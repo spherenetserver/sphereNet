@@ -34,6 +34,11 @@ PROJE SAGLIGI / PROJECT HEALTH:
     Documented the tests needed before touching sensitive network crypto and
     Huffman code.
 
+SCRIPT PARITESI / SCRIPT PARITY:
+  - Daha fazla karakter ve esya trigger ismi Source-X script adlariyla uyumlu
+    hale getirildi.
+    More character and item trigger names now match Source-X script names.
+
 [2026-05-02] - GM komut paritesi: CURE, POISON, REVEAL, GOUID, GOCHAR, OPENPAPERDOLL, SHOWSKILLS, PAGE routing
               (GM command parity: CURE, POISON, REVEAL, GOUID, GOCHAR, OPENPAPERDOLL, SHOWSKILLS, PAGE routing)
 ----------------------------------------

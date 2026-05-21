@@ -1020,4 +1020,31 @@ public class GameSystemTests
             Character.ResolveShipUidsByOwner = null;
         }
     }
+
+    [Fact]
+    public void TriggerDispatcher_UsesSourceCompatibleItemTriggerNames()
+    {
+        var dispatcher = new TriggerDispatcher();
+        var item = new Item();
+        var ch = new Character();
+        int itemCalls = 0;
+        int charCalls = 0;
+
+        dispatcher.RegisterItemEvent("EVENTSITEM", "DropOn_Trade", (_, _) =>
+        {
+            itemCalls++;
+            return TriggerResult.Default;
+        });
+        dispatcher.RegisterCharEvent("EVENTSPET", "itemDropOn_Trade", (_, _) =>
+        {
+            charCalls++;
+            return TriggerResult.Default;
+        });
+
+        dispatcher.FireItemTrigger(item, ItemTrigger.DropOnTrade, new SphereNet.Game.Scripting.TriggerArgs());
+        dispatcher.FireCharTrigger(ch, CharTrigger.itemDropOnTrade, new SphereNet.Game.Scripting.TriggerArgs());
+
+        Assert.Equal(1, itemCalls);
+        Assert.Equal(1, charCalls);
+    }
 }

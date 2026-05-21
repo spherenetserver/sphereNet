@@ -260,8 +260,7 @@ public sealed partial class GameClient
     /// dismount the GM's character if currently mounted.</summary>
     public void UnmountSelf()
     {
-        if (_character == null || _mountEngine == null) return;
-        _mountEngine.Dismount(_character);
+        DismountCharacter();
     }
 
     private void ClearPendingTargetState()

@@ -174,10 +174,14 @@ public sealed partial class GameClient
         int result = VendorEngine.ProcessBuy(_character, vendor, entries);
         if (result < 0)
             NpcSpeech(vendor, ServerMessages.Get("npc_vendor_nomoney1"));
-        else if (result == 0)
-            NpcSpeech(vendor, ServerMessages.Get("npc_vendor_ty"));
         else
-            NpcSpeech(vendor, ServerMessages.GetFormatted("npc_vendor_b1", result, result == 1 ? "" : "s"));
+        {
+            FireVendorItemTriggers(vendor, entries, ItemTrigger.Buy);
+            if (result == 0)
+                NpcSpeech(vendor, ServerMessages.Get("npc_vendor_ty"));
+            else
+                NpcSpeech(vendor, ServerMessages.GetFormatted("npc_vendor_b1", result, result == 1 ? "" : "s"));
+        }
 
         RefreshBackpackContents();
         SendCharacterStatus(_character);
@@ -220,6 +224,8 @@ public sealed partial class GameClient
         }
 
         int result = VendorEngine.ProcessSell(_character, vendor, entries);
+        if (result > 0)
+            FireVendorItemTriggers(vendor, entries, ItemTrigger.Sell);
         NpcSpeech(vendor, ServerMessages.GetFormatted("npc_vendor_sell_ty", result, result == 1 ? "" : "s"));
         RefreshBackpackContents();
         SendCharacterStatus(_character);
@@ -237,6 +243,26 @@ public sealed partial class GameClient
     private static int GetVendorItemSellPrice(Character vendor, Item item)
     {
         return Math.Max(1, GetVendorItemPrice(vendor, item) / 2);
+    }
+
+    private void FireVendorItemTriggers(Character vendor, IReadOnlyList<TradeEntry> entries, ItemTrigger trigger)
+    {
+        if (_triggerDispatcher == null || _character == null) return;
+
+        foreach (var entry in entries)
+        {
+            var item = _world.FindItem(entry.ItemUid);
+            if (item == null) continue;
+
+            _triggerDispatcher.FireItemTrigger(item, trigger, new TriggerArgs
+            {
+                CharSrc = _character,
+                ItemSrc = item,
+                O1 = vendor,
+                N1 = entry.Amount,
+                N2 = entry.Price
+            });
+        }
     }
 
     /// <summary>
@@ -288,6 +314,8 @@ public sealed partial class GameClient
         cont2.Name = "Trade Container";
 
         var trade = _tradeManager.StartTrade(_character, partner, cont1, cont2);
+        FireTradeTrigger(_character, CharTrigger.TradeCreate, trade, partner);
+        FireTradeTrigger(partner, CharTrigger.TradeCreate, trade, _character);
 
         _netState.Send(new PacketWorldItem(cont1.Uid.Value, 0x1E5E, 1, 0, 0, 0, 0));
         _netState.Send(new PacketWorldItem(cont2.Uid.Value, 0x1E5E, 1, 0, 0, 0, 0));
@@ -321,6 +349,9 @@ public sealed partial class GameClient
         _netState.Send(new PacketSecureTradeClose(myCont.Uid.Value));
         SendTradeCloseToPartner?.Invoke(partner, theirCont.Uid.Value);
 
+        FireTradeTrigger(_character!, CharTrigger.TradeClose, trade, partner);
+        FireTradeTrigger(partner, CharTrigger.TradeClose, trade, _character!);
+
         trade.Cancel();
         _tradeManager!.EndTrade(trade);
 
@@ -346,6 +377,11 @@ public sealed partial class GameClient
             trade.GetPartner(_character!),
             trade.GetPartnerContainer(_character!).Uid.Value);
 
+        FireTradeTrigger(initiator, CharTrigger.TradeAccepted, trade, partner);
+        FireTradeTrigger(partner, CharTrigger.TradeAccepted, trade, initiator);
+        FireTradeTrigger(initiator, CharTrigger.TradeClose, trade, partner);
+        FireTradeTrigger(partner, CharTrigger.TradeClose, trade, initiator);
+
         trade.Complete();
         _tradeManager!.EndTrade(trade);
 
@@ -365,6 +401,16 @@ public sealed partial class GameClient
 
         var partner = trade.GetPartner(_character!);
         SendTradeUpdateToPartner?.Invoke(partner, trade);
+    }
+
+    private void FireTradeTrigger(Character target, CharTrigger trigger, SecureTrade trade, Character other)
+    {
+        _triggerDispatcher?.FireCharTrigger(target, trigger, new TriggerArgs
+        {
+            CharSrc = other,
+            O1 = other,
+            N1 = (int)trade.SessionId.Value
+        });
     }
 
     public Action<Character, Character, Item, Item>? SendTradeToPartner { get; set; }
@@ -1223,6 +1269,7 @@ public sealed partial class GameClient
         var ch = _world.FindChar(new Serial(targetSerial));
         if (ch != null)
         {
+            FireContextMenuTrigger(ch, CharTrigger.ContextMenuRequest, 0);
             entries.Add((1, 3006123, 0)); // Open Paperdoll
             if (ch == _character)
             {
@@ -1259,12 +1306,14 @@ public sealed partial class GameClient
     private void HandleContextMenuResponse(uint targetSerial, ushort entryTag)
     {
         if (_character == null) return;
+        var target = _world.FindChar(new Serial(targetSerial));
+        if (target != null)
+            FireContextMenuTrigger(target, CharTrigger.ContextMenuSelect, entryTag);
 
         switch (entryTag)
         {
             case 1: // Open Paperdoll
-                var ch = _world.FindChar(new Serial(targetSerial));
-                if (ch != null) SendPaperdoll(ch);
+                if (target != null) SendPaperdoll(target);
                 break;
             case 2: // Open Backpack
                 if (_character.Backpack != null)
@@ -1284,9 +1333,18 @@ public sealed partial class GameClient
                 HandleDoubleClick(targetSerial);
                 break;
             case 7: // Dismount
-                _mountEngine?.Dismount(_character);
+                DismountCharacter();
                 break;
         }
+    }
+
+    private void FireContextMenuTrigger(Character target, CharTrigger trigger, ushort entryTag)
+    {
+        _triggerDispatcher?.FireCharTrigger(target, trigger, new TriggerArgs
+        {
+            CharSrc = _character,
+            N1 = entryTag
+        });
     }
 
     // ==================== Single Click ====================

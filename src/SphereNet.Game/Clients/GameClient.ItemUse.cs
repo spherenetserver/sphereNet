@@ -45,7 +45,7 @@ public sealed partial class GameClient
             if (_character.IsMounted && _mountEngine != null)
             {
                 uint oldMountItemUid = _character.GetEquippedItem(Layer.Horse)?.Uid.Value ?? 0;
-                var npc = _mountEngine.Dismount(_character);
+                var npc = DismountCharacter();
 
                 // Correct Z to terrain after body type change (mounted→foot)
                 var mapData = _world.MapData;
@@ -163,7 +163,7 @@ public sealed partial class GameClient
                 }
 
                 uint mountNpcUid = ch.Uid.Value;
-                if (_mountEngine.TryMount(_character, ch))
+                if (TryMountCharacter(ch))
                 {
                     // Correct Z to terrain after body type change (foot→mounted)
                     var mountMapData = _world.MapData;

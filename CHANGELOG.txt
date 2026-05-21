@@ -38,6 +38,16 @@ SCRIPT PARITESI / SCRIPT PARITY:
   - Daha fazla karakter ve esya trigger ismi Source-X script adlariyla uyumlu
     hale getirildi.
     More character and item trigger names now match Source-X script names.
+  - Binek ve guvenli ticaret islemleri artik ilgili script triggerlarini
+    calistiriyor.
+    Mount and secure trade actions now fire their related script triggers.
+  - Vendor alis/satis islemlerinde esya tarafindaki @Buy ve @Sell triggerlari
+    gorunur hale getirildi.
+    Vendor buy/sell actions now expose item-side @Buy and @Sell triggers.
+  - Context menu acilma ve secim islemleri artik script triggerlariyla
+    izlenebiliyor.
+    Context menu request and selection actions can now be observed by script
+    triggers.
 
 [2026-05-02] - GM komut paritesi: CURE, POISON, REVEAL, GOUID, GOCHAR, OPENPAPERDOLL, SHOWSKILLS, PAGE routing
               (GM command parity: CURE, POISON, REVEAL, GOUID, GOCHAR, OPENPAPERDOLL, SHOWSKILLS, PAGE routing)

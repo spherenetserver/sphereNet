@@ -55,6 +55,19 @@ public class GameSystemTests
             .SetValue(state, value);
     }
 
+    private static void AttachCharacter(SphereNet.Game.Clients.GameClient client, Character ch, Account? account = null)
+    {
+        typeof(SphereNet.Game.Clients.GameClient)
+            .GetField("_character", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(client, ch);
+        if (account != null)
+        {
+            typeof(SphereNet.Game.Clients.GameClient)
+                .GetField("_account", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .SetValue(client, account);
+        }
+    }
+
     private static bool InvokePetCommand(SphereNet.Game.Clients.GameClient client, string text)
     {
         return (bool)typeof(SphereNet.Game.Clients.GameClient)
@@ -67,6 +80,13 @@ public class GameSystemTests
         typeof(SphereNet.Game.Clients.GameClient)
             .GetMethod("EnterWorld", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(client, []);
+    }
+
+    private static void InvokePrivate(SphereNet.Game.Clients.GameClient client, string methodName, params object[] args)
+    {
+        typeof(SphereNet.Game.Clients.GameClient)
+            .GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(client, args);
     }
 
     // --- Party ---
@@ -584,12 +604,7 @@ public class GameSystemTests
         ch.SkillClass = 99;
         world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
 
-        typeof(SphereNet.Game.Clients.GameClient)
-            .GetField("_character", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(client, ch);
-        typeof(SphereNet.Game.Clients.GameClient)
-            .GetField("_account", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(client, account);
+        AttachCharacter(client, ch, account);
 
         InvokeEnterWorld(client);
 
@@ -711,6 +726,41 @@ public class GameSystemTests
         Assert.True(mountEngine.TryMount(rider, horse));
         Assert.True(horse.HasOwner(rider.Uid));
         Assert.True(horse.HasController(rider.Uid));
+    }
+
+    [Fact]
+    public void GameClient_DoubleClickMount_FiresMountTrigger()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var netState = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = 701 };
+        SetNetStateInUse(netState, true);
+        var client = new SphereNet.Game.Clients.GameClient(netState, world, accountManager,
+            loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
+
+        var rider = world.CreateCharacter();
+        rider.IsPlayer = true;
+        world.PlaceCharacter(rider, new Point3D(100, 100, 0, 0));
+        var horse = world.CreateCharacter();
+        horse.BodyId = 0x00C8;
+        world.PlaceCharacter(horse, new Point3D(101, 100, 0, 0));
+
+        var dispatcher = new TriggerDispatcher();
+        int calls = 0;
+        dispatcher.RegisterCharEvent("EVENTSPLAYER", "Mount", (_, args) =>
+        {
+            calls++;
+            Assert.Same(horse, args.O1);
+            return TriggerResult.Default;
+        });
+
+        client.SetEngines(triggerDispatcher: dispatcher, mountEngine: new SphereNet.Game.Mounts.MountEngine(world));
+        AttachCharacter(client, rider);
+
+        client.HandleDoubleClick(horse.Uid.Value);
+
+        Assert.Equal(1, calls);
     }
 
     [Fact]
@@ -1046,5 +1096,192 @@ public class GameSystemTests
 
         Assert.Equal(1, itemCalls);
         Assert.Equal(1, charCalls);
+    }
+
+    [Fact]
+    public void GameClient_TradeLifecycle_FiresCreateAcceptedAndCloseTriggers()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var netState = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = 801 };
+        SetNetStateInUse(netState, true);
+        var client = new SphereNet.Game.Clients.GameClient(netState, world, accountManager,
+            loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
+
+        var initiator = world.CreateCharacter();
+        initiator.IsPlayer = true;
+        world.PlaceCharacter(initiator, new Point3D(100, 100, 0, 0));
+        var partner = world.CreateCharacter();
+        partner.IsPlayer = true;
+        world.PlaceCharacter(partner, new Point3D(101, 100, 0, 0));
+
+        var tradeManager = new TradeManager();
+        var dispatcher = new TriggerDispatcher();
+        int createCount = 0;
+        int acceptedCount = 0;
+        int closeCount = 0;
+
+        dispatcher.RegisterCharEvent("EVENTSPLAYER", "TradeCreate", (_, _) =>
+        {
+            createCount++;
+            return TriggerResult.Default;
+        });
+        dispatcher.RegisterCharEvent("EVENTSPLAYER", "TradeAccepted", (_, _) =>
+        {
+            acceptedCount++;
+            return TriggerResult.Default;
+        });
+        dispatcher.RegisterCharEvent("EVENTSPLAYER", "TradeClose", (_, _) =>
+        {
+            closeCount++;
+            return TriggerResult.Default;
+        });
+
+        client.SetEngines(triggerDispatcher: dispatcher, tradeManager: tradeManager);
+        AttachCharacter(client, initiator);
+
+        client.InitiateTrade(partner);
+        var trade = tradeManager.FindTradeFor(initiator);
+        Assert.NotNull(trade);
+        Assert.Equal(2, createCount);
+
+        trade!.ToggleAccept(partner);
+        client.HandleSecureTrade(2, trade.InitiatorContainer.Uid.Value, 0);
+
+        Assert.Equal(2, acceptedCount);
+        Assert.Equal(2, closeCount);
+        Assert.Null(tradeManager.FindTradeFor(initiator));
+    }
+
+    [Fact]
+    public void GameClient_VendorBuyAndSell_FireItemTriggers()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var oldVendorWorld = VendorEngine.World;
+        VendorEngine.World = world;
+        try
+        {
+            var accountManager = new AccountManager(loggerFactory);
+            var netState = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = 901 };
+            SetNetStateInUse(netState, true);
+            var client = new SphereNet.Game.Clients.GameClient(netState, world, accountManager,
+                loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
+
+            var player = world.CreateCharacter();
+            player.IsPlayer = true;
+            player.PrivLevel = PrivLevel.GM; // skip gold checks; this test is about trigger visibility.
+            world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
+
+            var pack = world.CreateItem();
+            pack.ItemType = ItemType.Container;
+            player.Equip(pack, Layer.Pack);
+
+            var vendor = world.CreateCharacter();
+            vendor.NpcBrain = NpcBrainType.Vendor;
+            world.PlaceCharacter(vendor, new Point3D(101, 100, 0, 0));
+
+            var stock = world.CreateItem();
+            stock.BaseId = 0x0F7A;
+            stock.Name = "Black Pearl";
+            stock.Amount = 1;
+            world.PlaceItem(stock, vendor.Position);
+
+            var sellItem = world.CreateItem();
+            sellItem.BaseId = 0x0F7B;
+            sellItem.Name = "Blood Moss";
+            sellItem.Amount = 1;
+            pack.AddItem(sellItem);
+
+            var dispatcher = new TriggerDispatcher();
+            int buyCount = 0;
+            int sellCount = 0;
+            dispatcher.RegisterItemEvent("EVENTSITEM", "Buy", (_, args) =>
+            {
+                buyCount++;
+                Assert.Equal(1, args.N1);
+                Assert.True(args.N2 > 0);
+                return TriggerResult.Default;
+            });
+            dispatcher.RegisterItemEvent("EVENTSITEM", "Sell", (_, args) =>
+            {
+                sellCount++;
+                Assert.Equal(1, args.N1);
+                Assert.True(args.N2 > 0);
+                return TriggerResult.Default;
+            });
+
+            client.SetEngines(triggerDispatcher: dispatcher);
+            AttachCharacter(client, player);
+
+            client.HandleVendorBuy(vendor.Uid.Value, 1,
+            [
+                new SphereNet.Network.Packets.Incoming.VendorBuyEntry
+                {
+                    ItemSerial = stock.Uid.Value,
+                    Amount = 1
+                }
+            ]);
+            client.HandleVendorSell(vendor.Uid.Value,
+            [
+                new SphereNet.Network.Packets.Incoming.VendorSellEntry
+                {
+                    ItemSerial = sellItem.Uid.Value,
+                    Amount = 1
+                }
+            ]);
+
+            Assert.Equal(1, buyCount);
+            Assert.Equal(1, sellCount);
+        }
+        finally
+        {
+            VendorEngine.World = oldVendorWorld;
+        }
+    }
+
+    [Fact]
+    public void GameClient_ContextMenu_FiresRequestAndSelectTriggers()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var netState = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = 1001 };
+        SetNetStateInUse(netState, true);
+        var client = new SphereNet.Game.Clients.GameClient(netState, world, accountManager,
+            loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
+
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
+        var target = world.CreateCharacter();
+        target.IsPlayer = true;
+        world.PlaceCharacter(target, new Point3D(101, 100, 0, 0));
+
+        var dispatcher = new TriggerDispatcher();
+        int requestCount = 0;
+        int selectCount = 0;
+        dispatcher.RegisterCharEvent("EVENTSPLAYER", "ContextMenuRequest", (_, args) =>
+        {
+            requestCount++;
+            Assert.Equal(0, args.N1);
+            return TriggerResult.Default;
+        });
+        dispatcher.RegisterCharEvent("EVENTSPLAYER", "ContextMenuSelect", (_, args) =>
+        {
+            selectCount++;
+            Assert.Equal(1, args.N1);
+            return TriggerResult.Default;
+        });
+
+        client.SetEngines(triggerDispatcher: dispatcher);
+        AttachCharacter(client, player);
+
+        InvokePrivate(client, "SendContextMenu", target.Uid.Value);
+        InvokePrivate(client, "HandleContextMenuResponse", target.Uid.Value, (ushort)1);
+
+        Assert.Equal(1, requestCount);
+        Assert.Equal(1, selectCount);
     }
 }

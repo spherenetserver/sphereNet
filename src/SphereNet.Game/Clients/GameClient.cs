@@ -323,6 +323,33 @@ public sealed partial class GameClient : ITextConsole
         _mountEngine = mountEngine;
     }
 
+    private bool TryMountCharacter(Character mount)
+    {
+        if (_character == null || _mountEngine == null)
+            return false;
+
+        if (!_mountEngine.TryMount(_character, mount))
+            return false;
+
+        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Mount,
+            new TriggerArgs { CharSrc = _character, O1 = mount });
+        return true;
+    }
+
+    private Character? DismountCharacter()
+    {
+        if (_character == null || _mountEngine == null)
+            return null;
+
+        var mount = _mountEngine.Dismount(_character);
+        if (mount != null)
+        {
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Dismount,
+                new TriggerArgs { CharSrc = _character, O1 = mount });
+        }
+        return mount;
+    }
+
     public void SetScriptServices(
         ScriptSystemHooks? systemHooks = null,
         ScriptDbAdapter? scriptDb = null,

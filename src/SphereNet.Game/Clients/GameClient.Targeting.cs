@@ -368,7 +368,7 @@ public sealed partial class GameClient
             _pendingMountTarget = false;
             var npc = ResolvePickedChar(serial);
             if (npc == null) { SysMessage(ServerMessages.Get("target_must_object")); return; }
-            if (_mountEngine == null || !_mountEngine.TryMount(_character, npc))
+            if (!TryMountCharacter(npc))
             {
                 SysMessage(ServerMessages.Get("gm_mount_failed"));
                 return;

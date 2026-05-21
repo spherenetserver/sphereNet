@@ -140,7 +140,7 @@ public sealed class Account : IScriptObj
         var upper = key.ToUpperInvariant();
 
         // TAG.name
-        if (upper.StartsWith("TAG."))
+        if (upper.StartsWith("TAG.", StringComparison.Ordinal))
         {
             value = _tags.Get(key[4..]) ?? "0";
             return true;
@@ -173,7 +173,7 @@ public sealed class Account : IScriptObj
             case "TOTALCONNECTTIME": value = _totalConnectTime.ToString(); return true;
             default:
                 // CHAR.n
-                if (upper.StartsWith("CHAR.") && int.TryParse(upper.AsSpan(5), out int slotIdx))
+                if (upper.StartsWith("CHAR.", StringComparison.Ordinal) && int.TryParse(upper.AsSpan(5), out int slotIdx))
                 {
                     var uid = GetCharSlot(slotIdx);
                     value = uid.IsValid ? $"0{uid.Value:X8}" : "0";
@@ -193,7 +193,7 @@ public sealed class Account : IScriptObj
         var upper = key.ToUpperInvariant();
 
         // TAG.name
-        if (upper.StartsWith("TAG."))
+        if (upper.StartsWith("TAG.", StringComparison.Ordinal))
         {
             _tags.Set(key[4..], value);
             return true;

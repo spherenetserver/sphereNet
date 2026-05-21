@@ -1159,8 +1159,7 @@ public class Item : ObjBase
             }
             case "RESYNC":
             {
-                // Resend building state to character — actual packet send at engine level
-                // Stub: mark for resync
+                MarkDirty(DirtyFlag.Position | DirtyFlag.Body | DirtyFlag.Hue | DirtyFlag.Name | DirtyFlag.Amount | DirtyFlag.Container);
                 return true;
             }
             case "MULTICREATE":

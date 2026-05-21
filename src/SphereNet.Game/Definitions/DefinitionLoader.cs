@@ -721,7 +721,7 @@ public sealed class DefinitionLoader
         result = 0;
         if (string.IsNullOrEmpty(val)) return false;
         val = val.Trim();
-        if (val.StartsWith("0x", StringComparison.OrdinalIgnoreCase) || val.StartsWith("0X"))
+        if (val.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             return ulong.TryParse(val.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out result);
         // Sphere scripts use bare hex (e.g. "00000004") — try hex if all chars are hex digits
         if (val.Length >= 2 && val[0] == '0')

@@ -1,153 +1,426 @@
-Visibility & Tick Performance Plan — v2 (2025-04-25)
-=====================================================
+7. Oyun Sistemleri — Sistem Sistem İnceleme
+7.1 Tam / güçlü implementasyon
+Sistem	Dosya	Not
+Combat
+CombatEngine.cs (388)
+3 era hit chance, armor, elemental
+Magic
+SpellEngine.cs (894)
+Interrupt, buff undo, reagents
+Death
+DeathEngine.cs (418)
+Corpse sırası Source-X kritik
+Movement
+MovementEngine + Pathfinder
+Region trigger’ları wired
+NPC AI
+NpcAI.cs (1602)
+C# AI güçlü; script trigger yok
+Housing
+HousingEngine.cs (538)
+Placement, lockdown, decay — token API eksik
+Ships
+ShipEngine.cs (710)
+Hareket, rotation
+Save
+Persistence
+4 format + shard + migration test
+Gathering
+GatheringEngine
+@ResourceTest/Gather wired
+Crafting
+CraftingEngine + gump
+@SkillMakeItem
+Party/Guild
+Managers
+Temel akış + bazı trigger’lar
+Secure trade
+SecureTrade + 0x6F
+Paket var; trade trigger yok
+Vendor
+VendorEngine + buy list paketleri
+Buy/sell logic var; edge case + BUY stub
+7.2 Kısmi / stub alanlar
+Alan	Detay
+Item use
+Tinker/poison target unimplemented (ItemUse.cs:367)
+Polymorph
+Resurrect body restore TODO (Combat.cs:917)
+Active skills
+Per-tick STROKE animasyon döngüsü yok
+Profanity
+ISOBSCENE → 0
+Dialog help
+Türkçe placeholder “scripts dolduracak”
+Mount
+Paket + MountEngine; @Mount/@Dismount yok
+7.3 GameClient partial haritası
+Partial	Satır	Sorumluluk
+ScriptConsole
+1768
+. komutlar, SERV, FOR*, DB
+Dialogs
+1529
+Gump render, FOR/RANGE
+ItemUse
+1426
+DClick routing (en karmaşık)
+PacketHelpers
+1351
+GM target, spawn
+Combat
+1184
+Walk, attack, spell, death
+WorldFeatures
+1164
+Craft gump, vendor, party UI, extended cmd
+Inventory
+377
+Pickup/drop/equip + trigger zinciri
+8. Scripting Katmanı
+8.1 Interpreter — desteklenen kontrol akışı
+IF/ELIF/ELSE, FOR/ENDFOR, WHILE, DORAND, DOSWITCH, BEGIN/END, FORPLAYERS/CHARS/ITEMS/CONT*, RETURN, CALL, TRY/TRYSRV/TRYSRC/TRYP/TRYLEVEL
 
-Mevcut Durum
-─────────────
-Senaryo: 300 online player (bot), 100.000 karakter, ~1.900 item
-Tick interval: 100ms
-Ölçümler (son test):
-  avg = 53.6ms    max = 146.5ms    players = 301
+8.2 Expression parser (~1.196 satır)
+50+ built-in: STRMATCH, STRCMP, RAND, MD5HASH, trig, regex, SEX, FORMATMINUTES, dialog arg hooks…
 
-Faz kırılımı (slow_tick > 25ms):
-  snapshot  =  2-3ms
-  compute   = 62-65ms
-    ├── npc_build      =  0.3-1ms   (BuildDecision, paralel)
-    ├── client_state   =  0.1ms     (TickClientState)
-    ├── npc_apply      = 61-63ms    ← DARBOĞAZ
-    │     └── ~3.230 NPC move/tick, her biri:
-    │           MoveCharacter (~3µs) + OnCharacterMoved fan-out (~17µs)
-    │           = 3.230 × 9 sektör × OnlinePlayers iteration
-    └── view_build     =  0.5-2ms   (BuildViewDelta, paralel)
-  apply     =  1-2ms
-  flush     =  2-6ms
+Eksik vs tam Source-X: STRREPLACE, STRJOIN, gerçek float pipeline (FEVAL integer’a indirgeniyor), birçok admin-specific func.
 
-Tamamlanan Optimizasyonlar
-──────────────────────────
-✓ FindRegion eliminasyonu: NPC move'larında 2× FindRegion (tüm region linear scan)
-  kaldırıldı. Sadece IsPlayer ise yapılıyor. Kazanç: ~435ms → ~5ms (NPC move başına)
-✓ Allocation churn: ConcurrentBag → lock+List, ConcurrentDictionary → reusable,
-  refreshClients → reusable. Her tick'te sıfır GC allocation.
-✓ Decision sort kaldırıldı: 3.230 item sort (~0.2ms) eliminasyonu.
-✓ Boş sektör atla: OnCharacterMoved, BroadcastCharacterAppear, MarkNearbyClientsRefresh
-  içinde sector.OnlinePlayers.Count == 0 kontrolü ile boş sektörler atlanıyor.
-✓ Telemetry temizliği: Per-decision Stopwatch ve charMoved accumulator kaldırıldı.
-  4-faz breakdown (npc_build/client_state/npc_apply/view_build) korundu.
+8.3 SpellDef çift model
+Scripting	Game
+Kullanım
+Ölü sınıf — instantiate edilmiyor
+Runtime tek kaynak
+Yükleme
+—
+DefinitionLoader → ResourceLink.StoredKeys → SpellRegistry
+Aksiyon: Scripting SpellDef.cs silinmeli veya internal mapper’a indirgenmeli.
 
-Toplam kazanç: 100 bot ile 547ms avg → 300 bot ile 53.6ms avg (~10× iyileşme, 3× fazla yük)
+9. MapData ve Client Dosyaları
+Varlık	MUL	UOP	Memory-mapped
+Terrain
+✓ MapReader
+✓ UopMapReader (temp extract → mmap)
+UOP: evet; MUL: FileStream
+Statics
+✓ StaticReader
+✗
+idx+data mmap
+Multis
+✓ pre-HS 12-byte
+✗
+Hayır
+Tiledata
+✓ full RAM load
+—
+Hayır
+Modern UO client: UOP statics/multis yok → HS+ shard’larda eksik statikler.
 
+10. Config (sphere.ini) — Gerçek vs Belge
+~1.293 satır, üç etiket sistemi:
 
-Kalan Darboğaz Analizi
-──────────────────────
-npc_apply = 61-63ms, bunun ~95%'i OnCharacterMoved fan-out.
+Etiket	~Adet	Anlam
+[ÇALIŞIYOR] / [CALISIYOR]
+64
+Kodda aktif
+[OKUNUYOR]
+45
+SphereConfig’e yüklenir, çoğu uygulanmaz
+[UYGULANMADI]
+50
+Modelde bile yok
+SphereConfig.cs: ~100 property — ini’nin yarısından fazlası “ölü ayar”.
 
-OnCharacterMoved her NPC move için:
-  1. 3×3 = 9 sektör tarar (64×64 tile, secRadius=1 for range=18)
-  2. Her sektörde OnlinePlayers listesini iterate eder
-  3. Her online player için NotifyCharMoved çağırır:
-     - 2× InRange check (wasInRange, nowInRange)
-     - _knownChars.Contains + _lastKnownPos.TryGetValue
-     - Değiştiyse SendUpdateMobile (0x77 packet build + queue)
+Örnek okunup uygulanmayanlar: CLIENTMAXIP, linkdead timer, connecting limit, birçok COMBAT*ERA, NPCAI flag’leri, housing limitleri.
 
-3.230 NPC move × ortalama ~3-5 yakın player = ~12.000 NotifyCharMoved çağrısı/tick
-Her çağrı ~5µs (InRange + dictionary + packet) = ~60ms
+Hardcoded prod riski:
 
-Max tick spike'ları (146ms): Tüm NPC'ler aynı anda hareket ettiğinde (timer wheel
-burst), veya yoğun sektörlerde çok sayıda player+NPC kesiştiğinde oluşuyor.
+        _accounts.AutoCreateAccounts = true;
+sphere.ini’de kapatılsa bile kod zorla açıyor — herhangi kullanıcı adı+şifre ile hesap oluşur.
 
+11. Güvenlik Denetimi
+Yüzey	Port	Auth	Risk
+UO client
+2593
+Account MD5 + crypto
+Auto-create accounts
+Telnet admin
++1
+Yok (sadece 127.0.0.1)
+Localhost’ta tam admin
+Web status JSON
++2
+Yok
+Karakter/item/connection sızıntısı
+Web panel
++3 (Host)
+AdminPassword plaintext + 24h bearer
+XSS → token; HTTP only
+IPC named pipe
+—
+Yok
+Local trust
+Headless stdin
+—
+Yok
+Tam komut
+Panel API (korumalı): save, shutdown, restart, broadcast, raw command, accounts CRUD, script read, GitHub ZIP install, debug toggles.
 
-Önerilen Adımlar (öncelik sırasıyla)
-─────────────────────────────────────
+Panel eksikleri: script write API yok (UI read-only); player kick/goto yok; TLS/2FA yok; token localStorage.
 
-Adım 1 — NPC move throttle / stagger
-  Sorun: Timer wheel her 700-900ms'de NPC'leri ateşliyor. Tick intervali 100ms
-  olunca, belirli tick'lerde NPC'lerin büyük kısmı aynı anda düşüyor (burst).
-  max=146ms spike'larının sebebi bu.
+Telnet düzeltmesi: sphere.ini AdminPassword telnet için etiketlenmiş “çalışıyor” — TelnetConsole oturum açılışında şifre sormuyor; sadece localhost bind. Gerçekte şifresiz localhost admin.
 
-  Çözüm: BuildDecision'daki NextNpcActionTime jitter'ını tick interval'e göre
-  daha iyi dağıt. Örneğin 3.230 NPC'nin 700ms periyotta düzgün yayılması için
-  NPC UID hash'ine dayalı offset: baseDelay + (uid % spreadWindow). Bu, her
-  tick'te ~460 NPC hareket eder (3230/7 tick) ve max spike düşer.
+12. Test Kapsamı — Detaylı Matris
+12.1 Mevcut 151 test (11 dosya)
+Dosya	Test sayısı	Kapsam
+GameSystemTests
+39
+Party, guild, trade, death, crafting, scripting snippet, DB adapter
+ActiveSkillEngineTests
+16
+Hiding, meditating, stealing, taming…
+ServerMessagesTests
+14
+DEFMSG, printf conversion
+CombatEngineTests
+12
+Hit chance, damage, armor
+InfoSkillEngineTests
+11
+Anatomy, arms lore…
+SaveFormatTests
+8
+Text/binary/gz, shard, migration
+SkillEngineTests
+8
+Difficulty, GM bypass
+DefinitionAndSpellRegressionTests
+6
+Spell load, Recall
+EncryptionTests
+7
+Blowfish/Twofish
+MovementTests
+4
+Walk, frozen
+PathfinderTests
+4
+A*
+12.2 Test edilmeyen (yüksek risk)
+Alan	Neden önemli
+EQUIP load roundtrip
+Veri kaybı bug’ı
+TCP login → play
+Gerçek client uyumu
+Packet parse/send
+48/256 opcode
+NpcAI + trigger
+Shard NPC script’leri
+SpellEngine full
+Sadece regression
+WorldLoader/Saver integration
+Tam dünya
+Multicore determinism
+Hash guardrail
+Panel auth
+Bearer bypass
+HousingEngine
+Token + decay
+Vendor buy 0x3B
+Ekonomi
+12.3 Boş test projeleri
+tests/SphereNet.{Core,Game,MapData,Network,Persistence,Scripting}.Tests — sadece .csproj, 0 test. dotnet test uyarı veriyor.
 
-  Dosyalar: src/SphereNet.Game/AI/NpcAI.cs BuildDecision()
-  Risk: Düşük — sadece zamanlama, davranış değişmez
-  Beklenen kazanç: max spike 146ms → ~80ms
+13. Panel ve Host
+13.1 Vue panel (panel/src, ~3.200 satır)
+Sayfa	Özellik	Eksik
+Dashboard
+SignalR canlı metrik
+Grafik/geçmiş
+Logs
+Canlı akış
+Filtre/export
+Players
+Liste
+Kick, whisper, goto
+Accounts
+CRUD, ban
+Password/plevel edit UI
+Server
+Save, GC, broadcast, console
+Bot/recording
+Scripts
+Ağaç + read-only viewer
+Edit, hot-reload
+Settings
+Debug toggle
+Tam ini edit
+Setup
+İlk kurulum ~8 key
+Geri kalan ini manuel
+13.2 Host vs Server
+Host: Panel + managed server child + IPC
+Server headless: PanelContext var ama PanelHost başlamıyor — panel için Host şart
+14. Operasyon ve Repo Hijyeni
+Konu	Durum
+CI (GitHub Actions)
+Yok
+Docker
+Yok
+scripts/
+.gitignore — clone sonrası boş shard
+save/
+Gitignore — doğru
+CONTRIBUTING / ARCHITECTURE
+Yok
+wiki/
+Gitignore
+CHANGELOG
+~6.500 satır; May 2026 GM/packet/combat yoğun
+Deploy checklist (manuel): sphere.ini + scripts/ + UO mul/ + opsiyonel save/
 
-Adım 2 — Reverse-known index ile targeted update
-  Sorun: NPC hareket ettiğinde OnCharacterMoved TÜM yakın sektörlerdeki
-  OnlinePlayers'ı tarıyor. Çoğu player zaten o NPC'yi biliyor ve sadece
-  position update (0x77) alması yeterli.
+15. Performans (README ile uyumlu + derinleştirme)
+300 bot / ~50K NPC / ~101K item:
 
-  Çözüm: Her NPC/obje için "beni hangi client'lar biliyor" reverse index tut.
-  _knownChars zaten client→NPC yönünde var; NPC→client[] ters index ekle.
-  NPC hareket ettiğinde:
-    a) Reverse index'teki client'lara doğrudan SendUpdateMobile
-    b) Menzile yeni giren client'lara NotifyCharacterAppear (enter-range)
-    c) Menzilden çıkan client'lardan RemoveKnownChar (leave-range)
-  Sektör taraması sadece (b) ve (c) için gerekli, bu da çoğu tick'te boş.
+Metrik	Değer
+Ortalama tick
+~9 ms
+Max tick
+~37 ms
+Darboğaz
+npc_apply ~20 ms (slow tick spike)
+İyileştirme yönleri:
 
-  Dosyalar:
-    src/SphereNet.Game/Clients/GameClient.cs — _knownChars Add/Remove'da
-      reverse index güncelle
-    src/SphereNet.Server/Program.cs — OnCharacterMoved yeni mantık
-    src/SphereNet.Game/World/GameWorld.cs — reverse index storage
-  Risk: Orta — known-set senkronizasyonu kritik, shadow mode ile doğrulanmalı
-  Beklenen kazanç: npc_apply 60ms → ~15-20ms (sektör scan eliminasyonu)
+Apply fazında gereksiz paket/state güncellemesi
+NPC karar batch boyutu / önceliklendirme
+View delta ile NPC apply çakışmasını azaltma
+Bot benchmark’ı CI nightly (regresyon alarmı)
+16. CHANGELOG’tan Gelişim Deseni (2026)
+Son dönem yoğunluğu:
 
-Adım 3 — Player movement incremental view
-  Sorun: Player hareket ettiğinde ViewNeedsRefresh=true → sonraki tick'te
-  BuildViewDelta tüm range'i baştan tarıyor. Şu an view_build 0.5-2ms ama
-  player sayısı artarsa (500+) lineer büyür.
+Source-X paritesi — GM komut, DEFMSG, item use, death pipeline
+Paket paritesi — status, equip, ground item, stat lock
+NPC AI / combat — spell seçimi, ranged ammo
+Performans — multicore, sector sleep, region cache
+Panel/Host — launcher, setup wizard, script viewer
+Test ve CI neredeyse hiç mention edilmiyor → teknik borç birikiyor.
 
-  Çözüm: Player hareket ettiğinde sadece view sınırından giren/çıkan
-  1-tile şeridini tara. Eski yöndeki 1 sıra objeyi remove, yeni yöndeki
-  1 sıra objeyi appear. BuildViewDelta login/teleport/resync fallback olur.
-
-  Dosyalar:
-    src/SphereNet.Server/Program.cs — OnCharacterMoved player branch
-    src/SphereNet.Game/Clients/GameClient.cs — IncrementalViewUpdate()
-  Risk: Orta — kenar durumlar (teleport, map geçişi, mount) dikkatli
-  Beklenen kazanç: Player hareket maliyeti sabit O(view_width) yerine O(view_width²)
-
-Adım 4 — 16×16 visibility grid (gerekirse)
-  Sorun: GetObjectsInRange 64×64 sektörlerdeki TÜM NPC'leri iterate edip
-  GetDistanceTo filtreliyor. Bir sektörde 5.000 NPC varsa, hepsi taranıyor.
-  Şu an BuildViewDelta çok az çalışıyor (<2ms) ama Adım 2-3 sonrası
-  kalan darboğaz buraya kayabilir.
-
-  Çözüm: 64×64 tick sektörlerin yanına 16×16 visibility cell grid'i ekle.
-  MoveCharacter/PlaceCharacter bu grid'i de günceller. GetObjectsInRange
-  16×16 cell'lerden aday çeker (4× daha az aday).
-
-  Dosyalar:
-    src/SphereNet.Game/World/GameWorld.cs — VisibilityGrid class + PlaceCharacter/
-      MoveCharacter güncelleme
-    src/SphereNet.Game/World/Sectors/Sector.cs — aynen kalır (tick/sleep)
-  Risk: Düşük-Orta — yeni yapı, mevcut sistemi bozmaz
-  Beklenen kazanç: GetObjectsInRange aday kümesi ~4× küçülür
-
-Adım 5 — Dirty object reverse-known update
-  Sorun: NPC body/hue/equip değişince MarkClientsNearDirtyObjects tüm yakın
-  sektörleri tarıyor ve client'ları full refresh'e zorluyor.
-
-  Çözüm: Adım 2'deki reverse index'i kullanarak, dirty objeyi zaten bilen
-  client'lara targeted update gönder. Full refresh'i sadece login/resync için tut.
-
-  Dosyalar: src/SphereNet.Server/Program.cs — MarkClientsNearDirtyObjects
-  Risk: Düşük (Adım 2'nin uzantısı)
-  Beklenen kazanç: Dirty spike'lar azalır
-
-
-Hedef Metrikler
-───────────────
-Adım 1 sonrası:  avg < 40ms,  max < 80ms   (300 player, 100K char)
-Adım 2 sonrası:  avg < 25ms,  max < 50ms
-Adım 3 sonrası:  avg < 20ms,  max < 40ms
-Adım 4-5:        500+ player senaryosuna hazır
-
-100ms tick bütçesi içinde %50+ boşluk hedefi: sunucu, script execution,
-combat hesabı, packet processing gibi diğer işlere yeterli headroom bırakır.
-
-
-Not: Her adım bağımsız test edilebilir. Adım 2 en büyük kazancı verecek ama
-en riskli olan da o (known-set senkronizasyonu). Shadow mode ile eski/yeni
-sonuçları karşılaştırarak güvenli geçiş yapılabilir.
+17. Öncelikli Yol Haritası (Efor Tahmini)
+Faz A — Veri bütünlüğü ve güvenlik (1–2 hafta) — P0
+#	İş	Efor	Çıktı
+A1
+EQUIP[] restore + test
+1–2 gün
+Restart sonrası ekipman korunur
+A2
+AutoCreateAccounts → ini-driven
+2 saat
+Prod güvenliği
+A3
+Telnet şifre veya default kapalı
+1 gün
+Localhost exploit kapanır
+A4
+HOUSES/House.N → HousingEngine
+1 gün
+Housing script’leri
+A5
+GitHub Actions CI
+4 saat
+Her PR build+test
+Faz B — Mimari sağlık (3–5 hafta) — P1
+#	İş	Efor
+B1
+Program.cs → ServerBootstrap, TickHost, PacketHost
+2 hafta
+B2
+Scripting SpellDef kaldır / tek model
+2 gün
+B3
+docs/PARITY.md — stub + trigger matrisi
+3 gün
+B4
+Boş test projelerini doldur veya sil
+1 gün
+B5
+.editorconfig + nullable warnings
+2 gün
+Faz C — Script / NPC paritesi (6–10 hafta) — P1
+#	İş	Efor
+C1
+NpcAI → @NPCAct* / @NPCLook* fire
+2 hafta
+C2
+Trade lifecycle trigger’ları
+3 gün
+C3
+Mount/Dismount trigger
+2 gün
+C4
+f_onchar_* global hook’lar
+1 hafta
+C5
+[TYPEDEF] script execution
+1 hafta
+C6
+Item Buy/Sell + vendor edge
+1 hafta
+C7
+GOTO/BREAK (gerekirse)
+1–2 hafta
+Faz D — Ağ ve client (4–6 hafta) — P2
+#	İş
+D1
+Inbound Huffman recv path
+D2
+0xBF sub-op registry (RegisterExtended)
+D3
+0xF0 movement, boat 0xF6, buff 0xDF
+D4
+Opcode gap checklist + client matrix (ClassicUO / official)
+Faz E — Test ve operasyon (sürekli) — P2
+#	İş
+E1
+Integration test: loopback login
+E2
+Golden script tests (tests/fixtures/*.scp)
+E3
+scripts/samples/ minimal shard (git’te)
+E4
+docs/DEPLOY.md + systemd örneği
+E5
+Panel: script PUT + player actions
+Faz F — Performans (profil sonrası) — P3
+#	İş
+F1
+npc_apply flamegraph
+F2
+Apply faz optimizasyonu
+F3
+Nightly bot benchmark CI artifact
+18. Risk Matrisi
+Risk	Olasılık	Etki	Mitigasyon
+EQUIP kaybı
+Yüksek (her save/load)
+Kritik
+A1
+Script sessiz fail
+Yüksek
+Yüksek
+PARITY.md + stub’ları false döndür
+NPC script çalışmıyor
+Yüksek
+Yüksek
+C1
+Localhost admin açık
+Orta (shared host)
+Kritik
+A3, panel TLS
+Opcode gap client crash
+Orta
+Orta
+D3, unknown packet logging
+Program.cs regresyon
+Yüksek (değişiklikte)
+Yüksek
+B1 + integration test

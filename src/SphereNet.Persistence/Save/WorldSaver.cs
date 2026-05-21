@@ -73,6 +73,7 @@ public sealed class WorldSaver
         catch (Exception ex)
         {
             _logger.LogError(ex, "World save #{Index} FAILED", _saveIndex);
+            CleanupTmpFiles(savePath);
             return false;
         }
     }
@@ -605,6 +606,19 @@ public sealed class WorldSaver
         }
 
         File.Move(tmpPath, finalPath, overwrite: true);
+    }
+
+    private void CleanupTmpFiles(string savePath)
+    {
+        try
+        {
+            foreach (var tmp in Directory.EnumerateFiles(savePath, "*.tmp"))
+            {
+                try { File.Delete(tmp); }
+                catch { /* best effort */ }
+            }
+        }
+        catch { /* directory may not exist */ }
     }
 
     /// <summary>Delete files that match the save base but are NOT in the

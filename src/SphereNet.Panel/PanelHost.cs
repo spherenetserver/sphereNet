@@ -210,7 +210,7 @@ public sealed class PanelHost : IDisposable
             if (string.IsNullOrEmpty(_ctx.AdminPassword))
                 return Results.BadRequest(new { error = "AdminPassword not configured in sphere.ini" });
 
-            if (req.Password != _ctx.AdminPassword)
+            if (!Core.Configuration.PasswordHelper.Verify(req.Password, _ctx.AdminPassword))
             {
                 Thread.Sleep(500);
                 return Results.Unauthorized();
@@ -264,13 +264,13 @@ public sealed class PanelHost : IDisposable
             {
                 ["ServName"]       = req.ServerName,
                 ["ServPort"]       = req.ServPort.ToString(),
-                ["AdminPassword"]  = req.AdminPassword,
+                ["AdminPassword"]  = Core.Configuration.PasswordHelper.Hash(req.AdminPassword),
                 ["AdminPanelPort"] = req.AdminPanelPort.ToString(),
                 ["TickSleepMode"]  = req.TickSleepMode.ToString(),
                 ["DebugPackets"]   = req.DebugPackets ? "1" : "0",
                 ["ScriptDebug"]    = req.ScriptDebug  ? "1" : "0",
             });
-            _ctx.AdminPassword = req.AdminPassword;
+            _ctx.AdminPassword = Core.Configuration.PasswordHelper.Hash(req.AdminPassword);
             _ctx.ServerName    = req.ServerName;
 
             // Mark setup as complete

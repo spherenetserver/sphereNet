@@ -1473,10 +1473,9 @@ public sealed partial class GameClient
                     return true;
                 default:
                     // FILE.READLINE n, FILE.SEEK pos, FILE.FILELINES path, FILE.FILEEXIST path
-                    if (fileProp.StartsWith("READLINE"))
+                    if (fileProp.StartsWith("READLINE", StringComparison.Ordinal))
                     {
                         string lineArg = fileProp.Length > 8 ? fileProp[8..].Trim() : "";
-                        // Argument may also come after space: FILE.READLINE 3
                         if (string.IsNullOrEmpty(lineArg) && varName.Length > 13)
                             lineArg = varName[13..].Trim();
                         int lineNum = 0;
@@ -1485,7 +1484,7 @@ public sealed partial class GameClient
                         value = _scriptFile.ReadLine(lineNum);
                         return true;
                     }
-                    if (fileProp.StartsWith("SEEK"))
+                    if (fileProp.StartsWith("SEEK", StringComparison.Ordinal))
                     {
                         string seekArg = fileProp.Length > 4 ? fileProp[4..].Trim() : "";
                         if (string.IsNullOrEmpty(seekArg) && varName.Length > 9)
@@ -1494,7 +1493,7 @@ public sealed partial class GameClient
                         value = _scriptFile.Position.ToString();
                         return true;
                     }
-                    if (fileProp.StartsWith("FILELINES"))
+                    if (fileProp.StartsWith("FILELINES", StringComparison.Ordinal))
                     {
                         string flArg = fileProp.Length > 9 ? fileProp[9..].Trim() : "";
                         if (string.IsNullOrEmpty(flArg) && varName.Length > 14)
@@ -1503,7 +1502,7 @@ public sealed partial class GameClient
                             Path.GetDirectoryName(_scriptFile.FilePath) ?? "", flArg).ToString();
                         return true;
                     }
-                    if (fileProp.StartsWith("FILEEXIST"))
+                    if (fileProp.StartsWith("FILEEXIST", StringComparison.Ordinal))
                     {
                         string feArg = fileProp.Length > 9 ? fileProp[9..].Trim() : "";
                         if (string.IsNullOrEmpty(feArg) && varName.Length > 14)

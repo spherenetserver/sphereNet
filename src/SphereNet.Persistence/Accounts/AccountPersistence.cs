@@ -222,7 +222,7 @@ public static class AccountPersistence
                 if (byte.TryParse(val, out byte rd)) acc.ResDisp = rd;
                 break;
             default:
-                if (upper.StartsWith("TAG.") && upper.Length > 4)
+                if (upper.StartsWith("TAG.", StringComparison.Ordinal) && upper.Length > 4)
                 {
                     acc.SetTag(upper[4..], val);
                 }
@@ -235,7 +235,7 @@ public static class AccountPersistence
                         if (free >= 0) acc.SetCharSlot(free, new Serial(cs));
                     }
                 }
-                else if (upper.StartsWith("CHARUID") && upper.Length == 8
+                else if (upper.StartsWith("CHARUID", StringComparison.Ordinal) && upper.Length == 8
                     && int.TryParse(upper.AsSpan(7), out int slotIdx))
                 {
                     if (TryParseHexOrDec(val, out uint charSerial))

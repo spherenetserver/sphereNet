@@ -40,7 +40,7 @@ public sealed class TextSaveReader : ISaveReader
         {
             string trimmed = line.Trim();
             if (trimmed.Length == 0) continue;
-            if (trimmed.StartsWith("//")) continue;
+            if (trimmed.StartsWith("//", StringComparison.Ordinal)) continue;
 
             if (trimmed.Length >= 2 && trimmed[0] == '[' && trimmed[^1] == ']')
             {
@@ -73,7 +73,7 @@ public sealed class TextSaveReader : ISaveReader
         {
             string trimmed = line.Trim();
             if (trimmed.Length == 0) continue;
-            if (trimmed.StartsWith("//")) continue;
+            if (trimmed.StartsWith("//", StringComparison.Ordinal)) continue;
 
             // Another section header or [EOF] — back out, caller re-enters via NextRecord.
             if (trimmed.Length >= 2 && trimmed[0] == '[' && trimmed[^1] == ']')

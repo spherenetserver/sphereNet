@@ -440,4 +440,41 @@ public class SaveFormatTests
             try { Directory.Delete(tmp, recursive: true); } catch { }
         }
     }
+
+    [Theory]
+    [InlineData(SaveFormat.Text)]
+    [InlineData(SaveFormat.Binary)]
+    public void Roundtrip_PreservesOSkinDistinctFromOBody(SaveFormat fmt)
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_oskin_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            saver.Format = fmt;
+            saver.ShardCount = 0;
+
+            var src = MakeWorld();
+            var ch = src.CreateCharacter();
+            ch.Name = "SkinTest";
+            ch.IsPlayer = true;
+            ch.OBody = 0x0190;
+            ch.OSkin = 0x03EA;
+            src.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
+
+            Assert.True(saver.Save(src, tmp));
+
+            var dst = MakeWorld();
+            loader.Load(dst, tmp);
+
+            var loaded = dst.FindChar(ch.Uid);
+            Assert.NotNull(loaded);
+            Assert.Equal((ushort)0x0190, loaded!.OBody);
+            Assert.Equal((ushort)0x03EA, loaded.OSkin);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
 }

@@ -34,7 +34,7 @@ public sealed class ShardManifest
         foreach (string raw in File.ReadLines(path))
         {
             string line = raw.Trim();
-            if (line.Length == 0 || line.StartsWith("//")) continue;
+            if (line.Length == 0 || line.StartsWith("//", StringComparison.Ordinal)) continue;
             int eq = line.IndexOf('=');
             if (eq <= 0) continue;
             string key = line[..eq].Trim();

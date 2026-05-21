@@ -1298,7 +1298,7 @@ public sealed class CommandHandler
             string arg = args.Trim();
 
             // Try numeric first
-            if (arg.StartsWith("0x", StringComparison.OrdinalIgnoreCase) || arg.StartsWith("0X"))
+            if (arg.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             {
                 int.TryParse(arg.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out spellId);
             }

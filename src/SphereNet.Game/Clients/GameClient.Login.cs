@@ -37,6 +37,13 @@ public sealed partial class GameClient
 
     public void HandleLoginRequest(string account, string password)
     {
+        if (string.IsNullOrWhiteSpace(account) || string.IsNullOrEmpty(password))
+        {
+            _netState.Send(new PacketLoginDenied(3));
+            _netState.MarkClosing();
+            return;
+        }
+
         _account = _accountManager.Authenticate(account, password);
         if (_account == null)
         {
@@ -53,6 +60,13 @@ public sealed partial class GameClient
 
     public void HandleGameLogin(string account, string password, uint authId)
     {
+        if (string.IsNullOrWhiteSpace(account) || string.IsNullOrEmpty(password))
+        {
+            _netState.Send(new PacketLoginDenied(3));
+            _netState.MarkClosing();
+            return;
+        }
+
         _logger.LogDebug("HandleGameLogin: account='{Account}' authId=0x{AuthId:X8}", account, authId);
         _account = _accountManager.Authenticate(account, password);
         if (_account == null)

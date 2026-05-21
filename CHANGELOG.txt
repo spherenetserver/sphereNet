@@ -4,6 +4,64 @@
  All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-22] - Kapsamli hata taramasi ve duzeltme (Comprehensive bug audit and fixes)
+----------------------------------------
+
+KRITIK HATA DUZELTMELERI / CRITICAL BUG FIXES:
+  - WorldLoader OSKIN property'si ch.OBody yerine ch.OSkin'e ataniyor; save/load
+    sonrasi karakter skin rengi artik korunuyor.
+    WorldLoader OSKIN property now assigns to ch.OSkin instead of ch.OBody;
+    character skin colour is preserved across save/load.
+  - Paket builder'larda (PartyMemberList, PartyRemoveMember, ContextMenu) array
+    boyutu byte'a cast edilirken 255 siniri eklendi; tasmadan kaynaklanan paket
+    bozulmasi onlendi.
+    Packet builders (PartyMemberList, PartyRemoveMember, ContextMenu) now clamp
+    array length to 255 before byte cast; prevents packet corruption from overflow.
+
+GUVENLIK / SECURITY:
+  - Admin panel sifresi artik SHA256 hash ile saklanip karsilastiriliyor; eski
+    plaintext sifrelerle geriye uyumlu.
+    Admin panel password is now stored and verified using SHA256 hash; backwards
+    compatible with existing plaintext passwords.
+  - Telnet konsolu sifresi de ayni hash mekanizmasini kullaniyor.
+    Telnet console password also uses the same hash mechanism.
+  - Login isteklerinde bos hesap adi ve sifre erken reddediliyor.
+    Login requests with empty account name or password are rejected early.
+
+DAYANIKLILIK / RESILIENCE:
+  - WorldSaver basarisiz kayittan sonra artik yetim .tmp dosyalarini temizliyor.
+    WorldSaver now cleans up orphaned .tmp files after a failed save.
+  - MultiReader constructor'inda ikinci FileStream atarsa birinci stream dispose
+    ediliyor.
+    MultiReader constructor now disposes the first FileStream if the second one
+    throws.
+
+STUB TAMAMLAMA / STUB COMPLETION:
+  - PARTY.SYSMESSAGE artik SendPacketToOwner uzerinden gercek paket gonderiyor.
+    PARTY.SYSMESSAGE now sends a real packet via SendPacketToOwner.
+  - Item RESYNC komutu artik tum dirty flag'leri isaretliyor.
+    Item RESYNC command now marks all dirty flags for resync.
+
+KOD KALITESI / CODE QUALITY:
+  - 26 StartsWith cagrisi StringComparison.Ordinal ile guncellendi (performans ve
+    culture-safety).
+    26 StartsWith calls updated with StringComparison.Ordinal (performance and
+    culture-safety).
+  - 2 gereksiz "|| .StartsWith(\"0X\")" kosulu kaldirildi; OrdinalIgnoreCase
+    zaten kapsiyor.
+    Removed 2 redundant "|| .StartsWith(\"0X\")" conditions; OrdinalIgnoreCase
+    already covers them.
+
+TEST:
+  - OSKIN roundtrip testi eklendi (Text + Binary format).
+    Added OSKIN roundtrip test (Text + Binary format).
+  - PasswordHelper hash/verify/backwards-compat/empty-input testleri eklendi.
+    Added PasswordHelper hash/verify/backwards-compat/empty-input tests.
+  - Paket byte overflow clamp testi eklendi.
+    Added packet byte overflow clamp test.
+  - PARTY.SYSMESSAGE delegate testi eklendi.
+    Added PARTY.SYSMESSAGE delegate test.
+
 [2026-05-22] - Kalan backlog fazlari: guvenlik, parity ve test guvencesi
               (Remaining backlog phases: security, parity, and test coverage)
 ----------------------------------------

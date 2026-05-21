@@ -454,7 +454,7 @@ public sealed class WorldLoader
                 break;
             case "OSKIN":
                 if (TryParseHexOrDec(val, out uint oskin))
-                    ch.OBody = (ushort)oskin;
+                    ch.OSkin = (ushort)oskin;
                 break;
             case "ISPLAYER":
                 ch.IsPlayer = val == "1";
@@ -472,7 +472,7 @@ public sealed class WorldLoader
                     ch.Int = oint;
                 break;
             default:
-                if (upper.StartsWith("SKILL[") && upper.Contains(']'))
+                if (upper.StartsWith("SKILL[", StringComparison.Ordinal) && upper.Contains(']'))
                 {
                     var idx = upper.IndexOf('[');
                     var end = upper.IndexOf(']');
@@ -486,7 +486,7 @@ public sealed class WorldLoader
                     }
                     break;
                 }
-                if (upper.StartsWith("EQUIP["))
+                if (upper.StartsWith("EQUIP[", StringComparison.Ordinal))
                 {
                     break;
                 }

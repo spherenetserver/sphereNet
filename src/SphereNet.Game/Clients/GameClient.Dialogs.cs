@@ -1178,9 +1178,9 @@ public sealed partial class GameClient
                 // convention — scripts read them as zero before the first
                 // assignment (common pattern: "while <dlocal.n>" where the
                 // counter is bumped inside the body).
-                if (upper.StartsWith("LOCAL."))
+                if (upper.StartsWith("LOCAL.", StringComparison.Ordinal))
                     return locals.TryGetValue(upper[6..], out var lv) ? lv : "0";
-                if (upper.StartsWith("DLOCAL."))
+                if (upper.StartsWith("DLOCAL.", StringComparison.Ordinal))
                     return locals.TryGetValue(upper[7..], out var dlv) ? dlv : "0";
 
                 // REFn and REFn.property — dialog-scoped object references.
@@ -1205,8 +1205,8 @@ public sealed partial class GameClient
                 // the client-session CTag map (Source-X CClient::m_TagDefs
                 // parity), not the persistent TAG storage. Defaults to
                 // "0" when unset — Sphere convention.
-                if (upper.StartsWith("CTAG0.") || upper.StartsWith("CTAG.") ||
-                    upper.StartsWith("DCTAG0.") || upper.StartsWith("DCTAG."))
+                if (upper.StartsWith("CTAG0.", StringComparison.Ordinal) || upper.StartsWith("CTAG.", StringComparison.Ordinal) ||
+                    upper.StartsWith("DCTAG0.", StringComparison.Ordinal) || upper.StartsWith("DCTAG.", StringComparison.Ordinal))
                 {
                     int dot = upper.IndexOf('.');
                     string tagKey = upper[(dot + 1)..];
@@ -1219,7 +1219,7 @@ public sealed partial class GameClient
                     }
                     return tagVal ?? "0";
                 }
-                if ((upper.StartsWith("DEF.") || upper.StartsWith("DEF0.")) &&
+                if ((upper.StartsWith("DEF.", StringComparison.Ordinal) || upper.StartsWith("DEF0.", StringComparison.Ordinal)) &&
                     _commands?.Resources != null)
                 {
                     string origKey = varName.StartsWith("DEF.", StringComparison.OrdinalIgnoreCase)
@@ -1234,7 +1234,7 @@ public sealed partial class GameClient
                     if (defRid.IsValid) return defRid.Index.ToString();
                     return "0";
                 }
-                if ((upper.StartsWith("SRC.") || upper.StartsWith("DSRC.")) && _character != null)
+                if ((upper.StartsWith("SRC.", StringComparison.Ordinal) || upper.StartsWith("DSRC.", StringComparison.Ordinal)) && _character != null)
                 {
                     int d = upper.IndexOf('.');
                     string sub = upper[(d + 1)..];
@@ -1247,7 +1247,7 @@ public sealed partial class GameClient
                         return srcVal;
                     }
                 }
-                if (upper.StartsWith("SERV.") && servResolver != null)
+                if (upper.StartsWith("SERV.", StringComparison.Ordinal) && servResolver != null)
                     return servResolver(upper[5..]);
 
                 // Dialog subject (CLIMODE_DIALOG pObj) wins over GM

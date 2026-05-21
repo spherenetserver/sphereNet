@@ -1231,14 +1231,16 @@ public sealed class PacketContextMenu : PacketWriter
 
     public override PacketBuffer Build()
     {
-        var buf = CreateVariable(16 + _entries.Length * 8);
+        int count = Math.Min(_entries.Length, 255);
+        var buf = CreateVariable(16 + count * 8);
         buf.WriteUInt16(0x14); // sub-command
         buf.WriteUInt16(0x0001); // new-style context menu
         buf.WriteUInt32(_serial);
-        buf.WriteByte((byte)_entries.Length);
+        buf.WriteByte((byte)count);
 
-        foreach (var (entryTag, clilocId, flags) in _entries)
+        for (int i = 0; i < count; i++)
         {
+            var (entryTag, clilocId, flags) = _entries[i];
             buf.WriteUInt16(entryTag);
             buf.WriteUInt32(clilocId);
             buf.WriteUInt16(flags); // 0x00=enabled, 0x01=disabled, 0x20=highlighted
@@ -1359,13 +1361,14 @@ public sealed class PacketPartyMemberList : PacketWriter
 
     public override PacketBuffer Build()
     {
-        int len = 7 + _memberSerials.Length * 4; // cmd(2) + sub(2) + subSub(1) + count(1) + serials
+        int count = Math.Min(_memberSerials.Length, 255);
+        int len = 7 + count * 4;
         var buf = CreateVariable(len);
         buf.WriteUInt16(0x0006); // sub-command: party
         buf.WriteByte(0x01);    // sub-sub: member list
-        buf.WriteByte((byte)_memberSerials.Length);
-        foreach (var s in _memberSerials)
-            buf.WriteUInt32(s);
+        buf.WriteByte((byte)count);
+        for (int i = 0; i < count; i++)
+            buf.WriteUInt32(_memberSerials[i]);
         buf.WriteLengthAt(1);
         return buf;
     }
@@ -1387,14 +1390,15 @@ public sealed class PacketPartyRemoveMember : PacketWriter
 
     public override PacketBuffer Build()
     {
-        int len = 11 + _remainingMembers.Length * 4;
+        int count = Math.Min(_remainingMembers.Length, 255);
+        int len = 11 + count * 4;
         var buf = CreateVariable(len);
         buf.WriteUInt16(0x0006);
         buf.WriteByte(0x02); // sub-sub: remove member
-        buf.WriteByte((byte)_remainingMembers.Length);
+        buf.WriteByte((byte)count);
         buf.WriteUInt32(_removedSerial);
-        foreach (var s in _remainingMembers)
-            buf.WriteUInt32(s);
+        for (int i = 0; i < count; i++)
+            buf.WriteUInt32(_remainingMembers[i]);
         buf.WriteLengthAt(1);
         return buf;
     }

@@ -892,7 +892,7 @@ public sealed partial class GameClient
         ];
 
         // "all <verb>" path.
-        if (lower.StartsWith("all "))
+        if (lower.StartsWith("all ", StringComparison.Ordinal))
         {
             string verb = NormalizePetVerb(lower[4..], allMode: true);
             return DispatchAllPets(verb);

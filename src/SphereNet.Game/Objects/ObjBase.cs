@@ -579,7 +579,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             value = statics.Length.ToString();
             return true;
         }
-        if (upper.StartsWith("STATICS."))
+        if (upper.StartsWith("STATICS.", StringComparison.Ordinal))
         {
             // STATICS.n.ID, STATICS.n.COLOR, STATICS.n.Z
             var rest = upper["STATICS.".Length..];
@@ -608,7 +608,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         }
 
         // --- ISNEARTYPE ---
-        if (upper.StartsWith("ISNEARTYPE"))
+        if (upper.StartsWith("ISNEARTYPE", StringComparison.Ordinal))
         {
             // Format: ISNEARTYPE type,distance  or  ISNEARTYPE(type,distance)
             var argStr = upper["ISNEARTYPE".Length..].Trim('(', ')', ' ');

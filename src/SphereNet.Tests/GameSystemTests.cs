@@ -2139,4 +2139,79 @@ public class GameSystemTests
         Assert.Equal(1, questCount);
         Assert.Equal(1, virtueCount);
     }
+
+    // ───── Faz 5: Regression tests for bug fixes ─────
+
+    [Fact]
+    public void PasswordHelper_HashAndVerify_RoundTrips()
+    {
+        var hash = SphereNet.Core.Configuration.PasswordHelper.Hash("testpass123");
+        Assert.StartsWith("SHA256:", hash);
+        Assert.True(SphereNet.Core.Configuration.PasswordHelper.Verify("testpass123", hash));
+        Assert.False(SphereNet.Core.Configuration.PasswordHelper.Verify("wrongpass", hash));
+    }
+
+    [Fact]
+    public void PasswordHelper_Verify_PlaintextBackwardsCompat()
+    {
+        Assert.True(SphereNet.Core.Configuration.PasswordHelper.Verify("admin", "admin"));
+        Assert.False(SphereNet.Core.Configuration.PasswordHelper.Verify("admin", "other"));
+    }
+
+    [Fact]
+    public void PasswordHelper_EmptyInputs_ReturnFalse()
+    {
+        Assert.False(SphereNet.Core.Configuration.PasswordHelper.Verify("", "hash"));
+        Assert.False(SphereNet.Core.Configuration.PasswordHelper.Verify("pass", ""));
+        Assert.False(SphereNet.Core.Configuration.PasswordHelper.Verify("", ""));
+        Assert.Equal("", SphereNet.Core.Configuration.PasswordHelper.Hash(""));
+    }
+
+    [Fact]
+    public void PasswordHelper_IsHashed_DetectsFormat()
+    {
+        var hash = SphereNet.Core.Configuration.PasswordHelper.Hash("x");
+        Assert.True(SphereNet.Core.Configuration.PasswordHelper.IsHashed(hash));
+        Assert.False(SphereNet.Core.Configuration.PasswordHelper.IsHashed("plaintext"));
+        Assert.False(SphereNet.Core.Configuration.PasswordHelper.IsHashed(""));
+    }
+
+    [Fact]
+    public void PacketByteOverflow_ContextMenuClampsTo255()
+    {
+        var entries = new (ushort, uint, ushort)[300];
+        for (int i = 0; i < 300; i++)
+            entries[i] = ((ushort)i, (uint)(3000000 + i), (ushort)0);
+
+        var pkt = new SphereNet.Network.Packets.Outgoing.PacketContextMenu(0x12345678, entries);
+        var buf = pkt.Build();
+        var data = buf.Data;
+        // opcode(1) + len(2) + sub(2) + subSub(2) + serial(4) = offset 11 → count byte
+        Assert.Equal(255, data[11]);
+    }
+
+    [Fact]
+    public void Character_PartySysMessage_UsesDelegate()
+    {
+        var lf = LoggerFactory.Create(b => { });
+        var w = new GameWorld(lf);
+        w.InitMap(0, 6144, 4096);
+
+        var ch = w.CreateCharacter();
+        ch.Name = "Tester";
+        w.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
+
+        SphereNet.Network.Packets.PacketWriter? captured = null;
+        Character.SendPacketToOwner = (c, pkt) => { if (c == ch) captured = pkt; };
+
+        try
+        {
+            ch.TryExecuteCommand("PARTY.SYSMESSAGE", "Hello World", null!);
+            Assert.NotNull(captured);
+        }
+        finally
+        {
+            Character.SendPacketToOwner = null;
+        }
+    }
 }

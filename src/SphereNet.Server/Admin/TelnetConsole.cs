@@ -101,7 +101,7 @@ public sealed class TelnetConsole : IDisposable
     {
         if (!session.IsAuthenticated)
         {
-            if (input == _adminPassword)
+            if (Core.Configuration.PasswordHelper.Verify(input, _adminPassword))
             {
                 session.IsAuthenticated = true;
                 session.SendLine("Authentication successful.");

@@ -3606,7 +3606,7 @@ public class Character : ObjBase
     {
         value = "";
         var upper = key.ToUpperInvariant();
-        if (!upper.StartsWith("PARTY.")) return false;
+        if (!upper.StartsWith("PARTY.", StringComparison.Ordinal)) return false;
 
         var party = ResolvePartyFinder?.Invoke(Uid);
 
@@ -3629,7 +3629,7 @@ public class Character : ObjBase
         }
 
         // PARTY.MEMBER.n
-        if (sub.StartsWith("MEMBER.") && int.TryParse(sub["MEMBER.".Length..], out int memberIdx))
+        if (sub.StartsWith("MEMBER.", StringComparison.Ordinal) && int.TryParse(sub["MEMBER.".Length..], out int memberIdx))
         {
             if (party != null && memberIdx >= 0 && memberIdx < party.MemberCount)
                 value = $"0{party.Members[memberIdx].Value:X}";
@@ -3639,7 +3639,7 @@ public class Character : ObjBase
         }
 
         // PARTY.ISSAMEPARTYOF uid
-        if (sub.StartsWith("ISSAMEPARTYOF"))
+        if (sub.StartsWith("ISSAMEPARTYOF", StringComparison.Ordinal))
         {
             var uidPart = sub.Length > "ISSAMEPARTYOF".Length
                 ? sub["ISSAMEPARTYOF".Length..].TrimStart('.', ' ')
@@ -3655,7 +3655,7 @@ public class Character : ObjBase
         }
 
         // PARTY.TAG.key
-        if (sub.StartsWith("TAG."))
+        if (sub.StartsWith("TAG.", StringComparison.Ordinal))
         {
             var tagKey = key["PARTY.TAG.".Length..]; // preserve original case
             if (party != null && party.TryGetTag(tagKey, out string tagVal))
@@ -3666,7 +3666,7 @@ public class Character : ObjBase
         }
 
         // PARTY.TAGAT.n / PARTY.TAGAT.n.KEY / PARTY.TAGAT.n.VAL
-        if (sub.StartsWith("TAGAT."))
+        if (sub.StartsWith("TAGAT.", StringComparison.Ordinal))
         {
             var rest = sub["TAGAT.".Length..];
             var dotParts = rest.Split('.', 2);
@@ -3694,7 +3694,7 @@ public class Character : ObjBase
     private bool TrySetPartyProperty(string key, string value)
     {
         var upper = key.ToUpperInvariant();
-        if (!upper.StartsWith("PARTY.")) return false;
+        if (!upper.StartsWith("PARTY.", StringComparison.Ordinal)) return false;
 
         var party = ResolvePartyFinder?.Invoke(Uid);
         if (party == null) return false;
@@ -3714,7 +3714,7 @@ public class Character : ObjBase
         }
 
         // PARTY.TAG.key
-        if (sub.StartsWith("TAG."))
+        if (sub.StartsWith("TAG.", StringComparison.Ordinal))
         {
             var tagKey = key["PARTY.TAG.".Length..];
             if (string.IsNullOrEmpty(value))
@@ -3783,7 +3783,11 @@ public class Character : ObjBase
             }
             case "SYSMESSAGE":
             {
-                // Stub — actual system message delivery needs GameClient context
+                if (SendPacketToOwner != null && !string.IsNullOrEmpty(args))
+                {
+                    SendPacketToOwner(this, new SphereNet.Network.Packets.Outgoing.PacketSpeechUnicodeOut(
+                        0xFFFFFFFF, 0xFFFF, 6, 0x0035, 3, "TRK", "System", args));
+                }
                 return true;
             }
             case "CLEARTAGS":

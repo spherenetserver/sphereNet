@@ -19,8 +19,16 @@ public sealed class MultiReader : IDisposable
         var idxStream = new FileStream(idxPath, FileMode.Open, FileAccess.Read, FileShare.Read);
         _idxReader = new BinaryReader(idxStream);
 
-        var dataStream = new FileStream(dataPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-        _dataReader = new BinaryReader(dataStream);
+        try
+        {
+            var dataStream = new FileStream(dataPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            _dataReader = new BinaryReader(dataStream);
+        }
+        catch
+        {
+            _idxReader.Dispose();
+            throw;
+        }
     }
 
     public MultiDef? GetMulti(int multiId)

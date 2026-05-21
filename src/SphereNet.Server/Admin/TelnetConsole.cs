@@ -18,16 +18,19 @@ public sealed class TelnetConsole : IDisposable
     private readonly List<TelnetSession> _sessions = [];
     private readonly ILogger _logger;
     private readonly AdminCommandProcessor _processor;
+    private readonly string _adminPassword;
     private bool _running;
 
     public TelnetConsole(GameWorld world, AccountManager accounts, SphereConfig config,
         Func<int> getActiveConnections, ILogger logger, ILoggerFactory loggerFactory)
     {
         _logger = logger;
+        _adminPassword = config.AdminPassword ?? "";
         _processor = new AdminCommandProcessor(world, accounts, config, getActiveConnections, loggerFactory);
     }
 
     public AdminCommandProcessor Processor => _processor;
+    internal bool RequiresPassword => !string.IsNullOrEmpty(_adminPassword);
 
     public bool Start(int port)
     {
@@ -62,8 +65,14 @@ public sealed class TelnetConsole : IDisposable
                 var session = new TelnetSession(socket, this);
                 _sessions.Add(session);
                 session.SendLine("SphereNet Admin Console");
-                session.SendLine("Type 'help' for commands.");
-                session.SendPrompt();
+                if (RequiresPassword)
+                    session.SendPasswordPrompt();
+                else
+                {
+                    session.SendLine("AdminPassword is empty; localhost telnet is running without authentication.");
+                    session.SendLine("Type 'help' for commands.");
+                    session.SendPrompt();
+                }
                 _logger.LogInformation("Admin telnet session from {EP}", socket.RemoteEndPoint);
             }
         }
@@ -91,6 +100,23 @@ public sealed class TelnetConsole : IDisposable
 
     private void ProcessCommand(TelnetSession session, string input)
     {
+        if (!session.IsAuthenticated)
+        {
+            if (input == _adminPassword)
+            {
+                session.IsAuthenticated = true;
+                session.SendLine("Authentication successful.");
+                session.SendLine("Type 'help' for commands.");
+                session.SendPrompt();
+            }
+            else
+            {
+                session.SendLine("Authentication failed.");
+                session.Close();
+            }
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(input))
         {
             session.SendPrompt();
@@ -170,12 +196,14 @@ internal sealed class TelnetSession : IDisposable
     private bool _closed;
 
     public bool IsAlive => !_closed && _socket.Connected;
+    public bool IsAuthenticated { get; set; }
 
     public TelnetSession(Socket socket, TelnetConsole console)
     {
         _socket = socket;
         _console = console;
         _socket.Blocking = false;
+        IsAuthenticated = !console.RequiresPassword;
     }
 
     public string? TryReadLine()
@@ -224,6 +252,17 @@ internal sealed class TelnetSession : IDisposable
         try
         {
             byte[] data = Encoding.ASCII.GetBytes("> ");
+            _socket.Send(data, 0, data.Length, SocketFlags.None);
+        }
+        catch { _closed = true; }
+    }
+
+    public void SendPasswordPrompt()
+    {
+        if (_closed) return;
+        try
+        {
+            byte[] data = Encoding.ASCII.GetBytes("Password: ");
             _socket.Send(data, 0, data.Length, SocketFlags.None);
         }
         catch { _closed = true; }

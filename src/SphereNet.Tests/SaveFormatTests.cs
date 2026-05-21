@@ -319,4 +319,57 @@ public class SaveFormatTests
             try { Directory.Delete(tmp, recursive: true); } catch { }
         }
     }
+
+    [Theory]
+    [InlineData(SaveFormat.Text)]
+    [InlineData(SaveFormat.TextGz)]
+    [InlineData(SaveFormat.Binary)]
+    [InlineData(SaveFormat.BinaryGz)]
+    public void Roundtrip_RestoresEquipmentFromCharEquipLinks(SaveFormat fmt)
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_equip_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var lf = LoggerFactory.Create(b => { });
+            var worldPath = Path.Combine(tmp, "sphereworld" + SaveIO.ExtensionFor(fmt));
+            using (var writer = SaveIO.OpenWriter(worldPath, fmt))
+            {
+                writer.BeginRecord("WORLDITEM");
+                writer.WriteProperty("SERIAL", "040001000");
+                writer.WriteProperty("ID", "0EED");
+                writer.WriteProperty("NAME", "equipped test sword");
+                writer.WriteProperty("P", "1000,1000,0,0");
+                writer.EndRecord();
+
+                writer.BeginRecord("WORLDCHAR");
+                writer.WriteProperty("SERIAL", "01");
+                writer.WriteProperty("NAME", "EquipTester");
+                writer.WriteProperty("P", "1000,1001,0,0");
+                writer.WriteProperty("BODY", "0190");
+                writer.WriteProperty("EQUIP[1]", "040001000");
+                writer.EndRecord();
+            }
+
+            var loader = new WorldLoader(lf);
+            var dst = MakeWorld();
+            var (items, chars) = loader.Load(dst, tmp);
+
+            Assert.Equal(1, items);
+            Assert.Equal(1, chars);
+
+            var ch = dst.FindChar(new Serial(0x00000001));
+            Assert.NotNull(ch);
+            var equipped = ch!.GetEquippedItem(Layer.OneHanded);
+            Assert.NotNull(equipped);
+            Assert.Equal(new Serial(0x40001000), equipped!.Uid);
+            Assert.True(equipped.IsEquipped);
+            Assert.Equal(Layer.OneHanded, equipped.EquipLayer);
+            Assert.Equal(ch.Uid, equipped.ContainedIn);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
 }

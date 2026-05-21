@@ -572,7 +572,7 @@ public class GameSystemTests
         var loggerFactory = LoggerFactory.Create(_ => { });
         var world = CreateWorld();
         var accountManager = new AccountManager(loggerFactory);
-        var account = accountManager.CreateAccount("tester", "pw");
+        var account = accountManager.CreateAccount("tester", "pw")!;
         account.PrivLevel = PrivLevel.Counsel;
         var netState = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = 77 };
         SetNetStateInUse(netState, true);
@@ -983,5 +983,41 @@ public class GameSystemTests
         client.HandleGumpResponse(0, (uint)Math.Abs("testdlg".GetHashCode()), 1, [], []);
         Assert.True(activeChar.TryGetProperty("TAG.DIALOG_CLOSED", out var closedVal));
         Assert.Equal("1", closedVal);
+    }
+
+    [Fact]
+    public void CharacterOwnedMultiTokens_UseRuntimeResolvers()
+    {
+        var ch = new Character();
+        ch.SetUid(new Serial(0x01));
+
+        Character.ResolveHouseUidsByOwner = owner =>
+            owner == ch.Uid
+                ? [new Serial(0x40001000), new Serial(0x40001001)]
+                : [];
+        Character.ResolveShipUidsByOwner = owner =>
+            owner == ch.Uid
+                ? [new Serial(0x40002000)]
+                : [];
+
+        try
+        {
+            Assert.True(ch.TryGetProperty("HOUSES", out var houses));
+            Assert.Equal("2", houses);
+            Assert.True(ch.TryGetProperty("HOUSE.0", out var firstHouse));
+            Assert.Equal("040001000", firstHouse);
+            Assert.True(ch.TryGetProperty("HOUSE.5", out var missingHouse));
+            Assert.Equal("0", missingHouse);
+
+            Assert.True(ch.TryGetProperty("SHIPS", out var ships));
+            Assert.Equal("1", ships);
+            Assert.True(ch.TryGetProperty("SHIP.0", out var firstShip));
+            Assert.Equal("040002000", firstShip);
+        }
+        finally
+        {
+            Character.ResolveHouseUidsByOwner = null;
+            Character.ResolveShipUidsByOwner = null;
+        }
     }
 }

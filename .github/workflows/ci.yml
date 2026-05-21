@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  build-test:
+    name: Build and test
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Restore
+        run: dotnet restore sphereNet.sln
+
+      - name: Build
+        run: dotnet build sphereNet.sln --configuration Debug --no-restore
+
+      - name: Test
+        run: dotnet test src/SphereNet.Tests/SphereNet.Tests.csproj --configuration Debug --no-build --no-restore --verbosity normal

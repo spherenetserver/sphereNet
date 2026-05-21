@@ -33,6 +33,13 @@ public class Character : ObjBase
     // Static delegate for character lookup by UID — used for ACCOUNT.CHAR.N.NAME
     // chain and admin dialog references (set in Program.cs).
     public static Func<Serial, Character?>? ResolveCharByUid;
+    /// <summary>Resolve house multi UIDs owned by a character. Wired by the
+    /// server against HousingEngine so script tokens like HOUSES and HOUSE.0
+    /// report live runtime state instead of a stale placeholder.</summary>
+    public static Func<Serial, IReadOnlyList<Serial>>? ResolveHouseUidsByOwner;
+    /// <summary>Resolve ship multi UIDs owned by a character. Wired by the
+    /// server against ShipEngine for SHIPS and SHIP.N script tokens.</summary>
+    public static Func<Serial, IReadOnlyList<Serial>>? ResolveShipUidsByOwner;
 
     // Static delegate used by script verbs that need to emit a packet
     // directly to the owning client (ADDBUFF / REMOVEBUFF / SYSMESSAGELOC
@@ -1520,13 +1527,9 @@ public class Character : ObjBase
             return true;
         }
 
-        // <House.N> / <Ship.N> indexed UID accessor — stubbed to 0
-        // until the housing engine ships, mirroring the count stub
-        // above so the dialog never iterates past the empty case.
-        if (upper.StartsWith("HOUSE.", StringComparison.Ordinal) ||
-            upper.StartsWith("SHIP.", StringComparison.Ordinal))
+        if (TryResolveOwnedObjectToken(upper, "HOUSE.", Uid, ResolveHouseUidsByOwner, out value) ||
+            TryResolveOwnedObjectToken(upper, "SHIP.", Uid, ResolveShipUidsByOwner, out value))
         {
-            value = "0";
             return true;
         }
 
@@ -1694,15 +1697,16 @@ public class Character : ObjBase
                 value = info.Type == ClientType.Enhanced ? "1" : "0";
                 return true;
             }
-            // Houses / Ships ownership counts. We do not have a multi-
-            // tile housing engine yet; report 0 so the admin dialog
-            // renders the "Empty" branch instead of an unresolved
-            // <Houses> token. Indexed accessors (HOUSE.N / SHIP.N)
-            // similarly return "0" via the prefix branch below.
             case "HOUSES":
-            case "SHIPS":
-                value = "0";
+            {
+                value = (ResolveHouseUidsByOwner?.Invoke(Uid).Count ?? 0).ToString();
                 return true;
+            }
+            case "SHIPS":
+            {
+                value = (ResolveShipUidsByOwner?.Invoke(Uid).Count ?? 0).ToString();
+                return true;
+            }
             case "REGION":
                 value = (TryGetTag("CURRENT_REGION_UID", out string? regionUid) ? regionUid : "") ?? "";
                 return true;
@@ -2309,6 +2313,24 @@ public class Character : ObjBase
         if (val.StartsWith('0') && val.Length > 1 && !val.Contains('.'))
             return ushort.TryParse(val.AsSpan(1), System.Globalization.NumberStyles.HexNumber, null, out result);
         return ushort.TryParse(val, out result);
+    }
+
+    private static bool TryResolveOwnedObjectToken(string upperKey, string prefix, Serial ownerUid,
+        Func<Serial, IReadOnlyList<Serial>>? resolver, out string value)
+    {
+        value = "";
+        if (!upperKey.StartsWith(prefix, StringComparison.Ordinal))
+            return false;
+
+        if (!int.TryParse(upperKey[prefix.Length..], out int index) || index < 0)
+        {
+            value = "0";
+            return true;
+        }
+
+        var uids = resolver?.Invoke(ownerUid) ?? [];
+        value = index < uids.Count ? $"0{uids[index].Value:X8}" : "0";
+        return true;
     }
 
     private static bool TryParseShortSingleOrRange(string value, out short result)

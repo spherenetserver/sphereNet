@@ -499,7 +499,7 @@ public static class Program
 
         // --- 6. Accounts ---
         _accounts = new AccountManager(_loggerFactory);
-        _accounts.AutoCreateAccounts = true;
+        _accounts.AutoCreateAccounts = _config.AccApp != 0;
         _accounts.Md5Passwords = _config.Md5Passwords;
         _accounts.DefaultPrivLevel = (PrivLevel)_config.DefaultCommandLevel;
         if (_accounts.DefaultPrivLevel < PrivLevel.Counsel)
@@ -1936,6 +1936,18 @@ public static class Program
         _shipEngine.DeserializeFromWorld();
         if (_shipEngine.ShipCount > 0)
             _log.LogInformation("Restored {Count} ships from world save", _shipEngine.ShipCount);
+
+        SphereNet.Game.Objects.Characters.Character.ResolveHouseUidsByOwner = ownerUid =>
+            _housingEngine?.GetHousesByOwner(ownerUid)
+                .Select(house => house.MultiItem.Uid)
+                .ToArray()
+            ?? [];
+        SphereNet.Game.Objects.Characters.Character.ResolveShipUidsByOwner = ownerUid =>
+            _shipEngine?.AllShips
+                .Where(ship => ship.Owner == ownerUid)
+                .Select(ship => ship.MultiItem.Uid)
+                .ToArray()
+            ?? [];
 
         // Wire Item static delegates for ship resolution
         SphereNet.Game.Objects.Items.Item.ResolveShip = uid => _shipEngine.GetShip(uid);

@@ -40,6 +40,7 @@ public sealed class WorldLoader
         int itemCount = 0, charCount = 0;
 
         var charAccountLinks = new List<(Character Char, string AccountName)>();
+        var charEquipLinks = new List<(Character Char, Serial ItemSerial, byte Layer)>();
         var itemContLinks = new List<(Item Item, Serial ContSerial, byte Layer)>();
 
         // Suppress dirty notifications for the whole bulk materialization.
@@ -81,7 +82,7 @@ public sealed class WorldLoader
             // now make a second pass over the same files to pick up NPCs.
             foreach (string path in itemPaths)
             {
-                int n = LoadCharFile(world, path, charAccountLinks);
+                int n = LoadCharFile(world, path, charAccountLinks, charEquipLinks);
                 if (n > 0)
                 {
                     charCount += n;
@@ -91,7 +92,7 @@ public sealed class WorldLoader
 
             foreach (string path in charPaths)
             {
-                int n = LoadCharFile(world, path, charAccountLinks);
+                int n = LoadCharFile(world, path, charAccountLinks, charEquipLinks);
                 charCount += n;
                 _logger.LogInformation("Chars: {Path} -> {Count}", Path.GetFileName(path), n);
             }
@@ -170,8 +171,26 @@ public sealed class WorldLoader
             }
         }
 
+        int equipCount = 0;
+        foreach (var (ch, itemSerial, layer) in charEquipLinks)
+        {
+            var item = world.FindItem(itemSerial);
+            if (item == null)
+            {
+                _logger.LogWarning("Character 0x{CharUid:X8} references missing EQUIP item 0x{ItemUid:X8} on layer {Layer}",
+                    ch.Uid.Value, itemSerial.Value, layer);
+                continue;
+            }
+
+            if (item.ContainedIn.IsValid && world.FindItem(item.ContainedIn) is { } parentItem)
+                parentItem.RemoveItem(item);
+
+            if (ch.Equip(item, (Layer)layer))
+                equipCount++;
+        }
+
         _logger.LogInformation("World loaded: {Items} items, {Chars} chars, {Contained} contained/equipped in {Elapsed}s",
-            itemCount, charCount, containedCount, sw.Elapsed.TotalSeconds.ToString("F1"));
+            itemCount, charCount, containedCount + equipCount, sw.Elapsed.TotalSeconds.ToString("F1"));
 
         if (_migratedUuids > 0)
             _logger.LogInformation("UUID migration: {Count} objects had no UUID — auto-generated (will persist on next save)",
@@ -301,7 +320,8 @@ public sealed class WorldLoader
         return count;
     }
 
-    private int LoadCharFile(GameWorld world, string path, List<(Character, string)> accountLinks)
+    private int LoadCharFile(GameWorld world, string path, List<(Character, string)> accountLinks,
+        List<(Character, Serial, byte)> equipLinks)
     {
         int count = 0;
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -366,6 +386,12 @@ public sealed class WorldLoader
 
                 if (key.Equals("CREATE", StringComparison.OrdinalIgnoreCase))
                     continue;
+
+                if (TryParseEquipProperty(key, val, out var itemSerial, out byte layer))
+                {
+                    equipLinks.Add((ch, itemSerial, layer));
+                    continue;
+                }
 
                 ApplyCharProperty(ch, key, val);
             }
@@ -483,6 +509,25 @@ public sealed class WorldLoader
                 ch.TrySetProperty(key, val);
                 break;
         }
+    }
+
+    private static bool TryParseEquipProperty(string key, string value, out Serial itemSerial, out byte layer)
+    {
+        itemSerial = Serial.Invalid;
+        layer = 0;
+
+        string upper = key.ToUpperInvariant();
+        if (!upper.StartsWith("EQUIP[", StringComparison.Ordinal) || !upper.EndsWith(']'))
+            return false;
+
+        if (!byte.TryParse(upper.AsSpan("EQUIP[".Length, upper.Length - "EQUIP[".Length - 1), out layer))
+            return false;
+
+        if (!TryParseHexOrDec(value, out uint serial) || serial == 0)
+            return false;
+
+        itemSerial = new Serial(serial);
+        return true;
     }
 
     private void LoadDataFile(GameWorld world, string path)

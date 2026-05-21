@@ -4,6 +4,36 @@
  All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-21] - Kayit, hesap ve yonetim guvenligi iyilestirmeleri
+              (Save, account and admin safety improvements)
+----------------------------------------
+
+KAYIT / SAVE:
+  - Sunucu yeniden basladiginda karakterlerin uzerindeki esyalar artik guvenli
+    sekilde geri yukleniyor.
+    Equipped items now restore safely after a server restart.
+
+HESAPLAR / ACCOUNTS:
+  - Bilinmeyen hesaplarin otomatik acilip acilmayacagi artik sphere.ini
+    icinden ACCAPP ayariyla kontrol ediliyor.
+    Unknown-account auto creation is now controlled from sphere.ini with ACCAPP.
+
+YONETIM / ADMIN:
+  - Telnet yonetim konsolu AdminPassword doluysa once sifre istiyor.
+    Telnet admin console now asks for AdminPassword when it is configured.
+  - Karakterlerin ev ve gemi bilgileri artik scriptlerde dogru sayi ve UID
+    olarak gorunuyor.
+    Character house and ship information now appears in scripts with correct
+    counts and UIDs.
+
+PROJE SAGLIGI / PROJECT HEALTH:
+  - GitHub Actions ile otomatik build/test kontrolu eklendi.
+    Added automatic build/test checks with GitHub Actions.
+  - Sifreleme ve Huffman gibi hassas ag kodlarina dokunmadan once gereken
+    test notlari belgelendi.
+    Documented the tests needed before touching sensitive network crypto and
+    Huffman code.
+
 [2026-05-02] - GM komut paritesi: CURE, POISON, REVEAL, GOUID, GOCHAR, OPENPAPERDOLL, SHOWSKILLS, PAGE routing
               (GM command parity: CURE, POISON, REVEAL, GOUID, GOCHAR, OPENPAPERDOLL, SHOWSKILLS, PAGE routing)
 ----------------------------------------

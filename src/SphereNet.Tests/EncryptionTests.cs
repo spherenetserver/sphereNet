@@ -1,9 +1,13 @@
+using SphereNet.Core.Configuration;
+using SphereNet.Core.Enums;
 using SphereNet.Network.Encryption;
 
 namespace SphereNet.Tests;
 
 public class EncryptionTests
 {
+    private static CryptConfig EmptyCryptConfig() => new();
+
     [Fact]
     public void Blowfish_EncryptDecrypt_RoundTrips()
     {
@@ -111,5 +115,55 @@ public class EncryptionTests
 
         enc.Decrypt(data, 0, 8);
         Assert.NotEqual(original, data);
+    }
+
+    [Fact]
+    public void CryptoState_NoCryptLogin_DetectsValidLoginPacket()
+    {
+        byte[] packet = new byte[62];
+        packet[0] = 0x80;
+        packet[30] = 0x00;
+        packet[60] = 0x00;
+
+        var state = new CryptoState();
+        var decoded = state.DetectAndDecryptLogin(0x12345678, packet, EmptyCryptConfig(),
+            useCrypt: false, useNoCrypt: true);
+
+        Assert.NotNull(decoded);
+        Assert.Equal(packet, decoded);
+        Assert.True(state.IsInitialized);
+        Assert.Equal(EncryptionType.None, state.EncType);
+    }
+
+    [Fact]
+    public void CryptoState_NoCryptGameLogin_DetectsValidRelayPacket()
+    {
+        byte[] packet = new byte[65];
+        packet[0] = 0x91;
+        packet[34] = 0x00;
+        packet[64] = 0x00;
+
+        var state = new CryptoState();
+        var decoded = state.DetectAndDecryptGameLogin(0x01020304, packet, EmptyCryptConfig(),
+            useCrypt: false, useNoCrypt: true);
+
+        Assert.NotNull(decoded);
+        Assert.Equal(packet, decoded);
+        Assert.True(state.IsInitialized);
+        Assert.Equal(EncryptionType.None, state.EncType);
+    }
+
+    [Fact]
+    public void CryptoState_RelayKeys_AreSingleUse()
+    {
+        const uint authId = 0xAABBCCDD;
+        CryptoState.StoreRelayKeys(authId, 0x11111111, 0x22222222, 70011400);
+
+        Assert.True(CryptoState.TryGetRelayKeys(authId, out uint key1, out uint key2, out uint clientVersion));
+        Assert.Equal(0x11111111u, key1);
+        Assert.Equal(0x22222222u, key2);
+        Assert.Equal(70011400u, clientVersion);
+
+        Assert.False(CryptoState.TryGetRelayKeys(authId, out _, out _, out _));
     }
 }

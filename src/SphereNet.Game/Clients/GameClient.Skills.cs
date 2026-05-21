@@ -326,6 +326,21 @@ public sealed partial class GameClient
         var obj = _world.FindObject(new Serial(serial));
         if (obj == null) return;
 
+        if (_triggerDispatcher != null)
+        {
+            TriggerResult triggerResult = obj switch
+            {
+                Character ch => _triggerDispatcher.FireCharTrigger(ch, CharTrigger.ClientTooltip,
+                    new TriggerArgs { CharSrc = _character, ScriptConsole = this }),
+                Item tooltipItem => _triggerDispatcher.FireItemTrigger(tooltipItem, ItemTrigger.ClientTooltip,
+                    new TriggerArgs { CharSrc = _character, ItemSrc = tooltipItem, ScriptConsole = this }),
+                _ => TriggerResult.Default
+            };
+
+            if (triggerResult == TriggerResult.True)
+                return;
+        }
+
         var propList = new List<(uint ClilocId, string Args)>
         {
             (1050045, obj.GetName()) // generic name cliloc
@@ -373,6 +388,9 @@ public sealed partial class GameClient
                     propList.Add((1072789, $"\t{item.TotalWeight}")); // weight
                     break;
             }
+
+            _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.ClientTooltipAfterDefault,
+                new TriggerArgs { CharSrc = _character, ItemSrc = item, ScriptConsole = this });
         }
 
         var props = propList.ToArray();

@@ -71,6 +71,9 @@ public sealed partial class GameClient
     {
         if (_character == null) return;
 
+        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserSkills,
+            new TriggerArgs { CharSrc = _character });
+
         var skills = new List<(ushort Id, ushort Value, ushort RawValue, byte Lock, ushort Cap)>();
         for (int i = 0; i < (int)SkillType.Qty && i < 58; i++)
         {

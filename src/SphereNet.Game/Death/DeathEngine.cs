@@ -3,6 +3,7 @@ using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.Party;
+using SphereNet.Game.Scripting;
 using SphereNet.Game.World;
 
 namespace SphereNet.Game.Death;
@@ -29,6 +30,9 @@ public sealed class DeathEngine
 
     /// <summary>Party manager reference for loot rights.</summary>
     public Party.PartyManager? PartyManager { get; set; }
+
+    /// <summary>Optional script trigger dispatcher for corpse item hooks.</summary>
+    public TriggerDispatcher? TriggerDispatcher { get; set; }
 
     public DeathEngine(GameWorld world)
     {
@@ -423,6 +427,13 @@ public sealed class DeathEngine
     {
         var results = new List<Item>();
         if (corpse.ItemType != ItemType.Corpse) return results;
+
+        if (TriggerDispatcher?.FireItemTrigger(corpse, ItemTrigger.CarveCorpse, new TriggerArgs
+        {
+            CharSrc = carver,
+            ItemSrc = corpse
+        }) == TriggerResult.True)
+            return results;
 
         var rand = new Random();
 

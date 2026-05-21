@@ -69,6 +69,20 @@ public sealed partial class GameClient
         _netState.Send(new PacketSpeechUnicodeOut(
             uid, (ushort)(obj is Character c ? c.BodyId : 0),
             6, nameHue, 3, "TRK", "", obj.GetName()));
+
+        if (_triggerDispatcher != null)
+        {
+            if (obj is Character afterClickCh)
+            {
+                _triggerDispatcher.FireCharTrigger(afterClickCh, CharTrigger.AfterClick,
+                    new TriggerArgs { CharSrc = _character, ScriptConsole = this });
+            }
+            else if (obj is Item afterClickItem)
+            {
+                _triggerDispatcher.FireItemTrigger(afterClickItem, ItemTrigger.AfterClick,
+                    new TriggerArgs { CharSrc = _character, ItemSrc = afterClickItem, ScriptConsole = this });
+            }
+        }
     }
 
     /// <summary>Convert a notoriety byte (1-7) to the hue used for
@@ -188,6 +202,22 @@ public sealed partial class GameClient
                     _netState.Send(new PacketDropReject());
                     return;
                 }
+
+                var dropOnTradeResult = _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.DropOnTrade,
+                    new TriggerArgs
+                    {
+                        CharSrc = _character,
+                        ItemSrc = item,
+                        O1 = dropTrade.GetPartner(_character),
+                        N1 = (int)dropTrade.SessionId.Value
+                    });
+                if (dropOnTradeResult == TriggerResult.True)
+                {
+                    PlaceItemInPack(_character, item);
+                    _netState.Send(new PacketDropReject());
+                    return;
+                }
+
                 var myCont = dropTrade.GetOwnContainer(_character);
                 myCont.AddItem(item);
                 item.Position = new Point3D(30, 30, 0, _character.MapIndex);
@@ -376,9 +406,27 @@ public sealed partial class GameClient
         if (mode == 1)
         {
             if (ch == _character || _character.PrivLevel >= PrivLevel.GM)
+            {
+                var result = _triggerDispatcher?.FireCharTrigger(ch, CharTrigger.Profile, new TriggerArgs
+                {
+                    CharSrc = _character,
+                    S1 = bioText,
+                    N1 = mode
+                });
+                if (result == TriggerResult.True)
+                    return;
+
                 ch.SetTag("PROFILE_BIO", bioText);
+            }
             return;
         }
+
+        if (_triggerDispatcher?.FireCharTrigger(ch, CharTrigger.Profile, new TriggerArgs
+        {
+            CharSrc = _character,
+            N1 = mode
+        }) == TriggerResult.True)
+            return;
 
         string title = string.IsNullOrEmpty(ch.Title)
             ? ch.GetName()

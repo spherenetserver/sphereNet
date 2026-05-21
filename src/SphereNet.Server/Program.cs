@@ -1473,6 +1473,7 @@ public static class Program
         _deathEngine.CorpseDecayNPC = _config.CorpseNpcDecay * 60;
         _deathEngine.CorpseDecayPlayer = _config.CorpsePlayerDecay * 60;
         _deathEngine.PartyManager = _partyManager;
+        _deathEngine.TriggerDispatcher = _triggerDispatcher;
         _tradeManager = new TradeManager();
         _npcAI = new NpcAI(_world, _config);
         _npcTimerWheel = new SphereNet.Game.Scheduling.TimerWheel(Environment.TickCount64);
@@ -2580,22 +2581,7 @@ public static class Program
                 _network.ProcessAllOutput();
             }
 
-            // Yield CPU between iterations. Mode set by sphere.ini TickSleepMode:
-            //   0=spin (lowest latency, high CPU), 1=sleep (low CPU, ~15ms latency),
-            //   2=hybrid (balanced, default)
-            switch (_config.TickSleepMode)
-            {
-                case 0: // spin — busy-wait, <1ms latency, ~100% CPU core
-                    Thread.SpinWait(100);
-                    break;
-                case 1: // sleep — OS scheduler yield, minimal CPU, ~15ms latency on Windows
-                    Thread.Sleep(1);
-                    break;
-                default: // hybrid — SpinWait + Sleep(0), ~1ms latency, moderate CPU
-                    Thread.SpinWait(100);
-                    Thread.Sleep(0);
-                    break;
-            }
+            TickYieldStrategy.Yield(_config.TickSleepMode);
         }
 
         // --- 10. Shutdown ---

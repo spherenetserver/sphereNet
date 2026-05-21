@@ -435,6 +435,14 @@ public sealed partial class GameClient
         if (target != null)
         {
             string oldName = target.Name;
+            var result = _triggerDispatcher?.FireCharTrigger(target, CharTrigger.Rename, new TriggerArgs
+            {
+                CharSrc = _character,
+                S1 = name.Trim()
+            });
+            if (result == TriggerResult.True)
+                return;
+
             target.Name = name.Trim();
             SysMessage(ServerMessages.GetFormatted("msg_rename_success", oldName, target.Name));
             return;
@@ -1090,28 +1098,28 @@ public sealed partial class GameClient
                 if (_character != null)
                 {
                     _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserChatButton,
-                        new TriggerArgs { CharSrc = _character });
+                        new TriggerArgs { CharSrc = _character, N1 = subCmd });
                 }
                 break;
             case 0x0028: // Guild button on paperdoll
                 if (_character != null)
                 {
                     _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserGuildButton,
-                        new TriggerArgs { CharSrc = _character });
+                        new TriggerArgs { CharSrc = _character, N1 = subCmd });
                 }
                 break;
             case 0x0032: // Quest button on paperdoll
                 if (_character != null)
                 {
                     _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserQuestButton,
-                        new TriggerArgs { CharSrc = _character });
+                        new TriggerArgs { CharSrc = _character, N1 = subCmd });
                 }
                 break;
             case 0x002C: // Invoke virtue — client passes virtue id in data[0]
                 if (_character != null && data.Length >= 1)
                 {
                     _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserVirtueInvoke,
-                        new TriggerArgs { CharSrc = _character, N1 = data[0] });
+                        new TriggerArgs { CharSrc = _character, N1 = subCmd, N2 = data[0] });
                 }
                 break;
         }
@@ -1298,6 +1306,10 @@ public sealed partial class GameClient
                 entries.Add((7, 3006112, 0)); // Dismount
             }
         }
+        else if (_world.FindItem(new Serial(targetSerial)) is { } item)
+        {
+            FireContextMenuTrigger(item, ItemTrigger.ContextMenuRequest, 0);
+        }
 
         if (entries.Count > 0)
             _netState.Send(new PacketContextMenu(targetSerial, entries.ToArray()));
@@ -1309,6 +1321,8 @@ public sealed partial class GameClient
         var target = _world.FindChar(new Serial(targetSerial));
         if (target != null)
             FireContextMenuTrigger(target, CharTrigger.ContextMenuSelect, entryTag);
+        else if (_world.FindItem(new Serial(targetSerial)) is { } itemTarget)
+            FireContextMenuTrigger(itemTarget, ItemTrigger.ContextMenuSelect, entryTag);
 
         switch (entryTag)
         {
@@ -1343,6 +1357,16 @@ public sealed partial class GameClient
         _triggerDispatcher?.FireCharTrigger(target, trigger, new TriggerArgs
         {
             CharSrc = _character,
+            N1 = entryTag
+        });
+    }
+
+    private void FireContextMenuTrigger(Item target, ItemTrigger trigger, ushort entryTag)
+    {
+        _triggerDispatcher?.FireItemTrigger(target, trigger, new TriggerArgs
+        {
+            CharSrc = _character,
+            ItemSrc = target,
             N1 = entryTag
         });
     }

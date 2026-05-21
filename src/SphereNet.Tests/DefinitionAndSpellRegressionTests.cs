@@ -106,6 +106,53 @@ public class DefinitionAndSpellRegressionTests
     }
 
     [Fact]
+    public void DefinitionLoader_ParsesTemplateSellBuyDiceAmounts()
+    {
+        var resources = LoadScript("""
+            [ITEMDEF i_reagent]
+            ID=0f7a
+            NAME=Reagent
+
+            [TEMPLATE VENDOR_S_MAGE]
+            SELL=i_reagent,{3 7}
+            BUY=i_reagent,5
+            """);
+
+        var registry = new SpellRegistry();
+        new DefinitionLoader(resources, registry).LoadAll();
+
+        var template = DefinitionLoader.GetTemplateDef("VENDOR_S_MAGE");
+        Assert.NotNull(template);
+        Assert.Equal(2, template!.ItemEntries.Count);
+        Assert.All(template.ItemEntries, entry => Assert.Equal("i_reagent", entry.DefName));
+        Assert.Contains(template.ItemEntries, entry => entry.Amount == 7);
+        Assert.Contains(template.ItemEntries, entry => entry.Amount == 5);
+    }
+
+    [Fact]
+    public void DefinitionLoader_ParsesSpellFlagsFromDefnamesAndBareHex()
+    {
+        var resources = LoadScript("""
+            [DEFNAME spell_flags]
+            spellflag_targ_char=00000002
+            spellflag_harm=0x00000020
+
+            [SPELL 5]
+            NAME=Magic Arrow
+            FLAGS=spellflag_targ_char|spellflag_harm|00000004
+            """);
+
+        var registry = new SpellRegistry();
+        new DefinitionLoader(resources, registry).LoadAll();
+
+        var spell = registry.Get(SpellType.MagicArrow);
+        Assert.NotNull(spell);
+        Assert.True(spell!.IsFlag((SpellFlag)0x00000002));
+        Assert.True(spell.IsFlag((SpellFlag)0x00000020));
+        Assert.True(spell.IsFlag((SpellFlag)0x00000004));
+    }
+
+    [Fact]
     public void SpellEngine_Recall_UsesRuneItemTarget()
     {
         var world = CreateWorld();

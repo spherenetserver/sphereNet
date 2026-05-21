@@ -372,4 +372,72 @@ public class SaveFormatTests
             try { Directory.Delete(tmp, recursive: true); } catch { }
         }
     }
+
+    [Theory]
+    [InlineData(SaveFormat.Text)]
+    [InlineData(SaveFormat.TextGz)]
+    [InlineData(SaveFormat.Binary)]
+    [InlineData(SaveFormat.BinaryGz)]
+    public void Roundtrip_PreservesNestedContainersAndBankBox(SaveFormat fmt)
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_nested_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            saver.Format = fmt;
+            saver.ShardCount = 0;
+
+            var src = MakeWorld();
+            var ch = src.CreateCharacter();
+            ch.Name = "Banker";
+            ch.IsPlayer = true;
+            src.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
+
+            var bank = src.CreateItem();
+            bank.ItemType = ItemType.Container;
+            bank.Name = "bank box";
+            ch.Equip(bank, Layer.BankBox);
+
+            var pouch = src.CreateItem();
+            pouch.ItemType = ItemType.Container;
+            pouch.Name = "nested pouch";
+            bank.AddItem(pouch);
+
+            var gold = src.CreateItem();
+            gold.BaseId = 0x0EED;
+            gold.ItemType = ItemType.Gold;
+            gold.Amount = 42;
+            pouch.AddItem(gold);
+
+            Assert.True(saver.Save(src, tmp));
+
+            var dst = MakeWorld();
+            var (items, chars) = loader.Load(dst, tmp);
+
+            Assert.Equal(3, items);
+            Assert.Equal(1, chars);
+
+            var loadedChar = dst.FindChar(ch.Uid);
+            Assert.NotNull(loadedChar);
+            var loadedBank = loadedChar!.GetEquippedItem(Layer.BankBox);
+            Assert.NotNull(loadedBank);
+            Assert.Equal(loadedChar.Uid, loadedBank!.ContainedIn);
+
+            var loadedPouch = dst.FindItem(pouch.Uid);
+            Assert.NotNull(loadedPouch);
+            Assert.Equal(loadedBank.Uid, loadedPouch!.ContainedIn);
+            Assert.Contains(loadedPouch, loadedBank.Contents);
+
+            var loadedGold = dst.FindItem(gold.Uid);
+            Assert.NotNull(loadedGold);
+            Assert.Equal(loadedPouch.Uid, loadedGold!.ContainedIn);
+            Assert.Equal(42, loadedGold.Amount);
+            Assert.Contains(loadedGold, loadedPouch.Contents);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
 }

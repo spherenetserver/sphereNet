@@ -846,6 +846,15 @@ public sealed partial class GameClient
         if (dest == null) { SysMessage(ServerMessages.Get(Msg.ItemuseDyeReach)); return; }
         if (vat.TryGetTag("DYE_HUE", out string? hueText) && ushort.TryParse(hueText, out ushort hue))
         {
+            if (_triggerDispatcher?.FireItemTrigger(dest, ItemTrigger.Dye, new TriggerArgs
+            {
+                CharSrc = _character,
+                ItemSrc = dest,
+                O1 = vat,
+                N1 = hue
+            }) == TriggerResult.True)
+                return;
+
             dest.Hue = new Core.Types.Color(hue);
             SysMessage("The item changes color.");
         }

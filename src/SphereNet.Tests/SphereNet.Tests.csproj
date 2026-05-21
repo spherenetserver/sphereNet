@@ -27,6 +27,7 @@
     <ProjectReference Include="..\SphereNet.Scripting\SphereNet.Scripting.csproj" />
     <ProjectReference Include="..\SphereNet.MapData\SphereNet.MapData.csproj" />
     <ProjectReference Include="..\SphereNet.Persistence\SphereNet.Persistence.csproj" />
+    <ProjectReference Include="..\SphereNet.Server\SphereNet.Server.csproj" />
   </ItemGroup>
 
 </Project>

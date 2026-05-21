@@ -113,6 +113,14 @@ public sealed partial class GameClient
 
         _logger.LogDebug("[dye_response] char=0x{Uid:X8} item=0x{Item:X8} hue={Hue}",
             _character.Uid.Value, itemSerial, hue);
+        if (_triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Dye, new TriggerArgs
+        {
+            CharSrc = _character,
+            ItemSrc = item,
+            N1 = hue
+        }) == TriggerResult.True)
+            return;
+
         item.Hue = new Core.Types.Color(hue);
 
         // Refresh item for nearby clients

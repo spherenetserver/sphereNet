@@ -42,6 +42,7 @@ public sealed partial class GameClient
         bool targetCancelled = IsTargetCancelled(serial, x, y, z, graphic);
         if (targetCancelled)
         {
+            var pendingItemUid = _pendingTargetItemUid;
             // Hard-cancel all pending target flows to avoid any stale state from triggering
             // a resync/teleport path on the next target packet.
             _pendingTeleTarget = false;
@@ -67,14 +68,23 @@ public sealed partial class GameClient
             _lastScriptTargetPoint = null;
             _pendingTargetCallback = null;
 
-            if (_character.TryGetTag("CAST_SPELL", out _))
+            if (_character.TryGetTag("CAST_SPELL", out string? cancelledSpellStr))
+            {
+                if (Enum.TryParse<SpellType>(cancelledSpellStr, out var cancelledSpell))
+                {
+                    _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellTargetCancel,
+                        new TriggerArgs { CharSrc = _character, N1 = (int)cancelledSpell });
+                }
                 _character.RemoveTag("CAST_SPELL");
+            }
             _character.RemoveTag("TARGP");
             _character.RemoveTag("TARG.X");
             _character.RemoveTag("TARG.Y");
             _character.RemoveTag("TARG.Z");
             _character.RemoveTag("TARG.MAP");
             _character.RemoveTag("TARG.UID");
+
+            FirePendingItemTargetTrigger(pendingItemUid, ItemTrigger.TargOnCancel, Serial.Invalid, x, y, z, graphic);
 
             SysMessage(ServerMessages.Get("target_cancel_1"));
             return;
@@ -477,6 +487,12 @@ public sealed partial class GameClient
                 return;
             }
 
+            if (FirePendingItemTargetTrigger(pendingItemUid, ResolveItemTargetTrigger(serial, argo), new Serial(serial), x, y, z, graphic) == TriggerResult.True)
+            {
+                _pendingTargetArgs = "";
+                return;
+            }
+
             var trigArgs = new ExecTriggerArgs(_character, 0, 0, _pendingTargetArgs)
             {
                 Object1 = argo,
@@ -509,6 +525,37 @@ public sealed partial class GameClient
             _character.RemoveTag("CAST_SPELL");
             HandleCastSpell(spell, serial);
         }
+    }
+
+    private ItemTrigger ResolveItemTargetTrigger(uint serial, IScriptObj? target)
+    {
+        if (target is Character) return ItemTrigger.TargOnChar;
+        if (target is Item) return ItemTrigger.TargOnItem;
+        if (serial == 0 || serial == 0xFFFFFFFF) return ItemTrigger.TargOnGround;
+        return ItemTrigger.TargOnGround;
+    }
+
+    private TriggerResult FirePendingItemTargetTrigger(Serial sourceItemUid, ItemTrigger trigger, Serial targetUid,
+        short x, short y, sbyte z, ushort graphic)
+    {
+        if (!sourceItemUid.IsValid || _triggerDispatcher == null)
+            return TriggerResult.Default;
+
+        var sourceItem = _world.FindItem(sourceItemUid);
+        if (sourceItem == null)
+            return TriggerResult.Default;
+
+        IScriptObj? targetObj = targetUid.IsValid ? _world.FindObject(targetUid) : null;
+        return _triggerDispatcher.FireItemTrigger(sourceItem, trigger, new TriggerArgs
+        {
+            CharSrc = _character,
+            ItemSrc = sourceItem,
+            O1 = targetObj,
+            N1 = x,
+            N2 = y,
+            N3 = z,
+            S1 = graphic.ToString()
+        });
     }
 
     private static bool IsTargetCancelled(uint serial, short x, short y, sbyte z, ushort graphic)

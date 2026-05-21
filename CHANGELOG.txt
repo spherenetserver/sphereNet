@@ -48,6 +48,42 @@ SCRIPT PARITESI / SCRIPT PARITY:
     izlenebiliyor.
     Context menu request and selection actions can now be observed by script
     triggers.
+  - Guvenli ticaret konteynerine esya birakma artik @DropOn_Trade ile
+    denetlenebiliyor.
+    Dropping items into secure trade containers can now be controlled by
+    @DropOn_Trade.
+  - AOS tooltip istekleri artik esya scriptlerindeki @ClientTooltip ve
+    @ClientTooltipAfterDefault tetiklerini calistiriyor.
+    AOS tooltip requests now fire item-side @ClientTooltip and
+    @ClientTooltipAfterDefault triggers.
+  - TARGETF/TARGETFG kaynakli esya hedeflemeleri artik @TargOn_Item ve
+    @TargOn_Cancel gibi hedef triggerlarini calistiriyor.
+    Item-backed TARGETF/TARGETFG flows now fire target triggers such as
+    @TargOn_Item and @TargOn_Cancel.
+  - Rename, profil ve boya islemleri artik @Rename, @Profile ve @Dye
+    script triggerlariyla denetlenebiliyor.
+    Rename, profile, and dye actions can now be controlled by @Rename,
+    @Profile, and @Dye script triggers.
+  - Single-click isim gosteriminden sonra karakter ve esyalar icin
+    @AfterClick triggerlari calisiyor.
+    Character and item @AfterClick triggers now fire after single-click name
+    display.
+  - Context menu ve tooltip triggerlari karakter/esya tarafinda daha simetrik
+    calisiyor.
+    Context menu and tooltip triggers now behave more consistently across
+    character and item targets.
+  - Esya kaynakli target akislari @TargOn_Char, @TargOn_Ground ve
+    @TargOn_Cancel kapsaminda tamamlandi; spell hedef iptali @SpellTargetCancel
+    tetikliyor.
+    Item-backed target flows now cover @TargOn_Char, @TargOn_Ground, and
+    @TargOn_Cancel; spell target cancellation now fires @SpellTargetCancel.
+  - Ceset carve islemi artik @CarveCorpse item triggeriyle denetlenebiliyor.
+    Corpse carving can now be controlled by the @CarveCorpse item trigger.
+  - Skill listesi, status ve paperdoll button paketleri @UserSkills,
+    @UserStats ve ilgili User* trigger argumanlariyla scriptlere gorunur hale
+    getirildi.
+    Skill list, status, and paperdoll button packets now expose @UserSkills,
+    @UserStats, and related User* trigger arguments to scripts.
 
 [2026-05-02] - GM komut paritesi: CURE, POISON, REVEAL, GOUID, GOCHAR, OPENPAPERDOLL, SHOWSKILLS, PAGE routing
               (GM command parity: CURE, POISON, REVEAL, GOUID, GOCHAR, OPENPAPERDOLL, SHOWSKILLS, PAGE routing)

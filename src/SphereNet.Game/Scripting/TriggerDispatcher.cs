@@ -137,6 +137,14 @@ public sealed class TriggerDispatcher
             }
         }
 
+        if (Runner != null)
+        {
+            string funcName = "f_onchar_" + trigName.ToLowerInvariant();
+            var result = Runner.RunFunction(funcName, ch, args.ScriptConsole, WrapArgs(args));
+            if (result == TriggerResult.True)
+                return TriggerResult.True;
+        }
+
         return TriggerResult.Default;
     }
 
@@ -237,6 +245,23 @@ public sealed class TriggerDispatcher
                 var result = handler(item, args);
                 if (result == TriggerResult.True)
                     return TriggerResult.True;
+            }
+        }
+        if (Resources != null && Runner != null)
+        {
+            var itemDef = Definitions.DefinitionLoader.GetItemDef(item.BaseId);
+            if (!string.IsNullOrWhiteSpace(itemDef?.TypeRaw))
+            {
+                var typeRid = Resources.ResolveDefName(itemDef.TypeRaw.Trim());
+                var typeLink = typeRid.IsValid && typeRid.Type == ResType.TypeDef
+                    ? Resources.GetResource(typeRid)
+                    : null;
+                if (typeLink != null)
+                {
+                    var result = Runner.RunTriggerByName(typeLink, trigName, item, args.ScriptConsole, WrapArgs(args));
+                    if (result == TriggerResult.True)
+                        return TriggerResult.True;
+                }
             }
         }
 

@@ -166,4 +166,21 @@ public class EncryptionTests
 
         Assert.False(CryptoState.TryGetRelayKeys(authId, out _, out _, out _));
     }
+
+    [Fact]
+    public void Huffman_ServerCompress_DecompressFromServer_RoundTrips()
+    {
+        byte[] packet =
+        [
+            0x1B, 0x00, 0x25, 0x40, 0x00, 0x10, 0x00, 0x01,
+            0x90, 0x03, 0xE8, 0x03, 0xE8, 0x00, 0x00, 0x00,
+            0x00, 0x00
+        ];
+
+        var compressed = HuffmanCompression.Compress(packet, 0, packet.Length);
+        var decompressed = HuffmanCompression.DecompressFromServer(compressed, 0, compressed.Length, out int consumed);
+
+        Assert.Equal(packet, decompressed);
+        Assert.InRange(consumed, 1, compressed.Length);
+    }
 }

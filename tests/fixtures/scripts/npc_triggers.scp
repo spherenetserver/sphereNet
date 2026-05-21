@@ -1,0 +1,14 @@
+[EVENTS e_npc_parity_probe]
+ON=@NPCActFight
+    TAG.NPC_ACT_FIGHT=1
+    RETURN 0
+
+ON=@NPCLookAtChar
+    TAG.NPC_LOOK_CHAR=1
+    RETURN 0
+
+[CHARDEF c_npc_parity_probe]
+DEFNAME=c_npc_parity_probe
+NAME=NPC Parity Probe
+ID=c_man
+EVENTS=e_npc_parity_probe

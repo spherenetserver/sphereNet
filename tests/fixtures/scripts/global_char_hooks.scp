@@ -1,0 +1,7 @@
+[FUNCTION f_onchar_login]
+SRC.TAG.GLOBAL_LOGIN=1
+RETURN 0
+
+[FUNCTION f_onchar_attack]
+SRC.TAG.GLOBAL_ATTACK=1
+RETURN 0

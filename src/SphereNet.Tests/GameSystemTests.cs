@@ -9,6 +9,9 @@ using SphereNet.Game.Trade;
 using SphereNet.Game.Gumps;
 using SphereNet.Game.Death;
 using SphereNet.Game.Crafting;
+using SphereNet.Game.AI;
+using SphereNet.Game.Definitions;
+using SphereNet.Game.Magic;
 using SphereNet.Game.Skills;
 using SphereNet.Game.Speech;
 using Microsoft.Extensions.Logging;
@@ -960,6 +963,95 @@ public class GameSystemTests
     }
 
     [Fact]
+    public void TriggerDispatcher_FiresGenericGlobalCharFunction()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var resources = new SphereNet.Scripting.Resources.ResourceHolder(loggerFactory.CreateLogger<SphereNet.Scripting.Resources.ResourceHolder>());
+        string tempFile = Path.Combine(Path.GetTempPath(), $"spherenet_global_char_{Guid.NewGuid():N}.scp");
+        File.WriteAllText(tempFile,
+            "[FUNCTION f_onchar_attack]\nTAG.GLOBAL_ATTACK=1\nRETURN 1\n");
+        resources.LoadResourceFile(tempFile);
+
+        var interpreter = new ScriptInterpreter(new ExpressionParser(), loggerFactory.CreateLogger<ScriptInterpreter>());
+        var runner = new TriggerRunner(interpreter, resources, loggerFactory.CreateLogger<TriggerRunner>());
+        var dispatcher = new TriggerDispatcher { Resources = resources, Runner = runner };
+        var ch = new Character();
+
+        var result = dispatcher.FireCharTrigger(ch, CharTrigger.Attack, new SphereNet.Game.Scripting.TriggerArgs());
+
+        Assert.Equal(TriggerResult.True, result);
+        Assert.True(ch.TryGetProperty("TAG.GLOBAL_ATTACK", out var value));
+        Assert.Equal("1", value);
+    }
+
+    [Fact]
+    public void TriggerDispatcher_FiresScriptTypeDefTrigger()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var resources = new SphereNet.Scripting.Resources.ResourceHolder(loggerFactory.CreateLogger<SphereNet.Scripting.Resources.ResourceHolder>());
+        string tempFile = Path.Combine(Path.GetTempPath(), $"spherenet_typedef_{Guid.NewGuid():N}.scp");
+        File.WriteAllText(tempFile,
+            "[TYPEDEF t_parity_container]\n" +
+            "ON=@DClick\n" +
+            "TAG.TYPEDEF_DCLICK=1\n" +
+            "RETURN 1\n\n" +
+            "[ITEMDEF 0E75]\n" +
+            "TYPE=t_parity_container\n");
+        resources.LoadResourceFile(tempFile);
+
+        var registry = new SpellRegistry();
+        new DefinitionLoader(resources, registry).LoadAll();
+        var interpreter = new ScriptInterpreter(new ExpressionParser(), loggerFactory.CreateLogger<ScriptInterpreter>());
+        var runner = new TriggerRunner(interpreter, resources, loggerFactory.CreateLogger<TriggerRunner>());
+        var dispatcher = new TriggerDispatcher { Resources = resources, Runner = runner };
+        var item = new Item { BaseId = 0x0E75, ItemType = ItemType.Container };
+
+        var result = dispatcher.FireItemTrigger(item, ItemTrigger.DClick, new SphereNet.Game.Scripting.TriggerArgs());
+
+        Assert.Equal(TriggerResult.True, result);
+        Assert.True(item.TryGetProperty("TAG.TYPEDEF_DCLICK", out var value));
+        Assert.Equal("1", value);
+    }
+
+    [Fact]
+    public void NpcAI_TriggerCallbacks_CanBlockLookAndFight()
+    {
+        var world = CreateWorld();
+        var ai = new NpcAI(world, new SphereNet.Core.Configuration.SphereConfig());
+        var npc = world.CreateCharacter();
+        npc.NpcBrain = NpcBrainType.Monster;
+        npc.Hits = npc.MaxHits = 100;
+        npc.Karma = -5000;
+        npc.NextNpcActionTime = 0;
+        world.PlaceCharacter(npc, new Point3D(100, 100, 0, 0));
+
+        var target = world.CreateCharacter();
+        target.IsPlayer = true;
+        target.IsOnline = true;
+        target.Hits = target.MaxHits = 100;
+        target.Karma = 1000;
+        world.PlaceCharacter(target, new Point3D(101, 100, 0, 0));
+        world.AddOnlinePlayer(target);
+        world.OnTick();
+
+        int lookCount = 0;
+        ai.OnNpcLookAtChar = (_, _) => { lookCount++; return true; };
+        ai.OnTickAction(npc);
+
+        Assert.True(lookCount > 0);
+        Assert.False(npc.FightTarget.IsValid);
+
+        npc.FightTarget = target.Uid;
+        int fightCount = 0;
+        ai.OnNpcLookAtChar = (_, _) => false;
+        ai.OnNpcActFight = (_, _) => { fightCount++; return true; };
+        npc.NextNpcActionTime = 0;
+        ai.OnTickAction(npc);
+
+        Assert.True(fightCount > 0);
+    }
+
+    [Fact]
     public void CommandHandler_NotFound_FiresScriptParityWarning()
     {
         var world = CreateWorld();
@@ -1145,6 +1237,38 @@ public class GameSystemTests
             Character.ResolveHouseUidsByOwner = null;
             Character.ResolveShipUidsByOwner = null;
         }
+    }
+
+    [Fact]
+    public void HousingEngine_PlaceHouse_EnforcesPlayerHouseLimit()
+    {
+        var world = CreateWorld();
+        var registry = new SphereNet.Game.Housing.MultiRegistry();
+        var multi = new SphereNet.Game.Housing.MultiDef { Id = 0x0064, Name = "small test house" };
+        multi.Components.Add(new SphereNet.Game.Housing.MultiComponent
+        {
+            TileId = 0x0001,
+            DeltaX = 0,
+            DeltaY = 0,
+            DeltaZ = 0,
+            Visible = true
+        });
+        multi.RecalcBounds();
+        registry.Register(multi);
+
+        var engine = new SphereNet.Game.Housing.HousingEngine(world, registry)
+        {
+            MaxHousesPerPlayer = 1
+        };
+        var owner = world.CreateCharacter();
+        world.PlaceCharacter(owner, new Point3D(100, 100, 0, 0));
+
+        var first = engine.PlaceHouse(owner, 0x0064, new Point3D(120, 120, 0, 0));
+        var second = engine.PlaceHouse(owner, 0x0064, new Point3D(140, 140, 0, 0));
+
+        Assert.NotNull(first);
+        Assert.Null(second);
+        Assert.Single(engine.GetHousesByOwner(owner.Uid));
     }
 
     [Fact]

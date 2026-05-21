@@ -73,6 +73,9 @@ public sealed class NpcAI
     private readonly Dictionary<uint, int> _pathIndex = [];
     private long _lastPathPurge;
 
+    public Func<Character, Character, bool>? OnNpcActFight { get; set; }
+    public Func<Character, Character, bool>? OnNpcLookAtChar { get; set; }
+
     public void PurgeStalePaths()
     {
         long now = Environment.TickCount64;
@@ -485,6 +488,9 @@ public sealed class NpcAI
     /// </summary>
     private void ActFight(Character npc, Character target, int motivation)
     {
+        if (OnNpcActFight?.Invoke(npc, target) == true)
+            return;
+
         // Source-X: flee when motivation < 0 (non-pets only)
         if (!npc.IsStatFlag(StatFlag.Pet) && motivation < 0)
         {
@@ -1008,6 +1014,7 @@ public sealed class NpcAI
         {
             if (ch == npc || !IsAttackable(ch)) continue;
             if (!_world.CanSeeLOS(npc.Position, ch.Position)) continue;
+            if (OnNpcLookAtChar?.Invoke(npc, ch) == true) continue;
             int motivation = GetAttackMotivation(npc, ch);
             if (motivation > bestMotivation)
             {

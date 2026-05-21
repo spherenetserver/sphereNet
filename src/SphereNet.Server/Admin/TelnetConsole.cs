@@ -34,6 +34,12 @@ public sealed class TelnetConsole : IDisposable
 
     public bool Start(int port)
     {
+        if (!AdminHostPolicy.CanStartTelnet(new SphereConfig { AdminPassword = _adminPassword }))
+        {
+            _logger.LogWarning("Telnet admin console disabled because AdminPassword is empty.");
+            return false;
+        }
+
         try
         {
             _listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
@@ -65,14 +71,7 @@ public sealed class TelnetConsole : IDisposable
                 var session = new TelnetSession(socket, this);
                 _sessions.Add(session);
                 session.SendLine("SphereNet Admin Console");
-                if (RequiresPassword)
-                    session.SendPasswordPrompt();
-                else
-                {
-                    session.SendLine("AdminPassword is empty; localhost telnet is running without authentication.");
-                    session.SendLine("Type 'help' for commands.");
-                    session.SendPrompt();
-                }
+                session.SendPasswordPrompt();
                 _logger.LogInformation("Admin telnet session from {EP}", socket.RemoteEndPoint);
             }
         }

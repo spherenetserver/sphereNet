@@ -4,6 +4,60 @@
  All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-22] - Kalan backlog fazlari: guvenlik, parity ve test guvencesi
+              (Remaining backlog phases: security, parity, and test coverage)
+----------------------------------------
+
+GUVENLIK / SECURITY:
+  - Telnet yonetim konsolu artik AdminPassword bosken fail-closed davraniyor ve
+    baslamiyor.
+    Telnet admin now fails closed and does not start when AdminPassword is empty.
+  - Telnet baslatma karari testlenebilir AdminHostPolicy yardimcisina tasindi.
+    Telnet startup policy was extracted into the testable AdminHostPolicy helper.
+
+SCRIPT PARITESI / SCRIPT PARITY:
+  - NPC AI akislari artik @NPCLookAtChar ve @NPCActFight callbackleri ile script
+    tarafindan engellenebilir hale geldi.
+    NPC AI flows can now be blocked from scripts through @NPCLookAtChar and
+    @NPCActFight callbacks.
+  - Script TYPEDEF kaynaklari item trigger zincirinde calistiriliyor.
+    Script TYPEDEF resources now participate in the item trigger chain.
+  - Genel f_onchar_* fonksiyonlari karakter trigger zincirinin sonunda
+    calistiriliyor.
+    Generic f_onchar_* functions now run at the end of the character trigger
+    chain.
+  - STRREPLACE ve STRJOIN expression yardimcilari eklendi.
+    Added STRREPLACE and STRJOIN expression helpers.
+
+OYUN SISTEMLERI / GAME SYSTEMS:
+  - HousingEngine artik oyuncu basi ev limitini MaxHousesPerPlayer ile uygular;
+    sunucu bu degeri sphere.ini MaxHousesPlayer ayarindan baglar.
+    HousingEngine now enforces the per-player house limit with MaxHousesPerPlayer;
+    the server wires it from sphere.ini MaxHousesPlayer.
+
+NETWORK / TEST HARNESS:
+  - Huffman server-compress/decompress roundtrip testi eklendi.
+    Added Huffman server-compress/decompress roundtrip coverage.
+  - PacketManager standard, extended ve encoded handler registry davranisi test
+    altina alindi.
+    PacketManager standard, extended, and encoded handler registry behavior is
+    now covered by tests.
+
+DOKUMANTASYON / DOCUMENTATION:
+  - Admin guvenlik modeli, deploy rehberi, parity matrisi ve performans benchmark
+    notlari eklendi.
+    Added admin security model, deployment guide, parity matrix, and performance
+    benchmark notes.
+  - Golden script fixture envanteri NPC trigger, TYPEDEF ve global char hook
+    ornekleriyle baslatildi.
+    Started the golden script fixture inventory with NPC trigger, TYPEDEF, and
+    global char hook examples.
+
+PROJE SAGLIGI / PROJECT HEALTH:
+  - Bos test projeleri solution disina alinarak solution test gürültüsü azaltildi.
+    Empty test projects were removed from the solution to reduce solution test
+    noise.
+
 [2026-05-21] - Kayit, hesap ve yonetim guvenligi iyilestirmeleri
               (Save, account and admin safety improvements)
 ----------------------------------------

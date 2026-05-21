@@ -305,6 +305,8 @@ public sealed class HousingEngine
     private readonly MultiRegistry _multiDefs;
     private readonly Dictionary<Serial, House> _houses = [];
 
+    public int MaxHousesPerPlayer { get; set; } = 1;
+
     public HousingEngine(GameWorld world, MultiRegistry multiDefs)
     {
         _world = world;
@@ -340,6 +342,9 @@ public sealed class HousingEngine
     /// </summary>
     public House? PlaceHouse(Character owner, ushort multiId, Point3D position)
     {
+        if (MaxHousesPerPlayer >= 0 && GetHousesByOwner(owner.Uid).Count >= MaxHousesPerPlayer)
+            return null;
+
         var def = _multiDefs.Get(multiId);
         if (def == null) return null;
 

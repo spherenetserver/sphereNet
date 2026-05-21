@@ -1526,6 +1526,13 @@ public static class Program
         if (_config.MacroEnabled)
             _macroEngine = new SphereNet.Server.Macro.MacroEngine(_config.MacroMaxSteps, _config.MacroMaxLoopMinutes);
 
+        _npcAI.OnNpcLookAtChar = (npc, target) =>
+            _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCLookAtChar,
+                new TriggerArgs { CharSrc = target, N1 = target.Uid.Value > int.MaxValue ? 0 : (int)target.Uid.Value }) == TriggerResult.True;
+        _npcAI.OnNpcActFight = (npc, target) =>
+            _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActFight,
+                new TriggerArgs { CharSrc = target, N1 = target.Uid.Value > int.MaxValue ? 0 : (int)target.Uid.Value }) == TriggerResult.True;
+
         _npcAI.OnNpcSay = (npc, text) =>
         {
             NpcSpeak(npc, text);
@@ -1910,7 +1917,10 @@ public static class Program
             int multiCount = multiRegistry.LoadFromMapData(_mapData);
             _log.LogInformation("Loaded {Count} multi definitions from multi.mul", multiCount);
         }
-        _housingEngine = new HousingEngine(_world, multiRegistry);
+        _housingEngine = new HousingEngine(_world, multiRegistry)
+        {
+            MaxHousesPerPlayer = _config.MaxHousesPlayer
+        };
         _housingEngine.DeserializeFromWorld();
         if (_housingEngine.HouseCount > 0)
             _log.LogInformation("Restored {Count} houses from world save", _housingEngine.HouseCount);

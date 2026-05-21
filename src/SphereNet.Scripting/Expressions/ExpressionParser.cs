@@ -1125,6 +1125,40 @@ public sealed class ExpressionParser
             return "0";
         }
 
+        // STRREPLACE — replace all literal matches: STRREPLACE(text, search, replacement)
+        if (varExpr.StartsWith("STRREPLACE(", StringComparison.OrdinalIgnoreCase) ||
+            varExpr.StartsWith("STRREPLACE ", StringComparison.OrdinalIgnoreCase))
+        {
+            string inner = ExtractFuncArg(varExpr, 10);
+            var parts = inner.Split(',', 3);
+            if (parts.Length >= 2)
+            {
+                string text = ResolveAngleBrackets(parts[0].Trim());
+                string search = ResolveAngleBrackets(parts[1].Trim());
+                string replacement = parts.Length >= 3 ? ResolveAngleBrackets(parts[2].Trim()) : "";
+                if (search.Length == 0)
+                    return text;
+                return text.Replace(search, replacement, StringComparison.Ordinal);
+            }
+            return "";
+        }
+
+        // STRJOIN — join arguments with a separator: STRJOIN(separator, a, b, ...)
+        if (varExpr.StartsWith("STRJOIN(", StringComparison.OrdinalIgnoreCase) ||
+            varExpr.StartsWith("STRJOIN ", StringComparison.OrdinalIgnoreCase))
+        {
+            string inner = ExtractFuncArg(varExpr, 7);
+            var parts = inner.Split(',', StringSplitOptions.None);
+            if (parts.Length < 2)
+                return "";
+
+            string separator = ResolveAngleBrackets(parts[0]);
+            var values = new string[parts.Length - 1];
+            for (int i = 1; i < parts.Length; i++)
+                values[i - 1] = ResolveAngleBrackets(parts[i].Trim());
+            return string.Join(separator, values);
+        }
+
         // STRINDEXOF — find substring: STRINDEXOF(text, search, start)
         if (varExpr.StartsWith("STRINDEXOF(", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("STRINDEXOF ", StringComparison.OrdinalIgnoreCase))

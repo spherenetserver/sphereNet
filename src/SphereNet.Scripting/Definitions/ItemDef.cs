@@ -10,6 +10,7 @@ namespace SphereNet.Scripting.Definitions;
 public sealed class ItemDef : BaseDef
 {
     public ItemType Type { get; set; } = ItemType.Normal;
+    public string TypeRaw { get; set; } = "";
     public ushort FlipId { get; set; }
     public int Weight { get; set; }
     public Layer Layer { get; set; }
@@ -57,7 +58,7 @@ public sealed class ItemDef : BaseDef
         switch (key.ToUpperInvariant())
         {
             case "NAME": Name = value; break;
-            case "TYPE": Type = ParseItemType(value); break;
+            case "TYPE": TypeRaw = value.Trim(); Type = ParseItemType(value); break;
             case "WEIGHT": int.TryParse(value, out int w); Weight = w; break;
             case "LAYER": Enum.TryParse(value, true, out Layer l); Layer = l; break;
             case "FLIPID": ParseHexOrDec(value, out ushort f); FlipId = f; break;

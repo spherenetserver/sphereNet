@@ -1,0 +1,10 @@
+[TYPEDEF t_parity_container]
+ON=@DClick
+    TAG.TYPEDEF_DCLICK=1
+    RETURN 0
+
+[ITEMDEF i_parity_container]
+DEFNAME=i_parity_container
+ID=i_box_wood
+TYPE=t_parity_container
+NAME=Parity Container

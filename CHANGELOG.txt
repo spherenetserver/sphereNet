@@ -4,6 +4,38 @@
  All notable changes are documented in this file.
 ================================================================================
 
+NETWORK / NETWORK:
+  - Gelen oyun paketleri icin Huffman decompress kaldirildi: UO client→server
+    plaintext gonderir; yanlis decompress IndexOutOfRangeException crash yaratiyordu.
+    Inbound Huffman removed; only server→client compress remains.
+  - Decompress() bounds checks eklendi (defense in depth).
+    Decompress tree walk hardened against invalid input.
+
+GAME / GAME:
+  - Kapı double-click düzeltmesi: tiledata Door flag (±1/±2 varyant), ITEMDEF TYPE/TFLAGS,
+    harita static kapıları (statics*.mul) ve OpenDoor makrosu artık ToggleDoor çağırıyor.
+    Door dclick fixed: tiledata/ITEMDEF detection, map static doors, OpenDoor macro.
+  - CHARDEF/body parity: .info BODY alanı defname gösterir (c_man); BODY/CHARDEF=c_man_gm
+    uygulanır, görünüm paketi güncellenir; NPC load'da hash→body truncation düzeltildi;
+    CAN=C_PassWalls / c_man_gm GM body ile kapı/duvar geçişi; @Create CHARDEF apply sonrası.
+    CHARDEF/body parity: defname in .info, apply CHARDEF by name, NPC body fix, pass-walls.
+  - f_onchar_* / f_onitem_* global hook yoksa artık log spam yok (TryRunFunction).
+    Optional global script hooks no longer warn when absent.
+  - Ceset adı: corpse_name defmessage + GetDisplayName (CHARDEF NAME fallback).
+    Corpse naming uses defmessage and resolved victim display name.
+  - Panel/konsol hesap şifresi (ve diğer account CRUD) artık anında sphereaccu dosyasına
+    yazılıyor; sunucu yeniden başlayınca şifre kaybolmuyor.
+    Account password/ban/plevel changes persist immediately to disk.
+  - Yürüme düzeltmesi: turn-in-place ACK (konum değişmeden MoveAck) kaldırıldı — istemci
+    adım attığını sanıp desync oluyordu. Yön+adım tek pakette TryMove ile işleniyor.
+    DIR running bit (0x80) artık maskeleniyor; login Z snap toleransı genişletildi.
+    Login'de BODY/CHARDEF'ten grafik onarımı; fastwalk key stack (0xBF sub 1/2) eklendi;
+    0xF0 wrapped move 6–34 byte destekleniyor.
+    Walk fix: turn-only ACK removed, body repair at login, fastwalk stack, 0xF0 moves.
+  - BODY/CHARDEF degisince kendi client'a SendSelfRedraw; hash (0x03DB) artik body
+    olarak kullanilmiyor — kirmizi/bozuk goruntu ve yurume sorunu.
+    Self redraw on body change; def hash no longer sent as body graphic.
+
 [2026-05-23] - Deferred parity: opcodes, f_onitem, housing, viewport
               (Deferred parity: opcodes, f_onitem, housing, viewport)
 ----------------------------------------
@@ -41,9 +73,9 @@ TRADE / TRADE:
     Trade completion validates recipient weight; failed complete resets accept.
 
 NETWORK / NETWORK:
-  - Gelen oyun paketleri icin Huffman decompress (game connection, decrypt sonrasi).
-    Inbound Huffman decompress on game connections after decrypt.
-  - EncryptionTests: client compress → server decompress roundtrip.
+  - ~~Gelen oyun paketleri icin Huffman decompress~~ (geri alindi — bkz. ust bolum).
+    ~~Inbound Huffman decompress on game connections after decrypt.~~
+  - EncryptionTests: client compress → server decompress roundtrip (outbound only).
 
 NPC / AI:
   - @NPCActWander, @NPCActFollow, @NPCActCast, @NPCLookAtItem Program.cs'te

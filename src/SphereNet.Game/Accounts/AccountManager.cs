@@ -14,7 +14,7 @@ public sealed class AccountManager
 
     public int Count => _accounts.Count;
     public bool AutoCreateAccounts { get => _autoCreateAccounts; set => _autoCreateAccounts = value; }
-    public bool Md5Passwords { get; set; } = true;
+    public bool Md5Passwords { get; set; }
 
     /// <summary>Default PrivLevel for auto-created accounts. Maps to DEFAULTCOMMANDLEVEL in sphere.ini.</summary>
     public Core.Enums.PrivLevel DefaultPrivLevel { get; set; } = Core.Enums.PrivLevel.Guest;
@@ -24,6 +24,8 @@ public sealed class AccountManager
     public event Action<Account>? AccountUnblocked;
     public event Action<Account>? AccountDeleted;
     public event Action<Account>? AccountPasswordChanged;
+    /// <summary>Fired after any admin/panel mutation that should be written to disk.</summary>
+    public event Action? AccountsChanged;
 
     public AccountManager(ILoggerFactory loggerFactory)
     {
@@ -96,6 +98,7 @@ public sealed class AccountManager
         _accounts[name] = account;
         _logger.LogInformation("Account '{Name}' created", name);
         AccountCreated?.Invoke(account);
+        NotifyAccountsChanged();
         return account;
     }
 
@@ -106,6 +109,7 @@ public sealed class AccountManager
 
         _accounts.Remove(name);
         AccountDeleted?.Invoke(account);
+        NotifyAccountsChanged();
         return true;
     }
 
@@ -116,6 +120,7 @@ public sealed class AccountManager
             return false;
         account.SetPassword(newPassword);
         AccountPasswordChanged?.Invoke(account);
+        NotifyAccountsChanged();
         return true;
     }
 
@@ -129,8 +134,21 @@ public sealed class AccountManager
             AccountBlocked?.Invoke(account);
         else
             AccountUnblocked?.Invoke(account);
+        NotifyAccountsChanged();
         return true;
     }
+
+    public bool SetAccountPrivLevel(string name, Core.Enums.PrivLevel level)
+    {
+        var account = FindAccount(name);
+        if (account == null)
+            return false;
+        account.PrivLevel = level;
+        NotifyAccountsChanged();
+        return true;
+    }
+
+    private void NotifyAccountsChanged() => AccountsChanged?.Invoke();
 
     public IEnumerable<Account> GetAllAccounts() => _accounts.Values;
 

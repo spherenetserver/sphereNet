@@ -202,7 +202,8 @@ public sealed class CommandHandler
     private readonly Dictionary<string, PrivLevel> _scriptCommandPrivLevels = new(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> _preferBuiltinVerbs = new(StringComparer.OrdinalIgnoreCase)
     {
-        "TELE", "EDIT", "XEDIT"
+        "TELE", "EDIT", "XEDIT", "SET", "BODY", "CHARDEF",
+        "SAVE", "RESYNC", "SHUTDOWN"
     };
 
     /// <summary>Set this to enable AREADEF-based location lookup for GO command.</summary>
@@ -944,8 +945,35 @@ public sealed class CommandHandler
             {
                 string key = args[..eq].Trim();
                 string val = args[(eq + 1)..].Trim();
-                gm.TrySetProperty(key, val);
+                if (gm.TrySetProperty(key, val))
+                    OnSysMessage?.Invoke(gm, $"{key}={val}");
             }
+        });
+
+        Register("BODY", PrivLevel.GM, (gm, args) =>
+        {
+            if (string.IsNullOrWhiteSpace(args))
+            {
+                OnSysMessage?.Invoke(gm, "Usage: .BODY <body|chardef>");
+                return;
+            }
+            if (gm.TrySetProperty("BODY", args.Trim()))
+                OnSysMessage?.Invoke(gm, $"BODY={gm.BodyId:X4}");
+            else
+                OnSysMessage?.Invoke(gm, $"Invalid BODY: {args.Trim()}");
+        });
+
+        Register("CHARDEF", PrivLevel.GM, (gm, args) =>
+        {
+            if (string.IsNullOrWhiteSpace(args))
+            {
+                OnSysMessage?.Invoke(gm, "Usage: .CHARDEF <chardef>");
+                return;
+            }
+            if (gm.TrySetProperty("CHARDEF", args.Trim()))
+                OnSysMessage?.Invoke(gm, $"CHARDEF={args.Trim()} BODY={gm.BodyId:X4}");
+            else
+                OnSysMessage?.Invoke(gm, $"Invalid CHARDEF: {args.Trim()}");
         });
 
         Register("INFO", PrivLevel.Counsel, (gm, args) =>

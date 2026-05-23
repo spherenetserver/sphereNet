@@ -1,0 +1,1004 @@
+using System.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Serilog;
+using Serilog.Sinks.SystemConsole.Themes;
+using SphereNet.Core.Configuration;
+using SphereNet.Core.Enums;
+using SphereNet.Core.Interfaces;
+using SphereNet.Core.Types;
+using SphereNet.Game.Accounts;
+using SphereNet.Game.AI;
+using SphereNet.Game.Clients;
+using SphereNet.Game.Combat;
+using SphereNet.Game.Crafting;
+using SphereNet.Game.Death;
+using SphereNet.Game.Definitions;
+using SphereNet.Game.Guild;
+using SphereNet.Game.Housing;
+using SphereNet.Game.Messages;
+using SphereNet.Game.Magic;
+using SphereNet.Game.Movement;
+using SphereNet.Game.Party;
+using SphereNet.Game.Scripting;
+using SphereNet.Game.Skills;
+using SphereNet.Game.Objects;
+using SphereNet.Game.Objects.Characters;
+using SphereNet.Game.Objects.Items;
+using SphereNet.Game.Speech;
+using SphereNet.Game.Trade;
+using SphereNet.Game.World;
+using SphereNet.MapData;
+using SphereNet.Network.Manager;
+using SphereNet.Network.Packets;
+using SphereNet.Network.Packets.Incoming;
+using SphereNet.Network.Packets.Outgoing;
+using System.Collections.Concurrent;
+using SphereNet.Network.State;
+using SphereNet.Persistence.Load;
+using SphereNet.Persistence.Save;
+using SphereNet.Scripting.Execution;
+using TriggerArgs = SphereNet.Game.Scripting.TriggerArgs;
+using SphereNet.Scripting.Expressions;
+using SphereNet.Scripting.Definitions;
+using SphereNet.Scripting.Resources;
+using GameRegion = SphereNet.Game.World.Regions.Region;
+using SphereNet.Game.World.Regions;
+using SphereNet.Panel;
+using SphereNet.Server.Admin;
+using System.Data.Common;
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.Data.Sqlite;
+
+
+namespace SphereNet.Server;
+
+public static partial class Program
+{
+    private static void OnWorldObjectCreated(SphereNet.Game.Objects.ObjBase obj)
+    {
+        _systemHooks.DispatchObject("create", obj);
+        if (obj.IsItem)
+        {
+            _systemHooks.DispatchItem("create", obj);
+            MarkNearbyClientsRefresh(obj.Position);
+        }
+        else if (obj is Character npc && !npc.IsPlayer)
+        {
+            if (_npcTimerWheel != null)
+                _npcTimerWheel.Schedule(npc, Environment.TickCount64 + 500);
+        }
+    }
+
+    private static void OnWorldObjectDeleting(SphereNet.Game.Objects.ObjBase obj)
+    {
+        _systemHooks.DispatchObject("delete", obj);
+        if (obj.IsItem)
+        {
+            _systemHooks.DispatchItem("delete", obj);
+            MarkNearbyClientsRefresh(obj.Position);
+        }
+        else if (obj is Character ch && !ch.IsPlayer)
+        {
+            _npcTimerWheel?.Remove(ch);
+            MarkNearbyClientsRefresh(ch.Position);
+        }
+    }
+
+    private static void OnUnknownPacket(NetState state, byte opcode, byte[] raw)
+    {
+        if (!_clients.TryGetValue(state.Id, out var client))
+            return;
+        IScriptObj? src = client.Character ?? (IScriptObj?)client.Account;
+        if (src == null)
+            return;
+        _systemHooks.DispatchClient("unkdata", src, client.Character, $"0x{opcode:X2}", opcode, raw.Length);
+    }
+
+    private static void OnPacketQuotaExceeded(NetState state, int processed)
+    {
+        if (!_clients.TryGetValue(state.Id, out var client))
+            return;
+        IScriptObj? src = client.Character ?? (IScriptObj?)client.Account;
+        if (src == null)
+            return;
+        _systemHooks.DispatchClient("quotaexceed", src, client.Character, processed.ToString(), processed);
+    }
+
+    private static bool HandlePacketScriptHook(NetState state, byte opcode, byte[] packet)
+    {
+        if (opcode != 0x03 && opcode != 0xAD && opcode != 0x6C && opcode != 0x72 && opcode != 0x22)
+            return false;
+
+        if (!_clients.TryGetValue(state.Id, out var client))
+            return false;
+
+        IScriptObj? src = client.Character ?? (IScriptObj?)client.Account;
+        if (src == null)
+            return false;
+
+        string payloadHex = Convert.ToHexString(packet);
+        bool handled = _systemHooks.DispatchPacket(opcode, src, client.Character, payloadHex);
+
+        // Keep script hook visibility for war/peace packets, but do not allow
+        // script short-circuit to block core war mode state changes.
+        if (opcode == 0x72)
+            return false;
+
+        return handled;
+    }
+
+    private static string? ResolveDefMessage(string key)
+    {
+        return _resources.TryGetDefMessage(key, out var message) ? message : null;
+    }
+
+    private static void RegisterDbProviders()
+    {
+        // Register SQLite provider for ADO.NET DbProviderFactories
+        if (!DbProviderFactories.TryGetFactory("Microsoft.Data.Sqlite", out _))
+        {
+            DbProviderFactories.RegisterFactory("Microsoft.Data.Sqlite", SqliteFactory.Instance);
+            _log.LogDebug("Registered SQLite database provider");
+        }
+    }
+
+    private static void InitDbConnections(SphereConfig config, ScriptDbAdapter db)
+    {
+        if (config.DbConnections.Count == 0)
+        {
+            _log.LogDebug("No DB connections configured.");
+            return;
+        }
+
+        foreach (var connCfg in config.DbConnections)
+        {
+            db.RegisterConnection(connCfg);
+
+            if (connCfg.AutoConnect)
+            {
+                string displayInfo = connCfg.IsSqlite
+                    ? connCfg.Database
+                    : $"{connCfg.Host}/{connCfg.Database}";
+
+                if (db.Connect(connCfg.Name, out string err))
+                    _log.LogInformation("DB '{Name}' connected ({Info})",
+                        connCfg.Name, displayInfo);
+                else
+                    _log.LogWarning("DB '{Name}' auto-connect failed: {Error}", connCfg.Name, err);
+            }
+        }
+
+        _log.LogInformation("Registered {Count} DB connection(s)", config.DbConnections.Count);
+    }
+
+    private static HashSet<byte>? ParseDebugPacketOpcodes(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        var set = new HashSet<byte>();
+        foreach (var token in raw.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries))
+        {
+            string part = token.Trim();
+            if (part.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+                part = part[2..];
+
+            if (byte.TryParse(part, System.Globalization.NumberStyles.HexNumber,
+                    System.Globalization.CultureInfo.InvariantCulture, out byte opcode))
+            {
+                set.Add(opcode);
+            }
+        }
+
+        return set.Count > 0 ? set : null;
+    }
+
+    // --- Network Event Handlers ---
+
+    private static void OnConnectionClosed(int stateId)
+    {
+        if (_clients.TryGetValue(stateId, out var client))
+        {
+            client.OnDisconnect();
+            _clients.Remove(stateId);
+        }
+    }
+
+    private static GameClient GetOrCreateClient(NetState state)
+    {
+        if (!_clients.TryGetValue(state.Id, out var client))
+        {
+            client = new GameClient(state, _world, _accounts,
+                _loggerFactory.CreateLogger<GameClient>());
+            client.SetEngines(_movement, _speech, _commands, _spellEngine, _deathEngine, _partyManager, _tradeManager,
+                _skillHandlers, _craftingEngine, _housingEngine, _triggerDispatcher, _guildManager, _mountEngine);
+            client.SetScriptServices(_systemHooks, _scriptDb, ResolveDefMessage, _scriptFile, _scriptLdb);
+            client.BroadcastNearby = BroadcastNearby;
+            client.BroadcastMoveNearby = BroadcastMoveNearby;
+            client.ForEachClientInRange = ForEachClientInRange;
+            client.SendToChar = SendPacketToChar;
+            client.BroadcastCharacterAppear = BroadcastCharacterAppear;
+            client.OnCharacterDeathOfOther = victim =>
+            {
+                // Resolve the victim's own client and run its death sequence
+                // (ghost transition, 0x77 broadcast, 0x20/0x2C self packets).
+                if (_clientsByCharUid.TryGetValue(victim.Uid, out var victimClient))
+                    victimClient.OnCharacterDeath();
+            };
+            client.OnResurrectOther = victim =>
+            {
+                if (_clientsByCharUid.TryGetValue(victim.Uid, out var victimClient))
+                    victimClient.OnResurrect();
+                else if (victim.IsDead)
+                    victim.Resurrect(); // offline / NPC fallback
+            };
+            client.OnKillTarget = (killer, victim) =>
+            {
+                if (victim.IsDead || victim.IsDeleted)
+                {
+                    client.SysMessage($"'{victim.Name}' is already dead.");
+                    return;
+                }
+                BroadcastLightningStrike(victim);
+                _deathEngine.ProcessDeath(victim, killer);
+                client.SysMessage($"Killed '{victim.Name}'.");
+            };
+
+            client.SendTradeToPartner = (partner, initiator, cont1, cont2) =>
+            {
+                if (_clientsByCharUid.TryGetValue(partner.Uid, out var pc))
+                {
+                    pc.NetState.Send(new PacketWorldItem(cont1.Uid.Value, 0x1E5E, 1, 0, 0, 0, 0));
+                    pc.NetState.Send(new PacketWorldItem(cont2.Uid.Value, 0x1E5E, 1, 0, 0, 0, 0));
+                    pc.NetState.Send(new PacketSecureTradeOpen(
+                        initiator.Uid.Value, cont2.Uid.Value, cont1.Uid.Value, initiator.GetName()));
+                }
+            };
+            client.SendTradeItemToPartner = (partner, item, container) =>
+            {
+                if (_clientsByCharUid.TryGetValue(partner.Uid, out var pc))
+                    pc.NetState.Send(new PacketContainerItem(
+                        item.Uid.Value, item.DispIdFull, 0,
+                        item.Amount, 30, 30,
+                        container.Uid.Value, item.Hue, pc.NetState.IsClientPost6017));
+            };
+            client.SendTradeCloseToPartner = (partner, containerSerial) =>
+            {
+                if (_clientsByCharUid.TryGetValue(partner.Uid, out var pc))
+                    pc.NetState.Send(new PacketSecureTradeClose(containerSerial));
+            };
+            client.SendTradeUpdateToPartner = (partner, trade) =>
+            {
+                if (_clientsByCharUid.TryGetValue(partner.Uid, out var pc))
+                {
+                    var theirCont = trade.GetOwnContainer(partner);
+                    bool theirAcc = partner == trade.Initiator ? trade.InitiatorAccepted : trade.PartnerAccepted;
+                    bool myAcc = partner == trade.Initiator ? trade.PartnerAccepted : trade.InitiatorAccepted;
+                    pc.NetState.Send(new PacketSecureTradeUpdate(theirCont.Uid.Value, theirAcc, myAcc));
+                }
+            };
+            client.SendTradeMessageToPartner = (partner, msg) =>
+            {
+                if (_clientsByCharUid.TryGetValue(partner.Uid, out var pc))
+                    pc.SysMessage(msg);
+            };
+
+            _clients[state.Id] = client;
+        }
+        return client;
+    }
+
+    private static void BroadcastNearby(Point3D center, int range, PacketWriter packet, uint excludeUid)
+    {
+        int secRadius = (range / SphereNet.Game.World.Sectors.Sector.SectorSize) + 1;
+        int cx = center.X / SphereNet.Game.World.Sectors.Sector.SectorSize;
+        int cy = center.Y / SphereNet.Game.World.Sectors.Sector.SectorSize;
+
+        if (_recordingEngine.HasActiveRecordings)
+        {
+            var built = packet.Build();
+            _recordingEngine.CaptureFromBroadcast(center, range, built.Span.ToArray());
+        }
+
+        for (int sx = cx - secRadius; sx <= cx + secRadius; sx++)
+        for (int sy = cy - secRadius; sy <= cy + secRadius; sy++)
+        {
+            var sector = _world.GetSector(center.Map, sx, sy);
+            if (sector == null) continue;
+            foreach (var ch in sector.OnlinePlayers)
+            {
+                if (ch.Uid.Value == excludeUid) continue;
+                if (center.GetDistanceTo(ch.Position) > range) continue;
+                if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying)
+                    c.Send(packet);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Per-observer dispatch helper. Walks every online player whose character
+    /// is within <paramref name="range"/> tiles of <paramref name="center"/>
+    /// and invokes <paramref name="action"/> with both the observer Character
+    /// and its GameClient. Used by the death/resurrect pipeline where the
+    /// packet sent depends on the observer (plain player vs Counsel+ staff
+    /// vs the dying player itself) — the standard BroadcastNearby helper
+    /// can only dispatch a single packet to everyone.
+    ///
+    /// <paramref name="excludeUid"/> behaves like BroadcastNearby — pass 0
+    /// to include everyone (the action can decide what to send to the
+    /// dying player), or a specific UID to skip a single character.
+    /// </summary>
+    private static void ForEachClientInRange(Point3D center, int range, uint excludeUid,
+        Action<Character, GameClient> action)
+    {
+        int secRadius = (range / SphereNet.Game.World.Sectors.Sector.SectorSize) + 1;
+        int cx = center.X / SphereNet.Game.World.Sectors.Sector.SectorSize;
+        int cy = center.Y / SphereNet.Game.World.Sectors.Sector.SectorSize;
+        for (int sx = cx - secRadius; sx <= cx + secRadius; sx++)
+        for (int sy = cy - secRadius; sy <= cy + secRadius; sy++)
+        {
+            var sector = _world.GetSector(center.Map, sx, sy);
+            if (sector == null) continue;
+            foreach (var ch in sector.OnlinePlayers)
+            {
+                if (ch.Uid.Value == excludeUid) continue;
+                if (center.GetDistanceTo(ch.Position) > range) continue;
+                if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying)
+                    action(ch, c);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Movement-specific broadcast: sends 0x77 AND updates each receiving client's
+    /// _lastKnownPos so the view delta won't send a duplicate 0x77 for the same step.
+    /// Only sends to clients that already know this mobile — new-in-range receivers
+    /// get a 0x78 (DrawObject) from the view delta instead, avoiding a race where
+    /// 0x77 arrives before the client has spawned the mobile.
+    /// </summary>
+    private static void BroadcastMoveNearby(Point3D center, int range, PacketWriter packet,
+        uint excludeUid, Character movingChar)
+    {
+        if (_recordingEngine.HasActiveRecordings)
+        {
+            var built = packet.Build();
+            _recordingEngine.CaptureFromBroadcast(center, range, built.Span.ToArray(), movingChar.Uid.Value);
+        }
+
+        uint movingUid = movingChar.Uid.Value;
+        int secRadius = (range / SphereNet.Game.World.Sectors.Sector.SectorSize) + 1;
+        int cx = center.X / SphereNet.Game.World.Sectors.Sector.SectorSize;
+        int cy = center.Y / SphereNet.Game.World.Sectors.Sector.SectorSize;
+        for (int sx = cx - secRadius; sx <= cx + secRadius; sx++)
+        for (int sy = cy - secRadius; sy <= cy + secRadius; sy++)
+        {
+            var sector = _world.GetSector(center.Map, sx, sy);
+            if (sector == null) continue;
+            foreach (var ch in sector.OnlinePlayers)
+            {
+                if (ch.Uid.Value == excludeUid) continue;
+                if (center.GetDistanceTo(ch.Position) > range) continue;
+                if (!_clientsByCharUid.TryGetValue(ch.Uid, out var c) || !c.IsPlaying) continue;
+                if (!c.HasKnownChar(movingUid)) continue;
+                c.Send(packet);
+                c.UpdateKnownCharPosition(movingChar);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Notify all nearby clients that a character appeared (login/teleport).
+    /// Each client renders from its own perspective (notoriety, equipment, etc.).
+    /// </summary>
+    private static void BroadcastCharacterAppear(Character ch)
+    {
+        const int Range = 18;
+        const int secSize = SphereNet.Game.World.Sectors.Sector.SectorSize;
+        const int secRadius = (Range / secSize) + 1;
+        int cx = ch.Position.X / secSize;
+        int cy = ch.Position.Y / secSize;
+        byte mapId = ch.Position.Map;
+        for (int sx = cx - secRadius; sx <= cx + secRadius; sx++)
+        for (int sy = cy - secRadius; sy <= cy + secRadius; sy++)
+        {
+            var sector = _world.GetSector(mapId, sx, sy);
+            if (sector == null || sector.OnlinePlayers.Count == 0) continue;
+            foreach (var other in sector.OnlinePlayers)
+            {
+                if (other == ch) continue;
+                if (ch.Position.GetDistanceTo(other.Position) > Range) continue;
+                if (_clientsByCharUid.TryGetValue(other.Uid, out var c) && c.IsPlaying)
+                    c.NotifyCharacterAppear(ch);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Object-centric movement handler: when any character moves, notify nearby clients
+    /// directly instead of waiting for per-tick BuildViewDelta. For player movement,
+    /// marks the player's own client for a full view refresh. For NPC movement, sends
+    /// enter/leave/update packets to each nearby client.
+    /// Player still-in-range 0x77 is handled by BroadcastMoveNearby (called after
+    /// MoveCharacter in the walk handler), so OnCharacterMoved only handles the
+    /// enter-range (0x78) and leave-range (0x1D) cases for players.
+    /// </summary>
+    private static void OnCharacterMoved(Character ch, Point3D oldPos)
+    {
+        bool isPlayer = ch.IsPlayer;
+
+        if (isPlayer && ch.IsOnline)
+        {
+            if (_clientsByCharUid.TryGetValue(ch.Uid, out var ownClient))
+                ownClient.ViewNeedsRefresh = true;
+        }
+
+        const int range = 18;
+        const int secSize = SphereNet.Game.World.Sectors.Sector.SectorSize;
+        const int secRadius = (range / secSize) + 1;
+
+        int newCx = ch.Position.X / secSize;
+        int newCy = ch.Position.Y / secSize;
+        int oldCx = oldPos.X / secSize;
+        int oldCy = oldPos.Y / secSize;
+
+        int minSx = Math.Min(newCx, oldCx) - secRadius;
+        int maxSx = Math.Max(newCx, oldCx) + secRadius;
+        int minSy = Math.Min(newCy, oldCy) - secRadius;
+        int maxSy = Math.Max(newCy, oldCy) + secRadius;
+
+        byte mapId = ch.Position.Map;
+        for (int sx = minSx; sx <= maxSx; sx++)
+        for (int sy = minSy; sy <= maxSy; sy++)
+        {
+            var sector = _world.GetSector(mapId, sx, sy);
+            if (sector == null || sector.OnlinePlayers.Count == 0) continue;
+            foreach (var other in sector.OnlinePlayers)
+            {
+                if (other == ch) continue;
+                if (!_clientsByCharUid.TryGetValue(other.Uid, out var c) || !c.IsPlaying) continue;
+                if (isPlayer)
+                    c.NotifyCharEnterLeave(ch, oldPos);
+                else
+                    c.NotifyCharMoved(ch, oldPos);
+            }
+        }
+    }
+
+    /// <summary>Mark nearby clients for a view refresh when an object at the given position changes.</summary>
+    private static void MarkNearbyClientsRefresh(Point3D pos)
+    {
+        const int Range = 18;
+        const int secSize = SphereNet.Game.World.Sectors.Sector.SectorSize;
+        const int secRadius = (Range / secSize) + 1;
+        int cx = pos.X / secSize;
+        int cy = pos.Y / secSize;
+        for (int sx = cx - secRadius; sx <= cx + secRadius; sx++)
+        for (int sy = cy - secRadius; sy <= cy + secRadius; sy++)
+        {
+            var sector = _world.GetSector(pos.Map, sx, sy);
+            if (sector == null || sector.OnlinePlayers.Count == 0) continue;
+            foreach (var ch in sector.OnlinePlayers)
+            {
+                if (pos.GetDistanceTo(ch.Position) > Range) continue;
+                if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying)
+                    c.ViewNeedsRefresh = true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Mark clients near dirty (non-movement) objects for a view refresh.
+    /// </summary>
+    private static void MarkClientsNearDirtyObjects(IReadOnlyList<ObjBase> dirtyObjects)
+    {
+        if (_clientsByCharUid.Count == 0 || dirtyObjects.Count == 0)
+            return;
+
+        const int Range = 18;
+        int secRadius = (Range / SphereNet.Game.World.Sectors.Sector.SectorSize) + 1;
+        foreach (var obj in dirtyObjects)
+        {
+            var pos = obj.Position;
+            int cx = pos.X / SphereNet.Game.World.Sectors.Sector.SectorSize;
+            int cy = pos.Y / SphereNet.Game.World.Sectors.Sector.SectorSize;
+            for (int sx = cx - secRadius; sx <= cx + secRadius; sx++)
+            for (int sy = cy - secRadius; sy <= cy + secRadius; sy++)
+            {
+                var sector = _world.GetSector(pos.Map, sx, sy);
+                if (sector == null) continue;
+                foreach (var ch in sector.OnlinePlayers)
+                {
+                    if (pos.GetDistanceTo(ch.Position) > Range) continue;
+                    if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying)
+                        c.ViewNeedsRefresh = true;
+                }
+            }
+        }
+    }
+
+    /// <summary>Send a packet to a specific character by UID.</summary>
+    private static void SendPacketToChar(Serial charUid, PacketWriter packet)
+    {
+        if (_clientsByCharUid.TryGetValue(charUid, out var c) && c.IsPlaying)
+            c.Send(packet);
+    }
+
+    private static void OnLoginRequest(NetState state, string account, string password)
+    {
+        var client = GetOrCreateClient(state);
+        client.HandleLoginRequest(account, password);
+    }
+
+    private static void OnServerSelect(NetState state, ushort serverIndex)
+    {
+        uint ip;
+        if (_config.ServIP == "0.0.0.0" || string.IsNullOrEmpty(_config.ServIP))
+        {
+            var localEp = state.LocalEndPoint;
+            if (localEp != null)
+            {
+                var bytes = localEp.Address.GetAddressBytes();
+                ip = (uint)((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]);
+            }
+            else
+            {
+                ip = 0x7F000001; // 127.0.0.1
+            }
+        }
+        else
+        {
+            if (System.Net.IPAddress.TryParse(_config.ServIP, out var addr))
+            {
+                var bytes = addr.GetAddressBytes();
+                ip = (uint)((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]);
+            }
+            else
+            {
+                ip = 0x7F000001;
+            }
+        }
+
+        ushort port = (ushort)_config.ServPort;
+        uint authId = (uint)Random.Shared.Next(1, int.MaxValue);
+        state.AuthId = authId;
+
+        // Store login crypto keys for the game connection (Source-X RelayGameCryptStart)
+        SphereNet.Network.Encryption.CryptoState.StoreRelayKeys(authId, state.Crypto.Key1, state.Crypto.Key2, state.ClientVersionNumber);
+        _log.LogDebug("Relay #{Id}: ip=0x{IP:X8}, port={Port}, authId=0x{AuthId:X8}",
+            state.Id, ip, port, authId);
+
+        state.Send(new PacketRelay(ip, port, authId));
+
+        // Login connection is no longer needed after relay — the client will open
+        // a new TCP connection for the game server.  Mark this one for closure so it
+        // doesn't linger until the idle-timeout fires.
+        state.MarkClosing();
+    }
+
+    private static void OnGameLogin(NetState state, string account, string password, uint authId)
+    {
+        var client = GetOrCreateClient(state);
+        client.HandleGameLogin(account, password, authId);
+        if (client.Account != null)
+            _systemHooks.DispatchAccount("connect", client.Account, client.Character);
+    }
+
+    /// <summary>
+    /// Kick any existing client playing the same character.
+    /// Allows multi-client with different characters on the same account.
+    /// </summary>
+    private static void KickDuplicateCharacter(uint charUid, int excludeStateId)
+    {
+        foreach (var kvp in _clients.ToArray())
+        {
+            if (kvp.Key == excludeStateId) continue;
+            var existing = kvp.Value;
+            if (existing.Character != null &&
+                existing.Character.Uid.Value == charUid)
+            {
+                _log.LogInformation("Kicking duplicate character 0x{Uid:X8} (old connection #{Id})",
+                    charUid, kvp.Key);
+                existing.OnDisconnect();
+                _clients.Remove(kvp.Key);
+                existing.NetState.MarkClosing();
+            }
+        }
+    }
+
+    private static void OnCharCreate(NetState state, CharCreateInfo info)
+    {
+        var client = GetOrCreateClient(state);
+        client.PendingCharCreate = info;
+        client.HandleCharSelect(-1, info.Name);
+    }
+
+    private static void OnCharSelect(NetState state, int slot, string name)
+    {
+        var client = GetOrCreateClient(state);
+
+        // Aynı karakter zaten online ise eski bağlantıyı kick et
+        if (client.Account != null && slot >= 0)
+        {
+            var charUid = client.Account.GetCharSlot(slot);
+            if (charUid.IsValid)
+                KickDuplicateCharacter(charUid.Value, state.Id);
+        }
+
+        client.HandleCharSelect(slot, name);
+    }
+
+    private static void OnMoveRequest(NetState state, byte dir, byte seq, uint fastWalkKey)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleMove(dir, seq, fastWalkKey);
+    }
+
+    private static void OnSpeech(NetState state, byte type, ushort hue, ushort font, string text)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleSpeech(type, hue, font, text);
+    }
+
+    private static void OnAttackRequest(NetState state, uint targetUid)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleAttack(targetUid);
+    }
+
+    /// <summary>Scan loaded scripts for [DIALOG &lt;name&gt;] section names
+    /// and return up to <paramref name="maxCount"/> that share a prefix
+    /// with the (case-insensitive) query. Used by the ".dialog" admin
+    /// command's not-found message so singular/plural typos can be
+    /// fixed from the hint instead of grepping scripts by hand.</summary>
+    private static List<string> CollectDialogSuggestions(string query, int maxCount)
+    {
+        var results = new List<string>();
+        if (_resources == null || string.IsNullOrEmpty(query))
+            return results;
+
+        string q = query.ToLowerInvariant();
+        string qPrefix = q.Length > 3 ? q[..3] : q;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var script in _resources.ScriptFiles)
+        {
+            var file = script.Open();
+            try
+            {
+                foreach (var section in file.ReadAllSections())
+                {
+                    if (results.Count >= maxCount) break;
+                    if (!section.Name.Equals("DIALOG", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    string name = section.Argument.Split(' ', 2)[0].Trim();
+                    if (name.Length == 0 || !seen.Add(name)) continue;
+                    if (name.ToLowerInvariant().Contains(qPrefix))
+                        results.Add(name);
+                }
+            }
+            finally { script.Close(); }
+            if (results.Count >= maxCount) break;
+        }
+        return results;
+    }
+
+    private static void OnWarMode(NetState state, bool warMode)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+        {
+            var ch = client.Character;
+            if (ch != null && _recordingEngine.IsReplaying(ch.Uid.Value))
+            {
+                FinishReplay(ch);
+                SendSysMessage(ch, "Replay stopped.");
+                return;
+            }
+            client.HandleWarMode(warMode);
+        }
+    }
+
+    private static void OnDoubleClick(NetState state, uint serial)
+    {
+        if (!_clients.TryGetValue(state.Id, out var client)) return;
+        if (_macroEngine != null && client.Character != null &&
+            _macroEngine.IsRecording(client.Character.Uid.Value))
+        {
+            var item = _world.FindItem(new Serial(serial));
+            if (item != null)
+                _macroEngine.CaptureUseObject(client.Character.Uid.Value, item.DispIdFull);
+        }
+        client.HandleDoubleClick(serial);
+    }
+
+    private static void OnSingleClick(NetState state, uint serial)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleSingleClick(serial);
+    }
+
+    private static void OnItemPickup(NetState state, uint serial, ushort amount)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleItemPickup(serial, amount);
+    }
+
+    private static void OnItemDrop(NetState state, uint serial, short x, short y, sbyte z, uint container)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleItemDrop(serial, x, y, z, container);
+    }
+
+    private static void OnItemEquip(NetState state, uint serial, byte layer, uint charSerial)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleItemEquip(serial, layer, charSerial);
+    }
+
+    private static void OnStatusRequest(NetState state, byte type, uint serial)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleStatusRequest(type, serial);
+    }
+
+    private static void OnProfileRequest(NetState state, byte mode, uint serial, string bioText)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleProfileRequest(mode, serial, bioText);
+    }
+
+    private static void OnTargetResponse(NetState state, byte type, uint targetId, uint serial,
+        short x, short y, sbyte z, ushort graphic)
+    {
+        if (!_clients.TryGetValue(state.Id, out var client)) return;
+        if (_macroEngine != null && client.Character != null &&
+            _macroEngine.IsRecording(client.Character.Uid.Value))
+        {
+            _macroEngine.CaptureTarget(client.Character.Uid.Value, serial, x, y, z, graphic,
+                client.Character.Uid.Value);
+        }
+        client.HandleTargetResponse(type, targetId, serial, x, y, z, graphic);
+    }
+
+    private static void OnGumpResponse(NetState state, uint serial, uint gumpId, uint buttonId,
+        uint[] switches, (ushort Id, string Text)[] textEntries)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleGumpResponse(serial, gumpId, buttonId, switches, textEntries);
+    }
+
+    private static void OnClientVersion(NetState state, string version)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleClientVersion(version);
+    }
+
+    private static void OnAOSTooltip(NetState state, uint serial)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleAOSTooltip(serial);
+    }
+
+    private static void OnTextCommand(NetState state, byte type, string command)
+    {
+        if (!_clients.TryGetValue(state.Id, out var client)) return;
+
+        switch (type)
+        {
+            case 0x24: // UseSkill
+                if (int.TryParse(command.Split(' ')[0], out int skillId))
+                {
+                    if (_macroEngine != null && client.Character != null &&
+                        _macroEngine.IsRecording(client.Character.Uid.Value))
+                        _macroEngine.CaptureUseSkill(client.Character.Uid.Value, skillId);
+                    client.HandleUseSkill(skillId);
+                }
+                break;
+            case 0x56: // CastSpell
+                if (int.TryParse(command.Split(' ')[0], out int spellId) && spellId > 0)
+                    client.HandleCastSpell((SpellType)spellId, 0);
+                break;
+            case 0x58: // OpenDoor
+                client.OpenDoor();
+                break;
+            case 0xF4: // SKILLLOCK
+                var parts = command.Split(' ');
+                if (parts.Length >= 3 && parts[0] == "SKILLLOCK" &&
+                    ushort.TryParse(parts[1], out ushort sid) &&
+                    byte.TryParse(parts[2], out byte lockVal))
+                {
+                    client.Character?.SetSkillLock((SkillType)sid, lockVal);
+                }
+                break;
+        }
+    }
+
+    private static void OnExtendedCommand(NetState state, ushort subCmd, PacketBuffer buffer)
+    {
+        if (!_clients.TryGetValue(state.Id, out var client)) return;
+
+        byte[] remaining = buffer.ReadBytes(buffer.Remaining);
+        client.HandleExtendedCommand(subCmd, remaining);
+    }
+
+    private static void OnResyncRequest(NetState state)
+    {
+        if (!_clients.TryGetValue(state.Id, out var client)) return;
+        client.Resync();
+    }
+
+    /// <summary>
+    /// 0xD1 — Client requested to return to character select. Send the accept
+    /// reply and tear down the in-world client state (mark offline, notify
+    /// nearby players) while keeping the TCP connection alive so the client
+    /// can receive the char-list without reconnecting.
+    /// </summary>
+    private static void OnLogoutRequest(NetState state)
+    {
+        // Always acknowledge so the client transitions out of world.
+        state.Send(new PacketLogoutAck());
+
+        if (_clients.TryGetValue(state.Id, out var client))
+        {
+            client.OnDisconnect();
+            // Client object is recycled on next login/char-select; leave the
+            // NetState entry in _clients so future packets still route.
+        }
+    }
+
+    private static void OnHelpRequest(NetState state)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleHelpRequest();
+    }
+
+    private static void BroadcastSeasonChange(bool playSound)
+    {
+        var seasonPacket = new PacketSeason((byte)_weatherEngine.CurrentSeason, playSound);
+        foreach (var client in _clients.Values)
+        {
+            if (!client.IsPlaying || client.Character == null) continue;
+            client.Send(seasonPacket);
+
+            var r = _world.FindRegion(client.Character.Position);
+            if (r != null && !string.IsNullOrEmpty(r.Name))
+            {
+                var (wType, wIntensity, wTemp) = _weatherEngine.GetWeatherForRegion(r.Name);
+                client.Send(new PacketWeather((byte)wType, wIntensity, wTemp));
+            }
+        }
+    }
+
+    private static void OnViewRange(NetState state, byte range)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleViewRange(range);
+    }
+
+    private static void OnVendorBuy(NetState state, uint vendorSerial, byte flag, List<VendorBuyEntry> items)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleVendorBuy(vendorSerial, flag, items);
+    }
+
+    private static void OnVendorSell(NetState state, uint vendorSerial, List<VendorSellEntry> items)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleVendorSell(vendorSerial, items);
+    }
+
+    private static void OnSecureTrade(NetState state, byte action, uint sessionId, uint param)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleSecureTrade(action, sessionId, param);
+    }
+
+    private static void OnRename(NetState state, uint serial, string name)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleRename(serial, name);
+    }
+
+    // ==================== Phase 1: Critical Stability ====================
+
+    private static void OnDeathMenu(NetState state, byte action)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleDeathMenu(action);
+    }
+
+    private static void OnCharDelete(NetState state, int charIndex, string password)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleCharDelete(charIndex, password);
+    }
+
+    private static void OnDyeResponse(NetState state, uint itemSerial, ushort hue)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleDyeResponse(itemSerial, hue);
+    }
+
+    private static void OnPromptResponse(NetState state, uint serial, uint promptId, uint type, string text)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandlePromptResponse(serial, promptId, type, text);
+    }
+
+    private static void OnMenuChoice(NetState state, uint serial, ushort menuId, ushort index, ushort modelId)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleMenuChoice(serial, menuId, index, modelId);
+    }
+
+    // ==================== Phase 2: Content Features ====================
+
+    private static void OnBookPage(NetState state, uint serial, List<(ushort PageNum, string[] Lines)> pages)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleBookPage(serial, pages);
+    }
+
+    private static void OnBookHeader(NetState state, uint serial, bool writable, string title, string author)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleBookHeader(serial, writable, title, author);
+    }
+
+    private static void OnBulletinBoardRequestList(NetState state, uint boardSerial)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleBulletinBoardRequestList(boardSerial);
+    }
+
+    private static void OnBulletinBoardRequestMessage(NetState state, uint boardSerial, uint msgSerial)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleBulletinBoardRequestMessage(boardSerial, msgSerial);
+    }
+
+    private static void OnBulletinBoardPost(NetState state, uint boardSerial, uint replyTo, string subject, string[] bodyLines)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleBulletinBoardPost(boardSerial, replyTo, subject, bodyLines);
+    }
+
+    private static void OnBulletinBoardDelete(NetState state, uint boardSerial, uint msgSerial)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleBulletinBoardDelete(boardSerial, msgSerial);
+    }
+
+    private static void OnMapDetail(NetState state, uint serial)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleMapDetail(serial);
+    }
+
+    private static void OnMapPinEdit(NetState state, uint serial, byte action, byte pinId, ushort x, ushort y)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleMapPinEdit(serial, action, pinId, x, y);
+    }
+
+    // ==================== Phase 3: Client Compatibility ====================
+
+    private static void OnGumpTextEntry(NetState state, uint serial, ushort context, byte action, string text)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleGumpTextEntry(serial, context, action, text);
+    }
+
+    private static void OnAllNamesRequest(NetState state, uint serial)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleAllNamesRequest(serial);
+    }
+
+    /// <summary>
+    /// NPC keyword/conversation handler. Routes speech to NPCs for keyword responses.
+    /// Maps to Source-X NPC_OnHear / @NPCHearGreeting / @NPCHearUnknown triggers.
+    /// </summary>
+    /// <summary>Look up the GameClient that owns the given character (player only).</summary>
+}

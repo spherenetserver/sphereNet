@@ -122,6 +122,62 @@ public class SaveFormatTests
     }
 
     [Fact]
+    public void Roundtrip_NormalizesStatLockAndRuneRuntimeState()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_runtime_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            saver.Format = SaveFormat.Text;
+            saver.ShardCount = 0;
+
+            var src = MakeWorld();
+            var ch = src.CreateCharacter();
+            ch.Name = "Runtime";
+            ch.BodyId = 0x0190;
+            ch.SetStatLock(0, 2);
+            ch.SetTag("STATLOCK.1", "1");
+            src.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
+
+            var rune = src.CreateItem();
+            rune.BaseId = 0x1F14;
+            rune.SetTag("RUNE_X", "150");
+            rune.SetTag("RUNE_Y", "160");
+            rune.SetTag("RUNE_Z", "3");
+            rune.SetTag("RUNE_MAP", "1");
+            src.PlaceItem(rune, new Point3D(101, 100, 0, 0));
+
+            Assert.True(saver.Save(src, tmp));
+
+            string charSave = File.ReadAllText(Path.Combine(tmp, "spherechars.scp"));
+            string itemSave = File.ReadAllText(Path.Combine(tmp, "sphereworld.scp"));
+            Assert.Contains("StatLock[0]=2", charSave);
+            Assert.Contains("StatLock[1]=1", charSave);
+            Assert.DoesNotContain("TAG.STATLOCK.", charSave);
+            Assert.Contains("MOREP=150,160,3,1", itemSave);
+            Assert.DoesNotContain("RUNE_X", itemSave);
+
+            var dst = MakeWorld();
+            loader.Load(dst, tmp);
+
+            var loadedChar = dst.FindChar(ch.Uid);
+            Assert.NotNull(loadedChar);
+            Assert.Equal(2, loadedChar!.GetStatLock(0));
+            Assert.Equal(1, loadedChar.GetStatLock(1));
+
+            var loadedRune = dst.FindItem(rune.Uid);
+            Assert.NotNull(loadedRune);
+            Assert.True(loadedRune!.TryGetRuneMark(out Point3D mark));
+            Assert.Equal(new Point3D(150, 160, 3, 1), mark);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public void ShardHash_IsDeterministicAndDistributes()
     {
         var histogram = new int[8];
@@ -248,6 +304,40 @@ public class SaveFormatTests
 
             Assert.NotNull(dst.FindAccount("bob"));
             Assert.NotNull(dst.FindAccount("with space"));
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void AccountPersistence_PlainPassword_WhenMd5Disabled()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_accplain_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var lf = LoggerFactory.Create(b => { });
+            File.WriteAllText(Path.Combine(tmp, "sphereaccu.scp"),
+                """
+                [mortal]
+                PLEVEL=7
+                PASSWORD=1
+                CHARUID0=0204d7
+                [EOF]
+
+                """);
+
+            var mgr = new AccountManager(lf) { Md5Passwords = false };
+            int loaded = AccountPersistence.Load(mgr, tmp);
+            Assert.Equal(1, loaded);
+
+            var acc = mgr.FindAccount("mortal");
+            Assert.NotNull(acc);
+            Assert.True(acc!.CheckPassword("1"));
+            Assert.False(acc.CheckPassword("2"));
+            Assert.Equal("1", acc.PasswordHash);
         }
         finally
         {

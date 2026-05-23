@@ -10,6 +10,8 @@ public sealed class ScriptScope
     public string? ReturnValue { get; set; }
     public bool IsReturning { get; set; }
     public int LoopDepth { get; set; }
+    public int CallDepth { get; set; }
+    public int MaxCallDepth { get; set; } = 32;
 
     /// <summary>Optional human-readable label for the current trigger or
     /// function (e.g. "@Click", "@Create", "f_doSomething"). Surfaced by

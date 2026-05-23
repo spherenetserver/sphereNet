@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
+using SphereNet.Game.Definitions;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.World;
@@ -28,6 +29,12 @@ public sealed class WorldLoader
 
     /// <inheritdoc cref="ResolveItemDef"/>
     public Func<string, ushort>? ResolveCharDef { get; set; }
+
+    /// <summary>Applies a WORLDCHAR section defname (c_man, c_banker, …).</summary>
+    public Action<Character, string>? ApplyCharDefFromName { get; set; }
+
+    /// <summary>Resolves a loaded CHARDEFINDEX to a client body graphic.</summary>
+    public Func<int, ushort>? ResolveBodyFromCharDefIndex { get; set; }
 
     public WorldLoader(ILoggerFactory loggerFactory)
     {
@@ -339,13 +346,18 @@ public sealed class WorldLoader
             string? accountName = null;
             bool charHasUuid = false;
 
-            if (defname != null && ResolveCharDef != null)
+            if (defname != null && ApplyCharDefFromName != null)
+            {
+                ApplyCharDefFromName(ch, defname);
+            }
+            else if (defname != null && ResolveCharDef != null)
             {
                 ushort bodyId = ResolveCharDef(defname);
                 if (bodyId != 0)
                 {
                     ch.BodyId = bodyId;
                     ch.OBody = bodyId;
+                    ch.BaseId = bodyId;
                 }
                 else
                     _logger.LogDebug("Unknown char defname '{DefName}' — BodyId stays default", defname);
@@ -395,6 +407,10 @@ public sealed class WorldLoader
 
                 ApplyCharProperty(ch, key, val);
             }
+
+            CharDefHelper.EnsureDisplayBody(ch, DefinitionLoader.StaticResources);
+            ch.ClearTransientVisualState();
+
             if (!charHasUuid)
                 _migratedUuids++;
 
@@ -442,7 +458,13 @@ public sealed class WorldLoader
         {
             case "BODY":
                 if (TryParseHexOrDec(val, out uint body))
-                    ch.BodyId = (ushort)body;
+                {
+                    ushort bid = (ushort)body;
+                    // Saves sometimes store CHARDEF hash (e.g. 0x03DB) in BODY.
+                    if (ch.CharDefIndex != 0 && bid == (ushort)ch.CharDefIndex)
+                        break;
+                    ch.BodyId = bid;
+                }
                 break;
             case "CHARDEFINDEX":
                 if (TryParseHexOrDec(val, out uint cdi))

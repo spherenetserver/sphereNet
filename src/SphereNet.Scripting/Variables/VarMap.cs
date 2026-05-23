@@ -53,21 +53,22 @@ public sealed class VarMap
     /// every tag under that scope.</summary>
     public int RemoveByPrefix(string prefix)
     {
+        prefix = prefix.Trim();
         if (string.IsNullOrEmpty(prefix))
         {
             int n = _vars.Count;
             _vars.Clear();
             return n;
         }
-        var toRemove = new List<string>();
-        foreach (var key in _vars.Keys)
+
+        string[] keys = _vars.Keys.ToArray();
+        int removed = 0;
+        foreach (var key in keys)
         {
-            if (key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                toRemove.Add(key);
+            if (key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && _vars.Remove(key))
+                removed++;
         }
-        foreach (var key in toRemove)
-            _vars.Remove(key);
-        return toRemove.Count;
+        return removed;
     }
 
     public IEnumerable<KeyValuePair<string, string>> GetAll() => _vars;

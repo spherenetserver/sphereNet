@@ -40,9 +40,9 @@ public sealed class WorldSaver
     /// (e.g. 0x0E75 → "i_backpack"). Used for Source-X compatible section headers.</summary>
     public Func<ushort, string?>? ResolveItemDefName { get; set; }
 
-    /// <summary>Resolves a character BodyId to its script defname
-    /// (e.g. 0x0190 → "c_man"). Used for Source-X compatible section headers.</summary>
-    public Func<ushort, string?>? ResolveCharDefName { get; set; }
+    /// <summary>Resolves a character CHARDEFINDEX to its script defname
+    /// (e.g. hash → "c_man"). Used for Source-X compatible section headers.</summary>
+    public Func<int, string?>? ResolveCharDefName { get; set; }
 
     public WorldSaver(ILoggerFactory loggerFactory)
     {
@@ -60,7 +60,7 @@ public sealed class WorldSaver
         {
             Directory.CreateDirectory(savePath);
 
-            var allObjects = world.GetAllObjects();
+            var allObjects = world.GetAllObjects().ToArray();
 
             int itemCount = SaveSharded(allObjects, savePath, "sphereworld", isItems: true);
             int charCount = SaveSharded(allObjects, savePath, "spherechars", isItems: false);
@@ -131,14 +131,14 @@ public sealed class WorldSaver
             for (int i = 0; i < shards; i++)
                 outputFiles.Add($"{baseName}.{i}{ext}");
 
-            var capturedObjects = objects.ToList();
+            var shardBuckets = PartitionObjectsByShard(objects, shards, isItems);
             var tasks = new Task[shards];
             for (int i = 0; i < shards; i++)
             {
                 int shardIdx = i;
                 string tmp = Path.Combine(savePath, outputFiles[shardIdx] + ".tmp");
                 tasks[i] = Task.Run(() =>
-                    counts[shardIdx] = WriteOneShard(capturedObjects, tmp, isItems, shardIdx, shards));
+                    counts[shardIdx] = WriteOneShard(shardBuckets[shardIdx], tmp, isItems, shardIdx, shards));
             }
             Task.WaitAll(tasks);
 
@@ -171,6 +171,30 @@ public sealed class WorldSaver
 
         RemoveStaleSiblings(savePath, baseName, outputFiles);
         return totalCount;
+    }
+
+    private static List<ObjBase>[] PartitionObjectsByShard(IEnumerable<ObjBase> objects, int shards, bool isItems)
+    {
+        var buckets = new List<ObjBase>[shards];
+        for (int i = 0; i < shards; i++)
+            buckets[i] = [];
+
+        foreach (var obj in objects)
+        {
+            if (isItems)
+            {
+                if (obj is not Item item || item.IsDeleted) continue;
+                if (item.IsAttr(Core.Enums.ObjAttributes.Static)) continue;
+                buckets[ShardManifest.ShardIndexForUid(item.Uid.Value, shards)].Add(item);
+            }
+            else
+            {
+                if (obj is not Character ch || ch.IsDeleted) continue;
+                buckets[ShardManifest.ShardIndexForUid(ch.Uid.Value, shards)].Add(ch);
+            }
+        }
+
+        return buckets;
     }
 
     /// <summary>Sphere-style rolling writer: open <c>{base}.0{ext}</c>, write
@@ -407,7 +431,11 @@ public sealed class WorldSaver
     {
         EngineTags.StripEphemeral(ch);
 
-        string? defname = ResolveCharDefName?.Invoke(ch.BodyId);
+        string? defname = ch.CharDefIndex != 0
+            ? ResolveCharDefName?.Invoke(ch.CharDefIndex)
+            : null;
+        if (string.IsNullOrEmpty(defname) && ch.TryGetTag("CHARDEF", out string? tagDef) && !string.IsNullOrEmpty(tagDef))
+            defname = tagDef;
         w.BeginRecord(defname != null ? $"WORLDCHAR {defname}" : "WORLDCHAR");
         w.WriteProperty("SERIAL", $"0{ch.Uid.Value:X8}");
         w.WriteProperty("UUID", ch.Uuid.ToString("D"));

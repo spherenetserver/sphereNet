@@ -140,8 +140,8 @@ public sealed class TriggerDispatcher
         if (Runner != null)
         {
             string funcName = "f_onchar_" + trigName.ToLowerInvariant();
-            var result = Runner.RunFunction(funcName, ch, args.ScriptConsole, WrapArgs(args));
-            if (result == TriggerResult.True)
+            if (Runner.TryRunFunction(funcName, ch, args.ScriptConsole, WrapArgs(args), out var result) &&
+                result == TriggerResult.True)
                 return TriggerResult.True;
         }
 
@@ -271,8 +271,8 @@ public sealed class TriggerDispatcher
         if (Runner != null)
         {
             string funcName = "f_onitem_" + trigName.ToLowerInvariant();
-            var result = Runner.RunFunction(funcName, item, args.ScriptConsole, WrapArgs(args));
-            if (result == TriggerResult.True)
+            if (Runner.TryRunFunction(funcName, item, args.ScriptConsole, WrapArgs(args), out var result) &&
+                result == TriggerResult.True)
                 return TriggerResult.True;
         }
 

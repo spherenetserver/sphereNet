@@ -1,5 +1,6 @@
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
+using SphereNet.Game.Definitions;
 using SphereNet.Game.Movement;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.World;
@@ -67,6 +68,63 @@ public class MovementTests
 
         engine.TryMove(ch, Direction.North, false, 4);
         Assert.Equal(1000, ch.Y);
+    }
+
+    [Fact]
+    public void TryMove_DirectionChange_StillMoves()
+    {
+        var (world, engine) = CreateWorld();
+        var ch = world.CreateCharacter();
+        ch.Str = 50; ch.Dex = 50; ch.MaxHits = 50; ch.MaxStam = 50;
+        ch.Hits = 50; ch.Stam = 50;
+        ch.Direction = Direction.North;
+        world.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
+
+        bool moved = engine.TryMove(ch, Direction.East, false, 1);
+
+        Assert.True(moved);
+        Assert.Equal(1001, ch.X);
+        Assert.Equal(Direction.East, ch.Direction);
+    }
+
+    [Fact]
+    public void Character_Direction_StripsRunningBit()
+    {
+        var ch = new Character();
+        ch.Direction = Direction.East | Direction.Running;
+        Assert.Equal(Direction.East, ch.Direction);
+    }
+
+    [Fact]
+    public void BodyMatchesDefHash_DetectsCorruptSaveBody()
+    {
+        var ch = new Character { CharDefIndex = 0x1D03DB, BodyId = 0x03DB, IsPlayer = true };
+        Assert.True(CharDefHelper.BodyMatchesDefHash(ch));
+    }
+
+    [Fact]
+    public void BodyMatchesDefHash_AllowsNumericCharDefBody()
+    {
+        var ch = new Character { CharDefIndex = 0x00DC, BodyId = 0x00DC, IsPlayer = true };
+        Assert.False(CharDefHelper.BodyMatchesDefHash(ch));
+    }
+
+    [Fact]
+    public void ClearTransientVisualState_RemovesPersistedSpellAndReplayVisuals()
+    {
+        var ch = new Character { BodyId = 0x0190 };
+        ch.Hue = new Color(0x03EC);
+        ch.SetStatFlag(StatFlag.Freeze);
+        ch.SetStatFlag(StatFlag.Invisible);
+        ch.SetStatFlag(StatFlag.Hidden);
+        ch.SetStatFlag(StatFlag.Reflection);
+
+        Assert.True(ch.ClearTransientVisualState());
+        Assert.Equal((ushort)0, ch.Hue.Value);
+        Assert.False(ch.IsStatFlag(StatFlag.Freeze));
+        Assert.False(ch.IsStatFlag(StatFlag.Invisible));
+        Assert.False(ch.IsStatFlag(StatFlag.Hidden));
+        Assert.False(ch.IsStatFlag(StatFlag.Reflection));
     }
 
     [Fact]

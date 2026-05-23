@@ -122,6 +122,9 @@ public sealed partial class GameClient
             return;
         }
 
+        if (TryToggleNearestMapStaticDoor(uid))
+            return;
+
         var ch = _world.FindChar(new Serial(uid));
         if (ch != null)
         {
@@ -250,6 +253,7 @@ public sealed partial class GameClient
 
             // ---- doors ----
             case ItemType.Door:
+            case ItemType.DoorOpen:
                 ToggleDoor(item);
                 break;
             case ItemType.DoorLocked:
@@ -759,6 +763,16 @@ public sealed partial class GameClient
                 break;
 
             default:
+                if (DoorHelper.IsDoorItem(item, _world.MapData))
+                {
+                    if (item.ItemType == ItemType.DoorLocked)
+                        SysMessage(ServerMessages.Get(Msg.ItemuseLocked));
+                    else
+                        ToggleDoor(item);
+                    break;
+                }
+                if (TryToggleNearestMapStaticDoor(0))
+                    break;
                 SysMessage(ServerMessages.Get(Msg.ItemuseCantthink));
                 break;
         }

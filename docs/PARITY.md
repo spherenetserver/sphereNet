@@ -15,8 +15,8 @@ large backlog notes. It supersedes stale status lines in `tools/plan.txt`.
   `@Buy`/`@Sell`, context menu, AOS tooltips, target flows, rename/profile/dye,
   single-click `@AfterClick`, corpse carving, and User* packet hooks.
 - Network safety: crypto primitive tests and no-crypt login/game-login harness
-  exist; inbound Huffman decompress wired for game connections (plaintext test
-  harness exempt).
+  exist; outbound Huffman compress on game connections. Client→server packets
+  remain plaintext after decrypt (standard UO protocol).
 - Combat core: shared `CombatHelper` gates (safe region, archery range,
   shield+bow, movement delay), player `@Attack`/`@HitTry`/`@HitCheck`, reveal
   on attack, NPC miss swing feedback, and per-observer notoriety on NPC swings.

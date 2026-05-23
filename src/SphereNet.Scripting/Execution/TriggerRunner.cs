@@ -160,7 +160,18 @@ public sealed class TriggerRunner
         ITriggerArgs? args,
         out TriggerResult result)
     {
-        return TryExecuteFunction(funcName, target, source, args, out result, out _);
+        return TryExecuteFunction(funcName, target, source, args, null, out result, out _);
+    }
+
+    public bool TryRunFunction(
+        string funcName,
+        IScriptObj target,
+        ITextConsole? source,
+        ITriggerArgs? args,
+        ScriptScope callerScope,
+        out TriggerResult result)
+    {
+        return TryExecuteFunction(funcName, target, source, args, callerScope, out result, out _);
     }
 
     /// <summary>
@@ -182,7 +193,30 @@ public sealed class TriggerRunner
             Object2 = args?.Object2,
             Number3 = args?.Number3 ?? 0
         };
-        if (!TryExecuteFunction(funcName, target, source, funcArgs, out var result, out var returnValue))
+        if (!TryExecuteFunction(funcName, target, source, funcArgs, null, out var result, out var returnValue))
+            return false;
+
+        value = returnValue ?? (result == TriggerResult.True ? "1" : "0");
+        return true;
+    }
+
+    public bool TryEvaluateFunction(
+        string funcName,
+        string argString,
+        IScriptObj target,
+        ITextConsole? source,
+        ITriggerArgs? args,
+        ScriptScope callerScope,
+        out string value)
+    {
+        value = "";
+        var funcArgs = new TriggerArgs(args?.Source, args?.Number1 ?? 0, args?.Number2 ?? 0, argString)
+        {
+            Object1 = args?.Object1,
+            Object2 = args?.Object2,
+            Number3 = args?.Number3 ?? 0
+        };
+        if (!TryExecuteFunction(funcName, target, source, funcArgs, callerScope, out var result, out var returnValue))
             return false;
 
         value = returnValue ?? (result == TriggerResult.True ? "1" : "0");
@@ -194,6 +228,7 @@ public sealed class TriggerRunner
         IScriptObj target,
         ITextConsole? source,
         ITriggerArgs? args,
+        ScriptScope? callerScope,
         out TriggerResult result,
         out string? returnValue)
     {
@@ -232,7 +267,24 @@ public sealed class TriggerRunner
             return true;
         }
 
-        var scope = new ScriptScope { TriggerName = funcName };
+        int callDepth = (callerScope?.CallDepth ?? 0) + 1;
+        int maxCallDepth = callerScope?.MaxCallDepth ?? 32;
+        if (callDepth > maxCallDepth)
+        {
+            _logger.LogWarning(
+                "Script call depth exceeded MaxCallDepth={MaxDepth} while calling {Name}",
+                maxCallDepth, funcName);
+            result = TriggerResult.False;
+            returnValue = null;
+            return true;
+        }
+
+        var scope = new ScriptScope
+        {
+            TriggerName = funcName,
+            CallDepth = callDepth,
+            MaxCallDepth = maxCallDepth
+        };
         result = _interpreter.Execute(sections[0].Keys, target, source, args, scope);
         returnValue = scope.ReturnValue;
         return true;

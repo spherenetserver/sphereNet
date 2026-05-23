@@ -294,7 +294,10 @@ public sealed class DefinitionLoader
 
     private void LoadCharDef(ResourceLink link)
     {
-        var def = new CharDef(link.Id);
+        var def = new CharDef(link.Id)
+        {
+            HeaderArgument = link.HeaderArgument
+        };
 
         var keys = link.StoredKeys;
         if (keys == null || keys.Count == 0) { CharDefsLoaded++; return; }

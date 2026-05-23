@@ -1141,6 +1141,49 @@ public sealed class PacketLogoutAck : PacketWriter
     }
 }
 
+/// <summary>0xBF sub 0x01 — Initialize fast-walk prevention key stack (6 keys).</summary>
+public sealed class PacketFastWalkStackInit : PacketWriter
+{
+    private readonly uint[] _keys;
+
+    public PacketFastWalkStackInit(ReadOnlySpan<uint> keys) : base(0xBF)
+    {
+        if (keys.Length < 6)
+            throw new ArgumentException("FastWalk stack requires 6 keys.", nameof(keys));
+        _keys = keys[..6].ToArray();
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(64);
+        buf.WriteUInt16(0x0001);
+        for (int i = 0; i < 6; i++)
+            buf.WriteUInt32(_keys[i]);
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
+/// <summary>0xBF sub 0x02 — Push one key onto the fast-walk stack.</summary>
+public sealed class PacketFastWalkStackPush : PacketWriter
+{
+    private readonly uint _key;
+
+    public PacketFastWalkStackPush(uint key) : base(0xBF)
+    {
+        _key = key;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(64);
+        buf.WriteUInt16(0x0002);
+        buf.WriteUInt32(_key);
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
 /// <summary>0xBF sub 0x08 — Map change. Tells client which map to display.</summary>
 public sealed class PacketMapChange : PacketWriter
 {

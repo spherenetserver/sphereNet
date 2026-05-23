@@ -16,6 +16,8 @@ public class RuntimeStateParityTests
 
         Assert.Equal(2, ch.GetStatLock(0));
         Assert.Equal(1, ch.GetStatLock(1));
+        Assert.True(ch.TryGetProperty("StatLock[0]", out string bracketValue));
+        Assert.Equal("2", bracketValue);
         Assert.False(ch.TryGetTag("STATLOCK.0", out _));
     }
 
@@ -27,6 +29,19 @@ public class RuntimeStateParityTests
 
         Assert.Equal(1, ch.GetStatLock(2));
         Assert.False(ch.TryGetTag("STATLOCK.2", out _));
+    }
+
+    [Fact]
+    public void StatLock_TagWrite_RoutesToNativeField()
+    {
+        var ch = new Character();
+
+        ch.SetTag("STATLOCK.0", "2");
+
+        Assert.Equal(2, ch.GetStatLock(0));
+        Assert.True(ch.TryGetProperty("TAG.STATLOCK.0", out string tagValue));
+        Assert.Equal("0", tagValue);
+        Assert.False(ch.TryGetTag("STATLOCK.0", out _));
     }
 
     [Fact]
@@ -90,5 +105,22 @@ public class RuntimeStateParityTests
         Assert.Equal(150, mark.X);
         Assert.Equal(1, mark.Map);
         Assert.False(item.TryGetTag("RUNE_Y", out _));
+    }
+
+    [Fact]
+    public void Item_RuneTagWrite_RoutesToMoreP()
+    {
+        var item = new Item();
+
+        item.TrySetProperty("TAG.RUNE_X", "150");
+        item.TrySetProperty("TAG.RUNE_Y", "160");
+        item.TrySetProperty("TAG.RUNE_Z", "3");
+        item.TrySetProperty("TAG.RUNE_MAP", "1");
+
+        Assert.True(item.TryGetRuneMark(out Point3D mark));
+        Assert.Equal(new Point3D(150, 160, 3, 1), mark);
+        Assert.True(item.TryGetProperty("RUNE_X", out string runeX));
+        Assert.Equal("150", runeX);
+        Assert.False(item.TryGetTag("RUNE_X", out _));
     }
 }

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Buffers.Binary;
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Network.Encryption;
@@ -54,6 +55,9 @@ public sealed class NetState : IDisposable
     public CryptoState Crypto { get; } = new CryptoState();
     public uint ClientVersionNumber { get; set; }
     public int UndecryptedOffset { get; set; }
+    public byte PendingPacketOpcode { get; set; }
+    public int PendingPacketLength { get; set; }
+    public long PendingPacketStartTick { get; set; }
 
     // Client version breakpoints (UO protocol milestones).
     // When ClientVersionNumber == 0 (undetected), assume modern client — all current
@@ -66,6 +70,7 @@ public sealed class NetState : IDisposable
 
     /// <summary>Debug mode — log all outgoing packets.</summary>
     public bool DebugPackets { get; set; }
+    public Func<ReadOnlySpan<byte>, string>? PacketDebugClassifier { get; set; }
 
     public NetState(ILogger logger)
     {
@@ -98,6 +103,7 @@ public sealed class NetState : IDisposable
         Crypto.Reset();
         ClientVersionNumber = 0;
         UndecryptedOffset = 0;
+        ClearPendingPacket();
     }
 
     public void Clear()
@@ -129,7 +135,12 @@ public sealed class NetState : IDisposable
             if (_socket.Available <= 0) return 0;
 
             int space = _recvBuffer.Length - _recvLength;
-            if (space <= 0) return 0;
+            if (space <= 0)
+            {
+                _logger.LogWarning("Receive buffer full for #{Id} ({EP}), disconnecting", Id, RemoteEndPoint);
+                MarkClosing();
+                return -1;
+            }
 
             int read = _socket.Receive(_recvBuffer, _recvLength, space, SocketFlags.None);
             if (read <= 0) return -1;
@@ -148,8 +159,11 @@ public sealed class NetState : IDisposable
         }
     }
 
-    /// <summary>When true, received game packets are Huffman-decompressed after decrypt.</summary>
-    public bool HuffmanReceiveEnabled { get; set; } = true;
+    /// <summary>
+    /// Reserved for optional client-side Huffman receive. UO clients send plaintext
+    /// packets to the game server; only server→client traffic is Huffman compressed.
+    /// </summary>
+    public bool HuffmanReceiveEnabled { get; set; } = false;
 
     public ReadOnlySpan<byte> ReceivedData => _recvBuffer.AsSpan(0, _recvLength);
 
@@ -206,6 +220,7 @@ public sealed class NetState : IDisposable
             Buffer.BlockCopy(data, 0, _recvBuffer, 0, length);
         _recvLength = length;
         UndecryptedOffset = 0;
+        ClearPendingPacket();
     }
 
     /// <summary>Enqueue a packet for sending.</summary>
@@ -219,8 +234,11 @@ public sealed class NetState : IDisposable
             var raw = packet.Span;
             byte opcode = raw.Length > 0 ? raw[0] : (byte)0;
             if (opcode != 0x73) // skip Ping spam
-                _logger.LogDebug("SEND #{Id} 0x{Op:X2} len={Len} data=[{Data}]",
-                    Id, opcode, raw.Length, FormatHex(raw, 32));
+            {
+                string cat = ClassifyPacket(raw);
+                _logger.LogDebug("SEND #{Id} cat={Cat} 0x{Op:X2} len={Len} data=[{Data}]",
+                    Id, cat, opcode, raw.Length, FormatHex(raw, 32));
+            }
         }
 
         lock (_sendLock)
@@ -286,6 +304,23 @@ public sealed class NetState : IDisposable
     }
 
     public void MarkClosing() => IsClosing = true;
+
+    public void MarkPendingPacket(byte opcode, int length, long now)
+    {
+        if (PendingPacketStartTick > 0 && PendingPacketOpcode == opcode && PendingPacketLength == length)
+            return;
+
+        PendingPacketOpcode = opcode;
+        PendingPacketLength = length;
+        PendingPacketStartTick = now;
+    }
+
+    public void ClearPendingPacket()
+    {
+        PendingPacketOpcode = 0;
+        PendingPacketLength = 0;
+        PendingPacketStartTick = 0;
+    }
 
     // --- Packet handler delegates (connected to game logic) ---
 
@@ -564,5 +599,37 @@ public sealed class NetState : IDisposable
         }
         if (data.Length > maxBytes) sb.Append(" ...");
         return sb.ToString();
+    }
+
+    public string ClassifyPacket(ReadOnlySpan<byte> data)
+    {
+        string? external = PacketDebugClassifier?.Invoke(data);
+        if (!string.IsNullOrWhiteSpace(external))
+            return external;
+        if (!TryReadPacketSerial(data, out uint serial))
+            return "packet";
+        return (serial & 0x40000000) != 0 ? "item" : "mobile";
+    }
+
+    private static bool TryReadPacketSerial(ReadOnlySpan<byte> data, out uint serial)
+    {
+        serial = 0;
+        if (data.Length == 0)
+            return false;
+
+        int offset = data[0] switch
+        {
+            0x1A => data.Length >= 7 ? 3 : -1,
+            0x1D => data.Length >= 5 ? 1 : -1,
+            0x2E => data.Length >= 5 ? 1 : -1,
+            0x78 => data.Length >= 7 ? 3 : -1,
+            0x77 or 0x20 or 0x11 or 0x88 or 0xAE => data.Length >= 5 ? 1 : -1,
+            _ => -1
+        };
+
+        if (offset < 0 || data.Length < offset + 4)
+            return false;
+        serial = BinaryPrimitives.ReadUInt32BigEndian(data[offset..]);
+        return true;
     }
 }

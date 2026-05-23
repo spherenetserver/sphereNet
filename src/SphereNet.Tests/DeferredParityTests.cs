@@ -56,6 +56,34 @@ public class DeferredParityTests
     }
 
     [Fact]
+    public void PacketNewMovementRequest_RoutesSevenByteWrappedMove()
+    {
+        var loggerFactory = TestHarness.CreateLoggerFactory();
+        var state = TestHarness.CreateActiveNetState(loggerFactory, 3);
+        byte capturedDir = 0;
+        state.MoveRequestHandler = (_, dir, _, _) => capturedDir = dir;
+
+        var handler = new PacketNewMovementRequest();
+        var buf = new PacketBuffer(new byte[] { 0x04, 5, 0, 0, 0x30, 0x39, 0x00 });
+
+        handler.OnReceive(buf, state);
+
+        Assert.Equal(0x04, capturedDir);
+    }
+
+    [Fact]
+    public void PacketFastWalkStackInit_BuildsExpectedPayload()
+    {
+        Span<uint> keys = stackalloc uint[] { 1, 2, 3, 4, 5, 6 };
+        var packet = new PacketFastWalkStackInit(keys);
+        var buf = packet.Build();
+
+        Assert.Equal(0xBF, buf.Data[0]);
+        Assert.Equal(0x00, buf.Data[3]);
+        Assert.Equal(0x01, buf.Data[4]); // sub 0x0001
+    }
+
+    [Fact]
     public void PacketBoatSmoothMove_BuildsExpectedPayload()
     {
         var packet = new PacketBoatSmoothMove(0x40000001, 4, 2, 2, 1500, 1600, 5);

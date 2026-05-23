@@ -440,6 +440,33 @@ public class GameSystemTests
     }
 
     [Fact]
+    public void CommandHandler_SavePrefersBuiltinAndRaisesEvent()
+    {
+        var world = CreateWorld();
+        var commands = new CommandHandler();
+        commands.RegisterDefaults(world);
+
+        var admin = world.CreateCharacter();
+        admin.IsPlayer = true;
+        admin.PrivLevel = PrivLevel.Admin;
+
+        bool saveCalled = false;
+        bool fallbackCalled = false;
+        commands.OnSaveCommand += () => saveCalled = true;
+        commands.ScriptFallbackExecutor = (_, _) =>
+        {
+            fallbackCalled = true;
+            return true;
+        };
+
+        var result = commands.TryExecute(admin, "SAVE");
+
+        Assert.Equal(CommandResult.Executed, result);
+        Assert.True(saveCalled);
+        Assert.False(fallbackCalled);
+    }
+
+    [Fact]
     public void CommandHandler_ScriptPrivilegeMatrix_RejectsLowPrivAndAllowsHighPriv()
     {
         var world = CreateWorld();
@@ -1201,6 +1228,23 @@ public class GameSystemTests
         client.HandleGumpResponse(0, (uint)Math.Abs("testdlg".GetHashCode()), 1, [], []);
         Assert.True(activeChar.TryGetProperty("TAG.DIALOG_CLOSED", out var closedVal));
         Assert.Equal("1", closedVal);
+    }
+
+    [Fact]
+    public void EnterWorld_DoesNotAutoOpenPaperdoll()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var client = TestHarness.CreateClient(loggerFactory, world, accountManager, 0);
+
+        var acc = accountManager.CreateAccount("paper", "pw")!;
+        client.HandleLoginRequest(acc.Name, "pw");
+        client.HandleGameLogin(acc.Name, "pw", 1);
+        client.HandleCharSelect(-1, "Paper");
+
+        var packets = TestHarness.GetQueuedPackets(client.NetState).ToArray();
+        Assert.DoesNotContain(packets, p => p.Span.Length > 0 && p.Span[0] == 0x88);
     }
 
     [Fact]

@@ -288,7 +288,7 @@ public sealed class AdminCommandProcessor
                     return;
                 }
                 if (account == null) { output($"Account '{accountName}' not found."); return; }
-                account.PrivLevel = (PrivLevel)plevel;
+                _accounts.SetAccountPrivLevel(accountName, (PrivLevel)plevel);
                 output($"PLEVEL for '{accountName}' set to {account.PrivLevel} ({plevel}).");
                 OnAccountPrivLevelChanged?.Invoke(accountName, account.PrivLevel);
                 break;

@@ -8,13 +8,24 @@ namespace SphereNet.Scripting.Execution;
 /// </summary>
 public sealed class TriggerArgs : ITriggerArgs
 {
+    private string _argString = "";
+    private string[]? _argvCache;
+
     public IScriptObj? Source { get; set; }
     public IScriptObj? Object1 { get; set; }
     public IScriptObj? Object2 { get; set; }
     public int Number1 { get; set; }
     public int Number2 { get; set; }
     public int Number3 { get; set; }
-    public string ArgString { get; set; } = "";
+    public string ArgString
+    {
+        get => _argString;
+        set
+        {
+            _argString = value ?? "";
+            _argvCache = null;
+        }
+    }
 
     public TriggerArgs() { }
 
@@ -25,4 +36,13 @@ public sealed class TriggerArgs : ITriggerArgs
         Number2 = n2;
         ArgString = argStr;
     }
+
+    public IReadOnlyList<string> GetArgv() => _argvCache ??= SplitArgString(_argString);
+
+    public int GetArgc() => GetArgv().Count;
+
+    private static string[] SplitArgString(string argString) =>
+        string.IsNullOrWhiteSpace(argString)
+            ? []
+            : argString.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 }

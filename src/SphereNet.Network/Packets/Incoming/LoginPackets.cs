@@ -204,8 +204,9 @@ public sealed class PacketNewMovementRequest : PacketHandler
             return;
         }
 
-        // Some clients wrap a standard 0x02 move request inside 0xF0.
-        if (remaining == 6)
+        // Wrapped 0x02 move (dir + seq + fastwalk key). ClassicUO may send
+        // 6–34 bytes; only treat as ModernUO when a full step block fits.
+        if (remaining >= 6 && remaining < 35)
         {
             byte dir = buffer.ReadByte();
             byte seq = buffer.ReadByte();

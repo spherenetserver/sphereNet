@@ -246,6 +246,7 @@ public sealed partial class GameClient
         _world.PlaceCharacter(_character, _character.Position);
         EnsurePlayerBackpack(_character);
         _mountEngine?.EnsureMountedState(_character);
+        RepairCharacterAppearance(_character);
 
         if (_account != null)
         {
@@ -292,7 +293,7 @@ public sealed partial class GameClient
         // Without the downward snap, saves written with an out-of-band Z (e.g.
         // old dismount code that zeroed Z) keep that Z after login and every
         // subsequent CanWalkTo projects collision onto wall foundations.
-        const int RoofSnapTolerance = 5;
+        const int RoofSnapTolerance = 12;
         var mapData = _world.MapData;
         if (mapData != null)
         {
@@ -301,6 +302,14 @@ public sealed partial class GameClient
             if (diff != 0 && diff >= -RoofSnapTolerance)
             {
                 _logger.LogInformation("Login Z correction: {OldZ} -> {NewZ} for '{Name}' at {X},{Y}",
+                    _character.Z, terrainZ, _character.Name, _character.X, _character.Y);
+                _character.Position = new Point3D(_character.X, _character.Y, terrainZ, _character.MapIndex);
+            }
+            else if (diff > 0)
+            {
+                // Character is below the nearest walkable surface — snap up so
+                // WalkCheck can find a valid start Z instead of rejecting every step.
+                _logger.LogInformation("Login Z lift: {OldZ} -> {NewZ} for '{Name}' at {X},{Y}",
                     _character.Z, terrainZ, _character.Name, _character.X, _character.Y);
                 _character.Position = new Point3D(_character.X, _character.Y, terrainZ, _character.MapIndex);
             }
@@ -340,8 +349,6 @@ public sealed partial class GameClient
         SendCharacterStatus(_character);
         SendSkillList();
 
-        // Send paperdoll info on login so the client has name/title immediately.
-        SendPaperdoll(_character);
         _netState.Send(new PacketGlobalLight(_world.GlobalLight));
         _netState.Send(new PacketPersonalLight(_character.Uid.Value, _character.LightLevel));
         _netState.Send(new PacketSeason((byte)_world.CurrentSeason));
@@ -510,6 +517,28 @@ public sealed partial class GameClient
         BroadcastCharacterAppear?.Invoke(_character);
 
         _logger.LogDebug("Resync for client '{Name}'", _character.Name);
+    }
+
+    /// <summary>Resolve CHARDEF/body graphic and clear transient visual flags
+    /// before login packets go out. Saves sometimes store a def hash
+    /// (e.g. 0x03DB) in BODY instead of the display Id (0x0190); old saves
+    /// can also persist spell/replay visuals such as hue 0x03EC + freeze.</summary>
+    private void RepairCharacterAppearance(Character ch)
+    {
+        ushort bodyBefore = ch.BodyId;
+        ushort hueBefore = ch.Hue.Value;
+        StatFlag flagsBefore = ch.StatFlags;
+
+        bool repaired = CharDefHelper.EnsureDisplayBody(ch, DefinitionLoader.StaticResources);
+        bool visualCleaned = ch.ClearTransientVisualState();
+        if (repaired || visualCleaned)
+        {
+            string defname = ch.TryGetTag("CHARDEF", out string? tag) ? tag ?? "" : "";
+            _logger.LogInformation(
+                "[appearance_repair] char=0x{Uid:X8} def='{Def}' body=0x{BodyBefore:X4}->0x{BodyAfter:X4} hue=0x{HueBefore:X4}->0x{HueAfter:X4} flags=0x{FlagsBefore:X8}->0x{FlagsAfter:X8}",
+                ch.Uid.Value, defname, bodyBefore, ch.BodyId, hueBefore, ch.Hue.Value,
+                (uint)flagsBefore, (uint)ch.StatFlags);
+        }
     }
 
     /// <summary>

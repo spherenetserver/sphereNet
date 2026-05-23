@@ -819,6 +819,7 @@ public sealed class ExpressionParser
 
         // D — force decimal evaluation (e.g. <DHITS>, <dsrc.hits>, <ddef.X>)
         if (varExpr.Length > 1 && (varExpr[0] == 'D' || varExpr[0] == 'd') &&
+            !varExpr.Equals("DARGV", StringComparison.OrdinalIgnoreCase) &&
             !varExpr.StartsWith("DEFMSG", StringComparison.OrdinalIgnoreCase) &&
             !varExpr.StartsWith("DEF.", StringComparison.OrdinalIgnoreCase) &&
             !varExpr.StartsWith("DEF0.", StringComparison.OrdinalIgnoreCase) &&

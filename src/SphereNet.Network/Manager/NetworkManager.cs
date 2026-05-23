@@ -17,6 +17,8 @@ namespace SphereNet.Network.Manager;
 /// </summary>
 public sealed class NetworkManager : IDisposable
 {
+    private const int MaxPacketSize = 65535;
+    private const int PartialPacketTimeoutMs = 15_000;
     private Socket? _listenSocket;
     private readonly NetState[] _states;
     private readonly PacketManager _packetManager;
@@ -282,12 +284,6 @@ public sealed class NetworkManager : IDisposable
             }
         }
 
-        if (state.ConnectionType == ConnectType.Game && state.HuffmanReceiveEnabled && data.Length > 0)
-        {
-            TryDecompressReceived(state);
-            data = state.ReceivedData;
-        }
-
         int consumed = 0;
         int packetsProcessed = 0;
         while (consumed < data.Length)
@@ -322,14 +318,19 @@ public sealed class NetworkManager : IDisposable
                 packetLen = (data[consumed + 1] << 8) | data[consumed + 2];
             }
 
-            const int MaxPacketSize = 65535;
             if (packetLen <= 0 || packetLen > MaxPacketSize)
             {
                 _logger.LogWarning("Invalid packet length {Len} from #{Id}, dropping connection", packetLen, state.Id);
                 state.MarkClosing();
                 break;
             }
-            if (data.Length - consumed < packetLen) break;
+                if (data.Length - consumed < packetLen)
+                {
+                    MarkOrDropPartialPacket(state, opcode, packetLen);
+                    break;
+                }
+
+                state.ClearPendingPacket();
 
             var handler = _packetManager.GetHandler(opcode);
             if (handler != null)
@@ -357,6 +358,7 @@ public sealed class NetworkManager : IDisposable
                 {
                     _logger.LogWarning("Invalid packet length #{Id} 0x{Op:X2}: total={Total} payloadOffset={Offset}",
                         state.Id, opcode, packetLen, payloadOffset);
+                    state.MarkClosing();
                     break;
                 }
 
@@ -384,6 +386,19 @@ public sealed class NetworkManager : IDisposable
 
         if (consumed > 0)
             state.ConsumeReceived(consumed);
+    }
+
+    private void MarkOrDropPartialPacket(NetState state, byte opcode, int packetLen)
+    {
+        long now = Environment.TickCount64;
+        state.MarkPendingPacket(opcode, packetLen, now);
+        if (state.PendingPacketStartTick > 0 && now - state.PendingPacketStartTick > PartialPacketTimeoutMs)
+        {
+            _logger.LogWarning(
+                "Partial packet timeout for #{Id}: opcode=0x{Op:X2}, expected={Len}, buffered={Buffered}",
+                state.Id, opcode, packetLen, state.ReceivedData.Length);
+            state.MarkClosing();
+        }
     }
 
     /// <summary>
@@ -686,28 +701,5 @@ public sealed class NetworkManager : IDisposable
         }
         if (data.Length > maxBytes) sb.Append(" ...");
         return sb.ToString();
-    }
-
-    /// <summary>Decompress Huffman-encoded client payload. Skips if already plaintext.</summary>
-    private static void TryDecompressReceived(NetState state)
-    {
-        var span = state.ReceivedData;
-        if (span.Length == 0) return;
-
-        // Plaintext move packet (0x02, len 7) — used by unit tests / no-crypt harness.
-        if (span.Length >= 2 && span[0] == 0x02 && span[1] == 0x07)
-            return;
-
-        byte[] compressed = span.ToArray();
-        byte[] decompressed = HuffmanCompression.Decompress(compressed, 0, compressed.Length);
-        if (decompressed.Length == 0)
-            return;
-
-        // Accept only if result looks like a valid UO packet stream.
-        byte op = decompressed[0];
-        if (op == 0 || op > 0xF8)
-            return;
-
-        state.ReplaceAllReceived(decompressed, decompressed.Length);
     }
 }

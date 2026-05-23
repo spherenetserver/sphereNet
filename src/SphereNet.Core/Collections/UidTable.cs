@@ -1,4 +1,6 @@
 using SphereNet.Core.Types;
+using System.Collections.Concurrent;
+using System.Threading;
 
 namespace SphereNet.Core.Collections;
 
@@ -8,53 +10,41 @@ namespace SphereNet.Core.Collections;
 /// </summary>
 public sealed class UidTable
 {
-    private readonly Dictionary<uint, object> _objects = [];
-    private readonly Queue<int> _freeItemSlots = [];
-    private readonly Queue<int> _freeCharSlots = [];
-    private int _nextItemIndex = 1;
-    private int _nextCharIndex = 1;
-    private readonly object _lock = new();
+    private readonly ConcurrentQueue<int> _freeItemSlots = new();
+    private readonly ConcurrentQueue<int> _freeCharSlots = new();
+    private int _nextItemIndex;
+    private int _nextCharIndex;
 
-    public int Count => _objects.Count;
+    public int Count => 0;
 
     public Serial AllocateItem()
     {
-        lock (_lock)
-        {
-            int index = _freeItemSlots.Count > 0 ? _freeItemSlots.Dequeue() : _nextItemIndex++;
-            return Serial.NewItem(index);
-        }
+        int index = _freeItemSlots.TryDequeue(out int recycled)
+            ? recycled
+            : Interlocked.Increment(ref _nextItemIndex);
+        return Serial.NewItem(index);
     }
 
     public Serial AllocateChar()
     {
-        lock (_lock)
-        {
-            int index = _freeCharSlots.Count > 0 ? _freeCharSlots.Dequeue() : _nextCharIndex++;
-            return Serial.NewChar(index);
-        }
+        int index = _freeCharSlots.TryDequeue(out int recycled)
+            ? recycled
+            : Interlocked.Increment(ref _nextCharIndex);
+        return Serial.NewChar(index);
     }
 
     public void Register(Serial uid, object obj)
     {
-        lock (_lock)
-        {
-            _objects[uid.Value] = obj;
-        }
     }
 
     public void Free(Serial uid)
     {
-        lock (_lock)
-        {
-            if (_objects.Remove(uid.Value))
-            {
-                if (uid.IsItem)
-                    _freeItemSlots.Enqueue(uid.Index);
-                else if (uid.IsChar)
-                    _freeCharSlots.Enqueue(uid.Index);
-            }
-        }
+        if (uid.Index <= 0)
+            return;
+        if (uid.IsItem)
+            _freeItemSlots.Enqueue(uid.Index);
+        else if (uid.IsChar)
+            _freeCharSlots.Enqueue(uid.Index);
     }
 
     /// <summary>
@@ -64,59 +54,39 @@ public sealed class UidTable
     /// </summary>
     public void ReRegister(Serial oldUid, Serial newUid, object obj)
     {
-        lock (_lock)
-        {
-            // Remove temp serial from tracking (do NOT recycle the index)
-            _objects.Remove(oldUid.Value);
-
-            // Register with the saved serial
-            _objects[newUid.Value] = obj;
-
-            // Ensure next allocation index is past this serial to prevent future collisions
-            int newIndex = newUid.Index + 1;
-            if (newUid.IsItem)
-            {
-                if (newIndex > _nextItemIndex)
-                    _nextItemIndex = newIndex;
-            }
-            else if (newUid.IsChar)
-            {
-                if (newIndex > _nextCharIndex)
-                    _nextCharIndex = newIndex;
-            }
-        }
+        int required = newUid.Index;
+        if (newUid.IsItem)
+            AdvanceAtLeast(ref _nextItemIndex, required);
+        else if (newUid.IsChar)
+            AdvanceAtLeast(ref _nextCharIndex, required);
     }
 
-    public object? Find(Serial uid)
-    {
-        lock (_lock)
-        {
-            return _objects.GetValueOrDefault(uid.Value);
-        }
-    }
+    public object? Find(Serial uid) => null;
 
     public T? Find<T>(Serial uid) where T : class
     {
         return Find(uid) as T;
     }
 
-    public bool Exists(Serial uid)
-    {
-        lock (_lock)
-        {
-            return _objects.ContainsKey(uid.Value);
-        }
-    }
+    public bool Exists(Serial uid) => false;
 
     public void Clear()
     {
-        lock (_lock)
+        while (_freeItemSlots.TryDequeue(out _)) { }
+        while (_freeCharSlots.TryDequeue(out _)) { }
+        Volatile.Write(ref _nextItemIndex, 0);
+        Volatile.Write(ref _nextCharIndex, 0);
+    }
+
+    private static void AdvanceAtLeast(ref int target, int value)
+    {
+        int current;
+        do
         {
-            _objects.Clear();
-            _freeItemSlots.Clear();
-            _freeCharSlots.Clear();
-            _nextItemIndex = 1;
-            _nextCharIndex = 1;
+            current = Volatile.Read(ref target);
+            if (current >= value)
+                return;
         }
+        while (Interlocked.CompareExchange(ref target, value, current) != current);
     }
 }

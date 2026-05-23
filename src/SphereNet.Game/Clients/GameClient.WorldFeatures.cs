@@ -953,32 +953,79 @@ public sealed partial class GameClient
         if (_character == null) return;
         foreach (var item in _world.GetItemsInRange(_character.Position, 2))
         {
-            if (item.ItemType == ItemType.Door || item.ItemType == ItemType.DoorLocked ||
-                item.ItemType == ItemType.Portculis || item.ItemType == ItemType.PortLocked)
+            if (!DoorHelper.IsDoorItem(item, _world.MapData))
+                continue;
+            if (item.ItemType == ItemType.DoorLocked)
             {
-                ToggleDoor(item);
+                SysMessage(ServerMessages.Get(Msg.ItemuseLocked));
                 return;
             }
+            ToggleDoor(item);
+            return;
         }
+
+        TryToggleNearestMapStaticDoor(0);
+    }
+
+    private bool TryToggleNearestMapStaticDoor(uint clientSerial)
+    {
+        if (_character == null) return false;
+        if (!DoorHelper.FindNearestStaticDoor(
+                _world.MapData, _character.MapIndex, _character.X, _character.Y, 2,
+                out short x, out short y, out sbyte z, out ushort tileId, out ushort hue))
+            return false;
+
+        bool open = _world.IsMapStaticDoorOpen(_character.MapIndex, x, y, z);
+        ushort newTile = open ? (ushort)(tileId - 1) : (ushort)(tileId + 1);
+        _world.SetMapStaticDoorOpen(_character.MapIndex, x, y, z, !open);
+
+        uint serial = clientSerial != 0
+            ? clientSerial
+            : (uint)(Serial.ItemFlag | (uint)((x & 0x7FFF) << 16) | (uint)((y & 0x3FFF) << 3) | (uint)(z & 0x07));
+        BroadcastMapStaticDoorUpdate(serial, newTile, x, y, z, hue, opening: !open);
+        return true;
+    }
+
+    private void BroadcastMapStaticDoorUpdate(
+        uint serial, ushort tileId, short x, short y, sbyte z, ushort hue, bool opening)
+    {
+        if (_character == null) return;
+        var pos = new Point3D(x, y, z, _character.MapIndex);
+        ushort soundId = (ushort)(opening ? 0x00EA : 0x00F1);
+        var soundPacket = new PacketSound(soundId, x, y, z);
+        BroadcastNearby?.Invoke(pos, UpdateRange, soundPacket, 0);
+
+        var itemPacket = new PacketWorldItem(serial, tileId, 1, x, y, z, hue);
+        _netState.Send(itemPacket);
+        BroadcastNearby?.Invoke(pos, UpdateRange, itemPacket, _character.Uid.Value);
     }
 
     private void ToggleDoor(Item door)
     {
         if (_character == null) return;
 
+        int dx = Math.Abs(_character.X - door.X);
+        int dy = Math.Abs(_character.Y - door.Y);
+        if (_character.MapIndex != door.MapIndex || dx > 2 || dy > 2)
+        {
+            SysMessage("That is too far away.");
+            return;
+        }
+
         // Door art IDs toggle between open/closed variants (±1 or ±2 offset)
         bool isOpen = door.TryGetTag("DOOR_OPEN", out string? openStr) && openStr == "1";
 
-        if (isOpen)
-        {
-            door.BaseId = (ushort)(door.BaseId - 1);
-            door.RemoveTag("DOOR_OPEN");
-        }
+        ushort displayId = door.DispIdFull;
+        ushort newDisplayId = (ushort)(displayId + (isOpen ? -1 : 1));
+        if (door.DispIdOverride != 0)
+            door.TrySetProperty("DISPID", $"0{newDisplayId:X}");
         else
-        {
-            door.BaseId = (ushort)(door.BaseId + 1);
+            door.BaseId = newDisplayId;
+
+        if (isOpen)
+            door.RemoveTag("DOOR_OPEN");
+        else
             door.SetTag("DOOR_OPEN", "1");
-        }
 
         // Play door sound and broadcast updated item to nearby clients
         ushort soundId = (ushort)(isOpen ? 0x00F1 : 0x00EA); // close/open sounds
@@ -988,7 +1035,8 @@ public sealed partial class GameClient
         var itemPacket = new PacketWorldItem(
             door.Uid.Value, door.DispIdFull, door.Amount,
             door.X, door.Y, door.Z, door.Hue);
-        BroadcastNearby?.Invoke(door.Position, UpdateRange, itemPacket, 0);
+        _netState.Send(itemPacket);
+        BroadcastNearby?.Invoke(door.Position, UpdateRange, itemPacket, _character.Uid.Value);
     }
 
     private void UsePotion(Item potion)

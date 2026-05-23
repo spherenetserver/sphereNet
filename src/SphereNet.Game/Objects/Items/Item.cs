@@ -4,6 +4,7 @@ using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
 using SphereNet.Game.Components;
 using SphereNet.Game.Definitions;
+using SphereNet.Game.World;
 using SphereNet.Scripting.Resources;
 
 namespace SphereNet.Game.Objects.Items;
@@ -86,7 +87,13 @@ public class Item : ObjBase
             if (_type != ItemType.Normal)
                 return _type;
             var def = DefinitionLoader.GetItemDef(BaseId);
-            return def?.Type ?? ItemType.Normal;
+            if (def?.Type is ItemType defType && defType != ItemType.Normal)
+                return defType;
+            var world = ResolveWorld?.Invoke();
+            if (DoorHelper.IsDoorGraphic(world?.MapData, BaseId) ||
+                DoorHelper.IsDoorGraphic(world?.MapData, DispIdFull))
+                return ItemType.Door;
+            return ItemType.Normal;
         }
         set => _type = value;
     }
@@ -264,6 +271,49 @@ public class Item : ObjBase
     public bool IsMemoryTypes(MemoryType flags) =>
         _type == ItemType.EqMemoryObj && (GetMemoryTypes() & flags) != 0;
 
+    public override void SetTag(string key, string value)
+    {
+        if (TrySetRuneTag(key, value))
+            return;
+
+        base.SetTag(key, value);
+    }
+
+    private bool TrySetRuneTag(string key, string value)
+    {
+        string runeKey = key;
+        if (runeKey.StartsWith("TAG.", StringComparison.OrdinalIgnoreCase) ||
+            runeKey.StartsWith("TAG0.", StringComparison.OrdinalIgnoreCase) ||
+            runeKey.StartsWith("DTAG.", StringComparison.OrdinalIgnoreCase) ||
+            runeKey.StartsWith("DTAG0.", StringComparison.OrdinalIgnoreCase))
+        {
+            int dotIdx = runeKey.IndexOf('.');
+            runeKey = dotIdx >= 0 ? runeKey[(dotIdx + 1)..] : "";
+        }
+
+        switch (runeKey.ToUpperInvariant())
+        {
+            case "RUNE_X":
+                if (short.TryParse(value, out short x))
+                    _moreP = new Point3D(x, _moreP.Y, _moreP.Z, _moreP.Map);
+                return true;
+            case "RUNE_Y":
+                if (short.TryParse(value, out short y))
+                    _moreP = new Point3D(_moreP.X, y, _moreP.Z, _moreP.Map);
+                return true;
+            case "RUNE_Z":
+                if (sbyte.TryParse(value, out sbyte z))
+                    _moreP = new Point3D(_moreP.X, _moreP.Y, z, _moreP.Map);
+                return true;
+            case "RUNE_MAP":
+                if (byte.TryParse(value, out byte map))
+                    _moreP = new Point3D(_moreP.X, _moreP.Y, _moreP.Z, map);
+                return true;
+            default:
+                return false;
+        }
+    }
+
     /// <summary>Weapon swing speed read from ITEMDEF.SPEED. 0 = unspecified
     /// (combat code falls back to a sensible default). Used by
     /// <c>GetSwingDelayMs</c> to compute swing recoil per Source-X
@@ -412,6 +462,10 @@ public class Item : ObjBase
             case "MOREX": value = _moreP.X.ToString(); return true;
             case "MOREY": value = _moreP.Y.ToString(); return true;
             case "MOREZ": value = _moreP.Z.ToString(); return true;
+            case "RUNE_X": value = _moreP.X.ToString(); return true;
+            case "RUNE_Y": value = _moreP.Y.ToString(); return true;
+            case "RUNE_Z": value = _moreP.Z.ToString(); return true;
+            case "RUNE_MAP": value = _moreP.Map.ToString(); return true;
             case "LINK": value = _link.IsValid ? $"0{_link.Value:X}" : ""; return true;
             case "MEMORYTYPES": value = ((ushort)GetMemoryTypes()).ToString(); return true;
             case "PRICE": value = _price.ToString(); return true;

@@ -111,7 +111,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     public VarMap Tags => _tags;
 
     /// <summary>Set a tag value on this object.</summary>
-    public void SetTag(string key, string value) => _tags.Set(key, value);
+    public virtual void SetTag(string key, string value) => _tags.Set(key, value);
 
     /// <summary>Get a tag value, returning true if found.</summary>
     public bool TryGetTag(string key, out string? value)
@@ -450,7 +450,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             string tagKey = dotIdx >= 0 ? key[(dotIdx + 1)..] : "";
             if (EngineTags.IsEphemeral(tagKey))
                 return true;
-            _tags.Set(tagKey, value);
+            SetTag(tagKey, value);
             return true;
         }
         if (key.StartsWith("CTAG.", StringComparison.OrdinalIgnoreCase) ||

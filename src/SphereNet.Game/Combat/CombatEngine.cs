@@ -66,6 +66,17 @@ public enum DamageType : ushort
     Fixed = 0x1000,
 }
 
+public enum ArmorHitRegion
+{
+    Head,
+    Neck,
+    Chest,
+    Arms,
+    Hands,
+    Legs,
+    Feet,
+}
+
 /// <summary>
 /// Core combat engine. Maps to CChar::Fight_* functions in Source-X CCharFight.cpp.
 /// Handles hit/miss, damage calculation, armor, and weapon skill routing.
@@ -73,6 +84,16 @@ public enum DamageType : ushort
 public static class CombatEngine
 {
     private static readonly Random _rand = new();
+    private static readonly (ArmorHitRegion Region, Layer Layer, int Weight)[] _armorRegions =
+    [
+        (ArmorHitRegion.Head, Layer.Helm, 15),
+        (ArmorHitRegion.Neck, Layer.Neck, 7),
+        (ArmorHitRegion.Chest, Layer.Chest, 35),
+        (ArmorHitRegion.Arms, Layer.Arms, 14),
+        (ArmorHitRegion.Hands, Layer.Gloves, 7),
+        (ArmorHitRegion.Legs, Layer.Legs, 22),
+        (ArmorHitRegion.Feet, Layer.Shoes, 3),
+    ];
 
     public static bool DurabilityEnabled { get; set; }
     public static int DurabilityLossChance { get; set; } = 25;
@@ -190,20 +211,51 @@ public static class CombatEngine
             return 0; // elemental uses per-type resists
 
         int totalAR = 0;
-        // Check equipment layers for armor
-        Layer[] armorLayers = [Layer.Helm, Layer.Neck, Layer.Chest, Layer.Arms, Layer.Gloves, Layer.Legs, Layer.Shoes, Layer.TwoHanded];
-        int[] coverage = [15, 7, 35, 14, 7, 22, 3, 0]; // body region coverage %
-
-        for (int i = 0; i < armorLayers.Length; i++)
+        foreach (var region in _armorRegions)
         {
-            var item = defender.GetEquippedItem(armorLayers[i]);
+            var item = defender.GetEquippedItem(region.Layer);
             if (item == null) continue;
 
             int ar = item.GetArmorDefense();
-            totalAR += coverage[i] * ar;
+            totalAR += region.Weight * ar;
         }
 
         return Math.Max(0, totalAR / 100);
+    }
+
+    public static ArmorHitRegion RollArmorHitRegion()
+    {
+        int total = 0;
+        foreach (var region in _armorRegions)
+            total += region.Weight;
+
+        int roll = _rand.Next(total);
+        int cumulative = 0;
+        foreach (var region in _armorRegions)
+        {
+            cumulative += region.Weight;
+            if (roll < cumulative)
+                return region.Region;
+        }
+
+        return ArmorHitRegion.Chest;
+    }
+
+    public static Layer GetArmorLayerForRegion(ArmorHitRegion hitRegion)
+    {
+        foreach (var region in _armorRegions)
+        {
+            if (region.Region == hitRegion)
+                return region.Layer;
+        }
+
+        return Layer.Chest;
+    }
+
+    public static int CalcArmorDefenseForRegion(Character defender, ArmorHitRegion hitRegion)
+    {
+        var armor = defender.GetEquippedItem(GetArmorLayerForRegion(hitRegion));
+        return Math.Max(0, armor?.GetArmorDefense() ?? 0);
     }
 
     /// <summary>
@@ -251,11 +303,15 @@ public static class CombatEngine
         }
         else
         {
-            int armorRating = CalcArmorDefense(target);
+            var hitRegion = RollArmorHitRegion();
+            int armorRating = CalcArmorDefenseForRegion(target, hitRegion);
             int arMax = armorRating * _rand.Next(7, 36) / 100;
             int arMin = arMax / 2;
             int defense = _rand.Next(arMin, arMax + 1);
             damage -= defense;
+
+            if (DurabilityEnabled)
+                ApplyArmorDurabilityLoss(target, hitRegion);
         }
 
         damage = Math.Max(0, damage);
@@ -279,22 +335,15 @@ public static class CombatEngine
             {
                 if (weapon != null)
                     ApplyDurabilityLoss(weapon);
-                ApplyArmorDurabilityLoss(target);
             }
         }
 
         return damage;
     }
 
-    private static readonly Layer[] _armorLayers =
-    [
-        Layer.Helm, Layer.Neck, Layer.Chest, Layer.Arms,
-        Layer.Gloves, Layer.Legs, Layer.Shoes, Layer.TwoHanded
-    ];
-
-    private static void ApplyArmorDurabilityLoss(Character target)
+    private static void ApplyArmorDurabilityLoss(Character target, ArmorHitRegion hitRegion)
     {
-        var layer = _armorLayers[_rand.Next(_armorLayers.Length)];
+        var layer = GetArmorLayerForRegion(hitRegion);
         var armor = target.GetEquippedItem(layer);
         if (armor != null)
             ApplyDurabilityLoss(armor);

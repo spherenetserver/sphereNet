@@ -70,6 +70,20 @@ public sealed class GameWorld
     /// <summary>Optional map data access for terrain queries.</summary>
     public MapData.MapDataManager? MapData { get; set; }
 
+    private readonly HashSet<(byte Map, short X, short Y, sbyte Z)> _openMapStaticDoors = [];
+
+    public bool IsMapStaticDoorOpen(byte map, short x, short y, sbyte z) =>
+        _openMapStaticDoors.Contains((map, x, y, z));
+
+    public void SetMapStaticDoorOpen(byte map, short x, short y, sbyte z, bool open)
+    {
+        var key = (map, x, y, z);
+        if (open)
+            _openMapStaticDoors.Add(key);
+        else
+            _openMapStaticDoors.Remove(key);
+    }
+
     private TerrainEngine? _terrain;
     /// <summary>Lazy terrain helper (LOS, ground height). Uses current MapData.</summary>
     public TerrainEngine Terrain => _terrain ??= new TerrainEngine(MapData);
@@ -171,25 +185,29 @@ public sealed class GameWorld
     /// <summary>O(1) check — true if any object has pending delta updates.</summary>
     public bool HasDirty => !_dirtyObjects.IsEmpty;
 
-    /// <summary>Iterate dirty objects without consuming them. Use before ConsumeDirtyObjects.</summary>
-    public IEnumerable<ObjBase> DirtyObjects => _dirtyObjects.Values;
-
     /// <summary>Consume all dirty objects and clear the set. Call once per tick after mutations.</summary>
     public void ConsumeDirtyObjects()
     {
-        foreach (var kvp in _dirtyObjects)
-            kvp.Value.ConsumeDirty();
-        _dirtyObjects.Clear();
+        DrainDirtyObjectsSnapshot();
     }
 
-    /// <summary>Snapshot and clear dirty set. Call once per tick after mutations.</summary>
-    [Obsolete("Use ConsumeDirtyObjects() to avoid allocation")]
-    public List<ObjBase> DrainDirtyObjects()
+    /// <summary>
+    /// Snapshot and consume the objects dirty at drain start.
+    /// Objects dirtied during the drain remain queued for the next pass.
+    /// </summary>
+    public List<ObjBase> DrainDirtyObjectsSnapshot()
     {
         var list = new List<ObjBase>(_dirtyObjects.Count);
-        foreach (var kvp in _dirtyObjects)
-            list.Add(kvp.Value);
-        _dirtyObjects.Clear();
+        uint[] keys = _dirtyObjects.Keys.ToArray();
+        foreach (uint key in keys)
+        {
+            if (!_dirtyObjects.TryRemove(key, out var obj))
+                continue;
+
+            obj.ConsumeDirty();
+            if (!obj.IsDeleted)
+                list.Add(obj);
+        }
         return list;
     }
 
@@ -261,6 +279,16 @@ public sealed class GameWorld
     public void DeleteObject(ObjBase obj)
     {
         ObjectDeleting?.Invoke(obj);
+        _dirtyObjects.TryRemove(obj.Uid.Value, out _);
+        obj.ConsumeDirty();
+        obj.SetDirtyNotify(null);
+
+        if (obj is Item container)
+        {
+            foreach (var child in container.Contents.ToArray())
+                DeleteObject(child);
+        }
+
         if (_objects.Remove(obj.Uid.Value))
         {
             if (obj.IsChar) _totalChars--;
@@ -372,16 +400,21 @@ public sealed class GameWorld
         var oldSector = GetSector(oldPos);
         if (oldSector != newSector)
         {
-            oldSector?.RemoveCharacter(ch);
+            ch.Position = newPos;
             newSector.AddCharacter(ch);
             if (ch.IsPlayer)
             {
-                oldSector?.RemoveOnlinePlayer(ch);
                 if (ch.IsOnline)
                     newSector.AddOnlinePlayer(ch);
             }
+            oldSector?.RemoveCharacter(ch);
+            if (ch.IsPlayer)
+                oldSector?.RemoveOnlinePlayer(ch);
         }
-        ch.Position = newPos;
+        else
+        {
+            ch.Position = newPos;
+        }
         if (!oldPos.Equals(newPos))
             ch.LastMoveTick = Environment.TickCount64;
 
@@ -414,13 +447,14 @@ public sealed class GameWorld
                 ch.Uid.Value, pos.X, pos.Y, pos.Z, pos.Map);
             return;
         }
-        RemoveFromSector(ch);
         ch.Position = pos;
         sector.AddCharacter(ch);
         if (ch.IsPlayer && ch.IsOnline)
             sector.AddOnlinePlayer(ch);
         else if (!ch.IsPlayer && _onlinePlayers.Count > 0)
             CharacterPlaced?.Invoke(ch);
+
+        RemoveFromOtherSectors(ch, sector);
     }
 
     /// <summary>
@@ -440,6 +474,27 @@ public sealed class GameWorld
                 sector.RemoveOnlinePlayer(ch);
         }
         else if (obj is Item item) sector.RemoveItem(item);
+    }
+
+    private void RemoveFromOtherSectors(Character ch, Sectors.Sector keepSector)
+    {
+        foreach (var (_, grid) in _sectors)
+        {
+            int cols = grid.GetLength(0);
+            int rows = grid.GetLength(1);
+            for (int x = 0; x < cols; x++)
+            {
+                for (int y = 0; y < rows; y++)
+                {
+                    var sector = grid[x, y];
+                    if (sector == keepSector)
+                        continue;
+                    sector.RemoveCharacter(ch);
+                    if (ch.IsPlayer)
+                        sector.RemoveOnlinePlayer(ch);
+                }
+            }
+        }
     }
 
     // --- Regions ---

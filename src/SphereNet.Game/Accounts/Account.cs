@@ -105,7 +105,7 @@ public sealed class Account : IScriptObj
     }
     public bool RemoveTag(string key) => _tags.Remove(key);
 
-    public bool UseMd5Passwords { get; set; } = true;
+    public bool UseMd5Passwords { get; set; }
 
     public bool CheckPassword(string password)
     {
@@ -117,7 +117,17 @@ public sealed class Account : IScriptObj
             return string.Equals(hash, _passwordHash, StringComparison.OrdinalIgnoreCase);
         }
 
-        return string.Equals(password, _passwordHash, StringComparison.Ordinal);
+        if (string.Equals(password, _passwordHash, StringComparison.Ordinal))
+            return true;
+
+        // Legacy saves may contain an MD5 hash while Md5Passwords=0.
+        if (LooksLikeMd5Hex(_passwordHash))
+        {
+            string hash = ComputeMd5(password);
+            return string.Equals(hash, _passwordHash, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
     }
 
     public void SetPassword(string password)
@@ -131,6 +141,9 @@ public sealed class Account : IScriptObj
         var hash = System.Security.Cryptography.MD5.HashData(bytes);
         return Convert.ToHexString(hash);
     }
+
+    private static bool LooksLikeMd5Hex(string value) =>
+        value.Length == 32 && value.All(static c => "0123456789abcdefABCDEF".Contains(c));
 
     public string GetName() => _name;
 

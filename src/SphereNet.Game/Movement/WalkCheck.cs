@@ -1,5 +1,6 @@
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
+using SphereNet.Game.Definitions;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.World;
@@ -79,6 +80,12 @@ public sealed class WalkCheck
         var md = _world.MapData;
         if (md == null) return false;
 
+        if (CharDefHelper.CanPassWalls(mover))
+        {
+            newZ = loc.Z;
+            return true;
+        }
+
         int mapId = mover.MapIndex;
         int xStart = loc.X;
         int yStart = loc.Y;
@@ -109,11 +116,12 @@ public sealed class WalkCheck
         // — total statics, count of impassable ones, and a compact dump of
         // every static's (id,z,h,flags). This lets the reject log show what
         // is actually on the tile beyond the Surface-only candidate count.
-        var fwdStatics = md.GetStatics(mapId, xForward, yForward);
         int fwdImpassable = 0;
+        int fwdStaticCount = 0;
         var dump = new System.Text.StringBuilder();
-        foreach (var s in fwdStatics)
+        md.ForEachStatic(mapId, xForward, yForward, s =>
         {
+            fwdStaticCount++;
             var sd = md.GetItemTileData(s.TileId);
             if (sd.IsImpassable) fwdImpassable++;
             if (dump.Length > 0) dump.Append(',');
@@ -123,7 +131,7 @@ public sealed class WalkCheck
             string nm = sd.Name ?? "";
             if (nm.Length > 12) nm = nm.Substring(0, 12);
             dump.Append($"0x{s.TileId:X}@{s.Z}h{sd.Height}f0x{(ulong)sd.Flags:X}'{nm}'");
-        }
+        });
         var fwdLandTile = md.GetTerrainTile(mapId, xForward, yForward);
         var mobDump = new System.Text.StringBuilder();
         foreach (var mob in mobsForward)
@@ -177,7 +185,7 @@ public sealed class WalkCheck
             fwdTrace.LandBlocks, fwdTrace.ConsiderLand,
             fwdTrace.SurfaceCandidates, fwdTrace.ItemSurfaceCandidates,
             fwdTrace.LastReason,
-            fwdStatics.Length, fwdImpassable, fwdLandTile.TileId, dump.ToString(),
+            fwdStaticCount, fwdImpassable, fwdLandTile.TileId, dump.ToString(),
             mobsForward.Count, mobDump.ToString());
         return moveOk;
     }
@@ -204,7 +212,6 @@ public sealed class WalkCheck
     {
         newZ = 0;
 
-        var statics = md.GetStatics(mapId, x, y);
         var landTile = md.GetTerrainTile(mapId, x, y);
         var landData = md.GetLandTileData(landTile.TileId);
 
@@ -218,6 +225,7 @@ public sealed class WalkCheck
         bool considerLand = !MapDataManager.IsLandIgnored(landTile.TileId);
 
         md.GetAverageZ(mapId, x, y, out int landZ, out int landCenter, out int landTop);
+        var staticBlock = md.GetStaticBlock(mapId, x, y, out int staticOffX, out int staticOffY);
 
         trace.LandZ = landZ;
         trace.LandCenter = landCenter;
@@ -231,9 +239,11 @@ public sealed class WalkCheck
         int checkTop = startZ + PersonHeight;
 
         // --- Static tiles ---
-        for (int i = 0; i < statics.Length; i++)
+        for (int i = 0; i < staticBlock.Length; i++)
         {
-            var tile = statics[i];
+            var tile = staticBlock[i];
+            if (tile.XOffset != staticOffX || tile.YOffset != staticOffY)
+                continue;
             var itemData = md.GetItemTileData(tile.TileId);
             TileFlag flags = itemData.Flags;
 
@@ -268,7 +278,7 @@ public sealed class WalkCheck
                     if (considerLand && landCheck < landCenter && landCenter > ourZ && testTop > landZ)
                     { trace.LastReason = $"static_land_cover id=0x{tile.TileId:X} z={itemZ} ourZ={ourZ}"; continue; }
 
-                    if (IsOk(mover, ourZ, testTop, statics, items, md))
+                    if (IsOk(mover, ourZ, testTop, staticBlock, staticOffX, staticOffY, items, md))
                     {
                         newZ = ourZ;
                         moveIsOk = true;
@@ -321,7 +331,7 @@ public sealed class WalkCheck
                     if (considerLand && landCheck < landCenter && landCenter > ourZ && testTop > landZ)
                     { trace.LastReason = $"item_land_cover id=0x{item.BaseId:X} z={itemZ}"; continue; }
 
-                    if (IsOk(mover, ourZ, testTop, statics, items, md))
+                    if (IsOk(mover, ourZ, testTop, staticBlock, staticOffX, staticOffY, items, md))
                     {
                         newZ = ourZ;
                         moveIsOk = true;
@@ -353,7 +363,7 @@ public sealed class WalkCheck
                 if (cmp > 0 || (cmp == 0 && ourZ > newZ)) shouldCheck = false;
             }
 
-            if (shouldCheck && IsOk(mover, ourZ, testTop, statics, items, md))
+            if (shouldCheck && IsOk(mover, ourZ, testTop, staticBlock, staticOffX, staticOffY, items, md))
             {
                 newZ = ourZ;
                 moveIsOk = true;
@@ -414,10 +424,12 @@ public sealed class WalkCheck
             isSet = true;
         }
 
-        var staticTiles = md.GetStatics(mapId, x, y);
+        var staticTiles = md.GetStaticBlock(mapId, x, y, out int staticOffX, out int staticOffY);
         for (int i = 0; i < staticTiles.Length; i++)
         {
             var tile = staticTiles[i];
+            if (tile.XOffset != staticOffX || tile.YOffset != staticOffY)
+                continue;
             var id = md.GetItemTileData(tile.TileId);
             int calcTop = tile.Z + id.CalcHeight;
 
@@ -462,11 +474,13 @@ public sealed class WalkCheck
     /// collide with?" — scans impassable/surface tiles whose Z span overlaps
     /// [ourZ, ourTop) and rejects if so. ServUO's IsOk.</summary>
     private bool IsOk(Character mover, int ourZ, int ourTop,
-        StaticItem[] tiles, List<Item> items, MapDataManager md)
+        ReadOnlySpan<StaticItem> tiles, int offX, int offY, List<Item> items, MapDataManager md)
     {
         for (int i = 0; i < tiles.Length; i++)
         {
             var check = tiles[i];
+            if (check.XOffset != offX || check.YOffset != offY)
+                continue;
             var data = md.GetItemTileData(check.TileId);
             if ((data.Flags & ImpassableSurface) != 0)
             {

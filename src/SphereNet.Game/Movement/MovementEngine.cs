@@ -1,5 +1,6 @@
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
+using SphereNet.Game.Definitions;
 using SphereNet.Game.Magic;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Scripting;
@@ -78,7 +79,7 @@ public sealed class MovementEngine
         // GM with AllMove, or an uninitialized world (no MapData — unit tests
         // and in-memory fixtures) bypass the full terrain algorithm. Step on
         // pure delta, keeping Z unchanged.
-        if ((ch.PrivLevel >= PrivLevel.GM && ch.AllMove) || _world.MapData == null)
+        if ((ch.PrivLevel >= PrivLevel.GM && ch.AllMove) || CharDefHelper.CanPassWalls(ch) || _world.MapData == null)
         {
             target = new Point3D((short)(ch.X + dx), (short)(ch.Y + dy), ch.Z, ch.MapIndex);
         }
@@ -136,6 +137,8 @@ public sealed class MovementEngine
     public bool CanWalkTo(Objects.Characters.Character ch, Point3D target)
     {
         if (ch.PrivLevel >= PrivLevel.GM && ch.AllMove)
+            return true;
+        if (CharDefHelper.CanPassWalls(ch))
             return true;
 
         if (target.X < 0 || target.Y < 0)

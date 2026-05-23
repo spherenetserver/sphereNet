@@ -87,6 +87,40 @@ public class DefinitionAndSpellRegressionTests
     }
 
     [Fact]
+    public void CharDefHelper_ResolvesNumericCharDefHeaderAsBody()
+    {
+        var resources = LoadScript("""
+            [CHARDEF 00dc]
+            DEFNAME=c_snake
+            NAME=snake
+            """);
+        new DefinitionLoader(resources, new SpellRegistry()).LoadAll();
+
+        int idx = CharDefHelper.ResolveDefIndex("c_snake", resources);
+        Assert.Equal(0x00DC, idx);
+        Assert.Equal(0x00DC, CharDefHelper.ResolveBodyId(idx, resources));
+
+        var ch = new SphereNet.Game.Objects.Characters.Character { IsPlayer = true };
+        Assert.True(CharDefHelper.TryApplyDefName(ch, "c_snake", resources, refresh: false));
+        Assert.Equal(0x00DC, ch.BodyId);
+    }
+
+    [Fact]
+    public void CharDefHelper_DoesNotResolveStringHashCharDefAsBody()
+    {
+        var resources = LoadScript("""
+            [CHARDEF c_man_gm]
+            DEFNAME=c_man_gm
+            NAME=gm
+            """);
+        new DefinitionLoader(resources, new SpellRegistry()).LoadAll();
+
+        int idx = CharDefHelper.ResolveDefIndex("c_man_gm", resources);
+        Assert.NotEqual(0, idx);
+        Assert.Equal(0, CharDefHelper.ResolveBodyId(idx, resources));
+    }
+
+    [Fact]
     public void DefinitionLoader_PreservesRunesWithOrWithoutLeadingDot()
     {
         var resources = LoadScript("""

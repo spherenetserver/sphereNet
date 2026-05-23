@@ -421,7 +421,10 @@ public sealed partial class GameClient
             }
             else if (appearance)
             {
-                BroadcastDrawObject(ch);
+                if (ch == _character)
+                    SendSelfRedraw();
+                else
+                    BroadcastDrawObject(ch);
             }
         }
     }

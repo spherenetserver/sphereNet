@@ -834,41 +834,15 @@ public sealed class SpellEngine
                 // Already handled by target position
                 break;
             case SpellType.Recall:
-                // Source-X CCharSpell Recall: rune must be marked, otherwise
-                // 'spell_recall_blank' / 'spell_recall_notrune'.
-                if (target.TryGetTag("RUNE_X", out string? rx) &&
-                    target.TryGetTag("RUNE_Y", out string? ry))
-                {
-                    short.TryParse(rx, out short rxx);
-                    short.TryParse(ry, out short ryy);
-                    sbyte rzz = 0;
-                    if (target.TryGetTag("RUNE_Z", out string? rz))
-                        sbyte.TryParse(rz, out rzz);
-                    _world.MoveCharacter(caster, new Point3D(rxx, ryy, rzz, caster.MapIndex));
-                }
-                else
-                {
-                    OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellRecallBlank));
-                }
+                // Recall/Gate use item rune state (MOREP/TryGetRuneMark).
+                // A character target cannot be a valid rune.
+                OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellRecallBlank));
                 break;
             case SpellType.Mark:
                 // Handled in CastDone before ApplyCharEffect
                 break;
             case SpellType.GateTravel:
-                // Source-X CCharSpell GateTravel: rune must be marked, else
-                // 'spell_recall_blank'. The destination link is established
-                // via the rune's RUNE_* tags — Mark seeds them.
-                if (!target.TryGetTag("RUNE_X", out _))
-                {
-                    OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellRecallBlank));
-                    break;
-                }
-                var gate = _world.CreateItem();
-                gate.BaseId = 0x0F6C; // moongate graphic
-                gate.Name = "moongate";
-                gate.DecayTime = Environment.TickCount64 + 30_000;
-                _world.PlaceItem(gate, caster.Position);
-                OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGateOpen));
+                OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellRecallBlank));
                 break;
             case SpellType.Cure:
             case SpellType.ArchCure:
@@ -1057,8 +1031,13 @@ public sealed class SpellEngine
     {
         for (int i = _activeEffects.Count - 1; i >= 0; i--)
         {
-            if (now < _activeEffects[i].ExpireTick) continue;
             var eff = _activeEffects[i];
+            if (eff.Target.IsDeleted)
+            {
+                _activeEffects.RemoveAt(i);
+                continue;
+            }
+            if (now < eff.ExpireTick) continue;
             _activeEffects.RemoveAt(i);
             RevertDeltas(eff);
         }

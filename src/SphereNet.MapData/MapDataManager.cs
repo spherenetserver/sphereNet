@@ -127,6 +127,24 @@ public sealed class MapDataManager : IDisposable
         return [];
     }
 
+    public void ForEachStatic(int mapId, int x, int y, Action<StaticItem> action)
+    {
+        if (_staticReaders.TryGetValue(mapId, out var reader))
+            reader.ForEachStatic(x, y, action);
+    }
+
+    public bool AnyStatic(int mapId, int x, int y, Func<StaticItem, bool> predicate) =>
+        _staticReaders.TryGetValue(mapId, out var reader) && reader.AnyStatic(x, y, predicate);
+
+    public ReadOnlySpan<StaticItem> GetStaticBlock(int mapId, int x, int y, out int offX, out int offY)
+    {
+        offX = x % MapBlock.BlockSize;
+        offY = y % MapBlock.BlockSize;
+        if (_staticReaders.TryGetValue(mapId, out var reader))
+            return reader.ReadBlock(x / MapBlock.BlockSize, y / MapBlock.BlockSize);
+        return [];
+    }
+
     public LandTileData GetLandTileData(int tileId) =>
         _tileData?.GetLandTile(tileId) ?? default;
 
@@ -165,24 +183,75 @@ public sealed class MapDataManager : IDisposable
         sbyte bestZ = terrain.Z;
         int bestDist = Math.Abs(currentZ - bestZ);
 
-        var statics = GetStatics(mapId, x, y);
-        foreach (var s in statics)
+        if (_staticReaders.TryGetValue(mapId, out var staticReader))
         {
-            var data = GetItemTileData(s.TileId);
-            if (data.IsSurface || data.IsBridge)
+            var staticBlock = staticReader.ReadBlock(x / MapBlock.BlockSize, y / MapBlock.BlockSize);
+            int offX = x % MapBlock.BlockSize;
+            int offY = y % MapBlock.BlockSize;
+            foreach (var s in staticBlock)
             {
-                sbyte topZ = (sbyte)(s.Z + data.CalcHeight);
-                int dist = Math.Abs(currentZ - topZ);
-                if (dist > MaxClimbHeight) continue; // unreachable in one step
-                if (dist < bestDist)
+                if (s.XOffset != offX || s.YOffset != offY)
+                    continue;
+
+                var data = GetItemTileData(s.TileId);
+                if (data.IsSurface || data.IsBridge)
                 {
-                    bestZ = topZ;
-                    bestDist = dist;
+                    sbyte topZ = (sbyte)(s.Z + data.CalcHeight);
+                    int dist = Math.Abs(currentZ - topZ);
+                    if (dist > MaxClimbHeight) continue; // unreachable in one step
+                    if (dist < bestDist)
+                    {
+                        bestZ = topZ;
+                        bestDist = dist;
+                    }
                 }
             }
         }
 
         return bestZ;
+    }
+
+    public (sbyte EffectiveZ, bool Passable) GetEffectiveZAndPassable(int mapId, int x, int y, sbyte currentZ, int z)
+    {
+        const int MaxClimbHeight = 12;
+        var terrain = GetTerrainTile(mapId, x, y);
+        sbyte bestZ = terrain.Z;
+        int bestDist = Math.Abs(currentZ - bestZ);
+        bool blocks = false;
+
+        var landData = GetLandTileData(terrain.TileId);
+        bool wetLand = landData.IsWet;
+        bool hasWetSurface = false;
+
+        var staticBlock = GetStaticBlock(mapId, x, y, out int offX, out int offY);
+        foreach (var s in staticBlock)
+        {
+            if (s.XOffset != offX || s.YOffset != offY)
+                continue;
+
+            var data = GetItemTileData(s.TileId);
+            if (data.IsSurface || data.IsBridge)
+            {
+                sbyte topZ = (sbyte)(s.Z + data.CalcHeight);
+                int dist = Math.Abs(currentZ - topZ);
+                if (dist <= MaxClimbHeight && dist < bestDist)
+                {
+                    bestZ = topZ;
+                    bestDist = dist;
+                }
+
+                if (wetLand && z >= s.Z && z <= s.Z + data.CalcHeight + 2)
+                    hasWetSurface = true;
+            }
+
+            if (data.IsImpassable && z >= s.Z && z < s.Z + data.Height)
+                blocks = true;
+        }
+
+        if (wetLand && !hasWetSurface)
+            blocks = true;
+
+        return (bestZ, !blocks);
     }
 
     /// <summary>Compute the 4-corner average / low / top land Z for the tile
@@ -228,8 +297,6 @@ public sealed class MapDataManager : IDisposable
     /// </summary>
     public bool IsPassable(int mapId, int x, int y, int z)
     {
-        var statics = GetStatics(mapId, x, y);
-
         // Check terrain (land) tile — water tiles are not walkable
         // unless there is a walkable surface/bridge static above (e.g. dock, bridge, ship)
         var terrain = GetTerrainTile(mapId, x, y);
@@ -237,25 +304,21 @@ public sealed class MapDataManager : IDisposable
         if (landData.IsWet)
         {
             bool hasSurface = false;
-            foreach (var s in statics)
+            hasSurface = AnyStatic(mapId, x, y, s =>
             {
                 var sd = GetItemTileData(s.TileId);
-                if ((sd.IsSurface || sd.IsBridge) && z >= s.Z && z <= s.Z + sd.CalcHeight + 2)
-                {
-                    hasSurface = true;
-                    break;
-                }
-            }
+                return (sd.IsSurface || sd.IsBridge) && z >= s.Z && z <= s.Z + sd.CalcHeight + 2;
+            });
             if (!hasSurface)
                 return false;
         }
 
-        foreach (var s in statics)
+        if (AnyStatic(mapId, x, y, s =>
         {
             var data = GetItemTileData(s.TileId);
-            if (data.IsImpassable && z >= s.Z && z < s.Z + data.Height)
-                return false;
-        }
+            return data.IsImpassable && z >= s.Z && z < s.Z + data.Height;
+        }))
+            return false;
         return true;
     }
 

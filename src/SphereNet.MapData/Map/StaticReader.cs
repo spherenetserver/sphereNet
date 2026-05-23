@@ -1,4 +1,5 @@
 using System.IO.MemoryMappedFiles;
+using System.Collections.Concurrent;
 
 namespace SphereNet.MapData.Map;
 
@@ -20,6 +21,7 @@ public sealed class StaticReader : IDisposable
 
     private readonly int _blockWidth;
     private readonly int _blockHeight;
+    private readonly ConcurrentDictionary<long, StaticItem[]> _blockCache = new();
 
     private const int StaticEntrySize = 7; // tileId:2 + xOff:1 + yOff:1 + z:1 + hue:2
     private const int IdxEntrySize = 12;   // offset:4 + length:4 + extra:4
@@ -42,6 +44,15 @@ public sealed class StaticReader : IDisposable
     /// Read all static items in an 8x8 block.
     /// </summary>
     public StaticItem[] ReadBlock(int blockX, int blockY)
+    {
+        if (blockX < 0 || blockX >= _blockWidth || blockY < 0 || blockY >= _blockHeight)
+            return [];
+
+        long cacheKey = MakeBlockKey(blockX, blockY);
+        return _blockCache.GetOrAdd(cacheKey, _ => ReadBlockUncached(blockX, blockY));
+    }
+
+    private StaticItem[] ReadBlockUncached(int blockX, int blockY)
     {
         if (blockX < 0 || blockX >= _blockWidth || blockY < 0 || blockY >= _blockHeight)
             return [];
@@ -79,6 +90,38 @@ public sealed class StaticReader : IDisposable
         return items;
     }
 
+    public void ForEachStatic(int x, int y, Action<StaticItem> action)
+    {
+        int bx = x / MapBlock.BlockSize;
+        int by = y / MapBlock.BlockSize;
+        int offX = x % MapBlock.BlockSize;
+        int offY = y % MapBlock.BlockSize;
+
+        var allItems = ReadBlock(bx, by);
+        foreach (var item in allItems)
+        {
+            if (item.XOffset == offX && item.YOffset == offY)
+                action(item);
+        }
+    }
+
+    public bool AnyStatic(int x, int y, Func<StaticItem, bool> predicate)
+    {
+        int bx = x / MapBlock.BlockSize;
+        int by = y / MapBlock.BlockSize;
+        int offX = x % MapBlock.BlockSize;
+        int offY = y % MapBlock.BlockSize;
+
+        var allItems = ReadBlock(bx, by);
+        foreach (var item in allItems)
+        {
+            if (item.XOffset == offX && item.YOffset == offY && predicate(item))
+                return true;
+        }
+
+        return false;
+    }
+
     /// <summary>
     /// Get static items at a specific world coordinate.
     /// </summary>
@@ -99,11 +142,14 @@ public sealed class StaticReader : IDisposable
         return filtered.ToArray();
     }
 
+    private static long MakeBlockKey(int blockX, int blockY) => ((long)blockX << 32) | (uint)blockY;
+
     public void Dispose()
     {
         _idxView.Dispose();
         _idxMmf.Dispose();
         _dataView.Dispose();
         _dataMmf.Dispose();
+        _blockCache.Clear();
     }
 }

@@ -47,13 +47,11 @@ public sealed class TerrainEngine
     {
         if (_mapData == null) return true;
 
-        // Check impassable statics
-        if (!_mapData.IsPassable(to.Map, to.X, to.Y, from.Z))
+        var target = _mapData.GetEffectiveZAndPassable(to.Map, to.X, to.Y, from.Z, from.Z);
+        if (!target.Passable)
             return false;
 
-        // Check height difference using current Z as reference
-        sbyte targetZ = _mapData.GetEffectiveZ(to.Map, to.X, to.Y, from.Z);
-        int heightDiff = Math.Abs(targetZ - from.Z);
+        int heightDiff = Math.Abs(target.EffectiveZ - from.Z);
         if (heightDiff > MaxClimb)
             return false;
 
@@ -94,13 +92,8 @@ public sealed class TerrainEngine
             short checkY = (short)Math.Round(cy);
             int checkZ = (int)Math.Round(cz);
 
-            // Check terrain blocks LOS
-            sbyte groundZ = _mapData.GetEffectiveZ(from.Map, checkX, checkY);
-            if (groundZ > checkZ)
-                return false;
-
-            // Check impassable statics at this ray point
-            if (!_mapData.IsPassable(from.Map, checkX, checkY, checkZ))
+            var cell = _mapData.GetEffectiveZAndPassable(from.Map, checkX, checkY, 0, checkZ);
+            if (cell.EffectiveZ > checkZ || !cell.Passable)
                 return false;
         }
 

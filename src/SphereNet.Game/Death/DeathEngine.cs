@@ -1,5 +1,6 @@
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
+using SphereNet.Game.Messages;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.Party;
@@ -182,7 +183,9 @@ public sealed class DeathEngine
         var corpse = _world.CreateItem();
         corpse.BaseId = 0x2006; // ITEMID_CORPSE
         corpse.Amount = victim.BodyId; // body type for corpse display
-        corpse.Name = $"corpse of {victim.Name}";
+        string victimName = victim.GetDisplayName();
+        corpse.Name = ServerMessages.GetFormatted(Msg.CorpseName, "corpse", victimName);
+        corpse.SetTag("CORPSE_NAME", victimName);
         corpse.ItemType = ItemType.Corpse;
         corpse.Hue = victim.Hue;
 

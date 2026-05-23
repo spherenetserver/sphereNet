@@ -12,6 +12,17 @@
           {{ lvl.label }}
         </button>
       </div>
+      <div class="filters">
+        <button
+          v-for="cat in packetCats"
+          :key="cat.value"
+          class="level-btn packet-cat"
+          :class="{ active: activePacketCat === cat.value }"
+          @click="activePacketCat = activePacketCat === cat.value ? '' : cat.value"
+        >
+          {{ cat.label }}
+        </button>
+      </div>
       <div class="toolbar-right">
         <input v-model="search" class="search-input" placeholder="Filter…" />
         <button class="btn-ghost" @click="logs.paused = !logs.paused">
@@ -53,6 +64,7 @@ import { useLogsStore } from '@/stores/logs'
 const logs      = useLogsStore()
 const search    = ref('')
 const activeLevel = ref('')
+const activePacketCat = ref('')
 const scrollEl  = ref<HTMLElement | null>(null)
 
 const levels = [
@@ -64,9 +76,20 @@ const levels = [
   { value: 'Fatal',       label: 'FTL' },
 ]
 
+const packetCats = [
+  { value: 'player', label: 'Player' },
+  { value: 'npc',    label: 'NPC' },
+  { value: 'item',   label: 'Item' },
+  { value: 'packet', label: 'Other' },
+]
+
 const filtered = computed(() => {
   let list = logs.entries
   if (activeLevel.value) list = list.filter(e => e.level === activeLevel.value)
+  if (activePacketCat.value) {
+    const marker = `cat=${activePacketCat.value}`
+    list = list.filter(e => e.message.includes(marker))
+  }
   if (search.value) {
     const q = search.value.toLowerCase()
     list = list.filter(e =>
@@ -139,6 +162,7 @@ function levelClass(level: string): string {
 
 .level-btn:hover        { border-color: var(--accent); color: var(--accent); }
 .level-btn.active       { background: var(--accent); color: #0d1117; border-color: var(--accent); }
+.packet-cat.active      { background: var(--warning); color: #0d1117; border-color: var(--warning); }
 
 .toolbar-right { display: flex; align-items: center; gap: 8px; }
 

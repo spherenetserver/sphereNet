@@ -23,12 +23,14 @@ public sealed class ScriptInterpreter
 
     /// <summary>Optional TriggerRunner for CALL verb support.</summary>
     public Func<string, IScriptObj, ITextConsole?, ITriggerArgs?, TriggerResult>? CallFunction { get; set; }
+    public Func<string, IScriptObj, ITextConsole?, ITriggerArgs?, ScriptScope, TriggerResult>? CallFunctionWithScope { get; set; }
 
     /// <summary>
     /// Optional bridge for angle-bracket script function calls that need a
     /// string/numeric return value, e.g. <c>&lt;MyFunc arg1,arg2&gt;</c>.
     /// </summary>
     public Func<string, string, IScriptObj, ITextConsole?, ITriggerArgs?, string?>? ResolveFunctionExpression { get; set; }
+    public Func<string, string, IScriptObj, ITextConsole?, ITriggerArgs?, ScriptScope, string?>? ResolveFunctionExpressionWithScope { get; set; }
 
     /// <summary>Resolves SERV.* and other server-level property lookups from scripts.</summary>
     public Func<string, string?>? ServerPropertyResolver { get; set; }
@@ -183,9 +185,9 @@ public sealed class ScriptInterpreter
                 case "CALL":
                 {
                     string funcName = ResolveArgs(key.Arg, target, source, args, scope).Trim();
-                    if (!string.IsNullOrEmpty(funcName) && CallFunction != null)
+                    if (!string.IsNullOrEmpty(funcName))
                     {
-                        var callResult = CallFunction(funcName, target, source, args);
+                        var callResult = InvokeFunction(funcName, target, source, args, scope);
                         if (callResult == TriggerResult.True)
                             result = TriggerResult.True;
                     }
@@ -439,7 +441,7 @@ public sealed class ScriptInterpreter
                     return;
                 }
                 // Source-X: unrecognized SRC.verb → treat as function call on source object
-                if (CallFunction != null)
+                if (CallFunctionWithScope != null || CallFunction != null)
                 {
                     // Pass resolvedArg as the new <ARGS> for the called function
                     var funcArgs = new TriggerArgs
@@ -452,7 +454,7 @@ public sealed class ScriptInterpreter
                         Number3 = args?.Number3 ?? 0,
                         ArgString = resolvedArg
                     };
-                    CallFunction(subCmd, srcObj, source, funcArgs);
+                    InvokeFunction(subCmd, srcObj, source, funcArgs, scope);
                     return;
                 }
             }
@@ -615,7 +617,7 @@ public sealed class ScriptInterpreter
         }
 
         // Source-X: any unrecognized command is treated as a function call
-        if (CallFunction != null)
+        if (CallFunctionWithScope != null || CallFunction != null)
         {
             // Pass resolvedArg as the new <ARGS> for the called function
             var funcArgs = new TriggerArgs
@@ -628,7 +630,7 @@ public sealed class ScriptInterpreter
                 Number3 = args?.Number3 ?? 0,
                 ArgString = resolvedArg
             };
-            CallFunction(cmd, target, source, funcArgs);
+            InvokeFunction(cmd, target, source, funcArgs, scope);
             if (_expr.DebugUnresolved)
                 _logger.LogDebug("[script_exec] delegated to function '{Cmd}'", cmd);
             return;
@@ -904,7 +906,7 @@ public sealed class ScriptInterpreter
         var oldResolver = _expr.VariableResolver;
         var oldFunctionResolver = _expr.FunctionResolver;
         _expr.VariableResolver = varName => ResolveVarForTarget(varName, target, source, args, scope);
-        _expr.FunctionResolver = expr => TryResolveFunctionExpression(expr, target, source, args);
+        _expr.FunctionResolver = expr => TryResolveFunctionExpression(expr, target, source, args, scope);
         string result = _expr.EvaluateStr(arg);
         _expr.VariableResolver = oldResolver;
         _expr.FunctionResolver = oldFunctionResolver;
@@ -918,16 +920,17 @@ public sealed class ScriptInterpreter
         var oldResolver = _expr.VariableResolver;
         var oldFunctionResolver = _expr.FunctionResolver;
         _expr.VariableResolver = varName => ResolveVarForTarget(varName, target, source, args, scope);
-        _expr.FunctionResolver = exprText => TryResolveFunctionExpression(exprText, target, source, args);
+        _expr.FunctionResolver = exprText => TryResolveFunctionExpression(exprText, target, source, args, scope);
         long result = _expr.Evaluate(expr.AsSpan());
         _expr.VariableResolver = oldResolver;
         _expr.FunctionResolver = oldFunctionResolver;
         return result;
     }
 
-    private string? TryResolveFunctionExpression(string expr, IScriptObj target, ITextConsole? source, ITriggerArgs? args)
+    private string? TryResolveFunctionExpression(string expr, IScriptObj target, ITextConsole? source, ITriggerArgs? args, ScriptScope? scope)
     {
-        if (ResolveFunctionExpression == null || string.IsNullOrWhiteSpace(expr))
+        if (ResolveFunctionExpressionWithScope == null && ResolveFunctionExpression == null ||
+            string.IsNullOrWhiteSpace(expr))
             return null;
 
         string text = expr.Trim();
@@ -980,7 +983,17 @@ public sealed class ScriptInterpreter
             funcArgs = remainder.Trim();
         }
 
-        return ResolveFunctionExpression(funcName, funcArgs, target, source, args);
+        return ResolveFunctionExpressionWithScope != null && scope != null
+            ? ResolveFunctionExpressionWithScope(funcName, funcArgs, target, source, args, scope)
+            : ResolveFunctionExpression?.Invoke(funcName, funcArgs, target, source, args);
+    }
+
+    private TriggerResult InvokeFunction(string funcName, IScriptObj target, ITextConsole? source, ITriggerArgs? args, ScriptScope scope)
+    {
+        if (CallFunctionWithScope != null)
+            return CallFunctionWithScope(funcName, target, source, args, scope);
+
+        return CallFunction?.Invoke(funcName, target, source, args) ?? TriggerResult.Default;
     }
 
     private string? ResolveVarForTarget(string varName, IScriptObj target, ITextConsole? source, ITriggerArgs? args, ScriptScope? scope = null)
@@ -1036,23 +1049,27 @@ public sealed class ScriptInterpreter
                 return targPoint;
             return args?.ArgString ?? "0,0,0,0";
         }
+        if (varName.Equals("DARGV", StringComparison.OrdinalIgnoreCase))
+        {
+            return args is TriggerArgs triggerArgs
+                ? triggerArgs.GetArgc().ToString()
+                : "0";
+        }
         if (varName.StartsWith("ARGV", StringComparison.OrdinalIgnoreCase))
         {
             if (args == null || string.IsNullOrEmpty(args.ArgString))
                 return "";
 
-            // Sphere tokenises ARGS by both space and comma — moongate
-            // handlers pass "X,Y,Z,MAP,Name" through args= and then
-            // pick coordinates via <argv[0..3]>. Splitting on only
-            // space leaves a single undivided blob.
-            string[] argv = args.ArgString.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            IReadOnlyList<string> argv = args is TriggerArgs triggerArgs
+                ? triggerArgs.GetArgv()
+                : args.ArgString.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             int idx = 0;
             string suffix = varName.Length > 4 ? varName[4..] : "";
             if (suffix.StartsWith("[", StringComparison.Ordinal) && suffix.EndsWith("]", StringComparison.Ordinal) && suffix.Length > 2)
                 suffix = suffix[1..^1];
             if (int.TryParse(suffix, out int parsed))
                 idx = parsed;
-            return (idx >= 0 && idx < argv.Length) ? argv[idx] : "";
+            return (idx >= 0 && idx < argv.Count) ? argv[idx] : "";
         }
 
         // LOCAL.varname / DLOCAL.varname — read from scope local variables.

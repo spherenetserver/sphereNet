@@ -7,7 +7,6 @@ public partial class Character
 {
     // Stat locks: 0=up, 1=down, 2=locked (UO client convention)
     private readonly byte[] _statLocks = new byte[3];
-    private bool _statLocksMigrated;
 
     // Spell cast runtime (Source-X m_Act_Spell / cast timer)
     private int _castingSpell = -1;
@@ -35,14 +34,15 @@ public partial class Character
     public void SetStatLock(int statIdx, byte lockState)
     {
         if (statIdx >= 0 && statIdx < _statLocks.Length)
+        {
             _statLocks[statIdx] = lockState;
+            RemoveTag($"STATLOCK.{statIdx}");
+        }
     }
 
     /// <summary>One-time import from legacy TAG.STATLOCK.* saves.</summary>
     public void MigrateStatLockFromTags()
     {
-        if (_statLocksMigrated) return;
-        _statLocksMigrated = true;
         for (int i = 0; i < _statLocks.Length; i++)
         {
             if (!TryGetTag($"STATLOCK.{i}", out string? val) || !byte.TryParse(val, out byte sl))

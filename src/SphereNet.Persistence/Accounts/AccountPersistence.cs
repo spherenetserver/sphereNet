@@ -98,7 +98,11 @@ public static class AccountPersistence
                 continue;
             }
 
-            var account = new Account { Name = name };
+            var account = new Account
+            {
+                Name = name,
+                UseMd5Passwords = accounts.Md5Passwords,
+            };
             while (reader.NextProperty(out string key, out string value))
                 ApplyProperty(account, key, value);
 

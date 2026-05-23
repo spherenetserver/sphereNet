@@ -84,6 +84,7 @@ public static class HuffmanCompression
     public static byte[] Decompress(byte[] input, int offset, int length)
     {
         const int MaxDecompressedSize = 262_144; // 256 KB safety cap
+        int treeRows = DecompTree.GetLength(0);
         var output = new List<byte>(length * 2);
         int bitPos = 0;
         int totalBits = length * 8;
@@ -97,15 +98,22 @@ public static class HuffmanCompression
                 if (bitPos >= totalBits) return output.ToArray();
 
                 int byteIdx = offset + (bitPos >> 3);
+                if (byteIdx < offset || byteIdx >= offset + length)
+                    return output.ToArray();
+
                 int bitIdx = 7 - (bitPos & 7);
                 int bit = (input[byteIdx] >> bitIdx) & 1;
                 bitPos++;
+
+                if (node < 0 || node >= treeRows)
+                    return output.ToArray();
 
                 node = DecompTree[node, bit];
             }
 
             int value = ~node;
             if (value == 256) break;
+            if (value < 0 || value > 255) return output.ToArray();
             output.Add((byte)value);
             if (output.Count >= MaxDecompressedSize) break;
         }

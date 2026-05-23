@@ -261,8 +261,48 @@ public sealed partial class GameClient : ITextConsole
         _world = world;
         _accountManager = accountManager;
         _logger = logger;
+        _netState.PacketDebugClassifier = ClassifyPacketDebug;
 
         RegisterNativeDialogFallbacks();
+    }
+
+    private string ClassifyPacketDebug(ReadOnlySpan<byte> data)
+    {
+        if (!TryReadPacketSerial(data, out uint rawSerial))
+            return "packet";
+
+        var serial = new Serial(rawSerial);
+        var ch = _world.FindChar(serial);
+        if (ch != null)
+            return ch.IsPlayer ? "player" : "npc";
+
+        if (_world.FindItem(serial) != null)
+            return "item";
+
+        return (rawSerial & 0x40000000) != 0 ? "item" : "packet";
+    }
+
+    private static bool TryReadPacketSerial(ReadOnlySpan<byte> data, out uint serial)
+    {
+        serial = 0;
+        if (data.Length == 0)
+            return false;
+
+        int offset = data[0] switch
+        {
+            0x1A => data.Length >= 7 ? 3 : -1,
+            0x1D => data.Length >= 5 ? 1 : -1,
+            0x2E => data.Length >= 5 ? 1 : -1,
+            0x78 => data.Length >= 7 ? 3 : -1,
+            0x77 or 0x20 or 0x11 or 0x88 or 0xAE => data.Length >= 5 ? 1 : -1,
+            _ => -1
+        };
+
+        if (offset < 0 || data.Length < offset + 4)
+            return false;
+
+        serial = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(data[offset..]);
+        return true;
     }
 
     /// <summary>Wire built-in <c>d_xxx</c> native gump fallbacks. Each entry

@@ -37,7 +37,6 @@ public sealed partial class GameClient
 
     // ServUO-style fastwalk prevention via time-based throttle
     private long _nextMoveTime;
-
     public void HandleMove(byte dir, byte seq, uint fastWalkKey)
     {
         if (_character == null) return;
@@ -56,32 +55,6 @@ public sealed partial class GameClient
         _netState.LastActivityTick = Environment.TickCount64;
         long now = Environment.TickCount64;
         byte expectedSeq = _netState.WalkSequence;
-
-        // Turn-in-place: when the client's MoveRequest direction differs from
-        // the character's current facing, the packet is a pure rotation — ACK
-        // with the same position, advance the walk sequence, no collision
-        // check needed. Source-X CClient::Event_Walk handles this identically.
-        if (_character.Direction != direction)
-        {
-            _character.Direction = direction;
-            byte notoRot = GetNotoriety(_character);
-            _netState.Send(new PacketMoveAck(seq, notoRot));
-            _netState.WalkSequence = (byte)(seq + 1);
-            if (_netState.WalkSequence == 0) _netState.WalkSequence = 1;
-
-            // Broadcast facing change so nearby players see the new direction.
-            byte flagsRot = BuildMobileFlags(_character);
-            byte dirRot = (byte)((byte)_character.Direction | (running ? 0x80 : 0));
-            var rotPacket = new PacketMobileMoving(
-                _character.Uid.Value, _character.BodyId,
-                _character.X, _character.Y, _character.Z, dirRot,
-                _character.Hue, flagsRot, notoRot);
-            if (BroadcastMoveNearby != null)
-                BroadcastMoveNearby.Invoke(_character.Position, UpdateRange, rotPacket, _character.Uid.Value, _character);
-            else
-                BroadcastNearby?.Invoke(_character.Position, UpdateRange, rotPacket, _character.Uid.Value);
-            return;
-        }
 
         // Strict sequence validation (ServUO-style): reject out-of-order walk packets.
         if (expectedSeq != 0 && seq != expectedSeq)

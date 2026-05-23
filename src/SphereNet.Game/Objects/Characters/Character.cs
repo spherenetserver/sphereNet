@@ -66,6 +66,10 @@ public partial class Character : ObjBase
     /// (admin function dialog "Info" row).</summary>
     public static Action<Character>? OpenInfoDialog;
 
+    /// <summary>Fired after BODY/CHARDEF/COLOR changes so online clients
+    /// receive an updated 0x78 DrawObject.</summary>
+    public static Action<Character>? OnAppearanceChanged;
+
     /// <summary>Pop a target cursor for the GM's TELE verb. Source-X
     /// behaviour: GM picks ground/object, server moves the GM there.</summary>
     public static Action<Character>? BeginTeleTarget;
@@ -260,6 +264,38 @@ public partial class Character : ObjBase
     // Player state
     private short _deaths;
     private string _profile = "";
+
+    public override void SetTag(string key, string value)
+    {
+        if (TrySetStatLockTag(key, value))
+            return;
+
+        base.SetTag(key, value);
+    }
+
+    private bool TrySetStatLockTag(string key, string value)
+    {
+        string statKey = key;
+        if (statKey.StartsWith("TAG.", StringComparison.OrdinalIgnoreCase) ||
+            statKey.StartsWith("TAG0.", StringComparison.OrdinalIgnoreCase) ||
+            statKey.StartsWith("DTAG.", StringComparison.OrdinalIgnoreCase) ||
+            statKey.StartsWith("DTAG0.", StringComparison.OrdinalIgnoreCase))
+        {
+            int dotIdx = statKey.IndexOf('.');
+            statKey = dotIdx >= 0 ? statKey[(dotIdx + 1)..] : "";
+        }
+
+        if (!statKey.StartsWith("STATLOCK.", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (int.TryParse(statKey.AsSpan("STATLOCK.".Length), out int statIdx) &&
+            byte.TryParse(value, out byte lockVal))
+        {
+            SetStatLock(statIdx, lockVal);
+        }
+
+        return true;
+    }
     private uint _pFlag;
     private int _tithing;
     private byte _speedMode;
@@ -511,6 +547,28 @@ public partial class Character : ObjBase
 
     public ushort BodyId { get => _bodyId; set { _bodyId = value; MarkDirty(DirtyFlag.Body); } }
 
+    /// <summary>Player-facing name (overhead label, corpse, tooltips).
+    /// Falls back to CHARDEF NAME when the runtime name is blank or
+    /// still an unresolved template.</summary>
+    public override string GetName() => GetDisplayName();
+
+    public string GetDisplayName()
+    {
+        string raw = (Name ?? "").Trim();
+        if (!string.IsNullOrEmpty(raw) && !raw.Contains('#'))
+            return raw;
+
+        var def = DefinitionLoader.GetCharDef(_charDefIndex != 0 ? _charDefIndex : CharDefIndex);
+        if (def != null && !string.IsNullOrWhiteSpace(def.Name))
+        {
+            string fromDef = DefinitionLoader.ResolveNames(def.Name).Trim();
+            if (!string.IsNullOrEmpty(fromDef))
+                return fromDef;
+        }
+
+        return string.IsNullOrEmpty(raw) ? "creature" : raw;
+    }
+
     /// <summary>
     /// Full-width CHARDEF resource index (24-bit, defname hashes can exceed
     /// ushort). Used by trigger and definition lookups
@@ -528,7 +586,19 @@ public partial class Character : ObjBase
         set => _charDefIndex = value;
     }
     private int _charDefIndex;
-    public Direction Direction { get => _direction; set { if (value != _direction) { _direction = value; MarkDirty(DirtyFlag.Direction); } } }
+    public Direction Direction
+    {
+        get => _direction;
+        set
+        {
+            var masked = (Direction)((byte)value & 0x07);
+            if (masked != _direction)
+            {
+                _direction = masked;
+                MarkDirty(DirtyFlag.Direction);
+            }
+        }
+    }
     public StatFlag StatFlags { get => _statFlags; set => _statFlags = value; }
     public PrivLevel PrivLevel
     {
@@ -850,6 +920,24 @@ public partial class Character : ObjBase
     public bool IsInWarMode => IsStatFlag(StatFlag.War);
     public bool IsInvisible => IsStatFlag(StatFlag.Invisible);
     public bool IsMounted => IsStatFlag(StatFlag.OnHorse);
+
+    public bool ClearTransientVisualState()
+    {
+        var beforeFlags = _statFlags;
+        ushort beforeHue = Hue.Value;
+
+        ClearStatFlag(StatFlag.Freeze);
+        ClearStatFlag(StatFlag.Invisible);
+        ClearStatFlag(StatFlag.Hidden);
+        ClearStatFlag(StatFlag.Reflection);
+        ClearStatFlag(StatFlag.Reactive);
+        ClearStatFlag(StatFlag.NightSight);
+
+        if (Hue.Value == 0x03EC && !IsStatFlag(StatFlag.Reflection))
+            Hue = Core.Types.Color.Default;
+
+        return beforeFlags != _statFlags || beforeHue != Hue.Value;
+    }
 
     public bool IsSummoned =>
         TryGetTag("SUMMON_MASTER", out string? sm) && ParseSerial(sm).IsValid ||
@@ -1834,7 +1922,7 @@ public partial class Character : ObjBase
             case "MAXHITS": value = _maxHits.ToString(); return true;
             case "MAXMANA": value = _maxMana.ToString(); return true;
             case "MAXSTAM": value = _maxStam.ToString(); return true;
-            case "BODY": value = $"0{_bodyId:X}"; return true;
+            case "BODY": value = FormatBodyProperty(); return true;
             case "DIR": value = ((byte)_direction).ToString(); return true;
             case "FLAGS": value = ((uint)_statFlags).ToString(); return true;
             case "FAME": value = _fame.ToString(); return true;
@@ -2459,6 +2547,20 @@ public partial class Character : ObjBase
             return true;
         }
 
+        // StatLock[n] bracket syntax (Sphere save/script format)
+        if (upper.StartsWith("STATLOCK[", StringComparison.Ordinal) && upper.Contains(']'))
+        {
+            int si = upper.IndexOf('[');
+            int ei = upper.IndexOf(']');
+            if (int.TryParse(upper.AsSpan(si + 1, ei - si - 1), out int statIdx))
+            {
+                value = GetStatLock(statIdx).ToString();
+                return true;
+            }
+            value = "0";
+            return true;
+        }
+
         // SKILLTOTAL +N / SKILLTOTAL -N — totals filtered by threshold.
         // Matches Source-X r_WriteVal: "+<amount>" sums skills >= amount,
         // "-<amount>" sums skills < amount. Skill values are tenths of a
@@ -2623,8 +2725,34 @@ public partial class Character : ObjBase
             case "MAXHITS": if (short.TryParse(normalized, out short mhv)) MaxHits = mhv; return true;
             case "MAXMANA": if (short.TryParse(normalized, out short mmv)) MaxMana = mmv; return true;
             case "MAXSTAM": if (short.TryParse(normalized, out short msv)) MaxStam = msv; return true;
-            case "BODY": if (TryParseHexOrDecUshort(normalized, out ushort bv)) _bodyId = bv; return true;
-            case "DIR": if (byte.TryParse(normalized, out byte drv)) _direction = (Direction)drv; return true;
+            case "BODY":
+                if (TryParseHexOrDecUshort(normalized, out ushort bv))
+                {
+                    _bodyId = bv;
+                    BaseId = bv;
+                    NotifyAppearanceChanged();
+                    return true;
+                }
+                if (CharDefHelper.TryApplyDefName(this, normalized, DefinitionLoader.StaticResources))
+                    return true;
+                if (CharDefHelper.EnsureDisplayBody(this, DefinitionLoader.StaticResources))
+                {
+                    RefreshAppearance();
+                    return true;
+                }
+                return false;
+            case "CHARDEF":
+            case "TYPEDEF":
+                if (CharDefHelper.TryApplyDefName(this, normalized, DefinitionLoader.StaticResources))
+                    return true;
+                return true;
+            case "DIR":
+                if (byte.TryParse(normalized, out byte drv))
+                {
+                    Direction = (Direction)drv;
+                    return true;
+                }
+                return false;
             case "FAME":
                 if (TryParseShortSingleOrRange(normalized, out short fv))
                     _fame = fv;
@@ -4060,7 +4188,7 @@ public partial class Character : ObjBase
                 // CTags live on the active client and die with the
                 // session; this verb fires from dialog close handlers
                 // and refresh buttons to reset admin-panel-style state.
-                CTags.RemoveByPrefix(args ?? string.Empty);
+                CTags.RemoveByPrefix(args?.Trim() ?? string.Empty);
                 return true;
             }
             case "TAGLIST":
@@ -4480,4 +4608,17 @@ public partial class Character : ObjBase
             return ushort.TryParse(text[2..], System.Globalization.NumberStyles.HexNumber, null, out value);
         return ushort.TryParse(text, out value);
     }
+
+    private string FormatBodyProperty()
+    {
+        string? defname = CharDefHelper.ResolveDefName(_charDefIndex);
+        if (string.IsNullOrEmpty(defname) && TryGetTag("CHARDEF", out string? tag) && !string.IsNullOrEmpty(tag))
+            defname = tag;
+        return !string.IsNullOrEmpty(defname) ? defname : $"0{_bodyId:X}";
+    }
+
+    private void NotifyAppearanceChanged() => OnAppearanceChanged?.Invoke(this);
+
+    /// <summary>Broadcast appearance/body updates to clients (including self).</summary>
+    public void RefreshAppearance() => OnAppearanceChanged?.Invoke(this);
 }

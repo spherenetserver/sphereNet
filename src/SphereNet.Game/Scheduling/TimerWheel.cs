@@ -87,8 +87,11 @@ public sealed class TimerWheel
     /// <summary>Remove an NPC from the wheel (e.g. on delete).</summary>
     public void Remove(Character npc)
     {
-        _scheduled.Remove(npc.Uid.Value);
-        // Lazy removal — deleted NPCs are filtered in Advance
+        if (!_scheduled.Remove(npc.Uid.Value))
+            return;
+
+        foreach (var slot in _slots)
+            slot.Remove(npc);
     }
 
     /// <summary>Number of NPCs currently scheduled.</summary>

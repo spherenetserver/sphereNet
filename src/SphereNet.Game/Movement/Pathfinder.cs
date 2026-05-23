@@ -4,7 +4,7 @@ using SphereNet.Core.Types;
 namespace SphereNet.Game.Movement;
 
 /// <summary>
-/// A* pathfinding for NPC movement. Grid-based 2D pathfinding.
+/// A* pathfinding for NPC movement. Grid-based 3D pathfinding.
 /// Maps to NPC_AI_PATH logic in Source-X.
 /// </summary>
 public sealed class Pathfinder
@@ -15,6 +15,7 @@ public sealed class Pathfinder
     // not unbounded — A* with open set + closed set is O(N log N) worst-case.
     private const int MaxNodes = 20000;
     private const int MaxPathLength = 256;
+    private const int MaxClimb = 12;
 
     public Pathfinder(World.GameWorld world)
     {
@@ -27,25 +28,30 @@ public sealed class Pathfinder
     /// </summary>
     public List<Point3D>? FindPath(Point3D start, Point3D goal, byte mapIndex, CanFlags canFlags = CanFlags.None)
     {
-        if (start.GetDistanceTo(goal) <= 1)
+        if (IsGoalReached(start, goal))
+            return [goal];
+
+        if (start.GetDistanceTo(goal) <= 1 && Math.Abs(start.Z - goal.Z) <= MaxClimb)
             return [goal];
 
         var openSet = new PriorityQueue<PathNode, int>();
         var closedSet = new HashSet<long>();
         var cameFrom = new Dictionary<long, PathNode>();
+        var gScore = new Dictionary<long, int>();
 
         var startNode = new PathNode(start.X, start.Y, start.Z, 0, Heuristic(start, goal));
         openSet.Enqueue(startNode, startNode.F);
+        gScore[PackKey(startNode.X, startNode.Y, startNode.Z)] = 0;
 
         int nodesExplored = 0;
 
         while (openSet.Count > 0 && nodesExplored < MaxNodes)
         {
             var current = openSet.Dequeue();
-            long currentKey = PackKey(current.X, current.Y);
+            long currentKey = PackKey(current.X, current.Y, current.Z);
 
-            if (current.X == goal.X && current.Y == goal.Y)
-                return ReconstructPath(cameFrom, current);
+            if (IsGoalReached(current, goal))
+                return ReconstructPath(cameFrom, current, mapIndex);
 
             if (!closedSet.Add(currentKey))
                 continue;
@@ -61,19 +67,19 @@ public sealed class Pathfinder
 
                     short nx = (short)(current.X + dx);
                     short ny = (short)(current.Y + dy);
-                    long neighborKey = PackKey(nx, ny);
-
-                    if (closedSet.Contains(neighborKey))
-                        continue;
 
                     // Each tile has its own surface Z (terrain vs. static floors,
                     // bridges, steps). Using current.Z for every neighbor makes
                     // pathfinding fail as soon as terrain height changes by one
                     // step. Resolve the effective Z per-tile using MapData.
                     sbyte nz = _world.MapData?.GetEffectiveZ(mapIndex, nx, ny, current.Z) ?? current.Z;
+                    long neighborKey = PackKey(nx, ny, nz);
+
+                    if (closedSet.Contains(neighborKey))
+                        continue;
 
                     // Climb limit: avoid jumping onto rooftops / off cliffs.
-                    if (Math.Abs(nz - current.Z) > 12)
+                    if (Math.Abs(nz - current.Z) > MaxClimb)
                         continue;
 
                     var neighborPos = new Point3D(nx, ny, nz, mapIndex);
@@ -86,14 +92,11 @@ public sealed class Pathfinder
 
                     var neighbor = new PathNode(nx, ny, nz, newG, h);
 
-                    if (cameFrom.ContainsKey(neighborKey))
-                    {
-                        var existing = cameFrom[neighborKey];
-                        if (newG >= existing.G)
-                            continue;
-                    }
+                    if (gScore.TryGetValue(neighborKey, out int existingG) && newG >= existingG)
+                        continue;
 
                     cameFrom[neighborKey] = current;
+                    gScore[neighborKey] = newG;
                     openSet.Enqueue(neighbor, neighbor.F);
                 }
             }
@@ -138,23 +141,30 @@ public sealed class Pathfinder
     {
         int dx = Math.Abs(a.X - b.X);
         int dy = Math.Abs(a.Y - b.Y);
-        return 10 * (dx + dy) + (14 - 20) * Math.Min(dx, dy); // octile distance
+        int dz = Math.Abs(a.Z - b.Z);
+        return 10 * (dx + dy) + (14 - 20) * Math.Min(dx, dy) + dz; // octile distance + Z pressure
     }
 
-    private static long PackKey(short x, short y) =>
-        ((long)(ushort)x << 16) | (ushort)y;
+    private static long PackKey(short x, short y, sbyte z) =>
+        ((long)(ushort)x << 24) | ((long)(ushort)y << 8) | (byte)z;
 
-    private static List<Point3D> ReconstructPath(Dictionary<long, PathNode> cameFrom, PathNode current)
+    private static bool IsGoalReached(Point3D current, Point3D goal) =>
+        current.X == goal.X && current.Y == goal.Y && current.Map == goal.Map && Math.Abs(current.Z - goal.Z) <= MaxClimb;
+
+    private static bool IsGoalReached(PathNode current, Point3D goal) =>
+        current.X == goal.X && current.Y == goal.Y && Math.Abs(current.Z - goal.Z) <= MaxClimb;
+
+    private static List<Point3D> ReconstructPath(Dictionary<long, PathNode> cameFrom, PathNode current, byte mapIndex)
     {
         var path = new List<Point3D>();
         var node = current;
-        long key = PackKey(node.X, node.Y);
+        long key = PackKey(node.X, node.Y, node.Z);
 
         while (cameFrom.ContainsKey(key))
         {
-            path.Add(new Point3D(node.X, node.Y, node.Z, 0));
+            path.Add(new Point3D(node.X, node.Y, node.Z, mapIndex));
             node = cameFrom[key];
-            key = PackKey(node.X, node.Y);
+            key = PackKey(node.X, node.Y, node.Z);
         }
 
         path.Reverse();

@@ -39,6 +39,18 @@ public class PathfinderTests
     }
 
     [Fact]
+    public void FindPath_SameXYDifferentUnreachableZ_DoesNotTreatAsReached()
+    {
+        var (_, pf) = CreateWorld();
+        var start = new Point3D(100, 100, 0, 0);
+        var goal = new Point3D(100, 100, 20, 0);
+
+        var path = pf.FindPath(start, goal, 0);
+
+        Assert.Null(path);
+    }
+
+    [Fact]
     public void FindPath_ShortDistance_FindsPath()
     {
         var (_, pf) = CreateWorld();

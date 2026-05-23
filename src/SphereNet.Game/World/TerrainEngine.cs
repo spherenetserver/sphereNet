@@ -1,4 +1,5 @@
 using SphereNet.Core.Types;
+using SphereNet.MapData.Tiles;
 
 namespace SphereNet.Game.World;
 
@@ -92,11 +93,45 @@ public sealed class TerrainEngine
             short checkY = (short)Math.Round(cy);
             int checkZ = (int)Math.Round(cz);
 
-            var cell = _mapData.GetEffectiveZAndPassable(from.Map, checkX, checkY, 0, checkZ);
-            if (cell.EffectiveZ > checkZ || !cell.Passable)
+            if (HasLosOccluder(from.Map, checkX, checkY, checkZ))
                 return false;
         }
 
         return true;
     }
+
+    private bool HasLosOccluder(byte mapId, short x, short y, int rayZ)
+    {
+        if (_mapData == null)
+            return false;
+
+        var terrain = _mapData.GetTerrainTile(mapId, x, y);
+        if (terrain.Z > rayZ)
+            return true;
+
+        var staticBlock = _mapData.GetStaticBlock(mapId, x, y, out int offX, out int offY);
+        foreach (var s in staticBlock)
+        {
+            if (s.XOffset != offX || s.YOffset != offY)
+                continue;
+
+            var data = _mapData.GetItemTileData(s.TileId);
+            if (!BlocksLineOfSight(data))
+                continue;
+
+            int height = Math.Max(1, Math.Max(data.Height, data.CalcHeight));
+            int bottomZ = s.Z;
+            int topZ = bottomZ + height;
+            if (rayZ >= bottomZ && rayZ <= topZ)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool BlocksLineOfSight(ItemTileData data) =>
+        data.IsWall ||
+        data.IsImpassable ||
+        data.IsRoof ||
+        (data.Flags & TileFlag.NoShoot) != 0;
 }

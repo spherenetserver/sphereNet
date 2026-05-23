@@ -4,6 +4,34 @@
  All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-24] - Runtime deep parity: crypto, Z/LOS, loader guards
+              (Runtime deep parity: crypto, Z/LOS, loader guards)
+----------------------------------------
+
+NETWORK / NETWORK:
+  - CryptoState login/game-login detection artik tek pooled scratch buffer ile
+    deneme yapar; basarisiz denemelerde tekrar tekrar raw ToArray allocation yok.
+    Crypto detection uses one cleared pooled scratch buffer for failed attempts.
+
+GAME / GAME:
+  - Pathfinder A* state/closed/gScore anahtarlari X/Y/Z oldu; ayni X/Y farkli kat
+    hedefleri artik erken basari sayilmiyor, path sonucunda map korunuyor.
+    Pathfinder state is Z-aware and preserves map on reconstructed steps.
+  - TerrainEngine LOS, passability yerine static Z-span occlusion kontrolu yapar;
+    ray yuksekligi static Z..Z+Height araligini keserse engel sayilir.
+    LOS checks static Z spans instead of treating any roof above as blocking.
+  - GameWorld ReRegisterObject/ReIndexUuid duplicate SERIAL/UUID gorurse load/import
+    sirasinda sessiz overwrite yerine InvalidOperationException firlatir.
+    Duplicate serial/UUID load collisions now fail loudly.
+
+SCRIPT / SCRIPT:
+  - ScriptInterpreter ResolveArgs literal fast-path eklendi; '<...>' icermeyen arglar
+    expression parser/resolver delegate churn yaratmadan aynen doner.
+    Literal script args bypass parser setup; resolver state is restored with finally.
+
+TEST / TESTS:
+  - Pathfinder Z hedef regresyonu ve WorldLoader duplicate SERIAL/UUID testleri eklendi.
+
 NETWORK / NETWORK:
   - Gelen oyun paketleri icin Huffman decompress kaldirildi: UO client→server
     plaintext gonderir; yanlis decompress IndexOutOfRangeException crash yaratiyordu.

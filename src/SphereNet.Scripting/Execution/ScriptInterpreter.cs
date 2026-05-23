@@ -902,15 +902,22 @@ public sealed class ScriptInterpreter
     private string ResolveArgs(string arg, IScriptObj target, ITextConsole? source, ITriggerArgs? args, ScriptScope? scope = null)
     {
         if (string.IsNullOrEmpty(arg)) return "";
+        if (arg.IndexOf('<') < 0) return arg;
+
         // Set resolver to target object for <property> lookups
         var oldResolver = _expr.VariableResolver;
         var oldFunctionResolver = _expr.FunctionResolver;
-        _expr.VariableResolver = varName => ResolveVarForTarget(varName, target, source, args, scope);
-        _expr.FunctionResolver = expr => TryResolveFunctionExpression(expr, target, source, args, scope);
-        string result = _expr.EvaluateStr(arg);
-        _expr.VariableResolver = oldResolver;
-        _expr.FunctionResolver = oldFunctionResolver;
-        return result;
+        try
+        {
+            _expr.VariableResolver = varName => ResolveVarForTarget(varName, target, source, args, scope);
+            _expr.FunctionResolver = expr => TryResolveFunctionExpression(expr, target, source, args, scope);
+            return _expr.EvaluateStr(arg);
+        }
+        finally
+        {
+            _expr.VariableResolver = oldResolver;
+            _expr.FunctionResolver = oldFunctionResolver;
+        }
     }
 
     private long EvaluateWithResolver(string expr, IScriptObj target, ITextConsole? source, ITriggerArgs? args, ScriptScope? scope = null)

@@ -463,6 +463,71 @@ public class SaveFormatTests
         }
     }
 
+    [Fact]
+    public void WorldLoader_DuplicateSerial_Throws()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_dup_serial_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            using (var writer = SaveIO.OpenWriter(Path.Combine(tmp, "sphereworld.scp"), SaveFormat.Text))
+            {
+                writer.BeginRecord("WORLDITEM");
+                writer.WriteProperty("SERIAL", "040001000");
+                writer.WriteProperty("ID", "0EED");
+                writer.EndRecord();
+
+                writer.BeginRecord("WORLDITEM");
+                writer.WriteProperty("SERIAL", "040001000");
+                writer.WriteProperty("ID", "0EED");
+                writer.EndRecord();
+            }
+
+            var loader = new WorldLoader(LoggerFactory.Create(b => { }));
+            var dst = MakeWorld();
+
+            Assert.Throws<InvalidOperationException>(() => loader.Load(dst, tmp));
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void WorldLoader_DuplicateUuid_Throws()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_dup_uuid_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            string duplicateUuid = Guid.NewGuid().ToString("D");
+            using (var writer = SaveIO.OpenWriter(Path.Combine(tmp, "sphereworld.scp"), SaveFormat.Text))
+            {
+                writer.BeginRecord("WORLDITEM");
+                writer.WriteProperty("SERIAL", "040001000");
+                writer.WriteProperty("UUID", duplicateUuid);
+                writer.WriteProperty("ID", "0EED");
+                writer.EndRecord();
+
+                writer.BeginRecord("WORLDITEM");
+                writer.WriteProperty("SERIAL", "040001001");
+                writer.WriteProperty("UUID", duplicateUuid);
+                writer.WriteProperty("ID", "0EED");
+                writer.EndRecord();
+            }
+
+            var loader = new WorldLoader(LoggerFactory.Create(b => { }));
+            var dst = MakeWorld();
+
+            Assert.Throws<InvalidOperationException>(() => loader.Load(dst, tmp));
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
     [Theory]
     [InlineData(SaveFormat.Text)]
     [InlineData(SaveFormat.TextGz)]

@@ -325,6 +325,10 @@ public sealed class GameWorld
     /// </summary>
     public void ReRegisterObject(ObjBase obj, Serial oldUid, Serial newUid)
     {
+        if (_objects.TryGetValue(newUid.Value, out var existing) && !ReferenceEquals(existing, obj))
+            throw new InvalidOperationException(
+                $"Duplicate object serial 0x{newUid.Value:X8}: existing={existing.GetType().Name} new={obj.GetType().Name}");
+
         _objects.Remove(oldUid.Value);
         _uidTable.ReRegister(oldUid, newUid, obj);
         obj.SetUid(newUid);
@@ -346,6 +350,10 @@ public sealed class GameWorld
     /// <summary>Update the UUID index when an object's UUID changes (e.g. on load).</summary>
     public void ReIndexUuid(ObjBase obj, Guid oldUuid)
     {
+        if (_uuidIndex.TryGetValue(obj.Uuid, out var existing) && !ReferenceEquals(existing, obj))
+            throw new InvalidOperationException(
+                $"Duplicate object UUID {obj.Uuid}: existing=0x{existing.Uid.Value:X8} new=0x{obj.Uid.Value:X8}");
+
         _uuidIndex.Remove(oldUuid);
         _uuidIndex[obj.Uuid] = obj;
     }

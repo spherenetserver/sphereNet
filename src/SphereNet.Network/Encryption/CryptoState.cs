@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
@@ -70,6 +71,8 @@ public sealed class CryptoState
     public byte[]? DetectAndDecryptLogin(uint seed, ReadOnlySpan<byte> rawData, CryptConfig cryptConfig, bool useCrypt, bool useNoCrypt)
     {
         _seed = seed;
+        if (rawData.IsEmpty)
+            return null;
 
         if (useNoCrypt)
         {
@@ -84,28 +87,36 @@ public sealed class CryptoState
         if (!useCrypt)
             return null;
 
-        foreach (var clientKey in cryptConfig.Keys)
+        byte[] scratch = ArrayPool<byte>.Shared.Rent(rawData.Length);
+        try
         {
-            var testCrypt = new LoginEncryption(seed, clientKey.Key1, clientKey.Key2);
-            byte[] testBuf = rawData.ToArray();
-            testCrypt.Decrypt(testBuf, 0, testBuf.Length);
-
-            if (testBuf[0] == 0x80 && testBuf.Length >= 62 && testBuf[30] == 0x00 && testBuf[60] == 0x00)
+            foreach (var clientKey in cryptConfig.Keys)
             {
-                bool valid = true;
-                for (int i = 21; i <= 30 && valid; i++)
-                    valid = testBuf[i] == 0x00 && testBuf[i + 30] == 0x00;
+                rawData.CopyTo(scratch);
+                var testCrypt = new LoginEncryption(seed, clientKey.Key1, clientKey.Key2);
+                testCrypt.Decrypt(scratch, 0, rawData.Length);
 
-                if (valid)
+                if (scratch[0] == 0x80 && rawData.Length >= 62 && scratch[30] == 0x00 && scratch[60] == 0x00)
                 {
-                    _key1 = clientKey.Key1;
-                    _key2 = clientKey.Key2;
-                    _encType = clientKey.EncType;
-                    _loginCrypt = testCrypt;
-                    _initialized = true;
-                    return testBuf;
+                    bool valid = true;
+                    for (int i = 21; i <= 30 && valid; i++)
+                        valid = scratch[i] == 0x00 && scratch[i + 30] == 0x00;
+
+                    if (valid)
+                    {
+                        _key1 = clientKey.Key1;
+                        _key2 = clientKey.Key2;
+                        _encType = clientKey.EncType;
+                        _loginCrypt = testCrypt;
+                        _initialized = true;
+                        return scratch.AsSpan(0, rawData.Length).ToArray();
+                    }
                 }
             }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(scratch, clearArray: true);
         }
 
         if (rawData[0] == 0x80 && rawData.Length >= 62)
@@ -171,6 +182,8 @@ public sealed class CryptoState
         CryptConfig cryptConfig, bool useCrypt, bool useNoCrypt)
     {
         _seed = newSeed;
+        if (rawData.IsEmpty)
+            return null;
 
         // 1) ENC_NONE — check unencrypted
         if (useNoCrypt)
@@ -186,6 +199,10 @@ public sealed class CryptoState
         if (!useCrypt)
             return null;
 
+        byte[] scratch = ArrayPool<byte>.Shared.Rent(rawData.Length);
+        try
+        {
+
         // 2) RelayGameCryptStart — exact port of Source-X CCrypto::RelayGameCryptStart.
         if (TryGetRelayKeys(newSeed, out uint relayKey1, out uint relayKey2, out uint relayVer))
         {
@@ -200,7 +217,7 @@ public sealed class CryptoState
 
             for (int encTry = 0; encTry <= 3; encTry++)
             {
-                byte[] testBuf = rawData.ToArray();
+                rawData.CopyTo(scratch);
                 TwofishGameEncryption? thisTf = null;
                 BlowfishGameEncryption? thisBf = null;
 
@@ -210,26 +227,26 @@ public sealed class CryptoState
                         break;
                     case 1: // ENC_BFISH — Blowfish only (1.26.x – 2.0.0)
                         thisBf = new BlowfishGameEncryption(derivedSeed);
-                        thisBf.Decrypt(testBuf, 0, testBuf.Length);
+                        thisBf.Decrypt(scratch, 0, rawData.Length);
                         break;
                     case 2: // ENC_BTFISH — Twofish then Blowfish (2.0.0x – 2.0.3)
                         thisTf = new TwofishGameEncryption(derivedSeed);
                         thisBf = new BlowfishGameEncryption(derivedSeed);
-                        thisTf.Decrypt(testBuf, 0, testBuf.Length);
-                        thisBf.Decrypt(testBuf, 0, testBuf.Length);
+                        thisTf.Decrypt(scratch, 0, rawData.Length);
+                        thisBf.Decrypt(scratch, 0, rawData.Length);
                         break;
                     case 3: // ENC_TFISH — Twofish only (3.0.0+)
                         thisTf = new TwofishGameEncryption(derivedSeed);
-                        thisTf.Decrypt(testBuf, 0, testBuf.Length);
+                        thisTf.Decrypt(scratch, 0, rawData.Length);
                         break;
                 }
 
-                if (testBuf[0] == 0x91)
+                if (scratch[0] == 0x91)
                 {
                     var loginDecrypt = new LoginEncryption(0, relayKey1, relayKey2, maskLo: 0, maskHi: 0);
-                    loginDecrypt.Decrypt(testBuf, 0, testBuf.Length);
+                    loginDecrypt.Decrypt(scratch, 0, rawData.Length);
 
-                    if (testBuf[0] == 0x91 && testBuf.Length >= 65 && testBuf[34] == 0x00 && testBuf[64] == 0x00)
+                    if (scratch[0] == 0x91 && rawData.Length >= 65 && scratch[34] == 0x00 && scratch[64] == 0x00)
                     {
                         _key1 = relayKey1;
                         _key2 = relayKey2;
@@ -239,7 +256,7 @@ public sealed class CryptoState
                         _md5Encrypt = thisTf != null ? new Md5GameEncryption(thisTf.Md5Digest) : null;
                         _loginCrypt = null;
                         _initialized = true;
-                        return testBuf;
+                        return scratch.AsSpan(0, rawData.Length).ToArray();
                     }
                 }
             }
@@ -248,17 +265,17 @@ public sealed class CryptoState
         // 3) Fallback: GameCryptStart — seed-only Twofish (no relay keys available)
         {
             var testTf = new TwofishGameEncryption(newSeed);
-            byte[] testBuf = rawData.ToArray();
-            testTf.Decrypt(testBuf, 0, testBuf.Length);
+            rawData.CopyTo(scratch);
+            testTf.Decrypt(scratch, 0, rawData.Length);
 
-            if (testBuf[0] == 0x91 && testBuf.Length >= 65 && testBuf[34] == 0x00 && testBuf[64] == 0x00)
+            if (scratch[0] == 0x91 && rawData.Length >= 65 && scratch[34] == 0x00 && scratch[64] == 0x00)
             {
                 _encType = EncryptionType.Twofish;
                 _loginCrypt = null;
                 _twofishCrypt = testTf;
                 _md5Encrypt = new Md5GameEncryption(testTf.Md5Digest);
                 _initialized = true;
-                return testBuf;
+                return scratch.AsSpan(0, rawData.Length).ToArray();
             }
         }
 
@@ -268,11 +285,11 @@ public sealed class CryptoState
             if (clientKey.EncType != EncryptionType.Login)
                 continue;
 
+            rawData.CopyTo(scratch);
             var testCrypt = new LoginEncryption(newSeed, clientKey.Key1, clientKey.Key2);
-            byte[] testBuf = rawData.ToArray();
-            testCrypt.Decrypt(testBuf, 0, testBuf.Length);
+            testCrypt.Decrypt(scratch, 0, rawData.Length);
 
-            if (testBuf[0] == 0x91 && testBuf.Length >= 65 && testBuf[34] == 0x00 && testBuf[64] == 0x00)
+            if (scratch[0] == 0x91 && rawData.Length >= 65 && scratch[34] == 0x00 && scratch[64] == 0x00)
             {
                 _key1 = clientKey.Key1;
                 _key2 = clientKey.Key2;
@@ -280,8 +297,13 @@ public sealed class CryptoState
                 _loginCrypt = testCrypt;
                 _twofishCrypt = null;
                 _initialized = true;
-                return testBuf;
+                return scratch.AsSpan(0, rawData.Length).ToArray();
             }
+        }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(scratch, clearArray: true);
         }
 
         if (rawData[0] == 0x91 && rawData.Length >= 65)

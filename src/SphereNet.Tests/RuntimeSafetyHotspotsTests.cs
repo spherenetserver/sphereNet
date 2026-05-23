@@ -1,5 +1,6 @@
 using System.Reflection;
 using Microsoft.Extensions.Logging;
+using SphereNet.Core.Configuration;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Network.State;
@@ -41,6 +42,36 @@ public class RuntimeSafetyHotspotsTests
         method.Invoke(manager, [state, (byte)0xBF, 4096]);
 
         Assert.True(state.IsClosing);
+    }
+
+    [Fact]
+    public void NetworkManager_PartialCryptoInit_WaitsForMoreData()
+    {
+        using var loggerFactory = TestHarness.CreateLoggerFactory();
+        var config = new CryptConfig();
+        var keys = (List<CryptoClientKey>)typeof(CryptConfig)
+            .GetField("_keys", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(config)!;
+        keys.Add(new CryptoClientKey(70000000, 0x11111111, 0x22222222, SphereNet.Core.Enums.EncryptionType.Login));
+
+        var manager = new SphereNet.Network.Manager.NetworkManager(1, loggerFactory)
+        {
+            CryptConfig = config
+        };
+        var state = TestHarness.CreateActiveNetState(loggerFactory, 2);
+        state.IsSeeded = true;
+
+        state.InjectReceived(new byte[10]);
+
+        var method = typeof(SphereNet.Network.Manager.NetworkManager).GetMethod(
+            "ProcessInput",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        method.Invoke(manager, [state]);
+
+        Assert.False(state.IsClosing);
+        Assert.Equal(0x80, state.PendingPacketOpcode);
+        Assert.Equal(62, state.PendingPacketLength);
     }
 
     [Fact]

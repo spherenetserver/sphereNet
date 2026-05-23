@@ -12,6 +12,10 @@ NETWORK / NETWORK:
   - CryptoState login/game-login detection artik tek pooled scratch buffer ile
     deneme yapar; basarisiz denemelerde tekrar tekrar raw ToArray allocation yok.
     Crypto detection uses one cleared pooled scratch buffer for failed attempts.
+  - Seed sonrasi ilk login/game-login paketi TCP fragment olarak 62 byte'tan kisa
+    gelirse crypto detection baglantiyi kapatmak yerine partial packet timeout'a
+    birakir.
+    Partial first login packets now wait for reassembly before crypto detection.
 
 GAME / GAME:
   - Pathfinder A* state/closed/gScore anahtarlari X/Y/Z oldu; ayni X/Y farkli kat
@@ -23,6 +27,12 @@ GAME / GAME:
   - GameWorld ReRegisterObject/ReIndexUuid duplicate SERIAL/UUID gorurse load/import
     sirasinda sessiz overwrite yerine InvalidOperationException firlatir.
     Duplicate serial/UUID load collisions now fail loudly.
+  - WalkCheck, script/load ile sadece ana multi item'i olan ev/gemi icin multi.mul
+    componentlerini tile basina virtual movement geometry olarak hesaba katar.
+    WalkCheck includes virtual multi components for collision/Z checks.
+  - TimerWheel Remove artik 256 slot icinde List.Remove aramasi yapmaz; hash'ten
+    cikarma sonrasi slot temizligi lazy olarak Advance sirasinda olur.
+    TimerWheel removal is lazy and avoids O(slot * list) scans.
 
 SCRIPT / SCRIPT:
   - ScriptInterpreter ResolveArgs literal fast-path eklendi; '<...>' icermeyen arglar
@@ -30,7 +40,8 @@ SCRIPT / SCRIPT:
     Literal script args bypass parser setup; resolver state is restored with finally.
 
 TEST / TESTS:
-  - Pathfinder Z hedef regresyonu ve WorldLoader duplicate SERIAL/UUID testleri eklendi.
+  - Pathfinder Z hedef regresyonu, WorldLoader duplicate SERIAL/UUID ve partial
+    crypto init reassembly testleri eklendi.
 
 NETWORK / NETWORK:
   - Gelen oyun paketleri icin Huffman decompress kaldirildi: UO client→server

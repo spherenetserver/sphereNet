@@ -70,9 +70,11 @@ public sealed class TimerWheel
             var slot = _slots[_currentSlot];
             foreach (var npc in slot)
             {
+                if (!_scheduled.Remove(npc.Uid.Value))
+                    continue;
+
                 if (!npc.IsDeleted && !npc.IsPlayer)
                     _advanceResult.Add(npc);
-                _scheduled.Remove(npc.Uid.Value);
             }
             slot.Clear();
 
@@ -87,11 +89,7 @@ public sealed class TimerWheel
     /// <summary>Remove an NPC from the wheel (e.g. on delete).</summary>
     public void Remove(Character npc)
     {
-        if (!_scheduled.Remove(npc.Uid.Value))
-            return;
-
-        foreach (var slot in _slots)
-            slot.Remove(npc);
+        _scheduled.Remove(npc.Uid.Value);
     }
 
     /// <summary>Number of NPCs currently scheduled.</summary>

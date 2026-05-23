@@ -411,6 +411,12 @@ public sealed class NetworkManager : IDisposable
 
         if (config == null || config.Keys.Count == 0)
         {
+            if (data.Length < 62)
+            {
+                MarkOrDropPartialPacket(state, 0x80, 62);
+                return false;
+            }
+
             // No crypt config loaded — assume plaintext
             state.Crypto.Reset();
             // Mark as initialized with no encryption via a direct approach
@@ -436,6 +442,12 @@ public sealed class NetworkManager : IDisposable
 
         // Try game login first (65 bytes) — if we try login (62 bytes) first on 65-byte data,
         // it might falsely match and corrupt the crypto state.
+        if (data.Length < 62)
+        {
+            MarkOrDropPartialPacket(state, 0x80, 62);
+            return false;
+        }
+
         bool isGameLogin = data.Length >= 65;
         bool isLoginPacket = data.Length >= 62 && !isGameLogin;
 

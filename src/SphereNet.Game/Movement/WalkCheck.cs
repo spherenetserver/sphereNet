@@ -544,8 +544,55 @@ public sealed class WalkCheck
             if (item.X != x || item.Y != y) continue;
             list.Add(item);
         }
+        AddVirtualMultiComponents(mapId, x, y, list);
         return list;
     }
+
+    private void AddVirtualMultiComponents(int mapId, int x, int y, List<Item> list)
+    {
+        var md = _world.MapData;
+        if (md == null)
+            return;
+
+        var pivot = new Point3D((short)x, (short)y, 0, (byte)mapId);
+        foreach (var multi in _world.GetItemsInRange(pivot, 32))
+        {
+            if (multi.IsDeleted || multi.IsEquipped || !multi.IsOnGround)
+                continue;
+            if (multi.ItemType is not (ItemType.Multi or ItemType.MultiCustom or ItemType.MultiAddon or ItemType.Ship))
+                continue;
+
+            var def = md.GetMulti(multi.BaseId);
+            if (def == null)
+                continue;
+
+            foreach (var comp in def.Components)
+            {
+                if (!comp.IsVisible)
+                    continue;
+
+                int compX = multi.X + comp.XOffset;
+                int compY = multi.Y + comp.YOffset;
+                if (compX != x || compY != y)
+                    continue;
+
+                var componentData = md.GetItemTileData(comp.TileId);
+                if (!ShouldTreatAsVirtualMultiGeometry(componentData))
+                    continue;
+
+                var virtualItem = new Item
+                {
+                    BaseId = comp.TileId,
+                    ItemType = ItemType.MultiAddon,
+                    Position = new Point3D((short)x, (short)y, (sbyte)(multi.Z + comp.ZOffset), (byte)mapId)
+                };
+                list.Add(virtualItem);
+            }
+        }
+    }
+
+    private static bool ShouldTreatAsVirtualMultiGeometry(ItemTileData data) =>
+        data.IsSurface || data.IsBridge || data.IsImpassable;
 
     private List<Character> CollectMobiles(int mapId, int x, int y, Character mover)
     {

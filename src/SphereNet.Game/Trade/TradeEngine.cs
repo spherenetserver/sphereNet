@@ -354,4 +354,73 @@ public sealed class TradeManager
     public SecureTrade? FindTradeFor(Character ch) =>
         _activeTrades.Values.FirstOrDefault(t =>
             !t.IsCompleted && (t.Initiator == ch || t.Partner == ch));
+
+    /// <summary>Return all trade-container items to their owners' backpacks.</summary>
+    public static void ReturnTradeItems(GameWorld world, SecureTrade trade)
+    {
+        ReturnContainerItems(world, trade.Initiator, trade.InitiatorContainer);
+        ReturnContainerItems(world, trade.Partner, trade.PartnerContainer);
+    }
+
+    private static void ReturnContainerItems(GameWorld world, Character owner, Item container)
+    {
+        foreach (var item in container.Contents.ToList())
+        {
+            container.RemoveItem(item);
+            ReturnItemToCharacter(world, owner, item);
+        }
+    }
+
+    /// <summary>Move one item into the character backpack (or feet if no pack).</summary>
+    public static void ReturnItemToCharacter(GameWorld world, Character owner, Item item)
+    {
+        var pack = EnsureBackpack(world, owner);
+        if (pack != null)
+        {
+            pack.AddItem(item);
+            item.Position = new Point3D(0, 0, 0, owner.MapIndex);
+            return;
+        }
+
+        world.PlaceItem(item, owner.Position);
+    }
+
+    private static Item? EnsureBackpack(GameWorld world, Character ch)
+    {
+        if (!ch.IsPlayer)
+            return ch.Backpack;
+
+        Item? pack = ch.GetEquippedItem(Core.Enums.Layer.Pack) ?? ch.Backpack;
+        if (pack == null || pack.IsDeleted || world.FindItem(pack.Uid) == null)
+        {
+            pack = world.CreateItem();
+            pack.BaseId = 0x0E75;
+            pack.ItemType = Core.Enums.ItemType.Container;
+            pack.Name = "Backpack";
+        }
+
+        ch.Backpack = pack;
+        ch.Equip(pack, Core.Enums.Layer.Pack);
+        return pack;
+    }
+
+    /// <summary>Sum incoming trade weight against recipient carry capacity.</summary>
+    public static bool CanAcceptTradeItems(Character recipient, GameWorld world, Item sourceContainer,
+        out string? reason)
+    {
+        reason = null;
+        int maxWeight = (recipient.Str * 7 / 2) + 40 + recipient.ModMaxWeight;
+        int current = recipient.GetTotalWeight();
+        int incoming = 0;
+        foreach (var item in sourceContainer.Contents)
+            incoming += Math.Max(1, item.Weight) * Math.Max(1, (int)item.Amount);
+
+        if (current + incoming > maxWeight)
+        {
+            reason = "You cannot carry that much.";
+            return false;
+        }
+
+        return true;
+    }
 }

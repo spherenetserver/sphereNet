@@ -4,6 +4,56 @@
  All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-23] - Deferred parity: opcodes, f_onitem, housing, viewport
+              (Deferred parity: opcodes, f_onitem, housing, viewport)
+----------------------------------------
+
+NETWORK / NETWORK:
+  - 0xF0 New Movement Request handler (0x02 alias + ModernUO step format).
+    0xF0 incoming handler routes movement and ignores ClassicUO extensions.
+  - 0xF6 PacketBoatSmoothMove outgoing; ShipEngine.OnShipMoved broadcast.
+    Smooth boat move packet broadcast on ship movement.
+
+SCRIPT / SCRIPT:
+  - f_onitem_* global dispatch (TriggerDispatcher parity with f_onchar_*).
+    Generic f_onitem_* global function dispatch added.
+
+HOUSING / HOUSING:
+  - MaxHousesAccount config wired in HousingEngine.PlaceHouse.
+    Account-wide house limit enforced via ResolveAccountForChar.
+
+CLIENT / CLIENT:
+  - 0xBF sub 0x0005 and 0x001C viewport handlers -> Character.SetScreenSize.
+    Screen size extended commands update cached viewport dimensions.
+
+TEST / TESTS:
+  - DeferredParityTests: 0xF0, 0xF6, f_onitem, MaxHousesAccount, viewport.
+
+[2026-05-23] - Audit remediation: trade, network, NPC triggers
+              (Audit remediation: trade, network, NPC triggers)
+----------------------------------------
+
+TRADE / TRADE:
+  - Disconnect sirasinda secure trade iptali: esyalar sahiplerine iade, partner
+    bildirimi, container temizligi. TradeSafetyTests eklendi.
+    Secure trade abort on disconnect returns items and notifies partner.
+  - Trade tamamlama agirlik (carry capacity) kontrolu; basarisizda accept reset.
+    Trade completion validates recipient weight; failed complete resets accept.
+
+NETWORK / NETWORK:
+  - Gelen oyun paketleri icin Huffman decompress (game connection, decrypt sonrasi).
+    Inbound Huffman decompress on game connections after decrypt.
+  - EncryptionTests: client compress → server decompress roundtrip.
+
+NPC / AI:
+  - @NPCActWander, @NPCActFollow, @NPCActCast, @NPCLookAtItem Program.cs'te
+    TriggerDispatcher'a baglandi.
+    NPC AI script triggers wired for wander/follow/cast/look-at-item.
+
+TEST / TESTS:
+  - GlobalConfigSerialCollection: MagicFlags paralel test flakiness azaltildi.
+    GlobalConfigSerialCollection reduces MagicFlags parallel test flakiness.
+
 [2026-05-23] - Savas, i_memory ve skill/magery parity duzeltmeleri
               (Combat, i_memory, and skill/magery parity fixes)
 ----------------------------------------
@@ -55,6 +105,8 @@ TEST / TESTS:
     CombatHelperTests cover range, safe region, shield+bow, and reveal behavior.
   - EngineTagsTests: script TAG yazim engeli, save strip, item HITS alan migrasyonu.
     EngineTagsTests: script TAG write block, save strip, item HITS field migration.
+  - RuntimeStateParityTests: STATLOCK, cast/skill state, rune MoreP migrasyonu.
+    RuntimeStateParityTests: STATLOCK, cast/skill state, rune MoreP migration.
 
 TAG / RUNTIME STATE:
   - EngineTags: motor icin gecici tag denylist (SPELL_*, SKILL_PENDING_*, bolge,
@@ -68,6 +120,12 @@ TAG / RUNTIME STATE:
     @SkillStart ACTDIFF now read from Character.ActDiff field.
   - Legacy StealthSteps tag yerine StepStealth alani kullaniliyor.
     Legacy StealthSteps tag replaced by StepStealth field.
+  - STATLOCK native byte[3] alanlari; SkillLock parity; legacy TAG migrasyonu.
+    STATLOCK native byte[3] fields; SkillLock parity; legacy TAG migration.
+  - Recall rune konumu Item.MoreP alaninda; legacy RUNE_* tag migrasyonu.
+    Recall rune location stored in Item.MoreP; legacy RUNE_* tag migration.
+  - Buyu/skill runtime state Character alanlarinda (cast timer, pending skill).
+    Spell/skill runtime state moved to Character fields (cast timer, pending skill).
 
 [2026-05-22] - Kapsamli hata taramasi ve duzeltme (Comprehensive bug audit and fixes)
 ----------------------------------------

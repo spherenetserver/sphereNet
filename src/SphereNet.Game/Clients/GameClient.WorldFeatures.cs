@@ -287,10 +287,55 @@ public sealed partial class GameClient
                 SendTradeUpdateToBoth(trade);
 
                 if (bothAccepted)
-                    CompleteTrade(trade);
+                {
+                    if (!TryCompleteTrade(trade))
+                    {
+                        trade.ResetAcceptance();
+                        SendTradeUpdateToBoth(trade);
+                    }
+                    else
+                        return;
+                }
                 break;
             }
         }
+    }
+
+    /// <summary>Cancel active trade on disconnect — return items, notify partner.</summary>
+    internal void AbortActiveTradeOnDisconnect()
+    {
+        if (_character == null || _tradeManager == null) return;
+
+        var trade = _tradeManager.FindTradeFor(_character);
+        if (trade == null) return;
+
+        var partner = trade.GetPartner(_character);
+        FinalizeTradeCancel(trade, partner, sendSelfClose: false);
+    }
+
+    private bool TryCompleteTrade(SecureTrade trade)
+    {
+        var initiator = trade.Initiator;
+        var partner = trade.Partner;
+
+        if (!TradeManager.CanAcceptTradeItems(partner, _world, trade.InitiatorContainer, out string? reason))
+        {
+            SysMessage(reason ?? "Trade failed.");
+            SendTradeMessageToPartner?.Invoke(partner, reason ?? "Trade failed.");
+            SendTradeUpdateToBoth(trade);
+            return false;
+        }
+
+        if (!TradeManager.CanAcceptTradeItems(initiator, _world, trade.PartnerContainer, out reason))
+        {
+            SysMessage(reason ?? "Trade failed.");
+            SendTradeMessageToPartner?.Invoke(partner, "Your partner cannot carry that much.");
+            SendTradeUpdateToBoth(trade);
+            return false;
+        }
+
+        CompleteTrade(trade);
+        return true;
     }
 
     public void InitiateTrade(Character partner, Item? firstItem = null)
@@ -338,25 +383,31 @@ public sealed partial class GameClient
     private void CancelTrade(SecureTrade trade)
     {
         var partner = trade.GetPartner(_character!);
-        var myCont = trade.GetOwnContainer(_character!);
-        var theirCont = trade.GetPartnerContainer(_character!);
+        FinalizeTradeCancel(trade, partner, sendSelfClose: true);
+    }
 
-        foreach (var item in _world.GetContainerContents(myCont.Uid).ToList())
-            PlaceItemInPack(_character!, item);
-        foreach (var item in _world.GetContainerContents(theirCont.Uid).ToList())
-            PlaceItemInPack(partner, item);
+    private void FinalizeTradeCancel(SecureTrade trade, Character partner, bool sendSelfClose)
+    {
+        if (_character == null || _tradeManager == null) return;
 
-        _netState.Send(new PacketSecureTradeClose(myCont.Uid.Value));
-        SendTradeCloseToPartner?.Invoke(partner, theirCont.Uid.Value);
+        TradeManager.ReturnTradeItems(_world, trade);
 
-        FireTradeTrigger(_character!, CharTrigger.TradeClose, trade, partner);
-        FireTradeTrigger(partner, CharTrigger.TradeClose, trade, _character!);
+        if (sendSelfClose)
+        {
+            var myCont = trade.GetOwnContainer(_character);
+            _netState.Send(new PacketSecureTradeClose(myCont.Uid.Value));
+        }
+
+        SendTradeCloseToPartner?.Invoke(partner, trade.GetPartnerContainer(_character).Uid.Value);
+
+        FireTradeTrigger(_character, CharTrigger.TradeClose, trade, partner);
+        FireTradeTrigger(partner, CharTrigger.TradeClose, trade, _character);
 
         trade.Cancel();
-        _tradeManager!.EndTrade(trade);
+        _tradeManager.EndTrade(trade);
 
-        myCont.Delete();
-        theirCont.Delete();
+        trade.InitiatorContainer.Delete();
+        trade.PartnerContainer.Delete();
     }
 
     private void CompleteTrade(SecureTrade trade)
@@ -366,10 +417,10 @@ public sealed partial class GameClient
         var cont1 = trade.InitiatorContainer;
         var cont2 = trade.PartnerContainer;
 
-        foreach (var item in _world.GetContainerContents(cont1.Uid).ToList())
-            PlaceItemInPack(partner, item);
-        foreach (var item in _world.GetContainerContents(cont2.Uid).ToList())
-            PlaceItemInPack(initiator, item);
+        foreach (var item in cont1.Contents.ToList())
+            TradeManager.ReturnItemToCharacter(_world, partner, item);
+        foreach (var item in cont2.Contents.ToList())
+            TradeManager.ReturnItemToCharacter(_world, initiator, item);
 
         _netState.Send(new PacketSecureTradeClose(
             trade.GetOwnContainer(_character!).Uid.Value));
@@ -1070,7 +1121,7 @@ public sealed partial class GameClient
                     byte stat = data[0];
                     byte lockVal = data[1];
                     // stat: 0=str, 1=dex, 2=int — store as tags
-                    _character.SetTag($"STATLOCK.{stat}", lockVal.ToString());
+                    _character.SetStatLock(stat, lockVal);
                 }
                 break;
             case 0x0013: // context menu request
@@ -1091,6 +1142,22 @@ public sealed partial class GameClient
             case 0x0006: // party commands
                 if (data.Length >= 1)
                     HandlePartyCommand(data);
+                break;
+            case 0x0005: // screen size (ServUO / POL sub 5)
+                if (data.Length >= 8 && _character != null)
+                {
+                    ushort width = (ushort)((data[4] << 8) | data[5]);
+                    ushort height = (ushort)((data[6] << 8) | data[7]);
+                    _character.SetScreenSize(width, height);
+                }
+                break;
+            case 0x001C: // viewport size (alternate client report)
+                if (data.Length >= 4 && _character != null)
+                {
+                    ushort width = (ushort)((data[0] << 8) | data[1]);
+                    ushort height = (ushort)((data[2] << 8) | data[3]);
+                    _character.SetScreenSize(width, height);
+                }
                 break;
             case 0x0024: // unknown / unused in most clients
                 break;

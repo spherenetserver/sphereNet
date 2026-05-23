@@ -168,6 +168,13 @@ public class EncryptionTests
     }
 
     [Fact]
+    public void Huffman_Decompress_EmptyInput_ReturnsEmpty()
+    {
+        var result = HuffmanCompression.Decompress([], 0, 0);
+        Assert.Empty(result);
+    }
+
+    [Fact]
     public void Huffman_ServerCompress_DecompressFromServer_RoundTrips()
     {
         byte[] packet =

@@ -11,6 +11,7 @@ using SphereNet.Game.World.Regions;
 
 namespace SphereNet.Tests;
 
+[Collection("GlobalConfigSerial")]
 public class SkillMagicPhase4Tests
 {
     private static GameWorld CreateWorld()
@@ -74,10 +75,7 @@ public class SkillMagicPhase4Tests
             world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));
 
             var rune = world.CreateItem();
-            rune.SetTag("RUNE_X", "200");
-            rune.SetTag("RUNE_Y", "210");
-            rune.SetTag("RUNE_Z", "5");
-            rune.SetTag("RUNE_MAP", "0");
+            rune.SetRuneMark(new Point3D(200, 210, 5, 0));
             world.PlaceItem(rune, new Point3D(101, 100, 0, 0));
 
             var engine = new SpellEngine(world, registry);

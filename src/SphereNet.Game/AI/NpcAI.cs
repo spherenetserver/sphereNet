@@ -75,6 +75,10 @@ public sealed class NpcAI
 
     public Func<Character, Character, bool>? OnNpcActFight { get; set; }
     public Func<Character, Character, bool>? OnNpcLookAtChar { get; set; }
+    public Func<Character, bool>? OnNpcActWander { get; set; }
+    public Func<Character, Character, bool>? OnNpcActFollow { get; set; }
+    public Func<Character, Character, SpellType, bool>? OnNpcActCast { get; set; }
+    public Func<Character, Item, bool>? OnNpcLookAtItem { get; set; }
 
     public void PurgeStalePaths()
     {
@@ -117,10 +121,10 @@ public sealed class NpcAI
 
         long now = Environment.TickCount64;
 
-        if (npc.TryGetTag("SPELL_CASTING", out _))
+        if (npc.IsCasting)
         {
             OnNpcTickSpellCast?.Invoke(npc);
-            if (npc.TryGetTag("SPELL_CASTING", out _))
+            if (npc.IsCasting)
             {
                 npc.NextNpcActionTime = now + 250;
                 return;
@@ -753,7 +757,7 @@ public sealed class NpcAI
             && _world.CanSeeLOS(npc.Position, target.Position))
         {
             var spell = ChooseBestSpell(npc, target, dist);
-            if (spell != SpellType.None)
+            if (spell != SpellType.None && !TryNpcCastSpell(npc, target, spell))
                 OnNpcCastSpell?.Invoke(npc, target, spell);
         }
 
@@ -763,11 +767,13 @@ public sealed class NpcAI
         {
             if (npc.NpcSpells.Contains(SpellType.GreaterHeal))
             {
-                OnNpcCastSpell?.Invoke(npc, npc, SpellType.GreaterHeal);
+                if (!TryNpcCastSpell(npc, npc, SpellType.GreaterHeal))
+                    OnNpcCastSpell?.Invoke(npc, npc, SpellType.GreaterHeal);
             }
             else if (npc.NpcSpells.Contains(SpellType.Heal))
             {
-                OnNpcCastSpell?.Invoke(npc, npc, SpellType.Heal);
+                if (!TryNpcCastSpell(npc, npc, SpellType.Heal))
+                    OnNpcCastSpell?.Invoke(npc, npc, SpellType.Heal);
             }
         }
 
@@ -872,9 +878,15 @@ public sealed class NpcAI
         if (spell == SpellType.None)
             return false;
 
+        if (TryNpcCastSpell(npc, target, spell))
+            return true;
+
         OnNpcCastSpell?.Invoke(npc, target, spell);
         return true;
     }
+
+    private bool TryNpcCastSpell(Character npc, Character target, SpellType spell) =>
+        OnNpcActCast?.Invoke(npc, target, spell) == true;
 
     /// <summary>
     /// Intelligent spell selection. Priority:
@@ -1272,9 +1284,22 @@ public sealed class NpcAI
     private void ActHuman(Character npc)
     {
         CheckWitnessCrime(npc);
+        LookAtNearbyItems(npc);
 
         if (_rand.Next(100) < 10)
             WanderHome(npc);
+    }
+
+    private void LookAtNearbyItems(Character npc)
+    {
+        if (OnNpcLookAtItem == null || _rand.Next(8) != 0) return;
+
+        foreach (var item in _world.GetItemsInRange(npc.Position, 3))
+        {
+            if (item.IsDeleted || item.ContainedIn.IsValid) continue;
+            if (OnNpcLookAtItem.Invoke(npc, item))
+                return;
+        }
     }
 
     /// <summary>
@@ -1335,6 +1360,8 @@ public sealed class NpcAI
             case PetAIMode.Come:
             {
                 Character followTarget = ResolvePetTargetCharacter(npc, "FOLLOW_TARGET") ?? master;
+                if (OnNpcActFollow?.Invoke(npc, followTarget) == true)
+                    break;
                 if (npc.MapIndex != followTarget.MapIndex)
                 {
                     _world.MoveCharacter(npc, followTarget.Position);
@@ -1488,10 +1515,10 @@ public sealed class NpcAI
             npc.NextAttackTime = now + 500;
             return;
         }
-        if (npc.TryGetTag("SPELL_CASTING", out _))
+        if (npc.IsCasting)
         {
             OnNpcTickSpellCast?.Invoke(npc);
-            if (npc.TryGetTag("SPELL_CASTING", out _))
+            if (npc.IsCasting)
             {
                 npc.NextAttackTime = now + 250;
                 return;
@@ -1613,6 +1640,9 @@ public sealed class NpcAI
 
     private void Wander(Character npc)
     {
+        if (OnNpcActWander?.Invoke(npc) == true)
+            return;
+
         int dx = _rand.Next(-1, 2);
         int dy = _rand.Next(-1, 2);
         if (dx == 0 && dy == 0) return;

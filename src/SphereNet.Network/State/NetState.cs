@@ -148,6 +148,9 @@ public sealed class NetState : IDisposable
         }
     }
 
+    /// <summary>When true, received game packets are Huffman-decompressed after decrypt.</summary>
+    public bool HuffmanReceiveEnabled { get; set; } = true;
+
     public ReadOnlySpan<byte> ReceivedData => _recvBuffer.AsSpan(0, _recvLength);
 
     public void ConsumeReceived(int count)
@@ -188,6 +191,21 @@ public sealed class NetState : IDisposable
     public void ReplaceReceivedRange(int offset, byte[] data, int length)
     {
         Buffer.BlockCopy(data, 0, _recvBuffer, offset, length);
+    }
+
+    /// <summary>Replace the entire receive buffer (e.g. after Huffman decompress).</summary>
+    public void ReplaceAllReceived(byte[] data, int length)
+    {
+        if (length > _recvBuffer.Length)
+        {
+            MarkClosing();
+            return;
+        }
+
+        if (length > 0)
+            Buffer.BlockCopy(data, 0, _recvBuffer, 0, length);
+        _recvLength = length;
+        UndecryptedOffset = 0;
     }
 
     /// <summary>Enqueue a packet for sending.</summary>

@@ -238,6 +238,7 @@ public sealed partial class GameClient
         _logger.LogInformation("[LOGIN] '{Name}' pos: {X},{Y},{Z} map={Map}",
             _character.Name, _character.X, _character.Y, _character.Z, _character.Position.Map);
         EngineTags.StripEphemeral(_character);
+        _character.MigrateStatLockFromTags();
         _character.IsOnline = true;
         _world.AddOnlinePlayer(_character); // activates tick for this player's sectors
         OnCharacterOnline?.Invoke(_character, this);

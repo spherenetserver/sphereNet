@@ -183,6 +183,60 @@ public sealed class PacketMoveRequest : PacketHandler
     }
 }
 
+/// <summary>
+/// 0xF0 — New movement request (ModernUO/EC) or ClassicUO/Razor extension subcommands.
+/// Extension payloads (party/guild/razor) are ignored; movement payloads route to 0x02 handler.
+/// </summary>
+public sealed class PacketNewMovementRequest : PacketHandler
+{
+    public PacketNewMovementRequest() : base(0xF0, 0) { }
+
+    public override void OnReceive(PacketBuffer buffer, State.NetState state)
+    {
+        int remaining = buffer.Remaining;
+        if (remaining <= 0)
+            return;
+
+        // ClassicUO/Razor extension subcommands — no server action required.
+        if (remaining <= 3)
+        {
+            _ = buffer.ReadByte();
+            return;
+        }
+
+        // Some clients wrap a standard 0x02 move request inside 0xF0.
+        if (remaining == 6)
+        {
+            byte dir = buffer.ReadByte();
+            byte seq = buffer.ReadByte();
+            uint fastWalkKey = buffer.ReadUInt32();
+            state.OnMoveRequest(dir, seq, fastWalkKey);
+            return;
+        }
+
+        // ModernUO NewMovementReq: steps + per-step timing/direction block.
+        byte steps = buffer.ReadByte();
+        for (int i = 0; i < steps && buffer.Remaining >= 35; i++)
+        {
+            buffer.ReadUInt32();
+            buffer.ReadUInt32();
+            buffer.ReadUInt32();
+            buffer.ReadUInt32();
+            byte seq = buffer.ReadByte();
+            byte dir = buffer.ReadByte();
+            int mode = buffer.ReadInt32();
+            buffer.ReadInt32();
+            buffer.ReadInt32();
+            buffer.ReadInt32();
+
+            if (mode == 2)
+                dir |= 0x80;
+
+            state.OnMoveRequest(dir, seq, 0);
+        }
+    }
+}
+
 /// <summary>0x03 — ASCII speech request.</summary>
 public sealed class PacketSpeechRequest : PacketHandler
 {

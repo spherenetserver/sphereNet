@@ -612,3 +612,46 @@ public sealed class PacketDropReject : PacketWriter
         return buf;
     }
 }
+
+/// <summary>
+/// 0xF6 — Smooth boat movement (server → client).
+/// ClassicUO expects serial, speed, move/facing dirs, and destination tile.
+/// </summary>
+public sealed class PacketBoatSmoothMove : PacketWriter
+{
+    private readonly uint _serial;
+    private readonly byte _boatSpeed;
+    private readonly byte _moveDir;
+    private readonly byte _faceDir;
+    private readonly short _x;
+    private readonly short _y;
+    private readonly ushort _z;
+
+    public PacketBoatSmoothMove(
+        uint serial, byte boatSpeed, byte moveDir, byte faceDir,
+        short x, short y, ushort z)
+        : base(0xF6)
+    {
+        _serial = serial;
+        _boatSpeed = boatSpeed;
+        _moveDir = moveDir;
+        _faceDir = faceDir;
+        _x = x;
+        _y = y;
+        _z = z;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(16);
+        buf.WriteUInt32(_serial);
+        buf.WriteByte(_boatSpeed);
+        buf.WriteByte(_moveDir);
+        buf.WriteByte(_faceDir);
+        buf.WriteUInt16((ushort)_x);
+        buf.WriteUInt16((ushort)_y);
+        buf.WriteUInt16(_z);
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}

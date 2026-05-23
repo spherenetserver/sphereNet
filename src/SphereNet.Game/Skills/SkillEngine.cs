@@ -253,12 +253,7 @@ public static class SkillEngine
     /// Try to gain stats from skill use.
     /// Stats gain based on SkillDef stat mapping or hardcoded fallback.
     /// </summary>
-    private static int GetStatLock(Character ch, int statIdx)
-    {
-        if (ch.TryGetTag($"STATLOCK.{statIdx}", out string? val) && int.TryParse(val, out int lock_))
-            return lock_;
-        return 0;
-    }
+    private static int GetStatLock(Character ch, int statIdx) => ch.GetStatLock(statIdx);
 
     private static void TryStatGain(Character ch, SkillType skill)
     {

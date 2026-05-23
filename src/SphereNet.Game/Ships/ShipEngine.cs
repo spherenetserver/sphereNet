@@ -39,6 +39,9 @@ public sealed class ShipEngine
     /// in such turbulent water" appear above the ship.</summary>
     public Action<Ship, string>? OnTillerSpeak { get; set; }
 
+    /// <summary>Called after a ship moves so Program.cs can broadcast 0xF6.</summary>
+    public Action<Ship>? OnShipMoved { get; set; }
+
     private void TillerSpeak(Ship ship, string key) =>
         OnTillerSpeak?.Invoke(ship, SphereNet.Game.Messages.ServerMessages.Get(key));
 
@@ -575,6 +578,7 @@ public sealed class ShipEngine
                 (sbyte)(p.Z + dz), p.Map));
         }
 
+        OnShipMoved?.Invoke(ship);
         return true;
     }
 

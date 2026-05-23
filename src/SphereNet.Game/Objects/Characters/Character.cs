@@ -11,7 +11,7 @@ namespace SphereNet.Game.Objects.Characters;
 /// <summary>
 /// Character instance (player or NPC). Maps to CChar in Source-X.
 /// </summary>
-public class Character : ObjBase
+public partial class Character : ObjBase
 {
     /// <summary>
     /// Optional diagnostic sink. Wired by the host (Program.cs) so
@@ -676,21 +676,19 @@ public class Character : ObjBase
     /// <summary>Clear in-progress delayed skill state. Returns skill id if one was pending.</summary>
     public int ClearActiveSkillPending()
     {
-        if (!TryGetTag("SKILL_PENDING_ID", out string? idStr) || !int.TryParse(idStr, out int skillId))
+        if (_skillPendingId < 0)
             return -1;
 
-        RemoveTag("SKILL_PENDING_ID");
-        RemoveTag("SKILL_DELAY_END");
-        RemoveTag("SKILL_STROKE_NEXT");
-        RemoveTag("SKILL_PENDING_TARGET");
-        RemoveTag("SKILL_PENDING_X");
-        RemoveTag("SKILL_PENDING_Y");
-        RemoveTag("SKILL_PENDING_Z");
+        int skillId = _skillPendingId;
+        _skillPendingId = -1;
+        _skillDelayEnd = 0;
+        _skillStrokeNext = 0;
+        _skillPendingTarget = Serial.Invalid;
+        _hasSkillPendingPoint = false;
         return skillId;
     }
 
-    public bool HasActiveSkillPending() =>
-        TryGetTag("SKILL_PENDING_ID", out _);
+    public bool HasActiveSkillPending() => _skillPendingId >= 0;
 
     /// <summary>Drop hidden/invisible/stealth-walk state (cast, combat, step expiry).</summary>
     public void ClearHiddenState()
@@ -2449,11 +2447,15 @@ public class Character : ObjBase
             return true;
         }
 
-        // STATLOCK.n (TAG-based)
+        // STATLOCK.n
         if (upper.StartsWith("STATLOCK.", StringComparison.Ordinal))
         {
-            string statIdx = upper["STATLOCK.".Length..];
-            value = TryGetTag($"STATLOCK.{statIdx}", out string? sl) ? (sl ?? "0") : "0";
+            if (int.TryParse(upper.AsSpan("STATLOCK.".Length), out int statIdx))
+            {
+                value = GetStatLock(statIdx).ToString();
+                return true;
+            }
+            value = "0";
             return true;
         }
 
@@ -2853,10 +2855,14 @@ public class Character : ObjBase
             return true;
         }
 
-        // STATLOCK.n (TAG-based)
+        // STATLOCK.n
         if (upperKey.StartsWith("STATLOCK.", StringComparison.Ordinal))
         {
-            SetTag($"STATLOCK.{upperKey["STATLOCK.".Length..]}", normalized);
+            if (int.TryParse(upperKey.AsSpan("STATLOCK.".Length), out int statIdx) &&
+                byte.TryParse(normalized, out byte lockVal))
+            {
+                SetStatLock(statIdx, lockVal);
+            }
             return true;
         }
 
@@ -2885,8 +2891,11 @@ public class Character : ObjBase
         {
             int si = upperKey.IndexOf('[');
             int ei = upperKey.IndexOf(']');
-            if (int.TryParse(upperKey.AsSpan(si + 1, ei - si - 1), out int slIdx))
-                SetTag($"STATLOCK.{slIdx}", normalized);
+            if (int.TryParse(upperKey.AsSpan(si + 1, ei - si - 1), out int slIdx) &&
+                byte.TryParse(normalized, out byte slVal))
+            {
+                SetStatLock(slIdx, slVal);
+            }
             return true;
         }
 

@@ -267,6 +267,15 @@ public sealed class TriggerDispatcher
 
         // 6. ITEMDEF (base definition script) — already covered by step 3
 
+        // 7. Global f_onitem_* function (parity with f_onchar_*)
+        if (Runner != null)
+        {
+            string funcName = "f_onitem_" + trigName.ToLowerInvariant();
+            var result = Runner.RunFunction(funcName, item, args.ScriptConsole, WrapArgs(args));
+            if (result == TriggerResult.True)
+                return TriggerResult.True;
+        }
+
         return TriggerResult.Default;
     }
 

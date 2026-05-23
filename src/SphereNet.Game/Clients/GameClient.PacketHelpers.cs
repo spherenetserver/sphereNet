@@ -791,13 +791,11 @@ public sealed partial class GameClient
             _netState.Send(new PacketUpdateMana(ch.Uid.Value, maxMana, mana));
             _netState.Send(new PacketUpdateStamina(ch.Uid.Value, maxStam, stam));
 
-            ch.TryGetTag("STATLOCK.0", out string? slRaw);
-            ch.TryGetTag("STATLOCK.1", out string? dlRaw);
-            ch.TryGetTag("STATLOCK.2", out string? ilRaw);
-            byte strLock = byte.TryParse(slRaw, out byte sl) ? sl : (byte)0;
-            byte dexLock = byte.TryParse(dlRaw, out byte dl) ? dl : (byte)0;
-            byte intLock = byte.TryParse(ilRaw, out byte il) ? il : (byte)0;
-            _netState.Send(new PacketStatLockInfo(ch.Uid.Value, strLock, dexLock, intLock));
+            _netState.Send(new PacketStatLockInfo(
+                ch.Uid.Value,
+                ch.GetStatLock(0),
+                ch.GetStatLock(1),
+                ch.GetStatLock(2)));
         }
     }
 

@@ -211,6 +211,54 @@ public class Item : ObjBase
         }
     }
 
+    /// <summary>Mark location for recall runes (Source-X m_morep).</summary>
+    public void SetRuneMark(Point3D mark)
+    {
+        _moreP = mark;
+        ClearRuneTags();
+    }
+
+    /// <summary>One-time import from legacy TAG.RUNE_* saves.</summary>
+    public void MigrateRuneFromTags()
+    {
+        if (!TryGetTag("RUNE_X", out string? rx) || !TryGetTag("RUNE_Y", out string? ry) ||
+            !short.TryParse(rx, out short x) || !short.TryParse(ry, out short y))
+            return;
+
+        sbyte z = 0;
+        byte map = 0;
+        if (TryGetTag("RUNE_Z", out string? rz))
+            sbyte.TryParse(rz, out z);
+        if (TryGetTag("RUNE_MAP", out string? rm))
+            byte.TryParse(rm, out map);
+
+        _moreP = new Point3D(x, y, z, map);
+        ClearRuneTags();
+    }
+
+    public bool TryGetRuneMark(out Point3D mark)
+    {
+        MigrateRuneFromTags();
+        if (_moreP.X == 0 && _moreP.Y == 0)
+        {
+            mark = default;
+            return false;
+        }
+
+        mark = _moreP;
+        return true;
+    }
+
+    public bool HasRuneMark => TryGetRuneMark(out _);
+
+    private void ClearRuneTags()
+    {
+        RemoveTag("RUNE_X");
+        RemoveTag("RUNE_Y");
+        RemoveTag("RUNE_Z");
+        RemoveTag("RUNE_MAP");
+    }
+
     public MemoryType GetMemoryTypes() => (MemoryType)Hue.Value;
     public void SetMemoryTypes(MemoryType flags) => Hue = new Core.Types.Color((ushort)flags);
     public bool IsMemoryTypes(MemoryType flags) =>

@@ -40,12 +40,11 @@ public class SkillDelayTests
     }
 
     [Fact]
-    public void Character_ClearActiveSkillPending_ClearsTags()
+    public void Character_ClearActiveSkillPending_ClearsPendingState()
     {
         var world = CreateWorld();
         var ch = world.CreateCharacter();
-        ch.SetTag("SKILL_PENDING_ID", "17");
-        ch.SetTag("SKILL_DELAY_END", "99999");
+        ch.BeginSkillPending(17, 99999, 1000, Serial.Invalid, null);
 
         int id = ch.ClearActiveSkillPending();
         Assert.Equal(17, id);

@@ -370,6 +370,8 @@ public sealed class WorldSaver
                 w.WriteProperty("ADDOBJ", $"0{uid.Value:x}");
         }
 
+        item.MigrateRuneFromTags();
+
         foreach (var (key, val) in item.Tags.GetAll())
         {
             string upper = key.ToUpperInvariant();
@@ -378,6 +380,8 @@ public sealed class WorldSaver
             if (EngineTags.IsEphemeral(key))
                 continue;
             if (upper is "HITS" or "HITSMAX" or "MAXHITS")
+                continue;
+            if (upper.StartsWith("RUNE_", StringComparison.Ordinal))
                 continue;
             if (upper is "SPAWNID" or "TIMELO" or "TIMEHI" or "MAXDIST"
                 or "REGION.FLAGS" or "REGION.EVENTS" or "OWNER" or "HOUSETYPE"
@@ -508,9 +512,9 @@ public sealed class WorldSaver
 
         for (int i = 0; i < 3; i++)
         {
-            var slTag = ch.Tags.Get($"STATLOCK.{i}");
-            if (!string.IsNullOrEmpty(slTag))
-                w.WriteProperty($"StatLock[{i}]", slTag);
+            byte lockVal = ch.GetStatLock(i);
+            if (lockVal != 0)
+                w.WriteProperty($"StatLock[{i}]", lockVal.ToString());
         }
 
         for (int layer = 0; layer <= (int)SphereNet.Core.Enums.Layer.Horse; layer++)

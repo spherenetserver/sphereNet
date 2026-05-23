@@ -306,6 +306,7 @@ public sealed class HousingEngine
     private readonly Dictionary<Serial, House> _houses = [];
 
     public int MaxHousesPerPlayer { get; set; } = 1;
+    public int MaxHousesPerAccount { get; set; } = 1;
 
     public HousingEngine(GameWorld world, MultiRegistry multiDefs)
     {
@@ -343,6 +344,9 @@ public sealed class HousingEngine
     public House? PlaceHouse(Character owner, ushort multiId, Point3D position)
     {
         if (MaxHousesPerPlayer >= 0 && GetHousesByOwner(owner.Uid).Count >= MaxHousesPerPlayer)
+            return null;
+
+        if (MaxHousesPerAccount >= 0 && GetHouseCountForAccount(owner) >= MaxHousesPerAccount)
             return null;
 
         var def = _multiDefs.Get(multiId);
@@ -457,6 +461,30 @@ public sealed class HousingEngine
                 result.Add(house);
         }
         return result;
+    }
+
+    /// <summary>Count houses owned by any character on the owner's account.</summary>
+    public int GetHouseCountForAccount(Character owner)
+    {
+        var account = Character.ResolveAccountForChar?.Invoke(owner.Uid);
+        if (account == null)
+            return GetHousesByOwner(owner.Uid).Count;
+
+        var accountChars = new HashSet<Serial>();
+        for (int i = 0; i < 7; i++)
+        {
+            var uid = account.GetCharSlot(i);
+            if (uid.IsValid)
+                accountChars.Add(uid);
+        }
+
+        int count = 0;
+        foreach (var house in _houses.Values)
+        {
+            if (accountChars.Contains(house.Owner))
+                count++;
+        }
+        return count;
     }
 
     /// <summary>Get all registered houses.</summary>

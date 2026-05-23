@@ -411,7 +411,7 @@ public sealed partial class GameClient
         // SKTRIG_START path: the cast skill owns m_atFight while it runs).
         // We tolerate the swing finishing the *current* recoil but won't
         // start a new one mid-cast.
-        if (_character.TryGetTag("SPELL_CASTING", out _))
+        if (_character.IsCasting)
         {
             _character.NextAttackTime = now + 500;
             return;
@@ -1171,9 +1171,7 @@ public sealed partial class GameClient
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
                     if (_character == null) return;
-                    _character.SetTag("SPELL_TARGET_POS_X", x.ToString());
-                    _character.SetTag("SPELL_TARGET_POS_Y", y.ToString());
-                    _character.SetTag("SPELL_TARGET_POS_Z", z.ToString());
+                    _character.SetCastTargetPosPending(new Point3D(x, y, z, _character.MapIndex));
                     HandleCastSpell(spell, serial != 0 ? serial : _character.Uid.Value);
                 });
                 return;
@@ -1184,18 +1182,8 @@ public sealed partial class GameClient
         }
 
         var targetPos = _character.Position;
-        if (_character.TryGetTag("SPELL_TARGET_POS_X", out string? spx) &&
-            _character.TryGetTag("SPELL_TARGET_POS_Y", out string? spy) &&
-            _character.TryGetTag("SPELL_TARGET_POS_Z", out string? spz))
-        {
-            short.TryParse(spx, out short stx);
-            short.TryParse(spy, out short sty);
-            sbyte.TryParse(spz, out sbyte stz);
-            targetPos = new Point3D(stx, sty, stz, _character.MapIndex);
-            _character.RemoveTag("SPELL_TARGET_POS_X");
-            _character.RemoveTag("SPELL_TARGET_POS_Y");
-            _character.RemoveTag("SPELL_TARGET_POS_Z");
-        }
+        if (_character.TryTakeCastTargetPosPending(out Point3D pendingPos))
+            targetPos = pendingPos;
         else
         {
             var targetChar = _world.FindChar(new Serial(targetUid));
@@ -1206,7 +1194,7 @@ public sealed partial class GameClient
         int castTime = _spellEngine.CastStart(_character, spell, new Serial(targetUid), targetPos);
         if (castTime > 0)
         {
-            _character.SetTag("CAST_TIMER", (Environment.TickCount64 + castTime).ToString());
+            _character.SetCastTimerEnd(Environment.TickCount64 + castTime);
         }
         else
         {
@@ -1224,8 +1212,8 @@ public sealed partial class GameClient
         int castTime = _spellEngine.CastStart(_character, spell, _character.Uid, _character.Position);
         if (castTime > 0)
         {
-            _character.SetTag("SPELL_PRECAST", "1");
-            _character.SetTag("CAST_TIMER", (Environment.TickCount64 + castTime).ToString());
+            _character.SpellPrecast = true;
+            _character.SetCastTimerEnd(Environment.TickCount64 + castTime);
             return;
         }
 
@@ -1268,10 +1256,7 @@ public sealed partial class GameClient
     {
         if (_character == null || _spellEngine == null) return;
 
-        _character.SetTag("SPELL_TARGET_UID", targetUid.ToString());
-        _character.SetTag("SPELL_TARGET_X", targetPos.X.ToString());
-        _character.SetTag("SPELL_TARGET_Y", targetPos.Y.ToString());
-        _character.SetTag("SPELL_TARGET_Z", targetPos.Z.ToString());
+        _character.UpdateCastTarget(new Serial(targetUid), targetPos);
 
         var spellDef = _spellEngine.GetSpellDef(spell);
         var targetChar = _world.FindChar(new Serial(targetUid));
@@ -1293,32 +1278,28 @@ public sealed partial class GameClient
     {
         if (_character == null || _spellEngine == null) return;
 
-        if (_character.TryGetTag("CAST_TIMER", out string? timerStr) &&
-            long.TryParse(timerStr, out long castEnd) &&
-            Environment.TickCount64 >= castEnd)
+        if (_character.IsCastTimerExpired(Environment.TickCount64))
         {
-            _character.RemoveTag("CAST_TIMER");
+            _character.SetCastTimerEnd(0);
 
-            if (_character.TryGetTag("SPELL_PRECAST", out _))
+            if (_character.SpellPrecast)
             {
-                _character.RemoveTag("SPELL_PRECAST");
-                int preSpellId = 0;
-                if (_character.TryGetTag("SPELL_CASTING", out string? preSpellStr))
-                    int.TryParse(preSpellStr, out preSpellId);
-                PromptPrecastTarget((SpellType)preSpellId, _spellEngine.GetSpellDef((SpellType)preSpellId));
+                _character.SpellPrecast = false;
+                SpellType preSpell = default;
+                if (_character.TryGetCastingSpell(out SpellType pre))
+                    preSpell = pre;
+                PromptPrecastTarget(preSpell, _spellEngine.GetSpellDef(preSpell));
                 return;
             }
 
             // Retrieve spell ID before CastDone clears state
             int spellId = 0;
-            if (_character.TryGetTag("SPELL_CASTING", out string? spellStr))
-                int.TryParse(spellStr, out spellId);
+            if (_character.TryGetCastingSpell(out SpellType castingSpell))
+                spellId = (int)castingSpell;
 
             // Get spell def + target BEFORE CastDone clears state
             var spellDef = _spellEngine.GetSpellDef((SpellType)spellId);
-            uint targetUidRaw = 0;
-            if (_character.TryGetTag("SPELL_TARGET_UID", out string? tgtStr))
-                uint.TryParse(tgtStr, out targetUidRaw);
+            uint targetUidRaw = _character.CastTargetUid.Value;
             var targetChar = targetUidRaw != 0 ? _world.FindChar(new Serial(targetUidRaw)) : null;
 
             bool castOk = _spellEngine.CastDone(_character);

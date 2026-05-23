@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
+using SphereNet.Network.Encryption;
 using SphereNet.Network.Packets;
 using SphereNet.Network.Packets.Incoming;
 using SphereNet.Network.State;
@@ -67,6 +68,7 @@ public sealed class NetworkManager : IDisposable
         _packetManager.Register(new PacketCreateCharacterHS());
         _packetManager.Register(new PacketPing());
         _packetManager.Register(new PacketMoveRequest());
+        _packetManager.Register(new PacketNewMovementRequest());
         _packetManager.Register(new PacketSpeechRequest());
         _packetManager.Register(new PacketAttackRequest());
         _packetManager.Register(new PacketWarMode());
@@ -278,6 +280,12 @@ public sealed class NetworkManager : IDisposable
                     ArrayPool<byte>.Shared.Return(toDecrypt);
                 }
             }
+        }
+
+        if (state.ConnectionType == ConnectType.Game && state.HuffmanReceiveEnabled && data.Length > 0)
+        {
+            TryDecompressReceived(state);
+            data = state.ReceivedData;
         }
 
         int consumed = 0;
@@ -678,5 +686,28 @@ public sealed class NetworkManager : IDisposable
         }
         if (data.Length > maxBytes) sb.Append(" ...");
         return sb.ToString();
+    }
+
+    /// <summary>Decompress Huffman-encoded client payload. Skips if already plaintext.</summary>
+    private static void TryDecompressReceived(NetState state)
+    {
+        var span = state.ReceivedData;
+        if (span.Length == 0) return;
+
+        // Plaintext move packet (0x02, len 7) — used by unit tests / no-crypt harness.
+        if (span.Length >= 2 && span[0] == 0x02 && span[1] == 0x07)
+            return;
+
+        byte[] compressed = span.ToArray();
+        byte[] decompressed = HuffmanCompression.Decompress(compressed, 0, compressed.Length);
+        if (decompressed.Length == 0)
+            return;
+
+        // Accept only if result looks like a valid UO packet stream.
+        byte op = decompressed[0];
+        if (op == 0 || op > 0xF8)
+            return;
+
+        state.ReplaceAllReceived(decompressed, decompressed.Length);
     }
 }

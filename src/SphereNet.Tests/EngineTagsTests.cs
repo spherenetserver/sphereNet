@@ -24,6 +24,7 @@ public class EngineTagsTests
         ch.SetTag("SPELL_CASTING", "4");
         Assert.True(ch.TryGetTag("SPELL_CASTING", out string? v));
         Assert.Equal("4", v);
+        Assert.False(ch.IsCasting);
     }
 
     [Fact]

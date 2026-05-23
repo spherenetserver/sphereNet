@@ -95,15 +95,13 @@ public sealed class SpellEngine
     /// </summary>
     public bool TickCastTimer(Character caster)
     {
-        if (!caster.TryGetTag("SPELL_CASTING", out _))
+        if (!caster.IsCasting)
             return false;
 
-        if (caster.TryGetTag("CAST_TIMER", out string? timerStr) &&
-            long.TryParse(timerStr, out long castEnd) &&
-            Environment.TickCount64 < castEnd)
+        if (caster.IsCastTimerActive(Environment.TickCount64))
             return true;
 
-        caster.RemoveTag("CAST_TIMER");
+        caster.SetCastTimerEnd(0);
         CastDone(caster);
         return false;
     }
@@ -181,17 +179,13 @@ public sealed class SpellEngine
     private void InterruptCast(Character caster, string reason)
     {
         SpellDef? def = null;
-        if (caster.TryGetTag("SPELL_CASTING", out string? spellStr) &&
-            int.TryParse(spellStr, out int spellId))
-        {
-            def = _spells.Get((SpellType)spellId);
-        }
+        if (caster.TryGetCastingSpell(out SpellType spell))
+            def = _spells.Get(spell);
 
         if (def != null)
             ApplyCastResourceLoss(caster, def, IsCastingWithWand(caster), fizzle: false, abort: true);
 
         ClearCastState(caster);
-        caster.RemoveTag("CAST_TIMER");
 
         string msg = reason switch
         {
@@ -210,7 +204,7 @@ public sealed class SpellEngine
     /// </summary>
     public bool TryInterruptFromDamage(Character caster, int damage)
     {
-        if (!caster.TryGetTag("SPELL_CASTING", out _))
+        if (!caster.IsCasting)
             return false;
 
         if (IsMagicFlag(MagicConfigFlags.NoInterrupt))
@@ -238,7 +232,7 @@ public sealed class SpellEngine
     /// </summary>
     public bool TryInterruptFromMovement(Character caster)
     {
-        if (!caster.TryGetTag("SPELL_CASTING", out _))
+        if (!caster.IsCasting)
             return false;
 
         if (caster.PrivLevel >= PrivLevel.GM)
@@ -258,7 +252,7 @@ public sealed class SpellEngine
     /// </summary>
     public bool TryInterruptFromEquip(Character caster)
     {
-        if (!caster.TryGetTag("SPELL_CASTING", out _))
+        if (!caster.IsCasting)
             return false;
 
         if (IsMagicFlag(MagicConfigFlags.NoInterrupt))
@@ -334,11 +328,7 @@ public sealed class SpellEngine
         RevealOnCast(caster);
 
         // Store cast state on character
-        caster.SetTag("SPELL_CASTING", ((int)spell).ToString());
-        caster.SetTag("SPELL_TARGET_UID", targetUid.Value.ToString());
-        caster.SetTag("SPELL_TARGET_X", targetPos.X.ToString());
-        caster.SetTag("SPELL_TARGET_Y", targetPos.Y.ToString());
-        caster.SetTag("SPELL_TARGET_Z", targetPos.Z.ToString());
+        caster.BeginCast(spell, targetUid, targetPos);
 
         if (!targetPos.Equals(caster.Position))
         {
@@ -375,16 +365,9 @@ public sealed class SpellEngine
             return false;
         }
 
-        if (!caster.TryGetTag("SPELL_CASTING", out string? spellStr))
+        if (!caster.TryGetCastingSpell(out SpellType spell))
             return false;
 
-        if (!int.TryParse(spellStr, out int spellId))
-        {
-            ClearCastState(caster);
-            return false;
-        }
-
-        var spell = (SpellType)spellId;
         var def = _spells.Get(spell);
         if (def == null)
         {
@@ -393,20 +376,8 @@ public sealed class SpellEngine
         }
 
         // Resolve target before consumption so LOS can be checked first
-        Serial targetUid = Serial.Invalid;
-        if (caster.TryGetTag("SPELL_TARGET_UID", out string? uidStr) && uint.TryParse(uidStr, out uint uid))
-            targetUid = new Serial(uid);
-
-        Point3D targetPos = caster.Position;
-        if (caster.TryGetTag("SPELL_TARGET_X", out string? xs) &&
-            caster.TryGetTag("SPELL_TARGET_Y", out string? ys) &&
-            caster.TryGetTag("SPELL_TARGET_Z", out string? zs))
-        {
-            short.TryParse(xs, out short tx);
-            short.TryParse(ys, out short ty);
-            sbyte.TryParse(zs, out sbyte tz);
-            targetPos = new Point3D(tx, ty, tz, caster.MapIndex);
-        }
+        Serial targetUid = caster.CastTargetUid;
+        Point3D targetPos = caster.CastTargetPos;
 
         // LOS check BEFORE consuming resources
         if (_world != null &&
@@ -469,10 +440,7 @@ public sealed class SpellEngine
             var rune = _world?.FindItem(targetUid);
             if (rune != null)
             {
-                rune.SetTag("RUNE_X", caster.X.ToString());
-                rune.SetTag("RUNE_Y", caster.Y.ToString());
-                rune.SetTag("RUNE_Z", caster.Z.ToString());
-                rune.SetTag("RUNE_MAP", caster.MapIndex.ToString());
+                rune.SetRuneMark(caster.Position);
                 OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellMarkCont));
             }
             else
@@ -824,23 +792,12 @@ public sealed class SpellEngine
 
     private void ApplyRuneTravelSpell(Character caster, Item rune, SpellDef def)
     {
-        if (!rune.TryGetTag("RUNE_X", out string? rx) ||
-            !rune.TryGetTag("RUNE_Y", out string? ry))
+        if (!rune.TryGetRuneMark(out Point3D dest))
         {
             OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellRecallBlank));
             return;
         }
 
-        short.TryParse(rx, out short x);
-        short.TryParse(ry, out short y);
-        sbyte z = 0;
-        if (rune.TryGetTag("RUNE_Z", out string? rz))
-            sbyte.TryParse(rz, out z);
-        byte map = caster.MapIndex;
-        if (rune.TryGetTag("RUNE_MAP", out string? rm))
-            byte.TryParse(rm, out map);
-
-        var dest = new Point3D(x, y, z, map);
         if (def.Id == SpellType.Recall)
         {
             _world.MoveCharacter(caster, dest);
@@ -1058,14 +1015,7 @@ public sealed class SpellEngine
         }
     }
 
-    private static void ClearCastState(Character ch)
-    {
-        ch.RemoveTag("SPELL_CASTING");
-        ch.RemoveTag("SPELL_TARGET_UID");
-        ch.RemoveTag("SPELL_TARGET_X");
-        ch.RemoveTag("SPELL_TARGET_Y");
-        ch.RemoveTag("SPELL_TARGET_Z");
-    }
+    private static void ClearCastState(Character ch) => ch.ClearCastState();
 
     /// <summary>Register a spell's expiration with its undo data.
     /// Duration comes from <see cref="SpellDef.GetDuration"/>(caster's

@@ -1547,6 +1547,18 @@ public static class Program
         _npcAI.OnNpcActFight = (npc, target) =>
             _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActFight,
                 new TriggerArgs { CharSrc = target, N1 = target.Uid.Value > int.MaxValue ? 0 : (int)target.Uid.Value }) == TriggerResult.True;
+        _npcAI.OnNpcActWander = npc =>
+            _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActWander,
+                new TriggerArgs { CharSrc = npc }) == TriggerResult.True;
+        _npcAI.OnNpcActFollow = (npc, target) =>
+            _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActFollow,
+                new TriggerArgs { CharSrc = target, O1 = target }) == TriggerResult.True;
+        _npcAI.OnNpcActCast = (npc, target, spell) =>
+            _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActCast,
+                new TriggerArgs { CharSrc = target, O1 = target, N1 = (int)spell }) == TriggerResult.True;
+        _npcAI.OnNpcLookAtItem = (npc, item) =>
+            _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCLookAtItem,
+                new TriggerArgs { CharSrc = npc, O1 = item, N1 = (int)item.Uid.Value }) == TriggerResult.True;
 
         _npcAI.OnNpcSay = (npc, text) =>
         {
@@ -1831,7 +1843,7 @@ public static class Program
         {
             int castMs = _spellEngine.CastStart(npc, spell, target.Uid, target.Position);
             if (castMs > 0)
-                npc.SetTag("CAST_TIMER", (Environment.TickCount64 + castMs).ToString());
+                npc.SetCastTimerEnd(Environment.TickCount64 + castMs);
         };
         _npcAI.OnNpcTickSpellCast = npc => _spellEngine.TickCastTimer(npc);
         var gatheringEngine = new GatheringEngine(_world, _triggerDispatcher);
@@ -1951,7 +1963,8 @@ public static class Program
         }
         _housingEngine = new HousingEngine(_world, multiRegistry)
         {
-            MaxHousesPerPlayer = _config.MaxHousesPlayer
+            MaxHousesPerPlayer = _config.MaxHousesPlayer,
+            MaxHousesPerAccount = _config.MaxHousesAccount
         };
         _housingEngine.DeserializeFromWorld();
         if (_housingEngine.HouseCount > 0)
@@ -1975,6 +1988,17 @@ public static class Program
                 ship.MultiItem.Name ?? "Tillerman",
                 text);
             BroadcastNearby(origin, 18, pkt, 0);
+        };
+        _shipEngine.OnShipMoved = ship =>
+        {
+            var mi = ship.MultiItem;
+            var pkt = new PacketBoatSmoothMove(
+                mi.Uid.Value,
+                (byte)ship.SpeedMode,
+                (byte)((byte)ship.DirMove & 0x07),
+                (byte)((byte)ship.DirFace & 0x07),
+                mi.X, mi.Y, (ushort)(mi.Z < 0 ? 0 : mi.Z));
+            BroadcastNearby(mi.Position, 18, pkt, 0);
         };
         _shipEngine.DeserializeFromWorld();
         if (_shipEngine.ShipCount > 0)

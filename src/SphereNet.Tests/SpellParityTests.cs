@@ -7,6 +7,7 @@ using SphereNet.Game.World;
 
 namespace SphereNet.Tests;
 
+[Collection("GlobalConfigSerial")]
 public class SpellParityTests
 {
     private static GameWorld CreateWorld()
@@ -45,7 +46,7 @@ public class SpellParityTests
         Assert.True(engine.CastStart(caster, SpellType.Clumsy, target.Uid, target.Position) > 0);
         Assert.False(engine.CastDone(caster));
         Assert.Equal(100, caster.Mana);
-        Assert.False(caster.TryGetTag("SPELL_CASTING", out _));
+        Assert.False(caster.IsCasting);
     }
 
     [Fact]
@@ -74,10 +75,10 @@ public class SpellParityTests
         var engine = new SpellEngine(world, registry);
         int castMs = engine.CastStart(npc, SpellType.Heal, npc.Uid, npc.Position);
         Assert.True(castMs > 0);
-        npc.SetTag("CAST_TIMER", (Environment.TickCount64 - 1).ToString());
+        npc.SetCastTimerEnd(Environment.TickCount64 - 1);
 
         Assert.False(engine.TickCastTimer(npc));
-        Assert.False(npc.TryGetTag("SPELL_CASTING", out _));
+        Assert.False(npc.IsCasting);
         Assert.True(npc.Hits > 10);
     }
 

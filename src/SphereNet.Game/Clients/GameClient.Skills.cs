@@ -167,18 +167,12 @@ public sealed partial class GameClient
         if (delayMs <= 0) return false;
 
         long now = Environment.TickCount64;
-        _character.SetTag("SKILL_PENDING_ID", skillId.ToString());
-        _character.SetTag("SKILL_DELAY_END", (now + delayMs).ToString());
-        _character.SetTag("SKILL_STROKE_NEXT",
-            (now + SkillEngine.GetSkillStrokeIntervalMs(skill)).ToString());
-        if (targetUid.IsValid)
-            _character.SetTag("SKILL_PENDING_TARGET", targetUid.Value.ToString());
-        if (point.HasValue)
-        {
-            _character.SetTag("SKILL_PENDING_X", point.Value.X.ToString());
-            _character.SetTag("SKILL_PENDING_Y", point.Value.Y.ToString());
-            _character.SetTag("SKILL_PENDING_Z", point.Value.Z.ToString());
-        }
+        _character.BeginSkillPending(
+            skillId,
+            now + delayMs,
+            now + SkillEngine.GetSkillStrokeIntervalMs(skill),
+            targetUid,
+            point);
 
         FireActiveSkillStroke(skillId);
         return true;
@@ -187,28 +181,20 @@ public sealed partial class GameClient
     /// <summary>Advance delayed active skills (@SkillStroke loop + completion).</summary>
     public void TickPendingSkill()
     {
-        if (_character == null || !_character.TryGetTag("SKILL_PENDING_ID", out string? idStr))
+        if (_character == null || !_character.HasActiveSkillPending())
             return;
 
-        if (!int.TryParse(idStr, out int skillId))
-        {
-            _character.ClearActiveSkillPending();
-            return;
-        }
-
+        int skillId = _character.SkillPendingId;
         var skill = (SkillType)skillId;
         long now = Environment.TickCount64;
 
-        if (_character.TryGetTag("SKILL_STROKE_NEXT", out string? strokeStr) &&
-            long.TryParse(strokeStr, out long strokeNext) && now >= strokeNext)
+        if (now >= _character.SkillStrokeNext)
         {
             FireActiveSkillStroke(skillId);
-            _character.SetTag("SKILL_STROKE_NEXT",
-                (now + SkillEngine.GetSkillStrokeIntervalMs(skill)).ToString());
+            _character.SetSkillStrokeNext(now + SkillEngine.GetSkillStrokeIntervalMs(skill));
         }
 
-        if (!_character.TryGetTag("SKILL_DELAY_END", out string? endStr) ||
-            !long.TryParse(endStr, out long endTick) || now < endTick)
+        if (now < _character.SkillDelayEnd)
             return;
 
         CompletePendingSkill(skill, skillId);
@@ -218,21 +204,10 @@ public sealed partial class GameClient
     {
         if (_character == null) return;
 
-        Serial targetUid = Serial.Invalid;
-        if (_character.TryGetTag("SKILL_PENDING_TARGET", out string? uidStr) &&
-            uint.TryParse(uidStr, out uint uidVal))
-            targetUid = new Serial(uidVal);
-
+        Serial targetUid = _character.SkillPendingTarget;
         Point3D? point = null;
-        if (_character.TryGetTag("SKILL_PENDING_X", out string? xs) &&
-            _character.TryGetTag("SKILL_PENDING_Y", out string? ys) &&
-            _character.TryGetTag("SKILL_PENDING_Z", out string? zs) &&
-            short.TryParse(xs, out short tx) &&
-            short.TryParse(ys, out short ty) &&
-            sbyte.TryParse(zs, out sbyte tz))
-        {
-            point = new Point3D(tx, ty, tz, _character.MapIndex);
-        }
+        if (_character.TryGetSkillPendingPoint(out Point3D pt))
+            point = new Point3D(pt.X, pt.Y, pt.Z, _character.MapIndex);
 
         _character.ClearActiveSkillPending();
 

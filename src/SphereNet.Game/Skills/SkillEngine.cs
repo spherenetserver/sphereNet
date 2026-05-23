@@ -42,6 +42,22 @@ public static class SkillEngine
     /// <summary>Skill variance for S-curve calculation (Source-X: SKILL_VARIANCE = 100).</summary>
     private const int SkillVariance = 100;
 
+    /// <summary>Active skill duration from [SKILLDEF] DELAY (tenths of a second → ms). 0 = instant.</summary>
+    public static int GetSkillDelayMs(SkillType skill)
+    {
+        var def = DefinitionLoader.GetSkillDef((int)skill);
+        if (def == null || def.Delay <= 0) return 0;
+        return def.Delay * 100;
+    }
+
+    /// <summary>Interval between @SkillStroke firings during a delayed skill.</summary>
+    public static int GetSkillStrokeIntervalMs(SkillType skill)
+    {
+        int delay = GetSkillDelayMs(skill);
+        if (delay <= 0) return 0;
+        return Math.Clamp(delay / 5, 500, 2000);
+    }
+
     /// <summary>
     /// Check if a skill use succeeds. Maps to Skill_CheckSuccess.
     /// Does NOT award experience.

@@ -116,6 +116,17 @@ public sealed class NpcAI
         if (npc.IsPlayer || npc.IsDead || npc.IsStatFlag(StatFlag.Ridden)) return;
 
         long now = Environment.TickCount64;
+
+        if (npc.TryGetTag("SPELL_CASTING", out _))
+        {
+            OnNpcTickSpellCast?.Invoke(npc);
+            if (npc.TryGetTag("SPELL_CASTING", out _))
+            {
+                npc.NextNpcActionTime = now + 250;
+                return;
+            }
+        }
+
         if (now < npc.NextNpcActionTime)
             return;
 
@@ -1221,16 +1232,9 @@ public sealed class NpcAI
             }
         }
 
-        if (!npc.TryGetTag("HOME_X", out string? hx) || !npc.TryGetTag("HOME_Y", out string? hy))
-            return;
-        if (!short.TryParse(hx, out short homeX) || !short.TryParse(hy, out short homeY))
+        if (!TryResolveHome(npc, out Point3D home, out _))
             return;
 
-        sbyte homeZ = npc.Z;
-        if (npc.TryGetTag("HOME_Z", out string? hz))
-            sbyte.TryParse(hz, out homeZ);
-
-        var home = new Point3D(homeX, homeY, homeZ, npc.MapIndex);
         int dist = npc.Position.GetDistanceTo(home);
         if (dist > 3)
         {
@@ -1292,6 +1296,7 @@ public sealed class NpcAI
             if (!_world.CanSeeLOS(npc.Position, ch.Position)) continue;
 
             OnNpcSay?.Invoke(npc, "Guards! A villain!");
+            npc.Memory_AddObjTypes(ch.Uid, MemoryType.SawCrime);
             OnWitnessCrime?.Invoke(npc, ch);
             return;
         }
@@ -1431,6 +1436,9 @@ public sealed class NpcAI
     /// Program.cs handles SpellEngine.CastStart + broadcast.</summary>
     public Action<Character, Character, SpellType>? OnNpcCastSpell { get; set; }
 
+    /// <summary>Advance an NPC's in-progress spell cast timer. Returns true while still casting.</summary>
+    public Func<Character, bool>? OnNpcTickSpellCast { get; set; }
+
     /// <summary>Callback: dragon breath attack. Parameters: npc, target, damage.</summary>
     public Action<Character, Character, int>? OnNpcBreath { get; set; }
 
@@ -1482,31 +1490,36 @@ public sealed class NpcAI
         }
         if (npc.TryGetTag("SPELL_CASTING", out _))
         {
-            npc.NextAttackTime = now + 500;
-            return;
+            OnNpcTickSpellCast?.Invoke(npc);
+            if (npc.TryGetTag("SPELL_CASTING", out _))
+            {
+                npc.NextAttackTime = now + 250;
+                return;
+            }
         }
 
         Item? weapon = npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
-        int maxRange = GetAttackRange(npc, weapon);
-        int distToTarget = npc.Position.GetDistanceTo(target.Position);
-        if (distToTarget > maxRange)
-            return;
 
-        // Source-X formula 0 swing delay, identical to player code.
-        // Group stagger: offset swing timer by a UID-derived amount so
-        // multiple NPCs hitting the same target don't all swing in unison.
+        var prep = CombatHelper.ValidateSwingPrep(
+            _world, npc, target, weapon, PrivLevel.Player, now, _world.CanSeeLOS);
+        switch (prep.Result)
+        {
+            case CombatHelper.SwingPrepResult.Abort:
+                npc.FightTarget = Serial.Invalid;
+                return;
+            case CombatHelper.SwingPrepResult.RetryLater:
+                npc.NextAttackTime = now + Math.Max(prep.RetryMs, 250);
+                return;
+        }
+
         int swingDelayMs = SphereNet.Game.Clients.GameClient.GetSwingDelayMs(npc, weapon);
         int stagger = (int)(npc.Uid.Value * 2654435761u % 200);
-        npc.NextAttackTime = now + swingDelayMs + stagger;
 
-        // Face the target *before* the swing — Source-X UpdateDir(pCharTarg).
-        // Direction setter marks the dirty flag; the actual 0x77 broadcast
-        // is performed by Program.cs's OnNpcAttack handler when it sends
-        // the swing animation, so a single network update covers both
-        // the new facing and the swing.
         var newDir = npc.Position.GetDirectionTo(target.Position);
         if (newDir != npc.Direction)
             npc.Direction = newDir;
+
+        npc.NextAttackTime = now + swingDelayMs + stagger;
 
         if (npc.Stam > 0)
             npc.Stam = (short)(npc.Stam - 1);
@@ -1526,13 +1539,14 @@ public sealed class NpcAI
         }
 
         short hpBefore = npc.Hits;
-        int damage = CombatEngine.ResolveAttack(npc, target, weapon);
+        int damage = CombatEngine.ResolveAttack(npc, target, weapon, CombatHelper.ActiveCombatFlags);
+        OnNpcAttack?.Invoke(npc, target, damage);
+
         if (damage > 0)
         {
             EmitSound(npc, CreatureSoundType.Hit);
             if (!target.IsPlayer)
                 EmitSound(target, CreatureSoundType.GetHit);
-            OnNpcAttack?.Invoke(npc, target, damage);
 
             // Retaliation: NPC targets that aren't already fighting back
             // acquire the attacker as their fight target (Source-X parity).
@@ -1621,21 +1635,45 @@ public sealed class NpcAI
     /// <summary>Wander with home range check. Source-X: m_Home_Dist_Wander.</summary>
     private void WanderHome(Character npc)
     {
+        if (!TryResolveHome(npc, out Point3D home, out int homeDist))
+        {
+            Wander(npc);
+            return;
+        }
+
+        int curDist = Math.Abs(npc.X - home.X) + Math.Abs(npc.Y - home.Y);
+        if (curDist > homeDist)
+        {
+            MoveToward(npc, home);
+            return;
+        }
+        Wander(npc);
+    }
+
+    /// <summary>Home from Character.Home field; legacy TAG.HOME_* fallback.</summary>
+    private static bool TryResolveHome(Character npc, out Point3D home, out int wanderDist)
+    {
+        wanderDist = npc.HomeDist > 0 ? npc.HomeDist : 10;
+        if (npc.Home.X != 0 || npc.Home.Y != 0)
+        {
+            home = new Point3D(npc.Home.X, npc.Home.Y, npc.Home.Z, npc.MapIndex);
+            return true;
+        }
+
         if (npc.TryGetTag("HOME_X", out string? hx) && npc.TryGetTag("HOME_Y", out string? hy) &&
             short.TryParse(hx, out short homeX) && short.TryParse(hy, out short homeY))
         {
-            int homeDist = npc.TryGetTag("HOME_DIST", out string? hdStr) && int.TryParse(hdStr, out int hd) ? hd : 10;
-            int curDist = Math.Abs(npc.X - homeX) + Math.Abs(npc.Y - homeY);
-            if (curDist > homeDist)
-            {
-                sbyte homeZ = npc.Z;
-                if (npc.TryGetTag("HOME_Z", out string? hz))
-                    sbyte.TryParse(hz, out homeZ);
-                MoveToward(npc, new Point3D(homeX, homeY, homeZ, npc.MapIndex));
-                return;
-            }
+            sbyte homeZ = npc.Z;
+            if (npc.TryGetTag("HOME_Z", out string? hz))
+                sbyte.TryParse(hz, out homeZ);
+            home = new Point3D(homeX, homeY, homeZ, npc.MapIndex);
+            if (npc.TryGetTag("HOME_DIST", out string? hdStr) && int.TryParse(hdStr, out int hd))
+                wanderDist = hd;
+            return true;
         }
-        Wander(npc);
+
+        home = default;
+        return false;
     }
 
     private void MoveToward(Character npc, Point3D target, bool run = false)
@@ -1753,12 +1791,7 @@ public sealed class NpcAI
     private static int GetAttackRange(Character npc, Item? weapon = null)
     {
         weapon ??= npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
-        if (weapon != null &&
-            (weapon.ItemType == ItemType.WeaponBow || weapon.ItemType == ItemType.WeaponXBow))
-        {
-            return 10;
-        }
-        return 1;
+        return CombatHelper.GetWeaponRange(weapon).Max;
     }
 
     private void MoveAway(Character npc, Point3D threat)

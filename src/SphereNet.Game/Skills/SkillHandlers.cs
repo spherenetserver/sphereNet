@@ -126,6 +126,7 @@ public sealed class SkillHandlers
     public static ActiveSkillTargetKind GetActiveSkillTarget(SkillType skill) => skill switch
     {
         SkillType.Hiding         => ActiveSkillTargetKind.None,
+        SkillType.Stealth        => ActiveSkillTargetKind.None,
         SkillType.DetectingHidden => ActiveSkillTargetKind.None,
         SkillType.Meditation     => ActiveSkillTargetKind.None,
         SkillType.SpiritSpeak    => ActiveSkillTargetKind.None,
@@ -143,6 +144,9 @@ public sealed class SkillHandlers
         SkillType.Mining         => ActiveSkillTargetKind.Ground,
         SkillType.Fishing        => ActiveSkillTargetKind.Ground,
         SkillType.Lumberjacking  => ActiveSkillTargetKind.Ground,
+        SkillType.Musicianship   => ActiveSkillTargetKind.None,
+        SkillType.Peacemaking    => ActiveSkillTargetKind.Character,
+        SkillType.Provocation    => ActiveSkillTargetKind.Character,
         _                        => ActiveSkillTargetKind.Unsupported,
     };
 
@@ -159,6 +163,7 @@ public sealed class SkillHandlers
         switch (skill)
         {
             case SkillType.Hiding:           return ActiveSkillEngine.Hiding(sink);
+            case SkillType.Stealth:          return ActiveSkillEngine.Stealth(sink);
             case SkillType.DetectingHidden:  return ActiveSkillEngine.DetectHidden(sink);
             case SkillType.Meditation:       return ActiveSkillEngine.Meditation(sink);
             case SkillType.SpiritSpeak:      return ActiveSkillEngine.SpiritSpeak(sink);
@@ -179,6 +184,9 @@ public sealed class SkillHandlers
             case SkillType.Mining:           return ActiveSkillEngine.Mining(sink, point ?? ch.Position, _gatheringEngine, _world);
             case SkillType.Fishing:          return ActiveSkillEngine.Fishing(sink, point ?? ch.Position, _gatheringEngine, _world);
             case SkillType.Lumberjacking:    return ActiveSkillEngine.Lumberjacking(sink, point ?? ch.Position, _gatheringEngine, _world);
+            case SkillType.Musicianship:     return ActiveSkillEngine.Musicianship(sink);
+            case SkillType.Peacemaking:      return ActiveSkillEngine.Peacemaking(sink, target as Character);
+            case SkillType.Provocation:      return ActiveSkillEngine.Provocation(sink, target as Character);
             default:                         return UseSkill(ch, skill, point);
         }
     }
@@ -267,7 +275,7 @@ public sealed class SkillHandlers
         if (success)
         {
             int steps = Math.Max(1, ch.GetSkill(SkillType.Stealth) / 100);
-            ch.SetTag("StealthSteps", steps.ToString());
+            ch.StepStealth = (short)Math.Clamp(steps, 1, 10);
         }
         return success;
     }
@@ -553,7 +561,7 @@ public sealed class SkillHandlers
     private bool HandleStealing(Character ch, Point3D? target)
     {
         bool success = SkillEngine.UseQuick(ch, SkillType.Stealing, 60);
-        if (success)
+        if (!success && Random.Shared.Next(2) == 0)
             ch.MakeCriminal();
         return success;
     }

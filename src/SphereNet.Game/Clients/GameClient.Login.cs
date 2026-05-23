@@ -11,6 +11,7 @@ using SphereNet.Game.Guild;
 using SphereNet.Game.Housing;
 using SphereNet.Game.Magic;
 using SphereNet.Game.Movement;
+using SphereNet.Game.Objects;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.Party;
@@ -18,7 +19,6 @@ using SphereNet.Game.Skills;
 using SphereNet.Game.Speech;
 using SphereNet.Game.Trade;
 using SphereNet.Game.World;
-using SphereNet.Game.Objects;
 using SphereNet.Game.Gumps;
 using SphereNet.Game.Scripting;
 using SphereNet.Scripting.Expressions;
@@ -237,6 +237,7 @@ public sealed partial class GameClient
 
         _logger.LogInformation("[LOGIN] '{Name}' pos: {X},{Y},{Z} map={Map}",
             _character.Name, _character.X, _character.Y, _character.Z, _character.Position.Map);
+        EngineTags.StripEphemeral(_character);
         _character.IsOnline = true;
         _world.AddOnlinePlayer(_character); // activates tick for this player's sectors
         OnCharacterOnline?.Invoke(_character, this);

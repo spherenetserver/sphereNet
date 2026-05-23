@@ -210,18 +210,27 @@ public static class CombatEngine
     /// Perform a full attack resolution. Returns damage dealt (0 = miss/blocked).
     /// Maps to CChar::Fight_Hit flow in Source-X.
     /// </summary>
-    public static int ResolveAttack(Character attacker, Character target, Item? weapon, CombatFlags flags = CombatFlags.None, int era = 0)
+    public static int ResolveAttack(
+        Character attacker,
+        Character target,
+        Item? weapon,
+        CombatFlags flags = CombatFlags.None,
+        int hitEra = -1,
+        int damageEra = -1)
     {
+        if (hitEra < 0) hitEra = Character.CombatHitChanceEra;
+        if (damageEra < 0) damageEra = Character.CombatDamageEra;
+
         if (attacker.IsDead || target.IsDead)
             return 0;
 
         // Hit check
-        int hitChance = CalcHitChance(attacker, target, era);
+        int hitChance = CalcHitChance(attacker, target, hitEra);
         if (_rand.Next(100) >= hitChance)
             return 0; // miss
 
         // Calculate raw damage
-        var (dmgMin, dmgMax) = CalcWeaponDamage(attacker, weapon, era);
+        var (dmgMin, dmgMax) = CalcWeaponDamage(attacker, weapon, damageEra);
         int damage = _rand.Next(dmgMin, dmgMax + 1);
 
         // Parry check — only works with actual shields, not two-handed weapons
@@ -300,8 +309,8 @@ public static class CombatEngine
         if (maxHits <= 0)
         {
             maxHits = DefaultHits;
-            item.SetTag("HITSMAX", maxHits.ToString());
-            item.SetTag("HITS", maxHits.ToString());
+            item.HitsMax = maxHits;
+            item.HitsCur = maxHits;
             return;
         }
 
@@ -314,7 +323,7 @@ public static class CombatEngine
             return;
 
         curHits = Math.Max(0, curHits - loss);
-        item.SetTag("HITS", curHits.ToString());
+        item.HitsCur = curHits;
 
         if (curHits <= 0 && BreakOnZeroHits)
             OnItemBroken?.Invoke(item);

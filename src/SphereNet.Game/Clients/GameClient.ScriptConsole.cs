@@ -395,24 +395,26 @@ public sealed partial class GameClient
     private static ushort GetSwingSound(Item? weapon)
     {
         if (weapon == null)
-            return 0x023A; // unarmed whoosh
+            return 0x023A;
         return weapon.ItemType switch
         {
             Core.Enums.ItemType.WeaponBow or
-            Core.Enums.ItemType.WeaponXBow => 0x0223,  // bow draw
+            Core.Enums.ItemType.WeaponXBow => 0x0223,
             Core.Enums.ItemType.WeaponSword or
             Core.Enums.ItemType.WeaponAxe or
-            Core.Enums.ItemType.WeaponFence => 0x023B, // blade swing
+            Core.Enums.ItemType.WeaponFence => 0x023B,
             Core.Enums.ItemType.WeaponMaceSmith or
             Core.Enums.ItemType.WeaponMaceSharp or
             Core.Enums.ItemType.WeaponMaceStaff or
             Core.Enums.ItemType.WeaponMaceCrook or
             Core.Enums.ItemType.WeaponMacePick or
-            Core.Enums.ItemType.WeaponWhip => 0x023D,  // mace swing
+            Core.Enums.ItemType.WeaponWhip => 0x023D,
             Core.Enums.ItemType.WeaponThrowing => 0x0238,
             _ => 0x023B,
         };
     }
+
+    public static ushort GetSwingSoundPublic(Item? weapon) => GetSwingSound(weapon);
 
     /// <summary>Compute the UO notoriety byte for <paramref name="ch"/> as
     /// seen by this client's character. The client reads this byte (part of
@@ -422,69 +424,64 @@ public sealed partial class GameClient
     /// 7=yellow/invul. Returning 1 for everyone (as we did until now)
     /// rendered every mobile in neutral grey. Source-X:
     /// CChar::Noto_GetFlag / Noto_CalcFlag in CCharNotoriety.cpp.</summary>
-    private byte GetNotoriety(Character ch)
+    /// <summary>Compute notoriety byte for <paramref name="subject"/> as seen by
+    /// <paramref name="viewer"/>. Used by per-observer combat/move broadcasts.</summary>
+    public static byte ComputeNotoriety(GameWorld? world, Character? viewer, Character subject)
     {
-        if (_character == null || ch == _character)
-            return 1; // self reads as innocent (blue)
+        if (viewer == null || subject == viewer)
+            return 1;
 
-        // Invulnerable first — always yellow regardless of karma/guild.
-        if (ch.IsStatFlag(StatFlag.Invul))
+        if (subject.IsStatFlag(StatFlag.Invul))
             return 7;
 
-        // Incognito — always grey (Source-X: STATF_INCOGNITO → NOTO_NEUTRAL)
-        if (ch.IsStatFlag(StatFlag.Incognito))
+        if (subject.IsStatFlag(StatFlag.Incognito))
             return 3;
 
-        // Arena region — everyone neutral (Source-X: REGION_FLAG_ARENA)
-        var targetRegion = _world?.FindRegion(ch.Position);
+        var targetRegion = world?.FindRegion(subject.Position);
         if (targetRegion != null && targetRegion.IsFlag(RegionFlag.Arena))
             return 3;
 
-        // Red zone — reversed notoriety (Source-X: REGION_FLAG_RED)
         bool isRedZone = targetRegion != null && targetRegion.IsFlag(RegionFlag.RedZone);
         if (isRedZone)
         {
-            if (ch.IsMurderer) return 1; // murderers are "innocent" in red zones
-            if (ch.Karma > 0) return 6;  // good karma is "evil" in red zones
+            if (subject.IsMurderer) return 1;
+            if (subject.Karma > 0) return 6;
         }
 
-        // Murderers are red even if they share a guild with the viewer.
-        if (ch.IsMurderer)
+        if (subject.IsMurderer)
             return 6;
 
-        // Active criminal flag from MakeCriminal()
-        if (ch.IsCriminal || ch.IsStatFlag(StatFlag.Criminal))
+        if (subject.IsCriminal || subject.IsStatFlag(StatFlag.Criminal))
             return 4;
 
-        // Guild relations: same guild / ally = green, at-war = orange.
-        var guildMgr = Character.ResolveGuildManager?.Invoke(_character.Uid);
+        var guildMgr = Character.ResolveGuildManager?.Invoke(viewer.Uid);
         if (guildMgr != null)
         {
-            var myGuild = guildMgr.FindGuildFor(_character.Uid);
-            var theirGuild = guildMgr.FindGuildFor(ch.Uid);
+            var myGuild = guildMgr.FindGuildFor(viewer.Uid);
+            var theirGuild = guildMgr.FindGuildFor(subject.Uid);
             if (myGuild != null && theirGuild != null)
             {
-                if (myGuild == theirGuild) return 2; // same guild → green
-                if (myGuild.IsAlliedWith(theirGuild.StoneUid)) return 2; // ally → green
-                if (myGuild.IsAtWarWith(theirGuild.StoneUid)) return 5; // enemy → orange
+                if (myGuild == theirGuild) return 2;
+                if (myGuild.IsAlliedWith(theirGuild.StoneUid)) return 2;
+                if (myGuild.IsAtWarWith(theirGuild.StoneUid)) return 5;
             }
         }
 
-        // Party members read as green.
-        var myParty = Character.ResolvePartyFinder?.Invoke(_character.Uid);
-        if (myParty != null && myParty.IsMember(ch.Uid))
+        var myParty = Character.ResolvePartyFinder?.Invoke(viewer.Uid);
+        if (myParty != null && myParty.IsMember(subject.Uid))
             return 2;
 
-        // PermaGrey tag — Source-X: NOTO.PERMAGREY
-        if (ch.TryGetTag("NOTO.PERMAGREY", out string? pg) && pg == "1")
+        if (subject.TryGetTag("NOTO.PERMAGREY", out string? pg) && pg == "1")
             return 3;
 
-        bool isActuallyPlayer = ch.IsPlayer || ch.TryGetTag("ACCOUNT", out _);
+        bool isActuallyPlayer = subject.IsPlayer || subject.TryGetTag("ACCOUNT", out _);
         if (!isActuallyPlayer)
-            return GetNpcNotoriety(ch);
+            return GetNpcNotoriety(subject);
 
-        return 1; // default player → innocent / blue
+        return 1;
     }
+
+    private byte GetNotoriety(Character ch) => ComputeNotoriety(_world, _character, ch);
 
     /// <summary>Notoriety for non-player mobiles. Source-X Noto_CalcFlag
     /// for NPCs mixes brain type and karma:

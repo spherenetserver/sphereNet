@@ -382,6 +382,8 @@ public sealed class GameWorld
             }
         }
         ch.Position = newPos;
+        if (!oldPos.Equals(newPos))
+            ch.LastMoveTick = Environment.TickCount64;
 
         CharacterMoved?.Invoke(ch, oldPos);
 

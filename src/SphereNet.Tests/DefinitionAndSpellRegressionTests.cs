@@ -8,6 +8,7 @@ using SphereNet.Scripting.Resources;
 
 namespace SphereNet.Tests;
 
+[Collection("DefinitionLoaderSerial")]
 public class DefinitionAndSpellRegressionTests
 {
     private static ResourceHolder LoadScript(string contents)
@@ -168,6 +169,7 @@ public class DefinitionAndSpellRegressionTests
         var caster = world.CreateCharacter();
         caster.MaxMana = 100;
         caster.Mana = 100;
+        caster.SetSkill(SkillType.Magery, 1000);
         world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));
 
         var rune = world.CreateItem();

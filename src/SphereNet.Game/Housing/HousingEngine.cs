@@ -380,6 +380,7 @@ public sealed class HousingEngine
         }
 
         _houses[multiItem.Uid] = house;
+        owner.Memory_AddObjTypes(multiItem.Uid, MemoryType.Guard);
         return house;
     }
 

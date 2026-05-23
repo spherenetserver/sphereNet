@@ -76,6 +76,8 @@ public sealed class SpellEngine
         public byte OldLightLevel { get; set; }
         public bool LightChanged { get; set; }
         public StatFlag AppliedFlag { get; set; }
+        public ushort OldBodyId { get; set; }
+        public bool BodyChanged { get; set; }
     }
 
     /// <summary>Active time-limited spell effects. Walked once per world tick
@@ -88,6 +90,120 @@ public sealed class SpellEngine
     public SpellDef? GetSpellDef(SpellType spell) => _spells.Get(spell);
 
     /// <summary>
+    /// Advance an in-progress cast timer. Returns true while still casting.
+    /// Used by player TickSpellCast and NPC AI ticks.
+    /// </summary>
+    public bool TickCastTimer(Character caster)
+    {
+        if (!caster.TryGetTag("SPELL_CASTING", out _))
+            return false;
+
+        if (caster.TryGetTag("CAST_TIMER", out string? timerStr) &&
+            long.TryParse(timerStr, out long castEnd) &&
+            Environment.TickCount64 < castEnd)
+            return true;
+
+        caster.RemoveTag("CAST_TIMER");
+        CastDone(caster);
+        return false;
+    }
+
+    private static bool IsMagicFlag(MagicConfigFlags flag) =>
+        (Character.MagicFlags & (int)flag) != 0;
+
+    private static bool IsCastingWithWand(Character caster)
+    {
+        var weapon = caster.GetEquippedItem(Layer.OneHanded);
+        return weapon?.ItemType == ItemType.Wand;
+    }
+
+    private static bool IsSpellDisabledByConfig(SpellType spell)
+    {
+        return spell switch
+        {
+            SpellType.Mark when IsMagicFlag(MagicConfigFlags.DisableMark) => true,
+            SpellType.Recall when IsMagicFlag(MagicConfigFlags.DisableRecall) => true,
+            SpellType.GateTravel when IsMagicFlag(MagicConfigFlags.DisableGate) => true,
+            _ => false
+        };
+    }
+
+    private static void RevealOnCast(Character caster)
+    {
+        if (IsMagicFlag(MagicConfigFlags.NoRevealOnCast))
+            return;
+        caster.ClearHiddenState();
+    }
+
+    /// <summary>Precast mode from sphere.ini MAGICFLAGS bit 0x0001.</summary>
+    public static bool IsPrecastEnabled(SpellDef def) =>
+        IsMagicFlag(MagicConfigFlags.Precast) && !def.IsFlag(SpellFlag.NoPrecast);
+
+    private static bool IsOutdoorOnlySpell(SpellType spell) => spell switch
+    {
+        SpellType.ChainLightning or SpellType.Flamestrike or
+        SpellType.MeteorSwarm or SpellType.EnergyVortex => true,
+        _ => false,
+    };
+
+    private bool CanCastOutdoorSpell(Character caster, SpellDef def, Point3D pos)
+    {
+        if (!IsOutdoorOnlySpell(def.Id)) return true;
+        if (IsMagicFlag(MagicConfigFlags.DungeonOutdoorSpells)) return true;
+        if (caster.PrivLevel >= PrivLevel.GM) return true;
+        var region = _world.FindRegion(pos);
+        return region == null || !region.IsFlag(RegionFlag.Underground);
+    }
+
+    private void ApplyCastResourceLoss(Character caster, SpellDef def, bool wand, bool fizzle, bool abort)
+    {
+        if (caster.PrivLevel >= PrivLevel.GM)
+            return;
+
+        bool takeReagents = !wand && Character.ReagentsRequiredEnabled && HasRequiredReagents(caster, def);
+        if (fizzle && !Character.ReagentLossFail) takeReagents = false;
+        if (abort && !Character.ReagentLossAbort) takeReagents = false;
+
+        bool takeMana = true;
+        if (fizzle && !Character.ManaLossFail) takeMana = false;
+        if (abort && !Character.ManaLossAbort) takeMana = false;
+
+        if (takeMana && def.ManaCost > 0)
+        {
+            int cost = Math.Max(0, def.ManaCost * Character.ManaLossPercent / 100);
+            caster.Mana = (short)Math.Max(0, caster.Mana - cost);
+        }
+
+        if (takeReagents)
+            ConsumeReagents(caster, def);
+    }
+
+    private void InterruptCast(Character caster, string reason)
+    {
+        SpellDef? def = null;
+        if (caster.TryGetTag("SPELL_CASTING", out string? spellStr) &&
+            int.TryParse(spellStr, out int spellId))
+        {
+            def = _spells.Get((SpellType)spellId);
+        }
+
+        if (def != null)
+            ApplyCastResourceLoss(caster, def, IsCastingWithWand(caster), fizzle: false, abort: true);
+
+        ClearCastState(caster);
+        caster.RemoveTag("CAST_TIMER");
+
+        string msg = reason switch
+        {
+            "damaged" or "moved" or "equip_changed" => ServerMessages.Get(Msg.SpellGenFizzles),
+            _ => reason
+        };
+        OnSpellInterrupt?.Invoke(caster, msg);
+        if (caster.IsPlayer)
+            OnSysMessage?.Invoke(caster, msg);
+    }
+
+    /// <summary>
     /// Check and apply spell interruption from damage.
     /// Call this when a casting character takes damage.
     /// Returns true if the spell was interrupted.
@@ -97,21 +213,19 @@ public sealed class SpellEngine
         if (!caster.TryGetTag("SPELL_CASTING", out _))
             return false;
 
+        if (IsMagicFlag(MagicConfigFlags.NoInterrupt))
+            return false;
+
         // Interrupt chance = damage / maxHits * 100 (Source-X style)
         int chance = caster.MaxHits > 0 ? (damage * 100) / caster.MaxHits : 100;
-        chance = Math.Clamp(chance, 5, 95); // always at least 5% chance, never 100%
+        chance = Math.Clamp(chance, 5, 95);
 
-        // Protection spell halves the interrupt chance. Uses the
-        // ArcherCanMove bit as a Protection marker (see the Protection
-        // case in ApplySpecificSpell for the rationale).
         if (caster.IsStatFlag(StatFlag.ArcherCanMove))
             chance /= 2;
 
         if (_rand.Next(100) < chance)
         {
-            ClearCastState(caster);
-            caster.RemoveTag("CAST_TIMER");
-            OnSpellInterrupt?.Invoke(caster, "damaged");
+            InterruptCast(caster, "damaged");
             return true;
         }
         return false;
@@ -127,13 +241,13 @@ public sealed class SpellEngine
         if (!caster.TryGetTag("SPELL_CASTING", out _))
             return false;
 
-        // GMs can cast while moving
         if (caster.PrivLevel >= PrivLevel.GM)
             return false;
 
-        ClearCastState(caster);
-        caster.RemoveTag("CAST_TIMER");
-        OnSpellInterrupt?.Invoke(caster, "moved");
+        if (IsMagicFlag(MagicConfigFlags.NoInterrupt))
+            return false;
+
+        InterruptCast(caster, "moved");
         return true;
     }
 
@@ -147,9 +261,10 @@ public sealed class SpellEngine
         if (!caster.TryGetTag("SPELL_CASTING", out _))
             return false;
 
-        ClearCastState(caster);
-        caster.RemoveTag("CAST_TIMER");
-        OnSpellInterrupt?.Invoke(caster, "equip_changed");
+        if (IsMagicFlag(MagicConfigFlags.NoInterrupt))
+            return false;
+
+        InterruptCast(caster, "equip_changed");
         return true;
     }
 
@@ -161,6 +276,9 @@ public sealed class SpellEngine
     {
         var def = _spells.Get(spell);
         if (def == null || def.IsFlag(SpellFlag.Disabled))
+            return -1;
+
+        if (IsSpellDisabledByConfig(spell))
             return -1;
 
         if (caster.IsDead)
@@ -178,22 +296,33 @@ public sealed class SpellEngine
         if (caster.Mana < def.ManaCost)
             return -1;
 
-        // Skill check
+        if (!CanCastOutdoorSpell(caster, def, targetPos))
+        {
+            OnSysMessage?.Invoke(caster, "That spell does not work here.");
+            return -1;
+        }
+
         var primarySkill = def.GetPrimarySkill();
         int skillVal = caster.GetSkill(primarySkill);
-        int difficulty = def.GetDifficulty();
 
-        // Wand/scroll: reduce difficulty and bypass reagent cost (the item is
-        // the reagent). GM+ also bypasses reagent requirements.
         var weapon = caster.GetEquippedItem(Layer.OneHanded);
+        var offhand = caster.GetEquippedItem(Layer.TwoHanded);
         bool isWand = weapon?.ItemType == ItemType.Wand;
-        if (isWand) difficulty = 1;
+        bool hasBlockingWeapon = (weapon != null && weapon.ItemType != ItemType.Wand) ||
+            (offhand != null && offhand.ItemType != ItemType.Shield);
+
+        if (!Character.EquippedCastEnabled && hasBlockingWeapon &&
+            caster.PrivLevel < PrivLevel.GM)
+        {
+            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGenFizzles));
+            return -1;
+        }
 
         // Reagent availability check (before starting cast). Wand/scroll/GM skip.
         if (!isWand && caster.PrivLevel < PrivLevel.GM &&
             Character.ReagentsRequiredEnabled && !HasRequiredReagents(caster, def))
         {
-            OnSpellInterrupt?.Invoke(caster, "You lack the reagents to cast that spell.");
+            OnSysMessage?.Invoke(caster, "You lack the reagents to cast that spell.");
             return -1;
         }
 
@@ -201,6 +330,8 @@ public sealed class SpellEngine
         int castTimeTenths = def.GetCastTime(skillVal);
         if (caster.PrivLevel >= PrivLevel.GM)
             castTimeTenths = 1;
+
+        RevealOnCast(caster);
 
         // Store cast state on character
         caster.SetTag("SPELL_CASTING", ((int)spell).ToString());
@@ -280,6 +411,7 @@ public sealed class SpellEngine
         // LOS check BEFORE consuming resources
         if (_world != null &&
             caster.PrivLevel < PrivLevel.GM &&
+            !IsMagicFlag(MagicConfigFlags.NoLos) &&
             (def.IsFlag(SpellFlag.TargChar) || def.IsFlag(SpellFlag.TargObj) ||
              def.IsFlag(SpellFlag.Area)     || def.IsFlag(SpellFlag.Field) ||
              def.IsFlag(SpellFlag.Summon)))
@@ -288,35 +420,48 @@ public sealed class SpellEngine
             if (losDist > 0 && !_world.CanSeeLOS(caster.Position, targetPos))
             {
                 ClearCastState(caster);
-                OnSpellInterrupt?.Invoke(caster, "Target not in line of sight.");
+                OnSysMessage?.Invoke(caster, "Target not in line of sight.");
                 return false;
             }
+        }
+
+        var primarySkill = def.GetPrimarySkill();
+        int skillVal = caster.GetSkill(primarySkill);
+        int difficulty = def.GetDifficulty();
+        bool castWithWand = IsCastingWithWand(caster);
+        if (castWithWand) difficulty = 1;
+
+        // Source-X: skill check at cast completion — fizzle on failure.
+        if (caster.PrivLevel < PrivLevel.GM &&
+            !SkillEngine.CheckSuccess(caster, primarySkill, difficulty))
+        {
+            ApplyCastResourceLoss(caster, def, castWithWand, fizzle: true, abort: false);
+            ClearCastState(caster);
+            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGenFizzles));
+            return false;
         }
 
         // Consume mana
         if (caster.Mana < def.ManaCost)
         {
             ClearCastState(caster);
-            OnSpellInterrupt?.Invoke(caster, "You lack the mana to cast that spell.");
+            OnSysMessage?.Invoke(caster, "You lack the mana to cast that spell.");
             return false;
         }
-        caster.Mana -= (short)def.ManaCost;
 
-        // Consume reagents (unless using a wand / GM override).
-        var castWeapon = caster.GetEquippedItem(Layer.OneHanded);
-        bool castWithWand = castWeapon?.ItemType == ItemType.Wand;
         if (!castWithWand && caster.PrivLevel < PrivLevel.GM &&
             Character.ReagentsRequiredEnabled)
         {
             ConsumeReagents(caster, def);
         }
 
+        int manaCost = Math.Max(0, def.ManaCost * Character.ManaLossPercent / 100);
+        caster.Mana -= (short)Math.Min(manaCost, caster.Mana);
+
         // Clear cast state
         ClearCastState(caster);
 
-        // Get skill level for effect calculation
-        var primarySkill = def.GetPrimarySkill();
-        int skillLevel = caster.GetSkill(primarySkill);
+        int skillLevel = skillVal;
 
         // Mark targets an item (rune), not a character
         if (spell == SpellType.Mark)
@@ -478,6 +623,7 @@ public sealed class SpellEngine
             {
                 target.Hits -= (short)Math.Min(damage, short.MaxValue);
                 target.RecordAttack(caster.Uid, damage);
+                TryInterruptFromDamage(target, damage);
                 if (target.Hits <= 0 && !target.IsDead)
                 {
                     if (OnTargetKilled != null)
@@ -490,6 +636,7 @@ public sealed class SpellEngine
         // Heal spells
         else if (def.IsFlag(SpellFlag.Heal))
         {
+            caster.FlagForHelpingCriminalIfNeeded(target);
             target.Hits = (short)Math.Min(target.Hits + effect, target.MaxHits);
         }
         // Buff/debuff
@@ -538,6 +685,21 @@ public sealed class SpellEngine
     /// <summary>Summon a creature at target location.</summary>
     private void SummonCreature(Character caster, Point3D pos, SpellDef def, int skillLevel)
     {
+        if (IsMagicFlag(MagicConfigFlags.LimitSummons))
+        {
+            int activeSummons = 0;
+            foreach (var ch in _world.GetCharsInRange(caster.Position, 24))
+            {
+                if (ch.IsSummoned && ch.OwnerSerial == caster.Uid)
+                    activeSummons++;
+            }
+            if (activeSummons >= 2)
+            {
+                OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGenFizzles));
+                return;
+            }
+        }
+
         var creature = _world.CreateCharacter();
         creature.Name = def.Name;
         creature.NpcBrain = NpcBrainType.Monster;
@@ -692,6 +854,18 @@ public sealed class SpellEngine
         gate.MoreP = dest;
         gate.DecayTime = Environment.TickCount64 + 30_000;
         _world.PlaceItem(gate, caster.Position);
+
+        if (IsMagicFlag(MagicConfigFlags.GateBothSides))
+        {
+            var returnGate = _world.CreateItem();
+            returnGate.BaseId = 0x0F6C;
+            returnGate.ItemType = ItemType.Moongate;
+            returnGate.Name = "moongate";
+            returnGate.MoreP = caster.Position;
+            returnGate.DecayTime = Environment.TickCount64 + 30_000;
+            _world.PlaceItem(returnGate, dest);
+        }
+
         OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGateOpen));
     }
 
@@ -741,6 +915,7 @@ public sealed class SpellEngine
                 break;
             case SpellType.Cure:
             case SpellType.ArchCure:
+                caster.FlagForHelpingCriminalIfNeeded(target);
                 target.CurePoison();
                 break;
             case SpellType.Paralyze:
@@ -765,15 +940,26 @@ public sealed class SpellEngine
             case SpellType.MassDispel:
                 if (target.IsStatFlag(StatFlag.Conjured) && !target.IsDead)
                 {
-                    if (OnTargetKilled != null)
-                        OnTargetKilled.Invoke(target, caster);
+                    if (IsMagicFlag(MagicConfigFlags.DispelKillSummons))
+                    {
+                        if (OnTargetKilled != null)
+                            OnTargetKilled.Invoke(target, caster);
+                        else
+                            target.Kill();
+                    }
                     else
-                        target.Kill();
+                    {
+                        _world.DeleteObject(target);
+                        target.Delete();
+                    }
                 }
                 break;
             case SpellType.Resurrection:
                 if (target.IsDead)
+                {
+                    caster.FlagForHelpingCriminalIfNeeded(target);
                     target.Resurrect();
+                }
                 break;
             case SpellType.Poison:
             {
@@ -847,10 +1033,18 @@ public sealed class SpellEngine
                 break;
             }
             case SpellType.Polymorph:
-                // Polymorph body change — needs target prompt for body ID.
-                // Deferred until the body-swap + name/hue save/restore path
-                // (shared with Incognito visual changes) is implemented.
+            {
+                ReadOnlySpan<ushort> forms = [0x0033, 0x0034, 0x0035, 0x0036, 0x0037, 0x0038];
+                ushort newBody = forms[_rand.Next(forms.Length)];
+                if (target.OBody == 0)
+                    target.OBody = target.BodyId;
+                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                eff.OldBodyId = target.OBody;
+                eff.BodyChanged = true;
+                target.BodyId = newBody;
+                target.SetStatFlag(StatFlag.Polymorph);
                 break;
+            }
             case SpellType.ManaDrain:
                 int drain = Math.Min(target.Mana, (short)effect);
                 target.Mana -= (short)drain;
@@ -932,11 +1126,46 @@ public sealed class SpellEngine
         if (eff.DexDelta != 0) t.Dex -= eff.DexDelta;
         if (eff.IntDelta != 0) t.Int -= eff.IntDelta;
         if (eff.AppliedFlag != StatFlag.None) t.ClearStatFlag(eff.AppliedFlag);
+        if (eff.BodyChanged) t.BodyId = eff.OldBodyId;
+        if (eff.BodyChanged && eff.Spell == SpellType.Polymorph)
+        {
+            t.ClearStatFlag(StatFlag.Polymorph);
+            if (t.OBody != 0 && t.BodyId == t.OBody)
+                t.OBody = 0;
+        }
         if (eff.LightChanged)
         {
             t.LightLevel = eff.OldLightLevel;
             OnPersonalLightChanged?.Invoke(t);
         }
+    }
+
+    /// <summary>Revert polymorph body on death when MAGICF bit 0x0008 is set.</summary>
+    public void RevertPolymorphOnDeath(Character ch)
+    {
+        if (!IsMagicFlag(MagicConfigFlags.PolymorphRevertDeath))
+            return;
+
+        for (int i = _activeEffects.Count - 1; i >= 0; i--)
+        {
+            var eff = _activeEffects[i];
+            if (eff.Target != ch || !eff.BodyChanged || eff.Spell != SpellType.Polymorph)
+                continue;
+            RevertDeltas(eff);
+            _activeEffects.RemoveAt(i);
+            return;
+        }
+    }
+
+    /// <summary>Original body for resurrect after polymorph (OBody or active effect).</summary>
+    public ushort GetResurrectBody(Character ch)
+    {
+        foreach (var eff in _activeEffects)
+        {
+            if (eff.Target == ch && eff.BodyChanged && eff.OldBodyId != 0)
+                return eff.OldBodyId;
+        }
+        return ch.OBody != 0 ? ch.OBody : ch.BodyId;
     }
 
     /// <summary>Revert all active buff deltas so character stats are saved

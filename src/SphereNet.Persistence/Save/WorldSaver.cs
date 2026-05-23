@@ -304,6 +304,8 @@ public sealed class WorldSaver
 
     private void WriteItem(ISaveWriter w, Item item)
     {
+        EngineTags.StripEphemeral(item);
+
         string? defname = ResolveItemDefName?.Invoke(item.BaseId);
         w.BeginRecord(defname != null ? $"WORLDITEM {defname}" : "WORLDITEM");
         w.WriteProperty("SERIAL", $"0{item.Uid.Value:X8}");
@@ -323,6 +325,10 @@ public sealed class WorldSaver
         if (item.Link.IsValid) w.WriteProperty("LINK", $"0{item.Link.Value:X}");
         if (item.Price != 0) w.WriteProperty("PRICE", item.Price.ToString());
         if (item.Quality != 50) w.WriteProperty("QUALITY", item.Quality.ToString());
+
+        item.MigrateHitsFromTags();
+        if (item.HitsCur > 0) w.WriteProperty("HITS", item.HitsCur.ToString());
+        if (item.HitsMax > 0) w.WriteProperty("MAXHITS", item.HitsMax.ToString());
 
         if (item.TData1 != 0) w.WriteProperty("TDATA1", item.TData1.ToString());
         if (item.TData2 != 0) w.WriteProperty("TDATA2", item.TData2.ToString());
@@ -369,6 +375,10 @@ public sealed class WorldSaver
             string upper = key.ToUpperInvariant();
             if (upper == "ADDOBJ")
                 continue; // already written from SpawnComponent above
+            if (EngineTags.IsEphemeral(key))
+                continue;
+            if (upper is "HITS" or "HITSMAX" or "MAXHITS")
+                continue;
             if (upper is "SPAWNID" or "TIMELO" or "TIMEHI" or "MAXDIST"
                 or "REGION.FLAGS" or "REGION.EVENTS" or "OWNER" or "HOUSETYPE"
                 or "LOCKDOWNSPERCENT" or "BASEVENDORS" or "BASESTORAGE")
@@ -391,6 +401,8 @@ public sealed class WorldSaver
 
     private void WriteChar(ISaveWriter w, Character ch)
     {
+        EngineTags.StripEphemeral(ch);
+
         string? defname = ResolveCharDefName?.Invoke(ch.BodyId);
         w.BeginRecord(defname != null ? $"WORLDCHAR {defname}" : "WORLDCHAR");
         w.WriteProperty("SERIAL", $"0{ch.Uid.Value:X8}");
@@ -535,6 +547,8 @@ public sealed class WorldSaver
         {
             string upper = key.ToUpperInvariant();
             if (upper is "ACCOUNT" or "MAXFOOD")
+                continue;
+            if (EngineTags.IsEphemeral(key))
                 continue;
             if (upper.StartsWith("STATLOCK.", StringComparison.Ordinal))
                 continue;

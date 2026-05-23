@@ -134,6 +134,7 @@ public sealed partial class GameClient
 
         if (moved)
         {
+            _character.LastMoveTick = now;
             // Advance next allowed move time — cap accumulation to prevent
             // cascading rejects when the client sends TCP-buffered walk packets.
             int moveDelay = MovementEngine.GetMoveDelay(_character.IsMounted, running);
@@ -252,7 +253,22 @@ public sealed partial class GameClient
 
         var target = _world.FindChar(new Serial(targetUid));
         if (target == null || target == _character) return;
+
+        if (CombatHelper.IsCombatBlockedByRegion(_world, _character, target))
+        {
+            SysMessage(ServerMessages.Get("combat_nopvp"));
+            return;
+        }
+
         _character.FightTarget = target.Uid;
+
+        if (_triggerDispatcher != null)
+        {
+            var attackResult = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.Attack,
+                new TriggerArgs { CharSrc = _character, O1 = target });
+            if (attackResult == TriggerResult.True)
+                return;
+        }
 
         // Region PvP enforcement
         if (target.IsPlayer && _character.IsPlayer)
@@ -297,21 +313,23 @@ public sealed partial class GameClient
         _character.Memory_Fight_Start(target);
         target.Memory_Fight_Start(_character);
 
-        // Set initial swing delay so the first hit isn't instant
+        // Set initial swing delay so the first hit isn't instant (unless COMBATFLAGS allows it)
         if (_character.NextAttackTime == 0)
         {
-            var w = _character.GetEquippedItem(Layer.OneHanded)
-                 ?? _character.GetEquippedItem(Layer.TwoHanded);
-            _character.NextAttackTime = Environment.TickCount64 + GetSwingDelayMs(_character, w);
+            bool instantFirst = (Character.CombatFlags & (int)CombatFlags.FirstHitInstant) != 0;
+            if (!instantFirst)
+            {
+                var w = _character.GetEquippedItem(Layer.OneHanded)
+                     ?? _character.GetEquippedItem(Layer.TwoHanded);
+                _character.NextAttackTime = Environment.TickCount64 + GetSwingDelayMs(_character, w);
+            }
         }
 
         // Range check — only swing now if already close enough
         var atkWeapon = _character.GetEquippedItem(Layer.OneHanded)
                      ?? _character.GetEquippedItem(Layer.TwoHanded);
-        int atkMaxRange = (atkWeapon != null &&
-            (atkWeapon.ItemType == ItemType.WeaponBow || atkWeapon.ItemType == ItemType.WeaponXBow))
-            ? 10 : 1;
-        int atkDist = Math.Max(Math.Abs(_character.X - target.X), Math.Abs(_character.Y - target.Y));
+        int atkMaxRange = CombatHelper.GetWeaponRange(atkWeapon).Max;
+        int atkDist = CombatHelper.GetChebyshevDistance(_character, target);
         if (atkDist > atkMaxRange)
             return;
 
@@ -344,10 +362,8 @@ public sealed partial class GameClient
 
         var weapon = _character.GetEquippedItem(Layer.OneHanded)
                   ?? _character.GetEquippedItem(Layer.TwoHanded);
-        int maxRange = (weapon != null &&
-            (weapon.ItemType == ItemType.WeaponBow || weapon.ItemType == ItemType.WeaponXBow))
-            ? 10 : 1;
-        int dist = Math.Max(Math.Abs(_character.X - target.X), Math.Abs(_character.Y - target.Y));
+        int maxRange = CombatHelper.GetWeaponRange(weapon).Max;
+        int dist = CombatHelper.GetChebyshevDistance(_character, target);
         if (dist > maxRange)
             return;
 
@@ -404,32 +420,60 @@ public sealed partial class GameClient
         var weapon = _character.GetEquippedItem(Layer.OneHanded)
                   ?? _character.GetEquippedItem(Layer.TwoHanded);
 
-        _character.NextAttackTime = now + GetSwingDelayMs(_character, weapon);
+        var prep = CombatHelper.ValidateSwingPrep(
+            _world, _character, target, weapon, _character.PrivLevel, now, _world.CanSeeLOS);
+        switch (prep.Result)
+        {
+            case CombatHelper.SwingPrepResult.Abort:
+                if (prep.MessageKey != null)
+                    SysMessage(ServerMessages.Get(prep.MessageKey));
+                _character.FightTarget = Serial.Invalid;
+                return;
+            case CombatHelper.SwingPrepResult.RetryLater:
+                if (prep.MessageKey != null)
+                    SysMessage(ServerMessages.Get(prep.MessageKey));
+                else if (CombatHelper.IsRangedWeapon(weapon))
+                    SysMessage("You cannot see that target.");
+                _character.NextAttackTime = now + Math.Max(prep.RetryMs, 250);
+                return;
+        }
 
-        // Source-X Fight_Hit: UpdateDir(pCharTarg) before launching the
-        // swing animation so the attacker visibly turns to face the target.
-        // We do this even on missed swings so combat doesn't look frozen
-        // from a side/back angle.
+        CombatHelper.RevealOnAttack(_character, _character.PrivLevel);
+
+        int swingDelayMs = GetSwingDelayMs(_character, weapon);
+        int swingDelayTenths = Math.Max(1, swingDelayMs / 100);
+        if (_triggerDispatcher != null)
+        {
+            var hitTryArgs = new TriggerArgs
+            {
+                CharSrc = _character,
+                O1 = target,
+                ItemSrc = weapon,
+                N1 = swingDelayTenths,
+            };
+            if (_triggerDispatcher.FireCharTrigger(_character, CharTrigger.HitTry, hitTryArgs) == TriggerResult.True)
+                return;
+            swingDelayTenths = Math.Max(1, hitTryArgs.N1);
+            swingDelayMs = swingDelayTenths * 100;
+        }
+
         FaceTarget(target);
 
-        // Ranged LOS check
-        if (weapon != null && _character.PrivLevel < PrivLevel.GM &&
-            (weapon.ItemType == ItemType.WeaponBow || weapon.ItemType == ItemType.WeaponXBow))
+        if (_triggerDispatcher != null)
         {
-            int rangeDist = Math.Max(Math.Abs(_character.X - target.X), Math.Abs(_character.Y - target.Y));
-            if (rangeDist > 1 && !_world.CanSeeLOS(_character.Position, target.Position))
+            var hitCheckArgs = new TriggerArgs { CharSrc = _character, O1 = target, ItemSrc = weapon };
+            if (_triggerDispatcher.FireCharTrigger(_character, CharTrigger.HitCheck, hitCheckArgs) == TriggerResult.True)
             {
-                SysMessage("You cannot see that target.");
+                EmitMissFeedback(target, weapon);
+                _triggerDispatcher.FireCharTrigger(_character, CharTrigger.HitMiss,
+                    new TriggerArgs { CharSrc = _character, O1 = target });
                 return;
             }
+        }
 
-            // Source-X CCharFight: ranged weapons reject point-blank shots and need ammo.
-            if (rangeDist <= 1)
-            {
-                SysMessage(ServerMessages.Get(Msg.CombatArchTooclose));
-                return;
-            }
-            var ammoType = weapon.ItemType == ItemType.WeaponBow ? ItemType.WeaponArrow : ItemType.WeaponBolt;
+        if (CombatHelper.IsRangedWeapon(weapon))
+        {
+            var ammoType = weapon!.ItemType == ItemType.WeaponBow ? ItemType.WeaponArrow : ItemType.WeaponBolt;
             if (!HasAmmoInBackpack(ammoType))
             {
                 SysMessage(ServerMessages.Get(Msg.CombatArchNoammo));
@@ -438,12 +482,17 @@ public sealed partial class GameClient
             ConsumeAmmoFromBackpack(ammoType);
         }
 
-        // Each swing burns a small bit of stamina (Source-X
-        // Fight_Hit -> UpdateStatVal(STAT_DEX, -1)).
+        _character.NextAttackTime = now + swingDelayMs;
+
+        // Each swing burns a small bit of stamina (Source-X Fight_Hit -> UpdateStatVal(STAT_DEX, -1)).
         if (_character.Stam > 0)
             _character.Stam = (short)(_character.Stam - 1);
 
-        int damage = CombatEngine.ResolveAttack(_character, target, weapon);
+        int damage = CombatEngine.ResolveAttack(
+            _character,
+            target,
+            weapon,
+            CombatHelper.ActiveCombatFlags);
 
         if (damage == 0)
         {
@@ -636,18 +685,24 @@ public sealed partial class GameClient
             _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.HitMiss,
                 new TriggerArgs { CharSrc = _character, O1 = target });
 
-            // Swing animation plays even on miss
-            ushort missAction = GetSwingAction(_character, weapon);
-            var missAnim = new PacketAnimation(_character.Uid.Value, missAction);
-            BroadcastNearby?.Invoke(_character.Position, UpdateRange, missAnim, 0);
-
-            ushort missSwingSound = GetSwingSound(weapon);
-            var missSwingSoundPacket = new PacketSound(missSwingSound, _character.X, _character.Y, _character.Z);
-            BroadcastNearby?.Invoke(_character.Position, UpdateRange, missSwingSoundPacket, 0);
-
-            var missSound = new PacketSound(0x0234, target.X, target.Y, target.Z);
-            BroadcastNearby?.Invoke(target.Position, UpdateRange, missSound, 0);
+            EmitMissFeedback(target, weapon);
         }
+    }
+
+    private void EmitMissFeedback(Character target, Item? weapon)
+    {
+        if (_character == null) return;
+
+        ushort missAction = GetSwingAction(_character, weapon);
+        var missAnim = new PacketAnimation(_character.Uid.Value, missAction);
+        BroadcastNearby?.Invoke(_character.Position, UpdateRange, missAnim, 0);
+
+        ushort missSwingSound = GetSwingSound(weapon);
+        var missSwingSoundPacket = new PacketSound(missSwingSound, _character.X, _character.Y, _character.Z);
+        BroadcastNearby?.Invoke(_character.Position, UpdateRange, missSwingSoundPacket, 0);
+
+        var missSound = new PacketSound(0x0234, target.X, target.Y, target.Z);
+        BroadcastNearby?.Invoke(target.Position, UpdateRange, missSound, 0);
     }
 
     /// <summary>
@@ -675,6 +730,8 @@ public sealed partial class GameClient
         //   (HUE_DEFAULT). The "transparent ghost" bug from the early
         //   death logs was caused by sending 0x4001 here.
         // ---------------------------------------------------------------
+
+        _spellEngine?.RevertPolymorphOnDeath(_character);
 
         ushort ghostBody = _character.BodyId == 0x0191 ? (ushort)0x0193 : (ushort)0x0192;
         _character.BodyId = ghostBody;
@@ -912,17 +969,16 @@ public sealed partial class GameClient
 
         _character.Resurrect();
 
-        // Ghost → human body remap. NOTE: polymorphed players store
-        // their "form before polymorph" separately in Source-X — this
-        // is a TODO when the polymorph system lands; for now plain
-        // ghosts (0x192/0x193) are the only inputs we expect.
         ushort restoredBody = _character.BodyId switch
         {
             0x0193 => (ushort)0x0191,
             0x0192 => (ushort)0x0190,
-            _      => _character.BodyId,
+            _      => _spellEngine?.GetResurrectBody(_character) ?? _character.BodyId,
         };
         _character.BodyId = restoredBody;
+        if (_character.OBody != 0 && _character.BodyId == _character.OBody)
+            _character.OBody = 0;
+        _character.ClearStatFlag(StatFlag.Polymorph);
         _character.Hue = Core.Types.Color.Default;
 
         // === Source-X "Resurrect with Corpse" — auto re-equip ===
@@ -1094,10 +1150,18 @@ public sealed partial class GameClient
                 return;
         }
 
+        var spellDef = _spellEngine.GetSpellDef(spell);
+
+        // Precast: power words + animation first, target cursor after timer.
+        if (targetUid == 0 && spellDef != null && SpellEngine.IsPrecastEnabled(spellDef))
+        {
+            StartPrecast(spell);
+            return;
+        }
+
         // If no explicit target provided, check if the spell needs a target cursor
         if (targetUid == 0)
         {
-            var spellDef = _spellEngine.GetSpellDef(spell);
             bool needsTarget = spellDef != null &&
                 (spellDef.IsFlag(SpellFlag.TargChar) || spellDef.IsFlag(SpellFlag.TargObj) ||
                  spellDef.IsFlag(SpellFlag.Area) || spellDef.IsFlag(SpellFlag.Field));
@@ -1153,6 +1217,78 @@ public sealed partial class GameClient
         }
     }
 
+    private void StartPrecast(SpellType spell)
+    {
+        if (_character == null || _spellEngine == null) return;
+
+        int castTime = _spellEngine.CastStart(_character, spell, _character.Uid, _character.Position);
+        if (castTime > 0)
+        {
+            _character.SetTag("SPELL_PRECAST", "1");
+            _character.SetTag("CAST_TIMER", (Environment.TickCount64 + castTime).ToString());
+            return;
+        }
+
+        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellFail,
+            new TriggerArgs { CharSrc = _character, N1 = (int)spell });
+        SysMessage(ServerMessages.Get("spell_cant_cast"));
+    }
+
+    private void PromptPrecastTarget(SpellType spell, Magic.SpellDef? spellDef)
+    {
+        if (_character == null || _spellEngine == null) return;
+
+        bool needsTarget = spellDef != null &&
+            (spellDef.IsFlag(SpellFlag.TargChar) || spellDef.IsFlag(SpellFlag.TargObj) ||
+             spellDef.IsFlag(SpellFlag.Area) || spellDef.IsFlag(SpellFlag.Field));
+
+        if (!needsTarget)
+        {
+            FinishPrecastCast(spell, _character.Uid.Value, _character.Position);
+            return;
+        }
+
+        SysMessage(spellDef!.TargetPrompt.Length > 0
+            ? spellDef.TargetPrompt
+            : "Choose your target.");
+
+        SetPendingTarget((serial, x, y, z, graphic) =>
+        {
+            if (_character == null) return;
+            var targetPos = new Point3D(x, y, z, _character.MapIndex);
+            uint uid = serial != 0 ? serial : _character.Uid.Value;
+            var targetChar = _world.FindChar(new Serial(uid));
+            if (targetChar != null)
+                targetPos = targetChar.Position;
+            FinishPrecastCast(spell, uid, targetPos);
+        });
+    }
+
+    private void FinishPrecastCast(SpellType spell, uint targetUid, Point3D targetPos)
+    {
+        if (_character == null || _spellEngine == null) return;
+
+        _character.SetTag("SPELL_TARGET_UID", targetUid.ToString());
+        _character.SetTag("SPELL_TARGET_X", targetPos.X.ToString());
+        _character.SetTag("SPELL_TARGET_Y", targetPos.Y.ToString());
+        _character.SetTag("SPELL_TARGET_Z", targetPos.Z.ToString());
+
+        var spellDef = _spellEngine.GetSpellDef(spell);
+        var targetChar = _world.FindChar(new Serial(targetUid));
+
+        bool castOk = _spellEngine.CastDone(_character);
+        if (castOk)
+        {
+            string spellName = spellDef?.Name ?? spell.ToString();
+            SysMessage(ServerMessages.GetFormatted("spell_cast_ok", spellName));
+        }
+        else
+        {
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellFail,
+                new TriggerArgs { CharSrc = _character, N1 = (int)spell });
+        }
+    }
+
     public void TickSpellCast()
     {
         if (_character == null || _spellEngine == null) return;
@@ -1162,6 +1298,16 @@ public sealed partial class GameClient
             Environment.TickCount64 >= castEnd)
         {
             _character.RemoveTag("CAST_TIMER");
+
+            if (_character.TryGetTag("SPELL_PRECAST", out _))
+            {
+                _character.RemoveTag("SPELL_PRECAST");
+                int preSpellId = 0;
+                if (_character.TryGetTag("SPELL_CASTING", out string? preSpellStr))
+                    int.TryParse(preSpellStr, out preSpellId);
+                PromptPrecastTarget((SpellType)preSpellId, _spellEngine.GetSpellDef((SpellType)preSpellId));
+                return;
+            }
 
             // Retrieve spell ID before CastDone clears state
             int spellId = 0;
@@ -1276,6 +1422,7 @@ public sealed partial class GameClient
     {
         TickCombat();
         TickSpellCast();
+        TickPendingSkill();
         TickStatUpdate();
     }
 

@@ -17,6 +17,9 @@ large backlog notes. It supersedes stale status lines in `tools/plan.txt`.
 - Network safety: crypto primitive tests and no-crypt login/game-login harness
   exist; inbound Huffman behavior is intentionally unchanged until broader
   packet fixtures are available.
+- Combat core: shared `CombatHelper` gates (safe region, archery range,
+  shield+bow, movement delay), player `@Attack`/`@HitTry`/`@HitCheck`, reveal
+  on attack, NPC miss swing feedback, and per-observer notoriety on NPC swings.
 
 ## Partial
 
@@ -29,6 +32,9 @@ large backlog notes. It supersedes stale status lines in `tools/plan.txt`.
   primary dispatch path yet.
 - Program bootstrap: `TickYieldStrategy` was extracted, but `Program.cs` remains
   the main wiring monolith.
+- Combat: `COMBATFLAGS` and era values load from ini and feed `CombatEngine`,
+  but full Source-X swing-state machine (`SWING_READY/SWINGING`) and arrow
+  projectile effects are still open.
 
 ## Open Script Parity
 

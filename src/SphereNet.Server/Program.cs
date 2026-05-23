@@ -474,6 +474,23 @@ public static class Program
         Character.HelpingCriminalsIsACrimeEnabled = _config.HelpingCriminalsIsACrime;
         Character.SnoopCriminalEnabled            = _config.SnoopCriminal;
         Character.ReagentsRequiredEnabled  = _config.ReagentsRequired;
+        Character.CombatFlags              = _config.CombatFlags;
+        Character.CombatDamageEra          = _config.CombatDamageEra;
+        Character.CombatHitChanceEra       = _config.CombatHitChanceEra;
+        Character.ArcheryMinDist           = _config.ArcheryMinDist;
+        Character.ArcheryMaxDist           = _config.ArcheryMaxDist;
+        Character.CombatArcheryMovementDelay = _config.CombatArcheryMovementDelay;
+        Character.MagicFlags = _config.MagicFlags;
+        Character.EquippedCastEnabled = _config.EquippedCast;
+        Character.ReagentLossAbort = _config.ReagentLossAbort;
+        Character.ReagentLossFail = _config.ReagentLossFail;
+        Character.ManaLossAbort = _config.ManaLossAbort;
+        Character.ManaLossFail = _config.ManaLossFail;
+        Character.ManaLossPercent = _config.ManaLossPercent;
+        Character.MapViewRadarTiles = _config.MapViewRadar > 0
+            ? _config.MapViewRadar
+            : _config.MapViewSize;
+        Character.AttackerTimeoutSeconds = _config.AttackerTimeout;
 
         // --- 5. World ---
         _world = new GameWorld(_loggerFactory);
@@ -670,10 +687,8 @@ public static class Program
             // @SkillStart — scripts can set ACTDIFF via tags
             _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillStart, args);
 
-            // Difficulty from ACTDIFF tag or default 50
-            int difficulty = 50;
-            if (ch.TryGetTag("ACTDIFF", out string? actDiff) && !string.IsNullOrEmpty(actDiff) && int.TryParse(actDiff, out int d))
-                difficulty = d;
+            // Difficulty from ACTDIFF property (scripts set via ACTDIFF=, not TAG)
+            int difficulty = ch.ActDiff != 0 ? ch.ActDiff : 50;
 
             bool success = SkillEngine.CheckSuccess(ch, skill, difficulty);
 
@@ -1547,45 +1562,57 @@ public static class Program
         };
         _npcAI.OnNpcAttack = (attacker, target, damage) =>
         {
-            // Broadcast the attacker's new facing first (Source-X
-            // CChar::UpdateDir during Fight_Hit). Without a 0x77 here the
-            // client keeps drawing the NPC facing its old direction even
-            // though the AI has already turned it on the server side, and
-            // the swing animation plays sideways.
             byte attackerDir = (byte)((byte)attacker.Direction & 0x07);
             byte attackerFlags = 0;
             if (attacker.IsInWarMode) attackerFlags |= 0x40;
             if (attacker.IsDead) attackerFlags |= 0x02;
-            var movePkt = new PacketMobileMoving(
-                attacker.Uid.Value, attacker.BodyId,
-                attacker.X, attacker.Y, attacker.Z, attackerDir,
-                attacker.Hue, attackerFlags, /*notoriety*/ 3);
-            BroadcastNearby(attacker.Position, 18, movePkt, 0);
+            if (attacker.BodyId == 0x0191 || attacker.BodyId == 0x0193) attackerFlags |= 0x02;
+            if (attacker.IsStatFlag(StatFlag.Freeze)) attackerFlags |= 0x01;
 
-            ushort swingAnim = SphereNet.Game.Clients.GameClient.GetNpcSwingAction(attacker);
-            var animPkt = new PacketAnimation(attacker.Uid.Value, swingAnim);
-            BroadcastNearby(attacker.Position, 18, animPkt, 0);
+            ForEachClientInRange(attacker.Position, 18, 0, (observerCh, observerClient) =>
+            {
+                byte noto = GameClient.ComputeNotoriety(_world, observerCh, attacker);
+                observerClient.Send(new PacketMobileMoving(
+                    attacker.Uid.Value, attacker.BodyId,
+                    attacker.X, attacker.Y, attacker.Z, attackerDir,
+                    attacker.Hue, attackerFlags, noto));
+            });
+
+            ushort swingAnim = GameClient.GetNpcSwingAction(attacker);
+            BroadcastNearby(attacker.Position, 18, new PacketAnimation(attacker.Uid.Value, swingAnim), 0);
+
+            var weapon = attacker.GetEquippedItem(Layer.OneHanded) ?? attacker.GetEquippedItem(Layer.TwoHanded);
+            ushort swingSound = GameClient.GetSwingSoundPublic(weapon);
+            BroadcastNearby(attacker.Position, 18,
+                new PacketSound(swingSound, attacker.X, attacker.Y, attacker.Z), 0);
+
+            if (damage <= 0)
+            {
+                BroadcastNearby(target.Position, 18,
+                    new PacketSound(0x0234, target.X, target.Y, target.Z), 0);
+                _triggerDispatcher?.FireCharTrigger(attacker, CharTrigger.HitMiss,
+                    new TriggerArgs { CharSrc = attacker, O1 = target });
+                return;
+            }
 
             ushort getHitAction = target.IsMounted
-                ? MapAnimToMounted((ushort)SphereNet.Core.Enums.AnimationType.GetHit)
-                : (ushort)SphereNet.Core.Enums.AnimationType.GetHit;
-            var getHitAnim = new PacketAnimation(target.Uid.Value, getHitAction);
-            BroadcastNearby(target.Position, 18, getHitAnim, 0);
+                ? MapAnimToMounted((ushort)AnimationType.GetHit)
+                : (ushort)AnimationType.GetHit;
+            BroadcastNearby(target.Position, 18, new PacketAnimation(target.Uid.Value, getHitAction), 0);
 
-            var dmgPkt = new PacketDamage(target.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue));
-            BroadcastNearby(target.Position, 18, dmgPkt, 0);
+            if (damage > 0)
+                _spellEngine?.TryInterruptFromDamage(target, damage);
 
-            var healthPkt = new PacketUpdateHealth(target.Uid.Value, target.MaxHits, target.Hits);
-            BroadcastNearby(target.Position, 18, healthPkt, 0);
+            BroadcastNearby(target.Position, 18,
+                new PacketDamage(target.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue)), 0);
+            BroadcastNearby(target.Position, 18,
+                new PacketUpdateHealth(target.Uid.Value, target.MaxHits, target.Hits), 0);
 
-            // Source-X parity: fire @Hit/@GetHit triggers so script-based
-            // combat barks, emotes, and hit effects work for NPC attackers.
             _triggerDispatcher?.FireCharTrigger(attacker, CharTrigger.Hit,
                 new TriggerArgs { CharSrc = attacker, O1 = target, N1 = damage });
             _triggerDispatcher?.FireCharTrigger(target, CharTrigger.GetHit,
                 new TriggerArgs { CharSrc = attacker, N1 = damage });
 
-            var weapon = attacker.GetEquippedItem(Layer.OneHanded) ?? attacker.GetEquippedItem(Layer.TwoHanded);
             if (weapon != null)
                 _triggerDispatcher?.FireItemTrigger(weapon, ItemTrigger.Hit,
                     new TriggerArgs { CharSrc = attacker, ItemSrc = weapon, O1 = target, N1 = damage });
@@ -1752,6 +1779,7 @@ public static class Program
             BroadcastNearby(npc.Position, 18, breathSound, 0);
 
             target.Hits -= (short)Math.Min(damage, target.Hits);
+            _spellEngine?.TryInterruptFromDamage(target, damage);
             if (!target.IsPlayer && !target.IsDead && !target.FightTarget.IsValid)
             {
                 target.FightTarget = npc.Uid;
@@ -1784,6 +1812,7 @@ public static class Program
             BroadcastNearby(npc.Position, 18, fx, 0);
 
             target.Hits -= (short)Math.Min(damage, target.Hits);
+            _spellEngine?.TryInterruptFromDamage(target, damage);
             if (!target.IsPlayer && !target.IsDead && !target.FightTarget.IsValid)
             {
                 target.FightTarget = npc.Uid;
@@ -1800,8 +1829,11 @@ public static class Program
         };
         _npcAI.OnNpcCastSpell = (npc, target, spell) =>
         {
-            _spellEngine.CastStart(npc, spell, target.Uid, target.Position);
+            int castMs = _spellEngine.CastStart(npc, spell, target.Uid, target.Position);
+            if (castMs > 0)
+                npc.SetTag("CAST_TIMER", (Environment.TickCount64 + castMs).ToString());
         };
+        _npcAI.OnNpcTickSpellCast = npc => _spellEngine.TickCastTimer(npc);
         var gatheringEngine = new GatheringEngine(_world, _triggerDispatcher);
         _skillHandlers = new SkillHandlers(_world, gatheringEngine);
         _craftingEngine = new CraftingEngine(_world);
@@ -2057,6 +2089,43 @@ public static class Program
                 }
             }
         };
+
+        SphereNet.Game.Objects.Characters.Character.SendOwnerMessage = (target, msg) =>
+        {
+            if (_clientsByCharUid.TryGetValue(target.Uid, out var gc))
+                gc.SysMessage(msg);
+        };
+
+        SphereNet.Game.Objects.Characters.Character.NotoSaveUpdate = ch =>
+        {
+            if (ch == null || _world == null) return;
+            ForEachClientInRange(ch.Position, 18, 0, (observerCh, observerClient) =>
+            {
+                byte noto = GameClient.ComputeNotoriety(_world, observerCh, ch);
+                byte dir = (byte)((byte)ch.Direction & 0x07);
+                byte flags = 0;
+                if (ch.IsInWarMode) flags |= 0x40;
+                if (ch.IsDead) flags |= 0x02;
+                if (ch.BodyId == 0x0191 || ch.BodyId == 0x0193) flags |= 0x02;
+                if (ch.IsStatFlag(StatFlag.Freeze)) flags |= 0x01;
+                observerClient.Send(new PacketMobileMoving(
+                    ch.Uid.Value, ch.BodyId,
+                    ch.X, ch.Y, ch.Z, dir,
+                    ch.Hue, flags, noto));
+            });
+        };
+
+        SphereNet.Game.Objects.Characters.Character.ActiveSkillAborted = (ch, skillId) =>
+        {
+            _triggerDispatcher?.FireCharTrigger(ch, CharTrigger.SkillAbort,
+                new TriggerArgs { CharSrc = ch, N1 = skillId });
+            if (_clientsByCharUid.TryGetValue(ch.Uid, out var gc))
+                gc.SysMessage("You stop what you were doing.");
+        };
+
+        SphereNet.Game.Objects.Characters.Character.OnStepStealth = ch =>
+            _triggerDispatcher?.FireCharTrigger(ch, CharTrigger.StepStealth,
+                new TriggerArgs { CharSrc = ch });
 
         // Account resolution from character UID
         SphereNet.Game.Objects.Characters.Character.ResolveAccountForChar = uid =>

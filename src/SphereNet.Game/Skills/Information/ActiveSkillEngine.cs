@@ -60,6 +60,35 @@ public static class ActiveSkillEngine
         return success;
     }
 
+    // --------------------------------------------------------------- Stealth
+
+    /// <summary>Source-X stealth: must already be hidden; success grants StepStealth walk budget.</summary>
+    public static bool Stealth(IActiveSkillSink sink)
+    {
+        var ch = sink.Self;
+        if (ch.IsInWarMode) return false;
+        if (!ch.IsStatFlag(StatFlag.Hidden))
+        {
+            sink.SysMessage("You must be hidden to use stealth.");
+            return false;
+        }
+
+        bool success = SkillEngine.UseQuick(ch, SkillType.Stealth, sink.Random.Next(60, 90));
+        if (success)
+        {
+            ch.StepStealth = (short)Math.Clamp(Math.Max(1, ch.GetSkill(SkillType.Stealth) / 100), 1, 10);
+            ch.SetStatFlag(StatFlag.Hidden);
+            ch.SetStatFlag(StatFlag.Invisible);
+            sink.SysMessage("You begin to move quietly.");
+        }
+        else
+        {
+            ch.ClearHiddenState();
+            sink.SysMessage("You fail to move quietly.");
+        }
+        return success;
+    }
+
     // ---------------------------------------------------------- DetectHidden
 
     /// <summary>Source-X CChar::Skill_DetectHidden. Reveals hidden chars in radius based on skill diff.</summary>
@@ -78,8 +107,7 @@ public static class ActiveSkillEngine
             int diff = detectSkill - nearby.GetSkill(SkillType.Hiding);
             if (diff > 0 || sink.Random.Next(1000) < 300)
             {
-                nearby.ClearStatFlag(StatFlag.Hidden);
-                nearby.ClearStatFlag(StatFlag.Invisible);
+                nearby.ClearHiddenState();
             }
         }
         return true;
@@ -332,6 +360,8 @@ public static class ActiveSkillEngine
         sink.ConsumeAmount(bandage); // Source-X consumes on fail too.
         if (!success)
             return false;
+
+        ch.FlagForHelpingCriminalIfNeeded(target);
 
         if (target.IsStatFlag(StatFlag.Poisoned))
         {
@@ -821,6 +851,107 @@ public static class ActiveSkillEngine
         Character.BroadcastNearby?.Invoke(ch.Position, 18, soundPkt, 0);
     }
 
+    // ---------------------------------------------------------- Musicianship
+
+    /// <summary>Source-X CChar::Skill_Musicianship. Requires a musical instrument.</summary>
+    public static bool Musicianship(IActiveSkillSink sink)
+    {
+        if (!HasMusicalInstrument(sink))
+        {
+            sink.SysMessage("You have no musical instrument.");
+            return false;
+        }
+        sink.Sound(0x045);
+        return SkillEngine.UseQuick(sink.Self, SkillType.Musicianship, 40);
+    }
+
+    // ----------------------------------------------------------- Peacemaking
+
+    /// <summary>Source-X CChar::Skill_Peacemaking. Pacifies a creature.</summary>
+    public static bool Peacemaking(IActiveSkillSink sink, Character? target)
+    {
+        var ch = sink.Self;
+        if (target == null || target.IsPlayer)
+            return false;
+        if (!HasMusicalInstrument(sink))
+        {
+            sink.SysMessage("You have no musical instrument.");
+            return false;
+        }
+        if (!SkillEngine.UseQuick(ch, SkillType.Musicianship, 40))
+            return false;
+
+        sink.Emote(ServerMessages.Get(Msg.PeacemakingIgnore));
+        if (!SkillEngine.UseQuick(ch, SkillType.Peacemaking, 50))
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.PeacemakingDisobey));
+            return false;
+        }
+
+        target.ClearStatFlag(StatFlag.War);
+        target.FightTarget = Serial.Invalid;
+        return true;
+    }
+
+    // ----------------------------------------------------------- Provocation
+
+    /// <summary>Source-X CChar::Skill_Provocation. Incites one creature against another.</summary>
+    public static bool Provocation(IActiveSkillSink sink, Character? target)
+    {
+        var ch = sink.Self;
+        if (target == null || target.IsPlayer)
+            return false;
+        if (!HasMusicalInstrument(sink))
+        {
+            sink.SysMessage("You have no musical instrument.");
+            return false;
+        }
+        if (!SkillEngine.UseQuick(ch, SkillType.Musicianship, 40))
+            return false;
+
+        var provokeAgainst = FindProvocationVictim(sink, target);
+        if (provokeAgainst == null)
+            return false;
+
+        sink.Emote(ServerMessages.GetFormatted(Msg.ProvocationPlayer, target.Name));
+        if (!SkillEngine.UseQuick(ch, SkillType.Provocation, 60))
+            return false;
+
+        target.FightTarget = provokeAgainst.Uid;
+        target.SetStatFlag(StatFlag.War);
+        sink.Emote(ServerMessages.GetFormatted(Msg.ProvocationUpset, provokeAgainst.Name));
+        return true;
+    }
+
+    private static Character? FindProvocationVictim(IActiveSkillSink sink, Character target)
+    {
+        Character? best = null;
+        int bestDist = int.MaxValue;
+        foreach (var c in sink.World.GetCharsInRange(target.Position, 12))
+        {
+            if (c == target || c == sink.Self || c.IsDead) continue;
+            int d = target.Position.GetDistanceTo(c.Position);
+            if (d < bestDist)
+            {
+                bestDist = d;
+                best = c;
+            }
+        }
+        return best;
+    }
+
+    private static bool HasMusicalInstrument(IActiveSkillSink sink)
+    {
+        var pack = sink.Self.Backpack;
+        if (pack == null) return false;
+        foreach (var it in pack.Contents)
+        {
+            if (it.ItemType == ItemType.Musical) return true;
+        }
+        var hand = sink.Self.GetEquippedItem(Layer.OneHanded);
+        return hand?.ItemType == ItemType.Musical;
+    }
+
     private static bool MatchesCategory(Character c, TrackingCategory cat) => cat switch
     {
         TrackingCategory.Animals  => c.NpcBrain == NpcBrainType.Animal,
@@ -829,4 +960,67 @@ public static class ActiveSkillEngine
         TrackingCategory.Players  => c.IsPlayer,
         _ => false,
     };
+
+    // --------------------------------------------------------------- Tinkering
+
+    /// <summary>Source-X weapon-dclick repair via tinkering skill.</summary>
+    public static bool RepairItem(IActiveSkillSink sink, Item? target)
+    {
+        var ch = sink.Self;
+        if (target == null)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.RepairUnk));
+            return false;
+        }
+
+        if (target.IsEquipped)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.RepairWorn));
+            return false;
+        }
+
+        var def = DefinitionLoader.GetItemDef(target.BaseId);
+        if (def != null && !def.Repair)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.RepairNot));
+            return false;
+        }
+
+        int maxHits = target.GetHitsMax();
+        if (maxHits <= 0)
+        {
+            maxHits = 50;
+            target.HitsMax = maxHits;
+            target.HitsCur = maxHits;
+        }
+
+        int curHits = target.GetHitsCur();
+        if (curHits >= maxHits)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.RepairFull));
+            return false;
+        }
+
+        int difficulty = Math.Clamp(maxHits - curHits, 20, 90);
+        if (!SkillEngine.UseQuick(ch, SkillType.Tinkering, difficulty))
+        {
+            if (sink.Random.Next(100) < 10)
+            {
+                int damage = Math.Max(1, maxHits / 20);
+                target.HitsCur = Math.Max(0, curHits - damage);
+                sink.SysMessage(ServerMessages.Get(Msg.Repair2));
+            }
+            else
+            {
+                sink.SysMessage(ServerMessages.Get(Msg.Repair4));
+            }
+            return false;
+        }
+
+        int restore = Math.Max(1, ch.GetSkill(SkillType.Tinkering) / 25);
+        int newHits = Math.Min(maxHits, curHits + restore);
+        target.HitsCur = newHits;
+        sink.SysMessage(ServerMessages.GetFormatted(Msg.RepairMsg, "You repair", target.Name ?? "the item"));
+        return true;
+    }
 }

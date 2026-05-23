@@ -142,11 +142,9 @@ internal static class InfoSkillExtensions
         };
     }
 
-    public static int GetHitsCur(this Item it) =>
-        it.TryGetTag("HITS", out string? s) && int.TryParse(s, out int v) ? v : 0;
+    public static int GetHitsCur(this Item it) => it.HitsCur;
 
-    public static int GetHitsMax(this Item it) =>
-        it.TryGetTag("HITSMAX", out string? s) && int.TryParse(s, out int v) ? v : 0;
+    public static int GetHitsMax(this Item it) => it.HitsMax;
 
     public static int GetPoisonSkill(this Item it) =>
         it.TryGetTag("POISON_SKILL", out string? s) && int.TryParse(s, out int v) ? v : 0;

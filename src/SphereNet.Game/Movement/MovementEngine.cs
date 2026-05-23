@@ -1,6 +1,7 @@
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Magic;
+using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Scripting;
 
 namespace SphereNet.Game.Movement;
@@ -108,8 +109,17 @@ public sealed class MovementEngine
         // Spell interruption on movement
         SpellEngine?.TryInterruptFromMovement(ch);
 
+        if (ch.HasActiveSkillPending())
+        {
+            int skillId = ch.ClearActiveSkillPending();
+            if (skillId >= 0)
+                Character.ActiveSkillAborted?.Invoke(ch, skillId);
+        }
+
         // Move
         _world.MoveCharacter(ch, target);
+
+        TickStealthStep(ch);
 
         // Region/item step effects
         CheckLocationEffects(ch, target);
@@ -394,5 +404,17 @@ public sealed class MovementEngine
         foreach (var item in pack.Contents)
             total += Math.Max(1, (int)item.Amount);
         return total;
+    }
+
+    private static void TickStealthStep(Objects.Characters.Character ch)
+    {
+        if (ch.StepStealth <= 0)
+            return;
+
+        ch.StepStealth--;
+        Character.OnStepStealth?.Invoke(ch);
+
+        if (ch.StepStealth <= 0)
+            ch.ClearHiddenState();
     }
 }

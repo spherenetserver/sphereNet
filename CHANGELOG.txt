@@ -4,6 +4,71 @@
  All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-23] - Savas, i_memory ve skill/magery parity duzeltmeleri
+              (Combat, i_memory, and skill/magery parity fixes)
+----------------------------------------
+
+BUYU / MAGIC & SKILL:
+  - NPC buyu pipeline: CastStart + CAST_TIMER + CastDone; fizzle CastDone'da
+    skill check; MagicFlags (Gate/Recall/Mark, NoLos, NoInterrupt, NoReveal);
+    interrupt mesajlari; cast reveal; EQUIPPEDCAST; reagent/mana loss config;
+    heal-criminal; stealing unify; spell/NPC damage interrupt.
+  - Skill delay/STROKE dongusu: SKILLDEF DELAY uygulanir; @SkillStroke periyodik;
+    hareket skill'i iptal eder. Bard skill'ler ActiveSkillEngine'e tasindi.
+    Polymorph spell body swap + sure sonunda geri donus. Silah cift tiklama
+    zehir/tinker hedef akisi baglandi.
+  - Phase 4: Stealth StepStealth + @StepStealth; Precast/GateBothSides/
+    DungeonOutdoorSpells/PolymorphRevertDeath; polymorph OBody + resurrect;
+    tinker repair (HITS).
+
+HAFIZA / MEMORY (i_memory):
+  - Fight tick Source-X parity: MapViewRadar, AttackerTimeout, retreat/fame,
+    2s reschedule, stale clear; Memory_Fight_Start guard'lari; MEMORY script
+    gercek flag; SawCrime witness; Guard/Guild/Town wiring; ISPAWNED/FOLLOW;
+    BaseId 0x2007; NotoSave refresh.
+    Fight tick Source-X parity: MapViewRadar, AttackerTimeout, retreat/fame,
+    2s reschedule, stale clears; Memory_Fight_Start guards; MEMORY script flags;
+    SawCrime witness; Guard/Guild/Town wiring; ISPAWNED/FOLLOW; BaseId 0x2007;
+    NotoSave refresh.
+
+SAVAS / COMBAT:
+  - CombatHelper ile Source-X tarzı swing on-kontrolleri eklendi: safe region,
+    ok menzili, kalkan+yay, hareket gecikmesi ve yuz yuzlesme kontrolu.
+    Source-X-style swing pre-checks added via CombatHelper: safe region, archery
+    range, shield+bow, movement delay, and facing checks.
+  - Swing recoil artik LOS/ammo/menzil basarisizliginda tuketilmiyor.
+    Swing recoil is no longer consumed on LOS/ammo/range failures.
+  - Oyuncu saldirisinda @Attack, @HitTry ve @HitCheck triggerlari calisiyor;
+    saldiri reveal hidden/invisible durumunu temizliyor.
+    Player attacks now fire @Attack, @HitTry, and @HitCheck; attacks reveal
+    hidden/invisible attackers.
+  - NPC miss durumunda da swing animasyonu/sesi gonderiliyor; NPC facing paketi
+    per-observer notoriety kullaniyor.
+    NPC misses now send swing animation/sound; NPC facing packets use per-observer
+    notoriety.
+  - COMBATFLAGS, era ve ARCHERY* ini ayarlari runtime combat path'e baglandi.
+    COMBATFLAGS, era, and ARCHERY* ini settings are now wired into runtime combat.
+
+TEST / TESTS:
+  - CombatHelperTests ile menzil, safe region, shield+bow ve reveal davranisi
+    regression altina alindi.
+    CombatHelperTests cover range, safe region, shield+bow, and reveal behavior.
+  - EngineTagsTests: script TAG yazim engeli, save strip, item HITS alan migrasyonu.
+    EngineTagsTests: script TAG write block, save strip, item HITS field migration.
+
+TAG / RUNTIME STATE:
+  - EngineTags: motor icin gecici tag denylist (SPELL_*, SKILL_PENDING_*, bolge,
+    hedef, oturum). Script TAG.x= yazamaz; disconnect/login/save oncesi temizlenir.
+    EngineTags denylist blocks script TAG.x= writes; stripped on disconnect/login/save.
+  - Item HITS/MAXHITS native alanlar; legacy TAG.HITS migrasyonu; save'de property.
+    Item HITS/MAXHITS as native fields; legacy TAG.HITS migration; saved as properties.
+  - NpcAI HOME: Character.Home + HomeDist; legacy HOME_X/Y/Z tag fallback.
+    NpcAI HOME uses Character.Home field with legacy tag fallback.
+  - @SkillStart ACTDIFF artik Character.ActDiff alanindan okunuyor.
+    @SkillStart ACTDIFF now read from Character.ActDiff field.
+  - Legacy StealthSteps tag yerine StepStealth alani kullaniliyor.
+    Legacy StealthSteps tag replaced by StepStealth field.
+
 [2026-05-22] - Kapsamli hata taramasi ve duzeltme (Comprehensive bug audit and fixes)
 ----------------------------------------
 

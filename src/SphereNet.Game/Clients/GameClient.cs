@@ -230,6 +230,7 @@ public sealed partial class GameClient : ITextConsole
                 new PacketDeleteObject(_character.Uid.Value), _character.Uid.Value);
 
             _systemHooks?.DispatchClient("disconnect", _character, _account);
+            EngineTags.StripEphemeral(_character);
             _character.IsOnline = false;
             _character.CTags.RemoveByPrefix("");
             OnCharacterOffline?.Invoke(_character);

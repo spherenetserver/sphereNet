@@ -53,6 +53,8 @@ public class Item : ObjBase
     private Serial _link = Serial.Invalid;
     private int _price;
     private ushort _quality = 50;
+    private int _hitsCur;
+    private int _hitsMax;
 
     private ushort _dispId;
 
@@ -166,6 +168,48 @@ public class Item : ObjBase
     public Serial Link { get => _link; set => _link = value; }
     public int Price { get => _price; set => _price = value; }
     public ushort Quality { get => _quality; set => _quality = value; }
+
+    /// <summary>Current durability (0 = unset). Source-X item hits field.</summary>
+    public int HitsCur
+    {
+        get
+        {
+            MigrateHitsFromTags();
+            return _hitsCur;
+        }
+        set => _hitsCur = Math.Max(0, value);
+    }
+
+    /// <summary>Maximum durability (0 = unset).</summary>
+    public int HitsMax
+    {
+        get
+        {
+            MigrateHitsFromTags();
+            return _hitsMax;
+        }
+        set => _hitsMax = Math.Max(0, value);
+    }
+
+    /// <summary>One-time import from legacy TAG.HITS / TAG.HITSMAX saves.</summary>
+    public void MigrateHitsFromTags()
+    {
+        if (_hitsCur == 0 && TryGetTag("HITS", out string? hc) && int.TryParse(hc, out int c) && c > 0)
+        {
+            _hitsCur = c;
+            RemoveTag("HITS");
+        }
+        if (_hitsMax == 0 && TryGetTag("HITSMAX", out string? hm) && int.TryParse(hm, out int m) && m > 0)
+        {
+            _hitsMax = m;
+            RemoveTag("HITSMAX");
+        }
+        else if (_hitsMax == 0 && TryGetTag("MAXHITS", out string? mh) && int.TryParse(mh, out int mx) && mx > 0)
+        {
+            _hitsMax = mx;
+            RemoveTag("MAXHITS");
+        }
+    }
 
     public MemoryType GetMemoryTypes() => (MemoryType)Hue.Value;
     public void SetMemoryTypes(MemoryType flags) => Hue = new Core.Types.Color((ushort)flags);
@@ -304,9 +348,9 @@ public class Item : ObjBase
             case "TYPE": value = FormatItemType(_type); return true;
             case "AMOUNT": value = _amount.ToString(); return true;
             case "CONT": value = _containedIn.IsValid ? $"0{_containedIn.Value:X}" : ""; return true;
-            case "HITS": value = (TryGetTag("HITS", out string? hv) ? hv : "0")!; return true;
+            case "HITS": value = HitsCur.ToString(); return true;
             case "MAXHITS":
-            case "HITSMAX": value = (TryGetTag("HITSMAX", out string? hmv) ? hmv : "0")!; return true;
+            case "HITSMAX": value = HitsMax.ToString(); return true;
             case "LAYER": value = ((byte)EquipLayer).ToString(); return true;
 
             // Faz 1: Core fields
@@ -737,11 +781,11 @@ public class Item : ObjBase
                 if (ushort.TryParse(value, out ushort av)) Amount = av;
                 return true;
             case "HITS":
-                SetTag("HITS", value);
+                if (int.TryParse(value, out int hits)) HitsCur = hits;
                 return true;
             case "MAXHITS":
             case "HITSMAX":
-                SetTag("HITSMAX", value);
+                if (int.TryParse(value, out int maxHits)) HitsMax = maxHits;
                 return true;
 
             // Faz 1: Core fields
@@ -1312,7 +1356,18 @@ public class Item : ObjBase
                 if (guild != null)
                 {
                     uint uid = ParseHexOrDecUInt(args.Trim());
-                    if (uid != 0) guild.JoinAsMember(new Serial(uid));
+                    if (uid != 0)
+                    {
+                        guild.JoinAsMember(new Serial(uid));
+                        var member = ResolveWorld?.Invoke()?.FindChar(new Serial(uid));
+                        if (member != null)
+                        {
+                            var memType = ItemType == ItemType.StoneTown
+                                ? MemoryType.Town
+                                : MemoryType.Guild;
+                            member.Memory_AddObjTypes(Uid, memType);
+                        }
+                    }
                 }
                 return true;
             }

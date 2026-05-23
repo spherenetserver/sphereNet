@@ -3,6 +3,7 @@ using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
 using SphereNet.Game.Definitions;
+using SphereNet.Game.Messages;
 using SphereNet.Game.Objects.Items;
 
 namespace SphereNet.Game.Objects.Characters;
@@ -358,6 +359,45 @@ public class Character : ObjBase
     /// <summary>Whether spells must consume reagents from backpack. sphere.ini REAGENTSREQUIRED.</summary>
     public static bool ReagentsRequiredEnabled { get; set; } = true;
 
+    /// <summary>COMBATFLAGS bitfield from sphere.ini.</summary>
+    public static int CombatFlags { get; set; }
+    /// <summary>COMBATDAMAGEERA from sphere.ini.</summary>
+    public static int CombatDamageEra { get; set; }
+    /// <summary>COMBATHITCHANCEERA from sphere.ini.</summary>
+    public static int CombatHitChanceEra { get; set; }
+    /// <summary>ARCHERYMINDIST from sphere.ini.</summary>
+    public static int ArcheryMinDist { get; set; } = 1;
+    /// <summary>ARCHERYMAXDIST from sphere.ini.</summary>
+    public static int ArcheryMaxDist { get; set; } = 12;
+    /// <summary>COMBATARCHERYMOVEMENTDELAY from sphere.ini (ms).</summary>
+    public static int CombatArcheryMovementDelay { get; set; }
+    /// <summary>MAGICFLAGS bitfield from sphere.ini.</summary>
+    public static int MagicFlags { get; set; }
+    /// <summary>EQUIPPEDCAST from sphere.ini — allow casting with weapons equipped.</summary>
+    public static bool EquippedCastEnabled { get; set; }
+    public static bool ReagentLossAbort { get; set; }
+    public static bool ReagentLossFail { get; set; }
+    public static bool ManaLossAbort { get; set; }
+    public static bool ManaLossFail { get; set; }
+    public static int ManaLossPercent { get; set; } = 100;
+    /// <summary>Combat retreat distance in tiles. sphere.ini MAPVIEWRADAR (0 = MapViewSize).</summary>
+    public static int MapViewRadarTiles { get; set; } = 18;
+    /// <summary>Attacker inactivity timeout in seconds. 0 = disabled. sphere.ini ATTACKERTIMEOUT.</summary>
+    public static int AttackerTimeoutSeconds { get; set; }
+
+    /// <summary>Refresh notoriety for nearby clients after memory changes (NotoSave_Update).</summary>
+    public static Action<Character>? NotoSaveUpdate { get; set; }
+    /// <summary>Send a system message to the character's client (cowardice, etc.).</summary>
+    public static Action<Character, string>? SendOwnerMessage { get; set; }
+    /// <summary>Fired when a delayed skill is aborted (movement, etc.). Arg: skill index.</summary>
+    public static Action<Character, int>? ActiveSkillAborted { get; set; }
+
+    /// <summary>Fired once per stealth movement step (Source-X @StepStealth).</summary>
+    public static Action<Character>? OnStepStealth { get; set; }
+
+    /// <summary>TickCount64 of the last successful move — archery movement delay gate.</summary>
+    public long LastMoveTick { get; set; }
+
     // Regen timers (ms)
     private long _nextHitRegen;
     private long _nextManaRegen;
@@ -621,6 +661,44 @@ public class Character : ObjBase
     public short Kills { get => _kills; set => _kills = value; }
     public bool IsCriminal => _criminalTimer > 0 && Environment.TickCount64 < _criminalTimer;
     public bool IsMurderer => _kills >= MurderMinCount;
+    /// <summary>True when the character should be treated as a criminal for heal/help checks.</summary>
+    public bool IsFlaggedAsCriminal => IsCriminal || IsMurderer || IsStatFlag(StatFlag.Criminal);
+
+    /// <summary>If HELPINGCRIMINALSISACrime is enabled, flag the helper criminal when aiding a criminal.</summary>
+    public void FlagForHelpingCriminalIfNeeded(Character beneficiary)
+    {
+        if (!HelpingCriminalsIsACrimeEnabled || !IsPlayer || beneficiary == this)
+            return;
+        if (beneficiary.IsFlaggedAsCriminal)
+            MakeCriminal();
+    }
+
+    /// <summary>Clear in-progress delayed skill state. Returns skill id if one was pending.</summary>
+    public int ClearActiveSkillPending()
+    {
+        if (!TryGetTag("SKILL_PENDING_ID", out string? idStr) || !int.TryParse(idStr, out int skillId))
+            return -1;
+
+        RemoveTag("SKILL_PENDING_ID");
+        RemoveTag("SKILL_DELAY_END");
+        RemoveTag("SKILL_STROKE_NEXT");
+        RemoveTag("SKILL_PENDING_TARGET");
+        RemoveTag("SKILL_PENDING_X");
+        RemoveTag("SKILL_PENDING_Y");
+        RemoveTag("SKILL_PENDING_Z");
+        return skillId;
+    }
+
+    public bool HasActiveSkillPending() =>
+        TryGetTag("SKILL_PENDING_ID", out _);
+
+    /// <summary>Drop hidden/invisible/stealth-walk state (cast, combat, step expiry).</summary>
+    public void ClearHiddenState()
+    {
+        ClearStatFlag(StatFlag.Hidden);
+        ClearStatFlag(StatFlag.Invisible);
+        StepStealth = 0;
+    }
 
     /// <summary>Mark this character criminal (gray) and arm the decay timer. Called
     /// by HandleAttack, snooping, theft, etc. Overwrites any existing timer (i.e.
@@ -957,7 +1035,7 @@ public class Character : ObjBase
         var mem = new Item
         {
             ItemType = ItemType.EqMemoryObj,
-            BaseId = 0x1F14,
+            BaseId = 0x2007,
             Name = "Memory",
         };
         mem.Link = uid;
@@ -967,8 +1045,7 @@ public class Character : ObjBase
         mem.ContainedIn = Uid;
 
         mem.SetMemoryTypes(flags);
-        mem.MoreP = Position;
-        Memory_UpdateFlags(mem);
+        Memory_AddTypes(mem, flags);
 
         _memories.Add(mem);
         return mem;
@@ -980,6 +1057,7 @@ public class Character : ObjBase
         if (mem == null)
             return Memory_CreateObj(uid, flags);
         Memory_AddTypes(mem, flags);
+        NotoSaveDelete(uid);
         return mem;
     }
 
@@ -987,7 +1065,35 @@ public class Character : ObjBase
     {
         mem.SetMemoryTypes(mem.GetMemoryTypes() | flags);
         mem.MoreP = Position;
+        mem.More1 = (uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         Memory_UpdateFlags(mem);
+    }
+
+    private static void Memory_SetTimeout(Item mem, long delayMs)
+    {
+        if (delayMs < 0)
+            mem.SetTimeout(-1);
+        else if (delayMs == 0)
+            mem.SetTimeout(0);
+        else
+            mem.SetTimeout(Environment.TickCount64 + delayMs);
+    }
+
+    private void Memory_NotifyNotoriety(Item mem)
+    {
+        NotoSaveUpdate?.Invoke(this);
+        if (!mem.Link.IsValid) return;
+        var link = ResolveWorld?.Invoke()?.FindChar(mem.Link);
+        if (link != null)
+            NotoSaveUpdate?.Invoke(link);
+    }
+
+    private void NotoSaveDelete(Serial uid)
+    {
+        if (!uid.IsValid) return;
+        var link = ResolveWorld?.Invoke()?.FindChar(uid);
+        if (link != null)
+            NotoSaveUpdate?.Invoke(link);
     }
 
     public bool Memory_UpdateClearTypes(Item mem, MemoryType flags)
@@ -1049,7 +1155,8 @@ public class Character : ObjBase
         else
             timeout = 20 * 60_000;
 
-        mem.SetTimeout(timeout);
+        Memory_SetTimeout(mem, timeout);
+        Memory_NotifyNotoriety(mem);
         return true;
     }
 
@@ -1069,6 +1176,12 @@ public class Character : ObjBase
 
     public void Memory_Fight_Start(Character target)
     {
+        if (target == null || !target.Uid.IsValid)
+            return;
+
+        if (FightTarget.IsValid && FightTarget == target.Uid)
+            return;
+
         var mem = Memory_FindObj(target.Uid);
         MemoryType aggFlags;
 
@@ -1092,12 +1205,40 @@ public class Character : ObjBase
             return;
         }
 
+        if (Attacker_GetIndex(target.Uid) >= 0)
+            return;
+
         if (mem.IsMemoryTypes(MemoryType.HarmedBy | MemoryType.SawCrime | MemoryType.Aggreived))
             aggFlags = MemoryType.None;
         else
             aggFlags = MemoryType.IAggressor;
 
         Memory_AddTypes(mem, MemoryType.Fight | aggFlags);
+    }
+
+    private void Memory_Fight_Retreat(Character target, Item fightMem)
+    {
+        if (target == null || target.IsStatFlag(StatFlag.Dead))
+            return;
+
+        int myDistFromBattle = Position.GetDistanceTo(fightMem.MoreP);
+        int hisDistFromBattle = target.Position.GetDistanceTo(fightMem.MoreP);
+        bool cowardice = myDistFromBattle > hisDistFromBattle;
+        Attacker_Delete(target.Uid);
+
+        if (cowardice && !fightMem.IsMemoryTypes(MemoryType.IAggressor))
+            return;
+
+        if (IsPlayer)
+        {
+            string msg = cowardice
+                ? ServerMessages.GetFormatted(Msg.MsgCoward1, target.Name)
+                : ServerMessages.GetFormatted(Msg.MsgCoward2, target.Name);
+            SendOwnerMessage?.Invoke(this, msg);
+        }
+
+        if (cowardice && IsPlayer)
+            Fame = (short)Math.Max(0, Fame - 1);
     }
 
     private bool Memory_Fight_OnTick(Item mem)
@@ -1112,15 +1253,40 @@ public class Character : ObjBase
             return true;
         }
 
-        int dist = Position.GetDistanceTo(target.Position);
-        if (dist > 32)
+        int radar = MapViewRadarTiles > 0 ? MapViewRadarTiles : 18;
+        long elapsedSec = Attacker_GetElapsedSeconds(target.Uid);
+        bool attackerTimedOut = AttackerTimeoutSeconds > 0 && elapsedSec >= 0 &&
+            elapsedSec > AttackerTimeoutSeconds;
+
+        if (Position.GetDistanceTo(target.Position) > radar || attackerTimedOut)
+        {
+            Memory_Fight_Retreat(target, mem);
+            Memory_ClearTypes(mem, MemoryType.Fight | MemoryType.IAggressor | MemoryType.Aggreived);
+            return true;
+        }
+
+        long fightElapsedMs = Memory_GetElapsedMs(mem);
+        if (fightElapsedMs > 60 * 60 * 1000L)
         {
             Memory_ClearTypes(mem, MemoryType.Fight | MemoryType.IAggressor | MemoryType.Aggreived);
             return true;
         }
 
-        mem.SetTimeout(30_000);
+        if (target.Hits >= target.MaxHits && fightElapsedMs > 2 * 60 * 1000L)
+        {
+            Memory_ClearTypes(mem, MemoryType.Fight | MemoryType.IAggressor | MemoryType.Aggreived);
+            return true;
+        }
+
+        Memory_SetTimeout(mem, 2000);
         return true;
+    }
+
+    private static long Memory_GetElapsedMs(Item mem)
+    {
+        if (mem.More1 == 0) return 0;
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        return Math.Max(0L, (now - mem.More1) * 1000L);
     }
 
     public IReadOnlyList<IScriptObj> GetMemoryEntriesByType(string rawType)
@@ -1141,6 +1307,9 @@ public class Character : ObjBase
             "MEMORY_HARMEDBY" => MemoryType.HarmedBy,
             "MEMORY_AGGREIVED" => MemoryType.Aggreived,
             "MEMORY_SPEAK" => MemoryType.Speak,
+            "MEMORY_ISPAWNED" => MemoryType.ISpawned,
+            "MEMORY_FOLLOW" => MemoryType.Follow,
+            "MEMORY_IRRITATEDBY" => MemoryType.IrritatedBy,
             _ => null
         };
 
@@ -1236,6 +1405,38 @@ public class Character : ObjBase
             "FRIEND" or "MEMORY_FRIEND" => "MEMORY_FRIEND",
             _ => upper.StartsWith("MEMORY_", StringComparison.Ordinal) ? upper : "MEMORY_" + upper,
         };
+    }
+
+    private static bool TryParseMemoryTypeName(string raw, out MemoryType type)
+    {
+        type = MemoryType.None;
+        string norm = NormalizeMemoryType(raw);
+        if (norm switch
+        {
+            "MEMORY_FIGHT" => (type = MemoryType.Fight) != 0,
+            "MEMORY_IAGGRESSOR" => (type = MemoryType.IAggressor) != 0,
+            "MEMORY_HARMEDBY" => (type = MemoryType.HarmedBy) != 0,
+            "MEMORY_AGGREIVED" => (type = MemoryType.Aggreived) != 0,
+            "MEMORY_SAWCRIME" => (type = MemoryType.SawCrime) != 0,
+            "MEMORY_IPET" or "MEMORY_OWNER" => (type = MemoryType.IPet) != 0,
+            "MEMORY_FRIEND" => (type = MemoryType.Friend) != 0,
+            "MEMORY_GUARD" => (type = MemoryType.Guard) != 0,
+            "MEMORY_GUILD" => (type = MemoryType.Guild) != 0,
+            "MEMORY_TOWN" => (type = MemoryType.Town) != 0,
+            "MEMORY_SPEAK" => (type = MemoryType.Speak) != 0,
+            "MEMORY_ISPAWNED" => (type = MemoryType.ISpawned) != 0,
+            "MEMORY_FOLLOW" => (type = MemoryType.Follow) != 0,
+            "MEMORY_IRRITATEDBY" => (type = MemoryType.IrritatedBy) != 0,
+            _ => false
+        })
+            return true;
+
+        if (TryParseHexOrDecUshort(norm, out ushort bits))
+        {
+            type = (MemoryType)bits;
+            return type != MemoryType.None;
+        }
+        return false;
     }
 
     private void SetOwnerControllerRaw(Serial ownerUid, Serial controllerUid, bool mirrorLegacySummon)
@@ -1411,6 +1612,30 @@ public class Character : ObjBase
     }
 
     public void ClearAttackers() => _attackers.Clear();
+
+    /// <summary>Index of <paramref name="uid"/> in the attacker log, or -1.</summary>
+    public int Attacker_GetIndex(Serial uid)
+    {
+        for (int i = 0; i < _attackers.Count; i++)
+            if (_attackers[i].Uid == uid) return i;
+        return -1;
+    }
+
+    /// <summary>Seconds since the last hit from <paramref name="uid"/>, or -1 when unknown.</summary>
+    public long Attacker_GetElapsedSeconds(Serial uid)
+    {
+        int idx = Attacker_GetIndex(uid);
+        if (idx < 0) return -1;
+        return Math.Max(0L, (Environment.TickCount64 - _attackers[idx].LastHitTick) / 1000L);
+    }
+
+    /// <summary>Remove one attacker entry (fight retreat / timeout).</summary>
+    public void Attacker_Delete(Serial uid)
+    {
+        int idx = Attacker_GetIndex(uid);
+        if (idx >= 0)
+            _attackers.RemoveAt(idx);
+    }
 
     // --- Death ---
     public void Kill()
@@ -2281,6 +2506,15 @@ public class Character : ObjBase
                 if (entry != null && entry.TryGetProperty("LINK", out value))
                     return true;
             }
+            else
+            {
+                string memPart = upper["MEMORY.".Length..];
+                if (TryParseMemoryTypeName(memPart, out MemoryType mt))
+                {
+                    value = Memory_FindTypes(mt) != null ? "1" : "0";
+                    return true;
+                }
+            }
 
             value = TryGetTag(key, out string? mv) ? (mv ?? "0") : "0";
             return true;
@@ -2626,9 +2860,22 @@ public class Character : ObjBase
             return true;
         }
 
-        // MEMORY.xxx (TAG-based)
+        // MEMORY.xxx — real memory flags when the suffix is a known type name
         if (upperKey.StartsWith("MEMORY.", StringComparison.Ordinal))
         {
+            string memPart = upperKey["MEMORY.".Length..];
+            if (TryParseMemoryTypeName(memPart, out MemoryType mt))
+            {
+                if (normalized is "0" or "")
+                    Memory_ClearAllTypes(mt);
+                else
+                {
+                    Serial link = ParseSerial(normalized);
+                    if (link.IsValid)
+                        Memory_AddObjTypes(link, mt);
+                }
+                return true;
+            }
             SetTag(key, normalized);
             return true;
         }

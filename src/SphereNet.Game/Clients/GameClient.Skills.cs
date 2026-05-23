@@ -103,18 +103,13 @@ public sealed partial class GameClient
         // No-target path: fire stroke, run engine, fire success/fail.
         if (kind == SkillHandlers.ActiveSkillTargetKind.None)
         {
-            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillStroke,
-                new TriggerArgs { CharSrc = _character, N1 = skillId });
+            if (TryScheduleActiveSkillDelay(skill, skillId, Serial.Invalid, null))
+                return;
 
+            FireActiveSkillStroke(skillId);
             var sink0 = new InfoSkillSink(this, _character);
             bool ok0 = _skillHandlers?.UseActiveSkill(sink0, skill, null) ?? false;
-
-            if (_triggerDispatcher != null)
-            {
-                _triggerDispatcher.FireCharTrigger(_character,
-                    ok0 ? CharTrigger.SkillSuccess : CharTrigger.SkillFail,
-                    new TriggerArgs { CharSrc = _character, N1 = skillId });
-            }
+            FireActiveSkillResult(skillId, ok0);
             return;
         }
 
@@ -141,19 +136,110 @@ public sealed partial class GameClient
             Objects.ObjBase? target = uid.IsValid ? _world.FindObject(uid) : null;
             var point = new Point3D(x, y, z);
 
-            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillStroke,
-                new TriggerArgs { CharSrc = _character, N1 = skillId });
+            if (TryScheduleActiveSkillDelay(skill, skillId, uid, point))
+                return;
 
+            FireActiveSkillStroke(skillId);
             var sink = new InfoSkillSink(this, _character);
             bool ok = _skillHandlers?.UseActiveSkill(sink, skill, target, point) ?? false;
-
-            if (_triggerDispatcher != null)
-            {
-                _triggerDispatcher.FireCharTrigger(_character,
-                    ok ? CharTrigger.SkillSuccess : CharTrigger.SkillFail,
-                    new TriggerArgs { CharSrc = _character, N1 = skillId });
-            }
+            FireActiveSkillResult(skillId, ok);
         });
+    }
+
+    private void FireActiveSkillStroke(int skillId)
+    {
+        _triggerDispatcher?.FireCharTrigger(_character!, CharTrigger.SkillStroke,
+            new TriggerArgs { CharSrc = _character, N1 = skillId });
+    }
+
+    private void FireActiveSkillResult(int skillId, bool ok)
+    {
+        if (_triggerDispatcher == null || _character == null) return;
+        _triggerDispatcher.FireCharTrigger(_character,
+            ok ? CharTrigger.SkillSuccess : CharTrigger.SkillFail,
+            new TriggerArgs { CharSrc = _character, N1 = skillId });
+    }
+
+    private bool TryScheduleActiveSkillDelay(SkillType skill, int skillId, Serial targetUid, Point3D? point)
+    {
+        if (_character == null) return false;
+        int delayMs = SkillEngine.GetSkillDelayMs(skill);
+        if (delayMs <= 0) return false;
+
+        long now = Environment.TickCount64;
+        _character.SetTag("SKILL_PENDING_ID", skillId.ToString());
+        _character.SetTag("SKILL_DELAY_END", (now + delayMs).ToString());
+        _character.SetTag("SKILL_STROKE_NEXT",
+            (now + SkillEngine.GetSkillStrokeIntervalMs(skill)).ToString());
+        if (targetUid.IsValid)
+            _character.SetTag("SKILL_PENDING_TARGET", targetUid.Value.ToString());
+        if (point.HasValue)
+        {
+            _character.SetTag("SKILL_PENDING_X", point.Value.X.ToString());
+            _character.SetTag("SKILL_PENDING_Y", point.Value.Y.ToString());
+            _character.SetTag("SKILL_PENDING_Z", point.Value.Z.ToString());
+        }
+
+        FireActiveSkillStroke(skillId);
+        return true;
+    }
+
+    /// <summary>Advance delayed active skills (@SkillStroke loop + completion).</summary>
+    public void TickPendingSkill()
+    {
+        if (_character == null || !_character.TryGetTag("SKILL_PENDING_ID", out string? idStr))
+            return;
+
+        if (!int.TryParse(idStr, out int skillId))
+        {
+            _character.ClearActiveSkillPending();
+            return;
+        }
+
+        var skill = (SkillType)skillId;
+        long now = Environment.TickCount64;
+
+        if (_character.TryGetTag("SKILL_STROKE_NEXT", out string? strokeStr) &&
+            long.TryParse(strokeStr, out long strokeNext) && now >= strokeNext)
+        {
+            FireActiveSkillStroke(skillId);
+            _character.SetTag("SKILL_STROKE_NEXT",
+                (now + SkillEngine.GetSkillStrokeIntervalMs(skill)).ToString());
+        }
+
+        if (!_character.TryGetTag("SKILL_DELAY_END", out string? endStr) ||
+            !long.TryParse(endStr, out long endTick) || now < endTick)
+            return;
+
+        CompletePendingSkill(skill, skillId);
+    }
+
+    private void CompletePendingSkill(SkillType skill, int skillId)
+    {
+        if (_character == null) return;
+
+        Serial targetUid = Serial.Invalid;
+        if (_character.TryGetTag("SKILL_PENDING_TARGET", out string? uidStr) &&
+            uint.TryParse(uidStr, out uint uidVal))
+            targetUid = new Serial(uidVal);
+
+        Point3D? point = null;
+        if (_character.TryGetTag("SKILL_PENDING_X", out string? xs) &&
+            _character.TryGetTag("SKILL_PENDING_Y", out string? ys) &&
+            _character.TryGetTag("SKILL_PENDING_Z", out string? zs) &&
+            short.TryParse(xs, out short tx) &&
+            short.TryParse(ys, out short ty) &&
+            sbyte.TryParse(zs, out sbyte tz))
+        {
+            point = new Point3D(tx, ty, tz, _character.MapIndex);
+        }
+
+        _character.ClearActiveSkillPending();
+
+        Objects.ObjBase? target = targetUid.IsValid ? _world.FindObject(targetUid) : null;
+        var sink = new InfoSkillSink(this, _character);
+        bool ok = _skillHandlers?.UseActiveSkill(sink, skill, target, point) ?? false;
+        FireActiveSkillResult(skillId, ok);
     }
 
     private void ShowTrackingMenu(SkillType skill, int skillId)

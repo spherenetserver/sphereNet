@@ -68,6 +68,10 @@ public sealed class SphereConfig
     public int SectorSleep { get; set; } = 7;
     public int MapViewSize { get; set; } = 18;
     public int MapViewSizeMax { get; set; } = 18;
+    /// <summary>Combat retreat distance (tiles). 0 = use MapViewSize. sphere.ini MAPVIEWRADAR.</summary>
+    public int MapViewRadar { get; set; }
+    /// <summary>Seconds before combat memory clears from inactivity. 0 = disabled. sphere.ini ATTACKERTIMEOUT.</summary>
+    public int AttackerTimeout { get; set; }
 
     // Regen (seconds)
     public int RegenHits { get; set; } = 40;
@@ -80,8 +84,17 @@ public sealed class SphereConfig
     public int CombatDamageEra { get; set; }
     public int CombatHitChanceEra { get; set; }
     public int CombatSpeedEra { get; set; }
+    public int CombatArcheryMovementDelay { get; set; }
+    public int ArcheryMinDist { get; set; } = 1;
+    public int ArcheryMaxDist { get; set; } = 12;
     public int MagicFlags { get; set; }
     public bool ReagentsRequired { get; set; } = true;
+    public bool EquippedCast { get; set; }
+    public bool ReagentLossAbort { get; set; }
+    public bool ReagentLossFail { get; set; }
+    public bool ManaLossAbort { get; set; }
+    public bool ManaLossFail { get; set; }
+    public int ManaLossPercent { get; set; } = 100;
     public int WalkBuffer { get; set; } = 75;
     public int WalkRegen { get; set; } = 25;
 
@@ -310,6 +323,8 @@ public sealed class SphereConfig
         SectorSleep = ini.GetInt(section, "SectorSleep", SectorSleep);
         MapViewSize = ini.GetInt(section, "MapViewSize", MapViewSize);
         MapViewSizeMax = ini.GetInt(section, "MapViewSizeMax", MapViewSizeMax);
+        MapViewRadar = ini.GetInt(section, "MapViewRadar", MapViewRadar);
+        AttackerTimeout = ini.GetInt(section, "AttackerTimeout", AttackerTimeout);
 
         RegenHits = ini.GetInt(section, "Regen0", RegenHits);
         RegenStam = ini.GetInt(section, "Regen1", RegenStam);
@@ -319,8 +334,17 @@ public sealed class SphereConfig
         CombatDamageEra = ini.GetInt(section, "CombatDamageEra", CombatDamageEra);
         CombatHitChanceEra = ini.GetInt(section, "CombatHitChanceEra", CombatHitChanceEra);
         CombatSpeedEra = ini.GetInt(section, "CombatSpeedEra", CombatSpeedEra);
+        CombatArcheryMovementDelay = ini.GetInt(section, "CombatArcheryMovementDelay", CombatArcheryMovementDelay);
+        ArcheryMinDist = ini.GetInt(section, "ArcheryMinDist", ArcheryMinDist);
+        ArcheryMaxDist = ini.GetInt(section, "ArcheryMaxDist", ArcheryMaxDist);
         MagicFlags = ini.GetInt(section, "MagicFlags", MagicFlags);
         ReagentsRequired = ini.GetBool(section, "ReagentsRequired", ReagentsRequired);
+        EquippedCast = ini.GetBool(section, "EquippedCast", EquippedCast);
+        ReagentLossAbort = ini.GetBool(section, "ReagentLossAbort", ReagentLossAbort);
+        ReagentLossFail = ini.GetBool(section, "ReagentLossFail", ReagentLossFail);
+        ManaLossAbort = ini.GetBool(section, "ManaLossAbort", ManaLossAbort);
+        ManaLossFail = ini.GetBool(section, "ManaLossFail", ManaLossFail);
+        ManaLossPercent = ini.GetInt(section, "ManaLossPercent", ManaLossPercent);
         WalkBuffer = ini.GetInt(section, "WalkBuffer", WalkBuffer);
         WalkRegen = ini.GetInt(section, "WalkRegen", WalkRegen);
 

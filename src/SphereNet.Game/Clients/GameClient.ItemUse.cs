@@ -364,7 +364,21 @@ public sealed partial class GameClient
             case ItemType.WeaponMaceStaff:
             case ItemType.WeaponMaceSmith:
                 SysMessage(ServerMessages.Get(Msg.ItemuseWeaponPromt));
-                SetPendingTarget((serial, x, y, z, gfx) => { /* tinker/poison etc unimplemented */ });
+                SetPendingTarget((serial, x, y, z, gfx) =>
+                {
+                    var targetSerial = new Serial(serial);
+                    var targetObj = targetSerial.IsValid ? _world.FindObject(targetSerial) : null;
+                    if (targetObj is Item targetItem && IsWeaponItemType(targetItem.ItemType))
+                    {
+                        RouteSkillTarget(SkillType.Poisoning, targetSerial);
+                        return;
+                    }
+                    if (targetObj is Item repairItem && _character.GetSkill(SkillType.Tinkering) > 0)
+                    {
+                        var sink = new InfoSkillSink(this, _character);
+                        Skills.Information.ActiveSkillEngine.RepairItem(sink, repairItem);
+                    }
+                });
                 break;
 
             case ItemType.WeaponMaceCrook:
@@ -798,6 +812,12 @@ public sealed partial class GameClient
         var sink = new InfoSkillSink(this, _character);
         _skillHandlers?.UseActiveSkill(sink, skill, obj, point);
     }
+
+    private static bool IsWeaponItemType(ItemType type) => type is
+        ItemType.WeaponSword or ItemType.WeaponFence or ItemType.WeaponAxe or
+        ItemType.WeaponMaceSharp or ItemType.WeaponMaceStaff or ItemType.WeaponMaceSmith or
+        ItemType.WeaponBow or ItemType.WeaponXBow or ItemType.WeaponMaceCrook or
+        ItemType.WeaponMacePick or ItemType.WeaponThrowing or ItemType.WeaponWhip;
 
     /// <summary>Source-X uses scissors to convert hides/cloth to leather/bolts.</summary>
     private void HandleScissorsTarget(Item scissors, Serial target)

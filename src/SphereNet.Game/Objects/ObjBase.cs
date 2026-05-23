@@ -448,6 +448,8 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         {
             int dotIdx = key.IndexOf('.');
             string tagKey = dotIdx >= 0 ? key[(dotIdx + 1)..] : "";
+            if (EngineTags.IsEphemeral(tagKey))
+                return true;
             _tags.Set(tagKey, value);
             return true;
         }

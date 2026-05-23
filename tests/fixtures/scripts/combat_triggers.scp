@@ -1,0 +1,14 @@
+// Golden combat trigger probes for parity regression work.
+
+[EVENTS e_combat_hittry_probe]
+ON=@HitTry
+    TAG.HITTRY_SEEN=1
+    ARGN1=25
+
+[EVENTS e_combat_attack_probe]
+ON=@Attack
+    TAG.ATTACK_SEEN=1
+
+[EVENTS e_combat_hitcheck_probe]
+ON=@HitCheck
+    RETURN 1

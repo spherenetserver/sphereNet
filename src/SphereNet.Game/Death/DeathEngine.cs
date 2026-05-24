@@ -114,8 +114,8 @@ public sealed class DeathEngine
 
         // For NPCs, remove the mobile from world state immediately so it no
         // longer blocks movement or lingers in sector/object queries after the
-        // corpse has been created.
-        if (!victim.IsPlayer)
+        // corpse has been created. Bonded pets stay as ghosts (like players).
+        if (!victim.IsPlayer && !victim.IsBonded)
         {
             _world.DeleteObject(victim);
             victim.Delete();
@@ -242,11 +242,10 @@ public sealed class DeathEngine
         DropLootToCorpse(victim, corpse);
 
         // Generate loot based on NPC brain type / stats tier
-        var rand = new Random();
         int tier = Math.Max(1, (victim.Str + victim.Dex + victim.Int) / 60);
 
         // Gold drop
-        int goldAmount = rand.Next(tier * 5, tier * 25 + 1);
+        int goldAmount = Random.Shared.Next(tier * 5, tier * 25 + 1);
         if (goldAmount > 0)
         {
             var gold = _world.CreateItem();
@@ -258,22 +257,22 @@ public sealed class DeathEngine
         }
 
         // Random reagent drops (for magic creatures)
-        if (victim.Int > 30 && rand.Next(100) < 40)
+        if (victim.Int > 30 && Random.Shared.Next(100) < 40)
         {
             ushort[] reagents = [0x0F7A, 0x0F7B, 0x0F84, 0x0F85, 0x0F86, 0x0F88, 0x0F8C, 0x0F8D];
             var reagent = _world.CreateItem();
-            reagent.BaseId = reagents[rand.Next(reagents.Length)];
+            reagent.BaseId = reagents[Random.Shared.Next(reagents.Length)];
             reagent.Name = "reagent";
-            reagent.Amount = (ushort)rand.Next(1, tier + 1);
+            reagent.Amount = (ushort)Random.Shared.Next(1, tier + 1);
             corpse.AddItem(reagent);
         }
 
         // Gem drops for higher tier NPCs
-        if (tier >= 3 && rand.Next(100) < 25)
+        if (tier >= 3 && Random.Shared.Next(100) < 25)
         {
             ushort[] gems = [0x0F13, 0x0F15, 0x0F16, 0x0F18, 0x0F25, 0x0F26];
             var gem = _world.CreateItem();
-            gem.BaseId = gems[rand.Next(gems.Length)];
+            gem.BaseId = gems[Random.Shared.Next(gems.Length)];
             gem.Name = "gem";
             gem.Amount = 1;
             corpse.AddItem(gem);
@@ -438,15 +437,13 @@ public sealed class DeathEngine
         }) == TriggerResult.True)
             return results;
 
-        var rand = new Random();
-
         // Hides
-        if (rand.Next(100) < 70)
+        if (Random.Shared.Next(100) < 70)
         {
             var hides = _world.CreateItem();
             hides.BaseId = 0x1079; // hides
             hides.Name = "hides";
-            hides.Amount = (ushort)rand.Next(1, 4);
+            hides.Amount = (ushort)Random.Shared.Next(1, 4);
             AddToPackOrGround(carver, hides);
             results.Add(hides);
         }
@@ -455,12 +452,12 @@ public sealed class DeathEngine
         var meat = _world.CreateItem();
         meat.BaseId = 0x09F1; // raw ribs
         meat.Name = "raw ribs";
-        meat.Amount = (ushort)rand.Next(1, 3);
+        meat.Amount = (ushort)Random.Shared.Next(1, 3);
         AddToPackOrGround(carver, meat);
         results.Add(meat);
 
         // Bones (low chance)
-        if (rand.Next(100) < 20)
+        if (Random.Shared.Next(100) < 20)
         {
             var bones = _world.CreateItem();
             bones.BaseId = 0x0ECA; // bone pile

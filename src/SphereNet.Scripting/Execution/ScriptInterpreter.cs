@@ -171,6 +171,22 @@ public sealed class ScriptInterpreter
                     i = ExecuteForObjects(lines, i, target, source, args, scope, out result, cmd);
                     break;
 
+                case "BREAK":
+                    if (scope.LoopDepth > 0)
+                    {
+                        scope.IsBreaking = true;
+                        i = lines.Count;
+                    }
+                    break;
+
+                case "CONTINUE":
+                    if (scope.LoopDepth > 0)
+                    {
+                        scope.IsContinuing = true;
+                        i = lines.Count;
+                    }
+                    break;
+
                 case "RETURN":
                 {
                     string argStr = ResolveArgs(key.Arg, target, source, args, scope);
@@ -742,6 +758,8 @@ public sealed class ScriptInterpreter
         {
             scope.LocalVars.SetInt("_FOR", iter);
             result = Execute(GetSubList(lines, bodyStart, bodyEnd), target, source, args, scope);
+            if (scope.IsContinuing) { scope.IsContinuing = false; continue; }
+            if (scope.IsBreaking) { scope.IsBreaking = false; break; }
             if (scope.IsReturning) break;
         }
         scope.LoopDepth--;
@@ -770,6 +788,8 @@ public sealed class ScriptInterpreter
                 break;
 
             result = Execute(GetSubList(lines, bodyStart, bodyEnd), target, source, args, scope);
+            if (scope.IsContinuing) { scope.IsContinuing = false; iterations++; continue; }
+            if (scope.IsBreaking) { scope.IsBreaking = false; break; }
             if (scope.IsReturning) break;
             iterations++;
         }
@@ -859,6 +879,8 @@ public sealed class ScriptInterpreter
             if (args is TriggerArgs ta)
                 ta.Object1 = obj;
             result = Execute(body, obj, source, args, scope);
+            if (scope.IsContinuing) { scope.IsContinuing = false; continue; }
+            if (scope.IsBreaking) { scope.IsBreaking = false; break; }
             if (scope.IsReturning) break;
         }
         if (args is TriggerArgs ta2)

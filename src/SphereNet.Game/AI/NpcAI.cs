@@ -71,6 +71,8 @@ public sealed class NpcAI
     // Cached paths per NPC UID — avoids recalculating every tick
     private readonly Dictionary<uint, List<Point3D>> _pathCache = [];
     private readonly Dictionary<uint, int> _pathIndex = [];
+    private readonly Dictionary<uint, long> _pathTime = [];
+    private const long PathCacheMaxAge = 10_000;
     private long _lastPathPurge;
 
     public Func<Character, Character, bool>? OnNpcActFight { get; set; }
@@ -90,7 +92,8 @@ public sealed class NpcAI
         foreach (var uid in _pathCache.Keys)
         {
             var obj = _world.FindObject(new Core.Types.Serial(uid));
-            if (obj is not Character ch || ch.IsDeleted || ch.IsDead)
+            bool expired = _pathTime.TryGetValue(uid, out long t) && now - t > PathCacheMaxAge;
+            if (obj is not Character ch || ch.IsDeleted || ch.IsDead || expired)
                 (stale ??= []).Add(uid);
         }
         if (stale != null)
@@ -99,6 +102,7 @@ public sealed class NpcAI
             {
                 _pathCache.Remove(uid);
                 _pathIndex.Remove(uid);
+                _pathTime.Remove(uid);
                 _losFailCounts.Remove(uid);
             }
         }
@@ -399,7 +403,7 @@ public sealed class NpcAI
                     if (_rand.Next(4) == 0)
                     {
                         var (betterTarget, betterMotivation) = FindBestTarget(npc, sightRange);
-                        if (betterTarget != null && betterTarget != current && betterMotivation > curMotivation)
+                        if (betterTarget != null && !betterTarget.IsDeleted && betterTarget != current && betterMotivation > curMotivation)
                         {
                             npc.FightTarget = betterTarget.Uid;
                             npc.Memory_Fight_Start(betterTarget);
@@ -1740,6 +1744,7 @@ public sealed class NpcAI
             _world.MoveCharacter(npc, directPos);
             _pathCache.Remove(npc.Uid.Value);
             _pathIndex.Remove(npc.Uid.Value);
+            _pathTime.Remove(npc.Uid.Value);
             return;
         }
 
@@ -1755,13 +1760,14 @@ public sealed class NpcAI
         {
             _pathCache.Remove(uid);
             _pathIndex.Remove(uid);
+            _pathTime.Remove(uid);
         }
         if (!_pathCache.TryGetValue(uid, out var path) || path.Count == 0)
         {
             // Calculate new path
             var npcDef = DefinitionLoader.GetCharDef(npc.CharDefIndex);
             var npcCanFlags = npcDef?.Can ?? Core.Enums.CanFlags.None;
-            path = _pathfinder.FindPath(npc.Position, target, npc.MapIndex, npcCanFlags);
+            path = _pathfinder.FindPath(npc.Position, target, npc.MapIndex, npcCanFlags, npc);
             if (path == null || path.Count == 0)
             {
                 npc.Direction = dir;
@@ -1769,6 +1775,7 @@ public sealed class NpcAI
             }
             _pathCache[uid] = path;
             _pathIndex[uid] = 0;
+            _pathTime[uid] = Environment.TickCount64;
         }
 
         int idx = _pathIndex.GetValueOrDefault(uid, 0);
@@ -1777,6 +1784,7 @@ public sealed class NpcAI
             // Path exhausted — recalculate
             _pathCache.Remove(uid);
             _pathIndex.Remove(uid);
+            _pathTime.Remove(uid);
             return;
         }
 

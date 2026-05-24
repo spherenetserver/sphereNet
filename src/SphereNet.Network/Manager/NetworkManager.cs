@@ -36,6 +36,7 @@ public sealed class NetworkManager : IDisposable
     public bool DebugPackets { get; set; }
     public HashSet<byte>? DebugPacketOpcodeFilter { get; set; }
     public int MaxPacketsPerTick { get; set; } = 100;
+    public int ClientMaxIP { get; set; } = 16;
     public Func<NetState, byte, byte[], bool>? PacketScriptHook { get; set; }
 
     /// <summary>Fired when a connection is about to be cleaned up (before Clear).</summary>
@@ -121,6 +122,8 @@ public sealed class NetworkManager : IDisposable
         _packetManager.Register(new PacketGumpTextEntry());
         _packetManager.Register(new PacketAllNamesReq());
         _packetManager.Register(new PacketChatText());
+        _packetManager.Register(new PacketClientType());
+        _packetManager.Register(new PacketKREncryption());
     }
 
     /// <summary>Initialize the listen socket.</summary>
@@ -170,6 +173,24 @@ public sealed class NetworkManager : IDisposable
             while (_listenSocket.Poll(0, SelectMode.SelectRead))
             {
                 Socket clientSocket = _listenSocket.Accept();
+
+                if (ClientMaxIP > 0 && clientSocket.RemoteEndPoint is System.Net.IPEndPoint ep)
+                {
+                    int ipCount = 0;
+                    foreach (var s in _states)
+                    {
+                        if (s.IsInUse && s.RemoteEndPoint is System.Net.IPEndPoint sEp &&
+                            sEp.Address.Equals(ep.Address))
+                            ipCount++;
+                    }
+                    if (ipCount >= ClientMaxIP)
+                    {
+                        _logger.LogWarning("IP limit ({Limit}) reached for {IP}, rejecting", ClientMaxIP, ep.Address);
+                        clientSocket.Close();
+                        continue;
+                    }
+                }
+
                 var slot = FindFreeSlot();
                 if (slot == null)
                 {

@@ -233,8 +233,6 @@ public sealed partial class GameClient
             return;
         }
 
-        _character.FightTarget = target.Uid;
-
         if (_triggerDispatcher != null)
         {
             var attackResult = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.Attack,
@@ -242,6 +240,8 @@ public sealed partial class GameClient
             if (attackResult == TriggerResult.True)
                 return;
         }
+
+        _character.FightTarget = target.Uid;
 
         // Region PvP enforcement
         if (target.IsPlayer && _character.IsPlayer)

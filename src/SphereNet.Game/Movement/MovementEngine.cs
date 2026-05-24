@@ -235,7 +235,7 @@ public sealed class MovementEngine
             {
                 case ItemType.Trap:
                 case ItemType.TrapActive:
-                    int trapDamage = 5 + new Random().Next(15);
+                    int trapDamage = 5 + Random.Shared.Next(15);
                     ch.Hits -= (short)Math.Min(trapDamage, ch.Hits);
                     if (ch.Hits <= 0) ch.Kill();
                     break;

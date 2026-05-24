@@ -104,8 +104,8 @@ public sealed class House
     private readonly HashSet<Serial> _friends = [];
     private readonly HashSet<Serial> _bans = [];
     private readonly HashSet<Serial> _accessList = [];
-    private readonly List<Serial> _lockdowns = [];
-    private readonly List<Serial> _secureContainers = [];
+    private readonly HashSet<Serial> _lockdowns = [];
+    private readonly HashSet<Serial> _secureContainers = [];
     private readonly List<Serial> _components = [];
     private readonly List<Serial> _vendors = [];
 
@@ -129,8 +129,8 @@ public sealed class House
     public IReadOnlyCollection<Serial> CoOwners => _coOwners;
     public IReadOnlyCollection<Serial> Friends => _friends;
     public IReadOnlyCollection<Serial> Bans => _bans;
-    public IReadOnlyList<Serial> Lockdowns => _lockdowns;
-    public IReadOnlyList<Serial> SecureContainers => _secureContainers;
+    public IReadOnlyCollection<Serial> Lockdowns => _lockdowns;
+    public IReadOnlyCollection<Serial> SecureContainers => _secureContainers;
 
     public House(Item multiItem)
     {

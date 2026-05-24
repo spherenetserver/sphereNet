@@ -110,6 +110,7 @@ public sealed class TelnetConsole : IDisposable
             }
             else
             {
+                _logger.LogWarning("Failed admin login attempt from {EP}", session.RemoteEndPoint);
                 session.SendLine("Authentication failed.");
                 session.Close();
             }
@@ -196,6 +197,7 @@ internal sealed class TelnetSession : IDisposable
 
     public bool IsAlive => !_closed && _socket.Connected;
     public bool IsAuthenticated { get; set; }
+    public EndPoint? RemoteEndPoint => _socket.Connected ? _socket.RemoteEndPoint : null;
 
     public TelnetSession(Socket socket, TelnetConsole console)
     {

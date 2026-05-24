@@ -50,12 +50,15 @@ public class Item : ObjBase
     // Faz 1: Core item fields
     private uint _more1;
     private uint _more2;
+    private uint _moreB;
     private Point3D _moreP;
     private Serial _link = Serial.Invalid;
     private int _price;
     private ushort _quality = 50;
     private int _hitsCur;
     private int _hitsMax;
+    private Serial _crafter = Serial.Invalid;
+    private ushort _usesRemaining;
 
     private ushort _dispId;
 
@@ -171,7 +174,10 @@ public class Item : ObjBase
     // Faz 1: Core field public accessors
     public uint More1 { get => _more1; set => _more1 = value; }
     public uint More2 { get => _more2; set => _more2 = value; }
+    public uint MoreB { get => _moreB; set => _moreB = value; }
     public Point3D MoreP { get => _moreP; set => _moreP = value; }
+    public Serial Crafter { get => _crafter; set => _crafter = value; }
+    public ushort UsesRemaining { get => _usesRemaining; set => _usesRemaining = value; }
     public Serial Link { get => _link; set => _link = value; }
     public int Price { get => _price; set => _price = value; }
     public ushort Quality { get => _quality; set => _quality = value; }
@@ -454,6 +460,7 @@ public class Item : ObjBase
             // Faz 1: Core fields
             case "MORE1": case "MORE": value = FormatMore1(); return true;
             case "MORE2": value = $"0{_more2:X}"; return true;
+            case "MOREB": value = $"0{_moreB:X}"; return true;
             case "MORE1H": value = ((ushort)(_more1 >> 16)).ToString(); return true;
             case "MORE1L": value = ((ushort)(_more1 & 0xFFFF)).ToString(); return true;
             case "MORE2H": value = ((ushort)(_more2 >> 16)).ToString(); return true;
@@ -470,6 +477,8 @@ public class Item : ObjBase
             case "MEMORYTYPES": value = ((ushort)GetMemoryTypes()).ToString(); return true;
             case "PRICE": value = _price.ToString(); return true;
             case "QUALITY": value = _quality.ToString(); return true;
+            case "CRAFTER": value = _crafter.IsValid ? $"0{_crafter.Value:X}" : ""; return true;
+            case "USESREMAINING": value = _usesRemaining.ToString(); return true;
             case "DECAY":
             {
                 if (DecayTime <= 0) { value = "-1"; return true; }
@@ -906,6 +915,9 @@ public class Item : ObjBase
             case "MORE2":
                 _more2 = ParseHexOrDecUInt(value);
                 return true;
+            case "MOREB":
+                _moreB = ParseHexOrDecUInt(value);
+                return true;
             case "MORE1H":
                 if (ushort.TryParse(value, out ushort m1h))
                     _more1 = (_more1 & 0x0000FFFF) | ((uint)m1h << 16);
@@ -942,6 +954,12 @@ public class Item : ObjBase
                 return true;
             case "QUALITY":
                 if (ushort.TryParse(value, out ushort qv)) _quality = qv;
+                return true;
+            case "CRAFTER":
+                _crafter = new Serial(ParseHexOrDecUInt(value));
+                return true;
+            case "USESREMAINING":
+                if (ushort.TryParse(value, out ushort ur)) _usesRemaining = ur;
                 return true;
             case "DECAY":
                 if (long.TryParse(value, out long decaySec) && decaySec > 0)

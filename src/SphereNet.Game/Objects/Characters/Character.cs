@@ -969,6 +969,34 @@ public partial class Character : ObjBase
 
     public bool HasOwner(Serial ownerUid) => ownerUid.IsValid && OwnerSerial == ownerUid;
 
+    public bool IsBonded
+    {
+        get => TryGetTag("BONDED", out string? v) && v == "1";
+        set { if (value) SetTag("BONDED", "1"); else RemoveTag("BONDED"); MarkDirty(DirtyFlag.StatFlags); }
+    }
+
+    public long BondingStartTick
+    {
+        get => TryGetTag("BONDING_START", out string? v) && long.TryParse(v, out long t) ? t : 0;
+        set { if (value > 0) SetTag("BONDING_START", value.ToString()); else RemoveTag("BONDING_START"); }
+    }
+
+    public void TickBonding(long nowTick, long bondingDurationMs = 604800000)
+    {
+        if (IsBonded || !OwnerSerial.IsValid || !IsStatFlag(StatFlag.Pet)) return;
+        long start = BondingStartTick;
+        if (start <= 0)
+        {
+            BondingStartTick = nowTick;
+            return;
+        }
+        if (nowTick - start >= bondingDurationMs)
+        {
+            IsBonded = true;
+            RemoveTag("BONDING_START");
+        }
+    }
+
     public bool HasController(Serial controllerUid) => controllerUid.IsValid && ControllerSerial == controllerUid;
 
     public bool IsFriendOf(Serial charUid)
@@ -1951,6 +1979,7 @@ public partial class Character : ObjBase
             case "PRIVLEVEL": value = ((int)PrivLevel).ToString(); return true;
             case "ISMOUNTED": value = IsMounted ? "1" : "0"; return true;
             case "ISDEAD": value = IsDead ? "1" : "0"; return true;
+            case "BONDED": value = IsBonded ? "1" : "0"; return true;
             case "ISINWAR": value = IsInWarMode ? "1" : "0"; return true;
             case "TITLE": value = _title; return true;
             case "SKILLCLASS": value = _skillClass.ToString(); return true;
@@ -2885,6 +2914,9 @@ public partial class Character : ObjBase
                 }
                 return true;
             }
+            case "BONDED":
+                IsBonded = normalized != "0" && !string.IsNullOrEmpty(normalized);
+                return true;
             case "CONTROLLER":
             case "CONTROLLER_UID":
             {

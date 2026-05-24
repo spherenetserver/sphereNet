@@ -149,14 +149,15 @@ public sealed class CraftingEngine
         return CountInContainer(pack, itemId);
     }
 
-    private static int CountInContainer(Item container, ushort itemId)
+    private static int CountInContainer(Item container, ushort itemId, int depth = 0)
     {
+        if (depth > 10) return 0;
         int count = 0;
         foreach (var item in container.Contents)
         {
             if (item.BaseId == itemId)
                 count += item.Amount;
-            count += CountInContainer(item, itemId);
+            count += CountInContainer(item, itemId, depth + 1);
         }
         return count;
     }
@@ -169,8 +170,9 @@ public sealed class CraftingEngine
         ConsumeFromContainer(pack, itemId, ref amount);
     }
 
-    private static void ConsumeFromContainer(Item container, ushort itemId, ref int remaining)
+    private static void ConsumeFromContainer(Item container, ushort itemId, ref int remaining, int depth = 0)
     {
+        if (depth > 10) return;
         for (int i = container.Contents.Count - 1; i >= 0 && remaining > 0; i--)
         {
             var item = container.Contents[i];
@@ -191,7 +193,7 @@ public sealed class CraftingEngine
             }
             else
             {
-                ConsumeFromContainer(item, itemId, ref remaining);
+                ConsumeFromContainer(item, itemId, ref remaining, depth + 1);
             }
         }
     }

@@ -153,6 +153,11 @@ public sealed class WorldLoader
                         }
                     }
                 }
+                else
+                {
+                    _logger.LogWarning("Orphan player character 0x{Uid:X8} ({Name}) — account '{Account}' not found",
+                        ch.Uid.Value, ch.Name, accName);
+                }
             }
             _logger.LogInformation("Linked {Count}/{Total} characters to accounts", linked, charAccountLinks.Count);
         }
@@ -589,9 +594,17 @@ public sealed class WorldLoader
                     world.SetGlobalVar($"SCRIPT.{scriptName}.{key}", val);
                 }
             }
+            else if (upper == "SPHERE")
+            {
+                while (reader.NextProperty(out string key, out string val))
+                {
+                    if (key.Equals("VERSION", StringComparison.OrdinalIgnoreCase))
+                        _logger.LogInformation("Save file version: {Version}", val);
+                }
+            }
             else
             {
-                // SPHERE, TIMERF, EOF — skip properties
+                // TIMERF, EOF — skip properties
                 while (reader.NextProperty(out _, out _)) { }
             }
         }

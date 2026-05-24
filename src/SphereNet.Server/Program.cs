@@ -275,6 +275,9 @@ public static partial class Program
         iniParser.Load(iniPath);
         _config = new SphereConfig();
         _config.LoadFromIni(iniParser);
+        var configWarnings = _config.Validate();
+        foreach (var w in configWarnings)
+            ConsoleAppend($"CONFIG WARNING: {w}");
         // Multicore is always on. The runtime flag still exists because
         // a phase timeout or unhandled exception in RunMulticoreTick
         // flips it to false as a hot fallback to single-thread.

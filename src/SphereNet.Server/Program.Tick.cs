@@ -158,7 +158,7 @@ public static partial class Program
             _log.LogInformation("Shutting down...");
             _systemHooks.DispatchServer("exit", _serverHookContext);
 
-            _log.LogInformation("Auto-save on shutdown is disabled. Use 'save' command before quitting to persist world state.");
+            _log.LogWarning("Auto-save on shutdown is disabled. Use 'save' command before quitting to persist world state.");
 
             _stateRecorder?.Dispose();
             _telnet?.Dispose();

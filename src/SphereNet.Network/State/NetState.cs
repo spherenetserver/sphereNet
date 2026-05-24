@@ -54,6 +54,7 @@ public sealed class NetState : IDisposable
     // Encryption
     public CryptoState Crypto { get; } = new CryptoState();
     public uint ClientVersionNumber { get; set; }
+    public uint ClientTypeFlag { get; set; }
     public int UndecryptedOffset { get; set; }
     public byte PendingPacketOpcode { get; set; }
     public int PendingPacketLength { get; set; }
@@ -559,6 +560,17 @@ public sealed class NetState : IDisposable
     internal void OnAssistVersion(uint version)
     {
         AssistVersion = version;
+    }
+
+    internal void OnClientType(uint clientFlag)
+    {
+        ClientTypeFlag = clientFlag;
+    }
+
+    internal void OnKREncryption()
+    {
+        // KR encryption negotiation — accept silently, no action needed.
+        // ClassicUO and KR clients send this during login handshake.
     }
 
     internal void OnGumpTextEntry(uint serial, ushort context, byte action, string text)

@@ -345,7 +345,10 @@ public sealed class WorldSaver
 
         if (item.More1 != 0) w.WriteProperty("MORE1", $"0{item.More1:X}");
         if (item.More2 != 0) w.WriteProperty("MORE2", $"0{item.More2:X}");
+        if (item.MoreB != 0) w.WriteProperty("MOREB", $"0{item.MoreB:X}");
         if (item.MoreP != Point3D.Zero) w.WriteProperty("MOREP", item.MoreP.ToString());
+        if (item.Crafter.IsValid) w.WriteProperty("CRAFTER", $"0{item.Crafter.Value:X}");
+        if (item.UsesRemaining != 0) w.WriteProperty("USESREMAINING", item.UsesRemaining.ToString());
         if (item.Link.IsValid) w.WriteProperty("LINK", $"0{item.Link.Value:X}");
         if (item.Price != 0) w.WriteProperty("PRICE", item.Price.ToString());
         if (item.Quality != 50) w.WriteProperty("QUALITY", item.Quality.ToString());
@@ -606,6 +609,7 @@ public sealed class WorldSaver
             sw.WriteLine($"// Save #{_saveIndex} at {DateTime.UtcNow:u}");
             sw.WriteLine();
             sw.WriteLine("[SPHERE]");
+            sw.WriteLine("VERSION=1");
             sw.WriteLine($"SAVECOUNT={_saveIndex}");
             sw.WriteLine($"TIME={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}");
             sw.WriteLine();

@@ -441,8 +441,9 @@ public sealed class PacketPromptResponse : PacketHandler
         string text = "";
         if (type != 0 && buffer.Remaining > 0)
         {
-            // Remaining bytes are the response text (ASCII, null-terminated)
             text = buffer.ReadAsciiNull();
+            if (text.Length > 512)
+                text = text[..512];
         }
         state.OnPromptResponse(serial, promptId, type, text);
     }
@@ -701,5 +702,29 @@ public sealed class PacketChatText : PacketHandler
     public override void OnReceive(PacketBuffer buffer, State.NetState state)
     {
         // Legacy chat system — silently ignore
+    }
+}
+
+/// <summary>0xE1 — Client type announcement (KR/EC/ClassicUO).</summary>
+public sealed class PacketClientType : PacketHandler
+{
+    public PacketClientType() : base(0xE1, 0) { }
+
+    public override void OnReceive(PacketBuffer buffer, State.NetState state)
+    {
+        if (buffer.Remaining < 4) return;
+        uint clientFlag = buffer.ReadUInt32();
+        state.OnClientType(clientFlag);
+    }
+}
+
+/// <summary>0xE3 — KR/EC encryption negotiation seed. Accept silently.</summary>
+public sealed class PacketKREncryption : PacketHandler
+{
+    public PacketKREncryption() : base(0xE3, 0) { }
+
+    public override void OnReceive(PacketBuffer buffer, State.NetState state)
+    {
+        state.OnKREncryption();
     }
 }

@@ -49,7 +49,6 @@ public sealed class LoginEncryption
         uint oldLo = _maskLo;
         uint oldHi = _maskHi;
         _maskLo = ((oldLo >> 1) | (oldHi << 31)) ^ _masterLo;
-        oldHi = ((oldHi >> 1) | (oldLo << 31)) ^ _masterHi;
         _maskHi = ((oldHi >> 1) | (oldLo << 31)) ^ _masterHi;
     }
 

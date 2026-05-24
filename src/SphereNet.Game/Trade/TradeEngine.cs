@@ -180,15 +180,18 @@ public static class VendorEngine
                 }
             }
 
-            // Add gold to player
-            if (totalValue > 0 && backpack != null)
+            // Add gold to player (split into 60000-max piles)
+            int remaining = totalValue;
+            while (remaining > 0 && backpack != null)
             {
+                int pile = Math.Min(remaining, 60000);
                 var gold = World.CreateItem();
-                gold.BaseId = 0x0EED; // gold pile
+                gold.BaseId = 0x0EED;
                 gold.ItemType = Core.Enums.ItemType.Gold;
-                gold.Amount = (ushort)Math.Min(totalValue, 60000);
+                gold.Amount = (ushort)pile;
                 gold.Name = "Gold";
                 backpack.AddItem(gold);
+                remaining -= pile;
             }
         }
 

@@ -234,12 +234,13 @@ public static class SkillEngine
         int max = GetSkillSumMax(ch);
         if (total < max) return;
 
-        // Find a skill set to "down" and reduce it
-        for (int i = 0; i < (int)SkillType.Qty; i++)
+        int count = (int)SkillType.Qty;
+        int start = Random.Shared.Next(count);
+        for (int n = 0; n < count; n++)
         {
-            var sk = (SkillType)i;
+            var sk = (SkillType)((start + n) % count);
             if (sk == excludeSkill) continue;
-            if (ch.GetSkillLock(sk) != 1) continue; // only decay "down" skills
+            if (ch.GetSkillLock(sk) != 1) continue;
             int val = ch.GetSkill(sk);
             if (val > 0)
             {

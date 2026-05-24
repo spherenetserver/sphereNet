@@ -17,14 +17,22 @@ public sealed class ShardManifest
     public static string PathFor(string savePath, string baseName) =>
         Path.Combine(savePath, baseName + ".manifest");
 
+    public Dictionary<string, long> FileSizes { get; set; } = new();
+
     public void Save(string path)
     {
+        string dir = Path.GetDirectoryName(path) ?? ".";
         using var sw = new StreamWriter(path);
         sw.WriteLine("// SphereNet shard manifest");
         sw.WriteLine($"FORMAT={Format}");
         sw.WriteLine($"SHARDS={ShardCount}");
         foreach (var f in Files)
+        {
+            string fullPath = Path.Combine(dir, f);
+            long size = File.Exists(fullPath) ? new FileInfo(fullPath).Length : 0;
             sw.WriteLine($"FILE={f}");
+            sw.WriteLine($"SIZE={size}");
+        }
     }
 
     public static ShardManifest? TryLoad(string path)
@@ -50,6 +58,10 @@ public sealed class ShardManifest
                     break;
                 case "FILE":
                     m.Files.Add(val);
+                    break;
+                case "SIZE":
+                    if (m.Files.Count > 0 && long.TryParse(val, out long sz))
+                        m.FileSizes[m.Files[^1]] = sz;
                     break;
             }
         }

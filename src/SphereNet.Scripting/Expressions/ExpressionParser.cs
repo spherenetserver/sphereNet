@@ -1202,8 +1202,32 @@ public sealed class ExpressionParser
         if (varExpr.StartsWith("ISOBSCENE(", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("ISOBSCENE ", StringComparison.OrdinalIgnoreCase))
         {
-            // Simple stub — always returns 0 (no profanity filter loaded)
             return "0";
+        }
+
+        // DATE — current date/time as formatted string
+        if (varExpr.Equals("DATE", StringComparison.OrdinalIgnoreCase))
+        {
+            return DateTime.Now.ToString("MM/dd/yy");
+        }
+
+        // DATEOBJ — numeric access: DATEOBJ.YEAR, DATEOBJ.MONTH, etc.
+        if (varExpr.StartsWith("DATEOBJ.", StringComparison.OrdinalIgnoreCase))
+        {
+            string field = varExpr[8..].Trim().ToUpperInvariant();
+            var now = DateTime.Now;
+            return field switch
+            {
+                "YEAR" => now.Year.ToString(),
+                "MONTH" => now.Month.ToString(),
+                "DAY" => now.Day.ToString(),
+                "HOUR" => now.Hour.ToString(),
+                "MINUTE" => now.Minute.ToString(),
+                "SECOND" => now.Second.ToString(),
+                "DAYOFWEEK" => ((int)now.DayOfWeek).ToString(),
+                "DAYOFYEAR" => now.DayOfYear.ToString(),
+                _ => "0"
+            };
         }
 
         // ID — resolve defname to numeric value

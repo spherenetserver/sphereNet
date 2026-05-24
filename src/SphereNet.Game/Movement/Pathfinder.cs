@@ -26,7 +26,7 @@ public sealed class Pathfinder
     /// Find a path from start to goal. Returns the next step direction,
     /// or null if no path found.
     /// </summary>
-    public List<Point3D>? FindPath(Point3D start, Point3D goal, byte mapIndex, CanFlags canFlags = CanFlags.None)
+    public List<Point3D>? FindPath(Point3D start, Point3D goal, byte mapIndex, CanFlags canFlags = CanFlags.None, Objects.Characters.Character? self = null)
     {
         if (IsGoalReached(start, goal))
             return [goal];
@@ -83,7 +83,7 @@ public sealed class Pathfinder
                         continue;
 
                     var neighborPos = new Point3D(nx, ny, nz, mapIndex);
-                    if (!IsWalkable(neighborPos, canFlags))
+                    if (!IsWalkable(neighborPos, canFlags, self))
                         continue;
 
                     int moveCost = (dx != 0 && dy != 0) ? 14 : 10; // diagonal vs cardinal
@@ -102,14 +102,20 @@ public sealed class Pathfinder
             }
         }
 
-        return null; // no path found
+        if (nodesExplored >= MaxNodes)
+            Objects.Characters.Character.Diagnostic?.Invoke(
+                $"Pathfinder: MaxNodes ({MaxNodes}) exhausted from {start} to {goal}");
+
+        return null;
     }
 
-    private bool IsWalkable(Point3D pos, CanFlags canFlags = CanFlags.None)
+    private bool IsWalkable(Point3D pos, CanFlags canFlags = CanFlags.None, Objects.Characters.Character? self = null)
     {
         foreach (var ch in _world.GetCharsInRange(pos, 0))
         {
-            if (!ch.IsDead) return false;
+            if (ch == self || ch.IsDead || ch.IsStatFlag(StatFlag.Invisible) || ch.IsStatFlag(StatFlag.Hidden))
+                continue;
+            return false;
         }
 
         foreach (var item in _world.GetItemsInRange(pos, 0))

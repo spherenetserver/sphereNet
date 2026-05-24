@@ -146,6 +146,12 @@ public sealed partial class GameClient
             if (!ch.IsPlayer && _mountEngine != null &&
                 Mounts.MountEngine.IsMountable(ch.BodyId))
             {
+                if (ch.IsDead)
+                {
+                    SysMessage(ServerMessages.Get(Msg.MsgBondedDeadCantmount));
+                    return;
+                }
+
                 // Already riding — block with message instead of falling through to paperdoll
                 if (_character.IsMounted)
                 {
@@ -457,7 +463,10 @@ public sealed partial class GameClient
                 break;
             case ItemType.Shrine:
                 if (_character.IsDead)
+                {
+                    OnResurrect();
                     SysMessage(ServerMessages.Get(Msg.HealingRes));
+                }
                 else
                     SysMessage(ServerMessages.Get("itemuse_shrine"));
                 break;

@@ -9,6 +9,8 @@ public sealed class ScriptScope
     public Variables.VarMap LocalVars { get; } = new();
     public string? ReturnValue { get; set; }
     public bool IsReturning { get; set; }
+    public bool IsBreaking { get; set; }
+    public bool IsContinuing { get; set; }
     public int LoopDepth { get; set; }
     public int CallDepth { get; set; }
     public int MaxCallDepth { get; set; } = 32;

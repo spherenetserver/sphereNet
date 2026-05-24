@@ -62,7 +62,12 @@ public sealed class WebStatusServer : IDisposable
                 if (!result.AsyncWaitHandle.WaitOne(0)) return;
                 ctx = _listener.EndGetContext(result);
             }
-            catch { return; }
+            catch (Exception ex)
+            {
+                if (_running)
+                    _logger.LogWarning(ex, "Web status listener error");
+                return;
+            }
 
             try
             {

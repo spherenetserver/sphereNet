@@ -111,7 +111,8 @@ public sealed class SpellEngine
 
     private static bool IsCastingWithWand(Character caster)
     {
-        var weapon = caster.GetEquippedItem(Layer.OneHanded);
+        var weapon = caster.GetEquippedItem(Layer.OneHanded)
+                  ?? caster.GetEquippedItem(Layer.TwoHanded);
         return weapon?.ItemType == ItemType.Wand;
     }
 
@@ -140,7 +141,10 @@ public sealed class SpellEngine
     private static bool IsOutdoorOnlySpell(SpellType spell) => spell switch
     {
         SpellType.ChainLightning or SpellType.Flamestrike or
-        SpellType.MeteorSwarm or SpellType.EnergyVortex => true,
+        SpellType.MeteorSwarm or SpellType.EnergyVortex or
+        SpellType.Earthquake or SpellType.AirElemental or
+        SpellType.EarthElemental or SpellType.FireElemental or
+        SpellType.WaterElemental => true,
         _ => false,
     };
 

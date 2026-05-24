@@ -1761,6 +1761,7 @@ public static partial class Program
             _network.DebugPackets = _config.DebugPackets;
             _network.DebugPacketOpcodeFilter = ParseDebugPacketOpcodes(_config.DebugPacketOpcodes);
             _network.MaxPacketsPerTick = _config.MaxPacketsPerTick;
+            _network.ClientMaxIP = _config.ClientMaxIP;
             _network.PacketScriptHook = HandlePacketScriptHook;
             _log.LogInformation("Crypto keys loaded: {Count}, UseCrypt={UC}, UseNoCrypt={UNC}",
                 _cryptConfig.Keys.Count, _config.UseCrypt, _config.UseNoCrypt);

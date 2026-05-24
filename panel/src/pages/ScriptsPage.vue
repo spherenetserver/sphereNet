@@ -96,15 +96,38 @@
           <span class="content-path">
             <i class="bi bi-file-earmark-text" />
             {{ selected.relativePath }}
+            <span v-if="dirty" class="dirty-dot">unsaved</span>
           </span>
           <div class="content-actions">
             <span class="content-meta">{{ fmtSize(selected.sizeBytes) }}</span>
+            <button class="btn-small" @click="validateCurrent" :disabled="saving || contentLoading">
+              Validate
+            </button>
+            <button class="btn-small primary" @click="saveCurrent" :disabled="!dirty || saving || contentLoading">
+              {{ saving ? 'Saving…' : 'Save' }}
+            </button>
+            <button class="btn-small" @click="resyncScripts" :disabled="saving">
+              Resync
+            </button>
           </div>
         </div>
 
         <div v-if="contentLoading" class="no-selection">Loading…</div>
 
-        <pre v-else class="content-body">{{ content }}</pre>
+        <div v-else class="editor-wrap">
+          <textarea
+            v-model="content"
+            class="script-editor"
+            spellcheck="false"
+            @input="dirty = true"
+          />
+          <div v-if="statusMsg" class="editor-status" :class="{ error: statusError }">
+            {{ statusMsg }}
+          </div>
+          <ul v-if="validationErrors.length" class="validation-list">
+            <li v-for="err in validationErrors" :key="err">{{ err }}</li>
+          </ul>
+        </div>
       </template>
     </div>
   </div>
@@ -112,7 +135,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { scriptsApi } from '@/lib/api'
+import { scriptsApi, serverApi } from '@/lib/api'
 import type { ScriptFileInfo } from '@/lib/api'
 
 interface TreeNode {
@@ -129,7 +152,13 @@ const loading       = ref(true)
 const search        = ref('')
 const selected      = ref<ScriptFileInfo | null>(null)
 const content       = ref('')
+const originalContent = ref('')
 const contentLoading = ref(false)
+const saving        = ref(false)
+const dirty         = ref(false)
+const statusMsg     = ref('')
+const statusError   = ref(false)
+const validationErrors = ref<string[]>([])
 const downloading   = ref(false)
 const downloadMsg   = ref('')
 const downloadError = ref(false)
@@ -221,16 +250,79 @@ function toggleFolder(path: string) {
 }
 
 async function openFile(f: ScriptFileInfo) {
+  if (dirty.value && !window.confirm('Discard unsaved changes?')) return
   selected.value = f
   content.value = ''
+  originalContent.value = ''
+  dirty.value = false
+  statusMsg.value = ''
+  statusError.value = false
+  validationErrors.value = []
   contentLoading.value = true
   try {
     const { data } = await scriptsApi.content(f.relativePath)
     content.value = data.content
+    originalContent.value = data.content
   } catch {
     content.value = '(error loading file)'
+    statusMsg.value = 'Error loading file'
+    statusError.value = true
   } finally {
     contentLoading.value = false
+  }
+}
+
+async function validateCurrent() {
+  if (!selected.value) return false
+  statusMsg.value = ''
+  statusError.value = false
+  validationErrors.value = []
+  try {
+    const { data } = await scriptsApi.validate(selected.value.relativePath, content.value)
+    validationErrors.value = data.errors
+    statusMsg.value = data.ok ? 'Validation passed' : 'Validation failed'
+    statusError.value = !data.ok
+    return data.ok
+  } catch {
+    statusMsg.value = 'Validation request failed'
+    statusError.value = true
+    return false
+  }
+}
+
+async function saveCurrent() {
+  if (!selected.value) return
+  saving.value = true
+  statusMsg.value = ''
+  statusError.value = false
+  try {
+    const ok = await validateCurrent()
+    if (!ok) return
+    await scriptsApi.save(selected.value.relativePath, content.value)
+    originalContent.value = content.value
+    dirty.value = false
+    statusMsg.value = 'Saved. Run Resync to reload scripts.'
+    statusError.value = false
+    await refresh()
+  } catch (e: unknown) {
+    const msg = (e as { response?: { data?: { error?: string; errors?: string[] } } })?.response?.data
+    validationErrors.value = msg?.errors ?? []
+    statusMsg.value = msg?.error ?? 'Save failed'
+    statusError.value = true
+  } finally {
+    saving.value = false
+  }
+}
+
+async function resyncScripts() {
+  statusMsg.value = ''
+  statusError.value = false
+  try {
+    await serverApi.resync()
+    statusMsg.value = 'Resync requested'
+  } catch {
+    statusMsg.value = 'Resync failed'
+    statusError.value = true
   }
 }
 
@@ -500,16 +592,65 @@ function fmtSize(bytes: number): string {
 
 .content-meta { font-size: 11px; color: var(--text-muted); }
 
-.content-body {
+.dirty-dot {
+  color: #f0b429;
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.btn-small {
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.btn-small:hover:not(:disabled) { background: var(--bg-tertiary); }
+.btn-small:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-small.primary { border-color: var(--accent); color: var(--accent); }
+
+.editor-wrap {
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.script-editor {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 14px 16px;
   margin: 0;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
   font-size: 12px;
   line-height: 1.6;
   color: var(--text-primary);
   font-family: 'Consolas', 'Monaco', monospace;
   white-space: pre;
   tab-size: 4;
+}
+
+.editor-status {
+  border-top: 1px solid var(--border);
+  padding: 8px 14px;
+  font-size: 12px;
+  color: #7ee787;
+}
+
+.editor-status.error { color: #ff7b72; }
+
+.validation-list {
+  margin: 0;
+  padding: 8px 14px 10px 32px;
+  border-top: 1px solid var(--border);
+  color: #ff7b72;
+  font-size: 12px;
 }
 </style>

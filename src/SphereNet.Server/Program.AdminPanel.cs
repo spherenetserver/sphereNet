@@ -101,6 +101,9 @@ public static partial class Program
                     var (chars, items, sectors) = _world.GetStats();
                     var uptime = DateTime.UtcNow - _serverStartTime;
                     var runtime = GetTickTelemetrySnapshot();
+                    var maps = _world.GetMapStats()
+                        .Select(m => new MapStats(m.MapId, m.Chars, m.Items, m.Sectors, m.ActiveSectors, m.OnlinePlayers))
+                        .ToList();
                     return new ServerStats(
                         _config.ServName,
                         uptime.ToString(@"d\.hh\:mm\:ss"),
@@ -117,7 +120,8 @@ public static partial class Program
                         P50TickMs: runtime.P50Ms,
                         P95TickMs: runtime.P95Ms,
                         P99TickMs: runtime.P99Ms,
-                        MulticoreEnabled: runtime.MulticoreEnabled);
+                        MulticoreEnabled: runtime.MulticoreEnabled,
+                        Maps: maps);
                 },
 
                 GetOnlinePlayers = () => _clients.Values
@@ -167,6 +171,7 @@ public static partial class Program
                     _consoleProcessor?.ProcessCommand(cmd, lines.Add);
                     return [.. lines];
                 },
+                AuditLog = msg => _log.LogWarning("Panel audit: {Message}", msg),
 
                 // Paths
                 IniPath     = _iniPath,

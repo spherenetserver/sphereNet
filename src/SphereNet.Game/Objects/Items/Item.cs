@@ -4,6 +4,7 @@ using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
 using SphereNet.Game.Components;
 using SphereNet.Game.Definitions;
+using SphereNet.Game.Housing;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.World;
 using SphereNet.Scripting.Resources;
@@ -18,6 +19,7 @@ public class Item : ObjBase
 {
     // Static delegates set by Program.cs for cross-module resolution
     public static Func<Serial, Ships.Ship?>? ResolveShip;
+    public static Func<Serial, House?>? ResolveHouse;
     public static Func<Ships.ShipEngine?>? ResolveShipEngine;
     public new static Func<World.GameWorld>? ResolveWorld;
     public static Func<Serial, Guild.GuildDef?>? ResolveGuild;
@@ -874,6 +876,12 @@ public class Item : ObjBase
                     return linked.TryGetProperty(sub, out value);
             }
             value = "";
+            return true;
+        }
+
+        if (upper.StartsWith("HOUSE.", StringComparison.Ordinal) &&
+            TryGetHouseProperty(upper["HOUSE.".Length..], out value))
+        {
             return true;
         }
 
@@ -1805,6 +1813,110 @@ public class Item : ObjBase
         }
         return count;
     }
+
+    private bool TryGetHouseProperty(string subKey, out string value)
+    {
+        value = "";
+        var house = ResolveHouse?.Invoke(Uid);
+        if (house == null)
+        {
+            value = "0";
+            return true;
+        }
+
+        switch (subKey)
+        {
+            case "OWNER": value = FormatSerial(house.Owner); return true;
+            case "TYPE": value = ((byte)house.Type).ToString(); return true;
+            case "GUILDSTONE": value = FormatSerial(house.GuildStone); return true;
+            case "STORAGE":
+            case "BASESTORAGE": value = house.BaseStorage.ToString(); return true;
+            case "MAXLOCKDOWNS": value = house.MaxLockdowns.ToString(); return true;
+            case "MAXSECURE": value = house.MaxSecure.ToString(); return true;
+            case "DECAYSTAGE":
+            case "DECAY_STAGE": value = ((byte)house.DecayStage).ToString(); return true;
+        }
+
+        if (TryGetHouseSerialCollection(subKey, "COOWNER", "COOWNERS", house.CoOwners, out value) ||
+            TryGetHouseSerialCollection(subKey, "FRIEND", "FRIENDS", house.Friends, out value) ||
+            TryGetHouseSerialCollection(subKey, "BAN", "BANS", house.Bans, out value) ||
+            TryGetHouseSerialCollection(subKey, "LOCKDOWN", "LOCKDOWNS", house.Lockdowns, out value) ||
+            TryGetHouseSerialCollection(subKey, "SECURE", "SECURE", house.SecureContainers, out value) ||
+            TryGetHouseSerialCollection(subKey, "COMPONENT", "COMPONENTS", house.Components, out value) ||
+            TryGetHouseSerialCollection(subKey, "VENDOR", "VENDORS", house.Vendors, out value))
+        {
+            return true;
+        }
+
+        if (TryReadHouseSerialPredicate(subKey, "PRIV.", uid => ((byte)house.GetPriv(uid)).ToString(), out value) ||
+            TryReadHouseSerialPredicate(subKey, "CANACCESS.", uid => house.CanAccess(uid) ? "1" : "0", out value) ||
+            TryReadHouseSerialPredicate(subKey, "CANLOCKDOWN.", uid => house.CanLockdown(uid) ? "1" : "0", out value) ||
+            TryReadHouseSerialPredicate(subKey, "ISLOCKEDDOWN.", uid => house.IsLockedDown(uid) ? "1" : "0", out value) ||
+            TryReadHouseSerialPredicate(subKey, "ISSECURED.", uid => house.IsSecured(uid) ? "1" : "0", out value))
+        {
+            return true;
+        }
+
+        value = "0";
+        return true;
+    }
+
+    private static bool TryGetHouseSerialCollection(string subKey, string singular, string plural,
+        IReadOnlyCollection<Serial> serials, out string value)
+    {
+        value = "";
+        if (subKey.Equals(singular, StringComparison.Ordinal) ||
+            subKey.Equals(plural, StringComparison.Ordinal))
+        {
+            value = serials.Count.ToString();
+            return true;
+        }
+
+        string singularPrefix = singular + ".";
+        string pluralPrefix = plural + ".";
+        string? idxStr = null;
+        if (subKey.StartsWith(singularPrefix, StringComparison.Ordinal))
+            idxStr = subKey[singularPrefix.Length..];
+        else if (subKey.StartsWith(pluralPrefix, StringComparison.Ordinal))
+            idxStr = subKey[pluralPrefix.Length..];
+
+        if (idxStr == null)
+            return false;
+
+        if (!int.TryParse(idxStr, out int index) || index < 0)
+        {
+            value = "0";
+            return true;
+        }
+
+        value = index < serials.Count ? FormatSerial(serials.ElementAt(index)) : "0";
+        return true;
+    }
+
+    private static bool TryReadHouseSerialPredicate(string subKey, string prefix,
+        Func<Serial, string> predicate, out string value)
+    {
+        value = "";
+        if (!subKey.StartsWith(prefix, StringComparison.Ordinal))
+            return false;
+
+        uint raw = ParseSphereSerial(subKey[prefix.Length..]);
+        value = raw == 0 ? "0" : predicate(new Serial(raw));
+        return true;
+    }
+
+    private static uint ParseSphereSerial(string value)
+    {
+        var s = value.Trim();
+        if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            s = s[2..];
+        if (s.Length > 1 && s[0] == '0')
+            return uint.TryParse(s, NumberStyles.HexNumber, null, out uint hex) ? hex : 0;
+        return uint.TryParse(s, out uint dec) ? dec : 0;
+    }
+
+    private static string FormatSerial(Serial uid) =>
+        uid.IsValid && uid.Value != 0 ? $"0{uid.Value:X8}" : "0";
 
     // --- Guild stone relation properties ---
 

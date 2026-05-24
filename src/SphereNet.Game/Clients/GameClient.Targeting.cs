@@ -67,6 +67,8 @@ public sealed partial class GameClient
             _pendingScriptNewItem = null;
             _lastScriptTargetPoint = null;
             _pendingTargetCallback = null;
+            int pendingSkillTargetCancelId = _pendingSkillTargetCancelId;
+            _pendingSkillTargetCancelId = -1;
 
             if (_character.TryGetTag("CAST_SPELL", out string? cancelledSpellStr))
             {
@@ -85,6 +87,11 @@ public sealed partial class GameClient
             _character.RemoveTag("TARG.UID");
 
             FirePendingItemTargetTrigger(pendingItemUid, ItemTrigger.TargOnCancel, Serial.Invalid, x, y, z, graphic);
+            if (pendingSkillTargetCancelId >= 0)
+            {
+                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillTargetCancel,
+                    new TriggerArgs { CharSrc = _character, N1 = pendingSkillTargetCancelId });
+            }
 
             SysMessage(ServerMessages.Get("target_cancel_1"));
             return;

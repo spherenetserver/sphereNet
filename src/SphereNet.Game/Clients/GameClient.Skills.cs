@@ -132,6 +132,7 @@ public sealed partial class GameClient
         SetPendingTarget((serial, x, y, z, graphic) =>
         {
             if (_character == null) return;
+            _pendingSkillTargetCancelId = -1;
 
             var uid = new Serial(serial);
             Objects.ObjBase? target = uid.IsValid ? _world.FindObject(uid) : null;
@@ -145,6 +146,7 @@ public sealed partial class GameClient
             bool ok = _skillHandlers?.UseActiveSkill(sink, skill, target, point) ?? false;
             FireActiveSkillResult(skillId, ok);
         });
+        _pendingSkillTargetCancelId = skillId;
     }
 
     private void FireActiveSkillStroke(int skillId)
@@ -385,6 +387,7 @@ public sealed partial class GameClient
     {
         if (_character == null) return;
         if (_world.ToolTipMode == 0) return;
+        if (!_netState.SupportsAosTooltip) return;
 
         var obj = _world.FindObject(new Serial(serial));
         if (obj == null) return;

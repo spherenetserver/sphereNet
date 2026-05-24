@@ -146,6 +146,8 @@ public sealed class IpcServer : IDisposable
             Void(() => _ctx?.SetPacketDebug?.Invoke(root.GetBool("on"))),
         "set_script_debug" =>
             Void(() => _ctx?.SetScriptDebug?.Invoke(root.GetBool("on"))),
+        "audit" =>
+            Void(() => _ctx?.AuditLog?.Invoke(root.GetStr("msg") ?? "")),
 
         _ => null
     };

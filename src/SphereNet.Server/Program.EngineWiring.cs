@@ -63,6 +63,10 @@ public static partial class Program
     {
             // --- 7b. Game Engines ---
             _log.LogInformation("Initializing game engines...");
+            GameClient.WalkBufferMax = Math.Max(1, _config.WalkBuffer);
+            GameClient.WalkRegenPerSecond = Math.Max(0, _config.WalkRegen);
+            GameClient.MoveToleranceMs = 80;
+            GameClient.MoveViolationKickThreshold = 0;
             _triggerDispatcher = new TriggerDispatcher();
             _triggerDispatcher.Resources = _resources;
             var exprParser = new ExpressionParser
@@ -1429,6 +1433,7 @@ public static partial class Program
 
             // Wire Item static delegates for ship resolution
             SphereNet.Game.Objects.Items.Item.ResolveShip = uid => _shipEngine.GetShip(uid);
+            SphereNet.Game.Objects.Items.Item.ResolveHouse = uid => _housingEngine?.GetHouse(uid);
             // MULTICREATE verb -> HousingEngine runtime registration
             SphereNet.Game.Objects.Items.Item.OnHouseRegister =
                 item => _housingEngine?.RegisterExistingMulti(item);
@@ -1516,7 +1521,12 @@ public static partial class Program
             SphereNet.Game.Objects.Characters.Character.SendPacketToOwner = (target, packet) =>
             {
                 if (TryGetClientFor(target, out var c))
+                {
+                    if (packet is SphereNet.Network.Packets.Outgoing.PacketBuffIcon &&
+                        !c.NetState.SupportsBuffIcon)
+                        return;
                     c.Send(packet);
+                }
             };
 
             SphereNet.Game.Objects.Characters.Character.SendOwnerMessage = (target, msg) =>
@@ -1771,6 +1781,7 @@ public static partial class Program
             _network.CryptConfig = _cryptConfig;
             _network.UseCrypt = _config.UseCrypt;
             _network.UseNoCrypt = _config.UseNoCrypt;
+            _network.DefaultClientEra = _config.ClientEra;
             _network.DebugPackets = _config.DebugPackets;
             _network.DebugPacketOpcodeFilter = ParseDebugPacketOpcodes(_config.DebugPacketOpcodes);
             _network.MaxPacketsPerTick = _config.MaxPacketsPerTick;

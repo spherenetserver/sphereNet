@@ -56,6 +56,11 @@ const router = createRouter({
           component: () => import('@/pages/ScriptsPage.vue'),
         },
         {
+          path: 'gumps',
+          name: 'gumps',
+          component: () => import('@/pages/GumpDesignerPage.vue'),
+        },
+        {
           path: 'settings',
           name: 'settings',
           component: () => import('@/pages/SettingsPage.vue'),

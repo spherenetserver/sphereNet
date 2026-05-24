@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Buffers.Binary;
 using Microsoft.Extensions.Logging;
+using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
 using SphereNet.Network.Encryption;
 using SphereNet.Network.Packets;
@@ -53,6 +54,7 @@ public sealed class NetState : IDisposable
 
     // Encryption
     public CryptoState Crypto { get; } = new CryptoState();
+    public ClientEra ClientEra { get; set; } = ClientEra.Sphere56x;
     public uint ClientVersionNumber { get; set; }
     public uint ClientTypeFlag { get; set; }
     public int UndecryptedOffset { get; set; }
@@ -60,14 +62,16 @@ public sealed class NetState : IDisposable
     public int PendingPacketLength { get; set; }
     public long PendingPacketStartTick { get; set; }
 
-    // Client version breakpoints (UO protocol milestones).
-    // When ClientVersionNumber == 0 (undetected), assume modern client — all current
-    // clients (ClassicUO, official 7.0.x) require the newer packet formats.
-    // Sending old-format packets to a modern client corrupts the TCP byte stream.
-    public bool IsClientPost6017  => ClientVersionNumber == 0 || ClientVersionNumber >= 60_001_007; // 6.0.1.7+
-    public bool IsClientPost60142 => ClientVersionNumber == 0 || ClientVersionNumber >= 60_014_002; // 6.0.14.2+
-    public bool IsClientPost7090  => ClientVersionNumber == 0 || ClientVersionNumber >= 70_009_000; // 7.0.9.0+
-    public bool IsClientPost70180 => ClientVersionNumber == 0 || ClientVersionNumber >= 70_018_000; // 7.0.18.0+
+    // Client version breakpoints (UO protocol milestones). Unknown clients
+    // follow the configured profile. Sphere56x is the default parity target,
+    // so unknown no longer means "modern packet formats"; a 0xEF seed or
+    // 0xBD client-version handshake can still opt in.
+    public bool IsClientPost6017  => IsClientVersionAtLeast(60_001_007); // 6.0.1.7+
+    public bool IsClientPost60142 => IsClientVersionAtLeast(60_014_002); // 6.0.14.2+
+    public bool IsClientPost7090  => IsClientVersionAtLeast(70_009_000); // 7.0.9.0+
+    public bool IsClientPost70180 => IsClientVersionAtLeast(70_018_000); // 7.0.18.0+
+    public bool SupportsAosTooltip => ClientEra == ClientEra.Modern || ClientVersionNumber >= 40_000_000;
+    public bool SupportsBuffIcon => ClientEra == ClientEra.Modern || ClientVersionNumber >= 50_000_000;
 
     /// <summary>Debug mode — log all outgoing packets.</summary>
     public bool DebugPackets { get; set; }
@@ -401,7 +405,7 @@ public sealed class NetState : IDisposable
 
     internal void OnCharSelect(int slot, string name)
     {
-        if (slot < 0 || slot > 7) return;
+        if (slot > 7) return;
         SelectedCharSlot = slot;
         CharSelectHandler?.Invoke(this, slot, name);
     }
@@ -589,6 +593,13 @@ public sealed class NetState : IDisposable
     }
 
     public void Dispose() => Clear();
+
+    private bool IsClientVersionAtLeast(uint version)
+    {
+        if (ClientVersionNumber != 0)
+            return ClientVersionNumber >= version;
+        return ClientEra == ClientEra.Modern;
+    }
 
     private static bool IsExpectedDisconnect(SocketError error) => error switch
     {

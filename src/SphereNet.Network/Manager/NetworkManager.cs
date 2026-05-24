@@ -26,6 +26,7 @@ public sealed class NetworkManager : IDisposable
     private readonly ILoggerFactory _loggerFactory;
     private int _maxClients;
     private bool _isRunning;
+    private ClientEra _defaultClientEra = ClientEra.Sphere56x;
 
     public PacketManager Packets => _packetManager;
     public int ActiveConnections => _states.Count(s => s.IsInUse);
@@ -33,6 +34,16 @@ public sealed class NetworkManager : IDisposable
     public CryptConfig? CryptConfig { get; set; }
     public bool UseCrypt { get; set; } = true;
     public bool UseNoCrypt { get; set; }
+    public ClientEra DefaultClientEra
+    {
+        get => _defaultClientEra;
+        set
+        {
+            _defaultClientEra = value;
+            foreach (var state in _states)
+                state.ClientEra = value;
+        }
+    }
     public bool DebugPackets { get; set; }
     public HashSet<byte>? DebugPacketOpcodeFilter { get; set; }
     public int MaxPacketsPerTick { get; set; } = 100;
@@ -56,7 +67,11 @@ public sealed class NetworkManager : IDisposable
 
         for (int i = 0; i < maxClients; i++)
         {
-            _states[i] = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = i };
+            _states[i] = new NetState(loggerFactory.CreateLogger<NetState>())
+            {
+                Id = i,
+                ClientEra = _defaultClientEra
+            };
         }
 
         RegisterStandardPackets();
@@ -91,7 +106,7 @@ public sealed class NetworkManager : IDisposable
         _packetManager.Register(new PacketSpeechUnicode());
         _packetManager.Register(new PacketGumpResponse());
         _packetManager.Register(new PacketClientVersion());
-        _packetManager.Register(new PacketExtendedCommand());
+        _packetManager.Register(new PacketExtendedCommand(_packetManager));
         _packetManager.Register(new PacketEncodedCommand());
         _packetManager.Register(new PacketAOSTooltipReq());
         _packetManager.Register(new PacketVendorBuy());
@@ -590,6 +605,13 @@ public sealed class NetworkManager : IDisposable
             if (state.IsInUse && !state.IsClosing)
                 yield return state;
         }
+    }
+
+    public NetState? GetState(int id)
+    {
+        if (id < 0 || id >= _states.Length)
+            return null;
+        return _states[id];
     }
 
     public bool InvokePacketScriptHook(NetState state, byte opcode, byte[] packet) =>

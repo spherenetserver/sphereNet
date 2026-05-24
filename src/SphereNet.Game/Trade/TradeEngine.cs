@@ -164,6 +164,7 @@ public static class VendorEngine
             return 0;
 
         long totalValue = 0;
+        var validated = new List<(TradeEntry Entry, Item Item)>();
         foreach (var entry in items)
         {
             if (entry.Price < 0 || entry.Amount < 0)
@@ -171,21 +172,30 @@ public static class VendorEngine
             totalValue += (long)entry.Price * entry.Amount;
             if (totalValue > int.MaxValue)
                 return 0;
+
+            if (entry.Amount == 0)
+                continue;
+
+            var found = FindItemInBackpack(player, entry.ItemUid);
+            if (found == null || found.IsDeleted || found.Amount < entry.Amount ||
+                found.ItemType == Core.Enums.ItemType.Gold || found.BaseId == 0x0EED)
+                return 0;
+
+            validated.Add((entry, found));
         }
 
         if (World != null)
         {
             var backpack = player.Backpack;
-            foreach (var entry in items)
+            if (backpack == null)
+                return 0;
+
+            foreach (var (entry, found) in validated)
             {
-                var found = FindItemInBackpack(player, entry.ItemUid);
-                if (found != null)
-                {
-                    if (found.Amount <= entry.Amount)
-                        found.Delete();
-                    else
-                        found.Amount -= (ushort)entry.Amount;
-                }
+                if (found.Amount <= entry.Amount)
+                    found.Delete();
+                else
+                    found.Amount -= (ushort)entry.Amount;
             }
 
             // Add gold to player (split into 60000-max piles)
@@ -214,7 +224,7 @@ public static class VendorEngine
         if (backpack == null) return 0;
 
         int total = 0;
-        foreach (var item in World.GetContainerContents(backpack.Uid))
+        foreach (var item in EnumerateContainerContentsRecursive(backpack))
         {
             if (item.ItemType == Core.Enums.ItemType.Gold || item.BaseId == 0x0EED)
                 total += item.Amount;
@@ -230,7 +240,7 @@ public static class VendorEngine
         if (backpack == null) return;
 
         int remaining = amount;
-        foreach (var item in World.GetContainerContents(backpack.Uid).ToList())
+        foreach (var item in EnumerateContainerContentsRecursive(backpack).ToList())
         {
             if (remaining <= 0) break;
             if (item.ItemType != Core.Enums.ItemType.Gold && item.BaseId != 0x0EED)
@@ -252,7 +262,24 @@ public static class VendorEngine
     private static Item? FindItemInBackpack(Character ch, Serial itemUid)
     {
         if (World == null) return null;
-        return World.FindItem(itemUid);
+        var backpack = ch.Backpack;
+        if (backpack == null) return null;
+        return EnumerateContainerContentsRecursive(backpack)
+            .FirstOrDefault(item => item.Uid == itemUid);
+    }
+
+    private static IEnumerable<Item> EnumerateContainerContentsRecursive(Item container)
+    {
+        foreach (var item in container.Contents)
+        {
+            if (item.IsDeleted)
+                continue;
+
+            yield return item;
+
+            foreach (var child in EnumerateContainerContentsRecursive(item))
+                yield return child;
+        }
     }
 
     /// <summary>Default restock interval in milliseconds (10 minutes).</summary>

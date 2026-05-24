@@ -542,7 +542,7 @@ public sealed partial class GameClient
 
         // 5. Reset walk sequence (0 = resync sentinel, client must send seq 0 next)
         _netState.WalkSequence = 0;
-        _nextMoveTime = 0;
+        ResetWalkValidator();
 
         // 6. Final authoritative DrawObject — ensures mount at Layer.Horse renders.
         // Some clients skip mount rendering from the first 0x78 if it arrives
@@ -611,7 +611,7 @@ public sealed partial class GameClient
         // in with seq=0 while expectedSeq still holds the pre-redraw value,
         // producing a seq_mismatch reject storm.
         _netState.WalkSequence = 0;
-        _nextMoveTime = 0;
+        ResetWalkValidator();
     }
 
     /// <summary>
@@ -627,7 +627,7 @@ public sealed partial class GameClient
             0, _character.X, _character.Y, _character.Z,
             (byte)_character.Direction));
         _netState.WalkSequence = 0;
-        _nextMoveTime = 0;
+        ResetWalkValidator();
     }
 
     /// <summary>Re-send the 0x4E PacketPersonalLight packet so the client

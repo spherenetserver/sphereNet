@@ -85,6 +85,7 @@ public static partial class Program
     private static object GetRuntimeMetrics()
     {
         var tick = GetTickTelemetrySnapshot();
+        var mapStats = _world.GetMapStats();
         return new
         {
             tick.SampleCount,
@@ -98,6 +99,7 @@ public static partial class Program
             SlowTickCount = _slowTickCount,
             LastSlowTickDominantPhase = _lastSlowTickDominantPhase,
             SaveCount = _saveCount,
+            Maps = mapStats,
             Telemetry = new
             {
                 SnapshotMs = _telemetrySnapshotUs / 1000.0,

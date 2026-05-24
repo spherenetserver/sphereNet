@@ -30,6 +30,9 @@ public sealed class PacketManager
     public PacketHandler? GetExtendedHandler(ushort subCmd) =>
         _extendedHandlers.GetValueOrDefault(subCmd);
 
+    public bool IsKnownExtendedSubCommand(ushort subCmd) =>
+        ExtendedCommandRegistry.IsKnown(subCmd) || _extendedHandlers.ContainsKey(subCmd);
+
     public PacketHandler? GetEncodedHandler(ushort subCmd) =>
         _encodedHandlers.GetValueOrDefault(subCmd);
 

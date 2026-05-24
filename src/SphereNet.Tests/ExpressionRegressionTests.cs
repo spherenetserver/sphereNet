@@ -57,4 +57,14 @@ public class ExpressionRegressionTests
         Assert.Equal("2.75", parser.EvaluateStr("<FLOATVAL (1.5+4)/2>"));
         Assert.Equal("02", parser.EvaluateStr("<FHVAL 2.9>"));
     }
+
+    [Fact]
+    public void ExpressionParser_LeadingZeroNumbers_UseSourceXHexConvention()
+    {
+        var parser = new ExpressionParser();
+
+        Assert.Equal(10, parser.Evaluate("0A".AsSpan()));
+        Assert.Equal("10", parser.EvaluateStr("<EVAL 0A>"));
+        Assert.Equal("10", parser.EvaluateStr("<FEVAL 0A>"));
+    }
 }

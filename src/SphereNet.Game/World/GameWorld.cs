@@ -939,7 +939,7 @@ public sealed class GameWorld
     }
 
     /// <summary>Enumerate all objects in the world (items + characters), including contained items.</summary>
-    public IEnumerable<ObjBase> GetAllObjects() => _objects.Values;
+    public IEnumerable<ObjBase> GetAllObjects() => _objects.Values.ToArray();
 
     // --- Stats ---
 
@@ -1019,4 +1019,38 @@ public sealed class GameWorld
         }
         return (chars, items, sectorCount);
     }
+
+    public IReadOnlyList<MapRuntimeStats> GetMapStats()
+    {
+        var result = new List<MapRuntimeStats>();
+        foreach (var (mapId, grid) in _sectors.OrderBy(kv => kv.Key))
+        {
+            int chars = 0, items = 0, sectors = 0, activeSectors = 0, onlinePlayers = 0;
+            int cols = grid.GetLength(0);
+            int rows = grid.GetLength(1);
+            for (int x = 0; x < cols; x++)
+            {
+                for (int y = 0; y < rows; y++)
+                {
+                    var sector = grid[x, y];
+                    sectors++;
+                    chars += sector.CharacterCount;
+                    items += sector.ItemCount;
+                    if (_activeSectors.Contains(sector))
+                        activeSectors++;
+                    onlinePlayers += sector.OnlinePlayers.Count;
+                }
+            }
+            result.Add(new MapRuntimeStats(mapId, chars, items, sectors, activeSectors, onlinePlayers));
+        }
+        return result;
+    }
 }
+
+public sealed record MapRuntimeStats(
+    int MapId,
+    int Chars,
+    int Items,
+    int Sectors,
+    int ActiveSectors,
+    int OnlinePlayers);

@@ -11,6 +11,9 @@ before/after numbers.
   fields include NPC apply, view build, output flush, and world maintenance.
 - `/status`: exposes the same rolling tick percentiles and last phase telemetry
   under the `runtime` object for automation and panels.
+- `runtime.maps`: per-map read-only counts for chars, items, sectors, active
+  sectors, and online players. This is the evidence source for any future
+  map-based worker partitioning decision.
 - `runtime.slowTickCount` and `runtime.lastSlowTickDominantPhase`: quick signal
   for whether recent lag is mostly `npc_apply`, `view_build`, `flush`, or
   another phase.
@@ -49,7 +52,10 @@ fields:
   "runtime": {
     "multicoreEnabled": true,
     "slowTickCount": 0,
-    "worstPhase": "view_build"
+    "worstPhase": "view_build",
+    "maps": [
+      { "mapId": 0, "chars": 0, "items": 0, "sectors": 0, "activeSectors": 0, "onlinePlayers": 0 }
+    ]
   },
   "gc": {
     "gen0": 0,

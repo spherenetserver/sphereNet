@@ -389,6 +389,12 @@ public sealed partial class GameClient
         _spellEngine?.TryInterruptFromEquip(target);
 
         target.Equip(item, (Layer)layer);
+        if ((Layer)layer is Layer.OneHanded or Layer.TwoHanded && IsCombatEquipItem(item))
+        {
+            bool noWait = (Character.CombatFlags & (int)CombatFlags.FirstHitInstant) != 0;
+            int delayMs = CombatEngine.GetSwingDelayMs(target, item);
+            target.BeginEquipSwingWait(Environment.TickCount64, delayMs, noWait);
+        }
 
         var wornPkt = new PacketWornItem(
             item.Uid.Value, item.DispIdFull, layer,
@@ -399,6 +405,13 @@ public sealed partial class GameClient
         _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Equip,
             new TriggerArgs { CharSrc = _character, ItemSrc = item });
     }
+
+    private static bool IsCombatEquipItem(Item item) => item.ItemType is
+        ItemType.WeaponMaceSmith or ItemType.WeaponMaceSharp or ItemType.WeaponSword or
+        ItemType.WeaponFence or ItemType.WeaponBow or ItemType.WeaponMaceStaff or
+        ItemType.WeaponMaceCrook or ItemType.WeaponMacePick or ItemType.WeaponAxe or
+        ItemType.WeaponXBow or ItemType.WeaponThrowing or ItemType.WeaponWhip or
+        ItemType.Shield;
 
     // ==================== Status Request ====================
 

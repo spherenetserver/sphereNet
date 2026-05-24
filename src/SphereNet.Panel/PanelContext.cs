@@ -43,6 +43,7 @@ public sealed class PanelContext
 
     // Raw command — returns response lines
     public Func<string, string[]>? ExecuteCommand { get; set; }
+    public Action<string>? AuditLog { get; set; }
 
     // Server lifecycle state
     public Func<bool>? IsServerRunning { get; set; }
@@ -75,7 +76,17 @@ public record ServerStats(
     double P50TickMs = 0,
     double P95TickMs = 0,
     double P99TickMs = 0,
-    bool MulticoreEnabled = false
+    bool MulticoreEnabled = false,
+    IReadOnlyList<MapStats>? Maps = null
+);
+
+public record MapStats(
+    int MapId,
+    int Chars,
+    int Items,
+    int Sectors,
+    int ActiveSectors,
+    int OnlinePlayers
 );
 
 public record PlayerInfo(

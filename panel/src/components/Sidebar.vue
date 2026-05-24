@@ -30,7 +30,7 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
 import {
-  LayoutDashboard, Terminal, Users, UserCog, Server, LogOut, ScrollText, Settings,
+  LayoutDashboard, Terminal, Users, UserCog, Server, LogOut, ScrollText, Settings, PanelTop,
 } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 
@@ -43,6 +43,7 @@ const navItems = [
   { to: '/accounts',  label: 'Accounts',  icon: UserCog         },
   { to: '/server',    label: 'Server',    icon: Server          },
   { to: '/scripts',   label: 'Scripts',   icon: ScrollText      },
+  { to: '/gumps',     label: 'Gumps',     icon: PanelTop        },
   { to: '/settings',  label: 'Settings',  icon: Settings        },
 ]
 </script>

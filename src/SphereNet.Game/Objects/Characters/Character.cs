@@ -2,6 +2,7 @@ using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
+using SphereNet.Game.Combat;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Messages;
 using SphereNet.Game.Objects.Items;
@@ -898,7 +899,46 @@ public partial class Character : ObjBase
     // Combat fields
     public Serial FightTarget { get; set; } = Serial.Invalid;
     public long NextAttackTime { get; set; }
+    public SwingState CombatSwingState { get; private set; } = SwingState.Ready;
+    public long CombatSwingStateUntil { get; private set; }
     public long NextNpcActionTime { get; set; }
+
+    public void SetCombatSwingState(SwingState state, long untilMs = 0)
+    {
+        CombatSwingState = state;
+        CombatSwingStateUntil = untilMs;
+    }
+
+    public void RefreshCombatSwingState(long nowMs)
+    {
+        if (CombatSwingState is SwingState.Swinging or SwingState.Equipping or SwingState.EquippingNoWait &&
+            CombatSwingStateUntil > 0 && nowMs >= CombatSwingStateUntil)
+        {
+            CombatSwingState = SwingState.Ready;
+            CombatSwingStateUntil = 0;
+        }
+    }
+
+    public void BeginSwingRecoil(long nowMs, int delayMs)
+    {
+        NextAttackTime = nowMs + Math.Max(delayMs, 0);
+        SetCombatSwingState(SwingState.Swinging, NextAttackTime);
+    }
+
+    public void BeginEquipSwingWait(long nowMs, int delayMs, bool noWait)
+    {
+        if (noWait)
+        {
+            SetCombatSwingState(SwingState.EquippingNoWait, nowMs);
+            if (NextAttackTime == 0 || NextAttackTime > nowMs)
+                NextAttackTime = nowMs;
+            RefreshCombatSwingState(nowMs);
+            return;
+        }
+
+        NextAttackTime = Math.Max(NextAttackTime, nowMs + Math.Max(delayMs, 0));
+        SetCombatSwingState(SwingState.Equipping, NextAttackTime);
+    }
 
     // NPC spell list — populated from CHARDEF or spellbook items
     private List<SpellType>? _npcSpells;
@@ -2140,6 +2180,14 @@ public partial class Character : ObjBase
             case "ACTDIFF": value = _actDiff.ToString(); return true;
             case "ACTION": value = ((int)_action).ToString(); return true;
             case "FIGHTTARGET": value = FightTarget.IsValid ? $"0{FightTarget.Value:X}" : "0"; return true;
+            case "SWINGSTATE": value = ((int)CombatSwingState).ToString(); return true;
+            case "SWINGSTATE.NAME": value = CombatSwingState.ToString(); return true;
+            case "SWINGREMAIN":
+            {
+                long remain = CombatSwingStateUntil > 0 ? CombatSwingStateUntil - Environment.TickCount64 : 0;
+                value = Math.Max(0, remain).ToString();
+                return true;
+            }
             case "PETAI":
             case "PETAIMODE": value = ((int)PetAIMode).ToString(); return true;
             case "FLEESTEPS": value = FleeStepsCurrent.ToString(); return true;

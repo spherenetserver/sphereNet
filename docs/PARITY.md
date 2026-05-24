@@ -1,70 +1,42 @@
-# SphereNet Parity Matrix
+# SphereNet Source-X / Sphere 56x Parity Matrix
 
-This document tracks Source-X/Sphere compatibility work that is easy to lose in
-large backlog notes. It supersedes stale status lines in `tools/plan.txt`.
+This matrix tracks compatibility work by the same categories used for project
+scoring. Every non-covered item names either a regression test to add/extend or
+an explicit deferred reason so the backlog does not turn into folklore.
 
-## Completed Or Covered
+## Scripting Parity
 
-- Save/load: `EQUIP[n]`, nested containers, and bank box roundtrips have
-  regression tests.
-- Account creation: `AccApp` drives `AutoCreateAccounts`; production can disable
-  automatic account creation.
-- Admin telnet: starts only with a non-empty `AdminPassword`.
-- CI: GitHub Actions restores, builds, and runs the main regression suite.
-- Client/script triggers: mount/dismount, secure trade lifecycle, vendor
-  `@Buy`/`@Sell`, context menu, AOS tooltips, target flows, rename/profile/dye,
-  single-click `@AfterClick`, corpse carving, and User* packet hooks.
-- Network safety: crypto primitive tests and no-crypt login/game-login harness
-  exist; outbound Huffman compress on game connections. Client→server packets
-  remain plaintext after decrypt (standard UO protocol).
-- Combat core: shared `CombatHelper` gates (safe region, archery range,
-  shield+bow, movement delay), player `@Attack`/`@HitTry`/`@HitCheck`, reveal
-  on attack, NPC miss swing feedback, and per-observer notoriety on NPC swings.
-- Trade safety: disconnect abort returns items; complete validates carry weight.
-- NPC AI script hooks: `@NPCLookAtChar`, `@NPCActFight`, `@NPCActWander`,
-  `@NPCActFollow`, `@NPCActCast`, `@NPCLookAtItem` wired from `NpcAI`.
-- Runtime state: STATLOCK, cast/skill pending, rune MoreP use native fields.
-- Modern opcodes: `0xF0` movement handler; `0xF6` smooth boat broadcast on move.
-- Viewport: `0xBF sub 0x0005` / `0x001C` update `Character.SetScreenSize`.
-- Housing limits: `MaxHousesPlayer` and `MaxHousesAccount` enforced in
-  `HousingEngine.PlaceHouse`.
-- Script globals: generic `f_onitem_*` dispatch mirrors `f_onchar_*`.
+| Area | Status | Test / Guardrail | Notes |
+|---|---|---|---|
+| Save/load script-facing fields | Covered | `SaveFormatTests` | `EQUIP[n]`, nested containers, bank box roundtrips. |
+| Trigger dispatch basics | Covered | `GameSystemTests`, script fixtures | Client, NPC, combat, trade, vendor, context menu and `f_onitem_*` hooks. |
+| Expression float pipeline | Covered | `ExpressionRegressionTests`, `ScriptObjectParityTests` | `FEVAL`, `FLOATVAL`, `FHVAL`, `FVAL`, leading-zero hex and local `FLOAT.*` are covered. |
+| String helper functions | Covered | `ExpressionRegressionTests` | `STRREPLACE`, `STRJOIN`, safe regex, `ISOBSCENE=0` compatibility fallback. |
+| `LOCAL.*`, `DLOCAL.*`, `REFn.*` | Covered | `ScriptObjectParityTests` | Scope locals, decimal-forced locals, ref property reads and ref command bridge are covered. |
+| `SERV.*`, `UID.*` | Covered | `ScriptObjectParityTests` | Server property reads, direct UID reads, UID command dispatch and `SERV.ALLCLIENTS` bridge are covered. |
+| `HOUSE.n` script API | Covered | `HousingEconomyTests` | Owned-house indexing, owner/co-owner/friend/ban lists, lockdown/secure predicates and decay stages are covered. |
+| Duplicate spell definition model | Covered | `DefinitionAndSpellRegressionTests` | Runtime uses `SphereNet.Game.Magic.SpellDef`; obsolete scripting duplicate was removed. |
 
-## Partial
+## Gameplay Parity
 
-- Housing: account/player limits are enforced; more script-facing `HOUSE.n`
-  behaviors still need focused coverage.
-- Vendor/trade: core packet paths and triggers exist; gold stack edge cases
-  need tests.
-- `0xBF` extended commands: several subcommands are handled in
-  `GameClient.WorldFeatures`, while `PacketManager.RegisterExtended` is not the
-  primary dispatch path yet.
-- Program bootstrap: `TickYieldStrategy` was extracted, but `Program.cs` remains
-  the main wiring monolith.
-- Combat: `COMBATFLAGS` and era values load from ini and feed `CombatEngine`,
-  but full Source-X swing-state machine (`SWING_READY/SWINGING`) and arrow
-  projectile effects are still open.
+| Area | Status | Test / Guardrail | Notes |
+|---|---|---|---|
+| Combat gates and triggers | Covered | `CombatHelperTests`, `CombatEngineTests`, `GameSystemTests` | Safe region, range, shield/bow, movement delay, `@Hit*`, notoriety feedback. |
+| Swing-state machine | Covered | `CombatSwingParityTests` | `Ready`, `Swinging`, `Equipping` and `EquippingNoWait` now drive equip waits and swing recoil. |
+| Archery projectile feedback | Covered | `CombatHelperTests`, `CombatSwingParityTests` | Ammo/range/movement checks and Sphere 56x-style arrow projectile packet assertions are covered. |
+| Active skill delay/stroke | Partial | `SkillDelayTests`, add interrupt cases | `@SkillStroke` loop exists; add damage/movement/cancel ordering tests. |
+| Item-use target flows | Covered | `ItemUseParityTests` | Weapon DClick -> poisoning, repair/tinkering and trap DClick -> remove-trap paths are covered. |
+| Vendor/trade safety | Partial | `TradeSafetyTests`, `HousingEconomyTests` | Disconnect/weight rollback, nested gold stacks and sell validation covered; buy/sell packet roundtrip still open. |
+| Housing economy | Partial | `HousingEconomyTests` | Placement/account limits, access-list script surface and decay covered; richer house gump/transfer packet roundtrips remain open. |
 
-## Open Script Parity
+## Network / Crypto / Client Parity
 
-- Expression gaps: true floating-point expression behavior.
-- Duplicate spell definition model: runtime uses `SphereNet.Game.Magic.SpellDef`;
-  `SphereNet.Scripting.Definitions.SpellDef` should be removed or reduced to a
-  loader-side mapper.
-
-## Open Gameplay Parity
-
-- Item-use stubs for tinker/poison target flows.
-- Active skill STROKE animation loop.
-
-## Open Network And Client Parity
-
-- Selected `0xDF` buff interactions and remaining opcode/client matrix work.
-- Loopback login integration test beyond current no-crypt unit slices.
-
-## Open Ops And Panel Work
-
-- `docs/DEPLOY.md` with host/headless/panel deployment steps.
-- Panel script write/hot-reload and player actions such as kick/goto/whisper.
-- Panel token storage and TLS/reverse proxy guidance.
-- IPC and web status threat-model decisions beyond localhost trust.
+| Area | Status | Test / Guardrail | Notes |
+|---|---|---|---|
+| Sphere 56x default client profile | Covered | `PacketEraCompatibilityTests` | Unknown clients default to old packet formats via `ClientEra=Sphere56x`. |
+| Modern feature gates | Covered | `PacketEraCompatibilityTests`, AOS tooltip tests | Modern `0xDF` buff and AOS tooltip behavior require client/version support. |
+| Crypto primitives | Covered | `EncryptionTests` | Login, Blowfish, Twofish, no-crypt login/game-login, Huffman roundtrips. |
+| Relay/game crypto matrix | Partial | Extend `EncryptionTests` | Add explicit `ENC_BFISH`, `ENC_TFISH`, `ENC_BTFISH` relay vectors. |
+| `0xBF` extended command routing | Partial | `PacketManagerTests`, add dispatch integration | `GameClient.HandleExtendedCommand` is primary; `RegisterExtended` remains a registry utility. |
+| Loopback login integration | Open (deferred: needs socket harness) | Add `ClientLoginIntegrationTests` | Cover login -> relay auth -> game login -> char select -> enter world. |
+| Packet opcode matrix | Open (deferred: needs fixture corpus) | Add `PacketEraCompatibilityTests` cases | Classify required Sphere 56x opcodes, optional modern opcodes, ignored hooks. |

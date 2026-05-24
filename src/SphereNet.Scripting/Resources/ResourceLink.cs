@@ -27,6 +27,9 @@ public class ResourceLink : ResourceDef
     /// Retained for definition types (ItemDef, CharDef, SpellDef) to avoid re-reading files.
     /// </summary>
     public List<ScriptKey>? StoredKeys { get; private set; }
+    private readonly Dictionary<string, List<ScriptKey>> _triggerBodies = new(StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyList<ScriptKey>? FunctionBody { get; private set; }
 
     public ResourceLink(ResourceId id) : base(id) { }
 
@@ -57,9 +60,56 @@ public class ResourceLink : ResourceDef
         }
 
         if (retainKeys)
+        {
             StoredKeys = section.Keys;
+            BuildBodyIndexes(section.Keys);
+        }
 
         HasBeenScanned = true;
+    }
+
+    public bool TryGetTriggerBody(string triggerName, out IReadOnlyList<ScriptKey> body)
+    {
+        string key = triggerName.TrimStart('@');
+        if (_triggerBodies.TryGetValue(key, out var lines))
+        {
+            body = lines;
+            return true;
+        }
+
+        body = Array.Empty<ScriptKey>();
+        return false;
+    }
+
+    private void BuildBodyIndexes(List<ScriptKey> keys)
+    {
+        if (Id.Type == Core.Enums.ResType.Function)
+            FunctionBody = keys;
+
+        for (int i = 0; i < keys.Count; i++)
+        {
+            if (!keys[i].Key.Equals("ON", StringComparison.OrdinalIgnoreCase) ||
+                !keys[i].HasArg ||
+                !keys[i].Arg.StartsWith('@'))
+                continue;
+
+            string triggerName = keys[i].Arg[1..].Trim();
+            _triggerBodies[triggerName] = CollectTriggerBody(keys, i + 1);
+        }
+    }
+
+    private static List<ScriptKey> CollectTriggerBody(List<ScriptKey> keys, int startIdx)
+    {
+        var body = new List<ScriptKey>();
+        for (int i = startIdx; i < keys.Count; i++)
+        {
+            if (keys[i].Key.Equals("ON", StringComparison.OrdinalIgnoreCase) &&
+                keys[i].HasArg &&
+                keys[i].Arg.StartsWith('@'))
+                break;
+            body.Add(keys[i]);
+        }
+        return body;
     }
 
     public void SetTriggerActive(int triggerIndex)

@@ -67,6 +67,48 @@ public class TradeSafetyTests
     }
 
     [Fact]
+    public void SecureTrade_OverweightCompletion_ResetsAcceptanceAndKeepsItemsInTrade()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new SphereNet.Game.Accounts.AccountManager(loggerFactory);
+        var client = TestHarness.CreateClient(loggerFactory, world, accountManager, 902);
+
+        var initiator = world.CreateCharacter();
+        initiator.IsPlayer = true;
+        initiator.Str = 100;
+        world.PlaceCharacter(initiator, new Point3D(100, 100, 0, 0));
+
+        var partner = world.CreateCharacter();
+        partner.IsPlayer = true;
+        partner.Str = 1;
+        partner.ModMaxWeight = -43;
+        world.PlaceCharacter(partner, new Point3D(101, 100, 0, 0));
+
+        var tradeManager = new TradeManager();
+        client.SetEngines(tradeManager: tradeManager);
+        TestHarness.AttachCharacter(client, initiator);
+
+        client.InitiateTrade(partner);
+        var trade = tradeManager.FindTradeFor(initiator);
+        Assert.NotNull(trade);
+
+        var heavy = world.CreateItem();
+        heavy.BaseId = 0x1F14;
+        heavy.Amount = 100;
+        trade!.InitiatorContainer.AddItem(heavy);
+
+        Assert.False(trade.ToggleAccept(partner));
+        client.HandleSecureTrade(2, trade.InitiatorContainer.Uid.Value, 0);
+
+        Assert.NotNull(tradeManager.FindTradeFor(initiator));
+        Assert.False(trade.InitiatorAccepted);
+        Assert.False(trade.PartnerAccepted);
+        Assert.Contains(heavy, trade.InitiatorContainer.Contents);
+        Assert.DoesNotContain(heavy, partner.Backpack?.Contents ?? []);
+    }
+
+    [Fact]
     public void TradeManager_CanAcceptTradeItems_AllowsEmptyOffer()
     {
         var world = CreateWorld();

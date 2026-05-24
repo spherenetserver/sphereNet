@@ -28,6 +28,8 @@ using SphereNet.Network.State;
 using System.Data.Common;
 using System.Reflection;
 using Microsoft.Data.Sqlite;
+using SphereNet.Network.Encryption;
+using SphereNet.Network.Packets.Outgoing;
 using ExecTriggerArgs = SphereNet.Scripting.Execution.TriggerArgs;
 
 namespace SphereNet.Tests;
@@ -1334,6 +1336,87 @@ public class GameSystemTests
     }
 
     [Fact]
+    public void NetworkPipeline_LoginRelayGameLoginCharSelect_EntersWorld()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory)
+        {
+            AutoCreateAccounts = true
+        };
+        var network = new NetworkManager(2, loggerFactory)
+        {
+            UseCrypt = false,
+            UseNoCrypt = true
+        };
+        var clients = new Dictionary<int, SphereNet.Game.Clients.GameClient>();
+        int charSelectCount = 0;
+        byte unknownOpcode = 0;
+        network.OnUnknownPacket += (_, opcode, _) => unknownOpcode = opcode;
+
+        SphereNet.Game.Clients.GameClient GetClient(NetState state)
+        {
+            if (!clients.TryGetValue(state.Id, out var client))
+            {
+                client = new SphereNet.Game.Clients.GameClient(state, world, accountManager,
+                    loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
+                clients[state.Id] = client;
+            }
+            return client;
+        }
+
+        network.SetHandlers(
+            loginRequest: (state, account, password) => GetClient(state).HandleLoginRequest(account, password),
+            serverSelect: (state, _) =>
+            {
+                const uint authId = 0x01020304;
+                state.AuthId = authId;
+                CryptoState.StoreRelayKeys(authId, state.Crypto.Key1, state.Crypto.Key2, state.ClientVersionNumber);
+                state.Send(new PacketRelay(0x7F000001, 2593, authId));
+                state.MarkClosing();
+            },
+            gameLogin: (state, account, password, authId) => GetClient(state).HandleGameLogin(account, password, authId),
+            charSelect: (state, slot, name) =>
+            {
+                charSelectCount++;
+                GetClient(state).HandleCharSelect(slot, name);
+            });
+
+        var loginState = network.GetState(0)!;
+        SetNetStateInUse(loginState, true);
+        ProcessPacket(network, loginState, BuildLoginPacket("loopacct", "pw"));
+        AssertQueuedOpcode(loginState, 0xA8);
+
+        ProcessPacket(network, loginState, [0xA0, 0x00, 0x00]);
+        var relay = AssertQueuedOpcode(loginState, 0x8C);
+        uint authId = ReadUInt32(relay.Span, 7);
+        Assert.Equal(0x01020304u, authId);
+        Assert.True(loginState.IsClosing);
+
+        var gameState = network.GetState(1)!;
+        SetNetStateInUse(gameState, true);
+        ProcessPacket(network, gameState, BuildGameLoginPacket(authId, "loopacct", "pw"));
+        Assert.True(gameState.IsSeeded);
+        Assert.True(gameState.Crypto.IsInitialized);
+        AssertQueuedOpcode(gameState, 0xB9);
+        AssertQueuedOpcode(gameState, 0xA9);
+
+        ProcessPacket(network, gameState, BuildCharSelectPacket("LoopChar", -1));
+        Assert.Equal(0, unknownOpcode);
+        Assert.Equal(0, gameState.PendingPacketLength);
+        Assert.Equal(0, gameState.ReceivedData.Length);
+        Assert.Equal(1, charSelectCount);
+
+        var client = clients[gameState.Id];
+        Assert.NotNull(client.Account);
+        Assert.NotNull(client.Character);
+        Assert.True(client.Character!.IsOnline);
+        Assert.Contains(client.Character, world.OnlinePlayers);
+        AssertQueuedOpcode(gameState, 0x1B);
+        AssertQueuedOpcode(gameState, 0x55);
+    }
+
+    [Fact]
     public void BuildViewDelta_CapsItemsPerTileAtEighty()
     {
         var loggerFactory = LoggerFactory.Create(_ => { });
@@ -1787,7 +1870,11 @@ public class GameSystemTests
         var world = CreateWorld();
         world.ToolTipMode = 1;
         var accountManager = new AccountManager(loggerFactory);
-        var netState = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = 1101 };
+        var netState = new NetState(loggerFactory.CreateLogger<NetState>())
+        {
+            Id = 1101,
+            ClientVersionNumber = 70_009_000
+        };
         SetNetStateInUse(netState, true);
         var client = new SphereNet.Game.Clients.GameClient(netState, world, accountManager,
             loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
@@ -1849,7 +1936,11 @@ public class GameSystemTests
         var world = CreateWorld();
         world.ToolTipMode = 1;
         var accountManager = new AccountManager(loggerFactory);
-        var netState = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = 1102 };
+        var netState = new NetState(loggerFactory.CreateLogger<NetState>())
+        {
+            Id = 1102,
+            ClientVersionNumber = 70_009_000
+        };
         SetNetStateInUse(netState, true);
         var client = new SphereNet.Game.Clients.GameClient(netState, world, accountManager,
             loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
@@ -2389,4 +2480,76 @@ public class GameSystemTests
             Character.SendPacketToOwner = null;
         }
     }
+
+    private static void ProcessPacket(NetworkManager network, NetState state, byte[] packet)
+    {
+        state.InjectReceived(packet);
+        typeof(NetworkManager)
+            .GetMethod("ProcessInput", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(network, [state]);
+    }
+
+    private static PacketBuffer AssertQueuedOpcode(NetState state, byte opcode)
+    {
+        var queue = TestHarness.GetQueuedPackets(state);
+        Assert.True(queue.Count > 0, $"Expected queued packet 0x{opcode:X2}.");
+        while (queue.Count > 0)
+        {
+            var packet = queue.Dequeue();
+            if (packet.Length > 0 && packet.Span[0] == opcode)
+                return packet;
+        }
+
+        throw new Xunit.Sdk.XunitException($"Queued packet 0x{opcode:X2} was not found.");
+    }
+
+    private static byte[] BuildLoginPacket(string account, string password)
+    {
+        byte[] packet = new byte[66];
+        WriteUInt32(packet, 0, 0x12345678);
+        packet[4] = 0x80;
+        WriteAsciiFixed(packet, 5, 30, account);
+        WriteAsciiFixed(packet, 35, 30, password);
+        return packet;
+    }
+
+    private static byte[] BuildGameLoginPacket(uint authId, string account, string password)
+    {
+        byte[] packet = new byte[69];
+        WriteUInt32(packet, 0, 0x87654321);
+        packet[4] = 0x91;
+        WriteUInt32(packet, 5, authId);
+        WriteAsciiFixed(packet, 9, 30, account);
+        WriteAsciiFixed(packet, 39, 30, password);
+        return packet;
+    }
+
+    private static byte[] BuildCharSelectPacket(string name, int slot)
+    {
+        byte[] packet = new byte[73];
+        packet[0] = 0x5D;
+        WriteAsciiFixed(packet, 5, 30, name);
+        WriteInt32(packet, 65, slot);
+        return packet;
+    }
+
+    private static void WriteAsciiFixed(byte[] buffer, int offset, int length, string text)
+    {
+        var bytes = System.Text.Encoding.ASCII.GetBytes(text);
+        Buffer.BlockCopy(bytes, 0, buffer, offset, Math.Min(bytes.Length, length - 1));
+    }
+
+    private static void WriteUInt32(byte[] buffer, int offset, uint value)
+    {
+        buffer[offset] = (byte)(value >> 24);
+        buffer[offset + 1] = (byte)(value >> 16);
+        buffer[offset + 2] = (byte)(value >> 8);
+        buffer[offset + 3] = (byte)value;
+    }
+
+    private static void WriteInt32(byte[] buffer, int offset, int value) =>
+        WriteUInt32(buffer, offset, unchecked((uint)value));
+
+    private static uint ReadUInt32(ReadOnlySpan<byte> buffer, int offset) =>
+        (uint)((buffer[offset] << 24) | (buffer[offset + 1] << 16) | (buffer[offset + 2] << 8) | buffer[offset + 3]);
 }

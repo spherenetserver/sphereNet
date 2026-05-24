@@ -251,11 +251,27 @@ public sealed class PacketClientVersion : PacketHandler
 /// <summary>0xBF — Extended command (sub-opcode router).</summary>
 public sealed class PacketExtendedCommand : PacketHandler
 {
+    private readonly PacketManager? _packetManager;
+
     public PacketExtendedCommand() : base(0xBF, 0) { }
+
+    public PacketExtendedCommand(PacketManager packetManager) : this()
+    {
+        _packetManager = packetManager;
+    }
 
     public override void OnReceive(PacketBuffer buffer, State.NetState state)
     {
         ushort subCmd = buffer.ReadUInt16();
+        if (_packetManager?.GetExtendedHandler(subCmd) is { } registered)
+        {
+            registered.OnReceive(buffer, state);
+            return;
+        }
+
+        if (_packetManager != null && !_packetManager.IsKnownExtendedSubCommand(subCmd))
+            return;
+
         state.OnExtendedCommand(subCmd, buffer);
     }
 }
@@ -360,7 +376,7 @@ public sealed class PacketSecureTrade : PacketHandler
     {
         byte action = buffer.ReadByte();
         uint sessionId = buffer.ReadUInt32();
-        uint param = buffer.Length > 9 ? buffer.ReadUInt32() : 0;
+        uint param = buffer.Remaining >= 4 ? buffer.ReadUInt32() : 0;
         state.OnSecureTrade(action, sessionId, param);
     }
 }

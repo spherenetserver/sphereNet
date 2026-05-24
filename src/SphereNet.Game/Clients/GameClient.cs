@@ -186,6 +186,7 @@ public sealed partial class GameClient : ITextConsole
     private Point3D? _lastScriptTargetPoint;
     private uint _lastCombatNotifyTarget;
     private Action<uint, short, short, sbyte, ushort>? _pendingTargetCallback;
+    private int _pendingSkillTargetCancelId = -1;
     private Item? _pendingScriptNewItem;
     private bool _targetCursorActive;
     private string? _pendingDialogCloseFunction;

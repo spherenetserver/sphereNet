@@ -68,6 +68,7 @@ enough.
 | Refresh client count | `RunMulticoreTick` refresh client list | Normalizes view build cost per client |
 | Range query calls and scanned objects | Add counters around `GetObjectsInRange` or typed alternatives | Measures sector sweep waste |
 | Sector tick chars/items | Add optional counters in `Sector.OnTick` | Measures active-sector density |
+| Per-map chars/items/active sectors/online players | `GameWorld.GetMapStats`, `/status.runtime.maps`, panel stats payload | Shows whether load is clustered enough to justify map workers |
 | GC Gen0/Gen1/Gen2 and allocated bytes | `GC.CollectionCount`, `GC.GetTotalAllocatedBytes` | Detects iterator/list/delta churn |
 | Working set and managed heap | `StressTestEngine.LogReport` | Memory pressure and LOH footprint |
 
@@ -118,6 +119,10 @@ on the code paths above.
 Start with a single-pass typed view range query plus allocation counters. It is
 low risk because it keeps `Character` and `Item` as the source of truth and only
 changes how `BuildViewDelta` visits nearby sector lists.
+
+Do not introduce a map worker pool until `runtime.maps` shows sustained
+per-map imbalance and the tick phase telemetry points to map-local work rather
+than shared apply/flush costs.
 
 Target shape:
 

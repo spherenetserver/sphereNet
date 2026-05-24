@@ -61,6 +61,9 @@ public static class HostPanelContext
             ExecuteCommand = cmd =>
                 Run(() => ipc.QueryAsync<string[]>("exec", new { raw = cmd })) ?? [],
 
+            AuditLog = msg =>
+                RunVoid(() => ipc.MutateAsync("audit", new { msg })),
+
             // ── Debug ──────────────────────────────────────────────────────
             GetDebugState = () =>
                 Run(() => ipc.QueryAsync<DebugState>("debug")) ?? new DebugState(false, false),

@@ -34,6 +34,9 @@ namespace SphereNet.Game.Clients;
 
 public sealed partial class GameClient
 {
+    private static readonly IReadOnlyDictionary<ushort, Action<GameClient, byte[]>> s_extendedCommandHandlers =
+        BuildExtendedCommandHandlers();
+
 
     /// <summary>
     /// Open a crafting gump for the given skill.
@@ -223,9 +226,10 @@ public sealed partial class GameClient
             });
         }
 
-        int result = VendorEngine.ProcessSell(_character, vendor, entries);
-        if (result > 0)
+        int result;
+        if (_triggerDispatcher != null)
             FireVendorItemTriggers(vendor, entries, ItemTrigger.Sell);
+        result = VendorEngine.ProcessSell(_character, vendor, entries);
         NpcSpeech(vendor, ServerMessages.GetFormatted("npc_vendor_sell_ty", result, result == 1 ? "" : "s"));
         RefreshBackpackContents();
         SendCharacterStatus(_character);
@@ -1161,83 +1165,103 @@ public sealed partial class GameClient
     /// <summary>Handle extended command (0xBF sub-commands).</summary>
     public void HandleExtendedCommand(ushort subCmd, byte[] data)
     {
-        switch (subCmd)
+        if (s_extendedCommandHandlers.TryGetValue(subCmd, out var handler))
+            handler(this, data);
+    }
+
+    private static IReadOnlyDictionary<ushort, Action<GameClient, byte[]>> BuildExtendedCommandHandlers()
+    {
+        var handlers = new Dictionary<ushort, Action<GameClient, byte[]>>
         {
-            case 0x001A: // stat lock change
-                if (data.Length >= 2 && _character != null)
-                {
-                    byte stat = data[0];
-                    byte lockVal = data[1];
-                    // stat: 0=str, 1=dex, 2=int — store as tags
-                    _character.SetStatLock(stat, lockVal);
-                }
-                break;
-            case 0x0013: // context menu request
-                if (data.Length >= 4)
-                {
-                    uint targetSerial = (uint)((data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3]);
-                    SendContextMenu(targetSerial);
-                }
-                break;
-            case 0x0015: // context menu response
-                if (data.Length >= 6)
-                {
-                    uint respSerial = (uint)((data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3]);
-                    ushort entryTag = (ushort)((data[4] << 8) | data[5]);
-                    HandleContextMenuResponse(respSerial, entryTag);
-                }
-                break;
-            case 0x0006: // party commands
-                if (data.Length >= 1)
-                    HandlePartyCommand(data);
-                break;
-            case 0x0005: // screen size (ServUO / POL sub 5)
-                if (data.Length >= 8 && _character != null)
-                {
-                    ushort width = (ushort)((data[4] << 8) | data[5]);
-                    ushort height = (ushort)((data[6] << 8) | data[7]);
-                    _character.SetScreenSize(width, height);
-                }
-                break;
-            case 0x001C: // viewport size (alternate client report)
-                if (data.Length >= 4 && _character != null)
-                {
-                    ushort width = (ushort)((data[0] << 8) | data[1]);
-                    ushort height = (ushort)((data[2] << 8) | data[3]);
-                    _character.SetScreenSize(width, height);
-                }
-                break;
-            case 0x0024: // unknown / unused in most clients
-                break;
-            case 0x000B: // Chat button on paperdoll — client requests chat window
-                if (_character != null)
-                {
-                    _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserChatButton,
-                        new TriggerArgs { CharSrc = _character, N1 = subCmd });
-                }
-                break;
-            case 0x0028: // Guild button on paperdoll
-                if (_character != null)
-                {
-                    _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserGuildButton,
-                        new TriggerArgs { CharSrc = _character, N1 = subCmd });
-                }
-                break;
-            case 0x0032: // Quest button on paperdoll
-                if (_character != null)
-                {
-                    _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserQuestButton,
-                        new TriggerArgs { CharSrc = _character, N1 = subCmd });
-                }
-                break;
-            case 0x002C: // Invoke virtue — client passes virtue id in data[0]
-                if (_character != null && data.Length >= 1)
-                {
-                    _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserVirtueInvoke,
-                        new TriggerArgs { CharSrc = _character, N1 = subCmd, N2 = data[0] });
-                }
-                break;
-        }
+            [0x0005] = static (client, data) => client.HandleExtendedScreenSize(data),
+            [0x0006] = static (client, data) => client.HandleExtendedParty(data),
+            [0x000B] = static (client, _) => client.FireExtendedButtonTrigger(CharTrigger.UserChatButton, 0x000B),
+            [0x0013] = static (client, data) => client.HandleExtendedContextMenuRequest(data),
+            [0x0015] = static (client, data) => client.HandleExtendedContextMenuResponse(data),
+            [0x001A] = static (client, data) => client.HandleExtendedStatLock(data),
+            [0x001C] = static (client, data) => client.HandleExtendedViewportSize(data),
+            [0x0024] = static (_, _) => { },
+            [0x0028] = static (client, _) => client.FireExtendedButtonTrigger(CharTrigger.UserGuildButton, 0x0028),
+            [0x002C] = static (client, data) => client.HandleExtendedVirtueInvoke(data),
+            [0x0032] = static (client, _) => client.FireExtendedButtonTrigger(CharTrigger.UserQuestButton, 0x0032),
+        };
+
+        if (handlers.Keys.Any(subCmd => !ExtendedCommandRegistry.IsKnown(subCmd)) ||
+            ExtendedCommandRegistry.KnownSubCommands.Any(subCmd => !handlers.ContainsKey(subCmd)))
+            throw new InvalidOperationException("0xBF extended command handlers drifted from ExtendedCommandRegistry.");
+
+        return handlers;
+    }
+
+    private void HandleExtendedStatLock(byte[] data)
+    {
+        if (data.Length < 2 || _character == null)
+            return;
+
+        _character.SetStatLock(data[0], data[1]);
+    }
+
+    private void HandleExtendedContextMenuRequest(byte[] data)
+    {
+        if (data.Length < 4)
+            return;
+
+        uint targetSerial = (uint)((data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3]);
+        SendContextMenu(targetSerial);
+    }
+
+    private void HandleExtendedContextMenuResponse(byte[] data)
+    {
+        if (data.Length < 6)
+            return;
+
+        uint respSerial = (uint)((data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3]);
+        ushort entryTag = (ushort)((data[4] << 8) | data[5]);
+        HandleContextMenuResponse(respSerial, entryTag);
+    }
+
+    private void HandleExtendedParty(byte[] data)
+    {
+        if (data.Length >= 1)
+            HandlePartyCommand(data);
+    }
+
+    private void HandleExtendedScreenSize(byte[] data)
+    {
+        if (data.Length < 8 || _character == null)
+            return;
+
+        ushort width = (ushort)((data[4] << 8) | data[5]);
+        ushort height = (ushort)((data[6] << 8) | data[7]);
+        _character.SetScreenSize(width, height);
+    }
+
+    private void HandleExtendedViewportSize(byte[] data)
+    {
+        if (data.Length < 4 || _character == null)
+            return;
+
+        ushort width = (ushort)((data[0] << 8) | data[1]);
+        ushort height = (ushort)((data[2] << 8) | data[3]);
+        _character.SetScreenSize(width, height);
+    }
+
+    private void FireExtendedButtonTrigger(CharTrigger trigger, ushort subCmd)
+    {
+        if (_character == null)
+            return;
+
+        _triggerDispatcher?.FireCharTrigger(_character, trigger,
+            new TriggerArgs { CharSrc = _character, N1 = subCmd });
+    }
+
+    private void HandleExtendedVirtueInvoke(byte[] data)
+    {
+        if (_character == null || data.Length < 1)
+            return;
+
+        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserVirtueInvoke,
+            new TriggerArgs { CharSrc = _character, N1 = 0x002C, N2 = data[0] });
     }
 
     /// <summary>

@@ -12,6 +12,7 @@ public class ConfigRegressionTests
             [SPHERE]
             AdminPassword=change-me
             AccApp=0
+            ClientEra=Modern
             SaveShards=99
             SaveShardSizeMb=-5
             ItemDurabilityLossChance=150
@@ -33,6 +34,7 @@ public class ConfigRegressionTests
 
             Assert.Equal("change-me", config.AdminPassword);
             Assert.Equal(0, config.AccApp);
+            Assert.Equal(ClientEra.Modern, config.ClientEra);
             Assert.Equal(16, config.SaveShards);
             Assert.Equal(0, config.SaveShardSizeMb);
             Assert.Equal(100, config.ItemDurabilityLossChance);

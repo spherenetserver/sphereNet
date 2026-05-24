@@ -73,7 +73,7 @@ public sealed partial class GameClient
                     // the "horse spawns a tile behind me" complaint. With the snap
                     // the player may briefly slide back one tile, but the horse is
                     // always exactly under the character — which is the contract.
-                    _nextMoveTime = 0;
+                    ResetWalkValidator();
                     _netState.WalkSequence = 0;
                     _netState.Send(new PacketMoveReject(0,
                         _character.X, _character.Y, _character.Z,
@@ -191,7 +191,7 @@ public sealed partial class GameClient
 
                     // Reset walk state — foot→mount speed transition
                     _netState.WalkSequence = 0;
-                    _nextMoveTime = 0;
+                    ResetWalkValidator();
 
                     // MoveReject FIRST — clears walk queue + Offset.Z, sets exact position
                     _netState.Send(new PacketMoveReject(0,
@@ -264,6 +264,11 @@ public sealed partial class GameClient
                 break;
             case ItemType.DoorLocked:
                 SysMessage(ServerMessages.Get(Msg.ItemuseLocked));
+                break;
+
+            case ItemType.Trap:
+            case ItemType.TrapActive:
+                RouteSkillTarget(SkillType.RemoveTrap, item.Uid);
                 break;
 
             // ---- consumables / potions / books ----

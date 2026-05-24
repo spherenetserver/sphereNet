@@ -1,3 +1,4 @@
+using System.Reflection;
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
 using SphereNet.Network.Encryption;
@@ -7,6 +8,16 @@ namespace SphereNet.Tests;
 public class EncryptionTests
 {
     private static CryptConfig EmptyCryptConfig() => new();
+
+    private static CryptConfig LoadCryptConfig(string contents)
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"spherenet_crypt_{Guid.NewGuid():N}.ini");
+        File.WriteAllText(path, contents);
+        var config = new CryptConfig();
+        config.Load(path);
+        File.Delete(path);
+        return config;
+    }
 
     [Fact]
     public void Blowfish_EncryptDecrypt_RoundTrips()
@@ -168,6 +179,68 @@ public class EncryptionTests
     }
 
     [Fact]
+    public void CryptConfig_ParsesSphereEncryptionMatrix()
+    {
+        var config = LoadCryptConfig("""
+            [SPHERECRYPT]
+            2000000 012345678 0ABCDEF01 ENC_BFISH
+            3000000 011111111 022222222 ENC_BTFISH
+            70011400 037062ADD 0ACCA227F ENC_TFISH
+            """);
+
+        Assert.Equal(3, config.Keys.Count);
+        Assert.Equal(EncryptionType.Blowfish, config.FindKey(2000000)!.EncType);
+        Assert.Equal(EncryptionType.BlowfishTwofish, config.FindKey(3000000)!.EncType);
+        Assert.Equal(EncryptionType.Twofish, config.FindKey(70011400)!.EncType);
+    }
+
+    [Theory]
+    [InlineData(EncryptionType.Blowfish)]
+    [InlineData(EncryptionType.Twofish)]
+    [InlineData(EncryptionType.BlowfishTwofish)]
+    public void CryptoState_RelayGameLogin_DetectsEncryptionMatrix(EncryptionType encType)
+    {
+        const uint authId = 0x1234ABCD;
+        const uint key1 = 0x37062ADD;
+        const uint key2 = 0xACCA227F;
+        const uint clientVersion = 70011400;
+
+        byte[] plain = new byte[65];
+        plain[0] = 0x91;
+        plain[34] = 0x00;
+        plain[64] = 0x00;
+        WriteAsciiFixed(plain, 5, 30, "testacct");
+        WriteAsciiFixed(plain, 35, 30, "testpass");
+        byte[] encrypted = EncryptRelayGameLogin(plain, authId, key1, key2, encType);
+
+        CryptoState.StoreRelayKeys(authId, key1, key2, clientVersion);
+        var state = new CryptoState();
+        var decoded = state.DetectAndDecryptGameLogin(authId, encrypted, EmptyCryptConfig(),
+            useCrypt: true, useNoCrypt: false);
+
+        Assert.NotNull(decoded);
+        Assert.Equal(plain, decoded);
+        Assert.Equal(encType, state.EncType);
+        Assert.Equal(clientVersion, state.RelayClientVersion);
+    }
+
+    [Fact]
+    public void CryptoState_RelayKeys_ExpireAfterTtlPurge()
+    {
+        const uint expiredAuthId = 0x01020304;
+        const uint freshAuthId = 0x05060708;
+        long now = Environment.TickCount64;
+
+        StoreExpiredRelayForTest(expiredAuthId, 0x11111111, 0x22222222, 0,
+            now - 120_000);
+        CryptoState.StoreRelayKeys(freshAuthId, 0x33333333, 0x44444444, 70000000);
+
+        Assert.False(CryptoState.TryGetRelayKeys(expiredAuthId, out _, out _, out _));
+        Assert.True(CryptoState.TryGetRelayKeys(freshAuthId, out _, out _, out uint version));
+        Assert.Equal(70000000u, version);
+    }
+
+    [Fact]
     public void Huffman_Decompress_EmptyInput_ReturnsEmpty()
     {
         var result = HuffmanCompression.Decompress([], 0, 0);
@@ -202,5 +275,56 @@ public class EncryptionTests
 
         Assert.Equal(262_144, decompressed.Length);
         Assert.Equal(compressed.Length, consumed);
+    }
+
+    private static byte[] EncryptRelayGameLogin(byte[] plain, uint authId, uint key1, uint key2, EncryptionType encType)
+    {
+        byte[] encrypted = (byte[])plain.Clone();
+        var login = new LoginEncryption(0, key1, key2, maskLo: 0, maskHi: 0);
+        login.Decrypt(encrypted, 0, encrypted.Length);
+
+        uint derivedSeed = DeriveRelaySeed(authId, key1, key2);
+        switch (encType)
+        {
+            case EncryptionType.Blowfish:
+                new BlowfishGameEncryption(derivedSeed).Decrypt(encrypted, 0, encrypted.Length);
+                break;
+            case EncryptionType.Twofish:
+                new TwofishGameEncryption(derivedSeed).Decrypt(encrypted, 0, encrypted.Length);
+                break;
+            case EncryptionType.BlowfishTwofish:
+                new BlowfishGameEncryption(derivedSeed).Decrypt(encrypted, 0, encrypted.Length);
+                new TwofishGameEncryption(derivedSeed).Decrypt(encrypted, 0, encrypted.Length);
+                break;
+        }
+
+        return encrypted;
+    }
+
+    private static uint DeriveRelaySeed(uint authId, uint key1, uint key2)
+    {
+        uint xored = key1 ^ key2;
+        uint swapped = ((xored >> 24) & 0xFF) |
+                       ((xored >> 8) & 0xFF00) |
+                       ((xored << 8) & 0xFF0000) |
+                       ((xored << 24) & 0xFF000000);
+        return swapped ^ authId;
+    }
+
+    private static void WriteAsciiFixed(byte[] buffer, int offset, int length, string text)
+    {
+        var bytes = System.Text.Encoding.ASCII.GetBytes(text);
+        Buffer.BlockCopy(bytes, 0, buffer, offset, Math.Min(length - 1, bytes.Length));
+    }
+
+    private static void StoreExpiredRelayForTest(uint authId, uint key1, uint key2, uint clientVersion, long storedAt)
+    {
+        var pending = (System.Collections.IDictionary)typeof(CryptoState)
+            .GetField("_pendingRelays", BindingFlags.Static | BindingFlags.NonPublic)!
+            .GetValue(null)!;
+        pending[authId] = (key1, key2, clientVersion, storedAt);
+        typeof(CryptoState)
+            .GetField("_lastRelayPurge", BindingFlags.Static | BindingFlags.NonPublic)!
+            .SetValue(null, storedAt);
     }
 }

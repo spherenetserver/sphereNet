@@ -1,6 +1,8 @@
 using SphereNet.Network.Packets;
 using SphereNet.Network.Packets.Incoming;
 using SphereNet.Network.State;
+using SphereNet.Network.Manager;
+using System.Reflection;
 
 namespace SphereNet.Tests;
 
@@ -62,5 +64,167 @@ public class PacketManagerTests
 
         Assert.True(invoked);
         Assert.False(buffer.IsUnderrun);
+    }
+
+    [Fact]
+    public void PacketVendorBuy_RoutesRoundtripEntriesToState()
+    {
+        var handler = new PacketVendorBuy();
+        var state = new NetState(Microsoft.Extensions.Logging.Abstractions.NullLogger<NetState>.Instance);
+        uint vendor = 0;
+        byte flag = 0;
+        List<VendorBuyEntry>? entries = null;
+        state.VendorBuyHandler = (_, vendorSerial, buyFlag, items) =>
+        {
+            vendor = vendorSerial;
+            flag = buyFlag;
+            entries = items;
+        };
+
+        var buffer = new PacketBuffer([
+            0x00, 0x00, 0x01, 0x00,
+            0x01,
+            0x1A, 0x40, 0x00, 0x00, 0x01, 0x00, 0x02
+        ]);
+
+        handler.OnReceive(buffer, state);
+
+        Assert.Equal(0x00000100u, vendor);
+        Assert.Equal((byte)1, flag);
+        Assert.NotNull(entries);
+        var entry = Assert.Single(entries!);
+        Assert.Equal((byte)0x1A, entry.Layer);
+        Assert.Equal(0x40000001u, entry.ItemSerial);
+        Assert.Equal((ushort)2, entry.Amount);
+    }
+
+    [Fact]
+    public void PacketVendorSell_RoutesRoundtripEntriesToState()
+    {
+        var handler = new PacketVendorSell();
+        var state = new NetState(Microsoft.Extensions.Logging.Abstractions.NullLogger<NetState>.Instance);
+        uint vendor = 0;
+        List<VendorSellEntry>? entries = null;
+        state.VendorSellHandler = (_, vendorSerial, items) =>
+        {
+            vendor = vendorSerial;
+            entries = items;
+        };
+
+        var buffer = new PacketBuffer([
+            0x00, 0x00, 0x01, 0x00,
+            0x00, 0x01,
+            0x40, 0x00, 0x00, 0x02, 0x00, 0x03
+        ]);
+
+        handler.OnReceive(buffer, state);
+
+        Assert.Equal(0x00000100u, vendor);
+        Assert.NotNull(entries);
+        var entry = Assert.Single(entries!);
+        Assert.Equal(0x40000002u, entry.ItemSerial);
+        Assert.Equal((ushort)3, entry.Amount);
+    }
+
+    [Fact]
+    public void PacketSecureTrade_RoutesActionSessionAndParamToState()
+    {
+        var handler = new PacketSecureTrade();
+        var state = new NetState(Microsoft.Extensions.Logging.Abstractions.NullLogger<NetState>.Instance);
+        byte action = 0;
+        uint session = 0;
+        uint param = 0;
+        state.SecureTradeHandler = (_, a, s, p) =>
+        {
+            action = a;
+            session = s;
+            param = p;
+        };
+
+        var buffer = new PacketBuffer([
+            0x02,
+            0x80, 0x00, 0x00, 0x01,
+            0x40, 0x00, 0x00, 0x02
+        ]);
+
+        handler.OnReceive(buffer, state);
+
+        Assert.Equal((byte)2, action);
+        Assert.Equal(0x80000001u, session);
+        Assert.Equal(0x40000002u, param);
+    }
+
+    [Fact]
+    public void ProtocolMatrix_DocumentsAllRegisteredIncomingHandlers()
+    {
+        using var loggerFactory = TestHarness.CreateLoggerFactory();
+        using var network = new NetworkManager(1, loggerFactory);
+        string matrix = File.ReadAllText(FindRepoFile("docs", "PROTOCOL_MATRIX.md"));
+
+        foreach (byte opcode in GetRegisteredOpcodes(network))
+            Assert.Contains($"`0x{opcode:X2}`", matrix);
+    }
+
+    [Fact]
+    public void RegisteredPacketHandlers_TruncatedPayloads_DoNotThrow()
+    {
+        using var loggerFactory = TestHarness.CreateLoggerFactory();
+        using var network = new NetworkManager(1, loggerFactory);
+        var state = new NetState(Microsoft.Extensions.Logging.Abstractions.NullLogger<NetState>.Instance);
+
+        foreach (var handler in GetRegisteredHandlers(network))
+        {
+            int payloadLength = handler.ExpectedLength > 0 ? Math.Max(0, handler.ExpectedLength - 1) : 1;
+            byte[] payload = new byte[Math.Min(payloadLength, 8)];
+            var buffer = new PacketBuffer(payload);
+
+            var ex = Record.Exception(() => handler.OnReceive(buffer, state));
+            Assert.Null(ex);
+        }
+    }
+
+    [Fact]
+    public void VariableLengthPacketHandlers_RandomBodies_DoNotThrow()
+    {
+        using var loggerFactory = TestHarness.CreateLoggerFactory();
+        using var network = new NetworkManager(1, loggerFactory);
+        var state = new NetState(Microsoft.Extensions.Logging.Abstractions.NullLogger<NetState>.Instance);
+        var random = new Random(56);
+
+        foreach (var handler in GetRegisteredHandlers(network).Where(h => h.ExpectedLength == 0))
+        {
+            byte[] payload = new byte[32];
+            random.NextBytes(payload);
+            var buffer = new PacketBuffer(payload);
+
+            var ex = Record.Exception(() => handler.OnReceive(buffer, state));
+            Assert.Null(ex);
+        }
+    }
+
+    private static IEnumerable<byte> GetRegisteredOpcodes(NetworkManager network) =>
+        GetRegisteredHandlers(network).Select(handler => handler.PacketId).Order();
+
+    private static IEnumerable<PacketHandler> GetRegisteredHandlers(NetworkManager network)
+    {
+        var manager = network.Packets;
+        var handlers = (PacketHandler?[])typeof(PacketManager)
+            .GetField("_handlers", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(manager)!;
+        return handlers.Where(handler => handler != null).Cast<PacketHandler>();
+    }
+
+    private static string FindRepoFile(params string[] parts)
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null)
+        {
+            string candidate = Path.Combine(new[] { dir.FullName }.Concat(parts).ToArray());
+            if (File.Exists(candidate))
+                return candidate;
+            dir = dir.Parent;
+        }
+
+        throw new FileNotFoundException(string.Join(Path.DirectorySeparatorChar, parts));
     }
 }

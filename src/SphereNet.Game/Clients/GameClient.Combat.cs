@@ -35,8 +35,18 @@ namespace SphereNet.Game.Clients;
 public sealed partial class GameClient
 {
 
-    // ServUO-style fastwalk prevention via time-based throttle
+    // ServUO-style fastwalk prevention via time-based throttle + walk buffer.
+    public static int WalkBufferMax { get; set; } = 75;
+    public static int WalkRegenPerSecond { get; set; } = 25;
+    public static int MoveToleranceMs { get; set; } = 80;
+    public static int MoveViolationKickThreshold { get; set; }
+    public static Func<long> MoveClock { get; set; } = () => Environment.TickCount64;
+
     private long _nextMoveTime;
+    private int _walkTokens = WalkBufferMax;
+    private long _walkTokenLastMs;
+    private int _moveViolationCount;
+
     public void HandleMove(byte dir, byte seq, uint fastWalkKey)
     {
         if (_character == null) return;
@@ -52,8 +62,8 @@ public sealed partial class GameClient
         var direction = (Direction)(dir & 0x07);
         bool running = (dir & 0x80) != 0;
 
-        _netState.LastActivityTick = Environment.TickCount64;
-        long now = Environment.TickCount64;
+        long now = MoveClock();
+        _netState.LastActivityTick = now;
         byte expectedSeq = _netState.WalkSequence;
 
         // Strict sequence validation (ServUO-style): reject out-of-order walk packets.
@@ -75,18 +85,27 @@ public sealed partial class GameClient
         _netState.LastFastWalkKey = fastWalkKey;
 
         // Fastwalk throttle: reject if moving too fast.
-        // Tolerance scales with move speed so TCP-buffered walk packets aren't rejected.
         if (_character.PrivLevel < PrivLevel.GM)
         {
             int moveDelay = MovementEngine.GetMoveDelay(_character.IsMounted, running);
-            int tolerance = moveDelay * 3;
-            if (_nextMoveTime > 0 && now < _nextMoveTime - tolerance)
+            RefillWalkTokens(now);
+
+            string? rejectReason = null;
+            if (_nextMoveTime > 0 && now + MoveToleranceMs < _nextMoveTime)
+                rejectReason = "throttle";
+            else if (_walkTokens <= 0)
+                rejectReason = "walk_buffer";
+
+            if (rejectReason != null)
             {
-                _logger.LogDebug("[move_reject] reason=throttle ahead={Ahead}ms delay={Delay}ms at {X},{Y},{Z}",
-                    _nextMoveTime - now, moveDelay, _character.X, _character.Y, _character.Z);
+                _moveViolationCount++;
+                _logger.LogDebug("[move_reject] reason={Reason} violations={Violations} ahead={Ahead}ms delay={Delay}ms tokens={Tokens} at {X},{Y},{Z}",
+                    rejectReason, _moveViolationCount, Math.Max(0, _nextMoveTime - now), moveDelay, _walkTokens,
+                    _character.X, _character.Y, _character.Z);
                 _netState.Send(new PacketMoveReject(seq, _character.X, _character.Y, _character.Z, (byte)_character.Direction));
                 _netState.WalkSequence = 0;
-                _nextMoveTime = now;
+                if (MoveViolationKickThreshold > 0 && _moveViolationCount >= MoveViolationKickThreshold)
+                    _netState.MarkClosing();
                 return;
             }
         }
@@ -108,13 +127,14 @@ public sealed partial class GameClient
         if (moved)
         {
             _character.LastMoveTick = now;
-            // Advance next allowed move time — cap accumulation to prevent
-            // cascading rejects when the client sends TCP-buffered walk packets.
             int moveDelay = MovementEngine.GetMoveDelay(_character.IsMounted, running);
+            if (_character.PrivLevel < PrivLevel.GM && _walkTokens > 0)
+                _walkTokens--;
             if (_nextMoveTime <= 0 || now >= _nextMoveTime)
                 _nextMoveTime = now + moveDelay;
             else
-                _nextMoveTime = Math.Min(_nextMoveTime + moveDelay, now + moveDelay * 3);
+                _nextMoveTime += moveDelay;
+            _moveViolationCount = 0;
 
             byte notoriety = GetNotoriety(_character);
             _netState.Send(new PacketMoveAck(seq, notoriety));
@@ -171,6 +191,41 @@ public sealed partial class GameClient
             _netState.Send(new PacketMoveReject(seq, _character.X, _character.Y, _character.Z, (byte)_character.Direction));
             _netState.WalkSequence = 0;
         }
+    }
+
+    private void ResetWalkValidator()
+    {
+        _nextMoveTime = 0;
+        _walkTokens = Math.Max(1, WalkBufferMax);
+        _walkTokenLastMs = 0;
+        _moveViolationCount = 0;
+    }
+
+    private void RefillWalkTokens(long now)
+    {
+        int maxTokens = Math.Max(1, WalkBufferMax);
+        if (_walkTokenLastMs <= 0)
+        {
+            _walkTokens = maxTokens;
+            _walkTokenLastMs = now;
+            return;
+        }
+
+        int regen = Math.Max(0, WalkRegenPerSecond);
+        if (regen == 0 || _walkTokens >= maxTokens)
+        {
+            _walkTokenLastMs = now;
+            _walkTokens = Math.Min(_walkTokens, maxTokens);
+            return;
+        }
+
+        long elapsed = Math.Max(0, now - _walkTokenLastMs);
+        int add = (int)(elapsed * regen / 1000);
+        if (add <= 0)
+            return;
+
+        _walkTokens = Math.Min(maxTokens, _walkTokens + add);
+        _walkTokenLastMs += add * 1000L / regen;
     }
 
     // ==================== Speech ====================
@@ -294,7 +349,11 @@ public sealed partial class GameClient
             {
                 var w = _character.GetEquippedItem(Layer.OneHanded)
                      ?? _character.GetEquippedItem(Layer.TwoHanded);
-                _character.NextAttackTime = Environment.TickCount64 + GetSwingDelayMs(_character, w);
+                _character.BeginEquipSwingWait(Environment.TickCount64, GetSwingDelayMs(_character, w), noWait: false);
+            }
+            else
+            {
+                _character.BeginEquipSwingWait(Environment.TickCount64, 0, noWait: true);
             }
         }
 
@@ -324,6 +383,7 @@ public sealed partial class GameClient
         if (!_character.IsInWarMode) return;
 
         long now = Environment.TickCount64;
+        _character.RefreshCombatSwingState(now);
         if (now < _character.NextAttackTime) return;
 
         var target = _world.FindChar(_character.FightTarget);
@@ -348,7 +408,10 @@ public sealed partial class GameClient
         if (_character == null) return;
 
         long now = Environment.TickCount64;
+        _character.RefreshCombatSwingState(now);
         if (now < _character.NextAttackTime)
+            return;
+        if (_character.CombatSwingState is SwingState.Swinging or SwingState.Equipping)
             return;
 
         // Source-X CChar::Fight_CanHit gates: dead / paralyzed / sleeping
@@ -453,9 +516,10 @@ public sealed partial class GameClient
                 return;
             }
             ConsumeAmmoFromBackpack(ammoType);
+            EmitRangedProjectile(target, ammoType);
         }
 
-        _character.NextAttackTime = now + swingDelayMs;
+        _character.BeginSwingRecoil(now, swingDelayMs);
 
         // Each swing burns a small bit of stamina (Source-X Fight_Hit -> UpdateStatVal(STAT_DEX, -1)).
         if (_character.Stam > 0)
@@ -682,6 +746,29 @@ public sealed partial class GameClient
 
         var missSound = new PacketSound(0x0234, target.X, target.Y, target.Z);
         BroadcastNearby?.Invoke(target.Position, UpdateRange, missSound, 0);
+    }
+
+    private void EmitRangedProjectile(Character target, ItemType ammoType)
+    {
+        if (_character == null) return;
+
+        ushort effectId = ammoType == ItemType.WeaponBolt ? (ushort)0x1BFB : (ushort)0x0F3F;
+        var projectile = new PacketEffect(
+            type: 0,
+            srcSerial: _character.Uid.Value,
+            dstSerial: target.Uid.Value,
+            effectId: effectId,
+            srcX: _character.X,
+            srcY: _character.Y,
+            srcZ: _character.Z,
+            dstX: target.X,
+            dstY: target.Y,
+            dstZ: target.Z,
+            speed: 18,
+            duration: 1,
+            fixedDir: true,
+            explode: false);
+        BroadcastNearby?.Invoke(_character.Position, UpdateRange, projectile, 0);
     }
 
     /// <summary>
@@ -1309,7 +1396,8 @@ public sealed partial class GameClient
                 }
 
                 // --- Buff icon (0xDF) for beneficial spells with duration ---
-                if (spellDef != null && spellDef.IsFlag(SpellFlag.Good) && spellDef.DurationBase > 0)
+                if (_netState.SupportsBuffIcon &&
+                    spellDef != null && spellDef.IsFlag(SpellFlag.Good) && spellDef.DurationBase > 0)
                 {
                     int skillLvl = _character.GetSkill(spellDef.GetPrimarySkill());
                     int durTenths = spellDef.GetDuration(skillLvl);

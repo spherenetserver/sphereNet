@@ -438,6 +438,12 @@ public sealed class ExpressionParser
             pos += 2;
             while (pos < text.Length && IsHexDigit(text[pos])) pos++;
         }
+        else if (text[pos] == '0')
+        {
+            isHex = true;
+            pos++;
+            while (pos < text.Length && IsHexDigit(text[pos])) pos++;
+        }
         else
         {
             while (pos < text.Length && char.IsDigit(text[pos])) pos++;
@@ -446,9 +452,14 @@ public sealed class ExpressionParser
         if (pos == start) return 0;
 
         ReadOnlySpan<char> numText = text.AsSpan(start, pos - start);
-        if (isHex && numText.Length > 2)
+        if (isHex)
         {
-            long.TryParse(numText[2..], System.Globalization.NumberStyles.HexNumber, null, out long val);
+            ReadOnlySpan<char> hexText = numText.Length > 2 &&
+                numText[0] == '0' &&
+                (numText[1] == 'x' || numText[1] == 'X')
+                ? numText[2..]
+                : numText;
+            long.TryParse(hexText, System.Globalization.NumberStyles.HexNumber, null, out long val);
             return val;
         }
 
@@ -1496,6 +1507,14 @@ public sealed class ExpressionParser
             pos += 2;
             while (pos < text.Length && IsHexDigit(text[pos])) pos++;
             if (pos > start + 2 && long.TryParse(text.AsSpan(start + 2, pos - start - 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out long hex))
+                return hex;
+            return 0;
+        }
+        if (text[pos] == '0')
+        {
+            pos++;
+            while (pos < text.Length && IsHexDigit(text[pos])) pos++;
+            if (long.TryParse(text.AsSpan(start, pos - start), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out long hex))
                 return hex;
             return 0;
         }

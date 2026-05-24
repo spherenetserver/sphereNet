@@ -492,20 +492,45 @@ public sealed class PanelHost : IDisposable
 
         app.MapGet("/api/scripts/content", (string path) =>
         {
-            var root = _ctx.ScriptsPath;
-            if (root is null)
-                return Results.Problem("ScriptsPath not configured");
-
-            // Prevent path traversal
-            var full = Path.GetFullPath(Path.Combine(root, path));
-            if (!full.StartsWith(Path.GetFullPath(root), StringComparison.OrdinalIgnoreCase))
-                return Results.BadRequest(new { error = "Invalid path" });
+            if (!TryResolveScriptPath(path, out var full, out var error))
+                return Results.BadRequest(new { error });
 
             if (!File.Exists(full))
                 return Results.NotFound();
 
             var content = File.ReadAllText(full);
             return Results.Ok(new { content });
+        });
+
+        app.MapPost("/api/scripts/validate", (ScriptContentRequest req) =>
+        {
+            var validation = ValidateScriptContent(req.Content);
+            return Results.Ok(validation);
+        });
+
+        app.MapPut("/api/scripts/content", (ScriptContentRequest req, HttpContext http) =>
+        {
+            if (!TryResolveScriptPath(req.Path, out var full, out var error))
+                return Results.BadRequest(new { error });
+
+            if (!full.EndsWith(".scp", StringComparison.OrdinalIgnoreCase))
+                return Results.BadRequest(new { error = "Only .scp files can be edited" });
+
+            var validation = ValidateScriptContent(req.Content);
+            if (!validation.Ok)
+                return Results.BadRequest(validation);
+
+            Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+            if (File.Exists(full))
+            {
+                string backup = $"{full}.{DateTime.UtcNow:yyyyMMddHHmmss}.bak";
+                File.Copy(full, backup, overwrite: false);
+            }
+
+            File.WriteAllText(full, req.Content);
+            string rel = Path.GetRelativePath(_ctx.ScriptsPath!, full).Replace('\\', '/');
+            _ctx.AuditLog?.Invoke($"script saved path='{rel}' ip='{http.Connection.RemoteIpAddress}' bytes={req.Content.Length}");
+            return Results.Ok(new { saved = true, path = rel, validation });
         });
 
         app.MapPost("/api/scripts/download", async () =>
@@ -562,6 +587,94 @@ public sealed class PanelHost : IDisposable
                 return Results.Problem($"Download failed: {ex.Message}");
             }
         });
+    }
+
+    private bool TryResolveScriptPath(string path, out string fullPath, out string? error)
+    {
+        fullPath = "";
+        error = null;
+        var root = _ctx.ScriptsPath;
+        if (root is null)
+        {
+            error = "ScriptsPath not configured";
+            return false;
+        }
+
+        string rootFull = Path.GetFullPath(root);
+        fullPath = Path.GetFullPath(Path.Combine(rootFull, path.Replace('/', Path.DirectorySeparatorChar)));
+        if (!fullPath.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase))
+        {
+            error = "Invalid path";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static ScriptValidationResult ValidateScriptContent(string content)
+    {
+        var errors = new List<string>();
+        var stack = new Stack<(string Token, int Line)>();
+        string[] lines = content.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            string trimmed = lines[i].Trim();
+            if (trimmed.Length == 0 || trimmed.StartsWith("//"))
+                continue;
+
+            if (trimmed.StartsWith('[') && !trimmed.Contains(']'))
+                errors.Add($"Line {i + 1}: missing closing bracket");
+
+            string upper = trimmed.Split(' ', '\t')[0].ToUpperInvariant();
+            switch (upper)
+            {
+                case "IF":
+                case "FOR":
+                case "WHILE":
+                case "DORAND":
+                case "DOSWITCH":
+                case "BEGIN":
+                    stack.Push((upper, i + 1));
+                    break;
+                case "ENDIF":
+                    PopExpected(stack, "IF", i + 1, errors);
+                    break;
+                case "ENDFOR":
+                    PopExpected(stack, "FOR", i + 1, errors);
+                    break;
+                case "ENDWHILE":
+                    PopExpected(stack, "WHILE", i + 1, errors);
+                    break;
+                case "ENDDO":
+                    if (stack.Count == 0 || (stack.Peek().Token != "DORAND" && stack.Peek().Token != "DOSWITCH"))
+                        errors.Add($"Line {i + 1}: ENDDO without DORAND/DOSWITCH");
+                    else
+                        stack.Pop();
+                    break;
+                case "END":
+                    PopExpected(stack, "BEGIN", i + 1, errors);
+                    break;
+            }
+        }
+
+        foreach (var item in stack)
+            errors.Add($"Line {item.Line}: {item.Token} block is not closed");
+
+        return new ScriptValidationResult(errors.Count == 0, errors.ToArray());
+    }
+
+    private static void PopExpected(Stack<(string Token, int Line)> stack, string expected, int line, List<string> errors)
+    {
+        if (stack.Count == 0)
+        {
+            errors.Add($"Line {line}: END block without {expected}");
+            return;
+        }
+
+        var top = stack.Pop();
+        if (top.Token != expected)
+            errors.Add($"Line {line}: expected END for {top.Token} opened at line {top.Line}, got {expected}");
     }
 
     /// <summary>
@@ -659,3 +772,5 @@ file record CreateAccountRequest(string Name, string Password);
 file record ChangePasswordRequest(string Password);
 file record ChangePlevelRequest(int Level);
 file record DebugRequest(bool PacketDebug, bool ScriptDebug);
+file record ScriptContentRequest(string Path, string Content);
+internal record ScriptValidationResult(bool Ok, string[] Errors);

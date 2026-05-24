@@ -1,5 +1,7 @@
 namespace SphereNet.Scripting.Parsing;
 
+using System.Collections.Concurrent;
+
 /// <summary>
 /// .scp file reader with optional in-memory line cache.
 /// Maps to CScript + CCacheableScriptFile in Source-X.
@@ -7,7 +9,7 @@ namespace SphereNet.Scripting.Parsing;
 /// </summary>
 public sealed class ScriptFile : IDisposable
 {
-    private static readonly Dictionary<string, string[]> s_fileContentCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, string[]> s_fileContentCache = new(StringComparer.OrdinalIgnoreCase);
 
     private StreamReader? _reader;
     private string[]? _cachedLines;
@@ -43,11 +45,7 @@ public sealed class ScriptFile : IDisposable
 
         if (UseCache)
         {
-            if (!s_fileContentCache.TryGetValue(FilePath, out _cachedLines))
-            {
-                _cachedLines = File.ReadAllLines(FilePath);
-                s_fileContentCache[FilePath] = _cachedLines;
-            }
+            _cachedLines = s_fileContentCache.GetOrAdd(FilePath, static path => File.ReadAllLines(path));
             _cacheLineIndex = 0;
         }
         else

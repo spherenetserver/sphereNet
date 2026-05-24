@@ -6,6 +6,12 @@ public enum SeasonMode
     Manual = 1,
 }
 
+public enum ClientEra
+{
+    Sphere56x = 0,
+    Modern = 1,
+}
+
 /// <summary>
 /// Server configuration model. Maps to CServerConfig in Source-X.
 /// Holds all sphere.ini settings as strongly-typed properties.
@@ -20,6 +26,7 @@ public sealed class SphereConfig
 
     // Client
     public string ClientVersion { get; set; } = "4.0.2";
+    public ClientEra ClientEra { get; set; } = ClientEra.Sphere56x;
     public bool UseCrypt { get; set; } = true;
     public bool UseNoCrypt { get; set; }
     public int ClientMax { get; set; } = 256;
@@ -281,6 +288,15 @@ public sealed class SphereConfig
         AdminEmail = ini.GetValue(section, "AdminEmail") ?? AdminEmail;
 
         ClientVersion = ini.GetValue(section, "ClientVersion") ?? ClientVersion;
+        string? clientEraRaw = ini.GetValue(section, "ClientEra");
+        if (!string.IsNullOrWhiteSpace(clientEraRaw))
+        {
+            if (Enum.TryParse<ClientEra>(clientEraRaw, ignoreCase: true, out var parsedEra))
+                ClientEra = parsedEra;
+            else if (int.TryParse(clientEraRaw, out int parsedEraNum) &&
+                     Enum.IsDefined(typeof(ClientEra), parsedEraNum))
+                ClientEra = (ClientEra)parsedEraNum;
+        }
         UseCrypt = ini.GetBool(section, "UseCrypt", UseCrypt);
         UseNoCrypt = ini.GetBool(section, "UseNoCrypt", UseNoCrypt);
         ClientMax = ini.GetInt(section, "ClientMax", ClientMax);

@@ -49,6 +49,12 @@ public sealed class TriggerRunner
         if (!link.IsTriggerActive(triggerIndex))
             return TriggerResult.Default;
 
+        if (link.TryGetTriggerBody(triggerName, out var cachedTriggerLines))
+        {
+            var cachedScope = new ScriptScope { TriggerName = "@" + triggerName };
+            return _interpreter.Execute(cachedTriggerLines, target, source, args, cachedScope);
+        }
+
         using var scriptFile = link.OpenAtStoredPosition();
         if (scriptFile == null)
             return TriggerResult.Default;
@@ -86,6 +92,15 @@ public sealed class TriggerRunner
         ITriggerArgs? args)
     {
         bool verbose = ScriptDebug;
+
+        if (link.TryGetTriggerBody(triggerName, out var cachedTriggerLines))
+        {
+            if (verbose)
+                _logger.LogDebug("[trig_runner] {Trig} matched cached body lines={N}",
+                    triggerName, cachedTriggerLines.Count);
+            var cachedScope = new ScriptScope { TriggerName = "@" + triggerName };
+            return _interpreter.Execute(cachedTriggerLines, target, source, args, cachedScope);
+        }
 
         using var scriptFile = link.OpenAtStoredPosition();
         if (scriptFile == null)
@@ -251,22 +266,6 @@ public sealed class TriggerRunner
         if (link == null)
             return false;
 
-        using var scriptFile = link.OpenAtStoredPosition();
-        if (scriptFile == null)
-        {
-            _logger.LogWarning("Function script file could not be opened: {Name} at {Path}:{Line}",
-                funcName, link.ScriptFilePath, link.ScriptLineNumber);
-            return true;
-        }
-
-        var sections = scriptFile.ReadAllSections();
-        if (sections.Count == 0)
-        {
-            _logger.LogWarning("Function has no sections: {Name} at {Path}:{Line}",
-                funcName, link.ScriptFilePath, link.ScriptLineNumber);
-            return true;
-        }
-
         int callDepth = (callerScope?.CallDepth ?? 0) + 1;
         int maxCallDepth = callerScope?.MaxCallDepth ?? 32;
         if (callDepth > maxCallDepth)
@@ -279,13 +278,34 @@ public sealed class TriggerRunner
             return true;
         }
 
+        IReadOnlyList<ScriptKey>? functionLines = link.FunctionBody;
+        if (functionLines == null)
+        {
+            using var scriptFile = link.OpenAtStoredPosition();
+            if (scriptFile == null)
+            {
+                _logger.LogWarning("Function script file could not be opened: {Name} at {Path}:{Line}",
+                    funcName, link.ScriptFilePath, link.ScriptLineNumber);
+                return true;
+            }
+
+            var sections = scriptFile.ReadAllSections();
+            if (sections.Count == 0)
+            {
+                _logger.LogWarning("Function has no sections: {Name} at {Path}:{Line}",
+                    funcName, link.ScriptFilePath, link.ScriptLineNumber);
+                return true;
+            }
+            functionLines = sections[0].Keys;
+        }
+
         var scope = new ScriptScope
         {
             TriggerName = funcName,
             CallDepth = callDepth,
             MaxCallDepth = maxCallDepth
         };
-        result = _interpreter.Execute(sections[0].Keys, target, source, args, scope);
+        result = _interpreter.Execute(functionLines, target, source, args, scope);
         returnValue = scope.ReturnValue;
         return true;
     }

@@ -41,6 +41,16 @@ export interface ServerStats {
   accounts: number
   cpuPercent: number
   threadCount: number
+  maps?: MapStats[]
+}
+
+export interface MapStats {
+  mapId: number
+  chars: number
+  items: number
+  sectors: number
+  activeSectors: number
+  onlinePlayers: number
 }
 
 export interface PlayerInfo {
@@ -72,6 +82,11 @@ export interface ScriptFileInfo {
   relativePath: string
   sizeBytes: number
   lastModified: string
+}
+
+export interface ScriptValidationResult {
+  ok: boolean
+  errors: string[]
 }
 
 export interface SetupConfig {
@@ -141,5 +156,7 @@ export const settingsApi = {
 export const scriptsApi = {
   list:     () => api.get<ScriptFileInfo[]>('/scripts'),
   content:  (path: string) => api.get<{ content: string }>(`/scripts/content`, { params: { path } }),
+  validate: (path: string, content: string) => api.post<ScriptValidationResult>('/scripts/validate', { path, content }),
+  save:     (path: string, content: string) => api.put<{ saved: boolean; path: string; validation: ScriptValidationResult }>('/scripts/content', { path, content }),
   download: () => api.post<{ filesInstalled: number }>('/scripts/download', null, { timeout: 120_000 }),
 }

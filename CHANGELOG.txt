@@ -4,6 +4,62 @@
  All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-24] - Gameplay parity, script tools ve anti-cheat iyilestirmeleri
+              (Gameplay parity, script tools and anti-cheat improvements)
+----------------------------------------
+
+GUVENLIK / SECURITY:
+  - Strict walk validator token-bucket + minimum interval modeliyle yenilendi;
+    WalkBuffer/WalkRegen config degerleri artik hareket dogrulamasinda kullanilir.
+    Strict walk validation now uses token bucket + minimum interval checks.
+  - Seq mismatch, too-fast movement, burst buffer, mounted/foot delay ve GM bypass
+    davranislari regresyon testleriyle kapsandi.
+    Movement anti-cheat edge cases are covered by regression tests.
+  - Gump response, secure trade, vendor buy/sell ve housing gump forgery yollarinda
+    ek guvenlik/parity kontrolleri tamamlandi.
+    Gump, trade, vendor and housing forgery paths received additional safeguards.
+
+PANEL / DEVTOOLS:
+  - Panel script editor read-only moddan Validate -> Save -> Resync akisini destekleyen
+    guvenli editor moduna genisletildi.
+    Panel scripts page now supports validate, save and manual resync.
+  - Script save endpoint'i path traversal korumasi, .bak backup ve audit log uretir;
+    validate basarisizsa dosya overwrite edilmez.
+    Script writes are path-safe, backed up and audited.
+  - Visual Gump Designer MVP eklendi: resizepic/text/button/gumppic/htmlgump layout
+    kontrolleri, property panel, preview ve script export.
+    Visual Gump Designer MVP added with property editing and script export.
+
+PERFORMANS / PERFORMANCE:
+  - Script hot-path cache eklendi; EVENTS, TYPEDEF, FUNCTION ve DIALOG gibi runtime-heavy
+    section'larda StoredKeys, trigger body index ve function body cache kullanilir.
+    Script trigger/function hot paths now use load-time body caches.
+  - Map bazli telemetry eklendi: mapId, chars, items, sectors, active sectors ve
+    online player sayilari panel/status runtime verisine tasindi.
+    Per-map runtime telemetry is now exposed for future worker partitioning decisions.
+  - Data locality ve benchmark dokumanlari map telemetry sinyalleriyle guncellendi.
+    Performance docs now document per-map metrics.
+
+NETWORK / PROTOCOL:
+  - 0xBF extended command routing merkezi ExtendedCommandRegistry uzerinden yapilir.
+    Extended command routing now uses a shared registry.
+  - Login/relay/game-login/character-select pipeline ve encryption matrix regresyon
+    testleri genisletildi.
+    Login, relay and encryption compatibility tests expanded.
+  - docs/PROTOCOL_MATRIX.md eklendi ve packet handler drift/fuzz testleriyle baglandi.
+    Protocol matrix documentation is now checked by tests.
+
+OYUN MANTIGI / GAMEPLAY:
+  - Skill, combat swing, item use, vendor, trade, housing ve script object parity
+    davranislari genis testlerle tamamlandi.
+    Gameplay parity coverage expanded across skills, combat, item use, trade and housing.
+  - Mount/dismount, resync ve hareket validator reset akislari tutarli hale getirildi.
+    Mount, dismount and resync now reset movement validation state consistently.
+
+TEST / TEST:
+  - 363 testlik .NET test paketi ve panel production build dogrulandi.
+    Full .NET test suite and panel production build pass.
+
 [2026-05-24] - Guvenlik taramasi ve exploit duzeltmeleri
               (Security audit and exploit fixes)
 ----------------------------------------

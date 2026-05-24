@@ -7,6 +7,12 @@ namespace SphereNet.Scripting.Expressions;
 /// </summary>
 public sealed class ExpressionParser
 {
+    private int _resolveDepth;
+    private const int MaxResolveDepth = 32;
+    private const int MaxRegexPatternLength = 512;
+    private const int MaxRegexInputLength = 4096;
+    private static readonly TimeSpan RegexMatchTimeout = TimeSpan.FromMilliseconds(25);
+
     /// <summary>
     /// Variable/property resolver callback.
     /// Given a variable name, returns its string value.
@@ -493,41 +499,39 @@ public sealed class ExpressionParser
     {
         if (string.IsNullOrEmpty(text) || !text.Contains('<'))
             return text;
+        if (_resolveDepth >= MaxResolveDepth)
+            return text;
 
         var sb = new System.Text.StringBuilder(text.Length);
         int pos = 0;
-
-        while (pos < text.Length)
+        _resolveDepth++;
+        try
         {
-            if (text[pos] == '<')
+            while (pos < text.Length)
             {
-                // Sphere scripts use '<' both as the opening of a
-                // variable expansion (<Account.Plevel>) AND as the
-                // less-than operator (a < b). Disambiguate by the
-                // following character: an identifier start (letter
-                // or '_') begins an expansion, anything else is LT
-                // and passes through literally. This prevents
-                // "<Src.X> < <Y>" from being read as a single
-                // runaway bracket.
-                char next = pos + 1 < text.Length ? text[pos + 1] : '\0';
-                bool isBracketOpen = next == '_' || char.IsLetter(next);
-                if (!isBracketOpen)
+                if (text[pos] == '<')
                 {
-                    sb.Append('<');
-                    pos++;
-                    continue;
-                }
+                    char next = pos + 1 < text.Length ? text[pos + 1] : '\0';
+                    bool isBracketOpen = next == '_' || char.IsLetter(next);
+                    if (!isBracketOpen)
+                    {
+                        sb.Append('<');
+                        pos++;
+                        continue;
+                    }
 
-                string inner = ReadAngleBracket(text, ref pos);
-                string resolved = ResolveVariable(inner);
-                sb.Append(resolved);
-            }
-            else
-            {
-                sb.Append(text[pos]);
-                pos++;
+                    string inner = ReadAngleBracket(text, ref pos);
+                    string resolved = ResolveVariable(inner);
+                    sb.Append(resolved);
+                }
+                else
+                {
+                    sb.Append(text[pos]);
+                    pos++;
+                }
             }
         }
+        finally { _resolveDepth--; }
 
         return sb.ToString();
     }
@@ -956,9 +960,9 @@ public sealed class ExpressionParser
                 string pattern = ResolveAngleBrackets(parts[2].Trim());
                 try
                 {
-                    return System.Text.RegularExpressions.Regex.IsMatch(str, pattern,
-                        System.Text.RegularExpressions.RegexOptions.None,
-                        TimeSpan.FromMilliseconds(100)) ? "1" : "0";
+                    return TrySafeRegexIsMatch(str, pattern, out bool isMatch)
+                        ? (isMatch ? "1" : "0")
+                        : "-1";
                 }
                 catch { return "-1"; }
             }
@@ -1189,9 +1193,7 @@ public sealed class ExpressionParser
                 string text = ResolveAngleBrackets(parts[1].Trim());
                 try
                 {
-                    return System.Text.RegularExpressions.Regex.IsMatch(text, pattern,
-                        System.Text.RegularExpressions.RegexOptions.None,
-                        TimeSpan.FromMilliseconds(100)) ? "1" : "0";
+                    return TrySafeRegexIsMatch(text, pattern, out bool isMatch) && isMatch ? "1" : "0";
                 }
                 catch { return "0"; }
             }
@@ -1358,6 +1360,33 @@ public sealed class ExpressionParser
         }
         while (p < pattern.Length && pattern[p] == '*') p++;
         return p == pattern.Length;
+    }
+
+    private static bool TrySafeRegexIsMatch(string input, string pattern, out bool isMatch)
+    {
+        isMatch = false;
+        if (pattern.Length == 0 || pattern.Length > MaxRegexPatternLength || input.Length > MaxRegexInputLength)
+            return false;
+
+        try
+        {
+            isMatch = System.Text.RegularExpressions.Regex.IsMatch(input, pattern,
+                System.Text.RegularExpressions.RegexOptions.NonBacktracking,
+                RegexMatchTimeout);
+            return true;
+        }
+        catch (System.Text.RegularExpressions.RegexParseException)
+        {
+            return false;
+        }
+        catch (System.Text.RegularExpressions.RegexMatchTimeoutException)
+        {
+            return false;
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
     }
 
     /// <summary>

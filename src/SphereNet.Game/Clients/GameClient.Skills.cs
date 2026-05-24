@@ -88,6 +88,7 @@ public sealed partial class GameClient
     private void BeginActiveSkill(SkillType skill, int skillId, SkillHandlers.ActiveSkillTargetKind kind)
     {
         if (_character == null) return;
+        _character.ResetSkillStrokeCount();
 
         if (_triggerDispatcher != null)
         {
@@ -148,8 +149,9 @@ public sealed partial class GameClient
 
     private void FireActiveSkillStroke(int skillId)
     {
+        int strokeCount = _character?.IncrementSkillStrokeCount() ?? 0;
         _triggerDispatcher?.FireCharTrigger(_character!, CharTrigger.SkillStroke,
-            new TriggerArgs { CharSrc = _character, N1 = skillId });
+            new TriggerArgs { CharSrc = _character, N1 = skillId, N2 = strokeCount });
     }
 
     private void FireActiveSkillResult(int skillId, bool ok)

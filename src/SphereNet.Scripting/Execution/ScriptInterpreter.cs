@@ -874,8 +874,11 @@ public sealed class ScriptInterpreter
         // Source-X behavior: each loop iteration changes the default object (target)
         // to the iterated object, while also setting ARGO for compatibility.
         IScriptObj? prevObj1 = args?.Object1;
+        int iterations = 0;
+        scope.LoopDepth++;
         foreach (var obj in objects)
         {
+            if (iterations++ >= scope.MaxLoopIterations) break;
             if (args is TriggerArgs ta)
                 ta.Object1 = obj;
             result = Execute(body, obj, source, args, scope);
@@ -883,6 +886,7 @@ public sealed class ScriptInterpreter
             if (scope.IsBreaking) { scope.IsBreaking = false; break; }
             if (scope.IsReturning) break;
         }
+        scope.LoopDepth--;
         if (args is TriggerArgs ta2)
             ta2.Object1 = prevObj1;
 

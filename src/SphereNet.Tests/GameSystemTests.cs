@@ -1231,6 +1231,57 @@ public class GameSystemTests
     }
 
     [Fact]
+    public void GumpResponse_WithoutActiveGump_DoesNotInvokeForgedCallback()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var client = TestHarness.CreateClient(loggerFactory, world, accountManager, 88);
+        var ch = world.CreateCharacter();
+        ch.Name = "GumpGuard";
+        world.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
+        TestHarness.AttachCharacter(client, ch);
+
+        bool called = false;
+        var callbacks = (Dictionary<uint, Action<uint, uint[], (ushort, string)[]>>)typeof(SphereNet.Game.Clients.GameClient)
+            .GetField("_gumpCallbacks", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(client)!;
+        callbacks[0xDEADBEEF] = (_, _, _) => called = true;
+
+        client.HandleGumpResponse(ch.Uid.Value, 0xDEADBEEF, 1, [], []);
+
+        Assert.False(called);
+    }
+
+    [Fact]
+    public void BuildViewDelta_CapsItemsPerTileAtEighty()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var client = TestHarness.CreateClient(loggerFactory, world, accountManager, 89);
+
+        var viewer = world.CreateCharacter();
+        viewer.Name = "Viewer";
+        viewer.IsPlayer = true;
+        world.PlaceCharacter(viewer, new Point3D(1000, 1000, 0, 0));
+        TestHarness.AttachCharacter(client, viewer);
+
+        for (int i = 0; i < 81; i++)
+        {
+            var item = world.CreateItem();
+            item.BaseId = 0x0EED;
+            world.PlaceItem(item, new Point3D(1001, 1000, 0, 0));
+        }
+
+        var delta = client.BuildViewDelta();
+
+        Assert.NotNull(delta);
+        Assert.Equal(80, delta!.CurrentItems.Count);
+        Assert.Equal(80, delta.NewItems.Count);
+    }
+
+    [Fact]
     public void EnterWorld_DoesNotAutoOpenPaperdoll()
     {
         var loggerFactory = LoggerFactory.Create(_ => { });

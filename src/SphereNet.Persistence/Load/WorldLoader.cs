@@ -174,8 +174,17 @@ public sealed class WorldLoader
             }
             else if (parent is Item parentItem)
             {
-                parentItem.AddItem(item);
-                containedCount++;
+                if (parentItem.Uid == item.Uid)
+                {
+                    _logger.LogWarning("Item {Uid:X8} references itself as container, placing on ground",
+                        item.Uid.Value);
+                    world.PlaceItem(item, item.Position);
+                }
+                else
+                {
+                    parentItem.AddItem(item);
+                    containedCount++;
+                }
             }
             else
             {

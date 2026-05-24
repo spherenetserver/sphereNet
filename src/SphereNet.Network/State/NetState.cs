@@ -401,6 +401,7 @@ public sealed class NetState : IDisposable
 
     internal void OnCharSelect(int slot, string name)
     {
+        if (slot < 0 || slot > 7) return;
         SelectedCharSlot = slot;
         CharSelectHandler?.Invoke(this, slot, name);
     }

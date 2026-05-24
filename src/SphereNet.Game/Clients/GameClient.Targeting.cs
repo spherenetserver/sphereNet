@@ -595,6 +595,13 @@ public sealed partial class GameClient
     {
         if (_character == null) return;
 
+        if (!_activeGumps.Remove(gumpId))
+        {
+            _logger.LogWarning("Rejected forged/stale gump response from {Char}: serial=0x{S:X}, gumpId=0x{G:X}, button={B}",
+                _character.Name, serial, gumpId, buttonId);
+            return;
+        }
+
         if (!string.IsNullOrWhiteSpace(_pendingDialogCloseFunction))
         {
             string closeFn = _pendingDialogCloseFunction;
@@ -656,6 +663,7 @@ public sealed partial class GameClient
 
         if (callback != null)
             _gumpCallbacks[gump.GumpId] = callback;
+        _activeGumps.Add(gump.GumpId);
 
         string layout = gump.BuildLayoutString();
         int gx = gump.ExplicitX ?? (gump.Width > 0 ? (800 - gump.Width) / 2 : 50);

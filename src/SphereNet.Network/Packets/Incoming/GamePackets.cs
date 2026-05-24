@@ -193,9 +193,10 @@ public sealed class PacketSpeechUnicode : PacketHandler
         }
         else
         {
-            text = buffer.ReadUnicodeNullBE();
+            text = buffer.ReadUnicodeNullBE(256);
         }
 
+        if (text.Length > 256) text = text[..256];
         state.OnSpeech(type, hue, font, text);
     }
 }

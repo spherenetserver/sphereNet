@@ -483,6 +483,12 @@ public sealed partial class GameClient
             }
 
             _spellEngine?.TryInterruptFromDamage(target, damage);
+            if (target.HasActiveSkillPending())
+            {
+                int abortedSkill = target.ClearActiveSkillPending();
+                if (abortedSkill >= 0)
+                    Character.ActiveSkillAborted?.Invoke(target, abortedSkill);
+            }
 
             if (!target.IsPlayer && !target.IsDead && !target.FightTarget.IsValid)
             {

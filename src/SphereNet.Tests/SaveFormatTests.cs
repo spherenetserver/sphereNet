@@ -596,6 +596,51 @@ public class SaveFormatTests
         }
     }
 
+    [Fact]
+    public void Save_UsesCapturedSnapshotForShardedDiskWrite()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_snapshot_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            saver.Format = SaveFormat.Text;
+            saver.ShardCount = 4;
+
+            var src = MakeWorld();
+            var backpack = src.CreateItem();
+            backpack.BaseId = 0x0E75;
+            src.PlaceItem(backpack, new Point3D(1000, 1000, 0, 0));
+
+            var houseChest = src.CreateItem();
+            houseChest.BaseId = 0x0E43;
+            src.PlaceItem(houseChest, new Point3D(2000, 2000, 0, 0));
+
+            var gold = src.CreateItem();
+            gold.BaseId = 0x0EED;
+            gold.Amount = 100;
+            backpack.AddItem(gold);
+
+            Assert.True(saver.Save(src, tmp));
+
+            // Mutate the live world after the snapshot was captured. The files
+            // already committed from the snapshot must not observe this move.
+            houseChest.AddItem(gold);
+
+            var dst = MakeWorld();
+            loader.Load(dst, tmp);
+
+            var loadedGold = dst.FindItem(gold.Uid);
+            Assert.NotNull(loadedGold);
+            Assert.Equal(backpack.Uid, loadedGold!.ContainedIn);
+            Assert.NotEqual(houseChest.Uid, loadedGold.ContainedIn);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
     [Theory]
     [InlineData(SaveFormat.Text)]
     [InlineData(SaveFormat.Binary)]
@@ -626,6 +671,67 @@ public class SaveFormatTests
             Assert.NotNull(loaded);
             Assert.Equal((ushort)0x0190, loaded!.OBody);
             Assert.Equal((ushort)0x03EA, loaded.OSkin);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Theory]
+    [InlineData(SaveFormat.Text)]
+    [InlineData(SaveFormat.Binary)]
+    public void Roundtrip_PreservesNpcActionState(SaveFormat fmt)
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_npc_action_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            saver.Format = fmt;
+            saver.ShardCount = 0;
+
+            var src = MakeWorld();
+            var target = src.CreateCharacter();
+            target.Name = "Target";
+            src.PlaceCharacter(target, new Point3D(1001, 1000, 0, 0));
+
+            var npc = src.CreateCharacter();
+            npc.Name = "Hunter";
+            npc.NpcBrain = NpcBrainType.Monster;
+            npc.Action = SkillType.Mining;
+            npc.Act = target.Uid;
+            npc.ActArg1 = 11;
+            npc.ActArg2 = 22;
+            npc.ActArg3 = 33;
+            npc.ActP = new Point3D(1200, 1300, 5, 0);
+            npc.ActPrv = target.Uid;
+            npc.ActDiff = 44;
+            npc.FightTarget = target.Uid;
+            npc.PetAIMode = PetAIMode.Attack;
+            npc.FleeStepsCurrent = 3;
+            npc.FleeStepsMax = 20;
+            src.PlaceCharacter(npc, new Point3D(1000, 1000, 0, 0));
+
+            Assert.True(saver.Save(src, tmp));
+
+            var dst = MakeWorld();
+            loader.Load(dst, tmp);
+
+            var loaded = dst.FindChar(npc.Uid);
+            Assert.NotNull(loaded);
+            Assert.Equal(SkillType.Mining, loaded!.Action);
+            Assert.Equal(target.Uid, loaded.Act);
+            Assert.Equal(11, loaded.ActArg1);
+            Assert.Equal(22, loaded.ActArg2);
+            Assert.Equal(33, loaded.ActArg3);
+            Assert.Equal(new Point3D(1200, 1300, 5, 0), loaded.ActP);
+            Assert.Equal(target.Uid, loaded.ActPrv);
+            Assert.Equal(44, loaded.ActDiff);
+            Assert.Equal(target.Uid, loaded.FightTarget);
+            Assert.Equal(PetAIMode.Attack, loaded.PetAIMode);
+            Assert.Equal(3, loaded.FleeStepsCurrent);
+            Assert.Equal(20, loaded.FleeStepsMax);
         }
         finally
         {

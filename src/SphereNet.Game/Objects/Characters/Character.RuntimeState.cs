@@ -21,6 +21,7 @@ public partial class Character
     private int _skillPendingId = -1;
     private long _skillDelayEnd;
     private long _skillStrokeNext;
+    private int _skillStrokeCount;
     private Serial _skillPendingTarget = Serial.Invalid;
     private bool _hasSkillPendingPoint;
     private Point3D _skillPendingPoint;
@@ -135,6 +136,7 @@ public partial class Character
         _skillPendingId = skillId;
         _skillDelayEnd = delayEnd;
         _skillStrokeNext = strokeNext;
+        _skillStrokeCount = 0;
         _skillPendingTarget = targetUid;
         if (point.HasValue)
         {
@@ -154,6 +156,12 @@ public partial class Character
     public long SkillStrokeNext => _skillStrokeNext;
 
     public void SetSkillStrokeNext(long tickMs) => _skillStrokeNext = tickMs;
+
+    public int SkillStrokeCount => _skillStrokeCount;
+
+    public int IncrementSkillStrokeCount() => ++_skillStrokeCount;
+
+    public void ResetSkillStrokeCount() => _skillStrokeCount = 0;
 
     public Serial SkillPendingTarget => _skillPendingTarget;
 

@@ -112,9 +112,11 @@ public static class VendorEngine
         if (vendor.NpcBrain != Core.Enums.NpcBrainType.Vendor)
             return -1;
 
-        int totalCost = 0;
+        long totalCost = 0;
         foreach (var entry in items)
-            totalCost += entry.Price * entry.Amount;
+            totalCost += (long)entry.Price * entry.Amount;
+        if (totalCost > int.MaxValue)
+            return -1;
 
         bool isStaff = player.PrivLevel >= Core.Enums.PrivLevel.GM;
         bool isBot = Diagnostics.BotClient.IsBotCharName(player.Name ?? "");
@@ -125,7 +127,7 @@ public static class VendorEngine
             if (playerGold < totalCost)
                 return -1;
 
-            RemoveGold(player, totalCost);
+            RemoveGold(player, (int)totalCost);
         }
         else
         {
@@ -149,7 +151,7 @@ public static class VendorEngine
             }
         }
 
-        return totalCost;
+        return (int)totalCost;
     }
 
     /// <summary>

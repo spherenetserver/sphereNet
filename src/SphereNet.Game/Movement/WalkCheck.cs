@@ -102,6 +102,8 @@ public sealed class WalkCheck
 
         // Bounds — reject walking off the map edge.
         if (xForward < 0 || yForward < 0) return false;
+        if (checkDiagonals && (xLeft < 0 || yLeft < 0 || xRight < 0 || yRight < 0))
+            return false;
 
         var itemsStart = CollectItems(mapId, xStart, yStart);
         var itemsForward = CollectItems(mapId, xForward, yForward);

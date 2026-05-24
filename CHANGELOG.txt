@@ -4,11 +4,70 @@
  All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-24] - Guvenlik taramasi ve exploit duzeltmeleri
+              (Security audit and exploit fixes)
+----------------------------------------
+
+KRITIK / CRITICAL:
+  - TradeEngine vendor alis totalCost int overflow: Price*Amount carpimindan
+    kaynaklanan negatif sarilma gold kontrolunu bypass ediyordu (gold dupe exploit).
+    long aritmetik ve int.MaxValue cap eklendi.
+    Vendor buy totalCost int overflow allowed negative wrap bypassing gold check.
+    Fixed with long arithmetic and int.MaxValue cap.
+
+GUVENLIK / SECURITY:
+  - TelnetConsole _lineBuffer sinirsiz buyumesi engellendi (8KB cap); uzak DoS
+    saldirisi ile bellek tukenmesi onlendi.
+    TelnetConsole line buffer capped at 8KB to prevent remote OOM DoS.
+  - Speech paketi Unicode metin uzunlugu 256 karakterle sinirlandirildi.
+    Speech packet Unicode text capped at 256 characters.
+  - CharSelect (0x5D) slotIndex bounds kontrolu eklendi (0-7 arasi).
+    CharSelect slot index validated to [0,7] range.
+
+SCRIPT / SCRIPT:
+  - ExpressionParser ResolveAngleBrackets recursion derinlik limiti (max 32);
+    TAG.X → TAG.Y → TAG.X gibi dongusel referanslar sonsuz dongu yaratamaz.
+    Variable resolution recursion capped at depth 32 to prevent infinite loops.
+  - ForObjects (FORCHARS, FORITEMS vb.) MaxLoopIterations kontrolu eklendi;
+    buyuk obje listeleri uzerinde script DoS onlendi.
+    ForObjects loops now respect MaxLoopIterations cap.
+  - STRREGEX pattern uzunlugu 512, input 4096 karakterle sinirlandirildi;
+    regex timeout 25ms'ye dusuruldu (ReDoS azaltma).
+    STRREGEX pattern/input length capped and timeout reduced to 25ms.
+
+HAREKET / MOVEMENT:
+  - WalkCheck diagonal yonlerde negatif koordinat sinir kontrolu eklendi;
+    harita kenarinda capraz yuruyus ile map-escape onlendi.
+    WalkCheck diagonal boundary validation added for negative coordinates.
+
+PERSISTENCE / PERSISTENCE:
+  - WorldLoader item self-containment kontrolu (CONT=kendi serial'i);
+    dongusel container referanslari tespit edilip yere birakilir.
+    Self-referencing item containers detected and placed on ground during load.
+
+CORE / CORE:
+  - IniParser comment strip sonrasi bos satir guard eklendi.
+    IniParser empty line guard added after comment stripping.
+
 [2026-05-24] - Kapsamli hata taramasi ve eksik ozellik tamamlama
               (Comprehensive bug audit and missing feature completion)
 ----------------------------------------
 
 KRITIK DUZELTMELER / CRITICAL FIXES:
+  - Data locality audit dokumani eklendi; tick/view/NPC/range hot path'leri,
+    benchmark senaryolari, baseline metrikleri ve ilk optimizasyon onerisi belirlendi.
+    Data locality audit added with hot paths, benchmark scenarios, metrics and first recommendation.
+  - NPC ACTION/ACT runtime state save/load'a eklendi; FightTarget, PetAI ve FleeSteps
+    restart sonrasi korunur.
+    NPC action state now persists across save/load.
+  - Skill stroke sayaci Character runtime state'e tasindi; @SkillStroke N2 stroke
+    numarasini alir, hareket ve hasar pending active skill'i abort eder.
+    Active skill stroke count is stateful and damage/movement abort delayed skills.
+  - Gump response paketleri aktif acik gump listesine gore dogrulanir; sahte/stale
+    0xB1 yanitlari callback/script calistirmadan reddedilir.
+    Gump responses are validated against active open gumps.
+  - ViewUpdate ayni Point3D uzerindeki ground item gonderimini 80 ile sinirlar.
+    Per-tile item sends are capped at 80 to avoid client item-crash stacks.
   - CryptoEngine login mask rotation hatasi: AdvanceMask() _maskHi hesabinda
     eski oldHi degeri kayboluyordu, yanlis decrypt login basarisizligina yol aciyordu.
     Login mask rotation fix: AdvanceMask() now preserves oldHi before computing _maskHi.
@@ -22,6 +81,15 @@ KRITIK DUZELTMELER / CRITICAL FIXES:
     Thread-safe Random.Shared replaces per-call new Random() in combat/movement code.
 
 GUVENLIK / SECURITY:
+  - World save artik once immutable item/character record snapshot alir; shard/rolling
+    disk yazimi canli objeleri okumaz ve save istekleri ana loop kuyrugunda serilestirilir.
+    World save now writes from immutable records and queues save requests on the main loop.
+  - STRREGEX/STRREGEXNEW artik NonBacktracking regex motoru, daha kisa timeout
+    ve pattern/input uzunluk limitleri kullanir; ReDoS backtracking riski azaltilir.
+    STRREGEX/STRREGEXNEW now use NonBacktracking regex with tighter timeout and size limits.
+  - Huffman DecompressFromServer buyume yolu MaxDecompressedSize ustunde ArrayPool rent
+    yapmayacak sekilde clamp edildi.
+    Huffman server decompression growth is clamped to the decompressed-size cap.
   - TelnetConsole basarisiz login IP loglama eklendi.
     Failed admin login attempts now log the remote IP address.
   - WebStatusServer sessiz exception yutma duzeltildi; hatalar artik loglanir.

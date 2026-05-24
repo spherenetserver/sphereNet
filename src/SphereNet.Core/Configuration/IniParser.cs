@@ -28,6 +28,7 @@ public sealed class IniParser
             int commentIdx = line.IndexOf("//");
             if (commentIdx > 0)
                 line = line[..commentIdx].TrimEnd();
+            if (line.IsEmpty) continue;
 
             if (line[0] == '[')
             {

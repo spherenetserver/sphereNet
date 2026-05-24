@@ -72,6 +72,16 @@ public static partial class Program
         }
     }
 
+    private static void RequestSaveOnMainLoop()
+    {
+        _mainLoopActions.Enqueue(PerformSave);
+    }
+
+    private static void RequestSaveFormatChangeOnMainLoop(string fmtName, int shards)
+    {
+        _mainLoopActions.Enqueue(() => HandleSaveFormatChange(fmtName, shards));
+    }
+
     private static void PerformSave()
     {
         // Source-X DEFMSG_WORLDSAVE_S behaviour: tell every online player a

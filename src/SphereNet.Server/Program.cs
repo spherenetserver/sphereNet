@@ -208,6 +208,7 @@ public static partial class Program
     }
 
     private static readonly ConcurrentQueue<string> _headlessCommandQueue = new();
+    private static readonly ConcurrentQueue<Action> _mainLoopActions = new();
 
 #if WINFORMS
     private static void RunWithGui(string[] args)

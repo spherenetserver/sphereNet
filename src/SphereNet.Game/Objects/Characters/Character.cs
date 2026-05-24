@@ -753,6 +753,7 @@ public partial class Character : ObjBase
         _skillPendingId = -1;
         _skillDelayEnd = 0;
         _skillStrokeNext = 0;
+        _skillStrokeCount = 0;
         _skillPendingTarget = Serial.Invalid;
         _hasSkillPendingPoint = false;
         return skillId;
@@ -2136,6 +2137,11 @@ public partial class Character : ObjBase
             case "ACTPRV": value = _actPrv == Serial.Invalid ? "0" : $"0{_actPrv.Value:X}"; return true;
             case "ACTDIFF": value = _actDiff.ToString(); return true;
             case "ACTION": value = ((int)_action).ToString(); return true;
+            case "FIGHTTARGET": value = FightTarget.IsValid ? $"0{FightTarget.Value:X}" : "0"; return true;
+            case "PETAI":
+            case "PETAIMODE": value = ((int)PetAIMode).ToString(); return true;
+            case "FLEESTEPS": value = FleeStepsCurrent.ToString(); return true;
+            case "FLEESTEPSMAX": value = FleeStepsMax.ToString(); return true;
             case "CREATETIME":
             case "CREATE": value = (_createTime / 1000).ToString(); return true;
             case "ISONLINE": value = _isOnline ? "1" : "0"; return true;
@@ -2978,6 +2984,26 @@ public partial class Character : ObjBase
             case "ACTDIFF": if (int.TryParse(normalized, out int adv)) _actDiff = adv; return true;
             case "ACTION":
                 if (int.TryParse(normalized, out int actv)) _action = (SkillType)actv;
+                return true;
+            case "FIGHTTARGET":
+            {
+                FightTarget = ParseSerial(normalized);
+                return true;
+            }
+            case "PETAI":
+            case "PETAIMODE":
+            {
+                if (byte.TryParse(normalized, out byte mode) && Enum.IsDefined(typeof(PetAIMode), mode))
+                    PetAIMode = (PetAIMode)mode;
+                else if (Enum.TryParse<PetAIMode>(normalized, ignoreCase: true, out var parsedMode))
+                    PetAIMode = parsedMode;
+                return true;
+            }
+            case "FLEESTEPS":
+                if (int.TryParse(normalized, out int fleeSteps)) FleeStepsCurrent = Math.Max(0, fleeSteps);
+                return true;
+            case "FLEESTEPSMAX":
+                if (int.TryParse(normalized, out int fleeMax)) FleeStepsMax = Math.Max(0, fleeMax);
                 return true;
             case "CREATE":
             case "CREATETIME":

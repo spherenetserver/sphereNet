@@ -64,7 +64,7 @@ public static partial class Program
                 () => _network.ActiveConnections,
                 _loggerFactory.CreateLogger("Telnet"), _loggerFactory);
             _telnet.Start(telnetPort);
-            _telnet.OnSaveRequested += PerformSave;
+            _telnet.OnSaveRequested += RequestSaveOnMainLoop;
             _telnet.OnShutdownRequested += () => _running = false;
             _telnet.OnResyncRequested += PerformScriptResync;
             _telnet.OnAccountPrivLevelChanged += SyncOnlineAccountPrivLevel;
@@ -74,7 +74,7 @@ public static partial class Program
             // Console command processor (shares logic with telnet)
             _consoleProcessor = new AdminCommandProcessor(_world, _accounts, _config,
                 () => _network.ActiveConnections, _loggerFactory);
-            _consoleProcessor.OnSaveRequested += PerformSave;
+            _consoleProcessor.OnSaveRequested += RequestSaveOnMainLoop;
             _consoleProcessor.OnShutdownRequested += () => _running = false;
             _consoleProcessor.OnResyncRequested += PerformScriptResync;
             _consoleProcessor.OnAccountPrivLevelChanged += SyncOnlineAccountPrivLevel;
@@ -145,7 +145,7 @@ public static partial class Program
                     _accounts.SetAccountPrivLevel(name, (SphereNet.Core.Enums.PrivLevel)level),
 
                 // Reuse AdminCommandProcessor so panel and telnet share the same logic
-                OnSave     = PerformSave,
+                OnSave     = RequestSaveOnMainLoop,
                 OnShutdown = () => _running = false,
                 OnResync   = PerformScriptResync,
                 OnGc       = () => { GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); },

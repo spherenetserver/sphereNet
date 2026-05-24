@@ -190,4 +190,17 @@ public class EncryptionTests
         Assert.Equal(packet, decompressed);
         Assert.InRange(consumed, 1, compressed.Length);
     }
+
+    [Fact]
+    public void Huffman_DecompressFromServer_CapsExpansion()
+    {
+        byte[] payload = new byte[300_000];
+        Array.Fill<byte>(payload, (byte)'e');
+        var compressed = HuffmanCompression.Compress(payload, 0, payload.Length);
+
+        var decompressed = HuffmanCompression.DecompressFromServer(compressed, 0, compressed.Length, out int consumed);
+
+        Assert.Equal(262_144, decompressed.Length);
+        Assert.Equal(compressed.Length, consumed);
+    }
 }

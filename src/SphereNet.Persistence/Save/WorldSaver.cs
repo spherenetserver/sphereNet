@@ -60,10 +60,10 @@ public sealed class WorldSaver
         {
             Directory.CreateDirectory(savePath);
 
-            var allObjects = world.GetAllObjects().ToArray();
+            var snapshot = CaptureSnapshot(world);
 
-            int itemCount = SaveSharded(allObjects, savePath, "sphereworld", isItems: true);
-            int charCount = SaveSharded(allObjects, savePath, "spherechars", isItems: false);
+            int itemCount = SaveSharded(snapshot.Items, savePath, "sphereworld", isItems: true);
+            int charCount = SaveSharded(snapshot.Characters, savePath, "spherechars", isItems: false);
             SaveServerData(savePath, world);
 
             _logger.LogInformation("World save #{Index} complete: {Items} items, {Chars} chars in {Elapsed}s",
@@ -86,7 +86,33 @@ public sealed class WorldSaver
     /// spill to the next. Small worlds stay single-file + no manifest.</item>
     /// <item><c>2-16</c> → fixed UID-hash parallel shards, always manifest.</item>
     /// </list></summary>
-    private int SaveSharded(IEnumerable<ObjBase> objects, string savePath, string baseName, bool isItems)
+    private WorldSaveSnapshot CaptureSnapshot(GameWorld world)
+    {
+        var allObjects = world.GetAllObjects().ToArray();
+        var items = new List<SaveRecord>();
+        var chars = new List<SaveRecord>();
+        long now = Environment.TickCount64;
+
+        foreach (var obj in allObjects)
+        {
+            if (obj is Item item)
+            {
+                if (item.IsDeleted || item.IsAttr(Core.Enums.ObjAttributes.Static))
+                    continue;
+                items.Add(CaptureItem(item, now));
+            }
+            else if (obj is Character ch)
+            {
+                if (ch.IsDeleted)
+                    continue;
+                chars.Add(CaptureChar(ch, now));
+            }
+        }
+
+        return new WorldSaveSnapshot(items, chars);
+    }
+
+    private int SaveSharded(IReadOnlyList<SaveRecord> records, string savePath, string baseName, bool isItems)
     {
         int shards = Math.Clamp(ShardCount, 0, 16);
         string ext = SaveIO.ExtensionFor(Format);
@@ -99,13 +125,13 @@ public sealed class WorldSaver
         {
             string fileName = baseName + ext;
             string tmp = Path.Combine(savePath, fileName + ".tmp");
-            totalCount = WriteOneShard(objects, tmp, isItems, shardIndex: 0, shardCount: 1);
+            totalCount = WriteOneShard(records, tmp, isItems, shardIndex: 0, shardCount: 1);
             outputFiles = new List<string> { fileName };
         }
         else if (shards == 1)
         {
             outputFiles = new List<string>();
-            totalCount = WriteRollingShards(objects, savePath, baseName, ext, sizeLimit, isItems, outputFiles);
+            totalCount = WriteRollingShards(records, savePath, baseName, ext, sizeLimit, isItems, outputFiles);
 
             // Small worlds that never hit the rolling threshold get promoted
             // to the classic {base}{ext} name so there's no lone .0 suffix
@@ -131,7 +157,7 @@ public sealed class WorldSaver
             for (int i = 0; i < shards; i++)
                 outputFiles.Add($"{baseName}.{i}{ext}");
 
-            var shardBuckets = PartitionObjectsByShard(objects, shards, isItems);
+            var shardBuckets = PartitionRecordsByShard(records, shards);
             var tasks = new Task[shards];
             for (int i = 0; i < shards; i++)
             {
@@ -173,26 +199,14 @@ public sealed class WorldSaver
         return totalCount;
     }
 
-    private static List<ObjBase>[] PartitionObjectsByShard(IEnumerable<ObjBase> objects, int shards, bool isItems)
+    private static List<SaveRecord>[] PartitionRecordsByShard(IEnumerable<SaveRecord> records, int shards)
     {
-        var buckets = new List<ObjBase>[shards];
+        var buckets = new List<SaveRecord>[shards];
         for (int i = 0; i < shards; i++)
             buckets[i] = [];
 
-        foreach (var obj in objects)
-        {
-            if (isItems)
-            {
-                if (obj is not Item item || item.IsDeleted) continue;
-                if (item.IsAttr(Core.Enums.ObjAttributes.Static)) continue;
-                buckets[ShardManifest.ShardIndexForUid(item.Uid.Value, shards)].Add(item);
-            }
-            else
-            {
-                if (obj is not Character ch || ch.IsDeleted) continue;
-                buckets[ShardManifest.ShardIndexForUid(ch.Uid.Value, shards)].Add(ch);
-            }
-        }
+        foreach (var record in records)
+            buckets[ShardManifest.ShardIndexForUid(record.Uid, shards)].Add(record);
 
         return buckets;
     }
@@ -203,7 +217,7 @@ public sealed class WorldSaver
     /// The actual file list is appended to <paramref name="outputFiles"/>.
     /// Size is polled on the raw FileStream (compressed bytes for gzip) which
     /// may lag by up to one gzip block — close enough for rolling.</summary>
-    private int WriteRollingShards(IEnumerable<ObjBase> objects, string savePath, string baseName,
+    private int WriteRollingShards(IEnumerable<SaveRecord> records, string savePath, string baseName,
         string ext, long sizeLimit, bool isItems, List<string> outputFiles)
     {
         int count = 0;
@@ -225,21 +239,11 @@ public sealed class WorldSaver
 
         OpenNext();
 
-        foreach (var obj in objects)
+        foreach (var record in records)
         {
             try
             {
-                if (isItems)
-                {
-                    if (obj is not Item item || item.IsDeleted) continue;
-                    if (item.IsAttr(Core.Enums.ObjAttributes.Static)) continue;
-                    WriteItem(writer!, item);
-                }
-                else
-                {
-                    if (obj is not Character ch || ch.IsDeleted) continue;
-                    WriteChar(writer!, ch);
-                }
+                WriteRecord(writer!, record);
                 count++;
             }
             catch (Exception ex)
@@ -266,7 +270,7 @@ public sealed class WorldSaver
         return count;
     }
 
-    private int WriteOneShard(IEnumerable<ObjBase> objects, string tmpPath, bool isItems,
+    private int WriteOneShard(IEnumerable<SaveRecord> records, string tmpPath, bool isItems,
         int shardIndex, int shardCount)
     {
         using var writer = SaveIO.OpenWriter(tmpPath, Format);
@@ -278,45 +282,21 @@ public sealed class WorldSaver
         int count = 0;
         int errors = 0;
 
-        if (isItems)
+        foreach (var record in records)
         {
-            foreach (var obj in objects)
+            if (shardCount > 1 && ShardManifest.ShardIndexForUid(record.Uid, shardCount) != shardIndex)
+                continue;
+            try
             {
-                if (obj is not Item item || item.IsDeleted) continue;
-                if (shardCount > 1 && ShardManifest.ShardIndexForUid(item.Uid.Value, shardCount) != shardIndex)
-                    continue;
-                try
-                {
-                    WriteItem(writer, item);
-                    count++;
-                }
-                catch (Exception ex)
-                {
-                    errors++;
-                    if (errors <= 5)
-                        _logger.LogWarning(ex, "Error saving item 0x{Serial:X8}", item.Uid.Value);
-                }
+                WriteRecord(writer, record);
+                count++;
             }
-        }
-        else
-        {
-            foreach (var obj in objects)
+            catch (Exception ex)
             {
-                if (obj is not Character ch || ch.IsDeleted) continue;
-                if (shardCount > 1 && ShardManifest.ShardIndexForUid(ch.Uid.Value, shardCount) != shardIndex)
-                    continue;
-                try
-                {
-                    WriteChar(writer, ch);
-                    count++;
-                }
-                catch (Exception ex)
-                {
-                    errors++;
-                    if (errors <= 5)
-                        _logger.LogWarning(ex, "Error saving char 0x{Serial:X8} ({Name})",
-                            ch.Uid.Value, ch.Name);
-                }
+                errors++;
+                if (errors <= 5)
+                    _logger.LogWarning(ex, "Error saving {Kind} 0x{Serial:X8}",
+                        isItems ? "item" : "char", record.Uid);
             }
         }
 
@@ -326,7 +306,29 @@ public sealed class WorldSaver
         return count;
     }
 
-    private void WriteItem(ISaveWriter w, Item item)
+    private SaveRecord CaptureItem(Item item, long now)
+    {
+        using var writer = new SnapshotSaveWriter();
+        WriteItem(writer, item, now);
+        return writer.ToRecord(item.Uid.Value);
+    }
+
+    private SaveRecord CaptureChar(Character ch, long now)
+    {
+        using var writer = new SnapshotSaveWriter();
+        WriteChar(writer, ch, now);
+        return writer.ToRecord(ch.Uid.Value);
+    }
+
+    private static void WriteRecord(ISaveWriter writer, SaveRecord record)
+    {
+        writer.BeginRecord(record.Section);
+        foreach (var (key, value) in record.Properties)
+            writer.WriteProperty(key, value);
+        writer.EndRecord();
+    }
+
+    private void WriteItem(ISaveWriter w, Item item, long now)
     {
         EngineTags.StripEphemeral(item);
 
@@ -369,14 +371,14 @@ public sealed class WorldSaver
         long timeout = item.Timeout;
         if (timeout > 0)
         {
-            long remainingMs = timeout - Environment.TickCount64;
+            long remainingMs = timeout - now;
             if (remainingMs > 0)
                 w.WriteProperty("TIMERMS", remainingMs.ToString());
         }
 
         if (item.DecayTime > 0)
         {
-            long remainingSec = (item.DecayTime - Environment.TickCount64) / 1000;
+            long remainingSec = (item.DecayTime - now) / 1000;
             if (remainingSec > 0)
                 w.WriteProperty("DECAY", remainingSec.ToString());
         }
@@ -430,7 +432,7 @@ public sealed class WorldSaver
         w.EndRecord();
     }
 
-    private void WriteChar(ISaveWriter w, Character ch)
+    private void WriteChar(ISaveWriter w, Character ch, long now)
     {
         EngineTags.StripEphemeral(ch);
 
@@ -495,6 +497,20 @@ public sealed class WorldSaver
             w.WriteProperty("HOME", $"{ch.Home.X},{ch.Home.Y},{ch.Home.Z},{ch.Home.Map}");
         if (ch.HomeDist != 10) w.WriteProperty("HOMEDIST", ch.HomeDist.ToString());
         if (ch.ActPri != 0) w.WriteProperty("ACTPRI", ch.ActPri.ToString());
+        if (ch.Action != 0) w.WriteProperty("ACTION", ((int)ch.Action).ToString());
+        if (ch.Act.IsValid) w.WriteProperty("ACT", $"0{ch.Act.Value:X8}");
+        if (ch.ActArg1 != 0) w.WriteProperty("ACTARG1", ch.ActArg1.ToString());
+        if (ch.ActArg2 != 0) w.WriteProperty("ACTARG2", ch.ActArg2.ToString());
+        if (ch.ActArg3 != 0) w.WriteProperty("ACTARG3", ch.ActArg3.ToString());
+        if (ch.ActP.X != 0 || ch.ActP.Y != 0 || ch.ActP.Z != 0 || ch.ActP.Map != 0)
+            w.WriteProperty("ACTP", $"{ch.ActP.X},{ch.ActP.Y},{ch.ActP.Z},{ch.ActP.Map}");
+        if (ch.ActPrv.IsValid) w.WriteProperty("ACTPRV", $"0{ch.ActPrv.Value:X8}");
+        if (ch.ActDiff != 0) w.WriteProperty("ACTDIFF", ch.ActDiff.ToString());
+        if (ch.FightTarget.IsValid) w.WriteProperty("FIGHTTARGET", $"0{ch.FightTarget.Value:X8}");
+        if (!ch.IsPlayer && ch.PetAIMode != SphereNet.Core.Enums.PetAIMode.Follow)
+            w.WriteProperty("PETAI", ((int)ch.PetAIMode).ToString());
+        if (ch.FleeStepsCurrent != 0) w.WriteProperty("FLEESTEPS", ch.FleeStepsCurrent.ToString());
+        if (ch.FleeStepsMax != 0) w.WriteProperty("FLEESTEPSMAX", ch.FleeStepsMax.ToString());
         if (ch.SpeechColor != 0x0035) w.WriteProperty("SPEECHCOLOR", ch.SpeechColor.ToString());
         if (ch.MaxFollower != 5) w.WriteProperty("MAXFOLLOWER", ch.MaxFollower.ToString());
         if (ch.ResFireMax != 70) w.WriteProperty("RESFIREMAX", ch.ResFireMax.ToString());
@@ -514,7 +530,7 @@ public sealed class WorldSaver
         long chTimeout = ch.Timeout;
         if (chTimeout > 0)
         {
-            long chRemainingMs = chTimeout - Environment.TickCount64;
+            long chRemainingMs = chTimeout - now;
             if (chRemainingMs > 0)
                 w.WriteProperty("TIMERMS", chRemainingMs.ToString());
         }
@@ -726,5 +742,62 @@ public sealed class WorldSaver
         if (i == digitStart) return false; // no digits
         string tail = fileName[i..].ToLowerInvariant();
         return tail == ".scp" || tail == ".scp.gz" || tail == ".sbin" || tail == ".sbin.gz";
+    }
+
+    private sealed record WorldSaveSnapshot(IReadOnlyList<SaveRecord> Items, IReadOnlyList<SaveRecord> Characters);
+
+    private sealed record SaveRecord(uint Uid, string Section, IReadOnlyList<(string Key, string Value)> Properties);
+
+    private sealed class SnapshotSaveWriter : ISaveWriter
+    {
+        private readonly List<(string Key, string Value)> _properties = [];
+        private string? _section;
+        private bool _recordOpen;
+
+        public long WrittenBytes { get; private set; }
+
+        public void BeginRecord(string section)
+        {
+            if (_recordOpen)
+                EndRecord();
+            _section = section;
+            _properties.Clear();
+            _recordOpen = true;
+            WrittenBytes += section.Length;
+        }
+
+        public void WriteProperty(string key, string value)
+        {
+            if (!_recordOpen)
+                throw new InvalidOperationException("WriteProperty called before BeginRecord");
+            _properties.Add((key, value));
+            WrittenBytes += key.Length + value.Length + 1;
+        }
+
+        public void EndRecord()
+        {
+            _recordOpen = false;
+        }
+
+        public void WriteHeaderComment(string line)
+        {
+            _ = line;
+        }
+
+        public void Flush()
+        {
+        }
+
+        public SaveRecord ToRecord(uint uid)
+        {
+            if (string.IsNullOrEmpty(_section))
+                throw new InvalidOperationException("Snapshot record was not opened");
+            return new SaveRecord(uid, _section, _properties.ToArray());
+        }
+
+        public void Dispose()
+        {
+            EndRecord();
+        }
     }
 }

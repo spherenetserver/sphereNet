@@ -1716,8 +1716,8 @@ public static partial class Program
             _commands.OnRecordDialogRequested += ShowRecordingDialog;
             _commands.OnStateRecordRequested += HandleStateRecordCommand;
             _commands.OnMacroRequested += HandleMacroCommand;
-            _commands.OnSaveCommand += PerformSave;
-            _commands.OnSaveFormatChangeRequested += HandleSaveFormatChange;
+            _commands.OnSaveCommand += RequestSaveOnMainLoop;
+            _commands.OnSaveFormatChangeRequested += RequestSaveFormatChangeOnMainLoop;
             _commands.OnScriptDebugToggleRequested += on =>
             {
                 exprParser.DebugUnresolved = on;

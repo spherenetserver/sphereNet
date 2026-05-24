@@ -207,7 +207,7 @@ public static class HuffmanCompression
 
         const int MaxDecompressedSize = 262_144;
         var pool = ArrayPool<byte>.Shared;
-        int capacity = Math.Min(length * 2, MaxDecompressedSize);
+        int capacity = Math.Clamp(length * 2, 256, MaxDecompressedSize);
         var output = pool.Rent(capacity);
         int outLen = 0;
 
@@ -258,7 +258,11 @@ public static class HuffmanCompression
 
                 if (outLen >= output.Length)
                 {
-                    var bigger = pool.Rent(output.Length * 2);
+                    if (output.Length >= MaxDecompressedSize)
+                        break;
+
+                    int nextCapacity = Math.Min(output.Length * 2, MaxDecompressedSize);
+                    var bigger = pool.Rent(nextCapacity);
                     Array.Copy(output, bigger, outLen);
                     pool.Return(output);
                     output = bigger;

@@ -34,6 +34,7 @@ namespace SphereNet.Game.Clients;
 
 public sealed partial class GameClient
 {
+    private const int MaxItemsPerViewTile = 80;
 
     /// <summary>
     /// Source-X CClient::addObjMessage loop. Sends newly visible objects and
@@ -107,12 +108,20 @@ public sealed partial class GameClient
         }
 
         bool isStaff = _character.PrivLevel >= Core.Enums.PrivLevel.Counsel;
+        Dictionary<Point3D, int>? itemTileCounts = null;
         foreach (var item in _world.GetItemsInRange(center, range))
         {
             if (item.IsDeleted || item.IsEquipped || !item.IsOnGround) continue;
             bool isInvis = item.IsAttr(Core.Enums.ObjAttributes.Invis);
             if (isInvis && !_character.AllShow && !isStaff)
                 continue;
+
+            itemTileCounts ??= [];
+            var tile = new Point3D(item.X, item.Y, item.Z, item.MapIndex);
+            int tileCount = itemTileCounts.GetValueOrDefault(tile);
+            if (tileCount >= MaxItemsPerViewTile)
+                continue;
+            itemTileCounts[tile] = tileCount + 1;
 
             uint uid = item.Uid.Value;
             delta.CurrentItems.Add(uid);

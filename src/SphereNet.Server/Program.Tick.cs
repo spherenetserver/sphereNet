@@ -98,6 +98,12 @@ public static partial class Program
                         HandleConsoleCommand(consoleCmd);
                 }
 
+                while (_mainLoopActions.TryDequeue(out var action))
+                {
+                    try { action(); }
+                    catch (Exception ex) { _log.LogError(ex, "Main-loop action failed"); }
+                }
+
                 // Network I/O runs every iteration for low latency
                 _network.CheckNewConnections();
                 _network.ProcessAllInput();

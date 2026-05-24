@@ -220,6 +220,7 @@ internal sealed class TelnetSession : IDisposable
 
                 string text = Encoding.ASCII.GetString(_buffer, 0, read);
                 _lineBuffer.Append(text);
+                if (_lineBuffer.Length > 8192) { _closed = true; return null; }
             }
         }
         catch { _closed = true; return null; }

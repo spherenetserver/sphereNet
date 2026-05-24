@@ -1446,7 +1446,7 @@ public partial class Character : ObjBase
         return Math.Max(0L, (now - mem.More1) * 1000L);
     }
 
-    public IReadOnlyList<IScriptObj> GetMemoryEntriesByType(string rawType)
+    public IReadOnlyList<IScriptObj> GetMemoryEntriesByType(string rawType, World.GameWorld? world = null)
     {
         string normalized = NormalizeMemoryType(rawType);
         var result = new List<IScriptObj>();
@@ -1472,10 +1472,15 @@ public partial class Character : ObjBase
 
         if (filter.HasValue)
         {
+            var resolveWorld = world ?? ResolveWorld?.Invoke();
             for (int i = 0; i < _memories.Count; i++)
             {
-                if (_memories[i].IsMemoryTypes(filter.Value))
-                    result.Add(_memories[i]);
+                var memory = _memories[i];
+                if (!memory.IsMemoryTypes(filter.Value))
+                    continue;
+
+                var link = resolveWorld?.FindChar(memory.Link);
+                result.Add(link != null ? new ScriptMemoryEntry(this, link, normalized) : memory);
             }
         }
 

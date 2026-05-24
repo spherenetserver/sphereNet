@@ -214,7 +214,8 @@ public static partial class Program
                 _loggerFactory.CreateLogger<GameClient>());
             client.SetEngines(_movement, _speech, _commands, _spellEngine, _deathEngine, _partyManager, _tradeManager,
                 _skillHandlers, _craftingEngine, _housingEngine, _triggerDispatcher, _guildManager, _mountEngine);
-            client.SetScriptServices(_systemHooks, _scriptDb, ResolveDefMessage, _scriptFile, _scriptLdb);
+            client.SetScriptServices(_systemHooks, _scriptDb, ResolveDefMessage, _scriptFile, _scriptLdb,
+                _scriptDirs.Count > 0 ? _scriptDirs[0] : Path.GetDirectoryName(_config.ScpFilesDir));
             client.BroadcastNearby = BroadcastNearby;
             client.BroadcastMoveNearby = BroadcastMoveNearby;
             client.ForEachClientInRange = ForEachClientInRange;
@@ -633,6 +634,12 @@ public static partial class Program
     {
         if (_clients.TryGetValue(state.Id, out var client))
             client.HandleMove(dir, seq, fastWalkKey);
+    }
+
+    private static void OnMovementBatch(NetState state, IReadOnlyList<MovementStep> steps)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleMovementBatch(steps);
     }
 
     private static void OnSpeech(NetState state, byte type, ushort hue, ushort font, string text)

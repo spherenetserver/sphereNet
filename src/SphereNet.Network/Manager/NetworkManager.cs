@@ -450,98 +450,110 @@ public sealed class NetworkManager : IDisposable
     /// </summary>
     private bool TryInitCrypto(NetState state, ReadOnlySpan<byte> data)
     {
-        var config = CryptConfig;
+        var config = CryptConfig ?? new CryptConfig();
+        bool allowNoCrypt = UseNoCrypt || !UseCrypt || config.Keys.Count == 0;
 
-        if (config == null || config.Keys.Count == 0)
-        {
-            if (data.Length < 62)
-            {
-                MarkOrDropPartialPacket(state, 0x80, 62);
-                return false;
-            }
-
-            // No crypt config loaded — assume plaintext
-            state.Crypto.Reset();
-            // Mark as initialized with no encryption via a direct approach
-            byte[]? result = state.Crypto.DetectAndDecryptLogin(
-                state.Seed, data, new CryptConfig(), false, true);
-            if (result != null)
-            {
-                ReplaceReceivedData(state, result);
-                return true;
-            }
-            // Not a login packet? Check game login
-            result = state.Crypto.DetectAndDecryptGameLogin(
-                state.Seed, data, new CryptConfig(), false, true);
-            if (result != null)
-            {
-                ReplaceReceivedData(state, result);
-                if (state.ClientVersionNumber == 0 && state.Crypto.RelayClientVersion > 0)
-                    state.ClientVersionNumber = state.Crypto.RelayClientVersion;
-                return true;
-            }
-            return false;
-        }
-
-        // Try game login first (65 bytes) — if we try login (62 bytes) first on 65-byte data,
-        // it might falsely match and corrupt the crypto state.
         if (data.Length < 62)
         {
             MarkOrDropPartialPacket(state, 0x80, 62);
             return false;
         }
 
-        bool isGameLogin = data.Length >= 65;
-        bool isLoginPacket = data.Length >= 62 && !isGameLogin;
-
-        if (isGameLogin)
+        // Universal compatibility mode: some clients coalesce seed+login in
+        // one TCP read, some are no-crypt, and legacy clients require key
+        // probing. Try plausible packet boundaries instead of assuming that
+        // every 65+ byte first packet is a game-login.
+        string attempts = "";
+        string diagnostics = "";
+        foreach (int offset in GetCryptoCandidateOffsets(data))
         {
-            _logger.LogDebug("Game login detection for #{Id}: seed=0x{Seed:X8}, bytes: {B0:X2} {B1:X2} {B2:X2} {B3:X2}, len={Len}",
-                state.Id, state.Seed, data[0], data[1], data[2], data[3], data.Length);
-
-            var result = state.Crypto.DetectAndDecryptGameLogin(
-                state.Seed, data[..65], config, UseCrypt, UseNoCrypt || !UseCrypt);
-            if (result != null)
+            var slice = data[offset..];
+            foreach (uint seedCandidate in GetCryptoSeedCandidates(state.Seed))
             {
-                byte[] newData = new byte[result.Length + (data.Length - 65)];
-                result.CopyTo(newData, 0);
-                if (data.Length > 65)
-                    data[65..].CopyTo(newData.AsSpan(65));
-                ReplaceReceivedData(state, newData);
-                state.ConnectionType = ConnectType.Game;
-                // Restore client version from login connection (carried via relay keys)
-                if (state.ClientVersionNumber == 0 && state.Crypto.RelayClientVersion > 0)
-                    state.ClientVersionNumber = state.Crypto.RelayClientVersion;
-                _logger.LogDebug("Game login encryption detected for #{Id}: {Enc}", state.Id, state.Crypto.EncType);
-                return true;
-            }
-            state.Crypto.Reset();
+                if (slice.Length >= 65)
+                {
+                    attempts += $" game@{offset}/0x{seedCandidate:X8}";
+                    _logger.LogDebug("Game login detection for #{Id}: offset={Offset}, seed=0x{Seed:X8}, bytes=[{Data}], len={Len}",
+                        state.Id, offset, seedCandidate, FormatHex(slice[..Math.Min(slice.Length, 16)], 16), slice.Length);
 
-            // Didn't match as game login; fall through to try as login
-            isLoginPacket = true;
+                    var result = state.Crypto.DetectAndDecryptGameLogin(
+                        seedCandidate, slice[..65], config, UseCrypt, allowNoCrypt);
+                    if (result != null)
+                    {
+                        state.Seed = seedCandidate;
+                        ReplaceCryptoCandidateData(state, data, offset, 65, result);
+                        state.ConnectionType = ConnectType.Game;
+                        if (state.ClientVersionNumber == 0 && state.Crypto.RelayClientVersion > 0)
+                            state.ClientVersionNumber = state.Crypto.RelayClientVersion;
+                        _logger.LogDebug("Game login encryption detected for #{Id}: {Enc}, offset={Offset}, seed=0x{Seed:X8}",
+                            state.Id, state.Crypto.EncType, offset, seedCandidate);
+                        return true;
+                    }
+                    if (!string.IsNullOrEmpty(state.Crypto.LastDetectionDiagnostic))
+                        diagnostics = state.Crypto.LastDetectionDiagnostic;
+                    state.Crypto.Reset();
+                }
+
+                if (slice.Length >= 62)
+                {
+                    attempts += $" login@{offset}/0x{seedCandidate:X8}";
+                    var result = state.Crypto.DetectAndDecryptLogin(
+                        seedCandidate, slice[..62], config, UseCrypt, allowNoCrypt);
+                    if (result != null)
+                    {
+                        state.Seed = seedCandidate;
+                        ReplaceCryptoCandidateData(state, data, offset, 62, result);
+                        state.ConnectionType = ConnectType.Login;
+                        _logger.LogInformation("Login encryption detected for #{Id}: {Enc}, offset={Offset}, seed=0x{Seed:X8}",
+                            state.Id, state.Crypto.EncType, offset, seedCandidate);
+                        return true;
+                    }
+                    if (!string.IsNullOrEmpty(state.Crypto.LastDetectionDiagnostic))
+                        diagnostics = state.Crypto.LastDetectionDiagnostic;
+                    state.Crypto.Reset();
+                }
+            }
         }
 
-        if (isLoginPacket)
-        {
-            var result = state.Crypto.DetectAndDecryptLogin(
-                state.Seed, data[..62], config, UseCrypt, UseNoCrypt || !UseCrypt);
-            if (result != null)
-            {
-                byte[] newData = new byte[result.Length + (data.Length - 62)];
-                result.CopyTo(newData, 0);
-                if (data.Length > 62)
-                    data[62..].CopyTo(newData.AsSpan(62));
-                ReplaceReceivedData(state, newData);
-                state.ConnectionType = ConnectType.Login;
-                _logger.LogInformation("Login encryption detected for #{Id}: {Enc}", state.Id, state.Crypto.EncType);
-                return true;
-            }
-        }
-
-        _logger.LogWarning("Failed to detect encryption for #{Id}, first byte: 0x{B:X2}, len: {Len}",
-            state.Id, data[0], data.Length);
+        _logger.LogWarning(
+            "Failed to detect encryption for #{Id}: seed=0x{Seed:X8}, first=0x{B:X2}, len={Len}, useCrypt={UseCrypt}, useNoCrypt={UseNoCrypt}, keys={Keys}, attempts='{Attempts}', diag=\"{Diag}\", raw=[{Raw}]",
+            state.Id, state.Seed, data[0], data.Length, UseCrypt, allowNoCrypt, config.Keys.Count,
+            attempts.Trim(), diagnostics, FormatHex(data[..Math.Min(data.Length, 96)], 96));
         state.MarkClosing();
         return false;
+    }
+
+    private static int[] GetCryptoCandidateOffsets(ReadOnlySpan<byte> data)
+    {
+        Span<int> offsets = stackalloc int[3];
+        int count = 0;
+        offsets[count++] = 0;
+
+        if (data.Length >= 66 && (data[4] == 0x80 || data[4] == 0x91))
+            offsets[count++] = 4;
+
+        if (data.Length >= 83 && data[0] == 0xEF && (data[21] == 0x80 || data[21] == 0x91))
+            offsets[count++] = 21;
+
+        return offsets[..count].ToArray();
+    }
+
+    private static uint[] GetCryptoSeedCandidates(uint seed)
+    {
+        uint swapped = ((seed & 0x000000FF) << 24) |
+                       ((seed & 0x0000FF00) << 8) |
+                       ((seed & 0x00FF0000) >> 8) |
+                       ((seed & 0xFF000000) >> 24);
+        return swapped == seed ? [seed] : [seed, swapped];
+    }
+
+    private static void ReplaceCryptoCandidateData(NetState state, ReadOnlySpan<byte> original, int offset, int packetLength, byte[] decoded)
+    {
+        byte[] newData = new byte[decoded.Length + (original.Length - offset - packetLength)];
+        decoded.CopyTo(newData, 0);
+        if (original.Length > offset + packetLength)
+            original[(offset + packetLength)..].CopyTo(newData.AsSpan(decoded.Length));
+        ReplaceReceivedData(state, newData);
     }
 
     private static void ReplaceReceivedData(NetState state, byte[] newData)
@@ -623,6 +635,7 @@ public sealed class NetworkManager : IDisposable
         Action<NetState, string, string, uint>? gameLogin = null,
         Action<NetState, int, string>? charSelect = null,
         Action<NetState, byte, byte, uint>? moveRequest = null,
+        Action<NetState, IReadOnlyList<MovementStep>>? movementBatch = null,
         Action<NetState, byte, ushort, ushort, string>? speech = null,
         Action<NetState, uint>? attackRequest = null,
         Action<NetState, bool>? warMode = null,
@@ -675,6 +688,7 @@ public sealed class NetworkManager : IDisposable
             state.CharSelectHandler = charSelect;
             state.CharCreateHandler = charCreate;
             state.MoveRequestHandler = moveRequest;
+            state.MovementBatchHandler = movementBatch;
             state.SpeechHandler = speech;
             state.AttackRequestHandler = attackRequest;
             state.WarModeHandler = warMode;

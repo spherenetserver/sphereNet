@@ -50,12 +50,17 @@ using System.Data.Common;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Data.Sqlite;
+using System.IO;
 
 
 namespace SphereNet.Server;
 
 public static partial class Program
 {
+    private sealed record GmPageEntry(string Account, string Reason, string Handler, string Status, long Created);
+
+    private static readonly List<GmPageEntry> _scriptGmPages = [];
+
     private static string? ResolveServerProperty(string property)
     {
         string upper = property.ToUpperInvariant();
@@ -90,10 +95,15 @@ public static partial class Program
 
             // --- Misc ---
             "HEARALL" => "0",
-            "GMPAGES" => "0",
+            "GMPAGES" => _scriptGmPages.Count.ToString(),
             "GUILDS" => "0",
+            "AGE" => ((int)(DateTime.UtcNow - _serverStartTime).TotalDays).ToString(),
+            "BUILD" => ThisAssemblyVersion(),
+            "URL" => "localhost",
+            "MYSQL" => _scriptDb?.IsConnected == true ? "1" : "0",
             "SEASON" => ((int)(_weatherEngine?.CurrentSeason ?? SeasonType.Spring)).ToString(),
             "SEASONMODE" => (_weatherEngine?.CurrentSeasonMode ?? SeasonMode.Auto).ToString(),
+            "FEATURETOL" => (_config?.FeatureTOL ?? 0).ToString(),
             "FEATURET2A" => (_config?.FeatureT2A ?? 0).ToString(),
             // Chat system flags are script-visible even when chat is disabled.
             // Return 0 until a fuller chat subsystem is wired.
@@ -116,6 +126,11 @@ public static partial class Program
             // definition data without instantiating the object.
             _ when upper.StartsWith("CHARDEF.") => ResolveServCharDef(property[8..]),
             _ when upper.StartsWith("ITEMDEF.") => ResolveServItemDef(property[8..]),
+            _ when upper.StartsWith("AREA.") => ResolveServArea(property[5..]),
+            _ when upper.StartsWith("MULTIDEF.") => ResolveServMultiDef(property[9..]),
+            _ when upper.StartsWith("LIST.") => ResolveServList(property[5..]),
+            _ when upper.StartsWith("DEFLIST.") => ResolveServDefList(property[8..]),
+            _ when upper.StartsWith("GMPAGE.") => ResolveServGmPage(property[7..]),
 
             // --- ISEVENT.name — 1 if the named event script is loaded.
             // Used by admin dialogs to grey out delete buttons for missing events.
@@ -180,6 +195,9 @@ public static partial class Program
             // online player, with the caller as src. Protocol format:
             // _ALLCLIENTS=<srcUid>|<funcName>.
             _ when upper.StartsWith("_ALLCLIENTS=") => HandleAllClients(property[12..]),
+            _ when upper.StartsWith("_WRITEFILE=") => HandleServWriteFile(property[11..]),
+            _ when upper.StartsWith("_LOG=") => HandleServLog(property[5..]),
+            _ when upper.StartsWith("_GMPAGE=") => HandleServGmPage(property[8..]),
 
             // serv.resync / serv.save / serv.shutdown — admin write
             // verbs reachable from dialog buttons (d_admin_function).
@@ -313,6 +331,150 @@ public static partial class Program
             "TYPE" => def.Type.ToString(),
             _ => ""
         };
+    }
+
+    private static string ThisAssemblyVersion() =>
+        typeof(Program).Assembly.GetName().Version?.ToString() ?? "1.0.0";
+
+    private static string? ResolveServArea(string sub)
+    {
+        if (_world == null || string.IsNullOrWhiteSpace(sub))
+            return "0";
+
+        int dot = sub.IndexOf('.');
+        string selector = dot >= 0 ? sub[..dot] : sub;
+        string field = dot >= 0 ? sub[(dot + 1)..] : "";
+
+        Region? region = null;
+        if (int.TryParse(selector, out int index))
+        {
+            if (index >= 0 && index < _world.Regions.Count)
+                region = _world.Regions[index];
+        }
+        else
+        {
+            string normalized = selector.Trim();
+            region = _world.Regions.FirstOrDefault(r =>
+                string.Equals(r.DefName, normalized, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(r.Name, normalized, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (region == null)
+            return "0";
+        if (string.IsNullOrWhiteSpace(field))
+            return region.DefName ?? region.Name;
+        return region.TryGetProperty(field, out string value) ? value : "0";
+    }
+
+    private static string? ResolveServList(string sub)
+    {
+        if (_world == null || string.IsNullOrWhiteSpace(sub))
+            return "0";
+
+        int dot = sub.IndexOf('.');
+        string name = dot >= 0 ? sub[..dot] : sub;
+        string rest = dot >= 0 ? sub[(dot + 1)..] : "";
+        var list = _world.GetAllGlobalLists()
+            .FirstOrDefault(kv => kv.Key.Equals(name, StringComparison.OrdinalIgnoreCase)).Value;
+        if (list == null)
+            return rest.Equals("COUNT", StringComparison.OrdinalIgnoreCase) ? "0" : "";
+        if (string.IsNullOrEmpty(rest) || rest.Equals("COUNT", StringComparison.OrdinalIgnoreCase))
+            return list.Count.ToString();
+        if (int.TryParse(rest, out int index) && index >= 0 && index < list.Count)
+            return list[index];
+        return "";
+    }
+
+    private static string? ResolveServDefList(string sub)
+    {
+        if (string.IsNullOrWhiteSpace(sub))
+            return "0";
+
+        int dot = sub.IndexOf('.');
+        string kind = (dot >= 0 ? sub[..dot] : sub).ToUpperInvariant();
+        string rest = dot >= 0 ? sub[(dot + 1)..] : "";
+        var names = kind switch
+        {
+            "ITEMDEF" => DefinitionLoader.AllItemDefs
+                .Select(kv => kv.Value.DefName)
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+                .ToArray()!,
+            "CHARDEF" => DefinitionLoader.AllCharDefs
+                .Select(kv => kv.Value.DefName)
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+                .ToArray()!,
+            _ => Array.Empty<string>()
+        };
+
+        if (string.IsNullOrEmpty(rest) || rest.Equals("COUNT", StringComparison.OrdinalIgnoreCase))
+            return names.Length.ToString();
+        if (int.TryParse(rest, out int index) && index >= 0 && index < names.Length)
+            return names[index];
+        return "";
+    }
+
+    private static string? ResolveServGmPage(string sub)
+    {
+        int dot = sub.IndexOf('.');
+        string idxStr = dot >= 0 ? sub[..dot] : sub;
+        string field = dot >= 0 ? sub[(dot + 1)..].ToUpperInvariant() : "";
+        if (!int.TryParse(idxStr, out int index) || index < 0 || index >= _scriptGmPages.Count)
+            return "0";
+        var page = _scriptGmPages[index];
+        return field switch
+        {
+            "" => page.Reason,
+            "ACCOUNT" => page.Account,
+            "REASON" => page.Reason,
+            "HANDLER" => page.Handler,
+            "STATUS" => page.Status,
+            "TIME" or "CREATED" => page.Created.ToString(),
+            "DELETE" => RemoveGmPage(index),
+            _ => ""
+        };
+    }
+
+    private static string RemoveGmPage(int index)
+    {
+        if (index >= 0 && index < _scriptGmPages.Count)
+            _scriptGmPages.RemoveAt(index);
+        return "";
+    }
+
+    private static string? ResolveServMultiDef(string sub)
+    {
+        if (string.IsNullOrWhiteSpace(sub))
+            return "0";
+
+        int dot = sub.IndexOf('.');
+        string idPart = dot >= 0 ? sub[..dot] : sub;
+        string field = dot >= 0 ? sub[(dot + 1)..].ToUpperInvariant() : "";
+        int multiId = ParseScriptInt(idPart);
+        if (multiId == 0 && !idPart.Trim().Equals("0", StringComparison.Ordinal))
+            return "0";
+
+        var rid = new ResourceId(ResType.MultiDef, multiId);
+        var link = _resources?.GetResource(rid);
+        return field switch
+        {
+            "" or "ID" => $"0{multiId:X}",
+            "TYPE" => link?.StoredKeys?.FirstOrDefault(k => k.Key.Equals("TYPE", StringComparison.OrdinalIgnoreCase))?.Arg ?? "T_MULTI",
+            "COMPONENTS" or "COMPONENTCOUNT" => (link?.StoredKeys?.Count(k => k.Key.Equals("COMPONENT", StringComparison.OrdinalIgnoreCase)) ?? 0).ToString(),
+            "NAME" or "DEFNAME" => link?.DefName ?? "",
+            _ => ""
+        };
+    }
+
+    private static int ParseScriptInt(string value)
+    {
+        string v = value.Trim();
+        if (v.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            return int.TryParse(v.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out int hx) ? hx : 0;
+        if (v.StartsWith('0') && v.Length > 1)
+            return int.TryParse(v.AsSpan(1), System.Globalization.NumberStyles.HexNumber, null, out int sx) ? sx : 0;
+        return int.TryParse(v, out int dec) ? dec : 0;
     }
 
     private static string? ResolveObjProperty(string subProp)
@@ -587,6 +749,104 @@ public static partial class Program
                 _triggerRunner.TryRunFunction(payload, target, client, trigArgs, out _);
         }
         return "";
+    }
+
+    private static string? HandleServWriteFile(string raw)
+    {
+        try
+        {
+            string payload = raw.Trim();
+            if (payload.Length == 0)
+                return "0";
+
+            string path;
+            string text;
+            int sep = payload.IndexOf('|');
+            if (sep >= 0)
+            {
+                path = payload[..sep].Trim();
+                text = payload[(sep + 1)..];
+            }
+            else
+            {
+                int sp = payload.IndexOfAny(new[] { ' ', '\t' });
+                if (sp <= 0)
+                    return "0";
+                path = payload[..sp].Trim();
+                text = payload[(sp + 1)..].TrimStart();
+            }
+
+            string basePath = GetScriptFilesBasePath();
+            string? resolved = ResolveScriptSafePath(basePath, path);
+            if (resolved == null)
+                return "0";
+            Directory.CreateDirectory(Path.GetDirectoryName(resolved) ?? basePath);
+            File.AppendAllText(resolved, text + Environment.NewLine, Encoding.UTF8);
+            return "1";
+        }
+        catch (Exception ex)
+        {
+            _log?.LogWarning(ex, "SERV.WRITEFILE failed");
+            return "0";
+        }
+    }
+
+    private static string? HandleServLog(string message)
+    {
+        _log?.LogInformation("[script] {Message}", message);
+        return "";
+    }
+
+    private static string? HandleServGmPage(string data)
+    {
+        string src = "";
+        string reason = data;
+        int pipe = data.IndexOf('|');
+        if (pipe >= 0)
+        {
+            src = data[..pipe].Trim();
+            reason = data[(pipe + 1)..].Trim();
+        }
+
+        string account = src;
+        if (_world != null && TryParseSerial(src, out var uid) && _world.FindObject(uid) is Character ch)
+            account = Character.ResolveAccountForChar?.Invoke(ch.Uid)?.Name ?? ch.Name ?? src;
+        _scriptGmPages.Add(new GmPageEntry(account, reason, "", "open", DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
+        return _scriptGmPages.Count.ToString();
+    }
+
+    private static string GetScriptFilesBasePath()
+    {
+        string root = _scriptDirs.Count > 0
+            ? _scriptDirs[0]
+            : Path.GetDirectoryName(_config?.ScpFilesDir ?? "") ?? AppContext.BaseDirectory;
+        return Path.Combine(root, "files");
+    }
+
+    private static string? ResolveScriptSafePath(string basePath, string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return null;
+        string normalized = path.Trim().Trim('"').Replace('\\', '/');
+        if (normalized.Contains("..", StringComparison.Ordinal) || normalized.StartsWith('/') || normalized.Contains(':'))
+            return null;
+        string fullBase = Path.GetFullPath(basePath);
+        string full = Path.GetFullPath(Path.Combine(fullBase, normalized));
+        return full.StartsWith(fullBase, StringComparison.OrdinalIgnoreCase) ? full : null;
+    }
+
+    private static bool TryParseSerial(string raw, out Serial serial)
+    {
+        serial = Serial.Invalid;
+        string v = raw.Trim();
+        if (v.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            v = v[2..];
+        else if (v.StartsWith('0') && v.Length > 1)
+            v = v[1..];
+        if (!uint.TryParse(v, System.Globalization.NumberStyles.HexNumber, null, out uint uid))
+            return false;
+        serial = new Serial(uid);
+        return true;
     }
 
     /// <summary>Source-X <c>serv.resync</c> from a script: trigger the

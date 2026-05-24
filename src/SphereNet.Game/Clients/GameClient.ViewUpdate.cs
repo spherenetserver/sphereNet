@@ -70,7 +70,6 @@ public sealed partial class GameClient
         var center = _character.Position;
         var delta = new ClientViewDelta();
 
-        bool isStaff = _character.PrivLevel >= Core.Enums.PrivLevel.Counsel;
         Dictionary<Point3D, int>? itemTileCounts = null;
 
         _world.VisitInRange(center, range, ch =>
@@ -113,7 +112,7 @@ public sealed partial class GameClient
         {
             if (item.IsDeleted || item.IsEquipped || !item.IsOnGround) return;
             bool isInvis = item.IsAttr(Core.Enums.ObjAttributes.Invis);
-            if (isInvis && !_character.AllShow && !isStaff)
+            if (isInvis && !_character.AllShow)
                 return;
 
             itemTileCounts ??= [];
@@ -126,7 +125,7 @@ public sealed partial class GameClient
             uint uid = item.Uid.Value;
             delta.CurrentItems.Add(uid);
             if (!_knownItems.Contains(uid))
-                delta.NewItems.Add((item, isInvis && (_character.AllShow || isStaff)));
+                delta.NewItems.Add((item, isInvis && _character.AllShow));
             else
                 delta.UpdatedItems.Add(item);
         });

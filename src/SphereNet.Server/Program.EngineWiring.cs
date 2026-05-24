@@ -66,6 +66,7 @@ public static partial class Program
             GameClient.WalkBufferMax = Math.Max(1, _config.WalkBuffer);
             GameClient.WalkRegenPerSecond = Math.Max(0, _config.WalkRegen);
             GameClient.MoveToleranceMs = 80;
+            GameClient.MoveRejectResyncMs = 150;
             GameClient.MoveViolationKickThreshold = 0;
             _triggerDispatcher = new TriggerDispatcher();
             _triggerDispatcher.Resources = _resources;
@@ -1488,6 +1489,16 @@ public static partial class Program
                     ItemTrigger.Timer,
                     new TriggerArgs { ItemSrc = item });
             };
+            _world.TimerFExpired = (obj, entry) =>
+            {
+                if (_triggerRunner == null)
+                    return;
+                var trigArgs = new SphereNet.Scripting.Execution.TriggerArgs(obj)
+                {
+                    ArgString = entry.Args
+                };
+                _triggerRunner.TryRunFunction(entry.FunctionName, obj, null, trigArgs, out _);
+            };
             SphereNet.Game.Objects.Items.Item.ResolveShipEngine = () => _shipEngine;
             SphereNet.Game.Objects.Items.Item.ResolveWorld = () => _world;
             SphereNet.Game.Objects.ObjBase.ResolveWorld = () => _world;
@@ -1794,6 +1805,7 @@ public static partial class Program
                 gameLogin: OnGameLogin,
                 charSelect: OnCharSelect,
                 moveRequest: OnMoveRequest,
+                movementBatch: OnMovementBatch,
                 speech: OnSpeech,
                 attackRequest: OnAttackRequest,
                 warMode: OnWarMode,

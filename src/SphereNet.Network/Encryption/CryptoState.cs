@@ -25,6 +25,7 @@ public sealed class CryptoState
     public EncryptionType EncType => _encType;
     public uint Key1 => _key1;
     public uint Key2 => _key2;
+    public string LastDetectionDiagnostic { get; private set; } = "";
 
     /// <summary>Client version number recovered from relay keys during game login detection.</summary>
     public uint RelayClientVersion { get; private set; }
@@ -71,12 +72,13 @@ public sealed class CryptoState
     public byte[]? DetectAndDecryptLogin(uint seed, ReadOnlySpan<byte> rawData, CryptConfig cryptConfig, bool useCrypt, bool useNoCrypt)
     {
         _seed = seed;
+        LastDetectionDiagnostic = "";
         if (rawData.IsEmpty)
             return null;
 
         if (useNoCrypt)
         {
-            if (rawData[0] == 0x80 && rawData.Length >= 62 && rawData[30] == 0x00 && rawData[60] == 0x00)
+            if (IsValidLoginPacket(rawData))
             {
                 _encType = EncryptionType.None;
                 _initialized = true;
@@ -92,24 +94,29 @@ public sealed class CryptoState
         {
             foreach (var clientKey in cryptConfig.Keys)
             {
-                rawData.CopyTo(scratch);
-                var testCrypt = new LoginEncryption(seed, clientKey.Key1, clientKey.Key2);
-                testCrypt.Decrypt(scratch, 0, rawData.Length);
-
-                if (scratch[0] == 0x80 && rawData.Length >= 62 && scratch[30] == 0x00 && scratch[60] == 0x00)
+                foreach (var mode in GetLoginEncryptionModes(clientKey.EncType))
                 {
-                    bool valid = true;
-                    for (int i = 21; i <= 30 && valid; i++)
-                        valid = scratch[i] == 0x00 && scratch[i + 30] == 0x00;
-
-                    if (valid)
+                    for (int keyOrder = 0; keyOrder < 2; keyOrder++)
                     {
-                        _key1 = clientKey.Key1;
-                        _key2 = clientKey.Key2;
-                        _encType = clientKey.EncType;
-                        _loginCrypt = testCrypt;
-                        _initialized = true;
-                        return scratch.AsSpan(0, rawData.Length).ToArray();
+                        bool swappedKeys = keyOrder == 1;
+                        uint key1 = swappedKeys ? clientKey.Key2 : clientKey.Key1;
+                        uint key2 = swappedKeys ? clientKey.Key1 : clientKey.Key2;
+
+                        rawData.CopyTo(scratch);
+                        var testCrypt = new LoginEncryption(seed, key1, key2, mode);
+                        testCrypt.Decrypt(scratch, 0, rawData.Length);
+
+                        if (IsValidLoginPacket(scratch.AsSpan(0, rawData.Length)))
+                        {
+                            _key1 = key1;
+                            _key2 = key2;
+                            _encType = clientKey.EncType;
+                            _loginCrypt = testCrypt;
+                            _initialized = true;
+                            return scratch.AsSpan(0, rawData.Length).ToArray();
+                        }
+
+                        CaptureLoginDiagnostic(scratch.AsSpan(0, rawData.Length), clientKey, swappedKeys, mode);
                     }
                 }
             }
@@ -119,7 +126,7 @@ public sealed class CryptoState
             ArrayPool<byte>.Shared.Return(scratch, clearArray: true);
         }
 
-        if (rawData[0] == 0x80 && rawData.Length >= 62)
+        if (useNoCrypt && IsValidLoginPacket(rawData))
         {
             _encType = EncryptionType.None;
             _initialized = true;
@@ -127,6 +134,76 @@ public sealed class CryptoState
         }
 
         return null;
+    }
+
+    private static ReadOnlySpan<LoginEncryptionMode> GetLoginEncryptionModes(EncryptionType encType) =>
+        encType == EncryptionType.Login
+            ? [LoginEncryptionMode.Old, LoginEncryptionMode.Standard]
+            : [LoginEncryptionMode.Standard, LoginEncryptionMode.Old];
+
+    private void CaptureLoginDiagnostic(ReadOnlySpan<byte> data, CryptoClientKey key,
+        bool swappedKeys = false, LoginEncryptionMode mode = LoginEncryptionMode.Standard)
+    {
+        if (data.Length < 62 || data[0] != 0x80)
+            return;
+
+        string account = PreviewLoginField(data.Slice(1, 30));
+        string password = PreviewLoginField(data.Slice(31, 30));
+        bool accountValid = IsValidLoginField(data.Slice(1, 30), requireTerminator: true);
+        bool passwordValid = IsValidLoginField(data.Slice(31, 30), requireTerminator: false);
+        if (!accountValid && LastDetectionDiagnostic.Contains("accountValid=True", StringComparison.Ordinal))
+            return;
+        if (!passwordValid && LastDetectionDiagnostic.Contains("passValid=True", StringComparison.Ordinal))
+            return;
+
+        string variant = $" mode={mode}" + (swappedKeys ? " keyOrder=swapped" : "");
+        LastDetectionDiagnostic =
+            $"candidate ver={key.ClientVersion} enc={key.EncType} key1=0x{key.Key1:X8} key2=0x{key.Key2:X8}{variant} accountValid={accountValid} passValid={passwordValid} account='{account}' pass='{password}'";
+    }
+
+    private static bool IsValidLoginPacket(ReadOnlySpan<byte> data)
+    {
+        if (data.Length < 62 || data[0] != 0x80)
+            return false;
+
+        // Non-zero padding after the first null is tolerated, but both account
+        // and password prefixes must decrypt to printable text. Accepting an
+        // account-only candidate can route a wrong cipher into auth and surface
+        // as a misleading "wrong password".
+        return IsValidLoginField(data.Slice(1, 30), requireTerminator: true) &&
+               IsValidLoginField(data.Slice(31, 30), requireTerminator: false);
+    }
+
+    private static bool IsValidLoginField(ReadOnlySpan<byte> field, bool requireTerminator)
+    {
+        int nullIdx = field.IndexOf((byte)0);
+        int len = nullIdx >= 0 ? nullIdx : field.Length;
+        if (len == 0)
+            return !requireTerminator || nullIdx >= 0;
+
+        if (requireTerminator && nullIdx < 0)
+            return false;
+
+        for (int i = 0; i < len; i++)
+        {
+            byte b = field[i];
+            if (b < 0x20 || b > 0x7E)
+                return false;
+        }
+        return true;
+    }
+
+    private static string PreviewLoginField(ReadOnlySpan<byte> field)
+    {
+        int nullIdx = field.IndexOf((byte)0);
+        int len = nullIdx >= 0 ? nullIdx : field.Length;
+        Span<char> chars = stackalloc char[Math.Min(len, 16)];
+        for (int i = 0; i < chars.Length; i++)
+        {
+            byte b = field[i];
+            chars[i] = b is >= 0x20 and <= 0x7E ? (char)b : '.';
+        }
+        return new string(chars);
     }
 
     /// <summary>
@@ -306,7 +383,7 @@ public sealed class CryptoState
             ArrayPool<byte>.Shared.Return(scratch, clearArray: true);
         }
 
-        if (rawData[0] == 0x91 && rawData.Length >= 65)
+        if (useNoCrypt && rawData[0] == 0x91 && rawData.Length >= 65)
         {
             _encType = EncryptionType.None;
             _initialized = true;

@@ -28,6 +28,7 @@ public sealed class GameWorld
     private readonly List<Room> _rooms = [];
     private readonly ConcurrentDictionary<long, Region?> _regionCache = new();
     private readonly ILogger<GameWorld> _logger;
+    private readonly List<ObjBase> _timerFSnapshot = [];
 
     private long _tickCount;
     private int _totalChars;
@@ -36,6 +37,7 @@ public sealed class GameWorld
     public event Action<ObjBase>? ObjectDeleting;
     public event Action<Character, Point3D>? CharacterMoved;
     public event Action<Character>? CharacterPlaced;
+    public Action<ObjBase, ObjBase.TimerFEntry>? TimerFExpired { get; set; }
 
     // --- Global script variables (VAR/VAR0 system) ---
     private readonly Dictionary<string, string> _globalVars = new(StringComparer.OrdinalIgnoreCase);
@@ -323,16 +325,27 @@ public sealed class GameWorld
     /// Re-register an object under a new serial (for save/load when serial is read from file).
     /// Removes the old dictionary entry and adds the new one.
     /// </summary>
-    public void ReRegisterObject(ObjBase obj, Serial oldUid, Serial newUid)
+    public bool TryReRegisterObject(ObjBase obj, Serial oldUid, Serial newUid, out ObjBase? existing)
     {
-        if (_objects.TryGetValue(newUid.Value, out var existing) && !ReferenceEquals(existing, obj))
-            throw new InvalidOperationException(
-                $"Duplicate object serial 0x{newUid.Value:X8}: existing={existing.GetType().Name} new={obj.GetType().Name}");
+        existing = null;
+        if (_objects.TryGetValue(newUid.Value, out var found) && !ReferenceEquals(found, obj))
+        {
+            existing = found;
+            return false;
+        }
 
         _objects.Remove(oldUid.Value);
         _uidTable.ReRegister(oldUid, newUid, obj);
         obj.SetUid(newUid);
         _objects[newUid.Value] = obj;
+        return true;
+    }
+
+    public void ReRegisterObject(ObjBase obj, Serial oldUid, Serial newUid)
+    {
+        if (!TryReRegisterObject(obj, oldUid, newUid, out var existing))
+            throw new InvalidOperationException(
+                $"Duplicate object serial 0x{newUid.Value:X8}: existing={existing!.GetType().Name} new={obj.GetType().Name}");
     }
 
     public ObjBase? FindObject(Serial uid) =>
@@ -348,14 +361,25 @@ public sealed class GameWorld
         _uuidIndex.GetValueOrDefault(uuid);
 
     /// <summary>Update the UUID index when an object's UUID changes (e.g. on load).</summary>
-    public void ReIndexUuid(ObjBase obj, Guid oldUuid)
+    public bool TryReIndexUuid(ObjBase obj, Guid oldUuid, out ObjBase? existing)
     {
-        if (_uuidIndex.TryGetValue(obj.Uuid, out var existing) && !ReferenceEquals(existing, obj))
-            throw new InvalidOperationException(
-                $"Duplicate object UUID {obj.Uuid}: existing=0x{existing.Uid.Value:X8} new=0x{obj.Uid.Value:X8}");
+        existing = null;
+        if (_uuidIndex.TryGetValue(obj.Uuid, out var found) && !ReferenceEquals(found, obj))
+        {
+            existing = found;
+            return false;
+        }
 
         _uuidIndex.Remove(oldUuid);
         _uuidIndex[obj.Uuid] = obj;
+        return true;
+    }
+
+    public void ReIndexUuid(ObjBase obj, Guid oldUuid)
+    {
+        if (!TryReIndexUuid(obj, oldUuid, out var existing))
+            throw new InvalidOperationException(
+                $"Duplicate object UUID {obj.Uuid}: existing=0x{existing!.Uid.Value:X8} new=0x{obj.Uid.Value:X8}");
     }
 
     // --- Placement ---
@@ -711,6 +735,32 @@ public sealed class GameWorld
         {
             _lastMaintenanceTick = currentTime;
             TickSleepingSectorItems();
+        }
+
+        TickTimerF(currentTime);
+    }
+
+    private void TickTimerF(long nowMs)
+    {
+        if (TimerFExpired == null)
+            return;
+
+        _timerFSnapshot.Clear();
+        foreach (var obj in _objects.Values)
+        {
+            if (!obj.IsDeleted && obj.TimerFEntries.Count > 0)
+                _timerFSnapshot.Add(obj);
+        }
+
+        foreach (var obj in _timerFSnapshot)
+        {
+            if (obj.IsDeleted)
+                continue;
+            foreach (var entry in obj.DequeueDueTimerF(nowMs))
+            {
+                if (!obj.IsDeleted)
+                    TimerFExpired?.Invoke(obj, entry);
+            }
         }
     }
 

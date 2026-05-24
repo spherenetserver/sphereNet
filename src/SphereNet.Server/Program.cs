@@ -433,8 +433,9 @@ public static partial class Program
         }
 
         // --- 4. Map Data ---
-        string mulPath = _config.MulFilesDir;
-        if (string.IsNullOrEmpty(mulPath)) mulPath = FindDir(basePath, "mul");
+        string mulPath = string.IsNullOrWhiteSpace(_config.MulFilesDir)
+            ? FindDir(basePath, "mul")
+            : ResolvePath(basePath, _config.MulFilesDir);
         if (string.IsNullOrEmpty(mulPath) || !Directory.Exists(mulPath))
         {
             _log.LogCritical(
@@ -445,10 +446,16 @@ public static partial class Program
             throw new DirectoryNotFoundException(
                 $"UO client files directory missing: '{mulPath}'. Server cannot start.");
         }
+        mulPath = Path.GetFullPath(mulPath);
+        _log.LogInformation("UO client data path resolved: configured='{Configured}' resolved='{Resolved}'",
+            _config.MulFilesDir, mulPath);
 
         _mapData = new MapDataManager(mulPath);
         _mapData.OnMapFileLoaded += (id, path) =>
             _log.LogInformation("Map{Id} loaded from: {Path}", id, path);
+        _mapData.OnMapFileLoadedDetailed += (id, path, bytes, utc) =>
+            _log.LogInformation("Map{Id} data file: {Path} bytes={Bytes} modifiedUtc={ModifiedUtc:O}",
+                id, path, bytes, utc);
         try
         {
             _mapData.Load();

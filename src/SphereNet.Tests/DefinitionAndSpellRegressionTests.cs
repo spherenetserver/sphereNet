@@ -4,6 +4,7 @@ using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Magic;
 using SphereNet.Game.World;
+using SphereNet.Scripting.Parsing;
 using SphereNet.Scripting.Resources;
 
 namespace SphereNet.Tests;
@@ -188,6 +189,53 @@ public class DefinitionAndSpellRegressionTests
     }
 
     [Fact]
+    public void ScriptCorpusSmoke_LoadsAllFixtureScriptsAndReportsMatrix()
+    {
+        string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string fixtureDir = Path.Combine(root, "tests", "fixtures", "scripts");
+        var files = Directory.GetFiles(fixtureDir, "*.scp", SearchOption.AllDirectories)
+            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        Assert.NotEmpty(files);
+
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var resources = new ResourceHolder(loggerFactory.CreateLogger<ResourceHolder>());
+        var sectionCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var path in files)
+        {
+            using var scriptFile = new ScriptFile();
+            Assert.True(scriptFile.Open(path), $"Could not open {path}");
+            var sections = scriptFile.ReadAllSections();
+            Assert.NotEmpty(sections);
+            foreach (var section in sections)
+            {
+                sectionCounts.TryGetValue(section.Name, out int count);
+                sectionCounts[section.Name] = count + 1;
+            }
+
+            int loaded = resources.LoadResourceFile(path);
+            Assert.True(loaded > 0, $"{Path.GetFileName(path)} did not load any resources");
+        }
+
+        var loadedResources = resources.GetAllResources().ToArray();
+        var matrix = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["sections"] = sectionCounts.Count,
+            ["resources"] = loadedResources.Length,
+            ["events"] = loadedResources.Count(r => r.Id.Type == ResType.Events),
+            ["typedefs"] = loadedResources.Count(r => r.Id.Type == ResType.TypeDef),
+            ["functions"] = loadedResources.Count(r => r.Id.Type == ResType.Function),
+        };
+
+        Assert.Contains("EVENTS", sectionCounts.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("TYPEDEF", sectionCounts.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("FUNCTION", sectionCounts.Keys, StringComparer.OrdinalIgnoreCase);
+        Assert.All(matrix, entry => Assert.True(entry.Value > 0, $"Script parity matrix category '{entry.Key}' is empty"));
+    }
+
+    [Fact]
     public void SpellEngine_Recall_UsesRuneItemTarget()
     {
         var world = CreateWorld();
@@ -275,5 +323,62 @@ public class DefinitionAndSpellRegressionTests
 
         Assert.False(engine.CastDone(caster));
         Assert.False(caster.IsCasting);
+    }
+
+    [Fact]
+    public void ResourceHolder_LoadsStartsGoldAndMoongates()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "spherenet-world-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        string scriptPath = Path.Combine(dir, "world.scp");
+        File.WriteAllText(scriptPath, """
+[STARTS]
+Britain=1495,1629,10,0
+
+[STARTSGOLD]
+gold=500
+
+[MOONGATES]
+Moonglow=4467,1283,5,0
+""");
+
+        using var loggerFactory = LoggerFactory.Create(_ => { });
+        var resources = new ResourceHolder(loggerFactory.CreateLogger<ResourceHolder>());
+        resources.LoadResourceFile(scriptPath);
+
+        Assert.Single(resources.Starts);
+        Assert.Equal(new Point3D(1495, 1629, 10, 0), resources.Starts[0].Point);
+        Assert.Single(resources.StartGold);
+        Assert.Equal(500, resources.StartGold[0].Amount);
+        Assert.Single(resources.Moongates);
+        Assert.Equal("Moonglow", resources.Moongates[0].Name);
+    }
+
+    [Fact]
+    public void ResourceHolder_RetainsMultiDefKeysForServResolver()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "spherenet-multi-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        string scriptPath = Path.Combine(dir, "multi.scp");
+        File.WriteAllText(scriptPath, """
+[MULTIDEF 04000]
+DEFNAME=m_test_house
+TYPE=t_multi_custom
+COMPONENT=01,0,0,0
+COMPONENT=02,1,0,0
+""");
+
+        using var loggerFactory = LoggerFactory.Create(_ => { });
+        var resources = new ResourceHolder(loggerFactory.CreateLogger<ResourceHolder>());
+        resources.LoadResourceFile(scriptPath);
+
+        var rid = resources.ResolveDefName("m_test_house");
+        Assert.True(rid.IsValid);
+        Assert.Equal(0x4000, rid.Index);
+        var link = resources.GetResource(rid);
+        Assert.NotNull(link);
+        Assert.NotNull(link!.StoredKeys);
+        Assert.Equal(2, link.StoredKeys!.Count(k => k.Key.Equals("COMPONENT", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(link.StoredKeys!, k => k.Key.Equals("TYPE", StringComparison.OrdinalIgnoreCase) && k.Arg == "t_multi_custom");
     }
 }

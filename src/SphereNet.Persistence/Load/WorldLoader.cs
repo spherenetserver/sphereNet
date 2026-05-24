@@ -281,6 +281,7 @@ public sealed class WorldLoader
 
             bool hasUuid = false;
             bool hasId = false;
+            bool skipItem = false;
             while (reader.NextProperty(out string key, out string val))
             {
                 string upper = key.ToUpperInvariant();
@@ -289,7 +290,15 @@ public sealed class WorldLoader
                     if (TryParseHexOrDec(val, out uint serial))
                     {
                         var oldUid = item.Uid;
-                        world.ReRegisterObject(item, oldUid, new Serial(serial));
+                        var newUid = new Serial(serial);
+                        if (!world.TryReRegisterObject(item, oldUid, newUid, out var existing))
+                        {
+                            _logger.LogWarning(
+                                "Skipping duplicate item serial 0x{Serial:X8} in {File}: existing={ExistingType}",
+                                serial, Path.GetFileName(path), existing?.GetType().Name ?? "unknown");
+                            world.DeleteObject(item);
+                            skipItem = true;
+                        }
                     }
                     continue;
                 }
@@ -299,7 +308,14 @@ public sealed class WorldLoader
                     {
                         var oldUuid = item.Uuid;
                         item.Uuid = uuid;
-                        world.ReIndexUuid(item, oldUuid);
+                        if (!world.TryReIndexUuid(item, oldUuid, out var existing))
+                        {
+                            _logger.LogWarning(
+                                "Skipping duplicate item UUID {Uuid} for serial 0x{Serial:X8} in {File}: existing=0x{Existing:X8}",
+                                uuid, item.Uid.Value, Path.GetFileName(path), existing?.Uid.Value ?? 0);
+                            world.DeleteObject(item);
+                            skipItem = true;
+                        }
                         hasUuid = true;
                     }
                     continue;
@@ -321,6 +337,9 @@ public sealed class WorldLoader
                     hasId = true;
                 ApplyItemProperty(item, key, val);
             }
+            if (skipItem)
+                continue;
+
             if (!hasUuid)
                 _migratedUuids++;
 
@@ -359,6 +378,7 @@ public sealed class WorldLoader
             var ch = world.CreateCharacter();
             string? accountName = null;
             bool charHasUuid = false;
+            bool skipChar = false;
 
             if (defname != null && ApplyCharDefFromName != null)
             {
@@ -384,7 +404,15 @@ public sealed class WorldLoader
                     if (TryParseHexOrDec(val, out uint serial))
                     {
                         var oldUid = ch.Uid;
-                        world.ReRegisterObject(ch, oldUid, new Serial(serial));
+                        var newUid = new Serial(serial);
+                        if (!world.TryReRegisterObject(ch, oldUid, newUid, out var existing))
+                        {
+                            _logger.LogWarning(
+                                "Skipping duplicate character serial 0x{Serial:X8} in {File}: existing={ExistingType}",
+                                serial, Path.GetFileName(path), existing?.GetType().Name ?? "unknown");
+                            world.DeleteObject(ch);
+                            skipChar = true;
+                        }
                     }
                     continue;
                 }
@@ -395,7 +423,14 @@ public sealed class WorldLoader
                     {
                         var oldUuid = ch.Uuid;
                         ch.Uuid = uuid;
-                        world.ReIndexUuid(ch, oldUuid);
+                        if (!world.TryReIndexUuid(ch, oldUuid, out var existing))
+                        {
+                            _logger.LogWarning(
+                                "Skipping duplicate character UUID {Uuid} for serial 0x{Serial:X8} in {File}: existing=0x{Existing:X8}",
+                                uuid, ch.Uid.Value, Path.GetFileName(path), existing?.Uid.Value ?? 0);
+                            world.DeleteObject(ch);
+                            skipChar = true;
+                        }
                         charHasUuid = true;
                     }
                     continue;
@@ -421,6 +456,8 @@ public sealed class WorldLoader
 
                 ApplyCharProperty(ch, key, val);
             }
+            if (skipChar)
+                continue;
 
             CharDefHelper.EnsureDisplayBody(ch, DefinitionLoader.StaticResources);
             ch.ClearTransientVisualState();
@@ -460,7 +497,8 @@ public sealed class WorldLoader
                     item.ContainedIn = new Serial(cont);
                 break;
             default:
-                item.TrySetProperty(key, val);
+                if (!item.TrySetProperty(key, val))
+                    item.SetTag("SAVE." + key, val);
                 break;
         }
     }
@@ -542,7 +580,8 @@ public sealed class WorldLoader
                         ch.SetSkill(skill, sv);
                     break;
                 }
-                ch.TrySetProperty(key, val);
+                if (!ch.TrySetProperty(key, val))
+                    ch.SetTag("SAVE." + key, val);
                 break;
         }
     }

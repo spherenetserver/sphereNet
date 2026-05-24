@@ -19,6 +19,14 @@ public class EncryptionTests
         return config;
     }
 
+    private static void AddCryptKey(CryptConfig config, CryptoClientKey key)
+    {
+        var keys = (List<CryptoClientKey>)typeof(CryptConfig)
+            .GetField("_keys", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(config)!;
+        keys.Add(key);
+    }
+
     [Fact]
     public void Blowfish_EncryptDecrypt_RoundTrips()
     {
@@ -144,6 +152,72 @@ public class EncryptionTests
         Assert.Equal(packet, decoded);
         Assert.True(state.IsInitialized);
         Assert.Equal(EncryptionType.None, state.EncType);
+    }
+
+    [Fact]
+    public void CryptoState_NoCryptLogin_RequiresNoCryptMode()
+    {
+        byte[] packet = new byte[62];
+        packet[0] = 0x80;
+
+        var state = new CryptoState();
+        var decoded = state.DetectAndDecryptLogin(0x12345678, packet, EmptyCryptConfig(),
+            useCrypt: false, useNoCrypt: false);
+
+        Assert.Null(decoded);
+        Assert.False(state.IsInitialized);
+    }
+
+    [Fact]
+    public void CryptoState_LoginEncryption_DetectsKnownKey()
+    {
+        const uint seed = 0x12345678;
+        const uint key1 = 0x11111111;
+        const uint key2 = 0x22222222;
+        var config = new CryptConfig();
+        AddCryptKey(config, new CryptoClientKey(70000000, key1, key2, EncryptionType.Login));
+
+        byte[] plain = new byte[62];
+        plain[0] = 0x80;
+        WriteAsciiFixed(plain, 1, 30, "acct");
+        WriteAsciiFixed(plain, 31, 30, "pw");
+        byte[] encrypted = (byte[])plain.Clone();
+        new LoginEncryption(seed, key1, key2).Decrypt(encrypted, 0, encrypted.Length);
+
+        var state = new CryptoState();
+        var decoded = state.DetectAndDecryptLogin(seed, encrypted, config,
+            useCrypt: true, useNoCrypt: false);
+
+        Assert.NotNull(decoded);
+        Assert.Equal(plain, decoded);
+        Assert.True(state.IsInitialized);
+        Assert.Equal(EncryptionType.Login, state.EncType);
+    }
+
+    [Fact]
+    public void CryptoState_LoginEncryption_RejectsAccountOnlyFalsePositive()
+    {
+        byte[] raw =
+        [
+            0x55, 0x78, 0x9A, 0xF7, 0x49, 0x80, 0xE3, 0x38,
+            0xE3, 0x8E, 0x38, 0x63, 0x4E, 0x58, 0x53, 0x56,
+            0xD4, 0x95, 0xB5, 0x25, 0x6D, 0xC9, 0x1B, 0xF2,
+            0x86, 0x3C, 0x61, 0x4F, 0x58, 0xD3, 0x96, 0x05,
+            0x4B, 0xDE, 0x10, 0x80, 0xE6, 0x57, 0x1B, 0x2D,
+            0x61, 0xA8, 0x50, 0x91, 0x70, 0x17, 0x2C, 0xC4,
+            0x7D, 0x25, 0x6A, 0x90, 0x43, 0xE4, 0xAC, 0xB1,
+            0xA6, 0x40, 0x4F, 0xB1, 0x8B, 0xD4
+        ];
+        var config = new CryptConfig();
+        AddCryptKey(config, new CryptoClientKey(67000000, 0x0D93A5FD, 0x0B3DD527F, EncryptionType.Twofish));
+
+        var state = new CryptoState();
+        var decoded = state.DetectAndDecryptLogin(0x0100007F, raw, config,
+            useCrypt: true, useNoCrypt: true);
+
+        Assert.Null(decoded);
+        Assert.False(state.IsInitialized);
+        Assert.Contains("account='mortal'", state.LastDetectionDiagnostic);
     }
 
     [Fact]

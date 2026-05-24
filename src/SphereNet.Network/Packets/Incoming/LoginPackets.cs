@@ -1,5 +1,6 @@
 using SphereNet.Core.Types;
 using SphereNet.Network.Packets;
+using SphereNet.Network.State;
 
 namespace SphereNet.Network.Packets.Incoming;
 
@@ -175,6 +176,8 @@ public sealed class PacketMoveRequest : PacketHandler
 
     public override void OnReceive(PacketBuffer buffer, State.NetState state)
     {
+        state.LastMovementOpcode = 0x02;
+        state.LastMovementBatchSize = 1;
         byte dir = buffer.ReadByte();
         byte seq = buffer.ReadByte();
         uint fastWalkKey = buffer.ReadUInt32();
@@ -197,6 +200,9 @@ public sealed class PacketNewMovementRequest : PacketHandler
         if (remaining <= 0)
             return;
 
+        state.LastMovementOpcode = 0xF0;
+        state.LastMovementBatchSize = 0;
+
         // ClassicUO/Razor extension subcommands — no server action required.
         if (remaining <= 3)
         {
@@ -211,13 +217,15 @@ public sealed class PacketNewMovementRequest : PacketHandler
             byte dir = buffer.ReadByte();
             byte seq = buffer.ReadByte();
             uint fastWalkKey = buffer.ReadUInt32();
+            state.LastMovementBatchSize = 1;
             state.OnMoveRequest(dir, seq, fastWalkKey);
             return;
         }
 
-        // ModernUO NewMovementReq: steps + per-step timing/direction block.
+        // ModernUO NewMovementReq: steps + 34-byte per-step timing/direction block.
         byte steps = buffer.ReadByte();
-        for (int i = 0; i < steps && buffer.Remaining >= 35; i++)
+        var movementSteps = new List<MovementStep>(steps);
+        for (int i = 0; i < steps && buffer.Remaining >= 34; i++)
         {
             buffer.ReadUInt32();
             buffer.ReadUInt32();
@@ -233,7 +241,13 @@ public sealed class PacketNewMovementRequest : PacketHandler
             if (mode == 2)
                 dir |= 0x80;
 
-            state.OnMoveRequest(dir, seq, 0);
+            movementSteps.Add(new MovementStep(dir, seq, 0, mode));
+        }
+
+        if (movementSteps.Count > 0)
+        {
+            state.LastMovementBatchSize = movementSteps.Count;
+            state.OnMovementBatch(movementSteps);
         }
     }
 }

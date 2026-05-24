@@ -498,7 +498,7 @@ public class SaveFormatTests
     }
 
     [Fact]
-    public void WorldLoader_DuplicateSerial_Throws()
+    public void WorldLoader_DuplicateSerial_SkipsDuplicateAndContinues()
     {
         string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_dup_serial_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tmp);
@@ -520,7 +520,11 @@ public class SaveFormatTests
             var loader = new WorldLoader(LoggerFactory.Create(b => { }));
             var dst = MakeWorld();
 
-            Assert.Throws<InvalidOperationException>(() => loader.Load(dst, tmp));
+            var (items, chars) = loader.Load(dst, tmp);
+
+            Assert.Equal(1, items);
+            Assert.Equal(0, chars);
+            Assert.NotNull(dst.FindItem(new Serial(0x40001000)));
         }
         finally
         {
@@ -529,7 +533,7 @@ public class SaveFormatTests
     }
 
     [Fact]
-    public void WorldLoader_DuplicateUuid_Throws()
+    public void WorldLoader_DuplicateUuid_SkipsDuplicateAndContinues()
     {
         string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_dup_uuid_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tmp);
@@ -554,7 +558,136 @@ public class SaveFormatTests
             var loader = new WorldLoader(LoggerFactory.Create(b => { }));
             var dst = MakeWorld();
 
-            Assert.Throws<InvalidOperationException>(() => loader.Load(dst, tmp));
+            var (items, chars) = loader.Load(dst, tmp);
+
+            Assert.Equal(1, items);
+            Assert.Equal(0, chars);
+            Assert.NotNull(dst.FindItem(new Serial(0x40001000)));
+            Assert.Null(dst.FindItem(new Serial(0x40001001)));
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void WorldLoader_SourceStyleFixture_PreservesCompatKeysAcrossRoundtrip()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_source_fixture_{Guid.NewGuid():N}");
+        string outDir = Path.Combine(tmp, "out");
+        Directory.CreateDirectory(tmp);
+        Directory.CreateDirectory(outDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(tmp, "sphereworld.scp"),
+                """
+                [WORLDITEM i_gold]
+                SERIAL=040001000
+                ID=0EED
+                P=1500,1600,5,0
+                AMOUNT=42
+                MORE1=01
+                MORE2=02
+                TIMER=30
+                ATTR=010
+                TAG.CUSTOM=kept
+                SOURCEONLY=value
+
+                [WORLDITEM i_sword_viking]
+                SERIAL=040001001
+                ID=013B9
+                CONT=01
+                LAYER=1
+                MOREP=10,11,12,0
+
+                [EOF]
+
+                """);
+
+            File.WriteAllText(Path.Combine(tmp, "spherechars.scp"),
+                """
+                [WORLDCHAR c_man]
+                SERIAL=01
+                NAME=FixtureChar
+                ACCOUNT=mortal
+                P=1501,1600,5,0
+                BODY=0190
+                STR=50
+                DEX=60
+                INT=70
+                EQUIP[1]=040001001
+                MEMORY=040001000,8
+                REGION=britain
+                EVENTS=e_player
+                UNKNOWNCHARKEY=char-value
+
+                [EOF]
+
+                """);
+
+            File.WriteAllText(Path.Combine(tmp, "spheredata.scp"),
+                """
+                [GLOBALS]
+                VAR.TEST=1
+
+                [LIST shardlist]
+                ELEM=alpha
+
+                [EOF]
+
+                """);
+
+            var lf = LoggerFactory.Create(b => { });
+            var loader = new WorldLoader(lf);
+            var world = MakeWorld();
+            var accounts = new AccountManager(lf);
+            accounts.CreateAccount("mortal", "pw");
+
+            var (items, chars) = loader.Load(world, tmp, accounts);
+
+            Assert.Equal(2, items);
+            Assert.Equal(1, chars);
+
+            var gold = world.FindItem(new Serial(0x40001000));
+            Assert.NotNull(gold);
+            Assert.Equal((ushort)42, gold!.Amount);
+            Assert.True(gold.TryGetTag("CUSTOM", out var custom));
+            Assert.Equal("kept", custom);
+            Assert.True(gold.TryGetTag("SAVE.SOURCEONLY", out var sourceOnly));
+            Assert.Equal("value", sourceOnly);
+
+            var ch = world.FindChar(new Serial(0x00000001));
+            Assert.NotNull(ch);
+            Assert.True(ch!.IsPlayer);
+            Assert.True(ch.TryGetTag("ACCOUNT", out var accountTag));
+            Assert.Equal("mortal", accountTag);
+            Assert.True(ch.TryGetTag("SAVE.REGION", out var region));
+            Assert.Equal("britain", region);
+            Assert.True(ch.TryGetTag("SAVE.UNKNOWNCHARKEY", out var unknownChar));
+            Assert.Equal("char-value", unknownChar);
+            Assert.Single(ch.Memories);
+            Assert.Equal(new Serial(0x40001000), ch.Memories[0].Link);
+
+            var equipped = ch.GetEquippedItem(Layer.OneHanded);
+            Assert.NotNull(equipped);
+            Assert.Equal(new Serial(0x40001001), equipped!.Uid);
+
+            var acc = accounts.FindAccount("mortal");
+            Assert.NotNull(acc);
+            Assert.Equal(ch.Uid, acc!.GetCharSlot(0));
+
+            var saver = new WorldSaver(lf) { Format = SaveFormat.Text, ShardCount = 0 };
+            Assert.True(saver.Save(world, outDir));
+
+            var reloaded = MakeWorld();
+            var (items2, chars2) = loader.Load(reloaded, outDir);
+            Assert.Equal(items, items2);
+            Assert.Equal(chars, chars2);
+            var gold2 = reloaded.FindItem(new Serial(0x40001000));
+            Assert.NotNull(gold2);
+            Assert.True(gold2!.TryGetTag("SAVE.SOURCEONLY", out var sourceOnly2));
+            Assert.Equal("value", sourceOnly2);
         }
         finally
         {

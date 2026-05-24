@@ -10,6 +10,8 @@ using SphereNet.Network.Packets.Incoming;
 
 namespace SphereNet.Network.State;
 
+public readonly record struct MovementStep(byte Direction, byte Sequence, uint FastWalkKey, int Mode);
+
 /// <summary>
 /// Per-connection state machine. Maps to CNetState in Source-X.
 /// Tracks socket, buffers, crypto state, and connection lifecycle.
@@ -42,6 +44,8 @@ public sealed class NetState : IDisposable
     public int WalkBufferCount { get; set; }
     public long WalkBufferRegenTime { get; set; }
     public uint LastFastWalkKey { get; set; }
+    public byte LastMovementOpcode { get; set; }
+    public int LastMovementBatchSize { get; set; }
 
     // Packet flood detection
     public int PacketFloodCount { get; set; }
@@ -99,6 +103,8 @@ public sealed class NetState : IDisposable
         WalkBufferCount = 0;
         WalkBufferRegenTime = 0;
         LastFastWalkKey = 0;
+        LastMovementOpcode = 0;
+        LastMovementBatchSize = 0;
         _recvLength = 0;
         AccountName = "";
         AuthId = 0;
@@ -265,6 +271,16 @@ public sealed class NetState : IDisposable
         Send(writer.Build());
     }
 
+    public void SendRaw(ReadOnlySpan<byte> data)
+    {
+        if (data.Length == 0)
+            return;
+        var packet = new PacketBuffer(data.Length);
+        foreach (byte b in data)
+            packet.WriteByte(b);
+        Send(packet);
+    }
+
     /// <summary>Flush all queued packets to the socket.</summary>
     public void FlushOutput()
     {
@@ -333,6 +349,7 @@ public sealed class NetState : IDisposable
     public Action<NetState, string, string, uint>? GameLoginHandler { get; set; }
     public Action<NetState, int, string>? CharSelectHandler { get; set; }
     public Action<NetState, byte, byte, uint>? MoveRequestHandler { get; set; }
+    public Action<NetState, IReadOnlyList<MovementStep>>? MovementBatchHandler { get; set; }
     public Action<NetState, byte, ushort, ushort, string>? SpeechHandler { get; set; }
     public Action<NetState, uint>? AttackRequestHandler { get; set; }
     public Action<NetState, bool>? WarModeHandler { get; set; }
@@ -412,6 +429,18 @@ public sealed class NetState : IDisposable
 
     internal void OnMoveRequest(byte dir, byte seq, uint fastWalkKey)
         => MoveRequestHandler?.Invoke(this, dir, seq, fastWalkKey);
+
+    internal void OnMovementBatch(IReadOnlyList<MovementStep> steps)
+    {
+        if (MovementBatchHandler != null)
+        {
+            MovementBatchHandler.Invoke(this, steps);
+            return;
+        }
+
+        foreach (var step in steps)
+            OnMoveRequest(step.Direction, step.Sequence, step.FastWalkKey);
+    }
 
     internal void OnSpeech(byte type, ushort hue, ushort font, string text)
         => SpeechHandler?.Invoke(this, type, hue, font, text);

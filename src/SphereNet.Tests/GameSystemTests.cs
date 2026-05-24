@@ -19,6 +19,7 @@ using SphereNet.Core.Interfaces;
 using SphereNet.Scripting.Execution;
 using SphereNet.Scripting.Expressions;
 using SphereNet.Scripting.Parsing;
+using SphereNet.Scripting.Resources;
 using SphereNet.Game.Scripting;
 using SphereNet.Game.Movement;
 using SphereNet.Game.Accounts;
@@ -1004,6 +1005,149 @@ public class GameSystemTests
         Assert.Equal("f_mtele", console.LastCommandArgs);
     }
 
+    [Fact]
+    public void ScriptInterpreter_RoutesExternalServBridgeCommands()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var interpreter = new ScriptInterpreter(new ExpressionParser(), loggerFactory.CreateLogger<ScriptInterpreter>());
+        var target = new Character();
+        var args = new ExecTriggerArgs { Source = target };
+        var scope = new ScriptScope();
+        var captured = new List<string>();
+        interpreter.ServerPropertyResolver = request =>
+        {
+            captured.Add(request);
+            return "";
+        };
+
+        var lines = ParseKeys(
+            "SERV.WRITEFILE audit/external.log|boot ok",
+            "SERV.LOG bridge ok",
+            "SERV.GMPAGE stuck");
+
+        interpreter.Execute(lines, target, new TestConsole(), args, scope);
+
+        Assert.Contains("_WRITEFILE=audit/external.log|boot ok", captured);
+        Assert.Contains("_LOG=bridge ok", captured);
+        Assert.Contains(captured, r => r.StartsWith("_GMPAGE=", StringComparison.Ordinal) && r.EndsWith("|stuck", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ObjBase_TimerF_QueuesAndRunsDueCallback()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var ch = world.CreateCharacter();
+        var fired = false;
+        world.TimerFExpired = (obj, entry) =>
+        {
+            fired = true;
+            Assert.Same(ch, obj);
+            Assert.Equal("f_remove_buff", entry.FunctionName);
+            Assert.Equal("arg1 arg2", entry.Args);
+        };
+
+        Assert.True(ch.TryExecuteCommand("TIMERF", "0,f_remove_buff arg1 arg2", new TestConsole()));
+        world.OnTick();
+
+        Assert.True(fired);
+        Assert.Empty(ch.TimerFEntries);
+    }
+
+    [Fact]
+    public void ObjBase_TimerF_DeletedObjectIsSafeNoOp()
+    {
+        var world = CreateWorld();
+        var item = world.CreateItem();
+        var fired = false;
+        world.TimerFExpired = (_, _) => fired = true;
+
+        Assert.True(item.TryExecuteCommand("TIMERF", "0,f_cleanup", new TestConsole()));
+        item.Delete();
+        world.OnTick();
+
+        Assert.False(fired);
+    }
+
+    [Fact]
+    public void GameClient_SendPacket_ParsesRawPacketSafely()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var netState = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = 1701 };
+        SetNetStateInUse(netState, true);
+        var client = new SphereNet.Game.Clients.GameClient(netState, world, accountManager,
+            loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
+        var ch = world.CreateCharacter();
+        AttachCharacter(client, ch);
+
+        Assert.True(client.TryExecuteScriptCommand(ch, "SENDPACKET", "065 BYTE:01 WORD:0203 DWORD:04050607", null));
+
+        var queue = GetQueuedPackets(netState);
+        Assert.Single(queue);
+        Assert.Equal([0x65, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07], queue.Peek().Span.ToArray());
+    }
+
+    [Fact]
+    public void GameClient_SendPacket_InvalidTokenDoesNotSend()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var netState = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = 1702 };
+        SetNetStateInUse(netState, true);
+        var client = new SphereNet.Game.Clients.GameClient(netState, world, accountManager,
+            loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
+        var ch = world.CreateCharacter();
+        AttachCharacter(client, ch);
+
+        Assert.True(client.TryExecuteScriptCommand(ch, "SENDPACKET", "065 WORD:999999", null));
+
+        Assert.Empty(GetQueuedPackets(netState));
+    }
+
+    [Fact]
+    public void GameClient_ExternalDialogControls_RenderWithoutUnknownGaps()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var netState = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = 1703 };
+        SetNetStateInUse(netState, true);
+        var client = new SphereNet.Game.Clients.GameClient(netState, world, accountManager,
+            loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
+        var ch = world.CreateCharacter();
+        ch.IsPlayer = true;
+        AttachCharacter(client, ch);
+
+        string dir = Path.Combine(Path.GetTempPath(), "spherenet-dialog-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        string scriptPath = Path.Combine(dir, "dialog.scp");
+        File.WriteAllText(scriptPath, """
+[DIALOG d_external_smoke]
+0,0
+DORIGIN 20 30
+PAGE 0
+DHTMLGUMP +0 +0 180 40 0 1 <NAME>
+DCROPPEDTEXT +0 +45 180 20 1153 Hello
+DTEXTENTRYLIMITED +0 +70 180 20 1153 1 12 Default
+BUTTON +0 +95 4005 4006 1 0 1
+
+[DIALOG d_external_smoke BUTTON]
+ON=1
+TAG.BUTTON=1
+""");
+
+        var resources = new ResourceHolder(loggerFactory.CreateLogger<ResourceHolder>());
+        resources.LoadResourceFile(scriptPath);
+        var commands = new CommandHandler { Resources = resources };
+        client.SetEngines(commands: commands);
+
+        Assert.True(client.TryShowScriptDialog("d_external_smoke", 0));
+        Assert.Single(GetQueuedPackets(netState));
+    }
+
     private static List<ScriptKey> ParseKeys(params string[] lines)
     {
         var keys = new List<ScriptKey>(lines.Length);
@@ -1442,6 +1586,41 @@ public class GameSystemTests
         Assert.NotNull(delta);
         Assert.Equal(80, delta!.CurrentItems.Count);
         Assert.Equal(80, delta.NewItems.Count);
+    }
+
+    [Fact]
+    public void BuildViewDelta_HidesAttrInvisItemsUntilAllShow()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var client = TestHarness.CreateClient(loggerFactory, world, accountManager, 90);
+
+        var viewer = world.CreateCharacter();
+        viewer.Name = "Staff";
+        viewer.IsPlayer = true;
+        viewer.PrivLevel = PrivLevel.GM;
+        world.PlaceCharacter(viewer, new Point3D(1000, 1000, 0, 0));
+        TestHarness.AttachCharacter(client, viewer);
+
+        var mapPoint = world.CreateItem();
+        mapPoint.BaseId = 0x1BC3;
+        Assert.True(mapPoint.TrySetProperty("ATTR", "ATTR_INVIS|ATTR_STATIC|ATTR_MOVE_NEVER"));
+        world.PlaceItem(mapPoint, new Point3D(1001, 1000, 0, 0));
+
+        var hiddenDelta = client.BuildViewDelta();
+        Assert.NotNull(hiddenDelta);
+        Assert.DoesNotContain(mapPoint.Uid.Value, hiddenDelta!.CurrentItems);
+        Assert.True(mapPoint.IsAttr(ObjAttributes.Invis));
+        Assert.True(mapPoint.IsAttr(ObjAttributes.Static));
+        Assert.True(mapPoint.IsAttr(ObjAttributes.Move_Never));
+
+        viewer.AllShow = true;
+        var allShowDelta = client.BuildViewDelta();
+        Assert.NotNull(allShowDelta);
+        Assert.Contains(mapPoint.Uid.Value, allShowDelta!.CurrentItems);
+        Assert.Single(allShowDelta.NewItems);
+        Assert.True(allShowDelta.NewItems[0].HiddenAsAllShow);
     }
 
     [Fact]

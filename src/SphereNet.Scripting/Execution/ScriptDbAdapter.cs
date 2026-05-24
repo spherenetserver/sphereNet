@@ -80,15 +80,73 @@ public sealed class ScriptDbAdapter : IDisposable
     public bool ConnectFile(string fileName, out string error)
     {
         error = "";
+        string resolvedFileName = ResolveSafeDatabasePath(fileName, AppContext.BaseDirectory, out error);
+        if (resolvedFileName.Length == 0)
+            return false;
+
         var cfg = new DbConnectionConfig
         {
             Name = "default",
             Provider = "Microsoft.Data.Sqlite",
-            Database = fileName
+            Database = resolvedFileName
         };
         var session = GetOrCreateActiveSession();
         session.UpdateConfig(cfg);
-        return session.Connect("Microsoft.Data.Sqlite", $"Data Source={fileName};", out error);
+        return session.Connect("Microsoft.Data.Sqlite", $"Data Source={resolvedFileName};", out error);
+    }
+
+    /// <summary>Connect a SQLite file under a trusted script/save root.</summary>
+    public bool ConnectFile(string fileName, string basePath, out string error)
+    {
+        error = "";
+        string resolvedFileName = ResolveSafeDatabasePath(fileName, basePath, out error);
+        if (resolvedFileName.Length == 0)
+            return false;
+
+        var cfg = new DbConnectionConfig
+        {
+            Name = "default",
+            Provider = "Microsoft.Data.Sqlite",
+            Database = resolvedFileName
+        };
+        var session = GetOrCreateActiveSession();
+        session.UpdateConfig(cfg);
+        return session.Connect("Microsoft.Data.Sqlite", $"Data Source={resolvedFileName};", out error);
+    }
+
+    private static string ResolveSafeDatabasePath(string fileName, string basePath, out string error)
+    {
+        error = "";
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            error = "Database file name is empty.";
+            return "";
+        }
+
+        string normalized = fileName.Trim().Trim('"').Replace('\\', '/');
+        if (normalized.Contains("..", StringComparison.Ordinal) || normalized.StartsWith('/') || normalized.Contains(':'))
+        {
+            error = "Database path is outside the allowed script root.";
+            return "";
+        }
+
+        try
+        {
+            string fullBase = Path.GetFullPath(basePath);
+            string full = Path.GetFullPath(Path.Combine(fullBase, normalized));
+            if (!full.StartsWith(fullBase, StringComparison.OrdinalIgnoreCase))
+            {
+                error = "Database path is outside the allowed script root.";
+                return "";
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(full) ?? fullBase);
+            return full;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return "";
+        }
     }
 
     /// <summary>Connect the default session (backward compat).</summary>

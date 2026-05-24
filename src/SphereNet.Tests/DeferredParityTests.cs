@@ -72,6 +72,50 @@ public class DeferredParityTests
     }
 
     [Fact]
+    public void PacketNewMovementRequest_RoutesModernStepsAsBatch()
+    {
+        var loggerFactory = TestHarness.CreateLoggerFactory();
+        var state = TestHarness.CreateActiveNetState(loggerFactory, 4);
+        IReadOnlyList<SphereNet.Network.State.MovementStep>? captured = null;
+        state.MovementBatchHandler = (_, steps) => captured = steps;
+
+        var payload = new List<byte> { 2 };
+        AddModernMovementStep(payload, seq: 10, dir: 2, mode: 0);
+        AddModernMovementStep(payload, seq: 11, dir: 2, mode: 2);
+        var handler = new PacketNewMovementRequest();
+        var buf = new PacketBuffer(payload.ToArray());
+
+        handler.OnReceive(buf, state);
+
+        Assert.NotNull(captured);
+        Assert.Equal(2, captured.Count);
+        Assert.Equal((byte)10, captured[0].Sequence);
+        Assert.Equal((byte)2, captured[0].Direction);
+        Assert.Equal((byte)11, captured[1].Sequence);
+        Assert.Equal((byte)(2 | 0x80), captured[1].Direction);
+    }
+
+    private static void AddModernMovementStep(List<byte> payload, byte seq, byte dir, int mode)
+    {
+        for (int i = 0; i < 16; i++)
+            payload.Add(0);
+        payload.Add(seq);
+        payload.Add(dir);
+        WriteInt32(payload, mode);
+        WriteInt32(payload, 0);
+        WriteInt32(payload, 0);
+        WriteInt32(payload, 0);
+    }
+
+    private static void WriteInt32(List<byte> payload, int value)
+    {
+        payload.Add((byte)(value >> 24));
+        payload.Add((byte)(value >> 16));
+        payload.Add((byte)(value >> 8));
+        payload.Add((byte)value);
+    }
+
+    [Fact]
     public void PacketFastWalkStackInit_BuildsExpectedPayload()
     {
         Span<uint> keys = stackalloc uint[] { 1, 2, 3, 4, 5, 6 };

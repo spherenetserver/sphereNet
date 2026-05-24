@@ -8,6 +8,12 @@ an explicit deferred reason so the backlog does not turn into folklore.
 
 | Area | Status | Test / Guardrail | Notes |
 |---|---|---|---|
+| External script pack bridge matrix | Covered | `ExternalScriptPackSmokeTests`, `ScriptPackCompatibilitySummary` | Category scoring now tracks load, runtime triggers, DB/LDB, `SERV`, dialogs, vendor/craft, world/map, multi/housing, packet and staff/worldgen gaps. |
+| External P0 bridges | Covered | `GameSystemTests`, `ExternalScriptPackSmokeTests` | `SERV.AREA`, `SERV.GMPAGE`, `SERV.LIST`, `SERV.DEFLIST`, scalar `SERV.*`, `SERV.WRITEFILE`, `SERV.LOG`, `SERV.ALLCLIENTS`, `SERV.NEWITEM` and safe `LDB.CONNECT` path handling are compatibility-safe. |
+| `TIMERF` callbacks | Covered | `GameSystemTests` | `TIMERF delay,function args` queues delayed callbacks on chars/items and runs due entries from world tick, with deleted-object no-op behavior. |
+| `SENDPACKET` compatibility | Covered | `GameSystemTests` | Safe byte/word/dword raw packet parser sends to owner client and rejects invalid/out-of-range payloads without crashing. |
+| External world sections | Covered | `DefinitionAndSpellRegressionTests` | `[STARTS]`, `[STARTSGOLD]`, `[MOONGATES]`, numeric `[MULTIDEF]` and retained MULTIDEF keys are loaded for diagnostics/runtime lookup. |
+| Worldgen safety profile | Covered | `ExternalScriptPackSmokeTests` | `functions/worldgen/**` is excluded from core profile and loaded only through the explicit audit profile. |
 | Save/load script-facing fields | Covered | `SaveFormatTests` | `EQUIP[n]`, nested containers, bank box roundtrips. |
 | Trigger dispatch basics | Covered | `GameSystemTests`, script fixtures | Client, NPC, combat, trade, vendor, context menu and `f_onitem_*` hooks. |
 | Expression float pipeline | Covered | `ExpressionRegressionTests`, `ScriptObjectParityTests` | `FEVAL`, `FLOATVAL`, `FHVAL`, `FVAL`, leading-zero hex and local `FLOAT.*` are covered. |

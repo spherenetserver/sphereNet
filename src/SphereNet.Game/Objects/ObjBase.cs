@@ -25,6 +25,9 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     private ObjAttributes _attr;
     private readonly VarMap _tags = new();
     private readonly Dictionary<ComponentType, IComponent> _components = [];
+    private readonly List<TimerFEntry> _timerFEntries = [];
+
+    public sealed record TimerFEntry(long DueTickMs, string FunctionName, string Args);
 
     /// <summary>Resolve the GameWorld instance (set at startup).</summary>
     public static Func<World.GameWorld>? ResolveWorld;
@@ -109,6 +112,29 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     }
 
     public VarMap Tags => _tags;
+    public IReadOnlyList<TimerFEntry> TimerFEntries => _timerFEntries;
+
+    public void AddTimerF(long delayMs, string functionName, string args)
+    {
+        if (string.IsNullOrWhiteSpace(functionName))
+            return;
+        long due = Environment.TickCount64 + Math.Max(0, delayMs);
+        _timerFEntries.Add(new TimerFEntry(due, functionName.Trim(), args.Trim()));
+    }
+
+    public List<TimerFEntry> DequeueDueTimerF(long nowMs)
+    {
+        var due = new List<TimerFEntry>();
+        for (int i = _timerFEntries.Count - 1; i >= 0; i--)
+        {
+            if (_timerFEntries[i].DueTickMs > nowMs)
+                continue;
+            due.Add(_timerFEntries[i]);
+            _timerFEntries.RemoveAt(i);
+        }
+        due.Reverse();
+        return due;
+    }
 
     /// <summary>Set a tag value on this object.</summary>
     public virtual void SetTag(string key, string value) => _tags.Set(key, value);
@@ -284,6 +310,21 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
 
         switch (key.ToUpperInvariant())
         {
+            case "TIMERF":
+            {
+                int comma = args.IndexOf(',');
+                string delayPart = comma >= 0 ? args[..comma] : args;
+                string payload = comma >= 0 ? args[(comma + 1)..].Trim() : "";
+                if (string.IsNullOrWhiteSpace(payload))
+                    return true;
+                int space = payload.IndexOfAny(new[] { ' ', '\t' });
+                string functionName = space >= 0 ? payload[..space].Trim() : payload.Trim();
+                string functionArgs = space >= 0 ? payload[(space + 1)..].Trim() : "";
+                long delaySeconds = 0;
+                _ = long.TryParse(delayPart.Trim(), out delaySeconds);
+                AddTimerF(delaySeconds * 1000L, functionName, functionArgs);
+                return true;
+            }
             case "SHOW":
                 source.SysMessage($"{GetName()} [0x{Uid.Value:X8}] P={Position.X},{Position.Y},{Position.Z},{Position.Map}");
                 return true;
@@ -423,7 +464,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                 }
                 return true;
             case "ATTR":
-                _attr = (ObjAttributes)ParseHexOrDecUInt(value);
+                _attr = ParseObjAttributes(value);
                 return true;
             case "EVENTS":
                 if (this is Characters.Character ch)
@@ -806,11 +847,44 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         {
             if (uint.TryParse(s.AsSpan(2), NumberStyles.HexNumber, null, out uint h)) return h;
         }
-        else if (s.Length > 1 && s[0] == '0' && !s.All(char.IsDigit))
+        else if (s.Length > 1 && s[0] == '0')
         {
             if (uint.TryParse(s, NumberStyles.HexNumber, null, out uint h)) return h;
         }
         if (uint.TryParse(s, out uint d)) return d;
         return 0;
+    }
+
+    private static ObjAttributes ParseObjAttributes(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return ObjAttributes.None;
+
+        ObjAttributes result = ObjAttributes.None;
+        var parts = value.Split(['|', ',', ' '], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        foreach (string part in parts)
+        {
+            string token = part.Trim();
+            if (token.Length == 0)
+                continue;
+
+            uint numeric = ParseHexOrDecUInt(token);
+            if (numeric != 0 || token == "0")
+            {
+                result |= (ObjAttributes)numeric;
+                continue;
+            }
+
+            string enumName = token;
+            if (enumName.StartsWith("ATTR_", StringComparison.OrdinalIgnoreCase))
+                enumName = enumName[5..];
+            enumName = enumName.Replace("MOVE_ALWAYS", "Move_Always", StringComparison.OrdinalIgnoreCase)
+                .Replace("MOVE_NEVER", "Move_Never", StringComparison.OrdinalIgnoreCase);
+
+            if (Enum.TryParse(enumName, ignoreCase: true, out ObjAttributes attr))
+                result |= attr;
+        }
+
+        return result;
     }
 }

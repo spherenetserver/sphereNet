@@ -55,6 +55,7 @@ public sealed class MapDataManager : IDisposable
     /// </summary>
     /// <summary>Called when a map file is loaded (for logging).</summary>
     public event Action<int, string>? OnMapFileLoaded;
+    public event Action<int, string, long, DateTime>? OnMapFileLoadedDetailed;
 
     public void InitMap(int mapId, int width, int height)
     {
@@ -68,12 +69,12 @@ public sealed class MapDataManager : IDisposable
         if (uopPath != null)
         {
             _uopMapReaders[mapId] = new UopMapReader(uopPath, width, height);
-            OnMapFileLoaded?.Invoke(mapId, uopPath);
+            NotifyMapFileLoaded(mapId, uopPath);
         }
         else if (File.Exists(mapPath))
         {
             _mapReaders[mapId] = new MapReader(mapPath, width, height);
-            OnMapFileLoaded?.Invoke(mapId, mapPath);
+            NotifyMapFileLoaded(mapId, mapPath);
         }
         else
         {
@@ -94,7 +95,15 @@ public sealed class MapDataManager : IDisposable
                 "Copy from your UO client install.",
                 File.Exists(idxPath) ? statPath : idxPath);
         _staticReaders[mapId] = new StaticReader(idxPath, statPath, width, height);
-        OnMapFileLoaded?.Invoke(mapId, statPath);
+        NotifyMapFileLoaded(mapId, idxPath);
+        NotifyMapFileLoaded(mapId, statPath);
+    }
+
+    private void NotifyMapFileLoaded(int mapId, string path)
+    {
+        OnMapFileLoaded?.Invoke(mapId, path);
+        var info = new FileInfo(path);
+        OnMapFileLoadedDetailed?.Invoke(mapId, path, info.Length, info.LastWriteTimeUtc);
     }
 
     private string? FindUopMap(int mapId)

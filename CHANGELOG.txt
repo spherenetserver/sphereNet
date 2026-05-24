@@ -1,8 +1,52 @@
 ================================================================================
  SphereNet Changelog
  Tum onemli degisiklikler bu dosyada belgelenir.
- All notable changes are documented in this file.
+All notable changes are documented in this file.
 ================================================================================
+
+[2026-05-24] - Script pack parity hardening ve movement resync duzeltmeleri
+              (Script pack parity hardening and movement resync fixes)
+----------------------------------------
+
+SCRIPT / PARITY:
+  - External/custom script pack icin core/audit profilleri, inventory raporlari,
+    parse/load smoke testleri, runtime trigger corpus ve kategori uyumluluk
+    skorlari eklendi.
+    Added external/custom script pack profiles, inventory reports, load smoke tests,
+    runtime corpus checks and category compatibility scoring.
+  - SERV.*, DB/LDB, FILE.*, TIMERF, SENDPACKET, STARTS/STARTSGOLD, MOONGATES,
+    MULTIDEF, dialog, staff tool ve worldgen audit uyumluluk eksikleri tamamlandi.
+    Completed compatibility gaps across server bridges, delayed callbacks,
+    raw packet sends, starts/moongates, multidefs, dialogs and worldgen audits.
+
+MOVEMENT / MAP:
+  - MoveReject sonrasi client prediction kuyrugunun eski adimlari kabul edilmesin
+    diye kisa resync penceresi eklendi.
+    Added a short post-reject resync window to prevent stale predicted client
+    steps from moving the authoritative server position.
+  - Collision kaynakli movement reject'lerinde 0x21 sonrasinda self redraw
+    (0x20 + 0x78) gonderilerek kosarken duvara/ust yuzeye carpma anindaki sert
+    snap etkisi azaltildi.
+    Collision rejects now redraw the local player after MoveReject to reduce
+    harsh visual snapping on client prediction rollback.
+  - UO map data path cozumleme base path'e sabitlendi; map/statics dosyalari
+    path, boyut ve modifiedUtc bilgisiyle loglanir.
+    UO map data path resolution now uses the server base path and logs terrain
+    and static file identity for diagnostics.
+
+GAMEPLAY / VISIBILITY:
+  - ATTR_INVIS sembolik flag parsing duzeltildi; staff oyuncular ATTR_INVIS
+    ground item'lari sadece AllShow aktifken gorur.
+    Symbolic ATTR_INVIS parsing was fixed, and staff visibility now requires
+    AllShow for invisible ground items.
+  - Login Z correction, map movement diagnostics ve walk validator davranislari
+    regresyon testleriyle genisletildi.
+    Login Z correction, map movement diagnostics and walk validator behavior
+    received expanded regression coverage.
+
+TEST / TEST:
+  - .NET test paketi 397 teste genisletildi ve tum suite dogrulandi.
+    Full .NET test suite expanded to 397 tests and passes.
 
 [2026-05-24] - Gameplay parity, script tools ve anti-cheat iyilestirmeleri
               (Gameplay parity, script tools and anti-cheat improvements)

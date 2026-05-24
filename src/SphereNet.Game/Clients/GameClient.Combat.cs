@@ -39,6 +39,7 @@ public sealed partial class GameClient
     public static int WalkBufferMax { get; set; } = 75;
     public static int WalkRegenPerSecond { get; set; } = 25;
     public static int MoveToleranceMs { get; set; } = 80;
+    public static int MoveRejectResyncMs { get; set; } = 150;
     public static int MoveViolationKickThreshold { get; set; }
     public static Func<long> MoveClock { get; set; } = () => Environment.TickCount64;
 
@@ -46,10 +47,38 @@ public sealed partial class GameClient
     private int _walkTokens = WalkBufferMax;
     private long _walkTokenLastMs;
     private int _moveViolationCount;
+    private long _moveRejectResyncUntil;
+    private long? _movementBatchNow;
 
-    public void HandleMove(byte dir, byte seq, uint fastWalkKey)
+    public void HandleMovementBatch(IReadOnlyList<SphereNet.Network.State.MovementStep> steps)
     {
-        if (_character == null) return;
+        if (_character == null || steps.Count == 0)
+            return;
+
+        long baseNow = MoveClock();
+        long virtualNow = baseNow;
+        for (int i = 0; i < steps.Count; i++)
+        {
+            _movementBatchNow = virtualNow;
+            var step = steps[i];
+            bool accepted = HandleMove(step.Direction, step.Sequence, step.FastWalkKey);
+            if (!accepted)
+            {
+                _logger.LogWarning("[move_batch_stop] char={Char} step={Step}/{Total} seq={Seq} dir=0x{Dir:X2} mode={Mode} pos={X},{Y},{Z}",
+                    _character.Name, i + 1, steps.Count, step.Sequence, step.Direction, step.Mode,
+                    _character.X, _character.Y, _character.Z);
+                break;
+            }
+
+            bool running = (step.Direction & 0x80) != 0;
+            virtualNow += MovementEngine.GetMoveDelay(_character.IsMounted, running);
+        }
+        _movementBatchNow = null;
+    }
+
+    public bool HandleMove(byte dir, byte seq, uint fastWalkKey)
+    {
+        if (_character == null) return false;
         // NOTE: do NOT silently drop walk packets when IsDead. Source-X
         // ghosts walk freely; if the server eats the request without
         // sending either 0x22 (MoveAck) or 0x21 (MoveReject) the client's
@@ -62,18 +91,25 @@ public sealed partial class GameClient
         var direction = (Direction)(dir & 0x07);
         bool running = (dir & 0x80) != 0;
 
-        long now = MoveClock();
+        long now = _movementBatchNow ?? MoveClock();
         _netState.LastActivityTick = now;
+
+        if (_moveRejectResyncUntil > 0 && now < _moveRejectResyncUntil)
+        {
+            _netState.Send(new PacketMoveReject(seq, _character.X, _character.Y, _character.Z, CurrentFacingDir()));
+            _netState.WalkSequence = 0;
+            return false;
+        }
+
         byte expectedSeq = _netState.WalkSequence;
 
         // Strict sequence validation (ServUO-style): reject out-of-order walk packets.
         if (expectedSeq != 0 && seq != expectedSeq)
         {
-            _logger.LogDebug("[move_reject] reason=seq_mismatch got={Got} expected={Expected} at {X},{Y},{Z}",
-                seq, expectedSeq, _character.X, _character.Y, _character.Z);
-            _netState.Send(new PacketMoveReject(seq, _character.X, _character.Y, _character.Z, (byte)_character.Direction));
-            _netState.WalkSequence = 0;
-            return;
+            _logger.LogWarning("[move_reject] reason=seq_mismatch got={Got} expected={Expected} packet=0x{Packet:X2} batch={Batch} dir=0x{Dir:X2} run={Run} at {X},{Y},{Z}",
+                seq, expectedSeq, _netState.LastMovementOpcode, _netState.LastMovementBatchSize, dir, running, _character.X, _character.Y, _character.Z);
+            RejectMove(seq, now);
+            return false;
         }
 
         // Fast-walk replay check intentionally dropped: the server never ships
@@ -99,19 +135,21 @@ public sealed partial class GameClient
             if (rejectReason != null)
             {
                 _moveViolationCount++;
-                _logger.LogDebug("[move_reject] reason={Reason} violations={Violations} ahead={Ahead}ms delay={Delay}ms tokens={Tokens} at {X},{Y},{Z}",
+                _logger.LogWarning("[move_reject] reason={Reason} violations={Violations} ahead={Ahead}ms delay={Delay}ms tokens={Tokens} packet=0x{Packet:X2} batch={Batch} seq={Seq} dir=0x{Dir:X2} run={Run} at {X},{Y},{Z}",
                     rejectReason, _moveViolationCount, Math.Max(0, _nextMoveTime - now), moveDelay, _walkTokens,
-                    _character.X, _character.Y, _character.Z);
-                _netState.Send(new PacketMoveReject(seq, _character.X, _character.Y, _character.Z, (byte)_character.Direction));
-                _netState.WalkSequence = 0;
+                    _netState.LastMovementOpcode, _netState.LastMovementBatchSize, seq, dir, running, _character.X, _character.Y, _character.Z);
+                RejectMove(seq, now);
                 if (MoveViolationKickThreshold > 0 && _moveViolationCount >= MoveViolationKickThreshold)
                     _netState.MarkClosing();
-                return;
+                return false;
             }
         }
 
         // Execute the move
         bool moved;
+        short oldX = _character.X;
+        short oldY = _character.Y;
+        sbyte oldZ = _character.Z;
         SphereNet.Game.Movement.WalkCheck.Diagnostic moveDiag = default;
         if (_movement != null)
             moved = _movement.TryMoveDetailed(_character, direction, running, seq, out moveDiag);
@@ -130,13 +168,22 @@ public sealed partial class GameClient
             int moveDelay = MovementEngine.GetMoveDelay(_character.IsMounted, running);
             if (_character.PrivLevel < PrivLevel.GM && _walkTokens > 0)
                 _walkTokens--;
-            if (_nextMoveTime <= 0 || now >= _nextMoveTime)
-                _nextMoveTime = now + moveDelay;
-            else
-                _nextMoveTime += moveDelay;
+            // Keep the throttle anchored to the last accepted client step.
+            // Accumulating a future schedule makes small, legitimate timing
+            // differences grow until the client is snapped back by MoveReject.
+            _nextMoveTime = now + moveDelay;
             _moveViolationCount = 0;
 
             byte notoriety = GetNotoriety(_character);
+            int zDelta = _character.Z - oldZ;
+            if (Math.Abs(zDelta) > 4)
+            {
+                _logger.LogInformation(
+                    "[move_z_delta] seq={Seq} dir={Dir} run={Run} from {OldX},{OldY},{OldZ} to {NewX},{NewY},{NewZ} dz={Delta} startZ={StartZ} startTop={StartTop} fwdZ={FwdZ} last={Last} tiles=[{Dump}]",
+                    seq, direction, running, oldX, oldY, oldZ, _character.X, _character.Y, _character.Z, zDelta,
+                    moveDiag.StartZ, moveDiag.StartTop, moveDiag.ForwardNewZ,
+                    moveDiag.FwdReason, moveDiag.FwdStaticDump);
+            }
             _netState.Send(new PacketMoveAck(seq, notoriety));
 
             // NOTE: MoveAck (0x22) carries no Z data, so the client keeps its own
@@ -160,6 +207,7 @@ public sealed partial class GameClient
 
             // Expected next sequence from client (0..255, wraps naturally)
             _netState.WalkSequence = (byte)(seq + 1);
+            return true;
         }
         else
         {
@@ -175,22 +223,44 @@ public sealed partial class GameClient
                 reason = $"diagonal_edge left={moveDiag.LeftOk} right={moveDiag.RightOk}";
             else reason = "unknown";
 
-            _logger.LogDebug(
-                "[move_reject] {Reason} dir={Dir} run={Run} from {FromX},{FromY},{FromZ} " +
+            _logger.LogWarning(
+                "[move_reject] {Reason} packet=0x{Packet:X2} batch={Batch} seq={Seq} dir={Dir} run={Run} from {FromX},{FromY},{FromZ} " +
                 "target {TgtX},{TgtY} startZ={StartZ} startTop={StartTop} fwdZ={FwdZ} | " +
                 "fwdLand=tile=0x{LandTile:X} ({LZ}/{LC}/{LT}) blocks={LB} consider={CL} | " +
                 "statics={ST} impassable={IMP} surfaces={SC} items={IC} mobiles={MC} last={Last} | " +
                 "tiles=[{Dump}] mobs=[{MobDump}]",
-                reason, direction, running, _character.X, _character.Y, _character.Z,
+                reason, _netState.LastMovementOpcode, _netState.LastMovementBatchSize, seq, direction, running, _character.X, _character.Y, _character.Z,
                 tgtX, tgtY, moveDiag.StartZ, moveDiag.StartTop, moveDiag.ForwardNewZ,
                 moveDiag.FwdLandTileId, moveDiag.FwdLandZ, moveDiag.FwdLandCenter, moveDiag.FwdLandTop,
                 moveDiag.FwdLandBlocks, moveDiag.FwdConsiderLand,
                 moveDiag.FwdStaticTotal, moveDiag.FwdImpassableCount,
                 moveDiag.FwdSurfaceCount, moveDiag.FwdItemSurfaceCount, moveDiag.FwdMobileCount,
                 moveDiag.FwdReason, moveDiag.FwdStaticDump, moveDiag.FwdMobileDump);
-            _netState.Send(new PacketMoveReject(seq, _character.X, _character.Y, _character.Z, (byte)_character.Direction));
-            _netState.WalkSequence = 0;
+            RejectMove(seq, now, redrawSelf: true);
+            return false;
         }
+    }
+
+    private void RejectMove(byte seq, long now, bool redrawSelf = false)
+    {
+        if (_character == null) return;
+        _netState.Send(new PacketMoveReject(seq, _character.X, _character.Y, _character.Z, CurrentFacingDir()));
+        if (redrawSelf)
+        {
+            _netState.Send(new PacketDrawPlayer(
+                _character.Uid.Value, _character.BodyId, _character.Hue,
+                BuildMobileFlags(_character),
+                _character.X, _character.Y, _character.Z, CurrentFacingDir()));
+            SendDrawObject(_character);
+        }
+        _netState.WalkSequence = 0;
+        int resyncMs = Math.Max(0, MoveRejectResyncMs);
+        _moveRejectResyncUntil = resyncMs > 0 ? now + resyncMs : 0;
+    }
+
+    private byte CurrentFacingDir()
+    {
+        return _character == null ? (byte)0 : (byte)((byte)_character.Direction & 0x07);
     }
 
     private void ResetWalkValidator()
@@ -199,6 +269,7 @@ public sealed partial class GameClient
         _walkTokens = Math.Max(1, WalkBufferMax);
         _walkTokenLastMs = 0;
         _moveViolationCount = 0;
+        _moveRejectResyncUntil = 0;
     }
 
     private void RefillWalkTokens(long now)

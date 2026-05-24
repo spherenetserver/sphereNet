@@ -563,6 +563,29 @@ public sealed class ScriptInterpreter
             return;
         }
 
+        if (cmd.Equals("SERV.WRITEFILE", StringComparison.OrdinalIgnoreCase) ||
+            cmd.Equals("WRITEFILE", StringComparison.OrdinalIgnoreCase))
+        {
+            ServerPropertyResolver?.Invoke($"_WRITEFILE={resolvedArg}");
+            return;
+        }
+
+        if (cmd.Equals("SERV.LOG", StringComparison.OrdinalIgnoreCase) ||
+            cmd.Equals("LOG", StringComparison.OrdinalIgnoreCase))
+        {
+            ServerPropertyResolver?.Invoke($"_LOG={resolvedArg}");
+            return;
+        }
+
+        if (cmd.Equals("SERV.GMPAGE", StringComparison.OrdinalIgnoreCase) ||
+            cmd.Equals("SENDGMPAGE", StringComparison.OrdinalIgnoreCase))
+        {
+            string srcUid = args?.Source != null && args.Source.TryGetProperty("UID", out string suid)
+                ? suid : "";
+            ServerPropertyResolver?.Invoke($"_GMPAGE={srcUid}|{resolvedArg}");
+            return;
+        }
+
         // DEFMSG name=value — set default message
         if (cmd.Equals("DEFMSG", StringComparison.OrdinalIgnoreCase))
         {

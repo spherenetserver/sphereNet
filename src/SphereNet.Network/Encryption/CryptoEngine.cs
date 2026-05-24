@@ -15,24 +15,29 @@ public sealed class LoginEncryption
     private uint _maskHi;
     private readonly uint _masterHi;
     private readonly uint _masterLo;
+    private readonly LoginEncryptionMode _mode;
 
-    public LoginEncryption(uint seed, uint clientKey1, uint clientKey2)
+    public LoginEncryption(uint seed, uint clientKey1, uint clientKey2,
+        LoginEncryptionMode mode = LoginEncryptionMode.Standard)
     {
         _maskLo = ((~seed ^ 0x00001357) << 16) | ((seed ^ 0xFFFFAAAA) & 0x0000FFFF);
         _maskHi = ((seed ^ 0x43210000) >> 16) | ((~seed ^ 0xABCDFFFF) & 0xFFFF0000);
         _masterHi = clientKey1;
         _masterLo = clientKey2;
+        _mode = mode;
     }
 
     /// <summary>
     /// Constructor with explicit initial masks (for RelayGameCryptStart where masks start at 0).
     /// </summary>
-    public LoginEncryption(uint seed, uint clientKey1, uint clientKey2, uint maskLo, uint maskHi)
+    public LoginEncryption(uint seed, uint clientKey1, uint clientKey2, uint maskLo, uint maskHi,
+        LoginEncryptionMode mode = LoginEncryptionMode.Standard)
     {
         _maskLo = maskLo;
         _maskHi = maskHi;
         _masterHi = clientKey1;
         _masterLo = clientKey2;
+        _mode = mode;
     }
 
     public void Decrypt(byte[] data, int offset, int length)
@@ -49,11 +54,20 @@ public sealed class LoginEncryption
         uint oldLo = _maskLo;
         uint oldHi = _maskHi;
         _maskLo = ((oldLo >> 1) | (oldHi << 31)) ^ _masterLo;
-        _maskHi = ((oldHi >> 1) | (oldLo << 31)) ^ _masterHi;
+        uint nextHi = ((oldHi >> 1) | (oldLo << 31)) ^ _masterHi;
+        _maskHi = _mode == LoginEncryptionMode.Old
+            ? nextHi
+            : ((nextHi >> 1) | (oldLo << 31)) ^ _masterHi;
     }
 
     public uint CurrentMaskLo => _maskLo;
     public uint CurrentMaskHi => _maskHi;
+}
+
+public enum LoginEncryptionMode
+{
+    Standard,
+    Old
 }
 
 /// <summary>

@@ -224,8 +224,27 @@ public sealed partial class GameClient
             _character.Hits = _character.MaxHits; _character.Mana = _character.MaxMana; _character.Stam = _character.MaxStam;
 
             var startPos = BotSpawnLocationProvider?.Invoke(_account.Name)
+                ?? _commands?.Resources?.Starts.FirstOrDefault()?.Point
                 ?? new Point3D(1495, 1629, 10, 0);
             _world.PlaceCharacter(_character, startPos);
+
+            foreach (var goldEntry in _commands?.Resources?.StartGold ?? [])
+            {
+                if (goldEntry.Amount <= 0)
+                    continue;
+                var gold = _world.CreateItem();
+                gold.BaseId = 0x0EED;
+                gold.Name = string.IsNullOrWhiteSpace(goldEntry.Name) ? "gold" : goldEntry.Name;
+                gold.Amount = (ushort)Math.Min(ushort.MaxValue, goldEntry.Amount);
+                var pack = _character.Backpack;
+                if (pack == null)
+                {
+                    pack = _world.CreateItem();
+                    pack.BaseId = 0x0E75;
+                    _character.Equip(pack, Layer.Pack);
+                }
+                pack.AddItem(gold);
+            }
             int assignSlot = slot >= 0 ? slot : _account.FindFreeSlot();
             if (assignSlot >= 0)
                 _account.SetCharSlot(assignSlot, _character.Uid);

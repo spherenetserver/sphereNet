@@ -19,15 +19,24 @@ public sealed class ResourceHolder
     private readonly List<ResourceScript> _scriptFiles = [];
     private readonly Dictionary<string, string> _defMessages = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<TeleporterEntry> _teleporters = [];
+    private readonly List<StartEntry> _starts = [];
+    private readonly List<StartGoldEntry> _startGold = [];
+    private readonly List<MoongateEntry> _moongates = [];
     private readonly Dictionary<string, (string FilePath, List<string> Lines)> _dialogTextCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ILogger _logger;
 
     public IReadOnlyList<(Point3D Src, Point3D Dest, string Name)> Teleporters =>
         _teleporters.Select(t => (t.Src, t.Dest, t.Name)).ToList();
+    public IReadOnlyList<StartEntry> Starts => _starts;
+    public IReadOnlyList<StartGoldEntry> StartGold => _startGold;
+    public IReadOnlyList<MoongateEntry> Moongates => _moongates;
 
     public string ScpBaseDir { get; set; } = "";
 
     private sealed record TeleporterEntry(Point3D Src, Point3D Dest, string Name, string FilePath);
+    public sealed record StartEntry(string Name, Point3D Point);
+    public sealed record StartGoldEntry(string Name, int Amount);
+    public sealed record MoongateEntry(string Name, Point3D Point);
 
     public ResourceHolder(ILogger<ResourceHolder> logger)
     {
@@ -75,7 +84,7 @@ public sealed class ResourceHolder
         "COMMENT" => ResType.Comment,
         "ADVANCE" or "FAME" or "KARMA" or "NOTOTITLES" or "RUNES" or "DEFMESSAGE" => ResType.Sphere,
         "TYPEDEFS" => ResType.Sphere,
-        "STARTS" or "MOONGATES" or "TELEPORTERS" => ResType.WorldScript,
+        "STARTS" or "STARTSGOLD" or "STARTGOLD" or "MOONGATES" or "TELEPORTERS" => ResType.WorldScript,
         _ => ResType.Unknown
     };
 
@@ -84,7 +93,7 @@ public sealed class ResourceHolder
     /// All other types use string names that get auto-hashed.
     /// </summary>
     private static bool IsNumericIdType(ResType t) => t is
-        ResType.ItemDef or ResType.CharDef or ResType.SpellDef or ResType.SkillDef;
+        ResType.ItemDef or ResType.CharDef or ResType.SpellDef or ResType.SkillDef or ResType.MultiDef;
 
     /// <summary>
     /// Definition types whose keys should be retained on the ResourceLink
@@ -93,7 +102,8 @@ public sealed class ResourceHolder
     private static bool IsDefinitionType(ResType t) => t is
         ResType.ItemDef or ResType.CharDef or ResType.SpellDef or ResType.SkillClass or ResType.SkillDef
         or ResType.Names or ResType.Speech or ResType.Template or ResType.RegionResource or ResType.RegionType
-        or ResType.NewBie or ResType.Events or ResType.TypeDef or ResType.Function or ResType.Dialog;
+        or ResType.NewBie or ResType.Events or ResType.TypeDef or ResType.Function or ResType.Dialog
+        or ResType.MultiDef;
 
     /// <summary>
     /// Load all sections from a script file.
@@ -156,6 +166,12 @@ public sealed class ResourceHolder
                 string sectionUpper = section.Name.ToUpperInvariant();
                 if (sectionUpper == "TELEPORTERS")
                     LoadTeleporters(section, filePath);
+                else if (sectionUpper == "STARTS")
+                    LoadStarts(section);
+                else if (sectionUpper is "STARTSGOLD" or "STARTGOLD")
+                    LoadStartGold(section);
+                else if (sectionUpper == "MOONGATES")
+                    LoadMoongates(section);
                 count++;
                 continue;
             }
@@ -294,10 +310,11 @@ public sealed class ResourceHolder
         if (string.IsNullOrEmpty(arg))
             return -1;
 
-        // For numeric ID types (ITEMDEF, CHARDEF, SPELL, SKILL) — parse as hex
+        // For numeric ID types (ITEMDEF, CHARDEF, SPELL, SKILL, MULTIDEF) — parse as hex
         if (IsNumericIdType(resType))
         {
-            var span = arg.AsSpan().Trim();
+            var cleanName = arg.Split(' ', 2)[0].Trim();
+            var span = cleanName.AsSpan();
 
             // Strip 0x prefix if present
             if (span.Length > 2 && span[0] == '0' && (span[1] == 'x' || span[1] == 'X'))
@@ -307,11 +324,10 @@ public sealed class ResourceHolder
                 return (int)hexVal;
 
             // Try as DEFNAME for numeric types too (e.g. [CHARDEF c_guard] where c_guard was in DEFNAME)
-            if (_defNames.TryGetValue(arg, out var rid))
+            if (_defNames.TryGetValue(cleanName, out var rid))
                 return rid.Index;
 
             // For CHARDEF/ITEMDEF with string names, auto-assign an index and register
-            string cleanName = arg.Split(' ', 2)[0].Trim();
             if (!string.IsNullOrEmpty(cleanName))
             {
                 int hash = GenerateStringHash(cleanName, resType);
@@ -630,8 +646,15 @@ public sealed class ResourceHolder
 
             if (resType == ResType.WorldScript)
             {
-                if (section.Name.Equals("TELEPORTERS", StringComparison.OrdinalIgnoreCase))
+                string sectionUpper = section.Name.ToUpperInvariant();
+                if (sectionUpper == "TELEPORTERS")
                     LoadTeleporters(section, filePath);
+                else if (sectionUpper == "STARTS")
+                    LoadStarts(section);
+                else if (sectionUpper is "STARTSGOLD" or "STARTGOLD")
+                    LoadStartGold(section);
+                else if (sectionUpper == "MOONGATES")
+                    LoadMoongates(section);
                 continue;
             }
 
@@ -747,6 +770,56 @@ public sealed class ResourceHolder
         }
 
         _logger.LogInformation("Loaded {Count} teleporters", _teleporters.Count);
+    }
+
+    private void LoadStarts(ScriptSection section)
+    {
+        foreach (var key in section.Keys)
+        {
+            string name = key.Key.Trim();
+            string value = key.Arg.Trim();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                name = "";
+                value = key.Key.Trim();
+            }
+            var point = ParseTeleportPoint(value);
+            if (point.X == 0 && point.Y == 0)
+                continue;
+            _starts.Add(new StartEntry(name, point));
+        }
+        _logger.LogInformation("Loaded {Count} start locations", _starts.Count);
+    }
+
+    private void LoadStartGold(ScriptSection section)
+    {
+        foreach (var key in section.Keys)
+        {
+            string name = key.Key.Trim();
+            string amountText = key.Arg.Trim();
+            if (int.TryParse(amountText, out int amount))
+                _startGold.Add(new StartGoldEntry(name, amount));
+        }
+        _logger.LogInformation("Loaded {Count} start gold entries", _startGold.Count);
+    }
+
+    private void LoadMoongates(ScriptSection section)
+    {
+        foreach (var key in section.Keys)
+        {
+            string name = key.Key.Trim();
+            string value = key.Arg.Trim();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                name = "";
+                value = key.Key.Trim();
+            }
+            var point = ParseTeleportPoint(value);
+            if (point.X == 0 && point.Y == 0)
+                continue;
+            _moongates.Add(new MoongateEntry(name, point));
+        }
+        _logger.LogInformation("Loaded {Count} moongates", _moongates.Count);
     }
 
     private static Point3D ParseTeleportPoint(string s)

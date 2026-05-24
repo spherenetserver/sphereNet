@@ -1325,7 +1325,7 @@ public sealed partial class GameClient
                         SysMessage("LDB.CONNECT requires a filename.");
                         return true;
                     }
-                    if (!_scriptLdb.ConnectFile(fileName, out string err))
+                    if (!_scriptLdb.ConnectFile(fileName, _scriptDatabaseRoot, out string err))
                         SysMessage(ServerMessages.GetFormatted("db_connect_fail", err));
                     return true;
                 }
@@ -1356,7 +1356,125 @@ public sealed partial class GameClient
             return true;
         }
 
+        if (upper.Equals("SENDPACKET", StringComparison.Ordinal))
+        {
+            if (TryParseScriptPacket(args, out byte[] packet, out string err))
+            {
+                _netState.SendRaw(packet);
+            }
+            else
+            {
+                _logger.LogWarning("[script_packet] SENDPACKET rejected: {Error}; input='{Input}'", err, args);
+            }
+            return true;
+        }
+
         return false;
+    }
+
+    private static bool TryParseScriptPacket(string args, out byte[] packet, out string error)
+    {
+        packet = [];
+        error = "";
+        var tokens = args.Split([' ', '\t', ','], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (tokens.Length == 0)
+        {
+            error = "empty packet";
+            return false;
+        }
+
+        var bytes = new List<byte>(tokens.Length + 8);
+        foreach (string raw in tokens)
+        {
+            if (!TryParsePacketToken(raw, bytes, out error))
+                return false;
+            if (bytes.Count > 256)
+            {
+                error = "packet exceeds 256-byte script limit";
+                return false;
+            }
+        }
+
+        packet = bytes.ToArray();
+        return packet.Length > 0;
+    }
+
+    private static bool TryParsePacketToken(string token, List<byte> bytes, out string error)
+    {
+        error = "";
+        string t = token.Trim();
+        if (t.Length == 0)
+            return true;
+
+        int colon = t.IndexOf(':');
+        string kind = "";
+        if (colon > 0)
+        {
+            kind = t[..colon].ToUpperInvariant();
+            t = t[(colon + 1)..];
+        }
+        else if (t.Length > 1 && (t[0] == 'B' || t[0] == 'W' || t[0] == 'D') &&
+                 (char.IsDigit(t[1]) || t[1] == 'x' || t[1] == 'X'))
+        {
+            kind = t[0] switch
+            {
+                'B' => "BYTE",
+                'W' => "WORD",
+                'D' => "DWORD",
+                _ => ""
+            };
+            t = t[1..];
+        }
+
+        if (!TryParsePacketNumber(t, out uint value))
+        {
+            error = $"invalid token '{token}'";
+            return false;
+        }
+
+        switch (kind)
+        {
+            case "":
+            case "BYTE":
+                if (value > byte.MaxValue)
+                {
+                    error = $"byte token out of range '{token}'";
+                    return false;
+                }
+                bytes.Add((byte)value);
+                return true;
+            case "WORD":
+                if (value > ushort.MaxValue)
+                {
+                    error = $"word token out of range '{token}'";
+                    return false;
+                }
+                bytes.Add((byte)(value >> 8));
+                bytes.Add((byte)value);
+                return true;
+            case "DWORD":
+                bytes.Add((byte)(value >> 24));
+                bytes.Add((byte)(value >> 16));
+                bytes.Add((byte)(value >> 8));
+                bytes.Add((byte)value);
+                return true;
+            default:
+                error = $"unknown token type '{kind}'";
+                return false;
+        }
+    }
+
+    private static bool TryParsePacketNumber(string token, out uint value)
+    {
+        value = 0;
+        string t = token.Trim();
+        if (t.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            return uint.TryParse(t.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out value);
+        if (t.Length > 1 && t[0] == '0' && t.All(c => Uri.IsHexDigit(c)))
+            return uint.TryParse(t.AsSpan(1), System.Globalization.NumberStyles.HexNumber, null, out value);
+        if (t.Any(c => char.IsLetter(c)))
+            return uint.TryParse(t, System.Globalization.NumberStyles.HexNumber, null, out value);
+        return uint.TryParse(t, out value);
     }
 
     public bool TryResolveScriptVariable(string varName, IScriptObj target, ITriggerArgs? triggerArgs, out string value)
@@ -1842,7 +1960,7 @@ public sealed partial class GameClient
             Character? ch = target as Character ?? _character;
             if (ch == null)
                 return Array.Empty<IScriptObj>();
-            return ch.GetMemoryEntriesByType(args);
+            return ch.GetMemoryEntriesByType(args, _world);
         }
 
         return Array.Empty<IScriptObj>();

@@ -72,6 +72,7 @@ public sealed partial class GameClient : ITextConsole
     public static Action<Character>? OnWakeNpc;
     private ScriptDbAdapter? _scriptDb;
     private ScriptDbAdapter? _scriptLdb;
+    private string _scriptDatabaseRoot = AppContext.BaseDirectory;
     private ScriptFileHandle? _scriptFile;
     private Func<string, string?>? _defMessageLookup;
 
@@ -401,11 +402,14 @@ public sealed partial class GameClient : ITextConsole
         ScriptDbAdapter? scriptDb = null,
         Func<string, string?>? defMessageLookup = null,
         ScriptFileHandle? scriptFile = null,
-        ScriptDbAdapter? scriptLdb = null)
+        ScriptDbAdapter? scriptLdb = null,
+        string? scriptDatabaseRoot = null)
     {
         _systemHooks = systemHooks;
         _scriptDb = scriptDb;
         _scriptLdb = scriptLdb;
+        if (!string.IsNullOrWhiteSpace(scriptDatabaseRoot))
+            _scriptDatabaseRoot = scriptDatabaseRoot;
         _defMessageLookup = defMessageLookup;
         _scriptFile = scriptFile;
     }

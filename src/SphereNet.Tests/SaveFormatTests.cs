@@ -122,6 +122,40 @@ public class SaveFormatTests
     }
 
     [Fact]
+    public void WorldSaver_BackupLevels_RotatesCommittedFiles()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_backup_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, _) = MakeIO();
+            saver.Format = SaveFormat.Text;
+            saver.ShardCount = 0;
+            saver.BackupLevels = 2;
+
+            var world = MakeWorld();
+            var item = world.CreateItem();
+            item.BaseId = 0x0EED;
+            world.PlaceItem(item, new Point3D(100, 100, 0, 0));
+
+            Assert.True(saver.Save(world, tmp));
+            item.Amount = 2;
+            Assert.True(saver.Save(world, tmp));
+            Assert.True(File.Exists(Path.Combine(tmp, "sphereworld.scp.bak1")));
+            item.Amount = 3;
+            Assert.True(saver.Save(world, tmp));
+
+            Assert.True(File.Exists(Path.Combine(tmp, "sphereworld.scp.bak1")));
+            Assert.True(File.Exists(Path.Combine(tmp, "sphereworld.scp.bak2")));
+            Assert.False(File.Exists(Path.Combine(tmp, "sphereworld.scp.bak3")));
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public void Roundtrip_NormalizesStatLockAndRuneRuntimeState()
     {
         string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_runtime_{Guid.NewGuid():N}");

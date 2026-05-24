@@ -47,4 +47,14 @@ public class ExpressionRegressionTests
 
         Assert.Equal("-1", parser.EvaluateStr("<STRREGEXNEW 4,aaaa,(a+)\\1>"));
     }
+
+    [Fact]
+    public void ExpressionParser_FloatFunctions_PreserveDecimalMath()
+    {
+        var parser = new ExpressionParser();
+
+        Assert.Equal("1.5", parser.EvaluateStr("<FEVAL 1/2+1>"));
+        Assert.Equal("2.75", parser.EvaluateStr("<FLOATVAL (1.5+4)/2>"));
+        Assert.Equal("02", parser.EvaluateStr("<FHVAL 2.9>"));
+    }
 }

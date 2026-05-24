@@ -53,6 +53,39 @@ Before accepting real players:
 - Confirm telnet refuses to start when `AdminPassword` is empty.
 - Confirm save/load roundtrip on a staging world.
 - Watch startup logs for missing scripts, map data, and unknown packet warnings.
+- Check `http://localhost:<status-port>/health` returns `{"status":"ok"}`.
+- Check `http://localhost:<status-port>/status` includes `runtime.tick` data
+  such as `p95Ms`, `p99Ms`, `multicoreEnabled`, and phase timings.
+
+## Windows Service / Scheduled Host
+
+For a first production shard on Windows, run `SphereNet.Server.exe` from a
+dedicated service account with read/write access only to the shard directory.
+Use NSSM, Windows Service Wrapper, Task Scheduler, or your preferred supervisor
+to restart on failure. Redirect stdout/stderr to `logs/` and keep the current
+working directory at the shard root so relative `sphere.ini` paths resolve.
+
+## Linux systemd Sketch
+
+```ini
+[Unit]
+Description=SphereNet shard
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/spherenet/shard
+ExecStart=/usr/bin/dotnet /opt/spherenet/SphereNet.Server.dll
+Restart=on-failure
+RestartSec=10
+User=spherenet
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Keep saves and account files on persistent storage and back them up outside the
+process. `BackupLevels` protects recent file generations, not disk loss.
 
 ## Reverse Proxy Notes
 

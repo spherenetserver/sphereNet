@@ -26,6 +26,7 @@ using SphereNet.Scripting.Definitions;
 using SphereNet.Network.Packets;
 using SphereNet.Network.Packets.Outgoing;
 using SphereNet.Network.State;
+using SphereNet.Core.Security;
 using ExecTriggerArgs = SphereNet.Scripting.Execution.TriggerArgs;
 using SphereNet.Game.Messages;
 using ScriptDbAdapter = SphereNet.Scripting.Execution.ScriptDbAdapter;
@@ -34,11 +35,16 @@ namespace SphereNet.Game.Clients;
 
 public sealed partial class GameClient
 {
+    private static readonly LoginRateLimiter s_loginRateLimiter = new();
 
     public void HandleLoginRequest(string account, string password)
     {
+        if (IsLoginLimited(account))
+            return;
+
         if (string.IsNullOrWhiteSpace(account) || string.IsNullOrEmpty(password))
         {
+            RegisterLoginFailure(account);
             _netState.Send(new PacketLoginDenied(3));
             _netState.MarkClosing();
             return;
@@ -47,11 +53,13 @@ public sealed partial class GameClient
         _account = _accountManager.Authenticate(account, password);
         if (_account == null)
         {
+            RegisterLoginFailure(account);
             _netState.Send(new PacketLoginDenied(3));
             _netState.MarkClosing();
             return;
         }
 
+        RegisterLoginSuccess(account);
         _account.LastIp = _netState.RemoteEndPoint?.Address.ToString() ?? "";
         // Keep login-server list deterministic for local development.
         // 0.0.0.0 (or unstable interface picks) can make some clients hang.
@@ -60,8 +68,12 @@ public sealed partial class GameClient
 
     public void HandleGameLogin(string account, string password, uint authId)
     {
+        if (IsLoginLimited(account))
+            return;
+
         if (string.IsNullOrWhiteSpace(account) || string.IsNullOrEmpty(password))
         {
+            RegisterLoginFailure(account);
             _netState.Send(new PacketLoginDenied(3));
             _netState.MarkClosing();
             return;
@@ -72,11 +84,13 @@ public sealed partial class GameClient
         if (_account == null)
         {
             _logger.LogDebug("HandleGameLogin: AUTH FAILED for '{Account}'", account);
+            RegisterLoginFailure(account);
             _netState.Send(new PacketLoginDenied(3));
             _netState.MarkClosing();
             return;
         }
 
+        RegisterLoginSuccess(account);
         // Feature enable (0xB9) — must come before char list.
         // Prefer config-driven FEATURE* OR from sphere.ini (set via
         // ServerFeatureFlags during startup). Fall back to a client-version
@@ -102,6 +116,32 @@ public sealed partial class GameClient
         var charListPacket = new PacketCharList(charNames);
         var built = charListPacket.Build();
         _netState.Send(built);
+    }
+
+    private bool IsLoginLimited(string account)
+    {
+        string key = LoginRateLimitKey(account);
+        if (!s_loginRateLimiter.IsLimited(key, out var retryAfter))
+            return false;
+
+        _logger.LogWarning("[AUTH] Login throttled for {Key}; retry after {Seconds:F1}s",
+            key, retryAfter.TotalSeconds);
+        _netState.Send(new PacketLoginDenied(3));
+        _netState.MarkClosing();
+        return true;
+    }
+
+    private void RegisterLoginFailure(string account) =>
+        s_loginRateLimiter.RegisterFailure(LoginRateLimitKey(account));
+
+    private void RegisterLoginSuccess(string account) =>
+        s_loginRateLimiter.RegisterSuccess(LoginRateLimitKey(account));
+
+    private string LoginRateLimitKey(string account)
+    {
+        string ip = _netState.RemoteEndPoint?.Address.ToString() ?? "unknown";
+        string name = string.IsNullOrWhiteSpace(account) ? "<empty>" : account.Trim();
+        return $"{ip}:{name}";
     }
 
     public void HandleCharSelect(int slot, string name)

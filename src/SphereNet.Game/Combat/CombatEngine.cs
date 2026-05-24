@@ -485,17 +485,28 @@ public static class CombatEngine
     /// </summary>
     public static int GetSwingDelayMs(Character attacker, Item? weapon)
     {
-        const int speedScaleFactor = 15000;
-
         int baseSpeed = weapon?.Speed > 0 ? weapon.Speed : 0;
         if (baseSpeed <= 0)
             baseSpeed = weapon == null ? 50 : 35;
 
         int dex = Math.Max(0, (int)attacker.Dex);
-        long iSwingSpeed = (long)(dex + 100) * baseSpeed;
-        if (iSwingSpeed < 1) iSwingSpeed = 1;
+        long deciseconds;
+        switch (Character.CombatSpeedEra)
+        {
+            case 2: // AOS: faster dex scaling, approximates UO:R/AOS weapon-speed feel.
+                deciseconds = (long)Math.Round((40_000.0 / ((dex + 100) * Math.Max(1, baseSpeed))) * 10);
+                break;
+            case 1: // Pre-AOS: fixed weapon speed with lighter dex contribution.
+                deciseconds = Math.Max(8, 50 - (baseSpeed / 2) - (dex / 30));
+                break;
+            default:
+                const int speedScaleFactor = 15000;
+                long iSwingSpeed = (long)(dex + 100) * baseSpeed;
+                if (iSwingSpeed < 1) iSwingSpeed = 1;
+                deciseconds = (speedScaleFactor * 10L) / iSwingSpeed;
+                break;
+        }
 
-        long deciseconds = (speedScaleFactor * 10L) / iSwingSpeed;
         if (deciseconds < 5) deciseconds = 5;
 
         if (weapon != null && weapon.IsTwoHanded)

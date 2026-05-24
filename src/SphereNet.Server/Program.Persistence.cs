@@ -82,6 +82,36 @@ public static partial class Program
         _mainLoopActions.Enqueue(() => HandleSaveFormatChange(fmtName, shards));
     }
 
+    private static object GetRuntimeMetrics()
+    {
+        var tick = GetTickTelemetrySnapshot();
+        return new
+        {
+            tick.SampleCount,
+            tick.AvgMs,
+            tick.MaxMs,
+            tick.P50Ms,
+            tick.P95Ms,
+            tick.P99Ms,
+            tick.MaxSinceStartMs,
+            tick.MulticoreEnabled,
+            SlowTickCount = _slowTickCount,
+            LastSlowTickDominantPhase = _lastSlowTickDominantPhase,
+            SaveCount = _saveCount,
+            Telemetry = new
+            {
+                SnapshotMs = _telemetrySnapshotUs / 1000.0,
+                ComputeMs = _telemetryComputeUs / 1000.0,
+                ApplyMs = _telemetryApplyUs / 1000.0,
+                FlushMs = _telemetryFlushUs / 1000.0,
+                NpcBuildMs = _telemetryNpcBuildUs / 1000.0,
+                ClientStateMs = _telemetryClientStateUs / 1000.0,
+                NpcApplyMs = _telemetryNpcApplyUs / 1000.0,
+                ViewBuildMs = _telemetryViewBuildUs / 1000.0
+            }
+        };
+    }
+
     private static void PerformSave()
     {
         // Source-X DEFMSG_WORLDSAVE_S behaviour: tell every online player a

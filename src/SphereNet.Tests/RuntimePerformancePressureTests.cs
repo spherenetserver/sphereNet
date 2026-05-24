@@ -129,6 +129,28 @@ public class RuntimePerformancePressureTests
         }
     }
 
+    [Fact]
+    public void GameWorld_VisitInRange_ReturnsCharsAndItemsInSinglePass()
+    {
+        using var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld(loggerFactory);
+        var center = new Point3D(100, 100, 0, 0);
+        var ch = world.CreateCharacter();
+        world.PlaceCharacter(ch, center);
+        var item = world.CreateItem();
+        world.PlaceItem(item, new Point3D(101, 100, 0, 0));
+        var far = world.CreateItem();
+        world.PlaceItem(far, new Point3D(300, 300, 0, 0));
+
+        var chars = new List<Character>();
+        var items = new List<Item>();
+        world.VisitInRange(center, 2, chars.Add, items.Add);
+
+        Assert.Contains(ch, chars);
+        Assert.Contains(item, items);
+        Assert.DoesNotContain(far, items);
+    }
+
     private static GameWorld CreateWorld(ILoggerFactory loggerFactory)
     {
         var world = new GameWorld(loggerFactory);

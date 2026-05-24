@@ -353,7 +353,7 @@ public sealed partial class GameClient
                     SysMessage(ServerMessages.Get(Msg.ItemuseDyeNohair));
                     break;
                 }
-                SysMessage("Choose a new color for your hair."); // Source-X dialog d_hair_dye not yet ported.
+                ApplyHairDye(item);
                 break;
 
             case ItemType.Dye:
@@ -901,6 +901,19 @@ public sealed partial class GameClient
             dest.Hue = new Core.Types.Color(hue);
             SysMessage("The item changes color.");
         }
+    }
+
+    private void ApplyHairDye(Item dye)
+    {
+        if (_character == null) return;
+        ushort hue = dye.Hue.Value != 0 ? dye.Hue.Value : (ushort)0x044E;
+        var hair = _character.GetEquippedItem(Layer.Hair);
+        var beard = _character.GetEquippedItem(Layer.FacialHair);
+        if (hair != null)
+            hair.Hue = new Core.Types.Color(hue);
+        if (beard != null)
+            beard.Hue = new Core.Types.Color(hue);
+        SysMessage("You dye your hair.");
     }
 
     /// <summary>Format a Source-X-style local game time string for IT_CLOCK.</summary>

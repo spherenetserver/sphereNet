@@ -163,9 +163,15 @@ public static class VendorEngine
         if (vendor.NpcBrain != Core.Enums.NpcBrainType.Vendor)
             return 0;
 
-        int totalValue = 0;
+        long totalValue = 0;
         foreach (var entry in items)
-            totalValue += entry.Price * entry.Amount;
+        {
+            if (entry.Price < 0 || entry.Amount < 0)
+                return 0;
+            totalValue += (long)entry.Price * entry.Amount;
+            if (totalValue > int.MaxValue)
+                return 0;
+        }
 
         if (World != null)
         {
@@ -183,7 +189,7 @@ public static class VendorEngine
             }
 
             // Add gold to player (split into 60000-max piles)
-            int remaining = totalValue;
+            int remaining = (int)totalValue;
             while (remaining > 0 && backpack != null)
             {
                 int pile = Math.Min(remaining, 60000);
@@ -197,7 +203,7 @@ public static class VendorEngine
             }
         }
 
-        return totalValue;
+        return (int)totalValue;
     }
 
     /// <summary>Count gold in player's backpack recursively.</summary>

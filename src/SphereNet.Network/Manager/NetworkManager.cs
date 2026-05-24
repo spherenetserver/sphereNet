@@ -385,6 +385,13 @@ public sealed class NetworkManager : IDisposable
 
                 var buffer = new PacketBuffer(data.Slice(consumed + payloadOffset, payloadLength).ToArray());
                 handler.OnReceive(buffer, state);
+                if (buffer.IsUnderrun)
+                {
+                    _logger.LogWarning("Malformed packet underrun #{Id} 0x{Op:X2}: payload={PayloadLen}",
+                        state.Id, opcode, payloadLength);
+                    state.MarkClosing();
+                    break;
+                }
             }
             else
             {

@@ -131,4 +131,28 @@ public class CombatEngineTests
         var type = CombatEngine.GetWeaponDamageType(null);
         Assert.Equal(DamageType.HitBlunt, type);
     }
+
+    [Fact]
+    public void GetSwingDelayMs_CombatSpeedEra_ChangesDelay()
+    {
+        var ch = MakeChar(dex: 80);
+        var weapon = new Item { BaseId = 0x0F5E };
+        int oldEra = Character.CombatSpeedEra;
+        try
+        {
+            Character.CombatSpeedEra = 0;
+            int era0 = CombatEngine.GetSwingDelayMs(ch, weapon);
+            Character.CombatSpeedEra = 1;
+            int era1 = CombatEngine.GetSwingDelayMs(ch, weapon);
+            Character.CombatSpeedEra = 2;
+            int era2 = CombatEngine.GetSwingDelayMs(ch, weapon);
+
+            Assert.NotEqual(era0, era1);
+            Assert.NotEqual(era1, era2);
+        }
+        finally
+        {
+            Character.CombatSpeedEra = oldEra;
+        }
+    }
 }

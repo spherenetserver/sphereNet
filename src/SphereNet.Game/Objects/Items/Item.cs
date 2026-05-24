@@ -4,6 +4,7 @@ using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
 using SphereNet.Game.Components;
 using SphereNet.Game.Definitions;
+using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.World;
 using SphereNet.Scripting.Resources;
 
@@ -20,6 +21,9 @@ public class Item : ObjBase
     public static Func<Ships.ShipEngine?>? ResolveShipEngine;
     public new static Func<World.GameWorld>? ResolveWorld;
     public static Func<Serial, Guild.GuildDef?>? ResolveGuild;
+    public static Func<Serial, Character?>? ResolveGuildCharacter;
+    public static Func<Item, Serial, string, bool>? ExecuteGuildMemberCommand;
+    public static Func<Item, Serial, string, bool>? ExecuteGuildRelationCommand;
     public static Func<string, ushort>? ResolveDefName;
     /// <summary>Invoked by MULTICREATE when a script registers a multi
     /// as a house at runtime. Program.cs wires this to
@@ -1531,13 +1535,41 @@ public class Item : ObjBase
             case "ALLMEMBERS":
             {
                 // ALLMEMBERS priv, command — execute command on matching members
-                // Stub: actual execution requires script engine context
+                var guild = ResolveGuild?.Invoke(Uid);
+                if (guild == null) return true;
+                var parts = args.Split(',', 2, StringSplitOptions.TrimEntries);
+                int minPriv = parts.Length > 0 && int.TryParse(parts[0], out int parsedPriv) ? parsedPriv : -1;
+                string command = parts.Length > 1 ? parts[1] : "";
+                if (string.IsNullOrWhiteSpace(command)) return true;
+
+                foreach (var member in guild.Members)
+                {
+                    if ((byte)member.Priv >= 100) continue;
+                    if (minPriv >= 0 && (byte)member.Priv < minPriv) continue;
+                    ExecuteGuildMemberCommand?.Invoke(this, member.CharUid, command);
+                }
                 return true;
             }
             case "ALLGUILDS":
             {
                 // ALLGUILDS flags, command — execute command on linked guilds
-                // Stub: actual execution requires script engine context
+                var guild = ResolveGuild?.Invoke(Uid);
+                if (guild == null) return true;
+                var parts = args.Split(',', 2, StringSplitOptions.TrimEntries);
+                string flags = parts.Length > 0 ? parts[0] : "";
+                string command = parts.Length > 1 ? parts[1] : "";
+                if (string.IsNullOrWhiteSpace(command)) return true;
+
+                bool includeWar = flags.Contains("war", StringComparison.OrdinalIgnoreCase) ||
+                                  flags.Contains("enemy", StringComparison.OrdinalIgnoreCase) ||
+                                  flags.Contains("all", StringComparison.OrdinalIgnoreCase);
+                bool includeAlly = flags.Contains("ally", StringComparison.OrdinalIgnoreCase) ||
+                                   flags.Contains("all", StringComparison.OrdinalIgnoreCase);
+                foreach (var (otherStone, rel) in guild.Relations)
+                {
+                    if ((includeWar && rel.IsEnemy) || (includeAlly && rel.IsAlly))
+                        ExecuteGuildRelationCommand?.Invoke(this, otherStone, command);
+                }
                 return true;
             }
         }

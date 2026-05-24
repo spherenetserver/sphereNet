@@ -6,9 +6,14 @@ before/after numbers.
 
 ## Existing Signals
 
-- `[tick_stats]`: periodic average/max tick, entity counts, and bot packet rates.
+- `[tick_stats]`: periodic average/max/p50/p95/p99 tick, entity counts, and bot packet rates.
 - `[slow_tick]`: phase breakdown when a tick exceeds the slow threshold. Useful
   fields include NPC apply, view build, output flush, and world maintenance.
+- `/status`: exposes the same rolling tick percentiles and last phase telemetry
+  under the `runtime` object for automation and panels.
+- `runtime.slowTickCount` and `runtime.lastSlowTickDominantPhase`: quick signal
+  for whether recent lag is mostly `npc_apply`, `view_build`, `flush`, or
+  another phase.
 - `TickSleepMode`: controls main-loop yield strategy.
 
 ## Manual Benchmark Recipe
@@ -18,11 +23,42 @@ before/after numbers.
 3. Spawn a fixed bot count and duration, for example 50 bots for 60 seconds.
 4. Capture server logs from startup until bots disconnect.
 5. Record:
-   - average tick from `[tick_stats]`
-   - max tick from `[tick_stats]`
+   - average, max, p50, p95, p99 tick from `[tick_stats]`
    - count and worst phase from `[slow_tick]`
    - packet send/receive rate
 6. Repeat the same run after code changes.
+
+## Baseline Artifact
+
+Store benchmark results as JSON so nightly jobs and reviewers compare the same
+fields:
+
+```json
+{
+  "commit": "git-sha",
+  "scenario": "idle",
+  "durationSeconds": 180,
+  "hardware": "cpu/ram/os note",
+  "tick": {
+    "avgMs": 0.0,
+    "maxMs": 0.0,
+    "p50Ms": 0.0,
+    "p95Ms": 0.0,
+    "p99Ms": 0.0
+  },
+  "runtime": {
+    "multicoreEnabled": true,
+    "slowTickCount": 0,
+    "worstPhase": "view_build"
+  },
+  "gc": {
+    "gen0": 0,
+    "gen1": 0,
+    "gen2": 0,
+    "managedHeapMB": 0
+  }
+}
+```
 
 ## Regression Gates
 

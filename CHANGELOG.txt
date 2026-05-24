@@ -81,6 +81,43 @@ KRITIK DUZELTMELER / CRITICAL FIXES:
     Thread-safe Random.Shared replaces per-call new Random() in combat/movement code.
 
 GUVENLIK / SECURITY:
+  - Public shard security gate baslatildi: bos account password hash artik kabul edilmez,
+    game/panel login denemelerine rate-limit eklendi ve config validation public shard
+    icin riskli AccApp/DefaultCommandLevel/AdminPassword/Md5Passwords ayarlarini uyarir.
+    Public shard auth hardening added for empty hashes, login throttling and config warnings.
+
+PERFORMANS / PERFORMANCE:
+  - CI Release build ve guvenlik regresyon testi adimlariyla genisletildi; nightly
+    benchmark smoke workflow baseline artifact iskeleti uretir.
+    CI now includes Release/security checks and a nightly benchmark smoke artifact.
+  - Tick telemetry p50/p95/p99 percentilleriyle genisletildi; /status ve panel runtime
+    metrikleri rolling tick snapshot ve phase telemetry yayinlar.
+    Tick telemetry now exposes p50/p95/p99 through logs, /status and panel stats.
+
+SCRIPT / PARITY:
+  - FEVAL/FLOATVAL artik decimal math korur, FHVAL float sonucu integer hex'e cevirir.
+    Guild stone ALLMEMBERS/ALLGUILDS stub'lari komut dispatch hook'larina baglandi.
+    FEVAL/FLOATVAL now preserve decimal math and guild stone bulk commands dispatch.
+  - CombatSpeedEra sphere.ini ayari swing delay hesaplamasina baglandi.
+    CombatSpeedEra now affects weapon swing delay calculations.
+  - Housing lockdown/secure pickup guard ve vendor sell gold overflow korumasi eklendi.
+    Housing lockdown pickup and vendor sell overflow guards added.
+  - PacketBuffer underrun artik malformed packet olarak isaretlenir; profile/gump variable
+    text parserlari cap ve remaining-byte guard kullanir.
+    PacketBuffer underruns now fail closed and variable text packets are bounded.
+  - WorldSaver BackupLevels ayariyla committed save dosyalarini .bak1..N olarak dondurur.
+    WorldSaver now rotates committed save files with BackupLevels sidecar backups.
+  - GameWorld VisitInRange tek-pass char/item range traversal ekledi; view build cift sektor
+    taramasini azaltir.
+    GameWorld VisitInRange reduces duplicate sector scans during view builds.
+  - HairDye artik sadece mesaj vermek yerine mevcut sac/sakal hue degerlerini boyar.
+    HairDye now changes existing hair and beard hue values.
+  - Deploy dokumani health/status contract ve servis calistirma notlariyla genisletildi;
+    yeni RUNBOOK tick lag, save failure, disk full, packet flood ve restore drill adimlari ekler.
+    Deployment docs now include health contracts and an operator runbook.
+  - Slow tick telemetry dominant phase ve slowTickCount alanlariyla genisletildi;
+    /status runtime verisi npc_apply/view_build darboğazlarını daha hizli gosterir.
+    Slow tick telemetry now reports dominant phase and cumulative slow tick count.
   - World save artik once immutable item/character record snapshot alir; shard/rolling
     disk yazimi canli objeleri okumaz ve save istekleri ana loop kuyrugunda serilestirilir.
     World save now writes from immutable records and queues save requests on the main loop.

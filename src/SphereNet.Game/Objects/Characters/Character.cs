@@ -401,6 +401,8 @@ public partial class Character : ObjBase
     public static int CombatDamageEra { get; set; }
     /// <summary>COMBATHITCHANCEERA from sphere.ini.</summary>
     public static int CombatHitChanceEra { get; set; }
+    /// <summary>COMBATSPEEDERA from sphere.ini.</summary>
+    public static int CombatSpeedEra { get; set; }
     /// <summary>ARCHERYMINDIST from sphere.ini.</summary>
     public static int ArcheryMinDist { get; set; } = 1;
     /// <summary>ARCHERYMAXDIST from sphere.ini.</summary>

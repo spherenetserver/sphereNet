@@ -27,5 +27,11 @@ jobs:
       - name: Build
         run: dotnet build sphereNet.sln --configuration Debug --no-restore
 
+      - name: Build Release
+        run: dotnet build sphereNet.sln --configuration Release --no-restore
+
       - name: Test
         run: dotnet test src/SphereNet.Tests/SphereNet.Tests.csproj --configuration Debug --no-build --no-restore --verbosity normal
+
+      - name: Security regression tests
+        run: dotnet test src/SphereNet.Tests/SphereNet.Tests.csproj --configuration Debug --no-build --no-restore --filter "AdminSecurityTests|ConfigRegressionTests|RuntimeSafetyHotspotsTests|ExpressionRegressionTests|EncryptionTests" --verbosity normal

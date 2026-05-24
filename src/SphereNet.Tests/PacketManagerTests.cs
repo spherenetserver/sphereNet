@@ -1,4 +1,5 @@
 using SphereNet.Network.Packets;
+using SphereNet.Network.Packets.Incoming;
 using SphereNet.Network.State;
 
 namespace SphereNet.Tests;
@@ -32,5 +33,34 @@ public class PacketManagerTests
         Assert.Same(encoded, manager.GetEncodedHandler(0x0001));
         Assert.Null(manager.GetExtendedHandler(0xFFFF));
         Assert.Null(manager.GetEncodedHandler(0xFFFF));
+    }
+
+    [Fact]
+    public void PacketBuffer_ReadPastEnd_SetsUnderrunFlag()
+    {
+        var buffer = new PacketBuffer([0x01]);
+
+        Assert.Equal((ushort)0, buffer.ReadUInt16());
+        Assert.True(buffer.IsUnderrun);
+    }
+
+    [Fact]
+    public void PacketProfileRequest_TruncatedBio_DoesNotOverread()
+    {
+        var handler = new PacketProfileRequest();
+        var buffer = new PacketBuffer([0x01, 0, 0, 0, 1, 0, 1, 0, 10]);
+        var state = new NetState(Microsoft.Extensions.Logging.Abstractions.NullLogger<NetState>.Instance);
+        bool invoked = false;
+        state.ProfileRequestHandler = (_, mode, serial, bio) =>
+        {
+            invoked = true;
+            Assert.Equal((byte)1, mode);
+            Assert.Equal("", bio);
+        };
+
+        handler.OnReceive(buffer, state);
+
+        Assert.True(invoked);
+        Assert.False(buffer.IsUnderrun);
     }
 }

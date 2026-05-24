@@ -154,10 +154,16 @@ public static partial class Program
     private static long _telemetryNpcApplyUs;
     private static long _telemetryViewBuildUs;
     private static long _lastSlowTickWarningMs;
+    private static long _slowTickCount;
+    private static string _lastSlowTickDominantPhase = "";
     private static long _lastTickStatsLogMs;
     private static long _tickStatsTotalUs;
     private static long _tickStatsMaxUs;
     private static int _tickStatsCount;
+    private const int TickTelemetryWindowSize = 2048;
+    private static readonly long[] _tickTelemetryWindowUs = new long[TickTelemetryWindowSize];
+    private static int _tickTelemetryWriteIndex;
+    private static int _tickTelemetrySampleCount;
     private static bool _headless;
     private static bool _managed;       // running as child of SphereNet.Host
     private static string _pipeName = ""; // IPC pipe name when managed
@@ -481,6 +487,7 @@ public static partial class Program
         Character.CombatFlags              = _config.CombatFlags;
         Character.CombatDamageEra          = _config.CombatDamageEra;
         Character.CombatHitChanceEra       = _config.CombatHitChanceEra;
+        Character.CombatSpeedEra           = _config.CombatSpeedEra;
         Character.ArcheryMinDist           = _config.ArcheryMinDist;
         Character.ArcheryMaxDist           = _config.ArcheryMaxDist;
         Character.CombatArcheryMovementDelay = _config.CombatArcheryMovementDelay;
@@ -539,6 +546,7 @@ public static partial class Program
             Format = _config.SaveFormat,
             ShardCount = _config.SaveShards,
             ShardSizeBytes = _config.SaveShardSizeMb * 1024L * 1024L,
+            BackupLevels = _config.BackupLevels,
         };
         _saver.ResolveResourceName = rid =>
         {

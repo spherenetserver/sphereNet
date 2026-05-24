@@ -7,6 +7,7 @@ namespace SphereNet.Scripting.Definitions;
 /// Spell definition. Maps to CSpellDef in Source-X.
 /// Loaded from [SPELL] sections.
 /// </summary>
+[Obsolete("Use SphereNet.Game.Magic.SpellDef for runtime spell behavior; this type is loader-side compatibility only.")]
 public sealed class SpellDef : ResourceLink
 {
     public string Name { get; set; } = "";

@@ -70,14 +70,17 @@ public sealed partial class GameClient
         var center = _character.Position;
         var delta = new ClientViewDelta();
 
-        foreach (var ch in _world.GetCharsInRange(center, range))
+        bool isStaff = _character.PrivLevel >= Core.Enums.PrivLevel.Counsel;
+        Dictionary<Point3D, int>? itemTileCounts = null;
+
+        _world.VisitInRange(center, range, ch =>
         {
-            if (ch == _character || ch.IsDeleted) continue;
-            if (ch.IsStatFlag(Core.Enums.StatFlag.Ridden)) continue;
+            if (ch == _character || ch.IsDeleted) return;
+            if (ch.IsStatFlag(Core.Enums.StatFlag.Ridden)) return;
 
             bool isOfflinePlayer = ch.IsPlayer && !ch.IsOnline;
             if (isOfflinePlayer && !_character.AllShow)
-                continue;
+                return;
 
             bool isHidden = ch.IsInvisible || ch.IsStatFlag(Core.Enums.StatFlag.Hidden);
             bool canSeeHidden = _character.AllShow ||
@@ -85,7 +88,7 @@ public sealed partial class GameClient
                  _character.PrivLevel >= ch.PrivLevel);
 
             if (isHidden && !canSeeHidden)
-                continue;
+                return;
 
             bool ghostManifested = ch.IsDead && ch.IsInWarMode;
             if (ch.IsDead && !_character.IsDead && !ghostManifested)
@@ -94,7 +97,7 @@ public sealed partial class GameClient
                     _character.PrivLevel >= Core.Enums.PrivLevel.Counsel ||
                     _character.IsStatFlag(Core.Enums.StatFlag.SpiritSpeak);
                 if (!canSeeGhosts)
-                    continue;
+                    return;
             }
 
             uint uid = ch.Uid.Value;
@@ -105,22 +108,19 @@ public sealed partial class GameClient
                 delta.NewChars.Add((ch, hiddenAsAllShow));
             else
                 delta.UpdatedChars.Add(ch);
-        }
-
-        bool isStaff = _character.PrivLevel >= Core.Enums.PrivLevel.Counsel;
-        Dictionary<Point3D, int>? itemTileCounts = null;
-        foreach (var item in _world.GetItemsInRange(center, range))
+        },
+        item =>
         {
-            if (item.IsDeleted || item.IsEquipped || !item.IsOnGround) continue;
+            if (item.IsDeleted || item.IsEquipped || !item.IsOnGround) return;
             bool isInvis = item.IsAttr(Core.Enums.ObjAttributes.Invis);
             if (isInvis && !_character.AllShow && !isStaff)
-                continue;
+                return;
 
             itemTileCounts ??= [];
             var tile = new Point3D(item.X, item.Y, item.Z, item.MapIndex);
             int tileCount = itemTileCounts.GetValueOrDefault(tile);
             if (tileCount >= MaxItemsPerViewTile)
-                continue;
+                return;
             itemTileCounts[tile] = tileCount + 1;
 
             uint uid = item.Uid.Value;
@@ -129,7 +129,7 @@ public sealed partial class GameClient
                 delta.NewItems.Add((item, isInvis && (_character.AllShow || isStaff)));
             else
                 delta.UpdatedItems.Add(item);
-        }
+        });
 
         return delta;
     }

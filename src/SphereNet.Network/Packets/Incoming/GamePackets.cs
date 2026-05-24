@@ -97,9 +97,11 @@ public sealed class PacketProfileRequest : PacketHandler
         string bioText = "";
         if (mode == 1)
         {
+            if (!buffer.HasBytes(4)) return;
             ushort cmdType = buffer.ReadUInt16();
             ushort textLen = buffer.ReadUInt16();
-            if (textLen > 0)
+            textLen = Math.Min(textLen, (ushort)1024);
+            if (textLen > 0 && buffer.HasBytes(textLen * 2))
                 bioText = buffer.ReadUnicodeFixed(textLen);
         }
         state.OnProfileRequest(mode, serial, bioText);
@@ -225,6 +227,7 @@ public sealed class PacketGumpResponse : PacketHandler
         {
             ushort id = buffer.ReadUInt16();
             ushort len = Math.Min(buffer.ReadUInt16(), (ushort)1024);
+            if (!buffer.HasBytes(len * 2)) break;
             string text = buffer.ReadUnicodeFixed(len);
             textEntries[i] = (id, text);
         }

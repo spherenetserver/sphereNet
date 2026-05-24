@@ -34,6 +34,13 @@ namespace SphereNet.Tests;
 
 public class GameSystemTests
 {
+    private sealed class NullConsole : ITextConsole
+    {
+        public PrivLevel GetPrivLevel() => PrivLevel.Owner;
+        public void SysMessage(string text) { }
+        public string GetName() => "test";
+    }
+
     private static GameWorld CreateWorld()
     {
         var loggerFactory = LoggerFactory.Create(b => { });
@@ -748,6 +755,79 @@ public class GameSystemTests
         Assert.True(pet.TryGetProperty("MemoryFindType.memory_friend.link.name", out var friendName));
         Assert.Equal("Friend", friendName);
         Assert.Single(pet.GetMemoryEntriesByType("memory_friend"));
+    }
+
+    [Fact]
+    public void GuildStone_AllMembers_DispatchesCommandToMatchingMembers()
+    {
+        var world = CreateWorld();
+        var stone = world.CreateItem();
+        stone.ItemType = ItemType.StoneGuild;
+        world.PlaceItem(stone, new Point3D(100, 100, 0, 0));
+
+        var member = world.CreateCharacter();
+        world.PlaceCharacter(member, new Point3D(101, 100, 0, 0));
+        var candidate = world.CreateCharacter();
+        world.PlaceCharacter(candidate, new Point3D(102, 100, 0, 0));
+
+        var guild = new GuildDef(stone.Uid);
+        guild.JoinAsMember(member.Uid);
+        guild.AddRecruit(candidate.Uid);
+
+        var oldResolveGuild = Item.ResolveGuild;
+        var oldExecute = Item.ExecuteGuildMemberCommand;
+        var invoked = new List<Serial>();
+        try
+        {
+            Item.ResolveGuild = uid => uid == stone.Uid ? guild : null;
+            Item.ExecuteGuildMemberCommand = (_, uid, command) =>
+            {
+                if (command == "TAG.TEST=1")
+                    invoked.Add(uid);
+                return true;
+            };
+
+            Assert.True(stone.TryExecuteCommand("ALLMEMBERS", "1,TAG.TEST=1", new NullConsole()));
+            Assert.Contains(member.Uid, invoked);
+            Assert.DoesNotContain(candidate.Uid, invoked);
+        }
+        finally
+        {
+            Item.ResolveGuild = oldResolveGuild;
+            Item.ExecuteGuildMemberCommand = oldExecute;
+        }
+    }
+
+    [Fact]
+    public void GameClient_HairDye_ChangesHairAndBeardHue()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var netState = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = 101 };
+        SetNetStateInUse(netState, true);
+        var client = new SphereNet.Game.Clients.GameClient(netState, world, accountManager,
+            loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
+
+        var ch = world.CreateCharacter();
+        var hair = world.CreateItem();
+        hair.BaseId = 0x203B;
+        ch.Equip(hair, Layer.Hair);
+        var beard = world.CreateItem();
+        beard.BaseId = 0x203E;
+        ch.Equip(beard, Layer.FacialHair);
+        typeof(SphereNet.Game.Clients.GameClient)
+            .GetField("_character", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(client, ch);
+
+        var dye = world.CreateItem();
+        dye.ItemType = ItemType.HairDye;
+        dye.Hue = new Color(0x0455);
+
+        client.HandleDoubleClick(dye.Uid.Value);
+
+        Assert.Equal((ushort)0x0455, hair.Hue.Value);
+        Assert.Equal((ushort)0x0455, beard.Hue.Value);
     }
 
     [Fact]

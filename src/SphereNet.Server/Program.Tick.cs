@@ -256,11 +256,14 @@ public static partial class Program
             if (totalUs > 25_000 && nowMs - _lastSlowTickWarningMs > 10_000)
             {
                 _lastSlowTickWarningMs = nowMs;
+                _slowTickCount++;
+                _lastSlowTickDominantPhase = GetDominantTickPhase();
                 _log.LogWarning(
-                    "[slow_tick] mode={Mode} tick={Tick} total={TotalMs}ms snapshot={SnapshotMs}ms compute={ComputeMs}ms (npc_build={NpcBuildMs}ms client_state={ClientStateMs}ms npc_apply={NpcApplyMs}ms view_build={ViewBuildMs}ms) apply={ApplyMs}ms flush={FlushMs}ms",
+                    "[slow_tick] mode={Mode} tick={Tick} total={TotalMs}ms dominant={DominantPhase} snapshot={SnapshotMs}ms compute={ComputeMs}ms (npc_build={NpcBuildMs}ms client_state={ClientStateMs}ms npc_apply={NpcApplyMs}ms view_build={ViewBuildMs}ms) apply={ApplyMs}ms flush={FlushMs}ms",
                     _multicoreRuntimeEnabled ? "multicore" : "single",
                     _tickCounter,
                     (totalUs / 1000.0).ToString("F1"),
+                    _lastSlowTickDominantPhase,
                     (_telemetrySnapshotUs / 1000.0).ToString("F1"),
                     (_telemetryComputeUs / 1000.0).ToString("F1"),
                     (_telemetryNpcBuildUs / 1000.0).ToString("F1"),
@@ -272,6 +275,7 @@ public static partial class Program
             }
 
             // Periodic tick stats: log average and max tick time every 30 seconds
+            RecordTickTelemetry(totalUs);
             _tickStatsTotalUs += totalUs;
             if (totalUs > _tickStatsMaxUs) _tickStatsMaxUs = totalUs;
             _tickStatsCount++;
@@ -280,6 +284,7 @@ public static partial class Program
             {
                 double avgMs = _tickStatsCount > 0 ? (_tickStatsTotalUs / _tickStatsCount / 1000.0) : 0;
                 double maxMs = _tickStatsMaxUs / 1000.0;
+                var tickTelemetry = GetTickTelemetrySnapshot();
                 int onlinePlayers = _clients.Values.Count(c => c.IsPlaying);
                 var (chars, items, _) = _world.GetStats();
 
@@ -288,15 +293,15 @@ public static partial class Program
                 {
                     var botStats = _botEngine.GetStats();
                     _log.LogInformation(
-                        "[tick_stats] ticks={Count} avg={AvgMs:F1}ms max={MaxMs:F1}ms players={Players} chars={Chars} items={Items} bots={Bots}/{BotTotal} pps_in={PpsIn:F0} pps_out={PpsOut:F0}",
-                        _tickStatsCount, avgMs, maxMs, onlinePlayers, chars, items,
+                        "[tick_stats] ticks={Count} avg={AvgMs:F1}ms max={MaxMs:F1}ms p50={P50Ms:F1}ms p95={P95Ms:F1}ms p99={P99Ms:F1}ms players={Players} chars={Chars} items={Items} bots={Bots}/{BotTotal} pps_in={PpsIn:F0} pps_out={PpsOut:F0}",
+                        _tickStatsCount, avgMs, maxMs, tickTelemetry.P50Ms, tickTelemetry.P95Ms, tickTelemetry.P99Ms, onlinePlayers, chars, items,
                         botStats.ActiveBots, botStats.TotalBots, botStats.PacketsPerSecIn, botStats.PacketsPerSecOut);
                 }
                 else
                 {
                     _log.LogInformation(
-                        "[tick_stats] ticks={Count} avg={AvgMs:F1}ms max={MaxMs:F1}ms players={Players} chars={Chars} items={Items}",
-                        _tickStatsCount, avgMs, maxMs, onlinePlayers, chars, items);
+                        "[tick_stats] ticks={Count} avg={AvgMs:F1}ms max={MaxMs:F1}ms p50={P50Ms:F1}ms p95={P95Ms:F1}ms p99={P99Ms:F1}ms players={Players} chars={Chars} items={Items}",
+                        _tickStatsCount, avgMs, maxMs, tickTelemetry.P50Ms, tickTelemetry.P95Ms, tickTelemetry.P99Ms, onlinePlayers, chars, items);
                 }
 
                 _tickStatsTotalUs = 0;
@@ -306,6 +311,67 @@ public static partial class Program
             }
         }
     }
+
+    private static string GetDominantTickPhase()
+    {
+        var phases = new[]
+        {
+            ("snapshot", _telemetrySnapshotUs),
+            ("compute", _telemetryComputeUs),
+            ("npc_build", _telemetryNpcBuildUs),
+            ("client_state", _telemetryClientStateUs),
+            ("npc_apply", _telemetryNpcApplyUs),
+            ("view_build", _telemetryViewBuildUs),
+            ("apply", _telemetryApplyUs),
+            ("flush", _telemetryFlushUs),
+        };
+        return phases.OrderByDescending(p => p.Item2).First().Item1;
+    }
+
+    private static void RecordTickTelemetry(long totalUs)
+    {
+        _tickTelemetryWindowUs[_tickTelemetryWriteIndex] = totalUs;
+        _tickTelemetryWriteIndex = (_tickTelemetryWriteIndex + 1) % TickTelemetryWindowSize;
+        if (_tickTelemetrySampleCount < TickTelemetryWindowSize)
+            _tickTelemetrySampleCount++;
+    }
+
+    private static TickTelemetrySnapshot GetTickTelemetrySnapshot()
+    {
+        int count = _tickTelemetrySampleCount;
+        if (count == 0)
+            return new TickTelemetrySnapshot(false, _multicoreRuntimeEnabled, 0, 0, 0, 0, 0, 0, 0);
+
+        var samples = new long[count];
+        Array.Copy(_tickTelemetryWindowUs, samples, count);
+        Array.Sort(samples);
+
+        double p50 = Percentile(samples, 0.50) / 1000.0;
+        double p95 = Percentile(samples, 0.95) / 1000.0;
+        double p99 = Percentile(samples, 0.99) / 1000.0;
+        double max = samples[^1] / 1000.0;
+        double avg = samples.Average() / 1000.0;
+        return new TickTelemetrySnapshot(true, _multicoreRuntimeEnabled, count, avg, max, p50, p95, p99,
+            _telemetryMaxTickUs / 1000.0);
+    }
+
+    private static long Percentile(long[] sorted, double percentile)
+    {
+        if (sorted.Length == 0) return 0;
+        int index = (int)Math.Ceiling(percentile * sorted.Length) - 1;
+        return sorted[Math.Clamp(index, 0, sorted.Length - 1)];
+    }
+
+    private readonly record struct TickTelemetrySnapshot(
+        bool HasSamples,
+        bool MulticoreEnabled,
+        int SampleCount,
+        double AvgMs,
+        double MaxMs,
+        double P50Ms,
+        double P95Ms,
+        double P99Ms,
+        double MaxSinceStartMs);
 
     private static void RunSingleThreadTick()
     {

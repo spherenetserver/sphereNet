@@ -34,6 +34,9 @@ public sealed class WorldSaver
     /// <summary>Rolling threshold (bytes). Only consulted when <see cref="ShardCount"/>==1.</summary>
     public long ShardSizeBytes { get; set; }
 
+    /// <summary>Number of per-file backup generations to keep beside the live save.</summary>
+    public int BackupLevels { get; set; }
+
     public Func<ResourceId, string?>? ResolveResourceName { get; set; }
 
     /// <summary>Resolves an item BaseId (graphic) to its script defname
@@ -655,23 +658,57 @@ public sealed class WorldSaver
         CommitFile(finalPath);
     }
 
-    /// <summary>Atomic commit: .tmp → final (overwrite). Previous .bak rotation
-    /// was dropped — it doubled the on-disk file count without a matching
-    /// restore path. Catastrophic failure is still recoverable via the usual
-    /// BACKUPLEVELS folder rotation (save/1, save/2, …).</summary>
-    private static void CommitFile(string finalPath)
+    /// <summary>Atomic commit: rotate existing final to .bak1..N, then .tmp → final.</summary>
+    private void CommitFile(string finalPath)
     {
         string tmpPath = finalPath + ".tmp";
         if (!File.Exists(tmpPath)) return;
 
-        // Clean up any stale .bak from earlier runs that still wrote one.
+        RotateBackups(finalPath);
+
+        File.Move(tmpPath, finalPath, overwrite: true);
+    }
+
+    private void RotateBackups(string finalPath)
+    {
+        int levels = Math.Clamp(BackupLevels, 0, 32);
+        if (levels <= 0)
+        {
+            for (int i = 1; i <= 32; i++)
+            {
+                string staleGeneration = $"{finalPath}.bak{i}";
+                if (File.Exists(staleGeneration))
+                {
+                    try { File.Delete(staleGeneration); } catch { /* best effort */ }
+                }
+            }
+            return;
+        }
+
+        string oldest = $"{finalPath}.bak{levels}";
+        if (File.Exists(oldest))
+        {
+            try { File.Delete(oldest); } catch { /* best effort */ }
+        }
+
+        for (int i = levels - 1; i >= 1; i--)
+        {
+            string src = $"{finalPath}.bak{i}";
+            if (!File.Exists(src)) continue;
+            string dst = $"{finalPath}.bak{i + 1}";
+            try { File.Move(src, dst, overwrite: true); } catch { /* best effort */ }
+        }
+
         string stale = finalPath + ".bak";
         if (File.Exists(stale))
         {
             try { File.Delete(stale); } catch { /* best effort */ }
         }
 
-        File.Move(tmpPath, finalPath, overwrite: true);
+        if (File.Exists(finalPath))
+        {
+            try { File.Copy(finalPath, $"{finalPath}.bak1", overwrite: true); } catch { /* best effort */ }
+        }
     }
 
     private void CleanupTmpFiles(string savePath)
@@ -715,7 +752,8 @@ public sealed class WorldSaver
             if (name.Equals(baseName + ".manifest", StringComparison.OrdinalIgnoreCase)) continue;
             if (name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)) continue;
 
-            // .bak leftovers from older runs always go.
+            // Plain .bak leftovers from older runs always go. Numbered
+            // .bakN files belong to BackupLevels rotation.
             if (name.EndsWith(".bak", StringComparison.OrdinalIgnoreCase))
             {
                 try { File.Delete(file); }

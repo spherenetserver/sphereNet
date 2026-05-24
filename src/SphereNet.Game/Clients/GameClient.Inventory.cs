@@ -115,6 +115,12 @@ public sealed partial class GameClient
             return;
         }
 
+        if (_housingEngine != null && !_housingEngine.CanPickupHouseItem(_character, item))
+        {
+            SendPickupFailed(1);
+            return;
+        }
+
         // Fire @Pickup trigger
         if (_triggerDispatcher != null)
         {

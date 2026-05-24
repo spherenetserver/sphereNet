@@ -27,6 +27,7 @@ public sealed class PacketBuffer
     public int Length => _length;
     public byte[] Data => _data;
     public ReadOnlySpan<byte> Span => _data.AsSpan(0, _length);
+    public bool IsUnderrun { get; private set; }
 
     private void EnsureCapacity(int needed)
     {
@@ -151,7 +152,7 @@ public sealed class PacketBuffer
 
     public byte ReadByte()
     {
-        if (_position >= _length) return 0;
+        if (_position >= _length) { IsUnderrun = true; return 0; }
         return _data[_position++];
     }
 
@@ -160,7 +161,7 @@ public sealed class PacketBuffer
 
     public ushort ReadUInt16()
     {
-        if (_position + 2 > _length) return 0;
+        if (_position + 2 > _length) { IsUnderrun = true; return 0; }
         var val = BinaryPrimitives.ReadUInt16BigEndian(_data.AsSpan(_position));
         _position += 2;
         return val;
@@ -168,7 +169,7 @@ public sealed class PacketBuffer
 
     public short ReadInt16()
     {
-        if (_position + 2 > _length) return 0;
+        if (_position + 2 > _length) { IsUnderrun = true; return 0; }
         var val = BinaryPrimitives.ReadInt16BigEndian(_data.AsSpan(_position));
         _position += 2;
         return val;
@@ -176,7 +177,7 @@ public sealed class PacketBuffer
 
     public uint ReadUInt32()
     {
-        if (_position + 4 > _length) return 0;
+        if (_position + 4 > _length) { IsUnderrun = true; return 0; }
         var val = BinaryPrimitives.ReadUInt32BigEndian(_data.AsSpan(_position));
         _position += 4;
         return val;
@@ -184,7 +185,7 @@ public sealed class PacketBuffer
 
     public int ReadInt32()
     {
-        if (_position + 4 > _length) return 0;
+        if (_position + 4 > _length) { IsUnderrun = true; return 0; }
         var val = BinaryPrimitives.ReadInt32BigEndian(_data.AsSpan(_position));
         _position += 4;
         return val;
@@ -192,7 +193,7 @@ public sealed class PacketBuffer
 
     public string ReadAsciiFixed(int length)
     {
-        if (_position + length > _length) return "";
+        if (_position + length > _length) { IsUnderrun = true; return ""; }
         int end = _position + length;
         int nullIdx = Array.IndexOf(_data, (byte)0, _position, length);
         int strLen = nullIdx >= 0 ? nullIdx - _position : length;
@@ -238,7 +239,11 @@ public sealed class PacketBuffer
 
     public byte[] ReadBytes(int count)
     {
-        if (_position + count > _length) count = _length - _position;
+        if (_position + count > _length)
+        {
+            IsUnderrun = true;
+            count = _length - _position;
+        }
         var result = new byte[count];
         Array.Copy(_data, _position, result, 0, count);
         _position += count;
@@ -246,10 +251,12 @@ public sealed class PacketBuffer
     }
 
     public int Remaining => _length - _position;
+    public bool HasBytes(int count) => count >= 0 && _position + count <= _length;
 
     public void Reset()
     {
         _position = 0;
         _length = 0;
+        IsUnderrun = false;
     }
 }

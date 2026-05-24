@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Configuration;
+using SphereNet.Core.Security;
 using SphereNet.Game.Accounts;
 using SphereNet.Game.World;
 using SphereNet.Server.Admin;
@@ -42,5 +43,51 @@ public class AdminSecurityTests
     public void AdminHostPolicy_CanStartTelnet_RequiresConfiguredPassword(string password, bool expected)
     {
         Assert.Equal(expected, AdminHostPolicy.CanStartTelnet(new SphereConfig { AdminPassword = password }));
+    }
+
+    [Fact]
+    public void SphereConfig_Validate_WarnsForUnsafePublicShardDefaults()
+    {
+        var warnings = new SphereConfig
+        {
+            AccApp = 2,
+            DefaultCommandLevel = 1,
+            AdminPassword = "",
+            Md5Passwords = true
+        }.Validate();
+
+        Assert.Contains(warnings, w => w.Contains("AccApp=2"));
+        Assert.Contains(warnings, w => w.Contains("DefaultCommandLevel=1"));
+        Assert.Contains(warnings, w => w.Contains("AdminPassword is empty"));
+        Assert.Contains(warnings, w => w.Contains("Md5Passwords=1"));
+    }
+
+    [Fact]
+    public void Account_CheckPassword_RejectsEmptyStoredHash()
+    {
+        var account = new Account();
+
+        Assert.False(account.CheckPassword("anything"));
+    }
+
+    [Fact]
+    public void LoginRateLimiter_ThrottlesAfterThresholdAndClearsOnSuccess()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var limiter = new LoginRateLimiter(
+            threshold: 2,
+            window: TimeSpan.FromMinutes(1),
+            baseDelay: TimeSpan.FromSeconds(5),
+            maxDelay: TimeSpan.FromSeconds(5),
+            clock: () => now);
+
+        Assert.False(limiter.IsLimited("ip:account", out _));
+        Assert.Equal(TimeSpan.Zero, limiter.RegisterFailure("ip:account"));
+        Assert.Equal(TimeSpan.FromSeconds(5), limiter.RegisterFailure("ip:account"));
+        Assert.True(limiter.IsLimited("ip:account", out var retryAfter));
+        Assert.Equal(TimeSpan.FromSeconds(5), retryAfter);
+
+        limiter.RegisterSuccess("ip:account");
+        Assert.False(limiter.IsLimited("ip:account", out _));
     }
 }

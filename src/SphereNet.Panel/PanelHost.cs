@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging;
+using SphereNet.Core.Security;
 using SphereNet.Panel.Auth;
 using SphereNet.Panel.Hubs;
 using SphereNet.Panel.Logging;
@@ -26,6 +27,7 @@ public sealed class PanelHost : IDisposable
     // CPU tracking
     private TimeSpan _lastCpuTime = TimeSpan.Zero;
     private DateTime _lastCpuMeasure = DateTime.MinValue;
+    private readonly LoginRateLimiter _authLimiter = new();
 
     public PanelHost(PanelContext ctx, int port, PanelLogSink logSink, ILogger logger)
     {
@@ -205,17 +207,22 @@ public sealed class PanelHost : IDisposable
         app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
         // --- Auth ---
-        app.MapPost("/api/auth/login", (LoginRequest req) =>
+        app.MapPost("/api/auth/login", (LoginRequest req, HttpContext http) =>
         {
+            string remoteIp = http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            if (_authLimiter.IsLimited(remoteIp, out _))
+                return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+
             if (string.IsNullOrEmpty(_ctx.AdminPassword))
                 return Results.BadRequest(new { error = "AdminPassword not configured in sphere.ini" });
 
             if (!Core.Configuration.PasswordHelper.Verify(req.Password, _ctx.AdminPassword))
             {
-                Thread.Sleep(500);
+                _authLimiter.RegisterFailure(remoteIp);
                 return Results.Unauthorized();
             }
 
+            _authLimiter.RegisterSuccess(remoteIp);
             var token = tokens.Create();
             return Results.Ok(new { token, serverName = _ctx.ServerName });
         });

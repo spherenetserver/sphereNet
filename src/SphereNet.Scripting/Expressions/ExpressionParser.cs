@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace SphereNet.Scripting.Expressions;
 
 /// <summary>
@@ -115,6 +117,16 @@ public sealed class ExpressionParser
         int pos = 0;
         string text = expr.ToString();
         return ParseExpression(text, ref pos);
+    }
+
+    public double EvaluateFloat(ReadOnlySpan<char> expr)
+    {
+        expr = expr.Trim();
+        if (expr.IsEmpty) return 0;
+
+        int pos = 0;
+        string text = expr.ToString();
+        return ParseFloatExpression(text, ref pos);
     }
 
     /// <summary>
@@ -861,34 +873,34 @@ public sealed class ExpressionParser
             return inner;
         }
 
-        // FEVAL — float evaluation (returns integer, same as EVAL for our purposes)
+        // FEVAL — floating-point evaluation.
         if (varExpr.StartsWith("FEVAL ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("FEVAL(", StringComparison.OrdinalIgnoreCase))
         {
             string inner = varExpr.StartsWith("FEVAL(", StringComparison.OrdinalIgnoreCase)
                 ? ExtractFuncArg(varExpr, 5) : varExpr[6..].Trim();
             string expanded = ResolveAngleBrackets(inner);
-            return Evaluate(expanded.AsSpan()).ToString();
+            return FormatFloat(EvaluateFloat(expanded.AsSpan()));
         }
 
-        // FHVAL — float hex value (returns hex, same as HVAL for our purposes)
+        // FHVAL — evaluate as float, then format the truncated integer as hex.
         if (varExpr.StartsWith("FHVAL ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("FHVAL(", StringComparison.OrdinalIgnoreCase))
         {
             string inner = varExpr.StartsWith("FHVAL(", StringComparison.OrdinalIgnoreCase)
                 ? ExtractFuncArg(varExpr, 5) : varExpr[6..].Trim();
             string expanded = ResolveAngleBrackets(inner);
-            return "0" + Evaluate(expanded.AsSpan()).ToString("X");
+            return "0" + ((long)EvaluateFloat(expanded.AsSpan())).ToString("X");
         }
 
-        // FLOATVAL — floating point math (basic support)
+        // FLOATVAL — floating point math.
         if (varExpr.StartsWith("FLOATVAL ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("FLOATVAL(", StringComparison.OrdinalIgnoreCase))
         {
             string inner = varExpr.StartsWith("FLOATVAL(", StringComparison.OrdinalIgnoreCase)
                 ? ExtractFuncArg(varExpr, 8) : varExpr[9..].Trim();
             string expanded = ResolveAngleBrackets(inner);
-            return Evaluate(expanded.AsSpan()).ToString();
+            return FormatFloat(EvaluateFloat(expanded.AsSpan()));
         }
 
         // FVAL — format as x.x (divides by 10): <FVAL 125> = "12.5"
@@ -1387,6 +1399,127 @@ public sealed class ExpressionParser
         {
             return false;
         }
+    }
+
+    private double ParseFloatExpression(string text, ref int pos) => ParseFloatAddSub(text, ref pos);
+
+    private double ParseFloatAddSub(string text, ref int pos)
+    {
+        double left = ParseFloatMulDiv(text, ref pos);
+        SkipWhitespace(text, ref pos);
+
+        while (pos < text.Length)
+        {
+            char c = text[pos];
+            if (c == '+') { pos++; left += ParseFloatMulDiv(text, ref pos); }
+            else if (c == '-') { pos++; left -= ParseFloatMulDiv(text, ref pos); }
+            else break;
+            SkipWhitespace(text, ref pos);
+        }
+
+        return left;
+    }
+
+    private double ParseFloatMulDiv(string text, ref int pos)
+    {
+        double left = ParseFloatUnary(text, ref pos);
+        SkipWhitespace(text, ref pos);
+
+        while (pos < text.Length)
+        {
+            char c = text[pos];
+            if (c == '*') { pos++; left *= ParseFloatUnary(text, ref pos); }
+            else if (c == '/')
+            {
+                pos++;
+                double r = ParseFloatUnary(text, ref pos);
+                left = Math.Abs(r) > double.Epsilon ? left / r : 0;
+            }
+            else break;
+            SkipWhitespace(text, ref pos);
+        }
+
+        return left;
+    }
+
+    private double ParseFloatUnary(string text, ref int pos)
+    {
+        SkipWhitespace(text, ref pos);
+        if (pos >= text.Length) return 0;
+
+        char c = text[pos];
+        if (c == '-') { pos++; return -ParseFloatUnary(text, ref pos); }
+        if (c == '+') { pos++; return ParseFloatUnary(text, ref pos); }
+        return ParseFloatPrimary(text, ref pos);
+    }
+
+    private double ParseFloatPrimary(string text, ref int pos)
+    {
+        SkipWhitespace(text, ref pos);
+        if (pos >= text.Length) return 0;
+
+        if (text[pos] == '(')
+        {
+            pos++;
+            double val = ParseFloatExpression(text, ref pos);
+            SkipWhitespace(text, ref pos);
+            if (pos < text.Length && text[pos] == ')') pos++;
+            return val;
+        }
+
+        if (text[pos] == '<')
+        {
+            string resolved = ReadAngleBracket(text, ref pos);
+            string expanded = ResolveAngleBrackets(resolved);
+            return ParseFloatLiteral(expanded);
+        }
+
+        if (char.IsLetter(text[pos]) || text[pos] == '_')
+        {
+            int idStart = pos;
+            while (pos < text.Length && (char.IsLetterOrDigit(text[pos]) || text[pos] == '_'))
+                pos++;
+            string ident = text[idStart..pos];
+            string val = ResolveVariable(ident) ?? "";
+            return ParseFloatLiteral(val);
+        }
+
+        return ReadFloatNumber(text, ref pos);
+    }
+
+    private static double ReadFloatNumber(string text, ref int pos)
+    {
+        SkipWhitespace(text, ref pos);
+        int start = pos;
+        if (pos + 1 < text.Length && text[pos] == '0' && (text[pos + 1] == 'x' || text[pos + 1] == 'X'))
+        {
+            pos += 2;
+            while (pos < text.Length && IsHexDigit(text[pos])) pos++;
+            if (pos > start + 2 && long.TryParse(text.AsSpan(start + 2, pos - start - 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out long hex))
+                return hex;
+            return 0;
+        }
+
+        while (pos < text.Length && (char.IsDigit(text[pos]) || text[pos] == '.'))
+            pos++;
+        if (pos == start) return 0;
+        return ParseFloatLiteral(text[start..pos]);
+    }
+
+    private static double ParseFloatLiteral(string value)
+    {
+        if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double result))
+            return double.IsFinite(result) ? result : 0;
+        if (value.StartsWith("0x", StringComparison.OrdinalIgnoreCase) &&
+            long.TryParse(value.AsSpan(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out long hex))
+            return hex;
+        return 0;
+    }
+
+    private static string FormatFloat(double value)
+    {
+        if (!double.IsFinite(value)) return "0";
+        return value.ToString("0.##########", CultureInfo.InvariantCulture);
     }
 
     /// <summary>

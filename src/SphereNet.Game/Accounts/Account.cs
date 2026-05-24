@@ -109,7 +109,7 @@ public sealed class Account : IScriptObj
 
     public bool CheckPassword(string password)
     {
-        if (string.IsNullOrEmpty(_passwordHash)) return true;
+        if (string.IsNullOrEmpty(_passwordHash)) return false;
 
         if (UseMd5Passwords)
         {

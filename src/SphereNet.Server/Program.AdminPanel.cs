@@ -84,7 +84,8 @@ public static partial class Program
             int webPort = _config.ServPort + 2;
             _webStatus = new WebStatusServer(_world, _accounts,
                 () => _network.ActiveConnections,
-                _loggerFactory.CreateLogger("WebStatus"));
+                _loggerFactory.CreateLogger("WebStatus"),
+                GetRuntimeMetrics);
             _webStatus.Start(webPort);
 
             // --- 10. Admin Panel (SphereNet.Panel) ---
@@ -99,6 +100,7 @@ public static partial class Program
                 {
                     var (chars, items, sectors) = _world.GetStats();
                     var uptime = DateTime.UtcNow - _serverStartTime;
+                    var runtime = GetTickTelemetrySnapshot();
                     return new ServerStats(
                         _config.ServName,
                         uptime.ToString(@"d\.hh\:mm\:ss"),
@@ -109,7 +111,13 @@ public static partial class Program
                         sectors,
                         _world.TickCount,
                         GC.GetTotalMemory(false) / 1024 / 1024,
-                        _accounts.Count);
+                        _accounts.Count,
+                        AvgTickMs: runtime.AvgMs,
+                        MaxTickMs: runtime.MaxMs,
+                        P50TickMs: runtime.P50Ms,
+                        P95TickMs: runtime.P95Ms,
+                        P99TickMs: runtime.P99Ms,
+                        MulticoreEnabled: runtime.MulticoreEnabled);
                 },
 
                 GetOnlinePlayers = () => _clients.Values

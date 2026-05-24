@@ -14,7 +14,8 @@ control plane, not as a public gameplay endpoint.
 - Web panel: bearer-token admin API served by `SphereNet.Host`. Use a reverse
   proxy with TLS if it is exposed beyond localhost.
 - IPC named pipe: local-trust channel between host and managed server. Any local
-  process with pipe access should be considered trusted.
+  process with pipe access should be considered trusted. Managed host starts the
+  server with a random pipe name per run, but this is not a remote-auth boundary.
 - Headless stdin: direct process console commands. Only run the server under an
   account that trusted operators can access.
 
@@ -22,6 +23,12 @@ control plane, not as a public gameplay endpoint.
 
 - Set a non-empty `AdminPassword` before enabling telnet or panel access.
 - Keep `AccApp=0` on production shards unless open account creation is intended.
+- Keep `DefaultCommandLevel=0` for public shards. Auto-created accounts must not
+  receive elevated command access.
+- Keep `Md5Passwords=0` for new deployments. MD5 is accepted only for legacy
+  compatibility and should be migrated away from.
 - Bind admin surfaces to localhost or protect them with a trusted reverse proxy.
 - Do not expose named pipes, server stdin, or raw panel HTTP to untrusted users.
 - Rotate the panel password after setup and after any operator departure.
+- Watch startup validation warnings. Unsafe public-shard defaults are reported
+  by `SphereConfig.Validate()` so operators see them before opening the shard.

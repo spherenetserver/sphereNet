@@ -451,6 +451,21 @@ public sealed class HousingEngine
         return null;
     }
 
+    public bool CanPickupHouseItem(Character actor, Item item)
+    {
+        if (actor.PrivLevel >= PrivLevel.GM)
+            return true;
+
+        foreach (var house in _houses.Values)
+        {
+            if (!house.IsLockedDown(item.Uid) && !house.IsSecured(item.Uid))
+                continue;
+            return house.CanLockdown(actor.Uid);
+        }
+
+        return true;
+    }
+
     /// <summary>Find all houses owned by a character.</summary>
     public List<House> GetHousesByOwner(Serial ownerUid)
     {

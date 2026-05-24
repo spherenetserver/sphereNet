@@ -1574,6 +1574,19 @@ public static partial class Program
                 return null;
             };
             SphereNet.Game.Objects.Items.Item.ResolveGuild = uid => _guildManager.GetGuild(uid);
+            SphereNet.Game.Objects.Items.Item.ResolveGuildCharacter = uid => _world.FindChar(uid);
+            SphereNet.Game.Objects.Items.Item.ExecuteGuildMemberCommand = (_, memberUid, command) =>
+            {
+                var ch = _world.FindChar(memberUid);
+                return ch != null && _commands.TryExecute(ch, command) == CommandResult.Executed;
+            };
+            SphereNet.Game.Objects.Items.Item.ExecuteGuildRelationCommand = (_, stoneUid, command) =>
+            {
+                var guild = _guildManager.GetGuild(stoneUid);
+                var masterUid = guild?.GetMaster()?.CharUid ?? Serial.Invalid;
+                var ch = masterUid.IsValid ? _world.FindChar(masterUid) : null;
+                return ch != null && _commands.TryExecute(ch, command) == CommandResult.Executed;
+            };
 
 
             // --- Admin dialog verb hooks (DISCONNECT/KICK/RESENDTOOLTIP/...).

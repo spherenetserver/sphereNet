@@ -18,15 +18,17 @@ public sealed class WebStatusServer : IDisposable
     private readonly GameWorld _world;
     private readonly AccountManager _accounts;
     private readonly Func<int> _getActiveConnections;
+    private readonly Func<object?>? _getRuntimeMetrics;
     private readonly DateTime _startTime;
     private bool _running;
 
     public WebStatusServer(GameWorld world, AccountManager accounts,
-        Func<int> getActiveConnections, ILogger logger)
+        Func<int> getActiveConnections, ILogger logger, Func<object?>? getRuntimeMetrics = null)
     {
         _world = world;
         _accounts = accounts;
         _getActiveConnections = getActiveConnections;
+        _getRuntimeMetrics = getRuntimeMetrics;
         _logger = logger;
         _startTime = DateTime.UtcNow;
     }
@@ -123,7 +125,8 @@ public sealed class WebStatusServer : IDisposable
             connections = _getActiveConnections(),
             accounts = _accounts.Count,
             ticks = _world.TickCount,
-            memoryMB = GC.GetTotalMemory(false) / (1024 * 1024)
+            memoryMB = GC.GetTotalMemory(false) / (1024 * 1024),
+            runtime = _getRuntimeMetrics?.Invoke()
         };
 
         string json = JsonSerializer.Serialize(status, new JsonSerializerOptions { WriteIndented = true });

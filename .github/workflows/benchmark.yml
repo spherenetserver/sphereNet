@@ -1,0 +1,65 @@
+name: Nightly Benchmark Smoke
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  benchmark-smoke:
+    name: Benchmark smoke
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Restore
+        run: dotnet restore sphereNet.sln
+
+      - name: Build Release
+        run: dotnet build sphereNet.sln --configuration Release --no-restore
+
+      - name: Run benchmark-safe tests
+        run: dotnet test src/SphereNet.Tests/SphereNet.Tests.csproj --configuration Release --no-build --no-restore --filter "RuntimePerformancePressureTests|SaveFormatTests" --verbosity normal
+
+      - name: Write baseline artifact placeholder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          $artifact = @{
+            commit = "${{ github.sha }}"
+            scenario = "benchmark-smoke"
+            durationSeconds = 0
+            hardware = "github-actions-windows-latest"
+            tick = @{
+              avgMs = 0
+              maxMs = 0
+              p50Ms = 0
+              p95Ms = 0
+              p99Ms = 0
+            }
+            runtime = @{
+              multicoreEnabled = $false
+              slowTickCount = 0
+              worstPhase = ""
+            }
+            gc = @{
+              gen0 = 0
+              gen1 = 0
+              gen2 = 0
+              managedHeapMB = 0
+            }
+          }
+          $artifact | ConvertTo-Json -Depth 8 | Set-Content artifacts/benchmark-smoke.json
+
+      - name: Upload benchmark artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-smoke
+          path: artifacts/benchmark-smoke.json

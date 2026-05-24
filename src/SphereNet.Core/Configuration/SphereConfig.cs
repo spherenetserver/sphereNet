@@ -565,6 +565,10 @@ public sealed class SphereConfig
         if (MulticorePhaseTimeoutMs < 100) warnings.Add($"MulticorePhaseTimeoutMs={MulticorePhaseTimeoutMs} — too aggressive, will constantly fallback to single-thread");
         if (NetTTL < 10) warnings.Add($"NetTTL={NetTTL} — very short idle timeout");
         if (SavePeriodMinutes < 0) warnings.Add($"SavePeriodMinutes={SavePeriodMinutes} — negative save period");
+        if (AccApp != 0) warnings.Add($"AccApp={AccApp} — public shards should disable automatic account creation");
+        if (DefaultCommandLevel > 0) warnings.Add($"DefaultCommandLevel={DefaultCommandLevel} — auto-created accounts may receive elevated commands");
+        if (string.IsNullOrWhiteSpace(AdminPassword)) warnings.Add("AdminPassword is empty — admin panel/telnet must remain disabled");
+        if (Md5Passwords) warnings.Add("Md5Passwords=1 — MD5 is legacy-only and weak for public shards");
         foreach (var map in Maps)
         {
             if (map.MaxX <= 0 || map.MaxY <= 0) warnings.Add($"Map {map.MapReadId}: MaxX={map.MaxX} MaxY={map.MaxY} — invalid dimensions");

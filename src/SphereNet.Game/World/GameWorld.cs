@@ -611,10 +611,7 @@ public sealed class GameWorld
     /// </summary>
     public IEnumerable<ObjBase> GetObjectsInRange(Point3D center, int range = 18)
     {
-        int minSx = (center.X - range) / Sector.SectorSize;
-        int maxSx = (center.X + range) / Sector.SectorSize;
-        int minSy = (center.Y - range) / Sector.SectorSize;
-        int maxSy = (center.Y + range) / Sector.SectorSize;
+        var (minSx, maxSx, minSy, maxSy) = GetSectorRange(center, range);
 
         for (int sx = minSx; sx <= maxSx; sx++)
         {
@@ -626,6 +623,44 @@ public sealed class GameWorld
                     yield return obj;
             }
         }
+    }
+
+    public void VisitInRange(Point3D center, int range, Action<Character>? visitChar, Action<Item>? visitItem)
+    {
+        var (minSx, maxSx, minSy, maxSy) = GetSectorRange(center, range);
+        for (int sx = minSx; sx <= maxSx; sx++)
+        {
+            for (int sy = minSy; sy <= maxSy; sy++)
+            {
+                var sector = GetSector(center.Map, sx, sy);
+                if (sector == null) continue;
+
+                var chars = sector.Characters;
+                for (int i = chars.Count - 1; i >= 0; i--)
+                {
+                    var ch = chars[i];
+                    if (!ch.IsDeleted && center.GetDistanceTo(ch.Position) <= range)
+                        visitChar?.Invoke(ch);
+                }
+
+                var items = sector.Items;
+                for (int i = items.Count - 1; i >= 0; i--)
+                {
+                    var item = items[i];
+                    if (!item.IsDeleted && item.IsOnGround && center.GetDistanceTo(item.Position) <= range)
+                        visitItem?.Invoke(item);
+                }
+            }
+        }
+    }
+
+    private static (int MinSx, int MaxSx, int MinSy, int MaxSy) GetSectorRange(Point3D center, int range)
+    {
+        int minSx = (center.X - range) / Sector.SectorSize;
+        int maxSx = (center.X + range) / Sector.SectorSize;
+        int minSy = (center.Y - range) / Sector.SectorSize;
+        int maxSy = (center.Y + range) / Sector.SectorSize;
+        return (minSx, maxSx, minSy, maxSy);
     }
 
     public IEnumerable<Character> GetCharsInRange(Point3D center, int range = 18)

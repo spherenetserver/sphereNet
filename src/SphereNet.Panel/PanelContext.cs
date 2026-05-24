@@ -69,7 +69,13 @@ public record ServerStats(
     long MemoryMB,
     int Accounts,
     double CpuPercent = 0,
-    int ThreadCount = 0
+    int ThreadCount = 0,
+    double AvgTickMs = 0,
+    double MaxTickMs = 0,
+    double P50TickMs = 0,
+    double P95TickMs = 0,
+    double P99TickMs = 0,
+    bool MulticoreEnabled = false
 );
 
 public record PlayerInfo(

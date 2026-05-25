@@ -30,10 +30,10 @@ public sealed class MovementEngine
     /// the matching client only.</summary>
     public Action<Objects.Characters.Character, string>? OnSysMessage { get; set; }
 
-    private const int WalkDelayFoot = 400;
-    private const int WalkDelayMount = 200;
-    private const int RunDelayFoot = 200;
-    private const int RunDelayMount = 100;
+    public static int WalkDelayFoot { get; set; } = 400;
+    public static int WalkDelayMount { get; set; } = 200;
+    public static int RunDelayFoot { get; set; } = 200;
+    public static int RunDelayMount { get; set; } = 100;
 
     public MovementEngine(World.GameWorld world, TriggerDispatcher? triggerDispatcher = null)
     {

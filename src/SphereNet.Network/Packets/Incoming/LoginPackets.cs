@@ -165,7 +165,7 @@ public sealed class PacketPing : PacketHandler
     public override void OnReceive(PacketBuffer buffer, State.NetState state)
     {
         byte seq = buffer.ReadByte();
-        state.SendPing(seq);
+        state.OnPingReceived(seq);
     }
 }
 

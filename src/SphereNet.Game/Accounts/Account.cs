@@ -111,6 +111,9 @@ public sealed class Account : IScriptObj
     {
         if (string.IsNullOrEmpty(_passwordHash)) return false;
 
+        if (Core.Configuration.PasswordHelper.IsHashed(_passwordHash))
+            return Core.Configuration.PasswordHelper.Verify(password, _passwordHash);
+
         if (UseMd5Passwords)
         {
             string hash = ComputeMd5(password);
@@ -120,7 +123,6 @@ public sealed class Account : IScriptObj
         if (string.Equals(password, _passwordHash, StringComparison.Ordinal))
             return true;
 
-        // Legacy saves may contain an MD5 hash while Md5Passwords=0.
         if (LooksLikeMd5Hex(_passwordHash))
         {
             string hash = ComputeMd5(password);
@@ -132,7 +134,7 @@ public sealed class Account : IScriptObj
 
     public void SetPassword(string password)
     {
-        _passwordHash = UseMd5Passwords ? ComputeMd5(password) : password;
+        _passwordHash = Core.Configuration.PasswordHelper.Hash(password);
     }
 
     private static string ComputeMd5(string input)

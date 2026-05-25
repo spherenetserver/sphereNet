@@ -47,8 +47,11 @@ public sealed class NetworkManager : IDisposable
     public bool DebugPackets { get; set; }
     public HashSet<byte>? DebugPacketOpcodeFilter { get; set; }
     public int MaxPacketsPerTick { get; set; } = 100;
+    public int FloodDetectionCount { get; set; } = 5;
+    public int FloodDetectionWindowMs { get; set; } = 10_000;
     public int ClientMaxIP { get; set; } = 16;
     public Func<NetState, byte, byte[], bool>? PacketScriptHook { get; set; }
+    public Func<System.Net.IPAddress, bool>? ConnectionAcceptFilter { get; set; }
 
     /// <summary>Fired when a connection is about to be cleaned up (before Clear).</summary>
     public event Action<int>? OnConnectionClosed;
@@ -139,6 +142,11 @@ public sealed class NetworkManager : IDisposable
         _packetManager.Register(new PacketChatText());
         _packetManager.Register(new PacketClientType());
         _packetManager.Register(new PacketKREncryption());
+
+        // Faz 2: Packet Audit & Hardening
+        _packetManager.Register(new PacketNewBookHeader());
+        _packetManager.Register(new PacketCrashReport());
+        _packetManager.Register(new PacketDisconnect());
     }
 
     /// <summary>Initialize the listen socket.</summary>
@@ -188,6 +196,15 @@ public sealed class NetworkManager : IDisposable
             while (_listenSocket.Poll(0, SelectMode.SelectRead))
             {
                 Socket clientSocket = _listenSocket.Accept();
+
+                if (ConnectionAcceptFilter != null &&
+                    clientSocket.RemoteEndPoint is IPEndPoint filterEp &&
+                    ConnectionAcceptFilter(filterEp.Address))
+                {
+                    _logger.LogWarning("Connection from {IP} rejected by accept filter", filterEp.Address);
+                    clientSocket.Close();
+                    continue;
+                }
 
                 if (ClientMaxIP > 0 && clientSocket.RemoteEndPoint is System.Net.IPEndPoint ep)
                 {
@@ -327,13 +344,13 @@ public sealed class NetworkManager : IDisposable
             if (MaxPacketsPerTick > 0 && packetsProcessed >= MaxPacketsPerTick)
             {
                 long now = Environment.TickCount64;
-                if (now - state.PacketFloodWindowStart > 10_000)
+                if (now - state.PacketFloodWindowStart > FloodDetectionWindowMs)
                 {
                     state.PacketFloodCount = 0;
                     state.PacketFloodWindowStart = now;
                 }
                 state.PacketFloodCount++;
-                if (state.PacketFloodCount >= 5)
+                if (state.PacketFloodCount >= FloodDetectionCount)
                 {
                     _logger.LogWarning("Packet flood detected for #{Id}, dropping connection", state.Id);
                     state.MarkClosing();

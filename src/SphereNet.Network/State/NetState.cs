@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
@@ -25,6 +26,7 @@ public sealed class NetState : IDisposable
     private int _recvLength;
     private readonly object _sendLock = new();
     private readonly Queue<PacketBuffer> _sendQueue = [];
+    private byte[] _sendBatchBuffer = new byte[4096];
 
     private readonly ILogger _logger;
 
@@ -51,6 +53,15 @@ public sealed class NetState : IDisposable
     public int PacketFloodCount { get; set; }
     public long PacketFloodWindowStart { get; set; }
 
+    // RTT measurement
+    private byte _rttPingSeq;
+    private long _rttPingSentTick;
+    private int _rttMs = -1;
+    private long _rttLastPingSentTick;
+    public int RttMs => _rttMs;
+    public bool HasRtt => _rttMs >= 0;
+    public static int RttPingIntervalMs { get; set; } = 30_000;
+
     // Client info
     public string AccountName { get; set; } = "";
     public uint AuthId { get; set; }
@@ -59,23 +70,51 @@ public sealed class NetState : IDisposable
     // Encryption
     public CryptoState Crypto { get; } = new CryptoState();
     public ClientEra ClientEra { get; set; } = ClientEra.Sphere56x;
-    public uint ClientVersionNumber { get; set; }
+
+    private uint _clientVersionNumber;
+    private ProtocolChanges _protocolChanges;
+
+    public uint ClientVersionNumber
+    {
+        get => _clientVersionNumber;
+        set
+        {
+            _clientVersionNumber = value;
+            _protocolChanges = ProtocolChangesHelper.DetermineProtocolChanges(value);
+        }
+    }
+
+    public ProtocolChanges ProtocolChanges => _protocolChanges;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool HasProtocolChanges(ProtocolChanges flags) =>
+        (_protocolChanges & flags) == flags;
+
+    public Expansion ClientExpansion { get; set; } = Expansion.None;
+
     public uint ClientTypeFlag { get; set; }
     public int UndecryptedOffset { get; set; }
     public byte PendingPacketOpcode { get; set; }
     public int PendingPacketLength { get; set; }
     public long PendingPacketStartTick { get; set; }
 
-    // Client version breakpoints (UO protocol milestones). Unknown clients
-    // follow the configured profile. Sphere56x is the default parity target,
-    // so unknown no longer means "modern packet formats"; a 0xEF seed or
-    // 0xBD client-version handshake can still opt in.
-    public bool IsClientPost6017  => IsClientVersionAtLeast(60_001_007); // 6.0.1.7+
-    public bool IsClientPost60142 => IsClientVersionAtLeast(60_014_002); // 6.0.14.2+
-    public bool IsClientPost7090  => IsClientVersionAtLeast(70_009_000); // 7.0.9.0+
-    public bool IsClientPost70180 => IsClientVersionAtLeast(70_018_000); // 7.0.18.0+
-    public bool SupportsAosTooltip => ClientEra == ClientEra.Modern || ClientVersionNumber >= 40_000_000;
-    public bool SupportsBuffIcon => ClientEra == ClientEra.Modern || ClientVersionNumber >= 50_000_000;
+    public bool IsClientPost6017  => HasProtocolChanges(ProtocolChanges.Version6017) || FallbackVersionAtLeast(60_001_007);
+    public bool IsClientPost60142 => HasProtocolChanges(ProtocolChanges.Version60142) || FallbackVersionAtLeast(60_014_002);
+    public bool IsClientPost7090  => HasProtocolChanges(ProtocolChanges.Version7090) || FallbackVersionAtLeast(70_009_000);
+    public bool IsClientPost70180 => HasProtocolChanges(ProtocolChanges.Version70300) || FallbackVersionAtLeast(70_018_000);
+    public bool SupportsAosTooltip => HasProtocolChanges(ProtocolChanges.Version500a) || ClientEra == ClientEra.Modern || _clientVersionNumber >= 40_000_000;
+    public bool SupportsBuffIcon => HasProtocolChanges(ProtocolChanges.BuffIcon) || ClientEra == ClientEra.Modern || _clientVersionNumber >= 50_000_000;
+    public bool SupportsStygianAbyss => HasProtocolChanges(ProtocolChanges.StygianAbyss);
+    public bool SupportsHighSeas => HasProtocolChanges(ProtocolChanges.HighSeas);
+    public bool SupportsNewMobileIncoming => HasProtocolChanges(ProtocolChanges.NewMobileIncoming);
+    public bool SupportsNewSecureTrading => HasProtocolChanges(ProtocolChanges.NewSecureTrading);
+    public bool SupportsNewCharacterList => HasProtocolChanges(ProtocolChanges.NewCharacterList);
+    public bool SupportsNewCharacterCreation => HasProtocolChanges(ProtocolChanges.NewCharacterCreation);
+    public bool SupportsExtendedStatus => HasProtocolChanges(ProtocolChanges.ExtendedStatus);
+
+    public ushort ScreenWidth { get; set; }
+    public ushort ScreenHeight { get; set; }
+    public string ClientLanguage { get; set; } = "ENU";
 
     /// <summary>Debug mode — log all outgoing packets.</summary>
     public bool DebugPackets { get; set; }
@@ -288,38 +327,61 @@ public sealed class NetState : IDisposable
 
         lock (_sendLock)
         {
-            while (_sendQueue.Count > 0)
+            if (_sendQueue.Count == 0) return;
+
+            try
             {
-                var packet = _sendQueue.Dequeue();
-                try
+                if (ConnectionType == ConnectType.Game)
                 {
-                    if (ConnectionType == ConnectType.Game)
+                    // Batch all compressed+encrypted packets into a single send
+                    // to guarantee atomic TCP segment delivery and avoid client-side
+                    // decompression issues at segment boundaries.
+                    int totalLen = 0;
+                    var batchBuf = _sendBatchBuffer;
+
+                    while (_sendQueue.Count > 0)
                     {
-                        // Game connection: all outgoing data must be Huffman compressed.
-                        // Source-X compresses each packet individually before sending.
+                        var packet = _sendQueue.Dequeue();
                         var compressed = HuffmanCompression.Compress(packet.Data, 0, packet.Length);
                         Crypto.Encrypt(compressed, 0, compressed.Length);
-                        _socket.Send(compressed, 0, compressed.Length, SocketFlags.None);
+
+                        int needed = totalLen + compressed.Length;
+                        if (needed > batchBuf.Length)
+                        {
+                            int newSize = Math.Max(batchBuf.Length * 2, needed);
+                            var bigger = new byte[newSize];
+                            Buffer.BlockCopy(batchBuf, 0, bigger, 0, totalLen);
+                            _sendBatchBuffer = bigger;
+                            batchBuf = bigger;
+                        }
+
+                        Buffer.BlockCopy(compressed, 0, batchBuf, totalLen, compressed.Length);
+                        totalLen += compressed.Length;
                     }
-                    else
+
+                    if (totalLen > 0)
+                        _socket.Send(batchBuf, 0, totalLen, SocketFlags.None);
+                }
+                else
+                {
+                    while (_sendQueue.Count > 0)
                     {
-                        // Login connection: send raw (no compression)
+                        var packet = _sendQueue.Dequeue();
                         _socket.Send(packet.Data, 0, packet.Length, SocketFlags.None);
                     }
                 }
-                catch (SocketException ex)
+            }
+            catch (SocketException ex)
+            {
+                if (IsExpectedDisconnect(ex.SocketErrorCode))
                 {
-                    if (IsExpectedDisconnect(ex.SocketErrorCode))
-                    {
-                        _logger.LogInformation("Client {Remote} disconnected ({Reason}).", RemoteEndPoint, ex.SocketErrorCode);
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Send error to {Remote}: {Msg}", RemoteEndPoint, ex.Message);
-                    }
-                    MarkClosing();
-                    break;
+                    _logger.LogInformation("Client {Remote} disconnected ({Reason}).", RemoteEndPoint, ex.SocketErrorCode);
                 }
+                else
+                {
+                    _logger.LogWarning("Send error to {Remote}: {Msg}", RemoteEndPoint, ex.Message);
+                }
+                MarkClosing();
             }
         }
     }
@@ -607,6 +669,11 @@ public sealed class NetState : IDisposable
         // ClassicUO and KR clients send this during login handshake.
     }
 
+    internal void OnCrashReport()
+    {
+        _logger.LogWarning("Client #{Id} ({EP}) sent crash report", Id, RemoteEndPoint);
+    }
+
     internal void OnGumpTextEntry(uint serial, ushort context, byte action, string text)
         => GumpTextEntryHandler?.Invoke(this, serial, context, action, text);
 
@@ -621,12 +688,38 @@ public sealed class NetState : IDisposable
         Send(buf);
     }
 
+    public bool SendRttPing(long nowMs)
+    {
+        if (RttPingIntervalMs <= 0) return false;
+        if (_rttLastPingSentTick > 0 && (nowMs - _rttLastPingSentTick) < RttPingIntervalMs)
+            return false;
+
+        _rttPingSeq = (byte)((_rttPingSeq + 1) | 0x80);
+        _rttPingSentTick = nowMs;
+        _rttLastPingSentTick = nowMs;
+        SendPing(_rttPingSeq);
+        return true;
+    }
+
+    public void OnPingReceived(byte seq)
+    {
+        if ((seq & 0x80) != 0 && seq == _rttPingSeq && _rttPingSentTick > 0)
+        {
+            _rttMs = (int)(Environment.TickCount64 - _rttPingSentTick);
+            _rttPingSentTick = 0;
+        }
+        else
+        {
+            SendPing(seq);
+        }
+    }
+
     public void Dispose() => Clear();
 
-    private bool IsClientVersionAtLeast(uint version)
+    private bool FallbackVersionAtLeast(uint version)
     {
-        if (ClientVersionNumber != 0)
-            return ClientVersionNumber >= version;
+        if (_clientVersionNumber != 0)
+            return false; // already handled by HasProtocolChanges
         return ClientEra == ClientEra.Modern;
     }
 

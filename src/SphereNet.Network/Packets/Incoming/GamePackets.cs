@@ -748,3 +748,55 @@ public sealed class PacketKREncryption : PacketHandler
         state.OnKREncryption();
     }
 }
+
+// ==================== Faz 2: Packet Audit & Hardening ====================
+
+/// <summary>0xD4 — New book header (AOS+ variable-length format with length-prefixed strings).
+/// Routes to the same OnBookHeader as the fixed-length 0x93 handler.</summary>
+public sealed class PacketNewBookHeader : PacketHandler
+{
+    public PacketNewBookHeader() : base(0xD4, 0) { }
+
+    public override void OnReceive(PacketBuffer buffer, State.NetState state)
+    {
+        if (buffer.Remaining < 9) return;
+        uint serial = buffer.ReadUInt32();
+        byte flag = buffer.ReadByte();
+        bool writable = flag == 1;
+        buffer.ReadUInt16(); // page count (unused for header change)
+
+        ushort titleLen = buffer.ReadUInt16();
+        string title = titleLen > 0 && buffer.Remaining >= titleLen
+            ? buffer.ReadAsciiFixed(titleLen).TrimEnd('\0')
+            : "";
+
+        ushort authorLen = buffer.ReadUInt16();
+        string author = authorLen > 0 && buffer.Remaining >= authorLen
+            ? buffer.ReadAsciiFixed(authorLen).TrimEnd('\0')
+            : "";
+
+        state.OnBookHeader(serial, writable, title, author);
+    }
+}
+
+/// <summary>0xF4 — Client crash report. Accept silently and log.</summary>
+public sealed class PacketCrashReport : PacketHandler
+{
+    public PacketCrashReport() : base(0xF4, 0) { }
+
+    public override void OnReceive(PacketBuffer buffer, State.NetState state)
+    {
+        state.OnCrashReport();
+    }
+}
+
+/// <summary>0x01 — Client disconnect notification. Mark connection for closure.</summary>
+public sealed class PacketDisconnect : PacketHandler
+{
+    public PacketDisconnect() : base(0x01, 5) { }
+
+    public override void OnReceive(PacketBuffer buffer, State.NetState state)
+    {
+        state.MarkClosing();
+    }
+}

@@ -371,7 +371,7 @@ public class SaveFormatTests
             Assert.NotNull(acc);
             Assert.True(acc!.CheckPassword("1"));
             Assert.False(acc.CheckPassword("2"));
-            Assert.Equal("1", acc.PasswordHash);
+            Assert.StartsWith("SHA256:", acc.PasswordHash);
         }
         finally
         {

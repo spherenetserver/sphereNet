@@ -296,6 +296,28 @@ public sealed class MapDataManager : IDisposable
         return v / 2;
     }
 
+    /// <summary>Direction-specific land Z for the CalculateMinMaxZ pre-filter.
+    /// Cardinal directions return the average of two edge corners;
+    /// diagonal directions return the single corner in that direction.
+    /// Matches ClassicUO Land.CalculateCurrentAverageZ.</summary>
+    public int GetDirectionalLandZ(int mapId, int x, int y, int direction)
+    {
+        int zNW = GetTerrainTile(mapId, x, y).Z;
+        int zNE = GetTerrainTile(mapId, x + 1, y).Z;
+        int zSE = GetTerrainTile(mapId, x + 1, y + 1).Z;
+        int zSW = GetTerrainTile(mapId, x, y + 1).Z;
+
+        int idx = (((direction >> 1) + 1) & 3);
+        int z1 = idx switch { 1 => zNE, 2 => zSE, 3 => zSW, _ => zNW };
+
+        if ((direction & 1) != 0)
+            return z1;
+
+        int idx2 = direction >> 1;
+        int z2 = idx2 switch { 1 => zNE, 2 => zSE, 3 => zSW, _ => zNW };
+        return (z1 + z2) >> 1;
+    }
+
     /// <summary>Matches ServUO LandTile.Ignored — void/no-draw tiles that the
     /// movement algorithm treats as absent land.</summary>
     public static bool IsLandIgnored(ushort tileId) =>

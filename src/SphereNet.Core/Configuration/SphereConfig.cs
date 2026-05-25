@@ -105,6 +105,28 @@ public sealed class SphereConfig
     public int WalkBuffer { get; set; } = 75;
     public int WalkRegen { get; set; } = 25;
 
+    // Movement Credit System (opt-in, disabled by default)
+    public bool MovementCreditEnabled { get; set; }
+    public int MovementCreditBaseMs { get; set; } = 200;
+    public int MovementCreditMaxMs { get; set; } = 1400;
+    public int MovementQueueCapacity { get; set; } = 10;
+
+    // Configurable movement delays (ms)
+    public int WalkDelayFoot { get; set; } = 400;
+    public int WalkDelayMount { get; set; } = 200;
+    public int RunDelayFoot { get; set; } = 200;
+    public int RunDelayMount { get; set; } = 100;
+
+    // Speed hack detection (opt-in)
+    public bool SpeedHackDetectionEnabled { get; set; }
+    public double SpeedHackRateThreshold { get; set; } = 1.5;
+    public int SpeedHackBurstWindow { get; set; } = 3;
+    public int SpeedHackHistorySize { get; set; } = 20;
+    public int SpeedHackCooldownMs { get; set; } = 60_000;
+
+    // RTT Measurement
+    public int RttPingIntervalMs { get; set; } = 30_000;
+
     // Crime & Notoriety
     public int CriminalTimer { get; set; } = 180;
     public int MurderMinCount { get; set; } = 5;
@@ -202,6 +224,8 @@ public sealed class SphereConfig
 
     // Network
     public int MaxPacketsPerTick { get; set; } = 100;
+    public int FloodDetectionCount { get; set; } = 5;
+    public int FloodDetectionWindowMs { get; set; } = 10_000;
     public int DeadSocketTime { get; set; } = 300;
     public int FreezeRestartTime { get; set; } = 60;
     public int NetworkThreads { get; set; }
@@ -364,6 +388,23 @@ public sealed class SphereConfig
         WalkBuffer = ini.GetInt(section, "WalkBuffer", WalkBuffer);
         WalkRegen = ini.GetInt(section, "WalkRegen", WalkRegen);
 
+        MovementCreditEnabled = ini.GetBool(section, "MovementCreditEnabled", MovementCreditEnabled);
+        MovementCreditBaseMs = ini.GetInt(section, "MovementCreditBaseMs", MovementCreditBaseMs);
+        MovementCreditMaxMs = ini.GetInt(section, "MovementCreditMaxMs", MovementCreditMaxMs);
+        MovementQueueCapacity = ini.GetInt(section, "MovementQueueCapacity", MovementQueueCapacity);
+        WalkDelayFoot = ini.GetInt(section, "WalkDelayFoot", WalkDelayFoot);
+        WalkDelayMount = ini.GetInt(section, "WalkDelayMount", WalkDelayMount);
+        RunDelayFoot = ini.GetInt(section, "RunDelayFoot", RunDelayFoot);
+        RunDelayMount = ini.GetInt(section, "RunDelayMount", RunDelayMount);
+        SpeedHackDetectionEnabled = ini.GetBool(section, "SpeedHackDetectionEnabled", SpeedHackDetectionEnabled);
+        if (double.TryParse(ini.GetValue(section, "SpeedHackRateThreshold"), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double shrt))
+            SpeedHackRateThreshold = shrt;
+        SpeedHackBurstWindow = ini.GetInt(section, "SpeedHackBurstWindow", SpeedHackBurstWindow);
+        SpeedHackHistorySize = ini.GetInt(section, "SpeedHackHistorySize", SpeedHackHistorySize);
+        SpeedHackCooldownMs = ini.GetInt(section, "SpeedHackCooldownMs", SpeedHackCooldownMs);
+        RttPingIntervalMs = ini.GetInt(section, "RttPingIntervalMs", RttPingIntervalMs);
+
         CriminalTimer = ini.GetInt(section, "CriminalTimer", CriminalTimer);
         MurderMinCount = ini.GetInt(section, "MurderMinCount", MurderMinCount);
         MurderDecayTime = ini.GetInt(section, "MurderDecayTime", MurderDecayTime);
@@ -450,6 +491,8 @@ public sealed class SphereConfig
         OptionFlags = ini.GetInt(section, "OptionFlags", OptionFlags);
 
         MaxPacketsPerTick = ini.GetInt(section, "MaxPacketsPerTick", MaxPacketsPerTick);
+        FloodDetectionCount = ini.GetInt(section, "FloodDetectionCount", FloodDetectionCount);
+        FloodDetectionWindowMs = ini.GetInt(section, "FloodDetectionWindowMs", FloodDetectionWindowMs);
         DeadSocketTime = ini.GetInt(section, "DeadSocketTime", DeadSocketTime);
         FreezeRestartTime = ini.GetInt(section, "FreezeRestartTime", FreezeRestartTime);
         NetworkThreads = ini.GetInt(section, "NetworkThreads", NetworkThreads);
@@ -585,6 +628,11 @@ public sealed class SphereConfig
         if (DefaultCommandLevel > 0) warnings.Add($"DefaultCommandLevel={DefaultCommandLevel} — auto-created accounts may receive elevated commands");
         if (string.IsNullOrWhiteSpace(AdminPassword)) warnings.Add("AdminPassword is empty — admin panel/telnet must remain disabled");
         if (Md5Passwords) warnings.Add("Md5Passwords=1 — MD5 is legacy-only and weak for public shards");
+        if (FloodDetectionCount <= 0) warnings.Add($"FloodDetectionCount={FloodDetectionCount} — flood detection disabled");
+        if (FloodDetectionWindowMs < 1000) warnings.Add($"FloodDetectionWindowMs={FloodDetectionWindowMs} — too small, may cause false positives");
+        if (MovementCreditEnabled && MovementCreditBaseMs < 50) warnings.Add($"MovementCreditBaseMs={MovementCreditBaseMs} — too small, may reject legitimate movement");
+        if (MovementQueueCapacity > 50) warnings.Add($"MovementQueueCapacity={MovementQueueCapacity} — large queue may mask speed hacks");
+        if (WalkDelayFoot <= 0) warnings.Add($"WalkDelayFoot={WalkDelayFoot} — invalid movement delay");
         foreach (var map in Maps)
         {
             if (map.MaxX <= 0 || map.MaxY <= 0) warnings.Add($"Map {map.MapReadId}: MaxX={map.MaxX} MaxY={map.MaxY} — invalid dimensions");

@@ -144,9 +144,12 @@ public sealed class WalkCheck
             mobDump.Append($"0x{mob.Uid.Value:X} z={mob.Z} dead={mob.IsDead} player={mob.IsPlayer} war={mob.IsInWarMode} '{nm}'");
         }
 
+        CalculateMinMaxZ(md, mapId, xStart, yStart, loc.Z, (int)d, itemsStart,
+            out int fwdMinZ, out int fwdMaxZ);
+
         var fwdTrace = new CheckTrace();
         bool forwardOk = Check(mover, md, mapId, xForward, yForward, startTop, startZ, loc.Z,
-            itemsForward, mobsForward, out newZ, ref fwdTrace);
+            fwdMinZ, fwdMaxZ, itemsForward, mobsForward, out newZ, ref fwdTrace);
         int forwardNewZ = newZ;
         bool moveOk = forwardOk;
         bool mobBlocked = false;
@@ -157,7 +160,7 @@ public sealed class WalkCheck
         {
             var noMobTrace = new CheckTrace();
             bool surfaceWithoutMob = Check(mover, md, mapId, xForward, yForward, startTop, startZ,
-                loc.Z, itemsForward, null, out _, ref noMobTrace);
+                loc.Z, fwdMinZ, fwdMaxZ, itemsForward, null, out _, ref noMobTrace);
             if (surfaceWithoutMob) mobBlocked = true;
         }
 
@@ -169,12 +172,19 @@ public sealed class WalkCheck
             // everyone below GM so corners cannot be cut through walls.
             bool bothRequired = mover.PrivLevel < PrivLevel.GM;
 
+            int leftDir = ((int)d - 1) & 0x7;
+            int rightDir = ((int)d + 1) & 0x7;
+            CalculateMinMaxZ(md, mapId, xStart, yStart, loc.Z, leftDir, itemsStart,
+                out int leftMinZ, out int leftMaxZ);
+            CalculateMinMaxZ(md, mapId, xStart, yStart, loc.Z, rightDir, itemsStart,
+                out int rightMinZ, out int rightMaxZ);
+
             var leftTrace = new CheckTrace();
             var rightTrace = new CheckTrace();
             leftOk = Check(mover, md, mapId, xLeft, yLeft, startTop, startZ, loc.Z,
-                itemsLeft!, null, out _, ref leftTrace);
+                leftMinZ, leftMaxZ, itemsLeft!, null, out _, ref leftTrace);
             rightOk = Check(mover, md, mapId, xRight, yRight, startTop, startZ, loc.Z,
-                itemsRight!, null, out _, ref rightTrace);
+                rightMinZ, rightMaxZ, itemsRight!, null, out _, ref rightTrace);
 
             moveOk = bothRequired ? (leftOk && rightOk) : (leftOk || rightOk);
         }
@@ -204,12 +214,106 @@ public sealed class WalkCheck
     }
 
     // -----------------------------------------------------------------
-    //  Per-tile checks (Check / GetStartZ / IsOk) — structural clone of
-    //  the ServUO functions. Comments mirror the original intent.
+    //  CalculateMinMaxZ — ClassicUO-style pre-filter that establishes a
+    //  vertical [minZ, maxZ+2] window from the SOURCE tile. Surfaces on
+    //  the TARGET tile must be reachable within this window.
+    // -----------------------------------------------------------------
+
+    private void CalculateMinMaxZ(MapDataManager md, int mapId,
+        int srcX, int srcY, int currentZ, int direction, List<Item> sourceItems,
+        out int minZ, out int maxZ)
+    {
+        minZ = -128;
+        maxZ = currentZ;
+
+        var landTile = md.GetTerrainTile(mapId, srcX, srcY);
+        if (!MapDataManager.IsLandIgnored(landTile.TileId))
+        {
+            var landData = md.GetLandTileData(landTile.TileId);
+            bool landBlocks = landData.IsImpassable && landData.IsWet;
+
+            if (!landBlocks)
+            {
+                int zNW = landTile.Z;
+                md.GetAverageZ(mapId, srcX, srcY, out int landLow, out int landAvg, out int landHigh);
+                bool isStretched = (landLow != landHigh);
+
+                if (isStretched && landAvg <= currentZ)
+                {
+                    int dirZ = md.GetDirectionalLandZ(mapId, srcX, srcY, direction);
+                    if (minZ < dirZ) minZ = dirZ;
+                    if (maxZ < dirZ) maxZ = dirZ;
+                }
+                else if (!isStretched)
+                {
+                    if (landAvg <= currentZ && minZ < landAvg)
+                        minZ = landAvg;
+                    if (currentZ == landAvg)
+                    {
+                        if (maxZ < landAvg) maxZ = landAvg;
+                        if (minZ > landLow) minZ = landLow;
+                    }
+                }
+            }
+        }
+
+        var statics = md.GetStaticBlock(mapId, srcX, srcY, out int offX, out int offY);
+        for (int i = 0; i < statics.Length; i++)
+        {
+            var s = statics[i];
+            if (s.XOffset != offX || s.YOffset != offY) continue;
+            var data = md.GetItemTileData(s.TileId);
+
+            bool isImpOrSurf = data.IsImpassable || data.IsSurface;
+            bool isBridge = !data.IsImpassable && data.IsBridge;
+
+            int tileZ = s.Z;
+            int avgZ = tileZ + (data.IsBridge ? data.Height / 2 : data.Height);
+
+            if (isImpOrSurf && avgZ <= currentZ && minZ < avgZ)
+                minZ = avgZ;
+
+            if (isBridge && currentZ == avgZ)
+            {
+                int top = tileZ + data.Height;
+                if (maxZ < top) maxZ = top;
+                if (minZ > tileZ) minZ = tileZ;
+            }
+        }
+
+        for (int i = 0; i < sourceItems.Count; i++)
+        {
+            var item = sourceItems[i];
+            var data = md.GetItemTileData(item.BaseId);
+            if (!ShouldTreatAsMovementGeometry(item, data)) continue;
+
+            bool isImpOrSurf = data.IsImpassable || data.IsSurface;
+            bool isBridge = !data.IsImpassable && data.IsBridge;
+
+            int itemZ = item.Z;
+            int avgZ = itemZ + (data.IsBridge ? data.Height / 2 : data.Height);
+
+            if (isImpOrSurf && avgZ <= currentZ && minZ < avgZ)
+                minZ = avgZ;
+
+            if (isBridge && currentZ == avgZ)
+            {
+                int top = itemZ + data.Height;
+                if (maxZ < top) maxZ = top;
+                if (minZ > itemZ) minZ = itemZ;
+            }
+        }
+
+        maxZ += 2;
+    }
+
+    // -----------------------------------------------------------------
+    //  Per-tile checks (Check / GetStartZ / IsOk)
     // -----------------------------------------------------------------
 
     private bool Check(Character mover, MapDataManager md, int mapId, int x, int y,
-        int startTop, int startZ, int moverZ, List<Item> items, List<Character>? mobiles, out int newZ,
+        int startTop, int startZ, int moverZ, int preMinZ, int preMaxZ,
+        List<Item> items, List<Character>? mobiles, out int newZ,
         ref CheckTrace trace)
     {
         newZ = 0;
@@ -239,6 +343,7 @@ public sealed class WalkCheck
         bool moveIsOk = false;
         int stepTop = startTop + StepHeight;
         int checkTop = startZ + PersonHeight;
+        int effectiveZ = Math.Max(moverZ, preMinZ);
 
         // --- Static tiles ---
         for (int i = 0; i < staticBlock.Length; i++)
@@ -258,12 +363,13 @@ public sealed class WalkCheck
                 int itemTop = itemZ;
                 int ourZ = itemZ + itemData.CalcHeight;
 
+                bool maxZOk = (itemData.IsBridge && itemZ <= preMaxZ)
+                           || (itemData.IsSurface && ourZ <= preMaxZ);
+                if (!maxZOk) { trace.LastReason = $"static_maxz id=0x{tile.TileId:X} ourZ={ourZ} maxZ={preMaxZ}"; continue; }
+
                 if (moveIsOk)
                 {
-                    // Prefer the Z closest to the mover's current Z (ServUO
-                    // uses `p.Z`, not startZ — they diverge when the mover
-                    // stands on a surface whose Z != the tile's baseline).
-                    int cmp = Math.Abs(ourZ - moverZ) - Math.Abs(newZ - moverZ);
+                    int cmp = Math.Abs(ourZ - effectiveZ) - Math.Abs(newZ - effectiveZ);
                     if (cmp > 0 || (cmp == 0 && ourZ > newZ)) continue;
                 }
 
@@ -314,9 +420,13 @@ public sealed class WalkCheck
                 int itemTop = itemZ;
                 int ourZ = itemZ + itemData.CalcHeight;
 
+                bool maxZOk = (itemData.IsBridge && itemZ <= preMaxZ)
+                           || (itemData.IsSurface && ourZ <= preMaxZ);
+                if (!maxZOk) { trace.LastReason = $"item_maxz id=0x{item.BaseId:X} ourZ={ourZ} maxZ={preMaxZ}"; continue; }
+
                 if (moveIsOk)
                 {
-                    int cmp = Math.Abs(ourZ - moverZ) - Math.Abs(newZ - moverZ);
+                    int cmp = Math.Abs(ourZ - effectiveZ) - Math.Abs(newZ - effectiveZ);
                     if (cmp > 0 || (cmp == 0 && ourZ > newZ)) continue;
                 }
 
@@ -352,7 +462,12 @@ public sealed class WalkCheck
         }
 
         // --- Land (terrain) candidate ---
-        if (considerLand && !landBlocks && stepTop >= landZ)
+        // ClassicUO gives land tiles both POF_SURFACE and POF_BRIDGE flags.
+        // Surface check uses averageZ (landCenter), bridge check uses base Z
+        // (landZ = minimum corner). Without the bridge fallback, uphill ramps
+        // where landCenter exceeds maxZ by 1-2 units get rejected while the
+        // client accepts them — causing MoveReject → DenyWalk teleportation.
+        if (considerLand && !landBlocks && stepTop >= landZ && (landCenter <= preMaxZ || landZ <= preMaxZ))
         {
             int ourZ = landCenter;
             int testTop = checkTop;
@@ -361,7 +476,7 @@ public sealed class WalkCheck
             bool shouldCheck = true;
             if (moveIsOk)
             {
-                int cmp = Math.Abs(ourZ - moverZ) - Math.Abs(newZ - moverZ);
+                int cmp = Math.Abs(ourZ - effectiveZ) - Math.Abs(newZ - effectiveZ);
                 if (cmp > 0 || (cmp == 0 && ourZ > newZ)) shouldCheck = false;
             }
 
@@ -380,8 +495,10 @@ public sealed class WalkCheck
             trace.LastReason = $"land_ignored tile=0x{landTile.TileId:X}";
         else if (landBlocks)
             trace.LastReason = $"land_impassable tile=0x{landTile.TileId:X}";
-        else
+        else if (stepTop < landZ)
             trace.LastReason = $"land_too_tall landZ={landZ} stepTop={stepTop}";
+        else
+            trace.LastReason = $"land_maxz landCenter={landCenter} maxZ={preMaxZ}";
 
         // --- Mobile blocking ---
         if (moveIsOk && mobiles != null)

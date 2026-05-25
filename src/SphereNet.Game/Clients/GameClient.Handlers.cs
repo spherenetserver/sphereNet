@@ -93,7 +93,7 @@ public sealed partial class GameClient
         // Send success + new char list
         _netState.Send(new PacketCharDeleteResult(0));
         var charNames = _account.GetCharNames(uid => _world.FindChar(uid)?.GetName());
-        _netState.Send(new PacketCharList(charNames).Build());
+        _netState.Send(new PacketCharList(charNames, newCharacterList: _netState.SupportsNewCharacterList).Build());
     }
 
     /// <summary>Handle dye response from color picker (0x95).</summary>

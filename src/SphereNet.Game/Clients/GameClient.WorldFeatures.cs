@@ -366,8 +366,8 @@ public sealed partial class GameClient
         FireTradeTrigger(_character, CharTrigger.TradeCreate, trade, partner);
         FireTradeTrigger(partner, CharTrigger.TradeCreate, trade, _character);
 
-        _netState.Send(new PacketWorldItem(cont1.Uid.Value, 0x1E5E, 1, 0, 0, 0, 0));
-        _netState.Send(new PacketWorldItem(cont2.Uid.Value, 0x1E5E, 1, 0, 0, 0, 0));
+        _netState.Send(BuildWorldItemPacket(cont1.Uid.Value, 0x1E5E, 1, 0, 0, 0, 0));
+        _netState.Send(BuildWorldItemPacket(cont2.Uid.Value, 0x1E5E, 1, 0, 0, 0, 0));
         _netState.Send(new PacketSecureTradeOpen(
             partner.Uid.Value, cont1.Uid.Value, cont2.Uid.Value, partner.GetName()));
 
@@ -999,9 +999,9 @@ public sealed partial class GameClient
         var soundPacket = new PacketSound(soundId, x, y, z);
         BroadcastNearby?.Invoke(pos, UpdateRange, soundPacket, 0);
 
-        var itemPacket = new PacketWorldItem(serial, tileId, 1, x, y, z, hue);
-        _netState.Send(itemPacket);
-        BroadcastNearby?.Invoke(pos, UpdateRange, itemPacket, _character.Uid.Value);
+        _netState.Send(BuildWorldItemPacket(serial, tileId, 1, x, y, z, hue));
+        var broadcastPacket = new PacketWorldItem(serial, tileId, 1, x, y, z, hue);
+        BroadcastNearby?.Invoke(pos, UpdateRange, broadcastPacket, _character.Uid.Value);
     }
 
     private void ToggleDoor(Item door)
@@ -1036,11 +1036,13 @@ public sealed partial class GameClient
         var soundPacket = new PacketSound(soundId, door.X, door.Y, door.Z);
         BroadcastNearby?.Invoke(door.Position, UpdateRange, soundPacket, 0);
 
-        var itemPacket = new PacketWorldItem(
+        _netState.Send(BuildWorldItemPacket(
+            door.Uid.Value, door.DispIdFull, door.Amount,
+            door.X, door.Y, door.Z, door.Hue));
+        var doorBroadcast = new PacketWorldItem(
             door.Uid.Value, door.DispIdFull, door.Amount,
             door.X, door.Y, door.Z, door.Hue);
-        _netState.Send(itemPacket);
-        BroadcastNearby?.Invoke(door.Position, UpdateRange, itemPacket, _character.Uid.Value);
+        BroadcastNearby?.Invoke(door.Position, UpdateRange, doorBroadcast, _character.Uid.Value);
     }
 
     private void UsePotion(Item potion)
@@ -1175,7 +1177,12 @@ public sealed partial class GameClient
         {
             [0x0005] = static (client, data) => client.HandleExtendedScreenSize(data),
             [0x0006] = static (client, data) => client.HandleExtendedParty(data),
-            [0x000B] = static (client, _) => client.FireExtendedButtonTrigger(CharTrigger.UserChatButton, 0x000B),
+            [0x000B] = static (client, data) =>
+            {
+                if (data.Length >= 3)
+                    client._netState.ClientLanguage = System.Text.Encoding.ASCII.GetString(data, 0, 3);
+                client.FireExtendedButtonTrigger(CharTrigger.UserChatButton, 0x000B);
+            },
             [0x0013] = static (client, data) => client.HandleExtendedContextMenuRequest(data),
             [0x0015] = static (client, data) => client.HandleExtendedContextMenuResponse(data),
             [0x001A] = static (client, data) => client.HandleExtendedStatLock(data),
@@ -1233,6 +1240,8 @@ public sealed partial class GameClient
 
         ushort width = (ushort)((data[4] << 8) | data[5]);
         ushort height = (ushort)((data[6] << 8) | data[7]);
+        _netState.ScreenWidth = width;
+        _netState.ScreenHeight = height;
         _character.SetScreenSize(width, height);
     }
 

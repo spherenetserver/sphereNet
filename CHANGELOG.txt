@@ -4,6 +4,110 @@
 All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-26] - Network modernizasyonu: protokol altyapisi, guvenlik, hareket ve multi-era paket destegi
+              (Network modernization: protocol infrastructure, security hardening, movement overhaul, multi-era packet support)
+----------------------------------------
+
+PROTOKOL / PROTOCOL:
+  - ProtocolChanges enum (15 bayrak, Version500a - Version70610) ile client versiyon
+    tespiti altyapisi eklendi; NetState uzerinde SupportsNewMobileIncoming,
+    SupportsNewCharacterList, SupportsNewCharacterCreation, SupportsExtendedStatus
+    helper property'leri tanimlandi.
+    Added ProtocolChanges flags enum (15 flags from Version500a to Version70610) for
+    client version detection; NetState gains per-version capability properties.
+  - PacketDrawObject (0x78) versiyon dallanmasi: 7.0.33.1 oncesi 15-bit itemId + signal
+    bit, 7.0.33.1+ 16-bit itemId + her zaman hue yazimi.
+    PacketDrawObject (0x78) version branching: pre-7.0.33.1 uses 15-bit itemId with
+    signal bit for hue, post-7.0.33.1 uses full 16-bit with hue always written.
+  - PacketCharList (0xA9) versiyon dallanmasi: eski format 31-byte sehir alani,
+    yeni format 32-byte + koordinat + trailing -1.
+    PacketCharList (0xA9) version branching: old format 31-byte city fields without
+    coords, new format 32-byte with coords and trailing -1.
+  - ExtendedStatus (0x11) expansion seviyesi 7.0.30+ client'lar icin expansion=7
+    olarak guncellendi; onceki ML client'lari expansion=5 almaya devam eder.
+    ExtendedStatus (0x11) expansion level updated to 7 for clients 7.0.30+; older ML
+    clients still receive expansion=5.
+  - BroadcastDrawObject per-observer dispatch: ForEachClientInRange ile her gozlemciye
+    kendi client versiyonuna uygun 0x78 formati gonderilir.
+    BroadcastDrawObject refactored to per-observer dispatch via ForEachClientInRange,
+    sending version-appropriate 0x78 format to each observer.
+  - 0xF0 movement batch paketi parse ve handler eklendi; birden fazla walk adimi tek
+    pakette islenir.
+    Added 0xF0 movement batch packet parsing and handler; multiple walk steps are
+    processed from a single packet.
+
+GUVENLIK / SECURITY:
+  - IP bazli baglanti hiz sinirlandirici (ConnectionRateLimiter) ve IP engelleme
+    listesi (IPBlockList) eklendi; SphereConfig uzerinden yapilandirilabilir.
+    Added connection rate limiter and IP block list with configurable thresholds
+    via SphereConfig.
+  - Sifre dogrulama SHA256 hash destegi eklendi (PasswordHelper); hesap sifreleri
+    artik hash'lenerek saklanabilir.
+    Password verification now supports SHA256 hashing via PasswordHelper; account
+    passwords can be stored hashed.
+  - 0xF0 batch paketi boyut ve step sayisi sinirlari eklendi (max 4096 byte,
+    max 128 adim).
+    0xF0 batch packet size and step count limits added (max 4096 bytes, 128 steps).
+
+HAREKET / MOVEMENT:
+  - Token-bucket kredi sistemi (MovementCreditSystem): burst buffer ve saniye basina
+    yenileme ile hiz hilesi tespiti; CircularBuffer tabanli hareket gecmisi.
+    Token-bucket credit system with burst buffer and per-second regen for speed hack
+    detection; CircularBuffer-based movement history tracking.
+  - SpeedHackDetector: hareket gecmisini analiz ederek sliding-window tabanli hiz
+    hilesi tespit mekanizmasi.
+    SpeedHackDetector analyzes movement history via sliding-window for speed hack
+    verdicts.
+  - Collision/freeze rejection sonrasi tam karakter yeniden cizimi (0x20 + 0x78)
+    eklendi; client prediction rollback'indeki goruntusel atlama duzeltildi.
+    Collision/freeze rejection now sends full character redraw (0x20 + 0x78) after
+    MoveReject, fixing visual snapping on client prediction rollback.
+  - WalkCheck detayli tani modu: forward/diagonal/mob-block tile bazli dump,
+    land/static/impassable sayaclari ile reject nedeni teshisi.
+    WalkCheck detailed diagnostics: per-tile forward/diagonal/mob-block dumps with
+    land/static/impassable counters for rejection root-cause analysis.
+  - Map veri yoneticisine statics dosya boyut dogrulama ve duzgun path cozumleme
+    eklendi.
+    Map data manager now validates statics file size and resolves paths from server
+    base directory.
+
+RTT / RTT:
+  - Server tarafli RTT (Round-Trip Time) olcum altyapisi: 0x73 ping yuksek-bit
+    sequence (0x80+), yapilandirilabilir 30sn aralik (RttPingIntervalMs), NetState
+    uzerinde RttMs/HasRtt okunabilir deger.
+    Server-initiated RTT measurement via 0x73 ping with high-bit sequence (0x80+),
+    configurable 30s interval, and RttMs/HasRtt readable on NetState.
+
+TEST / TEST:
+  - Multi-client gorunurluk testleri (8 test): hareket broadcast, pozisyon dogrulama,
+    menzil disi filtreleme, self-exclude, versiyon dallanma, savas modu, dovus
+    swing/hasar gozlemcisi.
+    Multi-client visibility tests (8 tests): movement broadcast, position validation,
+    out-of-range filtering, self-exclusion, version branching, war mode, combat
+    swing/damage observer.
+  - RecordingEngine testleri (15 test): kayit yasam dongusu, menzil icinde/disinda
+    yakalama, coklu kaydedici, roundtrip save/load, replay/seek/pause/resume/speed,
+    phantom temizligi, dosya silme.
+    RecordingEngine tests (15 tests): recording lifecycle, in/out-of-range capture,
+    multi-recorder, roundtrip save/load, replay/seek/pause/resume/speed, phantom
+    cleanup, delete.
+  - Version-branched entegrasyon testleri (3 test): ExtendedStatus expansion 7/5,
+    CharList eski format boyut dogrulama.
+    Version-branched integration tests (3 tests): ExtendedStatus expansion 7/5,
+    old-format CharList size validation.
+  - Login akisi edge-case testleri (2 test): hatali sifre reject, EnterWorld paket
+    dogrulama (DrawPlayer + StatusFull + LightLevel).
+    Login flow edge-case tests (2 tests): wrong password rejection, EnterWorld packet
+    validation (DrawPlayer + StatusFull + LightLevel).
+  - Hareket ve multi-client testleri MoveClockSerial koleksiyonuyla seriklestirilerek
+    paralel statik yaris durumu giderildi.
+    Movement and multi-client tests serialized via MoveClockSerial collection to
+    eliminate parallel static race conditions.
+  - Script fixture testleri (3 test) fixture dizini yoksa sessizce gecilir.
+    Script fixture tests (3 tests) skip silently when fixture directory is absent.
+  - Toplam test sayisi 512'ye cikti, tumu gecmektedir.
+    Total test count raised to 512, all passing.
+
 [2026-05-24] - Script pack parity hardening ve movement resync duzeltmeleri
               (Script pack parity hardening and movement resync fixes)
 ----------------------------------------

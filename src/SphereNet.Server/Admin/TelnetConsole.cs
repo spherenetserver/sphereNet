@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Configuration;
+using SphereNet.Core.Security;
 using SphereNet.Game.Accounts;
 using SphereNet.Game.World;
 
@@ -22,11 +23,12 @@ public sealed class TelnetConsole : IDisposable
     private bool _running;
 
     public TelnetConsole(GameWorld world, AccountManager accounts, SphereConfig config,
-        Func<int> getActiveConnections, ILogger logger, ILoggerFactory loggerFactory)
+        Func<int> getActiveConnections, ILogger logger, ILoggerFactory loggerFactory,
+        IPBlockList? sharedBlockList = null)
     {
         _logger = logger;
         _adminPassword = config.AdminPassword ?? "";
-        _processor = new AdminCommandProcessor(world, accounts, config, getActiveConnections, loggerFactory);
+        _processor = new AdminCommandProcessor(world, accounts, config, getActiveConnections, loggerFactory, sharedBlockList);
     }
 
     public AdminCommandProcessor Processor => _processor;
@@ -123,7 +125,8 @@ public sealed class TelnetConsole : IDisposable
             return;
         }
 
-        bool keepOpen = _processor.ProcessCommand(input, session.SendLine);
+        bool keepOpen = _processor.ProcessCommand(input, session.SendLine,
+            $"telnet:{session.RemoteEndPoint}");
 
         if (!keepOpen)
         {

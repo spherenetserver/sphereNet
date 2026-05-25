@@ -625,7 +625,8 @@ public static partial class Program
             var center = session.Center;
             client.NetState.Send(new PacketDrawObject(
                 gm.Uid.Value, gm.BodyId, center.X, center.Y, center.Z,
-                (byte)gm.Direction, gm.Hue, 0x80, 0, []).Build());
+                (byte)gm.Direction, gm.Hue, 0x80, 0, [],
+                client.NetState.SupportsNewMobileIncoming).Build());
         }
 
         SendSysMessage(gm, $"State replay: {session.RecorderName}, {session.DurationMs / 1000.0:F0}s, {session.Packets.Count} packets");

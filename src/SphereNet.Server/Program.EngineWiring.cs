@@ -68,6 +68,24 @@ public static partial class Program
             GameClient.MoveToleranceMs = 80;
             GameClient.MoveRejectResyncMs = 150;
             GameClient.MoveViolationKickThreshold = 0;
+
+            GameClient.MovementCreditEnabled = _config.MovementCreditEnabled;
+            GameClient.MovementCreditBaseMs = _config.MovementCreditBaseMs;
+            GameClient.MovementCreditMaxMs = _config.MovementCreditMaxMs;
+            GameClient.MovementQueueCapacity = _config.MovementQueueCapacity;
+            GameClient.SpeedHackDetectionEnabled = _config.SpeedHackDetectionEnabled;
+            GameClient.SpeedHackRateThreshold = _config.SpeedHackRateThreshold;
+            GameClient.SpeedHackBurstWindow = _config.SpeedHackBurstWindow;
+            GameClient.SpeedHackHistorySize = _config.SpeedHackHistorySize;
+            GameClient.SpeedHackCooldownMs = _config.SpeedHackCooldownMs;
+
+            MovementEngine.WalkDelayFoot = _config.WalkDelayFoot;
+            MovementEngine.WalkDelayMount = _config.WalkDelayMount;
+            MovementEngine.RunDelayFoot = _config.RunDelayFoot;
+            MovementEngine.RunDelayMount = _config.RunDelayMount;
+
+            NetState.RttPingIntervalMs = _config.RttPingIntervalMs;
+
             _triggerDispatcher = new TriggerDispatcher();
             _triggerDispatcher.Resources = _resources;
             var exprParser = new ExpressionParser
@@ -1796,6 +1814,8 @@ public static partial class Program
             _network.DebugPackets = _config.DebugPackets;
             _network.DebugPacketOpcodeFilter = ParseDebugPacketOpcodes(_config.DebugPacketOpcodes);
             _network.MaxPacketsPerTick = _config.MaxPacketsPerTick;
+            _network.FloodDetectionCount = _config.FloodDetectionCount;
+            _network.FloodDetectionWindowMs = _config.FloodDetectionWindowMs;
             _network.ClientMaxIP = _config.ClientMaxIP;
             _network.PacketScriptHook = HandlePacketScriptHook;
             _log.LogInformation("Crypto keys loaded: {Count}, UseCrypt={UC}, UseNoCrypt={UNC}",

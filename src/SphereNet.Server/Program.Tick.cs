@@ -409,8 +409,10 @@ public static partial class Program
         var dirtyObjects = _world.HasDirty ? _world.DrainDirtyObjectsSnapshot() : [];
         MarkClientsNearDirtyObjects(dirtyObjects);
 
+        long rttNow = Environment.TickCount64;
         foreach (var client in _clients.Values)
         {
+            client.NetState.SendRttPing(rttNow);
             client.TickClientState();
             if (client.ViewNeedsRefresh)
             {

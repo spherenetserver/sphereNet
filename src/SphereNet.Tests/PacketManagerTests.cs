@@ -1,5 +1,6 @@
 using SphereNet.Network.Packets;
 using SphereNet.Network.Packets.Incoming;
+using SphereNet.Network.Packets.Outgoing;
 using SphereNet.Network.State;
 using SphereNet.Network.Manager;
 using System.Reflection;
@@ -212,6 +213,60 @@ public class PacketManagerTests
             .GetField("_handlers", BindingFlags.Instance | BindingFlags.NonPublic)!
             .GetValue(manager)!;
         return handlers.Where(handler => handler != null).Cast<PacketHandler>();
+    }
+
+    [Fact]
+    public void PacketWorldItemSA_Build_CorrectOpcodeAndLength()
+    {
+        var packet = new PacketWorldItemSA(0x40000001, 0x0EED, 100, 1000, 2000, 10, 0x0035);
+        var buf = packet.Build();
+
+        Assert.Equal(24, buf.Length);
+        Assert.Equal(0xF3, buf.Data[0]);
+    }
+
+    [Fact]
+    public void PacketWorldItemSA_HighSeas_Build_CorrectLength()
+    {
+        var packet = new PacketWorldItemSA(0x40000001, 0x0EED, 100, 1000, 2000, 10, 0x0035,
+            highSeas: true);
+        var buf = packet.Build();
+
+        Assert.Equal(26, buf.Length);
+        Assert.Equal(0xF3, buf.Data[0]);
+    }
+
+    [Fact]
+    public void PacketPopupMessage_Build_CorrectOpcodeAndLength()
+    {
+        var packet = new PacketPopupMessage(0x05);
+        var buf = packet.Build();
+
+        Assert.Equal(2, buf.Length);
+        Assert.Equal(0x53, buf.Data[0]);
+        Assert.Equal(0x05, buf.Data[1]);
+    }
+
+    [Fact]
+    public void PacketClilocMessageAffix_Build_CorrectOpcode()
+    {
+        var packet = new PacketClilocMessageAffix(
+            0x00000001, 0x0190, 0x06, 0x0035, 0x0003,
+            1042762, "TestName", " crafted", "");
+        var buf = packet.Build();
+
+        Assert.Equal(0xCC, buf.Data[0]);
+        Assert.True(buf.Length > 30);
+    }
+
+    [Fact]
+    public void PacketNewAnimation_Build_CorrectOpcodeAndLength()
+    {
+        var packet = new PacketNewAnimation(0x00000001, 11, 0, 5);
+        var buf = packet.Build();
+
+        Assert.Equal(10, buf.Length);
+        Assert.Equal(0xE2, buf.Data[0]);
     }
 
     private static string FindRepoFile(params string[] parts)

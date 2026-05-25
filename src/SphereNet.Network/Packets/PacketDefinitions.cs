@@ -18,6 +18,7 @@ public static class PacketDefinitions
 
         // Fixed-length packets (from Source-X + legacy table)
         _lengths[0x00] = 0x68;  // 104 - Create Character
+        _lengths[0x01] = 0x05;  // 5 - Disconnect
         _lengths[0x02] = 0x07;  // Move Request
         _lengths[0x03] = 0;     // Speech (variable)
         _lengths[0x04] = 0x02;  // God mode (unused)

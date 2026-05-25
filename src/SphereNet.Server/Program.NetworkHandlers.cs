@@ -832,6 +832,8 @@ public static partial class Program
     private static void OnResyncRequest(NetState state)
     {
         if (!_clients.TryGetValue(state.Id, out var client)) return;
+        _log.LogWarning("[resync_request] Client #{Id} requested resync — walk seq was {Seq}",
+            state.Id, state.WalkSequence);
         client.Resync();
     }
 

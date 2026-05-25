@@ -113,7 +113,7 @@ public sealed partial class GameClient
         _netState.Send(new PacketFeatureEnable(featureFlags, _netState.IsClientPost60142));
 
         var charNames = _account.GetCharNames(uid => _world.FindChar(uid)?.GetName());
-        var charListPacket = new PacketCharList(charNames);
+        var charListPacket = new PacketCharList(charNames, newCharacterList: _netState.SupportsNewCharacterList);
         var built = charListPacket.Build();
         _netState.Send(built);
     }

@@ -169,15 +169,18 @@ public sealed class PacketDrawObject : PacketWriter
     private readonly byte _flags;
     private readonly byte _notoriety;
     private readonly (uint Serial, ushort ItemId, byte Layer, ushort Hue)[] _equipment;
+    private readonly bool _newMobileIncoming;
 
     public PacketDrawObject(uint serial, ushort bodyId, short x, short y, sbyte z,
         byte dir, ushort hue, byte flags, byte notoriety,
-        (uint Serial, ushort ItemId, byte Layer, ushort Hue)[] equipment)
+        (uint Serial, ushort ItemId, byte Layer, ushort Hue)[] equipment,
+        bool newMobileIncoming = false)
         : base(0x78)
     {
         _serial = serial; _bodyId = bodyId; _x = x; _y = y; _z = z;
         _dir = dir; _hue = hue; _flags = flags; _notoriety = notoriety;
         _equipment = equipment;
+        _newMobileIncoming = newMobileIncoming;
     }
 
     public override PacketBuffer Build()
@@ -196,16 +199,25 @@ public sealed class PacketDrawObject : PacketWriter
         foreach (var (serial, itemId, layer, hue) in _equipment)
         {
             buf.WriteUInt32(serial);
-            if (hue != 0)
+            if (_newMobileIncoming)
             {
-                buf.WriteUInt16((ushort)(itemId | 0x8000));
+                buf.WriteUInt16((ushort)(itemId & 0xFFFF));
                 buf.WriteByte(layer);
                 buf.WriteUInt16(hue);
             }
             else
             {
-                buf.WriteUInt16(itemId);
-                buf.WriteByte(layer);
+                if (hue != 0)
+                {
+                    buf.WriteUInt16((ushort)((itemId & 0x7FFF) | 0x8000));
+                    buf.WriteByte(layer);
+                    buf.WriteUInt16(hue);
+                }
+                else
+                {
+                    buf.WriteUInt16((ushort)(itemId & 0x7FFF));
+                    buf.WriteByte(layer);
+                }
             }
         }
         buf.WriteUInt32(0); // terminator
@@ -1881,6 +1893,139 @@ public sealed class PacketSecureTradeUpdate : PacketWriter
         buf.WriteUInt32(_myAccepted ? 1u : 0u);
         buf.WriteUInt32(_theirAccepted ? 1u : 0u);
         buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
+// ==================== SA/HS+ Packets ====================
+
+/// <summary>0xF3 — SA+ world entity packet. Replaces 0x1A for clients with
+/// ProtocolChanges.StygianAbyss. HS clients expect 2 extra trailing bytes.</summary>
+public sealed class PacketWorldItemSA : PacketWriter
+{
+    private readonly uint _serial;
+    private readonly ushort _itemId;
+    private readonly ushort _amount;
+    private readonly short _x, _y;
+    private readonly sbyte _z;
+    private readonly ushort _hue;
+    private readonly byte _light;
+    private readonly byte _flags;
+    private readonly bool _highSeas;
+
+    public PacketWorldItemSA(uint serial, ushort itemId, ushort amount,
+        short x, short y, sbyte z, ushort hue,
+        bool highSeas = false, byte light = 0, byte flags = 0)
+        : base(0xF3)
+    {
+        _serial = serial;
+        _itemId = itemId;
+        _amount = amount;
+        _x = x; _y = y; _z = z;
+        _hue = hue;
+        _highSeas = highSeas;
+        _light = light;
+        _flags = flags;
+    }
+
+    public override PacketBuffer Build()
+    {
+        int size = _highSeas ? 26 : 24;
+        var buf = CreateFixed(size);
+        buf.WriteUInt16(0x0001);
+        buf.WriteByte(0x00); // type: 0 = item
+        buf.WriteUInt32(_serial);
+        buf.WriteUInt16((ushort)(_itemId & (_highSeas ? 0xFFFF : 0x7FFF)));
+        buf.WriteByte(0x00); // direction
+        buf.WriteInt16((short)_amount);
+        buf.WriteInt16((short)_amount);
+        buf.WriteInt16((short)(_x & 0x7FFF));
+        buf.WriteInt16((short)(_y & 0x3FFF));
+        buf.WriteSByte(_z);
+        buf.WriteByte(_light);
+        buf.WriteInt16((short)_hue);
+        buf.WriteByte(_flags);
+        if (_highSeas)
+            buf.WriteUInt16(0);
+        return buf;
+    }
+}
+
+/// <summary>0xCC — Localized message with prefix/suffix affix.</summary>
+public sealed class PacketClilocMessageAffix : PacketWriter
+{
+    private readonly uint _serial;
+    private readonly ushort _body;
+    private readonly byte _type;
+    private readonly ushort _hue;
+    private readonly ushort _font;
+    private readonly uint _clilocId;
+    private readonly byte _flags;
+    private readonly string _name;
+    private readonly string _affix;
+    private readonly string _args;
+
+    public PacketClilocMessageAffix(uint serial, ushort body, byte type,
+        ushort hue, ushort font, uint clilocId,
+        string name, string affix, string args,
+        bool prepend = false, bool system = false)
+        : base(0xCC)
+    {
+        _serial = serial;
+        _body = body;
+        _type = type;
+        _hue = hue;
+        _font = font;
+        _clilocId = clilocId;
+        _flags = (byte)((prepend ? 0x01 : 0) | (system ? 0x02 : 0));
+        _name = name ?? "";
+        _affix = affix ?? "";
+        _args = args ?? "";
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(64 + _affix.Length + _args.Length * 2);
+        buf.WriteUInt32(_serial);
+        buf.WriteUInt16(_body);
+        buf.WriteByte(_type);
+        buf.WriteUInt16(_hue);
+        buf.WriteUInt16(_font);
+        buf.WriteUInt32(_clilocId);
+        buf.WriteByte(_flags);
+        buf.WriteAsciiFixed(_name, 30);
+        buf.WriteAsciiNull(_affix);
+        buf.WriteUnicodeLeNullTerminated(_args);
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
+/// <summary>0xE2 — New animation packet for HS+ clients.
+/// Replaces 0x6E for clients with ProtocolChanges.HighSeas.</summary>
+public sealed class PacketNewAnimation : PacketWriter
+{
+    private readonly uint _serial;
+    private readonly ushort _animationType;
+    private readonly ushort _action;
+    private readonly byte _delay;
+
+    public PacketNewAnimation(uint serial, ushort animationType, ushort action, byte delay = 0)
+        : base(0xE2)
+    {
+        _serial = serial;
+        _animationType = animationType;
+        _action = action;
+        _delay = delay;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateFixed(10);
+        buf.WriteUInt32(_serial);
+        buf.WriteUInt16(_animationType);
+        buf.WriteUInt16(_action);
+        buf.WriteByte(_delay);
         return buf;
     }
 }

@@ -1561,6 +1561,99 @@ TAG.BUTTON=1
     }
 
     [Fact]
+    public void LoginPipeline_InvalidPassword_SendsReject()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory) { AutoCreateAccounts = false };
+        var network = new NetworkManager(2, loggerFactory)
+        {
+            UseCrypt = false,
+            UseNoCrypt = true
+        };
+        var clients = new Dictionary<int, SphereNet.Game.Clients.GameClient>();
+
+        SphereNet.Game.Clients.GameClient GetClient(NetState state)
+        {
+            if (!clients.TryGetValue(state.Id, out var client))
+            {
+                client = new SphereNet.Game.Clients.GameClient(state, world, accountManager,
+                    loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
+                clients[state.Id] = client;
+            }
+            return client;
+        }
+
+        network.SetHandlers(
+            loginRequest: (state, account, password) => GetClient(state).HandleLoginRequest(account, password));
+
+        var loginState = network.GetState(0)!;
+        SetNetStateInUse(loginState, true);
+        ProcessPacket(network, loginState, BuildLoginPacket("nonexistent", "badpw"));
+
+        // Should receive 0x82 (LoginDenied) since account doesn't exist and AutoCreate is off
+        AssertQueuedOpcode(loginState, 0x82);
+    }
+
+    [Fact]
+    public void LoginPipeline_EnterWorld_ReceivesDrawPlayerAndStatus()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory) { AutoCreateAccounts = true };
+        var network = new NetworkManager(2, loggerFactory)
+        {
+            UseCrypt = false,
+            UseNoCrypt = true
+        };
+        var clients = new Dictionary<int, SphereNet.Game.Clients.GameClient>();
+
+        SphereNet.Game.Clients.GameClient GetClient(NetState state)
+        {
+            if (!clients.TryGetValue(state.Id, out var client))
+            {
+                client = new SphereNet.Game.Clients.GameClient(state, world, accountManager,
+                    loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
+                clients[state.Id] = client;
+            }
+            return client;
+        }
+
+        network.SetHandlers(
+            loginRequest: (state, account, password) => GetClient(state).HandleLoginRequest(account, password),
+            serverSelect: (state, _) =>
+            {
+                const uint authId = 0x01020304;
+                state.AuthId = authId;
+                CryptoState.StoreRelayKeys(authId, state.Crypto.Key1, state.Crypto.Key2, state.ClientVersionNumber);
+                state.Send(new PacketRelay(0x7F000001, 2593, authId));
+                state.MarkClosing();
+            },
+            gameLogin: (state, account, password, authId) => GetClient(state).HandleGameLogin(account, password, authId),
+            charSelect: (state, slot, name) => GetClient(state).HandleCharSelect(slot, name));
+
+        var loginState = network.GetState(0)!;
+        SetNetStateInUse(loginState, true);
+        ProcessPacket(network, loginState, BuildLoginPacket("entertest", "pw"));
+        ProcessPacket(network, loginState, [0xA0, 0x00, 0x00]);
+        var relay = AssertQueuedOpcode(loginState, 0x8C);
+        uint authId = ReadUInt32(relay.Span, 7);
+
+        var gameState = network.GetState(1)!;
+        SetNetStateInUse(gameState, true);
+        ProcessPacket(network, gameState, BuildGameLoginPacket(authId, "entertest", "pw"));
+        ProcessPacket(network, gameState, BuildCharSelectPacket("EnterChar", -1));
+
+        // After entering world: 0x1B (LoginConfirm), 0x20 (DrawPlayer), 0x11 (StatusFull)
+        AssertQueuedOpcode(gameState, 0x1B);
+
+        // Check remaining packets for 0x20 and 0x11
+        var remainingPackets = TestHarness.GetQueuedPackets(gameState).ToList();
+        Assert.Contains(remainingPackets, p => p.Span.Length > 0 && p.Span[0] == 0x20);
+        Assert.Contains(remainingPackets, p => p.Span.Length > 0 && p.Span[0] == 0x11);
+    }
+
+    [Fact]
     public void BuildViewDelta_CapsItemsPerTileAtEighty()
     {
         var loggerFactory = LoggerFactory.Create(_ => { });

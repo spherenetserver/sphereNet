@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using SphereNet.Core.Configuration;
 
 namespace SphereNet.Game.Accounts;
 
@@ -72,6 +73,13 @@ public sealed class AccountManager
         {
             _logger.LogWarning("Wrong password for account '{Name}'", name);
             return null;
+        }
+
+        if (PasswordHelper.NeedsUpgrade(account.PasswordHash))
+        {
+            account.PasswordHash = PasswordHelper.Hash(password);
+            _logger.LogInformation("Password hash upgraded for account '{Name}'", name);
+            NotifyAccountsChanged();
         }
 
         account.LastLogin = DateTime.UtcNow;

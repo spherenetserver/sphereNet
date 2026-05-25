@@ -45,7 +45,7 @@ public sealed partial class GameClient
             ch.Uid.Value, ch.BodyId,
             ch.X, ch.Y, ch.Z,
             (byte)ch.Direction, ch.Hue, flags, noto,
-            equipment
+            equipment, _netState.SupportsNewMobileIncoming
         ));
     }
 
@@ -471,7 +471,7 @@ public sealed partial class GameClient
             ch.Uid.Value, ch.BodyId,
             ch.X, ch.Y, ch.Z,
             (byte)ch.Direction, hue, flags, noto,
-            equipment
+            equipment, _netState.SupportsNewMobileIncoming
         ));
     }
 
@@ -485,13 +485,22 @@ public sealed partial class GameClient
             ch.Uid.Value, ch.BodyId,
             ch.X, ch.Y, ch.Z,
             (byte)ch.Direction, ch.Hue, flags, noto,
-            equipment
+            equipment, _netState.SupportsNewMobileIncoming
         ));
+    }
+
+    private PacketWriter BuildWorldItemPacket(uint serial, ushort itemId, ushort amount,
+        short x, short y, sbyte z, ushort hue)
+    {
+        if (_netState.SupportsStygianAbyss)
+            return new PacketWorldItemSA(serial, itemId, amount, x, y, z, hue,
+                highSeas: _netState.SupportsHighSeas);
+        return new PacketWorldItem(serial, itemId, amount, x, y, z, hue);
     }
 
     private void SendWorldItem(Item item)
     {
-        _netState.Send(new PacketWorldItem(
+        _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
             item.X, item.Y, item.Z, item.Hue
         ));
@@ -499,7 +508,7 @@ public sealed partial class GameClient
 
     private void SendWorldItemWithHue(Item item, ushort hue)
     {
-        _netState.Send(new PacketWorldItem(
+        _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
             item.X, item.Y, item.Z, hue
         ));
@@ -507,7 +516,7 @@ public sealed partial class GameClient
 
     private void SendWorldItemAllShow(Item item)
     {
-        _netState.Send(new PacketWorldItem(
+        _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
             item.X, item.Y, item.Z, item.Hue
         ));
@@ -736,10 +745,11 @@ public sealed partial class GameClient
 
     public void SendCharacterStatus(Character ch, bool includeExtendedStats = true)
     {
-        // Expansion level matched to client version capabilities
         byte expansion;
-        if (_netState.IsClientPost7090)
-            expansion = 5; // ML (SA client can handle ML fields)
+        if (_netState.SupportsExtendedStatus)
+            expansion = 7; // HS Extended (15 AOS bonus shorts)
+        else if (_netState.IsClientPost7090)
+            expansion = 5; // ML
         else if (_netState.IsClientPost6017)
             expansion = 4; // SE
         else if (_netState.ClientVersionNumber >= 40_000_000)
@@ -830,18 +840,27 @@ public sealed partial class GameClient
         var equipment = BuildEquipmentList(ch);
         byte flags = BuildMobileFlags(ch);
         byte noto = GetNotoriety(ch);
-        var drawObj = new PacketDrawObject(
+
+        // Self — use own client version
+        _netState.Send(new PacketDrawObject(
             ch.Uid.Value, ch.BodyId,
             ch.X, ch.Y, ch.Z,
             (byte)ch.Direction, ch.Hue, flags, noto,
-            equipment);
-        _netState.Send(drawObj);
-        // Use BroadcastMoveNearby (if available) to also update receiving clients'
-        // _lastKnownPos cache, preventing a duplicate 0x77 from the next view delta.
-        if (BroadcastMoveNearby != null)
-            BroadcastMoveNearby.Invoke(ch.Position, UpdateRange, drawObj, _character?.Uid.Value ?? 0, ch);
-        else
-            BroadcastNearby?.Invoke(ch.Position, UpdateRange, drawObj, _character?.Uid.Value ?? 0);
+            equipment, _netState.SupportsNewMobileIncoming));
+
+        // Others — per-observer version branching (0x78 format differs by client era)
+        uint selfUid = _character?.Uid.Value ?? 0;
+        ForEachClientInRange?.Invoke(ch.Position, UpdateRange, selfUid,
+            (observerCh, observerClient) =>
+            {
+                var pkt = new PacketDrawObject(
+                    ch.Uid.Value, ch.BodyId,
+                    ch.X, ch.Y, ch.Z,
+                    (byte)ch.Direction, ch.Hue, flags, noto,
+                    equipment, observerClient.NetState.SupportsNewMobileIncoming);
+                observerClient.NetState.Send(pkt);
+                observerClient.UpdateKnownCharPosition(ch);
+            });
     }
 
     /// <summary>Resolves a target serial to a <see cref="Character"/>.

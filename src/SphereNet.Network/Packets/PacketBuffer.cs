@@ -132,6 +132,15 @@ public sealed class PacketBuffer
         if (_position > _length) _length = _position;
     }
 
+    public void WriteUnicodeLeNullTerminated(string text)
+    {
+        WriteUnicodeLE(text);
+        EnsureCapacity(2);
+        BinaryPrimitives.WriteUInt16LittleEndian(_data.AsSpan(_position), 0);
+        _position += 2;
+        if (_position > _length) _length = _position;
+    }
+
     public void WriteBytes(ReadOnlySpan<byte> bytes)
     {
         EnsureCapacity(bytes.Length);

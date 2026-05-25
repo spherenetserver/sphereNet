@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
+using SphereNet.Core.Security;
 using SphereNet.Game.Accounts;
 using SphereNet.Game.World;
 
@@ -17,10 +18,10 @@ public sealed class AdminCommandProcessor
     private readonly SphereConfig _config;
     private readonly Func<int> _getActiveConnections;
     private readonly ILoggerFactory _loggerFactory;
-    private readonly HashSet<string> _blockedIPs = new(StringComparer.OrdinalIgnoreCase);
+    private readonly IPBlockList _blockList;
 
-    /// <summary>Check if an IP address is blocked.</summary>
-    public bool IsIPBlocked(string ip) => _blockedIPs.Contains(ip);
+    public bool IsIPBlocked(string ip) => _blockList.IsBlocked(ip);
+    public IPBlockList BlockList => _blockList;
 
     public event Action? OnSaveRequested;
     public event Action? OnShutdownRequested;
@@ -31,24 +32,29 @@ public sealed class AdminCommandProcessor
     public event Action? OnRestockRequested;
     public event Action<Action<string>>? OnDebugToggleRequested;
     public event Action<Action<string>>? OnScriptDebugToggleRequested;
+    public event Action<string, string>? OnCommandExecuted;
 
     public AdminCommandProcessor(GameWorld world, AccountManager accounts,
-        SphereConfig config, Func<int> getActiveConnections, ILoggerFactory loggerFactory)
+        SphereConfig config, Func<int> getActiveConnections, ILoggerFactory loggerFactory,
+        IPBlockList? sharedBlockList = null)
     {
         _world = world;
         _accounts = accounts;
         _config = config;
         _getActiveConnections = getActiveConnections;
         _loggerFactory = loggerFactory;
+        _blockList = sharedBlockList ?? new IPBlockList();
     }
 
     /// <summary>
     /// Process a command line. Returns response lines via the output action.
     /// Returns false if the session should close (quit/exit).
     /// </summary>
-    public bool ProcessCommand(string input, Action<string> output)
+    public bool ProcessCommand(string input, Action<string> output, string source = "console")
     {
         if (string.IsNullOrWhiteSpace(input)) return true;
+
+        OnCommandExecuted?.Invoke(source, input);
 
         string[] parts = input.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
         string cmd = parts[0].ToUpperInvariant();
@@ -80,6 +86,7 @@ public sealed class AdminCommandProcessor
                 output("  GARBAGE                    - Force garbage collection");
                 output("  BLOCKIP <ip>               - Block an IP address");
                 output("  UNBLOCKIP <ip>             - Unblock an IP address");
+                output("  LISTBLOCKED                - List blocked IPs");
                 output("  SHUTDOWN                   - Shutdown server");
                 output("  QUIT / EXIT                - Close session");
                 break;
@@ -177,7 +184,7 @@ public sealed class AdminCommandProcessor
             case "BLOCKIP":
                 if (!string.IsNullOrWhiteSpace(args))
                 {
-                    _blockedIPs.Add(args.Trim());
+                    _blockList.Add(args.Trim());
                     output($"IP blocked: {args.Trim()}");
                 }
                 else
@@ -187,7 +194,7 @@ public sealed class AdminCommandProcessor
             case "UNBLOCKIP":
                 if (!string.IsNullOrWhiteSpace(args))
                 {
-                    if (_blockedIPs.Remove(args.Trim()))
+                    if (_blockList.Remove(args.Trim()))
                         output($"IP unblocked: {args.Trim()}");
                     else
                         output($"IP not in block list: {args.Trim()}");
@@ -195,6 +202,20 @@ public sealed class AdminCommandProcessor
                 else
                     output("Usage: UNBLOCKIP <address>");
                 break;
+
+            case "LISTBLOCKED":
+            {
+                var blocked = _blockList.GetAll();
+                if (blocked.Count == 0)
+                    output("No blocked IPs.");
+                else
+                {
+                    output($"Blocked IPs ({blocked.Count}):");
+                    foreach (var ip in blocked)
+                        output($"  {ip}");
+                }
+                break;
+            }
 
             case "QUIT":
             case "EXIT":

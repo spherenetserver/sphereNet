@@ -27,4 +27,7 @@ public static class PasswordHelper
 
     public static bool IsHashed(string stored) =>
         !string.IsNullOrEmpty(stored) && stored.StartsWith(HashPrefix, StringComparison.Ordinal);
+
+    public static bool NeedsUpgrade(string stored) =>
+        !string.IsNullOrEmpty(stored) && !stored.StartsWith(HashPrefix, StringComparison.Ordinal);
 }

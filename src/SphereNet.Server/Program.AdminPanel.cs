@@ -6,6 +6,7 @@ using Serilog.Sinks.SystemConsole.Themes;
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
+using SphereNet.Core.Security;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
 using SphereNet.Game.AI;
@@ -56,13 +57,29 @@ namespace SphereNet.Server;
 
 public static partial class Program
 {
+    private static IPBlockList? _ipBlockList;
+    private static ConnectionRateLimiter? _connRateLimiter;
+
     private static void InitializeAdminSurfaces()
     {
+            // --- Security: shared IP block list & connection rate limiter ---
+            _ipBlockList = new IPBlockList();
+            _connRateLimiter = new ConnectionRateLimiter();
+            _network.ConnectionAcceptFilter = ip =>
+            {
+                string ipStr = ip.ToString();
+                if (_ipBlockList.IsBlocked(ipStr))
+                    return true;
+                _connRateLimiter.RegisterAttempt(ipStr);
+                return _connRateLimiter.ShouldThrottle(ipStr);
+            };
+
             // --- 9. Admin Console ---
             int telnetPort = _config.ServPort + 1;
             _telnet = new TelnetConsole(_world, _accounts, _config,
                 () => _network.ActiveConnections,
-                _loggerFactory.CreateLogger("Telnet"), _loggerFactory);
+                _loggerFactory.CreateLogger("Telnet"), _loggerFactory,
+                _ipBlockList);
             _telnet.Start(telnetPort);
             _telnet.OnSaveRequested += RequestSaveOnMainLoop;
             _telnet.OnShutdownRequested += () => _running = false;
@@ -73,13 +90,19 @@ public static partial class Program
 
             // Console command processor (shares logic with telnet)
             _consoleProcessor = new AdminCommandProcessor(_world, _accounts, _config,
-                () => _network.ActiveConnections, _loggerFactory);
+                () => _network.ActiveConnections, _loggerFactory, _ipBlockList);
             _consoleProcessor.OnSaveRequested += RequestSaveOnMainLoop;
             _consoleProcessor.OnShutdownRequested += () => _running = false;
             _consoleProcessor.OnResyncRequested += PerformScriptResync;
             _consoleProcessor.OnAccountPrivLevelChanged += SyncOnlineAccountPrivLevel;
             _consoleProcessor.OnDebugToggleRequested += ToggleDebugPackets;
             _consoleProcessor.OnScriptDebugToggleRequested += ToggleScriptDebug;
+
+            // Audit logging for admin commands
+            _telnet.Processor.OnCommandExecuted += (source, cmd) =>
+                _log.LogWarning("[AUDIT] [{Source}] {Command}", source, cmd);
+            _consoleProcessor.OnCommandExecuted += (source, cmd) =>
+                _log.LogWarning("[AUDIT] [{Source}] {Command}", source, cmd);
 
             int webPort = _config.ServPort + 2;
             _webStatus = new WebStatusServer(_world, _accounts,

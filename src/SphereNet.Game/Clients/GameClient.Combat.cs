@@ -39,16 +39,40 @@ public sealed partial class GameClient
     public static int WalkBufferMax { get; set; } = 75;
     public static int WalkRegenPerSecond { get; set; } = 25;
     public static int MoveToleranceMs { get; set; } = 80;
-    public static int MoveRejectResyncMs { get; set; } = 150;
+    public static int MoveRejectResyncMs { get; set; } = 0;
+    public static int WalkZCorrectionThreshold { get; set; } = 0;
     public static int MoveViolationKickThreshold { get; set; }
     public static Func<long> MoveClock { get; set; } = () => Environment.TickCount64;
+
+    // Credit-based movement system (opt-in via MovementCreditEnabled)
+    public static bool MovementCreditEnabled { get; set; }
+    public static int MovementCreditBaseMs { get; set; } = 200;
+    public static int MovementCreditMaxMs { get; set; } = 1400;
+    public static int MovementQueueCapacity { get; set; } = 10;
+
+    // Speed hack detection (opt-in)
+    public static bool SpeedHackDetectionEnabled { get; set; }
+    public static double SpeedHackRateThreshold { get; set; } = 1.5;
+    public static int SpeedHackBurstWindow { get; set; } = 3;
+    public static int SpeedHackHistorySize { get; set; } = 20;
+    public static int SpeedHackCooldownMs { get; set; } = 60_000;
+
+    public static event Action<Objects.Characters.Character, Movement.SpeedVerdict>? OnSpeedHackDetected;
 
     private long _nextMoveTime;
     private int _walkTokens = WalkBufferMax;
     private long _walkTokenLastMs;
     private int _moveViolationCount;
     private long _moveRejectResyncUntil;
+    private sbyte _walkZCorrectionBase;
     private long? _movementBatchNow;
+
+    // Credit-based movement state (active only when MovementCreditEnabled=true)
+    private int _movementCreditMs;
+    private long _movementCreditLastTick;
+    private Movement.MovementQueueProcessor? _movementQueue;
+    private Movement.MovementHistory? _movementHistory;
+    private Movement.SpeedHackDetector? _speedHackDetector;
 
     public void HandleMovementBatch(IReadOnlyList<SphereNet.Network.State.MovementStep> steps)
     {
@@ -94,8 +118,16 @@ public sealed partial class GameClient
         long now = _movementBatchNow ?? MoveClock();
         _netState.LastActivityTick = now;
 
+        _logger.LogDebug(
+            "[move_recv] seq={Seq} dir={Dir} run={Run} expected={Expected} at {X},{Y},{Z}",
+            seq, direction, running, _netState.WalkSequence,
+            _character.X, _character.Y, _character.Z);
+
         if (_moveRejectResyncUntil > 0 && now < _moveRejectResyncUntil)
         {
+            _logger.LogDebug(
+                "[move_reject_resync] seq={Seq} dir=0x{Dir:X2} remaining={Remaining}ms at {X},{Y},{Z}",
+                seq, dir, _moveRejectResyncUntil - now, _character.X, _character.Y, _character.Z);
             _netState.Send(new PacketMoveReject(seq, _character.X, _character.Y, _character.Z, CurrentFacingDir()));
             _netState.WalkSequence = 0;
             return false;
@@ -124,24 +156,49 @@ public sealed partial class GameClient
         if (_character.PrivLevel < PrivLevel.GM)
         {
             int moveDelay = MovementEngine.GetMoveDelay(_character.IsMounted, running);
-            RefillWalkTokens(now);
 
-            string? rejectReason = null;
-            if (_nextMoveTime > 0 && now + MoveToleranceMs < _nextMoveTime)
-                rejectReason = "throttle";
-            else if (_walkTokens <= 0)
-                rejectReason = "walk_buffer";
-
-            if (rejectReason != null)
+            if (MovementCreditEnabled)
             {
-                _moveViolationCount++;
-                _logger.LogWarning("[move_reject] reason={Reason} violations={Violations} ahead={Ahead}ms delay={Delay}ms tokens={Tokens} packet=0x{Packet:X2} batch={Batch} seq={Seq} dir=0x{Dir:X2} run={Run} at {X},{Y},{Z}",
-                    rejectReason, _moveViolationCount, Math.Max(0, _nextMoveTime - now), moveDelay, _walkTokens,
-                    _netState.LastMovementOpcode, _netState.LastMovementBatchSize, seq, dir, running, _character.X, _character.Y, _character.Z);
-                RejectMove(seq, now);
-                if (MoveViolationKickThreshold > 0 && _moveViolationCount >= MoveViolationKickThreshold)
-                    _netState.MarkClosing();
-                return false;
+                EnsureCreditState();
+                if (!MovementCreditSystem.TryConsumeCredit(
+                        ref _movementCreditMs, ref _movementCreditLastTick,
+                        MovementCreditBaseMs, MovementCreditMaxMs, moveDelay, now))
+                {
+                    if (_movementQueue!.IsFull || !_movementQueue.Enqueue(dir, seq, fastWalkKey, now))
+                    {
+                        _moveViolationCount++;
+                        _logger.LogWarning("[move_reject] reason=credit_exhausted violations={Violations} credit={Credit}ms delay={Delay}ms queue={Queue} packet=0x{Packet:X2} batch={Batch} seq={Seq} dir=0x{Dir:X2} run={Run} at {X},{Y},{Z}",
+                            _moveViolationCount, _movementCreditMs, moveDelay, _movementQueue.Count,
+                            _netState.LastMovementOpcode, _netState.LastMovementBatchSize, seq, dir, running, _character.X, _character.Y, _character.Z);
+                        RejectMove(seq, now);
+                        if (MoveViolationKickThreshold > 0 && _moveViolationCount >= MoveViolationKickThreshold)
+                            _netState.MarkClosing();
+                        return false;
+                    }
+                    return false;
+                }
+            }
+            else
+            {
+                RefillWalkTokens(now);
+
+                string? rejectReason = null;
+                if (_nextMoveTime > 0 && now + MoveToleranceMs < _nextMoveTime)
+                    rejectReason = "throttle";
+                else if (_walkTokens <= 0)
+                    rejectReason = "walk_buffer";
+
+                if (rejectReason != null)
+                {
+                    _moveViolationCount++;
+                    _logger.LogWarning("[move_reject] reason={Reason} violations={Violations} ahead={Ahead}ms delay={Delay}ms tokens={Tokens} packet=0x{Packet:X2} batch={Batch} seq={Seq} dir=0x{Dir:X2} run={Run} at {X},{Y},{Z}",
+                        rejectReason, _moveViolationCount, Math.Max(0, _nextMoveTime - now), moveDelay, _walkTokens,
+                        _netState.LastMovementOpcode, _netState.LastMovementBatchSize, seq, dir, running, _character.X, _character.Y, _character.Z);
+                    RejectMove(seq, now);
+                    if (MoveViolationKickThreshold > 0 && _moveViolationCount >= MoveViolationKickThreshold)
+                        _netState.MarkClosing();
+                    return false;
+                }
             }
         }
 
@@ -166,13 +223,70 @@ public sealed partial class GameClient
         {
             _character.LastMoveTick = now;
             int moveDelay = MovementEngine.GetMoveDelay(_character.IsMounted, running);
-            if (_character.PrivLevel < PrivLevel.GM && _walkTokens > 0)
+            if (!MovementCreditEnabled && _character.PrivLevel < PrivLevel.GM && _walkTokens > 0)
                 _walkTokens--;
-            // Keep the throttle anchored to the last accepted client step.
-            // Accumulating a future schedule makes small, legitimate timing
-            // differences grow until the client is snapped back by MoveReject.
             _nextMoveTime = now + moveDelay;
             _moveViolationCount = 0;
+
+            _movementHistory?.Record(now, direction, running, _character.IsMounted);
+            if (SpeedHackDetectionEnabled && _speedHackDetector != null && _movementHistory != null)
+            {
+                var verdict = _speedHackDetector.Analyze(_movementHistory, _character.IsMounted, running, now);
+                if (verdict == Movement.SpeedVerdict.Violation)
+                {
+                    _logger.LogWarning("[speed_hack] char={Name} verdict={Verdict} avg={Avg:F0}ms burst={Burst}",
+                        _character.Name, verdict,
+                        _movementHistory.AverageIntervalMs(5),
+                        _movementHistory.CountBurstMoves(moveDelay / 2, 5));
+                    OnSpeedHackDetected?.Invoke(_character, verdict);
+                }
+                else if (verdict == Movement.SpeedVerdict.Kick)
+                {
+                    _logger.LogWarning("[speed_hack_kick] char={Name}", _character.Name);
+                    OnSpeedHackDetected?.Invoke(_character, verdict);
+                    _netState.MarkClosing();
+                    return true;
+                }
+            }
+
+            if (expectedSeq == 0)
+                _walkZCorrectionBase = oldZ;
+
+            GetDirectionDelta(direction, out short expectedDx, out short expectedDy);
+            short expectedX = (short)(oldX + expectedDx);
+            short expectedY = (short)(oldY + expectedDy);
+
+            if (_character.X != expectedX || _character.Y != expectedY)
+            {
+                _logger.LogWarning(
+                    "[move_teleport] seq={Seq} dir={Dir} from {OldX},{OldY},{OldZ} expected {ExpX},{ExpY} actual {ActX},{ActY},{ActZ} — telepad/script moved character during CheckLocationEffects, suppressing MoveAck",
+                    seq, direction, oldX, oldY, oldZ, expectedX, expectedY,
+                    _character.X, _character.Y, _character.Z);
+                return true;
+            }
+
+            if (WalkZCorrectionThreshold > 0 && Math.Abs(_character.Z - _walkZCorrectionBase) >= WalkZCorrectionThreshold)
+            {
+                _logger.LogInformation(
+                    "[move_z_correct] seq={Seq} dir={Dir} baseZ={BaseZ} newZ={NewZ} accum={Accum} at {X},{Y}",
+                    seq, direction, _walkZCorrectionBase, _character.Z,
+                    Math.Abs(_character.Z - _walkZCorrectionBase), _character.X, _character.Y);
+                _walkZCorrectionBase = _character.Z;
+                _netState.Send(new PacketMoveReject(seq, _character.X, _character.Y, _character.Z, CurrentFacingDir()));
+                _netState.WalkSequence = 0;
+                byte flagsCorr = BuildMobileFlags(_character);
+                byte dirCorr = (byte)((byte)_character.Direction | (running ? 0x80 : 0));
+                byte notoCorr = GetNotoriety(_character);
+                var movePktCorr = new PacketMobileMoving(
+                    _character.Uid.Value, _character.BodyId,
+                    _character.X, _character.Y, _character.Z, dirCorr,
+                    _character.Hue, flagsCorr, notoCorr);
+                if (BroadcastMoveNearby != null)
+                    BroadcastMoveNearby.Invoke(_character.Position, UpdateRange, movePktCorr, _character.Uid.Value, _character);
+                else
+                    BroadcastNearby?.Invoke(_character.Position, UpdateRange, movePktCorr, _character.Uid.Value);
+                return true;
+            }
 
             byte notoriety = GetNotoriety(_character);
             int zDelta = _character.Z - oldZ;
@@ -184,16 +298,13 @@ public sealed partial class GameClient
                     moveDiag.StartZ, moveDiag.StartTop, moveDiag.ForwardNewZ,
                     moveDiag.FwdReason, moveDiag.FwdStaticDump);
             }
+
+            _logger.LogDebug(
+                "[move_ok] seq={Seq} dir={Dir} run={Run} pos={X},{Y},{Z}",
+                seq, direction, running, _character.X, _character.Y, _character.Z);
+
             _netState.Send(new PacketMoveAck(seq, notoriety));
 
-            // NOTE: MoveAck (0x22) carries no Z data, so the client keeps its own
-            // predicted Z.  We intentionally do NOT send DrawPlayer here — doing so
-            // during active walking corrupts the client's move buffer and causes
-            // cascading MoveRejects ("square jumping").  The server tracks the
-            // authoritative Z internally and broadcasts it to other players via 0x77.
-            // The client's slight Z prediction error is visually imperceptible.
-
-            // Broadcast movement to nearby players (0x77 MobileMoving, NOT 0x20 DrawPlayer)
             byte flags = BuildMobileFlags(_character);
             byte dir77 = (byte)((byte)_character.Direction | (running ? 0x80 : 0));
             var movePacket = new PacketMobileMoving(
@@ -205,7 +316,6 @@ public sealed partial class GameClient
             else
                 BroadcastNearby?.Invoke(_character.Position, UpdateRange, movePacket, _character.Uid.Value);
 
-            // Expected next sequence from client (0..255, wraps naturally)
             _netState.WalkSequence = (byte)(seq + 1);
             return true;
         }
@@ -254,6 +364,7 @@ public sealed partial class GameClient
             SendDrawObject(_character);
         }
         _netState.WalkSequence = 0;
+        _walkZCorrectionBase = _character.Z;
         int resyncMs = Math.Max(0, MoveRejectResyncMs);
         _moveRejectResyncUntil = resyncMs > 0 ? now + resyncMs : 0;
     }
@@ -270,6 +381,32 @@ public sealed partial class GameClient
         _walkTokenLastMs = 0;
         _moveViolationCount = 0;
         _moveRejectResyncUntil = 0;
+
+        _movementCreditMs = MovementCreditMaxMs;
+        _movementCreditLastTick = 0;
+        _movementQueue?.Clear();
+        _movementHistory?.Clear();
+        _speedHackDetector?.Reset();
+    }
+
+    private void EnsureCreditState()
+    {
+        _movementQueue ??= new Movement.MovementQueueProcessor(MovementQueueCapacity);
+        _movementHistory ??= new Movement.MovementHistory(SpeedHackHistorySize);
+        if (SpeedHackDetectionEnabled)
+            _speedHackDetector ??= new Movement.SpeedHackDetector(
+                SpeedHackRateThreshold, SpeedHackBurstWindow, SpeedHackCooldownMs);
+    }
+
+    public void TickMovementQueue(long nowMs)
+    {
+        if (!MovementCreditEnabled || _movementQueue == null || _movementQueue.Count == 0)
+            return;
+
+        if (_movementQueue.TryDequeue(out byte qDir, out byte qSeq, out uint qKey))
+        {
+            HandleMove(qDir, qSeq, qKey);
+        }
     }
 
     private void RefillWalkTokens(long now)
@@ -977,14 +1114,7 @@ public sealed partial class GameClient
         uint fallDir = (uint)Random.Shared.Next(2);
         var deathAnim = new PacketDeathAnimation(victimUid, corpseSerial, fallDir);
 
-        // Pre-build the ghost mobile draw object once; it's identical
-        // for every staff observer.
         var ghostEquipment = BuildEquipmentList(_character);
-        var ghostDraw = new PacketDrawObject(
-            victimUid, ghostBody,
-            cx, cy, cz, ghostDir,
-            _character.Hue, ghostFlags, ghostNoto,
-            ghostEquipment);
 
         // Follow-up 0x77 — even though ClassicUO's 0x78 path already
         // calls CheckGraphicChange() when GetOrCreateMobile spawns a
@@ -1018,7 +1148,11 @@ public sealed partial class GameClient
                     // ClassicUO builds don't fully reset the animation
                     // cache on delete+recreate, leaving the alive sprite
                     // visible despite the ghost body being set.
-                    observerClient.Send(ghostDraw);
+                    observerClient.Send(new PacketDrawObject(
+                        victimUid, ghostBody,
+                        cx, cy, cz, ghostDir,
+                        _character.Hue, ghostFlags, ghostNoto,
+                        ghostEquipment, observerClient.NetState.SupportsNewMobileIncoming));
                     observerClient.Send(ghostMovingBroadcast);
                     observerClient.UpdateKnownCharRender(victimUid, ghostBody, _character.Hue,
                         ghostDir, cx, cy, cz);
@@ -1139,14 +1273,6 @@ public sealed partial class GameClient
         uint uid = _character.Uid.Value;
         var resEquipment = BuildEquipmentList(_character);
 
-        // Single draw object reused across all paths — same equipment,
-        // same body, same hue everywhere.
-        var resDraw = new PacketDrawObject(
-            uid, restoredBody,
-            cx, cy, cz, resDir,
-            _character.Hue, resFlags, resNoto,
-            resEquipment);
-
         // === Self redraw ===
         // Symmetrical to OnCharacterDeath: 0x20 is the ONLY packet
         // that actually swaps world.Player.Graphic in ClassicUO, so
@@ -1164,7 +1290,11 @@ public sealed partial class GameClient
             _character.Hue, resFlags, resNoto);
         _netState.Send(resMoving);
 
-        _netState.Send(resDraw);
+        _netState.Send(new PacketDrawObject(
+            uid, restoredBody,
+            cx, cy, cz, resDir,
+            _character.Hue, resFlags, resNoto,
+            resEquipment, _netState.SupportsNewMobileIncoming));
 
         // === Per-observer dispatch ===
         // Plain observer: never saw the ghost (filter dropped it during
@@ -1180,7 +1310,11 @@ public sealed partial class GameClient
         ForEachClientInRange?.Invoke(_character.Position, UpdateRange, uid,
             (observerCh, observerClient) =>
             {
-                observerClient.Send(resDraw);
+                observerClient.Send(new PacketDrawObject(
+                    uid, restoredBody,
+                    cx, cy, cz, resDir,
+                    _character.Hue, resFlags, resNoto,
+                    resEquipment, observerClient.NetState.SupportsNewMobileIncoming));
                 observerClient.UpdateKnownCharRender(uid, restoredBody, _character.Hue,
                     resDir, cx, cy, cz);
             });
@@ -1539,6 +1673,7 @@ public sealed partial class GameClient
     /// </summary>
     public void TickClientState()
     {
+        TickMovementQueue(MoveClock());
         TickCombat();
         TickSpellCast();
         TickPendingSkill();

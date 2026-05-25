@@ -85,18 +85,20 @@ public sealed class PacketCharList : PacketWriter
 {
     private readonly string[] _charNames;
     private readonly int _maxChars;
+    private readonly bool _newCharacterList;
 
     /// <summary>When false, the 0x20 (AOS tooltips) bit is stripped from char
     /// list flags so the client sends 0x09 single-click instead of 0xD6.</summary>
     public static bool AosTooltipsEnabled { get; set; } = true;
 
-    public PacketCharList(string[] charNames, int maxChars = 7) : base(0xA9)
+    public PacketCharList(string[] charNames, int maxChars = 7, bool newCharacterList = false)
+        : base(0xA9)
     {
         _charNames = charNames;
         _maxChars = maxChars;
+        _newCharacterList = newCharacterList;
     }
 
-    // Default starting city coordinates (map 0 = Felucca)
     private static readonly (string Name, string Area, int X, int Y, int Z, int Map, uint Cliloc)[] Cities =
     [
         ("Yew",         "The Empath Abbey",  543, 976, 0, 0, 1075074),
@@ -114,7 +116,6 @@ public sealed class PacketCharList : PacketWriter
     {
         var buf = CreateVariable(2048);
 
-        // Character count — always send maxChars slots (empty names for unused)
         byte charCount = (byte)_maxChars;
         buf.WriteByte(charCount);
 
@@ -125,7 +126,6 @@ public sealed class PacketCharList : PacketWriter
             buf.WriteAsciiFixed("", 30); // password (blank)
         }
 
-        // Starting cities — new format for 7.0+ clients
         byte cityCount = (byte)Cities.Length;
         buf.WriteByte(cityCount);
 
@@ -133,17 +133,26 @@ public sealed class PacketCharList : PacketWriter
         {
             var city = Cities[i];
             buf.WriteByte(i);
-            buf.WriteAsciiFixed(city.Name, 32);
-            buf.WriteAsciiFixed(city.Area, 32);
-            buf.WriteInt32(city.X);
-            buf.WriteInt32(city.Y);
-            buf.WriteInt32(city.Z);
-            buf.WriteInt32(city.Map);
-            buf.WriteUInt32(city.Cliloc);
-            buf.WriteUInt32(0); // padding
+
+            if (_newCharacterList)
+            {
+                buf.WriteAsciiFixed(city.Name, 32);
+                buf.WriteAsciiFixed(city.Area, 32);
+                buf.WriteInt32(city.X);
+                buf.WriteInt32(city.Y);
+                buf.WriteInt32(city.Z);
+                buf.WriteInt32(city.Map);
+                buf.WriteUInt32(city.Cliloc);
+                buf.WriteUInt32(0); // padding
+            }
+            else
+            {
+                buf.WriteAsciiFixed(city.Name, 31);
+                buf.WriteAsciiFixed(city.Area, 31);
+            }
         }
 
-        // CharList flags (NOT the same as 0xB9 feature flags!)
+        // CharList flags
         // 0x0008 = context menus (popup)
         // 0x0020 = AOS classes + tooltips
         // 0x0040 = 6th char slot
@@ -151,13 +160,13 @@ public sealed class PacketCharList : PacketWriter
         // 0x0100 = ML elven race
         // 0x1000 = 7th char slot
         // 0x4000 = new movement packets
-        uint flags = 0x11E8; // popup + AOS + 6th slot + SE + ML + 7th slot
+        uint flags = 0x11E8;
         if (!AosTooltipsEnabled)
             flags &= ~0x0020u;
         buf.WriteUInt32(flags);
 
-        // Last character slot index (-1 = none)
-        buf.WriteInt16(-1);
+        if (_newCharacterList)
+            buf.WriteInt16(-1);
 
         buf.WriteLengthAt(1);
         return buf;
@@ -652,6 +661,24 @@ public sealed class PacketBoatSmoothMove : PacketWriter
         buf.WriteUInt16((ushort)_y);
         buf.WriteUInt16(_z);
         buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
+/// <summary>0x53 — Popup warning/error message (login reject, idle timeout, etc.).</summary>
+public sealed class PacketPopupMessage : PacketWriter
+{
+    private readonly byte _reason;
+
+    public PacketPopupMessage(byte reason) : base(0x53)
+    {
+        _reason = reason;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateFixed(2);
+        buf.WriteByte(_reason);
         return buf;
     }
 }

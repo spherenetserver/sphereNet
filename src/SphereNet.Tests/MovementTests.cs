@@ -12,6 +12,7 @@ using SphereNet.MapData;
 
 namespace SphereNet.Tests;
 
+[Collection("MoveClockSerial")]
 public class MovementTests
 {
     private static GameClient CreateClient(GameWorld world, Character ch, int id = 1)

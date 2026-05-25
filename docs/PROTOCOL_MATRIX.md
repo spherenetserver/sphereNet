@@ -55,17 +55,19 @@ incoming handler below must be documented here, and tests fail if registry/docs 
 - `0xE3` KR encryption negotiation
 
 ## Known Ignored
+- `0x01` Disconnect notification
 - `0x2C` Death menu
 - `0x83` Character delete
 - `0x95` Dye response
 - `0x9A` Prompt response
 - `0x9B` Help request
 - `0xD1` Logout request
+- `0xD4` New book header (AOS+ variable-length format)
+- `0xF4` Crash report (silently accepted and logged)
 
 ## Deferred
 - `0x66` Book page editing is parser-supported but gameplay persistence is limited.
 - `0x7D` Menu choice is parser-supported for compatibility flows.
-- `0xF4` Crash report is not registered; use logs/client diagnostics externally.
 
 ## Unknown / Drop
 Unknown opcodes are routed to the network unknown-packet path and must not crash the

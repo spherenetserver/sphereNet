@@ -4,6 +4,33 @@
 All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-26] - Paperdoll isim/title duzeltmesi ve login paperdoll gonderimi
+              (Paperdoll name/title fix and login paperdoll delivery)
+----------------------------------------
+
+PAPERDOLL DUZELTMESI / PAPERDOLL FIX:
+  - DoubleClick (0x06) paketindeki bit 31 paperdoll flag'i artik dogru isleniyor.
+    Client status bar'daki paperdoll butonu veya Alt+DoubleClick ile gelen istekler
+    serial'in yuksek bit'i set edilmis olarak gelir — onceden bu serial karakter
+    serial'iyla eslesmiyor ve paperdoll gonderilmiyordu.
+    (DoubleClick packet (0x06) bit 31 paperdoll flag now handled correctly. Requests
+    from the client status bar button or Alt+DClick send the serial with high bit set —
+    previously this didn't match the character serial and no paperdoll was sent.)
+  - EnterWorld login akisinda 0x88 paperdoll paketi gonderiliyor. ClassicUO disconnect
+    oncesi acik olan paperdoll penceresini login sonrasi geri yuklediginde artik
+    isim/title verisi mevcut.
+    (EnterWorld login flow now sends 0x88 paperdoll packet. When ClassicUO restores a
+    paperdoll window that was open before disconnect, name/title data is now available.)
+  - Paperdoll throttle (2sn) login gonderiminde de guncelleniyor — ayni karakter icin
+    kisa surede tekrar paket gonderilmesini onluyor.
+    (Paperdoll throttle (2s) updated on login send — prevents duplicate packet for same
+    character within short timeframe.)
+
+TEST:
+  - EnterWorld_DoesNotAutoOpenPaperdoll -> EnterWorld_SendsPaperdollWithTitle olarak
+    guncellendi (login'de 0x88 gonderimini dogruluyor).
+    (Test renamed and updated to verify 0x88 is sent during login.)
+
 [2026-05-26] - Combat animasyon/ses tamiri, hareket Z paritesi, guvenlik iyilestirmeleri
               (Combat animation/sound fixes, movement Z parity, security hardening)
 ----------------------------------------

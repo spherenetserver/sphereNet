@@ -39,6 +39,20 @@ public sealed partial class GameClient
     {
         if (_character == null) return;
 
+        // Bit 31 = paperdoll request flag (client status bar button, Alt+DClick)
+        bool paperdollRequest = (uid & 0x80000000) != 0;
+        uid &= 0x7FFFFFFF;
+
+        if (paperdollRequest)
+        {
+            var target = uid == _character.Uid.Value
+                ? _character
+                : _world.FindChar(new Serial(uid));
+            if (target != null)
+                SendPaperdoll(target);
+            return;
+        }
+
         if (uid == _character.Uid.Value)
         {
             // If mounted, dismount on self-dclick

@@ -429,6 +429,15 @@ public sealed partial class GameClient
 
         _netState.Send(new PacketLoginComplete());
 
+        // Send paperdoll so the client has the character name/title immediately
+        // (ClassicUO auto-restores paperdoll if it was open before disconnect).
+        string paperdollTitle = string.IsNullOrEmpty(_character.Title)
+            ? _character.GetName()
+            : $"{_character.GetName()}, {_character.Title}";
+        _netState.Send(new PacketOpenPaperdoll(
+            _character.Uid.Value, paperdollTitle, 0x02));
+        _paperdollThrottle[_character.Uid.Value] = Environment.TickCount64;
+
         _knownChars.Clear();
         _knownItems.Clear();
         _lastKnownPos.Clear();

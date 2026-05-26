@@ -1717,7 +1717,7 @@ TAG.BUTTON=1
     }
 
     [Fact]
-    public void EnterWorld_DoesNotAutoOpenPaperdoll()
+    public void EnterWorld_SendsPaperdollWithTitle()
     {
         var loggerFactory = LoggerFactory.Create(_ => { });
         var world = CreateWorld();
@@ -1730,7 +1730,7 @@ TAG.BUTTON=1
         client.HandleCharSelect(-1, "Paper");
 
         var packets = TestHarness.GetQueuedPackets(client.NetState).ToArray();
-        Assert.DoesNotContain(packets, p => p.Span.Length > 0 && p.Span[0] == 0x88);
+        Assert.Contains(packets, p => p.Span.Length > 0 && p.Span[0] == 0x88);
     }
 
     [Fact]

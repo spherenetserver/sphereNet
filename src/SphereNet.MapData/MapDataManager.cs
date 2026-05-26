@@ -264,12 +264,22 @@ public sealed class MapDataManager : IDisposable
     }
 
     /// <summary>Compute the 4-corner average / low / top land Z for the tile
-    /// footprint at (x, y). Mirrors Source-X / ServUO Map.GetAverageZ and is
-    /// required by the ServUO movement algorithm — without it, diagonal
-    /// steps onto slopes pick the wrong reference height.</summary>
+    /// footprint at (x, y). ClassicUO only "stretches" land tiles that have a
+    /// valid texmap entry (TextureId != 0). Tiles without a texture are treated
+    /// as flat — all three outputs equal the raw tile Z. Matching this avoids Z
+    /// mismatches between server and client on untextured slopes.</summary>
     public void GetAverageZ(int mapId, int x, int y, out int low, out int average, out int top)
     {
-        int zTop = GetTerrainTile(mapId, x, y).Z;
+        var landTile = GetTerrainTile(mapId, x, y);
+        var landData = GetLandTileData(landTile.TileId);
+
+        if (landData.TextureId == 0)
+        {
+            low = average = top = landTile.Z;
+            return;
+        }
+
+        int zTop = landTile.Z;
         int zLeft = GetTerrainTile(mapId, x, y + 1).Z;
         int zRight = GetTerrainTile(mapId, x + 1, y).Z;
         int zBottom = GetTerrainTile(mapId, x + 1, y + 1).Z;
@@ -299,10 +309,18 @@ public sealed class MapDataManager : IDisposable
     /// <summary>Direction-specific land Z for the CalculateMinMaxZ pre-filter.
     /// Cardinal directions return the average of two edge corners;
     /// diagonal directions return the single corner in that direction.
-    /// Matches ClassicUO Land.CalculateCurrentAverageZ.</summary>
+    /// Matches ClassicUO Land.CalculateCurrentAverageZ. Only meaningful for
+    /// tiles with a valid texture (stretched); untextured tiles return the
+    /// raw tile Z.</summary>
     public int GetDirectionalLandZ(int mapId, int x, int y, int direction)
     {
-        int zNW = GetTerrainTile(mapId, x, y).Z;
+        var landTile = GetTerrainTile(mapId, x, y);
+        var landData = GetLandTileData(landTile.TileId);
+
+        if (landData.TextureId == 0)
+            return landTile.Z;
+
+        int zNW = landTile.Z;
         int zNE = GetTerrainTile(mapId, x + 1, y).Z;
         int zSE = GetTerrainTile(mapId, x + 1, y + 1).Z;
         int zSW = GetTerrainTile(mapId, x, y + 1).Z;

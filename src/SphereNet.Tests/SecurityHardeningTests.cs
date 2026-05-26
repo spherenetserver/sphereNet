@@ -329,9 +329,9 @@ public class SecurityHardeningTests
     }
 
     [Fact]
-    public void PasswordHelper_NeedsUpgrade_TrueForMd5()
+    public void PasswordHelper_NeedsUpgrade_FalseForMd5()
     {
-        Assert.True(PasswordHelper.NeedsUpgrade("D41D8CD98F00B204E9800998ECF8427E"));
+        Assert.False(PasswordHelper.NeedsUpgrade("D41D8CD98F00B204E9800998ECF8427E"));
     }
 
     [Fact]
@@ -351,16 +351,17 @@ public class SecurityHardeningTests
     // --- Step 9: Account password hardening ---
 
     [Fact]
-    public void Account_SetPassword_AlwaysProducesSHA256()
+    public void Account_SetPassword_ProducesMd5Hex()
     {
         var account = new Account { Name = "test", UseMd5Passwords = true };
         account.SetPassword("secret");
 
-        Assert.StartsWith("SHA256:", account.PasswordHash);
+        Assert.Equal(32, account.PasswordHash.Length);
+        Assert.DoesNotContain("SHA256:", account.PasswordHash);
     }
 
     [Fact]
-    public void Account_SetPassword_SHA256_Roundtrips()
+    public void Account_SetPassword_Md5_Roundtrips()
     {
         var account = new Account { Name = "test" };
         account.SetPassword("mypass");
@@ -381,7 +382,7 @@ public class SecurityHardeningTests
     }
 
     [Fact]
-    public void AccountManager_Authenticate_UpgradesPlaintextToSHA256()
+    public void AccountManager_Authenticate_UpgradesPlaintextToMd5()
     {
         var mgr = new AccountManager(NullLoggerFactory.Instance) { AutoCreateAccounts = false };
         var account = new Account { Name = "legacy" };
@@ -391,7 +392,7 @@ public class SecurityHardeningTests
         var result = mgr.Authenticate("legacy", "plaintext123");
 
         Assert.NotNull(result);
-        Assert.StartsWith("SHA256:", result!.PasswordHash);
+        Assert.Equal(32, result!.PasswordHash.Length);
         Assert.True(result.CheckPassword("plaintext123"));
     }
 

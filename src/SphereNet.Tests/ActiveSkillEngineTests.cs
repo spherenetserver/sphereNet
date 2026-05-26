@@ -39,6 +39,7 @@ public class ActiveSkillEngineTests
         public void ObjectMessage(ObjBase target, string text) => Log.Add(("OBJ", text));
         public void Emote(string text) => Log.Add(("EMOTE", text));
         public void Sound(ushort soundId) => Sounds.Add(soundId);
+        public void Animation(ushort animId) { }
         public Item? FindBackpackItem(ItemType type) => Pack.TryGetValue(type, out var i) ? i : null;
         public void ConsumeAmount(Item item, ushort amount = 1) => Consumed.Add((item, amount));
         public void DeliverItem(Item item) => Delivered.Add(item);

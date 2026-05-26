@@ -4,6 +4,109 @@
 All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-26] - Combat animasyon/ses tamiri, hareket Z paritesi, guvenlik iyilestirmeleri
+              (Combat animation/sound fixes, movement Z parity, security hardening)
+----------------------------------------
+
+COMBAT ANIMASYON / COMBAT ANIMATION:
+  - Swing animasyonu damage hesabindan ONCE gonderiliyor; hit/miss her iki durumda
+    silah kaldirma gorunur. Onceki davranista animasyon sadece hit yolunda ve damage
+    sonrasinda gonderiliyordu — karakter silah kaldirmadan vuruyor gorunuyordu.
+    (Swing animation now sent BEFORE damage resolution; weapon raise visible on both
+    hit and miss. Previously animation was sent only in hit path after damage calc —
+    character appeared to deal damage without swinging.)
+  - Ranged projectile siralama: bow/xbow animasyonu artik ok/bolt ucmadan ONCE oynuyor.
+    (Ranged projectile ordering: bow/xbow animation now plays BEFORE arrow/bolt flight.)
+  - Mounted GetHit: at ustundeki target HorseSlap animasyonu aliyor (player yolunda eksikti).
+    (Mounted GetHit: mounted target receives HorseSlap animation — was missing in player path.)
+  - Miss yolunda artik sadece whoosh sesi (0x0234) gonderiliyor; swing anim zaten onceden gitti.
+    (Miss path now sends only whoosh sound; swing anim already sent earlier.)
+  - NPC BeginSwingRecoil: NPC'ler de artik swing state takip ediyor (CombatSwingState paritesi).
+    (NPC BeginSwingRecoil: NPCs now track swing state via BeginSwingRecoil for state parity.)
+
+MELEE HAREKET GECIKMESI / MELEE MOVEMENT DELAY:
+  - CombatMeleeMovementDelay config secenegi (sphere.ini). Default 0 (devre disi).
+    Ayarlandiginda koserken melee saldiri engellenir (archery delay'in melee karsiligi).
+    (CombatMeleeMovementDelay config option. Default 0 (disabled). When set, blocks melee
+    attacks while running — melee counterpart of CombatArcheryMovementDelay.)
+
+SKILL ANIMASYON + SES / SKILL ANIMATION + SOUND:
+  - IActiveSkillSink.Animation() metodu eklendi — skill'ler animasyon broadcast edebilir.
+    (Added IActiveSkillSink.Animation() — skills can now broadcast animations.)
+  - Sound() broadcast fix: skill sesleri artik nearby herkese duyuluyor (onceden sadece self).
+    (Sound() broadcast fix: skill sounds now heard by all nearby players, not just self.)
+  - Healing (bandaj): Bow animasyonu + bandaj sesi (0x0057).
+  - Crafting (tum zanaat): skill'e gore animasyon + ses (cekic, dikis, karisma vb).
+    (Crafting: per-skill animation + sound — hammer, sewing, mixing, etc.)
+  - Muzik skill'leri (Musicianship, Peacemaking, Provocation): muzik calma anim + ses (0x0038).
+    (Music skills: playing animation + lute sound.)
+  - Taming: egitme animasyonu + ses (0x0064).
+  - Veterinary: bandaj animasyonu + ses (0x0057).
+
+ETKILESIM ANIMASYON + SES / INTERACTION ANIMATION + SOUND:
+  - Yemek yeme: Eat animasyonu + ses (0x003A).
+    (Food eating: Eat animation + eating sound.)
+  - Potion icme: Eat animasyonu eklendi + ses broadcast'e cevrildi (onceden sadece self).
+    (Potion drinking: Eat animation added + sound converted to broadcast.)
+  - Container acma: acilis sesi (0x0048).
+    (Container open: open sound.)
+  - Mount/dismount: at binme/inme sesi (0x0140).
+    (Mount/dismount: mount/dismount sound.)
+
+HAREKET Z PARITESI / MOVEMENT Z PARITY:
+  - WalkCheck.Check() ClassicUO sorted-list headroom algoritmasina tamamen yeniden yazildi.
+    Eski ServUO-style per-candidate IsOk yaklasimi yapisal farklar nedeniyle edge-case Z
+    uyumsuzlugu uretiyordu. Yeni algoritma ClassicUO CalculateNewZ (Pathfinder.cs:370-512)
+    ile birebir eslesir.
+    (WalkCheck.Check() fully rewritten to ClassicUO sorted-list headroom algorithm. Old
+    ServUO-style per-candidate IsOk approach produced edge-case Z divergence. New algorithm
+    matches ClassicUO CalculateNewZ exactly.)
+  - GetAverageZ: TextureId=0 olan arazi karolari duz muamele goruyor (ClassicUO Land.cs
+    ApplyStretch paritesi).
+    (GetAverageZ: land tiles with TextureId=0 treated as flat — ClassicUO parity.)
+
+GUVENLIK / SECURITY:
+  - Hesap sifre yonetimi: MD5 hash varsayilan, NeedsUpgrade plaintext tespiti, otomatik
+    hash yukseltme login sirasinda.
+    (Account password management: MD5 hash default, NeedsUpgrade plaintext detection,
+    automatic hash upgrade on login.)
+  - Admin panel IP bloklama ve komut denetim loglari.
+    (Admin panel IP blocking and command audit logging.)
+
+TEST:
+  - IActiveSkillSink.Animation() icin 3 test mock guncellendi.
+    (3 test mocks updated for IActiveSkillSink.Animation().)
+  - SecurityHardeningTests, GameSystemTests, SaveFormatTests guncellemeleri.
+
+DOSYALAR / FILES:
+  Degistirilen (27):
+    src/SphereNet.Core/Configuration/PasswordHelper.cs
+    src/SphereNet.Core/Configuration/SphereConfig.cs
+    src/SphereNet.Game/AI/NpcAI.cs
+    src/SphereNet.Game/Accounts/Account.cs
+    src/SphereNet.Game/Clients/GameClient.Combat.cs
+    src/SphereNet.Game/Clients/GameClient.ItemUse.cs
+    src/SphereNet.Game/Clients/GameClient.PacketHelpers.cs
+    src/SphereNet.Game/Clients/GameClient.Skills.cs
+    src/SphereNet.Game/Clients/GameClient.WorldFeatures.cs
+    src/SphereNet.Game/Combat/CombatHelper.cs
+    src/SphereNet.Game/Diagnostics/BotEngine.cs
+    src/SphereNet.Game/Movement/WalkCheck.cs
+    src/SphereNet.Game/Objects/Characters/Character.cs
+    src/SphereNet.Game/Skills/Information/ActiveSkillEngine.cs
+    src/SphereNet.Game/Skills/Information/IActiveSkillSink.cs
+    src/SphereNet.Game/Skills/SkillHandlers.cs
+    src/SphereNet.MapData/MapDataManager.cs
+    src/SphereNet.Persistence/Accounts/AccountPersistence.cs
+    src/SphereNet.Server/Program.AdminPanel.cs
+    src/SphereNet.Server/Program.cs
+    src/SphereNet.Tests/ActiveSkillEngineTests.cs
+    src/SphereNet.Tests/GameSystemTests.cs
+    src/SphereNet.Tests/SaveFormatTests.cs
+    src/SphereNet.Tests/SecurityHardeningTests.cs
+    src/SphereNet.Tests/SkillDelayTests.cs
+    src/SphereNet.Tests/SkillMagicPhase4Tests.cs
+
 [2026-05-26] - Bot Soak Framework ve collision reject duzeltmesi
               (Bot Soak Framework and collision reject fix)
 ----------------------------------------

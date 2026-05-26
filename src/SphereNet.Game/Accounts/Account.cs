@@ -110,42 +110,13 @@ public sealed class Account : IScriptObj
     public bool CheckPassword(string password)
     {
         if (string.IsNullOrEmpty(_passwordHash)) return false;
-
-        if (Core.Configuration.PasswordHelper.IsHashed(_passwordHash))
-            return Core.Configuration.PasswordHelper.Verify(password, _passwordHash);
-
-        if (UseMd5Passwords)
-        {
-            string hash = ComputeMd5(password);
-            return string.Equals(hash, _passwordHash, StringComparison.OrdinalIgnoreCase);
-        }
-
-        if (string.Equals(password, _passwordHash, StringComparison.Ordinal))
-            return true;
-
-        if (LooksLikeMd5Hex(_passwordHash))
-        {
-            string hash = ComputeMd5(password);
-            return string.Equals(hash, _passwordHash, StringComparison.OrdinalIgnoreCase);
-        }
-
-        return false;
+        return Core.Configuration.PasswordHelper.Verify(password, _passwordHash);
     }
 
     public void SetPassword(string password)
     {
         _passwordHash = Core.Configuration.PasswordHelper.Hash(password);
     }
-
-    private static string ComputeMd5(string input)
-    {
-        var bytes = System.Text.Encoding.UTF8.GetBytes(input);
-        var hash = System.Security.Cryptography.MD5.HashData(bytes);
-        return Convert.ToHexString(hash);
-    }
-
-    private static bool LooksLikeMd5Hex(string value) =>
-        value.Length == 32 && value.All(static c => "0123456789abcdefABCDEF".Contains(c));
 
     public string GetName() => _name;
 

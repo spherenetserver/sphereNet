@@ -173,9 +173,11 @@ public static class AccountPersistence
         switch (upper)
         {
             case "PASSWORD":
-                if (val.Length == 32 && val.All(c => "0123456789abcdefABCDEF".Contains(c)))
+                if (val.StartsWith("SHA256:", StringComparison.Ordinal))
                     acc.PasswordHash = val;
-                else
+                else if (val.Length == 32 && val.All(c => "0123456789abcdefABCDEF".Contains(c)))
+                    acc.PasswordHash = val;
+                else if (!string.IsNullOrEmpty(val))
                     acc.SetPassword(val);
                 break;
             case "PLEVEL":

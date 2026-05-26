@@ -357,6 +357,8 @@ public static class ActiveSkillEngine
                  : sink.Random.Next(80);
         bool success = SkillEngine.UseQuick(ch, SkillType.Healing, diff);
 
+        sink.Animation((ushort)Core.Enums.AnimationType.Bow);
+        sink.Sound(0x0057);
         sink.ConsumeAmount(bandage); // Source-X consumes on fail too.
         if (!success)
             return false;

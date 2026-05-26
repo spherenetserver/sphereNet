@@ -499,6 +499,7 @@ public static partial class Program
         Character.ArcheryMinDist           = _config.ArcheryMinDist;
         Character.ArcheryMaxDist           = _config.ArcheryMaxDist;
         Character.CombatArcheryMovementDelay = _config.CombatArcheryMovementDelay;
+        Character.CombatMeleeMovementDelay  = _config.CombatMeleeMovementDelay;
         Character.MagicFlags = _config.MagicFlags;
         Character.EquippedCastEnabled = _config.EquippedCast;
         Character.ReagentLossAbort = _config.ReagentLossAbort;

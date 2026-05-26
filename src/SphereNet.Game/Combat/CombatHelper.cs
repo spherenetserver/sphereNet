@@ -175,6 +175,16 @@ public static class CombatHelper
         {
             if (GetChebyshevDistance(attacker, target) > 1)
                 return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
+
+            if (Character.CombatMeleeMovementDelay > 0 && attacker.LastMoveTick > 0)
+            {
+                long sinceMove = nowMs - attacker.LastMoveTick;
+                if (sinceMove < Character.CombatMeleeMovementDelay)
+                {
+                    long wait = Character.CombatMeleeMovementDelay - sinceMove;
+                    return new SwingPrepFailure(SwingPrepResult.RetryLater, wait);
+                }
+            }
         }
 
         return new SwingPrepFailure(SwingPrepResult.Ready, 0);

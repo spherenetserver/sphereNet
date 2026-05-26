@@ -92,6 +92,7 @@ public sealed class SphereConfig
     public int CombatHitChanceEra { get; set; }
     public int CombatSpeedEra { get; set; }
     public int CombatArcheryMovementDelay { get; set; }
+    public int CombatMeleeMovementDelay { get; set; }
     public int ArcheryMinDist { get; set; } = 1;
     public int ArcheryMaxDist { get; set; } = 12;
     public int MagicFlags { get; set; }
@@ -375,6 +376,7 @@ public sealed class SphereConfig
         CombatHitChanceEra = ini.GetInt(section, "CombatHitChanceEra", CombatHitChanceEra);
         CombatSpeedEra = ini.GetInt(section, "CombatSpeedEra", CombatSpeedEra);
         CombatArcheryMovementDelay = ini.GetInt(section, "CombatArcheryMovementDelay", CombatArcheryMovementDelay);
+        CombatMeleeMovementDelay = ini.GetInt(section, "CombatMeleeMovementDelay", CombatMeleeMovementDelay);
         ArcheryMinDist = ini.GetInt(section, "ArcheryMinDist", ArcheryMinDist);
         ArcheryMaxDist = ini.GetInt(section, "ArcheryMaxDist", ArcheryMaxDist);
         MagicFlags = ini.GetInt(section, "MagicFlags", MagicFlags);

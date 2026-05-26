@@ -100,6 +100,12 @@ public sealed partial class GameClient
                     _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillMakeItem,
                         new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill });
 
+                    var (craftAnim, craftSound) = GetCraftAnimAndSound(craftSkill);
+                    BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                        new PacketAnimation(_character.Uid.Value, craftAnim), 0);
+                    BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                        new PacketSound(craftSound, _character.X, _character.Y, _character.Z), 0);
+
                     var result = _craftingEngine.TryCraft(_character, recipe);
 
                     if (result != null)
@@ -1045,6 +1051,19 @@ public sealed partial class GameClient
         BroadcastNearby?.Invoke(door.Position, UpdateRange, doorBroadcast, _character.Uid.Value);
     }
 
+    private static (ushort Anim, ushort Sound) GetCraftAnimAndSound(SkillType skill) => skill switch
+    {
+        SkillType.Blacksmithing => ((ushort)AnimationType.Attack1HBash, (ushort)0x002A),
+        SkillType.Carpentry => ((ushort)AnimationType.Attack2HSlash, (ushort)0x023D),
+        SkillType.Tailoring => ((ushort)AnimationType.Bow, (ushort)0x0248),
+        SkillType.Tinkering => ((ushort)AnimationType.Attack1HBash, (ushort)0x002A),
+        SkillType.Cooking => ((ushort)AnimationType.Bow, (ushort)0x0225),
+        SkillType.Alchemy => ((ushort)AnimationType.Bow, (ushort)0x0242),
+        SkillType.Bowcraft => ((ushort)AnimationType.Bow, (ushort)0x023D),
+        SkillType.Inscription => ((ushort)AnimationType.Bow, (ushort)0x0249),
+        _ => ((ushort)AnimationType.Bow, (ushort)0x002A),
+    };
+
     private void UsePotion(Item potion)
     {
         if (_character == null) return;
@@ -1086,9 +1105,10 @@ public sealed partial class GameClient
                 break;
         }
 
-        // Play drink sound
-        var soundPacket = new PacketSound(0x0031, _character.X, _character.Y, _character.Z);
-        _netState.Send(soundPacket);
+        BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+            new PacketAnimation(_character.Uid.Value, (ushort)AnimationType.Eat), 0);
+        BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+            new PacketSound(0x0031, _character.X, _character.Y, _character.Z), 0);
 
         // Update stats
         SendCharacterStatus(_character);

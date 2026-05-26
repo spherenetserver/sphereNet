@@ -135,6 +135,19 @@ public sealed partial class GameClient
 
         byte expectedSeq = _netState.WalkSequence;
 
+        // After a reject, WalkSequence resets to 0. The client's first
+        // move post-reject will be seq 0 or 1. Anything higher is a stale
+        // speculative move still in flight from before the rejection —
+        // processing it from the corrected position would move the
+        // character in unexpected directions (teleportation). Drop them.
+        if (expectedSeq == 0 && seq > 1)
+        {
+            _logger.LogDebug(
+                "[move_drop_stale] seq={Seq} dir=0x{Dir:X2} at {X},{Y},{Z}",
+                seq, dir, _character.X, _character.Y, _character.Z);
+            return true;
+        }
+
         // Strict sequence validation (ServUO-style): reject out-of-order walk packets.
         if (expectedSeq != 0 && seq != expectedSeq)
         {
@@ -290,13 +303,17 @@ public sealed partial class GameClient
 
             byte notoriety = GetNotoriety(_character);
             int zDelta = _character.Z - oldZ;
-            if (Math.Abs(zDelta) > 4)
+            if (Math.Abs(zDelta) > 0)
             {
                 _logger.LogInformation(
-                    "[move_z_delta] seq={Seq} dir={Dir} run={Run} from {OldX},{OldY},{OldZ} to {NewX},{NewY},{NewZ} dz={Delta} startZ={StartZ} startTop={StartTop} fwdZ={FwdZ} last={Last} tiles=[{Dump}]",
+                    "[move_z_delta] seq={Seq} dir={Dir} run={Run} from {OldX},{OldY},{OldZ} to {NewX},{NewY},{NewZ} dz={Delta} startZ={StartZ} startTop={StartTop} fwdZ={FwdZ} last={Last} ourZ={OurZ} " +
+                    "fwdLand=({LZ}/{LC}/{LT}) statics={SC} items={IC} tiles=[{Dump}]",
                     seq, direction, running, oldX, oldY, oldZ, _character.X, _character.Y, _character.Z, zDelta,
                     moveDiag.StartZ, moveDiag.StartTop, moveDiag.ForwardNewZ,
-                    moveDiag.FwdReason, moveDiag.FwdStaticDump);
+                    moveDiag.FwdReason, moveDiag.ForwardNewZ,
+                    moveDiag.FwdLandZ, moveDiag.FwdLandCenter, moveDiag.FwdLandTop,
+                    moveDiag.FwdSurfaceCount, moveDiag.FwdItemSurfaceCount,
+                    moveDiag.FwdStaticDump);
             }
 
             _logger.LogDebug(
@@ -311,12 +328,15 @@ public sealed partial class GameClient
                 _character.Uid.Value, _character.BodyId,
                 _character.X, _character.Y, _character.Z, dir77,
                 _character.Hue, flags, notoriety);
+
             if (BroadcastMoveNearby != null)
                 BroadcastMoveNearby.Invoke(_character.Position, UpdateRange, movePacket, _character.Uid.Value, _character);
             else
                 BroadcastNearby?.Invoke(_character.Position, UpdateRange, movePacket, _character.Uid.Value);
 
-            _netState.WalkSequence = (byte)(seq + 1);
+            byte nextSeq = (byte)(seq + 1);
+            if (nextSeq == 0) nextSeq = 1;
+            _netState.WalkSequence = nextSeq;
             return true;
         }
         else
@@ -715,6 +735,18 @@ public sealed partial class GameClient
             }
         }
 
+        _character.BeginSwingRecoil(now, swingDelayMs);
+
+        // Each swing burns a small bit of stamina (Source-X Fight_Hit -> UpdateStatVal(STAT_DEX, -1)).
+        if (_character.Stam > 0)
+            _character.Stam = (short)(_character.Stam - 1);
+
+        ushort swingAction = GetSwingAction(_character, weapon);
+        BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+            new PacketAnimation(_character.Uid.Value, swingAction), 0);
+        BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+            new PacketSound(GetSwingSound(weapon), _character.X, _character.Y, _character.Z), 0);
+
         if (CombatHelper.IsRangedWeapon(weapon))
         {
             var ammoType = weapon!.ItemType == ItemType.WeaponBow ? ItemType.WeaponArrow : ItemType.WeaponBolt;
@@ -726,12 +758,6 @@ public sealed partial class GameClient
             ConsumeAmmoFromBackpack(ammoType);
             EmitRangedProjectile(target, ammoType);
         }
-
-        _character.BeginSwingRecoil(now, swingDelayMs);
-
-        // Each swing burns a small bit of stamina (Source-X Fight_Hit -> UpdateStatVal(STAT_DEX, -1)).
-        if (_character.Stam > 0)
-            _character.Stam = (short)(_character.Stam - 1);
 
         int damage = CombatEngine.ResolveAttack(
             _character,
@@ -785,19 +811,12 @@ public sealed partial class GameClient
             _logger.LogDebug("{Attacker} hit {Target} for {Dmg} damage",
                 _character.Name, target.Name, damage);
 
-            ushort swingAction = GetSwingAction(_character, weapon);
-            var swingAnim = new PacketAnimation(_character.Uid.Value, swingAction);
-            BroadcastNearby?.Invoke(_character.Position, UpdateRange, swingAnim, 0);
-
-            ushort swingSound = GetSwingSound(weapon);
-            var swingSoundPacket = new PacketSound(swingSound, _character.X, _character.Y, _character.Z);
-            BroadcastNearby?.Invoke(_character.Position, UpdateRange, swingSoundPacket, 0);
-
             ushort hitSound = weapon != null ? (ushort)0x0239 : (ushort)0x0135;
             var hitSoundPacket = new PacketSound(hitSound, target.X, target.Y, target.Z);
             BroadcastNearby?.Invoke(target.Position, UpdateRange, hitSoundPacket, 0);
 
-            var getHitAnim = new PacketAnimation(target.Uid.Value, (ushort)AnimationType.GetHit);
+            ushort getHitAction = target.IsMounted ? (ushort)AnimationType.HorseSlap : (ushort)AnimationType.GetHit;
+            var getHitAnim = new PacketAnimation(target.Uid.Value, getHitAction);
             BroadcastNearby?.Invoke(target.Position, UpdateRange, getHitAnim, 0);
 
             var damagePacket = new PacketDamage(target.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue));
@@ -936,7 +955,8 @@ public sealed partial class GameClient
             _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.HitMiss,
                 new TriggerArgs { CharSrc = _character, O1 = target });
 
-            EmitMissFeedback(target, weapon);
+            BroadcastNearby?.Invoke(target.Position, UpdateRange,
+                new PacketSound(0x0234, target.X, target.Y, target.Z), 0);
         }
     }
 

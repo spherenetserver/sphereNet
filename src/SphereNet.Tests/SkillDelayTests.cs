@@ -284,6 +284,7 @@ public class SkillDelayTests
         public void ObjectMessage(SphereNet.Game.Objects.ObjBase target, string text) { }
         public void Emote(string text) { }
         public void Sound(ushort soundId) { }
+        public void Animation(ushort animId) { }
         public SphereNet.Game.Objects.Items.Item? FindBackpackItem(ItemType type)
         {
             var pack = Self.Backpack;

@@ -410,6 +410,9 @@ public partial class Character : ObjBase
     public static int ArcheryMaxDist { get; set; } = 12;
     /// <summary>COMBATARCHERYMOVEMENTDELAY from sphere.ini (ms).</summary>
     public static int CombatArcheryMovementDelay { get; set; }
+    /// <summary>COMBATMELEEMOVEMENTDELAY from sphere.ini (ms). When > 0,
+    /// melee swings are blocked for this duration after the last movement step.</summary>
+    public static int CombatMeleeMovementDelay { get; set; }
     /// <summary>MAGICFLAGS bitfield from sphere.ini.</summary>
     public static int MagicFlags { get; set; }
     /// <summary>EQUIPPEDCAST from sphere.ini — allow casting with weapons equipped.</summary>

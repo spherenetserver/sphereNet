@@ -67,11 +67,27 @@ public static partial class Program
             _connRateLimiter = new ConnectionRateLimiter();
             _network.ConnectionAcceptFilter = ip =>
             {
+                if (SphereNet.Game.Diagnostics.BotEngine.BotModeActive && System.Net.IPAddress.IsLoopback(ip))
+                    return false;
                 string ipStr = ip.ToString();
                 if (_ipBlockList.IsBlocked(ipStr))
                     return true;
                 _connRateLimiter.RegisterAttempt(ipStr);
                 return _connRateLimiter.ShouldThrottle(ipStr);
+            };
+
+            SphereNet.Game.Diagnostics.BotEngine.OnBotModeChanged += active =>
+            {
+                if (active)
+                {
+                    _connRateLimiter!.Reset("127.0.0.1");
+                    _connRateLimiter.Reset("::1");
+                    _network.ClientMaxIP = 0;
+                }
+                else
+                {
+                    _network.ClientMaxIP = _config.ClientMaxIP;
+                }
             };
 
             // --- 9. Admin Console ---

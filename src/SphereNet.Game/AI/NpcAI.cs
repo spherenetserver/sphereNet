@@ -1551,6 +1551,7 @@ public sealed class NpcAI
             npc.Direction = newDir;
 
         npc.NextAttackTime = now + swingDelayMs + stagger;
+        npc.BeginSwingRecoil(now, swingDelayMs + stagger);
 
         if (npc.Stam > 0)
             npc.Stam = (short)(npc.Stam - 1);

@@ -33,6 +33,11 @@ public interface IActiveSkillSink : IInfoSkillSink
     void Sound(ushort soundId);
 
     /// <summary>
+    /// Broadcast a 0x6E animation packet for the actor to all nearby clients.
+    /// </summary>
+    void Animation(ushort animId);
+
+    /// <summary>
     /// Search the actor's backpack (and one level of sub-containers) for the
     /// first item of <paramref name="type"/>. Returns null when not present.
     /// </summary>

@@ -149,7 +149,7 @@ public sealed class WalkCheck
 
         var fwdTrace = new CheckTrace();
         bool forwardOk = Check(mover, md, mapId, xForward, yForward, startTop, startZ, loc.Z,
-            fwdMinZ, fwdMaxZ, itemsForward, mobsForward, out newZ, ref fwdTrace);
+            fwdMinZ, fwdMaxZ, itemsForward, mobsForward, (int)d, out newZ, ref fwdTrace);
         int forwardNewZ = newZ;
         bool moveOk = forwardOk;
         bool mobBlocked = false;
@@ -160,7 +160,7 @@ public sealed class WalkCheck
         {
             var noMobTrace = new CheckTrace();
             bool surfaceWithoutMob = Check(mover, md, mapId, xForward, yForward, startTop, startZ,
-                loc.Z, fwdMinZ, fwdMaxZ, itemsForward, null, out _, ref noMobTrace);
+                loc.Z, fwdMinZ, fwdMaxZ, itemsForward, null, (int)d, out _, ref noMobTrace);
             if (surfaceWithoutMob) mobBlocked = true;
         }
 
@@ -182,9 +182,9 @@ public sealed class WalkCheck
             var leftTrace = new CheckTrace();
             var rightTrace = new CheckTrace();
             leftOk = Check(mover, md, mapId, xLeft, yLeft, startTop, startZ, loc.Z,
-                leftMinZ, leftMaxZ, itemsLeft!, null, out _, ref leftTrace);
+                leftMinZ, leftMaxZ, itemsLeft!, null, leftDir, out _, ref leftTrace);
             rightOk = Check(mover, md, mapId, xRight, yRight, startTop, startZ, loc.Z,
-                rightMinZ, rightMaxZ, itemsRight!, null, out _, ref rightTrace);
+                rightMinZ, rightMaxZ, itemsRight!, null, rightDir, out _, ref rightTrace);
 
             moveOk = bothRequired ? (leftOk && rightOk) : (leftOk || rightOk);
         }
@@ -308,25 +308,43 @@ public sealed class WalkCheck
     }
 
     // -----------------------------------------------------------------
-    //  Per-tile checks (Check / GetStartZ / IsOk)
+    //  Per-tile check — ClassicUO sorted-list algorithm (CalculateNewZ)
+    //
+    //  Builds a unified list of all geometry (land, statics, items),
+    //  sorts by Z, and walks upward looking for headroom gaps ≥ 16
+    //  between a blocker and the surfaces below it. Picks the surface
+    //  closest to the mover's current Z. A sentinel at Z=128 ensures
+    //  the topmost surface is always evaluated.
+    //
+    //  This replaces the earlier per-candidate IsOk approach to
+    //  guarantee Z parity with the ClassicUO client.
     // -----------------------------------------------------------------
+
+    [Flags]
+    private enum PathFlags : byte
+    {
+        None = 0,
+        ImpSurf = 1,
+        Surface = 2,
+        Bridge  = 4,
+    }
+
+    private readonly record struct PathEntry(PathFlags Flags, int Z, int AverageZ, int Height) : IComparable<PathEntry>
+    {
+        public int CompareTo(PathEntry other) => Z.CompareTo(other.Z);
+    }
+
+    [ThreadStatic] private static List<PathEntry>? t_pathList;
 
     private bool Check(Character mover, MapDataManager md, int mapId, int x, int y,
         int startTop, int startZ, int moverZ, int preMinZ, int preMaxZ,
-        List<Item> items, List<Character>? mobiles, out int newZ,
+        List<Item> items, List<Character>? mobiles, int direction, out int newZ,
         ref CheckTrace trace)
     {
         newZ = 0;
 
         var landTile = md.GetTerrainTile(mapId, x, y);
         var landData = md.GetLandTileData(landTile.TileId);
-
-        // Only water (Impassable + Wet) land blocks walking — barriers like
-        // deep ocean that need a bridge static above. Land that is Impassable
-        // alone is treated as walkable: stock tiledata.mul flags some
-        // decorative rock / slope textures as Impassable, but the UO client
-        // (and standard sphere maps) use them as walkable sloped terrain. Real
-        // walls must be modeled as static items, which are checked properly.
         bool landBlocks = landData.IsImpassable && landData.IsWet;
         bool considerLand = !MapDataManager.IsLandIgnored(landTile.TileId);
 
@@ -340,165 +358,124 @@ public sealed class WalkCheck
         trace.ConsiderLand = considerLand;
         trace.LastReason = "no_candidates";
 
-        bool moveIsOk = false;
-        int stepTop = startTop + StepHeight;
-        int checkTop = startZ + PersonHeight;
-        int effectiveZ = Math.Max(moverZ, preMinZ);
+        var list = t_pathList ??= new List<PathEntry>(32);
+        list.Clear();
 
-        // --- Static tiles ---
+        // --- Land tile → PathEntry ---
+        if (considerLand && !landBlocks)
+        {
+            list.Add(new PathEntry(
+                PathFlags.ImpSurf | PathFlags.Surface | PathFlags.Bridge,
+                landZ, landCenter, landCenter - landZ));
+        }
+
+        // --- Static tiles → PathEntries ---
         for (int i = 0; i < staticBlock.Length; i++)
         {
             var tile = staticBlock[i];
             if (tile.XOffset != staticOffX || tile.YOffset != staticOffY)
                 continue;
-            var itemData = md.GetItemTileData(tile.TileId);
-            TileFlag flags = itemData.Flags;
+            var data = md.GetItemTileData(tile.TileId);
 
-            // Walkable surface (Surface flag and NOT Impassable).
-            if ((flags & ImpassableSurface) == TileFlag.Surface)
+            PathFlags pf = PathFlags.None;
+            if (data.IsImpassable || data.IsSurface)
+                pf |= PathFlags.ImpSurf;
+            if (!data.IsImpassable)
             {
-                trace.SurfaceCandidates++;
-
-                int itemZ = tile.Z;
-                int itemTop = itemZ;
-                int ourZ = itemZ + itemData.CalcHeight;
-
-                bool maxZOk = (itemData.IsBridge && itemZ <= preMaxZ)
-                           || (itemData.IsSurface && ourZ <= preMaxZ);
-                if (!maxZOk) { trace.LastReason = $"static_maxz id=0x{tile.TileId:X} ourZ={ourZ} maxZ={preMaxZ}"; continue; }
-
-                if (moveIsOk)
-                {
-                    int cmp = Math.Abs(ourZ - effectiveZ) - Math.Abs(newZ - effectiveZ);
-                    if (cmp > 0 || (cmp == 0 && ourZ > newZ)) continue;
-                }
-
-                int testTop = checkTop;
-                if (ourZ + PersonHeight > testTop) testTop = ourZ + PersonHeight;
-
-                if (!itemData.IsBridge) itemTop += itemData.Height;
-
-                if (stepTop >= itemTop)
-                {
-                    int landCheck = itemZ +
-                        (itemData.Height >= StepHeight ? StepHeight : itemData.Height);
-
-                    if (considerLand && landCheck < landCenter && landCenter > ourZ && testTop > landZ)
-                    { trace.LastReason = $"static_land_cover id=0x{tile.TileId:X} z={itemZ} ourZ={ourZ}"; continue; }
-
-                    if (IsOk(mover, ourZ, testTop, staticBlock, staticOffX, staticOffY, items, md))
-                    {
-                        newZ = ourZ;
-                        moveIsOk = true;
-                        trace.LastReason = $"accepted_static id=0x{tile.TileId:X} ourZ={ourZ}";
-                    }
-                    else
-                    {
-                        trace.LastReason = $"static_headroom id=0x{tile.TileId:X} ourZ={ourZ} top={testTop}";
-                    }
-                }
-                else
-                {
-                    trace.LastReason = $"static_too_tall id=0x{tile.TileId:X} top={itemTop} step={stepTop}";
-                }
+                if (data.IsSurface) pf |= PathFlags.Surface;
+                if (data.IsBridge) pf |= PathFlags.Bridge;
             }
+            if (pf == PathFlags.None) continue;
+
+            int tileZ = tile.Z;
+            int h = data.Height;
+            int avgZ = tileZ + (data.IsBridge ? h / 2 : h);
+            list.Add(new PathEntry(pf, tileZ, avgZ, h));
+
+            if ((pf & PathFlags.Surface) != 0)
+                trace.SurfaceCandidates++;
         }
 
-        // --- In-world items (same treatment as static tiles) ---
+        // --- In-world items → PathEntries ---
         for (int i = 0; i < items.Count; i++)
         {
             var item = items[i];
-            var itemData = md.GetItemTileData(item.BaseId);
-            if (!ShouldTreatAsMovementGeometry(item, itemData)) continue;
-            TileFlag flags = itemData.Flags;
+            var data = md.GetItemTileData(item.BaseId);
+            if (!ShouldTreatAsMovementGeometry(item, data)) continue;
 
-            if ((flags & ImpassableSurface) == TileFlag.Surface)
+            PathFlags pf = PathFlags.None;
+            if (data.IsImpassable || data.IsSurface)
+                pf |= PathFlags.ImpSurf;
+            if (!data.IsImpassable)
             {
+                if (data.IsSurface) pf |= PathFlags.Surface;
+                if (data.IsBridge) pf |= PathFlags.Bridge;
+            }
+            if (pf == PathFlags.None) continue;
+
+            int itemZ = item.Z;
+            int h = data.Height;
+            int avgZ = itemZ + (data.IsBridge ? h / 2 : h);
+            list.Add(new PathEntry(pf, itemZ, avgZ, h));
+
+            if ((pf & PathFlags.Surface) != 0)
                 trace.ItemSurfaceCandidates++;
-
-                int itemZ = item.Z;
-                int itemTop = itemZ;
-                int ourZ = itemZ + itemData.CalcHeight;
-
-                bool maxZOk = (itemData.IsBridge && itemZ <= preMaxZ)
-                           || (itemData.IsSurface && ourZ <= preMaxZ);
-                if (!maxZOk) { trace.LastReason = $"item_maxz id=0x{item.BaseId:X} ourZ={ourZ} maxZ={preMaxZ}"; continue; }
-
-                if (moveIsOk)
-                {
-                    int cmp = Math.Abs(ourZ - effectiveZ) - Math.Abs(newZ - effectiveZ);
-                    if (cmp > 0 || (cmp == 0 && ourZ > newZ)) continue;
-                }
-
-                int testTop = checkTop;
-                if (ourZ + PersonHeight > testTop) testTop = ourZ + PersonHeight;
-
-                if (!itemData.IsBridge) itemTop += itemData.Height;
-
-                if (stepTop >= itemTop)
-                {
-                    int landCheck = itemZ +
-                        (itemData.Height >= StepHeight ? StepHeight : itemData.Height);
-
-                    if (considerLand && landCheck < landCenter && landCenter > ourZ && testTop > landZ)
-                    { trace.LastReason = $"item_land_cover id=0x{item.BaseId:X} z={itemZ}"; continue; }
-
-                    if (IsOk(mover, ourZ, testTop, staticBlock, staticOffX, staticOffY, items, md))
-                    {
-                        newZ = ourZ;
-                        moveIsOk = true;
-                        trace.LastReason = $"accepted_item id=0x{item.BaseId:X} ourZ={ourZ}";
-                    }
-                    else
-                    {
-                        trace.LastReason = $"item_headroom id=0x{item.BaseId:X} ourZ={ourZ}";
-                    }
-                }
-                else
-                {
-                    trace.LastReason = $"item_too_tall id=0x{item.BaseId:X}";
-                }
-            }
         }
 
-        // --- Land (terrain) candidate ---
-        // ClassicUO gives land tiles both POF_SURFACE and POF_BRIDGE flags.
-        // Surface check uses averageZ (landCenter), bridge check uses base Z
-        // (landZ = minimum corner). Without the bridge fallback, uphill ramps
-        // where landCenter exceeds maxZ by 1-2 units get rejected while the
-        // client accepts them — causing MoveReject → DenyWalk teleportation.
-        if (considerLand && !landBlocks && stepTop >= landZ && (landCenter <= preMaxZ || landZ <= preMaxZ))
+        list.Sort();
+        list.Add(new PathEntry(PathFlags.ImpSurf, 128, 128, 128));
+
+        int resultZ = -128;
+        int minZ = preMinZ;
+        int currentZ = -128;
+        int bestDelta = 1_000_000;
+
+        int z = moverZ;
+        if (z < minZ) z = minZ;
+
+        for (int i = 0; i < list.Count; i++)
         {
-            int ourZ = landCenter;
-            int testTop = checkTop;
-            if (ourZ + PersonHeight > testTop) testTop = ourZ + PersonHeight;
+            var obj = list[i];
+            if ((obj.Flags & PathFlags.ImpSurf) == 0) continue;
 
-            bool shouldCheck = true;
-            if (moveIsOk)
+            int objZ = obj.Z;
+
+            if (objZ - minZ >= PersonHeight)
             {
-                int cmp = Math.Abs(ourZ - effectiveZ) - Math.Abs(newZ - effectiveZ);
-                if (cmp > 0 || (cmp == 0 && ourZ > newZ)) shouldCheck = false;
+                for (int j = i - 1; j >= 0; j--)
+                {
+                    var cand = list[j];
+                    if ((cand.Flags & (PathFlags.Surface | PathFlags.Bridge)) == 0)
+                        continue;
+
+                    int candAvg = cand.AverageZ;
+                    if (candAvg < currentZ) continue;
+                    if (objZ - candAvg < PersonHeight) continue;
+
+                    bool maxOk = ((cand.Flags & PathFlags.Surface) != 0 && candAvg <= preMaxZ)
+                              || ((cand.Flags & PathFlags.Bridge) != 0 && cand.Z <= preMaxZ);
+                    if (!maxOk) continue;
+
+                    int delta = Math.Abs(z - candAvg);
+                    if (delta < bestDelta)
+                    {
+                        bestDelta = delta;
+                        resultZ = candAvg;
+                    }
+                }
             }
 
-            if (shouldCheck && IsOk(mover, ourZ, testTop, staticBlock, staticOffX, staticOffY, items, md))
-            {
-                newZ = ourZ;
-                moveIsOk = true;
-                trace.LastReason = $"accepted_land ourZ={ourZ}";
-            }
-            else if (shouldCheck)
-            {
-                trace.LastReason = $"land_headroom ourZ={ourZ} top={testTop}";
-            }
+            int avgZ2 = obj.AverageZ;
+            if (minZ < avgZ2) minZ = avgZ2;
+            if (currentZ < avgZ2) currentZ = avgZ2;
         }
-        else if (!considerLand)
-            trace.LastReason = $"land_ignored tile=0x{landTile.TileId:X}";
-        else if (landBlocks)
-            trace.LastReason = $"land_impassable tile=0x{landTile.TileId:X}";
-        else if (stepTop < landZ)
-            trace.LastReason = $"land_too_tall landZ={landZ} stepTop={stepTop}";
-        else
-            trace.LastReason = $"land_maxz landCenter={landCenter} maxZ={preMaxZ}";
+
+        bool moveIsOk = resultZ != -128;
+        if (moveIsOk)
+        {
+            newZ = resultZ;
+            trace.LastReason = $"accepted ourZ={resultZ}";
+        }
 
         // --- Mobile blocking ---
         if (moveIsOk && mobiles != null)
@@ -587,42 +564,6 @@ public sealed class WalkCheck
         {
             zTop = locZ;
         }
-    }
-
-    /// <summary>"Is there anything above the target Z that our head would
-    /// collide with?" — scans impassable/surface tiles whose Z span overlaps
-    /// [ourZ, ourTop) and rejects if so. ServUO's IsOk.</summary>
-    private bool IsOk(Character mover, int ourZ, int ourTop,
-        ReadOnlySpan<StaticItem> tiles, int offX, int offY, List<Item> items, MapDataManager md)
-    {
-        for (int i = 0; i < tiles.Length; i++)
-        {
-            var check = tiles[i];
-            if (check.XOffset != offX || check.YOffset != offY)
-                continue;
-            var data = md.GetItemTileData(check.TileId);
-            if ((data.Flags & ImpassableSurface) != 0)
-            {
-                int checkZ = check.Z;
-                int checkTop = checkZ + data.CalcHeight;
-                if (checkTop > ourZ && ourTop > checkZ) return false;
-            }
-        }
-
-        for (int i = 0; i < items.Count; i++)
-        {
-            var item = items[i];
-            var data = md.GetItemTileData(item.BaseId);
-            if (!ShouldTreatAsMovementGeometry(item, data)) continue;
-            if ((data.Flags & ImpassableSurface) != 0)
-            {
-                int checkZ = item.Z;
-                int checkTop = checkZ + data.CalcHeight;
-                if (checkTop > ourZ && ourTop > checkZ) return false;
-            }
-        }
-
-        return true;
     }
 
     private static bool ShouldTreatAsMovementGeometry(Item item, ItemTileData data)

@@ -595,6 +595,8 @@ public sealed partial class GameClient
         //   4) Generic bag fallback 0x003C.
         ushort gumpId = ResolveContainerGump(container);
         _netState.Send(new PacketOpenContainer(container.Uid.Value, gumpId, _netState.IsClientPost7090));
+        if (_character != null)
+            _netState.Send(new PacketSound(0x0048, _character.X, _character.Y, _character.Z));
 
         foreach (var child in _world.GetContainerContents(container.Uid))
         {

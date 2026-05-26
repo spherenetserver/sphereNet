@@ -45,6 +45,8 @@ public sealed partial class GameClient
             if (_character.IsMounted && _mountEngine != null)
             {
                 uint oldMountItemUid = _character.GetEquippedItem(Layer.Horse)?.Uid.Value ?? 0;
+                BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                    new PacketSound(0x0140, _character.X, _character.Y, _character.Z), 0);
                 var npc = DismountCharacter();
 
                 // Correct Z to terrain after body type change (mounted→foot)
@@ -172,6 +174,8 @@ public sealed partial class GameClient
                 }
 
                 uint mountNpcUid = ch.Uid.Value;
+                BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                    new PacketSound(0x0140, _character.X, _character.Y, _character.Z), 0);
                 if (TryMountCharacter(ch))
                 {
                     // Correct Z to terrain after body type change (foot→mounted)
@@ -280,6 +284,10 @@ public sealed partial class GameClient
             case ItemType.Drink:
                 _character.Food = (ushort)Math.Min(_character.Food + 5, 60);
                 SysMessage(ServerMessages.Get("itemuse_eat_food"));
+                BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                    new PacketAnimation(_character.Uid.Value, (ushort)AnimationType.Eat), 0);
+                BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                    new PacketSound(0x003A, _character.X, _character.Y, _character.Z), 0);
                 if (_triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Destroy,
                         new TriggerArgs { CharSrc = _character, ItemSrc = item }) != TriggerResult.True)
                 {

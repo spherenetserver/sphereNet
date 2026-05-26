@@ -25,6 +25,10 @@ public sealed class BotEngine : IDisposable
     private int _lastPacketsSent;
     private int _lastPacketsReceived;
 
+    // Bot mode flag — used by network layer to bypass rate limiting for loopback
+    public static bool BotModeActive { get; private set; }
+    public static event Action<bool>? OnBotModeChanged;
+
     // Anomaly tracking
     public readonly ConcurrentQueue<BotAnomaly> Anomalies = new();
     public int AnomalyCount => Anomalies.Count;
@@ -125,6 +129,12 @@ public sealed class BotEngine : IDisposable
         _lastCount = count;
         _lastBehavior = behavior;
 
+        if (!BotModeActive)
+        {
+            BotModeActive = true;
+            OnBotModeChanged?.Invoke(true);
+        }
+
         string cityInfo = _spawnCity == BotSpawnCity.All ? "all cities" : _spawnCity.ToString();
         _logger.LogInformation("[BOT] Starting {Count} bots with {Behavior} behavior in {City}...", 
             count, behavior, cityInfo);
@@ -198,7 +208,7 @@ public sealed class BotEngine : IDisposable
     public void StopAllBots()
     {
         _logger.LogInformation("[BOT] Stopping all {Count} bots...", _bots.Count);
-        
+
         _globalCts?.Cancel();
 
         foreach (var bot in _bots.Values)
@@ -206,6 +216,12 @@ public sealed class BotEngine : IDisposable
             try { bot.Dispose(); } catch { }
         }
         _bots.Clear();
+
+        if (BotModeActive)
+        {
+            BotModeActive = false;
+            OnBotModeChanged?.Invoke(false);
+        }
 
         _logger.LogInformation("[BOT] All bots stopped. Use .bot clean to remove characters from world.");
     }

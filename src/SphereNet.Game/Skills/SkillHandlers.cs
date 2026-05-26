@@ -445,6 +445,7 @@ public sealed class SkillHandlers
         if (target == null) return false;
         var npc = FindNearbyNpc(ch, target.Value);
         if (npc == null || npc.NpcBrain == NpcBrainType.Human) return false;
+        BroadcastSkillAnimation(ch, (ushort)AnimationType.Bow, 0x0064);
         bool success = SkillEngine.UseQuick(ch, SkillType.Taming, 60);
         if (success)
         {
@@ -479,6 +480,7 @@ public sealed class SkillHandlers
 
     private bool HandlePeacemaking(Character ch, Point3D? target)
     {
+        BroadcastSkillAnimation(ch, (ushort)AnimationType.Bow, 0x0038);
         if (!SkillEngine.UseQuick(ch, SkillType.Musicianship, 40)) return false;
         bool success = SkillEngine.UseQuick(ch, SkillType.Peacemaking, 50);
         if (success && target != null)
@@ -492,12 +494,14 @@ public sealed class SkillHandlers
 
     private bool HandleProvocation(Character ch, Point3D? target)
     {
+        BroadcastSkillAnimation(ch, (ushort)AnimationType.Bow, 0x0038);
         if (!SkillEngine.UseQuick(ch, SkillType.Musicianship, 40)) return false;
         return SkillEngine.UseQuick(ch, SkillType.Provocation, 60);
     }
 
     private bool HandleMusicianship(Character ch, Point3D? target)
     {
+        BroadcastSkillAnimation(ch, (ushort)AnimationType.Bow, 0x0038);
         return SkillEngine.UseQuick(ch, SkillType.Musicianship, 40);
     }
 
@@ -666,6 +670,7 @@ public sealed class SkillHandlers
         if (animal.NpcBrain != NpcBrainType.Animal && animal.NpcBrain != NpcBrainType.Monster)
             return false;
 
+        BroadcastSkillAnimation(ch, (ushort)AnimationType.Bow, 0x0057);
         bool success = SkillEngine.UseQuick(ch, SkillType.Veterinary, 40);
         if (success)
         {

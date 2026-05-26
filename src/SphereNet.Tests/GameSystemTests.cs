@@ -2684,7 +2684,7 @@ TAG.BUTTON=1
     public void PasswordHelper_HashAndVerify_RoundTrips()
     {
         var hash = SphereNet.Core.Configuration.PasswordHelper.Hash("testpass123");
-        Assert.StartsWith("SHA256:", hash);
+        Assert.Equal(32, hash.Length);
         Assert.True(SphereNet.Core.Configuration.PasswordHelper.Verify("testpass123", hash));
         Assert.False(SphereNet.Core.Configuration.PasswordHelper.Verify("wrongpass", hash));
     }

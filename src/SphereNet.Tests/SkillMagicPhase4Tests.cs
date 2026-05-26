@@ -202,6 +202,7 @@ public class SkillMagicPhase4Tests
         public void ObjectMessage(SphereNet.Game.Objects.ObjBase target, string text) { }
         public void Emote(string text) { }
         public void Sound(ushort soundId) { }
+        public void Animation(ushort animId) { }
         public Item? FindBackpackItem(ItemType type) => null;
         public void ConsumeAmount(Item item, ushort amount = 1) { }
         public void DeliverItem(Item item) { }

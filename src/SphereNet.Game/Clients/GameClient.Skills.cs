@@ -282,7 +282,12 @@ public sealed partial class GameClient
         public void ObjectMessage(Objects.ObjBase target, string text) => _client.ObjectMessage(target, text);
         public void Emote(string text) => _client.NpcSpeech(Self, text);
         public void Sound(ushort soundId) =>
-            _client._netState.Send(new PacketSound(soundId, (short)Self.Position.X, (short)Self.Position.Y, Self.Position.Z));
+            _client.BroadcastNearby?.Invoke(Self.Position, 18,
+                new PacketSound(soundId, (short)Self.Position.X, (short)Self.Position.Y, Self.Position.Z), 0);
+
+        public void Animation(ushort animId) =>
+            _client.BroadcastNearby?.Invoke(Self.Position, 18,
+                new PacketAnimation(Self.Uid.Value, animId), 0);
 
         public Item? FindBackpackItem(Core.Enums.ItemType type)
         {

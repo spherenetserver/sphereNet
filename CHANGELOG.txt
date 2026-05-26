@@ -4,6 +4,56 @@
 All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-26] - Multi-client uyumluluk: per-client protokol negotiation
+              (Multi-client compatibility: per-client protocol negotiation)
+----------------------------------------
+
+CLIENT TYPE TESPITI / CLIENT TYPE DETECTION:
+  - 0xE1 ClientType flag'i artik gercekten kullaniliyor. Client 0=Classic2D, 1=3D,
+    2=KR, 3=Enhanced olarak tanimlaniyor ve CLIENTISKR/IS3D/ISENHANCED script
+    token'lari dogru sonuc donuyor. Onceden tum client'lar ClassicWindows varsayiliyordu.
+    (0xE1 ClientType flag now actually used. Clients identified as Classic2D/3D/KR/Enhanced
+    and CLIENTISKR/IS3D/ISENHANCED script tokens return correct results. Previously all
+    clients were assumed ClassicWindows.)
+
+PER-CLIENT FEATURE FLAG NEGOTIATION:
+  - ServerFeatureFlags (sphere.ini) artik tavan degeri olarak kullaniliyor; her client'a
+    gonderilen 0xB9 paketi client versiyonuna gore filtreleniyor. 7.0.9+ client full
+    16-bit, 6.0.1.7+ client 8-bit, eski client'lar kendi kapasitelerine gore aliyorlar.
+    Onceden admin flag set ettiginde tum client'lar ayni flag seti aliyordu.
+    (ServerFeatureFlags now used as ceiling; 0xB9 feature enable packet filtered per
+    client version. 7.0.9+ gets full 16-bit, 6.0.1.7+ gets 8-bit, older clients get
+    their capacity. Previously all clients received identical flags when admin set them.)
+
+EXPANSION FALLBACK:
+  - Versiyon henuz tespit edilmemis client'lar (0xBD gelmeden) icin expansion=3 (AOS)
+    baseline. Onceden expansion=0 (pre-AOS) donuyordu — tooltip ve item property'ler
+    calismiyordu. Acikca pre-AOS (<4.0) olan client'lar hala expansion=0 aliyor.
+    (Clients with undetected version now get AOS (expansion=3) baseline. Previously
+    returned pre-AOS (0) breaking tooltips and item properties. Explicitly pre-AOS
+    clients (<4.0) still receive expansion=0.)
+
+0xF0 HAREKET PAKETI ROUTING / 0xF0 MOVEMENT PACKET ROUTING:
+  - Batch vs single-step routing artik protokol versiyonu ve 0xE1 client type'a
+    dayanarak karar veriyor. Onceden sadece payload boyutuna gore ayristiriliyordu
+    (heuristic) — hybrid client'lar yanlis siniflandirilabiliyordu.
+    (Batch vs single-step routing now uses protocol version and 0xE1 client type.
+    Previously relied only on payload-size heuristic which could misclassify
+    hybrid clients.)
+
+VERSION FALLBACK IYILESTIRMESI / VERSION FALLBACK IMPROVEMENT:
+  - KR/EC client'lar (0xE1 flag >= 2) 0xBD versiyon paketi gondermese bile en az 6.0
+    olarak kabul ediliyor. Bu, container grid index, extended feature flag gibi 6.0+
+    ozelliklerinin dogru calismasini sagliyor.
+    (KR/EC clients (0xE1 flag >= 2) treated as at least 6.0 even without 0xBD version
+    packet. Ensures 6.0+ features like container grid index and extended feature flags
+    work correctly.)
+
+TEST:
+  - PacketNewMovementRequest_RoutesModernStepsAsBatch: SA+ client version set ediliyor
+    (batch routing icin protocol detection gerekiyor).
+    (Test updated: SA+ client version set for batch routing protocol detection.)
+
 [2026-05-26] - Paperdoll isim/title duzeltmesi ve login paperdoll gonderimi
               (Paperdoll name/title fix and login paperdoll delivery)
 ----------------------------------------

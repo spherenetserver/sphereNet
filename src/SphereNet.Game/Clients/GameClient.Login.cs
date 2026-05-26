@@ -92,24 +92,21 @@ public sealed partial class GameClient
 
         RegisterLoginSuccess(account);
         // Feature enable (0xB9) — must come before char list.
-        // Prefer config-driven FEATURE* OR from sphere.ini (set via
-        // ServerFeatureFlags during startup). Fall back to a client-version
-        // mapping if the config is empty (e.g. test harness without ini).
+        // Start from config-driven ServerFeatureFlags (sphere.ini) or the
+        // maximum feature set, then cap to the client's protocol version so
+        // older clients don't receive flags they can't interpret.
+        uint featureCeiling = ServerFeatureFlags != 0 ? ServerFeatureFlags : 0xFFFF;
         uint featureFlags;
-        if (ServerFeatureFlags != 0)
-        {
-            featureFlags = ServerFeatureFlags;
-        }
-        else if (_netState.IsClientPost7090)
-            featureFlags = 0x0244; // SA+ML
+        if (_netState.IsClientPost7090)
+            featureFlags = featureCeiling & 0xFFFF; // SA+ understands full 16-bit
         else if (_netState.IsClientPost6017)
-            featureFlags = 0x0044; // ML
+            featureFlags = featureCeiling & 0x00FF; // ML/SE: 8-bit feature set
         else if (_netState.ClientVersionNumber >= 50_000_000)
-            featureFlags = 0x0004; // context menus (SE)
+            featureFlags = featureCeiling & 0x003F; // SE: bits 0-5
         else if (_netState.ClientVersionNumber >= 40_000_000)
-            featureFlags = 0x0001; // T2A (AOS)
+            featureFlags = featureCeiling & 0x001F; // AOS: bits 0-4
         else
-            featureFlags = 0x0000; // minimal
+            featureFlags = featureCeiling & 0x0003; // pre-AOS: T2A + Renaissance
         _netState.Send(new PacketFeatureEnable(featureFlags, _netState.IsClientPost60142));
 
         var charNames = _account.GetCharNames(uid => _world.FindChar(uid)?.GetName());

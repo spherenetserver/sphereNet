@@ -76,6 +76,7 @@ public class DeferredParityTests
     {
         var loggerFactory = TestHarness.CreateLoggerFactory();
         var state = TestHarness.CreateActiveNetState(loggerFactory, 4);
+        state.ClientVersionNumber = 70_000_000; // SA+ client → batch routing
         IReadOnlyList<SphereNet.Network.State.MovementStep>? captured = null;
         state.MovementBatchHandler = (_, steps) => captured = steps;
 

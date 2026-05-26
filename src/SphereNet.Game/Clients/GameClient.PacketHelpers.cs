@@ -756,8 +756,11 @@ public sealed partial class GameClient
             expansion = 4; // SE
         else if (_netState.ClientVersionNumber >= 40_000_000)
             expansion = 3; // AOS
+        else if (_netState.ClientVersionNumber == 0)
+            expansion = 3; // AOS baseline — version not yet detected via 0xBD;
+                           // AOS is the safe minimum for any modern client
         else
-            expansion = 0; // pre-AOS
+            expansion = 0; // explicit pre-AOS client (version < 4.0)
         string statusName = ResolveStatusName(ch);
         var (hits, maxHits) = NormalizeStatusPair(ch.Hits, ch.MaxHits, ch.Str);
         var (stam, maxStam) = NormalizeStatusPair(ch.Stam, ch.MaxStam, ch.Dex);

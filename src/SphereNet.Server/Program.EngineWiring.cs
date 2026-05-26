@@ -1705,10 +1705,17 @@ public static partial class Program
 
             SphereNet.Game.Objects.Characters.Character.ResolveClientInfo = ch =>
             {
-                return TryGetClientFor(ch, out var c)
-                    ? ((int)c.NetState.ClientVersionNumber,
-                        SphereNet.Game.Objects.Characters.Character.ClientType.ClassicWindows)
-                    : (0, SphereNet.Game.Objects.Characters.Character.ClientType.ClassicWindows);
+                if (!TryGetClientFor(ch, out var c))
+                    return (0, SphereNet.Game.Objects.Characters.Character.ClientType.ClassicWindows);
+
+                var ct = c.NetState.ParsedClientType switch
+                {
+                    1 => SphereNet.Game.Objects.Characters.Character.ClientType.Classic3D,
+                    2 => SphereNet.Game.Objects.Characters.Character.ClientType.KingdomReborn,
+                    3 => SphereNet.Game.Objects.Characters.Character.ClientType.Enhanced,
+                    _ => SphereNet.Game.Objects.Characters.Character.ClientType.ClassicWindows,
+                };
+                return ((int)c.NetState.ClientVersionNumber, ct);
             };
 
             SphereNet.Game.Objects.Characters.Character.FollowUid = (gm, uid) =>

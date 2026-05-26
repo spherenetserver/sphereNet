@@ -187,8 +187,9 @@ public sealed class PacketMoveRequest : PacketHandler
 }
 
 /// <summary>
-/// 0xF0 — New movement request (ModernUO/EC) or ClassicUO/Razor extension subcommands.
+/// 0xF0 — New movement request (EC/batch) or third-party client extension subcommands.
 /// Extension payloads (party/guild/razor) are ignored; movement payloads route to 0x02 handler.
+/// Routing uses protocol version when available, falls back to payload-size heuristic.
 /// </summary>
 public sealed class PacketNewMovementRequest : PacketHandler
 {
@@ -203,26 +204,34 @@ public sealed class PacketNewMovementRequest : PacketHandler
         state.LastMovementOpcode = 0xF0;
         state.LastMovementBatchSize = 0;
 
-        // ClassicUO/Razor extension subcommands — no server action required.
+        // Extension subcommands (≤3 bytes) — no server action required.
         if (remaining <= 3)
         {
             _ = buffer.ReadByte();
             return;
         }
 
-        // Wrapped 0x02 move (dir + seq + fastwalk key). ClassicUO may send
-        // 6–34 bytes; only treat as ModernUO when a full step block fits.
-        if (remaining >= 6 && remaining < 35)
+        // Determine routing: batch movement (EC / ModernUO) vs single-step.
+        // Prefer explicit version/type detection over payload-size heuristic.
+        bool isBatchClient = state.HasProtocolChanges(Core.Enums.ProtocolChanges.StygianAbyss)
+            || state.ClientTypeFlag >= 2; // KR (2) or Enhanced (3)
+
+        if (!isBatchClient)
         {
-            byte dir = buffer.ReadByte();
-            byte seq = buffer.ReadByte();
-            uint fastWalkKey = buffer.ReadUInt32();
-            state.LastMovementBatchSize = 1;
-            state.OnMoveRequest(dir, seq, fastWalkKey);
+            // Single-step movement (dir + seq + fastwalk key = 6 bytes).
+            // Also handles clients that embed a single move in 0xF0.
+            if (remaining >= 6)
+            {
+                byte dir = buffer.ReadByte();
+                byte seq = buffer.ReadByte();
+                uint fastWalkKey = buffer.ReadUInt32();
+                state.LastMovementBatchSize = 1;
+                state.OnMoveRequest(dir, seq, fastWalkKey);
+            }
             return;
         }
 
-        // ModernUO NewMovementReq: steps + 34-byte per-step timing/direction block.
+        // Batch movement: steps count + 34-byte per-step timing/direction block.
         byte steps = buffer.ReadByte();
         var movementSteps = new List<MovementStep>(steps);
         for (int i = 0; i < steps && buffer.Remaining >= 34; i++)

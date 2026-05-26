@@ -725,7 +725,7 @@ public sealed class PacketChatText : PacketHandler
     }
 }
 
-/// <summary>0xE1 — Client type announcement (KR/EC/ClassicUO).</summary>
+/// <summary>0xE1 — Client type announcement. Flag: 0=Classic2D, 1=3D, 2=KR, 3=EC.</summary>
 public sealed class PacketClientType : PacketHandler
 {
     public PacketClientType() : base(0xE1, 0) { }

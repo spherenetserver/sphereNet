@@ -1029,6 +1029,7 @@ public sealed partial class GameClient
 
         ushort ghostBody = _character.BodyId == 0x0191 ? (ushort)0x0193 : (ushort)0x0192;
         _character.BodyId = ghostBody;
+        _character.OSkin = _character.Hue.Value;
         _character.Hue = Core.Types.Color.Default;
 
         // pClient->addPlayerWarMode(off). We only need the local
@@ -1270,7 +1271,10 @@ public sealed partial class GameClient
         if (_character.OBody != 0 && _character.BodyId == _character.OBody)
             _character.OBody = 0;
         _character.ClearStatFlag(StatFlag.Polymorph);
-        _character.Hue = Core.Types.Color.Default;
+        _character.Hue = _character.OSkin != 0
+            ? new Core.Types.Color(_character.OSkin)
+            : Core.Types.Color.Default;
+        _character.OSkin = 0;
 
         // === Source-X "Resurrect with Corpse" — auto re-equip ===
         // If the resurrected character is standing on (or one tile of)

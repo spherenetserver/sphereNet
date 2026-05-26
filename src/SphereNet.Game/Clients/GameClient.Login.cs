@@ -429,8 +429,8 @@ public sealed partial class GameClient
 
         _netState.Send(new PacketLoginComplete());
 
-        // Send paperdoll so the client has the character name/title immediately
-        // (ClassicUO auto-restores paperdoll if it was open before disconnect).
+        // Source-X parity: send paperdoll on login so the client has name/title
+        // data immediately (some clients restore the paperdoll window on reconnect).
         string paperdollTitle = string.IsNullOrEmpty(_character.Title)
             ? _character.GetName()
             : $"{_character.GetName()}, {_character.Title}";

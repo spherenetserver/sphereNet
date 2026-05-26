@@ -37,10 +37,10 @@ public static class BotManagerDialog
     /// </summary>
     public static GumpBuilder Build(uint charSerial, BotStats stats, BotSpawnCity currentCity, int lastCount)
     {
-        var gump = new GumpBuilder(charSerial, GumpId, 450, 420);
+        var gump = new GumpBuilder(charSerial, GumpId, 450, 500);
 
         // Background
-        gump.AddResizePic(0, 0, BackgroundId, 450, 420);
+        gump.AddResizePic(0, 0, BackgroundId, 450, 500);
 
         // Title
         gump.AddText(150, 15, 1153, "Bot Stress Test Manager");
@@ -68,76 +68,100 @@ public static class BotManagerDialog
         gump.AddTextEntry(125, 175, 70, 20, 0, EntryBotCount, lastCount > 0 ? lastCount.ToString() : "100");
 
         // === Behavior Section ===
-        gump.AddText(220, 175, 946, "Behavior:");
+        gump.AddText(20, 195, 946, "Behavior:");
 
         gump.AddGroup(1);
-        gump.AddRadio(310, 173, RadioOff, RadioOn, false, RadioBehaviorBase);
-        gump.AddText(335, 175, 0, "Idle");
+        // Row 1 — legacy behaviors
+        gump.AddRadio(20, 218, RadioOff, RadioOn, false, RadioBehaviorBase);
+        gump.AddText(45, 220, 0, "Idle");
 
-        gump.AddRadio(370, 173, RadioOff, RadioOn, false, RadioBehaviorBase + 1);
-        gump.AddText(395, 175, 0, "Walk");
+        gump.AddRadio(100, 218, RadioOff, RadioOn, false, RadioBehaviorBase + 1);
+        gump.AddText(125, 220, 0, "Walk");
 
-        gump.AddRadio(310, 195, RadioOff, RadioOn, false, RadioBehaviorBase + 2);
-        gump.AddText(335, 197, 0, "Combat");
+        gump.AddRadio(190, 218, RadioOff, RadioOn, false, RadioBehaviorBase + 2);
+        gump.AddText(215, 220, 0, "Combat");
 
-        gump.AddRadio(370, 195, RadioOff, RadioOn, false, RadioBehaviorBase + 3);
-        gump.AddText(395, 197, 0, "Full");
+        gump.AddRadio(290, 218, RadioOff, RadioOn, false, RadioBehaviorBase + 3);
+        gump.AddText(315, 220, 0, "Full");
 
-        gump.AddRadio(310, 217, RadioOff, RadioOn, true, RadioBehaviorBase + 4);
-        gump.AddText(335, 219, 68, "Smart AI");
+        gump.AddRadio(370, 218, RadioOff, RadioOn, true, RadioBehaviorBase + 4);
+        gump.AddText(395, 220, 68, "Smart");
+
+        // Row 2 — role-based behaviors
+        gump.AddRadio(20, 243, RadioOff, RadioOn, false, RadioBehaviorBase + 5);
+        gump.AddText(45, 245, 67, "Walker");
+
+        gump.AddRadio(120, 243, RadioOff, RadioOn, false, RadioBehaviorBase + 6);
+        gump.AddText(145, 245, 67, "CombatR");
+
+        gump.AddRadio(220, 243, RadioOff, RadioOn, false, RadioBehaviorBase + 7);
+        gump.AddText(245, 245, 67, "Vendor");
+
+        gump.AddRadio(320, 243, RadioOff, RadioOn, false, RadioBehaviorBase + 8);
+        gump.AddText(345, 245, 67, "Loot");
+
+        // Row 3 — more roles
+        gump.AddRadio(20, 268, RadioOff, RadioOn, false, RadioBehaviorBase + 9);
+        gump.AddText(45, 270, 67, "Skill");
+
+        gump.AddRadio(120, 268, RadioOff, RadioOn, false, RadioBehaviorBase + 10);
+        gump.AddText(145, 270, 67, "Social");
+
+        gump.AddRadio(220, 268, RadioOff, RadioOn, false, RadioBehaviorBase + 11);
+        gump.AddText(245, 270, 37, "Chaos");
 
         // Divider
-        gump.AddGumpPicTiled(20, 225, 410, 2, 2620);
+        gump.AddGumpPicTiled(20, 300, 410, 2, 2620);
 
         // === Spawn City Section ===
-        gump.AddText(20, 235, 946, "Spawn Location:");
+        gump.AddText(20, 310, 946, "Spawn Location:");
 
         gump.AddGroup(2);
         // Row 1
-        gump.AddRadio(20, 258, RadioOff, RadioOn, currentCity == BotSpawnCity.All, RadioCityBase);
-        gump.AddText(45, 260, currentCity == BotSpawnCity.All ? 53 : 0, "All Cities");
+        gump.AddRadio(20, 333, RadioOff, RadioOn, currentCity == BotSpawnCity.All, RadioCityBase);
+        gump.AddText(45, 335, currentCity == BotSpawnCity.All ? 53 : 0, "All Cities");
 
-        gump.AddRadio(130, 258, RadioOff, RadioOn, currentCity == BotSpawnCity.Britain, RadioCityBase + 1);
-        gump.AddText(155, 260, currentCity == BotSpawnCity.Britain ? 53 : 0, "Britain");
+        gump.AddRadio(130, 333, RadioOff, RadioOn, currentCity == BotSpawnCity.Britain, RadioCityBase + 1);
+        gump.AddText(155, 335, currentCity == BotSpawnCity.Britain ? 53 : 0, "Britain");
 
-        gump.AddRadio(240, 258, RadioOff, RadioOn, currentCity == BotSpawnCity.Trinsic, RadioCityBase + 2);
-        gump.AddText(265, 260, currentCity == BotSpawnCity.Trinsic ? 53 : 0, "Trinsic");
+        gump.AddRadio(240, 333, RadioOff, RadioOn, currentCity == BotSpawnCity.Trinsic, RadioCityBase + 2);
+        gump.AddText(265, 335, currentCity == BotSpawnCity.Trinsic ? 53 : 0, "Trinsic");
 
-        gump.AddRadio(340, 258, RadioOff, RadioOn, currentCity == BotSpawnCity.Moonglow, RadioCityBase + 3);
-        gump.AddText(365, 260, currentCity == BotSpawnCity.Moonglow ? 53 : 0, "Moonglow");
+        gump.AddRadio(340, 333, RadioOff, RadioOn, currentCity == BotSpawnCity.Moonglow, RadioCityBase + 3);
+        gump.AddText(365, 335, currentCity == BotSpawnCity.Moonglow ? 53 : 0, "Moonglow");
 
         // Row 2
-        gump.AddRadio(20, 283, RadioOff, RadioOn, currentCity == BotSpawnCity.Yew, RadioCityBase + 4);
-        gump.AddText(45, 285, currentCity == BotSpawnCity.Yew ? 53 : 0, "Yew");
+        gump.AddRadio(20, 358, RadioOff, RadioOn, currentCity == BotSpawnCity.Yew, RadioCityBase + 4);
+        gump.AddText(45, 360, currentCity == BotSpawnCity.Yew ? 53 : 0, "Yew");
 
-        gump.AddRadio(130, 283, RadioOff, RadioOn, currentCity == BotSpawnCity.Minoc, RadioCityBase + 5);
-        gump.AddText(155, 285, currentCity == BotSpawnCity.Minoc ? 53 : 0, "Minoc");
+        gump.AddRadio(130, 358, RadioOff, RadioOn, currentCity == BotSpawnCity.Minoc, RadioCityBase + 5);
+        gump.AddText(155, 360, currentCity == BotSpawnCity.Minoc ? 53 : 0, "Minoc");
 
-        gump.AddRadio(240, 283, RadioOff, RadioOn, currentCity == BotSpawnCity.Vesper, RadioCityBase + 6);
-        gump.AddText(265, 285, currentCity == BotSpawnCity.Vesper ? 53 : 0, "Vesper");
+        gump.AddRadio(240, 358, RadioOff, RadioOn, currentCity == BotSpawnCity.Vesper, RadioCityBase + 6);
+        gump.AddText(265, 360, currentCity == BotSpawnCity.Vesper ? 53 : 0, "Vesper");
 
-        gump.AddRadio(340, 283, RadioOff, RadioOn, currentCity == BotSpawnCity.Skara, RadioCityBase + 7);
-        gump.AddText(365, 285, currentCity == BotSpawnCity.Skara ? 53 : 0, "Skara");
+        gump.AddRadio(340, 358, RadioOff, RadioOn, currentCity == BotSpawnCity.Skara, RadioCityBase + 7);
+        gump.AddText(365, 360, currentCity == BotSpawnCity.Skara ? 53 : 0, "Skara");
 
         // Row 3
-        gump.AddRadio(20, 308, RadioOff, RadioOn, currentCity == BotSpawnCity.Jhelom, RadioCityBase + 8);
-        gump.AddText(45, 310, currentCity == BotSpawnCity.Jhelom ? 53 : 0, "Jhelom");
+        gump.AddRadio(20, 383, RadioOff, RadioOn, currentCity == BotSpawnCity.Jhelom, RadioCityBase + 8);
+        gump.AddText(45, 385, currentCity == BotSpawnCity.Jhelom ? 53 : 0, "Jhelom");
 
         // Divider
-        gump.AddGumpPicTiled(20, 340, 410, 2, 2620);
+        gump.AddGumpPicTiled(20, 415, 410, 2, 2620);
 
         // === Action Buttons ===
-        gump.AddButton(30, 360, ButtonOk, ButtonOkPressed, BtnStart);
-        gump.AddText(65, 362, 67, "Start Bots");
+        gump.AddButton(30, 440, ButtonOk, ButtonOkPressed, BtnStart);
+        gump.AddText(65, 442, 67, "Start Bots");
 
-        gump.AddButton(150, 360, ButtonCancel, ButtonCancelPressed, BtnStop);
-        gump.AddText(185, 362, 37, "Stop All");
+        gump.AddButton(150, 440, ButtonCancel, ButtonCancelPressed, BtnStop);
+        gump.AddText(185, 442, 37, "Stop All");
 
-        gump.AddButton(260, 360, 4020, 4022, BtnClean);
-        gump.AddText(295, 362, 32, "Clean Chars");
+        gump.AddButton(260, 440, 4020, 4022, BtnClean);
+        gump.AddText(295, 442, 32, "Clean Chars");
 
-        gump.AddButton(370, 360, 4008, 4010, BtnRefresh);
-        gump.AddText(405, 362, 0, "Refresh");
+        gump.AddButton(370, 440, 4008, 4010, BtnRefresh);
+        gump.AddText(405, 442, 0, "Refresh");
 
         return gump;
     }
@@ -159,8 +183,8 @@ public static class BotManagerDialog
         // Parse radio selections
         foreach (uint sw in switches)
         {
-            // Behavior radios (100-103)
-            if (sw >= RadioBehaviorBase && sw < RadioBehaviorBase + 10)
+            // Behavior radios (100-111)
+            if (sw >= RadioBehaviorBase && sw < RadioBehaviorBase + 20)
             {
                 action.Behavior = (int)(sw - RadioBehaviorBase) switch
                 {
@@ -168,6 +192,14 @@ public static class BotManagerDialog
                     1 => BotBehavior.RandomWalk,
                     2 => BotBehavior.Combat,
                     3 => BotBehavior.FullSimulation,
+                    4 => BotBehavior.SmartAI,
+                    5 => BotBehavior.Walker,
+                    6 => BotBehavior.CombatRole,
+                    7 => BotBehavior.Vendor,
+                    8 => BotBehavior.Loot,
+                    9 => BotBehavior.Skill,
+                    10 => BotBehavior.Social,
+                    11 => BotBehavior.Chaos,
                     _ => BotBehavior.SmartAI
                 };
             }

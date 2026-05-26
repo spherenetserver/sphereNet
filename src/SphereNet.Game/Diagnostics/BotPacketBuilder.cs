@@ -169,6 +169,139 @@ public static class BotPacketBuilder
         return packet;
     }
 
+    /// <summary>Build 0x07 Pick Up Item packet (7 bytes).</summary>
+    public static byte[] BuildPickUp(uint serial, ushort amount)
+    {
+        var packet = new byte[7];
+        packet[0] = 0x07;
+        WriteUInt32BE(packet, 1, serial);
+        WriteUInt16BE(packet, 5, amount);
+        return packet;
+    }
+
+    /// <summary>Build 0x08 Drop Item packet (14 bytes, 6.0.1.7+).</summary>
+    public static byte[] BuildDropToContainer(uint itemSerial, uint containerSerial,
+        short x = -1, short y = -1, sbyte z = 0)
+    {
+        var packet = new byte[15];
+        packet[0] = 0x08;
+        WriteUInt32BE(packet, 1, itemSerial);
+        WriteUInt16BE(packet, 5, (ushort)x);
+        WriteUInt16BE(packet, 7, (ushort)y);
+        packet[9] = (byte)z;
+        packet[10] = 0; // grid index
+        WriteUInt32BE(packet, 11, containerSerial);
+        return packet;
+    }
+
+    /// <summary>Build 0x08 Drop Item to World packet (15 bytes, 6.0.1.7+).</summary>
+    public static byte[] BuildDropToWorld(uint itemSerial, short x, short y, sbyte z)
+    {
+        return BuildDropToContainer(itemSerial, 0xFFFFFFFF, x, y, z);
+    }
+
+    /// <summary>Build 0x6C Target Response packet (19 bytes).</summary>
+    public static byte[] BuildTargetObject(uint cursorId, uint targetSerial)
+    {
+        var packet = new byte[19];
+        packet[0] = 0x6C;
+        packet[1] = 0x00; // object target
+        WriteUInt32BE(packet, 2, cursorId);
+        packet[6] = 0x00; // flags
+        WriteUInt32BE(packet, 7, targetSerial);
+        return packet;
+    }
+
+    /// <summary>Build 0x6C Target Location Response packet (19 bytes).</summary>
+    public static byte[] BuildTargetLocation(uint cursorId, short x, short y, sbyte z, ushort graphic = 0)
+    {
+        var packet = new byte[19];
+        packet[0] = 0x6C;
+        packet[1] = 0x01; // ground target
+        WriteUInt32BE(packet, 2, cursorId);
+        packet[6] = 0x00;
+        WriteUInt16BE(packet, 11, (ushort)x);
+        WriteUInt16BE(packet, 13, (ushort)y);
+        packet[15] = (byte)z;
+        packet[16] = 0;
+        WriteUInt16BE(packet, 17, graphic);
+        return packet;
+    }
+
+    /// <summary>Build 0x3B Buy Items packet (variable).</summary>
+    public static byte[] BuildBuyItems(uint vendorSerial, (ushort layer, uint serial, ushort amount)[] items)
+    {
+        int len = 8 + items.Length * 7;
+        var packet = new byte[len];
+        packet[0] = 0x3B;
+        WriteUInt16BE(packet, 1, (ushort)len);
+        WriteUInt32BE(packet, 3, vendorSerial);
+        packet[7] = 0x02; // flag: buy
+        int offset = 8;
+        foreach (var (layer, serial, amount) in items)
+        {
+            packet[offset++] = (byte)layer;
+            WriteUInt32BE(packet, offset, serial); offset += 4;
+            WriteUInt16BE(packet, offset, amount); offset += 2;
+        }
+        return packet;
+    }
+
+    /// <summary>Build 0x9F Sell Items packet (variable).</summary>
+    public static byte[] BuildSellItems(uint vendorSerial, (uint serial, ushort amount)[] items)
+    {
+        int len = 9 + items.Length * 6;
+        var packet = new byte[len];
+        packet[0] = 0x9F;
+        WriteUInt16BE(packet, 1, (ushort)len);
+        WriteUInt32BE(packet, 3, vendorSerial);
+        WriteUInt16BE(packet, 7, (ushort)items.Length);
+        int offset = 9;
+        foreach (var (serial, amount) in items)
+        {
+            WriteUInt32BE(packet, offset, serial); offset += 4;
+            WriteUInt16BE(packet, offset, amount); offset += 2;
+        }
+        return packet;
+    }
+
+    /// <summary>Build 0xB1 Gump Response packet (variable).</summary>
+    public static byte[] BuildGumpResponse(uint serial, uint gumpId, int buttonId, int[]? switches = null)
+    {
+        int switchCount = switches?.Length ?? 0;
+        int len = 23 + switchCount * 4;
+        var packet = new byte[len];
+        packet[0] = 0xB1;
+        WriteUInt16BE(packet, 1, (ushort)len);
+        WriteUInt32BE(packet, 3, serial);
+        WriteUInt32BE(packet, 7, gumpId);
+        WriteUInt32BE(packet, 11, (uint)buttonId);
+        WriteUInt32BE(packet, 15, (uint)switchCount);
+        int offset = 19;
+        if (switches != null)
+            foreach (int sw in switches)
+            {
+                WriteUInt32BE(packet, offset, (uint)sw);
+                offset += 4;
+            }
+        WriteUInt32BE(packet, offset, 0); // text entry count
+        return packet;
+    }
+
+    /// <summary>Build 0x12 Cast Spell packet (variable).</summary>
+    public static byte[] BuildCastSpell(int spellId)
+    {
+        string cmd = $" {spellId}";
+        int len = 4 + cmd.Length + 1;
+        var packet = new byte[len];
+        packet[0] = 0x12;
+        WriteUInt16BE(packet, 1, (ushort)len);
+        packet[3] = 0x56; // spell cast command type
+        Encoding.ASCII.GetBytes(cmd, 0, cmd.Length, packet, 4);
+        packet[len - 1] = 0;
+        return packet;
+    }
+
     private static void WriteUInt32BE(byte[] buf, int offset, uint value)
     {
         buf[offset] = (byte)(value >> 24);

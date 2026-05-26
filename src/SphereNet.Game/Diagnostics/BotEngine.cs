@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
+using SphereNet.Game.Diagnostics.Behaviors;
+using SphereNet.Game.Diagnostics.Scenarios;
 
 namespace SphereNet.Game.Diagnostics;
 
@@ -22,6 +24,28 @@ public sealed class BotEngine : IDisposable
     private long _lastStatsLogMs;
     private int _lastPacketsSent;
     private int _lastPacketsReceived;
+
+    // Anomaly tracking
+    public readonly ConcurrentQueue<BotAnomaly> Anomalies = new();
+    public int AnomalyCount => Anomalies.Count;
+
+    // Scenario state
+    private IBotScenario? _activeScenario;
+    private CancellationTokenSource? _scenarioCts;
+    private long _scenarioStartMs;
+    private int _scenarioBotCount;
+    public BotScenarioReport? LastScenarioReport { get; private set; }
+    public IBotScenario? ActiveScenario => _activeScenario;
+    public bool IsScenarioRunning => _activeScenario != null && _scenarioCts != null && !_scenarioCts.IsCancellationRequested;
+
+    public static readonly IBotScenario[] AvailableScenarios =
+    [
+        new WalkTalkScenario(),
+        new VendorCycleScenario(),
+        new CombatSoakScenario(),
+        new MixedLoadScenario(),
+        new LoginStormScenario(),
+    ];
 
     /// <summary>City bounding boxes for bot spawning (minX, minY, maxX, maxY, defaultZ).</summary>
     public static readonly Dictionary<BotSpawnCity, (short MinX, short MinY, short MaxX, short MaxY, sbyte Z)> CityBounds = new()
@@ -122,14 +146,20 @@ public sealed class BotEngine : IDisposable
             {
                 int botId = Interlocked.Increment(ref _nextBotId);
                 var bot = new BotClient(botId, _logger);
+                bot.SetAnomalySink(Anomalies);
                 _bots[botId] = bot;
                 
+                int localBotId = botId;
                 tasks.Add(Task.Run(async () =>
                 {
                     bool success = await bot.ConnectAndLoginAsync(host, port, ct);
                     if (success)
                     {
-                        bot.StartBehavior(behavior, ct);
+                        var roleBehavior = CreateRoleBehavior(behavior, localBotId);
+                        if (roleBehavior != null)
+                            bot.StartBehavior(roleBehavior, ct);
+                        else
+                            bot.StartBehavior(behavior, ct);
                         return true;
                     }
                     return false;
@@ -258,6 +288,120 @@ public sealed class BotEngine : IDisposable
                 bot.Dispose();
         }
         return toRemove.Count;
+    }
+
+    public async Task RunScenarioAsync(IBotScenario scenario, string host = "127.0.0.1",
+        int port = 2593, int? botCountOverride = null, int? durationOverride = null)
+    {
+        if (IsScenarioRunning)
+        {
+            _logger.LogWarning("[BOT] A scenario is already running. Stop it first.");
+            return;
+        }
+
+        StopAllBots();
+
+        _activeScenario = scenario;
+        _scenarioCts = new CancellationTokenSource();
+        int botCount = botCountOverride ?? scenario.DefaultBotCount;
+        int durationMin = durationOverride ?? scenario.DefaultDurationMinutes;
+
+        _spawnCity = scenario.SpawnCity;
+        _scenarioBotCount = botCount;
+        _scenarioStartMs = Environment.TickCount64;
+
+        _logger.LogInformation("[BOT] Starting scenario '{Name}': {Count} bots, {Duration} min, {City}",
+            scenario.Name, botCount, durationMin, scenario.SpawnCity);
+
+        var distribution = scenario.GetBotDistribution(botCount);
+        var ct = _scenarioCts.Token;
+
+        foreach (var (behavior, count) in distribution)
+        {
+            for (int i = 0; i < count && !ct.IsCancellationRequested; i++)
+            {
+                int botId = Interlocked.Increment(ref _nextBotId);
+                var bot = new BotClient(botId, _logger);
+                bot.SetAnomalySink(Anomalies);
+                _bots[botId] = bot;
+
+                var localBehavior = behavior;
+                _ = Task.Run(async () =>
+                {
+                    bool success = await bot.ConnectAndLoginAsync(host, port, ct);
+                    if (success)
+                        bot.StartBehavior(localBehavior, ct);
+                }, ct);
+
+                if (i % 50 == 49)
+                    await Task.Delay(100, ct);
+            }
+        }
+
+        _logger.LogInformation("[BOT] Scenario '{Name}' spawning complete. Running for {Duration} min...",
+            scenario.Name, durationMin);
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromMinutes(durationMin), ct);
+            }
+            catch (OperationCanceledException) { }
+            finally
+            {
+                FinishScenario();
+            }
+        });
+    }
+
+    public void StopScenario()
+    {
+        if (!IsScenarioRunning)
+        {
+            _logger.LogWarning("[BOT] No scenario is running.");
+            return;
+        }
+        _scenarioCts?.Cancel();
+        FinishScenario();
+    }
+
+    private void FinishScenario()
+    {
+        if (_activeScenario == null) return;
+
+        var elapsed = TimeSpan.FromMilliseconds(Environment.TickCount64 - _scenarioStartMs);
+        LastScenarioReport = BotScenarioReport.Generate(
+            _activeScenario.Name, this, elapsed, _scenarioBotCount);
+
+        _logger.LogInformation("[BOT] Scenario '{Name}' finished. Duration={Duration:F1}min Passed={Passed} " +
+            "Active={Active}/{Total} Disconnects={Disc} Anomalies={Anom}",
+            LastScenarioReport.ScenarioName, elapsed.TotalMinutes, LastScenarioReport.Passed,
+            LastScenarioReport.ActiveAtEnd, LastScenarioReport.TotalBots,
+            LastScenarioReport.Disconnects, LastScenarioReport.AnomalyCount);
+
+        if (LastScenarioReport.FailReasons.Count > 0)
+        {
+            foreach (var reason in LastScenarioReport.FailReasons)
+                _logger.LogWarning("[BOT] FAIL: {Reason}", reason);
+        }
+
+        _activeScenario = null;
+    }
+
+    private static IBotBehavior? CreateRoleBehavior(BotBehavior behavior, int seed)
+    {
+        return behavior switch
+        {
+            BotBehavior.Walker => new WalkerBot(seed),
+            BotBehavior.CombatRole => new Behaviors.CombatBot(seed),
+            BotBehavior.Vendor => new VendorBot(seed),
+            BotBehavior.Loot => new LootBot(seed),
+            BotBehavior.Skill => new SkillBot(seed),
+            BotBehavior.Social => new SocialBot(seed),
+            BotBehavior.Chaos => new ChaosBot(seed),
+            _ => null,
+        };
     }
 
     public void Dispose()

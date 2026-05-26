@@ -149,6 +149,7 @@ public static partial class Program
     private static long _telemetryApplyUs;
     private static long _telemetryFlushUs;
     private static long _telemetryMaxTickUs;
+    internal static readonly SphereNet.Game.Diagnostics.TickHistogram TickHistogram = new(500, 1);
     private static long _telemetryNpcBuildUs;
     private static long _telemetryClientStateUs;
     private static long _telemetryNpcApplyUs;

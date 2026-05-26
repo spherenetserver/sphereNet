@@ -4,6 +4,94 @@
 All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-26] - Bot Soak Framework ve collision reject duzeltmesi
+              (Bot Soak Framework and collision reject fix)
+----------------------------------------
+
+BOT FRAMEWORK / BOT ALTYAPISI:
+  Faz 1 - Memory Layer:
+  - BotWorldModel genisletildi: item, container, gump, vendor, journal, equipment state
+  - BotClient'a 12 yeni packet handler eklendi (0x1A WorldItem, 0x3C ContainerContent,
+    0x25 ContainerItemAdd, 0x24 OpenContainer, 0xDD CompressedGump, 0x74 BuyList,
+    0x9E SellList, 0x1C AsciiMessage, 0xAE UnicodeMessage, 0x2E EquipItem, 0x27
+    RejectMoveItem, 0x6F SecureTrade)
+  - Gold takibi, anomaly tracking state (PrevX/Y/Z, ConsecutivePickupRejects)
+
+  Faz 2 - Action Layer:
+  - BotActionApi sinifi: 20+ async action (MoveTo, PickUp, Drop, Buy, Sell,
+    CastSpell, WaitForGump, WaitForTarget, UseSkill vb.)
+  - BotActionResult enum: Success, Rejected, TimedOut, Desynced, Disconnected, InvalidState
+  - TaskCompletionSource tabanli await/timeout mekanizmasi
+  - BotPacketBuilder'a 8 yeni paket: PickUp (0x07), Drop (0x08), TargetObject/Location
+    (0x6C), BuyItems (0x3B), SellItems (0x9F), GumpResponse (0xB1), CastSpell (0x12)
+
+  Faz 3 - Behavior Layer:
+  - IBotBehavior interface ve 7 rol tabanli bot: WalkerBot, CombatBot, VendorBot,
+    LootBot, SkillBot, SocialBot, ChaosBot
+  - BotBehavior enum'a 7 yeni deger (Walker, CombatRole, Vendor, Loot, Skill,
+    Social, Chaos)
+  - BotEngine'de behavior factory, BotManagerDialog'da yeni radio butonlari
+
+  Faz 4 - Anomaly Scanner:
+  - BotAnomalyScanner: 6 anomaly tipi (ExcessiveMoveReject, ZJump, PositionSnap,
+    ItemPickupReject, GumpStuck, PacketTimeout) + UnexpectedDisconnect
+  - 7 saniye aralikla tick, BotEngine'de ConcurrentQueue ile anomaly toplama
+
+  Faz 5 - Scenario Layer:
+  - IBotScenario interface ve 5 hazir senaryo: WalkTalk, VendorCycle, CombatSoak,
+    MixedLoad, LoginStorm
+  - BotScenarioReport: duration, disconnect rate, anomaly count, pass/fail
+  - BotEngine'de RunScenarioAsync/StopScenario orchestration
+
+  Faz 6 - Performance Gate:
+  - BotPerformanceGate: 5 hard gate (disconnect rate <%2, p95 tick <50ms, p99 tick
+    <100ms, anomaly rate <%5, critical anomaly = 0)
+  - TickHistogram: server tick surelerini histogram olarak toplar, p50/p95/p99 hesaplar
+  - Program.Tick.cs'e tick histogram entegrasyonu
+
+HAREKET / MOVEMENT:
+  - Collision reject'te gereksiz 0x20+0x78 paket gonderimi kaldirildi; sadece 0x21
+    (MoveReject) gonderilir. Onceki davranis client'in her duvar carpismasinda
+    isinlanma (teleport) hissiyati yaratiyordu.
+    (Removed unnecessary 0x20+0x78 redraw on collision reject; only 0x21 MoveReject
+    is sent. Previous behavior caused client to perceive teleportation on every
+    wall collision.)
+
+TEST:
+  - CollisionReject testi guncellendi: 0x20/0x78 gonderilmedigini dogrular
+
+DOSYALAR / FILES:
+  Yeni (19):
+    src/SphereNet.Game/Diagnostics/BotActionApi.cs
+    src/SphereNet.Game/Diagnostics/BotAnomalyScanner.cs
+    src/SphereNet.Game/Diagnostics/BotPerformanceGate.cs
+    src/SphereNet.Game/Diagnostics/TickHistogram.cs
+    src/SphereNet.Game/Diagnostics/Behaviors/IBotBehavior.cs
+    src/SphereNet.Game/Diagnostics/Behaviors/WalkerBot.cs
+    src/SphereNet.Game/Diagnostics/Behaviors/CombatBot.cs
+    src/SphereNet.Game/Diagnostics/Behaviors/VendorBot.cs
+    src/SphereNet.Game/Diagnostics/Behaviors/LootBot.cs
+    src/SphereNet.Game/Diagnostics/Behaviors/SkillBot.cs
+    src/SphereNet.Game/Diagnostics/Behaviors/SocialBot.cs
+    src/SphereNet.Game/Diagnostics/Behaviors/ChaosBot.cs
+    src/SphereNet.Game/Diagnostics/Scenarios/IBotScenario.cs
+    src/SphereNet.Game/Diagnostics/Scenarios/BotScenarioReport.cs
+    src/SphereNet.Game/Diagnostics/Scenarios/WalkTalkScenario.cs
+    src/SphereNet.Game/Diagnostics/Scenarios/VendorCycleScenario.cs
+    src/SphereNet.Game/Diagnostics/Scenarios/CombatSoakScenario.cs
+    src/SphereNet.Game/Diagnostics/Scenarios/MixedLoadScenario.cs
+    src/SphereNet.Game/Diagnostics/Scenarios/LoginStormScenario.cs
+  Degistirilen (9):
+    src/SphereNet.Game/Clients/GameClient.Combat.cs
+    src/SphereNet.Game/Diagnostics/BotClient.cs
+    src/SphereNet.Game/Diagnostics/BotEngine.cs
+    src/SphereNet.Game/Diagnostics/BotManagerDialog.cs
+    src/SphereNet.Game/Diagnostics/BotPacketBuilder.cs
+    src/SphereNet.Game/Diagnostics/BotWorldModel.cs
+    src/SphereNet.Server/Program.Tick.cs
+    src/SphereNet.Server/Program.cs
+    src/SphereNet.Tests/MovementTests.cs
+
 [2026-05-26] - Network modernizasyonu: protokol altyapisi, guvenlik, hareket ve multi-era paket destegi
               (Network modernization: protocol infrastructure, security hardening, movement overhaul, multi-era packet support)
 ----------------------------------------

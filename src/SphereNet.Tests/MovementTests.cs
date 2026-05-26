@@ -216,7 +216,7 @@ public class MovementTests
     }
 
     [Fact]
-    public void HandleMove_CollisionReject_RedrawsSelfAfterMoveReject()
+    public void HandleMove_CollisionReject_SendsMoveRejectOnly()
     {
         var (world, _) = CreateWorld();
         var ch = world.CreateCharacter();
@@ -228,12 +228,9 @@ public class MovementTests
         Assert.False(client.HandleMove((byte)Direction.East, 0, 0));
 
         var packets = TestHarness.GetQueuedPackets(client.NetState).ToList();
-        int rejectIndex = packets.FindIndex(p => p.Span.Length > 0 && p.Span[0] == 0x21);
-        int drawIndex = packets.FindIndex(p => p.Span.Length > 0 && p.Span[0] == 0x20);
-        int drawObjectIndex = packets.FindIndex(p => p.Span.Length > 0 && p.Span[0] == 0x78);
-        Assert.InRange(rejectIndex, 0, int.MaxValue);
-        Assert.True(drawIndex > rejectIndex);
-        Assert.True(drawObjectIndex > drawIndex);
+        Assert.Contains(packets, p => p.Span.Length > 0 && p.Span[0] == 0x21);
+        Assert.DoesNotContain(packets, p => p.Span.Length > 0 && p.Span[0] == 0x20);
+        Assert.DoesNotContain(packets, p => p.Span.Length > 0 && p.Span[0] == 0x78);
         Assert.Equal(0, client.NetState.WalkSequence);
         Assert.Equal(1000, ch.X);
     }

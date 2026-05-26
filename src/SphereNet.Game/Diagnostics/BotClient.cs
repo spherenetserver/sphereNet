@@ -30,13 +30,15 @@ public sealed class BotClient : IDisposable
 
     private readonly BotWorldModel _world = new();
     private BotAI? _ai;
+    private BotAnomalyScanner? _anomalyScanner;
+    private System.Collections.Concurrent.ConcurrentQueue<BotAnomaly>? _anomalySink;
     
     // Buffers for game server packets (Huffman compressed)
     private readonly List<byte> _decompressedBuffer = new();
     private readonly List<byte> _compressedBuffer = new(); // Raw compressed data
     private bool _isGamePhase;
 
-    public BotState State { get; private set; } = BotState.Disconnected;
+    public BotState State { get; internal set; } = BotState.Disconnected;
     public int PacketsSent { get; private set; }
     public int PacketsReceived { get; private set; }
     public int BytesSent { get; private set; }
@@ -44,6 +46,16 @@ public sealed class BotClient : IDisposable
     public long ConnectTimeMs { get; private set; }
     public long LastActivityMs { get; private set; }
     public int BotId => _botId;
+    public BotWorldModel World => _world;
+
+    private BotActionApi? _actionApi;
+    public BotActionApi Actions => _actionApi ??= new BotActionApi(this);
+
+    public void SetAnomalySink(System.Collections.Concurrent.ConcurrentQueue<BotAnomaly> sink)
+    {
+        _anomalySink = sink;
+        _anomalyScanner = new BotAnomalyScanner(_botId, _world);
+    }
 
     public const string AccountPrefix = "spherenetBot";
     public const string CharPrefix = "SphereBot";
@@ -248,16 +260,53 @@ public sealed class BotClient : IDisposable
         _behaviorTask = Task.Run(() => RunBehaviorLoopAsync(behavior, _cts.Token));
     }
 
+    public void StartBehavior(Behaviors.IBotBehavior roleBehavior, CancellationToken ct)
+    {
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _behaviorTask = Task.Run(() => RunRoleBehaviorAsync(roleBehavior, _cts.Token));
+    }
+
+    private async Task RunRoleBehaviorAsync(Behaviors.IBotBehavior roleBehavior, CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested && State == BotState.Playing)
+            {
+                await DrainIncomingPacketsAsync(ct);
+                await roleBehavior.RunAsync(this, Actions, ct);
+                LastActivityMs = Environment.TickCount64;
+                if (_anomalyScanner != null && _anomalySink != null)
+                    _anomalyScanner.Tick(LastActivityMs, _anomalySink);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger.LogDebug("[Bot{Id}] Role behavior error: {Error}", _botId, ex.Message);
+        }
+        finally
+        {
+            if (_anomalySink != null)
+                _anomalySink.Enqueue(new BotAnomaly
+                {
+                    Type = BotAnomalyType.UnexpectedDisconnect,
+                    BotId = _botId,
+                    TimestampMs = Environment.TickCount64,
+                    Detail = "Bot disconnected during role behavior loop",
+                    Severity = BotAnomalySeverity.Error,
+                });
+            State = BotState.Disconnected;
+        }
+    }
+
     private async Task RunBehaviorLoopAsync(BotBehavior behavior, CancellationToken ct)
     {
         try
         {
             while (!ct.IsCancellationRequested && State == BotState.Playing)
             {
-                // Drain incoming packets (non-blocking)
                 await DrainIncomingPacketsAsync(ct);
 
-                // Perform behavior
                 switch (behavior)
                 {
                     case BotBehavior.Idle:
@@ -278,6 +327,8 @@ public sealed class BotClient : IDisposable
                 }
 
                 LastActivityMs = Environment.TickCount64;
+                if (_anomalyScanner != null && _anomalySink != null)
+                    _anomalyScanner.Tick(LastActivityMs, _anomalySink);
             }
         }
         catch (OperationCanceledException) { }
@@ -287,6 +338,15 @@ public sealed class BotClient : IDisposable
         }
         finally
         {
+            if (_anomalySink != null)
+                _anomalySink.Enqueue(new BotAnomaly
+                {
+                    Type = BotAnomalyType.UnexpectedDisconnect,
+                    BotId = _botId,
+                    TimestampMs = Environment.TickCount64,
+                    Detail = "Bot disconnected during behavior loop",
+                    Severity = BotAnomalySeverity.Error,
+                });
             State = BotState.Disconnected;
         }
     }
@@ -323,6 +383,9 @@ public sealed class BotClient : IDisposable
             case 0x20: // Draw Game Player (19 bytes)
                 if (packet.Length >= 19)
                 {
+                    _world.PrevX = _world.X;
+                    _world.PrevY = _world.Y;
+                    _world.PrevZ = _world.Z;
                     _world.Body = ReadUInt16BE(packet, 5);
                     _world.X = _x = (short)ReadUInt16BE(packet, 11);
                     _world.Y = _y = (short)ReadUInt16BE(packet, 13);
@@ -384,6 +447,10 @@ public sealed class BotClient : IDisposable
                 {
                     uint serialDel = ReadUInt32BE(packet, 1);
                     _world.Mobiles.Remove(serialDel);
+                    _world.KnownItems.Remove(serialDel);
+                    if (_world.OpenContainers.Remove(serialDel, out var cont))
+                        foreach (var ci in cont.Items)
+                            _world.KnownItems.Remove(ci.Serial);
                 }
                 break;
 
@@ -426,16 +493,27 @@ public sealed class BotClient : IDisposable
 
             case 0x22: // Move Ack (3 bytes)
                 _world.MoveRejectCount = 0;
+                _world.ConsecutivePickupRejects = 0;
+                _world.LastActionResult = BotActionResult.Success;
+                _world.LastActionTimeMs = now;
+                _actionApi?.CompleteMove(true);
                 break;
 
             case 0x21: // Move Rejected (8 bytes)
                 if (packet.Length >= 8)
                 {
                     _world.MoveRejectCount++;
+                    _world.TotalMoveRejects++;
+                    _world.PrevX = _world.X;
+                    _world.PrevY = _world.Y;
+                    _world.PrevZ = _world.Z;
                     _world.X = _x = (short)ReadUInt16BE(packet, 2);
                     _world.Y = _y = (short)ReadUInt16BE(packet, 4);
                     _world.Direction = packet[6];
                     _world.Z = _z = (sbyte)packet[7];
+                    _world.LastActionResult = BotActionResult.Rejected;
+                    _world.LastActionTimeMs = now;
+                    _actionApi?.CompleteMove(false);
                 }
                 break;
 
@@ -444,14 +522,334 @@ public sealed class BotClient : IDisposable
                 {
                     _world.HasPendingTarget = true;
                     _world.TargetCursorId = ReadUInt32BE(packet, 2);
+                    _actionApi?.CompleteTarget();
                 }
                 break;
+
+            case 0x1A: // World Item (variable)
+                if (packet.Length >= 7)
+                    HandleWorldItem(packet, now);
+                break;
+
+            case 0x3C: // Container Content (variable)
+                if (packet.Length >= 5)
+                {
+                    HandleContainerContent(packet, now);
+                    _actionApi?.CompletePickUp(true);
+                }
+                break;
+
+            case 0x25: // Container Item Add (21 bytes, 6.0.1.7+)
+                if (packet.Length >= 21)
+                    HandleContainerItemAdd(packet, now);
+                break;
+
+            case 0x24: // Open Container (9 bytes)
+                if (packet.Length >= 9)
+                {
+                    uint contSerial24 = ReadUInt32BE(packet, 1);
+                    ushort gumpId24 = ReadUInt16BE(packet, 5);
+                    if (!_world.OpenContainers.ContainsKey(contSerial24))
+                        _world.OpenContainers[contSerial24] = new BotContainerState
+                            { Serial = contSerial24, GumpId = gumpId24 };
+                    _actionApi?.CompleteContainerOpen();
+                }
+                break;
+
+            case 0xDD: // Compressed Gump (variable)
+                if (packet.Length >= 23)
+                {
+                    uint gumpSerial = ReadUInt32BE(packet, 3);
+                    uint gumpId = ReadUInt32BE(packet, 7);
+                    int gumpX = (int)ReadUInt32BE(packet, 11);
+                    int gumpY = (int)ReadUInt32BE(packet, 15);
+                    _world.ActiveGump = new BotGumpState
+                    {
+                        Serial = gumpSerial,
+                        GumpId = gumpId,
+                        X = gumpX,
+                        Y = gumpY,
+                        IsOpen = true,
+                        ReceivedMs = now,
+                    };
+                    _world.ActiveGumpReceivedMs = now;
+                    _actionApi?.CompleteGump();
+                }
+                break;
+
+            case 0x74: // Buy List (variable)
+                if (packet.Length >= 8)
+                    HandleBuyList(packet);
+                break;
+
+            case 0x9E: // Sell List (variable)
+                if (packet.Length >= 9)
+                    HandleSellList(packet);
+                break;
+
+            case 0x1C: // ASCII Message (variable)
+                if (packet.Length >= 44)
+                    HandleAsciiMessage(packet, now);
+                break;
+
+            case 0xAE: // Unicode Message (variable)
+                if (packet.Length >= 48)
+                    HandleUnicodeMessage(packet, now);
+                break;
+
+            case 0x2E: // Equip Item (15 bytes)
+                if (packet.Length >= 15)
+                {
+                    uint eqSerial = ReadUInt32BE(packet, 1);
+                    ushort eqItemId = ReadUInt16BE(packet, 5);
+                    byte eqLayer = packet[8];
+                    uint eqMobile = ReadUInt32BE(packet, 9);
+                    ushort eqHue = ReadUInt16BE(packet, 13);
+                    if (eqMobile == _charUid)
+                    {
+                        var eqItem = new BotKnownItem
+                        {
+                            Serial = eqSerial, ItemId = eqItemId,
+                            Layer = eqLayer, Hue = eqHue, LastSeenMs = now,
+                        };
+                        _world.Equipment[eqLayer] = eqItem;
+                        _world.KnownItems[eqSerial] = eqItem;
+                    }
+                }
+                break;
+
+            case 0x27: // Reject Move Item (2 bytes)
+                _world.ConsecutivePickupRejects++;
+                _world.LastActionResult = BotActionResult.Rejected;
+                _world.LastActionTimeMs = now;
+                _actionApi?.CompletePickUp(false);
+                break;
         }
+    }
+
+    private void HandleWorldItem(byte[] packet, long now)
+    {
+        // 0x1A: [opcode][len:2][serial:4][itemId:2][amount:2][x:2][y:2][z:1][dir:1][hue:2][flags:1]
+        // Serial high bit indicates amount field present
+        uint serial = ReadUInt32BE(packet, 3);
+        bool hasAmount = (serial & 0x80000000) != 0;
+        serial &= 0x7FFFFFFF;
+
+        if ((serial & 0x40000000) != 0) return; // skip mobiles
+
+        int offset = 7;
+        ushort itemId = ReadUInt16BE(packet, offset); offset += 2;
+        bool hasStackId = (itemId & 0x8000) != 0;
+        itemId &= 0x3FFF;
+        if (hasStackId) offset += 2; // skip stack id
+
+        ushort amount = 0;
+        if (hasAmount && offset + 2 <= packet.Length)
+        {
+            amount = ReadUInt16BE(packet, offset);
+            offset += 2;
+        }
+
+        if (offset + 5 > packet.Length) return;
+        short x = (short)(ReadUInt16BE(packet, offset) & 0x7FFF);
+        bool hasDir = (ReadUInt16BE(packet, offset) & 0x8000) != 0;
+        offset += 2;
+        short y = (short)(ReadUInt16BE(packet, offset) & 0x3FFF);
+        bool hasHue = (ReadUInt16BE(packet, offset) & 0x8000) != 0;
+        bool hasFlags = (ReadUInt16BE(packet, offset) & 0x4000) != 0;
+        offset += 2;
+
+        if (hasDir) offset++;
+        sbyte z = offset < packet.Length ? (sbyte)packet[offset++] : (sbyte)0;
+        ushort hue = 0;
+        if (hasHue && offset + 2 <= packet.Length)
+        {
+            hue = ReadUInt16BE(packet, offset);
+            offset += 2;
+        }
+
+        _world.KnownItems[serial] = new BotKnownItem
+        {
+            Serial = serial, ItemId = itemId, X = x, Y = y, Z = z,
+            Amount = amount, Hue = hue, LastSeenMs = now,
+        };
+
+        if (itemId == 0x0EED) // gold pile
+            RecalcGold();
+    }
+
+    private void HandleContainerContent(byte[] packet, long now)
+    {
+        // 0x3C: [opcode][len:2][count:2] then per item (6.0.1.7+ = 20 bytes each)
+        if (packet.Length < 5) return;
+        ushort count = ReadUInt16BE(packet, 3);
+        int offset = 5;
+
+        uint parentSerial = 0;
+        for (int i = 0; i < count && offset + 20 <= packet.Length; i++)
+        {
+            uint itemSerial = ReadUInt32BE(packet, offset);
+            ushort itemId = ReadUInt16BE(packet, offset + 4);
+            offset += 7; // serial(4) + itemId(2) + unknown(1)
+            ushort amount = ReadUInt16BE(packet, offset); offset += 2;
+            short ix = (short)ReadUInt16BE(packet, offset); offset += 2;
+            short iy = (short)ReadUInt16BE(packet, offset); offset += 2;
+            offset++; // grid index (6.0.1.7+)
+            uint contSerial = ReadUInt32BE(packet, offset); offset += 4;
+            ushort hue = ReadUInt16BE(packet, offset); offset += 2;
+
+            if (parentSerial == 0) parentSerial = contSerial;
+
+            var item = new BotKnownItem
+            {
+                Serial = itemSerial, ItemId = itemId, Amount = amount,
+                X = ix, Y = iy, Hue = hue,
+                ContainerSerial = contSerial, LastSeenMs = now,
+            };
+            _world.KnownItems[itemSerial] = item;
+
+            if (_world.OpenContainers.TryGetValue(contSerial, out var cs))
+                cs.Items.Add(item);
+        }
+
+        if (parentSerial != 0 && _world.OpenContainers.TryGetValue(parentSerial, out var container))
+        {
+            // items were already added above
+        }
+
+        RecalcGold();
+    }
+
+    private void HandleContainerItemAdd(byte[] packet, long now)
+    {
+        // 0x25 (21 bytes, 6.0.1.7+): serial(4) itemId(2) unk(1) amount(2) x(2) y(2) grid(1) container(4) hue(2)
+        uint serial = ReadUInt32BE(packet, 1);
+        ushort itemId = ReadUInt16BE(packet, 5);
+        ushort amount = ReadUInt16BE(packet, 8);
+        short x = (short)ReadUInt16BE(packet, 10);
+        short y = (short)ReadUInt16BE(packet, 12);
+        uint contSerial = ReadUInt32BE(packet, 15);
+        ushort hue = ReadUInt16BE(packet, 19);
+
+        var item = new BotKnownItem
+        {
+            Serial = serial, ItemId = itemId, Amount = amount,
+            X = x, Y = y, Hue = hue,
+            ContainerSerial = contSerial, LastSeenMs = now,
+        };
+        _world.KnownItems[serial] = item;
+
+        if (_world.OpenContainers.TryGetValue(contSerial, out var cs))
+            cs.Items.Add(item);
+
+        _world.ConsecutivePickupRejects = 0;
+        _world.LastActionResult = BotActionResult.Success;
+        _world.LastActionTimeMs = now;
+
+        if (itemId == 0x0EED) RecalcGold();
+    }
+
+    private void HandleBuyList(byte[] packet)
+    {
+        // 0x74: [opcode][len:2][vendorSerial:4][count:1] then items
+        uint vendorSerial = ReadUInt32BE(packet, 3);
+        byte count = packet[7];
+        var vendor = new BotVendorState { VendorSerial = vendorSerial, IsBuyList = true };
+
+        int offset = 8;
+        for (int i = 0; i < count && offset + 5 <= packet.Length; i++)
+        {
+            int price = (int)ReadUInt32BE(packet, offset); offset += 4;
+            byte nameLen = packet[offset++];
+            string name = nameLen > 0 && offset + nameLen <= packet.Length
+                ? System.Text.Encoding.ASCII.GetString(packet, offset, nameLen) : "";
+            offset += nameLen;
+            vendor.Items.Add(new BotVendorItem { Price = price, Name = name });
+        }
+
+        _world.ActiveVendor = vendor;
+    }
+
+    private void HandleSellList(byte[] packet)
+    {
+        // 0x9E: [opcode][len:2][vendorSerial:4][count:2] then items
+        uint vendorSerial = ReadUInt32BE(packet, 3);
+        ushort count = ReadUInt16BE(packet, 7);
+        var vendor = new BotVendorState { VendorSerial = vendorSerial, IsBuyList = false };
+
+        int offset = 9;
+        for (int i = 0; i < count && offset + 14 <= packet.Length; i++)
+        {
+            uint itemSerial = ReadUInt32BE(packet, offset); offset += 4;
+            ushort itemId = ReadUInt16BE(packet, offset); offset += 2;
+            ushort hue = ReadUInt16BE(packet, offset); offset += 2;
+            ushort amount = ReadUInt16BE(packet, offset); offset += 2;
+            int price = (int)ReadUInt16BE(packet, offset); offset += 2;
+            ushort nameLen = ReadUInt16BE(packet, offset); offset += 2;
+            string name = nameLen > 0 && offset + nameLen <= packet.Length
+                ? System.Text.Encoding.ASCII.GetString(packet, offset, nameLen) : "";
+            offset += nameLen;
+            vendor.Items.Add(new BotVendorItem
+            {
+                Serial = itemSerial, ItemId = itemId, Amount = amount,
+                Price = price, Name = name,
+            });
+        }
+
+        _world.ActiveVendor = vendor;
+    }
+
+    private void HandleAsciiMessage(byte[] packet, long now)
+    {
+        // 0x1C: [opcode][len:2][serial:4][body:2][type:1][hue:2][font:2][name:30][text:variable]
+        if (packet.Length < 45) return;
+        uint serial = ReadUInt32BE(packet, 3);
+        int nameEnd = 14;
+        string name = System.Text.Encoding.ASCII.GetString(packet, nameEnd, 30).TrimEnd('\0');
+        int textStart = 44;
+        int textLen = packet.Length - textStart - 1;
+        if (textLen <= 0) return;
+        string text = System.Text.Encoding.ASCII.GetString(packet, textStart, textLen).TrimEnd('\0');
+
+        _world.Journal.Push(new BotJournalEntry
+        {
+            TimestampMs = now, SpeakerSerial = serial,
+            Speaker = name, Text = text,
+        });
+    }
+
+    private void HandleUnicodeMessage(byte[] packet, long now)
+    {
+        // 0xAE: [opcode][len:2][serial:4][body:2][type:1][hue:2][font:2][lang:4][name:30][text:unicode]
+        if (packet.Length < 50) return;
+        uint serial = ReadUInt32BE(packet, 3);
+        string name = System.Text.Encoding.ASCII.GetString(packet, 18, 30).TrimEnd('\0');
+        int textStart = 48;
+        int textBytes = packet.Length - textStart;
+        if (textBytes <= 0) return;
+        string text = System.Text.Encoding.BigEndianUnicode
+            .GetString(packet, textStart, textBytes).TrimEnd('\0');
+
+        _world.Journal.Push(new BotJournalEntry
+        {
+            TimestampMs = now, SpeakerSerial = serial,
+            Speaker = name, Text = text,
+        });
+    }
+
+    private void RecalcGold()
+    {
+        int total = 0;
+        foreach (var item in _world.KnownItems.Values)
+            if (item.ItemId == 0x0EED)
+                total += item.Amount == 0 ? 1 : item.Amount;
+        _world.Gold = total;
     }
 
     private async Task DoRandomWalkAsync(CancellationToken ct)
     {
         byte dir = (byte)_rng.Next(0, 8);
+        _world.TotalMoveRequests++;
         await SendPacketAsync(BotPacketBuilder.BuildMoveRequest(dir, _moveSequence++), ct);
         await Task.Delay(_rng.Next(300, 700), ct);
     }
@@ -506,6 +904,7 @@ public sealed class BotClient : IDisposable
         switch (action.Type)
         {
             case BotAIActionType.Move:
+                _world.TotalMoveRequests++;
                 await SendPacketAsync(BotPacketBuilder.BuildMoveRequest(action.Direction, _moveSequence++), ct);
                 bool isRunning = (action.Direction & 0x80) != 0;
                 int moveDelay = isRunning ? _rng.Next(100, 250) : _rng.Next(200, 450);
@@ -541,6 +940,23 @@ public sealed class BotClient : IDisposable
                 await Task.Delay(200, ct);
                 break;
         }
+    }
+
+    internal void SendRawPacket(byte[] packet)
+    {
+        if (_stream == null || !_tcp!.Connected) return;
+        try
+        {
+            _stream.Write(packet);
+            PacketsSent++;
+            BytesSent += packet.Length;
+        }
+        catch { State = BotState.Disconnected; }
+    }
+
+    internal void SendMovePacket(byte dir)
+    {
+        SendRawPacket(BotPacketBuilder.BuildMoveRequest(dir, _moveSequence++));
     }
 
     private async Task SendPacketAsync(byte[] packet, CancellationToken ct)
@@ -640,6 +1056,7 @@ public sealed class BotClient : IDisposable
         {
             0x11 => 91,  // Status bar info
             0x1B => 37,  // Login confirm
+            0x1A => -1,  // World item (variable)
             0x1C => -1,  // ASCII speech (variable)
             0x1D => 5,   // Delete object
             0x20 => 19,  // Update mobile
@@ -649,6 +1066,7 @@ public sealed class BotClient : IDisposable
             0x25 => 21,  // Add item to container
             0x27 => 2,   // Reject move item
             0x2E => 15,  // Equip item
+            0x3C => -1,  // Container content (variable)
             0x3A => -1,  // Skills list (variable)
             0x4E => 6,   // Personal light level
             0x4F => 2,   // Global light level
@@ -657,12 +1075,15 @@ public sealed class BotClient : IDisposable
             0x6C => 19,  // Target cursor
             0x6D => 3,   // Play music
             0x6E => 14,  // Char animation
+            0x6F => -1,  // Secure trade (variable)
             0x73 => 2,   // Ping
+            0x74 => -1,  // Buy list (variable)
             0x77 => 17,  // Mobile moving
             0x78 => -1,  // Draw object (variable)
             0x82 => 2,   // Login denied
             0x88 => 66,  // Open paperdoll
             0x8C => 11,  // Relay
+            0x9E => -1,  // Sell list (variable)
             0xA1 => 9,   // Health bar update
             0xA2 => 9,   // Mana bar update
             0xA3 => 9,   // Stamina bar update
@@ -809,6 +1230,7 @@ public sealed class BotClient : IDisposable
     public void Disconnect()
     {
         _cts?.Cancel();
+        _actionApi?.CompleteDisconnect();
         try { _behaviorTask?.Wait(1000); } catch { }
         _stream?.Close();
         _tcp?.Close();
@@ -840,5 +1262,12 @@ public enum BotBehavior
     RandomWalk,
     Combat,
     FullSimulation,
-    SmartAI
+    SmartAI,
+    Walker,
+    CombatRole,
+    Vendor,
+    Loot,
+    Skill,
+    Social,
+    Chaos,
 }

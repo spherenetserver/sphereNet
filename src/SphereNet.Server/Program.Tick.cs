@@ -247,6 +247,7 @@ public static partial class Program
             long totalUs = ToMicroseconds(Stopwatch.GetTimestamp() - tickStart);
             if (totalUs > _telemetryMaxTickUs)
                 _telemetryMaxTickUs = totalUs;
+            TickHistogram.Record((int)(totalUs / 1000));
 
             // Slow-tick detector: anything over 25ms will show up as ping jitter
             // on a 100ms tick budget. Log per-phase breakdown so the cause is

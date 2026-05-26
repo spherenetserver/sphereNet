@@ -1,3 +1,5 @@
+using SphereNet.Core.Collections;
+
 namespace SphereNet.Game.Diagnostics;
 
 public sealed class BotWorldModel
@@ -22,6 +24,8 @@ public sealed class BotWorldModel
     public uint TargetCursorId;
 
     public int MoveRejectCount;
+    public int TotalMoveRequests;
+    public int TotalMoveRejects;
 
     // Navigation state
     public short DestX, DestY;
@@ -33,6 +37,34 @@ public sealed class BotWorldModel
     public int PoiVisitCount;
     public long LastDestReachedMs;
     public int ConsecutiveStuck;
+
+    // Item & Container state
+    public readonly Dictionary<uint, BotKnownItem> KnownItems = new();
+    public readonly Dictionary<uint, BotContainerState> OpenContainers = new();
+    public readonly Dictionary<byte, BotKnownItem> Equipment = new();
+    public uint BackpackSerial;
+    public int Gold;
+
+    // Gump state
+    public BotGumpState? ActiveGump;
+    public long ActiveGumpReceivedMs;
+
+    // Vendor state
+    public BotVendorState? ActiveVendor;
+
+    // Journal
+    public readonly CircularBuffer<BotJournalEntry> Journal = new(50);
+
+    // Action tracking
+    public BotActionResult LastActionResult;
+    public long LastActionTimeMs;
+
+    // Anomaly tracking
+    public short PrevX, PrevY;
+    public sbyte PrevZ;
+    public int ConsecutivePickupRejects;
+    public int PendingPacketCount;
+    public long LastAnomalyScanMs;
 
     public int DistanceTo(short tx, short ty)
     {
@@ -103,4 +135,70 @@ public enum BotTravelPhase
 {
     InCity,
     TravelingToCity,
+}
+
+public sealed class BotKnownItem
+{
+    public uint Serial;
+    public ushort ItemId;
+    public short X, Y;
+    public sbyte Z;
+    public ushort Amount;
+    public ushort Hue;
+    public uint ContainerSerial;
+    public byte Layer;
+    public long LastSeenMs;
+}
+
+public sealed class BotContainerState
+{
+    public uint Serial;
+    public ushort GumpId;
+    public readonly List<BotKnownItem> Items = new();
+}
+
+public sealed class BotGumpState
+{
+    public uint GumpId;
+    public uint Serial;
+    public bool IsOpen;
+    public int X, Y;
+    public int LayoutLength;
+    public int TextLineCount;
+    public long ReceivedMs;
+}
+
+public sealed class BotVendorState
+{
+    public uint VendorSerial;
+    public bool IsBuyList;
+    public readonly List<BotVendorItem> Items = new();
+}
+
+public sealed class BotVendorItem
+{
+    public uint Serial;
+    public ushort ItemId;
+    public ushort Amount;
+    public int Price;
+    public string Name = string.Empty;
+}
+
+public sealed class BotJournalEntry
+{
+    public long TimestampMs;
+    public uint SpeakerSerial;
+    public string Speaker = string.Empty;
+    public string Text = string.Empty;
+}
+
+public enum BotActionResult
+{
+    None,
+    Success,
+    Rejected,
+    TimedOut,
+    Desynced,
+    Disconnected,
+    InvalidState,
 }

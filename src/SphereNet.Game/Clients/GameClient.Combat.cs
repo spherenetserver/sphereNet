@@ -346,7 +346,7 @@ public sealed partial class GameClient
                 moveDiag.FwdStaticTotal, moveDiag.FwdImpassableCount,
                 moveDiag.FwdSurfaceCount, moveDiag.FwdItemSurfaceCount, moveDiag.FwdMobileCount,
                 moveDiag.FwdReason, moveDiag.FwdStaticDump, moveDiag.FwdMobileDump);
-            RejectMove(seq, now, redrawSelf: true);
+            RejectMove(seq, now);
             return false;
         }
     }

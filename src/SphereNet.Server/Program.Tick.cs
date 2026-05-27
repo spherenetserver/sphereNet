@@ -76,7 +76,7 @@ public static partial class Program
             // --- 9. Main Game Loop ---
             _running = true;
             var sw = Stopwatch.StartNew();
-            const int TickIntervalMs = 100; // 10 ticks per second (optimized for performance)
+            const int TickIntervalMs = 50; // 20 ticks per second
             const int MaxCatchUpTicksPerLoop = 4;
             long nextTickMs = TickIntervalMs;
 
@@ -249,10 +249,6 @@ public static partial class Program
                 _telemetryMaxTickUs = totalUs;
             TickHistogram.Record((int)(totalUs / 1000));
 
-            // Slow-tick detector: anything over 25ms will show up as ping jitter
-            // on a 100ms tick budget. Log per-phase breakdown so the cause is
-            // visible without running a profiler. Throttled to max 1 per 10 seconds
-            // to avoid flooding console during stress tests.
             long nowMs = Environment.TickCount64;
             if (totalUs > 25_000 && nowMs - _lastSlowTickWarningMs > 10_000)
             {
@@ -393,7 +389,7 @@ public static partial class Program
             foreach (var npc in dueNpcs)
             {
                 _npcAI.OnTickAction(npc);
-                if (npc.NpcMaster.IsValid || _world.IsInActiveArea(npc.MapIndex, npc.X, npc.Y))
+                if (!npc.IsDead && !npc.IsDeleted && (npc.NpcMaster.IsValid || _world.IsInActiveArea(npc.MapIndex, npc.X, npc.Y)))
                     _npcTimerWheel.Schedule(npc, npc.NextNpcActionTime);
             }
         }
@@ -731,8 +727,8 @@ public static partial class Program
         // Ship movement ticks
         _shipEngine?.OnTickAll();
 
-        // House decay (check every ~60 ticks to avoid per-tick cost)
-        if (_world.TickCount % 60 == 0 && _housingEngine != null)
+        // House decay (check every ~120 ticks = ~6s at 50ms tick)
+        if (_world.TickCount % 120 == 0 && _housingEngine != null)
         {
             var collapsed = _housingEngine.OnTickDecay();
             foreach (var house in collapsed)

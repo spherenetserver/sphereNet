@@ -176,6 +176,13 @@ public static class CombatHelper
             if (GetChebyshevDistance(attacker, target) > 1)
                 return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
 
+            if (privLevel < PrivLevel.GM)
+            {
+                canSeeLos ??= world.CanSeeLOS;
+                if (!canSeeLos(attacker.Position, target.Position))
+                    return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
+            }
+
             if (Character.CombatMeleeMovementDelay > 0 && attacker.LastMoveTick > 0)
             {
                 long sinceMove = nowMs - attacker.LastMoveTick;

@@ -85,7 +85,7 @@ public sealed class StableEngine
         pet.NpcBrain = data.NpcBrain;
         pet.NpcFood = data.NpcFood;
         pet.PetAIMode = data.PetAIMode;
-        pet.TryAssignOwnership(owner, owner, summoned: false, enforceFollowerCap: false);
+        pet.TryAssignOwnership(owner, owner, summoned: false, enforceFollowerCap: true);
         if (data.ControllerUid != 0 && data.ControllerUid != owner.Uid.Value)
             pet.TrySetProperty("CONTROLLER_UID", data.ControllerUid.ToString());
 

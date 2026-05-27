@@ -234,7 +234,25 @@ public sealed partial class GameClient : ITextConsole
 
             _systemHooks?.DispatchClient("disconnect", _character, _account);
             AbortActiveTradeOnDisconnect();
+            _partyManager?.Leave(_character.Uid);
             EngineTags.StripEphemeral(_character);
+
+            _pendingTargetCallback = null;
+            _targetCursorActive = false;
+            _pendingInputDlg.Clear();
+            _pendingMenuOptions = null;
+            _pendingEditMenuUids = null;
+            _pendingEditMenuMemories = null;
+            _pendingScriptNewItem = null;
+            _pendingSkillTargetCancelId = -1;
+            _pendingDupeTarget = false;
+            _pendingHealTarget = false;
+            _pendingKillTarget = false;
+            _pendingBankTarget = false;
+            _pendingSummonToTarget = false;
+            _pendingMountTarget = false;
+            _pendingSummonCageTarget = false;
+
             _character.IsOnline = false;
             _character.CTags.RemoveByPrefix("");
             OnCharacterOffline?.Invoke(_character);

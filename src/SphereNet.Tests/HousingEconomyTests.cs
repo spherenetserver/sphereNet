@@ -412,6 +412,13 @@ public class HousingEconomyTests
 
             var vendor = world.CreateCharacter();
             vendor.NpcBrain = NpcBrainType.Vendor;
+            var vendorPack = world.CreateItem();
+            vendorPack.ItemType = ItemType.Container;
+            vendor.Backpack = vendorPack;
+            var stockItem = world.CreateItem();
+            stockItem.BaseId = 0x0F7A;
+            stockItem.SetTag("PRICE", "50");
+            vendorPack.AddItem(stockItem);
             var entries = new[]
             {
                 new TradeEntry

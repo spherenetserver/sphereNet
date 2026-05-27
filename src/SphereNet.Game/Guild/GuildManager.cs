@@ -179,7 +179,13 @@ public sealed class GuildDef
         }
         if (votes.Count == 0) return;
 
-        var winner = votes.MaxBy(kv => kv.Value).Key;
+        // Only members can become master — filter out non-member votes
+        var winner = votes
+            .Where(kv => FindMember(kv.Key) != null)
+            .OrderByDescending(kv => kv.Value)
+            .Select(kv => kv.Key)
+            .FirstOrDefault();
+        if (winner == default) return;
         SetMaster(winner);
     }
 
@@ -288,12 +294,17 @@ public sealed class GuildManager
             stone.SetTag("GUILD.ABBREV", guild.Abbreviation);
             if (!string.IsNullOrEmpty(guild.Charter))
                 stone.SetTag("GUILD.CHARTER", guild.Charter);
+            else
+                stone.RemoveTag("GUILD.CHARTER");
             if (guild.Align != GuildAlign.Standard)
                 stone.SetTag("GUILD.ALIGN", ((byte)guild.Align).ToString());
+            else
+                stone.RemoveTag("GUILD.ALIGN");
 
             // Members: uid:priv:title:accountgold:loyalto:showabbrev
+            // Escape colons in title to prevent deserialization corruption
             var memberStrs = guild.Members.Select(m =>
-                $"0{m.CharUid.Value:X}:{(byte)m.Priv}:{m.Title}:{m.AccountGold}:{(m.LoyalTo == Serial.Invalid ? "0" : $"0{m.LoyalTo.Value:X}")}:{(m.ShowAbbrev ? "1" : "0")}");
+                $"0{m.CharUid.Value:X}:{(byte)m.Priv}:{m.Title?.Replace(":", "\\c") ?? ""}:{m.AccountGold}:{(m.LoyalTo == Serial.Invalid ? "0" : $"0{m.LoyalTo.Value:X}")}:{(m.ShowAbbrev ? "1" : "0")}");
             stone.SetTag("GUILD.MEMBERS", string.Join(",", memberStrs));
 
             // Relations: uid:wewar:theywar:weally:theyally
@@ -303,14 +314,22 @@ public sealed class GuildManager
                     $"0{r.OtherStoneUid.Value:X}:{(r.WeDeclaredWar ? "1" : "0")}:{(r.TheyDeclaredWar ? "1" : "0")}:{(r.WeDeclaredAlliance ? "1" : "0")}:{(r.TheyDeclaredAlliance ? "1" : "0")}");
                 stone.SetTag("GUILD.RELATIONS", string.Join(",", relStrs));
             }
+            else
+            {
+                stone.RemoveTag("GUILD.RELATIONS");
+            }
 
             // Legacy compat: also write GUILD.WARS/ALLIES for older saves
             var wars = guild.Wars.ToList();
             if (wars.Count > 0)
                 stone.SetTag("GUILD.WARS", string.Join(",", wars.Select(s => $"0{s.Value:X}")));
+            else
+                stone.RemoveTag("GUILD.WARS");
             var allies = guild.Allies.ToList();
             if (allies.Count > 0)
                 stone.SetTag("GUILD.ALLIES", string.Join(",", allies.Select(s => $"0{s.Value:X}")));
+            else
+                stone.RemoveTag("GUILD.ALLIES");
         }
     }
 
@@ -344,7 +363,7 @@ public sealed class GuildManager
                     uint uid = ParseHexSerial(segs[0]);
                     if (uid == 0) continue;
                     byte priv = byte.TryParse(segs[1], out byte p) ? p : (byte)1;
-                    string title = segs.Length > 2 ? segs[2] : "";
+                    string title = segs.Length > 2 ? segs[2].Replace("\\c", ":") : "";
 
                     var member = guild.AddRecruit(new Serial(uid));
                     member.Priv = (GuildPriv)priv;

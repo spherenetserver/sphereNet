@@ -94,9 +94,19 @@ public sealed class CraftingEngine
 
         if (success)
         {
-            // Consume resources
+            // Re-verify resources before consuming (gump callback delay may have changed state)
             foreach (var res in recipe.Resources)
-                ConsumeResource(crafter, res.ItemId, res.Amount);
+            {
+                if (CountResource(crafter, res.ItemId) < res.Amount)
+                    return null;
+            }
+
+            // Consume resources — abort if any fail
+            foreach (var res in recipe.Resources)
+            {
+                if (!ConsumeResource(crafter, res.ItemId, res.Amount))
+                    return null;
+            }
 
             // Create the item
             var item = _world.CreateItem();
@@ -162,12 +172,13 @@ public sealed class CraftingEngine
         return count;
     }
 
-    /// <summary>Consume a specific amount of items from the backpack.</summary>
-    private static void ConsumeResource(Character ch, ushort itemId, int amount)
+    /// <summary>Consume a specific amount of items from the backpack. Returns true if fully consumed.</summary>
+    private static bool ConsumeResource(Character ch, ushort itemId, int amount)
     {
         var pack = ch.Backpack;
-        if (pack == null) return;
+        if (pack == null) return false;
         ConsumeFromContainer(pack, itemId, ref amount);
+        return amount == 0;
     }
 
     private static void ConsumeFromContainer(Item container, ushort itemId, ref int remaining, int depth = 0)

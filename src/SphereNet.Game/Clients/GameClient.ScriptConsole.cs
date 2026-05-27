@@ -444,8 +444,8 @@ public sealed partial class GameClient
         bool isRedZone = targetRegion != null && targetRegion.IsFlag(RegionFlag.RedZone);
         if (isRedZone)
         {
-            if (subject.IsMurderer) return 1;
-            if (subject.Karma > 0) return 6;
+            if (subject.IsMurderer) return 6;
+            if (subject.Karma > 0) return 1;
         }
 
         if (subject.IsMurderer)

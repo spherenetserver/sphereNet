@@ -814,8 +814,10 @@ public partial class Character : ObjBase
     /// <summary>Apply poison to this character. Level: 1=lesser, 2=normal, 3=greater, 4=deadly, 5=lethal.</summary>
     public void ApplyPoison(byte level)
     {
+        if (level <= _poisonLevel && _poisonTicksRemaining > 0)
+            return;
         _poisonLevel = Math.Max(_poisonLevel, level);
-        _poisonTicksRemaining = level switch
+        _poisonTicksRemaining = _poisonLevel switch
         {
             1 => 5, 2 => 8, 3 => 12, 4 => 16, _ => 20
         };
@@ -868,6 +870,9 @@ public partial class Character : ObjBase
         damage = Math.Max(1, damage);
 
         Hits = (short)Math.Max(0, Hits - damage);
+
+        if (Hits <= 0 && !IsDead)
+            Kill();
 
         if (_poisonTicksRemaining <= 0)
             CurePoison();
@@ -1806,6 +1811,8 @@ public partial class Character : ObjBase
     public void Kill()
     {
         _hits = 0;
+        CurePoison();
+        FightTarget = Serial.Invalid;
         SetStatFlag(StatFlag.Dead);
         MarkDirty(DirtyFlag.StatFlags | DirtyFlag.Stats);
     }
@@ -1813,8 +1820,11 @@ public partial class Character : ObjBase
     public void Resurrect()
     {
         ClearStatFlag(StatFlag.Dead);
+        CurePoison();
+        ClearStatFlag(StatFlag.Hidden);
         _hits = (short)(_maxHits / 2);
         _attackers.Clear();
+        FightTarget = Serial.Invalid;
 
         // Source-X: murderer resurrection penalties (stat/skill loss ~1%)
         if (IsMurderer && IsPlayer)
@@ -1833,6 +1843,9 @@ public partial class Character : ObjBase
     public void Delete()
     {
         _isDeleted = true;
+        _attackers.Clear();
+        _memories.Clear();
+        FightTarget = Serial.Invalid;
     }
 
     // --- IScriptObj overrides ---
@@ -2930,7 +2943,8 @@ public partial class Character : ObjBase
                 _privShow = normalized != "0" && !string.IsNullOrEmpty(normalized);
                 return true;
             case "PRIVLEVEL":
-                if (int.TryParse(normalized, out int plvSet))
+            case "PLEVEL":
+                if (int.TryParse(normalized, out int plvSet) && plvSet >= 0 && plvSet <= (int)PrivLevel.Owner)
                     PrivLevel = (PrivLevel)plvSet;
                 return true;
             case "NIGHTSIGHT":
@@ -4327,25 +4341,32 @@ public partial class Character : ObjBase
         {
             int regenAmount = _food > 0 ? 1 : 0;
             if (_str > 50) regenAmount += 1;
-            _hits = (short)Math.Min(_hits + Math.Max(1, regenAmount), _maxHits);
+            if (regenAmount > 0)
+            {
+                _hits = (short)Math.Min(_hits + regenAmount, _maxHits);
+                MarkDirty(DirtyFlag.Stats);
+            }
             _nextHitRegen = now + 6000;
         }
 
-        // Mana regen: every 4s base, improved by meditation
+        // Mana regen: every 4s base, improved by meditation, scaled by INT
         if (now >= _nextManaRegen && _mana < _maxMana)
         {
-            int regenAmount = 1;
+            int regenAmount = Math.Max(1, _int / 50);
             if (IsStatFlag(StatFlag.Meditation)) regenAmount += 2;
             _mana = (short)Math.Min(_mana + regenAmount, _maxMana);
+            if (_mana >= _maxMana && IsStatFlag(StatFlag.Meditation))
+                ClearStatFlag(StatFlag.Meditation);
+            MarkDirty(DirtyFlag.Stats);
             _nextManaRegen = now + 4000;
         }
 
         // Stam regen: Source-X scales with DEX — higher DEX = faster regen.
-        // NPC base interval 1.5s, player 3s. Regen amount scales with MaxStam.
         if (now >= _nextStamRegen && _stam < _maxStam)
         {
-            int regenAmt = _isPlayer ? 1 : Math.Max(1, _maxStam / 20);
+            int regenAmt = _isPlayer ? Math.Max(1, _dex / 30) : Math.Max(1, _maxStam / 20);
             _stam = (short)Math.Min(_stam + regenAmt, _maxStam);
+            MarkDirty(DirtyFlag.Stats);
             _nextStamRegen = now + (_isPlayer ? 3000 : 1500);
         }
 

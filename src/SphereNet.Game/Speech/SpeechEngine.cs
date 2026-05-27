@@ -428,7 +428,11 @@ public sealed class CommandHandler
         {
             string propKey = commandLine[..eqIdx].Trim();
             string propVal = commandLine[(eqIdx + 1)..].Trim();
-            if (propKey.Length > 0 && gm.TrySetProperty(propKey, propVal))
+            if (propKey.Length > 0
+                && !propKey.Equals("PRIVLEVEL", StringComparison.OrdinalIgnoreCase)
+                && !propKey.Equals("PLEVEL", StringComparison.OrdinalIgnoreCase)
+                && !propKey.Equals("FLAGS", StringComparison.OrdinalIgnoreCase)
+                && gm.TrySetProperty(propKey, propVal))
                 return CommandResult.Executed;
         }
 
@@ -460,7 +464,11 @@ public sealed class CommandHandler
             // This allows ".events +e_human_player", ".name NewName", etc.
             if (gm.TryExecuteCommand(verb, args, NullConsole.Instance))
                 return CommandResult.Executed;
-            if (args.Length > 0 && gm.TrySetProperty(verb, args))
+            if (args.Length > 0
+                && !verb.Equals("PRIVLEVEL", StringComparison.OrdinalIgnoreCase)
+                && !verb.Equals("PLEVEL", StringComparison.OrdinalIgnoreCase)
+                && !verb.Equals("FLAGS", StringComparison.OrdinalIgnoreCase)
+                && gm.TrySetProperty(verb, args))
                 return CommandResult.Executed;
 
             // Source-X CClient.cpp:921 — generic X-prefix targeting fallback.

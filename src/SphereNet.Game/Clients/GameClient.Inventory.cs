@@ -85,6 +85,18 @@ public sealed partial class GameClient
         }
     }
 
+    private bool IsInsideContainer(Item container, Serial parentUid, int maxDepth = 16)
+    {
+        var current = container;
+        for (int i = 0; i < maxDepth && current != null; i++)
+        {
+            if (current.Uid == parentUid) return true;
+            if (!current.ContainedIn.IsValid) break;
+            current = _world.FindItem(current.ContainedIn);
+        }
+        return false;
+    }
+
     /// <summary>Convert a notoriety byte (1-7) to the hue used for
     /// overhead labels and system speech. Values mirror Source-X
     /// CServerConfig::m_iColorNoto* defaults:
@@ -141,6 +153,21 @@ public sealed partial class GameClient
             return;
         }
 
+        // Stack splitting: if picking up less than the full stack, create a split item
+        if (amount > 0 && amount < item.Amount && item.Amount > 1)
+        {
+            var splitItem = _world.CreateItem();
+            splitItem.BaseId = item.BaseId;
+            splitItem.Hue = item.Hue;
+            splitItem.Amount = amount;
+            splitItem.More1 = item.More1;
+            splitItem.More2 = item.More2;
+            item.Amount -= amount;
+            splitItem.ContainedIn = _character.Uid;
+            _character.SetTag("DRAGGING", splitItem.Uid.Value.ToString());
+            return;
+        }
+
         if (item.IsEquipped)
         {
             var owner = _world.FindChar(item.ContainedIn);
@@ -194,6 +221,12 @@ public sealed partial class GameClient
 
         var item = _world.FindItem(new Serial(serial));
         if (item == null) return;
+
+        if (!_character.TryGetTag("DRAGGING", out var dragTag) || dragTag != serial.ToString())
+        {
+            _netState.Send(new PacketDropReject());
+            return;
+        }
 
         _character.RemoveTag("DRAGGING");
 
@@ -260,8 +293,8 @@ public sealed partial class GameClient
                     {
                         int totalWeight = 0;
                         foreach (var b in _world.GetContainerContents(container.Uid))
-                            totalWeight += Math.Max(1, (int)b.Amount);
-                        if (totalWeight + Math.Max(1, (int)item.Amount) > weightLimit)
+                            totalWeight += b.Weight * Math.Max(1, (int)b.Amount);
+                        if (totalWeight + item.Weight * Math.Max(1, (int)item.Amount) > weightLimit)
                         {
                             SysMessage(ServerMessages.Get(isBank ? Msg.BvboxFullWeight : Msg.ContFullWeight));
                             PlaceItemInPack(_character, item);
@@ -269,6 +302,13 @@ public sealed partial class GameClient
                             return;
                         }
                     }
+                }
+
+                if (item.Uid == container.Uid || IsInsideContainer(container, item.Uid))
+                {
+                    PlaceItemInPack(_character, item);
+                    _netState.Send(new PacketDropReject());
+                    return;
                 }
 
                 // Fire @DropOn_Item
@@ -347,6 +387,18 @@ public sealed partial class GameClient
         }
 
         // Source-X parity: @DropOn_Ground RETURN 1 cancels the drop;
+        // Distance check for ground drops
+        if (_character.PrivLevel < PrivLevel.GM)
+        {
+            int dropDist = Math.Max(Math.Abs(_character.X - x), Math.Abs(_character.Y - y));
+            if (dropDist > 3)
+            {
+                PlaceItemInPack(_character, item);
+                _netState.Send(new PacketDropReject());
+                return;
+            }
+        }
+
         // bounce the item back to the player's pack so the cursor
         // doesn't get stuck and scripts can fully gate ground placement.
         var dropResult = _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.DropOnGround,
@@ -370,6 +422,8 @@ public sealed partial class GameClient
 
         var item = _world.FindItem(new Serial(serial));
         if (item == null) return;
+
+        if (layer == 0 || layer >= (byte)Layer.Qty) return;
 
         var target = _world.FindChar(new Serial(charSerial));
         if (target == null) target = _character;

@@ -382,7 +382,12 @@ public static partial class Program
                 if (ch.Uid.Value == excludeUid) continue;
                 if (center.GetDistanceTo(ch.Position) > range) continue;
                 if (!_clientsByCharUid.TryGetValue(ch.Uid, out var c) || !c.IsPlaying) continue;
-                if (!c.HasKnownChar(movingUid)) continue;
+                if (!c.HasKnownChar(movingUid))
+                {
+                    c.NotifyCharacterAppear(movingChar);
+                    if (!c.HasKnownChar(movingUid))
+                        continue;
+                }
                 c.Send(packet);
                 c.UpdateKnownCharPosition(movingChar);
             }
@@ -633,7 +638,7 @@ public static partial class Program
     private static void OnMoveRequest(NetState state, byte dir, byte seq, uint fastWalkKey)
     {
         if (_clients.TryGetValue(state.Id, out var client))
-            client.HandleMove(dir, seq, fastWalkKey);
+            client.QueueMoveRequest(dir, seq, fastWalkKey);
     }
 
     private static void OnMovementBatch(NetState state, IReadOnlyList<MovementStep> steps)

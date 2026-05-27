@@ -105,7 +105,6 @@ public sealed class SphereConfig
     public int ManaLossPercent { get; set; } = 100;
     public int WalkBuffer { get; set; } = 75;
     public int WalkRegen { get; set; } = 25;
-
     // Movement Credit System (opt-in, disabled by default)
     public bool MovementCreditEnabled { get; set; }
     public int MovementCreditBaseMs { get; set; } = 200;
@@ -389,7 +388,6 @@ public sealed class SphereConfig
         ManaLossPercent = ini.GetInt(section, "ManaLossPercent", ManaLossPercent);
         WalkBuffer = ini.GetInt(section, "WalkBuffer", WalkBuffer);
         WalkRegen = ini.GetInt(section, "WalkRegen", WalkRegen);
-
         MovementCreditEnabled = ini.GetBool(section, "MovementCreditEnabled", MovementCreditEnabled);
         MovementCreditBaseMs = ini.GetInt(section, "MovementCreditBaseMs", MovementCreditBaseMs);
         MovementCreditMaxMs = ini.GetInt(section, "MovementCreditMaxMs", MovementCreditMaxMs);

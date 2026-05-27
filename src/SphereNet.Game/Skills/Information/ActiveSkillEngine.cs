@@ -171,8 +171,10 @@ public static class ActiveSkillEngine
 
         sink.Emote(ServerMessages.Get(Msg.BeggingStart));
         bool success = SkillEngine.UseQuick(ch, SkillType.Begging, 40);
-        if (success && ch.Backpack != null)
+        if (success)
         {
+            if (ch.Backpack == null)
+                return success;
             int amount = sink.Random.Next(1, 11);
             var gold = sink.World.CreateItem();
             gold.BaseId = 0x0EED; gold.Name = "Gold";
@@ -200,7 +202,16 @@ public static class ActiveSkillEngine
             return false;
         }
 
+        if (target.IsAttr(ObjAttributes.Blessed) || target.IsAttr(ObjAttributes.Blessed2) ||
+            target.IsAttr(ObjAttributes.Newbie) || target.IsAttr(ObjAttributes.Nodropt))
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.StealingNothing));
+            return false;
+        }
+
         Character? owner = ResolveItemOwner(target, sink.World);
+        if (owner == ch)
+            return false;
         if (owner != null)
         {
             sink.SysMessage(ServerMessages.GetFormatted(Msg.StealingPickpocket, owner.Name));
@@ -208,11 +219,15 @@ public static class ActiveSkillEngine
 
         bool success = SkillEngine.UseQuick(ch, SkillType.Stealing, sink.Random.Next(60));
 
-        if (success)
+        if (success && ch.Backpack != null)
         {
-            // Move item to backpack.
-            ch.Backpack?.AddItem(target);
-            target.ContainedIn = ch.Backpack?.Uid ?? Serial.Invalid;
+            // Remove from source container first
+            if (target.ContainedIn.IsValid)
+            {
+                var sourceContainer = sink.World.FindItem(target.ContainedIn);
+                sourceContainer?.RemoveItem(target);
+            }
+            ch.Backpack.AddItem(target);
         }
         else
         {
@@ -370,7 +385,7 @@ public static class ActiveSkillEngine
             int skillLvl = ch.GetSkill(SkillType.Healing);
             if (sink.Random.Next(1000) < skillLvl)
             {
-                target.ClearStatFlag(StatFlag.Poisoned);
+                target.CurePoison();
                 sink.SysMessage(ServerMessages.GetFormatted(Msg.HealingCure1,
                     target == ch ? ServerMessages.Get(Msg.HealingYourself) : target.Name));
             }
@@ -384,7 +399,7 @@ public static class ActiveSkillEngine
 
         if (target.IsStatFlag(StatFlag.Dead))
         {
-            // Resurrect path -- relies on existing GameWorld death pipeline; emit text only.
+            target.Resurrect();
             sink.SysMessage(ServerMessages.Get(Msg.HealingRes));
             return true;
         }
@@ -568,17 +583,17 @@ public static class ActiveSkillEngine
         ItemType.WeaponMaceSharp or ItemType.WeaponSword or ItemType.WeaponFence or
         ItemType.WeaponAxe or ItemType.Food or ItemType.MeatRaw or ItemType.Fruit;
 
-    private static Character? ResolveItemOwner(Item it, World.GameWorld world)
+    private static Character? ResolveItemOwner(Item it, World.GameWorld world, int maxDepth = 16)
     {
-        if (!it.ContainedIn.IsValid) return null;
-        // Walk up: container -> owner char.
-        var holder = world.FindObject(it.ContainedIn);
-        return holder switch
+        for (int i = 0; i < maxDepth; i++)
         {
-            Character c => c,
-            Item parent => ResolveItemOwner(parent, world),
-            _ => null,
-        };
+            if (!it.ContainedIn.IsValid) return null;
+            var holder = world.FindObject(it.ContainedIn);
+            if (holder is Character c) return c;
+            if (holder is Item parent) { it = parent; continue; }
+            return null;
+        }
+        return null;
     }
 
     // --------------------------------------------------------------- Mining

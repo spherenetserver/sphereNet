@@ -333,6 +333,8 @@ public sealed class WorldLoader
                 }
                 if (upper == "CREATE")
                     continue;
+                if (skipItem)
+                    continue;
                 if (upper == "ID")
                     hasId = true;
                 ApplyItemProperty(item, key, val);
@@ -447,6 +449,8 @@ public sealed class WorldLoader
 
                 if (key.Equals("CREATE", StringComparison.OrdinalIgnoreCase))
                     continue;
+                if (skipChar)
+                    continue;
 
                 if (TryParseEquipProperty(key, val, out var itemSerial, out byte layer))
                 {
@@ -535,22 +539,23 @@ public sealed class WorldLoader
                 break;
             case "OSTR":
                 if (short.TryParse(val, out short ostr))
-                    ch.Str = ostr;
+                    ch.OStr = ostr;
                 break;
             case "ODEX":
                 if (short.TryParse(val, out short odex))
-                    ch.Dex = odex;
+                    ch.ODex = odex;
                 break;
             case "OINT":
                 if (short.TryParse(val, out short oint))
-                    ch.Int = oint;
+                    ch.OInt = oint;
                 break;
             default:
                 if (upper.StartsWith("SKILL[", StringComparison.Ordinal) && upper.Contains(']'))
                 {
                     var idx = upper.IndexOf('[');
                     var end = upper.IndexOf(']');
-                    if (int.TryParse(upper.AsSpan(idx + 1, end - idx - 1), out int skillIdx))
+                    if (int.TryParse(upper.AsSpan(idx + 1, end - idx - 1), out int skillIdx)
+                        && skillIdx >= 0 && skillIdx < (int)SphereNet.Core.Enums.SkillType.Qty)
                     {
                         var parts = val.Split(',');
                         if (parts.Length >= 1 && ushort.TryParse(parts[0], out ushort sv))

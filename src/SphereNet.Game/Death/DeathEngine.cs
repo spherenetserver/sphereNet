@@ -209,27 +209,28 @@ public sealed class DeathEngine
             var item = victim.Unequip(layer);
             if (item != null)
             {
-                // Source-X corpse "tag.equiplayer" — preserves the
-                // original equip slot so a later Resurrect-with-Corpse
-                // pass can put the item back where it came from. We
-                // also store it on the item directly via the corpse
-                // 0x89 PacketCorpseEquipment path (which reads
-                // item.EquipLayer), but Unequip clears IsEquipped and
-                // the layer can be wiped by container moves between
-                // death and resurrect — so the tag is the durable copy.
+                if (item.IsAttr(ObjAttributes.Blessed) || item.IsAttr(ObjAttributes.Blessed2) ||
+                    item.IsAttr(ObjAttributes.Newbie) || item.IsAttr(ObjAttributes.Nodropt))
+                {
+                    victim.Equip(item, layer);
+                    continue;
+                }
+
                 item.SetTag("EQUIPLAYER", ((byte)layer).ToString());
                 corpse.AddItem(item);
             }
         }
 
-        // Move backpack contents to corpse — these had no equip slot,
-        // so on resurrect they go back to the backpack (no layer tag).
         var pack = victim.Backpack;
         if (pack != null)
         {
             var contents = new List<Item>(pack.Contents);
             foreach (var item in contents)
             {
+                if (item.IsAttr(ObjAttributes.Blessed) || item.IsAttr(ObjAttributes.Blessed2) ||
+                    item.IsAttr(ObjAttributes.Newbie) || item.IsAttr(ObjAttributes.Nodropt))
+                    continue;
+
                 pack.RemoveItem(item);
                 corpse.AddItem(item);
             }

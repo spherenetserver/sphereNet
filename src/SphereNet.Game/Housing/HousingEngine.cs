@@ -408,7 +408,9 @@ public sealed class HousingEngine
                     position.Map
                 );
 
-                // Check for blocking items/characters
+                if (FindHouseAt(checkPos) != null)
+                    return false;
+
                 foreach (var ch in _world.GetCharsInRange(checkPos, 0))
                 {
                     if (!ch.IsDead) return false;
@@ -593,16 +595,28 @@ public sealed class HousingEngine
 
             if (house.CoOwners.Count > 0)
                 item.SetTag("HOUSE.COOWNERS", string.Join(",", house.CoOwners.Select(s => $"0{s.Value:X}")));
+            else
+                item.RemoveTag("HOUSE.COOWNERS");
             if (house.Friends.Count > 0)
                 item.SetTag("HOUSE.FRIENDS", string.Join(",", house.Friends.Select(s => $"0{s.Value:X}")));
+            else
+                item.RemoveTag("HOUSE.FRIENDS");
             if (house.Bans.Count > 0)
                 item.SetTag("HOUSE.BANS", string.Join(",", house.Bans.Select(s => $"0{s.Value:X}")));
+            else
+                item.RemoveTag("HOUSE.BANS");
             if (house.Lockdowns.Count > 0)
                 item.SetTag("HOUSE.LOCKDOWNS", string.Join(",", house.Lockdowns.Select(s => $"0{s.Value:X}")));
+            else
+                item.RemoveTag("HOUSE.LOCKDOWNS");
             if (house.SecureContainers.Count > 0)
                 item.SetTag("HOUSE.SECURE", string.Join(",", house.SecureContainers.Select(s => $"0{s.Value:X}")));
+            else
+                item.RemoveTag("HOUSE.SECURE");
             if (house.Components.Count > 0)
                 item.SetTag("HOUSE.COMPONENTS", string.Join(",", house.Components.Select(s => $"0{s.Value:X}")));
+            else
+                item.RemoveTag("HOUSE.COMPONENTS");
         }
     }
 

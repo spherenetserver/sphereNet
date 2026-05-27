@@ -163,7 +163,8 @@ public sealed partial class GameClient
         if (_character == null)
         {
             _character = _world.CreateCharacter();
-            _character.Name = string.IsNullOrWhiteSpace(name) ? _account.Name : name;
+            string safeName = SanitizeCharacterName(string.IsNullOrWhiteSpace(name) ? _account.Name : name);
+            _character.Name = safeName;
             _character.IsPlayer = true;
 
             var info = PendingCharCreate;
@@ -306,17 +307,14 @@ public sealed partial class GameClient
 
         if (_account != null)
         {
-            var accLvl = _account.PrivLevel;
-            var chLvl = _character.PrivLevel;
-            var max = chLvl >= accLvl ? chLvl : accLvl;
-            if (chLvl != max || accLvl != max)
+            // Account is authoritative — character inherits from account, never elevates it
+            if (_character.PrivLevel != _account.PrivLevel)
             {
                 _logger.LogInformation(
-                    "[LOGIN] PrivLevel sync: account='{Acct}' PLEVEL={AccLvl} char=0x{Char:X8} PRIVLEVEL={ChLvl} -> {Max}",
-                    _account.Name, accLvl, _character.Uid.Value, chLvl, max);
+                    "[LOGIN] PrivLevel sync: account='{Acct}' PLEVEL={AccLvl} char=0x{Char:X8} PRIVLEVEL={ChLvl} -> {AccLvl2}",
+                    _account.Name, _account.PrivLevel, _character.Uid.Value, _character.PrivLevel, _account.PrivLevel);
+                _character.PrivLevel = _account.PrivLevel;
             }
-            if (_account.PrivLevel != max) _account.PrivLevel = max;
-            if (_character.PrivLevel != max) _character.PrivLevel = max;
         }
         _character.NormalizePlayerSkillClass();
 
@@ -355,17 +353,9 @@ public sealed partial class GameClient
         {
             sbyte terrainZ = mapData.GetEffectiveZ(_character.MapIndex, _character.X, _character.Y, _character.Z);
             int diff = terrainZ - _character.Z;
-            if (diff != 0 && diff >= -RoofSnapTolerance)
+            if (diff != 0 && Math.Abs(diff) <= RoofSnapTolerance)
             {
                 _logger.LogInformation("Login Z correction: {OldZ} -> {NewZ} for '{Name}' at {X},{Y}",
-                    _character.Z, terrainZ, _character.Name, _character.X, _character.Y);
-                _character.Position = new Point3D(_character.X, _character.Y, terrainZ, _character.MapIndex);
-            }
-            else if (diff > 0)
-            {
-                // Character is below the nearest walkable surface — snap up so
-                // WalkCheck can find a valid start Z instead of rejecting every step.
-                _logger.LogInformation("Login Z lift: {OldZ} -> {NewZ} for '{Name}' at {X},{Y}",
                     _character.Z, terrainZ, _character.Name, _character.X, _character.Y);
                 _character.Position = new Point3D(_character.X, _character.Y, terrainZ, _character.MapIndex);
             }
@@ -663,6 +653,21 @@ public sealed partial class GameClient
     {
         if (_character == null || !IsPlaying) return;
         _netState.Send(new PacketPersonalLight(_character.Uid.Value, _character.LightLevel));
+    }
+
+    private static string SanitizeCharacterName(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return "Unknown";
+        var sb = new System.Text.StringBuilder(raw.Length);
+        foreach (char c in raw)
+        {
+            if (char.IsLetterOrDigit(c) || c == ' ' || c == '-' || c == '\'')
+                sb.Append(c);
+        }
+        string result = sb.ToString().Trim();
+        if (result.Length > 30) result = result[..30];
+        return result.Length == 0 ? "Unknown" : result;
     }
 
     /// <summary>Valid human/elf/gargoyle hair graphic IDs.</summary>

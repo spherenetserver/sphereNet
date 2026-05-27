@@ -641,10 +641,18 @@ public sealed partial class GameClient
                 guild.AddRecruit(_character.Uid);
                 SysMessage(ServerMessages.Get("guild_join_request"));
                 break;
-            case 2: // Disband
+            case 2: // Disband — only guild master may disband
+            {
+                var disbandMember = guild.FindMember(_character.Uid);
+                if (disbandMember == null || disbandMember.Priv != GuildPriv.Master)
+                {
+                    SysMessage(ServerMessages.Get("msg_insufficient_priv"));
+                    break;
+                }
                 _guildManager.RemoveGuild(stone.Uid);
                 SysMessage(ServerMessages.Get("guild_disbanded"));
                 break;
+            }
             case 3: // Leave
                 guild.RemoveMember(_character.Uid);
                 SysMessage(ServerMessages.Get("guild_left"));
@@ -1083,7 +1091,7 @@ public sealed partial class GameClient
                 SysMessage(ServerMessages.GetFormatted("potion_heal", healAmount));
                 break;
             case "cure":
-                _character.ClearStatFlag(StatFlag.Poisoned);
+                _character.CurePoison();
                 SysMessage(ServerMessages.Get("potion_cured"));
                 break;
             case "refresh":
@@ -1228,10 +1236,17 @@ public sealed partial class GameClient
         _character.SetStatLock(data[0], data[1]);
     }
 
+    private long _lastContextMenuRequestMs;
+
     private void HandleExtendedContextMenuRequest(byte[] data)
     {
         if (data.Length < 4)
             return;
+
+        long now = Environment.TickCount64;
+        if (now - _lastContextMenuRequestMs < 500)
+            return;
+        _lastContextMenuRequestMs = now;
 
         uint targetSerial = (uint)((data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3]);
         SendContextMenu(targetSerial);
@@ -1310,6 +1325,7 @@ public sealed partial class GameClient
                     uint targetUid = (uint)((data[1] << 24) | (data[2] << 16) | (data[3] << 8) | data[4]);
                     var target = _world.FindChar(new Serial(targetUid));
                     if (target == null || !target.IsPlayer) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
+                    if (target.Uid == _character.Uid) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
 
                     var existingParty = _partyManager.FindParty(_character.Uid);
                     if (existingParty != null && existingParty.IsFull) { SysMessage(ServerMessages.Get("party_is_full")); return; }

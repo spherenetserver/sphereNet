@@ -66,9 +66,8 @@ public static partial class Program
             GameClient.WalkBufferMax = Math.Max(1, _config.WalkBuffer);
             GameClient.WalkRegenPerSecond = Math.Max(0, _config.WalkRegen);
             GameClient.MoveToleranceMs = 80;
-            GameClient.MoveRejectResyncMs = 150;
+            GameClient.MoveRejectResyncMs = 0;
             GameClient.MoveViolationKickThreshold = 0;
-
             GameClient.MovementCreditEnabled = _config.MovementCreditEnabled;
             GameClient.MovementCreditBaseMs = _config.MovementCreditBaseMs;
             GameClient.MovementCreditMaxMs = _config.MovementCreditMaxMs;

@@ -440,7 +440,7 @@ public class Item : ObjBase
 
     private int CalcTotalWeight(int maxDepth)
     {
-        int w = Amount;
+        int w = Weight * Math.Max(1, (int)Amount);
         if (maxDepth <= 0) return w;
         foreach (var child in _contents)
             w += child.CalcTotalWeight(maxDepth - 1);
@@ -1684,11 +1684,12 @@ public class Item : ObjBase
 
     // --- Helper methods ---
 
-    private int GetDeepContentCount()
+    private int GetDeepContentCount(int maxDepth = 16)
     {
+        if (maxDepth <= 0) return 0;
         int count = _contents.Count;
         foreach (var child in _contents)
-            count += child.GetDeepContentCount();
+            count += child.GetDeepContentCount(maxDepth - 1);
         return count;
     }
 

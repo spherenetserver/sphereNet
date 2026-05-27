@@ -4,6 +4,182 @@
 All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-28] - Kapsamli guvenlik ve oyun mantigi denetimi — 40+ hata duzeltmesi
+              (Comprehensive security and game logic audit — 40+ bug fixes)
+----------------------------------------
+
+KRITIK GUVENLIK / CRITICAL SECURITY:
+  - Vendor buy/sell: Client tarafindan gonderilen fiyat artik kullanilmiyor, sunucu
+    tarafli fiyat hesaplamasi eklendi. Gold/item duplikasyonu onlendi.
+    (Vendor buy/sell no longer trusts client-provided prices. Server-side price lookup
+    prevents gold/item duplication exploits.)
+  - HandleItemDrop: DRAGGING tag dogrulamasi eklendi. Oyuncular artik sadece
+    surukladikleri itemi birakabiliyor, keyfi item tasima onlendi.
+    (HandleItemDrop now validates DRAGGING tag. Players can only drop items they are
+    actually dragging — arbitrary item movement prevented.)
+  - WorldLoader OSTR/ODEX/OINT: Save/load dongusunde base stat'lar yanlis alana
+    yukleniyor, karakter statlari her restart'ta bozuluyordu. Duzeltildi.
+    (OSTR/ODEX/OINT were loaded into Str/Dex/Int instead of OStr/ODex/OInt,
+    corrupting character stats every save/load cycle. Fixed.)
+  - Guild title serialization: Colon iceren title'lar serializasyon formatini
+    bozuyordu. Escape mekanizmasi eklendi.
+    (Guild member titles containing colons corrupted serialization format.
+    Colon escaping added.)
+  - Housing stale tags: Kaldirilan co-owner/friend/ban/lockdown restart sonrasi
+    geri geliyordu. Bos listeler artik RemoveTag ile temizleniyor.
+    (Removed co-owners/friends/bans/lockdowns were restored after restart.
+    Empty lists now cleaned via RemoveTag.)
+  - Vendor buy item spam: Tek seferde 100 item alimi 100 ayri obje olusturuyordu.
+    Artik tek stack olarak olusturuluyor (DoS onleme).
+    (Buying 100 items created 100 separate objects. Now creates single stacked item.)
+  - ProcessSell ushort truncation: 65535+ amount ile item duplikasyonu mumkundu.
+    Amount siniri eklendi.
+    (ProcessSell ushort cast allowed item duplication with amount > 65535. Fixed.)
+
+OLUM VE SAVAS / DEATH AND COMBAT:
+  - Poison death: Zehir hasari HP'yi 0'a dusurdugunde olum tetiklenmiyordu. Artik
+    ProcessPoisonTick sonrasi Kill() cagriliyor.
+    (Poison damage reducing HP to 0 did not trigger death. Kill() now called after
+    ProcessPoisonTick when Hits <= 0.)
+  - Spell curse stat underflow: Weaken/Clumsy/Feeblemind/Curse statlari negatife
+    dusuruyordu, MaxHits/MaxMana/MaxStam bozuluyordu. Minimum 1 siniri eklendi.
+    (Curse spells could reduce stats below zero, corrupting MaxHits/MaxMana/MaxStam.
+    Stats now clamped to minimum 1.)
+  - Blessed/Newbie item: Olumde Blessed/Blessed2/Newbie/Nodropt itemler artik
+    cesede dusmeyip karakterde kaliyor.
+    (Blessed/Blessed2/Newbie/Nodropt items now stay on character instead of falling
+    to corpse on death.)
+  - Death dismount: Olumde binek uzerindeyken dismount yapiliyordu.
+    (Character now dismounted on death.)
+  - Melee LOS: Yakin dovus saldirilarinda gorus hatti kontrolu eklendi.
+    (Line-of-sight check added for melee attacks.)
+  - Hidden staff attack: Gizli GM'lere normal oyuncular saldiramiyor.
+    (Normal players can no longer attack hidden staff members.)
+
+HAREKET VE POZISYON / MOVEMENT AND POSITION:
+  - HandleMovementBatch: Onceki refactor sirasinda kirilan sanal zaman mekanizmasi
+    geri yuklendi. Toplu hareket adimlarinin throttle tarafindan reddedilmesi onlendi.
+    (Restored virtual-time mechanism broken during previous refactoring. Prevents
+    batch movement steps from being throttle-rejected.)
+  - Login Z correction: Ust katlardaki (cati, kopru, 2. kat) karakterler login'de
+    yere snap'leniyordu. Math.Abs(diff) kontrolu ile duzeltildi.
+    (Characters on upper floors were snapped to ground on login. Fixed with
+    Math.Abs(diff) check preserving upper-floor positions.)
+  - Stamina underflow: MovementEngine.CanShove Stam -= 10 negatife dusebiliyordu.
+    Math.Max(0, ...) eklendi.
+    (Stamina could go negative in CanShove. Clamped to 0.)
+
+ENVANTER VE ITEM / INVENTORY AND ITEM:
+  - Stack splitting: HandleItemPickup amount parametresi kullanilmiyordu.
+    Artik stackable itemlarda miktar belirtildiginde split yapiliyor.
+    (HandleItemPickup amount parameter was ignored. Stack splitting now works.)
+  - Container nesting: Dairesel container ic ice koyma onlendi (A->B->A).
+    IsInsideContainer kontrolu eklendi.
+    (Circular container nesting prevented. IsInsideContainer check added.)
+  - GetDeepContentCount: Derinlik limiti eklendi (maxDepth=16), stack overflow onlendi.
+    (Depth limit added to prevent stack overflow.)
+  - HandleItemDrop distance: Yere birakma icin 3 tile mesafe siniri eklendi.
+    (3-tile distance limit added for ground drops.)
+  - Vendor NPC range: Vendor etkilesimi icin 3 tile mesafe kontrolu eklendi.
+    (3-tile distance check added for vendor interaction.)
+
+HIRSIZLIK VE BECERI / STEALING AND SKILLS:
+  - Stealing item dupe: Calinan item kaynak container'dan silinmiyordu, iki
+    container'da ayni anda var oluyordu. RemoveItem cagrisi eklendi.
+    (Stolen item was not removed from source container, existing in two containers
+    simultaneously. RemoveItem call added.)
+  - ResolveItemOwner: Sinirsiz recursion stack overflow'a neden olabiliyordu.
+    Loop tabanli implementasyon (maxDepth=16) ile degistirildi.
+    (Unbounded recursion could cause stack overflow. Replaced with loop-based
+    implementation with maxDepth=16.)
+  - Healing overflow: Sifa miktari MaxHits'i asabiliyordu. Clamp eklendi.
+    (Heal amount could exceed MaxHits. Clamp added.)
+
+HESAP VE GIRIS / ACCOUNT AND LOGIN:
+  - PrivLevel escalation: Karakter PrivLevel'i account'u yukseltebiliyordu.
+    Account artik otoritatif kaynak, karakter account'u yukseltemiyor.
+    (Character PrivLevel could permanently elevate account. Account is now
+    authoritative — character cannot elevate account privilege.)
+  - Character name sanitization: Ozel karakter filtreleme ve 30 karakter siniri.
+    (Special character filtering and 30-character limit added.)
+  - PRIVLEVEL/FLAGS speech block: GM konusma komutlariyla PRIVLEVEL/PLEVEL/FLAGS
+    degistirilemez.
+    (PRIVLEVEL/PLEVEL/FLAGS cannot be set via GM speech commands.)
+
+CRAFTING:
+  - ConsumeResource dogrulama: Craft basari durumunda kaynaklar gump callback
+    gecikmesi nedeniyle degismis olabiliyordu. Tuketim oncesi yeniden dogrulama ve
+    tuketim sonucu kontrolu eklendi.
+    (Resources may have changed between CanCraft and TryCraft due to gump callback
+    delay. Re-verification before consumption and result checking added.)
+
+PARTI VE GUILD / PARTY AND GUILD:
+  - Party dual membership: AcceptInvite artik oyuncunun baska partide olup
+    olmadigini kontrol ediyor.
+    (AcceptInvite now checks if player is already in another party.)
+  - Guild ElectMaster: Non-member'lara oy verilebiliyordu, masterless guild
+    olusabiliyordu. Non-member adaylar filtreleniyor.
+    (Voting for non-members could create masterless guilds. Non-member candidates
+    now filtered.)
+  - Guild stale tags: Charter, align, relations, wars, allies bos olunca tag
+    temizleniyor.
+    (Guild tags cleaned when charter/align/relations/wars/allies become empty.)
+
+DIGER / OTHER:
+  - Regen MarkDirty: HP/mana/stam rejen degisiklikleri client'a bildirilmiyordu.
+    MarkDirty(DirtyFlag.Stats) eklendi. Mana INT-scaled, stam DEX-scaled yapildi.
+    (HP/mana/stam regen changes not sent to client. MarkDirty added. Mana now
+    INT-scaled, stam DEX-scaled.)
+  - Meditation flag: Mana doldugunda Meditation flag temizleniyor.
+    (Meditation flag cleared when mana reaches max.)
+  - Red zone notoriety: Degerler ters donuyordu (katil=mavi, iyi=kirmizi). Duzeltildi.
+    (Values were inverted — murderer returned blue, good karma returned red. Fixed.)
+  - Dead NPC timer: Olu NPC'ler timer wheel'e tekrar planlanmiyordu.
+    (Dead NPCs no longer rescheduled in the timer wheel.)
+  - Context menu throttle: 500ms rate limiting eklendi.
+    (500ms rate limiting added for context menu requests.)
+  - PacketStatusFull buffer: 128 -> 200 byte, expansion level 7 icin yeterli.
+    (Buffer increased from 128 to 200 bytes for expansion level 7.)
+  - OnDisconnect cleanup: Pending target callback, input dialog, menu state
+    temizleniyor.
+    (Pending target callback, input dialog, menu state cleared on disconnect.)
+  - Character.Delete() cleanup: Attacker/memory/target temizligi eklendi.
+    (Attacker/memory/target cleanup added to Delete().)
+  - WorldLoader skip property: Duplicate serial/UUID sonrasi deleted objelere
+    property uygulanmasi onlendi.
+    (Properties no longer applied to deleted objects after duplicate serial/UUID.)
+  - Spawn tick overflow: delaySec * 1000L ile int overflow onlendi.
+    (Spawn tick calculation uses 1000L to prevent int overflow.)
+  - Party disconnect: Baglanti kopmasinda parti ayrilma islemi yapiliyor.
+    (Party leave called on disconnect.)
+
+[2026-05-26] - Merdiven/rampa Z desync duzeltmesi (teleport fix)
+              (Stair/ramp Z desync correction — teleport fix)
+----------------------------------------
+
+Z CORRECTION MEKANIZMASI AKTIF:
+  - WalkZCorrectionThreshold varsayilan deger 0'dan 4'e yukseltildi. Karakter merdiven
+    veya rampada Z ekseni boyunca hareket ettiginde, birikimli Z kayma esik degeri asarsa
+    sunucu MoveReject + MobileMoving gondererek client'i dogru pozisyona zorluyor. Onceden
+    bu mekanizma devre disi oldugundan client kendi Z hesabini yapiyordu ve server ile
+    uyumsuz kaldiginda karakter "teleport ediyormus gibi" gorunuyordu.
+    (WalkZCorrectionThreshold default raised from 0 to 4. When character Z drifts beyond
+    threshold on stairs/ramps, server sends MoveReject + MobileMoving to force client to
+    correct position. Previously disabled — client computed Z independently, and when it
+    disagreed with server the character appeared to "teleport".)
+
+KONFIGURASYON / CONFIGURATION:
+  - sphere.ini'den WalkZCorrectionThreshold ayarlanabilir. 0 = devre disi, 4 = varsayilan.
+    Dusuk degerler daha sik duzeltme yapar (hassas), yuksek degerler daha az (toleransli).
+    (Configurable via sphere.ini WalkZCorrectionThreshold. 0 = disabled, 4 = default.
+    Lower values correct more aggressively, higher values are more tolerant.)
+
+LOG DUZELTMESI / LOG FIX:
+  - move_z_delta log satirinda kopya "ourZ" alani kaldirildi (fwdZ ile ayni degeri
+    gosteriyordu).
+    (Removed duplicate "ourZ" field from move_z_delta log line — it showed the same
+    value as fwdZ.)
+
 [2026-05-26] - Multi-client uyumluluk: per-client protokol negotiation
               (Multi-client compatibility: per-client protocol negotiation)
 ----------------------------------------

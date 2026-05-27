@@ -468,7 +468,7 @@ public sealed class SkillHandlers
         if (success)
         {
             int healAmount = ch.GetSkill(SkillType.Healing) / 40 + 3;
-            healTarget.Hits += (short)healAmount;
+            healTarget.Hits = (short)Math.Min(healTarget.Hits + healAmount, healTarget.MaxHits);
         }
         return success;
     }

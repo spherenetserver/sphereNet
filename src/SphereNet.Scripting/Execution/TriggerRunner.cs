@@ -21,6 +21,8 @@ public sealed class TriggerRunner
     private readonly ScriptInterpreter _interpreter;
     private readonly ResourceHolder _resources;
     private readonly ILogger _logger;
+    private int _triggerDepth;
+    private const int MaxTriggerDepth = 32;
 
     public TriggerRunner(ScriptInterpreter interpreter, ResourceHolder resources, ILogger<TriggerRunner> logger)
     {
@@ -49,32 +51,45 @@ public sealed class TriggerRunner
         if (!link.IsTriggerActive(triggerIndex))
             return TriggerResult.Default;
 
-        if (link.TryGetTriggerBody(triggerName, out var cachedTriggerLines))
+        if (_triggerDepth >= MaxTriggerDepth)
         {
-            var cachedScope = new ScriptScope { TriggerName = "@" + triggerName };
-            return _interpreter.Execute(cachedTriggerLines, target, source, args, cachedScope);
+            _logger.LogWarning("[trigger_overflow] depth={Depth} trigger=@{Name}", _triggerDepth, triggerName);
+            return TriggerResult.Default;
         }
 
-        using var scriptFile = link.OpenAtStoredPosition();
-        if (scriptFile == null)
-            return TriggerResult.Default;
-
-        var sections = scriptFile.ReadAllSections();
-        foreach (var section in sections)
+        _triggerDepth++;
+        try
         {
-            // Find the ON=@TriggerName block
-            foreach (var key in section.Keys)
+            if (link.TryGetTriggerBody(triggerName, out var cachedTriggerLines))
             {
-                if (key.Key.Equals("ON", StringComparison.OrdinalIgnoreCase) &&
-                    key.Arg.Equals($"@{triggerName}", StringComparison.OrdinalIgnoreCase))
-                {
-                    int startIdx = section.Keys.IndexOf(key) + 1;
-                    var triggerLines = CollectTriggerBody(section.Keys, startIdx);
+                var cachedScope = new ScriptScope { TriggerName = "@" + triggerName };
+                return _interpreter.Execute(cachedTriggerLines, target, source, args, cachedScope);
+            }
 
-                    var scope = new ScriptScope { TriggerName = "@" + triggerName };
-                    return _interpreter.Execute(triggerLines, target, source, args, scope);
+            using var scriptFile = link.OpenAtStoredPosition();
+            if (scriptFile == null)
+                return TriggerResult.Default;
+
+            var sections = scriptFile.ReadAllSections();
+            foreach (var section in sections)
+            {
+                foreach (var key in section.Keys)
+                {
+                    if (key.Key.Equals("ON", StringComparison.OrdinalIgnoreCase) &&
+                        key.Arg.Equals($"@{triggerName}", StringComparison.OrdinalIgnoreCase))
+                    {
+                        int startIdx = section.Keys.IndexOf(key) + 1;
+                        var triggerLines = CollectTriggerBody(section.Keys, startIdx);
+
+                        var scope = new ScriptScope { TriggerName = "@" + triggerName };
+                        return _interpreter.Execute(triggerLines, target, source, args, scope);
+                    }
                 }
             }
+        }
+        finally
+        {
+            _triggerDepth--;
         }
 
         return TriggerResult.Default;
@@ -91,62 +106,75 @@ public sealed class TriggerRunner
         ITextConsole? source,
         ITriggerArgs? args)
     {
-        bool verbose = ScriptDebug;
-
-        if (link.TryGetTriggerBody(triggerName, out var cachedTriggerLines))
+        if (_triggerDepth >= MaxTriggerDepth)
         {
-            if (verbose)
-                _logger.LogDebug("[trig_runner] {Trig} matched cached body lines={N}",
-                    triggerName, cachedTriggerLines.Count);
-            var cachedScope = new ScriptScope { TriggerName = "@" + triggerName };
-            return _interpreter.Execute(cachedTriggerLines, target, source, args, cachedScope);
-        }
-
-        using var scriptFile = link.OpenAtStoredPosition();
-        if (scriptFile == null)
-        {
-            if (verbose)
-                _logger.LogDebug(
-                    "[trig_runner] {Trig} on {Target}: scriptFile=null (link unresolved)",
-                    triggerName, target);
+            _logger.LogWarning("[trigger_overflow] depth={Depth} trigger=@{Name}", _triggerDepth, triggerName);
             return TriggerResult.Default;
         }
 
-        var sections = scriptFile.ReadAllSections();
-        int sectionsScanned = 0;
-        foreach (var section in sections)
+        bool verbose = ScriptDebug;
+        _triggerDepth++;
+        try
         {
-            sectionsScanned++;
-            foreach (var key in section.Keys)
+            if (link.TryGetTriggerBody(triggerName, out var cachedTriggerLines))
             {
-                if (key.Key.Equals("ON", StringComparison.OrdinalIgnoreCase) &&
-                    key.Arg.Equals($"@{triggerName}", StringComparison.OrdinalIgnoreCase))
+                if (verbose)
+                    _logger.LogDebug("[trig_runner] {Trig} matched cached body lines={N}",
+                        triggerName, cachedTriggerLines.Count);
+                var cachedScope = new ScriptScope { TriggerName = "@" + triggerName };
+                return _interpreter.Execute(cachedTriggerLines, target, source, args, cachedScope);
+            }
+
+            using var scriptFile = link.OpenAtStoredPosition();
+            if (scriptFile == null)
+            {
+                if (verbose)
+                    _logger.LogDebug(
+                        "[trig_runner] {Trig} on {Target}: scriptFile=null (link unresolved)",
+                        triggerName, target);
+                return TriggerResult.Default;
+            }
+
+            var sections = scriptFile.ReadAllSections();
+            int sectionsScanned = 0;
+            foreach (var section in sections)
+            {
+                sectionsScanned++;
+                foreach (var key in section.Keys)
                 {
-                    int startIdx = section.Keys.IndexOf(key) + 1;
-                    var triggerLines = CollectTriggerBody(section.Keys, startIdx);
-
-                    if (verbose)
+                    if (key.Key.Equals("ON", StringComparison.OrdinalIgnoreCase) &&
+                        key.Arg.Equals($"@{triggerName}", StringComparison.OrdinalIgnoreCase))
                     {
-                        _logger.LogDebug(
-                            "[trig_runner] {Trig} matched section #{Idx} body lines={N}",
-                            triggerName, sectionsScanned, triggerLines.Count);
-                        foreach (var ln in triggerLines)
-                            _logger.LogDebug(
-                                "[trig_runner]   line key='{Key}' hasArg={HasArg} arg='{Arg}'",
-                                ln.Key, ln.HasArg, ln.Arg);
-                    }
+                        int startIdx = section.Keys.IndexOf(key) + 1;
+                        var triggerLines = CollectTriggerBody(section.Keys, startIdx);
 
-                    var scope = new ScriptScope { TriggerName = "@" + triggerName };
-                    return _interpreter.Execute(triggerLines, target, source, args, scope);
+                        if (verbose)
+                        {
+                            _logger.LogDebug(
+                                "[trig_runner] {Trig} matched section #{Idx} body lines={N}",
+                                triggerName, sectionsScanned, triggerLines.Count);
+                            foreach (var ln in triggerLines)
+                                _logger.LogDebug(
+                                    "[trig_runner]   line key='{Key}' hasArg={HasArg} arg='{Arg}'",
+                                    ln.Key, ln.HasArg, ln.Arg);
+                        }
+
+                        var scope = new ScriptScope { TriggerName = "@" + triggerName };
+                        return _interpreter.Execute(triggerLines, target, source, args, scope);
+                    }
                 }
             }
-        }
 
-        if (verbose)
-            _logger.LogDebug(
-                "[trig_runner] {Trig} not found in any of {N} sections (target={Target})",
-                triggerName, sectionsScanned, target);
-        return TriggerResult.Default;
+            if (verbose)
+                _logger.LogDebug(
+                    "[trig_runner] {Trig} not found in any of {N} sections (target={Target})",
+                    triggerName, sectionsScanned, target);
+            return TriggerResult.Default;
+        }
+        finally
+        {
+            _triggerDepth--;
+        }
     }
 
     /// <summary>

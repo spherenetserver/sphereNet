@@ -51,7 +51,7 @@ public sealed class PacketStatusFull : PacketWriter
 
     public override PacketBuffer Build()
     {
-        var buf = CreateVariable(128);
+        var buf = CreateVariable(200);
         buf.WriteUInt32(_serial);
         buf.WriteAsciiFixed(_name, 30);
         buf.WriteInt16(_hits);

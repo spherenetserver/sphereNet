@@ -76,45 +76,31 @@ public sealed partial class GameClient
                     }
                 }
 
+                if (oldMountItemUid != 0)
+                    BroadcastDeleteObject(oldMountItemUid);
+
+                ResetWalkValidator();
+                _netState.WalkSequence = 0;
+                _netState.Send(new PacketMoveReject(0,
+                    _character.X, _character.Y, _character.Z,
+                    (byte)((byte)_character.Direction & 0x07)));
+
+                byte flags = BuildMobileFlags(_character);
+                byte dir77 = (byte)((byte)_character.Direction & 0x07);
+                byte noto = GetNotoriety(_character);
+                var movePacket = new PacketMobileMoving(
+                    _character.Uid.Value, _character.BodyId,
+                    _character.X, _character.Y, _character.Z, dir77,
+                    _character.Hue, flags, noto);
+                _netState.Send(movePacket);
+                if (BroadcastMoveNearby != null)
+                    BroadcastMoveNearby.Invoke(_character.Position, UpdateRange, movePacket, _character.Uid.Value, _character);
+                else
+                    BroadcastNearby?.Invoke(_character.Position, UpdateRange, movePacket, _character.Uid.Value);
+
                 if (npc != null)
                 {
-                    // Immediately remove the old horse-layer item from all clients to avoid ghost mount visuals.
-                    if (oldMountItemUid != 0)
-                        BroadcastDeleteObject(oldMountItemUid);
-
-                    // Snap the client back to the server-authoritative rider position
-                    // and drop the horse right there. Without the snap the client
-                    // keeps its predicted (possibly 1 tile ahead) position while the
-                    // server places the NPC at the real rider.Position, producing
-                    // the "horse spawns a tile behind me" complaint. With the snap
-                    // the player may briefly slide back one tile, but the horse is
-                    // always exactly under the character — which is the contract.
-                    ResetWalkValidator();
-                    _netState.WalkSequence = 0;
-                    _netState.Send(new PacketMoveReject(0,
-                        _character.X, _character.Y, _character.Z,
-                        (byte)((byte)_character.Direction & 0x07)));
-
-                    // MobileMoving (0x77) to self + nearby — body update without screen reload.
-                    byte flags = BuildMobileFlags(_character);
-                    byte dir77 = (byte)((byte)_character.Direction & 0x07);
-                    byte noto = GetNotoriety(_character);
-                    var movePacket = new PacketMobileMoving(
-                        _character.Uid.Value, _character.BodyId,
-                        _character.X, _character.Y, _character.Z, dir77,
-                        _character.Hue, flags, noto);
-                    _netState.Send(movePacket); // self — update own body
-                    if (BroadcastMoveNearby != null)
-                        BroadcastMoveNearby.Invoke(_character.Position, UpdateRange, movePacket, _character.Uid.Value, _character);
-                    else
-                        BroadcastNearby?.Invoke(_character.Position, UpdateRange, movePacket, _character.Uid.Value);
-
-                    // Clear Ridden flag AFTER sending all dismount packets.
                     npc.ClearStatFlag(StatFlag.Ridden);
-
-                    // Broadcast the dismounted NPC to nearby clients so it appears
-                    // immediately. Without this the pet is invisible until the next
-                    // view-delta tick and cannot be seen following the owner.
                     BroadcastCharacterAppear?.Invoke(npc);
                 }
                 return;
@@ -126,6 +112,16 @@ public sealed partial class GameClient
         var item = _world.FindItem(new Serial(uid));
         if (item != null)
         {
+            if (_character.PrivLevel < PrivLevel.GM && !item.ContainedIn.IsValid)
+            {
+                int dist = _character.Position.GetDistanceTo(item.Position);
+                if (dist > 3)
+                {
+                    SysMessage(ServerMessages.Get(Msg.ItemuseToofar));
+                    return;
+                }
+            }
+
             // Fire @DClick on item — if script returns true, block default action
             if (_triggerDispatcher != null)
             {
@@ -154,6 +150,15 @@ public sealed partial class GameClient
             }
             if (!ch.IsPlayer && ch.NpcBrain == NpcBrainType.Vendor)
             {
+                if (_character.PrivLevel < PrivLevel.GM)
+                {
+                    int dist = Math.Max(Math.Abs(_character.X - ch.X), Math.Abs(_character.Y - ch.Y));
+                    if (dist > 3 || _character.MapIndex != ch.MapIndex)
+                    {
+                        SysMessage(ServerMessages.Get(Msg.ItemuseToofar));
+                        return;
+                    }
+                }
                 HandleVendorInteraction(ch);
                 return;
             }
@@ -245,6 +250,12 @@ public sealed partial class GameClient
         if (_character == null) return;
         if (_character.IsDead)
         {
+            if (item.ItemType == ItemType.Shrine)
+            {
+                OnResurrect();
+                SysMessage(ServerMessages.Get(Msg.HealingRes));
+                return;
+            }
             SysMessage(ServerMessages.Get("death_cant_while_dead"));
             return;
         }

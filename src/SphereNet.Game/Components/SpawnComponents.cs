@@ -295,7 +295,7 @@ public sealed class SpawnComponent
     private void SetNextSpawnTime()
     {
         int delaySec = _rand.Next(_minDelaySec, _maxDelaySec + 1);
-        _nextSpawnTick = Environment.TickCount64 + delaySec * 1000;
+        _nextSpawnTick = Environment.TickCount64 + delaySec * 1000L;
         _spawnItem.SetTimeout(_nextSpawnTick);
     }
 

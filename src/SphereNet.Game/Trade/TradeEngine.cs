@@ -112,10 +112,20 @@ public static class VendorEngine
         if (vendor.NpcBrain != Core.Enums.NpcBrainType.Vendor)
             return -1;
 
+        // Validate and calculate cost using server-side prices
         long totalCost = 0;
         foreach (var entry in items)
-            totalCost += (long)entry.Price * entry.Amount;
+        {
+            if (entry.Amount <= 0 || entry.Amount > 999) return -1;
+            int serverPrice = GetServerBuyPrice(vendor, entry.ItemId);
+            if (serverPrice <= 0) return -1;
+            totalCost += (long)serverPrice * entry.Amount;
+        }
         if (totalCost > int.MaxValue)
+            return -1;
+
+        var backpack = player.Backpack;
+        if (backpack == null && World == null)
             return -1;
 
         bool isStaff = player.PrivLevel >= Core.Enums.PrivLevel.GM;
@@ -134,20 +144,15 @@ public static class VendorEngine
             totalCost = 0;
         }
 
-        if (World != null)
+        if (World != null && backpack != null)
         {
-            var backpack = player.Backpack;
             foreach (var entry in items)
             {
-                for (int n = 0; n < entry.Amount; n++)
-                {
-                    var newItem = World.CreateItem();
-                    newItem.BaseId = entry.ItemId;
-                    newItem.Name = entry.Name;
-                    newItem.Amount = 1;
-                    if (backpack != null)
-                        backpack.AddItem(newItem);
-                }
+                var newItem = World.CreateItem();
+                newItem.BaseId = entry.ItemId;
+                newItem.Name = entry.Name;
+                newItem.Amount = (ushort)Math.Max(1, Math.Min(entry.Amount, ushort.MaxValue));
+                backpack.AddItemWithStack(newItem);
             }
         }
 
@@ -164,24 +169,24 @@ public static class VendorEngine
             return 0;
 
         long totalValue = 0;
-        var validated = new List<(TradeEntry Entry, Item Item)>();
+        var validated = new List<(TradeEntry Entry, Item Item, int ServerPrice)>();
         foreach (var entry in items)
         {
-            if (entry.Price < 0 || entry.Amount < 0)
+            if (entry.Amount <= 0 || entry.Amount > ushort.MaxValue)
                 return 0;
-            totalValue += (long)entry.Price * entry.Amount;
-            if (totalValue > int.MaxValue)
-                return 0;
-
-            if (entry.Amount == 0)
-                continue;
 
             var found = FindItemInBackpack(player, entry.ItemUid);
             if (found == null || found.IsDeleted || found.Amount < entry.Amount ||
                 found.ItemType == Core.Enums.ItemType.Gold || found.BaseId == 0x0EED)
                 return 0;
 
-            validated.Add((entry, found));
+            int serverPrice = GetServerSellPrice(vendor, found);
+            if (serverPrice <= 0) return 0;
+            totalValue += (long)serverPrice * entry.Amount;
+            if (totalValue > int.MaxValue)
+                return 0;
+
+            validated.Add((entry, found, serverPrice));
         }
 
         if (World != null)
@@ -190,7 +195,7 @@ public static class VendorEngine
             if (backpack == null)
                 return 0;
 
-            foreach (var (entry, found) in validated)
+            foreach (var (entry, found, _) in validated)
             {
                 if (found.Amount <= entry.Amount)
                     found.Delete();
@@ -214,6 +219,40 @@ public static class VendorEngine
         }
 
         return (int)totalValue;
+    }
+
+    /// <summary>Look up server-side price for an item. Checks vendor stock PRICE tags, item def, fallback to baseId formula.</summary>
+    internal static int GetServerBuyPrice(Character vendor, ushort itemId)
+    {
+        var stock = vendor.GetEquippedItem(Core.Enums.Layer.VendorStock);
+        if (stock != null)
+        {
+            foreach (var item in stock.Contents)
+            {
+                if (item.BaseId == itemId &&
+                    item.TryGetTag("PRICE", out string? priceStr) && int.TryParse(priceStr, out int p))
+                    return Math.Max(1, p);
+            }
+        }
+        var pack = vendor.Backpack;
+        if (pack != null)
+        {
+            foreach (var item in pack.Contents)
+            {
+                if (item.BaseId == itemId &&
+                    item.TryGetTag("PRICE", out string? priceStr) && int.TryParse(priceStr, out int p))
+                    return Math.Max(1, p);
+            }
+        }
+        return Math.Max(1, itemId / 10 + 5);
+    }
+
+    /// <summary>Get the server-side sell price (what vendor pays). Usually half of buy price.</summary>
+    internal static int GetServerSellPrice(Character vendor, Item item)
+    {
+        if (item.TryGetTag("PRICE", out string? priceStr) && int.TryParse(priceStr, out int p))
+            return Math.Max(1, p / 2);
+        return Math.Max(1, GetServerBuyPrice(vendor, item.BaseId) / 2);
     }
 
     /// <summary>Count gold in player's backpack recursively.</summary>

@@ -40,7 +40,7 @@ public sealed partial class GameClient
     public static int WalkRegenPerSecond { get; set; } = 25;
     public static int MoveToleranceMs { get; set; } = 80;
     public static int MoveRejectResyncMs { get; set; } = 0;
-    public static int WalkZCorrectionThreshold { get; set; } = 0;
+
     public static int MoveViolationKickThreshold { get; set; }
     public static Func<long> MoveClock { get; set; } = () => Environment.TickCount64;
 
@@ -64,7 +64,6 @@ public sealed partial class GameClient
     private long _walkTokenLastMs;
     private int _moveViolationCount;
     private long _moveRejectResyncUntil;
-    private sbyte _walkZCorrectionBase;
     private long? _movementBatchNow;
 
     // Credit-based movement state (active only when MovementCreditEnabled=true)
@@ -98,6 +97,49 @@ public sealed partial class GameClient
             virtualNow += MovementEngine.GetMoveDelay(_character.IsMounted, running);
         }
         _movementBatchNow = null;
+    }
+
+    public void QueueMoveRequest(byte dir, byte seq, uint fastWalkKey)
+    {
+        if (_character == null) return;
+
+        if (_character.PrivLevel >= PrivLevel.GM)
+        {
+            HandleMove(dir, seq, fastWalkKey);
+            return;
+        }
+
+        long now = MoveClock();
+        _netState.LastActivityTick = now;
+
+        if (_moveRejectResyncUntil > 0 && now < _moveRejectResyncUntil)
+        {
+            _logger.LogDebug(
+                "[move_queue_resync] seq={Seq} dir=0x{Dir:X2} remaining={Remaining}ms at {X},{Y},{Z}",
+                seq, dir, _moveRejectResyncUntil - now, _character.X, _character.Y, _character.Z);
+            _netState.Send(new PacketMoveReject(seq, _character.X, _character.Y, _character.Z, CurrentFacingDir()));
+            _netState.WalkSequence = 0;
+            return;
+        }
+
+        byte expectedSeq = _netState.WalkSequence;
+        if (expectedSeq == 0 && seq > 1)
+        {
+            _logger.LogDebug(
+                "[move_drop_stale] seq={Seq} dir=0x{Dir:X2} at {X},{Y},{Z}",
+                seq, dir, _character.X, _character.Y, _character.Z);
+            return;
+        }
+
+        _movementQueue ??= new Movement.MovementQueueProcessor(MovementQueueCapacity);
+        if (!_movementQueue.Enqueue(dir, seq, fastWalkKey, now))
+        {
+            _logger.LogWarning("[move_reject] reason=queue_full seq={Seq} dir=0x{Dir:X2} queue={Count} at {X},{Y},{Z}",
+                seq, dir, _movementQueue.Count, _character.X, _character.Y, _character.Z);
+            RejectMove(seq, now);
+            _movementQueue.Clear();
+            return;
+        }
     }
 
     public bool HandleMove(byte dir, byte seq, uint fastWalkKey)
@@ -262,9 +304,6 @@ public sealed partial class GameClient
                 }
             }
 
-            if (expectedSeq == 0)
-                _walkZCorrectionBase = oldZ;
-
             GetDirectionDelta(direction, out short expectedDx, out short expectedDy);
             short expectedX = (short)(oldX + expectedDx);
             short expectedY = (short)(oldY + expectedDy);
@@ -278,39 +317,16 @@ public sealed partial class GameClient
                 return true;
             }
 
-            if (WalkZCorrectionThreshold > 0 && Math.Abs(_character.Z - _walkZCorrectionBase) >= WalkZCorrectionThreshold)
-            {
-                _logger.LogInformation(
-                    "[move_z_correct] seq={Seq} dir={Dir} baseZ={BaseZ} newZ={NewZ} accum={Accum} at {X},{Y}",
-                    seq, direction, _walkZCorrectionBase, _character.Z,
-                    Math.Abs(_character.Z - _walkZCorrectionBase), _character.X, _character.Y);
-                _walkZCorrectionBase = _character.Z;
-                _netState.Send(new PacketMoveReject(seq, _character.X, _character.Y, _character.Z, CurrentFacingDir()));
-                _netState.WalkSequence = 0;
-                byte flagsCorr = BuildMobileFlags(_character);
-                byte dirCorr = (byte)((byte)_character.Direction | (running ? 0x80 : 0));
-                byte notoCorr = GetNotoriety(_character);
-                var movePktCorr = new PacketMobileMoving(
-                    _character.Uid.Value, _character.BodyId,
-                    _character.X, _character.Y, _character.Z, dirCorr,
-                    _character.Hue, flagsCorr, notoCorr);
-                if (BroadcastMoveNearby != null)
-                    BroadcastMoveNearby.Invoke(_character.Position, UpdateRange, movePktCorr, _character.Uid.Value, _character);
-                else
-                    BroadcastNearby?.Invoke(_character.Position, UpdateRange, movePktCorr, _character.Uid.Value);
-                return true;
-            }
-
             byte notoriety = GetNotoriety(_character);
             int zDelta = _character.Z - oldZ;
             if (Math.Abs(zDelta) > 0)
             {
                 _logger.LogInformation(
-                    "[move_z_delta] seq={Seq} dir={Dir} run={Run} from {OldX},{OldY},{OldZ} to {NewX},{NewY},{NewZ} dz={Delta} startZ={StartZ} startTop={StartTop} fwdZ={FwdZ} last={Last} ourZ={OurZ} " +
+                    "[move_z_delta] seq={Seq} dir={Dir} run={Run} from {OldX},{OldY},{OldZ} to {NewX},{NewY},{NewZ} dz={Delta} startZ={StartZ} startTop={StartTop} fwdZ={FwdZ} last={Last} " +
                     "fwdLand=({LZ}/{LC}/{LT}) statics={SC} items={IC} tiles=[{Dump}]",
                     seq, direction, running, oldX, oldY, oldZ, _character.X, _character.Y, _character.Z, zDelta,
                     moveDiag.StartZ, moveDiag.StartTop, moveDiag.ForwardNewZ,
-                    moveDiag.FwdReason, moveDiag.ForwardNewZ,
+                    moveDiag.FwdReason,
                     moveDiag.FwdLandZ, moveDiag.FwdLandCenter, moveDiag.FwdLandTop,
                     moveDiag.FwdSurfaceCount, moveDiag.FwdItemSurfaceCount,
                     moveDiag.FwdStaticDump);
@@ -384,7 +400,6 @@ public sealed partial class GameClient
             SendDrawObject(_character);
         }
         _netState.WalkSequence = 0;
-        _walkZCorrectionBase = _character.Z;
         int resyncMs = Math.Max(0, MoveRejectResyncMs);
         _moveRejectResyncUntil = resyncMs > 0 ? now + resyncMs : 0;
     }
@@ -420,12 +435,23 @@ public sealed partial class GameClient
 
     public void TickMovementQueue(long nowMs)
     {
-        if (!MovementCreditEnabled || _movementQueue == null || _movementQueue.Count == 0)
+        if (_movementQueue == null || _movementQueue.Count == 0)
+            return;
+
+        if (_nextMoveTime > 0 && nowMs < _nextMoveTime)
             return;
 
         if (_movementQueue.TryDequeue(out byte qDir, out byte qSeq, out uint qKey))
         {
-            HandleMove(qDir, qSeq, qKey);
+            bool accepted = HandleMove(qDir, qSeq, qKey);
+            if (!accepted)
+            {
+                _movementQueue.Clear();
+            }
+            else if (_netState.WalkSequence == 0 && _movementQueue.Count > 0)
+            {
+                _movementQueue.Clear();
+            }
         }
     }
 
@@ -509,6 +535,11 @@ public sealed partial class GameClient
 
         var target = _world.FindChar(new Serial(targetUid));
         if (target == null || target == _character) return;
+
+        if ((target.IsStatFlag(StatFlag.Hidden) || target.IsStatFlag(StatFlag.Invisible))
+            && target.PrivLevel >= PrivLevel.Counsel
+            && _character.PrivLevel < PrivLevel.Counsel)
+            return;
 
         if (CombatHelper.IsCombatBlockedByRegion(_world, _character, target))
         {
@@ -1010,6 +1041,9 @@ public sealed partial class GameClient
     {
         if (_character == null) return;
 
+        if (_character.IsMounted && _mountEngine != null)
+            DismountCharacter();
+
         // ---------------------------------------------------------------
         //   Source-X CChar::Death (CCharAct.cpp) reference order:
         //     1) MakeCorpse + UpdateCanSee(PacketDeath)   ← caller did this
@@ -1025,7 +1059,7 @@ public sealed partial class GameClient
         //   death logs was caused by sending 0x4001 here.
         // ---------------------------------------------------------------
 
-        _spellEngine?.RevertPolymorphOnDeath(_character);
+        _spellEngine?.ClearAllEffectsOnDeath(_character);
 
         ushort ghostBody = _character.BodyId == 0x0191 ? (ushort)0x0193 : (ushort)0x0192;
         _character.BodyId = ghostBody;

@@ -209,7 +209,7 @@ public sealed class MovementEngine
 
         if (mover.Stam == mover.MaxStam && mover.MaxStam > 0)
         {
-            mover.Stam -= 10;
+            mover.Stam = (short)Math.Max(0, mover.Stam - 10);
             if (mover.IsStatFlag(StatFlag.Hidden)) mover.ClearStatFlag(StatFlag.Hidden);
             if (mover.IsStatFlag(StatFlag.Invisible)) mover.ClearStatFlag(StatFlag.Invisible);
             return true;
@@ -219,8 +219,9 @@ public sealed class MovementEngine
     }
 
     /// <summary>Check step effects (traps, fields, region enter/leave).</summary>
-    private void CheckLocationEffects(Objects.Characters.Character ch, Point3D pos)
+    private void CheckLocationEffects(Objects.Characters.Character ch, Point3D originalPos)
     {
+        var pos = originalPos;
         foreach (var item in _world.GetItemsInRange(pos, 0))
         {
             // Source-X parity: @Step trigger gets first chance. RETURN 1
@@ -247,6 +248,7 @@ public sealed class MovementEngine
                     {
                         _world.MoveCharacter(ch, dest);
                         OnTeleport?.Invoke(ch, dest);
+                        pos = ch.Position;
                     }
                     break;
                 }

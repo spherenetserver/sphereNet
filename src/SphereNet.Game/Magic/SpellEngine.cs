@@ -768,27 +768,37 @@ public sealed class SpellEngine
         {
             case SpellType.Weaken:
             {
+                short actual = (short)Math.Min(penalty, target.Str - 1);
+                if (actual <= 0) break;
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                eff.StrDelta = (short)-penalty; target.Str -= penalty;
+                eff.StrDelta = (short)-actual; target.Str -= actual;
                 break;
             }
             case SpellType.Clumsy:
             {
+                short actual = (short)Math.Min(penalty, target.Dex - 1);
+                if (actual <= 0) break;
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                eff.DexDelta = (short)-penalty; target.Dex -= penalty;
+                eff.DexDelta = (short)-actual; target.Dex -= actual;
                 break;
             }
             case SpellType.Feeblemind:
             {
+                short actual = (short)Math.Min(penalty, target.Int - 1);
+                if (actual <= 0) break;
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                eff.IntDelta = (short)-penalty; target.Int -= penalty;
+                eff.IntDelta = (short)-actual; target.Int -= actual;
                 break;
             }
             case SpellType.Curse:
             {
+                short strP = (short)Math.Min(penalty, target.Str - 1);
+                short dexP = (short)Math.Min(penalty, target.Dex - 1);
+                short intP = (short)Math.Min(penalty, target.Int - 1);
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                eff.StrDelta = (short)-penalty; eff.DexDelta = (short)-penalty; eff.IntDelta = (short)-penalty;
-                target.Str -= penalty; target.Dex -= penalty; target.Int -= penalty;
+                if (strP > 0) { eff.StrDelta = (short)-strP; target.Str -= strP; }
+                if (dexP > 0) { eff.DexDelta = (short)-dexP; target.Dex -= dexP; }
+                if (intP > 0) { eff.IntDelta = (short)-intP; target.Int -= intP; }
                 break;
             }
         }
@@ -898,8 +908,7 @@ public sealed class SpellEngine
                 break;
             case SpellType.Poison:
             {
-                // Source-X CCharSpell Poison: level (1=lesser, 4=deadly) keys
-                // the matching DEFMSG_SPELL_POISON_# string the victim sees.
+                if (target.IsDead) break;
                 byte poisonLvl = caster.GetSkill(SkillType.Magery) switch
                 {
                     >= 800 => 4, // deadly
@@ -1087,6 +1096,17 @@ public sealed class SpellEngine
             RevertDeltas(eff);
             _activeEffects.RemoveAt(i);
             return;
+        }
+    }
+
+    public void ClearAllEffectsOnDeath(Character ch)
+    {
+        RevertPolymorphOnDeath(ch);
+        for (int i = _activeEffects.Count - 1; i >= 0; i--)
+        {
+            if (_activeEffects[i].Target != ch) continue;
+            RevertDeltas(_activeEffects[i]);
+            _activeEffects.RemoveAt(i);
         }
     }
 

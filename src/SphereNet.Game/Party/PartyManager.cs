@@ -134,6 +134,10 @@ public sealed class PartyManager
     /// <summary>Handle an invitation accept.</summary>
     public bool AcceptInvite(Serial masterUid, Serial memberUid)
     {
+        // Already in a party — must leave first
+        if (FindParty(memberUid) != null)
+            return false;
+
         var party = FindParty(masterUid);
         if (party == null)
             party = CreateParty(masterUid);

@@ -426,6 +426,8 @@ public sealed partial class GameClient
             NotifyCharacterAppear(ch);
         else if (wasInRange && !nowInRange)
             RemoveKnownChar(uid, sendDelete: true);
+        else if (nowInRange && !_knownChars.Contains(uid))
+            NotifyCharacterAppear(ch);
     }
 
     private static bool InRange(Point3D a, Point3D b, int range)

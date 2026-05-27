@@ -177,16 +177,12 @@ public sealed class MountEngine
             return null;
 
         var mountItem = rider.GetEquippedItem(Layer.Horse);
-        if (mountItem == null)
+        if (mountItem != null)
         {
-            rider.ClearStatFlag(StatFlag.OnHorse);
-            return null;
+            rider.Unequip(Layer.Horse);
+            _world.DeleteObject(mountItem);
+            mountItem.Delete();
         }
-
-        // Unequip and delete mount item
-        rider.Unequip(Layer.Horse);
-        _world.DeleteObject(mountItem);
-        mountItem.Delete();
 
         rider.ClearStatFlag(StatFlag.OnHorse);
 
@@ -214,13 +210,9 @@ public sealed class MountEngine
         if (npc == null)
             return null;
 
-        // Restore NPC to the world at rider's position.
-        // NOTE: Ridden flag is NOT cleared here — caller must clear it after
-        // sending mount-item-delete packets to avoid a "two horses" visual glitch.
         npc.Direction = rider.Direction;
         npc.NextNpcActionTime = Environment.TickCount64 + 1500;
 
-        // Use rider's position, correcting Z if underground
         var pos = rider.Position;
         var mapData = _world.MapData;
         if (mapData != null)

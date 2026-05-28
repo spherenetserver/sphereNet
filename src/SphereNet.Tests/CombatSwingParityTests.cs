@@ -32,6 +32,7 @@ public class CombatSwingParityTests
             sword.ItemType = ItemType.WeaponSword;
             sword.BaseId = 0x0F5E;
             sword.Amount = 1;
+            sword.ContainedIn = player.Uid;
 
             client.HandleItemEquip(sword.Uid.Value, (byte)Layer.OneHanded, player.Uid.Value);
 
@@ -45,6 +46,7 @@ public class CombatSwingParityTests
             instantSword.ItemType = ItemType.WeaponSword;
             instantSword.BaseId = 0x0F5E;
             instantSword.Amount = 1;
+            instantSword.ContainedIn = player.Uid;
 
             client.HandleItemEquip(instantSword.Uid.Value, (byte)Layer.OneHanded, player.Uid.Value);
 

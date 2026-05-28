@@ -159,6 +159,7 @@ public sealed class SkillHandlers
     {
         var ch = sink.Self;
         if (ch.IsDead) return false;
+        if (ch.IsStatFlag(StatFlag.Freeze)) return false;
 
         switch (skill)
         {
@@ -196,6 +197,7 @@ public sealed class SkillHandlers
     public bool UseSkill(Character ch, SkillType skill, Point3D? target = null)
     {
         if (ch.IsDead) return false;
+        if (ch.IsStatFlag(StatFlag.Freeze)) return false;
 
         if (_handlers.TryGetValue(skill, out var handler))
             return handler(ch, target);
@@ -258,7 +260,7 @@ public sealed class SkillHandlers
 
     private bool HandleHiding(Character ch, Point3D? target)
     {
-        if (ch.IsInWarMode) return false;
+        if (ch.IsInWarMode || ch.FightTarget.IsValid) return false;
         bool success = SkillEngine.UseQuick(ch, SkillType.Hiding, 50);
         if (success)
         {

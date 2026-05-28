@@ -86,6 +86,7 @@ public sealed class CraftingEngine
     /// </summary>
     public Item? TryCraft(Character crafter, CraftRecipe recipe)
     {
+        if (crafter.IsDead) return null;
         if (!CanCraft(crafter, recipe))
             return null;
 

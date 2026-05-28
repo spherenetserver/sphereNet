@@ -217,6 +217,7 @@ public sealed class House
         _coOwners.Remove(newOwnerUid);
         _friends.Remove(newOwnerUid);
         _owner = newOwnerUid;
+        Refresh();
     }
 
     /// <summary>Refresh the house (reset decay timer).</summary>

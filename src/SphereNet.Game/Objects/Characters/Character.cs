@@ -378,6 +378,20 @@ public partial class Character : ObjBase
 
     // Criminal / murderer state
     private long _criminalTimer;       // TickCount64 when criminal flag expires (0 = not criminal)
+
+    public int CriminalTimerRemainingSeconds
+    {
+        get
+        {
+            if (_criminalTimer <= 0) return 0;
+            long remain = _criminalTimer - Environment.TickCount64;
+            return remain > 0 ? (int)(remain / 1000) : 0;
+        }
+        set
+        {
+            _criminalTimer = value > 0 ? Environment.TickCount64 + value * 1000L : 0;
+        }
+    }
     private short _kills;              // murder count
     private long _nextMurderDecayTick; // next TickCount64 at which one kill will decay
 
@@ -816,7 +830,7 @@ public partial class Character : ObjBase
     {
         if (level <= _poisonLevel && _poisonTicksRemaining > 0)
             return;
-        _poisonLevel = Math.Max(_poisonLevel, level);
+        _poisonLevel = _poisonTicksRemaining > 0 ? Math.Max(_poisonLevel, level) : level;
         _poisonTicksRemaining = _poisonLevel switch
         {
             1 => 5, 2 => 8, 3 => 12, 4 => 16, _ => 20
@@ -2904,6 +2918,7 @@ public partial class Character : ObjBase
             case "RESPOISON": if (short.TryParse(normalized, out short rpov)) _resPoison = rpov; return true;
             case "RESENERGY": if (short.TryParse(normalized, out short rev)) _resEnergy = rev; return true;
             case "KILLS": if (short.TryParse(normalized, out short killsVal)) _kills = killsVal; return true;
+            case "CRIMINALTIMER": if (int.TryParse(normalized, out int ctSec) && ctSec > 0) CriminalTimerRemainingSeconds = ctSec; return true;
             case "POISONLEVEL":
                 if (byte.TryParse(normalized, out byte plv))
                 {

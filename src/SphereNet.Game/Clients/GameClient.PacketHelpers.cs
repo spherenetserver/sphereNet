@@ -701,7 +701,7 @@ public sealed partial class GameClient
             // Create bank box
             bankBox = _world.CreateItem();
             bankBox.BaseId = 0x09AB; // bank box container graphic
-            bankBox.ItemType = ItemType.Container;
+            bankBox.ItemType = ItemType.EqBankBox;
             bankBox.Name = "Bank Box";
             _character.Equip(bankBox, Layer.BankBox);
         }
@@ -1019,12 +1019,10 @@ public sealed partial class GameClient
         var bank = victim.GetEquippedItem(Layer.BankBox);
         if (bank == null)
         {
-            // Conjure a transient empty bank box so the GM still gets a UI.
-            OpenBankBox();
+            SysMessage($"{victim.GetName()} has no bank box.");
             return;
         }
-        // Reuse the standard open-container flow on the bank serial.
-        _netState.Send(new PacketOpenContainer(bank.Uid.Value, 0x003C));
+        SendOpenContainer(bank);
     }
 
     private bool RemoveTargetedObject(uint uid)

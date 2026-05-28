@@ -101,8 +101,10 @@ public sealed class WalkCheck
         Offset((Direction)(((int)d + 1) & 0x7), ref xRight, ref yRight);
 
         // Bounds — reject walking off the map edge.
-        if (xForward < 0 || yForward < 0) return false;
-        if (checkDiagonals && (xLeft < 0 || yLeft < 0 || xRight < 0 || yRight < 0))
+        var (mapW, mapH) = md.GetMapSize(mapId);
+        if (xForward < 0 || yForward < 0 || xForward >= mapW || yForward >= mapH) return false;
+        if (checkDiagonals && (xLeft < 0 || yLeft < 0 || xRight < 0 || yRight < 0 ||
+            xLeft >= mapW || yLeft >= mapH || xRight >= mapW || yRight >= mapH))
             return false;
 
         var itemsStart = CollectItems(mapId, xStart, yStart);

@@ -125,6 +125,9 @@ public static partial class Program
 
         if (brain == NpcBrainType.Banker)
         {
+            int bankDist = Math.Max(Math.Abs(speaker.X - npc.X), Math.Abs(speaker.Y - npc.Y));
+            if (bankDist > 3 || speaker.MapIndex != npc.MapIndex) return false;
+
             int withdrawAmount = TryParseAmountAfter(lower, "withdraw");
             int checkAmount = TryParseAmountAfter(lower, "check");
             bool wantBank = lower.Contains("bank") || lower == "deposit"

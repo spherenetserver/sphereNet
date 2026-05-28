@@ -428,7 +428,9 @@ public sealed partial class GameClient
     /// <paramref name="viewer"/>. Used by per-observer combat/move broadcasts.</summary>
     public static byte ComputeNotoriety(GameWorld? world, Character? viewer, Character subject)
     {
-        if (viewer == null || subject == viewer)
+        if (viewer == null)
+            return 3;
+        if (subject == viewer)
             return 1;
 
         if (subject.IsStatFlag(StatFlag.Invul))

@@ -281,6 +281,10 @@ public sealed class SpellEngine
 
         if (caster.IsDead)
             return -1;
+        if (caster.IsCasting)
+            return -1;
+        if (caster.IsStatFlag(StatFlag.Freeze))
+            return -1;
 
         // Region NoMagic check
         if (_world != null)
@@ -444,8 +448,15 @@ public sealed class SpellEngine
             var rune = _world?.FindItem(targetUid);
             if (rune != null)
             {
-                rune.SetRuneMark(caster.Position);
-                OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellMarkCont));
+                if (!IsItemAccessible(caster, rune))
+                {
+                    OnSysMessage?.Invoke(caster, "You must target a rune in your pack.");
+                }
+                else
+                {
+                    rune.SetRuneMark(caster.Position);
+                    OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellMarkCont));
+                }
             }
             else
             {
@@ -459,7 +470,7 @@ public sealed class SpellEngine
         if (spell is SpellType.Recall or SpellType.GateTravel)
         {
             var rune = _world?.FindItem(targetUid);
-            if (rune != null)
+            if (rune != null && IsItemAccessible(caster, rune))
                 ApplyRuneTravelSpell(caster, rune, def);
             else
                 OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellRecallBlank));
@@ -468,7 +479,17 @@ public sealed class SpellEngine
         {
             var target = _world?.FindChar(targetUid);
             if (target != null)
-                ApplyCharEffect(caster, target, def, skillLevel);
+            {
+                if (target.MapIndex != caster.MapIndex ||
+                    caster.Position.GetDistanceTo(target.Position) > 12)
+                {
+                    OnSysMessage?.Invoke(caster, "That is too far away.");
+                }
+                else
+                {
+                    ApplyCharEffect(caster, target, def, skillLevel);
+                }
+            }
         }
         else if (def.IsFlag(SpellFlag.Area))
         {
@@ -804,12 +825,55 @@ public sealed class SpellEngine
         }
     }
 
+    private bool IsItemAccessible(Character ch, Item item)
+    {
+        if (ch.PrivLevel >= PrivLevel.GM) return true;
+        if (!item.ContainedIn.IsValid)
+            return ch.Position.GetDistanceTo(item.Position) <= 2;
+        var current = item;
+        for (int depth = 0; depth < 16 && current.ContainedIn.IsValid; depth++)
+        {
+            if (current.ContainedIn == ch.Uid) return true;
+            var parent = _world?.FindItem(current.ContainedIn);
+            if (parent == null) break;
+            current = parent;
+        }
+        return false;
+    }
+
     private void ApplyRuneTravelSpell(Character caster, Item rune, SpellDef def)
     {
         if (!rune.TryGetRuneMark(out Point3D dest))
         {
             OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellRecallBlank));
             return;
+        }
+
+        if (caster.PrivLevel < Core.Enums.PrivLevel.GM)
+        {
+            var srcRegion = _world.FindRegion(caster.Position);
+            var destRegion = _world.FindRegion(dest);
+            if (srcRegion != null && srcRegion.NoMagic)
+            {
+                OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGenFizzles));
+                return;
+            }
+            if (destRegion != null && destRegion.NoMagic)
+            {
+                OnSysMessage?.Invoke(caster, "That location blocks magic.");
+                return;
+            }
+        }
+
+        var md = _world.MapData;
+        if (md != null)
+        {
+            var (mapW, mapH) = md.GetMapSize(dest.Map);
+            if (dest.X < 0 || dest.Y < 0 || dest.X >= mapW || dest.Y >= mapH)
+            {
+                OnSysMessage?.Invoke(caster, "That location is unreachable.");
+                return;
+            }
         }
 
         if (def.Id == SpellType.Recall)

@@ -264,9 +264,25 @@ public sealed partial class GameClient
         {
             // ---- containers / corpses ----
             case ItemType.Container:
-            case ItemType.Corpse:
             case ItemType.TrashCan:
             case ItemType.ShipHold:
+            {
+                // Snoop gate: opening another player's sub-container requires Snooping skill
+                if (_character.PrivLevel < PrivLevel.GM && item.ItemType == ItemType.Container)
+                {
+                    var containerOwner = ResolveContainerOwner(item);
+                    if (containerOwner != null && containerOwner != _character && containerOwner.IsPlayer)
+                    {
+                        bool snoopOk = Skills.Information.ActiveSkillEngine.Snooping(
+                            new InfoSkillSink(this, _character), item);
+                        if (!snoopOk)
+                            break;
+                    }
+                }
+                SendOpenContainer(item);
+                break;
+            }
+            case ItemType.Corpse:
                 SendOpenContainer(item);
                 break;
 
@@ -852,6 +868,20 @@ public sealed partial class GameClient
     }
 
     /// <summary>Find a key in the player's backpack that opens a locked container/door.</summary>
+    private Character? ResolveContainerOwner(Item item, int maxDepth = 16)
+    {
+        var current = item;
+        for (int i = 0; i < maxDepth && current != null; i++)
+        {
+            if (!current.ContainedIn.IsValid) return null;
+            var holder = _world.FindObject(current.ContainedIn);
+            if (holder is Character c) return c;
+            if (holder is Item parent) { current = parent; continue; }
+            return null;
+        }
+        return null;
+    }
+
     private Item? FindBackpackKeyFor(Item locked)
     {
         if (_character?.Backpack == null) return null;
@@ -1282,7 +1312,8 @@ public sealed partial class GameClient
             case "kill":
                 if (obj is Character victim && victim != pet &&
                     !victim.IsDead && !victim.IsStatFlag(StatFlag.Invul) &&
-                    !victim.IsStatFlag(StatFlag.Ridden))
+                    !victim.IsStatFlag(StatFlag.Ridden) &&
+                    victim != _character && victim.Uid != pet.NpcMaster)
                 {
                     pet.SetTag("ATTACK_TARGET", victim.Uid.Value.ToString());
                     pet.FightTarget = victim.Uid;

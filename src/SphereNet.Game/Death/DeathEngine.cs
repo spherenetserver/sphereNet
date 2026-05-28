@@ -406,15 +406,26 @@ public sealed class DeathEngine
             ownerUid == looter.Uid.Value)
             return false;
 
-        // Party member with loot rights is not criminal
-        if (PartyManager != null)
+        if (corpse.TryGetTag("OWNER_UID", out string? ownerUidStr) &&
+            uint.TryParse(ownerUidStr, out uint ownerUid2))
         {
-            if (corpse.TryGetTag("OWNER_UID", out string? ownerUidStr) &&
-                uint.TryParse(ownerUidStr, out uint ownerUid2))
+            var ownerSerial = new Serial(ownerUid2);
+
+            // Party member with loot rights is not criminal
+            if (PartyManager != null)
             {
-                var ownerSerial = new Serial(ownerUid2);
                 var party = PartyManager.FindParty(looter.Uid);
                 if (party != null && party.IsMember(ownerSerial) && party.GetLootFlag(looter.Uid))
+                    return false;
+            }
+
+            // Guild member is not criminal (same guild = shared loot rights)
+            var guildMgr = Character.ResolveGuildManager?.Invoke(looter.Uid);
+            if (guildMgr != null)
+            {
+                var looterGuild = guildMgr.FindGuildFor(looter.Uid);
+                var ownerGuild = guildMgr.FindGuildFor(ownerSerial);
+                if (looterGuild != null && ownerGuild != null && looterGuild == ownerGuild)
                     return false;
             }
         }

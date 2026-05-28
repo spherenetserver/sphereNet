@@ -32,6 +32,14 @@ public sealed class StableEngine
         if (list.Count >= MaxStabledPets)
             return false;
 
+        var skillSnap = new Dictionary<int, ushort>();
+        foreach (SkillType st in Enum.GetValues<SkillType>())
+        {
+            if (st == SkillType.None || st >= SkillType.Qty) continue;
+            ushort sv = pet.GetSkill(st);
+            if (sv > 0) skillSnap[(int)st] = sv;
+        }
+
         list.Add(new StabledPet
         {
             Name = pet.Name,
@@ -49,6 +57,7 @@ public sealed class StableEngine
             NpcFood = pet.NpcFood,
             PetAIMode = pet.PetAIMode,
             FriendUids = GetFriendUids(pet),
+            Skills = skillSnap,
         });
         PersistOwnerStableList(owner, list);
 
@@ -94,6 +103,12 @@ public sealed class StableEngine
             var oldUuid = pet.Uuid;
             pet.Uuid = data.OriginalUuid;
             world.ReIndexUuid(pet, oldUuid);
+        }
+
+        foreach (var (skillId, skillVal) in data.Skills)
+        {
+            if (Enum.IsDefined((SkillType)skillId))
+                pet.SetSkill((SkillType)skillId, skillVal);
         }
 
         foreach (uint friendUid in data.FriendUids)
@@ -190,11 +205,13 @@ public sealed class StableEngine
         public ushort NpcFood { get; set; }
         public PetAIMode PetAIMode { get; set; }
         public List<uint> FriendUids { get; set; } = [];
+        public Dictionary<int, ushort> Skills { get; set; } = [];
 
         public string Serialize()
         {
             string name64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(Name ?? ""));
             string friends = string.Join(',', FriendUids);
+            string skills = string.Join(',', Skills.Select(kv => $"{kv.Key}:{kv.Value}"));
             return string.Join('|',
                 name64,
                 BodyId,
@@ -210,7 +227,8 @@ public sealed class StableEngine
                 ControllerUid,
                 NpcFood,
                 (int)PetAIMode,
-                friends);
+                friends,
+                skills);
         }
 
         public static bool TryDeserialize(string raw, out StabledPet pet)
@@ -243,6 +261,15 @@ public sealed class StableEngine
                     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                     .Select(uint.Parse)
                     .ToList();
+                if (parts.Length > 15 && !string.IsNullOrEmpty(parts[15]))
+                {
+                    foreach (string entry in parts[15].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    {
+                        var kv = entry.Split(':');
+                        if (kv.Length == 2 && int.TryParse(kv[0], out int sid) && ushort.TryParse(kv[1], out ushort sv))
+                            pet.Skills[sid] = sv;
+                    }
+                }
                 return true;
             }
             catch

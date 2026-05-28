@@ -846,6 +846,8 @@ public sealed partial class GameClient
         return output;
     }
 
+    private const int MaxExpandedLines = 10000;
+
     private void ExpandRange(
         IReadOnlyList<SphereNet.Scripting.Parsing.ScriptKey> input, int start, int end,
         List<SphereNet.Scripting.Parsing.ScriptKey> output,
@@ -855,6 +857,8 @@ public sealed partial class GameClient
         int i = start;
         while (i < end)
         {
+            if (output.Count >= MaxExpandedLines)
+                return;
             var k = input[i];
             string cmd = k.Key.Trim().ToUpperInvariant();
             string args = k.Arg;

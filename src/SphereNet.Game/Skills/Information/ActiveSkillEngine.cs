@@ -420,7 +420,9 @@ public static class ActiveSkillEngine
             sink.SysMessage(ServerMessages.Get(Msg.TamingReach));
             return false;
         }
-        if (target.NpcBrain == NpcBrainType.Human)
+        if (target.NpcBrain is NpcBrainType.Human or NpcBrainType.Guard or
+            NpcBrainType.Vendor or NpcBrainType.Banker or NpcBrainType.Stable or
+            NpcBrainType.Healer)
         {
             sink.SysMessage(ServerMessages.Get(Msg.TamingCant));
             return false;

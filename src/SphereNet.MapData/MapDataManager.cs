@@ -120,6 +120,15 @@ public sealed class MapDataManager : IDisposable
         return null;
     }
 
+    public (int Width, int Height) GetMapSize(int mapId)
+    {
+        if (_mapReaders.TryGetValue(mapId, out var reader))
+            return (reader.Width, reader.Height);
+        if (_uopMapReaders.TryGetValue(mapId, out var uopReader))
+            return (uopReader.Width, uopReader.Height);
+        return (7168, 4096);
+    }
+
     public MapCell GetTerrainTile(int mapId, int x, int y)
     {
         if (_mapReaders.TryGetValue(mapId, out var reader))

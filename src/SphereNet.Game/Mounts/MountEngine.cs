@@ -28,6 +28,8 @@ public sealed class MountEngine
     {
         if (rider.IsDead || rider.IsMounted || npc.IsDead)
             return false;
+        if (rider.FightTarget.IsValid || rider.IsStatFlag(StatFlag.Freeze))
+            return false;
 
         ushort mountItemId = GetMountItemId(npc.BodyId);
         if (mountItemId == 0)

@@ -66,7 +66,7 @@ public sealed class NpcAI
     private readonly GameWorld _world;
     private readonly Pathfinder _pathfinder;
     private readonly SphereConfig _config;
-    private readonly Random _rand = new();
+    private static Random _rand => Random.Shared;
 
     // Cached paths per NPC UID — avoids recalculating every tick
     private readonly Dictionary<uint, List<Point3D>> _pathCache = [];
@@ -1106,13 +1106,17 @@ public sealed class NpcAI
     /// </summary>
     private int GetHostilityLevel(Character npc, Character target)
     {
-        // If target is a pet, evaluate hostility toward its owner
-        if (target.OwnerSerial.IsValid)
+        // If target is a pet, evaluate hostility toward its owner (max 8 hops to prevent circular chains)
+        var eval = target;
+        for (int hops = 0; hops < 8 && eval.OwnerSerial.IsValid; hops++)
         {
-            var owner = target.ResolveOwnerCharacter();
-            if (owner != null && owner != npc)
-                return GetHostilityLevel(npc, owner);
+            var owner = eval.ResolveOwnerCharacter();
+            if (owner == null || owner == npc || owner == eval)
+                break;
+            eval = owner;
         }
+        if (eval != target)
+            target = eval;
 
         // Players and berserk always hostile
         if (target.IsPlayer || npc.NpcBrain == NpcBrainType.Berserk)

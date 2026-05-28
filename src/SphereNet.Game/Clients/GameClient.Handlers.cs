@@ -254,6 +254,8 @@ public sealed partial class GameClient
         var item = _world.FindItem(new Serial(serial));
         if (item == null) return;
 
+        bool canWrite = _character.PrivLevel >= PrivLevel.GM || IsBookWritableBy(item, _character);
+
         foreach (var (pageNum, lines) in pages)
         {
             if (lines.Length == 0)
@@ -270,10 +272,31 @@ public sealed partial class GameClient
                 continue;
             }
 
+            if (!canWrite)
+                continue;
+
             // Write request — store page content in tags
             string pageContent = string.Join("\n", lines);
             item.SetTag($"PAGE_{pageNum}", pageContent);
         }
+    }
+
+    private bool IsBookWritableBy(Item book, Character ch)
+    {
+        if (book.TryGetTag("BOOK_WRITABLE", out string? w) && w == "0")
+            return false;
+        if (!book.ContainedIn.IsValid)
+            return true;
+        var current = book;
+        for (int depth = 0; depth < 16 && current.ContainedIn.IsValid; depth++)
+        {
+            if (current.ContainedIn == ch.Uid)
+                return true;
+            var parent = _world.FindItem(current.ContainedIn);
+            if (parent == null) break;
+            current = parent;
+        }
+        return false;
     }
 
     /// <summary>Handle book header change (0x93).</summary>
@@ -287,7 +310,7 @@ public sealed partial class GameClient
         _logger.LogDebug("[book_header] item=0x{Item:X8} title='{Title}' author='{Author}'",
             serial, title, author);
 
-        if (writable)
+        if (writable && (_character.PrivLevel >= PrivLevel.GM || IsBookWritableBy(item, _character)))
         {
             item.SetTag("BOOK_TITLE", title);
             item.SetTag("BOOK_AUTHOR", author);

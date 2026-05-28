@@ -83,16 +83,16 @@ public enum ArmorHitRegion
 /// </summary>
 public static class CombatEngine
 {
-    private static readonly Random _rand = new();
+    private static Random _rand => Random.Shared;
     private static readonly (ArmorHitRegion Region, Layer Layer, int Weight)[] _armorRegions =
     [
-        (ArmorHitRegion.Head, Layer.Helm, 15),
+        (ArmorHitRegion.Head, Layer.Helm, 14),
         (ArmorHitRegion.Neck, Layer.Neck, 7),
         (ArmorHitRegion.Chest, Layer.Chest, 35),
         (ArmorHitRegion.Arms, Layer.Arms, 14),
         (ArmorHitRegion.Hands, Layer.Gloves, 7),
         (ArmorHitRegion.Legs, Layer.Legs, 22),
-        (ArmorHitRegion.Feet, Layer.Shoes, 3),
+        (ArmorHitRegion.Feet, Layer.Shoes, 1),
     ];
 
     public static bool DurabilityEnabled { get; set; }
@@ -436,13 +436,16 @@ public static class CombatEngine
         if (firePct == 0 && coldPct == 0 && poisonPct == 0 && energyPct == 0)
             return ApplyElementalResist(target, damage, GetWeaponDamageType(weapon));
 
+        int sum = physPct + firePct + coldPct + poisonPct + energyPct;
+        if (sum <= 0) sum = 100;
+
         int total = 0;
-        if (physPct > 0) total += ApplyElementalResist(target, damage * physPct / 100, DamageType.Physical);
-        if (firePct > 0) total += ApplyElementalResist(target, damage * firePct / 100, DamageType.Fire);
-        if (coldPct > 0) total += ApplyElementalResist(target, damage * coldPct / 100, DamageType.Cold);
-        if (poisonPct > 0) total += ApplyElementalResist(target, damage * poisonPct / 100, DamageType.Poison);
-        if (energyPct > 0) total += ApplyElementalResist(target, damage * energyPct / 100, DamageType.Energy);
-        return total;
+        if (physPct > 0) total += ApplyElementalResist(target, damage * physPct / sum, DamageType.Physical);
+        if (firePct > 0) total += ApplyElementalResist(target, damage * firePct / sum, DamageType.Fire);
+        if (coldPct > 0) total += ApplyElementalResist(target, damage * coldPct / sum, DamageType.Cold);
+        if (poisonPct > 0) total += ApplyElementalResist(target, damage * poisonPct / sum, DamageType.Poison);
+        if (energyPct > 0) total += ApplyElementalResist(target, damage * energyPct / sum, DamageType.Energy);
+        return Math.Max(1, total);
     }
 
     /// <summary>

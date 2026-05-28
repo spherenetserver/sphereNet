@@ -316,6 +316,16 @@ public sealed partial class GameClient
                 _character.PrivLevel = _account.PrivLevel;
             }
         }
+        if (_character.TryGetTag("JAIL_RELEASE", out string? jailTag))
+        {
+            var jailPos = new Point3D(1476, 1604, 20, 0);
+            if (_character.Position.X != jailPos.X || _character.Position.Y != jailPos.Y)
+            {
+                _world.MoveCharacter(_character, jailPos);
+                _character.SetStatFlag(StatFlag.Freeze);
+            }
+        }
+
         _character.NormalizePlayerSkillClass();
 
         // Ensure Max stats are derived from attributes if missing (old saves)

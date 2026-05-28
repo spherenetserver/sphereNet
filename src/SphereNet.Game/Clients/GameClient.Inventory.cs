@@ -42,6 +42,11 @@ public sealed partial class GameClient
         var obj = _world.FindObject(new Serial(uid));
         if (obj == null) return;
 
+        if (obj is Character clickTarget &&
+            clickTarget.IsStatFlag(StatFlag.Hidden | StatFlag.Invisible) &&
+            _character.PrivLevel < PrivLevel.Counsel)
+            return;
+
         // Fire @Click trigger
         if (_triggerDispatcher != null)
         {
@@ -97,6 +102,18 @@ public sealed partial class GameClient
         return false;
     }
 
+    private Item? GetTopContainer(Item item)
+    {
+        var current = item;
+        for (int i = 0; i < 16 && current.ContainedIn.IsValid; i++)
+        {
+            var parent = _world.FindItem(current.ContainedIn);
+            if (parent == null) break;
+            current = parent;
+        }
+        return current;
+    }
+
     /// <summary>Convert a notoriety byte (1-7) to the hue used for
     /// overhead labels and system speech. Values mirror Source-X
     /// CServerConfig::m_iColorNoto* defaults:
@@ -119,6 +136,11 @@ public sealed partial class GameClient
     public void HandleItemPickup(uint serial, ushort amount)
     {
         if (_character == null) return;
+        if (_character.IsDead)
+        {
+            SendPickupFailed(1);
+            return;
+        }
 
         var item = _world.FindItem(new Serial(serial));
         if (item == null)
@@ -146,11 +168,22 @@ public sealed partial class GameClient
             }
         }
 
-        int dist = _character.Position.GetDistanceTo(item.Position);
-        if (dist > 3 && !item.ContainedIn.IsValid && _character.PrivLevel < PrivLevel.GM)
+        if (_character.PrivLevel < PrivLevel.GM)
         {
-            SendPickupFailed(4); // too far away
-            return;
+            if (!item.ContainedIn.IsValid)
+            {
+                int dist = _character.Position.GetDistanceTo(item.Position);
+                if (dist > 3) { SendPickupFailed(4); return; }
+            }
+            else
+            {
+                var topCont = GetTopContainer(item);
+                if (topCont != null && !topCont.ContainedIn.IsValid)
+                {
+                    int cDist = _character.Position.GetDistanceTo(topCont.Position);
+                    if (cDist > 3) { SendPickupFailed(4); return; }
+                }
+            }
         }
 
         // Stack splitting: if picking up less than the full stack, create a split item
@@ -272,6 +305,27 @@ public sealed partial class GameClient
             }
             if (container != null)
             {
+                // Distance check: player must be near the container (or its parent on world).
+                // Bank boxes (equipped on the player) are always reachable; other containers
+                // must be within 3 tiles. Without this a crafted packet can move items into
+                // distant containers the client happened to open earlier.
+                if (_character.PrivLevel < PrivLevel.GM &&
+                    container.EquipLayer != Layer.BankBox &&
+                    container.EquipLayer != Layer.Pack)
+                {
+                    var topContainer = GetTopContainer(container);
+                    if (topContainer != null && !topContainer.ContainedIn.IsValid)
+                    {
+                        int cDist = _character.Position.GetDistanceTo(topContainer.Position);
+                        if (cDist > 3)
+                        {
+                            PlaceItemInPack(_character, item);
+                            _netState.Send(new PacketDropReject());
+                            return;
+                        }
+                    }
+                }
+
                 // Capacity enforcement — bank and normal containers have separate limits.
                 // Staff bypass so GMs can overstuff chests during testing.
                 // On rejection we bounce the item into the dropper's backpack so it
@@ -360,6 +414,15 @@ public sealed partial class GameClient
             }
             else if (charTarget != null)
             {
+                if (_character.PrivLevel < PrivLevel.GM &&
+                    (_character.MapIndex != charTarget.MapIndex ||
+                     _character.Position.GetDistanceTo(charTarget.Position) > 3))
+                {
+                    PlaceItemInPack(_character, item);
+                    _netState.Send(new PacketDropReject());
+                    return;
+                }
+
                 // Fire @DropOn_Char
                 if (_triggerDispatcher != null)
                 {
@@ -386,10 +449,20 @@ public sealed partial class GameClient
             }
         }
 
-        // Source-X parity: @DropOn_Ground RETURN 1 cancels the drop;
-        // Distance check for ground drops
+        // Distance check + map bounds check for ground drops
         if (_character.PrivLevel < PrivLevel.GM)
         {
+            var md = _world.MapData;
+            if (md != null)
+            {
+                var (mapW, mapH) = md.GetMapSize(_character.MapIndex);
+                if (x < 0 || y < 0 || x >= mapW || y >= mapH)
+                {
+                    PlaceItemInPack(_character, item);
+                    _netState.Send(new PacketDropReject());
+                    return;
+                }
+            }
             int dropDist = Math.Max(Math.Abs(_character.X - x), Math.Abs(_character.Y - y));
             if (dropDist > 3)
             {
@@ -419,11 +492,16 @@ public sealed partial class GameClient
     public void HandleItemEquip(uint serial, byte layer, uint charSerial)
     {
         if (_character == null) return;
+        if (_character.IsDead) return;
 
         var item = _world.FindItem(new Serial(serial));
         if (item == null) return;
 
         if (layer == 0 || layer >= (byte)Layer.Qty) return;
+
+        if (_character.PrivLevel < PrivLevel.GM &&
+            item.ContainedIn != _character.Uid)
+            return;
 
         var target = _world.FindChar(new Serial(charSerial));
         if (target == null) target = _character;

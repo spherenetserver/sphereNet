@@ -977,10 +977,15 @@ public sealed class ScriptInterpreter
         var oldFunctionResolver = _expr.FunctionResolver;
         _expr.VariableResolver = varName => ResolveVarForTarget(varName, target, source, args, scope);
         _expr.FunctionResolver = exprText => TryResolveFunctionExpression(exprText, target, source, args, scope);
-        long result = _expr.Evaluate(expr.AsSpan());
-        _expr.VariableResolver = oldResolver;
-        _expr.FunctionResolver = oldFunctionResolver;
-        return result;
+        try
+        {
+            return _expr.Evaluate(expr.AsSpan());
+        }
+        finally
+        {
+            _expr.VariableResolver = oldResolver;
+            _expr.FunctionResolver = oldFunctionResolver;
+        }
     }
 
     private string? TryResolveFunctionExpression(string expr, IScriptObj target, ITextConsole? source, ITriggerArgs? args, ScriptScope? scope)
@@ -1377,20 +1382,21 @@ public sealed class ScriptInterpreter
     private static int FindBlockEnd(IReadOnlyList<ScriptKey> lines, int start, string endKeyword)
     {
         int depth = 1;
-        string startKeyword = endKeyword switch
-        {
-            "ENDFOR" => "FOR",
-            "ENDWHILE" => "WHILE",
-            "END" => "BEGIN",
-            "ENDDO" => "DORAND",
-            _ => ""
-        };
 
         for (int i = start; i < lines.Count; i++)
         {
             string cmd = lines[i].Key.ToUpperInvariant();
-            if (!string.IsNullOrEmpty(startKeyword) &&
-                (cmd == startKeyword || cmd == "DORAND" || cmd == "DOSWITCH"))
+
+            bool isOpener = endKeyword switch
+            {
+                "ENDFOR" => cmd == "FOR" || IsForVariant(cmd),
+                "ENDWHILE" => cmd == "WHILE",
+                "END" => cmd == "BEGIN",
+                "ENDDO" => cmd is "DORAND" or "DOSWITCH",
+                _ => false
+            };
+
+            if (isOpener)
                 depth++;
             if (cmd == endKeyword)
             {
@@ -1403,21 +1409,92 @@ public sealed class ScriptInterpreter
 
     private static int SkipBlock(IReadOnlyList<ScriptKey> lines, int idx, string cmd)
     {
-        if (cmd == "IF")
+        switch (cmd)
         {
-            int depth = 1;
-            idx++;
-            while (idx < lines.Count && depth > 0)
+            case "IF":
             {
-                string c = lines[idx].Key.ToUpperInvariant();
-                if (c == "IF") depth++;
-                if (c == "ENDIF") depth--;
-                if (depth > 0) idx++;
+                int depth = 1;
+                idx++;
+                while (idx < lines.Count && depth > 0)
+                {
+                    string c = lines[idx].Key.ToUpperInvariant();
+                    if (c == "IF") depth++;
+                    if (c == "ENDIF") depth--;
+                    if (depth > 0) idx++;
+                }
+                return idx + 1;
             }
-            return idx + 1;
+            case "FOR":
+            case "FORPLAYERS":
+            case "FORCHARS":
+            case "FORITEMS":
+            case "FORCLIENTS":
+            case "FOROBJS":
+            case "FORINSTANCES":
+            case "FORCONT":
+            case "FORCONTID":
+            case "FORCONTTYPE":
+            {
+                int depth = 1;
+                idx++;
+                while (idx < lines.Count && depth > 0)
+                {
+                    string c = lines[idx].Key.ToUpperInvariant();
+                    if (c == "FOR" || c.StartsWith("FOR", StringComparison.Ordinal) && IsForVariant(c))
+                        depth++;
+                    if (c == "ENDFOR") depth--;
+                    if (depth > 0) idx++;
+                }
+                return idx + 1;
+            }
+            case "WHILE":
+            {
+                int depth = 1;
+                idx++;
+                while (idx < lines.Count && depth > 0)
+                {
+                    string c = lines[idx].Key.ToUpperInvariant();
+                    if (c == "WHILE") depth++;
+                    if (c == "ENDWHILE") depth--;
+                    if (depth > 0) idx++;
+                }
+                return idx + 1;
+            }
+            case "DORAND":
+            case "DOSWITCH":
+            {
+                int depth = 1;
+                idx++;
+                while (idx < lines.Count && depth > 0)
+                {
+                    string c = lines[idx].Key.ToUpperInvariant();
+                    if (c == "DORAND" || c == "DOSWITCH") depth++;
+                    if (c == "ENDDO") depth--;
+                    if (depth > 0) idx++;
+                }
+                return idx + 1;
+            }
+            case "BEGIN":
+            {
+                int depth = 1;
+                idx++;
+                while (idx < lines.Count && depth > 0)
+                {
+                    string c = lines[idx].Key.ToUpperInvariant();
+                    if (c == "BEGIN") depth++;
+                    if (c == "END") depth--;
+                    if (depth > 0) idx++;
+                }
+                return idx + 1;
+            }
+            default:
+                return idx + 1;
         }
-        return idx + 1;
     }
+
+    private static bool IsForVariant(string cmd) =>
+        cmd is "FORPLAYERS" or "FORCHARS" or "FORITEMS" or "FORCLIENTS"
+            or "FOROBJS" or "FORINSTANCES" or "FORCONT" or "FORCONTID" or "FORCONTTYPE";
 
     private static IReadOnlyList<ScriptKey> GetSubList(IReadOnlyList<ScriptKey> lines, int start, int end)
     {
@@ -1432,7 +1509,7 @@ public sealed class ScriptInterpreter
     private sealed class NullConsole : ITextConsole
     {
         public static readonly NullConsole Instance = new();
-        public PrivLevel GetPrivLevel() => PrivLevel.Guest;
+        public PrivLevel GetPrivLevel() => PrivLevel.Owner;
         public void SysMessage(string text) { }
         public string GetName() => "SYSTEM";
     }

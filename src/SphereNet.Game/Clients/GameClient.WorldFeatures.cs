@@ -1525,8 +1525,16 @@ public sealed partial class GameClient
                 SysMessage(ServerMessages.Get("vendor_what_sell"));
                 break;
             case 5: // Open Bankbox
-                SysMessage(ServerMessages.Get("vendor_bank_unavailable"));
+            {
+                var banker = _world.FindChar(new Serial(targetSerial));
+                if (banker != null && banker.NpcBrain == NpcBrainType.Banker &&
+                    _character.Position.GetDistanceTo(banker.Position) <= 3 &&
+                    _character.MapIndex == banker.MapIndex)
+                {
+                    OpenBankBox();
+                }
                 break;
+            }
             case 6: // Mount Me
                 HandleDoubleClick(targetSerial);
                 break;

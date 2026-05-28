@@ -379,16 +379,15 @@ public static class VendorEngine
             backpack.AddItem(newItem);
         }
 
-        // Mark restock time
-        vendor.SetTag("RESTOCK_TIME", Environment.TickCount64.ToString());
+        vendor.SetTag("RESTOCK_TIME", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString());
     }
 
     /// <summary>Check if vendor needs restocking (based on RESTOCK_TIME tag).</summary>
     public static bool NeedsRestock(Character vendor, int intervalMs = DefaultRestockInterval)
     {
         if (!vendor.TryGetTag("RESTOCK_TIME", out string? timeStr) || !long.TryParse(timeStr, out long lastRestock))
-            return true; // never restocked
-        return Environment.TickCount64 - lastRestock >= intervalMs;
+            return true;
+        return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - lastRestock >= intervalMs;
     }
 }
 

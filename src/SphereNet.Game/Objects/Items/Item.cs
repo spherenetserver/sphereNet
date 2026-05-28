@@ -373,8 +373,12 @@ public class Item : ObjBase
     public IReadOnlyList<Item> Contents => _contents;
     public int ContentCount => _contents.Count;
 
+    public const int MaxContainerItems = 500;
+
     public void AddItem(Item item)
     {
+        if (_contents.Count >= MaxContainerItems)
+            return;
         _contents.Add(item);
         item.ContainedIn = Uid;
         if (item.X == 0 && item.Y == 0)

@@ -12,7 +12,13 @@
       "WebFetch(domain:web.archive.org)",
       "WebFetch(domain:prerelease.sphere.torfo.org)",
       "WebFetch(domain:docs.polserver.com)",
-      "WebFetch(domain:docs.fivem.net)"
+      "WebFetch(domain:docs.fivem.net)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:deepwiki.com)",
+      "WebFetch(domain:news.ycombinator.com)",
+      "WebFetch(domain:modernuo.com)",
+      "WebFetch(domain:www.servuo.dev)",
+      "WebFetch(domain:forum.uo.com)"
     ]
   },
   "model": "claude-opus-4-6"

@@ -154,7 +154,26 @@ public sealed partial class GameClient
         int strokeCount = _character?.IncrementSkillStrokeCount() ?? 0;
         _triggerDispatcher?.FireCharTrigger(_character!, CharTrigger.SkillStroke,
             new TriggerArgs { CharSrc = _character, N1 = skillId, N2 = strokeCount });
+
+        if (_character != null)
+        {
+            ushort animId = GetSkillStrokeAnimation((SkillType)skillId);
+            if (animId != 0)
+                BroadcastNearby?.Invoke(_character.Position, 18,
+                    new PacketAnimation(_character.Uid.Value, animId), 0);
+        }
     }
+
+    private static ushort GetSkillStrokeAnimation(SkillType skill) => skill switch
+    {
+        SkillType.Mining => (ushort)AnimationType.Attack1HBash,
+        SkillType.Lumberjacking => (ushort)AnimationType.Attack1HBash,
+        SkillType.Fishing => (ushort)AnimationType.Attack2HBash,
+        SkillType.Blacksmithing => (ushort)AnimationType.Attack1HBash,
+        SkillType.Hiding => 0,
+        SkillType.Meditation => 0,
+        _ => 0,
+    };
 
     private void FireActiveSkillResult(int skillId, bool ok)
     {

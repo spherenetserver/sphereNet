@@ -534,7 +534,25 @@ public sealed partial class GameClient
             return;
         }
 
-        _world.PlaceItemWithDecay(item, new Point3D(x, y, z, _character.MapIndex));
+        var groundPos = new Point3D(x, y, z, _character.MapIndex);
+        var sector = _world.GetSector(groundPos);
+        if (sector != null)
+        {
+            foreach (var existing in sector.Items)
+            {
+                if (existing.X == x && existing.Y == y && existing.MapIndex == _character.MapIndex &&
+                    existing.CanStackWith(item) && (existing.Amount + item.Amount) <= ushort.MaxValue)
+                {
+                    existing.Amount += item.Amount;
+                    _world.RemoveItem(item);
+                    item.Delete();
+                    _netState.Send(new PacketDropAck());
+                    return;
+                }
+            }
+        }
+
+        _world.PlaceItemWithDecay(item, groundPos);
         _netState.Send(new PacketDropAck());
     }
 
@@ -570,6 +588,26 @@ public sealed partial class GameClient
 
         // Spell interruption on equip change
         _spellEngine?.TryInterruptFromEquip(target);
+
+        // Two-handed weapon ↔ shield mutual exclusion
+        if ((Layer)layer == Layer.TwoHanded && item.IsTwoHanded)
+        {
+            var oldShield = target.GetEquippedItem(Layer.OneHanded);
+            if (oldShield != null && oldShield.ItemType == ItemType.Shield)
+            {
+                target.Unequip(Layer.OneHanded);
+                PlaceItemInPack(target, oldShield);
+            }
+        }
+        else if ((Layer)layer == Layer.OneHanded && item.ItemType == ItemType.Shield)
+        {
+            var oldWeapon = target.GetEquippedItem(Layer.TwoHanded);
+            if (oldWeapon != null && oldWeapon.IsTwoHanded)
+            {
+                target.Unequip(Layer.TwoHanded);
+                PlaceItemInPack(target, oldWeapon);
+            }
+        }
 
         target.Equip(item, (Layer)layer);
         if ((Layer)layer is Layer.OneHanded or Layer.TwoHanded && IsCombatEquipItem(item))

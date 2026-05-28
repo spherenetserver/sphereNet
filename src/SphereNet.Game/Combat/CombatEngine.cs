@@ -104,6 +104,7 @@ public static class CombatEngine
 
     public static Action<Item>? OnItemBroken;
     public static Func<Item, int, bool>? OnItemDamaged;
+    public static Action<Character, Character>? OnHitParry;
 
     /// <summary>
     /// Calculate hit chance. Maps to CServerConfig::Calc_CombatChanceToHit.
@@ -285,14 +286,17 @@ public static class CombatEngine
         var (dmgMin, dmgMax) = CalcWeaponDamage(attacker, weapon, damageEra);
         int damage = _rand.Next(dmgMin, dmgMax + 1);
 
-        // Parry check — only works with actual shields, not two-handed weapons
+        // Parry check — shields and wrestling parry (fist blocking)
         int parrySkill = target.GetSkill(SkillType.Parrying);
         var shield = target.GetEquippedItem(Layer.TwoHanded);
         if (shield != null && shield.ItemType == ItemType.Shield && parrySkill > 0)
         {
             int parryChance = parrySkill / 30;
             if (_rand.Next(100) < parryChance)
-                return 0; // parried
+            {
+                OnHitParry?.Invoke(target, attacker);
+                return 0;
+            }
         }
 
         // Armor reduction
@@ -315,6 +319,31 @@ public static class CombatEngine
         }
 
         damage = Math.Max(0, damage);
+
+        // Weapon poison on-hit: transfer poison from weapon to target.
+        // Source-X: HIT_POISON attribute on weapon. SphereNet: POISON_SKILL tag
+        // set by Poisoning skill. Uses 1 charge per hit; cleared at 0.
+        if (damage > 0 && weapon != null && !flags.HasFlag(CombatFlags.NoPoisonHit))
+        {
+            if (weapon.TryGetTag("POISON_SKILL", out string? poisonStr) &&
+                int.TryParse(poisonStr, out int poisonLevel) && poisonLevel > 0)
+            {
+                byte targetLevel = (byte)Math.Clamp(poisonLevel / 200, 1, 5);
+                target.ApplyPoison(targetLevel);
+
+                int charges = 1;
+                if (weapon.TryGetTag("POISON_CHARGES", out string? chargesStr))
+                    int.TryParse(chargesStr, out charges);
+                charges--;
+                if (charges <= 0)
+                {
+                    weapon.RemoveTag("POISON_SKILL");
+                    weapon.RemoveTag("POISON_CHARGES");
+                }
+                else
+                    weapon.SetTag("POISON_CHARGES", charges.ToString());
+            }
+        }
 
         // Apply damage — do NOT call Kill() here; the caller handles death
         // via DeathEngine.ProcessDeath which creates the corpse, drops loot,

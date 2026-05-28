@@ -1525,6 +1525,12 @@ public static partial class Program
                 item.Delete();
             };
 
+            CombatEngine.OnHitParry = (defender, attacker) =>
+            {
+                _triggerDispatcher?.FireCharTrigger(defender, CharTrigger.HitParry,
+                    new TriggerArgs { CharSrc = attacker, O1 = attacker });
+            };
+
             // Housing — load multi definitions from multi.mul
             var multiRegistry = new SphereNet.Game.Housing.MultiRegistry();
             if (_mapData != null)

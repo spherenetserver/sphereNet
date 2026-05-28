@@ -126,6 +126,13 @@ public static class ActiveSkillEngine
             return false;
         }
 
+        // Source-X parity: meditation blocked by metal armor (chest/legs/gloves)
+        if (IsWearingMeditationBlockingArmor(ch))
+        {
+            sink.SysMessage("You cannot focus with all that armor on.");
+            return false;
+        }
+
         sink.SysMessage(ServerMessages.Get(Msg.MeditationTry));
 
         bool success = SkillEngine.UseQuick(ch, SkillType.Meditation, sink.Random.Next(100));
@@ -655,6 +662,18 @@ public static class ActiveSkillEngine
     private static bool IsBladeOrFood(ItemType t) => t is
         ItemType.WeaponMaceSharp or ItemType.WeaponSword or ItemType.WeaponFence or
         ItemType.WeaponAxe or ItemType.Food or ItemType.MeatRaw or ItemType.Fruit;
+
+    private static bool IsWearingMeditationBlockingArmor(Character ch)
+    {
+        Layer[] armorLayers = [Layer.Chest, Layer.Legs, Layer.Gloves, Layer.Helm];
+        foreach (var layer in armorLayers)
+        {
+            var armor = ch.GetEquippedItem(layer);
+            if (armor != null && armor.ItemType is ItemType.Armor or ItemType.ArmorChain or ItemType.ArmorRing)
+                return true;
+        }
+        return false;
+    }
 
     private static Character? ResolveItemOwner(Item it, World.GameWorld world, int maxDepth = 16)
     {

@@ -74,6 +74,10 @@ public sealed class MovementEngine
         if (ch.IsStatFlag(StatFlag.Freeze) || ch.IsStatFlag(StatFlag.Stone))
             return false;
 
+        // Overweight running prevention — can't run when carrying more than max weight
+        if (running && ch.IsPlayer && ch.GetTotalWeight() > (ch.Str * 7 / 2) + 40 + ch.ModMaxWeight)
+            running = false;
+
         var current = new Point3D(ch.X, ch.Y, ch.Z, ch.MapIndex);
 
         Point3D target;
@@ -128,6 +132,10 @@ public sealed class MovementEngine
 
         // Move
         _world.MoveCharacter(ch, target);
+
+        // Run stamina drain — 1 stam per running step (Source-X parity)
+        if (running && ch.IsPlayer && ch.Stam > 0)
+            ch.Stam = (short)Math.Max(0, ch.Stam - 1);
 
         TickStealthStep(ch);
 
@@ -393,13 +401,20 @@ public sealed class MovementEngine
     /// Get expected delay between movement steps.
     /// Maps to speed check in Event_Walk / Event_CheckWalkBuffer.
     /// </summary>
-    public static int GetMoveDelay(bool mounted, bool running) => (mounted, running) switch
+    public static int GetMoveDelay(bool mounted, bool running, bool warMode = false)
     {
-        (true, true) => RunDelayMount,
-        (true, false) => WalkDelayMount,
-        (false, true) => RunDelayFoot,
-        (false, false) => WalkDelayFoot,
-    };
+        int delay = (mounted, running) switch
+        {
+            (true, true) => RunDelayMount,
+            (true, false) => WalkDelayMount,
+            (false, true) => RunDelayFoot,
+            (false, false) => WalkDelayFoot,
+        };
+        // War mode speed penalty — 20% slower when in combat stance (Source-X parity)
+        if (warMode && !mounted)
+            delay = delay * 120 / 100;
+        return delay;
+    }
 
     private static void GetDirectionDelta(Direction dir, out short dx, out short dy)
     {

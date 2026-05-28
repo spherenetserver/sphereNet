@@ -4,6 +4,53 @@
 All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-28] - Source-X gameplay parity taramasi ve eksik davranis tamamlama Wave 16
+              (Source-X gameplay parity scan and missing behavior completion Wave 16)
+----------------------------------------
+
+COMBAT / SAVAS:
+  - Silah zehir transferi (on-hit poison): Zehirlenmis silahla vurunca hedef
+    zehirlenir, POISON_SKILL/POISON_CHARGES tag sistemi ile sarj tuketimi.
+    (Weapon poison on-hit transfer: poisoned weapon applies poison to target on
+    hit, charge-based consumption via POISON_SKILL/POISON_CHARGES tags.)
+  - @HitParry trigger: Basarili parry sonrasi CharTrigger.HitParry ateslenir,
+    script'ler parry olayini yakalayabilir.
+    (Parry trigger: fires CharTrigger.HitParry on successful parry, allowing
+    scripts to hook into parry events.)
+
+HAREKET / MOVEMENT:
+  - Kosu stamina tuketimi: Her kosu adiminda 1 stamina dusmesi.
+    (Run stamina drain: 1 stamina per running step.)
+  - Asiri agirlik kosu engeli: MaxWeight uzerinde tasirken kosamaz.
+    (Overweight running prevention: cannot run when carrying over MaxWeight.)
+  - Savas modu hiz cezasi: Savas modunda %20 yavas hareket (bineksiz).
+    (War mode speed penalty: 20% slower movement when in war mode, unmounted.)
+
+ENVANTER / INVENTORY:
+  - Iki elli silah ↔ kalkan otomatik cikarma: 2H silah takildiginda kalkan,
+    kalkan takildiginda 2H silah otomatik cikartilir.
+    (Two-handed weapon ↔ shield auto-unequip: equipping a 2H weapon removes
+    shield, equipping a shield removes 2H weapon.)
+  - Yere birakilan esyalar yiginlama: Stackable esyalar yere birakildiginda
+    ayni pozisyondaki ayni tip esya ile birlesir.
+    (Ground drop stack merging: stackable items merge with same-type items
+    at the same ground position.)
+
+BECERILER / SKILLS:
+  - Stroke animasyon yayini: Gathering skill'ler (Mining, Fishing, Lumberjacking,
+    Blacksmithing) her @SkillStroke tick'inde animasyon paketi broadcast eder.
+    (Stroke animation broadcast: gathering skills broadcast animation packet
+    on each @SkillStroke tick for visual feedback.)
+  - Meditasyon zirh kisitlamasi: Metal zirh (Armor/ArmorChain/ArmorRing) giyen
+    karakter medite yapamaz.
+    (Meditation armor restriction: characters wearing metal armor cannot meditate.)
+
+ESYA KULLANIMI / ITEM USE:
+  - Tuzakli sandik hasar: TRAP_DAMAGE tag'li sandik acildiginda hasar verir
+    ve tag kaldirilir.
+    (Trapped container damage: opening a container with TRAP_DAMAGE tag deals
+    damage and removes the trap.)
+
 [2026-05-28] - Worldgen/spawn script kopruleri ve engine tamamlama Wave 15
               (Worldgen/spawn script bridge and engine completeness Wave 15)
 ----------------------------------------

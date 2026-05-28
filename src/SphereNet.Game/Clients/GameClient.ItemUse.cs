@@ -284,6 +284,14 @@ public sealed partial class GameClient
                             break;
                     }
                 }
+                // Trapped container: fire trap on open, then disarm
+                if (item.TryGetTag("TRAP_DAMAGE", out string? trapDmgStr) &&
+                    int.TryParse(trapDmgStr, out int trapDmg) && trapDmg > 0)
+                {
+                    _character.Hits -= (short)Math.Min(trapDmg, _character.Hits);
+                    SysMessage("You set off a trap!");
+                    item.RemoveTag("TRAP_DAMAGE");
+                }
                 SendOpenContainer(item);
                 break;
             }

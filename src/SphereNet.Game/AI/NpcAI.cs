@@ -274,7 +274,8 @@ public sealed class NpcAI
             case NpcDecisionType.Move:
                 npc.NextNpcActionTime = decision.NextActionTick;
                 npc.Direction = decision.Direction;
-                _world.MoveCharacter(npc, decision.TargetPos);
+                if (CanNpcEnterTile(npc, decision.TargetPos))
+                    _world.MoveCharacter(npc, decision.TargetPos);
                 break;
             case NpcDecisionType.Legacy:
                 // Let OnTickAction own the cadence update; setting NextNpcActionTime

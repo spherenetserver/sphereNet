@@ -555,7 +555,15 @@ public sealed class HousingEngine
         // Remove collapsed houses
         foreach (var house in collapsed)
         {
-            house.Redeed(_world); // destroys components
+            var deed = house.Redeed(_world);
+            if (deed != null && house.Owner.IsValid)
+            {
+                var owner = _world.FindChar(house.Owner);
+                if (owner?.Backpack != null)
+                    owner.Backpack.AddItem(deed);
+                else
+                    _world.PlaceItem(deed, house.MultiItem.Position);
+            }
             _houses.Remove(house.MultiItem.Uid);
         }
 

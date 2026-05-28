@@ -151,6 +151,9 @@ public sealed partial class GameClient
         if (_character == null) return;
         var vendor = _world.FindChar(new Serial(vendorSerial));
         if (vendor == null || vendor.NpcBrain != NpcBrainType.Vendor) return;
+        if (_character.MapIndex != vendor.MapIndex ||
+            _character.Position.GetDistanceTo(vendor.Position) > 3)
+            return;
 
         if (flag == 0 || buyItems.Count == 0)
         {
@@ -203,6 +206,9 @@ public sealed partial class GameClient
         if (_character == null) return;
         var vendor = _world.FindChar(new Serial(vendorSerial));
         if (vendor == null || vendor.NpcBrain != NpcBrainType.Vendor) return;
+        if (_character.MapIndex != vendor.MapIndex ||
+            _character.Position.GetDistanceTo(vendor.Position) > 3)
+            return;
 
         if (sellItems.Count == 0)
         {
@@ -232,10 +238,9 @@ public sealed partial class GameClient
             });
         }
 
-        int result;
-        if (_triggerDispatcher != null)
+        int result = VendorEngine.ProcessSell(_character, vendor, entries);
+        if (_triggerDispatcher != null && result > 0)
             FireVendorItemTriggers(vendor, entries, ItemTrigger.Sell);
-        result = VendorEngine.ProcessSell(_character, vendor, entries);
         NpcSpeech(vendor, ServerMessages.GetFormatted("npc_vendor_sell_ty", result, result == 1 ? "" : "s"));
         RefreshBackpackContents();
         SendCharacterStatus(_character);
@@ -285,6 +290,7 @@ public sealed partial class GameClient
 
         var trade = _tradeManager.FindByContainer(containerSerial);
         if (trade == null) return;
+        if (!trade.IsParticipant(_character)) return;
 
         switch (action)
         {
@@ -1599,8 +1605,53 @@ public sealed partial class GameClient
                 HandleDoubleClick(targetSerial);
                 break;
             case 7: // Dismount
-                DismountCharacter();
+            {
+                if (_character.IsMounted && _mountEngine != null)
+                {
+                    uint oldMountItemUid = _character.GetEquippedItem(Core.Enums.Layer.Horse)?.Uid.Value ?? 0;
+                    BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                        new PacketSound(0x0140, _character.X, _character.Y, _character.Z), 0);
+                    var npc = DismountCharacter();
+
+                    var mapData = _world.MapData;
+                    if (mapData != null)
+                    {
+                        sbyte correctedZ = mapData.GetEffectiveZ(_character.MapIndex,
+                            _character.X, _character.Y, _character.Z);
+                        if (correctedZ != _character.Z)
+                            _character.Position = new Point3D(_character.X, _character.Y, correctedZ, _character.MapIndex);
+                    }
+
+                    if (oldMountItemUid != 0)
+                        BroadcastDeleteObject(oldMountItemUid);
+
+                    ResetWalkValidator();
+                    _netState.WalkSequence = 0;
+                    _netState.Send(new PacketMoveReject(0,
+                        _character.X, _character.Y, _character.Z,
+                        (byte)((byte)_character.Direction & 0x07)));
+
+                    byte flags = BuildMobileFlags(_character);
+                    byte dir77 = (byte)((byte)_character.Direction & 0x07);
+                    byte noto = GetNotoriety(_character);
+                    var movePacket = new PacketMobileMoving(
+                        _character.Uid.Value, _character.BodyId,
+                        _character.X, _character.Y, _character.Z, dir77,
+                        _character.Hue, flags, noto);
+                    _netState.Send(movePacket);
+                    if (BroadcastMoveNearby != null)
+                        BroadcastMoveNearby.Invoke(_character.Position, UpdateRange, movePacket, _character.Uid.Value, _character);
+                    else
+                        BroadcastNearby?.Invoke(_character.Position, UpdateRange, movePacket, _character.Uid.Value);
+
+                    if (npc != null)
+                    {
+                        npc.ClearStatFlag(Core.Enums.StatFlag.Ridden);
+                        BroadcastCharacterAppear?.Invoke(npc);
+                    }
+                }
                 break;
+            }
         }
     }
 

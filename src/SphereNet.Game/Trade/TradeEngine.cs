@@ -170,9 +170,12 @@ public static class VendorEngine
 
         long totalValue = 0;
         var validated = new List<(TradeEntry Entry, Item Item, int ServerPrice)>();
+        var seenSerials = new HashSet<uint>();
         foreach (var entry in items)
         {
             if (entry.Amount <= 0 || entry.Amount > ushort.MaxValue)
+                return 0;
+            if (!seenSerials.Add(entry.ItemUid.Value))
                 return 0;
 
             var found = FindItemInBackpack(player, entry.ItemUid);

@@ -787,9 +787,18 @@ public sealed partial class GameClient
             }
         }
 
+        if (CombatHelper.IsRangedWeapon(weapon))
+        {
+            var ammoType = weapon!.ItemType == ItemType.WeaponBow ? ItemType.WeaponArrow : ItemType.WeaponBolt;
+            if (!HasAmmoInBackpack(ammoType))
+            {
+                SysMessage(ServerMessages.Get(Msg.CombatArchNoammo));
+                return;
+            }
+        }
+
         _character.BeginSwingRecoil(now, swingDelayMs);
 
-        // Each swing burns a small bit of stamina (Source-X Fight_Hit -> UpdateStatVal(STAT_DEX, -1)).
         if (_character.Stam > 0)
             _character.Stam = (short)(_character.Stam - 1);
 
@@ -802,11 +811,6 @@ public sealed partial class GameClient
         if (CombatHelper.IsRangedWeapon(weapon))
         {
             var ammoType = weapon!.ItemType == ItemType.WeaponBow ? ItemType.WeaponArrow : ItemType.WeaponBolt;
-            if (!HasAmmoInBackpack(ammoType))
-            {
-                SysMessage(ServerMessages.Get(Msg.CombatArchNoammo));
-                return;
-            }
             ConsumeAmmoFromBackpack(ammoType);
             EmitRangedProjectile(target, ammoType);
         }

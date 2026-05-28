@@ -135,7 +135,7 @@ public sealed partial class GameClient : ITextConsole
     private readonly HashSet<uint> _knownDoorOverrides = [];
     private readonly HashSet<uint> _activeGumps = [];
     private readonly Dictionary<uint, Action<uint, uint[], (ushort, string)[]>> _gumpCallbacks = [];
-    private readonly Dictionary<uint, (short X, short Y, sbyte Z, byte Dir, ushort Body, ushort Hue)> _lastKnownPos = [];
+    private readonly Dictionary<uint, (short X, short Y, sbyte Z, byte Dir, ushort Body, ushort Hue, byte Vis)> _lastKnownPos = [];
     private readonly Dictionary<uint, (short X, short Y, sbyte Z, ushort DispId, ushort Hue, ushort Amount)> _lastKnownItemState = [];
     private readonly Dictionary<uint, uint> _tooltipHashCache = []; // serial → last sent hash
     private string? _pendingTargetFunction;

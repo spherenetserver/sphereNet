@@ -4,6 +4,81 @@
 All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-28] - Guvenlik, exploit ve oyun mantigi duzeltmeleri Wave 12
+              (Security, exploit and game logic fixes Wave 12)
+----------------------------------------
+
+KRITIK GUVENLIK / CRITICAL SECURITY:
+  - Vendor buy/sell uzaktan erisim: HandleVendorBuy/HandleVendorSell mesafe
+    kontrolu yapmiyordu. Crafted paket ile haritanin her yerinden alisveris
+    mumkundu. 3 tile + map kontrolu eklendi.
+    (HandleVendorBuy/HandleVendorSell had no range check. Crafted packets
+    allowed cross-map trading. 3 tile + map check added.)
+  - Vendor sell gold dup: ProcessSell ayni ItemSerial'i listede iki kez
+    kabul ediyordu, cift gold odemesi yapiliyordu. HashSet dedup eklendi.
+    (ProcessSell accepted duplicate ItemSerials in the list, paying gold
+    twice. HashSet deduplication added.)
+  - Vendor sell trigger sirasi: @Sell trigger ProcessSell'den once
+    calisiyordu, script item'i tasiyabilir/silebilirdi. Trigger artik
+    ProcessSell sonrasina tasinidi.
+    (Sell triggers fired before ProcessSell — script could move/delete the
+    item. Triggers now fire after ProcessSell.)
+  - Secure trade participant: HandleSecureTrade (0x6F) katilimci kontrolu
+    yapmiyordu. Container serial bilen biri baskasinin trade'ini iptal
+    edebilirdi. IsParticipant kontrolu eklendi.
+    (HandleSecureTrade had no participant check. Anyone knowing the container
+    serial could cancel another's trade. IsParticipant check added.)
+
+HAREKET VE AI / MOVEMENT AND AI:
+  - Multicore NPC collision: Multicore path'te idle NPC'ler (vendor, healer,
+    animal) WalkCheck olmadan hareket ediyordu, duvar/su icinden gecebiliyordu.
+    ApplyDecision'a CanNpcEnterTile kontrolu eklendi.
+    (Idle NPCs in multicore path moved without WalkCheck — could walk through
+    walls/water. CanNpcEnterTile check added to ApplyDecision.)
+  - Shove stamina cift dusme: WalkCheck.CanMoveOver ve MovementEngine.CanShove
+    ikisi de -10 stam uyguluyordu. CanShove'dan stamina dusumu kaldirildi.
+    (WalkCheck.CanMoveOver and MovementEngine.CanShove both deducted -10 stam.
+    Stamina deduction removed from CanShove.)
+  - Herding teleport bypass: Basarili herd animal.Position dogrudan atiyordu,
+    sector/broadcast atlaniyordu. World.MoveCharacter kullanildi.
+    (Successful herd set animal.Position directly, bypassing sector/broadcast.
+    Switched to World.MoveCharacter.)
+  - Housing ban enforcement: House.CanAccess() sadece gump/API'de kullaniliyordu,
+    hareket sirasinda uygulanmiyordu. MovementEngine'e CanEnterHouse delegate'i
+    eklendi.
+    (House.CanAccess() only used in gump/API, not enforced during movement.
+    CanEnterHouse delegate added to MovementEngine.)
+
+BINEK VE SAVAS / MOUNT AND COMBAT:
+  - Context menu dismount: Context menu "Dismount" sadece DismountCharacter()
+    cagriyordu, self-DClick path'indeki ses, mount silme, walk reset, NPC
+    Ridden temizleme ve broadcast paketleri yoktu. Tam sync eklendi.
+    (Context menu Dismount only called DismountCharacter without sound, mount
+    delete, walk reset, NPC Ridden clear, or broadcast. Full sync added.)
+  - Archery ammo sirasi: Recoil + stamina ok kontrolunden once harcaniyordu.
+    Ok kontrolu BeginSwingRecoil oncesine tasindi.
+    (Recoil + stamina spent before ammo check. Ammo check moved before
+    BeginSwingRecoil.)
+
+GORUNUM VE SKILL / VIEW AND SKILL:
+  - View sync visibility: _lastKnownPos sadece pozisyon/body/hue takip
+    ediyordu; Hidden/Invisible/Dead/WarMode flag degisimlerinde paket
+    gitmiyordu. Visibility key tracking eklendi.
+    (View delta only tracked position/body/hue; visibility flag changes
+    like Hidden/Invisible/Dead/WarMode sent no packets. Visibility key
+    tracking added.)
+  - Hiding dual path: ActiveSkillEngine.Hiding basari'da Hidden+Invisible
+    temizliyordu, SkillHandlers.HandleHiding her ikisini set ediyordu.
+    ActiveSkillEngine SkillHandlers ile hizalandi.
+    (ActiveSkillEngine.Hiding cleared Invisible on success while
+    SkillHandlers.HandleHiding set both flags. Aligned to set both.)
+
+HOUSING / HOUSING:
+  - IDOC deed: Decay collapse'ta Redeed() sonucu atiliyordu, ev sahibine
+    deed verilmiyordu. Deed artik owner backpack'ine veya zemine birakiliyor.
+    (Decay collapse discarded Redeed() result — no deed given to owner.
+    Deed now placed in owner's backpack or on ground.)
+
 [2026-05-28] - Yasam dongusu bypass ve client sync duzeltmeleri
               (Lifecycle bypass and client sync fixes)
 ----------------------------------------

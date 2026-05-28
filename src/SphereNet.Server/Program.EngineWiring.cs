@@ -225,6 +225,14 @@ public static partial class Program
                     c.SysMessage(text);
             };
 
+            _movement.CanEnterHouse = (mover, dest) =>
+            {
+                if (mover.PrivLevel >= PrivLevel.GM) return true;
+                var house = _housingEngine?.FindHouseAt(dest);
+                if (house == null) return true;
+                return house.CanAccess(mover.Uid);
+            };
+
             _movement.OnTeleport = (mover, dest, oldMap) =>
             {
                 if (TryGetClientFor(mover, out var c))

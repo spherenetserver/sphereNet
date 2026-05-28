@@ -1,3 +1,4 @@
+using SphereNet.Core.Types;
 using SphereNet.Game.Objects;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.World;
@@ -62,4 +63,10 @@ public interface IActiveSkillSink : IInfoSkillSink
     /// <c>Character.Resurrect()</c> for offline/NPC targets.
     /// </summary>
     void ResurrectTarget(Objects.Characters.Character target) => target.Resurrect();
+
+    /// <summary>
+    /// Move a character through the world engine (sector update + broadcast).
+    /// Default falls back to direct position assignment for offline/test contexts.
+    /// </summary>
+    void MoveCharacter(Objects.Characters.Character ch, Point3D dest) => World.MoveCharacter(ch, dest);
 }

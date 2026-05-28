@@ -49,7 +49,7 @@ public static class ActiveSkillEngine
         if (success)
         {
             ch.SetStatFlag(StatFlag.Hidden);
-            ch.ClearStatFlag(StatFlag.Invisible);
+            ch.SetStatFlag(StatFlag.Invisible);
             sink.ObjectMessage(ch, ServerMessages.Get(Msg.HidingSuccess));
         }
         else
@@ -541,7 +541,7 @@ public static class ActiveSkillEngine
         bool success = SkillEngine.UseQuick(ch, SkillType.Herding, diff);
         if (success && destination.HasValue)
         {
-            animal.Position = destination.Value;
+            sink.MoveCharacter(animal, destination.Value);
             animal.SetTag("HERD_MASTER", ch.Uid.Value.ToString());
             animal.SetTag("HERD_MASTER_UUID", ch.Uuid.ToString("D"));
             sink.ObjectMessage(animal, ServerMessages.Get(Msg.HerdingSuccess));

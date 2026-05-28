@@ -30,6 +30,9 @@ public sealed class MovementEngine
     /// the matching client only.</summary>
     public Action<Objects.Characters.Character, string>? OnSysMessage { get; set; }
 
+    /// <summary>Optional housing ban check. Returns false if character cannot enter the tile.</summary>
+    public Func<Objects.Characters.Character, Point3D, bool>? CanEnterHouse { get; set; }
+
     public static int WalkDelayFoot { get; set; } = 400;
     public static int WalkDelayMount { get; set; } = 200;
     public static int RunDelayFoot { get; set; } = 200;
@@ -103,6 +106,12 @@ public sealed class MovementEngine
                     return false;
                 }
             }
+        }
+
+        if (CanEnterHouse != null && !CanEnterHouse(ch, target))
+        {
+            diag = diag with { MobBlocked = true };
+            return false;
         }
 
         ch.Direction = dir;
@@ -208,12 +217,7 @@ public sealed class MovementEngine
             return true;
 
         if (mover.Stam == mover.MaxStam && mover.MaxStam > 0)
-        {
-            mover.Stam = (short)Math.Max(0, mover.Stam - 10);
-            if (mover.IsStatFlag(StatFlag.Hidden)) mover.ClearStatFlag(StatFlag.Hidden);
-            if (mover.IsStatFlag(StatFlag.Invisible)) mover.ClearStatFlag(StatFlag.Invisible);
             return true;
-        }
 
         return false;
     }

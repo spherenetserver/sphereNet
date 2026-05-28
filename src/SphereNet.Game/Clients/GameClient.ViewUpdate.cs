@@ -153,7 +153,7 @@ public sealed partial class GameClient
 
             uint uid = ch.Uid.Value;
             _knownChars.Add(uid);
-            _lastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue);
+            _lastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch));
         }
 
         foreach (var ch in delta.UpdatedChars)
@@ -161,10 +161,13 @@ public sealed partial class GameClient
             uint uid = ch.Uid.Value;
             bool posChanged = false;
             bool bodyChanged = false;
+            bool visChanged = false;
+            byte curVis = ComputeVisKey(ch);
             if (_lastKnownPos.TryGetValue(uid, out var last))
             {
                 posChanged = last.X != ch.X || last.Y != ch.Y || last.Z != ch.Z || last.Dir != (byte)ch.Direction;
                 bodyChanged = last.Body != ch.BodyId || last.Hue != ch.Hue;
+                visChanged = last.Vis != curVis;
             }
             else
             {
@@ -182,7 +185,7 @@ public sealed partial class GameClient
                  _character.PrivLevel >= ch.PrivLevel);
             bool hiddenAsAllShow = isOfflinePlayer || (isHidden && canSeeHidden);
 
-            if (bodyChanged)
+            if (bodyChanged || visChanged)
             {
                 if (hiddenAsAllShow)
                     SendDrawObjectHidden(ch);
@@ -201,8 +204,8 @@ public sealed partial class GameClient
                     SendUpdateMobile(ch);
             }
 
-            if (posChanged || bodyChanged)
-                _lastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue);
+            if (posChanged || bodyChanged || visChanged)
+                _lastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, curVis);
         }
 
         foreach (var (item, hiddenAsAllShow) in delta.NewItems)
@@ -319,6 +322,16 @@ public sealed partial class GameClient
             _knownDoorOverrides.Remove(s);
     }
 
+    private static byte ComputeVisKey(Character ch)
+    {
+        byte vis = 0;
+        if (ch.IsStatFlag(Core.Enums.StatFlag.Hidden)) vis |= 1;
+        if (ch.IsInvisible) vis |= 2;
+        if (ch.IsDead) vis |= 4;
+        if (ch.IsInWarMode) vis |= 8;
+        return vis;
+    }
+
     /// <summary>
     /// Update this client's _lastKnownPos for a character that was just broadcast via 0x77.
     /// Prevents the view delta from sending a duplicate 0x77 for the same position.
@@ -327,7 +340,7 @@ public sealed partial class GameClient
     {
         uint uid = ch.Uid.Value;
         if (_knownChars.Contains(uid))
-            _lastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue);
+            _lastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch));
     }
 
     /// <summary>Returns true if this client already tracks the given mobile (has sent 0x78 spawn).</summary>
@@ -349,10 +362,10 @@ public sealed partial class GameClient
     /// observers who never had the mobile in cache because the ghost
     /// was hidden from them).
     /// </summary>
-    public void UpdateKnownCharRender(uint uid, ushort newBody, ushort newHue, byte direction, short x, short y, sbyte z)
+    public void UpdateKnownCharRender(uint uid, ushort newBody, ushort newHue, byte direction, short x, short y, sbyte z, byte visKey = 0)
     {
         if (_knownChars.Contains(uid))
-            _lastKnownPos[uid] = (x, y, z, direction, newBody, newHue);
+            _lastKnownPos[uid] = (x, y, z, direction, newBody, newHue, visKey);
     }
 
     /// <summary>
@@ -420,7 +433,7 @@ public sealed partial class GameClient
             SendDrawObject(ch);
 
         _knownChars.Add(uid);
-        _lastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue);
+        _lastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch));
     }
 
     /// <summary>
@@ -456,7 +469,7 @@ public sealed partial class GameClient
                 if (!posChanged) return;
             }
             SendUpdateMobile(ch);
-            _lastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue);
+            _lastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch));
         }
     }
 

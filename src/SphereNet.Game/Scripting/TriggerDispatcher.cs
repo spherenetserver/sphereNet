@@ -484,6 +484,7 @@ public sealed class TriggerDispatcher
         CharTrigger.SpellEffect => "SpellEffect",
         CharTrigger.SpellSuccess => "SpellSuccess",
         CharTrigger.SpellFail => "SpellFail",
+        CharTrigger.SpellInterrupt => "SpellInterrupt",
         CharTrigger.SpellSelect => "SpellSelect",
         CharTrigger.SpellBook => "SpellBook",
         CharTrigger.SpellTargetCancel => "SpellTargetCancel",

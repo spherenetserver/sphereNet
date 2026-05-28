@@ -484,6 +484,28 @@ public sealed partial class GameClient
                     return;
                 }
 
+                // Giving an item to an NPC — fire @ReceiveItem so quest/reward/
+                // "bring me X" scripts can handle it (<src> = giver, <argo> = item).
+                // RETURN 1 means the script fully consumed/handled the item.
+                if (!charTarget.IsPlayer && _triggerDispatcher != null)
+                {
+                    var rcv = _triggerDispatcher.FireCharTrigger(charTarget, CharTrigger.ReceiveItem,
+                        new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item });
+                    if (rcv == TriggerResult.True)
+                    {
+                        _netState.Send(new PacketDropAck());
+                        return;
+                    }
+                    // Default: NPC accepts the item into its pack and fires
+                    // @NPCAcceptItem; a script may refuse via @NPCRefuseItem by
+                    // bouncing the item itself (handled in @ReceiveItem RETURN 1).
+                    PlaceItemInPack(charTarget, item);
+                    _triggerDispatcher.FireCharTrigger(charTarget, CharTrigger.NPCAcceptItem,
+                        new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item });
+                    _netState.Send(new PacketDropAck());
+                    return;
+                }
+
                 PlaceItemInPack(charTarget, item);
                 _netState.Send(new PacketDropAck());
                 return;

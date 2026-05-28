@@ -332,7 +332,22 @@ public sealed class ExpressionParser
         if (c == '~') { pos++; return ~ParseUnary(text, ref pos); }
         if (c == '+') { pos++; return ParseUnary(text, ref pos); }
 
-        return ParsePrimary(text, ref pos);
+        return ParsePower(text, ref pos);
+    }
+
+    /// <summary>Power operator '@' (Source-X GetValMath '@'): a@b = a^b.</summary>
+    private long ParsePower(string text, ref int pos)
+    {
+        long left = ParsePrimary(text, ref pos);
+        SkipWhitespace(text, ref pos);
+        while (pos < text.Length && text[pos] == '@')
+        {
+            pos++;
+            long right = ParsePrimary(text, ref pos);
+            left = (long)Math.Pow(left, right);
+            SkipWhitespace(text, ref pos);
+        }
+        return left;
     }
 
     private long ParsePrimary(string text, ref int pos)
@@ -348,6 +363,27 @@ public sealed class ExpressionParser
             SkipWhitespace(text, ref pos);
             if (pos < text.Length && text[pos] == ')') pos++;
             return val;
+        }
+
+        // Brace range / weighted value — Source-X GetRangeNumber:
+        //   {lo hi}             -> random integer in [lo,hi]
+        //   {v1 w1 v2 w2 ...}   -> weighted random pick among v1,v2,...
+        //   {v}                 -> v
+        if (text[pos] == '{')
+        {
+            pos++; // skip '{'
+            int braceStart = pos;
+            int depth = 1;
+            while (pos < text.Length && depth > 0)
+            {
+                char bc = text[pos];
+                if (bc == '{') depth++;
+                else if (bc == '}') { depth--; if (depth == 0) break; }
+                pos++;
+            }
+            string inner = text.Substring(braceStart, pos - braceStart);
+            if (pos < text.Length && text[pos] == '}') pos++; // skip '}'
+            return EvaluateBraceRange(inner);
         }
 
         // Angle bracket variable <...>
@@ -422,6 +458,77 @@ public sealed class ExpressionParser
 
         // Number literal
         return ReadNumber(text, ref pos);
+    }
+
+    /// <summary>Evaluate a Sphere brace expression. Two tokens = numeric range
+    /// (random lo..hi); more = (value weight) weighted pairs; one = that value.
+    /// Each token is itself evaluated so &lt;...&gt;/hex/identifiers work.</summary>
+    private long EvaluateBraceRange(string inner)
+    {
+        inner = inner.Trim();
+        if (inner.Length == 0) return 0;
+
+        var tokens = SplitBraceTokens(inner);
+        if (tokens.Count == 0) return 0;
+
+        var vals = new long[tokens.Count];
+        for (int i = 0; i < tokens.Count; i++)
+        {
+            int p = 0;
+            vals[i] = ParseExpression(tokens[i], ref p);
+        }
+
+        if (vals.Length == 1) return vals[0];
+
+        if (vals.Length == 2)
+        {
+            long lo = Math.Min(vals[0], vals[1]);
+            long hi = Math.Max(vals[0], vals[1]);
+            return Random.Shared.NextInt64(lo, hi + 1);
+        }
+
+        // Weighted (value, weight) pairs.
+        long totalWeight = 0;
+        for (int i = 1; i < vals.Length; i += 2)
+            totalWeight += Math.Max(0, vals[i]);
+        if (totalWeight <= 0) return vals[0];
+
+        long roll = Random.Shared.NextInt64(totalWeight);
+        for (int i = 0; i + 1 < vals.Length; i += 2)
+        {
+            roll -= Math.Max(0, vals[i + 1]);
+            if (roll < 0) return vals[i];
+        }
+        return vals[0];
+    }
+
+    /// <summary>Split brace content on whitespace, respecting nested &lt;...&gt;
+    /// and {...} so a token may itself be an expression.</summary>
+    private static List<string> SplitBraceTokens(string s)
+    {
+        var tokens = new List<string>();
+        int depth = 0, angle = 0, start = 0;
+        bool inTok = false;
+        for (int i = 0; i < s.Length; i++)
+        {
+            char c = s[i];
+            if (c == '<') angle++;
+            else if (c == '>' && angle > 0) angle--;
+            else if (c == '{') depth++;
+            else if (c == '}' && depth > 0) depth--;
+
+            if (char.IsWhiteSpace(c) && angle == 0 && depth == 0)
+            {
+                if (inTok) { tokens.Add(s[start..i]); inTok = false; }
+            }
+            else if (!inTok)
+            {
+                start = i;
+                inTok = true;
+            }
+        }
+        if (inTok) tokens.Add(s[start..]);
+        return tokens;
     }
 
     private long ReadNumber(string text, ref int pos)
@@ -599,6 +706,11 @@ public sealed class ExpressionParser
             return "0" + Evaluate(expanded.AsSpan()).ToString("X");
         }
 
+        // QVAL paren form — <QVAL(v1,v2,lt,eq,gt)> numeric 3-way compare.
+        if (varExpr.StartsWith("QVAL(", StringComparison.OrdinalIgnoreCase))
+        {
+            return EvaluateQval(ExtractFuncArg(varExpr, 4));
+        }
         // QVAL — conditional: <QVAL condition?true_val:false_val>
         if (varExpr.StartsWith("QVAL ", StringComparison.OrdinalIgnoreCase))
         {
@@ -1031,6 +1143,22 @@ public sealed class ExpressionParser
             return Math.Abs(Evaluate(inner.AsSpan())).ToString();
         }
 
+        // MAX / MIN — two-argument intrinsics (Source-X INTRINSIC_MAX/MIN).
+        if (varExpr.StartsWith("MAX(", StringComparison.OrdinalIgnoreCase) ||
+            varExpr.StartsWith("MAX ", StringComparison.OrdinalIgnoreCase))
+        {
+            var a = SplitArgsTopLevel(ExtractFuncArg(varExpr, 3));
+            if (a.Count >= 2) return Math.Max(Evaluate(a[0].AsSpan()), Evaluate(a[1].AsSpan())).ToString();
+            return a.Count == 1 ? Evaluate(a[0].AsSpan()).ToString() : "0";
+        }
+        if (varExpr.StartsWith("MIN(", StringComparison.OrdinalIgnoreCase) ||
+            varExpr.StartsWith("MIN ", StringComparison.OrdinalIgnoreCase))
+        {
+            var a = SplitArgsTopLevel(ExtractFuncArg(varExpr, 3));
+            if (a.Count >= 2) return Math.Min(Evaluate(a[0].AsSpan()), Evaluate(a[1].AsSpan())).ToString();
+            return a.Count == 1 ? Evaluate(a[0].AsSpan()).ToString() : "0";
+        }
+
         // SQRT — square root
         if (varExpr.StartsWith("SQRT(", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("SQRT ", StringComparison.OrdinalIgnoreCase))
@@ -1319,7 +1447,20 @@ public sealed class ExpressionParser
     private string EvaluateQval(string expr)
     {
         int questionIdx = expr.IndexOf('?');
-        if (questionIdx < 0) return "";
+        if (questionIdx < 0)
+        {
+            // Source-X numeric 3-way form: QVAL v1,v2,lt,eq,gt
+            //   v1 <  v2 -> lt,  v1 == v2 -> eq,  v1 > v2 -> gt
+            var args = SplitArgsTopLevel(expr);
+            if (args.Count >= 5)
+            {
+                long v1 = Evaluate(ResolveAngleBrackets(args[0]).AsSpan());
+                long v2 = Evaluate(ResolveAngleBrackets(args[1]).AsSpan());
+                string pick = v1 < v2 ? args[2] : (v1 == v2 ? args[3] : args[4]);
+                return ResolveAngleBrackets(pick.Trim());
+            }
+            return "";
+        }
 
         string condition = expr[..questionIdx].Trim();
         string rest = expr[(questionIdx + 1)..];
@@ -1561,6 +1702,29 @@ public sealed class ExpressionParser
             rest = rest.TrimStart();
         }
         return ResolveAngleBrackets(rest);
+    }
+
+    /// <summary>Split a function argument list on top-level commas, respecting
+    /// nested &lt;...&gt; and (...).</summary>
+    private static List<string> SplitArgsTopLevel(string s)
+    {
+        var args = new List<string>();
+        int angle = 0, paren = 0, start = 0;
+        for (int i = 0; i < s.Length; i++)
+        {
+            char c = s[i];
+            if (c == '<') angle++;
+            else if (c == '>' && angle > 0) angle--;
+            else if (c == '(') paren++;
+            else if (c == ')' && paren > 0) paren--;
+            else if (c == ',' && angle == 0 && paren == 0)
+            {
+                args.Add(s[start..i].Trim());
+                start = i + 1;
+            }
+        }
+        if (start <= s.Length) args.Add(s[start..].Trim());
+        return args;
     }
 
     private static void SkipWhitespace(string text, ref int pos)

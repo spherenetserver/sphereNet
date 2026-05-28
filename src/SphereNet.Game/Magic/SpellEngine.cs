@@ -62,6 +62,10 @@ public sealed class SpellEngine
 
     public Action<Character, Point3D, byte>? OnSpellTeleport { get; set; }
 
+    /// <summary>Remove a world item and broadcast its deletion (used by
+    /// Dispel Field to clear a field item early).</summary>
+    public Action<Item>? OnItemRemoved { get; set; }
+
     /// <summary>One entry per active time-limited spell effect. Captures
     /// what was applied (stat deltas, light level, flag) so UndoEffect can
     /// revert exactly those changes when the timer fires. Runtime-only —
@@ -80,7 +84,17 @@ public sealed class SpellEngine
         public StatFlag AppliedFlag { get; set; }
         public ushort OldBodyId { get; set; }
         public bool BodyChanged { get; set; }
+        public string? OldName { get; set; }
+        public bool NameChanged { get; set; }
     }
+
+    // Disguise names used by Incognito.
+    private static readonly string[] s_incognitoNames =
+    {
+        "Adam", "Brom", "Cyne", "Doran", "Edric", "Faerd", "Gareth", "Halt",
+        "Ivar", "Joran", "Kael", "Loric", "Maren", "Nyle", "Oren", "Pael",
+        "Quenn", "Roth", "Sael", "Tarl", "Ulric", "Varis", "Wren", "Yorick",
+    };
 
     /// <summary>Active time-limited spell effects. Walked once per world tick
     /// by <see cref="ProcessExpirations"/>; when the tick is reached the
@@ -287,6 +301,9 @@ public sealed class SpellEngine
             return -1;
         if (caster.IsStatFlag(StatFlag.Freeze))
             return -1;
+        // Cast recovery — block back-to-back spam (non-GM).
+        if (caster.PrivLevel < PrivLevel.GM && caster.IsCastOnRecovery(Environment.TickCount64))
+            return -1;
 
         // Region NoMagic check
         if (_world != null)
@@ -410,11 +427,22 @@ public sealed class SpellEngine
         int skillVal = caster.GetSkill(primarySkill);
         int difficulty = def.GetDifficulty();
         bool castWithWand = IsCastingWithWand(caster);
-        if (castWithWand) difficulty = 1;
+        if (castWithWand) difficulty = 10;
+
+        // Cast recovery — a completed cast (success OR fizzle) starts a cooldown
+        // before the next one. Higher skill recovers faster (FCR-style).
+        if (caster.PrivLevel < PrivLevel.GM)
+        {
+            int recoveryMs = Math.Max(400, 1500 - skillVal);
+            caster.SetCastRecovery(Environment.TickCount64 + recoveryMs);
+        }
 
         // Source-X: skill check at cast completion — fizzle on failure.
+        // GetDifficulty() is on the 0-1000 skill scale, but CheckSuccess expects
+        // a 0-100 difficulty (it multiplies by 10 internally) — convert here so
+        // the bell curve compares like-for-like against the 0-1000 skill value.
         if (caster.PrivLevel < PrivLevel.GM &&
-            !SkillEngine.CheckSuccess(caster, primarySkill, difficulty))
+            !SkillEngine.CheckSuccess(caster, primarySkill, difficulty / 10))
         {
             ApplyCastResourceLoss(caster, def, castWithWand, fizzle: true, abort: false);
             ClearCastState(caster);
@@ -463,6 +491,23 @@ public sealed class SpellEngine
             else
             {
                 OnSysMessage?.Invoke(caster, "You must target a recall rune.");
+            }
+            if (def.Sound > 0) OnPlaySound?.Invoke(caster.Position, (ushort)def.Sound);
+            return true;
+        }
+
+        // Dispel Field targets a field ITEM (not a character) and removes it.
+        if (spell == SpellType.DispelField)
+        {
+            var fieldItem = _world?.FindItem(targetUid);
+            if (fieldItem != null && !fieldItem.IsDeleted &&
+                (fieldItem.TryGetTag("FIELD_DAMAGE", out _) || fieldItem.ItemType == ItemType.Spell))
+            {
+                OnItemRemoved?.Invoke(fieldItem);
+            }
+            else
+            {
+                OnSysMessage?.Invoke(caster, "That is not a magical field.");
             }
             if (def.Sound > 0) OnPlaySound?.Invoke(caster.Position, (ushort)def.Sound);
             return true;
@@ -604,6 +649,20 @@ public sealed class SpellEngine
         int potency = skillLevel / 2 + _rand.Next(Math.Max(1, skillLevel / 2));
         effect = def.GetEffect(potency);
 
+        // Mind Blast: damage = (casterINT - targetINT)/2, capped at the victim's
+        // STR/2; if the caster is less intelligent the spell rebounds onto them.
+        if (def.Id == SpellType.MindBlast)
+        {
+            int diff = (caster.Int - target.Int) / 2;
+            if (diff < 0) { target = caster; diff = -diff; }
+            effect = Math.Min(diff, Math.Max(1, target.Str / 2));
+        }
+        // EvalInt scales offensive spell potency (Source-X spell-damage formula).
+        else if (def.IsFlag(SpellFlag.Damage))
+        {
+            effect += effect * caster.GetSkill(SkillType.EvalInt) / 1000;
+        }
+
         // Magic resist
         if (def.IsFlag(SpellFlag.Resist) && caster != target)
         {
@@ -670,17 +729,37 @@ public sealed class SpellEngine
         }
     }
 
-    /// <summary>Create a field item at target location.</summary>
+    /// <summary>Create a multi-tile field wall centred on the target location,
+    /// oriented perpendicular to the cast direction (UO-style 5-tile wall).</summary>
     private void CreateField(Character caster, Point3D pos, SpellDef def)
     {
-        var fieldItem = _world.CreateItem();
-        fieldItem.BaseId = def.EffectId;
-        fieldItem.Name = def.Name + " field";
-        fieldItem.SetTag("FIELD_CASTER", caster.Uid.Value.ToString());
-        fieldItem.SetTag("FIELD_CASTER_UUID", caster.Uuid.ToString("D"));
-        fieldItem.SetTag("FIELD_DAMAGE", def.GetEffect(caster.GetSkill(def.GetPrimarySkill())).ToString());
-        fieldItem.DecayTime = Environment.TickCount64 + 30_000; // 30s duration
-        _world.PlaceItem(fieldItem, pos);
+        int dmg = def.GetEffect(caster.GetSkill(def.GetPrimarySkill()));
+
+        // Orient the wall perpendicular to the caster→target axis.
+        int dx = pos.X - caster.X;
+        int dy = pos.Y - caster.Y;
+        bool wallRunsNorthSouth = Math.Abs(dx) >= Math.Abs(dy); // facing E/W → N-S wall
+
+        for (int offset = -2; offset <= 2; offset++)
+        {
+            int tx = wallRunsNorthSouth ? pos.X : pos.X + offset;
+            int ty = wallRunsNorthSouth ? pos.Y + offset : pos.Y;
+            var tilePos = new Point3D((short)tx, (short)ty, pos.Z, pos.Map);
+
+            // Don't lay a field segment on a blocked tile.
+            var md = _world.MapData;
+            if (md != null && !md.IsPassable(tilePos.Map, tilePos.X, tilePos.Y, tilePos.Z))
+                continue;
+
+            var fieldItem = _world.CreateItem();
+            fieldItem.BaseId = def.EffectId;
+            fieldItem.Name = def.Name + " field";
+            fieldItem.SetTag("FIELD_CASTER", caster.Uid.Value.ToString());
+            fieldItem.SetTag("FIELD_CASTER_UUID", caster.Uuid.ToString("D"));
+            fieldItem.SetTag("FIELD_DAMAGE", dmg.ToString());
+            fieldItem.DecayTime = Environment.TickCount64 + 30_000; // 30s duration
+            _world.PlaceItem(fieldItem, tilePos);
+        }
     }
 
     /// <summary>Summon a creature at target location.</summary>
@@ -728,7 +807,9 @@ public sealed class SpellEngine
     private int CalcMagicResist(Character target, SpellDef def, Character caster)
     {
         int mr = target.GetSkill(SkillType.MagicResistance);
-        int spellCircle = 1 + (int)def.Id / 8;
+        // Use the spell's real UO circle, not an enum-index approximation, so
+        // resist difficulty lines up with the rest of the spell system.
+        int spellCircle = Math.Clamp(def.GetCircle(), 1, 8);
         int difficulty = spellCircle * 80;
 
         SkillEngine.UseQuick(target, SkillType.MagicResistance, spellCircle * 10);
@@ -857,6 +938,15 @@ public sealed class SpellEngine
             return;
         }
 
+        // A frozen/jailed/paralyzed or dead caster cannot travel out — otherwise
+        // a jailed player could recall straight out of jail.
+        if (caster.PrivLevel < Core.Enums.PrivLevel.GM &&
+            (caster.IsDead || caster.IsStatFlag(StatFlag.Freeze)))
+        {
+            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGenFizzles));
+            return;
+        }
+
         if (caster.PrivLevel < Core.Enums.PrivLevel.GM)
         {
             var srcRegion = _world.FindRegion(caster.Position);
@@ -894,6 +984,14 @@ public sealed class SpellEngine
             if (dest.X < 0 || dest.Y < 0 || dest.X >= mapW || dest.Y >= mapH)
             {
                 OnSysMessage?.Invoke(caster, "That location is unreachable.");
+                return;
+            }
+            // Don't teleport into a wall/water/impassable static — would leave
+            // the traveller stuck. Applies to both Recall and Gate destinations.
+            if (caster.PrivLevel < Core.Enums.PrivLevel.GM &&
+                !md.IsPassable(dest.Map, dest.X, dest.Y, dest.Z))
+            {
+                OnSysMessage?.Invoke(caster, "That location is blocked.");
                 return;
             }
         }
@@ -1015,7 +1113,7 @@ public sealed class SpellEngine
                     >= 400 => 2, // normal
                     _ => 1       // lesser
                 };
-                target.ApplyPoison(poisonLvl);
+                target.ApplyPoison(poisonLvl, caster.Uid);
                 string poisonKey = poisonLvl switch
                 {
                     1 => Msg.SpellPoison1,
@@ -1065,7 +1163,14 @@ public sealed class SpellEngine
             {
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
                 eff.AppliedFlag = StatFlag.Incognito;
+                // Disguise: hide the real name behind a random alias (restored
+                // on expiry). Source-X also randomizes skin/hair; name is the
+                // visible part other players key off.
+                eff.OldName = target.Name;
+                eff.NameChanged = true;
+                target.Name = s_incognitoNames[_rand.Next(s_incognitoNames.Length)];
                 target.SetStatFlag(StatFlag.Incognito);
+                Character.OnAppearanceChanged?.Invoke(target);
                 break;
             }
             case SpellType.MagicReflect:
@@ -1098,6 +1203,20 @@ public sealed class SpellEngine
                 target.Mana -= (short)vamp;
                 caster.Mana = (short)Math.Min(caster.Mana + vamp, caster.MaxMana);
                 break;
+
+            case SpellType.CreateFood:
+            {
+                // Materialize a food item into the caster's pack (was a no-op).
+                var food = _world.CreateItem();
+                food.BaseId = def.EffectId != 0 ? def.EffectId : (ushort)0x09D0; // apple default
+                food.ItemType = ItemType.Food;
+                food.Name = "food";
+                if (target.Backpack != null)
+                    target.Backpack.AddItem(food);
+                else
+                    _world.PlaceItem(food, target.Position);
+                break;
+            }
         }
     }
 
@@ -1167,6 +1286,11 @@ public sealed class SpellEngine
         if (eff.DexDelta != 0) t.Dex -= eff.DexDelta;
         if (eff.IntDelta != 0) t.Int -= eff.IntDelta;
         if (eff.AppliedFlag != StatFlag.None) t.ClearStatFlag(eff.AppliedFlag);
+        if (eff.NameChanged && eff.OldName != null)
+        {
+            t.Name = eff.OldName;
+            Character.OnAppearanceChanged?.Invoke(t);
+        }
         if (eff.BodyChanged) t.BodyId = eff.OldBodyId;
         if (eff.BodyChanged && eff.Spell == SpellType.Polymorph)
         {

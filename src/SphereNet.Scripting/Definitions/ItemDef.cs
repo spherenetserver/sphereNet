@@ -33,6 +33,11 @@ public sealed class ItemDef : BaseDef
     public uint TData2 { get; set; }
     public uint TData3 { get; set; }
     public uint TData4 { get; set; }
+    // Raw TDATA values when they were a defname (e.g. crops store the fruit
+    // defname in TDATA3) — resolved to a baseid lazily at use time, after all
+    // defnames are loaded.
+    public string? TData1Name { get; set; }
+    public string? TData3Name { get; set; }
     public ulong TFlags { get; set; }
     public ushort AmmoAnim { get; set; }
     public ushort AmmoAnimHue { get; set; }
@@ -96,9 +101,15 @@ public sealed class ItemDef : BaseDef
                 break;
             case "REPLICATE": Replicate = value != "0"; break;
             case "TWOHANDS": TwoHands = value != "0"; break;
-            case "TDATA1": ParseHexOrDecUInt(value, out uint td1); TData1 = td1; break;
+            case "TDATA1":
+                if (!ParseHexOrDecUInt(value, out uint td1) && value.Length > 0 &&
+                    (char.IsLetter(value[0]) || value[0] == '_')) TData1Name = value.Trim();
+                TData1 = td1; break;
             case "TDATA2": ParseHexOrDecUInt(value, out uint td2); TData2 = td2; break;
-            case "TDATA3": ParseHexOrDecUInt(value, out uint td3); TData3 = td3; break;
+            case "TDATA3":
+                if (!ParseHexOrDecUInt(value, out uint td3) && value.Length > 0 &&
+                    (char.IsLetter(value[0]) || value[0] == '_')) TData3Name = value.Trim();
+                TData3 = td3; break;
             case "TDATA4": ParseHexOrDecUInt(value, out uint td4); TData4 = td4; break;
             case "TFLAGS": ParseHexOrDecULong(value, out ulong tf); TFlags = tf; break;
             case "AMMOANIM": ParseHexOrDec(value, out ushort aa); AmmoAnim = aa; break;
@@ -172,13 +183,12 @@ public sealed class ItemDef : BaseDef
         }
     }
 
-    private static void ParseHexOrDecUInt(string value, out uint result)
+    private static bool ParseHexOrDecUInt(string value, out uint result)
     {
         result = 0;
         if (value.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-            uint.TryParse(value.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out result);
-        else
-            uint.TryParse(value, out result);
+            return uint.TryParse(value.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out result);
+        return uint.TryParse(value, out result);
     }
 
     private static void ParseHexOrDecULong(string value, out ulong result)

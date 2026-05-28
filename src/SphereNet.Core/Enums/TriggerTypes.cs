@@ -177,6 +177,7 @@ public enum CharTrigger : short
     SpellCast,
     SpellEffect,
     SpellFail,
+    SpellInterrupt,
     SpellSelect,
     SpellSuccess,
     SpellTargetCancel,

@@ -132,9 +132,16 @@ public sealed class GuildDef
         _members.Remove(member);
         if (wasMaster && _members.Count > 0)
         {
+            // Promote a real person — a full Member first, otherwise a waiting
+            // candidate. Never fall back to _members[0]: that could be an
+            // Enemy/Ally relationship record (Priv 100/101), which must not
+            // become guild master. If no human remains, the guild is left
+            // masterless and is reaped by the disband path.
             var next = _members.FirstOrDefault(m => m.Priv == GuildPriv.Member)
-                       ?? _members[0];
-            next.Priv = GuildPriv.Master;
+                       ?? _members.FirstOrDefault(m => m.Priv == GuildPriv.Candidate
+                                                    || m.Priv == GuildPriv.Accepted);
+            if (next != null)
+                next.Priv = GuildPriv.Master;
         }
         return true;
     }

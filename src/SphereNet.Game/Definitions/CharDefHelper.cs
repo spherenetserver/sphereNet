@@ -182,13 +182,17 @@ public static class CharDefHelper
 
         if (stats && def != null)
         {
-            int strVal = def.StrMax > 0 ? def.StrMax : Math.Max(1, def.StrMin);
-            int dexVal = def.DexMax > 0 ? def.DexMax : Math.Max(1, def.DexMin);
-            int intVal = def.IntMax > 0 ? def.IntMax : Math.Max(1, def.IntMin);
+            // Roll each stat within its [min,max] range (Source-X randomizes on
+            // spawn) instead of always taking the max.
+            int strVal = RollStat(def.StrMin, def.StrMax);
+            int dexVal = RollStat(def.DexMin, def.DexMax);
+            int intVal = RollStat(def.IntMin, def.IntMax);
             ch.Str = (short)Math.Clamp(strVal, 1, short.MaxValue);
             ch.Dex = (short)Math.Clamp(dexVal, 1, short.MaxValue);
             ch.Int = (short)Math.Clamp(intVal, 1, short.MaxValue);
-            int hits = def.HitsMax > 0 ? def.HitsMax : Math.Max(1, strVal);
+            int hits = def.HitsMax > 0 || def.HitsMin > 0
+                ? RollStat(def.HitsMin, def.HitsMax)
+                : Math.Max(1, strVal);
             ch.MaxHits = (short)Math.Clamp(hits, 1, short.MaxValue);
             if (ch.Hits > ch.MaxHits)
                 ch.Hits = ch.MaxHits;
@@ -198,5 +202,16 @@ public static class CharDefHelper
         if (refresh)
             ch.RefreshAppearance();
         return true;
+    }
+
+    /// <summary>Roll a stat within its [min,max] range. Falls back to whichever
+    /// bound is set when the other is missing.</summary>
+    private static int RollStat(int min, int max)
+    {
+        if (max <= 0 && min <= 0) return 1;
+        if (max <= 0) return Math.Max(1, min);
+        if (min <= 0) min = max;
+        if (min > max) (min, max) = (max, min);
+        return min == max ? min : Random.Shared.Next(min, max + 1);
     }
 }

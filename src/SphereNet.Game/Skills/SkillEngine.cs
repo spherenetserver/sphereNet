@@ -31,7 +31,9 @@ public enum SkillTrigger
 /// </summary>
 public static class SkillEngine
 {
-    private static readonly Random _rand = new();
+    // Random.Shared is thread-safe; a plain shared Random instance is not and
+    // can corrupt/return 0 under concurrent skill use on the multicore tick.
+    private static Random _rand => Random.Shared;
 
     /// <summary>Callback fired when a skill gain occurs. Args: (Character, SkillType, newValue).</summary>
     public static Action<Character, SkillType, int>? OnSkillGain { get; set; }
@@ -110,6 +112,9 @@ public static class SkillEngine
     public static void GainExperience(Character ch, SkillType skill, int difficulty)
     {
         if (ch.IsDead) return;
+        // GMs auto-succeed every check (see CheckSuccess); they must not also
+        // accrue skill/stat gains from that free success.
+        if (ch.PrivLevel >= PrivLevel.GM) return;
         if ((int)skill < 0 || (int)skill >= (int)SkillType.Qty)
             return;
 

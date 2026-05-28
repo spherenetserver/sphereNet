@@ -178,9 +178,9 @@ public sealed class SkillHandlers
             case SkillType.Poisoning:        return ActiveSkillEngine.Poisoning(sink, target as Item);
             case SkillType.Herding:          return ActiveSkillEngine.Herding(sink, target as Character, point);
             case SkillType.Veterinary:
-                if (target is Character vetAnimal)
-                    return UseSkill(ch, SkillType.Veterinary, vetAnimal.Position);
-                return false;
+                // Source-X SKILL_VETERINARY routes to Skill_Healing (bandages,
+                // poison cure, pet resurrect) rather than a separate weak path.
+                return ActiveSkillEngine.Healing(sink, target as Character);
             case SkillType.Tracking:         return ActiveSkillEngine.Tracking(sink, ActiveSkillEngine.TrackingCategory.Animals);
             case SkillType.Mining:           return ActiveSkillEngine.Mining(sink, point ?? ch.Position, _gatheringEngine, _world);
             case SkillType.Fishing:          return ActiveSkillEngine.Fishing(sink, point ?? ch.Position, _gatheringEngine, _world);
@@ -558,7 +558,7 @@ public sealed class SkillHandlers
             gold.BaseId = 0x0EED;
             gold.Name = "Gold";
             gold.ItemType = ItemType.Gold;
-            gold.Amount = (ushort)Random.Shared.Next(1, 10);
+            gold.Amount = (ushort)Random.Shared.Next(1, 11); // 1-10, matching ActiveSkillEngine
             ch.Backpack.AddItem(gold);
         }
         return success;

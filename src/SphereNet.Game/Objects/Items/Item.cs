@@ -446,6 +446,38 @@ public class Item : ObjBase
         return false;
     }
 
+    /// <summary>Implements the <c>CONT=</c> script setter: move this item into
+    /// the given container item, or into a character's backpack. Detaches it
+    /// from its current container/ground first.</summary>
+    private bool TryMoveToContainer(string value)
+    {
+        var world = ResolveWorld?.Invoke();
+        if (world == null) return true;
+        uint contUid = ParseHexOrDecUInt(value);
+        if (contUid == 0) return true;
+
+        var target = world.FindObject(new Core.Types.Serial(contUid));
+        if (target == null) return true;
+
+        // Detach from wherever it currently is.
+        if (_containedIn.IsValid)
+        {
+            var oldCont = world.FindItem(_containedIn);
+            oldCont?.RemoveItem(this);
+        }
+        else
+        {
+            world.HideFromSector(this); // was lying on the ground
+        }
+        IsEquipped = false;
+
+        if (target is Item contItem)
+            contItem.AddItem(this);
+        else if (target is Character ch && ch.Backpack != null)
+            ch.Backpack.AddItem(this);
+        return true;
+    }
+
     public Item? FindContentItem(Serial uid, int maxDepth = 16)
     {
         if (maxDepth <= 0) return null;
@@ -937,6 +969,24 @@ public class Item : ObjBase
                 if (int.TryParse(value, out int maxHits)) HitsMax = maxHits;
                 return true;
 
+            // Move this item into another container (or a char's pack). Very
+            // common in crafting/loot/vendor scripts: <new>.cont <pack.uid>.
+            case "CONT":
+                return TryMoveToContainer(value);
+
+            // Set Z (height) of a grounded/contained item.
+            case "Z":
+                if (int.TryParse(value, out int zVal))
+                    Position = new Point3D(X, Y,
+                        (sbyte)Math.Clamp(zVal, sbyte.MinValue, sbyte.MaxValue), MapIndex);
+                return true;
+
+            // Set the equip layer (used when scripts equip an item directly).
+            case "LAYER":
+                if (byte.TryParse(value, out byte layerVal))
+                    EquipLayer = (Layer)layerVal;
+                return true;
+
             // Faz 1: Core fields
             case "MORE1": case "MORE":
             {
@@ -1190,6 +1240,33 @@ public class Item : ObjBase
         var upper = key.ToUpperInvariant();
         switch (upper)
         {
+            // Clone this item (optionally <n> times) into the same location.
+            case "DUPE":
+            {
+                var dupeWorld = ResolveWorld?.Invoke();
+                if (dupeWorld == null) return true;
+                int dupeCount = 1;
+                if (!string.IsNullOrWhiteSpace(args) && int.TryParse(args.Trim(), out int dc) && dc > 0)
+                    dupeCount = dc;
+                var contItem = _containedIn.IsValid ? dupeWorld.FindItem(_containedIn) : null;
+                for (int n = 0; n < dupeCount; n++)
+                {
+                    var copy = dupeWorld.CreateItem();
+                    copy.BaseId = BaseId;
+                    copy.Amount = Amount;
+                    copy.Hue = Hue;
+                    copy.ItemType = ItemType;
+                    copy.Name = Name;
+                    copy.More1 = More1;
+                    copy.More2 = More2;
+                    if (contItem != null)
+                        contItem.AddItem(copy);
+                    else
+                        dupeWorld.PlaceItem(copy, Position);
+                }
+                return true;
+            }
+
             // Faz 2: Container commands
             case "OPEN":
                 // SendOpenContainer is on GameClient; source must be a GameClient

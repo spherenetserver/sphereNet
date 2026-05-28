@@ -148,8 +148,6 @@ public sealed class WeatherEngine
 
             if (_rand.Next(1000) < 5) // 0.5% chance per tick
             {
-                var type = _currentSeason == SeasonType.Winter ? WeatherType.Snow : WeatherType.Rain;
-                byte intensity = (byte)_rand.Next(10, 50);
                 byte temp = _currentSeason switch
                 {
                     SeasonType.Spring => 15,
@@ -158,6 +156,17 @@ public sealed class WeatherEngine
                     SeasonType.Winter => 0,
                     _ => 20
                 };
+                // Snow only when freezing; otherwise rain, with an occasional
+                // thunderstorm. Previously snow was season-only and Storm was
+                // never generated at all.
+                WeatherType type;
+                if (temp <= 0)
+                    type = WeatherType.Snow;
+                else
+                    type = _rand.Next(100) < 20 ? WeatherType.Storm : WeatherType.Rain;
+                byte intensity = type == WeatherType.Storm
+                    ? (byte)_rand.Next(50, 90)
+                    : (byte)_rand.Next(10, 50);
                 SetRegionWeather(region.Name, type, intensity, temp);
                 OnWeatherChanged?.Invoke(region.Name, type, intensity, temp);
             }

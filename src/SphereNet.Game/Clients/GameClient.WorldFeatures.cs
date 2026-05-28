@@ -667,6 +667,13 @@ public sealed partial class GameClient
         switch (buttonId)
         {
             case 1: // Join request
+                // A character may belong to only one guild — reject if already
+                // a member/candidate somewhere (prevents multi-guild membership).
+                if (_guildManager.FindGuildFor(_character.Uid) != null)
+                {
+                    SysMessage(ServerMessages.Get("msg_insufficient_priv"));
+                    break;
+                }
                 guild.AddRecruit(_character.Uid);
                 SysMessage(ServerMessages.Get("guild_join_request"));
                 break;
@@ -682,10 +689,19 @@ public sealed partial class GameClient
                 SysMessage(ServerMessages.Get("guild_disbanded"));
                 break;
             }
-            case 3: // Leave
+            case 3: // Leave — must actually belong to this guild (button can be
+                    // spoofed by a crafted client packet, so don't trust the gump).
+            {
+                var leaveMember = guild.FindMember(_character.Uid);
+                if (leaveMember == null)
+                {
+                    SysMessage(ServerMessages.Get("msg_insufficient_priv"));
+                    break;
+                }
                 guild.RemoveMember(_character.Uid);
                 SysMessage(ServerMessages.Get("guild_left"));
                 break;
+            }
             case 10: // Accept candidate
                 SysMessage(ServerMessages.Get("guild_target_candidate"));
                 SetPendingTarget((serial, x, y, z, graphic) =>
@@ -859,6 +875,16 @@ public sealed partial class GameClient
                     if (target == null || !target.IsPlayer)
                     {
                         SysMessage(ServerMessages.Get("msg_invalid_target"));
+                        return;
+                    }
+                    // Transfer must respect the recipient's house cap, same as
+                    // PlaceHouse — otherwise it's an easy way to exceed the limit.
+                    if ((_housingEngine.MaxHousesPerPlayer >= 0 &&
+                         _housingEngine.GetHousesByOwner(target.Uid).Count >= _housingEngine.MaxHousesPerPlayer) ||
+                        (_housingEngine.MaxHousesPerAccount >= 0 &&
+                         _housingEngine.GetHouseCountForAccount(target) >= _housingEngine.MaxHousesPerAccount))
+                    {
+                        SysMessage(ServerMessages.Get("house_add_limit"));
                         return;
                     }
                     house.TransferOwnership(target.Uid);
@@ -1406,9 +1432,25 @@ public sealed partial class GameClient
                         _triggerDispatcher?.FireCharTrigger(removedChar, CharTrigger.PartyRemove,
                             new TriggerArgs { CharSrc = _character });
 
+                    // Snapshot members before the leave, which may disband the
+                    // party (drops to a single member).
+                    var membersBefore = party.Members.ToList();
                     _partyManager.Leave(new Serial(removeUid));
                     SysMessage(ServerMessages.Get("party_leave_1"));
-                    BroadcastPartyUpdate(party, new Serial(removeUid));
+
+                    if (party.MemberCount == 0)
+                    {
+                        // Party disbanded — tell every former member to clear
+                        // their party UI, instead of broadcasting an empty list.
+                        var emptyList = Array.Empty<uint>();
+                        foreach (var formerUid in membersBefore)
+                            SendToChar?.Invoke(formerUid,
+                                new PacketPartyRemoveMember(formerUid.Value, emptyList));
+                    }
+                    else
+                    {
+                        BroadcastPartyUpdate(party, new Serial(removeUid));
+                    }
                 }
                 break;
 
@@ -1458,11 +1500,19 @@ public sealed partial class GameClient
                 if (_character.TryGetTag("PARTY_INVITE_FROM", out string? inviterStr) &&
                     uint.TryParse(inviterStr, out uint inviterUid))
                 {
-                    _partyManager.AcceptInvite(new Serial(inviterUid), _character.Uid);
                     _character.RemoveTag("PARTY_INVITE_FROM");
-                    SysMessage(ServerMessages.Get("party_added"));
-                    var party = _partyManager.FindParty(_character.Uid);
-                    if (party != null) BroadcastPartyUpdate(party);
+                    // Honour AcceptInvite's result — it fails if already partied
+                    // or the inviter's party is gone. Don't claim success blindly.
+                    if (_partyManager.AcceptInvite(new Serial(inviterUid), _character.Uid))
+                    {
+                        SysMessage(ServerMessages.Get("party_added"));
+                        var party = _partyManager.FindParty(_character.Uid);
+                        if (party != null) BroadcastPartyUpdate(party);
+                    }
+                    else
+                    {
+                        SysMessage(ServerMessages.Get("party_join_failed"));
+                    }
                 }
                 break;
             }

@@ -4,6 +4,121 @@
 All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-29] - Gameplay hata duzeltmeleri ve Source-X parity tamamlama Wave 17
+              (Gameplay bug fixes and Source-X parity completion Wave 17)
+----------------------------------------
+
+SCRIPT MOTORU / SCRIPT ENGINE:
+  - Sayisal brace-range {n m}: Ifade ayristiriciya rastgele aralik ve agirlikli
+    {a w b w} secim destegi; CharDef stat satirlari (STR={100 130}) artik min/max
+    arasi rulo yapar.
+    (Numeric brace-range {n m}: random-range and weighted {a w b w} selection in
+    the expression parser; CharDef stat lines now roll between min/max.)
+  - FOR arguman formlari: FOR x (1..x), FOR min max, FOR var max, FOR var min max;
+    inclusive aralik, geri-sayim ve isimli dongu degiskeni.
+    (FOR argument forms: inclusive ranges, count-down, named loop variable.)
+  - MAX/MIN intrinsic ve @ (us) operatoru; QVAL sayisal 3-yonlu form
+    (v1,v2,lt,eq,gt).
+    (MAX/MIN intrinsics, '@' power operator, numeric 3-way QVAL form.)
+  - ItemDef TDATA1/TDATA3 defname yakalama (lazy resolve).
+    (ItemDef TDATA1/TDATA3 defname capture with lazy resolution.)
+
+SAVAS / COMBAT:
+  - Era-0 vurus sansi formulu: hedef DEX ve ranged ayari savunmaya dahil edildi.
+    (Era-0 hit-chance: target DEX and ranged adjustment now factor into defence.)
+  - Era-bazli hasar bonusu: yuzde tabanli, era-0'da tactics/anatomy uygulanmaz.
+    (Era-aware damage bonus: percentage-based; tactics/anatomy excluded in era-0.)
+  - Hasar araliginda min>max korumasi (Random.Next istisna onleme).
+    (Damage min>max guard to prevent Random.Next exception.)
+  - Silah-parry: kalkan + tek/iki-el silah ile parry.
+    (Weapon parry with shield or one/two-handed weapon.)
+  - Reactive armor yansima hasari saldirgana atfedilir (RecordAttack).
+    (Reactive-armor reflected damage attributed to the attacker.)
+
+BUYU / MAGIC:
+  - Buyu basari (fizzle) olcek hatasi: SKILLREQ (0-1000) artik dogru olcekle
+    kontrol edilir; yuksek skill artik fizzle olmaz.
+    (Spell success scale fix: SKILLREQ checked at the correct scale.)
+  - CreateFood (yemek uretir), DispelField (field siler), MindBlast (INT-farki
+    formulu + geri-tepme); EvalInt buyu hasarini olcekler.
+    (CreateFood, DispelField, MindBlast INT-diff formula; EvalInt scales damage.)
+  - Cast recovery (FCR) cooldown + skill-bazli hafif FC.
+    (Cast-recovery cooldown plus light skill-based faster-casting.)
+  - Alan buyuleri: cok-kare duvar + alanda duran hedefe periyodik tik hasari.
+    (Field spells: multi-tile wall plus periodic tick damage to stationary targets.)
+  - Incognito: gercek isim takma adla gizlenir, sure bitince geri yuklenir.
+    (Incognito disguises the real name, restored on expiry.)
+  - Recall/Gate Freeze (hapis/paralyze) ve blocked-tile kontrolu.
+    (Recall/Gate blocked while frozen and against blocked destination tiles.)
+  - CalcMagicResist circle hesabi GetCircle() ile tutarli.
+    (Magic-resist circle aligned with GetCircle().)
+
+BECERILER / SKILLS:
+  - GM karakterler skill/stat gain almaz.
+    (GMs no longer accrue skill/stat gains.)
+  - Taming zorlugu 0-100 olcege cevrildi (yuksek HP yaratiklar tame edilebilir).
+    (Taming difficulty rescaled to 0-100; high-HP creatures tameable.)
+  - Stealing: backpack yoksa basari reddedilir (item kaybi + bedava suc onlendi).
+    (Stealing fails without a backpack, preventing item loss / free criminal flag.)
+  - Crafting: exceptional dayaniklilik bonusu + kaynak hue aktarimi; basarisizlik
+    kaynak kaybi rastgele.
+    (Crafting: exceptional durability bonus, resource hue transfer, randomized
+    failure resource loss.)
+  - RemoveTrap basarisizlikta tuzagi tetikler; bandaj anatomy bonusu + bloody
+    bandage; Veterinary Healing yoluna baglandi.
+    (RemoveTrap springs the trap on failure; bandage anatomy bonus + bloody
+    bandage; Veterinary routed through Healing.)
+  - SkillEngine Random.Shared (multicore thread-guvenligi).
+    (SkillEngine uses Random.Shared for multicore thread safety.)
+  - Gathering: tukenmis havuzdan fazla kaynak verme onlendi.
+    (Gathering no longer yields more than a depleted node holds.)
+
+TETIKLEYICILER / TRIGGERS:
+  - @ReceiveItem / @NPCAcceptItem: NPC'ye esya verme zinciri ateslenir.
+    (@ReceiveItem / @NPCAcceptItem fired when giving an item to an NPC.)
+  - @Criminal (iptal edilebilir), @SeeCrime (yakin NPC'ler), @SpellInterrupt,
+    @Hunger.
+    (@Criminal cancellable, @SeeCrime to nearby NPCs, @SpellInterrupt, @Hunger.)
+
+ESYALAR / ITEMS:
+  - Item CONT= / Z= / LAYER= setter'lari (script ile konteynere tasima).
+    (Item CONT= / Z= / LAYER= setters for script-driven container moves.)
+  - DUPE verb; char CURE / REVEAL / ATTACK verb'leri; char ARMOR/AR okuma.
+    (DUPE verb; char CURE/REVEAL/ATTACK verbs; char ARMOR/AR read.)
+  - Crops/Foliage hasadi (TDATA3 fruit + regrow cooldown); Seed ekme;
+    PitcherEmpty su kaynagindan doldurma.
+    (Crops/foliage harvest, seed planting, empty-pitcher filling from water.)
+  - Light kaynagi: konteyner-ici yakma engeli + charge tuketimi; Switch grafik
+    takasi; food/drink tek-birim tuketimi.
+    (Light source: in-container ignite block + charge use; switch graphic swap;
+    food/drink single-unit consumption.)
+
+DUNYA / WORLD:
+  - Sureli jail otomatik salinim (DateTime tabanli, reboot-dayanikli) + login'de
+    suresi dolan hapis temizleme.
+    (Timed jail auto-release, reboot-safe, plus expired-jail cleanup on login.)
+  - Party: dagilmada bos liste yerine dogru bildirim; davet kabulu sonucu
+    dogrulanir. Guild: Leave priv dogrulama, candidate->master terfi, coklu
+    uyelik engeli.
+    (Party disband notify + invite-accept result honoured. Guild leave priv check,
+    candidate->master promotion, multi-guild block.)
+  - Housing: devirde ev limiti, footprint passability, IDOC'ta lockdown/secure
+    esya korumasi.
+    (Housing: transfer cap, footprint passability, IDOC lockdown/secure item
+    preservation.)
+  - Fame/gold: sifir-degerli yaratiklar fame/gold dusurmez (farm onleme).
+    (Zero-value creatures grant no fame/gold, preventing farming.)
+
+KARAKTER / CHARACTER:
+  - Poison tik'i health/damage paketi yayinlar + olduren karaktere atif yapar.
+    (Poison tick broadcasts health/damage and attributes the kill.)
+  - HP regen zehirliyken durur; aclik etkisi (stamina/hits drain); FOOD clamp;
+    resurrect en az 1 HP; pet control-slot toplama + loyalty uyarilari.
+    (HP regen halts while poisoned; starvation drain; FOOD clamp; resurrect >=1 HP;
+    pet control-slot summation + loyalty warnings.)
+  - Hareket shove: tek-yer stamina maliyeti (cift-dusum + sahte blok onlendi).
+    (Movement shove: single stamina cost, fixing double-deduction / false block.)
+
 [2026-05-28] - Source-X gameplay parity taramasi ve eksik davranis tamamlama Wave 16
               (Source-X gameplay parity scan and missing behavior completion Wave 16)
 ----------------------------------------

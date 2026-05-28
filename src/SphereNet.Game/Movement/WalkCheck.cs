@@ -679,27 +679,23 @@ public sealed class WalkCheck
 
     private static bool CanMoveOver(Character mover, Character blocker)
     {
-        // ServUO / RunUO-style shove rule:
+        // ServUO / RunUO-style shove rule (PURE predicate — no side effects):
         // - staff can always move through mobiles
         // - dead bodies / dead movers do not block
         // - hidden staff do not block
-        // - players can shove only when at full stamina, spending 10 stam
+        // - players can shove only when at full stamina
+        // The stamina cost + reveal for a real shove is applied once by
+        // MovementEngine after the move commits; deducting it here as well made
+        // the subsequent MovementEngine.CanShove check fail (full-stam gate),
+        // so the player lost stamina yet never actually moved.
         if (mover.PrivLevel >= PrivLevel.Counsel) return true;
-        if (!mover.IsDead && mover.Stam == mover.MaxStam && mover.MaxStam > 0)
-        {
-            mover.Stam -= 10;
-            if (mover.IsStatFlag(StatFlag.Hidden)) mover.ClearStatFlag(StatFlag.Hidden);
-            if (mover.IsStatFlag(StatFlag.Invisible)) mover.ClearStatFlag(StatFlag.Invisible);
-            return true;
-        }
-
         if (blocker.IsDead) return true;
         if (mover.IsDead) return true;
         if ((blocker.IsStatFlag(StatFlag.Hidden) || blocker.IsStatFlag(StatFlag.Invisible))
             && blocker.PrivLevel >= PrivLevel.Counsel)
             return true;
 
-        return false;
+        return mover.Stam == mover.MaxStam && mover.MaxStam > 0;
     }
 
     public static void Offset(Direction d, ref int x, ref int y)

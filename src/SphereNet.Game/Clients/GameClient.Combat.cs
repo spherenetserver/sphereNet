@@ -96,7 +96,7 @@ public sealed partial class GameClient
             }
 
             bool running = (step.Direction & 0x80) != 0;
-            virtualNow += MovementEngine.GetMoveDelay(_character.IsMounted, running);
+            virtualNow += MovementEngine.GetMoveDelay(_character.IsMounted, running, _character.IsInWarMode);
         }
         _movementBatchNow = null;
     }
@@ -212,7 +212,7 @@ public sealed partial class GameClient
         // Fastwalk throttle: reject if moving too fast.
         if (_character.PrivLevel < PrivLevel.GM)
         {
-            int moveDelay = MovementEngine.GetMoveDelay(_character.IsMounted, running);
+            int moveDelay = MovementEngine.GetMoveDelay(_character.IsMounted, running, _character.IsInWarMode);
 
             if (MovementCreditEnabled)
             {
@@ -279,7 +279,7 @@ public sealed partial class GameClient
         if (moved)
         {
             _character.LastMoveTick = now;
-            int moveDelay = MovementEngine.GetMoveDelay(_character.IsMounted, running);
+            int moveDelay = MovementEngine.GetMoveDelay(_character.IsMounted, running, _character.IsInWarMode);
             if (!MovementCreditEnabled && _character.PrivLevel < PrivLevel.GM && _walkTokens > 0)
                 _walkTokens--;
             _nextMoveTime = now + moveDelay;

@@ -134,11 +134,18 @@ public sealed class GatheringEngine
 
             if (marker == null)
             {
-                int poolAmount = _rng.Next(
-                    Math.Max(1, resDef.AmountMin),
-                    Math.Max(2, resDef.AmountMax + 1));
+                int amtMin = Math.Max(1, resDef.AmountMin);
+                int amtMax = Math.Max(amtMin + 1, resDef.AmountMax + 1); // guard Min>Max bad data
+                int poolAmount = _rng.Next(amtMin, amtMax);
                 marker = CreateMarker(target, skillTag, (ushort)poolAmount, resDef.Regen);
             }
+
+            // Never hand out more than the pool actually holds — otherwise a
+            // near-empty node still yields a full reap.
+            if (reapAmount > marker.Amount)
+                reapAmount = marker.Amount;
+            if (reapAmount <= 0)
+                return new GatherResult { Handled = true, Success = false };
 
             int remaining = marker.Amount - reapAmount;
             if (remaining <= 0)

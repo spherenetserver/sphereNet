@@ -70,9 +70,11 @@ public sealed class SpellDef
     public int GetDuration(int skillLevel) =>
         DurationBase + ((DurationScale - DurationBase) * skillLevel / 1000);
 
-    /// <summary>Get cast time at given skill level, in tenths of a second.</summary>
+    /// <summary>Get cast time at given skill level, in tenths of a second.
+    /// Higher skill casts a little faster (light Faster-Casting effect), down
+    /// to a 1-tenth floor.</summary>
     public int GetCastTime(int skillLevel) =>
-        Math.Max(1, CastTimeBase);
+        Math.Max(1, CastTimeBase - Math.Clamp(skillLevel, 0, 1000) / 250);
 
     public bool IsFlag(SpellFlag flag) => (Flags & flag) != 0;
 

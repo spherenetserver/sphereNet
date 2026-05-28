@@ -493,6 +493,10 @@ public sealed class TradeManager
         int incoming = 0;
         foreach (var item in sourceContainer.Contents)
             incoming += Math.Max(1, item.Weight) * Math.Max(1, (int)item.Amount);
+        // Item.Weight is in tenths of a stone; capacity math (current/maxWeight)
+        // is in whole stones, so normalize incoming to stones too. Without this
+        // the incoming weight was counted 10x and rejected most real trades.
+        incoming /= 10;
 
         if (current + incoming > maxWeight)
         {

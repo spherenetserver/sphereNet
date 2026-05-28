@@ -342,7 +342,18 @@ public sealed partial class GameClient
                     new PacketAnimation(_character.Uid.Value, (ushort)AnimationType.Eat), 0);
                 BroadcastNearby?.Invoke(_character.Position, UpdateRange,
                     new PacketSound(0x003A, _character.X, _character.Y, _character.Z), 0);
-                if (_triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Destroy,
+                if (item.Amount > 1)
+                {
+                    // Eat a single unit, don't wipe the whole stack.
+                    item.Amount--;
+                    if (item.ContainedIn.IsValid)
+                        _netState.Send(new PacketContainerItem(
+                            item.Uid.Value, item.DispIdFull, 0, item.Amount, item.X, item.Y,
+                            item.ContainedIn.Value, item.Hue, _netState.IsClientPost6017));
+                    else
+                        SendWorldItem(item);
+                }
+                else if (_triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Destroy,
                         new TriggerArgs { CharSrc = _character, ItemSrc = item }) != TriggerResult.True)
                 {
                     item.Delete();
@@ -659,12 +670,31 @@ public sealed partial class GameClient
                         item.X, item.Y, item.Z, item.Hue), 0);
                 break;
             case ItemType.LightOut:
+            {
+                // Can't light a torch/lantern while it sits inside a container
+                // (Source-X CItem::Use_Light rule).
+                if (item.ContainedIn.IsValid && _world.FindObject(item.ContainedIn) is Item)
+                {
+                    SysMessage("You cannot light that while it is in a container.");
+                    break;
+                }
+                // Each lighting burns one charge; a burned-out source can't relight.
+                int charges = 20;
+                if (item.TryGetTag("LIGHT_CHARGES", out string? cs) && int.TryParse(cs, out int c))
+                    charges = c;
+                if (charges <= 0)
+                {
+                    SysMessage("It has burned out and cannot be lit.");
+                    break;
+                }
+                item.SetTag("LIGHT_CHARGES", (charges - 1).ToString());
                 item.ItemType = ItemType.LightLit;
                 _netState.Send(new PacketSound(0x0047, _character.X, _character.Y, _character.Z));
                 BroadcastNearby?.Invoke(item.Position, UpdateRange,
                     new PacketWorldItem(item.Uid.Value, item.DispIdFull, item.Amount,
                         item.X, item.Y, item.Z, item.Hue), 0);
                 break;
+            }
 
             // ---- telepad / switch ----
             case ItemType.Telepad:
@@ -679,6 +709,18 @@ public sealed partial class GameClient
                 break;
             }
             case ItemType.Switch:
+                // Toggle the lever graphic (Source-X SetSwitchState): swap BaseId
+                // with the alternate held in MORE1 so the lever visibly flips.
+                if (item.More1 != 0)
+                {
+                    ushort altGfx = (ushort)item.More1;
+                    item.More1 = item.BaseId;
+                    item.BaseId = altGfx;
+                    BroadcastNearby?.Invoke(item.Position, UpdateRange,
+                        new PacketWorldItem(item.Uid.Value, item.DispIdFull, item.Amount,
+                            item.X, item.Y, item.Z, item.Hue), 0);
+                    _netState.Send(new PacketSound(0x0F, _character.X, _character.Y, _character.Z));
+                }
                 _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Step,
                     new TriggerArgs { CharSrc = _character, ItemSrc = item });
                 break;
@@ -778,28 +820,53 @@ public sealed partial class GameClient
                 break;
 
             // ---- crafting stations (overridable via @DClick trigger) ----
-            case ItemType.Loom:
             case ItemType.SpinWheel:
+                // Cosmetic spinning-wheel sound (Source-X plays a spin anim on
+                // dclick), then open the tailoring gump for actual crafting.
+                BroadcastNearby?.Invoke(item.Position, UpdateRange,
+                    new PacketSound(0x0055, item.X, item.Y, item.Z), 0);
+                OpenCraftingGump(SkillType.Tailoring);
+                break;
+            case ItemType.Loom:
                 OpenCraftingGump(SkillType.Tailoring);
                 break;
             case ItemType.Anvil:
                 OpenCraftingGump(SkillType.Blacksmithing);
                 break;
 
+            // ---- crops / foliage harvesting ----
+            case ItemType.Crops:
+            case ItemType.Foliage:
+                HarvestPlant(item);
+                break;
+
             // ---- beehive / seed / pitcher ----
             case ItemType.BeeHive:
-                SysMessage("You reach into the beehive.");
+                if (Random.Shared.Next(100) < 60)
+                {
+                    var honey = _world.CreateItem();
+                    honey.BaseId = 0x09EC; // jar of honey
+                    honey.ItemType = ItemType.Food;
+                    honey.Name = "jar of honey";
+                    PlaceItemInPack(_character, honey);
+                    SysMessage("You gather some honey from the hive.");
+                }
+                else
+                {
+                    _character.ApplyPoison(1); // lesser poison from bee stings
+                    SysMessage("You are stung by angry bees!");
+                }
                 break;
             case ItemType.Seed:
                 SysMessage("Select where to plant the seed.");
-                SetPendingTarget((serial, x, y, z, gfx) => { /* planting pending */ });
+                SetPendingTarget((serial, x, y, z, gfx) => PlantSeed(item, x, y, z));
                 break;
             case ItemType.Pitcher:
                 UsePotion(item);
                 break;
             case ItemType.PitcherEmpty:
                 SysMessage("Select a water source to fill the pitcher.");
-                SetPendingTarget((serial, x, y, z, gfx) => { /* fill pending */ });
+                SetPendingTarget((serial, x, y, z, gfx) => FillPitcher(item, x, y));
                 break;
 
             // ---- raw materials ----
@@ -868,6 +935,122 @@ public sealed partial class GameClient
                 SysMessage(ServerMessages.Get(Msg.ItemuseCantthink));
                 break;
         }
+    }
+
+    /// <summary>Harvest a crop/foliage plant (Source-X CItemPlant::Plant_Use).
+    /// The fruit item id comes from the plant's ITEMDEF TDATA3 (numeric or a
+    /// defname). Reaping starts a regrow cooldown.</summary>
+    private void HarvestPlant(Item item)
+    {
+        if (_character == null) return;
+
+        long now = Environment.TickCount64;
+        if (item.TryGetTag("REAP_TIME", out string? rt) &&
+            long.TryParse(rt, out long ready) && now < ready)
+        {
+            SysMessage("There is nothing to harvest yet.");
+            return;
+        }
+
+        var def = DefinitionLoader.GetItemDef(item.BaseId);
+        ushort fruitId = 0;
+        if (def != null)
+        {
+            if (def.TData3 != 0) fruitId = (ushort)def.TData3;
+            else if (!string.IsNullOrEmpty(def.TData3Name) && Item.ResolveDefName != null)
+                fruitId = Item.ResolveDefName(def.TData3Name);
+        }
+        if (fruitId == 0)
+        {
+            SysMessage("There is nothing to harvest yet.");
+            return;
+        }
+
+        var fruit = _world.CreateItem();
+        fruit.BaseId = fruitId;
+        fruit.ItemType = ItemType.Food;
+        PlaceItemInPack(_character, fruit);
+
+        BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+            new PacketAnimation(_character.Uid.Value, (ushort)AnimationType.Bow), 0);
+        BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+            new PacketSound(0x013E, _character.X, _character.Y, _character.Z), 0);
+
+        // Regrow cooldown so the plant can't be farmed every click.
+        item.SetTag("REAP_TIME", (now + 60_000).ToString());
+        SysMessage("You harvest the plant.");
+    }
+
+    /// <summary>Fill an empty pitcher from a water source (Source-X
+    /// CChar::Use_Item on IT_PITCHER_EMPTY).</summary>
+    private void FillPitcher(Item pitcher, short x, short y)
+    {
+        if (_character == null) return;
+        var here = new Point3D(x, y, _character.Z, _character.MapIndex);
+        if (_character.Position.GetDistanceTo(here) > 3)
+        {
+            SysMessage(ServerMessages.Get(Msg.ItemuseToofar));
+            return;
+        }
+        var md = _world.MapData;
+        bool water = md != null &&
+            md.GetLandTileData(md.GetTerrainTile(_character.MapIndex, x, y).TileId).IsWet;
+        if (!water)
+        {
+            SysMessage("That is not a water source.");
+            return;
+        }
+        var def = DefinitionLoader.GetItemDef(pitcher.BaseId);
+        ushort fullId = def != null && def.TData1 != 0 ? (ushort)def.TData1 : (ushort)0x1F9D;
+        pitcher.BaseId = fullId;
+        pitcher.ItemType = ItemType.Pitcher;
+        if (pitcher.ContainedIn.IsValid)
+            _netState.Send(new PacketContainerItem(
+                pitcher.Uid.Value, pitcher.DispIdFull, 0, pitcher.Amount, pitcher.X, pitcher.Y,
+                pitcher.ContainedIn.Value, pitcher.Hue, _netState.IsClientPost6017));
+        else
+            SendWorldItem(pitcher);
+        SysMessage("You fill the pitcher with water.");
+    }
+
+    /// <summary>Plant a seed on the targeted ground (Source-X CChar::Use_Seed).
+    /// The crop to grow comes from the seed's ITEMDEF TDATA1.</summary>
+    private void PlantSeed(Item seed, short x, short y, sbyte z)
+    {
+        if (_character == null) return;
+        var here = new Point3D(x, y, _character.Z, _character.MapIndex);
+        if (_character.Position.GetDistanceTo(here) > 3)
+        {
+            SysMessage(ServerMessages.Get(Msg.ItemuseToofar));
+            return;
+        }
+
+        var def = DefinitionLoader.GetItemDef(seed.BaseId);
+        ushort cropId = 0;
+        if (def != null)
+        {
+            if (def.TData1 != 0) cropId = (ushort)def.TData1;
+            else if (!string.IsNullOrEmpty(def.TData1Name) && Item.ResolveDefName != null)
+                cropId = Item.ResolveDefName(def.TData1Name);
+        }
+        if (cropId == 0)
+        {
+            SysMessage("You cannot plant that here.");
+            return;
+        }
+
+        var crop = _world.CreateItem();
+        crop.BaseId = cropId;
+        crop.ItemType = ItemType.Crops;
+        _world.PlaceItem(crop, new Point3D(x, y, z, _character.MapIndex));
+        BroadcastNearby?.Invoke(crop.Position, UpdateRange,
+            new PacketWorldItem(crop.Uid.Value, crop.DispIdFull, crop.Amount,
+                crop.X, crop.Y, crop.Z, crop.Hue), 0);
+
+        if (seed.Amount > 1) seed.Amount--; else seed.Delete();
+        BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+            new PacketAnimation(_character.Uid.Value, (ushort)AnimationType.Bow), 0);
+        SysMessage("You plant the seed.");
     }
 
     // ---- helpers used by HandleItemUse target callbacks ----
@@ -1758,7 +1941,10 @@ public sealed partial class GameClient
         var md = _world.MapData;
         if (md == null) return true;
         var (mapW, mapH) = md.GetMapSize(dest.Map);
-        return dest.X < mapW && dest.Y < mapH;
+        if (dest.X >= mapW || dest.Y >= mapH) return false;
+        // Reject blocked destinations (wall/water/impassable) so the moongate
+        // can't strand the traveller inside geometry.
+        return md.IsPassable(dest.Map, dest.X, dest.Y, dest.Z);
     }
 
     // ==================== Crafting Gump ====================

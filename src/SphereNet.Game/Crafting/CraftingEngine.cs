@@ -102,6 +102,16 @@ public sealed class CraftingEngine
                     return null;
             }
 
+            // Capture the primary resource's hue BEFORE consuming so the crafted
+            // item can inherit the material colour (e.g. coloured ingots produce
+            // a coloured weapon/armour, matching UO material behaviour).
+            ushort resourceHue = 0;
+            if (recipe.Resources.Count > 0)
+            {
+                var primaryRes = FindResourceItem(crafter, recipe.Resources[0].ItemId);
+                if (primaryRes != null) resourceHue = primaryRes.Hue.Value;
+            }
+
             // Consume resources
             foreach (var res in recipe.Resources)
             {
@@ -112,6 +122,8 @@ public sealed class CraftingEngine
             var item = _world.CreateItem();
             item.BaseId = recipe.ResultItemId;
             item.Name = recipe.ResultName;
+            if (resourceHue != 0)
+                item.Hue = new Core.Types.Color(resourceHue);
 
             // Quality roll based on skill
             int skillVal = crafter.GetSkill(recipe.PrimarySkill);
@@ -119,21 +131,37 @@ public sealed class CraftingEngine
             if (quality > 100)
                 item.SetTag("QUALITY", quality.ToString());
 
-            // Exceptional check
+            // Exceptional check — also apply a concrete durability bonus and an
+            // EXCEPTIONAL tag, so the result is mechanically better, not just a
+            // renamed normal item.
             if (quality >= 150)
+            {
                 item.Name = "exceptional " + item.Name;
+                item.SetTag("EXCEPTIONAL", "1");
+                int baseMax = item.HitsMax;
+                if (baseMax > 0)
+                {
+                    int boosted = baseMax * 120 / 100;
+                    item.HitsMax = boosted;
+                    item.HitsCur = boosted;
+                }
+            }
 
             // Caller (GameClient.OpenCraftingGump) handles placement + notification
             return item;
         }
         else
         {
-            // Partial resource loss on failure (50% chance per resource)
+            // Partial resource loss on failure: each resource has a 50% chance to
+            // be (partly) lost. Previously this consumed exactly half every time
+            // (deterministic), and lost nothing at all for single-unit resources
+            // (res.Amount/2 == 0).
             foreach (var res in recipe.Resources)
             {
-                int lostAmount = res.Amount / 2;
-                if (lostAmount > 0)
-                    ConsumeResource(crafter, res.ItemId, lostAmount);
+                if (Random.Shared.Next(2) != 0)
+                    continue; // this resource survived the failure
+                int lostAmount = Math.Max(1, res.Amount / 2);
+                ConsumeResource(crafter, res.ItemId, lostAmount);
             }
 
             return null;
@@ -157,6 +185,26 @@ public sealed class CraftingEngine
         var pack = ch.Backpack;
         if (pack == null) return 0;
         return CountInContainer(pack, itemId);
+    }
+
+    /// <summary>Find the first backpack item matching an item ID (used to read
+    /// the resource hue before it is consumed).</summary>
+    private static Item? FindResourceItem(Character ch, ushort itemId)
+    {
+        var pack = ch.Backpack;
+        return pack == null ? null : FindInContainer(pack, itemId, 0);
+    }
+
+    private static Item? FindInContainer(Item container, ushort itemId, int depth)
+    {
+        if (depth > 10) return null;
+        foreach (var item in container.Contents)
+        {
+            if (item.BaseId == itemId) return item;
+            var found = FindInContainer(item, itemId, depth + 1);
+            if (found != null) return found;
+        }
+        return null;
     }
 
     private static int CountInContainer(Item container, ushort itemId, int depth = 0)

@@ -239,7 +239,7 @@ public sealed class House
         deed.SetTag("HOUSE_MULTI_UUID", _multiItem.Uuid.ToString("D"));
         deed.SetTag("HOUSE_MULTI_BASEID", _multiItem.BaseId.ToString());
 
-        // Remove all component items
+        // Remove all component items (the structure itself)
         foreach (var compUid in _components)
         {
             var item = world.FindItem(compUid);
@@ -247,6 +247,19 @@ public sealed class House
                 world.RemoveItem(item);
         }
         _components.Clear();
+
+        // Release locked-down / secured PLAYER items from house protection.
+        // These are NOT structure components, so they must NOT be deleted —
+        // instead they revert to normal ground items and get a decay timer so
+        // the world doesn't accumulate orphaned, unprotected loot forever.
+        foreach (var protUid in _lockdowns.Concat(_secureContainers))
+        {
+            var item = world.FindItem(protUid);
+            if (item != null && item.DecayTime <= 0)
+                item.DecayTime = Environment.TickCount64 + GameWorld.DefaultDecayTimeMs;
+        }
+        _lockdowns.Clear();
+        _secureContainers.Clear();
 
         // Remove the multi item itself
         world.RemoveItem(_multiItem);
@@ -413,6 +426,12 @@ public sealed class HousingEngine
                 );
 
                 if (FindHouseAt(checkPos) != null)
+                    return false;
+
+                // Reject blocked terrain (water, mountains, impassable statics)
+                // in the footprint — a house can't sit on un-walkable ground.
+                var md = _world.MapData;
+                if (md != null && !md.IsPassable(checkPos.Map, checkPos.X, checkPos.Y, checkPos.Z))
                     return false;
 
                 foreach (var ch in _world.GetCharsInRange(checkPos, 0))

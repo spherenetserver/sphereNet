@@ -25,6 +25,15 @@ public partial class Character : ObjBase
 
     public static Action<Character, Character?>? OnLifecycleKill;
     public static Action<Character>? OnLifecycleResurrect;
+    /// <summary>Fired when a timed jail sentence expires and the character
+    /// should be released (move out of jail, clear Freeze, resync).</summary>
+    public static Action<Character>? OnJailReleaseRequested;
+    /// <summary>Fired each time hunger decays so scripts can react via the
+    /// @Hunger trigger.</summary>
+    public static Action<Character>? OnHungerDecay;
+    /// <summary>Fires the @Criminal trigger before a character is flagged
+    /// criminal. Return true to cancel (script handled / forgave the crime).</summary>
+    public static Func<Character, bool>? OnCriminalCheck;
 
     // Static delegate for guild resolution (set in Program.cs)
     public static Func<Serial, Guild.GuildManager?>? ResolveGuildManager;
@@ -364,6 +373,8 @@ public partial class Character : ObjBase
     private byte _poisonLevel; // 0=none, 1=lesser, 2=normal, 3=greater, 4=deadly, 5=lethal
     private long _nextPoisonTick;
     private int _poisonTicksRemaining;
+    private Serial _poisonSource; // who applied the poison (for kill attribution)
+    private long _nextFieldTick;  // next time standing-in-field damage is applied
 
     // Per-attacker damage log (ATTACKER / ATTACKER.LAST / ATTACKER.MAX /
     // ATTACKER.n.DAM / ELAPSED / UID). Source-X: CChar::m_lastAttackers.
@@ -686,6 +697,12 @@ public partial class Character : ObjBase
 
     // Followers
     public byte MaxFollower { get => _maxFollower; set => _maxFollower = value; }
+
+    /// <summary>How many follower/control slots this creature occupies when
+    /// owned (from CHARDEF FOLLOWERSLOTS; large creatures cost several). Minimum 1.</summary>
+    public int ControlSlots =>
+        Math.Max(1, DefinitionLoader.GetCharDef(CharDefIndex)?.FollowerSlots ?? 1);
+
     public byte CurFollower
     {
         get
@@ -703,7 +720,9 @@ public partial class Character : ObjBase
                     continue;
                 if (creature.IsStatFlag(StatFlag.Ridden))
                     continue;
-                count++;
+                // Sum each pet's control-slot cost, not a flat 1 — otherwise five
+                // multi-slot creatures (e.g. dragons) all fit under a 5 cap.
+                count += creature.ControlSlots;
             }
 
             _curFollower = (byte)Math.Clamp(count, 0, byte.MaxValue);
@@ -799,6 +818,9 @@ public partial class Character : ObjBase
     /// a fresh crime refreshes the countdown, matching Source-X behaviour).</summary>
     public void MakeCriminal()
     {
+        // @Criminal trigger — a script may cancel the flag (RETURN 1).
+        if (OnCriminalCheck != null && OnCriminalCheck(this))
+            return;
         SetStatFlag(StatFlag.Criminal);
         _criminalTimer = Environment.TickCount64 + CriminalTimerSeconds * 1000L;
     }
@@ -831,7 +853,9 @@ public partial class Character : ObjBase
     }
 
     /// <summary>Apply poison to this character. Level: 1=lesser, 2=normal, 3=greater, 4=deadly, 5=lethal.</summary>
-    public void ApplyPoison(byte level)
+    public void ApplyPoison(byte level) => ApplyPoison(level, Serial.Invalid);
+
+    public void ApplyPoison(byte level, Serial source)
     {
         if (level == 0 || level > 5) return;
         if (IsDead) return;
@@ -843,7 +867,49 @@ public partial class Character : ObjBase
             1 => 5, 2 => 8, 3 => 12, 4 => 16, _ => 20
         };
         _nextPoisonTick = Environment.TickCount64 + GetPoisonTickInterval();
+        if (source.IsValid) _poisonSource = source;
         SetStatFlag(StatFlag.Poisoned);
+    }
+
+    /// <summary>Apply damage from any fire/poison field on the character's
+    /// current tile. Sector-indexed lookup, so this is cheap per tick.</summary>
+    private void ApplyStandingFieldDamage()
+    {
+        if (IsDead) return;
+        var world = ResolveWorld?.Invoke();
+        if (world == null) return;
+
+        foreach (var item in world.GetItemsInRange(Position, 0))
+        {
+            if (item.IsDeleted) continue;
+            if (item.Position.X != X || item.Position.Y != Y) continue;
+            if (!item.TryGetTag("FIELD_DAMAGE", out string? fdStr) ||
+                !int.TryParse(fdStr, out int dmg) || dmg <= 0)
+                continue;
+
+            Character? caster = null;
+            if (item.TryGetTag("FIELD_CASTER", out string? cStr) &&
+                uint.TryParse(cStr, out uint cuid))
+                caster = ResolveCharByUid?.Invoke(new Serial(cuid));
+
+            Hits = (short)Math.Max(0, Hits - dmg);
+            if (caster != null && caster != this)
+                RecordAttack(caster.Uid, dmg);
+
+            BroadcastNearby?.Invoke(Position, 18,
+                new SphereNet.Network.Packets.Outgoing.PacketDamage(
+                    Uid.Value, (ushort)Math.Min(dmg, ushort.MaxValue)), 0);
+            BroadcastNearby?.Invoke(Position, 18,
+                new SphereNet.Network.Packets.Outgoing.PacketUpdateHealth(
+                    Uid.Value, MaxHits, Hits), 0);
+
+            if (Hits <= 0 && !IsDead)
+            {
+                if (OnLifecycleKill != null) OnLifecycleKill(this, caster);
+                else Kill();
+            }
+            return; // one field tick per cycle is enough
+        }
     }
 
     /// <summary>Cure poison.</summary>
@@ -852,6 +918,7 @@ public partial class Character : ObjBase
         _poisonLevel = 0;
         _poisonTicksRemaining = 0;
         _nextPoisonTick = 0;
+        _poisonSource = Serial.Invalid;
         ClearStatFlag(StatFlag.Poisoned);
     }
 
@@ -859,6 +926,18 @@ public partial class Character : ObjBase
     public void SetCriminal(long durationMs = 120_000)
     {
         _criminalTimer = Environment.TickCount64 + durationMs;
+    }
+
+    /// <summary>True if this character is serving a timed jail sentence whose
+    /// time has expired. The release time is stored in the JAIL_RELEASE tag as
+    /// DateTime UTC ticks so it survives server reboots (0 = indefinite, no tag
+    /// = not jailed). Returns false for indefinite sentences and non-jailed chars.</summary>
+    public bool IsJailExpired()
+    {
+        if (!TryGetTag("JAIL_RELEASE", out string? tag)) return false;
+        if (!long.TryParse(tag, out long releaseUtcTicks)) return false;
+        if (releaseUtcTicks <= 0) return false; // indefinite
+        return DateTime.UtcNow.Ticks >= releaseUtcTicks;
     }
 
     private int GetPoisonTickInterval() => _poisonLevel switch
@@ -893,9 +972,24 @@ public partial class Character : ObjBase
 
         Hits = (short)Math.Max(0, Hits - damage);
 
+        // Credit the damage to the poisoner so murder count / karma-fame / loot
+        // rights resolve correctly on a poison kill (otherwise it is anonymous).
+        var poisoner = _poisonSource.IsValid ? ResolveCharByUid?.Invoke(_poisonSource) : null;
+        if (_poisonSource.IsValid)
+            RecordAttack(_poisonSource, damage);
+
+        // Show the poison damage to nearby clients and refresh the health bar —
+        // without this the victim's HP silently drains with no visual feedback.
+        BroadcastNearby?.Invoke(Position, 18,
+            new SphereNet.Network.Packets.Outgoing.PacketDamage(
+                Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue)), 0);
+        BroadcastNearby?.Invoke(Position, 18,
+            new SphereNet.Network.Packets.Outgoing.PacketUpdateHealth(
+                Uid.Value, MaxHits, Hits), 0);
+
         if (Hits <= 0 && !IsDead)
         {
-            if (OnLifecycleKill != null) OnLifecycleKill(this, null);
+            if (OnLifecycleKill != null) OnLifecycleKill(this, poisoner);
             else Kill();
         }
 
@@ -1104,7 +1198,7 @@ public partial class Character : ObjBase
         Serial controllerUid = controller?.Uid ?? ownerUid;
 
         if (enforceFollowerCap && owner != null && !HasOwner(owner.Uid) &&
-            owner.CurFollower >= owner.MaxFollower)
+            owner.CurFollower + ControlSlots > owner.MaxFollower)
         {
             return false;
         }
@@ -1555,12 +1649,21 @@ public partial class Character : ObjBase
         if (_npcFood > 0)
             _npcFood--;
 
+        var petOwner = OwnerSerial.IsValid ? ResolveCharByUid?.Invoke(OwnerSerial) : null;
+
         if (_npcFood == 0)
         {
+            // Warn the owner instead of letting the pet go feral silently.
+            if (petOwner != null)
+                SendOwnerMessage?.Invoke(petOwner, ServerMessages.GetFormatted("pet_gone_wild", Name));
             ClearOwnership(clearFriends: false);
             PetAIMode = PetAIMode.Stay;
             return false;
         }
+
+        // Escalating loyalty warnings as the pet grows hungry/unhappy.
+        if (petOwner != null && (_npcFood == 15 || _npcFood == 10 || _npcFood == 5))
+            SendOwnerMessage?.Invoke(petOwner, ServerMessages.GetFormatted("pet_loyalty_low", Name));
 
         return false;
     }
@@ -1848,7 +1951,9 @@ public partial class Character : ObjBase
         ClearStatFlag(StatFlag.Dead);
         CurePoison();
         ClearStatFlag(StatFlag.Hidden);
-        _hits = (short)(_maxHits / 2);
+        // At least 1 HP — integer halving of MaxHits==1 would resurrect at 0 HP,
+        // re-killing the character on the next tick.
+        _hits = (short)Math.Max(1, _maxHits / 2);
         _attackers.Clear();
         FightTarget = Serial.Invalid;
 
@@ -2270,6 +2375,11 @@ public partial class Character : ObjBase
                 value = ac.ToString();
                 return true;
             }
+            case "ARMOR":
+            case "AR":
+                // Total worn armour rating (Source-X OC_ARMOR / CHC_AR).
+                value = Combat.CombatEngine.CalcArmorDefense(this).ToString();
+                return true;
             case "WEIGHT": value = GetTotalWeight().ToString(); return true;
             case "MAXWEIGHT":
                 value = ((_str * 7 / 2) + 40 + _modMaxWeight).ToString();
@@ -2924,7 +3034,9 @@ public partial class Character : ObjBase
                     SetCriminal();
                 return true;
             case "FOOD":
-                if (ushort.TryParse(normalized, out ushort foodVal)) _food = foodVal;
+                // Clamp to the 0-60 range like the Food property setter, so the
+                // script path can't push hunger past the client/regen ceiling.
+                if (ushort.TryParse(normalized, out ushort foodVal)) Food = foodVal;
                 return true;
             case "RESPHYSICAL": if (short.TryParse(normalized, out short rpv)) _resPhysical = rpv; return true;
             case "RESFIRE": if (short.TryParse(normalized, out short rfv)) _resFire = rfv; return true;
@@ -3447,6 +3559,28 @@ public partial class Character : ObjBase
                 if (OnLifecycleResurrect != null) OnLifecycleResurrect(this);
                 else Resurrect();
                 return true;
+            case "CURE":
+                CurePoison();
+                return true;
+            case "REVEAL":
+                ClearStatFlag(StatFlag.Hidden);
+                ClearStatFlag(StatFlag.Invisible);
+                return true;
+            case "ATTACK":
+            case "KILLTARGET":
+            {
+                // ATTACK <uid> — set this character's combat target.
+                if (!string.IsNullOrWhiteSpace(args))
+                {
+                    var atkTarget = ParseSerial(args.Trim());
+                    if (atkTarget.IsValid)
+                    {
+                        FightTarget = atkTarget;
+                        SetStatFlag(StatFlag.War);
+                    }
+                }
+                return true;
+            }
             case "ANIM":
             {
                 // Source-X CChar::r_Verb ANIM action[,frameCount[,repeatCount[,backwards[,repeat[,delay]]]]]
@@ -4368,8 +4502,9 @@ public partial class Character : ObjBase
 
         long now = Environment.TickCount64;
 
-        // HP regen: every 6s base, affected by hunger
-        if (now >= _nextHitRegen && _hits < _maxHits)
+        // HP regen: every 6s base, affected by hunger. Suspended while poisoned
+        // so the poison can actually whittle the victim down.
+        if (now >= _nextHitRegen && _hits < _maxHits && _poisonLevel == 0)
         {
             int regenAmount = _food > 0 ? 1 : 0;
             if (_str > 50) regenAmount += 1;
@@ -4407,14 +4542,42 @@ public partial class Character : ObjBase
         {
             if (_food > 0) _food--;
             _nextFoodDecay = now + 600_000;
+
+            // Let scripts react to hunger (@Hunger trigger).
+            OnHungerDecay?.Invoke(this);
+
+            // Starvation bite: a fully-starved character loses stamina (and a
+            // little health once stamina is gone) so hunger has real stakes
+            // beyond merely halting HP regen.
+            if (_food == 0)
+            {
+                if (_stam > 0)
+                    _stam = (short)Math.Max(0, _stam - Math.Max(1, _maxStam / 10));
+                else if (_hits > 1)
+                    _hits = (short)Math.Max(1, _hits - Math.Max(1, _maxHits / 20));
+                MarkDirty(DirtyFlag.Stats);
+            }
         }
 
         // Poison tick
         ProcessPoisonTick(now);
 
+        // Field damage tick — periodic damage while standing in a fire/poison
+        // field, so a stationary victim still takes damage (not only on step).
+        if (now >= _nextFieldTick)
+        {
+            _nextFieldTick = now + 1000;
+            ApplyStandingFieldDamage();
+        }
+
         // Criminal timer expiry
         if (_criminalTimer > 0 && now >= _criminalTimer)
             _criminalTimer = 0;
+
+        // Timed jail auto-release. Gated on Freeze so only jailed/frozen chars
+        // pay the tag lookup; the release hook clears Freeze so it fires once.
+        if (IsStatFlag(StatFlag.Freeze) && IsJailExpired())
+            OnJailReleaseRequested?.Invoke(this);
 
         // Memory item ticks
         for (int i = _memories.Count - 1; i >= 0; i--)

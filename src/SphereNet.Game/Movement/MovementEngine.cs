@@ -81,6 +81,7 @@ public sealed class MovementEngine
         var current = new Point3D(ch.X, ch.Y, ch.Z, ch.MapIndex);
 
         Point3D target;
+        bool shoved = false;
         GetDirectionDelta(dir, out short dx, out short dy);
 
         // GM with AllMove, or an uninitialized world (no MapData — unit tests
@@ -109,6 +110,8 @@ public sealed class MovementEngine
                     diag = diag with { MobBlocked = true };
                     return false;
                 }
+                // A living blocker we pushed past = a real shove.
+                shoved = true;
             }
         }
 
@@ -132,6 +135,16 @@ public sealed class MovementEngine
 
         // Move
         _world.MoveCharacter(ch, target);
+
+        // Shove cost — applied once here (not in the two shove predicates) so a
+        // player who pushes past a mobile spends 10 stamina and is revealed,
+        // exactly once, only when the move actually commits.
+        if (shoved && ch.PrivLevel < PrivLevel.Counsel && ch.MaxStam > 0)
+        {
+            ch.Stam = (short)Math.Max(0, ch.Stam - 10);
+            if (ch.IsStatFlag(StatFlag.Hidden)) ch.ClearStatFlag(StatFlag.Hidden);
+            if (ch.IsStatFlag(StatFlag.Invisible)) ch.ClearStatFlag(StatFlag.Invisible);
+        }
 
         // Run stamina drain — 1 stam per running step (Source-X parity)
         if (running && ch.IsPlayer && ch.Stam > 0)
@@ -260,8 +273,10 @@ public sealed class MovementEngine
                 case ItemType.Moongate:
                 {
                     var dest = item.MoreP;
+                    var md = _world.MapData;
+                    bool destPassable = md == null || md.IsPassable(dest.Map, dest.X, dest.Y, dest.Z);
                     if ((dest.X != 0 || dest.Y != 0) && dest.X >= 0 && dest.Y >= 0 &&
-                        _world.GetSector(dest) != null)
+                        _world.GetSector(dest) != null && destPassable)
                     {
                         byte oldMap = ch.MapIndex;
                         _world.MoveCharacter(ch, dest);

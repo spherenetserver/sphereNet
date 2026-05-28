@@ -515,6 +515,24 @@ public sealed class NpcAI
         }
         npc.FleeStepsCurrent = 0;
 
+        // Home leash: a wild (non-pet, masterless) monster that has chased its
+        // target too far from home gives up and walks back, instead of trailing
+        // a player across the whole map. Pets/summons follow their master and
+        // are exempt; NPCs without a home anchor can't leash.
+        if (!npc.IsStatFlag(StatFlag.Pet) && !npc.NpcMaster.IsValid &&
+            TryResolveHome(npc, out Point3D leashHome, out int leashWander))
+        {
+            int homeDist = npc.Position.GetDistanceTo(leashHome);
+            int leash = Math.Max(leashWander * 2, 18);
+            if (homeDist > leash)
+            {
+                npc.FightTarget = Serial.Invalid;
+                ClearLosFailCount(npc);
+                MoveToward(npc, leashHome, run: true);
+                return;
+            }
+        }
+
         int dist = npc.Position.GetDistanceTo(target.Position);
         bool hasLOS = _world.CanSeeLOS(npc.Position, target.Position);
 
@@ -1787,6 +1805,24 @@ public sealed class NpcAI
         }
 
         var nextStep = path[idx];
+
+        // Re-validate the cached step before committing it. The path can be up to
+        // PathCacheMaxAge old, during which a door may have closed, another mob
+        // moved in, or a damage field appeared — walking it blindly would shove
+        // the NPC into a blocked/dangerous tile. If it's no longer valid, drop
+        // the path and recompute next tick.
+        var stepMapData = _world.MapData;
+        if ((stepMapData != null &&
+             !stepMapData.IsPassable(nextStep.Map, nextStep.X, nextStep.Y, nextStep.Z))
+            || !CanNpcEnterTile(npc, nextStep))
+        {
+            _pathCache.Remove(uid);
+            _pathIndex.Remove(uid);
+            _pathTime.Remove(uid);
+            npc.Direction = npc.Position.GetDirectionTo(nextStep);
+            return;
+        }
+
         npc.Direction = npc.Position.GetDirectionTo(nextStep);
         _world.MoveCharacter(npc, nextStep);
         _pathIndex[uid] = idx + 1;

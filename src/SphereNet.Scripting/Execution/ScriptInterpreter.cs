@@ -769,17 +769,47 @@ public sealed class ScriptInterpreter
         result = TriggerResult.Default;
         int i = startIdx;
 
-        string countStr = ResolveArgs(lines[i].Arg, target, source, args, scope);
-        long count = EvaluateWithResolver(countStr, target, source, args, scope);
+        // Source-X FOR argument forms (CScriptObj.cpp):
+        //   FOR x            -> _FOR = 1..x
+        //   FOR min max      -> _FOR = min..max
+        //   FOR var max      -> var  = 1..max   (first token is a name)
+        //   FOR var min max  -> var  = min..max
+        // Ranges are INCLUSIVE and count DOWN when min > max.
+        var tokens = TokenizeForArgs(lines[i].Arg);
         i++;
+
+        string loopVar = "_FOR";
+        long min = 1, max = 1;
+        long Eval(string tok) =>
+            EvaluateWithResolver(ResolveArgs(tok, target, source, args, scope), target, source, args, scope);
+
+        if (tokens.Count == 1)
+        {
+            min = 1; max = Eval(tokens[0]);
+        }
+        else if (tokens.Count == 2)
+        {
+            if (IsLoopVarName(tokens[0])) { loopVar = tokens[0]; min = 1; max = Eval(tokens[1]); }
+            else { min = Eval(tokens[0]); max = Eval(tokens[1]); }
+        }
+        else if (tokens.Count >= 3)
+        {
+            loopVar = tokens[0]; min = Eval(tokens[1]); max = Eval(tokens[2]);
+        }
 
         int bodyStart = i;
         int bodyEnd = FindBlockEnd(lines, bodyStart, "ENDFOR");
 
         scope.LoopDepth++;
-        for (long iter = 0; iter < count && iter < scope.MaxLoopIterations; iter++)
+        bool countDown = min > max;
+        long iterations = 0;
+        for (long v = min;
+             (countDown ? v >= max : v <= max) && iterations < scope.MaxLoopIterations;
+             v += countDown ? -1 : 1, iterations++)
         {
-            scope.LocalVars.SetInt("_FOR", iter);
+            scope.LocalVars.SetInt("_FOR", v);
+            if (!loopVar.Equals("_FOR", StringComparison.OrdinalIgnoreCase))
+                scope.LocalVars.SetInt(loopVar, v);
             result = Execute(GetSubList(lines, bodyStart, bodyEnd), target, source, args, scope);
             if (scope.IsContinuing) { scope.IsContinuing = false; continue; }
             if (scope.IsBreaking) { scope.IsBreaking = false; break; }
@@ -788,6 +818,43 @@ public sealed class ScriptInterpreter
         scope.LoopDepth--;
 
         return bodyEnd + 1;
+    }
+
+    /// <summary>Split a FOR argument list on spaces/commas, respecting &lt;...&gt;
+    /// and (...) so a bracketed sub-expression stays one token.</summary>
+    private static List<string> TokenizeForArgs(string s)
+    {
+        var tokens = new List<string>();
+        int angle = 0, paren = 0, start = 0;
+        bool inTok = false;
+        for (int i = 0; i < s.Length; i++)
+        {
+            char c = s[i];
+            if (c == '<') angle++;
+            else if (c == '>' && angle > 0) angle--;
+            else if (c == '(') paren++;
+            else if (c == ')' && paren > 0) paren--;
+
+            bool sep = (char.IsWhiteSpace(c) || c == ',') && angle == 0 && paren == 0;
+            if (sep)
+            {
+                if (inTok) { tokens.Add(s[start..i]); inTok = false; }
+            }
+            else if (!inTok) { start = i; inTok = true; }
+        }
+        if (inTok) tokens.Add(s[start..]);
+        return tokens;
+    }
+
+    /// <summary>A FOR loop-variable name is a bare identifier (letters/digits/_,
+    /// starting with a letter or _) — not a number or a &lt;...&gt; expression.</summary>
+    private static bool IsLoopVarName(string tok)
+    {
+        if (string.IsNullOrEmpty(tok)) return false;
+        if (!(char.IsLetter(tok[0]) || tok[0] == '_')) return false;
+        foreach (char c in tok)
+            if (!(char.IsLetterOrDigit(c) || c == '_')) return false;
+        return true;
     }
 
     private int ExecuteWhile(IReadOnlyList<ScriptKey> lines, int startIdx, IScriptObj target,

@@ -131,15 +131,29 @@ public static class CombatEngine
                 int chance = atkCalc * 100 / Math.Max(1, defCalc * 2);
                 return Math.Clamp(chance, 5, 95);
             }
-            default: // Sphere custom (era 0)
+            default: // Sphere custom (era 0) — Source-X Calc_CombatChanceToHit
             {
-                // Source-X Calc_CombatChanceToHit: base 50% shifted by
-                // the attack/defend skill difference, clamped 5-95%.
-                int iSkillAttack = (attackSkill + tacticsAtk) / 2;
-                int iSkillDefend = (targetSkill + tacticsDef) / 2;
-                int iDiff = iSkillAttack - iSkillDefend;
-                int chance = 50 + iDiff / 10;
-                return Math.Clamp(chance, 5, 95);
+                // Sleeping/frozen target: near-guaranteed hit window.
+                if (target.IsStatFlag(StatFlag.Freeze))
+                    return Math.Clamp(_rand.Next(10) * 10, 0, 100);
+
+                int iSkillVal = attackSkill;
+                // Offence: weapon skill + tactics, averaged.
+                int iSkillAttack = (iSkillVal + tacticsAtk) / 2;
+                // Defence: target's tactics blended with their DEX (the key
+                // factor the old formula dropped entirely).
+                int iSkillDefend = tacticsDef;
+                int iStam = target.Dex;
+                bool targetRanged = IsRangedSkill(GetWeaponSkill(target));
+                bool attackerRanged = IsRangedSkill(GetWeaponSkill(attacker));
+                if (targetRanged && !attackerRanged)
+                    iSkillDefend = (iSkillDefend + iStam * 9) / 2;  // bows are easier to hit
+                else
+                    iSkillDefend = (iSkillDefend + iStam * 10) / 2;
+
+                int iDiff = (iSkillAttack - iSkillDefend) / 5;
+                iDiff = (iSkillVal - iDiff) / 10;
+                return Math.Clamp(iDiff, 0, 100);
             }
         }
     }
@@ -186,18 +200,38 @@ public static class CombatEngine
             }
         }
 
-        // Source-X: damage += STR/10 (flat additive, not percentage)
-        int strBonus = attacker.Str / 10;
+        // Source-X Fight_CalcDamage: the bonus is a PERCENTAGE applied to the
+        // base damage and is era-specific (tactics/anatomy only count in era 1/2).
+        int tactics = attacker.GetSkill(SkillType.Tactics);
+        int anatomy = attacker.GetSkill(SkillType.Anatomy);
+        int dmgBonus; // percent
+        switch (era)
+        {
+            case 1: // pre-AOS
+                dmgBonus = (tactics - 500) / 10;
+                dmgBonus += anatomy / 50;
+                if (anatomy >= 1000) dmgBonus += 10;
+                if (weapon != null && weapon.ItemType == ItemType.WeaponAxe)
+                {
+                    int lj = attacker.GetSkill(SkillType.Lumberjacking);
+                    dmgBonus += lj / 50;
+                    if (lj >= 1000) dmgBonus += 10;
+                }
+                dmgBonus += attacker.Str * 20 / 100;
+                break;
+            case 2: // AOS
+                dmgBonus = tactics / 16;
+                dmgBonus += anatomy / 20;
+                if (attacker.Str >= 100) dmgBonus += 5;
+                dmgBonus += attacker.Str * 30 / 100;
+                break;
+            default: // era 0 — Sphere custom: STR% only, no tactics/anatomy
+                dmgBonus = attacker.Str * 10 / 100;
+                break;
+        }
 
-        // Tactics: (skill / 10) * 0.3 ≈ skill / 33
-        int tacticsBonus = attacker.GetSkill(SkillType.Tactics) / 33;
-
-        // Anatomy: skill / 50
-        int anatomyBonus = attacker.GetSkill(SkillType.Anatomy) / 50;
-
-        int totalBonus = strBonus + tacticsBonus + anatomyBonus;
-        dmgMin += totalBonus;
-        dmgMax += totalBonus;
+        dmgMin += dmgMin * dmgBonus / 100;
+        dmgMax += dmgMax * dmgBonus / 100;
 
         return (Math.Max(1, dmgMin), Math.Max(1, dmgMax));
     }
@@ -284,15 +318,26 @@ public static class CombatEngine
 
         // Calculate raw damage
         var (dmgMin, dmgMax) = CalcWeaponDamage(attacker, weapon, damageEra);
+        // Guard against malformed weapon/NPC damage defs where Min > Max, which
+        // would make Random.Next throw and crash the combat tick.
+        if (dmgMax < dmgMin) dmgMax = dmgMin;
         int damage = _rand.Next(dmgMin, dmgMax + 1);
 
-        // Parry check — shields and wrestling parry (fist blocking)
+        // Parry check — Source-X Calc_CombatChanceToParry: a shield parries best,
+        // a wielded weapon (one- or two-handed) can also parry at a lower rate.
         int parrySkill = target.GetSkill(SkillType.Parrying);
-        var shield = target.GetEquippedItem(Layer.TwoHanded);
-        if (shield != null && shield.ItemType == ItemType.Shield && parrySkill > 0)
+        if (parrySkill > 0)
         {
-            int parryChance = parrySkill / 30;
-            if (_rand.Next(100) < parryChance)
+            var twoHanded = target.GetEquippedItem(Layer.TwoHanded);
+            var oneHanded = target.GetEquippedItem(Layer.OneHanded);
+            int parryChance;
+            if (twoHanded != null && twoHanded.ItemType == ItemType.Shield)
+                parryChance = parrySkill / 30;          // shield
+            else if (twoHanded != null || oneHanded != null)
+                parryChance = parrySkill / 80;          // weapon parry
+            else
+                parryChance = 0;                        // bare-handed: no parry
+            if (parryChance > 0 && _rand.Next(100) < parryChance)
             {
                 OnHitParry?.Invoke(target, attacker);
                 return 0;
@@ -329,7 +374,7 @@ public static class CombatEngine
                 int.TryParse(poisonStr, out int poisonLevel) && poisonLevel > 0)
             {
                 byte targetLevel = (byte)Math.Clamp(poisonLevel / 200, 1, 5);
-                target.ApplyPoison(targetLevel);
+                target.ApplyPoison(targetLevel, attacker.Uid);
 
                 int charges = 1;
                 if (weapon.TryGetTag("POISON_CHARGES", out string? chargesStr))
@@ -358,6 +403,9 @@ public static class CombatEngine
             {
                 int reflect = Math.Max(1, damage / 4);
                 attacker.Hits -= (short)Math.Min(reflect, short.MaxValue);
+                // Credit reflected damage so a reactive-armor kill attributes to
+                // the target (murder count / karma-fame / loot rights).
+                attacker.RecordAttack(target.Uid, reflect);
             }
 
             if (DurabilityEnabled)
@@ -411,6 +459,10 @@ public static class CombatEngine
     /// Get the combat skill used by the attacker's weapon.
     /// Maps to CItem::Weapon_GetSkill in Source-X.
     /// </summary>
+    /// <summary>True for ranged weapon skills (Source-X SKF_RANGED).</summary>
+    private static bool IsRangedSkill(SkillType skill) =>
+        skill is SkillType.Archery or SkillType.Throwing;
+
     public static SkillType GetWeaponSkill(Character ch)
     {
         var weapon = ch.GetEquippedItem(Layer.OneHanded) ?? ch.GetEquippedItem(Layer.TwoHanded);

@@ -261,6 +261,21 @@ public sealed class CharDef : BaseDef
 
     private static (int Min, int Max) ParseRange(string value)
     {
+        value = value.Trim();
+        // Sphere brace range: {min max} (space-separated). chardefs use this for
+        // STR/DEX/INT/HITS, e.g. STR={100 130} — previously this failed to parse
+        // (no comma) and the stat collapsed to 0.
+        if (value.Length > 0 && value[0] == '{')
+        {
+            string inner = value.Trim('{', '}').Trim();
+            var parts = inner.Split(new[] { ' ', '\t', ',' },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (parts.Length >= 2 && int.TryParse(parts[0], out int bmin) && int.TryParse(parts[1], out int bmax))
+                return (bmin, bmax);
+            if (parts.Length == 1 && int.TryParse(parts[0], out int bsingle))
+                return (bsingle, bsingle);
+            return (0, 0);
+        }
         int comma = value.IndexOf(',');
         if (comma >= 0)
         {

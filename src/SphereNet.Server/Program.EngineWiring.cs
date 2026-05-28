@@ -770,6 +770,18 @@ public static partial class Program
                 var pkt = new PacketSound(soundId, pos.X, pos.Y, pos.Z);
                 BroadcastNearby(pos, 18, pkt, 0);
             };
+            _spellEngine.OnItemRemoved = item =>
+            {
+                if (item == null || item.IsDeleted) return;
+                BroadcastNearby(item.Position, 18, new PacketDeleteObject(item.Uid.Value), 0);
+                _world.DeleteObject(item);
+                item.Delete();
+            };
+            _spellEngine.OnSpellInterrupt = (caster, _) =>
+            {
+                _triggerDispatcher?.FireCharTrigger(caster, CharTrigger.SpellInterrupt,
+                    new TriggerArgs { CharSrc = caster });
+            };
             _spellEngine.OnPersonalLightChanged = target =>
             {
                 if (TryGetClientFor(target, out var c))
@@ -993,6 +1005,36 @@ public static partial class Program
                     victimClient.OnResurrect();
                 else
                     victim.Resurrect();
+            };
+            Character.OnJailReleaseRequested = inmate =>
+            {
+                inmate.ClearStatFlag(StatFlag.Freeze);
+                inmate.RemoveTag("JAIL_RELEASE");
+                var spawnPos = new Point3D(1495, 1629, 10, 0);
+                _world.MoveCharacter(inmate, spawnPos);
+                if (_clientsByCharUid.TryGetValue(inmate.Uid, out var inmateClient))
+                    inmateClient.Resync();
+            };
+            Character.OnHungerDecay = ch =>
+            {
+                _triggerDispatcher?.FireCharTrigger(ch, CharTrigger.Hunger,
+                    new TriggerArgs { CharSrc = ch });
+            };
+            Character.OnCriminalCheck = ch =>
+            {
+                bool cancelled = _triggerDispatcher?.FireCharTrigger(ch, CharTrigger.Criminal,
+                    new TriggerArgs { CharSrc = ch }) == TriggerResult.True;
+                if (!cancelled && _world != null && _triggerDispatcher != null)
+                {
+                    // Nearby NPCs/guards witness the crime (@SeeCrime, <src> = criminal).
+                    foreach (var witness in _world.GetCharsInRange(ch.Position, 12))
+                    {
+                        if (witness == ch || witness.IsPlayer || witness.IsDead) continue;
+                        _triggerDispatcher.FireCharTrigger(witness, CharTrigger.SeeCrime,
+                            new TriggerArgs { CharSrc = ch });
+                    }
+                }
+                return cancelled;
             };
             GameRegion.ClientCountProvider = regionObj =>
             {

@@ -235,7 +235,13 @@ public static class ActiveSkillEngine
 
         bool success = SkillEngine.UseQuick(ch, SkillType.Stealing, sink.Random.Next(60));
 
-        if (success && ch.Backpack != null)
+        // No backpack = nowhere to stash the loot, so the theft can't succeed.
+        // Without this the item silently vanished AND the thief could still be
+        // flagged criminal for a "successful" steal that moved nothing.
+        if (success && ch.Backpack == null)
+            success = false;
+
+        if (success)
         {
             // Remove from source container first
             if (target.ContainedIn.IsValid)
@@ -243,7 +249,7 @@ public static class ActiveSkillEngine
                 var sourceContainer = sink.World.FindItem(target.ContainedIn);
                 sourceContainer?.RemoveItem(target);
             }
-            ch.Backpack.AddItem(target);
+            ch.Backpack!.AddItem(target);
         }
         else
         {
@@ -360,7 +366,21 @@ public static class ActiveSkillEngine
 
         bool success = SkillEngine.UseQuick(ch, SkillType.RemoveTrap, sink.Random.Next(60));
         if (success)
+        {
             trap.ItemType = ItemType.Trap; // disarm: clear active variant.
+        }
+        else if (trap.ItemType == ItemType.TrapActive)
+        {
+            // Source-X: a botched disarm springs the trap on the would-be disarmer.
+            int trapDmg = 5 + sink.Random.Next(15);
+            ch.Hits = (short)Math.Max(0, ch.Hits - trapDmg);
+            sink.SysMessage(ServerMessages.Get("removetraps_fail"));
+            if (ch.Hits <= 0 && !ch.IsDead)
+            {
+                if (Character.OnLifecycleKill != null) Character.OnLifecycleKill(ch, null);
+                else ch.Kill();
+            }
+        }
         return success;
     }
 
@@ -411,6 +431,11 @@ public static class ActiveSkillEngine
         sink.Animation((ushort)Core.Enums.AnimationType.Bow);
         sink.Sound(0x0057);
         sink.ConsumeAmount(bandage); // Source-X consumes on fail too.
+        // Used bandages become bloody bandages (Source-X parity).
+        var bloody = sink.World.CreateItem();
+        bloody.BaseId = 0x0E20; // bloody bandage
+        bloody.Name = "bloodied bandage";
+        sink.DeliverItem(bloody);
         if (!success)
             return false;
 
@@ -462,7 +487,8 @@ public static class ActiveSkillEngine
             return true;
         }
 
-        int heal = ch.GetSkill(SkillType.Healing) / 40 + 3;
+        // Anatomy contributes to the amount healed (Source-X heal formula).
+        int heal = ch.GetSkill(SkillType.Healing) / 40 + ch.GetSkill(SkillType.Anatomy) / 80 + 3;
         target.Hits = (short)Math.Min(target.MaxHits, target.Hits + heal);
         return true;
     }
@@ -505,8 +531,11 @@ public static class ActiveSkillEngine
         string[] tries = { Msg.Taming1, Msg.Taming2, Msg.Taming3, Msg.Taming4 };
         sink.Emote(ServerMessages.GetFormatted(tries[sink.Random.Next(tries.Length)], target.Name));
 
-        // Difficulty is roughly 1.5x the target's combined skill -- approximated.
-        int diff = Math.Min(1000, target.MaxHits * 4);
+        // Difficulty approximated from the creature's hit points. CheckSuccess
+        // expects a 0-100 difficulty (it scales x10 internally vs the 0-1000
+        // skill value), so map HP onto 0-100 — using the raw HP here made high-HP
+        // creatures (dragons/bosses) mathematically un-tameable.
+        int diff = Math.Clamp(target.MaxHits / 10, 1, 100);
         bool success = SkillEngine.UseQuick(ch, SkillType.Taming, diff);
         if (success)
         {

@@ -1108,10 +1108,11 @@ public sealed class CommandHandler
                     world.MoveCharacter(target, jailPos);
                     target.SetStatFlag(StatFlag.Freeze);
 
-                    // Jail duration (minutes)
+                    // Jail duration (minutes). Stored as DateTime UTC ticks so the
+                    // sentence survives reboots (TickCount64 resets on restart).
                     if (parts.Length > 1 && int.TryParse(parts[1], out int minutes) && minutes > 0)
                     {
-                        long releaseTime = Environment.TickCount64 + minutes * 60_000L;
+                        long releaseTime = DateTime.UtcNow.Ticks + minutes * TimeSpan.TicksPerMinute;
                         target.SetTag("JAIL_RELEASE", releaseTime.ToString());
                         OnSysMessage?.Invoke(gm, ServerMessages.GetFormatted("gm_jailed_timed", target.Name, minutes));
                     }

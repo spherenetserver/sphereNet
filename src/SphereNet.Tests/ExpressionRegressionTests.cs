@@ -67,4 +67,39 @@ public class ExpressionRegressionTests
         Assert.Equal("10", parser.EvaluateStr("<EVAL 0A>"));
         Assert.Equal("10", parser.EvaluateStr("<FEVAL 0A>"));
     }
+
+    [Fact]
+    public void ExpressionParser_BraceRange_RollsWithinBounds()
+    {
+        var parser = new ExpressionParser();
+
+        // Equal bounds are deterministic.
+        Assert.Equal(5, parser.Evaluate("{5 5}".AsSpan()));
+        // A real range stays within [lo,hi].
+        for (int i = 0; i < 50; i++)
+            Assert.InRange(parser.Evaluate("{3 8}".AsSpan()), 3, 8);
+    }
+
+    [Fact]
+    public void ExpressionParser_MaxMin_And_Power()
+    {
+        var parser = new ExpressionParser();
+
+        Assert.Equal(7, parser.Evaluate("MAX(3,7)".AsSpan()));
+        Assert.Equal(3, parser.Evaluate("MIN(3,7)".AsSpan()));
+        Assert.Equal(256, parser.Evaluate("2@8".AsSpan())); // power operator
+    }
+
+    [Fact]
+    public void ExpressionParser_Qval_NumericThreeWay()
+    {
+        var parser = new ExpressionParser();
+
+        // QVAL v1,v2,lt,eq,gt
+        Assert.Equal("lt", parser.EvaluateStr("<QVAL 3,7,lt,eq,gt>"));
+        Assert.Equal("eq", parser.EvaluateStr("<QVAL 5,5,lt,eq,gt>"));
+        Assert.Equal("gt", parser.EvaluateStr("<QVAL 9,2,lt,eq,gt>"));
+        // Conditional form still works.
+        Assert.Equal("yes", parser.EvaluateStr("<QVAL 1?yes:no>"));
+    }
 }

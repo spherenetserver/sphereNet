@@ -131,8 +131,12 @@ public sealed class DeathEngine
         // Fame: Source-X Calc_FameKill — PC kill /10, NPC kill /200
         int rawFame = Math.Max(0, (int)victim.Fame);
         int fameGain = victim.IsPlayer ? rawFame / 10 : rawFame / 200;
-        fameGain = Math.Clamp(fameGain, 1, 200);
-        killer.Fame = (short)Math.Clamp(killer.Fame + fameGain, 0, 10000);
+        // Clamp the magnitude but DON'T force a minimum of 1 — a zero-fame victim
+        // (rabbit, bird) must grant zero fame, otherwise players farm trash mobs
+        // for fame one point at a time.
+        fameGain = Math.Min(fameGain, 200);
+        if (fameGain > 0)
+            killer.Fame = (short)Math.Clamp(killer.Fame + fameGain, 0, 10000);
 
         // Source-X: no karma loss for killing criminal/red
         if (victim.IsCriminal || victim.IsMurderer)
@@ -245,8 +249,10 @@ public sealed class DeathEngine
         // Generate loot based on NPC brain type / stats tier
         int tier = Math.Max(1, (victim.Str + victim.Dex + victim.Int) / 60);
 
-        // Gold drop
-        int goldAmount = Random.Shared.Next(tier * 5, tier * 25 + 1);
+        // Gold drop — use a floor-free tier so weak creatures (rabbits, birds:
+        // combined stats < 60) drop no gold at all, instead of a guaranteed 5+.
+        int goldTier = (victim.Str + victim.Dex + victim.Int) / 60;
+        int goldAmount = goldTier > 0 ? Random.Shared.Next(goldTier * 5, goldTier * 25 + 1) : 0;
         if (goldAmount > 0)
         {
             var gold = _world.CreateItem();

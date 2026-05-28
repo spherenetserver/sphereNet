@@ -319,11 +319,23 @@ public sealed partial class GameClient
         }
         if (_character.TryGetTag("JAIL_RELEASE", out string? jailTag))
         {
-            var jailPos = new Point3D(1476, 1604, 20, 0);
-            if (_character.Position.X != jailPos.X || _character.Position.Y != jailPos.Y)
+            if (_character.IsJailExpired())
             {
-                _world.MoveCharacter(_character, jailPos);
-                _character.SetStatFlag(StatFlag.Freeze);
+                // Sentence already served while logged out — release on login
+                // instead of re-applying an expired jail.
+                _character.RemoveTag("JAIL_RELEASE");
+                _character.ClearStatFlag(StatFlag.Freeze);
+                var spawnPos = new Point3D(1495, 1629, 10, 0);
+                _world.MoveCharacter(_character, spawnPos);
+            }
+            else
+            {
+                var jailPos = new Point3D(1476, 1604, 20, 0);
+                if (_character.Position.X != jailPos.X || _character.Position.Y != jailPos.Y)
+                {
+                    _world.MoveCharacter(_character, jailPos);
+                    _character.SetStatFlag(StatFlag.Freeze);
+                }
             }
         }
 

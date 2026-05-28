@@ -331,6 +331,10 @@ public static partial class ServerMessages
         // ===== Pet Commands shortcuts =====
         Def("pet_all_cmd", "All pets: %s");
         Def("pet_cmd", "%s: %s");
+        Def("pet_loyalty_low", "%s looks hungry and is growing restless.");
+        Def("pet_gone_wild", "%s has lost its loyalty to you and has gone wild!");
+        Def("party_join_failed", "You could not join that party.");
+        Def("removetraps_fail", "You fail to disarm the trap and set it off!");
 
         // ===== GM Commands (SpeechEngine) =====
         Def("gm_add_usage", "Usage: .ADD <itemid|charid|DEFNAME>");

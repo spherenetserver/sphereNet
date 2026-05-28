@@ -21,15 +21,43 @@ Keep `save/`, account files, and admin passwords out of source control.
 
 The web panel is not started by the headless server alone.
 
-## Security Checklist
+## Security
+
+SphereNet has several operator surfaces. Treat every one of them as an admin
+control plane, not as a public gameplay endpoint.
+
+### Operator surfaces
+
+- **UO client port** — public gameplay traffic. Account creation is controlled
+  by `AccApp` in `sphere.ini`.
+- **Telnet admin** — binds to loopback and starts only when `AdminPassword` is
+  non-empty. Empty passwords fail closed.
+- **Web status** — loopback-only status JSON intended for local tooling. Keep it
+  behind a trusted host boundary.
+- **Web panel** — bearer-token admin API served by `SphereNet.Host`. Use a
+  reverse proxy with TLS if it is exposed beyond localhost.
+- **IPC named pipe** — local-trust channel between host and managed server. Any
+  local process with pipe access is trusted. The managed host uses a random pipe
+  name per run, but this is not a remote-auth boundary.
+- **Headless stdin** — direct process console commands. Only run the server
+  under an account trusted operators can access.
+
+### Checklist
 
 - Set `AccApp=0` unless open account creation is intentional.
 - Set a non-empty `AdminPassword` before enabling telnet or panel access.
+- Keep `DefaultCommandLevel=0` for public shards — auto-created accounts must not
+  receive elevated command access.
+- Keep `Md5Passwords=0` for new deployments. MD5 is accepted only for legacy
+  compatibility and should be migrated away from.
 - Keep telnet, web status, panel, and IPC bound to localhost unless protected by
-  a trusted reverse proxy.
-- Use TLS at the reverse proxy when exposing the panel beyond localhost.
-- Treat named pipe IPC and headless stdin as local-admin surfaces.
-- Rotate `AdminPassword` after setup and after operator changes.
+  a trusted reverse proxy; use TLS at the proxy when exposing the panel.
+- Treat named pipe IPC and headless stdin as local-admin surfaces; do not expose
+  them or raw panel HTTP to untrusted users.
+- Rotate `AdminPassword` / the panel password after setup and after operator
+  changes.
+- Watch startup validation warnings — unsafe public-shard defaults are reported
+  by `SphereConfig.Validate()` before the shard opens.
 
 ## Suggested Layout
 

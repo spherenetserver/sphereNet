@@ -3,6 +3,7 @@
 > A modern, high-performance **Ultima Online private server emulator** written in **.NET 9**, designed for script compatibility with [Source-X](https://github.com/Sphereserver/Source-X) while going far beyond it in performance, persistence, and operability.
 
 🇹🇷 **Türkçe okumak için → [README-TR.md](README-TR.md)**
+📚 **Documentation → [docs/](docs/README.md)** (architecture, [staff commands](docs/STAFF_COMMANDS.md), [triggers](docs/TRIGGERS.md), deploy, runbook)
 📜 **Changelog → [CHANGELOG-EN.txt](CHANGELOG-EN.txt) · [CHANGELOG-TR.txt](CHANGELOG-TR.txt)**
 
 ---

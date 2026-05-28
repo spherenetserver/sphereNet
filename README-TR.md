@@ -3,6 +3,7 @@
 > **.NET 9** ile yazılmış, modern ve yüksek performanslı bir **Ultima Online özel sunucu emülatörü**. [Source-X](https://github.com/Sphereserver/Source-X) ile script uyumluluğu hedeflenir; performans, kalıcılık ve işletilebilirlik açısından onun çok ötesine geçer.
 
 🇬🇧 **Read in English → [README.md](README.md)**
+📚 **Dokümantasyon → [docs/](docs/README.md)** (mimari, [staff komutları](docs/STAFF_COMMANDS.md), [trigger'lar](docs/TRIGGERS.md), deploy, runbook) — *İngilizce*
 📜 **Changelog → [CHANGELOG-TR.txt](CHANGELOG-TR.txt) · [CHANGELOG-EN.txt](CHANGELOG-EN.txt)**
 
 ---

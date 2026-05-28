@@ -491,6 +491,7 @@ public partial class Character : ObjBase
         get => _str;
         set
         {
+            if (value < 0) value = 0;
             short old = _str;
             _str = value;
             if (_maxHits == old || _maxHits <= 0)
@@ -506,6 +507,7 @@ public partial class Character : ObjBase
         get => _dex;
         set
         {
+            if (value < 0) value = 0;
             short old = _dex;
             _dex = value;
             if (_maxStam == old || _maxStam <= 0)
@@ -521,6 +523,7 @@ public partial class Character : ObjBase
         get => _int;
         set
         {
+            if (value < 0) value = 0;
             short old = _int;
             _int = value;
             if (_maxMana == old || _maxMana <= 0)
@@ -561,9 +564,9 @@ public partial class Character : ObjBase
             if (v != _stam) { _stam = v; MarkDirty(DirtyFlag.Stats); }
         }
     }
-    public short MaxHits { get => _maxHits; set { if (value != _maxHits) { _maxHits = value; if (_hits > _maxHits) _hits = _maxHits; MarkDirty(DirtyFlag.Stats); } } }
-    public short MaxMana { get => _maxMana; set { if (value != _maxMana) { _maxMana = value; if (_mana > _maxMana) _mana = _maxMana; MarkDirty(DirtyFlag.Stats); } } }
-    public short MaxStam { get => _maxStam; set { if (value != _maxStam) { _maxStam = value; if (_stam > _maxStam) _stam = _maxStam; MarkDirty(DirtyFlag.Stats); } } }
+    public short MaxHits { get => _maxHits; set { var v = Math.Max((short)1, value); if (v != _maxHits) { _maxHits = v; if (_hits > _maxHits) _hits = _maxHits; MarkDirty(DirtyFlag.Stats); } } }
+    public short MaxMana { get => _maxMana; set { var v = Math.Max((short)0, value); if (v != _maxMana) { _maxMana = v; if (_mana > _maxMana) _mana = _maxMana; MarkDirty(DirtyFlag.Stats); } } }
+    public short MaxStam { get => _maxStam; set { var v = Math.Max((short)0, value); if (v != _maxStam) { _maxStam = v; if (_stam > _maxStam) _stam = _maxStam; MarkDirty(DirtyFlag.Stats); } } }
 
     public ushort BodyId { get => _bodyId; set { _bodyId = value; MarkDirty(DirtyFlag.Body); } }
 
@@ -828,6 +831,8 @@ public partial class Character : ObjBase
     /// <summary>Apply poison to this character. Level: 1=lesser, 2=normal, 3=greater, 4=deadly, 5=lethal.</summary>
     public void ApplyPoison(byte level)
     {
+        if (level == 0 || level > 5) return;
+        if (IsDead) return;
         if (level <= _poisonLevel && _poisonTicksRemaining > 0)
             return;
         _poisonLevel = _poisonTicksRemaining > 0 ? Math.Max(_poisonLevel, level) : level;
@@ -872,6 +877,7 @@ public partial class Character : ObjBase
     public int ProcessPoisonTick(long now)
     {
         if (_poisonLevel == 0 || _poisonTicksRemaining <= 0) return 0;
+        if (IsDead) { CurePoison(); return 0; }
         if (now < _nextPoisonTick) return 0;
 
         _nextPoisonTick = now + GetPoisonTickInterval();
@@ -1833,6 +1839,7 @@ public partial class Character : ObjBase
 
     public void Resurrect()
     {
+        if (!IsDead) return;
         ClearStatFlag(StatFlag.Dead);
         CurePoison();
         ClearStatFlag(StatFlag.Hidden);
@@ -1852,6 +1859,8 @@ public partial class Character : ObjBase
                     _skillValues[i] = (ushort)Math.Max(0, _skillValues[i] - Math.Max(1, _skillValues[i] / 100));
             }
         }
+
+        MarkDirty(DirtyFlag.StatFlags | DirtyFlag.Stats);
     }
 
     public void Delete()

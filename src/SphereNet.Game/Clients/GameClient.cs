@@ -192,6 +192,7 @@ public sealed partial class GameClient : ITextConsole
     private bool _targetCursorActive;
     private string? _pendingDialogCloseFunction;
     private string _pendingDialogArgs = "";
+    private int _dialogDepth;
     /// <summary>
     /// Pending Source-X <c>INPDLG</c> prompt state. Keyed by the
     /// <c>(targetSerial, context)</c> pair we encoded into the outgoing
@@ -243,7 +244,11 @@ public sealed partial class GameClient : ITextConsole
             _pendingMenuOptions = null;
             _pendingEditMenuUids = null;
             _pendingEditMenuMemories = null;
-            _pendingScriptNewItem = null;
+            if (_pendingScriptNewItem != null)
+            {
+                _world.RemoveItem(_pendingScriptNewItem);
+                _pendingScriptNewItem = null;
+            }
             _pendingSkillTargetCancelId = -1;
             _pendingDupeTarget = false;
             _pendingHealTarget = false;

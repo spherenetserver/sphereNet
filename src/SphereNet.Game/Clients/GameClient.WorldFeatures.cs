@@ -351,6 +351,10 @@ public sealed partial class GameClient
     public void InitiateTrade(Character partner, Item? firstItem = null)
     {
         if (_character == null || _tradeManager == null) return;
+        if (_character.IsDead || partner.IsDead) { SysMessage("You cannot trade while dead."); return; }
+        if (_character.MapIndex != partner.MapIndex ||
+            _character.Position.GetDistanceTo(partner.Position) > 3)
+        { SysMessage("That person is too far away."); return; }
 
         var existing = _tradeManager.FindTradeFor(_character);
         if (existing != null) { SysMessage("You are already trading."); return; }
@@ -485,11 +489,26 @@ public sealed partial class GameClient
     {
         if (_character == null) return;
 
-        // Only GM+ can rename
         if (_character.PrivLevel < PrivLevel.GM)
         {
             SysMessage(ServerMessages.Get("rename_no_permission"));
             return;
+        }
+
+        var trimmed = name.Trim();
+        if (trimmed.Length == 0 || trimmed.Length > 30)
+        {
+            SysMessage("Invalid name length.");
+            return;
+        }
+
+        foreach (char c in trimmed)
+        {
+            if (!char.IsLetterOrDigit(c) && c != ' ' && c != '-' && c != '\'')
+            {
+                SysMessage("Name contains invalid characters.");
+                return;
+            }
         }
 
         var target = _world.FindChar(new Serial(serial));
@@ -499,12 +518,12 @@ public sealed partial class GameClient
             var result = _triggerDispatcher?.FireCharTrigger(target, CharTrigger.Rename, new TriggerArgs
             {
                 CharSrc = _character,
-                S1 = name.Trim()
+                S1 = trimmed
             });
             if (result == TriggerResult.True)
                 return;
 
-            target.Name = name.Trim();
+            target.Name = trimmed;
             SysMessage(ServerMessages.GetFormatted("msg_rename_success", oldName, target.Name));
             return;
         }
@@ -512,7 +531,7 @@ public sealed partial class GameClient
         var item = _world.FindItem(new Serial(serial));
         if (item != null)
         {
-            item.Name = name.Trim();
+            item.Name = trimmed;
             SysMessage(ServerMessages.GetFormatted("rename_item_ok", item.Name));
         }
     }
@@ -899,6 +918,12 @@ public sealed partial class GameClient
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
                     var targetUid = new Serial(serial);
+                    var lockItem = _world.FindItem(targetUid);
+                    if (lockItem == null || _housingEngine?.FindHouseAt(lockItem.Position) != house)
+                    {
+                        SysMessage(ServerMessages.Get("house_lockdown_fail"));
+                        return;
+                    }
                     if (house.Lockdown(targetUid, _character.Uid))
                         SysMessage(ServerMessages.Get("house_lockdown_ok"));
                     else
@@ -1076,8 +1101,13 @@ public sealed partial class GameClient
     {
         if (_character == null) return;
 
-        // Determine potion effect from BaseId ranges
-        // Common UO potion base IDs: 0x0F06-0x0F0D heal, 0x0F07 cure, 0x0F0B refresh etc.
+        long now = Environment.TickCount64;
+        if (now < _nextPotionTimeMs)
+        {
+            SysMessage("You must wait before using another potion.");
+            return;
+        }
+        _nextPotionTimeMs = now + 2000;
         string potionType = "heal"; // default
         if (potion.TryGetTag("POTION_TYPE", out string? pType) && pType != null)
             potionType = pType.ToLowerInvariant();
@@ -1233,10 +1263,14 @@ public sealed partial class GameClient
         if (data.Length < 2 || _character == null)
             return;
 
+        if (data[0] > 2 || data[1] > 2)
+            return;
+
         _character.SetStatLock(data[0], data[1]);
     }
 
     private long _lastContextMenuRequestMs;
+    private long _nextPotionTimeMs;
 
     private void HandleExtendedContextMenuRequest(byte[] data)
     {
@@ -1456,9 +1490,17 @@ public sealed partial class GameClient
     {
         if (_character == null) return;
 
+        var ch = _world.FindChar(new Serial(targetSerial));
+        var item = ch == null ? _world.FindItem(new Serial(targetSerial)) : null;
+        if (ch != null && (ch.MapIndex != _character.MapIndex ||
+            _character.Position.GetDistanceTo(ch.Position) > 12))
+            return;
+        if (item != null && !item.ContainedIn.IsValid && (item.Position.Map != _character.MapIndex ||
+            _character.Position.GetDistanceTo(item.Position) > 3))
+            return;
+
         var entries = new List<(ushort EntryTag, uint ClilocId, ushort Flags)>();
 
-        var ch = _world.FindChar(new Serial(targetSerial));
         if (ch != null)
         {
             FireContextMenuTrigger(ch, CharTrigger.ContextMenuRequest, 0);
@@ -1490,7 +1532,7 @@ public sealed partial class GameClient
                 entries.Add((7, 3006112, 0)); // Dismount
             }
         }
-        else if (_world.FindItem(new Serial(targetSerial)) is { } item)
+        else if (item != null)
         {
             FireContextMenuTrigger(item, ItemTrigger.ContextMenuRequest, 0);
         }
@@ -1502,7 +1544,17 @@ public sealed partial class GameClient
     private void HandleContextMenuResponse(uint targetSerial, ushort entryTag)
     {
         if (_character == null) return;
-        var target = _world.FindChar(new Serial(targetSerial));
+
+        var charTarget = _world.FindChar(new Serial(targetSerial));
+        if (charTarget != null && (charTarget.MapIndex != _character.MapIndex ||
+            _character.Position.GetDistanceTo(charTarget.Position) > 12))
+            return;
+        var itemObj = charTarget == null ? _world.FindItem(new Serial(targetSerial)) : null;
+        if (itemObj != null && !itemObj.ContainedIn.IsValid && (itemObj.Position.Map != _character.MapIndex ||
+            _character.Position.GetDistanceTo(itemObj.Position) > 3))
+            return;
+
+        var target = charTarget;
         if (target != null)
             FireContextMenuTrigger(target, CharTrigger.ContextMenuSelect, entryTag);
         else if (_world.FindItem(new Serial(targetSerial)) is { } itemTarget)

@@ -180,6 +180,7 @@ public sealed partial class GameClient
                 int intl = Math.Clamp((int)info.Int, 10, 60);
                 int total = str + dex + intl;
                 if (total > 80) { double s = 80.0 / total; str = (int)(str * s); dex = (int)(dex * s); intl = 80 - str - dex; }
+                str = Math.Max(10, str); dex = Math.Max(10, dex); intl = Math.Max(10, intl);
                 _character.Str = (short)str; _character.Dex = (short)dex; _character.Int = (short)intl;
 
                 if (info.HairStyle != 0 && IsValidHairGraphic(info.HairStyle))

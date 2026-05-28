@@ -480,7 +480,11 @@ public sealed class SpellEngine
             var target = _world?.FindChar(targetUid);
             if (target != null)
             {
-                if (target.MapIndex != caster.MapIndex ||
+                if (target.IsDead && !def.IsFlag(SpellFlag.TargDead))
+                {
+                    OnSysMessage?.Invoke(caster, "That target is dead.");
+                }
+                else if (target.MapIndex != caster.MapIndex ||
                     caster.Position.GetDistanceTo(target.Position) > 12)
                 {
                     OnSysMessage?.Invoke(caster, "That is too far away.");
@@ -651,7 +655,7 @@ public sealed class SpellEngine
     /// <summary>Apply area effect. Maps to SPELLFLAG_AREA logic.</summary>
     private void ApplyAreaEffect(Character caster, Point3D center, SpellDef def, int skillLevel)
     {
-        int range = 3 + skillLevel / 300; // scale range with skill
+        int range = Math.Min(8, 3 + skillLevel / 300);
         bool harmful = def.IsFlag(SpellFlag.Damage) || def.IsFlag(SpellFlag.Curse);
         foreach (var target in _world.GetCharsInRange(center, range))
         {
@@ -862,6 +866,20 @@ public sealed class SpellEngine
             {
                 OnSysMessage?.Invoke(caster, "That location blocks magic.");
                 return;
+            }
+            if (def.Id == SpellType.Recall)
+            {
+                if (srcRegion != null && srcRegion.TryGetProperty("RECALLOUT", out string? rOut) && rOut == "0")
+                { OnSysMessage?.Invoke(caster, "You cannot recall from here."); return; }
+                if (destRegion != null && destRegion.TryGetProperty("RECALLIN", out string? rIn) && rIn == "0")
+                { OnSysMessage?.Invoke(caster, "You cannot recall to that location."); return; }
+            }
+            if (def.Id == SpellType.GateTravel)
+            {
+                if (srcRegion != null && srcRegion.TryGetProperty("GATEOUT", out string? gOut) && gOut == "0")
+                { OnSysMessage?.Invoke(caster, "You cannot open a gate here."); return; }
+                if (destRegion != null && destRegion.TryGetProperty("GATEIN", out string? gIn) && gIn == "0")
+                { OnSysMessage?.Invoke(caster, "You cannot gate to that location."); return; }
             }
         }
 

@@ -33,7 +33,7 @@ public sealed class VarMap
         if (string.IsNullOrEmpty(value))
             _vars.Remove(key);
         else
-            _vars[key] = value;
+            _vars[key] = value.Length > 4096 ? value[..4096] : value;
     }
 
     public void SetInt(string key, long value)

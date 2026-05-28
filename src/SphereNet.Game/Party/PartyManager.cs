@@ -104,11 +104,13 @@ public sealed class PartyDef
         return (kvp.Key, kvp.Value);
     }
 
-    /// <summary>Force-add a member, bypassing size limit and removing from existing party.</summary>
-    public void AddMemberForced(Serial uid)
+    /// <summary>Force-add a member, removing from existing party. Still respects max size.</summary>
+    public bool AddMemberForced(Serial uid)
     {
-        if (!_members.Contains(uid))
-            _members.Add(uid);
+        if (_members.Contains(uid)) return true;
+        if (IsFull) return false;
+        _members.Add(uid);
+        return true;
     }
 }
 

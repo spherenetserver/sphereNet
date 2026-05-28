@@ -133,7 +133,7 @@ public static class VendorEngine
         bool isOwner = vendor.HasOwner(player.Uid);
         if (!isStaff && !isBot && !isOwner)
         {
-            int playerGold = CountGold(player);
+            long playerGold = CountGold(player);
             if (playerGold < totalCost)
                 return -1;
 
@@ -256,13 +256,13 @@ public static class VendorEngine
     }
 
     /// <summary>Count gold in player's backpack recursively.</summary>
-    public static int CountGold(Character ch)
+    public static long CountGold(Character ch)
     {
         if (World == null) return 0;
         var backpack = ch.Backpack;
         if (backpack == null) return 0;
 
-        int total = 0;
+        long total = 0;
         foreach (var item in EnumerateContainerContentsRecursive(backpack))
         {
             if (item.ItemType == Core.Enums.ItemType.Gold || item.BaseId == 0x0EED)

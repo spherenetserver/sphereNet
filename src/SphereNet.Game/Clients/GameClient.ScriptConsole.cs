@@ -954,70 +954,9 @@ public sealed partial class GameClient
         // need to be rewritten.
         if (upper == "DIALOG" || upper == "SDIALOG")
         {
-            string raw = args.Trim();
-            string dialogId = "script_dialog";
-            string closeSpec = "";
-            int requestedPage = 1;
-
-            if (!string.IsNullOrWhiteSpace(raw))
-            {
-                int sep = raw.IndexOfAny([' ', ',']);
-                if (sep < 0)
-                {
-                    dialogId = raw;
-                }
-                else
-                {
-                    dialogId = raw[..sep];
-                    closeSpec = raw[(sep + 1)..].TrimStart(' ', ',');
-                }
-            }
-
-            dialogId = dialogId.Trim().Trim(',', ';');
-            if (string.IsNullOrWhiteSpace(dialogId))
-                dialogId = "script_dialog";
-
-            if (!string.IsNullOrWhiteSpace(closeSpec))
-            {
-                string[] dialogTokens = closeSpec.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                if (dialogTokens.Length > 0 && int.TryParse(dialogTokens[0], out int parsedPage))
-                    requestedPage = parsedPage;
-            }
-
-            if (OpenNamedDialog(dialogId, requestedPage))
-                return true;
-
-            string closeFn = "";
-            if (!string.IsNullOrWhiteSpace(closeSpec))
-            {
-                string[] tokens = closeSpec.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                if (tokens.Length > 0)
-                {
-                    if (tokens[0].Equals("DIALOGCLOSE", StringComparison.OrdinalIgnoreCase))
-                    {
-                        closeFn = tokens.Length > 1 ? tokens[1] : "";
-                    }
-                    else
-                    {
-                        closeFn = tokens[0];
-                    }
-                }
-            }
-
-            _pendingDialogCloseFunction = string.IsNullOrWhiteSpace(closeFn)
-                ? $"f_dialogclose_{dialogId}"
-                : closeFn.Trim().Trim(',', ';');
-            _pendingDialogArgs = dialogId;
-            string title = $"Dialog {dialogId}";
-
-            uint gumpId = (uint)Math.Abs(dialogId.GetHashCode());
-            var gump = new GumpBuilder(_character.Uid.Value, gumpId, 360, 180);
-            gump.AddResizePic(0, 0, 5054, 360, 180);
-            gump.AddText(20, 20, 0, title);
-            gump.AddText(20, 60, 0, $"[{dialogId}]");
-            gump.AddButton(140, 130, 4005, 4007, 1);
-            SendGump(gump);
-            return true;
+            if (_dialogDepth >= 4) return true;
+            _dialogDepth++;
+            try { return HandleDialogCommand(args); } finally { _dialogDepth--; }
         }
 
         if (upper == "GO" && target is Character goChar)
@@ -1372,6 +1311,61 @@ public sealed partial class GameClient
         }
 
         return false;
+    }
+
+    private bool HandleDialogCommand(string args)
+    {
+        string raw = args.Trim();
+        string dialogId = "script_dialog";
+        string closeSpec = "";
+        int requestedPage = 1;
+
+        if (!string.IsNullOrWhiteSpace(raw))
+        {
+            int sep = raw.IndexOfAny([' ', ',']);
+            if (sep < 0) { dialogId = raw; }
+            else { dialogId = raw[..sep]; closeSpec = raw[(sep + 1)..].TrimStart(' ', ','); }
+        }
+
+        dialogId = dialogId.Trim().Trim(',', ';');
+        if (string.IsNullOrWhiteSpace(dialogId)) dialogId = "script_dialog";
+
+        if (!string.IsNullOrWhiteSpace(closeSpec))
+        {
+            string[] dialogTokens = closeSpec.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (dialogTokens.Length > 0 && int.TryParse(dialogTokens[0], out int parsedPage))
+                requestedPage = parsedPage;
+        }
+
+        if (OpenNamedDialog(dialogId, requestedPage)) return true;
+
+        string closeFn = "";
+        if (!string.IsNullOrWhiteSpace(closeSpec))
+        {
+            string[] tokens = closeSpec.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (tokens.Length > 0)
+            {
+                if (tokens[0].Equals("DIALOGCLOSE", StringComparison.OrdinalIgnoreCase))
+                    closeFn = tokens.Length > 1 ? tokens[1] : "";
+                else
+                    closeFn = tokens[0];
+            }
+        }
+
+        _pendingDialogCloseFunction = string.IsNullOrWhiteSpace(closeFn)
+            ? $"f_dialogclose_{dialogId}"
+            : closeFn.Trim().Trim(',', ';');
+        _pendingDialogArgs = dialogId;
+        string title = $"Dialog {dialogId}";
+
+        uint gumpId = (uint)Math.Abs(dialogId.GetHashCode());
+        var gump = new GumpBuilder(_character.Uid.Value, gumpId, 360, 180);
+        gump.AddResizePic(0, 0, 5054, 360, 180);
+        gump.AddText(20, 20, 0, title);
+        gump.AddText(20, 60, 0, $"[{dialogId}]");
+        gump.AddButton(140, 130, 4005, 4007, 1);
+        SendGump(gump);
+        return true;
     }
 
     private static bool TryParseScriptPacket(string args, out byte[] packet, out string error)

@@ -1509,7 +1509,7 @@ public sealed class ScriptInterpreter
     private sealed class NullConsole : ITextConsole
     {
         public static readonly NullConsole Instance = new();
-        public PrivLevel GetPrivLevel() => PrivLevel.Owner;
+        public PrivLevel GetPrivLevel() => PrivLevel.Guest;
         public void SysMessage(string text) { }
         public string GetName() => "SYSTEM";
     }

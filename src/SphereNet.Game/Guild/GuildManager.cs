@@ -123,12 +123,19 @@ public sealed class GuildDef
         return true;
     }
 
-    /// <summary>Remove a member from the guild.</summary>
+    /// <summary>Remove a member from the guild. If the master is removed, promotes next member.</summary>
     public bool RemoveMember(Serial charUid)
     {
         var member = FindMember(charUid);
         if (member == null) return false;
+        bool wasMaster = member.Priv == GuildPriv.Master;
         _members.Remove(member);
+        if (wasMaster && _members.Count > 0)
+        {
+            var next = _members.FirstOrDefault(m => m.Priv == GuildPriv.Member)
+                       ?? _members[0];
+            next.Priv = GuildPriv.Master;
+        }
         return true;
     }
 
@@ -206,8 +213,11 @@ public sealed class GuildDef
         _relations.GetValueOrDefault(otherStoneUid);
 
     /// <summary>Declare war on another guild (sets WeDeclaredWar).</summary>
-    public void DeclareWar(Serial otherGuildStone) =>
+    public void DeclareWar(Serial otherGuildStone)
+    {
+        if (otherGuildStone == _stoneUid) return;
         GetOrCreateRelation(otherGuildStone).WeDeclaredWar = true;
+    }
 
     /// <summary>Declare peace with another guild.</summary>
     public void DeclarePeace(Serial otherGuildStone)
@@ -225,8 +235,11 @@ public sealed class GuildDef
     public IEnumerable<Serial> Wars =>
         _relations.Where(kv => kv.Value.WeDeclaredWar).Select(kv => kv.Key);
 
-    public void AddAlly(Serial otherGuildStone) =>
+    public void AddAlly(Serial otherGuildStone)
+    {
+        if (otherGuildStone == _stoneUid) return;
         GetOrCreateRelation(otherGuildStone).WeDeclaredAlliance = true;
+    }
 
     public void RemoveAlly(Serial otherGuildStone)
     {

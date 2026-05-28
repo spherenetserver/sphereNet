@@ -196,6 +196,14 @@ public static class ActiveSkillEngine
             sink.SysMessage(ServerMessages.Get(Msg.StealingNothing));
             return false;
         }
+        var itemPos = target.ContainedIn.IsValid
+            ? ResolveItemOwner(target, sink.World)?.Position ?? target.Position
+            : target.Position;
+        if (itemPos.Map != ch.MapIndex || ch.Position.GetDistanceTo(itemPos) > 2)
+        {
+            sink.SysMessage("That is too far away.");
+            return false;
+        }
         if (target.GetWeight() > Math.Max(1, ch.GetSkill(SkillType.Stealing) / 10))
         {
             sink.SysMessage(ServerMessages.Get(Msg.StealingHeavy));
@@ -254,6 +262,14 @@ public static class ActiveSkillEngine
             return false;
         }
 
+        var ownerChar = ResolveItemOwner(container, sink.World);
+        var refPos = ownerChar?.Position ?? container.Position;
+        if (refPos.Map != ch.MapIndex || ch.Position.GetDistanceTo(refPos) > 2)
+        {
+            sink.SysMessage("That is too far away.");
+            return false;
+        }
+
         sink.SysMessage(ServerMessages.Get(Msg.SnoopingAttempting));
         bool success = SkillEngine.UseQuick(ch, SkillType.Snooping, sink.Random.Next(50));
         if (!success)
@@ -279,6 +295,12 @@ public static class ActiveSkillEngine
         if (lockedTarget.ItemType is not (ItemType.ContainerLocked or ItemType.DoorLocked))
         {
             sink.SysMessage(ServerMessages.Get(Msg.LockpickingWitem));
+            return false;
+        }
+        if (lockedTarget.Position.Map != ch.MapIndex ||
+            ch.Position.GetDistanceTo(lockedTarget.Position) > 2)
+        {
+            sink.SysMessage("That is too far away.");
             return false;
         }
 
@@ -319,6 +341,12 @@ public static class ActiveSkillEngine
         if (trap.ItemType is not (ItemType.Trap or ItemType.TrapActive))
         {
             sink.SysMessage(ServerMessages.Get(Msg.RemovetrapsWitem));
+            return false;
+        }
+        if (trap.Position.Map != ch.MapIndex ||
+            ch.Position.GetDistanceTo(trap.Position) > 2)
+        {
+            sink.SysMessage("That is too far away.");
             return false;
         }
 
@@ -427,12 +455,17 @@ public static class ActiveSkillEngine
             sink.SysMessage(ServerMessages.Get(Msg.TamingCant));
             return false;
         }
+        if (target.IsDead)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.TamingCant));
+            return false;
+        }
         if (target.IsStatFlag(StatFlag.Pet))
         {
             sink.SysMessage(ServerMessages.GetFormatted(Msg.TamingTame, target.Name));
             return false;
         }
-        if (GetDistance(ch.Position, target.Position) > 6)
+        if (ch.MapIndex != target.MapIndex || GetDistance(ch.Position, target.Position) > 6)
         {
             sink.SysMessage(ServerMessages.Get(Msg.TamingLos));
             return false;
@@ -920,6 +953,11 @@ public static class ActiveSkillEngine
         var ch = sink.Self;
         if (target == null || target.IsPlayer)
             return false;
+        if (ch.MapIndex != target.MapIndex || GetDistance(ch.Position, target.Position) > 8)
+        {
+            sink.SysMessage("That creature is too far away.");
+            return false;
+        }
         if (!HasMusicalInstrument(sink))
         {
             sink.SysMessage("You have no musical instrument.");

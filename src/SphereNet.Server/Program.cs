@@ -189,6 +189,8 @@ public static partial class Program
             ? $"SphereNet starting in managed mode (pipe: {_pipeName})…"
             : "SphereNet starting in headless mode…");
 
+        _running = true;
+
         // In managed mode the Host sends commands via IPC, not stdin
         if (!_managed)
         {
@@ -209,8 +211,6 @@ public static partial class Program
             Console.CancelKeyPress += (_, e) => { e.Cancel = true; _running = false; };
             inputThread.Start();
         }
-
-        _running = true;
         ServerMain(args);
     }
 

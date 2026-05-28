@@ -114,9 +114,13 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     public VarMap Tags => _tags;
     public IReadOnlyList<TimerFEntry> TimerFEntries => _timerFEntries;
 
+    private const int MaxTimersPerObject = 64;
+
     public void AddTimerF(long delayMs, string functionName, string args)
     {
         if (string.IsNullOrWhiteSpace(functionName))
+            return;
+        if (_timerFEntries.Count >= MaxTimersPerObject)
             return;
         long due = Environment.TickCount64 + Math.Max(0, delayMs);
         _timerFEntries.Add(new TimerFEntry(due, functionName.Trim(), args.Trim()));
@@ -382,7 +386,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                 return true;
             case "TIMER":
                 if (long.TryParse(args, out long timerVal))
-                    SetTimeout(Environment.TickCount64 + timerVal * 1000);
+                    SetTimeout(Environment.TickCount64 + Math.Max(0, timerVal) * 1000);
                 return true;
             case "FIX":
                 // Re-seat on the terrain (stub — just keeps current Z)

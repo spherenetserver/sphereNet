@@ -695,7 +695,7 @@ public sealed class PacketGumpTextEntry : PacketHandler
         uint serial = buffer.ReadUInt32();
         ushort context = buffer.ReadUInt16();
         byte action = buffer.ReadByte();
-        ushort textLen = buffer.Remaining >= 2 ? buffer.ReadUInt16() : (ushort)0;
+        ushort textLen = buffer.Remaining >= 2 ? Math.Min(buffer.ReadUInt16(), (ushort)1024) : (ushort)0;
         string text = textLen > 0 && buffer.Remaining >= textLen
             ? buffer.ReadAsciiFixed(textLen).TrimEnd('\0') : "";
         state.OnGumpTextEntry(serial, context, action, text);
@@ -765,15 +765,20 @@ public sealed class PacketNewBookHeader : PacketHandler
         bool writable = flag == 1;
         buffer.ReadUInt16(); // page count (unused for header change)
 
-        ushort titleLen = buffer.ReadUInt16();
-        string title = titleLen > 0 && buffer.Remaining >= titleLen
-            ? buffer.ReadAsciiFixed(titleLen).TrimEnd('\0')
-            : "";
+        ushort titleLen = Math.Min(buffer.ReadUInt16(), (ushort)256);
+        string title = "";
+        if (titleLen > 0 && buffer.Remaining >= titleLen)
+            title = buffer.ReadAsciiFixed(titleLen).TrimEnd('\0');
+        else if (titleLen > 0)
+            return;
 
-        ushort authorLen = buffer.ReadUInt16();
-        string author = authorLen > 0 && buffer.Remaining >= authorLen
-            ? buffer.ReadAsciiFixed(authorLen).TrimEnd('\0')
-            : "";
+        if (buffer.Remaining < 2) return;
+        ushort authorLen = Math.Min(buffer.ReadUInt16(), (ushort)256);
+        string author = "";
+        if (authorLen > 0 && buffer.Remaining >= authorLen)
+            author = buffer.ReadAsciiFixed(authorLen).TrimEnd('\0');
+        else if (authorLen > 0)
+            return;
 
         state.OnBookHeader(serial, writable, title, author);
     }

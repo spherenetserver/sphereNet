@@ -21,7 +21,7 @@ public class SecurityHardeningTests
     // --- Step 1: Slot validation ---
 
     [Fact]
-    public void OnCharSelect_NegativeSlot_PassesToHandler()
+    public void OnCharSelect_NegativeSlot_DoesNotInvokeHandler()
     {
         var state = new NetState(NullLogger<NetState>.Instance);
         bool invoked = false;
@@ -29,7 +29,7 @@ public class SecurityHardeningTests
 
         InvokeOnCharSelect(state, -1, "test");
 
-        Assert.True(invoked);
+        Assert.False(invoked);
     }
 
     [Fact]

@@ -62,6 +62,8 @@ public sealed partial class GameClient
     private long _nextMoveTime;
     private int _walkTokens = WalkBufferMax;
     private long _walkTokenLastMs;
+    private long _lastSpeechMs;
+    private int _speechBurst;
     private int _moveViolationCount;
     private long _moveRejectResyncUntil;
     private long? _movementBatchNow;
@@ -488,11 +490,32 @@ public sealed partial class GameClient
     {
         if (_character == null) return;
 
+        long now = Environment.TickCount64;
+        if (now - _lastSpeechMs > 5000) _speechBurst = 0;
+        if (++_speechBurst > 10)
+            return;
+        _lastSpeechMs = now;
+
+        if (text.Length > 256)
+            text = text[..256];
+
         if (TryHandleCommandSpeech(text))
             return;
 
+        if (_character.IsDead)
+        {
+            text = "OooOoo";
+            hue = 0x0481;
+        }
+
+        if (_character.IsStatFlag(StatFlag.Hidden))
+        {
+            _character.ClearStatFlag(StatFlag.Hidden);
+            _character.ClearStatFlag(StatFlag.Invisible);
+        }
+
         // Pet commands — "all follow", "all guard", "petname follow" etc.
-        if (TryHandlePetCommand(text))
+        if (!_character.IsDead && TryHandlePetCommand(text))
         {
             // Still broadcast the speech so others hear it
         }
@@ -511,9 +534,7 @@ public sealed partial class GameClient
             _character.Uid.Value, _character.BodyId,
             type, hue, font, "TRK", _character.Name, text
         );
-        // Send to self first (speaker should see their own message)
         Send(speechPacket);
-        // Then broadcast to nearby (excluding self since we already sent)
         BroadcastNearby?.Invoke(_character.Position, range, speechPacket, _character.Uid.Value);
     }
 

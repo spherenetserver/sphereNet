@@ -4,6 +4,90 @@
 All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-28] - Kapsamli guvenlik taramasi Wave 11 — 17 hata duzeltmesi
+              (Comprehensive security audit Wave 11 — 17 bug fixes)
+----------------------------------------
+
+KRITIK / CRITICAL:
+  - UidTable serial overflow: Interlocked.Increment int tasmasi 2.1B+ obje sonrasi
+    gecersiz serial uretiyordu. MaxIndex (0x0FFFFFFF) siniri ve tasma korumasi eklendi.
+    (Interlocked.Increment overflow produced invalid serials after 2.1B+ objects.
+    MaxIndex guard and overflow protection added.)
+  - HandleDialogCommand: DIALOG/SDIALOG komutu HandleDialogCommand cagiriyordu ama
+    metod olustu—rulmamisti, build kirilmisti. Metod ve recursion depth limiti (4)
+    eklendi.
+    (DIALOG/SDIALOG called HandleDialogCommand which did not exist — build was broken.
+    Method created with recursion depth limit of 4.)
+  - Program.cs thread race: Console input thread _running=false iken basliyordu,
+    thread aninda cikabiliyordu. _running=true startup'tan once set edildi.
+    (Console input thread started with _running=false — thread could exit immediately.
+    _running=true now set before thread start.)
+
+BUYU VE SAVAS / SPELL AND COMBAT:
+  - Dead target spell: Tekil hedefli buyuler olu karakterlere uygulanabiliyordu.
+    TargDead flag'i olmayan buyuler artik olu hedefi reddediyor.
+    (Single-target spells could be cast on dead characters. Spells without TargDead
+    flag now reject dead targets.)
+  - AoE range cap: Alan etkili buyu menzili skill ile sinir—siz buyuyordu.
+    Maksimum 8 tile siniri eklendi.
+    (Area spell range scaled unbounded with skill. Capped at 8 tiles.)
+  - Frozen item use: Donmus karakterler item kullanabiliyordu (iksir, yemek, craft).
+    StatFlag.Freeze kontrolu HandleItemUse'a eklendi.
+    (Frozen characters could use items. StatFlag.Freeze check added to HandleItemUse.)
+
+ENVANTER VE OBJE / INVENTORY AND OBJECT:
+  - Container cycle detection: AddItem'a ContainsInSubtree ile dairesel referans
+    tespiti eklendi (maxDepth=16).
+    (Circular container reference detection added via ContainsInSubtree.)
+  - Crafting resource loss: ConsumeResource kismi basarisizlikta bazi kaynaklar
+    tuketilip item olusturulmuyordu. Tuketim dogrudan yapiliyor (oncesinde
+    re-verify zaten var).
+    (Partial ConsumeResource failure consumed some resources without creating item.
+    Consumption now proceeds directly after re-verification.)
+
+NETWORK VE PROTOKOL / NETWORK AND PROTOCOL:
+  - NetState slot index: Negatif slot degerleri (slot < 0) kabul ediliyordu.
+    Alt sinir kontrolu eklendi.
+    (Negative slot values accepted in OnCharSelect. Lower bound check added.)
+  - Huffman tree bounds: BuildServerDecompTree nextNode siniri yoktu.
+    1024 node limiti eklendi.
+    (BuildServerDecompTree had no bounds check on nextNode. 1024 node limit added.)
+  - Book page bounds: HandleBookPage sayfa numarasi dogrulanmiyordu, sinirsiz
+    tag olusturulabiliyordu. maxPages siniri eklendi.
+    (HandleBookPage page number was unbounded — unlimited tags could be created.
+    maxPages validation added.)
+
+SPAWN VE TIMER / SPAWN AND TIMER:
+  - Spawn count limit: SpawnComponent ve ItemSpawnComponent MaxCount 250 ile
+    sinirlandirildi (onceden ushort.MaxValue=65535 mumkundu).
+    (SpawnComponent and ItemSpawnComponent MaxCount capped at 250.)
+  - TIMER negatif delay: Script TIMER komutu negatif deger kabul edip gecmiste
+    timeout ayarlayabiliyordu. Math.Max(0, ...) eklendi.
+    (Script TIMER command accepted negative values setting timeout in the past.
+    Clamped to zero.)
+
+DIGER / OTHER:
+  - Resurrect MarkDirty: Dirilis sonrasi stat degisiklikleri client'a
+    bildirilmiyordu. MarkDirty(StatFlags|Stats) eklendi.
+    (Stat changes after resurrection not synced to client. MarkDirty added.)
+  - Housing redeed: Redeed iki kez cagrildiginda cift silme olusuyordu.
+    _redeeded idempotency flag'i eklendi.
+    (Calling Redeed twice caused double deletion. Idempotency flag added.)
+  - Housing lockdown: Ev siniri disindaki itemler lockdown yapilabiliyordu.
+    FindHouseAt pozisyon dogrulamasi eklendi.
+    (Items outside house bounds could be locked down. Position validation via
+    FindHouseAt added.)
+  - NEWITEM orphan: Disconnect'te _pendingScriptNewItem temizlenmeden
+    birakiliyordu. RemoveItem ile temizleniyor.
+    (Orphaned _pendingScriptNewItem not cleaned on disconnect. Now removed.)
+  - Stable skill cap: Stable'a alinan pet skill degerleri 1000 ustunde
+    olabiliyordu. Math.Min(sv, 1000) siniri eklendi.
+    (Stabled pet skill values could exceed 1000. Capped at 1000.)
+
+TESTLER / TESTS:
+  - OnCharSelect_NegativeSlot testi yeni davranisa guncellendi (reject).
+  - Login pipeline testleri slot=-1'den slot=0'a guncellendi.
+
 [2026-05-28] - Kapsamli guvenlik ve oyun mantigi denetimi — 40+ hata duzeltmesi
               (Comprehensive security and game logic audit — 40+ bug fixes)
 ----------------------------------------

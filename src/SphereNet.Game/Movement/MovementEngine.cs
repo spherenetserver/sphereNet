@@ -244,7 +244,8 @@ public sealed class MovementEngine
                 case ItemType.Moongate:
                 {
                     var dest = item.MoreP;
-                    if (dest.X != 0 || dest.Y != 0)
+                    if ((dest.X != 0 || dest.Y != 0) && dest.X >= 0 && dest.Y >= 0 &&
+                        _world.GetSector(dest) != null)
                     {
                         _world.MoveCharacter(ch, dest);
                         OnTeleport?.Invoke(ch, dest);

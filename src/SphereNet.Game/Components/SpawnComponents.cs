@@ -36,14 +36,16 @@ public sealed class SpawnComponent
     /// Fires @PreSpawn, @Spawn, @AddObj, @DelObj on the spawn item.</summary>
     public static Func<Item, ItemTrigger, SpawnTriggerArgs, TriggerResult>? OnSpawnTrigger;
 
+    private const int MaxSpawnLimit = 250;
+
     public int CurrentCount => _spawnedUids.Count;
     public int MaxCount
     {
         get => _maxCount;
         set
         {
-            _maxCount = value;
-            _spawnItem.Amount = (ushort)Math.Clamp(value, 1, ushort.MaxValue);
+            _maxCount = Math.Clamp(value, 1, MaxSpawnLimit);
+            _spawnItem.Amount = (ushort)_maxCount;
         }
     }
     public ushort CharDefId { get => _charDefId; set => _charDefId = value; }
@@ -535,14 +537,16 @@ public sealed class ItemSpawnComponent
     private int _pile = 1;
     private long _nextSpawnTick;
 
+    private const int MaxSpawnLimit = 250;
+
     public ushort ItemDefId { get => _itemDefId; set => _itemDefId = value; }
     public int MaxCount
     {
         get => _maxCount;
         set
         {
-            _maxCount = value;
-            _spawnItem.Amount = (ushort)Math.Clamp(value, 1, ushort.MaxValue);
+            _maxCount = Math.Clamp(value, 1, MaxSpawnLimit);
+            _spawnItem.Amount = (ushort)_maxCount;
         }
     }
     /// <summary>Source-X PILE: max items per spawn interval for stackable items.</summary>

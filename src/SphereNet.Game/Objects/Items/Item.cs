@@ -379,10 +379,23 @@ public class Item : ObjBase
     {
         if (_contents.Count >= MaxContainerItems)
             return;
+        if (item == this) return;
+        if (item.ContainsInSubtree(Uid)) return;
         _contents.Add(item);
         item.ContainedIn = Uid;
         if (item.X == 0 && item.Y == 0)
             AssignRandomContainerPosition(this, item);
+    }
+
+    private bool ContainsInSubtree(Serial targetUid, int maxDepth = 16)
+    {
+        if (maxDepth <= 0) return false;
+        foreach (var child in _contents)
+        {
+            if (child.Uid == targetUid) return true;
+            if (child.ContainsInSubtree(targetUid, maxDepth - 1)) return true;
+        }
+        return false;
     }
 
     public bool CanStackWith(Item other)

@@ -984,6 +984,7 @@ public sealed class GameWorld
     /// <summary>Place an item on the ground with the default decay timer.</summary>
     public void PlaceItemWithDecay(Item item, Point3D pos, long decayMs = DefaultDecayTimeMs)
     {
+        if (GetSector(pos) == null) return;
         PlaceItem(item, pos);
         item.DecayTime = Environment.TickCount64 + decayMs;
     }

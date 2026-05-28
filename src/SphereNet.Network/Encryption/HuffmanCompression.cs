@@ -169,6 +169,8 @@ public static class HuffmanCompression
                     // Internal node - create child if needed
                     if (tree[node, bit] == Uninitialized)
                     {
+                        if (nextNode >= 1024)
+                            throw new InvalidOperationException("Huffman tree exceeds max node count");
                         tree[node, bit] = nextNode++;
                     }
                     // Move to child node (must be positive)

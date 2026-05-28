@@ -107,6 +107,7 @@ public sealed class House
     private readonly HashSet<Serial> _lockdowns = [];
     private readonly HashSet<Serial> _secureContainers = [];
     private readonly List<Serial> _components = [];
+    private bool _redeeded;
     private readonly List<Serial> _vendors = [];
 
     private int _baseStorage = 400;
@@ -230,6 +231,8 @@ public sealed class House
     /// <summary>Transfer ownership (deed back). Preserves multi UUID in deed tag.</summary>
     public Item? Redeed(GameWorld world)
     {
+        if (_redeeded) return null;
+        _redeeded = true;
         var deed = world.CreateItem();
         deed.BaseId = 0x14F0; // ITEMID_DEED1
         deed.Name = _multiItem.Name + " deed";

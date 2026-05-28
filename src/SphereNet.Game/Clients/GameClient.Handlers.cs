@@ -256,8 +256,15 @@ public sealed partial class GameClient
 
         bool canWrite = _character.PrivLevel >= PrivLevel.GM || IsBookWritableBy(item, _character);
 
+        ushort maxPages = 64;
+        if (item.TryGetTag("BOOK_PAGES", out string? bpStr) && ushort.TryParse(bpStr, out ushort bpVal))
+            maxPages = Math.Min(bpVal, (ushort)256);
+
         foreach (var (pageNum, lines) in pages)
         {
+            if (pageNum < 1 || pageNum > maxPages)
+                continue;
+
             if (lines.Length == 0)
             {
                 // Read request — send page content back

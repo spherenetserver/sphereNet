@@ -195,6 +195,7 @@ public class ActiveSkillEngineTests
         var ch = MakeChar();
         var sink = new RecordingActiveSink(ch, world);
         var chest = new Item { ItemType = ItemType.ContainerLocked };
+        chest.Position = new Core.Types.Point3D(100, 100, 0, 0);
 
         bool ok = ActiveSkillEngine.Lockpicking(sink, chest);
 

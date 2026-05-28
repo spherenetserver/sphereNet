@@ -102,11 +102,10 @@ public sealed class CraftingEngine
                     return null;
             }
 
-            // Consume resources — abort if any fail
+            // Consume resources
             foreach (var res in recipe.Resources)
             {
-                if (!ConsumeResource(crafter, res.ItemId, res.Amount))
-                    return null;
+                ConsumeResource(crafter, res.ItemId, res.Amount);
             }
 
             // Create the item

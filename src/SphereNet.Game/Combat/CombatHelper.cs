@@ -38,8 +38,11 @@ public static class CombatHelper
         return (minDist, maxDist);
     }
 
-    public static int GetChebyshevDistance(Character a, Character b) =>
-        Math.Max(Math.Abs(a.X - b.X), Math.Abs(a.Y - b.Y));
+    public static int GetChebyshevDistance(Character a, Character b)
+    {
+        if (a.MapIndex != b.MapIndex) return int.MaxValue;
+        return Math.Max(Math.Abs(a.X - b.X), Math.Abs(a.Y - b.Y));
+    }
 
     /// <summary>Source-X safe/nopvp region combat blocks for f_combat_hit.</summary>
     public static bool IsCombatBlockedByRegion(GameWorld world, Character attacker, Character target)

@@ -1545,7 +1545,7 @@ TAG.BUTTON=1
         AssertQueuedOpcode(gameState, 0xB9);
         AssertQueuedOpcode(gameState, 0xA9);
 
-        ProcessPacket(network, gameState, BuildCharSelectPacket("LoopChar", -1));
+        ProcessPacket(network, gameState, BuildCharSelectPacket("LoopChar", 0));
         Assert.Equal(0, unknownOpcode);
         Assert.Equal(0, gameState.PendingPacketLength);
         Assert.Equal(0, gameState.ReceivedData.Length);
@@ -1642,7 +1642,7 @@ TAG.BUTTON=1
         var gameState = network.GetState(1)!;
         SetNetStateInUse(gameState, true);
         ProcessPacket(network, gameState, BuildGameLoginPacket(authId, "entertest", "pw"));
-        ProcessPacket(network, gameState, BuildCharSelectPacket("EnterChar", -1));
+        ProcessPacket(network, gameState, BuildCharSelectPacket("EnterChar", 0));
 
         // After entering world: 0x1B (LoginConfirm), 0x20 (DrawPlayer), 0x11 (StatusFull)
         AssertQueuedOpcode(gameState, 0x1B);

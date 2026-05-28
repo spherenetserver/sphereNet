@@ -17,11 +17,15 @@ public sealed class UidTable
 
     public int Count => 0;
 
+    private const int MaxIndex = 0x0FFF_FFFF;
+
     public Serial AllocateItem()
     {
         int index = _freeItemSlots.TryDequeue(out int recycled)
             ? recycled
             : Interlocked.Increment(ref _nextItemIndex);
+        if (index < 0 || index > MaxIndex)
+            throw new InvalidOperationException("Item UID space exhausted");
         return Serial.NewItem(index);
     }
 
@@ -30,6 +34,8 @@ public sealed class UidTable
         int index = _freeCharSlots.TryDequeue(out int recycled)
             ? recycled
             : Interlocked.Increment(ref _nextCharIndex);
+        if (index < 0 || index > MaxIndex)
+            throw new InvalidOperationException("Character UID space exhausted");
         return Serial.NewChar(index);
     }
 

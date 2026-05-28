@@ -259,6 +259,11 @@ public sealed partial class GameClient
             SysMessage(ServerMessages.Get("death_cant_while_dead"));
             return;
         }
+        if (_character.IsStatFlag(StatFlag.Freeze))
+        {
+            SysMessage(ServerMessages.Get("msg_frozen"));
+            return;
+        }
 
         switch (item.ItemType)
         {
@@ -563,7 +568,23 @@ public sealed partial class GameClient
             // ---- spell tools (Source-X routes via CClient::Cmd_Skill_Magery) ----
             case ItemType.Wand:
                 if (item.More1 > 0)
+                {
                     HandleCastSpell((SpellType)item.More1, 0);
+                    if (item.TryGetTag("CHARGES", out string? chStr) &&
+                        int.TryParse(chStr, out int charges) && charges > 0)
+                    {
+                        charges--;
+                        if (charges <= 0)
+                        {
+                            item.More1 = 0;
+                            item.RemoveTag("CHARGES");
+                        }
+                        else
+                        {
+                            item.SetTag("CHARGES", charges.ToString());
+                        }
+                    }
+                }
                 else
                     SysMessage("This wand has no charges.");
                 break;
@@ -641,7 +662,7 @@ public sealed partial class GameClient
             case ItemType.Telepad:
             {
                 var dest = item.MoreP;
-                if (dest.X != 0 || dest.Y != 0)
+                if ((dest.X != 0 || dest.Y != 0) && IsValidTeleportDest(dest))
                 {
                     _character.MoveTo(dest);
                     SendSelfRedraw();
@@ -700,7 +721,7 @@ public sealed partial class GameClient
             case ItemType.Moongate:
             {
                 var dest = item.MoreP;
-                if (dest.X != 0 || dest.Y != 0)
+                if ((dest.X != 0 || dest.Y != 0) && IsValidTeleportDest(dest))
                 {
                     _character.MoveTo(dest);
                     SendSelfRedraw();
@@ -1705,6 +1726,15 @@ public sealed partial class GameClient
         }
 
         return items;
+    }
+
+    private bool IsValidTeleportDest(Core.Types.Point3D dest)
+    {
+        if (dest.X < 0 || dest.Y < 0) return false;
+        var md = _world.MapData;
+        if (md == null) return true;
+        var (mapW, mapH) = md.GetMapSize(dest.Map);
+        return dest.X < mapW && dest.Y < mapH;
     }
 
     // ==================== Crafting Gump ====================

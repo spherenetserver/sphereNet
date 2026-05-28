@@ -39,6 +39,7 @@ public sealed partial class GameClient
     {
         if (_character == null) return;
         _targetCursorActive = false;
+        if (_character.IsDead) return;
         bool targetCancelled = IsTargetCancelled(serial, x, y, z, graphic);
         if (targetCancelled)
         {

@@ -37,7 +37,7 @@ public sealed class StableEngine
         {
             if (st == SkillType.None || st >= SkillType.Qty) continue;
             ushort sv = pet.GetSkill(st);
-            if (sv > 0) skillSnap[(int)st] = sv;
+            if (sv > 0) skillSnap[(int)st] = Math.Min(sv, (ushort)1000);
         }
 
         list.Add(new StabledPet

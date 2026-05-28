@@ -74,6 +74,9 @@ public sealed class NpcAI
     private readonly Dictionary<uint, int> _pathIndex = [];
     private readonly Dictionary<uint, long> _pathTime = [];
     private const long PathCacheMaxAge = 10_000;
+    /// <summary>How long a target-less NPC waits before re-running the full
+    /// acquire scan (ModernUO ReacquireDelay). Reset to 0 on being attacked.</summary>
+    private const long ReacquireDelayMs = 1500;
     private long _lastPathPurge;
 
     public Func<Character, Character, bool>? OnNpcActFight { get; set; }
@@ -106,6 +109,24 @@ public sealed class NpcAI
                 _pathTime.Remove(uid);
                 _losFailCounts.Remove(uid);
             }
+        }
+
+        // LOS-fail counters can accumulate for NPCs that never built a path
+        // cache entry (target keeps moving but the straight line stays open),
+        // so the path-cache sweep above never reaches them. Purge them here too.
+        if (_losFailCounts.Count > 0)
+        {
+            List<uint>? staleLos = null;
+            foreach (var uid in _losFailCounts.Keys)
+            {
+                if (_pathCache.ContainsKey(uid)) continue; // already handled above
+                var obj = _world.FindObject(new Core.Types.Serial(uid));
+                if (obj is not Character ch || ch.IsDeleted || ch.IsDead)
+                    (staleLos ??= []).Add(uid);
+            }
+            if (staleLos != null)
+                foreach (var uid in staleLos)
+                    _losFailCounts.Remove(uid);
         }
     }
 
@@ -403,20 +424,38 @@ public sealed class NpcAI
                     ActFight(npc, current, curMotivation);
                     return;
                 }
+                if (curMotivation < 0)
+                {
+                    // Negative motivation = fear: flee from the target instead of
+                    // silently dropping it (Source-X NPC_LookAtChar fear path).
+                    // ActFight routes motivation < 0 into ActFlee.
+                    ActFight(npc, current, curMotivation);
+                    return;
+                }
+                // motivation == 0: neutral — let go of the target.
             }
             npc.FightTarget = Serial.Invalid;
         }
 
-        // No current target — scan for new one
-        var (bestTarget, bestMotivation) = FindBestTarget(npc, sightRange);
-        if (bestTarget != null && bestMotivation > 0)
+        // No current target — scan for a new one, but throttle the full-range
+        // scan so idle NPCs don't sweep every tick (ModernUO ReacquireDelay).
+        // RecordAttack zeroes NextNpcReacquireTime so retaliation is immediate.
+        long nowReac = Environment.TickCount64;
+        if (nowReac >= npc.NextNpcReacquireTime)
         {
-            npc.FightTarget = bestTarget.Uid;
-            npc.Memory_Fight_Start(bestTarget);
-            EmitSound(npc, CreatureSoundType.Notice);
-            NotifyNearbyAllies(npc, bestTarget);
-            ActFight(npc, bestTarget, bestMotivation);
-            return;
+            var (bestTarget, bestMotivation) = FindBestTarget(npc, sightRange);
+            if (bestTarget != null && bestMotivation > 0)
+            {
+                npc.NextNpcReacquireTime = 0;
+                npc.FightTarget = bestTarget.Uid;
+                npc.Memory_Fight_Start(bestTarget);
+                EmitSound(npc, CreatureSoundType.Notice);
+                NotifyNearbyAllies(npc, bestTarget);
+                ActFight(npc, bestTarget, bestMotivation);
+                return;
+            }
+            // Nothing found — back off the next scan.
+            npc.NextNpcReacquireTime = nowReac + ReacquireDelayMs;
         }
 
         npc.FightTarget = Serial.Invalid;
@@ -1453,7 +1492,18 @@ public sealed class NpcAI
                     ActFight(npc, target, Math.Max(motivation, 50));
                     return;
                 }
+                // Target dead/gone — revert to the mode the pet was in before the
+                // attack order (Guard/Follow), instead of trailing the master.
                 npc.FightTarget = Serial.Invalid;
+                npc.RemoveTag("ATTACK_TARGET");
+                PetAIMode revertMode = PetAIMode.Follow;
+                if (npc.TryGetTag("PREV_PET_MODE", out string? prevTag) &&
+                    int.TryParse(prevTag, out int prevVal) &&
+                    Enum.IsDefined(typeof(PetAIMode), prevVal) &&
+                    (PetAIMode)prevVal != PetAIMode.Attack)
+                    revertMode = (PetAIMode)prevVal;
+                npc.RemoveTag("PREV_PET_MODE");
+                npc.PetAIMode = revertMode;
                 int d = npc.Position.GetDistanceTo(master.Position);
                 if (d > 2)
                     MoveToward(npc, master.Position);

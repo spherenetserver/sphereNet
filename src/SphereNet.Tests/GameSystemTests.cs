@@ -213,6 +213,23 @@ public class GameSystemTests
         Assert.True(both);
     }
 
+    // --- NPC AI ---
+
+    [Fact]
+    public void Npc_RecordAttack_ResetsReacquireThrottle()
+    {
+        // Being attacked must clear the target-scan throttle so an idle NPC
+        // retaliates immediately instead of waiting out ReacquireDelay.
+        var world = CreateWorld();
+        var npc = world.CreateCharacter();
+        var attacker = world.CreateCharacter();
+
+        npc.NextNpcReacquireTime = long.MaxValue; // fully throttled
+        npc.RecordAttack(attacker.Uid, 5);
+
+        Assert.Equal(0, npc.NextNpcReacquireTime);
+    }
+
     // --- Gump ---
 
     [Fact]

@@ -513,6 +513,13 @@ public static partial class Program
         _telemetryClientStateUs = ToMicroseconds(Stopwatch.GetTimestamp() - p1b);
 
         long p1c = Stopwatch.GetTimestamp();
+        // Parallel.ForEach adds decisions in completion order, which is
+        // non-deterministic and differs from the single-thread wheel order.
+        // Apply order matters for order-sensitive side effects (ally rally,
+        // surround steps, shared-RNG draws), so sort by UID for a stable,
+        // reproducible apply order before committing.
+        decisionList.Sort(static (a, b) => a.NpcUid.CompareTo(b.NpcUid));
+
         // Apply NPC decisions — fires CharacterMoved for each NPC move,
         // which immediately notifies nearby clients via OnCharacterMoved.
         foreach (var decision in decisionList)
@@ -623,7 +630,9 @@ public static partial class Program
         {
             foreach (var npc in npcSnapshot)
             {
-                if (!npc.IsDeleted && !npc.IsPlayer &&
+                // Match the single-thread reschedule guard: a dead NPC (killed
+                // during ApplyDecision) must not be re-queued into the wheel.
+                if (!npc.IsDead && !npc.IsDeleted && !npc.IsPlayer &&
                     (npc.NpcMaster.IsValid || _world.IsInActiveArea(npc.MapIndex, npc.X, npc.Y)))
                     _npcTimerWheel.Schedule(npc, npc.NextNpcActionTime);
             }

@@ -1029,6 +1029,9 @@ public partial class Character : ObjBase
     public SwingState CombatSwingState { get; private set; } = SwingState.Ready;
     public long CombatSwingStateUntil { get; private set; }
     public long NextNpcActionTime { get; set; }
+    /// <summary>Earliest tick at which a target-less NPC may run a full
+    /// acquire scan again (throttles the hot FindBestTarget path). Runtime-only.</summary>
+    public long NextNpcReacquireTime { get; set; }
 
     public void SetCombatSwingState(SwingState state, long untilMs = 0)
     {
@@ -1890,6 +1893,9 @@ public partial class Character : ObjBase
     {
         if (attackerUid == Uid || attackerUid == Serial.Invalid || damage <= 0)
             return;
+        // Being hit lets an idle NPC re-acquire immediately (bypass the
+        // target-scan throttle), so retaliation is never delayed.
+        NextNpcReacquireTime = 0;
         long now = Environment.TickCount64;
         for (int i = 0; i < _attackers.Count; i++)
         {

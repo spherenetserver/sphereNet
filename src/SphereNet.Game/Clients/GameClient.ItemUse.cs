@@ -1543,6 +1543,11 @@ public sealed partial class GameClient
                     !victim.IsStatFlag(StatFlag.Ridden) &&
                     victim != _character && victim.Uid != pet.NpcMaster)
                 {
+                    // Remember the mode to fall back to once the target dies,
+                    // so the pet returns to Guard/Follow instead of trailing the
+                    // master (ModernUO DoOrderNone behavior).
+                    if (pet.PetAIMode != PetAIMode.Attack)
+                        pet.SetTag("PREV_PET_MODE", ((int)pet.PetAIMode).ToString());
                     pet.SetTag("ATTACK_TARGET", victim.Uid.Value.ToString());
                     pet.FightTarget = victim.Uid;
                     pet.PetAIMode = PetAIMode.Attack;

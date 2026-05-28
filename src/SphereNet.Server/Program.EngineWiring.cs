@@ -1227,10 +1227,14 @@ public static partial class Program
             };
             _npcAI.OnNpcKill = (killer, victim) =>
             {
-                var effectiveKiller = ResolveEffectiveOffender(killer);
+                // Reflect / self-inflicted death (reactive armor etc.): don't
+                // attribute the kill to the victim itself.
+                var actualKiller = ReferenceEquals(killer, victim) ? null : killer;
+                var effectiveKiller = actualKiller != null ? ResolveEffectiveOffender(actualKiller) : null;
 
-                _triggerDispatcher?.FireCharTrigger(effectiveKiller, CharTrigger.Kill,
-                    new TriggerArgs { CharSrc = effectiveKiller, O1 = victim });
+                if (effectiveKiller != null)
+                    _triggerDispatcher?.FireCharTrigger(effectiveKiller, CharTrigger.Kill,
+                        new TriggerArgs { CharSrc = effectiveKiller, O1 = victim });
                 _triggerDispatcher?.FireCharTrigger(victim, CharTrigger.Death,
                     new TriggerArgs { CharSrc = effectiveKiller });
 

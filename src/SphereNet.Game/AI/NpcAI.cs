@@ -184,17 +184,23 @@ public sealed class NpcAI
         if (charDef != null && charDef.MoveRate > 0)
             moveRate = charDef.MoveRate;
 
+        // Badly-hurt creatures act a little slower (ModernUO BadlyHurtMoveDelay) —
+        // natural "wounded" pacing plus a touch of CPU relief on big fights.
+        int hurtDelay = (npc.MaxHits > 0 && npc.Hits > 0 && npc.Hits < npc.MaxHits / 3)
+            ? (isActive ? 200 : 400)
+            : 0;
+
         if (isActive)
         {
             int baseDelay = 400 * moveRate / 100;
-            npc.NextNpcActionTime = now + baseDelay + _rand.Next(0, 100);
+            npc.NextNpcActionTime = now + baseDelay + hurtDelay + _rand.Next(0, 100);
         }
         else if (isService)
             npc.NextNpcActionTime = now + 3000 + _rand.Next(0, 2000);
         else
         {
             int baseDelay = 1000 * moveRate / 100;
-            npc.NextNpcActionTime = now + baseDelay + _rand.Next(0, 250);
+            npc.NextNpcActionTime = now + baseDelay + hurtDelay + _rand.Next(0, 250);
         }
 
         // Pet behavior — owned NPCs follow pet AI mode
@@ -318,6 +324,9 @@ public sealed class NpcAI
             }
             npc.FightTarget = Serial.Invalid;
         }
+
+        // Guards periodically try to reveal hidden players (ModernUO DetectHidden).
+        TryDetectHidden(npc);
 
         bool guardMurderers = _config.GuardsOnMurderers;
         foreach (var target in _world.GetCharsInRange(npc.Position, 12))
@@ -594,7 +603,18 @@ public sealed class NpcAI
         if (!hasLOS && dist > 1)
         {
             IncrementLosFailCount(npc);
-            if (GetLosFailCount(npc) > 15)
+            int losFails = GetLosFailCount(npc);
+            // Stuck for a while — a caster that knows Teleport blinks toward the
+            // target instead of giving up (ModernUO OnFailedMove smart-AI).
+            if (losFails >= 8 && npc.NpcSpells.Contains(SpellType.Teleport)
+                && npc.Mana >= npc.Int / 4 && _rand.Next(3) == 0)
+            {
+                ClearLosFailCount(npc);
+                if (!TryNpcCastSpell(npc, target, SpellType.Teleport))
+                    OnNpcCastSpell?.Invoke(npc, target, SpellType.Teleport);
+                return;
+            }
+            if (losFails > 15)
             {
                 npc.FightTarget = Serial.Invalid;
                 ClearLosFailCount(npc);
@@ -1089,6 +1109,54 @@ public sealed class NpcAI
         return (SpellType.None, target);
     }
 
+    /// <summary>Periodically try to reveal nearby hidden players (ModernUO
+    /// DetectHidden). Throttled per-NPC (NEXT_DETECT tag); chance scales with
+    /// the NPC's DetectingHidden vs the target's Hiding/Stealth.</summary>
+    private bool TryDetectHidden(Character npc)
+    {
+        long now = Environment.TickCount64;
+        if (npc.TryGetTag("NEXT_DETECT", out string? nd) && long.TryParse(nd, out long t) && now < t)
+            return false;
+        // Smarter NPCs scan more often (8-30s).
+        int intervalMs = Math.Clamp(30000 - npc.Int * 100, 8000, 30000);
+        npc.SetTag("NEXT_DETECT", (now + intervalMs).ToString());
+
+        int detectSkill = npc.GetSkill(SkillType.DetectingHidden);
+        bool any = false;
+        foreach (var ch in _world.GetCharsInRange(npc.Position, 6))
+        {
+            if (ch == npc || ch.IsDead || ch.IsDeleted) continue;
+            if (!ch.IsStatFlag(StatFlag.Hidden) && !ch.IsStatFlag(StatFlag.Invisible)) continue;
+            int conceal = Math.Max(ch.GetSkill(SkillType.Hiding), ch.GetSkill(SkillType.Stealth));
+            int chance = Math.Clamp((detectSkill - conceal / 2) / 10 + 20, 5, 95); // percent
+            if (_rand.Next(100) < chance)
+            {
+                ch.ClearStatFlag(StatFlag.Hidden);
+                ch.ClearStatFlag(StatFlag.Invisible);
+                Character.OnAppearanceChanged?.Invoke(ch); // re-show to nearby clients
+                any = true;
+            }
+        }
+        return any;
+    }
+
+    /// <summary>Per-creature target-preference bias from the FIGHTMODE tag
+    /// (Weakest/Strongest/Evil). Closest is the default (distance already drives
+    /// motivation), so no tag = unchanged behavior.</summary>
+    private static int FightModeBias(Character npc, Character target)
+    {
+        if (!npc.TryGetTag("FIGHTMODE", out string? mode) || string.IsNullOrEmpty(mode))
+            return 0;
+        int hpPct = target.MaxHits > 0 ? target.Hits * 100 / target.MaxHits : 100;
+        return mode.Trim().ToLowerInvariant() switch
+        {
+            "weakest"   => (100 - hpPct) / 2,                                      // favor low HP
+            "strongest" => Math.Clamp((target.Str + target.GetSkill(SkillType.Tactics) / 10) / 20, 0, 40),
+            "evil"      => (target.IsCriminal || target.IsMurderer) ? 40 : 0,
+            _ => 0,
+        };
+    }
+
     /// <summary>A target just hid/went invisible. Instead of dropping it
     /// instantly, move to its last known spot for a few ticks and try to Reveal
     /// it if the NPC can (ServUO mage reveal). Returns true while still pursuing,
@@ -1272,6 +1340,11 @@ public sealed class NpcAI
         if (target.FightTarget == npc.Uid)
             motivation += 15;
 
+        // Optional per-creature FightMode bias (ServUO/ModernUO AcquireFocusMob:
+        // Weakest/Strongest/Evil). Default (no tag) leaves distance-based
+        // "closest" behavior unchanged.
+        motivation += FightModeBias(npc, target);
+
         // Fear: flee if HP is low (Source-X: MonsterFear + STR check)
         if (_config.MonsterFear && npc.MaxHits > 0 && npc.Hits < npc.MaxHits / 2)
             motivation -= 50 + (npc.Int / 16);
@@ -1453,14 +1526,23 @@ public sealed class NpcAI
     /// <summary>Animal: wander, flee from combat.</summary>
     private void ActAnimal(Character npc)
     {
-        foreach (var ch in _world.GetCharsInRange(npc.Position, 6))
+        // Timid animals back off from the nearest threat until they reach a safe
+        // distance, instead of only stepping away once (ModernUO Backoff state).
+        // A threat is anyone in war mode or actively targeting this animal.
+        const int threatRange = 8;
+        Character? threat = null;
+        int nearest = int.MaxValue;
+        foreach (var ch in _world.GetCharsInRange(npc.Position, threatRange))
         {
-            if (ch == npc || ch.IsDead) continue;
-            if (ch.IsStatFlag(StatFlag.War))
-            {
-                MoveAway(npc, ch.Position);
-                return;
-            }
+            if (ch == npc || ch.IsDead || ch.IsDeleted) continue;
+            if (!ch.IsStatFlag(StatFlag.War) && ch.FightTarget != npc.Uid) continue;
+            int d = npc.Position.GetDistanceTo(ch.Position);
+            if (d < nearest) { nearest = d; threat = ch; }
+        }
+        if (threat != null)
+        {
+            MoveAway(npc, threat.Position);
+            return;
         }
 
         if (_rand.Next(12) == 0)

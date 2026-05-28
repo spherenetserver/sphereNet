@@ -46,6 +46,11 @@ public class Item : ObjBase
     /// Default=no handler (keep unless ATTR_DECAY).</summary>
     public static Func<Item, TriggerResult?>? OnTimerExpired;
 
+    /// <summary>Invoked when TYPE is set to a spawn type at runtime.
+    /// Program.cs wires this to InitializeSpawnComponent so script-driven
+    /// spawner creation works without waiting for a world reload.</summary>
+    public static Action<Item>? OnSpawnTypeChanged;
+
     private ItemType _type;
     private ushort _amount = 1;
     private Serial _containedIn = Serial.Invalid;
@@ -914,7 +919,11 @@ public class Item : ObjBase
             {
                 var parsed = ParseItemType(value);
                 if (parsed != ItemType.Invalid)
+                {
                     _type = parsed;
+                    if (parsed is ItemType.SpawnChar or ItemType.SpawnItem)
+                        OnSpawnTypeChanged?.Invoke(this);
+                }
                 return true;
             }
             case "AMOUNT":
@@ -1200,6 +1209,11 @@ public class Item : ObjBase
                 _contents.Clear();
                 return true;
             case "FIXWEIGHT":
+                return true;
+            case "UPDATE":
+            case "UPDATEX":
+            case "REMOVEFROMVIEW":
+                MarkDirty((DirtyFlag)0xFFFFFFFF);
                 return true;
 
             // Source-X CV_MOVE: shift the item by a (dx,dy,dz) tuple.
@@ -1671,32 +1685,45 @@ public class Item : ObjBase
     }
 
     /// <summary>
-    /// Initialize the SpawnComponent for IT_SPAWN_CHAR items.
-    /// Resolves MORE1 as either a spawn group defname or a single chardef ID.
-    /// Called from WorldLoader/LegacySphereImporter after item load.
+    /// Initialize the SpawnComponent for IT_SPAWN_CHAR / IT_SPAWN_ITEM items.
+    /// Resolves MORE1 as either a spawn group defname or a single chardef/itemdef ID.
+    /// Called from WorldLoader/LegacySphereImporter after item load, and at
+    /// runtime when TYPE is set to a spawn type via script.
     /// </summary>
     public void InitializeSpawnComponent(World.GameWorld world, ResourceHolder resources)
     {
-        if (_type != ItemType.SpawnChar)
-            return;
-
-        if (SpawnChar == null)
-            SpawnChar = new SpawnComponent(this, world);
-
-        SpawnChar.SetFromMore1(_more1, resources);
-        SpawnChar.ApplyMoreP();
-
-        // Source-X parity: AMOUNT = max count of spawned creatures.
-        if (_amount > 1)
-            SpawnChar.MaxCount = _amount;
-        else if (_more2 != 0)
+        if (_type == ItemType.SpawnChar)
         {
-            ushort maxCount = (ushort)(_more2 & 0xFFFF);
-            if (maxCount > 0)
-                SpawnChar.MaxCount = maxCount;
-        }
+            if (SpawnChar == null)
+                SpawnChar = new SpawnComponent(this, world);
 
-        SpawnChar.ResetTimer();
+            SpawnChar.SetFromMore1(_more1, resources);
+            SpawnChar.ApplyMoreP();
+
+            if (_amount > 1)
+                SpawnChar.MaxCount = _amount;
+            else if (_more2 != 0)
+            {
+                ushort maxCount = (ushort)(_more2 & 0xFFFF);
+                if (maxCount > 0)
+                    SpawnChar.MaxCount = maxCount;
+            }
+
+            SpawnChar.ResetTimer();
+        }
+        else if (_type == ItemType.SpawnItem)
+        {
+            if (SpawnItem == null)
+                SpawnItem = new ItemSpawnComponent(this, world);
+
+            if (_more1 != 0)
+                SpawnItem.ItemDefId = (ushort)(_more1 & 0xFFFF);
+
+            if (_amount > 1)
+                SpawnItem.MaxCount = _amount;
+
+            SpawnItem.ResetTimer();
+        }
     }
 
     // --- Helper methods ---

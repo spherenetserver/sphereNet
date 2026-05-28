@@ -1593,6 +1593,9 @@ public static partial class Program
             // MULTICREATE verb -> HousingEngine runtime registration
             SphereNet.Game.Objects.Items.Item.OnHouseRegister =
                 item => _housingEngine?.RegisterExistingMulti(item);
+            // Runtime TYPE=t_spawn_char/item → initialize spawn component
+            SphereNet.Game.Objects.Items.Item.OnSpawnTypeChanged = item =>
+                item.InitializeSpawnComponent(_world, _resources);
 
             // Char UID -> GameClient index, used by BroadcastNearby /
             // SendPacketToChar to skip the full _clients.Values scan.

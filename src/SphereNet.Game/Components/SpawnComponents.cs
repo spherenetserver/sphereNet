@@ -118,6 +118,32 @@ public sealed class SpawnComponent
             else
                 return;
         }
+        else if (_charDefId == 0)
+        {
+            // tag.spawn_array fallback: comma-separated chardef names used by
+            // typedef @Timer scripts (e.g. t_custom_spawner_char).
+            string? spawnArray = _spawnItem.Tags.Get("spawn_array");
+            if (!string.IsNullOrEmpty(spawnArray) && _resources != null)
+            {
+                var entries = spawnArray.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+                if (entries.Length > 0)
+                {
+                    string pick = entries[_rand.Next(entries.Length)];
+                    var rid = _resources.ResolveDefName(pick);
+                    if (rid.IsValid && rid.Type == ResType.CharDef)
+                    {
+                        defIndex = rid.Index;
+                        bodyId = (ushort)Math.Clamp(defIndex, 0, ushort.MaxValue);
+                    }
+                    else
+                        return;
+                }
+                else
+                    return;
+            }
+            else
+                return;
+        }
 
         // @PreSpawn — script can override spawn ID or abort (return TRUE)
         if (OnSpawnTrigger != null)
@@ -592,6 +618,11 @@ public sealed class ItemSpawnComponent
         _spawnedUids.Add(item.Uid);
 
         _nextSpawnTick = Environment.TickCount64 + _rand.Next(60, 300) * 1000;
+    }
+
+    public void ResetTimer()
+    {
+        _nextSpawnTick = Environment.TickCount64 + _rand.Next(5, 30) * 1000;
     }
 
     private void CleanupDeleted()

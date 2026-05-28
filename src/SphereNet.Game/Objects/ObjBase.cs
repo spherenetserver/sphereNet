@@ -2,6 +2,7 @@ using System.Globalization;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
+using SphereNet.Game.Definitions;
 using SphereNet.MapData;
 using SphereNet.MapData.Tiles;
 using SphereNet.Scripting.Variables;
@@ -840,6 +841,12 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         var rid = ResourceId.FromEventName(text);
         if (rid.IsValid)
             return rid;
+
+        // Fallback: typedef names (e.g. t_custom_spawner_char) are registered as
+        // ResType.TypeDef, not ResType.Events. ResolveDefName covers both.
+        var resolved = DefinitionLoader.StaticResources?.ResolveDefName(text) ?? ResourceId.Invalid;
+        if (resolved.IsValid && resolved.Type is ResType.TypeDef or ResType.Events)
+            return resolved;
 
         return ResourceId.Invalid;
     }

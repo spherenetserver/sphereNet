@@ -4,6 +4,47 @@
 All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-28] - Worldgen/spawn script kopruleri ve engine tamamlama Wave 15
+              (Worldgen/spawn script bridge and engine completeness Wave 15)
+----------------------------------------
+
+SPAWN SISTEMI / SPAWN SYSTEM:
+  - ParseEventResourceId typedef fallback: events=+t_custom_spawner_char gibi
+    typedef isimlerini Events hash ile ariyordu, TypeDef hash ile uyusmuyordu.
+    ResolveDefName fallback eklendi — TypeDef ve Events isimlerini dogru eslestirir.
+    (ParseEventResourceId resolved typedef names like t_custom_spawner_char with
+    Events hash only. Added ResolveDefName fallback for TypeDef/Events match.)
+  - Runtime TYPE=t_spawn_char/item init: Script ile TYPE set edildiginde
+    InitializeSpawnComponent cagrilmiyordu. SpawnComponent/ItemSpawnComponent
+    sadece world load'da init ediliyordu. OnSpawnTypeChanged delegate'i eklendi.
+    (Setting TYPE to spawn type via script didn't trigger InitializeSpawnComponent.
+    Spawn components only initialized at world load. OnSpawnTypeChanged delegate added.)
+  - InitializeSpawnComponent SpawnItem destegi: Metod sadece IT_SPAWN_CHAR icin
+    calissiyordu, IT_SPAWN_ITEM tamamen init edilmiyordu. ItemSpawnComponent
+    olusturma ve MORE1'den ItemDefId atama eklendi.
+    (InitializeSpawnComponent only handled IT_SPAWN_CHAR. IT_SPAWN_ITEM had no
+    initialization. ItemSpawnComponent creation and MORE1→ItemDefId mapping added.)
+  - tag.spawn_array fallback: SpawnComponent charDefId ve spawnGroup bos oldugunda
+    tag.spawn_array'den virgul-ayirici chardef isimleri okuyarak rastgele spawn
+    secimi yapiyor. Typedef @Timer script'leri ile uyumlu.
+    (SpawnComponent now reads tag.spawn_array as comma-separated chardef names when
+    charDefId and spawnGroup are empty. Compatible with typedef @Timer scripts.)
+  - ItemSpawnComponent.ResetTimer: Eksik metod eklendi — spawn timer baslatma
+    icin gerekli.
+    (Missing ResetTimer method added — required for spawn timer initialization.)
+
+SCRIPT KOMUTLARI / SCRIPT COMMANDS:
+  - Item UPDATE/UPDATEX/REMOVEFROMVIEW: Item sinifinda UPDATE komutu yoktu,
+    sadece Character'da vardi. Item'a MarkDirty ile view refresh destegi eklendi.
+    (Item class had no UPDATE command — only Character did. Added MarkDirty-based
+    view refresh for items.)
+  - NEW.CONT pending item leak: NEW.CONT komutu hedef container'a item ekledikten
+    sonra _pendingScriptNewItem'i null'a set etmiyordu. Sonraki SERV.NEWITEM
+    onceki item'i sarkik birakiyordu. Null commit eklendi.
+    (NEW.CONT didn't null _pendingScriptNewItem after placing item in target
+    container. Subsequent SERV.NEWITEM left the previous item dangling. Null
+    commit added.)
+
 [2026-05-28] - Multicore/single-thread pipeline parity duzeltmeleri Wave 14
               (Multicore/single-thread pipeline parity fixes Wave 14)
 ----------------------------------------

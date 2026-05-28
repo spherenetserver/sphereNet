@@ -1026,10 +1026,11 @@ public sealed partial class GameClient
                     {
                         uint cval = ObjBase.ParseHexOrDecUInt(trimmed);
                         var cont = _world.FindObject(new Serial(cval)) as Item;
-                        if (cont != null) { cont.AddItem(_pendingScriptNewItem); return true; }
+                        if (cont != null) { cont.AddItem(_pendingScriptNewItem); _pendingScriptNewItem = null; return true; }
                     }
                     _character.Backpack ??= _world.CreateItem();
                     _character.Backpack.AddItem(_pendingScriptNewItem);
+                    _pendingScriptNewItem = null;
                     return true;
                 }
                 default:

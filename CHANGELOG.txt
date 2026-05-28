@@ -4,6 +4,138 @@
 All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-28] - Multicore/single-thread pipeline parity duzeltmeleri Wave 14
+              (Multicore/single-thread pipeline parity fixes Wave 14)
+----------------------------------------
+
+KRITIK PARITY / CRITICAL PARITY:
+  - A1: TickTimerF + TickSleepingSectorItems multicore'da calismiyor: OnTickParallel
+    bu iki fonksiyonu cagirmiyordu. Script TIMERF callback'leri ve uzak sector
+    spawn/decay/timer islemleri multicore modunda tamamen devre disiydi.
+    Sequential fazda calistirilmak uzere eklendi.
+    (OnTickParallel didn't call TickTimerF or TickSleepingSectorItems. Script TIMERF
+    callbacks and remote sector spawn/decay/timers were completely disabled in
+    multicore mode. Added to sequential phase.)
+  - A2: NPC brain routing eksik: BuildDecision sadece Guard/Monster/Dragon/Berserk/
+    Healer/Vendor'i Legacy'ye yonlendiriyordu. Banker, Stable, Human, Animal
+    brain'leri sadece deterministic wander yapiyordu — ActVendor/ActHuman/ActAnimal
+    mantigi calismiyordu. Tum brain'ler Legacy'ye yonlendirildi.
+    (BuildDecision only routed Guard/Monster/Dragon/Berserk/Healer/Vendor to Legacy.
+    Banker, Stable, Human, Animal brains only did deterministic wander — ActVendor/
+    ActHuman/ActAnimal logic skipped. All brains now route to Legacy.)
+  - A3: Casting NPC tick: BuildDecision IsCasting kontrolu yapmiyordu. NPC buyu
+    cast tick'i (OnNpcTickSpellCast) multicore'da calismiyordu. Tum brain'lerin
+    Legacy'ye yonlenmesiyle cozuldu.
+    (BuildDecision didn't check IsCasting. NPC spell cast tick skipped in multicore.
+    Resolved by routing all brains to Legacy.)
+  - A4: BuildDecision parallel mutation: Inactive gate'te NextNpcActionTime dogrudan
+    yaziliyordu (parallel phase'de mutation). None decision dondurup ApplyDecision'da
+    sequential yazima tasindi.
+    (Inactive gate wrote NextNpcActionTime directly in parallel phase. Changed to
+    return None decision — write moved to sequential ApplyDecision.)
+
+CLIENT SYNC / CLIENT SYNC:
+  - A5: Multicore door sync: ApplyViewDelta sonrasi SyncOpenMapStaticDoors
+    cagrilmiyordu. Acik kapilarin durumu sonradan yaklasan oyunculara
+    gonderilmiyordu. Eklendi.
+    (SyncOpenMapStaticDoors not called after ApplyViewDelta in multicore.
+    Open door state not synced to late-joining players. Added.)
+  - A6: Multicore RTT ping: SendRttPing multicore path'te cagrilmiyordu.
+    Client ping/latency olcumu calismiyordu. TickClientState oncesine eklendi.
+    (SendRttPing not called in multicore path. Client ping/latency measurement
+    broken. Added before TickClientState.)
+  - A7: Single-thread diagnostics: StateRecorder ve MacroEngine tick'i single-thread
+    path'te cagrilmiyordu. Fallback modunda kayit ve makro islemleri duruyor du.
+    Eklendi.
+    (StateRecorder and MacroEngine tick not called in single-thread path.
+    Recording and macro operations stopped in fallback mode. Added.)
+
+NPC COLLISION / NPC COLLISION:
+  - ApplyDecision(Move) IsPassable: Move decision'i sadece CanNpcEnterTile
+    kontrolu yapiyordu, IsPassable (terrain passability) kontrol edilmiyordu.
+    NPC'ler gecilmez araziden gecebiliyordu. IsPassable kontrolu eklendi.
+    (Move decision only checked CanNpcEnterTile, not IsPassable. NPCs could
+    walk through impassable terrain. IsPassable check added.)
+
+[2026-05-28] - Guvenlik, envanter ve oyun mantigi duzeltmeleri Wave 13
+              (Security, inventory and game logic fixes Wave 13)
+----------------------------------------
+
+KRITIK GUVENLIK / CRITICAL SECURITY:
+  - Envanter pickup exploit: Baska oyuncunun ustundeki container'dan item
+    pickup mesafe kontrolu yapmiyordu, worn-container icin wearer==self
+    sahiplik kontrolu yoktu. Mesafe (3 tile) ve sahiplik kontrolleri eklendi.
+    (Pickup from another player's worn container had no distance check and
+    no wearer==self ownership check. Distance and ownership checks added.)
+  - Envanter drop exploit: Drop handler Pack/BankBox hedefinde owner kontrolu
+    yapmiyordu — baskasinin cantasina item birakilabiliyordu. Owner==self
+    kontrolu eklendi.
+    (Drop handler had no owner check for Pack/BankBox targets — items could
+    be dropped into another player's pack. Owner==self check added.)
+  - Container nesting exploit: Ic ice container siniri yoktu. Nested-pouch ile
+    slot limiti bypass edilebiliyordu. Maksimum 8 depth siniri eklendi.
+    (No container nesting depth limit. Nested pouches could bypass slot limit.
+    Max depth 8 enforced.)
+  - House drop exploit: Drop handler ev icerisinde CanAccess kontrolu
+    yapmiyordu — ban'li oyuncu ev icine item birakabiliyordu. CanAccess
+    kontrolu eklendi.
+    (Drop handler had no CanAccess check inside houses — banned players could
+    drop items. CanAccess check added.)
+  - Vendor buy stock bypass: GetServerBuyPrice fallback fiyat formulu
+    (itemId/10+5) vendor stock'ta olmayan item'lere fiyat veriyordu.
+    Fallback kaldirildi, stock'ta olmayan item'ler reddediliyor.
+    (GetServerBuyPrice fallback formula assigned prices to items not in vendor
+    stock. Fallback removed — items without server-side pricing are rejected.)
+  - Secured container chain: CanPickupHouseItem sadece dogrudan item kontrolu
+    yapiyordu, secured container icindeki item'lere erisim kontrol edilmiyordu.
+    Parent container zinciri taranarak secured/lockdown kontrolu eklendi.
+    (CanPickupHouseItem only checked the item directly, not items inside
+    secured containers. Parent container chain walk added.)
+
+GORUNUM VE AI / VIEW AND AI:
+  - View fast-path hidden leak: NotifyCharacterAppear ve NotifyCharMoved
+    fast-path'leri Hidden/Invisible flag kontrolu yapmiyordu. BuildViewDelta
+    filtreleri ile hizalandi.
+    (NotifyCharacterAppear and NotifyCharMoved fast-paths didn't check
+    Hidden/Invisible flags. Aligned with BuildViewDelta filters.)
+  - NPC Healer/Vendor brain routing: Healer ve Vendor NPC'ler multicore
+    path'te BuildDecision Legacy dalina yonlendirilmiyordu, ActHealer/
+    ActVendor mantigi calismiyordu. Legacy routing'e eklendi.
+    (Healer and Vendor NPCs not routed to Legacy path in BuildDecision —
+    ActHealer/ActVendor logic skipped. Added to Legacy routing.)
+
+BINEK VE SAVAS / MOUNT AND COMBAT:
+  - Mount death Ridden flag: DismountCharacter() StatFlag.Ridden temizlemiyordu.
+    Olum sirasinda dismount'ta mount NPC hala binek olarak gorunuyordu. Explicit
+    ClearStatFlag + BroadcastCharacterAppear eklendi.
+    (DismountCharacter didn't clear StatFlag.Ridden. Mount NPC still appeared
+    as mount after death dismount. Explicit clear and broadcast added.)
+
+HOUSING / HOUSING:
+  - Decay persistence: LastRefreshTick restart'ta sifirlaniyordu, ev decay
+    timer'i her restart'ta bastan basliyordu. HOUSE.DECAY_ELAPSED tag'i ile
+    elapsed time persist ediliyor.
+    (LastRefreshTick reset on restart — house decay timer restarted every boot.
+    Elapsed time now persisted via HOUSE.DECAY_ELAPSED tag.)
+  - IDOC deed: Decay collapse'ta Redeed() sonucu ev sahibine verilmiyordu.
+    Deed artik owner backpack'ine veya zemine birakiliyor.
+    (Decay collapse discarded Redeed() result. Deed now placed in owner's
+    backpack or on ground.)
+
+ITEM KULLANIMI / ITEM USE:
+  - Uzaktan item kullanimi: Scissors, key, dye pick/apply islemleri hedef
+    item mesafe kontrolu yapmiyordu. CanReachTargetItem helper'i ile 3 tile
+    mesafe kontrolu eklendi.
+    (Scissors, key, dye pick/apply had no target item distance check.
+    CanReachTargetItem helper with 3 tile range added.)
+
+STABLE / STABLE:
+  - CharDefIndex kaybi: StabledPet serialize/deserialize CharDefIndex alanini
+    icermiyordu. Stable'dan cikarilan pet CHARDEF tanimini kaybediyordu.
+    17. pipe-delimited field olarak eklendi.
+    (StabledPet serialize/deserialize didn't include CharDefIndex. Pets lost
+    their CHARDEF definition after unstabling. Added as 17th pipe field.)
+
 [2026-05-28] - Guvenlik, exploit ve oyun mantigi duzeltmeleri Wave 12
               (Security, exploit and game logic fixes Wave 12)
 ----------------------------------------

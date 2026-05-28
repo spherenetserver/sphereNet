@@ -421,6 +421,13 @@ public static partial class Program
         if (_recordingEngine.HasActiveReplays)
             TickReplayOverlays();
 
+        _stateRecorder?.Tick(Environment.TickCount64, _world.GetAllObjects().OfType<Character>());
+
+        _macroEngine?.Tick(Environment.TickCount64,
+            uid => _clientsByCharUid.GetValueOrDefault(new Serial(uid)),
+            FindItemInBackpack,
+            (uid, msg) => { if (_world.FindChar(new Serial(uid)) is { } c) SendSysMessage(c, msg); });
+
         _telemetryApplyUs = ToMicroseconds(Stopwatch.GetTimestamp() - p1);
 
         long p2 = Stopwatch.GetTimestamp();
@@ -497,8 +504,12 @@ public static partial class Program
         _telemetryNpcBuildUs = ToMicroseconds(Stopwatch.GetTimestamp() - p1);
 
         long p1b = Stopwatch.GetTimestamp();
+        long rttNow = Environment.TickCount64;
         foreach (var client in clientSnapshot)
+        {
+            client.NetState.SendRttPing(rttNow);
             client.TickClientState();
+        }
         _telemetryClientStateUs = ToMicroseconds(Stopwatch.GetTimestamp() - p1b);
 
         long p1c = Stopwatch.GetTimestamp();
@@ -565,6 +576,7 @@ public static partial class Program
                 continue;
 
             client.ApplyViewDelta(delta);
+            client.SyncOpenMapStaticDoors();
 
             if (hasRecordings && delta.NewChars.Count > 0)
             {

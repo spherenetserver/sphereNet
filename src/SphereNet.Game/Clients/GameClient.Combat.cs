@@ -1067,7 +1067,14 @@ public sealed partial class GameClient
         if (_character == null) return;
 
         if (_character.IsMounted && _mountEngine != null)
-            DismountCharacter();
+        {
+            var mountNpc = DismountCharacter();
+            if (mountNpc != null)
+            {
+                mountNpc.ClearStatFlag(Core.Enums.StatFlag.Ridden);
+                BroadcastCharacterAppear?.Invoke(mountNpc);
+            }
+        }
 
         // ---------------------------------------------------------------
         //   Source-X CChar::Death (CCharAct.cpp) reference order:

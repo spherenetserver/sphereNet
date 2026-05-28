@@ -931,11 +931,27 @@ public sealed partial class GameClient
         ItemType.WeaponBow or ItemType.WeaponXBow or ItemType.WeaponMaceCrook or
         ItemType.WeaponMacePick or ItemType.WeaponThrowing or ItemType.WeaponWhip;
 
+    private bool CanReachTargetItem(Item? obj)
+    {
+        if (obj == null || _character == null) return false;
+        if (_character.PrivLevel >= PrivLevel.GM) return true;
+        var topCont = GetTopContainer(obj);
+        if (topCont != null && !topCont.ContainedIn.IsValid)
+            return _character.Position.GetDistanceTo(topCont.Position) <= 3;
+        if (topCont != null && topCont.ContainedIn.IsValid)
+        {
+            var wearer = _world.FindChar(topCont.ContainedIn);
+            if (wearer != null)
+                return _character.Position.GetDistanceTo(wearer.Position) <= 3;
+        }
+        return _character.Position.GetDistanceTo(obj.Position) <= 3;
+    }
+
     /// <summary>Source-X uses scissors to convert hides/cloth to leather/bolts.</summary>
     private void HandleScissorsTarget(Item scissors, Serial target)
     {
         var obj = target.IsValid ? _world.FindObject(target) as Item : null;
-        if (obj == null) { SysMessage(ServerMessages.Get(Msg.ItemuseCantthink)); return; }
+        if (obj == null || !CanReachTargetItem(obj)) { SysMessage(ServerMessages.Get(Msg.ItemuseCantthink)); return; }
         switch (obj.ItemType)
         {
             case ItemType.Hide: obj.ItemType = ItemType.Leather; SysMessage("You cut the hide into leather."); break;
@@ -949,7 +965,7 @@ public sealed partial class GameClient
     private void HandleKeyUse(Item key, Serial target)
     {
         var obj = target.IsValid ? _world.FindObject(target) as Item : null;
-        if (obj == null) { SysMessage(ServerMessages.Get(Msg.ItemuseKeyNolock)); return; }
+        if (obj == null || !CanReachTargetItem(obj)) { SysMessage(ServerMessages.Get(Msg.ItemuseKeyNolock)); return; }
 
         bool linked = key.TryGetTag("LINK", out string? lk) && uint.TryParse(lk, out uint kv) && kv == obj.Uid.Value;
         if (!linked) { SysMessage(ServerMessages.Get(Msg.ItemuseKeyNokey)); return; }
@@ -965,7 +981,7 @@ public sealed partial class GameClient
     private void HandleDyePickup(Item dye, Serial target)
     {
         var vat = target.IsValid ? _world.FindObject(target) as Item : null;
-        if (vat == null || vat.ItemType != ItemType.DyeVat)
+        if (vat == null || vat.ItemType != ItemType.DyeVat || !CanReachTargetItem(vat))
         { SysMessage(ServerMessages.Get(Msg.ItemuseDyeFail)); return; }
         vat.SetTag("DYE_HUE", dye.Hue.ToString());
         SysMessage("You apply the dye to the vat.");
@@ -975,7 +991,7 @@ public sealed partial class GameClient
     private void HandleDyeApply(Item vat, Serial target)
     {
         var dest = target.IsValid ? _world.FindObject(target) as Item : null;
-        if (dest == null) { SysMessage(ServerMessages.Get(Msg.ItemuseDyeReach)); return; }
+        if (dest == null || !CanReachTargetItem(dest)) { SysMessage(ServerMessages.Get(Msg.ItemuseDyeReach)); return; }
         if (vat.TryGetTag("DYE_HUE", out string? hueText) && ushort.TryParse(hueText, out ushort hue))
         {
             if (_triggerDispatcher?.FireItemTrigger(dest, ItemTrigger.Dye, new TriggerArgs

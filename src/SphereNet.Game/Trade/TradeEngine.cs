@@ -247,7 +247,7 @@ public static class VendorEngine
                     return Math.Max(1, p);
             }
         }
-        return Math.Max(1, itemId / 10 + 5);
+        return 0;
     }
 
     /// <summary>Get the server-side sell price (what vendor pays). Usually half of buy price.</summary>

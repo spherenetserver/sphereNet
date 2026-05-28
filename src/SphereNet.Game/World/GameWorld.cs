@@ -907,6 +907,17 @@ public sealed class GameWorld
             if (player.IsDeleted) continue;
             player.TickNotorietyDecay(currentTime);
         }
+
+        // Sleeping sector maintenance — item timers, spawn points, decay in sectors
+        // with no nearby players. Without this, remote spawns freeze in multicore mode.
+        if (currentTime - _lastMaintenanceTick >= SleepingMaintenanceIntervalMs)
+        {
+            _lastMaintenanceTick = currentTime;
+            TickSleepingSectorItems();
+        }
+
+        // Script TIMERF callbacks — must run in sequential phase (callbacks can mutate world).
+        TickTimerF(currentTime);
     }
 
     /// <summary>

@@ -2007,11 +2007,21 @@ TAG.BUTTON=1
             vendor.NpcBrain = NpcBrainType.Vendor;
             world.PlaceCharacter(vendor, new Point3D(101, 100, 0, 0));
 
+            var vendorStock = world.CreateItem();
+            vendorStock.ItemType = ItemType.Container;
+            vendor.Equip(vendorStock, Layer.VendorStock);
             var stock = world.CreateItem();
             stock.BaseId = 0x0F7A;
             stock.Name = "Black Pearl";
             stock.Amount = 1;
-            world.PlaceItem(stock, vendor.Position);
+            stock.SetTag("PRICE", "10");
+            vendorStock.AddItem(stock);
+
+            var stockSellRef = world.CreateItem();
+            stockSellRef.BaseId = 0x0F7B;
+            stockSellRef.Name = "Blood Moss";
+            stockSellRef.SetTag("PRICE", "8");
+            vendorStock.AddItem(stockSellRef);
 
             var sellItem = world.CreateItem();
             sellItem.BaseId = 0x0F7B;

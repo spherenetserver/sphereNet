@@ -462,11 +462,18 @@ public sealed class HousingEngine
         if (actor.PrivLevel >= PrivLevel.GM)
             return true;
 
-        foreach (var house in _houses.Values)
+        var check = item;
+        int depth = 0;
+        while (check != null && depth < 16)
         {
-            if (!house.IsLockedDown(item.Uid) && !house.IsSecured(item.Uid))
-                continue;
-            return house.CanLockdown(actor.Uid);
+            foreach (var house in _houses.Values)
+            {
+                if (house.IsLockedDown(check.Uid) || house.IsSecured(check.Uid))
+                    return house.CanLockdown(actor.Uid);
+            }
+            if (!check.ContainedIn.IsValid) break;
+            check = _world.FindItem(check.ContainedIn);
+            depth++;
         }
 
         return true;
@@ -604,6 +611,8 @@ public sealed class HousingEngine
             item.SetTag("HOUSE.TYPE", ((byte)house.Type).ToString());
             item.SetTag("HOUSE.STORAGE", house.BaseStorage.ToString());
             item.SetTag("HOUSE.DECAY_STAGE", ((byte)house.DecayStage).ToString());
+            long elapsed = Environment.TickCount64 - house.LastRefreshTick;
+            item.SetTag("HOUSE.DECAY_ELAPSED", Math.Max(0, elapsed).ToString());
 
             if (house.CoOwners.Count > 0)
                 item.SetTag("HOUSE.COOWNERS", string.Join(",", house.CoOwners.Select(s => $"0{s.Value:X}")));
@@ -656,6 +665,8 @@ public sealed class HousingEngine
                 house.BaseStorage = stor;
             if (item.TryGetTag("HOUSE.DECAY_STAGE", out string? dsStr) && byte.TryParse(dsStr, out byte ds))
                 house.DecayStage = (HouseDecayStage)ds;
+            if (item.TryGetTag("HOUSE.DECAY_ELAPSED", out string? elStr) && long.TryParse(elStr, out long el) && el > 0)
+                house.LastRefreshTick = Environment.TickCount64 - el;
 
             ParseSerialList(item, "HOUSE.COOWNERS", uid => house.AddCoOwner(uid));
             ParseSerialList(item, "HOUSE.FRIENDS", uid => house.AddFriend(uid));

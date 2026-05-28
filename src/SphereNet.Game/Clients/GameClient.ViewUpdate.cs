@@ -270,7 +270,7 @@ public sealed partial class GameClient
         }
     }
 
-    private void SyncOpenMapStaticDoors()
+    public void SyncOpenMapStaticDoors()
     {
         if (_character == null || _world.MapData == null) return;
 
@@ -424,6 +424,10 @@ public sealed partial class GameClient
         if (ch.IsDead && !_character.IsDead && !ghostManifested && !isStaffViewer)
             return;
 
+        bool isHidden = ch.IsInvisible || ch.IsStatFlag(Core.Enums.StatFlag.Hidden);
+        if (isHidden && !isStaffViewer)
+            return;
+
         uint uid = ch.Uid.Value;
         // Manifested ghost renders translucent grey (hue 0x4001) for plain
         // observers; staff already see ghosts in their normal hue (HUE_DEFAULT).
@@ -463,6 +467,16 @@ public sealed partial class GameClient
         }
         else if (wasInRange && nowInRange && _knownChars.Contains(uid))
         {
+            bool isHiddenNow = ch.IsInvisible || ch.IsStatFlag(Core.Enums.StatFlag.Hidden);
+            bool canSeeHidden = _character.AllShow ||
+                (_character.PrivLevel >= Core.Enums.PrivLevel.Counsel &&
+                 _character.PrivLevel >= ch.PrivLevel);
+            if (isHiddenNow && !canSeeHidden)
+            {
+                RemoveKnownChar(uid, sendDelete: true);
+                return;
+            }
+
             if (_lastKnownPos.TryGetValue(uid, out var last))
             {
                 bool posChanged = last.X != ch.X || last.Y != ch.Y || last.Z != ch.Z || last.Dir != (byte)ch.Direction;

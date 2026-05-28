@@ -178,10 +178,26 @@ public sealed partial class GameClient
             else
             {
                 var topCont = GetTopContainer(item);
-                if (topCont != null && !topCont.ContainedIn.IsValid)
+                if (topCont != null)
                 {
-                    int cDist = _character.Position.GetDistanceTo(topCont.Position);
-                    if (cDist > 3) { SendPickupFailed(4); return; }
+                    if (!topCont.ContainedIn.IsValid)
+                    {
+                        int cDist = _character.Position.GetDistanceTo(topCont.Position);
+                        if (cDist > 3) { SendPickupFailed(4); return; }
+                    }
+                    else
+                    {
+                        var wearer = _world.FindChar(topCont.ContainedIn);
+                        if (wearer != null && wearer != _character && wearer.IsPlayer)
+                        {
+                            SendPickupFailed(1); return;
+                        }
+                        if (wearer != null)
+                        {
+                            int wDist = _character.Position.GetDistanceTo(wearer.Position);
+                            if (wDist > 3) { SendPickupFailed(4); return; }
+                        }
+                    }
                 }
             }
         }
@@ -309,27 +325,52 @@ public sealed partial class GameClient
                 // Bank boxes (equipped on the player) are always reachable; other containers
                 // must be within 3 tiles. Without this a crafted packet can move items into
                 // distant containers the client happened to open earlier.
-                if (_character.PrivLevel < PrivLevel.GM &&
-                    container.EquipLayer != Layer.BankBox &&
-                    container.EquipLayer != Layer.Pack)
+                if (_character.PrivLevel < PrivLevel.GM)
                 {
-                    var topContainer = GetTopContainer(container);
-                    if (topContainer != null && !topContainer.ContainedIn.IsValid)
+                    if (container.EquipLayer == Layer.BankBox || container.EquipLayer == Layer.Pack)
                     {
-                        int cDist = _character.Position.GetDistanceTo(topContainer.Position);
-                        if (cDist > 3)
+                        var owner = _world.FindChar(container.ContainedIn);
+                        if (owner != null && owner != _character)
                         {
                             PlaceItemInPack(_character, item);
                             _netState.Send(new PacketDropReject());
                             return;
                         }
                     }
+                    else
+                    {
+                        var topContainer = GetTopContainer(container);
+                        if (topContainer != null && !topContainer.ContainedIn.IsValid)
+                        {
+                            int cDist = _character.Position.GetDistanceTo(topContainer.Position);
+                            if (cDist > 3)
+                            {
+                                PlaceItemInPack(_character, item);
+                                _netState.Send(new PacketDropReject());
+                                return;
+                            }
+                        }
+                    }
                 }
 
-                // Capacity enforcement — bank and normal containers have separate limits.
-                // Staff bypass so GMs can overstuff chests during testing.
-                // On rejection we bounce the item into the dropper's backpack so it
-                // is never destroyed; client visually resyncs from our 0x25/0x3C.
+                // Nesting depth limit — prevent container-in-container bypass of slot limits.
+                if (_character.PrivLevel < PrivLevel.GM)
+                {
+                    int depth = 0;
+                    var parent = container;
+                    while (parent != null && parent.ContainedIn.IsValid && depth < 8)
+                    {
+                        parent = _world.FindItem(parent.ContainedIn);
+                        depth++;
+                    }
+                    if (depth >= 8)
+                    {
+                        PlaceItemInPack(_character, item);
+                        _netState.Send(new PacketDropReject());
+                        return;
+                    }
+                }
+
                 if (_character.PrivLevel < PrivLevel.GM)
                 {
                     bool isBank = container.EquipLayer == Layer.BankBox;
@@ -472,8 +513,18 @@ public sealed partial class GameClient
             }
         }
 
-        // bounce the item back to the player's pack so the cursor
-        // doesn't get stuck and scripts can fully gate ground placement.
+        if (_character.PrivLevel < PrivLevel.GM && _housingEngine != null)
+        {
+            var dropPos = new Point3D(x, y, z, _character.MapIndex);
+            var house = _housingEngine.FindHouseAt(dropPos);
+            if (house != null && !house.CanAccess(_character.Uid))
+            {
+                PlaceItemInPack(_character, item);
+                _netState.Send(new PacketDropReject());
+                return;
+            }
+        }
+
         var dropResult = _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.DropOnGround,
             new TriggerArgs { CharSrc = _character, ItemSrc = item });
         if (dropResult == TriggerResult.True)

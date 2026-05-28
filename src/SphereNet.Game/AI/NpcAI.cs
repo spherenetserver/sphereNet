@@ -225,39 +225,23 @@ public sealed class NpcAI
         if (nowTick < npc.NextNpcActionTime)
             return null;
 
-        // Active-area gate (see OnTickAction). Deterministic jitter keeps the
-        // multicore path reproducible. 30-60s park — sector wake reschedules
-        // these NPCs instantly when a player enters the area.
+        // Active-area gate: no player nearby → park for 30-60s. Returns a None
+        // decision so ApplyDecision sets NextNpcActionTime in the sequential phase
+        // (no mutation during parallel compute).
         if (!npc.NpcMaster.IsValid && !_world.IsInActiveArea(npc.MapIndex, npc.X, npc.Y))
         {
-            npc.NextNpcActionTime = nowTick + 30_000 + DeterministicJitter(npc.Uid.Value, nowTick, 30_000);
-            return null;
+            long parkTime = nowTick + 30_000 + DeterministicJitter(npc.Uid.Value, nowTick, 30_000);
+            return new NpcDecision(npc.Uid.Value, NpcDecisionType.None, npc.Position, npc.Direction, parkTime);
         }
 
         int spread = (int)((npc.Uid.Value * 2654435761u) % 400);
         long nextAction = nowTick + 600 + spread;
 
-        // Pets and combat brains need the full OnTickAction path (ActPet,
-        // ActGuard, ActMonster etc.) — route them through Legacy.
-        if (npc.NpcMaster.IsValid ||
-            npc.NpcBrain is NpcBrainType.Guard or NpcBrainType.Monster or NpcBrainType.Dragon or NpcBrainType.Berserk)
-        {
-            return new NpcDecision(npc.Uid.Value, NpcDecisionType.Legacy, npc.Position, npc.Direction, nextAction);
-        }
-
-        // Deterministic wander decision for non-combat brains.
-        var dir = GetDeterministicDirection(npc.Uid.Value, nowTick);
-        GetDirectionDelta(dir, out short dx, out short dy);
-        if (dx == 0 && dy == 0)
-            return new NpcDecision(npc.Uid.Value, NpcDecisionType.None, npc.Position, npc.Direction, nextAction);
-
-        var target = new Point3D(
-            (short)(npc.X + dx),
-            (short)(npc.Y + dy),
-            npc.Z,
-            npc.MapIndex);
-
-        return new NpcDecision(npc.Uid.Value, NpcDecisionType.Move, target, dir, nextAction);
+        // All brain types route through Legacy → OnTickAction for full Source-X
+        // parity. Without this, service brains (Banker, Stable, Human, Animal)
+        // only do deterministic wander and lose their ActVendor/ActHuman/ActAnimal logic.
+        // Casting NPCs also need Legacy to run OnNpcTickSpellCast.
+        return new NpcDecision(npc.Uid.Value, NpcDecisionType.Legacy, npc.Position, npc.Direction, nextAction);
     }
 
     /// <summary>
@@ -274,7 +258,9 @@ public sealed class NpcAI
             case NpcDecisionType.Move:
                 npc.NextNpcActionTime = decision.NextActionTick;
                 npc.Direction = decision.Direction;
-                if (CanNpcEnterTile(npc, decision.TargetPos))
+                var mapData = _world.MapData;
+                if ((mapData == null || mapData.IsPassable(decision.TargetPos.Map, decision.TargetPos.X, decision.TargetPos.Y, decision.TargetPos.Z))
+                    && CanNpcEnterTile(npc, decision.TargetPos))
                     _world.MoveCharacter(npc, decision.TargetPos);
                 break;
             case NpcDecisionType.Legacy:

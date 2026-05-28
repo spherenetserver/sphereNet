@@ -56,6 +56,7 @@ public sealed class StableEngine
             ControllerUid = pet.ControllerSerial.Value,
             NpcFood = pet.NpcFood,
             PetAIMode = pet.PetAIMode,
+            CharDefIndex = pet.CharDefIndex,
             FriendUids = GetFriendUids(pet),
             Skills = skillSnap,
         });
@@ -94,6 +95,8 @@ public sealed class StableEngine
         pet.NpcBrain = data.NpcBrain;
         pet.NpcFood = data.NpcFood;
         pet.PetAIMode = data.PetAIMode;
+        if (data.CharDefIndex != 0)
+            pet.CharDefIndex = data.CharDefIndex;
         pet.TryAssignOwnership(owner, owner, summoned: false, enforceFollowerCap: true);
         if (data.ControllerUid != 0 && data.ControllerUid != owner.Uid.Value)
             pet.TrySetProperty("CONTROLLER_UID", data.ControllerUid.ToString());
@@ -205,6 +208,7 @@ public sealed class StableEngine
         public ushort NpcFood { get; set; }
         public PetAIMode PetAIMode { get; set; }
         public List<uint> FriendUids { get; set; } = [];
+        public int CharDefIndex { get; set; }
         public Dictionary<int, ushort> Skills { get; set; } = [];
 
         public string Serialize()
@@ -228,7 +232,8 @@ public sealed class StableEngine
                 NpcFood,
                 (int)PetAIMode,
                 friends,
-                skills);
+                skills,
+                CharDefIndex);
         }
 
         public static bool TryDeserialize(string raw, out StabledPet pet)
@@ -261,6 +266,8 @@ public sealed class StableEngine
                     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                     .Select(uint.Parse)
                     .ToList();
+                if (parts.Length > 16 && int.TryParse(parts[16], out int cdi))
+                    pet.CharDefIndex = cdi;
                 if (parts.Length > 15 && !string.IsNullOrEmpty(parts[15]))
                 {
                     foreach (string entry in parts[15].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))

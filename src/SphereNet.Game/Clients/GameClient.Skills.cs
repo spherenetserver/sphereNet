@@ -341,6 +341,12 @@ public sealed partial class GameClient
                 pack.Uid.Value, actual.Hue,
                 _client._netState.IsClientPost6017));
         }
+
+        public void ResurrectTarget(Objects.Characters.Character target)
+        {
+            if (!target.IsDead) return;
+            _client.OnResurrectOther?.Invoke(target);
+        }
     }
 
     /// <summary>Source-X addObjMessage: overhead speech over any ObjBase.</summary>

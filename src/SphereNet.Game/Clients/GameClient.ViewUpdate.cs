@@ -44,7 +44,10 @@ public sealed partial class GameClient
     {
         var delta = BuildViewDelta();
         if (delta != null)
+        {
             ApplyViewDelta(delta);
+            SyncOpenMapStaticDoors();
+        }
     }
 
     public sealed class ClientViewDelta
@@ -262,6 +265,58 @@ public sealed partial class GameClient
             _knownItems.Remove(uid);
             _lastKnownItemState.Remove(uid);
         }
+    }
+
+    private void SyncOpenMapStaticDoors()
+    {
+        if (_character == null || _world.MapData == null) return;
+
+        int range = _netState.ViewRange;
+        byte mapId = _character.MapIndex;
+        short cx = _character.X, cy = _character.Y;
+
+        var activeDoors = new HashSet<uint>();
+
+        foreach (var (map, x, y, z) in _world.OpenMapStaticDoors)
+        {
+            if (map != mapId) continue;
+            if (Math.Abs(x - cx) > range || Math.Abs(y - cy) > range) continue;
+
+            uint serial = (uint)(Serial.ItemFlag |
+                (uint)((x & 0x7FFF) << 16) |
+                (uint)((y & 0x3FFF) << 3) |
+                (uint)(z & 0x07));
+            activeDoors.Add(serial);
+
+            if (_knownDoorOverrides.Add(serial))
+            {
+                ushort openTile = 0;
+                ushort hue = 0;
+                foreach (var s in _world.MapData.GetStatics(mapId, x, y))
+                {
+                    if (s.Z == z && DoorHelper.IsDoorGraphic(_world.MapData, s.TileId))
+                    {
+                        openTile = (ushort)(s.TileId + 1);
+                        hue = s.Hue;
+                        break;
+                    }
+                }
+                if (openTile != 0)
+                    _netState.Send(new PacketWorldItem(serial, openTile, 1, x, y, z, hue));
+            }
+        }
+
+        var staleDoors = new List<uint>();
+        foreach (uint serial in _knownDoorOverrides)
+        {
+            if (!activeDoors.Contains(serial))
+            {
+                _netState.Send(new PacketDeleteObject(serial));
+                staleDoors.Add(serial);
+            }
+        }
+        foreach (uint s in staleDoors)
+            _knownDoorOverrides.Remove(s);
     }
 
     /// <summary>

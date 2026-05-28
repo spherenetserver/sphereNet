@@ -1430,7 +1430,10 @@ public sealed class CommandHandler
                 args.Trim().Length == 0)
             {
                 if (gm.IsDead)
-                    gm.Resurrect();
+                {
+                    if (Character.OnLifecycleResurrect != null) Character.OnLifecycleResurrect(gm);
+                    else gm.Resurrect();
+                }
                 gm.Hits = gm.MaxHits;
                 gm.Mana = gm.MaxMana;
                 gm.Stam = gm.MaxStam;
@@ -1512,7 +1515,8 @@ public sealed class CommandHandler
         Register("SUICIDE", PrivLevel.Player, (gm, _) =>
         {
             gm.Hits = 0;
-            gm.Kill();
+            if (Character.OnLifecycleKill != null) Character.OnLifecycleKill(gm, gm);
+            else gm.Kill();
             OnSysMessage?.Invoke(gm, ServerMessages.Get("gm_suicide_done"));
         });
 

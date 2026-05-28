@@ -23,6 +23,8 @@ public partial class Character : ObjBase
     /// </summary>
     public static Action<string>? Diagnostic { get; set; }
 
+    public static Action<Character, Character?>? OnLifecycleKill;
+    public static Action<Character>? OnLifecycleResurrect;
 
     // Static delegate for guild resolution (set in Program.cs)
     public static Func<Serial, Guild.GuildManager?>? ResolveGuildManager;
@@ -841,7 +843,7 @@ public partial class Character : ObjBase
             1 => 5, 2 => 8, 3 => 12, 4 => 16, _ => 20
         };
         _nextPoisonTick = Environment.TickCount64 + GetPoisonTickInterval();
-        StatFlags |= StatFlag.Poisoned;
+        SetStatFlag(StatFlag.Poisoned);
     }
 
     /// <summary>Cure poison.</summary>
@@ -850,7 +852,7 @@ public partial class Character : ObjBase
         _poisonLevel = 0;
         _poisonTicksRemaining = 0;
         _nextPoisonTick = 0;
-        StatFlags &= ~StatFlag.Poisoned;
+        ClearStatFlag(StatFlag.Poisoned);
     }
 
     /// <summary>Set criminal timer (duration in ms).</summary>
@@ -892,7 +894,10 @@ public partial class Character : ObjBase
         Hits = (short)Math.Max(0, Hits - damage);
 
         if (Hits <= 0 && !IsDead)
-            Kill();
+        {
+            if (OnLifecycleKill != null) OnLifecycleKill(this, null);
+            else Kill();
+        }
 
         if (_poisonTicksRemaining <= 0)
             CurePoison();
@@ -3435,10 +3440,12 @@ public partial class Character : ObjBase
                 return true;
             }
             case "KILL":
-                Kill();
+                if (OnLifecycleKill != null) OnLifecycleKill(this, null);
+                else Kill();
                 return true;
             case "RESURRECT":
-                Resurrect();
+                if (OnLifecycleResurrect != null) OnLifecycleResurrect(this);
+                else Resurrect();
                 return true;
             case "ANIM":
             {
@@ -3771,7 +3778,8 @@ public partial class Character : ObjBase
             }
             case "SUICIDE":
             {
-                Kill();
+                if (OnLifecycleKill != null) OnLifecycleKill(this, null);
+                else Kill();
                 return true;
             }
             case "RELEASE":

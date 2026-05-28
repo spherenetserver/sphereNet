@@ -4,6 +4,92 @@
 All notable changes are documented in this file.
 ================================================================================
 
+[2026-05-28] - Yasam dongusu bypass ve client sync duzeltmeleri
+              (Lifecycle bypass and client sync fixes)
+----------------------------------------
+
+MERKEZI YASAM DONGUSU API / CENTRAL LIFECYCLE API:
+  - OnLifecycleKill delegate: Kill() dogrudan cagrisi ProcessDeath pipeline'ini
+    (corpse, loot, trigger, ghost gecisi) atliyordu. Tum 7 call site (poison tick,
+    trap, field, script KILL/SUICIDE, GM .SUICIDE, spell fallback) merkezi delegate
+    uzerinden ProcessDeath'e yonlendirildi.
+    (Direct Kill() calls bypassed ProcessDeath pipeline (corpse, loot, triggers,
+    ghost transition). All 7 call sites routed through central delegate.)
+  - OnLifecycleResurrect delegate: Resurrect() dogrudan cagrisi client sync'i
+    (body restore, equipment re-equip, paketler) atliyordu. Tum 5 call site
+    (resurrection spell, GM .HEAL self/target, script RESURRECT, sector RESPAWN)
+    merkezi delegate uzerinden OnResurrect()'e yonlendirildi.
+    (Direct Resurrect() calls bypassed client sync (body restore, equipment,
+    packets). All 5 call sites routed through central delegate.)
+
+OLUM VE DIRILIS / DEATH AND RESURRECTION:
+  - NPC healer manifest kontrolu: Healer NPC'ler manifest olmamis (war mode
+    degil) ghost'lari diriltiyordu. War mode kontrolu eklendi, manifest uyarisi
+    gonderiliyor.
+    (NPC healers resurrected non-manifested ghosts. War mode check added with
+    manifest warning message.)
+  - Bandage rez manifest/proximity/LOS: Healing ile diriltme manifest, 3 tile
+    mesafe ve corpse line-of-sight kontrolu yapmiyordu. Uc kontrol de eklendi.
+    (Bandage resurrection skipped manifest, proximity, and corpse LOS checks.
+    All three validations added.)
+  - PacketDeathStatus dirilis: Dirilis sonrasi death UI kapanmiyordu.
+    OnResurrect'e PacketDeathStatus(ActionResurrect) eklendi.
+    (Death UI not dismissed after resurrection. PacketDeathStatus(ActionResurrect)
+    added to OnResurrect.)
+  - Login dead state: Olu karakter ile login'de ghost body ve death UI
+    gonderilmiyordu. EnterWorld'de IsDead kontrolu eklendi.
+    (Login with dead character didn't send ghost body or death UI. IsDead check
+    added to EnterWorld.)
+
+TELEPORT VE CLIENT SYNC / TELEPORT AND CLIENT SYNC:
+  - Recall spell sync: Recall buyusu MoveCharacter cagiriyordu ama client'a
+    Resync/HandleMapChanged gonderilmiyordu. OnSpellTeleport delegate eklendi.
+    (Recall spell called MoveCharacter without client Resync/HandleMapChanged.
+    OnSpellTeleport delegate added.)
+  - Teleport spell implementasyonu: Teleport buyusu hedef pozisyona isimlama
+    yapiyordu ama yer hedefi (CastTargetPos) kullanilmiyordu. Dogru pozisyon
+    okuma ve client sync eklendi.
+    (Teleport spell used target position instead of ground target CastTargetPos.
+    Correct position reading and client sync added.)
+  - Moongate/telepad cross-map: OnTeleport callback'i map degisimini
+    algilamiyordu. oldMap parametresi eklendi, cross-map icin HandleMapChanged,
+    same-map icin Resync cagiriliyor.
+    (OnTeleport callback didn't detect map changes. oldMap parameter added —
+    HandleMapChanged for cross-map, Resync for same-map.)
+
+KAPI SYNC / DOOR SYNC:
+  - Late-joiner door state: Acik kapilarin durumu sonradan yaklasan
+    oyunculara gonderilmiyordu. _knownDoorOverrides takibi ve
+    SyncOpenMapStaticDoors ile gec katilimci sync'i eklendi.
+    (Open door state not sent to players arriving later. _knownDoorOverrides
+    tracking and SyncOpenMapStaticDoors late-joiner sync added.)
+  - Ghost kapi kisitlamasi: Ghost'lar kapilari acabiliyordu. IsDead kontrolu
+    eklendi.
+    (Ghosts could open doors. IsDead check added.)
+  - Kapi collision/persistence: Acik kapilar collision kontrolune dahil
+    degildi ve sunucu restart'inda sifilaniyordu. WalkCheck entegrasyonu ve
+    WorldSaver/WorldLoader door state persistence eklendi.
+    (Open doors excluded from collision checks and reset on restart. WalkCheck
+    integration and door state save/load added.)
+
+PARITY DUZELTMELERI / PARITY FIXES:
+  - Poison icon sync: StatFlags dogrudan atamasi (|= / &=~) MarkDirty
+    cagirmiyordu, client'ta zehir iconu guncellenmiyordu. SetStatFlag/
+    ClearStatFlag kullanildi.
+    (Direct StatFlags assignment skipped MarkDirty — poison icon not updated
+    on client. Switched to SetStatFlag/ClearStatFlag.)
+  - Trade backpack refresh: Trade tamamlandiginda her iki tarafin cantalari
+    guncellenmiyordu. RefreshBackpackContents ve partner refresh delegate'i
+    eklendi.
+    (Backpacks not refreshed for both parties after trade completion.
+    RefreshBackpackContents and partner refresh delegate added.)
+  - NPC melee skill interrupt: NPC saldirisi (melee/breath/throw) devam eden
+    skill'i (ornegin bandage) kesintiye ugratmiyordu. HasActiveSkillPending
+    kontrolu ve ActiveSkillAborted cagrisi eklendi (3 lokasyon).
+    (NPC attacks (melee/breath/throw) didn't interrupt pending skills like
+    bandage. HasActiveSkillPending check and ActiveSkillAborted invoke added
+    at 3 locations.)
+
 [2026-05-28] - Kapsamli guvenlik taramasi Wave 11 — 17 hata duzeltmesi
               (Comprehensive security audit Wave 11 — 17 bug fixes)
 ----------------------------------------

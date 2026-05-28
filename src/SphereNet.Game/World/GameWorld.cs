@@ -86,6 +86,9 @@ public sealed class GameWorld
             _openMapStaticDoors.Remove(key);
     }
 
+    public IReadOnlyCollection<(byte Map, short X, short Y, sbyte Z)> OpenMapStaticDoors =>
+        _openMapStaticDoors;
+
     private TerrainEngine? _terrain;
     /// <summary>Lazy terrain helper (LOS, ground height). Uses current MapData.</summary>
     public TerrainEngine Terrain => _terrain ??= new TerrainEngine(MapData);

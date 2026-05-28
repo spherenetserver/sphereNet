@@ -462,6 +462,16 @@ public sealed partial class GameClient
                 _account.LastLogin.ToString("yyyy-MM-dd HH:mm:ss")));
         }
 
+        if (_character.IsDead)
+        {
+            bool isFemale = _character.BodyId == 0x0191 || _character.BodyId == 0x025E || _character.BodyId == 0x029B;
+            ushort ghostBody = isFemale ? (ushort)0x0193 : (ushort)0x0192;
+            if (_character.BodyId != 0x0192 && _character.BodyId != 0x0193)
+                _character.BodyId = ghostBody;
+            _character.Hue = Core.Types.Color.Default;
+            _netState.Send(new PacketDeathStatus(PacketDeathStatus.ActionDead));
+        }
+
         // Ensure first world snapshot is fully consistent.
         // Some clients can show partially black map/chunk artifacts if they only
         // receive the minimal login packet set without a full nearby object refresh.

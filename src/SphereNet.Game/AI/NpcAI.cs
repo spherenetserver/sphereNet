@@ -6,6 +6,7 @@ using SphereNet.Game.Definitions;
 using SphereNet.Game.Movement;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
+using SphereNet.Game.Messages;
 using SphereNet.Game.World;
 
 namespace SphereNet.Game.AI;
@@ -1183,6 +1184,12 @@ public sealed class NpcAI
             if (ch == npc || !ch.IsDead || !ch.IsPlayer) continue;
             if (ch.IsCriminal || ch.IsMurderer) continue;
 
+            if (!ch.IsInWarMode)
+            {
+                OnNpcSay?.Invoke(npc, ServerMessages.Get(Msg.NpcHealerManifest));
+                continue;
+            }
+
             if (npc.Position.GetDistanceTo(ch.Position) > 2)
             {
                 MoveToward(npc, ch.Position);
@@ -1190,7 +1197,6 @@ public sealed class NpcAI
             }
 
             OnHealerAction?.Invoke(npc, ch, true);
-            ch.Resurrect();
             return;
         }
 

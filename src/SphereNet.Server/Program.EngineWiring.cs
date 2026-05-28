@@ -225,11 +225,14 @@ public static partial class Program
                     c.SysMessage(text);
             };
 
-            _movement.OnTeleport = (mover, dest) =>
+            _movement.OnTeleport = (mover, dest, oldMap) =>
             {
                 if (TryGetClientFor(mover, out var c))
                 {
-                    c.SendSelfRedraw();
+                    if (oldMap != mover.MapIndex)
+                        c.HandleMapChanged();
+                    else
+                        c.Resync();
                     var snd = new PacketSound(0x01FE, mover.X, mover.Y, mover.Z);
                     BroadcastNearby(mover.Position, 18, snd, 0);
                 }
@@ -807,6 +810,18 @@ public static partial class Program
                 var animPkt = new PacketAnimation(caster.Uid.Value, anim);
                 BroadcastNearby(caster.Position, 18, animPkt, 0);
             };
+            _spellEngine.OnSpellTeleport = (caster, dest, oldMap) =>
+            {
+                if (TryGetClientFor(caster, out var c))
+                {
+                    if (oldMap != caster.MapIndex)
+                        c.HandleMapChanged();
+                    else
+                        c.Resync();
+                    var snd = new PacketSound(0x01FE, caster.X, caster.Y, caster.Z);
+                    BroadcastNearby(caster.Position, 18, snd, 0);
+                }
+            };
             _spellEngine.OnTargetKilled = (victim, killer) =>
             {
                 var effectiveKiller = killer != null ? ResolveEffectiveOffender(killer) : null;
@@ -883,6 +898,93 @@ public static partial class Program
                         break;
                     }
                 }
+            };
+            Character.OnLifecycleKill = (victim, killer) =>
+            {
+                if (victim.IsDead) return;
+
+                var effectiveKiller = killer != null ? ResolveEffectiveOffender(killer) : null;
+
+                if (effectiveKiller != null)
+                    _triggerDispatcher?.FireCharTrigger(effectiveKiller, CharTrigger.Kill,
+                        new TriggerArgs { CharSrc = effectiveKiller, O1 = victim });
+                _triggerDispatcher?.FireCharTrigger(victim, CharTrigger.Death,
+                    new TriggerArgs { CharSrc = effectiveKiller });
+
+                var victimPos = victim.Position;
+                byte victimDir = (byte)((byte)victim.Direction & 0x07);
+                var corpse = _deathEngine.ProcessDeath(victim, effectiveKiller);
+                if (effectiveKiller != null)
+                    effectiveKiller.FightTarget = Serial.Invalid;
+
+                if (corpse != null)
+                {
+                    if (victim.IsPlayer)
+                    {
+                        var corpsePacket = new PacketWorldItem(
+                            corpse.Uid.Value, corpse.DispIdFull, corpse.Amount,
+                            corpse.X, corpse.Y, corpse.Z, corpse.Hue, victimDir);
+                        BroadcastNearby(victimPos, 18, corpsePacket, 0);
+
+                        foreach (var corpseItem in corpse.Contents)
+                        {
+                            var containerItem = new PacketContainerItem(
+                                corpseItem.Uid.Value, corpseItem.DispIdFull, 0,
+                                corpseItem.Amount, corpseItem.X, corpseItem.Y,
+                                corpse.Uid.Value, corpseItem.Hue, useGridIndex: true);
+                            BroadcastNearby(victimPos, 18, containerItem, 0);
+                        }
+
+                        var corpseEquipEntries = new List<(byte Layer, uint ItemSerial)>();
+                        var usedLayers = new HashSet<byte>();
+                        foreach (var item in corpse.Contents)
+                        {
+                            byte layer = (byte)item.EquipLayer;
+                            if (layer == (byte)Layer.None || layer == (byte)Layer.Face || layer == (byte)Layer.Pack)
+                                continue;
+                            if (!usedLayers.Add(layer))
+                                continue;
+                            corpseEquipEntries.Add((layer, item.Uid.Value));
+                        }
+
+                        var corpseEquip = new PacketCorpseEquipment(corpse.Uid.Value, corpseEquipEntries);
+                        BroadcastNearby(victimPos, 18, corpseEquip, 0);
+                    }
+                    else
+                    {
+                        var corpsePacket = new PacketWorldItem(
+                            corpse.Uid.Value, corpse.DispIdFull, corpse.Amount,
+                            corpse.X, corpse.Y, corpse.Z, corpse.Hue, victimDir);
+                        BroadcastNearby(victimPos, 18, corpsePacket, 0);
+
+                        var dirToKiller = effectiveKiller != null
+                            ? victim.Position.GetDirectionTo(effectiveKiller.Position)
+                            : victim.Direction;
+                        uint npcFallDir = (uint)dirToKiller <= 3 ? 1u : 0u;
+                        var deathAnim = new PacketDeathAnimation(victim.Uid.Value, corpse.Uid.Value, npcFallDir);
+                        BroadcastNearby(victimPos, 18, deathAnim, 0);
+
+                        var removeMobile = new PacketDeleteObject(victim.Uid.Value);
+                        BroadcastNearby(victimPos, 18, removeMobile, 0);
+                    }
+                }
+
+                foreach (var c in _clients.Values)
+                {
+                    if (c.Character == victim)
+                    {
+                        c.OnCharacterDeath();
+                        break;
+                    }
+                }
+            };
+            Character.OnLifecycleResurrect = victim =>
+            {
+                if (!victim.IsDead) return;
+                if (_clientsByCharUid.TryGetValue(victim.Uid, out var victimClient))
+                    victimClient.OnResurrect();
+                else
+                    victim.Resurrect();
             };
             GameRegion.ClientCountProvider = regionObj =>
             {
@@ -1045,7 +1147,15 @@ public static partial class Program
                 BroadcastNearby(target.Position, 18, new PacketAnimation(target.Uid.Value, getHitAction), 0);
 
                 if (damage > 0)
+                {
                     _spellEngine?.TryInterruptFromDamage(target, damage);
+                    if (target.HasActiveSkillPending())
+                    {
+                        int abortedSkill = target.ClearActiveSkillPending();
+                        if (abortedSkill >= 0)
+                            Character.ActiveSkillAborted?.Invoke(target, abortedSkill);
+                    }
+                }
 
                 BroadcastNearby(target.Position, 18,
                     new PacketDamage(target.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue)), 0);
@@ -1175,6 +1285,14 @@ public static partial class Program
                 var sound = new PacketSound(isResurrect ? (ushort)0x0214 : (ushort)0x01F2,
                     healer.X, healer.Y, healer.Z);
                 BroadcastNearby(healer.Position, 18, sound, 0);
+
+                if (isResurrect && target.IsDead)
+                {
+                    if (_clientsByCharUid.TryGetValue(target.Uid, out var victimClient))
+                        victimClient.OnResurrect();
+                    else
+                        target.Resurrect();
+                }
             };
             _npcAI.OnHealerCure = (healer, target) =>
             {
@@ -1224,6 +1342,12 @@ public static partial class Program
 
                 target.Hits -= (short)Math.Min(damage, target.Hits);
                 _spellEngine?.TryInterruptFromDamage(target, damage);
+                if (target.HasActiveSkillPending())
+                {
+                    int abortedSkill = target.ClearActiveSkillPending();
+                    if (abortedSkill >= 0)
+                        Character.ActiveSkillAborted?.Invoke(target, abortedSkill);
+                }
                 if (!target.IsPlayer && !target.IsDead && !target.FightTarget.IsValid)
                 {
                     target.FightTarget = npc.Uid;
@@ -1257,6 +1381,12 @@ public static partial class Program
 
                 target.Hits -= (short)Math.Min(damage, target.Hits);
                 _spellEngine?.TryInterruptFromDamage(target, damage);
+                if (target.HasActiveSkillPending())
+                {
+                    int abortedSkill = target.ClearActiveSkillPending();
+                    if (abortedSkill >= 0)
+                        Character.ActiveSkillAborted?.Invoke(target, abortedSkill);
+                }
                 if (!target.IsPlayer && !target.IsDead && !target.FightTarget.IsValid)
                 {
                     target.FightTarget = npc.Uid;

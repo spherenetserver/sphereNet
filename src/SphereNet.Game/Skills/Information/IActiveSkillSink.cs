@@ -55,4 +55,11 @@ public interface IActiveSkillSink : IInfoSkillSink
     /// the actor's backpack (or the ground if none exists).
     /// </summary>
     void DeliverItem(Item item);
+
+    /// <summary>
+    /// Resurrect a dead character through the full client pipeline (ghost→alive body,
+    /// corpse restore, equipment re-equip, client packet sync). Falls back to
+    /// <c>Character.Resurrect()</c> for offline/NPC targets.
+    /// </summary>
+    void ResurrectTarget(Objects.Characters.Character target) => target.Resurrect();
 }

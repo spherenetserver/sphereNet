@@ -285,6 +285,24 @@ public static partial class Program
                 if (_clientsByCharUid.TryGetValue(partner.Uid, out var pc))
                     pc.SysMessage(msg);
             };
+            client.RefreshBackpackForPartner = partner =>
+            {
+                if (_clientsByCharUid.TryGetValue(partner.Uid, out var pc))
+                {
+                    var pack = partner.Backpack;
+                    if (pack != null)
+                    {
+                        foreach (var child in _world.GetContainerContents(pack.Uid))
+                        {
+                            pc.NetState.Send(new PacketContainerItem(
+                                child.Uid.Value, child.DispIdFull, 0,
+                                child.Amount, child.X, child.Y,
+                                pack.Uid.Value, child.Hue,
+                                pc.NetState.IsClientPost6017));
+                        }
+                    }
+                }
+            };
 
             _clients[state.Id] = client;
         }

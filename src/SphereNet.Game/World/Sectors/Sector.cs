@@ -342,7 +342,10 @@ public sealed class Sector : IScriptObj
                 {
                     var ch = _characters[i];
                     if (!ch.IsPlayer && ch.IsDead)
-                        ch.Resurrect();
+                    {
+                        if (Character.OnLifecycleResurrect != null) Character.OnLifecycleResurrect(ch);
+                        else ch.Resurrect();
+                    }
                 }
                 return true;
             case "RESTOCK":

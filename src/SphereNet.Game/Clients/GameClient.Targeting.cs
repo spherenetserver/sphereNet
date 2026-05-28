@@ -340,7 +340,7 @@ public sealed partial class GameClient
             _pendingHealTarget = false;
             var victim = ResolvePickedChar(serial);
             if (victim == null) { SysMessage(ServerMessages.Get("target_must_object")); return; }
-            if (victim.IsDead) victim.Resurrect();
+            if (victim.IsDead) OnResurrectOther?.Invoke(victim);
             victim.Hits = victim.MaxHits;
             victim.Mana = victim.MaxMana;
             victim.Stam = victim.MaxStam;

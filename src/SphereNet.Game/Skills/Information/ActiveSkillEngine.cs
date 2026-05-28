@@ -5,6 +5,7 @@ using SphereNet.Game.Messages;
 using SphereNet.Game.Objects;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
+using SphereNet.Game.World;
 
 namespace SphereNet.Game.Skills.Information;
 
@@ -427,7 +428,29 @@ public static class ActiveSkillEngine
 
         if (target.IsStatFlag(StatFlag.Dead))
         {
-            target.Resurrect();
+            if (!target.IsInWarMode)
+            {
+                sink.SysMessage(ServerMessages.Get(Msg.HealingResManifest));
+                return false;
+            }
+
+            var corpse = FindCorpseFor(sink.World, target);
+            if (corpse != null)
+            {
+                var corpsePos = new Point3D(corpse.X, corpse.Y, corpse.Z, target.MapIndex);
+                if (GetDistance(target.Position, corpsePos) > 3)
+                {
+                    sink.SysMessage(ServerMessages.Get(Msg.HealingResToofar));
+                    return false;
+                }
+                if (!sink.World.CanSeeLOS(target.Position, corpsePos))
+                {
+                    sink.SysMessage(ServerMessages.Get(Msg.HealingResLos));
+                    return false;
+                }
+            }
+
+            sink.ResurrectTarget(target);
             sink.SysMessage(ServerMessages.Get(Msg.HealingRes));
             return true;
         }
@@ -602,6 +625,21 @@ public static class ActiveSkillEngine
     public enum TrackingCategory { Animals, Monsters, Humans, Players }
 
     // ----------------------------------------------------------- primitives
+
+    private static Item? FindCorpseFor(GameWorld world, Character ghost)
+    {
+        foreach (var item in world.GetItemsInRange(ghost.Position, 20))
+        {
+            if (item.ItemType != Core.Enums.ItemType.Corpse) continue;
+            if (item.TryGetTag("OWNER_UUID", out string? uuidStr) &&
+                Guid.TryParse(uuidStr, out Guid uuid) && uuid == ghost.Uuid)
+                return item;
+            if (item.TryGetTag("OWNER_UID", out string? uidStr) &&
+                uint.TryParse(uidStr, out uint ownerUid) && ownerUid == ghost.Uid.Value)
+                return item;
+        }
+        return null;
+    }
 
     private static int GetDistance(Point3D a, Point3D b)
     {

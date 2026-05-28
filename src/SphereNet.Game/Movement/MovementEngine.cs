@@ -22,7 +22,7 @@ public sealed class MovementEngine
 
     /// <summary>Fired when a character is teleported (telepad/moongate step-on).
     /// Program.cs wires this to send DrawPlayer + resync to the client.</summary>
-    public Action<Objects.Characters.Character, Point3D>? OnTeleport { get; set; }
+    public Action<Objects.Characters.Character, Point3D, byte>? OnTeleport { get; set; }
 
     /// <summary>Source-X CClient::SysMessage hook used by region enter/leave
     /// announcements. Program.cs wires this so the moving character receives
@@ -238,7 +238,11 @@ public sealed class MovementEngine
                 case ItemType.TrapActive:
                     int trapDamage = 5 + Random.Shared.Next(15);
                     ch.Hits -= (short)Math.Min(trapDamage, ch.Hits);
-                    if (ch.Hits <= 0) ch.Kill();
+                    if (ch.Hits <= 0 && !ch.IsDead)
+                    {
+                        if (Character.OnLifecycleKill != null) Character.OnLifecycleKill(ch, null);
+                        else ch.Kill();
+                    }
                     break;
                 case ItemType.Telepad:
                 case ItemType.Moongate:
@@ -247,8 +251,9 @@ public sealed class MovementEngine
                     if ((dest.X != 0 || dest.Y != 0) && dest.X >= 0 && dest.Y >= 0 &&
                         _world.GetSector(dest) != null)
                     {
+                        byte oldMap = ch.MapIndex;
                         _world.MoveCharacter(ch, dest);
-                        OnTeleport?.Invoke(ch, dest);
+                        OnTeleport?.Invoke(ch, dest, oldMap);
                         pos = ch.Position;
                     }
                     break;
@@ -259,7 +264,11 @@ public sealed class MovementEngine
             if (item.TryGetTag("FIELD_DAMAGE", out string? fdStr) && int.TryParse(fdStr, out int fieldDmg))
             {
                 ch.Hits -= (short)Math.Min(fieldDmg, ch.Hits);
-                if (ch.Hits <= 0) ch.Kill();
+                if (ch.Hits <= 0 && !ch.IsDead)
+                {
+                    if (Character.OnLifecycleKill != null) Character.OnLifecycleKill(ch, null);
+                    else ch.Kill();
+                }
             }
         }
 

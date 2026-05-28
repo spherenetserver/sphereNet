@@ -132,6 +132,7 @@ public sealed partial class GameClient : ITextConsole
 
     private readonly HashSet<uint> _knownChars = [];
     private readonly HashSet<uint> _knownItems = [];
+    private readonly HashSet<uint> _knownDoorOverrides = [];
     private readonly HashSet<uint> _activeGumps = [];
     private readonly Dictionary<uint, Action<uint, uint[], (ushort, string)[]>> _gumpCallbacks = [];
     private readonly Dictionary<uint, (short X, short Y, sbyte Z, byte Dir, ushort Body, ushort Hue)> _lastKnownPos = [];
@@ -265,6 +266,7 @@ public sealed partial class GameClient : ITextConsole
             _tooltipHashCache.Clear();
             _knownItems.Clear();
             _knownChars.Clear();
+            _knownDoorOverrides.Clear();
             _activeGumps.Clear();
             _gumpCallbacks.Clear();
             _lastKnownPos.Clear();

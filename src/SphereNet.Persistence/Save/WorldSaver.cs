@@ -655,6 +655,16 @@ public sealed class WorldSaver
                 sw.WriteLine();
             }
 
+            // Open static doors
+            var openDoors = world.OpenMapStaticDoors;
+            if (openDoors.Count > 0)
+            {
+                sw.WriteLine("[DOORS]");
+                foreach (var (map, x, y, z) in openDoors)
+                    sw.WriteLine($"OPEN={map},{x},{y},{z}");
+                sw.WriteLine();
+            }
+
             sw.WriteLine("[EOF]");
         }
         CommitFile(finalPath);

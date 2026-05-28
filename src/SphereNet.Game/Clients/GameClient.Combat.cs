@@ -1375,6 +1375,8 @@ public sealed partial class GameClient
             _character.Hue, resFlags, resNoto,
             resEquipment, _netState.SupportsNewMobileIncoming));
 
+        _netState.Send(new PacketDeathStatus(PacketDeathStatus.ActionResurrect));
+
         // === Per-observer dispatch ===
         // Plain observer: never saw the ghost (filter dropped it during
         // BuildViewDelta) → 0x78 spawns a brand-new living mobile under

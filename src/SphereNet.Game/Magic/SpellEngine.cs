@@ -60,6 +60,8 @@ public sealed class SpellEngine
     /// instead of the bare Character.Kill() that skips them.</summary>
     public Action<Character, Character?>? OnTargetKilled { get; set; }
 
+    public Action<Character, Point3D, byte>? OnSpellTeleport { get; set; }
+
     /// <summary>One entry per active time-limited spell effect. Captures
     /// what was applied (stat deltas, light level, flag) so UndoEffect can
     /// revert exactly those changes when the timer fires. Runtime-only —
@@ -625,6 +627,8 @@ public sealed class SpellEngine
                 {
                     if (OnTargetKilled != null)
                         OnTargetKilled.Invoke(target, caster);
+                    else if (Character.OnLifecycleKill != null)
+                        Character.OnLifecycleKill(target, caster);
                     else
                         target.Kill();
                 }
@@ -896,7 +900,9 @@ public sealed class SpellEngine
 
         if (def.Id == SpellType.Recall)
         {
+            byte oldMap = caster.MapIndex;
             _world.MoveCharacter(caster, dest);
+            OnSpellTeleport?.Invoke(caster, dest, oldMap);
             return;
         }
 
@@ -927,8 +933,14 @@ public sealed class SpellEngine
         switch (def.Id)
         {
             case SpellType.Teleport:
-                // Already handled by target position
+            {
+                var dest = caster.CastTargetPos;
+                if (dest.X == 0 && dest.Y == 0) break;
+                byte oldMap = caster.MapIndex;
+                _world.MoveCharacter(caster, dest);
+                OnSpellTeleport?.Invoke(caster, dest, oldMap);
                 break;
+            }
             case SpellType.Recall:
                 // Recall/Gate use item rune state (MOREP/TryGetRuneMark).
                 // A character target cannot be a valid rune.
@@ -971,6 +983,8 @@ public sealed class SpellEngine
                     {
                         if (OnTargetKilled != null)
                             OnTargetKilled.Invoke(target, caster);
+                        else if (Character.OnLifecycleKill != null)
+                            Character.OnLifecycleKill(target, caster);
                         else
                             target.Kill();
                     }
@@ -985,7 +999,10 @@ public sealed class SpellEngine
                 if (target.IsDead)
                 {
                     caster.FlagForHelpingCriminalIfNeeded(target);
-                    target.Resurrect();
+                    if (Character.OnLifecycleResurrect != null)
+                        Character.OnLifecycleResurrect(target);
+                    else
+                        target.Resurrect();
                 }
                 break;
             case SpellType.Poison:

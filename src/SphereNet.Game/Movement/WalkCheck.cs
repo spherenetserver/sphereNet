@@ -266,8 +266,12 @@ public sealed class WalkCheck
             if (s.XOffset != offX || s.YOffset != offY) continue;
             var data = md.GetItemTileData(s.TileId);
 
-            bool isImpOrSurf = data.IsImpassable || data.IsSurface;
-            bool isBridge = !data.IsImpassable && data.IsBridge;
+            bool isDoorOpen = (data.Flags & TileFlag.Door) != 0 &&
+                _world.IsMapStaticDoorOpen((byte)mapId, (short)srcX, (short)srcY, s.Z);
+            bool effectiveImp = data.IsImpassable && !isDoorOpen;
+
+            bool isImpOrSurf = effectiveImp || data.IsSurface;
+            bool isBridge = !effectiveImp && data.IsBridge;
 
             int tileZ = s.Z;
             int avgZ = tileZ + (data.IsBridge ? data.Height / 2 : data.Height);
@@ -379,10 +383,14 @@ public sealed class WalkCheck
                 continue;
             var data = md.GetItemTileData(tile.TileId);
 
+            bool isDoorOpen = (data.Flags & TileFlag.Door) != 0 &&
+                _world.IsMapStaticDoorOpen((byte)mapId, (short)x, (short)y, tile.Z);
+            bool effectiveImpassable = data.IsImpassable && !isDoorOpen;
+
             PathFlags pf = PathFlags.None;
-            if (data.IsImpassable || data.IsSurface)
+            if (effectiveImpassable || data.IsSurface)
                 pf |= PathFlags.ImpSurf;
-            if (!data.IsImpassable)
+            if (!effectiveImpassable)
             {
                 if (data.IsSurface) pf |= PathFlags.Surface;
                 if (data.IsBridge) pf |= PathFlags.Bridge;

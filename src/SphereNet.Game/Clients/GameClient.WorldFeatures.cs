@@ -453,6 +453,9 @@ public sealed partial class GameClient
         cont1.Delete();
         cont2.Delete();
 
+        RefreshBackpackContents();
+        RefreshBackpackForPartner?.Invoke(trade.GetPartner(_character!));
+
         SysMessage("Trade complete.");
         SendTradeMessageToPartner?.Invoke(trade.GetPartner(_character!), "Trade complete.");
     }
@@ -483,6 +486,7 @@ public sealed partial class GameClient
     public Action<Character, uint>? SendTradeCloseToPartner { get; set; }
     public Action<Character, SecureTrade>? SendTradeUpdateToPartner { get; set; }
     public Action<Character, string>? SendTradeMessageToPartner { get; set; }
+    public Action<Character>? RefreshBackpackForPartner { get; set; }
 
     /// <summary>Handle rename request (0x75).</summary>
     public void HandleRename(uint serial, string name)
@@ -994,6 +998,7 @@ public sealed partial class GameClient
     public void OpenDoor()
     {
         if (_character == null) return;
+        if (_character.IsDead) return;
         foreach (var item in _world.GetItemsInRange(_character.Position, 2))
         {
             if (!DoorHelper.IsDoorItem(item, _world.MapData))
@@ -1013,6 +1018,7 @@ public sealed partial class GameClient
     private bool TryToggleNearestMapStaticDoor(uint clientSerial)
     {
         if (_character == null) return false;
+        if (_character.IsDead) return false;
         if (!DoorHelper.FindNearestStaticDoor(
                 _world.MapData, _character.MapIndex, _character.X, _character.Y, 2,
                 out short x, out short y, out sbyte z, out ushort tileId, out ushort hue))
@@ -1046,6 +1052,7 @@ public sealed partial class GameClient
     private void ToggleDoor(Item door)
     {
         if (_character == null) return;
+        if (_character.IsDead) return;
 
         int dx = Math.Abs(_character.X - door.X);
         int dy = Math.Abs(_character.Y - door.Y);
@@ -1055,11 +1062,12 @@ public sealed partial class GameClient
             return;
         }
 
-        // Door art IDs toggle between open/closed variants (±1 or ±2 offset)
         bool isOpen = door.TryGetTag("DOOR_OPEN", out string? openStr) && openStr == "1";
+        bool isPortcullis = door.ItemType is ItemType.Portculis or ItemType.PortLocked;
+        int offset = isPortcullis ? 2 : 1;
 
         ushort displayId = door.DispIdFull;
-        ushort newDisplayId = (ushort)(displayId + (isOpen ? -1 : 1));
+        ushort newDisplayId = (ushort)(displayId + (isOpen ? -offset : offset));
         if (door.DispIdOverride != 0)
             door.TrySetProperty("DISPID", $"0{newDisplayId:X}");
         else

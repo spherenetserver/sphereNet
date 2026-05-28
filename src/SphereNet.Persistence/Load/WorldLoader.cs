@@ -639,6 +639,24 @@ public sealed class WorldLoader
                 }
                 lists++;
             }
+            else if (upper == "DOORS")
+            {
+                while (reader.NextProperty(out string key, out string val))
+                {
+                    if (key.Equals("OPEN", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var parts = val.Split(',');
+                        if (parts.Length == 4 &&
+                            byte.TryParse(parts[0], out byte dMap) &&
+                            short.TryParse(parts[1], out short dX) &&
+                            short.TryParse(parts[2], out short dY) &&
+                            sbyte.TryParse(parts[3], out sbyte dZ))
+                        {
+                            world.SetMapStaticDoorOpen(dMap, dX, dY, dZ, true);
+                        }
+                    }
+                }
+            }
             else if (upper.StartsWith("WORLDSCRIPT ", StringComparison.OrdinalIgnoreCase))
             {
                 string scriptName = section[12..].Trim();

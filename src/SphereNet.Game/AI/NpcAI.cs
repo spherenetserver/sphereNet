@@ -405,6 +405,11 @@ public sealed class NpcAI
             var current = _world.FindChar(npc.FightTarget);
             if (current != null && !current.IsDead && !current.IsDeleted && IsAttackable(current))
             {
+                // Remember where the target was while we can see it, and clear
+                // any hidden-pursuit state.
+                npc.SetTag("LAST_TGT_LOC", $"{current.X},{current.Y},{current.Z},{current.MapIndex}");
+                npc.RemoveTag("HIDE_PURSUIT");
+
                 int curMotivation = GetAttackMotivation(npc, current);
                 if (curMotivation > 0)
                 {
@@ -434,7 +439,17 @@ public sealed class NpcAI
                 }
                 // motivation == 0: neutral — let go of the target.
             }
+            else if (current != null && !current.IsDead && !current.IsDeleted &&
+                     (current.IsStatFlag(StatFlag.Hidden) || current.IsStatFlag(StatFlag.Invisible)))
+            {
+                // Target hid — don't give up instantly (ServUO reveal behavior):
+                // try to reveal it, or move to its last known spot for a few ticks.
+                if (PursueHiddenTarget(npc, current))
+                    return;
+            }
             npc.FightTarget = Serial.Invalid;
+            npc.RemoveTag("HIDE_PURSUIT");
+            npc.RemoveTag("LAST_TGT_LOC");
         }
 
         // No current target — scan for a new one, but throttle the full-range
@@ -805,9 +820,9 @@ public sealed class NpcAI
             && npc.FleeStepsCurrent % 3 == 0
             && _world.CanSeeLOS(npc.Position, target.Position))
         {
-            var spell = ChooseBestSpell(npc, target, dist);
-            if (spell != SpellType.None && !TryNpcCastSpell(npc, target, spell))
-                OnNpcCastSpell?.Invoke(npc, target, spell);
+            var (spell, castTarget) = ChooseBestSpell(npc, target, dist);
+            if (spell != SpellType.None && !TryNpcCastSpell(npc, castTarget, spell))
+                OnNpcCastSpell?.Invoke(npc, castTarget, spell);
         }
 
         // Self-heal while fleeing (every 4th step)
@@ -923,14 +938,14 @@ public sealed class NpcAI
             return false;
         }
 
-        var spell = ChooseBestSpell(npc, target, dist);
+        var (spell, castTarget) = ChooseBestSpell(npc, target, dist);
         if (spell == SpellType.None)
             return false;
 
-        if (TryNpcCastSpell(npc, target, spell))
+        if (TryNpcCastSpell(npc, castTarget, spell))
             return true;
 
-        OnNpcCastSpell?.Invoke(npc, target, spell);
+        OnNpcCastSpell?.Invoke(npc, castTarget, spell);
         return true;
     }
 
@@ -947,7 +962,11 @@ public sealed class NpcAI
     /// 6. Ranged damage at distance
     /// 7. Fallback: random non-reflected spell
     /// </summary>
-    private SpellType ChooseBestSpell(Character npc, Character target, int dist)
+    /// <summary>Pick the best spell AND the character it should be cast on.
+    /// Beneficial spells (heal/cure) return the wounded recipient (self or a
+    /// hurt ally); harmful spells return the enemy. Previously every spell was
+    /// cast on the enemy, so "self-heal" actually healed the enemy.</summary>
+    private (SpellType Spell, Character CastTarget) ChooseBestSpell(Character npc, Character target, int dist)
     {
         var spells = npc.NpcSpells;
         bool targetReflects = target.IsStatFlag(StatFlag.Reflection);
@@ -955,10 +974,8 @@ public sealed class NpcAI
         // 1. Self-cure if poisoned (50% chance — don't loop on cure forever)
         if (npc.IsPoisoned && _rand.Next(2) == 0)
         {
-            if (spells.Contains(SpellType.Cure))
-                return SpellType.Cure;
-            if (spells.Contains(SpellType.ArchCure))
-                return SpellType.ArchCure;
+            if (spells.Contains(SpellType.Cure)) return (SpellType.Cure, npc);
+            if (spells.Contains(SpellType.ArchCure)) return (SpellType.ArchCure, npc);
         }
 
         // 2. Self-heal if HP < 50% (33% chance — mix heals with offense)
@@ -972,22 +989,41 @@ public sealed class NpcAI
             if (shouldHeal)
             {
                 if (npc.Hits < npc.MaxHits / 4 && spells.Contains(SpellType.GreaterHeal))
-                    return SpellType.GreaterHeal;
-                if (spells.Contains(SpellType.Heal))
-                    return SpellType.Heal;
-                if (spells.Contains(SpellType.GreaterHeal))
-                    return SpellType.GreaterHeal;
+                    return (SpellType.GreaterHeal, npc);
+                if (spells.Contains(SpellType.Heal)) return (SpellType.Heal, npc);
+                if (spells.Contains(SpellType.GreaterHeal)) return (SpellType.GreaterHeal, npc);
+            }
+        }
+
+        // 2b. Group support — heal/cure a wounded ally (Source-X NPC_FightCast
+        //     GOOD-spell path). Only caster NPCs with a heal/cure spell scan.
+        bool hasHeal = spells.Contains(SpellType.Heal) || spells.Contains(SpellType.GreaterHeal);
+        if ((hasHeal || spells.Contains(SpellType.Cure)) && _rand.Next(2) == 0)
+        {
+            var ally = FindWoundedAlly(npc);
+            if (ally != null)
+            {
+                if (ally.IsPoisoned && spells.Contains(SpellType.Cure))
+                    return (SpellType.Cure, ally);
+                if (ally.MaxHits > 0 && ally.Hits < ally.MaxHits / 4 && spells.Contains(SpellType.GreaterHeal))
+                    return (SpellType.GreaterHeal, ally);
+                if (spells.Contains(SpellType.Heal)) return (SpellType.Heal, ally);
+                if (spells.Contains(SpellType.GreaterHeal)) return (SpellType.GreaterHeal, ally);
             }
         }
 
         // 3. Dispel if target is summoned
         if (target.IsSummoned)
         {
-            if (spells.Contains(SpellType.Dispel))
-                return SpellType.Dispel;
-            if (spells.Contains(SpellType.MassDispel))
-                return SpellType.MassDispel;
+            if (spells.Contains(SpellType.Dispel)) return (SpellType.Dispel, target);
+            if (spells.Contains(SpellType.MassDispel)) return (SpellType.MassDispel, target);
         }
+
+        // 3b. Spell combo chain (ServUO/Source-X mage burst): lock the target
+        //     down with Paralyze, then unload Explosion/EnergyBolt/Poison while
+        //     it can't move. Returns None unless a combo is active/startable.
+        var combo = NextComboSpell(npc, target, targetReflects);
+        if (combo != SpellType.None) return (combo, target);
 
         // 4. Area spells if 3+ enemies nearby
         int nearbyEnemies = 0;
@@ -1000,20 +1036,19 @@ public sealed class NpcAI
         if (nearbyEnemies >= 3)
         {
             if (spells.Contains(SpellType.MeteorSwarm) && !targetReflects)
-                return SpellType.MeteorSwarm;
+                return (SpellType.MeteorSwarm, target);
             if (spells.Contains(SpellType.ChainLightning) && !targetReflects)
-                return SpellType.ChainLightning;
+                return (SpellType.ChainLightning, target);
         }
 
         // 5. Paralyze fleeing targets
         if (dist > 4 && spells.Contains(SpellType.Paralyze) && !targetReflects)
-            return SpellType.Paralyze;
+            return (SpellType.Paralyze, target);
 
         // 6. Poison if target isn't poisoned yet
         if (!target.IsPoisoned && spells.Contains(SpellType.Poison) && !targetReflects)
         {
-            if (_rand.Next(3) == 0)
-                return SpellType.Poison;
+            if (_rand.Next(3) == 0) return (SpellType.Poison, target);
         }
 
         // 7. Damage spells — prefer high damage, avoid if target reflects
@@ -1021,28 +1056,19 @@ public sealed class NpcAI
         {
             if (dist <= 4)
             {
-                if (spells.Contains(SpellType.Explosion))
-                    return SpellType.Explosion;
-                if (spells.Contains(SpellType.Flamestrike))
-                    return SpellType.Flamestrike;
+                if (spells.Contains(SpellType.Explosion)) return (SpellType.Explosion, target);
+                if (spells.Contains(SpellType.Flamestrike)) return (SpellType.Flamestrike, target);
             }
-            if (spells.Contains(SpellType.EnergyBolt))
-                return SpellType.EnergyBolt;
-            if (spells.Contains(SpellType.Lightning))
-                return SpellType.Lightning;
-            if (spells.Contains(SpellType.Fireball))
-                return SpellType.Fireball;
-            if (spells.Contains(SpellType.Harm))
-                return SpellType.Harm;
-            if (spells.Contains(SpellType.MagicArrow))
-                return SpellType.MagicArrow;
+            if (spells.Contains(SpellType.EnergyBolt)) return (SpellType.EnergyBolt, target);
+            if (spells.Contains(SpellType.Lightning)) return (SpellType.Lightning, target);
+            if (spells.Contains(SpellType.Fireball)) return (SpellType.Fireball, target);
+            if (spells.Contains(SpellType.Harm)) return (SpellType.Harm, target);
+            if (spells.Contains(SpellType.MagicArrow)) return (SpellType.MagicArrow, target);
         }
 
         // 8. Curse/Weaken debuffs (safe against reflect)
-        if (spells.Contains(SpellType.Curse) && _rand.Next(4) == 0)
-            return SpellType.Curse;
-        if (spells.Contains(SpellType.Weaken) && _rand.Next(4) == 0)
-            return SpellType.Weaken;
+        if (spells.Contains(SpellType.Curse) && _rand.Next(4) == 0) return (SpellType.Curse, target);
+        if (spells.Contains(SpellType.Weaken) && _rand.Next(4) == 0) return (SpellType.Weaken, target);
 
         // 9. Fallback: random non-reflected spell (skip heals/cures on enemies)
         int startIdx = _rand.Next(spells.Count);
@@ -1057,9 +1083,117 @@ public sealed class NpcAI
                 or SpellType.Fireball or SpellType.Harm or SpellType.MeteorSwarm
                 or SpellType.ChainLightning)
                 continue;
-            return spell;
+            return (spell, target);
         }
 
+        return (SpellType.None, target);
+    }
+
+    /// <summary>A target just hid/went invisible. Instead of dropping it
+    /// instantly, move to its last known spot for a few ticks and try to Reveal
+    /// it if the NPC can (ServUO mage reveal). Returns true while still pursuing,
+    /// false to give up.</summary>
+    private bool PursueHiddenTarget(Character npc, Character hidden)
+    {
+        int ticks = 5;
+        if (npc.TryGetTag("HIDE_PURSUIT", out string? hp) && int.TryParse(hp, out int v))
+            ticks = v;
+        if (ticks <= 0) return false;
+        npc.SetTag("HIDE_PURSUIT", (ticks - 1).ToString());
+
+        Point3D lastLoc = npc.Position;
+        if (npc.TryGetTag("LAST_TGT_LOC", out string? loc) && TryParsePoint(loc, out Point3D p))
+            lastLoc = p;
+
+        int dist = npc.Position.GetDistanceTo(lastLoc);
+        // Near the last spot — try a Reveal (area around self) if available.
+        if (dist <= 3 && npc.NpcSpells.Contains(SpellType.Reveal) && npc.Mana >= npc.Int / 4)
+        {
+            if (!TryNpcCastSpell(npc, npc, SpellType.Reveal))
+                OnNpcCastSpell?.Invoke(npc, npc, SpellType.Reveal);
+            return true;
+        }
+        if (dist > 1)
+            MoveToward(npc, lastLoc);
+        return true;
+    }
+
+    /// <summary>Find a wounded/poisoned friendly NPC within range to support.
+    /// Allies are non-player creatures the NPC is not hostile toward. Picks the
+    /// most-wounded (or a poisoned one).</summary>
+    private Character? FindWoundedAlly(Character npc)
+    {
+        Character? best = null;
+        int bestPct = 80; // only consider allies below 80% HP
+        Character? poisoned = null;
+        foreach (var ch in _world.GetCharsInRange(npc.Position, 8))
+        {
+            if (ch == npc || ch.IsDead || ch.IsDeleted || ch.IsPlayer) continue;
+            if (ch.MaxHits <= 0) continue;
+            if (GetHostilityLevel(npc, ch) >= 0) continue; // not an ally
+            int pct = ch.Hits * 100 / ch.MaxHits;
+            if (ch.IsPoisoned) poisoned ??= ch;
+            if (pct < bestPct)
+            {
+                bestPct = pct;
+                best = ch;
+            }
+        }
+        return best ?? poisoned;
+    }
+
+    /// <summary>Spell-combo state machine. Tags COMBO_STEP / COMBO_TARGET track
+    /// progress. Step 0 may start a combo (Paralyze) when mana is high and the
+    /// target is free; later steps unload damage while the target is locked.
+    /// Returns None when no combo applies.</summary>
+    private SpellType NextComboSpell(Character npc, Character target, bool targetReflects)
+    {
+        if (targetReflects) { npc.RemoveTag("COMBO_STEP"); return SpellType.None; }
+        var spells = npc.NpcSpells;
+
+        int step = 0;
+        if (npc.TryGetTag("COMBO_STEP", out string? s)) int.TryParse(s, out step);
+
+        // Abandon a combo aimed at a different target.
+        if (step > 0 && npc.TryGetTag("COMBO_TARGET", out string? ct) &&
+            (!uint.TryParse(ct, out uint ctUid) || ctUid != target.Uid.Value))
+        {
+            npc.RemoveTag("COMBO_STEP");
+            step = 0;
+        }
+
+        if (step > 0)
+        {
+            // Advance the chain. Each step falls through to the next available
+            // spell so a missing spell doesn't stall the combo.
+            npc.RemoveTag("COMBO_STEP");
+            if (step <= 1)
+            {
+                if (spells.Contains(SpellType.Explosion)) { npc.SetTag("COMBO_STEP", "2"); return SpellType.Explosion; }
+                step = 2;
+            }
+            if (step <= 2)
+            {
+                if (spells.Contains(SpellType.EnergyBolt)) { npc.SetTag("COMBO_STEP", "3"); return SpellType.EnergyBolt; }
+                step = 3;
+            }
+            if (step <= 3 && !target.IsPoisoned && spells.Contains(SpellType.Poison))
+                return SpellType.Poison; // final hit, combo ends
+            return SpellType.None;
+        }
+
+        // Try to START a combo: high mana, target not already locked, and we
+        // have Paralyze plus at least one follow-up.
+        if (npc.Mana >= npc.Int * 2 / 3 && npc.Mana > 40
+            && !target.IsStatFlag(StatFlag.Freeze)
+            && spells.Contains(SpellType.Paralyze)
+            && (spells.Contains(SpellType.Explosion) || spells.Contains(SpellType.EnergyBolt))
+            && _rand.Next(3) == 0)
+        {
+            npc.SetTag("COMBO_STEP", "1");
+            npc.SetTag("COMBO_TARGET", target.Uid.Value.ToString());
+            return SpellType.Paralyze;
+        }
         return SpellType.None;
     }
 

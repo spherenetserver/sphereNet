@@ -1,0 +1,80 @@
+================================================================================
+ SphereNet Changelog (English)
+ All notable changes are documented in this file.
+ Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
+================================================================================
+
+[2026-05-29] - Gameplay bug fixes and Source-X parity completion (Wave 17)
+----------------------------------------
+
+SCRIPT ENGINE:
+  - Numeric brace-range {n m}: random-range and weighted {a w b w} selection in
+    the expression parser; CharDef stat lines now roll between min/max.
+  - FOR argument forms: FOR x (1..x), FOR min max, FOR var max, FOR var min max,
+    with inclusive ranges, count-down, and a named loop variable.
+  - MAX/MIN intrinsics, the @ power operator, and the numeric 3-way
+    QVAL(v1,v2,lt,eq,gt) form.
+  - ItemDef TDATA1/TDATA3 defname capture with lazy resolution.
+
+COMBAT:
+  - Era-0 hit-chance now factors in target DEX and a ranged-weapon adjustment.
+  - Era-aware damage bonus is percentage-based; tactics/anatomy excluded in era-0.
+  - Damage min>max guard prevents a Random.Next exception.
+  - Weapon parry with a shield or a one/two-handed weapon.
+  - Reactive-armor reflected damage is now attributed to the attacker.
+
+MAGIC:
+  - Spell-success scale fix: SKILLREQ is checked at the correct scale (high-skill
+    casters no longer fizzle constantly).
+  - Implemented CreateFood and DispelField; MindBlast now uses the INT-difference
+    formula; EvalInt scales spell damage.
+  - Cast-recovery cooldown plus a light skill-based faster-casting effect.
+  - Field spells form a multi-tile wall and deal periodic tick damage to
+    stationary targets.
+  - Incognito disguises the real name and restores it on expiry.
+  - Recall/Gate are blocked while frozen/jailed and against blocked destination
+    tiles.
+  - Magic-resist circle aligned with GetCircle().
+
+SKILLS:
+  - GMs no longer accrue skill/stat gains.
+  - Taming difficulty rescaled to 0-100, so high-HP creatures are tameable.
+  - Stealing fails without a backpack, preventing item loss and a free criminal
+    flag.
+  - Crafting: exceptional durability bonus, resource hue transfer, and randomized
+    failure resource loss.
+  - RemoveTrap springs the trap on failure; bandages gain an anatomy bonus and
+    produce bloody bandages; Veterinary routes through Healing.
+  - SkillEngine uses Random.Shared for multicore thread safety.
+  - Gathering no longer yields more than a depleted node holds.
+
+TRIGGERS:
+  - @ReceiveItem / @NPCAcceptItem fire when giving an item to an NPC.
+  - @Criminal (cancellable), @SeeCrime (nearby NPCs), @SpellInterrupt, @Hunger.
+
+ITEMS:
+  - Item CONT= / Z= / LAYER= setters for script-driven container moves.
+  - DUPE verb; character CURE / REVEAL / ATTACK verbs; character ARMOR/AR read.
+  - Crops/foliage harvesting, seed planting, and empty-pitcher filling from water.
+  - Light sources: in-container ignite block and charge consumption; switch
+    graphic swap; food/drink single-unit consumption.
+
+WORLD:
+  - Timed jail auto-release (DateTime-based, reboot-safe) plus expired-jail
+    cleanup on login.
+  - Party: proper disband notification and honoured invite-accept result.
+    Guild: leave privilege check, candidate->master promotion, multi-guild block.
+  - Housing: transfer cap, footprint passability, and IDOC lockdown/secure item
+    preservation.
+  - Zero-value creatures grant no fame/gold, preventing farming.
+
+CHARACTER:
+  - Poison ticks broadcast health/damage packets and attribute the kill.
+  - HP regen halts while poisoned; starvation drains stamina/hits; FOOD is
+    clamped; resurrect leaves at least 1 HP; pet control-slot summation and
+    loyalty warnings.
+  - Movement shove now costs stamina exactly once (fixing the double-deduction /
+    false-block bug).
+
+TESTS:
+  - Regression tests for brace-range, MAX/MIN/@, and QVAL (515 passing).

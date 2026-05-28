@@ -1,0 +1,80 @@
+================================================================================
+ SphereNet Changelog (Turkce)
+ Tum onemli degisiklikler bu dosyada belgelenir.
+ Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
+================================================================================
+
+[2026-05-29] - Gameplay hata duzeltmeleri ve Source-X parity tamamlama (Wave 17)
+----------------------------------------
+
+SCRIPT MOTORU:
+  - Sayisal brace-range {n m}: Ifade ayristiriciya rastgele aralik ve agirlikli
+    {a w b w} secim destegi; CharDef stat satirlari artik min/max arasi rulo yapar.
+  - FOR arguman formlari: FOR x (1..x), FOR min max, FOR var max, FOR var min max;
+    inclusive aralik, geri-sayim ve isimli dongu degiskeni.
+  - MAX/MIN intrinsic'leri, @ us operatoru ve sayisal 3-yonlu
+    QVAL(v1,v2,lt,eq,gt) formu.
+  - ItemDef TDATA1/TDATA3 defname yakalama (lazy resolve).
+
+SAVAS:
+  - Era-0 vurus sansi artik hedef DEX'ini ve ranged silah ayarini hesaba katar.
+  - Era-bazli hasar bonusu yuzde tabanlidir; era-0'da tactics/anatomy uygulanmaz.
+  - Hasar min>max korumasi Random.Next istisnasini onler.
+  - Kalkan veya tek/iki-el silah ile silah-parry.
+  - Reactive-armor yansima hasari artik saldirgana atfedilir.
+
+BUYU:
+  - Buyu basari (fizzle) olcek hatasi: SKILLREQ dogru olcekle kontrol edilir
+    (yuksek skilli buyuculer artik surekli fizzle olmaz).
+  - CreateFood ve DispelField eklendi; MindBlast INT-farki formulunu kullanir;
+    EvalInt buyu hasarini olcekler.
+  - Cast-recovery cooldown ve skill-bazli hafif faster-casting etkisi.
+  - Alan buyuleri cok-kareli duvar olusturur ve alanda duran hedefe periyodik
+    tik hasari verir.
+  - Incognito gercek ismi gizler ve sure bitince geri yukler.
+  - Recall/Gate hapis/freeze durumunda ve blocked-tile hedefine karsi engellenir.
+  - Magic-resist circle hesabi GetCircle() ile hizalandi.
+
+YETENEKLER:
+  - GM karakterler artik skill/stat gain almaz.
+  - Taming zorlugu 0-100 olcegine cevrildi; yuksek HP'li yaratiklar tame edilebilir.
+  - Stealing backpack yoksa basarisiz olur; item kaybi ve bedava criminal flag
+    onlenir.
+  - Crafting: exceptional dayaniklilik bonusu, kaynak hue aktarimi ve rastgele
+    basarisizlik kaynak kaybi.
+  - RemoveTrap basarisizlikta tuzagi tetikler; bandajlar anatomy bonusu alir ve
+    bloody bandage uretir; Veterinary, Healing yoluna baglandi.
+  - SkillEngine multicore thread guvenligi icin Random.Shared kullanir.
+  - Gathering tukenmis havuzun tutabileceginden fazlasini vermez.
+
+TETIKLEYICILER:
+  - @ReceiveItem / @NPCAcceptItem NPC'ye esya verirken ateslenir.
+  - @Criminal (iptal edilebilir), @SeeCrime (yakin NPC'ler), @SpellInterrupt,
+    @Hunger.
+
+ESYALAR:
+  - Item CONT= / Z= / LAYER= setter'lari (script ile konteynere tasima).
+  - DUPE verb'i; karakter CURE / REVEAL / ATTACK verb'leri; karakter ARMOR/AR
+    okuma.
+  - Crops/foliage hasadi, seed ekme ve bos pitcher'i su kaynagindan doldurma.
+  - Isik kaynaklari: konteyner-ici yakma engeli ve charge tuketimi; switch grafik
+    takasi; food/drink tek-birim tuketimi.
+
+DUNYA:
+  - Sureli jail otomatik salinimi (DateTime tabanli, reboot-dayanikli) ve login'de
+    suresi dolan hapis temizleme.
+  - Party: dogru dagilma bildirimi ve dikkate alinan invite-accept sonucu.
+    Guild: leave yetki kontrolu, candidate->master terfisi ve coklu-lonca engeli.
+  - Housing: devir limiti, footprint passability ve IDOC lockdown/secure esya
+    korumasi.
+  - Sifir-degerli yaratiklar fame/gold dusurmez; farm onlenir.
+
+KARAKTER:
+  - Poison tik'leri health/damage paketi yayinlar ve oldurmeyi atfeder.
+  - HP regen zehirliyken durur; aclik stamina/hits drain'i; FOOD clamp; resurrect
+    en az 1 HP birakir; pet control-slot toplama ve loyalty uyarilari.
+  - Hareket shove artik stamina'yi tam olarak bir kez tuketir (cift-dusum /
+    sahte-blok hatasi giderildi).
+
+TESTLER:
+  - brace-range, MAX/MIN/@ ve QVAL icin regresyon testleri (515 gecer).

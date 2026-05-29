@@ -408,6 +408,11 @@ public sealed class NpcAI
     {
         int sightRange = GetNpcSight(npc);
 
+        // Forced target override (bard provoke / scripted constant focus) takes
+        // priority over normal target selection.
+        if (TryForcedTarget(npc))
+            return;
+
         // If we have an existing target, check if it's still valid
         if (npc.FightTarget.IsValid)
         {
@@ -483,9 +488,51 @@ public sealed class NpcAI
         }
 
         npc.FightTarget = Serial.Invalid;
+
+        // No enemy — looters scavenge nearby corpses (Source-X NPC_AI_LOOTING).
+        if ((Flags.HasFlag(NpcAIFlags.Looting) || npc.TryGetTag("LOOTING", out _))
+            && TryLoot(npc))
+            return;
+
         if (_rand.Next(8) == 0)
             EmitSound(npc, _rand.Next(2) == 0 ? CreatureSoundType.Idle : CreatureSoundType.Notice);
         WanderHome(npc);
+    }
+
+    /// <summary>Looter NPCs walk to a nearby corpse with contents and take one
+    /// item into their pack (Source-X NPC_Act_Looting). Empty corpses are
+    /// skipped, so no separate loot-memory is needed. Returns true if busy.</summary>
+    private bool TryLoot(Character npc)
+    {
+        if (npc.Backpack == null) return false;
+
+        Item? corpse = null;
+        int best = int.MaxValue;
+        foreach (var it in _world.GetItemsInRange(npc.Position, 4))
+        {
+            if (it.IsDeleted || it.ItemType != ItemType.Corpse || it.Contents.Count == 0) continue;
+            int d = npc.Position.GetDistanceTo(it.Position);
+            if (d < best) { best = d; corpse = it; }
+        }
+        if (corpse == null) return false;
+
+        if (best > 1)
+        {
+            MoveToward(npc, corpse.Position);
+            return true;
+        }
+
+        // Adjacent — grab one random item.
+        if (corpse.Contents.Count > 0)
+        {
+            var loot = corpse.Contents[_rand.Next(corpse.Contents.Count)];
+            if (OnNpcLookAtItem?.Invoke(npc, loot) != true) // script may veto/handle
+            {
+                corpse.RemoveItem(loot);
+                npc.Backpack.AddItem(loot);
+            }
+        }
+        return true;
     }
 
     /// <summary>Berserk: attack nearest visible character (hostile to everyone).</summary>
@@ -861,8 +908,48 @@ public sealed class NpcAI
             }
         }
 
+        // Scout retreat: a creature that can hide vanishes mid-flee once it has
+        // some distance, breaking pursuit (ServUO OrcScout guerilla style). The
+        // pursuer then loses LOS and falls into hidden-target pursuit.
+        if (dist >= 4 && !npc.IsStatFlag(StatFlag.Hidden)
+            && npc.GetSkill(SkillType.Hiding) > 0 && _rand.Next(8) == 0)
+        {
+            npc.SetStatFlag(StatFlag.Hidden);
+            npc.FleeStepsCurrent = 0;
+            npc.FightTarget = Serial.Invalid;
+            return;
+        }
+
         // Pathfinder-based escape: find a direction away from threat
         FleeAway(npc, target.Position);
+    }
+
+    /// <summary>Honor a forced combat target: bard Provocation (PROVOKED_TARGET)
+    /// or a scripted ConstantFocus (CONSTANT_FOCUS). Returns true if engaged.</summary>
+    private bool TryForcedTarget(Character npc)
+    {
+        Serial uid = Serial.Invalid;
+        bool isProvoke = false;
+        if (npc.TryGetTag("PROVOKED_TARGET", out string? pt) && uint.TryParse(pt, out uint pu))
+        {
+            uid = new Serial(pu);
+            isProvoke = true;
+        }
+        else if (npc.TryGetTag("CONSTANT_FOCUS", out string? cf) && uint.TryParse(cf, out uint cu))
+        {
+            uid = new Serial(cu);
+        }
+        if (!uid.IsValid) return false;
+
+        var t = _world.FindChar(uid);
+        if (t == null || t.IsDead || t.IsDeleted || t == npc || !IsAttackable(t))
+        {
+            if (isProvoke) npc.RemoveTag("PROVOKED_TARGET"); // expired/dead provoke clears
+            return false;
+        }
+        npc.FightTarget = t.Uid;
+        ActFight(npc, t, 100);
+        return true;
     }
 
     private void FleeAway(Character npc, Point3D threat)
@@ -1564,10 +1651,47 @@ public sealed class NpcAI
             return;
         }
 
+        // Hungry animals/NPCs with IntFood feed: eat from pack or graze
+        // (Source-X NPC_Act_Food).
+        if ((Flags.HasFlag(NpcAIFlags.IntFood) || npc.TryGetTag("INTFOOD", out _))
+            && TryEatFood(npc))
+            return;
+
         if (_rand.Next(12) == 0)
             EmitSound(npc, CreatureSoundType.Idle);
         if (_rand.Next(100) < 20)
             WanderHome(npc);
+    }
+
+    /// <summary>Hungry NPC feeds: consume a food item from its pack, otherwise
+    /// (animals) graze. Tops up the food meter. Returns true if it fed.</summary>
+    private bool TryEatFood(Character npc)
+    {
+        if (npc.NpcFood >= 50) return false;
+
+        var pack = npc.Backpack;
+        if (pack != null)
+        {
+            foreach (var it in pack.Contents)
+            {
+                if (it.ItemType is ItemType.Food or ItemType.Fruit or ItemType.Grain or ItemType.FoodRaw)
+                {
+                    if (it.Amount > 1) it.Amount--;
+                    else { pack.RemoveItem(it); it.Delete(); }
+                    npc.NpcFood = (ushort)Math.Min(60, npc.NpcFood + 10);
+                    EmitSound(npc, CreatureSoundType.Idle);
+                    return true;
+                }
+            }
+        }
+        // Grazers eat the grass wherever they roam.
+        if (npc.NpcBrain == NpcBrainType.Animal && _rand.Next(4) == 0)
+        {
+            npc.NpcFood = (ushort)Math.Min(60, npc.NpcFood + 5);
+            EmitSound(npc, CreatureSoundType.Idle);
+            return true;
+        }
+        return false;
     }
 
     /// <summary>Callback: NPC witnesses a crime and calls guards. Parameters: witness, criminal.</summary>

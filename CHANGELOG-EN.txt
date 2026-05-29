@@ -41,6 +41,13 @@ NPC AI - SMARTER BEHAVIORS:
   - DetectHidden: guards / high-INT NPCs periodically reveal hidden players.
   - Stuck -> Teleport: a stuck caster blinks toward the target instead of giving
     up.
+  - Forced target: bard Provocation (PROVOKED_TARGET) and scripted ConstantFocus
+    (CONSTANT_FOCUS) override normal target selection.
+  - Scout retreat: creatures with Hiding vanish mid-flee to break pursuit.
+  - Looting (Source-X NPC_AI_LOOTING): looter NPCs scavenge items from nearby
+    corpses into their pack (LOOTING tag or global flag).
+  - IntFood (Source-X NPC_Act_Food): hungry NPCs eat food from their pack or
+    graze (INTFOOD tag or global flag).
 
 DOCS:
   - docs/ restructured: added ARCHITECTURE, STAFF_COMMANDS, TRIGGERS and a docs

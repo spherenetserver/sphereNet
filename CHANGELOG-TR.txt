@@ -41,6 +41,14 @@ NPC AI - DAHA AKILLI DAVRANISLAR:
   - Backoff: urkek hayvanlar en yakin tehditten guvenli mesafeye cekilir.
   - DetectHidden: guard / yuksek-INT NPC periyodik gizli oyuncu acpiga cikarir.
   - Stuck -> Teleport: takilan caster vazgecmek yerine hedefe Teleport ile blink.
+  - Zorunlu hedef: bard Provocation (PROVOKED_TARGET) ve scripted ConstantFocus
+    (CONSTANT_FOCUS) normal hedef secimini ezer.
+  - Scout geri cekilme: Hiding becerisi olan yaratiklar kacarken gizlenip takibi
+    kirar.
+  - Looting (Source-X NPC_AI_LOOTING): yagmaci NPC'ler yakindaki cesetlerden
+    item alip cantasina koyar (LOOTING tag veya global flag).
+  - IntFood (Source-X NPC_Act_Food): ac NPC cantasindan yemek yer veya otlar
+    (INTFOOD tag veya global flag).
 
 DOKUMANTASYON:
   - docs/ yeniden duzenlendi: ARCHITECTURE, STAFF_COMMANDS, TRIGGERS ve docs

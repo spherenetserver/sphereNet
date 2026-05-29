@@ -4,6 +4,46 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-29] - NPC AI: Source-X parity fixes and smarter behaviors (Wave 18)
+----------------------------------------
+
+NPC AI - CORRECTNESS / PARITY:
+  - Flee logic: a fearful NPC (negative motivation) now routes to ActFlee
+    instead of silently dropping its target.
+  - Multicore ApplyDecision is sorted by NpcUid before applying, removing the
+    non-deterministic completion-order apply and matching single-thread behavior.
+  - _losFailCounts leak: separate purge pass for NPCs that never built a path
+    cache entry.
+  - Multicore reschedule now checks IsDead (symmetry with single-thread), so a
+    dead NPC is not re-queued into the timer wheel.
+  - Self-kill (reactive-armor reflect): killer==victim is attributed as null
+    (no Kill trigger on self).
+  - Beneficial-spell targeting fix: ChooseBestSpell now returns the cast target,
+    so heal/cure go to the right recipient. Previously every spell was cast on
+    the enemy, so an NPC "self-heal" actually healed its enemy.
+
+NPC AI - SMARTER BEHAVIORS:
+  - Spell combo chain: Paralyze -> Explosion -> EnergyBolt -> Poison while the
+    target is locked down (COMBO_STEP/COMBO_TARGET state).
+  - Ally support: caster NPCs heal/cure a wounded nearby ally, not just self.
+  - Hidden-target pursuit: when a target hides, the NPC moves to its last known
+    spot and tries Reveal instead of giving up immediately.
+  - ReacquireDelay: target-less NPCs throttle the full-range scan (reset on being
+    attacked, so retaliation is never delayed).
+  - Pet mode revert: after an attack target dies, the pet returns to its previous
+    order (Guard/Follow) instead of trailing the master.
+  - FightMode bias (FIGHTMODE tag): weakest / strongest / evil target preference.
+  - Dynamic tick: badly-hurt NPCs act slightly slower.
+  - Backoff: timid animals back off from the nearest threat to a safe distance.
+  - DetectHidden: guards / high-INT NPCs periodically reveal hidden players.
+  - Stuck -> Teleport: a stuck caster blinks toward the target instead of giving
+    up.
+
+DOCS:
+  - docs/ restructured: added ARCHITECTURE, STAFF_COMMANDS, TRIGGERS and a docs
+    index; ADMIN_SECURITY folded into DEPLOY; stale internal notes removed.
+  - README rewritten in English with README-TR.md (Turkish).
+
 [2026-05-29] - Gameplay bug fixes and Source-X parity completion (Wave 17)
 ----------------------------------------
 

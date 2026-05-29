@@ -4,6 +4,46 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-29] - NPC AI: Source-X parity duzeltmeleri ve daha akilli davranislar (Wave 18)
+----------------------------------------
+
+NPC AI - DOGRULUK / PARITY:
+  - Flee mantigi: korkan NPC (negatif motivation) artik hedefi sessizce
+    birakmak yerine ActFlee'ye yonlendiriliyor.
+  - Multicore ApplyDecision NpcUid'e gore siralaniyor; tamamlanma-sirasi
+    non-determinizmi giderildi, singlecore ile esitlendi.
+  - _losFailCounts sizintisi: path-cache'i hic olusmamis NPC'ler icin ayri
+    temizleme turu.
+  - Multicore reschedule artik IsDead kontrol ediyor (singlecore ile simetri);
+    olu NPC timer wheel'e geri yazilmiyor.
+  - Self-kill (reactive armor reflect): killer==victim artik null atfediliyor
+    (Kill trigger self'e ateslenmiyor).
+  - Faydali buyu hedefleme duzeltmesi: ChooseBestSpell artik cast hedefini
+    donduruyor; heal/cure dogru aliciya gidiyor. Onceki kod her buyuyu dusmana
+    atiyordu, yani NPC "self-heal" aslinda dusmani iyilestiriyordu.
+
+NPC AI - DAHA AKILLI DAVRANISLAR:
+  - Spell combo zinciri: hedef kilitliyken Paralyze -> Explosion -> EnergyBolt
+    -> Poison (COMBO_STEP/COMBO_TARGET state).
+  - Dost destegi: buyucu NPC'ler sadece kendini degil, yakindaki yarali dostu
+    da iyilestirir/zehir temizler.
+  - Gizli hedef takibi: hedef gizlenince aninda birakmak yerine son bilinen
+    konuma gidip Reveal dener.
+  - ReacquireDelay: hedefsiz NPC tum menzili her tick taramaz (saldiri alinca
+    sifirlanir, misilleme gecikmesiz).
+  - Pet moda donus: saldiri hedefi olunce pet master'i takip etmek yerine onceki
+    emrine (Guard/Follow) doner.
+  - FightMode onyargisi (FIGHTMODE tag): weakest / strongest / evil hedef tercihi.
+  - Dinamik tick: agir yarali NPC biraz daha yavas hareket eder.
+  - Backoff: urkek hayvanlar en yakin tehditten guvenli mesafeye cekilir.
+  - DetectHidden: guard / yuksek-INT NPC periyodik gizli oyuncu acpiga cikarir.
+  - Stuck -> Teleport: takilan caster vazgecmek yerine hedefe Teleport ile blink.
+
+DOKUMANTASYON:
+  - docs/ yeniden duzenlendi: ARCHITECTURE, STAFF_COMMANDS, TRIGGERS ve docs
+    index eklendi; ADMIN_SECURITY DEPLOY'a katlandi; eski ic-notlar kaldirildi.
+  - README Ingilizce yeniden yazildi, README-TR.md (Turkce) eklendi.
+
 [2026-05-29] - Gameplay hata duzeltmeleri ve Source-X parity tamamlama (Wave 17)
 ----------------------------------------
 

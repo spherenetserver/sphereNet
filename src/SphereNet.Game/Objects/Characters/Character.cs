@@ -1649,7 +1649,10 @@ public partial class Character : ObjBase
             return false;
 
         SetTag("PET_NEXT_LOYALTY_TICK", (nowMs + 60_000).ToString());
-        if (_npcFood > 0)
+        // Hirelings are paid in gold (handled by the AI wage tick), so hunger
+        // does not erode their loyalty.
+        bool isHireling = TryGetTag("HIRE_WAGE", out _);
+        if (!isHireling && _npcFood > 0)
             _npcFood--;
 
         var petOwner = OwnerSerial.IsValid ? ResolveCharByUid?.Invoke(OwnerSerial) : null;

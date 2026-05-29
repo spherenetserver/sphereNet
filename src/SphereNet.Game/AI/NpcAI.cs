@@ -1004,8 +1004,16 @@ public sealed class NpcAI
     /// </summary>
     private bool TryNpcCastSpell(Character npc, Character target, int dist)
     {
-        if (npc.Int < 5 || npc.NpcSpells.Count == 0)
+        if (npc.Int < 5)
             return false;
+        if (npc.NpcSpells.Count == 0)
+        {
+            // No scripted spell list — derive one from a carried/equipped
+            // spellbook (Source-X NPC_AddSpellsFromBook). Tried once per NPC.
+            EnsureNpcSpellsFromBook(npc);
+            if (npc.NpcSpells.Count == 0)
+                return false;
+        }
 
         int mana = npc.Mana;
         int intStat = npc.Int;
@@ -1225,6 +1233,61 @@ public sealed class NpcAI
             }
         }
         return any;
+    }
+
+    /// <summary>Populate an NPC's spell list from a carried/equipped magery
+    /// spellbook (Source-X NPC_AddSpellsFromBook). The book stores a 64-bit
+    /// bitmask (More2:More1) where bit i = magery spell (i+1). Tried once.</summary>
+    private static void EnsureNpcSpellsFromBook(Character npc)
+    {
+        if (npc.TryGetTag("SPELLS_LOADED", out _)) return;
+        npc.SetTag("SPELLS_LOADED", "1");
+
+        Item? book = FindSpellbook(npc);
+        if (book == null) return;
+        ulong bits = ((ulong)book.More2 << 32) | book.More1;
+        for (int i = 0; i < 64; i++)
+            if ((bits & (1UL << i)) != 0)
+                npc.NpcSpellAdd((SpellType)(i + 1));
+    }
+
+    /// <summary>Default hireling pay interval (ms) when HIRE_PERIOD isn't set.</summary>
+    private const long DefaultHirePeriodMs = 30 * 60 * 1000; // 30 minutes
+
+    /// <summary>Deduct a hireling's wage from the master's bank box. Returns
+    /// false (triggering desertion) if the bank can't cover the wage.</summary>
+    private static bool TryPayHireling(Character master, int wage)
+    {
+        var bank = master.GetEquippedItem(Layer.BankBox);
+        if (bank == null) return false;
+
+        long gold = 0;
+        foreach (var it in bank.Contents)
+            if (it.ItemType == ItemType.Gold) gold += it.Amount;
+        if (gold < wage) return false;
+
+        int remaining = wage;
+        for (int i = bank.Contents.Count - 1; i >= 0 && remaining > 0; i--)
+        {
+            var it = bank.Contents[i];
+            if (it.ItemType != ItemType.Gold) continue;
+            if (it.Amount <= remaining) { remaining -= it.Amount; bank.RemoveItem(it); it.Delete(); }
+            else { it.Amount = (ushort)(it.Amount - remaining); remaining = 0; }
+        }
+        return true;
+    }
+
+    private static Item? FindSpellbook(Character npc)
+    {
+        var held = npc.GetEquippedItem(Layer.OneHanded);
+        if (held?.ItemType == ItemType.Spellbook) return held;
+        held = npc.GetEquippedItem(Layer.TwoHanded);
+        if (held?.ItemType == ItemType.Spellbook) return held;
+        var pack = npc.Backpack;
+        if (pack != null)
+            foreach (var it in pack.Contents)
+                if (it.ItemType == ItemType.Spellbook) return it;
+        return null;
     }
 
     /// <summary>Threat weight: how strongly the NPC should prefer a target based
@@ -1769,6 +1832,33 @@ public sealed class NpcAI
             // Owner gone — uncontrolled pets idle instead of following stale state.
             Wander(npc);
             return;
+        }
+
+        // Hireling wage (Source-X NPC_OnHirePay): a hired NPC (HIRE_WAGE tag) is
+        // paid from the master's bank box on a timer; it deserts when unpaid.
+        if (npc.TryGetTag("HIRE_WAGE", out string? wageStr) &&
+            int.TryParse(wageStr, out int wage) && wage > 0)
+        {
+            long nowMs = Environment.TickCount64;
+            long period = npc.TryGetTag("HIRE_PERIOD", out string? ps) &&
+                long.TryParse(ps, out long p) && p > 0 ? p : DefaultHirePeriodMs;
+            long nextPay = npc.TryGetTag("HIRE_NEXT_PAY", out string? np) &&
+                long.TryParse(np, out long n) ? n : 0;
+            if (nextPay == 0)
+                npc.SetTag("HIRE_NEXT_PAY", (nowMs + period).ToString());
+            else if (nowMs >= nextPay)
+            {
+                if (TryPayHireling(master, wage))
+                    npc.SetTag("HIRE_NEXT_PAY", (nowMs + period).ToString());
+                else
+                {
+                    OnNpcSay?.Invoke(npc, "I can no longer be paid. Farewell!");
+                    npc.RemoveTag("HIRE_NEXT_PAY");
+                    npc.ClearOwnership(clearFriends: true);
+                    npc.PetAIMode = PetAIMode.Stay;
+                    return;
+                }
+            }
         }
 
         switch (npc.PetAIMode)

@@ -48,6 +48,12 @@ NPC AI - SMARTER BEHAVIORS:
     corpses into their pack (LOOTING tag or global flag).
   - IntFood (Source-X NPC_Act_Food): hungry NPCs eat food from their pack or
     graze (INTFOOD tag or global flag).
+  - Spellbook spell loading (Source-X NPC_AddSpellsFromBook): a caster NPC with
+    no scripted spell list derives one from a carried/equipped magery spellbook.
+    (Wand-holding NPCs already cast reagent-free via the wand path.)
+  - Hireling wage (Source-X NPC_OnHirePay): a hired NPC (HIRE_WAGE tag) is paid
+    from the master's bank box on a timer and deserts when it can't be paid;
+    hirelings are exempt from hunger-based loyalty loss.
 
 DOCS:
   - docs/ restructured: added ARCHITECTURE, STAFF_COMMANDS, TRIGGERS and a docs

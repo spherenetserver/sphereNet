@@ -49,6 +49,12 @@ NPC AI - DAHA AKILLI DAVRANISLAR:
     item alip cantasina koyar (LOOTING tag veya global flag).
   - IntFood (Source-X NPC_Act_Food): ac NPC cantasindan yemek yer veya otlar
     (INTFOOD tag veya global flag).
+  - Spellbook'tan buyu yukleme (Source-X NPC_AddSpellsFromBook): scripted buyu
+    listesi olmayan caster NPC, tasidigi/kusandigi magery spellbook'tan listeyi
+    turetir. (Wand tasiyan NPC zaten reagent'siz cast eder.)
+  - Hireling ucret (Source-X NPC_OnHirePay): kiralik NPC (HIRE_WAGE tag) ustanin
+    banka kutusundan periyodik odenir, odenemeyince terk eder; hireling'ler
+    aclik-bazli sadakat kaybindan muaftir.
 
 DOKUMANTASYON:
   - docs/ yeniden duzenlendi: ARCHITECTURE, STAFF_COMMANDS, TRIGGERS ve docs

@@ -1140,6 +1140,19 @@ public sealed class NpcAI
         return any;
     }
 
+    /// <summary>Threat weight: how strongly the NPC should prefer a target based
+    /// on the damage that target has dealt to it (from the attacker list).
+    /// Bounded so a single heavy hitter dominates target choice without
+    /// completely ignoring distance/other factors.</summary>
+    internal static int GetThreatBonus(Character npc, Character target)
+    {
+        var attackers = npc.Attackers;
+        for (int i = 0; i < attackers.Count; i++)
+            if (attackers[i].Uid == target.Uid)
+                return Math.Clamp(attackers[i].TotalDamage / 2, 0, 60);
+        return 0;
+    }
+
     /// <summary>Per-creature target-preference bias from the FIGHTMODE tag
     /// (Weakest/Strongest/Evil). Closest is the default (distance already drives
     /// motivation), so no tag = unchanged behavior.</summary>
@@ -1339,6 +1352,12 @@ public sealed class NpcAI
         // Targets actively attacking us get priority (retaliation)
         if (target.FightTarget == npc.Uid)
             motivation += 15;
+
+        // Threat: stick to whoever has dealt the most damage to us (Source-X
+        // NPC_AI_THREAT / NPC_FightFindBestTarget). Global flag, on by default;
+        // drives tank/aggro mechanics off the accumulated attacker list.
+        if (Flags.HasFlag(NpcAIFlags.Threat))
+            motivation += GetThreatBonus(npc, target);
 
         // Optional per-creature FightMode bias (ServUO/ModernUO AcquireFocusMob:
         // Weakest/Strongest/Evil). Default (no tag) leaves distance-based

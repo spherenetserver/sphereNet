@@ -32,6 +32,9 @@ NPC AI - SMARTER BEHAVIORS:
     attacked, so retaliation is never delayed).
   - Pet mode revert: after an attack target dies, the pet returns to its previous
     order (Guard/Follow) instead of trailing the master.
+  - Threat targeting (Source-X NPC_AI_THREAT): NPCs prefer whoever has dealt
+    them the most damage, driven by the attacker list (the previously-unused
+    NpcAIFlags.Threat is now honored).
   - FightMode bias (FIGHTMODE tag): weakest / strongest / evil target preference.
   - Dynamic tick: badly-hurt NPCs act slightly slower.
   - Backoff: timid animals back off from the nearest threat to a safe distance.

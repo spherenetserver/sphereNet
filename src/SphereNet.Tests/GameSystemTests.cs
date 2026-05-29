@@ -230,6 +230,26 @@ public class GameSystemTests
         Assert.Equal(0, npc.NextNpcReacquireTime);
     }
 
+    [Fact]
+    public void Npc_ThreatBonus_FavorsHeaviestAttacker()
+    {
+        // Threat targeting: a target that has dealt more damage to the NPC yields
+        // a higher (bounded) bonus, so the NPC sticks to its biggest threat.
+        var world = CreateWorld();
+        var npc = world.CreateCharacter();
+        var heavy = world.CreateCharacter();
+        var light = world.CreateCharacter();
+
+        npc.RecordAttack(heavy.Uid, 100);
+        npc.RecordAttack(light.Uid, 10);
+
+        Assert.Equal(50, SphereNet.Game.AI.NpcAI.GetThreatBonus(npc, heavy)); // 100/2
+        Assert.Equal(5, SphereNet.Game.AI.NpcAI.GetThreatBonus(npc, light));  // 10/2
+        Assert.True(SphereNet.Game.AI.NpcAI.GetThreatBonus(npc, heavy)
+                  > SphereNet.Game.AI.NpcAI.GetThreatBonus(npc, light));
+        Assert.Equal(0, SphereNet.Game.AI.NpcAI.GetThreatBonus(npc, npc)); // no record
+    }
+
     // --- Gump ---
 
     [Fact]

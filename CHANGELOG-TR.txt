@@ -33,6 +33,9 @@ NPC AI - DAHA AKILLI DAVRANISLAR:
     sifirlanir, misilleme gecikmesiz).
   - Pet moda donus: saldiri hedefi olunce pet master'i takip etmek yerine onceki
     emrine (Guard/Follow) doner.
+  - Threat hedefleme (Source-X NPC_AI_THREAT): NPC'ler kendilerine en cok hasar
+    vereni hedefler; saldirgan listesinden beslenir (onceden kullanilmayan
+    NpcAIFlags.Threat artik isleniyor).
   - FightMode onyargisi (FIGHTMODE tag): weakest / strongest / evil hedef tercihi.
   - Dinamik tick: agir yarali NPC biraz daha yavas hareket eder.
   - Backoff: urkek hayvanlar en yakin tehditten guvenli mesafeye cekilir.

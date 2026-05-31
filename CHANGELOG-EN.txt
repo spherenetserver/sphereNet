@@ -4,6 +4,33 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Interest management: shed cosmetic chatter under pressure (Wave 45)
+----------------------------------------
+
+NETWORK:
+  - When a connection's send queue backs up past a soft cap (1024, well below the
+    4096 hard-overflow disconnect), low-priority cosmetic broadcasts to it —
+    overhead speech (0xAE/0x1C) and sound (0x54) — are now shed instead of piling
+    on toward an overflow disconnect. State-bearing packets (movement, status,
+    combat results, corpses, gumps, ...) are never dropped. Classification is by
+    opcode in EnqueueShared, so no broadcast call site changed; the shared
+    packet's refcount is released for the shed recipient. A [gc_stats] "shed="
+    counter reports how many were dropped per window.
+
+  Behaviour / honesty:
+    - Inert in normal play: a 300-combat + 2,000-hostile run sheds nothing
+      (shed=0; queues never approach the cap) and tick/GC are unchanged — zero
+      harm to normal gameplay.
+    - Under the 1,000-bot one-screen flood it sheds ~165k chatter packets/window
+      and the server logs zero overflows. It does NOT change that scenario's
+      eventual bot attrition: that collapse is the in-process bots being
+      CPU-starved (they share the machine with the server), not speech volume —
+      shedding drops to 0 once the bots idle yet they still disconnect. So the
+      mechanism is verified correct and is a standard graceful-degradation layer,
+      but its real-world benefit (a genuine remote client draining less) is not
+      measurable with the in-process bot harness, and per-client inbound recv
+      capacity can't be cleanly measured here for the same reason.
+
 [2026-06-01] - Parallel output flush (Wave 44)
 ----------------------------------------
 

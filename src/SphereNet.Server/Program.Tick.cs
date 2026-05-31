@@ -306,6 +306,7 @@ public static partial class Program
                 // (in-process bots inflate the absolute number).
                 long allocNow = GC.GetTotalAllocatedBytes();
                 int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
+                long shedNow = SphereNet.Network.State.NetState.DroppedChatterPackets;
                 if (_gcWindowInit)
                 {
                     long windowMs = Math.Max(1, nowMs - _lastTickStatsLogMs);
@@ -314,12 +315,13 @@ public static partial class Program
                     double allocPerTickKB = _tickStatsCount > 0 ? allocDelta / 1024.0 / _tickStatsCount : 0;
                     var gcInfo = GC.GetGCMemoryInfo();
                     _log.LogInformation(
-                        "[gc_stats] alloc={AllocMBs:F0}MB/s ({PerTickKB:F0}KB/tick) gen0={G0} gen1={G1} gen2={G2} pause%={Pause:F1} heap={Heap}MB",
+                        "[gc_stats] alloc={AllocMBs:F0}MB/s ({PerTickKB:F0}KB/tick) gen0={G0} gen1={G1} gen2={G2} pause%={Pause:F1} heap={Heap}MB shed={Shed}",
                         allocMBs, allocPerTickKB, g0 - _gcWindowStartGen0, g1 - _gcWindowStartGen1, g2 - _gcWindowStartGen2,
-                        gcInfo.PauseTimePercentage, GC.GetTotalMemory(false) / 1048576);
+                        gcInfo.PauseTimePercentage, GC.GetTotalMemory(false) / 1048576, shedNow - _gcWindowStartShed);
                 }
                 _gcWindowStartAllocBytes = allocNow;
                 _gcWindowStartGen0 = g0; _gcWindowStartGen1 = g1; _gcWindowStartGen2 = g2;
+                _gcWindowStartShed = shedNow;
                 _gcWindowInit = true;
 
                 _tickStatsTotalUs = 0;

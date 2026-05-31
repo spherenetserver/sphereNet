@@ -172,6 +172,7 @@ public static partial class Program
     // signal (the ~40ms blocking pauses we want to eliminate).
     private static long _gcWindowStartAllocBytes;
     private static int _gcWindowStartGen0, _gcWindowStartGen1, _gcWindowStartGen2;
+    private static long _gcWindowStartShed;
     private static bool _gcWindowInit;
     private const int TickTelemetryWindowSize = 2048;
     private static readonly long[] _tickTelemetryWindowUs = new long[TickTelemetryWindowSize];

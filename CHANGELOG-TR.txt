@@ -4,6 +4,32 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Interest management: baski altinda kozmetik chatter'i dusur (Wave 45)
+----------------------------------------
+
+AG:
+  - Bir baglantinin send queue'su soft cap'i (1024; 4096 hard-overflow
+    disconnect'in cok altinda) asip geride kaldiginda, ona giden dusuk-oncelikli
+    kozmetik broadcast'ler — overhead speech (0xAE/0x1C) ve ses (0x54) — artik
+    overflow disconnect'e dogru birikmek yerine dusurulur. Durum tasiyan paketler
+    (hareket, status, savas sonuclari, ceset, gump, ...) asla dusurulmez.
+    Siniflandirma EnqueueShared icinde opcode ile yapilir, hicbir broadcast cagri
+    yeri degismedi; shared paketin refcount'u dusurulen alici icin birakilir.
+    [gc_stats] "shed=" sayaci pencere basina kacinin dustugunu raporlar.
+
+  Davranis / durustluk:
+    - Normal oyunda atil: 300-combat + 2.000-dusman run'i hicbir sey dusurmez
+      (shed=0; kuyruklar cap'e yaklasmaz), tick/GC degismez — normal oynanise
+      sifir zarar.
+    - 1.000-bot tek-ekran selinde pencere basina ~165k chatter dusurur ve sunucu
+      sifir overflow logluyor. Bu senaryonun nihai bot azalmasini DEGISTIRMEZ: o
+      cokus in-process botlarin CPU-acligindandir (sunucuyla ayni makineyi
+      paylasirlar), speech hacmi degil — botlar idle olunca shed 0'a duser ama
+      yine kopar. Yani mekanizma dogru calistigi dogrulandi ve standart bir
+      zarif-yavaslama katmanidir, ancak gercek-dunya faydasi (gercek uzak bir
+      client'in daha az bosaltmasi) in-process bot harness'iyle olculemez; ayni
+      sebeple client-basina gelen recv kapasitesi de burada temiz olculemez.
+
 [2026-06-01] - Paralel cikis flush'i (Wave 44)
 ----------------------------------------
 

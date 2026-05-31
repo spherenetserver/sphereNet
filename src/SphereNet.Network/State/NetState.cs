@@ -20,6 +20,26 @@ public readonly record struct MovementStep(byte Direction, byte Sequence, uint F
 public sealed class NetState : IDisposable
 {
     private const int MaxSendQueueSize = 4096;
+    // Above this queue depth a connection is treated as falling behind and
+    // low-priority cosmetic broadcasts are shed for it (interest management).
+    // Well below MaxSendQueueSize so chatter is dropped long before the hard
+    // overflow disconnect would trigger.
+    private const int DroppableSoftCap = 1024;
+
+    /// <summary>Count of cosmetic broadcast packets shed by interest management
+    /// (process-wide; for telemetry).</summary>
+    public static long DroppedChatterPackets;
+
+    /// <summary>Opcodes safe to drop to a backed-up connection: overhead speech
+    /// and sound. These carry no state the client tracks, so skipping them only
+    /// costs a message/sound, never desync.</summary>
+    private static bool IsDroppableUnderPressure(byte opcode) => opcode switch
+    {
+        0xAE => true, // Unicode speech (overhead text)
+        0x1C => true, // ASCII message / speech
+        0x54 => true, // Play sound effect
+        _ => false,
+    };
 
     private Socket? _socket;
     private readonly byte[] _recvBuffer = new byte[65536];
@@ -335,6 +355,21 @@ public sealed class NetState : IDisposable
 
         lock (_sendLock)
         {
+            // Interest management: when this connection is already falling behind
+            // (queue backed up past the soft cap), shed low-priority cosmetic
+            // chatter — overhead speech and sound — for it rather than piling on
+            // toward a hard overflow disconnect. State-bearing broadcasts
+            // (movement, status, combat results, corpses, ...) are never dropped.
+            // A slow consumer in a 1,000-strong crowd loses some chat it could
+            // never read anyway, but keeps its connection and its gameplay state.
+            if (_sendQueue.Count > DroppableSoftCap && packet.Length > 0
+                && IsDroppableUnderPressure(packet.Data[0]))
+            {
+                DroppedChatterPackets++;
+                packet.ReturnToPool();
+                return;
+            }
+
             if (_sendQueue.Count >= MaxSendQueueSize)
             {
                 _logger.LogWarning("Send queue overflow for #{Id} ({EP}), disconnecting",

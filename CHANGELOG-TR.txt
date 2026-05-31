@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Bare <dispid>/<dex> ifade cozumu duzeltmesi (Wave 24)
+----------------------------------------
+
+SCRIPT MOTORU:
+  - "D ondalik-zorlama" on-eki, 'd' ile baslayan bare self-property'leri
+    (DISPID, DEX, DIR, ...) yanlislikla yutuyordu: bastaki 'd' atilip kalan
+    cozulmeye calisiliyordu (<dispid> -> <ispid> -> 0). Artik once 'd'-strip
+    edilmis kalan denenir (mesru <DHITS>/<DLOCAL.HEX> ondalik formu korunur),
+    kalan cozulemezse tam token bir property olarak cozulur.
+  - Item <DISPID>/<ID> okuma property'si eklendi (DISPID override'ini yansitir,
+    BASEID gibi defname-veya-hex form). Onceden okuma yoktu; bu yuzden
+    IF (<dispid> == i_xxx) silah-tipi bonus dagitimi ve mobilya ac/kapa
+    (DISPID toggle) calismiyordu.
+
+TESTLER:
+  - <dispid>/<DEX>'in mangle olmadigi, <DHITS> ondalik formunun korundugu icin
+    ExpressionParser regresyon testi (524 gecer).
+
 [2026-05-31] - Script intrinsic'leri RESOURCETYPE / RESOURCEINDEX (Wave 23)
 ----------------------------------------
 

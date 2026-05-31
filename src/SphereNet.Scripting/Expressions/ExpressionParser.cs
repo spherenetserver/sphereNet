@@ -964,10 +964,11 @@ public sealed class ExpressionParser
             !varExpr.StartsWith("DEF0.", StringComparison.OrdinalIgnoreCase) &&
             char.IsLetterOrDigit(varExpr[1]))
         {
-            // <Dproperty> or <D expression> — evaluate and return as decimal
+            // The leading D forces a DECIMAL reading of the REST
+            // (<DHITS>, <DLOCAL.HEX>, <Dsrc.hits>): strip the D and resolve
+            // the remainder first, coercing a 0-prefixed/hex result to decimal.
             string inner = varExpr[1..];
             string resolved = ResolveAngleBrackets(inner);
-            // Try resolve as variable first
             string? varVal = VariableResolver?.Invoke(resolved);
             if (varVal != null)
             {
@@ -976,6 +977,13 @@ public sealed class ExpressionParser
                     return Evaluate(varVal.AsSpan()).ToString();
                 return varVal;
             }
+            // The stripped remainder is not a known variable — so the leading
+            // 'd' was NOT a prefix but part of a real property name (DISPID,
+            // DEX, DIR, ...). Resolve the full token before giving up.
+            // (Regression: <dispid> used to mangle to <ispid> and read 0.)
+            string? fullVal = VariableResolver?.Invoke(ResolveAngleBrackets(varExpr));
+            if (fullVal != null)
+                return fullVal;
             return Evaluate(resolved.AsSpan()).ToString();
         }
 

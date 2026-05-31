@@ -557,6 +557,13 @@ public class Item : ObjBase
             case "ISITEM": value = "1"; return true;
             case "ISCHAR": value = "0"; return true;
             case "BASEID": value = FormatBaseId(); return true;
+            // Display id read (Source-X <DISPID>/<ID>): mirrors BASEID's
+            // defname-or-hex form but reflects the DISPID override when set,
+            // so scripts like IF (<DISPID> == i_pie_safe) and weapon-type
+            // dispatch on <dispid> work. Without this the value fell through
+            // to the D-prefix decimal handler and resolved to 0.
+            case "DISPID":
+            case "ID": value = FormatDispId(); return true;
             case "DISPIDDEC": value = BaseId.ToString(); return true;
             case "TOPOBJ":
             {
@@ -1877,6 +1884,15 @@ public class Item : ObjBase
         if (idef != null && !string.IsNullOrEmpty(idef.DefName))
             return idef.DefName;
         return $"0{BaseId:X}";
+    }
+
+    private string FormatDispId()
+    {
+        ushort id = DispIdFull;
+        var idef = Definitions.DefinitionLoader.GetItemDef(id);
+        if (idef != null && !string.IsNullOrEmpty(idef.DefName))
+            return idef.DefName;
+        return $"0{id:X}";
     }
 
     private Item? FindContentByBaseId(ushort baseId)

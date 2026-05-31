@@ -69,6 +69,27 @@ public class ExpressionRegressionTests
     }
 
     [Fact]
+    public void ExpressionParser_DPrefix_DoesNotHijackBareProperties()
+    {
+        var parser = new ExpressionParser();
+        parser.VariableResolver = name => name.ToUpperInvariant() switch
+        {
+            "DISPID" => "i_halberd",
+            "DEX" => "75",
+            "HITS" => "42", // for the <DHITS> decimal-coercion fallback
+            _ => null,
+        };
+
+        // Bare 'd' properties resolve to the real property, not a 'd'-stripped
+        // name (regression: <dispid> used to become <ispid> -> 0).
+        Assert.Equal("i_halberd", parser.EvaluateStr("<dispid>"));
+        Assert.Equal("75", parser.EvaluateStr("<DEX>"));
+        // The genuine D-force-decimal prefix still works when the full name is
+        // unknown (<DHITS> -> decimal of HITS).
+        Assert.Equal("42", parser.EvaluateStr("<DHITS>"));
+    }
+
+    [Fact]
     public void ExpressionParser_BraceRange_RollsWithinBounds()
     {
         var parser = new ExpressionParser();

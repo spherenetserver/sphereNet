@@ -1,6 +1,6 @@
 # SphereNet
 
-> A modern, high-performance **Ultima Online private server emulator** written in **.NET 9**, designed for script compatibility with [Source-X](https://github.com/Sphereserver/Source-X) while going far beyond it in performance, persistence, and operability.
+> A modern, high-performance **Ultima Online private server emulator** written in **.NET 10 (LTS)**, designed for script compatibility with [Source-X](https://github.com/Sphereserver/Source-X) while going far beyond it in performance, persistence, and operability.
 
 🇹🇷 **Türkçe okumak için → [README-TR.md](README-TR.md)**
 📚 **Documentation → [docs/](docs/README.md)** (architecture, [staff commands](docs/STAFF_COMMANDS.md), [triggers](docs/TRIGGERS.md), deploy, runbook)
@@ -179,7 +179,7 @@ The `npc_apply` phase is the main bottleneck under this concentration; real depl
 
 ### Prerequisites
 
-- [.NET 9.0 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+- [.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - Ultima Online client data files (MUL/UOP)
 
 ### Build & run

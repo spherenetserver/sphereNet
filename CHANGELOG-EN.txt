@@ -8,8 +8,8 @@
 ----------------------------------------
 
 RUNTIME / BUILD:
-  - All projects retargeted net9.0 -> net10.0 (LTS). Legacy net48/net472 tooling
-    projects left as-is. Full solution builds clean; 525 tests pass under net10.
+  - All SphereNet projects retargeted net9.0 -> net10.0 (LTS). Full solution
+    builds clean; 525 tests pass under net10.
   - ServerGarbageCollection + ConcurrentGarbageCollection enabled on the Host
     entry point (the game Server already had them).
 

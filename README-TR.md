@@ -1,6 +1,6 @@
 # SphereNet
 
-> **.NET 9** ile yazılmış, modern ve yüksek performanslı bir **Ultima Online özel sunucu emülatörü**. [Source-X](https://github.com/Sphereserver/Source-X) ile script uyumluluğu hedeflenir; performans, kalıcılık ve işletilebilirlik açısından onun çok ötesine geçer.
+> **.NET 10 (LTS)** ile yazılmış, modern ve yüksek performanslı bir **Ultima Online özel sunucu emülatörü**. [Source-X](https://github.com/Sphereserver/Source-X) ile script uyumluluğu hedeflenir; performans, kalıcılık ve işletilebilirlik açısından onun çok ötesine geçer.
 
 🇬🇧 **Read in English → [README.md](README.md)**
 📚 **Dokümantasyon → [docs/](docs/README.md)** (mimari, [staff komutları](docs/STAFF_COMMANDS.md), [trigger'lar](docs/TRIGGERS.md), deploy, runbook) — *İngilizce*
@@ -179,7 +179,7 @@ Source-X'te geçmiş olayları yeniden izleme yoktur. SphereNet, karakter hareke
 
 ### Ön koşullar
 
-- [.NET 9.0 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+- [.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - Ultima Online istemci veri dosyaları (MUL/UOP)
 
 ### Derleme & çalıştırma

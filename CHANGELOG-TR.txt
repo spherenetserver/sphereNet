@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Ayni-fraksiyon kalabaliginda NPC hedef-taramasi sinirlama (Wave 31)
+----------------------------------------
+
+PERFORMANS:
+  - FindBestTarget artik degerlendirdigi saldirilabilir aday sayisini kapar
+    (yalnizca hostile olanlari degil). Wave 30'un cap'i sadece pozitif-motivation
+    hedefleri sayiyordu; bu yuzden kendi turuyle cevrili bir monster, birkac
+    gercek dusmani bulana dek tum komsulari degerlendiriyordu — NPC basina
+    O(yerel yogunluk). Artik en yakin birkac adayi degerlendirir; kalabalikta
+    daha geride kalan hedef, daha yakin bir NPC'nin isidir, combat yine baslar.
+  - GetAttackMotivation ucuz hostility testini FindRegion lookup'indan once
+    yapar; non-hostile adaylar (kalabaligin cogu) bolge sorgusunu atlar.
+  - Not: oyuncularin cevresinde binlerce kumelenmis monster'in kalan maliyeti
+    kalabalikta pathfinding/hareket'tir; bu (yapay) yogunluga ozgudur ve burada
+    degismez; normal oyun etkilenmez.
+
 [2026-05-31] - Kalabalik combat'ta NPC AI tick-maliyeti sinirlama (Wave 30)
 ----------------------------------------
 

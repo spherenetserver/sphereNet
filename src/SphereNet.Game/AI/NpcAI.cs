@@ -1476,7 +1476,7 @@ public sealed class NpcAI
     /// stalling the tick. Normal encounters have far fewer than this, so the
     /// cap is invisible in ordinary play; in a crowd, any of the nearest few is
     /// an equally valid target.</summary>
-    private const int MaxTargetCandidates = 12;
+    private const int MaxTargetCandidates = 40;
 
     private (Character? target, int motivation) FindBestTarget(Character npc, int sightRange)
     {
@@ -1492,6 +1492,13 @@ public sealed class NpcAI
         foreach (var ch in _world.GetCharsInRange(npc.Position, sightRange))
         {
             if (ch == npc || !IsAttackable(ch)) continue;
+            // Bound the scan over ALL attackable candidates (not just hostile
+            // ones): a monster in a crowd of its own kind would otherwise
+            // evaluate every neighbour before finding the few real enemies,
+            // making acquisition O(local density). Capping here means each NPC
+            // considers its nearest handful — a target farther back in a crowd
+            // is some closer NPC's problem, so combat still engages.
+            if (++evaluated > MaxTargetCandidates) break;
             int motivation = GetAttackMotivation(npc, ch);
             if (motivation <= 0) continue;
 
@@ -1507,7 +1514,6 @@ public sealed class NpcAI
             {
                 t3 = ch; m3 = motivation;
             }
-            if (++evaluated >= MaxTargetCandidates) break;
         }
 
         if (t1 != null && _world.CanSeeLOS(npc.Position, t1.Position) && OnNpcLookAtChar?.Invoke(npc, t1) != true)
@@ -1525,13 +1531,18 @@ public sealed class NpcAI
     /// </summary>
     private int GetAttackMotivation(Character npc, Character target)
     {
-        var region = _world.FindRegion(target.Position);
-        if (region != null && region.IsFlag(RegionFlag.Safe))
-            return 0;
-
+        // Cheap hostility test first. The overwhelming majority of candidates in
+        // a crowd are non-hostile (own kind / townsfolk) and return here, so the
+        // comparatively costly FindRegion spatial lookup is done only for a
+        // genuinely hostile target — this is what keeps dense-crowd target scans
+        // from becoming a per-candidate region query.
         int hostility = GetHostilityLevel(npc, target);
         if (hostility <= 0)
             return hostility;
+
+        var region = _world.FindRegion(target.Position);
+        if (region != null && region.IsFlag(RegionFlag.Safe))
+            return 0;
 
         if (npc.NpcBrain == NpcBrainType.Berserk || npc.NpcBrain == NpcBrainType.Guard)
             return 100;

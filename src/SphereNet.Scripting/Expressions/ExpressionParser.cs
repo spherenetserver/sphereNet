@@ -1432,11 +1432,13 @@ public sealed class ExpressionParser
             return val ?? "0";
         }
 
-        // R — random: <R max> returns random 0..max-1
-        if (varExpr.StartsWith("R ", StringComparison.OrdinalIgnoreCase) ||
-            varExpr.StartsWith("R\t", StringComparison.OrdinalIgnoreCase))
+        // R — random: <R max> returns random 0..max-1. Sphere also accepts the
+        // no-space form <Rmax> (e.g. <R999>); 'R' followed by a digit is the
+        // random form, while 'R' followed by a letter (REF, REGION, ...) is not.
+        if (varExpr.Length > 1 && (varExpr[0] == 'R' || varExpr[0] == 'r') &&
+            (varExpr[1] == ' ' || varExpr[1] == '\t' || char.IsDigit(varExpr[1])))
         {
-            string inner = ResolveAngleBrackets(varExpr[2..].Trim());
+            string inner = ResolveAngleBrackets(varExpr[1..].Trim());
             if (int.TryParse(inner, out int rMax) && rMax > 0)
                 return Random.Shared.Next(rMax).ToString();
             return "0";

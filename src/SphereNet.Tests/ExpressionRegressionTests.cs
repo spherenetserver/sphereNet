@@ -69,6 +69,17 @@ public class ExpressionRegressionTests
     }
 
     [Fact]
+    public void ExpressionParser_RandomR_AcceptsNoSpaceForm()
+    {
+        var parser = new ExpressionParser();
+        for (int i = 0; i < 50; i++)
+        {
+            Assert.InRange(int.Parse(parser.EvaluateStr("<R5>")), 0, 4);   // no-space form
+            Assert.InRange(int.Parse(parser.EvaluateStr("<R 5>")), 0, 4);  // spaced form still works
+        }
+    }
+
+    [Fact]
     public void ExpressionParser_DPrefix_DoesNotHijackBareProperties()
     {
         var parser = new ExpressionParser();

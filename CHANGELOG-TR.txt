@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Bosluksuz <Rnnn> random ifade formu (Wave 25)
+----------------------------------------
+
+SCRIPT MOTORU:
+  - <Rnnn> (bosluksuz, orn. <R999>) artik random 0..nnn-1 formu olarak kabul
+    ediliyor; bosluklu <R nnn> ile ayni. 'R' + rakam random; 'R' + harf
+    (REF, REGION, ...) dokunulmaz. Onceden bosluksuz form cozulemiyordu ve 0
+    okunuyordu, bu yuzden IF !(<R999>) hep dogruydu (nadir dal her seferinde
+    tetikleniyordu).
+
+TESTLER:
+  - Bosluksuz <R5> formu icin ExpressionParser regresyon testi (bosluklu <R 5>
+    da calisir).
+
 [2026-05-31] - Bare <dispid>/<dex> ifade cozumu duzeltmesi (Wave 24)
 ----------------------------------------
 

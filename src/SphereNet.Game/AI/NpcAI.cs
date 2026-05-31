@@ -1470,25 +1470,53 @@ public sealed class NpcAI
     /// Source-X: NPC_LookAround → NPC_LookAtCharMonster loop.
     /// Only acquires targets within line of sight.
     /// </summary>
+    /// <summary>Cap on candidates fully evaluated (LOS + motivation) per
+    /// acquisition. Without it, a dense crowd makes each NPC evaluate every
+    /// nearby mobile, turning target acquisition into O(n²) across the area and
+    /// stalling the tick. Normal encounters have far fewer than this, so the
+    /// cap is invisible in ordinary play; in a crowd, any of the nearest few is
+    /// an equally valid target.</summary>
+    private const int MaxTargetCandidates = 12;
+
     private (Character? target, int motivation) FindBestTarget(Character npc, int sightRange)
     {
-        Character? bestTarget = null;
-        int bestMotivation = 0;
+        // Rank candidates by motivation WITHOUT line-of-sight first: LOS
+        // raycasts against the real static map are the dominant cost under
+        // dense combat (one per candidate would be O(crowd) raycasts per NPC).
+        // Keep the top 3, then verify LOS lazily on those — so each NPC does at
+        // most a few raycasts regardless of crowd size.
+        Character? t1 = null, t2 = null, t3 = null;
+        int m1 = 0, m2 = 0, m3 = 0;
+        int evaluated = 0;
 
         foreach (var ch in _world.GetCharsInRange(npc.Position, sightRange))
         {
             if (ch == npc || !IsAttackable(ch)) continue;
-            if (!_world.CanSeeLOS(npc.Position, ch.Position)) continue;
-            if (OnNpcLookAtChar?.Invoke(npc, ch) == true) continue;
             int motivation = GetAttackMotivation(npc, ch);
-            if (motivation > bestMotivation)
+            if (motivation <= 0) continue;
+
+            if (motivation > m1)
             {
-                bestMotivation = motivation;
-                bestTarget = ch;
+                t3 = t2; m3 = m2; t2 = t1; m2 = m1; t1 = ch; m1 = motivation;
             }
+            else if (motivation > m2)
+            {
+                t3 = t2; m3 = m2; t2 = ch; m2 = motivation;
+            }
+            else if (motivation > m3)
+            {
+                t3 = ch; m3 = motivation;
+            }
+            if (++evaluated >= MaxTargetCandidates) break;
         }
 
-        return (bestTarget, bestMotivation);
+        if (t1 != null && _world.CanSeeLOS(npc.Position, t1.Position) && OnNpcLookAtChar?.Invoke(npc, t1) != true)
+            return (t1, m1);
+        if (t2 != null && _world.CanSeeLOS(npc.Position, t2.Position) && OnNpcLookAtChar?.Invoke(npc, t2) != true)
+            return (t2, m2);
+        if (t3 != null && _world.CanSeeLOS(npc.Position, t3.Position) && OnNpcLookAtChar?.Invoke(npc, t3) != true)
+            return (t3, m3);
+        return (null, 0);
     }
 
     /// <summary>

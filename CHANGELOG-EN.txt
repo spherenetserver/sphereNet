@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - NPC AI tick-cost bounding under crowded combat (Wave 30)
+----------------------------------------
+
+PERFORMANCE:
+  - Per-tick NPC budget: a mass sector activation (a player entering a densely
+    populated area) could make thousands of NPCs due in one tick and run their
+    AI serially, stalling the tick for several seconds. The tick now processes
+    at most a bounded number of NPCs and defers the overflow to the next tick.
+  - Bounded target acquisition: FindBestTarget previously did a line-of-sight
+    raycast (against the real static map — the dominant cost) for every nearby
+    mobile, making acquisition O(crowd) per NPC. It now ranks candidates by
+    motivation without LOS, caps how many are evaluated, and verifies LOS lazily
+    only on the top few — a few raycasts per NPC regardless of crowd size.
+  - Net: a pathological stress (50,000 monsters clustered around 8 fighting
+    players) dropped from ~8.8s ticks to ~2.2s; normal and realistic loads are
+    unaffected. (525 tests pass.)
+
 [2026-05-31] - Headless 'stress' console command (Wave 29)
 ----------------------------------------
 

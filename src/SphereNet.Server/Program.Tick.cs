@@ -386,6 +386,7 @@ public static partial class Program
         {
             long now = Environment.TickCount64;
             var dueNpcs = _npcTimerWheel.Advance(now);
+            ApplyNpcTickBudget(dueNpcs);
             foreach (var npc in dueNpcs)
             {
                 _npcAI.OnTickAction(npc);
@@ -445,6 +446,23 @@ public static partial class Program
     // ParallelForEach. Mirrors GameWorld.OnTickParallel sector cutoff.
     private const int ParallelComputeMinBatch = 16;
 
+    // Per-tick NPC AI budget. A mass sector activation (a player entering a
+    // densely populated area) can make thousands of NPCs due in a single tick;
+    // running BuildDecision for all of them at once stalls the tick for
+    // seconds. Process at most this many per tick and defer the overflow to the
+    // next tick. No effect on normal loads where the due count is below it.
+    private const int MaxNpcsPerTick = 500;
+
+    private static void ApplyNpcTickBudget(List<Character> due)
+    {
+        if (_npcTimerWheel == null || due.Count <= MaxNpcsPerTick) return;
+        long deferAt = Environment.TickCount64;
+        for (int i = MaxNpcsPerTick; i < due.Count; i++)
+            _npcTimerWheel.Schedule(due[i], deferAt);
+        // Removing the tail truncates the count without shifting elements.
+        due.RemoveRange(MaxNpcsPerTick, due.Count - MaxNpcsPerTick);
+    }
+
     private static void RunMulticoreTick()
     {
         int workerCount = _config.MulticoreWorkerCount > 0 ? _config.MulticoreWorkerCount : Environment.ProcessorCount;
@@ -460,6 +478,7 @@ public static partial class Program
 
         // NPC AI via timer wheel
         var npcSnapshot = _npcTimerWheel.Advance(Environment.TickCount64);
+        ApplyNpcTickBudget(npcSnapshot);
 
         _reusableClientSnapshot.Clear();
         foreach (var c in _clients.Values)

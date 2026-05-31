@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Kalabalik combat'ta NPC AI tick-maliyeti sinirlama (Wave 30)
+----------------------------------------
+
+PERFORMANS:
+  - Per-tick NPC budget: kutlesel sektor aktivasyonu (oyuncu yogun bir bolgeye
+    girince) binlerce NPC'yi tek tick'te due yapip AI'lari seri kosturarak
+    tick'i saniyelerce kilitleyebiliyordu. Tick artik tick basina sinirli sayida
+    NPC isler, fazlasini sonraki tick'e erteler.
+  - Sinirli hedef-edinme: FindBestTarget eskiden her yakin mobile icin LOS
+    raycast (gercek static map'e karsi — baskin maliyet) yapip edinmeyi NPC
+    basina O(kalabalik) haline getiriyordu. Artik adaylari LOS'suz motivation'a
+    gore siralar, kac tane degerlendirilecegini kapar ve LOS'u yalnizca en
+    iyi birkac aday icin tembel dogrular — kalabalik ne olursa olsun NPC basina
+    birkac raycast.
+  - Net: patolojik stress (8 dovusen oyuncunun cevresinde 50.000 kumelenmis
+    monster) ~8.8s tick'ten ~2.2s'e dustu; normal ve gercekci yukler etkilenmez.
+    (525 test geciyor.)
+
 [2026-05-31] - Headless 'stress' konsol komutu (Wave 29)
 ----------------------------------------
 

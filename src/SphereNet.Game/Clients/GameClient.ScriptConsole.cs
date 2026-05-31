@@ -1474,6 +1474,52 @@ public sealed partial class GameClient
         return uint.TryParse(t, out value);
     }
 
+    /// <summary>Map our internal <see cref="SphereNet.Core.Enums.ResType"/> to the
+    /// Source-X RES_* numeric code (as defined in [DEFNAME] sphere_defs), so that
+    /// <c>&lt;RESOURCETYPE x&gt;</c> compares equal to script constants like
+    /// <c>&lt;def.res_chardef&gt;</c> (=6) and <c>&lt;def.res_itemdef&gt;</c> (=14).</summary>
+    private static int SourceXResValue(SphereNet.Core.Enums.ResType type) => type switch
+    {
+        SphereNet.Core.Enums.ResType.Account => 1,
+        SphereNet.Core.Enums.ResType.Area => 3,
+        SphereNet.Core.Enums.ResType.Book => 5,
+        SphereNet.Core.Enums.ResType.CharDef => 6,
+        SphereNet.Core.Enums.ResType.Comment => 7,
+        SphereNet.Core.Enums.ResType.DefName => 8,
+        SphereNet.Core.Enums.ResType.Dialog => 9,
+        SphereNet.Core.Enums.ResType.Events => 10,
+        SphereNet.Core.Enums.ResType.Function => 12,
+        SphereNet.Core.Enums.ResType.GamePage => 13,
+        SphereNet.Core.Enums.ResType.ItemDef => 14,
+        SphereNet.Core.Enums.ResType.Menu => 17,
+        SphereNet.Core.Enums.ResType.Names => 19,
+        SphereNet.Core.Enums.ResType.NewBie => 20,
+        SphereNet.Core.Enums.ResType.Obscene => 22,
+        SphereNet.Core.Enums.ResType.PlevelCfg => 23,
+        SphereNet.Core.Enums.ResType.RegionResource => 24,
+        SphereNet.Core.Enums.ResType.RegionType => 25,
+        SphereNet.Core.Enums.ResType.ResourceList => 27,
+        SphereNet.Core.Enums.ResType.RoomDef => 29,
+        SphereNet.Core.Enums.ResType.Scroll => 31,
+        SphereNet.Core.Enums.ResType.Sector => 32,
+        SphereNet.Core.Enums.ResType.SkillDef => 34,
+        SphereNet.Core.Enums.ResType.SkillClass => 35,
+        SphereNet.Core.Enums.ResType.SkillMenu => 36,
+        SphereNet.Core.Enums.ResType.Spawn => 37,
+        SphereNet.Core.Enums.ResType.Speech => 38,
+        SphereNet.Core.Enums.ResType.SpellDef => 39,
+        SphereNet.Core.Enums.ResType.Sphere => 40,
+        SphereNet.Core.Enums.ResType.ServerConfig => 40,
+        SphereNet.Core.Enums.ResType.Template => 46,
+        SphereNet.Core.Enums.ResType.Tip => 48,
+        SphereNet.Core.Enums.ResType.TypeDef => 49,
+        SphereNet.Core.Enums.ResType.WebPage => 52,
+        SphereNet.Core.Enums.ResType.WorldChar => 54,
+        SphereNet.Core.Enums.ResType.WorldItem => 55,
+        SphereNet.Core.Enums.ResType.WorldScript => 57,
+        _ => 0, // Unknown / MultiDef / Stone — no Source-X RES_ comparison value
+    };
+
     public bool TryResolveScriptVariable(string varName, IScriptObj target, ITriggerArgs? triggerArgs, out string value)
     {
         value = "";
@@ -1525,6 +1571,29 @@ public sealed partial class GameClient
             }
             value = "0";
             return true; // answered as "0" rather than unresolved — matches Sphere behaviour
+        }
+        // RESOURCETYPE / RESOURCEINDEX (Source-X): resolve a defname to its
+        // resource TYPE code and resource INDEX. Worldgen spawners compare
+        // <RESOURCETYPE <entry>> against <def.res_chardef> / <def.res_itemdef>,
+        // so the type MUST use the Source-X RES_* numbering (CharDef=6,
+        // ItemDef=14, Spawn=37, …) — NOT our internal ResType enum order.
+        if (varName.StartsWith("RESOURCETYPE ", StringComparison.OrdinalIgnoreCase) ||
+            varName.StartsWith("RESOURCEINDEX ", StringComparison.OrdinalIgnoreCase))
+        {
+            int sp = varName.IndexOf(' ');
+            bool wantIndex = varName[..sp].Equals("RESOURCEINDEX", StringComparison.OrdinalIgnoreCase);
+            string arg = varName[(sp + 1)..].Trim();
+            var rid = _commands?.Resources?.ResolveDefName(arg)
+                      ?? SphereNet.Core.Types.ResourceId.Invalid;
+            if (!rid.IsValid)
+            {
+                value = "0"; // RES_UNKNOWN / no index
+                return true;
+            }
+            value = wantIndex
+                ? rid.Index.ToString()
+                : SourceXResValue(rid.Type).ToString();
+            return true;
         }
         if (varName.StartsWith("ISDIALOGOPEN.", StringComparison.OrdinalIgnoreCase))
         {

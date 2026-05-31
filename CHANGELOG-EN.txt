@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Script intrinsics RESOURCETYPE / RESOURCEINDEX (Wave 23)
+----------------------------------------
+
+SCRIPT:
+  - <RESOURCETYPE defname> and <RESOURCEINDEX defname> resolve a defname to its
+    resource type code and index. The type uses the Source-X RES_* numbering
+    (CharDef=6, ItemDef=14, Spawn=37, ...) so that
+    <RESOURCETYPE <entry>> == <def.res_chardef> compares correctly. The worldgen
+    spawner's NPC/item discrimination and staff restype menus rely on this.
+    Resolved via ResolveDefName; an unknown defname returns 0 (RES_UNKNOWN).
+
 [2026-05-31] - Region periodic triggers @RegPeriodic / @CliPeriodic (Wave 22)
 ----------------------------------------
 

@@ -4,6 +4,17 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Script intrinsic'leri RESOURCETYPE / RESOURCEINDEX (Wave 23)
+----------------------------------------
+
+SCRIPT:
+  - <RESOURCETYPE defname> ve <RESOURCEINDEX defname>: bir defname'in kaynak
+    tur kodunu ve index'ini cozer. Tur kodu Source-X RES_* numaralandirmasini
+    kullanir (CharDef=6, ItemDef=14, Spawn=37, ...), oyle ki
+    <RESOURCETYPE <entry>> == <def.res_chardef> dogru calisir. Worldgen
+    spawner'in NPC/item ayrimi ve staff restype menuleri buna dayanir.
+    ResolveDefName uzerinden cozulur; bilinmeyen defname 0 (RES_UNKNOWN) doner.
+
 [2026-05-31] - Bolge periyodik trigger'lari @RegPeriodic / @CliPeriodic (Wave 22)
 ----------------------------------------
 

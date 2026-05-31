@@ -4,6 +4,34 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Process-disi bot yuk uretici + soak bulgusu (Wave 48)
+----------------------------------------
+
+TANILAMA:
+  - Server exe'sine --botrunner <host> <port> <count> <behavior> [city] modu
+    eklendi: yalnizca bot engine'i ayrica calisan bir sunucuya karsi calistirir,
+    boylece yuk uretici kendi process'ine (kendi thread pool + GC) sahip olur ve
+    sunucuyla yarismaz — cluster olcumlerini karistiran in-process CPU-contention
+    artefaktini kaldirir.
+  - --trustloopback loopback client'lari icin baglanti rate-limit/accept
+    filtresini atlar (flood filtresi aksi halde 127.0.0.1'den ~1.000 baglanti
+    acan process-disi runner'i reddeder; in-process yol bunu BotEngine bot-mode
+    ile bypass ediyordu, ayri process paylasmaz).
+
+  Soak bulgusu (durust, kismen sonucsuz):
+    - Sunucu kendi process'inde izole iken, 1.000 bagli bot ~1.2 ms ort. tick'te
+      (p95 ~2 ms), 20 Hz, sifir shedding, sifir disconnect, ~490 MB sunucu RSS.
+      Bu, onceki IN-PROCESS cluster "yukunun" (ort. ~37 ms'ye tirmanma, milyonlar
+      shed) buyuk olcude harness CPU/GC contention'i oldugunu kuvvetle dusundurur
+      — botlar ve sunucu tek makinenin cekirdekleri ve tek GC icin yarisiyordu —
+      gercek sunucu broadcast maliyeti degil.
+    - Uyari: bu run'da cluster botlari neredeyse idle'di (runner run boyunca ~2 s
+      CPU kullandi), yani speech-broadcast selini YENIDEN URETMEDILER; dolayisiyla
+      process-disi broadcast yolu henuz kesin soak-test edilmedi. Yuk-uretim
+      davranisinin (filoyu kumede tutup seli gercekten surdurme) bir tur daha
+      duzeltilmesi gerekiyor. Ayni makine ayrica cekirdekleri hala paylasiyor;
+      gercek izolasyon ikinci bir makine gerektirir.
+
 [2026-06-01] - Async-send / interest-management etkilesimini duzelt (Wave 47)
 ----------------------------------------
 

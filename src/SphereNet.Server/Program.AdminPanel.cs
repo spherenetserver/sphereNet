@@ -67,7 +67,8 @@ public static partial class Program
             _connRateLimiter = new ConnectionRateLimiter();
             _network.ConnectionAcceptFilter = ip =>
             {
-                if (SphereNet.Game.Diagnostics.BotEngine.BotModeActive && System.Net.IPAddress.IsLoopback(ip))
+                if ((SphereNet.Game.Diagnostics.BotEngine.BotModeActive || _trustLoopback)
+                    && System.Net.IPAddress.IsLoopback(ip))
                     return false;
                 string ipStr = ip.ToString();
                 if (_ipBlockList.IsBlocked(ipStr))

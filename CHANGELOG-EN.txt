@@ -4,6 +4,35 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Out-of-process bot load runner + soak finding (Wave 48)
+----------------------------------------
+
+DIAGNOSTICS:
+  - The server exe gains a --botrunner <host> <port> <count> <behavior> [city]
+    mode that runs ONLY the bot engine against a separately-running server, so
+    the load generator has its own process (own thread pool + GC) and does not
+    contend with the server — removing the in-process CPU-contention artifact
+    that confounded the cluster measurements.
+  - --trustloopback skips the connection rate-limit/accept filter for loopback
+    clients (the flood filter otherwise rejects an out-of-process runner opening
+    ~1,000 connections from 127.0.0.1; the in-process path bypassed it via
+    BotEngine bot-mode, which a separate process doesn't share).
+
+  Soak finding (honest, partly inconclusive):
+    - With the server isolated in its own process, 1,000 connected bots sit at
+      ~1.2 ms avg tick (p95 ~2 ms), 20 Hz, zero shedding, zero disconnects, ~490
+      MB server RSS. This strongly suggests the earlier IN-PROCESS cluster
+      "load" (avg climbing to ~37 ms, millions shed) was dominated by harness
+      CPU/GC contention — the bots and server fighting for one machine's cores
+      and one GC — not genuine server broadcast cost.
+    - Caveat: in this run the cluster bots were near-idle (runner used ~2 s CPU
+      over the run), i.e. they did NOT reproduce the speech-broadcast flood, so
+      the out-of-process broadcast path is not yet conclusively soak-tested. The
+      load-generation behavior (keep the fleet clustered and actually sustaining
+      the flood) needs another pass before the out-of-process broadcast numbers
+      can be trusted. Same machine also still shares cores; true isolation needs
+      a second machine.
+
 [2026-06-01] - Fix async-send / interest-management interaction (Wave 47)
 ----------------------------------------
 

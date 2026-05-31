@@ -181,10 +181,24 @@ public static partial class Program
     private static bool _headless;
     private static bool _managed;       // running as child of SphereNet.Host
     private static string _pipeName = ""; // IPC pipe name when managed
+    // --trustloopback: skip the connection rate-limit/accept filter for loopback
+    // clients. For local soak testing with an out-of-process bot runner, which
+    // hammers many connections from 127.0.0.1 that the flood filter would reject.
+    private static bool _trustLoopback;
 
     public static void Main(string[] args)
     {
+        // Out-of-process load generator: connect bots to a remote/separate
+        // server instead of booting one, so the bot clients run in their own
+        // process (own thread pool + GC) and don't contend with the server.
+        if (args.Any(a => a.Equals("--botrunner", StringComparison.OrdinalIgnoreCase)))
+        {
+            RunBotRunner(args);
+            return;
+        }
+
         _managed = args.Any(a => a.Equals("--managed", StringComparison.OrdinalIgnoreCase));
+        _trustLoopback = args.Any(a => a.Equals("--trustloopback", StringComparison.OrdinalIgnoreCase));
         _pipeName = args.SkipWhile(a => !a.Equals("--pipe", StringComparison.OrdinalIgnoreCase))
                         .Skip(1).FirstOrDefault() ?? "";
 
@@ -194,6 +208,78 @@ public static partial class Program
                                   a.Equals("--nogui",    StringComparison.OrdinalIgnoreCase));
 
         RunHeadless(args);
+    }
+
+    /// <summary>Standalone bot load generator. Usage:
+    /// <c>--botrunner &lt;host&gt; &lt;port&gt; &lt;count&gt; &lt;behavior&gt; [city]</c>
+    /// (behavior: walk|combat|idle|smart|cluster). Runs the bot engine against a
+    /// separately-running server so the load generator has its own process,
+    /// thread pool and GC — removing the in-process CPU-contention artifact from
+    /// soak measurements.</summary>
+    private static void RunBotRunner(string[] args)
+    {
+        string[] rest = args.SkipWhile(a => !a.Equals("--botrunner", StringComparison.OrdinalIgnoreCase))
+                            .Skip(1).ToArray();
+        string host = rest.Length > 0 ? rest[0] : "127.0.0.1";
+        int port = rest.Length > 1 && int.TryParse(rest[1], out var pp) ? pp : 2593;
+        int count = rest.Length > 2 && int.TryParse(rest[2], out var cc) ? cc : 100;
+        string behaviorStr = rest.Length > 3 ? rest[3] : "smart";
+        string? city = rest.Length > 4 ? rest[4] : null;
+
+        Serilog.Log.Logger = new Serilog.LoggerConfiguration()
+            .MinimumLevel.Information()
+            .WriteTo.Console()
+            .CreateLogger();
+        using var lf = LoggerFactory.Create(b => b.AddSerilog(dispose: true));
+        var log = lf.CreateLogger("BotRunner");
+
+        var behavior = behaviorStr.ToUpperInvariant() switch
+        {
+            "WALK" => SphereNet.Game.Diagnostics.BotBehavior.RandomWalk,
+            "COMBAT" => SphereNet.Game.Diagnostics.BotBehavior.Combat,
+            "IDLE" => SphereNet.Game.Diagnostics.BotBehavior.Idle,
+            "SMART" => SphereNet.Game.Diagnostics.BotBehavior.SmartAI,
+            "CLUSTER" => SphereNet.Game.Diagnostics.BotBehavior.Cluster,
+            _ => SphereNet.Game.Diagnostics.BotBehavior.SmartAI,
+        };
+
+        var engine = new SphereNet.Game.Diagnostics.BotEngine(
+            lf.CreateLogger<SphereNet.Game.Diagnostics.BotEngine>());
+
+        if (!string.IsNullOrEmpty(city))
+        {
+            var spawnCity = city.ToUpperInvariant() switch
+            {
+                "BRITAIN" => SphereNet.Game.Diagnostics.BotSpawnCity.Britain,
+                "TRINSIC" => SphereNet.Game.Diagnostics.BotSpawnCity.Trinsic,
+                "MOONGLOW" => SphereNet.Game.Diagnostics.BotSpawnCity.Moonglow,
+                "YEW" => SphereNet.Game.Diagnostics.BotSpawnCity.Yew,
+                "MINOC" => SphereNet.Game.Diagnostics.BotSpawnCity.Minoc,
+                "VESPER" => SphereNet.Game.Diagnostics.BotSpawnCity.Vesper,
+                "SKARA" => SphereNet.Game.Diagnostics.BotSpawnCity.Skara,
+                "JHELOM" => SphereNet.Game.Diagnostics.BotSpawnCity.Jhelom,
+                _ => SphereNet.Game.Diagnostics.BotSpawnCity.All,
+            };
+            engine.SetSpawnCity(spawnCity);
+        }
+        engine.SetClusterSpawn(behavior == SphereNet.Game.Diagnostics.BotBehavior.Cluster);
+
+        log.LogInformation("[BotRunner] {Count} {Behavior} bots -> {Host}:{Port} (city={City})",
+            count, behavior, host, port, city ?? "All");
+
+        _running = true;
+        Console.CancelKeyPress += (_, e) => { e.Cancel = true; _running = false; };
+
+        try { engine.SpawnBotsAsync(count, behavior, host, port).GetAwaiter().GetResult(); }
+        catch (Exception ex) { log.LogError(ex, "[BotRunner] Spawn failed"); }
+
+        log.LogInformation("[BotRunner] Spawn complete — bots running. Ctrl+C to stop.");
+        while (_running)
+            System.Threading.Thread.Sleep(500);
+
+        engine.Dispose();
+        Serilog.Log.CloseAndFlush();
+        log.LogInformation("[BotRunner] Stopped.");
     }
 
     private static void RunHeadless(string[] args)

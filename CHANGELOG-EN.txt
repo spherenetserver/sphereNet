@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Resolve CHARDEF CAN= flags via script DEFNAME tables (Wave 36)
+----------------------------------------
+
+SCRIPT:
+  - Symbolic CAN= tokens (MT_RUN, MT_WALK, ...) are now resolved against the
+    script's own [DEFNAME can_flags] table at parse time instead of a hardcoded
+    map, so a server that redefines these constants is honored. The built-in
+    MT_* map remains as a fallback for isolated parsing where no resolver is
+    attached. ResourceHolder exposes TryResolveDefNameValue() for numeric
+    defname constants and wires CharDef.DefNameResolver on construction.
+
 [2026-05-31] - Fix symbolic CHARDEF CAN= flag parsing (Wave 35)
 ----------------------------------------
 

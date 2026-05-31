@@ -317,6 +317,13 @@ public sealed class CharDef : BaseDef
     /// (values identical to the can_flags defname). Without this the symbolic
     /// form failed to parse and every such creature lost its CAN flags
     /// (run/fly/swim/passwalls), defaulting to a basic walker.</summary>
+    /// <summary>Optional hook to resolve a script DEFNAME constant (notably the
+    /// can_flags MT_* names) to its numeric value at parse time. Wired to the
+    /// ResourceHolder during startup so symbolic CAN= flags follow the script's
+    /// own definitions; left null in isolated unit tests, where ParseCanFlags
+    /// uses its built-in MT_* fallback map.</summary>
+    public static Func<string, long?>? DefNameResolver { get; set; }
+
     private static CanFlags ParseCanFlags(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return CanFlags.None;
@@ -333,6 +340,14 @@ public sealed class CharDef : BaseDef
             if (uint.TryParse(tok, out uint dec))
             {
                 flags |= dec;
+                continue;
+            }
+            // Prefer the script's own [DEFNAME can_flags] values when wired
+            // (production). The hardcoded map below is the fallback for isolated
+            // parsing (e.g. unit tests) where no resolver is attached.
+            if (DefNameResolver?.Invoke(tok) is long resolved)
+            {
+                flags |= (uint)resolved;
                 continue;
             }
             flags |= tok.ToUpperInvariant() switch

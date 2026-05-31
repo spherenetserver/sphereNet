@@ -31,5 +31,6 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Items.Item.ResolveWorld = null;
         SphereNet.Game.Objects.Characters.Character.ResolveAccountForChar = null;
         SphereNet.Game.Trade.VendorEngine.World = null;
+        SphereNet.Scripting.Definitions.CharDef.DefNameResolver = null;
     }
 }

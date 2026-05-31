@@ -4,6 +4,18 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - CHARDEF CAN= bayraklari script DEFNAME tablosundan cozuluyor (Wave 36)
+----------------------------------------
+
+SCRIPT:
+  - Sembolik CAN= token'lari (MT_RUN, MT_WALK, ...) artik parse aninda
+    hardcoded map yerine script'in kendi [DEFNAME can_flags] tablosundan
+    cozuluyor; boylece bu sabitleri yeniden tanimlayan bir sunucu dikkate
+    alinir. Built-in MT_* map, resolver bagli olmayan izole parse durumlari
+    icin fallback olarak kaliyor. ResourceHolder sayisal defname sabitleri
+    icin TryResolveDefNameValue() sunar ve olusturulurken
+    CharDef.DefNameResolver hook'unu baglar.
+
 [2026-05-31] - Sembolik CHARDEF CAN= bayrak ayristirmasi duzeltmesi (Wave 35)
 ----------------------------------------
 

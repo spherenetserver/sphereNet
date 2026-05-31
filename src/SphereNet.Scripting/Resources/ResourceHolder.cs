@@ -41,6 +41,10 @@ public sealed class ResourceHolder
     public ResourceHolder(ILogger<ResourceHolder> logger)
     {
         _logger = logger;
+        // Let definition parsers resolve symbolic constants (e.g. CHARDEF
+        // CAN=MT_RUN|MT_WALK) against the script's own [DEFNAME] tables instead
+        // of a hardcoded map. Falls back to the built-in map when unresolved.
+        CharDef.DefNameResolver = name => TryResolveDefNameValue(name, out var v) ? v : null;
     }
 
     /// <summary>
@@ -385,6 +389,22 @@ public sealed class ResourceHolder
     public ResourceId ResolveDefName(string name)
     {
         return _defNames.TryGetValue(name, out var rid) ? rid : ResourceId.Invalid;
+    }
+
+    /// <summary>Resolve a numeric DEFNAME constant (e.g. a can_flags MT_* name)
+    /// to its script-defined integer value. Numeric defnames are stored with the
+    /// value in the ResourceId index by <see cref="LoadDefNames"/>, so we read it
+    /// back here. Returns false for unknown names and for string-valued defnames.</summary>
+    public bool TryResolveDefNameValue(string name, out long value)
+    {
+        if (!string.IsNullOrEmpty(name) &&
+            _defNames.TryGetValue(name, out var rid) && rid.Type == ResType.DefName)
+        {
+            value = rid.Index;
+            return true;
+        }
+        value = 0;
+        return false;
     }
 
     public bool RegisterDefName(string name, ResourceId rid)

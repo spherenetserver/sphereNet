@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Allocation-free pathfinder walkability check + benchmark (Wave 40)
+----------------------------------------
+
+PERFORMANCE:
+  - A deterministic allocation micro-benchmark for FindPath (fixed start/goal on
+    open terrain, GC.GetAllocatedBytesForCurrentThread over many iterations)
+    revealed that the dominant pathfinding allocation was NOT the A* scratch
+    collections pooled in Wave 38 but the per-neighbour walkability check:
+    Pathfinder.IsWalkable used the yield-based GetCharsInRange/GetItemsInRange
+    range queries, allocating an iterator chain for every explored neighbour.
+    On a 120-tile path that was ~486 KB/call.
+  - Added GameWorld.IsPathTileBlockedByObject — an allocation-free single-tile
+    blocker check that iterates the owning sector's char/item lists by index,
+    mirroring the exact filtering of the old range queries. IsWalkable now calls
+    it. Measured: ~486 KB/call -> ~1.7 KB/call (the remaining bytes are the
+    returned path List, which is the caller's result). The benchmark is kept as
+    a regression guard (asserts < 8 KB/call).
+
 [2026-05-31] - Pool outgoing packet buffers (Wave 39)
 ----------------------------------------
 

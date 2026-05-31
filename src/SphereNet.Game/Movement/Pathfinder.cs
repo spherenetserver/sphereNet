@@ -127,22 +127,11 @@ public sealed class Pathfinder
 
     private bool IsWalkable(Point3D pos, CanFlags canFlags = CanFlags.None, Objects.Characters.Character? self = null)
     {
-        foreach (var ch in _world.GetCharsInRange(pos, 0))
-        {
-            if (ch == self || ch.IsDead || ch.IsStatFlag(StatFlag.Invisible) || ch.IsStatFlag(StatFlag.Hidden))
-                continue;
+        // Single-tile char/item blocker check, done allocation-free in GameWorld
+        // (A* calls this per explored neighbour; the old range-query iterators
+        // were the dominant pathfinding allocation).
+        if (_world.IsPathTileBlockedByObject(pos, canFlags, self))
             return false;
-        }
-
-        foreach (var item in _world.GetItemsInRange(pos, 0))
-        {
-            if (item.IsStaticBlock) return false;
-            if (item.TryGetTag("FIELD_DAMAGE", out _))
-            {
-                if ((canFlags & CanFlags.C_FireImmune) == 0)
-                    return false;
-            }
-        }
 
         var mapData = _world.MapData;
         if (mapData != null)

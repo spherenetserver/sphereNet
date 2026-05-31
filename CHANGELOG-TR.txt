@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Tahsissiz pathfinder yurunebilirlik kontrolu + benchmark (Wave 40)
+----------------------------------------
+
+PERFORMANS:
+  - FindPath icin deterministik bir tahsis mikro-benchmark'i (acik arazide sabit
+    baslangic/hedef, cok iterasyon boyunca GC.GetAllocatedBytesForCurrentThread)
+    pathfinding'in baskin tahsisinin Wave 38'de havuzlanan A* scratch
+    koleksiyonlari DEGIL, per-komsu yurunebilirlik kontrolu oldugunu ortaya
+    cikardi: Pathfinder.IsWalkable yield-tabanli GetCharsInRange/GetItemsInRange
+    sorgulariyla her kesfedilen komsu icin bir iterator zinciri tahsis ediyordu.
+    120 karelik bir yolda bu ~486 KB/cagri idi.
+  - GameWorld.IsPathTileBlockedByObject eklendi — sahip sektorun char/item
+    listelerini index'le tarayan, eski sorgularin filtresini birebir koruyan
+    tahsissiz tek-tile blok kontrolu. IsWalkable artik bunu cagiriyor. Olculen:
+    ~486 KB/cagri -> ~1.7 KB/cagri (kalan byte'lar donen path List'i, yani
+    cagiranin sonucu). Benchmark regresyon korumasi olarak tutuluyor
+    (< 8 KB/cagri assert eder).
+
 [2026-05-31] - Giden paket buffer'larini havuzla (Wave 39)
 ----------------------------------------
 

@@ -706,6 +706,49 @@ public sealed class GameWorld
         }
     }
 
+    /// <summary>Allocation-free single-tile walkability blocker check for the
+    /// pathfinder. Returns true if a living, visible, non-self character or a
+    /// static-blocking / forbidden-field item occupies <paramref name="pos"/>.
+    /// Mirrors the char/item half of <c>Pathfinder.IsWalkable</c> exactly, but
+    /// iterates the owning sector's lists directly instead of going through the
+    /// yield-based range queries — A* calls this for every explored neighbour,
+    /// and those iterator chains were by far the dominant pathfinding
+    /// allocation under load. Reads sector lists by index, matching the
+    /// parallel-compute-phase safety contract of <c>Sector.GetObjectsInRange</c>.</summary>
+    public bool IsPathTileBlockedByObject(Point3D pos, CanFlags canFlags, Character? self)
+    {
+        var (minSx, maxSx, minSy, maxSy) = GetSectorRange(pos, 0);
+        for (int sx = minSx; sx <= maxSx; sx++)
+        for (int sy = minSy; sy <= maxSy; sy++)
+        {
+            var sector = GetSector(pos.Map, sx, sy);
+            if (sector == null) continue;
+
+            var chars = sector.Characters;
+            for (int i = chars.Count - 1; i >= 0; i--)
+            {
+                if (i >= chars.Count) continue;
+                var ch = chars[i];
+                if (ch.IsDeleted || pos.GetDistanceTo(ch.Position) > 0) continue;
+                if (ch == self || ch.IsDead || ch.IsStatFlag(StatFlag.Invisible) || ch.IsStatFlag(StatFlag.Hidden))
+                    continue;
+                return true;
+            }
+
+            var items = sector.Items;
+            for (int i = items.Count - 1; i >= 0; i--)
+            {
+                if (i >= items.Count) continue;
+                var item = items[i];
+                if (item.IsDeleted || !item.IsOnGround || pos.GetDistanceTo(item.Position) > 0) continue;
+                if (item.IsStaticBlock) return true;
+                if ((canFlags & CanFlags.C_FireImmune) == 0 && item.TryGetTag("FIELD_DAMAGE", out _))
+                    return true;
+            }
+        }
+        return false;
+    }
+
     // --- World Tick ---
 
     /// <summary>Game-minute length in real milliseconds. Default = 20 real seconds per game minute.</summary>

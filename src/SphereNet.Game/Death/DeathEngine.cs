@@ -246,6 +246,12 @@ public sealed class DeathEngine
     {
         DropLootToCorpse(victim, corpse);
 
+        // Roll the NPC's deferred plain loot (chardef ITEM= entries that
+        // were intentionally not materialised at spawn) straight into the
+        // corpse — Source-X CTRIG_CreateLoot parity, and the reason living
+        // NPCs carry no transient loot in the world save.
+        victim.MaterializeDeathLoot(corpse);
+
         // Generate loot based on NPC brain type / stats tier
         int tier = Math.Max(1, (victim.Str + victim.Dex + victim.Int) / 60);
 

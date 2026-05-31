@@ -4759,6 +4759,77 @@ public partial class Character : ObjBase
         _lastCreatedItem = item;
     }
 
+    /// <summary>
+    /// Materialise this NPC's deferred loot into a corpse at death.
+    /// Plain (non-wearable) chardef <c>ITEM=</c> entries that are not
+    /// flagged <c>ITEMNEWBIE</c> are NOT spawned onto the living NPC —
+    /// they are rolled here when the corpse is created. This mirrors
+    /// Source-X (CTRIG_CreateLoot fires just before MakeCorpse) and keeps
+    /// living NPCs from carrying transient loot items that would otherwise
+    /// be written into every world save. Wearable gear (weapons/armour) is
+    /// still equipped at spawn and dropped by the normal unequip path.
+    /// </summary>
+    public void MaterializeDeathLoot(Item corpse)
+    {
+        if (corpse == null) return;
+        var world = ResolveWorld?.Invoke();
+        if (world == null) return;
+        var charDef = Definitions.DefinitionLoader.GetCharDef(
+            _charDefIndex != 0 ? _charDefIndex : CharDefIndex);
+        if (charDef == null) return;
+        var resources = Definitions.DefinitionLoader.StaticResources;
+        if (resources == null) return;
+
+        ushort lastHue = 0;
+        foreach (var entry in charDef.NewbieItems)
+        {
+            if (entry.Newbie) continue;              // ITEMNEWBIE = NPC's own gear, never loot
+            if (string.IsNullOrWhiteSpace(entry.DefName)) continue;
+
+            string picked = Definitions.TemplateEngine.PickRandomItemDefName(entry.DefName);
+            if (string.IsNullOrWhiteSpace(picked)) continue;
+            var rid = resources.ResolveDefName(picked);
+            if (!rid.IsValid || rid.Type != Core.Enums.ResType.ItemDef) continue;
+
+            var idef = Definitions.DefinitionLoader.GetItemDef(rid.Index);
+            ushort dispId = 0;
+            if (idef != null)
+            {
+                if (idef.DispIndex != 0) dispId = idef.DispIndex;
+                else if (idef.DupItemId != 0) dispId = idef.DupItemId;
+            }
+            if (dispId == 0 && rid.Index <= 0xFFFF) dispId = (ushort)rid.Index;
+            if (dispId == 0) continue;
+
+            // Wearable gear is equipped at spawn (combat / appearance) and
+            // reaches the corpse via the unequip path — only non-wearable
+            // loot is deferred to here.
+            var layer = idef?.Layer ?? Core.Enums.Layer.None;
+            if (layer == Core.Enums.Layer.None)
+                layer = ResolveTileDataLayer(world, dispId);
+            if (layer != Core.Enums.Layer.None) continue;
+
+            var item = world.CreateItem();
+            item.BaseId = dispId;
+            if (idef != null && !string.IsNullOrWhiteSpace(idef.Name))
+                item.Name = idef.Name;
+
+            int amount = entry.Amount;
+            if (amount <= 0 && !string.IsNullOrWhiteSpace(entry.Dice))
+                amount = RollDice(entry.Dice!);
+            if (amount > 1)
+                item.Amount = (ushort)Math.Min(amount, ushort.MaxValue);
+
+            if (!string.IsNullOrWhiteSpace(entry.Color))
+            {
+                ushort hue = ResolveColorArg(entry.Color!, lastHue);
+                if (hue != 0) { item.Hue = new Core.Types.Color(hue); lastHue = hue; }
+            }
+
+            corpse.AddItem(item);
+        }
+    }
+
     /// <summary>Resolve an equip layer from <c>tiledata.mul</c>. Source-X
     /// scripts rarely set LAYER= on ITEMDEFs (e.g. i_shirt_plain has it
     /// commented out) and rely on the client data: when the item tile's
@@ -4840,6 +4911,19 @@ public partial class Character : ObjBase
     /// backpack so the existing buy gump can read them; BUY= lists also
     /// save the template name to TAG.VENDOR_BUY_LIST so a future sell
     /// gump can filter what the vendor is willing to purchase.</summary>
+    /// <summary>
+    /// Rebuild the virtual vendor stock from the persisted SELL template
+    /// tag. The stock container and its items are intentionally excluded
+    /// from the world save (rebuilt on demand), so a vendor loaded from a
+    /// prior save has no stock until this runs on first open.
+    /// </summary>
+    public void RebuildVendorStock()
+    {
+        if (TryGetTag("VENDOR_SELL_LIST", out string? defName) &&
+            !string.IsNullOrWhiteSpace(defName))
+            PopulateVendorStock(defName!, buySide: false);
+    }
+
     private void PopulateVendorStock(string templateDefName, bool buySide)
     {
         if (string.IsNullOrWhiteSpace(templateDefName))
@@ -4864,6 +4948,15 @@ public partial class Character : ObjBase
         // CChar::NPC_Vendor_Restock which uses LAYER_VENDOR_STOCK.
         var world = ResolveWorld?.Invoke();
         if (world == null) return;
+
+        // Persist the SELL template defname (not the items). The stock
+        // container and its items are VIRTUAL: never written to the world
+        // save, rebuilt on demand from this tag when a player opens the
+        // vendor after a load / restart. This is what keeps a populated
+        // vendor from leaving ~20 transient stock items per NPC in every
+        // save file.
+        SetTag("VENDOR_SELL_LIST", templateDefName);
+
         var pack = GetEquippedItem(Layer.VendorStock);
         if (pack == null)
         {
@@ -4903,6 +4996,21 @@ public partial class Character : ObjBase
             // every read (CItem::GetName parity, CItem.cpp:1769).
             if (idef != null && !string.IsNullOrWhiteSpace(idef.Name))
                 item.Name = idef.Name;
+            // Stamp the buy price from the itemdef VALUE (Source-X uses
+            // VALUE for vendor pricing). Without this the server-side
+            // price check fell back to 0 and rejected the purchase even
+            // though the client displayed a fallback price.
+            if (idef != null)
+            {
+                int value = idef.ValueMin > 0 && idef.ValueMax > 0
+                    ? (idef.ValueMin + idef.ValueMax) / 2
+                    : Math.Max(idef.ValueMin, idef.ValueMax);
+                if (value > 0)
+                {
+                    item.Price = value;
+                    item.SetTag("PRICE", value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                }
+            }
             if (entryAmount > 1)
                 item.Amount = (ushort)Math.Min(entryAmount, ushort.MaxValue);
             pack.AddItem(item);

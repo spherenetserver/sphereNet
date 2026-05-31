@@ -412,17 +412,21 @@ public class HousingEconomyTests
 
             var vendor = world.CreateCharacter();
             vendor.NpcBrain = NpcBrainType.Vendor;
+            // Stock lives in the dedicated stock container (LAYER 26) and is
+            // referenced by serial — the buy path validates containment.
             var vendorPack = world.CreateItem();
             vendorPack.ItemType = ItemType.Container;
-            vendor.Backpack = vendorPack;
+            vendor.Equip(vendorPack, Layer.VendorStock);
             var stockItem = world.CreateItem();
             stockItem.BaseId = 0x0F7A;
+            stockItem.Amount = 5;
             stockItem.SetTag("PRICE", "50");
             vendorPack.AddItem(stockItem);
             var entries = new[]
             {
                 new TradeEntry
                 {
+                    ItemUid = stockItem.Uid,
                     ItemId = 0x0F7A,
                     Name = "black pearl",
                     Price = 50,

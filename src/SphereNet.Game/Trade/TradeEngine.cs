@@ -111,21 +111,44 @@ public static class VendorEngine
     {
         if (vendor.NpcBrain != Core.Enums.NpcBrainType.Vendor)
             return -1;
+        if (World == null)
+            return -1;
 
-        // Validate and calculate cost using server-side prices
+        // Resolve every buy entry against an ACTUAL item inside this
+        // vendor's stock container (LAYER 26 / 27). The client sends back
+        // the stock item's serial; validating containment here prevents a
+        // crafted packet from "buying" an arbitrary world item by serial,
+        // and lets us decrement the virtual stock from the real entry.
+        var stockA = vendor.GetEquippedItem(Core.Enums.Layer.VendorStock);
+        var stockB = vendor.GetEquippedItem(Core.Enums.Layer.VendorExtra);
+        uint stockUidA = stockA?.Uid.Value ?? 0;
+        uint stockUidB = stockB?.Uid.Value ?? 0;
+
         long totalCost = 0;
+        var resolved = new List<(Item Stock, int Amount, int Price)>(items.Count);
         foreach (var entry in items)
         {
             if (entry.Amount <= 0 || entry.Amount > 999) return -1;
-            int serverPrice = GetServerBuyPrice(vendor, entry.ItemId);
+
+            var stockItem = World.FindItem(entry.ItemUid);
+            if (stockItem == null || stockItem.IsDeleted)
+                return -1;
+            uint cont = stockItem.ContainedIn.Value;
+            if (cont == 0 || (cont != stockUidA && cont != stockUidB))
+                return -1; // not part of this vendor's stock
+            if (stockItem.Amount < entry.Amount)
+                return -1; // not enough in stock
+
+            int serverPrice = GetServerBuyPrice(vendor, stockItem.BaseId);
             if (serverPrice <= 0) return -1;
             totalCost += (long)serverPrice * entry.Amount;
+            resolved.Add((stockItem, (int)entry.Amount, serverPrice));
         }
         if (totalCost > int.MaxValue)
             return -1;
 
         var backpack = player.Backpack;
-        if (backpack == null && World == null)
+        if (backpack == null)
             return -1;
 
         bool isStaff = player.PrivLevel >= Core.Enums.PrivLevel.GM;
@@ -144,16 +167,23 @@ public static class VendorEngine
             totalCost = 0;
         }
 
-        if (World != null && backpack != null)
+        foreach (var (stock, amount, _) in resolved)
         {
-            foreach (var entry in items)
-            {
-                var newItem = World.CreateItem();
-                newItem.BaseId = entry.ItemId;
-                newItem.Name = entry.Name;
-                newItem.Amount = (ushort)Math.Max(1, Math.Min(entry.Amount, ushort.MaxValue));
-                backpack.AddItemWithStack(newItem);
-            }
+            // Materialise the purchased item only now, on buy.
+            var newItem = World.CreateItem();
+            newItem.BaseId = stock.BaseId;
+            newItem.Name = stock.Name;
+            newItem.Hue = stock.Hue;
+            newItem.Amount = (ushort)Math.Max(1, Math.Min(amount, ushort.MaxValue));
+            backpack.AddItemWithStack(newItem);
+
+            // Decrement the virtual stock; a depleted entry is removed.
+            // When the whole container empties it is rebuilt from the
+            // SELL template the next time the vendor is opened.
+            if (stock.Amount <= amount)
+                stock.Delete();
+            else
+                stock.Amount -= (ushort)amount;
         }
 
         return (int)totalCost;
@@ -247,7 +277,9 @@ public static class VendorEngine
                     return Math.Max(1, p);
             }
         }
-        return 0;
+        // No PRICE tag — mirror the display fallback (GetVendorItemPrice)
+        // so a server check never rejects an item the client priced.
+        return Math.Max(1, itemId / 10 + 5);
     }
 
     /// <summary>Get the server-side sell price (what vendor pays). Usually half of buy price.</summary>

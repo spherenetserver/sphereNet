@@ -4,6 +4,36 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-29] - Vendor virtual stock and lazy NPC loot materialisation (Wave 19)
+----------------------------------------
+
+VENDOR STOCK (VIRTUAL):
+  - The vendor stock container (LAYER 26/27) and its items are no longer
+    written to the world save; they are rebuilt from the SELL template
+    (VENDOR_SELL_LIST tag) when a player opens the vendor. This removes
+    thousands of transient stock records from saves with many vendors.
+  - Buying decrements the stock amount; a depleted entry is removed, and the
+    container is repopulated from the template on the next open once empty.
+  - Buy now validates the stock serial against the vendor's own stock
+    container, preventing a crafted packet from "buying" an arbitrary world
+    item by serial.
+  - Stock price is stamped from the itemdef VALUE; an item with no PRICE tag
+    now uses the same fallback price as the display instead of 0 (the server
+    side previously rejected such items and broke the purchase).
+
+NPC LOOT (LAZY):
+  - NPC plain loot (non-wearable, non-ITEMNEWBIE chardef ITEM= entries) is no
+    longer materialised onto the living NPC at spawn; it is rolled straight
+    into the corpse at death (Source-X CTRIG_CreateLoot parity). Living NPCs
+    carry no transient loot items in the world save.
+  - Wearable gear (weapons/armour) is still equipped at spawn (combat /
+    appearance) and reaches the corpse via the normal unequip path.
+
+TESTS:
+  - Regression tests for vendor virtual stock: decrement, depletion removal,
+    non-stock serial rejection, over-stock amount rejection, price fallback
+    (522 passing).
+
 [2026-05-29] - NPC AI: Source-X parity fixes and smarter behaviors (Wave 18)
 ----------------------------------------
 

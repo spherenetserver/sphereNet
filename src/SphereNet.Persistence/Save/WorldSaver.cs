@@ -96,12 +96,30 @@ public sealed class WorldSaver
         var chars = new List<SaveRecord>();
         long now = Environment.TickCount64;
 
+        // Vendor stock is virtual: the container equipped at LAYER 26/27
+        // and every item inside it are rebuilt on demand from the SELL
+        // template when a player opens the vendor (PopulateVendorStock).
+        // Persisting them bloats every save with transient stock items
+        // (~20 per vendor), so collect those container UIDs and skip both
+        // the containers and their contents below.
+        var vendorStock = new HashSet<uint>();
+        foreach (var obj in allObjects)
+        {
+            if (obj is Item it && !it.IsDeleted &&
+                (it.EquipLayer == Core.Enums.Layer.VendorStock ||
+                 it.EquipLayer == Core.Enums.Layer.VendorExtra))
+                vendorStock.Add(it.Uid.Value);
+        }
+
         foreach (var obj in allObjects)
         {
             if (obj is Item item)
             {
                 if (item.IsDeleted || item.IsAttr(Core.Enums.ObjAttributes.Static))
                     continue;
+                if (vendorStock.Contains(item.Uid.Value) ||
+                    (item.ContainedIn.IsValid && vendorStock.Contains(item.ContainedIn.Value)))
+                    continue; // virtual vendor stock — never persisted
                 items.Add(CaptureItem(item, now));
             }
             else if (obj is Character ch)
@@ -571,6 +589,13 @@ public sealed class WorldSaver
 
         for (int layer = 0; layer <= (int)SphereNet.Core.Enums.Layer.Horse; layer++)
         {
+            // Skip the virtual vendor stock containers (LAYER 26/27); they
+            // and their contents are excluded from CaptureSnapshot and are
+            // rebuilt on demand, so persisting the EQUIP reference would
+            // dangle to a non-existent item on load.
+            if (layer == (int)SphereNet.Core.Enums.Layer.VendorStock ||
+                layer == (int)SphereNet.Core.Enums.Layer.VendorExtra)
+                continue;
             var equip = ch.GetEquippedItem((SphereNet.Core.Enums.Layer)layer);
             if (equip != null)
                 w.WriteProperty($"EQUIP[{layer}]", $"0{equip.Uid.Value:X8}");

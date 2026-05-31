@@ -1757,6 +1757,11 @@ public sealed partial class GameClient
         if (stockContainer == null ||
             !_world.GetContainerContents(stockContainer.Uid).Any())
         {
+            // Rebuild the virtual stock from the persisted SELL template
+            // (the stock items themselves are not saved). Covers vendors
+            // loaded from a prior world save and those drained to empty.
+            vendor.RebuildVendorStock();
+
             _triggerDispatcher?.FireCharTrigger(vendor,
                 SphereNet.Core.Enums.CharTrigger.NPCRestock,
                 new SphereNet.Game.Scripting.TriggerArgs { CharSrc = _character });

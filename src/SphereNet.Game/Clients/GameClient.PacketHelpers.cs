@@ -1286,7 +1286,7 @@ public sealed partial class GameClient
             else if (charDef.DamFire != 0 || charDef.DamCold != 0 || charDef.DamPoison != 0 || charDef.DamEnergy != 0)
                 npc.DamPhysical = (short)(100 - charDef.DamFire - charDef.DamCold - charDef.DamPoison - charDef.DamEnergy);
 
-            EquipNewbieItems(npc, charDef.NewbieItems);
+            EquipNewbieItems(npc, charDef.NewbieItems, npcDeferLoot: true);
         }
         else
         {
@@ -1362,7 +1362,8 @@ public sealed partial class GameClient
         return ushort.TryParse(v, out hue);
     }
 
-    private void EquipNewbieItems(Character ch, IReadOnlyList<NewbieItemEntry> newbieItems)
+    private void EquipNewbieItems(Character ch, IReadOnlyList<NewbieItemEntry> newbieItems,
+        bool npcDeferLoot = false)
     {
         if (newbieItems.Count == 0 || _commands?.Resources == null)
             return;
@@ -1434,6 +1435,17 @@ public sealed partial class GameClient
             }
             if (layer == Layer.None)
             {
+                // NPC plain loot (non-wearable, not ITEMNEWBIE) is NOT
+                // carried while alive — it is rolled into the corpse at
+                // death (Character.MaterializeDeathLoot), so it never
+                // becomes a transient item in the world save. The freshly
+                // minted candidate is discarded here.
+                if (npcDeferLoot && !entry.Newbie)
+                {
+                    item.Delete();
+                    continue;
+                }
+
                 var pack = ch.Backpack;
                 if (pack == null)
                 {

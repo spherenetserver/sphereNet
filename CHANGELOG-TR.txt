@@ -4,6 +4,34 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-29] - Vendor sanal stok ve NPC loot tembel materyalizasyonu (Wave 19)
+----------------------------------------
+
+VENDOR STOK (SANAL):
+  - Vendor stok container'i (LAYER 26/27) ve icindeki itemlar artik dunya
+    save'ine yazilmiyor; oyuncu vendor'i actiginda SELL template'inden
+    yeniden kuruluyor (VENDOR_SELL_LIST tag). Cok sayida vendor'da binlerce
+    gecici stok kaydi save'den dusuruldu.
+  - Satin alma stok miktarini dusuruyor; tukenen giris siliniyor, container
+    tamamen bosaldiginda bir sonraki acilista template'ten yeniden dolduruluyor.
+  - Buy artik stok serial'ini vendor'in kendi stok container'inda dogruluyor;
+    sahte paketle keyfi bir dunya itemini "satin alma" engellendi.
+  - Stok fiyati itemdef VALUE'dan damgalaniyor; PRICE tag'i olmayan item artik
+    0 yerine display ile ayni fallback fiyata sahip (server tarafi buy onceden
+    bu itemleri reddedip alisverisi bozuyordu).
+
+NPC LOOT (TEMBEL):
+  - NPC duz loot'u (giyilemez, ITEMNEWBIE olmayan chardef ITEM= girisleri)
+    artik spawn'da NPC'ye olusturulmuyor; olumde dogrudan cesede yuvarlaniyor
+    (Source-X CTRIG_CreateLoot esligi). Yasayan NPC'ler save'de gecici loot
+    itemi tasimiyor.
+  - Giyilebilir techizat (silah/zirh) spawn'da kusanmaya devam ediyor
+    (savas/gorunum) ve normal unequip yoluyla cesede dusuyor.
+
+TESTLER:
+  - Vendor sanal stok icin regresyon testleri: decrement, tukenme silme,
+    stok-disi serial reddi, stok-ustu miktar reddi, fiyat fallback (522 gecer).
+
 [2026-05-29] - NPC AI: Source-X parity duzeltmeleri ve daha akilli davranislar (Wave 18)
 ----------------------------------------
 

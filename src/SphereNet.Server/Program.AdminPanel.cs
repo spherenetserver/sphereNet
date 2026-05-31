@@ -113,6 +113,7 @@ public static partial class Program
             _consoleProcessor.OnAccountPrivLevelChanged += SyncOnlineAccountPrivLevel;
             _consoleProcessor.OnDebugToggleRequested += ToggleDebugPackets;
             _consoleProcessor.OnScriptDebugToggleRequested += ToggleScriptDebug;
+            _consoleProcessor.OnBotRequested += (count, behavior) => HandleBotCommand(count, behavior, false);
 
             // Audit logging for admin commands
             _telnet.Processor.OnCommandExecuted += (source, cmd) =>

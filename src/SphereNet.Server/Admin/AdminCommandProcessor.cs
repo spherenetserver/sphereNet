@@ -33,6 +33,9 @@ public sealed class AdminCommandProcessor
     public event Action<Action<string>>? OnDebugToggleRequested;
     public event Action<Action<string>>? OnScriptDebugToggleRequested;
     public event Action<string, string>? OnCommandExecuted;
+    // Headless bot spawning (CI / smoke / load test): mirrors the in-game
+    // .BOT GM speech command so bots can be driven without a logged-in GM.
+    public event Action<int, string>? OnBotRequested;
 
     public AdminCommandProcessor(GameWorld world, AccountManager accounts,
         SphereConfig config, Func<int> getActiveConnections, ILoggerFactory loggerFactory,
@@ -172,6 +175,20 @@ public sealed class AdminCommandProcessor
                 output("Restock requested...");
                 OnRestockRequested?.Invoke();
                 break;
+
+            case "BOT":
+            {
+                var botToks = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (botToks.Length == 0 || !int.TryParse(botToks[0], out int botCount) || botCount <= 0)
+                {
+                    output("Usage: BOT <count> [walk|combat|idle|smart]");
+                    break;
+                }
+                string botBehavior = botToks.Length > 1 ? botToks[1] : "smart";
+                output($"Spawning {botCount} bot(s) with {botBehavior} behavior (watch server log)...");
+                OnBotRequested?.Invoke(botCount, botBehavior);
+                break;
+            }
 
             case "GARBAGE":
                 output("Forcing garbage collection...");

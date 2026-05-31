@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Headless 'bot' console command (Wave 28)
+----------------------------------------
+
+ADMIN / DIAGNOSTICS:
+  - Added a `bot <count> [walk|combat|idle|smart]` console command so the bot
+    stress/smoke framework can be driven from a headless server (stdin / CI),
+    not only via the in-game .BOT GM speech command. Routes to the same spawn
+    path. Verified end-to-end: bots auto-create accounts, create characters,
+    enter the world, and walk — with the movement validator correctly rejecting
+    water/impassable steps and fast-walk against the real map data.
+
 [2026-05-31] - .NET 10 migration, ServerGC, deterministic test suite (Wave 27)
 ----------------------------------------
 

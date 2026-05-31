@@ -4,6 +4,17 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Headless 'bot' konsol komutu (Wave 28)
+----------------------------------------
+
+ADMIN / DIAGNOSTIK:
+  - `bot <count> [walk|combat|idle|smart]` konsol komutu eklendi; bot
+    stress/smoke cercevesi artik sadece oyun-ici .BOT GM komutuyla degil,
+    headless sunucudan (stdin / CI) da surulebiliyor. Ayni spawn yoluna baglanir.
+    Uctan uca dogrulandi: botlar hesap auto-create eder, karakter olusturur,
+    dunyaya girer ve yurur; hareket dogrulayici gercek harita verisine karsi
+    su/gecilemez ve hizli-yurume adimlarini dogru sekilde reddeder.
+
 [2026-05-31] - .NET 10 gecisi, ServerGC, deterministik test paketi (Wave 27)
 ----------------------------------------
 

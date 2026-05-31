@@ -4,6 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Shared broadcast packets — raise the dense-crowd wall (Wave 42)
+----------------------------------------
+
+PERFORMANCE / NETWORK:
+  - A broadcast event has identical bytes for every recipient, yet the old path
+    rebuilt and re-Huffman-compressed the packet once per recipient. Broadcasts
+    now build the packet ONCE, mark it shared, and enqueue the same buffer onto
+    each recipient's queue. The first flush Huffman-compresses it and caches the
+    (pre-encryption) bytes; the rest reuse the cache. For no-crypt game streams
+    (the common case) the cached bytes are the final wire bytes and are appended
+    directly — zero per-recipient compress/build. Crypted connections copy the
+    cache into a per-connection scratch and encrypt that, so the shared cache is
+    never mutated. PacketBuffer gained a refcount (returned to the pool only when
+    the last recipient has flushed; unicast stays refcount 1, unchanged).
+    BroadcastMoveNearby (per-recipient appearance side effects) is left on the
+    old path for now.
+
+  Validated:
+    - 529 tests pass.
+    - Correctness (300 combat + 2,000 hostile, no-crypt bots): 300/300 stay
+      connected, zero malformed/underrun/parse anomalies, tick unchanged.
+    - Dense-crowd wall (1,000 bots clustered in one town, all speaking): vs the
+      Wave 41 baseline of ~919 send-queue overflows and a 1,000 -> ~31 cull, the
+      server now logs ZERO overflows and holds all 1,000 at 20 Hz (~10 ms avg,
+      Gen2 ~0). Residual client attrition under the extreme flood is downstream
+      (the in-process bots can't drain ~1,000 inbound speech packets/s each;
+      TCP backpressure), not the server send path. README updated.
+
 [2026-05-31] - Cluster bot + measured the dense-crowd broadcast wall (Wave 41)
 ----------------------------------------
 

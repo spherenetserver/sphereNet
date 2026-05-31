@@ -309,6 +309,8 @@ public static partial class Program
         return client;
     }
 
+    [ThreadStatic] private static List<GameClient>? _broadcastRecipients;
+
     private static void BroadcastNearby(Point3D center, int range, PacketWriter packet, uint excludeUid)
     {
         int secRadius = (range / SphereNet.Game.World.Sectors.Sector.SectorSize) + 1;
@@ -319,7 +321,15 @@ public static partial class Program
         {
             var built = packet.Build();
             _recordingEngine.CaptureFromBroadcast(center, range, built.Span.ToArray());
+            built.ReturnToPool();
         }
+
+        // Collect the in-range recipients first, then build the packet ONCE and
+        // share it across them: the bytes are identical for every recipient of a
+        // given event, so re-building (and re-compressing) per recipient is pure
+        // waste. See PacketBuffer.MarkShared / NetState.EnqueueShared.
+        var recipients = _broadcastRecipients ??= new List<GameClient>(256);
+        recipients.Clear();
 
         for (int sx = cx - secRadius; sx <= cx + secRadius; sx++)
         for (int sy = cy - secRadius; sy <= cy + secRadius; sy++)
@@ -331,9 +341,17 @@ public static partial class Program
                 if (ch.Uid.Value == excludeUid) continue;
                 if (center.GetDistanceTo(ch.Position) > range) continue;
                 if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying)
-                    c.Send(packet);
+                    recipients.Add(c);
             }
         }
+
+        if (recipients.Count == 0) return;
+
+        var shared = packet.Build();
+        shared.MarkShared(recipients.Count);
+        foreach (var c in recipients)
+            c.NetState.EnqueueShared(shared);
+        recipients.Clear();
     }
 
     /// <summary>

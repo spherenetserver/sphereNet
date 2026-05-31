@@ -185,17 +185,17 @@ Bin yayılmış oyuncu neredeyse bedava (Gen0 ~1/pencere, bloklayan Gen2 yok). B
 
 ### Yoğun tek-ekran kalabalığı — broadcast duvarı
 
-Asıl ölçekleme sınırı **tek ekrana** sıkışmış ve hepsi broadcast yapan bir kalabalıktır. 1.000 botu tek şehir merkezine yığıp (cluster spawn) konuşturmak — konuşma görüş alanındaki her bota yayılır, yani giden paketler ~N² ölçeklenir — per-client send queue'larını doldurur:
+**Tek ekrana** sıkışmış ve hepsi broadcast yapan bir kalabalık en kötü durumdur: konuşma görüş alanındaki her bota yayılır, giden paketler ~N² ölçeklenir. 1.000 bot tek şehir merkezinde (cluster spawn), hepsi konuşurken:
 
-| Metrik | Sonuç |
-|---|---|
-| Send-queue overflow | ~919 |
-| Yük-atma sonrası filo | 1.000 → ~31 hayatta kalan |
-| Cull sonrası | 20 Hz, ~0.4 ms ort. (toparlandı) |
-| Tepe RSS | ~1.8 GB, sonra düştü |
-| Çökme / bozulma | yok — zarif yük atma |
+| Metrik | Per-recipient build (eski) | Shared broadcast (mevcut) |
+|---|---|---|
+| Send-queue overflow | ~919 | **0** |
+| Sel altında filo | 1.000 → ~31 | **1.000, 20 Hz'de tutuldu** |
+| Ort. tick (oturmuş) | çöküş | **~10 ms** |
+| Bloklayan Gen2 | var | **~0** |
+| Çökme / wire bozulması | yok | yok |
 
-Broadcast oranı serial send yolunun boşaltabileceğini aşınca, sunucu çökmek veya teli bozmak yerine send-queue-overflow disconnect'leriyle yük atar — sınırlı bellek, sonra toparlanma. Bu, tek broadcast eden ekran için pratik tavan ve bilinen ölçekleme duvarıdır. Hareket bu duvara aynı şekilde çarpmaz: yoğun kalabalık hareket edemez (mobile'lar birbirini bloklar, adımların çoğu reddedilir, hareket-broadcast fırtınası kendini sınırlar). Bu tavanı yükseltecek değişiklik: her alıcıya ayrı paket üretmek yerine (mevcut davranış) tüm alıcılara **tek paylaşılan** serileştirilmiş paket yayınlamaktır — doğal bir sonraki optimizasyon.
+Başlangıçta bu per-client send queue'larını dolduruyordu — broadcast paketi alıcı başına yeniden build + yeniden Huffman-compress ediliyordu, özdeş byte'lar N kez yeniden hesaplanıyordu — ve sunucu overflow disconnect'leriyle yük atıyordu (1.000 → ~31). **Tek paylaşılan** paket yayınlamak (bir kez build + compress, tüm alıcılarda tekrar kullan; bkz. Wave 42) bu darboğazı kaldırdı: aynı senaryo artık **sıfır** send-queue overflow logluyor ve 1.000 broadcast eden client'ı 20 Hz'de tutuyor. Daha da aşırı bir sel altında kalan sınır sunucunun *downstream*'ine kayar — saniyede ~1.000 konuşma paketi alan bir client bunları boşaltamaz (TCP backpressure); bu "1.000 kişi tek ekranda konuşuyor" durumunun doğasıdır, sunucu darboğazı değil. Hareket bu duvara aynı şekilde çarpmaz: yoğun kalabalık hareket edemez (mobile'lar birbirini bloklar, adımlar reddedilir, hareket-broadcast fırtınası kendini sınırlar).
 
 **Kayıt:** 102.780 item + 50.363 karakter → **0.6 sn** (BinaryGz, 3 shard).
 **Bellek:** Yukarıdaki tüm senaryolarda ~550–650 MB çalışma kümesi.

@@ -4,6 +4,33 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Paylasilan broadcast paketleri — yogun-kalabalik duvarini yukselt (Wave 42)
+----------------------------------------
+
+PERFORMANS / AG:
+  - Bir broadcast olayinin byte'lari her alici icin ozdes, ama eski yol paketi
+    alici basina yeniden build + yeniden Huffman-compress ediyordu. Broadcast'ler
+    artik paketi BIR KEZ build eder, shared isaretler ve ayni buffer'i her
+    alicinin kuyruguna ekler. Ilk flush Huffman ile sikistirip (sifrelemeden
+    onceki) byte'lari cache'ler; digerleri cache'i tekrar kullanir. No-crypt
+    game stream'de (yaygin durum) cache'lenen byte'lar nihai wire byte'laridir
+    ve dogrudan eklenir — alici basina sifir compress/build. Sifreli baglantilar
+    cache'i bagimlanti-basina scratch'e kopyalayip onu sifreler; shared cache
+    asla degismez. PacketBuffer refcount kazandi (havuza yalnizca son alici
+    flush edince doner; unicast refcount 1, degismedi). BroadcastMoveNearby
+    (alici-basina gorunum side-effect'leri) simdilik eski yolda birakildi.
+
+  Dogrulandi:
+    - 529 test gecti.
+    - Correctness (300 combat + 2.000 dusman, no-crypt botlar): 300/300 bagli
+      kaldi, sifir malformed/underrun/parse anomalisi, tick degismedi.
+    - Yogun-kalabalik duvari (1.000 bot tek sehirde, hepsi konusuyor): Wave 41
+      baseline'i ~919 send-queue overflow ve 1.000 -> ~31 cull iken, sunucu artik
+      SIFIR overflow logluyor ve 1.000'i 20 Hz'de tutuyor (~10 ms ort., Gen2 ~0).
+      Asiri sel altinda kalan client azalmasi downstream'dir (in-process botlar
+      her biri ~1.000 gelen speech/sn'yi bosaltamiyor; TCP backpressure), sunucu
+      send yolu degil. README guncellendi.
+
 [2026-05-31] - Cluster bot + yogun-kalabalik broadcast duvari olculdu (Wave 41)
 ----------------------------------------
 

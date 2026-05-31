@@ -27,6 +27,10 @@ public sealed class NetState : IDisposable
     private readonly object _sendLock = new();
     private readonly Queue<PacketBuffer> _sendQueue = [];
     private byte[] _sendBatchBuffer = new byte[4096];
+    // Per-connection scratch for encrypting a shared broadcast payload without
+    // mutating the shared (cross-recipient) cache. Only used by crypted game
+    // connections; nocrypt connections append the shared bytes directly.
+    private byte[] _cryptScratch = new byte[256];
 
     private readonly ILogger _logger;
 
@@ -320,6 +324,29 @@ public sealed class NetState : IDisposable
         Send(writer.Build());
     }
 
+    /// <summary>Enqueue a buffer shared across several recipients (built once by
+    /// the broadcaster and marked via <see cref="PacketBuffer.MarkShared"/>).
+    /// Does not rebuild the packet. If this connection can't take it, only this
+    /// recipient's refcount claim is released — the buffer survives for the rest.</summary>
+    public void EnqueueShared(PacketBuffer packet)
+    {
+        if (!IsInUse || IsClosing) { packet.ReturnToPool(); return; }
+        LastActivityTick = Environment.TickCount64;
+
+        lock (_sendLock)
+        {
+            if (_sendQueue.Count >= MaxSendQueueSize)
+            {
+                _logger.LogWarning("Send queue overflow for #{Id} ({EP}), disconnecting",
+                    Id, RemoteEndPoint);
+                MarkClosing();
+                packet.ReturnToPool();
+                return;
+            }
+            _sendQueue.Enqueue(packet);
+        }
+    }
+
     public void SendRaw(ReadOnlySpan<byte> data)
     {
         if (data.Length == 0)
@@ -328,6 +355,15 @@ public sealed class NetState : IDisposable
         foreach (byte b in data)
             packet.WriteByte(b);
         Send(packet);
+    }
+
+    /// <summary>Compress a shared broadcast packet once and cache the
+    /// pre-encryption bytes on it for the remaining recipients to reuse.</summary>
+    private static byte[] CacheSharedCompressed(PacketBuffer packet)
+    {
+        var compressed = HuffmanCompression.Compress(packet.Data, 0, packet.Length);
+        packet.SetSharedCompressed(compressed, compressed.Length);
+        return compressed;
     }
 
     /// <summary>Flush all queued packets to the socket.</summary>
@@ -352,10 +388,49 @@ public sealed class NetState : IDisposable
                     while (_sendQueue.Count > 0)
                     {
                         var packet = _sendQueue.Dequeue();
-                        var compressed = HuffmanCompression.Compress(packet.Data, 0, packet.Length);
-                        Crypto.Encrypt(compressed, 0, compressed.Length);
 
-                        int needed = totalLen + compressed.Length;
+                        // Resolve the bytes to append to the batch (compressed,
+                        // and encrypted when this connection uses a cipher).
+                        byte[] payload;
+                        int payloadLen;
+
+                        if (packet.IsShared)
+                        {
+                            // Broadcast: compress once (first recipient), cache the
+                            // pre-encryption bytes, reuse for every other recipient.
+                            byte[] shared = packet.SharedCompressed
+                                ?? CacheSharedCompressed(packet);
+                            int sharedLen = packet.SharedCompressedLen;
+
+                            if (Crypto.EncType == EncryptionType.None)
+                            {
+                                // Cache IS the final wire bytes — append directly,
+                                // no per-recipient work, no mutation of the cache.
+                                payload = shared;
+                                payloadLen = sharedLen;
+                            }
+                            else
+                            {
+                                // Encrypt a private copy so the shared cache stays
+                                // valid for the remaining recipients.
+                                if (_cryptScratch.Length < sharedLen)
+                                    _cryptScratch = new byte[Math.Max(_cryptScratch.Length * 2, sharedLen)];
+                                Buffer.BlockCopy(shared, 0, _cryptScratch, 0, sharedLen);
+                                Crypto.Encrypt(_cryptScratch, 0, sharedLen);
+                                payload = _cryptScratch;
+                                payloadLen = sharedLen;
+                            }
+                        }
+                        else
+                        {
+                            // Unicast — unchanged: private compress + in-place encrypt.
+                            var compressed = HuffmanCompression.Compress(packet.Data, 0, packet.Length);
+                            Crypto.Encrypt(compressed, 0, compressed.Length);
+                            payload = compressed;
+                            payloadLen = compressed.Length;
+                        }
+
+                        int needed = totalLen + payloadLen;
                         if (needed > batchBuf.Length)
                         {
                             int newSize = Math.Max(batchBuf.Length * 2, needed);
@@ -365,12 +440,11 @@ public sealed class NetState : IDisposable
                             batchBuf = bigger;
                         }
 
-                        Buffer.BlockCopy(compressed, 0, batchBuf, totalLen, compressed.Length);
-                        totalLen += compressed.Length;
+                        Buffer.BlockCopy(payload, 0, batchBuf, totalLen, payloadLen);
+                        totalLen += payloadLen;
 
-                        // packet.Data was fully consumed by Compress above; the
-                        // batch send uses batchBuf, not the packet buffer, so the
-                        // pooled backing array can go back now.
+                        // Releases this recipient's claim; the pooled backing array
+                        // returns only when the last recipient has flushed.
                         packet.ReturnToPool();
                     }
 

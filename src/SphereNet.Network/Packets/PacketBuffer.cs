@@ -15,6 +15,44 @@ public sealed class PacketBuffer
     private readonly bool _pooled;
     private bool _returned;
 
+    // Broadcast sharing: a single built packet can be enqueued onto many send
+    // queues (one event, identical bytes for every recipient). _refCount tracks
+    // how many flushes still owe a ReturnToPool; the backing array goes back only
+    // when the last recipient has consumed it. Unicast packets keep _refCount=1
+    // and behave exactly as before. The Huffman-compressed payload is computed
+    // once by the first flush and cached here (UNENCRYPTED, read-only) so the
+    // other recipients reuse it instead of recompressing.
+    private int _refCount = 1;
+    private byte[]? _sharedCompressed;
+    private int _sharedCompressedLen;
+
+    /// <summary>True once this buffer has been marked for multi-recipient
+    /// broadcast (so FlushOutput caches/reuses its compressed payload and never
+    /// encrypts it in place).</summary>
+    public bool IsShared { get; private set; }
+
+    /// <summary>Mark this packet as shared across <paramref name="recipientCount"/>
+    /// send queues. Must be called before enqueuing onto any queue.</summary>
+    public void MarkShared(int recipientCount)
+    {
+        IsShared = true;
+        _refCount = recipientCount < 1 ? 1 : recipientCount;
+    }
+
+    /// <summary>The cached, compression-only (pre-encryption) payload, or null
+    /// until the first flush computes it.</summary>
+    public byte[]? SharedCompressed => _sharedCompressed;
+    public int SharedCompressedLen => _sharedCompressedLen;
+
+    /// <summary>Cache the compressed payload for reuse by the remaining
+    /// recipients. The array is treated as immutable after this — recipients
+    /// that need encryption copy it first, they never encrypt it in place.</summary>
+    public void SetSharedCompressed(byte[] compressed, int length)
+    {
+        _sharedCompressed = compressed;
+        _sharedCompressedLen = length;
+    }
+
     /// <summary>Outgoing packet: rent the backing array from the shared pool.
     /// The byte[] is the bulk of a packet's allocation, and every outgoing
     /// PacketBuffer is built, queued and flushed exactly once (broadcasts build
@@ -65,14 +103,17 @@ public sealed class PacketBuffer
         }
     }
 
-    /// <summary>Return the pooled backing array to the shared pool once the
-    /// packet has been flushed. Idempotent; a no-op for wrapped (non-pooled)
-    /// buffers. The buffer must not be read or written after this call — the
-    /// backing array is swapped for an empty one so any stray use fails loudly
-    /// instead of corrupting a recycled array.</summary>
+    /// <summary>Release one flush's claim on the buffer; the pooled backing
+    /// array is returned to the pool only when the last recipient releases it
+    /// (refcount reaches zero). Idempotent past zero; a no-op for wrapped
+    /// (non-pooled) buffers. For a unicast packet (refcount 1) this returns
+    /// immediately, exactly as before. The buffer must not be read or written
+    /// after the final release — the backing array is swapped for an empty one
+    /// so any stray use fails loudly instead of corrupting a recycled array.</summary>
     public void ReturnToPool()
     {
         if (!_pooled || _returned) return;
+        if (System.Threading.Interlocked.Decrement(ref _refCount) > 0) return;
         _returned = true;
         ArrayPool<byte>.Shared.Return(_data);
         _data = Array.Empty<byte>();

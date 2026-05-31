@@ -185,17 +185,17 @@ A thousand spread-out players are nearly free (Gen0 ~1/window, no blocking Gen2)
 
 ### Dense single-screen crowd — the broadcast wall
 
-The real scaling limit is a crowd packed into **one screen** all broadcasting. Spawning 1,000 bots around a single town centre (cluster spawn) and having them speak — speech fans out to every bot in view, so outgoing packets scale ~N² — saturates the per-client send queues:
+A crowd packed into **one screen** all broadcasting is the worst case: speech fans out to every bot in view, so outgoing packets scale ~N². 1,000 bots clustered around one town centre (cluster spawn), all speaking:
 
-| Metric | Result |
-|---|---|
-| Send-queue overflows | ~919 |
-| Fleet after load-shed | 1,000 → ~31 survivors |
-| After the cull | 20 Hz, ~0.4 ms avg (recovered) |
-| Peak RSS | ~1.8 GB, then fell back |
-| Crash / corruption | none — graceful load shed |
+| Metric | Per-recipient build (old) | Shared broadcast (current) |
+|---|---|---|
+| Send-queue overflows | ~919 | **0** |
+| Fleet under the flood | 1,000 → ~31 | **1,000 held @ 20 Hz** |
+| Avg tick (settled) | collapse | **~10 ms** |
+| Blocking Gen2 | present | **~0** |
+| Crash / wire corruption | none | none |
 
-When the broadcast rate exceeds what the serial send path can drain, the server sheds load via send-queue-overflow disconnects rather than crashing or corrupting the wire — bounded memory, then recovery. This is the practical ceiling for a single broadcasting screen, and the known scaling wall. Movement does **not** hit it the same way: a dense crowd can't keep moving (mobiles block each other, so most steps are rejected and the move-broadcast storm self-throttles). The change that would raise this ceiling is broadcasting one **shared** serialized packet to all recipients instead of building a fresh packet per recipient (the current behaviour) — the natural next optimization.
+Originally this saturated the per-client send queues — a broadcast packet was rebuilt and re-Huffman-compressed once per recipient, identical bytes recomputed N times — and the server shed load via overflow disconnects (1,000 → ~31). Broadcasting one **shared** packet (build + compress once, reuse across all recipients; see Wave 42) removed that bottleneck: the same scenario now logs **zero** send-queue overflows and holds all 1,000 broadcasting clients at 20 Hz. Under an even more extreme flood the remaining limit moves *downstream* of the server — an individual client receiving ~1,000 speech packets/second can't drain them (TCP backpressure), which is inherent to "1,000 people talking on one screen," not a server bottleneck. Movement never hits this wall the same way: a dense crowd can't keep moving (mobiles block each other, so steps are rejected and the move-broadcast storm self-throttles).
 
 **Save:** 102,780 items + 50,363 characters → **0.6 s** (BinaryGz, 3 shards).
 **Memory:** ~550–650 MB working set across every scenario above.

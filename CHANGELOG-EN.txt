@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Throttle NPC A* recompute in churning crowds (Wave 32)
+----------------------------------------
+
+PERFORMANCE:
+  - A* path recompute is now throttled per NPC (at most once per ~750ms). In a
+    churning crowd the cached next step is invalidated almost every tick (a
+    neighbour moves onto it), which previously forced a fresh A* search every
+    tick. Between allowed recomputes the NPC follows its cached path or faces
+    the target and holds. A dedicated throttle timestamp survives path-cache
+    drops (and is swept for gone NPCs) so the limit actually binds.
+  - Helps real crowded combat (e.g. a champion spawn where mobs jostle); the
+    pathological 50k-clustered stress remains dominated by other per-NPC
+    combat-brain cost that needs profiling to isolate further.
+
 [2026-05-31] - NPC target-scan bounding in same-faction crowds (Wave 31)
 ----------------------------------------
 

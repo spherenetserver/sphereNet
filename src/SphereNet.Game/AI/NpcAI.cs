@@ -77,6 +77,12 @@ public sealed class NpcAI
     private readonly Dictionary<uint, int> _pathIndex = [];
     private readonly Dictionary<uint, long> _pathTime = [];
     private const long PathCacheMaxAge = 10_000;
+    // Last time A* was actually recomputed for this NPC. Survives path-cache
+    // drops (unlike _pathTime) so a churning crowd — where the cached step is
+    // invalidated almost every tick — cannot trigger a full A* recompute every
+    // tick. Recompute is throttled to at most once per PathThrottleMs per NPC.
+    private readonly Dictionary<uint, long> _lastPathfindMs = [];
+    private const long PathThrottleMs = 750;
     /// <summary>How long a target-less NPC waits before re-running the full
     /// acquire scan (ModernUO ReacquireDelay). Reset to 0 on being attacked.</summary>
     private const long ReacquireDelayMs = 1500;
@@ -111,7 +117,25 @@ public sealed class NpcAI
                 _pathIndex.Remove(uid);
                 _pathTime.Remove(uid);
                 _losFailCounts.Remove(uid);
+                _lastPathfindMs.Remove(uid);
             }
+        }
+
+        // Throttle timestamps can outlive the path cache (they survive path
+        // drops by design), so sweep them for gone NPCs here as well.
+        if (_lastPathfindMs.Count > 0)
+        {
+            List<uint>? stalePf = null;
+            foreach (var uid in _lastPathfindMs.Keys)
+            {
+                if (_pathCache.ContainsKey(uid)) continue;
+                var obj = _world.FindObject(new Core.Types.Serial(uid));
+                if (obj is not Character ch || ch.IsDeleted || ch.IsDead)
+                    (stalePf ??= []).Add(uid);
+            }
+            if (stalePf != null)
+                foreach (var uid in stalePf)
+                    _lastPathfindMs.Remove(uid);
         }
 
         // LOS-fail counters can accumulate for NPCs that never built a path
@@ -2352,6 +2376,19 @@ public sealed class NpcAI
         }
         if (!_pathCache.TryGetValue(uid, out var path) || path.Count == 0)
         {
+            // Throttle full A* recomputes per NPC. In a churning crowd the
+            // cached step is blocked nearly every tick, which would otherwise
+            // force a fresh A* search every tick for every NPC. Between allowed
+            // recomputes just face the target and hold — a closer/unblocked NPC
+            // keeps the pressure on, and the path refreshes shortly after.
+            long nowMs = Environment.TickCount64;
+            if (_lastPathfindMs.TryGetValue(uid, out long lastPf) && nowMs - lastPf < PathThrottleMs)
+            {
+                npc.Direction = dir;
+                return;
+            }
+            _lastPathfindMs[uid] = nowMs;
+
             // Calculate new path
             var npcDef = DefinitionLoader.GetCharDef(npc.CharDefIndex);
             var npcCanFlags = npcDef?.Can ?? Core.Enums.CanFlags.None;

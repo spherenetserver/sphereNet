@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Kaynayan kalabalikta NPC A* yeniden-hesabini throttle (Wave 32)
+----------------------------------------
+
+PERFORMANS:
+  - A* path yeniden-hesabi artik NPC basina throttle'li (en fazla ~750ms'de bir).
+    Kaynayan kalabalikta cache'lenmis sonraki adim neredeyse her tick gecersiz
+    oluyor (komsu uzerine geliyor); bu eskiden her tick yeni bir A* aramasi
+    zorluyordu. Izin verilen yeniden-hesaplar arasinda NPC cache'li path'i izler
+    ya da hedefe doner ve bekler. Throttle timestamp'i path-cache drop'larindan
+    sag kalir (ve gitmis NPC'ler icin temizlenir) ki sinir gercekten baglasin.
+  - Gercek kalabalik combat'a yardimci (orn. mob'larin itistigi champion spawn);
+    patolojik 50k-kume stress'i hala daha fazla izole etmek icin profiling
+    gerektiren diger per-NPC combat-brain maliyetinin egemenliginde.
+
 [2026-05-31] - Ayni-fraksiyon kalabaliginda NPC hedef-taramasi sinirlama (Wave 31)
 ----------------------------------------
 

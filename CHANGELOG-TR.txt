@@ -4,6 +4,21 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Hareket broadcast'leri icin shared yol (Wave 43)
+----------------------------------------
+
+PERFORMANS / AG:
+  - BroadcastMoveNearby artik o da shared-broadcast yolunu kullaniyor (Wave 42).
+    Move paketi her alici icin ozdes oldugundan bir kez build/compress edilip
+    tekrar kullanilir; gercekten farklilasan per-recipient is — moveri henuz
+    tanimayan bir client'a tam appearance gondermek ve o client'in
+    known-position kaydini guncellemek — aynen korunur (appearance alicilar
+    toplanirken, pozisyon guncellemesi shared paket enqueue edilirken calisir).
+  - Dogrulandi: 529 test; 300-combat + 2.000-dusman run'i (oyuncularin yaninda
+    2.000 NPC hareket ediyor, move broadcast'lerini yogun calistiriyor) —
+    300/300 bagli, sifir malformed/underrun/parse anomalisi, sifir send-queue
+    overflow, tick normal combat araliginda.
+
 [2026-05-31] - Paylasilan broadcast paketleri — yogun-kalabalik duvarini yukselt (Wave 42)
 ----------------------------------------
 

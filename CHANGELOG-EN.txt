@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Shared path for movement broadcasts (Wave 43)
+----------------------------------------
+
+PERFORMANCE / NETWORK:
+  - BroadcastMoveNearby now uses the shared-broadcast path too (Wave 42). The
+    move packet is identical for every recipient, so it is built/compressed once
+    and reused; the per-recipient work that genuinely differs — sending a full
+    appearance to a client that doesn't yet know the mover, and updating that
+    client's known-position bookkeeping — is preserved exactly (appearance runs
+    while collecting recipients, position update runs as the shared packet is
+    enqueued).
+  - Validated: 529 tests; a 300-combat + 2,000-hostile run (2,000 NPCs moving
+    near players, exercising move broadcasts heavily) — 300/300 connected, zero
+    malformed/underrun/parse anomalies, zero send-queue overflows, tick within
+    the normal combat range.
+
 [2026-05-31] - Shared broadcast packets — raise the dense-crowd wall (Wave 42)
 ----------------------------------------
 

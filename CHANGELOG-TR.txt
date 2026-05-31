@@ -4,6 +4,18 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Bolge periyodik trigger'lari @RegPeriodic / @CliPeriodic (Wave 22)
+----------------------------------------
+
+BOLGE TETIKLEYICILERI:
+  - @CliPeriodic her cevrimici oyuncu icin, bulundugu bolgede periyodik
+    ateslenir (SRC = oyuncu). @RegPeriodic icinde en az bir oyuncu olan her
+    bolge icin tur basina bir kez ateslenir (SRC = temsili oyuncu). Source-X
+    CSector environ tick davranisi (iRegionPeriodic) ile hizali; bos bolgeler
+    hic tiklemez. Bolge ortam sesi/muzik scriptleri (ON=@RegPeriodic SRC.SOUND,
+    ON=@CliPeriodic SRC.MUSIC) artik calisir. Mevcut FireRegionEvents
+    mekanizmasini kullanir (Enter/Leave/Step ile ayni).
+
 [2026-05-31] - NPC konusma yayini (SAY/SAYU/EMOTE) (Wave 21)
 ----------------------------------------
 

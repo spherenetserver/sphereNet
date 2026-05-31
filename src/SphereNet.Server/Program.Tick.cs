@@ -745,6 +745,33 @@ public static partial class Program
         if (seasonChanged)
             BroadcastSeasonChange(playSound: true);
 
+        // Region periodic triggers (Source-X CSector environ tick): fire
+        // @CliPeriodic for every online player on their current region, and
+        // @RegPeriodic once per region that holds at least one player (a
+        // representative player is the SRC, mirroring iRegionPeriodic). Only
+        // regions with players present tick — uninhabited regions never fire.
+        if (_world.TickCount % RegionPeriodicTicks == 0 && _triggerDispatcher != null)
+        {
+            _regPeriodicFired.Clear();
+            foreach (var client in _clients.Values)
+            {
+                if (!client.IsPlaying) continue;
+                var ch = client.Character;
+                if (ch == null) continue;
+                var region = _world.FindRegion(ch.Position);
+                if (region == null) continue;
+
+                // @RegPeriodic: once per region this tick (first player = SRC).
+                if (_regPeriodicFired.Add(region.Uid))
+                    _triggerDispatcher.FireRegionEvents(region, "RegPeriodic", ch,
+                        new TriggerArgs { CharSrc = ch, S1 = region.Name });
+
+                // @CliPeriodic: once per online player in a region.
+                _triggerDispatcher.FireRegionEvents(region, "CliPeriodic", ch,
+                    new TriggerArgs { CharSrc = ch, S1 = region.Name });
+            }
+        }
+
         // Ship movement ticks
         _shipEngine?.OnTickAll();
 

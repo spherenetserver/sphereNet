@@ -127,6 +127,11 @@ public static partial class Program
     private static byte _lastGlobalLight;
     private static AdminCommandProcessor? _consoleProcessor;
 
+    // Region @RegPeriodic/@CliPeriodic firing cadence (~6s at the 50ms tick)
+    // and the per-tick set used to fire @RegPeriodic once per inhabited region.
+    private const int RegionPeriodicTicks = 120;
+    private static readonly HashSet<uint> _regPeriodicFired = [];
+
     private static bool _running;
     private static bool _multicoreRuntimeEnabled;
     private static long _multicoreFallbackMs;

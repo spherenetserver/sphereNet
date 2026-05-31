@@ -4,6 +4,18 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Region periodic triggers @RegPeriodic / @CliPeriodic (Wave 22)
+----------------------------------------
+
+REGION TRIGGERS:
+  - @CliPeriodic fires periodically for every online player on their current
+    region (SRC = the player). @RegPeriodic fires once per tick for each region
+    holding at least one player (SRC = a representative player), mirroring
+    Source-X CSector's iRegionPeriodic environ tick; uninhabited regions never
+    tick. Region ambient sound/music scripts (ON=@RegPeriodic SRC.SOUND,
+    ON=@CliPeriodic SRC.MUSIC) now run. Reuses the existing FireRegionEvents
+    mechanism (same path as Enter/Leave/Step).
+
 [2026-05-31] - NPC speech broadcast (SAY/SAYU/EMOTE) (Wave 21)
 ----------------------------------------
 

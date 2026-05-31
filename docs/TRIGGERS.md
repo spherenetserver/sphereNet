@@ -107,6 +107,7 @@ When a trigger runs, the script body executes **on the object the trigger belong
 
 Notes:
 - `@RegionEnter/Leave/Step` and `@Room*` do **not** set `<src>` (only `S1`); the region/room name is in `<args>`. The region's own EVENTS `@Enter/@Exit/@Step` blocks fire separately via `FireRegionEvents` with `<src>` set.
+- Region EVENTS also receive two periodic triggers via `FireRegionEvents` (fired from the environment tick, ~6s, only while players are present): `@CliPeriodic` fires once per online player in the region (`<src>` = that player, `<args>` = region name); `@RegPeriodic` fires once per inhabited region per tick (`<src>` = a representative player in that region, `<args>` = region name). Uninhabited regions never tick. Mirrors Source-X `CSector` `iRegionPeriodic`.
 - `@Death` on the reactive-armor path (attacker dies) has `<src>` = the target.
 - `@NPCRestock` fires from two paths: spawn/finalize (`<src>` = the NPC) and opening a vendor (`<src>` = the player).
 

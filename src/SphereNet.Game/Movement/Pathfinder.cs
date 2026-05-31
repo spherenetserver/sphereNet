@@ -26,8 +26,9 @@ public sealed class Pathfinder
     /// Find a path from start to goal. Returns the next step direction,
     /// or null if no path found.
     /// </summary>
-    public List<Point3D>? FindPath(Point3D start, Point3D goal, byte mapIndex, CanFlags canFlags = CanFlags.None, Objects.Characters.Character? self = null)
+    public List<Point3D>? FindPath(Point3D start, Point3D goal, byte mapIndex, CanFlags canFlags = CanFlags.None, Objects.Characters.Character? self = null, int maxNodes = MaxNodes)
     {
+        if (maxNodes <= 0) maxNodes = MaxNodes;
         if (IsGoalReached(start, goal))
             return [goal];
 
@@ -45,7 +46,7 @@ public sealed class Pathfinder
 
         int nodesExplored = 0;
 
-        while (openSet.Count > 0 && nodesExplored < MaxNodes)
+        while (openSet.Count > 0 && nodesExplored < maxNodes)
         {
             var current = openSet.Dequeue();
             long currentKey = PackKey(current.X, current.Y, current.Z);
@@ -102,9 +103,9 @@ public sealed class Pathfinder
             }
         }
 
-        if (nodesExplored >= MaxNodes)
+        if (nodesExplored >= maxNodes)
             Objects.Characters.Character.Diagnostic?.Invoke(
-                $"Pathfinder: MaxNodes ({MaxNodes}) exhausted from {start} to {goal}");
+                $"Pathfinder: node budget ({maxNodes}) exhausted from {start} to {goal}");
 
         return null;
     }

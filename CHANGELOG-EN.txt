@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Cap NPC pathfinding node budget — the real crowd-stall fix (Wave 33)
+----------------------------------------
+
+PERFORMANCE:
+  - Profiling pinned the crowded-combat tick stall to a single cause: A*
+    pathfinding. The Pathfinder's node cap (20000, sized for player
+    half-continent .walk) meant an NPC chasing a target it cannot reach through
+    a press of bodies explored the full 20000 nodes — ~366ms PER call.
+  - FindPath now takes an optional maxNodes; NPC combat-chase passes a far
+    smaller budget (2000) — ample to route around local obstacles toward a
+    target in sight, while bounding a blocked search to ~20ms. Player .walk
+    keeps the full budget.
+  - Measured on the pathological 50k-monster cluster around 8 fighting players:
+    tick dropped from ~8.8s to ~0.13s typical (max ~0.5s) — the headline
+    fix that the earlier budget/scan/throttle waves had been bounding around.
+    525 tests pass.
+
 [2026-05-31] - Throttle NPC A* recompute in churning crowds (Wave 32)
 ----------------------------------------
 

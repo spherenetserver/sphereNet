@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - NPC pathfinding node budget cap — asil kalabalik-stall fix'i (Wave 33)
+----------------------------------------
+
+PERFORMANS:
+  - Profiling, kalabalik-combat tick stall'ini tek bir nedene pinledi: A*
+    pathfinding. Pathfinder'in node cap'i (20000, player yarim-kita .walk icin
+    boyutlandirilmis), govde yiginindan ulasamayacagi bir hedefi kovalayan
+    NPC'nin tum 20000 node'u gezmesine yol aciyordu — cagri basina ~366ms.
+  - FindPath artik opsiyonel maxNodes aliyor; NPC combat-chase cok daha kucuk
+    bir budget (2000) geciyor — gorus icindeki hedefe yerel engellerin etrafindan
+    rota bulmaya fazlasiyla yeterli, bloke aramayi ~20ms'e sinirlar. Player
+    .walk tam budget'i korur.
+  - Patolojik 50k-monster kume (8 dovusen oyuncu cevresinde) olcumu: tick ~8.8s'ten
+    ~0.13s tipik (max ~0.5s) seviyesine dustu — onceki budget/scan/throttle
+    dalgalarinin etrafini sinirladigi asil fix. 525 test geciyor.
+
 [2026-05-31] - Kaynayan kalabalikta NPC A* yeniden-hesabini throttle (Wave 32)
 ----------------------------------------
 

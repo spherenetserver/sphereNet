@@ -83,6 +83,12 @@ public sealed class NpcAI
     // tick. Recompute is throttled to at most once per PathThrottleMs per NPC.
     private readonly Dictionary<uint, long> _lastPathfindMs = [];
     private const long PathThrottleMs = 750;
+    // NPC combat-chase A* node budget. Far below the full Pathfinder cap (which
+    // is sized for player half-continent .walk): a creature only needs to route
+    // around local obstacles toward a target in sight, and an unreachable target
+    // through a press of bodies must not make A* explore tens of thousands of
+    // nodes (~300ms/call). A few thousand nodes covers any realistic chase.
+    private const int NpcPathMaxNodes = 2000;
     /// <summary>How long a target-less NPC waits before re-running the full
     /// acquire scan (ModernUO ReacquireDelay). Reset to 0 on being attacked.</summary>
     private const long ReacquireDelayMs = 1500;
@@ -163,6 +169,7 @@ public sealed class NpcAI
         _config = config;
         _pathfinder = new Pathfinder(world);
     }
+
 
     /// <summary>
     /// Main NPC tick action. Maps to NPC_OnTickAction in Source-X.
@@ -2392,7 +2399,7 @@ public sealed class NpcAI
             // Calculate new path
             var npcDef = DefinitionLoader.GetCharDef(npc.CharDefIndex);
             var npcCanFlags = npcDef?.Can ?? Core.Enums.CanFlags.None;
-            path = _pathfinder.FindPath(npc.Position, target, npc.MapIndex, npcCanFlags, npc);
+            path = _pathfinder.FindPath(npc.Position, target, npc.MapIndex, npcCanFlags, npc, NpcPathMaxNodes);
             if (path == null || path.Count == 0)
             {
                 npc.Direction = dir;

@@ -91,10 +91,17 @@ public class ExpressionRegressionTests
             _ => null,
         };
 
+        // A function whose name starts with 'd' (DamTypesOfString) must not be
+        // mangled either — resolved via the function resolver on the full token.
+        parser.FunctionResolver = expr =>
+            expr.StartsWith("DamTypesOfString", StringComparison.OrdinalIgnoreCase) ? "fire/cold" : null;
+
         // Bare 'd' properties resolve to the real property, not a 'd'-stripped
         // name (regression: <dispid> used to become <ispid> -> 0).
         Assert.Equal("i_halberd", parser.EvaluateStr("<dispid>"));
         Assert.Equal("75", parser.EvaluateStr("<DEX>"));
+        // D-prefixed function call resolves (regression: lost its leading 'd').
+        Assert.Equal("fire/cold", parser.EvaluateStr("<DamTypesOfString 5>"));
         // The genuine D-force-decimal prefix still works when the full name is
         // unknown (<DHITS> -> decimal of HITS).
         Assert.Equal("42", parser.EvaluateStr("<DHITS>"));

@@ -979,9 +979,12 @@ public sealed class ExpressionParser
             }
             // The stripped remainder is not a known variable — so the leading
             // 'd' was NOT a prefix but part of a real property name (DISPID,
-            // DEX, DIR, ...). Resolve the full token before giving up.
-            // (Regression: <dispid> used to mangle to <ispid> and read 0.)
-            string? fullVal = VariableResolver?.Invoke(ResolveAngleBrackets(varExpr));
+            // DEX, DIR, ...) or a function call (DamTypesOfString, ...).
+            // Resolve the full token as a variable, then as a function, before
+            // giving up. (Regression: <dispid> mangled to <ispid>; the
+            // D-prefixed [FUNCTION] DamTypesOfString lost its 'D' too.)
+            string fullName = ResolveAngleBrackets(varExpr);
+            string? fullVal = VariableResolver?.Invoke(fullName) ?? FunctionResolver?.Invoke(fullName);
             if (fullVal != null)
                 return fullVal;
             return Evaluate(resolved.AsSpan()).ToString();

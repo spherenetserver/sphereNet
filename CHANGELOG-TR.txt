@@ -4,6 +4,18 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - D-prefix duzeltmesi fonksiyon cagrilarina genisletildi (Wave 26)
+----------------------------------------
+
+SCRIPT MOTORU:
+  - D-prefix duzeltmesi (Wave 24) artik 'D' ile baslayan FONKSIYON cagrilarini
+    da kapsiyor: adi 'd' ile baslayan bir [FUNCTION] (orn. DamTypesOfString)
+    bastaki 'd'yi kaybedip hic cozulemiyordu. D-handler fallback'i artik tam
+    token'i degisken cozucu yaninda fonksiyon cozucu ile de cozuyor.
+
+TESTLER:
+  - ExpressionParser regresyonu D-prefixli fonksiyon cagrisiyla genisletildi.
+
 [2026-05-31] - Bosluksuz <Rnnn> random ifade formu (Wave 25)
 ----------------------------------------
 

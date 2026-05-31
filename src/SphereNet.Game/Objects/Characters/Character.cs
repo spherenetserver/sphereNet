@@ -3958,6 +3958,21 @@ public partial class Character : ObjBase
                     0);
                 return true;
             }
+            // Overhead speech (Source-X CChar SAY/SAYU/EMOTE): broadcast to
+            // nearby clients as the character's spoken line — NOT a private
+            // system message to the source (the base ObjBase handler does the
+            // latter, which left NPC dialog/barks invisible). SAY = ASCII
+            // (0x1C), SAYU/SAYUC = Unicode (0xAE), EMOTE = emote message type.
+            case "SAY":
+                BroadcastSpeech(0, unicode: false, args);
+                return true;
+            case "SAYU":
+            case "SAYUC":
+                BroadcastSpeech(0, unicode: true, args);
+                return true;
+            case "EMOTE":
+                BroadcastSpeech(2, unicode: false, args);
+                return true;
             case "DCLICK":
             {
                 // Source-X CChar::r_Verb DCLICK with no arg = dclick
@@ -4757,6 +4772,34 @@ public partial class Character : ObjBase
         }
 
         _lastCreatedItem = item;
+    }
+
+    /// <summary>Broadcast an overhead spoken line from this character to nearby
+    /// clients. Parses an optional Sphere <c>@color,font,mode</c> prefix for the
+    /// hue. SAY uses ASCII (0x1C); SAYU/SAYUC use Unicode (0xAE); EMOTE passes a
+    /// non-zero message type.</summary>
+    private void BroadcastSpeech(byte msgType, bool unicode, string rawArgs)
+    {
+        ushort hue = 0x03B2;
+        string text = rawArgs?.Trim() ?? "";
+        if (text.StartsWith('@'))
+        {
+            int sp = text.IndexOfAny(new[] { ' ', '\t' });
+            string spec = sp >= 0 ? text[1..sp] : text[1..];
+            text = sp >= 0 ? text[(sp + 1)..].Trim() : "";
+            var f = spec.Split(',');
+            if (f.Length > 0 && f[0].Length > 0 &&
+                ushort.TryParse(f[0], System.Globalization.NumberStyles.HexNumber, null, out ushort c))
+                hue = c;
+        }
+        if (string.IsNullOrEmpty(text)) return;
+
+        SphereNet.Network.Packets.PacketWriter pkt = unicode
+            ? new SphereNet.Network.Packets.Outgoing.PacketSpeechUnicodeOut(
+                Uid.Value, BodyId, msgType, hue, 3, "ENU", GetName(), text)
+            : new SphereNet.Network.Packets.Outgoing.PacketSpeechOut(
+                Uid.Value, BodyId, msgType, hue, 3, GetName(), text);
+        BroadcastNearby?.Invoke(Position, 18, pkt, 0);
     }
 
     /// <summary>

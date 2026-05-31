@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - NPC speech broadcast (SAY/SAYU/EMOTE) (Wave 21)
+----------------------------------------
+
+NPC SPEECH:
+  - SAY / SAYU / SAYUC / EMOTE now BROADCAST as overhead speech to nearby
+    clients instead of a private system message to the source (SAY = ASCII
+    0x1C, SAYU/SAYUC = Unicode 0xAE, EMOTE = emote type). An optional
+    @color,font,mode prefix is parsed for the hue. NPC dialog/bark lines were
+    previously invisible because they only went to the source as a system
+    message.
+
 [2026-05-31] - NPC AI morale/kiting and vendor restock unification (Wave 20)
 ----------------------------------------
 

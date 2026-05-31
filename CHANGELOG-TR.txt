@@ -4,6 +4,16 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - NPC konusma yayini (SAY/SAYU/EMOTE) (Wave 21)
+----------------------------------------
+
+NPC KONUSMA:
+  - SAY / SAYU / SAYUC / EMOTE artik kaynaga ozel sistem mesaji yerine
+    cevredeki client'lara overhead konusma olarak YAYINLANIYOR (SAY = ASCII
+    0x1C, SAYU/SAYUC = Unicode 0xAE, EMOTE = emote tipi). Opsiyonel
+    @color,font,mode prefix'i hue icin ayristirilir. NPC dialog/bark
+    satirlari onceden yalnizca kaynaga sistem mesaji oldugundan gorunmuyordu.
+
 [2026-05-31] - NPC AI morale/kiting ve vendor restock birlesimi (Wave 20)
 ----------------------------------------
 

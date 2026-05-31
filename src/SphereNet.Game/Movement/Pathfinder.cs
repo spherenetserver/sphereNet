@@ -22,6 +22,17 @@ public sealed class Pathfinder
         _world = world;
     }
 
+    // A* scratch collections, pooled per worker thread. NPC BuildDecision runs
+    // FindPath inside a Parallel.ForEach, so these MUST be thread-local: each
+    // worker reuses (and clears) its own set instead of allocating a fresh
+    // PriorityQueue + HashSet + two Dictionaries on every call. Before pooling,
+    // these four collections (each growing to thousands of entries, with the
+    // attendant resize churn) were the dominant per-tick allocation under combat.
+    [ThreadStatic] private static PriorityQueue<PathNode, int>? _tlOpenSet;
+    [ThreadStatic] private static HashSet<long>? _tlClosedSet;
+    [ThreadStatic] private static Dictionary<long, PathNode>? _tlCameFrom;
+    [ThreadStatic] private static Dictionary<long, int>? _tlGScore;
+
     /// <summary>
     /// Find a path from start to goal. Returns the next step direction,
     /// or null if no path found.
@@ -35,10 +46,14 @@ public sealed class Pathfinder
         if (start.GetDistanceTo(goal) <= 1 && Math.Abs(start.Z - goal.Z) <= MaxClimb)
             return [goal];
 
-        var openSet = new PriorityQueue<PathNode, int>();
-        var closedSet = new HashSet<long>();
-        var cameFrom = new Dictionary<long, PathNode>();
-        var gScore = new Dictionary<long, int>();
+        var openSet = _tlOpenSet ??= new PriorityQueue<PathNode, int>();
+        var closedSet = _tlClosedSet ??= new HashSet<long>();
+        var cameFrom = _tlCameFrom ??= new Dictionary<long, PathNode>();
+        var gScore = _tlGScore ??= new Dictionary<long, int>();
+        openSet.Clear();
+        closedSet.Clear();
+        cameFrom.Clear();
+        gScore.Clear();
 
         var startNode = new PathNode(start.X, start.Y, start.Z, 0, Heuristic(start, goal));
         openSet.Enqueue(startNode, startNode.F);

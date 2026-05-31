@@ -301,6 +301,27 @@ public static partial class Program
                         _tickStatsCount, avgMs, maxMs, tickTelemetry.P50Ms, tickTelemetry.P95Ms, tickTelemetry.P99Ms, onlinePlayers, chars, items);
                 }
 
+                // GC pressure for the same window. Gen2 collections and pause%
+                // are the GC-stall signal; alloc rate is a relative gauge
+                // (in-process bots inflate the absolute number).
+                long allocNow = GC.GetTotalAllocatedBytes();
+                int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
+                if (_gcWindowInit)
+                {
+                    long windowMs = Math.Max(1, nowMs - _lastTickStatsLogMs);
+                    long allocDelta = Math.Max(0, allocNow - _gcWindowStartAllocBytes);
+                    double allocMBs = allocDelta / 1048576.0 / (windowMs / 1000.0);
+                    double allocPerTickKB = _tickStatsCount > 0 ? allocDelta / 1024.0 / _tickStatsCount : 0;
+                    var gcInfo = GC.GetGCMemoryInfo();
+                    _log.LogInformation(
+                        "[gc_stats] alloc={AllocMBs:F0}MB/s ({PerTickKB:F0}KB/tick) gen0={G0} gen1={G1} gen2={G2} pause%={Pause:F1} heap={Heap}MB",
+                        allocMBs, allocPerTickKB, g0 - _gcWindowStartGen0, g1 - _gcWindowStartGen1, g2 - _gcWindowStartGen2,
+                        gcInfo.PauseTimePercentage, GC.GetTotalMemory(false) / 1048576);
+                }
+                _gcWindowStartAllocBytes = allocNow;
+                _gcWindowStartGen0 = g0; _gcWindowStartGen1 = g1; _gcWindowStartGen2 = g2;
+                _gcWindowInit = true;
+
                 _tickStatsTotalUs = 0;
                 _tickStatsMaxUs = 0;
                 _tickStatsCount = 0;

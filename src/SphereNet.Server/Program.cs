@@ -166,6 +166,13 @@ public static partial class Program
     private static long _tickStatsTotalUs;
     private static long _tickStatsMaxUs;
     private static int _tickStatsCount;
+    // GC pressure telemetry, sampled per tick_stats window. Bots run in-process
+    // so allocation bytes include client-emulation churn — treat alloc as a
+    // relative before/after gauge; gen2 count and pause% are the real GC-stall
+    // signal (the ~40ms blocking pauses we want to eliminate).
+    private static long _gcWindowStartAllocBytes;
+    private static int _gcWindowStartGen0, _gcWindowStartGen1, _gcWindowStartGen2;
+    private static bool _gcWindowInit;
     private const int TickTelemetryWindowSize = 2048;
     private static readonly long[] _tickTelemetryWindowUs = new long[TickTelemetryWindowSize];
     private static int _tickTelemetryWriteIndex;

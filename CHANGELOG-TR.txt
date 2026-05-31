@@ -4,6 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - A* scratch koleksiyonlarini havuzla; GC basinc telemetrisi (Wave 38)
+----------------------------------------
+
+PERFORMANS:
+  - Pathfinder her FindPath cagrisinda yeni bir PriorityQueue, HashSet ve iki
+    Dictionary tahsis ediyordu (her biri binlerce girise buyuyor, beraberinde
+    resize/rehash curuyu geliyordu). Savasta — her tick'te cok sayida NPC hedefe
+    path bulurken — bu baskin per-tick tahsisti. Dort scratch koleksiyonu artik
+    isci thread basina havuzlanir ([ThreadStatic], her cagrida temizlenir);
+    FindPath paralel NPC-karar fazinda calistigi icin havuz thread-local olmali.
+    Donen path List'i hala yeni tahsis edilir (cagiranin sonucu odur).
+  - [tick_stats] yaninda [gc_stats] telemetrisi eklendi: pencere basina tahsis
+    orani, Gen0/1/2 toplama deltalari, GC pause %'si ve managed heap. (Tahsis
+    byte'lari in-process stres botlarini icerir; bu yuzden alloc goreceli bir
+    gostergedir, Gen2 sayisi ve pause % asil GC-stall sinyalidir.)
+
+  Olculen (2.000 dusman canavar + 300 savasan oyuncu, 30 sn pencereler):
+    alloc ~160-178 MB/s -> ~63-103 MB/s; Gen0 ~226-255 -> ~43-91 (pencere basi);
+    Gen1 ~45-53 -> 2-14; ort. tick ~21-29 ms -> ~10-14 ms; p95 ~85-119 ms ->
+    ~46-51 ms; p99 ~127-167 ms -> ~83-85 ms. Havuzlama koleksiyon
+    resize/rehash isini de kaldirdigi icin sadece GC degil tick suresi de dustu.
+
 [2026-05-31] - Dusman-canavar stres modu + performans karakterizasyonu (Wave 37)
 ----------------------------------------
 

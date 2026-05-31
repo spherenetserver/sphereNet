@@ -4,6 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Pool A* scratch collections; GC pressure telemetry (Wave 38)
+----------------------------------------
+
+PERFORMANCE:
+  - Pathfinder allocated a fresh PriorityQueue, HashSet and two Dictionaries on
+    every FindPath call (each growing to thousands of entries, with the
+    resize/rehash churn that implies). Under combat — where many NPCs path
+    toward targets each tick — this was the dominant per-tick allocation. The
+    four scratch collections are now pooled per worker thread ([ThreadStatic],
+    cleared per call); FindPath runs inside the parallel NPC-decision phase, so
+    the pool must be thread-local. The returned path List is still allocated
+    fresh (it is the caller's result).
+  - Added [gc_stats] telemetry alongside [tick_stats]: per-window allocation
+    rate, Gen0/1/2 collection deltas, GC pause %, and managed heap. (Allocation
+    bytes include in-process stress bots, so treat alloc as a relative gauge;
+    Gen2 count and pause % are the GC-stall signal.)
+
+  Measured (2,000 hostile monsters + 300 combat players, 30 s windows):
+    alloc ~160-178 MB/s -> ~63-103 MB/s; Gen0 ~226-255 -> ~43-91 per window;
+    Gen1 ~45-53 -> 2-14; avg tick ~21-29 ms -> ~10-14 ms; p95 ~85-119 ms ->
+    ~46-51 ms; p99 ~127-167 ms -> ~83-85 ms. Lower tick time as well as GC,
+    since pooling also removes the per-call collection resize/rehash work.
+
 [2026-05-31] - Hostile-monster stress mode + performance characterization (Wave 37)
 ----------------------------------------
 

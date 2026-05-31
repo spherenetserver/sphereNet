@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Performans dogrulamasi: birlesik tahsis calismasi (Wave 38-40)
+----------------------------------------
+
+PERFORMANS:
+  - Combat senaryosu (2.000 dusman canavar + 300 savasan oyuncu) tum tahsis
+    calismasi devredeyken yedi adet 30 sn'lik pencerede yeniden olculdu. Ayni
+    senaryonun havuzlama-oncesi baseline'ina karsi:
+      ort. tick    21-29 ms  -> 3.6-13.8 ms (aktif savasci seti buyudukce ~13 ms
+                                platoya tirmanir; 20 Hz baştan sona korunur)
+      p95          85-119 ms -> 37-73 ms
+      p99          127-167 ms -> 40-110 ms
+      Gen0/pencere 226-255   -> 23-51
+      Gen2/pencere 1-3       -> ~0 (tick jitter'ini suren bloklayan duraklamalar)
+      alloc        160-178 MB/s -> 43-86 MB/s
+    Exception yok, kopma yok, bozuk paket yok. README guncellendi.
+
 [2026-05-31] - Tahsissiz pathfinder yurunebilirlik kontrolu + benchmark (Wave 40)
 ----------------------------------------
 

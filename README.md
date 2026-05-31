@@ -157,14 +157,16 @@ Steady state holds a full 20 Hz; the only outliers are occasional ~40 ms GC paus
 
 ### Active combat — the expensive case
 
-**2,000 hostile monsters + 300 players engaging** (`STRESS 0 2000 mob` + `BOT 300 combat`):
+**2,000 hostile monsters + 300 players engaging** (`STRESS 0 2000 mob` + `BOT 300 combat`), measured over seven 30 s windows after the allocation work:
 
-| Sample | Avg | p50 | p95 | p99 | Tick rate |
-|---|---|---|---|---|---|
-| Early | 22 ms | ~1 ms | ~90 ms | ~160 ms | 20 Hz |
-| Later | 40 ms | ~1 ms | ~130 ms | ~200 ms | ~16 Hz |
+| Sample | Avg | p50 | p95 | p99 | Gen0/win | Gen2/win | Tick rate |
+|---|---|---|---|---|---|---|---|
+| Early | 3.6 ms | 0.5 ms | 37 ms | 41 ms | ~50 | ≤2 | 20 Hz |
+| Plateau (active set grown) | ~13 ms | 0.5 ms | 73 ms | 110 ms | ~50 | ~0 | 20 Hz |
 
-The median tick stays ~1 ms; cost concentrates in the NPC-AI apply phase whenever many hostiles are simultaneously acquiring targets and retaliating, and it climbs as more monsters aggro and stay active. The dominant cost in a battle is the count of **simultaneously-active combatants**, not the player count.
+The median tick stays ~0.5 ms; cost concentrates in the NPC-AI apply phase whenever many hostiles are simultaneously acquiring targets and retaliating, and it climbs as more monsters aggro and stay active. The dominant cost in a battle is the count of **simultaneously-active combatants**, not the player count. 20 Hz is held throughout.
+
+Before the allocation work (pooled A* scratch + allocation-free walkability + pooled packet buffers) the same scenario ran at ~21–29 ms avg, p95 85–119 ms, ~230–255 Gen0 and 1–3 blocking Gen2 collections per window — i.e. the pooling roughly halved-to-quartered tick time and all but eliminated the blocking Gen2 pauses that drove tick jitter.
 
 **Ceiling:** 30,000 *hostile* monsters + 300 players saturates the loop (~600–800 ms ticks, ~1–2 Hz) — yet it degrades gracefully, with no crash and no multicore fallback. Tens of thousands of concurrently-fighting AI exceed a single 50 ms frame; idle populations of that size do not.
 

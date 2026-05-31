@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Performance verification: combined allocation work (Waves 38-40)
+----------------------------------------
+
+PERFORMANCE:
+  - Re-measured the combat scenario (2,000 hostile monsters + 300 combat players)
+    over seven 30 s windows with all of the allocation work in place. Versus the
+    pre-pooling baseline of the same scenario:
+      avg tick    21-29 ms  -> 3.6-13.8 ms (climbs to a ~13 ms plateau as the
+                               active-combatant set grows; 20 Hz held throughout)
+      p95         85-119 ms -> 37-73 ms
+      p99         127-167 ms -> 40-110 ms
+      Gen0/window 226-255   -> 23-51
+      Gen2/window 1-3       -> ~0 (the blocking pauses that drove tick jitter)
+      alloc       160-178 MB/s -> 43-86 MB/s
+    No exceptions, no disconnects, no malformed packets. README updated.
+
 [2026-05-31] - Allocation-free pathfinder walkability check + benchmark (Wave 40)
 ----------------------------------------
 

@@ -157,14 +157,16 @@ Kararlı durum tam 20 Hz'i korur; tek istisna ara sıra görülen ~40 ms'lik GC 
 
 ### Aktif savaş — pahalı durum
 
-**2.000 düşman canavar + 300 oyuncu çarpışırken** (`STRESS 0 2000 mob` + `BOT 300 combat`):
+**2.000 düşman canavar + 300 oyuncu çarpışırken** (`STRESS 0 2000 mob` + `BOT 300 combat`), tahsis çalışması sonrası yedi adet 30 sn'lik pencerede ölçüldü:
 
-| Ölçüm | Ort. | p50 | p95 | p99 | Tick hızı |
-|---|---|---|---|---|---|
-| Erken | 22 ms | ~1 ms | ~90 ms | ~160 ms | 20 Hz |
-| Sonra | 40 ms | ~1 ms | ~130 ms | ~200 ms | ~16 Hz |
+| Ölçüm | Ort. | p50 | p95 | p99 | Gen0/pencere | Gen2/pencere | Tick hızı |
+|---|---|---|---|---|---|---|---|
+| Erken | 3.6 ms | 0.5 ms | 37 ms | 41 ms | ~50 | ≤2 | 20 Hz |
+| Plato (aktif set büyümüş) | ~13 ms | 0.5 ms | 73 ms | 110 ms | ~50 | ~0 | 20 Hz |
 
-Medyan tick ~1 ms'de kalır; maliyet, çok sayıda düşmanın aynı anda hedef seçip karşılık verdiği NPC-AI apply fazında yoğunlaşır ve daha fazla canavar saldırıya geçip aktif kaldıkça artar. Bir savaşta baskın maliyet oyuncu sayısı değil, **aynı anda aktif olan savaşçı sayısıdır**.
+Medyan tick ~0.5 ms'de kalır; maliyet, çok sayıda düşmanın aynı anda hedef seçip karşılık verdiği NPC-AI apply fazında yoğunlaşır ve daha fazla canavar saldırıya geçip aktif kaldıkça artar. Bir savaşta baskın maliyet oyuncu sayısı değil, **aynı anda aktif olan savaşçı sayısıdır**. 20 Hz baştan sona korunur.
+
+Tahsis çalışmasından önce (havuzlanan A* scratch + tahsissiz yürünebilirlik + havuzlanan paket buffer'ları) aynı senaryo ~21–29 ms ort., p95 85–119 ms, pencere başına ~230–255 Gen0 ve 1–3 bloklayan Gen2 toplamasıyla çalışıyordu — yani havuzlama tick süresini kabaca yarı-ila-çeyreğe indirdi ve tick jitter'ını süren bloklayan Gen2 duraklamalarını neredeyse tümüyle giderdi.
 
 **Tavan:** 30.000 *düşman* canavar + 300 oyuncu döngüyü doyuma ulaştırır (~600–800 ms tick, ~1–2 Hz) — ancak çökme veya çok çekirdekten tek çekirdeğe düşme olmadan zarif şekilde yavaşlar. On binlerce eşzamanlı savaşan AI tek bir 50 ms karesini aşar; bu büyüklükteki boşta popülasyonlar aşmaz.
 

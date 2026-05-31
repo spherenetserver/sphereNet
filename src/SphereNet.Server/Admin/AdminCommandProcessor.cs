@@ -36,6 +36,8 @@ public sealed class AdminCommandProcessor
     // Headless bot spawning (CI / smoke / load test): mirrors the in-game
     // .BOT GM speech command so bots can be driven without a logged-in GM.
     public event Action<int, string>? OnBotRequested;
+    // Headless stress population (items, npcs): mirrors the in-game .STRESS.
+    public event Action<int, int>? OnStressRequested;
 
     public AdminCommandProcessor(GameWorld world, AccountManager accounts,
         SphereConfig config, Func<int> getActiveConnections, ILoggerFactory loggerFactory,
@@ -187,6 +189,25 @@ public sealed class AdminCommandProcessor
                 string botBehavior = botToks.Length > 1 ? botToks[1] : "smart";
                 output($"Spawning {botCount} bot(s) with {botBehavior} behavior (watch server log)...");
                 OnBotRequested?.Invoke(botCount, botBehavior);
+                break;
+            }
+
+            case "STRESS":
+            {
+                var stToks = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                int stItems = 500_000, stNpcs = 400_000;
+                if (stToks.Length >= 1 && !int.TryParse(stToks[0], out stItems))
+                {
+                    output("Usage: STRESS [items] [npcs]");
+                    break;
+                }
+                if (stToks.Length >= 2 && !int.TryParse(stToks[1], out stNpcs))
+                {
+                    output("Usage: STRESS [items] [npcs]");
+                    break;
+                }
+                output($"Queuing {stItems:N0} items and {stNpcs:N0} NPCs across town centers...");
+                OnStressRequested?.Invoke(stItems, stNpcs);
                 break;
             }
 

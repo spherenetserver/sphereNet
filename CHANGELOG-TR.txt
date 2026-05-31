@@ -4,6 +4,18 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Headless 'stress' konsol komutu (Wave 29)
+----------------------------------------
+
+ADMIN / DIAGNOSTIK:
+  - Oyun-ici .STRESS GM komutunu yansitan `stress [items] [npcs]` konsol komutu
+    eklendi; yuk-testi populasyonu artik headless sunucudan (CI / smoke)
+    uretilebiliyor. StressTestEngine.QueueGenerate'e baglanir.
+  - Gercek script/harita verisinde smoke ile dogrulandi: 8.000 NPC ~1s'de
+    olusturuldu, tick saglikli kaldi (avg ~0.6ms, 8.006 char + 6 oyuncu),
+    sifir hata. (Not: stress NPC'leri notr yuk-dummy'leri; sadece hostile
+    monster'a saldiran combat botlar onlarla dovusmez.)
+
 [2026-05-31] - Headless 'bot' konsol komutu (Wave 28)
 ----------------------------------------
 

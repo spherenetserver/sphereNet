@@ -4,6 +4,18 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Headless 'stress' console command (Wave 29)
+----------------------------------------
+
+ADMIN / DIAGNOSTICS:
+  - Added a `stress [items] [npcs]` console command mirroring the in-game
+    .STRESS GM speech command, so the load-test population can be generated
+    from a headless server (CI / smoke). Routes to StressTestEngine.QueueGenerate.
+  - Smoke-verified on the real script/map data: generating 8,000 NPCs took ~1s
+    and the tick loop stayed healthy (avg ~0.6ms, 8,006 chars + 6 players) with
+    zero errors. (Note: stress NPCs are neutral load dummies, so combat bots —
+    which only engage hostile monsters — do not fight them.)
+
 [2026-05-31] - Headless 'bot' console command (Wave 28)
 ----------------------------------------
 

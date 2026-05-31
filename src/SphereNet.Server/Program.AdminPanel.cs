@@ -114,6 +114,7 @@ public static partial class Program
             _consoleProcessor.OnDebugToggleRequested += ToggleDebugPackets;
             _consoleProcessor.OnScriptDebugToggleRequested += ToggleScriptDebug;
             _consoleProcessor.OnBotRequested += (count, behavior) => HandleBotCommand(count, behavior, false);
+            _consoleProcessor.OnStressRequested += (items, npcs) => _stressEngine?.QueueGenerate(items, npcs);
 
             // Audit logging for admin commands
             _telnet.Processor.OnCommandExecuted += (source, cmd) =>

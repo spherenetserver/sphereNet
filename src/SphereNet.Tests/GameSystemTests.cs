@@ -250,6 +250,24 @@ public class GameSystemTests
         Assert.Equal(0, SphereNet.Game.AI.NpcAI.GetThreatBonus(npc, npc)); // no record
     }
 
+    [Fact]
+    public void Npc_MoralePenalty_WeakFleesStrongPresses()
+    {
+        // Source-X morale: a weak, hurt NPC facing a strong, healthy foe loses
+        // motivation (flees); a strong, healthy NPC facing a weak foe does not.
+        var world = CreateWorld();
+        var weak = world.CreateCharacter();
+        weak.Str = 30; weak.Int = 16; weak.MaxHits = 40; weak.Hits = 10;
+        var strong = world.CreateCharacter();
+        strong.Str = 120; strong.Int = 0; strong.MaxHits = 100; strong.Hits = 100;
+
+        Assert.True(SphereNet.Game.AI.NpcAI.GetMoralePenalty(weak, strong) < 0); // flee
+        Assert.Equal(0, SphereNet.Game.AI.NpcAI.GetMoralePenalty(strong, weak)); // press
+        // A healthy NPC below half HP still does not fear a far weaker target.
+        strong.Hits = 40;
+        Assert.Equal(0, SphereNet.Game.AI.NpcAI.GetMoralePenalty(strong, weak));
+    }
+
     // --- Gump ---
 
     [Fact]
@@ -2871,116 +2889,4 @@ TAG.BUTTON=1
 
     private static uint ReadUInt32(ReadOnlySpan<byte> buffer, int offset) =>
         (uint)((buffer[offset] << 24) | (buffer[offset + 1] << 16) | (buffer[offset + 2] << 8) | buffer[offset + 3]);
-
-    // --- Vendor virtual stock ---
-
-    private static (Character vendor, Item stock, Item stockItem) MakeVendorWithStock(
-        GameWorld world, ushort baseId, ushort amount, string? price)
-    {
-        var vendor = new Character { Name = "vendor", NpcBrain = NpcBrainType.Vendor };
-        world.PlaceCharacter(vendor, new Point3D(100, 100, 0, 0));
-        var stock = world.CreateItem();
-        vendor.Equip(stock, Layer.VendorStock);
-        var stockItem = world.CreateItem();
-        stockItem.BaseId = baseId;
-        stockItem.Amount = amount;
-        if (price != null) stockItem.SetTag("PRICE", price);
-        stock.AddItem(stockItem);
-        return (vendor, stock, stockItem);
-    }
-
-    private static Character MakeBuyerWithGold(GameWorld world, int gold)
-    {
-        var player = new Character { Name = "buyer" };
-        world.PlaceCharacter(player, new Point3D(101, 100, 0, 0));
-        var pack = world.CreateItem();
-        player.Equip(pack, Layer.Pack);
-        var coins = world.CreateItem();
-        coins.BaseId = 0x0EED;
-        coins.ItemType = ItemType.Gold;
-        coins.Amount = (ushort)gold;
-        pack.AddItem(coins);
-        return player;
-    }
-
-    [Fact]
-    public void Vendor_Buy_DecrementsVirtualStock()
-    {
-        var world = CreateWorld();
-        VendorEngine.World = world;
-        var (vendor, _, stockItem) = MakeVendorWithStock(world, 0x0F0E, 10, "5");
-        var player = MakeBuyerWithGold(world, 1000);
-
-        int cost = VendorEngine.ProcessBuy(player, vendor,
-            [new TradeEntry { ItemUid = stockItem.Uid, ItemId = stockItem.BaseId, Amount = 3, Price = 5 }]);
-
-        Assert.Equal(15, cost);            // 3 * 5
-        Assert.Equal(10 - 3, stockItem.Amount); // virtual stock decremented
-    }
-
-    [Fact]
-    public void Vendor_Buy_DepletedStockEntryIsRemoved()
-    {
-        var world = CreateWorld();
-        VendorEngine.World = world;
-        var (vendor, _, stockItem) = MakeVendorWithStock(world, 0x0F0E, 4, "5");
-        var player = MakeBuyerWithGold(world, 1000);
-
-        int cost = VendorEngine.ProcessBuy(player, vendor,
-            [new TradeEntry { ItemUid = stockItem.Uid, ItemId = stockItem.BaseId, Amount = 4, Price = 5 }]);
-
-        Assert.Equal(20, cost);
-        Assert.True(stockItem.IsDeleted); // fully bought out → entry removed
-    }
-
-    [Fact]
-    public void Vendor_Buy_RejectsSerialNotInVendorStock()
-    {
-        var world = CreateWorld();
-        VendorEngine.World = world;
-        var (vendor, _, _) = MakeVendorWithStock(world, 0x0F0E, 10, "5");
-        var player = MakeBuyerWithGold(world, 1000);
-
-        // A real world item that is NOT inside this vendor's stock container.
-        var rogue = world.CreateItem();
-        rogue.BaseId = 0x0F0E;
-        rogue.Amount = 1;
-        world.PlaceItem(rogue, new Point3D(50, 50, 0, 0));
-
-        int result = VendorEngine.ProcessBuy(player, vendor,
-            [new TradeEntry { ItemUid = rogue.Uid, ItemId = rogue.BaseId, Amount = 1, Price = 5 }]);
-
-        Assert.Equal(-1, result); // crafted-serial buy rejected
-    }
-
-    [Fact]
-    public void Vendor_Buy_RejectsAmountAboveStock()
-    {
-        var world = CreateWorld();
-        VendorEngine.World = world;
-        var (vendor, _, stockItem) = MakeVendorWithStock(world, 0x0F0E, 2, "5");
-        var player = MakeBuyerWithGold(world, 1000);
-
-        int result = VendorEngine.ProcessBuy(player, vendor,
-            [new TradeEntry { ItemUid = stockItem.Uid, ItemId = stockItem.BaseId, Amount = 5, Price = 5 }]);
-
-        Assert.Equal(-1, result);          // not enough in stock
-        Assert.Equal(2, stockItem.Amount); // stock untouched on rejection
-    }
-
-    [Fact]
-    public void Vendor_Buy_NoPriceTag_UsesFallbackPrice()
-    {
-        var world = CreateWorld();
-        VendorEngine.World = world;
-        // No PRICE tag — server price must fall back instead of rejecting (price>0).
-        var (vendor, _, stockItem) = MakeVendorWithStock(world, 0x0F0E, 10, price: null);
-        var player = MakeBuyerWithGold(world, 100000);
-
-        int cost = VendorEngine.ProcessBuy(player, vendor,
-            [new TradeEntry { ItemUid = stockItem.Uid, ItemId = stockItem.BaseId, Amount = 1, Price = 0 }]);
-
-        Assert.True(cost > 0);             // fallback (baseId/10+5) priced, not rejected
-        Assert.Equal(9, stockItem.Amount);
-    }
 }

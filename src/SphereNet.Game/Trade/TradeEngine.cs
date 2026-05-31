@@ -369,18 +369,27 @@ public static class VendorEngine
         if (World == null) return;
         if (vendor.NpcBrain != Core.Enums.NpcBrainType.Vendor) return;
 
-        var backpack = vendor.Backpack;
-        if (backpack == null) return;
-
         if (!vendor.TryGetTag("VENDORINV", out string? invDef) || string.IsNullOrEmpty(invDef))
             return;
+
+        // Stock the dedicated vendor STOCK container (LAYER 26), the same
+        // container the buy gump reads from — not the regular backpack,
+        // which the display path ignores. The container and its contents
+        // are virtual (excluded from the world save, rebuilt on demand).
+        var stock = vendor.GetEquippedItem(Core.Enums.Layer.VendorStock);
+        if (stock == null)
+        {
+            stock = World.CreateItem();
+            stock.BaseId = 0x408D; // i_vendor_box (vendor stock graphic)
+            vendor.Equip(stock, Core.Enums.Layer.VendorStock);
+        }
 
         // Parse "itemId:amount,itemId:amount,..."
         var entries = invDef.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var existing = new Dictionary<ushort, int>();
 
         // Count existing stock
-        foreach (var item in World.GetContainerContents(backpack.Uid))
+        foreach (var item in World.GetContainerContents(stock.Uid))
         {
             if (item.IsDeleted) continue;
             existing.TryGetValue(item.BaseId, out int count);
@@ -411,7 +420,24 @@ public static class VendorEngine
             var newItem = World.CreateItem();
             newItem.BaseId = itemId;
             newItem.Amount = (ushort)Math.Min(deficit, 60000);
-            backpack.AddItem(newItem);
+
+            // Stamp the buy price from the itemdef VALUE when available so
+            // the server-side price check has an explicit figure (it falls
+            // back to the display formula otherwise).
+            var idef = Definitions.DefinitionLoader.GetItemDef(itemId);
+            if (idef != null)
+            {
+                int value = idef.ValueMin > 0 && idef.ValueMax > 0
+                    ? (idef.ValueMin + idef.ValueMax) / 2
+                    : Math.Max(idef.ValueMin, idef.ValueMax);
+                if (value > 0)
+                {
+                    newItem.Price = value;
+                    newItem.SetTag("PRICE", value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                }
+            }
+
+            stock.AddItem(newItem);
         }
 
         vendor.SetTag("RESTOCK_TIME", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString());

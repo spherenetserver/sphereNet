@@ -4,6 +4,32 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - NPC AI morale/kiting ve vendor restock birlesimi (Wave 20)
+----------------------------------------
+
+NPC AI:
+  - Morale/fear (Source-X NPC_GetAttackContinueMotivation): kacma karari artik
+    sabit "HP < yari" esigi yerine GORECELI guce dayali — STR farki + relatif
+    HP% farki. Guclu/saglikli NPC zayif hedefi yarim HP altinda bile kovalar;
+    zayif/yarali NPC ezici hedeften kacar. Yalniz ceza yonunde uygulanir.
+  - Ranged kiting (Source-X NPC_FightArchery): hedef yayli NPC'nin minimum
+    menziline girince NPC ates edemeyip melee'de sikismak yerine ~%50 geri
+    cekilip mesafe acar.
+  - NpcAIFlags bit degerleri NPC_AI_* tanimlarina hizalandi (0x20 bosluk
+    korundu); ileride ham NPC.AI sayisal degeri dogru bitlere eslesir.
+
+VENDOR:
+  - GM VENDORINV restock'u artik regular backpack yerine sanal stok
+    container'ina (LAYER 26) yaziyor — buy gump'inin okudugu yer. Boylece
+    GM-tanimli stok hem goruntulenir hem save'den haric kalir.
+  - Restock item'lari itemdef VALUE'dan PRICE damgalar; iki restock yolu
+    (template SELL= ve GM VENDORINV) ayni sanal stok modelinde birlesti.
+
+TESTLER:
+  - Morale penalty (zayif kacar / guclu kovalar) icin birim test; vendor
+    ticaret testleri paylasilan statik yaris icin serial collection'a alindi
+    (523 gecer).
+
 [2026-05-29] - Vendor sanal stok ve NPC loot tembel materyalizasyonu (Wave 19)
 ----------------------------------------
 

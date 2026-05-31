@@ -4,6 +4,33 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - NPC AI morale/kiting and vendor restock unification (Wave 20)
+----------------------------------------
+
+NPC AI:
+  - Morale/fear (Source-X NPC_GetAttackContinueMotivation): the decision to
+    flee is now based on RELATIVE strength instead of a fixed "HP < half"
+    threshold — STR difference + relative HP% difference. A strong, healthy
+    NPC presses a weak target even below half HP; a weak/hurt NPC flees an
+    overwhelming one. Applied as a penalty only.
+  - Ranged kiting (Source-X NPC_FightArchery): when a target closes inside a
+    ranged NPC's minimum range, the NPC backs off (~50%) to reopen the gap
+    instead of standing locked in melee unable to fire.
+  - NpcAIFlags bit values aligned to the NPC_AI_* defines (0x20 gap kept), so
+    a raw script NPC.AI integer maps to the correct bits in future.
+
+VENDOR:
+  - GM VENDORINV restock now writes to the virtual stock container (LAYER 26)
+    that the buy gump reads from, not the regular backpack — so GM-defined
+    stock both displays and stays excluded from the world save.
+  - Restocked items stamp PRICE from the itemdef VALUE; the two restock paths
+    (template SELL= and GM VENDORINV) now share the same virtual stock model.
+
+TESTS:
+  - Unit test for the morale penalty (weak flees / strong presses); vendor
+    trade tests moved to a serial collection to avoid a shared-static race
+    (523 passing).
+
 [2026-05-29] - Vendor virtual stock and lazy NPC loot materialisation (Wave 19)
 ----------------------------------------
 

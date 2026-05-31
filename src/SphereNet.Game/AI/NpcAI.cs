@@ -23,12 +23,15 @@ public enum NpcAIFlags : uint
     Extra = 0x0004,
     AlwaysInt = 0x0008,
     IntFood = 0x0010,
-    Combat = 0x0020,
-    VendTime = 0x0040,
-    Looting = 0x0080,
-    MoveObstacles = 0x0100,
-    PersistentPath = 0x0200,
-    Threat = 0x0400,
+    // 0x0020 is unused in Source-X (gap between INTFOOD and COMBAT) —
+    // bit values below are aligned to the NPC_AI_* defines so a raw
+    // script NPC.AI integer maps to the correct behaviours.
+    Combat = 0x0040,
+    VendTime = 0x0080,
+    Looting = 0x0100,
+    MoveObstacles = 0x0200,
+    PersistentPath = 0x0400,
+    Threat = 0x0800,
 }
 
 /// <summary>Source-X CRESND_TYPE — creature sound categories.</summary>
@@ -751,7 +754,20 @@ public sealed class NpcAI
             return;
 
         // Melee / ranged
-        if (dist <= GetAttackRange(npc))
+        var weapon = npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
+        var range = CombatHelper.GetWeaponRange(weapon);
+
+        // Ranged kiting (Source-X NPC_FightArchery): when the target has closed
+        // inside the weapon's minimum range a ranged attacker cannot fire, so
+        // back off to reopen the gap (≈50%) instead of standing locked in melee.
+        if (range.Max > 1 && dist < range.Min)
+        {
+            if (_rand.Next(2) == 0)
+                MoveAway(npc, target.Position);
+            return;
+        }
+
+        if (dist <= range.Max)
         {
             TrySwingAttack(npc, target);
             // After attacking, try to surround: if adjacent allies also occupy
@@ -1303,6 +1319,18 @@ public sealed class NpcAI
         return 0;
     }
 
+    /// <summary>Source-X NPC_GetAttackContinueMotivation morale: the penalty to
+    /// fight-motivation from being weaker / more hurt than the target. Returns a
+    /// value ≤ 0 (0 when the NPC is not outmatched), so it only ever pushes the
+    /// creature toward fleeing, never toward extra aggression. Exposed for tests.</summary>
+    internal static int GetMoralePenalty(Character npc, Character target)
+    {
+        int myHpPct = npc.MaxHits > 0 ? npc.Hits * 100 / npc.MaxHits : 100;
+        int targetHpPct = target.MaxHits > 0 ? target.Hits * 100 / target.MaxHits : 100;
+        int morale = (npc.Str - target.Str) + (myHpPct - targetHpPct) - (npc.Int / 16);
+        return morale < 0 ? morale : 0;
+    }
+
     /// <summary>Per-creature target-preference bias from the FIGHTMODE tag
     /// (Weakest/Strongest/Evil). Closest is the default (distance already drives
     /// motivation), so no tag = unchanged behavior.</summary>
@@ -1514,9 +1542,15 @@ public sealed class NpcAI
         // "closest" behavior unchanged.
         motivation += FightModeBias(npc, target);
 
-        // Fear: flee if HP is low (Source-X: MonsterFear + STR check)
-        if (_config.MonsterFear && npc.MaxHits > 0 && npc.Hits < npc.MaxHits / 2)
-            motivation -= 50 + (npc.Int / 16);
+        // Fear / morale (Source-X NPC_GetAttackContinueMotivation): the will
+        // to fight scales with RELATIVE strength and health, not a fixed HP
+        // threshold. A creature much weaker or more hurt than its target loses
+        // motivation (and flees once total motivation drops below 0); a strong,
+        // healthy NPC presses a weak target even while itself below half HP.
+        // Applied as a penalty only, so it never inflates aggression beyond
+        // the hostility/threat model above.
+        if (_config.MonsterFear)
+            motivation += GetMoralePenalty(npc, target);
 
         return motivation;
     }

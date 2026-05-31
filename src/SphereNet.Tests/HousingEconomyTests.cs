@@ -10,6 +10,7 @@ using SphereNet.Game.World;
 
 namespace SphereNet.Tests;
 
+[Collection("VendorStateSerial")]
 public class HousingEconomyTests
 {
     private static GameWorld CreateWorld()

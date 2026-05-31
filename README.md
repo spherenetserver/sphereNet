@@ -170,6 +170,19 @@ Before the allocation work (pooled A* scratch + allocation-free walkability + po
 
 **Ceiling:** 30,000 *hostile* monsters + 300 players saturates the loop (~600–800 ms ticks, ~1–2 Hz) — yet it degrades gracefully, with no crash and no multicore fallback. Tens of thousands of concurrently-fighting AI exceed a single 50 ms frame; idle populations of that size do not.
 
+### 1,000 concurrent clients
+
+1,000 live TCP bots (all connecting from loopback) connect in 25–30 s with zero failures and stay connected for the whole run — no disconnects, no malformed packets.
+
+| Scenario | Avg | p50 | p95 | p99 | Tick rate | pps out |
+|---|---|---|---|---|---|---|
+| 1,000 spread + low activity | ~0.8 ms | 0.7 ms | ~1.5 ms | 5–29 ms | 20 Hz | ~1,750/s |
+| 1,000 in active combat (+2,000 hostile) | ~32–34 ms | ~1 ms | ~130 ms | ~210–320 ms | ~19 Hz | ~1,950/s |
+
+A thousand spread-out players are nearly free (Gen0 ~1/window, no blocking Gen2). A thousand players *all fighting at once* push the loop to ~34 ms avg — workable, 20 Hz mostly held, but p95/p99 breach the 50 ms frame, so this is the practical edge for that intensity. The dominant cost is the active-combatant count, not the client count: 1,000 spread ≈ free, 1,000 all-fighting ≈ the budget edge.
+
+> Caveat: trying to force all 1,000 into a single town (to provoke the O(n²) same-screen broadcast worst case) did not reproduce it — the walker bots disperse within the town and idle, landing back at ~0.8 ms. The dense single-screen case (serial packet-flush + view amplification) remains the known scaling limit and is not yet measured. Figures are also pessimistic: the 1,000 bots share the CPU with the server in-process.
+
 **Save:** 102,780 items + 50,363 characters → **0.6 s** (BinaryGz, 3 shards).
 **Memory:** ~550–650 MB working set across every scenario above.
 

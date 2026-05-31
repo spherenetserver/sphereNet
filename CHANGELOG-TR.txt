@@ -4,6 +4,23 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - 1.000-client olcekleme testi
+----------------------------------------
+
+PERFORMANS:
+  - 1.000 canli TCP botu uc senaryoda kosuldu (loopback). Baglanti: 1.000/1.000
+    25-30 sn'de, sifir hata, kopma/bozuk paket yok.
+      yayilmis + dusuk aktivite   : ~0.8 ms ort., Gen0 ~1/pencere, bloklayan
+                                    Gen2 yok, ~1.750 pps out, 20 Hz
+      aktif savas (+2.000 canavar): ~32-34 ms ort., p95 ~130 ms, p99 ~210-320 ms,
+                                    ~19 Hz, ~1.950 pps out
+  - Sonuc: maliyet client sayisini degil aktif-savasci sayisini izler — 1.000
+    yayilmis oyuncu neredeyse bedava, 1.000 oyuncu ayni anda savasinca 50 ms
+    butce kenarinda. 1.000'in tamamini tek sehre yigmak yogun ayni-ekran O(n^2)
+    broadcast en kotu durumunu yeniden uretmedi (yuruyus botlari dagilip idle'a
+    duser); bu bilinen olculmemis olcekleme siniri olarak kaliyor. README
+    guncellendi.
+
 [2026-05-31] - Performans dogrulamasi: birlesik tahsis calismasi (Wave 38-40)
 ----------------------------------------
 

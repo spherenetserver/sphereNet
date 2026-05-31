@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - 1,000-client scaling test
+----------------------------------------
+
+PERFORMANCE:
+  - Ran 1,000 live TCP bots across three scenarios (loopback). Connect: 1,000/
+    1,000 in 25-30 s, zero failures, no disconnects/malformed packets.
+      spread + low activity      : ~0.8 ms avg, Gen0 ~1/window, no blocking Gen2,
+                                   ~1,750 pps out, 20 Hz
+      active combat (+2,000 mob) : ~32-34 ms avg, p95 ~130 ms, p99 ~210-320 ms,
+                                   ~19 Hz, ~1,950 pps out
+  - Takeaway: cost tracks the active-combatant count, not the client count —
+    1,000 spread players are nearly free, 1,000 all fighting at once sit at the
+    50 ms budget edge. Forcing all 1,000 into one town did not reproduce the
+    dense same-screen O(n^2) broadcast worst case (walker bots disperse and
+    idle); that remains the known unmeasured scaling limit. README updated.
+
 [2026-05-31] - Performance verification: combined allocation work (Waves 38-40)
 ----------------------------------------
 

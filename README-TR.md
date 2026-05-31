@@ -170,6 +170,19 @@ Tahsis çalışmasından önce (havuzlanan A* scratch + tahsissiz yürünebilirl
 
 **Tavan:** 30.000 *düşman* canavar + 300 oyuncu döngüyü doyuma ulaştırır (~600–800 ms tick, ~1–2 Hz) — ancak çökme veya çok çekirdekten tek çekirdeğe düşme olmadan zarif şekilde yavaşlar. On binlerce eşzamanlı savaşan AI tek bir 50 ms karesini aşar; bu büyüklükteki boşta popülasyonlar aşmaz.
 
+### 1.000 eş zamanlı client
+
+1.000 canlı TCP botu (hepsi loopback'ten) 25–30 sn'de sıfır hatayla bağlanır ve tüm run boyunca bağlı kalır — kopma yok, bozuk paket yok.
+
+| Senaryo | Ort. | p50 | p95 | p99 | Tick hızı | pps out |
+|---|---|---|---|---|---|---|
+| 1.000 yayılmış + düşük aktivite | ~0.8 ms | 0.7 ms | ~1.5 ms | 5–29 ms | 20 Hz | ~1.750/s |
+| 1.000 aktif savaşta (+2.000 düşman) | ~32–34 ms | ~1 ms | ~130 ms | ~210–320 ms | ~19 Hz | ~1.950/s |
+
+Bin yayılmış oyuncu neredeyse bedava (Gen0 ~1/pencere, bloklayan Gen2 yok). Bin oyuncu *aynı anda savaşırsa* döngü ~34 ms ort.'ya çıkar — çalışır, 20 Hz büyük ölçüde korunur, ama p95/p99 50 ms karesini aşar; yani bu yoğunlukta pratik sınır budur. Baskın maliyet client sayısı değil aktif-savaşçı sayısıdır: 1.000 yayılmış ≈ bedava, 1.000 hepsi-savaşta ≈ bütçe kenarı.
+
+> Uyarı: 1.000'in tamamını tek bir şehre yığıp (O(n²) aynı-ekran broadcast en kötü durumunu tetiklemek için) denemek bunu yeniden üretemedi — yürüyüş botları şehir içinde dağılıp idle'a düşüyor ve yine ~0.8 ms'ye iniyor. Yoğun tek-ekran durumu (serial paket-flush + görüş yayılımı) bilinen ölçekleme sınırı olarak kalıyor ve henüz ölçülmedi. Sayılar ayrıca kötümser: 1.000 bot sunucuyla aynı process'te CPU paylaşır.
+
 **Kayıt:** 102.780 item + 50.363 karakter → **0.6 sn** (BinaryGz, 3 shard).
 **Bellek:** Yukarıdaki tüm senaryolarda ~550–650 MB çalışma kümesi.
 

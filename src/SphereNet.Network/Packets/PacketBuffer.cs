@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Buffers.Binary;
+using SphereNet.Network.Encryption;
 
 namespace SphereNet.Network.Packets;
 
@@ -32,11 +33,20 @@ public sealed class PacketBuffer
     public bool IsShared { get; private set; }
 
     /// <summary>Mark this packet as shared across <paramref name="recipientCount"/>
-    /// send queues. Must be called before enqueuing onto any queue.</summary>
+    /// send queues, and pre-compute its Huffman-compressed (pre-encryption)
+    /// payload once here. Pre-computing at broadcast time (not lazily on the
+    /// first flush) is what lets recipients' FlushOutput run in PARALLEL: the
+    /// cache is then immutable and read-only during flushing, so there is no
+    /// init race. Must be called before enqueuing onto any queue.</summary>
     public void MarkShared(int recipientCount)
     {
         IsShared = true;
         _refCount = recipientCount < 1 ? 1 : recipientCount;
+        if (_sharedCompressed == null)
+        {
+            _sharedCompressed = HuffmanCompression.Compress(_data, 0, _length);
+            _sharedCompressedLen = _sharedCompressed.Length;
+        }
     }
 
     /// <summary>The cached, compression-only (pre-encryption) payload, or null

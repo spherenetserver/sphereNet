@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
@@ -583,13 +584,38 @@ public sealed class NetworkManager : IDisposable
     /// <summary>
     /// Flush all outgoing data. Called from main tick.
     /// </summary>
+    private const int FlushParallelThreshold = 128;
+
     public void ProcessAllOutput()
     {
-        foreach (var state in _states)
+        // Each connection's flush touches only its own state (send queue, crypto,
+        // batch buffer, socket). The only cross-connection data is shared
+        // broadcast packets, whose compressed payload is precomputed in
+        // MarkShared (read-only here) and whose pool return is an interlocked
+        // refcount — so flushes are independent and parallelize cleanly. Below a
+        // threshold the parallel overhead isn't worth it.
+        int active = 0;
+        for (int i = 0; i < _states.Length; i++)
+            if (_states[i].IsInUse) active++;
+
+        if (active < FlushParallelThreshold)
         {
-            if (state.IsInUse)
-                state.FlushOutput();
+            foreach (var state in _states)
+            {
+                if (state.IsInUse)
+                    state.FlushOutput();
+            }
+            return;
         }
+
+        Parallel.ForEach(
+            _states,
+            new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
+            state =>
+            {
+                if (state.IsInUse)
+                    state.FlushOutput();
+            });
     }
 
     /// <summary>Idle timeout: drop connections with no activity for this duration.</summary>

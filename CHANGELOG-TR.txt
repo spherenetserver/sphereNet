@@ -4,6 +4,27 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Paralel cikis flush'i (Wave 44)
+----------------------------------------
+
+PERFORMANS / AG:
+  - ProcessAllOutput her baglantiyi seri flush ediyordu. Her baglantinin flush'i
+    yalnizca kendi state'ine dokunur (send queue, crypto, batch buffer, socket);
+    shared broadcast yukleri onceden hesaplandiginda temizce paralellesir. Flush
+    artik aktif-baglanti sayisi bir esigin uzerindeyken cekirdeklere yayilir
+    (Parallel.ForEach, ProcessorCount ile sinirli); altinda seri yol korunur.
+  - Yarissiz olmasi icin shared broadcast paketinin Huffman-compressed yuku artik
+    ilk flush'ta degil MarkShared'da (broadcast aninda) bir kez hesaplanir;
+    FlushOutput bu cache'i yalnizca OKUR, asla yazmaz. Havuz iadesi zaten
+    interlocked refcount kullaniyor.
+  - Olculen: 300 combat + 2.000 dusman (paralel flush devrede) — p95 tick kabaca
+    yariya indi (~72 ms -> ~40 ms), ortalama dustu (~14-21 ms -> ~10 ms), seri
+    flush'a kiyasla; sifir wire-bozulmasi, sifir overflow. 1.000-bot yogun kume
+    hala 1.000'i 20 Hz'de sifir overflow ile tutuyor; asiri sel altindaki
+    nihai azalmasi client-side'dir (in-process botlar her biri ~1.000 gelen
+    speech/sn'yi bosaltamaz) ve beklendigi gibi server-side flush
+    paralelliginden etkilenmez.
+
 [2026-06-01] - Hareket broadcast'leri icin shared yol (Wave 43)
 ----------------------------------------
 

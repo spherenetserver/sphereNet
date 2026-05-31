@@ -357,15 +357,6 @@ public sealed class NetState : IDisposable
         Send(packet);
     }
 
-    /// <summary>Compress a shared broadcast packet once and cache the
-    /// pre-encryption bytes on it for the remaining recipients to reuse.</summary>
-    private static byte[] CacheSharedCompressed(PacketBuffer packet)
-    {
-        var compressed = HuffmanCompression.Compress(packet.Data, 0, packet.Length);
-        packet.SetSharedCompressed(compressed, compressed.Length);
-        return compressed;
-    }
-
     /// <summary>Flush all queued packets to the socket.</summary>
     public void FlushOutput()
     {
@@ -396,11 +387,21 @@ public sealed class NetState : IDisposable
 
                         if (packet.IsShared)
                         {
-                            // Broadcast: compress once (first recipient), cache the
-                            // pre-encryption bytes, reuse for every other recipient.
-                            byte[] shared = packet.SharedCompressed
-                                ?? CacheSharedCompressed(packet);
-                            int sharedLen = packet.SharedCompressedLen;
+                            // Broadcast: the pre-encryption bytes were compressed
+                            // once by MarkShared; reuse them read-only (so parallel
+                            // flushes never race on the cache). The defensive branch
+                            // compresses locally WITHOUT writing the shared cache.
+                            byte[] shared = packet.SharedCompressed;
+                            int sharedLen;
+                            if (shared != null)
+                            {
+                                sharedLen = packet.SharedCompressedLen;
+                            }
+                            else
+                            {
+                                shared = HuffmanCompression.Compress(packet.Data, 0, packet.Length);
+                                sharedLen = shared.Length;
+                            }
 
                             if (Crypto.EncType == EncryptionType.None)
                             {

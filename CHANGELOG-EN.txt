@@ -4,6 +4,28 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Parallel output flush (Wave 44)
+----------------------------------------
+
+PERFORMANCE / NETWORK:
+  - ProcessAllOutput flushed every connection serially. Each connection's flush
+    touches only its own state (send queue, crypto, batch buffer, socket), so
+    once shared broadcast payloads are precomputed they parallelize cleanly.
+    Flushing now runs across cores (Parallel.ForEach, capped at ProcessorCount)
+    when the active-connection count is above a threshold; below it, the serial
+    path is kept to avoid parallel overhead.
+  - To make this race-free, a shared broadcast packet's Huffman-compressed
+    payload is now computed once in MarkShared (at broadcast time) instead of
+    lazily on the first flush; FlushOutput only reads that cache, never writes
+    it. The pool return already uses an interlocked refcount.
+  - Measured: 300 combat + 2,000 hostile (parallel flush engaged) — p95 tick
+    roughly halved (~72 ms -> ~40 ms) and average dropped (~14-21 ms -> ~10 ms)
+    versus the serial flush, with zero wire-corruption, zero overflows. The
+    1,000-bot dense cluster still holds all 1,000 at 20 Hz with zero overflows;
+    its eventual attrition under the extreme flood is client-side (in-process
+    bots cannot drain ~1,000 inbound speech packets/s each) and is unchanged by
+    server-side flush parallelism, as expected.
+
 [2026-06-01] - Shared path for movement broadcasts (Wave 43)
 ----------------------------------------
 

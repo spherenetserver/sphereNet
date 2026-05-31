@@ -199,6 +199,8 @@ Originally this saturated the per-client send queues — a broadcast packet was 
 
 As a graceful-degradation layer, **interest management** sheds low-priority cosmetic broadcasts (overhead speech, sound) to any connection whose send queue is backing up past a soft cap — state-bearing packets (movement, status, combat) are never dropped. It is inert in normal play (a 300-player combat run sheds nothing) and activates only under a genuine per-connection backlog.
 
+**Non-blocking sends** keep a slow client from ever stalling the server. The game stream uses a per-connection persistent send buffer drained with non-blocking sends — when the OS send buffer is full the bytes wait for the next flush instead of blocking the flush thread. A connection that buffers more than 512 KB of unsent data is hopelessly behind and is disconnected (bounding worst-case memory). So a slow or distant client costs only its own buffer, never a shared server thread.
+
 Under an even more extreme flood the remaining limit is *downstream* of the server: an individual client receiving ~1,000 speech packets/second can't drain them (TCP backpressure) — inherent to "1,000 people talking on one screen," not a server bottleneck. (Note: this last limit can't be measured precisely with the in-process bot harness, where the bots share CPU with the server.)
 
 **Save:** 102,780 items + 50,363 characters → **0.6 s** (BinaryGz, 3 shards).

@@ -4,6 +4,40 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Non-blocking (async) game send (Wave 46)
+----------------------------------------
+
+NETWORK:
+  - The game stream no longer uses a blocking Socket.Send. A slow client, a full
+    OS send buffer, or a packet burst could previously block the flush thread
+    that was serving it. The game socket is now set non-blocking on login, and
+    FlushOutput accumulates compressed+encrypted bytes into a persistent
+    per-connection buffer ([_outStart.._outEnd), stream-ordered) and drains only
+    what the socket accepts (Send with out SocketError; WouldBlock leaves the
+    remainder for the next flush). The server thread never blocks.
+  - Backpressure: a connection buffering more than 512 KB of unsent bytes is
+    hopelessly behind and is disconnected (bounds worst-case memory to
+    ~maxClients * 512 KB). Clear() now does a best-effort final flush before
+    shutdown so a graceful disconnect still delivers queued/pending data.
+  - Design note: a synchronous non-blocking + per-tick retry model is used rather
+    than SocketAsyncEventArgs/SendAsync — it reaches the same goal (no blocked
+    thread) without completion-callback races, in-flight tracking and post-
+    completion cleanup, which are the parts most likely to produce wire bugs
+    worse than blocking. One active send per connection is inherent (flush is
+    serial per connection), packet order is preserved (single ordered buffer),
+    and the shared-broadcast/pre-compress path is unchanged. Toggle:
+    NetState.NonBlockingGameSend (default on) keeps the old blocking path for A/B
+    and rollback.
+
+  Validated: 529 tests; 300-combat correctness run (zero wire corruption, zero
+  backpressure trips — healthy connections drain fully each tick, tick
+  unchanged); 1,000-bot cluster — zero corruption and zero final-flush errors
+  across ~1,900 teardowns, the server never blocks, slow clients are shed cleanly
+  by the byte cap instead of a blocking cascade, peak RSS ~2.1 GB (was ~4.6 GB at
+  a 2 MB cap). The in-process bot cluster's eventual attrition is unchanged — it
+  is the bots being CPU-starved, not the send path — but the failure mode is now
+  bounded and non-blocking.
+
 [2026-06-01] - Interest management: shed cosmetic chatter under pressure (Wave 45)
 ----------------------------------------
 

@@ -199,6 +199,8 @@ Başlangıçta bu per-client send queue'larını dolduruyordu — broadcast pake
 
 Zarif-yavaşlama katmanı olarak **interest management**, send queue'su soft cap'i aşıp geride kalan herhangi bir bağlantıya giden düşük-öncelikli kozmetik broadcast'leri (overhead speech, ses) düşürür — durum taşıyan paketler (hareket, status, savaş) asla düşürülmez. Normal oyunda atıldır (300-oyuncu combat run'ı hiçbir şey düşürmez) ve yalnızca gerçek bir per-connection backlog'da devreye girer.
 
+**Non-blocking send'ler** yavaş bir client'ın sunucuyu asla durdurmamasını sağlar. Oyun stream'i, non-blocking send'lerle drenaj edilen per-connection kalıcı bir send buffer kullanır — OS send buffer'ı dolunca byte'lar flush thread'ini bloklamak yerine bir sonraki flush'ı bekler. 512 KB'tan fazla gönderilmemiş veri biriktiren bağlantı umutsuzca geridedir ve disconnect edilir (en kötü durum belleğini sınırlar). Yani yavaş veya uzak bir client yalnızca kendi buffer'ına mal olur, paylaşılan bir sunucu thread'ine asla.
+
 Daha da aşırı bir sel altında kalan sınır sunucunun *downstream*'indedir: saniyede ~1.000 konuşma paketi alan bir client bunları boşaltamaz (TCP backpressure) — bu "1.000 kişi tek ekranda konuşuyor"un doğasıdır, sunucu darboğazı değil. (Not: bu son sınır, botların sunucuyla CPU paylaştığı in-process harness ile tam ölçülemez.)
 
 **Kayıt:** 102.780 item + 50.363 karakter → **0.6 sn** (BinaryGz, 3 shard).

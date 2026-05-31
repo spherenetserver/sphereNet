@@ -41,12 +41,29 @@ public sealed class NetState : IDisposable
         _ => false,
     };
 
+    // Async (non-blocking) game send. The game socket is put in non-blocking
+    // mode; FlushOutput accumulates compressed+encrypted bytes into a persistent
+    // per-connection buffer and drains as much as the socket accepts without
+    // ever blocking a server thread. A slow client's bytes back up here (bounded
+    // by MaxPendingSendBytes) instead of stalling the flush, and it is
+    // disconnected only if it falls hopelessly behind. Toggle for A/B + rollback.
+    public static bool NonBlockingGameSend = true;
+    // Backpressure cap: a connection buffering more than this many unsent bytes
+    // is hopelessly behind and is disconnected. Generous for a transient stall,
+    // but bounds worst-case memory to ~maxClients * this.
+    private const int MaxPendingSendBytes = 512 * 1024;
+
     private Socket? _socket;
     private readonly byte[] _recvBuffer = new byte[65536];
     private int _recvLength;
     private readonly object _sendLock = new();
     private readonly Queue<PacketBuffer> _sendQueue = [];
+    // Persistent outbound byte buffer. [_outStart.._outEnd) are compressed+
+    // encrypted bytes not yet accepted by the socket (may span ticks in
+    // non-blocking mode). In blocking mode it is fully drained each flush.
     private byte[] _sendBatchBuffer = new byte[4096];
+    private int _outStart;
+    private int _outEnd;
     // Per-connection scratch for encrypting a shared broadcast payload without
     // mutating the shared (cross-recipient) cache. Only used by crypted game
     // connections; nocrypt connections append the shared bytes directly.
@@ -159,6 +176,8 @@ public sealed class NetState : IDisposable
         _socket.NoDelay = true;
         _socket.SendTimeout = 5000;
         _socket.LingerState = new LingerOption(false, 0);
+        _outStart = 0;
+        _outEnd = 0;
         RemoteEndPoint = socket.RemoteEndPoint as IPEndPoint;
         LocalEndPoint = socket.LocalEndPoint as IPEndPoint;
         ConnectionType = ConnectType.Unknown;
@@ -186,6 +205,14 @@ public sealed class NetState : IDisposable
 
     public void Clear()
     {
+        // Best-effort: flush queued + pending outbound bytes to the kernel before
+        // shutting down, so a graceful disconnect still delivers what was queued.
+        // Reuses the normal send path (same compression/encryption/order); the
+        // non-blocking send never stalls teardown — whatever the kernel won't take
+        // is dropped, as it was before this buffer existed.
+        try { FlushOutput(); }
+        catch (Exception ex) { _logger.LogDebug(ex, "Final flush error (client #{Id})", Id); }
+
         try { _socket?.Shutdown(SocketShutdown.Both); }
         catch (Exception ex) { _logger.LogDebug(ex, "Socket shutdown error (client #{Id})", Id); }
         try { _socket?.Close(); }
@@ -199,6 +226,8 @@ public sealed class NetState : IDisposable
             // Return any unsent pooled buffers to the pool instead of dropping them.
             while (_sendQueue.Count > 0)
                 _sendQueue.Dequeue().ReturnToPool();
+            _outStart = 0;
+            _outEnd = 0;
         }
     }
 
@@ -399,17 +428,28 @@ public sealed class NetState : IDisposable
 
         lock (_sendLock)
         {
-            if (_sendQueue.Count == 0) return;
+            // Nothing queued and nothing still pending from a previous
+            // (non-blocking) flush.
+            if (_sendQueue.Count == 0 && _outStart == _outEnd) return;
 
             try
             {
                 if (ConnectionType == ConnectType.Game)
                 {
-                    // Batch all compressed+encrypted packets into a single send
-                    // to guarantee atomic TCP segment delivery and avoid client-side
-                    // decompression issues at segment boundaries.
-                    int totalLen = 0;
-                    var batchBuf = _sendBatchBuffer;
+                    // Accumulate compressed+encrypted bytes into the persistent
+                    // outbound buffer, then drain (non-blocking) what the socket
+                    // accepts. Bytes are kept in stream order, so a partial send
+                    // is fine — the remainder goes out next flush.
+                    var buf = _sendBatchBuffer;
+
+                    // Reclaim the already-sent prefix.
+                    if (_outStart > 0)
+                    {
+                        if (_outEnd > _outStart)
+                            Buffer.BlockCopy(buf, _outStart, buf, 0, _outEnd - _outStart);
+                        _outEnd -= _outStart;
+                        _outStart = 0;
+                    }
 
                     while (_sendQueue.Count > 0)
                     {
@@ -466,26 +506,58 @@ public sealed class NetState : IDisposable
                             payloadLen = compressed.Length;
                         }
 
-                        int needed = totalLen + payloadLen;
-                        if (needed > batchBuf.Length)
+                        int needed = _outEnd + payloadLen;
+                        if (needed > buf.Length)
                         {
-                            int newSize = Math.Max(batchBuf.Length * 2, needed);
+                            int newSize = Math.Max(buf.Length * 2, needed);
                             var bigger = new byte[newSize];
-                            Buffer.BlockCopy(batchBuf, 0, bigger, 0, totalLen);
+                            Buffer.BlockCopy(buf, 0, bigger, 0, _outEnd);
                             _sendBatchBuffer = bigger;
-                            batchBuf = bigger;
+                            buf = bigger;
                         }
 
-                        Buffer.BlockCopy(payload, 0, batchBuf, totalLen, payloadLen);
-                        totalLen += payloadLen;
+                        Buffer.BlockCopy(payload, 0, buf, _outEnd, payloadLen);
+                        _outEnd += payloadLen;
 
                         // Releases this recipient's claim; the pooled backing array
                         // returns only when the last recipient has flushed.
                         packet.ReturnToPool();
                     }
 
-                    if (totalLen > 0)
-                        _socket.Send(batchBuf, 0, totalLen, SocketFlags.None);
+                    if (NonBlockingGameSend)
+                    {
+                        // Drain as much as the socket accepts without blocking.
+                        while (_outStart < _outEnd)
+                        {
+                            int sent = _socket.Send(buf, _outStart, _outEnd - _outStart,
+                                SocketFlags.None, out SocketError serr);
+                            if (sent > 0) _outStart += sent;
+                            if (serr == SocketError.WouldBlock) break;       // kernel buffer full — retry next flush
+                            if (serr != SocketError.Success) throw new SocketException((int)serr);
+                            if (sent == 0) break;
+                        }
+
+                        if (_outStart >= _outEnd)
+                        {
+                            _outStart = 0;
+                            _outEnd = 0;
+                        }
+                        else if (_outEnd - _outStart > MaxPendingSendBytes)
+                        {
+                            // Client hopelessly behind — shed it rather than buffer unbounded.
+                            _logger.LogWarning("Send backpressure cap ({Pending} bytes) for #{Id} ({EP}), disconnecting",
+                                _outEnd - _outStart, Id, RemoteEndPoint);
+                            MarkClosing();
+                        }
+                    }
+                    else
+                    {
+                        // Blocking fallback (toggle off): send the whole buffer.
+                        if (_outEnd > _outStart)
+                            _socket.Send(buf, _outStart, _outEnd - _outStart, SocketFlags.None);
+                        _outStart = 0;
+                        _outEnd = 0;
+                    }
                 }
                 else
                 {
@@ -605,6 +677,13 @@ public sealed class NetState : IDisposable
         AccountName = account;
         AuthId = authId;
         ConnectionType = ConnectType.Game;
+        // Switch the game stream to non-blocking sends so a slow client never
+        // blocks a flush thread (login stays blocking — tiny, short-lived).
+        if (NonBlockingGameSend && _socket != null)
+        {
+            try { _socket.Blocking = false; }
+            catch (Exception ex) { _logger.LogDebug(ex, "Could not set non-blocking on #{Id}", Id); }
+        }
         GameLoginHandler?.Invoke(this, account, password, authId);
     }
 

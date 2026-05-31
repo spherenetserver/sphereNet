@@ -4,6 +4,39 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Non-blocking (async) oyun send'i (Wave 46)
+----------------------------------------
+
+AG:
+  - Oyun stream'i artik blocking Socket.Send kullanmiyor. Yavas bir client, dolu
+    bir OS send buffer'i veya paket burst'u onceden o baglantiyi servis eden
+    flush thread'ini bloklayabiliyordu. Oyun socket'i login'de non-blocking'e
+    aliniyor; FlushOutput compressed+encrypted byte'lari kalici per-connection
+    buffer'a ([_outStart.._outEnd), stream sirali) biriktiriyor ve socket'in
+    kabul ettigi kadarini drenaj ediyor (Send + out SocketError; WouldBlock
+    kalani sonraki flush'a birakir). Server thread'i asla bloklanmaz.
+  - Backpressure: 512 KB'tan fazla gonderilmemis byte biriktiren baglanti
+    umutsuzca geride kalmistir ve disconnect edilir (en kotu durumda bellegi
+    ~maxClients * 512 KB ile sinirlar). Clear() artik shutdown oncesi best-effort
+    final flush yapar; zarif disconnect kuyruktaki/pending veriyi yine teslim
+    eder.
+  - Tasarim notu: SocketAsyncEventArgs/SendAsync yerine senkron non-blocking +
+    tick-basina retry modeli kullanildi — ayni hedefe (bloklanmayan thread)
+    completion-callback yarislari, in-flight takibi ve completion-sonrasi cleanup
+    olmadan ulasir; ki bunlar blocking send'den daha kotu wire bug'lari uretmeye
+    en yatkin kisimlardir. Connection basina tek aktif send dogal (flush per-conn
+    seri), paket sirasi korunur (tek sirali buffer), shared-broadcast/pre-compress
+    yolu degismedi. Toggle: NetState.NonBlockingGameSend (varsayilan acik) eski
+    blocking yolu A/B ve geri-alma icin korur.
+
+  Dogrulandi: 529 test; 300-combat correctness run'i (sifir wire-bozulmasi, sifir
+  backpressure tripi — saglikli baglantilar her tick tam drenaj, tick degismedi);
+  1.000-bot cluster — ~1.900 teardown boyunca sifir corruption ve sifir
+  final-flush hatasi, server hic bloklanmiyor, yavas client'lar blocking-cascade
+  yerine byte-cap ile temizce shed ediliyor, peak RSS ~2.1 GB (2 MB cap'te ~4.6 GB
+  idi). In-process bot cluster'inin nihai azalmasi degismedi — o botlarin
+  CPU-acligidir, send yolu degil — ama failure mode artik sinirli ve bloklanmaz.
+
 [2026-06-01] - Interest management: baski altinda kozmetik chatter'i dusur (Wave 45)
 ----------------------------------------
 

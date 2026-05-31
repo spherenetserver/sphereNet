@@ -4,6 +4,32 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Async-send / interest-management etkilesimini duzelt (Wave 47)
+----------------------------------------
+
+AG (Wave 46 icin review duzeltmeleri):
+  - Interest management artik async backlog'u goruyor. Chatter-shed kontrolu
+    yalniz _sendQueue.Count'a bakiyordu; ama async modelde queue her flush'ta
+    byte buffer'a bosaliyor, yani yavas client'in gercek backlog'u dusuk queue
+    sayisiyla _outEnd-_outStart'ta birikiyor — chatter hic shed edilmiyor, client
+    bunun yerine 512 KB hard cap'e ulasip disconnect oluyordu. Shed artik byte
+    basinciyla da tetikleniyor (giden backlog > 256 KB), non-blocking modda
+    graceful degradation'i geri getiriyor.
+  - 512 KB cap artik append SIRASINDA, buffer buyutulmeden once uygulaniyor; boylece
+    buyuk queue / buyuk gump / burst tek flush'ta buffer'i cap'in cok ustune
+    sisiremiyor (en kotu durum bellegi gercekten cap civarinda sinirli).
+  - Receive() non-blocking transient WouldBlock/Interrupted'i artik "baglanti
+    koptu" saymiyor (disconnect yerine "veri yok" doner).
+  - NetState nullability warning'i temizlendi (byte[]? shared).
+
+  Etki — bu review notlarindan fazlasini cozdu: chatter byte basinciyla shed
+  edilince, 1.000-bot tek-ekran seli artik 1.000 client'in TAMAMINI 20 Hz'de
+  (~3 ms ort.) SIFIR backpressure-cap disconnect ile TUTUYOR; onceki ~60'a
+  cokusun aksine. Onceki "azalma saf CPU acligi, degismez" yorumu eksikti: baskin
+  sebep shed edilmeyen speech seliydi (bu duzeltmenin bypass ettigi interest
+  management), botlarin CPU'su degil. Peak RSS ~2.1 GB, sifir wire-bozulmasi,
+  sifir final-flush hatasi. 529 test gecti.
+
 [2026-06-01] - Non-blocking (async) oyun send'i (Wave 46)
 ----------------------------------------
 

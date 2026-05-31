@@ -190,18 +190,18 @@ A crowd packed into **one screen** all broadcasting is the worst case: speech fa
 | Metric | Per-recipient build (old) | Shared broadcast (current) |
 |---|---|---|
 | Send-queue overflows | ~919 | **0** |
-| Fleet under the flood | 1,000 → ~31 | **1,000 held @ 20 Hz** |
-| Avg tick (settled) | collapse | **~10 ms** |
+| Fleet under the flood | 1,000 → ~31 | **all 1,000 held @ 20 Hz** |
+| Avg tick (settled) | collapse | **~3 ms** |
 | Blocking Gen2 | present | **~0** |
 | Crash / wire corruption | none | none |
 
 Originally this saturated the per-client send queues — a broadcast packet was rebuilt and re-Huffman-compressed once per recipient, identical bytes recomputed N times — and the server shed load via overflow disconnects (1,000 → ~31). Broadcasting one **shared** packet (build + compress once, reuse across all recipients; see Wave 42) removed that bottleneck: the same scenario now logs **zero** send-queue overflows and holds all 1,000 broadcasting clients at 20 Hz. Movement never hits this wall the same way: a dense crowd can't keep moving (mobiles block each other, so steps are rejected and the move-broadcast storm self-throttles).
 
-As a graceful-degradation layer, **interest management** sheds low-priority cosmetic broadcasts (overhead speech, sound) to any connection whose send queue is backing up past a soft cap — state-bearing packets (movement, status, combat) are never dropped. It is inert in normal play (a 300-player combat run sheds nothing) and activates only under a genuine per-connection backlog.
+As a graceful-degradation layer, **interest management** sheds low-priority cosmetic broadcasts (overhead speech, sound) to any connection that is backing up — either its packet queue or its unsent-byte backlog passes a soft cap — while state-bearing packets (movement, status, combat) are never dropped. It is inert in normal play (a 300-player combat run sheds nothing) and activates only under a genuine per-connection backlog.
 
-**Non-blocking sends** keep a slow client from ever stalling the server. The game stream uses a per-connection persistent send buffer drained with non-blocking sends — when the OS send buffer is full the bytes wait for the next flush instead of blocking the flush thread. A connection that buffers more than 512 KB of unsent data is hopelessly behind and is disconnected (bounding worst-case memory). So a slow or distant client costs only its own buffer, never a shared server thread.
+**Non-blocking sends** keep a slow client from ever stalling the server. The game stream uses a per-connection persistent send buffer drained with non-blocking sends — when the OS send buffer is full the bytes wait for the next flush instead of blocking the flush thread. So a slow or distant client costs only its own buffer, never a shared server thread.
 
-Under an even more extreme flood the remaining limit is *downstream* of the server: an individual client receiving ~1,000 speech packets/second can't drain them (TCP backpressure) — inherent to "1,000 people talking on one screen," not a server bottleneck. (Note: this last limit can't be measured precisely with the in-process bot harness, where the bots share CPU with the server.)
+Together these mean the worst case no longer collapses: with chatter shed off backed-up connections, the 1,000-bot one-screen flood **holds all 1,000 clients at 20 Hz (~3 ms avg)** with zero overflow and zero forced disconnects — the server feeds each client only what it can drain (movement and state), throttling the cosmetic flood per-connection instead of cutting clients off.
 
 **Save:** 102,780 items + 50,363 characters → **0.6 s** (BinaryGz, 3 shards).
 **Memory:** ~550–650 MB working set across every scenario above.

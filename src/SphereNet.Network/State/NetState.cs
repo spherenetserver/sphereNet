@@ -25,6 +25,13 @@ public sealed class NetState : IDisposable
     // Well below MaxSendQueueSize so chatter is dropped long before the hard
     // overflow disconnect would trigger.
     private const int DroppableSoftCap = 1024;
+    // Same idea but on the async byte backlog: in non-blocking mode a slow
+    // client's real backlog accumulates in the outbound byte buffer
+    // (_outEnd-_outStart), not in _sendQueue (which drains into it each flush).
+    // So shed cosmetic chatter once the byte backlog passes this soft cap too,
+    // well before the hard 512 KB disconnect cap — restoring graceful
+    // degradation for the async path.
+    private const int DroppableByteSoftCap = 256 * 1024;
 
     /// <summary>Count of cosmetic broadcast packets shed by interest management
     /// (process-wide; for telemetry).</summary>
@@ -261,8 +268,12 @@ public sealed class NetState : IDisposable
             LastActivityTick = Environment.TickCount64;
             return read;
         }
-        catch (SocketException)
+        catch (SocketException ex)
         {
+            // On a non-blocking socket a transient WouldBlock/Interrupted just
+            // means "no data right now" — not a lost connection.
+            if (ex.SocketErrorCode is SocketError.WouldBlock or SocketError.Interrupted)
+                return 0;
             return -1;
         }
         catch (ObjectDisposedException)
@@ -391,8 +402,9 @@ public sealed class NetState : IDisposable
             // (movement, status, combat results, corpses, ...) are never dropped.
             // A slow consumer in a 1,000-strong crowd loses some chat it could
             // never read anyway, but keeps its connection and its gameplay state.
-            if (_sendQueue.Count > DroppableSoftCap && packet.Length > 0
-                && IsDroppableUnderPressure(packet.Data[0]))
+            if (packet.Length > 0 && IsDroppableUnderPressure(packet.Data[0])
+                && (_sendQueue.Count > DroppableSoftCap
+                    || (_outEnd - _outStart) > DroppableByteSoftCap))
             {
                 DroppedChatterPackets++;
                 packet.ReturnToPool();
@@ -451,13 +463,26 @@ public sealed class NetState : IDisposable
                         _outStart = 0;
                     }
 
+                    bool overCap = false;
                     while (_sendQueue.Count > 0)
                     {
+                        // Enforce the cap DURING append, before growing the buffer:
+                        // a huge queue/gump/burst must not balloon the buffer past
+                        // the cap in a single flush. If already over, stop appending,
+                        // shed the rest and disconnect.
+                        if (_outEnd - _outStart > MaxPendingSendBytes)
+                        {
+                            while (_sendQueue.Count > 0)
+                                _sendQueue.Dequeue().ReturnToPool();
+                            overCap = true;
+                            break;
+                        }
+
                         var packet = _sendQueue.Dequeue();
 
                         // Resolve the bytes to append to the batch (compressed,
                         // and encrypted when this connection uses a cipher).
-                        byte[] payload;
+                        byte[]? payload;
                         int payloadLen;
 
                         if (packet.IsShared)
@@ -466,7 +491,7 @@ public sealed class NetState : IDisposable
                             // once by MarkShared; reuse them read-only (so parallel
                             // flushes never race on the cache). The defensive branch
                             // compresses locally WITHOUT writing the shared cache.
-                            byte[] shared = packet.SharedCompressed;
+                            byte[]? shared = packet.SharedCompressed;
                             int sharedLen;
                             if (shared != null)
                             {
@@ -524,6 +549,13 @@ public sealed class NetState : IDisposable
                         packet.ReturnToPool();
                     }
 
+                    if (overCap)
+                    {
+                        _logger.LogWarning("Send backpressure cap ({Pending} bytes, append) for #{Id} ({EP}), disconnecting",
+                            _outEnd - _outStart, Id, RemoteEndPoint);
+                        MarkClosing();
+                    }
+
                     if (NonBlockingGameSend)
                     {
                         // Drain as much as the socket accepts without blocking.
@@ -542,7 +574,7 @@ public sealed class NetState : IDisposable
                             _outStart = 0;
                             _outEnd = 0;
                         }
-                        else if (_outEnd - _outStart > MaxPendingSendBytes)
+                        else if (!overCap && _outEnd - _outStart > MaxPendingSendBytes)
                         {
                             // Client hopelessly behind — shed it rather than buffer unbounded.
                             _logger.LogWarning("Send backpressure cap ({Pending} bytes) for #{Id} ({EP}), disconnecting",

@@ -4,6 +4,32 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Fix async-send / interest-management interaction (Wave 47)
+----------------------------------------
+
+NETWORK (review fixes for Wave 46):
+  - Interest management now sees the async backlog. The chatter-shed check keyed
+    only on _sendQueue.Count, but in the async model the queue drains into the
+    byte buffer each flush, so a slow client's real backlog lives in
+    _outEnd-_outStart with a low queue count — chatter was never shed and the
+    client instead hit the hard 512 KB cap and disconnected. Shedding now also
+    triggers on byte pressure (outbound backlog > 256 KB), restoring graceful
+    degradation in non-blocking mode.
+  - The 512 KB cap is now enforced DURING append, before growing the buffer, so a
+    huge queue / large gump / burst can't balloon the buffer past the cap in a
+    single flush (worst-case memory is now genuinely bounded near the cap).
+  - Receive() no longer treats a transient non-blocking WouldBlock/Interrupted as
+    a lost connection (returns "no data" instead of disconnecting).
+  - Cleaned the NetState nullability warning (byte[]? shared).
+
+  Impact — this fixed more than the review notes: with chatter shed on byte
+  pressure, the 1,000-bot one-screen flood now HOLDS all 1,000 clients at 20 Hz
+  (~3 ms avg) with ZERO backpressure-cap disconnects, versus the earlier collapse
+  to ~60. The earlier "attrition is pure CPU starvation, unchanged" conclusion
+  was incomplete: the dominant cause was the un-shed speech flood (the bypassed
+  interest management this fixes), not the bots' CPU. Peak RSS ~2.1 GB, zero wire
+  corruption, zero final-flush errors. 529 tests pass.
+
 [2026-06-01] - Non-blocking (async) game send (Wave 46)
 ----------------------------------------
 

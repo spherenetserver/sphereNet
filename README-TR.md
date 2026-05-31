@@ -190,16 +190,18 @@ Bin yayılmış oyuncu neredeyse bedava (Gen0 ~1/pencere, bloklayan Gen2 yok). B
 | Metrik | Per-recipient build (eski) | Shared broadcast (mevcut) |
 |---|---|---|
 | Send-queue overflow | ~919 | **0** |
-| Sel altında filo | 1.000 → ~31 | **1.000, 20 Hz'de tutuldu** |
-| Ort. tick (oturmuş) | çöküş | **~10 ms** |
+| Sel altında filo | 1.000 → ~31 | **1.000'in tamamı 20 Hz'de tutuldu** |
+| Ort. tick (oturmuş) | çöküş | **~3 ms** |
 | Bloklayan Gen2 | var | **~0** |
 | Çökme / wire bozulması | yok | yok |
 
 Başlangıçta bu per-client send queue'larını dolduruyordu — broadcast paketi alıcı başına yeniden build + yeniden Huffman-compress ediliyordu, özdeş byte'lar N kez yeniden hesaplanıyordu — ve sunucu overflow disconnect'leriyle yük atıyordu (1.000 → ~31). **Tek paylaşılan** paket yayınlamak (bir kez build + compress, tüm alıcılarda tekrar kullan; bkz. Wave 42) bu darboğazı kaldırdı: aynı senaryo artık **sıfır** send-queue overflow logluyor ve 1.000 broadcast eden client'ı 20 Hz'de tutuyor. Hareket bu duvara aynı şekilde çarpmaz: yoğun kalabalık hareket edemez (mobile'lar birbirini bloklar, adımlar reddedilir, hareket-broadcast fırtınası kendini sınırlar).
 
-Zarif-yavaşlama katmanı olarak **interest management**, send queue'su soft cap'i aşıp geride kalan herhangi bir bağlantıya giden düşük-öncelikli kozmetik broadcast'leri (overhead speech, ses) düşürür — durum taşıyan paketler (hareket, status, savaş) asla düşürülmez. Normal oyunda atıldır (300-oyuncu combat run'ı hiçbir şey düşürmez) ve yalnızca gerçek bir per-connection backlog'da devreye girer.
+Zarif-yavaşlama katmanı olarak **interest management**, geride kalan herhangi bir bağlantıya — ister paket kuyruğu ister gönderilmemiş-byte backlog'u soft cap'i aşsın — giden düşük-öncelikli kozmetik broadcast'leri (overhead speech, ses) düşürür; durum taşıyan paketler (hareket, status, savaş) asla düşürülmez. Normal oyunda atıldır (300-oyuncu combat run'ı hiçbir şey düşürmez) ve yalnızca gerçek bir per-connection backlog'da devreye girer.
 
-**Non-blocking send'ler** yavaş bir client'ın sunucuyu asla durdurmamasını sağlar. Oyun stream'i, non-blocking send'lerle drenaj edilen per-connection kalıcı bir send buffer kullanır — OS send buffer'ı dolunca byte'lar flush thread'ini bloklamak yerine bir sonraki flush'ı bekler. 512 KB'tan fazla gönderilmemiş veri biriktiren bağlantı umutsuzca geridedir ve disconnect edilir (en kötü durum belleğini sınırlar). Yani yavaş veya uzak bir client yalnızca kendi buffer'ına mal olur, paylaşılan bir sunucu thread'ine asla.
+**Non-blocking send'ler** yavaş bir client'ın sunucuyu asla durdurmamasını sağlar. Oyun stream'i, non-blocking send'lerle drenaj edilen per-connection kalıcı bir send buffer kullanır — OS send buffer'ı dolunca byte'lar flush thread'ini bloklamak yerine bir sonraki flush'ı bekler. Yani yavaş veya uzak bir client yalnızca kendi buffer'ına mal olur, paylaşılan bir sunucu thread'ine asla.
+
+İkisi birlikte: en kötü durum artık çökmüyor. Chatter geride-kalan bağlantılardan shed edilince, 1.000-bot tek-ekran seli **1.000 client'in tamamını 20 Hz'de (~3 ms ort.)** sıfır overflow ve sıfır zorla-disconnect ile tutuyor — server her client'a yalnızca boşaltabileceği kadarını (hareket ve durum) besliyor, kozmetik seli client'ı kesmek yerine per-connection kısıyor.
 
 Daha da aşırı bir sel altında kalan sınır sunucunun *downstream*'indedir: saniyede ~1.000 konuşma paketi alan bir client bunları boşaltamaz (TCP backpressure) — bu "1.000 kişi tek ekranda konuşuyor"un doğasıdır, sunucu darboğazı değil. (Not: bu son sınır, botların sunucuyla CPU paylaştığı in-process harness ile tam ölçülemez.)
 

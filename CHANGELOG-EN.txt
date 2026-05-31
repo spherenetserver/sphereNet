@@ -4,6 +4,25 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - .NET 10 migration, ServerGC, deterministic test suite (Wave 27)
+----------------------------------------
+
+RUNTIME / BUILD:
+  - All projects retargeted net9.0 -> net10.0 (LTS). Legacy net48/net472 tooling
+    projects left as-is. Full solution builds clean; 525 tests pass under net10.
+  - ServerGarbageCollection + ConcurrentGarbageCollection enabled on the Host
+    entry point (the game Server already had them).
+
+TESTS (flaky CI fix, no tests removed):
+  - Root-caused the intermittent CI failures to process-wide mutable static
+    hooks left set across tests (ObjBase/Item.ResolveWorld,
+    Character.ResolveAccountForChar which drives PrivLevel, VendorEngine.World).
+    Under xUnit's non-deterministic order a later test resolved against a stale
+    hook (e.g. a player inheriting another test's GM account).
+  - Added a BeforeAfterTest attribute that resets those hooks before/after every
+    test, plus assembly-wide serialization. The suite is now green across
+    repeated runs regardless of order.
+
 [2026-05-31] - D-prefix fix extended to function calls (Wave 26)
 ----------------------------------------
 

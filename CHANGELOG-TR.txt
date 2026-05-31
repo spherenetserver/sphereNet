@@ -4,6 +4,26 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - .NET 10 gecisi, ServerGC, deterministik test paketi (Wave 27)
+----------------------------------------
+
+RUNTIME / BUILD:
+  - Tum projeler net9.0 -> net10.0 (LTS) hedefine alindi. Legacy net48/net472
+    arac projeleri oldugu gibi birakildi. Tum solution temiz derleniyor; net10
+    altinda 525 test geciyor.
+  - ServerGarbageCollection + ConcurrentGarbageCollection Host giris noktasinda
+    acildi (oyun Server'inda zaten vardi).
+
+TESTLER (flaky CI duzeltmesi, test kaldirilmadi):
+  - Aralikli CI hatalarinin kok nedeni: testler arasinda set kalan surec-geneli
+    mutable statik hook'lar (ObjBase/Item.ResolveWorld, PrivLevel'i belirleyen
+    Character.ResolveAccountForChar, VendorEngine.World). xUnit'in deterministik
+    olmayan sirasinda sonraki test eski hook'a cozulup (orn. bir oyuncu baska
+    testin GM hesabini devraliyor) hata veriyordu.
+  - Her testten once/sonra bu hook'lari resetleyen bir BeforeAfterTest attribute
+    + assembly-geneli serilestirme eklendi. Paket artik sira bagimsiz, tekrarli
+    kosularda yesil.
+
 [2026-05-31] - D-prefix duzeltmesi fonksiyon cagrilarina genisletildi (Wave 26)
 ----------------------------------------
 

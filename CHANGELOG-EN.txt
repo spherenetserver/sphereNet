@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Fix symbolic CHARDEF CAN= flag parsing (Wave 35)
+----------------------------------------
+
+SCRIPT / NPC:
+  - CHARDEF CAN= only accepted a numeric mask, so the standard symbolic form
+    (CAN=MT_RUN|MT_WALK) failed to parse and left the creature with no movement
+    capabilities at all (Can=None) — losing run/fly/swim/passwalls, which the
+    pathfinder and tile-entry checks rely on. CAN= now parses the |-separated
+    Sphere MT_* movement-type constants (the [DEFNAME can_flags] names) as well
+    as a numeric mask. (Regression tests added; 527 passing.)
+
 [2026-05-31] - NPC movement speed: Source-X DEX-scaled cadence (Wave 34)
 ----------------------------------------
 

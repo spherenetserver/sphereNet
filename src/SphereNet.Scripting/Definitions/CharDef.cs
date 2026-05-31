@@ -117,7 +117,7 @@ public sealed class CharDef : BaseDef
             case "HITS": (HitsMin, HitsMax) = ParseRange(value); break;
             case "DAM": (AttackMin, AttackMax) = ParseRange(value); break;
             case "ARMOR": (DefenseMin, DefenseMax) = ParseRange(value); break;
-            case "CAN": Can = (CanFlags)ParseHexOrDecUInt(value); break;
+            case "CAN": Can = ParseCanFlags(value); break;
             case "HEIGHT": byte.TryParse(value, out byte h); Height = h; break;
             case "DEFNAME": DefName = value; break;
             case "FOODTYPE": Enum.TryParse(value, true, out ItemType ft); FoodType = ft; break;
@@ -308,6 +308,55 @@ public sealed class CharDef : BaseDef
             return ushort.TryParse(value.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out result);
 
         return ushort.TryParse(value, out result);
+    }
+
+    /// <summary>Parse a CHARDEF <c>CAN=</c> value. Accepts a numeric mask
+    /// (<c>0x2004</c> / <c>8196</c>) OR the symbolic, <c>|</c>-separated Sphere
+    /// movement-type constants (<c>MT_RUN|MT_WALK</c>) — the standard
+    /// [DEFNAME can_flags] names. Each token maps to the matching CanFlags bit
+    /// (values identical to the can_flags defname). Without this the symbolic
+    /// form failed to parse and every such creature lost its CAN flags
+    /// (run/fly/swim/passwalls), defaulting to a basic walker.</summary>
+    private static CanFlags ParseCanFlags(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return CanFlags.None;
+        uint flags = 0;
+        foreach (var raw in value.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            string tok = raw;
+            if (tok.StartsWith("0x", StringComparison.OrdinalIgnoreCase) &&
+                uint.TryParse(tok.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out uint hx))
+            {
+                flags |= hx;
+                continue;
+            }
+            if (uint.TryParse(tok, out uint dec))
+            {
+                flags |= dec;
+                continue;
+            }
+            flags |= tok.ToUpperInvariant() switch
+            {
+                "MT_GHOST" => 0x0001u,
+                "MT_SWIM" => 0x0002u,
+                "MT_WALK" => 0x0004u,
+                "MT_PASSWALLS" => 0x0008u,
+                "MT_FLY" => 0x0010u,
+                "MT_FIRE_IMMUNE" => 0x0020u,
+                "MT_INDOORS" => 0x0040u,
+                "MT_HOVER" => 0x0080u,
+                "MT_EQUIP" => 0x0100u,
+                "MT_USEHANDS" => 0x0200u,
+                "MT_MOUNT" => 0x0400u,
+                "MT_FEMALE" => 0x0800u,
+                "MT_NONHUM" => 0x1000u,
+                "MT_RUN" => 0x2000u,
+                "MT_NODCLICKLOS" => 0x4000u,
+                "MT_NODCLICKDIST" => 0x8000u,
+                _ => 0u,
+            };
+        }
+        return (CanFlags)flags;
     }
 
     private static uint ParseHexOrDecUInt(string value)

@@ -4,6 +4,18 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Sembolik CHARDEF CAN= bayrak ayristirmasi duzeltmesi (Wave 35)
+----------------------------------------
+
+SCRIPT / NPC:
+  - CHARDEF CAN= yalnizca sayisal maske kabul ediyordu; bu yuzden standart
+    sembolik form (CAN=MT_RUN|MT_WALK) ayristirilamiyor ve yaratik hicbir
+    hareket yetenegi olmadan kaliyordu (Can=None) - kosma/ucma/yuzme/duvardan
+    gecme kayboluyordu; oysa pathfinder ve tile-giris kontrolleri bunlara
+    dayaniyor. CAN= artik |-ayrilmis Sphere MT_* hareket-tipi sabitlerini
+    ([DEFNAME can_flags] adlari) ve sayisal maskeyi birlikte ayristiriyor.
+    (Regresyon testleri eklendi; 527 gecti.)
+
 [2026-05-31] - NPC hareket hizi: Source-X DEX-olcekli cadence (Wave 34)
 ----------------------------------------
 

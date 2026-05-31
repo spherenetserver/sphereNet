@@ -85,7 +85,20 @@ public sealed class BotEngine : IDisposable
         _logger.LogInformation("[BOT] Spawn city set to: {City}", city);
     }
 
-    /// <summary>Get a random spawn location within a city bounding box.</summary>
+    // When set, every bot spawns within ClusterSpawnRadius tiles of the chosen
+    // city's centre instead of scattered across its full box — the cluster
+    // worst-case test needs the whole fleet inside one screen (mutual view) so
+    // each broadcast fans out to everyone.
+    private bool _clusterSpawn;
+    private const int ClusterSpawnRadius = 8;
+    public void SetClusterSpawn(bool enabled)
+    {
+        _clusterSpawn = enabled;
+        if (enabled) _logger.LogInformation("[BOT] Cluster spawn enabled (radius {R})", ClusterSpawnRadius);
+    }
+
+    /// <summary>Get a random spawn location within a city bounding box (or, in
+    /// cluster mode, packed around the city centre).</summary>
     public (short X, short Y, sbyte Z) GetRandomSpawnLocation(Random rng)
     {
         var cities = _spawnCity == BotSpawnCity.All
@@ -94,6 +107,16 @@ public sealed class BotEngine : IDisposable
 
         var city = cities[rng.Next(cities.Length)];
         var b = CityBounds[city];
+
+        if (_clusterSpawn)
+        {
+            int cx = (b.MinX + b.MaxX) / 2;
+            int cy = (b.MinY + b.MaxY) / 2;
+            short jx = (short)(cx + rng.Next(-ClusterSpawnRadius, ClusterSpawnRadius + 1));
+            short jy = (short)(cy + rng.Next(-ClusterSpawnRadius, ClusterSpawnRadius + 1));
+            return (jx, jy, b.Z);
+        }
+
         short x = (short)rng.Next(b.MinX, b.MaxX + 1);
         short y = (short)rng.Next(b.MinY, b.MaxY + 1);
         return (x, y, b.Z);
@@ -416,6 +439,7 @@ public sealed class BotEngine : IDisposable
             BotBehavior.Skill => new SkillBot(seed),
             BotBehavior.Social => new SocialBot(seed),
             BotBehavior.Chaos => new ChaosBot(seed),
+            BotBehavior.Cluster => new Behaviors.ClusterBot(seed),
             _ => null,
         };
     }

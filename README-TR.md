@@ -181,7 +181,21 @@ Tahsis çalışmasından önce (havuzlanan A* scratch + tahsissiz yürünebilirl
 
 Bin yayılmış oyuncu neredeyse bedava (Gen0 ~1/pencere, bloklayan Gen2 yok). Bin oyuncu *aynı anda savaşırsa* döngü ~34 ms ort.'ya çıkar — çalışır, 20 Hz büyük ölçüde korunur, ama p95/p99 50 ms karesini aşar; yani bu yoğunlukta pratik sınır budur. Baskın maliyet client sayısı değil aktif-savaşçı sayısıdır: 1.000 yayılmış ≈ bedava, 1.000 hepsi-savaşta ≈ bütçe kenarı.
 
-> Uyarı: 1.000'in tamamını tek bir şehre yığıp (O(n²) aynı-ekran broadcast en kötü durumunu tetiklemek için) denemek bunu yeniden üretemedi — yürüyüş botları şehir içinde dağılıp idle'a düşüyor ve yine ~0.8 ms'ye iniyor. Yoğun tek-ekran durumu (serial paket-flush + görüş yayılımı) bilinen ölçekleme sınırı olarak kalıyor ve henüz ölçülmedi. Sayılar ayrıca kötümser: 1.000 bot sunucuyla aynı process'te CPU paylaşır.
+(Sayılar kötümser: 1.000 bot sunucuyla aynı process'te CPU paylaşır.)
+
+### Yoğun tek-ekran kalabalığı — broadcast duvarı
+
+Asıl ölçekleme sınırı **tek ekrana** sıkışmış ve hepsi broadcast yapan bir kalabalıktır. 1.000 botu tek şehir merkezine yığıp (cluster spawn) konuşturmak — konuşma görüş alanındaki her bota yayılır, yani giden paketler ~N² ölçeklenir — per-client send queue'larını doldurur:
+
+| Metrik | Sonuç |
+|---|---|
+| Send-queue overflow | ~919 |
+| Yük-atma sonrası filo | 1.000 → ~31 hayatta kalan |
+| Cull sonrası | 20 Hz, ~0.4 ms ort. (toparlandı) |
+| Tepe RSS | ~1.8 GB, sonra düştü |
+| Çökme / bozulma | yok — zarif yük atma |
+
+Broadcast oranı serial send yolunun boşaltabileceğini aşınca, sunucu çökmek veya teli bozmak yerine send-queue-overflow disconnect'leriyle yük atar — sınırlı bellek, sonra toparlanma. Bu, tek broadcast eden ekran için pratik tavan ve bilinen ölçekleme duvarıdır. Hareket bu duvara aynı şekilde çarpmaz: yoğun kalabalık hareket edemez (mobile'lar birbirini bloklar, adımların çoğu reddedilir, hareket-broadcast fırtınası kendini sınırlar). Bu tavanı yükseltecek değişiklik: her alıcıya ayrı paket üretmek yerine (mevcut davranış) tüm alıcılara **tek paylaşılan** serileştirilmiş paket yayınlamaktır — doğal bir sonraki optimizasyon.
 
 **Kayıt:** 102.780 item + 50.363 karakter → **0.6 sn** (BinaryGz, 3 shard).
 **Bellek:** Yukarıdaki tüm senaryolarda ~550–650 MB çalışma kümesi.

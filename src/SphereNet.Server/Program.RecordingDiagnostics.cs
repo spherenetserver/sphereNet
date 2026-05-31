@@ -844,6 +844,7 @@ public static partial class Program
             "COMBAT" => SphereNet.Game.Diagnostics.BotBehavior.Combat,
             "IDLE" => SphereNet.Game.Diagnostics.BotBehavior.Idle,
             "SMART" => SphereNet.Game.Diagnostics.BotBehavior.SmartAI,
+            "CLUSTER" => SphereNet.Game.Diagnostics.BotBehavior.Cluster,
             _ => SphereNet.Game.Diagnostics.BotBehavior.SmartAI
         };
 
@@ -864,6 +865,10 @@ public static partial class Program
             };
             _botEngine.SetSpawnCity(city);
         }
+
+        // Cluster behavior packs the fleet around the city centre (mutual view)
+        // so its broadcast amplification is actually exercised.
+        _botEngine.SetClusterSpawn(botBehavior == SphereNet.Game.Diagnostics.BotBehavior.Cluster);
 
         _ = Task.Run(async () =>
         {

@@ -4,6 +4,26 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Cluster bot + yogun-kalabalik broadcast duvari olculdu (Wave 41)
+----------------------------------------
+
+TANILAMA:
+  - Cluster bot davranisi + cluster spawn eklendi (BotEngine filoyu sehir
+    kutusuna dagitmak yerine tek sehir merkezine yigar) — yogun tek-ekran en
+    kotu durumunu yeniden uretmek icin. Kullanim: BOT <n> cluster:<sehir>. Bot
+    sik konusur: konusma gorus alanindaki her bota yayilir, ~N^2 olceklenir ve
+    (paketlenmis mobile'lar birbirini bloklayip kendini sinirlayan hareketin
+    aksine) collision-limitli degildir.
+
+PERFORMANS (bulgu):
+  - 1.000 kumelenmis, broadcast yapan bot per-client send queue'larini doldurur.
+    Sunucu cokmek veya teli bozmak yerine send-queue-overflow disconnect'leriyle
+    yuk atar: ~919 overflow, filo 1.000 -> ~31 hayatta kalan, tepe RSS ~1.8 GB
+    sonra dustu, 20 Hz / ~0.4 ms'ye toparlandi. Bu, tek broadcast eden ekran
+    icin pratik tavan ve bilinen olcekleme duvaridir. Yukseltecek degisiklik:
+    her aliciya ayri paket uretmek yerine tum alicilara tek paylasilan
+    serilestirilmis paket yayinlamak. README olculen duvarla guncellendi.
+
 [2026-05-31] - 1.000-client olcekleme testi
 ----------------------------------------
 

@@ -1270,4 +1270,5 @@ public enum BotBehavior
     Skill,
     Social,
     Chaos,
+    Cluster,
 }

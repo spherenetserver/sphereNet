@@ -181,7 +181,21 @@ Before the allocation work (pooled A* scratch + allocation-free walkability + po
 
 A thousand spread-out players are nearly free (Gen0 ~1/window, no blocking Gen2). A thousand players *all fighting at once* push the loop to ~34 ms avg — workable, 20 Hz mostly held, but p95/p99 breach the 50 ms frame, so this is the practical edge for that intensity. The dominant cost is the active-combatant count, not the client count: 1,000 spread ≈ free, 1,000 all-fighting ≈ the budget edge.
 
-> Caveat: trying to force all 1,000 into a single town (to provoke the O(n²) same-screen broadcast worst case) did not reproduce it — the walker bots disperse within the town and idle, landing back at ~0.8 ms. The dense single-screen case (serial packet-flush + view amplification) remains the known scaling limit and is not yet measured. Figures are also pessimistic: the 1,000 bots share the CPU with the server in-process.
+(Figures are pessimistic: the 1,000 bots share the CPU with the server in-process.)
+
+### Dense single-screen crowd — the broadcast wall
+
+The real scaling limit is a crowd packed into **one screen** all broadcasting. Spawning 1,000 bots around a single town centre (cluster spawn) and having them speak — speech fans out to every bot in view, so outgoing packets scale ~N² — saturates the per-client send queues:
+
+| Metric | Result |
+|---|---|
+| Send-queue overflows | ~919 |
+| Fleet after load-shed | 1,000 → ~31 survivors |
+| After the cull | 20 Hz, ~0.4 ms avg (recovered) |
+| Peak RSS | ~1.8 GB, then fell back |
+| Crash / corruption | none — graceful load shed |
+
+When the broadcast rate exceeds what the serial send path can drain, the server sheds load via send-queue-overflow disconnects rather than crashing or corrupting the wire — bounded memory, then recovery. This is the practical ceiling for a single broadcasting screen, and the known scaling wall. Movement does **not** hit it the same way: a dense crowd can't keep moving (mobiles block each other, so most steps are rejected and the move-broadcast storm self-throttles). The change that would raise this ceiling is broadcasting one **shared** serialized packet to all recipients instead of building a fresh packet per recipient (the current behaviour) — the natural next optimization.
 
 **Save:** 102,780 items + 50,363 characters → **0.6 s** (BinaryGz, 3 shards).
 **Memory:** ~550–650 MB working set across every scenario above.

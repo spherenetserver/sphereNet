@@ -4,6 +4,27 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Cluster bot + measured the dense-crowd broadcast wall (Wave 41)
+----------------------------------------
+
+DIAGNOSTICS:
+  - Added a Cluster bot behavior + cluster spawn (BotEngine packs the fleet
+    around one city centre instead of scattering it across the city box) to
+    reproduce the dense single-screen worst case. Use BOT <n> cluster:<city>.
+    The bot speaks frequently: speech fans out to every bot in view, scaling
+    ~N^2, and (unlike movement, which self-throttles because packed mobiles
+    block each other) is not collision limited.
+
+PERFORMANCE (finding):
+  - 1,000 clustered, broadcasting bots saturate the per-client send queues. The
+    server sheds load via send-queue-overflow disconnects rather than crashing
+    or corrupting the wire: ~919 overflows, fleet culled 1,000 -> ~31 survivors,
+    peak RSS ~1.8 GB then fell back, recovering to 20 Hz / ~0.4 ms. This is the
+    practical ceiling for a single broadcasting screen and the known scaling
+    wall. The change that would raise it: broadcast one shared serialized packet
+    to all recipients instead of building a fresh packet per recipient. README
+    updated with the measured wall.
+
 [2026-05-31] - 1,000-client scaling test
 ----------------------------------------
 

@@ -4,6 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Giden paket buffer'larini havuzla (Wave 39)
+----------------------------------------
+
+PERFORMANS / AG:
+  - Her giden paket yeni bir byte[] arka dizi (PacketBuffer) tahsis ediyordu —
+    bir paketin tahsisinin buyuk kismi. PacketBuffer artik arka dizisini
+    ArrayPool<byte>.Shared'dan kiralar ve FlushOutput byte'lari tukettikten
+    sonra geri verir. Bu guvenli; cunku her giden PacketBuffer tam olarak bir
+    kez build/queue/flush edilir — broadcast'ler alici basina yeni paket build
+    eder (paylasilmis buffer degil, PacketWriter gecerler), dolayisiyla hicbir
+    buffer queue'lar arasinda paylasilmaz ve referans sayimi gerekmez.
+    Buffer'lar queue-overflow, not-in-use ve disconnect yollarinda da geri
+    verilir, boylece havuzdan sizmazlar. Gelen/sarmalanmis buffer'lar (byte[]
+    yapicisi) hicbir zaman havuzlanmaz.
+  - Buyume (EnsureCapacity) havuz icinde kalir: daha buyuk dizi kirala, kopyala,
+    eskiyi geri ver. Rent istenenden buyuk dizi dondurebilir; tum okuyucular
+    mantiksal Length kullanir (_data.Length degil), bu yuzden fazlalik gozlenmez.
+  - Send hot-path'inden paket-basina byte[] tahsisini kaldirir; fayda giden
+    paket hacmiyle olceklenir (yogun kumeler / buyuk savaslar). Surdurulen
+    300-bot run'inda dogrulandi: 300/300 bagli, 0 kopma, bozuk/underrun paket
+    yok — havuzlama teli bozmuyor.
+
 [2026-05-31] - A* scratch koleksiyonlarini havuzla; GC basinc telemetrisi (Wave 38)
 ----------------------------------------
 

@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Binary;
 
 namespace SphereNet.Network.Packets;
@@ -11,16 +12,30 @@ public sealed class PacketBuffer
     private byte[] _data;
     private int _position;
     private int _length;
+    private readonly bool _pooled;
+    private bool _returned;
 
+    /// <summary>Outgoing packet: rent the backing array from the shared pool.
+    /// The byte[] is the bulk of a packet's allocation, and every outgoing
+    /// PacketBuffer is built, queued and flushed exactly once (broadcasts build
+    /// per recipient), so <see cref="ReturnToPool"/> can recycle it right after
+    /// FlushOutput consumes the bytes. Rent may return a larger array than
+    /// requested — all readers use the logical <see cref="Length"/>, never
+    /// _data.Length, so the slack is never observed.</summary>
     public PacketBuffer(int capacity = 64)
     {
-        _data = new byte[capacity];
+        _data = ArrayPool<byte>.Shared.Rent(capacity);
+        _pooled = true;
     }
 
+    /// <summary>Incoming/wrapped packet: owns a caller-supplied array verbatim.
+    /// Never pooled — the array is not ours to recycle and its Length is the
+    /// payload length.</summary>
     public PacketBuffer(byte[] data)
     {
         _data = data;
         _length = data.Length;
+        _pooled = false;
     }
 
     public int Position { get => _position; set => _position = value; }
@@ -35,7 +50,32 @@ public sealed class PacketBuffer
         if (required <= _data.Length) return;
 
         int newSize = Math.Max(_data.Length * 2, required);
-        Array.Resize(ref _data, newSize);
+        if (_pooled)
+        {
+            // Grow within the pool: rent a bigger array, copy the written
+            // bytes, return the old one.
+            byte[] bigger = ArrayPool<byte>.Shared.Rent(newSize);
+            Buffer.BlockCopy(_data, 0, bigger, 0, _length);
+            ArrayPool<byte>.Shared.Return(_data);
+            _data = bigger;
+        }
+        else
+        {
+            Array.Resize(ref _data, newSize);
+        }
+    }
+
+    /// <summary>Return the pooled backing array to the shared pool once the
+    /// packet has been flushed. Idempotent; a no-op for wrapped (non-pooled)
+    /// buffers. The buffer must not be read or written after this call — the
+    /// backing array is swapped for an empty one so any stray use fails loudly
+    /// instead of corrupting a recycled array.</summary>
+    public void ReturnToPool()
+    {
+        if (!_pooled || _returned) return;
+        _returned = true;
+        ArrayPool<byte>.Shared.Return(_data);
+        _data = Array.Empty<byte>();
     }
 
     // --- Write methods (big-endian) ---

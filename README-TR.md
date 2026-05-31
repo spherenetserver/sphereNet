@@ -171,6 +171,17 @@ Medyan tick ~1 ms'de kalır; maliyet, çok sayıda düşmanın aynı anda hedef 
 **Kayıt:** 102.780 item + 50.363 karakter → **0.6 sn** (BinaryGz, 3 shard).
 **Bellek:** Yukarıdaki tüm senaryolarda ~550–650 MB çalışma kümesi.
 
+### Tahsis & GC
+
+Tick süresindeki dalgalanmanın ana kaynağı bloklayan Gen2 toplamalarıdır; bu
+yüzden hot-path'ler tick-başına tahsisten kaçınır. A* pathfinder, her
+`FindPath`'te bir PriorityQueue, HashSet ve iki Dictionary tahsis etmek yerine
+scratch koleksiyonlarını işçi-thread başına havuzlar (`[ThreadStatic]`, her
+çağrıda temizlenir); giden paket buffer'ları ise `ArrayPool<byte>`'dan kiralanıp
+socket gönderimi byte'ları tükettikten sonra geri verilir. `[tick_stats]`
+yanında her 30 sn'de bir `[gc_stats]` satırı (tahsis oranı, Gen0/1/2 deltaları,
+GC pause %'si, heap) yazılır; böylece tahsis regresyonları her run'da görünür.
+
 ---
 
 ## Hızlı başlangıç

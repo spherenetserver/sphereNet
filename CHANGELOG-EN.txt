@@ -4,6 +4,27 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Pool outgoing packet buffers (Wave 39)
+----------------------------------------
+
+PERFORMANCE / NETWORK:
+  - Every outgoing packet allocated a fresh byte[] backing array (PacketBuffer),
+    the bulk of a packet's allocation. PacketBuffer now rents its backing array
+    from ArrayPool<byte>.Shared and returns it once FlushOutput has consumed the
+    bytes. This is safe because every outgoing PacketBuffer is built, queued and
+    flushed exactly once — broadcasts build a fresh packet per recipient (they
+    pass a PacketWriter, not a shared buffer), so no buffer is ever shared across
+    send queues and no reference counting is needed. Buffers are also returned on
+    the queue-overflow, not-in-use and disconnect paths so they never leak from
+    the pool. Incoming/wrapped buffers (the byte[] constructor) are never pooled.
+  - Growth (EnsureCapacity) stays within the pool: rent a larger array, copy,
+    return the old one. Rent may hand back an oversized array; all readers use
+    the logical Length (never _data.Length), so the slack is never observed.
+  - Removes the per-packet byte[] allocation from the send hot path; the benefit
+    scales with outbound packet volume (dense clusters / large battles). Verified
+    correct under a sustained 300-bot run: 300/300 connected, 0 disconnects, no
+    malformed/underrun packets — pooling does not corrupt the wire.
+
 [2026-05-31] - Pool A* scratch collections; GC pressure telemetry (Wave 38)
 ----------------------------------------
 

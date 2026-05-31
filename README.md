@@ -171,6 +171,17 @@ The median tick stays ~1 ms; cost concentrates in the NPC-AI apply phase wheneve
 **Save:** 102,780 items + 50,363 characters → **0.6 s** (BinaryGz, 3 shards).
 **Memory:** ~550–650 MB working set across every scenario above.
 
+### Allocation & GC
+
+Blocking Gen2 collections are the main source of tick-time jitter, so the hot
+paths avoid per-tick allocation. The A* pathfinder pools its scratch
+collections per worker thread (`[ThreadStatic]`, cleared per call) instead of
+allocating a PriorityQueue, HashSet and two Dictionaries on every `FindPath`,
+and outgoing packet buffers are rented from `ArrayPool<byte>` and returned once
+the socket send has consumed them. A `[gc_stats]` log line (allocation rate,
+Gen0/1/2 deltas, GC pause %, heap) is emitted next to `[tick_stats]` every 30 s
+so allocation regressions are visible in any run.
+
 ---
 
 ## Quick start

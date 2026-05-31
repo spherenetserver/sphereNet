@@ -170,7 +170,12 @@ public sealed class NetState : IDisposable
         IsInUse = false;
         IsClosing = false;
         _recvLength = 0;
-        lock (_sendLock) { _sendQueue.Clear(); }
+        lock (_sendLock)
+        {
+            // Return any unsent pooled buffers to the pool instead of dropping them.
+            while (_sendQueue.Count > 0)
+                _sendQueue.Dequeue().ReturnToPool();
+        }
     }
 
     public bool CanReceive => IsInUse && !IsClosing && _socket is { Connected: true };
@@ -280,7 +285,7 @@ public sealed class NetState : IDisposable
     /// <summary>Enqueue a packet for sending.</summary>
     public void Send(PacketBuffer packet)
     {
-        if (!IsInUse || IsClosing) return;
+        if (!IsInUse || IsClosing) { packet.ReturnToPool(); return; }
         LastActivityTick = Environment.TickCount64;
 
         if (DebugPackets)
@@ -302,6 +307,7 @@ public sealed class NetState : IDisposable
                 _logger.LogWarning("Send queue overflow for #{Id} ({EP}), disconnecting",
                     Id, RemoteEndPoint);
                 MarkClosing();
+                packet.ReturnToPool();
                 return;
             }
             _sendQueue.Enqueue(packet);
@@ -361,6 +367,11 @@ public sealed class NetState : IDisposable
 
                         Buffer.BlockCopy(compressed, 0, batchBuf, totalLen, compressed.Length);
                         totalLen += compressed.Length;
+
+                        // packet.Data was fully consumed by Compress above; the
+                        // batch send uses batchBuf, not the packet buffer, so the
+                        // pooled backing array can go back now.
+                        packet.ReturnToPool();
                     }
 
                     if (totalLen > 0)
@@ -372,6 +383,7 @@ public sealed class NetState : IDisposable
                     {
                         var packet = _sendQueue.Dequeue();
                         _socket.Send(packet.Data, 0, packet.Length, SocketFlags.None);
+                        packet.ReturnToPool();
                     }
                 }
             }

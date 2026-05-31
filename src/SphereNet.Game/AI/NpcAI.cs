@@ -224,17 +224,27 @@ public sealed class NpcAI
             ? (isActive ? 200 : 400)
             : 0;
 
+        // Source-X NPC move cadence (CCharNPCAct move-tick): the step delay
+        // scales with DEX and the creature's MoveRate, NOT a flat rate. Running
+        // (combat/chase) is ~250ms at high DEX up to ~1.6s at low DEX; walking
+        // (idle wander) is ~1s up to ~2.6s. A flat 400ms made ordinary (mid-DEX)
+        // creatures chase noticeably faster than Source-X. Pets run a little
+        // faster (DEX floored to 75). Clamped to [100ms, 5s] like Source-X.
         if (isActive)
         {
-            int baseDelay = 400 * moveRate / 100;
-            npc.NextNpcActionTime = now + baseDelay + hurtDelay + _rand.Next(0, 100);
+            int dex = npc.Dex;
+            if (npc.NpcMaster.IsValid && dex < 75) dex = 75; // pets run faster
+            int range = Math.Max(0, 100 - dex * moveRate / 100) / 5;
+            int delay = Math.Clamp(250 + _rand.Next(range + 1) * 100, 100, 5000);
+            npc.NextNpcActionTime = now + delay + hurtDelay;
         }
         else if (isService)
             npc.NextNpcActionTime = now + 3000 + _rand.Next(0, 2000);
         else
         {
-            int baseDelay = 1000 * moveRate / 100;
-            npc.NextNpcActionTime = now + baseDelay + hurtDelay + _rand.Next(0, 250);
+            int range = Math.Max(0, 100 - npc.Dex * moveRate / 100) / 3;
+            int delay = Math.Clamp(1000 + _rand.Next(range + 1) * 100, 100, 5000);
+            npc.NextNpcActionTime = now + delay + hurtDelay;
         }
 
         // Pet behavior — owned NPCs follow pet AI mode

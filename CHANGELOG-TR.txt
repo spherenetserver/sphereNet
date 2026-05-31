@@ -4,6 +4,18 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - NPC hareket hizi: Source-X DEX-olcekli cadence (Wave 34)
+----------------------------------------
+
+NPC AI:
+  - NPC adim cadence'i artik Source-X formulunu izliyor (CCharNPCAct move-tick):
+    sabit oran yerine DEX ve yaratigin MoveRate'ine gore olcekleniyor. Kosma
+    (combat/chase) yuksek DEX'te ~250ms, dusuk DEX'te ~1.6s'e kadar; yurume
+    (idle) ~1s-2.6s; [100ms, 5s] araliginda; pet'ler biraz daha hizli (DEX tabani
+    75). Onceki sabit 400ms, siradan orta-DEX yaratiklari Source-X'ten belirgin
+    daha hizli kovaliyordu. Ayrica MoveRate yonu duzeltildi (yuksek MoveRate artik
+    daha hizli demek, Source-X gibi; once tersiydi).
+
 [2026-05-31] - NPC pathfinding node budget cap — asil kalabalik-stall fix'i (Wave 33)
 ----------------------------------------
 

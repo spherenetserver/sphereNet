@@ -37,7 +37,7 @@ public sealed class AdminCommandProcessor
     // .BOT GM speech command so bots can be driven without a logged-in GM.
     public event Action<int, string>? OnBotRequested;
     // Headless stress population (items, npcs): mirrors the in-game .STRESS.
-    public event Action<int, int>? OnStressRequested;
+    public event Action<int, int, bool>? OnStressRequested;
 
     public AdminCommandProcessor(GameWorld world, AccountManager accounts,
         SphereConfig config, Func<int> getActiveConnections, ILoggerFactory loggerFactory,
@@ -203,11 +203,14 @@ public sealed class AdminCommandProcessor
                 }
                 if (stToks.Length >= 2 && !int.TryParse(stToks[1], out stNpcs))
                 {
-                    output("Usage: STRESS [items] [npcs]");
+                    output("Usage: STRESS [items] [npcs] [mob]");
                     break;
                 }
-                output($"Queuing {stItems:N0} items and {stNpcs:N0} NPCs across town centers...");
-                OnStressRequested?.Invoke(stItems, stNpcs);
+                bool stHostile = stToks.Length >= 3 &&
+                    (stToks[2].Equals("mob", StringComparison.OrdinalIgnoreCase) ||
+                     stToks[2].Equals("hostile", StringComparison.OrdinalIgnoreCase));
+                output($"Queuing {stItems:N0} items and {stNpcs:N0} NPCs across town centers{(stHostile ? " (hostile monsters)" : "")}...");
+                OnStressRequested?.Invoke(stItems, stNpcs, stHostile);
                 break;
             }
 

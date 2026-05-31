@@ -4,6 +4,29 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Dusman-canavar stres modu + performans karakterizasyonu (Wave 37)
+----------------------------------------
+
+TANILAMA:
+  - STRESS konsol komutu opsiyonel ucuncu bir token alir (STRESS [items] [npcs]
+    mob): uretilen NPC'ler Monster beyni ve negatif karma alir, boylece kirmizi
+    (notoriety 6) gorunur ve sunucu tarafi hedef secimi ile karsilik vermeyi
+    tetiklerler; stres araci bir savas-yuku ureticisine donusur. Token'siz
+    varsayilan onceki inert populasyonu korur; oyun ici .STRESS yolu degismez.
+
+PERFORMANS (olculen: .NET 10 Release, Server GC, 20 Hz / 50 ms tick, canli TCP
+botlari, gercek script + MUL kurulumu; 30 sn'lik pencereler):
+  - 30.000 bosta NPC + 300 gezinen oyuncu: kararli ~3 ms ort. tick (%6 butce),
+    p95 ~7 ms, p99 ~9 ms; tam 20 Hz korunur. Sektor uykusu buyuk dunyayi
+    neredeyse bedava kilar.
+  - 2.000 dusman canavar + 300 savasan oyuncu: aktif savasci seti buyudukce
+    ~22 ms'den ~40 ms ort.'ya yukselir (p50 ~1 ms, p95 90-130 ms); erken 20 Hz,
+    surekli yuk altinda ~16 Hz. Maliyet oyuncu sayisi degil, eszamanli
+    NPC-AI'inin baskinligidir.
+  - 30.000 dusman canavar + 300 oyuncu (tavan): dongu doyuma ulasir
+    (~600-800 ms tick) ama zarif yavaslar — cokme yok, tek cekirdege dusme yok.
+    README performans bolumu bu degerlerle guncellendi.
+
 [2026-05-31] - CHARDEF CAN= bayraklari script DEFNAME tablosundan cozuluyor (Wave 36)
 ----------------------------------------
 

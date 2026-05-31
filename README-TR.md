@@ -142,36 +142,34 @@ Source-X'te geçmiş olayları yeniden izleme yoktur. SphereNet, karakter hareke
 
 ## Performans
 
-100 ms tick aralığında (saniyede 10 tick) stres testi sonuçları.
+Tick döngüsü **50 ms aralıkta (saniyede 20 tick)** çalışır; aşağıdaki *bütçe* sütunu bir tick'in bu 50 ms'nin ne kadarını harcadığıdır. Tüm değerler kod içi araçla ölçüldü — `STRESS` popülasyonu üretir, `BOT` ise giriş yapıp oynayan canlı TCP istemcileri başlatır — gerçek script + MUL kurulumuna karşı, .NET 10 Release ve Server GC ile. Her ölçüm 30 saniyelik bir penceredir (~600 tick).
 
-**Ortam:** ~50.000 NPC + ~101.000 item + 300 bot (canlı TCP bağlantısı, hepsi tek lokasyonda — en kötü senaryo).
+### Büyük boşta / gezinen dünya — sık karşılaşılan durum
 
-| Ölçüm | Ort. tick | Maks. tick | pps in | pps out | Bütçe |
+**30.000 NPC + 300 oyuncu yürürken** (canlı TCP botları tüm şehirlerde geziniyor):
+
+| Ölçüm | Ort. | p50 | p95 | p99 | Maks. | Bütçe (ort.) |
+|---|---|---|---|---|---|---|
+| Başlangıç (üretim + 300 giriş) | 7.3 ms | 2.2 ms | 41.8 ms | 81 ms | 146 ms | %15 |
+| Kararlı | ~3.0 ms | 2.2 ms | ~7 ms | ~9 ms | ~42 ms | %6 |
+
+Kararlı durum tam 20 Hz'i korur; tek istisna ara sıra görülen ~40 ms'lik GC duraklamalarıdır (yine bütçe içinde). Sektör uykusu sayesinde oyunculardan uzaktaki NPC'ler sıfır maliyetlidir, böylece büyük bir dünya neredeyse bedavadır.
+
+### Aktif savaş — pahalı durum
+
+**2.000 düşman canavar + 300 oyuncu çarpışırken** (`STRESS 0 2000 mob` + `BOT 300 combat`):
+
+| Ölçüm | Ort. | p50 | p95 | p99 | Tick hızı |
 |---|---|---|---|---|---|
-| Başlangıç | 8.7 ms | 35.1 ms | 2.370/s | 790/s | %8.7 |
-| Kararlı | 8.9 ms | 33.5 ms | 4.141/s | 802/s | %8.9 |
-| Doruk | 9.1 ms | 37.6 ms | 7.366/s | 846/s | %9.1 |
+| Erken | 22 ms | ~1 ms | ~90 ms | ~160 ms | 20 Hz |
+| Sonra | 40 ms | ~1 ms | ~130 ms | ~200 ms | ~16 Hz |
+
+Medyan tick ~1 ms'de kalır; maliyet, çok sayıda düşmanın aynı anda hedef seçip karşılık verdiği NPC-AI apply fazında yoğunlaşır ve daha fazla canavar saldırıya geçip aktif kaldıkça artar. Bir savaşta baskın maliyet oyuncu sayısı değil, **aynı anda aktif olan savaşçı sayısıdır**.
+
+**Tavan:** 30.000 *düşman* canavar + 300 oyuncu döngüyü doyuma ulaştırır (~600–800 ms tick, ~1–2 Hz) — ancak çökme veya çok çekirdekten tek çekirdeğe düşme olmadan zarif şekilde yavaşlar. On binlerce eşzamanlı savaşan AI tek bir 50 ms karesini aşar; bu büyüklükteki boşta popülasyonlar aşmaz.
 
 **Kayıt:** 102.780 item + 50.363 karakter → **0.6 sn** (BinaryGz, 3 shard).
-
-**Tick dağılımı** (300 bot, tipik yavaş tick):
-
-| Faz | Ortalama |
-|---|---|
-| Snapshot | 1.6 ms |
-| NPC Build | 1.1 ms |
-| NPC Apply | 20.8 ms |
-| View Build | 0.7 ms |
-| Apply + Flush | 0.4 ms |
-
-`npc_apply` fazı bu yoğunlukta ana darboğazdır; oyuncuların haritaya yayıldığı gerçek dağıtımlarda tick süreleri çok daha düşüktür.
-
-**Karşılaştırma** (300 bot, aynı lokasyon):
-
-| Emülatör | Ort. tick | Maks. tick |
-|---|---|---|
-| Sphere 56x | 50–80 ms | 150+ ms |
-| **SphereNet** | **9.0 ms** | **37.6 ms** |
+**Bellek:** Yukarıdaki tüm senaryolarda ~550–650 MB çalışma kümesi.
 
 ---
 

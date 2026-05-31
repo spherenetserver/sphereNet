@@ -142,36 +142,34 @@ Source-X has no way to replay past events. SphereNet includes a SQLite-backed re
 
 ## Performance
 
-Stress-test results at a 100 ms tick interval (10 ticks/second).
+The tick loop runs at a **50 ms interval (20 ticks/second)**; the *budget* column below is the share of that 50 ms a tick consumes. All figures are measured with the in-tree harness — `STRESS` generates the population, `BOT` spawns live TCP clients that log in and play — against a real script + MUL install on .NET 10 Release with Server GC. Each sample is a 30-second window (~600 ticks).
 
-**Environment:** ~50,000 NPCs + ~101,000 items + 300 bots (live TCP connections, all in one location — a worst-case scenario).
+### Large idle / roaming world — the common case
 
-| Sample | Avg tick | Max tick | pps in | pps out | Budget |
+**30,000 NPCs + 300 players walking** (live TCP bots roaming every town):
+
+| Sample | Avg | p50 | p95 | p99 | Max | Budget (avg) |
+|---|---|---|---|---|---|---|
+| Start (gen + 300 logins) | 7.3 ms | 2.2 ms | 41.8 ms | 81 ms | 146 ms | 15 % |
+| Steady | ~3.0 ms | 2.2 ms | ~7 ms | ~9 ms | ~42 ms | 6 % |
+
+Steady state holds a full 20 Hz; the only outliers are occasional ~40 ms GC pauses, still inside budget. Sector sleeping means NPCs away from players cost nothing, so a large world is nearly free.
+
+### Active combat — the expensive case
+
+**2,000 hostile monsters + 300 players engaging** (`STRESS 0 2000 mob` + `BOT 300 combat`):
+
+| Sample | Avg | p50 | p95 | p99 | Tick rate |
 |---|---|---|---|---|---|
-| Start | 8.7 ms | 35.1 ms | 2,370/s | 790/s | 8.7% |
-| Steady | 8.9 ms | 33.5 ms | 4,141/s | 802/s | 8.9% |
-| Peak | 9.1 ms | 37.6 ms | 7,366/s | 846/s | 9.1% |
+| Early | 22 ms | ~1 ms | ~90 ms | ~160 ms | 20 Hz |
+| Later | 40 ms | ~1 ms | ~130 ms | ~200 ms | ~16 Hz |
+
+The median tick stays ~1 ms; cost concentrates in the NPC-AI apply phase whenever many hostiles are simultaneously acquiring targets and retaliating, and it climbs as more monsters aggro and stay active. The dominant cost in a battle is the count of **simultaneously-active combatants**, not the player count.
+
+**Ceiling:** 30,000 *hostile* monsters + 300 players saturates the loop (~600–800 ms ticks, ~1–2 Hz) — yet it degrades gracefully, with no crash and no multicore fallback. Tens of thousands of concurrently-fighting AI exceed a single 50 ms frame; idle populations of that size do not.
 
 **Save:** 102,780 items + 50,363 characters → **0.6 s** (BinaryGz, 3 shards).
-
-**Tick breakdown** (300 bots, typical slow tick):
-
-| Phase | Average |
-|---|---|
-| Snapshot | 1.6 ms |
-| NPC Build | 1.1 ms |
-| NPC Apply | 20.8 ms |
-| View Build | 0.7 ms |
-| Apply + Flush | 0.4 ms |
-
-The `npc_apply` phase is the main bottleneck under this concentration; real deployments with players spread across the map see substantially lower tick times.
-
-**Comparison** (300 bots, same location):
-
-| Emulator | Avg tick | Max tick |
-|---|---|---|
-| Sphere 56x | 50–80 ms | 150+ ms |
-| **SphereNet** | **9.0 ms** | **37.6 ms** |
+**Memory:** ~550–650 MB working set across every scenario above.
 
 ---
 

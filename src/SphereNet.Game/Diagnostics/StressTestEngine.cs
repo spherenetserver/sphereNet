@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
+using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects;
 using SphereNet.Game.Objects.Characters;
@@ -33,6 +34,7 @@ public sealed class StressTestEngine
 
     private int _itemsRemaining;
     private int _npcsRemaining;
+    private bool _hostile;
     private int _itemsCreated;
     private int _npcsCreated;
     private long _startTimeMs;
@@ -130,8 +132,11 @@ public sealed class StressTestEngine
     }
 
     /// <summary>Begin generating the requested population. Per-tick batch
-    /// sizes are optional — defaults are tuned for a 250ms tick.</summary>
-    public void QueueGenerate(int items, int npcs, int itemsPerTick = 10000, int npcsPerTick = 2000)
+    /// sizes are optional — defaults are tuned for a 250ms tick. When
+    /// <paramref name="hostile"/> is set, generated NPCs get a Monster brain
+    /// and negative karma so they read as red (notoriety 6) and engage in
+    /// combat — used to load-test the combat pipeline with many attackers.</summary>
+    public void QueueGenerate(int items, int npcs, bool hostile = false, int itemsPerTick = 10000, int npcsPerTick = 2000)
     {
         if (IsGenerating)
         {
@@ -140,6 +145,7 @@ public sealed class StressTestEngine
             return;
         }
 
+        _hostile        = hostile;
         _itemsRemaining = Math.Max(0, items);
         _npcsRemaining  = Math.Max(0, npcs);
         _itemsPerTick   = Math.Max(100, itemsPerTick);
@@ -228,6 +234,14 @@ public sealed class StressTestEngine
         npc.Str = 50; npc.Dex = 50; npc.Int = 10;
         npc.MaxHits = 50; npc.Hits = 50;
         npc.Name = "stressling";
+        if (_hostile)
+        {
+            // Monster brain → notoriety 6 (red) so players/bots can engage it,
+            // and a hostile brain drives server-side target acquisition and
+            // retaliation through the NPC AI — a real combat load.
+            npc.NpcBrain = NpcBrainType.Monster;
+            npc.Karma = -1000;
+        }
         npc.SetTag(StressTag, "1");
         _world.PlaceCharacter(npc, new Point3D(x, y, z, 0));
     }

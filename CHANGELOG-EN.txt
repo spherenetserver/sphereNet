@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-05-31] - Hostile-monster stress mode + performance characterization (Wave 37)
+----------------------------------------
+
+DIAGNOSTICS:
+  - The STRESS console command takes an optional third token (STRESS [items]
+    [npcs] mob): generated NPCs get a Monster brain and negative karma so they
+    read as red (notoriety 6) and drive server-side target acquisition and
+    retaliation, turning the stress harness into a combat-load generator. The
+    default (no token) keeps the previous inert population; the in-game .STRESS
+    path is unchanged.
+
+PERFORMANCE (measured: .NET 10 Release, Server GC, 20 Hz / 50 ms tick, live
+TCP bots, real script + MUL install; 30 s windows):
+  - 30,000 idle NPCs + 300 roaming players: steady ~3 ms avg tick (6% budget),
+    p95 ~7 ms, p99 ~9 ms; full 20 Hz held. Sector sleeping keeps a large world
+    nearly free.
+  - 2,000 hostile monsters + 300 combat players: ~22 ms rising to ~40 ms avg as
+    the active-combatant set grows (p50 ~1 ms, p95 90-130 ms); 20 Hz held early,
+    ~16 Hz under sustained load. Cost is dominated by concurrent NPC-AI, not
+    player count.
+  - 30,000 hostile monsters + 300 players (ceiling): loop saturates
+    (~600-800 ms ticks) but degrades gracefully — no crash, no multicore
+    fallback. README performance section updated with these figures.
+
 [2026-05-31] - Resolve CHARDEF CAN= flags via script DEFNAME tables (Wave 36)
 ----------------------------------------
 

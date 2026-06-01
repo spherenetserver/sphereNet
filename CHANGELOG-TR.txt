@@ -4,6 +4,40 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Anchor'li cluster bot + kesin process-disi soak (Wave 49)
+----------------------------------------
+
+TANILAMA:
+  - ClusterBot artik cagri basina TEK iterasyon yapip return ediyor; iceride
+    sonsuz donmuyor. Runner'in davranis dongusu cagrilar arasinda gelen paketleri
+    drenaj eder; return etmeyen, yalnizca konusan bir bot socket'ini hic okumuyor,
+    inbound'u birikiyor, sunucu baglantiyi umutsuzca geride goruyor ve ona giden
+    her seyi shed ediyordu. Her iterasyonda return etmek, botun urettigi broadcast
+    selini tuketmesini saglar. Ayrica her botu spawn tile'ina anchor'lar (Radius 6)
+    boylece filo dagilmaz.
+  - Cluster yerlesimi SUNUCU tarafinda belirlenir (BotSpawnLocationProvider ->
+    sunucunun BotEngine'i), bu yuzden process-disi bir filoyu kumelemek sunucuda
+    yapilandirilmali: yeni --botcity <ad> ve --botcluster bayraklari bot
+    login'lerini bir sehir cevresine paketler. (--trustloopback Wave 48'den geliyor.)
+  - Runner periyodik active/pps stats logluyor; bot dususu ve gercek yuk gorulur.
+
+  Kesin soak (sunucu kendi process'inde tek basina, 1.000 cluster bot ayri bir
+  --botrunner process'inden, hepsi anchor'li + tek sehirde konusuyor):
+    - 1.000/1.000 bot bagli kaliyor; broadcast selini gercekten alip drenaj
+      ediyorlar (pps_in saniyede birkac bin, recv milyonlara tirmaniyor).
+    - Sunucu ~5 ms ort. tick (p95 ~50 ms), 20 Hz, players=1000, SIFIR shedding,
+      SIFIR backpressure-cap disconnect, SIFIR wire-bozulmasi; RSS ~1.3 GB, ~2
+      cekirdek.
+    - Bu, onceki IN-PROCESS cluster cokusunun (1.000 -> ~60, sonra milyonlar shed)
+      harness artefakti oldugunu dogrular: in-process'te botlar CPU-acti ve
+      drenaj edemiyordu, sunucunun per-connection buffer'lari birikiyordu. Botlar
+      kendi process'lerinde drenaj edince sunucu 1.000 kumelenmis, broadcast eden
+      client'i temizce tasiyor.
+    - Uyari: broadcast fan-out orta seviyedeydi (her konusma bir komsuluga ulasti,
+      1.000'in tamamina degil — spawn yaricapi + anchor drift), yani saglam
+      surdurulen bir soak'tir, mutlak en yogun en-kotu durum degil. Ayni makine
+      ayrica cekirdekleri paylasiyor.
+
 [2026-06-01] - Process-disi bot yuk uretici + soak bulgusu (Wave 48)
 ----------------------------------------
 

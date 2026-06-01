@@ -1960,6 +1960,27 @@ public static partial class Program
 
             // Bot stress test engine (.bot / .botmenu)
             _botEngine = new SphereNet.Game.Diagnostics.BotEngine(_loggerFactory.CreateLogger<SphereNet.Game.Diagnostics.BotEngine>());
+            // Soak placement (--botcity/--botcluster): the server positions incoming
+            // bot logins (BotSpawnLocationProvider -> this engine), so clustering an
+            // out-of-process fleet is configured here, not on the runner.
+            if (!string.IsNullOrEmpty(_botSpawnCity))
+            {
+                var sc = _botSpawnCity.ToUpperInvariant() switch
+                {
+                    "BRITAIN" => SphereNet.Game.Diagnostics.BotSpawnCity.Britain,
+                    "TRINSIC" => SphereNet.Game.Diagnostics.BotSpawnCity.Trinsic,
+                    "MOONGLOW" => SphereNet.Game.Diagnostics.BotSpawnCity.Moonglow,
+                    "YEW" => SphereNet.Game.Diagnostics.BotSpawnCity.Yew,
+                    "MINOC" => SphereNet.Game.Diagnostics.BotSpawnCity.Minoc,
+                    "VESPER" => SphereNet.Game.Diagnostics.BotSpawnCity.Vesper,
+                    "SKARA" => SphereNet.Game.Diagnostics.BotSpawnCity.Skara,
+                    "JHELOM" => SphereNet.Game.Diagnostics.BotSpawnCity.Jhelom,
+                    _ => SphereNet.Game.Diagnostics.BotSpawnCity.All,
+                };
+                _botEngine.SetSpawnCity(sc);
+            }
+            if (_botSpawnCluster)
+                _botEngine.SetClusterSpawn(true);
             _commands.OnBotCommandRequested += HandleBotCommand;
             _commands.OnBotMenuRequested += ShowBotManagerDialog;
             _commands.OnSectorListRequested += ShowSectorListDialog;

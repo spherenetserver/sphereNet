@@ -185,6 +185,12 @@ public static partial class Program
     // clients. For local soak testing with an out-of-process bot runner, which
     // hammers many connections from 127.0.0.1 that the flood filter would reject.
     private static bool _trustLoopback;
+    // Server-side bot spawn placement for soak tests. Bot character positions are
+    // chosen server-side (BotSpawnLocationProvider -> server's BotEngine), so to
+    // cluster an out-of-process bot fleet these must be set on the SERVER, not
+    // the runner. --botcity <name> + --botcluster pack bot logins around a town.
+    private static string? _botSpawnCity;
+    private static bool _botSpawnCluster;
 
     public static void Main(string[] args)
     {
@@ -199,6 +205,9 @@ public static partial class Program
 
         _managed = args.Any(a => a.Equals("--managed", StringComparison.OrdinalIgnoreCase));
         _trustLoopback = args.Any(a => a.Equals("--trustloopback", StringComparison.OrdinalIgnoreCase));
+        _botSpawnCluster = args.Any(a => a.Equals("--botcluster", StringComparison.OrdinalIgnoreCase));
+        _botSpawnCity = args.SkipWhile(a => !a.Equals("--botcity", StringComparison.OrdinalIgnoreCase))
+                            .Skip(1).FirstOrDefault();
         _pipeName = args.SkipWhile(a => !a.Equals("--pipe", StringComparison.OrdinalIgnoreCase))
                         .Skip(1).FirstOrDefault() ?? "";
 
@@ -274,8 +283,19 @@ public static partial class Program
         catch (Exception ex) { log.LogError(ex, "[BotRunner] Spawn failed"); }
 
         log.LogInformation("[BotRunner] Spawn complete — bots running. Ctrl+C to stop.");
+        long lastStatsMs = 0;
         while (_running)
+        {
             System.Threading.Thread.Sleep(500);
+            if (Environment.TickCount64 - lastStatsMs >= 10_000)
+            {
+                lastStatsMs = Environment.TickCount64;
+                var st = engine.GetStats();
+                log.LogInformation("[BotRunner] active={Active}/{Total} pps_in={In:F0} pps_out={Out:F0} sent={Sent} recv={Recv}",
+                    st.ActiveBots, st.TotalBots, st.PacketsPerSecIn, st.PacketsPerSecOut,
+                    engine.TotalPacketsSent, engine.TotalPacketsReceived);
+            }
+        }
 
         engine.Dispose();
         Serilog.Log.CloseAndFlush();

@@ -27,19 +27,39 @@ public sealed class ClusterBot : IBotBehavior
 
     public ClusterBot(int seed) => _rng = new Random(seed);
 
+    // Stay within this many tiles of the spawn anchor. Cluster spawn already
+    // packs every bot near one city centre, so anchoring each bot to its own
+    // spawn keeps the whole fleet inside a single screen (mutual view) instead
+    // of letting random jitter disperse it — which is what makes each speech
+    // actually fan out to ~everyone.
+    private const int Radius = 6;
+    private int _anchorX = -1, _anchorY;
+
+    /// <summary>One iteration of behavior, then return. The runner's behavior
+    /// loop (RunRoleBehaviorAsync) drains incoming packets between calls, so
+    /// RunAsync must NOT loop forever — otherwise a speak-only bot never reads
+    /// its socket, its inbound backs up, and the server sheds everything bound
+    /// for it (the connection looks hopelessly behind). Returning each iteration
+    /// lets the bot actually consume the broadcast flood it is generating.</summary>
     public async Task RunAsync(BotClient bot, BotActionApi actions, CancellationToken ct)
     {
-        while (!ct.IsCancellationRequested && bot.State == BotState.Playing)
+        var w = bot.World;
+        if (_anchorX < 0 && w.X > 0) { _anchorX = w.X; _anchorY = w.Y; }
+
+        if (_anchorX >= 0 && (Math.Abs(w.X - _anchorX) > Radius || Math.Abs(w.Y - _anchorY) > Radius))
         {
-            // Speak — broadcasts to every bot in view (the amplification path).
-            await actions.Say(Chatter[_rng.Next(Chatter.Length)], ct);
-
-            // Occasional jitter step so movement broadcasts fire too (mostly
-            // rejected in the crush, which is itself realistic).
-            if (_rng.Next(100) < 25)
-                await actions.MoveDirection((byte)_rng.Next(0, 8), ct);
-
-            await Task.Delay(_rng.Next(300, 600), ct);
+            // Drifted out of the cluster — walk back toward the anchor.
+            await actions.MoveTo(_anchorX, _anchorY, 3000, ct);
         }
+        else
+        {
+            // Inside the cluster — speak (broadcasts to everyone in view), with
+            // an occasional jitter step.
+            await actions.Say(Chatter[_rng.Next(Chatter.Length)], ct);
+            if (_rng.Next(100) < 20)
+                await actions.MoveDirection((byte)_rng.Next(0, 8), ct);
+        }
+
+        await Task.Delay(_rng.Next(250, 450), ct);
     }
 }

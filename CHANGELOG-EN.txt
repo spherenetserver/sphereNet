@@ -4,6 +4,40 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Anchored cluster bot + conclusive out-of-process soak (Wave 49)
+----------------------------------------
+
+DIAGNOSTICS:
+  - ClusterBot now does ONE iteration per call and returns, instead of looping
+    forever internally. The runner's behavior loop drains incoming packets
+    between calls, so a speak-only bot that never returned never read its socket;
+    its inbound backed up, the server saw the connection as hopelessly behind and
+    shed everything bound for it. Returning each iteration lets the bot consume
+    the broadcast flood it generates. It also anchors each bot to its spawn tile
+    (Radius 6) so the fleet stays clustered instead of dispersing.
+  - Cluster placement is decided SERVER-side (BotSpawnLocationProvider -> the
+    server's BotEngine), so clustering an out-of-process fleet must be configured
+    on the server: new --botcity <name> and --botcluster flags pack bot logins
+    around a town. (--trustloopback from Wave 48 covers the connection filter.)
+  - The runner logs periodic active/pps stats so bot drop-off and real load are
+    visible.
+
+  Conclusive soak (server alone in its own process, 1,000 cluster bots from a
+  separate --botrunner process, all anchored + speaking in one town):
+    - 1,000/1,000 bots stay connected; they actually receive and drain the
+      broadcast flood (pps_in a few thousand/s, recv climbing into the millions).
+    - Server holds ~5 ms avg tick (p95 ~50 ms), 20 Hz, players=1000, ZERO
+      shedding, ZERO backpressure-cap disconnects, ZERO wire corruption; RSS
+      ~1.3 GB, ~2 cores.
+    - This confirms the earlier IN-PROCESS cluster collapse (1,000 -> ~60, then
+      millions shed) was a harness artifact: in-process the bots were CPU-starved
+      and couldn't drain, so the server's per-connection buffers backed up. With
+      the bots in their own process they drain fine and the server handles 1,000
+      clustered, broadcasting clients cleanly.
+    - Caveat: broadcast fan-out was moderate (each speech reached a neighbourhood,
+      not all 1,000 — spawn radius + anchor drift), so this is a solid sustained
+      soak, not the absolute densest worst case. Same machine still shares cores.
+
 [2026-06-01] - Out-of-process bot load runner + soak finding (Wave 48)
 ----------------------------------------
 

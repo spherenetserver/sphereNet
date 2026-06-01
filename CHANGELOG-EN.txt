@@ -4,6 +4,33 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Reactive bot infrastructure: per-bot receive loop (Wave 52)
+----------------------------------------
+
+DIAGNOSTICS:
+  - Each bot now runs a dedicated background receive loop (ReceiveLoopAsync) that
+    is the sole socket reader once the bot is playing: it continuously reads
+    packets, updates the world model and completes pending actions. Previously
+    the only reader was a drain between behavior iterations, and WaitResult-based
+    actions stalled ~1 s with a stale world — so combat/skill bots fired blind.
+    Now the bot's world model stays current and WaitResult returns promptly, so
+    behaviors actually REACT to what they see.
+  - Thread-safety for the new cross-thread access: BotWorldModel.SyncRoot guards
+    the mobile/item dictionaries (FindNearest/RemoveStale and the receive-loop
+    mutations in ProcessIncomingPacket); BotActionApi guards _waitKind/
+    _pendingAction with a lock (the TCS already uses RunContinuationsAsynchronously
+    so completions never run inline under a lock). Behavior loops no longer drain
+    the socket themselves (would be a second reader on the stream).
+
+  Verified: 300 combat bots clustered among 2,000 hostile NPCs now genuinely
+  react — pps_in ~1,000-1,700 and recv climbing into the hundreds of thousands
+  (vs ~10/bot frozen before), bots attack what they see. Zero server exceptions
+  and zero bot anomalies across the run; server tick ~1-1.5 ms. (Newbie bot
+  characters don't out-damage 50-HP monsters, so mobs don't die — realistic weak
+  combat, not a bug.) This is contained to the bot harness; the server/wire is
+  untouched. Confirms the combat code path is robust under reactive load and
+  gives a foundation for richer bot gameplay tests.
+
 [2026-06-01] - Bot gameplay fuzzing pass + reactive-behavior groundwork (Wave 51)
 ----------------------------------------
 

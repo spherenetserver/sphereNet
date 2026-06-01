@@ -7,6 +7,9 @@ public sealed class BotActionApi
 
     private TaskCompletionSource<BotActionResult>? _pendingAction;
     private BotActionWaitKind _waitKind;
+    // Guards _waitKind/_pendingAction: the behavior thread sets them (SetWait /
+    // WaitResult) while the background receive loop completes them (CompleteXxx).
+    private readonly object _waitLock = new();
 
     public BotActionApi(BotClient bot)
     {
@@ -249,75 +252,89 @@ public sealed class BotActionApi
 
     internal void CompleteMove(bool success)
     {
-        if (_waitKind == BotActionWaitKind.MoveAck)
-            Complete(success ? BotActionResult.Success : BotActionResult.Rejected);
+        lock (_waitLock)
+            if (_waitKind == BotActionWaitKind.MoveAck)
+                Complete(success ? BotActionResult.Success : BotActionResult.Rejected);
     }
 
     internal void CompleteContainerOpen()
     {
-        if (_waitKind == BotActionWaitKind.ContainerOpen)
-            Complete(BotActionResult.Success);
+        lock (_waitLock)
+            if (_waitKind == BotActionWaitKind.ContainerOpen)
+                Complete(BotActionResult.Success);
     }
 
     internal void CompletePickUp(bool success)
     {
-        if (_waitKind == BotActionWaitKind.PickUpAck)
-            Complete(success ? BotActionResult.Success : BotActionResult.Rejected);
+        lock (_waitLock)
+            if (_waitKind == BotActionWaitKind.PickUpAck)
+                Complete(success ? BotActionResult.Success : BotActionResult.Rejected);
     }
 
     internal void CompleteDrop()
     {
-        if (_waitKind == BotActionWaitKind.DropAck)
-            Complete(BotActionResult.Success);
+        lock (_waitLock)
+            if (_waitKind == BotActionWaitKind.DropAck)
+                Complete(BotActionResult.Success);
     }
 
     internal void CompleteTarget()
     {
-        if (_waitKind == BotActionWaitKind.TargetCursor)
-            Complete(BotActionResult.Success);
+        lock (_waitLock)
+            if (_waitKind == BotActionWaitKind.TargetCursor)
+                Complete(BotActionResult.Success);
     }
 
     internal void CompleteGump()
     {
-        if (_waitKind == BotActionWaitKind.GumpOpen)
-            Complete(BotActionResult.Success);
+        lock (_waitLock)
+            if (_waitKind == BotActionWaitKind.GumpOpen)
+                Complete(BotActionResult.Success);
     }
 
     internal void CompleteSkill()
     {
-        if (_waitKind == BotActionWaitKind.SkillResponse)
-            Complete(BotActionResult.Success);
+        lock (_waitLock)
+            if (_waitKind == BotActionWaitKind.SkillResponse)
+                Complete(BotActionResult.Success);
     }
 
     internal void CompleteDisconnect()
     {
-        Complete(BotActionResult.Disconnected);
+        lock (_waitLock)
+            Complete(BotActionResult.Disconnected);
     }
 
-    private void SetWait(BotActionWaitKind kind)
-    {
-        _pendingAction?.TrySetResult(BotActionResult.TimedOut);
-        _waitKind = kind;
-        _pendingAction = new TaskCompletionSource<BotActionResult>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-    }
-
+    // Caller must hold _waitLock.
     private void Complete(BotActionResult result)
     {
         _waitKind = BotActionWaitKind.None;
         _pendingAction?.TrySetResult(result);
     }
 
+    private void SetWait(BotActionWaitKind kind)
+    {
+        lock (_waitLock)
+        {
+            _pendingAction?.TrySetResult(BotActionResult.TimedOut);
+            _waitKind = kind;
+            _pendingAction = new TaskCompletionSource<BotActionResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+    }
+
     private async Task<BotActionResult> WaitResult(int timeoutMs, CancellationToken ct)
     {
-        if (_pendingAction == null) return BotActionResult.None;
+        TaskCompletionSource<BotActionResult>? pending;
+        lock (_waitLock) pending = _pendingAction;
+        if (pending == null) return BotActionResult.None;
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(timeoutMs);
 
         try
         {
-            var task = _pendingAction.Task;
+            var task = pending.Task;
             var completed = await Task.WhenAny(task,
                 Task.Delay(Timeout.Infinite, cts.Token));
             if (completed == task) return task.Result;

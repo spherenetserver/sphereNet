@@ -73,25 +73,36 @@ public sealed class BotWorldModel
         return Math.Max(dx, dy);
     }
 
+    // Guards the dictionaries (Mobiles/KnownItems/Equipment/OpenContainers):
+    // the bot's background receive loop mutates them while the behavior thread
+    // reads them (FindNearest etc.). Hold this around any iterate-or-mutate.
+    public readonly object SyncRoot = new();
+
     public KnownMobile? FindNearest(Func<KnownMobile, bool> predicate, int maxRange = 18)
     {
         KnownMobile? best = null;
         int bestDist = int.MaxValue;
-        foreach (var m in Mobiles.Values)
+        lock (SyncRoot)
         {
-            if (!predicate(m)) continue;
-            int d = DistanceTo(m.X, m.Y);
-            if (d < bestDist && d <= maxRange) { bestDist = d; best = m; }
+            foreach (var m in Mobiles.Values)
+            {
+                if (!predicate(m)) continue;
+                int d = DistanceTo(m.X, m.Y);
+                if (d < bestDist && d <= maxRange) { bestDist = d; best = m; }
+            }
         }
         return best;
     }
 
     public void RemoveStale(long nowMs, long maxAgeMs = 60_000)
     {
-        var remove = new List<uint>();
-        foreach (var kv in Mobiles)
-            if (nowMs - kv.Value.LastSeenMs > maxAgeMs) remove.Add(kv.Key);
-        foreach (var id in remove) Mobiles.Remove(id);
+        lock (SyncRoot)
+        {
+            var remove = new List<uint>();
+            foreach (var kv in Mobiles)
+                if (nowMs - kv.Value.LastSeenMs > maxAgeMs) remove.Add(kv.Key);
+            foreach (var id in remove) Mobiles.Remove(id);
+        }
     }
 
     public byte GetDirectionTo(short tx, short ty)

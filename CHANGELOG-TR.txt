@@ -4,6 +4,33 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Reaktif bot altyapisi: bot-basina receive dongusu (Wave 52)
+----------------------------------------
+
+TANILAMA:
+  - Her bot artik ozel bir arka-plan receive dongusu (ReceiveLoopAsync) calistirir;
+    bot oynamaya basladiginda tek socket okuyucusu odur: surekli paket okur, world
+    model'i gunceller ve bekleyen aksiyonlari tamamlar. Onceden tek okuyucu davranis
+    iterasyonlari arasindaki drain'di ve WaitResult-tabanli aksiyonlar bayat world
+    ile ~1 sn stall ediyordu — combat/skill botlari kor ates ediyordu. Artik bot'un
+    world model'i guncel kalir ve WaitResult aninda doner, davranislar gercekten
+    gordukleri seye TEPKI verir.
+  - Yeni cross-thread erisim icin thread-safety: BotWorldModel.SyncRoot
+    mobile/item sozluklerini korur (FindNearest/RemoveStale ve ProcessIncomingPacket
+    icindeki receive-loop mutasyonlari); BotActionApi _waitKind/_pendingAction'i
+    lock ile korur (TCS zaten RunContinuationsAsynchronously kullaniyor, completion
+    asla lock altinda inline calismaz). Davranis donguleri artik socket'i kendileri
+    drenaj etmiyor (stream'de ikinci okuyucu olurdu).
+
+  Dogrulandi: 2.000 dusman NPC arasinda kumelenmis 300 combat bot artik gercekten
+  tepki veriyor — pps_in ~1.000-1.700, recv yuz binlere tirmaniyor (onceki ~10/bot
+  donmus haline karsi), botlar gordukleri seye saldiriyor. Run boyunca sifir server
+  exception ve sifir bot anomalisi; server tick ~1-1.5 ms. (Newbie bot karakterleri
+  50-HP canavarlari yenemiyor, mob olmuyor — gercekci zayif savas, bug degil.) Bu
+  yalniz bot harness'inde; server/wire dokunulmadi. Combat kod yolunun reaktif yuk
+  altinda saglam oldugunu teyit eder ve daha zengin bot gameplay testleri icin
+  zemin saglar.
+
 [2026-06-01] - Bot gameplay fuzzing taramasi + reaktif-davranis zemini (Wave 51)
 ----------------------------------------
 

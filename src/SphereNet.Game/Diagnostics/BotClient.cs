@@ -16,6 +16,7 @@ public sealed class BotClient : IDisposable
     private NetworkStream? _stream;
     private CancellationTokenSource? _cts;
     private Task? _behaviorTask;
+    private Task? _receiveTask;
     
     private readonly string _accountName;
     private readonly string _charName;
@@ -257,13 +258,43 @@ public sealed class BotClient : IDisposable
     public void StartBehavior(BotBehavior behavior, CancellationToken ct)
     {
         _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _receiveTask = Task.Run(() => ReceiveLoopAsync(_cts.Token));
         _behaviorTask = Task.Run(() => RunBehaviorLoopAsync(behavior, _cts.Token));
     }
 
     public void StartBehavior(Behaviors.IBotBehavior roleBehavior, CancellationToken ct)
     {
         _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _receiveTask = Task.Run(() => ReceiveLoopAsync(_cts.Token));
         _behaviorTask = Task.Run(() => RunRoleBehaviorAsync(roleBehavior, _cts.Token));
+    }
+
+    /// <summary>Sole socket reader once the bot is playing: continuously reads
+    /// packets and updates the world model + completes pending actions, so the
+    /// behavior thread sees a current world and its WaitResult calls return
+    /// promptly. Behaviors must NOT read the socket themselves (no draining) —
+    /// two readers on one stream would corrupt it.</summary>
+    private async Task ReceiveLoopAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested && State == BotState.Playing)
+            {
+                byte[]? packet = _isGamePhase
+                    ? await ReadGamePacketAsync(ct, timeout: 200)
+                    : await ReadPacketAsync(ct, timeout: 200);
+                if (packet != null)
+                {
+                    PacketsReceived++;
+                    ProcessIncomingPacket(packet);
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger.LogDebug("[Bot{Id}] Receive loop error: {Error}", _botId, ex.Message);
+        }
     }
 
     private async Task RunRoleBehaviorAsync(Behaviors.IBotBehavior roleBehavior, CancellationToken ct)
@@ -272,7 +303,7 @@ public sealed class BotClient : IDisposable
         {
             while (!ct.IsCancellationRequested && State == BotState.Playing)
             {
-                await DrainIncomingPacketsAsync(ct);
+                // Incoming packets are drained by ReceiveLoopAsync (sole reader).
                 await roleBehavior.RunAsync(this, Actions, ct);
                 LastActivityMs = Environment.TickCount64;
                 if (_anomalyScanner != null && _anomalySink != null)
@@ -305,8 +336,7 @@ public sealed class BotClient : IDisposable
         {
             while (!ct.IsCancellationRequested && State == BotState.Playing)
             {
-                await DrainIncomingPacketsAsync(ct);
-
+                // Incoming packets are drained by ReceiveLoopAsync (sole reader).
                 switch (behavior)
                 {
                     case BotBehavior.Idle:
@@ -378,6 +408,10 @@ public sealed class BotClient : IDisposable
         if (packet.Length == 0) return;
         long now = Environment.TickCount64;
 
+        // The receive loop runs on its own thread; guard world-model mutations
+        // against the behavior thread's reads (FindNearest etc.).
+        lock (_world.SyncRoot)
+        {
         switch (packet[0])
         {
             case 0x20: // Draw Game Player (19 bytes)
@@ -624,6 +658,7 @@ public sealed class BotClient : IDisposable
                 _world.LastActionTimeMs = now;
                 _actionApi?.CompletePickUp(false);
                 break;
+        }
         }
     }
 
@@ -1232,6 +1267,7 @@ public sealed class BotClient : IDisposable
         _cts?.Cancel();
         _actionApi?.CompleteDisconnect();
         try { _behaviorTask?.Wait(1000); } catch { }
+        try { _receiveTask?.Wait(1000); } catch { }
         _stream?.Close();
         _tcp?.Close();
         State = BotState.Disconnected;

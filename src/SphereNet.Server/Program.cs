@@ -248,7 +248,13 @@ public static partial class Program
             "COMBAT" => SphereNet.Game.Diagnostics.BotBehavior.Combat,
             "IDLE" => SphereNet.Game.Diagnostics.BotBehavior.Idle,
             "SMART" => SphereNet.Game.Diagnostics.BotBehavior.SmartAI,
+            "FULL" => SphereNet.Game.Diagnostics.BotBehavior.FullSimulation,
             "CLUSTER" => SphereNet.Game.Diagnostics.BotBehavior.Cluster,
+            "SKILL" => SphereNet.Game.Diagnostics.BotBehavior.Skill,
+            "LOOT" => SphereNet.Game.Diagnostics.BotBehavior.Loot,
+            "VENDOR" => SphereNet.Game.Diagnostics.BotBehavior.Vendor,
+            "SOCIAL" => SphereNet.Game.Diagnostics.BotBehavior.Social,
+            "CHAOS" => SphereNet.Game.Diagnostics.BotBehavior.Chaos,
             _ => SphereNet.Game.Diagnostics.BotBehavior.SmartAI,
         };
 

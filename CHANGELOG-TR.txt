@@ -4,6 +4,36 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Bot gameplay fuzzing taramasi + reaktif-davranis zemini (Wave 51)
+----------------------------------------
+
+TANILAMA:
+  - --botrunner davranis parser'i tam seti kabul ediyor: walk, combat, idle,
+    smart, full, cluster, skill, loot, vendor, social, chaos.
+  - CombatBot cagri basina tek-karar olacak sekilde yeniden yazildi (her
+    iterasyonda return) ki runner dongusu cycle-arasi drain etsin (ClusterBot
+    fix'iyle ayni).
+
+  Robustness sonucu: 200 chaos bot ~24k rastgele gameplay aksiyonu
+  (attack / skill / double-click / pick-up / target / konusma / war-mode,
+  rastgele serial'larla) + scriptli dunya + 2.000 dusman NPC'ye karsi 300-combat
+  run'i SIFIR server exception / crash / wire-bozulmasi uretti. Gameplay paket
+  handler'lari fuzzed/gecersiz girdiye karsi saglam. Bir ele-alinan uc durum:
+  hareket sirasinda telepad'e basan bir bot script teleport tetikledi, server
+  bunu yakalayip MoveAck'i bastirdi (dogru).
+
+  Bulunan durust kisit: bot client'inda surekli arka-plan socket okuyucusu yok.
+  Sadece davranis iterasyonlari arasinda okuyor; WaitResult-tabanli aksiyonlar
+  (move/attack) aksiyon sirasinda kimsenin okumadigi bir yaniti beklerken ~1 sn
+  stall ediyor — boylece combat/skill botunun world model'i guncel kalmiyor ve
+  buyuk olcude kor ates ediyor (gercek canavarlari guvenilir goremiyor/
+  hedefleyemiyor). One-iteration yeniden yazimi yalniz-konusan botlara
+  (ClusterBot) yardim eder, WaitResult-agir olanlara degil. Gercekten REAKTIF
+  bot gameplay (ve sonuc-dogrulayan correctness testleri) bot-basina arka-plan
+  receive dongusu + assertion gerektirir — gercek bir refactor. Gameplay
+  correctness'i bu arada 529 unit test kapsiyor; botlar yuk/stres (dogrulandi)
+  ve crash fuzzing (dogrulandi, sifir crash) icin en iyisi.
+
 [2026-06-01] - Yapilandirilabilir world-loop tick araligi (Wave 50)
 ----------------------------------------
 

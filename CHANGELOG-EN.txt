@@ -4,6 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Bot gameplay fuzzing pass + reactive-behavior groundwork (Wave 51)
+----------------------------------------
+
+DIAGNOSTICS:
+  - The --botrunner behavior parser accepts the full set: walk, combat, idle,
+    smart, full, cluster, skill, loot, vendor, social, chaos.
+  - CombatBot reworked to one decision per call (returns each iteration) so the
+    runner loop drains incoming between calls, matching the ClusterBot fix.
+
+  Robustness result: 200 chaos bots firing ~24k random gameplay actions
+  (attack / skill / double-click / pick-up / target / speech / war-mode, with
+  random serials) plus a 300-combat run against a scripted world + 2,000 hostile
+  NPCs produced ZERO server exceptions / crashes / wire corruption. The gameplay
+  packet handlers are robust against fuzzed and invalid input. One handled edge
+  case observed: a bot stepping on a telepad mid-move triggered a script
+  teleport, which the server detected and suppressed the MoveAck for (correct).
+
+  Honest limitation found: the bot client has no continuous background socket
+  reader. It only reads between behavior iterations, and WaitResult-based actions
+  (move/attack) stall ~1 s each waiting for a response that nothing reads during
+  the action — so a combat/skill bot's world model never stays current and it
+  fires largely blind (cannot reliably see/target real monsters). The
+  one-iteration rework helps speak-only bots (ClusterBot) but not WaitResult-
+  heavy ones. Genuinely REACTIVE bot gameplay (and outcome-verifying correctness
+  tests) needs a per-bot background receive loop + assertions — a real refactor.
+  Gameplay correctness is meanwhile covered by the 529 unit tests; bots remain
+  best for load/stress (validated) and crash fuzzing (validated, zero crashes).
+
 [2026-06-01] - Configurable world-loop tick interval (Wave 50)
 ----------------------------------------
 

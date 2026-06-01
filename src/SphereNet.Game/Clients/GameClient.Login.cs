@@ -260,7 +260,29 @@ public sealed partial class GameClient
                 _world.MoveCharacter(_character, botPos.Value);
         }
 
+        // Bot accounts get a combat/magic buff so the load/test bots can actually
+        // fight and cast (newbie stats can't out-damage monsters). Bot accounts
+        // are ephemeral test accounts; re-applied on every login.
+        if (_account != null && _character != null &&
+            SphereNet.Game.Diagnostics.BotClient.IsBotAccountName(_account.Name))
+            ApplyBotCombatBuff(_character);
+
         EnterWorld();
+    }
+
+    private static void ApplyBotCombatBuff(Character ch)
+    {
+        ch.Str = 100; ch.Dex = 100; ch.Int = 100;
+        ch.MaxHits = ch.Str; ch.MaxMana = (short)ch.Int; ch.MaxStam = ch.Dex;
+        ch.Hits = ch.MaxHits; ch.Mana = ch.MaxMana; ch.Stam = ch.MaxStam;
+        // Wrestling makes unarmed melee effective without needing a weapon item;
+        // Magery/EvalInt enable spellcasting.
+        ch.SetSkill(SphereNet.Core.Enums.SkillType.Wrestling, 1000);
+        ch.SetSkill(SphereNet.Core.Enums.SkillType.Tactics, 1000);
+        ch.SetSkill(SphereNet.Core.Enums.SkillType.Anatomy, 1000);
+        ch.SetSkill(SphereNet.Core.Enums.SkillType.Magery, 1000);
+        ch.SetSkill(SphereNet.Core.Enums.SkillType.EvalInt, 1000);
+        ch.SetSkill(SphereNet.Core.Enums.SkillType.Healing, 1000);
     }
 
     private void EnterWorld()

@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Bot combat/magic buff + MageBot; gameplay robustness pass (Wave 53)
+----------------------------------------
+
+DIAGNOSTICS:
+  - Bot accounts now receive a combat/magic buff on login (Str/Dex/Int 100,
+    Wrestling/Tactics/Anatomy/Magery/EvalInt/Healing maxed) so test bots can
+    actually deal damage and cast — newbie stats can't out-damage monsters. Bot
+    accounts are ephemeral; re-applied each login; gated on IsBotAccountName.
+  - Added MageBot (reactive spellcaster: finds the nearest monster and casts an
+    offensive spell via the cast→target flow) + wired into BotBehavior/
+    CreateRoleBehavior and the --botrunner parser ("mage").
+
+  Findings: across combat, mage and chaos bot runs against the scripted world +
+  hostile NPCs — ZERO server exceptions, crashes, wire corruption or bot
+  anomalies. The player melee/damage path was read and verified correct
+  (unarmed uses Wrestling -> ~85% hit vs an unskilled mob, real Str-scaled damage
+  with Tactics/Anatomy bonus). No server-side gameplay bug was found.
+  Caveat: reliably making bots KILL mobs is a harness positioning/movement
+  problem, not a server one — clustered bots are packed and can't path to a
+  target, while spread bots end up isolated from the mob hotspots, so few swings
+  land. Tuning bot/mob co-location (or a server-side bot stat boost plus a
+  dedicated "skirmish" spawn) is the open item for end-to-end combat-correctness
+  bot tests; the code paths themselves are exercised and robust.
+
 [2026-06-01] - Reactive bot infrastructure: per-bot receive loop (Wave 52)
 ----------------------------------------
 

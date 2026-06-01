@@ -1307,4 +1307,5 @@ public enum BotBehavior
     Social,
     Chaos,
     Cluster,
+    Mage,
 }

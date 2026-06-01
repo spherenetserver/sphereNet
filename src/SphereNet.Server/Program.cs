@@ -255,6 +255,7 @@ public static partial class Program
             "VENDOR" => SphereNet.Game.Diagnostics.BotBehavior.Vendor,
             "SOCIAL" => SphereNet.Game.Diagnostics.BotBehavior.Social,
             "CHAOS" => SphereNet.Game.Diagnostics.BotBehavior.Chaos,
+            "MAGE" => SphereNet.Game.Diagnostics.BotBehavior.Mage,
             _ => SphereNet.Game.Diagnostics.BotBehavior.SmartAI,
         };
 

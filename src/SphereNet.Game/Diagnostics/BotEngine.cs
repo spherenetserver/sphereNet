@@ -440,6 +440,7 @@ public sealed class BotEngine : IDisposable
             BotBehavior.Social => new SocialBot(seed),
             BotBehavior.Chaos => new ChaosBot(seed),
             BotBehavior.Cluster => new Behaviors.ClusterBot(seed),
+            BotBehavior.Mage => new Behaviors.MageBot(seed),
             _ => null,
         };
     }

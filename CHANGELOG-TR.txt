@@ -4,6 +4,30 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Bot combat/magic buff + MageBot; gameplay saglamlik taramasi (Wave 53)
+----------------------------------------
+
+TANILAMA:
+  - Bot hesaplari login'de combat/magic buff alir (Str/Dex/Int 100, Wrestling/
+    Tactics/Anatomy/Magery/EvalInt/Healing maxed) ki test botlari gercekten hasar
+    versin ve buyu yapsin — newbie statlari canavari yenemiyor. Bot hesaplari
+    gecici; her login'de tekrar uygulanir; IsBotAccountName ile gatelenir.
+  - MageBot eklendi (reaktif buyucu: en yakin canavari bulup cast->target akisiyla
+    saldiri buyusu atar) + BotBehavior/CreateRoleBehavior ve --botrunner parser'ina
+    ("mage") baglandi.
+
+  Bulgular: scriptli dunya + dusman NPC'lere karsi combat, mage ve chaos bot
+  run'larinda — SIFIR server exception, crash, wire-bozulmasi veya bot anomalisi.
+  Oyuncu melee/hasar yolu okunup dogrulandi (silahsiz Wrestling kullanir -> skilsiz
+  mob'a ~%85 hit, Str-olcekli gercek hasar + Tactics/Anatomy bonusu). Server-tarafi
+  gameplay bug'i bulunmadi.
+  Uyari: botlari guvenilir sekilde mob OLDURTMEK bir harness konumlandirma/hareket
+  sorunudur, server degil — clustered botlar paketlenip hedefe yol bulamiyor,
+  spread botlar mob hotspot'larindan izole kaliyor, bu yuzden az vurus iniyor.
+  Bot/mob ko-lokasyonu ayari (veya server-tarafi bot stat boost + ozel "skirmish"
+  spawn) uctan-uca combat-correctness bot testleri icin acik kalan is; kod
+  yollarinin kendisi calistirildi ve saglam.
+
 [2026-06-01] - Reaktif bot altyapisi: bot-basina receive dongusu (Wave 52)
 ----------------------------------------
 

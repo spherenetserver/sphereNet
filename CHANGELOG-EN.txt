@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Configurable world-loop tick interval (Wave 50)
+----------------------------------------
+
+CONFIG:
+  - The world-loop tick interval is no longer hardcoded to 50 ms. New sphere.ini
+    key ServerTickMs (default 50 = 20 ticks/s, clamped to [20,250]) sets it.
+    Raising it (e.g. 100 = 10 ticks/s) doubles the per-tick budget for very heavy
+    active-AI loads at the cost of coarser world-sim timing — which UO's
+    movement (200-400 ms/step) and combat (1-4 s swings) tolerate easily. Network
+    I/O is NOT gated by this (it runs every main-loop iteration), so the tick
+    rate affects world simulation granularity, not packet latency.
+    Verified: ServerTickMs=100 yields ~301 ticks per 30 s window (10 Hz) vs ~601
+    at the default 50 ms (20 Hz). Default behavior is unchanged.
+
 [2026-06-01] - Anchored cluster bot + conclusive out-of-process soak (Wave 49)
 ----------------------------------------
 

@@ -240,6 +240,13 @@ public sealed class SphereConfig
     public int MulticoreWorkerCount { get; set; } = 0; // 0 => auto
     public int MulticorePhaseTimeoutMs { get; set; } = 5000;
 
+    // World-loop tick interval in milliseconds (ini key: ServerTickMs).
+    // 50 = 20 ticks/s (default). Raising it (e.g. 100 = 10 ticks/s) doubles the
+    // per-tick budget for heavy active-AI loads at the cost of coarser world-sim
+    // timing; UO's movement/combat cadence tolerates 100ms easily. Network I/O is
+    // not gated by this (it runs every main-loop iteration). Clamped to [20,250].
+    public int ServerTickMs { get; set; } = 50;
+
     // Main loop yield strategy between ticks.
     // 0 = spin   : Thread.SpinWait — lowest latency (<1ms), highest CPU usage.
     //              Best for dedicated servers with spare CPU cores.
@@ -502,6 +509,7 @@ public sealed class SphereConfig
         MulticoreWorkerCount = ini.GetInt(section, "MulticoreWorkerCount", MulticoreWorkerCount);
         MulticorePhaseTimeoutMs = ini.GetInt(section, "MulticorePhaseTimeoutMs", MulticorePhaseTimeoutMs);
         TickSleepMode = ini.GetInt(section, "TickSleepMode", TickSleepMode);
+        ServerTickMs = Math.Clamp(ini.GetInt(section, "ServerTickMs", ServerTickMs), 20, 250);
 
         LogMask = ini.GetInt(section, "LogMask", LogMask);
         DebugPackets = ini.GetBool(section, "DebugPackets", DebugPackets);

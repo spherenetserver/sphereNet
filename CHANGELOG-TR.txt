@@ -4,6 +4,21 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-01] - Yapilandirilabilir world-loop tick araligi (Wave 50)
+----------------------------------------
+
+CONFIG:
+  - World-loop tick araligi artik 50 ms'ye sabit kodlanmis degil. Yeni sphere.ini
+    key'i ServerTickMs (default 50 = 20 tick/s, [20,250] araliginda kirpilir)
+    bunu belirler. Yukseltmek (orn. 100 = 10 tick/s) cok agir aktif-AI yukleri
+    icin per-tick butcesini 2'ye katlar; karsiliginda world-sim zamanlamasi
+    kabalasir — ki UO'nun hareketi (200-400 ms/adim) ve savasi (1-4 s vurus)
+    bunu rahat tolere eder. Ag I/O bununla SINIRLANMAZ (her main-loop
+    iterasyonunda calisir), yani tick hizi world-sim granularitesini etkiler,
+    paket gecikmesini degil.
+    Dogrulandi: ServerTickMs=100 -> 30 sn pencerede ~301 tick (10 Hz); default
+    50 ms'de ~601 (20 Hz). Varsayilan davranis degismedi.
+
 [2026-06-01] - Anchor'li cluster bot + kesin process-disi soak (Wave 49)
 ----------------------------------------
 

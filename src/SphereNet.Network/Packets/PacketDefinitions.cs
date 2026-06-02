@@ -204,16 +204,20 @@ public static class PacketDefinitions
 
     /// <summary>
     /// Version-aware packet length lookup for incoming packets whose size
-    /// changed between client versions (0x08 Drop Item, 0x00 Create Character).
+    /// changed between client versions (currently only 0x08 Drop Item).
     /// </summary>
+    /// <remarks>
+    /// Note: character creation does NOT change the 0x00 length. 0x00 is always
+    /// 104 bytes; 7.0.16+ clients send the 106-byte form under a distinct opcode
+    /// (0xF8, NewCharacterCreation), and Enhanced Client uses 0x8D. Treating 0x00
+    /// as 106 for modern clients would over-read and desync the stream.
+    /// </remarks>
     public static int GetPacketLength(byte opcode, State.NetState? ns)
     {
         if (ns != null)
         {
             // 0x08 Drop Item: 14 bytes pre-6.0.1.7, 15 bytes 6.0.1.7+
             if (opcode == 0x08) return ns.IsClientPost6017 ? 15 : 14;
-            // 0x00 Create Character: 104 bytes pre-7.0.18, 106 bytes 7.0.18+
-            if (opcode == 0x00) return ns.IsClientPost70180 ? 106 : 104;
         }
         return _lengths[opcode];
     }

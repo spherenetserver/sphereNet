@@ -4,6 +4,58 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-03] - Paket-cag uyumlulugu, surume-duyarli animasyon, hareket & gonderim-onceligi duzeltmeleri (Wave 54)
+----------------------------------------
+
+PROTOKOL / PAKET:
+  - 0x00 Create Character her zaman 104 byte. Surume-bagli 104/106 uzunluk
+    override'i kaldirildi (106-byte form ayri bir opcode'tur, 0xF8); modern
+    client icin 0x00'i 106 saymak fazla okuyup stream'i bozuyordu. Artik
+    kullanilmayan ve yanlis hesaplanan IsClientPost70180 bayragi kaldirildi.
+  - Kayitsiz modern opcode'lar (0xF1/F2/F7/F9/FA/FB/D0/DD/E0) kendi
+    cerceveleriyle tuketilip desync olmadan ignore ediliyor; bilinmeyen-opcode
+    log'u baglanti-basina opcode-basina bir kez (ShouldLogUnknownOpcode).
+  - 0xD7 encoded command (custom-house tasarim editoru) 0xBF extended-command
+    dispatch'inden ayrildi: subcommand ID'leri cakisiyordu (encoded Build 0x06
+    vs party 0x06, Roof 0x13 vs context-menu, Revert 0x1A vs stat-lock), ortak
+    tablo house aksiyonlarini alakasiz handler'lara yonlendiriyordu. Custom-house
+    tasarim aksiyonlari artik guvenle reject/ignore (editor henuz yok).
+    Subcommand setini belgeleyen EncodedCommandRegistry eklendi.
+
+ANIMASYON:
+  - 0xE2 yeni-animasyon paketi, alici-basina client-surumu secimiyle kullanima
+    alindi: High Seas+ client'lar body-agnostic 0xE2 gesture alir, eski client'lar
+    legacy 0x6E action index'inde kalir. NewAnimationGesture enum eklendi; combat
+    swing/get-hit/miss (oyuncu ve NPC) ortak surume-duyarli broadcast'tan gecer.
+
+HAREKET:
+  - Yaya yurume/kosma artik stamina tuketmiyor (Source-X paritesi: yalnizca bir
+    mobil'i itmek stamina harcar; adim-basina kosu drain'i yanlisti).
+  - Land-tile yurunebilirligi client ile eslesiyor: sadece impassable ISLAK (su)
+    land yuruyeni bloklar. Kuru impassable yokus/dag arazisi tekrar yurunebilir;
+    bloklamak client'tan desync olup merdiven/yokus yaninda rubber-band'e yol
+    aciyordu.
+  - Tek adimda MaxDescendZ (11) ustu Z inisleri reddedilir; boylece yuruyen
+    ucurum kenarinda durur, dalmaz; sira disi merdiven/yokus adimlari (<= ~2
+    basamak) etkilenmez. Tirmanma degismedi.
+
+AG (gonderim onceligi):
+  - Source-X paket-onceligi modeli: giden paketler PacketPriorityClassifier ile
+    siniflandirilir (Idle/Low/Normal/High/Highest) ve NetState her flush'ta
+    kuyruklari Highest -> Idle drain eder. Hareket ack/reject (0x21/0x22) ve auth
+    artik bulk world/UI trafiginin onunde gider; kosan client adim onaylarini
+    beklemez ve fazla tahmin yapmaz.
+  - Reddediş sonrasi resync penceresi artik her bekleyen adim icin 0x21
+    echo'lamiyor. Her uctaki adim icin bir reddediş echo'lamak client'i yeniden
+    gondermeye itiyordu (tekrar reddediliyordu) — dusuk gecikmeli baglantilarda
+    oyuncuyu donduran ve isinlanma gibi gorunen siki bir feedback storm. Artik
+    tek bir duzeltici reddediş kalir, stale adimlar sessizce yutulur.
+
+TESTLER:
+  - Era-sinir (0x00/0xF8 icin 7.0.18-7.0.30, 0x08 14/15 grid index),
+    kayitsiz-opcode saglamligi, custom-house reject, animasyon surume-secimi,
+    land-block kurali ve paket-onceligi testleri eklendi. Tum paket yesil (583).
+
 [2026-06-01] - Bot combat/magic buff + MageBot; gameplay saglamlik taramasi (Wave 53)
 ----------------------------------------
 

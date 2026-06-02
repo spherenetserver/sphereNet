@@ -1677,7 +1677,7 @@ public sealed partial class GameClient
 
                     ResetWalkValidator();
                     _netState.WalkSequence = 0;
-                    _netState.Send(new PacketMoveReject(0,
+                    _netState.SendPriority(new PacketMoveReject(0,
                         _character.X, _character.Y, _character.Z,
                         (byte)((byte)_character.Direction & 0x07)));
 

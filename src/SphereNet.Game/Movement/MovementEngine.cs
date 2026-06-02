@@ -146,9 +146,10 @@ public sealed class MovementEngine
             if (ch.IsStatFlag(StatFlag.Invisible)) ch.ClearStatFlag(StatFlag.Invisible);
         }
 
-        // Run stamina drain — 1 stam per running step (Source-X parity)
-        if (running && ch.IsPlayer && ch.Stam > 0)
-            ch.Stam = (short)Math.Max(0, ch.Stam - 1);
+        // Note: walking/running on foot does NOT drain stamina (Source-X
+        // CClient::Event_Walk has no per-step stamina cost — only shoving past a
+        // mobile, handled above, costs stamina). Mounted travel drains the
+        // mount, not the rider, and is handled separately.
 
         TickStealthStep(ch);
 

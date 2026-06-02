@@ -30,6 +30,35 @@ public sealed class WalkCheck
 
     private const TileFlag ImpassableSurface = TileFlag.Impassable | TileFlag.Surface;
 
+    /// <summary>
+    /// Maximum Z a mover may DROP in a single step. Beyond this the step is
+    /// rejected so the mover stops at the edge instead of plunging — e.g. the
+    /// cliff/beach tiles whose corners span ~25 units, where the walkable centre
+    /// Z sits 13+ below the mover. The 2D/UO client blocks such cliff drops
+    /// locally, so allowing them server-side desynced the two and the running
+    /// player teleported down then snapped back. Tuned to clear ordinary stair
+    /// steps and slopes (≤ ~2 stair risers) while blocking true cliff faces.
+    /// Climbing UP is unaffected (handled by the maxZ window).
+    /// </summary>
+    public static int MaxDescendZ { get; set; } = 11;
+
+    /// <summary>
+    /// Land-tile movement barrier rule: only WATER (Impassable + Wet) blocks a
+    /// walking mover. Dry land — including steep "impassable"-flagged mountain
+    /// and slope terrain — stays walkable, because the 2D/UO client predicts
+    /// movement onto those slopes (it walks up/down them and renders the step
+    /// before the server replies). If the server blocked them, the client would
+    /// walk where the server rejects, and every rejection snaps the running
+    /// client back several tiles (the "stairs throw me sideways" rubber-band).
+    ///
+    /// Matching the client's walkability is the controlling rule here. A blunt
+    /// "all impassable land blocks" (ServUO-style) desynced from the client and
+    /// broke walking the terrain beside stairs. Water still blocks via the Wet
+    /// bit (plus impassable water statics), so a mover still cannot walk INTO
+    /// the sea.
+    /// </summary>
+    internal static bool LandBlocks(LandTileData landData) => landData.IsImpassable && landData.IsWet;
+
     private readonly GameWorld _world;
 
     public WalkCheck(GameWorld world)
@@ -232,7 +261,7 @@ public sealed class WalkCheck
         if (!MapDataManager.IsLandIgnored(landTile.TileId))
         {
             var landData = md.GetLandTileData(landTile.TileId);
-            bool landBlocks = landData.IsImpassable && landData.IsWet;
+            bool landBlocks = LandBlocks(landData);
 
             if (!landBlocks)
             {
@@ -351,7 +380,7 @@ public sealed class WalkCheck
 
         var landTile = md.GetTerrainTile(mapId, x, y);
         var landData = md.GetLandTileData(landTile.TileId);
-        bool landBlocks = landData.IsImpassable && landData.IsWet;
+        bool landBlocks = LandBlocks(landData);
         bool considerLand = !MapDataManager.IsLandIgnored(landTile.TileId);
 
         md.GetAverageZ(mapId, x, y, out int landZ, out int landCenter, out int landTop);
@@ -481,6 +510,16 @@ public sealed class WalkCheck
         }
 
         bool moveIsOk = resultZ != -128;
+
+        // Reject a single-step drop steeper than MaxDescendZ (cliff edge). The
+        // client blocks these locally; matching it here stops the mover at the
+        // top instead of teleporting down onto the cliff/beach centre Z.
+        if (moveIsOk && moverZ - resultZ > MaxDescendZ)
+        {
+            trace.LastReason = $"descent_too_steep drop={moverZ - resultZ} ourZ={resultZ}";
+            moveIsOk = false;
+        }
+
         if (moveIsOk)
         {
             newZ = resultZ;
@@ -510,9 +549,8 @@ public sealed class WalkCheck
     {
         var landTile = md.GetTerrainTile(mapId, x, y);
         var landData = md.GetLandTileData(landTile.TileId);
-        // Match the landBlocks rule in Check() — only water (Impassable+Wet)
-        // is treated as a barrier. See the comment in Check for rationale.
-        bool landBlocks = landData.IsImpassable && landData.IsWet;
+        // Same land-barrier rule as Check() — see LandBlocks().
+        bool landBlocks = LandBlocks(landData);
         bool considerLand = !MapDataManager.IsLandIgnored(landTile.TileId);
 
         md.GetAverageZ(mapId, x, y, out int landZ, out int landCenter, out int landTopAvg);

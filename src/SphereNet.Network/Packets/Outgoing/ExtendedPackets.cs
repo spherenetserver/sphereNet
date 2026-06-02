@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text;
+using SphereNet.Core.Enums;
 using SphereNet.Network.Packets;
 
 namespace SphereNet.Network.Packets.Outgoing;
@@ -2001,31 +2002,34 @@ public sealed class PacketClilocMessageAffix : PacketWriter
     }
 }
 
-/// <summary>0xE2 — New animation packet for HS+ clients.
-/// Replaces 0x6E for clients with ProtocolChanges.HighSeas.</summary>
+/// <summary>0xE2 — New (body-agnostic) animation packet for High Seas+ clients.
+/// The client resolves the body-specific animation group from the gesture
+/// <paramref name="gesture"/>, sub-action and mode, so a single gesture plays a
+/// sensible animation on human, monster and gargoyle bodies alike. The legacy
+/// 0x6E packet (raw action index) is still used for pre-HS clients.</summary>
 public sealed class PacketNewAnimation : PacketWriter
 {
     private readonly uint _serial;
-    private readonly ushort _animationType;
-    private readonly ushort _action;
-    private readonly byte _delay;
+    private readonly ushort _gesture;
+    private readonly ushort _subAction;
+    private readonly byte _mode;
 
-    public PacketNewAnimation(uint serial, ushort animationType, ushort action, byte delay = 0)
+    public PacketNewAnimation(uint serial, NewAnimationGesture gesture, ushort subAction = 0, byte mode = 0)
         : base(0xE2)
     {
         _serial = serial;
-        _animationType = animationType;
-        _action = action;
-        _delay = delay;
+        _gesture = (ushort)gesture;
+        _subAction = subAction;
+        _mode = mode;
     }
 
     public override PacketBuffer Build()
     {
         var buf = CreateFixed(10);
         buf.WriteUInt32(_serial);
-        buf.WriteUInt16(_animationType);
-        buf.WriteUInt16(_action);
-        buf.WriteByte(_delay);
+        buf.WriteUInt16(_gesture);
+        buf.WriteUInt16(_subAction);
+        buf.WriteByte(_mode);
         return buf;
     }
 }

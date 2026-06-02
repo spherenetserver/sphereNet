@@ -1,3 +1,4 @@
+using SphereNet.Core.Enums;
 using SphereNet.Network.Packets;
 using SphereNet.Network.Packets.Incoming;
 using SphereNet.Network.Packets.Outgoing;
@@ -260,13 +261,23 @@ public class PacketManagerTests
     }
 
     [Fact]
-    public void PacketNewAnimation_Build_CorrectOpcodeAndLength()
+    public void PacketNewAnimation_Build_CorrectOpcodeAndLayout()
     {
-        var packet = new PacketNewAnimation(0x00000001, 11, 0, 5);
+        var packet = new PacketNewAnimation(0x01020304, NewAnimationGesture.Spell, subAction: 0, mode: 5);
         var buf = packet.Build();
+        var d = buf.Data;
 
         Assert.Equal(10, buf.Length);
-        Assert.Equal(0xE2, buf.Data[0]);
+        Assert.Equal(0xE2, d[0]);
+        // serial (big-endian)
+        Assert.Equal(0x01, d[1]); Assert.Equal(0x02, d[2]);
+        Assert.Equal(0x03, d[3]); Assert.Equal(0x04, d[4]);
+        // gesture (Spell = 11)
+        Assert.Equal(0x00, d[5]); Assert.Equal(11, d[6]);
+        // sub-action
+        Assert.Equal(0x00, d[7]); Assert.Equal(0x00, d[8]);
+        // mode
+        Assert.Equal(5, d[9]);
     }
 
     private static string FindRepoFile(params string[] parts)

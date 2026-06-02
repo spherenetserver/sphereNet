@@ -4,6 +4,60 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-03] - Packet-era compatibility, version-aware animation, movement & send-priority fixes (Wave 54)
+----------------------------------------
+
+PROTOCOL / PACKET:
+  - 0x00 Create Character is always 104 bytes. Removed a version-gated
+    104/106 length override (the 106-byte form is a distinct opcode, 0xF8);
+    treating 0x00 as 106 for modern clients over-read and desynced the stream.
+    Removed the now-unused, incorrectly-computed IsClientPost70180 flag.
+  - Unregistered modern opcodes (0xF1/F2/F7/F9/FA/FB/D0/DD/E0) are consumed by
+    their declared framing and ignored without desync; unknown-opcode logging
+    is rate-limited to once per opcode per connection (ShouldLogUnknownOpcode).
+  - 0xD7 encoded command (custom-house design editor) decoupled from the 0xBF
+    extended-command dispatch: their subcommand IDs overlap (encoded Build 0x06
+    vs party 0x06, Roof 0x13 vs context-menu, Revert 0x1A vs stat-lock), so a
+    shared table mis-routed house actions into unrelated handlers. Custom-house
+    design actions are now safely rejected/ignored (editor not yet implemented).
+    Added EncodedCommandRegistry documenting the subcommand set.
+
+ANIMATION:
+  - 0xE2 new-animation packet put to use with per-recipient client-version
+    selection: High Seas+ clients receive the body-agnostic 0xE2 gesture while
+    older clients keep the legacy 0x6E action index. Added NewAnimationGesture
+    enum; combat swing/get-hit/miss (player and NPC) route through the shared
+    version-aware broadcast.
+
+MOVEMENT:
+  - Walking/running on foot no longer drains stamina (Source-X parity: only
+    shoving past a mobile costs stamina; the per-step run drain was incorrect).
+  - Land-tile walkability matches the client: only impassable WET (water) land
+    blocks a walker. Dry impassable slope/mountain terrain is walkable again;
+    blocking it desynced from the client and rubber-banded movement beside
+    stairs and slopes.
+  - Single-step Z descents beyond MaxDescendZ (11) are rejected so a mover stops
+    at a cliff edge instead of plunging; ordinary stair/slope steps (<= ~2
+    risers) are unaffected. Climbing is unchanged.
+
+NETWORK (send priority):
+  - Source-X packet-priority model: outgoing packets are classified
+    (Idle/Low/Normal/High/Highest) by PacketPriorityClassifier and NetState
+    drains its queues Highest -> Idle each flush. Movement ack/reject
+    (0x21/0x22) and auth now lead bulk world/UI traffic, so a running client no
+    longer waits on step confirmations and over-predicts.
+  - The post-reject resync window no longer echoes a 0x21 per buffered step.
+    Echoing one reject per in-flight step made the client resend (rejected
+    again) in a tight feedback storm on low-latency links that froze the player
+    and read as a teleport; a single corrective reject now stands and stale
+    steps are absorbed silently.
+
+TESTS:
+  - Added era-boundary (7.0.18-7.0.30 for 0x00/0xF8, 0x08 14/15 grid index),
+    unregistered-opcode robustness, custom-house reject, animation
+    version-selection, land-block rule, and packet-priority tests. Full suite
+    green (583).
+
 [2026-06-01] - Bot combat/magic buff + MageBot; gameplay robustness pass (Wave 53)
 ----------------------------------------
 

@@ -256,6 +256,47 @@ public sealed partial class GameClient
         BroadcastNearby?.Invoke(_character.Position, UpdateRange, pkt, 0);
     }
 
+    /// <summary>
+    /// Broadcasts a mobile animation to nearby clients, choosing the packet per
+    /// recipient by client era: High Seas+ clients receive the body-agnostic
+    /// 0xE2 packet (the client resolves the right animation group for the
+    /// mobile's body from <paramref name="gesture"/>), while older clients
+    /// receive the legacy 0x6E packet with the raw human action index
+    /// <paramref name="legacyAction"/>.
+    ///
+    /// When per-recipient dispatch is unavailable (forEachClientInRange not
+    /// wired), it falls back to a single shared 0x6E broadcast — identical to
+    /// the legacy behaviour, so callers that route through this helper keep
+    /// working in contexts that only wire BroadcastNearby.
+    /// </summary>
+    public void BroadcastAnimation(Character actor, ushort legacyAction, NewAnimationGesture gesture, byte mode = 0)
+        => BroadcastAnimation(actor, legacyAction, gesture, UpdateRange, BroadcastNearby, ForEachClientInRange, mode);
+
+    /// <summary>Shared version-aware animation dispatch usable from both
+    /// player-driven (GameClient) and engine-driven (NPC) combat paths.</summary>
+    public static void BroadcastAnimation(
+        Character actor, ushort legacyAction, NewAnimationGesture gesture, int range,
+        Action<Point3D, int, PacketWriter, uint>? broadcastNearby,
+        Action<Point3D, int, uint, Action<Character, GameClient>>? forEachClientInRange,
+        byte mode = 0)
+    {
+        uint serial = actor.Uid.Value;
+        if (forEachClientInRange != null)
+        {
+            forEachClientInRange(actor.Position, range, 0, (_, observer) =>
+            {
+                if (observer.NetState.SupportsHighSeas)
+                    observer.Send(new PacketNewAnimation(serial, gesture, 0, mode));
+                else
+                    observer.Send(new PacketAnimation(serial, legacyAction));
+            });
+        }
+        else
+        {
+            broadcastNearby?.Invoke(actor.Position, range, new PacketAnimation(serial, legacyAction), 0);
+        }
+    }
+
     /// <summary>Convenience wrapper used by SpeechEngine event hookup —
     /// dismount the GM's character if currently mounted.</summary>
     public void UnmountSelf()

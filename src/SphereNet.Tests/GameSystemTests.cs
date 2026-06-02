@@ -56,9 +56,15 @@ public class GameSystemTests
 
     private static Queue<PacketBuffer> GetQueuedPackets(NetState state)
     {
-        return (Queue<PacketBuffer>)(typeof(NetState)
-            .GetField("_sendQueue", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(state)!);
+        // Combined outbound snapshot in flush order (priority queues, Highest → Idle).
+        var queues = (Queue<PacketBuffer>[])typeof(NetState)
+            .GetField("_queues", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(state)!;
+        var combined = new Queue<PacketBuffer>();
+        for (int p = queues.Length - 1; p >= 0; p--)
+            foreach (var pkt in queues[p])
+                combined.Enqueue(pkt);
+        return combined;
     }
 
     private static void SetNetStateInUse(NetState state, bool value)
@@ -725,11 +731,11 @@ public class GameSystemTests
             .GetField("_character", BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(client, ch);
 
-        var queue = GetQueuedPackets(netState);
-        queue.Clear();
-
         client.Resync();
 
+        // GetQueuedPackets returns a snapshot of the priority queues, so read it
+        // after the action under test.
+        var queue = GetQueuedPackets(netState);
         Assert.Contains(queue, pkt => pkt.Span.Length > 0 && pkt.Span[0] == 0xBC && pkt.Span[1] == (byte)SeasonType.Winter);
     }
 

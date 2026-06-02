@@ -276,7 +276,12 @@ public sealed class PacketExtendedCommand : PacketHandler
     }
 }
 
-/// <summary>0xD7 — Encoded command (sub-opcode router).</summary>
+/// <summary>0xD7 — Encoded command (custom-house design editor router).
+/// Routed to <see cref="State.NetState.OnEncodedCommand"/>, NOT the 0xBF
+/// extended-command path: the 0xD7 subcommand space (Build=0x06, Roof=0x13,
+/// Revert=0x1A, …) overlaps unrelated 0xBF subcommands (party=0x06,
+/// context-menu=0x13, stat-lock=0x1A), so sharing a dispatch table would
+/// mis-route house-design actions into those handlers.</summary>
 public sealed class PacketEncodedCommand : PacketHandler
 {
     public PacketEncodedCommand() : base(0xD7, 0) { }
@@ -285,7 +290,7 @@ public sealed class PacketEncodedCommand : PacketHandler
     {
         uint serial = buffer.ReadUInt32();
         ushort subCmd = buffer.ReadUInt16();
-        state.OnExtendedCommand(subCmd, buffer);
+        state.OnEncodedCommand(subCmd, serial);
     }
 }
 

@@ -67,6 +67,7 @@ public sealed partial class GameClient
     private int _moveViolationCount;
     private long _moveRejectResyncUntil;
     private long? _movementBatchNow;
+    private long _lastMoveRecvMs;
 
     // Credit-based movement state (active only when MovementCreditEnabled=true)
     private int _movementCreditMs;
@@ -116,10 +117,15 @@ public sealed partial class GameClient
 
         if (_moveRejectResyncUntil > 0 && now < _moveRejectResyncUntil)
         {
+            // Silently drop stale in-flight steps during the post-reject window.
+            // Do NOT echo a 0x21 here: the original RejectMove already sent one
+            // corrective reject, and re-sending one for every buffered step makes
+            // the client resend → which we reject again → a tight 0x21 feedback
+            // storm on low-latency links that freezes the player and reads as a
+            // teleport. One reject, then absorb.
             _logger.LogDebug(
                 "[move_queue_resync] seq={Seq} dir=0x{Dir:X2} remaining={Remaining}ms at {X},{Y},{Z}",
                 seq, dir, _moveRejectResyncUntil - now, _character.X, _character.Y, _character.Z);
-            _netState.Send(new PacketMoveReject(seq, _character.X, _character.Y, _character.Z, CurrentFacingDir()));
             _netState.WalkSequence = 0;
             return;
         }
@@ -162,9 +168,11 @@ public sealed partial class GameClient
         long now = _movementBatchNow ?? MoveClock();
         _netState.LastActivityTick = now;
 
+        long dtMs = _lastMoveRecvMs == 0 ? 0 : now - _lastMoveRecvMs;
+        _lastMoveRecvMs = now;
         _logger.LogDebug(
-            "[move_recv] seq={Seq} dir={Dir} run={Run} expected={Expected} at {X},{Y},{Z}",
-            seq, direction, running, _netState.WalkSequence,
+            "[move_recv] seq={Seq} dir={Dir} run={Run} expected={Expected} dt={Dt}ms at {X},{Y},{Z}",
+            seq, direction, running, _netState.WalkSequence, dtMs,
             _character.X, _character.Y, _character.Z);
 
         if (_moveRejectResyncUntil > 0 && now < _moveRejectResyncUntil)
@@ -172,7 +180,8 @@ public sealed partial class GameClient
             _logger.LogDebug(
                 "[move_reject_resync] seq={Seq} dir=0x{Dir:X2} remaining={Remaining}ms at {X},{Y},{Z}",
                 seq, dir, _moveRejectResyncUntil - now, _character.X, _character.Y, _character.Z);
-            _netState.Send(new PacketMoveReject(seq, _character.X, _character.Y, _character.Z, CurrentFacingDir()));
+            // Silently drop — no 0x21 echo (see HandleMovementBatch for why):
+            // echoing a reject per buffered step causes a feedback storm.
             _netState.WalkSequence = 0;
             return false;
         }
@@ -338,7 +347,7 @@ public sealed partial class GameClient
                 "[move_ok] seq={Seq} dir={Dir} run={Run} pos={X},{Y},{Z}",
                 seq, direction, running, _character.X, _character.Y, _character.Z);
 
-            _netState.Send(new PacketMoveAck(seq, notoriety));
+            _netState.SendPriority(new PacketMoveAck(seq, notoriety));
 
             byte flags = BuildMobileFlags(_character);
             byte dir77 = (byte)((byte)_character.Direction | (running ? 0x80 : 0));
@@ -392,7 +401,7 @@ public sealed partial class GameClient
     private void RejectMove(byte seq, long now, bool redrawSelf = false)
     {
         if (_character == null) return;
-        _netState.Send(new PacketMoveReject(seq, _character.X, _character.Y, _character.Z, CurrentFacingDir()));
+        _netState.SendPriority(new PacketMoveReject(seq, _character.X, _character.Y, _character.Z, CurrentFacingDir()));
         if (redrawSelf)
         {
             _netState.Send(new PacketDrawPlayer(
@@ -803,8 +812,7 @@ public sealed partial class GameClient
             _character.Stam = (short)(_character.Stam - 1);
 
         ushort swingAction = GetSwingAction(_character, weapon);
-        BroadcastNearby?.Invoke(_character.Position, UpdateRange,
-            new PacketAnimation(_character.Uid.Value, swingAction), 0);
+        BroadcastAnimation(_character, swingAction, NewAnimationGesture.Attack);
         BroadcastNearby?.Invoke(_character.Position, UpdateRange,
             new PacketSound(GetSwingSound(weapon), _character.X, _character.Y, _character.Z), 0);
 
@@ -872,8 +880,7 @@ public sealed partial class GameClient
             BroadcastNearby?.Invoke(target.Position, UpdateRange, hitSoundPacket, 0);
 
             ushort getHitAction = target.IsMounted ? (ushort)AnimationType.HorseSlap : (ushort)AnimationType.GetHit;
-            var getHitAnim = new PacketAnimation(target.Uid.Value, getHitAction);
-            BroadcastNearby?.Invoke(target.Position, UpdateRange, getHitAnim, 0);
+            BroadcastAnimation(target, getHitAction, NewAnimationGesture.Impact);
 
             var damagePacket = new PacketDamage(target.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue));
             BroadcastNearby?.Invoke(target.Position, UpdateRange, damagePacket, 0);
@@ -1021,8 +1028,7 @@ public sealed partial class GameClient
         if (_character == null) return;
 
         ushort missAction = GetSwingAction(_character, weapon);
-        var missAnim = new PacketAnimation(_character.Uid.Value, missAction);
-        BroadcastNearby?.Invoke(_character.Position, UpdateRange, missAnim, 0);
+        BroadcastAnimation(_character, missAction, NewAnimationGesture.Attack);
 
         ushort missSwingSound = GetSwingSound(weapon);
         var missSwingSoundPacket = new PacketSound(missSwingSound, _character.X, _character.Y, _character.Z);

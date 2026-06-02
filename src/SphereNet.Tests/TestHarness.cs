@@ -38,10 +38,20 @@ internal static class TestHarness
         return new GameClient(state, world, accounts, loggerFactory.CreateLogger<GameClient>());
     }
 
-    public static Queue<PacketBuffer> GetQueuedPackets(NetState state) =>
-        (Queue<PacketBuffer>)typeof(NetState)
-            .GetField("_sendQueue", BindingFlags.Instance | BindingFlags.NonPublic)!
+    public static Queue<PacketBuffer> GetQueuedPackets(NetState state)
+    {
+        // Combined outbound snapshot in flush order: priority queues drain
+        // Highest → Idle. _queues is indexed by (int)PacketPriority.
+        var queues = (Queue<PacketBuffer>[])typeof(NetState)
+            .GetField("_queues", BindingFlags.Instance | BindingFlags.NonPublic)!
             .GetValue(state)!;
+
+        var combined = new Queue<PacketBuffer>();
+        for (int p = queues.Length - 1; p >= 0; p--)
+            foreach (var pkt in queues[p])
+                combined.Enqueue(pkt);
+        return combined;
+    }
 
     public static void AttachCharacter(GameClient client, Character ch, Account? account = null)
     {

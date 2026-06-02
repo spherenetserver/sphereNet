@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
 using SphereNet.Network.Manager;
+using SphereNet.Network.Packets;
 using SphereNet.Network.State;
 
 namespace SphereNet.Tests;
@@ -115,5 +116,60 @@ public class PacketEraCompatibilityTests
         Assert.Equal(ProtocolChanges.Version70610, state.ProtocolChanges);
         Assert.True(state.SupportsNewMobileIncoming);
         Assert.True(state.SupportsNewSecureTrading);
+    }
+
+    // --- Create-character packet length boundaries ---
+    // 0x00 is ALWAYS 104 bytes; the 106-byte form is a distinct opcode (0xF8).
+    // Regression guard: a modern client must not cause 0x00 to be read as 106.
+    [Theory]
+    [InlineData(0u)]            // version unknown
+    [InlineData(60_001_007u)]   // 6.0.1.7
+    [InlineData(70_009_000u)]   // 7.0.9 (HS)
+    [InlineData(70_018_000u)]   // 7.0.18
+    [InlineData(70_020_000u)]   // 7.0.20
+    [InlineData(70_029_000u)]   // 7.0.29
+    [InlineData(70_030_000u)]   // 7.0.30
+    [InlineData(70_061_000u)]   // 7.0.61
+    public void CreateCharacter_0x00_IsAlways104Bytes(uint version)
+    {
+        var state = new NetState(NullLogger<NetState>.Instance) { ClientVersionNumber = version };
+        Assert.Equal(104, PacketDefinitions.GetPacketLength(0x00, state));
+    }
+
+    [Theory]
+    [InlineData(70_016_000u)]   // 7.0.16 (NewCharacterCreation)
+    [InlineData(70_018_000u)]   // 7.0.18
+    [InlineData(70_030_000u)]   // 7.0.30
+    public void CreateCharacterHS_0xF8_IsAlways106Bytes(uint version)
+    {
+        var state = new NetState(NullLogger<NetState>.Instance) { ClientVersionNumber = version };
+        Assert.Equal(106, PacketDefinitions.GetPacketLength(0xF8, state));
+    }
+
+    [Fact]
+    public void CreateCharacter_ModernEra_StillReads0x00As104()
+    {
+        var state = new NetState(NullLogger<NetState>.Instance) { ClientEra = ClientEra.Modern };
+        Assert.Equal(104, PacketDefinitions.GetPacketLength(0x00, state));
+    }
+
+    // --- Drop-item (0x08) grid-index boundary ---
+    // 14 bytes pre-6.0.1.7, 15 bytes 6.0.1.7+ (extra grid-index byte).
+    [Theory]
+    [InlineData(0u, 14)]              // version unknown → Sphere56x baseline
+    [InlineData(60_000_000u, 14)]     // 6.0.0 (pre grid index)
+    [InlineData(60_001_007u, 15)]     // 6.0.1.7 (grid index added)
+    [InlineData(70_009_000u, 15)]     // 7.0.9
+    public void DropItem_0x08_GridIndexLengthByEra(uint version, int expected)
+    {
+        var state = new NetState(NullLogger<NetState>.Instance) { ClientVersionNumber = version };
+        Assert.Equal(expected, PacketDefinitions.GetPacketLength(0x08, state));
+    }
+
+    [Fact]
+    public void DropItem_0x08_ModernEra_Uses15Bytes()
+    {
+        var state = new NetState(NullLogger<NetState>.Instance) { ClientEra = ClientEra.Modern };
+        Assert.Equal(15, PacketDefinitions.GetPacketLength(0x08, state));
     }
 }

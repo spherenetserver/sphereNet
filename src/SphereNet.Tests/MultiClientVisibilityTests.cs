@@ -334,7 +334,7 @@ public class MultiClientVisibilityTests
             long fakeNow = 10000;
             GameClient.MoveClock = () => fakeNow;
 
-            var (world, clientA, _, chA, chB, _, _) = CreateTwoClientWorld();
+            var (world, clientA, _, chA, chB, _, stateB) = CreateTwoClientWorld();
 
             // Move B adjacent to A (sword range = 1)
             world.PlaceCharacter(chB, new Point3D(1001, 1000, 0, 0));
@@ -353,9 +353,13 @@ public class MultiClientVisibilityTests
 
             clientA.TickCombat();
 
-            // Should have damage (0x0B) or swing animation (0x6E)
-            bool hasDamageOrSwing = broadcasts.Any(p =>
-                p.Span.Length > 0 && (p.Span[0] == 0x0B || p.Span[0] == 0x6E));
+            // Damage (0x0B) is broadcast to everyone; the swing animation is now
+            // dispatched per-recipient (0x6E for this legacy observer) via
+            // ForEachClientInRange, so it lands in the observer's own queue.
+            var observerQueue = TestHarness.GetQueuedPackets(stateB).ToList();
+            bool hasDamageOrSwing =
+                broadcasts.Any(p => p.Span.Length > 0 && p.Span[0] == 0x0B)
+                || observerQueue.Any(p => p.Span.Length > 0 && p.Span[0] == 0x6E);
             Assert.True(hasDamageOrSwing, "Should broadcast damage or swing animation");
         }
         finally

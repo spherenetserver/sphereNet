@@ -66,7 +66,12 @@ public static partial class Program
             GameClient.WalkBufferMax = Math.Max(1, _config.WalkBuffer);
             GameClient.WalkRegenPerSecond = Math.Max(0, _config.WalkRegen);
             GameClient.MoveToleranceMs = 80;
-            GameClient.MoveRejectResyncMs = 0;
+            // After a movement rejection, ignore the client's in-flight (already
+            // predicted) walk packets for this window and tell it to resync.
+            // Without it, those stale steps get processed from the corrected
+            // position and the running player appears to lurch several tiles
+            // forward. ~100ms covers one round-trip of in-flight steps.
+            GameClient.MoveRejectResyncMs = 100;
             GameClient.MoveViolationKickThreshold = 0;
             GameClient.MovementCreditEnabled = _config.MovementCreditEnabled;
             GameClient.MovementCreditBaseMs = _config.MovementCreditBaseMs;
@@ -1175,7 +1180,8 @@ public static partial class Program
                 });
 
                 ushort swingAnim = GameClient.GetNpcSwingAction(attacker);
-                BroadcastNearby(attacker.Position, 18, new PacketAnimation(attacker.Uid.Value, swingAnim), 0);
+                GameClient.BroadcastAnimation(attacker, swingAnim, NewAnimationGesture.Attack, 18,
+                    BroadcastNearby, ForEachClientInRange);
 
                 var weapon = attacker.GetEquippedItem(Layer.OneHanded) ?? attacker.GetEquippedItem(Layer.TwoHanded);
                 ushort swingSound = GameClient.GetSwingSoundPublic(weapon);

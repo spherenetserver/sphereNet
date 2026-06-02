@@ -27,7 +27,7 @@ public sealed class NetState : IDisposable
     private const int DroppableSoftCap = 1024;
     // Same idea but on the async byte backlog: in non-blocking mode a slow
     // client's real backlog accumulates in the outbound byte buffer
-    // (_outEnd-_outStart), not in _sendQueue (which drains into it each flush).
+    // (_outEnd-_outStart), not in the send queues (which drain into it each flush).
     // So shed cosmetic chatter once the byte backlog passes this soft cap too,
     // well before the hard 512 KB disconnect cap — restoring graceful
     // degradation for the async path.
@@ -64,7 +64,48 @@ public sealed class NetState : IDisposable
     private readonly byte[] _recvBuffer = new byte[65536];
     private int _recvLength;
     private readonly object _sendLock = new();
-    private readonly Queue<PacketBuffer> _sendQueue = [];
+    // Outbound queues indexed by PacketPriority. FlushOutput drains them
+    // Highest → Idle each flush, so latency-critical traffic (movement
+    // ack/reject 0x21/0x22, auth) never waits behind bulk world/UI updates.
+    // Source-X PacketSend priority parity.
+    private readonly Queue<PacketBuffer>[] _queues =
+    [
+        new Queue<PacketBuffer>(), // Idle
+        new Queue<PacketBuffer>(), // Low
+        new Queue<PacketBuffer>(), // Normal
+        new Queue<PacketBuffer>(), // High
+        new Queue<PacketBuffer>(), // Highest
+    ];
+
+    private int TotalQueuedCount()
+    {
+        int n = 0;
+        for (int i = 0; i < _queues.Length; i++) n += _queues[i].Count;
+        return n;
+    }
+
+    private bool AnyQueued()
+    {
+        for (int i = 0; i < _queues.Length; i++)
+            if (_queues[i].Count > 0) return true;
+        return false;
+    }
+
+    /// <summary>Dequeue the next packet in priority order (Highest → Idle), or
+    /// null if all queues are empty. Caller must hold <see cref="_sendLock"/>.</summary>
+    private PacketBuffer? DequeueNextLocked()
+    {
+        for (int p = _queues.Length - 1; p >= 0; p--)
+            if (_queues[p].Count > 0) return _queues[p].Dequeue();
+        return null;
+    }
+
+    private void DrainAllQueuesToPoolLocked()
+    {
+        for (int i = 0; i < _queues.Length; i++)
+            while (_queues[i].Count > 0)
+                _queues[i].Dequeue().ReturnToPool();
+    }
     // Persistent outbound byte buffer. [_outStart.._outEnd) are compressed+
     // encrypted bytes not yet accepted by the socket (may span ticks in
     // non-blocking mode). In blocking mode it is fully drained each flush.
@@ -122,6 +163,11 @@ public sealed class NetState : IDisposable
     private uint _clientVersionNumber;
     private ProtocolChanges _protocolChanges;
 
+    // Distinct unhandled opcodes already logged for this connection. Used to
+    // rate-limit unknown-packet logging to one entry per opcode per connection,
+    // so a client that repeatedly sends an unsupported opcode cannot spam logs.
+    private HashSet<byte>? _loggedUnknownOpcodes;
+
     public uint ClientVersionNumber
     {
         get => _clientVersionNumber;
@@ -153,7 +199,6 @@ public sealed class NetState : IDisposable
     public bool IsClientPost6017  => HasProtocolChanges(ProtocolChanges.Version6017) || FallbackVersionAtLeast(60_001_007);
     public bool IsClientPost60142 => HasProtocolChanges(ProtocolChanges.Version60142) || FallbackVersionAtLeast(60_014_002);
     public bool IsClientPost7090  => HasProtocolChanges(ProtocolChanges.Version7090) || FallbackVersionAtLeast(70_009_000);
-    public bool IsClientPost70180 => HasProtocolChanges(ProtocolChanges.Version70300) || FallbackVersionAtLeast(70_018_000);
     public bool SupportsAosTooltip => HasProtocolChanges(ProtocolChanges.Version500a) || ClientEra == ClientEra.Modern || _clientVersionNumber >= 40_000_000;
     public bool SupportsBuffIcon => HasProtocolChanges(ProtocolChanges.BuffIcon) || ClientEra == ClientEra.Modern || _clientVersionNumber >= 50_000_000;
     public bool SupportsStygianAbyss => HasProtocolChanges(ProtocolChanges.StygianAbyss);
@@ -207,8 +252,17 @@ public sealed class NetState : IDisposable
         Crypto.Reset();
         ClientVersionNumber = 0;
         UndecryptedOffset = 0;
+        _loggedUnknownOpcodes?.Clear();
         ClearPendingPacket();
     }
+
+    /// <summary>
+    /// Returns true the first time an unhandled <paramref name="opcode"/> is seen
+    /// on this connection, false on subsequent occurrences. Lets the packet loop
+    /// log each unsupported opcode once instead of on every received packet.
+    /// </summary>
+    internal bool ShouldLogUnknownOpcode(byte opcode) =>
+        (_loggedUnknownOpcodes ??= new HashSet<byte>()).Add(opcode);
 
     public void Clear()
     {
@@ -231,8 +285,7 @@ public sealed class NetState : IDisposable
         lock (_sendLock)
         {
             // Return any unsent pooled buffers to the pool instead of dropping them.
-            while (_sendQueue.Count > 0)
-                _sendQueue.Dequeue().ReturnToPool();
+            DrainAllQueuesToPoolLocked();
             _outStart = 0;
             _outEnd = 0;
         }
@@ -364,9 +417,41 @@ public sealed class NetState : IDisposable
             }
         }
 
+        var priority = packet.Length > 0
+            ? PacketPriorityClassifier.Classify(packet.Data[0])
+            : PacketPriority.Normal;
+        EnqueueAt(packet, priority);
+    }
+
+    /// <summary>Send a pre-built PacketWriter (priority classified by opcode).</summary>
+    public void Send(PacketWriter writer)
+    {
+        Send(writer.Build());
+    }
+
+    /// <summary>Send a PacketWriter at an explicit priority, overriding the
+    /// opcode-based classification (rarely needed).</summary>
+    public void Send(PacketWriter writer, PacketPriority priority)
+    {
+        EnqueueAt(writer.Build(), priority);
+    }
+
+    /// <summary>Enqueue a latency-critical packet (movement ack/reject) at
+    /// Highest priority — Source-X PRI_HIGHEST parity. Kept as a convenience
+    /// wrapper; equivalent to <c>Send(writer, PacketPriority.Highest)</c>.</summary>
+    public void SendPriority(PacketWriter writer)
+    {
+        EnqueueAt(writer.Build(), PacketPriority.Highest);
+    }
+
+    private void EnqueueAt(PacketBuffer packet, PacketPriority priority)
+    {
+        if (!IsInUse || IsClosing) { packet.ReturnToPool(); return; }
+        LastActivityTick = Environment.TickCount64;
+
         lock (_sendLock)
         {
-            if (_sendQueue.Count >= MaxSendQueueSize)
+            if (TotalQueuedCount() >= MaxSendQueueSize)
             {
                 _logger.LogWarning("Send queue overflow for #{Id} ({EP}), disconnecting",
                     Id, RemoteEndPoint);
@@ -374,14 +459,8 @@ public sealed class NetState : IDisposable
                 packet.ReturnToPool();
                 return;
             }
-            _sendQueue.Enqueue(packet);
+            _queues[(int)priority].Enqueue(packet);
         }
-    }
-
-    /// <summary>Send a pre-built PacketWriter.</summary>
-    public void Send(PacketWriter writer)
-    {
-        Send(writer.Build());
     }
 
     /// <summary>Enqueue a buffer shared across several recipients (built once by
@@ -403,7 +482,7 @@ public sealed class NetState : IDisposable
             // A slow consumer in a 1,000-strong crowd loses some chat it could
             // never read anyway, but keeps its connection and its gameplay state.
             if (packet.Length > 0 && IsDroppableUnderPressure(packet.Data[0])
-                && (_sendQueue.Count > DroppableSoftCap
+                && (TotalQueuedCount() > DroppableSoftCap
                     || (_outEnd - _outStart) > DroppableByteSoftCap))
             {
                 DroppedChatterPackets++;
@@ -411,7 +490,7 @@ public sealed class NetState : IDisposable
                 return;
             }
 
-            if (_sendQueue.Count >= MaxSendQueueSize)
+            if (TotalQueuedCount() >= MaxSendQueueSize)
             {
                 _logger.LogWarning("Send queue overflow for #{Id} ({EP}), disconnecting",
                     Id, RemoteEndPoint);
@@ -419,7 +498,11 @@ public sealed class NetState : IDisposable
                 packet.ReturnToPool();
                 return;
             }
-            _sendQueue.Enqueue(packet);
+
+            var priority = packet.Length > 0
+                ? PacketPriorityClassifier.Classify(packet.Data[0])
+                : PacketPriority.Normal;
+            _queues[(int)priority].Enqueue(packet);
         }
     }
 
@@ -442,7 +525,7 @@ public sealed class NetState : IDisposable
         {
             // Nothing queued and nothing still pending from a previous
             // (non-blocking) flush.
-            if (_sendQueue.Count == 0 && _outStart == _outEnd) return;
+            if (!AnyQueued() && _outStart == _outEnd) return;
 
             try
             {
@@ -464,7 +547,10 @@ public sealed class NetState : IDisposable
                     }
 
                     bool overCap = false;
-                    while (_sendQueue.Count > 0)
+                    // Drain in priority order (Highest → Idle) so step
+                    // confirmations and auth lead the batch ahead of bulk
+                    // world/UI traffic.
+                    while (AnyQueued())
                     {
                         // Enforce the cap DURING append, before growing the buffer:
                         // a huge queue/gump/burst must not balloon the buffer past
@@ -472,13 +558,12 @@ public sealed class NetState : IDisposable
                         // shed the rest and disconnect.
                         if (_outEnd - _outStart > MaxPendingSendBytes)
                         {
-                            while (_sendQueue.Count > 0)
-                                _sendQueue.Dequeue().ReturnToPool();
+                            DrainAllQueuesToPoolLocked();
                             overCap = true;
                             break;
                         }
 
-                        var packet = _sendQueue.Dequeue();
+                        var packet = DequeueNextLocked()!;
 
                         // Resolve the bytes to append to the batch (compressed,
                         // and encrypted when this connection uses a cipher).
@@ -593,9 +678,9 @@ public sealed class NetState : IDisposable
                 }
                 else
                 {
-                    while (_sendQueue.Count > 0)
+                    PacketBuffer? packet;
+                    while ((packet = DequeueNextLocked()) != null)
                     {
-                        var packet = _sendQueue.Dequeue();
                         _socket.Send(packet.Data, 0, packet.Length, SocketFlags.None);
                         packet.ReturnToPool();
                     }
@@ -657,6 +742,10 @@ public sealed class NetState : IDisposable
     public Action<NetState, string>? ClientVersionHandler { get; set; }
     public Action<NetState, byte>? ViewRangeHandler { get; set; }
     public Action<NetState, ushort, PacketBuffer>? ExtendedCommandHandler { get; set; }
+    /// <summary>0xD7 encoded command (custom-house design editor). Distinct from
+    /// <see cref="ExtendedCommandHandler"/> so the overlapping 0xD7/0xBF
+    /// subcommand IDs never cross-dispatch. Unwired = safe ignore.</summary>
+    public Action<NetState, ushort, uint>? EncodedCommandHandler { get; set; }
     public Action<NetState, uint>? AOSTooltipHandler { get; set; }
     public Action<NetState, uint, byte, List<VendorBuyEntry>>? VendorBuyHandler { get; set; }
     public Action<NetState, uint, List<VendorSellEntry>>? VendorSellHandler { get; set; }
@@ -791,6 +880,9 @@ public sealed class NetState : IDisposable
 
     internal void OnExtendedCommand(ushort subCmd, PacketBuffer buffer)
         => ExtendedCommandHandler?.Invoke(this, subCmd, buffer);
+
+    internal void OnEncodedCommand(ushort subCmd, uint serial)
+        => EncodedCommandHandler?.Invoke(this, subCmd, serial);
 
     internal void OnAOSTooltip(uint serial)
         => AOSTooltipHandler?.Invoke(this, serial);

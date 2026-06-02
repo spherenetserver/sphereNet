@@ -435,6 +435,13 @@ public sealed class NetworkManager : IDisposable
                     _logger.LogDebug("RECV #{Id} 0x{Op:X2} (UNHANDLED) len={Len} data=[{Data}]",
                         state.Id, opcode, packetLen, FormatHex(rawBytes.AsSpan(0, Math.Min(rawBytes.Length, 32)), 32));
                 }
+                else if (state.ShouldLogUnknownOpcode(opcode))
+                {
+                    // First time this opcode is seen on the connection: surface it once
+                    // so unsupported modern packets are visible. Repeats fall to Trace.
+                    _logger.LogDebug("Ignoring unsupported packet 0x{Op:X2} (len={Len}) from #{Id}; further occurrences suppressed",
+                        opcode, packetLen, state.Id);
+                }
                 else
                 {
                     _logger.LogTrace("Unhandled packet 0x{Op:X2} from #{Id}", opcode, state.Id);

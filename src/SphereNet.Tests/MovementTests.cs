@@ -450,6 +450,95 @@ public class MovementTests
     }
 
     [Fact]
+    public void HandleMove_StaleSeqAfterRejectWindow_SendsCorrectiveReject()
+    {
+        var oldClock = GameClient.MoveClock;
+        var oldTolerance = GameClient.MoveToleranceMs;
+        var oldBuffer = GameClient.WalkBufferMax;
+        var oldRegen = GameClient.WalkRegenPerSecond;
+        var oldResync = GameClient.MoveRejectResyncMs;
+        try
+        {
+            long now = 1_000;
+            GameClient.MoveClock = () => now;
+            GameClient.MoveToleranceMs = 0;
+            GameClient.WalkBufferMax = 100;
+            GameClient.WalkRegenPerSecond = 100;
+            GameClient.MoveRejectResyncMs = 150;
+
+            var (world, _) = CreateWorld();
+            var ch = world.CreateCharacter();
+            ch.Str = 50; ch.MaxHits = 50; ch.Hits = 50;
+            ch.MaxStam = 50; ch.Stam = 50;
+            world.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
+            var client = CreateClient(world, ch);
+            var state = client.NetState;
+
+            Assert.True(client.HandleMove((byte)Direction.East, 0, 0));
+
+            now += 1;
+            Assert.False(client.HandleMove((byte)Direction.East, 1, 0));
+            int rejectCountBeforeStale = TestHarness.GetQueuedPackets(state)
+                .Count(p => p.Span.Length > 0 && p.Span[0] == 0x21);
+
+            now += 200;
+            Assert.False(client.HandleMove((byte)Direction.East, 2, 0));
+            Assert.Equal(1001, ch.X);
+            Assert.Equal(0, state.WalkSequence);
+            int rejectCountAfterStale = TestHarness.GetQueuedPackets(state)
+                .Count(p => p.Span.Length > 0 && p.Span[0] == 0x21);
+            Assert.True(rejectCountAfterStale > rejectCountBeforeStale);
+
+            now += 50;
+            Assert.False(client.HandleMove((byte)Direction.East, 3, 0));
+            int rejectCountInsideWindow = TestHarness.GetQueuedPackets(state)
+                .Count(p => p.Span.Length > 0 && p.Span[0] == 0x21);
+            Assert.Equal(rejectCountAfterStale, rejectCountInsideWindow);
+        }
+        finally
+        {
+            GameClient.MoveClock = oldClock;
+            GameClient.MoveToleranceMs = oldTolerance;
+            GameClient.WalkBufferMax = oldBuffer;
+            GameClient.WalkRegenPerSecond = oldRegen;
+            GameClient.MoveRejectResyncMs = oldResync;
+        }
+    }
+
+    [Fact]
+    public void QueueMoveRequest_StaleSeqAfterReset_SendsCorrectiveReject()
+    {
+        var oldClock = GameClient.MoveClock;
+        var oldResync = GameClient.MoveRejectResyncMs;
+        try
+        {
+            long now = 1_000;
+            GameClient.MoveClock = () => now;
+            GameClient.MoveRejectResyncMs = 150;
+
+            var (world, _) = CreateWorld();
+            var ch = world.CreateCharacter();
+            ch.Str = 50; ch.MaxHits = 50; ch.Hits = 50;
+            ch.MaxStam = 50; ch.Stam = 50;
+            world.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
+            var client = CreateClient(world, ch);
+            var state = client.NetState;
+
+            state.WalkSequence = 0;
+            client.QueueMoveRequest((byte)Direction.East, 2, 0);
+
+            Assert.Equal(1000, ch.X);
+            Assert.Equal(0, state.WalkSequence);
+            Assert.Contains(TestHarness.GetQueuedPackets(state), p => p.Span.Length > 0 && p.Span[0] == 0x21);
+        }
+        finally
+        {
+            GameClient.MoveClock = oldClock;
+            GameClient.MoveRejectResyncMs = oldResync;
+        }
+    }
+
+    [Fact]
     public void ClientMovementSoakMatrix_RunsClassicAndModernProfilesWithoutRejectSpike()
     {
         var oldClock = GameClient.MoveClock;

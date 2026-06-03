@@ -192,11 +192,12 @@ public sealed partial class GameClient
                     return;
                 }
 
-                uint mountNpcUid = ch.Uid.Value;
-                BroadcastNearby?.Invoke(_character.Position, UpdateRange,
-                    new PacketSound(0x0140, _character.X, _character.Y, _character.Z), 0);
                 if (TryMountCharacter(ch))
                 {
+                    uint mountNpcUid = ch.Uid.Value;
+                    BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                        new PacketSound(0x0140, _character.X, _character.Y, _character.Z), 0);
+
                     // Correct Z to terrain after body type change (foot→mounted)
                     var mountMapData = _world.MapData;
                     if (mountMapData != null)
@@ -226,6 +227,9 @@ public sealed partial class GameClient
                     BroadcastDrawObject(_character);
                     return;
                 }
+
+                SysMessage(ServerMessages.Get("gm_mount_failed"));
+                return;
             }
 
             if (IsHumanLikeBody(ch.BodyId))

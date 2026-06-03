@@ -133,9 +133,7 @@ public sealed partial class GameClient
         byte expectedSeq = _netState.WalkSequence;
         if (expectedSeq == 0 && seq > 1)
         {
-            _logger.LogDebug(
-                "[move_drop_stale] seq={Seq} dir=0x{Dir:X2} at {X},{Y},{Z}",
-                seq, dir, _character.X, _character.Y, _character.Z);
+            RejectStaleMove(seq, dir, now);
             return;
         }
 
@@ -195,10 +193,8 @@ public sealed partial class GameClient
         // character in unexpected directions (teleportation). Drop them.
         if (expectedSeq == 0 && seq > 1)
         {
-            _logger.LogDebug(
-                "[move_drop_stale] seq={Seq} dir=0x{Dir:X2} at {X},{Y},{Z}",
-                seq, dir, _character.X, _character.Y, _character.Z);
-            return true;
+            RejectStaleMove(seq, dir, now);
+            return false;
         }
 
         // Strict sequence validation (ServUO-style): reject out-of-order walk packets.
@@ -413,6 +409,20 @@ public sealed partial class GameClient
         _netState.WalkSequence = 0;
         int resyncMs = Math.Max(0, MoveRejectResyncMs);
         _moveRejectResyncUntil = resyncMs > 0 ? now + resyncMs : 0;
+    }
+
+    private void RejectStaleMove(byte seq, byte dir, long now)
+    {
+        if (_character == null) return;
+
+        _logger.LogDebug(
+            "[move_drop_stale] seq={Seq} dir=0x{Dir:X2} at {X},{Y},{Z} - corrective reject",
+            seq, dir, _character.X, _character.Y, _character.Z);
+
+        // If the client keeps walking with seq > 1 after a reject reset, it did
+        // not observe the previous correction. Send a fresh correction and
+        // reopen the short absorb window instead of silently deadlocking it.
+        RejectMove(seq, now, redrawSelf: true);
     }
 
     private byte CurrentFacingDir()

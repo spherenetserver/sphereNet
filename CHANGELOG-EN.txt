@@ -49,14 +49,20 @@ NETWORK (send priority):
   - The post-reject resync window no longer echoes a 0x21 per buffered step.
     Echoing one reject per in-flight step made the client resend (rejected
     again) in a tight feedback storm on low-latency links that froze the player
-    and read as a teleport; a single corrective reject now stands and stale
-    steps are absorbed silently.
+    and read as a teleport. Stale steps inside the window are absorbed; if the
+    client still sends seq>1 after the window, the server sends a fresh
+    corrective reject + self redraw to break the walk-sequence deadlock.
+
+MOUNT / USE:
+  - Double-clicking a mount NPC no longer fails silently when the mount attempt
+    is rejected; the player now gets the mount-failed message. The mount sound
+    is broadcast only after a successful mount.
 
 TESTS:
   - Added era-boundary (7.0.18-7.0.30 for 0x00/0xF8, 0x08 14/15 grid index),
     unregistered-opcode robustness, custom-house reject, animation
-    version-selection, land-block rule, and packet-priority tests. Full suite
-    green (583).
+    version-selection, land-block rule, packet-priority, and stale
+    walk-sequence recovery tests. Full suite green (583).
 
 [2026-06-01] - Bot combat/magic buff + MageBot; gameplay robustness pass (Wave 53)
 ----------------------------------------

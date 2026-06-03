@@ -48,13 +48,20 @@ AG (gonderim onceligi):
   - Reddediş sonrasi resync penceresi artik her bekleyen adim icin 0x21
     echo'lamiyor. Her uctaki adim icin bir reddediş echo'lamak client'i yeniden
     gondermeye itiyordu (tekrar reddediliyordu) — dusuk gecikmeli baglantilarda
-    oyuncuyu donduran ve isinlanma gibi gorunen siki bir feedback storm. Artik
-    tek bir duzeltici reddediş kalir, stale adimlar sessizce yutulur.
+    oyuncuyu donduran ve isinlanma gibi gorunen siki bir feedback storm. Pencere
+    icindeki stale adimlar absorbe edilir; pencere bittikten sonra client hala
+    seq>1 gonderiyorsa yeni bir corrective reject + self redraw gonderilip
+    walk-sequence deadlock'u kirilir.
+
+MOUNT / KULLANIM:
+  - Binek NPC'ye cift tiklama basarisiz olursa artik sessiz kalmaz; basarisizligi
+    oyuncuya bildirir. Binek sesi de yalnizca basarili mount sonrasi yayinlanir.
 
 TESTLER:
   - Era-sinir (0x00/0xF8 icin 7.0.18-7.0.30, 0x08 14/15 grid index),
     kayitsiz-opcode saglamligi, custom-house reject, animasyon surume-secimi,
-    land-block kurali ve paket-onceligi testleri eklendi. Tum paket yesil (583).
+    land-block kurali, paket-onceligi ve stale walk-sequence recovery testleri
+    eklendi. Tum paket yesil (583).
 
 [2026-06-01] - Bot combat/magic buff + MageBot; gameplay saglamlik taramasi (Wave 53)
 ----------------------------------------

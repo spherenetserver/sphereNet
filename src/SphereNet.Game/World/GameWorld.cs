@@ -101,8 +101,9 @@ public sealed class GameWorld
     public int MaxBankWeight { get; set; } = 1600;
     /// <summary>Max total weight (stones) allowed in a regular container. sphere.ini CONTAINERMAXWEIGHT. 0=unlimited.</summary>
     public int MaxContainerWeight { get; set; } = 400;
-    /// <summary>AOS tooltip mode. 0=off, 1=enabled. sphere.ini TOOLTIPMODE.</summary>
-    public int ToolTipMode { get; set; }
+    /// <summary>AOS tooltip mode. 0=off, 1=revision/request, 2=force full. sphere.ini TOOLTIPMODE.</summary>
+    public int ToolTipMode { get; set; } = 1;
+    public int ToolTipCache { get; set; } = 30;
 
     /// <summary>Currently online, in-world players. Used to compute the set of
     /// active sectors each tick so that uninhabited regions don't iterate

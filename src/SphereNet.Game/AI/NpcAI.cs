@@ -53,6 +53,8 @@ public sealed class NpcAI
     public NpcAIFlags Flags { get; set; } =
         NpcAIFlags.Path | NpcAIFlags.Combat | NpcAIFlags.Threat | NpcAIFlags.PersistentPath;
 
+    public Action<Character>? OnNpcFacingChanged { get; set; }
+
     public enum NpcDecisionType
     {
         None = 0,
@@ -2176,7 +2178,10 @@ public sealed class NpcAI
 
         var newDir = npc.Position.GetDirectionTo(target.Position);
         if (newDir != npc.Direction)
+        {
             npc.Direction = newDir;
+            OnNpcFacingChanged?.Invoke(npc);
+        }
 
         npc.NextAttackTime = now + swingDelayMs + stagger;
         npc.BeginSwingRecoil(now, swingDelayMs + stagger);

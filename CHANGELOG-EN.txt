@@ -4,6 +4,32 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Animation client-type gating, NPC facing, tooltip and regen parity (Wave 59)
+----------------------------------------
+
+ANIMATION:
+  - The body-agnostic 0xE2 new-animation packet is now sent only to KR and
+    Enhanced clients; Classic/ClassicUO clients receive the legacy 0x6E packet
+    even when their version reports High Seas or newer. Selection switched from
+    SupportsHighSeas to the parsed client type. Added NetState
+    IsKingdomRebornClient / IsEnhancedClient.
+
+NPC AI:
+  - NPC attacks no longer emit a synthetic 0x77 MobileMoving on every hit/miss.
+    A facing update is broadcast only when the swing actually changes the NPC's
+    direction (OnNpcFacingChanged -> BroadcastFacingUpdate), matching Source-X.
+
+TOOLTIP:
+  - A 0xD6 full property-list response is no longer followed by a 0xDC revision
+    packet (Source-X sends only the requested list). ToolTipMode default is now
+    1 (0=off, 1=revision/request, 2=force full) and a ToolTipCache setting was
+    added; set TOOLTIPMODE=0 to disable tooltips entirely.
+
+REGEN:
+  - HP/stam/mana regeneration intervals derive from the configured REGEN values
+    (tenths of a second) instead of hard-coded periods. The HP regen no longer
+    grants an extra +1 per tick for STR > 50; it heals 1 per interval while fed.
+
 [2026-06-06] - Client speed mode (0xBF sub 0x26) parity (Wave 58)
 ----------------------------------------
 

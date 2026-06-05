@@ -2304,8 +2304,8 @@ TAG.BUTTON=1
         Assert.Equal(1, beforeCount);
         Assert.Equal(1, afterCount);
         Assert.Equal(1, charTooltipCount);
-        Assert.Contains(GetQueuedPackets(netState), p => p.Span[0] == 0xDC);
         Assert.Contains(GetQueuedPackets(netState), p => p.Span[0] == 0xD6);
+        Assert.DoesNotContain(GetQueuedPackets(netState), p => p.Span[0] == 0xDC);
     }
 
     [Fact]

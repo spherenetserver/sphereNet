@@ -637,6 +637,9 @@ public static partial class Program
             ? _config.MapViewRadar
             : _config.MapViewSize;
         Character.AttackerTimeoutSeconds = _config.AttackerTimeout;
+        Character.RegenHitsTenths = _config.RegenHits;
+        Character.RegenStamTenths = _config.RegenStam;
+        Character.RegenManaTenths = _config.RegenMana;
 
         // --- 5. World ---
         _world = new GameWorld(_loggerFactory);
@@ -645,6 +648,7 @@ public static partial class Program
         _world.MaxBankWeight        = _config.BankMaxWeight;
         _world.MaxContainerWeight   = _config.ContainerMaxWeight;
         _world.ToolTipMode       = _config.ToolTipMode;
+        _world.ToolTipCache      = _config.ToolTipCache;
         PacketCharList.AosTooltipsEnabled = _config.ToolTipMode != 0;
         foreach (var mapDef in _config.Maps)
         {

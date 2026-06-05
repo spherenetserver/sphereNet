@@ -203,6 +203,8 @@ public sealed class NetState : IDisposable
     public bool SupportsBuffIcon => HasProtocolChanges(ProtocolChanges.BuffIcon) || ClientEra == ClientEra.Modern || _clientVersionNumber >= 50_000_000;
     public bool SupportsStygianAbyss => HasProtocolChanges(ProtocolChanges.StygianAbyss);
     public bool SupportsHighSeas => HasProtocolChanges(ProtocolChanges.HighSeas);
+    public bool IsKingdomRebornClient => ParsedClientType == 2;
+    public bool IsEnhancedClient => ParsedClientType == 3;
     public bool SupportsNewMobileIncoming => HasProtocolChanges(ProtocolChanges.NewMobileIncoming);
     public bool SupportsNewSecureTrading => HasProtocolChanges(ProtocolChanges.NewSecureTrading);
     public bool SupportsNewCharacterList => HasProtocolChanges(ProtocolChanges.NewCharacterList);

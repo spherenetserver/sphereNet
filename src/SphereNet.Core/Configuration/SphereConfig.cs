@@ -80,7 +80,7 @@ public sealed class SphereConfig
     /// <summary>Seconds before combat memory clears from inactivity. 0 = disabled. sphere.ini ATTACKERTIMEOUT.</summary>
     public int AttackerTimeout { get; set; }
 
-    // Regen (seconds)
+    // Regen (tenths of a second, Source/Sphere REGEN0-3)
     public int RegenHits { get; set; } = 40;
     public int RegenStam { get; set; } = 20;
     public int RegenMana { get; set; } = 30;
@@ -214,7 +214,8 @@ public sealed class SphereConfig
     public int FeatureExtra { get; set; }
 
     // Tooltip
-    public int ToolTipMode { get; set; } // 0=off (default), 1=AOS tooltips
+    public int ToolTipMode { get; set; } = 1; // 0=off, 1=revision/request, 2=force full
+    public int ToolTipCache { get; set; } = 30;
 
     // Experimental / Option flags
     public int Experimental { get; set; }
@@ -493,6 +494,7 @@ public sealed class SphereConfig
         FeatureExtra = ini.GetInt(section, "FeatureExtra", FeatureExtra);
 
         ToolTipMode = ini.GetInt(section, "ToolTipMode", ToolTipMode);
+        ToolTipCache = ini.GetInt(section, "ToolTipCache", ToolTipCache);
 
         Experimental = ini.GetInt(section, "Experimental", Experimental);
         OptionFlags = ini.GetInt(section, "OptionFlags", OptionFlags);

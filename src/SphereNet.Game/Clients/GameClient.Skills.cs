@@ -459,7 +459,7 @@ public sealed partial class GameClient
                 case ItemType.WeaponMacePick:
                 case ItemType.WeaponThrowing:
                 case ItemType.WeaponWhip:
-                    // Weapon damage — try reading from tags or CombatEngine lookup
+                    // Weapon damage - try reading from tags or CombatEngine lookup
                     if (item.TryGetTag("DAM", out string? damStr) && damStr != null)
                         propList.Add((1061168, $"\t{damStr}")); // weapon damage cliloc
                     if (item.TryGetTag("SPEED", out string? speedStr) && speedStr != null)
@@ -490,19 +490,16 @@ public sealed partial class GameClient
         }
 
         var props = propList.ToArray();
-        // Deterministic hash — .NET GetHashCode() is randomized per process
+        // Deterministic hash - .NET GetHashCode() is randomized per process
         uint hash = StableStringHash(obj.GetName());
         foreach (var (clilocId, args) in props)
             hash = hash * 31 + (uint)clilocId + StableStringHash(args);
 
-        // Skip entirely if we already sent this exact hash for this serial.
-        // The client already has the tooltip data — no need to resend 0xDC.
-        if (_tooltipHashCache.TryGetValue(serial, out uint cachedHash) && cachedHash == hash)
-            return;
+        // Client already requested the full 0xD6 property list; Source-X does
+        // not follow that response with another 0xDC revision packet.
         _tooltipHashCache[serial] = hash;
 
         _netState.Send(new PacketOPLData(serial, hash, props));
-        _netState.Send(new PacketOPLInfo(serial, hash));
     }
 
     // ==================== Trade ====================
@@ -552,7 +549,7 @@ public sealed partial class GameClient
             {
                 uint patch = parts.Length > 3 && uint.TryParse(parts[3], out uint p) ? p : 0;
                 _netState.ClientVersionNumber = major * 10_000_000 + minor * 1_000_000 + rev * 1_000 + patch;
-                _logger.LogInformation("Client version detected from 0xBD: {Ver} → {Num}", version, _netState.ClientVersionNumber);
+                _logger.LogInformation("Client version detected from 0xBD: {Ver} -> {Num}", version, _netState.ClientVersionNumber);
             }
         }
     }

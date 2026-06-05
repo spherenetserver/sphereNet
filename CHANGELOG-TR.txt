@@ -4,6 +4,32 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Animasyon client-tipi kapilamasi, NPC yonelme, tooltip ve regen paritesi (Wave 59)
+----------------------------------------
+
+ANIMASYON:
+  - Body-agnostic 0xE2 yeni-animasyon paketi artik yalnizca KR ve Enhanced
+    client'lara gonderilir; Classic/ClassicUO client'lar surumleri High Seas veya
+    daha yeni bildirse bile legacy 0x6E paketini alir. Secim SupportsHighSeas
+    yerine ayristirilmis client tipine gore yapilir. NetState
+    IsKingdomRebornClient / IsEnhancedClient eklendi.
+
+NPC AI:
+  - NPC saldirilari artik her hit/miss'te sahte 0x77 MobileMoving basmaz. Yonelme
+    guncellemesi yalnizca vurus NPC'nin yonunu gercekten degistirdiginde yayinlanir
+    (OnNpcFacingChanged -> BroadcastFacingUpdate); Source-X ile eslesir.
+
+TOOLTIP:
+  - 0xD6 tam property-list cevabinin ardindan artik 0xDC revision paketi
+    gonderilmez (Source-X yalnizca istenen listeyi gonderir). ToolTipMode
+    varsayilani artik 1 (0=kapali, 1=revision/istek, 2=tam zorla) ve bir
+    ToolTipCache ayari eklendi; tooltip'i tamamen kapatmak icin TOOLTIPMODE=0.
+
+REGEN:
+  - HP/stam/mana yenilenme araliklari sabit periyotlar yerine yapilandirilan
+    REGEN degerlerinden (saniyenin onda biri) turetilir. HP regen artik STR > 50
+    icin tick basina ekstra +1 vermez; doyumlu iken aralik basina 1 iyilestirir.
+
 [2026-06-06] - Client hiz modu (0xBF sub 0x26) paritesi (Wave 58)
 ----------------------------------------
 

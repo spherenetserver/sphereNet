@@ -267,11 +267,9 @@ public sealed partial class GameClient
 
     /// <summary>
     /// Broadcasts a mobile animation to nearby clients, choosing the packet per
-    /// recipient by client era: High Seas+ clients receive the body-agnostic
-    /// 0xE2 packet (the client resolves the right animation group for the
-    /// mobile's body from <paramref name="gesture"/>), while older clients
-    /// receive the legacy 0x6E packet with the raw human action index
-    /// <paramref name="legacyAction"/>.
+    /// recipient by real client type: KR/Enhanced clients receive the body-agnostic
+    /// 0xE2 packet, while Classic/ClassicUO clients receive the legacy 0x6E
+    /// packet even when their version is High Seas or newer.
     ///
     /// When per-recipient dispatch is unavailable (forEachClientInRange not
     /// wired), it falls back to a single shared 0x6E broadcast — identical to
@@ -294,7 +292,7 @@ public sealed partial class GameClient
         {
             forEachClientInRange(actor.Position, range, 0, (_, observer) =>
             {
-                if (observer.NetState.SupportsHighSeas)
+                if (observer.NetState.IsKingdomRebornClient || observer.NetState.IsEnhancedClient)
                     observer.Send(new PacketNewAnimation(serial, gesture, 0, mode));
                 else
                     observer.Send(new PacketAnimation(serial, legacyAction));

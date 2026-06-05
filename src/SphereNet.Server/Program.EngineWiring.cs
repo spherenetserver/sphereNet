@@ -1164,24 +1164,12 @@ public static partial class Program
             {
                 BroadcastCharacterAppear(npc);
             };
+            _npcAI.OnNpcFacingChanged = npc =>
+            {
+                BroadcastFacingUpdate(npc);
+            };
             _npcAI.OnNpcAttack = (attacker, target, damage) =>
             {
-                byte attackerDir = (byte)((byte)attacker.Direction & 0x07);
-                byte attackerFlags = 0;
-                if (attacker.IsInWarMode) attackerFlags |= 0x40;
-                if (attacker.IsDead) attackerFlags |= 0x02;
-                if (attacker.BodyId == 0x0191 || attacker.BodyId == 0x0193) attackerFlags |= 0x02;
-                if (attacker.IsStatFlag(StatFlag.Freeze)) attackerFlags |= 0x01;
-
-                ForEachClientInRange(attacker.Position, 18, 0, (observerCh, observerClient) =>
-                {
-                    byte noto = GameClient.ComputeNotoriety(_world, observerCh, attacker);
-                    observerClient.Send(new PacketMobileMoving(
-                        attacker.Uid.Value, attacker.BodyId,
-                        attacker.X, attacker.Y, attacker.Z, attackerDir,
-                        attacker.Hue, attackerFlags, noto));
-                });
-
                 ushort swingAnim = GameClient.GetNpcSwingAction(attacker);
                 GameClient.BroadcastAnimation(attacker, swingAnim, NewAnimationGesture.Attack, 18,
                     BroadcastNearby, ForEachClientInRange);
@@ -2136,6 +2124,11 @@ public static partial class Program
             return;
 
         actor.Direction = newDir;
+        BroadcastFacingUpdate(actor, range);
+    }
+
+    private static void BroadcastFacingUpdate(Character actor, int range = 18)
+    {
         byte dirByte = (byte)((byte)actor.Direction & 0x07);
         byte flags = 0;
         if (actor.IsInvisible) flags |= 0x80;

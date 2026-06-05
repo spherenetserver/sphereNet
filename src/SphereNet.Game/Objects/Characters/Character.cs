@@ -453,6 +453,9 @@ public partial class Character : ObjBase
     public static int MapViewRadarTiles { get; set; } = 18;
     /// <summary>Attacker inactivity timeout in seconds. 0 = disabled. sphere.ini ATTACKERTIMEOUT.</summary>
     public static int AttackerTimeoutSeconds { get; set; }
+    public static int RegenHitsTenths { get; set; } = 40;
+    public static int RegenStamTenths { get; set; } = 20;
+    public static int RegenManaTenths { get; set; } = 30;
 
     /// <summary>Refresh notoriety for nearby clients after memory changes (NotoSave_Update).</summary>
     public static Action<Character>? NotoSaveUpdate { get; set; }
@@ -4526,21 +4529,20 @@ public partial class Character : ObjBase
 
         long now = Environment.TickCount64;
 
-        // HP regen: every 6s base, affected by hunger. Suspended while poisoned
+        // HP regen: Source/Sphere REGEN0 interval, affected by hunger. Suspended while poisoned
         // so the poison can actually whittle the victim down.
         if (now >= _nextHitRegen && _hits < _maxHits && _poisonLevel == 0)
         {
             int regenAmount = _food > 0 ? 1 : 0;
-            if (_str > 50) regenAmount += 1;
             if (regenAmount > 0)
             {
                 _hits = (short)Math.Min(_hits + regenAmount, _maxHits);
                 MarkDirty(DirtyFlag.Stats);
             }
-            _nextHitRegen = now + 6000;
+            _nextHitRegen = now + RegenTenthsToMs(RegenHitsTenths, 4000);
         }
 
-        // Mana regen: every 4s base, improved by meditation, scaled by INT
+        // Mana regen: Source/Sphere REGEN2 interval, improved by meditation, scaled by INT
         if (now >= _nextManaRegen && _mana < _maxMana)
         {
             int regenAmount = Math.Max(1, _int / 50);
@@ -4549,7 +4551,7 @@ public partial class Character : ObjBase
             if (_mana >= _maxMana && IsStatFlag(StatFlag.Meditation))
                 ClearStatFlag(StatFlag.Meditation);
             MarkDirty(DirtyFlag.Stats);
-            _nextManaRegen = now + 4000;
+            _nextManaRegen = now + RegenTenthsToMs(RegenManaTenths, 3000);
         }
 
         // Stam regen: Source-X scales with DEX — higher DEX = faster regen.
@@ -4558,7 +4560,7 @@ public partial class Character : ObjBase
             int regenAmt = _isPlayer ? Math.Max(1, _dex / 30) : Math.Max(1, _maxStam / 20);
             _stam = (short)Math.Min(_stam + regenAmt, _maxStam);
             MarkDirty(DirtyFlag.Stats);
-            _nextStamRegen = now + (_isPlayer ? 3000 : 1500);
+            _nextStamRegen = now + RegenTenthsToMs(RegenStamTenths, 2000);
         }
 
         // Hunger decay: every 10 minutes
@@ -4617,6 +4619,11 @@ public partial class Character : ObjBase
         }
 
         return true;
+    }
+
+    private static int RegenTenthsToMs(int tenths, int fallbackMs)
+    {
+        return tenths > 0 ? tenths * 100 : fallbackMs;
     }
 
     // Transient state used by the @Create verb sequence. Both fields

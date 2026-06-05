@@ -11,7 +11,7 @@ namespace SphereNet.Tests;
 
 /// <summary>
 /// Verifies that <see cref="GameClient.BroadcastAnimation(Character, ushort, NewAnimationGesture, int, Action{Point3D, int, PacketWriter, uint}, Action{Point3D, int, uint, Action{Character, GameClient}}, byte)"/>
-/// picks the 0xE2 (High Seas+) or 0x6E (legacy) animation packet per recipient,
+/// picks the 0xE2 (KR/Enhanced) or 0x6E (Classic/ClassicUO) animation packet per recipient,
 /// and falls back to a single 0x6E broadcast when per-recipient dispatch is
 /// unavailable.
 /// </summary>
@@ -28,22 +28,24 @@ public class AnimationVersionSelectionTests
     }
 
     private static GameClient MakeClient(GameWorld world, AccountManager accounts, ILoggerFactory lf,
-        int id, uint clientVersion)
+        int id, uint clientVersion, uint clientType = 0)
     {
         var state = TestHarness.CreateActiveNetState(lf, id);
         state.ClientVersionNumber = clientVersion;
+        state.ClientTypeFlag = clientType;
         return new GameClient(state, world, accounts, lf.CreateLogger<GameClient>());
     }
 
     [Fact]
-    public void BroadcastAnimation_PicksE2ForHighSeas_And6EForLegacy()
+    public void BroadcastAnimation_UsesE2OnlyForKrEnhanced_And6EForClassic()
     {
         var (world, actor, accounts, lf) = Setup();
-        var hsClient = MakeClient(world, accounts, lf, 1, 70_009_000);   // 7.0.9 → High Seas
-        var legacyClient = MakeClient(world, accounts, lf, 2, 60_001_007); // 6.0.1.7 → no HS
+        var classicHsClient = MakeClient(world, accounts, lf, 1, 70_009_000);
+        var enhancedClient = MakeClient(world, accounts, lf, 2, 70_009_000, 3);
 
-        Assert.True(hsClient.NetState.SupportsHighSeas);
-        Assert.False(legacyClient.NetState.SupportsHighSeas);
+        Assert.True(classicHsClient.NetState.SupportsHighSeas);
+        Assert.False(classicHsClient.NetState.IsEnhancedClient);
+        Assert.True(enhancedClient.NetState.IsEnhancedClient);
 
         ushort legacyAction = (ushort)AnimationType.AttackWeapon; // 0x09
         GameClient.BroadcastAnimation(
@@ -51,21 +53,21 @@ public class AnimationVersionSelectionTests
             broadcastNearby: null,
             forEachClientInRange: (_, _, _, action) =>
             {
-                action(actor, hsClient);
-                action(actor, legacyClient);
+                action(actor, classicHsClient);
+                action(actor, enhancedClient);
             });
 
         uint serial = actor.Uid.Value;
 
-        var hsPackets = TestHarness.GetQueuedPackets(hsClient.NetState).ToList();
-        var e2 = hsPackets.Single(p => p.Span.Length == 10 && p.Span[0] == 0xE2);
-        Assert.Equal(serial, ReadU32(e2, 1));
-        Assert.Equal((ushort)NewAnimationGesture.Impact, ReadU16(e2, 5)); // gesture field
-
-        var legacyPackets = TestHarness.GetQueuedPackets(legacyClient.NetState).ToList();
-        var a6e = legacyPackets.Single(p => p.Span.Length == 14 && p.Span[0] == 0x6E);
+        var classicPackets = TestHarness.GetQueuedPackets(classicHsClient.NetState).ToList();
+        var a6e = classicPackets.Single(p => p.Span.Length == 14 && p.Span[0] == 0x6E);
         Assert.Equal(serial, ReadU32(a6e, 1));
         Assert.Equal(legacyAction, ReadU16(a6e, 5)); // action field
+
+        var enhancedPackets = TestHarness.GetQueuedPackets(enhancedClient.NetState).ToList();
+        var e2 = enhancedPackets.Single(p => p.Span.Length == 10 && p.Span[0] == 0xE2);
+        Assert.Equal(serial, ReadU32(e2, 1));
+        Assert.Equal((ushort)NewAnimationGesture.Impact, ReadU16(e2, 5)); // gesture field
     }
 
     [Fact]
@@ -93,3 +95,4 @@ public class AnimationVersionSelectionTests
     private static ushort ReadU16(PacketBuffer p, int offset)
         => (ushort)((p.Span[offset] << 8) | p.Span[offset + 1]);
 }
+

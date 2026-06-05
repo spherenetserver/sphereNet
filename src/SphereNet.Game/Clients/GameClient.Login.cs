@@ -460,6 +460,7 @@ public sealed partial class GameClient
         }
 
         _netState.Send(new PacketLoginComplete());
+        SendSpeedMode();
 
         // Source-X parity: send paperdoll on login so the client has name/title
         // data immediately (some clients restore the paperdoll window on reconnect).

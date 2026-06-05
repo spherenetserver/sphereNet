@@ -432,6 +432,14 @@ public sealed class MovementEngine
         return delay;
     }
 
+    public static int GetMoveDelay(bool mounted, bool running, bool warMode, byte speedMode)
+    {
+        // Source-X Event_Walk treats SPEEDMODE bit 0 like mounted movement:
+        // foot walk/run cadence becomes 200/100ms instead of 400/200ms.
+        bool speedMounted = mounted || ((speedMode & 0x01) != 0);
+        return GetMoveDelay(speedMounted, running, warMode);
+    }
+
     private static void GetDirectionDelta(Direction dir, out short dx, out short dy)
     {
         dx = 0; dy = 0;

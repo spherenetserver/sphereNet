@@ -256,6 +256,15 @@ public sealed partial class GameClient
         BroadcastNearby?.Invoke(_character.Position, UpdateRange, pkt, 0);
     }
 
+    public void SendSpeedMode()
+    {
+        if (_character == null || !IsPlaying)
+            return;
+
+        _netState.Send(new PacketSpeedMode(_character.SpeedMode));
+        ResetWalkValidator();
+    }
+
     /// <summary>
     /// Broadcasts a mobile animation to nearby clients, choosing the packet per
     /// recipient by client era: High Seas+ clients receive the body-agnostic

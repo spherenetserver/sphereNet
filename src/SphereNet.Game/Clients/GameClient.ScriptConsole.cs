@@ -202,10 +202,13 @@ public sealed partial class GameClient
             _account?.Name ?? "?", _character.Uid.Value, text, normalized, prefix, commandLine);
 
         var posBefore = _character.Position;
+        byte speedModeBefore = _character.SpeedMode;
         var result = _commands.TryExecute(_character, commandLine);
         switch (result)
         {
             case CommandResult.Executed:
+                if (_character.SpeedMode != speedModeBefore)
+                    SendSpeedMode();
                 if (!_character.Position.Equals(posBefore))
                 {
                     // Teleport-like commands (.GO, .JAIL, script-based moves, etc.) must

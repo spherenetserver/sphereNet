@@ -109,7 +109,7 @@ public sealed partial class GameClient
             }
 
             bool running = (step.Direction & 0x80) != 0;
-            virtualNow += MovementEngine.GetMoveDelay(_character.IsMounted, running, _character.IsInWarMode);
+            virtualNow += GetMoveDelay(running);
         }
         _movementBatchNow = null;
     }
@@ -248,7 +248,7 @@ public sealed partial class GameClient
         // Fastwalk throttle: reject if moving too fast.
         if (_character.PrivLevel < PrivLevel.GM)
         {
-            int moveDelay = MovementEngine.GetMoveDelay(_character.IsMounted, running, _character.IsInWarMode);
+            int moveDelay = GetMoveDelay(running);
 
             if (MovementCreditEnabled)
             {
@@ -317,16 +317,17 @@ public sealed partial class GameClient
         if (moved)
         {
             _character.LastMoveTick = now;
-            int moveDelay = MovementEngine.GetMoveDelay(_character.IsMounted, running, _character.IsInWarMode);
+            int moveDelay = GetMoveDelay(running);
             if (!MovementCreditEnabled && _character.PrivLevel < PrivLevel.GM && _walkTokens > 0)
                 _walkTokens--;
             _nextMoveTime = now + moveDelay;
             _moveViolationCount = 0;
 
-            _movementHistory?.Record(now, direction, running, _character.IsMounted);
+            bool speedMounted = _character.IsMounted || ((_character.SpeedMode & 0x01) != 0);
+            _movementHistory?.Record(now, direction, running, speedMounted);
             if (SpeedHackDetectionEnabled && _speedHackDetector != null && _movementHistory != null)
             {
-                var verdict = _speedHackDetector.Analyze(_movementHistory, _character.IsMounted, running, now);
+                var verdict = _speedHackDetector.Analyze(_movementHistory, speedMounted, running, now);
                 if (verdict == Movement.SpeedVerdict.Violation)
                 {
                     _logger.LogWarning("[speed_hack] char={Name} verdict={Verdict} avg={Avg:F0}ms burst={Burst}",
@@ -581,6 +582,17 @@ public sealed partial class GameClient
         if (SpeedHackDetectionEnabled)
             _speedHackDetector ??= new Movement.SpeedHackDetector(
                 SpeedHackRateThreshold, SpeedHackBurstWindow, SpeedHackCooldownMs);
+    }
+
+    private int GetMoveDelay(bool running)
+    {
+        if (_character == null)
+            return MovementEngine.GetMoveDelay(false, running);
+        return MovementEngine.GetMoveDelay(
+            _character.IsMounted,
+            running,
+            _character.IsInWarMode,
+            _character.SpeedMode);
     }
 
     public void TickMovementQueue(long nowMs)

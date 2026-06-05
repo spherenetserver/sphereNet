@@ -4,6 +4,30 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Client hiz modu (0xBF sub 0x26) paritesi (Wave 58)
+----------------------------------------
+
+PROTOKOL / PAKET:
+  - 0xBF sub 0x26 (PacketSpeedMode) giden paketi eklendi; client hareket hiz modu
+    byte'ini tasir.
+
+HAREKET:
+  - SPEEDMODE bit 0, yaya karakteri mounted ritminde hareket ettirir (yurume/kosu
+    400/200ms yerine 200/100ms); Source-X Event_Walk ile eslesir. speedMode-
+    duyarli GetMoveDelay asiri yuklemesi eklendi; adim-basina hareket gecikmesi
+    artik karakterin SpeedMode'undan turetilir.
+  - Hiz-hilesi dedektoru hiz-modlu karakteri mounted sayar; boylece hizli ritim
+    ihlal olarak isaretlenmez veya burst olarak sayilmaz.
+  - SendSpeedMode mevcut modu aktif client'a gonderir ve walk validator'i
+    (token/throttle durumu) sifirlar; boylece yeni ritim temiz uygulanir.
+
+GM / KOMUTLAR:
+  - SPEEDMODE bir GM komutudur (".speedmode <n>"); property'yi ayarlar ve sonuc
+    degeri yankilar.
+  - Mod, login'de ve SpeedMode bir komut veya .set property duzenlemesiyle her
+    degistiginde sahibi olan client'a (yeniden) gonderilir; boylece client ve
+    sunucu relog olmadan ritimde anlasir.
+
 [2026-06-05] - Saldiri el-sikismasi (handshake) paritesi ve NPC ozel-saldiri yonelmesi (Wave 57)
 ----------------------------------------
 

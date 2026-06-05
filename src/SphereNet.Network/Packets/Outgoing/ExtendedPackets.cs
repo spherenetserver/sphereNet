@@ -1197,6 +1197,26 @@ public sealed class PacketFastWalkStackPush : PacketWriter
     }
 }
 
+/// <summary>0xBF sub 0x26 - Set client movement speed mode.</summary>
+public sealed class PacketSpeedMode : PacketWriter
+{
+    private readonly byte _mode;
+
+    public PacketSpeedMode(byte mode) : base(0xBF)
+    {
+        _mode = mode;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(6);
+        buf.WriteUInt16(0x0026);
+        buf.WriteByte(_mode);
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
 /// <summary>0xBF sub 0x08 — Map change. Tells client which map to display.</summary>
 public sealed class PacketMapChange : PacketWriter
 {

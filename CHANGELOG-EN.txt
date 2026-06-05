@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Client speed mode (0xBF sub 0x26) parity (Wave 58)
+----------------------------------------
+
+PROTOCOL / PACKET:
+  - Added 0xBF sub 0x26 (PacketSpeedMode) outgoing packet, carrying the client
+    movement speed mode byte.
+
+MOVEMENT:
+  - SPEEDMODE bit 0 makes a foot character move at the mounted cadence
+    (walk/run 200/100ms instead of 400/200ms), matching Source-X Event_Walk.
+    Added a speedMode-aware GetMoveDelay overload; the per-step move delay now
+    derives from the character's SpeedMode.
+  - The speed-hack detector treats a speed-mode character as mounted so the
+    faster cadence is not flagged as a violation or counted as a burst.
+  - SendSpeedMode pushes the current mode to the active client and resets the
+    walk validator (token/throttle state) so the new cadence applies cleanly.
+
+GM / COMMANDS:
+  - SPEEDMODE is a GM command (".speedmode <n>"); it sets the property and echoes
+    the resulting value.
+  - The mode is (re)sent to the owning client on login and whenever SpeedMode
+    changes via a command or a .set property edit, so client and server agree on
+    cadence without a relog.
+
 [2026-06-05] - Combat attack handshake parity and NPC special-attack facing (Wave 57)
 ----------------------------------------
 

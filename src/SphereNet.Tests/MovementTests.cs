@@ -198,6 +198,17 @@ public class MovementTests
     }
 
     [Fact]
+    public void GetMoveDelay_SpeedModeOne_UsesMountedCadence()
+    {
+        Assert.Equal(
+            MovementEngine.GetMoveDelay(true, false),
+            MovementEngine.GetMoveDelay(false, false, warMode: false, speedMode: 1));
+        Assert.Equal(
+            MovementEngine.GetMoveDelay(true, true),
+            MovementEngine.GetMoveDelay(false, true, warMode: false, speedMode: 1));
+    }
+
+    [Fact]
     public void HandleMove_SeqMismatch_RejectsAndResetsSequence()
     {
         var (world, _) = CreateWorld();

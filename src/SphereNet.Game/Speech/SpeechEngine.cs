@@ -958,6 +958,13 @@ public sealed class CommandHandler
             }
         });
 
+        Register("SPEEDMODE", PrivLevel.GM, (gm, args) =>
+        {
+            string val = string.IsNullOrWhiteSpace(args) ? "0" : args.Trim();
+            if (gm.TrySetProperty("SPEEDMODE", val))
+                OnSysMessage?.Invoke(gm, $"SPEEDMODE={gm.SpeedMode}");
+        });
+
         Register("BODY", PrivLevel.GM, (gm, args) =>
         {
             if (string.IsNullOrWhiteSpace(args))

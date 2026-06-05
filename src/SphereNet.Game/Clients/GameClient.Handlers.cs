@@ -431,6 +431,7 @@ public sealed partial class GameClient
         ushort bodyBefore = (target as Character)?.BodyId ?? 0;
         ushort hueBefore = (target as Character)?.Hue.Value ?? 0;
 
+        byte? speedModeBefore = target is Character targetChar ? targetChar.SpeedMode : null;
         if (!target.TrySetProperty(propName, value))
         {
             // Source-X falls back to executing the verb if it isn't a
@@ -456,6 +457,9 @@ public sealed partial class GameClient
                 else
                     BroadcastDrawObject(ch);
             }
+
+            if (ch == _character && speedModeBefore.HasValue && ch.SpeedMode != speedModeBefore.Value)
+                SendSpeedMode();
         }
     }
 

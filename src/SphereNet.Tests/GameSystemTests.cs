@@ -67,6 +67,18 @@ public class GameSystemTests
         return combined;
     }
 
+    private static bool IsSpeedModeOnePacket(PacketBuffer packet)
+    {
+        var span = packet.Span;
+        return span.Length == 6
+            && span[0] == 0xBF
+            && span[1] == 0x00
+            && span[2] == 0x06
+            && span[3] == 0x00
+            && span[4] == 0x26
+            && span[5] == 0x01;
+    }
+
     private static void SetNetStateInUse(NetState state, bool value)
     {
         typeof(NetState)
@@ -481,6 +493,30 @@ public class GameSystemTests
         Assert.Equal((short)100, gm.X);
         Assert.Equal((short)120, gm.Y);
         Assert.Equal((sbyte)5, gm.Z);
+    }
+
+    [Fact]
+    public void GameClient_SpeedModeCommand_SendsSourceXSpeedPacket()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = TestHarness.CreateWorld();
+        var accounts = new AccountManager(loggerFactory);
+        var client = TestHarness.CreateClient(loggerFactory, world, accounts, 1501);
+
+        var commands = new CommandHandler();
+        commands.RegisterDefaults(world);
+        client.SetEngines(commands: commands);
+
+        var gm = world.CreateCharacter();
+        gm.IsPlayer = true;
+        gm.PrivLevel = PrivLevel.GM;
+        world.PlaceCharacter(gm, new Point3D(10, 10, 0, 0));
+        TestHarness.AttachCharacter(client, gm);
+
+        client.HandleSpeech(0, 0x03B2, 3, ".speedmode 1");
+
+        Assert.Equal((byte)1, gm.SpeedMode);
+        Assert.Contains(TestHarness.GetQueuedPackets(client.NetState), IsSpeedModeOnePacket);
     }
 
     [Fact]

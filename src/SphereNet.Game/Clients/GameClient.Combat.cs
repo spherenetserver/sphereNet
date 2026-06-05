@@ -69,6 +69,18 @@ public sealed partial class GameClient
     private long? _movementBatchNow;
     private long _lastMoveRecvMs;
 
+    // ---- Movement reject diagnostics (Faz 0) --------------------------------
+    // Every visible "teleport" is the client snapping back (up to MAX_STEP_COUNT
+    // = 5 tiles) when the server rejects a move the client already predicted and
+    // rendered as valid. The client never sends a move its own Pathfinder.CanWalk
+    // rejected, so a reject ALWAYS means a server/client disagreement. This
+    // per-session tally reveals WHICH disagreement class dominates a walking
+    // session (throttle? descent_cap? impassable_static data mismatch? z_window
+    // parity?) so the targeted fix can be aimed instead of guessed.
+    private readonly Dictionary<string, int> _rejectTally = new();
+    private int _rejectBurst;
+    private long _lastRejectMs;
+
     // Credit-based movement state (active only when MovementCreditEnabled=true)
     private int _movementCreditMs;
     private long _movementCreditLastTick;
@@ -106,11 +118,16 @@ public sealed partial class GameClient
     {
         if (_character == null) return;
 
-        if (_character.PrivLevel >= PrivLevel.GM)
-        {
-            HandleMove(dir, seq, fastWalkKey);
-            return;
-        }
+        // NOTE: staff/GM movement is intentionally NOT short-circuited to an
+        // immediate HandleMove anymore. Bypassing the queue meant GM steps were
+        // accepted the instant they arrived — including the client's bursty
+        // "doublet" packets at direction/speed transitions (two steps ~47ms
+        // apart). Unpaced, those rendered as a forward "teleport" on screen.
+        // Routing GM through the same queue lets _nextMoveTime hold the early
+        // step to the natural move cadence (smoothing the doublet) exactly like
+        // a normal player; the throttle inside HandleMove is still skipped for
+        // GM, so GM is paced but never throttle-rejected. Movement speed is
+        // unchanged — only the burst is smoothed.
 
         long now = MoveClock();
         _netState.LastActivityTick = now;
@@ -142,6 +159,7 @@ public sealed partial class GameClient
         {
             _logger.LogWarning("[move_reject] reason=queue_full seq={Seq} dir=0x{Dir:X2} queue={Count} at {X},{Y},{Z}",
                 seq, dir, _movementQueue.Count, _character.X, _character.Y, _character.Z);
+            RecordReject(seq, "queue_full", now);
             RejectMove(seq, now);
             _movementQueue.Clear();
             return;
@@ -202,6 +220,7 @@ public sealed partial class GameClient
         {
             _logger.LogWarning("[move_reject] reason=seq_mismatch got={Got} expected={Expected} packet=0x{Packet:X2} batch={Batch} dir=0x{Dir:X2} run={Run} at {X},{Y},{Z}",
                 seq, expectedSeq, _netState.LastMovementOpcode, _netState.LastMovementBatchSize, dir, running, _character.X, _character.Y, _character.Z);
+            RecordReject(seq, "seq_mismatch", now);
             RejectMove(seq, now);
             return false;
         }
@@ -213,6 +232,18 @@ public sealed partial class GameClient
         // mid-run "square jumping" rejects. The time-based throttle below is
         // the speedhack barrier.
         _netState.LastFastWalkKey = fastWalkKey;
+
+        // Source-X parity: a walk request whose direction differs from the
+        // character's current facing is a turn-in-place, not a tile step.
+        // Direction-change packets often arrive as a short burst while running;
+        // treating them as movement consumes walk buffer and advances the server
+        // one tile farther than the client, which feels like a hitch or side
+        // teleport near stairs/walls.
+        if (((byte)_character.Direction & 0x07) != ((byte)direction & 0x07))
+        {
+            AcceptTurn(direction, seq);
+            return true;
+        }
 
         // Fastwalk throttle: reject if moving too fast.
         if (_character.PrivLevel < PrivLevel.GM)
@@ -232,6 +263,7 @@ public sealed partial class GameClient
                         _logger.LogWarning("[move_reject] reason=credit_exhausted violations={Violations} credit={Credit}ms delay={Delay}ms queue={Queue} packet=0x{Packet:X2} batch={Batch} seq={Seq} dir=0x{Dir:X2} run={Run} at {X},{Y},{Z}",
                             _moveViolationCount, _movementCreditMs, moveDelay, _movementQueue.Count,
                             _netState.LastMovementOpcode, _netState.LastMovementBatchSize, seq, dir, running, _character.X, _character.Y, _character.Z);
+                        RecordReject(seq, "credit_exhausted", now);
                         RejectMove(seq, now);
                         if (MoveViolationKickThreshold > 0 && _moveViolationCount >= MoveViolationKickThreshold)
                             _netState.MarkClosing();
@@ -256,6 +288,7 @@ public sealed partial class GameClient
                     _logger.LogWarning("[move_reject] reason={Reason} violations={Violations} ahead={Ahead}ms delay={Delay}ms tokens={Tokens} packet=0x{Packet:X2} batch={Batch} seq={Seq} dir=0x{Dir:X2} run={Run} at {X},{Y},{Z}",
                         rejectReason, _moveViolationCount, Math.Max(0, _nextMoveTime - now), moveDelay, _walkTokens,
                         _netState.LastMovementOpcode, _netState.LastMovementBatchSize, seq, dir, running, _character.X, _character.Y, _character.Z);
+                    RecordReject(seq, rejectReason, now);
                     RejectMove(seq, now);
                     if (MoveViolationKickThreshold > 0 && _moveViolationCount >= MoveViolationKickThreshold)
                         _netState.MarkClosing();
@@ -370,11 +403,19 @@ public sealed partial class GameClient
             short tgtX = (short)(_character.X + dxLog);
             short tgtY = (short)(_character.Y + dyLog);
             string reason;
-            if (moveDiag.MobBlocked) reason = "mob_block";
-            else if (!moveDiag.ForwardOk) reason = "forward_blocked";
+            string rejectKey;
+            if (moveDiag.MobBlocked) { reason = "mob_block"; rejectKey = "mob_block"; }
+            else if (!moveDiag.ForwardOk)
+            {
+                rejectKey = ClassifyForwardReject(moveDiag);
+                reason = $"forward_blocked ({rejectKey})";
+            }
             else if (moveDiag.DiagonalChecked && (!moveDiag.LeftOk || !moveDiag.RightOk))
+            {
                 reason = $"diagonal_edge left={moveDiag.LeftOk} right={moveDiag.RightOk}";
-            else reason = "unknown";
+                rejectKey = "diagonal_edge";
+            }
+            else { reason = "unknown"; rejectKey = "unknown"; }
 
             _logger.LogWarning(
                 "[move_reject] {Reason} packet=0x{Packet:X2} batch={Batch} seq={Seq} dir={Dir} run={Run} from {FromX},{FromY},{FromZ} " +
@@ -389,9 +430,58 @@ public sealed partial class GameClient
                 moveDiag.FwdStaticTotal, moveDiag.FwdImpassableCount,
                 moveDiag.FwdSurfaceCount, moveDiag.FwdItemSurfaceCount, moveDiag.FwdMobileCount,
                 moveDiag.FwdReason, moveDiag.FwdStaticDump, moveDiag.FwdMobileDump);
+            RecordReject(seq, rejectKey, now);
             RejectMove(seq, now);
             return false;
         }
+    }
+
+    /// <summary>Faz 0 diagnostic. Tally a reject under a normalized key and emit
+    /// a compact running session summary. Pure logging — no behaviour change.
+    /// The dominant key over a walking session names the disagreement class to
+    /// fix (e.g. throttle → convert reject to delay; descent_cap → MaxDescendZ;
+    /// impassable_static → client/server statics mismatch; z_window/no_surface →
+    /// Z-parity bug).</summary>
+    private void RecordReject(byte seq, string key, long now)
+    {
+        _rejectTally.TryGetValue(key, out int c);
+        _rejectTally[key] = c + 1;
+
+        // Consecutive rejects within 1s = a sustained desync, i.e. a larger felt
+        // rubber-band / repeated snap rather than a one-off stop at a wall.
+        if (_lastRejectMs != 0 && now - _lastRejectMs <= 1000) _rejectBurst++;
+        else _rejectBurst = 1;
+        _lastRejectMs = now;
+
+        var sb = new System.Text.StringBuilder();
+        foreach (var kv in _rejectTally)
+        {
+            if (sb.Length > 0) sb.Append(' ');
+            sb.Append(kv.Key).Append('=').Append(kv.Value);
+        }
+
+        _logger.LogWarning(
+            "[move_reject_tally] reason={Key} burst={Burst} seq={Seq} session=[{Tally}]",
+            key, _rejectBurst, seq, sb.ToString());
+    }
+
+    /// <summary>Classify a forward-tile rejection into the specific disagreement
+    /// bucket using the walk diagnostic, so a generic "forward_blocked" is split
+    /// into the actionable cause. See <see cref="RecordReject"/>.</summary>
+    private static string ClassifyForwardReject(in SphereNet.Game.Movement.WalkCheck.Diagnostic d)
+    {
+        string fr = d.FwdReason ?? "";
+        // Server-only descent cap (MaxDescendZ). ClassicUO's CalculateNewZ has NO
+        // descent limit, so the client walks the drop and the server snaps it back.
+        if (fr.StartsWith("descent_too_steep", StringComparison.Ordinal)) return "descent_cap";
+        // No walkable surface found at all. If an impassable static is present the
+        // client most likely lacks/differs that static (data mismatch); otherwise
+        // it is a surface/Z resolution parity gap.
+        if (fr == "no_candidates")
+            return d.FwdImpassableCount > 0 ? "impassable_static" : "no_surface";
+        // A surface existed but every candidate fell outside the [minZ, maxZ]
+        // window — a Z-window parity discrepancy with the client.
+        return "z_window";
     }
 
     private void RejectMove(byte seq, long now, bool redrawSelf = false)
@@ -416,18 +506,57 @@ public sealed partial class GameClient
         if (_character == null) return;
 
         _logger.LogDebug(
-            "[move_drop_stale] seq={Seq} dir=0x{Dir:X2} at {X},{Y},{Z} - corrective reject",
+            "[move_drop_stale] seq={Seq} dir=0x{Dir:X2} at {X},{Y},{Z} - silent drop (awaiting client seq reset)",
             seq, dir, _character.X, _character.Y, _character.Z);
+        RecordReject(seq, "stale", now);
 
-        // If the client keeps walking with seq > 1 after a reject reset, it did
-        // not observe the previous correction. Send a fresh correction and
-        // reopen the short absorb window instead of silently deadlocking it.
-        RejectMove(seq, now, redrawSelf: true);
+        // A seq > 1 arriving while WalkSequence == 0 is an in-flight step the
+        // client predicted BEFORE it processed our single corrective 0x21. The
+        // client (ClassicUO) has already cleared its step queue, snapped to the
+        // rejected position and reset its sequence to 0 — it is now resending
+        // from seq 0. Replying here at all is harmful:
+        //   * another 0x21 → the client ClearSteps + snaps AGAIN, and
+        //   * a 0x20 DrawPlayer (the old redrawSelf) → a hard reposition/redraw,
+        // and a burst of either makes ConfirmWalk see "bad steps" and fire a
+        // full client-initiated resync request — that cascade is the visible
+        // "walking teleport" / flash. So we DROP SILENTLY: emit nothing, keep
+        // WalkSequence pinned at 0, and let the fresh seq-0 stream resume the
+        // walk cleanly. On TCP the original 0x21 is guaranteed delivered, so the
+        // client always resets — there is no deadlock to guard against.
+        _netState.WalkSequence = 0;
     }
 
     private byte CurrentFacingDir()
     {
         return _character == null ? (byte)0 : (byte)((byte)_character.Direction & 0x07);
+    }
+
+    private void AcceptTurn(Direction direction, byte seq)
+    {
+        if (_character == null) return;
+
+        _character.Direction = direction;
+        byte notoriety = GetNotoriety(_character);
+        _netState.SendPriority(new PacketMoveAck(seq, notoriety));
+
+        byte flags = BuildMobileFlags(_character);
+        var movePacket = new PacketMobileMoving(
+            _character.Uid.Value, _character.BodyId,
+            _character.X, _character.Y, _character.Z, (byte)_character.Direction,
+            _character.Hue, flags, notoriety);
+
+        if (BroadcastMoveNearby != null)
+            BroadcastMoveNearby.Invoke(_character.Position, UpdateRange, movePacket, _character.Uid.Value, _character);
+        else
+            BroadcastNearby?.Invoke(_character.Position, UpdateRange, movePacket, _character.Uid.Value);
+
+        byte nextSeq = (byte)(seq + 1);
+        if (nextSeq == 0) nextSeq = 1;
+        _netState.WalkSequence = nextSeq;
+
+        _logger.LogDebug(
+            "[move_turn] seq={Seq} dir={Dir} pos={X},{Y},{Z}",
+            seq, direction, _character.X, _character.Y, _character.Z);
     }
 
     private void ResetWalkValidator()

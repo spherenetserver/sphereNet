@@ -639,6 +639,11 @@ public sealed class SphereConfig
         if (FloodDetectionCount <= 0) warnings.Add($"FloodDetectionCount={FloodDetectionCount} — flood detection disabled");
         if (FloodDetectionWindowMs < 1000) warnings.Add($"FloodDetectionWindowMs={FloodDetectionWindowMs} — too small, may cause false positives");
         if (MovementCreditEnabled && MovementCreditBaseMs < 50) warnings.Add($"MovementCreditBaseMs={MovementCreditBaseMs} — too small, may reject legitimate movement");
+        // WalkRegen is tokens-per-SECOND (a rate). A running player needs ~5 steps/s,
+        // so a regen below that starves the walk-token bucket and rejects legitimate
+        // steps (walk_buffer), causing client rubber-band/stutter. See WalkBufferMax.
+        if (!MovementCreditEnabled && WalkRegen < 5) warnings.Add($"WalkRegen={WalkRegen} — tokens/sec below running speed (~5), will throttle legitimate movement to walk_buffer rejects (recommended ≥25)");
+        if (!MovementCreditEnabled && WalkBuffer < 5) warnings.Add($"WalkBuffer={WalkBuffer} — walk-token bucket too small, drains after the first steps and stutters movement (recommended ≥25)");
         if (MovementQueueCapacity > 50) warnings.Add($"MovementQueueCapacity={MovementQueueCapacity} — large queue may mask speed hacks");
         if (WalkDelayFoot <= 0) warnings.Add($"WalkDelayFoot={WalkDelayFoot} — invalid movement delay");
         foreach (var map in Maps)

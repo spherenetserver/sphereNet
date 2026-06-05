@@ -221,6 +221,7 @@ public class MovementTests
         var (world, _) = CreateWorld();
         var ch = world.CreateCharacter();
         ch.IsPlayer = true;
+        ch.Direction = Direction.East;
         ch.SetStatFlag(StatFlag.Freeze);
         world.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
         var client = CreateClient(world, ch);
@@ -255,6 +256,7 @@ public class MovementTests
             var (world, _) = CreateWorld();
             var ch = world.CreateCharacter();
             ch.IsPlayer = true;
+            ch.Direction = Direction.East;
             world.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
             var client = CreateClient(world, ch);
             var state = client.NetState;
@@ -296,6 +298,7 @@ public class MovementTests
             var (world, _) = CreateWorld();
             var ch = world.CreateCharacter();
             ch.IsPlayer = true;
+            ch.Direction = Direction.East;
             world.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
             var client = CreateClient(world, ch);
             var state = client.NetState;
@@ -336,6 +339,7 @@ public class MovementTests
             var (world, _) = CreateWorld();
             var ch = world.CreateCharacter();
             ch.IsPlayer = true;
+            ch.Direction = Direction.East;
             world.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
             var client = CreateClient(world, ch);
             var state = client.NetState;
@@ -378,6 +382,7 @@ public class MovementTests
             var (world, _) = CreateWorld();
             var ch = world.CreateCharacter();
             ch.IsPlayer = true;
+            ch.Direction = Direction.East;
             world.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
             var client = CreateClient(world, ch);
             var state = client.NetState;
@@ -422,6 +427,7 @@ public class MovementTests
             var ch = world.CreateCharacter();
             ch.Str = 50; ch.MaxHits = 50; ch.Hits = 50;
             ch.MaxStam = 50; ch.Stam = 50;
+            ch.Direction = Direction.East;
             world.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
             var client = CreateClient(world, ch);
 
@@ -450,7 +456,7 @@ public class MovementTests
     }
 
     [Fact]
-    public void HandleMove_StaleSeqAfterRejectWindow_SendsCorrectiveReject()
+    public void HandleMove_StaleSeqAfterRejectWindow_DropsSilently()
     {
         var oldClock = GameClient.MoveClock;
         var oldTolerance = GameClient.MoveToleranceMs;
@@ -470,6 +476,7 @@ public class MovementTests
             var ch = world.CreateCharacter();
             ch.Str = 50; ch.MaxHits = 50; ch.Hits = 50;
             ch.MaxStam = 50; ch.Stam = 50;
+            ch.Direction = Direction.East;
             world.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
             var client = CreateClient(world, ch);
             var state = client.NetState;
@@ -481,19 +488,28 @@ public class MovementTests
             int rejectCountBeforeStale = TestHarness.GetQueuedPackets(state)
                 .Count(p => p.Span.Length > 0 && p.Span[0] == 0x21);
 
+            // A stale in-flight step (seq > 1 while WalkSequence == 0) must be
+            // dropped SILENTLY — no extra 0x21 reject and no 0x20 redraw — so the
+            // client's own seq-0 reset stream is never disturbed. Sending a
+            // corrective packet here is exactly what produced the post-reject
+            // "walking teleport" cascade.
             now += 200;
             Assert.False(client.HandleMove((byte)Direction.East, 2, 0));
             Assert.Equal(1001, ch.X);
             Assert.Equal(0, state.WalkSequence);
             int rejectCountAfterStale = TestHarness.GetQueuedPackets(state)
                 .Count(p => p.Span.Length > 0 && p.Span[0] == 0x21);
-            Assert.True(rejectCountAfterStale > rejectCountBeforeStale);
+            Assert.Equal(rejectCountBeforeStale, rejectCountAfterStale);
+
+            // No 0x20 DrawPlayer redraw should be emitted for a stale step either.
+            Assert.DoesNotContain(TestHarness.GetQueuedPackets(state),
+                p => p.Span.Length > 0 && p.Span[0] == 0x20);
 
             now += 50;
             Assert.False(client.HandleMove((byte)Direction.East, 3, 0));
             int rejectCountInsideWindow = TestHarness.GetQueuedPackets(state)
                 .Count(p => p.Span.Length > 0 && p.Span[0] == 0x21);
-            Assert.Equal(rejectCountAfterStale, rejectCountInsideWindow);
+            Assert.Equal(rejectCountBeforeStale, rejectCountInsideWindow);
         }
         finally
         {
@@ -506,7 +522,7 @@ public class MovementTests
     }
 
     [Fact]
-    public void QueueMoveRequest_StaleSeqAfterReset_SendsCorrectiveReject()
+    public void QueueMoveRequest_StaleSeqAfterReset_DropsSilently()
     {
         var oldClock = GameClient.MoveClock;
         var oldResync = GameClient.MoveRejectResyncMs;
@@ -527,14 +543,59 @@ public class MovementTests
             state.WalkSequence = 0;
             client.QueueMoveRequest((byte)Direction.East, 2, 0);
 
+            // Stale in-flight step after a reject: dropped silently, no 0x21 / 0x20.
             Assert.Equal(1000, ch.X);
             Assert.Equal(0, state.WalkSequence);
-            Assert.Contains(TestHarness.GetQueuedPackets(state), p => p.Span.Length > 0 && p.Span[0] == 0x21);
+            Assert.DoesNotContain(TestHarness.GetQueuedPackets(state), p => p.Span.Length > 0 && p.Span[0] == 0x21);
+            Assert.DoesNotContain(TestHarness.GetQueuedPackets(state), p => p.Span.Length > 0 && p.Span[0] == 0x20);
         }
         finally
         {
             GameClient.MoveClock = oldClock;
             GameClient.MoveRejectResyncMs = oldResync;
+        }
+    }
+
+    [Fact]
+    public void HandleMove_PostCollisionReject_DifferentDirectionTurnsBeforeMoving()
+    {
+        var oldClock = GameClient.MoveClock;
+        try
+        {
+            long now = 1_000;
+            GameClient.MoveClock = () => now;
+
+            var (world, _) = CreateWorld();
+            var ch = world.CreateCharacter();
+            ch.IsPlayer = true;
+            ch.SetStatFlag(StatFlag.Freeze);
+            world.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
+            var client = CreateClient(world, ch);
+            var state = client.NetState;
+            state.WalkSequence = 59;
+
+            Assert.False(client.HandleMove((byte)(Direction.North | Direction.Running), 59, 0));
+            Assert.Equal(1000, ch.X);
+            int rejectCountAfterCollision = TestHarness.GetQueuedPackets(state)
+                .Count(p => p.Span.Length > 0 && p.Span[0] == 0x21);
+            ch.ClearStatFlag(StatFlag.Freeze);
+
+            now += 150;
+            Assert.True(client.HandleMove((byte)(Direction.East | Direction.Running), 0, 0));
+            Assert.Equal(1000, ch.X);
+            Assert.Equal(Direction.East, ch.Direction);
+            Assert.Equal(1, state.WalkSequence);
+            Assert.Contains(TestHarness.GetQueuedPackets(state), p => p.Span.Length > 0 && p.Span[0] == 0x22);
+            Assert.Equal(rejectCountAfterCollision, TestHarness.GetQueuedPackets(state)
+                .Count(p => p.Span.Length > 0 && p.Span[0] == 0x21));
+
+            now += MovementEngine.GetMoveDelay(false, true);
+            Assert.True(client.HandleMove((byte)(Direction.East | Direction.Running), 1, 0));
+            Assert.Equal(1001, ch.X);
+        }
+        finally
+        {
+            GameClient.MoveClock = oldClock;
         }
     }
 
@@ -566,23 +627,39 @@ public class MovementTests
                 ch.IsPlayer = true;
                 ch.MaxStam = 100;
                 ch.Stam = 100;
+                ch.Direction = Direction.East;
                 world.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
                 var client = CreateClient(world, ch);
                 var state = client.NetState;
 
                 int rejects = 0;
                 int seq = 0;
-                for (int i = 0; i < 50; i++)
+                for (int i = 0; i < 25; i++)
                 {
                     if (batched)
                     {
+                        var steps = new[]
+                        {
+                            Direction.East | Direction.Running,
+                            Direction.East | Direction.Running,
+                            Direction.SouthEast | Direction.Running,
+                            Direction.SouthEast | Direction.Running,
+                            Direction.South | Direction.Running,
+                            Direction.South | Direction.Running,
+                            Direction.SouthWest | Direction.Running,
+                            Direction.SouthWest | Direction.Running,
+                        };
                         client.HandleMovementBatch([
-                            new SphereNet.Network.State.MovementStep((byte)(Direction.East | Direction.Running), (byte)seq++, 0, 0),
-                            new SphereNet.Network.State.MovementStep((byte)(Direction.East | Direction.Running), (byte)seq++, 0, 0),
-                            new SphereNet.Network.State.MovementStep((byte)(Direction.SouthEast | Direction.Running), (byte)seq++, 0, 0),
-                            new SphereNet.Network.State.MovementStep((byte)(Direction.South | Direction.Running), (byte)seq++, 0, 0)
+                            new SphereNet.Network.State.MovementStep((byte)steps[0], (byte)seq++, 0, 0),
+                            new SphereNet.Network.State.MovementStep((byte)steps[1], (byte)seq++, 0, 0),
+                            new SphereNet.Network.State.MovementStep((byte)steps[2], (byte)seq++, 0, 0),
+                            new SphereNet.Network.State.MovementStep((byte)steps[3], (byte)seq++, 0, 0),
+                            new SphereNet.Network.State.MovementStep((byte)steps[4], (byte)seq++, 0, 0),
+                            new SphereNet.Network.State.MovementStep((byte)steps[5], (byte)seq++, 0, 0),
+                            new SphereNet.Network.State.MovementStep((byte)steps[6], (byte)seq++, 0, 0),
+                            new SphereNet.Network.State.MovementStep((byte)steps[7], (byte)seq++, 0, 0)
                         ]);
-                        now += MovementEngine.GetMoveDelay(false, true) * 4;
+                        now += MovementEngine.GetMoveDelay(false, true) * steps.Length;
                     }
                     else
                     {
@@ -591,7 +668,11 @@ public class MovementTests
                             Direction.East | Direction.Running,
                             Direction.East | Direction.Running,
                             Direction.SouthEast | Direction.Running,
+                            Direction.SouthEast | Direction.Running,
                             Direction.South | Direction.Running,
+                            Direction.South | Direction.Running,
+                            Direction.SouthWest | Direction.Running,
+                            Direction.SouthWest | Direction.Running,
                         };
                         foreach (var dir in dirs)
                         {
@@ -605,7 +686,7 @@ public class MovementTests
                 }
 
                 Assert.Equal(0, rejects);
-                Assert.Equal(200, state.WalkSequence);
+                Assert.Equal((byte)seq, state.WalkSequence);
                 Assert.True(ch.X > 1000, $"{name} did not move east");
                 Assert.True(ch.Y > 1000, $"{name} did not move south/diagonal");
             }
@@ -631,6 +712,7 @@ public class MovementTests
             var ch = world.CreateCharacter();
             ch.IsPlayer = true;
             ch.PrivLevel = PrivLevel.GM;
+            ch.Direction = Direction.East;
             world.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
             var client = CreateClient(world, ch);
             var state = client.NetState;

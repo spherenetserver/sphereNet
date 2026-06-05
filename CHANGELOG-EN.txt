@@ -4,6 +4,46 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-05] - Turn-in-place movement parity, walk-token config fix, reject diagnostics (Wave 56)
+----------------------------------------
+
+MOVEMENT:
+  - Turn-in-place parity: a 0x02 walk request whose direction differs from the
+    character's current facing is now handled as a pure turn, not a tile step.
+    It only updates facing, sends 0x22 MoveAck, and broadcasts 0x77, bypassing
+    the throttle, walk-token bucket, collision and Z resolution. Previously such
+    a packet advanced the character one tile, so the client's direction-change
+    "doublet" packets (~31-47ms apart while running) produced an extra server
+    step, a momentary animation hitch, and a sideways snap near stairs/walls.
+  - Walk-token bucket is honored as documented and no longer starves movement on
+    a low setting: WalkBuffer is the bucket capacity (allowed step burst) and
+    WalkRegen is tokens-per-SECOND (a rate, not a per-step tick period). A
+    running mover needs ~5 steps/s, so a regen below that drained the bucket and
+    rejected legitimate steps as walk_buffer, snapping the client back into a
+    repeated stutter. Config restored to working values (75 / 25) and the stale
+    "loaded but unused" comments corrected. Validate() now warns when WalkRegen
+    or WalkBuffer is set below running speed.
+  - Post-reject in-flight steps (seq > 1 arriving after a reject reset
+    WalkSequence to 0) are dropped silently — no extra 0x21 reject and no 0x20
+    DrawPlayer redraw. Echoing either made the client ClearSteps and snap again,
+    cascading into a client resync (the visible walking "teleport"/flash). The
+    fixed post-reject absorb window (MoveRejectResyncMs) is disabled accordingly.
+  - GM/staff movement is routed through the movement queue instead of an
+    immediate step, so the client's transition doublet is paced to the natural
+    cadence; the throttle is still skipped for staff, so GM is smoothed but never
+    throttle-rejected. Movement speed is unchanged.
+  - Queued movement is drained every main-loop iteration (not only on the 50ms
+    tick), so the ack/reject flushes in the same iteration as input. The per-step
+    _nextMoveTime gate still paces the real drain, so this only cuts latency for
+    the client's 5-step budget on fast/stair sections; it does not raise speed.
+
+DIAGNOSTICS:
+  - Movement rejections are classified into a normalized cause (throttle,
+    walk_buffer, descent_cap, impassable_static, no_surface, z_window,
+    diagonal_edge, mob_block, seq_mismatch, queue_full, stale) and accumulated
+    into a per-session [move_reject_tally] summary, so the dominant disagreement
+    class over a walking session can be aimed instead of guessed. Pure logging.
+
 [2026-06-03] - Packet-era compatibility, version-aware animation, movement & send-priority fixes (Wave 54)
 ----------------------------------------
 

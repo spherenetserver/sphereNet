@@ -4,6 +4,48 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-05] - Yerinde-donus hareket paritesi, walk-token config duzeltmesi, red teshisi (Wave 56)
+----------------------------------------
+
+HAREKET:
+  - Yerinde-donus paritesi: yonu karakterin baktigi yonden farkli olan 0x02
+    yurume istegi artik tile adimi degil, saf donus olarak islenir. Yalnizca
+    yuzu cevirir, 0x22 MoveAck gonderir ve 0x77 yayinlar; throttle, walk-token
+    kovasi, collision ve Z hesabina girmez. Onceden boyle bir paket karakteri
+    bir tile ilerletiyordu; bu yuzden client'in yon-degisim "doublet" paketleri
+    (kosarken ~31-47ms arayla) fazladan sunucu adimi, anlik animasyon takilmasi
+    ve merdiven/duvar yaninda yana sicrama uretiyordu.
+  - Walk-token kovasi belgelendigi gibi calisir ve dusuk ayarda hareketi artik
+    bogmuyor: WalkBuffer kova kapasitesidir (izin verilen adim patlamasi),
+    WalkRegen ise SANIYEDEKI jeton sayisidir (rate, adim-basina tick periyodu
+    DEGIL). Kosan oyuncu ~5 adim/sn ister; bunun altinda bir regen kovayi
+    bosaltip mesru adimlari walk_buffer ile reddediyor, client'i tekrarli
+    takilmaya sokuyordu. Config calisir degerlere donduruldu (75 / 25) ve eski
+    "yukleniyor ama kullanilmiyor" yorumlari duzeltildi. Validate() artik
+    WalkRegen/WalkBuffer kosu hizinin altinda ayarlanirsa uyarir.
+  - Red sonrasi havadaki adimlar (red WalkSequence'i 0'a sifirladiktan sonra
+    gelen seq > 1) sessizce dusurulur — ekstra 0x21 red yok, 0x20 DrawPlayer
+    yeniden cizim yok. Ikisinden birini yankilamak client'i ClearSteps yapip
+    tekrar sicratiyor, client resync'ine (gorunen yuruyus "isinlanma"/flash)
+    zincirleniyordu. Sabit red-sonrasi soguruma penceresi (MoveRejectResyncMs)
+    buna uygun olarak devre disi.
+  - GM/yetkili hareketi aninda adim yerine hareket kuyrugundan gecirilir; boylece
+    client'in gecis doublet'i dogal ritme yedirilir; throttle yetkili icin hala
+    atlanir, yani GM yumusatilir ama asla throttle ile reddedilmez. Hareket hizi
+    degismez.
+  - Kuyruga alinan hareket her ana-dongu iterasyonunda (yalnizca 50ms tick'te
+    degil) bosaltilir; boylece ack/red girdiyle ayni iterasyonda flush edilir.
+    Adim-basina _nextMoveTime gecidi gercek drenaji hala pace ettigi icin bu
+    yalnizca hizli/merdiven bolumlerinde client'in 5-adim butcesi icin gecikmeyi
+    kisar; hizi artirmaz.
+
+TESHIS:
+  - Hareket redleri normallestirilmis bir nedene siniflandirilir (throttle,
+    walk_buffer, descent_cap, impassable_static, no_surface, z_window,
+    diagonal_edge, mob_block, seq_mismatch, queue_full, stale) ve oturum-basina
+    [move_reject_tally] ozetinde biriktirilir; boylece bir yuruyus oturumunda
+    baskin anlasmazlik sinifi tahmin yerine hedeflenebilir. Saf loglama.
+
 [2026-06-03] - Paket-cag uyumlulugu, surume-duyarli animasyon, hareket & gonderim-onceligi duzeltmeleri (Wave 54)
 ----------------------------------------
 

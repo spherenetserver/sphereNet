@@ -397,6 +397,13 @@ public sealed class WalkCheck
         list.Clear();
 
         // --- Land tile → PathEntry ---
+        // Dry land is always a walkable Surface/Bridge here even when the tiledata
+        // carries the Impassable bit: many sloped "dirt"/hillside land tiles (e.g.
+        // 0x91, 0x93) are Impassable-flagged yet the client (and RunUO/ServUO)
+        // walk them as terrain. Only WATER (Impassable+Wet, via landBlocks) is a
+        // true barrier. Treating Impassable land as a non-surface blocked those
+        // slopes server-side while the client walked them — a reject/rubber-band
+        // on every hillside step. See LandBlocks().
         if (considerLand && !landBlocks)
         {
             list.Add(new PathEntry(

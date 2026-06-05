@@ -108,6 +108,26 @@ public static partial class Program
                 _network.CheckNewConnections();
                 _network.ProcessAllInput();
 
+                // Drain queued movement EVERY loop iteration, not just on the
+                // 50ms server tick. ClassicUO animates its own steps on its local
+                // timer and keeps only MAX_STEP_COUNT (5) unconfirmed steps; if
+                // move acks/rejects arrive on the coarse 50ms tick cadence, fast
+                // or stair sections starve that 5-step budget — the client pauses,
+                // then replays the backlog in a burst ("throws forward" on
+                // stairs). Processing here, right after input, lets the ack flush
+                // in the SAME iteration (ProcessAllOutput below). The per-move
+                // _nextMoveTime gate still paces the real drain, so this only cuts
+                // latency — it does not let the player move faster.
+                if (_clients.Count > 0)
+                {
+                    long moveNowMs = GameClient.MoveClock();
+                    foreach (var client in _clients.Values)
+                    {
+                        if (client.IsPlaying)
+                            client.TickMovementQueue(moveNowMs);
+                    }
+                }
+
                 // Fast-path dirty: mark nearby clients for refresh, then run
                 // UpdateClientView only for those clients. Gated by HasDirty.
                 const bool FastPathViewDeltaEnabled = true;

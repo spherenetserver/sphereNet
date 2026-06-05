@@ -66,12 +66,15 @@ public static partial class Program
             GameClient.WalkBufferMax = Math.Max(1, _config.WalkBuffer);
             GameClient.WalkRegenPerSecond = Math.Max(0, _config.WalkRegen);
             GameClient.MoveToleranceMs = 80;
-            // After a movement rejection, ignore the client's in-flight (already
-            // predicted) walk packets for this window and tell it to resync.
-            // Without it, those stale steps get processed from the corrected
-            // position and the running player appears to lurch several tiles
-            // forward. ~100ms covers one round-trip of in-flight steps.
-            GameClient.MoveRejectResyncMs = 100;
+            // After a movement rejection the client (ClassicUO) clears its step
+            // queue, resets its walk sequence to 0 and resends from seq 0. The
+            // in-flight steps it had already predicted (seq > 1) arrive next and
+            // are now dropped SILENTLY by the stale-seq path — no extra 0x21, no
+            // 0x20 redraw — until that fresh seq-0 stream begins. A fixed time
+            // window is therefore unnecessary and counter-productive (it also
+            // swallowed the fresh seq-0/1 steps, delaying recovery), so it is
+            // disabled. See RejectStaleMove for the reasoning.
+            GameClient.MoveRejectResyncMs = 0;
             GameClient.MoveViolationKickThreshold = 0;
             GameClient.MovementCreditEnabled = _config.MovementCreditEnabled;
             GameClient.MovementCreditBaseMs = _config.MovementCreditBaseMs;

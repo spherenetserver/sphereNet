@@ -1394,6 +1394,8 @@ public static partial class Program
             };
             _npcAI.OnNpcBreath = (npc, target, damage) =>
             {
+                FaceAndBroadcastToward(npc, target);
+
                 // Fire breath effect: moving fireball from NPC to target
                 var fx = new PacketEffect(0, npc.Uid.Value, target.Uid.Value, 0x36D4,
                     npc.X, npc.Y, (short)(npc.Z + 10),
@@ -1427,6 +1429,8 @@ public static partial class Program
             };
             _npcAI.OnNpcThrow = (npc, target, damage) =>
             {
+                FaceAndBroadcastToward(npc, target);
+
                 ushort throwGfx = 0x0F51;
                 if (npc.TryGetTag("THROWOBJ", out string? objStr) && !string.IsNullOrWhiteSpace(objStr))
                 {
@@ -2118,5 +2122,34 @@ public static partial class Program
             _log.LogInformation("SphereNet ready. Listening on port {Port}.", _config.ServPort);
             _systemHooks.DispatchServer("start", _serverHookContext, _config.ServName);
         return true;
+    }
+
+    private static void FaceAndBroadcastToward(Character actor, Character target, int range = 18)
+    {
+        if (actor == null || target == null)
+            return;
+        if (actor.Position.Equals(target.Position))
+            return;
+
+        var newDir = actor.Position.GetDirectionTo(target.Position);
+        if (newDir == actor.Direction)
+            return;
+
+        actor.Direction = newDir;
+        byte dirByte = (byte)((byte)actor.Direction & 0x07);
+        byte flags = 0;
+        if (actor.IsInvisible) flags |= 0x80;
+        if (actor.IsInWarMode) flags |= 0x40;
+        if (actor.BodyId == 0x0191 || actor.BodyId == 0x0193) flags |= 0x02;
+        if (actor.IsStatFlag(StatFlag.Freeze)) flags |= 0x01;
+
+        ForEachClientInRange(actor.Position, range, 0, (observerCh, observerClient) =>
+        {
+            byte noto = GameClient.ComputeNotoriety(_world, observerCh, actor);
+            observerClient.Send(new PacketMobileMoving(
+                actor.Uid.Value, actor.BodyId,
+                actor.X, actor.Y, actor.Z, dirByte,
+                actor.Hue, flags, noto));
+        });
     }
 }

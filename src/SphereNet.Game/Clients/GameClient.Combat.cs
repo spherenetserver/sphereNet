@@ -691,8 +691,6 @@ public sealed partial class GameClient
     public void HandleAttack(uint targetUid)
     {
         if (_character == null || _character.IsDead) return;
-        if (!_character.IsInWarMode)
-            SetWarMode(true, syncClients: true, preserveTarget: true);
 
         // Source-X style target clear: attacking 0 resets current fight target.
         if (targetUid == 0 || targetUid == 0xFFFFFFFF)
@@ -703,16 +701,25 @@ public sealed partial class GameClient
         }
 
         var target = _world.FindChar(new Serial(targetUid));
-        if (target == null || target == _character) return;
+        if (target == null) return;
+        if (target == _character)
+        {
+            Send(new PacketAttackResponse(0));
+            return;
+        }
 
         if ((target.IsStatFlag(StatFlag.Hidden) || target.IsStatFlag(StatFlag.Invisible))
             && target.PrivLevel >= PrivLevel.Counsel
             && _character.PrivLevel < PrivLevel.Counsel)
+        {
+            Send(new PacketAttackResponse(0));
             return;
+        }
 
         if (CombatHelper.IsCombatBlockedByRegion(_world, _character, target))
         {
             SysMessage(ServerMessages.Get("combat_nopvp"));
+            Send(new PacketAttackResponse(0));
             return;
         }
 
@@ -721,10 +728,11 @@ public sealed partial class GameClient
             var attackResult = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.Attack,
                 new TriggerArgs { CharSrc = _character, O1 = target });
             if (attackResult == TriggerResult.True)
+            {
+                Send(new PacketAttackResponse(0));
                 return;
+            }
         }
-
-        _character.FightTarget = target.Uid;
 
         // Region PvP enforcement
         if (target.IsPlayer && _character.IsPlayer)
@@ -733,6 +741,7 @@ public sealed partial class GameClient
             if (region != null && region.IsFlag(Core.Enums.RegionFlag.NoPvP))
             {
                 SysMessage(ServerMessages.Get("combat_nopvp"));
+                Send(new PacketAttackResponse(0));
                 return;
             }
             // Attacking an innocent (neither criminal nor murderer) in a
@@ -763,11 +772,20 @@ public sealed partial class GameClient
             var result = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.CombatStart,
                 new TriggerArgs { CharSrc = _character, O1 = target });
             if (result == TriggerResult.True)
+            {
+                Send(new PacketAttackResponse(0));
                 return;
+            }
         }
 
+        if (!_character.IsInWarMode)
+            SetWarMode(true, syncClients: true, preserveTarget: true);
+
+        _character.FightTarget = target.Uid;
         _character.Memory_Fight_Start(target);
         target.Memory_Fight_Start(_character);
+        Send(new PacketSwing(_character.Uid.Value, target.Uid.Value));
+        Send(new PacketAttackResponse(target.Uid.Value));
 
         // Set initial swing delay so the first hit isn't instant (unless COMBATFLAGS allows it)
         if (_character.NextAttackTime == 0)

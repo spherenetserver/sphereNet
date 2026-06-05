@@ -4,6 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-05] - Saldiri el-sikismasi (handshake) paritesi ve NPC ozel-saldiri yonelmesi (Wave 57)
+----------------------------------------
+
+PROTOKOL / PAKET:
+  - 0x2F (combat swing/dovus bildirimi: saldiran + savunan serial'lari) ve 0xAA
+    (saldiri hedef onayi; serial 0 = reddedildi) giden paketleri eklendi.
+
+DOVUS:
+  - Saldiri istekleri artik kabul/red el-sikismasi ile yanitlanir. Reddedilen
+    saldiri (hedef 0/kendisi, gizli yetkili hedef, region/PvP blogu veya Attack /
+    CombatStart trigger'inin true donmesi) 0xAA=0 gonderir; kabul edilen saldiri
+    hedef serial'ini tasiyan 0xAA'dan once 0x2F Swing gonderir.
+  - War-mode'a girme ve dovus hedefi atama yalnizca kabul edilen saldirida olur.
+    Onceden istek, red kontrollerinden once pesinen war-mode'u aciyordu (ve
+    FightTarget atiyordu); bu yuzden reddedilen bir saldiri bile saldirani
+    war-mode'a sokup eski bir hedef birakiyordu.
+
+NPC AI:
+  - Breath ve throw ozel saldirilari, efekti basmadan once NPC'yi hedefe dondurup
+    0x77 yon guncellemesi yayinlar; boylece mermi/breath NPC'nin onceki yonu
+    yerine dogru yonelimden cikar (FaceAndBroadcastToward).
+
 [2026-06-05] - Yerinde-donus hareket paritesi, walk-token config duzeltmesi, red teshisi (Wave 56)
 ----------------------------------------
 

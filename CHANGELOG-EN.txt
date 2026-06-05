@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-05] - Combat attack handshake parity and NPC special-attack facing (Wave 57)
+----------------------------------------
+
+PROTOCOL / PACKET:
+  - Added 0x2F (combat swing/fight notification: attacker + defender serials)
+    and 0xAA (attack target confirmation; serial 0 means refused) outgoing
+    packets.
+
+COMBAT:
+  - Attack requests now reply with an accept/refuse handshake. A refused attack
+    (target 0/self, a hidden staff target, region/PvP block, or an Attack /
+    CombatStart trigger returning true) sends 0xAA=0; an accepted attack sends
+    0x2F Swing followed by 0xAA carrying the target serial.
+  - War mode is entered and the fight target is set only on an accepted attack.
+    Previously the request forced war mode (and assigned FightTarget) up front,
+    before the rejection checks, so a refused attack still flipped the attacker
+    into war mode and left a stale target.
+
+NPC AI:
+  - Breath and throw special attacks turn the NPC to face the target and
+    broadcast a 0x77 direction update before emitting the effect, so the
+    projectile/breath originates from the correct facing instead of the NPC's
+    previous direction (FaceAndBroadcastToward).
+
 [2026-06-05] - Turn-in-place movement parity, walk-token config fix, reject diagnostics (Wave 56)
 ----------------------------------------
 

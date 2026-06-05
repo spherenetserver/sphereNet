@@ -269,6 +269,28 @@ public sealed class PacketMoveReject : PacketWriter
     }
 }
 
+/// <summary>0x2F - Combat swing/fight notification sent to the attacker.</summary>
+public sealed class PacketSwing : PacketWriter
+{
+    private readonly uint _attackerSerial;
+    private readonly uint _defenderSerial;
+
+    public PacketSwing(uint attackerSerial, uint defenderSerial) : base(0x2F)
+    {
+        _attackerSerial = attackerSerial;
+        _defenderSerial = defenderSerial;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateFixed(10);
+        buf.WriteByte(0);
+        buf.WriteUInt32(_attackerSerial);
+        buf.WriteUInt32(_defenderSerial);
+        return buf;
+    }
+}
+
 /// <summary>0x1C — ASCII speech message.</summary>
 public sealed class PacketSpeechOut : PacketWriter
 {
@@ -346,6 +368,24 @@ public sealed class PacketSpeechUnicodeOut : PacketWriter
         buf.WriteAsciiFixed(_name, 30);
         buf.WriteUnicodeNullBE(_text);
         buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
+/// <summary>0xAA - Attack target confirmation. Serial 0 means attack refused.</summary>
+public sealed class PacketAttackResponse : PacketWriter
+{
+    private readonly uint _targetSerial;
+
+    public PacketAttackResponse(uint targetSerial) : base(0xAA)
+    {
+        _targetSerial = targetSerial;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateFixed(5);
+        buf.WriteUInt32(_targetSerial);
         return buf;
     }
 }

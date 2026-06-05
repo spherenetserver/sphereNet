@@ -120,6 +120,72 @@ public class CombatSwingParityTests
         }
     }
 
+    [Fact]
+    public void HandleAttack_AcceptedTarget_SendsSwingAndAttackOk()
+    {
+        var oldFlags = Character.CombatFlags;
+        try
+        {
+            Character.CombatFlags = (int)CombatFlags.FirstHitInstant;
+
+            var loggerFactory = LoggerFactory.Create(_ => { });
+            var world = TestHarness.CreateWorld();
+            var accounts = new AccountManager(loggerFactory);
+            var client = TestHarness.CreateClient(loggerFactory, world, accounts, 1203);
+
+            var attacker = world.CreateCharacter();
+            attacker.IsPlayer = true;
+            attacker.Str = attacker.Dex = attacker.Int = 100;
+            attacker.Hits = attacker.MaxHits = 100;
+            attacker.Stam = attacker.MaxStam = 100;
+            attacker.SetSkill(SkillType.Swordsmanship, 1200);
+            attacker.SetSkill(SkillType.Tactics, 1200);
+            world.PlaceCharacter(attacker, new Point3D(100, 100, 0, 0));
+            TestHarness.AttachCharacter(client, attacker);
+
+            var target = world.CreateCharacter();
+            target.IsPlayer = true;
+            target.Hits = target.MaxHits = 100;
+            target.SetSkill(SkillType.Wrestling, 0);
+            world.PlaceCharacter(target, new Point3D(101, 100, 0, 0));
+
+            client.HandleAttack(target.Uid.Value);
+
+            var packets = TestHarness.GetQueuedPackets(client.NetState).ToList();
+            Assert.Contains(packets, p => p.Span.Length > 0 && p.Span[0] == 0x72);
+            Assert.Contains(packets, p => IsAttackResponse(p, target.Uid.Value));
+            Assert.Contains(packets, p => IsSwing(p, attacker.Uid.Value, target.Uid.Value));
+            Assert.Equal(target.Uid, attacker.FightTarget);
+            Assert.True(attacker.IsInWarMode);
+        }
+        finally
+        {
+            Character.CombatFlags = oldFlags;
+        }
+    }
+
+    [Fact]
+    public void HandleAttack_SelfTarget_SendsRefuseWithoutWarmode()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = TestHarness.CreateWorld();
+        var accounts = new AccountManager(loggerFactory);
+        var client = TestHarness.CreateClient(loggerFactory, world, accounts, 1204);
+
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
+        TestHarness.AttachCharacter(client, player);
+
+        client.HandleAttack(player.Uid.Value);
+
+        var packets = TestHarness.GetQueuedPackets(client.NetState).ToList();
+        Assert.Contains(packets, p => IsAttackResponse(p, 0));
+        Assert.DoesNotContain(packets, p => p.Span.Length > 0 && p.Span[0] == 0x72);
+        Assert.False(player.IsInWarMode);
+        Assert.False(player.FightTarget.IsValid);
+    }
+
     private static bool IsArrowProjectile(PacketBuffer packet)
     {
         var span = packet.Span;
@@ -129,4 +195,26 @@ public class CombatSwingParityTests
         ushort effectId = (ushort)((span[10] << 8) | span[11]);
         return effectId == 0x0F3F;
     }
+
+    private static bool IsAttackResponse(PacketBuffer packet, uint targetSerial)
+    {
+        var span = packet.Span;
+        return span.Length == 5 && span[0] == 0xAA && ReadUInt32(span, 1) == targetSerial;
+    }
+
+    private static bool IsSwing(PacketBuffer packet, uint attackerSerial, uint defenderSerial)
+    {
+        var span = packet.Span;
+        return span.Length == 10
+            && span[0] == 0x2F
+            && span[1] == 0
+            && ReadUInt32(span, 2) == attackerSerial
+            && ReadUInt32(span, 6) == defenderSerial;
+    }
+
+    private static uint ReadUInt32(ReadOnlySpan<byte> span, int offset) =>
+        ((uint)span[offset] << 24) |
+        ((uint)span[offset + 1] << 16) |
+        ((uint)span[offset + 2] << 8) |
+        span[offset + 3];
 }

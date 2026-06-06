@@ -326,6 +326,9 @@ public static partial class Program
     private static void OnPlayerSpeech(Character speaker, string text, TalkMode mode)
     {
         if (string.IsNullOrEmpty(text)) return;
+        if (_triggerDispatcher?.FireSpeechSelfTrigger(speaker, text, (int)mode) == TriggerResult.True)
+            return;
+
         string lower = text.ToLowerInvariant();
         bool calledGuards = lower.Contains("guards") || lower == "help" || lower.Contains("help guards");
         if (!calledGuards) return;
@@ -715,7 +718,7 @@ public static partial class Program
             return;
 
         // Script-driven SPEECH triggers (from CHARDEF SPEECH/TSPEECH)
-        var speechResult = _triggerDispatcher?.FireSpeechTrigger(npc, speaker, text);
+        var speechResult = _triggerDispatcher?.FireSpeechTrigger(npc, speaker, text, (int)mode);
         if (speechResult == TriggerResult.True)
         {
             _log.LogDebug("[npc_hear] {Npc} SPEECH trigger consumed text='{Text}'", npc.Name, text);

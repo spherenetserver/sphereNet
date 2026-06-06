@@ -4,6 +4,23 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Global EVENTS / SPEECH config hook'lari (Wave 62)
+----------------------------------------
+
+BETIK / CONFIG:
+  - sphere.ini global script-hook listeleri SphereConfig'e okunuyor: EventsPlayer,
+    EventsPet, EventsItem, EventsRegion (her oyuncu/NPC/esya/bolgeye uygulanan
+    global EVENTS) ve SpeechSelf, SpeechPet (oyuncu ve NPC konusmasi icin global
+    SPEECH bloklari). Her deger virgulle ayrilmis defname listesi.
+  - TriggerDispatcher bunlari ResourceId listelerine cozer ve trigger zincirinde
+    calistirir: bir karakter trigger'i artik global EVENTSPLAYER/EVENTSPET
+    resource'larini CHARDEF'ten sonra ve f_onchar_ fallback'ten once calistirir;
+    esya trigger'lari global EVENTSITEM resource'larini calistirir. Konusma,
+    yerlesik kelime islemeden once SpeechSelf (oyuncular) ve SpeechPet (NPC)
+    uzerinden gecer.
+  - Listeler Program.EngineWiring'de config defname'lerinden doldurulur;
+    bos/bilinmeyen girisler atlanir, yani yapilandirilmadiginda yol no-op.
+
 [2026-06-06] - Hareket itme ve spell-efekt trigger'lari (Wave 61)
 ----------------------------------------
 

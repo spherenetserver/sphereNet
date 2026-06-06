@@ -170,6 +170,14 @@ public sealed class SphereConfig
     public int NpcTrainMax { get; set; } = 420;
     public int NpcDistanceHear { get; set; } = 16;
 
+    // Global script hooks
+    public string SpeechSelf { get; set; } = "";
+    public string SpeechPet { get; set; } = "";
+    public string EventsPet { get; set; } = "";
+    public string EventsPlayer { get; set; } = "";
+    public string EventsRegion { get; set; } = "";
+    public string EventsItem { get; set; } = "";
+
     // Light
     public int LightDay { get; set; }
     public int LightNight { get; set; } = 25;
@@ -449,6 +457,13 @@ public sealed class SphereConfig
         NpcTrainCost = ini.GetInt(section, "NpcTrainCost", NpcTrainCost);
         NpcTrainMax = ini.GetInt(section, "NpcTrainMax", NpcTrainMax);
         NpcDistanceHear = ini.GetInt(section, "NpcDistanceHear", NpcDistanceHear);
+
+        SpeechSelf = ini.GetValue(section, "SpeechSelf") ?? SpeechSelf;
+        SpeechPet = ini.GetValue(section, "SpeechPet") ?? SpeechPet;
+        EventsPet = ini.GetValue(section, "EventsPet") ?? EventsPet;
+        EventsPlayer = ini.GetValue(section, "EventsPlayer") ?? EventsPlayer;
+        EventsRegion = ini.GetValue(section, "EventsRegion") ?? EventsRegion;
+        EventsItem = ini.GetValue(section, "EventsItem") ?? EventsItem;
 
         LightDay = ini.GetInt(section, "LightDay", LightDay);
         LightNight = ini.GetInt(section, "LightNight", LightNight);

@@ -23,6 +23,12 @@ public class ConfigRegressionTests
             MacroMaxSteps=1000
             MacroMaxLoopMinutes=0
             OptionFlags=0x0020
+            SpeechSelf=spk_player
+            SpeechPet=spk_pet
+            EventsPet=e_npc_generic_event
+            EventsPlayer=e_player_generic_event,e_player_crafting_event
+            EventsRegion=e_region_generic_event
+            EventsItem=ei_generic_event
             """);
 
         try
@@ -45,6 +51,12 @@ public class ConfigRegressionTests
             Assert.Equal(200, config.MacroMaxSteps);
             Assert.Equal(1, config.MacroMaxLoopMinutes);
             Assert.True(config.HasFileCommands);
+            Assert.Equal("spk_player", config.SpeechSelf);
+            Assert.Equal("spk_pet", config.SpeechPet);
+            Assert.Equal("e_npc_generic_event", config.EventsPet);
+            Assert.Equal("e_player_generic_event,e_player_crafting_event", config.EventsPlayer);
+            Assert.Equal("e_region_generic_event", config.EventsRegion);
+            Assert.Equal("ei_generic_event", config.EventsItem);
         }
         finally
         {

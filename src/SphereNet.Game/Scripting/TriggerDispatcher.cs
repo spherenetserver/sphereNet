@@ -70,6 +70,13 @@ public sealed class TriggerDispatcher
     /// <summary>Optional trigger runner for executing script blocks.</summary>
     public TriggerRunner? Runner { get; set; }
 
+    public List<ResourceId> GlobalPlayerEvents { get; } = [];
+    public List<ResourceId> GlobalPetEvents { get; } = [];
+    public List<ResourceId> GlobalItemEvents { get; } = [];
+    public List<ResourceId> GlobalRegionEvents { get; } = [];
+    public List<ResourceId> SpeechSelfResources { get; } = [];
+    public List<ResourceId> SpeechPetResources { get; } = [];
+
     public bool ScriptDebug { get; set; }
     public Action<string>? DebugLog { get; set; }
 
@@ -143,6 +150,10 @@ public sealed class TriggerDispatcher
                     return TriggerResult.True;
             }
         }
+        var globalEventResult = RunResourceEventHandlers(
+            ch.IsPlayer ? GlobalPlayerEvents : GlobalPetEvents, trigName, ch, args);
+        if (globalEventResult == TriggerResult.True)
+            return TriggerResult.True;
 
         if (Runner != null)
         {
@@ -242,6 +253,9 @@ public sealed class TriggerDispatcher
                     return TriggerResult.True;
             }
         }
+        var globalEventResult = RunResourceEventHandlers(GlobalItemEvents, trigName, item, args);
+        if (globalEventResult == TriggerResult.True)
+            return TriggerResult.True;
 
         // 5. TYPEDEF (item type behavior)
         string typeKey = item.ItemType.ToString();
@@ -290,27 +304,61 @@ public sealed class TriggerDispatcher
     /// Fire SPEECH triggers for an NPC hearing speech.
     /// Iterates the CharDef's SpeechResources list and runs the first matching pattern.
     /// </summary>
-    public TriggerResult FireSpeechTrigger(Character npc, Character speaker, string text)
+    public TriggerResult FireSpeechTrigger(Character npc, Character speaker, string text, int mode = 0)
     {
         if (Resources == null || Runner == null)
             return TriggerResult.Default;
 
         var charDef = Definitions.DefinitionLoader.GetCharDef(npc.CharDefIndex);
-        if (charDef == null || charDef.SpeechResources.Count == 0)
+        if (charDef != null && charDef.SpeechResources.Count > 0)
+        {
+            var args = new SphereNet.Scripting.Execution.TriggerArgs(speaker, mode, 0, text)
+            {
+                Object1 = npc,
+                Object2 = speaker
+            };
+
+            foreach (var speechRid in charDef.SpeechResources)
+            {
+                var link = Resources.GetResource(speechRid);
+                if (link == null) continue;
+
+                var result = Runner.RunSpeechTrigger(link, text, npc, null, args);
+                if (result == TriggerResult.True)
+                    return TriggerResult.True;
+            }
+        }
+
+        return RunSpeechResourceHandlers(SpeechPetResources, npc, speaker, text, mode);
+    }
+
+    public TriggerResult FireSpeechSelfTrigger(Character speaker, string text, int mode)
+    {
+        return RunSpeechResourceHandlers(SpeechSelfResources, speaker, speaker, text, mode);
+    }
+
+    private TriggerResult RunSpeechResourceHandlers(
+        IReadOnlyList<ResourceId> speechResources,
+        Character target,
+        Character speaker,
+        string text,
+        int mode)
+    {
+        if (Resources == null || Runner == null || speechResources.Count == 0)
             return TriggerResult.Default;
 
-        var args = new SphereNet.Scripting.Execution.TriggerArgs(speaker, 0, 0, text)
+        var args = new SphereNet.Scripting.Execution.TriggerArgs(speaker, mode, 0, text)
         {
-            Object1 = npc,
+            Object1 = target,
             Object2 = speaker
         };
 
-        foreach (var speechRid in charDef.SpeechResources)
+        foreach (var speechRid in speechResources)
         {
             var link = Resources.GetResource(speechRid);
             if (link == null) continue;
 
-            var result = Runner.RunSpeechTrigger(link, text, npc, null, args);
+            var result = Runner.RunSpeechTrigger(link, text, target, null, args);
             if (result == TriggerResult.True)
                 return TriggerResult.True;
         }
@@ -332,6 +380,8 @@ public sealed class TriggerDispatcher
             if (link == null) continue;
             Runner.RunTriggerByName(link, trigName, ch, args.ScriptConsole, WrapArgs(args));
         }
+
+        RunResourceEventHandlers(GlobalRegionEvents, trigName, ch, args);
     }
 
     /// <summary>
@@ -348,6 +398,8 @@ public sealed class TriggerDispatcher
             if (link == null) continue;
             Runner.RunTriggerByName(link, trigName, ch, args.ScriptConsole, WrapArgs(args));
         }
+
+        RunResourceEventHandlers(GlobalRegionEvents, trigName, ch, args);
     }
 
     /// <summary>
@@ -377,6 +429,28 @@ public sealed class TriggerDispatcher
         }
         list.Add(handler);
         _usedCharTriggers.Add(trigName);
+    }
+
+    private TriggerResult RunResourceEventHandlers(
+        IReadOnlyList<ResourceId> eventResources,
+        string trigName,
+        IScriptObj target,
+        TriggerArgs args)
+    {
+        if (Resources == null || Runner == null || eventResources.Count == 0)
+            return TriggerResult.Default;
+
+        foreach (var eventRid in eventResources)
+        {
+            var link = Resources.GetResource(eventRid);
+            if (link == null) continue;
+
+            var result = Runner.RunTriggerByName(link, trigName, target, args.ScriptConsole, WrapArgs(args));
+            if (result == TriggerResult.True)
+                return TriggerResult.True;
+        }
+
+        return TriggerResult.Default;
     }
 
     /// <summary>

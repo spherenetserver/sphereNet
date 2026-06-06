@@ -59,6 +59,30 @@ public static partial class Program
     private static bool TryGetClientFor(Character ch, out GameClient client) =>
         _clientsByCharUid.TryGetValue(ch.Uid, out client!) && client.Character == ch;
 
+    private static void ConfigureGlobalScriptHooks(TriggerDispatcher dispatcher, SphereConfig config)
+    {
+        LoadResourceList(dispatcher.GlobalPlayerEvents, config.EventsPlayer, ResType.Events);
+        LoadResourceList(dispatcher.GlobalPetEvents, config.EventsPet, ResType.Events);
+        LoadResourceList(dispatcher.GlobalItemEvents, config.EventsItem, ResType.Events);
+        LoadResourceList(dispatcher.GlobalRegionEvents, config.EventsRegion, ResType.Events);
+        LoadResourceList(dispatcher.SpeechSelfResources, config.SpeechSelf, ResType.Speech);
+        LoadResourceList(dispatcher.SpeechPetResources, config.SpeechPet, ResType.Speech);
+    }
+
+    private static void LoadResourceList(List<ResourceId> target, string rawValue, ResType type)
+    {
+        target.Clear();
+        if (string.IsNullOrWhiteSpace(rawValue))
+            return;
+
+        foreach (var token in rawValue.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            var rid = ResourceId.FromString(token, type);
+            if (rid.IsValid && !target.Contains(rid))
+                target.Add(rid);
+        }
+    }
+
     private static void InitializeGameEngines(string basePath)
     {
             // --- 7b. Game Engines ---
@@ -143,6 +167,7 @@ public static partial class Program
                     : null;
             scriptInterpreter.ServerPropertyResolver = ResolveServerProperty;
             _triggerDispatcher.Runner = _triggerRunner;
+            ConfigureGlobalScriptHooks(_triggerDispatcher, _config);
 
             // Build the IsTrigUsed cache now that every script resource is loaded,
             // then wire @NotoSend ONLY if a script actually hooks it. ComputeNotoriety

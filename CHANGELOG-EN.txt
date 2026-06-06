@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Global EVENTS / SPEECH config hooks (Wave 62)
+----------------------------------------
+
+SCRIPTING / CONFIG:
+  - Added sphere.ini global script-hook lists read into SphereConfig: EventsPlayer,
+    EventsPet, EventsItem, EventsRegion (global EVENTS applied to every player /
+    NPC / item / region) and SpeechSelf, SpeechPet (global SPEECH blocks for
+    player and NPC speech). Each value is a comma-separated list of defnames.
+  - TriggerDispatcher resolves these into ResourceId lists and runs them in the
+    trigger chain: a character trigger now runs the global EVENTSPLAYER/EVENTSPET
+    resources after CHARDEF and before the f_onchar_ fallback; item triggers run
+    the global EVENTSITEM resources. Speech routes through SpeechSelf (players) and
+    SpeechPet (NPCs) before the built-in keyword handling.
+  - Lists are populated in Program.EngineWiring from the config defnames;
+    empty/unknown entries are skipped, so the path is a no-op when unconfigured.
+
 [2026-06-06] - Movement shove and spell-effect triggers (Wave 61)
 ----------------------------------------
 

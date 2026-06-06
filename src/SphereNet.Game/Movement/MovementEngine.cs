@@ -112,6 +112,8 @@ public sealed class MovementEngine
                 }
                 // A living blocker we pushed past = a real shove.
                 shoved = true;
+                // @PersonalSpace (Source-X) — the mover stepped into another's tile.
+                Character.OnPersonalSpace?.Invoke(ch, other);
             }
         }
 

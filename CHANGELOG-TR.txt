@@ -4,6 +4,17 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Hareket itme ve spell-efekt trigger'lari (Wave 61)
+----------------------------------------
+
+TRIGGER:
+  - @PersonalSpace (MovementEngine shove noktasi — mover baska bir karakterin
+    tile'ina ittiginde mover'da atesler) ve @EffectAdd (SpellEngine — bir hedefe
+    gecici spell efekti kaydedildiginde atesler) baglandi. Ikisi de
+    Program.EngineWiring'de baglanan yeni statik Character.On* hook'lari uzerinden
+    gecer ve ResetEngineStatics'te sifirlanir; @EffectAdd yalnizca bir betik
+    hook'larsa kurulur (IsTrigUsed kapisi), aksi halde buff uygulamak null kontrolu.
+
 [2026-06-06] - Karakter trigger P0/P1 baglama, IsTrigUsed kapisi ve Source-X parite test kosumlari (Wave 60)
 ----------------------------------------
 

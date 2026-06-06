@@ -504,6 +504,15 @@ public partial class Character : ObjBase
     /// gate), so the hot ComputeNotoriety path pays just a null check otherwise.</summary>
     public static Func<Character, Character, byte, byte>? OnNotoSend { get; set; }
 
+    /// <summary>Fired when a moving character shoves past another character's tile
+    /// (Source-X @PersonalSpace). Args: mover, the character being pushed past.</summary>
+    public static Action<Character, Character>? OnPersonalSpace { get; set; }
+
+    /// <summary>Fired when a temporary spell effect/buff is applied to a character
+    /// (Source-X @EffectAdd). Args: target, spell id. Installed only when hooked
+    /// (IsTrigUsed gate), so applying a buff is a null check otherwise.</summary>
+    public static Action<Character, int>? OnEffectAdd { get; set; }
+
     /// <summary>TickCount64 of the last successful move — archery movement delay gate.</summary>
     public long LastMoveTick { get; set; }
 

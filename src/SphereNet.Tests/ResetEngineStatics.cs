@@ -40,5 +40,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnCombatEnd = null;
         SphereNet.Game.Objects.Characters.Character.OnMurderDecay = null;
         SphereNet.Game.Objects.Characters.Character.OnNotoSend = null;
+        SphereNet.Game.Objects.Characters.Character.OnPersonalSpace = null;
+        SphereNet.Game.Objects.Characters.Character.OnEffectAdd = null;
     }
 }

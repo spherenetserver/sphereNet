@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Movement shove and spell-effect triggers (Wave 61)
+----------------------------------------
+
+TRIGGERS:
+  - Wired @PersonalSpace (MovementEngine shove point — fired on the mover when it
+    pushes past another character's tile) and @EffectAdd (SpellEngine — fired when
+    a temporary spell effect is registered for a target). Both route through new
+    static Character.On* hooks wired in Program.EngineWiring and reset in
+    ResetEngineStatics; @EffectAdd is installed only when a script hooks it
+    (IsTrigUsed gate), so applying a buff is a null check otherwise.
+
 [2026-06-06] - Char trigger P0/P1 wiring, IsTrigUsed gate and Source-X parity test harnesses (Wave 60)
 ----------------------------------------
 

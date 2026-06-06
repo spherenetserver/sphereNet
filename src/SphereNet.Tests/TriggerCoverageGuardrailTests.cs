@@ -97,19 +97,24 @@ public class TriggerCoverageGuardrailTests
     private static readonly HashSet<string> CharNotFiredP1 = new()
     {
         "PetDesert",
-        "PersonalSpace", "ExpChange", "ExpLevelChange",
+        "ExpChange", "ExpLevelChange",
         "SkillUseQuick", "Jail", "CallGuards",
-        "EnvironChange", "EffectAdd",
+        "EnvironChange",
         // Wired (now fired): Eat (food/booze use-item gate), SkillMenu (skill
         // selection menu), SkillWait (per-tick skill-in-progress, IsTrigUsed-gated);
         // Follow (pet "follow me"/"come" command), PartyDisband (party drops to 0);
-        // SpellSelect (cast request, pre-checks), SpellBook (spellbook open).
+        // SpellSelect (cast request, pre-checks), SpellBook (spellbook open);
+        // PersonalSpace (movement shove), EffectAdd (spell effect applied, gated).
         // Still deferred (need infrastructure / semantics):
         //   SkillUseQuick — UseQuick is atomic (check+gain); a pre-roll cancel hook
         //                   needs the check/gain split first.
         //   Jail          — no central jail method (teleport/freeze/timer) to hook.
         //   CallGuards    — no "guards" speech keyword / guard-summon system.
         //   PetDesert     — no pet loyalty/happiness meter, decay, or go-wild path.
+        //   ExpChange/ExpLevelChange — no runtime experience/level system (the Exp
+        //                   and Level fields are persistence-only).
+        //   EnvironChange — needs per-character light/weather state to fire only on
+        //                   an actual change as the char moves between regions.
     };
 
     private static readonly HashSet<string> CharNotFiredP2 = new()

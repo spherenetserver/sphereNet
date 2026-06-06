@@ -159,6 +159,17 @@ public static partial class Program
                     return (byte)Math.Clamp(args.N1, 0, 255);
                 };
             }
+            // @EffectAdd — fired per applied buff; gate to a null check when unhooked.
+            if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.EffectAdd))
+            {
+                SphereNet.Game.Objects.Characters.Character.OnEffectAdd = (target, spellId) =>
+                    _triggerDispatcher.FireCharTrigger(target, CharTrigger.EffectAdd,
+                        new TriggerArgs { CharSrc = target, N1 = spellId });
+            }
+            // @PersonalSpace — fired on a shove; low frequency, no gate needed.
+            SphereNet.Game.Objects.Characters.Character.OnPersonalSpace = (mover, blocker) =>
+                _triggerDispatcher.FireCharTrigger(mover, CharTrigger.PersonalSpace,
+                    new TriggerArgs { CharSrc = mover, O1 = blocker });
 
             // Wire @SkillGain trigger + blue system message (Source-X parity)
             SkillEngine.OnSkillGain = (ch, skill, newVal) =>

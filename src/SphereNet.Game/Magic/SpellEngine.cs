@@ -1252,6 +1252,8 @@ public sealed class SpellEngine
 
         var eff = new ActiveSpellEffect { Target = target, Spell = spell, ExpireTick = expireTick };
         _activeEffects.Add(eff);
+        // @EffectAdd (Source-X) — a temporary effect was applied to the target.
+        Character.OnEffectAdd?.Invoke(target, (int)spell);
         return eff;
     }
 

@@ -63,6 +63,7 @@ public sealed class TriggerDispatcher
     // skip firing entirely when nothing hooks the trigger. Registrations update it
     // live; BuildUsedTriggerCache scans the loaded scripts once after load.
     private readonly HashSet<string> _usedCharTriggers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _usedItemTriggers = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Optional resource holder for resolving CHARDEF/ITEMDEF scripts.</summary>
     public ResourceHolder? Resources { get; set; }
@@ -472,7 +473,14 @@ public sealed class TriggerDispatcher
             {
                 if (key.Key.Equals("ON", StringComparison.OrdinalIgnoreCase) &&
                     key.Arg.StartsWith('@'))
-                    _usedCharTriggers.Add(key.Arg[1..].Trim());
+                {
+                    // A scanned [ON=@X] name could hook either a char or an item
+                    // trigger; record it for both (a safe over-approximation — the
+                    // gate must never report a hooked trigger as unused).
+                    string trigName = key.Arg[1..].Trim();
+                    _usedCharTriggers.Add(trigName);
+                    _usedItemTriggers.Add(trigName);
+                }
             }
         }
 
@@ -483,6 +491,15 @@ public sealed class TriggerDispatcher
             string name = GetCharTriggerName(trig);
             if (Resources.ResolveDefName("f_onchar_" + name.ToLowerInvariant()).IsValid)
                 _usedCharTriggers.Add(name);
+        }
+
+        // f_onitem_<name> function fallbacks (FireItemTrigger step 7).
+        foreach (ItemTrigger trig in Enum.GetValues<ItemTrigger>())
+        {
+            if (trig == ItemTrigger.Qty) continue;
+            string name = GetItemTriggerName(trig);
+            if (Resources.ResolveDefName("f_onitem_" + name.ToLowerInvariant()).IsValid)
+                _usedItemTriggers.Add(name);
         }
     }
 
@@ -498,6 +515,17 @@ public sealed class TriggerDispatcher
         return _usedCharTriggers.Contains(name) || _usedCharTriggers.Contains("char" + name);
     }
 
+    /// <summary>
+    /// O(1) item-trigger counterpart of <see cref="IsCharTriggerUsed"/>. Also
+    /// covers the cross-fired <c>@item&lt;Name&gt;</c> mirror. Lets a hot item path
+    /// (e.g. memory creation during combat) skip the dispatch when nothing hooks it.
+    /// </summary>
+    public bool IsItemTriggerUsed(ItemTrigger trigger)
+    {
+        string name = GetItemTriggerName(trigger);
+        return _usedItemTriggers.Contains(name) || _usedItemTriggers.Contains("item" + name);
+    }
+
     /// <summary>Register a global item event handler.</summary>
     public void RegisterItemEvent(string eventKey, string trigName, TriggerHandler handler)
     {
@@ -508,6 +536,7 @@ public sealed class TriggerDispatcher
             _globalItemHandlers[key] = list;
         }
         list.Add(handler);
+        _usedItemTriggers.Add(trigName);
     }
 
     /// <summary>Register a TYPEDEF handler.</summary>

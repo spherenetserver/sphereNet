@@ -131,20 +131,21 @@ public class TriggerCoverageGuardrailTests
     // and cosmetic tooltips — none are core gameplay gates today).
     private static readonly HashSet<string> ItemNotFiredP2 = new()
     {
-        "SpellEffect", "MemoryEquip",
+        "SpellEffect",
         "RegionEnter", "RegionLeave",
         "Smelt", "Start", "Stop", "Level", "Complete",
         "AddRedCandle", "AddWhiteCandle", "DelRedCandle", "DelWhiteCandle",
         "PickupSelf", "PickupStack", "Tooltip",
         // Wired (now fired): ShipMove/ShipStop/ShipTurn (ShipEngine hooks),
-        // Redeed (House.OnRedeed at deed creation).
+        // Redeed (House.OnRedeed at deed creation), MemoryEquip (Memory_CreateObj
+        // via Character.OnMemoryEquip, installed only when hooked — item IsTrigUsed gate).
         // Still deferred (need infrastructure): champion-spawn candles
         // (AddRed/WhiteCandle, DelRed/WhiteCandle — no altar system), item
         // leveling (Level/Complete), item region tracking (RegionEnter/Leave),
         // Smelt (no ore->ingot completion hook), Start/Stop (no item timer
-        // start/stop event), SpellEffect (no spell-on-item path), MemoryEquip
-        // (no memory-equip hook), PickupSelf/PickupStack (ambiguous vs the existing
-        // PickupGround/PickupPack fires), Tooltip (covered by ClientTooltip 0xD6).
+        // start/stop event), SpellEffect (no spell-on-item path),
+        // PickupSelf/PickupStack (ambiguous vs the existing PickupGround/PickupPack
+        // fires), Tooltip (covered by ClientTooltip 0xD6).
     };
 
     private static readonly HashSet<string> ItemNotFired = new(ItemNotFiredP2);

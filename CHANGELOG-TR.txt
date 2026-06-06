@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Item-trigger IsTrigUsed kapisi ve @MemoryEquip (Wave 66)
+----------------------------------------
+
+BETIK:
+  - IsTrigUsed kapisinin item-trigger karsiligi eklendi:
+    TriggerDispatcher.IsItemTriggerUsed; RegisterItemEvent, yuklu [ON=@X] resource
+    taramasi (char trigger'larla paylasilan) ve f_onitem_x fonksiyonlarindan beslenen
+    bir kullanilan-item-trigger kumesiyle. Cross-fire @itemX aynasini da kapsar.
+
+TRIGGER:
+  - Item @MemoryEquip baglandi: bir karaktere takilan memory item (Memory_CreateObj)
+    artik o memory item'inda trigger atesler. Memory item'lari savasta sik
+    olusturuldugu icin, atesleme yalnizca bir betik hook'larsa kurulur (yeni item
+    kapisi), aksi halde yol null kontrolu kalir. Program.EngineWiring'de baglanan ve
+    ResetEngineStatics'te sifirlanan yeni statik Character.OnMemoryEquip hook'undan gecer.
+
 [2026-06-06] - Jail trigger'i (@Jail) (Wave 65)
 ----------------------------------------
 

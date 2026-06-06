@@ -191,6 +191,14 @@ public static partial class Program
                     _triggerDispatcher.FireCharTrigger(target, CharTrigger.EffectAdd,
                         new TriggerArgs { CharSrc = target, N1 = spellId });
             }
+            // @MemoryEquip — memory items are created frequently in combat; install
+            // the fire only when a script hooks the item trigger (item IsTrigUsed gate).
+            if (_triggerDispatcher.IsItemTriggerUsed(ItemTrigger.MemoryEquip))
+            {
+                SphereNet.Game.Objects.Characters.Character.OnMemoryEquip = mem =>
+                    _triggerDispatcher.FireItemTrigger(mem, ItemTrigger.MemoryEquip,
+                        new TriggerArgs { ItemSrc = mem });
+            }
             // @PersonalSpace — fired on a shove; low frequency, no gate needed.
             SphereNet.Game.Objects.Characters.Character.OnPersonalSpace = (mover, blocker) =>
                 _triggerDispatcher.FireCharTrigger(mover, CharTrigger.PersonalSpace,

@@ -522,6 +522,12 @@ public partial class Character : ObjBase
     /// jailed character, sentence minutes (0 = indefinite).</summary>
     public static Action<Character, int>? OnJailed { get; set; }
 
+    /// <summary>Fired when a memory item is equipped on a character (Source-X item
+    /// @MemoryEquip). Arg: the memory item. Installed only when hooked (item
+    /// IsTrigUsed gate), so the frequent combat-memory path is a null check
+    /// otherwise.</summary>
+    public static Action<Item>? OnMemoryEquip { get; set; }
+
     /// <summary>TickCount64 of the last successful move — archery movement delay gate.</summary>
     public long LastMoveTick { get; set; }
 
@@ -1394,6 +1400,8 @@ public partial class Character : ObjBase
         Memory_AddTypes(mem, flags);
 
         _memories.Add(mem);
+        // @MemoryEquip (Source-X) — a memory item was equipped on this character.
+        OnMemoryEquip?.Invoke(mem);
         return mem;
     }
 

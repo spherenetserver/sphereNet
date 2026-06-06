@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Item-trigger IsTrigUsed gate and @MemoryEquip (Wave 66)
+----------------------------------------
+
+SCRIPTING:
+  - Added the item-trigger counterpart of the IsTrigUsed gate:
+    TriggerDispatcher.IsItemTriggerUsed, backed by a used-item-trigger set fed from
+    RegisterItemEvent, the loaded [ON=@X] resource scan (shared with char triggers)
+    and f_onitem_x functions. Covers the cross-fired @itemX mirror.
+
+TRIGGERS:
+  - Wired item @MemoryEquip: a memory item equipped on a character (Memory_CreateObj)
+    now fires the trigger on that memory item. Memory items are created frequently in
+    combat, so the fire is installed only when a script hooks it (the new item gate),
+    keeping the path a null check otherwise. Routed through a new static
+    Character.OnMemoryEquip hook wired in Program.EngineWiring and reset in
+    ResetEngineStatics.
+
 [2026-06-06] - Jail trigger (@Jail) (Wave 65)
 ----------------------------------------
 

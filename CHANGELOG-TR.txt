@@ -4,6 +4,16 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Hizli-skill check/gain ayrimi (@SkillUseQuick) (Wave 69)
+----------------------------------------
+
+TRIGGER:
+  - SkillEngine.UseQuick'in kontrolu deneyim kazancindan ayrildi ve @SkillUseQuick
+    baglandi: trigger artik (IsTrigUsed-kapili Character.OnSkillUseQuick hook'uyla)
+    basari kontrolunden ONCE atesler; boylece bir betik hizli skill kullanimini
+    (RETURN 1 -> basarisizlik sayilir) herhangi bir roll veya deneyim kazancindan
+    once iptal edebilir. N1 = skill, N2 = zorluk. ResetEngineStatics'te sifirlanir.
+
 [2026-06-06] - Karakter-bazli ortam takibi (@EnvironChange) (Wave 68)
 ----------------------------------------
 

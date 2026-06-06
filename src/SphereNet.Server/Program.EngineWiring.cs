@@ -199,6 +199,14 @@ public static partial class Program
                     _triggerDispatcher.FireItemTrigger(mem, ItemTrigger.MemoryEquip,
                         new TriggerArgs { ItemSrc = mem });
             }
+            // @SkillUseQuick — fires per quick skill check; install only when hooked
+            // (IsTrigUsed gate). N1 = skill, N2 = difficulty; RETURN 1 cancels the use.
+            if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.SkillUseQuick))
+            {
+                SphereNet.Game.Objects.Characters.Character.OnSkillUseQuick = (ch, skillId, difficulty) =>
+                    _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillUseQuick,
+                        new TriggerArgs { CharSrc = ch, N1 = skillId, N2 = difficulty }) == TriggerResult.True;
+            }
             // @PersonalSpace — fired on a shove; low frequency, no gate needed.
             SphereNet.Game.Objects.Characters.Character.OnPersonalSpace = (mover, blocker) =>
                 _triggerDispatcher.FireCharTrigger(mover, CharTrigger.PersonalSpace,

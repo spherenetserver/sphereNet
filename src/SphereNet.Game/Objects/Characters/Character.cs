@@ -536,6 +536,12 @@ public partial class Character : ObjBase
     // Last perceived light level for @EnvironChange detection (-1 = no baseline yet).
     private int _lastEnvironLight = -1;
 
+    /// <summary>Fired before a "quick" (instant, no-delay) skill check resolves
+    /// (Source-X @SkillUseQuick). Args: character, skill id, difficulty. Return true
+    /// to cancel the use entirely (no roll, no gain — treated as a failure).
+    /// Installed only when hooked (IsTrigUsed gate).</summary>
+    public static Func<Character, int, int, bool>? OnSkillUseQuick { get; set; }
+
     /// <summary>Record the character's current perceived light level and fire
     /// @EnvironChange (via <see cref="OnEnvironChange"/>) when it actually changes.
     /// The first call only establishes the baseline (no fire), so entering the

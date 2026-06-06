@@ -4,6 +4,16 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Quick-skill check/gain split (@SkillUseQuick) (Wave 69)
+----------------------------------------
+
+TRIGGERS:
+  - Split SkillEngine.UseQuick's check from its experience gain and wired
+    @SkillUseQuick: the trigger now fires (via the IsTrigUsed-gated
+    Character.OnSkillUseQuick hook) BEFORE the success check, so a script can
+    cancel the quick skill use (RETURN 1 → treated as a failure) before any roll
+    or experience gain. N1 = skill, N2 = difficulty. Reset in ResetEngineStatics.
+
 [2026-06-06] - Per-character environment tracking (@EnvironChange) (Wave 68)
 ----------------------------------------
 

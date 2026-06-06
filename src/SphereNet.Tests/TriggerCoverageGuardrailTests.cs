@@ -97,7 +97,6 @@ public class TriggerCoverageGuardrailTests
     private static readonly HashSet<string> CharNotFiredP1 = new()
     {
         "ExpChange", "ExpLevelChange",
-        "SkillUseQuick",
         // Wired (now fired): Eat (food/booze use-item gate), SkillMenu (skill
         // selection menu), SkillWait (per-tick skill-in-progress, IsTrigUsed-gated);
         // Follow (pet "follow me"/"come" command), PartyDisband (party drops to 0);
@@ -108,10 +107,11 @@ public class TriggerCoverageGuardrailTests
         // CallGuards (the "guards" keyword handler in Program.NpcServices fires it
         // per reported criminal, <argo> = the hostile, RETURN 1 cancels that one);
         // EnvironChange (Character.UpdateEnvironLight fires it on a surface/dungeon
-        // light-level change at region transition, N1 = new light level).
+        // light-level change at region transition, N1 = new light level);
+        // SkillUseQuick (SkillEngine.UseQuick fires it before the check via the
+        // Character.OnSkillUseQuick gate; N1 = skill, N2 = difficulty, RETURN 1 cancels).
         // Still deferred (need infrastructure / semantics):
-        //   SkillUseQuick — UseQuick is atomic (check+gain); a pre-roll cancel hook
-        //                   needs the check/gain split first.
+        //   ExpChange/ExpLevelChange — no runtime experience/level system.
         //   ExpChange/ExpLevelChange — no runtime experience/level system (the Exp
         //                   and Level fields are persistence-only).
         //   EnvironChange — needs per-character light/weather state to fire only on

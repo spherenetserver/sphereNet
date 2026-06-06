@@ -94,6 +94,11 @@ public static class SkillEngine
     /// </summary>
     public static bool UseQuick(Character ch, SkillType skill, int difficulty, bool allowGain = true, bool useBellCurve = true)
     {
+        // @SkillUseQuick (Source-X) — fires before the check resolves so a script
+        // can cancel the quick use (RETURN 1) before any roll or experience gain.
+        if (Character.OnSkillUseQuick != null && Character.OnSkillUseQuick(ch, (int)skill, difficulty))
+            return false;
+
         bool success = CheckSuccess(ch, skill, difficulty, useBellCurve);
 
         if (allowGain)

@@ -141,17 +141,20 @@ public class TriggerCoverageGuardrailTests
         "RegionEnter", "RegionLeave",
         "Smelt", "Start", "Stop", "Level", "Complete",
         "AddRedCandle", "AddWhiteCandle", "DelRedCandle", "DelWhiteCandle",
-        "PickupSelf", "PickupStack", "Tooltip",
+        "Tooltip",
         // Wired (now fired): ShipMove/ShipStop/ShipTurn (ShipEngine hooks),
         // Redeed (House.OnRedeed at deed creation), MemoryEquip (Memory_CreateObj
-        // via Character.OnMemoryEquip, installed only when hooked — item IsTrigUsed gate).
+        // via Character.OnMemoryEquip, installed only when hooked — item IsTrigUsed gate);
+        // PickupSelf (item dragged off the picker's own equipment layers) and
+        // PickupStack (a partial amount split out of a larger stack), selected by
+        // SelectPickupTrigger in HandleItemPickup alongside the existing
+        // PickupGround/PickupPack cases.
         // Still deferred (need infrastructure): champion-spawn candles
         // (AddRed/WhiteCandle, DelRed/WhiteCandle — no altar system), item
         // leveling (Level/Complete), item region tracking (RegionEnter/Leave),
         // Smelt (no ore->ingot completion hook), Start/Stop (no item timer
         // start/stop event), SpellEffect (no spell-on-item path),
-        // PickupSelf/PickupStack (ambiguous vs the existing PickupGround/PickupPack
-        // fires), Tooltip (covered by ClientTooltip 0xD6).
+        // Tooltip (covered by ClientTooltip 0xD6).
     };
 
     private static readonly HashSet<string> ItemNotFired = new(ItemNotFiredP2);

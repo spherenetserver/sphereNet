@@ -133,6 +133,19 @@ public sealed partial class GameClient
 
     // ==================== Item Pick Up ====================
 
+    // Picks the pickup-source trigger matching where the item is being taken from.
+    // Equipment and stack-splits are distinguished from the plain pack/ground cases
+    // so scripts can gate each independently (Source-X PICKUP_SELF / PICKUP_STACK).
+    // Equipped items report ContainedIn = the wearer, so the equip check must come
+    // before the container check to avoid misclassifying worn items as pack pickups.
+    private static ItemTrigger SelectPickupTrigger(Item item, ushort amount)
+    {
+        if (item.IsEquipped) return ItemTrigger.PickupSelf;
+        if (amount > 0 && amount < item.Amount && item.Amount > 1) return ItemTrigger.PickupStack;
+        if (item.ContainedIn.IsValid) return ItemTrigger.PickupPack;
+        return ItemTrigger.PickupGround;
+    }
+
     public void HandleItemPickup(uint serial, ushort amount)
     {
         if (_character == null) return;
@@ -155,10 +168,13 @@ public sealed partial class GameClient
             return;
         }
 
-        // Fire @Pickup trigger
+        // Fire the pickup trigger, choosing the most specific source variant:
+        // Self  = dragged off the character's own equipment layers,
+        // Stack = a partial amount split out of a larger stack,
+        // Pack  = taken from inside a container, Ground = loose on the ground.
         if (_triggerDispatcher != null)
         {
-            var trigger = item.ContainedIn.IsValid ? ItemTrigger.PickupPack : ItemTrigger.PickupGround;
+            var trigger = SelectPickupTrigger(item, amount);
             var result = _triggerDispatcher.FireItemTrigger(item, trigger,
                 new TriggerArgs { CharSrc = _character, ItemSrc = item });
             if (result == TriggerResult.True)

@@ -4,6 +4,17 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Alma-kaynagi trigger varyantlari (@Pickup_Self / @Pickup_Stack) (Wave 71)
+----------------------------------------
+
+TRIGGER:
+  - HandleItemPickup artik alma-kaynagi trigger'ini esyanin nereden alindigina gore
+    secer (SelectPickupTrigger): Self (esya alanin kendi giyili katmanindan cekme),
+    Stack (buyuk bir yigindan kismi miktar ayirma), Pack (bir konteyner icinden),
+    Ground (yerde serbest). Giyili esyalar ContainedIn = giyen olarak rapor ettigi
+    icin equip kontrolu konteyner kontrolunden once yapilir; onceden yanlislikla
+    @Pickup_Pack atesleniyordu. Her durumda RETURN 1 almayi iptal eder.
+
 [2026-06-06] - NPC ilk-gorus algisi (@NPCSeeNewPlayer) (Wave 70)
 ----------------------------------------
 

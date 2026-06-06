@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Call-guards trigger (@CallGuards) (Wave 67)
+----------------------------------------
+
+TRIGGERS:
+  - Wired @CallGuards. The "guards" keyword handler already existed in
+    Program.NpcServices (region-guarded gate, hostile search, redirect of idle
+    patrol guards, city-guard summon and optional instant-kill) — only the trigger
+    was missing. @CallGuards now fires on the caller for each reported
+    criminal/murderer (<argo> = the hostile); a script returning 1 cancels the
+    guard response for that hostile.
+
 [2026-06-06] - Item-trigger IsTrigUsed gate and @MemoryEquip (Wave 66)
 ----------------------------------------
 

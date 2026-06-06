@@ -357,6 +357,13 @@ public static partial class Program
         {
             if (hostile.IsDeleted || hostile.IsDead) continue;
 
+            // @CallGuards (Source-X) — fired on the caller for each reported
+            // criminal/murderer (<argo> = the hostile). RETURN 1 cancels the guard
+            // response for that hostile.
+            if (_triggerDispatcher?.FireCharTrigger(speaker, CharTrigger.CallGuards,
+                    new TriggerArgs { CharSrc = speaker, O1 = hostile }) == TriggerResult.True)
+                continue;
+
             // Alert existing patrol guards in range toward this hostile
             _npcAI.AlertGuardsInRange(speaker.Position, hostile);
 

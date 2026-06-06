@@ -4,6 +4,17 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Muhafiz cagirma trigger'i (@CallGuards) (Wave 67)
+----------------------------------------
+
+TRIGGER:
+  - @CallGuards baglandi. "guards" keyword handler'i zaten Program.NpcServices'te
+    vardi (guarded-region kapisi, hostile aramasi, bos devriye muhafizlarini
+    yonlendirme, sehir muhafizi cagirma ve istege bagli aninda oldurme) — sadece
+    trigger eksikti. @CallGuards artik cagiran karakterde her bildirilen
+    criminal/murderer icin atesler (<argo> = hostile); bir betik RETURN 1 ile o
+    hostile icin muhafiz tepkisini iptal edebilir.
+
 [2026-06-06] - Item-trigger IsTrigUsed kapisi ve @MemoryEquip (Wave 66)
 ----------------------------------------
 

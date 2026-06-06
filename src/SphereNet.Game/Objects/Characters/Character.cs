@@ -528,6 +528,25 @@ public partial class Character : ObjBase
     /// otherwise.</summary>
     public static Action<Item>? OnMemoryEquip { get; set; }
 
+    /// <summary>Fired when a character's perceived light level changes — e.g.
+    /// crossing a surface/dungeon boundary (Source-X @EnvironChange). Arg: the new
+    /// light level. Driven by <see cref="UpdateEnvironLight"/>.</summary>
+    public static Action<Character, int>? OnEnvironChange { get; set; }
+
+    // Last perceived light level for @EnvironChange detection (-1 = no baseline yet).
+    private int _lastEnvironLight = -1;
+
+    /// <summary>Record the character's current perceived light level and fire
+    /// @EnvironChange (via <see cref="OnEnvironChange"/>) when it actually changes.
+    /// The first call only establishes the baseline (no fire), so entering the
+    /// world does not spuriously trigger an environment change.</summary>
+    public void UpdateEnvironLight(int light)
+    {
+        if (_lastEnvironLight >= 0 && light != _lastEnvironLight)
+            OnEnvironChange?.Invoke(this, light);
+        _lastEnvironLight = light;
+    }
+
     /// <summary>TickCount64 of the last successful move — archery movement delay gate.</summary>
     public long LastMoveTick { get; set; }
 

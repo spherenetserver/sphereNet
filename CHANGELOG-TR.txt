@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Karakter-bazli ortam takibi (@EnvironChange) (Wave 68)
+----------------------------------------
+
+TRIGGER:
+  - Karakter-bazli algilanan-isik takibi eklendi ve @EnvironChange baglandi.
+    Character.UpdateEnvironLight mevcut isik seviyesini kaydeder ve yalnizca gercek
+    bir degisimde @EnvironChange atesler (N1 = yeni isik); ilk cagri sadece baseline
+    kurar, boylece dunyaya giris sahte tetiklemez.
+  - Program bunu region-degisim hook'undan surface/dungeon isigiyla (yer alti 28,
+    aksi halde global isik) surer; dungeon/surface sinirini gecmek trigger'i
+    atesler. ResetEngineStatics'te sifirlanan yeni statik Character.OnEnvironChange
+    hook'undan gecer. (Sabit oyuncular icin global gece/gunduz EnvironChange
+    follow-up.)
+
 [2026-06-06] - Muhafiz cagirma trigger'i (@CallGuards) (Wave 67)
 ----------------------------------------
 

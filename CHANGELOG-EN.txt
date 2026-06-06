@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Per-character environment tracking (@EnvironChange) (Wave 68)
+----------------------------------------
+
+TRIGGERS:
+  - Added per-character perceived-light tracking and wired @EnvironChange.
+    Character.UpdateEnvironLight records the current light level and fires
+    @EnvironChange (N1 = new light) only when it actually changes; the first call
+    just establishes the baseline so entering the world does not spuriously fire.
+  - Program drives it from the region-change hook with the surface/dungeon light
+    (28 underground, else global light), so crossing a dungeon/surface boundary
+    fires the trigger. Routed through a new static Character.OnEnvironChange hook
+    reset in ResetEngineStatics. (Global day/night EnvironChange for stationary
+    players is a follow-up.)
+
 [2026-06-06] - Call-guards trigger (@CallGuards) (Wave 67)
 ----------------------------------------
 

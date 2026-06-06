@@ -215,6 +215,13 @@ public static partial class Program
                 _triggerDispatcher.FireCharTrigger(ch, CharTrigger.Jail,
                     new TriggerArgs { CharSrc = ch, N1 = minutes });
 
+            // @EnvironChange — fired when a character's perceived light level changes
+            // (surface/dungeon boundary). N1 = new light level. Only fires on an
+            // actual change (UpdateEnvironLight), which is infrequent.
+            SphereNet.Game.Objects.Characters.Character.OnEnvironChange = (ch, light) =>
+                _triggerDispatcher.FireCharTrigger(ch, CharTrigger.EnvironChange,
+                    new TriggerArgs { CharSrc = ch, N1 = light });
+
             // Wire @SkillGain trigger + blue system message (Source-X parity)
             SkillEngine.OnSkillGain = (ch, skill, newVal) =>
             {
@@ -351,6 +358,12 @@ public static partial class Program
                     mover.IsPlayer);
 
                 if (!mover.IsPlayer || newRegion == null) return;
+
+                // @EnvironChange — the perceived light level differs between surface
+                // and dungeon regions (mirrors WeatherEngine.GetLightLevel).
+                mover.UpdateEnvironLight(newRegion.IsFlag(SphereNet.Core.Enums.RegionFlag.Underground)
+                    ? (byte)28 : _world.GlobalLight);
+
                 if (!TryGetClientFor(mover, out var gc)) { _log.LogDebug("[REGION_CHANGE] no GameClient for {Name}", mover.Name); return; }
 
                 gc.SysMessage(SphereNet.Game.Messages.ServerMessages.GetFormatted(

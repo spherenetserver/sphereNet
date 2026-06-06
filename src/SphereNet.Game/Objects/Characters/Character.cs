@@ -513,6 +513,11 @@ public partial class Character : ObjBase
     /// (IsTrigUsed gate), so applying a buff is a null check otherwise.</summary>
     public static Action<Character, int>? OnEffectAdd { get; set; }
 
+    /// <summary>Fired when a pet's loyalty reaches zero and it is about to go wild
+    /// (Source-X @PetDesert). Args: pet, owner (may be null). Return true to cancel
+    /// the desertion — the pet keeps serving.</summary>
+    public static Func<Character, Character?, bool>? OnPetDesert { get; set; }
+
     /// <summary>TickCount64 of the last successful move — archery movement delay gate.</summary>
     public long LastMoveTick { get; set; }
 
@@ -1709,6 +1714,11 @@ public partial class Character : ObjBase
 
         if (_npcFood == 0)
         {
+            // @PetDesert (Source-X) — fires before the pet goes wild; a script may
+            // RETURN 1 to cancel the desertion and keep the pet serving.
+            if (OnPetDesert != null && OnPetDesert(this, petOwner))
+                return false;
+
             // Warn the owner instead of letting the pet go feral silently.
             if (petOwner != null)
                 SendOwnerMessage?.Invoke(petOwner, ServerMessages.GetFormatted("pet_gone_wild", Name));

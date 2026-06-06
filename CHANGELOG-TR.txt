@@ -4,6 +4,17 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Pet terk trigger'i (@PetDesert) (Wave 64)
+----------------------------------------
+
+TRIGGER:
+  - @PetDesert baglandi. Pet loyalty dongusu zaten vardi (TickPetOwnershipTimers
+    NpcFood'u 60s'de bir azaltir, NpcAI.TryEatFood yenilen yiyecekten geri yukler,
+    sifirda ClearOwnership ile pet vahsilesir) — sadece trigger eksikti. Artik
+    loyalty sifira ulasinca, pet vahsilesmeden hemen once pet'te atesler; bir betik
+    RETURN 1 ile terki iptal edebilir. Program.EngineWiring'de baglanan ve
+    ResetEngineStatics'te sifirlanan yeni statik Character.OnPetDesert hook'undan gecer.
+
 [2026-06-06] - Gemi ve redeed item trigger'lari (Wave 63)
 ----------------------------------------
 

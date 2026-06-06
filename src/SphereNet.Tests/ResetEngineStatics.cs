@@ -42,6 +42,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnNotoSend = null;
         SphereNet.Game.Objects.Characters.Character.OnPersonalSpace = null;
         SphereNet.Game.Objects.Characters.Character.OnEffectAdd = null;
+        SphereNet.Game.Objects.Characters.Character.OnPetDesert = null;
         SphereNet.Game.Housing.House.OnRedeed = null;
     }
 }

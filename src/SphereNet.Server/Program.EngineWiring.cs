@@ -196,6 +196,12 @@ public static partial class Program
                 _triggerDispatcher.FireCharTrigger(mover, CharTrigger.PersonalSpace,
                     new TriggerArgs { CharSrc = mover, O1 = blocker });
 
+            // @PetDesert — fired on the pet when loyalty hits zero; RETURN 1 cancels
+            // the desertion. O1 = owner (may be null if it could not be resolved).
+            SphereNet.Game.Objects.Characters.Character.OnPetDesert = (pet, owner) =>
+                _triggerDispatcher.FireCharTrigger(pet, CharTrigger.PetDesert,
+                    new TriggerArgs { CharSrc = pet, O1 = owner }) == TriggerResult.True;
+
             // Wire @SkillGain trigger + blue system message (Source-X parity)
             SkillEngine.OnSkillGain = (ch, skill, newVal) =>
             {

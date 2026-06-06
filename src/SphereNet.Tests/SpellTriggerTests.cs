@@ -105,4 +105,53 @@ public class SpellTriggerTests
 
         Assert.True(fired);
     }
+
+    [Fact]
+    public void SpellEngine_ItemTarget_FiresItemSpellEffect()
+    {
+        var world = CreateWorld();
+        var (_, player) = NewClient(world);
+        player.SetSkill(SkillType.Magery, 1000);
+
+        var pack = world.CreateItem();
+        pack.ItemType = ItemType.Container;
+        player.Equip(pack, Layer.Pack);
+
+        var rune = world.CreateItem();
+        rune.ItemType = ItemType.Rune;
+        rune.Name = "blank rune";
+        pack.AddItem(rune);
+
+        var registry = new SpellRegistry();
+        registry.Register(new SpellDef
+        {
+            Id = SpellType.Mark,
+            Name = "Mark",
+            Flags = SpellFlag.TargObj,
+            ManaCost = 0,
+            CastTimeBase = 1,
+        });
+
+        var dispatcher = new TriggerDispatcher();
+        int spellEffectCount = 0;
+        dispatcher.RegisterItemEvent("EVENTSITEM", "SpellEffect", (_, args) =>
+        {
+            spellEffectCount++;
+            Assert.Same(player, args.CharSrc);
+            Assert.Same(rune, args.ItemSrc);
+            Assert.Same(player, args.O1);
+            Assert.Equal((int)SpellType.Mark, args.N1);
+            Assert.Equal("Mark", args.S1);
+            return TriggerResult.Default;
+        });
+
+        var engine = new SpellEngine(world, registry) { TriggerDispatcher = dispatcher };
+
+        Assert.True(engine.CastStart(player, SpellType.Mark, rune.Uid, player.Position) > 0);
+        Assert.True(engine.CastDone(player));
+
+        Assert.Equal(1, spellEffectCount);
+        Assert.True(rune.TryGetRuneMark(out var marked));
+        Assert.Equal(player.Position, marked);
+    }
 }

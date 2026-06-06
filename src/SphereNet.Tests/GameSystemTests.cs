@@ -1245,6 +1245,59 @@ TAG.BUTTON=1
         Assert.Single(GetQueuedPackets(netState));
     }
 
+    [Fact]
+    public void GameClient_DialogOnTarget_OpensOnSourceAndBindsSubject()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var gmClient = TestHarness.CreateClient(loggerFactory, world, accountManager, 1704);
+        var targetClient = TestHarness.CreateClient(loggerFactory, world, accountManager, 1705);
+        var gm = world.CreateCharacter();
+        gm.IsPlayer = true;
+        gm.PrivLevel = PrivLevel.GM;
+        gm.Name = "Admin";
+        var target = world.CreateCharacter();
+        target.IsPlayer = true;
+        target.Name = "Target";
+        TestHarness.AttachCharacter(gmClient, gm);
+        TestHarness.AttachCharacter(targetClient, target);
+
+        string dir = Path.Combine(Path.GetTempPath(), "spherenet-dialog-target-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        string scriptPath = Path.Combine(dir, "dialog.scp");
+        File.WriteAllText(scriptPath, """
+[DIALOG d_admin_target_smoke]
+0,0
+PAGE 0
+DTEXT 20 20 1153 <NAME>
+BUTTON 20 50 4005 4006 1 0 1
+
+[DIALOG d_admin_target_smoke BUTTON]
+ON=1
+TAG.DIALOG_SUBJECT_TOUCHED=1
+""");
+
+        var resources = new ResourceHolder(loggerFactory.CreateLogger<ResourceHolder>());
+        resources.LoadResourceFile(scriptPath);
+        var commands = new CommandHandler { Resources = resources };
+        var interpreter = new ScriptInterpreter(new ExpressionParser(), loggerFactory.CreateLogger<ScriptInterpreter>());
+        var runner = new TriggerRunner(interpreter, resources, loggerFactory.CreateLogger<TriggerRunner>());
+        var dispatcher = new TriggerDispatcher { Resources = resources, Runner = runner };
+        gmClient.SetEngines(commands: commands, triggerDispatcher: dispatcher);
+
+        Assert.True(gmClient.TryExecuteScriptCommand(target, "DIALOG", "d_admin_target_smoke", null));
+
+        Assert.Single(GetQueuedPackets(gmClient.NetState));
+        Assert.Empty(GetQueuedPackets(targetClient.NetState));
+
+        uint gumpId = (uint)Math.Abs("d_admin_target_smoke".GetHashCode());
+        gmClient.HandleGumpResponse(gm.Uid.Value, gumpId, 1, [], []);
+
+        Assert.True(target.TryGetProperty("TAG.DIALOG_SUBJECT_TOUCHED", out var touched));
+        Assert.Equal("1", touched);
+    }
+
     private static List<ScriptKey> ParseKeys(params string[] lines)
     {
         var keys = new List<ScriptKey>(lines.Length);
@@ -1399,6 +1452,39 @@ TAG.BUTTON=1
         ai.OnTickAction(npc);
 
         Assert.True(fightCount > 0);
+    }
+
+    [Fact]
+    public void NpcAI_MoveTowardTarget_DoesNotStepOntoLivingMobile()
+    {
+        var world = CreateWorld();
+        var ai = new NpcAI(world, new SphereNet.Core.Configuration.SphereConfig());
+
+        var npc = world.CreateCharacter();
+        npc.NpcBrain = NpcBrainType.Monster;
+        npc.Hits = npc.MaxHits = 100;
+        npc.Stam = npc.MaxStam = 100;
+        npc.NextNpcActionTime = 0;
+        world.PlaceCharacter(npc, new Point3D(100, 100, 0, 0));
+
+        var blocker = world.CreateCharacter();
+        blocker.Hits = blocker.MaxHits = 100;
+        world.PlaceCharacter(blocker, new Point3D(101, 100, 0, 0));
+
+        var target = world.CreateCharacter();
+        target.IsPlayer = true;
+        target.IsOnline = true;
+        target.Hits = target.MaxHits = 100;
+        world.PlaceCharacter(target, new Point3D(105, 100, 0, 0));
+        world.AddOnlinePlayer(target);
+        world.OnTick();
+
+        npc.FightTarget = target.Uid;
+
+        ai.OnTickAction(npc);
+
+        Assert.Equal(new Point3D(100, 100, 0, 0), npc.Position);
+        Assert.Equal(new Point3D(101, 100, 0, 0), blocker.Position);
     }
 
     [Fact]

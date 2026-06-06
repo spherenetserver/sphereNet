@@ -29,6 +29,22 @@ public class ConfigRegressionTests
             EventsPlayer=e_player_generic_event,e_player_crafting_event
             EventsRegion=e_region_generic_event
             EventsItem=ei_generic_event
+            AdvancedLos=3
+            ColorNotoGood=059
+            ColorNotoGoodNPC=05a
+            ColorNotoGuildSame=03f
+            ColorNotoNeutral=03b2
+            ColorNotoCriminal=03b3
+            ColorNotoGuildWar=090
+            ColorNotoEvil=022
+            ColorNotoInvul=035
+            ColorNotoInvulGameMaster=0b
+            ColorNotoDefault=03b4
+            ColorInvisItem=1000
+            ColorInvis=04001
+            ColorInvisSpell=04002
+            ColorHidden=04003
+            PetsInheritNotoriety=07a
             """);
 
         try
@@ -57,6 +73,22 @@ public class ConfigRegressionTests
             Assert.Equal("e_player_generic_event,e_player_crafting_event", config.EventsPlayer);
             Assert.Equal("e_region_generic_event", config.EventsRegion);
             Assert.Equal("ei_generic_event", config.EventsItem);
+            Assert.Equal(3, config.AdvancedLos);
+            Assert.Equal(0x0059, config.ColorNotoGood);
+            Assert.Equal(0x005A, config.ColorNotoGoodNpc);
+            Assert.Equal(0x003F, config.ColorNotoGuildSame);
+            Assert.Equal(0x03B2, config.ColorNotoNeutral);
+            Assert.Equal(0x03B3, config.ColorNotoCriminal);
+            Assert.Equal(0x0090, config.ColorNotoGuildWar);
+            Assert.Equal(0x0022, config.ColorNotoEvil);
+            Assert.Equal(0x0035, config.ColorNotoInvul);
+            Assert.Equal(0x000B, config.ColorNotoInvulGameMaster);
+            Assert.Equal(0x03B4, config.ColorNotoDefault);
+            Assert.Equal(0x1000, config.ColorInvisItem);
+            Assert.Equal(0x4001, config.ColorInvis);
+            Assert.Equal(0x4002, config.ColorInvisSpell);
+            Assert.Equal(0x4003, config.ColorHidden);
+            Assert.Equal(0x07A, config.PetsInheritNotoriety);
         }
         finally
         {

@@ -900,13 +900,6 @@ public static partial class Program
                     else
                         response = "You have no stabled pets.";
                 }
-                else
-                {
-                    int count = _stableEngine.GetStabledCount(speaker);
-                    response = count > 0
-                        ? $"You have {count} pet(s) stabled. Say 'claim' to retrieve one."
-                        : "I can stable your pets for you. Just say 'stable'.";
-                }
                 break;
         }
 

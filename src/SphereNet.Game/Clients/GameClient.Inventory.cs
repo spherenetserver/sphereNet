@@ -70,7 +70,7 @@ public sealed partial class GameClient
         // label reads blue/green/grey/orange/red/yellow. Items stay grey.
         ushort nameHue = 0x03B2;
         if (obj is Character labelCh)
-            nameHue = NotoToHue(GetNotoriety(labelCh));
+            nameHue = NotoToHue(GetNotoriety(labelCh), labelCh);
         _netState.Send(new PacketSpeechUnicodeOut(
             uid, (ushort)(obj is Character c ? c.BodyId : 0),
             6, nameHue, 3, "TRK", "", obj.GetName()));
@@ -119,17 +119,22 @@ public sealed partial class GameClient
     /// CServerConfig::m_iColorNoto* defaults:
     /// good/innocent=0x59 blue, guild-same=0x3f green, neutral=0x3b2 grey,
     /// criminal=0x3b2 grey, guild-war=0x90 orange, evil/murderer=0x22 red,
-    /// invul=0x35 yellow.</summary>
-    private static ushort NotoToHue(byte noto) => noto switch
+    /// invul=0x35 yellow. Values are configurable through sphere.ini ColorNoto* keys.</summary>
+    private static ushort NotoToHue(byte noto, Character subject)
     {
-        1 => 0x0059, // innocent / blue
-        2 => 0x003F, // friend (party/guild-ally) / green
-        4 => 0x03B2, // criminal / grey
-        5 => 0x0090, // enemy guild / orange
-        6 => 0x0022, // murderer / red
-        7 => 0x0035, // invulnerable / yellow
-        _ => 0x03B2, // neutral / grey (NPC default)
-    };
+        var hues = NotorietyHues;
+        return noto switch
+        {
+            1 => !subject.IsPlayer && subject.NpcBrain != NpcBrainType.None ? hues.GoodNpc : hues.Good,
+            2 => hues.GuildSame,
+            4 => hues.Criminal,
+            5 => hues.GuildWar,
+            6 => hues.Evil,
+            7 => subject.PrivLevel >= PrivLevel.GM ? hues.InvulGameMaster : hues.Invul,
+            3 => hues.Neutral,
+            _ => hues.Default,
+        };
+    }
 
     // ==================== Item Pick Up ====================
 

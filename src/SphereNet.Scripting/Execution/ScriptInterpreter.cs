@@ -482,8 +482,10 @@ public sealed class ScriptInterpreter
         // UID. Dialog admin scripts lean on this pattern, e.g.
         //     UID.<CTag.Dialog.Admin.C<Eval <ArgN>-10>>.Dialog d_X
         // After ResolveArgs the key looks like "UID.0186A4.DIALOG"; we
-        // strip the prefix, look the object up via the same _REF_EXEC
-        // bridge REFn uses, and let the host dispatch the verb / setter.
+        // strip the prefix, look the object up via the same REF bridge
+        // REFn uses, and let the host dispatch the verb / setter. When
+        // SRC is known, include it so client-bound verbs open on SRC's
+        // client while the UID object remains the dialog subject.
         if (cmd.StartsWith("UID.", StringComparison.OrdinalIgnoreCase) && cmd.Length > 4)
         {
             int firstDot = cmd.IndexOf('.', 4);
@@ -493,7 +495,15 @@ public sealed class ScriptInterpreter
                 string subCmd = cmd[(firstDot + 1)..];
                 if (!string.IsNullOrEmpty(uidTok) && !string.IsNullOrEmpty(subCmd))
                 {
-                    ServerPropertyResolver?.Invoke($"_REF_EXEC={uidTok}|{subCmd}|{resolvedArg}");
+                    if (args?.Source != null && args.Source.TryGetProperty("UID", out string srcUid) &&
+                        !string.IsNullOrWhiteSpace(srcUid))
+                    {
+                        ServerPropertyResolver?.Invoke($"_REF_EXEC_AS={srcUid}|{uidTok}|{subCmd}|{resolvedArg}");
+                    }
+                    else
+                    {
+                        ServerPropertyResolver?.Invoke($"_REF_EXEC={uidTok}|{subCmd}|{resolvedArg}");
+                    }
                     return;
                 }
             }

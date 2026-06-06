@@ -141,6 +141,22 @@ public sealed class SphereConfig
     public int NotoTimeout { get; set; } = 30;
     public bool MonsterFight { get; set; }
     public bool MonsterFear { get; set; } = true;
+    public int AdvancedLos { get; set; }
+    public ushort ColorNotoGood { get; set; } = 0x0059;
+    public ushort ColorNotoGoodNpc { get; set; } = 0x0059;
+    public ushort ColorNotoGuildSame { get; set; } = 0x003F;
+    public ushort ColorNotoNeutral { get; set; } = 0x03B2;
+    public ushort ColorNotoCriminal { get; set; } = 0x03B2;
+    public ushort ColorNotoGuildWar { get; set; } = 0x0090;
+    public ushort ColorNotoEvil { get; set; } = 0x0022;
+    public ushort ColorNotoInvul { get; set; } = 0x0035;
+    public ushort ColorNotoInvulGameMaster { get; set; } = 0x000B;
+    public ushort ColorNotoDefault { get; set; } = 0x03B2;
+    public ushort ColorInvisItem { get; set; } = 1000;
+    public ushort ColorInvis { get; set; }
+    public ushort ColorInvisSpell { get; set; }
+    public ushort ColorHidden { get; set; }
+    public int PetsInheritNotoriety { get; set; }
 
     // Death & Resurrection
     public int CorpseNpcDecay { get; set; } = 7;
@@ -434,6 +450,22 @@ public sealed class SphereConfig
         NotoTimeout = ini.GetInt(section, "NotoTimeout", NotoTimeout);
         MonsterFight = ini.GetBool(section, "MonsterFight", MonsterFight);
         MonsterFear = ini.GetBool(section, "MonsterFear", MonsterFear);
+        AdvancedLos = ini.GetInt(section, "AdvancedLos", AdvancedLos);
+        ColorNotoGood = GetHue(ini, section, "ColorNotoGood", ColorNotoGood);
+        ColorNotoGoodNpc = GetHue(ini, section, "ColorNotoGoodNPC", ColorNotoGoodNpc);
+        ColorNotoGuildSame = GetHue(ini, section, "ColorNotoGuildSame", ColorNotoGuildSame);
+        ColorNotoNeutral = GetHue(ini, section, "ColorNotoNeutral", ColorNotoNeutral);
+        ColorNotoCriminal = GetHue(ini, section, "ColorNotoCriminal", ColorNotoCriminal);
+        ColorNotoGuildWar = GetHue(ini, section, "ColorNotoGuildWar", ColorNotoGuildWar);
+        ColorNotoEvil = GetHue(ini, section, "ColorNotoEvil", ColorNotoEvil);
+        ColorNotoInvul = GetHue(ini, section, "ColorNotoInvul", ColorNotoInvul);
+        ColorNotoInvulGameMaster = GetHue(ini, section, "ColorNotoInvulGameMaster", ColorNotoInvulGameMaster);
+        ColorNotoDefault = GetHue(ini, section, "ColorNotoDefault", ColorNotoDefault);
+        ColorInvisItem = GetHue(ini, section, "ColorInvisItem", ColorInvisItem);
+        ColorInvis = GetHue(ini, section, "ColorInvis", ColorInvis);
+        ColorInvisSpell = GetHue(ini, section, "ColorInvisSpell", ColorInvisSpell);
+        ColorHidden = GetHue(ini, section, "ColorHidden", ColorHidden);
+        PetsInheritNotoriety = GetIntOrHex(ini, section, "PetsInheritNotoriety", PetsInheritNotoriety);
 
         CorpseNpcDecay = ini.GetInt(section, "CorpseNpcDecay", CorpseNpcDecay);
         CorpsePlayerDecay = ini.GetInt(section, "CorpsePlayerDecay", CorpsePlayerDecay);
@@ -552,6 +584,41 @@ public sealed class SphereConfig
         SentryDsn = ini.GetValue(section, "SentryDsn") ?? SentryDsn;
 
         LoadDbConnections(ini);
+    }
+
+    private static ushort GetHue(IniParser ini, string section, string key, ushort defaultValue)
+    {
+        var raw = ini.GetValue(section, key);
+        if (string.IsNullOrWhiteSpace(raw))
+            return defaultValue;
+
+        raw = raw.Trim();
+        if (raw.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            raw = raw[2..];
+
+        return ushort.TryParse(raw, System.Globalization.NumberStyles.HexNumber,
+            System.Globalization.CultureInfo.InvariantCulture, out ushort value)
+            ? value
+            : defaultValue;
+    }
+
+    private static int GetIntOrHex(IniParser ini, string section, string key, int defaultValue)
+    {
+        var raw = ini.GetValue(section, key);
+        if (string.IsNullOrWhiteSpace(raw))
+            return defaultValue;
+
+        raw = raw.Trim();
+        if (int.TryParse(raw, out int decimalValue))
+            return decimalValue;
+
+        if (raw.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            raw = raw[2..];
+
+        return int.TryParse(raw, System.Globalization.NumberStyles.HexNumber,
+            System.Globalization.CultureInfo.InvariantCulture, out int hexValue)
+            ? hexValue
+            : defaultValue;
     }
 
     private void LoadDbConnections(IniParser ini)

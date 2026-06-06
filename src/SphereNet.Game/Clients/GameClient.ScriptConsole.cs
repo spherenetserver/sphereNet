@@ -971,7 +971,7 @@ public sealed partial class GameClient
         {
             if (_dialogDepth >= 4) return true;
             _dialogDepth++;
-            try { return HandleDialogCommand(args); } finally { _dialogDepth--; }
+            try { return HandleDialogCommand(args, target as ObjBase); } finally { _dialogDepth--; }
         }
 
         if (upper == "GO" && target is Character goChar)
@@ -1329,7 +1329,7 @@ public sealed partial class GameClient
         return false;
     }
 
-    private bool HandleDialogCommand(string args)
+    private bool HandleDialogCommand(string args, ObjBase? subject = null)
     {
         if (_character == null) return false;
 
@@ -1355,7 +1355,7 @@ public sealed partial class GameClient
                 requestedPage = parsedPage;
         }
 
-        if (OpenNamedDialog(dialogId, requestedPage)) return true;
+        if (OpenNamedDialog(dialogId, requestedPage, subject)) return true;
 
         string closeFn = "";
         if (!string.IsNullOrWhiteSpace(closeSpec))

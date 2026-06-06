@@ -109,6 +109,17 @@ public static partial class Program
             GameClient.SpeedHackBurstWindow = _config.SpeedHackBurstWindow;
             GameClient.SpeedHackHistorySize = _config.SpeedHackHistorySize;
             GameClient.SpeedHackCooldownMs = _config.SpeedHackCooldownMs;
+            GameClient.NotorietyHues = new NotorietyHueSettings(
+                _config.ColorNotoGood,
+                _config.ColorNotoGoodNpc,
+                _config.ColorNotoGuildSame,
+                _config.ColorNotoNeutral,
+                _config.ColorNotoCriminal,
+                _config.ColorNotoGuildWar,
+                _config.ColorNotoEvil,
+                _config.ColorNotoInvul,
+                _config.ColorNotoInvulGameMaster,
+                _config.ColorNotoDefault);
 
             MovementEngine.WalkDelayFoot = _config.WalkDelayFoot;
             MovementEngine.WalkDelayMount = _config.WalkDelayMount;
@@ -887,6 +898,7 @@ public static partial class Program
             };
             _spellRegistry = new SpellRegistry();
             _spellEngine = new SpellEngine(_world, _spellRegistry);
+            _spellEngine.TriggerDispatcher = _triggerDispatcher;
             _spellEngine.OnPlaySound = (pos, soundId) =>
             {
                 var pkt = new PacketSound(soundId, pos.X, pos.Y, pos.Z);

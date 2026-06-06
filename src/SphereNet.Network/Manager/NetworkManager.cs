@@ -364,12 +364,19 @@ public sealed class NetworkManager : IDisposable
             byte opcode = data[consumed];
             int definedLen = PacketDefinitions.GetPacketLength(opcode, state);
             bool hasLengthField = definedLen == 0;
+            bool legacyAssistPacket = false;
             int packetLen = definedLen;
 
             if (hasLengthField)
             {
                 if (data.Length - consumed < 3) break;
                 packetLen = (data[consumed + 1] << 8) | data[consumed + 2];
+                if (opcode == 0xBE && TryGetLegacyAssistPacketLength(data[consumed..], state, packetLen, out int legacyLen))
+                {
+                    packetLen = legacyLen;
+                    hasLengthField = false;
+                    legacyAssistPacket = true;
+                }
             }
 
             if (packetLen <= 0 || packetLen > MaxPacketSize)
@@ -406,7 +413,7 @@ public sealed class NetworkManager : IDisposable
                     }
                 }
 
-                int payloadOffset = hasLengthField ? 3 : 1;
+                int payloadOffset = hasLengthField && !legacyAssistPacket ? 3 : 1;
                 int payloadLength = packetLen - payloadOffset;
                 if (payloadLength < 0)
                 {
@@ -467,6 +474,54 @@ public sealed class NetworkManager : IDisposable
                 state.Id, opcode, packetLen, state.ReceivedData.Length);
             state.MarkClosing();
         }
+    }
+
+    private static bool TryGetLegacyAssistPacketLength(
+        ReadOnlySpan<byte> data,
+        NetState state,
+        int declaredLength,
+        out int packetLen)
+    {
+        packetLen = 0;
+
+        // 0xBE has two forms in the wild:
+        // - Modern/Razor CE: 0xBE + uint16 length + ASCII version text.
+        // - Legacy assistant clients: 0xBE + uint32 version, with no length field.
+        //
+        // The legacy uint can start with values like 00 FB, which look like a
+        // 251-byte variable packet and cause following movement packets to sit
+        // behind a phantom partial 0xBE. Treat only implausibly large/invalid
+        // declared lengths as the legacy 5-byte form, and prefer a real packet
+        // boundary immediately after it when more bytes are already buffered.
+        if (data.Length < 5)
+            return false;
+
+        if (declaredLength is >= 3 and <= 128)
+            return false;
+
+        if (data.Length == 5 || LooksLikePacketBoundary(data[5..], state))
+        {
+            packetLen = 5;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool LooksLikePacketBoundary(ReadOnlySpan<byte> data, NetState state)
+    {
+        if (data.IsEmpty)
+            return false;
+
+        int len = PacketDefinitions.GetPacketLength(data[0], state);
+        if (len > 0)
+            return true;
+
+        if (data.Length < 3)
+            return false;
+
+        int declaredLength = (data[1] << 8) | data[2];
+        return declaredLength is >= 3 and <= MaxPacketSize;
     }
 
     /// <summary>

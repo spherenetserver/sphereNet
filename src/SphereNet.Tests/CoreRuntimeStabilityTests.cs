@@ -169,7 +169,7 @@ public class CoreRuntimeStabilityTests
     [Fact]
     public void TickAccumulator_CatchesUpAndCapsSpiral()
     {
-        var method = typeof(Program).GetMethod("ComputeDueTickCount",
+        var method = typeof(SphereNet.Server.Program).GetMethod("ComputeDueTickCount",
             BindingFlags.Static | BindingFlags.NonPublic)!;
 
         object?[] args = [350L, 100L, 100, 4];

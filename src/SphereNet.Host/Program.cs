@@ -75,8 +75,15 @@ else
 var logSink = new PanelLogSink();
 var ipc     = new IpcBridge();
 var proc    = new ServerProcess(serverExe, ipc, logSink);
+var updater = new UpdateService(
+    () => proc.IsRunning,
+    () => ipc.SendCommand("save"),
+    () => proc.Stop(),
+    () => proc.Start(),
+    baseDir,
+    logSink);
 
-var panelCtx = HostPanelContext.Build(proc, ipc, iniPath, scriptsPath);
+var panelCtx = HostPanelContext.Build(proc, ipc, iniPath, scriptsPath, updater);
 panelCtx.AdminPassword = adminPass;
 panelCtx.ServerName    = serverName;
 

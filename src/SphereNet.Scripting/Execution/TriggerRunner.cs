@@ -405,8 +405,11 @@ public sealed class TriggerRunner
         for (int i = startIdx; i < allKeys.Count; i++)
         {
             string cmd = allKeys[i].Key.ToUpperInvariant();
-            // Stop at next ON= trigger or end of section
-            if (cmd == "ON" && allKeys[i].HasArg && allKeys[i].Arg.StartsWith('@'))
+            // Stop at next ON= trigger or end of section. Speech sections use
+            // ON=*keyword* blocks, so continuing past the next ON would execute
+            // unrelated responses for the same spoken line.
+            if (cmd == "ON" || cmd.StartsWith("ON=", StringComparison.Ordinal) ||
+                cmd.StartsWith("ON ", StringComparison.Ordinal))
                 break;
 
             body.Add(allKeys[i]);

@@ -48,6 +48,7 @@ public sealed partial class GameClient : ITextConsole
     /// Set by Program.cs startup. If zero, HandleGameLogin falls back to a
     /// hardcoded mapping derived from client version.</summary>
     public static uint ServerFeatureFlags { get; set; }
+    public static NotorietyHueSettings NotorietyHues { get; set; } = new();
     public static Func<string, Point3D?>? BotSpawnLocationProvider;
 
     private readonly NetState _netState;
@@ -393,6 +394,9 @@ public sealed partial class GameClient : ITextConsole
         _triggerDispatcher = triggerDispatcher;
         _guildManager = guildManager;
         _mountEngine = mountEngine;
+
+        if (_spellEngine != null && triggerDispatcher != null)
+            _spellEngine.TriggerDispatcher = triggerDispatcher;
     }
 
     private bool TryMountCharacter(Character mount)
@@ -439,3 +443,15 @@ public sealed partial class GameClient : ITextConsole
         _scriptFile = scriptFile;
     }
 }
+
+public sealed record NotorietyHueSettings(
+    ushort Good = 0x0059,
+    ushort GoodNpc = 0x0059,
+    ushort GuildSame = 0x003F,
+    ushort Neutral = 0x03B2,
+    ushort Criminal = 0x03B2,
+    ushort GuildWar = 0x0090,
+    ushort Evil = 0x0022,
+    ushort Invul = 0x0035,
+    ushort InvulGameMaster = 0x000B,
+    ushort Default = 0x03B2);

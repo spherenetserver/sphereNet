@@ -4,6 +4,62 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Panel update service, smelt/spell item triggers, configurable hues (Wave 72)
+----------------------------------------
+
+HOST / PANEL:
+  - Added UpdateService and the POST /api/update/run + GET /api/update/status
+    endpoints, surfaced as a "System Update / Update from GitHub" card on the
+    Settings page (state and last log lines shown live). The update runs git
+    status, git pull --ff-only, server save, server stop, build.ps1 -ServerOnly,
+    then server start, in that order.
+  - build.ps1 gained a -ServerOnly switch that publishes only SphereNet.Server and
+    copies the panel static files, leaving the running (and therefore locked)
+    SphereNet.Host.exe untouched so the panel can update itself.
+
+TRIGGERS:
+  - @Smelt: double-clicking ore now prompts for a forge target and fires @Smelt
+    (N1 = ore amount, O1 = forge, S1 = smelt message) before the native smelt;
+    RETURN 1 cancels it. On success the ore stack is consumed and an iron ingot
+    stack is added to the backpack (or dropped if there is no pack), firing
+    @Create on the result.
+  - Item-targeted @SpellEffect: Mark, Recall/Gate rune travel, Dispel Field and
+    generic TargObj item targets now fire @SpellEffect (O1 = caster, N1 = spell id,
+    S1 = spell name); RETURN 1 suppresses the native behaviour. SpellEngine takes
+    a TriggerDispatcher, wired from Program.
+
+CONFIG:
+  - Notoriety and invisibility hues are configurable via sphere.ini: ColorNotoGood,
+    ColorNotoGoodNPC, ColorNotoGuildSame, ColorNotoNeutral, ColorNotoCriminal,
+    ColorNotoGuildWar, ColorNotoEvil, ColorNotoInvul, ColorNotoInvulGameMaster,
+    ColorNotoDefault, ColorInvisItem, ColorInvis, ColorInvisSpell, ColorHidden.
+    NotoToHue now resolves through the loaded NotorietyHueSettings, distinguishing
+    NPC innocents (GoodNpc) and GM-level invulnerables (InvulGameMaster). Hue keys
+    parse hex; PetsInheritNotoriety and AdvancedLos keys are also read. Hex/decimal
+    parsing handled by GetHue / GetIntOrHex helpers.
+
+NPC AI:
+  - Consolidated every NPC move/wander/chase/path-step gate into a single
+    CanNpcMoveTo check: negative-coordinate guard, tile passability, static-block
+    items and occupying characters, all skipped when the NPC can pass walls
+    (hidden/invisible staff above the occupied tile do not block).
+
+NETWORK:
+  - 0xBE now distinguishes the modern length-prefixed assist/version packet from
+    the legacy 5-byte uint form, via TryGetLegacyAssistPacketLength: implausible
+    declared lengths followed by a real packet boundary are treated as the legacy
+    form so following movement packets are not stranded behind a phantom partial.
+  - 0xD9 Hardware Info length corrected to 0x010C (268 bytes total).
+
+SCRIPTING:
+  - SRC-aware dialog verb dispatch: UID.<obj>.DIALOG and similar verbs now route
+    through _REF_EXEC_AS (srcUid|targetUid|command|args) when SRC is known, so
+    client-bound verbs open on SRC's client while the UID object stays the dialog
+    subject. HandleDialogCommand / OpenNamedDialog thread the subject through.
+  - TriggerRunner stops a trigger body at any following ON= key (not only @-named
+    triggers), so ON=*keyword* speech blocks no longer bleed sibling responses
+    into one spoken line.
+
 [2026-06-06] - Pickup-source trigger variants (@Pickup_Self / @Pickup_Stack) (Wave 71)
 ----------------------------------------
 

@@ -5,6 +5,7 @@ using SphereNet.Game.Messages;
 using SphereNet.Game.Skills;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
+using SphereNet.Game.Scripting;
 using SphereNet.Game.World;
 
 namespace SphereNet.Game.Magic;
@@ -65,6 +66,9 @@ public sealed class SpellEngine
     /// <summary>Remove a world item and broadcast its deletion (used by
     /// Dispel Field to clear a field item early).</summary>
     public Action<Item>? OnItemRemoved { get; set; }
+
+    /// <summary>Optional script dispatcher for item spell hooks.</summary>
+    public TriggerDispatcher? TriggerDispatcher { get; set; }
 
     /// <summary>One entry per active time-limited spell effect. Captures
     /// what was applied (stat deltas, light level, flag) so UndoEffect can
@@ -482,6 +486,10 @@ public sealed class SpellEngine
                 {
                     OnSysMessage?.Invoke(caster, "You must target a rune in your pack.");
                 }
+                else if (FireItemSpellEffect(caster, rune, def) == TriggerResult.True)
+                {
+                    // Script handled/cancelled the native mark.
+                }
                 else
                 {
                     rune.SetRuneMark(caster.Position);
@@ -503,7 +511,8 @@ public sealed class SpellEngine
             if (fieldItem != null && !fieldItem.IsDeleted &&
                 (fieldItem.TryGetTag("FIELD_DAMAGE", out _) || fieldItem.ItemType == ItemType.Spell))
             {
-                OnItemRemoved?.Invoke(fieldItem);
+                if (FireItemSpellEffect(caster, fieldItem, def) != TriggerResult.True)
+                    OnItemRemoved?.Invoke(fieldItem);
             }
             else
             {
@@ -518,7 +527,10 @@ public sealed class SpellEngine
         {
             var rune = _world?.FindItem(targetUid);
             if (rune != null && IsItemAccessible(caster, rune))
-                ApplyRuneTravelSpell(caster, rune, def);
+            {
+                if (FireItemSpellEffect(caster, rune, def) != TriggerResult.True)
+                    ApplyRuneTravelSpell(caster, rune, def);
+            }
             else
                 OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellRecallBlank));
         }
@@ -540,6 +552,12 @@ public sealed class SpellEngine
                 {
                     ApplyCharEffect(caster, target, def, skillLevel);
                 }
+            }
+            else if (def.IsFlag(SpellFlag.TargObj))
+            {
+                var itemTarget = _world?.FindItem(targetUid);
+                if (itemTarget != null && CanSpellReachItem(caster, itemTarget))
+                    FireItemSpellEffect(caster, itemTarget, def);
             }
         }
         else if (def.IsFlag(SpellFlag.Area))
@@ -565,6 +583,21 @@ public sealed class SpellEngine
             OnPlaySound?.Invoke(caster.Position, (ushort)def.Sound);
 
         return true;
+    }
+
+    private TriggerResult FireItemSpellEffect(Character caster, Item item, SpellDef def)
+    {
+        if (TriggerDispatcher == null)
+            return TriggerResult.Default;
+
+        return TriggerDispatcher.FireItemTrigger(item, ItemTrigger.SpellEffect, new TriggerArgs
+        {
+            CharSrc = caster,
+            ItemSrc = item,
+            O1 = caster,
+            N1 = (int)def.Id,
+            S1 = def.Name,
+        });
     }
 
     /// <summary>Return true if the caster's backpack holds at least the needed
@@ -927,6 +960,19 @@ public sealed class SpellEngine
             if (parent == null) break;
             current = parent;
         }
+        return false;
+    }
+
+    private bool CanSpellReachItem(Character caster, Item item)
+    {
+        if (item.IsDeleted)
+            return false;
+        if (IsItemAccessible(caster, item))
+            return true;
+        if (!item.ContainedIn.IsValid &&
+            item.Position.Map == caster.MapIndex &&
+            caster.Position.GetDistanceTo(item.Position) <= 12)
+            return true;
         return false;
     }
 

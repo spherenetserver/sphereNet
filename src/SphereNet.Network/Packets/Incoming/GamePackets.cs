@@ -640,8 +640,7 @@ public sealed class PacketMapPinEdit : PacketHandler
 /// <summary>0xD9 — Hardware info (client sends system specs). Log only.</summary>
 public sealed class PacketHardwareInfo : PacketHandler
 {
-    // 0xD9 is fixed length 0x0102 (258 bytes data). Size=268 in PacketDefinitions but
-    // payload after opcode byte = 267 bytes. We handle all remaining as info.
+    // 0xD9 is fixed length 0x010C (268 bytes total). We handle all remaining as info.
     public PacketHardwareInfo() : base(0xD9, 268) { }
 
     public override void OnReceive(PacketBuffer buffer, State.NetState state)

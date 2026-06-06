@@ -516,7 +516,7 @@ public sealed partial class GameClient
             // ---- ore / forge / ingot (overridable via @DClick trigger) ----
             case ItemType.Ore:
                 SysMessage(ServerMessages.Get(Msg.ItemuseForge));
-                SetPendingTarget((serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Mining, new Serial(serial), new Point3D(x, y, z)));
+                SetPendingTarget((serial, x, y, z, gfx) => HandleSmeltTarget(item, new Serial(serial)));
                 break;
             case ItemType.Forge:
             case ItemType.Ingot:
@@ -1152,6 +1152,88 @@ public sealed partial class GameClient
                 return _character.Position.GetDistanceTo(wearer.Position) <= 3;
         }
         return _character.Position.GetDistanceTo(obj.Position) <= 3;
+    }
+
+    private void HandleSmeltTarget(Item ore, Serial target)
+    {
+        if (_character == null) return;
+        if (ore.IsDeleted || ore.ItemType != ItemType.Ore)
+        {
+            SysMessage(ServerMessages.Get(Msg.MiningNotOre));
+            return;
+        }
+
+        var forge = target.IsValid ? _world.FindItem(target) : null;
+        if (forge == null || forge.ItemType != ItemType.Forge || !CanReachTargetItem(forge))
+        {
+            SysMessage(ServerMessages.Get(Msg.MiningForge));
+            return;
+        }
+
+        if (!CanReachTargetItem(ore))
+        {
+            SysMessage(ServerMessages.Get(Msg.MiningReach));
+            return;
+        }
+
+        int amount = Math.Max(1, (int)ore.Amount);
+        if (_triggerDispatcher?.FireItemTrigger(ore, ItemTrigger.Smelt, new TriggerArgs
+        {
+            CharSrc = _character,
+            ItemSrc = ore,
+            O1 = forge,
+            N1 = amount,
+            S1 = ServerMessages.Get(Msg.MiningSmelt),
+        }) == TriggerResult.True)
+            return;
+
+        if (!SkillEngine.UseQuick(_character, SkillType.Mining, 30))
+        {
+            ConsumeOreStack(ore);
+            SysMessage(ServerMessages.GetFormatted(Msg.MiningNothing, ore.GetName()));
+            return;
+        }
+
+        ConsumeOreStack(ore);
+
+        var ingot = _world.CreateItem();
+        ingot.BaseId = 0x1BF2;
+        ingot.ItemType = ItemType.Ingot;
+        ingot.Name = "iron ingot";
+        ingot.Amount = (ushort)Math.Min(amount, ushort.MaxValue);
+
+        var pack = _character.Backpack;
+        if (pack != null)
+        {
+            var actual = pack.AddItemWithStack(ingot);
+            if (actual != ingot)
+                _world.RemoveItem(ingot);
+
+            _netState.Send(new PacketContainerItem(
+                actual.Uid.Value, actual.DispIdFull, 0,
+                actual.Amount, actual.X, actual.Y,
+                pack.Uid.Value, actual.Hue,
+                _netState.IsClientPost6017));
+
+            _triggerDispatcher?.FireItemTrigger(actual, ItemTrigger.Create,
+                new TriggerArgs { CharSrc = _character, ItemSrc = actual });
+        }
+        else
+        {
+            _world.PlaceItemWithDecay(ingot, _character.Position);
+            _triggerDispatcher?.FireItemTrigger(ingot, ItemTrigger.Create,
+                new TriggerArgs { CharSrc = _character, ItemSrc = ingot });
+        }
+    }
+
+    private void ConsumeOreStack(Item ore)
+    {
+        if (ore.ContainedIn.IsValid)
+            _netState.Send(new PacketDeleteObject(ore.Uid.Value));
+        else
+            BroadcastDeleteObject(ore.Uid.Value);
+
+        _world.RemoveItem(ore);
     }
 
     /// <summary>Source-X uses scissors to convert hides/cloth to leather/bolts.</summary>

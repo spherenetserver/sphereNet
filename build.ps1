@@ -22,6 +22,10 @@
     Release single-file EXE'yi framework-dependent publish eder.
     Varsayilan self-contained publish'tir; daha az dosya, daha buyuk EXE.
 
+.PARAMETER ServerOnly
+    Sadece SphereNet.Server'i publish eder ve panel statik dosyalarini kopyalar.
+    Calisan SphereNet.Host.exe kilitli olabilecegi icin panelden guncellemede kullanilir.
+
 .EXAMPLE
     .\build.ps1
     .\build.ps1 -Clean
@@ -40,7 +44,9 @@ param(
 
     [switch]$SkipPanel,
 
-    [switch]$FrameworkDependent
+    [switch]$FrameworkDependent,
+
+    [switch]$ServerOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -128,32 +134,44 @@ if ($Configuration -eq "Release") {
 
     if ($LASTEXITCODE -ne 0) { throw "SphereNet.Server publish basarisiz oldu." }
 
-    # 3b. SphereNet.Host (panel + launcher — ayri single-file)
-    Write-Step 4 4 "SphereNet.Host derleniyor (single-file, $publishKind, $Runtime)..."
+    if ($ServerOnly) {
+        Write-Step 4 4 "SphereNet.Host publish atlaniyor (ServerOnly)."
 
-    # Host'u gecici bir klasore publish et, sonra sadece EXE'yi kopyala
-    $hostTmp = "$root\bin\_host_tmp"
-    if (Test-Path $hostTmp) { Remove-Item -Recurse -Force $hostTmp -Confirm:$false }
-
-    dotnet publish "$root\src\SphereNet.Host\SphereNet.Host.csproj" `
-        @publishArgs `
-        --output $hostTmp
-
-    if ($LASTEXITCODE -ne 0) { throw "SphereNet.Host publish basarisiz oldu." }
-
-    # Host EXE ve runtimeconfig'i ana ciktiya kopyala
-    $exeExt = if ($Runtime -like "win-*") { ".exe" } else { "" }
-    Copy-Item "$hostTmp\SphereNet.Host$exeExt" $outDir -Force
-    Copy-Item "$hostTmp\SphereNet.Host.runtimeconfig.json" $outDir -Force -ErrorAction SilentlyContinue
-    Copy-Item "$hostTmp\SphereNet.Host.deps.json" $outDir -Force -ErrorAction SilentlyContinue
-
-    # panel/ klasoru Host publish'ten gelir, Server'da yoksa kopyala
-    if ((Test-Path "$hostTmp\panel") -and -not (Test-Path "$outDir\panel")) {
-        Copy-Item "$hostTmp\panel" $outDir -Recurse -Force
+        if (Test-Path "$root\panel\dist") {
+            if (Test-Path "$outDir\panel") {
+                Remove-Item "$outDir\panel" -Recurse -Force -Confirm:$false
+            }
+            Copy-Item "$root\panel\dist" "$outDir\panel" -Recurse -Force
+        }
     }
+    else {
+        # 3b. SphereNet.Host (panel + launcher — ayri single-file)
+        Write-Step 4 4 "SphereNet.Host derleniyor (single-file, $publishKind, $Runtime)..."
 
-    # Gecici klasoru temizle
-    Remove-Item -Recurse -Force $hostTmp -Confirm:$false
+        # Host'u gecici bir klasore publish et, sonra sadece EXE'yi kopyala
+        $hostTmp = "$root\bin\_host_tmp"
+        if (Test-Path $hostTmp) { Remove-Item -Recurse -Force $hostTmp -Confirm:$false }
+
+        dotnet publish "$root\src\SphereNet.Host\SphereNet.Host.csproj" `
+            @publishArgs `
+            --output $hostTmp
+
+        if ($LASTEXITCODE -ne 0) { throw "SphereNet.Host publish basarisiz oldu." }
+
+        # Host EXE ve runtimeconfig'i ana ciktiya kopyala
+        $exeExt = if ($Runtime -like "win-*") { ".exe" } else { "" }
+        Copy-Item "$hostTmp\SphereNet.Host$exeExt" $outDir -Force
+        Copy-Item "$hostTmp\SphereNet.Host.runtimeconfig.json" $outDir -Force -ErrorAction SilentlyContinue
+        Copy-Item "$hostTmp\SphereNet.Host.deps.json" $outDir -Force -ErrorAction SilentlyContinue
+
+        # panel/ klasoru Host publish'ten gelir, Server'da yoksa kopyala
+        if ((Test-Path "$hostTmp\panel") -and -not (Test-Path "$outDir\panel")) {
+            Copy-Item "$hostTmp\panel" $outDir -Recurse -Force
+        }
+
+        # Gecici klasoru temizle
+        Remove-Item -Recurse -Force $hostTmp -Confirm:$false
+    }
 
     # Ara build ciktilari temizle — single-file EXE icinde gomulu, ayrica gerekmez.
     # Self-contained modda native kutuphaneler de bundle'a gomulur; framework-dependent

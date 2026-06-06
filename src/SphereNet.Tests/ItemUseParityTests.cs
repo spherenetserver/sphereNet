@@ -5,6 +5,7 @@ using SphereNet.Game.Accounts;
 using SphereNet.Game.Clients;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
+using SphereNet.Game.Scripting;
 using SphereNet.Game.Skills;
 using SphereNet.Game.World;
 using SphereNet.Network.State;
@@ -97,6 +98,81 @@ public class ItemUseParityTests
 
         Assert.Equal(ItemType.Trap, trap.ItemType);
         Assert.False(client.HasPendingTarget);
+    }
+
+    [Fact]
+    public void OreDoubleClick_TargetForge_SmeltsOreIntoIngots()
+    {
+        var loggerFactory = TestHarness.CreateLoggerFactory();
+        var world = TestHarness.CreateWorld();
+        var accounts = new AccountManager(loggerFactory);
+        var client = CreatePlayingClient(loggerFactory, world, accounts, out _, out var player);
+        player.SetSkill(SkillType.Mining, 1000);
+
+        var pack = EquipBackpack(world, player);
+        var ore = world.CreateItem();
+        ore.ItemType = ItemType.Ore;
+        ore.BaseId = 0x19B9;
+        ore.Name = "iron ore";
+        ore.Amount = 4;
+        pack.AddItem(ore);
+
+        var forge = world.CreateItem();
+        forge.ItemType = ItemType.Forge;
+        world.PlaceItem(forge, new Point3D(101, 100, 0, 0));
+
+        client.HandleDoubleClick(ore.Uid.Value);
+        Assert.True(client.HasPendingTarget);
+
+        client.HandleTargetResponse(0, 0, forge.Uid.Value, forge.X, forge.Y, forge.Z, 0);
+
+        Assert.True(ore.IsDeleted);
+        var ingots = Assert.Single(pack.Contents, i => i.ItemType == ItemType.Ingot);
+        Assert.Equal(0x1BF2, ingots.BaseId);
+        Assert.Equal(4, ingots.Amount);
+        Assert.False(client.HasPendingTarget);
+    }
+
+    [Fact]
+    public void OreDoubleClick_SmeltTriggerReturnTrue_CancelsNativeSmelt()
+    {
+        var loggerFactory = TestHarness.CreateLoggerFactory();
+        var world = TestHarness.CreateWorld();
+        var accounts = new AccountManager(loggerFactory);
+        var client = CreatePlayingClient(loggerFactory, world, accounts, out _, out var player);
+        player.SetSkill(SkillType.Mining, 1000);
+
+        var pack = EquipBackpack(world, player);
+        var ore = world.CreateItem();
+        ore.ItemType = ItemType.Ore;
+        ore.BaseId = 0x19B9;
+        ore.Amount = 2;
+        pack.AddItem(ore);
+
+        var forge = world.CreateItem();
+        forge.ItemType = ItemType.Forge;
+        world.PlaceItem(forge, new Point3D(101, 100, 0, 0));
+
+        var dispatcher = new TriggerDispatcher();
+        int smeltCount = 0;
+        dispatcher.RegisterItemEvent("EVENTSITEM", "Smelt", (_, args) =>
+        {
+            smeltCount++;
+            Assert.Same(player, args.CharSrc);
+            Assert.Same(ore, args.ItemSrc);
+            Assert.Same(forge, args.O1);
+            Assert.Equal(2, args.N1);
+            return TriggerResult.True;
+        });
+        client.SetEngines(triggerDispatcher: dispatcher);
+
+        client.HandleDoubleClick(ore.Uid.Value);
+        client.HandleTargetResponse(0, 0, forge.Uid.Value, forge.X, forge.Y, forge.Z, 0);
+
+        Assert.Equal(1, smeltCount);
+        Assert.False(ore.IsDeleted);
+        Assert.Equal(2, ore.Amount);
+        Assert.DoesNotContain(pack.Contents, i => i.ItemType == ItemType.Ingot);
     }
 
     private static GameClient CreatePlayingClient(

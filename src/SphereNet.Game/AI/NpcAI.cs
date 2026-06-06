@@ -335,9 +335,7 @@ public sealed class NpcAI
             case NpcDecisionType.Move:
                 npc.NextNpcActionTime = decision.NextActionTick;
                 npc.Direction = decision.Direction;
-                var mapData = _world.MapData;
-                if ((mapData == null || mapData.IsPassable(decision.TargetPos.Map, decision.TargetPos.X, decision.TargetPos.Y, decision.TargetPos.Z))
-                    && CanNpcEnterTile(npc, decision.TargetPos))
+                if (CanNpcMoveTo(npc, decision.TargetPos))
                     _world.MoveCharacter(npc, decision.TargetPos);
                 break;
             case NpcDecisionType.Legacy:
@@ -867,8 +865,7 @@ public sealed class NpcAI
         sbyte nz = mapData?.GetEffectiveZ(npc.MapIndex, pick.x, pick.y, npc.Z) ?? npc.Z;
         if (Math.Abs(nz - npc.Z) > 12) return;
         var pos = new Point3D(pick.x, pick.y, nz, npc.MapIndex);
-        if (mapData != null && !mapData.IsPassable(pos.Map, pos.X, pos.Y, pos.Z)) return;
-        if (!CanNpcEnterTile(npc, pos)) return;
+        if (!CanNpcMoveTo(npc, pos)) return;
 
         _world.MoveCharacter(npc, pos);
     }
@@ -1029,8 +1026,7 @@ public sealed class NpcAI
         if (Math.Abs(nz - npc.Z) <= 12)
         {
             var newPos = new Point3D(nx, ny, nz, npc.MapIndex);
-            if ((mapData == null || mapData.IsPassable(newPos.Map, newPos.X, newPos.Y, newPos.Z))
-                && CanNpcEnterTile(npc, newPos))
+            if (CanNpcMoveTo(npc, newPos))
             {
                 _world.MoveCharacter(npc, newPos);
                 return;
@@ -1049,8 +1045,7 @@ public sealed class NpcAI
                 sbyte az = mapData?.GetEffectiveZ(npc.MapIndex, ax, ay, npc.Z) ?? npc.Z;
                 if (Math.Abs(az - npc.Z) > 12) continue;
                 var altPos = new Point3D(ax, ay, az, npc.MapIndex);
-                if ((mapData == null || mapData.IsPassable(altPos.Map, altPos.X, altPos.Y, altPos.Z))
-                    && CanNpcEnterTile(npc, altPos))
+                if (CanNpcMoveTo(npc, altPos))
                 {
                     _world.MoveCharacter(npc, altPos);
                     return;
@@ -2296,6 +2291,43 @@ public sealed class NpcAI
         return false;
     }
 
+    private bool CanNpcMoveTo(Character npc, Point3D pos)
+    {
+        if (pos.X < 0 || pos.Y < 0)
+            return false;
+
+        if (!CanNpcEnterTile(npc, pos))
+            return false;
+
+        bool canPassWalls = CharDefHelper.CanPassWalls(npc);
+        if (!canPassWalls)
+        {
+            var mapData = _world.MapData;
+            if (mapData != null && !mapData.IsPassable(pos.Map, pos.X, pos.Y, pos.Z))
+                return false;
+
+            foreach (var item in _world.GetItemsInRange(pos, 0))
+            {
+                if (item.IsStaticBlock)
+                    return false;
+            }
+
+            foreach (var other in _world.GetCharsInRange(pos, 0))
+            {
+                if (other == npc || other.IsDeleted || other.IsDead)
+                    continue;
+                if (other.MapIndex != pos.Map || other.X != pos.X || other.Y != pos.Y)
+                    continue;
+                if ((other.IsStatFlag(StatFlag.Hidden) || other.IsStatFlag(StatFlag.Invisible))
+                    && other.PrivLevel >= PrivLevel.Counsel)
+                    continue;
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private void Wander(Character npc)
     {
         if (OnNpcActWander?.Invoke(npc) == true)
@@ -2312,9 +2344,7 @@ public sealed class NpcAI
         if (Math.Abs(nz - npc.Z) > 12)
             return;
         var newPos = new Point3D(nx, ny, nz, npc.MapIndex);
-        if (mapData != null && !mapData.IsPassable(newPos.Map, newPos.X, newPos.Y, newPos.Z))
-            return;
-        if (!CanNpcEnterTile(npc, newPos))
+        if (!CanNpcMoveTo(npc, newPos))
             return;
 
         _world.MoveCharacter(npc, newPos);
@@ -2379,18 +2409,7 @@ public sealed class NpcAI
             return;
         var directPos = new Point3D(nx, ny, nz, npc.MapIndex);
 
-        bool directBlocked = false;
-        if (mapData != null && !mapData.IsPassable(directPos.Map, directPos.X, directPos.Y, directPos.Z))
-            directBlocked = true;
-        if (!directBlocked && !CanNpcEnterTile(npc, directPos))
-            directBlocked = true;
-        if (!directBlocked)
-        {
-            foreach (var item in _world.GetItemsInRange(directPos, 0))
-            {
-                if (item.IsStaticBlock) { directBlocked = true; break; }
-            }
-        }
+        bool directBlocked = !CanNpcMoveTo(npc, directPos);
 
         if (!directBlocked)
         {
@@ -2462,10 +2481,7 @@ public sealed class NpcAI
         // moved in, or a damage field appeared — walking it blindly would shove
         // the NPC into a blocked/dangerous tile. If it's no longer valid, drop
         // the path and recompute next tick.
-        var stepMapData = _world.MapData;
-        if ((stepMapData != null &&
-             !stepMapData.IsPassable(nextStep.Map, nextStep.X, nextStep.Y, nextStep.Z))
-            || !CanNpcEnterTile(npc, nextStep))
+        if (!CanNpcMoveTo(npc, nextStep))
         {
             _pathCache.Remove(uid);
             _pathIndex.Remove(uid);
@@ -2529,9 +2545,7 @@ public sealed class NpcAI
         if (Math.Abs(nz - npc.Z) > 12)
             return;
         var newPos = new Point3D(nx, ny, nz, npc.MapIndex);
-        if (mapData != null && !mapData.IsPassable(newPos.Map, newPos.X, newPos.Y, newPos.Z))
-            return;
-        if (!CanNpcEnterTile(npc, newPos))
+        if (!CanNpcMoveTo(npc, newPos))
             return;
 
         _world.MoveCharacter(npc, newPos);

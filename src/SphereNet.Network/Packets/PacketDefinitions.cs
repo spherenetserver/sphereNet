@@ -164,7 +164,7 @@ public static class PacketDefinitions
         _lengths[0xD6] = 0;     // variable (AOS Tooltip Request)
         _lengths[0xD7] = 0;     // variable (Encoded Command)
         _lengths[0xD8] = 0;     // variable (Custom House)
-        _lengths[0xD9] = 0x0102; // Hardware Info
+        _lengths[0xD9] = 0x010C; // Hardware Info
         _lengths[0xDA] = 0;     // variable
         _lengths[0xDB] = 0;     // variable
         _lengths[0xDC] = 0x09;  // AOS Tooltip Revision

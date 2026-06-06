@@ -95,4 +95,29 @@ public class GlobalConfigScriptHookTests
         Assert.True(pet.TryGetProperty("TAG.SPEECH_PET", out var petValue));
         Assert.Equal("1", petValue);
     }
+
+    [Fact]
+    public void SpeechTrigger_StopsBodyAtNextSpeechOnBlock()
+    {
+        var (dispatcher, _) = CreateDispatcher("""
+            [SPEECH spk_player]
+            ON=*hello*
+            TAG.SPEECH_MATCHED=1
+            RETURN 1
+
+            ON=*bye*
+            TAG.SPEECH_WRONG_BLOCK=1
+            RETURN 1
+            """);
+        dispatcher.SpeechSelfResources.Add(ResourceId.FromString("spk_player", ResType.Speech));
+
+        var player = new Character { IsPlayer = true };
+
+        var result = dispatcher.FireSpeechSelfTrigger(player, "hello there", 0);
+
+        Assert.Equal(TriggerResult.True, result);
+        Assert.True(player.TryGetProperty("TAG.SPEECH_MATCHED", out var matched));
+        Assert.Equal("1", matched);
+        Assert.False(player.TryGetTag("SPEECH_WRONG_BLOCK", out _));
+    }
 }

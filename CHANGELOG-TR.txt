@@ -4,6 +4,63 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Panel guncelleme servisi, smelt/spell esya trigger'lari, ayarlanabilir hue'lar (Wave 72)
+----------------------------------------
+
+HOST / PANEL:
+  - UpdateService ve POST /api/update/run + GET /api/update/status endpoint'leri
+    eklendi; Settings sayfasinda "System Update / Update from GitHub" karti olarak
+    gosterilir (durum ve son log satirlari canli gorunur). Guncelleme sirasiyla
+    git status, git pull --ff-only, server save, server stop, build.ps1 -ServerOnly,
+    server start calistirir.
+  - build.ps1'e -ServerOnly anahtari eklendi: yalnizca SphereNet.Server'i publish
+    eder ve panel statik dosyalarini kopyalar; boylece calisan (ve kilitli olan)
+    SphereNet.Host.exe'ye dokunmadan panel kendini guncelleyebilir.
+
+TRIGGER:
+  - @Smelt: ore'a cift tiklamak artik forge hedefi sorar ve native smelt'ten ONCE
+    @Smelt atesler (N1 = ore miktari, O1 = forge, S1 = smelt mesaji); RETURN 1
+    iptal eder. Basarida ore yigini tuketilir ve backpack'e iron ingot yigini
+    eklenir (pack yoksa yere birakilir), sonucta @Create atesler.
+  - Esya hedefli @SpellEffect: Mark, Recall/Gate rune yolculugu, Dispel Field ve
+    genel TargObj esya hedefleri artik @SpellEffect atesler (O1 = buyucu,
+    N1 = buyu id, S1 = buyu adi); RETURN 1 native davranisi bastirir. SpellEngine
+    bir TriggerDispatcher alir, Program'dan baglanir.
+
+CONFIG:
+  - Notoriety ve gorunmezlik hue'lari sphere.ini ile ayarlanabilir: ColorNotoGood,
+    ColorNotoGoodNPC, ColorNotoGuildSame, ColorNotoNeutral, ColorNotoCriminal,
+    ColorNotoGuildWar, ColorNotoEvil, ColorNotoInvul, ColorNotoInvulGameMaster,
+    ColorNotoDefault, ColorInvisItem, ColorInvis, ColorInvisSpell, ColorHidden.
+    NotoToHue artik yuklenen NotorietyHueSettings uzerinden cozumlenir; NPC masum
+    (GoodNpc) ve GM-seviyesi dokunulmaz (InvulGameMaster) ayirt edilir. Hue
+    anahtarlari hex parse edilir; PetsInheritNotoriety ve AdvancedLos anahtarlari
+    da okunur. Hex/ondalik ayristirma GetHue / GetIntOrHex yardimcilariyla yapilir.
+
+NPC AI:
+  - Tum NPC hareket/dolasma/kovalama/path-adimi kapilari tek bir CanNpcMoveTo
+    kontrolunde toplandi: negatif-koordinat korumasi, tile gecilebilirligi, statik
+    blok esyalari ve hucreyi isgal eden karakterler; NPC duvarlardan gecebiliyorsa
+    hepsi atlanir (isgal edilen tile uzerindeki gizli/gorunmez yetkili engellemez).
+
+AG (NETWORK):
+  - 0xBE artik modern uzunluk-onekli assist/version paketini eski 5-byte uint
+    formundan ayirir (TryGetLegacyAssistPacketLength): makul olmayan bildirilen
+    uzunluklar gercek bir paket sinirinin ardindan geliyorsa eski form sayilir,
+    boylece takip eden hareket paketleri hayalet bir kismi paketin arkasinda
+    takilip kalmaz.
+  - 0xD9 Hardware Info uzunlugu 0x010C (toplam 268 byte) olarak duzeltildi.
+
+SCRIPTING:
+  - SRC-farkindali dialog verb dagitimi: UID.<obj>.DIALOG ve benzeri verb'ler SRC
+    bilindiginde _REF_EXEC_AS (srcUid|targetUid|command|args) uzerinden yonlenir;
+    boylece client-bagli verb'ler SRC'nin client'inda acilir, UID nesnesi ise
+    dialog ozne'si olarak kalir. HandleDialogCommand / OpenNamedDialog ozne'yi
+    boylece tasir.
+  - TriggerRunner bir trigger govdesini takip eden herhangi bir ON= anahtarinda
+    durdurur (yalnizca @-isimli trigger'larda degil); boylece ON=*keyword* konusma
+    bloklari kardes yanitlari tek bir konusulan satira sizdirmaz.
+
 [2026-06-06] - Alma-kaynagi trigger varyantlari (@Pickup_Self / @Pickup_Stack) (Wave 71)
 ----------------------------------------
 

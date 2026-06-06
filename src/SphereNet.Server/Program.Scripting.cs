@@ -189,6 +189,7 @@ public static partial class Program
 
             // REF object property access
             _ when upper.StartsWith("_REF_GET=") => HandleRefGet(property[9..]),
+            _ when upper.StartsWith("_REF_EXEC_AS=") => HandleRefExecAs(property[13..]),
             _ when upper.StartsWith("_REF_EXEC=") => HandleRefExec(property[10..]),
 
             // serv.allclients <function> — invoke <function> once per
@@ -690,6 +691,47 @@ public static partial class Program
             if (gc != null)
                 gc.TryExecuteScriptCommand(obj, cmd, cmdArgs, null);
         }
+        return "";
+    }
+
+    /// <summary>Execute command on a target object using a specific source
+    /// client. Format: "srcUid|targetUid|command|args". This preserves
+    /// Source-X dialog semantics for admin scripts: UID.target.DIALOG opens
+    /// on SRC's client, with target bound as the dialog subject.</summary>
+    private static string? HandleRefExecAs(string data)
+    {
+        var parts = data.Split('|', 4);
+        if (parts.Length < 3 || _world == null) return "";
+        if (!TryParseSerial(parts[0], out var srcUid) ||
+            !TryParseSerial(parts[1], out var targetUid))
+            return "";
+
+        var srcChar = _world.FindChar(srcUid);
+        var target = _world.FindObject(targetUid);
+        if (srcChar == null || target == null)
+            return "";
+
+        string cmd = parts[2].Trim();
+        string cmdArgs = parts.Length > 3 ? parts[3].Trim() : "";
+        if (cmd.Length == 0)
+            return "";
+
+        if (target.TrySetProperty(cmd, cmdArgs))
+            return "";
+        if (target.TryExecuteCommand(cmd, cmdArgs, new RefExecConsole()))
+            return "";
+
+        var sourceClient = FindGameClient(srcChar);
+        if (sourceClient != null)
+        {
+            sourceClient.TryExecuteScriptCommand(target, cmd, cmdArgs,
+                new SphereNet.Scripting.Execution.TriggerArgs(srcChar)
+                {
+                    Object1 = target,
+                    Object2 = srcChar,
+                });
+        }
+
         return "";
     }
 

@@ -382,6 +382,32 @@ public sealed class PanelHost : IDisposable
             return Results.Ok(new { lines });
         });
 
+        // --- Application Update ---
+        app.MapPost("/api/update/run", async () =>
+        {
+            if (_ctx.StartUpdate == null)
+                return Results.BadRequest(new { error = "Update is only available when running through SphereNet.Host" });
+
+            var result = await _ctx.StartUpdate();
+            return result.Started
+                ? Results.Ok(result)
+                : Results.Conflict(result);
+        });
+
+        app.MapGet("/api/update/status", () =>
+        {
+            var status = _ctx.GetUpdateStatus?.Invoke() ?? new UpdateStatus(
+                false,
+                "Unavailable",
+                "Update is only available when running through SphereNet.Host",
+                null,
+                null,
+                null,
+                false,
+                Array.Empty<string>());
+            return Results.Ok(status);
+        });
+
         // --- Players ---
         app.MapGet("/api/players", () =>
         {

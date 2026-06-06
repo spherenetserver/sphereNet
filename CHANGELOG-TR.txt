@@ -4,6 +4,19 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - NPC ilk-gorus algisi (@NPCSeeNewPlayer) (Wave 70)
+----------------------------------------
+
+TRIGGER:
+  - Per-NPC gorulen-oyuncu hafizasi eklendi ve @NPCSeeNewPlayer baglandi.
+    Character.SeeNewPlayer algilanan bir oyuncuyu kaydeder ve trigger'i yalnizca
+    ilk goruste atesler (devam eden goruste per-oyuncu zamanlayici yenilenir,
+    boylece yakinda duran oyuncu tekrar selamlanmaz; oyuncu TTL'den uzun sure
+    ayrilip donunce tekrar atesler). NpcAI her tick yakindaki gorunur oyunculari
+    tarar; tarama Character.OnNpcSeeNewPlayer hook'una (yalnizca bir betik
+    hook'larsa kurulur) ve bir throttle'a kapilidir, boylece kullanilmazsa atlanir.
+    O1 = yeni gorulen oyuncu. ResetEngineStatics'te sifirlanir.
+
 [2026-06-06] - Hizli-skill check/gain ayrimi (@SkillUseQuick) (Wave 69)
 ----------------------------------------
 

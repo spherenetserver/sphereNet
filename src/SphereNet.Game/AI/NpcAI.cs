@@ -256,6 +256,10 @@ public sealed class NpcAI
             return;
         }
 
+        // Perceive nearby players for @NPCSeeNewPlayer greetings (free + skipped
+        // entirely when no script hooks the trigger).
+        LookForNewPlayers(npc);
+
         // Brain-based behavior
         switch (npc.NpcBrain)
         {
@@ -1884,6 +1888,22 @@ public sealed class NpcAI
 
         if (_rand.Next(100) < 10)
             WanderHome(npc);
+    }
+
+    /// <summary>Fire @NPCSeeNewPlayer for nearby players this NPC hasn't perceived
+    /// recently. Gated on the static hook (null when no script hooks the trigger)
+    /// plus a throttle, so the per-NPC range scan only runs when actually needed.</summary>
+    private void LookForNewPlayers(Character npc)
+    {
+        if (Character.OnNpcSeeNewPlayer == null || _rand.Next(4) != 0) return;
+
+        long now = Environment.TickCount64;
+        foreach (var ch in _world.GetCharsInRange(npc.Position, 12))
+        {
+            if (!ch.IsPlayer || ch.IsDead || ch.IsDeleted) continue;
+            if (!_world.CanSeeLOS(npc.Position, ch.Position)) continue;
+            npc.SeeNewPlayer(ch, now); // fires @NPCSeeNewPlayer on a first sighting
+        }
     }
 
     private void LookAtNearbyItems(Character npc)

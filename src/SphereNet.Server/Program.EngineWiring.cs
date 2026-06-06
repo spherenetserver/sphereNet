@@ -207,6 +207,14 @@ public static partial class Program
                     _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillUseQuick,
                         new TriggerArgs { CharSrc = ch, N1 = skillId, N2 = difficulty }) == TriggerResult.True;
             }
+            // @NPCSeeNewPlayer — install only when hooked so the per-NPC perception
+            // scan is skipped entirely otherwise. O1 = the newly-seen player.
+            if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCSeeNewPlayer))
+            {
+                SphereNet.Game.Objects.Characters.Character.OnNpcSeeNewPlayer = (npc, player) =>
+                    _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCSeeNewPlayer,
+                        new TriggerArgs { CharSrc = npc, O1 = player });
+            }
             // @PersonalSpace — fired on a shove; low frequency, no gate needed.
             SphereNet.Game.Objects.Characters.Character.OnPersonalSpace = (mover, blocker) =>
                 _triggerDispatcher.FireCharTrigger(mover, CharTrigger.PersonalSpace,

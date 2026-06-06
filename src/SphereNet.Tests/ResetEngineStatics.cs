@@ -47,6 +47,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnMemoryEquip = null;
         SphereNet.Game.Objects.Characters.Character.OnEnvironChange = null;
         SphereNet.Game.Objects.Characters.Character.OnSkillUseQuick = null;
+        SphereNet.Game.Objects.Characters.Character.OnNpcSeeNewPlayer = null;
         SphereNet.Game.Housing.House.OnRedeed = null;
     }
 }

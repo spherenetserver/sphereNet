@@ -81,17 +81,21 @@ public class TriggerCoverageGuardrailTests
     private static readonly HashSet<string> CharNotFiredP0 = new()
     {
         "HitIgnore",
-        "NPCSeeWantItem", "NPCSeeNewPlayer",
+        "NPCSeeWantItem",
         // Wired (now fired): MurderMark, KarmaChange, FameChange (DeathEngine +
         // Character.On*); SkillChange, StatChange (SkillEngine gain hooks);
         // CombatAdd, CombatDelete, CombatEnd (Character attacker-list hooks);
         // NPCRefuseItem (drop-on-NPC accept gate), NPCSpecialAction (breath/throw);
         // MurderDecay (Character notoriety-decay hook); NotoSend (ComputeNotoriety
-        // via the IsTrigUsed gate — installed only when a script hooks @NotoSend).
-        // Still deferred (need infrastructure):
-        //   HitIgnore     — AttackerRecord has no "ignore" flag + no NPC ignore-scan.
-        //   NPCSeeNewPlayer — no per-NPC seen-player memory to detect a NEW sighting.
-        //   NPCSeeWantItem  — NPCs only scan corpses; no ground-item "want" logic.
+        // via the IsTrigUsed gate); NPCSeeNewPlayer (new per-NPC seen-player memory:
+        // Character.SeeNewPlayer fires it on a first sighting; NpcAI scans nearby
+        // players, gated + throttled, installed only when hooked).
+        // Still deferred (need infrastructure / low marginal value):
+        //   HitIgnore      — AttackerRecord has no "ignore" flag, and no behaviour
+        //                    sets an attacker as ignored, so the trigger never fires.
+        //   NPCSeeWantItem — redundant with @NPCLookAtItem, which already fires on
+        //                    the NPC's ground-item scan (LookAtNearbyItems); a true
+        //                    "want" needs item-desire/pickup logic that does not exist.
     };
 
     private static readonly HashSet<string> CharNotFiredP1 = new()

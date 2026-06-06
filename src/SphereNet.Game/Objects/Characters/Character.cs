@@ -542,6 +542,41 @@ public partial class Character : ObjBase
     /// Installed only when hooked (IsTrigUsed gate).</summary>
     public static Func<Character, int, int, bool>? OnSkillUseQuick { get; set; }
 
+    /// <summary>Fired when an NPC perceives a player it has not seen recently
+    /// (Source-X @NPCSeeNewPlayer). Args: the NPC, the newly-seen player. Installed
+    /// only when hooked (IsTrigUsed gate), so the perception scan is free otherwise.</summary>
+    public static Action<Character, Character>? OnNpcSeeNewPlayer { get; set; }
+
+    // Per-NPC memory of recently-seen players (player uid -> last-seen tick) for
+    // @NPCSeeNewPlayer first-sight detection.
+    private Dictionary<uint, long>? _seenPlayers;
+
+    /// <summary>Record that this NPC perceives <paramref name="player"/> and fire
+    /// @NPCSeeNewPlayer (via <see cref="OnNpcSeeNewPlayer"/>) when it is a NEW
+    /// sighting — the player was not seen within the last <paramref name="ttlMs"/>.
+    /// Returns whether it was a new sighting.</summary>
+    public bool SeeNewPlayer(Character player, long nowMs, long ttlMs = 60_000)
+    {
+        _seenPlayers ??= new();
+        uint uid = player.Uid.Value;
+        bool isNew = !_seenPlayers.TryGetValue(uid, out long last) || nowMs - last > ttlMs;
+        _seenPlayers[uid] = nowMs;
+        if (!isNew) return false;
+
+        // Prune stale entries opportunistically so the table can't grow unbounded.
+        if (_seenPlayers.Count > 32)
+        {
+            List<uint>? stale = null;
+            foreach (var kv in _seenPlayers)
+                if (nowMs - kv.Value > ttlMs) (stale ??= []).Add(kv.Key);
+            if (stale != null)
+                foreach (var k in stale) _seenPlayers.Remove(k);
+        }
+
+        OnNpcSeeNewPlayer?.Invoke(this, player);
+        return true;
+    }
+
     /// <summary>Record the character's current perceived light level and fire
     /// @EnvironChange (via <see cref="OnEnvironChange"/>) when it actually changes.
     /// The first call only establishes the baseline (no fire), so entering the

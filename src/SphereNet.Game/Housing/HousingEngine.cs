@@ -228,6 +228,10 @@ public sealed class House
         _decayStage = HouseDecayStage.LikeNew;
     }
 
+    /// <summary>Fired when a house is converted back to a deed (Source-X @Redeed).
+    /// Arg: the freshly-created deed item.</summary>
+    public static Action<Item>? OnRedeed { get; set; }
+
     /// <summary>Transfer ownership (deed back). Preserves multi UUID in deed tag.</summary>
     public Item? Redeed(GameWorld world)
     {
@@ -238,6 +242,8 @@ public sealed class House
         deed.Name = _multiItem.Name + " deed";
         deed.SetTag("HOUSE_MULTI_UUID", _multiItem.Uuid.ToString("D"));
         deed.SetTag("HOUSE_MULTI_BASEID", _multiItem.BaseId.ToString());
+        // @Redeed (Source-X) — the house is now a deed item.
+        OnRedeed?.Invoke(deed);
 
         // Remove all component items (the structure itself)
         foreach (var compUid in _components)

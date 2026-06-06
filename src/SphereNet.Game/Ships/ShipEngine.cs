@@ -42,6 +42,12 @@ public sealed class ShipEngine
     /// <summary>Called after a ship moves so Program.cs can broadcast 0xF6.</summary>
     public Action<Ship>? OnShipMoved { get; set; }
 
+    /// <summary>Called when a ship stops (Source-X @ShipStop fire site).</summary>
+    public Action<Ship>? OnShipStopped { get; set; }
+
+    /// <summary>Called when a ship turns to a new facing (Source-X @ShipTurn).</summary>
+    public Action<Ship>? OnShipTurned { get; set; }
+
     private void TillerSpeak(Ship ship, string key) =>
         OnTillerSpeak?.Invoke(ship, SphereNet.Game.Messages.ServerMessages.Get(key));
 
@@ -257,14 +263,18 @@ public sealed class ShipEngine
         }
 
         ship.DirFace = newFacing;
+        OnShipTurned?.Invoke(ship);
         return true;
     }
 
     /// <summary>Stop ship movement.</summary>
     public void Stop(Ship ship)
     {
+        bool wasMoving = ship.MovementType != ShipMovementType.Stop;
         ship.MovementType = ShipMovementType.Stop;
         ship.NextMoveTick = 0;
+        if (wasMoving)
+            OnShipStopped?.Invoke(ship);
     }
 
     /// <summary>

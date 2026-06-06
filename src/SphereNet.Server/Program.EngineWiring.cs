@@ -1701,7 +1701,21 @@ public static partial class Program
                     (byte)((byte)ship.DirFace & 0x07),
                     mi.X, mi.Y, (ushort)(mi.Z < 0 ? 0 : mi.Z));
                 BroadcastNearby(mi.Position, 18, pkt, 0);
+                // @ShipMove (Source-X) — fired on the ship multi as it advances.
+                _triggerDispatcher?.FireItemTrigger(mi, ItemTrigger.ShipMove,
+                    new TriggerArgs { ItemSrc = mi });
             };
+            _shipEngine.OnShipStopped = ship =>
+                _triggerDispatcher?.FireItemTrigger(ship.MultiItem, ItemTrigger.ShipStop,
+                    new TriggerArgs { ItemSrc = ship.MultiItem });
+            _shipEngine.OnShipTurned = ship =>
+                _triggerDispatcher?.FireItemTrigger(ship.MultiItem, ItemTrigger.ShipTurn,
+                    new TriggerArgs { ItemSrc = ship.MultiItem });
+
+            // @Redeed (Source-X) — a house collapsed/redeeded into a deed item.
+            SphereNet.Game.Housing.House.OnRedeed = deed =>
+                _triggerDispatcher?.FireItemTrigger(deed, ItemTrigger.Redeed,
+                    new TriggerArgs { ItemSrc = deed });
             _shipEngine.DeserializeFromWorld();
             if (_shipEngine.ShipCount > 0)
                 _log.LogInformation("Restored {Count} ships from world save", _shipEngine.ShipCount);

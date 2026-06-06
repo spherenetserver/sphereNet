@@ -4,6 +4,16 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Gemi ve redeed item trigger'lari (Wave 63)
+----------------------------------------
+
+TRIGGER:
+  - Item trigger'lari @ShipMove, @ShipStop, @ShipTurn (ship multi'sinde, yeni
+    ShipEngine OnShipMoved/OnShipStopped/OnShipTurned hook'larindan Move/Stop/Face
+    icinde) ve @Redeed (yeni olusturulan deed'de, House.Redeed icindeki yeni
+    House.OnRedeed statik hook'undan) baglandi. Hepsi Program.EngineWiring'de
+    FireItemTrigger'a yonlendirilir; House.OnRedeed ResetEngineStatics'te sifirlanir.
+
 [2026-06-06] - Global EVENTS / SPEECH config hook'lari (Wave 62)
 ----------------------------------------
 

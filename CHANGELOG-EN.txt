@@ -4,6 +4,16 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Ship and redeed item triggers (Wave 63)
+----------------------------------------
+
+TRIGGERS:
+  - Wired item triggers @ShipMove, @ShipStop, @ShipTurn (fired on the ship multi
+    from new ShipEngine OnShipMoved/OnShipStopped/OnShipTurned hooks in Move/Stop/
+    Face) and @Redeed (fired on the freshly-created deed from a new House.OnRedeed
+    static hook in House.Redeed). All routed to FireItemTrigger in
+    Program.EngineWiring; House.OnRedeed is reset in ResetEngineStatics.
+
 [2026-06-06] - Global EVENTS / SPEECH config hooks (Wave 62)
 ----------------------------------------
 

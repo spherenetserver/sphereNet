@@ -1,0 +1,101 @@
+using Microsoft.Extensions.Logging;
+using SphereNet.Core.Enums;
+using SphereNet.Core.Types;
+using SphereNet.Game.Housing;
+using SphereNet.Game.Objects.Items;
+using SphereNet.Game.Ships;
+using SphereNet.Game.World;
+using Xunit;
+
+namespace SphereNet.Tests;
+
+// Verifies the wired item triggers @ShipMove / @ShipStop / @ShipTurn (ShipEngine
+// hooks fired by Move/Stop/Face) and @Redeed (House.OnRedeed fired when a house
+// converts to a deed). Each runs through an engine hook driven directly here, the
+// same way Program.EngineWiring routes the hook into FireItemTrigger; House.OnRedeed
+// is nulled between tests by ResetEngineStatics.
+public class ShipRedeedTriggerTests
+{
+    private static GameWorld CreateWorld()
+    {
+        var world = new GameWorld(LoggerFactory.Create(_ => { }));
+        world.InitMap(0, 6144, 4096);
+        SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
+        Item.ResolveWorld = () => world;
+        return world;
+    }
+
+    private static (ShipEngine engine, Ship ship) MakeShip(GameWorld world)
+    {
+        var multi = world.CreateItem();
+        multi.BaseId = 0x4000;
+        world.PlaceItem(multi, new Point3D(100, 100, 0, 0));
+        var engine = new ShipEngine(world, new MultiRegistry(), null);
+        return (engine, new Ship(multi));
+    }
+
+    [Fact]
+    public void ShipMove_MoveDelta_FiresShipMovedHook()
+    {
+        var world = CreateWorld();
+        var (engine, ship) = MakeShip(world);
+        int moves = 0;
+        engine.OnShipMoved = _ => moves++;
+
+        engine.MoveDelta(ship, 1, 0, 0);
+
+        Assert.Equal(1, moves);
+    }
+
+    [Fact]
+    public void ShipStop_FromMoving_FiresShipStoppedHook()
+    {
+        var world = CreateWorld();
+        var (engine, ship) = MakeShip(world);
+        ship.MovementType = ShipMovementType.Normal; // moving
+        int stops = 0;
+        engine.OnShipStopped = _ => stops++;
+
+        engine.Stop(ship);
+
+        Assert.Equal(1, stops);
+        Assert.Equal(ShipMovementType.Stop, ship.MovementType);
+
+        engine.Stop(ship);          // already stopped → no second fire
+        Assert.Equal(1, stops);
+    }
+
+    [Fact]
+    public void ShipTurn_NewFacing_FiresShipTurnedHook()
+    {
+        var world = CreateWorld();
+        var (engine, ship) = MakeShip(world);
+        ship.DirFace = Direction.North;
+        int turns = 0;
+        engine.OnShipTurned = _ => turns++;
+
+        Assert.True(engine.Face(ship, Direction.East));
+        Assert.Equal(1, turns);
+
+        Assert.True(engine.Face(ship, Direction.East)); // same facing → no rotation
+        Assert.Equal(1, turns);
+    }
+
+    [Fact]
+    public void Redeed_HouseToDeed_FiresRedeedWithDeed()
+    {
+        var world = CreateWorld();
+        var multi = world.CreateItem();
+        multi.Name = "small house";
+        world.PlaceItem(multi, new Point3D(100, 100, 0, 0));
+        var house = new House(multi);
+
+        Item? redeededDeed = null;
+        House.OnRedeed = d => redeededDeed = d;
+
+        var deed = house.Redeed(world);
+
+        Assert.NotNull(deed);
+        Assert.Same(deed, redeededDeed);
+    }
+}

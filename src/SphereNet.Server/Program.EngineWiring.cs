@@ -202,6 +202,11 @@ public static partial class Program
                 _triggerDispatcher.FireCharTrigger(pet, CharTrigger.PetDesert,
                     new TriggerArgs { CharSrc = pet, O1 = owner }) == TriggerResult.True;
 
+            // @Jail — fired on a character sent to jail. N1 = sentence minutes (0 = indefinite).
+            SphereNet.Game.Objects.Characters.Character.OnJailed = (ch, minutes) =>
+                _triggerDispatcher.FireCharTrigger(ch, CharTrigger.Jail,
+                    new TriggerArgs { CharSrc = ch, N1 = minutes });
+
             // Wire @SkillGain trigger + blue system message (Source-X parity)
             SkillEngine.OnSkillGain = (ch, skill, newVal) =>
             {

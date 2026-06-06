@@ -518,6 +518,10 @@ public partial class Character : ObjBase
     /// the desertion — the pet keeps serving.</summary>
     public static Func<Character, Character?, bool>? OnPetDesert { get; set; }
 
+    /// <summary>Fired when a character is sent to jail (Source-X @Jail). Args:
+    /// jailed character, sentence minutes (0 = indefinite).</summary>
+    public static Action<Character, int>? OnJailed { get; set; }
+
     /// <summary>TickCount64 of the last successful move — archery movement delay gate.</summary>
     public long LastMoveTick { get; set; }
 

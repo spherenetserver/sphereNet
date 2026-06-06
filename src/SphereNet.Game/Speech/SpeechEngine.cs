@@ -1117,8 +1117,10 @@ public sealed class CommandHandler
 
                     // Jail duration (minutes). Stored as DateTime UTC ticks so the
                     // sentence survives reboots (TickCount64 resets on restart).
+                    int jailMinutes = 0;
                     if (parts.Length > 1 && int.TryParse(parts[1], out int minutes) && minutes > 0)
                     {
+                        jailMinutes = minutes;
                         long releaseTime = DateTime.UtcNow.Ticks + minutes * TimeSpan.TicksPerMinute;
                         target.SetTag("JAIL_RELEASE", releaseTime.ToString());
                         OnSysMessage?.Invoke(gm, ServerMessages.GetFormatted("gm_jailed_timed", target.Name, minutes));
@@ -1128,6 +1130,10 @@ public sealed class CommandHandler
                         target.SetTag("JAIL_RELEASE", "0"); // indefinite
                         OnSysMessage?.Invoke(gm, ServerMessages.GetFormatted("gm_jailed_indef", target.Name));
                     }
+
+                    // @Jail (Source-X) — fired on the jailed character. N1 = minutes
+                    // (0 = indefinite).
+                    Character.OnJailed?.Invoke(target, jailMinutes);
 
                     OnCharacterResyncRequested?.Invoke(target);
                 }

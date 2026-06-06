@@ -4,6 +4,17 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Jail trigger'i (@Jail) (Wave 65)
+----------------------------------------
+
+TRIGGER:
+  - @Jail baglandi. Jail sistemi zaten vardi (GM JAIL komutu hedefi hucreye
+    isinlar, Freeze bayragi ve JAIL_RELEASE tag'i koyar, sureli salinim Program'dan
+    yonetilir) — sadece trigger eksikti. @Jail artik jaillenen karakterde ceza
+    suresiyle atesler (N1 = dakika, 0 = sinirsiz). Program.EngineWiring'de
+    baglanan ve ResetEngineStatics'te sifirlanan yeni statik Character.OnJailed
+    hook'undan gecer.
+
 [2026-06-06] - Pet terk trigger'i (@PetDesert) (Wave 64)
 ----------------------------------------
 

@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Jail trigger (@Jail) (Wave 65)
+----------------------------------------
+
+TRIGGERS:
+  - Wired @Jail. The jail system already existed (the GM JAIL command teleports
+    the target to the cell, sets the Freeze flag and a JAIL_RELEASE tag, with the
+    timed release handled from Program) — only the trigger was missing. @Jail now
+    fires on the jailed character with the sentence length (N1 = minutes, 0 =
+    indefinite). Routed through a new static Character.OnJailed hook wired in
+    Program.EngineWiring and reset in ResetEngineStatics.
+
 [2026-06-06] - Pet desertion trigger (@PetDesert) (Wave 64)
 ----------------------------------------
 

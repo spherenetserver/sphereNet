@@ -144,11 +144,34 @@ public static partial class Program
             scriptInterpreter.ServerPropertyResolver = ResolveServerProperty;
             _triggerDispatcher.Runner = _triggerRunner;
 
+            // Build the IsTrigUsed cache now that every script resource is loaded,
+            // then wire @NotoSend ONLY if a script actually hooks it. ComputeNotoriety
+            // is a per-observer hot path; installing the override hook only when used
+            // keeps it to a null check otherwise. N1 carries the noto for the script
+            // to rewrite; the (possibly rewritten) ARGN1 becomes the displayed colour.
+            _triggerDispatcher.BuildUsedTriggerCache();
+            if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NotoSend))
+            {
+                SphereNet.Game.Objects.Characters.Character.OnNotoSend = (viewer, subject, noto) =>
+                {
+                    var args = new TriggerArgs { CharSrc = viewer, N1 = noto };
+                    _triggerDispatcher.FireCharTrigger(subject, CharTrigger.NotoSend, args);
+                    return (byte)Math.Clamp(args.N1, 0, 255);
+                };
+            }
+
             // Wire @SkillGain trigger + blue system message (Source-X parity)
             SkillEngine.OnSkillGain = (ch, skill, newVal) =>
             {
                 _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillGain,
                     new TriggerArgs { CharSrc = ch, N1 = (int)skill, N2 = newVal });
+
+                // @SkillChange (Source-X CTRIG_SkillChange) fires on a runtime skill
+                // value change. Wired here on the gain hook (the dominant runtime
+                // change); load/spawn use the raw setter and do not fire.
+                // N1 = skill, N2 = new value, N3 = delta.
+                _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillChange,
+                    new TriggerArgs { CharSrc = ch, N1 = (int)skill, N2 = newVal, N3 = 1 });
 
                 if (ch.IsPlayer && _clientsByCharUid.TryGetValue(ch.Uid, out var gc))
                 {
@@ -162,6 +185,13 @@ public static partial class Program
             // Wire stat gain message (Source-X: "You feel stronger/more agile/smarter")
             SkillEngine.OnStatGain = (ch, statIdx, newVal) =>
             {
+                // @StatChange (Source-X CTRIG_StatChange) fires on a runtime stat
+                // value change. Wired on the stat-gain hook (the runtime change
+                // point); load/spawn set stats via the raw setter and do not fire.
+                // N1 = stat index (0=Str,1=Dex,2=Int), N2 = new value, N3 = delta.
+                _triggerDispatcher.FireCharTrigger(ch, CharTrigger.StatChange,
+                    new TriggerArgs { CharSrc = ch, N1 = statIdx, N2 = newVal, N3 = 1 });
+
                 if (ch.IsPlayer && _clientsByCharUid.TryGetValue(ch.Uid, out var gc))
                 {
                     string msg = statIdx switch
@@ -1382,6 +1412,12 @@ public static partial class Program
             };
             _npcAI.OnNpcBreath = (npc, target, damage) =>
             {
+                // @NPCSpecialAction (Source-X) — fires before a special attack.
+                // N1 = 1 (breath). RETURN 1 cancels the special (effect + damage).
+                if (_triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCSpecialAction,
+                        new TriggerArgs { CharSrc = npc, O1 = target, N1 = 1 }) == TriggerResult.True)
+                    return;
+
                 FaceAndBroadcastToward(npc, target);
 
                 // Fire breath effect: moving fireball from NPC to target
@@ -1417,6 +1453,12 @@ public static partial class Program
             };
             _npcAI.OnNpcThrow = (npc, target, damage) =>
             {
+                // @NPCSpecialAction (Source-X) — N1 = 2 (thrown object).
+                // RETURN 1 cancels the special (effect + damage).
+                if (_triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCSpecialAction,
+                        new TriggerArgs { CharSrc = npc, O1 = target, N1 = 2 }) == TriggerResult.True)
+                    return;
+
                 FaceAndBroadcastToward(npc, target);
 
                 ushort throwGfx = 0x0F51;
@@ -1787,6 +1829,53 @@ public static partial class Program
             SphereNet.Game.Objects.Characters.Character.OnStepStealth = ch =>
                 _triggerDispatcher?.FireCharTrigger(ch, CharTrigger.StepStealth,
                     new TriggerArgs { CharSrc = ch });
+
+            // @FameChange / @KarmaChange — fired before a kill applies the delta.
+            // N1 = proposed delta; a script may rewrite ARGN1 or RETURN 1 to cancel.
+            SphereNet.Game.Objects.Characters.Character.OnFameChanging = (ch, delta) =>
+            {
+                var args = new TriggerArgs { CharSrc = ch, N1 = delta };
+                if (_triggerDispatcher?.FireCharTrigger(ch, CharTrigger.FameChange, args) == TriggerResult.True)
+                    return null;
+                return args.N1;
+            };
+            SphereNet.Game.Objects.Characters.Character.OnKarmaChanging = (ch, delta) =>
+            {
+                var args = new TriggerArgs { CharSrc = ch, N1 = delta };
+                if (_triggerDispatcher?.FireCharTrigger(ch, CharTrigger.KarmaChange, args) == TriggerResult.True)
+                    return null;
+                return args.N1;
+            };
+
+            // @MurderMark — fired on a player-vs-player kill before the murder
+            // count is recorded. N1 = proposed count (script may rewrite ARGN1),
+            // O1 = victim; RETURN 1 blocks the mark and the criminal flag.
+            SphereNet.Game.Objects.Characters.Character.OnMurderMark = (killer, victim, proposed) =>
+            {
+                var args = new TriggerArgs { CharSrc = killer, N1 = proposed, O1 = victim };
+                if (_triggerDispatcher?.FireCharTrigger(killer, CharTrigger.MurderMark, args) == TriggerResult.True)
+                    return null;
+                return args.N1;
+            };
+
+            // Combat (attacker) list lifecycle — @CombatAdd / @CombatDelete fire on
+            // the character whose list changed, O1 = the other combatant; @CombatEnd
+            // fires when the list empties. The list is mutated inside Character with
+            // no dispatcher, so it resolves the attacker UID via the world here.
+            SphereNet.Game.Objects.Characters.Character.OnCombatAdd = (self, attackerUid) =>
+                _triggerDispatcher?.FireCharTrigger(self, CharTrigger.CombatAdd,
+                    new TriggerArgs { CharSrc = self, O1 = _world?.FindChar(attackerUid) });
+            SphereNet.Game.Objects.Characters.Character.OnCombatDelete = (self, attackerUid) =>
+                _triggerDispatcher?.FireCharTrigger(self, CharTrigger.CombatDelete,
+                    new TriggerArgs { CharSrc = self, O1 = _world?.FindChar(attackerUid) });
+            SphereNet.Game.Objects.Characters.Character.OnCombatEnd = self =>
+                _triggerDispatcher?.FireCharTrigger(self, CharTrigger.CombatEnd,
+                    new TriggerArgs { CharSrc = self });
+
+            // @MurderDecay — one murder count aged off. N1 = new kill count.
+            SphereNet.Game.Objects.Characters.Character.OnMurderDecay = (self, newKills) =>
+                _triggerDispatcher?.FireCharTrigger(self, CharTrigger.MurderDecay,
+                    new TriggerArgs { CharSrc = self, N1 = newKills });
 
             // Account resolution from character UID
             SphereNet.Game.Objects.Characters.Character.ResolveAccountForChar = uid =>

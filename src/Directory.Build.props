@@ -5,7 +5,7 @@
   <!-- Test projeleri unified bin\ çıktısına dahil edilmez -->
   <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
     <BaseOutputPath>$(MSBuildProjectDirectory)\bin\</BaseOutputPath>
-    <OutputPath>$(BaseOutputPath)$(Configuration)\net9.0\</OutputPath>
+    <OutputPath>$(BaseOutputPath)$(Configuration)\net10.0\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
 </Project>

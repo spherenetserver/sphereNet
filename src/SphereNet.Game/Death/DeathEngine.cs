@@ -65,11 +65,20 @@ public sealed class DeathEngine
         {
             ApplyKarmaFameChange(effectiveKiller, victim);
 
-            // PvP murder tracking
+            // PvP murder tracking — @MurderMark fires before the count is
+            // recorded (Source-X Noto_Kill): a script may adjust the new count or
+            // block the mark (and the criminal flag) entirely by returning null.
             if (victim.IsPlayer && effectiveKiller.IsPlayer)
             {
-                effectiveKiller.Kills++;
-                effectiveKiller.SetCriminal(120_000); // 2 minutes criminal flag
+                int proposed = effectiveKiller.Kills + 1;
+                int? finalCount = Character.OnMurderMark == null
+                    ? proposed
+                    : Character.OnMurderMark(effectiveKiller, victim, proposed);
+                if (finalCount.HasValue)
+                {
+                    effectiveKiller.Kills = (short)Math.Clamp(finalCount.Value, 0, short.MaxValue);
+                    effectiveKiller.SetCriminal(120_000); // 2 minutes criminal flag
+                }
             }
         }
 
@@ -135,8 +144,7 @@ public sealed class DeathEngine
         // (rabbit, bird) must grant zero fame, otherwise players farm trash mobs
         // for fame one point at a time.
         fameGain = Math.Min(fameGain, 200);
-        if (fameGain > 0)
-            killer.Fame = (short)Math.Clamp(killer.Fame + fameGain, 0, 10000);
+        ApplyFame(killer, fameGain);
 
         // Source-X: no karma loss for killing criminal/red
         if (victim.IsCriminal || victim.IsMurderer)
@@ -145,7 +153,7 @@ public sealed class DeathEngine
             {
                 int gain = Math.Clamp(-victim.Karma / 10, 1, 50);
                 gain = ScaleKarma(killer.Karma, gain);
-                killer.Karma = (short)Math.Clamp(killer.Karma + gain, -10000, 10000);
+                ApplyKarma(killer, gain);
             }
             return;
         }
@@ -166,7 +174,37 @@ public sealed class DeathEngine
         }
 
         karmaChange = ScaleKarma(killer.Karma, karmaChange);
-        killer.Karma = (short)Math.Clamp(killer.Karma + karmaChange, -10000, 10000);
+        ApplyKarma(killer, karmaChange);
+    }
+
+    /// <summary>Apply a Fame delta after firing @FameChange (Source-X Noto_Fame).
+    /// A script returning null cancels the change; otherwise the (possibly
+    /// adjusted) delta is clamped into [0, 10000].</summary>
+    private static void ApplyFame(Character killer, int delta)
+    {
+        if (delta == 0) return;
+        if (Character.OnFameChanging != null)
+        {
+            int? adjusted = Character.OnFameChanging(killer, delta);
+            if (adjusted == null) return;
+            delta = adjusted.Value;
+        }
+        killer.Fame = (short)Math.Clamp(killer.Fame + delta, 0, 10000);
+    }
+
+    /// <summary>Apply a Karma delta after firing @KarmaChange (Source-X Noto_Karma).
+    /// A script returning null cancels the change; otherwise the (possibly
+    /// adjusted) delta is clamped into [-10000, 10000].</summary>
+    private static void ApplyKarma(Character killer, int delta)
+    {
+        if (delta == 0) return;
+        if (Character.OnKarmaChanging != null)
+        {
+            int? adjusted = Character.OnKarmaChanging(killer, delta);
+            if (adjusted == null) return;
+            delta = adjusted.Value;
+        }
+        killer.Karma = (short)Math.Clamp(killer.Karma + delta, -10000, 10000);
     }
 
     /// <summary>Source-X Calc_KarmaScale: good chars lose karma 2x faster, gain 0.5x.</summary>

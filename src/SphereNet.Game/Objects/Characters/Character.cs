@@ -467,6 +467,43 @@ public partial class Character : ObjBase
     /// <summary>Fired once per stealth movement step (Source-X @StepStealth).</summary>
     public static Action<Character>? OnStepStealth { get; set; }
 
+    /// <summary>Fired before a kill applies a Fame delta (Source-X @FameChange).
+    /// Arg: proposed delta. Return null to cancel the change, or the (possibly
+    /// script-adjusted) delta to apply.</summary>
+    public static Func<Character, int, int?>? OnFameChanging { get; set; }
+
+    /// <summary>Fired before a kill applies a Karma delta (Source-X @KarmaChange).
+    /// Arg: proposed delta. Return null to cancel the change, or the (possibly
+    /// script-adjusted) delta to apply.</summary>
+    public static Func<Character, int, int?>? OnKarmaChanging { get; set; }
+
+    /// <summary>Fired before a player-vs-player kill records a murder count
+    /// (Source-X @MurderMark). Args: victim, proposed new murder count. Return
+    /// null to block the mark entirely, or the final count to record.</summary>
+    public static Func<Character, Character, int, int?>? OnMurderMark { get; set; }
+
+    /// <summary>Fired when a new attacker first enters this character's combat
+    /// (attacker) list (Source-X @CombatAdd). Arg: attacker UID.</summary>
+    public static Action<Character, Serial>? OnCombatAdd { get; set; }
+
+    /// <summary>Fired when an attacker is removed from the combat list
+    /// (Source-X @CombatDelete). Arg: removed attacker UID.</summary>
+    public static Action<Character, Serial>? OnCombatDelete { get; set; }
+
+    /// <summary>Fired when the last attacker leaves and combat ends — the
+    /// attacker list transitions to empty (Source-X @CombatEnd).</summary>
+    public static Action<Character>? OnCombatEnd { get; set; }
+
+    /// <summary>Fired when one murder count decays off (Source-X @MurderDecay).
+    /// Arg: the new (decremented) kill count.</summary>
+    public static Action<Character, int>? OnMurderDecay { get; set; }
+
+    /// <summary>Overrides the notoriety byte a viewer sees of a subject
+    /// (Source-X @NotoSend). Args: viewer, subject, computed noto. Returns the
+    /// final noto. Installed ONLY when @NotoSend is actually hooked (IsTrigUsed
+    /// gate), so the hot ComputeNotoriety path pays just a null check otherwise.</summary>
+    public static Func<Character, Character, byte, byte>? OnNotoSend { get; set; }
+
     /// <summary>TickCount64 of the last successful move — archery movement delay gate.</summary>
     public long LastMoveTick { get; set; }
 
@@ -847,6 +884,7 @@ public partial class Character : ObjBase
             {
                 _kills--;
                 _nextMurderDecayTick = nowMs + MurderDecayTimeSeconds * 1000L;
+                OnMurderDecay?.Invoke(this, _kills);
             }
         }
         else
@@ -1919,6 +1957,7 @@ public partial class Character : ObjBase
             }
         }
         _attackers.Add(new AttackerRecord(attackerUid, damage, now));
+        OnCombatAdd?.Invoke(this, attackerUid);
     }
 
     public void ClearAttackers() => _attackers.Clear();
@@ -1944,7 +1983,12 @@ public partial class Character : ObjBase
     {
         int idx = Attacker_GetIndex(uid);
         if (idx >= 0)
+        {
             _attackers.RemoveAt(idx);
+            OnCombatDelete?.Invoke(this, uid);
+            if (_attackers.Count == 0)
+                OnCombatEnd?.Invoke(this);
+        }
     }
 
     // --- Death ---

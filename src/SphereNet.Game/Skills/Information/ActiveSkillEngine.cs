@@ -21,10 +21,13 @@ namespace SphereNet.Game.Skills.Information;
 ///      push criminal flag, ...).
 ///
 /// Side effects use only <see cref="IActiveSkillSink"/>, which keeps the
-/// engine network-free and unit-testable. The synchronous collapse means
-/// SphereNet does not yet emulate Source-X's per-tick STROKE animation
-/// loop -- a future tick scheduler can drive these as well by calling the
-/// individual phase helpers.
+/// engine network-free and unit-testable. The engine itself is deliberately
+/// stateless: it resolves the SUCCESS/FAIL outcome in one call and holds no
+/// per-tick state. The Source-X per-tick STROKE loop is layered on top by the
+/// client (GameClient.TickPendingSkill / TryScheduleActiveSkillDelay), which,
+/// for skills with a DELAY, fires @SkillStroke on an interval and then invokes
+/// these methods at completion. Ordering and interrupt behaviour of that loop
+/// are locked by ActiveSkillStrokeMatrixTests / SkillDelayTests.
 /// </summary>
 public static class ActiveSkillEngine
 {

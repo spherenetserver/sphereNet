@@ -496,9 +496,19 @@ public sealed partial class GameClient
                         _netState.Send(new PacketDropAck());
                         return;
                     }
-                    // Default: NPC accepts the item into its pack and fires
-                    // @NPCAcceptItem; a script may refuse via @NPCRefuseItem by
-                    // bouncing the item itself (handled in @ReceiveItem RETURN 1).
+                    // @NPCRefuseItem — the engine's accept gate (Source-X). RETURN 1
+                    // refuses the gift: the item bounces back to the giver instead of
+                    // entering the NPC's pack. Default (no handler) accepts, so prior
+                    // behaviour is preserved.
+                    var refuse = _triggerDispatcher.FireCharTrigger(charTarget, CharTrigger.NPCRefuseItem,
+                        new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item });
+                    if (refuse == TriggerResult.True)
+                    {
+                        PlaceItemInPack(_character, item);
+                        _netState.Send(new PacketDropAck());
+                        return;
+                    }
+                    // Default: NPC accepts the item into its pack and fires @NPCAcceptItem.
                     PlaceItemInPack(charTarget, item);
                     _triggerDispatcher.FireCharTrigger(charTarget, CharTrigger.NPCAcceptItem,
                         new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item });

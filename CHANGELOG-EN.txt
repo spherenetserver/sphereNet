@@ -4,6 +4,51 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Char trigger P0/P1 wiring, IsTrigUsed gate and Source-X parity test harnesses (Wave 60)
+----------------------------------------
+
+BUILD / CI:
+  - Target framework pinned to net10.0 end to end: the CI and nightly benchmark
+    workflows install 10.0.x, a root global.json pins the SDK (10.0.100,
+    latestFeature), and the test-output path no longer carries a net9.0 segment.
+  - TreatWarningsAsErrors enabled in Directory.Build.props as a warning gate for
+    local and CI builds; the one outstanding nullable warning was cleared.
+
+TRIGGERS:
+  - Wired char triggers that were defined but never fired: @KarmaChange,
+    @FameChange and @MurderMark (DeathEngine notoriety hooks; N1 = delta/new
+    count, RETURN 1 cancels or blocks), @SkillChange and @StatChange (SkillEngine
+    runtime gain hooks), @CombatAdd / @CombatDelete / @CombatEnd (Character
+    attacker-list hooks), @MurderDecay (notoriety-decay hook), @NPCRefuseItem
+    (drop-on-NPC accept gate), @NPCSpecialAction (breath/throw cancel gate),
+    @NotoSend (ComputeNotoriety colour override), @Eat (food/booze use-item
+    gate), @SkillMenu, @SkillWait, @Follow (pet follow/come command),
+    @PartyDisband, @SpellSelect and @SpellBook.
+  - Value mutations route through new static Character.On* hooks wired in
+    Program.EngineWiring; the new hooks are reset in ResetEngineStatics.
+
+SCRIPTING:
+  - Added an IsTrigUsed gate (TriggerDispatcher.IsCharTriggerUsed +
+    BuildUsedTriggerCache) that scans loaded [ON=@X] blocks, f_onchar_x functions
+    and registered handlers, so a hot-path trigger only dispatches when a script
+    hooks it. @NotoSend uses it to stay a null check on the per-observer
+    ComputeNotoriety path.
+
+ACTIVE SKILL:
+  - Corrected the ActiveSkillEngine note: the per-tick @SkillStroke loop is
+    implemented in the client (TickPendingSkill) while the engine stays stateless.
+
+TESTS:
+  - Added Source-X parity harnesses: vendor 0x3B/0x9F packet roundtrip,
+    in-process loopback login (seed, no-crypt, 0x80/0xA0/0x91/0x5D through to
+    enter-world), 0xBF extended-command dispatch, a trigger-coverage guardrail
+    that locks the not-fired backlog by P0/P1/P2, the active-skill stroke matrix,
+    and per-trigger behaviour tests for each wiring above.
+
+DOCS:
+  - docs/PARITY.md and docs/TRIGGERS.md updated for the now-covered items and the
+    remaining deferred triggers, each noted with the infrastructure it needs.
+
 [2026-06-06] - Animation client-type gating, NPC facing, tooltip and regen parity (Wave 59)
 ----------------------------------------
 

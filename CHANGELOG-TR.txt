@@ -4,6 +4,52 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-06] - Karakter trigger P0/P1 baglama, IsTrigUsed kapisi ve Source-X parite test kosumlari (Wave 60)
+----------------------------------------
+
+BUILD / CI:
+  - Hedef framework uctan uca net10.0'a sabitlendi: CI ve gecelik benchmark is
+    akislari 10.0.x kurar, kok global.json SDK'yi sabitler (10.0.100,
+    latestFeature) ve test cikti yolu artik net9.0 segmenti tasimaz.
+  - Directory.Build.props'ta TreatWarningsAsErrors etkinlestirildi (yerel ve CI
+    derlemeleri icin uyari kapisi); mevcut tek nullable uyarisi giderildi.
+
+TRIGGER:
+  - Tanimli ama hic atesleymeyen karakter trigger'lari baglandi: @KarmaChange,
+    @FameChange ve @MurderMark (DeathEngine notoriety hook'lari; N1 = delta/yeni
+    sayi, RETURN 1 iptal/blok), @SkillChange ve @StatChange (SkillEngine runtime
+    gain hook'lari), @CombatAdd / @CombatDelete / @CombatEnd (Character
+    saldirgan-liste hook'lari), @MurderDecay (notoriety-decay hook), @NPCRefuseItem
+    (NPC'ye birak kabul kapisi), @NPCSpecialAction (breath/throw iptal kapisi),
+    @NotoSend (ComputeNotoriety renk override), @Eat (yiyecek/icecek esya-kullan
+    kapisi), @SkillMenu, @SkillWait, @Follow (pet follow/come komutu),
+    @PartyDisband, @SpellSelect ve @SpellBook.
+  - Deger mutasyonlari Program.EngineWiring'de baglanan yeni statik Character.On*
+    hook'lari uzerinden gecer; yeni hook'lar ResetEngineStatics'te sifirlanir.
+
+BETIK:
+  - IsTrigUsed kapisi eklendi (TriggerDispatcher.IsCharTriggerUsed +
+    BuildUsedTriggerCache): yuklu [ON=@X] bloklarini, f_onchar_x fonksiyonlarini
+    ve kayitli handler'lari tarar; sicak-yol trigger'i ancak bir betik onu
+    hook'larsa dispatch eder. @NotoSend bunu kullanarak per-observer
+    ComputeNotoriety yolunda null kontrolune iner.
+
+AKTIF SKILL:
+  - ActiveSkillEngine notu duzeltildi: per-tick @SkillStroke dongusu client'ta
+    (TickPendingSkill) uygulanir, motor stateless kalir.
+
+TEST:
+  - Source-X parite kosumlari eklendi: vendor 0x3B/0x9F paket roundtrip,
+    in-process loopback login (seed, no-crypt, 0x80/0xA0/0x91/0x5D'den
+    enter-world'e), 0xBF extended-command dispatch, not-fired backlog'u P0/P1/P2
+    ile kilitleyen trigger-coverage guardrail, aktif-skill stroke matrisi ve
+    yukaridaki her baglama icin trigger-bazli davranis testleri.
+
+DOK:
+  - docs/PARITY.md ve docs/TRIGGERS.md artik kapsanan ogeler ve kalan ertelenmis
+    trigger'lar (her biri icin gereken altyapi notuyla) yansitilacak sekilde
+    guncellendi.
+
 [2026-06-06] - Animasyon client-tipi kapilamasi, NPC yonelme, tooltip ve regen paritesi (Wave 59)
 ----------------------------------------
 

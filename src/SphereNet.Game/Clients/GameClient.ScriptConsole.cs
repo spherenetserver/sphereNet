@@ -431,6 +431,18 @@ public sealed partial class GameClient
     /// <paramref name="viewer"/>. Used by per-observer combat/move broadcasts.</summary>
     public static byte ComputeNotoriety(GameWorld? world, Character? viewer, Character subject)
     {
+        byte noto = ComputeNotorietyBase(world, viewer, subject);
+        // @NotoSend override gate. The hook is non-null only when a script hooks
+        // @NotoSend (TriggerDispatcher.IsCharTriggerUsed), so this hot per-observer
+        // path costs just a null check when nothing hooks it.
+        var hook = Character.OnNotoSend;
+        if (hook != null && viewer != null)
+            noto = hook(viewer, subject, noto);
+        return noto;
+    }
+
+    private static byte ComputeNotorietyBase(GameWorld? world, Character? viewer, Character subject)
+    {
         if (viewer == null)
             return 3;
         if (subject == viewer)
@@ -1319,6 +1331,8 @@ public sealed partial class GameClient
 
     private bool HandleDialogCommand(string args)
     {
+        if (_character == null) return false;
+
         string raw = args.Trim();
         string dialogId = "script_dialog";
         string closeSpec = "";

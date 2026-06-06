@@ -1444,8 +1444,15 @@ public sealed partial class GameClient
                         // their party UI, instead of broadcasting an empty list.
                         var emptyList = Array.Empty<uint>();
                         foreach (var formerUid in membersBefore)
+                        {
                             SendToChar?.Invoke(formerUid,
                                 new PacketPartyRemoveMember(formerUid.Value, emptyList));
+                            // @PartyDisband (Source-X) — fires on each former member.
+                            var formerChar = _world.FindChar(formerUid);
+                            if (formerChar != null)
+                                _triggerDispatcher?.FireCharTrigger(formerChar, CharTrigger.PartyDisband,
+                                    new TriggerArgs { CharSrc = formerChar });
+                        }
                     }
                     else
                     {

@@ -57,6 +57,13 @@ public sealed class TriggerDispatcher
     private readonly Dictionary<string, List<TriggerHandler>> _globalItemHandlers = [];
     private readonly Dictionary<string, List<TriggerHandler>> _typeDefHandlers = [];
 
+    // Source-X IsTrigUsed parity: the set of char-trigger names hooked anywhere —
+    // by a registered C# handler, an [ON=@X] block in any loaded resource, or an
+    // f_onchar_<x> function. Lets a hot path (e.g. ComputeNotoriety → @NotoSend)
+    // skip firing entirely when nothing hooks the trigger. Registrations update it
+    // live; BuildUsedTriggerCache scans the loaded scripts once after load.
+    private readonly HashSet<string> _usedCharTriggers = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Optional resource holder for resolving CHARDEF/ITEMDEF scripts.</summary>
     public ResourceHolder? Resources { get; set; }
 
@@ -369,6 +376,52 @@ public sealed class TriggerDispatcher
             _globalCharHandlers[key] = list;
         }
         list.Add(handler);
+        _usedCharTriggers.Add(trigName);
+    }
+
+    /// <summary>
+    /// Scan all loaded script resources for the char-trigger names they hook
+    /// (<c>[ON=@X]</c> blocks and <c>f_onchar_x</c> functions) and fold them into
+    /// the used-trigger set. Registered C# handlers are already tracked live by
+    /// <see cref="RegisterCharEvent"/>. Call once after scripts are loaded.
+    /// </summary>
+    public void BuildUsedTriggerCache()
+    {
+        if (Resources == null)
+            return;
+
+        foreach (var link in Resources.GetAllResources())
+        {
+            var keys = link.StoredKeys;
+            if (keys == null) continue;
+            foreach (var key in keys)
+            {
+                if (key.Key.Equals("ON", StringComparison.OrdinalIgnoreCase) &&
+                    key.Arg.StartsWith('@'))
+                    _usedCharTriggers.Add(key.Arg[1..].Trim());
+            }
+        }
+
+        // f_onchar_<name> function fallbacks (FireCharTrigger step 6).
+        foreach (CharTrigger trig in Enum.GetValues<CharTrigger>())
+        {
+            if (trig == CharTrigger.Qty) continue;
+            string name = GetCharTriggerName(trig);
+            if (Resources.ResolveDefName("f_onchar_" + name.ToLowerInvariant()).IsValid)
+                _usedCharTriggers.Add(name);
+        }
+    }
+
+    /// <summary>
+    /// O(1) check: is <paramref name="trigger"/> hooked by any script block,
+    /// registered handler, or function? Also covers the cross-fired
+    /// <c>@char&lt;Name&gt;</c> mirror. Returns false only when nothing can fire it,
+    /// letting hot-path callers skip the dispatch entirely.
+    /// </summary>
+    public bool IsCharTriggerUsed(CharTrigger trigger)
+    {
+        string name = GetCharTriggerName(trigger);
+        return _usedCharTriggers.Contains(name) || _usedCharTriggers.Contains("char" + name);
     }
 
     /// <summary>Register a global item event handler.</summary>

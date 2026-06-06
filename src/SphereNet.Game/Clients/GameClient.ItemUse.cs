@@ -340,6 +340,10 @@ public sealed partial class GameClient
             case ItemType.Food:
             case ItemType.Fruit:
             case ItemType.Drink:
+                // @Eat (Source-X) — RETURN 1 blocks the meal. N1 = hunger restored.
+                if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Eat,
+                        new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item, N1 = 5 }) == TriggerResult.True)
+                    break;
                 _character.Food = (ushort)Math.Min(_character.Food + 5, 60);
                 SysMessage(ServerMessages.Get("itemuse_eat_food"));
                 BroadcastNearby?.Invoke(_character.Position, UpdateRange,
@@ -379,6 +383,10 @@ public sealed partial class GameClient
             case ItemType.SpellbookMastery:
             case ItemType.SpellbookExtra:
             {
+                // @SpellBook (Source-X) — opening a spellbook. RETURN 1 keeps it shut.
+                if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellBook,
+                        new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item }) == TriggerResult.True)
+                    break;
                 ushort scrollOffset = item.ItemType switch
                 {
                     ItemType.SpellbookNecro => 101,
@@ -731,6 +739,10 @@ public sealed partial class GameClient
 
             // ---- beverages ----
             case ItemType.Booze:
+                // @Eat (Source-X) — drinking also feeds the @Eat hook. N1 = hunger.
+                if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Eat,
+                        new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item, N1 = 2 }) == TriggerResult.True)
+                    break;
                 _character.Food = (ushort)Math.Min(_character.Food + 2, 60);
                 SysMessage("*hic!*");
                 if (_triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Destroy,
@@ -1362,12 +1374,17 @@ public sealed partial class GameClient
             case "follow me":
                 pet.PetAIMode = PetAIMode.Follow;
                 pet.SetTag("FOLLOW_TARGET", _character.Uid.Value.ToString());
+                // @Follow (Source-X) — pet begins following its master. <src> = master.
+                _triggerDispatcher?.FireCharTrigger(pet, CharTrigger.Follow,
+                    new TriggerArgs { CharSrc = _character, O1 = _character });
                 NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetSuccess));
                 return true;
 
             case "come":
                 pet.PetAIMode = PetAIMode.Come;
                 pet.SetTag("FOLLOW_TARGET", _character.Uid.Value.ToString());
+                _triggerDispatcher?.FireCharTrigger(pet, CharTrigger.Follow,
+                    new TriggerArgs { CharSrc = _character, O1 = _character });
                 NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetSuccess));
                 return true;
 

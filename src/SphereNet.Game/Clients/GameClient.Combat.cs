@@ -1679,6 +1679,13 @@ public sealed partial class GameClient
     {
         if (_character == null || _spellEngine == null) return;
 
+        // @SpellSelect (Source-X) — a spell was chosen. Fires before @SpellCast and
+        // the mana/skill/reagent checks so a script can cancel early. N1 = spell.
+        if (_triggerDispatcher != null &&
+            _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SpellSelect,
+                new TriggerArgs { CharSrc = _character, N1 = (int)spell }) == TriggerResult.True)
+            return;
+
         // Fire @SpellCast — if script blocks, don't cast
         if (_triggerDispatcher != null)
         {

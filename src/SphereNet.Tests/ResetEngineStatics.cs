@@ -32,5 +32,13 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.ResolveAccountForChar = null;
         SphereNet.Game.Trade.VendorEngine.World = null;
         SphereNet.Scripting.Definitions.CharDef.DefNameResolver = null;
+        SphereNet.Game.Objects.Characters.Character.OnFameChanging = null;
+        SphereNet.Game.Objects.Characters.Character.OnKarmaChanging = null;
+        SphereNet.Game.Objects.Characters.Character.OnMurderMark = null;
+        SphereNet.Game.Objects.Characters.Character.OnCombatAdd = null;
+        SphereNet.Game.Objects.Characters.Character.OnCombatDelete = null;
+        SphereNet.Game.Objects.Characters.Character.OnCombatEnd = null;
+        SphereNet.Game.Objects.Characters.Character.OnMurderDecay = null;
+        SphereNet.Game.Objects.Characters.Character.OnNotoSend = null;
     }
 }

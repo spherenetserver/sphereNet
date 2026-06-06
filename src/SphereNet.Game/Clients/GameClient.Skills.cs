@@ -218,7 +218,15 @@ public sealed partial class GameClient
         }
 
         if (now < _character.SkillDelayEnd)
+        {
+            // @SkillWait (Source-X) — the skill is still in progress this tick.
+            // Gated by IsTrigUsed so an unhooked @SkillWait costs nothing on the
+            // per-tick skill loop (no FireCharTrigger allocation).
+            if (_triggerDispatcher?.IsCharTriggerUsed(CharTrigger.SkillWait) == true)
+                _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillWait,
+                    new TriggerArgs { CharSrc = _character, N1 = skillId });
             return;
+        }
 
         CompletePendingSkill(skill, skillId);
     }
@@ -243,6 +251,10 @@ public sealed partial class GameClient
     private void ShowTrackingMenu(SkillType skill, int skillId)
     {
         if (_character == null) return;
+
+        // @SkillMenu (Source-X) — a skill opened a selection menu. N1 = skill.
+        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillMenu,
+            new TriggerArgs { CharSrc = _character, N1 = skillId });
 
         var gump = new GumpBuilder(_character.Uid.Value, 0, 300, 220);
         gump.AddResizePic(0, 0, 5054, 300, 220);

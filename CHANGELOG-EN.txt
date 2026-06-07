@@ -4,8 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-07] - NPC CHARDEF skills/tags, hit-chance fallback, bare-hex def parsing (Wave 74)
+[2026-06-07] - Pet-command speech gating, skin hue preserved across death/resurrect (Wave 75)
 ----------------------------------------
+
+ENGINE - speech:
+  - The pet-command parser no longer treats every two-word line as "<pet name>
+    <command>"; it only engages when the line actually starts with a pet command
+    verb, so ordinary two-word speech no longer prints the "Sorry" pet-failure
+    message when the speaker has no pet.
+
+ENGINE - death / resurrect:
+  - Skin hue is preserved across death. The living body's skin hue is captured into
+    OSkin before the death spell-cleanup runs, and a dead character logging in keeps
+    that hue instead of losing it when switching to the ghost hue. Fixes the
+    character staying grey/default-hued after resurrect.
 
 ENGINE - NPC definitions:
   - CHARDEF skill ranges (WRESTLING, TACTICS, MAGERY, etc.) are now parsed and

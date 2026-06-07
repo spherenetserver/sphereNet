@@ -4,8 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-07] - NPC CHARDEF skill/tag aktarimi, hit-chance fallback, bare-hex parse (Wave 74)
+[2026-06-07] - Pet-komut konusma kapisi, olum/rez'de ten rengi korunmasi (Wave 75)
 ----------------------------------------
+
+ENGINE - konusma:
+  - Pet-komut parser'i artik her iki kelimelik satiri "<pet adi> <komut>" saymiyor;
+    yalnizca satir gercekten bir pet komut fiili ile basliyorsa devreye giriyor.
+    Boylece pet'i olmayan birinin siradan iki kelimelik konusmasi artik "Sorry"
+    pet-failure mesaji basmiyor.
+
+ENGINE - olum / dirilme:
+  - Ten rengi (skin hue) olum boyunca korunuyor. Canli body'nin ten rengi, olum
+    spell-cleanup calismadan once OSkin'e aliniyor; olu karakter login olursa ghost
+    hue'a gecerken bu rengi kaybetmiyor. Rez sonrasi karakterin gri/varsayilan
+    hue'da kalmasini cozer.
 
 ENGINE - NPC tanimlari:
   - CHARDEF skill araliklari (WRESTLING, TACTICS, MAGERY, vb.) artik spawn /

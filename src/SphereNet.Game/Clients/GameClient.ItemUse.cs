@@ -1345,6 +1345,8 @@ public sealed partial class GameClient
         if (lower.StartsWith("all ", StringComparison.Ordinal))
         {
             string verb = NormalizePetVerb(lower[4..], allMode: true);
+            if (!IsPetCommandVerb(verb))
+                return false;
             return DispatchAllPets(verb);
         }
 
@@ -1353,6 +1355,8 @@ public sealed partial class GameClient
         if (spaceIdx <= 0) return false;
         string name = lower[..spaceIdx];
         string rest = NormalizePetVerb(lower[(spaceIdx + 1)..], allMode: false);
+        if (!IsPetCommandVerb(rest))
+            return false;
         return DispatchNamedPet(name, rest);
     }
 
@@ -1373,6 +1377,16 @@ public sealed partial class GameClient
             return "follow me";
         return verb;
     }
+
+    private static bool IsPetCommandVerb(string verb) => verb switch
+    {
+        "follow me" or "guard me" or "come" or "stay" or "stop" or "speak" or
+        "drop" or "drop all" or "equip" or "status" or
+        "attack" or "kill" or "guard" or "follow" or "go" or
+        "friend" or "unfriend" or "transfer" or "release" or
+        "price" or "bought" or "samples" or "stock" or "cash" => true,
+        _ => false
+    };
 
     /// <summary>Source-X PC_*: target a single pet by name prefix.</summary>
     private bool DispatchNamedPet(string namePrefix, string verb)

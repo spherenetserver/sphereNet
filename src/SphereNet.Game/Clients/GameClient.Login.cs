@@ -501,6 +501,9 @@ public sealed partial class GameClient
         {
             bool isFemale = _character.BodyId == 0x0191 || _character.BodyId == 0x025E || _character.BodyId == 0x029B;
             ushort ghostBody = isFemale ? (ushort)0x0193 : (ushort)0x0192;
+            if (_character.OSkin == 0 && _character.Hue.Value != 0 &&
+                _character.BodyId != 0x0192 && _character.BodyId != 0x0193)
+                _character.OSkin = _character.Hue.Value;
             if (_character.BodyId != 0x0192 && _character.BodyId != 0x0193)
                 _character.BodyId = ghostBody;
             _character.Hue = Core.Types.Color.Default;

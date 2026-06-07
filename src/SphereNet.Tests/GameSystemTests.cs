@@ -113,6 +113,12 @@ public class GameSystemTests
             .Invoke(client, []);
     }
 
+    private static ushort ReadU16(PacketBuffer packet, int offset)
+    {
+        var span = packet.Span;
+        return (ushort)((span[offset] << 8) | span[offset + 1]);
+    }
+
     private static void InvokePrivate(SphereNet.Game.Clients.GameClient client, string methodName, params object[] args)
     {
         typeof(SphereNet.Game.Clients.GameClient)
@@ -125,6 +131,60 @@ public class GameSystemTests
         typeof(SphereNet.Game.Clients.GameClient)
             .GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(client, value);
+    }
+
+    [Fact]
+    public void Speech_TwoWordNonPetText_DoesNotEmitPetFailure()
+    {
+        var world = CreateWorld();
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var client = TestHarness.CreateClient(loggerFactory, world, new AccountManager(loggerFactory), 16001);
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
+        AttachCharacter(client, player);
+
+        Assert.False(InvokePetCommand(client, "selam nasilsin"));
+
+        var packets = GetQueuedPackets(client.NetState).ToList();
+        Assert.DoesNotContain(packets, p =>
+            p.Span.Length > 0 &&
+            (p.Span[0] == 0x1C || p.Span[0] == 0xAE) &&
+            System.Text.Encoding.ASCII.GetString(p.Span.ToArray()).Contains("Sorry"));
+    }
+
+    [Fact]
+    public void DeadLoginThenResurrect_RestoresSkinHue()
+    {
+        var world = CreateWorld();
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var client = TestHarness.CreateClient(loggerFactory, world, new AccountManager(loggerFactory), 16002);
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        player.BodyId = 0x0190;
+        player.Hue = new Color(0x03EA);
+        player.MaxHits = 50;
+        player.Kill();
+        world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
+        AttachCharacter(client, player);
+
+        InvokeEnterWorld(client);
+
+        Assert.Equal((ushort)0x0192, player.BodyId);
+        Assert.Equal((ushort)0x03EA, player.OSkin);
+        Assert.Equal((ushort)0, player.Hue.Value);
+
+        client.OnResurrect();
+
+        Assert.False(player.IsDead);
+        Assert.Equal((ushort)0x0190, player.BodyId);
+        Assert.Equal((ushort)0x03EA, player.Hue.Value);
+        Assert.Equal((ushort)0, player.OSkin);
+
+        var drawPlayer = GetQueuedPackets(client.NetState)
+            .LastOrDefault(p => p.Span.Length >= 19 && p.Span[0] == 0x20 && ReadU16(p, 5) == 0x0190);
+        Assert.NotNull(drawPlayer);
+        Assert.Equal((ushort)0x03EA, ReadU16(drawPlayer!, 8));
     }
 
     // --- Party ---

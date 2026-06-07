@@ -1269,11 +1269,14 @@ public sealed partial class GameClient
         //   death logs was caused by sending 0x4001 here.
         // ---------------------------------------------------------------
 
+        ushort deathSkinHue = _character.Hue.Value;
         _spellEngine?.ClearAllEffectsOnDeath(_character);
+        if (deathSkinHue == 0)
+            deathSkinHue = _character.Hue.Value;
 
         ushort ghostBody = _character.BodyId == 0x0191 ? (ushort)0x0193 : (ushort)0x0192;
         _character.BodyId = ghostBody;
-        _character.OSkin = _character.Hue.Value;
+        _character.OSkin = deathSkinHue;
         _character.Hue = Core.Types.Color.Default;
 
         // pClient->addPlayerWarMode(off). We only need the local

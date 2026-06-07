@@ -388,10 +388,16 @@ public static partial class Program
 
                 // @EnvironChange — the perceived light level differs between surface
                 // and dungeon regions (mirrors WeatherEngine.GetLightLevel).
-                mover.UpdateEnvironLight(newRegion.IsFlag(SphereNet.Core.Enums.RegionFlag.Underground)
-                    ? (byte)28 : _world.GlobalLight);
+                byte regionLight = newRegion.IsFlag(SphereNet.Core.Enums.RegionFlag.Underground)
+                    ? (byte)28 : _world.GlobalLight;
+                mover.UpdateEnvironLight(regionLight);
 
                 if (!TryGetClientFor(mover, out var gc)) { _log.LogDebug("[REGION_CHANGE] no GameClient for {Name}", mover.Name); return; }
+
+                gc.Send(new PacketGlobalLight(regionLight));
+                gc.Send(new PacketSeason((byte)_weatherEngine.CurrentSeason, playSound: false));
+                var (weatherType, weatherIntensity, weatherTemp) = _weatherEngine.GetWeatherForRegion(newRegion.Name);
+                gc.Send(new PacketWeather((byte)weatherType, weatherIntensity, weatherTemp));
 
                 gc.SysMessage(SphereNet.Game.Messages.ServerMessages.GetFormatted(
                     SphereNet.Game.Messages.Msg.MsgRegionEnter, newRegion.Name));
@@ -569,6 +575,11 @@ public static partial class Program
             {
                 if (TryGetClientFor(ch, out var c))
                     c.SendSelfRedraw();
+            };
+            Item.OnVisualUpdate = item =>
+            {
+                foreach (var c in _clients.Values)
+                    c.SendItemVisualUpdate(item);
             };
             _commands.OnScriptParityWarning += (ch, verb, reason) =>
             {
@@ -2124,9 +2135,17 @@ public static partial class Program
 
             // --- Observer-visible verbs (ANIM/SOUND/EFFECT/BOW/SALUTE/BARK)
             // and per-owner UI verbs (DCLICK/PACK/BANK) ---
+            SphereNet.Game.Objects.ObjBase.BroadcastNearby = (origin, range, pkt, exclude) =>
+            {
+                BroadcastNearby(origin, range, pkt, exclude);
+            };
             SphereNet.Game.Objects.Characters.Character.BroadcastNearby = (origin, range, pkt, exclude) =>
             {
                 BroadcastNearby(origin, range, pkt, exclude);
+            };
+            SphereNet.Game.Objects.Characters.Character.OnFacingChanged = ch =>
+            {
+                BroadcastFacingUpdate(ch);
             };
             SphereNet.Game.Objects.Characters.Character.OpenPaperdollForOwner = ch =>
             {

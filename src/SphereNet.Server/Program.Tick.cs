@@ -161,6 +161,17 @@ public static partial class Program
                     RestockBotCharacters();
                 }
 
+                // Periodic world auto-save (sphere.ini SavePeriod, minutes). 0 = off.
+                // Runs on the main loop so it shares the same single-threaded save
+                // path as the manual 'save' command. First save fires one full
+                // period after startup, not at boot.
+                if (_config.SavePeriodMinutes > 0
+                    && now - _lastAutoSaveMs > _config.SavePeriodMinutes * 60_000L)
+                {
+                    _lastAutoSaveMs = now;
+                    PerformSave();
+                }
+
                 // Replay packet delivery runs every main-loop iteration
                 // (~1-15ms) for smooth character movement instead of being
                 // batched into the 100ms server tick.
@@ -309,14 +320,14 @@ public static partial class Program
                 if (_botEngine != null && _botEngine.TotalBots > 0)
                 {
                     var botStats = _botEngine.GetStats();
-                    _log.LogInformation(
+                    _log.LogDebug(
                         "[tick_stats] ticks={Count} avg={AvgMs:F1}ms max={MaxMs:F1}ms p50={P50Ms:F1}ms p95={P95Ms:F1}ms p99={P99Ms:F1}ms players={Players} chars={Chars} items={Items} bots={Bots}/{BotTotal} pps_in={PpsIn:F0} pps_out={PpsOut:F0}",
                         _tickStatsCount, avgMs, maxMs, tickTelemetry.P50Ms, tickTelemetry.P95Ms, tickTelemetry.P99Ms, onlinePlayers, chars, items,
                         botStats.ActiveBots, botStats.TotalBots, botStats.PacketsPerSecIn, botStats.PacketsPerSecOut);
                 }
                 else
                 {
-                    _log.LogInformation(
+                    _log.LogDebug(
                         "[tick_stats] ticks={Count} avg={AvgMs:F1}ms max={MaxMs:F1}ms p50={P50Ms:F1}ms p95={P95Ms:F1}ms p99={P99Ms:F1}ms players={Players} chars={Chars} items={Items}",
                         _tickStatsCount, avgMs, maxMs, tickTelemetry.P50Ms, tickTelemetry.P95Ms, tickTelemetry.P99Ms, onlinePlayers, chars, items);
                 }
@@ -334,7 +345,7 @@ public static partial class Program
                     double allocMBs = allocDelta / 1048576.0 / (windowMs / 1000.0);
                     double allocPerTickKB = _tickStatsCount > 0 ? allocDelta / 1024.0 / _tickStatsCount : 0;
                     var gcInfo = GC.GetGCMemoryInfo();
-                    _log.LogInformation(
+                    _log.LogDebug(
                         "[gc_stats] alloc={AllocMBs:F0}MB/s ({PerTickKB:F0}KB/tick) gen0={G0} gen1={G1} gen2={G2} pause%={Pause:F1} heap={Heap}MB rss={Rss}MB shed={Shed}",
                         allocMBs, allocPerTickKB, g0 - _gcWindowStartGen0, g1 - _gcWindowStartGen1, g2 - _gcWindowStartGen2,
                         gcInfo.PauseTimePercentage, GC.GetTotalMemory(false) / 1048576,

@@ -95,4 +95,42 @@ public class ConfigRegressionTests
             try { File.Delete(tmp); } catch { }
         }
     }
+
+    // Case-insensitive INI keys mean COLORNOTOGOOD=0 maps to ColorNotoGood. A literal 0
+    // would paint the click name label black; the loader must fall back to the built-in
+    // colour instead. Invisibility hues keep an explicit 0 (it means "no tint").
+    [Fact]
+    public void SphereConfig_NotoHueZero_FallsBackToDefaultButInvisKeepsZero()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_cfg_{Guid.NewGuid():N}.ini");
+        File.WriteAllText(tmp, """
+            [SPHERE]
+            COLORNOTOGOOD=0
+            COLORNOTOEVIL=0
+            COLORNOTOCRIMINAL=0
+            COLORNOTODEFAULT=0
+            ColorInvis=0
+            """);
+
+        try
+        {
+            var parser = new IniParser();
+            parser.Load(tmp);
+            var config = new SphereConfig();
+            config.LoadFromIni(parser);
+
+            // Noto hues: 0 → built-in default (never black).
+            Assert.Equal(0x0059, config.ColorNotoGood);
+            Assert.Equal(0x0022, config.ColorNotoEvil);
+            Assert.Equal(0x03B2, config.ColorNotoCriminal);
+            Assert.Equal(0x03B2, config.ColorNotoDefault);
+
+            // Invisibility hue: 0 stays 0 (explicit "no tint").
+            Assert.Equal(0, config.ColorInvis);
+        }
+        finally
+        {
+            try { File.Delete(tmp); } catch { }
+        }
+    }
 }

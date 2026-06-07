@@ -184,6 +184,12 @@ if ($Configuration -eq "Release") {
     )
     Get-ChildItem $outDir -File | Where-Object { $keep -notcontains $_.Name } | Remove-Item -Force
 
+    # Tek-komut guncelleme scriptlerini ciktiya tasi ki deploy klasoru kendini
+    # gunceleyebilsin (update.cmd binari'lerle birlikte kopyalanir).
+    foreach ($u in @("update.ps1", "update.cmd")) {
+        if (Test-Path "$root\$u") { Copy-Item "$root\$u" $outDir -Force }
+    }
+
 } else {
     Write-Step 3 4 "C# cozumu derleniyor (Debug)..."
 

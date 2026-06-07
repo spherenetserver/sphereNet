@@ -48,10 +48,6 @@ public sealed class PanelContext
     // Server lifecycle state
     public Func<bool>? IsServerRunning { get; set; }
 
-    // Host-managed application update
-    public Func<Task<UpdateStartResult>>? StartUpdate { get; set; }
-    public Func<UpdateStatus>? GetUpdateStatus { get; set; }
-
     // Debug toggles
     public Func<DebugState>? GetDebugState { get; set; }
     public Action<bool>? SetPacketDebug { get; set; }
@@ -120,23 +116,6 @@ public record LogEntry(
 );
 
 public record DebugState(bool PacketDebug, bool ScriptDebug);
-
-public record UpdateStatus(
-    bool IsRunning,
-    string State,
-    string Message,
-    DateTime? StartedAt,
-    DateTime? FinishedAt,
-    int? ExitCode,
-    bool RequiresHostRestart,
-    IReadOnlyList<string> Log
-);
-
-public record UpdateStartResult(
-    bool Started,
-    string Message,
-    UpdateStatus Status
-);
 
 public record ScriptFileInfo(
     string Name,

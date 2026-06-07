@@ -5,6 +5,8 @@ using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
 using SphereNet.MapData;
 using SphereNet.MapData.Tiles;
+using SphereNet.Network.Packets;
+using SphereNet.Network.Packets.Outgoing;
 using SphereNet.Scripting.Variables;
 
 namespace SphereNet.Game.Objects;
@@ -33,6 +35,9 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     /// <summary>Resolve the GameWorld instance (set at startup).</summary>
     public static Func<World.GameWorld>? ResolveWorld;
 
+    /// <summary>Broadcast a packet to nearby clients. Wired by the server host.</summary>
+    public static Action<Point3D, int, PacketWriter, uint>? BroadcastNearby;
+
     // --- Dirty tracking for delta-based view updates ---
     private DirtyFlag _dirty;
     private Action<ObjBase>? _dirtyNotify;
@@ -59,6 +64,115 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
 
     /// <summary>Set the callback invoked on clean→dirty transition (used by GameWorld).</summary>
     public void SetDirtyNotify(Action<ObjBase>? notify) => _dirtyNotify = notify;
+
+    protected bool EmitScriptSound(string args, int range = 18)
+    {
+        var parts = SplitScriptArgs(args);
+        if (parts.Length == 0 || !TryParseScriptUShort(parts[0], out ushort soundId))
+            return true;
+
+        byte mode = parts.Length > 1 && TryParseScriptByte(parts[1], out byte parsedMode)
+            ? parsedMode
+            : (byte)1;
+
+        BroadcastNearby?.Invoke(Position, range, new PacketSound(soundId, X, Y, Z, mode), 0);
+        return true;
+    }
+
+    protected bool EmitScriptEffect(string args, int range = 18)
+    {
+        var parts = SplitScriptArgs(args);
+        if (parts.Length < 2
+            || !TryParseScriptByte(parts[0], out byte effectType)
+            || !TryParseScriptUShort(parts[1], out ushort effectId))
+            return true;
+
+        byte speed = parts.Length > 2 && TryParseScriptByte(parts[2], out byte parsedSpeed)
+            ? parsedSpeed
+            : (byte)5;
+        byte duration = parts.Length > 3 && TryParseScriptByte(parts[3], out byte parsedDuration)
+            ? parsedDuration
+            : (byte)1;
+        bool explode = parts.Length > 4 && !IsFalseToken(parts[4]);
+        uint hue = parts.Length > 5 && TryParseScriptUInt(parts[5], out uint parsedHue) ? parsedHue : 0;
+        uint render = parts.Length > 6 && TryParseScriptUInt(parts[6], out uint parsedRender) ? parsedRender : 0;
+        ushort particleEffectId = parts.Length > 7 && TryParseScriptUShort(parts[7], out ushort parsedParticleEffectId)
+            ? parsedParticleEffectId
+            : (ushort)0;
+        uint explodeId = parts.Length > 8 && TryParseScriptUInt(parts[8], out uint parsedExplodeId) ? parsedExplodeId : 0;
+        ushort explodeSound = parts.Length > 9 && TryParseScriptUShort(parts[9], out ushort parsedExplodeSound)
+            ? parsedExplodeSound
+            : (ushort)0;
+        uint effectUid = parts.Length > 10 && TryParseScriptUInt(parts[10], out uint parsedEffectUid) ? parsedEffectUid : 0;
+        byte particleType = parts.Length > 11 && TryParseScriptByte(parts[11], out byte parsedParticleType)
+            ? parsedParticleType
+            : (byte)0;
+
+        PacketWriter packet;
+        if (particleEffectId != 0 || explodeId != 0)
+        {
+            packet = new PacketEffectParticle(
+                effectType, Uid.Value, Uid.Value, effectId,
+                X, Y, Z, X, Y, Z,
+                speed, duration, fixedDir: true, explode,
+                hue, render, particleEffectId, explodeId, explodeSound, effectUid, particleType);
+        }
+        else if (hue != 0 || render != 0)
+        {
+            packet = new PacketEffectHued(
+                effectType, Uid.Value, Uid.Value, effectId,
+                X, Y, Z, X, Y, Z,
+                speed, duration, fixedDir: true, explode,
+                hue, render);
+        }
+        else
+        {
+            packet = new PacketEffect(
+                effectType, Uid.Value, Uid.Value, effectId,
+                X, Y, Z, X, Y, Z,
+                speed, duration, fixedDir: true, explode);
+        }
+
+        BroadcastNearby?.Invoke(Position, range, packet, 0);
+        return true;
+    }
+
+    protected static string[] SplitScriptArgs(string? args)
+        => (args ?? "").Split(
+            new[] { ',', ' ', '\t' },
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    protected static bool TryParseScriptUShort(string text, out ushort value)
+    {
+        value = 0;
+        if (string.IsNullOrEmpty(text)) return false;
+        text = text.Trim();
+        if (text.Length > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X'))
+            return ushort.TryParse(text[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out value);
+        return ushort.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+    }
+
+    protected static bool TryParseScriptUInt(string text, out uint value)
+    {
+        value = 0;
+        if (string.IsNullOrEmpty(text)) return false;
+        text = text.Trim();
+        if (text.Length > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X'))
+            return uint.TryParse(text[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out value);
+        return uint.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+    }
+
+    protected static bool TryParseScriptByte(string text, out byte value)
+    {
+        value = 0;
+        if (!TryParseScriptUInt(text, out uint parsed) || parsed > byte.MaxValue)
+            return false;
+        value = (byte)parsed;
+        return true;
+    }
+
+    private static bool IsFalseToken(string token)
+        => token == "0" || token.Equals("false", StringComparison.OrdinalIgnoreCase);
 
     public Serial Uid => _uid;
     public ref Serial UidRef => ref _uid;
@@ -313,6 +427,11 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             }
         }
 
+        if (trimmedKey.Equals("SOUND", StringComparison.OrdinalIgnoreCase))
+            return EmitScriptSound(args);
+        if (trimmedKey.Equals("EFFECT", StringComparison.OrdinalIgnoreCase))
+            return EmitScriptEffect(args);
+
         switch (key.ToUpperInvariant())
         {
             case "TIMERF":
@@ -437,6 +556,9 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                         // Resolve defname color ranges like colors_skin → {1002 1058}
                         _hue = new Color(ResolveRandomHueRange(rangeText));
                     }
+                    MarkDirty(DirtyFlag.Hue);
+                    if (this is Items.Item changedItem)
+                        Items.Item.OnVisualUpdate?.Invoke(changedItem);
                 }
                 return true;
             case "P":

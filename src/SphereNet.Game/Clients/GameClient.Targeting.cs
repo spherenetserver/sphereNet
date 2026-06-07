@@ -462,6 +462,15 @@ public sealed partial class GameClient
                         BroadcastDrawObject(ch);
                     }
                 }
+                else if (obj is Item it && !it.IsDeleted)
+                {
+                    // Refresh the item for every observer. Only the COLOR property
+                    // fires the OnVisualUpdate hook from inside TrySetProperty;
+                    // other appearance edits (.xid / DISPID, etc.) would otherwise
+                    // not reach clients until a full resync, since worn and
+                    // contained items are skipped by the per-tick view delta.
+                    Item.OnVisualUpdate?.Invoke(it);
+                }
             }
             else
             {

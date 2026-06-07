@@ -451,16 +451,18 @@ public sealed class SphereConfig
         MonsterFight = ini.GetBool(section, "MonsterFight", MonsterFight);
         MonsterFear = ini.GetBool(section, "MonsterFear", MonsterFear);
         AdvancedLos = ini.GetInt(section, "AdvancedLos", AdvancedLos);
-        ColorNotoGood = GetHue(ini, section, "ColorNotoGood", ColorNotoGood);
-        ColorNotoGoodNpc = GetHue(ini, section, "ColorNotoGoodNPC", ColorNotoGoodNpc);
-        ColorNotoGuildSame = GetHue(ini, section, "ColorNotoGuildSame", ColorNotoGuildSame);
-        ColorNotoNeutral = GetHue(ini, section, "ColorNotoNeutral", ColorNotoNeutral);
-        ColorNotoCriminal = GetHue(ini, section, "ColorNotoCriminal", ColorNotoCriminal);
-        ColorNotoGuildWar = GetHue(ini, section, "ColorNotoGuildWar", ColorNotoGuildWar);
-        ColorNotoEvil = GetHue(ini, section, "ColorNotoEvil", ColorNotoEvil);
-        ColorNotoInvul = GetHue(ini, section, "ColorNotoInvul", ColorNotoInvul);
-        ColorNotoInvulGameMaster = GetHue(ini, section, "ColorNotoInvulGameMaster", ColorNotoInvulGameMaster);
-        ColorNotoDefault = GetHue(ini, section, "ColorNotoDefault", ColorNotoDefault);
+        // Notoriety name hues: a configured 0 means "use the built-in default" (hue 0
+        // would render the overhead label as black, which is never wanted).
+        ColorNotoGood = GetHue(ini, section, "ColorNotoGood", ColorNotoGood, zeroMeansDefault: true);
+        ColorNotoGoodNpc = GetHue(ini, section, "ColorNotoGoodNPC", ColorNotoGoodNpc, zeroMeansDefault: true);
+        ColorNotoGuildSame = GetHue(ini, section, "ColorNotoGuildSame", ColorNotoGuildSame, zeroMeansDefault: true);
+        ColorNotoNeutral = GetHue(ini, section, "ColorNotoNeutral", ColorNotoNeutral, zeroMeansDefault: true);
+        ColorNotoCriminal = GetHue(ini, section, "ColorNotoCriminal", ColorNotoCriminal, zeroMeansDefault: true);
+        ColorNotoGuildWar = GetHue(ini, section, "ColorNotoGuildWar", ColorNotoGuildWar, zeroMeansDefault: true);
+        ColorNotoEvil = GetHue(ini, section, "ColorNotoEvil", ColorNotoEvil, zeroMeansDefault: true);
+        ColorNotoInvul = GetHue(ini, section, "ColorNotoInvul", ColorNotoInvul, zeroMeansDefault: true);
+        ColorNotoInvulGameMaster = GetHue(ini, section, "ColorNotoInvulGameMaster", ColorNotoInvulGameMaster, zeroMeansDefault: true);
+        ColorNotoDefault = GetHue(ini, section, "ColorNotoDefault", ColorNotoDefault, zeroMeansDefault: true);
         ColorInvisItem = GetHue(ini, section, "ColorInvisItem", ColorInvisItem);
         ColorInvis = GetHue(ini, section, "ColorInvis", ColorInvis);
         ColorInvisSpell = GetHue(ini, section, "ColorInvisSpell", ColorInvisSpell);
@@ -586,7 +588,12 @@ public sealed class SphereConfig
         LoadDbConnections(ini);
     }
 
-    private static ushort GetHue(IniParser ini, string section, string key, ushort defaultValue)
+    /// <param name="zeroMeansDefault">When true, a configured value of 0 falls back to
+    /// <paramref name="defaultValue"/> instead of being applied literally. Used for the
+    /// notoriety name hues, where hue 0 renders as black text (never a desired colour) and
+    /// "0" is documented as "use the built-in default".</param>
+    private static ushort GetHue(IniParser ini, string section, string key, ushort defaultValue,
+        bool zeroMeansDefault = false)
     {
         var raw = ini.GetValue(section, key);
         if (string.IsNullOrWhiteSpace(raw))
@@ -596,10 +603,11 @@ public sealed class SphereConfig
         if (raw.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             raw = raw[2..];
 
-        return ushort.TryParse(raw, System.Globalization.NumberStyles.HexNumber,
-            System.Globalization.CultureInfo.InvariantCulture, out ushort value)
-            ? value
-            : defaultValue;
+        if (!ushort.TryParse(raw, System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture, out ushort value))
+            return defaultValue;
+
+        return zeroMeansDefault && value == 0 ? defaultValue : value;
     }
 
     private static int GetIntOrHex(IniParser ini, string section, string key, int defaultValue)

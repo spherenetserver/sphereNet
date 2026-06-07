@@ -11,8 +11,7 @@ public static class HostPanelContext
         ServerProcess proc,
         IpcBridge ipc,
         string? iniPath,
-        string? scriptsPath,
-        UpdateService? updateService = null)
+        string? scriptsPath)
     {
         return new PanelContext
         {
@@ -68,10 +67,6 @@ public static class HostPanelContext
 
             AuditLog = msg =>
                 RunVoid(() => ipc.MutateAsync("audit", new { msg })),
-
-            // ── Application Update ──────────────────────────────────────────
-            StartUpdate = updateService is null ? null : () => updateService.StartAsync(),
-            GetUpdateStatus = updateService is null ? null : () => updateService.GetStatus(),
 
             // ── Debug ──────────────────────────────────────────────────────
             GetDebugState = () =>

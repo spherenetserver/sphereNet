@@ -538,19 +538,19 @@ public sealed partial class GameClient
     }
 
     private PacketWriter BuildWorldItemPacket(uint serial, ushort itemId, ushort amount,
-        short x, short y, sbyte z, ushort hue)
+        short x, short y, sbyte z, ushort hue, byte direction = 0)
     {
         if (_netState.SupportsStygianAbyss)
             return new PacketWorldItemSA(serial, itemId, amount, x, y, z, hue,
-                highSeas: _netState.SupportsHighSeas);
-        return new PacketWorldItem(serial, itemId, amount, x, y, z, hue);
+                highSeas: _netState.SupportsHighSeas, direction: direction);
+        return new PacketWorldItem(serial, itemId, amount, x, y, z, hue, direction);
     }
 
     private void SendWorldItem(Item item)
     {
         _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
-            item.X, item.Y, item.Z, item.Hue
+            item.X, item.Y, item.Z, item.Hue, item.Direction
         ));
     }
 
@@ -558,7 +558,7 @@ public sealed partial class GameClient
     {
         _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
-            item.X, item.Y, item.Z, hue
+            item.X, item.Y, item.Z, hue, item.Direction
         ));
     }
 
@@ -566,8 +566,61 @@ public sealed partial class GameClient
     {
         _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
-            item.X, item.Y, item.Z, item.Hue
+            item.X, item.Y, item.Z, item.Hue, item.Direction
         ));
+    }
+
+    public void SendItemVisualUpdate(Item item)
+    {
+        if (_character == null || !IsPlaying || item.IsDeleted)
+            return;
+
+        if (item.IsEquipped)
+        {
+            var wearer = item.ContainedIn.IsValid ? _world.FindChar(item.ContainedIn) : null;
+            if (wearer == null || wearer.Position.GetDistanceTo(_character.Position) > UpdateRange)
+                return;
+
+            _netState.Send(new PacketWornItem(
+                item.Uid.Value, item.DispIdFull, (byte)item.EquipLayer,
+                wearer.Uid.Value, item.Hue));
+            return;
+        }
+
+        if (item.IsOnGround)
+        {
+            if (item.Position.GetDistanceTo(_character.Position) > UpdateRange)
+                return;
+
+            SendWorldItem(item);
+            _knownItems.Add(item.Uid.Value);
+            _lastKnownItemState[item.Uid.Value] =
+                (item.X, item.Y, item.Z, item.DispIdFull, item.Hue, item.Amount, item.Direction);
+            return;
+        }
+
+        var parentItem = item.ContainedIn.IsValid ? _world.FindItem(item.ContainedIn) : null;
+        if (parentItem == null)
+            return;
+
+        var top = parentItem;
+        while (top.ContainedIn.IsValid)
+        {
+            var next = _world.FindItem(top.ContainedIn);
+            if (next == null)
+                break;
+            top = next;
+        }
+
+        var owner = top.ContainedIn.IsValid ? _world.FindChar(top.ContainedIn) : null;
+        if (owner != _character)
+            return;
+
+        _netState.Send(new PacketContainerItem(
+            item.Uid.Value, item.DispIdFull, 0,
+            item.Amount, item.X, item.Y,
+            parentItem.Uid.Value, item.Hue,
+            _netState.IsClientPost6017));
     }
 
     /// <summary>Place a dragged item into the target character's backpack and

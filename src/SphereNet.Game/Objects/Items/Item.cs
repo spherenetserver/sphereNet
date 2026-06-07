@@ -27,6 +27,7 @@ public class Item : ObjBase
     public static Func<Item, Serial, string, bool>? ExecuteGuildMemberCommand;
     public static Func<Item, Serial, string, bool>? ExecuteGuildRelationCommand;
     public static Func<string, ushort>? ResolveDefName;
+    public static Action<Item>? OnVisualUpdate;
     /// <summary>Invoked by MULTICREATE when a script registers a multi
     /// as a house at runtime. Program.cs wires this to
     /// HousingEngine.RegisterExistingMulti so the region tracker knows
@@ -149,6 +150,7 @@ public class Item : ObjBase
     public bool IsOnGround => !_containedIn.IsValid;
     public bool IsEquipped { get; set; }
     public Layer EquipLayer { get; set; }
+    public byte Direction { get; set; }
 
     /// <summary>Full display id. Returns DISPID override when set, otherwise BaseId.</summary>
     public ushort DispIdFull => _dispId != 0 ? _dispId : BaseId;
@@ -565,6 +567,8 @@ public class Item : ObjBase
             case "DISPID":
             case "ID": value = FormatDispId(); return true;
             case "DISPIDDEC": value = BaseId.ToString(); return true;
+            case "DIR":
+            case "DIRECTION": value = Direction.ToString(); return true;
             case "TOPOBJ":
             {
                 var world = ResolveWorld?.Invoke();
@@ -987,6 +991,14 @@ public class Item : ObjBase
                     Position = new Point3D(X, Y,
                         (sbyte)Math.Clamp(zVal, sbyte.MinValue, sbyte.MaxValue), MapIndex);
                 return true;
+            case "DIR":
+            case "DIRECTION":
+                if (byte.TryParse(value, out byte dirVal))
+                {
+                    Direction = (byte)(dirVal & 0x07);
+                    MarkDirty(DirtyFlag.Direction);
+                }
+                return true;
 
             // Set the equip layer (used when scripts equip an item directly).
             case "LAYER":
@@ -1321,11 +1333,7 @@ public class Item : ObjBase
             // without a flip pair this is a no-op.
             case "FLIP":
             {
-                var def = DefinitionLoader.GetItemDef(BaseId);
-                if (def != null && def.Flip)
-                {
-                    BaseId = (ushort)(BaseId ^ 1);
-                }
+                TryFlipDisplay();
                 return true;
             }
             // Source-X CV_DCLICK: simulate a double-click on this item.
@@ -1723,6 +1731,25 @@ public class Item : ObjBase
         }
 
         return base.TryExecuteCommand(key, args, source);
+    }
+
+    public bool TryFlipDisplay()
+    {
+        var def = DefinitionLoader.GetItemDef(BaseId);
+        if (def == null)
+            return false;
+
+        ushort next = 0;
+        if (def.FlipId != 0)
+            next = def.FlipId;
+        else if (def.Flip)
+            next = (ushort)(BaseId ^ 1);
+
+        if (next == 0 || next == BaseId)
+            return false;
+
+        BaseId = next;
+        return true;
     }
 
     public override bool OnTick()

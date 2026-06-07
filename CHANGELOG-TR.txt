@@ -4,6 +4,70 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-07] - Tek-komut guncelleme, ses/gorsel/hareket parity, combat facing (Wave 73)
+----------------------------------------
+
+HOST / PANEL / BUILD:
+  - In-app panel guncellemesi tek bir update.cmd / update.ps1 ile degistirildi;
+    server kapaliyken calisir: git pull --ff-only -> tam build.ps1 (panel + Server +
+    Host) -> build ciktisini calisma (deploy) klasorune kopyala -> SphereNet.Host'u
+    yeniden baslat. Ayri surec oldugu icin SphereNet.Host.exe'yi de degistirebilir
+    (in-app updater yapamiyordu). Kaynak repo sphere.ini AppUpdateRepoDir'dan (veya
+    -RepoDir) gelir; deploy klasoru scriptin kendi klasorudur (veya -DeployDir) ve
+    build-ciktisi==deploy durumunda kopyalama atlanir. build.ps1 update.* dosyalarini
+    ciktiya kopyalar, boylece deploy klasoru kendini gunceller.
+  - In-app UpdateService, POST /api/update/run, GET /api/update/status, Settings
+    "System Update" karti ve AutoUpdate acilis kontrolu kaldirildi.
+    AppUpdateRepoDir artik yalnizca update.ps1 tarafindan okunur; AutoUpdate gitti.
+
+ENGINE - ses / gorsel / efekt:
+  - 0xC0 PacketEffectHued, 0xC7 PacketEffectParticle ve 0x23 PacketDragAnimation
+    giden paketleri eklendi.
+  - ObjBase.SOUND / EFFECT artik stub degil: item ve char tabanli script komutlari
+    yakindaki clientlara broadcast eder. Character SOUND / EFFECT ortak ObjBase
+    yolundan gecer; FACE artik 0x77 facing broadcast tetikler.
+  - Pickup ve ground-drop 0x23 drag animasyonu yollar, destekleyen clientlara
+    (KR / Enhanced / SA) filtreli.
+  - Region degisiminde client'a GlobalLight, sessiz Season ve Weather resend edilir.
+
+ENGINE - combat & hareket:
+  - NPC yuruyus adimlari artik daima adim yonune doner (surround, Wander, kac ve
+    uzaklas yollari yon ayarlamadan hareket ediyordu; 0x77 yonu adimla uyusmuyor,
+    client NPC'yi snapliyordu). Surround adimi ayrica NPC'ye komsu karelerle
+    sinirlandi; tek harekette iki kare ziplayamaz ("combat'ta NPC teleport").
+  - Bir oyuncu combat hedefine donerken artik saldirganin kendi client'i da
+    guncellenir (0x20 PlayerUpdate + walk-seq reset); Source-X
+    CChar::UpdateMove -> addPlayerView/addPlayerUpdate ile ayni. Top-down gorunumde
+    avatar hedefe doner, sadece cevredekiler degil.
+
+ENGINE - esyalar & gorseller:
+  - Yer esyalari bir yon tasir: 0x1A ve 0xF3 paketleri yollar, client known-item
+    cache izler, WorldSaver DIR'i kaydeder. Ayni kareye ust uste birakilan ayri
+    (stack olmayan) esyalar, hepsi Direction=1 olmak yerine karedeki mevcut esya
+    sayisina gore yon saciyor.
+  - Daha once client'a yer esyasi olarak bilinen giyili bir esya artik per-tick
+    view delta tarafindan 0x1D ile silinmez (0x2E giyili paket zaten client'ta
+    tasidi) - GM renk/ozellik degisiminden sonra giyili esyanin resync'e kadar
+    kaybolmasini cozer.
+  - Item hedefli GM x-verb'leri (.xcolor / .xid / ...) esyayi tum gozlemcilere
+    yeniler; once yalnizca COLOR (OnVisualUpdate ile) ve char hedefleri yenilerdi.
+
+ENGINE - kalicilik:
+  - Periyodik dunya auto-save: sphere.ini SavePeriod (dakika, 0 = kapali) artik ana
+    dongude save tetikler. Config'e okunuyordu ama kullanilmiyordu; shutdown
+    auto-save kapali oldugu icin server kendiliginden hic kaydetmiyordu.
+
+CONFIG:
+  - Notoriety isim hue'lari (ColorNoto*): girilen 0 artik isim etiketini siyah
+    yapmak yerine yerlesik varsayilana duser; invis/hidden hue'lari acik 0 korur.
+    sphere.ini aciklamasi duzeltildi (hue hex'tir; 0 = varsayilan) ve mukerrer /
+    yanlis "[UYGULANMADI]" blogu kaldirildi.
+
+LOGGING:
+  - [move_z_delta] (her adim) ve [tick_stats] / [gc_stats] (30 sn'de bir) INFO'dan
+    DEBUG'a indirildi; debug kapaliyken konsol sessiz kalir, packet veya script
+    debug seviyeyi yukseltince geri gelir. [slow_tick] uyari olarak kalir.
+
 [2026-06-06] - Panel guncelleme servisi, smelt/spell esya trigger'lari, ayarlanabilir hue'lar (Wave 72)
 ----------------------------------------
 

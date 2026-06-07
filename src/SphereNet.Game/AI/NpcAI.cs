@@ -848,6 +848,14 @@ public sealed class NpcAI
                 short ty = (short)(target.Y + dy);
                 if (tx == npc.X && ty == npc.Y) continue;
 
+                // A surround step must be a single tile from the NPC's current
+                // position. Tiles around the target on the far side are 2 tiles
+                // away from the NPC; moving there in one step is not a walk the
+                // client can animate, so it teleports the NPC. Only keep tiles
+                // adjacent (Chebyshev <= 1) to the NPC.
+                if (Math.Abs(tx - npc.X) > 1 || Math.Abs(ty - npc.Y) > 1)
+                    continue;
+
                 bool occupied = false;
                 foreach (var ch in _world.GetCharsInRange(new Point3D(tx, ty, target.Z, target.MapIndex), 0))
                 {
@@ -867,6 +875,11 @@ public sealed class NpcAI
         var pos = new Point3D(pick.x, pick.y, nz, npc.MapIndex);
         if (!CanNpcMoveTo(npc, pos)) return;
 
+        // Face the step direction before moving. The 0x77 move packet carries this
+        // direction; if it doesn't match the actual tile delta the client can't
+        // walk-animate and snaps the NPC ("1-tile teleport" during combat
+        // surround steps). The next swing re-faces the target via TrySwingAttack.
+        npc.Direction = npc.Position.GetDirectionTo(pos);
         _world.MoveCharacter(npc, pos);
     }
 
@@ -1028,6 +1041,7 @@ public sealed class NpcAI
             var newPos = new Point3D(nx, ny, nz, npc.MapIndex);
             if (CanNpcMoveTo(npc, newPos))
             {
+                npc.Direction = npc.Position.GetDirectionTo(newPos);
                 _world.MoveCharacter(npc, newPos);
                 return;
             }
@@ -1047,6 +1061,7 @@ public sealed class NpcAI
                 var altPos = new Point3D(ax, ay, az, npc.MapIndex);
                 if (CanNpcMoveTo(npc, altPos))
                 {
+                    npc.Direction = npc.Position.GetDirectionTo(altPos);
                     _world.MoveCharacter(npc, altPos);
                     return;
                 }
@@ -2347,6 +2362,9 @@ public sealed class NpcAI
         if (!CanNpcMoveTo(npc, newPos))
             return;
 
+        // Face the step direction so the 0x77 move matches the tile delta and the
+        // client walk-animates instead of snapping the NPC.
+        npc.Direction = npc.Position.GetDirectionTo(newPos);
         _world.MoveCharacter(npc, newPos);
     }
 
@@ -2548,6 +2566,7 @@ public sealed class NpcAI
         if (!CanNpcMoveTo(npc, newPos))
             return;
 
+        npc.Direction = npc.Position.GetDirectionTo(newPos);
         _world.MoveCharacter(npc, newPos);
     }
 

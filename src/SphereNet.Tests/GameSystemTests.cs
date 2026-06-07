@@ -2163,6 +2163,184 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
     }
 
     [Fact]
+    public void GameClient_ItemColorChangeOnWornItem_SendsWornItemUpdate()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var netState = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = 853 };
+        SetNetStateInUse(netState, true);
+        var client = new SphereNet.Game.Clients.GameClient(netState, world, accountManager,
+            loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
+
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
+        AttachCharacter(client, player);
+
+        var shirt = world.CreateItem();
+        shirt.BaseId = 0x1517;
+        player.Equip(shirt, Layer.Shirt);
+
+        var oldCallback = Item.OnVisualUpdate;
+        try
+        {
+            Item.OnVisualUpdate = item => client.SendItemVisualUpdate(item);
+
+            Assert.True(shirt.TrySetProperty("COLOR", "0481"));
+
+            var packet = Assert.Single(GetQueuedPackets(netState), p => p.Span[0] == 0x2E);
+            Assert.Equal(0x04, packet.Span[13]);
+            Assert.Equal(0x81, packet.Span[14]);
+        }
+        finally
+        {
+            Item.OnVisualUpdate = oldCallback;
+        }
+    }
+
+    // Regression: an item the client knew as a ground item, once equipped, must
+    // not be 0x1D-deleted by the per-tick view delta. The 0x2E worn-item packet
+    // already re-homes it client-side; a stale delete made worn items vanish
+    // until a resync (the "recolour/equip a worn item and it disappears" bug).
+    [Fact]
+    public void ApplyViewDelta_EquippedFormerGroundItem_NotDeleted()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var netState = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = 871 };
+        SetNetStateInUse(netState, true);
+        var client = new SphereNet.Game.Clients.GameClient(netState, world, accountManager,
+            loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
+
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
+        AttachCharacter(client, player);
+
+        // Ground item next to the player → enters the client's known-item set.
+        var robe = world.CreateItem();
+        robe.BaseId = 0x1F03;
+        world.PlaceItem(robe, new Point3D(101, 100, 0, 0));
+        client.ApplyViewDelta(client.BuildViewDelta()!);
+        Assert.Contains(GetQueuedPackets(netState), p => p.Span[0] == 0x1A); // 0x1A world item
+
+        // Equip it (removes it from the ground sector), then refresh again.
+        world.HideFromSector(robe);
+        player.Equip(robe, Layer.Robe);
+        client.ApplyViewDelta(client.BuildViewDelta()!);
+
+        // No 0x1D PacketDeleteObject for the now-worn robe.
+        uint serial = robe.Uid.Value;
+        bool deleted = GetQueuedPackets(netState).Any(p =>
+            p.Span[0] == 0x1D &&
+            ((uint)(p.Span[1] << 24 | p.Span[2] << 16 | p.Span[3] << 8 | p.Span[4])) == serial);
+        Assert.False(deleted, "worn item must not receive a 0x1D delete");
+    }
+
+    [Fact]
+    public void GameClient_DropItemOnGround_SendsAckSoundAndWorldItemWithDirection()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var netState = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = 854 };
+        SetNetStateInUse(netState, true);
+        var client = new SphereNet.Game.Clients.GameClient(netState, world, accountManager,
+            loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
+
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
+        AttachCharacter(client, player);
+        client.BroadcastNearby = (_, _, packet, _) => netState.Send(packet);
+
+        var item = world.CreateItem();
+        item.BaseId = 0x0F7A;
+        world.PlaceItem(item, player.Position);
+
+        client.HandleItemPickup(item.Uid.Value, 1);
+        client.HandleItemDrop(item.Uid.Value, 101, 100, 0, 0xFFFFFFFF);
+
+        var packets = GetQueuedPackets(netState).ToArray();
+        Assert.Contains(packets, p => p.Span[0] == 0x29);
+        Assert.Contains(packets, p => p.Span[0] == 0x54);
+        var worldItem = Assert.Single(packets, p => p.Span[0] == 0x1A);
+        Assert.Equal(1, item.Direction);
+        Assert.True((worldItem.Span[9] & 0x80) != 0);
+        Assert.Equal(item.Direction, worldItem.Span[13]);
+    }
+
+    // Regression: dropping separate (non-stacking) items on the same tile must
+    // scatter their facing instead of all landing on Direction=1, which made
+    // piles look like a single uniformly-oriented item.
+    [Fact]
+    public void GameClient_DropMultipleItemsSameTile_ScattersDirection()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var netState = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = 872 };
+        SetNetStateInUse(netState, true);
+        var client = new SphereNet.Game.Clients.GameClient(netState, world, accountManager,
+            loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
+
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
+        AttachCharacter(client, player);
+        client.BroadcastNearby = (_, _, packet, _) => netState.Send(packet);
+
+        var first = world.CreateItem();
+        first.BaseId = 0x0F7A;
+        world.PlaceItem(first, player.Position);
+        client.HandleItemPickup(first.Uid.Value, 1);
+        client.HandleItemDrop(first.Uid.Value, 101, 100, 0, 0xFFFFFFFF);
+
+        // Different graphic so it won't stack onto the first.
+        var second = world.CreateItem();
+        second.BaseId = 0x1F03;
+        world.PlaceItem(second, player.Position);
+        client.HandleItemPickup(second.Uid.Value, 1);
+        client.HandleItemDrop(second.Uid.Value, 101, 100, 0, 0xFFFFFFFF);
+
+        Assert.Equal(1, first.Direction);
+        Assert.Equal(2, second.Direction);
+    }
+
+    // Source-X parity: turning to face a combat target must also reach the
+    // attacker's OWN client (CChar::UpdateMove -> addPlayerView/addPlayerUpdate,
+    // 0x20). Without it, in top-down view the player sees their avatar not facing
+    // the target while others see it turn.
+    [Fact]
+    public void FaceTarget_TurnsPlayerAndUpdatesOwnClient()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var netState = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = 873 };
+        SetNetStateInUse(netState, true);
+        var client = new SphereNet.Game.Clients.GameClient(netState, world, accountManager,
+            loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
+
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
+        AttachCharacter(client, player);
+        player.Direction = Direction.North;
+
+        var target = world.CreateCharacter();
+        world.PlaceCharacter(target, new Point3D(105, 100, 0, 0)); // due east
+
+        client.FaceTarget(target);
+
+        Assert.Equal(Direction.East, player.Direction);
+        // Own client receives a 0x20 PlayerUpdate (SendSelfRedraw) so the avatar turns.
+        Assert.Contains(GetQueuedPackets(netState), p => p.Span[0] == 0x20);
+    }
+
+    [Fact]
     public void GameClient_VendorBuyAndSell_FireItemTriggers()
     {
         var loggerFactory = LoggerFactory.Create(_ => { });

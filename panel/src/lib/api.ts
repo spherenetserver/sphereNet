@@ -104,23 +104,6 @@ export interface SetupStatus {
   hasScripts: boolean
 }
 
-export interface UpdateStatus {
-  isRunning: boolean
-  state: string
-  message: string
-  startedAt: string | null
-  finishedAt: string | null
-  exitCode: number | null
-  requiresHostRestart: boolean
-  log: string[]
-}
-
-export interface UpdateStartResult {
-  started: boolean
-  message: string
-  status: UpdateStatus
-}
-
 // --- API helpers ---
 
 export const serverApi = {
@@ -168,11 +151,6 @@ export const setupApi = {
 export const settingsApi = {
   getDebug: () => api.get<DebugState>('/settings/debug'),
   setDebug: (state: DebugState) => api.post('/settings/debug', state),
-}
-
-export const updateApi = {
-  run:    () => api.post<UpdateStartResult>('/update/run', null, { timeout: 120_000 }),
-  status: () => api.get<UpdateStatus>('/update/status'),
 }
 
 export const scriptsApi = {

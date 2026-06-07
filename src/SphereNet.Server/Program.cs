@@ -106,6 +106,7 @@ public static partial class Program
     private static SphereNet.Game.Diagnostics.StressTestEngine? _stressEngine;
     private static SphereNet.Game.Diagnostics.BotEngine? _botEngine;
     private static long _lastBotRestockMs;
+    private static long _lastAutoSaveMs;
     private static SphereNet.Game.NPCs.StableEngine _stableEngine = new();
     private static SphereNet.Game.Scheduling.TimerWheel _npcTimerWheel = null!;
     private static SphereNet.Game.Recording.RecordingEngine _recordingEngine = null!;

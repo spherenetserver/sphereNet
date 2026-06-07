@@ -139,15 +139,20 @@ public sealed partial class GameClient
     }
 
     /// <summary>
-    /// Turn the player to face <paramref name="target"/> and broadcast the
-    /// new facing to nearby clients via 0x77. Mirrors Source-X
-    /// <c>CChar::UpdateDir(pCharTarg)</c> -> <c>UpdateMove(GetTopPoint())</c>:
-    /// when an NPC starts a swing or a spell, the engine first turns the
-    /// caster/attacker so that the animation plays in the correct
-    /// direction. Without this, melee/cast animations look broken from
-    /// the side and bow shots may visually fly the wrong way.
-    /// Skips the broadcast (but still updates state) when facing is
-    /// already correct, to avoid packet spam during continuous combat.
+    /// Turn the player to face <paramref name="target"/>, update the player's own
+    /// client, and broadcast the new facing to nearby clients via 0x77. Mirrors
+    /// Source-X <c>CChar::UpdateDir(pCharTarg)</c> -> <c>UpdateMove(GetTopPoint())</c>:
+    /// when an attacker starts a swing or a spell, the engine first turns the
+    /// caster/attacker so that the animation plays in the correct direction.
+    /// Without this, melee/cast animations look broken from the side and bow
+    /// shots may visually fly the wrong way.
+    ///
+    /// Source-X's <c>UpdateMove</c> also calls <c>addPlayerView</c> /
+    /// <c>addPlayerUpdate</c> for the mover's OWN client (0x20 + walk-seq reset),
+    /// so in top-down view the attacker sees their own avatar turn. We mirror
+    /// that with <see cref="SendSelfRedraw"/> (0x20 PlayerUpdate + 0x78 to keep
+    /// equipment for ClassicUO + WalkSequence reset). Skips everything when the
+    /// facing is already correct, to avoid packet spam during continuous combat.
     /// </summary>
     public void FaceTarget(Character target)
     {
@@ -172,6 +177,10 @@ public sealed partial class GameClient
             BroadcastMoveNearby.Invoke(_character.Position, UpdateRange, pkt, _character.Uid.Value, _character);
         else
             BroadcastNearby?.Invoke(_character.Position, UpdateRange, pkt, _character.Uid.Value);
+
+        // Source-X parity: the mover's own client gets addPlayerUpdate so the
+        // local avatar visibly turns toward the target (UO is top-down).
+        SendSelfRedraw();
     }
 
     private bool TryHandleCommandSpeech(string text)

@@ -362,7 +362,10 @@ public sealed partial class GameClient
             int zDelta = _character.Z - oldZ;
             if (Math.Abs(zDelta) > 0)
             {
-                _logger.LogInformation(
+                // Per-step z-movement diagnostic (walk-teleport investigation).
+                // Debug level so it stays out of the normal INFO console; enable
+                // script/packet debug or a Debug log level to see it.
+                _logger.LogDebug(
                     "[move_z_delta] seq={Seq} dir={Dir} run={Run} from {OldX},{OldY},{OldZ} to {NewX},{NewY},{NewZ} dz={Delta} startZ={StartZ} startTop={StartTop} fwdZ={FwdZ} last={Last} " +
                     "fwdLand=({LZ}/{LC}/{LT}) statics={SC} items={IC} tiles=[{Dump}]",
                     seq, direction, running, oldX, oldY, oldZ, _character.X, _character.Y, _character.Z, zDelta,

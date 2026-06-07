@@ -107,7 +107,10 @@ public partial class Character : ObjBase
     /// that need observer-visible side effects (ANIM/SOUND/EFFECT/BOW
     /// /SALUTE/BARK). Wired in Program.cs against the global
     /// BroadcastNearby helper.</summary>
-    public static Action<Point3D, int, SphereNet.Network.Packets.PacketWriter, uint>? BroadcastNearby;
+    public new static Action<Point3D, int, SphereNet.Network.Packets.PacketWriter, uint>? BroadcastNearby;
+
+    /// <summary>Broadcast a direction-only 0x77 update after script FACE.</summary>
+    public static Action<Character>? OnFacingChanged;
 
     /// <summary>Open this character's paperdoll on the owning client.
     /// Used by the script <c>DCLICK</c> verb when the target is the
@@ -3615,6 +3618,24 @@ public partial class Character : ObjBase
 
     public override bool TryExecuteCommand(string key, string args, ITextConsole source)
     {
+        if (key.Equals("SOUND", StringComparison.OrdinalIgnoreCase))
+            return EmitScriptSound(args);
+        if (key.Equals("EFFECT", StringComparison.OrdinalIgnoreCase))
+            return EmitScriptEffect(args);
+        if (key.Equals("FACE", StringComparison.OrdinalIgnoreCase))
+        {
+            if (TryParseScriptByte(args, out byte dir))
+            {
+                var newDirection = (Direction)(dir & 0x07);
+                if (newDirection != _direction)
+                {
+                    _direction = newDirection;
+                    OnFacingChanged?.Invoke(this);
+                }
+            }
+            return true;
+        }
+
         // Source-X chained method dispatch on the equipped-layer slot:
         //   Src.FindLayer(21).Empty   → empty the worn pack
         //   Src.FindLayer(11).Remove  → strip the worn helmet
@@ -5231,16 +5252,6 @@ public partial class Character : ObjBase
             (ushort)AnimationType.Eat => (ushort)AnimationType.HorseSlap,
             _ => action
         };
-    }
-
-    private static bool TryParseScriptUShort(string text, out ushort value)
-    {
-        value = 0;
-        if (string.IsNullOrEmpty(text)) return false;
-        text = text.Trim();
-        if (text.Length > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X'))
-            return ushort.TryParse(text[2..], System.Globalization.NumberStyles.HexNumber, null, out value);
-        return ushort.TryParse(text, out value);
     }
 
     private string FormatBodyProperty()

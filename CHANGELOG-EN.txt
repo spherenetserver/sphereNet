@@ -4,6 +4,71 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-07] - Single-command update, sound/visual/movement parity, combat facing (Wave 73)
+----------------------------------------
+
+HOST / PANEL / BUILD:
+  - Replaced the in-app panel update with a single update.cmd / update.ps1, run
+    with the server stopped: git pull --ff-only -> full build.ps1 (panel + Server +
+    Host) -> copy the build output into the run (deploy) folder -> relaunch
+    SphereNet.Host. Running as a separate process it can replace SphereNet.Host.exe
+    too, which the in-app updater could not. The source repo comes from sphere.ini
+    AppUpdateRepoDir (or -RepoDir); the deploy folder defaults to the script's own
+    folder (or -DeployDir) and the build-output==deploy case skips the copy.
+    build.ps1 copies update.* into the build output so a deploy folder self-updates.
+  - Removed the in-app UpdateService, POST /api/update/run, GET /api/update/status,
+    the Settings "System Update" card and the AutoUpdate startup check.
+    AppUpdateRepoDir is now read only by update.ps1; the AutoUpdate key is gone.
+
+ENGINE - sound / visual / effects:
+  - Added 0xC0 PacketEffectHued, 0xC7 PacketEffectParticle and 0x23
+    PacketDragAnimation outgoing packets.
+  - ObjBase.SOUND / EFFECT are no longer stubs: item- and char-based script
+    commands now broadcast to nearby clients. Character SOUND / EFFECT route through
+    the shared ObjBase path, and FACE now triggers a 0x77 facing broadcast.
+  - Pickup and ground-drop emit the 0x23 drag animation, filtered to clients that
+    support it (KR / Enhanced / SA).
+  - Region change resends GlobalLight, a silent Season and Weather to the client.
+
+ENGINE - combat & movement:
+  - NPC walk steps now always face the step direction (surround step, Wander, flee
+    and move-away paths previously moved without setting Direction, so the 0x77 move
+    mismatched the tile delta and the client snapped the NPC). The surround step is
+    also constrained to tiles adjacent to the NPC, so it can no longer jump two
+    tiles in one move ("NPC teleport" during combat).
+  - A player turning to face a combat target now also updates the attacker's own
+    client (0x20 PlayerUpdate + walk-seq reset), mirroring Source-X
+    CChar::UpdateMove -> addPlayerView/addPlayerUpdate, so in top-down view the
+    avatar visibly faces the target instead of only nearby observers seeing it.
+
+ENGINE - items & visuals:
+  - Ground items carry a facing direction: 0x1A and 0xF3 world-item packets send it,
+    the per-client known-item cache tracks it, and WorldSaver persists DIR. Dropping
+    separate (non-stacking) items on one tile scatters their facing by the tile's
+    existing item count instead of every drop landing on Direction=1.
+  - A worn item previously known to a client as a ground item is no longer
+    0x1D-deleted by the per-tick view delta (the 0x2E worn packet already re-homes
+    it) - fixes worn items vanishing until a resync after a GM recolour/property edit.
+  - GM x-verbs on item targets (.xcolor / .xid / ...) refresh the item visual for
+    all observers; previously only COLOR (via OnVisualUpdate) and character targets
+    refreshed.
+
+ENGINE - persistence:
+  - Periodic world auto-save: sphere.ini SavePeriod (minutes, 0 = off) now drives a
+    save on the main loop. It was read into config but never used; with
+    auto-save-on-shutdown disabled, the server never saved on its own.
+
+CONFIG:
+  - Notoriety name hues (ColorNoto*): a configured 0 falls back to the built-in
+    default instead of rendering the single-click name label black; invis/hidden
+    hues keep an explicit 0. sphere.ini docs corrected (hue is hex; 0 = default) and
+    the duplicate/incorrectly-"unimplemented" block removed.
+
+LOGGING:
+  - Demoted [move_z_delta] (per-step) and [tick_stats] / [gc_stats] (every 30s) from
+    INFO to DEBUG so a debug-off console stays quiet; they reappear when packet or
+    script debug raises the level. [slow_tick] stays a warning.
+
 [2026-06-06] - Panel update service, smelt/spell item triggers, configurable hues (Wave 72)
 ----------------------------------------
 

@@ -363,6 +363,7 @@ public sealed class WorldSaver
         w.WriteProperty("P", item.Position.ToString());
         if (item.Hue.Value != 0) w.WriteProperty("COLOR", $"0{item.Hue.Value:x}");
         if (item.Amount > 1) w.WriteProperty("AMOUNT", item.Amount.ToString());
+        if (item.Direction != 0) w.WriteProperty("DIR", item.Direction.ToString());
         if ((uint)item.Attributes != 0) w.WriteProperty("ATTR", $"0{(uint)item.Attributes:x}");
         if (item.DispIdOverride != 0) w.WriteProperty("DISPID", $"0{item.DispIdOverride:x}");
 

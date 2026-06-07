@@ -60,43 +60,6 @@
       </p>
     </section>
 
-    <!-- System Update -->
-    <section class="card">
-      <div class="card-header">
-        <RefreshCw :size="16" />
-        <h2>System Update</h2>
-      </div>
-
-      <div class="update-row">
-        <div class="update-info">
-          <span class="update-label">Update from GitHub</span>
-          <span class="update-desc">
-            Pulls the latest repository changes, publishes the Windows server build, and restarts the game server.
-          </span>
-        </div>
-        <button
-          class="btn-primary"
-          @click="runUpdate"
-          :disabled="updateLoading || updateStatus?.isRunning"
-        >
-          {{ updateStatus?.isRunning ? 'Updating…' : 'Update' }}
-        </button>
-      </div>
-
-      <div v-if="updateStatus" class="update-status">
-        <div>
-          <strong>{{ updateStatus.state }}</strong>
-          <span>{{ updateStatus.message }}</span>
-        </div>
-        <p v-if="updateStatus.requiresHostRestart" class="hint-msg">
-          Host/backend changes will load after restarting SphereNet.Host.
-        </p>
-      </div>
-
-      <pre v-if="updateLogLines.length" class="update-log">{{ updateLogLines.join('\n') }}</pre>
-      <p v-if="updateError" class="error-msg">{{ updateError }}</p>
-    </section>
-
     <!-- Danger Zone -->
     <section class="card danger-card">
       <div class="card-header">
@@ -128,11 +91,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
-import { Bug, Settings, AlertTriangle, RefreshCw } from 'lucide-vue-next'
-import { settingsApi, serverApi, updateApi } from '@/lib/api'
-import type { DebugState, UpdateStatus } from '@/lib/api'
+import { Bug, Settings, AlertTriangle } from 'lucide-vue-next'
+import { settingsApi, serverApi } from '@/lib/api'
+import type { DebugState } from '@/lib/api'
 
 const debugLoading = ref(true)
 const debugSaving  = ref(false)
@@ -140,13 +103,8 @@ const debugSaved   = ref(false)
 const debugError   = ref('')
 const actionBusy   = ref(false)
 const actionMsg    = ref('')
-const updateLoading = ref(false)
-const updateError   = ref('')
-const updateStatus  = ref<UpdateStatus | null>(null)
-let updatePollTimer: number | undefined
 
 const debugState = ref<DebugState>({ packetDebug: false, scriptDebug: false })
-const updateLogLines = computed(() => updateStatus.value?.log.slice(-8) ?? [])
 
 onMounted(async () => {
   try {
@@ -157,14 +115,6 @@ onMounted(async () => {
   } finally {
     debugLoading.value = false
   }
-})
-
-onMounted(() => {
-  void refreshUpdateStatus()
-})
-
-onUnmounted(() => {
-  stopUpdatePolling()
 })
 
 async function saveDebug() {
@@ -190,48 +140,6 @@ async function togglePacket() {
 async function toggleScript() {
   debugState.value.scriptDebug = !debugState.value.scriptDebug
   await saveDebug()
-}
-
-async function refreshUpdateStatus() {
-  try {
-    const { data } = await updateApi.status()
-    updateStatus.value = data
-    if (data.isRunning) startUpdatePolling()
-    else stopUpdatePolling()
-  } catch {
-    updateError.value = 'Could not load update status'
-  }
-}
-
-function startUpdatePolling() {
-  if (updatePollTimer !== undefined) return
-  updatePollTimer = window.setInterval(() => {
-    void refreshUpdateStatus()
-  }, 2000)
-}
-
-function stopUpdatePolling() {
-  if (updatePollTimer === undefined) return
-  window.clearInterval(updatePollTimer)
-  updatePollTimer = undefined
-}
-
-async function runUpdate() {
-  if (!confirm('Pull latest GitHub changes and update the server?')) return
-  updateLoading.value = true
-  updateError.value = ''
-  try {
-    const { data } = await updateApi.run()
-    updateStatus.value = data.status
-    startUpdatePolling()
-  } catch (err: any) {
-    updateError.value = err?.response?.data?.message
-      ?? err?.response?.data?.error
-      ?? 'Update request failed'
-    await refreshUpdateStatus()
-  } finally {
-    updateLoading.value = false
-  }
 }
 
 async function doRestart() {
@@ -302,64 +210,6 @@ async function doShutdown() {
 .link:hover { text-decoration: underline; }
 
 .loading { font-size: 13px; color: var(--text-muted); }
-
-/* Update */
-.update-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.update-info { display: flex; flex-direction: column; gap: 3px; }
-.update-label { font-size: 14px; font-weight: 500; color: var(--text-primary); }
-.update-desc { font-size: 12px; color: var(--text-muted); }
-
-.btn-primary {
-  padding: 7px 16px;
-  border-radius: 6px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: opacity 0.15s;
-}
-
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.update-status {
-  margin-top: 14px;
-  padding: 12px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--bg-primary);
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.update-status strong {
-  display: block;
-  color: var(--text-primary);
-  margin-bottom: 4px;
-}
-
-.hint-msg { margin: 8px 0 0; color: var(--text-muted); }
-
-.update-log {
-  margin: 12px 0 0;
-  max-height: 180px;
-  overflow: auto;
-  padding: 12px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--bg-primary);
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
 
 /* Toggles */
 .toggle-list { display: flex; flex-direction: column; gap: 1px; }

@@ -13,7 +13,11 @@ For the project overview, features, and quick start, see the top-level **[README
 - **[STAFF_COMMANDS.md](STAFF_COMMANDS.md)** — Every in-game staff/GM command and server-console command, by privilege level.
 - **[TRIGGERS.md](TRIGGERS.md)** — Every script trigger that fires, with the `<src>`/`<argo>`/`<argn>`/`<args>` values available inside it.
 - **[PROTOCOL_MATRIX.md](PROTOCOL_MATRIX.md)** — Incoming client opcodes routed through `PacketManager` (kept in sync with `PacketManagerTests`).
+- **[PACKET_FLOW_GUIDE.md](PACKET_FLOW_GUIDE.md)** — How packets move from network parsing to `GameClient`, plus behavior-level packet sequences for Source-X developers.
 - **[PARITY.md](PARITY.md)** — Source-X / Sphere 56x compatibility matrix and the tests guarding each area.
+- **[TRANSITION_GUIDE_TR.md](TRANSITION_GUIDE_TR.md)** — Source-X'ten SphereNet'e geçiş rehberi.
+- **[PACKET_GUIDE_SIMPLE_TR.md](PACKET_GUIDE_SIMPLE_TR.md)** — Paket sistemi için basit anlatım rehberi.
+- **[DEVELOPER_MAP_TR.md](DEVELOPER_MAP_TR.md)** — Kapsamlı geliştirici haritası ve paket akış rehberi.
 
 ### Operations
 - **[DEPLOY.md](DEPLOY.md)** — Files, host modes, security model (operator surfaces + checklist), and validation needed to run a shard.

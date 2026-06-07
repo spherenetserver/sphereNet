@@ -173,6 +173,8 @@ public sealed partial class GameClient
             return;
         }
 
+        var (dragSourceSerial, dragSourcePos) = GetDragSource(item);
+
         // Fire the pickup trigger, choosing the most specific source variant:
         // Self  = dragged off the character's own equipment layers,
         // Stack = a partial amount split out of a larger stack,
@@ -235,6 +237,7 @@ public sealed partial class GameClient
             item.Amount -= amount;
             splitItem.ContainedIn = _character.Uid;
             _character.SetTag("DRAGGING", splitItem.Uid.Value.ToString());
+            BroadcastDragAnimation(splitItem, dragSourceSerial, dragSourcePos, 0, _character.Position, dragSourcePos);
             return;
         }
 
@@ -278,9 +281,68 @@ public sealed partial class GameClient
 
         item.ContainedIn = _character.Uid;
         _character.SetTag("DRAGGING", serial.ToString());
+        BroadcastDragAnimation(item, dragSourceSerial, dragSourcePos, 0, _character.Position, dragSourcePos);
 
         if (item.BaseId == 0x0EED)
             SendCharacterStatus(_character);
+    }
+
+    private (uint Serial, Point3D Position) GetDragSource(Item item)
+    {
+        if (!item.ContainedIn.IsValid)
+            return (0, item.Position);
+
+        var container = _world.FindItem(item.ContainedIn);
+        if (container != null)
+        {
+            var top = GetTopContainer(container) ?? container;
+            if (top.ContainedIn.IsValid)
+            {
+                var holder = _world.FindChar(top.ContainedIn);
+                if (holder != null)
+                    return (holder.Uid.Value, holder.Position);
+            }
+            return (top.Uid.Value, top.Position);
+        }
+
+        var character = _world.FindChar(item.ContainedIn);
+        if (character != null)
+            return (character.Uid.Value, character.Position);
+
+        return (0, item.Position);
+    }
+
+    private void BroadcastDragAnimation(Item item, uint sourceSerial, Point3D sourcePos,
+        uint targetSerial, Point3D targetPos, Point3D origin)
+    {
+        var packet = new PacketDragAnimation(
+            item.DispIdFull,
+            item.Hue,
+            item.Amount == 0 ? (ushort)1 : item.Amount,
+            sourceSerial,
+            sourcePos.X,
+            sourcePos.Y,
+            sourcePos.Z,
+            targetSerial,
+            targetPos.X,
+            targetPos.Y,
+            targetPos.Z);
+
+        if (ForEachClientInRange != null)
+        {
+            ForEachClientInRange(origin, UpdateRange, 0, (_, observer) =>
+            {
+                if (observer.NetState.IsKingdomRebornClient
+                    || observer.NetState.IsEnhancedClient
+                    || observer.NetState.SupportsStygianAbyss)
+                    return;
+
+                observer.Send(packet);
+            });
+            return;
+        }
+
+        BroadcastNearby?.Invoke(origin, UpdateRange, packet, 0);
     }
 
     // ==================== Item Drop ====================
@@ -589,24 +651,50 @@ public sealed partial class GameClient
 
         var groundPos = new Point3D(x, y, z, _character.MapIndex);
         var sector = _world.GetSector(groundPos);
+
+        // Stack onto a matching pile if possible; otherwise count the non-stacking
+        // items already on this exact tile so the new drop gets a distinct facing.
+        // A pile of separate items should scatter (Source-X behaviour) rather than
+        // all share one orientation — basing direction on the item's own previous
+        // value made every fresh drop land as Direction=1.
+        int tileItemCount = 0;
         if (sector != null)
         {
             foreach (var existing in sector.Items)
             {
-                if (existing.X == x && existing.Y == y && existing.MapIndex == _character.MapIndex &&
-                    existing.CanStackWith(item) && (existing.Amount + item.Amount) <= ushort.MaxValue)
+                if (existing.X != x || existing.Y != y || existing.MapIndex != _character.MapIndex)
+                    continue;
+
+                if (existing.CanStackWith(item) && (existing.Amount + item.Amount) <= ushort.MaxValue)
                 {
                     existing.Amount += item.Amount;
+                    BroadcastDragAnimation(item, _character.Uid.Value, _character.Position, 0, existing.Position, existing.Position);
                     _world.RemoveItem(item);
                     item.Delete();
                     _netState.Send(new PacketDropAck());
+                    BroadcastNearby?.Invoke(existing.Position, UpdateRange,
+                        new PacketSound(0x0042, existing.X, existing.Y, existing.Z), 0);
+                    BroadcastNearby?.Invoke(existing.Position, UpdateRange,
+                        new PacketWorldItem(existing.Uid.Value, existing.DispIdFull, existing.Amount,
+                            existing.X, existing.Y, existing.Z, existing.Hue, existing.Direction), 0);
                     return;
                 }
+
+                tileItemCount++;
             }
         }
 
+        item.Direction = (byte)((tileItemCount % 7) + 1);
+        item.TryFlipDisplay();
+
         _world.PlaceItemWithDecay(item, groundPos);
         _netState.Send(new PacketDropAck());
+        BroadcastDragAnimation(item, _character.Uid.Value, _character.Position, 0, groundPos, groundPos);
+        BroadcastNearby?.Invoke(groundPos, UpdateRange,
+            new PacketSound(0x0042, groundPos.X, groundPos.Y, groundPos.Z), 0);
+        BroadcastNearby?.Invoke(groundPos, UpdateRange,
+            new PacketWorldItem(item.Uid.Value, item.DispIdFull, item.Amount,
+                item.X, item.Y, item.Z, item.Hue, item.Direction), 0);
     }
 
     // ==================== Item Equip ====================

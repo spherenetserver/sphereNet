@@ -251,6 +251,55 @@ public sealed class PacketTarget : PacketWriter
     }
 }
 
+/// <summary>0x23 - Drag animation.</summary>
+public sealed class PacketDragAnimation : PacketWriter
+{
+    private readonly ushort _itemId;
+    private readonly ushort _hue;
+    private readonly ushort _amount;
+    private readonly uint _sourceSerial;
+    private readonly short _sourceX, _sourceY;
+    private readonly sbyte _sourceZ;
+    private readonly uint _targetSerial;
+    private readonly short _targetX, _targetY;
+    private readonly sbyte _targetZ;
+
+    public PacketDragAnimation(ushort itemId, ushort hue, ushort amount,
+        uint sourceSerial, short sourceX, short sourceY, sbyte sourceZ,
+        uint targetSerial, short targetX, short targetY, sbyte targetZ) : base(0x23)
+    {
+        _itemId = itemId;
+        _hue = hue;
+        _amount = amount;
+        _sourceSerial = sourceSerial;
+        _sourceX = sourceX;
+        _sourceY = sourceY;
+        _sourceZ = sourceZ;
+        _targetSerial = targetSerial;
+        _targetX = targetX;
+        _targetY = targetY;
+        _targetZ = targetZ;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateFixed(26);
+        buf.WriteUInt16(_itemId);
+        buf.WriteByte(0);
+        buf.WriteUInt16(_hue);
+        buf.WriteUInt16(_amount == 0 ? (ushort)1 : _amount);
+        buf.WriteUInt32(_sourceSerial);
+        buf.WriteInt16(_sourceX);
+        buf.WriteInt16(_sourceY);
+        buf.WriteByte((byte)_sourceZ);
+        buf.WriteUInt32(_targetSerial);
+        buf.WriteInt16(_targetX);
+        buf.WriteInt16(_targetY);
+        buf.WriteByte((byte)_targetZ);
+        return buf;
+    }
+}
+
 /// <summary>0x54 — Play sound effect.</summary>
 public sealed class PacketSound : PacketWriter
 {
@@ -318,6 +367,122 @@ public sealed class PacketEffect : PacketWriter
         buf.WriteUInt16(0); // unknown
         buf.WriteBool(_fixedDir);
         buf.WriteBool(_explode);
+        return buf;
+    }
+}
+
+/// <summary>0xC0 - Hued graphical effect.</summary>
+public sealed class PacketEffectHued : PacketWriter
+{
+    private readonly byte _type;
+    private readonly uint _srcSerial, _dstSerial;
+    private readonly ushort _effectId;
+    private readonly short _srcX, _srcY, _srcZ;
+    private readonly short _dstX, _dstY, _dstZ;
+    private readonly byte _speed, _duration;
+    private readonly bool _fixedDir, _explode;
+    private readonly uint _hue, _renderMode;
+
+    public PacketEffectHued(byte type, uint srcSerial, uint dstSerial, ushort effectId,
+        short srcX, short srcY, short srcZ, short dstX, short dstY, short dstZ,
+        byte speed, byte duration, bool fixedDir, bool explode, uint hue, uint renderMode) : base(0xC0)
+    {
+        _type = type; _srcSerial = srcSerial; _dstSerial = dstSerial;
+        _effectId = effectId;
+        _srcX = srcX; _srcY = srcY; _srcZ = srcZ;
+        _dstX = dstX; _dstY = dstY; _dstZ = dstZ;
+        _speed = speed; _duration = duration;
+        _fixedDir = fixedDir; _explode = explode;
+        _hue = hue; _renderMode = renderMode;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateFixed(36);
+        WriteBaseEffect(buf, _type, _srcSerial, _dstSerial, _effectId,
+            _srcX, _srcY, _srcZ, _dstX, _dstY, _dstZ,
+            _speed, _duration, _fixedDir, _explode);
+        WriteHuedEffect(buf, _hue, _renderMode);
+        return buf;
+    }
+
+    internal static void WriteBaseEffect(PacketBuffer buf, byte type, uint srcSerial, uint dstSerial, ushort effectId,
+        short srcX, short srcY, short srcZ, short dstX, short dstY, short dstZ,
+        byte speed, byte duration, bool fixedDir, bool explode)
+    {
+        buf.WriteByte(type);
+        buf.WriteUInt32(srcSerial);
+        buf.WriteUInt32(dstSerial);
+        buf.WriteUInt16(effectId);
+        buf.WriteInt16(srcX);
+        buf.WriteInt16(srcY);
+        buf.WriteSByte((sbyte)srcZ);
+        buf.WriteInt16(dstX);
+        buf.WriteInt16(dstY);
+        buf.WriteSByte((sbyte)dstZ);
+        buf.WriteByte(speed);
+        buf.WriteByte(duration);
+        buf.WriteUInt16(0);
+        buf.WriteBool(fixedDir);
+        buf.WriteBool(explode);
+    }
+
+    internal static void WriteHuedEffect(PacketBuffer buf, uint hue, uint renderMode)
+    {
+        buf.WriteUInt32(hue != 0 ? hue - 1 : 0);
+        buf.WriteUInt32(renderMode);
+    }
+}
+
+/// <summary>0xC7 - Particle graphical effect.</summary>
+public sealed class PacketEffectParticle : PacketWriter
+{
+    private readonly byte _type;
+    private readonly uint _srcSerial, _dstSerial;
+    private readonly ushort _effectId;
+    private readonly short _srcX, _srcY, _srcZ;
+    private readonly short _dstX, _dstY, _dstZ;
+    private readonly byte _speed, _duration;
+    private readonly bool _fixedDir, _explode;
+    private readonly uint _hue, _renderMode;
+    private readonly ushort _particleEffectId;
+    private readonly uint _explodeId;
+    private readonly ushort _explodeSound;
+    private readonly uint _effectUid;
+    private readonly byte _particleType;
+
+    public PacketEffectParticle(byte type, uint srcSerial, uint dstSerial, ushort effectId,
+        short srcX, short srcY, short srcZ, short dstX, short dstY, short dstZ,
+        byte speed, byte duration, bool fixedDir, bool explode, uint hue, uint renderMode,
+        ushort particleEffectId, uint explodeId, ushort explodeSound, uint effectUid, byte particleType) : base(0xC7)
+    {
+        _type = type; _srcSerial = srcSerial; _dstSerial = dstSerial;
+        _effectId = effectId;
+        _srcX = srcX; _srcY = srcY; _srcZ = srcZ;
+        _dstX = dstX; _dstY = dstY; _dstZ = dstZ;
+        _speed = speed; _duration = duration;
+        _fixedDir = fixedDir; _explode = explode;
+        _hue = hue; _renderMode = renderMode;
+        _particleEffectId = particleEffectId;
+        _explodeId = explodeId;
+        _explodeSound = explodeSound;
+        _effectUid = effectUid;
+        _particleType = particleType;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateFixed(49);
+        PacketEffectHued.WriteBaseEffect(buf, _type, _srcSerial, _dstSerial, _effectId,
+            _srcX, _srcY, _srcZ, _dstX, _dstY, _dstZ,
+            _speed, _duration, _fixedDir, _explode);
+        PacketEffectHued.WriteHuedEffect(buf, _hue, _renderMode);
+        buf.WriteUInt16(_particleEffectId);
+        buf.WriteUInt16((ushort)_explodeId);
+        buf.WriteUInt16(_explodeSound);
+        buf.WriteUInt32(_effectUid);
+        buf.WriteByte(_particleType == 0 ? (byte)0xFF : (byte)0x03);
+        buf.WriteUInt16(0);
         return buf;
     }
 }
@@ -1930,13 +2095,14 @@ public sealed class PacketWorldItemSA : PacketWriter
     private readonly short _x, _y;
     private readonly sbyte _z;
     private readonly ushort _hue;
+    private readonly byte _direction;
     private readonly byte _light;
     private readonly byte _flags;
     private readonly bool _highSeas;
 
     public PacketWorldItemSA(uint serial, ushort itemId, ushort amount,
         short x, short y, sbyte z, ushort hue,
-        bool highSeas = false, byte light = 0, byte flags = 0)
+        bool highSeas = false, byte light = 0, byte flags = 0, byte direction = 0)
         : base(0xF3)
     {
         _serial = serial;
@@ -1944,6 +2110,7 @@ public sealed class PacketWorldItemSA : PacketWriter
         _amount = amount;
         _x = x; _y = y; _z = z;
         _hue = hue;
+        _direction = direction;
         _highSeas = highSeas;
         _light = light;
         _flags = flags;
@@ -1957,7 +2124,7 @@ public sealed class PacketWorldItemSA : PacketWriter
         buf.WriteByte(0x00); // type: 0 = item
         buf.WriteUInt32(_serial);
         buf.WriteUInt16((ushort)(_itemId & (_highSeas ? 0xFFFF : 0x7FFF)));
-        buf.WriteByte(0x00); // direction
+        buf.WriteByte(_direction);
         buf.WriteInt16((short)_amount);
         buf.WriteInt16((short)_amount);
         buf.WriteInt16((short)(_x & 0x7FFF));

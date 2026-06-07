@@ -216,7 +216,7 @@ public sealed partial class GameClient
                 SendWorldItem(item);
             uint nuid = item.Uid.Value;
             _knownItems.Add(nuid);
-            _lastKnownItemState[nuid] = (item.X, item.Y, item.Z, item.DispIdFull, item.Hue, item.Amount);
+            _lastKnownItemState[nuid] = (item.X, item.Y, item.Z, item.DispIdFull, item.Hue, item.Amount, item.Direction);
         }
 
         foreach (var item in delta.UpdatedItems)
@@ -226,16 +226,16 @@ public sealed partial class GameClient
             {
                 bool changed = prev.X != item.X || prev.Y != item.Y || prev.Z != item.Z ||
                                prev.DispId != item.DispIdFull || prev.Hue != item.Hue ||
-                               prev.Amount != item.Amount;
+                               prev.Amount != item.Amount || prev.Direction != item.Direction;
                 if (changed)
                 {
                     SendWorldItem(item);
-                    _lastKnownItemState[uid] = (item.X, item.Y, item.Z, item.DispIdFull, item.Hue, item.Amount);
+                    _lastKnownItemState[uid] = (item.X, item.Y, item.Z, item.DispIdFull, item.Hue, item.Amount, item.Direction);
                 }
             }
             else
             {
-                _lastKnownItemState[uid] = (item.X, item.Y, item.Z, item.DispIdFull, item.Hue, item.Amount);
+                _lastKnownItemState[uid] = (item.X, item.Y, item.Z, item.DispIdFull, item.Hue, item.Amount, item.Direction);
             }
         }
 
@@ -257,11 +257,24 @@ public sealed partial class GameClient
         var staleItems = new List<uint>();
         foreach (uint uid in _knownItems)
         {
-            if (!delta.CurrentItems.Contains(uid))
+            if (delta.CurrentItems.Contains(uid))
+                continue;
+
+            // An item that dropped out of the ground view because it was
+            // equipped onto a mobile has already been re-homed client-side by
+            // the 0x2E worn-item packet. A 0x1D here would delete the now-worn
+            // item from the client — the classic "recolour/equip a worn item
+            // and it vanishes until a resync (teleport)" bug. Forget it from the
+            // ground-known set without deleting; the wearer's draw owns it now.
+            var existing = _world.FindItem(new Serial(uid));
+            if (existing is { IsDeleted: false, IsEquipped: true })
             {
-                _netState.Send(new PacketDeleteObject(uid));
                 staleItems.Add(uid);
+                continue;
             }
+
+            _netState.Send(new PacketDeleteObject(uid));
+            staleItems.Add(uid);
         }
         foreach (uint uid in staleItems)
         {

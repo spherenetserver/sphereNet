@@ -2,6 +2,12 @@
 bin/
 obj/
 
+# Test artifacts
+src/SphereNet.Tests/TestResults/
+
+# Local perf scratch
+.perf/
+
 # Local commit message scratch
 .git_commit_msg.tmp
 .commit_msg.tmp

@@ -58,6 +58,38 @@ public class CombatEngineTests
     }
 
     [Fact]
+    public void CalcHitChance_Era0_NpcWithZeroCombatSkills_UsesStatFallback()
+    {
+        var npc = MakeChar(str: 60, dex: 60);
+        npc.IsPlayer = false;
+        npc.SetSkill(SkillType.Wrestling, 0);
+        npc.SetSkill(SkillType.Tactics, 0);
+
+        var target = MakeChar(str: 60, dex: 50);
+        target.IsPlayer = true;
+
+        int chance = CombatEngine.CalcHitChance(npc, target, 0);
+
+        Assert.InRange(chance, 35, 95);
+    }
+
+    [Fact]
+    public void CalcHitChance_Era0_PlayerWithZeroCombatSkills_DoesNotUseNpcFallback()
+    {
+        var player = MakeChar(str: 60, dex: 60);
+        player.IsPlayer = true;
+        player.SetSkill(SkillType.Wrestling, 0);
+        player.SetSkill(SkillType.Tactics, 0);
+
+        var target = MakeChar(str: 60, dex: 50);
+        target.IsPlayer = true;
+
+        int chance = CombatEngine.CalcHitChance(player, target, 0);
+
+        Assert.InRange(chance, 0, 25);
+    }
+
+    [Fact]
     public void CalcWeaponDamage_Unarmed_MinIsAtLeast1()
     {
         var ch = MakeChar(str: 10);

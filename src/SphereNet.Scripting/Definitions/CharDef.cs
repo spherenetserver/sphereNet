@@ -83,6 +83,7 @@ public sealed class CharDef : BaseDef
     public short DamEnergy { get; set; }
 
     public List<int> NpcSpells { get; } = [];
+    public Dictionary<SkillType, (int Min, int Max)> SkillRanges { get; } = [];
 
     public CharDef(ResourceId id) : base(id) { }
 
@@ -152,10 +153,10 @@ public sealed class CharDef : BaseDef
             case "MAXFOOD": ushort.TryParse(value, out ushort mf); MaxFood = mf; break;
             case "ICON": Icon = value.Trim(); break;
             case "JOB": Job = value.Trim(); break;
-            case "THROWDAM": int.TryParse(value, out int td); ThrowDam = td; break;
-            case "THROWDAMTYPE": int.TryParse(value, out int tdt); ThrowDamType = tdt; break;
-            case "THROWOBJ": ThrowObj = ParseHexOrDec(value); break;
-            case "THROWRANGE": int.TryParse(value, out int tr); ThrowRange = tr; break;
+            case "THROWDAM": int.TryParse(value, out int td); ThrowDam = td; TagDefs.Set("THROWDAM", value.Trim()); break;
+            case "THROWDAMTYPE": int.TryParse(value, out int tdt); ThrowDamType = tdt; TagDefs.Set("THROWDAMTYPE", value.Trim()); break;
+            case "THROWOBJ": ThrowObj = ParseHexOrDec(value); TagDefs.Set("THROWOBJ", value.Trim()); break;
+            case "THROWRANGE": int.TryParse(value, out int tr); ThrowRange = tr; TagDefs.Set("THROWRANGE", value.Trim()); break;
             case "NPCSPELL":
                 if (int.TryParse(value.Trim(), out int spId) && spId > 0 && !NpcSpells.Contains(spId))
                     NpcSpells.Add(spId);
@@ -215,10 +216,52 @@ public sealed class CharDef : BaseDef
                     NewbieItems[^1].Color = value.Trim();
                 break;
             default:
+                if (key.StartsWith("BREATH.", StringComparison.OrdinalIgnoreCase))
+                {
+                    TagDefs.Set(key, value.Trim());
+                    break;
+                }
+                if (TryParseSkillName(key, out var skill))
+                {
+                    SkillRanges[skill] = ParseRange(value);
+                    break;
+                }
                 if (key.StartsWith("TAG.", StringComparison.OrdinalIgnoreCase))
                     TagDefs.Set(key[4..], value);
                 break;
         }
+    }
+
+    private static bool TryParseSkillName(string key, out SkillType skill)
+    {
+        string normalized = key.Trim().Replace("_", "", StringComparison.OrdinalIgnoreCase);
+        if (normalized.StartsWith("SKILL", StringComparison.OrdinalIgnoreCase))
+            normalized = normalized[5..];
+
+        skill = normalized.ToUpperInvariant() switch
+        {
+            "EVALUATINGINTEL" or "EVALUATINGINTELLIGENCE" or "EVALINT" => SkillType.EvalInt,
+            "ITEMID" or "ITEMIDENTIFICATION" => SkillType.ItemId,
+            "TASTEID" or "TASTEIDENTIFICATION" => SkillType.TasteId,
+            "MAGICRESISTANCE" or "RESISTINGSPELLS" or "RESIST" => SkillType.MagicResistance,
+            "ANIMALLORE" => SkillType.AnimalLore,
+            "ARMSLORE" => SkillType.ArmsLore,
+            "DETECTINGHIDDEN" => SkillType.DetectingHidden,
+            "SPIRITSPEAK" => SkillType.SpiritSpeak,
+            "SWORDSMANSHIP" => SkillType.Swordsmanship,
+            "MACEFIGHTING" or "MACEFIGHT" => SkillType.MaceFighting,
+            "FENCING" => SkillType.Fencing,
+            "WRESTLING" => SkillType.Wrestling,
+            "TACTICS" => SkillType.Tactics,
+            "ARCHERY" => SkillType.Archery,
+            "MAGERY" => SkillType.Magery,
+            "PARRYING" or "PARRY" => SkillType.Parrying,
+            _ => SkillType.None,
+        };
+        if (skill != SkillType.None)
+            return true;
+
+        return Enum.TryParse(key, true, out skill) && skill >= 0 && skill < SkillType.Qty;
     }
 
     private void ParseEventsList(string value)
@@ -294,6 +337,11 @@ public sealed class CharDef : BaseDef
             ushort.TryParse(value.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out ushort result);
             return result;
         }
+        if (value.StartsWith("0", StringComparison.OrdinalIgnoreCase) && value.Length > 1)
+        {
+            ushort.TryParse(value.AsSpan(), System.Globalization.NumberStyles.HexNumber, null, out ushort result);
+            return result;
+        }
         ushort.TryParse(value, out ushort r);
         return r;
     }
@@ -306,6 +354,8 @@ public sealed class CharDef : BaseDef
 
         if (value.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             return ushort.TryParse(value.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out result);
+        if (value.StartsWith("0", StringComparison.OrdinalIgnoreCase) && value.Length > 1)
+            return ushort.TryParse(value.AsSpan(), System.Globalization.NumberStyles.HexNumber, null, out result);
 
         return ushort.TryParse(value, out result);
     }
@@ -379,6 +429,11 @@ public sealed class CharDef : BaseDef
         if (value.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
         {
             uint.TryParse(value.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out uint result);
+            return result;
+        }
+        if (value.StartsWith("0", StringComparison.OrdinalIgnoreCase) && value.Length > 1)
+        {
+            uint.TryParse(value.AsSpan(), System.Globalization.NumberStyles.HexNumber, null, out uint result);
             return result;
         }
         uint.TryParse(value, out uint r);

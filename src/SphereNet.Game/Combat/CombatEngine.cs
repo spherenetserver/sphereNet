@@ -112,10 +112,10 @@ public static class CombatEngine
     /// </summary>
     public static int CalcHitChance(Character attacker, Character target, int era = 0)
     {
-        int attackSkill = attacker.GetSkill(GetWeaponSkill(attacker));
-        int targetSkill = target.GetSkill(GetWeaponSkill(target));
-        int tacticsAtk = attacker.GetSkill(SkillType.Tactics);
-        int tacticsDef = target.GetSkill(SkillType.Tactics);
+        int attackSkill = GetHitChanceSkill(attacker, GetWeaponSkill(attacker));
+        int targetSkill = GetHitChanceSkill(target, GetWeaponSkill(target));
+        int tacticsAtk = GetHitChanceTactics(attacker, attackSkill);
+        int tacticsDef = GetHitChanceTactics(target, targetSkill);
 
         switch (era)
         {
@@ -156,6 +156,30 @@ public static class CombatEngine
                 return Math.Clamp(iDiff, 0, 100);
             }
         }
+    }
+
+    private static int GetHitChanceSkill(Character ch, SkillType skill)
+    {
+        int value = ch.GetSkill(skill);
+        if (value > 0 || ch.IsPlayer || !IsWeaponSkill(skill))
+            return value;
+
+        return InferNpcCombatSkill(ch);
+    }
+
+    private static int GetHitChanceTactics(Character ch, int weaponSkill)
+    {
+        int value = ch.GetSkill(SkillType.Tactics);
+        if (value > 0 || ch.IsPlayer)
+            return value;
+
+        return Math.Max(weaponSkill, InferNpcCombatSkill(ch));
+    }
+
+    private static int InferNpcCombatSkill(Character ch)
+    {
+        int stat = Math.Max(ch.Str, ch.Dex);
+        return Math.Clamp(stat * 10, 250, 1000);
     }
 
     /// <summary>
@@ -462,6 +486,10 @@ public static class CombatEngine
     /// <summary>True for ranged weapon skills (Source-X SKF_RANGED).</summary>
     private static bool IsRangedSkill(SkillType skill) =>
         skill is SkillType.Archery or SkillType.Throwing;
+
+    private static bool IsWeaponSkill(SkillType skill) =>
+        skill is SkillType.Wrestling or SkillType.Swordsmanship or SkillType.Fencing or
+            SkillType.MaceFighting or SkillType.Archery or SkillType.Throwing;
 
     public static SkillType GetWeaponSkill(Character ch)
     {

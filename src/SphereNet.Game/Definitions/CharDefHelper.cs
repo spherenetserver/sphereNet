@@ -198,6 +198,12 @@ public static class CharDefHelper
                 ch.Hits = ch.MaxHits;
         }
 
+        if (def != null && !ch.IsPlayer)
+        {
+            ApplyNpcDefinitionSkills(ch, def);
+            ApplyNpcDefinitionTags(ch, def);
+        }
+
         AfterApplyDefName?.Invoke(ch);
         if (refresh)
             ch.RefreshAppearance();
@@ -213,5 +219,28 @@ public static class CharDefHelper
         if (min <= 0) min = max;
         if (min > max) (min, max) = (max, min);
         return min == max ? min : Random.Shared.Next(min, max + 1);
+    }
+
+    public static void ApplyNpcDefinitionSkills(Character ch, CharDef def)
+    {
+        if (ch.IsPlayer || def.SkillRanges.Count == 0)
+            return;
+
+        foreach (var (skill, range) in def.SkillRanges)
+        {
+            int value = RollStat(range.Min, range.Max);
+            if (value <= 0)
+                continue;
+            ch.SetSkill(skill, (ushort)Math.Clamp(value, 0, 1200));
+        }
+    }
+
+    public static void ApplyNpcDefinitionTags(Character ch, CharDef def)
+    {
+        if (ch.IsPlayer)
+            return;
+
+        foreach (var (key, value) in def.TagDefs.GetAll())
+            ch.SetTag(key, value);
     }
 }

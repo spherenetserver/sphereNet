@@ -4,8 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-07] - Tek-komut guncelleme, ses/gorsel/hareket parity, combat facing (Wave 73)
+[2026-06-07] - NPC CHARDEF skill/tag aktarimi, hit-chance fallback, bare-hex parse (Wave 74)
 ----------------------------------------
+
+ENGINE - NPC tanimlari:
+  - CHARDEF skill araliklari (WRESTLING, TACTICS, MAGERY, vb.) artik spawn /
+    applyDefName sirasinda parse edilip karaktere basiliyor (CharDefHelper
+    ApplyNpcDefinitionSkills, 0..1200 clamp). Tanimdaki TAG defleri de runtime
+    karaktere uygulaniyor (ApplyNpcDefinitionTags); boylece dragon/breath/throw ozel
+    saldirilari icin BREATH.*, THROWOBJ, THROWDAM, THROWRANGE okuyan AI artik
+    tanimdaki degerleri goruyor (onceden AI hic set edilmemis tag'leri okuyordu).
+
+ENGINE - combat:
+  - Hit-chance, silah skill'i veya Tactics'i 0 olan NPC'ler icin stat tabanli bir
+    fallback kazandi: cikarilan deger clamp(max(Str,Dex)*10, 250..1000). Yalnizca
+    oyuncu olmayan saldirganlara ve silah skill'lerine uygulanir, oyuncu isabeti
+    degismez. Skill'siz NPC tanimlarinin neredeyse her vurusu kacirmasini onler.
+
+SCRIPTING - tanim parse:
+  - ItemDef ve CharDef'te bare Sphere hex parse hatasi duzeltildi: 0F5E / 013B gibi
+    degerler artik decimal sanilmiyor ve {min max} bicimi item damage/range icin
+    parse ediliyor. Bu ayrica bir esya tanimimin yanlis metadata ile yuklenmesi
+    yolunu kapatir (orn. yanlis tiplenmis bir kilic ok/yay atis sesi uretmesi).
 
 HOST / PANEL / BUILD:
   - In-app panel guncellemesi tek bir update.cmd / update.ps1 ile degistirildi;

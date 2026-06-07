@@ -4,8 +4,28 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-07] - Single-command update, sound/visual/movement parity, combat facing (Wave 73)
+[2026-06-07] - NPC CHARDEF skills/tags, hit-chance fallback, bare-hex def parsing (Wave 74)
 ----------------------------------------
+
+ENGINE - NPC definitions:
+  - CHARDEF skill ranges (WRESTLING, TACTICS, MAGERY, etc.) are now parsed and
+    rolled onto the character on spawn / applyDefName (CharDefHelper
+    ApplyNpcDefinitionSkills, clamped 0..1200). Definition TAG defs are applied to
+    the runtime character too (ApplyNpcDefinitionTags), so AI that reads BREATH.*,
+    THROWOBJ, THROWDAM, THROWRANGE for dragon/breath/throw special attacks now sees
+    the values from the definition (previously the AI read tags that were never set).
+
+ENGINE - combat:
+  - Hit-chance gained a stat-based fallback for NPCs whose weapon skill or Tactics
+    is 0: the inferred value is clamp(max(Str,Dex)*10, 250..1000). It only applies
+    to non-player attackers and weapon skills, so player accuracy is unchanged. This
+    stops skill-less NPC definitions from missing almost every swing.
+
+SCRIPTING - definition parsing:
+  - Fixed bare Sphere hex parsing in ItemDef and CharDef: values like 0F5E / 013B
+    are no longer mistaken for decimal, and the {min max} form is parsed for item
+    damage/range. This also closes a path where an item definition could load with
+    wrong metadata (e.g. a sword mis-typed so it emitted the bow/arrow shoot sound).
 
 HOST / PANEL / BUILD:
   - Replaced the in-app panel update with a single update.cmd / update.ps1, run

@@ -217,6 +217,9 @@ public sealed class SpawnComponent
             if (charDef.DamCold != 0) ch.DamCold = charDef.DamCold;
             if (charDef.DamPoison != 0) ch.DamPoison = charDef.DamPoison;
             if (charDef.DamEnergy != 0) ch.DamEnergy = charDef.DamEnergy;
+
+            CharDefHelper.ApplyNpcDefinitionSkills(ch, charDef);
+            CharDefHelper.ApplyNpcDefinitionTags(ch, charDef);
         }
         else
         {

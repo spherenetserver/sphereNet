@@ -154,6 +154,19 @@ public sealed class ItemDef : BaseDef
 
     private static (int Min, int Max) ParseRange(string value)
     {
+        value = value.Trim();
+        if (value.Length > 0 && value[0] == '{')
+        {
+            string inner = value.Trim('{', '}').Trim();
+            var parts = inner.Split(new[] { ' ', '\t', ',' },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (parts.Length >= 2 && int.TryParse(parts[0], out int bmin) && int.TryParse(parts[1], out int bmax))
+                return (bmin, bmax);
+            if (parts.Length == 1 && int.TryParse(parts[0], out int bsingle))
+                return (bsingle, bsingle);
+            return (0, 0);
+        }
+
         int comma = value.IndexOf(',');
         if (comma >= 0)
         {
@@ -175,7 +188,7 @@ public sealed class ItemDef : BaseDef
             if (span.Length > 2 && (span[1] == 'x' || span[1] == 'X'))
                 ushort.TryParse(span[2..], System.Globalization.NumberStyles.HexNumber, null, out result);
             else
-                ushort.TryParse(span, out result);
+                ushort.TryParse(span, System.Globalization.NumberStyles.HexNumber, null, out result);
         }
         else
         {
@@ -188,6 +201,8 @@ public sealed class ItemDef : BaseDef
         result = 0;
         if (value.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             return uint.TryParse(value.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out result);
+        if (value.StartsWith("0", StringComparison.OrdinalIgnoreCase) && value.Length > 1)
+            return uint.TryParse(value.AsSpan(), System.Globalization.NumberStyles.HexNumber, null, out result);
         return uint.TryParse(value, out result);
     }
 
@@ -196,6 +211,8 @@ public sealed class ItemDef : BaseDef
         result = 0;
         if (value.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             ulong.TryParse(value.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out result);
+        else if (value.StartsWith("0", StringComparison.OrdinalIgnoreCase) && value.Length > 1)
+            ulong.TryParse(value.AsSpan(), System.Globalization.NumberStyles.HexNumber, null, out result);
         else
             ulong.TryParse(value, out result);
     }

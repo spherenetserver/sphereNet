@@ -1,5 +1,7 @@
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
+using SphereNet.Game.Definitions;
+using SphereNet.Game.Objects.Characters;
 using SphereNet.Scripting.Definitions;
 using Xunit;
 
@@ -54,5 +56,50 @@ public class CharDefCanFlagsTests
         {
             CharDef.DefNameResolver = prev;
         }
+    }
+
+    [Fact]
+    public void LoadFromKey_SkillRanges_ParseBraceRangesAndAliases()
+    {
+        var def = new CharDef(ResourceId.Invalid);
+
+        def.LoadFromKey("WRESTLING", "{70 90}");
+        def.LoadFromKey("EVALUATINGINTEL", "50,80");
+
+        Assert.Equal((70, 90), def.SkillRanges[SkillType.Wrestling]);
+        Assert.Equal((50, 80), def.SkillRanges[SkillType.EvalInt]);
+    }
+
+    [Fact]
+    public void LoadFromKey_BreathAndThrowProperties_AreRuntimeTags()
+    {
+        var def = new CharDef(ResourceId.Invalid);
+
+        def.LoadFromKey("BREATH.DAM", "45");
+        def.LoadFromKey("THROWOBJ", "0x0F51");
+        def.LoadFromKey("THROWDAM", "5,12");
+
+        Assert.Equal("45", def.TagDefs.Get("BREATH.DAM"));
+        Assert.Equal("0x0F51", def.TagDefs.Get("THROWOBJ"));
+        Assert.Equal("5,12", def.TagDefs.Get("THROWDAM"));
+    }
+
+    [Fact]
+    public void ApplyNpcDefinitionSkillsAndTags_CopiesCombatRuntimeData()
+    {
+        var def = new CharDef(ResourceId.Invalid);
+        def.LoadFromKey("WRESTLING", "75");
+        def.LoadFromKey("TACTICS", "80");
+        def.LoadFromKey("BREATH.DAM", "45");
+
+        var npc = new Character { IsPlayer = false };
+
+        CharDefHelper.ApplyNpcDefinitionSkills(npc, def);
+        CharDefHelper.ApplyNpcDefinitionTags(npc, def);
+
+        Assert.Equal(75, npc.GetSkill(SkillType.Wrestling));
+        Assert.Equal(80, npc.GetSkill(SkillType.Tactics));
+        Assert.True(npc.TryGetTag("BREATH.DAM", out var breathDam));
+        Assert.Equal("45", breathDam);
     }
 }

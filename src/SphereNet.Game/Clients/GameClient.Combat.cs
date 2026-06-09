@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -121,14 +121,14 @@ public sealed partial class GameClient
 
         // NOTE: staff/GM movement is intentionally NOT short-circuited to an
         // immediate HandleMove anymore. Bypassing the queue meant GM steps were
-        // accepted the instant they arrived â€” including the client's bursty
+        // accepted the instant they arrived — including the client's bursty
         // "doublet" packets at direction/speed transitions (two steps ~47ms
         // apart). Unpaced, those rendered as a forward "teleport" on screen.
         // Routing GM through the same queue lets Throttle.NextMoveTime hold the early
         // step to the natural move cadence (smoothing the doublet) exactly like
         // a normal player; the throttle inside HandleMove is still skipped for
         // GM, so GM is paced but never throttle-rejected. Movement speed is
-        // unchanged â€” only the burst is smoothed.
+        // unchanged — only the burst is smoothed.
 
         long now = MoveClock();
         _netState.LastActivityTick = now;
@@ -138,7 +138,7 @@ public sealed partial class GameClient
             // Silently drop stale in-flight steps during the post-reject window.
             // Do NOT echo a 0x21 here: the original RejectMove already sent one
             // corrective reject, and re-sending one for every buffered step makes
-            // the client resend â†’ which we reject again â†’ a tight 0x21 feedback
+            // the client resend → which we reject again → a tight 0x21 feedback
             // storm on low-latency links that freezes the player and reads as a
             // teleport. One reject, then absorb.
             _logger.LogDebug(
@@ -197,7 +197,7 @@ public sealed partial class GameClient
             _logger.LogDebug(
                 "[move_reject_resync] seq={Seq} dir=0x{Dir:X2} remaining={Remaining}ms at {X},{Y},{Z}",
                 seq, dir, _moveRejectResyncUntil - now, _character.X, _character.Y, _character.Z);
-            // Silently drop â€” no 0x21 echo (see HandleMovementBatch for why):
+            // Silently drop — no 0x21 echo (see HandleMovementBatch for why):
             // echoing a reject per buffered step causes a feedback storm.
             _netState.WalkSequence = 0;
             return false;
@@ -207,7 +207,7 @@ public sealed partial class GameClient
 
         // After a reject, WalkSequence resets to 0. The client's first
         // move post-reject will be seq 0 or 1. Anything higher is a stale
-        // speculative move still in flight from before the rejection â€”
+        // speculative move still in flight from before the rejection —
         // processing it from the corrected position would move the
         // character in unexpected directions (teleportation). Drop them.
         if (expectedSeq == 0 && seq > 1)
@@ -285,7 +285,7 @@ public sealed partial class GameClient
 
                 if (rejectReason != null)
                 {
-                    // Source-X @UserExWalkLimit â€” the client exceeded the walk
+                    // Source-X @UserExWalkLimit — the client exceeded the walk
                     // rate (token bucket dry). IsTrigUsed-gated: rejects can
                     // storm during client-side speed bursts.
                     if (rejectReason == "walk_buffer" &&
@@ -361,7 +361,7 @@ public sealed partial class GameClient
             if (_character.X != expectedX || _character.Y != expectedY)
             {
                 _logger.LogWarning(
-                    "[move_teleport] seq={Seq} dir={Dir} from {OldX},{OldY},{OldZ} expected {ExpX},{ExpY} actual {ActX},{ActY},{ActZ} â€” telepad/script moved character during CheckLocationEffects, suppressing MoveAck",
+                    "[move_teleport] seq={Seq} dir={Dir} from {OldX},{OldY},{OldZ} expected {ExpX},{ExpY} actual {ActX},{ActY},{ActZ} — telepad/script moved character during CheckLocationEffects, suppressing MoveAck",
                     seq, direction, oldX, oldY, oldZ, expectedX, expectedY,
                     _character.X, _character.Y, _character.Z);
                 return true;
@@ -450,10 +450,10 @@ public sealed partial class GameClient
     }
 
     /// <summary>Faz 0 diagnostic. Tally a reject under a normalized key and emit
-    /// a compact running session summary. Pure logging â€” no behaviour change.
+    /// a compact running session summary. Pure logging — no behaviour change.
     /// The dominant key over a walking session names the disagreement class to
-    /// fix (e.g. throttle â†’ convert reject to delay; descent_cap â†’ MaxDescendZ;
-    /// impassable_static â†’ client/server statics mismatch; z_window/no_surface â†’
+    /// fix (e.g. throttle → convert reject to delay; descent_cap → MaxDescendZ;
+    /// impassable_static → client/server statics mismatch; z_window/no_surface →
     /// Z-parity bug).</summary>
     private void RecordReject(byte seq, string key, long now)
     {
@@ -493,7 +493,7 @@ public sealed partial class GameClient
         if (fr == "no_candidates")
             return d.FwdImpassableCount > 0 ? "impassable_static" : "no_surface";
         // A surface existed but every candidate fell outside the [minZ, maxZ]
-        // window â€” a Z-window parity discrepancy with the client.
+        // window — a Z-window parity discrepancy with the client.
         return "z_window";
     }
 
@@ -526,16 +526,16 @@ public sealed partial class GameClient
         // A seq > 1 arriving while WalkSequence == 0 is an in-flight step the
         // client predicted BEFORE it processed our single corrective 0x21. The
         // client (ClassicUO) has already cleared its step queue, snapped to the
-        // rejected position and reset its sequence to 0 â€” it is now resending
+        // rejected position and reset its sequence to 0 — it is now resending
         // from seq 0. Replying here at all is harmful:
-        //   * another 0x21 â†’ the client ClearSteps + snaps AGAIN, and
-        //   * a 0x20 DrawPlayer (the old redrawSelf) â†’ a hard reposition/redraw,
+        //   * another 0x21 → the client ClearSteps + snaps AGAIN, and
+        //   * a 0x20 DrawPlayer (the old redrawSelf) → a hard reposition/redraw,
         // and a burst of either makes ConfirmWalk see "bad steps" and fire a
-        // full client-initiated resync request â€” that cascade is the visible
+        // full client-initiated resync request — that cascade is the visible
         // "walking teleport" / flash. So we DROP SILENTLY: emit nothing, keep
         // WalkSequence pinned at 0, and let the fresh seq-0 stream resume the
         // walk cleanly. On TCP the original 0x21 is guaranteed delivered, so the
-        // client always resets â€” there is no deadlock to guard against.
+        // client always resets — there is no deadlock to guard against.
         _netState.WalkSequence = 0;
     }
 
@@ -686,7 +686,7 @@ public sealed partial class GameClient
             _character.ClearStatFlag(StatFlag.Invisible);
         }
 
-        // Pet commands â€” "all follow", "all guard", "petname follow" etc.
+        // Pet commands — "all follow", "all guard", "petname follow" etc.
         if (!_character.IsDead && TryHandlePetCommand(text))
         {
             // Still broadcast the speech so others hear it
@@ -776,7 +776,7 @@ public sealed partial class GameClient
             }
             // Attacking an innocent (neither criminal nor murderer) in a
             // guarded / non-PvP region flags the aggressor criminal. Attacking
-            // a red/gray player is self-defense â€” no flag. Config gate:
+            // a red/gray player is self-defense — no flag. Config gate:
             // ATTACKINGISACRIME.
             bool targetIsInnocent = target.IsPlayer && !target.IsCriminal && !target.IsMurderer;
             if (Character.AttackingIsACrimeEnabled && targetIsInnocent &&
@@ -796,7 +796,7 @@ public sealed partial class GameClient
             }
         }
 
-        // Fire @CombatStart â€” if script blocks, cancel attack
+        // Fire @CombatStart — if script blocks, cancel attack
         if (_triggerDispatcher != null)
         {
             var result = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.CombatStart,
@@ -833,7 +833,7 @@ public sealed partial class GameClient
             }
         }
 
-        // Range check â€” only swing now if already close enough
+        // Range check — only swing now if already close enough
         var atkWeapon = _character.GetEquippedItem(Layer.OneHanded)
                      ?? _character.GetEquippedItem(Layer.TwoHanded);
         int atkMaxRange = CombatHelper.GetWeaponRange(atkWeapon).Max;
@@ -845,7 +845,7 @@ public sealed partial class GameClient
     }
 
     /// <summary>
-    /// Auto-attack tick. Called every server tick â€” if the player has a
+    /// Auto-attack tick. Called every server tick — if the player has a
     /// valid FightTarget and the swing timer has elapsed, automatically
     /// performs the next melee/ranged swing. Maps to CChar::Fight_HitTry
     /// in Source-X which runs every tick for any character with a fight
@@ -893,7 +893,7 @@ public sealed partial class GameClient
         // Source-X CChar::Fight_CanHit gates: dead / paralyzed / sleeping
         // attackers can't swing. Also a STAM<=0 char collapses (CCharAct.cpp
         // OnTick "Stat_GetVal(STAT_DEX) <= 0"), so block the swing entirely
-        // and re-check next tick â€” don't burn the recoil timer.
+        // and re-check next tick — don't burn the recoil timer.
         if (_character.IsDead) return;
 
         // Manifest ghost protection: a dead target (peace OR war manifest)
@@ -1148,7 +1148,7 @@ public sealed partial class GameClient
                     }
                     else
                     {
-                        // NPC corpse â€” matches both Source-X (PacketDeath +
+                        // NPC corpse — matches both Source-X (PacketDeath +
                         // RemoveFromView) and ServUO (DeathAnimation + Delete
                         // -> RemovePacket) reference flow:
                         //   1) 0x1A WorldItem  (corpse appears in world)
@@ -1249,7 +1249,7 @@ public sealed partial class GameClient
     }
 
     /// <summary>
-    /// Handle player death â€” body/hue ghost transition, death effect/sound,
+    /// Handle player death — body/hue ghost transition, death effect/sound,
     /// per-observer dispatch (plain players get 0xAF, staff get 0x1D + 0x78
     /// ghost mobile), self ghost render (0x77 + 0x20 + 0x78 self + 0x2C),
     /// and view-cache invalidation. Corpse + corpse equipment are already
@@ -1271,11 +1271,11 @@ public sealed partial class GameClient
 
         // ---------------------------------------------------------------
         //   Source-X CChar::Death (CCharAct.cpp) reference order:
-        //     1) MakeCorpse + UpdateCanSee(PacketDeath)   â† caller did this
-        //     2) SetID(ghost) + SetHue(HUE_DEFAULT)       â† below
-        //     3) addPlayerWarMode(off) + addTargCancel    â† below
-        //     4) Per-observer dispatch (UpdateCanSee)     â† below
-        //     5) PacketDeathMenu(Dead) on own client      â† below
+        //     1) MakeCorpse + UpdateCanSee(PacketDeath)   ← caller did this
+        //     2) SetID(ghost) + SetHue(HUE_DEFAULT)       ← below
+        //     3) addPlayerWarMode(off) + addTargCancel    ← below
+        //     4) Per-observer dispatch (UpdateCanSee)     ← below
+        //     5) PacketDeathMenu(Dead) on own client      ← below
         //
         //   Hue note: 0x4001 (HUE_TRANSLUCENT|1) makes the sprite
         //   see-through, NOT grey. ClassicUO renders the ghost body
@@ -1296,36 +1296,36 @@ public sealed partial class GameClient
 
         // pClient->addPlayerWarMode(off). We only need the local
         // state flip + the 0x72 PacketWarMode echo to the dying
-        // client â€” the per-observer dispatch below carries the
+        // client — the per-observer dispatch below carries the
         // post-death flags (War=off implicit, Female bit derived
         // from ghost body) through its 0x78 PacketDrawObject. A
         // syncClients=true here would inject an early 0x77 to staff
         // observers that mutates their cached mobile (Hue/Flags
-        // updated, Graphic NOT updated) â€” that intermediate state
+        // updated, Graphic NOT updated) — that intermediate state
         // can leave ClassicUO's animation atlas pointing at the
         // alive body even after the follow-up 0x1D + 0x78. So we
         // suppress the broadcast and rely on per-observer dispatch.
         if (_character.IsInWarMode)
             SetWarMode(false, syncClients: false, preserveTarget: false);
-        // The 0x72 echo is mandatory regardless â€” ClassicUO's input
+        // The 0x72 echo is mandatory regardless — ClassicUO's input
         // handler latches on it to release the war-mode toggle and
         // unblock the death menu.
         _netState.Send(new PacketWarModeResponse(false));
 
         // pClient->addTargCancel. CRITICAL: PacketTarget(0,0) with
-        // flags=0 (Neutral) does NOT cancel in ClassicUO â€” it OPENS
+        // flags=0 (Neutral) does NOT cancel in ClassicUO — it OPENS
         // a brand-new target cursor (TargetManager.SetTargeting:165:
         // `IsTargeting = cursorType < TargetType.Cancel;`). We use
         // flags=3 (Cancel). The Targets.CursorActive guard avoids a
-        // spurious 0x6C when no cursor was open â€” that flash was the
-        // "Ã¶len karakterde target Ã§Ä±kÄ±yor" symptom.
+        // spurious 0x6C when no cursor was open — that flash was the
+        // "ölen karakterde target çÄ±kÄ±yor" symptom.
         if (Targets.CursorActive)
         {
             _netState.Send(new PacketTarget(0x00, 0x00000000, flags: 3));
             ClearPendingTargetState();
         }
 
-        // Death particle + sound â€” single BroadcastNearby with
+        // Death particle + sound — single BroadcastNearby with
         // excludeUid=0 reaches everyone in range INCLUDING the dying
         // player (Source-X UpdateCanSee semantic). A redundant
         // _netState.Send afterwards would double-send and produce the
@@ -1348,18 +1348,18 @@ public sealed partial class GameClient
         //   the dying mobile to (serial | 0x80000000) and removes the
         //   original key from world.Mobiles (PacketHandlers.cs:3711). So:
         //
-        //     - PLAIN observer  â†’ 0xAF (mobile vanishes via remap, only
+        //     - PLAIN observer  → 0xAF (mobile vanishes via remap, only
         //                         the corpse + death anim remain visible)
         //                       + server-side cache cleanup (no 0x1D
         //                         needed; the slot is already empty).
-        //     - STAFF observer  â†’ 0x1D (delete the living-body mobile)
+        //     - STAFF observer  → 0x1D (delete the living-body mobile)
         //                       + 0x78 ghost mobile (fresh spawn under
-        //                         the original serial â€” safe because we
+        //                         the original serial — safe because we
         //                         never sent 0xAF to this observer, so
         //                         no remap collision).
         //                       + cache marked as ghost so the next view-
         //                         delta tick sees no body change.
-        //     - SELF (handled below the loop, not inside) â€” needs a full
+        //     - SELF (handled below the loop, not inside) — needs a full
         //       0x77 + 0x20 + 0x78 + 0x2C sequence.
         //
         //   This is the correct mapping for "staff sees ghosts, plain
@@ -1377,7 +1377,7 @@ public sealed partial class GameClient
         // Find the corpse the kill site just created so we can wire the
         // 0xAF DeathAnimation correctly (plain observers need the
         // corpse serial to anchor the falling-body animation). One tile
-        // search covers the corpse â€” DeathEngine.PlaceItem positions it
+        // search covers the corpse — DeathEngine.PlaceItem positions it
         // exactly at the victim's tile.
         uint corpseSerial = 0;
         if (_world != null)
@@ -1393,13 +1393,13 @@ public sealed partial class GameClient
             }
         }
 
-        // Source-X g_Rand.GetValFast(2) â€” 0/1 forward/backward fall.
+        // Source-X g_Rand.GetValFast(2) — 0/1 forward/backward fall.
         uint fallDir = (uint)Random.Shared.Next(2);
         var deathAnim = new PacketDeathAnimation(victimUid, corpseSerial, fallDir);
 
         var ghostEquipment = BuildEquipmentList(_character);
 
-        // Follow-up 0x77 â€” even though ClassicUO's 0x78 path already
+        // Follow-up 0x77 — even though ClassicUO's 0x78 path already
         // calls CheckGraphicChange() when GetOrCreateMobile spawns a
         // fresh entity (mobile.Graphic == 0 branch), some 4.x builds
         // skip the animation-atlas reset on the freshly-spawned ghost.
@@ -1425,7 +1425,7 @@ public sealed partial class GameClient
                     // handler calls GetOrCreateMobile which returns the
                     // existing entity, updates Graphic to 0x192/0x193,
                     // and runs CheckGraphicChange() to reload the
-                    // animation atlas. No 0x1D needed â€” sending
+                    // animation atlas. No 0x1D needed — sending
                     // DeleteObject first destroys the client-side mobile
                     // and the follow-up 0x78 recreates it, but some
                     // ClassicUO builds don't fully reset the animation
@@ -1448,39 +1448,39 @@ public sealed partial class GameClient
             });
 
         // ---------------------------------------------------------------
-        //   Self updates â€” make the ghost form actually render on the
+        //   Self updates — make the ghost form actually render on the
         //   dying player's own screen.
         //
         //   ClassicUO graphic-update reality (verified against
         //   PacketHandlers.cs in 4.x):
         //
-        //   * 0x77 (UpdateCharacter) â€” for self does NOT touch
+        //   * 0x77 (UpdateCharacter) — for self does NOT touch
         //     world.Player.Graphic in older builds; only NotorietyFlag
         //     and (sometimes) flags get applied. CheckGraphicChange is
         //     called against the OLD graphic, leaving the male/human
         //     state in place.
         //
-        //   * 0x78 (UpdateObject) â€” for an existing (non-zero-graphic)
+        //   * 0x78 (UpdateObject) — for an existing (non-zero-graphic)
         //     mobile, the body update path is gated by
         //     `mobile.Graphic == 0`, i.e. only fresh spawns get a real
         //     graphic switch. For self the existing mobile always has
         //     the alive body cached, so the ghost graphic NEVER lands.
         //
-        //   * 0x20 (UpdatePlayer) â€” the ONLY canonical path that sets
+        //   * 0x20 (UpdatePlayer) — the ONLY canonical path that sets
         //     world.Player.Graphic = newGraphic and follows it with a
         //     CheckGraphicChange + animation-atlas reset. This must be
         //     the first body-bearing packet sent to the dying player.
         //
-        //   * 0x88 (OpenPaperdoll) â€” forces the paperdoll gump to
+        //   * 0x88 (OpenPaperdoll) — forces the paperdoll gump to
         //     re-render against the now-updated body so the dying
         //     player sees the grey ghost on the paperdoll too.
         //
-        //   * 0x2C (DeathScreen) â€” opens the death menu UI; the client
+        //   * 0x2C (DeathScreen) — opens the death menu UI; the client
         //     echoes RequestWarMode(false) in response.
         //
-        //   Send order is therefore 0x20 â†’ 0x77 (CheckGraphicChange
-        //   re-trigger, harmless if already correct) â†’ 0x88 â†’ 0x2C â†’
-        //   status. The previous order (0x77 â†’ 0x20 â†’ 0x78) left the
+        //   Send order is therefore 0x20 → 0x77 (CheckGraphicChange
+        //   re-trigger, harmless if already correct) → 0x88 → 0x2C →
+        //   status. The previous order (0x77 → 0x20 → 0x78) left the
         //   ghost graphic stuck on the dying client because 0x78 self
         //   was a no-op and 0x77 was racing 0x20.
         // ---------------------------------------------------------------
@@ -1502,10 +1502,10 @@ public sealed partial class GameClient
     }
 
     /// <summary>
-    /// Handle resurrection â€” body restore (ghost â†’ human), Source-X
+    /// Handle resurrection — body restore (ghost → human), Source-X
     /// "Resurrect with Corpse" auto re-equip, self redraw (0x77 + 0x20
     /// + 0x78 self), per-observer dispatch (single 0x78 fresh draw,
-    /// works for both plain â€” never had the ghost â€” and staff â€” had
+    /// works for both plain — never had the ghost — and staff — had
     /// the ghost mobile, 0x78 overwrites it), and view-cache resync so
     /// the next BuildViewDelta tick sees the new living body.
     /// </summary>
@@ -1538,12 +1538,12 @@ public sealed partial class GameClient
             : Core.Types.Color.Default;
         _character.OSkin = 0;
 
-        // === Source-X "Resurrect with Corpse" â€” auto re-equip ===
+        // === Source-X "Resurrect with Corpse" — auto re-equip ===
         // If the resurrected character is standing on (or one tile of)
         // their own corpse, every item that was equipped at death goes
         // back to its original slot via the EQUIPLAYER tag, the rest
         // returns to the backpack, and the (now-empty) corpse is
-        // deleted. Returns true iff the corpse was found â€” used only
+        // deleted. Returns true iff the corpse was found — used only
         // for the SysMessage and for deciding whether to broadcast the
         // 0x1D corpse-delete (the corpse's own decay path will already
         // emit it, but we want it gone NOW so the resurrected player
@@ -1586,11 +1586,11 @@ public sealed partial class GameClient
 
         // === Per-observer dispatch ===
         // Plain observer: never saw the ghost (filter dropped it during
-        // BuildViewDelta) â†’ 0x78 spawns a brand-new living mobile under
+        // BuildViewDelta) → 0x78 spawns a brand-new living mobile under
         // the original serial.
         // Staff observer: had the ghost mobile in their world.Mobiles
         // (we sent 0x1D + 0x78 ghost during death and never sent 0xAF
-        // so no remap happened) â†’ 0x78 overwrites the body+equipment
+        // so no remap happened) → 0x78 overwrites the body+equipment
         // in-place via UpdateGameObject. Same packet, same outcome,
         // single dispatch path.
         // Either way we update the cache so the next view-delta tick
@@ -1610,7 +1610,7 @@ public sealed partial class GameClient
         // === Resurrect-with-Corpse: client-side state sync ===
         // RestoreFromCorpse mutated the data layer (Equip + AddItem) but
         // did NOT push any wire updates. Without the broadcasts below,
-        // ClassicUO observers don't know that backpack/armor came back â€”
+        // ClassicUO observers don't know that backpack/armor came back —
         // the killer would still see a "naked" resurrected mobile, and
         // the resurrected player would see an empty backpack until they
         // close+reopen it (which forces the 0x3C ContainerContent
@@ -1621,7 +1621,7 @@ public sealed partial class GameClient
         if (corpseRestored)
         {
             // 1) Broadcast every equipped item (skip layers that wouldn't
-            //    appear on a paperdoll: None / Face / Pack â€” Pack itself
+            //    appear on a paperdoll: None / Face / Pack — Pack itself
             //    rides on the 0x78 above, its CONTENTS need 0x25 below).
             for (int layerIdx = 1; layerIdx <= (int)Layer.Horse; layerIdx++)
             {
@@ -1642,7 +1642,7 @@ public sealed partial class GameClient
             //    drag layer / hot-bar references are valid the moment
             //    a gump is opened. Containers nested inside the
             //    backpack (e.g. a pouch) also need their own contents
-            //    pushed â€” we recurse via FindContentItem semantics.
+            //    pushed — we recurse via FindContentItem semantics.
             var pack = _character.Backpack;
             if (pack != null)
             {
@@ -1657,7 +1657,7 @@ public sealed partial class GameClient
             }
         }
 
-        // Resurrection visual + sound â€” anchored fixed effect (0x376A
+        // Resurrection visual + sound — anchored fixed effect (0x376A
         // heal particle) and chime (0x0214). BroadcastNearby with
         // excludeUid=0 reaches the resurrected player too, so no extra
         // _netState.Send needed.
@@ -1700,14 +1700,14 @@ public sealed partial class GameClient
     {
         if (_character == null || _spellEngine == null) return;
 
-        // @SpellSelect (Source-X) â€” a spell was chosen. Fires before @SpellCast and
+        // @SpellSelect (Source-X) — a spell was chosen. Fires before @SpellCast and
         // the mana/skill/reagent checks so a script can cancel early. N1 = spell.
         if (_triggerDispatcher != null &&
             _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SpellSelect,
                 new TriggerArgs { CharSrc = _character, N1 = (int)spell }) == TriggerResult.True)
             return;
 
-        // Fire @SpellCast â€” if script blocks, don't cast
+        // Fire @SpellCast — if script blocks, don't cast
         if (_triggerDispatcher != null)
         {
             var result = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SpellCast,
@@ -1743,7 +1743,7 @@ public sealed partial class GameClient
                 return;
             }
 
-            // Self-buff spell â€” target self
+            // Self-buff spell — target self
             targetUid = _character.Uid.Value;
         }
 

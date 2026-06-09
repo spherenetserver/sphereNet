@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -34,7 +34,7 @@ namespace SphereNet.Game.Clients;
 
 public sealed partial class GameClient
 {
-    /// <summary>Unimplemented SERV.* verbs seen this server run â€” used to
+    /// <summary>Unimplemented SERV.* verbs seen this server run — used to
     /// warn-log only the first occurrence of each.</summary>
     private static readonly HashSet<string> s_unknownServVerbs = [];
 
@@ -140,12 +140,12 @@ public sealed partial class GameClient
     ///
     /// Wire format mirrors ClassicUO <c>MobileFlags</c>:
     ///   0x01 = Frozen
-    ///   0x02 = Female  (NOT "Dead" â€” ghost state is read from body ID
+    ///   0x02 = Female  (NOT "Dead" — ghost state is read from body ID
     ///                   0x192/0x193 client-side; setting 0x02 on a male
     ///                   ghost makes ClassicUO short-circuit
     ///                   <c>CheckGraphicChange()</c> because the cached
     ///                   IsFemale state contradicts the male body, and
-    ///                   the sprite stays on the previous human atlas â€”
+    ///                   the sprite stays on the previous human atlas —
     ///                   the root cause of the "ghost body never
     ///                   renders" bug for both self and staff observers
     ///                   in the death rebuild logs.)
@@ -300,33 +300,33 @@ public sealed partial class GameClient
 
         if (!syncClients) return;
 
-        // Send 0x72 war mode confirmation â€” client expects this to actually toggle
+        // Send 0x72 war mode confirmation — client expects this to actually toggle
         _netState.Send(new PacketWarModeResponse(warMode));
 
         // Broadcast appearance update to nearby players. For a LIVING
-        // character a single 0x77 update is enough â€” every observer
+        // character a single 0x77 update is enough — every observer
         // already has the mobile in their world.Mobiles.
         //
         // Ghosts are special. While in peace mode the ghost is hidden
         // from plain observers via the BuildViewDelta filter (their
         // View.KnownChars never tracked the mobile). A blanket 0x77
-        // broadcast on a peaceâ†’war transition would target a serial
+        // broadcast on a peace→war transition would target a serial
         // that ClassicUO doesn't know about and silently drop.
         // So for a manifesting/un-manifesting ghost we skip the
         // BroadcastNearby and use per-observer dispatch instead:
         //
-        //   peace â†’ war (manifest):
-        //     plain observer  â†’ 0x78 PacketDrawObject (hue 0x4001
+        //   peace → war (manifest):
+        //     plain observer  → 0x78 PacketDrawObject (hue 0x4001
         //                       translucent grey) + cache add so the
         //                       next view-delta tick doesn't double-spawn
-        //     staff observer  â†’ 0x77 normal update (already had the
+        //     staff observer  → 0x77 normal update (already had the
         //                       ghost mobile in cache)
         //
-        //   war â†’ peace (un-manifest):
-        //     plain observer  â†’ 0x1D delete + cache drop
-        //     staff observer  â†’ 0x77 normal update
+        //   war → peace (un-manifest):
+        //     plain observer  → 0x1D delete + cache drop
+        //     staff observer  → 0x77 normal update
         //
-        //   self                â†’ 0x77 always (own client always knows
+        //   self                → 0x77 always (own client always knows
         //                         the mobile)
         byte warFlags = BuildMobileFlags(_character);
         byte warNoto = GetNotoriety(_character);
@@ -542,12 +542,12 @@ public sealed partial class GameClient
 
     /// <summary>Notoriety for non-player mobiles. Source-X Noto_CalcFlag
     /// for NPCs mixes brain type and karma:
-    ///  - monster / berserk / dragon brain â†’ red (always hostile)
-    ///  - healer / banker â†’ yellow (protected / invul-by-role)
-    ///  - vendor / stable / guard / human â†’ blue (friendly townfolk)
-    ///  - animal â†’ grey (neutral wildlife, huntable)
-    ///  - karma overrides: very negative â†’ red, negative â†’ grey criminal,
-    ///    very positive â†’ blue â€” lets scripts flip a normally-blue
+    ///  - monster / berserk / dragon brain → red (always hostile)
+    ///  - healer / banker → yellow (protected / invul-by-role)
+    ///  - vendor / stable / guard / human → blue (friendly townfolk)
+    ///  - animal → grey (neutral wildlife, huntable)
+    ///  - karma overrides: very negative → red, negative → grey criminal,
+    ///    very positive → blue — lets scripts flip a normally-blue
     ///    townsfolk into a red renegade via SET KARMA.</summary>
     /// <summary>Source-X Noto_IsEvil + Noto_CalcFlag for NPCs. Evil thresholds
     /// differ per brain type: Monster/Dragon karma&lt;0, Berserk always,
@@ -562,9 +562,9 @@ public sealed partial class GameClient
                 return 6; // always hostile / red
             case NpcBrainType.Healer:
             case NpcBrainType.Banker:
-                return 7; // yellow â€” invul by role
+                return 7; // yellow — invul by role
             case NpcBrainType.Guard:
-                return 1; // blue â€” law enforcement
+                return 1; // blue — law enforcement
             case NpcBrainType.Vendor:
             case NpcBrainType.Stable:
             case NpcBrainType.Human:
@@ -715,7 +715,7 @@ public sealed partial class GameClient
             return true;
         }
 
-        // SAYUA â€” overhead speech with hue/type/font/lang
+        // SAYUA — overhead speech with hue/type/font/lang
         // Format: sayua <hue>,<type>,<font>,<lang> <text>
         if (upper == "SAYUA")
         {
@@ -761,10 +761,10 @@ public sealed partial class GameClient
             return true;
         }
 
-        // INPDLG <prop> <maxLength> â€” open a Source-X style text-entry
+        // INPDLG <prop> <maxLength> — open a Source-X style text-entry
         // gump on this client. The reply (0xAC) writes the user-typed
         // value into <prop> on the script verb's target object.
-        // Source-X: CObjBase.cpp:OV_INPDLG â†’ CClient::addGumpInputVal.
+        // Source-X: CObjBase.cpp:OV_INPDLG → CClient::addGumpInputVal.
         if (upper == "INPDLG")
         {
             string raw = args.Trim();
@@ -898,9 +898,9 @@ public sealed partial class GameClient
 
             // Parse the MENU section:
             //   First key = title/question
-            //   ON=0 text          â†’ text-based item (modelId=0, hue=0)
-            //   ON=baseid text     â†’ item-based
-            //   ON=baseid @hue, text â†’ item-based with hue
+            //   ON=0 text          → text-based item (modelId=0, hue=0)
+            //   ON=baseid text     → item-based
+            //   ON=baseid @hue, text → item-based with hue
             //   Lines after ON until next ON = script to execute
 
             var keys = menuSection.Keys;
@@ -1173,7 +1173,7 @@ public sealed partial class GameClient
 
         if (upper == "WEBLINK" || upper.StartsWith("WEBLINK ", StringComparison.Ordinal))
         {
-            // Source-X CV_WEBLINK â€” open a browser on the client (0xA5).
+            // Source-X CV_WEBLINK — open a browser on the client (0xA5).
             string url = upper == "WEBLINK"
                 ? args.Trim()
                 : (cmd["WEBLINK ".Length..] + (string.IsNullOrEmpty(args) ? "" : $" {args}")).Trim();
@@ -1195,7 +1195,7 @@ public sealed partial class GameClient
 
         if (upper == "BYE")
         {
-            // Source-X CV_BYE: end the NPC interaction â€” close any open script
+            // Source-X CV_BYE: end the NPC interaction — close any open script
             // dialogs and drop the dialog subject so follow-up reads don't
             // resolve against the NPC anymore.
             foreach (var openDlg in Gumps.OpenScriptDialogs.Keys.ToArray())
@@ -1612,7 +1612,7 @@ public sealed partial class GameClient
         SphereNet.Core.Enums.ResType.WorldChar => 54,
         SphereNet.Core.Enums.ResType.WorldItem => 55,
         SphereNet.Core.Enums.ResType.WorldScript => 57,
-        _ => 0, // Unknown / MultiDef / Stone â€” no Source-X RES_ comparison value
+        _ => 0, // Unknown / MultiDef / Stone — no Source-X RES_ comparison value
     };
 
     public bool TryResolveScriptVariable(string varName, IScriptObj target, ITriggerArgs? triggerArgs, out string value)
@@ -1621,7 +1621,7 @@ public sealed partial class GameClient
         if (_character == null) return false;
 
         // Common Sphere runtime constants used by admin/dialog scripts.
-        // GETREFTYPE â€” match Source-X [DEFNAME ref_types] bit layout so
+        // GETREFTYPE — match Source-X [DEFNAME ref_types] bit layout so
         // <GetRefType> == <Def.TRef_Char> works straight from script.
         if (varName.Equals("GETREFTYPE", StringComparison.OrdinalIgnoreCase))
         {
@@ -1634,8 +1634,8 @@ public sealed partial class GameClient
             return true;
         }
 
-        // Generic DEF.X / DEF0.X lookup â€” covers everything in a [DEFNAME ...]
-        // section (admin_hidehighpriv, admin_flag_1, tcolor_orange, â€¦). Admin
+        // Generic DEF.X / DEF0.X lookup — covers everything in a [DEFNAME ...]
+        // section (admin_hidehighpriv, admin_flag_1, tcolor_orange, …). Admin
         // dialogs hit these for virtually every label; without this every
         // <Def.X> fell back to unresolved = empty string, leaving the gump
         // full of gaps.
@@ -1654,7 +1654,7 @@ public sealed partial class GameClient
                     value = defVal;
                     return true;
                 }
-                // Numeric defs (Admin_Hidehighpriv 1) â€” stored as ResourceId index.
+                // Numeric defs (Admin_Hidehighpriv 1) — stored as ResourceId index.
                 var rid = _commands.Resources.ResolveDefName(defKey);
                 if (rid.IsValid)
                 {
@@ -1665,13 +1665,13 @@ public sealed partial class GameClient
                 }
             }
             value = "0";
-            return true; // answered as "0" rather than unresolved â€” matches Sphere behaviour
+            return true; // answered as "0" rather than unresolved — matches Sphere behaviour
         }
         // RESOURCETYPE / RESOURCEINDEX (Source-X): resolve a defname to its
         // resource TYPE code and resource INDEX. Worldgen spawners compare
         // <RESOURCETYPE <entry>> against <def.res_chardef> / <def.res_itemdef>,
         // so the type MUST use the Source-X RES_* numbering (CharDef=6,
-        // ItemDef=14, Spawn=37, â€¦) â€” NOT our internal ResType enum order.
+        // ItemDef=14, Spawn=37, …) — NOT our internal ResType enum order.
         if (varName.StartsWith("RESOURCETYPE ", StringComparison.OrdinalIgnoreCase) ||
             varName.StartsWith("RESOURCEINDEX ", StringComparison.OrdinalIgnoreCase))
         {
@@ -1709,7 +1709,7 @@ public sealed partial class GameClient
             {
                 case "OPEN":
                 {
-                    // FILE.OPEN as read property â€” returns "1" if file is open
+                    // FILE.OPEN as read property — returns "1" if file is open
                     value = _scriptFile.IsOpen ? "1" : "0";
                     return true;
                 }
@@ -1988,7 +1988,7 @@ public sealed partial class GameClient
                 .ToList();
         }
 
-        // FORCHARS â€” all characters (players + NPCs) within radius
+        // FORCHARS — all characters (players + NPCs) within radius
         if (query.Equals("FORCHARS", StringComparison.OrdinalIgnoreCase))
         {
             int range = 18;
@@ -2004,7 +2004,7 @@ public sealed partial class GameClient
                 .ToList();
         }
 
-        // FORCLIENTS â€” only online player characters within radius
+        // FORCLIENTS — only online player characters within radius
         if (query.Equals("FORCLIENTS", StringComparison.OrdinalIgnoreCase))
         {
             int range = 18;
@@ -2020,7 +2020,7 @@ public sealed partial class GameClient
                 .ToList();
         }
 
-        // FORITEMS â€” all ground items within radius
+        // FORITEMS — all ground items within radius
         if (query.Equals("FORITEMS", StringComparison.OrdinalIgnoreCase))
         {
             int range = 18;
@@ -2036,7 +2036,7 @@ public sealed partial class GameClient
                 .ToList();
         }
 
-        // FOROBJS â€” all characters + items within radius
+        // FOROBJS — all characters + items within radius
         if (query.Equals("FOROBJS", StringComparison.OrdinalIgnoreCase))
         {
             int range = 18;
@@ -2056,7 +2056,7 @@ public sealed partial class GameClient
             return result;
         }
 
-        // FORCONT â€” all items inside a container (args: "uid [depth]")
+        // FORCONT — all items inside a container (args: "uid [depth]")
         if (query.Equals("FORCONT", StringComparison.OrdinalIgnoreCase))
         {
             var parts = args.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
@@ -2069,7 +2069,7 @@ public sealed partial class GameClient
             return result;
         }
 
-        // FORCONTID â€” items in current target's backpack matching a BASEID (args: "baseid [depth]")
+        // FORCONTID — items in current target's backpack matching a BASEID (args: "baseid [depth]")
         if (query.Equals("FORCONTID", StringComparison.OrdinalIgnoreCase))
         {
             var parts = args.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
@@ -2087,7 +2087,7 @@ public sealed partial class GameClient
             return result;
         }
 
-        // FORCONTTYPE â€” items in current target's backpack matching a TYPE (args: "type [depth]")
+        // FORCONTTYPE — items in current target's backpack matching a TYPE (args: "type [depth]")
         if (query.Equals("FORCONTTYPE", StringComparison.OrdinalIgnoreCase))
         {
             var parts = args.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
@@ -2104,7 +2104,7 @@ public sealed partial class GameClient
             return result;
         }
 
-        // FORCHARLAYER â€” items on a specific equipment layer of the target character
+        // FORCHARLAYER — items on a specific equipment layer of the target character
         if (query.Equals("FORCHARLAYER", StringComparison.OrdinalIgnoreCase))
         {
             if (!int.TryParse(args.Trim(), out int layerNum)) return Array.Empty<IScriptObj>();
@@ -2153,7 +2153,7 @@ public sealed partial class GameClient
 
     private int? ResolveItemType(string typeName)
     {
-        // Try as enum name (e.g. "t_spellbook" â†’ strip "t_" prefix, parse as ItemType)
+        // Try as enum name (e.g. "t_spellbook" → strip "t_" prefix, parse as ItemType)
         string name = typeName.TrimStart();
         if (name.StartsWith("t_", StringComparison.OrdinalIgnoreCase))
             name = name[2..];

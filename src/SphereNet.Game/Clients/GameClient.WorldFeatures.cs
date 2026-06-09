@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -57,7 +57,7 @@ public sealed partial class GameClient
         gump.AddResizePic(0, 0, 5054, 530, 437);
         gump.AddText(15, 15, 0, $"{craftSkill} Menu");
 
-        // Page 0 â€” recipe list
+        // Page 0 — recipe list
         int y = 50;
         int buttonId = 100;
         foreach (var recipe in recipes)
@@ -317,7 +317,7 @@ public sealed partial class GameClient
         }
     }
 
-    /// <summary>Cancel active trade on disconnect â€” return items, notify partner.</summary>
+    /// <summary>Cancel active trade on disconnect — return items, notify partner.</summary>
     internal void AbortActiveTradeOnDisconnect()
     {
         if (_character == null || _tradeManager == null) return;
@@ -563,7 +563,7 @@ public sealed partial class GameClient
         var guild = _guildManager.GetGuild(stone.Uid);
         if (guild == null)
         {
-            // No guild on this stone yet â€” offer to create one
+            // No guild on this stone yet — offer to create one
             var createGump = new GumpBuilder(_character.Uid.Value, stone.Uid.Value, 400, 300);
             createGump.AddResizePic(0, 0, 5054, 400, 300);
             createGump.AddText(30, 20, 0, "Guild Stone");
@@ -672,7 +672,7 @@ public sealed partial class GameClient
         switch (buttonId)
         {
             case 1: // Join request
-                // A character may belong to only one guild â€” reject if already
+                // A character may belong to only one guild — reject if already
                 // a member/candidate somewhere (prevents multi-guild membership).
                 if (_guildManager.FindGuildFor(_character.Uid) != null)
                 {
@@ -682,7 +682,7 @@ public sealed partial class GameClient
                 guild.AddRecruit(_character.Uid);
                 SysMessage(ServerMessages.Get("guild_join_request"));
                 break;
-            case 2: // Disband â€” only guild master may disband
+            case 2: // Disband — only guild master may disband
             {
                 var disbandMember = guild.FindMember(_character.Uid);
                 if (disbandMember == null || disbandMember.Priv != GuildPriv.Master)
@@ -694,11 +694,11 @@ public sealed partial class GameClient
                 SysMessage(ServerMessages.Get("guild_disbanded"));
                 break;
             }
-            case 4: // Visit web page â€” 0xA5 opens the client's browser
+            case 4: // Visit web page — 0xA5 opens the client's browser
                 if (!string.IsNullOrEmpty(guild.WebUrl))
                     Send(new PacketWebLink(guild.WebUrl));
                 break;
-            case 3: // Leave â€” must actually belong to this guild (button can be
+            case 3: // Leave — must actually belong to this guild (button can be
                     // spoofed by a crafted client packet, so don't trust the gump).
             {
                 var leaveMember = guild.FindMember(_character.Uid);
@@ -782,7 +782,7 @@ public sealed partial class GameClient
     {
         if (_character == null || _housingEngine == null) return;
 
-        // Find the house â€” could be the multi item itself or linked via tag
+        // Find the house — could be the multi item itself or linked via tag
         var house = _housingEngine.GetHouse(signOrMulti.Uid);
         if (house == null && signOrMulti.TryGetTag("HOUSE_UID", out string? houseUidStr) &&
             uint.TryParse(houseUidStr, out uint houseUid))
@@ -879,7 +879,7 @@ public sealed partial class GameClient
 
         switch (buttonId)
         {
-            case 1: // Transfer â€” target the new owner
+            case 1: // Transfer — target the new owner
                 SysMessage(ServerMessages.Get("house_select_owner"));
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
@@ -890,7 +890,7 @@ public sealed partial class GameClient
                         return;
                     }
                     // Transfer must respect the recipient's house cap, same as
-                    // PlaceHouse â€” otherwise it's an easy way to exceed the limit.
+                    // PlaceHouse — otherwise it's an easy way to exceed the limit.
                     if ((_housingEngine.MaxHousesPerPlayer >= 0 &&
                          _housingEngine.GetHousesByOwner(target.Uid).Count >= _housingEngine.MaxHousesPerPlayer) ||
                         (_housingEngine.MaxHousesPerAccount >= 0 &&
@@ -913,7 +913,7 @@ public sealed partial class GameClient
             case 3: // Open door
                 SysMessage(ServerMessages.Get("house_door_opened"));
                 break;
-            case 4: // Customize House â€” enter the client design editor
+            case 4: // Customize House — enter the client design editor
                 BeginHouseCustomization(house.MultiItem);
                 break;
             case 10: // Add Co-Owner
@@ -1239,7 +1239,7 @@ public sealed partial class GameClient
             return;
         }
 
-        // Fire @SkillPreStart â€” if script blocks, don't use skill
+        // Fire @SkillPreStart — if script blocks, don't use skill
         if (_triggerDispatcher != null)
         {
             var preResult = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillPreStart,
@@ -1248,7 +1248,7 @@ public sealed partial class GameClient
                 return;
         }
 
-        // Fire @SkillStart â€” if script blocks, don't use skill
+        // Fire @SkillStart — if script blocks, don't use skill
         if (_triggerDispatcher != null)
         {
             var result = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillStart,
@@ -1257,7 +1257,7 @@ public sealed partial class GameClient
                 return;
         }
 
-        // Fire @SkillStroke â€” the main action moment
+        // Fire @SkillStroke — the main action moment
         _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillStroke,
             new TriggerArgs { CharSrc = _character, N1 = skillId });
 
@@ -1385,7 +1385,7 @@ public sealed partial class GameClient
         _character.SetScreenSize(width, height);
     }
 
-    /// <summary>0xF4 crash report â†’ @UserBugReport.</summary>
+    /// <summary>0xF4 crash report → @UserBugReport.</summary>
     public void HandleCrashReport() =>
         FireExtendedButtonTrigger(CharTrigger.UserBugReport, 0x00F4);
 
@@ -1481,14 +1481,14 @@ public sealed partial class GameClient
 
                     if (party.MemberCount == 0)
                     {
-                        // Party disbanded â€” tell every former member to clear
+                        // Party disbanded — tell every former member to clear
                         // their party UI, instead of broadcasting an empty list.
                         var emptyList = Array.Empty<uint>();
                         foreach (var formerUid in membersBefore)
                         {
                             SendToChar?.Invoke(formerUid,
                                 new PacketPartyRemoveMember(formerUid.Value, emptyList));
-                            // @PartyDisband (Source-X) â€” fires on each former member.
+                            // @PartyDisband (Source-X) — fires on each former member.
                             var formerChar = _world.FindChar(formerUid);
                             if (formerChar != null)
                                 _triggerDispatcher?.FireCharTrigger(formerChar, CharTrigger.PartyDisband,
@@ -1549,7 +1549,7 @@ public sealed partial class GameClient
                     uint.TryParse(inviterStr, out uint inviterUid))
                 {
                     _character.RemoveTag("PARTY_INVITE_FROM");
-                    // Honour AcceptInvite's result â€” it fails if already partied
+                    // Honour AcceptInvite's result — it fails if already partied
                     // or the inviter's party is gone. Don't claim success blindly.
                     if (_partyManager.AcceptInvite(new Serial(inviterUid), _character.Uid))
                     {

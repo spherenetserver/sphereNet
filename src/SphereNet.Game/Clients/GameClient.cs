@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -103,7 +103,7 @@ public sealed partial class GameClient : ITextConsole
 
     /// <summary>Fired when this client's character goes online (post-login
     /// complete, character placed). Program.cs uses it to populate the
-    /// char-UID â†’ client map that BroadcastNearby walks instead of a
+    /// char-UID → client map that BroadcastNearby walks instead of a
     /// full _clients.Values scan. Cleared on OnDisconnect.</summary>
     public static Action<Character, GameClient>? OnCharacterOnline;
     public static Action<Character>? OnCharacterOffline;
@@ -122,7 +122,7 @@ public sealed partial class GameClient : ITextConsole
     /// to revive its owner.</summary>
     public Action<Character>? OnResurrectOther { get; set; }
 
-    /// <summary>Wired by Program.cs. GM .kill target cursor callback â€”
+    /// <summary>Wired by Program.cs. GM .kill target cursor callback —
     /// args are (killer, victim).</summary>
     public Action<Character, Character>? OnKillTarget { get; set; }
 
@@ -148,7 +148,7 @@ public sealed partial class GameClient : ITextConsole
     // <BODY> / <STR> etc. reflect the inspected target. Cleared after
     // render; callbacks that act on the target stash its UID locally.
     private Serial _dialogSubjectUid = Serial.Invalid;
-    /// <summary>Generic script-first â†’ native fallback registry. When a
+    /// <summary>Generic script-first → native fallback registry. When a
     /// named dialog (<c>d_xxx</c>) is requested via <c>SDIALOG</c> or a
     /// help/inspect entry point, the host first tries the script
     /// <c>[DIALOG d_xxx]</c> section through <see cref="TryShowScriptDialog"/>;
@@ -203,7 +203,7 @@ public sealed partial class GameClient : ITextConsole
             _logger.LogInformation("[LOGOUT] '{Name}' pos: {X},{Y},{Z} map={Map}",
                 _character.Name, _character.X, _character.Y, _character.Z, _character.Position.Map);
 
-            // YakÄ±ndaki oyunculara karakterin Ã§Ä±ktÄ±ÄŸÄ±nÄ± bildir
+            // YakÄ±ndaki oyunculara karakterin çÄ±ktÄ±ÄŸÄ±nÄ± bildir
             BroadcastNearby?.Invoke(_character.Position, UpdateRange,
                 new PacketDeleteObject(_character.Uid.Value), _character.Uid.Value);
 
@@ -311,7 +311,7 @@ public sealed partial class GameClient : ITextConsole
 
     /// <summary>Wire built-in <c>d_xxx</c> native gump fallbacks. Each entry
     /// is only used when the script-side <c>[DIALOG d_xxx]</c> section is
-    /// missing â€” see <see cref="OpenNamedDialog"/>.</summary>
+    /// missing — see <see cref="OpenNamedDialog"/>.</summary>
     private void RegisterNativeDialogFallbacks()
     {
         _nativeDialogFallbacks["d_helppage"] = page => ShowHelpPageDialog(page <= 0 ? 1 : page);

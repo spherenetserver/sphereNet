@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -219,7 +219,7 @@ public sealed partial class GameClient
 
         if (now < _character.SkillDelayEnd)
         {
-            // @SkillWait (Source-X) â€” the skill is still in progress this tick.
+            // @SkillWait (Source-X) — the skill is still in progress this tick.
             // Gated by IsTrigUsed so an unhooked @SkillWait costs nothing on the
             // per-tick skill loop (no FireCharTrigger allocation).
             if (_triggerDispatcher?.IsCharTriggerUsed(CharTrigger.SkillWait) == true)
@@ -252,7 +252,7 @@ public sealed partial class GameClient
     {
         if (_character == null) return;
 
-        // @SkillMenu (Source-X) â€” a skill opened a selection menu. N1 = skill.
+        // @SkillMenu (Source-X) — a skill opened a selection menu. N1 = skill.
         _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillMenu,
             new TriggerArgs { CharSrc = _character, N1 = skillId });
 

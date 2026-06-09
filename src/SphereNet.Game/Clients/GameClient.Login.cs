@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -91,7 +91,7 @@ public sealed partial class GameClient
         }
 
         RegisterLoginSuccess(account);
-        // Feature enable (0xB9) â€” must come before char list.
+        // Feature enable (0xB9) — must come before char list.
         // Start from config-driven ServerFeatureFlags (sphere.ini) or the
         // maximum feature set, then cap to the client's protocol version so
         // older clients don't receive flags they can't interpret.
@@ -148,7 +148,7 @@ public sealed partial class GameClient
         // Dedup: if this client already has a live character, a retransmitted
         // 0x5D/0xF8 must not create a second one. Without this guard a bugged
         // client sending the create packet N times produced N characters and
-        // N paperdoll-open packets â€” observed as "20 paperdolls opened".
+        // N paperdoll-open packets — observed as "20 paperdolls opened".
         if (_character != null && _character.IsOnline)
         {
             _logger.LogDebug("[LOGIN] Ignoring duplicate CharSelect for account '{Acct}'",
@@ -330,7 +330,7 @@ public sealed partial class GameClient
 
         if (_account != null)
         {
-            // Account is authoritative â€” character inherits from account, never elevates it
+            // Account is authoritative — character inherits from account, never elevates it
             if (_character.PrivLevel != _account.PrivLevel)
             {
                 _logger.LogInformation(
@@ -343,7 +343,7 @@ public sealed partial class GameClient
         {
             if (_character.IsJailExpired())
             {
-                // Sentence already served while logged out â€” release on login
+                // Sentence already served while logged out — release on login
                 // instead of re-applying an expired jail.
                 _character.RemoveTag("JAIL_RELEASE");
                 _character.ClearStatFlag(StatFlag.Freeze);
@@ -386,9 +386,9 @@ public sealed partial class GameClient
         // Snap Z to the nearest walkable surface unless the character is
         // clearly on an upper-level structure (roof / bridge / second floor).
         // Rule:
-        //   diff < 0                        â†’ snap up  (character is below ground)
-        //   0 < diff <= RoofSnapTolerance   â†’ snap down (saved Z is stale / hovers)
-        //   diff > RoofSnapTolerance        â†’ keep (assume legitimate upper floor)
+        //   diff < 0                        → snap up  (character is below ground)
+        //   0 < diff <= RoofSnapTolerance   → snap down (saved Z is stale / hovers)
+        //   diff > RoofSnapTolerance        → keep (assume legitimate upper floor)
         // Without the downward snap, saves written with an out-of-band Z (e.g.
         // old dismount code that zeroed Z) keep that Z after login and every
         // subsequent CanWalkTo projects collision onto wall foundations.
@@ -435,7 +435,7 @@ public sealed partial class GameClient
         ));
 
         _netState.Send(new PacketMapChange((byte)_character.MapIndex));
-        _netState.Send(new PacketMapPatches()); // no map diffs â€” all zeros
+        _netState.Send(new PacketMapPatches()); // no map diffs — all zeros
 
         SendCharacterStatus(_character);
         SendSkillList();
@@ -444,7 +444,7 @@ public sealed partial class GameClient
         _netState.Send(new PacketPersonalLight(_character.Uid.Value, _character.LightLevel));
         _netState.Send(new PacketSeason((byte)_world.CurrentSeason));
 
-        // Send player's own character with equipment â€” client needs this to render worn items
+        // Send player's own character with equipment — client needs this to render worn items
         SendDrawObject(_character);
 
         // Send equipped items individually (0x2E) so client tracks them in inventory
@@ -585,7 +585,7 @@ public sealed partial class GameClient
 
         // 2. Reposition player first, then send full appearance.
         // DrawPlayer (0x20) must come BEFORE DrawObject (0x78) because the
-        // UO client redraws the local character on 0x20 without equipment â€”
+        // UO client redraws the local character on 0x20 without equipment —
         // sending 0x78 afterwards restores the full equipment visual including
         // the mount at Layer.Horse.
         _netState.Send(new PacketDrawPlayer(
@@ -618,7 +618,7 @@ public sealed partial class GameClient
         _netState.WalkSequence = 0;
         ResetWalkValidator();
 
-        // 6. Final authoritative DrawObject â€” ensures mount at Layer.Horse renders.
+        // 6. Final authoritative DrawObject — ensures mount at Layer.Horse renders.
         // Some clients skip mount rendering from the first 0x78 if it arrives
         // interleaved with status/light packets. This final 0x78 is sent after
         // all other visual updates, guaranteeing the equipment list (including
@@ -669,7 +669,7 @@ public sealed partial class GameClient
 
     /// <summary>
     /// Re-send DrawPlayer + DrawObject so the owner client re-renders the player
-    /// with updated appearance flags (invisible â†’ translucent, war mode, etc.).
+    /// with updated appearance flags (invisible → translucent, war mode, etc.).
     /// The client-side visual state only changes when it receives a fresh draw.
     /// </summary>
     public void SendSelfRedraw()
@@ -689,7 +689,7 @@ public sealed partial class GameClient
     }
 
     /// <summary>
-    /// Partial resync â€” re-sends only position and nearby objects without full clear.
+    /// Partial resync — re-sends only position and nearby objects without full clear.
     /// Used for minor movement desync corrections.
     /// </summary>
     public void ResyncPosition()
@@ -706,7 +706,7 @@ public sealed partial class GameClient
 
     /// <summary>Re-send the 0x4E PacketPersonalLight packet so the client
     /// applies the current <see cref="Character.LightLevel"/>. Called after
-    /// effects that change personal brightness (e.g. Night Sight) â€”
+    /// effects that change personal brightness (e.g. Night Sight) —
     /// without this the server-side property change has no visible effect.</summary>
     public void SendPersonalLight()
     {

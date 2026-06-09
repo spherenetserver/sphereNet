@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -43,7 +43,7 @@ public sealed partial class GameClient
         bool targetCancelled = IsTargetCancelled(serial, x, y, z, graphic);
         if (targetCancelled)
         {
-            // Source-X @Targon_Cancel â€” the player dismissed the target cursor.
+            // Source-X @Targon_Cancel — the player dismissed the target cursor.
             _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Targon_Cancel,
                 new TriggerArgs { CharSrc = _character, ScriptConsole = this });
 
@@ -132,7 +132,7 @@ public sealed partial class GameClient
             destination ??= new Point3D(x, y, z, _character.MapIndex);
 
             // Snap Z to the nearest walkable surface. Clients pick the Z of
-            // whatever tile the mouse overlaps â€” frequently a rooftop or a
+            // whatever tile the mouse overlaps — frequently a rooftop or a
             // static plane. Landing there strands the player: every subsequent
             // step gets rejected by climb/cliff checks (~150 MoveReject spam
             // on `.mtele 1493,1639,40` observed in logs).
@@ -415,7 +415,7 @@ public sealed partial class GameClient
             return;
         }
 
-        // Source-X CClient.cpp:921 â€” generic X-prefix verb fallback:
+        // Source-X CClient.cpp:921 — generic X-prefix verb fallback:
         // resolve the picked object and apply the inner verb to it via
         // SpeechEngine.ExecuteVerbForTarget. Mirrors C++ addTargetVerb.
         if (!string.IsNullOrEmpty(Targets.XVerb))

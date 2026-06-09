@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -84,7 +84,7 @@ public sealed class ClientInventoryHandler
             _character.PrivLevel < PrivLevel.Counsel)
             return;
 
-        // Fire @Click trigger (and the legacy @ToolTip â€” old-style single-click
+        // Fire @Click trigger (and the legacy @ToolTip — old-style single-click
         // name/tooltip request. IsTrigUsed-gated: single click is a hot path).
         if (_triggerDispatcher != null)
         {
@@ -482,7 +482,7 @@ public sealed class ClientInventoryHandler
                     }
                 }
 
-                // Nesting depth limit â€” prevent container-in-container bypass of slot limits.
+                // Nesting depth limit — prevent container-in-container bypass of slot limits.
                 if (_character.PrivLevel < PrivLevel.GM)
                 {
                     int depth = 0;
@@ -551,7 +551,7 @@ public sealed class ClientInventoryHandler
                 item.Position = new Point3D(x, y, 0, _character.MapIndex);
                 // Critical: tell the client the item actually landed in the
                 // container. Without 0x25 the client only remembers the
-                // earlier pickup â†’ the item silently vanishes from its view.
+                // earlier pickup → the item silently vanishes from its view.
                 _netState.Send(new PacketContainerItem(
                     item.Uid.Value, item.DispIdFull, 0,
                     item.Amount, item.X, item.Y,
@@ -613,7 +613,7 @@ public sealed class ClientInventoryHandler
                     return;
                 }
 
-                // Giving an item to an NPC â€” fire @ReceiveItem so quest/reward/
+                // Giving an item to an NPC — fire @ReceiveItem so quest/reward/
                 // "bring me X" scripts can handle it (<src> = giver, <argo> = item).
                 // RETURN 1 means the script fully consumed/handled the item.
                 if (!charTarget.IsPlayer && _triggerDispatcher != null)
@@ -625,7 +625,7 @@ public sealed class ClientInventoryHandler
                         _netState.Send(new PacketDropAck());
                         return;
                     }
-                    // @NPCRefuseItem â€” the engine's accept gate (Source-X). RETURN 1
+                    // @NPCRefuseItem — the engine's accept gate (Source-X). RETURN 1
                     // refuses the gift: the item bounces back to the giver instead of
                     // entering the NPC's pack. Default (no handler) accepts, so prior
                     // behaviour is preserved.
@@ -701,7 +701,7 @@ public sealed class ClientInventoryHandler
         // Stack onto a matching pile if possible; otherwise count the non-stacking
         // items already on this exact tile so the new drop gets a distinct facing.
         // A pile of separate items should scatter (Source-X behaviour) rather than
-        // all share one orientation â€” basing direction on the item's own previous
+        // all share one orientation — basing direction on the item's own previous
         // value made every fresh drop land as Direction=1.
         int tileItemCount = 0;
         if (sector != null)
@@ -813,7 +813,7 @@ public sealed class ClientInventoryHandler
 
         if (target != _character && _character.PrivLevel < PrivLevel.GM) return;
 
-        // Fire @EquipTest â€” if script blocks, deny equip
+        // Fire @EquipTest — if script blocks, deny equip
         if (_triggerDispatcher != null)
         {
             var result = _triggerDispatcher.FireItemTrigger(item, ItemTrigger.EquipTest,
@@ -825,7 +825,7 @@ public sealed class ClientInventoryHandler
         // Spell interruption on equip change
         _spellEngine?.TryInterruptFromEquip(target);
 
-        // Two-handed weapon â†” shield mutual exclusion
+        // Two-handed weapon ↔ shield mutual exclusion
         if ((Layer)layer == Layer.TwoHanded && item.IsTwoHanded)
         {
             var oldShield = target.GetEquippedItem(Layer.OneHanded);

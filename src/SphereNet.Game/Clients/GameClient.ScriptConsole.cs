@@ -309,7 +309,7 @@ public sealed partial class GameClient
         //
         // Ghosts are special. While in peace mode the ghost is hidden
         // from plain observers via the BuildViewDelta filter (their
-        // _knownChars never tracked the mobile). A blanket 0x77
+        // View.KnownChars never tracked the mobile). A blanket 0x77
         // broadcast on a peaceâ†’war transition would target a serial
         // that ClassicUO doesn't know about and silently drop.
         // So for a manifesting/un-manifesting ghost we skip the
@@ -357,7 +357,7 @@ public sealed partial class GameClient
                         // BuildViewDelta will keep it in sync (manifested
                         // ghosts are now in the delta filter's allow-list).
                         // NotifyCharacterAppear handles the hue=0x4001 draw
-                        // and _knownChars insert in one call (mirroring the
+                        // and View.KnownChars insert in one call (mirroring the
                         // login/teleport entry path).
                         observerClient.NotifyCharacterAppear(_character);
                     }

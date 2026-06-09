@@ -16,8 +16,8 @@ GameClient (orkestratör: NetState + Character + yaşam döngüsü)
  ├─ ClientTargetState      hedef-cursor durum makinesi (faz 1 ✅)
  ├─ ClientGumpRegistry     açık gump/dialog kayıtları (faz 1 ✅)
  ├─ ClientMovementThrottle walk-token / hareket kuyruğu (faz 1 ✅)
- ├─ ClientViewCache        _knownChars/_knownItems/_lastKnown* (faz 2)
- └─ handler sınıfları      ClientContext üzerinden (faz 3)
+ ├─ ClientViewCache        known-set'ler + last-known durumlar (faz 2 ✅)
+ └─ handler sınıfları      ClientContext üzerinden (faz 3 — sıradaki)
 ```
 
 ## Fazlar
@@ -27,10 +27,11 @@ durum kümeleri ayrı sınıflara çıkar; partial'lardaki referanslar bileşen
 üyelerine yeniden adlandırılır. Davranış değişmez; bileşenler faz 3'teki
 handler sınıflarının enjekte edilebilir bağımlılıkları olur.
 
-**Faz 2 — görünüm önbelleği.** `_knownChars`, `_knownItems`,
-`_lastKnownPos`, `_lastKnownItemState`, `_tooltipHashCache` →
-`ClientViewCache`. ViewUpdate partial'ının tek gerçek durumudur; çıkınca
-ViewUpdate faz 3'te ilk dönüştürülecek handler olur.
+**Faz 2 — görünüm önbelleği (✅).** `KnownChars`, `KnownItems`,
+`KnownDoorOverrides`, `LastKnownPos`, `LastKnownItemState`,
+`TooltipHashCache` → `ClientViewCache` (`GameClient.View`). ViewUpdate
+partial'ının tek gerçek durumu artık dışarıda; ViewUpdate faz 3'te ilk
+dönüştürülecek handler'dır.
 
 **Faz 3 — handler sınıfları.** Her partial, `ClientContext`'e (NetState,
 Character, World, motorlar, Send/SysMessage/BroadcastNearby ve faz 1-2

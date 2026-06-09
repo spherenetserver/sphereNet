@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -62,7 +62,7 @@ public sealed partial class GameClient
 
     /// <summary>
     /// Build a readonly visibility delta. Safe for parallel build phase.
-    /// Only runs for clients with ViewNeedsRefresh — idle clients skip entirely.
+    /// Only runs for clients with ViewNeedsRefresh â€” idle clients skip entirely.
     /// </summary>
     public ClientViewDelta? BuildViewDelta()
     {
@@ -106,7 +106,7 @@ public sealed partial class GameClient
             delta.CurrentChars.Add(uid);
 
             bool hiddenAsAllShow = isOfflinePlayer || (isHidden && canSeeHidden);
-            if (!_knownChars.Contains(uid))
+            if (!View.KnownChars.Contains(uid))
                 delta.NewChars.Add((ch, hiddenAsAllShow));
             else
                 delta.UpdatedChars.Add(ch);
@@ -127,7 +127,7 @@ public sealed partial class GameClient
 
             uint uid = item.Uid.Value;
             delta.CurrentItems.Add(uid);
-            if (!_knownItems.Contains(uid))
+            if (!View.KnownItems.Contains(uid))
                 delta.NewItems.Add((item, isInvis && _character.AllShow));
             else
                 delta.UpdatedItems.Add(item);
@@ -152,8 +152,8 @@ public sealed partial class GameClient
                 SendDrawObject(ch);
 
             uint uid = ch.Uid.Value;
-            _knownChars.Add(uid);
-            _lastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch));
+            View.KnownChars.Add(uid);
+            View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch));
         }
 
         foreach (var ch in delta.UpdatedChars)
@@ -163,7 +163,7 @@ public sealed partial class GameClient
             bool bodyChanged = false;
             bool visChanged = false;
             byte curVis = ComputeVisKey(ch);
-            if (_lastKnownPos.TryGetValue(uid, out var last))
+            if (View.LastKnownPos.TryGetValue(uid, out var last))
             {
                 posChanged = last.X != ch.X || last.Y != ch.Y || last.Z != ch.Z || last.Dir != (byte)ch.Direction;
                 bodyChanged = last.Body != ch.BodyId || last.Hue != ch.Hue;
@@ -205,7 +205,7 @@ public sealed partial class GameClient
             }
 
             if (posChanged || bodyChanged || visChanged)
-                _lastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, curVis);
+                View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, curVis);
         }
 
         foreach (var (item, hiddenAsAllShow) in delta.NewItems)
@@ -215,14 +215,14 @@ public sealed partial class GameClient
             else
                 SendWorldItem(item);
             uint nuid = item.Uid.Value;
-            _knownItems.Add(nuid);
-            _lastKnownItemState[nuid] = (item.X, item.Y, item.Z, item.DispIdFull, item.Hue, item.Amount, item.Direction);
+            View.KnownItems.Add(nuid);
+            View.LastKnownItemState[nuid] = (item.X, item.Y, item.Z, item.DispIdFull, item.Hue, item.Amount, item.Direction);
         }
 
         foreach (var item in delta.UpdatedItems)
         {
             uint uid = item.Uid.Value;
-            if (_lastKnownItemState.TryGetValue(uid, out var prev))
+            if (View.LastKnownItemState.TryGetValue(uid, out var prev))
             {
                 bool changed = prev.X != item.X || prev.Y != item.Y || prev.Z != item.Z ||
                                prev.DispId != item.DispIdFull || prev.Hue != item.Hue ||
@@ -230,17 +230,17 @@ public sealed partial class GameClient
                 if (changed)
                 {
                     SendWorldItem(item);
-                    _lastKnownItemState[uid] = (item.X, item.Y, item.Z, item.DispIdFull, item.Hue, item.Amount, item.Direction);
+                    View.LastKnownItemState[uid] = (item.X, item.Y, item.Z, item.DispIdFull, item.Hue, item.Amount, item.Direction);
                 }
             }
             else
             {
-                _lastKnownItemState[uid] = (item.X, item.Y, item.Z, item.DispIdFull, item.Hue, item.Amount, item.Direction);
+                View.LastKnownItemState[uid] = (item.X, item.Y, item.Z, item.DispIdFull, item.Hue, item.Amount, item.Direction);
             }
         }
 
         var staleChars = new List<uint>();
-        foreach (uint uid in _knownChars)
+        foreach (uint uid in View.KnownChars)
         {
             if (!delta.CurrentChars.Contains(uid))
             {
@@ -250,12 +250,12 @@ public sealed partial class GameClient
         }
         foreach (uint uid in staleChars)
         {
-            _knownChars.Remove(uid);
-            _lastKnownPos.Remove(uid);
+            View.KnownChars.Remove(uid);
+            View.LastKnownPos.Remove(uid);
         }
 
         var staleItems = new List<uint>();
-        foreach (uint uid in _knownItems)
+        foreach (uint uid in View.KnownItems)
         {
             if (delta.CurrentItems.Contains(uid))
                 continue;
@@ -263,7 +263,7 @@ public sealed partial class GameClient
             // An item that dropped out of the ground view because it was
             // equipped onto a mobile has already been re-homed client-side by
             // the 0x2E worn-item packet. A 0x1D here would delete the now-worn
-            // item from the client — the classic "recolour/equip a worn item
+            // item from the client â€” the classic "recolour/equip a worn item
             // and it vanishes until a resync (teleport)" bug. Forget it from the
             // ground-known set without deleting; the wearer's draw owns it now.
             var existing = _world.FindItem(new Serial(uid));
@@ -278,8 +278,8 @@ public sealed partial class GameClient
         }
         foreach (uint uid in staleItems)
         {
-            _knownItems.Remove(uid);
-            _lastKnownItemState.Remove(uid);
+            View.KnownItems.Remove(uid);
+            View.LastKnownItemState.Remove(uid);
         }
     }
 
@@ -304,7 +304,7 @@ public sealed partial class GameClient
                 (uint)(z & 0x07));
             activeDoors.Add(serial);
 
-            if (_knownDoorOverrides.Add(serial))
+            if (View.KnownDoorOverrides.Add(serial))
             {
                 ushort openTile = 0;
                 ushort hue = 0;
@@ -323,7 +323,7 @@ public sealed partial class GameClient
         }
 
         var staleDoors = new List<uint>();
-        foreach (uint serial in _knownDoorOverrides)
+        foreach (uint serial in View.KnownDoorOverrides)
         {
             if (!activeDoors.Contains(serial))
             {
@@ -332,7 +332,7 @@ public sealed partial class GameClient
             }
         }
         foreach (uint s in staleDoors)
-            _knownDoorOverrides.Remove(s);
+            View.KnownDoorOverrides.Remove(s);
     }
 
     private static byte ComputeVisKey(Character ch)
@@ -346,39 +346,39 @@ public sealed partial class GameClient
     }
 
     /// <summary>
-    /// Update this client's _lastKnownPos for a character that was just broadcast via 0x77.
+    /// Update this client's View.LastKnownPos for a character that was just broadcast via 0x77.
     /// Prevents the view delta from sending a duplicate 0x77 for the same position.
     /// </summary>
     public void UpdateKnownCharPosition(Character ch)
     {
         uint uid = ch.Uid.Value;
-        if (_knownChars.Contains(uid))
-            _lastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch));
+        if (View.KnownChars.Contains(uid))
+            View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch));
     }
 
     /// <summary>Returns true if this client already tracks the given mobile (has sent 0x78 spawn).</summary>
-    public bool HasKnownChar(uint uid) => _knownChars.Contains(uid);
+    public bool HasKnownChar(uint uid) => View.KnownChars.Contains(uid);
 
     /// <summary>
     /// Update this client's known-character cache to reflect a body/hue
-    /// change that we already broadcast out-of-band — e.g. the ghost
+    /// change that we already broadcast out-of-band â€” e.g. the ghost
     /// transition during death (body=0x192, hue=0) or the living-body
     /// restore during resurrect (body=0x190, hue=skin). This prevents
     /// the next BuildViewDelta tick from detecting a stale
     /// <c>bodyChanged</c> and re-emitting a duplicate 0x78 with the new
-    /// body — which would race the per-observer dispatch and either
+    /// body â€” which would race the per-observer dispatch and either
     /// produce a duplicate ghost mobile (after 0xAF remap) or just
     /// repeat the spawn packet for no reason.
     ///
-    /// If the UID is not currently in <c>_knownChars</c> the call is a
+    /// If the UID is not currently in <c>View.KnownChars</c> the call is a
     /// no-op (use this in resurrect to safely re-sync everyone, including
     /// observers who never had the mobile in cache because the ghost
     /// was hidden from them).
     /// </summary>
     public void UpdateKnownCharRender(uint uid, ushort newBody, ushort newHue, byte direction, short x, short y, sbyte z, byte visKey = 0)
     {
-        if (_knownChars.Contains(uid))
-            _lastKnownPos[uid] = (x, y, z, direction, newBody, newHue, visKey);
+        if (View.KnownChars.Contains(uid))
+            View.LastKnownPos[uid] = (x, y, z, direction, newBody, newHue, visKey);
     }
 
     /// <summary>
@@ -387,7 +387,7 @@ public sealed partial class GameClient
     /// the mobile from world.Mobiles immediately.
     ///
     /// <paramref name="sendDelete"/> = false: only clears server-side
-    /// cache. Use this in the death dispatch for plain observers — the
+    /// cache. Use this in the death dispatch for plain observers â€” the
     /// 0xAF DisplayDeath we already sent re-keys the mobile to
     /// <c>serial | 0x80000000</c> in ClassicUO, so a follow-up 0x1D with
     /// the original serial would target a now-empty slot (no-op, just
@@ -395,7 +395,7 @@ public sealed partial class GameClient
     /// killer's view on every PvP death.
     ///
     /// <paramref name="sendDelete"/> = true (default): emit the 0x1D as
-    /// well — useful when the dying mobile was never announced via 0xAF
+    /// well â€” useful when the dying mobile was never announced via 0xAF
     /// to this observer (e.g. cleanup after a teleport, or for a plain
     /// observer who came in range AFTER the death animation had already
     /// played for everyone else).
@@ -404,9 +404,9 @@ public sealed partial class GameClient
     /// </summary>
     public void RemoveKnownChar(uint uid, bool sendDelete = true)
     {
-        if (_knownChars.Remove(uid))
+        if (View.KnownChars.Remove(uid))
         {
-            _lastKnownPos.Remove(uid);
+            View.LastKnownPos.Remove(uid);
             if (sendDelete)
                 _netState.Send(new PacketDeleteObject(uid));
         }
@@ -449,8 +449,8 @@ public sealed partial class GameClient
         else
             SendDrawObject(ch);
 
-        _knownChars.Add(uid);
-        _lastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch));
+        View.KnownChars.Add(uid);
+        View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch));
     }
 
     /// <summary>
@@ -478,7 +478,7 @@ public sealed partial class GameClient
         {
             RemoveKnownChar(uid, sendDelete: true);
         }
-        else if (wasInRange && nowInRange && _knownChars.Contains(uid))
+        else if (wasInRange && nowInRange && View.KnownChars.Contains(uid))
         {
             bool isHiddenNow = ch.IsInvisible || ch.IsStatFlag(Core.Enums.StatFlag.Hidden);
             bool canSeeHidden = _character.AllShow ||
@@ -490,13 +490,13 @@ public sealed partial class GameClient
                 return;
             }
 
-            if (_lastKnownPos.TryGetValue(uid, out var last))
+            if (View.LastKnownPos.TryGetValue(uid, out var last))
             {
                 bool posChanged = last.X != ch.X || last.Y != ch.Y || last.Z != ch.Z || last.Dir != (byte)ch.Direction;
                 if (!posChanged) return;
             }
             SendUpdateMobile(ch);
-            _lastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch));
+            View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch));
         }
     }
 
@@ -521,7 +521,7 @@ public sealed partial class GameClient
             NotifyCharacterAppear(ch);
         else if (wasInRange && !nowInRange)
             RemoveKnownChar(uid, sendDelete: true);
-        else if (nowInRange && !_knownChars.Contains(uid))
+        else if (nowInRange && !View.KnownChars.Contains(uid))
             NotifyCharacterAppear(ch);
     }
 

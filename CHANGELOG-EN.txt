@@ -28,6 +28,11 @@ INTERNAL - GameClient decomposition:
         queue processor.
   - Tests that reached these fields by reflection now use the internal
     component properties directly (InternalsVisibleTo).
+  - Phase 2 (same wave): the view-delta bookkeeping (known-char/item/door
+    sets, last-known position/item state, tooltip hash cache) moved into
+    ClientViewCache (GameClient.View) the same way. Phase 3 — converting
+    the partials into handler classes over a ClientContext — is the next,
+    per-partial effort and is intentionally left for dedicated sessions.
 
 [2026-06-10] - Character decomposition slice 3: memory subsystem component (Wave 83)
 ----------------------------------------

@@ -593,8 +593,8 @@ public sealed partial class GameClient
                 return;
 
             SendWorldItem(item);
-            _knownItems.Add(item.Uid.Value);
-            _lastKnownItemState[item.Uid.Value] =
+            View.KnownItems.Add(item.Uid.Value);
+            View.LastKnownItemState[item.Uid.Value] =
                 (item.X, item.Y, item.Z, item.DispIdFull, item.Hue, item.Amount, item.Direction);
             return;
         }
@@ -938,9 +938,9 @@ public sealed partial class GameClient
     private void BroadcastDeleteObject(uint uid)
     {
         _netState.Send(new PacketDeleteObject(uid));
-        _knownChars.Remove(uid);
-        _knownItems.Remove(uid);
-        _lastKnownPos.Remove(uid);
+        View.KnownChars.Remove(uid);
+        View.KnownItems.Remove(uid);
+        View.LastKnownPos.Remove(uid);
         // excludeUid must be the CHARACTER's UID (not the deleted object's UID)
         // so the sending client is excluded from the broadcast (already got direct send).
         BroadcastNearby?.Invoke(_character?.Position ?? Point3D.Zero, UpdateRange, new PacketDeleteObject(uid), _character?.Uid.Value ?? 0);

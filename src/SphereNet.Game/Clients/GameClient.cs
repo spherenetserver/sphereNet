@@ -81,7 +81,7 @@ public sealed partial class GameClient : ITextConsole
 
     /// <summary>Callback to broadcast a packet to all clients whose character is near a point.</summary>
     public Action<Point3D, int, PacketWriter, uint>? BroadcastNearby { get; set; }
-    /// <summary>Broadcast movement and update nearby clients' _lastKnownPos to prevent duplicate 0x77.</summary>
+    /// <summary>Broadcast movement and update nearby clients' View.LastKnownPos to prevent duplicate 0x77.</summary>
     public Action<Point3D, int, PacketWriter, uint, Character>? BroadcastMoveNearby { get; set; }
     /// <summary>
     /// Per-observer dispatch helper used by the death/resurrect pipeline
@@ -133,15 +133,12 @@ public sealed partial class GameClient : ITextConsole
     private Account? _account;
     private Character? _character;
 
-    private readonly HashSet<uint> _knownChars = [];
-    private readonly HashSet<uint> _knownItems = [];
-    private readonly HashSet<uint> _knownDoorOverrides = [];
+    /// <summary>View-delta bookkeeping (decomposition phase 2).</summary>
+    internal ClientViewCache View => _view;
+    private readonly ClientViewCache _view = new();
     /// <summary>Open gump/dialog bookkeeping (decomposition phase 1).</summary>
     internal ClientGumpRegistry Gumps => _gumps;
     private readonly ClientGumpRegistry _gumps = new();
-    private readonly Dictionary<uint, (short X, short Y, sbyte Z, byte Dir, ushort Body, ushort Hue, byte Vis)> _lastKnownPos = [];
-    private readonly Dictionary<uint, (short X, short Y, sbyte Z, ushort DispId, ushort Hue, ushort Amount, byte Direction)> _lastKnownItemState = [];
-    private readonly Dictionary<uint, uint> _tooltipHashCache = []; // serial â†’ last sent hash
     /// <summary>Target-cursor state machine (decomposition phase 1).</summary>
     internal ClientTargetState Targets => _targets;
     private readonly ClientTargetState _targets = new();
@@ -234,14 +231,14 @@ public sealed partial class GameClient : ITextConsole
             _character.CTags.RemoveByPrefix("");
             OnCharacterOffline?.Invoke(_character);
             _world.RemoveOnlinePlayer(_character);
-            _tooltipHashCache.Clear();
-            _knownItems.Clear();
-            _knownChars.Clear();
-            _knownDoorOverrides.Clear();
+            View.TooltipHashCache.Clear();
+            View.KnownItems.Clear();
+            View.KnownChars.Clear();
+            View.KnownDoorOverrides.Clear();
             Gumps.ActiveGumps.Clear();
             Gumps.Callbacks.Clear();
-            _lastKnownPos.Clear();
-            _lastKnownItemState.Clear();
+            View.LastKnownPos.Clear();
+            View.LastKnownItemState.Clear();
             _paperdollThrottle.Clear();
             _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.LogOut,
                 new TriggerArgs { CharSrc = _character });

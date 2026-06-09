@@ -1083,7 +1083,7 @@ public sealed partial class GameClient
                 _triggerDispatcher?.FireCharTrigger(target, CharTrigger.Death,
                     new TriggerArgs { CharSrc = _character });
 
-                _knownChars.Remove(target.Uid.Value);
+                View.KnownChars.Remove(target.Uid.Value);
 
                 var targetPos = target.Position;
                 byte targetDir = (byte)((byte)target.Direction & 0x07);
@@ -1098,7 +1098,7 @@ public sealed partial class GameClient
 
                     if (target.IsPlayer)
                     {
-                        _knownItems.Add(corpse.Uid.Value);
+                        View.KnownItems.Add(corpse.Uid.Value);
                         var corpsePacket = new PacketWorldItem(
                             corpse.Uid.Value, corpse.DispIdFull, corpse.Amount,
                             corpse.X, corpse.Y, corpse.Z, corpse.Hue,
@@ -1166,7 +1166,7 @@ public sealed partial class GameClient
                         // 0x89/0x3C (CorpseEquipment/ContainerContent) are
                         // only sent for human-body corpses; sending them for
                         // monster corpses corrupts the client's input state.
-                        _knownItems.Add(corpse.Uid.Value);
+                        View.KnownItems.Add(corpse.Uid.Value);
                         var corpsePacket = new PacketWorldItem(
                             corpse.Uid.Value, corpse.DispIdFull, corpse.Amount,
                             corpse.X, corpse.Y, corpse.Z, corpse.Hue,

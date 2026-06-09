@@ -509,7 +509,7 @@ public sealed partial class GameClient
 
         // Client already requested the full 0xD6 property list; Source-X does
         // not follow that response with another 0xDC revision packet.
-        _tooltipHashCache[serial] = hash;
+        View.TooltipHashCache[serial] = hash;
 
         _netState.Send(new PacketOPLData(serial, hash, props));
     }

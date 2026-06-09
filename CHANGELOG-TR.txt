@@ -4,6 +4,30 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-10] - GameClient ayristirmasi faz 1: durum-makinesi bilesenleri (Wave 84)
+----------------------------------------
+
+INTERNAL - GameClient ayristirmasi:
+  - ~16k satirlik GameClient partial kumesinin ayristirma plani
+    docs/GAMECLIENT_DECOMPOSITION_TR.md'de belgelendi (faz 1: durum
+    makineleri, faz 2: gorunum onbellegi, faz 3: ClientContext uzerinden
+    partial-basina handler siniflari); faz 1 bu dalgada uygulandi.
+  - Uc tutarli durum kumesi GameClient alanlarindan bilesenlere tasindi,
+    partial'lardaki tum referanslar yeniden adlandirildi — saf durum
+    tasimasi, mantik dokunulmadi:
+      * ClientTargetState (GameClient.Targets) — 28 bekleyen-hedef-cursor
+        alani + cursor-aktif bayragi; Clear() eski ClearPendingTargetState
+        govdesinin birebiri (dikkat: orijinaldeki gibi Kill bayragini,
+        callback slotunu ve skill-iptal id'sini hala TEMIZLEMEZ).
+      * ClientGumpRegistry (GameClient.Gumps) — aktif gump kumesi, gump
+        basina yanit callback'leri, acik script-dialog kaydi.
+      * ClientMovementThrottle (GameClient.Throttle) — walk token kovasi
+        (ilk kullanimda WalkBufferMax ile tohumlanir, eski alan
+        baslaticisiyla ayni zamanlama), hareket-zamani kapisi, ihlal
+        sayaci, hareket kuyrugu islemcisi.
+  - Bu alanlara reflection ile erisen testler artik internal bilesen
+    property'lerini dogrudan kullaniyor (InternalsVisibleTo).
+
 [2026-06-10] - Character ayristirmasi dilim 3: memory alt sistemi bileseni (Wave 83)
 ----------------------------------------
 

@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -34,23 +34,18 @@ namespace SphereNet.Game.Clients;
 
 public sealed partial class GameClient
 {
-    /// <summary>Open script dialogs (name → gump id). Backs the DIALOGCLOSE
-    /// verb and ISDIALOGOPEN.* reads; entries drop when the client answers
-    /// the gump or DIALOGCLOSE force-closes it.</summary>
-    private readonly Dictionary<string, uint> _openScriptDialogs = new(StringComparer.OrdinalIgnoreCase);
-
     public bool IsScriptDialogOpen(string dialogId) =>
-        _openScriptDialogs.ContainsKey(dialogId);
+        Gumps.OpenScriptDialogs.ContainsKey(dialogId);
 
     /// <summary>Force-close an open script dialog (0xBF 0x04) and drop its
     /// server-side tracking. Returns false when no such dialog is open.</summary>
     public bool CloseScriptDialog(string dialogId)
     {
-        if (!_openScriptDialogs.TryGetValue(dialogId, out uint gumpId))
+        if (!Gumps.OpenScriptDialogs.TryGetValue(dialogId, out uint gumpId))
             return false;
-        _openScriptDialogs.Remove(dialogId);
-        _gumpCallbacks.Remove(gumpId);
-        _activeGumps.Remove(gumpId);
+        Gumps.OpenScriptDialogs.Remove(dialogId);
+        Gumps.Callbacks.Remove(gumpId);
+        Gumps.ActiveGumps.Remove(gumpId);
         Send(new PacketCloseGump(gumpId));
         return true;
     }
@@ -239,7 +234,7 @@ public sealed partial class GameClient
 
     /// <summary>Open a script-defined dialog ([DIALOG &lt;name&gt;] sections)
     /// on this client. Returns false when the dialog name cannot be
-    /// resolved — caller logs or sysmessages accordingly. Public so
+    /// resolved â€” caller logs or sysmessages accordingly. Public so
     /// admin commands (".dialog") and script-command handlers share the
     /// same code path.</summary>
     public bool TryShowScriptDialog(string dialogId, int requestedPage)
@@ -247,7 +242,7 @@ public sealed partial class GameClient
 
     /// <summary>Open a script DIALOG section. When <paramref name="subject"/>
     /// is non-null, bare property reads inside the dialog resolve against
-    /// that object first (Source-X CLIMODE_DIALOG pObj semantics) — needed
+    /// that object first (Source-X CLIMODE_DIALOG pObj semantics) â€” needed
     /// by d_charprop1 / d_itemprop1 where the gump is bound to an inspected
     /// target instead of the GM.</summary>
     public bool TryShowScriptDialog(string dialogId, int requestedPage, ObjBase? subject)
@@ -312,7 +307,7 @@ public sealed partial class GameClient
         bool currentPageVisible = true;
 
         // Per-call local variable scope for LOCAL.x= assignments and
-        // <local.x> / <dlocal.x> references — used by Sphere dialog
+        // <local.x> / <dlocal.x> references â€” used by Sphere dialog
         // scripts that loop over a list (FOR) and emit a row per
         // iteration. Resolvers below look here first before delegating.
         var dialogLocals = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -321,7 +316,7 @@ public sealed partial class GameClient
         // render switch below can remain a linear walk. Each unrolled
         // copy of a loop body runs with the iterator's value substituted
         // into <local._for> / <local.n> / etc. before render commands see
-        // the args — matching Sphere's runtime-expansion behaviour.
+        // the args â€” matching Sphere's runtime-expansion behaviour.
         var expandedKeys = ExpandDialogScriptKeys(layoutSection.Keys, dialogLocals, requestedPage);
 
         // Diagnostic: count of commands per page post-expansion. If page 4
@@ -368,7 +363,7 @@ public sealed partial class GameClient
                     // `{ page N }` marker and let every subsequent
                     // element render under that tag.
                     // Source-X does NOT reset m_iOriginX/m_iOriginY on
-                    // PAGE — the DORIGIN baseline persists across pages
+                    // PAGE â€” the DORIGIN baseline persists across pages
                     // so that PAGE 1 content can use +N offsets relative
                     // to the last DORIGIN set on PAGE 0.
                     int pageNo = ParseIntToken(args);
@@ -560,7 +555,7 @@ public sealed partial class GameClient
                 case "TEXT":
                 {
                     if (!currentPageVisible) break;
-                    // TEXT x y hue textIndex — index into [dialog NAME text] section
+                    // TEXT x y hue textIndex â€” index into [dialog NAME text] section
                     var parts = SplitTokens(args, 4);
                     if (parts.Length >= 4)
                     {
@@ -777,15 +772,15 @@ public sealed partial class GameClient
             }
         }
 
-        _openScriptDialogs[dialogId] = gump.GumpId;
+        Gumps.OpenScriptDialogs[dialogId] = gump.GumpId;
         SendGump(gump, (buttonId, switches, textEntries) =>
         {
             if (_character == null)
                 return;
-            // The client closed the gump to answer it — only clear tracking
+            // The client closed the gump to answer it â€” only clear tracking
             // if a page re-open below didn't already re-register it.
-            if (_openScriptDialogs.TryGetValue(dialogId, out uint trackedId) && trackedId == gump.GumpId)
-                _openScriptDialogs.Remove(dialogId);
+            if (Gumps.OpenScriptDialogs.TryGetValue(dialogId, out uint trackedId) && trackedId == gump.GumpId)
+                Gumps.OpenScriptDialogs.Remove(dialogId);
             var prevSubject = _dialogSubjectUid;
             _dialogSubjectUid = subjectUid;
             try
@@ -793,7 +788,7 @@ public sealed partial class GameClient
             // Try the script's [Dialog d_xxx Button] handler first. If a matching
             // ON=buttonId block exists, its body runs and we're done. Otherwise
             // fall back to page navigation behaviour so the old in-dialog page
-            // buttons still work. Button 0 = close/escape — still needs to run
+            // buttons still work. Button 0 = close/escape â€” still needs to run
             // the ON=0 handler (e.g. ClearCTags).
             if (TryRunScriptDialogButton(dialogId, (int)buttonId, switches, textEntries))
                 return;
@@ -840,10 +835,10 @@ public sealed partial class GameClient
             string upper = varExpr.ToUpperInvariant();
             if (upper == "ARGN") return buttonId.ToString();
             if (upper == "ARGV") return buttonId.ToString();
-            // ARGCHK (no brackets) — 1 if any switch is flipped, 0 else.
-            // ARGCHKID — the ID of the first selected switch (0 if none).
+            // ARGCHK (no brackets) â€” 1 if any switch is flipped, 0 else.
+            // ARGCHKID â€” the ID of the first selected switch (0 if none).
             // Sphere dialogs rely on these two to gate "OK" handlers:
-            //   elseif !(<argchk>) src.sysmessage You did not select …
+            //   elseif !(<argchk>) src.sysmessage You did not select â€¦
             //   local.n=<eval <argchkid>-1>
             if (upper == "ARGCHK") return switchSet.Count > 0 ? "1" : "0";
             if (upper == "ARGCHKID")
@@ -858,7 +853,7 @@ public sealed partial class GameClient
             if (TryParseIndexedAccessor(upper, "ARGCHK", out int chkIdx))
                 return switchSet.Contains((uint)chkIdx) ? "1" : "0";
             // ARGV[N] falls through to the interpreter's default handling
-            // so the updated args.ArgString (from a script-side "args=…"
+            // so the updated args.ArgString (from a script-side "args=â€¦"
             // assignment) is tokenised, not the button id.
             return null;
         }
@@ -938,7 +933,7 @@ public sealed partial class GameClient
     }
 
     /// <summary>Pre-expand FOR / WHILE / IF / LOCAL blocks in a dialog's
-    /// key sequence. Dialog scripts mix render verbs (BUTTON, DTEXT, …)
+    /// key sequence. Dialog scripts mix render verbs (BUTTON, DTEXT, â€¦)
     /// with control-flow verbs Sphere's interpreter otherwise handles at
     /// runtime. The outer parser walks the section linearly, so we flatten
     /// loops into their rendered copies and evaluate IFs up front.
@@ -1083,7 +1078,7 @@ public sealed partial class GameClient
                 continue;
             }
 
-            // REFn = <uid> — scope-local object reference. Storage
+            // REFn = <uid> â€” scope-local object reference. Storage
             // lives in the same `locals` dict under the key "REFn" so
             // subsequent <REFn> / <REFn.property> lookups see it.
             // Scripts like the admin panel rely on this to point rows
@@ -1128,9 +1123,9 @@ public sealed partial class GameClient
                 continue;
             }
 
-            // Render command — inline-resolve the args and emit. Local
+            // Render command â€” inline-resolve the args and emit. Local
             // scope flows into the args via ResolveInlineExpressions so
-            // <local.x> / <eval …> inside BUTTON / DTEXT / RADIO /
+            // <local.x> / <eval â€¦> inside BUTTON / DTEXT / RADIO /
             // RESIZEPIC coordinates come out as concrete numbers.
             string resolvedArg = string.IsNullOrEmpty(args)
                 ? args
@@ -1193,7 +1188,7 @@ public sealed partial class GameClient
         var parts = expr.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (parts.Length == 1)
         {
-            // FOR N — loops 0 to N-1 in Sphere.
+            // FOR N â€” loops 0 to N-1 in Sphere.
             long.TryParse(parts[0], out long n);
             to = n - 1;
         }
@@ -1226,7 +1221,7 @@ public sealed partial class GameClient
     /// <summary>Cheap-and-cheerful truthiness for IF / WHILE. An expression
     /// is truthy if it evaluates to non-zero; strings compare as text.
     /// The Sphere parser accepts relational operators, which
-    /// ExpressionParser already understands — we just evaluate through it.</summary>
+    /// ExpressionParser already understands â€” we just evaluate through it.</summary>
     private bool EvaluateDialogCondition(string condition)
     {
         string c = condition.Trim();
@@ -1249,8 +1244,8 @@ public sealed partial class GameClient
         return truthy;
     }
 
-    /// <summary>Resolve &lt;local.x&gt; / &lt;dlocal.x&gt; / &lt;eval …&gt;
-    /// / &lt;def0.…&gt; / &lt;src.…&gt; etc. in an argument string, using
+    /// <summary>Resolve &lt;local.x&gt; / &lt;dlocal.x&gt; / &lt;eval â€¦&gt;
+    /// / &lt;def0.â€¦&gt; / &lt;src.â€¦&gt; etc. in an argument string, using
     /// the dialog-local scope for LOCAL references. <paramref name="dialogArgN1"/>
     /// feeds &lt;argn1&gt; / &lt;argn&gt; so the Sphere "page &lt;argn1&gt;"
     /// pattern in dialog layouts resolves to the page the dialog was
@@ -1287,7 +1282,7 @@ public sealed partial class GameClient
                     return "";
                 }
                 // Uninitialised LOCAL / DLOCAL return "0" per Sphere
-                // convention — scripts read them as zero before the first
+                // convention â€” scripts read them as zero before the first
                 // assignment (common pattern: "while <dlocal.n>" where the
                 // counter is bumped inside the body).
                 if (upper.StartsWith("LOCAL.", StringComparison.Ordinal))
@@ -1295,7 +1290,7 @@ public sealed partial class GameClient
                 if (upper.StartsWith("DLOCAL.", StringComparison.Ordinal))
                     return locals.TryGetValue(upper[7..], out var dlv) ? dlv : "0";
 
-                // REFn and REFn.property — dialog-scoped object references.
+                // REFn and REFn.property â€” dialog-scoped object references.
                 // REF1..REF999 are stored in the same locals dict keyed as
                 // "REFN" (upper). `<REFn>` returns the stored reference
                 // string (usually a UID); `<REFn.property>` looks up the
@@ -1316,7 +1311,7 @@ public sealed partial class GameClient
                 // CTAG0.X / CTAG.X / DCTAG0.X / DCTAG.X on the current character. Reads from
                 // the client-session CTag map (Source-X CClient::m_TagDefs
                 // parity), not the persistent TAG storage. Defaults to
-                // "0" when unset — Sphere convention.
+                // "0" when unset â€” Sphere convention.
                 if (upper.StartsWith("CTAG0.", StringComparison.Ordinal) || upper.StartsWith("CTAG.", StringComparison.Ordinal) ||
                     upper.StartsWith("DCTAG0.", StringComparison.Ordinal) || upper.StartsWith("DCTAG.", StringComparison.Ordinal))
                 {
@@ -1363,7 +1358,7 @@ public sealed partial class GameClient
                     return servResolver(upper[5..]);
 
                 // Dialog subject (CLIMODE_DIALOG pObj) wins over GM
-                // properties for bare reads — <BODY>, <STR>, <NAME>
+                // properties for bare reads â€” <BODY>, <STR>, <NAME>
                 // inside d_charprop1 refer to the inspected target,
                 // not the GM. Fall back to GM when subject misses so
                 // admin-style dialogs keep their existing behaviour.
@@ -1373,14 +1368,14 @@ public sealed partial class GameClient
                     if (subj != null)
                     {
                         // Sphere <I.*> alias = the subject itself.
-                        //   <I.STR> → subject STR, <I.0> → skill 0 level.
+                        //   <I.STR> â†’ subject STR, <I.0> â†’ skill 0 level.
                         // Character.TryGetProperty doesn't know the "I."
                         // prefix, so strip it here and delegate the rest.
                         string lookup = upper.StartsWith("I.", StringComparison.Ordinal)
                             ? upper[2..]
                             : upper;
                         // A bare number on Character resolves to that skill's
-                        // current level — matches Source-X CChar::r_WriteVal
+                        // current level â€” matches Source-X CChar::r_WriteVal
                         // on an integer key.
                         if (subj is Character subjCh && int.TryParse(lookup, out int skillIdx)
                             && skillIdx >= 0 && skillIdx < (int)SkillType.Qty)
@@ -1526,8 +1521,8 @@ public sealed partial class GameClient
     {
         // Delegate through the same resolver chain the interpreter uses.
         // SERV.*, RTIME, RTICKS, REFn.property, etc. all live on the server
-        // property resolver — without routing dialog text through it we lost
-        // the most common Sphere gump substitutions (<Serv.Servname>, …).
+        // property resolver â€” without routing dialog text through it we lost
+        // the most common Sphere gump substitutions (<Serv.Servname>, â€¦).
         var servResolver = _triggerDispatcher?.Runner?.Interpreter?.ServerPropertyResolver;
         var parser = new ExpressionParser
         {
@@ -1545,7 +1540,7 @@ public sealed partial class GameClient
 
                 // Source/target routing: Src.X resolves through the admin's
                 // own character. Admin dialogs reference <Src.Version>,
-                // <Src.Account>, <Src.CTag0.…>, etc.
+                // <Src.Account>, <Src.CTag0.â€¦>, etc.
                 if (varName.StartsWith("SRC.", StringComparison.OrdinalIgnoreCase))
                 {
                     string subProp = varName[4..];
@@ -1562,7 +1557,7 @@ public sealed partial class GameClient
                 if (target.TryGetProperty(varName, out string prop))
                     return prop;
 
-                // SERV.* / RTIME / RTICKS — delegate to the runtime resolver.
+                // SERV.* / RTIME / RTICKS â€” delegate to the runtime resolver.
                 if (servResolver != null)
                 {
                     if (varName.StartsWith("SERV.", StringComparison.OrdinalIgnoreCase))
@@ -1627,9 +1622,9 @@ public sealed partial class GameClient
 
     /// <summary>Resolve a dialog coordinate token.
     /// Formats:
-    ///   N      — absolute (resets cursor to N)
-    ///   +N     — cursor += N
-    ///   *N     — rowCursor += N; cursor = rowCursor (next-row step, independent
+    ///   N      â€” absolute (resets cursor to N)
+    ///   +N     â€” cursor += N
+    ///   *N     â€” rowCursor += N; cursor = rowCursor (next-row step, independent
     ///            of the +/- column walk)
     /// <paramref name="rowCursor"/> may alias <paramref name="cursor"/> when the
     /// caller hasn't wired a separate row tracker (old call sites).</summary>
@@ -1684,7 +1679,7 @@ public sealed partial class GameClient
 
     /// <summary>DEFNAME text values in Sphere scripts often ship wrapped
     /// in double quotes (<c>CharFlag.1 "Invulnerable"</c>). The quotes
-    /// are a Sphere source-lexer convention, not part of the payload —
+    /// are a Sphere source-lexer convention, not part of the payload â€”
     /// strip a single matched pair when resolving so the gump label
     /// reads "Invulnerable" instead of <c>"Invulnerable"</c>.</summary>
     private static string StripSurroundingQuotes(string s)
@@ -1704,9 +1699,9 @@ public sealed partial class GameClient
         // CExpression::GetVal): a leading '0' on a multi-digit token marks
         // the value as HEX. Without this rule "0480" silently parsed as
         // decimal 480 instead of 0x480 (1152) and admin gump hues came
-        // out as random off-spectrum colors — the d_SphereAdmin_PlayerTweak
+        // out as random off-spectrum colors â€” the d_SphereAdmin_PlayerTweak
         // labels were rendered in colors the client treats as
-        // near-invisible (the "yazılar okunmuyor" symptom).
+        // near-invisible (the "yazÄ±lar okunmuyor" symptom).
 
         if (token.StartsWith("0x", StringComparison.OrdinalIgnoreCase) &&
             int.TryParse(token[2..], System.Globalization.NumberStyles.HexNumber, null, out int hex))

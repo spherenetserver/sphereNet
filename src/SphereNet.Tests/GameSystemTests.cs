@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
@@ -56,7 +56,7 @@ public class GameSystemTests
 
     private static Queue<PacketBuffer> GetQueuedPackets(NetState state)
     {
-        // Combined outbound snapshot in flush order (priority queues, Highest → Idle).
+        // Combined outbound snapshot in flush order (priority queues, Highest â†’ Idle).
         var queues = (Queue<PacketBuffer>[])typeof(NetState)
             .GetField("_queues", BindingFlags.Instance | BindingFlags.NonPublic)!
             .GetValue(state)!;
@@ -312,7 +312,7 @@ public class GameSystemTests
 
         g1.AddAlly(g2.StoneUid);
         g1.GetOrCreateRelation(g2.StoneUid).TheyDeclaredAlliance = true; // mutual
-        g1.AddAlly(g3.StoneUid); // one-sided — must not receive
+        g1.AddAlly(g3.StoneUid); // one-sided â€” must not receive
 
         var speech = new SpeechEngine(world) { GuildManager = gm };
         var recipients = new List<Serial>();
@@ -1814,9 +1814,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         TestHarness.AttachCharacter(client, ch);
 
         bool called = false;
-        var callbacks = (Dictionary<uint, Action<uint, uint[], (ushort, string)[]>>)typeof(SphereNet.Game.Clients.GameClient)
-            .GetField("_gumpCallbacks", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(client)!;
+        var callbacks = client.Gumps.Callbacks;
         callbacks[0xDEADBEEF] = (_, _, _) => called = true;
 
         client.HandleGumpResponse(ch.Uid.Value, 0xDEADBEEF, 1, [], []);
@@ -2381,7 +2379,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
         AttachCharacter(client, player);
 
-        // Ground item next to the player → enters the client's known-item set.
+        // Ground item next to the player â†’ enters the client's known-item set.
         var robe = world.CreateItem();
         robe.BaseId = 0x1F03;
         world.PlaceItem(robe, new Point3D(101, 100, 0, 0));
@@ -2821,8 +2819,8 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
 
         client.SetEngines(triggerDispatcher: dispatcher);
         AttachCharacter(client, player);
-        SetPrivateField(client, "_pendingTargetFunction", "f_never_run");
-        SetPrivateField(client, "_pendingTargetItemUid", sourceItem.Uid);
+        client.Targets.Function = "f_never_run";
+        client.Targets.ItemUid = sourceItem.Uid;
 
         client.HandleTargetResponse(0, 0, targetItem.Uid.Value, 10, 11, 12, 0);
 
@@ -2861,8 +2859,8 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
 
         client.SetEngines(triggerDispatcher: dispatcher);
         AttachCharacter(client, player);
-        SetPrivateField(client, "_pendingTargetFunction", "f_cancelled");
-        SetPrivateField(client, "_pendingTargetItemUid", sourceItem.Uid);
+        client.Targets.Function = "f_cancelled";
+        client.Targets.ItemUid = sourceItem.Uid;
 
         client.HandleTargetResponse(0, 0, 0xFFFFFFFF, 0, 0, 0, 0);
 
@@ -2922,13 +2920,13 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
 
         client.SetEngines(triggerDispatcher: dispatcher);
         AttachCharacter(client, player);
-        SetPrivateField(client, "_pendingTargetFunction", "f_char");
-        SetPrivateField(client, "_pendingTargetItemUid", sourceItem.Uid);
+        client.Targets.Function = "f_char";
+        client.Targets.ItemUid = sourceItem.Uid;
         client.HandleTargetResponse(0, 0, targetChar.Uid.Value, 10, 11, 12, 0);
 
-        SetPrivateField(client, "_pendingTargetFunction", "f_ground");
-        SetPrivateField(client, "_pendingTargetAllowGround", true);
-        SetPrivateField(client, "_pendingTargetItemUid", sourceItem.Uid);
+        client.Targets.Function = "f_ground";
+        client.Targets.AllowGround = true;
+        client.Targets.ItemUid = sourceItem.Uid;
         client.HandleTargetResponse(1, 0, 0, 20, 21, 22, 0);
 
         Assert.Equal(1, charCount);
@@ -3211,7 +3209,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         Assert.Equal(1, virtueCount);
     }
 
-    // ───── Faz 5: Regression tests for bug fixes ─────
+    // â”€â”€â”€â”€â”€ Faz 5: Regression tests for bug fixes â”€â”€â”€â”€â”€
 
     [Fact]
     public void PasswordHelper_HashAndVerify_RoundTrips()
@@ -3257,7 +3255,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         var pkt = new SphereNet.Network.Packets.Outgoing.PacketContextMenu(0x12345678, entries);
         var buf = pkt.Build();
         var data = buf.Data;
-        // opcode(1) + len(2) + sub(2) + subSub(2) + serial(4) = offset 11 → count byte
+        // opcode(1) + len(2) + sub(2) + subSub(2) + serial(4) = offset 11 â†’ count byte
         Assert.Equal(255, data[11]);
     }
 

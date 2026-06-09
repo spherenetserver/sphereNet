@@ -175,10 +175,7 @@ public class HousingEconomyTests
             .GetMethod("OpenHouseSignGump", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(client, [multi]);
 
-        var activeGumps = (HashSet<uint>)typeof(SphereNet.Game.Clients.GameClient)
-            .GetField("_activeGumps", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(client)!;
-        uint gumpId = Assert.Single(activeGumps);
+        uint gumpId = Assert.Single(client.Gumps.ActiveGumps);
 
         client.HandleGumpResponse(multi.Uid.Value, gumpId, 1, [], []);
         client.HandleTargetResponse(0, 0, newOwner.Uid.Value, newOwner.X, newOwner.Y, newOwner.Z, 0);
@@ -456,10 +453,5 @@ public class HousingEconomyTests
     }
 
     private static uint GetSingleActiveGump(SphereNet.Game.Clients.GameClient client)
-    {
-        var activeGumps = (HashSet<uint>)typeof(SphereNet.Game.Clients.GameClient)
-            .GetField("_activeGumps", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(client)!;
-        return Assert.Single(activeGumps);
-    }
+        => Assert.Single(client.Gumps.ActiveGumps);
 }

@@ -4,6 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-10] - GameClient decomposition phase 1: state-machine components (Wave 84)
+----------------------------------------
+
+INTERNAL - GameClient decomposition:
+  - The decomposition plan for the ~16k-line GameClient partial-class cluster
+    is documented in docs/GAMECLIENT_DECOMPOSITION_TR.md (phase 1: state
+    machines, phase 2: view cache, phase 3: per-partial handler classes over
+    a ClientContext), and phase 1 is executed in this wave.
+  - Three cohesive state clusters moved out of GameClient fields into
+    components, with every reference across the partials renamed — pure
+    state relocation, logic untouched:
+      * ClientTargetState (GameClient.Targets) — all 28 pending-target-cursor
+        fields plus the cursor-active flag; its Clear() is the former
+        ClearPendingTargetState body verbatim (notably it still does NOT
+        clear the Kill flag, the callback slot or the skill-cancel id,
+        matching the original).
+      * ClientGumpRegistry (GameClient.Gumps) — active gump set, per-gump
+        response callbacks, open script-dialog registry.
+      * ClientMovementThrottle (GameClient.Throttle) — walk token bucket
+        (seeded with WalkBufferMax at first use, same timing as the former
+        field initializer), move-time gate, violation counter, movement
+        queue processor.
+  - Tests that reached these fields by reflection now use the internal
+    component properties directly (InternalsVisibleTo).
+
 [2026-06-10] - Character decomposition slice 3: memory subsystem component (Wave 83)
 ----------------------------------------
 

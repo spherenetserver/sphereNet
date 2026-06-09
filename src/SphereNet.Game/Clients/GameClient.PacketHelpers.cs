@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -53,12 +53,12 @@ public sealed partial class GameClient
     {
         if (_character == null)
             return;
-        if (_targetCursorActive)
+        if (Targets.CursorActive)
             return;
 
         ClearPendingTargetState();
-        _pendingTeleTarget = true;
-        _targetCursorActive = true;
+        Targets.Tele = true;
+        Targets.CursorActive = true;
         _netState.Send(new PacketTarget(1, (uint)Random.Shared.Next(1, int.MaxValue)));
     }
 
@@ -66,36 +66,36 @@ public sealed partial class GameClient
     {
         if (_character == null)
             return;
-        if (_targetCursorActive)
+        if (Targets.CursorActive)
             return;
 
         ClearPendingTargetState();
-        _pendingRemoveTarget = true;
-        _targetCursorActive = true;
+        Targets.Remove = true;
+        Targets.CursorActive = true;
         _netState.Send(new PacketTarget(1, (uint)Random.Shared.Next(1, int.MaxValue)));
     }
 
-    /// <summary>.XRESURRECT — opens a target cursor; the picked mobile (or
+    /// <summary>.XRESURRECT â€” opens a target cursor; the picked mobile (or
     /// the owner of the picked corpse) is resurrected via OnResurrectOther.</summary>
     public void BeginResurrectTarget()
     {
         if (_character == null) return;
-        if (_targetCursorActive) return;
+        if (Targets.CursorActive) return;
         ClearPendingTargetState();
-        _pendingResurrectTarget = true;
-        _targetCursorActive = true;
+        Targets.Resurrect = true;
+        Targets.CursorActive = true;
         _netState.Send(new PacketTarget(0, (uint)Random.Shared.Next(1, int.MaxValue)));
     }
 
-    /// <summary>.info without a UID — opens a target cursor; whatever
+    /// <summary>.info without a UID â€” opens a target cursor; whatever
     /// the GM clicks on lands in <see cref="ShowInspectDialog"/>.</summary>
     public void BeginInspectTarget()
     {
         if (_character == null) return;
-        if (_targetCursorActive) return;
+        if (Targets.CursorActive) return;
         ClearPendingTargetState();
-        _pendingInspectTarget = true;
-        _targetCursorActive = true;
+        Targets.Inspect = true;
+        Targets.CursorActive = true;
         _netState.Send(new PacketTarget(1, (uint)Random.Shared.Next(1, int.MaxValue)));
     }
 
@@ -103,12 +103,12 @@ public sealed partial class GameClient
     {
         if (_character == null)
             return;
-        if (_targetCursorActive)
+        if (Targets.CursorActive)
             return;
 
         ClearPendingTargetState();
-        _pendingAddToken = addToken.Trim();
-        _targetCursorActive = true;
+        Targets.AddToken = addToken.Trim();
+        Targets.CursorActive = true;
         _netState.Send(new PacketTarget(1, (uint)Random.Shared.Next(1, int.MaxValue)));
     }
 
@@ -116,12 +116,12 @@ public sealed partial class GameClient
     {
         if (_character == null)
             return;
-        if (_targetCursorActive)
+        if (Targets.CursorActive)
             return;
 
         ClearPendingTargetState();
-        _pendingShowArgs = string.IsNullOrWhiteSpace(showArgs) ? "EVENTS" : showArgs.Trim();
-        _targetCursorActive = true;
+        Targets.ShowArgs = string.IsNullOrWhiteSpace(showArgs) ? "EVENTS" : showArgs.Trim();
+        Targets.CursorActive = true;
         _netState.Send(new PacketTarget(1, (uint)Random.Shared.Next(1, int.MaxValue)));
     }
 
@@ -129,12 +129,12 @@ public sealed partial class GameClient
     {
         if (_character == null)
             return;
-        if (_targetCursorActive)
+        if (Targets.CursorActive)
             return;
 
         ClearPendingTargetState();
-        _pendingEditArgs = editArgs?.Trim() ?? "";
-        _targetCursorActive = true;
+        Targets.EditArgs = editArgs?.Trim() ?? "";
+        Targets.CursorActive = true;
         _netState.Send(new PacketTarget(1, (uint)Random.Shared.Next(1, int.MaxValue)));
     }
 
@@ -145,105 +145,105 @@ public sealed partial class GameClient
     public void BeginXVerbTarget(string verb, string args)
     {
         if (_character == null) return;
-        if (_targetCursorActive) return;
+        if (Targets.CursorActive) return;
         if (string.IsNullOrEmpty(verb)) return;
 
         ClearPendingTargetState();
-        _pendingXVerb = verb.Trim();
-        _pendingXVerbArgs = args?.Trim() ?? "";
-        _targetCursorActive = true;
+        Targets.XVerb = verb.Trim();
+        Targets.XVerbArgs = args?.Trim() ?? "";
+        Targets.CursorActive = true;
         _netState.Send(new PacketTarget(1, (uint)Random.Shared.Next(1, int.MaxValue)));
     }
 
     /// <summary>Source-X CV_NUKE / CV_NUKECHAR / CV_NUDGE: open a
     /// ground-target cursor and treat the picked tile as the centre of
     /// an axis-aligned area of half-extent <paramref name="range"/>.
-    /// We deviate from Source-X (which prompts for two corner tiles —
+    /// We deviate from Source-X (which prompts for two corner tiles â€”
     /// see CClient_functions.tbl 'NUKE'); a single pick + fixed range
     /// keeps the wire round-trip lean and is enough for GM cleanup.</summary>
     public void BeginAreaTarget(string verb, int range)
     {
         if (_character == null) return;
-        if (_targetCursorActive) return;
+        if (Targets.CursorActive) return;
         if (string.IsNullOrEmpty(verb)) return;
 
         ClearPendingTargetState();
-        _pendingAreaVerb = verb.Trim().ToUpperInvariant();
-        _pendingAreaRange = Math.Clamp(range, 1, 32);
-        _targetCursorActive = true;
+        Targets.AreaVerb = verb.Trim().ToUpperInvariant();
+        Targets.AreaRange = Math.Clamp(range, 1, 32);
+        Targets.CursorActive = true;
         // type=1 (ground allowed), so the GM can pick an empty tile.
         _netState.Send(new PacketTarget(1, (uint)Random.Shared.Next(1, int.MaxValue)));
     }
 
     public void BeginControlTarget()
     {
-        if (_character == null || _targetCursorActive) return;
+        if (_character == null || Targets.CursorActive) return;
         ClearPendingTargetState();
-        _pendingControlTarget = true;
-        _targetCursorActive = true;
+        Targets.Control = true;
+        Targets.CursorActive = true;
         _netState.Send(new PacketTarget(0, (uint)Random.Shared.Next(1, int.MaxValue)));
     }
 
     public void BeginDupeTarget()
     {
-        if (_character == null || _targetCursorActive) return;
+        if (_character == null || Targets.CursorActive) return;
         ClearPendingTargetState();
-        _pendingDupeTarget = true;
-        _targetCursorActive = true;
+        Targets.Dupe = true;
+        Targets.CursorActive = true;
         _netState.Send(new PacketTarget(0, (uint)Random.Shared.Next(1, int.MaxValue)));
     }
 
     public void BeginHealTarget()
     {
-        if (_character == null || _targetCursorActive) return;
+        if (_character == null || Targets.CursorActive) return;
         ClearPendingTargetState();
-        _pendingHealTarget = true;
-        _targetCursorActive = true;
+        Targets.Heal = true;
+        Targets.CursorActive = true;
         _netState.Send(new PacketTarget(0, (uint)Random.Shared.Next(1, int.MaxValue)));
     }
 
     public void BeginKillTarget()
     {
-        if (_character == null || _targetCursorActive) return;
+        if (_character == null || Targets.CursorActive) return;
         ClearPendingTargetState();
-        _pendingKillTarget = true;
-        _targetCursorActive = true;
+        Targets.Kill = true;
+        Targets.CursorActive = true;
         _netState.Send(new PacketTarget(0, (uint)Random.Shared.Next(1, int.MaxValue)));
     }
 
     public void BeginBankTarget()
     {
-        if (_character == null || _targetCursorActive) return;
+        if (_character == null || Targets.CursorActive) return;
         ClearPendingTargetState();
-        _pendingBankTarget = true;
-        _targetCursorActive = true;
+        Targets.Bank = true;
+        Targets.CursorActive = true;
         _netState.Send(new PacketTarget(0, (uint)Random.Shared.Next(1, int.MaxValue)));
     }
 
     public void BeginSummonToTarget()
     {
-        if (_character == null || _targetCursorActive) return;
+        if (_character == null || Targets.CursorActive) return;
         ClearPendingTargetState();
-        _pendingSummonToTarget = true;
-        _targetCursorActive = true;
+        Targets.SummonTo = true;
+        Targets.CursorActive = true;
         _netState.Send(new PacketTarget(0, (uint)Random.Shared.Next(1, int.MaxValue)));
     }
 
     public void BeginMountTarget()
     {
-        if (_character == null || _targetCursorActive) return;
+        if (_character == null || Targets.CursorActive) return;
         ClearPendingTargetState();
-        _pendingMountTarget = true;
-        _targetCursorActive = true;
+        Targets.Mount = true;
+        Targets.CursorActive = true;
         _netState.Send(new PacketTarget(0, (uint)Random.Shared.Next(1, int.MaxValue)));
     }
 
     public void BeginSummonCageTarget()
     {
-        if (_character == null || _targetCursorActive) return;
+        if (_character == null || Targets.CursorActive) return;
         ClearPendingTargetState();
-        _pendingSummonCageTarget = true;
-        _targetCursorActive = true;
+        Targets.SummonCage = true;
+        Targets.CursorActive = true;
         _netState.Send(new PacketTarget(0, (uint)Random.Shared.Next(1, int.MaxValue)));
     }
 
@@ -272,7 +272,7 @@ public sealed partial class GameClient
     /// packet even when their version is High Seas or newer.
     ///
     /// When per-recipient dispatch is unavailable (forEachClientInRange not
-    /// wired), it falls back to a single shared 0x6E broadcast — identical to
+    /// wired), it falls back to a single shared 0x6E broadcast â€” identical to
     /// the legacy behaviour, so callers that route through this helper keep
     /// working in contexts that only wire BroadcastNearby.
     /// </summary>
@@ -304,7 +304,7 @@ public sealed partial class GameClient
         }
     }
 
-    /// <summary>Convenience wrapper used by SpeechEngine event hookup —
+    /// <summary>Convenience wrapper used by SpeechEngine event hookup â€”
     /// dismount the GM's character if currently mounted.</summary>
     public void UnmountSelf()
     {
@@ -313,31 +313,31 @@ public sealed partial class GameClient
 
     private void ClearPendingTargetState()
     {
-        _pendingTeleTarget = false;
-        _pendingAddToken = null;
-        _pendingShowArgs = null;
-        _pendingEditArgs = null;
-        _pendingXVerb = null;
-        _pendingXVerbArgs = "";
-        _pendingAreaVerb = null;
-        _pendingAreaRange = 0;
-        _pendingControlTarget = false;
-        _pendingDupeTarget = false;
-        _pendingHealTarget = false;
-        _pendingBankTarget = false;
-        _pendingSummonToTarget = false;
-        _pendingMountTarget = false;
-        _pendingSummonCageTarget = false;
-        _pendingRemoveTarget = false;
-        _pendingResurrectTarget = false;
-        _pendingInspectTarget = false;
-        _pendingTargetFunction = null;
-        _pendingTargetArgs = "";
-        _pendingTargetAllowGround = false;
-        _pendingTargetItemUid = Serial.Invalid;
-        _pendingScriptNewItem = null;
-        _lastScriptTargetPoint = null;
-        _targetCursorActive = false;
+        Targets.Tele = false;
+        Targets.AddToken = null;
+        Targets.ShowArgs = null;
+        Targets.EditArgs = null;
+        Targets.XVerb = null;
+        Targets.XVerbArgs = "";
+        Targets.AreaVerb = null;
+        Targets.AreaRange = 0;
+        Targets.Control = false;
+        Targets.Dupe = false;
+        Targets.Heal = false;
+        Targets.Bank = false;
+        Targets.SummonTo = false;
+        Targets.Mount = false;
+        Targets.SummonCage = false;
+        Targets.Remove = false;
+        Targets.Resurrect = false;
+        Targets.Inspect = false;
+        Targets.Function = null;
+        Targets.FunctionArgs = "";
+        Targets.AllowGround = false;
+        Targets.ItemUid = Serial.Invalid;
+        Targets.ScriptNewItem = null;
+        Targets.LastScriptPoint = null;
+        Targets.CursorActive = false;
     }
 
     /// <summary>Source-X Cmd_EditItem parity (CClientUse.cpp:577).
@@ -626,7 +626,7 @@ public sealed partial class GameClient
     /// <summary>Place a dragged item into the target character's backpack and
     /// send the client a 0x25 ContainerItem packet so it actually appears there.
     /// Without the packet the client only sees the previous 0x1D delete and
-    /// treats the item as gone — classic "drop onto mobile = item vanishes"
+    /// treats the item as gone â€” classic "drop onto mobile = item vanishes"
     /// bug. If the backpack is somehow missing we recreate one so the item
     /// doesn't simply get lost.</summary>
     private void PlaceItemInPack(Character target, Item item)
@@ -661,7 +661,7 @@ public sealed partial class GameClient
             SendCharacterStatus(_character);
     }
 
-    /// <summary>Script OPEN verb bridge (Item.OnScriptOpen) — opens the
+    /// <summary>Script OPEN verb bridge (Item.OnScriptOpen) â€” opens the
     /// container on this client with the same packet flow as a dclick open,
     /// but with script authority (no snoop/trap gate).</summary>
     public void OpenContainerFromScript(Item container) => SendOpenContainer(container);
@@ -689,14 +689,14 @@ public sealed partial class GameClient
 
         // Per-container gump selection (Source-X CItemBase::IsTypeContainer
         // returns m_ttContainer.m_idGump = TDATA2; ServUO does the equivalent
-        // via Data/containers.cfg ItemID→GumpID lookup).
+        // via Data/containers.cfg ItemIDâ†’GumpID lookup).
         //
         // Resolution order:
-        //   1) ITEMDEF.TDATA2 if the script supplied one — script wins.
+        //   1) ITEMDEF.TDATA2 if the script supplied one â€” script wins.
         //   2) Built-in fallback table for the well-known UO container
         //      graphics (matches ServUO's Data/containers.cfg shipped table).
         //   3) Bank-box layer fallback to 0x004A (silver bank chest, used
-        //      with item ids 0xE7C / 0x9AB) — keeps GM-spawned bank boxes
+        //      with item ids 0xE7C / 0x9AB) â€” keeps GM-spawned bank boxes
         //      that have no itemdef render correctly.
         //   4) Generic bag fallback 0x003C.
         ushort gumpId = ResolveContainerGump(container);
@@ -719,7 +719,7 @@ public sealed partial class GameClient
     /// Resolve the container gump (0x24 second word) for a given container item.
     /// Mirrors Source-X CItemBase::IsTypeContainer (TDATA2 = m_idGump) and the
     /// ServUO Data/containers.cfg fallback table. Adding a new container ID to
-    /// the built-in table or to ITEMDEF.TDATA2 in script is enough — no other
+    /// the built-in table or to ITEMDEF.TDATA2 in script is enough â€” no other
     /// code path needs to know about it.
     /// </summary>
     private static ushort ResolveContainerGump(Item container)
@@ -735,35 +735,35 @@ public sealed partial class GameClient
         // when no scripted ITEMDEF is loaded.
         switch (container.BaseId)
         {
-            // 0x4A — silver bank chest (BankBox)
+            // 0x4A â€” silver bank chest (BankBox)
             case 0xE7C:
             case 0x9AB:
                 return 0x004A;
-            // 0x3D — small wooden chest with iron bands
+            // 0x3D â€” small wooden chest with iron bands
             case 0xE76:
             case 0x2256:
             case 0x2257:
                 return 0x003D;
-            // 0x3E — wooden box (no banding)
+            // 0x3E â€” wooden box (no banding)
             case 0xE77:
             case 0xE7F:
                 return 0x003E;
-            // 0x3F — gold-banded chest
+            // 0x3F â€” gold-banded chest
             case 0xE7A:
             case 0x24D5:
             case 0x24D6:
             case 0x24D9:
             case 0x24DA:
                 return 0x003F;
-            // 0x42 — pouch / standard backpack
+            // 0x42 â€” pouch / standard backpack
             case 0xE40:
             case 0xE41:
                 return 0x0042;
-            // 0x43 — wooden chest with no bands
+            // 0x43 â€” wooden chest with no bands
             case 0xE7D:
             case 0x9AA:
                 return 0x0043;
-            // 0x44 — large wood box
+            // 0x44 â€” large wood box
             case 0xE7E:
             case 0x9A9:
             case 0xE3C:
@@ -771,11 +771,11 @@ public sealed partial class GameClient
             case 0xE3E:
             case 0xE3F:
                 return 0x0044;
-            // 0x49 — small wooden chest gilt edges
+            // 0x49 â€” small wooden chest gilt edges
             case 0xE42:
             case 0xE43:
                 return 0x0049;
-            // 0x4B — large metal chest
+            // 0x4B â€” large metal chest
             case 0xE80:
             case 0x9A8:
                 return 0x004B;
@@ -863,7 +863,7 @@ public sealed partial class GameClient
         else if (_netState.ClientVersionNumber >= 40_000_000)
             expansion = 3; // AOS
         else if (_netState.ClientVersionNumber == 0)
-            expansion = 3; // AOS baseline — version not yet detected via 0xBD;
+            expansion = 3; // AOS baseline â€” version not yet detected via 0xBD;
                            // AOS is the safe minimum for any modern client
         else
             expansion = 0; // explicit pre-AOS client (version < 4.0)
@@ -952,14 +952,14 @@ public sealed partial class GameClient
         byte flags = BuildMobileFlags(ch);
         byte noto = GetNotoriety(ch);
 
-        // Self — use own client version
+        // Self â€” use own client version
         _netState.Send(new PacketDrawObject(
             ch.Uid.Value, ch.BodyId,
             ch.X, ch.Y, ch.Z,
             (byte)ch.Direction, ch.Hue, flags, noto,
             equipment, _netState.SupportsNewMobileIncoming));
 
-        // Others — per-observer version branching (0x78 format differs by client era)
+        // Others â€” per-observer version branching (0x78 format differs by client era)
         uint selfUid = _character?.Uid.Value ?? 0;
         ForEachClientInRange?.Invoke(ch.Position, UpdateRange, selfUid,
             (observerCh, observerClient) =>
@@ -1001,7 +1001,7 @@ public sealed partial class GameClient
         {
             case "NUKE":
             {
-                // Snapshot first — DeleteObject mutates the sector lists.
+                // Snapshot first â€” DeleteObject mutates the sector lists.
                 var items = _world.GetItemsInRange(centre, range).ToList();
                 foreach (var item in items)
                 {
@@ -1032,7 +1032,7 @@ public sealed partial class GameClient
             {
                 // Source-X reads TARG.X/Y/Z TAGs as the displacement.
                 // We default to (0, 0, +1) when the GM has not set them
-                // — useful for "lift items 1 tile up to clear floors".
+                // â€” useful for "lift items 1 tile up to clear floors".
                 int dx = TryGetIntTag("NUDGE.DX", 0);
                 int dy = TryGetIntTag("NUDGE.DY", 0);
                 int dz = TryGetIntTag("NUDGE.DZ", 1);
@@ -1096,7 +1096,7 @@ public sealed partial class GameClient
     private void SpawnCageAround(Point3D centre)
     {
         // Bar graphics:  0x0084 vertical, 0x0086 horizontal (Source-X
-        // i_bars_v / i_bars_h). We skip diagonal corners — the picture
+        // i_bars_v / i_bars_h). We skip diagonal corners â€” the picture
         // is a "+" pattern around the victim, enough to block movement.
         var ring = new (short dx, short dy, ushort gfx)[]
         {
@@ -1300,7 +1300,7 @@ public sealed partial class GameClient
     /// turn resolves to a hex graphic (common Sphere pattern:
     /// <c>[itemdef i_moongate] id=i_moongate_blue</c>, where
     /// <c>i_moongate_blue</c> is <c>[itemdef 0f6c]</c>). Returns 0 when
-    /// no numeric graphic can be reached within a small lookup bound —
+    /// no numeric graphic can be reached within a small lookup bound â€”
     /// the caller treats that as "unknown graphic" and aborts the add.</summary>
     private static ushort ResolveItemDispId(int defIndex)
     {
@@ -1314,7 +1314,7 @@ public sealed partial class GameClient
 
             // Def exists but has no explicit ID/DISPID. For numeric-range
             // sections (<= 0xFFFF) the section header itself is the
-            // graphic — treat defIndex as the graphic. For hash-range
+            // graphic â€” treat defIndex as the graphic. For hash-range
             // (named) sections without a DispIndex, we truly can't
             // resolve a graphic and the add fails.
             if (d.DispIndex == 0)
@@ -1353,7 +1353,7 @@ public sealed partial class GameClient
             // BaseId mirrors the resolved display body for legacy
             // consumers (mounting / click behaviour). Trigger / CharDef
             // lookups now go through CharDefIndex (full 24-bit defname
-            // hash), so the c_alchemist→c_man aliasing no longer
+            // hash), so the c_alchemistâ†’c_man aliasing no longer
             // hijacks @Create or brain selection.
             npc.BaseId = resolvedBody;
             if (!string.IsNullOrWhiteSpace(charDef.Name))
@@ -1403,7 +1403,7 @@ public sealed partial class GameClient
         }
 
         // Brain finalisation (Animal fallback + @NPCRestock for vendors)
-        // intentionally happens AFTER @Create runs — see FinalizeNpcBrain.
+        // intentionally happens AFTER @Create runs â€” see FinalizeNpcBrain.
         // Sphere scripts set NPC=brain_vendor inside ON=@Create, so the brain
         // is only known once that trigger has executed.
 
@@ -1489,8 +1489,8 @@ public sealed partial class GameClient
 
             var item = _world.CreateItem();
             var itemDef = DefinitionLoader.GetItemDef(rid.Index);
-            // Defname ITEMDEFs (i_shirt_plain, …) live under a 32-bit
-            // string hash, but their wire graphic is in DispIndex —
+            // Defname ITEMDEFs (i_shirt_plain, â€¦) live under a 32-bit
+            // string hash, but their wire graphic is in DispIndex â€”
             // see TemplateEngine.ResolveDispId. Truncating rid.Index
             // to ushort previously gave newbies random-tile clothing
             // (lava breastplates, window-shutter shirts).
@@ -1516,8 +1516,8 @@ public sealed partial class GameClient
             if (amount > 1)
                 item.Amount = (ushort)Math.Min(amount, ushort.MaxValue);
 
-            // Color: colors_* defname → random hue from the range;
-            // "match_<prev>" → re-use the last resolved hue so a hair /
+            // Color: colors_* defname â†’ random hue from the range;
+            // "match_<prev>" â†’ re-use the last resolved hue so a hair /
             // beard pair share the tint.
             if (!string.IsNullOrWhiteSpace(entry.Color))
             {
@@ -1542,7 +1542,7 @@ public sealed partial class GameClient
             if (layer == Layer.None)
             {
                 // NPC plain loot (non-wearable, not ITEMNEWBIE) is NOT
-                // carried while alive — it is rolled into the corpse at
+                // carried while alive â€” it is rolled into the corpse at
                 // death (Character.MaterializeDeathLoot), so it never
                 // becomes a transient item in the world save. The freshly
                 // minted candidate is discarded here.
@@ -1602,11 +1602,11 @@ public sealed partial class GameClient
     {
         string n = name.Trim();
         if (string.IsNullOrEmpty(n)) return 0;
-        // match_hair / match_skin / match_* → use the previously picked hue.
+        // match_hair / match_skin / match_* â†’ use the previously picked hue.
         if (n.StartsWith("match_", StringComparison.OrdinalIgnoreCase))
             return lastHue;
 
-        // Canonical palette ranges (inclusive) — matches classic
+        // Canonical palette ranges (inclusive) â€” matches classic
         // Sphere defaults shipped with the standard script pack.
         (ushort lo, ushort hi) = n.ToLowerInvariant() switch
         {

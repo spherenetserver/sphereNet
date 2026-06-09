@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -103,7 +103,7 @@ public sealed partial class GameClient : ITextConsole
 
     /// <summary>Fired when this client's character goes online (post-login
     /// complete, character placed). Program.cs uses it to populate the
-    /// char-UID → client map that BroadcastNearby walks instead of a
+    /// char-UID â†’ client map that BroadcastNearby walks instead of a
     /// full _clients.Values scan. Cleared on OnDisconnect.</summary>
     public static Action<Character, GameClient>? OnCharacterOnline;
     public static Action<Character>? OnCharacterOffline;
@@ -122,7 +122,7 @@ public sealed partial class GameClient : ITextConsole
     /// to revive its owner.</summary>
     public Action<Character>? OnResurrectOther { get; set; }
 
-    /// <summary>Wired by Program.cs. GM .kill target cursor callback —
+    /// <summary>Wired by Program.cs. GM .kill target cursor callback â€”
     /// args are (killer, victim).</summary>
     public Action<Character, Character>? OnKillTarget { get; set; }
 
@@ -136,26 +136,22 @@ public sealed partial class GameClient : ITextConsole
     private readonly HashSet<uint> _knownChars = [];
     private readonly HashSet<uint> _knownItems = [];
     private readonly HashSet<uint> _knownDoorOverrides = [];
-    private readonly HashSet<uint> _activeGumps = [];
-    private readonly Dictionary<uint, Action<uint, uint[], (ushort, string)[]>> _gumpCallbacks = [];
+    /// <summary>Open gump/dialog bookkeeping (decomposition phase 1).</summary>
+    internal ClientGumpRegistry Gumps => _gumps;
+    private readonly ClientGumpRegistry _gumps = new();
     private readonly Dictionary<uint, (short X, short Y, sbyte Z, byte Dir, ushort Body, ushort Hue, byte Vis)> _lastKnownPos = [];
     private readonly Dictionary<uint, (short X, short Y, sbyte Z, ushort DispId, ushort Hue, ushort Amount, byte Direction)> _lastKnownItemState = [];
-    private readonly Dictionary<uint, uint> _tooltipHashCache = []; // serial → last sent hash
-    private string? _pendingTargetFunction;
-    private string _pendingTargetArgs = "";
-    private bool _pendingTargetAllowGround;
-    private Serial _pendingTargetItemUid = Serial.Invalid;
-    private bool _pendingTeleTarget;
-    private bool _pendingRemoveTarget;
-    private bool _pendingResurrectTarget;
-    private bool _pendingInspectTarget;
+    private readonly Dictionary<uint, uint> _tooltipHashCache = []; // serial â†’ last sent hash
+    /// <summary>Target-cursor state machine (decomposition phase 1).</summary>
+    internal ClientTargetState Targets => _targets;
+    private readonly ClientTargetState _targets = new();
     // Source-X dialog subject (CLIMODE_DIALOG pObj). When set, bare
     // property names inside the active script dialog resolve on this
     // object instead of the GM. Used by d_charprop1 / d_itemprop1 so
     // <BODY> / <STR> etc. reflect the inspected target. Cleared after
     // render; callbacks that act on the target stash its UID locally.
     private Serial _dialogSubjectUid = Serial.Invalid;
-    /// <summary>Generic script-first → native fallback registry. When a
+    /// <summary>Generic script-first â†’ native fallback registry. When a
     /// named dialog (<c>d_xxx</c>) is requested via <c>SDIALOG</c> or a
     /// help/inspect entry point, the host first tries the script
     /// <c>[DIALOG d_xxx]</c> section through <see cref="TryShowScriptDialog"/>;
@@ -164,36 +160,7 @@ public sealed partial class GameClient : ITextConsole
     /// hard-coding their own render path.</summary>
     private readonly Dictionary<string, Action<int>> _nativeDialogFallbacks =
         new(StringComparer.OrdinalIgnoreCase);
-    private string? _pendingAddToken;
-    private string? _pendingShowArgs;
-    private string? _pendingEditArgs;
-    /// <summary>Source-X X-prefix verb fallback (CClient.cpp:921). When
-    /// the GM types e.g. <c>.xhits 100</c> the unknown-verb path opens a
-    /// target cursor and stores <c>(verb="HITS", args="100")</c>; on
-    /// pick, <see cref="SpeechEngine.ExecuteVerbForTarget"/> applies the
-    /// verb to the picked object.</summary>
-    private string? _pendingXVerb;
-    private string _pendingXVerbArgs = "";
-    // Phase C — Source-X parity targeted GM verbs.
-    /// <summary>"NUKE" / "NUKECHAR" / "NUDGE" — armed via
-    /// <see cref="BeginAreaTarget"/>. The picked tile is the area
-    /// centre; <see cref="_pendingAreaRange"/> is the half-extent.</summary>
-    private string? _pendingAreaVerb;
-    private int _pendingAreaRange;
-    private bool _pendingControlTarget;
-    private bool _pendingDupeTarget;
-    private bool _pendingHealTarget;
-    private bool _pendingKillTarget;
-    private bool _pendingBankTarget;
-    private bool _pendingSummonToTarget;
-    private bool _pendingMountTarget;
-    private bool _pendingSummonCageTarget;
-    private Point3D? _lastScriptTargetPoint;
     private uint _lastCombatNotifyTarget;
-    private Action<uint, short, short, sbyte, ushort>? _pendingTargetCallback;
-    private int _pendingSkillTargetCancelId = -1;
-    private Item? _pendingScriptNewItem;
-    private bool _targetCursorActive;
     private string? _pendingDialogCloseFunction;
     private string _pendingDialogArgs = "";
     private int _dialogDepth;
@@ -223,7 +190,7 @@ public sealed partial class GameClient : ITextConsole
     public Account? Account => _account;
     public Character? Character => _character;
     public bool IsPlaying => _character != null && !_character.IsDeleted;
-    public bool HasPendingTarget => _targetCursorActive;
+    public bool HasPendingTarget => Targets.CursorActive;
 
     /// <summary>Called when the network connection is closed. Marks character as offline.</summary>
     public void OnDisconnect()
@@ -233,7 +200,7 @@ public sealed partial class GameClient : ITextConsole
             _logger.LogInformation("[LOGOUT] '{Name}' pos: {X},{Y},{Z} map={Map}",
                 _character.Name, _character.X, _character.Y, _character.Z, _character.Position.Map);
 
-            // Yakındaki oyunculara karakterin çıktığını bildir
+            // YakÄ±ndaki oyunculara karakterin Ã§Ä±ktÄ±ÄŸÄ±nÄ± bildir
             BroadcastNearby?.Invoke(_character.Position, UpdateRange,
                 new PacketDeleteObject(_character.Uid.Value), _character.Uid.Value);
 
@@ -243,25 +210,25 @@ public sealed partial class GameClient : ITextConsole
             _partyManager?.Leave(_character.Uid);
             EngineTags.StripEphemeral(_character);
 
-            _pendingTargetCallback = null;
-            _targetCursorActive = false;
+            Targets.Callback = null;
+            Targets.CursorActive = false;
             _pendingInputDlg.Clear();
             _pendingMenuOptions = null;
             _pendingEditMenuUids = null;
             _pendingEditMenuMemories = null;
-            if (_pendingScriptNewItem != null)
+            if (Targets.ScriptNewItem != null)
             {
-                _world.RemoveItem(_pendingScriptNewItem);
-                _pendingScriptNewItem = null;
+                _world.RemoveItem(Targets.ScriptNewItem);
+                Targets.ScriptNewItem = null;
             }
-            _pendingSkillTargetCancelId = -1;
-            _pendingDupeTarget = false;
-            _pendingHealTarget = false;
-            _pendingKillTarget = false;
-            _pendingBankTarget = false;
-            _pendingSummonToTarget = false;
-            _pendingMountTarget = false;
-            _pendingSummonCageTarget = false;
+            Targets.SkillCancelId = -1;
+            Targets.Dupe = false;
+            Targets.Heal = false;
+            Targets.Kill = false;
+            Targets.Bank = false;
+            Targets.SummonTo = false;
+            Targets.Mount = false;
+            Targets.SummonCage = false;
 
             _character.IsOnline = false;
             _character.CTags.RemoveByPrefix("");
@@ -271,8 +238,8 @@ public sealed partial class GameClient : ITextConsole
             _knownItems.Clear();
             _knownChars.Clear();
             _knownDoorOverrides.Clear();
-            _activeGumps.Clear();
-            _gumpCallbacks.Clear();
+            Gumps.ActiveGumps.Clear();
+            Gumps.Callbacks.Clear();
             _lastKnownPos.Clear();
             _lastKnownItemState.Clear();
             _paperdollThrottle.Clear();
@@ -341,7 +308,7 @@ public sealed partial class GameClient : ITextConsole
 
     /// <summary>Wire built-in <c>d_xxx</c> native gump fallbacks. Each entry
     /// is only used when the script-side <c>[DIALOG d_xxx]</c> section is
-    /// missing — see <see cref="OpenNamedDialog"/>.</summary>
+    /// missing â€” see <see cref="OpenNamedDialog"/>.</summary>
     private void RegisterNativeDialogFallbacks()
     {
         _nativeDialogFallbacks["d_helppage"] = page => ShowHelpPageDialog(page <= 0 ? 1 : page);

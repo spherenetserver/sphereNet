@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -38,42 +38,42 @@ public sealed partial class GameClient
     public void HandleTargetResponse(byte type, uint targetId, uint serial, short x, short y, sbyte z, ushort graphic)
     {
         if (_character == null) return;
-        _targetCursorActive = false;
+        Targets.CursorActive = false;
         if (_character.IsDead) return;
         bool targetCancelled = IsTargetCancelled(serial, x, y, z, graphic);
         if (targetCancelled)
         {
-            // Source-X @Targon_Cancel — the player dismissed the target cursor.
+            // Source-X @Targon_Cancel â€” the player dismissed the target cursor.
             _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Targon_Cancel,
                 new TriggerArgs { CharSrc = _character, ScriptConsole = this });
 
-            var pendingItemUid = _pendingTargetItemUid;
+            var pendingItemUid = Targets.ItemUid;
             // Hard-cancel all pending target flows to avoid any stale state from triggering
             // a resync/teleport path on the next target packet.
-            _pendingTeleTarget = false;
-            _pendingAddToken = null;
-            _pendingRemoveTarget = false;
-            _pendingXVerb = null;
-            _pendingXVerbArgs = "";
-            _pendingAreaVerb = null;
-            _pendingAreaRange = 0;
-            _pendingControlTarget = false;
-            _pendingDupeTarget = false;
-            _pendingHealTarget = false;
-            _pendingKillTarget = false;
-            _pendingBankTarget = false;
-            _pendingSummonToTarget = false;
-            _pendingMountTarget = false;
-            _pendingSummonCageTarget = false;
-            _pendingTargetFunction = null;
-            _pendingTargetArgs = "";
-            _pendingTargetAllowGround = false;
-            _pendingTargetItemUid = Serial.Invalid;
-            _pendingScriptNewItem = null;
-            _lastScriptTargetPoint = null;
-            _pendingTargetCallback = null;
-            int pendingSkillTargetCancelId = _pendingSkillTargetCancelId;
-            _pendingSkillTargetCancelId = -1;
+            Targets.Tele = false;
+            Targets.AddToken = null;
+            Targets.Remove = false;
+            Targets.XVerb = null;
+            Targets.XVerbArgs = "";
+            Targets.AreaVerb = null;
+            Targets.AreaRange = 0;
+            Targets.Control = false;
+            Targets.Dupe = false;
+            Targets.Heal = false;
+            Targets.Kill = false;
+            Targets.Bank = false;
+            Targets.SummonTo = false;
+            Targets.Mount = false;
+            Targets.SummonCage = false;
+            Targets.Function = null;
+            Targets.FunctionArgs = "";
+            Targets.AllowGround = false;
+            Targets.ItemUid = Serial.Invalid;
+            Targets.ScriptNewItem = null;
+            Targets.LastScriptPoint = null;
+            Targets.Callback = null;
+            int pendingSkillTargetCancelId = Targets.SkillCancelId;
+            Targets.SkillCancelId = -1;
 
             if (_character.TryGetTag("CAST_SPELL", out string? cancelledSpellStr))
             {
@@ -103,17 +103,17 @@ public sealed partial class GameClient
         }
 
         // Callback-based target (housing, etc.)
-        if (_pendingTargetCallback != null)
+        if (Targets.Callback != null)
         {
-            var cb = _pendingTargetCallback;
-            _pendingTargetCallback = null;
+            var cb = Targets.Callback;
+            Targets.Callback = null;
             cb(serial, x, y, z, graphic);
             return;
         }
 
-        if (_pendingTeleTarget)
+        if (Targets.Tele)
         {
-            _pendingTeleTarget = false;
+            Targets.Tele = false;
 
             Point3D? destination = null;
             if (serial != 0 && serial != 0xFFFFFFFF)
@@ -132,7 +132,7 @@ public sealed partial class GameClient
             destination ??= new Point3D(x, y, z, _character.MapIndex);
 
             // Snap Z to the nearest walkable surface. Clients pick the Z of
-            // whatever tile the mouse overlaps — frequently a rooftop or a
+            // whatever tile the mouse overlaps â€” frequently a rooftop or a
             // static plane. Landing there strands the player: every subsequent
             // step gets rejected by climb/cliff checks (~150 MoveReject spam
             // on `.mtele 1493,1639,40` observed in logs).
@@ -154,10 +154,10 @@ public sealed partial class GameClient
             return;
         }
 
-        if (!string.IsNullOrWhiteSpace(_pendingAddToken))
+        if (!string.IsNullOrWhiteSpace(Targets.AddToken))
         {
-            string addToken = _pendingAddToken;
-            _pendingAddToken = null;
+            string addToken = Targets.AddToken;
+            Targets.AddToken = null;
 
             Point3D targetPos = new Point3D(x, y, z, _character.MapIndex);
             uint targetSerial = serial;
@@ -173,9 +173,9 @@ public sealed partial class GameClient
             return;
         }
 
-        if (_pendingRemoveTarget)
+        if (Targets.Remove)
         {
-            _pendingRemoveTarget = false;
+            Targets.Remove = false;
 
             if (serial == 0 || serial == 0xFFFFFFFF)
             {
@@ -190,9 +190,9 @@ public sealed partial class GameClient
             return;
         }
 
-        if (_pendingResurrectTarget)
+        if (Targets.Resurrect)
         {
-            _pendingResurrectTarget = false;
+            Targets.Resurrect = false;
 
             if (serial == 0 || serial == 0xFFFFFFFF)
             {
@@ -229,9 +229,9 @@ public sealed partial class GameClient
             return;
         }
 
-        if (_pendingInspectTarget)
+        if (Targets.Inspect)
         {
-            _pendingInspectTarget = false;
+            Targets.Inspect = false;
             if (serial == 0 || serial == 0xFFFFFFFF)
             {
                 SysMessage(ServerMessages.Get("target_must_object"));
@@ -245,10 +245,10 @@ public sealed partial class GameClient
             return;
         }
 
-        if (!string.IsNullOrWhiteSpace(_pendingShowArgs))
+        if (!string.IsNullOrWhiteSpace(Targets.ShowArgs))
         {
-            string showArgs = _pendingShowArgs;
-            _pendingShowArgs = null;
+            string showArgs = Targets.ShowArgs;
+            Targets.ShowArgs = null;
 
             if (_commands == null || serial == 0 || serial == 0xFFFFFFFF)
             {
@@ -260,10 +260,10 @@ public sealed partial class GameClient
             return;
         }
 
-        if (_pendingEditArgs != null)
+        if (Targets.EditArgs != null)
         {
-            string editArgs = _pendingEditArgs;
-            _pendingEditArgs = null;
+            string editArgs = Targets.EditArgs;
+            Targets.EditArgs = null;
 
             if (_commands == null || serial == 0 || serial == 0xFFFFFFFF)
             {
@@ -276,12 +276,12 @@ public sealed partial class GameClient
         }
 
         // ---- Phase C: NUKE / NUKECHAR / NUDGE area handlers ----
-        if (!string.IsNullOrEmpty(_pendingAreaVerb))
+        if (!string.IsNullOrEmpty(Targets.AreaVerb))
         {
-            string areaVerb = _pendingAreaVerb!;
-            int areaRange = _pendingAreaRange;
-            _pendingAreaVerb = null;
-            _pendingAreaRange = 0;
+            string areaVerb = Targets.AreaVerb!;
+            int areaRange = Targets.AreaRange;
+            Targets.AreaVerb = null;
+            Targets.AreaRange = 0;
 
             // Resolve the centre. If the GM clicked on an object use its
             // position so NUDGE/NUKE applied to a chest also covers the
@@ -313,9 +313,9 @@ public sealed partial class GameClient
             return;
         }
 
-        if (_pendingControlTarget)
+        if (Targets.Control)
         {
-            _pendingControlTarget = false;
+            Targets.Control = false;
             var npc = ResolvePickedChar(serial);
             if (npc == null) { SysMessage(ServerMessages.Get("target_must_object")); return; }
             npc.TryAssignOwnership(_character, _character, summoned: false, enforceFollowerCap: false);
@@ -323,9 +323,9 @@ public sealed partial class GameClient
             return;
         }
 
-        if (_pendingDupeTarget)
+        if (Targets.Dupe)
         {
-            _pendingDupeTarget = false;
+            Targets.Dupe = false;
             var pickedItem = serial != 0 && serial != 0xFFFFFFFF
                 ? _world.FindItem(new Serial(serial))
                 : null;
@@ -339,9 +339,9 @@ public sealed partial class GameClient
             return;
         }
 
-        if (_pendingHealTarget)
+        if (Targets.Heal)
         {
-            _pendingHealTarget = false;
+            Targets.Heal = false;
             var victim = ResolvePickedChar(serial);
             if (victim == null) { SysMessage(ServerMessages.Get("target_must_object")); return; }
             if (victim.IsDead) OnResurrectOther?.Invoke(victim);
@@ -352,18 +352,18 @@ public sealed partial class GameClient
             return;
         }
 
-        if (_pendingKillTarget)
+        if (Targets.Kill)
         {
-            _pendingKillTarget = false;
+            Targets.Kill = false;
             var victim = ResolvePickedChar(serial);
             if (victim == null) { SysMessage(ServerMessages.Get("target_must_object")); return; }
             OnKillTarget?.Invoke(_character!, victim);
             return;
         }
 
-        if (_pendingBankTarget)
+        if (Targets.Bank)
         {
-            _pendingBankTarget = false;
+            Targets.Bank = false;
             var picked = ResolvePickedChar(serial);
             if (picked == null) { SysMessage(ServerMessages.Get("target_must_object")); return; }
             // We open the picked char's bank on *our* client. Source-X
@@ -374,9 +374,9 @@ public sealed partial class GameClient
             return;
         }
 
-        if (_pendingSummonToTarget)
+        if (Targets.SummonTo)
         {
-            _pendingSummonToTarget = false;
+            Targets.SummonTo = false;
             var picked = ResolvePickedChar(serial);
             if (picked == null) { SysMessage(ServerMessages.Get("target_must_object")); return; }
             _world.MoveCharacter(picked, _character.Position);
@@ -385,9 +385,9 @@ public sealed partial class GameClient
             return;
         }
 
-        if (_pendingMountTarget)
+        if (Targets.Mount)
         {
-            _pendingMountTarget = false;
+            Targets.Mount = false;
             var npc = ResolvePickedChar(serial);
             if (npc == null) { SysMessage(ServerMessages.Get("target_must_object")); return; }
             if (!TryMountCharacter(npc))
@@ -400,9 +400,9 @@ public sealed partial class GameClient
             return;
         }
 
-        if (_pendingSummonCageTarget)
+        if (Targets.SummonCage)
         {
-            _pendingSummonCageTarget = false;
+            Targets.SummonCage = false;
             var picked = ResolvePickedChar(serial);
             if (picked == null) { SysMessage(ServerMessages.Get("target_must_object")); return; }
             // Source-X CV_SUMMONCAGE: teleport the victim to the GM and
@@ -415,15 +415,15 @@ public sealed partial class GameClient
             return;
         }
 
-        // Source-X CClient.cpp:921 — generic X-prefix verb fallback:
+        // Source-X CClient.cpp:921 â€” generic X-prefix verb fallback:
         // resolve the picked object and apply the inner verb to it via
         // SpeechEngine.ExecuteVerbForTarget. Mirrors C++ addTargetVerb.
-        if (!string.IsNullOrEmpty(_pendingXVerb))
+        if (!string.IsNullOrEmpty(Targets.XVerb))
         {
-            string verb = _pendingXVerb!;
-            string xargs = _pendingXVerbArgs;
-            _pendingXVerb = null;
-            _pendingXVerbArgs = "";
+            string verb = Targets.XVerb!;
+            string xargs = Targets.XVerbArgs;
+            Targets.XVerb = null;
+            Targets.XVerbArgs = "";
 
             if (serial == 0 || serial == 0xFFFFFFFF)
             {
@@ -483,15 +483,15 @@ public sealed partial class GameClient
             return;
         }
 
-        if (!string.IsNullOrEmpty(_pendingTargetFunction) && _triggerDispatcher?.Runner != null)
+        if (!string.IsNullOrEmpty(Targets.Function) && _triggerDispatcher?.Runner != null)
         {
-            string func = _pendingTargetFunction;
-            _pendingTargetFunction = null;
-            bool allowGround = _pendingTargetAllowGround;
-            _pendingTargetAllowGround = false;
-            var pendingItemUid = _pendingTargetItemUid;
-            _pendingTargetItemUid = Serial.Invalid;
-            _lastScriptTargetPoint = new Point3D(x, y, z, _character.MapIndex);
+            string func = Targets.Function;
+            Targets.Function = null;
+            bool allowGround = Targets.AllowGround;
+            Targets.AllowGround = false;
+            var pendingItemUid = Targets.ItemUid;
+            Targets.ItemUid = Serial.Invalid;
+            Targets.LastScriptPoint = new Point3D(x, y, z, _character.MapIndex);
             _character.SetTag("TARGP", $"{x},{y},{z},{_character.MapIndex}");
             _character.SetTag("TARG.X", x.ToString());
             _character.SetTag("TARG.Y", y.ToString());
@@ -510,24 +510,24 @@ public sealed partial class GameClient
 
             if (FirePendingItemTargetTrigger(pendingItemUid, ResolveItemTargetTrigger(serial, argo), new Serial(serial), x, y, z, graphic) == TriggerResult.True)
             {
-                _pendingTargetArgs = "";
+                Targets.FunctionArgs = "";
                 return;
             }
 
-            var trigArgs = new ExecTriggerArgs(_character, 0, 0, _pendingTargetArgs)
+            var trigArgs = new ExecTriggerArgs(_character, 0, 0, Targets.FunctionArgs)
             {
                 Object1 = argo,
                 Object2 = pendingItemUid.IsValid
                     ? ((IScriptObj?)_world.FindItem(pendingItemUid) ?? _character)
                     : _character
             };
-            _pendingTargetArgs = "";
+            Targets.FunctionArgs = "";
 
             // Snapshot position before running the script function so we can
             // detect if it moved the character (e.g. SRC.GO <TARGP>).
-            // We cannot rely on _lastScriptTargetPoint because the script may
+            // We cannot rely on Targets.LastScriptPoint because the script may
             // chain another TARGETF which calls ClearPendingTargetState and
-            // clears _lastScriptTargetPoint before we get back here.
+            // clears Targets.LastScriptPoint before we get back here.
             var posBefore = _character.Position;
             _triggerDispatcher.Runner.RunFunction(func, _character, this, trigArgs);
             if (_character != null && !_character.Position.Equals(posBefore))
@@ -616,7 +616,7 @@ public sealed partial class GameClient
     {
         if (_character == null) return;
 
-        if (!_activeGumps.Remove(gumpId))
+        if (!Gumps.ActiveGumps.Remove(gumpId))
         {
             _logger.LogWarning("Rejected forged/stale gump response from {Char}: serial=0x{S:X}, gumpId=0x{G:X}, button={B}",
                 _character.Name, serial, gumpId, buttonId);
@@ -664,9 +664,9 @@ public sealed partial class GameClient
         }
 
         // Route to registered callback if present
-        if (_gumpCallbacks.TryGetValue(gumpId, out var callback))
+        if (Gumps.Callbacks.TryGetValue(gumpId, out var callback))
         {
-            _gumpCallbacks.Remove(gumpId);
+            Gumps.Callbacks.Remove(gumpId);
             callback(buttonId, switches, textEntries);
             return;
         }
@@ -683,8 +683,8 @@ public sealed partial class GameClient
         if (_character == null) return;
 
         if (callback != null)
-            _gumpCallbacks[gump.GumpId] = callback;
-        _activeGumps.Add(gump.GumpId);
+            Gumps.Callbacks[gump.GumpId] = callback;
+        Gumps.ActiveGumps.Add(gump.GumpId);
 
         string layout = gump.BuildLayoutString();
         int gx = gump.ExplicitX ?? (gump.Width > 0 ? (800 - gump.Width) / 2 : 50);
@@ -696,12 +696,12 @@ public sealed partial class GameClient
     /// <summary>Set a callback-based target cursor. Used by housing, pets, etc.</summary>
     private void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1)
     {
-        if (_targetCursorActive)
+        if (Targets.CursorActive)
             _netState.Send(new PacketTarget(0x00, 0x00000000, flags: 3));
 
         ClearPendingTargetState();
-        _pendingTargetCallback = callback;
-        _targetCursorActive = true;
+        Targets.Callback = callback;
+        Targets.CursorActive = true;
         _netState.Send(new PacketTarget(cursorType, (uint)Random.Shared.Next(1, int.MaxValue)));
     }
 

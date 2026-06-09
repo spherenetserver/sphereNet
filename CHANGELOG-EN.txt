@@ -4,6 +4,39 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-10] - Character decomposition slice 3: memory subsystem component (Wave 83)
+----------------------------------------
+
+INTERNAL - Character decomposition:
+  - The memory-item subsystem (EqMemoryObj list, fight/aggressor memories,
+    timeout ticks, notoriety notifications — Source-X CChar Memory_*) moved
+    into a new CharacterMemoryState component (Character.MemoryState, lazily
+    created). All Memory_* methods and the Memories view delegate, so the
+    public API, the @MemoryEquip hook, pet-flag handling, the cowardice/fame
+    retreat rule and the fight-memory tick cadence are unchanged — the logic
+    moved verbatim. Character.cs is down to 4,500 lines (from ~4,950 before
+    the decomposition pass).
+  - Deliberate completion point for the state-extraction pass: the vitals
+    regen + hunger tick block and the core stat fields stay in Character ON
+    PURPOSE. That code writes the private stat fields directly and manages
+    the dirty-flag discipline by hand (e.g. Resurrect seeds _hits directly);
+    forcing it through the public property setters to move it into a
+    component would subtly change clamp/dirty semantics, which breaks the
+    "logic moves verbatim" guarantee these slices are built on. Any future
+    slice of that block needs a dedicated behavioural test net first.
+
+[2026-06-10] - Character decomposition slice 2: poison state component (Wave 82)
+----------------------------------------
+
+INTERNAL - Character decomposition:
+  - Poison runtime state (level, tick schedule, poisoner attribution) moved
+    into a new CharacterPoisonState component (Character.Poison, lazily
+    created), following the slice-1 delegation pattern: ApplyPoison,
+    CurePoison, ProcessPoisonTick, PoisonLevel and IsPoisoned delegate, so
+    the public API, resist math, damage broadcast and kill attribution are
+    unchanged — the logic moved verbatim. Character.cs is down to ~4,740
+    lines (from ~4,950 before the decomposition started).
+
 [2026-06-10] - Character decomposition slice 1: combat state component (Wave 81)
 ----------------------------------------
 

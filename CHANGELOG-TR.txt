@@ -4,6 +4,38 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-10] - Character ayristirmasi dilim 3: memory alt sistemi bileseni (Wave 83)
+----------------------------------------
+
+INTERNAL - Character ayristirmasi:
+  - Memory-item alt sistemi (EqMemoryObj listesi, fight/aggressor
+    memory'leri, timeout tick'leri, notoriety bildirimleri — Source-X CChar
+    Memory_*) yeni CharacterMemoryState bilesenine tasindi
+    (Character.MemoryState, lazy olusturulur). Tum Memory_* metodlari ve
+    Memories gorunumu delege ediyor; public API, @MemoryEquip hook'u,
+    pet-flag isleme, korkaklik/fame geri cekilme kurali ve fight-memory tick
+    temposu degismedi — mantik oldugu gibi tasindi. Character.cs 4.500 satira
+    indi (ayristirma oncesi ~4.950 idi).
+  - Durum-cikarma turunun bilincli tamamlanma noktasi: vitals regen + hunger
+    tick blogu ve cekirdek stat alanlari KASITLI olarak Character'da kaliyor.
+    O kod ozel stat alanlarina dogrudan yazar ve dirty-flag disiplinini elle
+    yonetir (orn. Resurrect _hits'i dogrudan tohumlar); bilesene tasimak icin
+    public property setter'larindan gecirmek clamp/dirty semantigini sessizce
+    degistirirdi — bu dilimlerin uzerine kuruldugu "mantik birebir tasinir"
+    garantisini bozar. O blogun gelecekteki bir dilimi once kendine ait
+    davranissal test agi gerektirir.
+
+[2026-06-10] - Character ayristirmasi dilim 2: poison durum bileseni (Wave 82)
+----------------------------------------
+
+INTERNAL - Character ayristirmasi:
+  - Poison calisma durumu (seviye, tick takvimi, zehirleyen atifi) dilim-1
+    delegasyon desenini izleyerek yeni CharacterPoisonState bilesenine tasindi
+    (Character.Poison, lazy olusturulur): ApplyPoison, CurePoison,
+    ProcessPoisonTick, PoisonLevel ve IsPoisoned delege ediyor; public API,
+    resist hesabi, hasar yayini ve kill atifi degismedi — mantik oldugu gibi
+    tasindi. Character.cs ~4.740 satira indi (ayristirma oncesi ~4.950 idi).
+
 [2026-06-10] - Character ayristirmasi dilim 1: combat durum bileseni (Wave 81)
 ----------------------------------------
 

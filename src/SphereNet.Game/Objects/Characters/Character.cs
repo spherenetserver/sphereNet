@@ -253,7 +253,6 @@ public partial class Character : ObjBase
     private readonly Item?[] _equipment = new Item?[(int)Layer.Qty];
     private Item? _backpack;
 
-    private readonly List<Item> _memories = [];
 
     // NPC fields
     private NpcBrainType _npcBrain;
@@ -388,10 +387,10 @@ public partial class Character : ObjBase
     private short _damEnergy;
 
     // Poison state
-    private byte _poisonLevel; // 0=none, 1=lesser, 2=normal, 3=greater, 4=deadly, 5=lethal
-    private long _nextPoisonTick;
-    private int _poisonTicksRemaining;
-    private Serial _poisonSource; // who applied the poison (for kill attribution)
+    /// <summary>Poison runtime state (decomposition slice 2) — the members
+    /// below delegate so the public API stays unchanged.</summary>
+    public CharacterPoisonState Poison => _poison ??= new CharacterPoisonState(this);
+    private CharacterPoisonState? _poison;
     private long _nextFieldTick;  // next time standing-in-field damage is applied
 
     /// <summary>Fired when an attacker flagged ATTACKER.n.IGNORE=1 lands a
@@ -961,8 +960,8 @@ public partial class Character : ObjBase
     public short DamEnergy { get => _damEnergy; set => _damEnergy = value; }
 
     // Poison
-    public byte PoisonLevel { get => _poisonLevel; set => _poisonLevel = value; }
-    public bool IsPoisoned => _poisonLevel > 0;
+    public byte PoisonLevel { get => Poison.Level; set => Poison.Level = value; }
+    public bool IsPoisoned => Poison.IsPoisoned;
     public short Kills { get => CombatState.Kills; set => CombatState.Kills = value; }
     public bool IsCriminal => CombatState.IsCriminal;
     public bool IsMurderer => CombatState.IsMurderer;
@@ -1023,21 +1022,7 @@ public partial class Character : ObjBase
     /// <summary>Apply poison to this character. Level: 1=lesser, 2=normal, 3=greater, 4=deadly, 5=lethal.</summary>
     public void ApplyPoison(byte level) => ApplyPoison(level, Serial.Invalid);
 
-    public void ApplyPoison(byte level, Serial source)
-    {
-        if (level == 0 || level > 5) return;
-        if (IsDead) return;
-        if (level <= _poisonLevel && _poisonTicksRemaining > 0)
-            return;
-        _poisonLevel = _poisonTicksRemaining > 0 ? Math.Max(_poisonLevel, level) : level;
-        _poisonTicksRemaining = _poisonLevel switch
-        {
-            1 => 5, 2 => 8, 3 => 12, 4 => 16, _ => 20
-        };
-        _nextPoisonTick = Environment.TickCount64 + GetPoisonTickInterval();
-        if (source.IsValid) _poisonSource = source;
-        SetStatFlag(StatFlag.Poisoned);
-    }
+    public void ApplyPoison(byte level, Serial source) => Poison.Apply(level, source);
 
     /// <summary>Apply damage from any fire/poison field on the character's
     /// current tile. Sector-indexed lookup, so this is cheap per tick.</summary>
@@ -1081,14 +1066,7 @@ public partial class Character : ObjBase
     }
 
     /// <summary>Cure poison.</summary>
-    public void CurePoison()
-    {
-        _poisonLevel = 0;
-        _poisonTicksRemaining = 0;
-        _nextPoisonTick = 0;
-        _poisonSource = Serial.Invalid;
-        ClearStatFlag(StatFlag.Poisoned);
-    }
+    public void CurePoison() => Poison.Cure();
 
     /// <summary>Set criminal timer (duration in ms).</summary>
     public void SetCriminal(long durationMs = 120_000) => CombatState.SetCriminal(durationMs);
@@ -1105,64 +1083,8 @@ public partial class Character : ObjBase
         return DateTime.UtcNow.Ticks >= releaseUtcTicks;
     }
 
-    private int GetPoisonTickInterval() => _poisonLevel switch
-    {
-        1 => 4000, 2 => 3000, 3 => 2500, 4 => 2000, _ => 1500
-    };
-
-    private int GetPoisonDamage() => _poisonLevel switch
-    {
-        1 => Random.Shared.Next(2, 5),
-        2 => Random.Shared.Next(3, 8),
-        3 => Random.Shared.Next(5, 12),
-        4 => Random.Shared.Next(8, 20),
-        _ => Random.Shared.Next(12, 30)
-    };
-
     /// <summary>Process poison tick. Returns damage dealt, 0 if no tick.</summary>
-    public int ProcessPoisonTick(long now)
-    {
-        if (_poisonLevel == 0 || _poisonTicksRemaining <= 0) return 0;
-        if (IsDead) { CurePoison(); return 0; }
-        if (now < _nextPoisonTick) return 0;
-
-        _nextPoisonTick = now + GetPoisonTickInterval();
-        _poisonTicksRemaining--;
-
-        int damage = GetPoisonDamage();
-        // Apply poison resist
-        int resistPct = Math.Clamp(_resPoison, (short)0, (short)80);
-        damage = damage * (100 - resistPct) / 100;
-        damage = Math.Max(1, damage);
-
-        Hits = (short)Math.Max(0, Hits - damage);
-
-        // Credit the damage to the poisoner so murder count / karma-fame / loot
-        // rights resolve correctly on a poison kill (otherwise it is anonymous).
-        var poisoner = _poisonSource.IsValid ? ResolveCharByUid?.Invoke(_poisonSource) : null;
-        if (_poisonSource.IsValid)
-            RecordAttack(_poisonSource, damage);
-
-        // Show the poison damage to nearby clients and refresh the health bar â€”
-        // without this the victim's HP silently drains with no visual feedback.
-        BroadcastNearby?.Invoke(Position, 18,
-            new SphereNet.Network.Packets.Outgoing.PacketDamage(
-                Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue)), 0);
-        BroadcastNearby?.Invoke(Position, 18,
-            new SphereNet.Network.Packets.Outgoing.PacketUpdateHealth(
-                Uid.Value, MaxHits, Hits), 0);
-
-        if (Hits <= 0 && !IsDead)
-        {
-            if (OnLifecycleKill != null) OnLifecycleKill(this, poisoner);
-            else Kill();
-        }
-
-        if (_poisonTicksRemaining <= 0)
-            CurePoison();
-
-        return damage;
-    }
+    public int ProcessPoisonTick(long now) => Poison.ProcessTick(now);
 
     // Hunger
     public ushort Food { get => _food; set => _food = Math.Min(value, (ushort)60); }
@@ -1451,297 +1373,38 @@ public partial class Character : ObjBase
         return Tags.Remove($"FRIEND_{friend.Uid.Value}");
     }
 
-    public IReadOnlyList<Item> Memories => _memories;
+    /// <summary>Memory-item subsystem (decomposition slice 3) — the
+    /// Memory_* members below delegate so the public API stays unchanged.</summary>
+    public CharacterMemoryState MemoryState => _memoryState ??= new CharacterMemoryState(this);
+    private CharacterMemoryState? _memoryState;
 
-    public Item? Memory_FindObj(Serial uid)
-    {
-        for (int i = 0; i < _memories.Count; i++)
-        {
-            var m = _memories[i];
-            if (m.ItemType == ItemType.EqMemoryObj && m.Link == uid)
-                return m;
-        }
-        return null;
-    }
+    public IReadOnlyList<Item> Memories => MemoryState.Items;
 
-    public Item? Memory_FindTypes(MemoryType flags)
-    {
-        if (flags == MemoryType.None) return null;
-        for (int i = 0; i < _memories.Count; i++)
-        {
-            if (_memories[i].IsMemoryTypes(flags))
-                return _memories[i];
-        }
-        return null;
-    }
+    public Item? Memory_FindObj(Serial uid) => MemoryState.FindObj(uid);
 
-    public Item? Memory_FindObjTypes(Serial uid, MemoryType flags)
-    {
-        var mem = Memory_FindObj(uid);
-        if (mem == null) return null;
-        return mem.IsMemoryTypes(flags) ? mem : null;
-    }
+    public Item? Memory_FindTypes(MemoryType flags) => MemoryState.FindTypes(flags);
 
-    public Item Memory_CreateObj(Serial uid, MemoryType flags)
-    {
-        var mem = new Item
-        {
-            ItemType = ItemType.EqMemoryObj,
-            BaseId = 0x2007,
-            Name = "Memory",
-        };
-        mem.Link = uid;
-        mem.SetAttr(ObjAttributes.Newbie);
-        mem.IsEquipped = true;
-        mem.EquipLayer = Layer.Special;
-        mem.ContainedIn = Uid;
+    public Item? Memory_FindObjTypes(Serial uid, MemoryType flags) => MemoryState.FindObjTypes(uid, flags);
 
-        mem.SetMemoryTypes(flags);
-        Memory_AddTypes(mem, flags);
+    public Item Memory_CreateObj(Serial uid, MemoryType flags) => MemoryState.CreateObj(uid, flags);
 
-        _memories.Add(mem);
-        // @MemoryEquip (Source-X) â€” a memory item was equipped on this character.
-        OnMemoryEquip?.Invoke(mem);
-        return mem;
-    }
+    public Item Memory_AddObjTypes(Serial uid, MemoryType flags) => MemoryState.AddObjTypes(uid, flags);
 
-    public Item Memory_AddObjTypes(Serial uid, MemoryType flags)
-    {
-        var mem = Memory_FindObj(uid);
-        if (mem == null)
-            return Memory_CreateObj(uid, flags);
-        Memory_AddTypes(mem, flags);
-        NotoSaveDelete(uid);
-        return mem;
-    }
+    public void Memory_AddTypes(Item mem, MemoryType flags) => MemoryState.AddTypes(mem, flags);
 
-    public void Memory_AddTypes(Item mem, MemoryType flags)
-    {
-        mem.SetMemoryTypes(mem.GetMemoryTypes() | flags);
-        mem.MoreP = Position;
-        mem.More1 = (uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        Memory_UpdateFlags(mem);
-    }
+    public bool Memory_UpdateClearTypes(Item mem, MemoryType flags) => MemoryState.UpdateClearTypes(mem, flags);
 
-    private static void Memory_SetTimeout(Item mem, long delayMs)
-    {
-        if (delayMs < 0)
-            mem.SetTimeout(-1);
-        else if (delayMs == 0)
-            mem.SetTimeout(0);
-        else
-            mem.SetTimeout(Environment.TickCount64 + delayMs);
-    }
+    public bool Memory_ClearTypes(Item mem, MemoryType flags) => MemoryState.ClearTypes(mem, flags);
 
-    private void Memory_NotifyNotoriety(Item mem)
-    {
-        NotoSaveUpdate?.Invoke(this);
-        if (!mem.Link.IsValid) return;
-        var link = ResolveWorld?.Invoke()?.FindChar(mem.Link);
-        if (link != null)
-            NotoSaveUpdate?.Invoke(link);
-    }
+    public void Memory_ClearAllTypes(MemoryType flags) => MemoryState.ClearAllTypes(flags);
 
-    private void NotoSaveDelete(Serial uid)
-    {
-        if (!uid.IsValid) return;
-        var link = ResolveWorld?.Invoke()?.FindChar(uid);
-        if (link != null)
-            NotoSaveUpdate?.Invoke(link);
-    }
+    public void Memory_Delete(Item mem) => MemoryState.Delete(mem);
 
-    public bool Memory_UpdateClearTypes(Item mem, MemoryType flags)
-    {
-        var prev = mem.GetMemoryTypes();
-        var remaining = prev & ~flags;
-        mem.SetMemoryTypes(remaining);
+    public bool Memory_UpdateFlags(Item mem) => MemoryState.UpdateFlags(mem);
 
-        if ((flags & MemoryType.IPet) != 0 && (prev & MemoryType.IPet) != 0)
-        {
-            if (Memory_FindTypes(MemoryType.IPet) == null)
-                ClearStatFlag(StatFlag.Pet);
-        }
+    public bool Memory_OnTick(Item mem) => MemoryState.OnMemoryTick(mem);
 
-        if (remaining == MemoryType.None)
-            return false;
-
-        return Memory_UpdateFlags(mem);
-    }
-
-    public bool Memory_ClearTypes(Item mem, MemoryType flags)
-    {
-        if (Memory_UpdateClearTypes(mem, flags))
-            return true;
-        Memory_Delete(mem);
-        return false;
-    }
-
-    public void Memory_ClearAllTypes(MemoryType flags)
-    {
-        for (int i = _memories.Count - 1; i >= 0; i--)
-        {
-            var m = _memories[i];
-            if (!m.IsMemoryTypes(flags)) continue;
-            Memory_ClearTypes(m, flags);
-        }
-    }
-
-    public void Memory_Delete(Item mem)
-    {
-        _memories.Remove(mem);
-    }
-
-    public bool Memory_UpdateFlags(Item mem)
-    {
-        var flags = mem.GetMemoryTypes();
-        if (flags == MemoryType.None) return false;
-
-        long timeout;
-        if ((flags & MemoryType.IPet) != 0)
-            SetStatFlag(StatFlag.Pet);
-
-        if ((flags & MemoryType.Fight) != 0)
-            timeout = 30_000;
-        else if ((flags & (MemoryType.IPet | MemoryType.Guard | MemoryType.Guild | MemoryType.Town)) != 0)
-            timeout = -1;
-        else if (!IsPlayer)
-            timeout = 5 * 60_000;
-        else
-            timeout = 20 * 60_000;
-
-        Memory_SetTimeout(mem, timeout);
-        Memory_NotifyNotoriety(mem);
-        return true;
-    }
-
-    public bool Memory_OnTick(Item mem)
-    {
-        if (mem.Link == Serial.Invalid)
-            return false;
-
-        if (mem.IsMemoryTypes(MemoryType.Fight))
-            return Memory_Fight_OnTick(mem);
-
-        if (mem.IsMemoryTypes(MemoryType.IPet | MemoryType.Guard | MemoryType.Guild | MemoryType.Town))
-            return true;
-
-        return false;
-    }
-
-    public void Memory_Fight_Start(Character target)
-    {
-        if (target == null || !target.Uid.IsValid)
-            return;
-
-        if (FightTarget.IsValid && FightTarget == target.Uid)
-            return;
-
-        var mem = Memory_FindObj(target.Uid);
-        MemoryType aggFlags;
-
-        if (mem == null)
-        {
-            var targMem = target.Memory_FindObj(Uid);
-            if (targMem != null)
-            {
-                if (targMem.IsMemoryTypes(MemoryType.IAggressor))
-                    aggFlags = MemoryType.HarmedBy;
-                else if (targMem.IsMemoryTypes(MemoryType.HarmedBy | MemoryType.SawCrime | MemoryType.Aggreived))
-                    aggFlags = MemoryType.IAggressor;
-                else
-                    aggFlags = MemoryType.None;
-            }
-            else
-            {
-                aggFlags = MemoryType.IAggressor;
-            }
-            Memory_CreateObj(target.Uid, MemoryType.Fight | aggFlags);
-            return;
-        }
-
-        if (Attacker_GetIndex(target.Uid) >= 0)
-            return;
-
-        if (mem.IsMemoryTypes(MemoryType.HarmedBy | MemoryType.SawCrime | MemoryType.Aggreived))
-            aggFlags = MemoryType.None;
-        else
-            aggFlags = MemoryType.IAggressor;
-
-        Memory_AddTypes(mem, MemoryType.Fight | aggFlags);
-    }
-
-    private void Memory_Fight_Retreat(Character target, Item fightMem)
-    {
-        if (target == null || target.IsStatFlag(StatFlag.Dead))
-            return;
-
-        int myDistFromBattle = Position.GetDistanceTo(fightMem.MoreP);
-        int hisDistFromBattle = target.Position.GetDistanceTo(fightMem.MoreP);
-        bool cowardice = myDistFromBattle > hisDistFromBattle;
-        Attacker_Delete(target.Uid);
-
-        if (cowardice && !fightMem.IsMemoryTypes(MemoryType.IAggressor))
-            return;
-
-        if (IsPlayer)
-        {
-            string msg = cowardice
-                ? ServerMessages.GetFormatted(Msg.MsgCoward1, target.Name)
-                : ServerMessages.GetFormatted(Msg.MsgCoward2, target.Name);
-            SendOwnerMessage?.Invoke(this, msg);
-        }
-
-        if (cowardice && IsPlayer)
-            Fame = (short)Math.Max(0, Fame - 1);
-    }
-
-    private bool Memory_Fight_OnTick(Item mem)
-    {
-        var world = ResolveWorld?.Invoke();
-        if (world == null) return false;
-
-        var target = world.FindChar(mem.Link);
-        if (target == null || target.IsDeleted || target.IsStatFlag(StatFlag.Dead))
-        {
-            Memory_ClearTypes(mem, MemoryType.Fight | MemoryType.IAggressor | MemoryType.Aggreived);
-            return true;
-        }
-
-        int radar = MapViewRadarTiles > 0 ? MapViewRadarTiles : 18;
-        long elapsedSec = Attacker_GetElapsedSeconds(target.Uid);
-        bool attackerTimedOut = AttackerTimeoutSeconds > 0 && elapsedSec >= 0 &&
-            elapsedSec > AttackerTimeoutSeconds;
-
-        if (Position.GetDistanceTo(target.Position) > radar || attackerTimedOut)
-        {
-            Memory_Fight_Retreat(target, mem);
-            Memory_ClearTypes(mem, MemoryType.Fight | MemoryType.IAggressor | MemoryType.Aggreived);
-            return true;
-        }
-
-        long fightElapsedMs = Memory_GetElapsedMs(mem);
-        if (fightElapsedMs > 60 * 60 * 1000L)
-        {
-            Memory_ClearTypes(mem, MemoryType.Fight | MemoryType.IAggressor | MemoryType.Aggreived);
-            return true;
-        }
-
-        if (target.Hits >= target.MaxHits && fightElapsedMs > 2 * 60 * 1000L)
-        {
-            Memory_ClearTypes(mem, MemoryType.Fight | MemoryType.IAggressor | MemoryType.Aggreived);
-            return true;
-        }
-
-        Memory_SetTimeout(mem, 2000);
-        return true;
-    }
-
-    private static long Memory_GetElapsedMs(Item mem)
-    {
-        if (mem.More1 == 0) return 0;
-        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        return Math.Max(0L, (now - mem.More1) * 1000L);
-    }
+    public void Memory_Fight_Start(Character target) => MemoryState.Fight_Start(target);
 
     public IReadOnlyList<IScriptObj> GetMemoryEntriesByType(string rawType, World.GameWorld? world = null)
     {
@@ -1770,9 +1433,9 @@ public partial class Character : ObjBase
         if (filter.HasValue)
         {
             var resolveWorld = world ?? ResolveWorld?.Invoke();
-            for (int i = 0; i < _memories.Count; i++)
+            for (int i = 0; i < MemoryState.Items.Count; i++)
             {
-                var memory = _memories[i];
+                var memory = MemoryState.Items[i];
                 if (!memory.IsMemoryTypes(filter.Value))
                     continue;
 
@@ -2125,7 +1788,7 @@ public partial class Character : ObjBase
     {
         _isDeleted = true;
         CombatState.ClearAttackers();
-        _memories.Clear();
+        MemoryState.Clear();
         FightTarget = Serial.Invalid;
     }
 
@@ -2409,7 +2072,7 @@ public partial class Character : ObjBase
             case "KILLS": value = Kills.ToString(); return true;
             case "CRIMINAL": value = IsCriminal ? "1" : "0"; return true;
             case "MURDERER": value = IsMurderer ? "1" : "0"; return true;
-            case "POISONLEVEL": value = _poisonLevel.ToString(); return true;
+            case "POISONLEVEL": value = Poison.Level.ToString(); return true;
             case "TARGP":
                 if (TryGetTag("TARGP", out string? targPoint))
                 {
@@ -4708,7 +4371,7 @@ public partial class Character : ObjBase
 
         // HP regen: Source/Sphere REGEN0 interval, affected by hunger. Suspended while poisoned
         // so the poison can actually whittle the victim down.
-        if (now >= _nextHitRegen && _hits < _maxHits && _poisonLevel == 0)
+        if (now >= _nextHitRegen && _hits < _maxHits && Poison.Level == 0)
         {
             int regenAmount = _food > 0 ? 1 : 0;
             if (regenAmount > 0)
@@ -4782,17 +4445,7 @@ public partial class Character : ObjBase
             OnJailReleaseRequested?.Invoke(this);
 
         // Memory item ticks
-        for (int i = _memories.Count - 1; i >= 0; i--)
-        {
-            var mem = _memories[i];
-            long mt = mem.Timeout;
-            if (mt > 0 && now >= mt)
-            {
-                mem.SetTimeout(0);
-                if (!Memory_OnTick(mem))
-                    _memories.RemoveAt(i);
-            }
-        }
+        MemoryState.Tick(now);
 
         return true;
     }

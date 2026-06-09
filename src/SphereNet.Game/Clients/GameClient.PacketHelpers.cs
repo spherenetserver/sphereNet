@@ -629,7 +629,7 @@ public sealed partial class GameClient
     /// treats the item as gone â€” classic "drop onto mobile = item vanishes"
     /// bug. If the backpack is somehow missing we recreate one so the item
     /// doesn't simply get lost.</summary>
-    private void PlaceItemInPack(Character target, Item item)
+    internal void PlaceItemInPack(Character target, Item item)
     {
         var pack = target.Backpack;
         if (pack == null && target.IsPlayer)

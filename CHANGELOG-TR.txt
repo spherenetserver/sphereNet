@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-10] - GameClient ayristirmasi faz 3b: inventory handler sinifi (Wave 86)
+----------------------------------------
+
+INTERNAL - GameClient ayristirmasi:
+  - Inventory partial'i (~820 satir: single click + @Click/@ToolTip
+    dispatch'i, drag defteri ve trade-penceresi yonlendirmesiyle item
+    pickup/drop/equip, profil ve status istekleri) ClientInventoryHandler'a
+    tasindi. Metod govdeleri bayt-bayt ayni; handler ihtiyac duydugu
+    GameClient yuzeyini private context shim'leriyle aynalar
+    (character/world/netstate, trigger dispatcher, housing/trade/spell
+    motorlari, Send*/SysMessage/notoriety/pack-yerlestirme yardimcilari) —
+    bu shim blogu handler'in bagimlilik listesinin ta kendisidir; gelecekteki
+    ClientContext arayuzu bu listeden turetilir. Ihtiyac duyulan
+    capraz-partial yardimcilar (GetNotoriety, SendPickupFailed,
+    PlaceItemInPack, SendTradeUpdateToBoth, CanSendStatusFor) private'tan
+    internal'a yukseltildi; eski partial yalnizca delegasyon uyeleri tutuyor
+    (ItemUse'un hala kullandigi internal GetTopContainer koprusu dahil).
+
 [2026-06-10] - GameClient ayristirmasi faz 3a: view-update handler sinifi (Wave 85)
 ----------------------------------------
 

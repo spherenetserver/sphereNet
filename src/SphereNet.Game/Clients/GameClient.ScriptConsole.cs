@@ -65,7 +65,7 @@ public sealed partial class GameClient
         return nearest;
     }
 
-    private bool CanSendStatusFor(Character ch)
+    internal bool CanSendStatusFor(Character ch)
     {
         if (_character == null)
             return false;
@@ -115,7 +115,7 @@ public sealed partial class GameClient
         _netState.Send(new PacketSkillList(skills.ToArray()));
     }
 
-    private void SendPickupFailed(byte reason)
+    internal void SendPickupFailed(byte reason)
     {
         var buf = new PacketBuffer(2);
         buf.WriteByte(0x27);
@@ -538,7 +538,7 @@ public sealed partial class GameClient
         return 1;
     }
 
-    private byte GetNotoriety(Character ch) => ComputeNotoriety(_world, _character, ch);
+    internal byte GetNotoriety(Character ch) => ComputeNotoriety(_world, _character, ch);
 
     /// <summary>Notoriety for non-player mobiles. Source-X Noto_CalcFlag
     /// for NPCs mixes brain type and karma:

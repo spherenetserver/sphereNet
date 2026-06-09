@@ -18,7 +18,8 @@ GameClient (orkestratör: NetState + Character + yaşam döngüsü)
  ├─ ClientMovementThrottle walk-token / hareket kuyruğu (faz 1 ✅)
  ├─ ClientViewCache        known-set'ler + last-known durumlar (faz 2 ✅)
  └─ handler sınıfları      (faz 3 — sürüyor)
-     └─ ClientViewUpdater  view-delta build/apply + known-char bildirimleri ✅
+     ├─ ClientViewUpdater       view-delta build/apply + known-char bildirimleri ✅
+     └─ ClientInventoryHandler  single click, pickup/drop/equip, profil/status ✅
 ```
 
 ## Fazlar
@@ -39,8 +40,17 @@ alan bir sınıfa dönüşür (ileride dar bir `ClientContext` arayüzüne
 indirgenebilir). Partial'lar arası private erişim bu noktada derleyici
 tarafından zorlanan gerçek sınırlara dönüşür: handler yalnızca GameClient'ın
 internal/public yüzeyini görebilir. Sıra (en az iç bağımlılıdan en çoğa):
-ViewUpdate ✅ → Inventory → ItemUse → WorldFeatures → Dialogs/Targeting →
+ViewUpdate ✅ → Inventory ✅ → ItemUse → WorldFeatures → Dialogs/Targeting →
 Combat → ScriptConsole.
+
+**Inventory dönüşüm notu — "context shim" deseni:** Gövdeyi bayt-bayt korumak
+için handler, GameClient yüzeyini private shim üyelerle aynalar
+(`private Character? _character => _client.Character;`,
+`private void SysMessage(...) => _client.SysMessage(...);` vb.). Shim bloğu,
+handler'ın gerçek bağımlılık listesinin kendisidir — ileride `ClientContext`
+arayüzü tam bu listeden türetilir. `ScriptConsole = this` geçişleri
+`_client`'a çevrilir (konsol kimliği GameClient'tır). Derleyici eksik
+bağımlılıkları sıralar; her biri ya shim ya internal yükseltmeyle kapanır.
 
 **ViewUpdate dönüşüm notları (sonrakiler için şablon):**
 - `ClientViewUpdater(GameClient)`; eski partial yalnızca delegasyon tutar —

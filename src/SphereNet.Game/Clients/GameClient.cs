@@ -181,11 +181,15 @@ public sealed partial class GameClient : ITextConsole
     private short _lastHits, _lastMana, _lastStam;
     private long _lastVitalsPacketTick;
     private const int VitalsPacketIntervalMs = 250;
-    private const int UpdateRange = 18;
+    internal const int UpdateRange = 18;
 
     public NetState NetState => _netState;
     /// <summary>World access for extracted handler classes (decomposition phase 3).</summary>
     internal GameWorld World => _world;
+    internal TriggerDispatcher? Triggers => _triggerDispatcher;
+    internal HousingEngine? Housing => _housingEngine;
+    internal TradeManager? TradeM => _tradeManager;
+    internal SpellEngine? Spells => _spellEngine;
     public Account? Account => _account;
     public Character? Character => _character;
     public bool IsPlaying => _character != null && !_character.IsDeleted;

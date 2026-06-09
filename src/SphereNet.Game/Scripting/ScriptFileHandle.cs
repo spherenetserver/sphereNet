@@ -7,6 +7,11 @@ namespace SphereNet.Game.Scripting;
 /// </summary>
 public sealed class ScriptFileHandle : IDisposable
 {
+    /// <summary>Optional diagnostic sink (wired by the host). Reports why a
+    /// script FILE.OPEN failed instead of dropping the reason — the script
+    /// itself still just sees a false return, Sphere-style.</summary>
+    public static Action<string>? Diagnostic;
+
     private readonly string _basePath;
     private FileStream? _stream;
     private StreamReader? _reader;
@@ -100,8 +105,14 @@ public sealed class ScriptFileHandle : IDisposable
 
             return true;
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+            or System.Security.SecurityException or ArgumentException or NotSupportedException)
         {
+            // Expected file-system failures (missing file, access denied, bad
+            // path) keep the Sphere contract of returning false; the reason is
+            // surfaced through the diagnostic sink so it isn't lost. Anything
+            // else (OOM, engine bugs) propagates.
+            Diagnostic?.Invoke($"FILE.OPEN '{path}' failed: {ex.GetType().Name}: {ex.Message}");
             Close();
             return false;
         }

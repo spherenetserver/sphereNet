@@ -651,6 +651,11 @@ public sealed partial class GameClient
             gump.AddText(70, btnY, 0, "Leave Guild");
             btnY += 25;
         }
+        if (!string.IsNullOrEmpty(guild.WebUrl))
+        {
+            gump.AddButton(30, btnY, 4005, 4007, 4); // Visit web page (0xA5)
+            gump.AddText(70, btnY, 0, "Visit Web Page");
+        }
         gump.AddButton(350, 480, 4017, 4019, 0); // Close
 
         var capturedGuild = guild;
@@ -689,6 +694,10 @@ public sealed partial class GameClient
                 SysMessage(ServerMessages.Get("guild_disbanded"));
                 break;
             }
+            case 4: // Visit web page — 0xA5 opens the client's browser
+                if (!string.IsNullOrEmpty(guild.WebUrl))
+                    Send(new PacketWebLink(guild.WebUrl));
+                break;
             case 3: // Leave — must actually belong to this guild (button can be
                     // spoofed by a crafted client packet, so don't trust the gump).
             {
@@ -836,6 +845,9 @@ public sealed partial class GameClient
             gump.AddButton(30, btnY, 4005, 4007, 17);
             gump.AddText(70, btnY, 0, "Release Secure");
             btnY += 25;
+            gump.AddButton(30, btnY, 4005, 4007, 4);
+            gump.AddText(70, btnY, 0, "Customize House");
+            btnY += 25;
         }
         if (priv == HousePriv.Owner)
         {
@@ -900,6 +912,9 @@ public sealed partial class GameClient
                 break;
             case 3: // Open door
                 SysMessage(ServerMessages.Get("house_door_opened"));
+                break;
+            case 4: // Customize House — enter the client design editor
+                BeginHouseCustomization(house.MultiItem);
                 break;
             case 10: // Add Co-Owner
                 SysMessage(ServerMessages.Get("house_add_coowner"));
@@ -1285,9 +1300,14 @@ public sealed partial class GameClient
             [0x0015] = static (client, data) => client.HandleExtendedContextMenuResponse(data),
             [0x001A] = static (client, data) => client.HandleExtendedStatLock(data),
             [0x001C] = static (client, data) => client.HandleExtendedViewportSize(data),
-            [0x0024] = static (_, _) => { },
+            [0x001E] = static (client, data) => client.HandleQueryDesignDetails(data),
+            [0x0024] = static (client, _) => client.FireExtendedButtonTrigger(CharTrigger.UserKRToolbar, 0x0024),
             [0x0028] = static (client, _) => client.FireExtendedButtonTrigger(CharTrigger.UserGuildButton, 0x0028),
-            [0x002C] = static (client, data) => client.HandleExtendedVirtueInvoke(data),
+            [0x002C] = static (client, data) =>
+            {
+                client.FireExtendedButtonTrigger(CharTrigger.UserVirtue, 0x002C);
+                client.HandleExtendedVirtueInvoke(data);
+            },
             [0x0032] = static (client, _) => client.FireExtendedButtonTrigger(CharTrigger.UserQuestButton, 0x0032),
         };
 

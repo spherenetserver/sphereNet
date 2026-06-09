@@ -372,6 +372,25 @@ public sealed class PacketSpeechUnicodeOut : PacketWriter
     }
 }
 
+/// <summary>0xA5 — open web browser at the given URL on the client.</summary>
+public sealed class PacketWebLink : PacketWriter
+{
+    private readonly string _url;
+
+    public PacketWebLink(string url) : base(0xA5)
+    {
+        _url = url ?? "";
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(4 + _url.Length);
+        buf.WriteAsciiNull(_url);
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
 /// <summary>0xAA - Attack target confirmation. Serial 0 means attack refused.</summary>
 public sealed class PacketAttackResponse : PacketWriter
 {

@@ -784,7 +784,8 @@ public sealed class NetworkManager : IDisposable
         Action<NetState, uint, byte, byte, ushort, ushort>? mapPinEdit = null,
         // Phase 3
         Action<NetState, uint, ushort, byte, string>? gumpTextEntry = null,
-        Action<NetState, uint>? allNamesRequest = null)
+        Action<NetState, uint>? allNamesRequest = null,
+        Action<NetState, ushort, uint, PacketBuffer>? encodedCommand = null)
     {
         foreach (var state in _states)
         {
@@ -810,6 +811,7 @@ public sealed class NetworkManager : IDisposable
             state.AOSTooltipHandler = aosTooltip;
             state.TextCommandHandler = textCommand;
             state.ExtendedCommandHandler = extendedCommand;
+            state.EncodedCommandHandler = encodedCommand;
             state.ResyncRequestHandler = resyncRequest;
             state.LogoutRequestHandler = logoutRequest;
             state.HelpRequestHandler = helpRequest;

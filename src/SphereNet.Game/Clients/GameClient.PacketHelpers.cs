@@ -661,6 +661,11 @@ public sealed partial class GameClient
             SendCharacterStatus(_character);
     }
 
+    /// <summary>Script OPEN verb bridge (Item.OnScriptOpen) — opens the
+    /// container on this client with the same packet flow as a dclick open,
+    /// but with script authority (no snoop/trap gate).</summary>
+    public void OpenContainerFromScript(Item container) => SendOpenContainer(container);
+
     private void SendOpenContainer(Item container)
     {
         // Source-X CClient::addContainerSetup parity: before opening

@@ -16,6 +16,8 @@ public static class ExtendedCommandRegistry
         0x0015, // context menu response
         0x001A, // stat lock change
         0x001C, // client view size
+        0x001E, // query custom house design details
+
         0x0024, // known ignored
         0x0028, // guild button
         0x002C, // virtue invoke

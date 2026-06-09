@@ -74,8 +74,9 @@ public sealed class ServerProcess : IDisposable
                 await _ipc.ConnectAsync(pipeName);
                 return;
             }
-            catch
+            catch (Exception ex) when (ex is IOException or TimeoutException or UnauthorizedAccessException)
             {
+                // Pipe not up yet (server still booting) — retry.
                 await Task.Delay(500);
             }
         }

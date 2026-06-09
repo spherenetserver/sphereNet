@@ -271,6 +271,108 @@ public class GameSystemTests
         Assert.False(g1.IsAtWarWith(g2.StoneUid));
     }
 
+    [Fact]
+    public void GuildChat_RoutesToMembersOnly_IncludingSpeakerEcho()
+    {
+        var world = CreateWorld();
+        var speaker = world.CreateCharacter(); speaker.Name = "Speaker";
+        var member = world.CreateCharacter(); member.Name = "Member";
+        var outsider = world.CreateCharacter(); outsider.Name = "Outsider";
+
+        var gm = new GuildManager();
+        var guild = gm.CreateGuild(new Serial(100), "TG", speaker.Uid);
+        guild.AddRecruit(member.Uid);
+        guild.AcceptMember(member.Uid);
+
+        var speech = new SpeechEngine(world) { GuildManager = gm };
+        var delivered = new List<(Serial Recipient, TalkMode Mode)>();
+        speech.OnChannelMessage += (_, recipient, _, mode) => delivered.Add((recipient.Uid, mode));
+
+        bool handled = speech.ProcessSpeech(speaker, "hail", TalkMode.Guild);
+
+        Assert.True(handled);
+        Assert.Contains(delivered, d => d.Recipient == speaker.Uid); // server echo
+        Assert.Contains(delivered, d => d.Recipient == member.Uid);
+        Assert.DoesNotContain(delivered, d => d.Recipient == outsider.Uid);
+        Assert.All(delivered, d => Assert.Equal(TalkMode.Guild, d.Mode));
+    }
+
+    [Fact]
+    public void AllianceChat_ReachesMutualAlliesOnly()
+    {
+        var world = CreateWorld();
+        var speaker = world.CreateCharacter();
+        var mutualAllyMaster = world.CreateCharacter();
+        var oneSidedAllyMaster = world.CreateCharacter();
+
+        var gm = new GuildManager();
+        var g1 = gm.CreateGuild(new Serial(100), "G1", speaker.Uid);
+        var g2 = gm.CreateGuild(new Serial(200), "G2", mutualAllyMaster.Uid);
+        var g3 = gm.CreateGuild(new Serial(300), "G3", oneSidedAllyMaster.Uid);
+
+        g1.AddAlly(g2.StoneUid);
+        g1.GetOrCreateRelation(g2.StoneUid).TheyDeclaredAlliance = true; // mutual
+        g1.AddAlly(g3.StoneUid); // one-sided — must not receive
+
+        var speech = new SpeechEngine(world) { GuildManager = gm };
+        var recipients = new List<Serial>();
+        speech.OnChannelMessage += (_, recipient, _, _) => recipients.Add(recipient.Uid);
+
+        speech.ProcessSpeech(speaker, "allies!", TalkMode.Alliance);
+
+        Assert.Contains(speaker.Uid, recipients);
+        Assert.Contains(mutualAllyMaster.Uid, recipients);
+        Assert.DoesNotContain(oneSidedAllyMaster.Uid, recipients);
+    }
+
+    // --- Script DISMOUNT verb ---
+
+    [Fact]
+    public void ScriptDismount_UsesHostHook_FlagFallbackWhenUnwired()
+    {
+        var world = CreateWorld();
+        var ch = world.CreateCharacter();
+        ch.SetStatFlag(StatFlag.OnHorse);
+
+        Character? dismounted = null;
+        Character.OnScriptDismount = c => dismounted = c;
+        Assert.True(ch.TryExecuteCommand("DISMOUNT", "", new NullConsole()));
+        Assert.Same(ch, dismounted); // host hook owns the full dismount
+
+        Character.OnScriptDismount = null;
+        Assert.True(ch.TryExecuteCommand("DISMOUNT", "", new NullConsole()));
+        Assert.False(ch.IsStatFlag(StatFlag.OnHorse)); // headless fallback
+    }
+
+    [Fact]
+    public void ScriptItemVerbs_OpenAndDClick_InvokeHostHooks()
+    {
+        var world = CreateWorld();
+        var item = world.CreateItem();
+
+        Item? opened = null;
+        Item? dclicked = null;
+        Item.OnScriptOpen = (i, _) => opened = i;
+        Item.OnScriptDClick = (i, _) => dclicked = i;
+
+        var console = new NullConsole();
+        Assert.True(item.TryExecuteCommand("OPEN", "", console));
+        Assert.Same(item, opened);
+
+        Assert.True(item.TryExecuteCommand("DCLICK", "", console));
+        Assert.Same(item, dclicked);
+
+        dclicked = null;
+        Assert.True(item.TryExecuteCommand("USE", "", console));
+        Assert.Same(item, dclicked);
+
+        // Unwired (headless) stays an ack-only no-op.
+        Item.OnScriptOpen = null;
+        Item.OnScriptDClick = null;
+        Assert.True(item.TryExecuteCommand("OPEN", "", console));
+        Assert.True(item.TryExecuteCommand("USE", "", console));
+    }
+
     // --- Trade ---
 
     [Fact]

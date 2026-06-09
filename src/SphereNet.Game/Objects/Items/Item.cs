@@ -52,6 +52,17 @@ public class Item : ObjBase
     /// spawner creation works without waiting for a world reload.</summary>
     public static Action<Item>? OnSpawnTypeChanged;
 
+    /// <summary>Invoked by the script OPEN verb (Source-X CV_OPEN). The host
+    /// opens this container on the acting console's client with script
+    /// authority (no snoop/trap gate). Unset → verb stays an ack-only no-op
+    /// so headless script runs don't fail.</summary>
+    public static Action<Item, ITextConsole>? OnScriptOpen;
+
+    /// <summary>Invoked by the script DCLICK/USE verbs (Source-X CV_DCLICK).
+    /// The host routes it through the acting client's double-click path so
+    /// doors, potions, containers etc. behave exactly like a real dclick.</summary>
+    public static Action<Item, ITextConsole>? OnScriptDClick;
+
     private ItemType _type;
     private ushort _amount = 1;
     private Serial _containedIn = Serial.Invalid;
@@ -1288,8 +1299,7 @@ public class Item : ObjBase
 
             // Faz 2: Container commands
             case "OPEN":
-                // SendOpenContainer is on GameClient; source must be a GameClient
-                // The actual open is handled via TryExecuteScriptCommand at GameClient level
+                OnScriptOpen?.Invoke(this, source);
                 return true;
             case "DELETE":
                 // DELETE nth — 1-based index
@@ -1337,11 +1347,12 @@ public class Item : ObjBase
                 return true;
             }
             // Source-X CV_DCLICK: simulate a double-click on this item.
-            // The actual handler runs in GameClient (containers, doors,
-            // potions, etc.); here we just acknowledge so the X-prefix
-            // chain doesn't fall through to the script fallback.
+            // OnScriptDClick routes through the acting client's dclick path
+            // (containers, doors, potions, ...); ack even when unwired so
+            // the X-prefix chain doesn't fall through to script fallback.
             case "DCLICK":
             case "USE":
+                OnScriptDClick?.Invoke(this, source);
                 return true;
 
             // Custom multi design commands

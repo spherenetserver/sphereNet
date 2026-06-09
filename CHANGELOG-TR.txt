@@ -4,6 +4,85 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-09] - Guild kanal teslimati, custom house tasarim editoru, script verb tamamlama (Wave 76)
+----------------------------------------
+
+ENGINE - konusma:
+  - Guild/ittifak kanal sohbeti artik teslim ediliyor. Kanal olayi aliciyi
+    tasiyor (onceden alicisiz invoke ediliyordu, hicbir sey yonlendirilemiyordu),
+    host subscribe edip uye basina 0xAE'yi talk tipi 0xD/0xE ile gonderiyor,
+    konusan kisi sunucu echo'sunu aliyor, ittifak teslimati karsilikli (iki
+    tarafin da ilan ettigi) ittifak gerektiriyor. Guild/ittifak satirlari artik
+    konusanin yanindaki ilgisiz oyunculara uzamsal yayinlanmiyor.
+
+ENGINE - custom housing:
+  - Ev tasarim editoru uctan uca calisiyor. Gelen 0xD7 encoded komutlari artik
+    payload'ini tasiyor (onceden subcommand'dan sonrasi dusuruluyordu) ve
+    isleniyor: Build, Delete, Stairs, Roof, RoofDelete, Level, Clear, Backup,
+    Restore, Sync, Revert, Commit, Close. Karakter basina tasarim oturumu
+    calisma kopyasini tutuyor; Commit tasarimi multi item uzerine DESIGN_n
+    tag'leri olarak kalici yapiyor (script ADDITEM verb'unun yazdigi formatla
+    ayni) ve DESIGN_REVISION'i artiriyor.
+  - Giden tasarim paketleri: 0xD8 tasarim akisi (zlib sikistirmali mode-0
+    plane'ler, byte yerlesimi client parser'ina karsi dogrulandi, buyuk
+    tasarimlar plane'lere bolunuyor), 0xBF 0x1D revision bildirimi, 0xBF 0x20
+    tasarim modu ac/kapa. 0xBF 0x1E tasarim sorgusu artik bilinen subcommand ve
+    kalici tasarimdan yanitlaniyor. House sign gump'ina sahip/co-owner icin
+    "Customize House" girisi eklendi; commit yeni revision'i yakindaki
+    clientlara yayinliyor, onlar da yeniden sorguluyor.
+  - @HouseDesignCommit ve @HouseDesignExit artik atesleniyor (Commit/Close).
+
+ENGINE - deneyim:
+  - Deneyim/seviye runtime'i: ChangeExperience her EXP degisimini (script
+    yazimlari dahil) @ExpChange uzerinden geciriyor (ARGN1 ayarlanabilir,
+    RETURN 1 iptal eder); seviye esigi gecilince @ExpLevelChange yeni seviyeyle
+    atesleniyor. NPC oldurmek kurbanin EXP degerini katile odul veriyor — EXP'i
+    olmayan karakterler hicbir sey vermez, yani tanimlar/scriptler deneyim
+    atamadikca sistem pasif kalir. Seviye egrisi ayarlanabilir (LevelNextAt
+    adimi, dogrusal veya katlanan mod).
+
+ENGINE - yardim menusu:
+  - Yardim menusu butonlari gercek is yapiyor: "stuck" guvenli bir kasaba
+    noktasina tasiyor, jail'de veya combat'tayken reddediliyor; "page" metin
+    giris gump'i acip .PAGE komut yolundan gonderiyor (staff yayini + sinirli
+    son-page kaydi); "page list" son page'leri gosteriyor (staff hepsini,
+    oyuncular kendininkini).
+
+ENGINE - client paketleri:
+  - 0xA5 web link yazicisi eklendi; WEBLINK script verb'u olarak ve guild'in
+    web adresi tanimliysa guild stone gump'inda "Visit Web Page" butonu olarak
+    kullanilabiliyor.
+  - Yere birakma sesi item'a duyarli: altin paralar miktara gore para seslerini
+    (0x2E4..0x2E6) caliyor, digerleri genel 0x42'de kaliyor.
+  - @UserVirtue (0xBF 0x2C) ve @UserKRToolbar (0xBF 0x24) artik atesleniyor.
+
+SCRIPTING - verb'ler:
+  - Item OPEN container'i isleyen client'ta script yetkisiyle aciyor;
+    DCLICK/USE gercek client cift-tik yolunu calistiriyor (kapilar, iksirler,
+    containerlar). Character DISMOUNT mount engine uzerinden tam inis yapiyor
+    (client yolu @Dismount'u ateslar ve binicinin gorunumunu tazeler; headless
+    kosumlar icin flag-temizleme fallback'i duruyor).
+  - Nesne TRIGGER verb'u dispatcher'in yeni isim-tabanli yolundan adli
+    trigger'i atesliyor; yalnizca EVENTS/TEVENTS iceriginde tanimli ozel
+    trigger adlari da calisiyor. FIX nesnenin Z'sini terrain yuzeyine oturtuyor.
+    TAGLIST (karakter, region, room) tag'leri cagiran konsola dokuyor.
+    Region/Room ALLCLIENTS alandaki her online client karakteri icin sysmessage
+    teslim ediyor veya script fonksiyonu calistiriyor.
+
+TESHIS:
+  - Uygulanmamis SERV.* verb'leri artik sessiz degil: her verb'un ilk kullanimi
+    warning loglaniyor (sonrakiler debug), GM seviyesindeki cagiran oyun ici
+    bildirim aliyor.
+  - FILE.OPEN hatalari nedenleriyle host'a bagli teshis kanalina raporlaniyor;
+    kayit yukleyici, host IPC baglanti denemesi ve ahir-pet tag parser'indaki
+    bos catch bloklari beklenen exception tiplerine daraltildi.
+
+INTERNAL:
+  - GameWorld is parcacigi (threading) sozlesmesini belgeliyor (tek-yazarli duz
+    koleksiyonlar vs concurrent dirty/region cache'leri; paralel asamalar
+    niyetleri seri faza kuyruklamali). Stub envanteri guncellendi; kalan
+    bosluklar gerekceleriyle bilincli erteleme olarak isaretli.
+
 [2026-06-07] - Pet-komut konusma kapisi, olum/rez'de ten rengi korunmasi (Wave 75)
 ----------------------------------------
 

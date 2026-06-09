@@ -85,9 +85,13 @@ public sealed class TriggerDispatcher
     /// Fire a character trigger. Maps to CChar::OnTrigger.
     /// </summary>
     public TriggerResult FireCharTrigger(Character ch, CharTrigger trigger, TriggerArgs args)
-    {
-        string trigName = GetCharTriggerName(trigger);
+        => FireCharTriggerByName(ch, GetCharTriggerName(trigger), args);
 
+    /// <summary>Name-based variant — used by the enum path above and by the
+    /// script TRIGGER verb (Source-X CV_TRIGGER), which may fire arbitrary
+    /// custom trigger names defined only in TEVENTS/EVENTS sections.</summary>
+    public TriggerResult FireCharTriggerByName(Character ch, string trigName, TriggerArgs args)
+    {
         if (ScriptDebug)
             DebugLog?.Invoke($"[script_debug] CTRIG @{trigName} on char 0x{ch.Uid.Value:X8} '{ch.Name}' src={args.CharSrc?.Name ?? "-"}");
 
@@ -171,9 +175,12 @@ public sealed class TriggerDispatcher
     /// Fire an item trigger. Maps to CItem::OnTrigger.
     /// </summary>
     public TriggerResult FireItemTrigger(Item item, ItemTrigger trigger, TriggerArgs args)
-    {
-        string trigName = GetItemTriggerName(trigger);
+        => FireItemTriggerByName(item, GetItemTriggerName(trigger), args);
 
+    /// <summary>Name-based variant — used by the enum path above and by the
+    /// script TRIGGER verb, which may fire custom trigger names.</summary>
+    public TriggerResult FireItemTriggerByName(Item item, string trigName, TriggerArgs args)
+    {
         if (ScriptDebug)
             DebugLog?.Invoke($"[script_debug] ITRIG @{trigName} on item 0x{item.Uid.Value:X8} id=0x{item.BaseId:X4} src={args.CharSrc?.Name ?? "-"}");
 

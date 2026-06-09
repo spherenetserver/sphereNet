@@ -4,6 +4,85 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-09] - Guild channel delivery, custom house design editor, script verb completeness (Wave 76)
+----------------------------------------
+
+ENGINE - speech:
+  - Guild/alliance channel chat is now delivered. The channel event carries the
+    recipient (it previously invoked with no recipient, so nothing could be
+    routed), the host subscribes it and sends 0xAE with talk type 0xD/0xE per
+    member, the speaker gets the server echo, and alliance delivery requires a
+    mutual (both-sides declared) alliance. Guild/alliance lines are no longer
+    spatially broadcast to bystanders near the speaker.
+
+ENGINE - custom housing:
+  - The house design editor is implemented end to end. Incoming 0xD7 encoded
+    commands now carry their payload (it was previously discarded after the
+    subcommand) and are handled: Build, Delete, Stairs, Roof, RoofDelete, Level,
+    Clear, Backup, Restore, Sync, Revert, Commit, Close. A per-character design
+    session holds the working design; Commit persists it as DESIGN_n tags on the
+    multi item (same format the script ADDITEM verb writes) and bumps
+    DESIGN_REVISION.
+  - Outgoing design packets: 0xD8 design stream (zlib-compressed mode-0 planes,
+    byte layout verified against the client parser, large designs split across
+    planes), 0xBF 0x1D revision notice, 0xBF 0x20 customization mode on/off.
+    The 0xBF 0x1E design query is now a known subcommand answered from the
+    committed design. The house sign gump gained a "Customize House" entry for
+    owners/co-owners, and a committed design broadcasts the new revision to
+    nearby clients so they re-query.
+  - @HouseDesignCommit and @HouseDesignExit now fire (Commit/Close paths).
+
+ENGINE - experience:
+  - Experience/level runtime: ChangeExperience routes every EXP change (script
+    writes included) through @ExpChange (ARGN1 adjustable, RETURN 1 cancels);
+    crossing a level threshold fires @ExpLevelChange with the new level. Killing
+    an NPC awards the victim's EXP value to the killer — characters without EXP
+    grant nothing, so the system stays inert unless definitions/scripts assign
+    experience. Level curve is configurable (LevelNextAt step, linear or
+    doubling mode).
+
+ENGINE - help menu:
+  - The help-menu buttons do real work now: "stuck" teleports to a safe town
+    spot and is refused while jailed or in combat; "page" opens a text-entry
+    gump routed through the .PAGE command path (staff broadcast + a capped
+    recent-page log); "page list" shows recent pages (staff see all, players
+    their own).
+
+ENGINE - client packets:
+  - 0xA5 web link writer added, exposed as the WEBLINK script verb and a
+    "Visit Web Page" button on the guild stone gump when the guild has a web
+    URL set.
+  - Ground-drop sound is item-aware: gold coins play the amount-scaled coin
+    sounds (0x2E4..0x2E6) instead of the generic 0x42.
+  - @UserVirtue (0xBF 0x2C) and @UserKRToolbar (0xBF 0x24) now fire.
+
+SCRIPTING - verbs:
+  - Item OPEN opens the container on the acting client with script authority;
+    DCLICK/USE replay the real client double-click path (doors, potions,
+    containers). Character DISMOUNT performs a full dismount through the mount
+    engine (client path fires @Dismount and refreshes the rider; flag-clear
+    fallback remains for headless runs).
+  - Object TRIGGER fires the named trigger through the dispatcher's new by-name
+    path, so custom trigger names defined only in EVENTS/TEVENTS work. FIX
+    re-seats the object Z on the terrain surface. TAGLIST (character, region,
+    room) dumps tags to the invoking console. Region/Room ALLCLIENTS delivers a
+    sysmessage or runs a script function for every online client character in
+    the area.
+
+DIAGNOSTICS:
+  - Unimplemented SERV.* verbs are no longer silent: first use of each verb is
+    warn-logged (debug afterwards) and GM-level callers get an in-game notice.
+  - FILE.OPEN failures report their reason through a host-wired diagnostic sink
+    instead of being swallowed; bare catch blocks in the recording loader,
+    host IPC connect retry and stable-pet tag parser were narrowed to the
+    expected exception types.
+
+INTERNAL:
+  - GameWorld now documents its threading contract (single-writer plain
+    collections vs concurrent dirty/region caches; parallel stages must queue
+    intents for the serial phase). Stub inventory updated; remaining gaps are
+    marked as deliberate deferrals with reasons.
+
 [2026-06-07] - Pet-command speech gating, skin hue preserved across death/resurrect (Wave 75)
 ----------------------------------------
 

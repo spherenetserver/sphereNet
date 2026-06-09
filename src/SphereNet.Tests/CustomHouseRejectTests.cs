@@ -9,11 +9,11 @@ using SphereNet.Network.State;
 namespace SphereNet.Tests;
 
 /// <summary>
-/// Phase 1 custom-housing support: the engine does not yet implement the
-/// house-design editor, so the incoming 0xD7 encoded design commands and the
-/// 0xBF sub-0x1E design query must be safely rejected/ignored — crucially
-/// WITHOUT cross-dispatching into the unrelated 0xBF extended-command handlers
-/// whose subcommand IDs overlap (Build 0x06 vs party 0x06, etc.).
+/// 0xD7 / 0xBF routing guarantees for the custom-house design editor: encoded
+/// design commands must reach the encoded handler (never cross-dispatch into
+/// the unrelated 0xBF extended-command handlers whose subcommand IDs overlap —
+/// Build 0x06 vs party 0x06, etc.), the 0xBF sub-0x1E design query must route
+/// to the extended handler, and an unwired encoded handler stays a safe no-op.
 /// </summary>
 public class CustomHouseRejectTests
 {
@@ -38,7 +38,7 @@ public class CustomHouseRejectTests
         ushort seenSub = 0xFFFF;
         uint seenSerial = 0;
         state.ExtendedCommandHandler = (_, _, _) => extendedCalled = true;
-        state.EncodedCommandHandler = (_, sub, serial) => { seenSub = sub; seenSerial = serial; };
+        state.EncodedCommandHandler = (_, sub, serial, _) => { seenSub = sub; seenSerial = serial; };
 
         var buf = new PacketBuffer(EncodedPayload(0x0A0B0C0D, subCmd));
         new PacketEncodedCommand().OnReceive(buf, state);
@@ -62,21 +62,22 @@ public class CustomHouseRejectTests
     }
 
     [Fact]
-    public void ExtendedCommand_QueryDesignDetails_0x1E_IsIgnored()
+    public void ExtendedCommand_QueryDesignDetails_0x1E_IsRoutedToExtendedHandler()
     {
         var pm = new PacketManager();
-        bool extendedCalled = false;
+        ushort seenSub = 0;
         var state = new NetState(NullLogger<NetState>.Instance)
         {
-            ExtendedCommandHandler = (_, _, _) => extendedCalled = true
+            ExtendedCommandHandler = (_, sub, _) => seenSub = sub
         };
 
-        // 0xBF payload = subCmd (0x001E) + data. 0x1E is not a known subcommand.
-        var payload = new byte[] { 0x00, 0x1E, 0x00, 0x00 };
+        // 0xBF payload = subCmd (0x001E) + house serial. 0x1E is the design
+        // query the server answers with a 0xD8 design stream.
+        var payload = new byte[] { 0x00, 0x1E, 0x0A, 0x0B, 0x0C, 0x0D };
         new PacketExtendedCommand(pm).OnReceive(new PacketBuffer(payload), state);
 
-        Assert.False(extendedCalled);
-        Assert.False(ExtendedCommandRegistry.IsKnown(0x1E));
+        Assert.Equal((ushort)0x1E, seenSub);
+        Assert.True(ExtendedCommandRegistry.IsKnown(0x1E));
     }
 
     [Fact]
@@ -93,7 +94,7 @@ public class CustomHouseRejectTests
         crypto.GetType().GetField("_encType", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(crypto, EncryptionType.None);
 
         ushort seenSub = 0xFFFF;
-        state.EncodedCommandHandler = (_, sub, _) => seenSub = sub;
+        state.EncodedCommandHandler = (_, sub, _, _) => seenSub = sub;
         var unknownSeen = new List<byte>();
         mgr.OnUnknownPacket += (_, op, _) => unknownSeen.Add(op);
 

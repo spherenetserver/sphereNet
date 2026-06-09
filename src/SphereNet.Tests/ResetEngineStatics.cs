@@ -37,6 +37,8 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Scripting.Definitions.CharDef.DefNameResolver = null;
         SphereNet.Game.Objects.Characters.Character.OnFameChanging = null;
         SphereNet.Game.Objects.Characters.Character.OnKarmaChanging = null;
+        SphereNet.Game.Objects.Characters.Character.OnExpChanging = null;
+        SphereNet.Game.Objects.Characters.Character.OnExpLevelChanged = null;
         SphereNet.Game.Objects.Characters.Character.OnMurderMark = null;
         SphereNet.Game.Objects.Characters.Character.OnCombatAdd = null;
         SphereNet.Game.Objects.Characters.Character.OnCombatDelete = null;
@@ -47,6 +49,13 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnEffectAdd = null;
         SphereNet.Game.Objects.Characters.Character.OnPetDesert = null;
         SphereNet.Game.Objects.Characters.Character.OnJailed = null;
+        SphereNet.Game.Objects.Characters.Character.OnScriptDismount = null;
+        SphereNet.Game.Objects.Items.Item.OnScriptOpen = null;
+        SphereNet.Game.Objects.Items.Item.OnScriptDClick = null;
+        SphereNet.Game.Scripting.ScriptFileHandle.Diagnostic = null;
+        SphereNet.Game.Objects.ObjBase.OnScriptTrigger = null;
+        SphereNet.Game.World.Regions.Region.OnAllClients = null;
+        SphereNet.Game.World.Regions.Room.OnAllClients = null;
         SphereNet.Game.Objects.Characters.Character.OnMemoryEquip = null;
         SphereNet.Game.Objects.Characters.Character.OnEnvironChange = null;
         SphereNet.Game.Objects.Characters.Character.OnSkillUseQuick = null;

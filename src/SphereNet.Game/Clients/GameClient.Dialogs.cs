@@ -117,21 +117,103 @@ public sealed partial class GameClient
 
             if (buttonId is >= 30 and <= 31)
             {
-                SysMessage(ServerMessages.Get("msg_stuck_script"));
+                HandleHelpStuck(toInn: buttonId == 31);
                 return;
             }
 
             if (buttonId == 21)
             {
-                SysMessage(ServerMessages.Get("msg_page_script"));
+                ShowHelpPageEntryDialog();
                 return;
             }
 
             if (buttonId == 22)
             {
-                SysMessage(ServerMessages.Get("msg_pagelist_script"));
+                ShowHelpPageListDialog();
             }
         });
+    }
+
+    /// <summary>Help-menu "I'm stuck": teleport to a safe town spot. Denied
+    /// while jailed (would be a jail escape) or mid-fight (combat escape).</summary>
+    private void HandleHelpStuck(bool toInn)
+    {
+        if (_character == null)
+            return;
+        if (_character.TryGetTag("JAIL_RELEASE", out _))
+        {
+            SysMessage(ServerMessages.Get("msg_stuck_denied"));
+            return;
+        }
+        if (_character.FightTarget.IsValid)
+        {
+            SysMessage(ServerMessages.Get("msg_stuck_denied"));
+            return;
+        }
+
+        // Britain: bank plaza for "Town", the inn block for "Inn" (map 0).
+        short x = toInn ? (short)1475 : (short)1495;
+        short y = toInn ? (short)1612 : (short)1629;
+        sbyte z = _world.MapData?.GetEffectiveZ(0, x, y) ?? (sbyte)10;
+        _world.MoveCharacter(_character, new Point3D(x, y, z, 0));
+        Resync();
+        SysMessage(ServerMessages.Get("msg_stuck_teleported"));
+    }
+
+    /// <summary>Help-menu "Page": prompt for a message, then submit through
+    /// the same .PAGE command path (staff broadcast + recent-page log).</summary>
+    private void ShowHelpPageEntryDialog()
+    {
+        if (_character == null)
+            return;
+        var gump = new GumpBuilder(_character.Uid.Value, _character.Uid.Value, 380, 180);
+        gump.AddResizePic(0, 0, 5054, 380, 180);
+        gump.AddText(20, 15, 0x0481, "Describe your problem for the staff:");
+        gump.AddResizePic(15, 45, 3000, 350, 80);
+        gump.AddTextEntryLimited(20, 50, 340, 70, 0, 1, "", 200);
+        gump.AddButton(150, 140, 4023, 4025, 1); // OK
+        gump.AddButton(200, 140, 4017, 4019, 0); // Cancel
+        SendGump(gump, (buttonId, _, textEntries) =>
+        {
+            if (_character == null || buttonId != 1 || _commands == null)
+                return;
+            string text = textEntries.FirstOrDefault(t => t.Item1 == 1).Item2?.Trim() ?? "";
+            if (text.Length == 0)
+                return;
+            _commands.TryExecute(_character, $"PAGE {text}");
+        });
+    }
+
+    /// <summary>Help-menu "Page List": staff see every recent page, players
+    /// only their own submissions.</summary>
+    private void ShowHelpPageListDialog()
+    {
+        if (_character == null || _commands == null)
+            return;
+        bool staff = _character.PrivLevel >= PrivLevel.Counsel;
+        var visible = _commands.RecentPages
+            .Where(p => staff || p.From == _character.Uid)
+            .TakeLast(10)
+            .ToList();
+        if (visible.Count == 0)
+        {
+            SysMessage(ServerMessages.Get("msg_pagelist_empty"));
+            return;
+        }
+        var gump = new GumpBuilder(_character.Uid.Value, _character.Uid.Value, 420, 70 + visible.Count * 22);
+        gump.AddResizePic(0, 0, 5054, 420, 70 + visible.Count * 22);
+        gump.AddText(20, 12, 0x0481, staff ? "Recent pages" : "Your recent pages");
+        int yy = 40;
+        foreach (var p in visible)
+        {
+            string line = staff
+                ? $"{p.Utc:HH:mm} {p.FromName}: {p.Message}"
+                : $"{p.Utc:HH:mm} {p.Message}";
+            gump.AddText(20, yy, 0, line.Length > 56 ? line[..56] : line);
+            yy += 22;
+        }
+        gump.AddButton(380, 12, 4017, 4019, 0);
+        SendGump(gump, (_, _, _) => { });
     }
 
     /// <summary>Open a script-defined dialog ([DIALOG &lt;name&gt;] sections)

@@ -60,8 +60,12 @@ public sealed class SpeechEngine
     /// </summary>
     public event Action<Character, string, TalkMode>? OnPlayerSpeech;
 
-    /// <summary>Fired when guild/party message should be routed.</summary>
-    public event Action<Character, string, TalkMode>? OnChannelMessage;
+    /// <summary>
+    /// Fired once per recipient when a guild/alliance message is routed.
+    /// Args: (speaker, recipient, text, mode). The speaker is included as a
+    /// recipient so its client gets the server echo of the message.
+    /// </summary>
+    public event Action<Character, Character, string, TalkMode>? OnChannelMessage;
 
     /// <summary>Party manager reference for party speech.</summary>
     public Party.PartyManager? PartyManager { get; set; }
@@ -134,38 +138,42 @@ public sealed class SpeechEngine
         return false;
     }
 
-    /// <summary>Route guild/alliance/party messages to correct recipients.</summary>
+    /// <summary>Route guild/alliance messages to correct recipients.
+    /// Maps to Source-X CChar::Speak with TALKMODE_GUILD/TALKMODE_ALLIANCE:
+    /// non-spatial, delivered to every online member (speaker included).</summary>
     private void RouteChannelMessage(Character speaker, string text, TalkMode mode)
     {
+        var guild = GuildManager?.FindGuildFor(speaker.Uid);
+        if (guild == null)
+            return;
+
         if (mode == TalkMode.Guild)
         {
-            var guild = GuildManager?.FindGuildFor(speaker.Uid);
-            if (guild != null)
-            {
-                foreach (var member in guild.Members)
-                {
-                    if (member.CharUid == speaker.Uid) continue;
-                    OnChannelMessage?.Invoke(speaker, text, mode);
-                }
-            }
+            DeliverToGuildMembers(guild, speaker, text, mode);
         }
         else if (mode == TalkMode.Alliance)
         {
-            var guild = GuildManager?.FindGuildFor(speaker.Uid);
-            if (guild != null)
+            // Alliance chat reaches the speaker's own guild plus every guild
+            // with a mutual alliance (both sides declared — GuildRelation.IsAlly).
+            DeliverToGuildMembers(guild, speaker, text, mode);
+            foreach (var (allyStone, relation) in guild.Relations)
             {
-                foreach (var allyStone in guild.Allies)
-                {
-                    var allyGuild = GuildManager?.GetGuild(allyStone);
-                    if (allyGuild != null)
-                    {
-                        foreach (var member in allyGuild.Members)
-                            OnChannelMessage?.Invoke(speaker, text, mode);
-                    }
-                }
-                foreach (var member in guild.Members)
-                    OnChannelMessage?.Invoke(speaker, text, mode);
+                if (!relation.IsAlly) continue;
+                var allyGuild = GuildManager?.GetGuild(allyStone);
+                if (allyGuild != null)
+                    DeliverToGuildMembers(allyGuild, speaker, text, mode);
             }
+        }
+    }
+
+    private void DeliverToGuildMembers(GuildDef guild, Character speaker, string text, TalkMode mode)
+    {
+        foreach (var member in guild.Members)
+        {
+            var recipient = _world.FindChar(member.CharUid);
+            if (recipient == null || recipient.IsDeleted)
+                continue;
+            OnChannelMessage?.Invoke(speaker, recipient, text, mode);
         }
     }
 }
@@ -281,6 +289,13 @@ public sealed class CommandHandler
     public event Action<Character>? OnShowSkillsRequested;
     /// <summary><c>.PAGE</c> — player page received, route to online staff.</summary>
     public event Action<Character, string>? OnPageReceived;
+    /// <summary>Recent pages this server run (newest last, capped). Backs the
+    /// help-menu "Page List" view; staff see all, players their own.</summary>
+    public IReadOnlyList<PageEntry> RecentPages => _recentPages;
+    private readonly List<PageEntry> _recentPages = [];
+    private const int MaxRecentPages = 100;
+
+    public readonly record struct PageEntry(DateTime Utc, Serial From, string FromName, string Message);
     /// <summary>Source-X parity: <c>.UNMOUNT</c> dismounts the caller.</summary>
     public event Action<Character>? OnUnmountRequested;
     /// <summary>Source-X parity: <c>.ANIM &lt;id&gt;</c> plays an
@@ -1045,6 +1060,9 @@ public sealed class CommandHandler
                 OnSysMessage?.Invoke(gm, "Usage: .PAGE <message>");
                 return;
             }
+            _recentPages.Add(new PageEntry(DateTime.UtcNow, gm.Uid, gm.GetName(), args.Trim()));
+            if (_recentPages.Count > MaxRecentPages)
+                _recentPages.RemoveAt(0);
             OnSysMessage?.Invoke(gm, ServerMessages.GetFormatted("gm_page_submitted", args));
             OnPageReceived?.Invoke(gm, args);
         });

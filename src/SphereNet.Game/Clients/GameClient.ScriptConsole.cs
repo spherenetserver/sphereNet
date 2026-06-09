@@ -34,6 +34,10 @@ namespace SphereNet.Game.Clients;
 
 public sealed partial class GameClient
 {
+    /// <summary>Unimplemented SERV.* verbs seen this server run — used to
+    /// warn-log only the first occurrence of each.</summary>
+    private static readonly HashSet<string> s_unknownServVerbs = [];
+
     private bool CanSendStatusFor(Character ch)
     {
         if (_character == null)
@@ -1134,6 +1138,17 @@ public sealed partial class GameClient
             return true;
         }
 
+        if (upper == "WEBLINK" || upper.StartsWith("WEBLINK ", StringComparison.Ordinal))
+        {
+            // Source-X CV_WEBLINK — open a browser on the client (0xA5).
+            string url = upper == "WEBLINK"
+                ? args.Trim()
+                : (cmd["WEBLINK ".Length..] + (string.IsNullOrEmpty(args) ? "" : $" {args}")).Trim();
+            if (url.Length > 0)
+                Send(new PacketWebLink(url));
+            return true;
+        }
+
         if (upper == "BUY")
         {
             // Vendor buy — placeholder until full vendor buy/sell packet support
@@ -1148,8 +1163,19 @@ public sealed partial class GameClient
 
         if (upper.StartsWith("SERV.", StringComparison.Ordinal))
         {
-            // Known but not yet fully implemented service verbs should not crash scripts.
-            _logger.LogDebug("Script SERV verb not fully implemented: {Verb} {Args}", key, args);
+            // Unimplemented service verbs must not crash scripts (Sphere keeps
+            // running), but the gap shouldn't be invisible either: warn once
+            // per verb per server run, debug-log every hit, and tell GM-level
+            // callers directly so script authors see it in-game.
+            bool firstHit;
+            lock (s_unknownServVerbs)
+                firstHit = s_unknownServVerbs.Add(upper);
+            if (firstHit)
+                _logger.LogWarning("Script SERV verb not implemented: {Verb} {Args} (further uses logged at debug)", key, args);
+            else
+                _logger.LogDebug("Script SERV verb not implemented: {Verb} {Args}", key, args);
+            if (_character != null && _character.PrivLevel >= PrivLevel.GM)
+                SysMessage($"Script: unimplemented verb '{key}' ignored.");
             return true;
         }
 

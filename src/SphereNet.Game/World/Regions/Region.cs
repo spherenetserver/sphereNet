@@ -28,6 +28,11 @@ public class Region : IScriptObj
 
     public static Func<IScriptObj, int>? ClientCountProvider { get; set; }
 
+    /// <summary>Script ALLCLIENTS verb: the host wires this to deliver or
+    /// execute the payload for every online client character in the region
+    /// (Region has no world/client registry of its own).</summary>
+    public static Action<Region, string, ITextConsole>? OnAllClients { get; set; }
+
     public Region()
     {
         _uid = _nextUid++;
@@ -317,13 +322,17 @@ public class Region : IScriptObj
         switch (upper)
         {
             case "ALLCLIENTS":
-                // stub — would message all clients in this region
+                // Deliver/execute the payload for every online client char in
+                // this region. The host wires OnAllClients (needs world + client
+                // registry, which Region itself doesn't hold).
+                OnAllClients?.Invoke(this, args, source);
                 return true;
             case "CLEARTAGS":
                 ClearTags(string.IsNullOrEmpty(args) ? null : args);
                 return true;
             case "TAGLIST":
-                // stub — would list tags to console
+                foreach (var (k, v) in _tags)
+                    source.SysMessage($"TAG.{k} = {v}");
                 return true;
         }
 

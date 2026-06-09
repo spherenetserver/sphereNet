@@ -685,6 +685,12 @@ public sealed partial class GameClient
 
         _speech?.ProcessSpeech(_character, text, (TalkMode)type, hue, font);
 
+        // Guild/alliance chat is non-spatial: SpeechEngine.RouteChannelMessage
+        // delivers it per member (speaker echo included), so the local echo
+        // and nearby broadcast below must not run for those modes.
+        if ((TalkMode)type is TalkMode.Guild or TalkMode.Alliance)
+            return;
+
         // Broadcast speech to nearby clients
         int range = type switch
         {

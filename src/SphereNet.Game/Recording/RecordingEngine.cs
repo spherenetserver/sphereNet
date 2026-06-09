@@ -581,8 +581,12 @@ public sealed class RecordingEngine
 
             return session;
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+            or FormatException or ArgumentException)
         {
+            // Truncated/corrupt .rec file or FS failure — treat as "no such
+            // recording" so the browser dialog just omits it. Anything else
+            // (engine bug) propagates.
             return null;
         }
     }

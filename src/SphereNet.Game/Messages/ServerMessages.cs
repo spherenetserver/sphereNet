@@ -13,7 +13,7 @@ namespace SphereNet.Game.Messages;
 ///   1. RegisterSphereDefaults() (generated, partial) - all 1165 Source-X DEFMSG_* keys
 ///      ported verbatim from oldSphere/Source-X-full/src/tables/defmessages.tbl.
 ///   2. RegisterCustomDefaults() - SphereNet-specific extension keys (gm_*, db_*,
-///      msg_stuck_script, ...) that do not exist upstream. These are applied AFTER
+///      msg_stuck_*, ...) that do not exist upstream. These are applied AFTER
 ///      the Source-X layer so they win for shared key names.
 /// Script overrides loaded via <see cref="LoadOverrides"/> always win over defaults.
 /// </summary>
@@ -439,9 +439,9 @@ public static partial class ServerMessages
         Def("db_query_fail", "DB.QUERY failed: %s");
         Def("db_execute_fail", "DB.EXECUTE failed: %s");
 
-        // ===== Script Stubs =====
-        Def("msg_stuck_script", "Stuck secimi script tarafinda islenmeli.");
-        Def("msg_page_script", "Page gonderim formu script tarafinda islenmeli.");
-        Def("msg_pagelist_script", "Onceki page listesi script tarafinda islenmeli.");
+        // ===== Help Menu =====
+        Def("msg_stuck_denied", "You cannot use the stuck option right now.");
+        Def("msg_stuck_teleported", "You have been moved to a safe location.");
+        Def("msg_pagelist_empty", "There are no recent pages.");
     }
 }

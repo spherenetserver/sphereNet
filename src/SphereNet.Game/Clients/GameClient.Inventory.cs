@@ -673,7 +673,7 @@ public sealed partial class GameClient
                     item.Delete();
                     _netState.Send(new PacketDropAck());
                     BroadcastNearby?.Invoke(existing.Position, UpdateRange,
-                        new PacketSound(0x0042, existing.X, existing.Y, existing.Z), 0);
+                        new PacketSound(GetDropSound(existing), existing.X, existing.Y, existing.Z), 0);
                     BroadcastNearby?.Invoke(existing.Position, UpdateRange,
                         new PacketWorldItem(existing.Uid.Value, existing.DispIdFull, existing.Amount,
                             existing.X, existing.Y, existing.Z, existing.Hue, existing.Direction), 0);
@@ -691,10 +691,19 @@ public sealed partial class GameClient
         _netState.Send(new PacketDropAck());
         BroadcastDragAnimation(item, _character.Uid.Value, _character.Position, 0, groundPos, groundPos);
         BroadcastNearby?.Invoke(groundPos, UpdateRange,
-            new PacketSound(0x0042, groundPos.X, groundPos.Y, groundPos.Z), 0);
+            new PacketSound(GetDropSound(item), groundPos.X, groundPos.Y, groundPos.Z), 0);
         BroadcastNearby?.Invoke(groundPos, UpdateRange,
             new PacketWorldItem(item.Uid.Value, item.DispIdFull, item.Amount,
                 item.X, item.Y, item.Z, item.Hue, item.Direction), 0);
+    }
+
+    /// <summary>Item-aware drop sound: gold coins get the amount-scaled coin
+    /// sounds; everything else keeps the generic 0x42 item drop.</summary>
+    private static ushort GetDropSound(Item item)
+    {
+        if (item.BaseId == 0x0EED)
+            return item.Amount switch { 1 => (ushort)0x02E4, < 6 => (ushort)0x02E5, _ => (ushort)0x02E6 };
+        return 0x0042;
     }
 
     // ==================== Item Equip ====================

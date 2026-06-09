@@ -9,9 +9,8 @@ namespace SphereNet.Network.Packets;
 /// numeric IDs overlap (e.g. 0x06 is "Build" here but "party" under 0xBF), so
 /// the two must never share a dispatch table.
 ///
-/// Custom housing is not yet supported, so these are currently rejected/ignored
-/// rather than acted upon. The list documents the protocol for the eventual
-/// design-editor implementation.
+/// Handled by GameClient.HandleEncodedCommand via NetState.EncodedCommandHandler;
+/// the design state machine lives in CustomHousingEngine.
 /// </summary>
 public static class EncodedCommandRegistry
 {

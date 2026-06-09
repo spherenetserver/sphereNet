@@ -66,6 +66,7 @@ public sealed partial class GameClient : ITextConsole
     private SkillHandlers? _skillHandlers;
     private CraftingEngine? _craftingEngine;
     private HousingEngine? _housingEngine;
+    private CustomHousingEngine? _customHousing;
     private GuildManager? _guildManager;
     private Mounts.MountEngine? _mountEngine;
     private TriggerDispatcher? _triggerDispatcher;
@@ -379,7 +380,8 @@ public sealed partial class GameClient : ITextConsole
         HousingEngine? housingEngine = null,
         TriggerDispatcher? triggerDispatcher = null,
         GuildManager? guildManager = null,
-        Mounts.MountEngine? mountEngine = null)
+        Mounts.MountEngine? mountEngine = null,
+        CustomHousingEngine? customHousing = null)
     {
         _movement = movement;
         _speech = speech;
@@ -394,6 +396,7 @@ public sealed partial class GameClient : ITextConsole
         _triggerDispatcher = triggerDispatcher;
         _guildManager = guildManager;
         _mountEngine = mountEngine;
+        _customHousing = customHousing;
 
         if (_spellEngine != null && triggerDispatcher != null)
             _spellEngine.TriggerDispatcher = triggerDispatcher;

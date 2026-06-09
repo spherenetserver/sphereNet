@@ -25,6 +25,10 @@ public partial class Character : ObjBase
 
     public static Action<Character, Character?>? OnLifecycleKill;
     public static Action<Character>? OnLifecycleResurrect;
+    /// <summary>Fired by the script DISMOUNT verb. The host routes it through
+    /// MountEngine.Dismount (restores the mount NPC) and the rider's client
+    /// update; when unset the verb falls back to clearing the OnHorse flag.</summary>
+    public static Action<Character>? OnScriptDismount;
     /// <summary>Fired when a timed jail sentence expires and the character
     /// should be released (move out of jail, clear Freeze, resync).</summary>
     public static Action<Character>? OnJailReleaseRequested;
@@ -480,6 +484,15 @@ public partial class Character : ObjBase
     /// script-adjusted) delta to apply.</summary>
     public static Func<Character, int, int?>? OnKarmaChanging { get; set; }
 
+    /// <summary>Fired before EXP changes (Source-X @ExpChange). Arg: proposed
+    /// delta. Return null to cancel the change, or the (possibly
+    /// script-adjusted) delta to apply.</summary>
+    public static Func<Character, int, int?>? OnExpChanging { get; set; }
+
+    /// <summary>Fired after a level threshold crossing changed the level
+    /// (Source-X @ExpLevelChange). Arg: the new level.</summary>
+    public static Action<Character, short>? OnExpLevelChanged { get; set; }
+
     /// <summary>Fired before a player-vs-player kill records a murder count
     /// (Source-X @MurderMark). Args: victim, proposed new murder count. Return
     /// null to block the mark entirely, or the final count to record.</summary>
@@ -808,6 +821,60 @@ public partial class Character : ObjBase
     // Experience
     public int Exp { get => _exp; set => _exp = value; }
     public short Level { get => _level; set => _level = value; }
+
+    /// <summary>Experience needed for the first level (sphere.ini LEVELNEXTAT
+    /// equivalent). 0 disables the level system entirely.</summary>
+    public static int LevelNextAt { get; set; } = 1000;
+    /// <summary>When true each level step costs double the previous one
+    /// (Source-X LEVEL_MODE_DOUBLE); false = linear steps.</summary>
+    public static bool LevelModeDouble { get; set; } = true;
+
+    /// <summary>
+    /// Change experience through the trigger pipeline (Source-X
+    /// CChar::ChangeExperience): @ExpChange may adjust or cancel the delta;
+    /// crossing a level threshold fires @ExpLevelChange with the new level.
+    /// </summary>
+    public void ChangeExperience(int delta)
+    {
+        if (delta != 0 && OnExpChanging != null)
+        {
+            int? adjusted = OnExpChanging(this, delta);
+            if (adjusted == null)
+                return;
+            delta = adjusted.Value;
+        }
+        if (delta == 0)
+            return;
+
+        _exp = (int)Math.Clamp((long)_exp + delta, 0, int.MaxValue);
+
+        short newLevel = ComputeLevel(_exp);
+        if (newLevel != _level)
+        {
+            _level = newLevel;
+            OnExpLevelChanged?.Invoke(this, newLevel);
+        }
+    }
+
+    /// <summary>Level for a total experience value: linear steps of
+    /// <see cref="LevelNextAt"/>, or doubling steps in double mode.</summary>
+    public static short ComputeLevel(int exp)
+    {
+        if (LevelNextAt <= 0)
+            return 0;
+        short level = 0;
+        long threshold = 0, step = LevelNextAt;
+        while (level < short.MaxValue)
+        {
+            threshold += step;
+            if (exp < threshold || threshold > int.MaxValue)
+                break;
+            level++;
+            if (LevelModeDouble)
+                step *= 2;
+        }
+        return level;
+    }
 
     // Player state
     public short Deaths { get => _deaths; set => _deaths = value; }
@@ -3248,7 +3315,12 @@ public partial class Character : ObjBase
                 else
                     ClearStatFlag(StatFlag.Stone);
                 return true;
-            case "EXP": if (int.TryParse(normalized, out int expv)) _exp = expv; return true;
+            case "EXP":
+                // Route through ChangeExperience so script writes fire
+                // @ExpChange/@ExpLevelChange like Source-X EXP assignment.
+                if (int.TryParse(normalized, out int expv))
+                    ChangeExperience(expv - _exp);
+                return true;
             case "LEVEL": if (short.TryParse(normalized, out short lvv)) _level = lvv; return true;
             case "DEATHS": if (short.TryParse(normalized, out short dthv)) _deaths = dthv; return true;
             case "HOMEDIST": if (short.TryParse(normalized, out short hdv)) _homeDist = hdv; return true;
@@ -4047,7 +4119,10 @@ public partial class Character : ObjBase
             }
             case "DISMOUNT":
             {
-                ClearStatFlag(StatFlag.OnHorse);
+                if (OnScriptDismount != null)
+                    OnScriptDismount(this);
+                else
+                    ClearStatFlag(StatFlag.OnHorse);
                 return true;
             }
             case "NEWGOLD":
@@ -4672,7 +4747,9 @@ public partial class Character : ObjBase
             }
             case "TAGLIST":
             {
-                // Stub — debug tag list
+                // Source-X CV_TAGLIST — dump this character's TAGs to the console.
+                foreach (var (k, v) in Tags.GetAll())
+                    source.SysMessage($"TAG.{k} = {v}");
                 return true;
             }
         }

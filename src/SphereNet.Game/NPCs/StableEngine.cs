@@ -279,8 +279,11 @@ public sealed class StableEngine
                 }
                 return true;
             }
-            catch
+            catch (Exception ex) when (ex is FormatException or OverflowException
+                or IndexOutOfRangeException or ArgumentException)
             {
+                // Malformed stable TAG entry (hand-edited save / older format) —
+                // skip just this pet instead of failing the whole stable load.
                 pet = new StabledPet();
                 return false;
             }

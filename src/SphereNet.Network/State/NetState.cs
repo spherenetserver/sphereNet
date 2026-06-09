@@ -746,8 +746,9 @@ public sealed class NetState : IDisposable
     public Action<NetState, ushort, PacketBuffer>? ExtendedCommandHandler { get; set; }
     /// <summary>0xD7 encoded command (custom-house design editor). Distinct from
     /// <see cref="ExtendedCommandHandler"/> so the overlapping 0xD7/0xBF
-    /// subcommand IDs never cross-dispatch. Unwired = safe ignore.</summary>
-    public Action<NetState, ushort, uint>? EncodedCommandHandler { get; set; }
+    /// subcommand IDs never cross-dispatch. The buffer is positioned at the
+    /// subcommand payload (after serial + subCmd). Unwired = safe ignore.</summary>
+    public Action<NetState, ushort, uint, PacketBuffer>? EncodedCommandHandler { get; set; }
     public Action<NetState, uint>? AOSTooltipHandler { get; set; }
     public Action<NetState, uint, byte, List<VendorBuyEntry>>? VendorBuyHandler { get; set; }
     public Action<NetState, uint, List<VendorSellEntry>>? VendorSellHandler { get; set; }
@@ -883,8 +884,8 @@ public sealed class NetState : IDisposable
     internal void OnExtendedCommand(ushort subCmd, PacketBuffer buffer)
         => ExtendedCommandHandler?.Invoke(this, subCmd, buffer);
 
-    internal void OnEncodedCommand(ushort subCmd, uint serial)
-        => EncodedCommandHandler?.Invoke(this, subCmd, serial);
+    internal void OnEncodedCommand(ushort subCmd, uint serial, PacketBuffer payload)
+        => EncodedCommandHandler?.Invoke(this, subCmd, serial, payload);
 
     internal void OnAOSTooltip(uint serial)
         => AOSTooltipHandler?.Invoke(this, serial);

@@ -158,6 +158,7 @@ public static partial class Program
             {
                 string fileBasePath = Path.Combine(Path.GetDirectoryName(_config.ScpFilesDir) ?? ".", "files");
                 _scriptFile = new ScriptFileHandle(fileBasePath);
+                ScriptFileHandle.Diagnostic = msg => _log.LogDebug("[script_file] {Message}", msg);
                 _log.LogInformation("Script FILE commands enabled, base path: {Path}", fileBasePath);
             }
             scriptInterpreter.CallFunction = (name, target, source, args) =>
@@ -373,6 +374,29 @@ public static partial class Program
                 }
             };
 
+            // Script TRIGGER verb — fire arbitrary named triggers through the
+            // dispatcher's by-name chain (Source-X CV_TRIGGER).
+            SphereNet.Game.Objects.ObjBase.OnScriptTrigger = (obj, trigName, console) =>
+            {
+                var src = (console as GameClient)?.Character ?? obj as Character;
+                var targs = new SphereNet.Game.Scripting.TriggerArgs
+                {
+                    CharSrc = src,
+                    ScriptConsole = console
+                };
+                if (obj is Character tch)
+                    _triggerDispatcher.FireCharTriggerByName(tch, trigName, targs);
+                else if (obj is Item titem)
+                    _triggerDispatcher.FireItemTriggerByName(titem, trigName, targs);
+            };
+
+            // Region/Room ALLCLIENTS — deliver or execute the payload for
+            // every online client character inside the area.
+            SphereNet.Game.World.Regions.Region.OnAllClients = (region, payload, console) =>
+                RunAllClientsPayload(payload, ch => _world.FindRegion(ch.Position) == region);
+            SphereNet.Game.World.Regions.Room.OnAllClients = (room, payload, console) =>
+                RunAllClientsPayload(payload, ch => _world.FindRoom(ch.Position) == room);
+
             // Source-X CCharBase::Region_Notify centralised at world level so
             // walk, .go teleport, recall and gate all hit one notify path.
             _world.OnRegionChanged = (mover, oldRegion, newRegion) =>
@@ -509,6 +533,22 @@ public static partial class Program
             _speech.GuildManager = _guildManager;
             _speech.OnNpcHear += OnNpcHearSpeech;
             _speech.OnPlayerSpeech += OnPlayerSpeech;
+            _speech.OnChannelMessage += (speaker, recipient, text, mode) =>
+            {
+                if (!TryGetClientFor(recipient, out var c))
+                    return;
+                // 0xAE with type 0xD/0xE — the client routes guild/alliance
+                // text to its chat channel and applies the profile color.
+                c.Send(new PacketSpeechUnicodeOut(
+                    speaker.Uid.Value,
+                    speaker.BodyId,
+                    (byte)mode,
+                    speaker.SpeechColor != 0 ? speaker.SpeechColor : (ushort)0x03B2,
+                    3,
+                    "TRK",
+                    speaker.Name ?? "",
+                    text));
+            };
             _commands = new CommandHandler();
             _commands.TriggerDispatcher = _triggerDispatcher;
             _commands.CommandPrefix = string.IsNullOrEmpty(_config.CommandPrefix) ? '.' : _config.CommandPrefix[0];
@@ -580,6 +620,19 @@ public static partial class Program
             {
                 foreach (var c in _clients.Values)
                     c.SendItemVisualUpdate(item);
+            };
+            // Script OPEN / DCLICK / USE verbs: resolve the acting console to
+            // its GameClient and replay the real client paths. Non-client
+            // consoles (telnet, headless script runs) stay ack-only.
+            Item.OnScriptOpen = (item, console) =>
+            {
+                if (console is SphereNet.Game.Clients.GameClient gc)
+                    gc.OpenContainerFromScript(item);
+            };
+            Item.OnScriptDClick = (item, console) =>
+            {
+                if (console is SphereNet.Game.Clients.GameClient gc)
+                    gc.HandleDoubleClick(item.Uid.Value);
             };
             _commands.OnScriptParityWarning += (ch, verb, reason) =>
             {
@@ -1742,6 +1795,7 @@ public static partial class Program
             _housingEngine.DeserializeFromWorld();
             if (_housingEngine.HouseCount > 0)
                 _log.LogInformation("Restored {Count} houses from world save", _housingEngine.HouseCount);
+            _customHousing = new CustomHousingEngine(_world, _housingEngine);
 
             // Ships
             _shipEngine = new SphereNet.Game.Ships.ShipEngine(_world, multiRegistry, _mapData);
@@ -1968,6 +2022,19 @@ public static partial class Program
                 return args.N1;
             };
 
+            // @ExpChange / @ExpLevelChange — N1 = proposed delta (script may
+            // rewrite ARGN1 or RETURN 1 to cancel) / N1 = the new level.
+            SphereNet.Game.Objects.Characters.Character.OnExpChanging = (ch, delta) =>
+            {
+                var args = new TriggerArgs { CharSrc = ch, N1 = delta };
+                if (_triggerDispatcher?.FireCharTrigger(ch, CharTrigger.ExpChange, args) == TriggerResult.True)
+                    return null;
+                return args.N1;
+            };
+            SphereNet.Game.Objects.Characters.Character.OnExpLevelChanged = (ch, level) =>
+                _triggerDispatcher?.FireCharTrigger(ch, CharTrigger.ExpLevelChange,
+                    new TriggerArgs { CharSrc = ch, N1 = level });
+
             // @MurderMark — fired on a player-vs-player kill before the murder
             // count is recorded. N1 = proposed count (script may rewrite ARGN1),
             // O1 = victim; RETURN 1 blocks the mark and the criminal flag.
@@ -2170,6 +2237,16 @@ public static partial class Program
 
             // Mounts
             _mountEngine = new SphereNet.Game.Mounts.MountEngine(_world);
+            // Script DISMOUNT verb: prefer the client path (fires @Dismount and
+            // refreshes the rider's view); fall back to the engine for NPCs and
+            // offline riders so the mount NPC is still restored.
+            SphereNet.Game.Objects.Characters.Character.OnScriptDismount = ch =>
+            {
+                if (TryGetClientFor(ch, out var c))
+                    c.UnmountSelf();
+                else
+                    _mountEngine.Dismount(ch);
+            };
 
             // Stress-test harness (.stress / .stressreport / .stressclean)
             _stressEngine = new SphereNet.Game.Diagnostics.StressTestEngine(_world, _loggerFactory);
@@ -2308,7 +2385,8 @@ public static partial class Program
                 mapPinEdit: OnMapPinEdit,
                 // Phase 3
                 gumpTextEntry: OnGumpTextEntry,
-                allNamesRequest: OnAllNamesRequest
+                allNamesRequest: OnAllNamesRequest,
+                encodedCommand: OnEncodedCommand
             );
 
             _network.OnConnectionClosed += OnConnectionClosed;
@@ -2328,6 +2406,38 @@ public static partial class Program
             _log.LogInformation("SphereNet ready. Listening on port {Port}.", _config.ServPort);
             _systemHooks.DispatchServer("start", _serverHookContext, _config.ServName);
         return true;
+    }
+
+    /// <summary>REGION/ROOM ALLCLIENTS payload: "SYSMESSAGE &lt;text&gt;" delivers
+    /// the text; anything else runs as a script function once per in-scope
+    /// client character (Source-X sector ALLCLIENTS semantics).</summary>
+    private static void RunAllClientsPayload(string payload, Func<Character, bool> inScope)
+    {
+        payload = payload?.Trim() ?? "";
+        if (payload.Length == 0)
+            return;
+        bool sysMessage = payload.StartsWith("SYSMESSAGE", StringComparison.OrdinalIgnoreCase);
+        string text = sysMessage ? payload["SYSMESSAGE".Length..].Trim() : "";
+        int sp = payload.IndexOf(' ');
+        string funcName = sp > 0 ? payload[..sp] : payload;
+        string funcArgs = sp > 0 ? payload[(sp + 1)..].Trim() : "";
+
+        foreach (var c in _clients.Values)
+        {
+            var ch = c.Character;
+            if (ch == null || !c.IsPlaying || !inScope(ch))
+                continue;
+            if (sysMessage)
+            {
+                c.SysMessage(text);
+                continue;
+            }
+            var callArgs = new SphereNet.Scripting.Execution.TriggerArgs(ch, 0, 0, funcArgs)
+            {
+                Object1 = ch
+            };
+            _ = _triggerRunner.TryRunFunction(funcName, ch, c, callArgs, out _);
+        }
     }
 
     private static void FaceAndBroadcastToward(Character actor, Character target, int range = 18)

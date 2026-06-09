@@ -290,7 +290,7 @@ public sealed class PacketEncodedCommand : PacketHandler
     {
         uint serial = buffer.ReadUInt32();
         ushort subCmd = buffer.ReadUInt16();
-        state.OnEncodedCommand(subCmd, serial);
+        state.OnEncodedCommand(subCmd, serial, buffer);
     }
 }
 

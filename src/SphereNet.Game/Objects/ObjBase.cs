@@ -35,6 +35,11 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     /// <summary>Resolve the GameWorld instance (set at startup).</summary>
     public static Func<World.GameWorld>? ResolveWorld;
 
+    /// <summary>Script TRIGGER verb (Source-X CV_TRIGGER): the host wires this
+    /// to TriggerDispatcher.Fire*TriggerByName so scripts can fire arbitrary
+    /// named triggers on an object through the normal handler chain.</summary>
+    public static Action<ObjBase, string, ITextConsole>? OnScriptTrigger;
+
     /// <summary>Broadcast a packet to nearby clients. Wired by the server host.</summary>
     public static Action<Point3D, int, PacketWriter, uint>? BroadcastNearby;
 
@@ -499,7 +504,14 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                 return true;
             }
             case "TRIGGER":
+            {
+                // Source-X CV_TRIGGER: fire @<name> on this object through the
+                // normal handler chain (EVENTS/TEVENTS/ITEMDEF/typedef).
+                string trigName = args.Trim().TrimStart('@');
+                if (trigName.Length > 0)
+                    OnScriptTrigger?.Invoke(this, trigName, source);
                 return true;
+            }
             case "REMOVE":
                 if (this is Items.Item delItem) delItem.Delete();
                 else if (this is Characters.Character delCh) delCh.Delete();
@@ -509,8 +521,20 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                     SetTimeout(Environment.TickCount64 + Math.Max(0, timerVal) * 1000);
                 return true;
             case "FIX":
-                // Re-seat on the terrain (stub — just keeps current Z)
+            {
+                // Source-X CObjBase fix: re-seat Z on the terrain surface.
+                var fixWorld = ResolveWorld?.Invoke();
+                if (fixWorld?.MapData != null)
+                {
+                    var p = Position;
+                    sbyte fixZ = fixWorld.MapData.GetEffectiveZ(p.Map, p.X, p.Y);
+                    if (this is Characters.Character fixCh)
+                        fixWorld.MoveCharacter(fixCh, new Point3D(p.X, p.Y, fixZ, p.Map));
+                    else if (this is Items.Item fixItem && !fixItem.ContainedIn.IsValid)
+                        Position = new Point3D(p.X, p.Y, fixZ, p.Map);
+                }
                 return true;
+            }
             case "SOUND":
                 // Sound effect — handled by the callback if set
                 if (ushort.TryParse(args, out ushort _))

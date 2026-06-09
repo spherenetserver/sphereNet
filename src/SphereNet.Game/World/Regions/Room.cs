@@ -20,6 +20,10 @@ public class Room : IScriptObj
     private readonly List<ResourceId> _events = [];
     private readonly uint _uid;
 
+    /// <summary>Script ALLCLIENTS verb — same host wiring contract as
+    /// <see cref="Region.OnAllClients"/>, scoped to this room.</summary>
+    public static Action<Room, string, ITextConsole>? OnAllClients { get; set; }
+
     public Room()
     {
         _uid = _nextUid++;
@@ -191,13 +195,14 @@ public class Room : IScriptObj
         switch (upper)
         {
             case "ALLCLIENTS":
-                // stub — would message all clients in this room
+                OnAllClients?.Invoke(this, args, source);
                 return true;
             case "CLEARTAGS":
                 ClearTags(string.IsNullOrEmpty(args) ? null : args);
                 return true;
             case "TAGLIST":
-                // stub — would list tags to console
+                foreach (var (k, v) in _tags)
+                    source.SysMessage($"TAG.{k} = {v}");
                 return true;
         }
 

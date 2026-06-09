@@ -16,6 +16,23 @@ namespace SphereNet.Game.World;
 /// <summary>
 /// The game world. Manages all objects, sectors, regions, and the world clock.
 /// Maps to CWorld in Source-X.
+///
+/// THREADING CONTRACT (multicore tick — Program.Tick.RunMulticoreTick):
+/// <list type="bullet">
+/// <item><c>_objects</c>, <c>_uuidIndex</c>, <c>_containerIndex</c>, <c>_sectors</c>,
+/// <c>_regions</c> and the other plain collections are single-writer: they may
+/// only be MUTATED on the main tick thread (serial phases — packet handling,
+/// ApplyDecision, world load). Parallel phases (NPC BuildDecision, view-delta
+/// building) may READ them concurrently because the serial phases never run
+/// at the same time as the parallel ones.</item>
+/// <item><c>_dirtyObjects</c> and <c>_regionCache</c> are ConcurrentDictionary
+/// because parallel phases write to them (ObjBase dirty-flag transitions call
+/// <see cref="NotifyDirty"/>; region lookups populate the cache).</item>
+/// <item>When adding a new parallel stage: it must not call CreateItem /
+/// CreateCharacter / PlaceCharacter / MoveCharacter / DeleteObject — collect
+/// intents in the stage and apply them in the serial phase, mirroring how
+/// NpcAI decisions are applied.</item>
+/// </list>
 /// </summary>
 public sealed class GameWorld
 {

@@ -100,8 +100,9 @@ public class TriggerCoverageGuardrailTests
 
     private static readonly HashSet<string> CharNotFiredP1 = new()
     {
-        "ExpChange", "ExpLevelChange",
-        // Wired (now fired): Eat (food/booze use-item gate), SkillMenu (skill
+        // Wired (now fired): ExpChange/ExpLevelChange (Character.ChangeExperience
+        // pipeline — script EXP writes and DeathEngine kill awards);
+        // Eat (food/booze use-item gate), SkillMenu (skill
         // selection menu), SkillWait (per-tick skill-in-progress, IsTrigUsed-gated);
         // Follow (pet "follow me"/"come" command), PartyDisband (party drops to 0);
         // SpellSelect (cast request, pre-checks), SpellBook (spellbook open);
@@ -114,19 +115,15 @@ public class TriggerCoverageGuardrailTests
         // light-level change at region transition, N1 = new light level);
         // SkillUseQuick (SkillEngine.UseQuick fires it before the check via the
         // Character.OnSkillUseQuick gate; N1 = skill, N2 = difficulty, RETURN 1 cancels).
-        // Still deferred (need infrastructure / semantics):
-        //   ExpChange/ExpLevelChange — no runtime experience/level system.
-        //   ExpChange/ExpLevelChange — no runtime experience/level system (the Exp
-        //                   and Level fields are persistence-only).
-        //   EnvironChange — needs per-character light/weather state to fire only on
-        //                   an actual change as the char moves between regions.
     };
 
     private static readonly HashSet<string> CharNotFiredP2 = new()
     {
-        "UserBugReport", "UserExWalkLimit", "UserGlobalChatButton", "UserKRToolbar",
-        "UserMailBag", "UserQuestArrowClick", "UserSpecialMove", "UserUltimaStoreButton", "UserVirtue",
-        "HouseDesignCommit", "HouseDesignExit",
+        "UserBugReport", "UserExWalkLimit", "UserGlobalChatButton",
+        "UserMailBag", "UserQuestArrowClick", "UserSpecialMove", "UserUltimaStoreButton",
+        // Wired (now fired): HouseDesignCommit / HouseDesignExit
+        // (GameClient.HandleEncodedCommand — 0xD7 Commit and Close paths);
+        // UserKRToolbar (0xBF 0x24), UserVirtue (0xBF 0x2C virtue invoke).
         "ToolTip", "Targon_Cancel", "NPCLostTeleport",
     };
 

@@ -65,6 +65,13 @@ public sealed class DeathEngine
         {
             ApplyKarmaFameChange(effectiveKiller, victim);
 
+            // Experience award (Source-X ChangeExperience on kill): the
+            // victim's own EXP value is the prize. Characters without EXP
+            // grant nothing, so the system stays inert unless scripts or
+            // CHARDEFs assign experience values.
+            if (!victim.IsPlayer && victim.Exp > 0)
+                effectiveKiller.ChangeExperience(victim.Exp);
+
             // PvP murder tracking — @MurderMark fires before the count is
             // recorded (Source-X Noto_Kill): a script may adjust the new count or
             // block the mark (and the criminal flag) entirely by returning null.

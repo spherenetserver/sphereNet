@@ -213,7 +213,8 @@ public static partial class Program
             client = new GameClient(state, _world, _accounts,
                 _loggerFactory.CreateLogger<GameClient>());
             client.SetEngines(_movement, _speech, _commands, _spellEngine, _deathEngine, _partyManager, _tradeManager,
-                _skillHandlers, _craftingEngine, _housingEngine, _triggerDispatcher, _guildManager, _mountEngine);
+                _skillHandlers, _craftingEngine, _housingEngine, _triggerDispatcher, _guildManager, _mountEngine,
+                _customHousing);
             client.SetScriptServices(_systemHooks, _scriptDb, ResolveDefMessage, _scriptFile, _scriptLdb,
                 _scriptDirs.Count > 0 ? _scriptDirs[0] : Path.GetDirectoryName(_config.ScpFilesDir));
             client.BroadcastNearby = BroadcastNearby;
@@ -890,6 +891,13 @@ public static partial class Program
 
         byte[] remaining = buffer.ReadBytes(buffer.Remaining);
         client.HandleExtendedCommand(subCmd, remaining);
+    }
+
+    /// <summary>0xD7 — custom-house design editor commands (Build, Commit, ...).</summary>
+    private static void OnEncodedCommand(NetState state, ushort subCmd, uint serial, PacketBuffer payload)
+    {
+        if (!_clients.TryGetValue(state.Id, out var client)) return;
+        client.HandleEncodedCommand(subCmd, serial, payload);
     }
 
     private static void OnResyncRequest(NetState state)

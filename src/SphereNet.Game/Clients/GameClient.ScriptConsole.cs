@@ -38,6 +38,33 @@ public sealed partial class GameClient
     /// warn-log only the first occurrence of each.</summary>
     private static readonly HashSet<string> s_unknownServVerbs = [];
 
+    /// <summary>Vendor for the script BUY verb: the current dialog subject
+    /// when it's a vendor NPC, otherwise the nearest vendor in range.</summary>
+    private Character? ResolveVendorContext()
+    {
+        if (_character == null)
+            return null;
+        if (_dialogSubjectUid.IsValid &&
+            _world.FindChar(_dialogSubjectUid) is { } subject &&
+            !subject.IsPlayer && subject.NpcBrain == NpcBrainType.Vendor)
+            return subject;
+
+        Character? nearest = null;
+        int bestDist = int.MaxValue;
+        foreach (var ch in _world.GetCharsInRange(_character.Position, 8))
+        {
+            if (ch.IsPlayer || ch.IsDeleted || ch.NpcBrain != NpcBrainType.Vendor)
+                continue;
+            int dist = _character.Position.GetDistanceTo(ch.Position);
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                nearest = ch;
+            }
+        }
+        return nearest;
+    }
+
     private bool CanSendStatusFor(Character ch)
     {
         if (_character == null)
@@ -970,10 +997,16 @@ public sealed partial class GameClient
             return true;
         }
 
-        if (upper == "DIALOGCLOSE")
+        if (upper == "DIALOGCLOSE" || upper.StartsWith("DIALOGCLOSE ", StringComparison.Ordinal))
         {
-            // Compatibility bridge: many scripts call DIALOGCLOSE before reopening.
-            // We don't currently keep a server-side open-dialog registry, so treat as no-op.
+            // Close the named open script dialog (0xBF 0x04) using the
+            // server-side open-dialog registry. Bare DIALOGCLOSE (no name)
+            // stays a no-op for legacy script compatibility.
+            string dlgName = upper == "DIALOGCLOSE"
+                ? args.Trim()
+                : (cmd["DIALOGCLOSE ".Length..] + (string.IsNullOrEmpty(args) ? "" : $" {args}")).Trim();
+            if (dlgName.Length > 0)
+                CloseScriptDialog(dlgName);
             return true;
         }
 
@@ -1151,13 +1184,23 @@ public sealed partial class GameClient
 
         if (upper == "BUY")
         {
-            // Vendor buy — placeholder until full vendor buy/sell packet support
+            // Source-X CV_BUY: open the vendor buy list. Vendor context is the
+            // current dialog subject when it's an NPC vendor, otherwise the
+            // nearest vendor NPC in interaction range.
+            var vendor = ResolveVendorContext();
+            if (vendor != null)
+                OpenVendorBuy(vendor);
             return true;
         }
 
         if (upper == "BYE")
         {
-            // End NPC interaction
+            // Source-X CV_BYE: end the NPC interaction — close any open script
+            // dialogs and drop the dialog subject so follow-up reads don't
+            // resolve against the NPC anymore.
+            foreach (var openDlg in _openScriptDialogs.Keys.ToArray())
+                CloseScriptDialog(openDlg);
+            _dialogSubjectUid = Serial.Invalid;
             return true;
         }
 
@@ -1649,8 +1692,7 @@ public sealed partial class GameClient
         }
         if (varName.StartsWith("ISDIALOGOPEN.", StringComparison.OrdinalIgnoreCase))
         {
-            // We currently don't track open dialogs server-side; keep compatibility checks false.
-            value = "0";
+            value = IsScriptDialogOpen(varName["ISDIALOGOPEN.".Length..].Trim()) ? "1" : "0";
             return true;
         }
 

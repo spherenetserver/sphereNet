@@ -7,6 +7,7 @@ using SphereNet.Game.World;
 using SphereNet.MapData;
 using SphereNet.MapData.Map;
 using SphereNet.MapData.Tiles;
+using SphereNet.Network.Packets.Outgoing;
 
 namespace SphereNet.Game.Movement;
 
@@ -663,6 +664,11 @@ public sealed class WalkCheck
         return list;
     }
 
+    /// <summary>Resolves the committed custom-house design tiles for a
+    /// MultiCustom item — wired by the host to CustomHousingEngine's cached
+    /// design lookup. Unset → custom designs contribute no walk geometry.</summary>
+    public static Func<Item, IReadOnlyList<HouseDesignTile>>? ResolveCustomDesign;
+
     private void AddVirtualMultiComponents(int mapId, int x, int y, List<Item> list)
     {
         var md = _world.MapData;
@@ -678,32 +684,53 @@ public sealed class WalkCheck
                 continue;
 
             var def = md.GetMulti(multi.BaseId);
-            if (def == null)
-                continue;
-
-            foreach (var comp in def.Components)
+            if (def != null)
             {
-                if (!comp.IsVisible)
-                    continue;
-
-                int compX = multi.X + comp.XOffset;
-                int compY = multi.Y + comp.YOffset;
-                if (compX != x || compY != y)
-                    continue;
-
-                var componentData = md.GetItemTileData(comp.TileId);
-                if (!ShouldTreatAsVirtualMultiGeometry(componentData))
-                    continue;
-
-                var virtualItem = new Item
+                foreach (var comp in def.Components)
                 {
-                    BaseId = comp.TileId,
-                    ItemType = ItemType.MultiAddon,
-                    Position = new Point3D((short)x, (short)y, (sbyte)(multi.Z + comp.ZOffset), (byte)mapId)
-                };
-                list.Add(virtualItem);
+                    if (!comp.IsVisible)
+                        continue;
+
+                    int compX = multi.X + comp.XOffset;
+                    int compY = multi.Y + comp.YOffset;
+                    if (compX != x || compY != y)
+                        continue;
+
+                    AddVirtualGeometry(md, list, comp.TileId, x, y,
+                        (sbyte)(multi.Z + comp.ZOffset), (byte)mapId);
+                }
+            }
+
+            // Committed custom-house design tiles (DESIGN_n) are not real
+            // items (the client renders them from the 0xD8 stream), so they
+            // become walk geometry the same virtual way as multi components.
+            if (multi.ItemType == ItemType.MultiCustom && ResolveCustomDesign != null)
+            {
+                foreach (var tile in ResolveCustomDesign(multi))
+                {
+                    if (multi.X + tile.X != x || multi.Y + tile.Y != y)
+                        continue;
+
+                    AddVirtualGeometry(md, list, tile.TileId, x, y,
+                        (sbyte)(multi.Z + tile.Z), (byte)mapId);
+                }
             }
         }
+    }
+
+    private static void AddVirtualGeometry(MapData.MapDataManager md, List<Item> list,
+        ushort tileId, int x, int y, sbyte z, byte mapId)
+    {
+        var data = md.GetItemTileData(tileId);
+        if (!ShouldTreatAsVirtualMultiGeometry(data))
+            return;
+
+        list.Add(new Item
+        {
+            BaseId = tileId,
+            ItemType = ItemType.MultiAddon,
+            Position = new Point3D((short)x, (short)y, z, mapId)
+        });
     }
 
     private static bool ShouldTreatAsVirtualMultiGeometry(ItemTileData data) =>

@@ -729,6 +729,24 @@ public sealed class PacketChatText : PacketHandler
     }
 }
 
+/// <summary>0xB3 — Chat action (client → server): [lang:4 ascii][cmd:2]
+/// [payload unicode BE]. Commands: 0x61 talk, 0x62 join (channel name wrapped
+/// in '"' quotes), 0x63 create channel, 0x43 leave.</summary>
+public sealed class PacketChatAction : PacketHandler
+{
+    public PacketChatAction() : base(0xB3, 0) { }
+
+    public override void OnReceive(PacketBuffer buffer, State.NetState state)
+    {
+        if (buffer.Remaining < 6)
+            return;
+        buffer.ReadAsciiFixed(4); // language
+        ushort cmd = buffer.ReadUInt16();
+        string text = buffer.Remaining >= 2 ? buffer.ReadUnicodeNullBE() : "";
+        state.OnChatAction(cmd, text);
+    }
+}
+
 /// <summary>0xE1 — Client type announcement. Flag: 0=Classic2D, 1=3D, 2=KR, 3=EC.</summary>
 public sealed class PacketClientType : PacketHandler
 {
@@ -796,6 +814,29 @@ public sealed class PacketCrashReport : PacketHandler
     public override void OnReceive(PacketBuffer buffer, State.NetState state)
     {
         state.OnCrashReport();
+    }
+}
+
+/// <summary>0xFA — Ultima Store button. Routed so @UserUltimaStoreButton fires.</summary>
+public sealed class PacketUltimaStoreButton : PacketHandler
+{
+    public PacketUltimaStoreButton() : base(0xFA, 1) { }
+
+    public override void OnReceive(PacketBuffer buffer, State.NetState state)
+    {
+        state.OnClientUiButton(0xFA);
+    }
+}
+
+/// <summary>0xB5 — open chat window. Payload (chat name) ignored; routed so
+/// @UserGlobalChatButton fires.</summary>
+public sealed class PacketChatOpen : PacketHandler
+{
+    public PacketChatOpen() : base(0xB5, 64) { }
+
+    public override void OnReceive(PacketBuffer buffer, State.NetState state)
+    {
+        state.OnClientUiButton(0xB5);
     }
 }
 

@@ -102,6 +102,7 @@ public static partial class Program
     private static WeatherEngine _weatherEngine = null!;
     private static HousingEngine? _housingEngine;
     private static CustomHousingEngine? _customHousing;
+    private static SphereNet.Game.Chat.ChatEngine? _chatEngine;
     private static SphereNet.Game.Ships.ShipEngine? _shipEngine;
     private static SphereNet.Game.Mounts.MountEngine? _mountEngine;
     private static SphereNet.Game.Diagnostics.StressTestEngine? _stressEngine;

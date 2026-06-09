@@ -214,7 +214,7 @@ public static partial class Program
                 _loggerFactory.CreateLogger<GameClient>());
             client.SetEngines(_movement, _speech, _commands, _spellEngine, _deathEngine, _partyManager, _tradeManager,
                 _skillHandlers, _craftingEngine, _housingEngine, _triggerDispatcher, _guildManager, _mountEngine,
-                _customHousing);
+                _customHousing, _chatEngine);
             client.SetScriptServices(_systemHooks, _scriptDb, ResolveDefMessage, _scriptFile, _scriptLdb,
                 _scriptDirs.Count > 0 ? _scriptDirs[0] : Path.GetDirectoryName(_config.ScpFilesDir));
             client.BroadcastNearby = BroadcastNearby;

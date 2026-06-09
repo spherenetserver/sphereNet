@@ -47,11 +47,16 @@ public sealed partial class GameClient
             _character.PrivLevel < PrivLevel.Counsel)
             return;
 
-        // Fire @Click trigger
+        // Fire @Click trigger (and the legacy @ToolTip — old-style single-click
+        // name/tooltip request. IsTrigUsed-gated: single click is a hot path).
         if (_triggerDispatcher != null)
         {
             if (obj is Character clickCh)
             {
+                if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.ToolTip) &&
+                    _triggerDispatcher.FireCharTrigger(clickCh, CharTrigger.ToolTip,
+                        new TriggerArgs { CharSrc = _character, ScriptConsole = this }) == TriggerResult.True)
+                    return;
                 var result = _triggerDispatcher.FireCharTrigger(clickCh, CharTrigger.Click,
                     new TriggerArgs { CharSrc = _character, ScriptConsole = this });
                 if (result == TriggerResult.True)
@@ -59,6 +64,10 @@ public sealed partial class GameClient
             }
             else if (obj is Item clickItem)
             {
+                if (_triggerDispatcher.IsItemTriggerUsed(ItemTrigger.Tooltip) &&
+                    _triggerDispatcher.FireItemTrigger(clickItem, ItemTrigger.Tooltip,
+                        new TriggerArgs { CharSrc = _character, ItemSrc = clickItem, ScriptConsole = this }) == TriggerResult.True)
+                    return;
                 var result = _triggerDispatcher.FireItemTrigger(clickItem, ItemTrigger.Click,
                     new TriggerArgs { CharSrc = _character, ItemSrc = clickItem, ScriptConsole = this });
                 if (result == TriggerResult.True)
@@ -695,6 +704,46 @@ public sealed partial class GameClient
         BroadcastNearby?.Invoke(groundPos, UpdateRange,
             new PacketWorldItem(item.Uid.Value, item.DispIdFull, item.Amount,
                 item.X, item.Y, item.Z, item.Hue, item.Direction), 0);
+    }
+
+    /// <summary>
+    /// Script BOUNCE/DROP verb bridge (Character.OnDragRelease): release the
+    /// item the character is dragging (DRAGGING tag) either to the ground at
+    /// their feet or back into the backpack, and cancel the client-side drag
+    /// cursor with 0x27. Returns false when nothing is being dragged.
+    /// </summary>
+    public bool ReleaseDraggedItem(bool toGround)
+    {
+        if (_character == null)
+            return false;
+        if (!_character.TryGetTag("DRAGGING", out string? dragSer) ||
+            !uint.TryParse(dragSer, out uint dragUid))
+            return false;
+
+        _character.RemoveTag("DRAGGING");
+        _netState.Send(new PacketPickupFailed(0)); // cancel the drag cursor
+
+        var item = _world.FindItem(new Serial(dragUid));
+        if (item == null || item.IsDeleted)
+            return true;
+
+        var pack = _character.Backpack;
+        if (!toGround && pack != null)
+        {
+            pack.AddItem(item);
+            item.Position = new Point3D(50, 50, 0, _character.MapIndex);
+            _netState.Send(new PacketContainerItem(
+                item.Uid.Value, item.DispIdFull, 0, item.Amount,
+                item.X, item.Y, pack.Uid.Value, item.Hue,
+                _netState.IsClientPost6017));
+            return true;
+        }
+
+        _world.PlaceItemWithDecay(item, _character.Position);
+        BroadcastNearby?.Invoke(item.Position, UpdateRange,
+            new PacketWorldItem(item.Uid.Value, item.DispIdFull, item.Amount,
+                item.X, item.Y, item.Z, item.Hue, item.Direction), 0);
+        return true;
     }
 
     /// <summary>Item-aware drop sound: gold coins get the amount-scaled coin

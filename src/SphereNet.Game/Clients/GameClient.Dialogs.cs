@@ -34,6 +34,27 @@ namespace SphereNet.Game.Clients;
 
 public sealed partial class GameClient
 {
+    /// <summary>Open script dialogs (name → gump id). Backs the DIALOGCLOSE
+    /// verb and ISDIALOGOPEN.* reads; entries drop when the client answers
+    /// the gump or DIALOGCLOSE force-closes it.</summary>
+    private readonly Dictionary<string, uint> _openScriptDialogs = new(StringComparer.OrdinalIgnoreCase);
+
+    public bool IsScriptDialogOpen(string dialogId) =>
+        _openScriptDialogs.ContainsKey(dialogId);
+
+    /// <summary>Force-close an open script dialog (0xBF 0x04) and drop its
+    /// server-side tracking. Returns false when no such dialog is open.</summary>
+    public bool CloseScriptDialog(string dialogId)
+    {
+        if (!_openScriptDialogs.TryGetValue(dialogId, out uint gumpId))
+            return false;
+        _openScriptDialogs.Remove(dialogId);
+        _gumpCallbacks.Remove(gumpId);
+        _activeGumps.Remove(gumpId);
+        Send(new PacketCloseGump(gumpId));
+        return true;
+    }
+
     private void ShowHelpPageDialog(int requestedPage)
     {
         if (_character == null)
@@ -756,10 +777,15 @@ public sealed partial class GameClient
             }
         }
 
+        _openScriptDialogs[dialogId] = gump.GumpId;
         SendGump(gump, (buttonId, switches, textEntries) =>
         {
             if (_character == null)
                 return;
+            // The client closed the gump to answer it — only clear tracking
+            // if a page re-open below didn't already re-register it.
+            if (_openScriptDialogs.TryGetValue(dialogId, out uint trackedId) && trackedId == gump.GumpId)
+                _openScriptDialogs.Remove(dialogId);
             var prevSubject = _dialogSubjectUid;
             _dialogSubjectUid = subjectUid;
             try

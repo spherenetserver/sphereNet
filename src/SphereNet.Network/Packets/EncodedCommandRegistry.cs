@@ -14,6 +14,10 @@ namespace SphereNet.Network.Packets;
 /// </summary>
 public static class EncodedCommandRegistry
 {
+    /// <summary>Combat ability request (Send_UseCombatAbility) — NOT a
+    /// house-design action; routed before the design-session gate.</summary>
+    public const ushort UseAbility = 0x19;
+
     public const ushort Backup = 0x02;
     public const ushort Restore = 0x03;
     public const ushort Commit = 0x04;

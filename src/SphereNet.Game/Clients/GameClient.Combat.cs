@@ -284,6 +284,14 @@ public sealed partial class GameClient
 
                 if (rejectReason != null)
                 {
+                    // Source-X @UserExWalkLimit — the client exceeded the walk
+                    // rate (token bucket dry). IsTrigUsed-gated: rejects can
+                    // storm during client-side speed bursts.
+                    if (rejectReason == "walk_buffer" &&
+                        _triggerDispatcher?.IsCharTriggerUsed(CharTrigger.UserExWalkLimit) == true)
+                        _triggerDispatcher.FireCharTrigger(_character, CharTrigger.UserExWalkLimit,
+                            new TriggerArgs { CharSrc = _character, ScriptConsole = this });
+
                     _moveViolationCount++;
                     _logger.LogWarning("[move_reject] reason={Reason} violations={Violations} ahead={Ahead}ms delay={Delay}ms tokens={Tokens} packet=0x{Packet:X2} batch={Batch} seq={Seq} dir=0x{Dir:X2} run={Run} at {X},{Y},{Z}",
                         rejectReason, _moveViolationCount, Math.Max(0, _nextMoveTime - now), moveDelay, _walkTokens,

@@ -15,7 +15,9 @@ public class UnsupportedOpcodeRobustnessTests
 {
     // Opcodes that are framed (fixed or length-prefixed) but have no incoming
     // handler. These must be consumed using their declared framing, not crash.
-    private static readonly byte[] FixedUnsupported = { 0xFA, 0xFB, 0xF1 }; // len 1, 2, 9
+    // (0xFA gained a real handler — Ultima Store button — so it is no longer
+    // part of this set.)
+    private static readonly byte[] FixedUnsupported = { 0xFB, 0xF1 }; // len 2, 9
 
     private static (NetworkManager Mgr, NetState State) CreatePlaintextConnection(int id = 1)
     {
@@ -62,19 +64,18 @@ public class UnsupportedOpcodeRobustnessTests
         var seen = new List<(byte Op, int Len)>();
         mgr.OnUnknownPacket += (_, op, bytes) => seen.Add((op, bytes.Length));
 
-        // 0xFA (1) + 0xFB (2) + 0xF1 (9), back to back.
-        var buffer = new byte[1 + 2 + 9];
-        buffer[0] = 0xFA;
-        buffer[1] = 0xFB;
-        // buffer[2] is 0xFB payload
-        buffer[3] = 0xF1;
+        // 0xFB (2) + 0xF1 (9), back to back.
+        var buffer = new byte[2 + 9];
+        buffer[0] = 0xFB;
+        // buffer[1] is 0xFB payload
+        buffer[2] = 0xF1;
         state.InjectReceived(buffer);
 
         Process(mgr, state);
 
         Assert.False(state.IsClosing);
         Assert.Equal(0, state.ReceivedData.Length); // fully consumed, no leftover
-        Assert.Equal(new[] { ((byte)0xFA, 1), ((byte)0xFB, 2), ((byte)0xF1, 9) }, seen);
+        Assert.Equal(new[] { ((byte)0xFB, 2), ((byte)0xF1, 9) }, seen);
     }
 
     [Fact]

@@ -80,7 +80,9 @@ public class TriggerCoverageGuardrailTests
 
     private static readonly HashSet<string> CharNotFiredP0 = new()
     {
-        "HitIgnore",
+        // Wired (now fired): HitIgnore — AttackerRecord gained the Ignored
+        // flag (script ATTACKER.n.IGNORE=1); a later hit from that attacker
+        // fires @HitIgnore on the victim, RETURN 1 clears the flag.
         "NPCSeeWantItem",
         // Wired (now fired): MurderMark, KarmaChange, FameChange (DeathEngine +
         // Character.On*); SkillChange, StatChange (SkillEngine gain hooks);
@@ -90,9 +92,7 @@ public class TriggerCoverageGuardrailTests
         // via the IsTrigUsed gate); NPCSeeNewPlayer (new per-NPC seen-player memory:
         // Character.SeeNewPlayer fires it on a first sighting; NpcAI scans nearby
         // players, gated + throttled, installed only when hooked).
-        // Still deferred (need infrastructure / low marginal value):
-        //   HitIgnore      — AttackerRecord has no "ignore" flag, and no behaviour
-        //                    sets an attacker as ignored, so the trigger never fires.
+        // Still deferred (low marginal value):
         //   NPCSeeWantItem — redundant with @NPCLookAtItem, which already fires on
         //                    the NPC's ground-item scan (LookAtNearbyItems); a true
         //                    "want" needs item-desire/pickup logic that does not exist.
@@ -119,12 +119,20 @@ public class TriggerCoverageGuardrailTests
 
     private static readonly HashSet<string> CharNotFiredP2 = new()
     {
-        "UserBugReport", "UserExWalkLimit", "UserGlobalChatButton",
-        "UserMailBag", "UserQuestArrowClick", "UserSpecialMove", "UserUltimaStoreButton",
         // Wired (now fired): HouseDesignCommit / HouseDesignExit
         // (GameClient.HandleEncodedCommand — 0xD7 Commit and Close paths);
-        // UserKRToolbar (0xBF 0x24), UserVirtue (0xBF 0x2C virtue invoke).
-        "ToolTip", "Targon_Cancel", "NPCLostTeleport",
+        // UserKRToolbar (0xBF 0x24), UserVirtue (0xBF 0x2C virtue invoke);
+        // UserQuestArrowClick (0xBF 0x07), UserBugReport (0xF4 crash report),
+        // UserUltimaStoreButton (0xFA), UserGlobalChatButton (0xB5),
+        // UserExWalkLimit (walk token bucket dry, IsTrigUsed-gated),
+        // ToolTip (single click, IsTrigUsed-gated), Targon_Cancel (target
+        // cursor dismissed).
+        // Wired (now fired): UserSpecialMove (0xD7 sub 0x19 combat ability,
+        // N1 = ability index); NPCLostTeleport (severely lost NPC teleports
+        // home from the serial ApplyDecision phase, RETURN 1 cancels).
+        // Still deferred:
+        //   UserMailBag — no carrier packet in the supported protocol set.
+        "UserMailBag",
     };
 
     private static readonly HashSet<string> CharNotFired =
@@ -135,9 +143,11 @@ public class TriggerCoverageGuardrailTests
     private static readonly HashSet<string> ItemNotFiredP2 = new()
     {
         "RegionEnter", "RegionLeave",
-        "Start", "Stop", "Level", "Complete",
+        "Level", "Complete",
         "AddRedCandle", "AddWhiteCandle", "DelRedCandle", "DelWhiteCandle",
-        "Tooltip",
+        // Wired (now fired): Tooltip (single click, IsTrigUsed-gated,
+        // ahead of @Click in HandleSingleClick); Start/Stop (the spawner
+        // START/STOP verbs, via Item.OnSpawnStartStop).
         // Wired (now fired): ShipMove/ShipStop/ShipTurn (ShipEngine hooks),
         // Redeed (House.OnRedeed at deed creation), MemoryEquip (Memory_CreateObj
         // via Character.OnMemoryEquip, installed only when hooked — item IsTrigUsed gate);

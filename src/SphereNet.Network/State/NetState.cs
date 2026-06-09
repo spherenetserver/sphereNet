@@ -1004,7 +1004,23 @@ public sealed class NetState : IDisposable
     internal void OnCrashReport()
     {
         _logger.LogWarning("Client #{Id} ({EP}) sent crash report", Id, RemoteEndPoint);
+        CrashReportHandler?.Invoke(this);
     }
+
+    /// <summary>0xF4 crash report — lets the game layer fire @UserBugReport.</summary>
+    public Action<NetState>? CrashReportHandler { get; set; }
+
+    /// <summary>Stateless client UI button packets (0xFA Ultima Store,
+    /// 0xB5 chat window). Arg: the packet opcode.</summary>
+    public Action<NetState, byte>? ClientUiButtonHandler { get; set; }
+
+    internal void OnClientUiButton(byte opcode) => ClientUiButtonHandler?.Invoke(this, opcode);
+
+    /// <summary>0xB3 chat action: (cmd, payload text). 0x61 talk, 0x62 join,
+    /// 0x63 create, 0x43 leave.</summary>
+    public Action<NetState, ushort, string>? ChatActionHandler { get; set; }
+
+    internal void OnChatAction(ushort cmd, string text) => ChatActionHandler?.Invoke(this, cmd, text);
 
     internal void OnGumpTextEntry(uint serial, ushort context, byte action, string text)
         => GumpTextEntryHandler?.Invoke(this, serial, context, action, text);

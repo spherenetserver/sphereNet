@@ -686,6 +686,17 @@ public sealed class NpcAI
             {
                 npc.FightTarget = Serial.Invalid;
                 ClearLosFailCount(npc);
+                // Severely lost — way past the leash radius: teleport straight
+                // home (Source-X lost-NPC go-home behaviour). @NPCLostTeleport
+                // fires first; RETURN 1 cancels the teleport and the NPC walks
+                // back instead. Safe to fire here: ActChase runs in the serial
+                // ApplyDecision phase.
+                if (homeDist > leash * 3 &&
+                    Character.OnNpcLostTeleport?.Invoke(npc) != true)
+                {
+                    _world.MoveCharacter(npc, leashHome);
+                    return;
+                }
                 MoveToward(npc, leashHome, run: true);
                 return;
             }

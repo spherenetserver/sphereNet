@@ -29,6 +29,17 @@ public partial class Character : ObjBase
     /// MountEngine.Dismount (restores the mount NPC) and the rider's client
     /// update; when unset the verb falls back to clearing the OnHorse flag.</summary>
     public static Action<Character>? OnScriptDismount;
+
+    /// <summary>Fired by the script BOUNCE/DROP verbs. Arg: true = release
+    /// the dragged item (DRAGGING tag) to the ground, false = bounce it back
+    /// into the backpack. The host resolves the owning client so the drag
+    /// cursor is cancelled (0x27) and the item view updated.</summary>
+    public static Action<Character, bool>? OnDragRelease;
+
+    /// <summary>Fired before a severely lost NPC (far past its home leash)
+    /// teleports home (Source-X @NPCLostTeleport). Return true to cancel the
+    /// teleport — the NPC walks back instead.</summary>
+    public static Func<Character, bool>? OnNpcLostTeleport;
     /// <summary>Fired when a timed jail sentence expires and the character
     /// should be released (move out of jail, clear Freeze, resync).</summary>
     public static Action<Character>? OnJailReleaseRequested;
@@ -388,13 +399,22 @@ public partial class Character : ObjBase
     // Entries accumulate while combat is active; cleared by ClearAttackers
     // (death, resurrect, or script). Insertion order is preserved so
     // ATTACKER.LAST reads the most-recent hit.
-    public readonly struct AttackerRecord(Serial uid, int totalDamage, long lastHitTick)
+    public readonly struct AttackerRecord(Serial uid, int totalDamage, long lastHitTick, bool ignored = false)
     {
         public Serial Uid { get; } = uid;
         public int TotalDamage { get; } = totalDamage;
         public long LastHitTick { get; } = lastHitTick;
+        /// <summary>Script-set ATTACKER.n.IGNORE flag (Source-X
+        /// STONEPRIV-style ignore). A hit from an ignored attacker fires
+        /// @HitIgnore on the victim instead of passing silently.</summary>
+        public bool Ignored { get; } = ignored;
     }
     private readonly List<AttackerRecord> _attackers = new();
+
+    /// <summary>Fired when an attacker flagged ATTACKER.n.IGNORE=1 lands a
+    /// hit (Source-X @HitIgnore). Args: victim, attacker uid. Return true to
+    /// clear the ignore flag (the script un-ignored the attacker).</summary>
+    public static Func<Character, Serial, bool>? OnHitIgnored;
 
     // Criminal / murderer state
     private long _criminalTimer;       // TickCount64 when criminal flag expires (0 = not criminal)
@@ -2106,7 +2126,10 @@ public partial class Character : ObjBase
         {
             if (_attackers[i].Uid == attackerUid)
             {
-                _attackers[i] = new AttackerRecord(attackerUid, _attackers[i].TotalDamage + damage, now);
+                bool ignored = _attackers[i].Ignored;
+                if (ignored && OnHitIgnored != null && OnHitIgnored(this, attackerUid))
+                    ignored = false; // script un-ignored the attacker
+                _attackers[i] = new AttackerRecord(attackerUid, _attackers[i].TotalDamage + damage, now, ignored);
                 // Move this entry to the end so ATTACKER.LAST reflects it
                 if (i != _attackers.Count - 1)
                 {
@@ -2119,6 +2142,22 @@ public partial class Character : ObjBase
         }
         _attackers.Add(new AttackerRecord(attackerUid, damage, now));
         OnCombatAdd?.Invoke(this, attackerUid);
+    }
+
+    /// <summary>Set/clear the ATTACKER.n.IGNORE flag for an attacker already
+    /// in the log. Returns false when the uid is not an attacker.</summary>
+    public bool SetAttackerIgnored(Serial attackerUid, bool ignored)
+    {
+        for (int i = 0; i < _attackers.Count; i++)
+        {
+            if (_attackers[i].Uid == attackerUid)
+            {
+                var rec = _attackers[i];
+                _attackers[i] = new AttackerRecord(rec.Uid, rec.TotalDamage, rec.LastHitTick, ignored);
+                return true;
+            }
+        }
+        return false;
     }
 
     public void ClearAttackers() => _attackers.Clear();
@@ -2763,6 +2802,9 @@ public partial class Character : ObjBase
                     case "UID":
                         value = "0x" + rec.Uid.Value.ToString("X");
                         return true;
+                    case "IGNORE":
+                        value = rec.Ignored ? "1" : "0";
+                        return true;
                 }
             }
         }
@@ -3172,6 +3214,23 @@ public partial class Character : ObjBase
         if (key.Equals("SELL", StringComparison.OrdinalIgnoreCase) ||
             key.Equals("BUY", StringComparison.OrdinalIgnoreCase))
         {
+            return false;
+        }
+
+        // ATTACKER.n.IGNORE=0/1 — script-controlled ignore flag on an
+        // attacker-log entry; a later hit from an ignored attacker fires
+        // @HitIgnore (Source-X parity).
+        if (key.StartsWith("ATTACKER.", StringComparison.OrdinalIgnoreCase))
+        {
+            string atail = key["ATTACKER.".Length..].ToUpperInvariant();
+            int adot = atail.IndexOf('.');
+            if (adot > 0 && atail[(adot + 1)..] == "IGNORE"
+                && int.TryParse(atail.AsSpan(0, adot), out int aidx)
+                && aidx >= 0 && aidx < _attackers.Count)
+            {
+                SetAttackerIgnored(_attackers[aidx].Uid, normalized != "0");
+                return true;
+            }
             return false;
         }
 
@@ -3870,14 +3929,12 @@ public partial class Character : ObjBase
             }
             case "BOUNCE":
             {
-                // Source-X CChar::r_Verb BOUNCE bounces whatever the
-                // character is currently dragging back to its origin
-                // container. We don't model a server-side drag cursor
-                // (the 0x25 pickup is handled inline by GameClient and
-                // either places or rejects the item in the same tick),
-                // so there's nothing to bounce here. The verb is left
-                // wired for script compatibility — calling it is safe
-                // and silent.
+                // Source-X CChar::r_Verb BOUNCE: return the dragged item
+                // (DRAGGING tag, set by the pickup packet) to the backpack
+                // and cancel the client drag cursor. The host hook resolves
+                // the owning client for the packet work; headless fallback
+                // just re-packs the item silently.
+                OnDragRelease?.Invoke(this, false);
                 return true;
             }
             case "SOUND":
@@ -4242,13 +4299,9 @@ public partial class Character : ObjBase
             }
             case "DROP":
             {
-                // Source-X CChar::r_Verb DROP releases the dragged item
-                // to the ground. SphereNet handles drag cursors purely
-                // in the GameClient packet path (0x25 pickup → 0x07/0x08
-                // drop within the same tick); there is no persistent
-                // server-side "in hand" item to drop here. The verb is
-                // accepted for script compatibility and is a safe
-                // no-op.
+                // Source-X CChar::r_Verb DROP: release the dragged item
+                // (DRAGGING tag) to the ground at the character's feet.
+                OnDragRelease?.Invoke(this, true);
                 return true;
             }
             case "PACK":

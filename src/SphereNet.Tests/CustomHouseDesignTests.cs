@@ -247,4 +247,68 @@ public class CustomHouseDesignTests
         Assert.Equal(47, CustomHousingEngine.LevelToZ(3));
         Assert.Equal(67, CustomHousingEngine.LevelToZ(4));
     }
+
+    // ---- Foundation placement + walk-geometry feed ----
+
+    [Fact]
+    public void PlaceHouse_CustomFoundation_NoComponentItems_RevisionInitialized()
+    {
+        var world = CreateWorld();
+        var registry = new MultiRegistry();
+        var def = new MultiDef { Id = 0x1404, Name = "foundation 7x7" };
+        def.Components.Add(new MultiComponent { TileId = 0x0064, DeltaX = -3, DeltaY = -3, DeltaZ = 0, Visible = true });
+        def.RecalcBounds();
+        registry.Register(def);
+        var housing = new HousingEngine(world, registry);
+
+        var owner = world.CreateCharacter();
+        owner.IsPlayer = true;
+        var pos = new SphereNet.Core.Types.Point3D(1500, 1500, 0, 0);
+
+        int itemsBefore = world.GetAllObjects().OfType<SphereNet.Game.Objects.Items.Item>().Count();
+        var house = housing.PlaceHouse(owner, 0x1404, pos, customFoundation: true);
+
+        Assert.NotNull(house);
+        var multi = house!.MultiItem;
+        Assert.Equal(SphereNet.Core.Enums.ItemType.MultiCustom, multi.ItemType);
+        // Only the multi item itself — design tiles are virtual, not real items.
+        int itemsAfter = world.GetAllObjects().OfType<SphereNet.Game.Objects.Items.Item>().Count();
+        Assert.Equal(itemsBefore + 1, itemsAfter);
+        Assert.True(multi.TryGetTag(HouseDesign.RevisionTag, out string? rev));
+        Assert.Equal("1", rev);
+
+        // Regular placement of the same def DOES materialize components.
+        var owner2 = world.CreateCharacter();
+        owner2.IsPlayer = true;
+        var house2 = housing.PlaceHouse(owner2, 0x1404, new SphereNet.Core.Types.Point3D(1600, 1600, 0, 0));
+        Assert.NotNull(house2);
+        Assert.Equal(SphereNet.Core.Enums.ItemType.Multi, house2!.MultiItem.ItemType);
+        Assert.Single(house2.Components);
+    }
+
+    [Fact]
+    public void GetCommittedTiles_CachesByRevision_AndInvalidatesOnCommit()
+    {
+        var world = CreateWorld();
+        var housing = new HousingEngine(world, new MultiRegistry());
+        var engine = new CustomHousingEngine(world, housing);
+        var ch = world.CreateCharacter();
+        var multi = world.CreateItem();
+
+        engine.Begin(ch, multi);
+        engine.Build(ch, 0x0064, 2, 3);
+        engine.Commit(ch);
+
+        var tiles1 = engine.GetCommittedTiles(multi);
+        Assert.Single(tiles1);
+        // Same revision → same cached instance.
+        Assert.Same(tiles1, engine.GetCommittedTiles(multi));
+
+        engine.Begin(ch, multi);
+        engine.Build(ch, 0x0066, 4, 4);
+        engine.Commit(ch); // revision bump invalidates the cache
+
+        var tiles2 = engine.GetCommittedTiles(multi);
+        Assert.Equal(2, tiles2.Count);
+    }
 }

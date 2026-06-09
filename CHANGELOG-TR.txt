@@ -4,6 +4,102 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-10] - Combat ability trigger'i, spawner start/stop trigger'lari, kaybolan NPC isinlanmasi (Wave 80)
+----------------------------------------
+
+ENGINE - trigger'lar:
+  - @UserSpecialMove 0xD7 sub 0x19 combat ability isteginden atesleniyor
+    (client Send_UseCombatAbility — payload yerlesimi ClassicUO yazicisina
+    karsi dogrulandi), N1 = ability index. 0xD7 opcode'unu paylastigi icin
+    house-design oturum kapisindan once yonlendiriliyor.
+  - @Start / @Stop spawner START/STOP verb'leri spawn'i acip kapattiginda
+    atesleniyor (Item.OnSpawnStartStop host hook'u).
+  - @NPCLostTeleport yeni motor davranisina baglandi: evinden leash
+    yaricapinin uc katindan fazla uzaklasan vahsi NPC yuruyerek donmek yerine
+    dogrudan eve isinlanir; trigger once ateslenir, RETURN 1 isinlanmayi
+    iptal eder (NPC eskisi gibi yurur). Guvenligi dogrulandi: chase/leash
+    mantigi paralel karar ureticide degil, seri ApplyDecision fazinda calisir.
+  - Item @RegionEnter/@RegionLeave gerekcesi netlestirilerek ertelendi:
+    hook'lanacak merkezi bir item-tasima yolu yok (Position, gemi hareketi
+    gibi sicak yollarda dogrudan atanir).
+
+[2026-06-10] - Conference chat sistemi (Wave 79)
+----------------------------------------
+
+ENGINE - chat:
+  - UO conference chat sistemi uygulandi. ChatEngine kanallari ve uyeligi
+    tutuyor (uye basina tek kanal; gecici kanallar bosalinca silinir, statik
+    "General" kanali kalir). Chat penceresi acilinca (0xB5) karakterin adi
+    chat ismi olarak kabul edilir ve kanal listesi gonderilir; client sonra
+    otomatik olarak "General"e katilir.
+  - Gelen 0xB3 chat aksiyonlari parse edilip isleniyor: konusma (0x61, kanal
+    uyelerine yayin), katilma (0x62 — kanal adi tirnak karakterleriyle sarili
+    gelir, opsiyonel sifre ayiklanir), kanal olusturma (0x63), ayrilma (0x43).
+    Baglanti koptugunda uyelik dusuruluyor, kanallarda bayat kayit kalmiyor.
+  - Giden 0xB2 chat mesajlari client'in render ettigi subcommand'lari
+    kapsiyor: kanal olustur/sil, isim kabulu, kullanici ekle/cikar, kullanici
+    listesi temizle, kanala katildin/ayrildin, kanal mesaji. Byte yerlesimi
+    (cmd + 4 rezerve byte + null-sonlu BE-unicode stringler) testlerde
+    ClassicUO parser'inin birebir sekline karsi dogrulaniyor. Client chat
+    butonunu acan T2A feature biti login'de zaten gonderiliyordu.
+
+[2026-06-09] - Script console compat verb'leri, drag-release verb'leri, trigger backlog kapanisi (Wave 78)
+----------------------------------------
+
+SCRIPTING - console verb'leri:
+  - DIALOGCLOSE adli acik script dialog'unu gercekten kapatiyor: acik
+    dialog'lar sunucu tarafinda izleniyor (ad → gump id), kapatma 0xBF sub
+    0x04 gonderip kaydi dusuruyor; ISDIALOGOPEN.* artik sabit 0 yerine bu
+    kayittan yanit veriyor. BYE NPC etkilesimini bitiriyor (acik script
+    dialog'larini kapatir, dialog subject'i temizler). BUY vendor buy
+    listesini aciyor — dialog subject vendor NPC ise onu, degilse menzildeki
+    en yakin vendor'u kullanir.
+  - Character BOUNCE/DROP suruklenen item uzerinde calisiyor (pickup paketinin
+    yazdigi DRAGGING durumu): BOUNCE cantaya geri koyar, DROP ayak ucuna
+    birakir; ikisi de client drag cursor'unu 0x27 ile iptal eder (yeni
+    PacketPickupFailed yazicisi). Item FIXWEIGHT client gorunumunu tazeler
+    (agirlik zaten talep aninda hesaplaniyor).
+
+ENGINE - trigger'lar:
+  - @HitIgnore uygulandi: AttackerRecord'a Ignored bayragi eklendi, scriptler
+    ATTACKER.n.IGNORE ile okuyup yazabiliyor; ignore'lu saldirganin vurusu
+    kurban uzerinde @HitIgnore atesliyor (RETURN 1 bayragi temizler).
+  - @Targon_Cancel oyuncu hedef cursor'unu iptal ettiginde atesleniyor.
+  - @ToolTip (char) ve @Tooltip (item) single click'te @Click'ten once
+    atesleniyor; single click sicak yol oldugu icin IsTrigUsed kapili.
+  - @UserQuestArrowClick 0xBF sub 0x07'den atesleniyor (yeni bilinen
+    subcommand).
+  - @UserBugReport 0xF4 crash raporundan atesleniyor.
+  - 0xFA (Ultima Store butonu) ve 0xB5 (chat penceresi acma) paket handler
+    kazandi; @UserUltimaStoreButton / @UserGlobalChatButton ateslerler.
+  - @UserExWalkLimit walk token kovasinin kurudugu anda atesleniyor
+    (IsTrigUsed kapili — hareket retleri firtinaya donebilir).
+  - Gerekceli ertelemeler guardrail'de kayitli: UserMailBag / UserSpecialMove
+    (desteklenen protokol setinde tasiyici paket yok), NPCLostTeleport
+    (leash'li NPC eve yuruyerek doner; AI karar asamasi paralel),
+    NPCSeeWantItem (@NPCLookAtItem kapsiyor). Sector ambient ruzgar sesi
+    maddesi Source-X referansi kontrol edilince dusuruldu: CSector'de boyle
+    bir ses mantigi yok — madde spekulatifmis.
+
+[2026-06-09] - Custom house foundation yerlestirme ve tasarim yurume geometrisi (Wave 77)
+----------------------------------------
+
+ENGINE - custom housing:
+  - Ozellestirilebilir foundation yerlestirme: TAG.CUSTOMHOUSE tasiyan ev
+    deed'i multi'yi MultiCustom foundation olarak yerlestiriyor (PlaceHouse
+    customFoundation yolu), revision 1'de bos kalici tasarimla. Normal ev
+    yerlestirmeden farkli olarak gercek bilesen item'i uretilmiyor — client
+    foundation multi'sini ve kalici tasarimi 0xD8 akisindan ciziyor, boylece
+    cift render olmuyor.
+  - Kalici tasarimlar artik sunucu tarafinda yurume geometrisi: WalkCheck,
+    MultiCustom item'in DESIGN_n karolarini multi.mul bilesenleriyle ayni
+    sekilde sanallastiriyor (surface/bridge/impassable tile bayraklari
+    gozetiliyor, ust katlar icin karo basina Z destekleniyor). Tasarim
+    sorgusu CustomHousingEngine uzerindeki revision-anahtarli onbellekten
+    geliyor — tasarim commit'i DESIGN_REVISION'i artirip onbellegi bir
+    sonraki adim kontrolunde gecersiz kiliyor. Paralel NPC-pathfinding
+    asamasi da WalkCheck'e bastigi icin onbellek concurrent.
+
 [2026-06-09] - Guild kanal teslimati, custom house tasarim editoru, script verb tamamlama (Wave 76)
 ----------------------------------------
 

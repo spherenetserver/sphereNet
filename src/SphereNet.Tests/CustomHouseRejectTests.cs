@@ -95,12 +95,12 @@ public class CustomHouseRejectTests
 
         ushort seenSub = 0xFFFF;
         state.EncodedCommandHandler = (_, sub, _, _) => seenSub = sub;
-        var unknownSeen = new List<byte>();
-        mgr.OnUnknownPacket += (_, op, _) => unknownSeen.Add(op);
+        var uiButtons = new List<byte>();
+        state.ClientUiButtonHandler = (_, op) => uiButtons.Add(op);
 
-        // Framed 0xD7 (len=11) carrying Build, followed by a trailing 0xFA (len 1).
-        // If the 0xD7 length were mis-handled, the trailing 0xFA would be read at
-        // the wrong offset and the unknown-opcode capture below would not see it.
+        // Framed 0xD7 (len=11) carrying Build, followed by a trailing 0xFA (len 1,
+        // Ultima Store button). If the 0xD7 length were mis-handled, the trailing
+        // 0xFA would be read at the wrong offset and its handler would not fire.
         byte[] d7 = { 0xD7, 0x00, 0x0B, 0x00, 0x00, 0x00, 0x05, 0x00, (byte)EncodedCommandRegistry.Build, 0x00, 0x00 };
         byte[] trailing = { 0xFA };
         state.InjectReceived(d7.Concat(trailing).ToArray());
@@ -111,6 +111,6 @@ public class CustomHouseRejectTests
         Assert.False(state.IsClosing);
         Assert.Equal(0, state.ReceivedData.Length);
         Assert.Equal(EncodedCommandRegistry.Build, seenSub);
-        Assert.Contains((byte)0xFA, unknownSeen); // trailing packet reached at correct offset
+        Assert.Contains((byte)0xFA, uiButtons); // trailing packet reached at correct offset
     }
 }

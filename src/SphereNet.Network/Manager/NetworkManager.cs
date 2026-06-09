@@ -148,6 +148,9 @@ public sealed class NetworkManager : IDisposable
         _packetManager.Register(new PacketNewBookHeader());
         _packetManager.Register(new PacketCrashReport());
         _packetManager.Register(new PacketDisconnect());
+        _packetManager.Register(new PacketUltimaStoreButton());
+        _packetManager.Register(new PacketChatOpen());
+        _packetManager.Register(new PacketChatAction());
     }
 
     /// <summary>Initialize the listen socket.</summary>
@@ -785,7 +788,10 @@ public sealed class NetworkManager : IDisposable
         // Phase 3
         Action<NetState, uint, ushort, byte, string>? gumpTextEntry = null,
         Action<NetState, uint>? allNamesRequest = null,
-        Action<NetState, ushort, uint, PacketBuffer>? encodedCommand = null)
+        Action<NetState, ushort, uint, PacketBuffer>? encodedCommand = null,
+        Action<NetState>? crashReport = null,
+        Action<NetState, byte>? clientUiButton = null,
+        Action<NetState, ushort, string>? chatAction = null)
     {
         foreach (var state in _states)
         {
@@ -812,6 +818,9 @@ public sealed class NetworkManager : IDisposable
             state.TextCommandHandler = textCommand;
             state.ExtendedCommandHandler = extendedCommand;
             state.EncodedCommandHandler = encodedCommand;
+            state.CrashReportHandler = crashReport;
+            state.ClientUiButtonHandler = clientUiButton;
+            state.ChatActionHandler = chatAction;
             state.ResyncRequestHandler = resyncRequest;
             state.LogoutRequestHandler = logoutRequest;
             state.HelpRequestHandler = helpRequest;

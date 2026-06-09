@@ -363,8 +363,13 @@ public sealed class HousingEngine
     /// <summary>
     /// Place a new house at the given position.
     /// Returns null if placement is invalid.
+    /// When <paramref name="customFoundation"/> is true the multi becomes a
+    /// customizable foundation (ItemType.MultiCustom): no real component items
+    /// are materialized — the client renders the foundation multi and the
+    /// committed design (0xD8) itself, and server walk geometry comes from
+    /// WalkCheck's virtual multi/design components.
     /// </summary>
-    public House? PlaceHouse(Character owner, ushort multiId, Point3D position)
+    public House? PlaceHouse(Character owner, ushort multiId, Point3D position, bool customFoundation = false)
     {
         if (MaxHousesPerPlayer >= 0 && GetHousesByOwner(owner.Uid).Count >= MaxHousesPerPlayer)
             return null;
@@ -383,27 +388,36 @@ public sealed class HousingEngine
         var multiItem = _world.CreateItem();
         multiItem.BaseId = multiId;
         multiItem.Name = def.Name;
-        multiItem.ItemType = ItemType.Multi;
+        multiItem.ItemType = customFoundation ? ItemType.MultiCustom : ItemType.Multi;
         _world.PlaceItem(multiItem, position);
 
         // Create house instance
         var house = new House(multiItem) { Owner = owner.Uid };
 
-        // Generate components
-        foreach (var comp in def.Components)
+        if (customFoundation)
         {
-            if (!comp.Visible) continue;
+            // Empty committed design at revision 1 — clients that query the
+            // design (0xBF 0x1E) get a valid, empty 0xD8 stream.
+            multiItem.Tags.Set(HouseDesign.RevisionTag, "1");
+        }
+        else
+        {
+            // Generate components
+            foreach (var comp in def.Components)
+            {
+                if (!comp.Visible) continue;
 
-            var compItem = _world.CreateItem();
-            compItem.BaseId = comp.TileId;
+                var compItem = _world.CreateItem();
+                compItem.BaseId = comp.TileId;
                 var compPos = new Point3D(
                     (short)(position.X + comp.DeltaX),
                     (short)(position.Y + comp.DeltaY),
                     (sbyte)(position.Z + comp.DeltaZ),
                     position.Map
                 );
-            _world.PlaceItem(compItem, compPos);
-            house.AddComponent(compItem.Uid);
+                _world.PlaceItem(compItem, compPos);
+                house.AddComponent(compItem.Uid);
+            }
         }
 
         _houses[multiItem.Uid] = house;

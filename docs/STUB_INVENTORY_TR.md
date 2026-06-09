@@ -24,7 +24,9 @@ Son güncelleme: 2026-06-09
 | P2 | Trigger backlog | 11 char + 11 item trigger ateşlenmiyor (HouseDesignCommit/Exit, ExpChange/ExpLevelChange, UserVirtue, UserKRToolbar artık ateşleniyor) |
 | ~~P2~~ ✅ | Region geçişinde client ışık paketi | **Zaten bağlıymış:** `Program.EngineWiring.cs` OnRegionChanged → 0x4F + sezon + bölgesel weather (envanter eskimişti) |
 
-**Kalan açık alanlar (özet):** custom housing devamı (foundation deed + commit sonrası multi rebuild), global/legacy chat (0xB2/0xF9 — bilinçli erteleme), kalan P2 trigger'lar (paket handler'ı olmayan User* butonları), sector ambient ses (kozmetik), `HitIgnore`/`NPCSeeWantItem` (altyapı gerekçeleriyle ertelendi), script console `BUY`/`BYE`/`DIALOGCLOSE`/`ISDIALOGOPEN` compat stub'ları, `Character.BOUNCE`/`DROP` (drag-cursor altyapısı yok), item `FIXWEIGHT`.
+**Kalan açık alanlar (özet, hepsi bilinçli erteleme):** 0xB2 legacy text-in + 0xF9 (çok eski/KR varyantları; conference chat 0xB3/0xB5 ile çalışıyor), `UserMailBag` (paket yok), `NPCSeeWantItem` (@NPCLookAtItem ile örtüşük), item `RegionEnter`/`RegionLeave` (merkezi item-taşıma yolu yok), item `Level`/`Complete` + candle trigger'ları (item-level / champion altar altyapısı yok), sector ambient ses (Source-X referansında yok — spekülatif maddeydi).
+
+**Custom housing tamamlandı (2026-06-09, dalga 3):** foundation yerleştirme — deed üzerinde `TAG.CUSTOMHOUSE` ile `PlaceHouse(customFoundation: true)` → `MultiCustom` item + boş tasarım (revision 1), gerçek bileşen item'ı üretilmez; commit edilen tasarım sunucu tarafında `WalkCheck.ResolveCustomDesign` → `CustomHousingEngine.GetCommittedTiles` (revision-anahtarlı concurrent önbellek) üzerinden sanal yürüme geometrisi olur (client karoları 0xD8'den çizdiği için çift render yok).
 
 ---
 
@@ -46,7 +48,7 @@ Son güncelleme: 2026-06-09
 |-------|--------|
 | `OPEN` | ✅ `Item.OnScriptOpen` → `GameClient.OpenContainerFromScript` (script otoritesi, snoop/trap atlanır) |
 | `DCLICK` / `USE` | ✅ `Item.OnScriptDClick` → `GameClient.HandleDoubleClick` (tam client çift-tık yolu) |
-| `FIXWEIGHT` | No-op |
+| `FIXWEIGHT` | ✅ View refresh (ağırlık zaten talep anında hesaplanıyor) |
 | `COMMIT` (MultiCustom) | Tag yazar; client design sync editör Commit'inden (0xD7 0x04) geçiyor — script COMMIT hâlâ rebuild tetiklemez |
 
 **Çalışan:** `DELETE`, `EMPTY`, `MOVE`, `FLIP` (flip çifti varsa), gemi komutları → `ShipEngine`, guild stone → `GuildManager`.
@@ -55,8 +57,8 @@ Son güncelleme: 2026-06-09
 
 | Komut | Durum |
 |-------|--------|
-| `BOUNCE` | Sunucu drag cursor yok; sessiz no-op |
-| `DROP` | Aynı — paket yolu inline drop |
+| `BOUNCE` | ✅ DRAGGING tag'indeki item çantaya döner, 0x27 ile drag cursor iptal edilir |
+| `DROP` | ✅ DRAGGING tag'indeki item ayak ucuna bırakılır |
 | `DISMOUNT` | ✅ `Character.OnScriptDismount` → client `UnmountSelf` / `MountEngine.Dismount`; headless'ta flag fallback |
 | `TAGLIST` | ✅ TAG'leri çağıran konsola döker |
 | `BARK` | Ses var; body-id türetilmiş (sound tablosu yok) |
@@ -82,10 +84,10 @@ Dosya: `GameClient.ScriptConsole.cs`, `Program.Scripting.cs`
 
 | Öğe | Durum |
 |-----|--------|
-| `BUY` | Placeholder — script vendor buy yok |
-| `BYE` | NPC oturumu kapatılmaz |
-| `DIALOGCLOSE` | Açık dialog kaydı yok |
-| `ISDIALOGOPEN.*` | Hep `"0"` |
+| `BUY` | ✅ Dialog subject'i vendor ise onun, değilse 8 tile içindeki en yakın vendor'un buy listesi |
+| `BYE` | ✅ Açık script dialog'larını kapatır + dialog subject'i temizler |
+| `DIALOGCLOSE` | ✅ Açık dialog kaydı (`_openScriptDialogs`) + `0xBF 0x04` close gump |
+| `ISDIALOGOPEN.*` | ✅ Gerçek değer (kayıttan) |
 | Yakalanmayan `SERV.*` | ✅ Fiil başına bir kez warning log, sonrası debug; GM çağırana SysMessage |
 | `SERV.CHATFLAGS` | Sabit `"0"` |
 | `SERV.ACCOUNT.n` (sayısal) | `"0"` |
@@ -100,17 +102,17 @@ Dosya: `GameClient.ScriptConsole.cs`, `Program.Scripting.cs`
 
 | Opcode | Açıklama |
 |--------|----------|
-| `0xB2` | Legacy chat — sessiz ignore |
+| `0xB2` | Legacy chat text-in — sessiz ignore (modern client 0xB3 gönderir; ✅ conference chat 0xB3/0xB5 üzerinden çalışıyor) |
 | `0xD7` | ✅ Custom house design — `GameClient.HandleEncodedCommand` (Build/Delete/Stairs/Roof/Level/Commit/Revert/Backup/Restore/Sync/Close) |
 | `0xD8` | (giden paket — bkz. bölüm 4) |
-| `0xF9` | Global chat — handler yok |
-| `0xA5` | Web link — handler yok |
-| `0xB5` | Chat — handler yok |
-| `0xFA` | Ultima Store — handler yok |
+| `0xF9` | Global chat — handler yok (bilinçli erteleme, chat-room sistemi) |
+| `0xA5` | (giden paket — ✅ `PacketWebLink`) |
+| `0xB5` | ✅ Kayıtlı — `@UserGlobalChatButton` ateşler |
+| `0xFA` | ✅ Kayıtlı — `@UserUltimaStoreButton` ateşler |
 | `0xD9` / `0xBE` | Hardware/system — kabul only |
 | `0xE3` | KR encryption seed — kabul only |
-| `0xF4` | Crash report — log only |
-| `0xBF.0x24` | Boş extended handler |
+| `0xF4` | ✅ Log + `@UserBugReport` ateşler |
+| `0xBF.0x24` | ✅ `@UserKRToolbar` ateşler |
 | `0xF0` (kısa) | Party/guild/razor extension — ignore |
 
 **Çalışan:** Hareket, konuşma, savaş, trade (`0x6F`), vendor buy/sell paketleri, gump, hedefleme, party `0xBF.0x06`, context menu, kitap/pano vb.
@@ -144,7 +146,7 @@ Hareket ack/reject, savaş, çoğu skill handler, party, secure trade, gemi, sta
 |------|--------|
 | Custom housing UI | ✅ House sign gump "Customize House" → `CustomHousingEngine` oturumu; 0xD7 komutları + 0xD8 stream + DESIGN_n tag persistence. Eksik kalan: foundation yerleştirme aracı (custom foundation deed), commit sonrası fiziksel multi component rebuild |
 | Guild/ittifak kanal | ✅ `OnChannelMessage(speaker, recipient, text, mode)` EngineWiring'de subscribe; karşılıklı ittifak (mutual ally) filtresiyle |
-| Global/legacy chat | 0xB2, 0xF9, `CHATFLAGS` — **bilinçli erteleme:** UO chat-room alt sistemi; modern client kullanımı yok denecek kadar az |
+| Global/legacy chat | ✅ **Conference chat uygulandı (2026-06-10):** `ChatEngine` (kanallar/üyelik), 0xB3 talk/join/create/leave, 0xB2 giden mesajlar (ClassicUO parser'ına karşı doğrulandı), 0xB5 açılışta kanal listesi + otomatik isim kabulü. Kalan: 0xB2 legacy text-in (çok eski clientlar) ve `CHATFLAGS` ini ayrıntıları — bilinçli erteleme |
 | In-client web | ✅ 0xA5 `PacketWebLink` + `WEBLINK` verb |
 | Help stuck/page | ✅ Stuck güvenli noktaya taşır (jail/combat reddi), page `.PAGE` yoluna bağlı, page list gump'ı |
 | XP / level | ✅ `Character.ChangeExperience` pipeline: `@ExpChange` (ARGN1 ayarlanabilir/iptal), level eşiğinde `@ExpLevelChange`; NPC kill'de kurbanın EXP'i ödül; `LevelNextAt`/`LevelModeDouble` ayarları |
@@ -162,15 +164,17 @@ Kaynak: `TriggerCoverageGuardrailTests.cs`
 
 ### Oyun karakteri trigger'ları — ateşlenmiyor
 
-**P0 (bilinçli erteleme, guardrail yorumunda gerekçeli):** `HitIgnore` (AttackerRecord'da ignore bayrağı yok), `NPCSeeWantItem` (`@NPCLookAtItem` ile örtüşüyor)
+**Bilinçli erteleme (guardrail yorumunda gerekçeli):** `NPCSeeWantItem` (`@NPCLookAtItem` ile örtüşüyor), `UserMailBag` (taşıyıcı client paketi yok)
 
-**P2:** `UserBugReport`, `UserExWalkLimit`, `UserGlobalChatButton`, `UserMailBag`, `UserQuestArrowClick`, `UserSpecialMove`, `UserUltimaStoreButton`, `ToolTip`, `Targon_Cancel`, `NPCLostTeleport`
+**Ateşleniyor (2026-06-10, dalga 5):** `UserSpecialMove` (0xD7 sub 0x19 combat ability, N1 = ability index — ClassicUO `Send_UseCombatAbility` doğrulandı), `NPCLostTeleport` (leash'in 3 katından uzağa düşen NPC eve ışınlanır — seri ApplyDecision fazından ateşlenir, RETURN 1 ışınlanmayı iptal eder)
 
-**Ateşleniyor (2026-06-09):** `HouseDesignCommit`, `HouseDesignExit` (0xD7 Commit/Close), `ExpChange`, `ExpLevelChange` (`ChangeExperience` pipeline), `UserVirtue` (0xBF 0x2C), `UserKRToolbar` (0xBF 0x24).
+**Ateşleniyor (2026-06-09):** `HouseDesignCommit`, `HouseDesignExit` (0xD7 Commit/Close), `ExpChange`, `ExpLevelChange` (`ChangeExperience` pipeline), `UserVirtue` (0xBF 0x2C), `UserKRToolbar` (0xBF 0x24), `UserQuestArrowClick` (0xBF 0x07), `UserBugReport` (0xF4), `UserUltimaStoreButton` (0xFA), `UserGlobalChatButton` (0xB5), `UserExWalkLimit` (walk token tükenmesi, gated), `ToolTip` (single click, gated), `Targon_Cancel` (hedef iptali), `HitIgnore` (ATTACKER.n.IGNORE bayraklı saldırgan vuruşu).
 
 ### Item trigger'ları — ateşlenmiyor (hepsi P2)
 
-`RegionEnter`, `RegionLeave`, `Start`, `Stop`, `Level`, `Complete`, `AddRedCandle`, `AddWhiteCandle`, `DelRedCandle`, `DelWhiteCandle`, `Tooltip`
+`RegionEnter`, `RegionLeave` (merkezi item-taşıma yolu yok; Position gemiler gibi sıcak yollarda doğrudan set ediliyor), `Level`, `Complete`, candle trigger'ları (champion altar yok)
+
+**Ateşleniyor (2026-06-09/10):** `Tooltip` (single click, IsTrigUsed gate ile, `@Click`'ten önce), `Start`/`Stop` (spawner START/STOP verb'leri).
 
 **Çalışan örnekler (char):** `@UserWarmode`, `@UserStats`, `@PersonalSpace`, `@EnvironChange`, `@Jail`, `@PartyDisband`, combat/skill/party/ship çoğu.
 
@@ -209,7 +213,7 @@ Kaynak: `TriggerCoverageGuardrailTests.cs`
 5. ~~Region geçişi → `PacketGlobalLight` + bölgesel `PacketWeather`~~ ✅ (zaten bağlıydı; envanter düzeltildi)
 6. ~~`SERV.*` bilinmeyen fiil → log/SysMessage~~ ✅ (2026-06-09)
 7. ~~Trigger P1 (ExpChange/ExpLevelChange) + kolay P2'ler (UserVirtue, UserKRToolbar)~~ ✅ (2026-06-09)
-8. Custom housing devamı: foundation yerleştirme deed'i, commit sonrası multi component rebuild
+8. ~~Custom housing devamı: foundation yerleştirme deed'i, commit edilen tasarımın sunucu yürüme geometrisi~~ ✅ (2026-06-09)
 9. Kalan P2 trigger'lar (User* butonları için paket handler'ları gerekiyor: 0xFA, 0xF4 vb.)
 10. Global/legacy chat (0xB2/0xF9) — bilinçli erteleme; talep olursa ayrı dalga
 

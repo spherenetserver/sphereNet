@@ -4,6 +4,101 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-10] - Combat ability trigger, spawner start/stop triggers, lost-NPC teleport (Wave 80)
+----------------------------------------
+
+ENGINE - triggers:
+  - @UserSpecialMove fires from the 0xD7 sub 0x19 combat ability request
+    (client Send_UseCombatAbility — payload layout verified against the
+    ClassicUO writer), N1 = the ability index. Routed ahead of the
+    house-design session gate since it shares the 0xD7 opcode.
+  - @Start / @Stop fire when the spawner START/STOP verbs toggle spawning
+    (Item.OnSpawnStartStop host hook).
+  - @NPCLostTeleport is anchored to new engine behaviour: a wild NPC that
+    ends up more than three leash radii from home teleports straight home
+    instead of walking the whole way back; the trigger fires first and
+    RETURN 1 cancels the teleport (the NPC walks as before). Confirmed safe:
+    the chase/leash logic runs in the serial ApplyDecision phase, not the
+    parallel decision builder.
+  - Item @RegionEnter/@RegionLeave remain deferred with a sharpened reason:
+    there is no central item-move path to hook (Position is assigned directly
+    on hot paths such as ship movement).
+
+[2026-06-10] - Conference chat system (Wave 79)
+----------------------------------------
+
+ENGINE - chat:
+  - The UO conference chat system is implemented. ChatEngine holds channels
+    and membership (one channel per member; ad-hoc channels disappear when
+    emptied, the static "General" channel survives). Opening the chat window
+    (0xB5) accepts the character's name as the chat handle and sends the
+    channel list; the client then auto-joins "General".
+  - Incoming 0xB3 chat actions are parsed and handled: talk (0x61, broadcast
+    to channel members), join (0x62 — channel name arrives wrapped in quote
+    characters, optional password stripped), create channel (0x63), leave
+    (0x43). Disconnect drops the membership so channels hold no stale entries.
+  - Outgoing 0xB2 chat messages cover the subcommands the client renders:
+    create/remove channel, username accepted, add/remove user, clear users,
+    joined/left channel, channel message. The byte layout (cmd + 4 reserved
+    bytes + null-terminated BE-unicode strings) is verified in tests against
+    the exact ClassicUO parser shape. The T2A feature bit that enables the
+    client chat button was already sent at login.
+
+[2026-06-09] - Script console compat verbs, drag-release verbs, trigger backlog closure (Wave 78)
+----------------------------------------
+
+SCRIPTING - console verbs:
+  - DIALOGCLOSE closes the named open script dialog for real: open dialogs are
+    tracked server-side (name → gump id), the close sends 0xBF sub 0x04 and
+    drops the tracking; ISDIALOGOPEN.* now answers from that registry instead
+    of a constant 0. BYE ends the NPC interaction (closes open script dialogs,
+    clears the dialog subject). BUY opens the vendor buy list — the dialog
+    subject when it is a vendor NPC, otherwise the nearest vendor in range.
+  - Character BOUNCE/DROP act on the dragged item (the DRAGGING state set by
+    the pickup packet): BOUNCE returns it to the backpack, DROP releases it at
+    the character's feet; both cancel the client drag cursor with 0x27 (new
+    PacketPickupFailed writer). Item FIXWEIGHT refreshes the client view
+    (weight is already computed on demand).
+
+ENGINE - triggers:
+  - @HitIgnore is implemented: AttackerRecord gained an Ignored flag, scripts
+    control it through ATTACKER.n.IGNORE (read/write), and a hit landed by an
+    ignored attacker fires @HitIgnore on the victim (RETURN 1 clears the flag).
+  - @Targon_Cancel fires when the player dismisses a target cursor.
+  - @ToolTip (char) and @Tooltip (item) fire on single click ahead of @Click,
+    IsTrigUsed-gated since single click is a hot path.
+  - @UserQuestArrowClick fires from 0xBF sub 0x07 (newly known subcommand).
+  - @UserBugReport fires from the 0xF4 crash report.
+  - 0xFA (Ultima Store button) and 0xB5 (chat window open) gained packet
+    handlers that fire @UserUltimaStoreButton / @UserGlobalChatButton.
+  - @UserExWalkLimit fires when the walk token bucket runs dry
+    (IsTrigUsed-gated — movement rejects can storm).
+  - Still deferred with reasons recorded in the guardrail: UserMailBag /
+    UserSpecialMove (no carrier packets in the supported protocol set),
+    NPCLostTeleport (leashed NPCs walk home; the AI decision stage is
+    parallel), NPCSeeWantItem (covered by @NPCLookAtItem). The sector ambient
+    wind sound inventory item was dropped after checking the Source-X
+    reference: CSector has no such sound logic — the item was speculative.
+
+[2026-06-09] - Custom house foundation placement and design walk geometry (Wave 77)
+----------------------------------------
+
+ENGINE - custom housing:
+  - Customizable foundation placement: a house deed carrying TAG.CUSTOMHOUSE
+    places the multi as a MultiCustom foundation (PlaceHouse customFoundation
+    path) with an empty committed design at revision 1. Unlike regular house
+    placement, no real component items are materialized — the client renders
+    the foundation multi and the committed design from the 0xD8 stream, so
+    nothing double-renders.
+  - Committed designs are now server-side walk geometry: WalkCheck virtualizes
+    the DESIGN_n tiles of a MultiCustom item the same way it virtualizes
+    multi.mul components (surface/bridge/impassable tile flags respected,
+    per-tile Z honored for upper stories). The design lookup is served by a
+    revision-keyed cache on CustomHousingEngine — a design commit bumps
+    DESIGN_REVISION, which invalidates the cache on the next step check. The
+    cache is concurrent because the parallel NPC-pathfinding stage consults
+    WalkCheck too.
+
 [2026-06-09] - Guild channel delivery, custom house design editor, script verb completeness (Wave 76)
 ----------------------------------------
 

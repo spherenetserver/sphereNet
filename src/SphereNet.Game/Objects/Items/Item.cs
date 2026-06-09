@@ -63,6 +63,10 @@ public class Item : ObjBase
     /// doors, potions, containers etc. behave exactly like a real dclick.</summary>
     public static Action<Item, ITextConsole>? OnScriptDClick;
 
+    /// <summary>Invoked by the spawner START/STOP verbs. Arg: true = started,
+    /// false = stopped. The host wires it to the @Start/@Stop item triggers.</summary>
+    public static Action<Item, bool>? OnSpawnStartStop;
+
     private ItemType _type;
     private ushort _amount = 1;
     private Serial _containedIn = Serial.Invalid;
@@ -1315,6 +1319,9 @@ public class Item : ObjBase
                 _contents.Clear();
                 return true;
             case "FIXWEIGHT":
+                // Weight is computed on demand (TotalWeight walks contents);
+                // refresh the client view so tooltips pick the value up.
+                MarkDirty((DirtyFlag)0xFFFFFFFF);
                 return true;
             case "UPDATE":
             case "UPDATEX":
@@ -1729,9 +1736,11 @@ public class Item : ObjBase
                     return true;
                 case "START":
                     SpawnChar.Start();
+                    OnSpawnStartStop?.Invoke(this, true);
                     return true;
                 case "STOP":
                     SpawnChar.Stop();
+                    OnSpawnStartStop?.Invoke(this, false);
                     return true;
                 case "DELOBJ":
                     if (!string.IsNullOrEmpty(args) && uint.TryParse(args.TrimStart('0'),

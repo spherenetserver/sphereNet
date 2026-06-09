@@ -372,6 +372,49 @@ public sealed class PacketSpeechUnicodeOut : PacketWriter
     }
 }
 
+/// <summary>0x27 — pickup failed / drag cancel. Sending it while the client
+/// is dragging an item cancels the drag cursor.</summary>
+public sealed class PacketPickupFailed : PacketWriter
+{
+    private readonly byte _reason;
+
+    public PacketPickupFailed(byte reason = 0) : base(0x27)
+    {
+        _reason = reason;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateFixed(2);
+        buf.WriteByte(_reason);
+        return buf;
+    }
+}
+
+/// <summary>0xBF sub 0x04 — close a generic gump on the client, optionally
+/// replaying a button response.</summary>
+public sealed class PacketCloseGump : PacketWriter
+{
+    private readonly uint _gumpId;
+    private readonly uint _buttonId;
+
+    public PacketCloseGump(uint gumpId, uint buttonId = 0) : base(0xBF)
+    {
+        _gumpId = gumpId;
+        _buttonId = buttonId;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(13);
+        buf.WriteUInt16(0x0004);
+        buf.WriteUInt32(_gumpId);
+        buf.WriteUInt32(_buttonId);
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
 /// <summary>0xA5 — open web browser at the given URL on the client.</summary>
 public sealed class PacketWebLink : PacketWriter
 {

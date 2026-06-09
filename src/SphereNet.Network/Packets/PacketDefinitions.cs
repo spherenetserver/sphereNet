@@ -137,6 +137,7 @@ public static class PacketDefinitions
         _lengths[0xB0] = 0;     // variable (Gump Dialog)
         _lengths[0xB1] = 0;     // variable (Gump Response)
         _lengths[0xB2] = 0;     // variable (Chat Text)
+        _lengths[0xB3] = 0;     // variable (Chat Action — client chat command)
         _lengths[0xB5] = 0x40;  // Chat
         _lengths[0xB6] = 0x09;  // Tooltip Request
         _lengths[0xB7] = 0;     // variable (Tooltip)

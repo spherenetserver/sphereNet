@@ -58,7 +58,23 @@ public sealed partial class GameClient
     /// </summary>
     public void HandleEncodedCommand(ushort subCmd, uint serial, PacketBuffer payload)
     {
-        if (_character == null || _customHousing == null)
+        if (_character == null)
+            return;
+
+        // 0xD7 sub 0x19 — combat ability request (client Send_UseCombatAbility:
+        // [serial][0x19][0:4][abilityIdx:1][0x0A]). Not a house-design command;
+        // handled before the design-session gate. N1 = the ability index.
+        if (subCmd == 0x19)
+        {
+            if (payload.Remaining >= 4)
+                payload.ReadUInt32();
+            int ability = payload.Remaining >= 1 ? payload.ReadByte() : 0;
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserSpecialMove,
+                new TriggerArgs { CharSrc = _character, N1 = ability, ScriptConsole = this });
+            return;
+        }
+
+        if (_customHousing == null)
             return;
         var session = _customHousing.GetSession(_character.Uid);
         if (session == null)

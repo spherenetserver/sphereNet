@@ -1796,6 +1796,11 @@ public static partial class Program
             if (_housingEngine.HouseCount > 0)
                 _log.LogInformation("Restored {Count} houses from world save", _housingEngine.HouseCount);
             _customHousing = new CustomHousingEngine(_world, _housingEngine);
+            _chatEngine = new SphereNet.Game.Chat.ChatEngine("General");
+            // Committed custom-house designs become virtual walk geometry
+            // (the tiles are not real items — clients render them from 0xD8).
+            SphereNet.Game.Movement.WalkCheck.ResolveCustomDesign =
+                multi => _customHousing.GetCommittedTiles(multi);
 
             // Ships
             _shipEngine = new SphereNet.Game.Ships.ShipEngine(_world, multiRegistry, _mapData);
@@ -2035,6 +2040,27 @@ public static partial class Program
                 _triggerDispatcher?.FireCharTrigger(ch, CharTrigger.ExpLevelChange,
                     new TriggerArgs { CharSrc = ch, N1 = level });
 
+            // @NPCLostTeleport — a severely lost NPC is about to teleport home;
+            // RETURN 1 cancels (the NPC walks back instead).
+            SphereNet.Game.Objects.Characters.Character.OnNpcLostTeleport = npc =>
+                _triggerDispatcher?.FireCharTrigger(npc, CharTrigger.NPCLostTeleport,
+                    new TriggerArgs { CharSrc = npc }) == TriggerResult.True;
+
+            // @Start / @Stop — the spawner START/STOP verbs toggled spawning.
+            Item.OnSpawnStartStop = (spawnItem, started) =>
+                _triggerDispatcher?.FireItemTrigger(spawnItem,
+                    started ? ItemTrigger.Start : ItemTrigger.Stop,
+                    new TriggerArgs { ItemSrc = spawnItem });
+
+            // @HitIgnore — an attacker flagged ATTACKER.n.IGNORE landed a hit.
+            // O1 = the attacker; RETURN 1 clears the ignore flag.
+            SphereNet.Game.Objects.Characters.Character.OnHitIgnored = (victim, attackerUid) =>
+            {
+                var args = new TriggerArgs { CharSrc = victim, O1 = _world?.FindChar(attackerUid) };
+                return _triggerDispatcher?.FireCharTrigger(victim, CharTrigger.HitIgnore, args)
+                    == TriggerResult.True;
+            };
+
             // @MurderMark — fired on a player-vs-player kill before the murder
             // count is recorded. N1 = proposed count (script may rewrite ARGN1),
             // O1 = victim; RETURN 1 blocks the mark and the criminal flag.
@@ -2248,6 +2274,29 @@ public static partial class Program
                     _mountEngine.Dismount(ch);
             };
 
+            // Script BOUNCE/DROP verbs — release the dragged item through the
+            // owning client (drag-cursor cancel + view updates); headless
+            // fallback re-packs the item silently.
+            SphereNet.Game.Objects.Characters.Character.OnDragRelease = (ch, toGround) =>
+            {
+                if (TryGetClientFor(ch, out var c))
+                {
+                    c.ReleaseDraggedItem(toGround);
+                    return;
+                }
+                if (!ch.TryGetTag("DRAGGING", out string? dragSer) ||
+                    !uint.TryParse(dragSer, out uint dragUid))
+                    return;
+                ch.RemoveTag("DRAGGING");
+                var dragged = _world.FindItem(new Core.Types.Serial(dragUid));
+                if (dragged == null || dragged.IsDeleted)
+                    return;
+                if (toGround || ch.Backpack == null)
+                    _world.PlaceItemWithDecay(dragged, ch.Position);
+                else
+                    ch.Backpack.AddItem(dragged);
+            };
+
             // Stress-test harness (.stress / .stressreport / .stressclean)
             _stressEngine = new SphereNet.Game.Diagnostics.StressTestEngine(_world, _loggerFactory);
             _commands.OnStressGenerateRequested += (items, npcs) => _stressEngine.QueueGenerate(items, npcs);
@@ -2386,7 +2435,22 @@ public static partial class Program
                 // Phase 3
                 gumpTextEntry: OnGumpTextEntry,
                 allNamesRequest: OnAllNamesRequest,
-                encodedCommand: OnEncodedCommand
+                encodedCommand: OnEncodedCommand,
+                crashReport: state =>
+                {
+                    if (_clients.TryGetValue(state.Id, out var c))
+                        c.HandleCrashReport();
+                },
+                clientUiButton: (state, opcode) =>
+                {
+                    if (_clients.TryGetValue(state.Id, out var c))
+                        c.HandleClientUiButton(opcode);
+                },
+                chatAction: (state, cmd, text) =>
+                {
+                    if (_clients.TryGetValue(state.Id, out var c))
+                        c.HandleChatAction(cmd, text);
+                }
             );
 
             _network.OnConnectionClosed += OnConnectionClosed;

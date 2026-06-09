@@ -67,6 +67,7 @@ public sealed partial class GameClient : ITextConsole
     private CraftingEngine? _craftingEngine;
     private HousingEngine? _housingEngine;
     private CustomHousingEngine? _customHousing;
+    private Chat.ChatEngine? _chatEngine;
     private GuildManager? _guildManager;
     private Mounts.MountEngine? _mountEngine;
     private TriggerDispatcher? _triggerDispatcher;
@@ -238,6 +239,7 @@ public sealed partial class GameClient : ITextConsole
 
             _systemHooks?.DispatchClient("disconnect", _character, _account);
             AbortActiveTradeOnDisconnect();
+            ChatOnDisconnect();
             _partyManager?.Leave(_character.Uid);
             EngineTags.StripEphemeral(_character);
 
@@ -381,7 +383,8 @@ public sealed partial class GameClient : ITextConsole
         TriggerDispatcher? triggerDispatcher = null,
         GuildManager? guildManager = null,
         Mounts.MountEngine? mountEngine = null,
-        CustomHousingEngine? customHousing = null)
+        CustomHousingEngine? customHousing = null,
+        Chat.ChatEngine? chatEngine = null)
     {
         _movement = movement;
         _speech = speech;
@@ -397,6 +400,7 @@ public sealed partial class GameClient : ITextConsole
         _guildManager = guildManager;
         _mountEngine = mountEngine;
         _customHousing = customHousing;
+        _chatEngine = chatEngine;
 
         if (_spellEngine != null && triggerDispatcher != null)
             _spellEngine.TriggerDispatcher = triggerDispatcher;

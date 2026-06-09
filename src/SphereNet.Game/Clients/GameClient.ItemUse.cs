@@ -655,7 +655,11 @@ public sealed partial class GameClient
             case ItemType.Deed:
                 if (_housingEngine != null)
                 {
-                    var house = _housingEngine.PlaceHouse(_character, item.BaseId, _character.Position);
+                    // TAG.CUSTOMHOUSE on the deed places a customizable
+                    // foundation (MultiCustom) instead of a fixed multi.
+                    bool customFoundation = item.TryGetTag("CUSTOMHOUSE", out string? customTag)
+                        && customTag != "0";
+                    var house = _housingEngine.PlaceHouse(_character, item.BaseId, _character.Position, customFoundation);
                     if (house != null)
                     {
                         SysMessage(ServerMessages.Get("house_placed"));

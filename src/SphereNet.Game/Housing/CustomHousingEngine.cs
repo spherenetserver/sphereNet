@@ -30,6 +30,11 @@ public sealed class CustomHousingEngine
     private readonly HousingEngine _housing;
     private readonly Dictionary<Serial, HouseDesignSession> _sessions = [];
 
+    // Committed-design cache keyed by DESIGN_REVISION. Concurrent because
+    // WalkCheck consults it from the parallel NPC-pathfinding stage too
+    // (see the GameWorld threading contract).
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Serial, (uint Revision, HouseDesign Design)> _committedCache = new();
+
     /// <summary>Story height in Z units; story 1 floor sits at Z=7
     /// (client plane transform: z = (plane-1)%4*20+7).</summary>
     public const int StoryHeight = 20;
@@ -42,6 +47,26 @@ public sealed class CustomHousingEngine
     }
 
     public static sbyte LevelToZ(int level) => (sbyte)(((Math.Clamp(level, 1, MaxLevel) - 1) % 4) * StoryHeight + 7);
+
+    /// <summary>
+    /// Committed design tiles for a multi, cached and invalidated by the
+    /// DESIGN_REVISION tag — Commit bumps the revision, so the next lookup
+    /// reparses the tags. Used by WalkCheck (via ResolveCustomDesign) to turn
+    /// the design into virtual walk geometry.
+    /// </summary>
+    public IReadOnlyList<HouseDesignTile> GetCommittedTiles(Item multi)
+    {
+        uint revision = 0;
+        if (multi.TryGetTag(HouseDesign.RevisionTag, out string? revStr))
+            uint.TryParse(revStr, out revision);
+
+        if (_committedCache.TryGetValue(multi.Uid, out var cached) && cached.Revision == revision)
+            return cached.Design.Tiles;
+
+        var design = HouseDesign.LoadFromTags(multi);
+        _committedCache[multi.Uid] = (revision, design);
+        return design.Tiles;
+    }
 
     public HouseDesignSession? GetSession(Serial charUid) => _sessions.GetValueOrDefault(charUid);
 

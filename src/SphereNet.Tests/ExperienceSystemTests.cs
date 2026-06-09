@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using SphereNet.Core.Types;
 using SphereNet.Game.Death;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.World;
@@ -132,6 +133,31 @@ public class ExperienceSystemTests
         death.ProcessDeath(npc, killer);
 
         Assert.Equal(750, killer.Exp);
+    }
+
+    [Fact]
+    public void AttackerIgnore_FlagAndHitIgnoreHook()
+    {
+        var world = CreateWorld();
+        var victim = world.CreateCharacter();
+        var attacker = world.CreateCharacter();
+
+        victim.RecordAttack(attacker.Uid, 10);
+        Assert.True(victim.TryGetProperty("ATTACKER.0.IGNORE", out string? ig0));
+        Assert.Equal("0", ig0);
+
+        // Script sets the ignore flag; the next hit fires the hook.
+        Assert.True(victim.TrySetProperty("ATTACKER.0.IGNORE", "1"));
+        Assert.True(victim.TryGetProperty("ATTACKER.0.IGNORE", out string? ig1));
+        Assert.Equal("1", ig1);
+
+        Serial? hookAttacker = null;
+        Character.OnHitIgnored = (_, uid) => { hookAttacker = uid; return true; }; // RETURN 1 → clear
+        victim.RecordAttack(attacker.Uid, 5);
+
+        Assert.Equal(attacker.Uid, hookAttacker);
+        Assert.True(victim.TryGetProperty("ATTACKER.0.IGNORE", out string? ig2));
+        Assert.Equal("0", ig2); // hook returning true cleared the flag
     }
 
     [Fact]

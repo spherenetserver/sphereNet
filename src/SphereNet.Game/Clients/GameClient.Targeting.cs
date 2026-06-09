@@ -43,6 +43,10 @@ public sealed partial class GameClient
         bool targetCancelled = IsTargetCancelled(serial, x, y, z, graphic);
         if (targetCancelled)
         {
+            // Source-X @Targon_Cancel — the player dismissed the target cursor.
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Targon_Cancel,
+                new TriggerArgs { CharSrc = _character, ScriptConsole = this });
+
             var pendingItemUid = _pendingTargetItemUid;
             // Hard-cancel all pending target flows to avoid any stale state from triggering
             // a resync/teleport path on the next target packet.

@@ -11,6 +11,7 @@ public static class ExtendedCommandRegistry
     [
         0x0005, // screen size
         0x0006, // party
+        0x0007, // quest arrow click
         0x000B, // chat/language button path
         0x0013, // context menu request
         0x0015, // context menu response

@@ -1290,6 +1290,7 @@ public sealed partial class GameClient
         {
             [0x0005] = static (client, data) => client.HandleExtendedScreenSize(data),
             [0x0006] = static (client, data) => client.HandleExtendedParty(data),
+            [0x0007] = static (client, _) => client.FireExtendedButtonTrigger(CharTrigger.UserQuestArrowClick, 0x0007),
             [0x000B] = static (client, data) =>
             {
                 if (data.Length >= 3)
@@ -1382,6 +1383,26 @@ public sealed partial class GameClient
         ushort width = (ushort)((data[0] << 8) | data[1]);
         ushort height = (ushort)((data[2] << 8) | data[3]);
         _character.SetScreenSize(width, height);
+    }
+
+    /// <summary>0xF4 crash report → @UserBugReport.</summary>
+    public void HandleCrashReport() =>
+        FireExtendedButtonTrigger(CharTrigger.UserBugReport, 0x00F4);
+
+    /// <summary>Stateless client UI button packets: 0xFA Ultima Store,
+    /// 0xB5 chat window open.</summary>
+    public void HandleClientUiButton(byte opcode)
+    {
+        switch (opcode)
+        {
+            case 0xFA:
+                FireExtendedButtonTrigger(CharTrigger.UserUltimaStoreButton, opcode);
+                break;
+            case 0xB5:
+                FireExtendedButtonTrigger(CharTrigger.UserGlobalChatButton, opcode);
+                HandleChatOpen();
+                break;
+        }
     }
 
     private void FireExtendedButtonTrigger(CharTrigger trigger, ushort subCmd)

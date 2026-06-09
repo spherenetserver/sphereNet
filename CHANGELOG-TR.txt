@@ -4,6 +4,25 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-10] - GameClient ayristirmasi faz 3a: view-update handler sinifi (Wave 85)
+----------------------------------------
+
+INTERNAL - GameClient ayristirmasi:
+  - Ilk gercek handler-sinifi donusumu: ViewUpdate partial'inin tamami
+    (view-delta build/apply hatti, acik-kapi senkronu, known-char
+    bildirimleri — ~480 satir) GameClient'i context alan bagimsiz
+    ClientViewUpdater sinifina tasindi. Eski partial dosyasi artik yalnizca
+    ince delegasyon uyeleri tutuyor; multicore tick'in paralel
+    BuildViewDelta / seri ApplyViewDelta ayrimi dahil hicbir cagri noktasi
+    degismedi — mantik oldugu gibi tasindi.
+  - Sinif siniri gercek: handler yalnizca GameClient'in internal/public
+    yuzeyine erisebiliyor. Ihtiyac duyulan sekiz Send* paket yardimcisi
+    private'tan internal'a yukseltildi, ClientViewDelta GameClient ici
+    nested tipten namespace seviyesine cikti (sunucunun yeniden
+    kullanilabilir delta havuzlari referans aliyor), GameClient'a internal
+    World erisimi eklendi. Donusum recetesi kalan partial'lar icin sablon
+    olarak ayristirma dokumanina islendi.
+
 [2026-06-10] - GameClient ayristirmasi faz 1: durum-makinesi bilesenleri (Wave 84)
 ----------------------------------------
 

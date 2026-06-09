@@ -35,7 +35,7 @@ namespace SphereNet.Game.Clients;
 public sealed partial class GameClient
 {
 
-    private void SendDrawObject(Character ch)
+    internal void SendDrawObject(Character ch)
     {
         var equipment = BuildEquipmentList(ch);
         byte flags = BuildMobileFlags(ch);
@@ -476,7 +476,7 @@ public sealed partial class GameClient
         SendGump(gump);
     }
 
-    private void SendUpdateMobile(Character ch)
+    internal void SendUpdateMobile(Character ch)
     {
         byte flags = BuildMobileFlags(ch);
         byte noto = GetNotoriety(ch);
@@ -487,7 +487,7 @@ public sealed partial class GameClient
         ));
     }
 
-    private void SendUpdateMobileWithHue(Character ch, ushort hue)
+    internal void SendUpdateMobileWithHue(Character ch, ushort hue)
     {
         byte flags = BuildMobileFlags(ch);
         byte noto = GetNotoriety(ch);
@@ -498,7 +498,7 @@ public sealed partial class GameClient
         ));
     }
 
-    private void SendUpdateMobileHidden(Character ch)
+    internal void SendUpdateMobileHidden(Character ch)
     {
         byte flags = (byte)(BuildMobileFlags(ch) | 0x80);
         byte noto = GetNotoriety(ch);
@@ -509,7 +509,7 @@ public sealed partial class GameClient
         ));
     }
 
-    private void SendDrawObjectWithHue(Character ch, ushort hue)
+    internal void SendDrawObjectWithHue(Character ch, ushort hue)
     {
         var equipment = BuildEquipmentList(ch);
         byte flags = BuildMobileFlags(ch);
@@ -523,7 +523,7 @@ public sealed partial class GameClient
         ));
     }
 
-    private void SendDrawObjectHidden(Character ch)
+    internal void SendDrawObjectHidden(Character ch)
     {
         var equipment = BuildEquipmentList(ch);
         byte flags = (byte)(BuildMobileFlags(ch) | 0x80);
@@ -546,7 +546,7 @@ public sealed partial class GameClient
         return new PacketWorldItem(serial, itemId, amount, x, y, z, hue, direction);
     }
 
-    private void SendWorldItem(Item item)
+    internal void SendWorldItem(Item item)
     {
         _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
@@ -562,7 +562,7 @@ public sealed partial class GameClient
         ));
     }
 
-    private void SendWorldItemAllShow(Item item)
+    internal void SendWorldItemAllShow(Item item)
     {
         _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,

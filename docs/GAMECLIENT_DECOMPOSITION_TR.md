@@ -17,7 +17,8 @@ GameClient (orkestratör: NetState + Character + yaşam döngüsü)
  ├─ ClientGumpRegistry     açık gump/dialog kayıtları (faz 1 ✅)
  ├─ ClientMovementThrottle walk-token / hareket kuyruğu (faz 1 ✅)
  ├─ ClientViewCache        known-set'ler + last-known durumlar (faz 2 ✅)
- └─ handler sınıfları      ClientContext üzerinden (faz 3 — sıradaki)
+ └─ handler sınıfları      (faz 3 — sürüyor)
+     └─ ClientViewUpdater  view-delta build/apply + known-char bildirimleri ✅
 ```
 
 ## Fazlar
@@ -33,12 +34,23 @@ handler sınıflarının enjekte edilebilir bağımlılıkları olur.
 partial'ının tek gerçek durumu artık dışarıda; ViewUpdate faz 3'te ilk
 dönüştürülecek handler'dır.
 
-**Faz 3 — handler sınıfları.** Her partial, `ClientContext`'e (NetState,
-Character, World, motorlar, Send/SysMessage/BroadcastNearby ve faz 1-2
-bileşenleri) bağımlı bir sınıfa dönüşür. Partial'lar arası private erişim bu
-noktada derleyici tarafından zorlanan gerçek sınırlara dönüşür. Sıra önerisi
-(en az iç bağımlılıdan en çoğa): ViewUpdate → Inventory → ItemUse →
-WorldFeatures → Dialogs/Targeting → Combat → ScriptConsole.
+**Faz 3 — handler sınıfları (sürüyor).** Her partial, GameClient'ı context
+alan bir sınıfa dönüşür (ileride dar bir `ClientContext` arayüzüne
+indirgenebilir). Partial'lar arası private erişim bu noktada derleyici
+tarafından zorlanan gerçek sınırlara dönüşür: handler yalnızca GameClient'ın
+internal/public yüzeyini görebilir. Sıra (en az iç bağımlılıdan en çoğa):
+ViewUpdate ✅ → Inventory → ItemUse → WorldFeatures → Dialogs/Targeting →
+Combat → ScriptConsole.
+
+**ViewUpdate dönüşüm notları (sonrakiler için şablon):**
+- `ClientViewUpdater(GameClient)`; eski partial yalnızca delegasyon tutar —
+  hiçbir çağrı noktası değişmez.
+- Handler'ın ihtiyaç duyduğu çapraz-partial private üyeler `internal`'a
+  yükseltilir (burada: 8 `Send*` paket yardımcısı + `World` erişimi).
+- `_character` null-kontrol deseni `var me = _client.Character;` yerel
+  değişkenine çevrilir; mantık birebir kalır.
+- Dışarıdan referans alan iç tipler namespace seviyesine çıkar
+  (`ClientViewDelta` — Server'daki delta havuzları kullanıyor).
 
 **Kapsam dışı / dikkat:** `ITextConsole` implementasyonu ve script-konsol
 yüzeyi GameClient üzerinde kalır (script'ler konsol olarak GameClient

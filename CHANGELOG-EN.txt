@@ -4,6 +4,25 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-10] - GameClient decomposition phase 3a: view-update handler class (Wave 85)
+----------------------------------------
+
+INTERNAL - GameClient decomposition:
+  - First real handler-class conversion: the entire ViewUpdate partial
+    (view-delta build/apply pipeline, open-door sync, known-char
+    notifications — ~480 lines) moved into a standalone ClientViewUpdater
+    class that takes the GameClient as its context. The former partial file
+    now holds only thin delegating members, so every call site (including
+    the multicore tick's parallel BuildViewDelta / serial ApplyViewDelta
+    split) is unchanged — the logic moved verbatim.
+  - The class boundary is real: the handler can only reach GameClient's
+    internal/public surface. The eight Send* packet helpers it needs were
+    promoted from private to internal, ClientViewDelta moved from a nested
+    GameClient type to namespace level (the server's reusable delta pools
+    reference it), and GameClient gained an internal World accessor.
+    The conversion recipe is recorded in the decomposition doc as the
+    template for the remaining partials.
+
 [2026-06-10] - GameClient decomposition phase 1: state-machine components (Wave 84)
 ----------------------------------------
 

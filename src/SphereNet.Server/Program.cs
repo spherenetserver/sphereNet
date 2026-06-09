@@ -147,9 +147,9 @@ public static partial class Program
     // low. The dictionary/bag allocations were measurable on low-core
     // VDS hosts (~30–100 ms slow-tick spikes when GC kicked in).
     private static readonly List<NpcAI.NpcDecision> _reusableDecisionList = [];
-    private static readonly Dictionary<int, GameClient.ClientViewDelta> _reusableClientDeltas = [];
+    private static readonly Dictionary<int, SphereNet.Game.Clients.ClientViewDelta> _reusableClientDeltas = [];
     private static readonly List<GameClient> _reusableRefreshClients = [];
-    private static readonly ConcurrentDictionary<int, GameClient.ClientViewDelta> _reusableViewDeltaConcurrent = new();
+    private static readonly ConcurrentDictionary<int, SphereNet.Game.Clients.ClientViewDelta> _reusableViewDeltaConcurrent = new();
     private static readonly Dictionary<Serial, long> _summonedGuardExpiry = [];
     private static long _nextDecayCatchupTick;
     private static long _telemetrySnapshotUs;

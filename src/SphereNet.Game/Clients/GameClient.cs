@@ -184,6 +184,8 @@ public sealed partial class GameClient : ITextConsole
     private const int UpdateRange = 18;
 
     public NetState NetState => _netState;
+    /// <summary>World access for extracted handler classes (decomposition phase 3).</summary>
+    internal GameWorld World => _world;
     public Account? Account => _account;
     public Character? Character => _character;
     public bool IsPlaying => _character != null && !_character.IsDeleted;

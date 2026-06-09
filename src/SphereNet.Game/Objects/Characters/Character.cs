@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
@@ -38,7 +38,7 @@ public partial class Character : ObjBase
 
     /// <summary>Fired before a severely lost NPC (far past its home leash)
     /// teleports home (Source-X @NPCLostTeleport). Return true to cancel the
-    /// teleport — the NPC walks back instead.</summary>
+    /// teleport â€” the NPC walks back instead.</summary>
     public static Func<Character, bool>? OnNpcLostTeleport;
     /// <summary>Fired when a timed jail sentence expires and the character
     /// should be released (move out of jail, clear Freeze, resync).</summary>
@@ -54,11 +54,11 @@ public partial class Character : ObjBase
     public static Func<Serial, Guild.GuildManager?>? ResolveGuildManager;
     // Static delegate for party resolution (set in Program.cs)
     public static Func<Serial, Party.PartyDef?>? ResolvePartyFinder;
-    // Static delegate for party manager (set in Program.cs) — needed for commands
+    // Static delegate for party manager (set in Program.cs) â€” needed for commands
     public static Func<Party.PartyManager?>? ResolvePartyManager;
     // Static delegate for account resolution from character UID (set in Program.cs)
     public static Func<Serial, Account?>? ResolveAccountForChar;
-    // Static delegate for character lookup by UID — used for ACCOUNT.CHAR.N.NAME
+    // Static delegate for character lookup by UID â€” used for ACCOUNT.CHAR.N.NAME
     // chain and admin dialog references (set in Program.cs).
     public static Func<Serial, Character?>? ResolveCharByUid;
     /// <summary>Resolve house multi UIDs owned by a character. Wired by the
@@ -71,7 +71,7 @@ public partial class Character : ObjBase
 
     // Static delegate used by script verbs that need to emit a packet
     // directly to the owning client (ADDBUFF / REMOVEBUFF / SYSMESSAGELOC
-    // / ARROWQUEST / MIDILIST …). Wired in Program.cs against the
+    // / ARROWQUEST / MIDILIST â€¦). Wired in Program.cs against the
     // connected-clients dictionary. Returns silently when the character
     // has no active client.
     public static Action<Character, SphereNet.Network.Packets.PacketWriter>? SendPacketToOwner;
@@ -223,7 +223,7 @@ public partial class Character : ObjBase
     private bool _isPlayer;
 
     // Client-session tags (CTAG.X / CTAG0.X). In Source-X these live on
-    // the CClient, which is destroyed on disconnect — so CTag is *not*
+    // the CClient, which is destroyed on disconnect â€” so CTag is *not*
     // persistent across login, despite running on a character. We mirror
     // that: CTags hang off the Character but GameClient clears them at
     // logout. Scripts often use CTags to stash per-session UI state
@@ -244,8 +244,8 @@ public partial class Character : ObjBase
     private readonly byte[] _skillLocks = new byte[(int)SkillType.Qty]; // 0=up, 1=down, 2=locked
 
     // Equipment and inventory
-    // Source-X parity: every LAYER_* slot — including BankBox(29),
-    // VendorStock/Buy/Extra and Special — must have a backing slot.
+    // Source-X parity: every LAYER_* slot â€” including BankBox(29),
+    // VendorStock/Buy/Extra and Special â€” must have a backing slot.
     // Sizing this to Layer.Horse(+1) silently dropped any Equip()
     // call for high-numbered layers (e.g. bank box), which made
     // GetEquippedItem(Layer.BankBox) return null and forced
@@ -394,46 +394,23 @@ public partial class Character : ObjBase
     private Serial _poisonSource; // who applied the poison (for kill attribution)
     private long _nextFieldTick;  // next time standing-in-field damage is applied
 
-    // Per-attacker damage log (ATTACKER / ATTACKER.LAST / ATTACKER.MAX /
-    // ATTACKER.n.DAM / ELAPSED / UID). Source-X: CChar::m_lastAttackers.
-    // Entries accumulate while combat is active; cleared by ClearAttackers
-    // (death, resurrect, or script). Insertion order is preserved so
-    // ATTACKER.LAST reads the most-recent hit.
-    public readonly struct AttackerRecord(Serial uid, int totalDamage, long lastHitTick, bool ignored = false)
-    {
-        public Serial Uid { get; } = uid;
-        public int TotalDamage { get; } = totalDamage;
-        public long LastHitTick { get; } = lastHitTick;
-        /// <summary>Script-set ATTACKER.n.IGNORE flag (Source-X
-        /// STONEPRIV-style ignore). A hit from an ignored attacker fires
-        /// @HitIgnore on the victim instead of passing silently.</summary>
-        public bool Ignored { get; } = ignored;
-    }
-    private readonly List<AttackerRecord> _attackers = new();
-
     /// <summary>Fired when an attacker flagged ATTACKER.n.IGNORE=1 lands a
     /// hit (Source-X @HitIgnore). Args: victim, attacker uid. Return true to
     /// clear the ignore flag (the script un-ignored the attacker).</summary>
     public static Func<Character, Serial, bool>? OnHitIgnored;
 
-    // Criminal / murderer state
-    private long _criminalTimer;       // TickCount64 when criminal flag expires (0 = not criminal)
+    /// <summary>Combat runtime state (attacker log, criminal/murder counters)
+    /// â€” first slice of the Character decomposition. The members below
+    /// delegate so the public API and script surface stay unchanged.</summary>
+    public CharacterCombatState CombatState => _combat ??= new CharacterCombatState(this);
+    private CharacterCombatState? _combat;
 
+    // Criminal / murderer state lives in CharacterCombatState (Combat).
     public int CriminalTimerRemainingSeconds
     {
-        get
-        {
-            if (_criminalTimer <= 0) return 0;
-            long remain = _criminalTimer - Environment.TickCount64;
-            return remain > 0 ? (int)(remain / 1000) : 0;
-        }
-        set
-        {
-            _criminalTimer = value > 0 ? Environment.TickCount64 + value * 1000L : 0;
-        }
+        get => CombatState.CriminalTimerRemainingSeconds;
+        set => CombatState.CriminalTimerRemainingSeconds = value;
     }
-    private short _kills;              // murder count
-    private long _nextMurderDecayTick; // next TickCount64 at which one kill will decay
 
     /// <summary>Seconds a character stays criminal (gray) after committing a crime. Set from sphere.ini CRIMINALTIMER.</summary>
     public static int CriminalTimerSeconds { get; set; } = 180;
@@ -469,7 +446,7 @@ public partial class Character : ObjBase
     public static int CombatMeleeMovementDelay { get; set; }
     /// <summary>MAGICFLAGS bitfield from sphere.ini.</summary>
     public static int MagicFlags { get; set; }
-    /// <summary>EQUIPPEDCAST from sphere.ini — allow casting with weapons equipped.</summary>
+    /// <summary>EQUIPPEDCAST from sphere.ini â€” allow casting with weapons equipped.</summary>
     public static bool EquippedCastEnabled { get; set; }
     public static bool ReagentLossAbort { get; set; }
     public static bool ReagentLossFail { get; set; }
@@ -526,7 +503,7 @@ public partial class Character : ObjBase
     /// (Source-X @CombatDelete). Arg: removed attacker UID.</summary>
     public static Action<Character, Serial>? OnCombatDelete { get; set; }
 
-    /// <summary>Fired when the last attacker leaves and combat ends — the
+    /// <summary>Fired when the last attacker leaves and combat ends â€” the
     /// attacker list transitions to empty (Source-X @CombatEnd).</summary>
     public static Action<Character>? OnCombatEnd { get; set; }
 
@@ -551,7 +528,7 @@ public partial class Character : ObjBase
 
     /// <summary>Fired when a pet's loyalty reaches zero and it is about to go wild
     /// (Source-X @PetDesert). Args: pet, owner (may be null). Return true to cancel
-    /// the desertion — the pet keeps serving.</summary>
+    /// the desertion â€” the pet keeps serving.</summary>
     public static Func<Character, Character?, bool>? OnPetDesert { get; set; }
 
     /// <summary>Fired when a character is sent to jail (Source-X @Jail). Args:
@@ -564,7 +541,7 @@ public partial class Character : ObjBase
     /// otherwise.</summary>
     public static Action<Item>? OnMemoryEquip { get; set; }
 
-    /// <summary>Fired when a character's perceived light level changes — e.g.
+    /// <summary>Fired when a character's perceived light level changes â€” e.g.
     /// crossing a surface/dungeon boundary (Source-X @EnvironChange). Arg: the new
     /// light level. Driven by <see cref="UpdateEnvironLight"/>.</summary>
     public static Action<Character, int>? OnEnvironChange { get; set; }
@@ -574,7 +551,7 @@ public partial class Character : ObjBase
 
     /// <summary>Fired before a "quick" (instant, no-delay) skill check resolves
     /// (Source-X @SkillUseQuick). Args: character, skill id, difficulty. Return true
-    /// to cancel the use entirely (no roll, no gain — treated as a failure).
+    /// to cancel the use entirely (no roll, no gain â€” treated as a failure).
     /// Installed only when hooked (IsTrigUsed gate).</summary>
     public static Func<Character, int, int, bool>? OnSkillUseQuick { get; set; }
 
@@ -589,7 +566,7 @@ public partial class Character : ObjBase
 
     /// <summary>Record that this NPC perceives <paramref name="player"/> and fire
     /// @NPCSeeNewPlayer (via <see cref="OnNpcSeeNewPlayer"/>) when it is a NEW
-    /// sighting — the player was not seen within the last <paramref name="ttlMs"/>.
+    /// sighting â€” the player was not seen within the last <paramref name="ttlMs"/>.
     /// Returns whether it was a new sighting.</summary>
     public bool SeeNewPlayer(Character player, long nowMs, long ttlMs = 60_000)
     {
@@ -624,7 +601,7 @@ public partial class Character : ObjBase
         _lastEnvironLight = light;
     }
 
-    /// <summary>TickCount64 of the last successful move — archery movement delay gate.</summary>
+    /// <summary>TickCount64 of the last successful move â€” archery movement delay gate.</summary>
     public long LastMoveTick { get; set; }
 
     // Regen timers (ms)
@@ -649,10 +626,10 @@ public partial class Character : ObjBase
     public int SkillClass { get => _skillClass; set => _skillClass = Math.Max(0, value); }
     public string Title { get => _title; set => _title = value ?? ""; }
 
-    /// <summary>GM AllShow mode — shows invisible objects with a grey hue. Runtime-only, not persisted.</summary>
+    /// <summary>GM AllShow mode â€” shows invisible objects with a grey hue. Runtime-only, not persisted.</summary>
     public bool AllShow { get => _allShow; set => _allShow = value; }
 
-    /// <summary>GM AllMove mode — bypass walk collision (walls, statics, mobiles).
+    /// <summary>GM AllMove mode â€” bypass walk collision (walls, statics, mobiles).
     /// Requires PrivLevel.GM+ to be honored. Runtime-only, not persisted.</summary>
     public bool AllMove { get => _allMove; set => _allMove = value; }
 
@@ -770,7 +747,7 @@ public partial class Character : ObjBase
     /// ushort). Used by trigger and definition lookups
     /// (TriggerDispatcher / SpeechEngine / InfoSkillExtensions). The legacy
     /// <see cref="BaseId"/> property stays at the display body Id and is
-    /// truncated to 16 bits — clamping the chardef hash through it
+    /// truncated to 16 bits â€” clamping the chardef hash through it
     /// previously resolved c_alchemist's @Create to c_man and c_banker's
     /// to nothing at all (no banker brain). Falls back to BaseId so any
     /// caller that didn't set it explicitly (loaded from save, players,
@@ -934,7 +911,7 @@ public partial class Character : ObjBase
                     continue;
                 if (creature.IsStatFlag(StatFlag.Ridden))
                     continue;
-                // Sum each pet's control-slot cost, not a flat 1 — otherwise five
+                // Sum each pet's control-slot cost, not a flat 1 â€” otherwise five
                 // multi-slot creatures (e.g. dragons) all fit under a 5 cap.
                 count += creature.ControlSlots;
             }
@@ -986,9 +963,9 @@ public partial class Character : ObjBase
     // Poison
     public byte PoisonLevel { get => _poisonLevel; set => _poisonLevel = value; }
     public bool IsPoisoned => _poisonLevel > 0;
-    public short Kills { get => _kills; set => _kills = value; }
-    public bool IsCriminal => _criminalTimer > 0 && Environment.TickCount64 < _criminalTimer;
-    public bool IsMurderer => _kills >= MurderMinCount;
+    public short Kills { get => CombatState.Kills; set => CombatState.Kills = value; }
+    public bool IsCriminal => CombatState.IsCriminal;
+    public bool IsMurderer => CombatState.IsMurderer;
     /// <summary>True when the character should be treated as a criminal for heal/help checks.</summary>
     public bool IsFlaggedAsCriminal => IsCriminal || IsMurderer || IsStatFlag(StatFlag.Criminal);
 
@@ -1032,40 +1009,16 @@ public partial class Character : ObjBase
     /// a fresh crime refreshes the countdown, matching Source-X behaviour).</summary>
     public void MakeCriminal()
     {
-        // @Criminal trigger — a script may cancel the flag (RETURN 1).
+        // @Criminal trigger â€” a script may cancel the flag (RETURN 1).
         if (OnCriminalCheck != null && OnCriminalCheck(this))
             return;
         SetStatFlag(StatFlag.Criminal);
-        _criminalTimer = Environment.TickCount64 + CriminalTimerSeconds * 1000L;
+        CombatState.SetCriminal(CriminalTimerSeconds * 1000L);
     }
 
     /// <summary>Called once per world tick. Clears expired criminal flag and
     /// decays one kill every MurderDecayTimeSeconds of online time.</summary>
-    public void TickNotorietyDecay(long nowMs)
-    {
-        if (_criminalTimer > 0 && nowMs >= _criminalTimer)
-        {
-            _criminalTimer = 0;
-            if (IsStatFlag(StatFlag.Criminal))
-                ClearStatFlag(StatFlag.Criminal);
-        }
-
-        if (_kills > 0 && MurderDecayTimeSeconds > 0)
-        {
-            if (_nextMurderDecayTick == 0)
-                _nextMurderDecayTick = nowMs + MurderDecayTimeSeconds * 1000L;
-            else if (nowMs >= _nextMurderDecayTick)
-            {
-                _kills--;
-                _nextMurderDecayTick = nowMs + MurderDecayTimeSeconds * 1000L;
-                OnMurderDecay?.Invoke(this, _kills);
-            }
-        }
-        else
-        {
-            _nextMurderDecayTick = 0;
-        }
-    }
+    public void TickNotorietyDecay(long nowMs) => CombatState.TickNotorietyDecay(nowMs);
 
     /// <summary>Apply poison to this character. Level: 1=lesser, 2=normal, 3=greater, 4=deadly, 5=lethal.</summary>
     public void ApplyPoison(byte level) => ApplyPoison(level, Serial.Invalid);
@@ -1138,10 +1091,7 @@ public partial class Character : ObjBase
     }
 
     /// <summary>Set criminal timer (duration in ms).</summary>
-    public void SetCriminal(long durationMs = 120_000)
-    {
-        _criminalTimer = Environment.TickCount64 + durationMs;
-    }
+    public void SetCriminal(long durationMs = 120_000) => CombatState.SetCriminal(durationMs);
 
     /// <summary>True if this character is serving a timed jail sentence whose
     /// time has expired. The release time is stored in the JAIL_RELEASE tag as
@@ -1193,7 +1143,7 @@ public partial class Character : ObjBase
         if (_poisonSource.IsValid)
             RecordAttack(_poisonSource, damage);
 
-        // Show the poison damage to nearby clients and refresh the health bar —
+        // Show the poison damage to nearby clients and refresh the health bar â€”
         // without this the victim's HP silently drains with no visual feedback.
         BroadcastNearby?.Invoke(Position, 18,
             new SphereNet.Network.Packets.Outgoing.PacketDamage(
@@ -1232,7 +1182,7 @@ public partial class Character : ObjBase
     }
     public ushort NpcFood { get => _npcFood; set => _npcFood = value; }
 
-    /// <summary>Pet AI mode — controls pet behavior when owned by a player.</summary>
+    /// <summary>Pet AI mode â€” controls pet behavior when owned by a player.</summary>
     public PetAIMode PetAIMode { get; set; } = PetAIMode.Follow;
 
     /// <summary>Runtime EVENTS list. Populated from CHARDEF Events + dynamically added at runtime.</summary>
@@ -1285,7 +1235,7 @@ public partial class Character : ObjBase
         SetCombatSwingState(SwingState.Equipping, NextAttackTime);
     }
 
-    // NPC spell list — populated from CHARDEF or spellbook items
+    // NPC spell list â€” populated from CHARDEF or spellbook items
     private List<SpellType>? _npcSpells;
     public IReadOnlyList<SpellType> NpcSpells => _npcSpells ?? (IReadOnlyList<SpellType>)Array.Empty<SpellType>();
     public void NpcSpellAdd(SpellType spell)
@@ -1550,7 +1500,7 @@ public partial class Character : ObjBase
         Memory_AddTypes(mem, flags);
 
         _memories.Add(mem);
-        // @MemoryEquip (Source-X) — a memory item was equipped on this character.
+        // @MemoryEquip (Source-X) â€” a memory item was equipped on this character.
         OnMemoryEquip?.Invoke(mem);
         return mem;
     }
@@ -1876,7 +1826,7 @@ public partial class Character : ObjBase
 
         if (_npcFood == 0)
         {
-            // @PetDesert (Source-X) — fires before the pet goes wild; a script may
+            // @PetDesert (Source-X) â€” fires before the pet goes wild; a script may
             // RETURN 1 to cancel the desertion and keep the pet serving.
             if (OnPetDesert != null && OnPetDesert(this, petOwner))
                 return false;
@@ -2095,7 +2045,7 @@ public partial class Character : ObjBase
 
     /// <summary>Teleport this character to <paramref name="target"/>.
     /// Routes through GameWorld.MoveCharacter so the character actually
-    /// moves between sectors — a plain <c>Position = ...</c> would leave
+    /// moves between sectors â€” a plain <c>Position = ...</c> would leave
     /// it registered in its old sector and invisible to BroadcastNearby.</summary>
     public void MoveTo(Point3D target)
     {
@@ -2106,90 +2056,32 @@ public partial class Character : ObjBase
             Position = target;
     }
 
-    // --- Attacker log ---
+    // --- Attacker log (state + logic in CharacterCombatState) ---
     /// <summary>Read-only view of the current attacker log. Most recent hit
     /// is at the end of the list (ATTACKER.LAST).</summary>
-    public IReadOnlyList<AttackerRecord> Attackers => _attackers;
+    public IReadOnlyList<AttackerRecord> Attackers => CombatState.Attackers;
 
     /// <summary>Add <paramref name="damage"/> to the running total for
     /// <paramref name="attackerUid"/> and stamp the current tick. Called
     /// from combat / spell damage paths. No-op for self-damage.</summary>
-    public void RecordAttack(Serial attackerUid, int damage)
-    {
-        if (attackerUid == Uid || attackerUid == Serial.Invalid || damage <= 0)
-            return;
-        // Being hit lets an idle NPC re-acquire immediately (bypass the
-        // target-scan throttle), so retaliation is never delayed.
-        NextNpcReacquireTime = 0;
-        long now = Environment.TickCount64;
-        for (int i = 0; i < _attackers.Count; i++)
-        {
-            if (_attackers[i].Uid == attackerUid)
-            {
-                bool ignored = _attackers[i].Ignored;
-                if (ignored && OnHitIgnored != null && OnHitIgnored(this, attackerUid))
-                    ignored = false; // script un-ignored the attacker
-                _attackers[i] = new AttackerRecord(attackerUid, _attackers[i].TotalDamage + damage, now, ignored);
-                // Move this entry to the end so ATTACKER.LAST reflects it
-                if (i != _attackers.Count - 1)
-                {
-                    var rec = _attackers[i];
-                    _attackers.RemoveAt(i);
-                    _attackers.Add(rec);
-                }
-                return;
-            }
-        }
-        _attackers.Add(new AttackerRecord(attackerUid, damage, now));
-        OnCombatAdd?.Invoke(this, attackerUid);
-    }
+    public void RecordAttack(Serial attackerUid, int damage) =>
+        CombatState.RecordAttack(attackerUid, damage);
 
     /// <summary>Set/clear the ATTACKER.n.IGNORE flag for an attacker already
     /// in the log. Returns false when the uid is not an attacker.</summary>
-    public bool SetAttackerIgnored(Serial attackerUid, bool ignored)
-    {
-        for (int i = 0; i < _attackers.Count; i++)
-        {
-            if (_attackers[i].Uid == attackerUid)
-            {
-                var rec = _attackers[i];
-                _attackers[i] = new AttackerRecord(rec.Uid, rec.TotalDamage, rec.LastHitTick, ignored);
-                return true;
-            }
-        }
-        return false;
-    }
+    public bool SetAttackerIgnored(Serial attackerUid, bool ignored) =>
+        CombatState.SetAttackerIgnored(attackerUid, ignored);
 
-    public void ClearAttackers() => _attackers.Clear();
+    public void ClearAttackers() => CombatState.ClearAttackers();
 
     /// <summary>Index of <paramref name="uid"/> in the attacker log, or -1.</summary>
-    public int Attacker_GetIndex(Serial uid)
-    {
-        for (int i = 0; i < _attackers.Count; i++)
-            if (_attackers[i].Uid == uid) return i;
-        return -1;
-    }
+    public int Attacker_GetIndex(Serial uid) => CombatState.GetIndex(uid);
 
     /// <summary>Seconds since the last hit from <paramref name="uid"/>, or -1 when unknown.</summary>
-    public long Attacker_GetElapsedSeconds(Serial uid)
-    {
-        int idx = Attacker_GetIndex(uid);
-        if (idx < 0) return -1;
-        return Math.Max(0L, (Environment.TickCount64 - _attackers[idx].LastHitTick) / 1000L);
-    }
+    public long Attacker_GetElapsedSeconds(Serial uid) => CombatState.GetElapsedSeconds(uid);
 
     /// <summary>Remove one attacker entry (fight retreat / timeout).</summary>
-    public void Attacker_Delete(Serial uid)
-    {
-        int idx = Attacker_GetIndex(uid);
-        if (idx >= 0)
-        {
-            _attackers.RemoveAt(idx);
-            OnCombatDelete?.Invoke(this, uid);
-            if (_attackers.Count == 0)
-                OnCombatEnd?.Invoke(this);
-        }
-    }
+    public void Attacker_Delete(Serial uid) => CombatState.Delete(uid);
 
     // --- Death ---
     public void Kill()
@@ -2207,10 +2099,10 @@ public partial class Character : ObjBase
         ClearStatFlag(StatFlag.Dead);
         CurePoison();
         ClearStatFlag(StatFlag.Hidden);
-        // At least 1 HP — integer halving of MaxHits==1 would resurrect at 0 HP,
+        // At least 1 HP â€” integer halving of MaxHits==1 would resurrect at 0 HP,
         // re-killing the character on the next tick.
         _hits = (short)Math.Max(1, _maxHits / 2);
-        _attackers.Clear();
+        CombatState.ClearAttackers();
         FightTarget = Serial.Invalid;
 
         // Source-X: murderer resurrection penalties (stat/skill loss ~1%)
@@ -2232,7 +2124,7 @@ public partial class Character : ObjBase
     public void Delete()
     {
         _isDeleted = true;
-        _attackers.Clear();
+        CombatState.ClearAttackers();
         _memories.Clear();
         FightTarget = Serial.Invalid;
     }
@@ -2243,10 +2135,10 @@ public partial class Character : ObjBase
         value = "";
         var upper = key.ToUpperInvariant();
 
-        // <MemoryFindType.<def>[.isValid|.Link[.<prop>]]> — Source-X
+        // <MemoryFindType.<def>[.isValid|.Link[.<prop>]]> â€” Source-X
         // memory inspection. We only have a partial memory engine so we
         // synthesize the two cases the admin dialogs care about:
-        //   memory_guild → resolve the player's guild from GuildManager
+        //   memory_guild â†’ resolve the player's guild from GuildManager
         // and pretend the guild stone is the linked object. Everything
         // else returns "0"/empty so the dialog renders the "no value"
         // path instead of a literal "<MemoryFindType...>".
@@ -2325,8 +2217,8 @@ public partial class Character : ObjBase
             return true;
         }
 
-        // <FindLayer(N)> → UID of item equipped on layer N, or 0.
-        // <FindLayer(N).property> → property on that item.
+        // <FindLayer(N)> â†’ UID of item equipped on layer N, or 0.
+        // <FindLayer(N).property> â†’ property on that item.
         if (upper.StartsWith("FINDLAYER(", StringComparison.Ordinal))
         {
             int closeParen = upper.IndexOf(')');
@@ -2349,8 +2241,8 @@ public partial class Character : ObjBase
             }
         }
 
-        // <Account> alone → account name. <Account.X> → delegate to Account
-        // object. <Account.Char.N.Subkey> → follow through to the nth slot
+        // <Account> alone â†’ account name. <Account.X> â†’ delegate to Account
+        // object. <Account.Char.N.Subkey> â†’ follow through to the nth slot
         // character and resolve Subkey on it (admin dialog uses this for
         // per-slot name/uid display).
         if (upper == "ACCOUNT")
@@ -2514,7 +2406,7 @@ public partial class Character : ObjBase
             case "RESCOLD": value = _resCold.ToString(); return true;
             case "RESPOISON": value = _resPoison.ToString(); return true;
             case "RESENERGY": value = _resEnergy.ToString(); return true;
-            case "KILLS": value = _kills.ToString(); return true;
+            case "KILLS": value = Kills.ToString(); return true;
             case "CRIMINAL": value = IsCriminal ? "1" : "0"; return true;
             case "MURDERER": value = IsMurderer ? "1" : "0"; return true;
             case "POISONLEVEL": value = _poisonLevel.ToString(); return true;
@@ -2728,7 +2620,7 @@ public partial class Character : ObjBase
             {
                 // Bare ATTACKER returns the count of distinct attackers,
                 // matching Source-X CChar::r_WriteVal ("ATTACKER").
-                value = _attackers.Count.ToString();
+                value = CombatState.Attackers.Count.ToString();
                 return true;
             }
         }
@@ -2768,28 +2660,28 @@ public partial class Character : ObjBase
             string tail = upper.Substring("ATTACKER.".Length);
             if (tail == "LAST")
             {
-                value = _attackers.Count > 0
-                    ? "0x" + _attackers[^1].Uid.Value.ToString("X")
+                value = CombatState.Attackers.Count > 0
+                    ? "0x" + CombatState.Attackers[^1].Uid.Value.ToString("X")
                     : "0";
                 return true;
             }
             if (tail == "MAX")
             {
-                if (_attackers.Count == 0) { value = "0"; return true; }
+                if (CombatState.Attackers.Count == 0) { value = "0"; return true; }
                 int bestIdx = 0;
-                for (int i = 1; i < _attackers.Count; i++)
-                    if (_attackers[i].TotalDamage > _attackers[bestIdx].TotalDamage)
+                for (int i = 1; i < CombatState.Attackers.Count; i++)
+                    if (CombatState.Attackers[i].TotalDamage > CombatState.Attackers[bestIdx].TotalDamage)
                         bestIdx = i;
-                value = "0x" + _attackers[bestIdx].Uid.Value.ToString("X");
+                value = "0x" + CombatState.Attackers[bestIdx].Uid.Value.ToString("X");
                 return true;
             }
             // ATTACKER.n.{DAM|ELAPSED|UID}
             int dot = tail.IndexOf('.');
             if (dot > 0 && int.TryParse(tail.AsSpan(0, dot), out int idx)
-                && idx >= 0 && idx < _attackers.Count)
+                && idx >= 0 && idx < CombatState.Attackers.Count)
             {
                 string sub = tail.Substring(dot + 1);
-                var rec = _attackers[idx];
+                var rec = CombatState.Attackers[idx];
                 switch (sub)
                 {
                     case "DAM":
@@ -2970,7 +2862,7 @@ public partial class Character : ObjBase
             return true;
         }
 
-        // FINDCONT.n — nth equipped item
+        // FINDCONT.n â€” nth equipped item
         if (upper.StartsWith("FINDCONT.", StringComparison.Ordinal))
         {
             if (int.TryParse(upper.AsSpan("FINDCONT.".Length), out int n))
@@ -2993,7 +2885,7 @@ public partial class Character : ObjBase
             return true;
         }
 
-        // FINDUID.uid — check if a specific UID is on this character
+        // FINDUID.uid â€” check if a specific UID is on this character
         if (upper.StartsWith("FINDUID.", StringComparison.Ordinal))
         {
             string uidStr = key["FINDUID.".Length..].Trim();
@@ -3064,7 +2956,7 @@ public partial class Character : ObjBase
             return true;
         }
 
-        // SKILLTOTAL +N / SKILLTOTAL -N — totals filtered by threshold.
+        // SKILLTOTAL +N / SKILLTOTAL -N â€” totals filtered by threshold.
         // Matches Source-X r_WriteVal: "+<amount>" sums skills >= amount,
         // "-<amount>" sums skills < amount. Skill values are tenths of a
         // percent (0-1000), so +500 = skills >= 50.0%.
@@ -3086,7 +2978,7 @@ public partial class Character : ObjBase
             }
         }
 
-        // SKILLBEST.n — nth highest skill
+        // SKILLBEST.n â€” nth highest skill
         if (upper.StartsWith("SKILLBEST.", StringComparison.Ordinal))
         {
             if (int.TryParse(upper.AsSpan("SKILLBEST.".Length), out int rank) && rank >= 0)
@@ -3217,7 +3109,7 @@ public partial class Character : ObjBase
             return false;
         }
 
-        // ATTACKER.n.IGNORE=0/1 — script-controlled ignore flag on an
+        // ATTACKER.n.IGNORE=0/1 â€” script-controlled ignore flag on an
         // attacker-log entry; a later hit from an ignored attacker fires
         // @HitIgnore (Source-X parity).
         if (key.StartsWith("ATTACKER.", StringComparison.OrdinalIgnoreCase))
@@ -3226,9 +3118,9 @@ public partial class Character : ObjBase
             int adot = atail.IndexOf('.');
             if (adot > 0 && atail[(adot + 1)..] == "IGNORE"
                 && int.TryParse(atail.AsSpan(0, adot), out int aidx)
-                && aidx >= 0 && aidx < _attackers.Count)
+                && aidx >= 0 && aidx < CombatState.Attackers.Count)
             {
-                SetAttackerIgnored(_attackers[aidx].Uid, normalized != "0");
+                SetAttackerIgnored(CombatState.Attackers[aidx].Uid, normalized != "0");
                 return true;
             }
             return false;
@@ -3319,7 +3211,7 @@ public partial class Character : ObjBase
             case "RESCOLD": if (short.TryParse(normalized, out short rcv)) _resCold = rcv; return true;
             case "RESPOISON": if (short.TryParse(normalized, out short rpov)) _resPoison = rpov; return true;
             case "RESENERGY": if (short.TryParse(normalized, out short rev)) _resEnergy = rev; return true;
-            case "KILLS": if (short.TryParse(normalized, out short killsVal)) _kills = killsVal; return true;
+            case "KILLS": if (short.TryParse(normalized, out short killsVal)) Kills = killsVal; return true;
             case "CRIMINALTIMER": if (int.TryParse(normalized, out int ctSec) && ctSec > 0) CriminalTimerRemainingSeconds = ctSec; return true;
             case "POISONLEVEL":
                 if (byte.TryParse(normalized, out byte plv))
@@ -3546,7 +3438,7 @@ public partial class Character : ObjBase
             return true;
         }
 
-        // MEMORY.xxx — real memory flags when the suffix is a known type name
+        // MEMORY.xxx â€” real memory flags when the suffix is a known type name
         if (upperKey.StartsWith("MEMORY.", StringComparison.Ordinal))
         {
             string memPart = upperKey["MEMORY.".Length..];
@@ -3593,7 +3485,7 @@ public partial class Character : ObjBase
             return true;
         }
 
-        // Sphere NPC/char properties — round-trip as TAGs
+        // Sphere NPC/char properties â€” round-trip as TAGs
         switch (upperKey)
         {
             case "OKARMA":
@@ -3768,8 +3660,8 @@ public partial class Character : ObjBase
         }
 
         // Source-X chained method dispatch on the equipped-layer slot:
-        //   Src.FindLayer(21).Empty   → empty the worn pack
-        //   Src.FindLayer(11).Remove  → strip the worn helmet
+        //   Src.FindLayer(21).Empty   â†’ empty the worn pack
+        //   Src.FindLayer(11).Remove  â†’ strip the worn helmet
         // Resolve the layer to an item and re-route the trailing verb
         // there so we do not have to add per-accessor handlers.
         if (key.StartsWith("FINDLAYER(", StringComparison.OrdinalIgnoreCase))
@@ -3797,7 +3689,7 @@ public partial class Character : ObjBase
         {
             case "NEWITEM":
             {
-                // NEWITEM i_gold — creates item and stores as NEW context
+                // NEWITEM i_gold â€” creates item and stores as NEW context
                 // The actual item creation is handled by the script engine callback
                 NewItemId = args.Trim();
                 return true;
@@ -3823,7 +3715,7 @@ public partial class Character : ObjBase
                 // Walks the backpack subtree, decrementing the matching
                 // item's Amount and deleting it when the stack is empty.
                 // Empty defname falls back to "consume one of any item"
-                // — matching r_Verb behaviour where omitted args mean
+                // â€” matching r_Verb behaviour where omitted args mean
                 // "the last NEWITEM defname". Returns silently if the
                 // requested resource is not present (Sphere never errors
                 // out on missing reagent counts; scripts gate on RESTEST
@@ -3868,7 +3760,7 @@ public partial class Character : ObjBase
             case "ATTACK":
             case "KILLTARGET":
             {
-                // ATTACK <uid> — set this character's combat target.
+                // ATTACK <uid> â€” set this character's combat target.
                 if (!string.IsNullOrWhiteSpace(args))
                 {
                     var atkTarget = ParseSerial(args.Trim());
@@ -3958,7 +3850,7 @@ public partial class Character : ObjBase
                 // We honour the first five tokens which cover all
                 // standard admin/spell scripts (the optional hue/render
                 // pair feeds the colored-particle packet which we don't
-                // implement yet — defaults to 0/0).
+                // implement yet â€” defaults to 0/0).
                 var eparts = (args ?? "").Split(
                     new[] { ',', ' ', '\t' },
                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -4030,7 +3922,7 @@ public partial class Character : ObjBase
             case "COLOR":
             {
                 // Applies the hue to the last item spawned via ITEM=.
-                // "match_*" reuses the last resolved hue — lets a
+                // "match_*" reuses the last resolved hue â€” lets a
                 // facial_hair share colour with the hair ITEM that
                 // came right before it.
                 ushort hue = ResolveColorArg(args.Trim(), _lastVerbHue);
@@ -4038,7 +3930,7 @@ public partial class Character : ObjBase
                 if (_lastCreatedItem != null && !_lastCreatedItem.IsDeleted)
                     _lastCreatedItem.Hue = new Core.Types.Color(hue);
                 else
-                    Hue = new Core.Types.Color(hue); // no item yet → tint the NPC body
+                    Hue = new Core.Types.Color(hue); // no item yet â†’ tint the NPC body
                 _lastVerbHue = hue;
                 return true;
             }
@@ -4048,7 +3940,7 @@ public partial class Character : ObjBase
                 // We honour icon + duration + a single plain-text arg
                 // string (concatenation of any args past the time slot)
                 // using the existing PacketBuffIcon code path. Cliloc
-                // indirection — clients without a cliloc.mul entry for
+                // indirection â€” clients without a cliloc.mul entry for
                 // arg placeholders just render empty strings, so we
                 // prefer the raw-string fallback.
                 var parts = args.Split(',', StringSplitOptions.TrimEntries);
@@ -4123,7 +4015,7 @@ public partial class Character : ObjBase
             }
             case "MIDILIST":
             {
-                // Source-X: MIDILIST music1, music2, ... — pick one at
+                // Source-X: MIDILIST music1, music2, ... â€” pick one at
                 // random and tell the client to play it.
                 var parts = args.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length > 0)
@@ -4224,7 +4116,7 @@ public partial class Character : ObjBase
             }
             case "BARK":
             {
-                // Source-X CChar::SoundChar(CRESND_RAND) — emit the
+                // Source-X CChar::SoundChar(CRESND_RAND) â€” emit the
                 // body's idle/death sound. We don't ship the per-body
                 // sound table yet, so synthesise a tile-relative sound
                 // from the body id (good enough to make the verb
@@ -4250,7 +4142,7 @@ public partial class Character : ObjBase
                 return true;
             }
             // Overhead speech (Source-X CChar SAY/SAYU/EMOTE): broadcast to
-            // nearby clients as the character's spoken line — NOT a private
+            // nearby clients as the character's spoken line â€” NOT a private
             // system message to the source (the base ObjBase handler does the
             // latter, which left NPC dialog/barks invisible). SAY = ASCII
             // (0x1C), SAYU/SAYUC = Unicode (0xAE), EMOTE = emote message type.
@@ -4283,8 +4175,8 @@ public partial class Character : ObjBase
             {
                 // Source-X CChar::r_Verb FIXWEIGHT recomputes the cached
                 // carry weight by walking the inventory. We don't cache
-                // weight separately — Item.TotalWeight is computed on
-                // demand — but the verb is also expected to refresh the
+                // weight separately â€” Item.TotalWeight is computed on
+                // demand â€” but the verb is also expected to refresh the
                 // status bar so the client picks up the new value, so
                 // mark the stat block dirty.
                 MarkDirty(DirtyFlag.Stats);
@@ -4316,7 +4208,7 @@ public partial class Character : ObjBase
             }
             case "HUNGRY":
             {
-                // Source-X CChar::r_Verb HUNGRY [amount] — adjust food
+                // Source-X CChar::r_Verb HUNGRY [amount] â€” adjust food
                 // level. Positive arg = set, negative = decrement,
                 // omitted = single tick of hunger (matches the @Hunger
                 // trigger CONSUME path). Triggers a stat refresh so the
@@ -4364,8 +4256,7 @@ public partial class Character : ObjBase
             {
                 RemoveTag("JAIL");
                 RemoveTag("JAIL_EXPIRE");
-                _kills = 0;
-                _criminalTimer = 0;
+                CombatState.Forgive();
                 return true;
             }
             case "JAIL":
@@ -4406,7 +4297,7 @@ public partial class Character : ObjBase
             case "TELE":
             {
                 // Bare TELE on a character begins the targeted teleport
-                // flow. Source-X also accepts "TELE x,y,z[,m]" — we
+                // flow. Source-X also accepts "TELE x,y,z[,m]" â€” we
                 // forward to the existing GO verb in that case so the
                 // coordinate parsing stays in one place.
                 if (!string.IsNullOrWhiteSpace(args) && args.Contains(','))
@@ -4791,7 +4682,7 @@ public partial class Character : ObjBase
             {
                 // Source-X verb: drop every *client-session* tag under
                 // the given prefix (e.g. CLEARCTAGS Dialog.Admin removes
-                // Dialog.Admin.*). No argument → wipe all client tags.
+                // Dialog.Admin.*). No argument â†’ wipe all client tags.
                 // CTags live on the active client and die with the
                 // session; this verb fires from dialog close handlers
                 // and refresh buttons to reset admin-panel-style state.
@@ -4800,7 +4691,7 @@ public partial class Character : ObjBase
             }
             case "TAGLIST":
             {
-                // Source-X CV_TAGLIST — dump this character's TAGs to the console.
+                // Source-X CV_TAGLIST â€” dump this character's TAGs to the console.
                 foreach (var (k, v) in Tags.GetAll())
                     source.SysMessage($"TAG.{k} = {v}");
                 return true;
@@ -4840,7 +4731,7 @@ public partial class Character : ObjBase
             _nextManaRegen = now + RegenTenthsToMs(RegenManaTenths, 3000);
         }
 
-        // Stam regen: Source-X scales with DEX — higher DEX = faster regen.
+        // Stam regen: Source-X scales with DEX â€” higher DEX = faster regen.
         if (now >= _nextStamRegen && _stam < _maxStam)
         {
             int regenAmt = _isPlayer ? Math.Max(1, _dex / 30) : Math.Max(1, _maxStam / 20);
@@ -4874,7 +4765,7 @@ public partial class Character : ObjBase
         // Poison tick
         ProcessPoisonTick(now);
 
-        // Field damage tick — periodic damage while standing in a fire/poison
+        // Field damage tick â€” periodic damage while standing in a fire/poison
         // field, so a stationary victim still takes damage (not only on step).
         if (now >= _nextFieldTick)
         {
@@ -4883,8 +4774,7 @@ public partial class Character : ObjBase
         }
 
         // Criminal timer expiry
-        if (_criminalTimer > 0 && now >= _criminalTimer)
-            _criminalTimer = 0;
+        CombatState.ExpireCriminalTimer(now);
 
         // Timed jail auto-release. Gated on Freeze so only jailed/frozen chars
         // pay the tag lookup; the release hook clears Freeze so it fires once.
@@ -4913,7 +4803,7 @@ public partial class Character : ObjBase
     }
 
     // Transient state used by the @Create verb sequence. Both fields
-    // live only inside the trigger run — they are cleared by
+    // live only inside the trigger run â€” they are cleared by
     // Resurrect() and are not persisted because they're purely a
     // write-order cache for ITEM/COLOR pairs.
     private Items.Item? _lastCreatedItem;
@@ -4942,7 +4832,7 @@ public partial class Character : ObjBase
                 ? hex2 : (ushort)0;
         }
 
-        // Try defname → ItemDef → DispIndex (wire graphic). Fall back to
+        // Try defname â†’ ItemDef â†’ DispIndex (wire graphic). Fall back to
         // the resource id when the def has no explicit DispIndex (matches
         // SpawnAndEquipItem's resolution).
         var resources = Definitions.DefinitionLoader.StaticResources;
@@ -5020,7 +4910,7 @@ public partial class Character : ObjBase
         var item = world.CreateItem();
         var idef = Definitions.DefinitionLoader.GetItemDef(rid.Index);
         // Wire-side graphic (DispIndex) is distinct from the script-side
-        // resource index for defname ITEMDEFs — see TemplateEngine.ResolveDispId
+        // resource index for defname ITEMDEFs â€” see TemplateEngine.ResolveDispId
         // for the full rationale. (ushort)rid.Index used to truncate the
         // 32-bit hash and produced random graphics on equipment.
         ushort dispId = 0;
@@ -5098,7 +4988,7 @@ public partial class Character : ObjBase
     /// <summary>
     /// Materialise this NPC's deferred loot into a corpse at death.
     /// Plain (non-wearable) chardef <c>ITEM=</c> entries that are not
-    /// flagged <c>ITEMNEWBIE</c> are NOT spawned onto the living NPC —
+    /// flagged <c>ITEMNEWBIE</c> are NOT spawned onto the living NPC â€”
     /// they are rolled here when the corpse is created. This mirrors
     /// Source-X (CTRIG_CreateLoot fires just before MakeCorpse) and keeps
     /// living NPCs from carrying transient loot items that would otherwise
@@ -5138,7 +5028,7 @@ public partial class Character : ObjBase
             if (dispId == 0) continue;
 
             // Wearable gear is equipped at spawn (combat / appearance) and
-            // reaches the corpse via the unequip path — only non-wearable
+            // reaches the corpse via the unequip path â€” only non-wearable
             // loot is deferred to here.
             var layer = idef?.Layer ?? Core.Enums.Layer.None;
             if (layer == Core.Enums.Layer.None)
@@ -5184,7 +5074,7 @@ public partial class Character : ObjBase
         return (Core.Enums.Layer)q;
     }
 
-    /// <summary>Resolve a COLOR= arg (colors_red, match_hair, 0x0481 …).
+    /// <summary>Resolve a COLOR= arg (colors_red, match_hair, 0x0481 â€¦).
     /// Shared between the root-level EquipNewbieItems path and the
     /// trigger-body COLOR= verb so both agree on the palette.</summary>
     private static ushort ResolveColorArg(string arg, ushort lastHue)
@@ -5219,7 +5109,7 @@ public partial class Character : ObjBase
     }
 
     /// <summary>Sphere dice expression roller (R5 / 2d6 / 1d10+2).
-    /// Kept small and defensive — unrecognised expressions default to 1
+    /// Kept small and defensive â€” unrecognised expressions default to 1
     /// so a broken line never silently mints a zero-amount stack.</summary>
     private static int RollDice(string expr)
     {
@@ -5267,14 +5157,14 @@ public partial class Character : ObjBase
 
         if (buySide)
         {
-            // BUY lists don't spawn items — they only configure what
+            // BUY lists don't spawn items â€” they only configure what
             // the vendor accepts when the player tries to sell. Store
             // the defname; the sell gump will resolve it at open time.
             SetTag("VENDOR_BUY_LIST", templateDefName);
             return;
         }
 
-        // SELL side — spawn every entry from the template into the
+        // SELL side â€” spawn every entry from the template into the
         // dedicated vendor STOCK container (Layer.VendorStock = 26).
         // ClassicUO's BuyList (0x74) handler hard-checks that the
         // referenced container is equipped at Layer.ShopBuyRestock
@@ -5314,11 +5204,11 @@ public partial class Character : ObjBase
             // Source-X parity: an [ITEMDEF i_potion_refresh] block lives
             // under a string-hashed *resource* index (e.g. 0x40B2C7E1)
             // but ships `ID=0x0F0E` as the wire graphic. We need BOTH:
-            //   - defIndex (32-bit hash) → look up the ItemDef
-            //   - dispId   (16-bit graphic) → wire-side BaseId / tile
+            //   - defIndex (32-bit hash) â†’ look up the ItemDef
+            //   - dispId   (16-bit graphic) â†’ wire-side BaseId / tile
             // Truncating defIndex to a ushort yields random visible
             // graphics (lava / window-shutter / elven-plate were the
-            // classic symptoms before this split — see ResolveDispId).
+            // classic symptoms before this split â€” see ResolveDispId).
             int defIndex = Definitions.TemplateEngine.ResolveItemDefIndex(resources, picked);
             if (defIndex == 0) { resolveFails++; continue; }
             ushort dispId = Definitions.TemplateEngine.ResolveDispId(resources, picked);
@@ -5327,7 +5217,7 @@ public partial class Character : ObjBase
             var item = world.CreateItem();
             var idef = Definitions.DefinitionLoader.GetItemDef(defIndex);
             item.BaseId = dispId;
-            // NAME= templates carry %plural/singular% markers — store
+            // NAME= templates carry %plural/singular% markers â€” store
             // the RAW template; Item.GetName() pluralizes per Amount on
             // every read (CItem::GetName parity, CItem.cpp:1769).
             if (idef != null && !string.IsNullOrWhiteSpace(idef.Name))

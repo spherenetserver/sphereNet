@@ -4,6 +4,21 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-10] - Character ayristirmasi dilim 1: combat durum bileseni (Wave 81)
+----------------------------------------
+
+INTERNAL - Character ayristirmasi:
+  - Character god class'inin parcalanmasinda ilk dilim: saldirgan-bazli hasar
+    kaydi (ATTACKER.*) ve criminal/murder notoriety sayaclari yeni
+    CharacterCombatState bilesenine tasindi (Character.CombatState, lazy
+    olusturulur). Character ince delegasyon uyeleri tutuyor; public API,
+    script property yuzeyi (ATTACKER.n.*, KILLS, FORGIVE, ...) ve tum trigger
+    hook'lari (OnCombatAdd/Delete/End, OnHitIgnored, OnMurderDecay) birebir
+    ayni davraniyor — mantik oldugu gibi tasindi. AttackerRecord struct'i
+    Character ici nested tipten namespace seviyesine cikti (nested ada disari
+    referans yoktu). Character.cs ~150 satir kuculdu; sonraki dilimler (stat
+    blogu, poison durumu, memory'ler) ayni delegasyon deseniyle ilerleyebilir.
+
 [2026-06-10] - Combat ability trigger'i, spawner start/stop trigger'lari, kaybolan NPC isinlanmasi (Wave 80)
 ----------------------------------------
 

@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-10] - Character decomposition slice 1: combat state component (Wave 81)
+----------------------------------------
+
+INTERNAL - Character decomposition:
+  - First slice of breaking up the Character god class: the per-attacker
+    damage log (ATTACKER.*) and the criminal/murder notoriety counters moved
+    into a new CharacterCombatState component (Character.CombatState,
+    lazily created). Character keeps thin delegating members, so the public
+    API, the script property surface (ATTACKER.n.*, KILLS, FORGIVE, ...) and
+    all trigger hooks (OnCombatAdd/Delete/End, OnHitIgnored, OnMurderDecay)
+    behave identically — the logic moved verbatim. The AttackerRecord struct
+    moved from a nested Character type to the namespace level (it had no
+    external references to the nested name). Character.cs shrank by ~150
+    lines; further slices (stats block, poison state, memories) can follow
+    the same delegation pattern.
+
 [2026-06-10] - Combat ability trigger, spawner start/stop triggers, lost-NPC teleport (Wave 80)
 ----------------------------------------
 

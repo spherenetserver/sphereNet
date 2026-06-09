@@ -301,7 +301,7 @@ public sealed partial class GameClient
     /// <see cref="Skills.Information.IActiveSkillSink"/> so the engines can
     /// emit overhead text, emote poses, sounds, and consume backpack items.
     /// </summary>
-    private sealed class InfoSkillSink : Skills.Information.IActiveSkillSink
+    internal sealed class InfoSkillSink : Skills.Information.IActiveSkillSink
     {
         private readonly GameClient _client;
         public InfoSkillSink(GameClient client, Character self) { _client = client; Self = self; }

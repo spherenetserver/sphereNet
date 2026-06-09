@@ -247,7 +247,7 @@ public sealed partial class GameClient
     }
 
     /// <summary>Get the buy price for an item from vendor inventory. Uses TAG.PRICE or defaults.</summary>
-    private static int GetVendorItemPrice(Character vendor, Item item)
+    internal static int GetVendorItemPrice(Character vendor, Item item)
     {
         if (item.TryGetTag("PRICE", out string? priceStr) && int.TryParse(priceStr, out int price))
             return price;
@@ -255,7 +255,7 @@ public sealed partial class GameClient
     }
 
     /// <summary>Get the sell price (what vendor pays the player). Usually half of buy price.</summary>
-    private static int GetVendorItemSellPrice(Character vendor, Item item)
+    internal static int GetVendorItemSellPrice(Character vendor, Item item)
     {
         return Math.Max(1, GetVendorItemPrice(vendor, item) / 2);
     }
@@ -556,7 +556,7 @@ public sealed partial class GameClient
     }
 
     /// <summary>Open guild stone gump with member list, options.</summary>
-    private void OpenGuildStoneGump(Item stone)
+    internal void OpenGuildStoneGump(Item stone)
     {
         if (_character == null || _guildManager == null) return;
 
@@ -778,7 +778,7 @@ public sealed partial class GameClient
     }
 
     /// <summary>Open house management gump from house sign or multi item.</summary>
-    private void OpenHouseSignGump(Item signOrMulti)
+    internal void OpenHouseSignGump(Item signOrMulti)
     {
         if (_character == null || _housingEngine == null) return;
 
@@ -1062,7 +1062,7 @@ public sealed partial class GameClient
         TryToggleNearestMapStaticDoor(0);
     }
 
-    private bool TryToggleNearestMapStaticDoor(uint clientSerial)
+    internal bool TryToggleNearestMapStaticDoor(uint clientSerial)
     {
         if (_character == null) return false;
         if (_character.IsDead) return false;
@@ -1096,7 +1096,7 @@ public sealed partial class GameClient
         BroadcastNearby?.Invoke(pos, UpdateRange, broadcastPacket, _character.Uid.Value);
     }
 
-    private void ToggleDoor(Item door)
+    internal void ToggleDoor(Item door)
     {
         if (_character == null) return;
         if (_character.IsDead) return;
@@ -1152,7 +1152,7 @@ public sealed partial class GameClient
         _ => ((ushort)AnimationType.Bow, (ushort)0x002A),
     };
 
-    private void UsePotion(Item potion)
+    internal void UsePotion(Item potion)
     {
         if (_character == null) return;
 

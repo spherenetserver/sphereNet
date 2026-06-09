@@ -694,7 +694,7 @@ public sealed partial class GameClient
     }
 
     /// <summary>Set a callback-based target cursor. Used by housing, pets, etc.</summary>
-    private void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1)
+    internal void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1)
     {
         if (Targets.CursorActive)
             _netState.Send(new PacketTarget(0x00, 0x00000000, flags: 3));

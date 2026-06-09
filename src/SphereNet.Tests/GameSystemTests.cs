@@ -3075,7 +3075,10 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         client.SetEngines(triggerDispatcher: dispatcher);
         AttachCharacter(client, player);
 
-        InvokePrivate(client, "HandleDyeApply", vat, dest.Uid);
+        // HandleDyeApply moved into the phase-3 item-use handler.
+        typeof(SphereNet.Game.Clients.ClientItemUseHandler)
+            .GetMethod("HandleDyeApply", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(client.ItemUse, [vat, dest.Uid]);
 
         Assert.Equal(1, dyeCount);
         Assert.Equal((ushort)1110, dest.Hue.Value);

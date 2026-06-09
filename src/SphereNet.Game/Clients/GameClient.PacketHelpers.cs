@@ -666,7 +666,7 @@ public sealed partial class GameClient
     /// but with script authority (no snoop/trap gate).</summary>
     public void OpenContainerFromScript(Item container) => SendOpenContainer(container);
 
-    private void SendOpenContainer(Item container)
+    internal void SendOpenContainer(Item container)
     {
         // Source-X CClient::addContainerSetup parity: before opening
         // any container the client must already know about that
@@ -935,7 +935,7 @@ public sealed partial class GameClient
         return (safeCur, safeMax);
     }
 
-    private void BroadcastDeleteObject(uint uid)
+    internal void BroadcastDeleteObject(uint uid)
     {
         _netState.Send(new PacketDeleteObject(uid));
         View.KnownChars.Remove(uid);
@@ -946,7 +946,7 @@ public sealed partial class GameClient
         BroadcastNearby?.Invoke(_character?.Position ?? Point3D.Zero, UpdateRange, new PacketDeleteObject(uid), _character?.Uid.Value ?? 0);
     }
 
-    private void BroadcastDrawObject(Character ch)
+    internal void BroadcastDrawObject(Character ch)
     {
         var equipment = BuildEquipmentList(ch);
         byte flags = BuildMobileFlags(ch);

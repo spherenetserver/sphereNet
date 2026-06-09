@@ -218,7 +218,7 @@ public sealed partial class GameClient
 
     // ==================== Phase 2: Content Feature Handlers ====================
 
-    private void OpenBook(Item book, bool writable)
+    internal void OpenBook(Item book, bool writable)
     {
         if (_character == null) return;
 

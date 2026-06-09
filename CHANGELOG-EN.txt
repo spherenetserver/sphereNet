@@ -4,6 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-10] - GameClient decomposition phase 3c: item-use handler class (Wave 87)
+----------------------------------------
+
+INTERNAL - GameClient decomposition:
+  - The ItemUse partial (~1,890 lines: double-click dispatch, the per-type
+    item-use switch, plant/pitcher/ammo helpers, pet speech-command engine,
+    vendor buy/sell list construction) moved into ClientItemUseHandler using
+    the established shim recipe; bodies are byte-identical. Twenty-six
+    cross-partial helpers it needed were promoted private → internal
+    (door/potion/book/gump/paperdoll/mount/walk-validator/vendor-price
+    helpers and the InfoSkillSink sink type among them); the former partial
+    keeps public delegators (HandleDoubleClick, OpenVendorBuy/Sell) plus
+    internal bridges for the Combat and WorldFeatures call sites
+    (TryHandlePetCommand, ammo helpers, vendor interaction) — the pet-command
+    bridge also keeps the test-harness reflection entry point stable. One
+    test that reflected the private HandleDyeApply now targets the handler.
+    File operations in the conversion tooling now use explicit UTF-8 (see
+    the Wave 86 mojibake repair); a post-conversion scan shows zero
+    double-encoded sequences.
+
 [2026-06-10] - GameClient decomposition phase 3b: inventory handler class (Wave 86)
 ----------------------------------------
 

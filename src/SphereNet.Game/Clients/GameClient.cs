@@ -190,6 +190,9 @@ public sealed partial class GameClient : ITextConsole
     internal HousingEngine? Housing => _housingEngine;
     internal TradeManager? TradeM => _tradeManager;
     internal SpellEngine? Spells => _spellEngine;
+    internal SkillHandlers? SkillH => _skillHandlers;
+    internal Mounts.MountEngine? MountE => _mountEngine;
+    internal ILogger Log => _logger;
     public Account? Account => _account;
     public Character? Character => _character;
     public bool IsPlaying => _character != null && !_character.IsDeleted;
@@ -376,7 +379,7 @@ public sealed partial class GameClient : ITextConsole
             _spellEngine.TriggerDispatcher = triggerDispatcher;
     }
 
-    private bool TryMountCharacter(Character mount)
+    internal bool TryMountCharacter(Character mount)
     {
         if (_character == null || _mountEngine == null)
             return false;
@@ -389,7 +392,7 @@ public sealed partial class GameClient : ITextConsole
         return true;
     }
 
-    private Character? DismountCharacter()
+    internal Character? DismountCharacter()
     {
         if (_character == null || _mountEngine == null)
             return null;

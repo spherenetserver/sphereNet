@@ -4,6 +4,26 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-10] - GameClient ayristirmasi faz 3c: item-use handler sinifi (Wave 87)
+----------------------------------------
+
+INTERNAL - GameClient ayristirmasi:
+  - ItemUse partial'i (~1.890 satir: cift-tik dispatch'i, tip-bazli item
+    kullanim switch'i, bitki/surahi/muhimmat yardimcilari, pet konusma-komut
+    motoru, vendor al/sat liste kurulumu) yerlesik shim recetesiyle
+    ClientItemUseHandler'a tasindi; govdeler bayt-bayt ayni. Ihtiyac duyulan
+    26 capraz-partial yardimci private'tan internal'a yukseltildi
+    (kapi/iksir/kitap/gump/paperdoll/binek/walk-validator/vendor-fiyat
+    yardimcilari ve InfoSkillSink sink tipi dahil); eski partial public
+    delegasyonlar (HandleDoubleClick, OpenVendorBuy/Sell) ile Combat ve
+    WorldFeatures cagri noktalari icin internal kopruler tutuyor
+    (TryHandlePetCommand, muhimmat yardimcilari, vendor etkilesimi) —
+    pet-komut koprusu test-harness reflection giris noktasini da sabit
+    tutuyor. Private HandleDyeApply'i reflect eden bir test artik handler'i
+    hedefliyor. Donusum araclarindaki dosya islemleri artik explicit UTF-8
+    (Wave 86 mojibake onarimina bakin); donusum sonrasi tarama sifir
+    cift-kodlanmis dizi gosteriyor.
+
 [2026-06-10] - GameClient ayristirmasi faz 3b: inventory handler sinifi (Wave 86)
 ----------------------------------------
 

@@ -159,7 +159,7 @@ public sealed partial class GameClient
     /// <c>CChar::IsFemale()</c> returns the same lookup): human female
     /// = 0x191, female ghost = 0x193.
     /// </summary>
-    private static byte BuildMobileFlags(Character ch)
+    internal static byte BuildMobileFlags(Character ch)
     {
         byte flags = 0;
         if (ch.IsInvisible) flags |= 0x80;
@@ -602,7 +602,7 @@ public sealed partial class GameClient
     }
 
     /// <summary>Send speech from an NPC to this client (overhead text above the NPC).</summary>
-    private void NpcSpeech(Character npc, string text)
+    internal void NpcSpeech(Character npc, string text)
     {
         var packet = new PacketSpeechUnicodeOut(
             npc.Uid.Value, npc.BodyId, 0, 0x03B2, 3, "TRK", npc.GetName(), text);

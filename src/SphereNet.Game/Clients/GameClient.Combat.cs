@@ -572,7 +572,7 @@ public sealed partial class GameClient
             seq, direction, _character.X, _character.Y, _character.Z);
     }
 
-    private void ResetWalkValidator()
+    internal void ResetWalkValidator()
     {
         Throttle.NextMoveTime = 0;
         Throttle.WalkTokens = Math.Max(1, WalkBufferMax);

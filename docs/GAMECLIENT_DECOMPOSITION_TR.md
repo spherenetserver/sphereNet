@@ -19,7 +19,8 @@ GameClient (orkestratör: NetState + Character + yaşam döngüsü)
  ├─ ClientViewCache        known-set'ler + last-known durumlar (faz 2 ✅)
  └─ handler sınıfları      (faz 3 — sürüyor)
      ├─ ClientViewUpdater       view-delta build/apply + known-char bildirimleri ✅
-     └─ ClientInventoryHandler  single click, pickup/drop/equip, profil/status ✅
+     ├─ ClientInventoryHandler  single click, pickup/drop/equip, profil/status ✅
+     └─ ClientItemUseHandler    dclick dispatch, item kullanımı, pet komutları, vendor listeleri ✅
 ```
 
 ## Fazlar
@@ -40,7 +41,7 @@ alan bir sınıfa dönüşür (ileride dar bir `ClientContext` arayüzüne
 indirgenebilir). Partial'lar arası private erişim bu noktada derleyici
 tarafından zorlanan gerçek sınırlara dönüşür: handler yalnızca GameClient'ın
 internal/public yüzeyini görebilir. Sıra (en az iç bağımlılıdan en çoğa):
-ViewUpdate ✅ → Inventory ✅ → ItemUse → WorldFeatures → Dialogs/Targeting →
+ViewUpdate ✅ → Inventory ✅ → ItemUse ✅ → WorldFeatures → Dialogs/Targeting →
 Combat → ScriptConsole.
 
 **Inventory dönüşüm notu — "context shim" deseni:** Gövdeyi bayt-bayt korumak

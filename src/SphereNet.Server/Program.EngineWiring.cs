@@ -1362,6 +1362,17 @@ public static partial class Program
             {
                 BroadcastFacingUpdate(npc);
             };
+            _npcAI.OnNpcFidget = npc =>
+            {
+                var fidget = Random.Shared.Next(2) == 0
+                    ? AnimationType.Fidget1
+                    : AnimationType.FidgetYawn;
+                ushort anim = npc.IsMounted
+                    ? MapAnimToMounted((ushort)fidget)
+                    : BodyAnimTranslator.Translate(npc.BodyId, (ushort)fidget);
+                GameClient.BroadcastAnimation(npc, anim, NewAnimationGesture.Fidget, 18,
+                    BroadcastNearby, ForEachClientInRange);
+            };
             _npcAI.OnNpcAttack = (attacker, target, damage) =>
             {
                 ushort swingAnim = GameClient.GetNpcSwingAction(attacker);

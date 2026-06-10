@@ -15,6 +15,32 @@
 
 
 
+
+[2026-06-10] - NPC cilası: boşta fidget animasyonu + pet takip tasması (Wave 99)
+----------------------------------------
+
+EKLEME - NPC davranışı:
+  - Boştaki NPC'ler artık ara sıra (8 boş tikte 1) gezinme adımı yerine
+    yerinde fidget animasyonu oynuyor; yeni OnNpcFidget kancası
+    sürüm-duyarlı, gövde-çevirili animasyon yayınına bağlandı (insansı
+    fidget/esneme, canavar grupları 0x11/0x12, hayvan grupları
+    0x09/0x0A, binekli eşleme uygulanır). Referans boşta rastgele fidget
+    oynatır; bizde duran NPC'ler daha önce hiç animasyon oynatmıyordu.
+  - Pet takip/koruma/dönüş hareketi artık aynı haritada tasma mesafesi
+    ötesinde vazgeçiyor (NpcAI.PetFollowMaxDistance, varsayılan 36 =
+    referans radar menzili; 0 kapatır) ve sahip menzile dönünce devam
+    ediyor. Haritalar arası yetişme ışınlanması değişmedi. Yeni statik,
+    test paketinin statik sıfırlamasına kaydedildi.
+
+NOTLAR - Bilinen eksik (dokümante edildi, henüz uygulanmadı):
+  - Referans NPC'ler boşta gezerken bitişik kapıları açar
+    (NPC_LookAtItem: kapıyı kullan, sonra içinden yürü). Bizim NPC
+    yürüme doğrulaması kapalı kapıyı kesin engel sayar; NPC'ler kapı
+    eşiklerinden kovalayamaz/gezinemez. Bunun için dünya-düzeyinde kapı
+    açma yardımcısı gerekir (mevcut açma istemci handler yüzeyinde) -
+    ertelendi.
+  - Tam paket yeşil (732).
+
 [2026-06-10] - NPC görünürlüğü: izlenmeyen-menzilde appear + cross-map ayrılış (Wave 98)
 ----------------------------------------
 

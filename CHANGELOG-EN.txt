@@ -15,6 +15,31 @@
 
 
 
+
+[2026-06-10] - NPC polish: idle fidget animation + pet follow leash (Wave 99)
+----------------------------------------
+
+ADDED - NPC behaviour:
+  - Idle NPCs now occasionally (1-in-8 idle ticks) play a fidget
+    animation in place instead of taking a wander step, through a new
+    OnNpcFidget hook wired to the version-aware, body-translated
+    animation broadcast (humanoid fidget/yawn, monster groups 0x11/0x12,
+    animal groups 0x09/0x0A, mounted mapping applied). Reference plays
+    random idle fidgets; standing NPCs previously never animated at all.
+  - Pet follow/guard/return movement now gives up beyond a leash
+    distance on the same map (NpcAI.PetFollowMaxDistance, default 36 =
+    the reference radar range; 0 disables) and resumes when the owner
+    comes back into range. The cross-map catch-up teleport is unchanged.
+    The new static is registered in the test-suite static reset.
+
+NOTES - Known gap (documented, not yet implemented):
+  - Reference NPCs open adjacent doors while idling (NPC_LookAtItem:
+    use the door, then walk through). Our NPC walk validation treats a
+    closed door as a hard block, so NPCs cannot chase or wander through
+    doorways. Implementing this needs a world-level door toggle (the
+    current toggle lives on the client handler surface) - deferred.
+  - Full suite green (732).
+
 [2026-06-10] - NPC visibility: untracked-in-range appear + cross-map leave (Wave 98)
 ----------------------------------------
 

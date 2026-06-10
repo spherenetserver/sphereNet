@@ -393,6 +393,15 @@ public sealed class NpcAI
         Wander(npc);
     }
 
+    /// <summary>Pet follow gives up beyond this distance on the same map
+    /// (reference parity: UO_MAP_VIEW_RADAR = 36); it resumes when the owner
+    /// comes back in range. 0 disables the leash.</summary>
+    public static int PetFollowMaxDistance { get; set; } = 36;
+
+    /// <summary>Idle fidget animation hook — wired by the server to the
+    /// body-aware animation broadcast.</summary>
+    public Action<Character>? OnNpcFidget { get; set; }
+
     public Action<Character, string>? OnNpcSay { get; set; }
     public Action<Character>? OnGuardLightningStrike { get; set; }
     public Action<Character>? OnNpcTeleport { get; set; }
@@ -2037,7 +2046,8 @@ public sealed class NpcAI
                     break;
                 }
                 int dist = npc.Position.GetDistanceTo(followTarget.Position);
-                if (dist > 2)
+                bool leashed = PetFollowMaxDistance > 0 && dist > PetFollowMaxDistance;
+                if (dist > 2 && !leashed)
                     MoveToward(npc, followTarget.Position, run: dist > 3);
                 if (npc.TryGetTag("GO_TARGET", out string? goTag) &&
                     TryParsePoint(goTag, out Point3D goPos))
@@ -2085,7 +2095,8 @@ public sealed class NpcAI
                     }
                 }
                 int guardDist = npc.Position.GetDistanceTo(guardTarget.Position);
-                if (guardDist > 3)
+                if (guardDist > 3 &&
+                    (PetFollowMaxDistance <= 0 || guardDist <= PetFollowMaxDistance))
                     MoveToward(npc, guardTarget.Position, run: true);
                 break;
             }
@@ -2116,7 +2127,7 @@ public sealed class NpcAI
                 npc.RemoveTag("PREV_PET_MODE");
                 npc.PetAIMode = revertMode;
                 int d = npc.Position.GetDistanceTo(master.Position);
-                if (d > 2)
+                if (d > 2 && (PetFollowMaxDistance <= 0 || d <= PetFollowMaxDistance))
                     MoveToward(npc, master.Position, run: d > 3);
                 break;
             }
@@ -2363,6 +2374,15 @@ public sealed class NpcAI
     {
         if (OnNpcActWander?.Invoke(npc) == true)
             return;
+
+        // Idle fidget (reference parity: idle NPCs randomly play a fidget
+        // animation) — occasionally animate in place instead of stepping so
+        // standing NPCs look alive without extra packet pressure.
+        if (_rand.Next(8) == 0)
+        {
+            OnNpcFidget?.Invoke(npc);
+            return;
+        }
 
         int dx = _rand.Next(-1, 2);
         int dy = _rand.Next(-1, 2);

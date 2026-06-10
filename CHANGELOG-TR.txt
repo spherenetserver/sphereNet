@@ -28,6 +28,18 @@
 
 
 
+[2026-06-11] - Kaynak işaretçileri worldgem-bit grafiğini kullanıyor (Wave 129)
+----------------------------------------
+
+DÜZELTME - Kaynak toplama:
+  - Tile başına kaynak işaretçileri (bölge havuzu ve fallback) 0x1
+    "nodraw" grafiğiyle yaratılıyordu; AllShow açık staff için bile
+    hiçbir şey çizilmiyor, damarlar görülemiyor/incelenemiyordu. İki
+    işaretçi sistemi de artık referans worldgem-bit grafiğini (0x1EA7)
+    "worldgem bit" adıyla kullanıyor; ATTR_INVIS oyunculardan gizlemeye
+    devam ediyor. Tüketim zaten iki yolda da tile başına havuz sınırlı
+    ve yenilenme süreliydi.
+
 [2026-06-11] - Karakter oluşturma: kıyafet, skill kitleri, kurulum fonksiyonları (Wave 128)
 ----------------------------------------
 

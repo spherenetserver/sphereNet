@@ -30,7 +30,13 @@ public sealed class GatheringEngine
 
     private const string TagResourceMarker = "RESOURCE_MARKER";
     private const string TagSkillType = "RES_SKILL";
-    private const ushort MarkerBaseId = 0x1;
+
+    /// <summary>Sphere worldgem-bit graphic. Resource markers use it so staff
+    /// can see and inspect veins with AllShow (the old 0x1 "nodraw" graphic
+    /// rendered nothing even for GMs); ATTR_INVIS keeps it hidden from
+    /// players.</summary>
+    internal const ushort MarkerGraphic = 0x1EA7;
+    private const ushort MarkerBaseId = MarkerGraphic;
 
     /// <summary>Skill → ItemTypeFilter mapping for REGIONTYPE filtering.</summary>
     private static readonly Dictionary<SkillType, string> _skillTypeFilters = new()
@@ -218,6 +224,7 @@ public sealed class GatheringEngine
     {
         var marker = _world.CreateItem();
         marker.BaseId = MarkerBaseId;
+        marker.Name = "worldgem bit";
         marker.Amount = amount;
         marker.SetAttr(ObjAttributes.Invis | ObjAttributes.Move_Never);
         marker.SetTag(TagResourceMarker, "1");

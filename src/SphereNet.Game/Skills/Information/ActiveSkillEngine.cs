@@ -950,7 +950,7 @@ public static class ActiveSkillEngine
     {
         foreach (var item in world.GetItemsInRange(tile, 0))
         {
-            if (item.BaseId != 0x1) continue;
+            if (item.BaseId != GatheringEngine.MarkerGraphic) continue;
             if (!item.TryGetTag("RESOURCE_MARKER", out string? mk) || mk != "1") continue;
             if (!item.TryGetTag("RES_SKILL", out string? st) || st != skillTag) continue;
             if (item.X == tile.X && item.Y == tile.Y) return item;
@@ -963,7 +963,8 @@ public static class ActiveSkillEngine
         if (marker == null)
         {
             marker = world.CreateItem();
-            marker.BaseId = 0x1;
+            marker.BaseId = GatheringEngine.MarkerGraphic;
+            marker.Name = "worldgem bit";
             marker.Amount = (ushort)FallbackResAmount;
             marker.SetAttr(ObjAttributes.Invis | ObjAttributes.Move_Never);
             marker.SetTag("RESOURCE_MARKER", "1");

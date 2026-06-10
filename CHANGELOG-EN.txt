@@ -28,6 +28,18 @@
 
 
 
+[2026-06-11] - Resource markers use the worldgem-bit graphic (Wave 129)
+----------------------------------------
+
+FIXED - Gathering:
+  - Per-tile resource markers (region pool and fallback) were created
+    with the 0x1 "nodraw" graphic, which renders nothing even for
+    staff with AllShow — veins could not be seen or inspected. Both
+    marker systems now use the reference worldgem-bit graphic (0x1EA7)
+    named "worldgem bit"; ATTR_INVIS still hides them from players.
+    Consumption itself was already pool-limited per tile with a regen
+    timer on both paths.
+
 [2026-06-11] - Character creation: outfit, per-skill kits, setup functions (Wave 128)
 ----------------------------------------
 

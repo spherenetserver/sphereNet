@@ -1,0 +1,108 @@
+using Microsoft.Extensions.Logging;
+using SphereNet.Core.Enums;
+using SphereNet.Core.Types;
+using SphereNet.Game.Objects.Characters;
+using SphereNet.Game.Skills;
+using SphereNet.Game.World;
+using Xunit;
+
+namespace SphereNet.Tests;
+
+/// <summary>
+/// Skill gain/atrophy parity (reference Skill_Experience/Skill_Decrease):
+/// the total cap blocks the gain roll but not the decay roll, so a capped
+/// character erodes a DOWN-locked skill and keeps training; without a
+/// DOWN-locked skill the cap freezes values.
+/// </summary>
+[Collection("DefinitionLoaderSerial")]
+public class SkillGainParityTests
+{
+    private static Character CreatePlayer()
+    {
+        var world = new GameWorld(LoggerFactory.Create(_ => { }));
+        world.InitMap(0, 6144, 4096);
+        var ch = world.CreateCharacter();
+        ch.IsPlayer = true;
+        world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
+        return ch;
+    }
+
+    [Fact]
+    public void AtTotalCap_DownLockedSkillDecays_AndTrainedSkillGains()
+    {
+        int savedCap = SkillEngine.SkillSumMaxOverride;
+        try
+        {
+            SkillEngine.SkillSumMaxOverride = 1500;
+            var ch = CreatePlayer();
+            ch.SetSkill(SkillType.Swordsmanship, 500); // trained skill (lock Up)
+            ch.SetSkill(SkillType.Begging, 1000);      // sacrifice skill
+            ch.SetSkillLock(SkillType.Begging, 1);     // Down
+
+            for (int i = 0; i < 4000; i++)
+                SkillEngine.GainExperience(ch, SkillType.Swordsmanship, 50);
+
+            Assert.True(ch.GetSkill(SkillType.Begging) < 1000,
+                "DOWN-locked skill should decay at the total cap");
+            Assert.True(ch.GetSkill(SkillType.Swordsmanship) > 500,
+                "trained skill should gain once decay opens room");
+        }
+        finally
+        {
+            SkillEngine.SkillSumMaxOverride = savedCap;
+        }
+    }
+
+    [Fact]
+    public void AtTotalCap_WithoutDownLock_ValuesStayFrozen()
+    {
+        int savedCap = SkillEngine.SkillSumMaxOverride;
+        try
+        {
+            SkillEngine.SkillSumMaxOverride = 1500;
+            var ch = CreatePlayer();
+            ch.SetSkill(SkillType.Swordsmanship, 500);
+            ch.SetSkill(SkillType.Begging, 1000); // lock Up (default)
+
+            for (int i = 0; i < 1000; i++)
+                SkillEngine.GainExperience(ch, SkillType.Swordsmanship, 50);
+
+            Assert.Equal(500, ch.GetSkill(SkillType.Swordsmanship));
+            Assert.Equal(1000, ch.GetSkill(SkillType.Begging));
+        }
+        finally
+        {
+            SkillEngine.SkillSumMaxOverride = savedCap;
+        }
+    }
+
+    [Fact]
+    public void HighSkill_LowDifficulty_CanStillGain_WithoutGainRadiusDefault()
+    {
+        var ch = CreatePlayer();
+        ch.SetSkill(SkillType.Swordsmanship, 900);
+
+        bool gained = false;
+        for (int i = 0; i < 8000 && !gained; i++)
+        {
+            SkillEngine.GainExperience(ch, SkillType.Swordsmanship, 1);
+            gained = ch.GetSkill(SkillType.Swordsmanship) > 900;
+        }
+
+        Assert.True(gained,
+            "without a script GAINRADIUS the low-difficulty gain roll must still run");
+    }
+
+    [Fact]
+    public void LockedSkill_NeverChanges()
+    {
+        var ch = CreatePlayer();
+        ch.SetSkill(SkillType.Swordsmanship, 500);
+        ch.SetSkillLock(SkillType.Swordsmanship, 2); // Locked
+
+        for (int i = 0; i < 1000; i++)
+            SkillEngine.GainExperience(ch, SkillType.Swordsmanship, 50);
+
+        Assert.Equal(500, ch.GetSkill(SkillType.Swordsmanship));
+    }
+}

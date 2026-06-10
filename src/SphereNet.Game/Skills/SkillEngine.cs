@@ -143,9 +143,10 @@ public static class SkillEngine
         if (totalSkill >= totalMax)
             iDiff = 0; // at skill cap
 
-        // Gain radius check (task too easy) — use SkillDef value if available
+        // Gain radius check (task too easy). Reference semantics: only
+        // active when the skill def sets GAINRADIUS (> 0); no invented default.
         var def = DefinitionLoader.GetSkillDef((int)skill);
-        int gainRadius = def?.GainRadius > 0 ? def.GainRadius : 300;
+        int gainRadius = def?.GainRadius ?? 0;
         if (gainRadius > 0 && (iDiff + gainRadius) < Math.Max(50, currentSkill))
             return; // task too easy for gain
 
@@ -160,16 +161,21 @@ public static class SkillEngine
 
         int roll = _rand.Next(1000);
 
-        if (currentSkill < skillMax && iDiff > 0)
+        // Reference structure (Skill_Experience): the block is entered when
+        // the used skill can still rise; the decay roll runs before the gain
+        // roll and is independent of the total cap, so a capped character
+        // erodes a DOWN-locked skill and gains on a later use.
+        int skillLevelFixed = Math.Max(50, currentSkill);
+        if (skillLevelFixed < skillMax)
         {
-            // Try skill decay before gain
+            // Slightly higher decay chance than gain chance (reference 3:4).
             if (roll * 3 <= chance * 4)
             {
                 TrySkillDecay(ch, skill);
             }
 
-            // Skill gain — only when lock state is Up (0)
-            if (lockState == 0 && roll <= chance)
+            // Skill gain — only when lock state is Up (0) and not at the cap.
+            if (iDiff > 0 && lockState == 0 && roll <= chance)
             {
                 ch.SetSkill(skill, (ushort)(currentSkill + 1));
                 OnSkillGain?.Invoke(ch, skill, currentSkill + 1);
@@ -243,13 +249,11 @@ public static class SkillEngine
         return (int)sCurve;
     }
 
-    /// <summary>Try to decay a random skill (for stat gain room).</summary>
+    /// <summary>Decay one DOWN-locked skill by 0.1 (reference
+    /// Skill_Decrease): runs on the pre-gain decay roll regardless of the
+    /// total cap, opening room for the skill being trained.</summary>
     private static void TrySkillDecay(Character ch, SkillType excludeSkill)
     {
-        int total = GetSkillSum(ch);
-        int max = GetSkillSumMax(ch);
-        if (total < max) return;
-
         int count = (int)SkillType.Qty;
         int start = Random.Shared.Next(count);
         for (int n = 0; n < count; n++)

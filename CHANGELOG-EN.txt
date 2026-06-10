@@ -18,6 +18,30 @@
 
 
 
+
+[2026-06-10] - Skill gain/atrophy parity: total cap no longer freezes characters (Wave 102)
+----------------------------------------
+
+FIXED - Skills:
+  - The gain and decay rolls were wrapped in a single gate that required
+    a positive difficulty, and the total skill cap zeroes the difficulty
+    — so at the cap neither roll ran and a capped character was frozen
+    permanently regardless of lock arrows. On top of that the decay
+    helper guarded itself with "only at the total cap", which combined
+    with the outer gate made skill atrophy dead code on every path.
+    Restructured to the reference Skill_Experience shape: the block is
+    entered while the trained skill can still rise, the decay roll
+    (3:4 of the gain chance) runs independently of the cap and erodes a
+    DOWN-locked skill by 0.1, and only the gain roll is gated on
+    difficulty — a capped character now retrains by setting arrows just
+    like the reference.
+  - Removed the invented GAINRADIUS=300 default: the reference treats an
+    unset GAINRADIUS as disabled, while the default silently blocked
+    low-difficulty gain rolls for every skill above 30.0.
+  - New tests (SkillGainParityTests, 4): capped retraining via a
+    DOWN-locked skill, frozen-at-cap without one, high-skill gain with no
+    gain radius, and locked-skill immutability. Full suite green (755).
+
 [2026-06-10] - Skill definitions: legacy value-curve parsing + ADV_RATE semantics (Wave 101)
 ----------------------------------------
 

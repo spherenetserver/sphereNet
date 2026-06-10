@@ -18,6 +18,29 @@
 
 
 
+
+[2026-06-10] - Skill kazanç/erime paritesi: toplam cap artık karakteri dondurmuyor (Wave 102)
+----------------------------------------
+
+DÜZELTME - Skill'ler:
+  - Kazanç ve erime zarları, pozitif zorluk şartı taşıyan tek bir kapının
+    içindeydi; toplam skill cap'i ise zorluğu sıfırlıyor — yani cap'te iki
+    zar da çalışmıyor ve cap'e ulaşan karakter ok yönlerinden bağımsız
+    olarak kalıcı donuyordu. Üstüne erime yardımcısı kendini "yalnız
+    toplam cap'te" diye korumaya almıştı; dış kapıyla birleşince skill
+    erimesi her yolda ölü koda dönüşüyordu. Yapı referans
+    Skill_Experience biçimine getirildi: blok eğitilen skill hâlâ
+    yükselebiliyorken girilir, erime zarı (kazanç şansının 3:4'ü) cap'ten
+    bağımsız çalışıp DOWN-kilitli bir skill'i 0.1 eritir ve yalnız kazanç
+    zarı zorluğa bağlıdır — cap'teki karakter artık referanstaki gibi ok
+    ayarlayarak yeniden eğitilebilir.
+  - İcat edilmiş GAINRADIUS=300 varsayılanı kaldırıldı: referans
+    ayarlanmamış GAINRADIUS'u kapalı sayar; varsayılan, 30.0 üzerindeki
+    her skill'de düşük-zorluk kazanç zarlarını sessizce engelliyordu.
+  - Yeni testler (SkillGainParityTests, 4): DOWN-kilitli skill ile cap'te
+    yeniden eğitim, DOWN olmadan cap'te donma, gain-radius'suz yüksek
+    skill kazancı ve kilitli skill değişmezliği. Tam paket yeşil (755).
+
 [2026-06-10] - Skill tanımları: legacy değer-kürvü parse'ı + ADV_RATE semantiği (Wave 101)
 ----------------------------------------
 

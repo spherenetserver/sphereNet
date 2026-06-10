@@ -12,6 +12,23 @@
 
 
 
+
+[2026-06-10] - Büyü cast animasyonu: gövde çevirisi + gesture dispatch (Wave 96)
+----------------------------------------
+
+DÜZELTME - Animasyonlar:
+  - Büyü cast animasyon kancası, caster gövdesinden ve istemci
+    sürümünden bağımsız olarak her gözlemciye insansı cast indeksleriyle
+    (0x10/0x11) ham legacy 0x6E paketi yayınlıyordu. İnsansı olmayan
+    caster'lar (lich'ler, canavar gövdeli büyücüler) klasik istemcilerde
+    yanlış grubu oynatıyor, KR/Enhanced istemciler 0xE2 gesture
+    varyantını hiç almıyordu. Kanca artık sürüm-duyarlı animasyon
+    yayınından geçiyor: legacy yol BodyAnimTranslator ile gövdeye
+    çevrilmiş grubu alır (Wave 95 tablosuna göre canavar cast =
+    stomp/pillage, hayvan cast = attack/eat; binekli eşleme değişmedi),
+    KR/Enhanced gözlemciler Spell gesture'lı 0xE2 alır. Tam paket yeşil
+    (730).
+
 [2026-06-10] - Legacy 0x6E yolu için gövde-tipi animasyon çevirisi (Wave 95)
 ----------------------------------------
 

@@ -1024,9 +1024,13 @@ public static partial class Program
             };
             _spellEngine.OnCastAnimation = (caster, animId) =>
             {
-                ushort anim = caster.IsMounted ? MapAnimToMounted(animId) : animId;
-                var animPkt = new PacketAnimation(caster.Uid.Value, anim);
-                BroadcastNearby(caster.Position, 18, animPkt, 0);
+                // Legacy 0x6E gets the body-translated group; KR/EC clients
+                // get the body-agnostic 0xE2 Spell gesture instead.
+                ushort anim = caster.IsMounted
+                    ? MapAnimToMounted(animId)
+                    : BodyAnimTranslator.Translate(caster.BodyId, animId);
+                GameClient.BroadcastAnimation(caster, anim, NewAnimationGesture.Spell, 18,
+                    BroadcastNearby, ForEachClientInRange);
             };
             _spellEngine.OnSpellTeleport = (caster, dest, oldMap) =>
             {

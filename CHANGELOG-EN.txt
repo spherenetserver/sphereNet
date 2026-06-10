@@ -12,6 +12,23 @@
 
 
 
+
+[2026-06-10] - Spell cast animation: body translation + gesture dispatch (Wave 96)
+----------------------------------------
+
+FIXED - Animations:
+  - The spell-cast animation hook broadcast a raw legacy 0x6E packet with
+    the humanoid cast indices (0x10/0x11) to every observer regardless of
+    caster body and client version. Non-humanoid casters (liches, mages
+    with monster bodies) therefore played the wrong group on classic
+    clients, and KR/Enhanced clients never received the 0xE2 gesture
+    variant. The hook now routes through the version-aware animation
+    broadcast: the legacy path gets the body-translated group via
+    BodyAnimTranslator (monster cast = stomp/pillage, animal cast =
+    attack/eat per the Wave 95 table, mounted mapping unchanged) and
+    KR/Enhanced observers get 0xE2 with the Spell gesture. Full suite
+    green (730).
+
 [2026-06-10] - Body-type animation translation for the legacy 0x6E path (Wave 95)
 ----------------------------------------
 

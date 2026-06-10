@@ -28,6 +28,27 @@
 
 
 
+[2026-06-11] - Panel dialog designer with live MUL-art preview (Wave 130)
+----------------------------------------
+
+ADDED - Admin panel / Tooling:
+  - GumpArtReader decodes gumpidx.mul + gumpart.mul (per-row RLE,
+    16-bit 555) to RGBA; a dependency-free PNG encoder serves the art
+    over HTTP with caching.
+  - Panel endpoints: /gumpart/{id}.png (gump art, outside /api so
+    <img> tags work), /api/dialogs (all loaded [DIALOG] names),
+    /api/dialog-source?name= (raw section text read from the script
+    file, formatting preserved).
+  - GumpDesignerPage rebuilt: real gump art on the canvas (RESIZEPIC
+    as a true 9-slice, GUMPPIC/BUTTON/CHECKBOX/RADIO images, tiled
+    pics), drag to move, property edits and the exported script update
+    live. Existing dialogs load from the server and import onto the
+    stage; the coordinate walk mirrors the engine (+N/-N/*N, DORIGIN,
+    PAGE) and lines with <expressions> are preserved verbatim.
+  - The status port also serves /dialogedit — a standalone
+    paste-script → live-preview editor that works without the panel
+    build.
+
 [2026-06-11] - Resource markers use the worldgem-bit graphic (Wave 129)
 ----------------------------------------
 

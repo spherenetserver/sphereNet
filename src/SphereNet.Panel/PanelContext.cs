@@ -52,6 +52,12 @@ public sealed class PanelContext
     public Func<DebugState>? GetDebugState { get; set; }
     public Action<bool>? SetPacketDebug { get; set; }
     public Action<bool>? SetScriptDebug { get; set; }
+
+    // Dialog designer bridge — gump art arrives pre-encoded as PNG so the
+    // panel stays free of imaging/MUL dependencies. Null = endpoints 404.
+    public Func<int, byte[]?>? GetGumpPng { get; set; }
+    public Func<IReadOnlyList<string>>? ListDialogNames { get; set; }
+    public Func<string, string?>? GetDialogSource { get; set; }
 }
 
 // ---------------------------------------------------------------------------

@@ -22,6 +22,15 @@ public sealed class WebStatusServer : IDisposable
     private readonly DateTime _startTime;
     private bool _running;
 
+    /// <summary>Dialog designer hooks — wired by the host. Null = the
+    /// /dialogedit routes answer 404.</summary>
+    public delegate bool GumpArtLookup(int id, out int width, out int height, out byte[] rgba);
+    public GumpArtLookup? GetGumpArt { get; set; }
+    public Func<List<string>>? ListDialogNames { get; set; }
+    public Func<string, string?>? GetDialogSource { get; set; }
+
+    private readonly Dictionary<int, byte[]?> _gumpPngCache = [];
+
     public WebStatusServer(GameWorld world, AccountManager accounts,
         Func<int> getActiveConnections, ILogger logger, Func<object?>? getRuntimeMetrics = null)
     {
@@ -97,6 +106,35 @@ public sealed class WebStatusServer : IDisposable
         {
             ServeHealth(response);
         }
+        else if (path == "/dialogedit")
+        {
+            ServeHtml(response, DialogEditorPage.Html);
+        }
+        else if (path == "/dialog/list" && ListDialogNames != null)
+        {
+            byte[] body = JsonSerializer.SerializeToUtf8Bytes(ListDialogNames());
+            response.ContentType = "application/json; charset=utf-8";
+            response.ContentLength64 = body.Length;
+            response.OutputStream.Write(body);
+        }
+        else if (path == "/dialog/source" && GetDialogSource != null)
+        {
+            string? name = request.QueryString["name"];
+            string? src = string.IsNullOrWhiteSpace(name) ? null : GetDialogSource(name);
+            if (src == null)
+            {
+                response.StatusCode = 404;
+                src = "";
+            }
+            byte[] body = Encoding.UTF8.GetBytes(src);
+            response.ContentType = "text/plain; charset=utf-8";
+            response.ContentLength64 = body.Length;
+            response.OutputStream.Write(body);
+        }
+        else if (path.StartsWith("/gump/", StringComparison.Ordinal) && GetGumpArt != null)
+        {
+            ServeGump(response, path);
+        }
         else
         {
             response.StatusCode = 404;
@@ -107,6 +145,49 @@ public sealed class WebStatusServer : IDisposable
         }
 
         response.Close();
+    }
+
+    private static void ServeHtml(HttpListenerResponse response, string html)
+    {
+        byte[] body = Encoding.UTF8.GetBytes(html);
+        response.ContentType = "text/html; charset=utf-8";
+        response.ContentLength64 = body.Length;
+        response.OutputStream.Write(body);
+    }
+
+    private void ServeGump(HttpListenerResponse response, string path)
+    {
+        // /gump/{id}.png  (id decimal or 0x hex)
+        string idPart = path["/gump/".Length..];
+        if (idPart.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+            idPart = idPart[..^4];
+        int id;
+        if (idPart.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            _ = int.TryParse(idPart[2..], System.Globalization.NumberStyles.HexNumber, null, out id);
+        else
+            _ = int.TryParse(idPart, out id);
+
+        byte[]? png;
+        lock (_gumpPngCache)
+        {
+            if (!_gumpPngCache.TryGetValue(id, out png))
+            {
+                png = GetGumpArt!(id, out int w, out int h, out byte[] rgba)
+                    ? MiniPng.Encode(w, h, rgba)
+                    : null;
+                _gumpPngCache[id] = png;
+            }
+        }
+
+        if (png == null)
+        {
+            response.StatusCode = 404;
+            return;
+        }
+        response.ContentType = "image/png";
+        response.Headers["Cache-Control"] = "public, max-age=86400";
+        response.ContentLength64 = png.Length;
+        response.OutputStream.Write(png);
     }
 
     private void ServeStatus(HttpListenerResponse response)

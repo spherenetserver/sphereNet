@@ -128,6 +128,16 @@ public static partial class Program
                 () => _network.ActiveConnections,
                 _loggerFactory.CreateLogger("WebStatus"),
                 GetRuntimeMetrics);
+            // Dialog designer data sources (also reused by the admin panel
+            // below): real gump art from the muls and the loaded [DIALOG]
+            // sections for the live preview.
+            _webStatus.GetGumpArt = (int id, out int w, out int h, out byte[] rgba) =>
+            {
+                w = 0; h = 0; rgba = [];
+                return _mapData != null && _mapData.TryGetGumpArt(id, out w, out h, out rgba);
+            };
+            _webStatus.ListDialogNames = ListAllDialogNames;
+            _webStatus.GetDialogSource = GetDialogSectionSource;
             _webStatus.Start(webPort);
 
             // --- 10. Admin Panel (SphereNet.Panel) ---
@@ -137,6 +147,10 @@ public static partial class Program
                 ServerName  = _config.ServName,
                 StartTime   = _serverStartTime,
                 AdminPassword = _config.AdminPassword,
+
+                GetGumpPng = GetGumpPngCached,
+                ListDialogNames = () => ListAllDialogNames(),
+                GetDialogSource = GetDialogSectionSource,
 
                 GetStats = () =>
                 {
@@ -377,5 +391,94 @@ public static partial class Program
             if (lvl < lowest) lowest = lvl;
         }
         minLevel = lowest;
+    }
+
+    // ==================== Dialog designer data sources ====================
+
+    private static readonly Dictionary<int, byte[]?> _gumpPngCache = [];
+
+    /// <summary>PNG-encoded gump art for the panel designer (cached; null =
+    /// missing id or no gumpart.mul in the muls directory).</summary>
+    private static byte[]? GetGumpPngCached(int id)
+    {
+        lock (_gumpPngCache)
+        {
+            if (_gumpPngCache.TryGetValue(id, out var cached))
+                return cached;
+            byte[]? png = null;
+            if (_mapData != null && _mapData.TryGetGumpArt(id, out int w, out int h, out byte[] rgba))
+                png = SphereNet.Server.Admin.MiniPng.Encode(w, h, rgba);
+            _gumpPngCache[id] = png;
+            return png;
+        }
+    }
+
+    /// <summary>All [DIALOG name] layout section names in the loaded packs
+    /// (subsections like "name BUTTON"/"name TEXT" are folded into one entry).</summary>
+    private static List<string> ListAllDialogNames()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<string>();
+        if (_resources == null) return result;
+        foreach (var script in _resources.ScriptFiles)
+        {
+            var file = script.Open();
+            try
+            {
+                foreach (var section in file.ReadAllSections())
+                {
+                    if (!section.Name.Equals("DIALOG", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    string name = section.Argument.Split(' ', 2)[0].Trim();
+                    if (name.Length > 0 && seen.Add(name))
+                        result.Add(name);
+                }
+            }
+            finally { script.Close(); }
+        }
+        result.Sort(StringComparer.OrdinalIgnoreCase);
+        return result;
+    }
+
+    /// <summary>Raw script text of every [DIALOG name ...] section (layout +
+    /// BUTTON/TEXT subsections) for the designer's import box. Reads the
+    /// source file directly so comments and formatting survive.</summary>
+    private static string? GetDialogSectionSource(string name)
+    {
+        if (_resources == null || string.IsNullOrWhiteSpace(name)) return null;
+        var sb = new System.Text.StringBuilder();
+        foreach (var script in _resources.ScriptFiles)
+        {
+            string path = script.FilePath;
+            string[] lines;
+            try { lines = File.ReadAllLines(path); }
+            catch { continue; }
+
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i].TrimStart();
+                if (!line.StartsWith("[DIALOG ", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                string header = line.TrimEnd();
+                int close = header.IndexOf(']');
+                if (close < 0) continue;
+                string arg = header[8..close].Trim();
+                string first = arg.Split(' ', 2)[0].Trim();
+                if (!first.Equals(name, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                sb.AppendLine(lines[i].TrimEnd());
+                for (int j = i + 1; j < lines.Length; j++)
+                {
+                    if (lines[j].TrimStart().StartsWith('['))
+                        break;
+                    sb.AppendLine(lines[j].TrimEnd());
+                }
+                sb.AppendLine();
+            }
+            if (sb.Length > 0)
+                return sb.ToString();
+        }
+        return sb.Length > 0 ? sb.ToString() : null;
     }
 }

@@ -28,6 +28,27 @@
 
 
 
+[2026-06-11] - Panelde MUL görselli canlı önizlemeli dialog tasarımcısı (Wave 130)
+----------------------------------------
+
+EKLENDİ - Yönetim paneli / Araçlar:
+  - GumpArtReader gumpidx.mul + gumpart.mul çiftini çözüyor (satır
+    bazlı RLE, 16-bit 555) ve bağımlılıksız PNG kodlayıcı görselleri
+    HTTP üzerinden cache'li servis ediyor.
+  - Panel endpoint'leri: /gumpart/{id}.png (gump görseli; <img>
+    etiketleri çalışsın diye /api dışında), /api/dialogs (yüklü tüm
+    [DIALOG] adları), /api/dialog-source?name= (script dosyasından
+    ham bölüm metni, format korunarak).
+  - GumpDesignerPage baştan yazıldı: sahnede gerçek gump görselleri
+    (RESIZEPIC gerçek 9-parça, GUMPPIC/BUTTON/CHECKBOX/RADIO
+    resimleri, döşemeli görseller), sürükleyerek taşıma, özellik
+    düzenlemeleri ve üretilen script canlı güncelleniyor. Mevcut
+    dialoglar sunucudan yüklenip sahneye aktarılıyor; koordinat
+    yürüyüşü motorla birebir (+N/-N/*N, DORIGIN, PAGE), <ifade>
+    içeren satırlar olduğu gibi korunuyor.
+  - Durum portu da /dialogedit sunuyor — panel build'i gerektirmeyen,
+    script yapıştır → canlı önizle bağımsız editör.
+
 [2026-06-11] - Kaynak işaretçileri worldgem-bit grafiğini kullanıyor (Wave 129)
 ----------------------------------------
 

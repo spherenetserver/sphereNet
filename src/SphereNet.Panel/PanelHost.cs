@@ -145,6 +145,36 @@ public sealed class PanelHost : IDisposable
             });
 
             MapRoutes(_app, tokens);
+
+            // --- Dialog designer ---------------------------------------------
+            // Gump art lives OUTSIDE /api so plain <img> tags can load it
+            // without the bearer header (read-only client art, cached a day).
+            _app.MapGet("/gumpart/{id}", (string id) =>
+            {
+                if (_ctx.GetGumpPng == null) return Results.NotFound();
+                if (id.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+                    id = id[..^4];
+                int gumpId;
+                if (id.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+                    _ = int.TryParse(id[2..], System.Globalization.NumberStyles.HexNumber, null, out gumpId);
+                else
+                    _ = int.TryParse(id, out gumpId);
+                var png = _ctx.GetGumpPng(gumpId);
+                return png == null
+                    ? Results.NotFound()
+                    : Results.File(png, "image/png");
+            });
+            _app.MapGet("/api/dialogs", () =>
+                _ctx.ListDialogNames == null
+                    ? Results.NotFound()
+                    : Results.Json(_ctx.ListDialogNames()));
+            _app.MapGet("/api/dialog-source", (string name) =>
+            {
+                if (_ctx.GetDialogSource == null) return Results.NotFound();
+                var src = _ctx.GetDialogSource(name);
+                return src == null ? Results.NotFound() : Results.Text(src, "text/plain");
+            });
+
             _app.MapHub<ServerHub>("/hubs/server");
 
             if (Directory.Exists(distPath))

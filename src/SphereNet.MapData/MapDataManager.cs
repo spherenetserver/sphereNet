@@ -16,6 +16,8 @@ public sealed class MapDataManager : IDisposable
     private readonly Dictionary<int, UopMapReader> _uopMapReaders = [];
     private readonly Dictionary<int, StaticReader> _staticReaders = [];
     private MultiReader? _multiReader;
+    private GumpArtReader? _gumpArt;
+    private bool _gumpArtTried;
 
     private readonly string _mulPath;
 
@@ -48,6 +50,26 @@ public sealed class MapDataManager : IDisposable
                 "Copy them from your UO client install.",
                 File.Exists(multiIdxPath) ? multiMulPath : multiIdxPath);
         _multiReader = new MultiReader(multiIdxPath, multiMulPath);
+    }
+
+    /// <summary>Lazy gump-art access (gumpidx.mul + gumpart.mul). Optional:
+    /// returns false when the files are not in the muls directory. Used by
+    /// the web dialog designer's previews.</summary>
+    public bool TryGetGumpArt(int id, out int width, out int height, out byte[] rgba)
+    {
+        width = 0; height = 0; rgba = [];
+        if (!_gumpArtTried)
+        {
+            _gumpArtTried = true;
+            var reader = new GumpArtReader(
+                Path.Combine(_mulPath, "gumpidx.mul"),
+                Path.Combine(_mulPath, "gumpart.mul"));
+            if (reader.Load())
+                _gumpArt = reader;
+            else
+                reader.Dispose();
+        }
+        return _gumpArt != null && _gumpArt.TryGetGump(id, out width, out height, out rgba);
     }
 
     /// <summary>
@@ -384,6 +406,7 @@ public sealed class MapDataManager : IDisposable
     {
         _tileData?.Dispose();
         _multiReader?.Dispose();
+        _gumpArt?.Dispose();
         foreach (var r in _mapReaders.Values) r.Dispose();
         foreach (var r in _uopMapReaders.Values) r.Dispose();
         foreach (var r in _staticReaders.Values) r.Dispose();

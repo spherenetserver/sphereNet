@@ -85,6 +85,11 @@ public static partial class Program
             _log.LogInformation("ReSync: reloaded {Count} script command privilege entries.", scriptCmdCount);
         }
 
+        // Reloaded files may add or remove [ON=@X] hooks and f_onchar_*/
+        // f_onitem_* fallback functions; refresh the used-trigger gates so
+        // hot paths see the new state without a restart.
+        _triggerDispatcher?.BuildUsedTriggerCache();
+
         sw.Stop();
         _log.LogInformation(
             "ReSync complete: {Files} files reloaded, {Spells} spells, {Items} itemdefs, {Chars} chardefs ({Ms}ms)",

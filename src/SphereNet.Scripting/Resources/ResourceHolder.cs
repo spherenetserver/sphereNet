@@ -418,6 +418,20 @@ public sealed class ResourceHolder
         return _defNames.TryGetValue(name, out var rid) ? rid : ResourceId.Invalid;
     }
 
+    /// <summary>Collect the suffix of every [FUNCTION] defname starting with
+    /// <paramref name="prefix"/> (case-insensitive) into <paramref name="output"/>.
+    /// Lets dispatch hot paths precompute which f_onchar_*/f_onitem_* fallbacks
+    /// exist instead of building and resolving a candidate name per trigger fire.</summary>
+    public void CollectFunctionDefNameSuffixes(string prefix, ISet<string> output)
+    {
+        foreach (var kv in _defNames)
+        {
+            if (kv.Value.Type == ResType.Function &&
+                kv.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                output.Add(kv.Key[prefix.Length..]);
+        }
+    }
+
     /// <summary>Resolve a numeric DEFNAME constant (e.g. a can_flags MT_* name)
     /// to its script-defined integer value. Numeric defnames are stored with the
     /// value in the ResourceId index by <see cref="LoadDefNames"/>, so we read it

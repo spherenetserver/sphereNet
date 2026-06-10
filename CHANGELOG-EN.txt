@@ -28,6 +28,30 @@
 
 
 
+[2026-06-10] - Allocation-free decay catch-up; precomputed trigger-function gate (Wave 112)
+----------------------------------------
+
+PERFORMANCE - Tick path:
+  - The 5-second decay catch-up sweep materialized a full snapshot of the
+    world object table (ToArray + LINQ chain) on every pass; on imported
+    worlds with 100k+ objects that is a megabyte-scale transient
+    allocation and a periodic GC spike. The sweep now collects expired
+    ground items directly into a reusable buffer
+    (GameWorld.CollectExpiredGroundItems); collection completes before
+    any deletion, so the snapshot-free enumeration is safe in the
+    serial post-tick phase.
+  - Trigger dispatch paid a name concat + lowercase + argument wrapping
+    on every char/item trigger fire to probe the f_onchar_*/f_onitem_*
+    function fallback even when no such function exists. The set of
+    trigger names that have function fallbacks is now precomputed from
+    loaded [FUNCTION] defnames (also covers custom TRIGGER-verb names,
+    which the old enum scan missed); the fallback step is skipped
+    entirely otherwise. If the cache is never built the gate stays open,
+    preserving embedded/test behavior.
+  - Script resync now rebuilds the used-trigger cache, so [ON=@X] hooks
+    and function fallbacks added or removed by reloaded files take
+    effect without a restart. Full suite green (783).
+
 [2026-06-10] - Craft work-site proximity matches map statics (Wave 111)
 ----------------------------------------
 

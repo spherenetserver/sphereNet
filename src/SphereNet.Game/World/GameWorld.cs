@@ -1067,6 +1067,26 @@ public sealed class GameWorld
     /// <summary>Enumerate all objects in the world (items + characters), including contained items.</summary>
     public IEnumerable<ObjBase> GetAllObjects() => _objects.Values.ToArray();
 
+    /// <summary>
+    /// Collect ground items whose decay timer has expired into <paramref name="buffer"/>,
+    /// up to <paramref name="max"/> entries. Allocation-free alternative to filtering a
+    /// <see cref="GetAllObjects"/> snapshot. Serial-phase only: enumerates <c>_objects</c>
+    /// directly, so the caller must not add/remove world objects until the collection
+    /// pass returns.
+    /// </summary>
+    public void CollectExpiredGroundItems(long now, int max, List<Item> buffer)
+    {
+        foreach (var obj in _objects.Values)
+        {
+            if (obj is Item it && !it.IsDeleted && it.IsOnGround && it.DecayTime > 0 && it.DecayTime <= now)
+            {
+                buffer.Add(it);
+                if (buffer.Count >= max)
+                    return;
+            }
+        }
+    }
+
     // --- Stats ---
 
     // ==================== Global Variables (VAR/VAR0) ====================

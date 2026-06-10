@@ -775,14 +775,12 @@ public static partial class Program
 
         // Sector sleep skips far-away sectors. This catch-up sweep ensures
         // decaying ground items/corpses still expire on time even when
-        // nobody is nearby.
-        var expired = _world.GetAllObjects()
-            .OfType<Item>()
-            .Where(it => !it.IsDeleted && it.IsOnGround && it.DecayTime > 0 && it.DecayTime <= now)
-            .Take(256)
-            .ToList();
+        // nobody is nearby. Collection completes before any deletion below,
+        // so the direct (snapshot-free) world enumeration is safe here.
+        _decayCatchupBuffer.Clear();
+        _world.CollectExpiredGroundItems(now, 256, _decayCatchupBuffer);
 
-        foreach (var item in expired)
+        foreach (var item in _decayCatchupBuffer)
         {
             // Drive the normal item decay path first (corpse spill, spawn cleanup).
             _ = item.OnTick();

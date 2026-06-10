@@ -28,6 +28,29 @@
 
 
 
+[2026-06-10] - Tahsissiz decay tarama; önceden hesaplanan trigger-fonksiyon kapısı (Wave 112)
+----------------------------------------
+
+PERFORMANS - Tick yolu:
+  - 5 saniyelik decay telafi taraması her geçişte dünya obje tablosunun
+    tam kopyasını çıkarıyordu (ToArray + LINQ zinciri); 100k+ objeli
+    import dünyalarda bu megabayt ölçekli geçici tahsis ve periyodik GC
+    sıçraması demek. Tarama artık süresi dolmuş yer öğelerini yeniden
+    kullanılan bir tampona doğrudan topluyor
+    (GameWorld.CollectExpiredGroundItems); toplama her silmeden önce
+    tamamlandığı için kopyasız sayım seri tick-sonrası fazda güvenli.
+  - Trigger dispatch, fonksiyon hiç tanımlı olmasa bile her char/item
+    trigger ateşlemesinde f_onchar_*/f_onitem_* fallback'ini yoklamak
+    için ad birleştirme + küçük harfe çevirme + argüman sarmalama
+    bedeli ödüyordu. Fonksiyon fallback'i olan trigger adları artık
+    yüklü [FUNCTION] defname'lerinden önceden hesaplanıyor (eski enum
+    taramasının kaçırdığı özel TRIGGER-verb adlarını da kapsar); aksi
+    halde fallback adımı tamamen atlanıyor. Önbellek hiç kurulmazsa
+    kapı açık kalır, gömülü/test davranışı korunur.
+  - Script resync artık used-trigger önbelleğini yeniden kuruyor; yeniden
+    yüklenen dosyaların eklediği/kaldırdığı [ON=@X] hook'ları ve fonksiyon
+    fallback'leri restart gerektirmeden etkinleşiyor. Tam paket yeşil (783).
+
 [2026-06-10] - Üretim çalışma alanı yakınlığı harita statiklerini de eşliyor (Wave 111)
 ----------------------------------------
 

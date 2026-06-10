@@ -65,6 +65,15 @@ public sealed class TriggerDispatcher
     private readonly HashSet<string> _usedCharTriggers = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _usedItemTriggers = new(StringComparer.OrdinalIgnoreCase);
 
+    // Trigger names that have an f_onchar_<x>/f_onitem_<x> [FUNCTION] fallback.
+    // Gates FireCharTriggerByName step 6 / FireItemTriggerByName step 7 so the
+    // per-fire name concat + ToLowerInvariant + args wrapping only happens when
+    // such a function actually exists. Until BuildUsedTriggerCache runs the gate
+    // stays open (always try), preserving behavior when no cache is built.
+    private bool _funcTriggerGateBuilt;
+    private readonly HashSet<string> _funcCharTriggers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _funcItemTriggers = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Optional resource holder for resolving CHARDEF/ITEMDEF scripts.</summary>
     public ResourceHolder? Resources { get; set; }
 
@@ -160,7 +169,7 @@ public sealed class TriggerDispatcher
         if (globalEventResult == TriggerResult.True)
             return TriggerResult.True;
 
-        if (Runner != null)
+        if (Runner != null && (!_funcTriggerGateBuilt || _funcCharTriggers.Contains(trigName)))
         {
             string funcName = "f_onchar_" + trigName.ToLowerInvariant();
             if (Runner.TryRunFunction(funcName, ch, args.ScriptConsole, WrapArgs(args), out var result) &&
@@ -297,7 +306,7 @@ public sealed class TriggerDispatcher
         // 6. ITEMDEF (base definition script) — already covered by step 3
 
         // 7. Global f_onitem_* function (parity with f_onchar_*)
-        if (Runner != null)
+        if (Runner != null && (!_funcTriggerGateBuilt || _funcItemTriggers.Contains(trigName)))
         {
             string funcName = "f_onitem_" + trigName.ToLowerInvariant();
             if (Runner.TryRunFunction(funcName, item, args.ScriptConsole, WrapArgs(args), out var result) &&
@@ -491,23 +500,22 @@ public sealed class TriggerDispatcher
             }
         }
 
-        // f_onchar_<name> function fallbacks (FireCharTrigger step 6).
-        foreach (CharTrigger trig in Enum.GetValues<CharTrigger>())
-        {
-            if (trig == CharTrigger.Qty) continue;
-            string name = GetCharTriggerName(trig);
-            if (Resources.ResolveDefName("f_onchar_" + name.ToLowerInvariant()).IsValid)
-                _usedCharTriggers.Add(name);
-        }
+        // f_onchar_<name>/f_onitem_<name> function fallbacks (FireCharTrigger
+        // step 6 / FireItemTrigger step 7). Scanning loaded function defnames
+        // instead of the trigger enums also covers custom trigger names fired
+        // via the TRIGGER verb. The f_f_* variants account for the automatic
+        // f_-prefix retry in function resolution.
+        _funcCharTriggers.Clear();
+        Resources.CollectFunctionDefNameSuffixes("f_onchar_", _funcCharTriggers);
+        Resources.CollectFunctionDefNameSuffixes("f_f_onchar_", _funcCharTriggers);
+        _usedCharTriggers.UnionWith(_funcCharTriggers);
 
-        // f_onitem_<name> function fallbacks (FireItemTrigger step 7).
-        foreach (ItemTrigger trig in Enum.GetValues<ItemTrigger>())
-        {
-            if (trig == ItemTrigger.Qty) continue;
-            string name = GetItemTriggerName(trig);
-            if (Resources.ResolveDefName("f_onitem_" + name.ToLowerInvariant()).IsValid)
-                _usedItemTriggers.Add(name);
-        }
+        _funcItemTriggers.Clear();
+        Resources.CollectFunctionDefNameSuffixes("f_onitem_", _funcItemTriggers);
+        Resources.CollectFunctionDefNameSuffixes("f_f_onitem_", _funcItemTriggers);
+        _usedItemTriggers.UnionWith(_funcItemTriggers);
+
+        _funcTriggerGateBuilt = true;
     }
 
     /// <summary>

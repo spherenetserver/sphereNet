@@ -740,11 +740,7 @@ public sealed class ClientCombatHandler
             hue = 0x0481;
         }
 
-        if (_character.IsStatFlag(StatFlag.Hidden))
-        {
-            _character.ClearStatFlag(StatFlag.Hidden);
-            _character.ClearStatFlag(StatFlag.Invisible);
-        }
+        _character.ClearHiddenState();
 
         // Pet commands — "all follow", "all guard", "petname follow" etc.
         if (!_character.IsDead && TryHandlePetCommand(text))

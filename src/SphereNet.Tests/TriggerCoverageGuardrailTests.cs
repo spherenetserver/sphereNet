@@ -115,6 +115,16 @@ public class TriggerCoverageGuardrailTests
         // light-level change at region transition, N1 = new light level);
         // SkillUseQuick (SkillEngine.UseQuick fires it before the check via the
         // Character.OnSkillUseQuick gate; N1 = skill, N2 = difficulty, RETURN 1 cancels).
+        // Wired (now fired): Reveal (Character.ClearHiddenState central reveal
+        // path, RETURN 1 keeps concealment); SpellEffectAdd / SpellEffectRemove
+        // (SpellEngine timed-effect lifecycle: apply, expiry, re-cast refresh,
+        // death cleanup — save-time revert/reapply deliberately silent);
+        // DeathCorpse (DeathEngine.ProcessDeath after loot transfer, argo = corpse).
+        // Still deferred (needs infrastructure):
+        //   SpellEffectTick — the engine has no SPELLFLAG_TICK periodic
+        //   spell-effect mechanism; effects apply once and revert at expiry,
+        //   so there is no tick to hook yet.
+        "SpellEffectTick",
     };
 
     private static readonly HashSet<string> CharNotFiredP2 = new()

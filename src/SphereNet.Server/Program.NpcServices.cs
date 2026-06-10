@@ -380,7 +380,7 @@ public static partial class Program
             if (_config.GuardsInstantKill)
             {
                 BroadcastLightningStrike(hostile);
-                _deathEngine.ProcessDeath(hostile, summonedGuard);
+                ProcessDeathWithEffects(hostile, summonedGuard);
                 if (summonedGuard != null)
                 {
                     summonedGuard.FightTarget = Serial.Invalid;

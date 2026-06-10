@@ -203,6 +203,28 @@ public static partial class Program
                     _triggerDispatcher.FireCharTrigger(target, CharTrigger.EffectAdd,
                         new TriggerArgs { CharSrc = target, N1 = spellId });
             }
+            // @Reveal — fired before hidden/invisible state drops; RETURN 1
+            // keeps the character concealed (Source-X CChar::Reveal).
+            if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.Reveal))
+            {
+                SphereNet.Game.Objects.Characters.Character.OnRevealing = ch =>
+                    _triggerDispatcher.FireCharTrigger(ch, CharTrigger.Reveal,
+                        new TriggerArgs { CharSrc = ch }) != TriggerResult.True;
+            }
+            // @SpellEffectAdd / @SpellEffectRemove — timed buff lifecycle
+            // (Source-X CCharSpell). ARGN1 = spell id; SRC = caster on add.
+            if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.SpellEffectAdd))
+            {
+                SphereNet.Game.Objects.Characters.Character.OnSpellEffectAdd = (target, caster, spellId) =>
+                    _triggerDispatcher.FireCharTrigger(target, CharTrigger.SpellEffectAdd,
+                        new TriggerArgs { CharSrc = caster ?? target, N1 = spellId });
+            }
+            if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.SpellEffectRemove))
+            {
+                SphereNet.Game.Objects.Characters.Character.OnSpellEffectRemove = (target, spellId) =>
+                    _triggerDispatcher.FireCharTrigger(target, CharTrigger.SpellEffectRemove,
+                        new TriggerArgs { CharSrc = target, N1 = spellId });
+            }
             // @MemoryEquip — memory items are created frequently in combat; install
             // the fire only when a script hooks the item trigger (item IsTrigUsed gate).
             if (_triggerDispatcher.IsItemTriggerUsed(ItemTrigger.MemoryEquip))
@@ -882,7 +904,7 @@ public static partial class Program
                 }
 
                 BroadcastLightningStrike(victim);
-                _deathEngine.ProcessDeath(victim, gm);
+                ProcessDeathWithEffects(victim, gm);
                 if (_clientsByCharUid.TryGetValue(gm.Uid, out var gmClient3))
                     gmClient3.SysMessage($"Killed '{victim.Name}'.");
             };
@@ -1440,109 +1462,8 @@ public static partial class Program
             };
             _npcAI.OnNpcKill = (killer, victim) =>
             {
-                // Reflect / self-inflicted death (reactive armor etc.): don't
-                // attribute the kill to the victim itself.
-                var actualKiller = ReferenceEquals(killer, victim) ? null : killer;
-                var effectiveKiller = actualKiller != null ? ResolveEffectiveOffender(actualKiller) : null;
-
-                if (effectiveKiller != null)
-                    _triggerDispatcher?.FireCharTrigger(effectiveKiller, CharTrigger.Kill,
-                        new TriggerArgs { CharSrc = effectiveKiller, O1 = victim });
-                _triggerDispatcher?.FireCharTrigger(victim, CharTrigger.Death,
-                    new TriggerArgs { CharSrc = effectiveKiller });
-
-                var victimPos = victim.Position;
-                byte victimDir = (byte)((byte)victim.Direction & 0x07);
-                var corpse = _deathEngine.ProcessDeath(victim, effectiveKiller);
+                ProcessDeathWithEffects(victim, killer);
                 killer.FightTarget = Serial.Invalid;
-
-                if (corpse != null)
-                {
-                    uint corpseWireSerial = corpse.Uid.Value;
-                    if (corpse.Amount > 1)
-                        corpseWireSerial |= 0x80000000u;
-
-                    if (victim.IsPlayer)
-                    {
-                        var corpsePacket = new PacketWorldItem(
-                            corpse.Uid.Value, corpse.DispIdFull, corpse.Amount,
-                            corpse.X, corpse.Y, corpse.Z, corpse.Hue,
-                            victimDir);
-                        BroadcastNearby(victimPos, 18, corpsePacket, 0);
-
-                        // Player corpse: send contents + equip map for paperdoll corpse rendering.
-                        foreach (var corpseItem in corpse.Contents)
-                        {
-                            var containerItem = new PacketContainerItem(
-                                corpseItem.Uid.Value,
-                                corpseItem.DispIdFull,
-                                0,
-                                corpseItem.Amount,
-                                corpseItem.X,
-                                corpseItem.Y,
-                                corpse.Uid.Value,
-                                corpseItem.Hue,
-                                useGridIndex: true);
-                            BroadcastNearby(victimPos, 18, containerItem, 0);
-                        }
-
-                        var corpseEquipEntries = new List<(byte Layer, uint ItemSerial)>();
-                        var usedLayers = new HashSet<byte>();
-                        foreach (var item in corpse.Contents)
-                        {
-                            byte layer = (byte)item.EquipLayer;
-                            if (layer == (byte)Layer.None || layer == (byte)Layer.Face || layer == (byte)Layer.Pack)
-                                continue;
-                            if (!usedLayers.Add(layer))
-                                continue;
-                            corpseEquipEntries.Add((layer, item.Uid.Value));
-                        }
-
-                        var corpseEquip = new PacketCorpseEquipment(corpse.Uid.Value, corpseEquipEntries);
-                        BroadcastNearby(victimPos, 18, corpseEquip, 0);
-
-                        // 0xAF is NOT broadcast here — OnCharacterDeath below
-                        // runs a per-observer dispatch that sends 0xAF to plain
-                        // players and 0x1D + 0x78 ghost mobile to staff. A
-                        // blanket BroadcastNearby would hit staff with 0xAF
-                        // BEFORE 0x1D+0x78, causing ClassicUO to remap the
-                        // serial (0x80000000|serial) so the follow-up 0x1D
-                        // becomes a no-op and the alive body lingers under the
-                        // remapped key alongside the new ghost mobile.
-                        // Mirrors the PvP (TrySwingAt) path which also defers
-                        // 0xAF to OnCharacterDeath's per-observer dispatch.
-                    }
-                    else
-                    {
-                        // NPC corpse — keep the same packet order the PvP path
-                        // uses for non-player victims so the client sees:
-                        //   1) corpse world item
-                        //   2) death animation
-                        //   3) delete dead mobile
-                        var corpsePacket = new PacketWorldItem(
-                            corpse.Uid.Value, corpse.DispIdFull, corpse.Amount,
-                            corpse.X, corpse.Y, corpse.Z, corpse.Hue,
-                            victimDir);
-                        BroadcastNearby(victimPos, 18, corpsePacket, 0);
-
-                        var dirToKiller = victim.Position.GetDirectionTo(killer.Position);
-                        uint npcFallDir = (uint)dirToKiller <= 3 ? 1u : 0u;
-                        var deathAnim = new PacketDeathAnimation(victim.Uid.Value, corpse.Uid.Value, npcFallDir);
-                        BroadcastNearby(victimPos, 18, deathAnim, 0);
-
-                        var removeMobile = new PacketDeleteObject(victim.Uid.Value);
-                        BroadcastNearby(victimPos, 18, removeMobile, 0);
-                    }
-                }
-
-                foreach (var c in _clients.Values)
-                {
-                    if (c.Character == victim)
-                    {
-                        c.OnCharacterDeath();
-                        break;
-                    }
-                }
             };
             _npcAI.OnHealerAction = (healer, target, isResurrect) =>
             {
@@ -2366,6 +2287,117 @@ public static partial class Program
                 exprParser.DebugUnresolved = on;
                 _log.LogInformation("Script debug logging: {State}", on ? "ON" : "OFF");
             };
+    }
+
+    /// <summary>
+    /// Full death pipeline with client-visible effects, shared by every
+    /// non-combat-handler kill path (NpcAI kills, GM kill command). Sequence:
+    /// @Kill/@Death triggers → DeathEngine.ProcessDeath → corpse + contents +
+    /// equipment broadcast (player victims) or corpse + 0xAF + mobile delete
+    /// (NPC victims) → victim client ghost transition via OnCharacterDeath.
+    /// Killer may be null or the victim itself (self-kill, reflected damage);
+    /// the kill is then unattributed.
+    /// </summary>
+    private static void ProcessDeathWithEffects(Character victim, Character? killer)
+    {
+        var actualKiller = killer != null && ReferenceEquals(killer, victim) ? null : killer;
+        var effectiveKiller = actualKiller != null ? ResolveEffectiveOffender(actualKiller) : null;
+
+        if (effectiveKiller != null)
+            _triggerDispatcher?.FireCharTrigger(effectiveKiller, CharTrigger.Kill,
+                new TriggerArgs { CharSrc = effectiveKiller, O1 = victim });
+        _triggerDispatcher?.FireCharTrigger(victim, CharTrigger.Death,
+            new TriggerArgs { CharSrc = effectiveKiller });
+
+        var victimPos = victim.Position;
+        byte victimDir = (byte)((byte)victim.Direction & 0x07);
+        var corpse = _deathEngine.ProcessDeath(victim, effectiveKiller);
+
+        if (corpse != null)
+        {
+            if (victim.IsPlayer)
+            {
+                var corpsePacket = new PacketWorldItem(
+                    corpse.Uid.Value, corpse.DispIdFull, corpse.Amount,
+                    corpse.X, corpse.Y, corpse.Z, corpse.Hue,
+                    victimDir);
+                BroadcastNearby(victimPos, 18, corpsePacket, 0);
+
+                // Player corpse: send contents + equip map for paperdoll corpse rendering.
+                foreach (var corpseItem in corpse.Contents)
+                {
+                    var containerItem = new PacketContainerItem(
+                        corpseItem.Uid.Value,
+                        corpseItem.DispIdFull,
+                        0,
+                        corpseItem.Amount,
+                        corpseItem.X,
+                        corpseItem.Y,
+                        corpse.Uid.Value,
+                        corpseItem.Hue,
+                        useGridIndex: true);
+                    BroadcastNearby(victimPos, 18, containerItem, 0);
+                }
+
+                var corpseEquipEntries = new List<(byte Layer, uint ItemSerial)>();
+                var usedLayers = new HashSet<byte>();
+                foreach (var item in corpse.Contents)
+                {
+                    byte layer = (byte)item.EquipLayer;
+                    if (layer == (byte)Layer.None || layer == (byte)Layer.Face || layer == (byte)Layer.Pack)
+                        continue;
+                    if (!usedLayers.Add(layer))
+                        continue;
+                    corpseEquipEntries.Add((layer, item.Uid.Value));
+                }
+
+                var corpseEquip = new PacketCorpseEquipment(corpse.Uid.Value, corpseEquipEntries);
+                BroadcastNearby(victimPos, 18, corpseEquip, 0);
+
+                // 0xAF is NOT broadcast here — OnCharacterDeath below
+                // runs a per-observer dispatch that sends 0xAF to plain
+                // players and 0x1D + 0x78 ghost mobile to staff. A
+                // blanket BroadcastNearby would hit staff with 0xAF
+                // BEFORE 0x1D+0x78, causing ClassicUO to remap the
+                // serial (0x80000000|serial) so the follow-up 0x1D
+                // becomes a no-op and the alive body lingers under the
+                // remapped key alongside the new ghost mobile.
+                // Mirrors the PvP (TrySwingAt) path which also defers
+                // 0xAF to OnCharacterDeath's per-observer dispatch.
+            }
+            else
+            {
+                // NPC corpse — keep the same packet order the PvP path
+                // uses for non-player victims so the client sees:
+                //   1) corpse world item
+                //   2) death animation
+                //   3) delete dead mobile
+                var corpsePacket = new PacketWorldItem(
+                    corpse.Uid.Value, corpse.DispIdFull, corpse.Amount,
+                    corpse.X, corpse.Y, corpse.Z, corpse.Hue,
+                    victimDir);
+                BroadcastNearby(victimPos, 18, corpsePacket, 0);
+
+                var dirToKiller = effectiveKiller != null
+                    ? victimPos.GetDirectionTo(effectiveKiller.Position)
+                    : victim.Direction;
+                uint npcFallDir = (uint)dirToKiller <= 3 ? 1u : 0u;
+                var deathAnim = new PacketDeathAnimation(victim.Uid.Value, corpse.Uid.Value, npcFallDir);
+                BroadcastNearby(victimPos, 18, deathAnim, 0);
+
+                var removeMobile = new PacketDeleteObject(victim.Uid.Value);
+                BroadcastNearby(victimPos, 18, removeMobile, 0);
+            }
+        }
+
+        foreach (var c in _clients.Values)
+        {
+            if (c.Character == victim)
+            {
+                c.OnCharacterDeath();
+                break;
+            }
+        }
     }
 
     private static void LoadDefinitionsAndRegions()

@@ -28,6 +28,39 @@
 
 
 
+[2026-06-10] - Shared death-effects pipeline; DeathCorpse, Reveal, SpellEffectAdd/Remove triggers (Wave 114)
+----------------------------------------
+
+FIXED - Death:
+  - GM kill paths (UID form, target-cursor form) and the guard
+    instant-kill path called the corpse/loot engine directly, skipping
+    the client-visible death sequence — corpse packet ordering, the
+    per-observer 0xAF dispatch and the victim ghost transition — and
+    the @Kill/@Death triggers. The visual sequence was extracted from
+    the NPC-kill handler into a shared ProcessDeathWithEffects pipeline
+    and every non-combat-handler kill path now runs it; self-kills are
+    unattributed (no kill credit, no murder mark).
+
+ADDED - Triggers:
+  - @DeathCorpse fires on the victim once the corpse exists and loot
+    has been transferred (argo = corpse), per the reference order.
+  - @Reveal: hidden/invisible removal is centralized in
+    Character.ClearHiddenState (attack, speech, detect-hidden, NPC
+    detection, reveal spell, stealth-step expiry); the trigger fires
+    before the state drops and RETURN 1 keeps concealment. Speech now
+    also drops spell invisibility, matching the reference reveal.
+  - @SpellEffectAdd / @SpellEffectRemove fire across the timed-effect
+    lifecycle (apply, expiry, re-cast refresh, death cleanup);
+    ARGN1 = spell id, SRC = caster on add. The transient save-time
+    revert/reapply is deliberately silent.
+  - @SpellEffectTick is declared but not fired: the engine has no
+    periodic spell-effect (tick-flagged) mechanism yet; documented in
+    the trigger-coverage guardrail backlog (char backlog now 3).
+  - New static hooks added to the test-isolation reset list. Stub
+    inventory doc updated with this audit's false-positive list so
+    future scans do not re-flag implemented features. Full suite
+    green (783).
+
 [2026-06-10] - Dialog layout engine: string LOCALs, function calls, FORINSTANCES, GUMPPIC/TOOLTIP (Wave 113)
 ----------------------------------------
 

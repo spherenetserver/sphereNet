@@ -107,6 +107,16 @@ public sealed class DeathEngine
         else
             DropNpcLootToCorpse(victim, corpse);
 
+        // @DeathCorpse — fired on the victim once the corpse exists and the
+        // loot has been transferred (Source-X CChar::Death fires it right
+        // after MakeCorpse, which moves the items itself), with the corpse
+        // as the argument object.
+        TriggerDispatcher?.FireCharTrigger(victim, CharTrigger.DeathCorpse, new TriggerArgs
+        {
+            CharSrc = victim,
+            O1 = corpse
+        });
+
         // Now that the corpse has snapshotted the original body, fire the
         // death callbacks so OnCharacterDeath / OnNpcKill can swap the
         // mobile to its ghost body and broadcast the new appearance.

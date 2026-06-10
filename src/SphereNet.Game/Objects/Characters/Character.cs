@@ -529,6 +529,22 @@ public partial class Character : ObjBase
     /// (IsTrigUsed gate), so applying a buff is a null check otherwise.</summary>
     public static Action<Character, int>? OnEffectAdd { get; set; }
 
+    /// <summary>Fired before hidden/invisible state is dropped (Source-X
+    /// @Reveal). Return false to keep the character concealed. Installed only
+    /// when hooked (IsTrigUsed gate), so reveals are a null check otherwise.</summary>
+    public static Func<Character, bool>? OnRevealing { get; set; }
+
+    /// <summary>Fired when a timed spell effect is applied to a character
+    /// (Source-X @SpellEffectAdd). Args: target, caster (null = unattributed),
+    /// spell id. Installed only when hooked (IsTrigUsed gate).</summary>
+    public static Action<Character, Character?, int>? OnSpellEffectAdd { get; set; }
+
+    /// <summary>Fired when a timed spell effect is removed from a character —
+    /// expiry, re-cast refresh or death cleanup, NOT the transient save-time
+    /// revert (Source-X @SpellEffectRemove). Args: target, spell id. Installed
+    /// only when hooked (IsTrigUsed gate).</summary>
+    public static Action<Character, int>? OnSpellEffectRemove { get; set; }
+
     /// <summary>Fired when a pet's loyalty reaches zero and it is about to go wild
     /// (Source-X @PetDesert). Args: pet, owner (may be null). Return true to cancel
     /// the desertion — the pet keeps serving.</summary>
@@ -999,12 +1015,20 @@ public partial class Character : ObjBase
 
     public bool HasActiveSkillPending() => _skillPendingId >= 0;
 
-    /// <summary>Drop hidden/invisible/stealth-walk state (cast, combat, step expiry).</summary>
-    public void ClearHiddenState()
+    /// <summary>Drop hidden/invisible/stealth-walk state (cast, combat, step
+    /// expiry). Runs the @Reveal trigger first (Source-X CChar::Reveal); a
+    /// script returning 1 keeps the character concealed. Returns true when
+    /// the state was actually dropped.</summary>
+    public bool ClearHiddenState()
     {
+        if (!IsStatFlag(StatFlag.Hidden) && !IsStatFlag(StatFlag.Invisible) && StepStealth == 0)
+            return false;
+        if (OnRevealing != null && !OnRevealing(this))
+            return false;
         ClearStatFlag(StatFlag.Hidden);
         ClearStatFlag(StatFlag.Invisible);
         StepStealth = 0;
+        return true;
     }
 
     /// <summary>Mark this character criminal (gray) and arm the decay timer. Called

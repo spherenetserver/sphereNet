@@ -96,10 +96,7 @@ public static class CombatHelper
     {
         if (privLevel >= PrivLevel.GM)
             return;
-        if (attacker.IsStatFlag(StatFlag.Hidden))
-            attacker.ClearStatFlag(StatFlag.Hidden);
-        if (attacker.IsStatFlag(StatFlag.Invisible))
-            attacker.ClearStatFlag(StatFlag.Invisible);
+        attacker.ClearHiddenState();
     }
 
     public enum SwingPrepResult

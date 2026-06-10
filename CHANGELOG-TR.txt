@@ -28,6 +28,39 @@
 
 
 
+[2026-06-10] - Ortak ölüm-efekt hattı; DeathCorpse, Reveal, SpellEffectAdd/Remove trigger'ları (Wave 114)
+----------------------------------------
+
+DÜZELTME - Ölüm:
+  - GM kill yolları (UID biçimi, hedef-imleç biçimi) ve guard anında-öldürme
+    yolu ceset/loot motorunu doğrudan çağırıyordu; istemciye görünen ölüm
+    dizisi — ceset paket sıralaması, gözlemci-başına 0xAF gönderimi ve
+    kurbanın hayalet geçişi — ve @Kill/@Death trigger'ları atlanıyordu.
+    Görsel dizi NPC-kill işleyicisinden ortak ProcessDeathWithEffects
+    hattına çıkarıldı; savaş-işleyicisi dışındaki her öldürme yolu artık
+    bunu çalıştırıyor. Kendini öldürme atfedilmez (kill kredisi ve
+    murder işareti yok).
+
+EKLEME - Trigger'lar:
+  - @DeathCorpse, ceset oluşup loot taşındıktan sonra kurban üzerinde
+    ateşlenir (argo = ceset), referans sırasına uygun.
+  - @Reveal: gizli/görünmez kaldırma Character.ClearHiddenState'te
+    merkezileştirildi (saldırı, konuşma, detect-hidden, NPC algılama,
+    reveal büyüsü, gizli adım bitimi); trigger durum düşmeden önce
+    ateşlenir, RETURN 1 gizliliği korur. Konuşma artık büyü
+    görünmezliğini de düşürüyor — referans reveal davranışı.
+  - @SpellEffectAdd / @SpellEffectRemove zamanlı efekt yaşam döngüsü
+    boyunca ateşlenir (uygulama, süre dolumu, yeniden-cast tazeleme,
+    ölüm temizliği); ARGN1 = büyü id, eklemede SRC = caster. Save anı
+    geçici revert/reapply bilinçli olarak sessizdir.
+  - @SpellEffectTick bildirildi ama ateşlenmiyor: motorda periyodik
+    büyü-efekti (tick bayraklı) mekanizması henüz yok; trigger kapsama
+    guardrail backlog'unda belgeli (char backlog artık 3).
+  - Yeni statik hook'lar test-izolasyon reset listesine eklendi. Stub
+    envanter dokümanı bu denetimin yanlış-pozitif listesiyle
+    güncellendi; gelecek taramalar mevcut özellikleri yeniden "eksik"
+    işaretlemesin. Tam paket yeşil (783).
+
 [2026-06-10] - Dialog yerleşim motoru: string LOCAL, fonksiyon çağrısı, FORINSTANCES, GUMPPIC/TOOLTIP (Wave 113)
 ----------------------------------------
 

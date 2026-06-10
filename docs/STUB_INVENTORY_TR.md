@@ -7,7 +7,16 @@ Bu doküman, kodda **tanımlı görünüp fiilen çalışmayan** veya **yalnızc
 İlgili test guardrail: `src/SphereNet.Tests/TriggerCoverageGuardrailTests.cs`  
 Ses/görüntü/hareket parity: `docs/SOUND_VISUAL_MOVEMENT_PARITY_TR.md`
 
-Son güncelleme: 2026-06-09
+Son güncelleme: 2026-06-10
+
+> **Tarama yapmadan önce oku:** Yeni bir "eksik var mı" taraması yapılacaksa
+> önce bu dosya + `docs/PARITY.md` + `src/SphereNet.Tests/TriggerCoverageGuardrailTests.cs`
+> okunmalıdır. Trigger backlog'unun tek otoritesi guardrail testidir (enum'a
+> ateşlenmeyen üye eklenirse test kırılır). 2026-06-10 taramasındaki ajan
+> raporlarında çıkan şu iddialar **yanlış pozitifti** — hepsi mevcut:
+> `SERV.NEWITEM` / `SERV.LOG` / `SERV.ALLCLIENTS` / `SERV.NEWNPC(LASTNEWCHAR)`,
+> `@DropOn_*`, `@PickUp_*`, `@TargOn_*`, `@SkillSuccess/Fail/Abort`,
+> `@SpellSuccess/Fail`, `@RegPeriodic` / `@CliPeriodic`.
 
 ---
 
@@ -21,10 +30,30 @@ Son güncelleme: 2026-06-09
 | ~~P1~~ ✅ | Item script `OPEN` / `DCLICK` / `USE` | **Çözüldü (2026-06-09):** `Item.OnScriptOpen` / `OnScriptDClick` hook'larıyla GameClient paket yoluna köprülendi |
 | ~~P1~~ ✅ | `Character.DISMOUNT` script fiili | **Çözüldü (2026-06-09):** `Character.OnScriptDismount` → `MountEngine.Dismount` (client yolu + headless fallback) |
 | ~~P1~~ ✅ | Help menüsü stuck/page | **Çözüldü (2026-06-09):** stuck → güvenli noktaya taşıma (jail/combat'ta reddedilir), page → `.PAGE` komut yolu + kayıt listesi, page list gump'ı |
-| P2 | Trigger backlog | 11 char + 11 item trigger ateşlenmiyor (HouseDesignCommit/Exit, ExpChange/ExpLevelChange, UserVirtue, UserKRToolbar artık ateşleniyor) |
+| P2 | Trigger backlog | 3 char + 11 item trigger ateşlenmiyor (2026-06-10: DeathCorpse, Reveal, SpellEffectAdd/Remove eklendi ve ateşleniyor; kalan: NPCSeeWantItem, UserMailBag, SpellEffectTick — SPELLFLAG_TICK altyapısı yok) |
 | ~~P2~~ ✅ | Region geçişinde client ışık paketi | **Zaten bağlıymış:** `Program.EngineWiring.cs` OnRegionChanged → 0x4F + sezon + bölgesel weather (envanter eskimişti) |
 
 **Kalan açık alanlar (özet, hepsi bilinçli erteleme):** 0xB2 legacy text-in + 0xF9 (çok eski/KR varyantları; conference chat 0xB3/0xB5 ile çalışıyor), `UserMailBag` (paket yok), `NPCSeeWantItem` (@NPCLookAtItem ile örtüşük), item `RegionEnter`/`RegionLeave` (merkezi item-taşıma yolu yok), item `Level`/`Complete` + candle trigger'ları (item-level / champion altar altyapısı yok), sector ambient ses (Source-X referansında yok — spekülatif maddeydi).
+
+**2026-06-10 dalgası — kapatılanlar:**
+- **Dialog sistemi:** `LOCAL.` atamaları artık string değerleri koruyor (virgüllü
+  listeler, `.=` birleştirme); dialog expression parser'ına script `[FUNCTION]`
+  çözücüsü bağlandı (`ARRAYCOUNT`/`ARRAY`/`FormatMinutes`… layout içinde çalışır);
+  `FORINSTANCES` expansion desteği + FOR ailesi blok eşleştirmesi; `GUMPPIC`
+  (çift P) alias'ı ve `TOOLTIP` render verb'i eklendi. Dialog layout verb
+  kapsaması script setine göre artık tam.
+- **Ölüm görselleri:** GM kill yolları (`.kill` UID/imleç, guard instant-kill)
+  `ProcessDeathWithEffects` ortak yoluna bağlandı — 0xAF, hayalet dönüşümü,
+  @Kill/@Death trigger'ları artık her ölüm yolunda tutarlı.
+- **Yeni trigger'lar:** `@DeathCorpse` (ProcessDeath, argo=ceset), `@Reveal`
+  (Character.ClearHiddenState merkez yolu, RETURN 1 gizliliği korur),
+  `@SpellEffectAdd` / `@SpellEffectRemove` (SpellEngine zamanlı efekt yaşam
+  döngüsü; save-anı revert/reapply bilinçli olarak sessiz). `@SpellEffectTick`
+  enum'da ama ateşlenmiyor — motorun SPELLFLAG_TICK periyodik efekt mekanizması
+  yok (guardrail backlog'unda belgeli).
+- **Script tarafı:** `FormatDays` (sphere_functions_datetime.scp) ve
+  `FamilyCount` (sphere_functions.scp; aile sistemi bu sete taşınmadığı için
+  şimdilik 0 döner) fonksiyonları eklendi — helppage sayfa 4 artık çözülür.
 
 **Custom housing tamamlandı (2026-06-09, dalga 3):** foundation yerleştirme — deed üzerinde `TAG.CUSTOMHOUSE` ile `PlaceHouse(customFoundation: true)` → `MultiCustom` item + boş tasarım (revision 1), gerçek bileşen item'ı üretilmez; commit edilen tasarım sunucu tarafında `WalkCheck.ResolveCustomDesign` → `CustomHousingEngine.GetCommittedTiles` (revision-anahtarlı concurrent önbellek) üzerinden sanal yürüme geometrisi olur (client karoları 0xD8'den çizdiği için çift render yok).
 

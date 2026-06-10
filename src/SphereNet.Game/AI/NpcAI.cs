@@ -1327,10 +1327,8 @@ public sealed class NpcAI
             if (!ch.IsStatFlag(StatFlag.Hidden) && !ch.IsStatFlag(StatFlag.Invisible)) continue;
             int conceal = Math.Max(ch.GetSkill(SkillType.Hiding), ch.GetSkill(SkillType.Stealth));
             int chance = Math.Clamp((detectSkill - conceal / 2) / 10 + 20, 5, 95); // percent
-            if (_rand.Next(100) < chance)
+            if (_rand.Next(100) < chance && ch.ClearHiddenState())
             {
-                ch.ClearStatFlag(StatFlag.Hidden);
-                ch.ClearStatFlag(StatFlag.Invisible);
                 Character.OnAppearanceChanged?.Invoke(ch); // re-show to nearby clients
                 any = true;
             }

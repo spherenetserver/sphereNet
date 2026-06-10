@@ -244,7 +244,7 @@ public static partial class Program
                     return;
                 }
                 BroadcastLightningStrike(victim);
-                _deathEngine.ProcessDeath(victim, killer);
+                ProcessDeathWithEffects(victim, killer);
                 client.SysMessage($"Killed '{victim.Name}'.");
             };
 

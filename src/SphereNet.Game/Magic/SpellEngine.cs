@@ -1187,8 +1187,7 @@ public sealed class SpellEngine
                 break;
             }
             case SpellType.Reveal:
-                target.ClearStatFlag(StatFlag.Invisible);
-                target.ClearStatFlag(StatFlag.Hidden);
+                target.ClearHiddenState();
                 break;
             case SpellType.Dispel:
             case SpellType.MassDispel:
@@ -1363,6 +1362,9 @@ public sealed class SpellEngine
             {
                 RevertDeltas(existing);
                 _activeEffects.RemoveAt(i);
+                // Source-X re-equips the spell memory on refresh: the old
+                // effect's removal is observable before the new add.
+                Character.OnSpellEffectRemove?.Invoke(target, (int)spell);
                 break;
             }
         }
@@ -1371,6 +1373,8 @@ public sealed class SpellEngine
         _activeEffects.Add(eff);
         // @EffectAdd (Source-X) — a temporary effect was applied to the target.
         Character.OnEffectAdd?.Invoke(target, (int)spell);
+        // @SpellEffectAdd (Source-X CCharSpell) — SRC = caster, ARGN1 = spell.
+        Character.OnSpellEffectAdd?.Invoke(target, caster, (int)spell);
         return eff;
     }
 
@@ -1390,6 +1394,7 @@ public sealed class SpellEngine
             if (now < eff.ExpireTick) continue;
             _activeEffects.RemoveAt(i);
             RevertDeltas(eff);
+            Character.OnSpellEffectRemove?.Invoke(eff.Target, (int)eff.Spell);
         }
     }
 
@@ -1437,6 +1442,7 @@ public sealed class SpellEngine
                 continue;
             RevertDeltas(eff);
             _activeEffects.RemoveAt(i);
+            Character.OnSpellEffectRemove?.Invoke(ch, (int)eff.Spell);
             return;
         }
     }
@@ -1447,8 +1453,10 @@ public sealed class SpellEngine
         for (int i = _activeEffects.Count - 1; i >= 0; i--)
         {
             if (_activeEffects[i].Target != ch) continue;
-            RevertDeltas(_activeEffects[i]);
+            var eff = _activeEffects[i];
+            RevertDeltas(eff);
             _activeEffects.RemoveAt(i);
+            Character.OnSpellEffectRemove?.Invoke(ch, (int)eff.Spell);
         }
     }
 

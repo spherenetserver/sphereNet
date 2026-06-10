@@ -28,6 +28,18 @@
 
 
 
+[2026-06-11] - Tam el dışlaması; konteyner tıkında içerik özeti (Wave 124)
+----------------------------------------
+
+DÜZELTME - Item:
+  - El yuvası dışlaması yalnız kalkan senaryolarını kapsıyordu; tek el
+    silahla çift elli silah birlikte tutulabiliyordu. Çift elli silah
+    artık diğer eldekini çantaya düşürüyor; tek el katmanına kuşanım,
+    eldeki çift elli silahı çantaya indiriyor (kalkan birlikteliği
+    sürüyor).
+  - Konteyner ve cesetler tek tık etiketine "(N items, N stones)"
+    ekliyor (CONT_ITEMS defmessage).
+
 [2026-06-11] - Saldırı anonsları referansa uygun; ölüm efektleri ölen istemciye ulaşıyor (Wave 123)
 ----------------------------------------
 

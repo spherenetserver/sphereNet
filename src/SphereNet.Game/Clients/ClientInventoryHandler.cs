@@ -117,9 +117,23 @@ public sealed class ClientInventoryHandler
         ushort nameHue = 0x03B2;
         if (obj is Character labelCh)
             nameHue = NotoToHue(GetNotoriety(labelCh), labelCh);
+
+        // Containers and corpses append their content summary on single
+        // click — "corpse of X (3 items, 25 stones)" (CONT_ITEMS defmessage).
+        string label = obj.GetName();
+        if (obj is Item contItem &&
+            contItem.ItemType is ItemType.Container or ItemType.Corpse &&
+            contItem.Contents.Count > 0)
+        {
+            int stones = 0;
+            foreach (var inner in contItem.Contents)
+                stones += inner.Weight * Math.Max(1, (int)inner.Amount);
+            label += ServerMessages.GetFormatted(Msg.ContItems, contItem.Contents.Count, stones);
+        }
+
         _netState.Send(new PacketSpeechUnicodeOut(
             uid, (ushort)(obj is Character c ? c.BodyId : 0),
-            6, nameHue, 3, "TRK", "", obj.GetName()));
+            6, nameHue, 3, "TRK", "", label));
 
         if (_triggerDispatcher != null)
         {
@@ -863,17 +877,22 @@ public sealed class ClientInventoryHandler
         // Spell interruption on equip change
         _spellEngine?.TryInterruptFromEquip(target);
 
-        // Two-handed weapon ↔ shield mutual exclusion
+        // Hands mutual exclusion (UO rules): a true two-handed weapon needs
+        // BOTH hands, so it bounces whatever the other hand holds — weapon or
+        // shield. Conversely any one-hand-layer equip bounces a held
+        // two-handed weapon (it coexists with a shield, which is not
+        // two-handed). The old check only covered the shield cases, so a
+        // 1H weapon + 2H weapon could end up held together.
         if ((Layer)layer == Layer.TwoHanded && item.IsTwoHanded)
         {
-            var oldShield = target.GetEquippedItem(Layer.OneHanded);
-            if (oldShield != null && oldShield.ItemType == ItemType.Shield)
+            var offhand = target.GetEquippedItem(Layer.OneHanded);
+            if (offhand != null)
             {
                 target.Unequip(Layer.OneHanded);
-                PlaceItemInPack(target, oldShield);
+                PlaceItemInPack(target, offhand);
             }
         }
-        else if ((Layer)layer == Layer.OneHanded && item.ItemType == ItemType.Shield)
+        else if ((Layer)layer == Layer.OneHanded)
         {
             var oldWeapon = target.GetEquippedItem(Layer.TwoHanded);
             if (oldWeapon != null && oldWeapon.IsTwoHanded)

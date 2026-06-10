@@ -28,6 +28,18 @@
 
 
 
+[2026-06-11] - Full hands exclusion; container click shows contents (Wave 124)
+----------------------------------------
+
+FIXED - Items:
+  - The hand-slot exclusion only covered the shield cases, so a
+    one-hand weapon and a two-handed weapon could be held together.
+    A true two-handed weapon now bounces whatever the other hand
+    holds to the backpack, and any one-hand-layer equip bounces a
+    held two-handed weapon (shields still coexist).
+  - Containers and corpses append "(N items, N stones)" to their
+    single-click label (CONT_ITEMS defmessage).
+
 [2026-06-11] - Attack announcements per reference; death FX reach the dying client (Wave 123)
 ----------------------------------------
 

@@ -28,6 +28,20 @@
 
 
 
+[2026-06-11] - Region EVENTS entries bind REGIONTYPE resource tables (Wave 117)
+----------------------------------------
+
+FIXED - Gathering:
+  - Area definitions attach their natural-resource tables through the
+    region EVENTS list ("EVENTS=r_default,r_default_rock,…"), and the
+    reference scans that list by res-type (FindNaturalResource). The
+    region loader only stored those names as plain event links, so
+    every region had an empty resource-table list and gathering
+    (mining / fishing / lumberjacking) fell back to an arbitrary
+    loaded table — often an all-nothing dungeon table, which made
+    every dig yield nothing and never spawn the resource marker.
+    REGIONTYPE names in EVENTS now also populate the region-type list.
+
 [2026-06-11] - Double-click equips first; vendor buy list reverse order (Wave 116)
 ----------------------------------------
 

@@ -28,6 +28,21 @@
 
 
 
+[2026-06-11] - Bölge EVENTS girişleri REGIONTYPE kaynak tablolarını bağlıyor (Wave 117)
+----------------------------------------
+
+DÜZELTME - Kaynak toplama:
+  - Alan tanımları doğal kaynak tablolarını bölge EVENTS listesiyle
+    bağlar ("EVENTS=r_default,r_default_rock,…") ve referans bu
+    listeyi res-type'a göre tarar (FindNaturalResource). Bölge
+    yükleyici bu adları yalnız düz event bağı olarak saklıyordu;
+    her bölgenin kaynak tablosu listesi boş kalıyor ve toplama
+    (mining / fishing / lumberjacking) yüklenmiş rastgele bir
+    tabloya — çoğu zaman tamamı "nothing" olan zindan tablosuna —
+    düşüyordu: her kazı boş dönüyor, kaynak işaretçisi hiç
+    doğmuyordu. EVENTS içindeki REGIONTYPE adları artık bölge
+    tipi listesini de dolduruyor.
+
 [2026-06-11] - Çift tık önce kuşanır; vendor satış listesi ters sıra (Wave 116)
 ----------------------------------------
 

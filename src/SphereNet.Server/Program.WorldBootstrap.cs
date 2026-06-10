@@ -390,7 +390,22 @@ public static partial class Program
                         if (!string.IsNullOrEmpty(key.Arg))
                         {
                             foreach (var ev in key.Arg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                                region.AddEvent(ResourceId.FromString(ev, ResType.Events));
+                            {
+                                // Source-X keeps REGIONTYPE links inside the region's
+                                // EVENTS list and FindNaturalResource scans that list
+                                // by res-type (CRegionWorld::FindNaturalResource). The
+                                // standard area defs attach their resource tables this
+                                // way ("EVENTS=r_default,r_default_rock,…"), so route
+                                // REGIONTYPE names into the region-type list too —
+                                // otherwise mining/fishing/lumberjacking never sees
+                                // the area's ore/fish/tree tables and falls back to an
+                                // arbitrary (often all-nothing) table.
+                                string evName = ev.TrimStart('+');
+                                var evResolved = _resources.ResolveDefName(evName);
+                                if (evResolved.IsValid && evResolved.Type == ResType.RegionType)
+                                    region.AddRegionType(evResolved);
+                                region.AddEvent(ResourceId.FromString(evName, ResType.Events));
+                            }
                         }
                         break;
                     case "RESOURCES":

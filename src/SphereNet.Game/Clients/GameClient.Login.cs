@@ -249,6 +249,20 @@ public sealed partial class GameClient
                 _account.SetCharSlot(assignSlot, _character.Uid);
 
             EquipPlayerNewbieItems(_character, info?.Female ?? false);
+            EquipNewbieSkillKits(_character, info);
+
+            // Reference serv_triggers pipeline: every fresh player character
+            // runs f_onchar_create_player and then f_onchar_setup_player once
+            // it exists server-side — the pack's own start setup (skillclass,
+            // Char_Start_Player) lives behind these functions.
+            var createRunner = _triggerDispatcher?.Runner;
+            if (createRunner != null)
+            {
+                var createArgs = new SphereNet.Scripting.Execution.TriggerArgs(
+                    _character, 0, 0, _account.Name);
+                createRunner.TryRunFunction("f_onchar_create_player", _character, null, createArgs, out _);
+                createRunner.TryRunFunction("f_onchar_setup_player", _character, null, createArgs, out _);
+            }
 
             _logger.LogInformation("Created char '{Name}' for account '{Acct}'", _character.Name, _account.Name);
         }
@@ -739,12 +753,29 @@ public sealed partial class GameClient
 
     private void EquipPlayerNewbieItems(Character ch, bool female)
     {
+        EquipNewbieSection(ch, female ? "FEMALE_DEFAULT" : "MALE_DEFAULT");
+    }
+
+    /// <summary>Sphere grants a starter kit per chosen creation skill through
+    /// the [NEWBIE &lt;SKILL&gt;] sections (sphere_newb.scp) on top of the
+    /// male/female default outfit. Unknown section names no-op.</summary>
+    private void EquipNewbieSkillKits(Character ch, CharCreateInfo? info)
+    {
+        if (info == null) return;
+        foreach (var (id, val) in info.Skills)
+        {
+            if (val <= 0 || id < 0 || id >= (int)SkillType.Qty) continue;
+            EquipNewbieSection(ch, ((SkillType)id).ToString().ToUpperInvariant());
+        }
+    }
+
+    private void EquipNewbieSection(Character ch, string sectionName)
+    {
         if (_commands?.Resources == null) return;
         var resources = _commands.Resources;
 
-        string sectionName = female ? "FEMALE_DEFAULT" : "MALE_DEFAULT";
         var rid = resources.ResolveDefName(sectionName);
-        if (!rid.IsValid)
+        if (!rid.IsValid || rid.Type != Core.Enums.ResType.NewBie)
             return;
 
         var link = resources.GetResource(rid);

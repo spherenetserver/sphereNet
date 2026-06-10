@@ -28,6 +28,22 @@
 
 
 
+[2026-06-11] - Character creation: outfit, per-skill kits, setup functions (Wave 128)
+----------------------------------------
+
+FIXED - Character creation:
+  - NEWBIE race variants ("[NEWBIE MALE_DEFAULT ELF]"/GARG — usually
+    empty) were keyed by their first token and overwrote the human
+    base section, so MALE/FEMALE_DEFAULT resolved to an empty section
+    and fresh characters spawned naked. The race suffix now folds into
+    the section identity; the default outfit equips again.
+  - Each chosen creation skill now grants its [NEWBIE <SKILL>] starter
+    kit on top of the default outfit (unknown names no-op).
+  - New player characters run the pack setup chain
+    f_onchar_create_player → f_onchar_setup_player (Char_Start_Player:
+    skillclass and pack-side start configuration) once they exist
+    server-side.
+
 [2026-06-11] - Corpse carving uses the chardef RESOURCES list (Wave 127)
 ----------------------------------------
 

@@ -204,6 +204,15 @@ public sealed class ResourceHolder
 
             string rawArg = section.Argument;
 
+            // NEWBIE race variants: "[NEWBIE MALE_DEFAULT ELF]" is a separate
+            // template from "[NEWBIE MALE_DEFAULT]". Keying both by the first
+            // token made the (usually empty) ELF/GARG variants overwrite the
+            // human base section — fresh characters spawned naked because
+            // MALE_DEFAULT resolved to the empty GARG section. Fold the race
+            // suffix into the identity token instead.
+            if (resType == ResType.NewBie && rawArg.Contains(' '))
+                rawArg = rawArg.Trim().Replace('\t', '_').Replace(' ', '_');
+
             if (resType == ResType.Dialog)
             {
                 var argParts = rawArg.Split(new[] { ' ', '\t' }, 2, StringSplitOptions.RemoveEmptyEntries);
@@ -725,6 +734,15 @@ public sealed class ResourceHolder
                 continue;
 
             string rawArg = section.Argument;
+
+            // NEWBIE race variants: "[NEWBIE MALE_DEFAULT ELF]" is a separate
+            // template from "[NEWBIE MALE_DEFAULT]". Keying both by the first
+            // token made the (usually empty) ELF/GARG variants overwrite the
+            // human base section — fresh characters spawned naked because
+            // MALE_DEFAULT resolved to the empty GARG section. Fold the race
+            // suffix into the identity token instead.
+            if (resType == ResType.NewBie && rawArg.Contains(' '))
+                rawArg = rawArg.Trim().Replace('\t', '_').Replace(' ', '_');
 
             if (resType == ResType.Dialog)
             {

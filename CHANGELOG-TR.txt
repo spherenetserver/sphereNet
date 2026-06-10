@@ -28,6 +28,22 @@
 
 
 
+[2026-06-11] - Karakter oluşturma: kıyafet, skill kitleri, kurulum fonksiyonları (Wave 128)
+----------------------------------------
+
+DÜZELTME - Karakter oluşturma:
+  - NEWBIE ırk varyantları ("[NEWBIE MALE_DEFAULT ELF]"/GARG — çoğu
+    boş) ilk token ile anahtarlanıp insan base bölümünü eziyordu;
+    MALE/FEMALE_DEFAULT boş bölüme çözülüyor ve yeni karakter çıplak
+    doğuyordu. Irk soneki artık bölüm kimliğine katlanıyor; varsayılan
+    kıyafet yeniden kuşatılıyor.
+  - Seçilen her oluşturma skill'i, varsayılan kıyafetin üstüne kendi
+    [NEWBIE <SKILL>] başlangıç kitini veriyor (bilinmeyen adlar no-op).
+  - Yeni player karakterleri sunucu tarafında oluştuğunda paketin
+    kurulum zinciri çalışıyor: f_onchar_create_player →
+    f_onchar_setup_player (Char_Start_Player: skillclass ve paket
+    tarafı başlangıç yapılandırması).
+
 [2026-06-11] - Ceset parçalama chardef RESOURCES listesini kullanıyor (Wave 127)
 ----------------------------------------
 

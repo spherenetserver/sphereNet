@@ -27,7 +27,9 @@ public class SkillMagicPhase4Tests
     {
         var world = CreateWorld();
         var ch = world.CreateCharacter();
-        ch.SetSkill(SkillType.Stealth, 2000);
+        // Stealth rolls a random 60-90 difficulty; 3000 keeps the delta past
+        // the bell curve's zero-chance tail (StepStealth still clamps to 10).
+        ch.SetSkill(SkillType.Stealth, 3000);
         ch.SetStatFlag(StatFlag.Hidden);
         world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
 

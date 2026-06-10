@@ -28,6 +28,17 @@
 
 
 
+[2026-06-11] - Swing and surround sidestep no longer share a tick (Wave 122)
+----------------------------------------
+
+FIXED - NPC AI:
+  - When a melee swing actually fired, the NPC could also take its
+    surround/flank sidestep in the same AI tick; the walk packet made
+    the client cancel the just-started attack animation (hits looked
+    like sliding). The sidestep now only happens on recoil ticks where
+    no swing fired — the same move-pair conflict class as the pet
+    GO/follow bug.
+
 [2026-06-11] - Single-step descent cap raised to climbable parity (Wave 121)
 ----------------------------------------
 

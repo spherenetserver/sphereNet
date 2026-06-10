@@ -842,10 +842,12 @@ public sealed class NpcAI
 
         if (dist <= range.Max)
         {
-            TrySwingAttack(npc, target);
-            // After attacking, try to surround: if adjacent allies also occupy
-            // the same side, sidestep to flank from an open direction.
-            if (dist <= 1 && _rand.Next(3) == 0)
+            // Surround/flank sidesteps only happen on ticks where the swing
+            // did NOT fire (recoil window). Moving in the same tick as a
+            // fired swing makes the client cancel the attack animation —
+            // the same move-pair conflict class as the pet GO/follow bug.
+            bool swung = TrySwingAttack(npc, target);
+            if (!swung && dist <= 1 && _rand.Next(3) == 0)
                 TrySurroundStep(npc, target);
         }
         else
@@ -2219,26 +2221,26 @@ public sealed class NpcAI
     ///     <item>Set <c>NextAttackTime</c> to the full swing recoil.</item>
     ///   </list>
     /// </summary>
-    private void TrySwingAttack(Character npc, Character target)
+    private bool TrySwingAttack(Character npc, Character target)
     {
         if (npc.IsDead || npc.Hits <= 0 || target.IsDead || target.Hits <= 0)
-            return;
+            return false;
 
         long now = Environment.TickCount64;
         if (now < npc.NextAttackTime)
-            return;
+            return false;
 
         // Same gating Source-X applies to player attackers — see
         // GameClient.TrySwingAt for rationale.
         if (npc.Stam <= 0)
         {
             npc.NextAttackTime = now + 1000;
-            return;
+            return false;
         }
         if (npc.IsStatFlag(StatFlag.Freeze) || npc.IsStatFlag(StatFlag.Sleeping))
         {
             npc.NextAttackTime = now + 500;
-            return;
+            return false;
         }
         if (npc.IsCasting)
         {
@@ -2246,7 +2248,7 @@ public sealed class NpcAI
             if (npc.IsCasting)
             {
                 npc.NextAttackTime = now + 250;
-                return;
+                return false;
             }
         }
 
@@ -2258,10 +2260,10 @@ public sealed class NpcAI
         {
             case CombatHelper.SwingPrepResult.Abort:
                 npc.FightTarget = Serial.Invalid;
-                return;
+                return false;
             case CombatHelper.SwingPrepResult.RetryLater:
                 npc.NextAttackTime = now + Math.Max(prep.RetryMs, 250);
-                return;
+                return false;
         }
 
         int swingDelayMs = SphereNet.Game.Clients.GameClient.GetSwingDelayMs(npc, weapon);
@@ -2327,6 +2329,7 @@ public sealed class NpcAI
             EmitSound(npc, CreatureSoundType.Die);
             OnNpcKill?.Invoke(npc, npc);
         }
+        return true;
     }
 
     // --- Movement helpers ---

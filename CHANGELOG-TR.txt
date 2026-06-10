@@ -28,6 +28,16 @@
 
 
 
+[2026-06-11] - Vuruş ile kuşatma yan adımı aynı tick'i paylaşmıyor (Wave 122)
+----------------------------------------
+
+DÜZELTME - NPC AI:
+  - Vuruş gerçekten ateşlendiğinde NPC aynı AI tick'inde kuşatma/yan
+    adımını da atabiliyordu; yürüme paketi istemcide yeni başlamış
+    vuruş animasyonunu iptal ediyordu (vuruşlar kayma gibi
+    görünüyordu). Yan adım artık yalnız vuruşsuz (recoil) tick'lerde
+    atılıyor — pet GO/follow hatasıyla aynı çakışma sınıfı.
+
 [2026-06-11] - Tek adım iniş sınırı tırmanma paritesine yükseltildi (Wave 121)
 ----------------------------------------
 

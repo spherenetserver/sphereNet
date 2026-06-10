@@ -759,8 +759,11 @@ public sealed class NpcAI
         if (npc.NpcBrain == NpcBrainType.Berserk || _rand.Next(6) == 0)
             EmitSound(npc, CreatureSoundType.Idle);
 
-        // Dragon breath: fires for Dragon brain, fire-immune monsters, or explicit BREATH.DAM tag
-        bool canBreath = npc.NpcBrain == NpcBrainType.Dragon;
+        // Dragon breath: fires for Dragon brain, dragon-family bodies, fire-immune
+        // monsters, or explicit BREATH.DAM tag. The body check matches the legacy
+        // body-derived creature type: script packs routinely keep
+        // BRAIN=brain_monster on dragons and still expect the breath attack.
+        bool canBreath = npc.NpcBrain == NpcBrainType.Dragon || IsDragonBody(npc.BodyId);
         if (!canBreath)
         {
             var breathDef = DefinitionLoader.GetCharDef(npc.CharDefIndex);
@@ -1541,6 +1544,16 @@ public sealed class NpcAI
         return SpellType.None;
     }
 
+    /// <summary>Dragon-family bodies (reference CREID list): dragon grey/red,
+    /// drakes, wyvern, serpentine/skeletal dragons, shadow/white wyrm, swamp
+    /// dragon, ancient wyrm. These breathe regardless of the scripted brain.</summary>
+    private static bool IsDragonBody(ushort bodyId) => bodyId switch
+    {
+        0x000C or 0x003B or 0x003C or 0x003D or 0x003E or
+        0x0067 or 0x0068 or 0x006A or 0x00B4 or 0x031A or 0x031E => true,
+        _ => false,
+    };
+
     /// <summary>Source-X: BREATH.DAM — defaults to STR*5/100, clamped 1-200.</summary>
     private static int GetBreathDamage(Character npc)
     {
@@ -2040,6 +2053,33 @@ public sealed class NpcAI
             case PetAIMode.Follow:
             case PetAIMode.Come:
             {
+                // "all go" — an explicit GO order overrides following entirely
+                // (Source-X NPCACT_GOTO): the pet walks to the ordered spot and
+                // stays there instead of returning to the owner. Running the
+                // follow step and the GO step in the same tick made the two
+                // moves cancel out, so the pet oscillated between the owner
+                // and the goal without ever arriving.
+                if (npc.TryGetTag("GO_TARGET", out string? goTag) &&
+                    TryParsePoint(goTag, out Point3D goPos))
+                {
+                    if (npc.MapIndex != goPos.Map)
+                    {
+                        _world.MoveCharacter(npc, goPos);
+                        npc.RemoveTag("GO_TARGET");
+                        npc.PetAIMode = PetAIMode.Stay;
+                        break;
+                    }
+                    int goDist = npc.Position.GetDistanceTo(goPos);
+                    if (goDist > 1)
+                        MoveToward(npc, goPos, run: goDist > 3);
+                    else
+                    {
+                        npc.RemoveTag("GO_TARGET");
+                        npc.PetAIMode = PetAIMode.Stay;
+                    }
+                    break;
+                }
+
                 Character followTarget = ResolvePetTargetCharacter(npc, "FOLLOW_TARGET") ?? master;
                 if (OnNpcActFollow?.Invoke(npc, followTarget) == true)
                     break;
@@ -2052,15 +2092,6 @@ public sealed class NpcAI
                 bool leashed = PetFollowMaxDistance > 0 && dist > PetFollowMaxDistance;
                 if (dist > 2 && !leashed)
                     MoveToward(npc, followTarget.Position, run: dist > 3);
-                if (npc.TryGetTag("GO_TARGET", out string? goTag) &&
-                    TryParsePoint(goTag, out Point3D goPos))
-                {
-                    int goDist = npc.Position.GetDistanceTo(goPos);
-                    if (goDist > 1)
-                        MoveToward(npc, goPos);
-                    else
-                        npc.RemoveTag("GO_TARGET");
-                }
                 break;
             }
             case PetAIMode.Guard:

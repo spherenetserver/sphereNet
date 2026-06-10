@@ -28,6 +28,23 @@
 
 
 
+[2026-06-11] - Pet GO emri follow'u geçersiz kılar; dragon ailesi nefesi (Wave 115)
+----------------------------------------
+
+DÜZELTME - NPC AI:
+  - "all go" pet emri, follow adımı ile GO adımını aynı AI tick'inde
+    çalıştırıyordu; iki hareket birbirini iptal ediyor ve pet sahibiyle
+    hedef arasında varamadan salınıyordu. Aktif GO emri artık follow'u
+    tamamen geçersiz kılıyor; pet hedefe yürüyüp orada kalıyor
+    (referans NPCACT_GOTO). Regresyon testi eklendi
+    (NpcPetGoOrderTests).
+  - Nefes saldırısı yalnız Dragon brain, ateş-bağışık canavarlar veya
+    BREATH.DAM tag'i için ateşleniyordu — script paketleri dragonlarda
+    rutin olarak BRAIN=brain_monster tutar ve legacy body-türevli tür
+    tespitine güvenirdi. Dragon ailesi body'leri (dragon, drake,
+    wyvern, serpentine/skeletal, shadow/white wyrm, swamp dragon,
+    ancient wyrm) artık scriptteki brain'den bağımsız nefes kullanıyor.
+
 [2026-06-10] - Ortak ölüm-efekt hattı; DeathCorpse, Reveal, SpellEffectAdd/Remove trigger'ları (Wave 114)
 ----------------------------------------
 

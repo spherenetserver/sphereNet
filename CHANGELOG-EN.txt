@@ -28,6 +28,23 @@
 
 
 
+[2026-06-11] - Pet GO order overrides following; dragon-family breath (Wave 115)
+----------------------------------------
+
+FIXED - NPC AI:
+  - The "all go" pet order ran the follow step and the GO step in the
+    same AI tick, so the two moves cancelled out and the pet oscillated
+    between its owner and the ordered spot without arriving. An active
+    GO order now overrides following entirely; the pet walks to the
+    spot and stays there (reference NPCACT_GOTO). Regression test
+    added (NpcPetGoOrderTests).
+  - The breath attack only fired for the Dragon brain, fire-immune
+    monsters or a BREATH.DAM tag — script packs routinely keep
+    BRAIN=brain_monster on dragons and relied on the legacy
+    body-derived creature type. Dragon-family bodies (dragons, drakes,
+    wyvern, serpentine/skeletal, shadow/white wyrm, swamp dragon,
+    ancient wyrm) now breathe regardless of the scripted brain.
+
 [2026-06-10] - Shared death-effects pipeline; DeathCorpse, Reveal, SpellEffectAdd/Remove triggers (Wave 114)
 ----------------------------------------
 

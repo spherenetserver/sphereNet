@@ -334,8 +334,11 @@ public sealed class SpellEngine
         var offhand = caster.GetEquippedItem(Layer.TwoHanded);
         bool isWand = weapon?.ItemType == ItemType.Wand;
         bool fromScroll = caster.TryGetTag("SCROLL_UID", out _);
-        bool hasBlockingWeapon = (weapon != null && weapon.ItemType != ItemType.Wand) ||
-            (offhand != null && offhand.ItemType != ItemType.Shield);
+        // A wielded spellbook never blocks casting (reference: casting from
+        // the book in hand is the normal flow); wands likewise.
+        bool hasBlockingWeapon =
+            (weapon != null && weapon.ItemType is not ItemType.Wand and not ItemType.Spellbook) ||
+            (offhand != null && offhand.ItemType is not ItemType.Shield and not ItemType.Spellbook);
 
         if (!Character.EquippedCastEnabled && hasBlockingWeapon &&
             caster.PrivLevel < PrivLevel.GM)

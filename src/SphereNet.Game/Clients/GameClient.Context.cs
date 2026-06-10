@@ -196,6 +196,9 @@ public sealed partial class GameClient : IClientContext
     void IClientContext.InitiateTrade(Character partner, Item? firstItem) => InitiateTrade(partner, firstItem);
     void IClientContext.SendTradeUpdateToBoth(SecureTrade trade) => SendTradeUpdateToBoth(trade);
     void IClientContext.TickPendingSkill() => TickPendingSkill();
+    void IClientContext.TickPendingCraft() => TickPendingCraft();
+    bool IClientContext.BeginPendingCraft(CraftRecipe recipe, SkillType craftSkill, bool reopenGump) =>
+        BeginPendingCraft(recipe, craftSkill, reopenGump);
 
     void IClientContext.SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType) => SetPendingTarget(callback, cursorType);
     void IClientContext.ClearPendingTargetState() => ClearPendingTargetState();

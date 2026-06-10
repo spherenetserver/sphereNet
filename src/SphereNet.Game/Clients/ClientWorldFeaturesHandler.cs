@@ -156,54 +156,139 @@ public sealed class ClientWorldFeaturesHandler
             {
                 int index = (int)(pressedButton - 100);
                 if (index < recipes.Count)
-                {
-                    var recipe = recipes[index];
-
-                    _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillMakeItem,
-                        new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill });
-
-                    var (craftAnim, craftSound) = GetCraftAnimAndSound(craftSkill);
-                    BroadcastNearby?.Invoke(_character.Position, UpdateRange,
-                        new PacketAnimation(_character.Uid.Value, craftAnim), 0);
-                    BroadcastNearby?.Invoke(_character.Position, UpdateRange,
-                        new PacketSound(craftSound, _character.X, _character.Y, _character.Z), 0);
-
-                    var result = _craftingEngine.TryCraft(_character, recipe);
-
-                    if (result != null)
-                    {
-                        var pack = _character.Backpack;
-                        if (pack != null)
-                        {
-                            var actual = pack.AddItemWithStack(result);
-                            if (actual != result)
-                                result.Delete();
-
-                            _netState.Send(new PacketContainerItem(
-                                actual.Uid.Value, actual.DispIdFull, 0,
-                                actual.Amount, actual.X, actual.Y,
-                                pack.Uid.Value, actual.Hue,
-                                _netState.IsClientPost6017));
-
-                            _triggerDispatcher?.FireItemTrigger(actual, ItemTrigger.Create,
-                                new TriggerArgs { CharSrc = _character, ItemSrc = actual });
-                        }
-                        else
-                        {
-                            _world.PlaceItemWithDecay(result, _character.Position);
-                            _triggerDispatcher?.FireItemTrigger(result, ItemTrigger.Create,
-                                new TriggerArgs { CharSrc = _character, ItemSrc = result });
-                        }
-                        SysMessage(ServerMessages.GetFormatted("craft_success", result.GetName()));
-                    }
-                    else
-                        SysMessage(ServerMessages.Get("craft_fail"));
-
-                    // Re-open gump for continued crafting
-                    OpenCraftingGump(craftSkill);
-                }
+                    BeginPendingCraft(recipes[index], craftSkill, reopenGump: true);
             }
         });
+    }
+
+    // --- multi-stroke crafting (reference Skill_Stroke) ----------------------
+    private CraftRecipe? _pendingCraftRecipe;
+    private SkillType _pendingCraftSkill;
+    private int _pendingCraftStrokes;
+    private long _pendingCraftNextStroke;
+    private bool _pendingCraftReopenGump;
+
+    /// <summary>Start a craft as a stroke loop (reference Skill_MakeItem →
+    /// Skill_Stroke): two work strokes with the skill's DELAY-curve timeout
+    /// (one-second floor), anim + sound per stroke; the roll and resource
+    /// consumption happen at completion, after a CanCraft re-check (covers
+    /// walking away from the forge mid-craft).</summary>
+    internal bool BeginPendingCraft(CraftRecipe recipe, SkillType craftSkill, bool reopenGump)
+    {
+        if (_character == null || _craftingEngine == null)
+            return false;
+        if (_pendingCraftRecipe != null)
+        {
+            SysMessage(ServerMessages.Get("craft_busy"));
+            return false;
+        }
+        if (!_craftingEngine.CanCraft(_character, recipe))
+        {
+            SysMessage(ServerMessages.Get("craft_fail"));
+            return false;
+        }
+
+        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillMakeItem,
+            new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill });
+
+        _pendingCraftRecipe = recipe;
+        _pendingCraftSkill = craftSkill;
+        _pendingCraftStrokes = 2;
+        _pendingCraftReopenGump = reopenGump;
+        EmitCraftStroke(craftSkill);
+        _pendingCraftNextStroke = Environment.TickCount64 + GetCraftStrokeIntervalMs(craftSkill);
+        return true;
+    }
+
+    /// <summary>Advance the pending craft stroke loop. Called from the
+    /// per-client tick pump.</summary>
+    internal void TickPendingCraft()
+    {
+        if (_pendingCraftRecipe == null || _character == null || _craftingEngine == null)
+            return;
+        if (Environment.TickCount64 < _pendingCraftNextStroke)
+            return;
+
+        _pendingCraftStrokes--;
+        if (_pendingCraftStrokes > 0)
+        {
+            EmitCraftStroke(_pendingCraftSkill);
+            _pendingCraftNextStroke = Environment.TickCount64 + GetCraftStrokeIntervalMs(_pendingCraftSkill);
+            return;
+        }
+
+        var recipe = _pendingCraftRecipe;
+        var craftSkill = _pendingCraftSkill;
+        bool reopen = _pendingCraftReopenGump;
+        _pendingCraftRecipe = null;
+
+        // Re-check at completion (reference SKTRIG_SUCCESS re-validates the
+        // work site): walking away from the forge or losing materials
+        // mid-craft fails without the roll.
+        if (!_craftingEngine.CanCraft(_character, recipe))
+        {
+            SysMessage(ServerMessages.Get("craft_fail"));
+            return;
+        }
+
+        CompleteCraft(recipe, craftSkill, reopen);
+    }
+
+    private void EmitCraftStroke(SkillType craftSkill)
+    {
+        if (_character == null)
+            return;
+        var (craftAnim, craftSound) = GetCraftAnimAndSound(craftSkill);
+        BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+            new PacketAnimation(_character.Uid.Value, craftAnim), 0);
+        BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+            new PacketSound(craftSound, _character.X, _character.Y, _character.Z), 0);
+    }
+
+    private int GetCraftStrokeIntervalMs(SkillType craftSkill)
+    {
+        int delayMs = Skills.SkillEngine.GetSkillDelayMs(craftSkill, _character?.GetSkill(craftSkill) ?? 0);
+        return Math.Max(1000, delayMs); // reference floor: 10 tenths per stroke
+    }
+
+    private void CompleteCraft(CraftRecipe recipe, SkillType craftSkill, bool reopenGump)
+    {
+        if (_character == null || _craftingEngine == null)
+            return;
+
+        var result = _craftingEngine.TryCraft(_character, recipe);
+
+        if (result != null)
+        {
+            var pack = _character.Backpack;
+            if (pack != null)
+            {
+                var actual = pack.AddItemWithStack(result);
+                if (actual != result)
+                    result.Delete();
+
+                _netState.Send(new PacketContainerItem(
+                    actual.Uid.Value, actual.DispIdFull, 0,
+                    actual.Amount, actual.X, actual.Y,
+                    pack.Uid.Value, actual.Hue,
+                    _netState.IsClientPost6017));
+
+                _triggerDispatcher?.FireItemTrigger(actual, ItemTrigger.Create,
+                    new TriggerArgs { CharSrc = _character, ItemSrc = actual });
+            }
+            else
+            {
+                _world.PlaceItemWithDecay(result, _character.Position);
+                _triggerDispatcher?.FireItemTrigger(result, ItemTrigger.Create,
+                    new TriggerArgs { CharSrc = _character, ItemSrc = result });
+            }
+            SysMessage(ServerMessages.GetFormatted("craft_success", result.GetName()));
+        }
+        else
+            SysMessage(ServerMessages.Get("craft_fail"));
+
+        if (reopenGump)
+            OpenCraftingGump(craftSkill);
     }
 
     /// <summary>Handle vendor buy packet (0x3B).</summary>

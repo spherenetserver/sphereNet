@@ -25,6 +25,36 @@
 
 
 
+
+[2026-06-10] - Multi-stroke crafting + spellbook-in-hand casting (Wave 109)
+----------------------------------------
+
+ADDED - Crafting:
+  - Crafting now runs as a stroke loop (reference Skill_MakeItem →
+    Skill_Stroke) instead of resolving instantly on the gump click: two
+    work strokes spaced by the skill's DELAY-curve timeout (one-second
+    reference floor), each broadcasting the craft animation and sound;
+    the skill roll and resource consumption happen at completion, after
+    a CanCraft re-check — walking away from the forge or losing the
+    materials mid-craft fails without the roll and without loss. A
+    second craft cannot start while one is pending. Both the crafting
+    gump and the SKILLMENU MAKEITEM verb route through the same loop,
+    driven from the per-client tick pump.
+
+FIXED - Magic:
+  - A wielded spellbook counted as a blocking weapon for the
+    equipped-cast check, so casting with the book in hand fizzled when
+    EQUIPPEDCAST was off. Spellbooks (like wands) no longer block
+    casting in either hand.
+
+INTERNAL - Tests:
+  - Two spell tests toggled the global spellbook-requirement static,
+    which parallel test collections reset mid-run (intermittent
+    failures); they now satisfy the requirement with a real spellbook
+    item instead. New tests (CraftStrokeTests, 2) cover the stroke
+    delay, the busy guard and the walk-away completion failure. Full
+    suite green (780) across repeated runs.
+
 [2026-06-10] - [SKILLMENU] selection menus: load, open, select (Wave 108)
 ----------------------------------------
 

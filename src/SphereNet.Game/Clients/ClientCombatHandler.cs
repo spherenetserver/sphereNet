@@ -115,6 +115,7 @@ public sealed class ClientCombatHandler
     private void BroadcastAnimation(Character actor, ushort legacyAction, NewAnimationGesture gesture, byte mode = 0) => _client.BroadcastAnimation(actor, legacyAction, gesture, mode);
     private static void GetDirectionDelta(Direction dir, out short dx, out short dy) => GameClient.GetDirectionDelta(dir, out dx, out dy);
     private void TickPendingSkill() => _client.TickPendingSkill();
+    private void TickPendingCraft() => _client.TickPendingCraft();
 
     private uint _lastCombatNotifyTarget;
 
@@ -2056,6 +2057,7 @@ public sealed class ClientCombatHandler
         TickCombat();
         TickSpellCast();
         TickPendingSkill();
+        TickPendingCraft();
         TickStatUpdate();
     }
 

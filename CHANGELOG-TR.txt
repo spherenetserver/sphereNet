@@ -25,6 +25,36 @@
 
 
 
+
+[2026-06-10] - Çok vuruşlu üretim + elde kitapla büyü atma (Wave 109)
+----------------------------------------
+
+EKLEME - Üretim:
+  - Üretim artık gump tıklamasında anında sonuçlanmak yerine vuruş
+    döngüsü olarak çalışıyor (referans Skill_MakeItem → Skill_Stroke):
+    beceri DELAY kürvünün zaman aşımıyla aralıklı iki iş vuruşu (referans
+    tabanı bir saniye), her biri üretim animasyonunu ve sesini yayınlar;
+    beceri zarı ve kaynak tüketimi tamamlanmada, CanCraft yeniden
+    kontrolünden sonra gerçekleşir — üretim ortasında ocaktan uzaklaşmak
+    ya da malzemeyi kaybetmek zarsız ve kayıpsız başarısızlık verir. Biri
+    beklerken ikinci üretim başlayamaz. Hem üretim gump'ı hem SKILLMENU
+    MAKEITEM verb'ü aynı döngüden geçer; döngü istemci tick pompasından
+    sürülür.
+
+DÜZELTME - Büyü:
+  - Elde tutulan spellbook, donanımlı-atış kontrolünde engelleyici silah
+    sayılıyordu; EQUIPPEDCAST kapalıyken kitap eldeyken atış fizzle
+    oluyordu. Spellbook'lar (wand gibi) artık iki elde de atışı
+    engellemiyor.
+
+İÇSEL - Testler:
+  - İki büyü testi, paralel test koleksiyonlarının koşu ortasında
+    sıfırladığı global spellbook-şartı statiğini açıp kapatıyordu
+    (aralıklı hatalar); artık şartı gerçek bir spellbook öğesiyle
+    karşılıyorlar. Yeni testler (CraftStrokeTests, 2) vuruş gecikmesini,
+    meşgul korumasını ve uzaklaşınca tamamlanma başarısızlığını kapsıyor.
+    Tam paket tekrarlı koşularda yeşil (780).
+
 [2026-06-10] - [SKILLMENU] seçim menüleri: yükleme, açma, seçme (Wave 108)
 ----------------------------------------
 

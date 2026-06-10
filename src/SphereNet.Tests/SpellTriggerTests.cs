@@ -109,17 +109,20 @@ public class SpellTriggerTests
     [Fact]
     public void SpellEngine_ItemTarget_FiresItemSpellEffect()
     {
-        // Memory-cast without a spellbook in the test world.
-        Character.SpellbookRequiredEnabled = false;
-        try
-        {
         var world = CreateWorld();
         var (_, player) = NewClient(world);
-        player.SetSkill(SkillType.Magery, 1000);
+        player.SetSkill(SkillType.Magery, 2000);
 
         var pack = world.CreateItem();
         pack.ItemType = ItemType.Container;
         player.Equip(pack, Layer.Pack);
+
+        // The global spellbook requirement is a static other parallel test
+        // collections reset; satisfy it with a real book instead of toggling.
+        var book = world.CreateItem();
+        book.ItemType = ItemType.Spellbook;
+        book.More2 = 1u << ((int)SpellType.Mark - 33); // Mark in the high mask
+        pack.AddItem(book);
 
         var rune = world.CreateItem();
         rune.ItemType = ItemType.Rune;
@@ -157,10 +160,5 @@ public class SpellTriggerTests
         Assert.Equal(1, spellEffectCount);
         Assert.True(rune.TryGetRuneMark(out var marked));
         Assert.Equal(player.Position, marked);
-        }
-        finally
-        {
-            Character.SpellbookRequiredEnabled = true;
-        }
     }
 }

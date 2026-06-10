@@ -122,7 +122,6 @@ public class SpellParityTests
     {
         Character.HelpingCriminalsIsACrimeEnabled = true;
         Character.CriminalTimerSeconds = 180;
-        Character.SpellbookRequiredEnabled = false; // memory-cast without a book
         try
         {
             var world = CreateWorld();
@@ -142,6 +141,13 @@ public class SpellParityTests
             healer.MaxMana = 100;
             healer.Mana = 100;
             healer.SetSkill(SkillType.Magery, 2000);
+
+            // Satisfy the spellbook requirement with a wielded book (the
+            // global flag is shared with parallel test collections).
+            var healBook = world.CreateItem();
+            healBook.ItemType = ItemType.Spellbook;
+            healBook.More1 = 1u << ((int)SpellType.Heal - 1);
+            healer.Equip(healBook, Layer.OneHanded);
             world.PlaceCharacter(healer, new Point3D(100, 100, 0, 0));
 
             var criminal = world.CreateCharacter();
@@ -159,7 +165,6 @@ public class SpellParityTests
         finally
         {
             Character.HelpingCriminalsIsACrimeEnabled = false;
-            Character.SpellbookRequiredEnabled = true;
         }
     }
 

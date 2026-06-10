@@ -73,6 +73,12 @@ public sealed partial class GameClient
 
     public void HandleCrashReport() => WorldFeatures.HandleCrashReport();
 
+    /// <summary>Advance the pending multi-stroke craft (tick pump).</summary>
+    internal void TickPendingCraft() => WorldFeatures.TickPendingCraft();
+
+    internal bool BeginPendingCraft(Crafting.CraftRecipe recipe, Core.Enums.SkillType craftSkill, bool reopenGump) =>
+        WorldFeatures.BeginPendingCraft(recipe, craftSkill, reopenGump);
+
     public void HandleClientUiButton(byte opcode) => WorldFeatures.HandleClientUiButton(opcode);
 
     // Test-harness reflection entry points (GameSystemTests InvokePrivate).

@@ -1129,16 +1129,7 @@ public sealed class ClientScriptConsoleHandler
             return;
         }
 
-        var item = craftE.TryCraft(_character, recipe);
-        if (item != null)
-        {
-            _client.PlaceItemInPack(_character, item);
-            SysMessage($"You create {item.GetName()}.");
-        }
-        else
-        {
-            SysMessage("You fail to create the item.");
-        }
+        _client.BeginPendingCraft(recipe, recipe.PrimarySkill, reopenGump: false);
     }
 
     private bool HandleDialogCommand(string args, ObjBase? subject = null)

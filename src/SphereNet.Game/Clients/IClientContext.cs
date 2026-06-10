@@ -172,6 +172,8 @@ internal interface IClientContext : ITextConsole
     void InitiateTrade(Character partner, Item? firstItem = null);
     void SendTradeUpdateToBoth(SecureTrade trade);
     void TickPendingSkill();
+    void TickPendingCraft();
+    bool BeginPendingCraft(CraftRecipe recipe, SkillType craftSkill, bool reopenGump);
 
     // --- targeting ---
     void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1);

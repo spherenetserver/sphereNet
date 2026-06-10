@@ -14,6 +14,30 @@
 
 
 
+
+[2026-06-10] - NPC visibility: untracked-in-range appear + cross-map leave (Wave 98)
+----------------------------------------
+
+FIXED - NPC visibility:
+  - The object-centric NPC move notification had no branch for a mobile
+    that is in range on both ends of the step but not yet tracked by the
+    observer (the player path already handled this). An NPC that unhid
+    after a scout-hide, or whose initial appear was filtered at spawn
+    time, moved invisibly until the observer's next full view refresh.
+    NotifyCharMoved now falls through to the appear path in that case
+    (hidden/ghost filters still apply), mirroring the player
+    enter/leave handler.
+  - Cross-map moves (pet follow teleporting to the owner's map) only
+    swept sectors on the destination map, so observers left on the old
+    map never received the leave-range delete and kept a ghost copy of
+    the mobile until their own view refreshed. The sector sweep is now
+    per-map: the destination map around the new position plus, for
+    cross-map moves, the source map around the old position. This also
+    removes the pathological sector rectangle the old min/max span
+    produced when the two positions were on unrelated coordinates.
+  - New tests (NpcVisibilityNotifyTests, 2) cover the untracked-appear
+    branch and the tracked-move 0x77 path. Full suite green (732).
+
 [2026-06-10] - NPC run-bit consistency on path-follow, flee and pet steps (Wave 97)
 ----------------------------------------
 

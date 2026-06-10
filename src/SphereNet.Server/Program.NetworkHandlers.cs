@@ -508,12 +508,28 @@ public static partial class Program
         int oldCx = oldPos.X / secSize;
         int oldCy = oldPos.Y / secSize;
 
-        int minSx = Math.Min(newCx, oldCx) - secRadius;
-        int maxSx = Math.Max(newCx, oldCx) + secRadius;
-        int minSy = Math.Min(newCy, oldCy) - secRadius;
-        int maxSy = Math.Max(newCy, oldCy) + secRadius;
-
         byte mapId = ch.Position.Map;
+        bool crossMap = oldPos.Map != mapId;
+
+        // Same-map move: one sweep spanning old+new sectors. Cross-map move:
+        // the old/new coordinates are unrelated, so spanning min..max would
+        // walk a huge sector rectangle — sweep each map around its own point
+        // instead (the old-map sweep delivers the leave-range delete that the
+        // new-map sweep can never produce).
+        int minSx = crossMap ? newCx - secRadius : Math.Min(newCx, oldCx) - secRadius;
+        int maxSx = crossMap ? newCx + secRadius : Math.Max(newCx, oldCx) + secRadius;
+        int minSy = crossMap ? newCy - secRadius : Math.Min(newCy, oldCy) - secRadius;
+        int maxSy = crossMap ? newCy + secRadius : Math.Max(newCy, oldCy) + secRadius;
+
+        NotifyMovedInSectors(ch, oldPos, isPlayer, mapId, minSx, maxSx, minSy, maxSy);
+        if (crossMap)
+            NotifyMovedInSectors(ch, oldPos, isPlayer, oldPos.Map,
+                oldCx - secRadius, oldCx + secRadius, oldCy - secRadius, oldCy + secRadius);
+    }
+
+    private static void NotifyMovedInSectors(Character ch, Point3D oldPos, bool isPlayer,
+        byte mapId, int minSx, int maxSx, int minSy, int maxSy)
+    {
         for (int sx = minSx; sx <= maxSx; sx++)
         for (int sy = minSy; sy <= maxSy; sy++)
         {

@@ -14,6 +14,30 @@
 
 
 
+
+[2026-06-10] - NPC görünürlüğü: izlenmeyen-menzilde appear + cross-map ayrılış (Wave 98)
+----------------------------------------
+
+DÜZELTME - NPC görünürlüğü:
+  - Nesne-merkezli NPC hareket bildiriminde, adımın iki ucunda da
+    menzilde olan ama gözlemci tarafından henüz izlenmeyen mobil için
+    dal yoktu (oyuncu yolu bunu zaten ele alıyordu). Scout-hide sonrası
+    görünür olan ya da spawn anında ilk çizimi filtrelenen bir NPC,
+    gözlemcinin bir sonraki tam görünüm yenilemesine kadar görünmez
+    hareket ediyordu. NotifyCharMoved bu durumda artık appear yoluna
+    düşüyor (gizli/hayalet filtreleri uygulanmaya devam eder) — oyuncu
+    enter/leave işleyicisiyle aynalı.
+  - Haritalar arası taşınmalar (pet'in sahibinin haritasına ışınlanması)
+    yalnız hedef haritanın sektörlerini tarıyordu; eski haritada kalan
+    gözlemciler ayrılış silme paketini (0x1D) hiç almıyor ve kendi
+    görünümleri yenilenene dek mobilin hayalet kopyasını görüyordu.
+    Sektör taraması artık harita-bazlı: hedef haritada yeni konum
+    çevresi + cross-map taşınmada kaynak haritada eski konum çevresi.
+    Bu, iki konum alakasız koordinatlardayken eski min/max aralığının
+    ürettiği patolojik sektör dikdörtgenini de ortadan kaldırıyor.
+  - Yeni testler (NpcVisibilityNotifyTests, 2) izlenmeyen-appear dalını
+    ve izlenen-hareket 0x77 yolunu kapsıyor. Tam paket yeşil (732).
+
 [2026-06-10] - Patika, kaçış ve pet adımlarında NPC koşu biti tutarlılığı (Wave 97)
 ----------------------------------------
 

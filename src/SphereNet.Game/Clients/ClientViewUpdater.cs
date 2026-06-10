@@ -466,6 +466,15 @@ public sealed class ClientViewUpdater
             _client.SendUpdateMobile(ch);
             View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch));
         }
+        else if (nowInRange)
+        {
+            // In range on both ends but not yet tracked — e.g. the NPC
+            // unhid after a scout-hide, or its initial appear was filtered
+            // at spawn time. Without this branch the mobile would move
+            // invisibly until the observer's next full view refresh.
+            // NotifyCharacterAppear re-applies the hidden/ghost filters.
+            NotifyCharacterAppear(ch);
+        }
     }
 
     /// <summary>

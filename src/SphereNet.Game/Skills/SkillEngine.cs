@@ -44,18 +44,21 @@ public static class SkillEngine
     /// <summary>Skill variance for S-curve calculation (Source-X: SKILL_VARIANCE = 100).</summary>
     private const int SkillVariance = 100;
 
-    /// <summary>Active skill duration from [SKILLDEF] DELAY (tenths of a second → ms). 0 = instant.</summary>
-    public static int GetSkillDelayMs(SkillType skill)
+    /// <summary>Active skill duration from [SKILL] DELAY (a tenths-of-a-second
+    /// curve across skill 0-100.0 → ms; reference Skill_GetTimeout).
+    /// <paramref name="skillValue"/> is the user's skill in tenths. 0 = instant.</summary>
+    public static int GetSkillDelayMs(SkillType skill, int skillValue = 0)
     {
         var def = DefinitionLoader.GetSkillDef((int)skill);
-        if (def == null || def.Delay <= 0) return 0;
-        return def.Delay * 100;
+        if (def == null || def.Delay.IsEmpty) return 0;
+        int tenths = def.Delay.GetLinear(skillValue);
+        return tenths <= 0 ? 0 : tenths * 100;
     }
 
     /// <summary>Interval between @SkillStroke firings during a delayed skill.</summary>
-    public static int GetSkillStrokeIntervalMs(SkillType skill)
+    public static int GetSkillStrokeIntervalMs(SkillType skill, int skillValue = 0)
     {
-        int delay = GetSkillDelayMs(skill);
+        int delay = GetSkillDelayMs(skill, skillValue);
         if (delay <= 0) return 0;
         return Math.Clamp(delay / 5, 500, 2000);
     }
@@ -146,8 +149,11 @@ public static class SkillEngine
         if (gainRadius > 0 && (iDiff + gainRadius) < Math.Max(50, currentSkill))
             return; // task too easy for gain
 
-        // Advance rate — use SkillDef AdvRate if available, else default curve
-        int chance = def?.AdvRate > 0 ? CalcAdvanceRateFromDef(currentSkill, def.AdvRate) : CalcAdvanceRate(currentSkill);
+        // Advance rate — ADV_RATE curve expresses "uses per 0.1 gain"; the
+        // per-mille gain chance is its inverse (reference GetChancePercent).
+        int chance = def != null && !def.AdvRate.IsEmpty
+            ? def.AdvRate.GetChancePercent(currentSkill)
+            : CalcAdvanceRate(currentSkill);
 
         if (chance <= 0)
             return;
@@ -346,16 +352,6 @@ public static class SkillEngine
     {
         var cls = DefinitionLoader.GetSkillClassDef(ch.SkillClass);
         return cls?.IntMax > 0 ? cls.IntMax : 125;
-    }
-
-    /// <summary>
-    /// Calculate advance rate using SkillDef's AdvRate value as a multiplier.
-    /// </summary>
-    private static int CalcAdvanceRateFromDef(int skillLevel, int advRate)
-    {
-        if (skillLevel >= 1000) return 0;
-        int baseChance = Math.Max(1, (1000 - skillLevel) / 5);
-        return Math.Max(1, baseChance * advRate / 100);
     }
 
     /// <summary>

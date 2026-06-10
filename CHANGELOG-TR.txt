@@ -17,6 +17,34 @@
 
 
 
+
+[2026-06-10] - Skill tanımları: legacy değer-kürvü parse'ı + ADV_RATE semantiği (Wave 101)
+----------------------------------------
+
+DÜZELTME - Skill'ler:
+  - [SKILL] tanımlarındaki sayılar düz int parse ile okunuyordu; gerçek
+    script paketlerinin kullandığı her ondalıklı/çok-değerli özellikte
+    (ADV_RATE=2.5,50.0,200.0; DELAY=2.0) bu sessizce başarısız olup değer
+    sıfıra düşüyordu: ADV_RATE tüm skill'lerde yok sayılıyor, tüm skill
+    gecikmeleri anında bitiyordu. Referans kürv tipinin portu olan
+    ValueCurve eklendi (kaynak: Sphere 0.56 CValueCurveDef + ahextoi):
+    legacy sabit-nokta sayı parse'ı (ondalık nokta rakamları birleştirir,
+    baştaki sıfır hex işaretler) ve skill 0-100.0 boyunca doğrusal
+    interpolasyon. ADV_RATE, DELAY ve EFFECT artık kürv; kalan sayısal
+    alanlar aynı legacy parse'ı kullanıyor (bu, baştaki-sıfırlı hex
+    değerlerde yanlış okunan FLAGS'i de düzeltir).
+  - ADV_RATE semantiği düzeltildi: kürv "0.1 kazanç başına kullanım
+    sayısı"nı ifade eder ve binde-bir kazanç şansı bunun tersidir
+    (100000/değer, referans GetChancePercent). Önceki yorum değeri kendi
+    kürvümüz üzerinde 0-100 çarpanı sayıyordu — kazanç temposu hem yanlış
+    hem skill başına ayarlanamaz haldeydi.
+  - Skill gecikmeleri artık kullanıcının skill seviyesinde DELAY kürvünü
+    izliyor (referans Skill_GetTimeout); gecikmeli-skill hattı karakterin
+    skill değerini iletiyor.
+  - Yeni testler (ValueCurveTests, 14) parse kurallarını gerçek mortechUO
+    script değerleriyle ve interpolasyon/şans matematiğiyle sabitliyor.
+    Tam paket yeşil (751).
+
 [2026-06-10] - NPC'ler engellenen adımlarda kilitsiz kapıları açıyor (Wave 100)
 ----------------------------------------
 

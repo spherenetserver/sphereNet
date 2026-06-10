@@ -222,14 +222,14 @@ public sealed class ClientSkillsHandler
     private bool TryScheduleActiveSkillDelay(SkillType skill, int skillId, Serial targetUid, Point3D? point)
     {
         if (_character == null) return false;
-        int delayMs = SkillEngine.GetSkillDelayMs(skill);
+        int delayMs = SkillEngine.GetSkillDelayMs(skill, _character.GetSkill(skill));
         if (delayMs <= 0) return false;
 
         long now = Environment.TickCount64;
         _character.BeginSkillPending(
             skillId,
             now + delayMs,
-            now + SkillEngine.GetSkillStrokeIntervalMs(skill),
+            now + SkillEngine.GetSkillStrokeIntervalMs(skill, _character.GetSkill(skill)),
             targetUid,
             point);
 
@@ -250,7 +250,7 @@ public sealed class ClientSkillsHandler
         if (now >= _character.SkillStrokeNext)
         {
             FireActiveSkillStroke(skillId);
-            _character.SetSkillStrokeNext(now + SkillEngine.GetSkillStrokeIntervalMs(skill));
+            _character.SetSkillStrokeNext(now + SkillEngine.GetSkillStrokeIntervalMs(skill, _character.GetSkill(skill)));
         }
 
         if (now < _character.SkillDelayEnd)

@@ -17,6 +17,34 @@
 
 
 
+
+[2026-06-10] - Skill definitions: legacy value-curve parsing + ADV_RATE semantics (Wave 101)
+----------------------------------------
+
+FIXED - Skills:
+  - [SKILL] definition numerics were read with plain int parsing, which
+    silently fails on every decimal/multi-value property real script
+    packs use (ADV_RATE=2.5,50.0,200.0; DELAY=2.0): the values dropped to
+    zero, so ADV_RATE was ignored for every skill and every skill delay
+    became instant. Added ValueCurve, a port of the reference curve type
+    (credit: Sphere 0.56 CValueCurveDef + ahextoi): legacy fixed-point
+    number parse (decimal point concatenates digits, leading zero marks
+    hex) and linear interpolation across skill 0-100.0. ADV_RATE, DELAY
+    and EFFECT are now curves; the remaining numeric fields use the same
+    legacy number parse (this also fixes FLAGS, which the old decimal
+    parse misread for leading-zero hex values).
+  - ADV_RATE semantics corrected: the curve expresses "skill uses per 0.1
+    gain" and the per-mille gain chance is its inverse (100000/value,
+    reference GetChancePercent). The previous interpretation treated the
+    value as a 0-100 multiplier on a homegrown curve, which made gain
+    pacing both wrong and untunable per skill.
+  - Skill delays now follow the DELAY curve at the user's skill level
+    (reference Skill_GetTimeout); the delayed-skill pipeline passes the
+    character's skill value through.
+  - New tests (ValueCurveTests, 14) pin the parse rules with the actual
+    mortechUO script values and the interpolation/chance math. Full suite
+    green (751).
+
 [2026-06-10] - NPCs open unlocked doors on blocked steps (Wave 100)
 ----------------------------------------
 

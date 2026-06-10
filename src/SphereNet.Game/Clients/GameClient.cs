@@ -157,10 +157,9 @@ public sealed partial class GameClient : ITextConsole
         get => _pendingDialogArgs;
         set => _pendingDialogArgs = value;
     }
-    private int _dialogDepth;
-    private List<MenuOptionEntry>? _pendingMenuOptions;
-    private ushort _pendingMenuId;
-    private string _pendingMenuDefname = "";
+    internal List<MenuOptionEntry>? _pendingMenuOptions;
+    internal ushort _pendingMenuId;
+    internal string _pendingMenuDefname = "";
     private const ushort EditMenuId = 0xFFED;
     private uint[]? _pendingEditMenuUids;
     private Item?[]? _pendingEditMenuMemories;
@@ -180,6 +179,10 @@ public sealed partial class GameClient : ITextConsole
     internal MovementEngine? MoveEng => _movement;
     internal SpeechEngine? SpeechEng => _speech;
     internal DeathEngine? DeathEng => _deathEngine;
+    internal ScriptFileHandle? ScriptFile => _scriptFile;
+    internal ScriptDbAdapter? ScriptDb => _scriptDb;
+    internal ScriptDbAdapter? ScriptLdb => _scriptLdb;
+    internal string ScriptDatabaseRoot => _scriptDatabaseRoot;
     internal GuildManager? GuildM => _guildManager;
     internal PartyManager? PartyM => _partyManager;
     internal SpellEngine? Spells => _spellEngine;

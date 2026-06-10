@@ -25,7 +25,8 @@ GameClient (orkestratör: NetState + Character + yaşam döngüsü)
      ├─ ClientTargetingHandler  target-response yönlendirici, gump gönderim/yanıt ✅
      ├─ ClientDialogHandler     script DIALOG render, named-dialog dispatch, help menü, INPDLG ✅
      ├─ ClientSkillsHandler     info/aktif skill akışları, tooltip, obje mesajı ✅
-     └─ ClientCombatHandler     hareket doğrulama, konuşma, swing/ölüm/diriliş, büyü, tick pompası ✅
+     ├─ ClientCombatHandler     hareket doğrulama, konuşma, swing/ölüm/diriliş, büyü, tick pompası ✅
+     └─ ClientScriptConsoleHandler  script-verb yüzeyi (TryExecuteScriptCommand/değişken çözümleme/FOR* sorguları) ✅
 ```
 
 ## Fazlar
@@ -86,7 +87,7 @@ dönüşüm sırası:
 | 3e ✅ | Dialogs | ~1629 | ClientDialogHandler | `_dialogSubjectUid`/`_nativeDialogFallbacks`/`_pendingInputDlg`/`_nextInputDlgContext` alanları + `OpenNamedDialog`/`RegisterNativeDialogFallbacks` GameClient.cs'ten handler'a taşındı. ScriptConsole `Dialogs.DialogSubjectUid`, Handlers `Dialogs.PendingInputDlg` üzerinden erişir. `TryFindMenuSection`/`IsPlainDefToken` internal köprü. |
 | 3f ✅ | Skills | ~489 | ClientSkillsHandler | GameClient property adı `SkillUse` (SkillH motor erişimcisi ve `Skills` namespace'iyle çakışmamak için). `InfoSkillSink` GameClient'ta nested kaldı — ItemUse handler ve motorlar `GameClient.InfoSkillSink` olarak kuruyor. |
 | 3f ✅ | Combat | ~1790 | ClientCombatHandler | Statik hareket/speed-hack config yüzeyi + OnSpeedHackDetected event'i GameClient'ta kaldı (ResetEngineStatics disiplini); handler statik shim'lerle okur, event `RaiseSpeedHackDetected` köprüsüyle ateşlenir. Throttle bileşeni + hareket durumu handler'a taşındı; vitals alanları (`_lastHits` vb.) Login da yazdığı için GameClient'ta internal kaldı. RuntimePerformancePressureTests yeşil (6/6). |
-| 3g | ScriptConsole | ~2024 | ClientScriptConsoleHandler | EN BÜYÜK. ITextConsole implementasyonu GameClient'ta KALIR (script'ler konsol olarak GameClient alır); handler script-verb yüzeyini barındırır, SysMessage/GetName GameClient'ta. `TryExecuteScriptCommand`/`TryGetScriptVariable` public delegasyon. |
+| 3g ✅ | ScriptConsole | ~2024 | ClientScriptConsoleHandler | Script-verb yüzeyi handler'da (TryExecuteScriptCommand, TryResolveScriptVariable, QueryScriptObjects + yardımcıları). ITextConsole impl. + paylaşılan combat/status/notoriety yardımcıları (BuildMobileFlags, SetWarMode, FaceTarget, swing tabloları, SendSkillList vb.) GameClient partial'ında kaldı — bunlar konsol değil ortak yardımcı; ileride ayrı bileşen olabilir. |
 | — | PacketHelpers | ~1470 | (dönüştürülmez) | Paket primitifleri: GameClient'ın internal gönderim yüzeyi olarak kalır; handler'ların ortak bağımlılığıdır. İstenirse ileride `ClientPacketSender` bileşeni. |
 | — | Login / Handlers / Chat / Housing | ~693/460/117/172 | (şimdilik kalır) | Login NetState yaşam döngüsüne bağlı (en son). Handlers (kitap/prompt) + Chat + Housing küçük ve zaten dar yüzeyli — 3g sonrası değerlendirilir. |
 

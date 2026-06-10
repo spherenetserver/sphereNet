@@ -9,6 +9,31 @@
 
 
 
+
+[2026-06-10] - GameClient ayrıştırma faz 3g: script-console handler sınıfı (Wave 93)
+----------------------------------------
+
+İÇSEL - GameClient ayrıştırma:
+  - ScriptConsole partial'ının script-verb yüzeyi (~1.300 satır: MESSAGE,
+    SAYUA, INPDLG, TRYSRC, TARGETF/TARGET, MENU, DIALOG/SDIALOG,
+    GO/GONAME, SERV.*, NEW.*, FILE.*, DB.*/LDB.*, WEBLINK, BUY/BYE ve
+    SENDPACKET'i kapsayan TryExecuteScriptCommand verb switch'i;
+    TryResolveScriptVariable; QueryScriptObjects'in FOR* nesne sorguları
+    ve özel yardımcıları) yerleşik shim reçetesiyle
+    ClientScriptConsoleHandler sınıfına taşındı; gövdeler
+    TryRunFunction/TryExecuteCommand'a geçen üç konsol-kimliğinin _client
+    olması dışında bayt-bayt aynı. ITextConsole implementasyonu
+    (SysMessage, GetName, GetPrivLevel) ve tarihsel olarak aynı
+    partial'da yaşayan paylaşılan combat/status/notoriety yardımcıları
+    (BuildMobileFlags, SetWarMode, FaceTarget, swing tabloları,
+    ComputeNotoriety, SendSkillList, status yardımcıları) GameClient'ta
+    kaldı — script'ler konsol kimliği olarak GameClient almaya devam
+    ediyor ve public delegasyonlar ITextConsole arayüz haritasını koruyor.
+    Dialog-derinlik koruması handler'a taşındı; bekleyen-menü durumu
+    GameClient'ta internal kaldı (0x7D menü yanıtını Handlers partial'ı
+    tüketiyor); ScriptFile/ScriptDb/ScriptLdb/ScriptDatabaseRoot
+    erişimcileri eklendi. Tam paket yeşil (723); mojibake taraması temiz.
+
 [2026-06-10] - GameClient ayrıştırma faz 3f: combat handler sınıfı (Wave 92)
 ----------------------------------------
 

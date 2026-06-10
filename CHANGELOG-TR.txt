@@ -27,6 +27,21 @@
 
 
 
+
+[2026-06-10] - Üretim çalışma alanı yakınlığı harita statiklerini de eşliyor (Wave 111)
+----------------------------------------
+
+DÜZELTME - Üretim:
+  - Wave 107'deki ocak/ısı yakınlık kontrolü yalnız dinamik ocak/ateş
+    öğelerini görüyordu; şehir demircilerinin yerleşik statik ocakları
+    çalışma alanı sayılmıyordu. Kontrol artık üreticinin çevresindeki
+    harita statiklerini de tarıyor ve her statik grafiği itemdef tipi
+    üzerinden çözüyor (ocak / ateş / kamp ateşi) — referansın statik
+    tile'lar için kullandığı grafik→itemdef çözümlemesinin aynısı. Not:
+    statik dal yüklü MUL verisine bağlıdır ve oyun içinde sınanır; birim
+    paketi dinamik-öğe yolunu kapsar (mevcut CraftParityTests). Tam paket
+    yeşil (783).
+
 [2026-06-10] - Büyü kesintisi INTERRUPT kürvünü izliyor (Wave 110)
 ----------------------------------------
 

@@ -27,6 +27,21 @@
 
 
 
+
+[2026-06-10] - Craft work-site proximity matches map statics (Wave 111)
+----------------------------------------
+
+FIXED - Crafting:
+  - The Wave 107 forge/heat proximity check only saw dynamic forge/fire
+    items, so the built-in static forges of town smithies did not count
+    as work sites. The check now also scans the map statics around the
+    crafter and resolves each static graphic through its itemdef type
+    (forge / fire / campfire) — the same graphic→itemdef resolution the
+    reference uses for static tiles. Note: the static branch depends on
+    loaded MUL data and is exercised in-game; the unit suite covers the
+    dynamic-item path (the existing CraftParityTests). Full suite green
+    (783).
+
 [2026-06-10] - Spell disturb follows the INTERRUPT curve (Wave 110)
 ----------------------------------------
 

@@ -265,6 +265,30 @@ public sealed class CraftingEngine
                     return true;
             }
         }
+
+        // Map statics count as work sites too: a static graphic's type comes
+        // from its itemdef (the way the reference resolves static tiles).
+        var mapData = _world.MapData;
+        if (mapData == null)
+            return false;
+        for (int dx = -range; dx <= range; dx++)
+        {
+            for (int dy = -range; dy <= range; dy++)
+            {
+                short x = (short)(crafter.X + dx);
+                short y = (short)(crafter.Y + dy);
+                foreach (var s in mapData.GetStatics(crafter.MapIndex, x, y))
+                {
+                    var sdef = DefinitionLoader.GetItemDef(s.TileId);
+                    if (sdef == null) continue;
+                    foreach (var t in types)
+                    {
+                        if (sdef.Type == t)
+                            return true;
+                    }
+                }
+            }
+        }
         return false;
     }
 

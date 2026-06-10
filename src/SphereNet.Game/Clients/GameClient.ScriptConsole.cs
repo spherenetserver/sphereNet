@@ -412,9 +412,10 @@ public sealed partial class GameClient
 
     public static ushort GetNpcSwingAction(Character npc)
     {
-        bool isHumanBody = npc.BodyId == 400 || npc.BodyId == 401;
-        if (!isHumanBody)
-            return 4; // ANIM_MON_ATTACK1
+        // Non-humanoid bodies use their own anim.mul attack groups
+        // (monster 4-6, animal 5-6) via the body translation table.
+        if (!BodyAnimTranslator.IsHumanoidBody(npc.BodyId))
+            return BodyAnimTranslator.Translate(npc.BodyId, (ushort)AnimationType.AttackWrestle);
 
         var weapon = npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
         return GetSwingAction(npc, weapon);

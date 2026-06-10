@@ -11,6 +11,32 @@
 
 
 
+
+[2026-06-10] - Legacy 0x6E yolu için gövde-tipi animasyon çevirisi (Wave 95)
+----------------------------------------
+
+DÜZELTME - Animasyonlar:
+  - Klasik istemciler 0x6E action alanını aktör gövdesinin kendi anim.mul
+    dosyasındaki ham grup indeksi olarak okur; bu yüzden canavar/hayvan
+    gövdelerine gönderilen insansı action indeksleri yanlış grubu (veya
+    hiçbir şeyi) oynatıyordu. Referans gövde-çeviri tablosunun portu olan
+    BodyAnimTranslator eklendi (kaynak: Sphere 0.56 GenerateAnimate):
+    gövde < 200 yüksek-detay canavar seti (saldırı 4-6, vuruş-yeme
+    get-hit/block-right/block-left arasında rastgele, cast = stomp/pillage,
+    ölüm 2/3), gövde 200-399 düşük-detay hayvan seti (saldırı 5-6,
+    vuruş-yeme 7, cast 5/eat, ölüm 8/12), gövde >= 400 değişmeden geçer.
+  - Aktörün insansı olmayabileceği her gönderim noktasına uygulandı:
+    oyuncu swing yolundaki vuruş-tepkisi yayını ve NPC saldırı bağlaması
+    (ikisi de her gövdeye insansı get-hit indeksi 0x14 gönderiyordu), NPC
+    swing-action yardımcısı (hayvanlar daha önce canavar saldırı grubu 4
+    alıyordu; insansı kontrolü de iki insan gövdesinden tam >= 400
+    aralığına genişletildi — elf-aralığı gövdeler insansı setle oynar),
+    healer iyileştirme animasyonu ve script ANIMATE/BOW/SALUTE verb'leri
+    (binekli eşleme korundu, bineksiz yola gövde çevirisi eklendi).
+  - Yeni deterministik birim paketi (BodyAnimTranslationTests, 7 test)
+    tablo sınırlarını ve grup eşlemelerini kapsıyor. Tam paket yeşil
+    (730).
+
 [2026-06-10] - GameClient ayrıştırma faz 4: IClientContext arayüzü (Wave 94)
 ----------------------------------------
 

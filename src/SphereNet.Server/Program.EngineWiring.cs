@@ -1380,7 +1380,7 @@ public static partial class Program
 
                 ushort getHitAction = target.IsMounted
                     ? MapAnimToMounted((ushort)AnimationType.GetHit)
-                    : (ushort)AnimationType.GetHit;
+                    : BodyAnimTranslator.Translate(target.BodyId, (ushort)AnimationType.GetHit);
                 BroadcastNearby(target.Position, 18, new PacketAnimation(target.Uid.Value, getHitAction), 0);
 
                 if (damage > 0)
@@ -1520,7 +1520,7 @@ public static partial class Program
             };
             _npcAI.OnHealerAction = (healer, target, isResurrect) =>
             {
-                ushort healAnim = healer.IsMounted ? MapAnimToMounted(16) : (ushort)16;
+                ushort healAnim = healer.IsMounted ? MapAnimToMounted(16) : BodyAnimTranslator.Translate(healer.BodyId, 16);
                 var anim = new PacketAnimation(healer.Uid.Value, healAnim, 4, 1, false, false, 0);
                 BroadcastNearby(healer.Position, 18, anim, 0);
                 var sound = new PacketSound(isResurrect ? (ushort)0x0214 : (ushort)0x01F2,
@@ -1537,7 +1537,7 @@ public static partial class Program
             };
             _npcAI.OnHealerCure = (healer, target) =>
             {
-                ushort healAnim = healer.IsMounted ? MapAnimToMounted(16) : (ushort)16;
+                ushort healAnim = healer.IsMounted ? MapAnimToMounted(16) : BodyAnimTranslator.Translate(healer.BodyId, 16);
                 var anim = new PacketAnimation(healer.Uid.Value, healAnim, 4, 1, false, false, 0);
                 BroadcastNearby(healer.Position, 18, anim, 0);
                 var sound = new PacketSound(0x01E0, healer.X, healer.Y, healer.Z);

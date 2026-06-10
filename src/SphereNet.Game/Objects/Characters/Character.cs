@@ -3450,6 +3450,8 @@ public partial class Character : ObjBase
                     return true;
                 if (IsMounted)
                     animAction = MapAnimToMounted(animAction);
+                else
+                    animAction = Combat.BodyAnimTranslator.Translate(BodyId, animAction);
                 ushort animFrames = aparts.Length > 1 && TryParseScriptUShort(aparts[1], out ushort fc) ? fc : (ushort)7;
                 ushort animRepeats = aparts.Length > 2 && TryParseScriptUShort(aparts[2], out ushort rc) ? rc : (ushort)1;
                 bool animBackwards = aparts.Length > 3 && aparts[3] != "0";
@@ -3792,15 +3794,21 @@ public partial class Character : ObjBase
             }
             case "BOW":
             {
+                ushort bowAnim = IsMounted
+                    ? MapAnimToMounted(32)
+                    : Combat.BodyAnimTranslator.Translate(BodyId, 32);
                 BroadcastNearby?.Invoke(Position, 18,
-                    new SphereNet.Network.Packets.Outgoing.PacketAnimation(Uid.Value, 32),
+                    new SphereNet.Network.Packets.Outgoing.PacketAnimation(Uid.Value, bowAnim),
                     0);
                 return true;
             }
             case "SALUTE":
             {
+                ushort saluteAnim = IsMounted
+                    ? MapAnimToMounted(33)
+                    : Combat.BodyAnimTranslator.Translate(BodyId, 33);
                 BroadcastNearby?.Invoke(Position, 18,
-                    new SphereNet.Network.Packets.Outgoing.PacketAnimation(Uid.Value, 33),
+                    new SphereNet.Network.Packets.Outgoing.PacketAnimation(Uid.Value, saluteAnim),
                     0);
                 return true;
             }

@@ -1125,7 +1125,9 @@ public sealed class ClientCombatHandler
             var hitSoundPacket = new PacketSound(hitSound, target.X, target.Y, target.Z);
             BroadcastNearby?.Invoke(target.Position, UpdateRange, hitSoundPacket, 0);
 
-            ushort getHitAction = target.IsMounted ? (ushort)AnimationType.HorseSlap : (ushort)AnimationType.GetHit;
+            ushort getHitAction = target.IsMounted
+                ? (ushort)AnimationType.HorseSlap
+                : BodyAnimTranslator.Translate(target.BodyId, (ushort)AnimationType.GetHit);
             BroadcastAnimation(target, getHitAction, NewAnimationGesture.Impact);
 
             var damagePacket = new PacketDamage(target.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue));

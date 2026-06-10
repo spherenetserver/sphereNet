@@ -11,6 +11,33 @@
 
 
 
+
+[2026-06-10] - Body-type animation translation for the legacy 0x6E path (Wave 95)
+----------------------------------------
+
+FIXED - Animations:
+  - Classic clients read the 0x6E action field as a raw group index into
+    the actor body's own anim.mul file, so humanoid action indices sent to
+    monster or animal bodies played the wrong group (or none). Added
+    BodyAnimTranslator, a port of the reference body-translation table
+    (credit: Sphere 0.56 GenerateAnimate): bodies < 200 use the
+    high-detail monster set (attacks 4-6, get-hit randomized over
+    get-hit/block-right/block-left, cast = stomp/pillage, deaths 2/3),
+    bodies 200-399 use the low-detail animal set (attacks 5-6, get-hit 7,
+    cast 5/eat, deaths 8/12), bodies >= 400 pass through unchanged.
+  - Applied at every emit site where the actor can be non-humanoid: the
+    hit-reaction broadcast in the player swing path and the NPC attack
+    wiring (both previously sent the humanoid get-hit index 0x14 to any
+    body), the NPC swing-action helper (animals previously received the
+    monster attack group 4; humanoid check also widened from the two
+    human bodies to the full >= 400 range so elf-range bodies animate
+    with the humanoid set), the healer heal animation, and the script
+    ANIMATE/BOW/SALUTE verbs (mounted mapping preserved, body translation
+    added for the unmounted path).
+  - New deterministic unit suite (BodyAnimTranslationTests, 7 tests)
+    covers the table boundaries and group mappings. Full suite green
+    (730).
+
 [2026-06-10] - GameClient decomposition phase 4: IClientContext interface (Wave 94)
 ----------------------------------------
 

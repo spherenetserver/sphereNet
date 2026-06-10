@@ -794,6 +794,44 @@ public sealed class ClientInventoryHandler
 
     // ==================== Item Equip ====================
 
+    /// <summary>Equip-first double-click step (Source-X CClient::Cmd_Use_Item):
+    /// an equippable item that is not currently equipped is armed/worn when
+    /// double-clicked — from the ground or a container — before its use-type
+    /// behavior runs. Routes through the real pickup + equip paths so reach,
+    /// ownership, @PickUp_*/@EquipTest/@Equip triggers and hand-swap rules all
+    /// apply; the current occupant of the layer is bounced to the backpack.
+    /// Returns true when the item ended up equipped.</summary>
+    public bool TryDClickEquip(Item item, Layer layer)
+    {
+        if (_character == null || item.IsEquipped)
+            return false;
+        if (layer <= Layer.None || layer >= Layer.Qty)
+            return false;
+
+        var prev = _character.GetEquippedItem(layer);
+
+        // Lift through the real pickup path (reach, housing, trigger gates).
+        HandleItemPickup(item.Uid.Value, 0);
+        if (!_character.TryGetTag("DRAGGING", out string? dragStr) ||
+            dragStr != item.Uid.Value.ToString())
+            return false;
+        _character.RemoveTag("DRAGGING");
+
+        // Bounce the layer's current occupant to the pack before equipping —
+        // Character.Equip alone would orphan it (Source-X ItemEquip bounce).
+        if (prev != null && _character.GetEquippedItem(layer) == prev)
+        {
+            _character.Unequip(layer);
+            var removePkt = new PacketDeleteObject(prev.Uid.Value);
+            _netState.Send(removePkt);
+            BroadcastNearby?.Invoke(_character.Position, UpdateRange, removePkt, _character.Uid.Value);
+            PlaceItemInPack(_character, prev);
+        }
+
+        HandleItemEquip(item.Uid.Value, (byte)layer, _character.Uid.Value);
+        return item.IsEquipped;
+    }
+
     public void HandleItemEquip(uint serial, byte layer, uint charSerial)
     {
         if (_character == null) return;

@@ -28,6 +28,25 @@
 
 
 
+[2026-06-11] - Double-click equips first; vendor buy list reverse order (Wave 116)
+----------------------------------------
+
+FIXED - Items / Vendors:
+  - Reference Cmd_Use_Item parity: an equippable item that is not
+    currently equipped is now armed/worn on double-click — from the
+    ground or a container — before its use-type behavior runs (weapons
+    and tools used to jump straight to the target prompt and never
+    reached the hand). Routes through the real pickup + equip paths so
+    reach, ownership, @PickUp_*/@EquipTest/@Equip triggers and
+    hand-swap rules all apply; the layer's previous occupant bounces
+    to the backpack. Spellbooks and ground light sources keep their
+    open/toggle behavior.
+  - The 0x74 vendor buy list is now sent in REVERSE of the 0x3C
+    container order: the client walks the stock container's item list
+    from the tail when decorating rows, so same-order packets paired
+    every row with another row's price and name (rows showed 0gp and
+    blank names on mismatch).
+
 [2026-06-11] - Pet GO order overrides following; dragon-family breath (Wave 115)
 ----------------------------------------
 

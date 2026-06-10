@@ -152,6 +152,7 @@ public sealed partial class GameClient : IClientContext
     void IClientContext.SendPickupFailed(byte reason) => SendPickupFailed(reason);
     bool IClientContext.CanSendStatusFor(Character ch) => CanSendStatusFor(ch);
     void IClientContext.PlaceItemInPack(Character target, Item item) => PlaceItemInPack(target, item);
+    bool IClientContext.TryDClickEquip(Item item, Layer layer) => Inventory.TryDClickEquip(item, layer);
     Item? IClientContext.GetTopContainer(Item item) => GetTopContainer(item);
     void IClientContext.RefreshBackpackContents() => RefreshBackpackContents();
     PacketWriter IClientContext.BuildWorldItemPacket(uint serial, ushort itemId, ushort amount,

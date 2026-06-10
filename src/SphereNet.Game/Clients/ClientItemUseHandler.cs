@@ -329,6 +329,21 @@ public sealed class ClientItemUseHandler
             return;
         }
 
+        // Source-X CClient::Cmd_Use_Item: an equippable item that is not
+        // currently equipped is armed/worn first on double-click — this is how
+        // a weapon or tool lying on the ground (or in the pack) reaches the
+        // hand — and the use-type behavior below then runs from the hand.
+        // Spellbooks and ground light sources keep their open/toggle behavior.
+        if (!item.IsEquipped &&
+            item.ItemType != ItemType.Spellbook &&
+            !((item.ItemType is ItemType.LightLit or ItemType.LightOut) && !item.ContainedIn.IsValid))
+        {
+            Layer wearLayer = ResolveWearableLayer(item);
+            if (wearLayer is not Layer.None and not Layer.Pack and not Layer.Hair and not Layer.FacialHair &&
+                (int)wearLayer < (int)Layer.Horse)
+                _client.TryDClickEquip(item, wearLayer);
+        }
+
         switch (item.ItemType)
         {
             // ---- containers / corpses ----
@@ -2030,7 +2045,17 @@ public sealed class ClientItemUseHandler
                 x, y, buyContainerSerial, vi.Hue, (byte)i));
         }
         _netState.Send(new PacketContainerContents(contentEntries, _netState.IsClientPost6017));
-        _netState.Send(new PacketVendorBuyList(buyContainerSerial, vendorItems));
+
+        // ClassicUO's BuyList(0x74) walks the stock container's item list in
+        // REVERSE: the 0x3C handler appends entries with PushToBack, and for
+        // any container graphic other than 0x2AF8 the 0x74 loop starts at the
+        // tail and steps Previous. The 0x74 entries must therefore be sent in
+        // reverse of the 0x3C order (RunUO does the same) — otherwise every
+        // row is decorated with another row's price and display name, and on
+        // a count mismatch rows fall back to 0gp with no name.
+        var buyListEntries = new List<VendorItem>(vendorItems);
+        buyListEntries.Reverse();
+        _netState.Send(new PacketVendorBuyList(buyContainerSerial, buyListEntries));
 
         // (4) Open the buy gump. ClassicUO's OpenContainer handler with
         //     gumpId=0x0030 walks vendor.FindItemByLayer(Layer.ShopBuyRestock

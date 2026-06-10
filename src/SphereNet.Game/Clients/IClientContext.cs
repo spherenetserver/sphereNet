@@ -126,6 +126,7 @@ internal interface IClientContext : ITextConsole
     void SendPickupFailed(byte reason);
     bool CanSendStatusFor(Character ch);
     void PlaceItemInPack(Character target, Item item);
+    bool TryDClickEquip(Item item, Layer layer);
     Item? GetTopContainer(Item item);
     void RefreshBackpackContents();
     PacketWriter BuildWorldItemPacket(uint serial, ushort itemId, ushort amount,

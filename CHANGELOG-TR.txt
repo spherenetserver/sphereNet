@@ -28,6 +28,25 @@
 
 
 
+[2026-06-11] - Çift tık önce kuşanır; vendor satış listesi ters sıra (Wave 116)
+----------------------------------------
+
+DÜZELTME - Item / Vendor:
+  - Referans Cmd_Use_Item parity'si: kuşanılı olmayan kuşanılabilir
+    item artık çift tıkta — yerden veya konteynerden — önce ele/üste
+    geliyor, kullanım davranışı ondan sonra çalışıyor (silah ve
+    aletler doğrudan hedef istemine atlıyor, ele hiç gelmiyordu).
+    Gerçek pickup + equip yollarından geçtiği için menzil, sahiplik,
+    @PickUp_*/@EquipTest/@Equip trigger'ları ve el-değiştirme
+    kuralları aynen uygulanıyor; katmandaki önceki item çantaya
+    düşüyor. Spellbook ve yerdeki ışık kaynakları açma/yakma
+    davranışını koruyor.
+  - 0x74 vendor satış listesi artık 0x3C konteyner sırasının TERSİNDEN
+    gönderiliyor: istemci satırları süslerken stok konteynerinin item
+    listesini sondan yürüyor; aynı sırada gönderim her satırı başka
+    satırın fiyat ve adıyla eşliyordu (uyumsuzlukta satırlar 0gp ve
+    isimsiz görünüyordu).
+
 [2026-06-11] - Pet GO emri follow'u geçersiz kılar; dragon ailesi nefesi (Wave 115)
 ----------------------------------------
 

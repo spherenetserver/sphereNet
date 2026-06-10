@@ -206,7 +206,13 @@ public sealed partial class GameClient
             var chosen = options[index - 1];
             foreach (var scriptKey in chosen.Script)
             {
-                TryExecuteScriptCommand(_character, scriptKey.Key, scriptKey.Arg, null);
+                // Console verbs first (SUMMON/MAKEITEM/SKILLMENU...), then the
+                // character's own property/verb surface (POLY, flags, ...).
+                if (TryExecuteScriptCommand(_character, scriptKey.Key, scriptKey.Arg, null))
+                    continue;
+                if (_character.TrySetProperty(scriptKey.Key, scriptKey.Arg))
+                    continue;
+                _character.TryExecuteCommand(scriptKey.Key, scriptKey.Arg, this);
             }
             return;
         }

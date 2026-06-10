@@ -1779,6 +1779,29 @@ public sealed class ClientCombatHandler
 
         var spellDef = _spellEngine.GetSpellDef(spell);
 
+        // Reference Cmd_Skill_Magery: Polymorph/Summon casts open their
+        // script selection menu when one exists (@SkillMenu with the menu
+        // name fires first and can veto). The menu entries do the work
+        // (POLY/SUMMON verbs); without a script menu the normal cast flow
+        // continues below.
+        if (targetUid == 0)
+        {
+            string? skillMenuName = spell switch
+            {
+                SpellType.Polymorph => "sm_polymorph",
+                SpellType.SummonCreature => "sm_summon",
+                _ => null,
+            };
+            if (skillMenuName != null)
+            {
+                if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillMenu,
+                        new TriggerArgs { CharSrc = _character, S1 = skillMenuName }) == TriggerResult.True)
+                    return;
+                if (_client.TryExecuteScriptCommand(_character, "SKILLMENU", skillMenuName, null))
+                    return;
+            }
+        }
+
         // Precast: power words + animation first, target cursor after timer.
         if (targetUid == 0 && spellDef != null && SpellEngine.IsPrecastEnabled(spellDef))
         {

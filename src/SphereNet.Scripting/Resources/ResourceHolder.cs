@@ -107,7 +107,7 @@ public sealed class ResourceHolder
         ResType.ItemDef or ResType.CharDef or ResType.SpellDef or ResType.SkillClass or ResType.SkillDef
         or ResType.Names or ResType.Speech or ResType.Template or ResType.RegionResource or ResType.RegionType
         or ResType.NewBie or ResType.Events or ResType.TypeDef or ResType.Function or ResType.Dialog
-        or ResType.MultiDef;
+        or ResType.MultiDef or ResType.SkillMenu;
 
     /// <summary>
     /// Load all sections from a script file.

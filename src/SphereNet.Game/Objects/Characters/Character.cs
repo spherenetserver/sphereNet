@@ -3757,7 +3757,8 @@ public partial class Character : ObjBase
             }
             case "POLY":
             {
-                if (ushort.TryParse(args.Trim(), out ushort polyBody))
+                ushort polyBody = ResolvePolyBody(args);
+                if (polyBody != 0)
                 {
                     if (_oBody == 0) _oBody = _bodyId;
                     _bodyId = polyBody;
@@ -4915,6 +4916,45 @@ public partial class Character : ObjBase
     // ScriptKey.TryParseNumber we don't apply the Source-X "leading
     // zero = hex" convention here because icon IDs are routinely
     // written with a zero pad (e.g. "0007") but meant as decimal.
+    /// <summary>Resolve a POLY argument to a body id: a numeric body, a
+    /// chardef defname, or a weighted "{ c_a 1 c_b 1 }" list.</summary>
+    private static ushort ResolvePolyBody(string args)
+    {
+        string arg = args.Trim();
+        if (arg.Length == 0)
+            return 0;
+
+        if (arg.StartsWith('{') && arg.EndsWith('}'))
+        {
+            var tokens = arg[1..^1].Split([' ', '\t'],
+                StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            var picks = new List<(string Name, int Weight)>();
+            for (int i = 0; i + 1 < tokens.Length; i += 2)
+            {
+                int w = SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(tokens[i + 1]);
+                picks.Add((tokens[i], Math.Max(1, w)));
+            }
+            if (picks.Count == 0)
+                return 0;
+            int total = 0;
+            foreach (var p in picks) total += p.Weight;
+            int roll = Random.Shared.Next(total);
+            foreach (var p in picks)
+            {
+                roll -= p.Weight;
+                if (roll < 0) { arg = p.Name; break; }
+            }
+        }
+
+        if (ushort.TryParse(arg, out ushort numeric))
+            return numeric;
+
+        int defIdx = Definitions.CharDefHelper.ResolveDefIndex(arg, Definitions.DefinitionLoader.StaticResources);
+        if (defIdx <= 0)
+            return 0;
+        return Definitions.CharDefHelper.ResolveBodyId(defIdx, Definitions.DefinitionLoader.StaticResources);
+    }
+
     private static ushort MapAnimToMounted(ushort action)
     {
         return action switch

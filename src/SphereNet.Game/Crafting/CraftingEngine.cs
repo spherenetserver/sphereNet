@@ -67,6 +67,10 @@ public sealed class CraftingEngine
     /// Check if a character has the resources and skills to craft an item.
     /// Maps to SkillResourceTest in Source-X.
     /// </summary>
+    /// <summary>Recipe lookup by result display id (SKILLMENU MAKEITEM).</summary>
+    public CraftRecipe? TryGetRecipe(ushort resultDispId) =>
+        _recipes.GetValueOrDefault(resultDispId);
+
     public bool CanCraft(Character crafter, CraftRecipe recipe)
     {
         // Check skill requirements

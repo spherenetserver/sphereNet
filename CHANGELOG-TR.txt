@@ -24,6 +24,37 @@
 
 
 
+
+[2026-06-10] - [SKILLMENU] seçim menüleri: yükleme, açma, seçme (Wave 108)
+----------------------------------------
+
+EKLEME - Script menüleri:
+  - [SKILLMENU] bölümleri (referans Cmd_Skill_Menu) artık yüklemede
+    saklanıyor ve çalışma zamanında erişilebilir: yeni SKILLMENU istemci
+    verb'ü adlandırılan bölümü 0x7C seçim menüsü olarak açar — ON
+    olmayan ilk satır başlık, her ON=<itemdef> [metin] girdisi itemdef
+    resmini gösterir ("<name>"/boş metin itemdef adına düşer),
+    TEST=SKILL değer satırları girdileri karakterin becerilerine göre
+    eler (legacy sabit-nokta değerler) ve kalan satırlar seçimde script
+    verb'leri olarak çalışır. Menü seçimi artık konsol verb'lerinden
+    karakterin kendi özellik/verb yüzeyine düşüyor; POLY gibi girdi
+    gövdeleri böylece çalışıyor.
+  - Yeni girdi verb'leri: SUMMON <chardef> (referans CV_SUMMON —
+    chardef'i geçici çağrılmış pet olarak çağırır, süre Summon büyüsünün
+    kürvünden, iki dakika geri dönüş) ve MAKEITEM <itemdef> (referans
+    SKILLMENU MAKEITEM — itemdef'in SKILLMAKE/RESOURCES'ından yüklenen
+    üretim tarifiyle üretir).
+  - POLY artık sayısal gövdelere ek olarak chardef defname'lerini ve
+    ağırlıklı "{ c_a 1 c_b 1 }" listelerini çözüyor (paketin
+    sm_polymorph girdileri iki biçimi de kullanıyor).
+  - Polymorph veya Summon Creature atınca paketteki
+    sm_polymorph/sm_summon menüsü (varsa) açılır (@SkillMenu önce menü
+    adıyla ateşlenir ve veto edebilir); script menüsü yoksa normal cast
+    akışı değişmeden sürer.
+  - Yeni testler (SkillMenuTests, 4): menü açma + TEST eleme, seçimin
+    POLY çalıştırması, bilinmeyen-menü düşüşü, ağırlıklı POLY listeleri.
+    Tam paket yeşil (778).
+
 [2026-06-10] - Craft paritesi: çalışma alanı yakınlığı, SKILLMAKE araçları, başarısızlık kaybı (Wave 107)
 ----------------------------------------
 

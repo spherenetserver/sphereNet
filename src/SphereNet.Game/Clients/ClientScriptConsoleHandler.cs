@@ -399,6 +399,28 @@ public sealed class ClientScriptConsoleHandler
             return true;
         }
 
+        if (upper == "SKILLMENU")
+        {
+            // Reference CV_SKILLMENU: open a [SKILLMENU name] selection menu.
+            return OpenSkillMenu(args.Trim());
+        }
+
+        if (upper == "SUMMON")
+        {
+            // Reference CV_SUMMON: summon the given chardef as a temporary
+            // summoned pet of the caster (used by sm_summon entries).
+            SummonFromMenu(args.Trim());
+            return true;
+        }
+
+        if (upper == "MAKEITEM")
+        {
+            // Reference SKILLMENU MAKEITEM: craft the itemdef through the
+            // crafting engine recipe loaded from its SKILLMAKE/RESOURCES.
+            MakeItemFromMenu(args.Trim());
+            return true;
+        }
+
         if (upper == "MENU")
         {
             string menuDefname = args.Trim();
@@ -923,6 +945,200 @@ public sealed class ClientScriptConsoleHandler
         }
 
         return false;
+    }
+
+    /// <summary>Open a [SKILLMENU name] section as a 0x7C selection menu.
+    /// Entries: first non-ON line is the title; each ON=&lt;itemdef&gt; [text]
+    /// shows the itemdef's art ("&lt;name&gt;" or empty text = itemdef name);
+    /// TEST=SKILL value gates the entry on the character's skills; remaining
+    /// lines run as script verbs on selection.</summary>
+    internal bool OpenSkillMenu(string menuName)
+    {
+        if (_character == null || string.IsNullOrWhiteSpace(menuName))
+            return false;
+        var resources = _commands?.Resources ?? DefinitionLoader.StaticResources;
+        if (resources == null)
+            return false;
+
+        var rid = resources.ResolveDefName(menuName.Trim());
+        if (!rid.IsValid || rid.Type != Core.Enums.ResType.SkillMenu)
+            return false;
+        var keys = resources.GetResource(rid)?.StoredKeys;
+        if (keys == null || keys.Count == 0)
+            return false;
+
+        string title = menuName;
+        bool titleSeen = false;
+        var options = new List<MenuOptionEntry>();
+        MenuOptionEntry? current = null;
+        bool skipping = false;
+
+        foreach (var k in keys)
+        {
+            bool isOn = k.Key.Equals("ON", StringComparison.OrdinalIgnoreCase);
+            if (!isOn && current == null && !skipping && !titleSeen)
+            {
+                title = string.IsNullOrEmpty(k.Arg) ? k.Key : $"{k.Key} {k.Arg}";
+                titleSeen = true;
+                continue;
+            }
+
+            if (isOn)
+            {
+                if (current != null && !skipping)
+                    options.Add(current);
+                skipping = false;
+
+                string onArg = k.Arg.Trim();
+                int sp = onArg.IndexOfAny([' ', '\t']);
+                string itemRef = sp < 0 ? onArg : onArg[..sp];
+                string text = sp < 0 ? "" : onArg[(sp + 1)..].Trim();
+
+                ushort modelId = 0;
+                string itemName = itemRef;
+                var irid = resources.ResolveDefName(itemRef);
+                if (irid.IsValid)
+                {
+                    var idef = DefinitionLoader.GetItemDef(irid.Index);
+                    modelId = idef?.DispIndex ?? (ushort)irid.Index;
+                    if (!string.IsNullOrEmpty(idef?.Name))
+                        itemName = idef.Name;
+                }
+                if (string.IsNullOrEmpty(text) || text.Equals("<name>", StringComparison.OrdinalIgnoreCase))
+                    text = itemName;
+
+                current = new MenuOptionEntry(modelId, 0, text, []);
+                continue;
+            }
+
+            if (current == null)
+                continue;
+
+            if (k.Key.Equals("TEST", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!PassesSkillMenuTest(k.Arg))
+                {
+                    current = null;
+                    skipping = true;
+                }
+                continue;
+            }
+            if (k.Key.Equals("TESTIF", StringComparison.OrdinalIgnoreCase))
+                continue; // expression tests not evaluated; entry stays visible
+
+            current.Script.Add(k);
+        }
+        if (current != null && !skipping)
+            options.Add(current);
+
+        if (options.Count == 0)
+        {
+            SysMessage("You are not able to use any of those options.");
+            return true;
+        }
+
+        _pendingMenuId = (ushort)(Math.Abs(menuName.GetHashCode()) & 0xFFFF);
+        _pendingMenuDefname = menuName;
+        _pendingMenuOptions = options;
+
+        var items = new List<MenuItemEntry>(options.Count);
+        foreach (var opt in options)
+            items.Add(new MenuItemEntry(opt.ModelId, opt.Hue, opt.Text));
+        _netState.Send(new PacketMenuDisplay(_character.Uid.Value, _pendingMenuId, title, items));
+        return true;
+    }
+
+    /// <summary>TEST= line of a skill menu entry: comma-separated
+    /// "SKILLNAME value" pairs (legacy fixed-point values, "75.0" = 750);
+    /// non-skill tokens are ignored.</summary>
+    private bool PassesSkillMenuTest(string arg)
+    {
+        if (_character == null || string.IsNullOrWhiteSpace(arg))
+            return true;
+        foreach (var part in arg.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            int sp = part.LastIndexOf(' ');
+            if (sp <= 0)
+                continue;
+            string name = part[..sp].Trim();
+            if (!Enum.TryParse<SkillType>(name, true, out var skill))
+                continue;
+            int required = ValueCurve.ParseSphereNumber(part[(sp + 1)..].Trim());
+            if (_character.GetSkill(skill) < required)
+                return false;
+        }
+        return true;
+    }
+
+    private void SummonFromMenu(string defname)
+    {
+        if (_character == null || string.IsNullOrWhiteSpace(defname))
+            return;
+        var resources = _commands?.Resources ?? DefinitionLoader.StaticResources;
+
+        var creature = _world.CreateCharacter();
+        creature.IsPlayer = false;
+        if (!Definitions.CharDefHelper.TryApplyDefName(creature, defname.Trim(), resources, refresh: false))
+        {
+            creature.Delete();
+            SysMessage("Nothing answers the summons.");
+            return;
+        }
+
+        creature.TryAssignOwnership(_character, _character, summoned: true, enforceFollowerCap: true);
+
+        // Duration follows the Summon spell's curve when defined (engine
+        // summon parity); fall back to two minutes.
+        int durationTenths = _client.Spells?.GetSpellDef(SpellType.SummonCreature)
+            ?.GetDuration(_character.GetSkill(SkillType.Magery)) ?? 0;
+        if (durationTenths <= 0)
+            durationTenths = 1200;
+        creature.SetTag("SUMMON_DURATION", durationTenths.ToString());
+        creature.SetTag("SUMMON_EXPIRE_TICK",
+            (Environment.TickCount64 + durationTenths * 100L).ToString());
+
+        var pos = new Point3D((short)(_character.X + 1), _character.Y, _character.Z, _character.MapIndex);
+        _world.PlaceCharacter(creature, pos);
+        _client.BroadcastCharacterAppear?.Invoke(creature);
+    }
+
+    private void MakeItemFromMenu(string defname)
+    {
+        if (_character == null || string.IsNullOrWhiteSpace(defname))
+            return;
+        var resources = _commands?.Resources ?? DefinitionLoader.StaticResources;
+        if (resources == null)
+            return;
+
+        var irid = resources.ResolveDefName(defname.Trim());
+        if (!irid.IsValid)
+            return;
+        var idef = DefinitionLoader.GetItemDef(irid.Index);
+        ushort dispId = idef?.DispIndex ?? (ushort)irid.Index;
+
+        var craftE = _client.CraftE;
+        var recipe = craftE?.TryGetRecipe(dispId);
+        if (craftE == null || recipe == null)
+        {
+            SysMessage("You don't know how to make that.");
+            return;
+        }
+        if (!craftE.CanCraft(_character, recipe))
+        {
+            SysMessage("You lack the skill, materials or work site for that.");
+            return;
+        }
+
+        var item = craftE.TryCraft(_character, recipe);
+        if (item != null)
+        {
+            _client.PlaceItemInPack(_character, item);
+            SysMessage($"You create {item.GetName()}.");
+        }
+        else
+        {
+            SysMessage("You fail to create the item.");
+        }
     }
 
     private bool HandleDialogCommand(string args, ObjBase? subject = null)

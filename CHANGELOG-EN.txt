@@ -24,6 +24,37 @@
 
 
 
+
+[2026-06-10] - [SKILLMENU] selection menus: load, open, select (Wave 108)
+----------------------------------------
+
+ADDED - Script menus:
+  - [SKILLMENU] sections (reference Cmd_Skill_Menu) are now retained at
+    load and reachable at runtime: the new SKILLMENU client verb opens
+    the named section as a 0x7C selection menu — first non-ON line is
+    the title, each ON=<itemdef> [text] entry shows the itemdef art
+    ("<name>"/empty text falls back to the itemdef name), TEST=SKILL
+    value lines gate entries on the character's skills (legacy
+    fixed-point values), and the remaining lines run as script verbs on
+    selection. Menu selection now falls through from console verbs to
+    the character's own property/verb surface, so entry bodies like
+    POLY work.
+  - New entry verbs: SUMMON <chardef> (reference CV_SUMMON — summons the
+    chardef as a temporary summoned pet, duration from the Summon
+    spell's curve, two-minute fallback) and MAKEITEM <itemdef>
+    (reference SKILLMENU MAKEITEM — crafts through the crafting-engine
+    recipe loaded from the itemdef's SKILLMAKE/RESOURCES).
+  - POLY now resolves chardef defnames and weighted "{ c_a 1 c_b 1 }"
+    lists in addition to numeric bodies (the script pack's sm_polymorph
+    entries use both forms).
+  - Casting Polymorph or Summon Creature opens the pack's
+    sm_polymorph/sm_summon menu when one exists (@SkillMenu fires first
+    with the menu name and can veto); without a script menu the normal
+    cast flow continues unchanged.
+  - New tests (SkillMenuTests, 4): menu open + TEST gating, selection
+    running POLY, unknown-menu fallthrough, weighted POLY lists. Full
+    suite green (778).
+
 [2026-06-10] - Craft parity: work-site proximity, SKILLMAKE tools, fail loss (Wave 107)
 ----------------------------------------
 

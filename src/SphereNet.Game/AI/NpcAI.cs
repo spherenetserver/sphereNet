@@ -402,6 +402,11 @@ public sealed class NpcAI
     /// body-aware animation broadcast.</summary>
     public Action<Character>? OnNpcFidget { get; set; }
 
+    /// <summary>Open an unlocked closed door for an NPC (state flip +
+    /// observer broadcast — wired by the server). Returns true when the
+    /// door ended up open so the blocked step can be re-validated.</summary>
+    public Func<Character, Item, bool>? OnNpcOpenDoor { get; set; }
+
     public Action<Character, string>? OnNpcSay { get; set; }
     public Action<Character>? OnGuardLightningStrike { get; set; }
     public Action<Character>? OnNpcTeleport { get; set; }
@@ -2465,6 +2470,16 @@ public sealed class NpcAI
 
         bool directBlocked = !CanNpcMoveTo(npc, directPos);
 
+        // Reference parity (NPC door handling in the idle look-at path): a
+        // blocked adjacent step may just be a closed door — try to open it
+        // (50% per attempt, like the reference) and re-check the tile.
+        if (directBlocked && OnNpcOpenDoor != null && _rand.Next(2) == 0)
+        {
+            var door = FindClosedDoorAt(directPos);
+            if (door != null && OnNpcOpenDoor(npc, door))
+                directBlocked = !CanNpcMoveTo(npc, directPos);
+        }
+
         if (!directBlocked)
         {
             npc.Direction = dir;
@@ -2548,6 +2563,22 @@ public sealed class NpcAI
         npc.Direction = run ? stepDir | Direction.Running : stepDir;
         _world.MoveCharacter(npc, nextStep);
         _pathIndex[uid] = idx + 1;
+    }
+
+    /// <summary>Find a closed, unlocked door item on the given tile
+    /// (within a reasonable Z window). Internal for tests.</summary>
+    internal Item? FindClosedDoorAt(Point3D pos)
+    {
+        foreach (var item in _world.GetItemsInRange(pos, 0))
+        {
+            if (item.IsDeleted) continue;
+            if (Math.Abs(item.Z - pos.Z) > 15) continue;
+            if (!DoorHelper.IsDoorItem(item, _world.MapData)) continue;
+            if (item.ItemType is ItemType.DoorLocked or ItemType.PortLocked) continue;
+            if (item.TryGetTag("DOOR_OPEN", out string? openStr) && openStr == "1") continue;
+            return item;
+        }
+        return null;
     }
 
     private Character? ResolvePetTargetCharacter(Character npc, string tagName)

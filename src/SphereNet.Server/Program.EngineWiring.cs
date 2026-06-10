@@ -1362,6 +1362,17 @@ public static partial class Program
             {
                 BroadcastFacingUpdate(npc);
             };
+            _npcAI.OnNpcOpenDoor = (npc, door) =>
+            {
+                if (!DoorHelper.TryOpenDoorState(door))
+                    return false;
+                BroadcastNearby(door.Position, 18,
+                    new PacketSound(0x00EA, door.X, door.Y, door.Z), 0);
+                BroadcastNearby(door.Position, 18,
+                    new PacketWorldItem(door.Uid.Value, door.DispIdFull, door.Amount,
+                        door.X, door.Y, door.Z, door.Hue), 0);
+                return true;
+            };
             _npcAI.OnNpcFidget = npc =>
             {
                 var fidget = Random.Shared.Next(2) == 0

@@ -16,6 +16,30 @@
 
 
 
+
+[2026-06-10] - NPCs open unlocked doors on blocked steps (Wave 100)
+----------------------------------------
+
+ADDED - NPC movement:
+  - Closes the door gap documented in Wave 99: NPC walk validation
+    treats a closed door as a hard block, so NPCs could not chase or
+    wander through doorways. When a direct step is blocked, the AI now
+    checks the blocked tile for a closed, unlocked door item (locked
+    doors and portcullises stay barriers when locked) and opens it with
+    the reference 50%-per-attempt gate before re-validating the step
+    (reference parity: the idle look-at path uses the door, then walks
+    through).
+  - The state flip lives in a new world-level DoorHelper.TryOpenDoorState
+    (same art-offset and DOOR_OPEN tag transition as the player
+    double-click path, portcullis offset 2, DISPID-override aware, no
+    network side effects); the server wiring broadcasts the open sound
+    (0xEA) and the refreshed world item to nearby observers via a new
+    OnNpcOpenDoor hook. Doors opened by NPCs close again through the
+    normal double-click toggle.
+  - New tests (NpcDoorOpeningTests, 5) cover the state flip (closed,
+    portcullis, locked, already-open) and the blocked-tile door lookup.
+    Full suite green (737).
+
 [2026-06-10] - NPC polish: idle fidget animation + pet follow leash (Wave 99)
 ----------------------------------------
 

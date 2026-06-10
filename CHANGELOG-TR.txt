@@ -16,6 +16,29 @@
 
 
 
+
+[2026-06-10] - NPC'ler engellenen adımlarda kilitsiz kapıları açıyor (Wave 100)
+----------------------------------------
+
+EKLEME - NPC hareketi:
+  - Wave 99'da dokümante edilen kapı eksiği kapatıldı: NPC yürüme
+    doğrulaması kapalı kapıyı kesin engel sayıyordu; NPC'ler kapı
+    eşiklerinden kovalayamıyor/geçemiyordu. Doğrudan adım engellendiğinde
+    AI artık engellenen tile'da kapalı, kilitsiz bir kapı öğesi arıyor
+    (kilitli kapılar ve kilitli demir parmaklıklar engel kalır) ve
+    referanstaki deneme-başına %50 kapısıyla açıp adımı yeniden
+    doğruluyor (referans paritesi: boşta bakış yolu kapıyı kullanır,
+    sonra içinden yürür).
+  - Durum geçişi yeni dünya-düzeyi DoorHelper.TryOpenDoorState içinde
+    (oyuncu çift-tık yolundaki aynı art-offset ve DOOR_OPEN tag geçişi,
+    demir parmaklık offset 2, DISPID-override duyarlı, ağ yan etkisi
+    yok); sunucu bağlaması yeni OnNpcOpenDoor kancası üzerinden açılış
+    sesini (0xEA) ve yenilenen dünya öğesini yakın gözlemcilere yayınlar.
+    NPC'nin açtığı kapı normal çift-tık geçişiyle yeniden kapanır.
+  - Yeni testler (NpcDoorOpeningTests, 5) durum geçişini (kapalı,
+    demir parmaklık, kilitli, zaten-açık) ve engellenen-tile kapı
+    aramasını kapsıyor. Tam paket yeşil (737).
+
 [2026-06-10] - NPC cilası: boşta fidget animasyonu + pet takip tasması (Wave 99)
 ----------------------------------------
 

@@ -45,6 +45,33 @@ public static class DoorHelper
         return (def.TFlags & (ulong)TileFlag.Door) != 0;
     }
 
+    /// <summary>
+    /// Flip a closed, unlocked door item to its open art and mark it with the
+    /// DOOR_OPEN tag (same state transition as the player double-click path,
+    /// without any network side effects — the caller broadcasts). Returns
+    /// true when the door is open after the call (already-open is success),
+    /// false for locked doors.
+    /// </summary>
+    public static bool TryOpenDoorState(Item door)
+    {
+        if (door.ItemType is ItemType.DoorLocked or ItemType.PortLocked)
+            return false;
+
+        bool isOpen = door.TryGetTag("DOOR_OPEN", out string? openStr) && openStr == "1";
+        if (isOpen)
+            return true;
+
+        bool isPortcullis = door.ItemType is ItemType.Portculis;
+        int offset = isPortcullis ? 2 : 1;
+        ushort newDisplayId = (ushort)(door.DispIdFull + offset);
+        if (door.DispIdOverride != 0)
+            door.TrySetProperty("DISPID", $"0{newDisplayId:X}");
+        else
+            door.BaseId = newDisplayId;
+        door.SetTag("DOOR_OPEN", "1");
+        return true;
+    }
+
     public static bool FindNearestStaticDoor(
         MapDataManager? mapData,
         byte mapId,

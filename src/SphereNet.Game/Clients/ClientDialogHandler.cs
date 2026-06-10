@@ -43,9 +43,9 @@ namespace SphereNet.Game.Clients;
 /// </summary>
 public sealed class ClientDialogHandler
 {
-    private readonly GameClient _client;
+    private readonly IClientContext _client;
 
-    public ClientDialogHandler(GameClient client)
+    internal ClientDialogHandler(IClientContext client)
     {
         _client = client;
         RegisterNativeDialogFallbacks();

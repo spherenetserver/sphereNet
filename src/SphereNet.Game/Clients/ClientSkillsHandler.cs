@@ -44,9 +44,9 @@ namespace SphereNet.Game.Clients;
 /// </summary>
 public sealed class ClientSkillsHandler
 {
-    private readonly GameClient _client;
+    private readonly IClientContext _client;
 
-    public ClientSkillsHandler(GameClient client)
+    internal ClientSkillsHandler(IClientContext client)
     {
         _client = client;
     }

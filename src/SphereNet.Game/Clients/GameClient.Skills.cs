@@ -45,11 +45,11 @@ public sealed partial class GameClient
     /// </summary>
     internal sealed class InfoSkillSink : Skills.Information.IActiveSkillSink
     {
-        private readonly GameClient _client;
-        public InfoSkillSink(GameClient client, Character self) { _client = client; Self = self; }
+        private readonly IClientContext _client;
+        public InfoSkillSink(IClientContext client, Character self) { _client = client; Self = self; }
         public Character Self { get; }
         public Random Random => System.Random.Shared;
-        public Game.World.GameWorld World => _client._world;
+        public Game.World.GameWorld World => _client.World;
 
         public void SysMessage(string text) => _client.SysMessage(text);
         public void ObjectMessage(Objects.ObjBase target, string text) => _client.ObjectMessage(target, text);
@@ -90,7 +90,7 @@ public sealed partial class GameClient
                 return;
             }
             // Drop from container.
-            var holder = _client._world.FindObject(item.ContainedIn);
+            var holder = _client.World.FindObject(item.ContainedIn);
             if (holder is Item parent) parent.RemoveItem(item);
             item.Delete();
         }
@@ -100,7 +100,7 @@ public sealed partial class GameClient
             var pack = Self.Backpack;
             if (pack == null)
             {
-                _client._world.PlaceItemWithDecay(item, Self.Position);
+                _client.World.PlaceItemWithDecay(item, Self.Position);
                 return;
             }
 
@@ -108,11 +108,11 @@ public sealed partial class GameClient
             if (actual != item)
                 item.Delete();
 
-            _client._netState.Send(new PacketContainerItem(
+            _client.NetState.Send(new PacketContainerItem(
                 actual.Uid.Value, actual.DispIdFull, 0,
                 actual.Amount, actual.X, actual.Y,
                 pack.Uid.Value, actual.Hue,
-                _client._netState.IsClientPost6017));
+                _client.NetState.IsClientPost6017));
         }
 
         public void ResurrectTarget(Objects.Characters.Character target)

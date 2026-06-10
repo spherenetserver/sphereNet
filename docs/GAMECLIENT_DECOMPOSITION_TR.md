@@ -12,12 +12,13 @@ test koşusu) ilerler.
 ## Hedef mimari
 
 ```
-GameClient (orkestratör: NetState + Character + yaşam döngüsü)
+GameClient (orkestratör: NetState + Character + yaşam döngüsü + ITextConsole)
+ ├─ IClientContext         handler'ların gördüğü dar yüzey (faz 4 ✅)
  ├─ ClientTargetState      hedef-cursor durum makinesi (faz 1 ✅)
  ├─ ClientGumpRegistry     açık gump/dialog kayıtları (faz 1 ✅)
- ├─ ClientMovementThrottle walk-token / hareket kuyruğu (faz 1 ✅)
+ ├─ ClientMovementThrottle walk-token / hareket kuyruğu (faz 1 ✅, Combat handler'da)
  ├─ ClientViewCache        known-set'ler + last-known durumlar (faz 2 ✅)
- └─ handler sınıfları      (faz 3 — sürüyor)
+ └─ handler sınıfları      (faz 3 ✅)
      ├─ ClientViewUpdater       view-delta build/apply + known-char bildirimleri ✅
      ├─ ClientInventoryHandler  single click, pickup/drop/equip, profil/status ✅
      ├─ ClientItemUseHandler    dclick dispatch, item kullanımı, pet komutları, vendor listeleri ✅
@@ -74,11 +75,10 @@ yüzeyi GameClient üzerinde kalır (script'ler konsol olarak GameClient
 referansı alır). Login/karakter-seçim akışı NetState yaşam döngüsüne bağlı —
 en son ele alınır.
 
-## Kalan iş planı (oturum devri — 2026-06-10 itibarıyla)
+## Durum: PLAN TAMAMLANDI (2026-06-10, Wave 88-94)
 
-Tamamlanan: faz 1-2 (durum bileşenleri), faz 3a-d (ViewUpdate, Inventory,
-ItemUse, WorldFeatures). Test tabanı: 723 yeşil. Güncel partial boyutları ve
-dönüşüm sırası:
+Faz 1-4'ün tamamı bitti. Test tabanı: 723 yeşil + RuntimePerformancePressure
+6/6. Dönüşüm geçmişi ve dilim notları:
 
 | Sıra | Partial | Satır | Hedef sınıf | Notlar / riskler |
 |------|---------|-------|-------------|------------------|
@@ -91,8 +91,13 @@ dönüşüm sırası:
 | — | PacketHelpers | ~1470 | (dönüştürülmez) | Paket primitifleri: GameClient'ın internal gönderim yüzeyi olarak kalır; handler'ların ortak bağımlılığıdır. İstenirse ileride `ClientPacketSender` bileşeni. |
 | — | Login / Handlers / Chat / Housing | ~693/460/117/172 | (şimdilik kalır) | Login NetState yaşam döngüsüne bağlı (en son). Handlers (kitap/prompt) + Chat + Housing küçük ve zaten dar yüzeyli — 3g sonrası değerlendirilir. |
 
-**Faz 4 (3g sonrası):** Handler'lardaki shim blokları birleştirilip dar bir
-`ClientContext` arayüzü türetilir; GameClient orkestratöre iner.
+**Faz 4 ✅ (Wave 94):** Shim bloklarının birleşiminden `IClientContext`
+arayüzü türetildi (`IClientContext.cs`, ITextConsole'u genişletir). GameClient
+`GameClient.Context.cs` içinde explicit implementasyonla uygular (internal
+üyeler internal kalır); tüm handler'lar + `InfoSkillSink` artık GameClient
+yerine `IClientContext` tutar — yeni handler kodu yalnızca bu yüzeye
+erişebilir, sınır derleyici tarafından zorlanır. Handler kurucuları internal
+(internal parametre tipi public ctor'da olamaz).
 
 **Reçete (her dönüşümde):**
 1. Boyut + public yüzey + çapraz-partial INBOUND çağrı taraması (private'lara).

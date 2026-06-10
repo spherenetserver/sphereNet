@@ -32,9 +32,9 @@ public sealed class ClientViewUpdater
 {
     private const int MaxItemsPerViewTile = 80;
 
-    private readonly GameClient _client;
+    private readonly IClientContext _client;
 
-    public ClientViewUpdater(GameClient client)
+    internal ClientViewUpdater(IClientContext client)
     {
         _client = client;
     }

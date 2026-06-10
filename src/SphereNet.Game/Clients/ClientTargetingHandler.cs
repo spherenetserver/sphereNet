@@ -42,9 +42,9 @@ namespace SphereNet.Game.Clients;
 /// </summary>
 public sealed class ClientTargetingHandler
 {
-    private readonly GameClient _client;
+    private readonly IClientContext _client;
 
-    public ClientTargetingHandler(GameClient client)
+    internal ClientTargetingHandler(IClientContext client)
     {
         _client = client;
     }

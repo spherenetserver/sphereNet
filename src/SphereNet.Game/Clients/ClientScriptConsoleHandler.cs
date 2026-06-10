@@ -45,9 +45,9 @@ namespace SphereNet.Game.Clients;
 /// </summary>
 public sealed class ClientScriptConsoleHandler
 {
-    private readonly GameClient _client;
+    private readonly IClientContext _client;
 
-    public ClientScriptConsoleHandler(GameClient client)
+    internal ClientScriptConsoleHandler(IClientContext client)
     {
         _client = client;
     }
@@ -68,9 +68,9 @@ public sealed class ClientScriptConsoleHandler
     private ClientGumpRegistry Gumps => _client.Gumps;
     private ClientDialogHandler Dialogs => _client.Dialogs;
     private int _dialogDepth;
-    private ushort _pendingMenuId { get => _client._pendingMenuId; set => _client._pendingMenuId = value; }
-    private string _pendingMenuDefname { get => _client._pendingMenuDefname; set => _client._pendingMenuDefname = value; }
-    private List<MenuOptionEntry>? _pendingMenuOptions { get => _client._pendingMenuOptions; set => _client._pendingMenuOptions = value; }
+    private ushort _pendingMenuId { get => _client.PendingMenuId; set => _client.PendingMenuId = value; }
+    private string _pendingMenuDefname { get => _client.PendingMenuDefname; set => _client.PendingMenuDefname = value; }
+    private List<MenuOptionEntry>? _pendingMenuOptions { get => _client.PendingMenuOptions; set => _client.PendingMenuOptions = value; }
     private string? _pendingDialogCloseFunction
     {
         get => _client.PendingDialogCloseFunction;

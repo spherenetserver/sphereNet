@@ -42,9 +42,9 @@ namespace SphereNet.Game.Clients;
 /// </summary>
 public sealed class ClientWorldFeaturesHandler
 {
-    private readonly GameClient _client;
+    private readonly IClientContext _client;
 
-    public ClientWorldFeaturesHandler(GameClient client)
+    internal ClientWorldFeaturesHandler(IClientContext client)
     {
         _client = client;
     }

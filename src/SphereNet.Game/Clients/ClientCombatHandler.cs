@@ -44,9 +44,9 @@ namespace SphereNet.Game.Clients;
 /// </summary>
 public sealed class ClientCombatHandler
 {
-    private readonly GameClient _client;
+    private readonly IClientContext _client;
 
-    public ClientCombatHandler(GameClient client)
+    internal ClientCombatHandler(IClientContext client)
     {
         _client = client;
     }
@@ -88,10 +88,10 @@ public sealed class ClientCombatHandler
     private static int SpeedHackBurstWindow => GameClient.SpeedHackBurstWindow;
     private static int SpeedHackHistorySize => GameClient.SpeedHackHistorySize;
     private static int SpeedHackCooldownMs => GameClient.SpeedHackCooldownMs;
-    private short _lastHits { get => _client._lastHits; set => _client._lastHits = value; }
-    private short _lastMana { get => _client._lastMana; set => _client._lastMana = value; }
-    private short _lastStam { get => _client._lastStam; set => _client._lastStam = value; }
-    private long _lastVitalsPacketTick { get => _client._lastVitalsPacketTick; set => _client._lastVitalsPacketTick = value; }
+    private short _lastHits { get => _client.LastHits; set => _client.LastHits = value; }
+    private short _lastMana { get => _client.LastMana; set => _client.LastMana = value; }
+    private short _lastStam { get => _client.LastStam; set => _client.LastStam = value; }
+    private long _lastVitalsPacketTick { get => _client.LastVitalsPacketTick; set => _client.LastVitalsPacketTick = value; }
     private void SysMessage(string text) => _client.SysMessage(text);
     private void Send(SphereNet.Network.Packets.PacketWriter packet) => _client.Send(packet);
     private void NpcSpeech(Character npc, string text) => _client.NpcSpeech(npc, text);

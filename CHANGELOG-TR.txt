@@ -10,6 +10,33 @@
 
 
 
+
+[2026-06-10] - GameClient ayrıştırma faz 4: IClientContext arayüzü (Wave 94)
+----------------------------------------
+
+İÇSEL - GameClient ayrıştırma (plan tamamlandı):
+  - Dokuz handler sınıfının context-shim bloklarının birleşiminden dar bir
+    internal IClientContext arayüzü türetildi (~125 üye: çekirdek durum,
+    motor erişimcileri, ayrıştırma bileşenleri, script servisleri,
+    paylaşılan değişken durum köprüleri, sunucu-bağlı callback'ler,
+    paket/gump yardımcıları, oyun köprüleri ve hedefleme yardımcıları).
+    Handler'lar bağlamlarını script konsol kimliği olarak ilettiği için
+    (TriggerArgs.ScriptConsole, TryRunFunction, TryExecuteCommand) arayüz
+    ITextConsole'u genişletir. GameClient bunu yeni GameClient.Context
+    partial'ında explicit implementasyonla uygular — salt yönlendirme,
+    davranış yok — böylece internal üyeler internal kalır. Dokuz handler
+    (ViewUpdater, Inventory, ItemUse, WorldFeatures, Targeting, Dialog,
+    Skills, Combat, ScriptConsole) ve InfoSkillSink yapışkan tipi artık
+    somut GameClient yerine IClientContext tutar; handler kodunun yalnızca
+    bildirilen yüzeye erişebilmesi derleyici tarafından zorlanır. Handler
+    kurucuları internal oldu (public kurucu internal parametre tipi
+    alamaz). Alan-düzeyi shim'ler (vitals son-gönderim, bekleyen-menü
+    durumu) mevcut GameClient alanlarına dayanan arayüz property'leri
+    üzerinden geçer. Tam paket yeşil (723) + RuntimePerformancePressure
+    6/6; mojibake taraması temiz. Bu, ayrıştırma planını (faz 1-4) kapatır;
+    PacketHelpers/Login/Handlers/Chat/Housing partial'ları tasarım gereği
+    GameClient'ta kalır.
+
 [2026-06-10] - GameClient ayrıştırma faz 3g: script-console handler sınıfı (Wave 93)
 ----------------------------------------
 

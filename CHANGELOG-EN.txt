@@ -10,6 +10,33 @@
 
 
 
+
+[2026-06-10] - GameClient decomposition phase 4: IClientContext interface (Wave 94)
+----------------------------------------
+
+INTERNAL - GameClient decomposition (plan complete):
+  - The union of the nine handler classes' context-shim blocks was derived
+    into a narrow internal IClientContext interface (~125 members: core
+    state, engine accessors, decomposition components, script services,
+    shared mutable state bridges, server-wired callbacks, packet/gump
+    helpers, gameplay bridges and targeting helpers). It extends
+    ITextConsole because handlers pass their context onward as the script
+    console identity (TriggerArgs.ScriptConsole, TryRunFunction,
+    TryExecuteCommand). GameClient implements it explicitly in the new
+    GameClient.Context partial - pure forwarding, no behaviour - which
+    keeps the internal members internal. All nine handlers
+    (ViewUpdater, Inventory, ItemUse, WorldFeatures, Targeting, Dialog,
+    Skills, Combat, ScriptConsole) and the InfoSkillSink glue type now
+    hold IClientContext instead of the concrete GameClient, so the
+    compiler enforces that handler code can only reach the declared
+    surface; handler constructors became internal (a public constructor
+    cannot take an internal parameter type). The field-level shims
+    (vitals last-sent, pending-menu state) route through interface
+    properties backed by the existing GameClient fields. Full suite green
+    (723) + RuntimePerformancePressure 6/6; mojibake scan clean. This
+    closes the decomposition plan (phases 1-4); the PacketHelpers/Login/
+    Handlers/Chat/Housing partials remain on GameClient by design.
+
 [2026-06-10] - GameClient decomposition phase 3g: script-console handler class (Wave 93)
 ----------------------------------------
 

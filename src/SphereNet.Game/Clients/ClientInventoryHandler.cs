@@ -41,9 +41,9 @@ namespace SphereNet.Game.Clients;
 /// </summary>
 public sealed class ClientInventoryHandler
 {
-    private readonly GameClient _client;
+    private readonly IClientContext _client;
 
-    public ClientInventoryHandler(GameClient client)
+    internal ClientInventoryHandler(IClientContext client)
     {
         _client = client;
     }

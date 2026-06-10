@@ -19,6 +19,28 @@
 
 
 
+
+[2026-06-10] - Skill success curve parity + stat-adjusted skill checks (Wave 103)
+----------------------------------------
+
+FIXED - Skills:
+  - The skill success roll used a tanh-based S-curve with variance 100;
+    the reference uses a piecewise halving bell curve with
+    SKILL_VARIANCE=150 (chance halves per 15.0 skill points of distance
+    from the difficulty midpoint). The tanh shape was much steeper —
+    e.g. 15.0 points above the difficulty succeeded ~95% of the time
+    instead of the reference 75%. Ported the reference
+    Calc_GetSCurve/Calc_GetBellCurve pair exactly and fixed the variance
+    constant (the old comment also mis-cited the reference value).
+  - Skill checks now use the stat-adjusted skill value (reference
+    Skill_GetAdjusted): raw skill + BONUS_STATS percent of the
+    BONUS_STR/INT/DEX-weighted stats from the skill def. Previously the
+    BONUS_* properties never influenced any check. Scope note: combat
+    hit/damage formulas still read the raw skill (their parity is a
+    separate combat-engine subject).
+  - New tests (SkillSuccessCurveTests, 7) pin the curve points and the
+    adjusted-skill formula. Full suite green (762).
+
 [2026-06-10] - Skill gain/atrophy parity: total cap no longer freezes characters (Wave 102)
 ----------------------------------------
 

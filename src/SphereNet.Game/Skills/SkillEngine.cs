@@ -41,8 +41,9 @@ public static class SkillEngine
     /// <summary>Callback fired when a stat gain occurs. Args: (Character, statIndex: 0=STR 1=DEX 2=INT, newValue).</summary>
     public static Action<Character, int, int>? OnStatGain { get; set; }
 
-    /// <summary>Skill variance for S-curve calculation (Source-X: SKILL_VARIANCE = 100).</summary>
-    private const int SkillVariance = 100;
+    /// <summary>Skill variance for S-curve calculation (reference SKILL_VARIANCE = 150,
+    /// i.e. 15.0 skill points per bell-curve halving period).</summary>
+    private const int SkillVariance = 150;
 
     /// <summary>Active skill duration from [SKILL] DELAY (a tenths-of-a-second
     /// curve across skill 0-100.0 → ms; reference Skill_GetTimeout).
@@ -76,7 +77,7 @@ public static class SkillEngine
             return false;
 
         int iDiff = difficulty * 10; // scale 0-100 to 0-1000
-        int skillVal = ch.GetSkill(skill);
+        int skillVal = GetAdjustedSkill(ch, skill);
 
         int successChance;
         if (useBellCurve)
@@ -238,15 +239,51 @@ public static class SkillEngine
     }
 
     /// <summary>
-    /// S-curve calculation for bell-curve success checks.
-    /// Maps to Calc_GetSCurve in Source-X.
+    /// Stat-adjusted skill value (reference Skill_GetAdjusted): the raw skill
+    /// plus BONUS_STATS percent of the BONUS_STR/INT/DEX-weighted stats.
     /// </summary>
-    private static int CalcSCurve(int value, int variance)
+    public static int GetAdjustedSkill(Character ch, SkillType skill)
     {
-        if (variance <= 0) variance = 1;
-        double x = (double)value / variance;
-        double sCurve = 500.0 + 500.0 * Math.Tanh(x);
-        return (int)sCurve;
+        int baseVal = ch.GetSkill(skill);
+        var def = DefinitionLoader.GetSkillDef((int)skill);
+        if (def == null || def.BonusStats <= 0)
+            return baseVal;
+
+        int str = Math.Max(0, (int)ch.Str);
+        int intl = Math.Max(0, (int)ch.Int);
+        int dex = Math.Max(0, (int)ch.Dex);
+        int pureBonus = def.BonusStr * str + def.BonusInt * intl + def.BonusDex * dex;
+        return baseVal + def.BonusStats * pureBonus / 10000;
+    }
+
+    /// <summary>
+    /// S-curve for bell-curve success checks. Exact port of the reference
+    /// Calc_GetSCurve/Calc_GetBellCurve pair: chance halves for each
+    /// variance period of distance from the midpoint, mirrored above it.
+    /// </summary>
+    internal static int CalcSCurve(int value, int variance)
+    {
+        int chance = CalcBellCurve(value, variance);
+        if (value > 0)
+            return 1000 - chance;
+        return chance;
+    }
+
+    private static int CalcBellCurve(int value, int variance)
+    {
+        if (variance <= 0)
+            return 500;
+        if (value < 0)
+            value = -value;
+
+        int chance = 500;
+        while (value > variance && chance != 0)
+        {
+            value -= variance;
+            chance /= 2;
+        }
+
+        return chance - (chance / 2) * value / variance;
     }
 
     /// <summary>Decay one DOWN-locked skill by 0.1 (reference

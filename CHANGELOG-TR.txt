@@ -19,6 +19,27 @@
 
 
 
+
+[2026-06-10] - Skill başarı eğrisi paritesi + stat-düzeltmeli skill kontrolleri (Wave 103)
+----------------------------------------
+
+DÜZELTME - Skill'ler:
+  - Skill başarı zarı, varyans 100 ile tanh tabanlı bir S-eğrisi
+    kullanıyordu; referans SKILL_VARIANCE=150 ile parçalı yarılanan çan
+    eğrisi kullanır (şans, zorluk orta noktasından her 15.0 skill puanı
+    uzaklıkta yarılanır). Tanh biçimi çok daha dikti — ör. zorluğun 15.0
+    puan üstü referansta %75 iken bizde ~%95 başarıyordu. Referans
+    Calc_GetSCurve/Calc_GetBellCurve çifti birebir portlandı ve varyans
+    sabiti düzeltildi (eski yorum referans değerini de yanlış aktarıyordu).
+  - Skill kontrolleri artık stat-düzeltmeli skill değerini kullanıyor
+    (referans Skill_GetAdjusted): ham skill + skill tanımındaki
+    BONUS_STR/INT/DEX ağırlıklı statların BONUS_STATS yüzdesi. Önceden
+    BONUS_* özellikleri hiçbir kontrole etki etmiyordu. Kapsam notu:
+    savaş vuruş/hasar formülleri hâlâ ham skill okur (oranların paritesi
+    ayrı bir combat-engine konusu).
+  - Yeni testler (SkillSuccessCurveTests, 7) eğri noktalarını ve
+    düzeltilmiş-skill formülünü sabitliyor. Tam paket yeşil (762).
+
 [2026-06-10] - Skill kazanç/erime paritesi: toplam cap artık karakteri dondurmuyor (Wave 102)
 ----------------------------------------
 

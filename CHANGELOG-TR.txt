@@ -23,6 +23,29 @@
 
 
 
+
+[2026-06-10] - Craft paritesi: çalışma alanı yakınlığı, SKILLMAKE araçları, başarısızlık kaybı (Wave 107)
+----------------------------------------
+
+DÜZELTME - Üretim:
+  - Çalışma alanı yakınlığı (referans Skill_Blacksmith / Skill_Cooking):
+    demircilik tarifleri artık 2 tile içinde ocak (forge), aşçılık 3 tile
+    içinde ısı kaynağı (ateş, ocak veya kamp ateşi) istiyor. Üretim
+    önceden her yerde çalışıyordu; gereksinim, yakında alan yokken üretim
+    gump'ındaki girdileri de soluklaştırıyor. (Yalnız dinamik ocak/ateş
+    öğeleri — harita statikleri tip eşlemesine girmez.)
+  - SKILLMAKE t_*/i_* girdileri parse edilip sessizce atılıyordu; artık
+    bulunma şartı (referans SkillResourceTest): t_* TYPEDEF tablosu
+    üzerinden taşınması/kuşanılması gereken öğe tipine, i_* bulunması
+    gereken belirli öğeye çözümlenir. İkisi de tüketilmez.
+  - Başarısızlık kaybı artık referans ResourceConsumePart semantiğiyle
+    eşleşiyor: tüm gerekli kaynaklara tek bir 0-50%% zarı uygulanır. Eski
+    davranış kaynak başına zar atıyordu (%50 olasılıkla tam yarısını,
+    tek-birimlik kaynakta bile en az 1 kayıpla).
+  - Yeni testler (CraftParityTests, 4): ocak/ısı yakınlık sınırları,
+    tüketilmeyen araç şartı ve başarısızlık-kaybı tavanı. Tam paket
+    yeşil (774).
+
 [2026-06-10] - Büyü cast paritesi: spellbook, scroll/wand maliyetleri, cast-time kürvü, resist (Wave 106)
 ----------------------------------------
 

@@ -23,6 +23,30 @@
 
 
 
+
+[2026-06-10] - Craft parity: work-site proximity, SKILLMAKE tools, fail loss (Wave 107)
+----------------------------------------
+
+FIXED - Crafting:
+  - Work-site proximity (reference Skill_Blacksmith / Skill_Cooking):
+    smithing recipes now require a forge within 2 tiles and cooking a
+    heat source within 3 (fire, forge or campfire). Crafting previously
+    worked anywhere; the requirement also greys out the crafting gump
+    entries when no site is near. (Dynamic forge/fire items only — map
+    statics are not type-matched.)
+  - SKILLMAKE t_*/i_* entries were parsed and silently discarded; they
+    are now presence requirements (reference SkillResourceTest): t_*
+    resolves through the TYPEDEF table to an item type that must be
+    carried or wielded, i_* to a specific item that must be present.
+    Neither is consumed.
+  - Fail loss now matches the reference ResourceConsumePart semantics:
+    one 0-50% roll applied uniformly to every required resource. The
+    old behaviour rolled per resource (50% chance to lose exactly half,
+    always at least 1 even for single-unit resources).
+  - New tests (CraftParityTests, 4): forge/heat proximity bounds, tool
+    presence without consumption, and the fail-loss ceiling. Full suite
+    green (774).
+
 [2026-06-10] - Spell cast parity: spellbook, scroll/wand costs, cast-time curve, resist (Wave 106)
 ----------------------------------------
 

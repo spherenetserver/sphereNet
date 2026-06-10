@@ -562,7 +562,15 @@ public class GameSystemTests
         var world = CreateWorld();
         var engine = new CraftingEngine(world);
         var ch = world.CreateCharacter();
-        ch.SetSkill(SkillType.Blacksmithing, 1000);
+        // Past the success curve's certainty point so the craft roll is
+        // deterministic for the test.
+        ch.SetSkill(SkillType.Blacksmithing, 2000);
+        world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
+
+        // Smithing requires a forge within 2 tiles (reference parity).
+        var forge = world.CreateItem();
+        forge.ItemType = ItemType.Forge;
+        world.PlaceItem(forge, new Point3D(101, 100, 0, 0));
 
         var pack = world.CreateItem();
         pack.ItemType = ItemType.Container;

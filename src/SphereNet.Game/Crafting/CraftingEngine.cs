@@ -29,6 +29,12 @@ public sealed class CraftRecipe
     public int Difficulty { get; init; }
     public List<CraftResource> Resources { get; } = [];
     public List<(SkillType Skill, int MinValue)> SkillRequirements { get; } = [];
+    /// <summary>Tool types from SKILLMAKE t_* entries — the crafter must
+    /// carry (or wield) an item of this type; it is not consumed.</summary>
+    public List<ItemType> RequiredToolTypes { get; } = [];
+    /// <summary>Specific items from SKILLMAKE i_* entries — must be present,
+    /// not consumed.</summary>
+    public List<ushort> RequiredItemIds { get; } = [];
 }
 
 /// <summary>
@@ -69,6 +75,24 @@ public sealed class CraftingEngine
             if (crafter.GetSkill(skill) < minVal)
                 return false;
         }
+
+        // SKILLMAKE tool/required-item presence (not consumed).
+        foreach (var toolType in recipe.RequiredToolTypes)
+        {
+            if (!HasItemOfType(crafter, toolType))
+                return false;
+        }
+        foreach (var reqId in recipe.RequiredItemIds)
+        {
+            if (CountResource(crafter, reqId) < 1)
+                return false;
+        }
+
+        // Work-site proximity (reference Skill_Blacksmith / Skill_Cooking):
+        // smithing needs a forge within 2 tiles, cooking a heat source
+        // within 3 (fire, forge or campfire).
+        if (!HasRequiredWorkSite(crafter, recipe.PrimarySkill))
+            return false;
 
         // Check resource availability
         foreach (var res in recipe.Resources)
@@ -152,16 +176,15 @@ public sealed class CraftingEngine
         }
         else
         {
-            // Partial resource loss on failure: each resource has a 50% chance to
-            // be (partly) lost. Previously this consumed exactly half every time
-            // (deterministic), and lost nothing at all for single-unit resources
-            // (res.Amount/2 == 0).
+            // Partial resource loss on failure (reference Skill_MakeItem
+            // SKTRIG_FAIL → ResourceConsumePart): one 0-50%% roll applied
+            // uniformly to every required resource.
+            int lossPercent = Random.Shared.Next(50);
             foreach (var res in recipe.Resources)
             {
-                if (Random.Shared.Next(2) != 0)
-                    continue; // this resource survived the failure
-                int lostAmount = Math.Max(1, res.Amount / 2);
-                ConsumeResource(crafter, res.ItemId, lostAmount);
+                int lostAmount = res.Amount * lossPercent / 100;
+                if (lostAmount > 0)
+                    ConsumeResource(crafter, res.ItemId, lostAmount);
             }
 
             return null;
@@ -189,6 +212,58 @@ public sealed class CraftingEngine
 
     /// <summary>Find the first backpack item matching an item ID (used to read
     /// the resource hue before it is consumed).</summary>
+    /// <summary>The crafter carries (or wields) an item of the given type.</summary>
+    private static bool HasItemOfType(Character ch, ItemType type)
+    {
+        var oneHand = ch.GetEquippedItem(Layer.OneHanded);
+        if (oneHand?.ItemType == type) return true;
+        var twoHand = ch.GetEquippedItem(Layer.TwoHanded);
+        if (twoHand?.ItemType == type) return true;
+        return ch.Backpack != null && HasItemOfTypeIn(ch.Backpack, type, depth: 3);
+    }
+
+    private static bool HasItemOfTypeIn(Item container, ItemType type, int depth)
+    {
+        foreach (var item in container.Contents)
+        {
+            if (item.IsDeleted) continue;
+            if (item.ItemType == type) return true;
+            if (depth > 0 && item.ContentCount > 0 && HasItemOfTypeIn(item, type, depth - 1))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>Work-site proximity (reference Skill_Blacksmith /
+    /// Skill_Cooking): smithing needs a forge within 2 tiles, cooking a
+    /// heat source within 3. Other craft skills have no site requirement.</summary>
+    private bool HasRequiredWorkSite(Character crafter, SkillType skill)
+    {
+        switch (skill)
+        {
+            case SkillType.Blacksmithing:
+                return HasNearbyType(crafter, 2, ItemType.Forge);
+            case SkillType.Cooking:
+                return HasNearbyType(crafter, 3, ItemType.Fire, ItemType.Forge, ItemType.Campfire);
+            default:
+                return true;
+        }
+    }
+
+    private bool HasNearbyType(Character crafter, int range, params ItemType[] types)
+    {
+        foreach (var item in _world.GetItemsInRange(crafter.Position, range))
+        {
+            if (item.IsDeleted) continue;
+            foreach (var t in types)
+            {
+                if (item.ItemType == t)
+                    return true;
+            }
+        }
+        return false;
+    }
+
     private static Item? FindResourceItem(Character ch, ushort itemId)
     {
         var pack = ch.Backpack;
@@ -288,12 +363,33 @@ public sealed class CraftingEngine
         SkillType primarySkill = SkillType.None;
         int difficulty = 0;
         var skillReqs = new List<(SkillType Skill, int MinValue)>();
+        var pendingToolTypes = new List<ItemType>();
+        var pendingItemIds = new List<ushort>();
 
         foreach (var part in skillParts)
         {
-            if (part.StartsWith("t_", StringComparison.OrdinalIgnoreCase) ||
-                part.StartsWith("i_", StringComparison.OrdinalIgnoreCase))
+            // t_* = a tool TYPE that must be carried; i_* = a specific item
+            // that must be present. Neither is consumed (reference
+            // SkillResourceTest semantics).
+            if (part.StartsWith("t_", StringComparison.OrdinalIgnoreCase))
+            {
+                string toolName = part.Split(' ', 2)[0].Trim();
+                var trid = resources.ResolveDefName(toolName);
+                if (trid.IsValid && trid.Type == Core.Enums.ResType.TypeDef)
+                    pendingToolTypes.Add((ItemType)trid.Index);
                 continue;
+            }
+            if (part.StartsWith("i_", StringComparison.OrdinalIgnoreCase))
+            {
+                string itemName = part.Split(' ', 2)[0].Trim();
+                var irid = resources.ResolveDefName(itemName);
+                if (irid.IsValid)
+                {
+                    var reqDef = DefinitionLoader.GetItemDef(irid.Index);
+                    pendingItemIds.Add(reqDef?.DispIndex ?? (ushort)irid.Index);
+                }
+                continue;
+            }
 
             int spaceIdx = part.LastIndexOf(' ');
             if (spaceIdx < 0) continue;
@@ -337,6 +433,8 @@ public sealed class CraftingEngine
 
         foreach (var sr in skillReqs)
             recipe.SkillRequirements.Add(sr);
+        recipe.RequiredToolTypes.AddRange(pendingToolTypes);
+        recipe.RequiredItemIds.AddRange(pendingItemIds);
 
         if (!string.IsNullOrWhiteSpace(def.ResourcesRaw))
         {

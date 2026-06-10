@@ -67,5 +67,9 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnNpcSeeNewPlayer = null;
         SphereNet.Game.Housing.House.OnRedeed = null;
         SphereNet.Game.AI.NpcAI.PetFollowMaxDistance = 36;
+        SphereNet.Game.Skills.SkillEngine.StatAdvCurves =
+            [SphereNet.Scripting.Definitions.ValueCurve.Empty,
+             SphereNet.Scripting.Definitions.ValueCurve.Empty,
+             SphereNet.Scripting.Definitions.ValueCurve.Empty];
     }
 }

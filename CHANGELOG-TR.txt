@@ -20,6 +20,39 @@
 
 
 
+
+[2026-06-10] - Stat kazancı paritesi ([ADVANCE] kürvleri, STAT_* hedefleri) + 0x3A cap (Wave 104)
+----------------------------------------
+
+DÜZELTME - Skill'ler:
+  - Stat kazancı basitleştirilmiş bir icattı: kullanım başına düz %5 şans
+    (veya o şans olarak yanlış okunan BONUS_STATS) ile ağırlıklı stat
+    seçimi ve geriye dönük sabit skill→stat tablosu. Yerine referans
+    Skill_Experience stat bölümü portlandı: statlar yalnız kullanılan
+    skill'in kilidi Up iken eğitilir; her stat, skill tanımındaki
+    STAT_STR/DEX/INT tavanına doğru eğitilir; şans script [ADVANCE]
+    ilerleme kürvlerinden gelir (puan-başına-kullanım, ADV_RATE gibi ters
+    oran) ve BONUS_* ağırlıkları ile BONUS_STATS yüzdesiyle ölçeklenir;
+    polymorph yalnız INT eğitimine izin verir; skill kullanımı başına tek
+    stat kazancı. mortechUO paketinde bulunan ama daha önce genel sphere
+    bölümü olarak atlanan [ADVANCE] artık parse edilip skill motoruna
+    aktarılıyor; test paketinin statik sıfırlaması kürvleri kapsıyor.
+  - Toplam stat cap'i için referans Stat_Decrease portlandı: cap altında
+    kazanca doğrudan izin verilir; üstünde, skill'in en az değer verdiği
+    DOWN-kilitli stat referans S-eğrisi kayıp şansıyla 1 eriyebilir
+    (taban 10) ve yer açar.
+  - 0x3A skill listesindeki cap alanı 100.0'a sabitlenmişti; artık
+    skill-başına görüntü cap'ini (sınıf cap'leri/override'lar) bildirir.
+  - Yeni testler (StatGainParityTests, 5). Tam paket yeşil (767).
+
+NOTLAR - Bilinen eksik (sonraki dalga):
+  - Kaynak yükleyici sayısal [SKILL n] bölüm kimliklerini HEX okuyor;
+    referans (ve gerçek script paketi, ondalık [SKILL 0]..[SKILL 57])
+    legacy sayı kuralını kullanır (baştaki sıfır yoksa ondalık) — indeks
+    >= 10 olan skill tanımları şu an yanlış skill'e oturuyor. Aynı kimlik
+    parse'ı spell tanımlarını da beslediği için kendi dalgasında
+    düzeltilecek.
+
 [2026-06-10] - Skill başarı eğrisi paritesi + stat-düzeltmeli skill kontrolleri (Wave 103)
 ----------------------------------------
 

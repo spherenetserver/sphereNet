@@ -156,6 +156,13 @@ public sealed class ResourceHolder
                 continue;
             }
 
+            if (section.Name.Equals("ADVANCE", StringComparison.OrdinalIgnoreCase))
+            {
+                LoadStatAdvance(section);
+                count++;
+                continue;
+            }
+
             ResType resType = SectionToResType(section.Name);
 
             if (resType == ResType.DefName)
@@ -809,6 +816,29 @@ public sealed class ResourceHolder
             _starts.Add(new StartEntry(name, point));
         }
         _logger.LogInformation("Loaded {Count} start locations", _starts.Count);
+    }
+
+    /// <summary>Stat advance-rate curves from [ADVANCE] (reference
+    /// RES_ADVANCE): STR/DEX/INT, each a "uses per +1" curve across the
+    /// stat's progress toward the skill's STAT_* target. Index order
+    /// follows the engine convention 0=Str, 1=Dex, 2=Int.</summary>
+    public Definitions.ValueCurve[] StatAdvance { get; } =
+        [Definitions.ValueCurve.Empty, Definitions.ValueCurve.Empty, Definitions.ValueCurve.Empty];
+
+    private void LoadStatAdvance(ScriptSection section)
+    {
+        foreach (var key in section.Keys)
+        {
+            int idx = key.Key.Trim().ToUpperInvariant() switch
+            {
+                "STR" => 0,
+                "DEX" => 1,
+                "INT" => 2,
+                _ => -1,
+            };
+            if (idx >= 0)
+                StatAdvance[idx] = Definitions.ValueCurve.Parse(key.Arg);
+        }
     }
 
     private void LoadStartGold(ScriptSection section)

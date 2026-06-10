@@ -95,7 +95,8 @@ public sealed partial class GameClient
         {
             ushort val = _character.GetSkill((SkillType)i);
             byte lockState = _character.GetSkillLock((SkillType)i);
-            skills.Add(((ushort)i, val, val, lockState, 1000)); // cap=100.0 (1000 in tenths)
+            ushort cap = (ushort)Skills.SkillEngine.GetSkillDisplayCap(_character, (SkillType)i);
+            skills.Add(((ushort)i, val, val, lockState, cap));
         }
         _netState.Send(new PacketSkillList(skills.ToArray()));
     }

@@ -2,6 +2,7 @@ using SphereNet.Core.Enums;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Scripting.Definitions;
+using SphereNet.Core.Types;
 
 namespace SphereNet.Game.Skills;
 
@@ -190,6 +191,16 @@ public static class SkillEngine
     /// <summary>Configurable total skill cap, defaults to 7000 (700.0). Set from sphere.ini MAXBASESKILL.</summary>
     public static int SkillSumMaxOverride { get; set; } = 7000;
 
+    /// <summary>Stat advance-rate curves from the script [ADVANCE] section
+    /// (reference g_Cfg.m_StatAdv): index 0=Str, 1=Dex, 2=Int. Empty curves
+    /// disable stat gain, matching the reference.</summary>
+    public static ValueCurve[] StatAdvCurves { get; set; } =
+        [ValueCurve.Empty, ValueCurve.Empty, ValueCurve.Empty];
+
+    /// <summary>Per-skill cap for the 0x3A skill-list cap field (class caps
+    /// and overrides, without the lock clamping used by gain logic).</summary>
+    public static int GetSkillDisplayCap(Character ch, SkillType skill) => ResolveSkillCap(ch, skill);
+
     /// <summary>Per-skill max override table (from SkillClassDef or config).</summary>
     public static Dictionary<SkillType, int> SkillMaxOverrides { get; } = [];
 
@@ -315,50 +326,110 @@ public static class SkillEngine
 
     private static void TryStatGain(Character ch, SkillType skill)
     {
+        // Reference: stats train only while the used skill's lock is Up.
+        if (ch.GetSkillLock(skill) != 0)
+            return;
+
         var def = DefinitionLoader.GetSkillDef((int)skill);
-
-        int statSum = ch.Str + ch.Dex + ch.Int;
         int statSumMax = ResolveStatSumCap(ch);
-        if (statSum >= statSumMax) return;
 
-        // Chance: SkillDef BonusStats or default 5%
-        int bonusChance = def?.BonusStats > 0 ? def.BonusStats : 5;
-        if (_rand.Next(100) >= bonusChance) return;
-
-        // Use SkillDef bonus weights if available, else fallback to primary stat mapping
-        if (def != null && (def.BonusStr > 0 || def.BonusDex > 0 || def.BonusInt > 0))
+        for (int statIdx = 0; statIdx < 3; statIdx++)
         {
-            int total = def.BonusStr + def.BonusDex + def.BonusInt;
-            if (total > 0)
+            // Polymorphed characters can only train INT (reference parity).
+            if (ch.IsStatFlag(StatFlag.Polymorph) && statIdx != 2)
+                continue;
+            if (GetStatLock(ch, statIdx) != 0)
+                continue;
+
+            int statVal = statIdx switch { 0 => ch.Str, 1 => ch.Dex, _ => ch.Int };
+            if (statVal <= 0)
+                continue;
+            if (ch.Str + ch.Dex + ch.Int > statSumMax)
+                break;
+            int statMax = statIdx switch { 0 => ResolveStrCap(ch), 1 => ResolveDexCap(ch), _ => ResolveIntCap(ch) };
+            if (statVal >= statMax)
+                continue;
+
+            // STAT_* on the skill def is the ceiling this skill trains the
+            // stat toward; no target (or no def) = this skill trains nothing.
+            int statTarg = def == null
+                ? 0
+                : statIdx switch { 0 => def.StatStr, 1 => def.StatDex, _ => def.StatInt };
+            if (statVal >= statTarg)
+                continue;
+
+            int difficulty = statVal * 1000 / statTarg;
+            var adv = StatAdvCurves.Length > statIdx ? StatAdvCurves[statIdx] : ValueCurve.Empty;
+            int chance = adv.IsEmpty ? 0 : adv.GetChancePercent(difficulty);
+            if (def != null && def.BonusStats > 0)
             {
-                int roll = _rand.Next(total);
-                if (roll < def.BonusStr)
+                int bonusWeight = statIdx switch { 0 => def.BonusStr, 1 => def.BonusDex, _ => def.BonusInt };
+                chance = chance * bonusWeight * def.BonusStats / 10000;
+            }
+            if (chance <= 0)
+                continue;
+
+            if (TryStatDecrease(ch, statIdx, def))
+            {
+                if (chance > _rand.Next(1000))
                 {
-                    if (GetStatLock(ch, 0) == 0 && ch.Str < ResolveStrCap(ch)) { ch.Str++; ch.MaxHits++; OnStatGain?.Invoke(ch, 0, ch.Str); }
-                }
-                else if (roll < def.BonusStr + def.BonusDex)
-                {
-                    if (GetStatLock(ch, 1) == 0 && ch.Dex < ResolveDexCap(ch)) { ch.Dex++; ch.MaxStam++; OnStatGain?.Invoke(ch, 1, ch.Dex); }
-                }
-                else
-                {
-                    if (GetStatLock(ch, 2) == 0 && ch.Int < ResolveIntCap(ch)) { ch.Int++; ch.MaxMana++; OnStatGain?.Invoke(ch, 2, ch.Int); }
+                    switch (statIdx)
+                    {
+                        case 0: ch.Str++; ch.MaxHits++; OnStatGain?.Invoke(ch, 0, ch.Str); break;
+                        case 1: ch.Dex++; ch.MaxStam++; OnStatGain?.Invoke(ch, 1, ch.Dex); break;
+                        case 2: ch.Int++; ch.MaxMana++; OnStatGain?.Invoke(ch, 2, ch.Int); break;
+                    }
+                    break; // one stat gain per skill use (reference)
                 }
             }
         }
-        else
+    }
+
+    /// <summary>Port of the reference Stat_Decrease: returns true when there
+    /// is room for a +1 stat under the total cap; over the cap it may erode
+    /// a DOWN-locked stat (the one this skill values least) to make room.</summary>
+    private static bool TryStatDecrease(Character ch, int gainStatIdx, SkillDef? def)
+    {
+        int statSum = ch.Str + ch.Dex + ch.Int + 1;
+        int cap = ResolveStatSumCap(ch);
+        if (statSum <= cap)
+            return true;
+
+        int sumMax = cap + cap / 4;
+        int chanceForLoss = CalcSCurve(sumMax - statSum, Math.Max(1, (sumMax - cap) / 4));
+        if (chanceForLoss <= _rand.Next(1000))
+            return false;
+
+        int minStat = -1;
+        int minVal = gainStatIdx switch { 0 => ResolveStrCap(ch), 1 => ResolveDexCap(ch), _ => ResolveIntCap(ch) };
+        for (int i = 0; i < 3; i++)
         {
-            // Fallback: use hardcoded stat target
-            int statIdx = def != null ? GetSkillStatTargetFromDef(def) : GetSkillStatTarget(skill);
-            if (statIdx < 0) return;
-            if (GetStatLock(ch, statIdx) != 0) return;
-            switch (statIdx)
+            if (i == gainStatIdx || GetStatLock(ch, i) != 1)
+                continue;
+            int val = def != null
+                ? i switch { 0 => def.BonusStr, 1 => def.BonusDex, _ => def.BonusInt }
+                : i switch { 0 => ch.Str, 1 => ch.Dex, _ => ch.Int };
+            if (minVal > val)
             {
-                case 0: if (ch.Str < ResolveStrCap(ch)) { ch.Str++; ch.MaxHits++; OnStatGain?.Invoke(ch, 0, ch.Str); } break;
-                case 1: if (ch.Dex < ResolveDexCap(ch)) { ch.Dex++; ch.MaxStam++; OnStatGain?.Invoke(ch, 1, ch.Dex); } break;
-                case 2: if (ch.Int < ResolveIntCap(ch)) { ch.Int++; ch.MaxMana++; OnStatGain?.Invoke(ch, 2, ch.Int); } break;
+                minStat = i;
+                minVal = val;
             }
         }
+
+        if (minStat < 0)
+            return false;
+
+        int statVal = minStat switch { 0 => ch.Str, 1 => ch.Dex, _ => ch.Int };
+        if (statVal <= 10)
+            return false;
+
+        switch (minStat)
+        {
+            case 0: ch.Str--; ch.MaxHits = (short)Math.Max(1, ch.MaxHits - 1); OnStatGain?.Invoke(ch, 0, ch.Str); break;
+            case 1: ch.Dex--; ch.MaxStam = (short)Math.Max(1, ch.MaxStam - 1); OnStatGain?.Invoke(ch, 1, ch.Dex); break;
+            case 2: ch.Int--; ch.MaxMana = (short)Math.Max(1, ch.MaxMana - 1); OnStatGain?.Invoke(ch, 2, ch.Int); break;
+        }
+        return true;
     }
 
     private static int ResolveSkillCap(Character ch, SkillType skill)
@@ -395,36 +466,4 @@ public static class SkillEngine
         return cls?.IntMax > 0 ? cls.IntMax : 125;
     }
 
-    /// <summary>
-    /// Get stat index from SkillDef STAT_STR/STAT_DEX/STAT_INT values.
-    /// Returns the stat with the highest weight, or -1 if none set.
-    /// </summary>
-    private static int GetSkillStatTargetFromDef(SkillDef def)
-    {
-        if (def.StatStr <= 0 && def.StatDex <= 0 && def.StatInt <= 0)
-            return -1;
-        if (def.StatStr >= def.StatDex && def.StatStr >= def.StatInt) return 0;
-        if (def.StatDex >= def.StatStr && def.StatDex >= def.StatInt) return 1;
-        return 2;
-    }
-
-    /// <summary>
-    /// Get which stat index (0=STR, 1=DEX, 2=INT) a skill primarily trains.
-    /// Hardcoded fallback mapping for standard skills.
-    /// </summary>
-    private static int GetSkillStatTarget(SkillType skill) => skill switch
-    {
-        SkillType.Swordsmanship or SkillType.MaceFighting or SkillType.Wrestling or
-        SkillType.Mining or SkillType.Lumberjacking or SkillType.Blacksmithing => 0, // STR
-
-        SkillType.Fencing or SkillType.Archery or SkillType.Throwing or
-        SkillType.Hiding or SkillType.Stealth or SkillType.Lockpicking or
-        SkillType.Snooping or SkillType.Stealing or SkillType.Musicianship => 1, // DEX
-
-        SkillType.Magery or SkillType.EvalInt or SkillType.MagicResistance or
-        SkillType.Meditation or SkillType.SpiritSpeak or SkillType.Inscription or
-        SkillType.Necromancy or SkillType.Mysticism or SkillType.Spellweaving => 2, // INT
-
-        _ => -1,
-    };
 }

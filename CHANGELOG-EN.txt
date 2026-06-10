@@ -20,6 +20,38 @@
 
 
 
+
+[2026-06-10] - Stat-gain parity ([ADVANCE] curves, STAT_* targets) + 0x3A caps (Wave 104)
+----------------------------------------
+
+FIXED - Skills:
+  - Stat gain was a simplified invention: a flat 5%-per-use chance (or
+    BONUS_STATS misread as that chance) picking a weighted stat, with a
+    hardcoded skill→stat table as fallback. Ported the reference
+    Skill_Experience stat section instead: stats train only while the
+    used skill's lock is Up; each stat trains toward the skill def's
+    STAT_STR/DEX/INT ceiling; the chance comes from the script [ADVANCE]
+    advance-rate curves (uses-per-point, inverse like ADV_RATE) scaled by
+    BONUS_* weights and BONUS_STATS percent; polymorphed characters can
+    only train INT; one stat gain per skill use. The [ADVANCE] section —
+    present in the mortechUO pack but previously skipped as a generic
+    sphere section — is now parsed and handed to the skill engine, and
+    the test-suite static reset covers the curves.
+  - Ported the reference Stat_Decrease for the total stat cap: under the
+    cap a gain is simply allowed; over it a DOWN-locked stat (the one the
+    skill values least) may erode by 1 (floor 10) to make room, with the
+    reference S-curve loss chance.
+  - The 0x3A skill-list cap field was hardcoded to 100.0; it now reports
+    the per-skill display cap (class caps/overrides).
+  - New tests (StatGainParityTests, 5). Full suite green (767).
+
+NOTES - Known gap (next wave):
+  - The resource loader parses numeric [SKILL n] section ids as HEX while
+    the reference (and the real script pack, [SKILL 0]..[SKILL 57]
+    decimal) uses the legacy number rule (decimal unless leading zero) —
+    skill defs with index >= 10 currently land on the wrong skill. Fixed
+    in its own wave because the same id parse feeds spell defs.
+
 [2026-06-10] - Skill success curve parity + stat-adjusted skill checks (Wave 103)
 ----------------------------------------
 

@@ -153,6 +153,8 @@ public sealed class DefinitionLoader
         }
 
         ResolveRegionResourceReapDefNames();
+
+        Skills.SkillEngine.StatAdvCurves = _resources.StatAdvance;
     }
 
     private void ResetCounters()

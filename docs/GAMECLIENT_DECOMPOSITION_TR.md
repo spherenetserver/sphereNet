@@ -24,7 +24,8 @@ GameClient (orkestratör: NetState + Character + yaşam döngüsü)
      ├─ ClientWorldFeaturesHandler  crafting/guild/house gump, trade, 0xBF dispatch, party, context menu ✅
      ├─ ClientTargetingHandler  target-response yönlendirici, gump gönderim/yanıt ✅
      ├─ ClientDialogHandler     script DIALOG render, named-dialog dispatch, help menü, INPDLG ✅
-     └─ ClientSkillsHandler     info/aktif skill akışları, tooltip, obje mesajı ✅
+     ├─ ClientSkillsHandler     info/aktif skill akışları, tooltip, obje mesajı ✅
+     └─ ClientCombatHandler     hareket doğrulama, konuşma, swing/ölüm/diriliş, büyü, tick pompası ✅
 ```
 
 ## Fazlar
@@ -84,7 +85,7 @@ dönüşüm sırası:
 | 3e ✅ | Targeting | ~627 | ClientTargetingHandler | SendGump/SetPendingTarget GameClient'ta delegasyon. Dialog close-fn durumu (`_pendingDialogCloseFunction`/`_pendingDialogArgs`) GameClient'ta internal property köprüsüyle — alanlar 3e Dialogs'ta handler'a taşınacak. |
 | 3e ✅ | Dialogs | ~1629 | ClientDialogHandler | `_dialogSubjectUid`/`_nativeDialogFallbacks`/`_pendingInputDlg`/`_nextInputDlgContext` alanları + `OpenNamedDialog`/`RegisterNativeDialogFallbacks` GameClient.cs'ten handler'a taşındı. ScriptConsole `Dialogs.DialogSubjectUid`, Handlers `Dialogs.PendingInputDlg` üzerinden erişir. `TryFindMenuSection`/`IsPlainDefToken` internal köprü. |
 | 3f ✅ | Skills | ~489 | ClientSkillsHandler | GameClient property adı `SkillUse` (SkillH motor erişimcisi ve `Skills` namespace'iyle çakışmamak için). `InfoSkillSink` GameClient'ta nested kaldı — ItemUse handler ve motorlar `GameClient.InfoSkillSink` olarak kuruyor. |
-| 3f | Combat | ~1790 | ClientCombatHandler | SICAK YOL: HandleMove/movement batch + HandleSpeech + HandleAttack + cast. Throttle bileşeni hazır. Shim'lerin property-erişim maliyeti ölçülmeli (muhtemelen ihmal edilebilir ama hareket yolunda perf testi koş: RuntimePerformancePressureTests). |
+| 3f ✅ | Combat | ~1790 | ClientCombatHandler | Statik hareket/speed-hack config yüzeyi + OnSpeedHackDetected event'i GameClient'ta kaldı (ResetEngineStatics disiplini); handler statik shim'lerle okur, event `RaiseSpeedHackDetected` köprüsüyle ateşlenir. Throttle bileşeni + hareket durumu handler'a taşındı; vitals alanları (`_lastHits` vb.) Login da yazdığı için GameClient'ta internal kaldı. RuntimePerformancePressureTests yeşil (6/6). |
 | 3g | ScriptConsole | ~2024 | ClientScriptConsoleHandler | EN BÜYÜK. ITextConsole implementasyonu GameClient'ta KALIR (script'ler konsol olarak GameClient alır); handler script-verb yüzeyini barındırır, SysMessage/GetName GameClient'ta. `TryExecuteScriptCommand`/`TryGetScriptVariable` public delegasyon. |
 | — | PacketHelpers | ~1470 | (dönüştürülmez) | Paket primitifleri: GameClient'ın internal gönderim yüzeyi olarak kalır; handler'ların ortak bağımlılığıdır. İstenirse ileride `ClientPacketSender` bileşeni. |
 | — | Login / Handlers / Chat / Housing | ~693/460/117/172 | (şimdilik kalır) | Login NetState yaşam döngüsüne bağlı (en son). Handlers (kitap/prompt) + Chat + Housing küçük ve zaten dar yüzeyli — 3g sonrası değerlendirilir. |

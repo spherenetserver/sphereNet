@@ -123,7 +123,7 @@ public sealed partial class GameClient
         _netState.Send(buf);
     }
 
-    private static (uint Serial, ushort ItemId, byte Layer, ushort Hue)[] BuildEquipmentList(Character ch)
+    internal static (uint Serial, ushort ItemId, byte Layer, ushort Hue)[] BuildEquipmentList(Character ch)
     {
         var list = new List<(uint, ushort, byte, ushort)>();
         for (int i = 0; i <= (int)Layer.Horse; i++)
@@ -214,7 +214,7 @@ public sealed partial class GameClient
         SendSelfRedraw();
     }
 
-    private bool TryHandleCommandSpeech(string text)
+    internal bool TryHandleCommandSpeech(string text)
     {
         if (_character == null || _commands == null)
             return false;
@@ -282,7 +282,7 @@ public sealed partial class GameClient
         }
     }
 
-    private void SetWarMode(bool warMode, bool syncClients, bool preserveTarget)
+    internal void SetWarMode(bool warMode, bool syncClients, bool preserveTarget)
     {
         if (_character == null) return;
 
@@ -387,7 +387,7 @@ public sealed partial class GameClient
     /// action; blades use the slash; blunt/maces use the overhead swing;
     /// unarmed uses the wrestling punch. Exact values come from
     /// ServUO MobileAnimation / Source-X AnimationRange tables.</summary>
-    private static ushort GetSwingAction(Character attacker, Item? weapon)
+    internal static ushort GetSwingAction(Character attacker, Item? weapon)
     {
         bool mounted = attacker.IsMounted;
 
@@ -435,7 +435,7 @@ public sealed partial class GameClient
         return GetSwingAction(npc, weapon);
     }
 
-    private static ushort GetSwingSound(Item? weapon)
+    internal static ushort GetSwingSound(Item? weapon)
     {
         if (weapon == null)
             return 0x023A;

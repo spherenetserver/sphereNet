@@ -8,6 +8,32 @@
 
 
 
+
+[2026-06-10] - GameClient decomposition phase 3f: combat handler class (Wave 92)
+----------------------------------------
+
+INTERNAL - GameClient decomposition:
+  - The Combat partial (~2,020 lines, the hot path: movement validation
+    with throttle/credit/queue and the reject taxonomy, speech, the
+    attack/swing loop, death and resurrect transitions, spell casting and
+    the per-tick client state pump) moved into ClientCombatHandler using
+    the established shim recipe; bodies are byte-identical except the
+    ITextConsole identity pass on @UserExWalkLimit and the speed-hack
+    event raise. The public static movement/speed-hack config surface
+    (WalkBufferMax, MoveClock, credit/speed-hack knobs) and the
+    OnSpeedHackDetected event stay on GameClient - Program.cs/SphereConfig
+    set them and the ResetEngineStatics test discipline keys off them; the
+    handler reads them through static shims and fires the event through an
+    internal RaiseSpeedHackDetected bridge (C# events are only invocable
+    from the declaring class). The movement throttle component and all
+    per-session movement state moved into the handler; the vitals
+    last-sent fields stay internal on GameClient because the Login partial
+    also writes them. Cross-partial helpers promoted private -> internal:
+    TryHandleCommandSpeech, SetWarMode, GetSwingAction, GetSwingSound,
+    BuildEquipmentList, GetDirectionDelta; engine accessors MoveEng,
+    SpeechEng, DeathEng added. Hot-path check: RuntimePerformancePressure
+    suite green (6/6); full suite green (723); mojibake scan clean.
+
 [2026-06-10] - GameClient decomposition phase 3f: skills handler class (Wave 91)
 ----------------------------------------
 

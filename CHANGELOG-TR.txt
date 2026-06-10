@@ -8,6 +8,32 @@
 
 
 
+
+[2026-06-10] - GameClient ayrıştırma faz 3f: combat handler sınıfı (Wave 92)
+----------------------------------------
+
+İÇSEL - GameClient ayrıştırma:
+  - Combat partial'ı (~2.020 satır, sıcak yol: throttle/kredi/kuyruk ve
+    reject taksonomisiyle hareket doğrulama, konuşma, saldırı/swing
+    döngüsü, ölüm ve diriliş geçişleri, büyü cast'i ve tick pompası)
+    yerleşik shim reçetesiyle ClientCombatHandler sınıfına taşındı;
+    gövdeler @UserExWalkLimit'teki ITextConsole kimlik geçişi ve
+    speed-hack event ateşlemesi dışında bayt-bayt aynı. Public statik
+    hareket/speed-hack config yüzeyi (WalkBufferMax, MoveClock,
+    kredi/speed-hack ayarları) ve OnSpeedHackDetected event'i
+    GameClient'ta kaldı — Program.cs/SphereConfig bunları ayarlıyor ve
+    ResetEngineStatics test disiplini bunlara bağlı; handler statik
+    shim'lerle okur, event'i internal RaiseSpeedHackDetected köprüsüyle
+    ateşler (C# event'leri yalnızca tanımlandığı sınıftan çağrılabilir).
+    Hareket throttle bileşeni ve oturum-bazlı tüm hareket durumu handler'a
+    taşındı; vitals son-gönderim alanları Login partial'ı da yazdığı için
+    GameClient'ta internal kaldı. Çapraz-partial yardımcılar private ->
+    internal yükseltildi: TryHandleCommandSpeech, SetWarMode,
+    GetSwingAction, GetSwingSound, BuildEquipmentList, GetDirectionDelta;
+    MoveEng, SpeechEng, DeathEng motor erişimcileri eklendi. Sıcak-yol
+    kontrolü: RuntimePerformancePressure paketi yeşil (6/6); tam paket
+    yeşil (723); mojibake taraması temiz.
+
 [2026-06-10] - GameClient ayrıştırma faz 3f: skills handler sınıfı (Wave 91)
 ----------------------------------------
 

@@ -142,7 +142,6 @@ public sealed partial class GameClient : ITextConsole
     /// <summary>Target-cursor state machine (decomposition phase 1).</summary>
     internal ClientTargetState Targets => _targets;
     private readonly ClientTargetState _targets = new();
-    private uint _lastCombatNotifyTarget;
     private string? _pendingDialogCloseFunction;
     private string _pendingDialogArgs = "";
     /// <summary>Dialog close-function state bridges for extracted handler
@@ -165,9 +164,9 @@ public sealed partial class GameClient : ITextConsole
     private const ushort EditMenuId = 0xFFED;
     private uint[]? _pendingEditMenuUids;
     private Item?[]? _pendingEditMenuMemories;
-    private short _lastHits, _lastMana, _lastStam;
-    private long _lastVitalsPacketTick;
-    private const int VitalsPacketIntervalMs = 250;
+    internal short _lastHits, _lastMana, _lastStam;
+    internal long _lastVitalsPacketTick;
+    internal const int VitalsPacketIntervalMs = 250;
     internal const int UpdateRange = 18;
 
     public NetState NetState => _netState;
@@ -178,6 +177,9 @@ public sealed partial class GameClient : ITextConsole
     internal TradeManager? TradeM => _tradeManager;
     internal CraftingEngine? CraftE => _craftingEngine;
     internal CommandHandler? Cmds => _commands;
+    internal MovementEngine? MoveEng => _movement;
+    internal SpeechEngine? SpeechEng => _speech;
+    internal DeathEngine? DeathEng => _deathEngine;
     internal GuildManager? GuildM => _guildManager;
     internal PartyManager? PartyM => _partyManager;
     internal SpellEngine? Spells => _spellEngine;

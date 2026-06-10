@@ -524,7 +524,7 @@ public sealed partial class GameClient
 
     // ==================== Helpers ====================
 
-    private static void GetDirectionDelta(Direction dir, out short dx, out short dy)
+    internal static void GetDirectionDelta(Direction dir, out short dx, out short dy)
     {
         dx = 0; dy = 0;
         switch (dir)

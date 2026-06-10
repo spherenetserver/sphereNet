@@ -28,6 +28,39 @@
 
 
 
+[2026-06-10] - Dialog yerleşim motoru: string LOCAL, fonksiyon çağrısı, FORINSTANCES, GUMPPIC/TOOLTIP (Wave 113)
+----------------------------------------
+
+DÜZELTME - Dialoglar:
+  - Yerleşim genişletme geçişindeki LOCAL atamaları her değeri sayıya
+    zorluyordu; virgüllü listeler ve .= birleştirmeleri yok oluyordu
+    ("0" olarak saklanan bir liste tüm döngü sınırlarını ve aramaları
+    çökertiyordu). Değerler artık olduğu gibi saklanıyor; ++/--/.=
+    biçimleri script-key ayrıştırıcısı tarafından zaten ifadeye
+    çevrilmiş geldiğinden çalışmayı sürdürüyor, +=/-= sayısal kalıyor.
+  - Yerleşim ifade çözücüsünde script-fonksiyon çözücüsü yoktu; layout
+    içindeki [FUNCTION] çağrıları (FOR sınırı olarak kullanılan liste
+    yardımcıları, metin argümanlarındaki biçimleyiciler) hiç
+    çözülmüyor ve ilgili döngü gövdeleri render edilen gump'tan
+    düşüyordu. Fonksiyon ifadeleri artık trigger runner üzerinden,
+    dialog karakteri hedef alınarak çalışıyor.
+  - Parametresiz fonksiyon token'ları çalıştırılmak yerine düz-defname
+    fallback'i üzerinden kaynak indeksine çözülüyordu; Function tipli
+    defname'ler bu fallback'ten hariç tutuldu, artık fonksiyon
+    çözücüsüne ulaşıyorlar.
+
+EKLEME - Dialoglar:
+  - FORINSTANCES genişletmesi: gövdeyi verilen itemdef'in canlı dünya
+    örneği başına bir kez çalıştırır (BaseId veya SCRIPTDEF tag
+    eşlemesi) — yalın sayım desenini kapsar. İç içe FOR* döngüsünün
+    ortak ENDFOR sonlandırıcısının dıştaki döngüyü erken kapatmaması
+    için FOR ailesi blok eşleştirmesi eklendi.
+  - GUMPPIC yalnız tek-P yazımıyla kabul ediliyordu; çift-P kanonik
+    verb artık aynı renderer'ın alias'ı. TOOLTIP yerleşim komutu
+    eklendi (önceki öğeye bağlanan cliloc ipucu, yeni
+    GumpBuilder.AddTooltip). İçe aktarılan dialog paketi için yerleşim
+    verb kapsaması artık tam. Tam paket yeşil (783).
+
 [2026-06-10] - Tahsissiz decay tarama; önceden hesaplanan trigger-fonksiyon kapısı (Wave 112)
 ----------------------------------------
 

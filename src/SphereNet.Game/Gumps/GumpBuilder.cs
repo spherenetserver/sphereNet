@@ -104,6 +104,14 @@ public sealed class GumpBuilder
         return this;
     }
 
+    /// <summary>Cliloc tooltip attached to the previous layout element
+    /// (Source-X GUMPCTL_TOOLTIP, client 4.0.0+).</summary>
+    public GumpBuilder AddTooltip(long cliloc)
+    {
+        _layout.Add($"{{ tooltip {cliloc} }}");
+        return this;
+    }
+
     public GumpBuilder AddTilePic(int x, int y, int tileId)
     {
         _layout.Add($"{{ tilepic {x} {y} {tileId} }}");

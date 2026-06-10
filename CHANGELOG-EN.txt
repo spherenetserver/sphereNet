@@ -28,6 +28,39 @@
 
 
 
+[2026-06-10] - Dialog layout engine: string LOCALs, function calls, FORINSTANCES, GUMPPIC/TOOLTIP (Wave 113)
+----------------------------------------
+
+FIXED - Dialogs:
+  - LOCAL assignments in the layout expansion pass coerced every value
+    to a number, destroying comma lists and .= string concatenations
+    (a list stored as "0" made every downstream loop bound and lookup
+    collapse). Values are now stored verbatim; ++/--/.= forms arrive
+    pre-rewritten as expressions by the script-key parser and keep
+    working, and +=/-= stay numeric.
+  - The layout expression resolver had no script-function resolver, so
+    [FUNCTION] calls inside layouts (list helpers used as FOR bounds,
+    formatters in text args) never resolved and the affected loop
+    bodies dropped out of the rendered gump. Function expressions now
+    execute through the trigger runner with the dialog character as
+    the target object.
+  - Bare function tokens resolved to their resource index through the
+    plain-defname fallback instead of executing; Function-typed
+    defnames are excluded from that fallback so they reach the
+    function resolver.
+
+ADDED - Dialogs:
+  - FORINSTANCES expansion: runs the body once per live world instance
+    of the given itemdef (matching BaseId or the SCRIPTDEF tag) —
+    covers the bare counting pattern. FOR-family block matching added
+    so a nested FOR* loop's shared ENDFOR terminator cannot close an
+    outer loop early.
+  - GUMPPIC was only accepted in its single-P spelling; the canonical
+    double-P verb is now an alias of the same renderer. TOOLTIP layout
+    op added (cliloc tooltip attached to the previous element, new
+    GumpBuilder.AddTooltip). Layout verb coverage for the imported
+    dialog pack is now complete. Full suite green (783).
+
 [2026-06-10] - Allocation-free decay catch-up; precomputed trigger-function gate (Wave 112)
 ----------------------------------------
 

@@ -510,6 +510,7 @@ public sealed class ClientDialogHandler
                     break;
                 }
                 case "GUMPIC":
+                case "GUMPPIC":
                 {
                     if (!currentPageVisible) break;
                     var parts = SplitTokens(args, 4);
@@ -521,6 +522,14 @@ public sealed class ClientDialogHandler
                         int hue = parts.Length >= 4 ? ParseIntToken(parts[3]) : 0;
                         gump.AddGumpPic(x, y, gumpId, hue);
                     }
+                    break;
+                }
+                case "TOOLTIP":
+                {
+                    if (!currentPageVisible) break;
+                    var parts = SplitTokens(args, 1);
+                    if (parts.Length >= 1)
+                        gump.AddTooltip(ParseIntToken(parts[0]));
                     break;
                 }
                 case "GUMPPICTILED":
@@ -1093,10 +1102,28 @@ public sealed class ClientDialogHandler
                 continue;
             }
 
+            if (cmd == "FORINSTANCES")
+            {
+                // FORINSTANCES <defname> — runs the body once per world
+                // instance of the given item definition. The expansion pass
+                // can't rebind the default object to each instance, but the
+                // dominant dialog pattern is bare counting
+                // ("FORINSTANCES i_x / LOCAL.n ++ / ENDFOR"), which this
+                // covers exactly.
+                int fiEnd = FindForBlockEnd(input, i + 1, end);
+                if (fiEnd < 0) { i = end; break; }
+                string defName = ResolveInlineExpressions(args, locals, dialogArgN1).Trim();
+                int instCount = Math.Min(500, CountWorldItemInstances(defName));
+                for (int it = 0; it < instCount; it++)
+                    ExpandRange(input, i + 1, fiEnd, output, locals, dialogArgN1);
+                i = fiEnd + 1;
+                continue;
+            }
+
             if (cmd == "FOR")
             {
                 // FOR N  / FOR START END / FOR VAR START END.
-                int forEnd = FindBlockEnd(input, i + 1, end, "FOR", "ENDFOR");
+                int forEnd = FindForBlockEnd(input, i + 1, end);
                 if (forEnd < 0) { i = end; break; }
                 string resolved = ResolveInlineExpressions(args, locals, dialogArgN1);
                 ParseForRange(resolved, out string? iterName, out long from, out long to);
@@ -1206,15 +1233,21 @@ public sealed class ClientDialogHandler
                     else if (trimmed.StartsWith("=", StringComparison.Ordinal)) { opCh = '='; valueExpr = trimmed[1..]; }
                 }
                 string resolved = ResolveInlineExpressions(valueExpr.Trim(), locals, dialogArgN1);
-                long num = ParseLongToken(resolved);
-                long current = locals.TryGetValue(varName, out var cur) && long.TryParse(cur, out long pv) ? pv : 0;
-                long next = opCh switch
+                if (opCh is '+' or '-')
                 {
-                    '+' => current + num,
-                    '-' => current - num,
-                    _ => num,
-                };
-                locals[varName] = next.ToString();
+                    long num = ParseLongToken(resolved);
+                    long current = locals.TryGetValue(varName, out var cur) && long.TryParse(cur, out long pv) ? pv : 0;
+                    locals[varName] = (opCh == '+' ? current + num : current - num).ToString();
+                }
+                else
+                {
+                    // Sphere LOCALs are strings: keep the resolved text verbatim
+                    // so comma lists ("a_town1,a_town2,…") and .= concatenations
+                    // survive instead of collapsing to a number. ++/--/.= lines
+                    // arrive here already rewritten into <EVAL …>/<KEY>… form by
+                    // ScriptKey.Parse, so plain assignment covers them too.
+                    locals[varName] = resolved;
+                }
                 i++;
                 continue;
             }
@@ -1229,6 +1262,43 @@ public sealed class ClientDialogHandler
             output.Add(new SphereNet.Scripting.Parsing.ScriptKey(k.Key, resolvedArg));
             i++;
         }
+    }
+
+    /// <summary>FOR-family block end: every FOR* loop keyword (FOR,
+    /// FORINSTANCES, FORCHARS, FORITEMS, …) opens a block closed by the
+    /// shared ENDFOR terminator, matching Sphere's loop grammar. Plain
+    /// open/close matching on "FOR" would let a nested FORINSTANCES's
+    /// ENDFOR close the outer FOR early.</summary>
+    private static int FindForBlockEnd(
+        IReadOnlyList<SphereNet.Scripting.Parsing.ScriptKey> input, int start, int end)
+    {
+        int depth = 1;
+        for (int i = start; i < end; i++)
+        {
+            string k = input[i].Key.Trim().ToUpperInvariant();
+            if (k.StartsWith("FOR", StringComparison.Ordinal)) depth++;
+            else if (k == "ENDFOR") { depth--; if (depth == 0) return i; }
+        }
+        return -1;
+    }
+
+    /// <summary>Count live world items spawned from the given item defname:
+    /// matches either the resolved def index as the item's BaseId or the
+    /// SCRIPTDEF tag that scripted ITEMDEFs stamp on their instances.</summary>
+    private int CountWorldItemInstances(string defName)
+    {
+        if (string.IsNullOrEmpty(defName) || _commands?.Resources == null) return 0;
+        var rid = _commands.Resources.ResolveDefName(defName);
+        if (!rid.IsValid) return 0;
+        int count = 0;
+        foreach (var obj in _world.GetAllObjects())
+        {
+            if (obj is SphereNet.Game.Objects.Items.Item it && !it.IsDeleted &&
+                (it.BaseId == rid.Index ||
+                 (it.TryGetTag("SCRIPTDEF", out string? sd) && int.TryParse(sd, out int sdi) && sdi == rid.Index)))
+                count++;
+        }
+        return count;
     }
 
     /// <summary>Find the matching end keyword, honouring nested blocks.
@@ -1351,8 +1421,28 @@ public sealed class ClientDialogHandler
         if (string.IsNullOrEmpty(input) || input.IndexOf('<') < 0) return input;
 
         var servResolver = _triggerDispatcher?.Runner?.Interpreter?.ServerPropertyResolver;
+        var runner = _triggerDispatcher?.Runner;
         var parser = new ExpressionParser
         {
+            // Script [FUNCTION] calls inside dialog layouts —
+            // <ARRAYCOUNT a,b,c>, <ARRAY list,idx>, <FormatMinutes n>, … —
+            // execute through the trigger runner with the dialog's character
+            // as the target, mirroring how the interpreter resolves them in
+            // trigger bodies. Without this, FOR bounds like
+            // "FOR s 1 <ARRAYCOUNT <LOCAL.list>>" never resolve and the loop
+            // body is dropped from the rendered gump.
+            FunctionResolver = expr =>
+            {
+                if (runner == null || _character == null) return null;
+                string call = expr.Trim();
+                if (call.Length == 0) return null;
+                int sp = call.IndexOfAny([' ', '\t']);
+                string fname = sp < 0 ? call : call[..sp];
+                string fargs = sp < 0 ? "" : call[(sp + 1)..].Trim();
+                return runner.TryEvaluateFunction(fname, fargs, _character, null, null, out string fval)
+                    ? fval
+                    : null;
+            },
             VariableResolver = varName =>
             {
                 string upper = varName.ToUpperInvariant();
@@ -1492,11 +1582,14 @@ public sealed class ClientDialogHandler
                     return fallback;
 
                 // Bare defname constants used in script arithmetic/bit tests,
-                // e.g. <statf_insubstantial>, <memory_ipet>.
+                // e.g. <statf_insubstantial>, <memory_ipet>. Function defnames
+                // are excluded: a bare <somefunc> token must fall through to
+                // the FunctionResolver and execute, not yield its resource
+                // index.
                 if (_commands?.Resources != null && IsPlainDefToken(upper))
                 {
                     var rid = _commands.Resources.ResolveDefName(upper);
-                    if (rid.IsValid) return rid.Index.ToString();
+                    if (rid.IsValid && rid.Type != ResType.Function) return rid.Index.ToString();
                 }
 
                 return null;

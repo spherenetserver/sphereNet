@@ -28,6 +28,19 @@
 
 
 
+[2026-06-11] - SPELLFLAG_* constant names resolve in spell flag parsing (Wave 118)
+----------------------------------------
+
+FIXED - Magic:
+  - SPELLFLAG_* names are engine constants in the reference
+    (game_macros.h), not script defnames — script packs typically
+    never declare them in a [DEFNAME] block. Spell FLAGS lines using
+    those names silently parsed to None, so no spell ever opened a
+    target cursor (every cast self-targeted) and field/area/bolt
+    behaviors were lost. The flag parser now falls back to the
+    built-in constant table (values match the reference one-to-one);
+    script-defined defnames still take precedence.
+
 [2026-06-11] - Region EVENTS entries bind REGIONTYPE resource tables (Wave 117)
 ----------------------------------------
 

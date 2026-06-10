@@ -734,9 +734,62 @@ public sealed class DefinitionLoader
             if (TryParseHexUlong(token, out ulong n))
             {
                 result |= (SpellFlag)n;
+                continue;
             }
+
+            // 3) Built-in constant names. SPELLFLAG_* are engine constants in
+            // the reference (game_macros.h), not script defnames — most packs
+            // never declare them in a [DEFNAME] block, and without this
+            // fallback every spell loads with Flags=None: no target cursor
+            // (everything self-casts), no field/area/bolt behavior.
+            if (TryParseSpellFlagName(token, out SpellFlag named))
+                result |= named;
         }
         return result;
+    }
+
+    /// <summary>Reference SPELLFLAG_* constant names → engine flags
+    /// (values match game_macros.h one-to-one).</summary>
+    private static bool TryParseSpellFlagName(string token, out SpellFlag flag)
+    {
+        flag = token.Trim().ToUpperInvariant() switch
+        {
+            "SPELLFLAG_DIR_ANIM" => SpellFlag.DirAnim,
+            "SPELLFLAG_TARG_ITEM" => SpellFlag.TargItem,
+            "SPELLFLAG_TARG_CHAR" => SpellFlag.TargChar,
+            "SPELLFLAG_TARG_OBJ" => SpellFlag.TargObj,
+            "SPELLFLAG_TARG_XYZ" => SpellFlag.TargXYZ,
+            "SPELLFLAG_HARM" => SpellFlag.Harm,
+            "SPELLFLAG_FX_BOLT" => SpellFlag.FxBolt,
+            "SPELLFLAG_FX_TARG" => SpellFlag.FxTarg,
+            "SPELLFLAG_FIELD" => SpellFlag.Field,
+            "SPELLFLAG_SUMMON" => SpellFlag.Summon,
+            "SPELLFLAG_GOOD" => SpellFlag.Good,
+            "SPELLFLAG_RESIST" => SpellFlag.Resist,
+            "SPELLFLAG_TARG_NOSELF" => SpellFlag.TargNoSelf,
+            "SPELLFLAG_FREEZEONCAST" => SpellFlag.FreezeOnCast,
+            "SPELLFLAG_FIELD_RANDOMDECAY" => SpellFlag.FieldRandomDecay,
+            "SPELLFLAG_NO_ELEMENTALENGINE" => SpellFlag.NoElementalEngine,
+            "SPELLFLAG_DISABLED" => SpellFlag.Disabled,
+            "SPELLFLAG_SCRIPTED" => SpellFlag.Scripted,
+            "SPELLFLAG_PLAYERONLY" => SpellFlag.PlayerOnly,
+            "SPELLFLAG_NOUNPARALYZE" => SpellFlag.NoUnparalyze,
+            "SPELLFLAG_NO_CASTANIM" => SpellFlag.NoCastAnim,
+            "SPELLFLAG_TARG_NO_PLAYER" => SpellFlag.TargNoPlayer,
+            "SPELLFLAG_TARG_NO_NPC" => SpellFlag.TargNoNPC,
+            "SPELLFLAG_NOPRECAST" => SpellFlag.NoPrecast,
+            "SPELLFLAG_NOFREEZEONCAST" => SpellFlag.NoFreezeOnCast,
+            "SPELLFLAG_AREA" => SpellFlag.Area,
+            "SPELLFLAG_POLY" => SpellFlag.Poly,
+            "SPELLFLAG_TARG_DEAD" => SpellFlag.TargDead,
+            "SPELLFLAG_DAMAGE" => SpellFlag.Damage,
+            "SPELLFLAG_BLESS" => SpellFlag.Bless,
+            "SPELLFLAG_CURSE" => SpellFlag.Curse,
+            "SPELLFLAG_HEAL" => SpellFlag.Heal,
+            "SPELLFLAG_TICK" => SpellFlag.Tick,
+            _ => SpellFlag.None,
+        };
+        return flag != SpellFlag.None;
     }
 
     private static bool TryParseHexUlong(string val, out ulong result)

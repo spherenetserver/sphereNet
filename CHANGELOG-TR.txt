@@ -28,6 +28,19 @@
 
 
 
+[2026-06-11] - SPELLFLAG_* sabit adları büyü bayrak ayrıştırmasında çözülüyor (Wave 118)
+----------------------------------------
+
+DÜZELTME - Büyü:
+  - SPELLFLAG_* adları referansta motor sabitidir (game_macros.h),
+    script defname'i değildir — script paketleri bunları tipik olarak
+    hiçbir [DEFNAME] bloğunda bildirmez. Bu adları kullanan FLAGS
+    satırları sessizce None'a ayrışıyordu: hiçbir büyü hedef imleci
+    açmıyor (her cast kendine basıyor), field/area/bolt davranışları
+    kayboluyordu. Bayrak ayrıştırıcı artık yerleşik sabit tablosuna
+    düşüyor (değerler referansla bire bir); scriptte tanımlı
+    defname'ler önceliğini koruyor.
+
 [2026-06-11] - Bölge EVENTS girişleri REGIONTYPE kaynak tablolarını bağlıyor (Wave 117)
 ----------------------------------------
 

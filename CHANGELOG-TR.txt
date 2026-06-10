@@ -26,6 +26,24 @@
 
 
 
+
+[2026-06-10] - Büyü kesintisi INTERRUPT kürvünü izliyor (Wave 110)
+----------------------------------------
+
+DÜZELTME - Büyü:
+  - INTERRUPT büyü özelliği düz int parse ile okunuyordu — paketin
+    ondalıklı kürv değerleri ("INTERRUPT=100.0,100.0") sessizce
+    başarısız oluyordu ve alan zaten hiç kullanılmıyordu: kesinti şansı
+    %5-95'e sıkıştırılmış icat bir hasar/max-can oranıydı. Referans
+    semantiği portlandı (OnTakeDamage kesinti bloğu): INTERRUPT,
+    caster'ın becerisi üzerinde legacy sabit-noktalı değerlerle
+    binde-bir kürvüdür ("100.0" = 1000 = her zaman kesilebilir, referans
+    varsayılanı), hasar miktarı zara girmez ve yalnız oyuncu caster'lar
+    kesilir. INTERRUPT=0 büyüleri kesilemez. Koruma-etkisi yumuşatması,
+    referanstaki koruma-büyüsü iptalinin motor yaklaşımı olarak korundu.
+  - Yeni testler (SpellInterruptTests, 3): sıfır kürv hiç kesmez, tam
+    kürv her hasarda keser, NPC caster'lar muaf. Tam paket yeşil (783).
+
 [2026-06-10] - Çok vuruşlu üretim + elde kitapla büyü atma (Wave 109)
 ----------------------------------------
 

@@ -26,6 +26,26 @@
 
 
 
+
+[2026-06-10] - Spell disturb follows the INTERRUPT curve (Wave 110)
+----------------------------------------
+
+FIXED - Magic:
+  - The INTERRUPT spell property was read with plain int parsing — the
+    pack's decimal curve values ("INTERRUPT=100.0,100.0") failed
+    silently and the field was never used anyway: the disturb chance was
+    an invented damage/max-hits ratio clamped to 5-95%. Ported the
+    reference semantics (OnTakeDamage disturb block): INTERRUPT is a
+    per-mille curve across the caster's skill with legacy fixed-point
+    values ("100.0" = 1000 = always disturbable, the reference default),
+    the damage amount does not factor into the roll, and only player
+    casters are disturbed. INTERRUPT=0 spells are uninterruptible. The
+    protection-effect dampening is kept as an engine approximation of
+    the reference protection-spell cancel.
+  - New tests (SpellInterruptTests, 3): zero curve never disturbs, full
+    curve disturbs on any damage, NPC casters exempt. Full suite green
+    (783).
+
 [2026-06-10] - Multi-stroke crafting + spellbook-in-hand casting (Wave 109)
 ----------------------------------------
 

@@ -234,14 +234,28 @@ public sealed class SpellEngine
         if (IsMagicFlag(MagicConfigFlags.NoInterrupt))
             return false;
 
-        // Interrupt chance = damage / maxHits * 100 (Source-X style)
-        int chance = caster.MaxHits > 0 ? (damage * 100) / caster.MaxHits : 100;
-        chance = Math.Clamp(chance, 5, 95);
+        // Reference disturb (OnTakeDamage): only players are disturbed; the
+        // chance is the spell's INTERRUPT curve at the caster's skill
+        // (per-mille) — the damage amount does not factor in.
+        if (!caster.IsPlayer)
+            return false;
 
+        int chance = 1000;
+        if (caster.TryGetCastingSpell(out SpellType castingSpell))
+        {
+            var def = GetSpellDef(castingSpell);
+            if (def != null)
+                chance = def.GetInterruptChance(caster.GetSkill(def.GetPrimarySkill()));
+        }
+        if (chance <= 0)
+            return false;
+
+        // Protection effect dampens the disturb (engine approximation of the
+        // reference protection-spell cancel).
         if (caster.IsStatFlag(StatFlag.ArcherCanMove))
             chance /= 2;
 
-        if (_rand.Next(100) < chance)
+        if (_rand.Next(1000) < chance)
         {
             InterruptCast(caster, "damaged");
             return true;

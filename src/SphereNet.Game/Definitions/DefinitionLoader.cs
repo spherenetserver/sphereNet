@@ -471,8 +471,16 @@ public sealed class DefinitionLoader
                     def.DurationBase = db * 10; def.DurationScale = ds * 10;
                     break;
                 case "INTERRUPT":
-                    if (int.TryParse(key.Arg, out int ic)) def.InterruptChance = ic;
+                {
+                    // Per-mille curve with legacy fixed-point values
+                    // ("100.0,100.0" → 1000,1000 = always disturbable).
+                    var icParts = key.Arg.Split(',', 2, StringSplitOptions.TrimEntries);
+                    def.InterruptBase = SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(icParts[0]);
+                    def.InterruptScale = icParts.Length > 1
+                        ? SphereNet.Scripting.Definitions.ValueCurve.ParseSphereNumber(icParts[1])
+                        : 0;
                     break;
+                }
                 case "LAYER":
                     if (byte.TryParse(key.Arg, out byte ly)) def.Layer = (Layer)ly;
                     break;

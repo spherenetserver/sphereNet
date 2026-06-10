@@ -33,7 +33,10 @@ public sealed class SpellDef
     public int EffectScale { get; set; }         // value at max skill (1000)
     public int DurationBase { get; set; }         // tenths of a second at 0 skill
     public int DurationScale { get; set; }        // tenths of a second at max skill
-    public int InterruptChance { get; set; } = 50;
+    /// <summary>INTERRUPT curve endpoints (per-mille, legacy fixed-point
+    /// "100.0" = 1000). Default: always disturbable (reference init 1000).</summary>
+    public int InterruptBase { get; set; } = 1000;
+    public int InterruptScale { get; set; }
     public ulong Group { get; set; }
 
     // Reagents (resource ID → amount)
@@ -71,6 +74,15 @@ public sealed class SpellDef
     public int GetDuration(int skillLevel) =>
         DurationBase + ((DurationScale - DurationBase) * skillLevel / 1000);
 
+    /// <summary>Disturb chance (per-mille) at the given caster skill
+    /// (reference m_Interrupt.GetLinear): single value = constant, "A,B"
+    /// interpolates from 0 to max skill.</summary>
+    public int GetInterruptChance(int skillLevel)
+    {
+        int top = InterruptScale > 0 ? InterruptScale : InterruptBase;
+        return InterruptBase + (top - InterruptBase) * Math.Clamp(skillLevel, 0, 1000) / 1000;
+    }
+
     /// <summary>Get cast time at given skill level, in tenths of a second.
     /// CAST_TIME is a curve across skill 0-100.0 (reference m_CastTime
     /// GetLinear): single-value scripts are constant; "A,B" interpolates
@@ -104,7 +116,7 @@ public sealed class SpellDef
             case "CAST_TIME": value = CastTimeBase.ToString(); return true;
             case "EFFECT": value = EffectScale != 0 ? $"{EffectBase},{EffectScale}" : EffectBase.ToString(); return true;
             case "DURATION": value = DurationScale != 0 ? $"{DurationBase},{DurationScale}" : DurationBase.ToString(); return true;
-            case "INTERRUPT": value = InterruptChance.ToString(); return true;
+            case "INTERRUPT": value = InterruptScale != 0 ? $"{InterruptBase},{InterruptScale}" : InterruptBase.ToString(); return true;
         }
 
         // RESOURCES.n.KEY / RESOURCES.n.VAL

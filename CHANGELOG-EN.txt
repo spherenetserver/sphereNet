@@ -21,6 +21,26 @@
 
 
 
+
+[2026-06-10] - Resource loader: legacy numeric section-id parse (Wave 105)
+----------------------------------------
+
+FIXED - Script loading:
+  - Numeric section ids ([SKILL n], [SPELL n], [ITEMDEF n], [CHARDEF n],
+    [MULTIDEF n]) were always parsed as hex. The reference uses the
+    legacy script number rule: "0x.." and leading-zero forms are hex,
+    anything else is decimal. Real packs write itemdef/chardef ids with
+    a leading zero ("0eed") — unaffected — but skill and spell ids as
+    plain decimal, so every [SKILL 10]..[SKILL 57] and [SPELL 10]+
+    definition landed on the wrong slot (e.g. the Swordsmanship def
+    [SKILL 40] registered as skill 64): names, delays, ADV_RATE curves
+    and spell properties above index 9 were silently mismapped or lost.
+  - A scan of the mortechUO pack confirms the fix is safe: 32,239
+    leading-zero headers keep their hex meaning, 57 [SKILL] + 167
+    [SPELL] decimal headers are corrected, and no header uses bare hex
+    without a leading zero. Tests that had encoded the hex behaviour
+    were updated to decimal ids. Full suite green (767).
+
 [2026-06-10] - Stat-gain parity ([ADVANCE] curves, STAT_* targets) + 0x3A caps (Wave 104)
 ----------------------------------------
 

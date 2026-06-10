@@ -21,6 +21,27 @@
 
 
 
+
+[2026-06-10] - Kaynak yükleyici: legacy sayısal bölüm-kimliği parse'ı (Wave 105)
+----------------------------------------
+
+DÜZELTME - Script yükleme:
+  - Sayısal bölüm kimlikleri ([SKILL n], [SPELL n], [ITEMDEF n],
+    [CHARDEF n], [MULTIDEF n]) her zaman hex okunuyordu. Referans legacy
+    script sayı kuralını kullanır: "0x.." ve baştaki-sıfırlı biçimler
+    hex, gerisi ondalıktır. Gerçek paketler itemdef/chardef kimliklerini
+    baştaki sıfırla yazar ("0eed") — etkilenmedi — ama skill ve spell
+    kimlikleri düz ondalıktır; yani [SKILL 10]..[SKILL 57] ve [SPELL 10]+
+    tanımlarının tamamı yanlış yuvaya oturuyordu (ör. Swordsmanship
+    tanımı [SKILL 40], skill 64 olarak kaydoluyordu): indeks 9 üstündeki
+    adlar, gecikmeler, ADV_RATE kürvleri ve büyü özellikleri sessizce
+    yanlış eşleniyor ya da kayboluyordu.
+  - mortechUO paketi taraması düzeltmenin güvenli olduğunu doğruladı:
+    32.239 baştaki-sıfırlı başlık hex anlamını koruyor, 57 [SKILL] + 167
+    [SPELL] ondalık başlık düzeliyor ve baştaki sıfırsız çıplak hex
+    kullanan hiçbir başlık yok. Hex davranışını kodlayan testler ondalık
+    kimliklere güncellendi. Tam paket yeşil (767).
+
 [2026-06-10] - Stat kazancı paritesi ([ADVANCE] kürvleri, STAT_* hedefleri) + 0x3A cap (Wave 104)
 ----------------------------------------
 

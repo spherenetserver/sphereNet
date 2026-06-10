@@ -38,7 +38,7 @@ public class StatGainParityTests
         INT=1.0,1.0
         DEX=1.0,1.0
 
-        [SKILL 28]
+        [SKILL 40]
         STAT_STR=100
         BONUS_STATS=100
         BONUS_STR=100
@@ -104,7 +104,7 @@ public class StatGainParityTests
     public void StatGain_WithoutAdvanceCurves_DoesNothing()
     {
         LoadDefinitions("""
-            [SKILL 28]
+            [SKILL 40]
             STAT_STR=100
             BONUS_STATS=100
             BONUS_STR=100

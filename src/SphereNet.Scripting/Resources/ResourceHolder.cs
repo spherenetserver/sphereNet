@@ -321,18 +321,38 @@ public sealed class ResourceHolder
         if (string.IsNullOrEmpty(arg))
             return -1;
 
-        // For numeric ID types (ITEMDEF, CHARDEF, SPELL, SKILL, MULTIDEF) — parse as hex
+        // Numeric ID types (ITEMDEF, CHARDEF, SPELL, SKILL, MULTIDEF) use the
+        // legacy script number rule (reference Exp_GetVal): "0x.." and
+        // leading-zero forms are hex, anything else is decimal. Real packs
+        // write itemdef/chardef ids with a leading zero ("0eed") and
+        // skill/spell ids as plain decimal ("[SKILL 40]", "[SPELL 44]");
+        // parsing everything as hex shifted every skill/spell definition
+        // with index >= 10 onto the wrong slot.
         if (IsNumericIdType(resType))
         {
             var cleanName = arg.Split(' ', 2)[0].Trim();
             var span = cleanName.AsSpan();
 
-            // Strip 0x prefix if present
+            bool isHex = false;
             if (span.Length > 2 && span[0] == '0' && (span[1] == 'x' || span[1] == 'X'))
+            {
                 span = span[2..];
+                isHex = true;
+            }
+            else if (span.Length > 1 && span[0] == '0')
+            {
+                isHex = true;
+            }
 
-            if (long.TryParse(span, System.Globalization.NumberStyles.HexNumber, null, out long hexVal))
-                return (int)hexVal;
+            if (isHex)
+            {
+                if (long.TryParse(span, System.Globalization.NumberStyles.HexNumber, null, out long hexVal))
+                    return (int)hexVal;
+            }
+            else if (long.TryParse(span, out long decVal))
+            {
+                return (int)decVal;
+            }
 
             // Try as DEFNAME for numeric types too (e.g. [CHARDEF c_guard] where c_guard was in DEFNAME)
             if (_defNames.TryGetValue(cleanName, out var rid))

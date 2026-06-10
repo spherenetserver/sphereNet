@@ -40,7 +40,7 @@ public class SkillDelayTests
     public void SkillEngine_GetSkillDelayMs_ReadsSkillDefDelay()
     {
         LoadDefinitions("""
-            [SKILL 11]
+            [SKILL 17]
             DELAY=110
             """);
 
@@ -51,7 +51,7 @@ public class SkillDelayTests
     public void DelayedActiveSkill_FiresStrokeBeforeSuccessInSourceXOrder()
     {
         LoadDefinitions("""
-            [SKILL 15]
+            [SKILL 21]
             DELAY=1
             """);
 

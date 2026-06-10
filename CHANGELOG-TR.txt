@@ -13,6 +13,25 @@
 
 
 
+
+[2026-06-10] - Patika, kaçış ve pet adımlarında NPC koşu biti tutarlılığı (Wave 97)
+----------------------------------------
+
+DÜZELTME - NPC hareketi:
+  - 0x77 yön baytı, istemcinin yürüme/koşma animasyonunu seçtiği koşu
+    bayrağını (0x80) taşır. Kovalayan NPC'ler bunu doğrudan adımlarda
+    ayarlıyor ama A* patika-takip adımlarında kaybediyordu; ~250ms'de bir
+    adım atan NPC yürüme animasyonuyla oynuyordu — görünür "kayan NPC"
+    artefaktı — ve doğrudan/patika karışık rotalarda koş-yürü titremesi
+    oluşuyordu. Patika-takip adımları artık çağıranın koşu niyetini
+    devralıyor.
+  - Kaçış adımları artık alan bulunca koşuyor, köşeye sıkışıkken
+    yürüyor (referans paritesi: kaçış yolu tehdit mesafesi <= 3'te yürür,
+    ötesinde koşar); pet takip/koruma/dönüş adımları hedef 3 tile'dan
+    uzaksa koşuyor (referans NPC_Act_Follow koşu eşiği).
+  - Tam paket yeşil (730); hareket + çalışma-zamanı baskı paketleri
+    yeşil (70).
+
 [2026-06-10] - Büyü cast animasyonu: gövde çevirisi + gesture dispatch (Wave 96)
 ----------------------------------------
 

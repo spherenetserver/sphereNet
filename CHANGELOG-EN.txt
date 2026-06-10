@@ -13,6 +13,24 @@
 
 
 
+
+[2026-06-10] - NPC run-bit consistency on path-follow, flee and pet steps (Wave 97)
+----------------------------------------
+
+FIXED - NPC movement:
+  - The 0x77 direction byte carries the run flag (0x80) that clients use
+    to pick the walk vs run animation. Chasing NPCs set it on direct
+    steps but lost it on A*-path-follow steps, so a pursuing NPC stepping
+    every ~250ms animated as walking — the visible "skating/sliding NPC"
+    artifact — and mixed direct/path routes flickered between run and
+    walk. Path-follow steps now inherit the caller's run intent.
+  - Flee steps now run once there is room and walk while cornered
+    (reference parity: the flee path walks at threat distance <= 3 and
+    runs beyond), and pet follow/guard/return steps run when the target
+    is more than 3 tiles away (reference NPC_Act_Follow run threshold).
+  - Full suite green (730); movement + runtime-pressure suites green
+    (70).
+
 [2026-06-10] - Spell cast animation: body translation + gesture dispatch (Wave 96)
 ----------------------------------------
 

@@ -1038,6 +1038,9 @@ public sealed class NpcAI
 
     private void FleeAway(Character npc, Point3D threat)
     {
+        // Run once there is room; walk while cornered (reference
+        // NPC_Act_Follow flee path: NPC_WalkToPoint(iDist > 3)).
+        bool run = npc.Position.GetDistanceTo(threat) > 3;
         // Try the direct opposite direction first
         var dir = npc.Position.GetDirectionTo(threat);
         GetDirectionDelta(dir, out short dx, out short dy);
@@ -1052,7 +1055,8 @@ public sealed class NpcAI
             var newPos = new Point3D(nx, ny, nz, npc.MapIndex);
             if (CanNpcMoveTo(npc, newPos))
             {
-                npc.Direction = npc.Position.GetDirectionTo(newPos);
+                var fleeDir = npc.Position.GetDirectionTo(newPos);
+                npc.Direction = run ? fleeDir | Direction.Running : fleeDir;
                 _world.MoveCharacter(npc, newPos);
                 return;
             }
@@ -1072,7 +1076,8 @@ public sealed class NpcAI
                 var altPos = new Point3D(ax, ay, az, npc.MapIndex);
                 if (CanNpcMoveTo(npc, altPos))
                 {
-                    npc.Direction = npc.Position.GetDirectionTo(altPos);
+                    var altFleeDir = npc.Position.GetDirectionTo(altPos);
+                    npc.Direction = run ? altFleeDir | Direction.Running : altFleeDir;
                     _world.MoveCharacter(npc, altPos);
                     return;
                 }
@@ -2033,7 +2038,7 @@ public sealed class NpcAI
                 }
                 int dist = npc.Position.GetDistanceTo(followTarget.Position);
                 if (dist > 2)
-                    MoveToward(npc, followTarget.Position);
+                    MoveToward(npc, followTarget.Position, run: dist > 3);
                 if (npc.TryGetTag("GO_TARGET", out string? goTag) &&
                     TryParsePoint(goTag, out Point3D goPos))
                 {
@@ -2081,7 +2086,7 @@ public sealed class NpcAI
                 }
                 int guardDist = npc.Position.GetDistanceTo(guardTarget.Position);
                 if (guardDist > 3)
-                    MoveToward(npc, guardTarget.Position);
+                    MoveToward(npc, guardTarget.Position, run: true);
                 break;
             }
             case PetAIMode.Attack:
@@ -2112,7 +2117,7 @@ public sealed class NpcAI
                 npc.PetAIMode = revertMode;
                 int d = npc.Position.GetDistanceTo(master.Position);
                 if (d > 2)
-                    MoveToward(npc, master.Position);
+                    MoveToward(npc, master.Position, run: d > 3);
                 break;
             }
             case PetAIMode.Stay:
@@ -2519,7 +2524,8 @@ public sealed class NpcAI
             return;
         }
 
-        npc.Direction = npc.Position.GetDirectionTo(nextStep);
+        var stepDir = npc.Position.GetDirectionTo(nextStep);
+        npc.Direction = run ? stepDir | Direction.Running : stepDir;
         _world.MoveCharacter(npc, nextStep);
         _pathIndex[uid] = idx + 1;
     }

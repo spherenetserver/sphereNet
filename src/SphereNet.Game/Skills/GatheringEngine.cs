@@ -161,6 +161,12 @@ public sealed class GatheringEngine
 
             var item = _world.CreateItem();
             item.BaseId = resDef.Reap;
+            // Carry the itemdef display name so single-click labels and the
+            // vendor/sell lists name the resource ("iron ore") instead of an
+            // empty string. GetName() pluralizes per Amount on read.
+            var reapDef = DefinitionLoader.GetItemDef(resDef.Reap);
+            if (reapDef != null && !string.IsNullOrWhiteSpace(reapDef.Name))
+                item.Name = reapDef.Name;
             item.Amount = (ushort)reapAmount;
             return new GatherResult { Handled = true, Success = true, Item = item };
         }

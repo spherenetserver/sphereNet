@@ -540,10 +540,19 @@ public sealed partial class GameClient
     internal PacketWriter BuildWorldItemPacket(uint serial, ushort itemId, ushort amount,
         short x, short y, sbyte z, ushort hue, byte direction = 0)
     {
+        // Staff clients get the force-movable flag (0x20) on ground items.
+        // The client refuses to even START a drag on tiledata-locked graphics
+        // (weight 255 — corpses, anvils, …) unless this flag is set, so a GM
+        // could not pick them up at all; the server side has no such
+        // restriction for staff.
+        byte flags = 0;
+        if (_character != null && _character.PrivLevel >= PrivLevel.GM)
+            flags |= 0x20;
+
         if (_netState.SupportsStygianAbyss)
             return new PacketWorldItemSA(serial, itemId, amount, x, y, z, hue,
-                highSeas: _netState.SupportsHighSeas, direction: direction);
-        return new PacketWorldItem(serial, itemId, amount, x, y, z, hue, direction);
+                highSeas: _netState.SupportsHighSeas, flags: flags, direction: direction);
+        return new PacketWorldItem(serial, itemId, amount, x, y, z, hue, direction, flags);
     }
 
     internal void SendWorldItem(Item item)

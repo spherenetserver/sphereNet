@@ -28,6 +28,21 @@
 
 
 
+[2026-06-11] - Staff tiledata-kilitli item sürükleyebilir; stack ve kaynak adları (Wave 125)
+----------------------------------------
+
+DÜZELTME - Item:
+  - İstemci, tiledata-kilitli grafiklerde (ağırlık 255 — ceset, örs)
+    world-item paketi force-movable bayrağı taşımadıkça sürüklemeyi
+    başlatmıyor; staff istemciler artık yer itemlarında bu bayrağı
+    alıyor — GM ceset taşıyabiliyor.
+  - Yığın birleşmesi scriptte nadiren bildirilen CAN_I_PILE bayrağını
+    şart koşuyordu; referans bunu tiledata stackable bayrağından
+    tohumlar — fallback eklendi, kazılan cevher/külçe/odun çantada
+    yeniden birleşiyor.
+  - Toplanan kaynaklar (mining/fishing/lumberjacking) itemdef görünen
+    adını taşıyor; tek tık ve vendor satırları adlandırıyor.
+
 [2026-06-11] - Tam el dışlaması; konteyner tıkında içerik özeti (Wave 124)
 ----------------------------------------
 

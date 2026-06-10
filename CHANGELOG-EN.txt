@@ -28,6 +28,21 @@
 
 
 
+[2026-06-11] - Staff drag tiledata-locked ground items; stacking and resource names (Wave 125)
+----------------------------------------
+
+FIXED - Items:
+  - The client refuses to start a drag on tiledata-locked graphics
+    (weight 255 — corpses, anvils) unless the world-item packet
+    carries the force-movable flag; staff clients now receive it on
+    ground items, so a GM can actually pick a corpse up.
+  - Stack merging required the scripted CAN_I_PILE flag, which packs
+    rarely declare; the reference seeds it from the tiledata stackable
+    flag, now used as a fallback — mined ore/ingots/logs merge in the
+    pack again.
+  - Gathered resources (mining/fishing/lumberjacking) now carry their
+    itemdef display name, so single-click and vendor rows name them.
+
 [2026-06-11] - Full hands exclusion; container click shows contents (Wave 124)
 ----------------------------------------
 

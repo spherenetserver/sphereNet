@@ -431,8 +431,22 @@ public class Item : ObjBase
             ItemType.SpawnItem or ItemType.Multi or ItemType.MultiCustom)
             return false;
 
+        // CAN_I_PILE comes from the scripted itemdef when present; the
+        // reference seeds it from the tiledata "Generic" (stackable) flag at
+        // itemdef load and packs rarely script it explicitly — without the
+        // tiledata fallback ore/ingot/log piles never merge in the pack.
         var def = DefinitionLoader.GetItemDef(BaseId);
-        if (def != null && (def.Can & CanFlags.I_Pile) == 0)
+        bool pile = def != null && (def.Can & CanFlags.I_Pile) != 0;
+        if (!pile)
+        {
+            var mapData = ResolveWorld?.Invoke()?.MapData;
+            if (mapData != null)
+            {
+                var tile = mapData.GetItemTileData(DispIdFull);
+                pile = (tile.Flags & SphereNet.MapData.Tiles.TileFlag.Generic) != 0;
+            }
+        }
+        if (!pile)
             return false;
 
         if (_more1 != other._more1 || _more2 != other._more2) return false;

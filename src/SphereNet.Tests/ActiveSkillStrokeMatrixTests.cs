@@ -44,7 +44,7 @@ public class ActiveSkillStrokeMatrixTests
         var client = TestHarness.CreateClient(lf, world, new SphereNet.Game.Accounts.AccountManager(lf), 1401);
         var player = world.CreateCharacter();
         player.IsPlayer = true;
-        player.SetSkill(SkillType.Hiding, 1000);
+        player.SetSkill(SkillType.Hiding, 2000);
         world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
         TestHarness.AttachCharacter(client, player);
 
@@ -127,7 +127,7 @@ public class ActiveSkillStrokeMatrixTests
     {
         var world = CreateWorld();
         var player = world.CreateCharacter();
-        player.SetSkill(SkillType.Hiding, 1000);
+        player.SetSkill(SkillType.Hiding, 2000);
         world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
         var sink = new RecordingSink(player, world);
 

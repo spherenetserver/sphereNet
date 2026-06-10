@@ -450,12 +450,14 @@ public sealed class DefinitionLoader
                     else { var r = _resourcesStatic?.ResolveDefName(key.Arg.Trim()) ?? ResourceId.Invalid; if (r.IsValid) def.ScrollItemId = (ushort)r.Index; }
                     break;
                 case "CAST_TIME":
-                    // Support decimal (0.4 = 4 tenths) and integer
-                    if (double.TryParse(key.Arg, System.Globalization.CultureInfo.InvariantCulture, out double ctd))
-                        def.CastTimeBase = (int)Math.Round(ctd * 10);
-                    else if (int.TryParse(key.Arg, out int ct))
-                        def.CastTimeBase = ct;
+                {
+                    // Curve in seconds across skill 0-100.0; stored as tenths.
+                    // Single value = constant; "A,B" = endpoints.
+                    var ctParts = key.Arg.Split(',', 2, StringSplitOptions.TrimEntries);
+                    def.CastTimeBase = ParseSecondsToTenths(ctParts[0]);
+                    def.CastTimeScale = ctParts.Length > 1 ? ParseSecondsToTenths(ctParts[1]) : 0;
                     break;
+                }
                 case "EFFECT":
                     ParseCurve(key.Arg, out int eb, out int es);
                     def.EffectBase = eb; def.EffectScale = es;
@@ -561,6 +563,13 @@ public sealed class DefinitionLoader
 
         _skillDefs[link.Id.Index] = def;
         SkillDefsLoaded++;
+    }
+
+    private static int ParseSecondsToTenths(string s)
+    {
+        if (double.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, out double d))
+            return (int)Math.Round(d * 10);
+        return EvalCurveTerm(s) * 10;
     }
 
     private static void ParseCurve(string val, out int baseVal, out int scale)

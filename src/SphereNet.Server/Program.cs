@@ -621,6 +621,7 @@ public static partial class Program
         Character.HelpingCriminalsIsACrimeEnabled = _config.HelpingCriminalsIsACrime;
         Character.SnoopCriminalEnabled            = _config.SnoopCriminal;
         Character.ReagentsRequiredEnabled  = _config.ReagentsRequired;
+        Character.SpellbookRequiredEnabled = _config.SpellbookRequired;
         Character.CombatFlags              = _config.CombatFlags;
         Character.CombatDamageEra          = _config.CombatDamageEra;
         Character.CombatHitChanceEra       = _config.CombatHitChanceEra;

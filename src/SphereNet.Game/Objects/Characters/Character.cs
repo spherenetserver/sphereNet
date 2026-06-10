@@ -425,6 +425,10 @@ public partial class Character : ObjBase
     public static bool SnoopCriminalEnabled { get; set; } = true;
     /// <summary>Whether spells must consume reagents from backpack. sphere.ini REAGENTSREQUIRED.</summary>
     public static bool ReagentsRequiredEnabled { get; set; } = true;
+    /// <summary>Players must have the spell in an accessible spellbook to
+    /// cast it from memory (reference Spell_CanCast book check). Scroll and
+    /// wand casts bypass the book.</summary>
+    public static bool SpellbookRequiredEnabled { get; set; } = true;
 
     /// <summary>COMBATFLAGS bitfield from sphere.ini.</summary>
     public static int CombatFlags { get; set; }

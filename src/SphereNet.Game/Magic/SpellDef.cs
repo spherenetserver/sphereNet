@@ -27,7 +27,8 @@ public sealed class SpellDef
     // names here are historical — Scale is the TOP value (endpoint at max
     // skill), NOT a delta added to Base. GetEffect / GetDuration interpolate
     // linearly between Base and Scale.
-    public int CastTimeBase { get; set; } = 15; // tenths of a second
+    public int CastTimeBase { get; set; } = 15; // tenths of a second at 0 skill
+    public int CastTimeScale { get; set; }       // tenths at max skill (0 = constant)
     public int EffectBase { get; set; }
     public int EffectScale { get; set; }         // value at max skill (1000)
     public int DurationBase { get; set; }         // tenths of a second at 0 skill
@@ -71,10 +72,15 @@ public sealed class SpellDef
         DurationBase + ((DurationScale - DurationBase) * skillLevel / 1000);
 
     /// <summary>Get cast time at given skill level, in tenths of a second.
-    /// Higher skill casts a little faster (light Faster-Casting effect), down
-    /// to a 1-tenth floor.</summary>
-    public int GetCastTime(int skillLevel) =>
-        Math.Max(1, CastTimeBase - Math.Clamp(skillLevel, 0, 1000) / 250);
+    /// CAST_TIME is a curve across skill 0-100.0 (reference m_CastTime
+    /// GetLinear): single-value scripts are constant; "A,B" interpolates
+    /// from A at 0 skill to B at max skill. 1-tenth floor.</summary>
+    public int GetCastTime(int skillLevel)
+    {
+        int top = CastTimeScale > 0 ? CastTimeScale : CastTimeBase;
+        int tenths = CastTimeBase + (top - CastTimeBase) * Math.Clamp(skillLevel, 0, 1000) / 1000;
+        return Math.Max(1, tenths);
+    }
 
     public bool IsFlag(SpellFlag flag) => (Flags & flag) != 0;
 

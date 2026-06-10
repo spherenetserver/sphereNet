@@ -22,6 +22,42 @@
 
 
 
+
+[2026-06-10] - Büyü cast paritesi: spellbook, scroll/wand maliyetleri, cast-time kürvü, resist (Wave 106)
+----------------------------------------
+
+DÜZELTME - Büyü:
+  - Spellbook şartı (referans Spell_CanCast): klasik bir büyüyü (1-64)
+    ezberden atan oyuncunun artık erişilebilir bir spellbook'ta (elde
+    veya çantada; klasik 64-bit More1/More2 maskesi) o büyüye sahip
+    olması gerekiyor. Scroll ve wand atışları kitabı atlar. Yeni
+    SpellbookRequired config anahtarı (varsayılan açık) ReagentsRequired
+    yanına bağlandı ve test paketinin statik taban çizgisine eklendi.
+  - Scroll atışları artık yarım mana öder ve yarım zorlukla zar atar;
+    wand atışları mana harcamaz (referans paritesi); scroll atışları
+    reagent kontrolünü de atlar. Önceden wand atışı tam mana harcıyor,
+    scroll ezber atışı gibi davranıyordu.
+  - CAST_TIME artık EFFECT/DURATION gibi kürv (tek değer = sabit, "A,B"
+    skill boyunca interpolasyon); icat edilmiş "-skill/250" hızlı-atış
+    formülü kaldırıldı — paketin sabit CAST_TIME değerleriyle her büyü
+    referansın aksine magery ile hızlanıyordu.
+  - Büyü direnci artık referans zarını izliyor: şansı max(resist/50,
+    resist - ((magery-200)/50 + (1 + spell/8)*50)) / 30 olan hızlı
+    MagicResistance kontrolü — başarı etkinin düz %25'ini emer,
+    başarısızlık hiçbir şey emmez. Önceki kademeli model (circle*80
+    zorluk, %0-50 ölçek) bir icattı.
+  - Yeni testler (SpellCastParityTests, 3) resist formülünü, cast-time
+    kürvünü ve kitap bit-maskesi aramasını sabitliyor.
+
+İÇSEL - Testler:
+  - Wave 103 referans başarı eğrisi kesinliğin altında tepe yapar
+    (maksimum skill-zorluk farkında ~%99.6) ve minimumda ~%0.5 başarı
+    kuyruğu bırakır; bu, başarı ve fizzle bekleyen testleri aralıklı
+    olarak kırılgan yapıyordu. Marjdaki testler sertleştirildi: başarması
+    gereken aktörler eğrinin kesinlik noktasının ötesine eğitiliyor veya
+    GM atlamasını kullanıyor; fizzle testinin gereksinimi sıfır-şans
+    kuyruğunun ötesine taşındı. Tam paket tekrarlı koşularda yeşil (770).
+
 [2026-06-10] - Kaynak yükleyici: legacy sayısal bölüm-kimliği parse'ı (Wave 105)
 ----------------------------------------
 

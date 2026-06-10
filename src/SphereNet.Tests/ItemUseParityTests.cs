@@ -108,6 +108,9 @@ public class ItemUseParityTests
         var accounts = new AccountManager(loggerFactory);
         var client = CreatePlayingClient(loggerFactory, world, accounts, out _, out var player);
         player.SetSkill(SkillType.Mining, 1000);
+        // The reference success curve tops out below certainty (~99.6%);
+        // GM auto-success keeps the smelt roll deterministic for the test.
+        player.PrivLevel = PrivLevel.GM;
 
         var pack = EquipBackpack(world, player);
         var ore = world.CreateItem();

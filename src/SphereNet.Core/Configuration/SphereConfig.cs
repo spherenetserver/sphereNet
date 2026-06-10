@@ -97,6 +97,7 @@ public sealed class SphereConfig
     public int ArcheryMaxDist { get; set; } = 12;
     public int MagicFlags { get; set; }
     public bool ReagentsRequired { get; set; } = true;
+    public bool SpellbookRequired { get; set; } = true;
     public bool EquippedCast { get; set; }
     public bool ReagentLossAbort { get; set; }
     public bool ReagentLossFail { get; set; }
@@ -412,6 +413,7 @@ public sealed class SphereConfig
         ArcheryMaxDist = ini.GetInt(section, "ArcheryMaxDist", ArcheryMaxDist);
         MagicFlags = ini.GetInt(section, "MagicFlags", MagicFlags);
         ReagentsRequired = ini.GetBool(section, "ReagentsRequired", ReagentsRequired);
+        SpellbookRequired = ini.GetBool(section, "SpellbookRequired", SpellbookRequired);
         EquippedCast = ini.GetBool(section, "EquippedCast", EquippedCast);
         ReagentLossAbort = ini.GetBool(section, "ReagentLossAbort", ReagentLossAbort);
         ReagentLossFail = ini.GetBool(section, "ReagentLossFail", ReagentLossFail);

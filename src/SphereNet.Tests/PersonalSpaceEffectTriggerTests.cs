@@ -43,7 +43,7 @@ public class PersonalSpaceEffectTriggerTests
 
         var caster = world.CreateCharacter();
         caster.MaxMana = caster.Mana = 100;
-        caster.SetSkill(SkillType.Magery, 1000);
+        caster.SetSkill(SkillType.Magery, 2000);
         caster.BodyId = 0x0190;
         world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));
 

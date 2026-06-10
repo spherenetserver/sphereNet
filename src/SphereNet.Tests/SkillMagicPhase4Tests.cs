@@ -27,7 +27,7 @@ public class SkillMagicPhase4Tests
     {
         var world = CreateWorld();
         var ch = world.CreateCharacter();
-        ch.SetSkill(SkillType.Stealth, 1000);
+        ch.SetSkill(SkillType.Stealth, 2000);
         ch.SetStatFlag(StatFlag.Hidden);
         world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
 
@@ -71,7 +71,7 @@ public class SkillMagicPhase4Tests
             var caster = world.CreateCharacter();
             caster.MaxMana = 100;
             caster.Mana = 100;
-            caster.SetSkill(SkillType.Magery, 1000);
+            caster.SetSkill(SkillType.Magery, 2000);
             world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));
 
             var rune = world.CreateItem();
@@ -155,7 +155,7 @@ public class SkillMagicPhase4Tests
             var caster = world.CreateCharacter();
             caster.MaxMana = 100;
             caster.Mana = 100;
-            caster.SetSkill(SkillType.Magery, 1000);
+            caster.SetSkill(SkillType.Magery, 2000);
             caster.BodyId = 0x0190;
             world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));
 
@@ -179,7 +179,7 @@ public class SkillMagicPhase4Tests
     {
         var world = CreateWorld();
         var smith = world.CreateCharacter();
-        smith.SetSkill(SkillType.Tinkering, 1000);
+        smith.SetSkill(SkillType.Tinkering, 2000);
         world.PlaceCharacter(smith, new Point3D(100, 100, 0, 0));
 
         var item = world.CreateItem();

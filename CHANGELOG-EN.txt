@@ -22,6 +22,43 @@
 
 
 
+
+[2026-06-10] - Spell cast parity: spellbook, scroll/wand costs, cast-time curve, resist (Wave 106)
+----------------------------------------
+
+FIXED - Magic:
+  - Spellbook requirement (reference Spell_CanCast): a player casting a
+    classic spell (1-64) from memory must now have it in an accessible
+    spellbook (equipped hands or backpack; the classic 64-bit More1/More2
+    mask). Scroll and wand casts bypass the book. New SpellbookRequired
+    config knob (default on) wired next to ReagentsRequired and covered
+    by the test-suite static baseline.
+  - Scroll casts now pay half mana and roll at half difficulty, and wand
+    casts cost no mana (reference parity); scroll casts also skip the
+    reagent check. Previously a wand cast still consumed the full mana
+    cost and scrolls behaved like memory casts.
+  - CAST_TIME is now a curve like EFFECT/DURATION (single value =
+    constant, "A,B" interpolates across skill); the invented
+    "-skill/250" faster-casting formula is gone — with the script pack's
+    constant CAST_TIME values every spell used to get faster with magery
+    against the reference.
+  - Magic resist now follows the reference roll: a quick MagicResistance
+    check whose chance is max(resist/50, resist - ((magery-200)/50 +
+    (1 + spell/8)*50)) / 30 — success absorbs a flat 25% of the effect,
+    failure absorbs nothing. The previous gradient (circle*80 difficulty,
+    0-50% scaling) was an invention.
+  - New tests (SpellCastParityTests, 3) pin the resist formula, the
+    cast-time curve and the book bit-mask lookup.
+
+INTERNAL - Tests:
+  - The Wave 103 reference success curve tops out below certainty
+    (~99.6% at the maximum skill-vs-difficulty delta) and keeps a ~0.5%
+    success tail at the minimum, which made success- and fizzle-asserting
+    tests intermittently flaky. Hardened the margin tests: actors that
+    must succeed train past the curve's certainty point or use the GM
+    bypass, and the fizzle test's requirement moved past the zero-chance
+    tail. Full suite green (770) across repeated runs.
+
 [2026-06-10] - Resource loader: legacy numeric section-id parse (Wave 105)
 ----------------------------------------
 

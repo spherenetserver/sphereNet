@@ -333,6 +333,7 @@ public sealed class SpellEngine
         var weapon = caster.GetEquippedItem(Layer.OneHanded);
         var offhand = caster.GetEquippedItem(Layer.TwoHanded);
         bool isWand = weapon?.ItemType == ItemType.Wand;
+        bool fromScroll = caster.TryGetTag("SCROLL_UID", out _);
         bool hasBlockingWeapon = (weapon != null && weapon.ItemType != ItemType.Wand) ||
             (offhand != null && offhand.ItemType != ItemType.Shield);
 
@@ -344,10 +345,23 @@ public sealed class SpellEngine
         }
 
         // Reagent availability check (before starting cast). Wand/scroll/GM skip.
-        if (!isWand && caster.PrivLevel < PrivLevel.GM &&
+        if (!isWand && !fromScroll && caster.PrivLevel < PrivLevel.GM &&
             Character.ReagentsRequiredEnabled && !HasRequiredReagents(caster, def))
         {
             OnSysMessage?.Invoke(caster, "You lack the reagents to cast that spell.");
+            return -1;
+        }
+
+        // Spellbook requirement (reference Spell_CanCast): a player casting
+        // from memory must have the spell in an accessible spellbook; scroll
+        // and wand casts bypass the book. Only the classic 1-64 ids are
+        // tracked through the book bit mask (More1/More2).
+        if (Character.SpellbookRequiredEnabled && caster.IsPlayer &&
+            !isWand && !fromScroll && caster.PrivLevel < PrivLevel.GM &&
+            (int)def.Id is >= 1 and <= 64 &&
+            !HasSpellInBook(caster, (int)def.Id))
+        {
+            OnSysMessage?.Invoke(caster, "You don't know that spell.");
             return -1;
         }
 
@@ -431,7 +445,9 @@ public sealed class SpellEngine
         int skillVal = caster.GetSkill(primarySkill);
         int difficulty = def.GetDifficulty();
         bool castWithWand = IsCastingWithWand(caster);
-        if (castWithWand) difficulty = 10;
+        bool castFromScroll = caster.TryGetTag("SCROLL_UID", out _);
+        if (castWithWand) difficulty = 10;          // reference: wand = minimal difficulty
+        else if (castFromScroll) difficulty /= 2;   // reference: scroll = half difficulty
 
         // Cast recovery — a completed cast (success OR fizzle) starts a cooldown
         // before the next one. Higher skill recovers faster (FCR-style).
@@ -469,6 +485,8 @@ public sealed class SpellEngine
         }
 
         int manaCost = Math.Max(0, def.ManaCost * Character.ManaLossPercent / 100);
+        if (castWithWand) manaCost = 0;             // reference: wands cost no mana
+        else if (castFromScroll) manaCost /= 2;     // reference: scrolls cost half mana
         caster.Mana -= (short)Math.Min(manaCost, caster.Mana);
 
         // Clear cast state
@@ -603,6 +621,39 @@ public sealed class SpellEngine
     /// <summary>Return true if the caster's backpack holds at least the needed
     /// amount of every reagent the spell requires. Reagents are identified by
     /// BaseId; stacked amounts contribute per-stack.</summary>
+    /// <summary>True when the spell's bit is set in any accessible
+    /// spellbook (equipped hands or top level of the backpack). Spellbook
+    /// content uses the classic 64-bit mask in More1/More2.</summary>
+    internal bool HasSpellInBook(Character caster, int spellId)
+    {
+        ulong bit = 1UL << (spellId - 1);
+        foreach (var book in EnumerateSpellbooks(caster))
+        {
+            ulong bits = ((ulong)book.More2 << 32) | book.More1;
+            if ((bits & bit) != 0)
+                return true;
+        }
+        return false;
+    }
+
+    private IEnumerable<Item> EnumerateSpellbooks(Character caster)
+    {
+        var oneHand = caster.GetEquippedItem(Layer.OneHanded);
+        if (oneHand?.ItemType == ItemType.Spellbook)
+            yield return oneHand;
+        var twoHand = caster.GetEquippedItem(Layer.TwoHanded);
+        if (twoHand?.ItemType == ItemType.Spellbook)
+            yield return twoHand;
+        if (caster.Backpack != null)
+        {
+            foreach (var item in caster.Backpack.Contents)
+            {
+                if (item.ItemType == ItemType.Spellbook)
+                    yield return item;
+            }
+        }
+    }
+
     private bool HasRequiredReagents(Character caster, SpellDef def)
     {
         if (def.Reagents.Count == 0) return true;
@@ -839,21 +890,24 @@ public sealed class SpellEngine
     /// </summary>
     private int CalcMagicResist(Character target, SpellDef def, Character caster)
     {
-        int mr = target.GetSkill(SkillType.MagicResistance);
-        // Use the spell's real UO circle, not an enum-index approximation, so
-        // resist difficulty lines up with the rest of the spell system.
-        int spellCircle = Math.Clamp(def.GetCircle(), 1, 8);
-        int difficulty = spellCircle * 80;
+        // Reference resist roll (Spell_CastDone): a quick MagicResistance
+        // check against a chance derived from resist skill vs caster magery
+        // and the spell id; success absorbs a flat 25% of the effect,
+        // failure absorbs nothing.
+        int chance = CalcResistChance(
+            target.GetSkill(SkillType.MagicResistance),
+            caster.GetSkill(SkillType.Magery),
+            (int)def.Id);
+        return SkillEngine.UseQuick(target, SkillType.MagicResistance, chance) ? 25 : 0;
+    }
 
-        SkillEngine.UseQuick(target, SkillType.MagicResistance, spellCircle * 10);
-
-        int resistPct;
-        if (mr > difficulty)
-            resistPct = Math.Min(50, 25 + (mr - difficulty) / 20);
-        else
-            resistPct = Math.Max(0, 25 - (difficulty - mr) / 20);
-
-        return resistPct;
+    /// <summary>Reference resist-chance formula:
+    /// max(resist/50, resist - ((magery-200)/50 + (1 + spell/8) * 50)) / 30.</summary>
+    internal static int CalcResistChance(int resistSkill, int casterMagery, int spellId)
+    {
+        int first = resistSkill / 50;
+        int second = resistSkill - (((casterMagery - 200) / 50) + (1 + spellId / 8) * 50);
+        return Math.Max(first, second) / 30;
     }
 
     /// <summary>Get damage type for spell.</summary>

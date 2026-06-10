@@ -60,7 +60,7 @@ public class SkillDelayTests
         var client = TestHarness.CreateClient(loggerFactory, world, new SphereNet.Game.Accounts.AccountManager(loggerFactory), 1301);
         var player = world.CreateCharacter();
         player.IsPlayer = true;
-        player.SetSkill(SkillType.Hiding, 1000);
+        player.SetSkill(SkillType.Hiding, 2000);
         world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
         TestHarness.AttachCharacter(client, player);
 
@@ -223,6 +223,9 @@ public class SkillDelayTests
         var bard = world.CreateCharacter();
         bard.SetSkill(SkillType.Musicianship, 900);
         bard.SetSkill(SkillType.Peacemaking, 900);
+        // The reference success curve tops out below certainty; GM
+        // auto-success keeps the music + peace rolls deterministic here.
+        bard.PrivLevel = PrivLevel.GM;
         world.PlaceCharacter(bard, new Point3D(100, 100, 0, 0));
 
         var pack = world.CreateItem();
@@ -262,7 +265,7 @@ public class SkillDelayTests
         var caster = world.CreateCharacter();
         caster.MaxMana = 100;
         caster.Mana = 100;
-        caster.SetSkill(SkillType.Magery, 1000);
+        caster.SetSkill(SkillType.Magery, 2000);
         caster.BodyId = 0x0190;
         world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));
 

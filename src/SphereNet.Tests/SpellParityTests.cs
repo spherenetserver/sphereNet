@@ -31,7 +31,9 @@ public class SpellParityTests
             ManaCost = 10,
             CastTimeBase = 1,
         });
-        registry.Get(SpellType.Clumsy)!.SkillReq[SkillType.Magery] = 1000;
+        // Far past the bell curve's zero-chance tail so the fizzle is
+        // deterministic (at delta -1000 the curve still succeeds ~0.5%).
+        registry.Get(SpellType.Clumsy)!.SkillReq[SkillType.Magery] = 3000;
 
         var caster = world.CreateCharacter();
         caster.MaxMana = 100;
@@ -69,7 +71,7 @@ public class SpellParityTests
         npc.Mana = 100;
         npc.Hits = 10;
         npc.MaxHits = 100;
-        npc.SetSkill(SkillType.Magery, 1000);
+        npc.SetSkill(SkillType.Magery, 2000);
         world.PlaceCharacter(npc, new Point3D(100, 100, 0, 0));
 
         var engine = new SpellEngine(world, registry);
@@ -120,6 +122,7 @@ public class SpellParityTests
     {
         Character.HelpingCriminalsIsACrimeEnabled = true;
         Character.CriminalTimerSeconds = 180;
+        Character.SpellbookRequiredEnabled = false; // memory-cast without a book
         try
         {
             var world = CreateWorld();
@@ -138,7 +141,7 @@ public class SpellParityTests
             healer.IsPlayer = true;
             healer.MaxMana = 100;
             healer.Mana = 100;
-            healer.SetSkill(SkillType.Magery, 1000);
+            healer.SetSkill(SkillType.Magery, 2000);
             world.PlaceCharacter(healer, new Point3D(100, 100, 0, 0));
 
             var criminal = world.CreateCharacter();
@@ -156,6 +159,7 @@ public class SpellParityTests
         finally
         {
             Character.HelpingCriminalsIsACrimeEnabled = false;
+            Character.SpellbookRequiredEnabled = true;
         }
     }
 

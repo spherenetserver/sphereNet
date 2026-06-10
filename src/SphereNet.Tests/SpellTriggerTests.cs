@@ -109,6 +109,10 @@ public class SpellTriggerTests
     [Fact]
     public void SpellEngine_ItemTarget_FiresItemSpellEffect()
     {
+        // Memory-cast without a spellbook in the test world.
+        Character.SpellbookRequiredEnabled = false;
+        try
+        {
         var world = CreateWorld();
         var (_, player) = NewClient(world);
         player.SetSkill(SkillType.Magery, 1000);
@@ -153,5 +157,10 @@ public class SpellTriggerTests
         Assert.Equal(1, spellEffectCount);
         Assert.True(rune.TryGetRuneMark(out var marked));
         Assert.Equal(player.Position, marked);
+        }
+        finally
+        {
+            Character.SpellbookRequiredEnabled = true;
+        }
     }
 }

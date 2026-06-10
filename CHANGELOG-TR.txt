@@ -6,6 +6,27 @@
 
 
 
+
+[2026-06-10] - GameClient ayrıştırma faz 3e: dialog handler sınıfı (Wave 90)
+----------------------------------------
+
+İÇSEL - GameClient ayrıştırma:
+  - Dialogs partial'ı (~1.740 satır: FOR/WHILE/IF açılımı ve DORIGIN
+    koordinat imleçleriyle script [DIALOG] bölüm render'ı, dialog buton
+    script yürütme, help menüsü ve page/stuck akışları) yerleşik shim
+    reçetesiyle ClientDialogHandler sınıfına taşındı; gövdeler
+    TryRunDialogButton'a geçen ITextConsole kimliğinin _client olması
+    dışında bayt-bayt aynı. GameClient çekirdeğinde kalan dialog durumu da
+    birlikte taşındı: _dialogSubjectUid konu alanı (ScriptConsole artık
+    Dialogs.DialogSubjectUid üzerinden okur), native-fallback kaydı ile
+    OpenNamedDialog/RegisterNativeDialogFallbacks (kayıt handler
+    kurucusuna taşındı) ve INPDLG bekleyen-istem haritası ile sayaç
+    (Handlers partial'ı ve disconnect temizliği artık
+    Dialogs.PendingInputDlg/NextInputDlgContext üzerinden geçer).
+    TryFindMenuSection ve IsPlainDefToken, ScriptConsole partial'ı için
+    internal GameClient köprüleriyle erişilebilir kaldı. Tam paket yeşil
+    (723); mojibake taraması temiz.
+
 [2026-06-10] - GameClient ayrıştırma faz 3e: targeting handler sınıfı (Wave 89)
 ----------------------------------------
 

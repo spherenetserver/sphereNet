@@ -22,7 +22,8 @@ GameClient (orkestratör: NetState + Character + yaşam döngüsü)
      ├─ ClientInventoryHandler  single click, pickup/drop/equip, profil/status ✅
      ├─ ClientItemUseHandler    dclick dispatch, item kullanımı, pet komutları, vendor listeleri ✅
      ├─ ClientWorldFeaturesHandler  crafting/guild/house gump, trade, 0xBF dispatch, party, context menu ✅
-     └─ ClientTargetingHandler  target-response yönlendirici, gump gönderim/yanıt ✅
+     ├─ ClientTargetingHandler  target-response yönlendirici, gump gönderim/yanıt ✅
+     └─ ClientDialogHandler     script DIALOG render, named-dialog dispatch, help menü, INPDLG ✅
 ```
 
 ## Fazlar
@@ -80,7 +81,7 @@ dönüşüm sırası:
 |------|---------|-------|-------------|------------------|
 | 3d ✅ | WorldFeatures | ~1583 | ClientWorldFeaturesHandler | Statik 0xBF sözlüğü `Action<ClientWorldFeaturesHandler, byte[]>` tipine döndü — lambda'lar bayt-bayt aynı (`client.X` artık handler üyesi). 6 trade callback property + test reflection köprüleri (SendContextMenu, HandleContextMenuResponse) GameClient'ta. |
 | 3e ✅ | Targeting | ~627 | ClientTargetingHandler | SendGump/SetPendingTarget GameClient'ta delegasyon. Dialog close-fn durumu (`_pendingDialogCloseFunction`/`_pendingDialogArgs`) GameClient'ta internal property köprüsüyle — alanlar 3e Dialogs'ta handler'a taşınacak. |
-| 3e | Dialogs | ~1629 | ClientDialogHandler | Script dialog render (RenderScriptDialog), help menüsü, INPDLG. `_dialogSubjectUid` + `_nativeDialogFallbacks` + `_pendingInputDlg` alanları handler'a taşınır (faz-1 tarzı). `TryShowScriptDialog` public delegasyon. |
+| 3e ✅ | Dialogs | ~1629 | ClientDialogHandler | `_dialogSubjectUid`/`_nativeDialogFallbacks`/`_pendingInputDlg`/`_nextInputDlgContext` alanları + `OpenNamedDialog`/`RegisterNativeDialogFallbacks` GameClient.cs'ten handler'a taşındı. ScriptConsole `Dialogs.DialogSubjectUid`, Handlers `Dialogs.PendingInputDlg` üzerinden erişir. `TryFindMenuSection`/`IsPlainDefToken` internal köprü. |
 | 3f | Skills | ~489 | ClientSkillsHandler | Küçük; InfoSkillSink zaten internal. |
 | 3f | Combat | ~1790 | ClientCombatHandler | SICAK YOL: HandleMove/movement batch + HandleSpeech + HandleAttack + cast. Throttle bileşeni hazır. Shim'lerin property-erişim maliyeti ölçülmeli (muhtemelen ihmal edilebilir ama hareket yolunda perf testi koş: RuntimePerformancePressureTests). |
 | 3g | ScriptConsole | ~2024 | ClientScriptConsoleHandler | EN BÜYÜK. ITextConsole implementasyonu GameClient'ta KALIR (script'ler konsol olarak GameClient alır); handler script-verb yüzeyini barındırır, SysMessage/GetName GameClient'ta. `TryExecuteScriptCommand`/`TryGetScriptVariable` public delegasyon. |

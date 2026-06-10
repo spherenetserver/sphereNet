@@ -142,21 +142,6 @@ public sealed partial class GameClient : ITextConsole
     /// <summary>Target-cursor state machine (decomposition phase 1).</summary>
     internal ClientTargetState Targets => _targets;
     private readonly ClientTargetState _targets = new();
-    // Source-X dialog subject (CLIMODE_DIALOG pObj). When set, bare
-    // property names inside the active script dialog resolve on this
-    // object instead of the GM. Used by d_charprop1 / d_itemprop1 so
-    // <BODY> / <STR> etc. reflect the inspected target. Cleared after
-    // render; callbacks that act on the target stash its UID locally.
-    private Serial _dialogSubjectUid = Serial.Invalid;
-    /// <summary>Generic script-first → native fallback registry. When a
-    /// named dialog (<c>d_xxx</c>) is requested via <c>SDIALOG</c> or a
-    /// help/inspect entry point, the host first tries the script
-    /// <c>[DIALOG d_xxx]</c> section through <see cref="TryShowScriptDialog"/>;
-    /// only when no script section is found does the registered native
-    /// fallback render. New native gumps should plug in here instead of
-    /// hard-coding their own render path.</summary>
-    private readonly Dictionary<string, Action<int>> _nativeDialogFallbacks =
-        new(StringComparer.OrdinalIgnoreCase);
     private uint _lastCombatNotifyTarget;
     private string? _pendingDialogCloseFunction;
     private string _pendingDialogArgs = "";
@@ -174,17 +159,6 @@ public sealed partial class GameClient : ITextConsole
         set => _pendingDialogArgs = value;
     }
     private int _dialogDepth;
-    /// <summary>
-    /// Pending Source-X <c>INPDLG</c> prompt state. Keyed by the
-    /// <c>(targetSerial, context)</c> pair we encoded into the outgoing
-    /// 0xAB packet; the matching 0xAC reply restores the property name
-    /// to write the user-typed value into.
-    /// </summary>
-    private readonly Dictionary<(uint Serial, ushort Context), string> _pendingInputDlg = new();
-    /// <summary>Monotonic counter for fresh INPDLG <c>context</c> ids
-    /// (Source-X uses CLIMODE constants, but we just need uniqueness per
-    /// open prompt).</summary>
-    private ushort _nextInputDlgContext = 0x1000;
     private List<MenuOptionEntry>? _pendingMenuOptions;
     private ushort _pendingMenuId;
     private string _pendingMenuDefname = "";
@@ -235,7 +209,7 @@ public sealed partial class GameClient : ITextConsole
 
             Targets.Callback = null;
             Targets.CursorActive = false;
-            _pendingInputDlg.Clear();
+            Dialogs.PendingInputDlg.Clear();
             _pendingMenuOptions = null;
             _pendingEditMenuUids = null;
             _pendingEditMenuMemories = null;
@@ -286,8 +260,6 @@ public sealed partial class GameClient : ITextConsole
         _accountManager = accountManager;
         _logger = logger;
         _netState.PacketDebugClassifier = ClassifyPacketDebug;
-
-        RegisterNativeDialogFallbacks();
     }
 
     private string ClassifyPacketDebug(ReadOnlySpan<byte> data)
@@ -327,36 +299,6 @@ public sealed partial class GameClient : ITextConsole
 
         serial = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(data[offset..]);
         return true;
-    }
-
-    /// <summary>Wire built-in <c>d_xxx</c> native gump fallbacks. Each entry
-    /// is only used when the script-side <c>[DIALOG d_xxx]</c> section is
-    /// missing — see <see cref="OpenNamedDialog"/>.</summary>
-    private void RegisterNativeDialogFallbacks()
-    {
-        _nativeDialogFallbacks["d_helppage"] = page => ShowHelpPageDialog(page <= 0 ? 1 : page);
-    }
-
-    /// <summary>Generic script-first dialog dispatcher. Tries the script
-    /// <c>[DIALOG dialogId]</c> section (Source-X parity), falling back to
-    /// any registered native gump. Returns true when something was
-    /// rendered. <paramref name="subject"/> binds the gump's CLIMODE_DIALOG
-    /// pObj for property reads (used by edit / inspect).</summary>
-    public bool OpenNamedDialog(string dialogId, int requestedPage = 0, ObjBase? subject = null)
-    {
-        if (string.IsNullOrWhiteSpace(dialogId))
-            return false;
-
-        if (TryShowScriptDialog(dialogId, requestedPage, subject))
-            return true;
-
-        if (_nativeDialogFallbacks.TryGetValue(dialogId, out var nativeOpen))
-        {
-            nativeOpen(requestedPage);
-            return true;
-        }
-
-        return false;
     }
 
     public void SetEngines(

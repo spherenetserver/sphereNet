@@ -402,12 +402,12 @@ public sealed partial class GameClient
         if (_character == null) return;
 
         var key = (serial, context);
-        if (!_pendingInputDlg.TryGetValue(key, out var propName))
+        if (!Dialogs.PendingInputDlg.TryGetValue(key, out var propName))
         {
             _logger.LogDebug("[inpdlg] unexpected text input: serial=0x{S:X8} ctx=0x{C:X4}", serial, context);
             return;
         }
-        _pendingInputDlg.Remove(key);
+        Dialogs.PendingInputDlg.Remove(key);
 
         if (action == 0)
         {
@@ -479,11 +479,11 @@ public sealed partial class GameClient
         else if (target is Item it) targetSerial = it.Uid.Value;
         else return;
 
-        ushort context = unchecked(_nextInputDlgContext++);
-        if (_nextInputDlgContext == 0)
-            _nextInputDlgContext = 0x1000;
+        ushort context = unchecked(Dialogs.NextInputDlgContext++);
+        if (Dialogs.NextInputDlgContext == 0)
+            Dialogs.NextInputDlgContext = 0x1000;
 
-        _pendingInputDlg[(targetSerial, context)] = propName;
+        Dialogs.PendingInputDlg[(targetSerial, context)] = propName;
 
         string current = ".";
         if (target.TryGetProperty(propName, out var cur) && !string.IsNullOrEmpty(cur))

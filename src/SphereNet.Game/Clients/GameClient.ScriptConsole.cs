@@ -44,8 +44,8 @@ public sealed partial class GameClient
     {
         if (_character == null)
             return null;
-        if (_dialogSubjectUid.IsValid &&
-            _world.FindChar(_dialogSubjectUid) is { } subject &&
+        if (Dialogs.DialogSubjectUid.IsValid &&
+            _world.FindChar(Dialogs.DialogSubjectUid) is { } subject &&
             !subject.IsPlayer && subject.NpcBrain == NpcBrainType.Vendor)
             return subject;
 
@@ -1200,7 +1200,7 @@ public sealed partial class GameClient
             // resolve against the NPC anymore.
             foreach (var openDlg in Gumps.OpenScriptDialogs.Keys.ToArray())
                 CloseScriptDialog(openDlg);
-            _dialogSubjectUid = Serial.Invalid;
+            Dialogs.DialogSubjectUid = Serial.Invalid;
             return true;
         }
 

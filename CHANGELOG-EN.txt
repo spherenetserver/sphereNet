@@ -6,6 +6,28 @@
 
 
 
+
+[2026-06-10] - GameClient decomposition phase 3e: dialog handler class (Wave 90)
+----------------------------------------
+
+INTERNAL - GameClient decomposition:
+  - The Dialogs partial (~1,740 lines: script [DIALOG] section rendering
+    with layout expansion (FOR/WHILE/IF unrolling, DORIGIN coordinate
+    cursors), dialog-button script execution, the help menu and the
+    page/stuck flows) moved into ClientDialogHandler using the established
+    shim recipe; bodies are byte-identical except the ITextConsole identity
+    pass to TryRunDialogButton, which becomes _client. The dialog state
+    that still lived on the GameClient core moved with it: the
+    _dialogSubjectUid subject field (ScriptConsole now reads it through
+    Dialogs.DialogSubjectUid), the native-fallback registry plus
+    OpenNamedDialog/RegisterNativeDialogFallbacks (registration relocated
+    to the handler constructor), and the INPDLG pending-prompt map and
+    context counter (the Handlers partial and disconnect cleanup now go
+    through Dialogs.PendingInputDlg/NextInputDlgContext). TryFindMenuSection
+    and IsPlainDefToken stay reachable for the ScriptConsole partial via
+    internal GameClient bridges. Full suite green (723); mojibake scan
+    clean.
+
 [2026-06-10] - GameClient decomposition phase 3e: targeting handler class (Wave 89)
 ----------------------------------------
 

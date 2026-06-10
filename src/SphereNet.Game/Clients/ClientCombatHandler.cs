@@ -1084,7 +1084,24 @@ public sealed class ClientCombatHandler
             if (_lastCombatNotifyTarget != target.Uid.Value)
             {
                 _lastCombatNotifyTarget = target.Uid.Value;
-                NpcSpeech(_character, ServerMessages.GetFormatted(Msg.CombatAttacks, target.Name));
+                // Reference Attacker_Add messaging: BOTH lines render over the
+                // ATTACKER. "*X is attacking Y!*" goes to every observer except
+                // the victim's client, in the emote hue; the victim's client
+                // alone gets "*X is attacking you!*" (%s = attacker). The old
+                // code formatted the "attacking you" template with the
+                // VICTIM's name and broadcast it to everyone.
+                const ushort emoteHue = 0x0022;
+                string atkName = _character.Name ?? "";
+                var emoteOthers = new PacketSpeechUnicodeOut(
+                    _character.Uid.Value, _character.BodyId, 2, emoteHue, 3, "TRK",
+                    atkName, ServerMessages.GetFormatted(Msg.CombatAttacko, atkName, target.Name));
+                var emoteVictim = new PacketSpeechUnicodeOut(
+                    _character.Uid.Value, _character.BodyId, 2, emoteHue, 3, "TRK",
+                    atkName, ServerMessages.GetFormatted(Msg.CombatAttacks, atkName));
+                uint victimUid = target.Uid.Value;
+                ForEachClientInRange?.Invoke(_character.Position, UpdateRange, 0,
+                    (obsCh, obsClient) => obsClient.Send(
+                        obsCh.Uid.Value == victimUid ? emoteVictim : emoteOthers));
             }
 
             _spellEngine?.TryInterruptFromDamage(target, damage);
@@ -1395,10 +1412,17 @@ public sealed class ClientCombatHandler
             _character.X, _character.Y, (short)_character.Z,
             0, 0, 0,
             10, 30, true, false);
-        BroadcastNearby?.Invoke(_character.Position, UpdateRange, deathEffect, 0);
+        // The dying client gets the effect/sound directly — wire captures
+        // showed the broadcast-only delivery never reaching it (the 0x70/0x54
+        // pair was absent from the death sequence while every _netState send
+        // arrived). Observers still get them via the broadcast, with the
+        // victim excluded to avoid the old double-send.
+        _netState.Send(deathEffect);
+        BroadcastNearby?.Invoke(_character.Position, UpdateRange, deathEffect, _character.Uid.Value);
 
         var deathSound = new PacketSound(0x01FE, _character.X, _character.Y, _character.Z);
-        BroadcastNearby?.Invoke(_character.Position, UpdateRange, deathSound, 0);
+        _netState.Send(deathSound);
+        BroadcastNearby?.Invoke(_character.Position, UpdateRange, deathSound, _character.Uid.Value);
 
         // ---------------------------------------------------------------
         //   Per-observer dispatch (mirror of CChar::UpdateCanSee with the

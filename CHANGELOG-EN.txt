@@ -28,6 +28,20 @@
 
 
 
+[2026-06-11] - Attack announcements per reference; death FX reach the dying client (Wave 123)
+----------------------------------------
+
+FIXED - Combat / Death:
+  - The "is attacking" announcement formatted the victim-facing
+    template with the wrong name and broadcast it to everyone. Per the
+    reference both lines now render over the ATTACKER: "*X is
+    attacking Y!*" in the emote hue to all observers except the
+    victim's client, and "*X is attacking you!*" only to the victim.
+  - The death particle and sound were delivered broadcast-only and
+    never reached the dying client (confirmed by wire capture); they
+    are now sent to it directly, with observers still covered by an
+    exclude-victim broadcast.
+
 [2026-06-11] - Swing and surround sidestep no longer share a tick (Wave 122)
 ----------------------------------------
 

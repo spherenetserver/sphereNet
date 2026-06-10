@@ -28,6 +28,19 @@
 
 
 
+[2026-06-11] - Saldırı anonsları referansa uygun; ölüm efektleri ölen istemciye ulaşıyor (Wave 123)
+----------------------------------------
+
+DÜZELTME - Savaş / Ölüm:
+  - "is attacking" anonsu kurban-şablonunu yanlış adla doldurup
+    herkese yayınlıyordu. Referans gereği iki satır da SALDIRGANIN
+    üzerinde: "*X is attacking Y!*" emote renginde kurban hariç tüm
+    gözlemcilere, "*X is attacking you!*" yalnız kurbanın istemcisine.
+  - Ölüm parçacığı ve sesi yalnız broadcast ile gönderiliyordu ve ölen
+    istemciye hiç ulaşmıyordu (paket kaydıyla doğrulandı); artık ona
+    doğrudan gönderiliyor, gözlemciler kurban-hariç broadcast ile
+    kapsanmaya devam ediyor.
+
 [2026-06-11] - Vuruş ile kuşatma yan adımı aynı tick'i paylaşmıyor (Wave 122)
 ----------------------------------------
 

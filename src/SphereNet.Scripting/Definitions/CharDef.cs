@@ -164,7 +164,7 @@ public sealed class CharDef : BaseDef
             case "RESLEVEL": byte.TryParse(value, out byte rsl); ResLevel = rsl; break;
             case "RESDISPDNHUE": ResDispDnHue = ParseHexOrDec(value); break;
             case "RESDISPDNID": ResDispDnId = ParseHexOrDec(value); break;
-            case "RESOURCES": ParseResourceList(value, BaseResources); break;
+            case "RESOURCES": ParseCarveResources(value); break;
             case "EVENTS":
             case "TEVENTS":
                 ParseEventsList(value);
@@ -272,6 +272,32 @@ public sealed class CharDef : BaseDef
             var rid = ResourceId.FromEventName(name);
             if (rid.IsValid && !Events.Contains(rid))
                 Events.Add(rid);
+        }
+    }
+
+    /// <summary>RESOURCES entries with their amounts and raw defnames
+    /// ("19 i_ribs_raw" → 19×, "i_flesh_head_2" → 1×). Corpse carving reads
+    /// this list (reference Use_CarveCorpse over m_BaseResources).</summary>
+    public List<(ResourceId Rid, int Amount, string DefName)> CarveResources { get; } = [];
+
+    private void ParseCarveResources(string value)
+    {
+        CarveResources.Clear();
+        BaseResources.Clear();
+        foreach (var raw in value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            string name = raw;
+            int amount = 1;
+            int sp = raw.IndexOf(' ');
+            if (sp > 0 && int.TryParse(raw[..sp], out int amt))
+            {
+                amount = Math.Max(1, amt);
+                name = raw[(sp + 1)..].Trim();
+            }
+            var rid = ResourceId.FromString(name);
+            if (rid.IsValid)
+                BaseResources.Add(rid);
+            CarveResources.Add((rid, amount, name));
         }
     }
 

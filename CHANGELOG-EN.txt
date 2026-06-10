@@ -28,6 +28,17 @@
 
 
 
+[2026-06-11] - Corpse carving uses the chardef RESOURCES list (Wave 127)
+----------------------------------------
+
+FIXED - Death:
+  - Carving produced hardcoded hides/meat for every corpse. Per the
+    reference, parts now come from the victim chardef RESOURCES list
+    (with amounts — "19 i_ribs_raw" works): player-corpse parts are
+    renamed "<part> of <victim>" and fall to the ground with decay,
+    creature parts go into the corpse. Defs without RESOURCES keep the
+    legacy random rolls; a corpse can only be carved once.
+
 [2026-06-11] - NPC cast FX, spell-damage feedback, gated per-action triggers (Wave 126)
 ----------------------------------------
 

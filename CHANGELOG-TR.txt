@@ -28,6 +28,17 @@
 
 
 
+[2026-06-11] - Ceset parçalama chardef RESOURCES listesini kullanıyor (Wave 127)
+----------------------------------------
+
+DÜZELTME - Ölüm:
+  - Parçalama her cesette sabit deri/et üretiyordu. Referans gereği
+    parçalar artık kurbanın chardef RESOURCES listesinden geliyor
+    (miktarlı — "19 i_ribs_raw" çalışır): player cesedinde parçalar
+    "<parça> of <kurban>" adıyla yere düşüyor (decay'li), yaratık
+    parçaları cesedin içine gidiyor. RESOURCES'sız tanımlar eski
+    rastgele düşüşü koruyor; ceset yalnız bir kez parçalanabiliyor.
+
 [2026-06-11] - NPC cast efektleri, büyü hasar geri bildirimi, kapılı aksiyon trigger'ları (Wave 126)
 ----------------------------------------
 

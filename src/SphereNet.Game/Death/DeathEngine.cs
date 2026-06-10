@@ -520,6 +520,7 @@ public sealed class DeathEngine
     {
         var results = new List<Item>();
         if (corpse.ItemType != ItemType.Corpse) return results;
+        if (corpse.TryGetTag("CARVED", out _)) return results; // once per corpse (reference m_carved)
 
         if (TriggerDispatcher?.FireItemTrigger(corpse, ItemTrigger.CarveCorpse, new TriggerArgs
         {
@@ -528,34 +529,83 @@ public sealed class DeathEngine
         }) == TriggerResult.True)
             return results;
 
-        // Hides
-        if (Random.Shared.Next(100) < 70)
+        // Reference Use_CarveCorpse: the parts come from the victim chardef's
+        // RESOURCES list. Player-corpse parts are renamed "<part> of <victim>"
+        // and fall to the ground with a decay timer; creature parts go into
+        // the corpse container.
+        Character? owner = null;
+        if (corpse.TryGetTag("OWNER_UID", out string? ownerUidStr2) && uint.TryParse(ownerUidStr2, out uint carveOwnerUid))
+            owner = _world.FindChar(new Serial(carveOwnerUid));
+        var charDef = owner != null
+            ? Definitions.DefinitionLoader.GetCharDef(owner.CharDefIndex)
+            : Definitions.DefinitionLoader.GetCharDef(corpse.Amount);
+        bool playerCorpse = owner?.IsPlayer ?? false;
+        string victimName = corpse.TryGetTag("CORPSE_NAME", out string? vn) && !string.IsNullOrWhiteSpace(vn)
+            ? vn!
+            : owner?.GetDisplayName() ?? "";
+
+        var resources = Definitions.DefinitionLoader.StaticResources;
+        if (charDef != null && resources != null && charDef.CarveResources.Count > 0)
         {
-            var hides = _world.CreateItem();
-            hides.BaseId = 0x1079; // hides
-            hides.Name = "hides";
-            hides.Amount = (ushort)Random.Shared.Next(1, 4);
-            AddToPackOrGround(carver, hides);
-            results.Add(hides);
+            foreach (var (rid, amount, defName) in charDef.CarveResources)
+            {
+                int defIndex = Definitions.TemplateEngine.ResolveItemDefIndex(resources, defName);
+                if (defIndex == 0) continue;
+                ushort dispId = Definitions.TemplateEngine.ResolveDispId(resources, defName);
+                if (dispId == 0) continue;
+
+                var part = _world.CreateItem();
+                part.BaseId = dispId;
+                var idef = Definitions.DefinitionLoader.GetItemDef(defIndex);
+                if (idef != null && !string.IsNullOrWhiteSpace(idef.Name))
+                    part.Name = idef.Name;
+                if (amount > 1)
+                    part.Amount = (ushort)Math.Min(amount, ushort.MaxValue);
+
+                if (playerCorpse)
+                {
+                    if (!string.IsNullOrEmpty(victimName))
+                        part.Name = ServerMessages.GetFormatted(Msg.CorpseName, part.GetName(), victimName);
+                    _world.PlaceItemWithDecay(part, corpse.Position);
+                }
+                else
+                {
+                    corpse.AddItem(part);
+                }
+                results.Add(part);
+            }
         }
 
-        // Raw meat
-        var meat = _world.CreateItem();
-        meat.BaseId = 0x09F1; // raw ribs
-        meat.Name = "raw ribs";
-        meat.Amount = (ushort)Random.Shared.Next(1, 3);
-        AddToPackOrGround(carver, meat);
-        results.Add(meat);
-
-        // Bones (low chance)
-        if (Random.Shared.Next(100) < 20)
+        if (results.Count == 0)
         {
-            var bones = _world.CreateItem();
-            bones.BaseId = 0x0ECA; // bone pile
-            bones.Name = "bones";
-            bones.Amount = 1;
-            AddToPackOrGround(carver, bones);
-            results.Add(bones);
+            // Def carries no RESOURCES — keep the legacy random rolls so plain
+            // creatures still yield something to the carver.
+            if (Random.Shared.Next(100) < 70)
+            {
+                var hides = _world.CreateItem();
+                hides.BaseId = 0x1079; // hides
+                hides.Name = "hides";
+                hides.Amount = (ushort)Random.Shared.Next(1, 4);
+                AddToPackOrGround(carver, hides);
+                results.Add(hides);
+            }
+
+            var meat = _world.CreateItem();
+            meat.BaseId = 0x09F1; // raw ribs
+            meat.Name = "raw ribs";
+            meat.Amount = (ushort)Random.Shared.Next(1, 3);
+            AddToPackOrGround(carver, meat);
+            results.Add(meat);
+
+            if (Random.Shared.Next(100) < 20)
+            {
+                var bones = _world.CreateItem();
+                bones.BaseId = 0x0ECA; // bone pile
+                bones.Name = "bones";
+                bones.Amount = 1;
+                AddToPackOrGround(carver, bones);
+                results.Add(bones);
+            }
         }
 
         corpse.SetTag("CARVED", "1");

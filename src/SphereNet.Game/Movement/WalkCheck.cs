@@ -32,16 +32,17 @@ public sealed class WalkCheck
     private const TileFlag ImpassableSurface = TileFlag.Impassable | TileFlag.Surface;
 
     /// <summary>
-    /// Maximum Z a mover may DROP in a single step. Beyond this the step is
-    /// rejected so the mover stops at the edge instead of plunging — e.g. the
-    /// cliff/beach tiles whose corners span ~25 units, where the walkable centre
-    /// Z sits 13+ below the mover. The 2D/UO client blocks such cliff drops
-    /// locally, so allowing them server-side desynced the two and the running
-    /// player teleported down then snapped back. Tuned to clear ordinary stair
-    /// steps and slopes (≤ ~2 stair risers) while blocking true cliff faces.
-    /// Climbing UP is unaffected (handled by the maxZ window).
+    /// Maximum Z a mover may DROP in a single step. ClassicUO's CalculateNewZ
+    /// has NO descent limit, so for client-driven moves this cap can only
+    /// CREATE desyncs: it gates steps the client already predicted and walked,
+    /// and every rejection rubber-bands the player back ("mine ramp threw me
+    /// to the top" — cave-floor ramps step down 24 units in one tile, and the
+    /// matching ascent IS accepted by the maxZ window, so the old cap of 11
+    /// made the ramp one-way). Kept, generously sized, as an extreme-fall
+    /// guard so chasing NPCs don't pour off true cliff faces; anything a
+    /// mover can climb up must pass back down through it.
     /// </summary>
-    public static int MaxDescendZ { get; set; } = 11;
+    public static int MaxDescendZ { get; set; } = 25;
 
     /// <summary>
     /// Land-tile movement barrier rule: only WATER (Impassable + Wet) blocks a

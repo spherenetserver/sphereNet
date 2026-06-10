@@ -28,6 +28,20 @@
 
 
 
+[2026-06-11] - Tek adım iniş sınırı tırmanma paritesine yükseltildi (Wave 121)
+----------------------------------------
+
+DÜZELTME - Hareket:
+  - Sunucuya özgü iniş sınırı (MaxDescendZ=11), tek tile'da 24 birim
+    inen mağara rampalarında AŞAĞI yürüyüşü reddediyordu; maxZ
+    penceresi aynı basamağın TIRMANIŞINI kabul ediyordu — rampa tek
+    yönlüydü ve her iniş reddi koşan oyuncuyu tepeye geri yapıştırıyordu
+    ("madenden çıkarken beni üste attı" raporu; bir oturumda 33
+    descent_cap reddi sayıldı). İstemcide iniş sınırı yok; istemci
+    güdümlü adımlarda bu sınır yalnız desync üretebilir. 25'e
+    yükseltildi: tırmanılabilen her şey aşağı da geçer; gerçek uçurum
+    yüzlerinde kovalayan NPC'ler için aşırı-düşüş koruması duruyor.
+
 [2026-06-11] - Sıfır başarı şansı asla başarı üretmez (Wave 120)
 ----------------------------------------
 

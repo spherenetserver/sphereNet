@@ -28,6 +28,20 @@
 
 
 
+[2026-06-11] - Single-step descent cap raised to climbable parity (Wave 121)
+----------------------------------------
+
+FIXED - Movement:
+  - The server-only descent cap (MaxDescendZ=11) rejected walking DOWN
+    cave-floor ramps that step 24 units in one tile, while the maxZ
+    window accepted the matching climb UP — the ramp was one-way and
+    every descent rejection rubber-banded the running player back to
+    the top (the "mine exit threw me up" report; one session tallied
+    33 descent_cap rejects). The client has no descent limit, so for
+    client-driven moves the cap can only create desyncs. Raised to 25
+    so anything a mover can climb passes back down; kept as an
+    extreme-fall guard for chasing NPCs at true cliff faces.
+
 [2026-06-11] - Zero success chance never rolls a success (Wave 120)
 ----------------------------------------
 

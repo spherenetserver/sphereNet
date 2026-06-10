@@ -28,6 +28,19 @@
 
 
 
+[2026-06-11] - Sıfır başarı şansı asla başarı üretmez (Wave 120)
+----------------------------------------
+
+DÜZELTME - Skiller:
+  - Skill_CheckSuccess "successChance >= rand(0..999)" karşılaştırması
+    yapıyordu; şans SIFIR olsa bile zar 0 gelince başarı sayılıyordu —
+    zar başına binde 1 tesadüf. Oyunda skill-0 denemelerinin imkânsız
+    zorlukları ara sıra geçmesine yol açıyordu; test paketinde ise
+    başarı eğrisi testlerindeki (craft fail-loss, stealth) uzun
+    süreli aralıklı kırmızının sınıfıydı (Wave 111 dönemindeki test
+    sertleştirmesi yalnız semptomu maskeliyordu). Pozitif olmayan
+    şans artık zar atılmadan doğrudan başarısız.
+
 [2026-06-11] - Eyerde ölüm, ceset anlık görüntüsünden önce binekten indirir (Wave 119)
 ----------------------------------------
 

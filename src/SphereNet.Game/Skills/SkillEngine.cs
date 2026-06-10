@@ -90,6 +90,14 @@ public static class SkillEngine
             successChance = iDiff;
         }
 
+        // A zero chance must be a real zero: with ">=" a 0-chance roll still
+        // succeeded when the die came up 0 (1-in-1000). That margin was the
+        // source of the long-standing intermittent success-curve test
+        // failures (craft fail-loss, stealth) and of skill-0 flukes against
+        // impossible difficulties in game.
+        if (successChance <= 0)
+            return false;
+
         return successChance >= _rand.Next(1000);
     }
 

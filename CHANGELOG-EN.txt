@@ -28,6 +28,19 @@
 
 
 
+[2026-06-11] - Zero success chance never rolls a success (Wave 120)
+----------------------------------------
+
+FIXED - Skills:
+  - Skill_CheckSuccess compared "successChance >= rand(0..999)", so a
+    ZERO chance still succeeded when the die came up 0 — a 1-in-1000
+    fluke per roll. In game that let skill-0 attempts occasionally
+    pass impossible difficulties; in the test suite it was the
+    long-standing intermittent failure class in the success-curve
+    tests (craft fail-loss, stealth — the Wave 111-era test hardening
+    only masked the symptom). A non-positive chance now fails
+    outright before the die is cast.
+
 [2026-06-11] - Dying in the saddle dismounts before the corpse snapshot (Wave 119)
 ----------------------------------------
 

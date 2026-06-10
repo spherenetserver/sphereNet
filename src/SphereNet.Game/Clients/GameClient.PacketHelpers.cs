@@ -311,7 +311,7 @@ public sealed partial class GameClient
         DismountCharacter();
     }
 
-    private void ClearPendingTargetState()
+    internal void ClearPendingTargetState()
     {
         Targets.Tele = false;
         Targets.AddToken = null;
@@ -977,7 +977,7 @@ public sealed partial class GameClient
     /// <summary>Resolves a target serial to a <see cref="Character"/>.
     /// If the serial is a corpse, falls back to the corpse's
     /// <c>OWNER_UID</c> tag (set by <see cref="DeathEngine"/>).</summary>
-    private Character? ResolvePickedChar(uint uid)
+    internal Character? ResolvePickedChar(uint uid)
     {
         if (uid == 0 || uid == 0xFFFFFFFF) return null;
         var ch = _world.FindChar(new Serial(uid));
@@ -993,7 +993,7 @@ public sealed partial class GameClient
     /// implementation. Iterates the world sectors around
     /// <paramref name="centre"/> at <paramref name="range"/> tiles and
     /// applies the verb. Returns the number of objects affected.</summary>
-    private int ExecuteAreaVerb(string verb, Point3D centre, int range)
+    internal int ExecuteAreaVerb(string verb, Point3D centre, int range)
     {
         if (_character == null) return 0;
         int affected = 0;
@@ -1071,7 +1071,7 @@ public sealed partial class GameClient
     /// Copies BaseId, Hue and Amount; container/equipped duplicates are
     /// not supported (matches Source-X CClient_functions.tbl behaviour
     /// for items in the world).</summary>
-    private Item? DuplicateItem(Item src)
+    internal Item? DuplicateItem(Item src)
     {
         if (_character == null) return null;
         var dup = _world.CreateItem();
@@ -1093,7 +1093,7 @@ public sealed partial class GameClient
     /// the 8 tiles surrounding <paramref name="centre"/> so the victim
     /// can't walk away. The bars are real items (visible to the client)
     /// and persist until manually removed.</summary>
-    private void SpawnCageAround(Point3D centre)
+    internal void SpawnCageAround(Point3D centre)
     {
         // Bar graphics:  0x0084 vertical, 0x0086 horizontal (Source-X
         // i_bars_v / i_bars_h). We skip diagonal corners — the picture
@@ -1120,7 +1120,7 @@ public sealed partial class GameClient
     /// <summary>Source-X CV_BANK with a target arg: opens the picked
     /// character's bank box on this client. Mirrors CChar::Use_Obj
     /// for BankBox layer items.</summary>
-    private void OpenForeignBank(Character victim)
+    internal void OpenForeignBank(Character victim)
     {
         var bank = victim.GetEquippedItem(Layer.BankBox);
         if (bank == null)
@@ -1131,7 +1131,7 @@ public sealed partial class GameClient
         SendOpenContainer(bank);
     }
 
-    private bool RemoveTargetedObject(uint uid)
+    internal bool RemoveTargetedObject(uint uid)
     {
         if (_character == null)
             return false;
@@ -1166,7 +1166,7 @@ public sealed partial class GameClient
         return false;
     }
 
-    private bool TryAddAtTarget(string token, Point3D targetPos, uint targetSerial = 0)
+    internal bool TryAddAtTarget(string token, Point3D targetPos, uint targetSerial = 0)
     {
         if (_character == null || _commands?.Resources == null)
             return false;

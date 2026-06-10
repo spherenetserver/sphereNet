@@ -5,6 +5,27 @@
 ================================================================================
 
 
+
+[2026-06-10] - GameClient ayrıştırma faz 3e: targeting handler sınıfı (Wave 89)
+----------------------------------------
+
+İÇSEL - GameClient ayrıştırma:
+  - Targeting partial'ı (~710 satır: GM cursor akışları, script TARGETF
+    dispatch ve büyü hedef tamamlama dahil HandleTargetResponse
+    yönlendiricisi; gump yanıt yönlendirme, SendGump ve SetPendingTarget)
+    yerleşik shim reçetesiyle ClientTargetingHandler sınıfına taşındı;
+    gövdeler dört ITextConsole kimlik geçişi (ScriptConsole = this,
+    RunFunction/TryRunFunction konsol argümanı) _client'a dönmesi dışında
+    bayt-bayt aynı. Sekiz GM hedef yardımcısı private -> internal yükseltildi
+    (ClearPendingTargetState, ExecuteAreaVerb, DuplicateItem,
+    SpawnCageAround, OpenForeignBank, RemoveTargetedObject, TryAddAtTarget,
+    ResolvePickedChar); komut işleyicisi için Cmds erişimcisi eklendi.
+    Dialog close-function durumu, dialog dilimi alanları taşıyana dek
+    GameClient'ta internal property köprüleri arkasında. SendGump ve
+    SetPendingTarget çok sayıda çapraz-partial çağrı noktası için
+    GameClient delegasyonu olarak kaldı. Tam paket yeşil (723); mojibake
+    taraması temiz.
+
 [2026-06-10] - GameClient ayrıştırma faz 3d: world-features handler sınıfı (Wave 88)
 ----------------------------------------
 

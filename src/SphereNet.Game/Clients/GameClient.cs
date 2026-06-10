@@ -160,6 +160,19 @@ public sealed partial class GameClient : ITextConsole
     private uint _lastCombatNotifyTarget;
     private string? _pendingDialogCloseFunction;
     private string _pendingDialogArgs = "";
+    /// <summary>Dialog close-function state bridges for extracted handler
+    /// classes (decomposition phase 3) — the fields themselves move into the
+    /// dialog handler in phase 3e.</summary>
+    internal string? PendingDialogCloseFunction
+    {
+        get => _pendingDialogCloseFunction;
+        set => _pendingDialogCloseFunction = value;
+    }
+    internal string PendingDialogArgs
+    {
+        get => _pendingDialogArgs;
+        set => _pendingDialogArgs = value;
+    }
     private int _dialogDepth;
     /// <summary>
     /// Pending Source-X <c>INPDLG</c> prompt state. Keyed by the
@@ -190,6 +203,7 @@ public sealed partial class GameClient : ITextConsole
     internal HousingEngine? Housing => _housingEngine;
     internal TradeManager? TradeM => _tradeManager;
     internal CraftingEngine? CraftE => _craftingEngine;
+    internal CommandHandler? Cmds => _commands;
     internal GuildManager? GuildM => _guildManager;
     internal PartyManager? PartyM => _partyManager;
     internal SpellEngine? Spells => _spellEngine;

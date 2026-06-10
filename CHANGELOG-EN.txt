@@ -5,6 +5,26 @@
 ================================================================================
 
 
+
+[2026-06-10] - GameClient decomposition phase 3e: targeting handler class (Wave 89)
+----------------------------------------
+
+INTERNAL - GameClient decomposition:
+  - The Targeting partial (~710 lines: HandleTargetResponse router covering
+    GM cursor flows, script TARGETF dispatch and spell-target completion,
+    plus gump response routing, SendGump and SetPendingTarget) moved into
+    ClientTargetingHandler using the established shim recipe; bodies are
+    byte-identical except the four ITextConsole identity passes
+    (ScriptConsole = this, RunFunction/TryRunFunction console argument)
+    which become _client. Eight GM target helpers were promoted
+    private -> internal (ClearPendingTargetState, ExecuteAreaVerb,
+    DuplicateItem, SpawnCageAround, OpenForeignBank, RemoveTargetedObject,
+    TryAddAtTarget, ResolvePickedChar) and a Cmds accessor added for the
+    command handler. Dialog close-function state stays on GameClient behind
+    internal property bridges until the dialog slice moves the fields.
+    SendGump/SetPendingTarget remain as GameClient delegations for the many
+    cross-partial call sites. Full suite green (723); mojibake scan clean.
+
 [2026-06-10] - GameClient decomposition phase 3d: world-features handler class (Wave 88)
 ----------------------------------------
 

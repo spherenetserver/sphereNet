@@ -7,6 +7,26 @@
 
 
 
+
+[2026-06-10] - GameClient decomposition phase 3f: skills handler class (Wave 91)
+----------------------------------------
+
+INTERNAL - GameClient decomposition:
+  - The Skills partial (~570 lines: info/active skill flows with target
+    cursor, stroke loop and delayed completion, the tracking menu, overhead
+    object messages, help request, AOS tooltip assembly and the small
+    trade/party/client-version packet handlers) moved into
+    ClientSkillsHandler using the established shim recipe; bodies are
+    byte-identical except the ITextConsole identity passes (ScriptConsole =
+    this, the f_onclient_helppage console argument) and sink construction,
+    which become _client. The GameClient property is named SkillUse to
+    avoid colliding with the SkillH engine accessor and the Skills
+    namespace. The InfoSkillSink glue type stays nested on GameClient -
+    the item-use handler and the skill engines construct it as
+    GameClient.InfoSkillSink. StableStringHash promoted private ->
+    internal for the tooltip hash. Full suite green (723); mojibake scan
+    clean.
+
 [2026-06-10] - GameClient decomposition phase 3e: dialog handler class (Wave 90)
 ----------------------------------------
 

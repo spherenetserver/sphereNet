@@ -1,0 +1,521 @@
+using Microsoft.Extensions.Logging;
+using SphereNet.Core.Enums;
+using SphereNet.Core.Interfaces;
+using SphereNet.Core.Types;
+using SphereNet.Game.Accounts;
+using SphereNet.Game.Combat;
+using SphereNet.Game.Crafting;
+using SphereNet.Game.Death;
+using SphereNet.Game.Definitions;
+using SphereNet.Game.Guild;
+using SphereNet.Game.Housing;
+using SphereNet.Game.Magic;
+using SphereNet.Game.Movement;
+using SphereNet.Game.Objects.Characters;
+using SphereNet.Game.Objects.Items;
+using SphereNet.Game.Party;
+using SphereNet.Game.Skills;
+using SphereNet.Game.Speech;
+using SphereNet.Game.Trade;
+using SphereNet.Game.World;
+using SphereNet.Game.Objects;
+using SphereNet.Game.Gumps;
+using SphereNet.Game.Scripting;
+using SphereNet.Scripting.Expressions;
+using SphereNet.Scripting.Definitions;
+using SphereNet.Network.Packets;
+using SphereNet.Network.Packets.Outgoing;
+using SphereNet.Network.State;
+using ExecTriggerArgs = SphereNet.Scripting.Execution.TriggerArgs;
+using SphereNet.Game.Messages;
+using ScriptDbAdapter = SphereNet.Scripting.Execution.ScriptDbAdapter;
+
+namespace SphereNet.Game.Clients;
+
+/// <summary>
+/// Skills handler extracted from the GameClient.Skills partial
+/// (decomposition phase 3 - see docs/GAMECLIENT_DECOMPOSITION_TR.md).
+/// Info/active skill flows (target cursor, stroke loop, delayed completion,
+/// tracking menu), overhead object messages, help request, AOS tooltips and
+/// the small trade/party/version packet handlers. Method bodies moved
+/// verbatim; the private context shims below enumerate exactly what this
+/// handler needs from GameClient. The InfoSkillSink glue type stays nested
+/// on GameClient (engines and other handlers construct it by that name).
+/// </summary>
+public sealed class ClientSkillsHandler
+{
+    private readonly GameClient _client;
+
+    public ClientSkillsHandler(GameClient client)
+    {
+        _client = client;
+    }
+
+    // --- context shims (the GameClient surface this handler depends on) ---
+    private Character? _character => _client.Character;
+    private GameWorld _world => _client.World;
+    private NetState _netState => _client.NetState;
+    private TriggerDispatcher? _triggerDispatcher => _client.Triggers;
+    private SkillHandlers? _skillHandlers => _client.SkillH;
+    private TradeManager? _tradeManager => _client.TradeM;
+    private PartyManager? _partyManager => _client.PartyM;
+    private ILogger _logger => _client.Log;
+    private ClientTargetState Targets => _client.Targets;
+    private ClientViewCache View => _client.View;
+    private Action<Point3D, int, SphereNet.Network.Packets.PacketWriter, uint>? BroadcastNearby => _client.BroadcastNearby;
+    private void SysMessage(string text) => _client.SysMessage(text);
+    private void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1) => _client.SetPendingTarget(callback, cursorType);
+    private void SendGump(GumpBuilder gump, Action<uint, uint[], (ushort, string)[]>? callback = null) => _client.SendGump(gump, callback);
+    private void InitiateTrade(Character partner, Item? firstItem = null) => _client.InitiateTrade(partner, firstItem);
+    private bool OpenNamedDialog(string dialogId, int requestedPage = 0) => _client.OpenNamedDialog(dialogId, requestedPage);
+    private static uint StableStringHash(string s) => GameClient.StableStringHash(s);
+
+
+    /// <summary>
+    /// Fires trigger chain (PreStart/Start/Stroke) for the information skill,
+    /// then asks the client for a target cursor. Selected target is resolved
+    /// to the actual Character/Item and pushed into <see cref="SkillHandlers.UseInfoSkill"/>.
+    /// </summary>
+    internal void BeginInfoSkill(SkillType skill, int skillId)
+    {
+        if (_character == null) return;
+
+        if (_triggerDispatcher != null)
+        {
+            var pre = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillPreStart,
+                new TriggerArgs { CharSrc = _character, N1 = skillId });
+            if (pre == TriggerResult.True) return;
+
+            var start = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillStart,
+                new TriggerArgs { CharSrc = _character, N1 = skillId });
+            if (start == TriggerResult.True) return;
+        }
+
+        SysMessage($"What do you wish to use your {skill} skill on?");
+        SetPendingTarget((serial, x, y, z, graphic) =>
+        {
+            if (_character == null) return;
+
+            var uid = new Serial(serial);
+            Objects.ObjBase? target = uid.IsValid ? _world.FindObject(uid) : null;
+
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillStroke,
+                new TriggerArgs { CharSrc = _character, N1 = skillId });
+
+            var sink = new GameClient.InfoSkillSink(_client, _character);
+            bool ok = _skillHandlers?.UseInfoSkill(sink, skill, target) ?? false;
+
+            if (_triggerDispatcher != null)
+            {
+                var trigger = ok ? CharTrigger.SkillSuccess : CharTrigger.SkillFail;
+                _triggerDispatcher.FireCharTrigger(_character, trigger,
+                    new TriggerArgs { CharSrc = _character, N1 = skillId });
+            }
+        });
+    }
+
+    /// <summary>
+    /// Active-skill driver. Skills with <see cref="SkillHandlers.ActiveSkillTargetKind.None"/>
+    /// run immediately (Hiding, Meditation, ...). Character/Item-target skills
+    /// open a target cursor and resolve the picked Serial via the world before
+    /// invoking <see cref="SkillHandlers.UseActiveSkill"/>. Trigger chain
+    /// (PreStart/Start/Stroke/Success/Fail) is preserved.
+    /// </summary>
+    internal void BeginActiveSkill(SkillType skill, int skillId, SkillHandlers.ActiveSkillTargetKind kind)
+    {
+        if (_character == null) return;
+        _character.ResetSkillStrokeCount();
+
+        if (_triggerDispatcher != null)
+        {
+            var pre = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillPreStart,
+                new TriggerArgs { CharSrc = _character, N1 = skillId });
+            if (pre == TriggerResult.True) return;
+
+            var start = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillStart,
+                new TriggerArgs { CharSrc = _character, N1 = skillId });
+            if (start == TriggerResult.True) return;
+        }
+
+        // No-target path: fire stroke, run engine, fire success/fail.
+        if (kind == SkillHandlers.ActiveSkillTargetKind.None)
+        {
+            if (TryScheduleActiveSkillDelay(skill, skillId, Serial.Invalid, null))
+                return;
+
+            FireActiveSkillStroke(skillId);
+            var sink0 = new GameClient.InfoSkillSink(_client, _character);
+            bool ok0 = _skillHandlers?.UseActiveSkill(sink0, skill, null) ?? false;
+            FireActiveSkillResult(skillId, ok0);
+            return;
+        }
+
+        // Menu path: show category selection gump (Tracking).
+        if (kind == SkillHandlers.ActiveSkillTargetKind.Menu)
+        {
+            ShowTrackingMenu(skill, skillId);
+            return;
+        }
+
+        // Target-required path.
+        SysMessage(kind switch
+        {
+            SkillHandlers.ActiveSkillTargetKind.Item => $"What item do you wish to use your {skill} skill on?",
+            SkillHandlers.ActiveSkillTargetKind.Ground => $"Where do you wish to use your {skill} skill?",
+            _ => $"Whom do you wish to use your {skill} skill on?"
+        });
+
+        SetPendingTarget((serial, x, y, z, graphic) =>
+        {
+            if (_character == null) return;
+            Targets.SkillCancelId = -1;
+
+            var uid = new Serial(serial);
+            Objects.ObjBase? target = uid.IsValid ? _world.FindObject(uid) : null;
+            var point = new Point3D(x, y, z);
+
+            if (TryScheduleActiveSkillDelay(skill, skillId, uid, point))
+                return;
+
+            FireActiveSkillStroke(skillId);
+            var sink = new GameClient.InfoSkillSink(_client, _character);
+            bool ok = _skillHandlers?.UseActiveSkill(sink, skill, target, point) ?? false;
+            FireActiveSkillResult(skillId, ok);
+        });
+        Targets.SkillCancelId = skillId;
+    }
+
+    private void FireActiveSkillStroke(int skillId)
+    {
+        int strokeCount = _character?.IncrementSkillStrokeCount() ?? 0;
+        _triggerDispatcher?.FireCharTrigger(_character!, CharTrigger.SkillStroke,
+            new TriggerArgs { CharSrc = _character, N1 = skillId, N2 = strokeCount });
+
+        if (_character != null)
+        {
+            ushort animId = GetSkillStrokeAnimation((SkillType)skillId);
+            if (animId != 0)
+                BroadcastNearby?.Invoke(_character.Position, 18,
+                    new PacketAnimation(_character.Uid.Value, animId), 0);
+        }
+    }
+
+    private static ushort GetSkillStrokeAnimation(SkillType skill) => skill switch
+    {
+        SkillType.Mining => (ushort)AnimationType.Attack1HBash,
+        SkillType.Lumberjacking => (ushort)AnimationType.Attack1HBash,
+        SkillType.Fishing => (ushort)AnimationType.Attack2HBash,
+        SkillType.Blacksmithing => (ushort)AnimationType.Attack1HBash,
+        SkillType.Hiding => 0,
+        SkillType.Meditation => 0,
+        _ => 0,
+    };
+
+    private void FireActiveSkillResult(int skillId, bool ok)
+    {
+        if (_triggerDispatcher == null || _character == null) return;
+        _triggerDispatcher.FireCharTrigger(_character,
+            ok ? CharTrigger.SkillSuccess : CharTrigger.SkillFail,
+            new TriggerArgs { CharSrc = _character, N1 = skillId });
+    }
+
+    private bool TryScheduleActiveSkillDelay(SkillType skill, int skillId, Serial targetUid, Point3D? point)
+    {
+        if (_character == null) return false;
+        int delayMs = SkillEngine.GetSkillDelayMs(skill);
+        if (delayMs <= 0) return false;
+
+        long now = Environment.TickCount64;
+        _character.BeginSkillPending(
+            skillId,
+            now + delayMs,
+            now + SkillEngine.GetSkillStrokeIntervalMs(skill),
+            targetUid,
+            point);
+
+        FireActiveSkillStroke(skillId);
+        return true;
+    }
+
+    /// <summary>Advance delayed active skills (@SkillStroke loop + completion).</summary>
+    public void TickPendingSkill()
+    {
+        if (_character == null || !_character.HasActiveSkillPending())
+            return;
+
+        int skillId = _character.SkillPendingId;
+        var skill = (SkillType)skillId;
+        long now = Environment.TickCount64;
+
+        if (now >= _character.SkillStrokeNext)
+        {
+            FireActiveSkillStroke(skillId);
+            _character.SetSkillStrokeNext(now + SkillEngine.GetSkillStrokeIntervalMs(skill));
+        }
+
+        if (now < _character.SkillDelayEnd)
+        {
+            // @SkillWait (Source-X) — the skill is still in progress this tick.
+            // Gated by IsTrigUsed so an unhooked @SkillWait costs nothing on the
+            // per-tick skill loop (no FireCharTrigger allocation).
+            if (_triggerDispatcher?.IsCharTriggerUsed(CharTrigger.SkillWait) == true)
+                _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillWait,
+                    new TriggerArgs { CharSrc = _character, N1 = skillId });
+            return;
+        }
+
+        CompletePendingSkill(skill, skillId);
+    }
+
+    private void CompletePendingSkill(SkillType skill, int skillId)
+    {
+        if (_character == null) return;
+
+        Serial targetUid = _character.SkillPendingTarget;
+        Point3D? point = null;
+        if (_character.TryGetSkillPendingPoint(out Point3D pt))
+            point = new Point3D(pt.X, pt.Y, pt.Z, _character.MapIndex);
+
+        _character.ClearActiveSkillPending();
+
+        Objects.ObjBase? target = targetUid.IsValid ? _world.FindObject(targetUid) : null;
+        var sink = new GameClient.InfoSkillSink(_client, _character);
+        bool ok = _skillHandlers?.UseActiveSkill(sink, skill, target, point) ?? false;
+        FireActiveSkillResult(skillId, ok);
+    }
+
+    private void ShowTrackingMenu(SkillType skill, int skillId)
+    {
+        if (_character == null) return;
+
+        // @SkillMenu (Source-X) — a skill opened a selection menu. N1 = skill.
+        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillMenu,
+            new TriggerArgs { CharSrc = _character, N1 = skillId });
+
+        var gump = new GumpBuilder(_character.Uid.Value, 0, 300, 220);
+        gump.AddResizePic(0, 0, 5054, 300, 220);
+        gump.AddText(30, 15, 0, "What do you wish to track?");
+        gump.AddButton(30, 55, 4005, 4007, 1);
+        gump.AddText(70, 55, 0, "Animals");
+        gump.AddButton(30, 85, 4005, 4007, 2);
+        gump.AddText(70, 85, 0, "Monsters");
+        gump.AddButton(30, 115, 4005, 4007, 3);
+        gump.AddText(70, 115, 0, "Humans");
+        gump.AddButton(150, 175, 4017, 4019, 0);
+        gump.AddText(190, 175, 0, "Cancel");
+
+        SendGump(gump, (buttonId, switches, textEntries) =>
+        {
+            if (_character == null || buttonId == 0) return;
+
+            var category = buttonId switch
+            {
+                1 => Skills.Information.ActiveSkillEngine.TrackingCategory.Animals,
+                2 => Skills.Information.ActiveSkillEngine.TrackingCategory.Monsters,
+                3 => Skills.Information.ActiveSkillEngine.TrackingCategory.Humans,
+                _ => Skills.Information.ActiveSkillEngine.TrackingCategory.Animals,
+            };
+
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillStroke,
+                new TriggerArgs { CharSrc = _character, N1 = skillId });
+
+            var sink = new GameClient.InfoSkillSink(_client, _character);
+            bool ok = Skills.Information.ActiveSkillEngine.Tracking(sink, category);
+
+            if (_triggerDispatcher != null)
+            {
+                _triggerDispatcher.FireCharTrigger(_character,
+                    ok ? CharTrigger.SkillSuccess : CharTrigger.SkillFail,
+                    new TriggerArgs { CharSrc = _character, N1 = skillId });
+            }
+        });
+    }
+
+    /// <summary>Source-X addObjMessage: overhead speech over any ObjBase.</summary>
+    internal void ObjectMessage(Objects.ObjBase target, string text)
+    {
+        uint uid;
+        ushort body;
+        string name;
+        switch (target)
+        {
+            case Character ch:
+                uid = ch.Uid.Value; body = ch.BodyId; name = ch.GetName();
+                break;
+            case Item it:
+                uid = it.Uid.Value; body = it.BaseId; name = it.Name ?? "";
+                break;
+            default:
+                SysMessage(text); return;
+        }
+        var packet = new PacketSpeechUnicodeOut(uid, body, 0, 0x03B2, 3, "ENU", name, text);
+        _netState.Send(packet);
+    }
+
+    // ==================== Help Menu ====================
+
+    public void HandleHelpRequest()
+    {
+        if (_character == null) return;
+
+        // Script-first parity:
+        // If [FUNCTION f_onclient_helppage] exists and runs, skip the built-in fallback.
+        if (_triggerDispatcher?.Runner != null)
+        {
+            var trigArgs = new ExecTriggerArgs(_character, 0, 0, string.Empty)
+            {
+                Object1 = _character,
+                Object2 = _character
+            };
+            if (_triggerDispatcher.Runner.TryRunFunction("f_onclient_helppage", _character, _client, trigArgs, out _))
+                return;
+        }
+
+        OpenNamedDialog("d_helppage", 1);
+    }
+
+    // ==================== AOS Tooltip ====================
+
+    public void HandleAOSTooltip(uint serial)
+    {
+        if (_character == null) return;
+        if (_world.ToolTipMode == 0) return;
+        if (!_netState.SupportsAosTooltip) return;
+
+        var obj = _world.FindObject(new Serial(serial));
+        if (obj == null) return;
+
+        if (_triggerDispatcher != null)
+        {
+            TriggerResult triggerResult = obj switch
+            {
+                Character ch => _triggerDispatcher.FireCharTrigger(ch, CharTrigger.ClientTooltip,
+                    new TriggerArgs { CharSrc = _character, ScriptConsole = _client }),
+                Item tooltipItem => _triggerDispatcher.FireItemTrigger(tooltipItem, ItemTrigger.ClientTooltip,
+                    new TriggerArgs { CharSrc = _character, ItemSrc = tooltipItem, ScriptConsole = _client }),
+                _ => TriggerResult.Default
+            };
+
+            if (triggerResult == TriggerResult.True)
+                return;
+        }
+
+        var propList = new List<(uint ClilocId, string Args)>
+        {
+            (1050045, obj.GetName()) // generic name cliloc
+        };
+
+        // Enrich tooltips for items
+        if (obj is Item item)
+        {
+            switch (item.ItemType)
+            {
+                case ItemType.WeaponMaceSmith:
+                case ItemType.WeaponMaceSharp:
+                case ItemType.WeaponSword:
+                case ItemType.WeaponFence:
+                case ItemType.WeaponBow:
+                case ItemType.WeaponAxe:
+                case ItemType.WeaponXBow:
+                case ItemType.WeaponMaceStaff:
+                case ItemType.WeaponMaceCrook:
+                case ItemType.WeaponMacePick:
+                case ItemType.WeaponThrowing:
+                case ItemType.WeaponWhip:
+                    // Weapon damage - try reading from tags or CombatEngine lookup
+                    if (item.TryGetTag("DAM", out string? damStr) && damStr != null)
+                        propList.Add((1061168, $"\t{damStr}")); // weapon damage cliloc
+                    if (item.TryGetTag("SPEED", out string? speedStr) && speedStr != null)
+                        propList.Add((1061167, $"\t{speedStr}")); // weapon speed cliloc
+                    break;
+
+                case ItemType.Armor:
+                case ItemType.ArmorLeather:
+                case ItemType.ArmorBone:
+                case ItemType.ArmorChain:
+                case ItemType.ArmorRing:
+                case ItemType.Shield:
+                    if (item.TryGetTag("ARMOR", out string? armorStr) && armorStr != null)
+                        propList.Add((1060448, $"\t{armorStr}")); // physical resist
+                    if (item.TryGetTag("DURABILITY", out string? durStr) && durStr != null)
+                        propList.Add((1060639, $"\t{durStr}")); // durability
+                    break;
+
+                case ItemType.Container:
+                case ItemType.ContainerLocked:
+                    propList.Add((1050044, $"\t{item.ContentCount}\t125")); // items/max items
+                    propList.Add((1072789, $"\t{item.TotalWeight}")); // weight
+                    break;
+            }
+
+            _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.ClientTooltipAfterDefault,
+                new TriggerArgs { CharSrc = _character, ItemSrc = item, ScriptConsole = _client });
+        }
+
+        var props = propList.ToArray();
+        // Deterministic hash - .NET GetHashCode() is randomized per process
+        uint hash = StableStringHash(obj.GetName());
+        foreach (var (clilocId, args) in props)
+            hash = hash * 31 + (uint)clilocId + StableStringHash(args);
+
+        // Client already requested the full 0xD6 property list; Source-X does
+        // not follow that response with another 0xDC revision packet.
+        View.TooltipHashCache[serial] = hash;
+
+        _netState.Send(new PacketOPLData(serial, hash, props));
+    }
+
+    // ==================== Trade ====================
+
+    public void HandleTradeRequest(uint targetUid)
+    {
+        if (_character == null || _tradeManager == null) return;
+        var target = _world.FindChar(new Serial(targetUid));
+        if (target == null || !target.IsPlayer) return;
+        InitiateTrade(target);
+    }
+
+    // ==================== Party ====================
+
+    public void HandlePartyInvite(uint targetUid)
+    {
+        if (_character == null || _partyManager == null) return;
+        var target = _world.FindChar(new Serial(targetUid));
+        if (target == null || !target.IsPlayer) return;
+        _triggerDispatcher?.FireCharTrigger(target, CharTrigger.PartyInvite,
+            new TriggerArgs { CharSrc = _character });
+        _partyManager.AcceptInvite(_character.Uid, target.Uid);
+    }
+
+    public void HandlePartyLeave()
+    {
+        if (_character == null || _partyManager == null) return;
+        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.PartyLeave,
+            new TriggerArgs { CharSrc = _character });
+        _partyManager.Leave(_character.Uid);
+    }
+
+    // ==================== Client Version ====================
+
+    public void HandleClientVersion(string version)
+    {
+        _logger.LogDebug("Client version: {Ver}", version);
+
+        // Parse version string (e.g. "7.0.20.0") into the numeric format used by NetState
+        if (!string.IsNullOrEmpty(version) && _netState.ClientVersionNumber == 0)
+        {
+            var parts = version.Split('.');
+            if (parts.Length >= 3 &&
+                uint.TryParse(parts[0], out uint major) &&
+                uint.TryParse(parts[1], out uint minor) &&
+                uint.TryParse(parts[2], out uint rev))
+            {
+                uint patch = parts.Length > 3 && uint.TryParse(parts[3], out uint p) ? p : 0;
+                _netState.ClientVersionNumber = major * 10_000_000 + minor * 1_000_000 + rev * 1_000 + patch;
+                _logger.LogInformation("Client version detected from 0xBD: {Ver} -> {Num}", version, _netState.ClientVersionNumber);
+            }
+        }
+    }
+
+    // ==================== Client Update Loop ====================
+}

@@ -7,6 +7,25 @@
 
 
 
+
+[2026-06-10] - GameClient ayrıştırma faz 3f: skills handler sınıfı (Wave 91)
+----------------------------------------
+
+İÇSEL - GameClient ayrıştırma:
+  - Skills partial'ı (~570 satır: hedef imleci, stroke döngüsü ve gecikmeli
+    tamamlama ile info/aktif skill akışları, tracking menüsü, baş üstü obje
+    mesajları, help isteği, AOS tooltip kurulumu ve küçük
+    trade/party/client-version paket işleyicileri) yerleşik shim
+    reçetesiyle ClientSkillsHandler sınıfına taşındı; gövdeler ITextConsole
+    kimlik geçişleri (ScriptConsole = this, f_onclient_helppage konsol
+    argümanı) ve sink kurulumunun _client olması dışında bayt-bayt aynı.
+    GameClient property adı, SkillH motor erişimcisi ve Skills
+    namespace'iyle çakışmamak için SkillUse seçildi. InfoSkillSink yapışkan
+    tipi GameClient'ta nested kaldı — item-use handler ve skill motorları
+    onu GameClient.InfoSkillSink olarak kuruyor. Tooltip hash'i için
+    StableStringHash private -> internal yükseltildi. Tam paket yeşil
+    (723); mojibake taraması temiz.
+
 [2026-06-10] - GameClient ayrıştırma faz 3e: dialog handler sınıfı (Wave 90)
 ----------------------------------------
 

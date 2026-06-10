@@ -920,7 +920,7 @@ public sealed partial class GameClient
         }
     }
 
-    private static uint StableStringHash(string s)
+    internal static uint StableStringHash(string s)
     {
         uint hash = 5381;
         foreach (char c in s)

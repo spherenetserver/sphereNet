@@ -28,6 +28,24 @@
 
 
 
+[2026-06-11] - NPC cast FX, spell-damage feedback, gated per-action triggers (Wave 126)
+----------------------------------------
+
+FIXED - Magic / NPC AI:
+  - Spell damage applied silently — no damage number, no health-bar
+    update — until the victim died; both packets are now broadcast on
+    every spell hit (the melee/breath paths already had them).
+  - NPC casts had no completion visuals (the bolt/impact effect lives
+    in the player client path); a host hook now emits the same effect
+    packet for clientless casters, so NPC spells are visible.
+  - Per-action NPC triggers (@NPCActWander/Fight/Follow/Cast,
+    @NPCLookAtChar/Item) install only when a script hooks them
+    (IsTrigUsed gate) — an idle 20-30K NPC world no longer pays a full
+    dispatch walk per wander step.
+  - Diagnostics: [npc_cast] logs every NPC cast attempt and
+    [death_path] names the kill entry point, for the delayed-death
+    report.
+
 [2026-06-11] - Staff drag tiledata-locked ground items; stacking and resource names (Wave 125)
 ----------------------------------------
 

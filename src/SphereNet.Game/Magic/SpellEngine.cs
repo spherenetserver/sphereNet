@@ -51,6 +51,12 @@ public sealed class SpellEngine
     /// send a 0x1C speech packet visible to nearby clients.</summary>
     public Action<Character, string>? OnSpellWords { get; set; }
 
+    /// <summary>Callback fired when a CLIENTLESS caster's spell completes —
+    /// the player completion path (TickSpellCast) sends its own bolt/impact
+    /// effect, but NPC casts have no client and were entirely invisible.
+    /// Args: caster, resolved char target (null = location/self), spell def.</summary>
+    public Action<Character, Character?, SpellDef>? OnNpcCastFx { get; set; }
+
     /// <summary>Callback fired when a character's personal light level
     /// changes (e.g. after Night Sight). Program.cs wires this to the
     /// matching GameClient so it can send a fresh 0x4E packet.</summary>
@@ -613,6 +619,12 @@ public sealed class SpellEngine
             ApplyCharEffect(caster, caster, def, skillLevel);
         }
 
+        // NPC casters have no client-side completion path (the player's
+        // TickSpellCast sends the impact/bolt effect there); emit their
+        // completion FX through the host hook so observers see the spell land.
+        if (!caster.IsPlayer)
+            OnNpcCastFx?.Invoke(caster, _world?.FindChar(targetUid), def);
+
         // Sound
         if (def.Sound > 0)
             OnPlaySound?.Invoke(caster.Position, (ushort)def.Sound);
@@ -783,6 +795,18 @@ public sealed class SpellEngine
                 target.Hits -= (short)Math.Min(damage, short.MaxValue);
                 target.RecordAttack(caster.Uid, damage);
                 TryInterruptFromDamage(target, damage);
+
+                // Victim feedback: spell damage used to apply silently — no
+                // 0x0B damage number, no health-bar update — while the melee
+                // and breath paths broadcast both. Without these the hit is
+                // invisible until the victim dies.
+                Character.BroadcastNearby?.Invoke(target.Position, 18,
+                    new SphereNet.Network.Packets.Outgoing.PacketDamage(
+                        target.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue)), 0);
+                Character.BroadcastNearby?.Invoke(target.Position, 18,
+                    new SphereNet.Network.Packets.Outgoing.PacketUpdateHealth(
+                        target.Uid.Value, target.MaxHits, target.Hits), 0);
+
                 if (target.Hits <= 0 && !target.IsDead)
                 {
                     if (OnTargetKilled != null)

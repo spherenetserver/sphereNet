@@ -28,6 +28,23 @@
 
 
 
+[2026-06-11] - NPC cast efektleri, büyü hasar geri bildirimi, kapılı aksiyon trigger'ları (Wave 126)
+----------------------------------------
+
+DÜZELTME - Büyü / NPC AI:
+  - Büyü hasarı sessiz uygulanıyordu — kurban ölene dek hasar sayısı
+    da can barı güncellemesi de yoktu; her büyü isabetinde iki paket
+    de yayınlanıyor (melee/breath yollarında zaten vardı).
+  - NPC cast'lerinin tamamlanma görseli yoktu (bolt/impact efekti
+    player istemci yolunda yaşıyor); istemcisiz caster'lar için aynı
+    efekt paketini basan host hook eklendi — NPC büyüleri görünür.
+  - Aksiyon-başına NPC trigger'ları (@NPCActWander/Fight/Follow/Cast,
+    @NPCLookAtChar/Item) yalnız script hook'layınca kuruluyor
+    (IsTrigUsed gate) — 20-30K NPC'li boş dünya gezinme adımı başına
+    tam dispatch maliyeti ödemiyor.
+  - Teşhis: [npc_cast] her NPC cast denemesini, [death_path] öldürme
+    giriş noktasını adlandırıyor (gecikmeli ölüm raporu için).
+
 [2026-06-11] - Staff tiledata-kilitli item sürükleyebilir; stack ve kaynak adları (Wave 125)
 ----------------------------------------
 

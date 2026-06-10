@@ -1044,6 +1044,25 @@ public static partial class Program
                     words);
                 BroadcastNearby(caster.Position, 18, pkt, 0);
             };
+            // NPC cast completion FX — mirrors the player completion path's
+            // bolt/impact packet (ClientCombatHandler.TickSpellCast) so NPC
+            // spells are visible to observers.
+            _spellEngine.OnNpcCastFx = (caster, target, def) =>
+            {
+                ushort gfx = def.EffectId;
+                if (gfx == 0) return;
+                var dst = target ?? caster;
+                byte effectType = def.IsFlag(SpellFlag.FxBolt) ? (byte)1 : (byte)3;
+                var fx = new PacketEffect(
+                    effectType,
+                    effectType == 1 ? caster.Uid.Value : dst.Uid.Value,
+                    dst.Uid.Value,
+                    gfx,
+                    dst.X, dst.Y, (short)dst.Z,
+                    dst.X, dst.Y, (short)dst.Z,
+                    10, 30, true, false);
+                BroadcastNearby(dst.Position, 18, fx, 0);
+            };
             _spellEngine.OnCastAnimation = (caster, animId) =>
             {
                 // Legacy 0x6E gets the body-translated group; KR/EC clients
@@ -1068,6 +1087,8 @@ public static partial class Program
             };
             _spellEngine.OnTargetKilled = (victim, killer) =>
             {
+                _log.LogDebug("[death_path] spell-damage victim=0x{V:X} killer=0x{K:X}",
+                    victim.Uid.Value, killer?.Uid.Value ?? 0);
                 var effectiveKiller = killer != null ? ResolveEffectiveOffender(killer) : null;
 
                 if (effectiveKiller != null)
@@ -1146,6 +1167,8 @@ public static partial class Program
             Character.OnLifecycleKill = (victim, killer) =>
             {
                 if (victim.IsDead) return;
+                _log.LogDebug("[death_path] lifecycle victim=0x{V:X} killer=0x{K:X}",
+                    victim.Uid.Value, killer?.Uid.Value ?? 0);
 
                 var effectiveKiller = killer != null ? ResolveEffectiveOffender(killer) : null;
 
@@ -1364,24 +1387,36 @@ public static partial class Program
             if (_config.MacroEnabled)
                 _macroEngine = new SphereNet.Server.Macro.MacroEngine(_config.MacroMaxSteps, _config.MacroMaxLoopMinutes);
 
-            _npcAI.OnNpcLookAtChar = (npc, target) =>
-                _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCLookAtChar,
-                    new TriggerArgs { CharSrc = target, N1 = target.Uid.Value > int.MaxValue ? 0 : (int)target.Uid.Value }) == TriggerResult.True;
-            _npcAI.OnNpcActFight = (npc, target) =>
-                _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActFight,
-                    new TriggerArgs { CharSrc = target, N1 = target.Uid.Value > int.MaxValue ? 0 : (int)target.Uid.Value }) == TriggerResult.True;
-            _npcAI.OnNpcActWander = npc =>
-                _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActWander,
-                    new TriggerArgs { CharSrc = npc }) == TriggerResult.True;
-            _npcAI.OnNpcActFollow = (npc, target) =>
-                _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActFollow,
-                    new TriggerArgs { CharSrc = target, O1 = target }) == TriggerResult.True;
-            _npcAI.OnNpcActCast = (npc, target, spell) =>
-                _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActCast,
-                    new TriggerArgs { CharSrc = target, O1 = target, N1 = (int)spell }) == TriggerResult.True;
-            _npcAI.OnNpcLookAtItem = (npc, item) =>
-                _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCLookAtItem,
-                    new TriggerArgs { CharSrc = npc, O1 = item, N1 = (int)item.Uid.Value }) == TriggerResult.True;
+            // Per-action NPC AI triggers (@NPCActWander fires every wander step
+            // of every active NPC, @NPCLookAtChar/Item every scan hit, the Act
+            // triggers every combat/follow/cast action). Install the fire only
+            // when a script hooks the trigger (IsTrigUsed gate) — otherwise a
+            // 20-30K NPC world pays a full dispatch walk per idle NPC per
+            // second for nothing.
+            if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCLookAtChar))
+                _npcAI.OnNpcLookAtChar = (npc, target) =>
+                    _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCLookAtChar,
+                        new TriggerArgs { CharSrc = target, N1 = target.Uid.Value > int.MaxValue ? 0 : (int)target.Uid.Value }) == TriggerResult.True;
+            if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCActFight))
+                _npcAI.OnNpcActFight = (npc, target) =>
+                    _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActFight,
+                        new TriggerArgs { CharSrc = target, N1 = target.Uid.Value > int.MaxValue ? 0 : (int)target.Uid.Value }) == TriggerResult.True;
+            if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCActWander))
+                _npcAI.OnNpcActWander = npc =>
+                    _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActWander,
+                        new TriggerArgs { CharSrc = npc }) == TriggerResult.True;
+            if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCActFollow))
+                _npcAI.OnNpcActFollow = (npc, target) =>
+                    _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActFollow,
+                        new TriggerArgs { CharSrc = target, O1 = target }) == TriggerResult.True;
+            if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCActCast))
+                _npcAI.OnNpcActCast = (npc, target, spell) =>
+                    _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActCast,
+                        new TriggerArgs { CharSrc = target, O1 = target, N1 = (int)spell }) == TriggerResult.True;
+            if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCLookAtItem))
+                _npcAI.OnNpcLookAtItem = (npc, item) =>
+                    _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCLookAtItem,
+                        new TriggerArgs { CharSrc = npc, O1 = item, N1 = (int)item.Uid.Value }) == TriggerResult.True;
 
             _npcAI.OnNpcSay = (npc, text) =>
             {
@@ -1571,7 +1606,10 @@ public static partial class Program
                 BroadcastNearby(target.Position, 18, healthPkt, 0);
 
                 if (target.Hits <= 0 && !target.IsDead)
+                {
+                    _log.LogDebug("[death_path] breath victim=0x{V:X} dmg={Dmg}", target.Uid.Value, damage);
                     _npcAI.OnNpcKill?.Invoke(npc, target);
+                }
             };
             _npcAI.OnNpcThrow = (npc, target, damage) =>
             {
@@ -1623,6 +1661,8 @@ public static partial class Program
             _npcAI.OnNpcCastSpell = (npc, target, spell) =>
             {
                 int castMs = _spellEngine.CastStart(npc, spell, target.Uid, target.Position);
+                _log.LogDebug("[npc_cast] npc=0x{Npc:X} '{Name}' spell={Spell} target=0x{Tgt:X} castMs={Ms}",
+                    npc.Uid.Value, npc.Name, spell, target.Uid.Value, castMs);
                 if (castMs > 0)
                     npc.SetCastTimerEnd(Environment.TickCount64 + castMs);
             };
@@ -2315,6 +2355,12 @@ public static partial class Program
     /// </summary>
     private static void ProcessDeathWithEffects(Character victim, Character? killer)
     {
+        // Diagnostic for the delayed-death / missing-visuals reports: names
+        // the kill entry point and the wall-clock so wire logs can be lined
+        // up against the killing-damage packet.
+        _log.LogDebug("[death_path] pipeline victim=0x{V:X} '{VName}' killer=0x{K:X}",
+            victim.Uid.Value, victim.Name, killer?.Uid.Value ?? 0);
+
         var actualKiller = killer != null && ReferenceEquals(killer, victim) ? null : killer;
         var effectiveKiller = actualKiller != null ? ResolveEffectiveOffender(actualKiller) : null;
 

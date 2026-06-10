@@ -4,6 +4,28 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+
+[2026-06-10] - GameClient decomposition phase 3d: world-features handler class (Wave 88)
+----------------------------------------
+
+INTERNAL - GameClient decomposition:
+  - The WorldFeatures partial (~1,780 lines: crafting gump, vendor buy/sell,
+    secure trade, rename, guild/house management gumps, doors, potions,
+    skill use, 0xBF extended-command dispatch, party commands, context
+    menus) moved into ClientWorldFeaturesHandler using the established shim
+    recipe; bodies are byte-identical. The static 0xBF dispatch dictionary
+    changed element type from Action<GameClient, byte[]> to
+    Action<ClientWorldFeaturesHandler, byte[]> so its static lambdas keep
+    the verbatim client.X form; the registry-drift guardrail is unchanged.
+    Five cross-partial helpers were promoted private -> internal
+    (BuildWorldItemPacket, RefreshBackpackContents, BeginInfoSkill,
+    BeginActiveSkill, HandleQueryDesignDetails) and three engine accessors
+    added (CraftE, GuildM, PartyM). The six partner-side trade callback
+    properties stay on GameClient (Program.cs wiring surface), as do
+    internal bridges for the test-harness reflection entry points
+    (SendContextMenu, HandleContextMenuResponse) and the vendor price
+    statics. Full suite green (723); mojibake scan clean.
+
 [2026-06-10] - GameClient decomposition phase 3c: item-use handler class (Wave 87)
 ----------------------------------------
 

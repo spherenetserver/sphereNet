@@ -4,6 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+
+[2026-06-10] - GameClient ayrıştırma faz 3d: world-features handler sınıfı (Wave 88)
+----------------------------------------
+
+İÇSEL - GameClient ayrıştırma:
+  - WorldFeatures partial'ı (~1.780 satır: crafting gump, vendor alış/satış,
+    secure trade, rename, guild/house yönetim gump'ları, kapılar, iksirler,
+    skill kullanımı, 0xBF extended-command dispatch, party komutları,
+    context menüler) yerleşik shim reçetesiyle ClientWorldFeaturesHandler
+    sınıfına taşındı; gövdeler bayt-bayt aynı. Statik 0xBF sözlüğünün eleman
+    tipi Action<GameClient, byte[]> yerine
+    Action<ClientWorldFeaturesHandler, byte[]> oldu — static lambda'lar
+    birebir client.X biçiminde kaldı; registry kayma guardrail'i değişmedi.
+    Beş çapraz-partial yardımcı private -> internal yükseltildi
+    (BuildWorldItemPacket, RefreshBackpackContents, BeginInfoSkill,
+    BeginActiveSkill, HandleQueryDesignDetails); üç motor erişimcisi eklendi
+    (CraftE, GuildM, PartyM). Altı partner-taraflı trade callback property
+    GameClient'ta kaldı (Program.cs bağlama yüzeyi); test reflection giriş
+    noktaları (SendContextMenu, HandleContextMenuResponse) ve vendor fiyat
+    statikleri için internal köprüler de öyle. Tam paket yeşil (723);
+    mojibake taraması temiz.
+
 [2026-06-10] - GameClient ayristirmasi faz 3c: item-use handler sinifi (Wave 87)
 ----------------------------------------
 

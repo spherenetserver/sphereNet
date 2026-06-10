@@ -20,7 +20,8 @@ GameClient (orkestratör: NetState + Character + yaşam döngüsü)
  └─ handler sınıfları      (faz 3 — sürüyor)
      ├─ ClientViewUpdater       view-delta build/apply + known-char bildirimleri ✅
      ├─ ClientInventoryHandler  single click, pickup/drop/equip, profil/status ✅
-     └─ ClientItemUseHandler    dclick dispatch, item kullanımı, pet komutları, vendor listeleri ✅
+     ├─ ClientItemUseHandler    dclick dispatch, item kullanımı, pet komutları, vendor listeleri ✅
+     └─ ClientWorldFeaturesHandler  crafting/guild/house gump, trade, 0xBF dispatch, party, context menu ✅
 ```
 
 ## Fazlar
@@ -41,7 +42,7 @@ alan bir sınıfa dönüşür (ileride dar bir `ClientContext` arayüzüne
 indirgenebilir). Partial'lar arası private erişim bu noktada derleyici
 tarafından zorlanan gerçek sınırlara dönüşür: handler yalnızca GameClient'ın
 internal/public yüzeyini görebilir. Sıra (en az iç bağımlılıdan en çoğa):
-ViewUpdate ✅ → Inventory ✅ → ItemUse ✅ → WorldFeatures → Dialogs/Targeting →
+ViewUpdate ✅ → Inventory ✅ → ItemUse ✅ → WorldFeatures ✅ → Dialogs/Targeting →
 Combat → ScriptConsole.
 
 **Inventory dönüşüm notu — "context shim" deseni:** Gövdeyi bayt-bayt korumak
@@ -67,6 +68,38 @@ bağımlılıkları sıralar; her biri ya shim ya internal yükseltmeyle kapanı
 yüzeyi GameClient üzerinde kalır (script'ler konsol olarak GameClient
 referansı alır). Login/karakter-seçim akışı NetState yaşam döngüsüne bağlı —
 en son ele alınır.
+
+## Kalan iş planı (oturum devri — 2026-06-10 itibarıyla)
+
+Tamamlanan: faz 1-2 (durum bileşenleri), faz 3a-d (ViewUpdate, Inventory,
+ItemUse, WorldFeatures). Test tabanı: 723 yeşil. Güncel partial boyutları ve
+dönüşüm sırası:
+
+| Sıra | Partial | Satır | Hedef sınıf | Notlar / riskler |
+|------|---------|-------|-------------|------------------|
+| 3d ✅ | WorldFeatures | ~1583 | ClientWorldFeaturesHandler | Statik 0xBF sözlüğü `Action<ClientWorldFeaturesHandler, byte[]>` tipine döndü — lambda'lar bayt-bayt aynı (`client.X` artık handler üyesi). 6 trade callback property + test reflection köprüleri (SendContextMenu, HandleContextMenuResponse) GameClient'ta. |
+| 3e | Targeting | ~627 | ClientTargetingHandler | HandleTargetResponse yönlendiricisi + SendGump/HandleGumpResponse. `SendGump` çok partial'dan çağrılıyor → GameClient'ta public delegasyon kalır. `IsTargetCancelled` statik. |
+| 3e | Dialogs | ~1629 | ClientDialogHandler | Script dialog render (RenderScriptDialog), help menüsü, INPDLG. `_dialogSubjectUid` + `_nativeDialogFallbacks` + `_pendingInputDlg` alanları handler'a taşınır (faz-1 tarzı). `TryShowScriptDialog` public delegasyon. |
+| 3f | Skills | ~489 | ClientSkillsHandler | Küçük; InfoSkillSink zaten internal. |
+| 3f | Combat | ~1790 | ClientCombatHandler | SICAK YOL: HandleMove/movement batch + HandleSpeech + HandleAttack + cast. Throttle bileşeni hazır. Shim'lerin property-erişim maliyeti ölçülmeli (muhtemelen ihmal edilebilir ama hareket yolunda perf testi koş: RuntimePerformancePressureTests). |
+| 3g | ScriptConsole | ~2024 | ClientScriptConsoleHandler | EN BÜYÜK. ITextConsole implementasyonu GameClient'ta KALIR (script'ler konsol olarak GameClient alır); handler script-verb yüzeyini barındırır, SysMessage/GetName GameClient'ta. `TryExecuteScriptCommand`/`TryGetScriptVariable` public delegasyon. |
+| — | PacketHelpers | ~1470 | (dönüştürülmez) | Paket primitifleri: GameClient'ın internal gönderim yüzeyi olarak kalır; handler'ların ortak bağımlılığıdır. İstenirse ileride `ClientPacketSender` bileşeni. |
+| — | Login / Handlers / Chat / Housing | ~693/460/117/172 | (şimdilik kalır) | Login NetState yaşam döngüsüne bağlı (en son). Handlers (kitap/prompt) + Chat + Housing küçük ve zaten dar yüzeyli — 3g sonrası değerlendirilir. |
+
+**Faz 4 (3g sonrası):** Handler'lardaki shim blokları birleştirilip dar bir
+`ClientContext` arayüzü türetilir; GameClient orkestratöre iner.
+
+**Reçete (her dönüşümde):**
+1. Boyut + public yüzey + çapraz-partial INBOUND çağrı taraması (private'lara).
+2. Test reflection taraması (`GetField/GetMethod` adları).
+3. Gövdeyi bayt-bayt kopyala (explicit UTF-8! `tools/scan-mojibake.ps1` ile doğrula).
+4. Eski partial → public delegasyonlar + inbound köprüler (internal).
+5. Derleyici-güdümlü shim/internal kapatma (`ScriptConsole = this` → `_client`).
+6. Tam test (723+); doküman + changelog; commit.
+
+**GameClient dışı kalan iş:** Character stat bloğu (vitals regen + hunger +
+çekirdek stat alanları) — önce davranışsal test ağı örülmeli (clamp/dirty
+semantiği), sonra extraction; gerekçe Wave 83 changelog'unda.
 
 ## Disiplin
 

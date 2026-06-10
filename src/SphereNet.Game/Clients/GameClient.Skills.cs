@@ -40,7 +40,7 @@ public sealed partial class GameClient
     /// then asks the client for a target cursor. Selected target is resolved
     /// to the actual Character/Item and pushed into <see cref="SkillHandlers.UseInfoSkill"/>.
     /// </summary>
-    private void BeginInfoSkill(SkillType skill, int skillId)
+    internal void BeginInfoSkill(SkillType skill, int skillId)
     {
         if (_character == null) return;
 
@@ -85,7 +85,7 @@ public sealed partial class GameClient
     /// invoking <see cref="SkillHandlers.UseActiveSkill"/>. Trigger chain
     /// (PreStart/Start/Stroke/Success/Fail) is preserved.
     /// </summary>
-    private void BeginActiveSkill(SkillType skill, int skillId, SkillHandlers.ActiveSkillTargetKind kind)
+    internal void BeginActiveSkill(SkillType skill, int skillId, SkillHandlers.ActiveSkillTargetKind kind)
     {
         if (_character == null) return;
         _character.ResetSkillStrokeCount();

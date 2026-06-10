@@ -537,7 +537,7 @@ public sealed partial class GameClient
         ));
     }
 
-    private PacketWriter BuildWorldItemPacket(uint serial, ushort itemId, ushort amount,
+    internal PacketWriter BuildWorldItemPacket(uint serial, ushort itemId, ushort amount,
         short x, short y, sbyte z, ushort hue, byte direction = 0)
     {
         if (_netState.SupportsStygianAbyss)
@@ -835,7 +835,7 @@ public sealed partial class GameClient
         SendCharacterStatus(ch, includeExtendedStats: ch == _character);
     }
 
-    private void RefreshBackpackContents()
+    internal void RefreshBackpackContents()
     {
         if (_character == null) return;
         var pack = _character.Backpack;

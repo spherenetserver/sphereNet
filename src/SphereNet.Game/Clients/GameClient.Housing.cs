@@ -33,7 +33,7 @@ public sealed partial class GameClient
     /// <summary>0xBF sub 0x1E — client requests the design of a house whose
     /// revision it doesn't have cached. Always answered from the committed
     /// design (DESIGN_n tags), never from someone's working session.</summary>
-    private void HandleQueryDesignDetails(byte[] data)
+    internal void HandleQueryDesignDetails(byte[] data)
     {
         if (data.Length < 4)
             return;

@@ -189,6 +189,9 @@ public sealed partial class GameClient : ITextConsole
     internal TriggerDispatcher? Triggers => _triggerDispatcher;
     internal HousingEngine? Housing => _housingEngine;
     internal TradeManager? TradeM => _tradeManager;
+    internal CraftingEngine? CraftE => _craftingEngine;
+    internal GuildManager? GuildM => _guildManager;
+    internal PartyManager? PartyM => _partyManager;
     internal SpellEngine? Spells => _spellEngine;
     internal SkillHandlers? SkillH => _skillHandlers;
     internal Mounts.MountEngine? MountE => _mountEngine;

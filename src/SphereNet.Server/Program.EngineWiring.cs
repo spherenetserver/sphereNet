@@ -1292,6 +1292,21 @@ public static partial class Program
             //     corpse + 0xAF packets. Doing it here would call it twice.
             // This hook is kept for non-visual side effects (logging, party
             // bookkeeping, etc.) — currently nothing else needs it.
+            // Dying in the saddle: drop the rider from the mount before the
+            // corpse snapshot, delete the mount-layer item for observers and
+            // re-show the mount NPC (Source-X Death → Horse_UnMount order).
+            _deathEngine.DismountHook = victim =>
+            {
+                uint mountItemUid = victim.GetEquippedItem(Layer.Horse)?.Uid.Value ?? 0;
+                var mountNpc = _mountEngine?.Dismount(victim);
+                if (mountItemUid != 0)
+                    BroadcastNearby(victim.Position, 18, new PacketDeleteObject(mountItemUid), 0);
+                if (mountNpc != null)
+                {
+                    mountNpc.ClearStatFlag(StatFlag.Ridden);
+                    BroadcastCharacterAppear(mountNpc);
+                }
+            };
             _deathEngine.LootingIsACrime = _config.LootingIsACrime;
             _deathEngine.CorpseDecayNPC = _config.CorpseNpcDecay * 60;
             _deathEngine.CorpseDecayPlayer = _config.CorpsePlayerDecay * 60;

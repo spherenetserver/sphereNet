@@ -35,6 +35,11 @@ public sealed class DeathEngine
     /// <summary>Optional script trigger dispatcher for corpse item hooks.</summary>
     public TriggerDispatcher? TriggerDispatcher { get; set; }
 
+    /// <summary>Host hook: dismount a mounted victim before the corpse is
+    /// made (Source-X CChar::Death runs Horse_UnMount first). Wired to the
+    /// mount engine + appearance broadcasts; null in bare test setups.</summary>
+    public Action<Character>? DismountHook { get; set; }
+
     public DeathEngine(GameWorld world)
     {
         _world = world;
@@ -59,6 +64,13 @@ public sealed class DeathEngine
 
         // Kill the character
         victim.Kill();
+
+        // Source-X CChar::Death order: the rider leaves the saddle before the
+        // corpse is made — otherwise the mount-layer item is snapshotted into
+        // the death state and the client keeps drawing a mounted body under
+        // the ghost.
+        if (victim.IsMounted)
+            DismountHook?.Invoke(victim);
 
         // Karma/Fame changes for killer
         if (effectiveKiller != null)

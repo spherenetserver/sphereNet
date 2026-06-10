@@ -28,6 +28,19 @@
 
 
 
+[2026-06-11] - Dying in the saddle dismounts before the corpse snapshot (Wave 119)
+----------------------------------------
+
+FIXED - Death:
+  - The death pipeline never dismounted a mounted victim, so the
+    mount-layer item survived into the death state: the client kept
+    drawing a mounted body under the dead character, the ghost
+    transition did not show and the mount NPC never reappeared.
+    DeathEngine now runs a dismount hook before the corpse is made
+    (reference Death → Horse_UnMount order): the mount item is
+    removed for observers and the mount NPC is placed back into the
+    world. Covers every kill path through ProcessDeath.
+
 [2026-06-11] - SPELLFLAG_* constant names resolve in spell flag parsing (Wave 118)
 ----------------------------------------
 

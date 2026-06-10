@@ -28,6 +28,19 @@
 
 
 
+[2026-06-11] - Eyerde ölüm, ceset anlık görüntüsünden önce binekten indirir (Wave 119)
+----------------------------------------
+
+DÜZELTME - Ölüm:
+  - Ölüm hattı binekli kurbanı hiç indirmiyordu; mount-katmanı item
+    ölüm durumuna taşınıyordu: istemci ölü karakterin altında binekli
+    gövde çizmeye devam ediyor, hayalet geçişi görünmüyor ve binek
+    NPC geri gelmiyordu. DeathEngine artık ceset oluşmadan önce
+    dismount hook'unu çalıştırıyor (referans Death → Horse_UnMount
+    sırası): mount item gözlemciler için kaldırılıyor, binek NPC
+    dünyaya geri yerleştiriliyor. ProcessDeath'ten geçen tüm öldürme
+    yollarını kapsıyor.
+
 [2026-06-11] - SPELLFLAG_* sabit adları büyü bayrak ayrıştırmasında çözülüyor (Wave 118)
 ----------------------------------------
 

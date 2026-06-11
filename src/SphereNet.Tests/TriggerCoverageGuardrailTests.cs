@@ -119,12 +119,11 @@ public class TriggerCoverageGuardrailTests
         // path, RETURN 1 keeps concealment); SpellEffectAdd / SpellEffectRemove
         // (SpellEngine timed-effect lifecycle: apply, expiry, re-cast refresh,
         // death cleanup — save-time revert/reapply deliberately silent);
-        // DeathCorpse (DeathEngine.ProcessDeath after loot transfer, argo = corpse).
-        // Still deferred (needs infrastructure):
-        //   SpellEffectTick — the engine has no SPELLFLAG_TICK periodic
-        //   spell-effect mechanism; effects apply once and revert at expiry,
-        //   so there is no tick to hook yet.
-        "SpellEffectTick",
+        // DeathCorpse (DeathEngine.ProcessDeath after loot transfer, argo = corpse);
+        // SpellEffectTick (CharacterPoisonState.ProcessTick via the gated
+        // Character.OnSpellEffectTick bridge — ARGN1 = spell id, ARGN2 =
+        // strength, ARGO = SpellMemoryShim, LOCAL.EFFECT/DELAY/CHARGES
+        // seeded and read back through TriggerArgs.Locals, RETURN 1 cures).
     };
 
     private static readonly HashSet<string> CharNotFiredP2 = new()
@@ -152,7 +151,6 @@ public class TriggerCoverageGuardrailTests
     // and cosmetic tooltips — none are core gameplay gates today).
     private static readonly HashSet<string> ItemNotFiredP2 = new()
     {
-        "RegionEnter", "RegionLeave",
         "Level", "Complete",
         "AddRedCandle", "AddWhiteCandle", "DelRedCandle", "DelWhiteCandle",
         // Wired (now fired): Tooltip (single click, IsTrigUsed-gated,
@@ -165,11 +163,14 @@ public class TriggerCoverageGuardrailTests
         // PickupStack (a partial amount split out of a larger stack), selected by
         // SelectPickupTrigger in HandleItemPickup alongside the existing
         // PickupGround/PickupPack cases.
+        // Wired (now fired): RegionEnter/RegionLeave — Source-X scopes these
+        // to movable multis: ShipEngine.MoveDelta fires them on the ship
+        // multi at a region boundary (ARGO = region, SRC = pilot, RETURN 1
+        // blocks the step), via the gated OnShipRegionChange hook.
         // Still deferred (need infrastructure): champion-spawn candles
         // (AddRed/WhiteCandle, DelRed/WhiteCandle — no altar system), item
-        // leveling (Level/Complete), item region tracking (RegionEnter/Leave),
-        // Start/Stop (no item timer start/stop event), Tooltip (covered by
-        // ClientTooltip 0xD6).
+        // leveling (Level/Complete), Start/Stop (no item timer start/stop
+        // event), Tooltip (covered by ClientTooltip 0xD6).
     };
 
     private static readonly HashSet<string> ItemNotFired = new(ItemNotFiredP2);

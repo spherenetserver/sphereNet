@@ -23,6 +23,12 @@ public sealed class TriggerArgs
     public IScriptObj? O1 { get; set; }
     public ITextConsole? ScriptConsole { get; set; }
 
+    /// <summary>Shared LOCAL.* pool for the trigger chain (Source-X
+    /// CScriptTriggerArgs.m_VarsLocal). The engine seeds values before the
+    /// fire and reads script writes back from the SAME map afterwards —
+    /// the @SpellEffectTick LOCAL.EFFECT/DELAY/CHARGES contract.</summary>
+    public SphereNet.Scripting.Variables.VarMap? Locals { get; set; }
+
     // Convenience typed references
     public Character? CharSrc { get; set; }
     public Item? ItemSrc { get; set; }
@@ -616,6 +622,9 @@ public sealed class TriggerDispatcher
             args.N1, args.N2, args.S1);
         wrapped.Object1 = args.O1;
         wrapped.Object2 = args.CharSrc ?? (IScriptObj?)args.ItemSrc;
+        // Reference, not copy: every chain step's wrapped args share the one
+        // LOCAL pool, so cross-step and engine readback semantics hold.
+        wrapped.SharedLocals = args.Locals;
         return wrapped;
     }
 

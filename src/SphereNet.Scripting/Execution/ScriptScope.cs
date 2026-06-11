@@ -6,7 +6,11 @@ namespace SphereNet.Scripting.Execution;
 /// </summary>
 public sealed class ScriptScope
 {
-    public Variables.VarMap LocalVars { get; } = new();
+    // init-settable so a trigger fire can inject the shared args-locals map
+    // (Source-X CScriptTriggerArgs.m_VarsLocal): every ON=@X block in one
+    // trigger chain then reads/writes the same LOCAL.* pool, and the engine
+    // can seed values before the fire and read script writes back after.
+    public Variables.VarMap LocalVars { get; init; } = new();
     public string? ReturnValue { get; set; }
     public bool IsReturning { get; set; }
     public bool IsBreaking { get; set; }

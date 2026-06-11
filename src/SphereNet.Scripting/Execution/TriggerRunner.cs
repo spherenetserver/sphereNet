@@ -37,6 +37,16 @@ public sealed class TriggerRunner
 
     public bool ScriptDebug { get; set; }
 
+    /// <summary>Scope for one ON=@X block. When the args carry a shared
+    /// LOCAL pool (Source-X CScriptTriggerArgs.m_VarsLocal), every block in
+    /// the chain uses it, so engine-seeded values are visible to the script
+    /// and script writes are visible back to the engine. Function calls are
+    /// NOT routed through here — they keep their own locals.</summary>
+    private static ScriptScope CreateTriggerScope(string triggerName, ITriggerArgs? args) =>
+        args is TriggerArgs { SharedLocals: not null } ta
+            ? new ScriptScope { TriggerName = triggerName, LocalVars = ta.SharedLocals }
+            : new ScriptScope { TriggerName = triggerName };
+
     /// <summary>
     /// Execute a trigger on a ResourceLink, reading its script on demand.
     /// </summary>
@@ -62,7 +72,7 @@ public sealed class TriggerRunner
         {
             if (link.TryGetTriggerBody(triggerName, out var cachedTriggerLines))
             {
-                var cachedScope = new ScriptScope { TriggerName = "@" + triggerName };
+                var cachedScope = CreateTriggerScope("@" + triggerName, args);
                 return _interpreter.Execute(cachedTriggerLines, target, source, args, cachedScope);
             }
 
@@ -81,7 +91,7 @@ public sealed class TriggerRunner
                         int startIdx = section.Keys.IndexOf(key) + 1;
                         var triggerLines = CollectTriggerBody(section.Keys, startIdx);
 
-                        var scope = new ScriptScope { TriggerName = "@" + triggerName };
+                        var scope = CreateTriggerScope("@" + triggerName, args);
                         return _interpreter.Execute(triggerLines, target, source, args, scope);
                     }
                 }
@@ -121,7 +131,7 @@ public sealed class TriggerRunner
                 if (verbose)
                     _logger.LogDebug("[trig_runner] {Trig} matched cached body lines={N}",
                         triggerName, cachedTriggerLines.Count);
-                var cachedScope = new ScriptScope { TriggerName = "@" + triggerName };
+                var cachedScope = CreateTriggerScope("@" + triggerName, args);
                 return _interpreter.Execute(cachedTriggerLines, target, source, args, cachedScope);
             }
 
@@ -159,7 +169,7 @@ public sealed class TriggerRunner
                                     ln.Key, ln.HasArg, ln.Arg);
                         }
 
-                        var scope = new ScriptScope { TriggerName = "@" + triggerName };
+                        var scope = CreateTriggerScope("@" + triggerName, args);
                         return _interpreter.Execute(triggerLines, target, source, args, scope);
                     }
                 }

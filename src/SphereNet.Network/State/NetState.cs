@@ -513,8 +513,7 @@ public sealed class NetState : IDisposable
         if (data.Length == 0)
             return;
         var packet = new PacketBuffer(data.Length);
-        foreach (byte b in data)
-            packet.WriteByte(b);
+        packet.WriteBytes(data);
         Send(packet);
     }
 

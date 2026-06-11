@@ -48,6 +48,14 @@ public sealed class ShipEngine
     /// <summary>Called when a ship turns to a new facing (Source-X @ShipTurn).</summary>
     public Action<Ship>? OnShipTurned { get; set; }
 
+    /// <summary>Fired before a ship move crosses a region boundary (Source-X
+    /// CCMultiMovable region check — item @RegionLeave/@RegionEnter live on
+    /// movable multis, not on ordinary items). Args: ship, region being left
+    /// (null = wilderness), region being entered (null = wilderness). Return
+    /// false to block the move (script RETURN 1). Installed only when one of
+    /// the two triggers is hooked, so unhooked shards pay a null check.</summary>
+    public Func<Ship, World.Regions.Region?, World.Regions.Region?, bool>? OnShipRegionChange { get; set; }
+
     private void TillerSpeak(Ship ship, string key) =>
         OnTillerSpeak?.Invoke(ship, SphereNet.Game.Messages.ServerMessages.Get(key));
 
@@ -547,6 +555,21 @@ public sealed class ShipEngine
     /// </summary>
     public bool MoveDelta(Ship ship, short dx, short dy, sbyte dz)
     {
+        // Region boundary check BEFORE anything moves (Source-X order): the
+        // multi's anchor decides the region; @RegionLeave/@RegionEnter fire on
+        // the multi item and RETURN 1 cancels the whole step.
+        var regionHook = OnShipRegionChange;
+        if (regionHook != null)
+        {
+            var anchor = ship.MultiItem.Position;
+            var oldRegion = _world.FindRegion(anchor);
+            var newRegion = _world.FindRegion(new Point3D(
+                (short)(anchor.X + dx), (short)(anchor.Y + dy),
+                (sbyte)(anchor.Z + dz), anchor.Map));
+            if (!ReferenceEquals(oldRegion, newRegion) && !regionHook(ship, oldRegion, newRegion))
+                return false;
+        }
+
         // Collect deck objects before moving (positions change during move)
         var deckChars = ListDeckCharacters(ship);
         var deckItems = ListDeckItems(ship);

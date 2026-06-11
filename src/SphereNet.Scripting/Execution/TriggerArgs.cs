@@ -27,6 +27,14 @@ public sealed class TriggerArgs : ITriggerArgs
         }
     }
 
+    /// <summary>Shared LOCAL.* pool for the whole trigger chain (Source-X
+    /// CScriptTriggerArgs.m_VarsLocal). When set, every trigger block run with
+    /// these args uses this map as its scope locals instead of a fresh one —
+    /// the engine can seed values (e.g. @SpellEffectTick LOCAL.EFFECT) and
+    /// read script writes back after the fire. Functions still get their own
+    /// locals (Source-X function-call semantics).</summary>
+    public Variables.VarMap? SharedLocals { get; set; }
+
     public TriggerArgs() { }
 
     public TriggerArgs(IScriptObj? source, int n1 = 0, int n2 = 0, string argStr = "")

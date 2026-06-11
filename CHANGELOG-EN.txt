@@ -28,6 +28,36 @@
 
 
 
+[2026-06-11] - @SpellEffectTick bridge; ship @RegionEnter/@RegionLeave; shared trigger LOCAL pool (Wave 133)
+----------------------------------------
+
+ADDED - Scripting engine:
+  - Shared trigger LOCAL pool (Source-X CScriptTriggerArgs.m_VarsLocal
+    parity): TriggerArgs can now carry one VarMap that every ON=@X
+    block in a trigger chain uses as its scope locals — the engine
+    seeds values before the fire and reads script writes back after.
+    Functions keep their own locals (Source-X call semantics).
+  - @SpellEffectTick (SPELLFLAG_TICK) fires from the native poison
+    tick: ARGN1 = spell id, ARGN2 = strength on the Sphere memory
+    scale, ARGO = a read-only spell-memory shim (BASEID = the spell's
+    RUNE_ITEM, MOREY = strength, LINK = poisoner) so the reference
+    handler pattern IF (<ARGO.BASEID>==I_RUNE_POISON) works verbatim.
+    LOCAL.EFFECT/DELAY/CHARGES/DAMAGETYPE are seeded and read back;
+    the script damage applies as-is (no second resist pass), zero
+    damage skips the application but keeps the schedule, RETURN 1
+    destroys the effect (cures). IsTrigUsed-gated: unhooked shards
+    pay a null check per tick.
+  - Item @RegionLeave/@RegionEnter wired with Source-X scope — these
+    fire on movable multis, not ordinary items: ShipEngine.MoveDelta
+    checks the multi anchor's region BEFORE anything moves; on a
+    boundary cross the triggers fire on the ship multi with ARGO =
+    region and SRC = pilot, and RETURN 1 blocks the whole step.
+    Installed only when hooked.
+
+FIXED - Networking (minor):
+  - NetState.SendRaw built its buffer one WriteByte per byte; now a
+    single block copy (cold path — script SENDPACKET verb).
+
 [2026-06-11] - NPC attack-engagement emote (Wave 132)
 ----------------------------------------
 

@@ -545,6 +545,14 @@ public partial class Character : ObjBase
     /// only when hooked (IsTrigUsed gate).</summary>
     public static Action<Character, int>? OnSpellEffectRemove { get; set; }
 
+    /// <summary>Fired before each periodic spell-effect tick applies (Source-X
+    /// @SpellEffectTick / SPELLFLAG_TICK). The wiring seeds the script LOCAL
+    /// contract from the context, fires the trigger and writes script
+    /// overrides back into it. Return false to destroy the effect (cure)
+    /// without applying this tick. Installed only when hooked (IsTrigUsed
+    /// gate), so the per-tick cost is a null check otherwise.</summary>
+    public static Func<Character, SpellEffectTickContext, bool>? OnSpellEffectTick { get; set; }
+
     /// <summary>Fired when a pet's loyalty reaches zero and it is about to go wild
     /// (Source-X @PetDesert). Args: pet, owner (may be null). Return true to cancel
     /// the desertion — the pet keeps serving.</summary>

@@ -28,6 +28,37 @@
 
 
 
+[2026-06-11] - @SpellEffectTick köprüsü; gemi @RegionEnter/@RegionLeave; paylaşımlı trigger LOCAL havuzu (Wave 133)
+----------------------------------------
+
+EKLENDİ - Script motoru:
+  - Paylaşımlı trigger LOCAL havuzu (Source-X
+    CScriptTriggerArgs.m_VarsLocal paritesi): TriggerArgs artık tek
+    bir VarMap taşıyabiliyor; zincirdeki her ON=@X bloğu scope local
+    olarak onu kullanıyor — motor ateşlemeden önce değer ekiyor,
+    script yazımlarını sonrasında geri okuyor. Fonksiyonlar kendi
+    local'lerini koruyor (Source-X çağrı semantiği).
+  - @SpellEffectTick (SPELLFLAG_TICK) native zehir tikinden
+    ateşleniyor: ARGN1 = büyü id, ARGN2 = Sphere memory ölçeğinde
+    güç, ARGO = salt-okunur spell-memory shim'i (BASEID = büyünün
+    RUNE_ITEM'ı, MOREY = güç, LINK = zehirleyen) — referans handler
+    deseni IF (<ARGO.BASEID>==I_RUNE_POISON) birebir çalışıyor.
+    LOCAL.EFFECT/DELAY/CHARGES/DAMAGETYPE ekiliyor ve geri okunuyor;
+    script hasarı olduğu gibi uygulanıyor (ikinci resist geçişi yok),
+    sıfır hasar uygulamayı atlayıp takvimi koruyor, RETURN 1 efekti
+    yok ediyor (cure). IsTrigUsed kapılı: hook yoksa tik başına
+    maliyet null kontrolü.
+  - Item @RegionLeave/@RegionEnter Source-X kapsamıyla bağlandı — bu
+    trigger'lar sıradan item'larda değil hareketli multi'lerde
+    ateşlenir: ShipEngine.MoveDelta, hiçbir şey taşınmadan ÖNCE multi
+    çapasının bölgesini kontrol ediyor; sınır geçişinde trigger'lar
+    gemi multi'sinde ARGO = bölge, SRC = pilot ile ateşleniyor ve
+    RETURN 1 adımın tamamını engelliyor. Yalnız hook varsa kurulur.
+
+DÜZELTME - Ağ (küçük):
+  - NetState.SendRaw buffer'ı bayt başına WriteByte ile dolduruyordu;
+    artık tek blok kopya (soğuk yol — script SENDPACKET fiili).
+
 [2026-06-11] - NPC saldırı başlangıç emote'u (Wave 132)
 ----------------------------------------
 

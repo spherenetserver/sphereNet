@@ -225,6 +225,52 @@ public static partial class Program
                     _triggerDispatcher.FireCharTrigger(target, CharTrigger.SpellEffectRemove,
                         new TriggerArgs { CharSrc = target, N1 = spellId });
             }
+            // @SpellEffectTick — Source-X SPELLFLAG_TICK bridge on the native
+            // poison tick (the era's only TICK consumer). Script contract:
+            // ARGN1 = spell id, ARGN2 = strength, ARGO = memory shim (BASEID =
+            // the spell's RUNE_ITEM, MOREY = strength, LINK = poisoner);
+            // LOCAL.EFFECT/DELAY/CHARGES/DAMAGETYPE seeded, script writes read
+            // back from the shared pool; RETURN 1 destroys the effect (cure).
+            if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.SpellEffectTick))
+            {
+                SphereNet.Game.Objects.Characters.Character.OnSpellEffectTick = (victim, ctx) =>
+                {
+                    var locals = new SphereNet.Scripting.Variables.VarMap();
+                    locals.Set("EFFECT", ctx.Damage.ToString());
+                    locals.Set("DELAY", (ctx.DelayMs / 1000.0).ToString(
+                        "0.###", System.Globalization.CultureInfo.InvariantCulture));
+                    locals.Set("CHARGES", ctx.Charges.ToString());
+                    locals.Set("DAMAGETYPE", "08"); // dam_poison
+                    var spellDef = _spellEngine?.GetSpellDef((SpellType)ctx.SpellId);
+                    var memory = new SpellMemoryShim
+                    {
+                        SpellId = ctx.SpellId,
+                        BaseId = spellDef?.RuneItemId ?? 0,
+                        MoreY = ctx.Strength,
+                        LinkUid = ctx.SourceUid.IsValid ? ctx.SourceUid.Value : 0,
+                        Name = spellDef?.Name ?? "poison",
+                    };
+                    var args = new TriggerArgs
+                    {
+                        CharSrc = victim,
+                        N1 = ctx.SpellId,
+                        N2 = ctx.Strength,
+                        O1 = memory,
+                        Locals = locals,
+                    };
+                    if (_triggerDispatcher.FireCharTrigger(victim, CharTrigger.SpellEffectTick, args)
+                        == TriggerResult.True)
+                        return false;
+                    ctx.Damage = (int)locals.GetInt("EFFECT", ctx.Damage);
+                    ctx.Charges = (int)locals.GetInt("CHARGES", ctx.Charges);
+                    if (double.TryParse(locals.Get("DELAY"),
+                            System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            out double delaySec) && delaySec > 0)
+                        ctx.DelayMs = (int)(delaySec * 1000);
+                    return true;
+                };
+            }
             // @MemoryEquip — memory items are created frequently in combat; install
             // the fire only when a script hooks the item trigger (item IsTrigUsed gate).
             if (_triggerDispatcher.IsItemTriggerUsed(ItemTrigger.MemoryEquip))
@@ -1862,6 +1908,31 @@ public static partial class Program
             _shipEngine.OnShipTurned = ship =>
                 _triggerDispatcher?.FireItemTrigger(ship.MultiItem, ItemTrigger.ShipTurn,
                     new TriggerArgs { ItemSrc = ship.MultiItem });
+            // @RegionLeave / @RegionEnter — Source-X scopes these item triggers
+            // to movable multis: they fire on the ship multi when a move step
+            // crosses a region boundary, ARGO = the region, SRC = the pilot,
+            // RETURN 1 blocks the step. Installed only when hooked so the
+            // per-step cost on unhooked shards is a null check in MoveDelta.
+            if (_triggerDispatcher != null &&
+                (_triggerDispatcher.IsItemTriggerUsed(ItemTrigger.RegionLeave) ||
+                 _triggerDispatcher.IsItemTriggerUsed(ItemTrigger.RegionEnter)))
+            {
+                _shipEngine.OnShipRegionChange = (ship, oldRegion, newRegion) =>
+                {
+                    var pilot = ship.Pilot.IsValid ? _world.FindChar(ship.Pilot) : null;
+                    if (oldRegion != null &&
+                        _triggerDispatcher.FireItemTrigger(ship.MultiItem, ItemTrigger.RegionLeave,
+                            new TriggerArgs { ItemSrc = ship.MultiItem, CharSrc = pilot, O1 = oldRegion })
+                        == TriggerResult.True)
+                        return false;
+                    if (newRegion != null &&
+                        _triggerDispatcher.FireItemTrigger(ship.MultiItem, ItemTrigger.RegionEnter,
+                            new TriggerArgs { ItemSrc = ship.MultiItem, CharSrc = pilot, O1 = newRegion })
+                        == TriggerResult.True)
+                        return false;
+                    return true;
+                };
+            }
 
             // @Redeed (Source-X) — a house collapsed/redeeded into a deed item.
             SphereNet.Game.Housing.House.OnRedeed = deed =>

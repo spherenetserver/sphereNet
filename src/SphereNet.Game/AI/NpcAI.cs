@@ -90,6 +90,10 @@ public sealed class NpcAI
     private readonly Dictionary<uint, long> _nextPathfindMs = [];
     private const long PathThrottleMs = 750;
     private const long PathFailBackoffMs = 5_000;
+    // Last fight target each NPC announced via OnNpcAttackNotify. Mirrors the
+    // player path's per-session notify latch: the "*X is attacking Y!*" emote
+    // fires once per target, again only when the NPC switches targets.
+    private readonly Dictionary<uint, uint> _lastAttackNotify = [];
     // NPC combat-chase A* node budget. Far below the full Pathfinder cap (which
     // is sized for player half-continent .walk): a creature only needs to route
     // around local obstacles toward a target in sight. Each explored node costs
@@ -134,6 +138,7 @@ public sealed class NpcAI
                 _pathTime.Remove(uid);
                 _losFailCounts.Remove(uid);
                 _nextPathfindMs.Remove(uid);
+                _lastAttackNotify.Remove(uid);
             }
         }
 
@@ -170,6 +175,23 @@ public sealed class NpcAI
             if (staleLos != null)
                 foreach (var uid in staleLos)
                     _losFailCounts.Remove(uid);
+        }
+
+        // Attack-notify latches outlive the path cache the same way (an NPC
+        // can fight without ever pathfinding), so sweep them for gone NPCs.
+        if (_lastAttackNotify.Count > 0)
+        {
+            List<uint>? staleNotify = null;
+            foreach (var uid in _lastAttackNotify.Keys)
+            {
+                if (_pathCache.ContainsKey(uid)) continue; // already handled above
+                var obj = _world.FindObject(new Core.Types.Serial(uid));
+                if (obj is not Character ch || ch.IsDeleted || ch.IsDead)
+                    (staleNotify ??= []).Add(uid);
+            }
+            if (staleNotify != null)
+                foreach (var uid in staleNotify)
+                    _lastAttackNotify.Remove(uid);
         }
     }
 
@@ -722,6 +744,17 @@ public sealed class NpcAI
                 MoveToward(npc, leashHome, run: true);
                 return;
             }
+        }
+
+        // Past every give-up branch (flee, leash) — the NPC is committed to
+        // this fight. Announce the engagement once per target so the victim
+        // sees the aggression while the NPC is still closing in, not only
+        // after the first hit lands.
+        if (!_lastAttackNotify.TryGetValue(npc.Uid.Value, out uint lastNotified) ||
+            lastNotified != target.Uid.Value)
+        {
+            _lastAttackNotify[npc.Uid.Value] = target.Uid.Value;
+            OnNpcAttackNotify?.Invoke(npc, target);
         }
 
         int dist = npc.Position.GetDistanceTo(target.Position);
@@ -2187,6 +2220,14 @@ public sealed class NpcAI
     /// Parameters: attacker, target, damage dealt
     /// </summary>
     public Action<Character, Character, int>? OnNpcAttack { get; set; }
+
+    /// <summary>
+    /// Callback for when an NPC engages a new fight target (reference
+    /// Attacker_Add). Fires before the first swing — at engage, while the NPC
+    /// may still be closing in — so Program.cs can broadcast the
+    /// "*X is attacking Y!*" emote pair. Parameters: attacker, target.
+    /// </summary>
+    public Action<Character, Character>? OnNpcAttackNotify { get; set; }
 
     /// <summary>
     /// Callback for when an NPC kills a target. Used by Program.cs to run DeathEngine + broadcast.

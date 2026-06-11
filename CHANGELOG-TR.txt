@@ -28,6 +28,23 @@
 
 
 
+[2026-06-11] - NPC saldırı başlangıç emote'u (Wave 132)
+----------------------------------------
+
+DÜZELTME - NPC AI / Savaş:
+  - "*X is attacking Y!*" / "*X is attacking you!*" emote çifti
+    (referans Attacker_Add mesajlaşması) yalnızca oyuncu saldırı
+    yolunda vardı — bir NPC oyuncuya saldırıya geçtiğinde hiçbir
+    duyuru üretilmiyordu; yaklaşan saldırgan görsel uyarı vermiyordu.
+    NpcAI artık yeni bir hedefe karşı ilk savaş aksiyonunda
+    (kaçma/leash vazgeçme dallarından sonra, ilk vuruştan önce)
+    OnNpcAttackNotify tetikliyor ve sunucu oyuncu yoluyla aynı emote
+    çiftini yayınlıyor: gözlemciler üçüncü şahıs satırı, kurban tek
+    başına "attacking you" varyantını görüyor; ikisi de saldırganın
+    üzerinde emote renginde. Bildirim kilidi yalnızca hedef
+    değişiminde yeniden ateşleniyor ve diğer NPC AI durumlarıyla
+    birlikte süpürülüyor.
+
 [2026-06-11] - NPC pathfind başarısızlık backoff'u; ana döngü stall teşhisi (Wave 131)
 ----------------------------------------
 

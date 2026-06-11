@@ -28,6 +28,22 @@
 
 
 
+[2026-06-11] - NPC attack-engagement emote (Wave 132)
+----------------------------------------
+
+FIXED - NPC AI / Combat:
+  - The "*X is attacking Y!*" / "*X is attacking you!*" emote pair
+    (reference Attacker_Add messaging) only existed on the player
+    attack path — an NPC engaging a player produced no announcement
+    at all, so an aggressor closing in gave no visual warning. NpcAI
+    now raises OnNpcAttackNotify the first combat action against a
+    new target (past the flee/leash give-up branches, before the
+    first swing), and the server broadcasts the same emote pair as
+    the player path: observers get the third-person line, the victim
+    alone gets the "attacking you" variant, both over the attacker
+    in the emote hue. The notify latch re-fires only on target
+    switch and is swept with the other per-NPC AI state.
+
 [2026-06-11] - NPC pathfind fail-backoff; main-loop stall diagnostics (Wave 131)
 ----------------------------------------
 

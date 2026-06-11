@@ -1510,6 +1510,25 @@ public static partial class Program
                     _triggerDispatcher?.FireItemTrigger(shield, ItemTrigger.GetHit,
                         new TriggerArgs { CharSrc = attacker, ItemSrc = shield, N1 = damage });
             };
+            _npcAI.OnNpcAttackNotify = (attacker, target) =>
+            {
+                // Same Attacker_Add messaging as the player attack path
+                // (ClientCombatHandler): both lines render over the ATTACKER in
+                // the emote hue; the victim's client alone gets the
+                // "*X is attacking you!*" variant.
+                const ushort emoteHue = 0x0022;
+                string atkName = attacker.Name ?? "";
+                var emoteOthers = new PacketSpeechUnicodeOut(
+                    attacker.Uid.Value, attacker.BodyId, 2, emoteHue, 3, "TRK",
+                    atkName, ServerMessages.GetFormatted(Msg.CombatAttacko, atkName, target.Name));
+                var emoteVictim = new PacketSpeechUnicodeOut(
+                    attacker.Uid.Value, attacker.BodyId, 2, emoteHue, 3, "TRK",
+                    atkName, ServerMessages.GetFormatted(Msg.CombatAttacks, atkName));
+                uint victimUid = target.Uid.Value;
+                ForEachClientInRange(attacker.Position, 18, 0,
+                    (obsCh, obsClient) => obsClient.Send(
+                        obsCh.Uid.Value == victimUid ? emoteVictim : emoteOthers));
+            };
             _npcAI.OnNpcKill = (killer, victim) =>
             {
                 ProcessDeathWithEffects(victim, killer);

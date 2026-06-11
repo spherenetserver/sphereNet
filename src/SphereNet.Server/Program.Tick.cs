@@ -56,6 +56,14 @@ namespace SphereNet.Server;
 
 public static partial class Program
 {
+    // Main-loop iteration stall detector. Catches latency the tick telemetry
+    // cannot see: GC suspensions, OS scheduling stalls, blocking I/O in
+    // periodic jobs — anything that delays the 0x73 ping echo. 50ms is well
+    // above a healthy iteration (a few ms) and below the smallest spike a
+    // player notices.
+    private const long LoopStallThresholdMs = 50;
+    private static long _lastLoopStallLogMs;
+
     private static void RunMainLoop()
     {
             _log.LogInformation("Type 'help' for commands. Enter commands directly (e.g. save, status, quit).");
@@ -82,6 +90,18 @@ public static partial class Program
 
             while (_running)
             {
+                // Loop-stall diagnostics: client-visible latency (0x73 ping echo)
+                // lives in the WHOLE iteration — network I/O, periodic jobs and
+                // the yield — not just RunServerTick. tick_stats can read 0.2ms
+                // avg while ping spikes to 160ms, because ticks cover <1% of
+                // wall time. Timestamp each segment and log a breakdown for any
+                // iteration over the threshold, with the GC collection delta so
+                // a GC pause is distinguishable from a slow job.
+                long iterTs0 = Stopwatch.GetTimestamp();
+                int iterG0 = GC.CollectionCount(0);
+                int iterG1 = GC.CollectionCount(1);
+                int iterG2 = GC.CollectionCount(2);
+
                 long now = sw.ElapsedMilliseconds;
 
                 // Console input (from WinForms command queue or headless stdin queue)
@@ -104,9 +124,13 @@ public static partial class Program
                     catch (Exception ex) { _log.LogError(ex, "Main-loop action failed"); }
                 }
 
+                long iterTs1 = Stopwatch.GetTimestamp(); // console/actions done
+
                 // Network I/O runs every iteration for low latency
                 _network.CheckNewConnections();
                 _network.ProcessAllInput();
+
+                long iterTs2 = Stopwatch.GetTimestamp(); // network input done
 
                 // Drain queued movement EVERY loop iteration, not just on the
                 // 50ms server tick. ClassicUO animates its own steps on its local
@@ -178,8 +202,12 @@ public static partial class Program
                 if (_recordingEngine.HasActiveReplays)
                     TickReplayPackets();
 
+                long iterTs3 = Stopwatch.GetTimestamp(); // periodic jobs done
+
                 _network.ProcessAllOutput();
                 _network.Tick();
+
+                long iterTs4 = Stopwatch.GetTimestamp(); // network output done
 
                 int catchUpTicks = ComputeDueTickCount(now, ref nextTickMs, TickIntervalMs, MaxCatchUpTicksPerLoop);
                 for (int tick = 0; tick < catchUpTicks; tick++)
@@ -188,7 +216,32 @@ public static partial class Program
                     _network.ProcessAllOutput();
                 }
 
+                long iterTs5 = Stopwatch.GetTimestamp(); // server ticks done
+
                 TickYieldStrategy.Yield(_config.TickSleepMode);
+
+                long iterTs6 = Stopwatch.GetTimestamp();
+                long iterTotalUs = ToMicroseconds(iterTs6 - iterTs0);
+                if (iterTotalUs > LoopStallThresholdMs * 1000)
+                {
+                    long stallNowMs = Environment.TickCount64;
+                    if (stallNowMs - _lastLoopStallLogMs > 2000)
+                    {
+                        _lastLoopStallLogMs = stallNowMs;
+                        _log.LogWarning(
+                            "[loop_stall] total={TotalMs}ms cmd={CmdMs}ms net_in={NetInMs}ms jobs={JobsMs}ms net_out={NetOutMs}ms ticks={TicksMs}ms yield={YieldMs}ms gc0=+{G0} gc1=+{G1} gc2=+{G2}",
+                            (iterTotalUs / 1000.0).ToString("F1"),
+                            (ToMicroseconds(iterTs1 - iterTs0) / 1000.0).ToString("F1"),
+                            (ToMicroseconds(iterTs2 - iterTs1) / 1000.0).ToString("F1"),
+                            (ToMicroseconds(iterTs3 - iterTs2) / 1000.0).ToString("F1"),
+                            (ToMicroseconds(iterTs4 - iterTs3) / 1000.0).ToString("F1"),
+                            (ToMicroseconds(iterTs5 - iterTs4) / 1000.0).ToString("F1"),
+                            (ToMicroseconds(iterTs6 - iterTs5) / 1000.0).ToString("F1"),
+                            GC.CollectionCount(0) - iterG0,
+                            GC.CollectionCount(1) - iterG1,
+                            GC.CollectionCount(2) - iterG2);
+                    }
+                }
             }
 
             // --- 10. Shutdown ---

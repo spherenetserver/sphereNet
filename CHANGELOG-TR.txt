@@ -28,6 +28,30 @@
 
 
 
+[2026-06-11] - NPC pathfind başarısızlık backoff'u; ana döngü stall teşhisi (Wave 131)
+----------------------------------------
+
+DÜZELTME - NPC AI / Performans:
+  - Başarısız combat-chase A* araması (ulaşılamaz hedef) pes etmeden
+    önce tüm node bütçesini tüketiyor, throttle ise 750ms'de bir
+    yeniden denemeye izin veriyordu — yürünemez alan arkasında kalan
+    her NPC, tek iş parçacıklı apply fazını deneme başına 40-75ms
+    duraklatıyordu (2000 node, ~35us/node) ve bu ~160ms ping
+    sıçraması olarak görünüyordu. Başarısız hesaplamalar artık 5s
+    backoff alıyor (başarılılar 750ms temposunu koruyor) ve node
+    bütçesi 500'e indi; en kötü durum ~17ms ile sınırlandı. A*'ın
+    üzerindeki direkt-adım hızlı yolu her aksiyonda çalışmaya devam
+    ettiğinden düz hat açılır açılmaz NPC anında devam ediyor.
+
+EKLENDİ - Teşhis:
+  - [loop_stall] uyarısı: 50ms'yi aşan her ana döngü iterasyonu
+    segment bazlı döküm logluyor (konsol/aksiyonlar, ağ girişi,
+    periyodik işler, ağ çıkışı, sunucu tick'leri, yield) ve GC
+    gen0/1/2 toplama deltalarını ekliyor; 2s'de bir log ile sınırlı.
+    Tick telemetrisinin göremediği gecikmeyi yakalıyor — tick'ler
+    iterasyon duvar süresinin <%1'i olduğundan tick_stats 0.2ms
+    ortalama gösterirken ping yankısı sıçrayabiliyor.
+
 [2026-06-11] - Panelde MUL görselli canlı önizlemeli dialog tasarımcısı (Wave 130)
 ----------------------------------------
 

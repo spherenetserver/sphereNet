@@ -79,18 +79,26 @@ public sealed class NpcAI
     private readonly Dictionary<uint, int> _pathIndex = [];
     private readonly Dictionary<uint, long> _pathTime = [];
     private const long PathCacheMaxAge = 10_000;
-    // Last time A* was actually recomputed for this NPC. Survives path-cache
+    // Earliest time A* may be recomputed for this NPC. Survives path-cache
     // drops (unlike _pathTime) so a churning crowd — where the cached step is
     // invalidated almost every tick — cannot trigger a full A* recompute every
-    // tick. Recompute is throttled to at most once per PathThrottleMs per NPC.
-    private readonly Dictionary<uint, long> _lastPathfindMs = [];
+    // tick. A successful compute allows the next one after PathThrottleMs; a
+    // FAILED compute (unreachable target — the search burns the whole node
+    // budget before giving up) backs off for PathFailBackoffMs instead. The
+    // direct-step fast path above A* still runs every action, so the NPC
+    // resumes immediately once the straight line opens.
+    private readonly Dictionary<uint, long> _nextPathfindMs = [];
     private const long PathThrottleMs = 750;
+    private const long PathFailBackoffMs = 5_000;
     // NPC combat-chase A* node budget. Far below the full Pathfinder cap (which
     // is sized for player half-continent .walk): a creature only needs to route
-    // around local obstacles toward a target in sight, and an unreachable target
-    // through a press of bodies must not make A* explore tens of thousands of
-    // nodes (~300ms/call). A few thousand nodes covers any realistic chase.
-    private const int NpcPathMaxNodes = 2000;
+    // around local obstacles toward a target in sight. Each explored node costs
+    // ~35µs (per-tile map/static/object walkability checks), so an unreachable
+    // target burns the WHOLE budget in the single-threaded apply phase — at
+    // 2000 nodes that was a 40-75ms main-loop stall (visible as a ~160ms ping
+    // spike). 500 nodes bounds the worst case to ~17ms and still covers any
+    // realistic local detour.
+    private const int NpcPathMaxNodes = 500;
     /// <summary>How long a target-less NPC waits before re-running the full
     /// acquire scan (ModernUO ReacquireDelay). Reset to 0 on being attacked.</summary>
     private const long ReacquireDelayMs = 1500;
@@ -125,16 +133,16 @@ public sealed class NpcAI
                 _pathIndex.Remove(uid);
                 _pathTime.Remove(uid);
                 _losFailCounts.Remove(uid);
-                _lastPathfindMs.Remove(uid);
+                _nextPathfindMs.Remove(uid);
             }
         }
 
         // Throttle timestamps can outlive the path cache (they survive path
         // drops by design), so sweep them for gone NPCs here as well.
-        if (_lastPathfindMs.Count > 0)
+        if (_nextPathfindMs.Count > 0)
         {
             List<uint>? stalePf = null;
-            foreach (var uid in _lastPathfindMs.Keys)
+            foreach (var uid in _nextPathfindMs.Keys)
             {
                 if (_pathCache.ContainsKey(uid)) continue;
                 var obj = _world.FindObject(new Core.Types.Serial(uid));
@@ -143,7 +151,7 @@ public sealed class NpcAI
             }
             if (stalePf != null)
                 foreach (var uid in stalePf)
-                    _lastPathfindMs.Remove(uid);
+                    _nextPathfindMs.Remove(uid);
         }
 
         // LOS-fail counters can accumulate for NPCs that never built a path
@@ -2544,12 +2552,11 @@ public sealed class NpcAI
             // recomputes just face the target and hold — a closer/unblocked NPC
             // keeps the pressure on, and the path refreshes shortly after.
             long nowMs = Environment.TickCount64;
-            if (_lastPathfindMs.TryGetValue(uid, out long lastPf) && nowMs - lastPf < PathThrottleMs)
+            if (_nextPathfindMs.TryGetValue(uid, out long nextPf) && nowMs < nextPf)
             {
                 npc.Direction = dir;
                 return;
             }
-            _lastPathfindMs[uid] = nowMs;
 
             // Calculate new path
             var npcDef = DefinitionLoader.GetCharDef(npc.CharDefIndex);
@@ -2557,9 +2564,11 @@ public sealed class NpcAI
             path = _pathfinder.FindPath(npc.Position, target, npc.MapIndex, npcCanFlags, npc, NpcPathMaxNodes);
             if (path == null || path.Count == 0)
             {
+                _nextPathfindMs[uid] = nowMs + PathFailBackoffMs;
                 npc.Direction = dir;
                 return;
             }
+            _nextPathfindMs[uid] = nowMs + PathThrottleMs;
             _pathCache[uid] = path;
             _pathIndex[uid] = 0;
             _pathTime[uid] = Environment.TickCount64;

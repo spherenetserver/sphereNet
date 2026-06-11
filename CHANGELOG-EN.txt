@@ -28,6 +28,30 @@
 
 
 
+[2026-06-11] - NPC pathfind fail-backoff; main-loop stall diagnostics (Wave 131)
+----------------------------------------
+
+FIXED - NPC AI / Performance:
+  - A failed combat-chase A* (unreachable target) burns the entire
+    node budget before giving up, and the recompute throttle allowed
+    a retry every 750ms — each NPC stuck behind an unwalkable area
+    stalled the single-threaded apply phase 40-75ms per attempt
+    (2000 nodes at ~35us/node), visible as ~160ms ping spikes.
+    Failed computes now back off for 5s (successful ones keep the
+    750ms cadence) and the node budget drops to 500, bounding the
+    worst case to ~17ms. The direct-step fast path above A* still
+    runs every action, so the NPC resumes immediately once the
+    straight line opens.
+
+ADDED - Diagnostics:
+  - [loop_stall] warning: any main-loop iteration over 50ms logs a
+    per-segment breakdown (console/actions, network input, periodic
+    jobs, network output, server ticks, yield) plus GC gen0/1/2
+    collection deltas, rate-limited to one log per 2s. Catches
+    latency the tick telemetry cannot see — ticks cover <1% of
+    iteration wall time, so tick_stats can read 0.2ms avg while the
+    ping echo spikes.
+
 [2026-06-11] - Panel dialog designer with live MUL-art preview (Wave 130)
 ----------------------------------------
 

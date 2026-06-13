@@ -28,6 +28,21 @@
 
 
 
+[2026-06-13] - ClassicUO death scene and corpse binding (Wave 134)
+----------------------------------------
+
+FIXED - Death / ClassicUO:
+  - Player corpse OWNER/KILLER tags are now written before the
+    DeathEngine OnDeath callback, so the GameClient death sequence can
+    find the corpse by OWNER_UID and bind to the correct serial.
+  - The dying player's own client now receives a 0xAF DeathAnimation
+    packet with a non-zero corpse serial. This completes the
+    death-screen flow that ClassicUO needs to transition mobile ->
+    corpse instead of leaving the live sprite stuck or failing to open
+    the "you are dead" scene.
+  - Added regression coverage for the DeathEngine owner-tag order and
+    the self death-animation packet.
+
 [2026-06-11] - @SpellEffectTick bridge; ship @RegionEnter/@RegionLeave; shared trigger LOCAL pool (Wave 133)
 ----------------------------------------
 

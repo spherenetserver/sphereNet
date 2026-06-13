@@ -112,6 +112,14 @@ public sealed class DeathEngine
         // instead of a normal humanoid corpse. Source-X ordering avoids
         // exactly this.
         var corpse = CreateCorpse(victim);
+        corpse.SetTag("OWNER_UID", victim.Uid.Value.ToString());
+        corpse.SetTag("OWNER_UUID", victim.Uuid.ToString("D"));
+
+        if (effectiveKiller != null)
+        {
+            corpse.SetTag("KILLER_UID", effectiveKiller.Uid.Value.ToString());
+            corpse.SetTag("KILLER_UUID", effectiveKiller.Uuid.ToString("D"));
+        }
 
         // Drop equipped items and backpack contents to corpse
         if (victim.IsPlayer)
@@ -141,14 +149,6 @@ public sealed class DeathEngine
         // driven from its sector, with no central scanner.
         int decaySeconds = victim.IsPlayer ? CorpseDecayPlayer : CorpseDecayNPC;
         corpse.DecayTime = Environment.TickCount64 + decaySeconds * 1000;
-        corpse.SetTag("OWNER_UID", victim.Uid.Value.ToString());
-        corpse.SetTag("OWNER_UUID", victim.Uuid.ToString("D"));
-
-        if (effectiveKiller != null)
-        {
-            corpse.SetTag("KILLER_UID", effectiveKiller.Uid.Value.ToString());
-            corpse.SetTag("KILLER_UUID", effectiveKiller.Uuid.ToString("D"));
-        }
 
         // For NPCs, remove the mobile from world state immediately so it no
         // longer blocks movement or lingers in sector/object queries after the

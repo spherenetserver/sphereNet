@@ -121,4 +121,27 @@ public class DeathTriggerTests
 
         Assert.Equal(5, killer.Kills); // 1 proposed + 4 adjustment
     }
+
+    [Fact]
+    public void ProcessDeath_WritesCorpseOwnerBeforeOnDeathCallback()
+    {
+        var world = CreateWorld();
+        var death = new DeathEngine(world);
+        var victim = MakePlayer(world, 100, karma: 0, fame: 0);
+
+        bool foundTaggedCorpse = false;
+        death.OnDeath += (dead, _) =>
+        {
+            foreach (var item in world.GetItemsInRange(dead.Position, 0))
+            {
+                if (item.ItemType != ItemType.Corpse) continue;
+                if (!item.TryGetTag("OWNER_UID", out string? owner)) continue;
+                foundTaggedCorpse = owner == dead.Uid.Value.ToString();
+            }
+        };
+
+        death.ProcessDeath(victim);
+
+        Assert.True(foundTaggedCorpse);
+    }
 }

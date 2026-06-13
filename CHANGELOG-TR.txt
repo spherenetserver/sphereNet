@@ -28,6 +28,21 @@
 
 
 
+[2026-06-13] - ClassicUO ölüm sahnesi ve corpse bağlantısı (Wave 134)
+----------------------------------------
+
+DÜZELTME - Ölüm / ClassicUO:
+  - Oyuncu ölümünde corpse OWNER/KILLER tag'leri artık DeathEngine
+    OnDeath callback'inden önce yazılıyor; böylece GameClient ölüm
+    sekansı corpse'i OWNER_UID ile bulup doğru seriale bağlayabiliyor.
+  - Ölen oyuncunun kendi client'ına da corpse seriali sıfır olmayan
+    0xAF DeathAnimation paketi gönderiliyor. Bu, ClassicUO tarafında
+    mobile -> corpse geçişinin kopmasını, ekranda canlı sprite'ın
+    takılı kalmasını ve "you are dead" sahnesinin açılmamasını
+    engelleyen death-screen akışını tamamlar.
+  - DeathEngine owner-tag sırası ve self death-animation paketi için
+    regresyon testleri eklendi.
+
 [2026-06-11] - @SpellEffectTick köprüsü; gemi @RegionEnter/@RegionLeave; paylaşımlı trigger LOCAL havuzu (Wave 133)
 ----------------------------------------
 

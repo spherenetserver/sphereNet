@@ -119,6 +119,13 @@ public class GameSystemTests
         return (ushort)((span[offset] << 8) | span[offset + 1]);
     }
 
+    private static uint ReadU32(PacketBuffer packet, int offset)
+    {
+        var span = packet.Span;
+        return (uint)((span[offset] << 24) | (span[offset + 1] << 16) |
+            (span[offset + 2] << 8) | span[offset + 3]);
+    }
+
     private static void InvokePrivate(SphereNet.Game.Clients.GameClient client, string methodName, params object[] args)
     {
         typeof(SphereNet.Game.Clients.GameClient)
@@ -185,6 +192,41 @@ public class GameSystemTests
             .LastOrDefault(p => p.Span.Length >= 19 && p.Span[0] == 0x20 && ReadU16(p, 5) == 0x0190);
         Assert.NotNull(drawPlayer);
         Assert.Equal((ushort)0x03EA, ReadU16(drawPlayer!, 8));
+    }
+
+    [Fact]
+    public void OnCharacterDeath_SendsSelfDeathAnimationWithCorpseSerial()
+    {
+        var world = CreateWorld();
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var client = TestHarness.CreateClient(loggerFactory, world, new AccountManager(loggerFactory), 16003);
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        player.BodyId = 0x0190;
+        player.Hue = new Color(0x03EA);
+        world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
+        AttachCharacter(client, player);
+
+        var corpse = world.CreateItem();
+        corpse.ItemType = ItemType.Corpse;
+        corpse.BaseId = 0x2006;
+        corpse.Amount = player.BodyId;
+        corpse.SetTag("OWNER_UID", player.Uid.Value.ToString());
+        world.PlaceItem(corpse, player.Position);
+
+        player.Kill();
+        client.OnCharacterDeath();
+
+        Assert.Equal((ushort)0x0192, player.BodyId);
+
+        var packets = GetQueuedPackets(client.NetState).ToList();
+        var deathAnim = packets.SingleOrDefault(p => p.Span.Length == 13 && p.Span[0] == 0xAF);
+        Assert.NotNull(deathAnim);
+        Assert.Equal(player.Uid.Value, ReadU32(deathAnim!, 1));
+        Assert.Equal(corpse.Uid.Value, ReadU32(deathAnim!, 5));
+
+        Assert.Contains(packets, p => p.Span.Length >= 19 && p.Span[0] == 0x20 && ReadU16(p, 5) == 0x0192);
+        Assert.Contains(packets, p => p.Span.Length == 2 && p.Span[0] == 0x2C && p.Span[1] == 0x00);
     }
 
     // --- Party ---

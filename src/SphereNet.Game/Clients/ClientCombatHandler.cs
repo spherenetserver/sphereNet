@@ -1566,6 +1566,9 @@ public sealed class ClientCombatHandler
         //   ghost graphic stuck on the dying client because 0x78 self
         //   was a no-op and 0x77 was racing 0x20.
         // ---------------------------------------------------------------
+        if (corpseSerial != 0)
+            _netState.Send(deathAnim);
+
         var drawPacket = new PacketDrawPlayer(
             victimUid, ghostBody, _character.Hue,
             ghostFlags, cx, cy, cz, ghostDir);

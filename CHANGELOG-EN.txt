@@ -4,6 +4,15 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-13] - Ping fast-path processing (Wave 135)
+----------------------------------------
+
+IMPROVED - Network / RTT:
+  - 0x73 ping packets now bypass the generic packet-buffer copy path and go
+    directly through echo/RTT handling.
+  - Added regression coverage for the ping fast path through the real
+    NetworkManager parser.
+
 
 
 

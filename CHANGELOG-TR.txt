@@ -4,6 +4,15 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-13] - Ping yolu hizli isleme (Wave 135)
+----------------------------------------
+
+IYILESTIRME - Network / RTT:
+  - 0x73 ping paketleri artik genel packet buffer kopyalama yoluna girmeden
+    dogrudan echo/RTT isleminden geciyor.
+  - Ping fast-path davranisi, gercek NetworkManager parser yolu uzerinden
+    regresyon testiyle korundu.
+
 
 
 

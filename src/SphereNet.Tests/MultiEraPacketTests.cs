@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
+using SphereNet.Network.Manager;
 using SphereNet.Network.Packets.Outgoing;
 using SphereNet.Network.State;
 
@@ -248,6 +249,26 @@ public class MultiEraPacketTests
     }
 
     [Fact]
+    public void NetworkManager_PingFastPath_EchoesClientPingAndConsumesPacket()
+    {
+        var loggerFactory = TestHarness.CreateLoggerFactory();
+        using var manager = new NetworkManager(1, loggerFactory) { UseCrypt = false, UseNoCrypt = true };
+        var state = manager.GetState(0)!;
+        typeof(NetState)
+            .GetField("<IsInUse>k__BackingField", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(state, true);
+        state.IsSeeded = true;
+        ForceNoCrypto(state);
+
+        state.InjectReceived([0x73, 0x42]);
+        ProcessInput(manager, state);
+
+        Assert.Equal(0, state.ReceivedData.Length);
+        var ping = Assert.Single(TestHarness.GetQueuedPackets(state));
+        Assert.Equal([0x73, 0x42], ping.Span.ToArray());
+    }
+
+    [Fact]
     public void RTT_RateLimited_RejectsEarlyPing()
     {
         var savedInterval = NetState.RttPingIntervalMs;
@@ -397,5 +418,20 @@ public class MultiEraPacketTests
         var field = typeof(NetState).GetField("_rttPingSeq",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
         return (byte)field.GetValue(state)!;
+    }
+
+    private static void ForceNoCrypto(NetState state)
+    {
+        var crypto = state.Crypto;
+        var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        crypto.GetType().GetField("_initialized", flags)!.SetValue(crypto, true);
+        crypto.GetType().GetField("_encType", flags)!.SetValue(crypto, EncryptionType.None);
+    }
+
+    private static void ProcessInput(NetworkManager manager, NetState state)
+    {
+        typeof(NetworkManager)
+            .GetMethod("ProcessInput", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .Invoke(manager, [state]);
     }
 }

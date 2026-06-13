@@ -396,6 +396,14 @@ public sealed class NetworkManager : IDisposable
 
                 state.ClearPendingPacket();
 
+            if (opcode == 0x73 && packetLen == 2 && PacketScriptHook == null)
+            {
+                state.OnPingReceived(data[consumed + 1]);
+                consumed += packetLen;
+                packetsProcessed++;
+                continue;
+            }
+
             var handler = _packetManager.GetHandler(opcode);
             if (handler != null)
             {

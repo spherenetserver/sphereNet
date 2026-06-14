@@ -2469,7 +2469,12 @@ public sealed class NpcAI
 
         if (damage > 0)
         {
-            EmitSound(npc, CreatureSoundType.Hit);
+            // Source-X SoundChar(CRESND_HIT): an armed strike makes the weapon
+            // sound (emitted by the OnNpcAttack hit feedback), so only fall back to
+            // the creature's own attack vocalization when unarmed — otherwise an
+            // armed creature would double up (creature sound + weapon sound).
+            if (weapon == null)
+                EmitSound(npc, CreatureSoundType.Hit);
             // The struck target's get-hit vocalization (creature SOUNDGETHIT or a
             // human "oomf") is emitted by the OnNpcAttack hit feedback so it covers
             // both creature and player targets uniformly.

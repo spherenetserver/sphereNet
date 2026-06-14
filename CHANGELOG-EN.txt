@@ -4,6 +4,16 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Armed-creature double hit sound fix (Wave 143)
+----------------------------------------
+
+FIXED - Combat / Sound:
+  - An armed creature played both its own CharDef attack sound and the weapon
+    hit sound on a hit (doubling up). Per Source-X SoundChar(CRESND_HIT) an armed
+    strike makes only the weapon sound, so the creature attack vocalization now
+    falls back only when the attacker is unarmed; an armed creature plays just the
+    weapon sound.
+
 [2026-06-14] - Defender pain sound, absorbed-hit feedback, parry spark (Wave 142)
 ----------------------------------------
 

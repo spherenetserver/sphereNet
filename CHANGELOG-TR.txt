@@ -4,6 +4,16 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Silahli yaratik cift hit sesi duzeltmesi (Wave 143)
+----------------------------------------
+
+DUZELTME - Savas / Ses:
+  - Silahli bir yaratik vurusta hem kendi CharDef saldiri sesini hem de silah hit
+    sesini caliyordu (cift ses). Source-X SoundChar(CRESND_HIT) geregi silahli bir
+    vurus yalnizca silah sesini cikarir; bu yuzden yaratik saldiri sesi artik
+    yalnizca silahsizken devreye giriyor, silahli yaratik sadece silah sesini
+    caliyor.
+
 [2026-06-14] - Defender aci sesi, emilmis-hit feedback, parry kivilcimi (Wave 142)
 ----------------------------------------
 

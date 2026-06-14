@@ -4,6 +4,19 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Savas kan sicramasi + NPC menzilli projectile (Wave 139)
+----------------------------------------
+
+EKLENDI - Savas / Gorsel:
+  - Bir vurus isabet edince hedefin etrafina 1-2 adet kisa omurlu kan item'i
+    saciliyor (grafik 0x122A-0x122F), hedefin CharDef BLOODCOLOR hue'su ile ve
+    5 saniye sonra decay oluyor. Hem oyuncu hem NPC vurus yolunda ortak
+    GameClient.EmitBloodSplat yardimcisiyla cikariliyor; yer item'i olarak
+    konduklari icin view-delta render ediyor.
+  - NPC okcular yay veya arbalet atinca artik hareketli ok/civata projectile'i
+    cikariyor (yay -> 0x0F3F ok, arbalet -> 0x1BFB civata), oyuncunun menzilli
+    efektiyle ayni. Onceden ucan mermiyi sadece oyuncular gosteriyordu.
+
 [2026-06-14] - Stack-merge gold kaybi, mining tukenme, pile graphic, archery loop + swing anim (Wave 138)
 ----------------------------------------
 

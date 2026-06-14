@@ -1512,6 +1512,10 @@ public static partial class Program
                     BroadcastNearby, ForEachClientInRange);
 
                 var weapon = attacker.GetEquippedItem(Layer.OneHanded) ?? attacker.GetEquippedItem(Layer.TwoHanded);
+                if (weapon != null &&
+                    (weapon.ItemType == ItemType.WeaponBow || weapon.ItemType == ItemType.WeaponXBow))
+                    GameClient.BroadcastRangedProjectile(attacker, target, weapon, BroadcastNearby);
+
                 ushort swingSound = GameClient.GetSwingSoundPublic(weapon);
                 BroadcastNearby(attacker.Position, 18,
                     new PacketSound(swingSound, attacker.X, attacker.Y, attacker.Z), 0);
@@ -1545,6 +1549,8 @@ public static partial class Program
                     new PacketDamage(target.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue)), 0);
                 BroadcastNearby(target.Position, 18,
                     new PacketUpdateHealth(target.Uid.Value, target.MaxHits, target.Hits), 0);
+
+                GameClient.EmitBloodSplat(_world, target);
 
                 _triggerDispatcher?.FireCharTrigger(attacker, CharTrigger.Hit,
                     new TriggerArgs { CharSrc = attacker, O1 = target, N1 = damage });

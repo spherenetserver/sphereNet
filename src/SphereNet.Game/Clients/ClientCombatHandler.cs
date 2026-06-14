@@ -1158,6 +1158,8 @@ public sealed class ClientCombatHandler
                 target.Uid.Value, target.MaxHits, target.Hits);
             BroadcastNearby?.Invoke(target.Position, UpdateRange, healthPacket, 0);
 
+            GameClient.EmitBloodSplat(_world, target);
+
             if (target.Hits <= 0 && !target.IsDead && _deathEngine != null)
             {
                 _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Kill,

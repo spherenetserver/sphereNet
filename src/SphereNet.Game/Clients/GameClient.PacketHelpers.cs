@@ -304,6 +304,55 @@ public sealed partial class GameClient
         }
     }
 
+    private static readonly ushort[] s_bloodGraphics =
+        { 0x122A, 0x122B, 0x122C, 0x122D, 0x122E, 0x122F };
+
+    /// <summary>Source-X CChar::Fight_Hit blood: scatter 1-2 short-lived blood
+    /// items around a struck target, hued by the target's CharDef BLOODCOLOR.
+    /// They're placed as ground items so the view-delta renders them; a 5s decay
+    /// removes them. Shared by the player and NPC hit paths.</summary>
+    public static void EmitBloodSplat(GameWorld world, Character target)
+    {
+        if (world == null || target.IsDead) return;
+        ushort hue = 0;
+        var cdef = DefinitionLoader.GetCharDef(target.CharDefIndex);
+        if (cdef != null && cdef.BloodColor > 0)
+            hue = (ushort)cdef.BloodColor;
+
+        int count = 1 + Random.Shared.Next(2); // 1-2
+        for (int i = 0; i < count; i++)
+        {
+            var blood = world.CreateItem();
+            blood.BaseId = s_bloodGraphics[Random.Shared.Next(s_bloodGraphics.Length)];
+            blood.Hue = new Core.Types.Color(hue);
+            blood.SetAttr(Core.Enums.ObjAttributes.Move_Never);
+            blood.DecayTime = Environment.TickCount64 + 5000;
+            var pos = new Point3D(
+                (short)(target.X + Random.Shared.Next(-1, 2)),
+                (short)(target.Y + Random.Shared.Next(-1, 2)),
+                target.Z, target.MapIndex);
+            world.PlaceItem(blood, pos);
+        }
+    }
+
+    /// <summary>Source-X archery EFFECT_BOLT: a moving arrow/bolt projectile
+    /// flying from the attacker to the target. Shared by the player and NPC
+    /// ranged paths so NPC archers' shots are visible too. Bow → arrow (0x0F3F),
+    /// crossbow → bolt (0x1BFB).</summary>
+    public static void BroadcastRangedProjectile(Character attacker, Character target, Item? weapon,
+        Action<Point3D, int, PacketWriter, uint>? broadcastNearby)
+    {
+        if (weapon == null) return;
+        ushort effectId = weapon.ItemType == ItemType.WeaponXBow ? (ushort)0x1BFB : (ushort)0x0F3F;
+        broadcastNearby?.Invoke(attacker.Position, 18, new PacketEffect(
+            type: 0,
+            srcSerial: attacker.Uid.Value, dstSerial: target.Uid.Value,
+            effectId: effectId,
+            srcX: attacker.X, srcY: attacker.Y, srcZ: attacker.Z,
+            dstX: target.X, dstY: target.Y, dstZ: target.Z,
+            speed: 18, duration: 1, fixedDir: true, explode: false), 0);
+    }
+
     /// <summary>Convenience wrapper used by SpeechEngine event hookup —
     /// dismount the GM's character if currently mounted.</summary>
     public void UnmountSelf()

@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Combat blood splatter + NPC ranged projectile (Wave 139)
+----------------------------------------
+
+ADDED - Combat / Visuals:
+  - Landing a hit now scatters 1-2 short-lived blood items around the struck
+    target (graphics 0x122A-0x122F), hued by the target's CharDef BLOODCOLOR and
+    decaying after 5 seconds. Emitted on both the player and NPC hit paths via a
+    shared GameClient.EmitBloodSplat helper; placed as ground items so the
+    view-delta renders them.
+  - NPC archers now emit the moving arrow/bolt projectile when they fire a bow
+    or crossbow (bow -> 0x0F3F arrow, crossbow -> 0x1BFB bolt), mirroring the
+    player's ranged effect. Previously only players showed the flying ammo.
+
 [2026-06-14] - Stack-merge gold loss, mining depletion, pile graphics, archery loop + swing anims (Wave 138)
 ----------------------------------------
 

@@ -392,6 +392,7 @@ public static class CombatEngine
         // Weapon poison on-hit: transfer poison from weapon to target.
         // Source-X: HIT_POISON attribute on weapon. SphereNet: POISON_SKILL tag
         // set by Poisoning skill. Uses 1 charge per hit; cleared at 0.
+        bool poisonApplied = false;
         if (damage > 0 && weapon != null && !flags.HasFlag(CombatFlags.NoPoisonHit))
         {
             if (weapon.TryGetTag("POISON_SKILL", out string? poisonStr) &&
@@ -399,6 +400,7 @@ public static class CombatEngine
             {
                 byte targetLevel = (byte)Math.Clamp(poisonLevel / 200, 1, 5);
                 target.ApplyPoison(targetLevel, attacker.Uid);
+                poisonApplied = true;
 
                 int charges = 1;
                 if (weapon.TryGetTag("POISON_CHARGES", out string? chargesStr))
@@ -411,6 +413,23 @@ public static class CombatEngine
                 }
                 else
                     weapon.SetTag("POISON_CHARGES", charges.ToString());
+            }
+        }
+
+        // Creature innate poison-on-hit (Source-X CChar::Fight_Hit: m_pNPC && 50%
+        // && SKILL_POISONING > 0). A venomous creature — spider, snake, scorpion —
+        // envenoms on a bite from its Poisoning skill alone, with no weapon and no
+        // POISON_SKILL tag. Skipped when the weapon already poisoned this hit or
+        // when poison hits are globally disabled. Poison level scales by skill on
+        // the same 0-1000 → 1-5 curve the weapon path uses.
+        if (damage > 0 && !poisonApplied && !attacker.IsPlayer &&
+            !flags.HasFlag(CombatFlags.NoPoisonHit))
+        {
+            int poisonSkill = attacker.GetSkill(SkillType.Poisoning);
+            if (poisonSkill > 0 && _rand.Next(100) < 50)
+            {
+                byte level = (byte)Math.Clamp(poisonSkill / 200, 1, 5);
+                target.ApplyPoison(level, attacker.Uid);
             }
         }
 

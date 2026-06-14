@@ -4,6 +4,54 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - NPC buyu, yaratik saldirilari, paket sirasi, view-sync, karakter olusturma (Wave 136)
+----------------------------------------
+
+DUZELTME - Buyu / NPC AI:
+  - NPC caster'lar recete (reagent) kontrolunden muaf tutuldu; cantasi bos bir
+    NPC hicbir zaman buyu baslatamiyordu (her deneme basarisiz donuyordu).
+  - NPCSPELL artik sadece sayisal id degil, spell defname/enum adini da parse
+    ediyor; sayisal spell-type degerleri Enum.IsDefined oncesi aralik kontrolu
+    ile ushort'a cast ediliyor (sayisal NPCSPELL/SPELL degeri dunya yukleyicisini
+    ArgumentException ile cokertiyordu).
+  - Buyu secimi zaten donmus hedefe Paralyze'i tekrar atmiyor ve caster basina
+    Paralyze cooldown'u uyguluyor; boylece caster Paralyze dongusune girmiyor
+    (aninda kurtulan hedefe karsi da) ve kilitler arasi hasar basiyor.
+  - Self-heal sansi her yara seviyesinde duz %33; kritik durumda bile caster
+    cast'lerinin ~2/3'unu saldiriya harciyor, turtling yapmiyor.
+  - Mana regen INT/50 yerine duz sabit miktar kullaniyor; yuksek INT'li caster
+    artik harcadigi kadar hizli mana yenilemiyor ve gercekten tukeniyor.
+
+DUZELTME - Savas / Yaratiklar:
+  - Zehirli NPC'ler (Poisoning becerisi > 0) melee vurusunda yalnizca beceriyle
+    zehirliyor, zehirli-silah tag'i gerekmiyor.
+  - Ozel hareket izi: dev orumcekler zemine ag, fire elemental'lar ates lekesi
+    (FIELD_DAMAGE) birakir; body id veya WEBTRAIL/FIRETRAIL tag ile. Fire
+    elemental body id 0x000F olarak duzeltildi.
+
+DUZELTME - Network / paket sirasi:
+  - 0x2E giyili-esya paketi artik graphic'e 0x8000 hue-flag bitini koymuyor (o
+    konvansiyon 0x78 equipment listesine ait); hue'su 0 olmayan giyili esya
+    gecersiz graphic ile gidip resync'e kadar istemcide kayboluyordu.
+  - Vendor al/sat listeleri (0x74/0x9E) ve spellbook icerigi (0xD4) tekrar Normal
+    oncelikte. Kuyruk Highest->Low bosaltiyor; sira-kritik bir sekansin Low uyesi,
+    onu tuketen Normal open-container paketinden sonra gidiyordu: vendor satirlari
+    0gp ve isimsiz cikiyor, spellbook'lar bos aciliyordu.
+
+DUZELTME - View-delta / gorunum senkronu:
+  - Giyili esya boyama ve sac/sakal boyasi artik degisikligi yayinliyor; zemin
+    item view-delta'si giyili esyalari izlemedigi icin degisiklik resync'e kadar
+    herkeste eski renkte kaliyordu.
+  - Criminal/murderer durumu view-delta gorunurluk anahtarinin parcasi; hareketsiz
+    bir saldirgan gozlemcilerde hareket etmeden gri/kirmiziya doner.
+
+DUZELTME - Karakter olusturma:
+  - [STARTSGOLD] ciplak-miktar satirlari parse ediliyor (miktar section key'inde);
+    yeni karakterler hicbir sey yerine tek bir baslangic parasi (start-index
+    satiri) aliyor.
+  - Item single-click etiketleri ve tooltip'leri, instance ismi yoksa itemdef
+    NAME='e geri donuyor; boylece duz spawn/loot item'lari ismini gosteriyor.
+
 [2026-06-13] - Ping yolu hizli isleme (Wave 135)
 ----------------------------------------
 

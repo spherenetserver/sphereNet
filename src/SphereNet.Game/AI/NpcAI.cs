@@ -279,6 +279,10 @@ public sealed class NpcAI
             npc.NextNpcActionTime = now + delay + hurtDelay;
         }
 
+        // Atmospheric special trail — giant spiders web the ground, fire
+        // elementals leave fire patches, as they move and fight.
+        TryDropSpecialTrail(npc);
+
         // Pet behavior — owned NPCs follow pet AI mode
         if (npc.NpcMaster.IsValid)
         {
@@ -1242,21 +1246,15 @@ public sealed class NpcAI
             if (spells.Contains(SpellType.ArchCure)) return (SpellType.ArchCure, npc);
         }
 
-        // 2. Self-heal if HP < 50% (33% chance — mix heals with offense)
-        //    HP < 25% gets 50% chance (more urgent)
-        if (npc.MaxHits > 0 && npc.Hits < npc.MaxHits / 2)
+        // 2. Self-heal if HP < 50% — flat 33% chance at any wound level (aggressive
+        //    bias: even a critically-hurt caster still spends ~2/3 of its casts on
+        //    offense instead of turtling on heals). Below 25% it prefers GreaterHeal.
+        if (npc.MaxHits > 0 && npc.Hits < npc.MaxHits / 2 && _rand.Next(3) == 0)
         {
-            bool shouldHeal = npc.Hits < npc.MaxHits / 4
-                ? _rand.Next(2) == 0   // 50% when critical
-                : _rand.Next(3) == 0;  // 33% when wounded
-
-            if (shouldHeal)
-            {
-                if (npc.Hits < npc.MaxHits / 4 && spells.Contains(SpellType.GreaterHeal))
-                    return (SpellType.GreaterHeal, npc);
-                if (spells.Contains(SpellType.Heal)) return (SpellType.Heal, npc);
-                if (spells.Contains(SpellType.GreaterHeal)) return (SpellType.GreaterHeal, npc);
-            }
+            if (npc.Hits < npc.MaxHits / 4 && spells.Contains(SpellType.GreaterHeal))
+                return (SpellType.GreaterHeal, npc);
+            if (spells.Contains(SpellType.Heal)) return (SpellType.Heal, npc);
+            if (spells.Contains(SpellType.GreaterHeal)) return (SpellType.GreaterHeal, npc);
         }
 
         // 2b. Group support — heal/cure a wounded ally (Source-X NPC_FightCast
@@ -1305,9 +1303,26 @@ public sealed class NpcAI
                 return (SpellType.ChainLightning, target);
         }
 
-        // 5. Paralyze fleeing targets
-        if (dist > 4 && spells.Contains(SpellType.Paralyze) && !targetReflects)
-            return (SpellType.Paralyze, target);
+        // 5. Paralyze a fleeing target to set up damage — but never spam it.
+        //    Skip a target that is already frozen, AND enforce a per-caster
+        //    cooldown so a target that breaks free instantly (trapped pouch,
+        //    expiry) isn't re-locked ahead of the damage spells below. Without
+        //    the cooldown the caster loops on Paralyze forever — the locked or
+        //    re-locked target stays >4 tiles away, so this rule keeps firing
+        //    and no damage is ever dealt. Between locks it falls through to
+        //    Poison/direct damage.
+        if (dist > 4 && spells.Contains(SpellType.Paralyze) && !targetReflects
+            && !target.IsStatFlag(StatFlag.Freeze))
+        {
+            long now = Environment.TickCount64;
+            long paraNext = 0;
+            if (npc.TryGetTag("PARA_CD", out string? pcd)) long.TryParse(pcd, out paraNext);
+            if (now >= paraNext)
+            {
+                npc.SetTag("PARA_CD", (now + ParalyzeRecastCooldownMs).ToString());
+                return (SpellType.Paralyze, target);
+            }
+        }
 
         // 6. Poison if target isn't poisoned yet
         if (!target.IsPoisoned && spells.Contains(SpellType.Poison) && !targetReflects)
@@ -1391,12 +1406,38 @@ public sealed class NpcAI
         npc.SetTag("SPELLS_LOADED", "1");
 
         Item? book = FindSpellbook(npc);
-        if (book == null) return;
-        ulong bits = ((ulong)book.More2 << 32) | book.More1;
-        for (int i = 0; i < 64; i++)
-            if ((bits & (1UL << i)) != 0)
-                npc.NpcSpellAdd((SpellType)(i + 1));
+        if (book != null)
+        {
+            ulong bits = ((ulong)book.More2 << 32) | book.More1;
+            for (int i = 0; i < 64; i++)
+                if ((bits & (1UL << i)) != 0)
+                    npc.NpcSpellAdd((SpellType)(i + 1));
+        }
+
+        if (npc.NpcSpells.Count == 0)
+            AddDefaultSpellsForCasterBody(npc);
     }
+
+    private static void AddDefaultSpellsForCasterBody(Character npc)
+    {
+        if (!IsLichBody(npc.BodyId))
+            return;
+
+        npc.NpcSpellAdd(SpellType.MagicArrow);
+        npc.NpcSpellAdd(SpellType.Harm);
+        npc.NpcSpellAdd(SpellType.Fireball);
+        npc.NpcSpellAdd(SpellType.Poison);
+        npc.NpcSpellAdd(SpellType.Curse);
+        npc.NpcSpellAdd(SpellType.Lightning);
+        npc.NpcSpellAdd(SpellType.MindBlast);
+        npc.NpcSpellAdd(SpellType.Paralyze);
+        npc.NpcSpellAdd(SpellType.EnergyBolt);
+        npc.NpcSpellAdd(SpellType.Explosion);
+        npc.NpcSpellAdd(SpellType.Flamestrike);
+    }
+
+    private static bool IsLichBody(ushort bodyId) =>
+        bodyId is 0x0018 or 0x004E or 0x004F or 0x033E;
 
     /// <summary>Default hireling pay interval (ms) when HIRE_PERIOD isn't set.</summary>
     private const long DefaultHirePeriodMs = 30 * 60 * 1000; // 30 minutes
@@ -1587,6 +1628,76 @@ public sealed class NpcAI
         return SpellType.None;
     }
 
+    // Special-trail creatures (Source-X NPC Action_StartSpecial): the giant
+    // spider lays web on the ground, the fire elemental drops fire patches.
+    private const ushort GiantSpiderBody = 0x001C;
+    private const ushort FireElementalBody = 0x000F;
+    private const ushort DefaultWebId = 0x10D5;   // spider web tile
+    private const ushort DefaultFireId = 0x398C;  // fire column tile
+    // Below this value a trail tag is read as a bare on/off flag (e.g. "1"),
+    // not a graphic override; at or above it the value overrides the tile id.
+    private const ushort TrailIdOverrideFloor = 0x0100;
+
+    /// <summary>Giant spiders web the ground and fire elementals leave fire
+    /// patches as they act (Source-X NPC Action_StartSpecial). Enabled by the
+    /// known giant-spider / fire-elemental body, or by a WEBTRAIL / FIRETRAIL
+    /// tag — whose value, when it looks like a tile id, overrides the graphic.
+    /// Fire patches carry FIELD_DAMAGE so a creature stepping on one is hurt
+    /// (the same field path the fire-field spell uses); webs are an atmospheric
+    /// obstacle. At most one drop per few ticks, never stacked on a tile.</summary>
+    private void TryDropSpecialTrail(Character npc)
+    {
+        if (npc.IsDead) return;
+
+        bool hasFireTag = npc.TryGetTag("FIRETRAIL", out string? fireTag);
+        bool hasWebTag = npc.TryGetTag("WEBTRAIL", out string? webTag);
+        bool fire = hasFireTag || npc.BodyId == FireElementalBody;
+        bool web = !fire && (hasWebTag || npc.BodyId == GiantSpiderBody);
+        if (!fire && !web) return;
+
+        // ~1 in 4 acting ticks, and never two trails on the same tile.
+        if (_rand.Next(4) != 0) return;
+        foreach (var existing in _world.GetItemsInRange(npc.Position, 0))
+        {
+            if (!existing.IsDeleted && existing.TryGetTag("SPECIAL_TRAIL", out _))
+                return;
+        }
+
+        ushort itemId = fire ? DefaultFireId : DefaultWebId;
+        string? tagVal = fire ? fireTag : webTag;
+        if (!string.IsNullOrWhiteSpace(tagVal) && TryParseTileId(tagVal, out ushort overrideId)
+            && overrideId >= TrailIdOverrideFloor)
+            itemId = overrideId;
+
+        var item = _world.CreateItem();
+        item.BaseId = itemId;
+        item.SetTag("SPECIAL_TRAIL", "1");
+        long now = Environment.TickCount64;
+        if (fire)
+        {
+            item.Name = "fire";
+            int dmg = Math.Clamp(npc.Str / 25, 2, 15);
+            item.SetTag("FIELD_DAMAGE", dmg.ToString());
+            item.DecayTime = now + 10_000;
+        }
+        else
+        {
+            item.Name = "web";
+            item.DecayTime = now + 20_000;
+        }
+        _world.PlaceItem(item, npc.Position);
+    }
+
+    /// <summary>Parse a tile id written as hex (0x10D5) or decimal.</summary>
+    private static bool TryParseTileId(string s, out ushort id)
+    {
+        s = s.Trim();
+        if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            return ushort.TryParse(s.AsSpan(2),
+                System.Globalization.NumberStyles.HexNumber, null, out id);
+        return ushort.TryParse(s, out id);
+    }
+
     /// <summary>Dragon-family bodies (reference CREID list): dragon grey/red,
     /// drakes, wyvern, serpentine/skeletal dragons, shadow/white wyrm, swamp
     /// dragon, ancient wyrm. These breathe regardless of the scripted brain.</summary>
@@ -1618,6 +1729,13 @@ public sealed class NpcAI
     /// cap is invisible in ordinary play; in a crowd, any of the nearest few is
     /// an equally valid target.</summary>
     private const int MaxTargetCandidates = 40;
+
+    /// <summary>Minimum gap between a caster's Paralyze re-casts on its target
+    /// (ChooseBestSpell rule 5). Stops the lock-down rule from firing ahead of
+    /// the damage spells every tick — including against a target that breaks
+    /// free instantly (trapped pouch) — so the caster actually deals damage
+    /// between locks instead of looping on Paralyze.</summary>
+    private const int ParalyzeRecastCooldownMs = 12000;
 
     private (Character? target, int motivation) FindBestTarget(Character npc, int sightRange)
     {

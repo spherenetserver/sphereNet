@@ -149,8 +149,14 @@ public sealed class PacketWornItem : PacketWriter
     {
         var buf = CreateFixed(15);
         buf.WriteUInt32(_itemSerial);
-        buf.WriteUInt16((ushort)(_hue != 0 ? _itemId | 0x8000 : _itemId));
-        buf.WriteByte(0); // padding
+        // Plain graphic — NO 0x8000 hue-flag bit. That high-bit convention
+        // belongs to the 0x78 equipment list, not 0x2E: ClassicUO's EquipItem
+        // handler reads this field raw (graphic = ReadUInt16BE() + ReadInt8())
+        // and does NOT mask it, so 0x1F03|0x8000 = 0x9F03 became an invalid
+        // graphic and the worn item vanished whenever it had a non-zero hue.
+        // The hue travels in its own field below.
+        buf.WriteUInt16(_itemId);
+        buf.WriteByte(0); // graphic increment (added to graphic by the client)
         buf.WriteByte(_layer);
         buf.WriteUInt32(_mobileSerial);
         buf.WriteUInt16(_hue);

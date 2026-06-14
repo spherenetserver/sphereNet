@@ -1558,11 +1558,13 @@ public sealed class ClientCombatHandler
         //     player sees the grey ghost on the paperdoll too.
         //
         //   * 0x2C (DeathScreen) — opens the death menu UI; the client
-        //     echoes RequestWarMode(false) in response.
+        //     echoes RequestWarMode(false) in response. Keep this as the
+        //     last normal-tier packet so the short ClassicUO timer starts
+        //     after the redraw/status/message chatter has been queued.
         //
         //   Send order is therefore 0x20 → 0x77 (CheckGraphicChange
-        //   re-trigger, harmless if already correct) → 0x88 → 0x2C →
-        //   status. The previous order (0x77 → 0x20 → 0x78) left the
+        //   re-trigger, harmless if already correct) → status/message →
+        //   0x2C. The previous order (0x77 → 0x20 → 0x78) left the
         //   ghost graphic stuck on the dying client because 0x78 self
         //   was a no-op and 0x77 was racing 0x20.
         // ---------------------------------------------------------------
@@ -1580,10 +1582,9 @@ public sealed class ClientCombatHandler
             _character.Hue, ghostFlags, ghostNoto);
         _netState.Send(ghostMoving);
 
-        _netState.Send(new PacketDeathStatus(PacketDeathStatus.ActionDead));
-
         SendCharacterStatus(_character);
         SysMessage(ServerMessages.Get("combat_dead"));
+        _netState.Send(new PacketDeathStatus(PacketDeathStatus.ActionDead));
     }
 
     /// <summary>

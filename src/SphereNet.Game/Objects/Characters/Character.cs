@@ -2879,8 +2879,8 @@ public partial class Character : ObjBase
             case "DAM":
                 return true;
             case "NPCSPELL":
-                if (int.TryParse(normalized, out int spellId) && Enum.IsDefined(typeof(SpellType), spellId))
-                    NpcSpellAdd((SpellType)spellId);
+                if (TryParseSpellTypeValue(normalized, out var spell))
+                    NpcSpellAdd(spell);
                 return true;
             case "SKILLCLASS":
                 if (string.IsNullOrWhiteSpace(normalized))
@@ -3318,6 +3318,46 @@ public partial class Character : ObjBase
         return false;
     }
 
+    private static bool TryParseSpellTypeValue(string value, out SpellType spell)
+    {
+        spell = SpellType.None;
+        string normalized = value.Trim();
+
+        // SpellType is backed by ushort; Enum.IsDefined throws ArgumentException
+        // unless the boxed value is the exact underlying type, so range-check
+        // and cast to ushort before probing.
+        if (int.TryParse(normalized, out int numeric) &&
+            numeric >= 0 && numeric <= ushort.MaxValue &&
+            Enum.IsDefined(typeof(SpellType), (ushort)numeric))
+        {
+            spell = (SpellType)numeric;
+            return true;
+        }
+
+        if (normalized.StartsWith("spell_", StringComparison.OrdinalIgnoreCase))
+            normalized = normalized[6..];
+        else if (normalized.StartsWith("s_", StringComparison.OrdinalIgnoreCase))
+            normalized = normalized[2..];
+
+        if (Enum.TryParse<SpellType>(normalized, true, out var named))
+        {
+            spell = named;
+            return true;
+        }
+
+        var resources = DefinitionLoader.StaticResources;
+        var rid = resources?.ResolveDefName(value.Trim()) ?? ResourceId.Invalid;
+        if (rid.IsValid && rid.Type == ResType.SpellDef &&
+            rid.Index >= 0 && rid.Index <= ushort.MaxValue &&
+            Enum.IsDefined(typeof(SpellType), (ushort)rid.Index))
+        {
+            spell = (SpellType)rid.Index;
+            return true;
+        }
+
+        return false;
+    }
+
     private static bool TryParseSkillClassValue(string value, out int classId)
     {
         classId = 0;
@@ -3401,10 +3441,8 @@ public partial class Character : ObjBase
             case "NPCSPELL":
             {
                 var raw = args.Trim();
-                if (int.TryParse(raw, out int sid) && Enum.IsDefined(typeof(SpellType), sid))
-                    NpcSpellAdd((SpellType)sid);
-                else if (Enum.TryParse<SpellType>(raw, true, out var st))
-                    NpcSpellAdd(st);
+                if (TryParseSpellTypeValue(raw, out var spell))
+                    NpcSpellAdd(spell);
                 return true;
             }
             case "CONSUME":
@@ -4427,10 +4465,14 @@ public partial class Character : ObjBase
             _nextHitRegen = now + RegenTenthsToMs(RegenHitsTenths, 4000);
         }
 
-        // Mana regen: Source/Sphere REGEN2 interval, improved by meditation, scaled by INT
+        // Mana regen: Source/Sphere REGEN2 interval. Source-X Stats_GetRegenVal
+        // returns a flat base (maximum(1, REGENVAL)) per tick — it is NOT scaled
+        // by INT. The old INT/50 let a high-INT caster (lich, elemental: INT 400+)
+        // regen 8-9 mana every 3s, matching or exceeding its spend, so its pool
+        // never ran dry and it cast forever. Meditation is the way to regen faster.
         if (now >= _nextManaRegen && _mana < _maxMana)
         {
-            int regenAmount = Math.Max(1, _int / 50);
+            int regenAmount = 1;
             if (IsStatFlag(StatFlag.Meditation)) regenAmount += 2;
             _mana = (short)Math.Min(_mana + regenAmount, _maxMana);
             if (_mana >= _maxMana && IsStatFlag(StatFlag.Meditation))

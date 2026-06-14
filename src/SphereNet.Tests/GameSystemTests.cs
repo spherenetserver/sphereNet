@@ -200,12 +200,23 @@ public class GameSystemTests
         var world = CreateWorld();
         var loggerFactory = LoggerFactory.Create(_ => { });
         var client = TestHarness.CreateClient(loggerFactory, world, new AccountManager(loggerFactory), 16003);
+        var observerClient = TestHarness.CreateClient(loggerFactory, world, new AccountManager(loggerFactory), 16004);
         var player = world.CreateCharacter();
         player.IsPlayer = true;
         player.BodyId = 0x0190;
         player.Hue = new Color(0x03EA);
         world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
         AttachCharacter(client, player);
+        var staff = world.CreateCharacter();
+        staff.IsPlayer = true;
+        staff.PrivLevel = PrivLevel.Counsel;
+        world.PlaceCharacter(staff, new Point3D(101, 100, 0, 0));
+        AttachCharacter(observerClient, staff);
+        client.ForEachClientInRange = (_, _, excludeUid, action) =>
+        {
+            if (staff.Uid.Value != excludeUid)
+                action(staff, observerClient);
+        };
 
         var corpse = world.CreateItem();
         corpse.ItemType = ItemType.Corpse;
@@ -226,7 +237,18 @@ public class GameSystemTests
         Assert.Equal(corpse.Uid.Value, ReadU32(deathAnim!, 5));
 
         Assert.Contains(packets, p => p.Span.Length >= 19 && p.Span[0] == 0x20 && ReadU16(p, 5) == 0x0192);
-        Assert.Contains(packets, p => p.Span.Length == 2 && p.Span[0] == 0x2C && p.Span[1] == 0x00);
+        Assert.Contains(packets, p => p.Span.Length >= 17 && p.Span[0] == 0x77 && ReadU16(p, 5) == 0x0192);
+        int drawPlayerIndex = packets.FindIndex(p => p.Span.Length >= 19 && p.Span[0] == 0x20 && ReadU16(p, 5) == 0x0192);
+        int sysMessageIndex = packets.FindIndex(p => p.Span.Length > 0 && p.Span[0] == 0xAE);
+        int deathStatusIndex = packets.FindIndex(p => p.Span.Length == 2 && p.Span[0] == 0x2C && p.Span[1] == 0x00);
+        Assert.True(drawPlayerIndex >= 0);
+        Assert.True(sysMessageIndex >= 0);
+        Assert.True(deathStatusIndex > drawPlayerIndex);
+        Assert.True(deathStatusIndex > sysMessageIndex);
+
+        var observerPackets = GetQueuedPackets(observerClient.NetState).ToList();
+        Assert.Contains(observerPackets, p => p.Span.Length >= 9 && p.Span[0] == 0x78 && ReadU16(p, 7) == 0x0192);
+        Assert.Contains(observerPackets, p => p.Span.Length >= 17 && p.Span[0] == 0x77 && ReadU16(p, 5) == 0x0192);
     }
 
     // --- Party ---
@@ -1664,6 +1686,45 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         ai.OnTickAction(npc);
 
         Assert.True(fightCount > 0);
+    }
+
+    [Fact]
+    public void NpcAI_LichBodyWithoutScriptSpellList_CastsFallbackSpell()
+    {
+        var world = CreateWorld();
+        var ai = new NpcAI(world, new SphereNet.Core.Configuration.SphereConfig());
+
+        var lich = world.CreateCharacter();
+        lich.Name = "a lich";
+        lich.NpcBrain = NpcBrainType.Monster;
+        lich.BodyId = 0x0018;
+        lich.Int = 5;
+        lich.Dex = 100;
+        lich.Mana = lich.MaxMana = 100;
+        lich.Hits = lich.MaxHits = 100;
+        world.PlaceCharacter(lich, new Point3D(100, 100, 0, 0));
+
+        var target = world.CreateCharacter();
+        target.IsPlayer = true;
+        target.IsOnline = true;
+        target.BodyId = 0x0190;
+        target.Hits = target.MaxHits = 100;
+        world.PlaceCharacter(target, new Point3D(104, 100, 0, 0));
+        world.AddOnlinePlayer(target);
+        world.OnTick();
+
+        lich.FightTarget = target.Uid;
+        SpellType castSpell = SpellType.None;
+        ai.OnNpcCastSpell = (_, _, spell) => castSpell = spell;
+
+        for (int i = 0; i < 50 && castSpell == SpellType.None; i++)
+        {
+            lich.NextNpcActionTime = 0;
+            ai.OnTickAction(lich);
+        }
+
+        Assert.NotEmpty(lich.NpcSpells);
+        Assert.NotEqual(SpellType.None, castSpell);
     }
 
     [Fact]

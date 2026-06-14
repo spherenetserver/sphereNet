@@ -341,6 +341,14 @@ public sealed class ClientViewUpdater
         if (ch.IsInvisible) vis |= 2;
         if (ch.IsDead) vis |= 4;
         if (ch.IsInWarMode) vis |= 8;
+        // Notoriety state drives the 0x77/0x78 noto byte (grey criminal / red
+        // murderer highlight). Without these bits the view-delta never re-sent
+        // an observer's 0x78 when only the criminal/murderer flag flipped, so a
+        // stationary attacker stayed blue/green on screen until they moved.
+        // MakeCriminal → SetStatFlag marks the char dirty, which flags nearby
+        // clients for refresh; the changed vis key then triggers the redraw.
+        if (ch.IsCriminal) vis |= 16;
+        if (ch.IsMurderer) vis |= 32;
         return vis;
     }
 

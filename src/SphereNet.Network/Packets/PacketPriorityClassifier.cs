@@ -47,13 +47,22 @@ public static class PacketPriorityClassifier
         t[0xB0] = PacketPriority.Low;     // gump
         t[0xDD] = PacketPriority.Low;     // compressed gump
         t[0x7C] = PacketPriority.Low;     // open menu
-        t[0xD4] = PacketPriority.Low;     // book (new)
+        // 0xD4 (spellbook/book content) stays Normal: it is sent immediately
+        // before the 0x24 OpenContainer that opens the book gump. As Low it
+        // flushed AFTER the Normal 0x24, so the book opened empty (same class
+        // of reorder bug as the vendor 0x74). 0x66 (single page, sent on a
+        // page-turn request) is self-contained, so it can stay Low.
         t[0x66] = PacketPriority.Low;     // book page
         t[0x90] = PacketPriority.Low;     // map
         t[0xF5] = PacketPriority.Low;     // new map
         t[0x88] = PacketPriority.Low;     // open paperdoll
-        t[0x74] = PacketPriority.Low;     // vendor buy list
-        t[0x9E] = PacketPriority.Low;     // vendor sell list
+        // 0x74 / 0x9E stay Normal (NOT Low): the vendor buy/sell lists are part
+        // of an ORDER-CRITICAL sequence — 0x3C container contents → 0x74 prices
+        // → 0x24 open container (all Normal). The queue drains Highest→Low, so a
+        // Low 0x74 was flushed AFTER the Normal 0x24 that opens the shop gump.
+        // The client then built the gump rows before the prices/names arrived,
+        // leaving every row at 0gp with no name. Same priority as its neighbours
+        // keeps FIFO order within the Normal queue and binds the prices.
         t[0x6C] = PacketPriority.Low;     // target cursor
         t[0x99] = PacketPriority.Low;     // target cursor (multi)
         t[0x6E] = PacketPriority.Low;     // animation

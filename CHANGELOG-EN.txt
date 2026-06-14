@@ -4,6 +4,56 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - NPC casting, creature attacks, packet ordering, view-sync, character creation (Wave 136)
+----------------------------------------
+
+FIXED - Magic / NPC AI:
+  - NPC casters were exempted from the reagent-availability gate; an NPC with
+    an empty pack could never start a cast (every attempt returned failure).
+  - NPCSPELL now parses a spell defname/enum name, not only a numeric id;
+    numeric spell-type values are range-checked and cast to the enum's ushort
+    base before Enum.IsDefined (a numeric NPCSPELL/SPELL value crashed the world
+    loader with an ArgumentException).
+  - Spell selection no longer re-casts Paralyze on an already-frozen target and
+    enforces a per-caster Paralyze cooldown, so a caster stops looping on
+    Paralyze (including against a target that breaks free instantly) and unloads
+    damage between locks.
+  - Self-heal chance is a flat 33% at any wound level, so a critically hurt
+    caster spends ~2/3 of its casts on offense instead of turtling.
+  - Mana regen uses a flat base amount instead of INT/50; a high-INT caster no
+    longer regenerated mana as fast as it spent it and now actually runs dry.
+
+FIXED - Combat / Creatures:
+  - Venomous NPCs (Poisoning skill > 0) envenom on a melee hit from the skill
+    alone, with no poisoned-weapon tag required.
+  - Special movement trail: giant spiders web the ground and fire elementals
+    drop fire patches (FIELD_DAMAGE) as they act; driven by body id or the
+    WEBTRAIL/FIRETRAIL tag. Fire-elemental body id corrected to 0x000F.
+
+FIXED - Network / packet ordering:
+  - The 0x2E worn-item packet no longer sets the 0x8000 hue-flag bit on the
+    graphic (that convention belongs to the 0x78 equipment list); a worn item
+    with a non-zero hue was sent with an invalid graphic and vanished on the
+    client until a resync.
+  - Vendor buy/sell lists (0x74/0x9E) and spellbook content (0xD4) are Normal
+    priority again. The send queue drains Highest->Low, so a Low member of an
+    order-critical sequence flushed after the Normal open-container packet that
+    consumes it: vendor rows showed 0gp with no name and spellbooks opened
+    empty.
+
+FIXED - View-delta / appearance sync:
+  - Dyeing a worn item, and hair/beard dye, now broadcast the recolour; the
+    ground-item view-delta never tracks worn items, so the change stayed the old
+    colour for everyone until a resync.
+  - Criminal/murderer state is part of the view-delta visibility key, so a
+    stationary attacker turns grey/red on observers without having to move.
+
+FIXED - Character creation:
+  - [STARTSGOLD] bare-amount rows are parsed (the amount is the section key);
+    new characters receive one stipend (the start-index row) instead of nothing.
+  - Item single-click labels and tooltips fall back to the itemdef NAME= when no
+    per-instance name was stamped, so plain spawned/looted items show their name.
+
 [2026-06-13] - Ping fast-path processing (Wave 135)
 ----------------------------------------
 

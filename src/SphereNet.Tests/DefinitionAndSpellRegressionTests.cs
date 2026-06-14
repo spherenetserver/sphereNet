@@ -142,6 +142,30 @@ public class DefinitionAndSpellRegressionTests
     }
 
     [Fact]
+    public void CharDef_NpcSpell_ResolvesNamesEnumsAndSpellDefnames()
+    {
+        var resources = LoadScript("""
+            [SPELL 5]
+            DEFNAME=s_magic_arrow
+            NAME=Magic Arrow
+
+            [CHARDEF c_test_caster]
+            ID=0x0190
+            NPCSPELL=s_magic_arrow
+            NPCSPELL=spell_fireball
+            NPCSPELL=Lightning
+            """);
+
+        new DefinitionLoader(resources, new SpellRegistry()).LoadAll();
+
+        var charDef = DefinitionLoader.GetCharDef(resources.ResolveDefName("c_test_caster").Index);
+        Assert.NotNull(charDef);
+        Assert.Contains((int)SpellType.MagicArrow, charDef!.NpcSpells);
+        Assert.Contains((int)SpellType.Fireball, charDef.NpcSpells);
+        Assert.Contains((int)SpellType.Lightning, charDef.NpcSpells);
+    }
+
+    [Fact]
     public void DefinitionLoader_ParsesTemplateSellBuyDiceAmounts()
     {
         var resources = LoadScript("""

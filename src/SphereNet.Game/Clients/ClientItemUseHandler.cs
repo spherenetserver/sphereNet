@@ -1372,6 +1372,12 @@ public sealed class ClientItemUseHandler
                 return;
 
             dest.Hue = new Core.Types.Color(hue);
+            // Broadcast the recolour to every nearby client. The view-delta only
+            // tracks GROUND items, so a worn/equipped item dyed this way would
+            // otherwise stay its old colour on observers (and self) until a full
+            // resync. OnVisualUpdate → SendItemVisualUpdate emits 0x2E for worn
+            // items, 0x1A for ground, 0x25 for the owner's pack.
+            Item.OnVisualUpdate?.Invoke(dest);
             SysMessage("The item changes color.");
         }
     }
@@ -1383,9 +1389,18 @@ public sealed class ClientItemUseHandler
         var hair = _character.GetEquippedItem(Layer.Hair);
         var beard = _character.GetEquippedItem(Layer.FacialHair);
         if (hair != null)
+        {
             hair.Hue = new Core.Types.Color(hue);
+            // Hair/beard are always worn (Layer.Hair/FacialHair) — the ground
+            // view-delta never sees them, so broadcast the recolour explicitly
+            // or it stays the old colour for everyone until a resync.
+            Item.OnVisualUpdate?.Invoke(hair);
+        }
         if (beard != null)
+        {
             beard.Hue = new Core.Types.Color(hue);
+            Item.OnVisualUpdate?.Invoke(beard);
+        }
         SysMessage("You dye your hair.");
     }
 

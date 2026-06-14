@@ -562,7 +562,10 @@ public static partial class Program
                     {
                         foreach (int spellId in spawnCharDef.NpcSpells)
                         {
-                            if (Enum.IsDefined(typeof(SpellType), spellId))
+                            // SpellType is ushort-backed; Enum.IsDefined throws on a
+                            // boxed int, so range-check and cast first.
+                            if (spellId >= 0 && spellId <= ushort.MaxValue &&
+                                Enum.IsDefined(typeof(SpellType), (ushort)spellId))
                                 npc.NpcSpellAdd((SpellType)spellId);
                         }
                     }

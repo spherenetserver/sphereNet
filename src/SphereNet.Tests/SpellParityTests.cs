@@ -85,6 +85,35 @@ public class SpellParityTests
     }
 
     [Fact]
+    public void SpellEngine_CastStart_AllowsNpcCastersWithWeapon()
+    {
+        Character.EquippedCastEnabled = false;
+        var world = CreateWorld();
+        var registry = new SpellRegistry();
+        registry.Register(new SpellDef
+        {
+            Id = SpellType.Heal,
+            Flags = SpellFlag.TargChar | SpellFlag.Heal,
+            ManaCost = 0,
+            CastTimeBase = 5,
+            EffectBase = 20,
+            EffectScale = 20,
+        });
+
+        var npc = world.CreateCharacter();
+        npc.MaxMana = 100;
+        npc.Mana = 100;
+        npc.SetSkill(SkillType.Magery, 2000);
+        var staff = world.CreateItem();
+        staff.ItemType = ItemType.WeaponMaceStaff;
+        npc.Equip(staff, Layer.OneHanded);
+        world.PlaceCharacter(npc, new Point3D(100, 100, 0, 0));
+
+        var engine = new SpellEngine(world, registry);
+        Assert.True(engine.CastStart(npc, SpellType.Heal, npc.Uid, npc.Position) > 0);
+    }
+
+    [Fact]
     public void SpellEngine_CastStart_BlocksRecallWhenMagicFlagSet()
     {
         Character.MagicFlags = (int)MagicConfigFlags.DisableRecall;

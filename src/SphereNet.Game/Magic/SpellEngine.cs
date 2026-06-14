@@ -360,7 +360,7 @@ public sealed class SpellEngine
             (weapon != null && weapon.ItemType is not ItemType.Wand and not ItemType.Spellbook) ||
             (offhand != null && offhand.ItemType is not ItemType.Shield and not ItemType.Spellbook);
 
-        if (!Character.EquippedCastEnabled && hasBlockingWeapon &&
+        if (!Character.EquippedCastEnabled && caster.IsPlayer && hasBlockingWeapon &&
             caster.PrivLevel < PrivLevel.GM)
         {
             OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGenFizzles));
@@ -368,7 +368,10 @@ public sealed class SpellEngine
         }
 
         // Reagent availability check (before starting cast). Wand/scroll/GM skip.
-        if (!isWand && !fromScroll && caster.PrivLevel < PrivLevel.GM &&
+        // NPC casters are exempt — like the reference, monsters cast from innate
+        // power and carry no reagents (mirrors the IsPlayer-gated spellbook check
+        // below). Without this gate an NPC with an empty pack fails every cast.
+        if (caster.IsPlayer && !isWand && !fromScroll && caster.PrivLevel < PrivLevel.GM &&
             Character.ReagentsRequiredEnabled && !HasRequiredReagents(caster, def))
         {
             OnSysMessage?.Invoke(caster, "You lack the reagents to cast that spell.");
@@ -501,7 +504,7 @@ public sealed class SpellEngine
             return false;
         }
 
-        if (!castWithWand && caster.PrivLevel < PrivLevel.GM &&
+        if (caster.IsPlayer && !castWithWand && caster.PrivLevel < PrivLevel.GM &&
             Character.ReagentsRequiredEnabled)
         {
             ConsumeReagents(caster, def);

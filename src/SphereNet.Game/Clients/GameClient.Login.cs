@@ -212,6 +212,16 @@ public sealed partial class GameClient
                         _character.SetSkill((SkillType)id, (ushort)(scaled * 10));
                     }
                 }
+                // Diagnostic: what the client actually sent for the creation
+                // skills. If these are all value=0 (or empty) the chosen skills
+                // and their newbie kits won't apply — the client used a
+                // profession preset the server doesn't expand, or sent the
+                // values at a value we read as 0. [char_create_skills] makes the
+                // real wire data visible for the no-skill/no-kit reports.
+                _logger.LogDebug("[char_create_skills] name='{Name}' skills=[{Skills}]",
+                    info.Name,
+                    string.Join(", ", info.Skills.Select(s =>
+                        $"{(s.Id < (int)SkillType.Qty ? ((SkillType)s.Id).ToString() : s.Id.ToString())}={s.Value}")));
             }
             else
             {
@@ -227,14 +237,13 @@ public sealed partial class GameClient
                 ?? new Point3D(1495, 1629, 10, 0);
             _world.PlaceCharacter(_character, startPos);
 
-            foreach (var goldEntry in _commands?.Resources?.StartGold ?? [])
+            // Starting stipend: [STARTSGOLD] rows are parallel to the [STARTS]
+            // city list. A new character spawns at start index 0, so it gets
+            // that row's amount as ONE pile — not the sum of every row.
+            var startGoldList = _commands?.Resources?.StartGold;
+            int startGoldAmount = startGoldList is { Count: > 0 } ? startGoldList[0].Amount : 0;
+            if (startGoldAmount > 0)
             {
-                if (goldEntry.Amount <= 0)
-                    continue;
-                var gold = _world.CreateItem();
-                gold.BaseId = 0x0EED;
-                gold.Name = string.IsNullOrWhiteSpace(goldEntry.Name) ? "gold" : goldEntry.Name;
-                gold.Amount = (ushort)Math.Min(ushort.MaxValue, goldEntry.Amount);
                 var pack = _character.Backpack;
                 if (pack == null)
                 {
@@ -242,6 +251,10 @@ public sealed partial class GameClient
                     pack.BaseId = 0x0E75;
                     _character.Equip(pack, Layer.Pack);
                 }
+                var gold = _world.CreateItem();
+                gold.BaseId = 0x0EED;
+                gold.Name = "gold";
+                gold.Amount = (ushort)Math.Min(ushort.MaxValue, startGoldAmount);
                 pack.AddItem(gold);
             }
             int assignSlot = slot >= 0 ? slot : _account.FindFreeSlot();

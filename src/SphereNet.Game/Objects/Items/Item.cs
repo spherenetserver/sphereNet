@@ -185,7 +185,22 @@ public class Item : ObjBase
     public override string GetName()
     {
         string raw = base.GetName();
-        if (string.IsNullOrEmpty(raw) || raw.IndexOf('%') < 0)
+        if (string.IsNullOrEmpty(raw))
+        {
+            // No per-instance name was stamped. Most items that aren't created
+            // through the vendor/NEWITEM paths (loot drops, spawned ground
+            // items, resources) keep _name="" — fall back to the itemdef NAME=
+            // so single-click labels and tooltips still read the base name.
+            // Source-X CItem::GetName resolves the base name from the type def
+            // the same way. Without this the client showed a blank label on
+            // single click because GetName() returned "".
+            var def = DefinitionLoader.GetItemDef(BaseId);
+            if (def != null && !string.IsNullOrWhiteSpace(def.Name))
+                raw = DefinitionLoader.ResolveNames(def.Name);
+            if (string.IsNullOrEmpty(raw))
+                return raw;
+        }
+        if (raw.IndexOf('%') < 0)
             return raw;
         bool plural = (_amount != 1) && _type != ItemType.Corpse;
         return SphereNet.Scripting.Definitions.ItemDef.Pluralize(raw, plural);

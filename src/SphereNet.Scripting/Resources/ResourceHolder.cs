@@ -45,6 +45,11 @@ public sealed class ResourceHolder
         // CAN=MT_RUN|MT_WALK) against the script's own [DEFNAME] tables instead
         // of a hardcoded map. Falls back to the built-in map when unresolved.
         CharDef.DefNameResolver = name => TryResolveDefNameValue(name, out var v) ? v : null;
+        CharDef.SpellNameResolver = name =>
+        {
+            var rid = ResolveDefName(name);
+            return rid.IsValid && rid.Type == ResType.SpellDef ? rid.Index : null;
+        };
     }
 
     /// <summary>
@@ -897,8 +902,13 @@ public sealed class ResourceHolder
     {
         foreach (var key in section.Keys)
         {
+            // [STARTSGOLD] entries are bare amounts ("10000"), parallel to the
+            // [STARTS] city list — the amount is the section KEY with no arg, so
+            // parse the key when the arg is empty. (A "name=amount" form is still
+            // honoured for named pools.) Parsing only the arg silently dropped
+            // every entry, leaving new characters with no starting gold.
             string name = key.Key.Trim();
-            string amountText = key.Arg.Trim();
+            string amountText = string.IsNullOrWhiteSpace(key.Arg) ? name : key.Arg.Trim();
             if (int.TryParse(amountText, out int amount))
                 _startGold.Add(new StartGoldEntry(name, amount));
         }

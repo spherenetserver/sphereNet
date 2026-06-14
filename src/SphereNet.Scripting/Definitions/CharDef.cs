@@ -158,7 +158,7 @@ public sealed class CharDef : BaseDef
             case "THROWOBJ": ThrowObj = ParseHexOrDec(value); TagDefs.Set("THROWOBJ", value.Trim()); break;
             case "THROWRANGE": int.TryParse(value, out int tr); ThrowRange = tr; TagDefs.Set("THROWRANGE", value.Trim()); break;
             case "NPCSPELL":
-                if (int.TryParse(value.Trim(), out int spId) && spId > 0 && !NpcSpells.Contains(spId))
+                if (TryParseNpcSpell(value, out int spId) && spId > 0 && !NpcSpells.Contains(spId))
                     NpcSpells.Add(spId);
                 break;
             case "RESLEVEL": byte.TryParse(value, out byte rsl); ResLevel = rsl; break;
@@ -399,6 +399,38 @@ public sealed class CharDef : BaseDef
     /// own definitions; left null in isolated unit tests, where ParseCanFlags
     /// uses its built-in MT_* fallback map.</summary>
     public static Func<string, long?>? DefNameResolver { get; set; }
+    public static Func<string, int?>? SpellNameResolver { get; set; }
+
+    private static bool TryParseNpcSpell(string value, out int spellId)
+    {
+        spellId = 0;
+        string normalized = value.Trim();
+        if (int.TryParse(normalized, out int numeric))
+        {
+            spellId = numeric;
+            return true;
+        }
+
+        if (normalized.StartsWith("spell_", StringComparison.OrdinalIgnoreCase))
+            normalized = normalized[6..];
+        else if (normalized.StartsWith("s_", StringComparison.OrdinalIgnoreCase))
+            normalized = normalized[2..];
+
+        if (Enum.TryParse<SpellType>(normalized, true, out var named))
+        {
+            spellId = (int)named;
+            return true;
+        }
+
+        int? resolved = SpellNameResolver?.Invoke(value.Trim());
+        if (resolved.HasValue)
+        {
+            spellId = resolved.Value;
+            return true;
+        }
+
+        return false;
+    }
 
     private static CanFlags ParseCanFlags(string value)
     {

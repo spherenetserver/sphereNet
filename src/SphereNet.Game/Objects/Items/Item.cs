@@ -197,9 +197,21 @@ public class Item : ObjBase
             var def = DefinitionLoader.GetItemDef(BaseId);
             if (def != null && !string.IsNullOrWhiteSpace(def.Name))
                 raw = DefinitionLoader.ResolveNames(def.Name);
-            if (string.IsNullOrEmpty(raw))
-                return raw;
         }
+        if (string.IsNullOrEmpty(raw))
+        {
+            // Last resort: the tiledata tile name. UO tiledata stores names with
+            // the %s% plural marker (resolved by Pluralize below). For an item
+            // whose itemdef has no NAME= (e.g. i_bottle_empty), sending an empty
+            // name let the client render its OWN raw tiledata string with the
+            // marker intact — "empty bottle %s%". Resolving it server-side sends
+            // a clean "empty bottle".
+            var md = ResolveWorld?.Invoke()?.MapData;
+            if (md != null)
+                raw = md.GetItemTileData(BaseId).Name ?? "";
+        }
+        if (string.IsNullOrEmpty(raw))
+            return raw;
         if (raw.IndexOf('%') < 0)
             return raw;
         bool plural = (_amount != 1) && _type != ItemType.Corpse;

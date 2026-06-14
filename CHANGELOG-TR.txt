@@ -4,6 +4,32 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Konsol bellek siniri, vendor cift-stok, item ismi fallback, buyu power words (Wave 137)
+----------------------------------------
+
+DUZELTME - Konsol / Bellek:
+  - GUI konsolunun bekleyen-satir kuyrugunun cap'i yoktu. Packet debug log acikken
+    satirlar UI thread'in render edebileceginden hizli enqueue ediliyor, birikim
+    sinirsiz buyuyup process RAM'i saatler icinde gigabyte'lara cikiyordu. Kuyruga
+    cap eklendi; cap ustundeki satirlar dusuruluyor ve sayisi konsola yaziliyor.
+
+DUZELTME - Vendor:
+  - Stok'u bos bir vendor acilinca hem persisted-tag rebuild hem @NPCRestock
+    script trigger'i calisip SELL listesini IKI kez spawn ediyordu — her satir
+    cift cikiyordu. Trigger artik yalnizca rebuild hicbir sey uretmediyse calisir.
+
+DUZELTME - Item:
+  - Item.GetName, ne instance ismi ne itemdef NAME= varsa tiledata tile ismine
+    (cozulmus ve cogullastirilmis) geri donuyor. i_bottle_empty (NAME= yok) gibi
+    bir item client'a bos isimle ulasiyordu, bu yuzden client kendi ham tiledata
+    string'ini cogul isaretcisiyle gosteriyordu ("empty bottle %s%").
+
+DUZELTME - Buyu:
+  - Buyu power words, RUNES'u sadece harf kisaltmasi tasiyan buyuler icin eski
+    kisaltmayi ("IL") soyluyordu. GetPowerWords artik varsa soylenen kelime
+    formunu kullaniyor, yoksa kanonik UO mantrasina ("In Lor") geri donuyor;
+    boylece oyuncu ve NPC cast yollari ayni kelimeleri okuyor.
+
 [2026-06-14] - NPC buyu, yaratik saldirilari, paket sirasi, view-sync, karakter olusturma (Wave 136)
 ----------------------------------------
 

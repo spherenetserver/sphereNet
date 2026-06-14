@@ -4,6 +4,35 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Console memory cap, vendor double-stock, item name fallback, spell power words (Wave 137)
+----------------------------------------
+
+FIXED - Console / Memory:
+  - The GUI console's pending-line queue had no cap. With packet debug logging
+    on, lines were enqueued faster than the UI thread could render them, so the
+    backlog grew without bound and process RAM climbed into the gigabytes over
+    hours. The queue is now capped; lines past the cap are dropped and the count
+    is surfaced in the console.
+
+FIXED - Vendors:
+  - Opening a vendor whose stock was empty ran BOTH the persisted-tag rebuild
+    and the @NPCRestock script trigger, spawning the SELL list twice — every buy
+    row appeared doubled. The trigger now only fires when the rebuild produced
+    nothing.
+
+FIXED - Items:
+  - Item.GetName falls back to the tiledata tile name (resolved and pluralized)
+    when neither a per-instance name nor an itemdef NAME= is set. An item such
+    as i_bottle_empty (no NAME=) had been reaching the client with an empty
+    name, so the client rendered its own raw tiledata string with the plural
+    marker intact ("empty bottle %s%").
+
+FIXED - Magic:
+  - Spell power words spoke the legacy letter abbreviation ("IL") for spells
+    whose RUNES only carry it. GetPowerWords now uses the spoken word form when
+    present and otherwise falls back to the canonical UO mantra ("In Lor"), so
+    the player and NPC cast paths read the same words.
+
 [2026-06-14] - NPC casting, creature attacks, packet ordering, view-sync, character creation (Wave 136)
 ----------------------------------------
 

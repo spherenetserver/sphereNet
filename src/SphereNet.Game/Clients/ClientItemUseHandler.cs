@@ -1972,12 +1972,21 @@ public sealed class ClientItemUseHandler
             // (the stock items themselves are not saved). Covers vendors
             // loaded from a prior world save and those drained to empty.
             vendor.RebuildVendorStock();
-
-            _triggerDispatcher?.FireCharTrigger(vendor,
-                SphereNet.Core.Enums.CharTrigger.NPCRestock,
-                new SphereNet.Game.Scripting.TriggerArgs { CharSrc = _character });
-            // Refresh after restock — the trigger may have created it.
             stockContainer = vendor.GetEquippedItem(Layer.VendorStock);
+
+            // Only fall back to the @NPCRestock script trigger when the
+            // persisted-tag rebuild produced nothing. Firing both spawned the
+            // SELL list TWICE, so every row showed up doubled in the buy gump.
+            bool rebuilt = stockContainer != null &&
+                _world.GetContainerContents(stockContainer.Uid).Any();
+            if (!rebuilt)
+            {
+                _triggerDispatcher?.FireCharTrigger(vendor,
+                    SphereNet.Core.Enums.CharTrigger.NPCRestock,
+                    new SphereNet.Game.Scripting.TriggerArgs { CharSrc = _character });
+                // Refresh after restock — the trigger may have created it.
+                stockContainer = vendor.GetEquippedItem(Layer.VendorStock);
+            }
         }
 
         // Collect vendor inventory items (items in vendor's "sell" container / buy pack)

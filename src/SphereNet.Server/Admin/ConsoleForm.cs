@@ -50,6 +50,15 @@ public sealed class ConsoleForm : Form, ILogEventSink
     private const int MaxHistory = 100;
     private const int FlushIntervalMs = 16;   // ~60fps — near real-time for debugging
     private const int MaxLinesPerFlush = 200;
+    // Hard cap on lines waiting to be rendered. The RichTextBox only ever shows
+    // MaxLines, and the UI thread drains at most MaxLinesPerFlush per tick — so
+    // under a high-volume burst (packet debug logging) the unbounded pending
+    // queue would grow faster than it drains and balloon process RAM into the
+    // gigabytes over hours. Past the cap we drop new lines (counted) instead of
+    // retaining millions of strings the console can never display anyway.
+    private const int MaxPendingLines = 20_000;
+    private int _pendingCount;
+    private long _droppedLines;
     private const string EmptyBar = "..........";
     private const string FillBar = "██████████";
 
@@ -730,6 +739,20 @@ public sealed class ConsoleForm : Form, ILogEventSink
     public void AppendLine(string text, Color color)
     {
         if (IsDisposed) return;
+        EnqueuePending(text, color);
+    }
+
+    /// <summary>Enqueue a line for the UI flush, dropping it (counted) once the
+    /// pending backlog hits <see cref="MaxPendingLines"/> so a logging burst can
+    /// never grow the queue without bound.</summary>
+    private void EnqueuePending(string text, System.Drawing.Color color)
+    {
+        if (System.Threading.Volatile.Read(ref _pendingCount) >= MaxPendingLines)
+        {
+            System.Threading.Interlocked.Increment(ref _droppedLines);
+            return;
+        }
+        System.Threading.Interlocked.Increment(ref _pendingCount);
         _pendingLines.Enqueue((text, color));
     }
 
@@ -747,9 +770,22 @@ public sealed class ConsoleForm : Form, ILogEventSink
         _output.SuspendLayout();
         try
         {
+            // Surface any lines the cap dropped since the last flush, so the
+            // backlog protection isn't silent.
+            long dropped = System.Threading.Interlocked.Exchange(ref _droppedLines, 0);
+            if (dropped > 0)
+            {
+                _output.SelectionStart = _output.TextLength;
+                _output.SelectionLength = 0;
+                _output.SelectionColor = Color.FromArgb(255, 72, 72);
+                _output.AppendText($"[console backlog full — dropped {dropped} log line(s)]" + Environment.NewLine);
+                _lineCount++;
+            }
+
             int processed = 0;
             while (processed < MaxLinesPerFlush && _pendingLines.TryDequeue(out var entry))
             {
+                System.Threading.Interlocked.Decrement(ref _pendingCount);
                 _output.SelectionStart = _output.TextLength;
                 _output.SelectionLength = 0;
                 _output.SelectionColor = entry.Color;
@@ -798,7 +834,7 @@ public sealed class ConsoleForm : Form, ILogEventSink
             _ => Color.FromArgb(204, 225, 255),
         };
 
-        _pendingLines.Enqueue((text, color));
+        EnqueuePending(text, color);
     }
 
     private void UpdateUiStats(string text, Color color)

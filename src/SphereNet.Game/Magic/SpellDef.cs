@@ -158,10 +158,21 @@ public sealed class SpellDef
         _ => 0,
     };
 
-    /// <summary>Get spell power words. Returns script-defined Runes if set,
-    /// otherwise falls back to standard UO Magery power words.</summary>
-    public string GetPowerWords() =>
-        !string.IsNullOrEmpty(Runes) ? Runes : GetDefaultPowerWords(Id);
+    /// <summary>Get spell power words. Script RUNES come in two forms: the full
+    /// spoken words (".In Lor", parsed to "In Lor" — always contains a space)
+    /// and the legacy letter abbreviation ("IL"). Many spells only ship the
+    /// abbreviation, and speaking that aloud gives the player "IL" instead of
+    /// "In Lor". Use the word form when present; otherwise fall back to the
+    /// canonical UO mantra (which the NPC path already hit because its spell
+    /// happened to carry the word form). UO mantras are always 2+ words, so a
+    /// space reliably tells the spoken form from the abbreviation.</summary>
+    public string GetPowerWords()
+    {
+        if (Runes.Contains(' '))
+            return Runes;
+        string fallback = GetDefaultPowerWords(Id);
+        return !string.IsNullOrEmpty(fallback) ? fallback : Runes;
+    }
 
     private static string GetDefaultPowerWords(SpellType spell) => spell switch
     {

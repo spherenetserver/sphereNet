@@ -4,6 +4,18 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Vendor stoku restock'ta artik ikiye katlanmiyor (Wave 147)
+----------------------------------------
+
+DUZELTME - Vendor:
+  - Vendor sanal stokunu yeniden doldurmak (SELL= / PopulateVendorStock) mevcut
+    pack'i temizlemeden ustune ekliyordu; bu yuzden periyodik @NPCRestock (her 10
+    dakika) ve zaten stoklu bir vendor uzerinde SELL='in her yeniden calismasi
+    her satirin ikinci bir kopyasini ekliyordu — buy gump'ta ayni item iki kez
+    gorunuyor, her restock'ta katlaniyor ve bellekteki item sayisini sisiriyordu.
+    Restock artik template seviyesine doldurmadan once mevcut sanal stoku
+    temizliyor (Source-X NPC_Vendor_Restock ile ayni).
+
 [2026-06-14] - Iki elli silahlar TwoHanded layer'a equip oluyor (Wave 146)
 ----------------------------------------
 

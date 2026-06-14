@@ -4944,6 +4944,16 @@ public partial class Character : ObjBase
             pack.BaseId = 0x408D; // i_vendor_box (Source-X stock graphic)
             Equip(pack, Layer.VendorStock);
         }
+        else
+        {
+            // A restock refills to the template levels, it does not stack a second
+            // copy on top. Clear the existing (virtual) stock first so a periodic
+            // @NPCRestock — which re-runs SELL= over an already-stocked pack —
+            // doesn't append a duplicate of every row (the reported "same item
+            // shows up twice" doubling that compounded on each 10-minute restock).
+            foreach (var old in world.GetContainerContents(pack.Uid).ToList())
+                world.RemoveItem(old);
+        }
 
         int spawned = 0, considered = 0, resolveFails = 0;
         foreach (var (entryName, entryAmount) in

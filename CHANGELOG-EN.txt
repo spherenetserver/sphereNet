@@ -4,6 +4,18 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Vendor stock no longer doubles on restock (Wave 147)
+----------------------------------------
+
+FIXED - Vendor:
+  - Repopulating a vendor's virtual stock (SELL= / PopulateVendorStock) appended
+    to the existing pack without clearing it, so the periodic @NPCRestock (every
+    10 minutes) and any re-run of SELL= over an already-stocked vendor stacked a
+    second copy of every row — the same item showing up twice in the buy gump,
+    compounding on each restock and inflating the in-memory item count. A restock
+    now clears the existing virtual stock before refilling to the template
+    levels, matching Source-X NPC_Vendor_Restock.
+
 [2026-06-14] - Two-handed weapons equip on the TwoHanded layer (Wave 146)
 ----------------------------------------
 

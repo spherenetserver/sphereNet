@@ -770,6 +770,12 @@ public static partial class Program
         string tail = sp > 0 ? payload[(sp + 1)..].TrimStart() : "";
 
         var snapshot = _clients.Values.Where(c => c.IsPlaying && c.Character != null).ToList();
+        // Diagnostic for the admin online-player list ("admin" command tallies
+        // clients into CTAG0 via this path). [allclients] shows whether SRC
+        // resolved and how many clients the callback runs for — an empty list
+        // there means the function never ran / SRC was wrong.
+        _log.LogDebug("[allclients] src=0x{Src:X} '{SrcName}' payload='{Payload}' clients={Count}",
+            srcChar.Uid.Value, srcChar.Name ?? "?", payload, snapshot.Count);
         foreach (var client in snapshot)
         {
             var target = client.Character!;
@@ -779,16 +785,23 @@ public static partial class Program
                 Object2 = srcChar,
             };
 
+            // Function form (e.g. "f_Admin_GetPlayers") takes priority: a
+            // [FUNCTION] with this name runs as the per-client callback, with
+            // SRC = the admin who issued ALLCLIENTS. Only when no such function
+            // exists is the payload treated as a verb (sysmessage, message,
+            // kick, ...). TryRunFunction is its own existence check — it returns
+            // false for a non-function. The previous "verb first" order let
+            // TryExecuteScriptCommand swallow the function NAME (return true), so
+            // the callback never ran and admin tallies like the online-player
+            // list came back empty.
             bool dispatched = false;
-            // Try as verb first — TryExecuteCommand returns false for
-            // unknown verbs, falling through to function-call form.
-            if (target.TryExecuteCommand(head, tail, client))
+            if (_triggerRunner != null &&
+                _triggerRunner.TryRunFunction(payload, target, client, trigArgs, out _))
                 dispatched = true;
-            else if (client.TryExecuteScriptCommand(target, head, tail, trigArgs))
+            if (!dispatched && target.TryExecuteCommand(head, tail, client))
                 dispatched = true;
-
-            if (!dispatched && _triggerRunner != null)
-                _triggerRunner.TryRunFunction(payload, target, client, trigArgs, out _);
+            if (!dispatched)
+                client.TryExecuteScriptCommand(target, head, tail, trigArgs);
         }
         return "";
     }

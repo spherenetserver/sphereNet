@@ -4,6 +4,42 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Stack-merge gold kaybi, mining tukenme, pile graphic, archery loop + swing anim (Wave 138)
+----------------------------------------
+
+DUZELTME - Envanter / Stacking:
+  - Bir stack'i baska stack'in ustune birakinca hedef stack container saniliyor
+    ve birakilan item icine nest ediliyordu (gorunmez) — gold ustune gold
+    yiginca birakilan yigin kayboluyordu. Artik amount'lar merge ediliyor;
+    overflow'da hedef doldurulup kalan yaninda birakiliyor.
+
+DUZELTME - Beceri / Mining:
+  - Kaynak-tukenme marker'i kalan pool'u Item.Amount'ta tutuyordu; Amount setter
+    min 1'e clamp ettigi icin node 0'a inmiyor ve sonsuza dek ore veriyordu.
+    Pool artik bir tag'de tutuluyor, boylece damarlar tukeniyor ve regen
+    timer'iyla yeniden olusuyor.
+
+DUZELTME - Item / Gorunum:
+  - Stackable "pile" itemlari (ore, ingot, log, bandage, scroll, arrow, ...)
+    amount arttikca daha buyuk graphic gosteriyor; DUPELIST ile (Source-X
+    paritesi). Pile-ness ile kapilandi, boylece DUPELIST'in animasyon/varyant
+    frame'leri icin kullanildigi non-pile itemlar etkilenmiyor. DispIdFull'da
+    hesaplandigi icin her paket yolu ve view-delta amount degisince guncelliyor.
+
+DUZELTME - Savas:
+  - Mermisiz bir menzilli silahla ates etmek swing timer'i ilerletmeden return
+    ediyordu; combat tick'i her server tick'inde yeniden giriyor — mermisiz
+    mesaji spam'leniyor ve donguye giriyordu. Artik Source-X gibi swing timer'la
+    paced calisiyor.
+  - Silah turune gore vurus animasyonu: balta ve kazma SLASH (pierce/bash
+    yolundaydi), firlatma silahlari 1H-slash kullaniyor — Source-X
+    CChar::GenerateAnimate ile uyumlu.
+
+DEGISIKLIK - Admin:
+  - Serv.AllClients, fonksiyon-formu bir payload'u (orn. f_Admin_GetPlayers)
+    once verb degil script fonksiyonu olarak, cagiran SRC ile calistiriyor.
+    Online-oyuncu sayimi icin [allclients] diagnostic eklendi.
+
 [2026-06-14] - Konsol bellek siniri, vendor cift-stok, item ismi fallback, buyu power words (Wave 137)
 ----------------------------------------
 

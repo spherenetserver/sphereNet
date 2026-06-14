@@ -1045,6 +1045,13 @@ public sealed class ClientCombatHandler
             if (!HasAmmoInBackpack(ammoType))
             {
                 SysMessage(ServerMessages.Get(Msg.CombatArchNoammo));
+                // Advance the swing timer even though no swing happened. Without
+                // this NextAttackTime never moves, so the combat tick re-enters
+                // every server tick — spamming the "no ammo" message and burning
+                // CPU in a tight loop (the reported "infinite loop when out of
+                // arrows"). Source-X returns WAR_SWING_INVALID, which its fight
+                // loop still paces by the swing timer.
+                _character.NextAttackTime = now + swingDelayMs;
                 return;
             }
         }

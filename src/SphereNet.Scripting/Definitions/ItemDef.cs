@@ -48,6 +48,36 @@ public sealed class ItemDef : BaseDef
     public string DupeList { get; set; } = "";
     public int WeightReduction { get; set; }
 
+    /// <summary>DUPELIST parsed to graphic ids, cached. Source-X "pile" items
+    /// (ore, etc.) show a larger graphic as the stack grows: amount 1 = base id,
+    /// 2 = DupeIds[0], 3 = DupeIds[1], 4+ = last. Used by Item.DispIdFull.</summary>
+    private ushort[]? _dupeIds;
+    public ushort[] DupeIds
+    {
+        get
+        {
+            if (_dupeIds == null)
+            {
+                if (string.IsNullOrWhiteSpace(DupeList))
+                    _dupeIds = System.Array.Empty<ushort>();
+                else
+                {
+                    var parts = DupeList.Split(',',
+                        System.StringSplitOptions.RemoveEmptyEntries | System.StringSplitOptions.TrimEntries);
+                    var list = new System.Collections.Generic.List<ushort>(parts.Length);
+                    foreach (var p in parts)
+                    {
+                        ParseHexOrDec(p, out ushort id);
+                        if (id != 0)
+                            list.Add(id);
+                    }
+                    _dupeIds = list.ToArray();
+                }
+            }
+            return _dupeIds;
+        }
+    }
+
     public ushort DupItemId { get; set; }
     public List<ResourceId> SkillMake { get; } = [];
     public string SkillMakeRaw { get; set; } = "";

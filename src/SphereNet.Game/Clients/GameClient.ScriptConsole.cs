@@ -396,17 +396,19 @@ public sealed partial class GameClient
         {
             ItemType.WeaponBow => (ushort)AnimationType.AttackBow,
             ItemType.WeaponXBow => (ushort)AnimationType.AttackXBow,
-            ItemType.WeaponSword => twoHand
+            // Weapon → swing animation, mirroring Source-X CChar::GenerateAnimate
+            // (CCharAct.cpp): sword/axe/pickaxe SLASH, fencing PIERCE, the mace
+            // family BASH, throwing 1H-SLASH. Axe and pickaxe were wrongly on the
+            // PIERCE/BASH paths, so an axe stabbed instead of chopping.
+            ItemType.WeaponSword or ItemType.WeaponAxe or ItemType.WeaponMacePick => twoHand
                 ? (ushort)AnimationType.Attack2HSlash : (ushort)AnimationType.AttackWeapon,
-            ItemType.WeaponAxe => twoHand
-                ? (ushort)AnimationType.Attack2HPierce : (ushort)AnimationType.Attack1HPierce,
             ItemType.WeaponFence => twoHand
                 ? (ushort)AnimationType.Attack2HPierce : (ushort)AnimationType.Attack1HPierce,
             ItemType.WeaponMaceSmith or ItemType.WeaponMaceSharp or
             ItemType.WeaponMaceStaff or ItemType.WeaponMaceCrook or
-            ItemType.WeaponMacePick or ItemType.WeaponWhip => twoHand
+            ItemType.WeaponWhip => twoHand
                 ? (ushort)AnimationType.Attack2HBash : (ushort)AnimationType.Attack1HBash,
-            ItemType.WeaponThrowing => (ushort)AnimationType.Attack2HBash,
+            ItemType.WeaponThrowing => (ushort)AnimationType.AttackWeapon,
             _ => (ushort)AnimationType.AttackWeapon,
         };
     }

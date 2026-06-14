@@ -4,6 +4,41 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Stack-merge gold loss, mining depletion, pile graphics, archery loop + swing anims (Wave 138)
+----------------------------------------
+
+FIXED - Inventory / Stacking:
+  - Dropping one stack onto a matching stack treated the target stack as a
+    container and nested the dragged item inside it (invisible), so stacking
+    gold onto gold lost the dropped pile. It now merges the amounts; an overflow
+    tops the target off and keeps the remainder beside it.
+
+FIXED - Skills / Mining:
+  - The resource-depletion marker tracked its remaining pool in Item.Amount,
+    which floors at 1, so a node never reached 0 and yielded ore forever. The
+    pool is now stored in a tag, so veins deplete and then regenerate on the
+    regen timer.
+
+FIXED - Items / Display:
+  - Stackable "pile" items (ore, ingot, log, bandage, scroll, arrow, ...) show a
+    larger graphic as the amount grows, driven by DUPELIST (Source-X parity).
+    Gated on pile-ness so DUPELIST used for animation/variant frames on non-pile
+    items is unaffected. Computed in DispIdFull, so every packet path and the
+    view-delta refresh the visual when the amount changes.
+
+FIXED - Combat:
+  - Firing a ranged weapon with no ammo returned without advancing the swing
+    timer, so the combat tick re-entered every server tick — spamming the
+    no-ammo message and looping. It now paces by the swing timer like Source-X.
+  - Swing animation by weapon type: axe and pickaxe SLASH (were on the
+    pierce/bash paths) and throwing weapons use the 1H-slash gesture, matching
+    Source-X CChar::GenerateAnimate.
+
+CHANGED - Admin:
+  - Serv.AllClients runs a function-form payload (e.g. f_Admin_GetPlayers) as a
+    script function first, before trying it as a verb, with the issuer as SRC.
+    Added an [allclients] diagnostic for the online-player tally.
+
 [2026-06-14] - Console memory cap, vendor double-stock, item name fallback, spell power words (Wave 137)
 ----------------------------------------
 

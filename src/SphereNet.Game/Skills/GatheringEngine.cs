@@ -30,6 +30,17 @@ public sealed class GatheringEngine
 
     private const string TagResourceMarker = "RESOURCE_MARKER";
     private const string TagSkillType = "RES_SKILL";
+    // Remaining pool count. Stored in a TAG, NOT in Item.Amount: the Amount
+    // setter floors at 1 (Math.Max(1, value)), so a depletion counter kept in
+    // Amount could never reach 0 — the node stayed at 1 forever and mining was
+    // effectively infinite. Tags have no such clamp.
+    private const string TagPool = "RES_POOL";
+
+    private static int GetPool(Item marker) =>
+        marker.TryGetTag(TagPool, out string? p) && int.TryParse(p, out int v) ? v : 0;
+
+    private static void SetPool(Item marker, int value) =>
+        marker.SetTag(TagPool, Math.Max(0, value).ToString());
 
     /// <summary>Sphere worldgem-bit graphic. Resource markers use it so staff
     /// can see and inspect veins with AllShow (the old 0x1 "nodraw" graphic
@@ -101,7 +112,7 @@ public sealed class GatheringEngine
         string skillTag = skill.ToString();
         var marker = FindMarker(target, skillTag);
 
-        if (marker != null && marker.Amount <= 0)
+        if (marker != null && GetPool(marker) <= 0)
             return new GatherResult { Handled = true, Depleted = true };
 
         int playerSkill = ch.GetSkill(skill);
@@ -148,21 +159,18 @@ public sealed class GatheringEngine
 
             // Never hand out more than the pool actually holds — otherwise a
             // near-empty node still yields a full reap.
-            if (reapAmount > marker.Amount)
-                reapAmount = marker.Amount;
+            int pool = GetPool(marker);
+            if (reapAmount > pool)
+                reapAmount = pool;
             if (reapAmount <= 0)
                 return new GatherResult { Handled = true, Success = false };
 
-            int remaining = marker.Amount - reapAmount;
+            int remaining = pool - reapAmount;
+            SetPool(marker, remaining);
             if (remaining <= 0)
             {
-                marker.Amount = 0;
                 long regenMs = resDef.Regen > 0 ? resDef.Regen * 1000L : 36_000_000L;
                 marker.DecayTime = Environment.TickCount64 + regenMs;
-            }
-            else
-            {
-                marker.Amount = (ushort)remaining;
             }
 
             var item = _world.CreateItem();
@@ -225,7 +233,7 @@ public sealed class GatheringEngine
         var marker = _world.CreateItem();
         marker.BaseId = MarkerBaseId;
         marker.Name = "worldgem bit";
-        marker.Amount = amount;
+        SetPool(marker, amount); // remaining pool — tag, not Amount (see TagPool)
         marker.SetAttr(ObjAttributes.Invis | ObjAttributes.Move_Never);
         marker.SetTag(TagResourceMarker, "1");
         marker.SetTag(TagSkillType, skillTag);

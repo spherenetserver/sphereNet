@@ -561,6 +561,47 @@ public sealed class ClientInventoryHandler
                         return;
                     }
                 }
+                // Dropping one stack onto another: the client sends the TARGET
+                // STACK's serial as the "container". If that target is itself a
+                // stackable item that matches, MERGE the amounts instead of
+                // nesting the dragged item inside the stack — nesting made the
+                // dropped pile a hidden child of the target and it silently
+                // vanished (the "stack gold onto gold and 10k disappears" bug).
+                if (container.CanStackWith(item))
+                {
+                    uint stackParent = container.ContainedIn.IsValid
+                        ? container.ContainedIn.Value : container.Uid.Value;
+                    int room = ushort.MaxValue - container.Amount;
+                    int moved = Math.Min(room, item.Amount);
+                    if (moved > 0)
+                    {
+                        container.Amount = (ushort)(container.Amount + moved);
+                        item.Amount = (ushort)Math.Max(0, item.Amount - moved);
+                        _netState.Send(new PacketContainerItem(
+                            container.Uid.Value, container.DispIdFull, 0,
+                            container.Amount, container.X, container.Y,
+                            stackParent, container.Hue, _netState.IsClientPost6017));
+                    }
+                    if (item.Amount <= 0)
+                    {
+                        _world.RemoveItem(item);
+                        item.Delete();
+                    }
+                    else if (container.ContainedIn.IsValid &&
+                             _world.FindItem(container.ContainedIn) is { } realParent)
+                    {
+                        // Overflow remainder stays beside the target stack.
+                        realParent.AddItem(item);
+                        item.Position = new Point3D(container.X, container.Y, 0, _character.MapIndex);
+                        _netState.Send(new PacketContainerItem(
+                            item.Uid.Value, item.DispIdFull, 0,
+                            item.Amount, item.X, item.Y,
+                            realParent.Uid.Value, item.Hue, _netState.IsClientPost6017));
+                    }
+                    _netState.Send(new PacketDropAck());
+                    return;
+                }
+
                 container.AddItem(item);
                 item.Position = new Point3D(x, y, 0, _character.MapIndex);
                 // Critical: tell the client the item actually landed in the

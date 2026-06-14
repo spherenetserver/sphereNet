@@ -168,9 +168,43 @@ public class Item : ObjBase
     public byte Direction { get; set; }
 
     /// <summary>Full display id. Returns DISPID override when set, otherwise BaseId.</summary>
-    public ushort DispIdFull => _dispId != 0 ? _dispId : BaseId;
+    public ushort DispIdFull
+    {
+        get
+        {
+            if (_dispId != 0) return _dispId;
+            // Source-X "pile" items (ore and friends with a DUPELIST) show a
+            // larger graphic as the stack grows: amount 1 = base id, 2 =
+            // DupeIds[0], 3 = DupeIds[1], 4+ = last. Sent through DispIdFull so
+            // every packet path — and the view-delta, which keys on DispIdFull —
+            // updates the visual when the amount changes. DUPELIST is overloaded
+            // in Sphere — it also groups animation/variant frames on NON-pile
+            // items (i_animations) — so gate the amount ramp on pile-ness, or a
+            // stacked decoration would render a wrong frame.
+            if (_amount > 1)
+            {
+                var def = DefinitionLoader.GetItemDef(BaseId);
+                var dupes = def?.DupeIds;
+                if (dupes is { Length: > 0 } && IsPileBase(def))
+                    return dupes[Math.Min(_amount - 2, dupes.Length - 1)];
+            }
+            return BaseId;
+        }
+    }
 
     public ushort DispIdOverride => _dispId;
+
+    /// <summary>Whether this item is a stackable "pile" (CAN_I_PILE, or the
+    /// tiledata Generic flag as the reference seeds it). Only pile items use
+    /// DUPELIST as an amount→graphic ramp. Uses BaseId for the tiledata lookup
+    /// to avoid recursing through DispIdFull.</summary>
+    private bool IsPileBase(SphereNet.Scripting.Definitions.ItemDef? def)
+    {
+        if (def != null && (def.Can & CanFlags.I_Pile) != 0) return true;
+        var mapData = ResolveWorld?.Invoke()?.MapData;
+        return mapData != null &&
+            (mapData.GetItemTileData(BaseId).Flags & SphereNet.MapData.Tiles.TileFlag.Generic) != 0;
+    }
 
     /// <summary>
     /// Source-X-faithful display name. Mirrors <c>CItem::GetName()</c>

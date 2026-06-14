@@ -945,7 +945,11 @@ public sealed class ClientInventoryHandler
         }
 
         target.Equip(item, (Layer)layer);
-        if ((Layer)layer is Layer.OneHanded or Layer.TwoHanded && IsCombatEquipItem(item))
+        // Equip may promote a two-handed weapon from the OneHanded layer to
+        // TwoHanded; reflect the actual layer to the client so it renders/animates
+        // the weapon correctly (a bow on the wrong layer animates as a punch).
+        byte actualLayer = (byte)item.EquipLayer;
+        if (item.EquipLayer is Layer.OneHanded or Layer.TwoHanded && IsCombatEquipItem(item))
         {
             bool noWait = (Character.CombatFlags & (int)CombatFlags.FirstHitInstant) != 0;
             int delayMs = CombatEngine.GetSwingDelayMs(target, item);
@@ -953,7 +957,7 @@ public sealed class ClientInventoryHandler
         }
 
         var wornPkt = new PacketWornItem(
-            item.Uid.Value, item.DispIdFull, layer,
+            item.Uid.Value, item.DispIdFull, actualLayer,
             target.Uid.Value, item.Hue);
         _netState.Send(wornPkt);
         BroadcastNearby?.Invoke(target.Position, UpdateRange, wornPkt, _character.Uid.Value);

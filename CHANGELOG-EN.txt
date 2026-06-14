@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Two-handed weapons equip on the TwoHanded layer (Wave 146)
+----------------------------------------
+
+FIXED - Combat / Equipment:
+  - A two-handed weapon (TWOHANDS=Y: bows, crossbows, two-handed swords/axes/
+    maces, halberds, …) was equipping on the OneHanded layer because UO tiledata
+    marks some of them there. The client picks the attack animation from the
+    equipped layer, so a bow on OneHanded swung like an empty-handed punch and a
+    two-handed melee weapon used a one-handed swing. Character.Equip now promotes
+    such weapons to the TwoHanded layer (Source-X LAYER_HAND2) and the worn-item
+    packet reports the actual layer.
+  - The swing animation's one/two-handed choice now keys on IsTwoHanded
+    (itemdef TWOHANDS) rather than the layer alone, so a two-hander animates
+    correctly even if a save predates the layer promotion. The unmatched weapon
+    case now falls back to BASH, matching Source-X GenerateAnimate.
+
 [2026-06-14] - Honor the picked starting city on character creation (Wave 145)
 ----------------------------------------
 

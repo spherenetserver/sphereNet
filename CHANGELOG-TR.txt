@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Iki elli silahlar TwoHanded layer'a equip oluyor (Wave 146)
+----------------------------------------
+
+DUZELTME - Savas / Ekipman:
+  - Iki elli bir silah (TWOHANDS=Y: yaylar, arbaletler, iki elli kilic/balta/
+    mace, halberd, …) OneHanded layer'a equip oluyordu cunku UO tiledata
+    bazilarini orada isaretliyor. Client saldiri animasyonunu equip layer'indan
+    sectigi icin OneHanded'daki bir yay bos-elle yumruk gibi vuruyor, iki elli
+    melee silah tek elli vurus kullaniyordu. Character.Equip artik bu silahlari
+    TwoHanded layer'a (Source-X LAYER_HAND2) promote ediyor ve worn-item paketi
+    gercek layer'i bildiriyor.
+  - Swing animasyonunun tek/iki elli secimi artik sadece layer yerine
+    IsTwoHanded'a (itemdef TWOHANDS) bakiyor; boylece layer promosyonundan onceki
+    bir save'de bile iki elli silah dogru animasyon oynatiyor. Eslesmeyen silah
+    durumu artik BASH'e dusuyor (Source-X GenerateAnimate ile ayni).
+
 [2026-06-14] - Karakter olusturmada secilen baslangic sehrini uygula (Wave 145)
 ----------------------------------------
 

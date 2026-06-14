@@ -1686,6 +1686,14 @@ public partial class Character : ObjBase
 
     public bool Equip(Item item, Layer layer)
     {
+        // A two-handed weapon (TWOHANDS=Y / bow / xbow) must occupy the
+        // TwoHanded layer. UO tiledata marks some of them as the OneHanded layer,
+        // and the client picks the attack animation from the equipped layer — a
+        // bow on OneHanded animates like an empty-handed punch. Promote it so the
+        // bow swings correctly. (Source-X equips two-handers on LAYER_HAND2.)
+        if (layer == Layer.OneHanded && item.IsTwoHanded)
+            layer = Layer.TwoHanded;
+
         int idx = (int)layer;
         if (idx < 0 || idx >= _equipment.Length) return false;
 

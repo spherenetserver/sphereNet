@@ -380,7 +380,11 @@ public sealed partial class GameClient
         if (weapon == null)
             return mounted ? (ushort)AnimationType.HorseSlap : (ushort)AnimationType.AttackWrestle;
 
-        bool twoHand = weapon.EquipLayer == Layer.TwoHanded;
+        // Two-handedness drives the 1H vs 2H attack frame. Use IsTwoHanded
+        // (itemdef TWOHANDS / TwoHanded layer) rather than the layer alone, so a
+        // two-hander still animates correctly even if it momentarily sits on the
+        // OneHanded layer (e.g. a save predating the equip-layer promotion).
+        bool twoHand = weapon.IsTwoHanded;
 
         if (mounted)
         {
@@ -409,7 +413,9 @@ public sealed partial class GameClient
             ItemType.WeaponWhip => twoHand
                 ? (ushort)AnimationType.Attack2HBash : (ushort)AnimationType.Attack1HBash,
             ItemType.WeaponThrowing => (ushort)AnimationType.AttackWeapon,
-            _ => (ushort)AnimationType.AttackWeapon,
+            // Source-X groups the default case with the mace family (BASH).
+            _ => twoHand
+                ? (ushort)AnimationType.Attack2HBash : (ushort)AnimationType.Attack1HBash,
         };
     }
 
@@ -433,7 +439,7 @@ public sealed partial class GameClient
     {
         if (weapon == null)
             return 0x0135; // unarmed/wrestling strike
-        bool twoHand = weapon.EquipLayer == Layer.TwoHanded;
+        bool twoHand = weapon.IsTwoHanded;
         switch (weapon.ItemType)
         {
             case Core.Enums.ItemType.WeaponMaceCrook:

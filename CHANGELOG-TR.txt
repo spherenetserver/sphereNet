@@ -4,6 +4,23 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Pile item gorunumu: amount etiketi + sadece-ore grafik ramp (Wave 144)
+----------------------------------------
+
+EKLENDI - Item / Gorunum:
+  - Stack'lenen pile item'lar artik single-click etiketinde ve property
+    tooltip'inde miktarini gosteriyor ("1234 gold coins"), Item.GetDisplayName
+    ile, Source-X CItem::GetNameFull gibi. Tekli item (ve pile olmayanlar) sadece
+    adini gosteriyor.
+
+DUZELTME - Item / Grafik:
+  - Artik yalnizca ore stack boyutuna gore grafik degistiriyor (ITEMID_ORE_1..4,
+    Source-X CItem::SetAmount); ok, bandaj, ingot, gold ve diger pile'lar base
+    grafigini koruyup sayiyi client'a birakiyor. Onceki DUPELIST tabanli amount
+    ramp, DUPELIST'i bir flip/alias listesi olan ok/bandaji yanlis sekilde
+    yeniden grafikliyordu. Ayrica ore kontrolunun tetikleyecegi ItemType<->
+    DispIdFull recursion'i da giderildi.
+
 [2026-06-14] - Silahli yaratik cift hit sesi duzeltmesi (Wave 143)
 ----------------------------------------
 

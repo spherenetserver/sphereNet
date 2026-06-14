@@ -402,7 +402,9 @@ public sealed class ClientSkillsHandler
 
         var propList = new List<(uint ClilocId, string Args)>
         {
-            (1050045, obj.GetName()) // generic name cliloc
+            // Pile items show their stack amount on the tooltip header
+            // ("1234 gold coins"), matching the single-click label.
+            (1050045, obj is Item nameItem ? nameItem.GetDisplayName() : obj.GetName())
         };
 
         // Enrich tooltips for items

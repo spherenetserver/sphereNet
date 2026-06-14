@@ -120,7 +120,8 @@ public sealed class ClientInventoryHandler
 
         // Containers and corpses append their content summary on single
         // click — "corpse of X (3 items, 25 stones)" (CONT_ITEMS defmessage).
-        string label = obj.GetName();
+        // Pile items prefix the stack amount ("1234 gold coins") via GetDisplayName.
+        string label = obj is Item nameItem ? nameItem.GetDisplayName() : obj.GetName();
         if (obj is Item contItem &&
             contItem.ItemType is ItemType.Container or ItemType.Corpse &&
             contItem.Contents.Count > 0)

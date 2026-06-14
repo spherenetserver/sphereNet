@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Pile item display: amount label + ore-only graphic ramp (Wave 144)
+----------------------------------------
+
+ADDED - Items / Display:
+  - Stacked pile items now show their amount on the single-click label and the
+    property tooltip ("1234 gold coins"), via Item.GetDisplayName, matching
+    Source-X CItem::GetNameFull. Single items (and non-piles) show just the name.
+
+FIXED - Items / Graphics:
+  - Only ore now changes graphic with stack size (ITEMID_ORE_1..4 per Source-X
+    CItem::SetAmount); arrows, bandages, ingots, gold and other piles keep their
+    base graphic and let the client render the count. The previous DUPELIST-based
+    amount ramp wrongly reskinned stacked arrows/bandages, whose DUPELIST is a
+    flip/alias list, not a size ramp. Also fixes an ItemType<->DispIdFull
+    recursion the ore check would otherwise trigger.
+
 [2026-06-14] - Armed-creature double hit sound fix (Wave 143)
 ----------------------------------------
 

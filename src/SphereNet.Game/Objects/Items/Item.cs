@@ -173,20 +173,27 @@ public class Item : ObjBase
         get
         {
             if (_dispId != 0) return _dispId;
-            // Source-X "pile" items (ore and friends with a DUPELIST) show a
-            // larger graphic as the stack grows: amount 1 = base id, 2 =
-            // DupeIds[0], 3 = DupeIds[1], 4+ = last. Sent through DispIdFull so
-            // every packet path — and the view-delta, which keys on DispIdFull —
-            // updates the visual when the amount changes. DUPELIST is overloaded
-            // in Sphere — it also groups animation/variant frames on NON-pile
-            // items (i_animations) — so gate the amount ramp on pile-ness, or a
-            // stacked decoration would render a wrong frame.
-            if (_amount > 1)
+            // Source-X CItem::SetAmount remaps ONLY ore by stack size; every other
+            // pile (arrows, bandages, ingots, gold, …) keeps its base graphic and
+            // the client renders the stack count. Wave 138 used DUPELIST as a
+            // generic amount ramp, but DUPELIST is a flip/alias list in Sphere
+            // (e.g. i_arrow → 0f3e), not a size ramp, so it wrongly reskinned
+            // stacked arrows/bandages. The ore ramp uses the hardcoded ITEMID_ORE
+            // graphics: 1=ORE_1, 2=ORE_2, 3=ORE_3, 4+=ORE_4 (CItem.cpp sm_Item_Ore).
+            // Resolve the type via the instance override / itemdef directly — the
+            // ItemType getter probes DispIdFull (door check) and would recurse.
+            ItemType resolvedType = _type != ItemType.Normal
+                ? _type
+                : DefinitionLoader.GetItemDef(BaseId)?.Type ?? ItemType.Normal;
+            if (resolvedType == ItemType.Ore)
             {
-                var def = DefinitionLoader.GetItemDef(BaseId);
-                var dupes = def?.DupeIds;
-                if (dupes is { Length: > 0 } && IsPileBase(def))
-                    return dupes[Math.Min(_amount - 2, dupes.Length - 1)];
+                return _amount switch
+                {
+                    <= 1 => (ushort)0x19B7, // ITEMID_ORE_1
+                    2 => (ushort)0x19BA,    // ITEMID_ORE_2
+                    3 => (ushort)0x19B8,    // ITEMID_ORE_3
+                    _ => (ushort)0x19B9,    // ITEMID_ORE_4
+                };
             }
             return BaseId;
         }
@@ -204,6 +211,22 @@ public class Item : ObjBase
         var mapData = ResolveWorld?.Invoke()?.MapData;
         return mapData != null &&
             (mapData.GetItemTileData(BaseId).Flags & SphereNet.MapData.Tiles.TileFlag.Generic) != 0;
+    }
+
+    /// <summary>True when this item is a stackable pile (CAN_I_PILE or tiledata
+    /// Generic), so its <see cref="Amount"/> stacks and is shown on the label.</summary>
+    public bool IsPile => IsPileBase(DefinitionLoader.GetItemDef(BaseId));
+
+    /// <summary>Name shown on single-click and the property tooltip. Source-X
+    /// CItem::GetNameFull prefixes the amount for a stacked pile
+    /// ("1234 gold coins"); a single item (or a non-pile) shows just its
+    /// pluralized <see cref="GetName"/>.</summary>
+    public string GetDisplayName()
+    {
+        string name = GetName();
+        if (_amount > 1 && IsPile && !string.IsNullOrEmpty(name))
+            return $"{_amount} {name}";
+        return name;
     }
 
     /// <summary>

@@ -110,7 +110,8 @@ public sealed class ClientCombatHandler
     private void FaceTarget(Character target) => _client.FaceTarget(target);
     private static int GetSwingDelayMs(Character attacker, Item? weapon) => GameClient.GetSwingDelayMs(attacker, weapon);
     private static ushort GetSwingAction(Character attacker, Item? weapon) => GameClient.GetSwingAction(attacker, weapon);
-    private static ushort GetSwingSound(Item? weapon) => GameClient.GetSwingSound(weapon);
+    private static ushort GetWeaponHitSound(Item? weapon) => GameClient.GetWeaponHitSound(weapon);
+    private static ushort GetWeaponMissSound(Item? weapon) => GameClient.GetWeaponMissSound(weapon);
     private static (uint Serial, ushort ItemId, byte Layer, ushort Hue)[] BuildEquipmentList(Character ch) => GameClient.BuildEquipmentList(ch);
     private void BroadcastAnimation(Character actor, ushort legacyAction, NewAnimationGesture gesture, byte mode = 0) => _client.BroadcastAnimation(actor, legacyAction, gesture, mode);
     private static void GetDirectionDelta(Direction dir, out short dx, out short dy) => GameClient.GetDirectionDelta(dir, out dx, out dy);
@@ -1063,8 +1064,9 @@ public sealed class ClientCombatHandler
 
         ushort swingAction = GetSwingAction(_character, weapon);
         BroadcastAnimation(_character, swingAction, NewAnimationGesture.Attack);
-        BroadcastNearby?.Invoke(_character.Position, UpdateRange,
-            new PacketSound(GetSwingSound(weapon), _character.X, _character.Y, _character.Z), 0);
+        // Source-X plays a single combat sound per swing: the per-weapon hit
+        // sound on a hit, the miss whoosh on a miss (emitted below). No extra
+        // unconditional swing sound.
 
         if (CombatHelper.IsRangedWeapon(weapon))
         {
@@ -1142,7 +1144,7 @@ public sealed class ClientCombatHandler
             _logger.LogDebug("{Attacker} hit {Target} for {Dmg} damage",
                 _character.Name, target.Name, damage);
 
-            ushort hitSound = weapon != null ? (ushort)0x0239 : (ushort)0x0135;
+            ushort hitSound = GetWeaponHitSound(weapon);
             var hitSoundPacket = new PacketSound(hitSound, target.X, target.Y, target.Z);
             BroadcastNearby?.Invoke(target.Position, UpdateRange, hitSoundPacket, 0);
 
@@ -1289,8 +1291,8 @@ public sealed class ClientCombatHandler
             _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.HitMiss,
                 new TriggerArgs { CharSrc = _character, O1 = target });
 
-            BroadcastNearby?.Invoke(target.Position, UpdateRange,
-                new PacketSound(0x0234, target.X, target.Y, target.Z), 0);
+            BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                new PacketSound(GetWeaponMissSound(weapon), _character.X, _character.Y, _character.Z), 0);
         }
     }
 
@@ -1301,12 +1303,9 @@ public sealed class ClientCombatHandler
         ushort missAction = GetSwingAction(_character, weapon);
         BroadcastAnimation(_character, missAction, NewAnimationGesture.Attack);
 
-        ushort missSwingSound = GetSwingSound(weapon);
-        var missSwingSoundPacket = new PacketSound(missSwingSound, _character.X, _character.Y, _character.Z);
-        BroadcastNearby?.Invoke(_character.Position, UpdateRange, missSwingSoundPacket, 0);
-
-        var missSound = new PacketSound(0x0234, target.X, target.Y, target.Z);
-        BroadcastNearby?.Invoke(target.Position, UpdateRange, missSound, 0);
+        // Source-X plays a single per-weapon miss whoosh from the attacker.
+        var missSound = new PacketSound(GetWeaponMissSound(weapon), _character.X, _character.Y, _character.Z);
+        BroadcastNearby?.Invoke(_character.Position, UpdateRange, missSound, 0);
     }
 
     private void EmitRangedProjectile(Character target, ItemType ammoType)

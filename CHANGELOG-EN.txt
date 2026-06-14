@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Per-weapon hit/miss combat sounds (Wave 141)
+----------------------------------------
+
+CHANGED - Combat / Sound:
+  - Melee and ranged swings now play a per-weapon hit or miss sound instead of a
+    single generic thud/clang. Hit sounds follow Source-X SoundChar(CRESND_HIT)
+    by weapon class (mace 0x233, war axe 0x232, two-handed sword/axe 0x236/0x237,
+    one-handed sword/axe and fencing 0x23B/0x23C, bow/crossbow 0x234, throwing
+    0x5D2, whip 0x67E, unarmed 0x135). Miss sounds draw at random from the
+    Source-X ranged set {0x233,0x238} or melee set {0x238,0x239,0x23A}.
+  - A swing now emits exactly one combat sound (hit OR miss), matching Source-X
+    Fight_Hit. The previous unconditional swing whoosh that played on top of the
+    hit/miss sound (doubling up) was removed from the player and NPC paths, and
+    the forced-miss feedback no longer plays two stacked sounds.
+
 [2026-06-14] - Moving-bolt effect direction (oneDirection) fix (Wave 140)
 ----------------------------------------
 

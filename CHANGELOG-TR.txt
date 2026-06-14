@@ -4,6 +4,21 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Silaha ozgu hit/miss combat sesleri (Wave 141)
+----------------------------------------
+
+DEGISIKLIK - Savas / Ses:
+  - Melee ve menzilli vuruslar artik tek generic thud/clang yerine silaha ozgu
+    hit veya miss sesi caliyor. Hit sesleri Source-X SoundChar(CRESND_HIT)
+    silah sinifini takip ediyor (mace 0x233, war axe 0x232, iki elli kilic/balta
+    0x236/0x237, tek elli kilic/balta ve fencing 0x23B/0x23C, yay/arbalet 0x234,
+    throwing 0x5D2, whip 0x67E, silahsiz 0x135). Miss sesleri Source-X ranged
+    seti {0x233,0x238} veya melee seti {0x238,0x239,0x23A} icinden random.
+  - Bir swing artik tam olarak tek combat sesi cikariyor (hit VEYA miss),
+    Source-X Fight_Hit ile ayni. Onceden hit/miss sesinin ustune calan kosulsuz
+    swing whoosh (cift ses) player ve NPC yollarindan kaldirildi; forced-miss
+    feedback de artik iki ust uste ses calmiyor.
+
 [2026-06-14] - Hareketli bolt efekt yonu (oneDirection) duzeltmesi (Wave 140)
 ----------------------------------------
 

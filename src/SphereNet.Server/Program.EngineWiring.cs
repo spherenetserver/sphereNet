@@ -1516,14 +1516,13 @@ public static partial class Program
                     (weapon.ItemType == ItemType.WeaponBow || weapon.ItemType == ItemType.WeaponXBow))
                     GameClient.BroadcastRangedProjectile(attacker, target, weapon, BroadcastNearby);
 
-                ushort swingSound = GameClient.GetSwingSoundPublic(weapon);
-                BroadcastNearby(attacker.Position, 18,
-                    new PacketSound(swingSound, attacker.X, attacker.Y, attacker.Z), 0);
-
+                // Source-X plays one combat sound per swing: the per-weapon miss
+                // whoosh on a miss, the per-weapon hit sound on a hit (below).
                 if (damage <= 0)
                 {
-                    BroadcastNearby(target.Position, 18,
-                        new PacketSound(0x0234, target.X, target.Y, target.Z), 0);
+                    BroadcastNearby(attacker.Position, 18,
+                        new PacketSound(GameClient.GetWeaponMissSoundPublic(weapon),
+                            attacker.X, attacker.Y, attacker.Z), 0);
                     _triggerDispatcher?.FireCharTrigger(attacker, CharTrigger.HitMiss,
                         new TriggerArgs { CharSrc = attacker, O1 = target });
                     return;
@@ -1533,6 +1532,10 @@ public static partial class Program
                     ? MapAnimToMounted((ushort)AnimationType.GetHit)
                     : BodyAnimTranslator.Translate(target.BodyId, (ushort)AnimationType.GetHit);
                 BroadcastNearby(target.Position, 18, new PacketAnimation(target.Uid.Value, getHitAction), 0);
+
+                BroadcastNearby(attacker.Position, 18,
+                    new PacketSound(GameClient.GetWeaponHitSoundPublic(weapon),
+                        attacker.X, attacker.Y, attacker.Z), 0);
 
                 if (damage > 0)
                 {

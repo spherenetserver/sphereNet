@@ -424,29 +424,63 @@ public sealed partial class GameClient
         return GetSwingAction(npc, weapon);
     }
 
-    internal static ushort GetSwingSound(Item? weapon)
+    /// <summary>Source-X CChar::SoundChar(CRESND_HIT) (CCharAct.cpp): the impact
+    /// noise an armed strike makes, chosen by weapon type. Two-handed swords/axes
+    /// land with the heavy-strike pair; a one-handed sword/axe shares the fencing
+    /// sound. Replaces a single generic thud so each weapon class hits with its
+    /// own sound.</summary>
+    internal static ushort GetWeaponHitSound(Item? weapon)
     {
         if (weapon == null)
-            return 0x023A;
-        return weapon.ItemType switch
+            return 0x0135; // unarmed/wrestling strike
+        bool twoHand = weapon.EquipLayer == Layer.TwoHanded;
+        switch (weapon.ItemType)
         {
-            Core.Enums.ItemType.WeaponBow or
-            Core.Enums.ItemType.WeaponXBow => 0x0223,
-            Core.Enums.ItemType.WeaponSword or
-            Core.Enums.ItemType.WeaponAxe or
-            Core.Enums.ItemType.WeaponFence => 0x023B,
-            Core.Enums.ItemType.WeaponMaceSmith or
-            Core.Enums.ItemType.WeaponMaceSharp or
-            Core.Enums.ItemType.WeaponMaceStaff or
-            Core.Enums.ItemType.WeaponMaceCrook or
-            Core.Enums.ItemType.WeaponMacePick or
-            Core.Enums.ItemType.WeaponWhip => 0x023D,
-            Core.Enums.ItemType.WeaponThrowing => 0x0238,
-            _ => 0x023B,
+            case Core.Enums.ItemType.WeaponMaceCrook:
+            case Core.Enums.ItemType.WeaponMacePick:
+            case Core.Enums.ItemType.WeaponMaceSmith:
+            case Core.Enums.ItemType.WeaponMaceStaff:
+                return 0x0233; // blunt01
+            case Core.Enums.ItemType.WeaponMaceSharp: // war axe
+                return 0x0232; // axe01
+            case Core.Enums.ItemType.WeaponSword:
+            case Core.Enums.ItemType.WeaponAxe:
+                if (twoHand)
+                    return Random.Shared.Next(2) == 0 ? (ushort)0x0236 : (ushort)0x0237; // heavy sword
+                goto case Core.Enums.ItemType.WeaponFence; // 1H sword/axe shares fencing sound
+            case Core.Enums.ItemType.WeaponFence:
+                return Random.Shared.Next(2) == 0 ? (ushort)0x023B : (ushort)0x023C; // sword1/sword7
+            case Core.Enums.ItemType.WeaponBow:
+            case Core.Enums.ItemType.WeaponXBow:
+                return 0x0234; // xbow hit
+            case Core.Enums.ItemType.WeaponThrowing:
+                return 0x05D2; // throwH
+            case Core.Enums.ItemType.WeaponWhip:
+                return 0x067E; // whip01
+            default:
+                return 0x023B;
+        }
+    }
+
+    /// <summary>Source-X CChar::Fight_Hit miss sound (CCharFight.cpp): a
+    /// swing-through whoosh drawn at random from the ranged or melee miss set.</summary>
+    internal static ushort GetWeaponMissSound(Item? weapon)
+    {
+        if (weapon != null &&
+            (weapon.ItemType == Core.Enums.ItemType.WeaponBow ||
+             weapon.ItemType == Core.Enums.ItemType.WeaponXBow))
+            return Random.Shared.Next(2) == 0 ? (ushort)0x0233 : (ushort)0x0238;
+
+        return Random.Shared.Next(3) switch
+        {
+            0 => (ushort)0x0238,
+            1 => (ushort)0x0239,
+            _ => (ushort)0x023A,
         };
     }
 
-    public static ushort GetSwingSoundPublic(Item? weapon) => GetSwingSound(weapon);
+    public static ushort GetWeaponHitSoundPublic(Item? weapon) => GetWeaponHitSound(weapon);
+    public static ushort GetWeaponMissSoundPublic(Item? weapon) => GetWeaponMissSound(weapon);
 
     /// <summary>Compute the UO notoriety byte for <paramref name="ch"/> as
     /// seen by this client's character. The client reads this byte (part of

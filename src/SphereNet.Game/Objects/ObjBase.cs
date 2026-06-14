@@ -113,13 +113,18 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             ? parsedParticleType
             : (byte)0;
 
+        // Source-X writeBasicEffect: oneDirection is false only for EFFECT_BOLT
+        // (type 0, a moving projectile) so it rotates to face travel; stationary
+        // effect types keep it true.
+        bool fixedDir = effectType != 0;
+
         PacketWriter packet;
         if (particleEffectId != 0 || explodeId != 0)
         {
             packet = new PacketEffectParticle(
                 effectType, Uid.Value, Uid.Value, effectId,
                 X, Y, Z, X, Y, Z,
-                speed, duration, fixedDir: true, explode,
+                speed, duration, fixedDir, explode,
                 hue, render, particleEffectId, explodeId, explodeSound, effectUid, particleType);
         }
         else if (hue != 0 || render != 0)
@@ -127,7 +132,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             packet = new PacketEffectHued(
                 effectType, Uid.Value, Uid.Value, effectId,
                 X, Y, Z, X, Y, Z,
-                speed, duration, fixedDir: true, explode,
+                speed, duration, fixedDir, explode,
                 hue, render);
         }
         else
@@ -135,7 +140,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             packet = new PacketEffect(
                 effectType, Uid.Value, Uid.Value, effectId,
                 X, Y, Z, X, Y, Z,
-                speed, duration, fixedDir: true, explode);
+                speed, duration, fixedDir, explode);
         }
 
         BroadcastNearby?.Invoke(Position, range, packet, 0);

@@ -1327,7 +1327,9 @@ public sealed class ClientCombatHandler
             dstZ: target.Z,
             speed: 18,
             duration: 1,
-            fixedDir: true,
+            // Source-X writeBasicEffect sets oneDirection=false for EFFECT_BOLT
+            // so the arrow graphic rotates to face its flight path.
+            fixedDir: false,
             explode: false);
         BroadcastNearby?.Invoke(_character.Position, UpdateRange, projectile, 0);
     }

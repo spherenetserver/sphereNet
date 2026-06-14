@@ -4,6 +4,23 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Hareketli bolt efekt yonu (oneDirection) duzeltmesi (Wave 140)
+----------------------------------------
+
+DUZELTME - Savas / Gorsel:
+  - Grafik efekt paketi (0x70) oneDirection byte'ini her zaman true yaziyordu;
+    bu yuzden hareketli EFFECT_BOLT projectile'lari (ok, civata, energy bolt,
+    magic arrow, throwing) ucus yonune donmuyor ve yanlis gorunuyordu. Source-X
+    writeBasicEffect (ve ModernUO MovingParticles) oneDirection'i sadece sabit
+    efektler icin set ediyor; bolt'lar false kullaniyor. Yon byte'i artik efekt
+    type'indan turetiliyor (type 0 / EFFECT_BOLT icin false, digerleri true) —
+    oyuncu menzilli atis, NPC menzilli atis ve script/karakter EFFECT
+    cikislarinin hepsinde.
+
+DUZELTME - Savas / Kan:
+  - Kan sicrama grafik setinde 0x1645 (BLOOD_SPLAT) eksikti; Source-X / ModernUO
+    kan havuzuyla eslesmesi icin eklendi.
+
 [2026-06-14] - Savas kan sicramasi + NPC menzilli projectile (Wave 139)
 ----------------------------------------
 

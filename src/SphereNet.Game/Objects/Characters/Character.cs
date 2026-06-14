@@ -3604,7 +3604,9 @@ public partial class Character : ObjBase
                     new SphereNet.Network.Packets.Outgoing.PacketEffect(
                         effType, Uid.Value, Uid.Value, effId,
                         X, Y, Z, X, Y, Z,
-                        effSpeed, effDur, fixedDir: true, explode: effExplode),
+                        // EFFECT_BOLT (type 0) moves and must rotate (oneDirection
+                        // false); stationary effect types keep it fixed.
+                        effSpeed, effDur, fixedDir: effType != 0, explode: effExplode),
                     0);
                 return true;
             }

@@ -305,7 +305,7 @@ public sealed partial class GameClient
     }
 
     private static readonly ushort[] s_bloodGraphics =
-        { 0x122A, 0x122B, 0x122C, 0x122D, 0x122E, 0x122F };
+        { 0x1645, 0x122A, 0x122B, 0x122C, 0x122D, 0x122E, 0x122F };
 
     /// <summary>Source-X CChar::Fight_Hit blood: scatter 1-2 short-lived blood
     /// items around a struck target, hued by the target's CharDef BLOODCOLOR.
@@ -350,7 +350,9 @@ public sealed partial class GameClient
             effectId: effectId,
             srcX: attacker.X, srcY: attacker.Y, srcZ: attacker.Z,
             dstX: target.X, dstY: target.Y, dstZ: target.Z,
-            speed: 18, duration: 1, fixedDir: true, explode: false), 0);
+            // Source-X EFFECT_BOLT writes oneDirection=false so the arrow rotates
+            // to face its flight path (matches the player ranged effect).
+            speed: 18, duration: 1, fixedDir: false, explode: false), 0);
     }
 
     /// <summary>Convenience wrapper used by SpeechEngine event hookup —

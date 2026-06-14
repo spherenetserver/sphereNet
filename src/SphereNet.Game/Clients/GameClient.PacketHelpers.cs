@@ -355,6 +355,21 @@ public sealed partial class GameClient
             speed: 18, duration: 1, fixedDir: false, explode: false), 0);
     }
 
+    /// <summary>ModernUO AbsorbDamageAOS block spark: a fixed 0x37B9 effect on a
+    /// defender who parries/blocks a blow, so a successful parry is visible
+    /// (Source-X gives no parry feedback, leaving the block invisible).</summary>
+    public static void BroadcastParryEffect(Character defender,
+        Action<Point3D, int, PacketWriter, uint>? broadcastNearby)
+    {
+        broadcastNearby?.Invoke(defender.Position, 18, new PacketEffect(
+            type: 3, // stay on the object (EFFECT_OBJ)
+            srcSerial: defender.Uid.Value, dstSerial: defender.Uid.Value,
+            effectId: 0x37B9,
+            srcX: defender.X, srcY: defender.Y, srcZ: defender.Z,
+            dstX: defender.X, dstY: defender.Y, dstZ: defender.Z,
+            speed: 10, duration: 16, fixedDir: true, explode: false), 0);
+    }
+
     /// <summary>Convenience wrapper used by SpeechEngine event hookup —
     /// dismount the GM's character if currently mounted.</summary>
     public void UnmountSelf()

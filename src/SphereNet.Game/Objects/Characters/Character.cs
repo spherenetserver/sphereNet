@@ -747,6 +747,10 @@ public partial class Character : ObjBase
 
     public ushort BodyId { get => _bodyId; set { _bodyId = value; MarkDirty(DirtyFlag.Body); } }
 
+    /// <summary>True for the standard UO female bodies (human/elf/gargoyle),
+    /// used to pick the gendered get-hit/death vocalizations.</summary>
+    public bool IsFemale => _bodyId == 0x0191 || _bodyId == 0x025E || _bodyId == 0x029B;
+
     /// <summary>Player-facing name (overhead label, corpse, tooltips).
     /// Falls back to CHARDEF NAME when the runtime name is blank or
     /// still an unresolved template.</summary>

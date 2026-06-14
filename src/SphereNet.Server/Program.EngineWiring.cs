@@ -1517,8 +1517,9 @@ public static partial class Program
                     GameClient.BroadcastRangedProjectile(attacker, target, weapon, BroadcastNearby);
 
                 // Source-X plays one combat sound per swing: the per-weapon miss
-                // whoosh on a miss, the per-weapon hit sound on a hit (below).
-                if (damage <= 0)
+                // whoosh on a miss, the per-weapon hit sound on a hit (below). A
+                // -1 is a true miss/parry; 0 is a connecting hit armor absorbed.
+                if (damage < 0)
                 {
                     BroadcastNearby(attacker.Position, 18,
                         new PacketSound(GameClient.GetWeaponMissSoundPublic(weapon),
@@ -1533,9 +1534,13 @@ public static partial class Program
                     : BodyAnimTranslator.Translate(target.BodyId, (ushort)AnimationType.GetHit);
                 BroadcastNearby(target.Position, 18, new PacketAnimation(target.Uid.Value, getHitAction), 0);
 
-                BroadcastNearby(attacker.Position, 18,
-                    new PacketSound(GameClient.GetWeaponHitSoundPublic(weapon),
-                        attacker.X, attacker.Y, attacker.Z), 0);
+                // Only an armed strike makes a weapon sound; an unarmed creature
+                // vocalizes via its own NPC Hit sound (CharDef SOUNDHIT), so don't
+                // overlay a human fist sound on a clawed monster.
+                if (weapon != null)
+                    BroadcastNearby(attacker.Position, 18,
+                        new PacketSound(GameClient.GetWeaponHitSoundPublic(weapon),
+                            attacker.X, attacker.Y, attacker.Z), 0);
 
                 if (damage > 0)
                 {
@@ -1548,12 +1553,24 @@ public static partial class Program
                     }
                 }
 
-                BroadcastNearby(target.Position, 18,
-                    new PacketDamage(target.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue)), 0);
+                if (damage > 0)
+                {
+                    // Source-X CRESND_GETHIT: the target's pain vocalization
+                    // (human "oomf" / creature SOUNDGETHIT), only on real damage.
+                    ushort painSound = GameClient.GetDefenderHitSoundPublic(target);
+                    if (painSound != 0)
+                        BroadcastNearby(target.Position, 18,
+                            new PacketSound(painSound, target.X, target.Y, target.Z), 0);
+
+                    BroadcastNearby(target.Position, 18,
+                        new PacketDamage(target.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue)), 0);
+                }
+
                 BroadcastNearby(target.Position, 18,
                     new PacketUpdateHealth(target.Uid.Value, target.MaxHits, target.Hits), 0);
 
-                GameClient.EmitBloodSplat(_world, target);
+                if (damage > 0)
+                    GameClient.EmitBloodSplat(_world, target);
 
                 _triggerDispatcher?.FireCharTrigger(attacker, CharTrigger.Hit,
                     new TriggerArgs { CharSrc = attacker, O1 = target, N1 = damage });
@@ -1855,6 +1872,8 @@ public static partial class Program
 
             CombatEngine.OnHitParry = (defender, attacker) =>
             {
+                // Visible block spark on a successful parry (ModernUO 0x37B9).
+                GameClient.BroadcastParryEffect(defender, BroadcastNearby);
                 _triggerDispatcher?.FireCharTrigger(defender, CharTrigger.HitParry,
                     new TriggerArgs { CharSrc = attacker, O1 = attacker });
             };

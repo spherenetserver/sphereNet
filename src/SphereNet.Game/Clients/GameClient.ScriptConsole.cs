@@ -482,6 +482,31 @@ public sealed partial class GameClient
     public static ushort GetWeaponHitSoundPublic(Item? weapon) => GetWeaponHitSound(weapon);
     public static ushort GetWeaponMissSoundPublic(Item? weapon) => GetWeaponMissSound(weapon);
 
+    private static readonly ushort[] s_maleHurtSounds =
+        { 0x0154, 0x0155, 0x0156, 0x0157, 0x0158, 0x0159 };
+    private static readonly ushort[] s_femaleHurtSounds =
+        { 0x014B, 0x014C, 0x014D, 0x014E, 0x014F };
+
+    /// <summary>Source-X CChar::SoundChar(CRESND_GETHIT) (CCharAct.cpp): the pain
+    /// vocalization a struck character makes when it takes damage. A creature
+    /// with a scripted SOUNDGETHIT uses it; humans use the gendered "oomf" set;
+    /// other bodies stay silent. Returns 0 when there is no sound to play.</summary>
+    internal static ushort GetDefenderHitSound(Character defender)
+    {
+        var cdef = DefinitionLoader.GetCharDef(defender.CharDefIndex);
+        if (cdef != null && cdef.SoundGetHit > 0)
+            return cdef.SoundGetHit;
+
+        if (BodyAnimTranslator.IsHumanoidBody(defender.BodyId))
+        {
+            var set = defender.IsFemale ? s_femaleHurtSounds : s_maleHurtSounds;
+            return set[Random.Shared.Next(set.Length)];
+        }
+        return 0;
+    }
+
+    public static ushort GetDefenderHitSoundPublic(Character defender) => GetDefenderHitSound(defender);
+
     /// <summary>Compute the UO notoriety byte for <paramref name="ch"/> as
     /// seen by this client's character. The client reads this byte (part of
     /// 0x77/0x78/etc.) to pick the overhead-name hue:

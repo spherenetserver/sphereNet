@@ -335,10 +335,12 @@ public static class CombatEngine
         if (attacker.IsDead || target.IsDead)
             return 0;
 
-        // Hit check
+        // Hit check. A failed roll is a true miss: return -1 so the caller can
+        // distinguish it from a connecting hit that armor fully absorbs (which
+        // returns 0 — Source-X still plays the hit sound/animation for that).
         int hitChance = CalcHitChance(attacker, target, hitEra);
         if (_rand.Next(100) >= hitChance)
-            return 0; // miss
+            return -1; // miss
 
         // Calculate raw damage
         var (dmgMin, dmgMax) = CalcWeaponDamage(attacker, weapon, damageEra);
@@ -364,7 +366,7 @@ public static class CombatEngine
             if (parryChance > 0 && _rand.Next(100) < parryChance)
             {
                 OnHitParry?.Invoke(target, attacker);
-                return 0;
+                return -1; // parried — treated as a miss by the caller
             }
         }
 

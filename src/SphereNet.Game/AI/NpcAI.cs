@@ -2470,8 +2470,9 @@ public sealed class NpcAI
         if (damage > 0)
         {
             EmitSound(npc, CreatureSoundType.Hit);
-            if (!target.IsPlayer)
-                EmitSound(target, CreatureSoundType.GetHit);
+            // The struck target's get-hit vocalization (creature SOUNDGETHIT or a
+            // human "oomf") is emitted by the OnNpcAttack hit feedback so it covers
+            // both creature and player targets uniformly.
 
             // Retaliation: NPC targets that aren't already fighting back
             // acquire the attacker as their fight target (Source-X parity).

@@ -4,6 +4,32 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Defender aci sesi, emilmis-hit feedback, parry kivilcimi (Wave 142)
+----------------------------------------
+
+EKLENDI - Savas / Ses:
+  - Vurulan hedef artik aci sesini caliyor (Source-X CRESND_GETHIT): yaratiklar
+    CharDef SOUNDGETHIT'i, insanlar cinsiyetli "oomf" setini (erkek 0x154-0x159,
+    kadin 0x14B-0x14F) kullaniyor. Hasarli vuruslarda hem player hem NPC yolundan
+    cikiyor; oncesinde player'larin get-hit sesi hic yoktu. NPC yaratik get-hit
+    cikisi hit feedback'te birlestirildi; artik yaratik ve player hedefleri ayni
+    sekilde, cift ses olmadan kapsiyor.
+
+DUZELTME - Savas / Vurus cozumlemesi:
+  - Zirhin tamamen emdigi (0 hasar) bir baglanma vurusu ıska olarak raporlaniyor
+    ve get-hit animasyonu olmadan ıska sesi caliyordu. ResolveAttack artik gercek
+    ıska/parry icin -1, emilmis hit icin 0 donduruyor; boylece player ve NPC
+    yollari emilmis hitte silah hit sesi + get-hit animasyonu caliyor (aci sesi,
+    hasar sayisi veya kan yok), Source-X Fight_Hit ile ayni.
+
+EKLENDI - Savas / Gorsel:
+  - Basarili bir parry/blok artik savunanda kivilcim gosteriyor (ModernUO 0x37B9);
+    oncesinde parry'nin hicbir client geri bildirimi yoktu.
+
+DUZELTME - Savas / Ses:
+  - NPC silah hit sesi artik yalnizca saldiran silahliysa caliyor; silahsiz bir
+    yaratik kendi CharDef saldiri sesinin ustune insan yumruk sesi bindirmiyor.
+
 [2026-06-14] - Silaha ozgu hit/miss combat sesleri (Wave 141)
 ----------------------------------------
 

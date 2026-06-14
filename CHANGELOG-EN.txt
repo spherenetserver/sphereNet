@@ -4,6 +4,33 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Defender pain sound, absorbed-hit feedback, parry spark (Wave 142)
+----------------------------------------
+
+ADDED - Combat / Sound:
+  - A struck target now plays its pain vocalization (Source-X CRESND_GETHIT):
+    creatures use their CharDef SOUNDGETHIT, humans use the gendered "oomf" set
+    (male 0x154-0x159, female 0x14B-0x14F). Emitted on a damaging hit from both
+    the player and NPC paths; players previously had no get-hit sound at all.
+    The NPC creature get-hit emission was unified into the hit feedback so it now
+    covers creature and player targets alike without doubling.
+
+FIXED - Combat / Hit resolution:
+  - A connecting hit that armor fully absorbed (0 damage) was reported as a miss,
+    so it played the miss whoosh with no get-hit animation. ResolveAttack now
+    returns -1 for a true miss/parry and 0 for an absorbed hit, so the player and
+    NPC paths play the weapon hit sound and get-hit animation for an absorbed hit
+    (no pain sound, damage number or blood), matching Source-X Fight_Hit.
+
+ADDED - Combat / Visuals:
+  - A successful parry/block now shows a spark on the defender (ModernUO 0x37B9);
+    previously a parry produced no client feedback at all.
+
+FIXED - Combat / Sound:
+  - The NPC weapon hit sound is now only played when the attacker is armed, so an
+    unarmed creature no longer overlays a human fist sound on top of its own
+    CharDef attack sound.
+
 [2026-06-14] - Per-weapon hit/miss combat sounds (Wave 141)
 ----------------------------------------
 

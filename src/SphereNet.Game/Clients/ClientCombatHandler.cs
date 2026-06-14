@@ -112,6 +112,7 @@ public sealed class ClientCombatHandler
     private static ushort GetSwingAction(Character attacker, Item? weapon) => GameClient.GetSwingAction(attacker, weapon);
     private static ushort GetWeaponHitSound(Item? weapon) => GameClient.GetWeaponHitSound(weapon);
     private static ushort GetWeaponMissSound(Item? weapon) => GameClient.GetWeaponMissSound(weapon);
+    private static ushort GetDefenderHitSound(Character defender) => GameClient.GetDefenderHitSound(defender);
     private static (uint Serial, ushort ItemId, byte Layer, ushort Hue)[] BuildEquipmentList(Character ch) => GameClient.BuildEquipmentList(ch);
     private void BroadcastAnimation(Character actor, ushort legacyAction, NewAnimationGesture gesture, byte mode = 0) => _client.BroadcastAnimation(actor, legacyAction, gesture, mode);
     private static void GetDirectionDelta(Direction dir, out short dx, out short dy) => GameClient.GetDirectionDelta(dir, out dx, out dy);
@@ -1081,9 +1082,11 @@ public sealed class ClientCombatHandler
             weapon,
             CombatHelper.ActiveCombatFlags);
 
-        if (damage == 0)
+        if (damage < 0)
         {
             // Source-X CCharFight Hit_Miss: emit attacker miss + target miss text.
+            // ResolveAttack returns -1 only on a true miss/parry; 0 is a connecting
+            // hit that armor fully absorbed (handled below).
             SysMessage(ServerMessages.GetFormatted(Msg.CombatMisss, target.Name));
             // No simple way yet to message the target client; the overhead packet is enough on the source side.
         }
@@ -1152,6 +1155,13 @@ public sealed class ClientCombatHandler
                 ? (ushort)AnimationType.HorseSlap
                 : BodyAnimTranslator.Translate(target.BodyId, (ushort)AnimationType.GetHit);
             BroadcastAnimation(target, getHitAction, NewAnimationGesture.Impact);
+
+            // Source-X CRESND_GETHIT: the struck target's pain vocalization
+            // (human "oomf" / creature SOUNDGETHIT). Only on a damaging hit.
+            ushort painSound = GetDefenderHitSound(target);
+            if (painSound != 0)
+                BroadcastNearby?.Invoke(target.Position, UpdateRange,
+                    new PacketSound(painSound, target.X, target.Y, target.Z), 0);
 
             var damagePacket = new PacketDamage(target.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue));
             BroadcastNearby?.Invoke(target.Position, UpdateRange, damagePacket, 0);
@@ -1285,6 +1295,19 @@ public sealed class ClientCombatHandler
                 _deathEngine.ProcessDeath(_character, target);
                 OnCharacterDeath();
             }
+        }
+        else if (damage == 0)
+        {
+            // Source-X: a connecting hit that armor fully absorbed still lands.
+            // Play the weapon hit sound and the target's get-hit animation, but
+            // no pain vocalization, damage number or blood (no damage was dealt).
+            BroadcastNearby?.Invoke(target.Position, UpdateRange,
+                new PacketSound(GetWeaponHitSound(weapon), target.X, target.Y, target.Z), 0);
+
+            ushort absorbGetHit = target.IsMounted
+                ? (ushort)AnimationType.HorseSlap
+                : BodyAnimTranslator.Translate(target.BodyId, (ushort)AnimationType.GetHit);
+            BroadcastAnimation(target, absorbGetHit, NewAnimationGesture.Impact);
         }
         else
         {

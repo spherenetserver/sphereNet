@@ -70,6 +70,9 @@ public sealed class PacketCreateCharacterHS : PacketHandler
         ushort beardStyle = buffer.ReadUInt16();
         ushort beardHue = buffer.ReadUInt16();
 
+        buffer.ReadByte();            // unknown
+        byte city = buffer.ReadByte(); // starting city index (into the 0xA9 list)
+
         bool female = (genderRace % 2) != 0;
 
         state.OnCharCreate(new CharCreateInfo
@@ -81,6 +84,7 @@ public sealed class PacketCreateCharacterHS : PacketHandler
             HairStyle = hairStyle, HairHue = hairHue,
             BeardStyle = beardStyle, BeardHue = beardHue,
             Skills = skills,
+            City = city,
         });
     }
 }
@@ -121,6 +125,9 @@ public sealed class PacketCreateCharacter : PacketHandler
         ushort beardStyle = buffer.ReadUInt16();
         ushort beardHue = buffer.ReadUInt16();
 
+        buffer.ReadByte();            // unknown
+        byte city = buffer.ReadByte(); // starting city index (into the 0xA9 list)
+
         bool female = (genderRace % 2) != 0;
 
         state.OnCharCreate(new CharCreateInfo
@@ -132,6 +139,7 @@ public sealed class PacketCreateCharacter : PacketHandler
             HairStyle = hairStyle, HairHue = hairHue,
             BeardStyle = beardStyle, BeardHue = beardHue,
             Skills = skills,
+            City = city,
         });
     }
 }

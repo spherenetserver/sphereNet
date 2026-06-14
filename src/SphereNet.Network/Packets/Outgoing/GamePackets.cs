@@ -112,6 +112,17 @@ public sealed class PacketCharList : PacketWriter
         ("Vesper",      "The Ironwood Inn",  2771, 976, 0, 0, 1075080),
     ];
 
+    /// <summary>Spawn coordinates for the starting city the client picked, by its
+    /// index into the list sent above. Lets character creation place the new
+    /// character where the player chose instead of always at city 0.</summary>
+    public static (int X, int Y, int Z, int Map)? GetCity(int index)
+    {
+        if (index < 0 || index >= Cities.Length)
+            return null;
+        var c = Cities[index];
+        return (c.X, c.Y, c.Z, c.Map);
+    }
+
     public override PacketBuffer Build()
     {
         var buf = CreateVariable(2048);

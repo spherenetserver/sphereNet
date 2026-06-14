@@ -4,6 +4,15 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Karakter olusturmada secilen baslangic sehrini uygula (Wave 145)
+----------------------------------------
+
+DUZELTME - Karakter olusturma:
+  - Oyuncunun sectigi baslangic sehri yok sayiliyordu — yeni karakterler her
+    zaman sehir index 0'a (Yew) spawn oluyordu, yani Britain secince bile Yew'e
+    dusuyordun. Create-character paketi (0x00/0xF8) artik sehir index'ini okuyor
+    ve karakter, client'a gosterilen 0xA9 listesindeki ilgili sehre spawn oluyor.
+
 [2026-06-14] - Pile item gorunumu: amount etiketi + sadece-ore grafik ramp (Wave 144)
 ----------------------------------------
 

@@ -4,6 +4,15 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-14] - Honor the picked starting city on character creation (Wave 145)
+----------------------------------------
+
+FIXED - Character creation:
+  - The starting city the player picked was ignored — new characters always
+    spawned at city index 0 (Yew), so choosing Britain still dropped you in Yew.
+    The create-character packet (0x00/0xF8) now reads the city index, and the
+    character spawns at the matching city from the 0xA9 list the client was shown.
+
 [2026-06-14] - Pile item display: amount label + ore-only graphic ramp (Wave 144)
 ----------------------------------------
 

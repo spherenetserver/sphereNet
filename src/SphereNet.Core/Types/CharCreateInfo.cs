@@ -16,4 +16,8 @@ public sealed class CharCreateInfo
     public ushort BeardStyle { get; init; }
     public ushort BeardHue { get; init; }
     public (byte Id, byte Value)[] Skills { get; init; } = [];
+
+    /// <summary>Index of the starting city the player picked, into the city list
+    /// sent in the 0xA9 character list. Drives the new character's spawn point.</summary>
+    public byte City { get; init; }
 }

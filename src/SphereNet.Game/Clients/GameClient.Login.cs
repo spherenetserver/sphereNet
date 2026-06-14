@@ -232,7 +232,16 @@ public sealed partial class GameClient
             _character.MaxHits = _character.Str; _character.MaxMana = (short)_character.Int; _character.MaxStam = _character.Dex;
             _character.Hits = _character.MaxHits; _character.Mana = _character.MaxMana; _character.Stam = _character.MaxStam;
 
+            // Spawn at the starting city the player picked (its index into the
+            // 0xA9 city list), not always city 0. Bots keep their provider-driven
+            // spawn; a missing/out-of-range index falls back to [STARTS]/Britain.
+            Point3D? cityPos = null;
+            if (info != null &&
+                SphereNet.Network.Packets.Outgoing.PacketCharList.GetCity(info.City) is { } c)
+                cityPos = new Point3D((short)c.X, (short)c.Y, (sbyte)c.Z, (byte)c.Map);
+
             var startPos = BotSpawnLocationProvider?.Invoke(_account.Name)
+                ?? cityPos
                 ?? _commands?.Resources?.Starts.FirstOrDefault()?.Point
                 ?? new Point3D(1495, 1629, 10, 0);
             _world.PlaceCharacter(_character, startPos);

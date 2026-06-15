@@ -1738,7 +1738,7 @@ public partial class Character : ObjBase
             if (eq != null)
                 total += GetItemTreeWeight(eq);
         }
-        return total / 10;
+        return total / Item.WeightUnits;
     }
 
     private int GetItemTreeWeight(Item item)

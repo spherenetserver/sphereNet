@@ -548,15 +548,11 @@ public sealed class TradeManager
         reason = null;
         int maxWeight = (recipient.Str * 7 / 2) + 40 + recipient.ModMaxWeight;
         int current = recipient.GetTotalWeight();
-        int incoming = 0;
+        int incomingTenths = 0;
         foreach (var item in sourceContainer.Contents)
-            incoming += Math.Max(1, item.Weight) * Math.Max(1, (int)item.Amount);
-        // Item.Weight is in tenths of a stone; capacity math (current/maxWeight)
-        // is in whole stones, so normalize incoming to stones too. Without this
-        // the incoming weight was counted 10x and rejected most real trades.
-        incoming /= 10;
+            incomingTenths += item.TotalWeightTenths;
 
-        if (current + incoming > maxWeight)
+        if ((current * Item.WeightUnits) + incomingTenths > maxWeight * Item.WeightUnits)
         {
             reason = "You cannot carry that much.";
             return false;

@@ -687,8 +687,7 @@ public static class ActiveSkillEngine
 
     private static int GetWeight(this Item it)
     {
-        var def = DefinitionLoader.GetItemDef(it.BaseId);
-        return def != null ? def.Weight : 1;
+        return Math.Max(1, it.TotalWeight);
     }
 
     private static bool IsBladeOrFood(ItemType t) => t is

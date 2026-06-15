@@ -121,6 +121,11 @@ public class PickupTriggerVariantTests
         client.HandleItemPickup(item.Uid.Value, 3); // partial → split
 
         Assert.Equal("Pickup_Stack", fired());
-        Assert.Equal(7, item.Amount); // remainder left behind
+        Assert.True(ch.TryGetTag("DRAGGING", out var dragging));
+        Assert.Equal(item.Uid.Value.ToString(), dragging);
+        Assert.Equal(3, item.Amount); // clicked serial remains the dragged stack
+
+        var remainder = world.GetSector(ch.Position)!.Items.Single(i => i.Uid != item.Uid);
+        Assert.Equal(7, remainder.Amount); // newly created leftover stays behind
     }
 }

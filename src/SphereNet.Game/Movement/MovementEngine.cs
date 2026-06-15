@@ -460,10 +460,7 @@ public sealed class MovementEngine
 
     private static int GetPackWeight(Objects.Items.Item pack)
     {
-        int total = 0;
-        foreach (var item in pack.Contents)
-            total += Math.Max(1, (int)item.Amount);
-        return total;
+        return pack.TotalWeight;
     }
 
     private static void TickStealthStep(Objects.Characters.Character ch)

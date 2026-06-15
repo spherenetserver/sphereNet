@@ -4,6 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-15] - Stack splitting and item weight system fixes (Wave 148)
+----------------------------------------
+
+FIXED - Items / Inventory:
+  - Partial stack pickup marked the newly-created serial as the dragged item,
+    while the client continues dropping with the clicked source serial, matching
+    Source-X / ServUO behavior. That mismatch made the split-off item disappear
+    and produced 0x28/05 "item does not exist" responses. The clicked serial now
+    remains held with the picked amount, and a new leftover stack is created at
+    the old container/ground location.
+  - Stack-on-stack merge no longer relies on setting an item amount to zero,
+    which was clamped back to one and could leave a phantom item. Fully moved
+    stacks are removed from the world; overflow remains as a positive amount.
+  - Ground pile items such as arrows, gold and bandages no longer get FLIP/DIR
+    visual changes on drop. They keep the base graphic, and SA clients receive
+    the 0xF3 world item packet with correct direction and amount fields.
+
+FIXED - Items / Weight:
+  - ITEMDEF WEIGHT parsing now matches Source-X: integer values are whole stones
+    converted to internal tenths (WEIGHT=2 => 20), and decimal values parse
+    correctly (WEIGHT=0.5 => 5). Previously a 1-stone item could display/count
+    as 0 stones, and decimal weights were ineffective.
+  - Container, bank, trade, status/tooltip and stealing weight calculations now
+    use consistent units. Capacity checks compare tenths to tenths, while
+    player-facing weight values are reported in whole stones.
+  - Items explicitly defined with WEIGHT=0 stay weightless, while undefined
+    items use tiledata or a minimal fallback instead of becoming weightless.
+
 [2026-06-14] - Vendor stock no longer doubles on restock (Wave 147)
 ----------------------------------------
 

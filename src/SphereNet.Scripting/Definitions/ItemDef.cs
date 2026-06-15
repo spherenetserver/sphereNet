@@ -1,4 +1,5 @@
 using SphereNet.Core.Enums;
+using System.Globalization;
 using SphereNet.Core.Types;
 
 namespace SphereNet.Scripting.Definitions;
@@ -13,6 +14,7 @@ public sealed class ItemDef : BaseDef
     public string TypeRaw { get; set; } = "";
     public ushort FlipId { get; set; }
     public int Weight { get; set; }
+    public bool HasWeight { get; set; }
     public Layer Layer { get; set; }
     public int ValueMin { get; set; }
     public int ValueMax { get; set; }
@@ -94,7 +96,7 @@ public sealed class ItemDef : BaseDef
         {
             case "NAME": Name = value; break;
             case "TYPE": TypeRaw = value.Trim(); Type = ParseItemType(value); break;
-            case "WEIGHT": int.TryParse(value, out int w); Weight = w; break;
+            case "WEIGHT": Weight = ParseWeight(value); HasWeight = true; break;
             case "LAYER": Enum.TryParse(value, true, out Layer l); Layer = l; break;
             case "FLIPID": ParseHexOrDec(value, out ushort f); FlipId = f; break;
             case "VALUE": (ValueMin, ValueMax) = ParseRange(value); break;
@@ -169,6 +171,27 @@ public sealed class ItemDef : BaseDef
             if (rid.IsValid && !Events.Contains(rid))
                 Events.Add(rid);
         }
+    }
+
+    private static int ParseWeight(string value)
+    {
+        var trimmed = value.Trim();
+        if (trimmed.Length == 0)
+            return 0;
+
+        // Source-X stores item weight in tenths of a stone. Integer script
+        // values are whole stones, while decimal values are already expressed
+        // as stones with one decimal place (1.0 => 10, 0.1 => 1).
+        if (trimmed.Contains('.'))
+        {
+            if (decimal.TryParse(trimmed, NumberStyles.Number, CultureInfo.InvariantCulture, out var dec))
+                return Math.Max(0, (int)Math.Round(dec * 10m, MidpointRounding.AwayFromZero));
+            return 0;
+        }
+
+        return int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out int whole)
+            ? Math.Max(0, whole * 10)
+            : 0;
     }
 
     private static void ParseResourceList(string value, List<ResourceId> list)

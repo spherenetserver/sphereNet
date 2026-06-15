@@ -445,13 +445,26 @@ public class Item : ObjBase
         }
     }
 
-    /// <summary>Item weight in stones (sphere units). Reads from ITEMDEF.</summary>
+    public const int WeightUnits = 10;
+
+    /// <summary>Item weight in tenths of a stone. Reads from ITEMDEF.</summary>
     public int Weight
     {
         get
         {
             var def = DefinitionLoader.GetItemDef(BaseId);
-            return def?.Weight ?? 0;
+            if (def is { HasWeight: true })
+                return def.Weight;
+
+            var mapData = ResolveWorld?.Invoke()?.MapData;
+            if (mapData != null)
+            {
+                int tileWeight = mapData.GetItemTileData(BaseId).Weight;
+                if (tileWeight > 0 && tileWeight < 0xFF)
+                    return tileWeight * WeightUnits;
+            }
+
+            return 1;
         }
     }
 
@@ -605,14 +618,18 @@ public class Item : ObjBase
         return null;
     }
 
-    public int TotalWeight => CalcTotalWeight(16);
+    /// <summary>Total item tree weight in whole stones for UI/status surfaces.</summary>
+    public int TotalWeight => TotalWeightTenths / WeightUnits;
 
-    private int CalcTotalWeight(int maxDepth)
+    /// <summary>Total item tree weight in tenths of a stone for capacity checks.</summary>
+    public int TotalWeightTenths => CalcTotalWeightTenths(16);
+
+    private int CalcTotalWeightTenths(int maxDepth)
     {
         int w = Weight * Math.Max(1, (int)Amount);
         if (maxDepth <= 0) return w;
         foreach (var child in _contents)
-            w += child.CalcTotalWeight(maxDepth - 1);
+            w += child.CalcTotalWeightTenths(maxDepth - 1);
         return w;
     }
 
@@ -1020,7 +1037,7 @@ public class Item : ObjBase
             switch (upper)
             {
                 case "VALUE": value = def.ValueMin == def.ValueMax ? def.ValueMin.ToString() : $"{def.ValueMin},{def.ValueMax}"; return true;
-                case "WEIGHT": value = def.Weight.ToString(); return true;
+                case "WEIGHT": value = (Weight / WeightUnits).ToString(); return true;
                 case "HEIGHT": value = def.Height.ToString(); return true;
                 case "ARMOR": value = def.DefenseMin == def.DefenseMax ? def.DefenseMin.ToString() : $"{def.DefenseMin},{def.DefenseMax}"; return true;
                 case "ARMOR.LO": value = def.DefenseMin.ToString(); return true;

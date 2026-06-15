@@ -4,6 +4,34 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-15] - Stack ayirma ve item agirlik sistemi duzeltmeleri (Wave 148)
+----------------------------------------
+
+DUZELTME - Item / Envanter:
+  - Stack'ten kismi miktar alirken server yeni serial'i elde tutulan item gibi
+    isaretliyordu; client ise Source-X / ServUO davranisi gibi tiklanan ana
+    serial ile drop'a devam ediyor. Bu uyumsuzluk split edilen item'in kaybolmasi
+    ve 0x28/05 "item yok" cevabi olarak gorunuyordu. Artik ana serial elde
+    kaliyor, secilen miktara dusuyor; kalan miktar eski canta/zemin konumunda
+    yeni leftover stack olarak olusuyor.
+  - Stack ustune stack merge ederken amount=0 setter clamp'ine takilip phantom
+    item birakabilen yol temizlendi. Tum miktar tasindiginda item world'den
+    siliniyor, overflow kalirsa pozitif miktar olarak geri yerlestiriliyor.
+  - Yere dusen pile item'lar (ok, gold, bandaj vb.) artik FLIP/DIR degisimiyle
+    farkli grafik almiyor; base grafik korunuyor ve SA client'lara 0xF3 world
+    item paketi dogru direction/amount ile gidiyor.
+
+DUZELTME - Item / Agirlik:
+  - ITEMDEF WEIGHT parser'i Source-X ile uyumlu hale getirildi: tam sayi degerler
+    whole-stone olarak internal tenth birime cevriliyor (WEIGHT=2 => 20),
+    decimal degerler de dogru okunuyor (WEIGHT=0.5 => 5). Once 1 stone'luk item
+    0 stone gibi gorunebiliyor, decimal agirliklar ise etkisiz kalabiliyordu.
+  - Container, banka, trade, status/tooltip ve stealing agirlik hesaplari ayni
+    birime cekildi. Limit kontrolleri tenth-vs-tenth, oyuncuya gosterilen
+    agirliklar whole-stone olarak hesaplaniyor.
+  - ITEMDEF'te acikca WEIGHT=0 verilen item'lar agirliksiz kalirken, tanimsiz
+    item'lar tiledata veya fallback ile tamamen agirliksiz sayilmiyor.
+
 [2026-06-14] - Vendor stoku restock'ta artik ikiye katlanmiyor (Wave 147)
 ----------------------------------------
 

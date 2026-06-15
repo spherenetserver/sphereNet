@@ -71,6 +71,24 @@ public sealed class ClientInventoryHandler
     private void SendSkillList() => _client.SendSkillList();
     private void InitiateTrade(Character partner, Item? firstItem = null) => _client.InitiateTrade(partner, firstItem);
     private void SendCharacterStatus(Character ch, bool includeExtendedStats = true) => _client.SendCharacterStatus(ch, includeExtendedStats);
+    private void BroadcastWorldItem(Item item)
+    {
+        if (ForEachClientInRange != null)
+        {
+            ForEachClientInRange(item.Position, UpdateRange, 0, (_, observer) =>
+            {
+                observer.SendWorldItem(item);
+                observer.View.KnownItems.Add(item.Uid.Value);
+                observer.View.LastKnownItemState[item.Uid.Value] =
+                    (item.X, item.Y, item.Z, item.DispIdFull, item.Hue, item.Amount, item.Direction);
+            });
+            return;
+        }
+
+        BroadcastNearby?.Invoke(item.Position, UpdateRange,
+            _client.BuildWorldItemPacket(item.Uid.Value, item.DispIdFull, item.Amount,
+                item.X, item.Y, item.Z, item.Hue, item.Direction), 0);
+    }
 
     public void HandleSingleClick(uint uid)
     {
@@ -126,9 +144,10 @@ public sealed class ClientInventoryHandler
             contItem.ItemType is ItemType.Container or ItemType.Corpse &&
             contItem.Contents.Count > 0)
         {
-            int stones = 0;
+            int tenths = 0;
             foreach (var inner in contItem.Contents)
-                stones += inner.Weight * Math.Max(1, (int)inner.Amount);
+                tenths += inner.TotalWeightTenths;
+            int stones = tenths / Item.WeightUnits;
             label += ServerMessages.GetFormatted(Msg.ContItems, contItem.Contents.Count, stones);
         }
 
@@ -286,19 +305,50 @@ public sealed class ClientInventoryHandler
             }
         }
 
-        // Stack splitting: if picking up less than the full stack, create a split item
+        // Stack splitting: the client keeps dragging the serial it clicked.
+        // Source-X/ServUO reduce that original item to the lifted amount and
+        // create a new leftover stack at the old location/container.
         if (amount > 0 && amount < item.Amount && item.Amount > 1)
         {
-            var splitItem = _world.CreateItem();
-            splitItem.BaseId = item.BaseId;
-            splitItem.Hue = item.Hue;
-            splitItem.Amount = amount;
-            splitItem.More1 = item.More1;
-            splitItem.More2 = item.More2;
-            item.Amount -= amount;
-            splitItem.ContainedIn = _character.Uid;
-            _character.SetTag("DRAGGING", splitItem.Uid.Value.ToString());
-            BroadcastDragAnimation(splitItem, dragSourceSerial, dragSourcePos, 0, _character.Position, dragSourcePos);
+            ushort originalAmount = item.Amount;
+            ushort remainderAmount = (ushort)(originalAmount - amount);
+            var sourceContainer = item.ContainedIn.IsValid ? _world.FindItem(item.ContainedIn) : null;
+            var sourcePos = item.Position;
+
+            var remainder = _world.CreateItem();
+            remainder.BaseId = item.BaseId;
+            remainder.Hue = item.Hue;
+            remainder.Amount = remainderAmount;
+            remainder.ItemType = item.ItemType;
+            remainder.Name = item.Name;
+            remainder.More1 = item.More1;
+            remainder.More2 = item.More2;
+            remainder.Direction = item.Direction;
+
+            item.Amount = amount;
+
+            if (sourceContainer != null)
+            {
+                sourceContainer.RemoveItem(item);
+                sourceContainer.AddItem(remainder);
+                remainder.Position = sourcePos;
+                _netState.Send(new PacketContainerItem(
+                    remainder.Uid.Value, remainder.DispIdFull, 0,
+                    remainder.Amount, remainder.X, remainder.Y,
+                    sourceContainer.Uid.Value, remainder.Hue,
+                    _netState.IsClientPost6017));
+            }
+            else
+            {
+                var sector = _world.GetSector(sourcePos);
+                sector?.RemoveItem(item);
+                _world.PlaceItemWithDecay(remainder, sourcePos);
+                BroadcastWorldItem(remainder);
+            }
+
+            item.ContainedIn = _character.Uid;
+            _character.SetTag("DRAGGING", item.Uid.Value.ToString());
+            BroadcastDragAnimation(item, dragSourceSerial, dragSourcePos, 0, _character.Position, dragSourcePos);
             return;
         }
 
@@ -530,10 +580,10 @@ public sealed class ClientInventoryHandler
                     int weightLimit = isBank ? _world.MaxBankWeight : _world.MaxContainerWeight;
                     if (weightLimit > 0)
                     {
-                        int totalWeight = 0;
+                        int totalWeightTenths = 0;
                         foreach (var b in _world.GetContainerContents(container.Uid))
-                            totalWeight += b.Weight * Math.Max(1, (int)b.Amount);
-                        if (totalWeight + item.Weight * Math.Max(1, (int)item.Amount) > weightLimit)
+                            totalWeightTenths += b.TotalWeightTenths;
+                        if (totalWeightTenths + item.TotalWeightTenths > weightLimit * Item.WeightUnits)
                         {
                             SysMessage(ServerMessages.Get(isBank ? Msg.BvboxFullWeight : Msg.ContFullWeight));
                             PlaceItemInPack(_character, item);
@@ -573,25 +623,26 @@ public sealed class ClientInventoryHandler
                     uint stackParent = container.ContainedIn.IsValid
                         ? container.ContainedIn.Value : container.Uid.Value;
                     int room = ushort.MaxValue - container.Amount;
-                    int moved = Math.Min(room, item.Amount);
+                    int originalAmount = item.Amount;
+                    int moved = Math.Min(room, originalAmount);
+                    int remaining = originalAmount - moved;
                     if (moved > 0)
                     {
                         container.Amount = (ushort)(container.Amount + moved);
-                        item.Amount = (ushort)Math.Max(0, item.Amount - moved);
                         _netState.Send(new PacketContainerItem(
                             container.Uid.Value, container.DispIdFull, 0,
                             container.Amount, container.X, container.Y,
                             stackParent, container.Hue, _netState.IsClientPost6017));
                     }
-                    if (item.Amount <= 0)
+                    if (remaining <= 0)
                     {
                         _world.RemoveItem(item);
-                        item.Delete();
                     }
                     else if (container.ContainedIn.IsValid &&
                              _world.FindItem(container.ContainedIn) is { } realParent)
                     {
                         // Overflow remainder stays beside the target stack.
+                        item.Amount = (ushort)remaining;
                         realParent.AddItem(item);
                         item.Position = new Point3D(container.X, container.Y, 0, _character.MapIndex);
                         _netState.Send(new PacketContainerItem(
@@ -770,15 +821,14 @@ public sealed class ClientInventoryHandler
                 if (existing.CanStackWith(item) && (existing.Amount + item.Amount) <= ushort.MaxValue)
                 {
                     existing.Amount += item.Amount;
+                    if (existing.IsPile)
+                        existing.Direction = 0;
                     BroadcastDragAnimation(item, _character.Uid.Value, _character.Position, 0, existing.Position, existing.Position);
                     _world.RemoveItem(item);
-                    item.Delete();
                     _netState.Send(new PacketDropAck());
                     BroadcastNearby?.Invoke(existing.Position, UpdateRange,
                         new PacketSound(GetDropSound(existing), existing.X, existing.Y, existing.Z), 0);
-                    BroadcastNearby?.Invoke(existing.Position, UpdateRange,
-                        new PacketWorldItem(existing.Uid.Value, existing.DispIdFull, existing.Amount,
-                            existing.X, existing.Y, existing.Z, existing.Hue, existing.Direction), 0);
+                    BroadcastWorldItem(existing);
                     return;
                 }
 
@@ -786,17 +836,22 @@ public sealed class ClientInventoryHandler
             }
         }
 
-        item.Direction = (byte)((tileItemCount % 7) + 1);
-        item.TryFlipDisplay();
+        if (item.IsPile)
+        {
+            item.Direction = 0;
+        }
+        else
+        {
+            item.Direction = (byte)((tileItemCount % 7) + 1);
+            item.TryFlipDisplay();
+        }
 
         _world.PlaceItemWithDecay(item, groundPos);
         _netState.Send(new PacketDropAck());
         BroadcastDragAnimation(item, _character.Uid.Value, _character.Position, 0, groundPos, groundPos);
         BroadcastNearby?.Invoke(groundPos, UpdateRange,
             new PacketSound(GetDropSound(item), groundPos.X, groundPos.Y, groundPos.Z), 0);
-        BroadcastNearby?.Invoke(groundPos, UpdateRange,
-            new PacketWorldItem(item.Uid.Value, item.DispIdFull, item.Amount,
-                item.X, item.Y, item.Z, item.Hue, item.Direction), 0);
+        BroadcastWorldItem(item);
     }
 
     /// <summary>
@@ -833,9 +888,7 @@ public sealed class ClientInventoryHandler
         }
 
         _world.PlaceItemWithDecay(item, _character.Position);
-        BroadcastNearby?.Invoke(item.Position, UpdateRange,
-            new PacketWorldItem(item.Uid.Value, item.DispIdFull, item.Amount,
-                item.X, item.Y, item.Z, item.Hue, item.Direction), 0);
+        BroadcastWorldItem(item);
         return true;
     }
 

@@ -34,6 +34,32 @@ FIXED - Items / Inventory:
     amount label. The merged ground pile now broadcasts a world item update, and
     any overflow remainder drops to the ground beside it instead of being lost.
 
+FIXED - Host / Stability:
+  - The Host had no last-resort handler for unhandled exceptions on background
+    threads. The child server's output is mirrored to the console on an
+    AsyncStreamReader thread with no surrounding try/catch, so when the console
+    handle became invalid mid-run (an interactive/RDP session disconnecting, or
+    redirected stdout) the resulting IOException went unhandled and terminated
+    the Host, taking the child game server down with it and leaving only a
+    0xe0434352 in the event log. Console mirroring now swallows IOException and
+    InvalidOperationException, and a global handler persists any unhandled
+    exception to logs/host-crash.log.
+
+FIXED - Memory:
+  - Server and Host now build with Workstation GC instead of Server GC. On the
+    low-core/low-RAM VDS deployment target Server GC keeps a per-CPU heap and
+    holds committed segments, so RSS climbed steadily under a steady allocation
+    rate and read as a leak even with a single player.
+  - NetState releases its grown per-connection send and crypt scratch buffers
+    back to their initial sizes when a connection is cleared, so a transient
+    large broadcast no longer pins that memory for the life of the slot.
+
+SECURITY:
+  - Pinned the native SQLite binary (SQLitePCLRaw.lib.e_sqlite3 3.50.3) above
+    the 2.1.11 pulled in transitively by Microsoft.Data.Sqlite, clearing
+    advisory GHSA-2m69-gcr7-jv3q (NU1903). The package is native-only, so the
+    managed SQLitePCLRaw core/provider ABI is unchanged.
+
 [2026-06-15] - Stack splitting and item weight system fixes (Wave 148)
 ----------------------------------------
 

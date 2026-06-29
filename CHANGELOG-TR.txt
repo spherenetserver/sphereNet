@@ -37,6 +37,31 @@ DUZELTME - Item / Envanter:
     guncellemesi yayinliyor; tasan kalan ise limbo'da kalmak yerine yanina
     zemine dusuyor.
 
+DUZELTME - Host / Kararlilik:
+  - Host'ta arka plan thread'lerindeki yakalanmamis istisnalar icin son-care
+    handler yoktu. Cocuk sunucunun ciktisi konsola try/catch'siz bir
+    AsyncStreamReader thread'inde aynalaniyor; konsol handle'i calisma aninda
+    gecersiz olunca (interaktif/RDP oturumu kopmasi veya yonlendirilmis stdout)
+    olusan IOException yakalanmadan Host'u sonlandiriyor, cocuk oyun sunucusunu
+    da beraberinde dusuruyor ve olay gunlugunde yalnizca 0xe0434352 birakiyordu.
+    Konsol aynalama artik IOException ve InvalidOperationException'i yutuyor;
+    global bir handler da yakalanmamis istisnayi logs/host-crash.log'a yaziyor.
+
+DUZELTME - Bellek:
+  - Server ve Host artik Server GC yerine Workstation GC ile derleniyor. Dusuk
+    cekirdek/RAM'li VDS dagitim hedefinde Server GC her CPU icin ayri heap tutup
+    commit edilmis segmentleri saliyor; bu yuzden sabit allocation altinda RSS
+    surekli tirmaniyor ve tek oyuncuyla bile sizinti gibi gorunuyordu.
+  - NetState, baglanti temizlenince buyumus per-connection send ve crypt scratch
+    buffer'larini ilk boyutlarina geri saliyor; boylece gecici buyuk bir
+    broadcast o bellegi slot omru boyunca tutmuyor.
+
+GUVENLIK:
+  - Native SQLite binary'si (SQLitePCLRaw.lib.e_sqlite3 3.50.3), Microsoft.Data
+    .Sqlite ile transitif gelen 2.1.11'in ustune pinlendi; GHSA-2m69-gcr7-jv3q
+    (NU1903) uyarisi temizlendi. Paket yalnizca native oldugundan managed
+    SQLitePCLRaw core/provider ABI'si degismiyor.
+
 [2026-06-15] - Stack ayirma ve item agirlik sistemi duzeltmeleri (Wave 148)
 ----------------------------------------
 

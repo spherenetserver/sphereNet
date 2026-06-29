@@ -4,8 +4,31 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-30] - NPC AI parity: NPCAI config, pathfinding, ozel saldirilar, spellbook, trigger'lar (Wave 152)
+[2026-06-30] - Item parity: layer numaralandirma + tam-sadakatli stack split (Wave 153)
 ----------------------------------------
+
+DUZELTME - Item / Equipment layer'lari:
+  - Layer enum'u artik UO LAYER_TYPE numaralandirmasiyla eslesiyor: LAYER_FACE=15
+    ve LAYER_BEARD(FacialHair)=16 yer degistirmisti, bu da sakallari wire'da face
+    layer'ina koyuyor ve legacy LAYER_BEARD=16 importlarini Face slotuna yanlis
+    esliyordu. Karakter olusturma sakallari ve legacy sakal importlari artik dogru
+    layer'a yerlesiyor. LAYER_DRAGGING=31 numerik parite icin tanimlandi (dragging
+    hala DRAGGING tag'i ile takip ediliyor); equip-layer dogrulamasi internal
+    layer'lari (31+) hala reddediyor, client-equippable layer'lar degismedi.
+
+DUZELTME - Item / Stack split:
+  - Bir stack bolundugunde geride kalan kalan icin artik orijinalin tam klonu
+    uretiliyor (Source-X CreateDupeItem): custom tag'ler, attribute flag'leri
+    (tag olarak saklanan), durability/quality, price/link, MORE/MOREB/MOREP, TDATA
+    override'lari, decay time ve runtime EVENTS listesi split ile birlikte gidiyor.
+    Onceden sadece id/hue/amount/type/name/more1/more2/direction kopyalaniyordu,
+    bu yuzden o state kalandan sessizce dusuyordu.
+  - Iki pile artik sadece tag setleri eslestiginde birlesiyor (Source-X
+    CItem::Stack m_TagDefs ve ATTR_* flag'lerini karsilastirir, SphereNet bunlari
+    tag olarak saklar), boylece stack'leme bir stack'in tag'lerini sessizce
+    dusurmuyor.
+
+
 
 EKLENEN - NPC AI / Config:
   - NPCAI, NPCHealThreshold ve NPCWanderLookAroundChance artik .ini'den okunuyor.

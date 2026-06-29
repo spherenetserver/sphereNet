@@ -4,8 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-30] - NPC AI parity: NPCAI config, pathfinding, special attacks, spellbooks, triggers (Wave 152)
+[2026-06-30] - Item parity: layer numbering + full-fidelity stack split (Wave 153)
 ----------------------------------------
+
+FIXED - Items / Equipment layers:
+  - The Layer enum now matches UO LAYER_TYPE numbering: LAYER_FACE=15 and
+    LAYER_BEARD(FacialHair)=16 were swapped, which put beards on the face layer
+    on the wire and mis-mapped legacy LAYER_BEARD=16 imports onto the Face slot.
+    Character-creation beards and legacy beard imports now land on the correct
+    layer. LAYER_DRAGGING=31 is defined for numeric parity (dragging is still
+    tracked via the DRAGGING tag); the equip-layer validation still rejects the
+    internal layers (31+), so client-equippable layers are unchanged.
+
+FIXED - Items / Stack split:
+  - Splitting a stack now produces a full clone of the original for the
+    left-behind remainder (Source-X CreateDupeItem): custom tags, attribute flags
+    (stored as tags), durability/quality, price/link, MORE/MOREB/MOREP, TDATA
+    overrides, decay time and the runtime EVENTS list all travel with the split.
+    Previously only id/hue/amount/type/name/more1/more2/direction were copied, so
+    that state was silently dropped from the remainder.
+  - Two piles now only merge when their tag sets match (Source-X CItem::Stack
+    compares m_TagDefs and the ATTR_* flags, which SphereNet stores as tags), so
+    stacking no longer silently drops one stack's tags.
+
+
 
 ADDED - NPC AI / Config:
   - NPCAI, NPCHealThreshold and NPCWanderLookAroundChance are now read from the

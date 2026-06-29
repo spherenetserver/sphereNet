@@ -564,7 +564,69 @@ public class Item : ObjBase
             return false;
 
         if (_more1 != other._more1 || _more2 != other._more2) return false;
+
+        // Two piles only merge when their tags match. Source-X CItem::Stack
+        // compares m_TagDefs (and the ATTR_* flags, which SphereNet stores as
+        // tags) before merging; merging stacks with differing tags would
+        // silently drop one set. Cheap: the vast majority of piles carry no tags.
+        if (!TagsEqual(Tags, other.Tags)) return false;
         return true;
+    }
+
+    /// <summary>Order-independent equality of two tag maps (used to gate stack
+    /// merges). Returns true when both hold the same keys with the same values.</summary>
+    private static bool TagsEqual(SphereNet.Scripting.Variables.VarMap a,
+        SphereNet.Scripting.Variables.VarMap b)
+    {
+        if (ReferenceEquals(a, b)) return true;
+        if (a.Count != b.Count) return false;
+        foreach (var kv in a.GetAll())
+        {
+            var bv = b.Get(kv.Key);
+            if (bv == null || !string.Equals(bv, kv.Value, StringComparison.Ordinal))
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>Copy all per-instance state from another item onto this one,
+    /// EXCEPT amount and containment/position. Used when splitting a stack so the
+    /// left-behind remainder is a full clone (Source-X CreateDupeItem), not just
+    /// id/hue/more — otherwise custom tags, attributes, durability, price/link,
+    /// timers and TDATA overrides on the original are silently dropped from the
+    /// remainder. Amount, ContainedIn, grid index, position and equip state are
+    /// deliberately left for the caller to set.</summary>
+    public void CopyStackInstanceStateFrom(Item src)
+    {
+        BaseId = src.BaseId;
+        Hue = src.Hue;
+        Name = src.Name;
+        _type = src._type; // direct field — avoid the ItemType setter's spawn/def side effects
+        Direction = src.Direction;
+        DecayTime = src.DecayTime;
+
+        _more1 = src._more1;
+        _more2 = src._more2;
+        _moreB = src._moreB;
+        _moreP = src._moreP;
+        _link = src._link;
+        _price = src._price;
+        _quality = src._quality;
+        _hitsCur = src._hitsCur;
+        _hitsMax = src._hitsMax;
+        _crafter = src._crafter;
+        _usesRemaining = src._usesRemaining;
+        _dispId = src._dispId;
+        _tdata1 = src._tdata1;
+        _tdata2 = src._tdata2;
+        _tdata3 = src._tdata3;
+        _tdata4 = src._tdata4;
+
+        // Tags (custom + attribute flags stored as tags) and the runtime EVENTS
+        // list must travel with the split so the remainder behaves identically.
+        Tags.CopyFrom(src.Tags);
+        _events.Clear();
+        _events.AddRange(src._events);
     }
 
     public Item AddItemWithStack(Item item)

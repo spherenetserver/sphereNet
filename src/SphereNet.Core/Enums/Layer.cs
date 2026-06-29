@@ -20,8 +20,12 @@ public enum Layer : byte
     Waist = 12,
     Chest = 13,
     Bracelet = 14,
-    FacialHair = 15,
-    Face = 16,
+    // UO LAYER_TYPE: LAYER_FACE=15 (enhanced-client face style / light halo),
+    // LAYER_BEARD=16 (facial hair). These were previously swapped, which placed
+    // beards on the face layer on the wire and mis-mapped legacy LAYER_BEARD=16
+    // imports onto the Face slot.
+    Face = 15,
+    FacialHair = 16,
     Tunic = 17,
     Earrings = 18,
     Arms = 19,
@@ -36,5 +40,9 @@ public enum Layer : byte
     VendorBuy = 28,
     BankBox = 29,
     Special = 30,
+    // UO LAYER_DRAGGING — the slot an item occupies while being dragged. SphereNet
+    // tracks dragging via the DRAGGING tag rather than this layer, so it is defined
+    // only for numeric parity with LAYER_TYPE; it is not a client-equippable slot.
+    Dragging = 31,
     Qty
 }

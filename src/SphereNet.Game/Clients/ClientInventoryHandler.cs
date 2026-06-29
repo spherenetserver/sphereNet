@@ -315,15 +315,12 @@ public sealed class ClientInventoryHandler
             var sourceContainer = item.ContainedIn.IsValid ? _world.FindItem(item.ContainedIn) : null;
             var sourcePos = item.Position;
 
+            // The left-behind remainder must be a full clone of the original
+            // (tags, attributes, durability, price/link, timers, TDATA), not just
+            // id/hue/more — otherwise that state is lost from the leftover stack.
             var remainder = _world.CreateItem();
-            remainder.BaseId = item.BaseId;
-            remainder.Hue = item.Hue;
+            remainder.CopyStackInstanceStateFrom(item);
             remainder.Amount = remainderAmount;
-            remainder.ItemType = item.ItemType;
-            remainder.Name = item.Name;
-            remainder.More1 = item.More1;
-            remainder.More2 = item.More2;
-            remainder.Direction = item.Direction;
 
             item.Amount = amount;
 
@@ -966,7 +963,10 @@ public sealed class ClientInventoryHandler
         var item = _world.FindItem(new Serial(serial));
         if (item == null) return;
 
-        if (layer == 0 || layer >= (byte)Layer.Qty) return;
+        // Reject the internal-only dragging/sentinel layers (31+). Dragging is
+        // not a client-equippable slot; this preserves the prior bound now that
+        // Layer.Dragging sits between Special and Qty.
+        if (layer == 0 || layer >= (byte)Layer.Dragging) return;
 
         if (_character.PrivLevel < PrivLevel.GM &&
             item.ContainedIn != _character.Uid)

@@ -121,6 +121,18 @@ public sealed class CraftingEngine
         // Skill check
         bool success = SkillEngine.UseQuick(crafter, recipe.PrimarySkill, recipe.Difficulty);
 
+        // Tools wear from use (Source-X Skill_MakeItem): damage the crafting tool
+        // on each attempt, whether the craft succeeds or fails.
+        foreach (var toolType in recipe.RequiredToolTypes)
+        {
+            var tool = FindItemOfType(crafter, toolType);
+            if (tool != null)
+            {
+                SphereNet.Game.Combat.CombatEngine.DamageItem(tool);
+                break;
+            }
+        }
+
         if (success)
         {
             // Re-verify resources before consuming (gump callback delay may have changed state)
@@ -236,6 +248,30 @@ public sealed class CraftingEngine
                 return true;
         }
         return false;
+    }
+
+    private static Item? FindItemOfType(Character ch, ItemType type)
+    {
+        var oneHand = ch.GetEquippedItem(Layer.OneHanded);
+        if (oneHand?.ItemType == type) return oneHand;
+        var twoHand = ch.GetEquippedItem(Layer.TwoHanded);
+        if (twoHand?.ItemType == type) return twoHand;
+        return ch.Backpack != null ? FindItemOfTypeIn(ch.Backpack, type, 3) : null;
+    }
+
+    private static Item? FindItemOfTypeIn(Item container, ItemType type, int depth)
+    {
+        foreach (var item in container.Contents)
+        {
+            if (item.IsDeleted) continue;
+            if (item.ItemType == type) return item;
+            if (depth > 0 && item.ContentCount > 0)
+            {
+                var found = FindItemOfTypeIn(item, type, depth - 1);
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     /// <summary>Work-site proximity (reference Skill_Blacksmith /

@@ -283,9 +283,15 @@ public static partial class Program
             // (IsTrigUsed gate). N1 = skill, N2 = difficulty; RETURN 1 cancels the use.
             if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.SkillUseQuick))
             {
-                SphereNet.Game.Objects.Characters.Character.OnSkillUseQuick = (ch, skillId, difficulty) =>
-                    _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillUseQuick,
-                        new TriggerArgs { CharSrc = ch, N1 = skillId, N2 = difficulty }) == TriggerResult.True;
+                // N1 = skill, N2 = difficulty, N3 = rolled result (1/0). RETURN 1
+                // cancels the use; otherwise ARGN3 is read back as the final result.
+                SphereNet.Game.Objects.Characters.Character.OnSkillUseQuick = (ch, skillId, difficulty, result) =>
+                {
+                    var args = new TriggerArgs { CharSrc = ch, N1 = skillId, N2 = difficulty, N3 = result };
+                    if (_triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillUseQuick, args) == TriggerResult.True)
+                        return -1;
+                    return Math.Clamp(args.N3, 0, 1);
+                };
             }
             // @NPCSeeNewPlayer — install only when hooked so the per-NPC perception
             // scan is skipped entirely otherwise. O1 = the newly-seen player.
@@ -2643,7 +2649,10 @@ public static partial class Program
             var defLoader = new DefinitionLoader(_resources, _spellRegistry);
             defLoader.LoadAll();
             defSw.Stop();
-            _log.LogInformation("Definitions loaded in {Ms}ms", defSw.ElapsedMilliseconds);
+            _log.LogInformation(
+                "Definitions loaded in {Ms}ms: {Spells} spells, {Items} itemdefs, {Chars} chardefs, {Skills} skilldefs",
+                defSw.ElapsedMilliseconds, defLoader.SpellsLoaded, defLoader.ItemDefsLoaded,
+                defLoader.CharDefsLoaded, defLoader.SkillDefsLoaded);
 
             // Load AREADEF definitions as regions from scripts
             LoadRegionDefs();

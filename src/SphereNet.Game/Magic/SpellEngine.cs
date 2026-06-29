@@ -487,8 +487,16 @@ public sealed class SpellEngine
         // GetDifficulty() is on the 0-1000 skill scale, but CheckSuccess expects
         // a 0-100 difficulty (it multiplies by 10 internally) — convert here so
         // the bell curve compares like-for-like against the 0-1000 skill value.
-        if (caster.PrivLevel < PrivLevel.GM &&
-            !SkillEngine.CheckSuccess(caster, primarySkill, difficulty / 10))
+        bool fizzled = caster.PrivLevel < PrivLevel.GM &&
+            !SkillEngine.CheckSuccess(caster, primarySkill, difficulty / 10);
+
+        // Source-X Spell_CastDone awards the casting skill a gain attempt on every
+        // resolved cast, whether it succeeds or fizzles. (GainExperience itself
+        // guards GM/dead/locked/safe-region.)
+        if (caster.PrivLevel < PrivLevel.GM)
+            SkillEngine.GainExperience(caster, primarySkill, difficulty / 10);
+
+        if (fizzled)
         {
             ApplyCastResourceLoss(caster, def, castWithWand, fizzle: true, abort: false);
             ClearCastState(caster);
@@ -601,7 +609,12 @@ public sealed class SpellEngine
             {
                 var itemTarget = _world?.FindItem(targetUid);
                 if (itemTarget != null && CanSpellReachItem(caster, itemTarget))
-                    FireItemSpellEffect(caster, itemTarget, def);
+                {
+                    // Fire the scriptable @SpellEffect first; only apply the
+                    // hardcoded item-spell behavior when no script overrode it.
+                    if (FireItemSpellEffect(caster, itemTarget, def) != TriggerResult.True)
+                        ApplyItemTargetSpell(itemTarget, def);
+                }
             }
         }
         else if (def.IsFlag(SpellFlag.Area))
@@ -633,6 +646,31 @@ public sealed class SpellEngine
             OnPlaySound?.Invoke(caster.Position, (ushort)def.Sound);
 
         return true;
+    }
+
+    /// <summary>Hardcoded behavior for item-targeted spells (Magic Lock/Unlock,
+    /// Magic Trap/Untrap). Runs only when no @SpellEffect script overrode it.
+    /// (Telekinesis remains script-driven via @SpellEffect — its real effect is
+    /// a client-routed remote double-click.)</summary>
+    private static void ApplyItemTargetSpell(Item item, SpellDef def)
+    {
+        switch (def.Id)
+        {
+            case SpellType.MagicLock:
+                if (item.ItemType == ItemType.Container) item.ItemType = ItemType.ContainerLocked;
+                else if (item.ItemType == ItemType.Door) item.ItemType = ItemType.DoorLocked;
+                break;
+            case SpellType.Unlock:
+                if (item.ItemType == ItemType.ContainerLocked) item.ItemType = ItemType.Container;
+                else if (item.ItemType == ItemType.DoorLocked) item.ItemType = ItemType.Door;
+                break;
+            case SpellType.MagicTrap:
+                item.SetTag("TRAPPED", "1");
+                break;
+            case SpellType.MagicUntrap:
+                item.RemoveTag("TRAPPED");
+                break;
+        }
     }
 
     private TriggerResult FireItemSpellEffect(Character caster, Item item, SpellDef def)
@@ -746,6 +784,14 @@ public sealed class SpellEngine
         // hits, so the reflected spell itself will NOT be re-reflected
         // by the original caster (even if they also have Reflection up).
         bool harmful = def.IsFlag(SpellFlag.Damage) || def.IsFlag(SpellFlag.Curse);
+
+        // A harmful spell cast on an innocent player is a crime (Source-X
+        // notoriety) — the caster goes grey, just like a melee attack. Checked
+        // before the reflect swap so it credits the real aggressor.
+        if (harmful && caster != target && caster.IsPlayer && target.IsPlayer &&
+            Character.AttackingIsACrimeEnabled && !target.IsFlaggedAsCriminal)
+            caster.MakeCriminal();
+
         if (harmful && caster != target && target.IsStatFlag(StatFlag.Reflection))
         {
             target.ClearStatFlag(StatFlag.Reflection);
@@ -797,6 +843,16 @@ public sealed class SpellEngine
             {
                 target.Hits -= (short)Math.Min(damage, short.MaxValue);
                 target.RecordAttack(caster.Uid, damage);
+
+                // Reactive Armor reflects a quarter of the damage back at the
+                // caster, the same as the melee path (previously melee-only).
+                if (target.IsStatFlag(StatFlag.Reactive) && caster != target && !caster.IsDead)
+                {
+                    int reflect = Math.Max(1, damage / 4);
+                    caster.Hits -= (short)Math.Min(reflect, short.MaxValue);
+                    caster.RecordAttack(target.Uid, reflect);
+                }
+
                 TryInterruptFromDamage(target, damage);
 
                 // Victim feedback: spell damage used to apply silently — no
@@ -992,7 +1048,10 @@ public sealed class SpellEngine
                 eff.IntDelta = bonus; target.Int += bonus;
                 break;
             }
+            // Arch Protection is the group-wide blessing; it is flagged Bless and
+            // routes here, so it applies the same all-stat ward per target.
             case SpellType.Bless:
+            case SpellType.ArchProtection:
             {
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
                 eff.StrDelta = bonus; eff.DexDelta = bonus; eff.IntDelta = bonus;
@@ -1031,7 +1090,10 @@ public sealed class SpellEngine
                 eff.IntDelta = (short)-actual; target.Int -= actual;
                 break;
             }
+            // Mass Curse is the area variant; it is flagged Curse and routes here,
+            // so it applies the same all-stat penalty per target.
             case SpellType.Curse:
+            case SpellType.MassCurse:
             {
                 short strP = (short)Math.Min(penalty, target.Str - 1);
                 short dexP = (short)Math.Min(penalty, target.Dex - 1);
@@ -1178,6 +1240,21 @@ public sealed class SpellEngine
             {
                 var dest = caster.CastTargetPos;
                 if (dest.X == 0 && dest.Y == 0) break;
+                // Validate the destination like Recall/Gate do: off-map or an
+                // impassable tile (wall/water/blocking static) would strand the
+                // caster. Recall/Gate guarded this; Teleport did not.
+                var teleMd = _world.MapData;
+                if (teleMd != null)
+                {
+                    var (mapW, mapH) = teleMd.GetMapSize(dest.Map);
+                    if (dest.X < 0 || dest.Y < 0 || dest.X >= mapW || dest.Y >= mapH ||
+                        (caster.PrivLevel < Core.Enums.PrivLevel.GM &&
+                         !teleMd.IsPassable(dest.Map, dest.X, dest.Y, dest.Z)))
+                    {
+                        OnSysMessage?.Invoke(caster, "That location is unreachable.");
+                        break;
+                    }
+                }
                 byte oldMap = caster.MapIndex;
                 _world.MoveCharacter(caster, dest);
                 OnSpellTeleport?.Invoke(caster, dest, oldMap);

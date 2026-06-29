@@ -580,7 +580,10 @@ public partial class Character : ObjBase
     /// (Source-X @SkillUseQuick). Args: character, skill id, difficulty. Return true
     /// to cancel the use entirely (no roll, no gain — treated as a failure).
     /// Installed only when hooked (IsTrigUsed gate).</summary>
-    public static Func<Character, int, int, bool>? OnSkillUseQuick { get; set; }
+    /// <summary>@SkillUseQuick hook, fired AFTER the success roll. Args: char,
+    /// skillId, difficulty, result (1=success/0=fail). Returns the final result
+    /// (the script may flip it) or a negative value to cancel the use.</summary>
+    public static Func<Character, int, int, int, int>? OnSkillUseQuick { get; set; }
 
     /// <summary>Fired when an NPC perceives a player it has not seen recently
     /// (Source-X @NPCSeeNewPlayer). Args: the NPC, the newly-seen player. Installed

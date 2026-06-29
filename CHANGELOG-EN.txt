@@ -4,6 +4,51 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Skill/spell parity: flags, caps, gain, Discordance, spells (Wave 151)
+----------------------------------------
+
+FIXED - Skills / Definitions:
+  - SKILLDEF now parses RANGE (gather use-distance) and PROMPT_CLILOC (target
+    cursor cliloc); both were silently dropped before.
+  - SkillFlag bit values now match Source-X SKF_* (GATHER=0x400, DISABLED=0x800,
+    plus IMMOBILE/SELECTABLE/NOMINDIST/NOANIM/NOSFX/RANGED). The previous values
+    diverged from 0x10 up and invented NOFAIL/RANKEDTITLE, so a script FLAGS bit
+    was misread. SKILLDEF FLAGS now also accepts symbolic, pipe-delimited values
+    (e.g. "skf_gather|skf_ranged"), like SPELL/CHARDEF already did.
+  - Startup and ReSync logs now report how many spells/itemdefs/chardefs and
+    skilldefs were loaded.
+
+FIXED - Skills / Caps and gain:
+  - The skill success S-curve variance is now 100 (Source-X SKILL_VARIANCE),
+    not 150.
+  - Per-character OVERRIDE.SKILLCAP_<n> and OVERRIDE.SKILLSUM tags are honored
+    over the skill-class and global caps.
+  - Skill gain no longer advances inside Safe regions (Source-X parity).
+
+FIXED - Magic / Skills:
+  - Casting awards the caster's casting-skill a gain attempt on every resolved
+    cast, success or fizzle (previously the casting skill never advanced).
+  - @SkillUseQuick now fires AFTER the success roll with ARGN3 = result; a script
+    can flip the result or cancel the use (RETURN 1). It used to fire before the
+    roll and could only hard-cancel.
+
+ADDED - Skills:
+  - Discordance/Enticement is now a working skill: it requires a musical
+    instrument and a Musicianship+Discordance check, then temporarily lowers the
+    target's defenses.
+  - Crafting tools take durability damage on each craft attempt.
+
+ADDED / FIXED - Magic:
+  - Magic Lock / Unlock now lock and unlock containers and doors; Magic Trap /
+    Untrap set and clear the trapped state; Arch Protection and Mass Curse now
+    apply their group buff/curse (they were inert).
+  - Reactive Armor now reflects a quarter of spell damage back at the caster, as
+    it already did for melee.
+  - A harmful spell cast on an innocent player now flags the caster criminal,
+    matching a melee attack.
+  - Teleport now validates the destination (off-map / impassable tile) like
+    Recall and Gate, so it can no longer strand the caster in a wall.
+
 [2026-06-30] - Combat parity: flags, scriptable damage/parry, ammo and skill overrides (Wave 150)
 ----------------------------------------
 

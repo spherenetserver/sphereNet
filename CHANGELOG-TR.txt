@@ -4,6 +4,51 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Skill/spell parity: flag'ler, cap'ler, gain, Discordance, spell'ler (Wave 151)
+----------------------------------------
+
+DUZELTME - Skill / Tanimlar:
+  - SKILLDEF artik RANGE (toplama kullanim mesafesi) ve PROMPT_CLILOC (hedef
+    imleci cliloc'u) parse ediyor; ikisi de oncesinde sessizce dusuyordu.
+  - SkillFlag bit degerleri Source-X SKF_* ile hizalandi (GATHER=0x400,
+    DISABLED=0x800, +IMMOBILE/SELECTABLE/NOMINDIST/NOANIM/NOSFX/RANGED). Onceki
+    degerler 0x10'dan yukari sapiyor ve olmayan NOFAIL/RANKEDTITLE'i uyduruyordu,
+    bu yuzden bir script FLAGS biti yanlis okunuyordu. SKILLDEF FLAGS artik
+    sembolik, pipe ile ayrilmis degerleri de kabul ediyor (or.
+    "skf_gather|skf_ranged"), SPELL/CHARDEF'in zaten yaptigi gibi.
+  - Baslangic ve ReSync log'lari artik kac spell/itemdef/chardef ve skilldef
+    yuklendigini bildiriyor.
+
+DUZELTME - Skill / Cap ve gain:
+  - Skill basari S-curve variance'i artik 100 (Source-X SKILL_VARIANCE), 150
+    degil.
+  - Karaktere ozel OVERRIDE.SKILLCAP_<n> ve OVERRIDE.SKILLSUM tag'leri,
+    skill-class ve global cap'lerin onunde onurlandiriliyor.
+  - Skill gain artik Safe bolgelerde ilerlemiyor (Source-X parity).
+
+DUZELTME - Buyu / Skill:
+  - Buyu yapmak, cozulen her cast'te (basari veya fizzle) caster'in cast
+    skill'ine bir gain denemesi veriyor (onceden cast skill'i hic ilerlemiyordu).
+  - @SkillUseQuick artik basari zarindan SONRA ARGN3 = result ile ateşleniyor;
+    script sonucu degistirebilir veya kullanimı iptal edebilir (RETURN 1). Once
+    zardan once ateşleniyor ve yalniz sert-iptal yapabiliyordu.
+
+EKLENDI - Skill:
+  - Discordance/Enticement artik calisan bir skill: muzik aleti + Musicianship+
+    Discordance kontrolu gerektiriyor, sonra hedefin savunmasini gecici dusuruyor.
+  - Crafting aletleri her craft denemesinde dayaniklilik hasari aliyor.
+
+EKLENDI / DUZELTME - Buyu:
+  - Magic Lock / Unlock artik container ve kapilari kilitleyip aciyor; Magic Trap
+    / Untrap tuzak durumunu set/clear ediyor; Arch Protection ve Mass Curse artik
+    grup buff/curse'unu uyguluyor (etkisizdiler).
+  - Reactive Armor artik melee'de oldugu gibi spell hasarinin dortte birini
+    caster'a yansitiyor.
+  - Masum bir oyuncuya atilan zararli buyu artik caster'i criminal isaretliyor,
+    tipki bir melee saldiri gibi.
+  - Teleport artik hedefi (harita disi / gecilmez tile) Recall ve Gate gibi
+    dogruluyor; boylece caster'i bir duvarda sikistiramaz.
+
 [2026-06-30] - Combat parity: flag'ler, scriptlenebilir hasar/parry, ammo ve skill override (Wave 150)
 ----------------------------------------
 

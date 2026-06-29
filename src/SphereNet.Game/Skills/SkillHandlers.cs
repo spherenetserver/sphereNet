@@ -147,6 +147,7 @@ public sealed class SkillHandlers
         SkillType.Musicianship   => ActiveSkillTargetKind.None,
         SkillType.Peacemaking    => ActiveSkillTargetKind.Character,
         SkillType.Provocation    => ActiveSkillTargetKind.Character,
+        SkillType.Enticement     => ActiveSkillTargetKind.Character,
         _                        => ActiveSkillTargetKind.Unsupported,
     };
 
@@ -188,6 +189,7 @@ public sealed class SkillHandlers
             case SkillType.Musicianship:     return ActiveSkillEngine.Musicianship(sink);
             case SkillType.Peacemaking:      return ActiveSkillEngine.Peacemaking(sink, target as Character);
             case SkillType.Provocation:      return ActiveSkillEngine.Provocation(sink, target as Character);
+            case SkillType.Enticement:       return ActiveSkillEngine.Discordance(sink, target as Character);
             default:                         return UseSkill(ch, skill, point);
         }
     }

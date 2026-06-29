@@ -92,9 +92,9 @@ public static partial class Program
 
         sw.Stop();
         _log.LogInformation(
-            "ReSync complete: {Files} files reloaded, {Spells} spells, {Items} itemdefs, {Chars} chardefs ({Ms}ms)",
+            "ReSync complete: {Files} files reloaded, {Spells} spells, {Items} itemdefs, {Chars} chardefs, {Skills} skilldefs ({Ms}ms)",
             reloaded, defLoader.SpellsLoaded, defLoader.ItemDefsLoaded, defLoader.CharDefsLoaded,
-            sw.ElapsedMilliseconds);
+            defLoader.SkillDefsLoaded, sw.ElapsedMilliseconds);
 
         BroadcastSysMessage($"ReSync: {reloaded} script files reloaded in {sw.ElapsedMilliseconds}ms.");
         SphereNet.Scripting.Parsing.ScriptFile.ClearFileCache();

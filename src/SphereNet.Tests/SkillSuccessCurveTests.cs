@@ -19,14 +19,15 @@ public class SkillSuccessCurveTests
 {
     [Theory]
     [InlineData(0, 500)]     // skill == difficulty → 50%
-    [InlineData(150, 750)]   // one variance above → 75%
-    [InlineData(-150, 250)]  // one variance below → 25%
-    [InlineData(300, 875)]
-    [InlineData(-300, 125)]
-    [InlineData(450, 937)]   // 1000 - (125 - 62)
+    [InlineData(100, 750)]   // one variance above → 75%
+    [InlineData(-100, 250)]  // one variance below → 25%
+    [InlineData(200, 875)]
+    [InlineData(-200, 125)]
+    [InlineData(300, 937)]   // 1000 - (125 - 62)
     public void CalcSCurve_MatchesReferenceHalvingCurve(int delta, int expected)
     {
-        Assert.Equal(expected, SkillEngine.CalcSCurve(delta, 150));
+        // Source-X SKILL_VARIANCE = 100 (10.0 points per halving period).
+        Assert.Equal(expected, SkillEngine.CalcSCurve(delta, 100));
     }
 
     [Fact]

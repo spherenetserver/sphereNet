@@ -42,9 +42,9 @@ public static class SkillEngine
     /// <summary>Callback fired when a stat gain occurs. Args: (Character, statIndex: 0=STR 1=DEX 2=INT, newValue).</summary>
     public static Action<Character, int, int>? OnStatGain { get; set; }
 
-    /// <summary>Skill variance for S-curve calculation (reference SKILL_VARIANCE = 150,
-    /// i.e. 15.0 skill points per bell-curve halving period).</summary>
-    private const int SkillVariance = 150;
+    /// <summary>Skill variance for S-curve calculation. Source-X SKILL_VARIANCE = 100
+    /// (10.0 skill points per bell-curve halving period).</summary>
+    private const int SkillVariance = 100;
 
     /// <summary>Active skill duration from [SKILL] DELAY (a tenths-of-a-second
     /// curve across skill 0-100.0 → ms; reference Skill_GetTimeout).
@@ -107,12 +107,18 @@ public static class SkillEngine
     /// </summary>
     public static bool UseQuick(Character ch, SkillType skill, int difficulty, bool allowGain = true, bool useBellCurve = true)
     {
-        // @SkillUseQuick (Source-X) — fires before the check resolves so a script
-        // can cancel the quick use (RETURN 1) before any roll or experience gain.
-        if (Character.OnSkillUseQuick != null && Character.OnSkillUseQuick(ch, (int)skill, difficulty))
-            return false;
-
         bool success = CheckSuccess(ch, skill, difficulty, useBellCurve);
+
+        // @SkillUseQuick (Source-X) — fires AFTER the roll with ARGN3 = result; a
+        // script may flip the result, or cancel the use entirely (RETURN 1) so no
+        // experience is gained.
+        if (Character.OnSkillUseQuick != null)
+        {
+            int outcome = Character.OnSkillUseQuick(ch, (int)skill, difficulty, success ? 1 : 0);
+            if (outcome < 0)
+                return false;
+            success = outcome != 0;
+        }
 
         if (allowGain)
         {
@@ -134,6 +140,11 @@ public static class SkillEngine
         // accrue skill/stat gains from that free success.
         if (ch.PrivLevel >= PrivLevel.GM) return;
         if ((int)skill < 0 || (int)skill >= (int)SkillType.Qty)
+            return;
+
+        // Source-X CChar::Skill_Experience: skills do not advance in safe areas.
+        var gainRegion = SphereNet.Game.Objects.ObjBase.ResolveWorld?.Invoke()?.FindRegion(ch.Position);
+        if (gainRegion != null && gainRegion.IsFlag(RegionFlag.Safe))
             return;
 
         // Scale and clamp difficulty
@@ -242,6 +253,11 @@ public static class SkillEngine
     /// <summary>Get maximum total skill cap.</summary>
     public static int GetSkillSumMax(Character ch)
     {
+        // Source-X Skill_GetSumMax: a per-character OVERRIDE.SKILLSUM tag wins
+        // over the class def and the global override.
+        if (ch.TryGetTag("OVERRIDE.SKILLSUM", out string? sumStr) &&
+            int.TryParse(sumStr, out int sumTag) && sumTag > 0)
+            return sumTag;
         var cls = DefinitionLoader.GetSkillClassDef(ch.SkillClass);
         return cls?.SkillSumMax > 0 ? cls.SkillSumMax : SkillSumMaxOverride;
     }
@@ -442,6 +458,11 @@ public static class SkillEngine
 
     private static int ResolveSkillCap(Character ch, SkillType skill)
     {
+        // Source-X Skill_GetMax: a per-character OVERRIDE.SKILLCAP_<n> tag wins
+        // over the class def and the global override.
+        if (ch.TryGetTag($"OVERRIDE.SKILLCAP_{(int)skill}", out string? capStr) &&
+            int.TryParse(capStr, out int capTag) && capTag > 0)
+            return capTag;
         var cls = DefinitionLoader.GetSkillClassDef(ch.SkillClass);
         if (cls != null && cls.SkillCaps.TryGetValue(skill, out int classCap) && classCap > 0)
             return classCap;

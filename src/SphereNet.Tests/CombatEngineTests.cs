@@ -270,6 +270,43 @@ public class CombatEngineTests
     }
 
     [Fact]
+    public void Discordance_TagReducesArmorDefenseUntilExpiry()
+    {
+        var ch = new Character();
+        var chest = new Item(); chest.SetTag("ARMOR", "40"); ch.Equip(chest, Layer.Chest);
+        Assert.Equal(40, CombatEngine.CalcArmorDefenseForRegion(ch, ArmorHitRegion.Chest));
+
+        // Active discord (50%) halves the region defense.
+        ch.SetTag("DISCORD_PCT", "50");
+        ch.SetTag("DISCORD_UNTIL", (Environment.TickCount64 + 60_000).ToString());
+        Assert.Equal(20, CombatEngine.CalcArmorDefenseForRegion(ch, ArmorHitRegion.Chest));
+
+        // Expired discord no longer applies.
+        ch.SetTag("DISCORD_UNTIL", (Environment.TickCount64 - 1000).ToString());
+        Assert.Equal(40, CombatEngine.CalcArmorDefenseForRegion(ch, ArmorHitRegion.Chest));
+    }
+
+    [Fact]
+    public void DamageItem_ReducesDurabilityWhenEnabled()
+    {
+        var savedEnabled = CombatEngine.DurabilityEnabled;
+        var savedChance = CombatEngine.DurabilityLossChance;
+        try
+        {
+            CombatEngine.DurabilityEnabled = true;
+            CombatEngine.DurabilityLossChance = 100; // always lose on the roll
+            var tool = new Item { HitsMax = 50, HitsCur = 50 };
+            CombatEngine.DamageItem(tool);
+            Assert.True(tool.HitsCur < 50);
+        }
+        finally
+        {
+            CombatEngine.DurabilityEnabled = savedEnabled;
+            CombatEngine.DurabilityLossChance = savedChance;
+        }
+    }
+
+    [Fact]
     public void OnHitParry_PartialBlockLeaksDamageInsteadOfFullBlock()
     {
         var savedParry = CombatEngine.OnHitParry;

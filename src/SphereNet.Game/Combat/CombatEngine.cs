@@ -343,6 +343,7 @@ public static class CombatEngine
 
     public static int CalcArmorDefenseForRegion(Character defender, ArmorHitRegion hitRegion)
     {
+        int ar;
         // COMBAT_STACKARMOR: sum the AR of every piece covering this region.
         if ((Character.CombatFlags & (int)CombatFlags.StackArmor) != 0 &&
             _stackArmorLayers.TryGetValue(hitRegion, out var layers))
@@ -354,11 +355,40 @@ public static class CombatEngine
                 if (piece != null)
                     total += Math.Max(0, piece.GetArmorDefense());
             }
-            return total;
+            ar = total;
+        }
+        else
+        {
+            var armor = defender.GetEquippedItem(GetArmorLayerForRegion(hitRegion));
+            ar = Math.Max(0, armor?.GetArmorDefense() ?? 0);
         }
 
-        var armor = defender.GetEquippedItem(GetArmorLayerForRegion(hitRegion));
-        return Math.Max(0, armor?.GetArmorDefense() ?? 0);
+        // Discordance temporarily lowers the target's defenses.
+        int discord = GetActiveDiscordPct(defender);
+        if (discord > 0)
+            ar -= ar * discord / 100;
+        return Math.Max(0, ar);
+    }
+
+    /// <summary>Active Discordance defense penalty % on a character (0 when none
+    /// or expired). Read from the DISCORD_PCT / DISCORD_UNTIL tags set by the
+    /// Discordance skill — lazy expiry, no separate timer.</summary>
+    private static int GetActiveDiscordPct(Character ch)
+    {
+        if (!ch.TryGetTag("DISCORD_PCT", out string? p) || !int.TryParse(p, out int pct) || pct <= 0)
+            return 0;
+        if (ch.TryGetTag("DISCORD_UNTIL", out string? u) && long.TryParse(u, out long until) &&
+            Environment.TickCount64 > until)
+            return 0;
+        return Math.Clamp(pct, 0, 100);
+    }
+
+    /// <summary>Apply one durability-loss roll to an arbitrary item (e.g. a
+    /// crafting tool). Honors the DurabilityEnabled gate and break handling.</summary>
+    public static void DamageItem(Item item)
+    {
+        if (DurabilityEnabled)
+            ApplyDurabilityLoss(item);
     }
 
     /// <summary>

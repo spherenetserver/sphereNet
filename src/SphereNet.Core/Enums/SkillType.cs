@@ -109,8 +109,12 @@ public enum SkillFlag
     Fight       = 0x0002,   // SKF_FIGHT
     Magic       = 0x0004,   // SKF_MAGIC
     Craft       = 0x0008,   // SKF_CRAFT
-    Gather      = 0x0010,   // SKF_GATHER
-    Disabled    = 0x0020,   // SKF_DISABLED
-    NoFail      = 0x0040,   // SKF_NOFAIL
-    RankedTitle = 0x0080,   // SKF_RANKEDTITLE
+    Immobile    = 0x0010,   // SKF_IMMOBILE — fails if the character moves
+    Selectable  = 0x0020,   // SKF_SELECTABLE — selectable from the skill menu
+    NoMinDist   = 0x0040,   // SKF_NOMINDIST — can gather on the tile you stand on
+    NoAnim      = 0x0080,   // SKF_NOANIM — suppress hardcoded animation
+    NoSfx       = 0x0100,   // SKF_NOSFX — suppress hardcoded sound
+    Ranged      = 0x0200,   // SKF_RANGED — ranged combat skill (with Fight)
+    Gather      = 0x0400,   // SKF_GATHER — gathering skill (SkillStrokes like Craft)
+    Disabled    = 0x0800,   // SKF_DISABLED — skill can't be used
 }

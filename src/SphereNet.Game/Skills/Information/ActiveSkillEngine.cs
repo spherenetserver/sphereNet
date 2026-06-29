@@ -1034,6 +1034,42 @@ public static class ActiveSkillEngine
         return true;
     }
 
+    // ----------------------------------------------------------- Discordance
+
+    /// <summary>Source-X CChar::Skill_Enticement (Discordance): debuffs a
+    /// creature's defenses for a short time via DISCORD_PCT/DISCORD_UNTIL tags
+    /// read by the combat armor calc (lazy expiry, no separate timer).</summary>
+    public static bool Discordance(IActiveSkillSink sink, Character? target)
+    {
+        var ch = sink.Self;
+        if (target == null || target.IsPlayer)
+            return false;
+        if (ch.MapIndex != target.MapIndex || GetDistance(ch.Position, target.Position) > 8)
+        {
+            sink.SysMessage("That creature is too far away.");
+            return false;
+        }
+        if (!HasMusicalInstrument(sink))
+        {
+            sink.SysMessage("You have no musical instrument.");
+            return false;
+        }
+        if (!SkillEngine.UseQuick(ch, SkillType.Musicianship, 40))
+            return false;
+        if (!SkillEngine.UseQuick(ch, SkillType.Enticement, 50))
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.PeacemakingDisobey));
+            return false;
+        }
+
+        // Defense penalty scales with skill (up to ~28%), lasting 20s.
+        int pct = Math.Clamp(ch.GetSkill(SkillType.Enticement) / 40, 1, 28);
+        target.SetTag("DISCORD_PCT", pct.ToString());
+        target.SetTag("DISCORD_UNTIL", (Environment.TickCount64 + 20_000).ToString());
+        sink.Emote("*plays discordant music*");
+        return true;
+    }
+
     // ----------------------------------------------------------- Provocation
 
     /// <summary>Source-X CChar::Skill_Provocation. Incites one creature against another.</summary>

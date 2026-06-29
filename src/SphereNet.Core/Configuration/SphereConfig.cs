@@ -143,6 +143,21 @@ public sealed class SphereConfig
     public bool MonsterFight { get; set; }
     public bool MonsterFear { get; set; } = true;
     public int AdvancedLos { get; set; }
+
+    // NPC AI (Source-X NPCAI / NPCHEALTHRESHOLD / NPCWANDERLOOKAROUNDCHANCE).
+    // NpcAi is the NPC_AI_* flag mask applied to every NPC unless a character
+    // sets OVERRIDE.NPCAI. Source-X's bare default is 0; SphereNet keeps the
+    // previously-shipped sensible default (PATH|COMBAT|PERSISTENTPATH|THREAT =
+    // 0x0C41) so existing worlds don't lose pathfinding/threat behaviour. Set
+    // NPCAI=0 in the .ini for exact bare-Source-X behaviour.
+    public int NpcAi { get; set; } = 0x0C41;
+    // Self-heal threshold (% HP) handed to the @NPCActCast trigger as
+    // LOCAL.HealThreshold. Source-X m_iNPCHealthreshold default 30.
+    public int NpcHealThreshold { get; set; } = 30;
+    // Percent chance (0-100) that an idle wandering NPC runs a look-around
+    // target scan on a given wander step. Source-X m_iNPCWanderLookAroundChance
+    // default 30. OVERRIDE.LOOKAROUNDCHANCE overrides it per character.
+    public int NpcWanderLookAroundChance { get; set; } = 30;
     public ushort ColorNotoGood { get; set; } = 0x0059;
     public ushort ColorNotoGoodNpc { get; set; } = 0x0059;
     public ushort ColorNotoGuildSame { get; set; } = 0x003F;
@@ -453,6 +468,10 @@ public sealed class SphereConfig
         MonsterFight = ini.GetBool(section, "MonsterFight", MonsterFight);
         MonsterFear = ini.GetBool(section, "MonsterFear", MonsterFear);
         AdvancedLos = ini.GetInt(section, "AdvancedLos", AdvancedLos);
+        NpcAi = ini.GetInt(section, "NpcAi", ini.GetInt(section, "NPCAI", NpcAi));
+        NpcHealThreshold = ini.GetInt(section, "NpcHealThreshold", ini.GetInt(section, "NPCHealthreshold", NpcHealThreshold));
+        NpcWanderLookAroundChance = ini.GetInt(section, "NpcWanderLookAroundChance",
+            ini.GetInt(section, "NPCWanderLookAroundChance", NpcWanderLookAroundChance));
         // Notoriety name hues: a configured 0 means "use the built-in default" (hue 0
         // would render the overhead label as black, which is never wanted).
         ColorNotoGood = GetHue(ini, section, "ColorNotoGood", ColorNotoGood, zeroMeansDefault: true);

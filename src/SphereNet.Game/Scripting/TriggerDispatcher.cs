@@ -142,7 +142,7 @@ public sealed class TriggerDispatcher
                 {
                     var tevLink = Resources.GetResource(tevRid);
                     if (tevLink == null) continue;
-                    var result = Runner.RunTriggerByName(tevLink, trigName, ch, args.ScriptConsole, WrapArgs(args));
+                    var result = RunWrapped(tevLink, trigName, ch, args);
                     if (result == TriggerResult.True)
                         return TriggerResult.True;
                 }
@@ -153,7 +153,7 @@ public sealed class TriggerDispatcher
             if (charDefLink != null)
             {
                 // CHARDEF links may not have trigger bitmasks precomputed, so resolve by name.
-                var result = Runner.RunTriggerByName(charDefLink, trigName, ch, args.ScriptConsole, WrapArgs(args));
+                var result = RunWrapped(charDefLink, trigName, ch, args);
                 if (result == TriggerResult.True)
                     return TriggerResult.True;
             }
@@ -604,7 +604,7 @@ public sealed class TriggerDispatcher
                     var eventLink = Resources.GetResource(eventRid);
                     if (eventLink == null) continue;
 
-                    var result = Runner.RunTriggerByName(eventLink, trigName, obj, args.ScriptConsole, WrapArgs(args));
+                    var result = RunWrapped(eventLink, trigName, obj, args);
                     if (result == TriggerResult.True)
                         return TriggerResult.True;
                 }
@@ -612,6 +612,24 @@ public sealed class TriggerDispatcher
         }
 
         return TriggerResult.Default;
+    }
+
+    /// <summary>Run one trigger block with wrapped args, then copy the script's
+    /// ARGN1/2/3 mutations back into the caller's TriggerArgs. Source-X reads
+    /// pScriptArgs->m_iN1/2 back after OnTrigger (e.g. @NPCActFight dist/motivation,
+    /// @HitTry swing delay); the wrapped instance is per-block, so without this
+    /// copy-back those mutations would be lost. LOCAL.* readback already works
+    /// via the shared Locals pool. Copying after each block in a chain also
+    /// forward-propagates the values to the next block, matching Source-X.</summary>
+    private TriggerResult RunWrapped(SphereNet.Scripting.Resources.ResourceLink link,
+        string trigName, IScriptObj obj, TriggerArgs args)
+    {
+        var wrapped = WrapArgs(args);
+        var result = Runner!.RunTriggerByName(link, trigName, obj, args.ScriptConsole, wrapped);
+        args.N1 = wrapped.Number1;
+        args.N2 = wrapped.Number2;
+        args.N3 = wrapped.Number3;
+        return result;
     }
 
     /// <summary>Convert TriggerArgs to ITriggerArgs for the script engine.</summary>

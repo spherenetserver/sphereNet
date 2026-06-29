@@ -4,6 +4,53 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - NPC AI parity: NPCAI config, pathfinding, special attacks, spellbooks, triggers (Wave 152)
+----------------------------------------
+
+ADDED - NPC AI / Config:
+  - NPCAI, NPCHealThreshold and NPCWanderLookAroundChance are now read from the
+    .ini. The global NPC_AI_* flag set is seeded from NPCAI instead of being
+    hardcoded; the default stays PATH|COMBAT|PERSISTENTPATH|THREAT (0x0C41) so
+    existing worlds keep pathfinding/threat. Set NPCAI=0 for bare Source-X.
+  - Per-character OVERRIDE.NPCAI is honored over the global NPCAI mask, so the
+    looting/food/path/threat behaviour can be set on a single creature (Source-X
+    CCharNPC::GetNpcAiFlags). Looting, IntFood, Path, PersistentPath and Threat
+    checks now resolve the per-character flags.
+
+FIXED - NPC AI / Pathfinding:
+  - A* pathfinding is gated on intelligence: a creature with effective INT < 30
+    no longer routes around obstacles (it faces the target and steps as the line
+    opens). NPC_AI_ALWAYSINT bypasses the gate (treated as INT 300). Source-X
+    NPC_Pathfinding parity.
+
+FIXED - NPC AI / Special attacks:
+  - Breath and rock-throw now require FULL stamina (Source-X
+    Stat_GetVal(DEX) >= Stat_GetAdjusted(DEX)) instead of half, so they fire on
+    the opening exchange / after a rest rather than every tick.
+  - Ogre/ettin/cyclops bodies throw rocks by default when carrying a throwable
+    rock (ItemType.ARock/Rock) in their pack; the default throw range is 2-9 (was
+    2-8). THROWOBJ/THROWRANGE/THROWDAM tag throwers are unchanged.
+
+FIXED - NPC AI / Spellbooks:
+  - NPCs derive their spell list from any spellbook type (necro/paladin/bushido/
+    ninjitsu/arcanist/mystic/mastery/extra), reading the book itemdef's spell
+    window (TDATA3 offset, TDATA4 max spells) instead of assuming the classic
+    64-bit magery book. The classic book remains the fallback when undefined.
+    Source-X NPC_AddSpellsFromBook parity.
+
+FIXED - NPC AI / Triggers:
+  - @NPCActCast RETURN 1 now aborts the cast and reverts to melee instead of
+    being consumed as a successful action (Source-X NPC_FightMagery). The trigger
+    receives ARGN1=spell and LOCAL.HealThreshold (from NPCHealThreshold) and may
+    override the cast spell via ARGN1.
+  - @NPCActFight now receives ARGN1=distance and ARGN2=motivation with ARGO=target
+    (was the target UID in ARGN1). A script may flip motivation (ARGN2 readback),
+    force a cast via LOCAL.skill + LOCAL.spell, or fully handle the action with
+    RETURN 1.
+  - Trigger ARGN1/ARGN2/ARGN3 mutations made by a script are now copied back to
+    the engine after each character trigger block (was lost before; LOCAL.* was
+    already shared), so @NPCActFight/@NPCActCast/@HitTry readbacks work.
+
 [2026-06-30] - Skill/spell parity: flags, caps, gain, Discordance, spells (Wave 151)
 ----------------------------------------
 

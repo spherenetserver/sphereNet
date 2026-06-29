@@ -108,12 +108,34 @@ public sealed class NpcAI
     private const long ReacquireDelayMs = 1500;
     private long _lastPathPurge;
 
-    public Func<Character, Character, bool>? OnNpcActFight { get; set; }
+    /// <summary>@NPCActFight hook. Source-X NPC_Act_Fight fires it with ARGN1=dist,
+    /// ARGN2=motivation, ARGO=target. RETURN 1 fully handles the action; otherwise
+    /// the script may override motivation (ARGN2 readback) and force a cast via
+    /// LOCAL.skill + LOCAL.spell. Args: (npc, target, dist, motivation).</summary>
+    public Func<Character, Character, int, int, NpcFightDecision>? OnNpcActFight { get; set; }
     public Func<Character, Character, bool>? OnNpcLookAtChar { get; set; }
+
+    /// <summary>Resolved @NPCActFight decision. <see cref="Handled"/> = RETURN 1
+    /// (skip the engine's fight logic this tick). Otherwise <see cref="Motivation"/>
+    /// is the (possibly script-mutated) motivation and <see cref="ForcedSpell"/> /
+    /// <see cref="ForcedSkill"/> carry a script-forced cast (LOCAL.spell / LOCAL.skill).</summary>
+    public readonly record struct NpcFightDecision(
+        bool Handled, int Motivation, SkillType ForcedSkill, SpellType ForcedSpell);
     public Func<Character, bool>? OnNpcActWander { get; set; }
     public Func<Character, Character, bool>? OnNpcActFollow { get; set; }
-    public Func<Character, Character, SpellType, bool>? OnNpcActCast { get; set; }
+    /// <summary>@NPCActCast hook. Source-X NPC_FightMagery fires it per candidate
+    /// spell with ARGN1=spell, ARGN2=wand-use, ARGO=target, LOCAL.HealThreshold.
+    /// RETURN 1 aborts the cast and reverts to melee; otherwise the (possibly
+    /// script-mutated) spell/target are cast. Returns the resolved decision; a
+    /// null result (no hook) means "proceed with the given spell/target".</summary>
+    public Func<Character, Character, SpellType, NpcCastDecision>? OnNpcActCast { get; set; }
     public Func<Character, Item, bool>? OnNpcLookAtItem { get; set; }
+
+    /// <summary>Outcome of the @NPCActCast trigger. <see cref="Abort"/> true =
+    /// RETURN 1 (revert to melee, no cast). Otherwise <see cref="Spell"/> /
+    /// <see cref="Target"/> carry the spell and target to cast (script may have
+    /// overridden them via ARGN1 / REF1).</summary>
+    public readonly record struct NpcCastDecision(bool Abort, SpellType Spell, Character? Target);
 
     public void PurgeStalePaths()
     {
@@ -200,6 +222,29 @@ public sealed class NpcAI
         _world = world;
         _config = config;
         _pathfinder = new Pathfinder(world);
+        // Source-X parity: the global NPC_AI_* mask is configured (NPCAI), not
+        // hardcoded. Seed the default flag set from config so every NPC inherits
+        // it unless overridden per character via OVERRIDE.NPCAI.
+        Flags = (NpcAIFlags)(uint)config.NpcAi;
+    }
+
+    /// <summary>Effective NPC_AI_* flags for a single NPC. Source-X
+    /// CCharNPC::GetNpcAiFlags: a per-character OVERRIDE.NPCAI key wins over the
+    /// global NPCAI config (mirrored here by the global <see cref="Flags"/>).
+    /// The override value is a raw NPC_AI_* integer (hex or decimal).</summary>
+    internal NpcAIFlags GetNpcFlags(Character npc)
+    {
+        if (npc.TryGetTag("OVERRIDE.NPCAI", out string? raw) && !string.IsNullOrWhiteSpace(raw))
+        {
+            raw = raw.Trim();
+            uint val;
+            bool ok = raw.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                ? uint.TryParse(raw.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out val)
+                : uint.TryParse(raw, out val);
+            if (ok)
+                return (NpcAIFlags)val;
+        }
+        return Flags;
     }
 
 
@@ -586,7 +631,7 @@ public sealed class NpcAI
         npc.FightTarget = Serial.Invalid;
 
         // No enemy — looters scavenge nearby corpses (Source-X NPC_AI_LOOTING).
-        if ((Flags.HasFlag(NpcAIFlags.Looting) || npc.TryGetTag("LOOTING", out _))
+        if ((GetNpcFlags(npc).HasFlag(NpcAIFlags.Looting) || npc.TryGetTag("LOOTING", out _))
             && TryLoot(npc))
             return;
 
@@ -701,8 +746,24 @@ public sealed class NpcAI
     /// </summary>
     private void ActFight(Character npc, Character target, int motivation)
     {
-        if (OnNpcActFight?.Invoke(npc, target) == true)
-            return;
+        if (OnNpcActFight != null)
+        {
+            int dist0 = npc.Position.GetDistanceTo(target.Position);
+            var decision = OnNpcActFight(npc, target, dist0, motivation);
+            if (decision.Handled)
+                return; // RETURN 1 — script fully handled the fight action
+            // LOCAL.skill + LOCAL.spell forced cast (Source-X magic-skill path):
+            // a forced spell is cast at the target; a forced non-cast skill yields
+            // this action to the script without the engine's default combat.
+            if (decision.ForcedSpell != SpellType.None)
+            {
+                CastViaTrigger(npc, target, decision.ForcedSpell);
+                return;
+            }
+            if (decision.ForcedSkill != SkillType.None)
+                return;
+            motivation = decision.Motivation; // ARGN2 readback (may flip to flee)
+        }
 
         // Source-X: flee when motivation < 0 (non-pets only)
         if (!npc.IsStatFlag(StatFlag.Pet) && motivation < 0)
@@ -775,8 +836,7 @@ public sealed class NpcAI
                 && npc.Mana >= npc.Int / 4 && _rand.Next(3) == 0)
             {
                 ClearLosFailCount(npc);
-                if (!TryNpcCastSpell(npc, target, SpellType.Teleport))
-                    OnNpcCastSpell?.Invoke(npc, target, SpellType.Teleport);
+                CastViaTrigger(npc, target, SpellType.Teleport);
                 return;
             }
             if (losFails > 15)
@@ -818,7 +878,11 @@ public sealed class NpcAI
         if (!canBreath)
             canBreath = npc.TryGetTag("BREATH.DAM", out _);
 
-        if (canBreath && dist <= 8 && npc.Stam >= npc.MaxStam / 2 && hasLOS)
+        // Source-X NPC_Act_Fight gates breath/throw behind FULL stamina
+        // (Stat_GetVal(STAT_DEX) >= Stat_GetAdjusted(STAT_DEX)) so these
+        // specials fire on the opening exchange / after a rest, not every tick.
+        bool fullStam = npc.MaxStam <= 0 || npc.Stam >= npc.MaxStam;
+        if (canBreath && dist <= 8 && fullStam && hasLOS)
         {
             long now = Environment.TickCount64;
             long nextBreath = 0;
@@ -837,12 +901,18 @@ public sealed class NpcAI
             }
         }
 
-        // Object throwing (Source-X: NPCACT_THROWING, range 2-8, stam >= 50%)
-        if (dist >= 2 && dist <= 8 && npc.Stam >= npc.MaxStam / 2
-            && hasLOS && npc.TryGetTag("THROWOBJ", out _))
+        // Object throwing (Source-X NPCACT_THROWING, range 2-9, full stamina).
+        // Throwers are ogre/ettin/cyclops bodies (the hardcoded default rock
+        // throwers) or any creature carrying a THROWOBJ tag. A default rock
+        // thrower must actually have a throwable rock (ItemType.ARock) in its
+        // pack — Source-X ContentFind(IT_AROCK); a THROWOBJ-tagged creature
+        // throws on the tag alone (SphereNet flag semantics, THROWDAM/THROWRANGE).
+        bool throwObjTag = npc.TryGetTag("THROWOBJ", out _);
+        bool defaultThrower = !throwObjTag && IsRockThrowerBody(npc.BodyId) && HasThrowableRock(npc);
+        if (dist >= 2 && fullStam && hasLOS && (throwObjTag || defaultThrower))
         {
             int throwDmg = Math.Max(1, npc.Dex / 4 + _rand.Next(npc.Dex / 4 + 1));
-            int throwMin = 2, throwMax = 8;
+            int throwMin = 2, throwMax = 9;
             if (npc.TryGetTag("THROWRANGE", out string? trStr) && !string.IsNullOrWhiteSpace(trStr))
             {
                 var parts = trStr.Split(',', 2, StringSplitOptions.TrimEntries);
@@ -1036,8 +1106,8 @@ public sealed class NpcAI
             && _world.CanSeeLOS(npc.Position, target.Position))
         {
             var (spell, castTarget) = ChooseBestSpell(npc, target, dist);
-            if (spell != SpellType.None && !TryNpcCastSpell(npc, castTarget, spell))
-                OnNpcCastSpell?.Invoke(npc, castTarget, spell);
+            if (spell != SpellType.None)
+                CastViaTrigger(npc, castTarget, spell);
         }
 
         // Self-heal while fleeing (every 4th step)
@@ -1045,15 +1115,9 @@ public sealed class NpcAI
             && npc.FleeStepsCurrent % 4 == 0)
         {
             if (npc.NpcSpells.Contains(SpellType.GreaterHeal))
-            {
-                if (!TryNpcCastSpell(npc, npc, SpellType.GreaterHeal))
-                    OnNpcCastSpell?.Invoke(npc, npc, SpellType.GreaterHeal);
-            }
+                CastViaTrigger(npc, npc, SpellType.GreaterHeal);
             else if (npc.NpcSpells.Contains(SpellType.Heal))
-            {
-                if (!TryNpcCastSpell(npc, npc, SpellType.Heal))
-                    OnNpcCastSpell?.Invoke(npc, npc, SpellType.Heal);
-            }
+                CastViaTrigger(npc, npc, SpellType.Heal);
         }
 
         // Scout retreat: a creature that can hide vanishes mid-flee once it has
@@ -1210,15 +1274,30 @@ public sealed class NpcAI
         if (spell == SpellType.None)
             return false;
 
-        if (TryNpcCastSpell(npc, castTarget, spell))
-            return true;
-
-        OnNpcCastSpell?.Invoke(npc, castTarget, spell);
-        return true;
+        // Fire @NPCActCast and cast unless the script aborts. On abort (RETURN 1)
+        // CastViaTrigger returns false, so the magery attempt fails and
+        // NPC_Act_Fight falls through to archery/melee (Source-X parity).
+        return CastViaTrigger(npc, castTarget, spell);
     }
 
-    private bool TryNpcCastSpell(Character npc, Character target, SpellType spell) =>
-        OnNpcActCast?.Invoke(npc, target, spell) == true;
+    /// <summary>Fire @NPCActCast, then launch the native cast unless the script
+    /// aborted it. Source-X parity: RETURN 1 cancels the cast and the fight
+    /// falls back to melee (returns false); otherwise the possibly-overridden
+    /// spell/target are cast (returns true). With no script hook this always
+    /// casts the given spell.</summary>
+    private bool CastViaTrigger(Character npc, Character target, SpellType spell)
+    {
+        if (OnNpcActCast != null)
+        {
+            var d = OnNpcActCast(npc, target, spell);
+            if (d.Abort)
+                return false; // RETURN 1 — revert to melee, no cast this attempt
+            if (d.Spell != SpellType.None) spell = d.Spell;
+            if (d.Target != null && !d.Target.IsDeleted && !d.Target.IsDead) target = d.Target;
+        }
+        OnNpcCastSpell?.Invoke(npc, target, spell);
+        return true;
+    }
 
     /// <summary>
     /// Intelligent spell selection. Priority:
@@ -1397,10 +1476,14 @@ public sealed class NpcAI
         return any;
     }
 
-    /// <summary>Populate an NPC's spell list from a carried/equipped magery
-    /// spellbook (Source-X NPC_AddSpellsFromBook). The book stores a 64-bit
-    /// bitmask (More2:More1) where bit i = magery spell (i+1). Tried once.</summary>
-    private static void EnsureNpcSpellsFromBook(Character npc)
+    /// <summary>Populate an NPC's spell list from any carried/equipped spellbook
+    /// (Source-X NPC_AddSpellsFromBook). The book's itemdef carries the spell
+    /// range: TDATA3 = first-spell offset, TDATA4 = max spells. Spell (offset+1+i)
+    /// is present when bit i is set in the book's More1:More2 mask (bits 0-31 in
+    /// More1, 32-63 in More2 — Source-X CItem::IsSpellInBook). This covers
+    /// necro/chivalry/mysticism/spellweaving books, not just the classic 64-bit
+    /// magery book. Tried once per NPC.</summary>
+    internal static void EnsureNpcSpellsFromBook(Character npc)
     {
         if (npc.TryGetTag("SPELLS_LOADED", out _)) return;
         npc.SetTag("SPELLS_LOADED", "1");
@@ -1408,10 +1491,17 @@ public sealed class NpcAI
         Item? book = FindSpellbook(npc);
         if (book != null)
         {
+            var def = DefinitionLoader.GetItemDef(book.BaseId);
+            // TDATA3/TDATA4 define the book's spell window. Undefined (0 max) →
+            // fall back to the classic magery book (offset 0, 64 spells).
+            int offset = (int)(def?.TData3 ?? 0);
+            int maxSpells = (int)(def?.TData4 ?? 0);
+            if (maxSpells <= 0) { offset = 0; maxSpells = 64; }
+
             ulong bits = ((ulong)book.More2 << 32) | book.More1;
-            for (int i = 0; i < 64; i++)
+            for (int i = 0; i < maxSpells && i < 64; i++)
                 if ((bits & (1UL << i)) != 0)
-                    npc.NpcSpellAdd((SpellType)(i + 1));
+                    npc.NpcSpellAdd((SpellType)(offset + 1 + i));
         }
 
         if (npc.NpcSpells.Count == 0)
@@ -1465,16 +1555,23 @@ public sealed class NpcAI
         return true;
     }
 
+    /// <summary>All spellbook item types (Source-X CItemBase::IsTypeSpellbook):
+    /// magery plus necro/paladin/bushido/ninjitsu/arcanist/mystic/mastery/extra.</summary>
+    private static bool IsSpellbookType(ItemType type) => type is
+        ItemType.Spellbook or ItemType.SpellbookNecro or ItemType.SpellbookPala or
+        ItemType.SpellbookExtra or ItemType.SpellbookBushido or ItemType.SpellbookNinjitsu or
+        ItemType.SpellbookArcanist or ItemType.SpellbookMystic or ItemType.SpellbookMastery;
+
     private static Item? FindSpellbook(Character npc)
     {
         var held = npc.GetEquippedItem(Layer.OneHanded);
-        if (held?.ItemType == ItemType.Spellbook) return held;
+        if (held != null && IsSpellbookType(held.ItemType)) return held;
         held = npc.GetEquippedItem(Layer.TwoHanded);
-        if (held?.ItemType == ItemType.Spellbook) return held;
+        if (held != null && IsSpellbookType(held.ItemType)) return held;
         var pack = npc.Backpack;
         if (pack != null)
             foreach (var it in pack.Contents)
-                if (it.ItemType == ItemType.Spellbook) return it;
+                if (!it.IsDeleted && IsSpellbookType(it.ItemType)) return it;
         return null;
     }
 
@@ -1540,8 +1637,7 @@ public sealed class NpcAI
         // Near the last spot — try a Reveal (area around self) if available.
         if (dist <= 3 && npc.NpcSpells.Contains(SpellType.Reveal) && npc.Mana >= npc.Int / 4)
         {
-            if (!TryNpcCastSpell(npc, npc, SpellType.Reveal))
-                OnNpcCastSpell?.Invoke(npc, npc, SpellType.Reveal);
+            CastViaTrigger(npc, npc, SpellType.Reveal);
             return true;
         }
         if (dist > 1)
@@ -1708,6 +1804,25 @@ public sealed class NpcAI
         _ => false,
     };
 
+    /// <summary>Bodies that throw rocks by default (Source-X NPC_Act_Fight:
+    /// CREID_OGRE 0x01, CREID_ETTIN 0x02, CREID_CYCLOPS 0x4C). These throw only
+    /// while carrying a rock; a THROWOBJ tag enables throwing on any body.</summary>
+    internal static bool IsRockThrowerBody(ushort bodyId) =>
+        bodyId is 0x0001 or 0x0002 or 0x004C;
+
+    /// <summary>True when the NPC carries a throwable rock in its pack
+    /// (Source-X ContentFind(IT_AROCK)). ItemType.Rock is accepted too so a
+    /// plain rock pile also arms a default thrower.</summary>
+    internal static bool HasThrowableRock(Character npc)
+    {
+        var pack = npc.Backpack;
+        if (pack == null) return false;
+        foreach (var it in pack.Contents)
+            if (!it.IsDeleted && it.ItemType is ItemType.ARock or ItemType.Rock)
+                return true;
+        return false;
+    }
+
     /// <summary>Source-X: BREATH.DAM — defaults to STR*5/100, clamped 1-200.</summary>
     private static int GetBreathDamage(Character npc)
     {
@@ -1832,7 +1947,7 @@ public sealed class NpcAI
         // Threat: stick to whoever has dealt the most damage to us (Source-X
         // NPC_AI_THREAT / NPC_FightFindBestTarget). Global flag, on by default;
         // drives tank/aggro mechanics off the accumulated attacker list.
-        if (Flags.HasFlag(NpcAIFlags.Threat))
+        if (GetNpcFlags(npc).HasFlag(NpcAIFlags.Threat))
             motivation += GetThreatBonus(npc, target);
 
         // Optional per-creature FightMode bias (ServUO/ModernUO AcquireFocusMob:
@@ -2048,7 +2163,7 @@ public sealed class NpcAI
 
         // Hungry animals/NPCs with IntFood feed: eat from pack or graze
         // (Source-X NPC_Act_Food).
-        if ((Flags.HasFlag(NpcAIFlags.IntFood) || npc.TryGetTag("INTFOOD", out _))
+        if ((GetNpcFlags(npc).HasFlag(NpcAIFlags.IntFood) || npc.TryGetTag("INTFOOD", out _))
             && TryEatFood(npc))
             return;
 
@@ -2731,7 +2846,20 @@ public sealed class NpcAI
             return;
         }
 
-        if (!Flags.HasFlag(NpcAIFlags.Path))
+        var npcFlags = GetNpcFlags(npc);
+        if (!npcFlags.HasFlag(NpcAIFlags.Path))
+        {
+            npc.Direction = dir;
+            return;
+        }
+
+        // Source-X NPC_Pathfinding intelligence gate: a creature only routes
+        // with A* when it is smart enough (effective INT >= 30). NPC_AI_ALWAYSINT
+        // bypasses the check (treated as INT 300). A dumb creature just faces the
+        // target and takes the blocked-direct step on later ticks as the line
+        // opens — it never burns the A* node budget.
+        int effInt = npcFlags.HasFlag(NpcAIFlags.AlwaysInt) ? 300 : npc.Int;
+        if (effInt < 30)
         {
             npc.Direction = dir;
             return;
@@ -2739,7 +2867,7 @@ public sealed class NpcAI
 
         // Direct path blocked — use A* pathfinding
         uint uid = npc.Uid.Value;
-        if (!Flags.HasFlag(NpcAIFlags.PersistentPath))
+        if (!npcFlags.HasFlag(NpcAIFlags.PersistentPath))
         {
             _pathCache.Remove(uid);
             _pathIndex.Remove(uid);

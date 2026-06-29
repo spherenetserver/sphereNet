@@ -1681,7 +1681,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         npc.FightTarget = target.Uid;
         int fightCount = 0;
         ai.OnNpcLookAtChar = (_, _) => false;
-        ai.OnNpcActFight = (_, _) => { fightCount++; return true; };
+        ai.OnNpcActFight = (_, _, _, _) => { fightCount++; return new NpcAI.NpcFightDecision(true, 0, SkillType.None, SpellType.None); };
         npc.NextNpcActionTime = 0;
         ai.OnTickAction(npc);
 

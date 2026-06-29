@@ -1453,9 +1453,26 @@ public static partial class Program
                     _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCLookAtChar,
                         new TriggerArgs { CharSrc = target, N1 = target.Uid.Value > int.MaxValue ? 0 : (int)target.Uid.Value }) == TriggerResult.True;
             if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCActFight))
-                _npcAI.OnNpcActFight = (npc, target) =>
-                    _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActFight,
-                        new TriggerArgs { CharSrc = target, N1 = target.Uid.Value > int.MaxValue ? 0 : (int)target.Uid.Value }) == TriggerResult.True;
+                _npcAI.OnNpcActFight = (npc, target, dist, motivation) =>
+                {
+                    // Source-X NPC_Act_Fight args: ARGN1=distance, ARGN2=motivation,
+                    // ARGO=target. The script may flip motivation (ARGN2 readback,
+                    // wired through RunWrapped) or force a cast via LOCAL.skill +
+                    // LOCAL.spell. RETURN 1 fully handles the action.
+                    var locals = new SphereNet.Scripting.Variables.VarMap();
+                    var args = new TriggerArgs
+                    {
+                        CharSrc = target, O1 = target,
+                        N1 = dist, N2 = motivation, Locals = locals
+                    };
+                    var res = _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActFight, args);
+                    var forcedSkill = locals.Has("skill")
+                        ? (SkillType)(int)locals.GetInt("skill") : SkillType.None;
+                    var forcedSpell = locals.Has("spell")
+                        ? (SpellType)(int)locals.GetInt("spell") : SpellType.None;
+                    return new NpcAI.NpcFightDecision(
+                        res == TriggerResult.True, args.N2, forcedSkill, forcedSpell);
+                };
             if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCActWander))
                 _npcAI.OnNpcActWander = npc =>
                     _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActWander,
@@ -1466,8 +1483,24 @@ public static partial class Program
                         new TriggerArgs { CharSrc = target, O1 = target }) == TriggerResult.True;
             if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCActCast))
                 _npcAI.OnNpcActCast = (npc, target, spell) =>
-                    _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActCast,
-                        new TriggerArgs { CharSrc = target, O1 = target, N1 = (int)spell }) == TriggerResult.True;
+                {
+                    // Source-X NPC_FightMagery args: ARGN1=spell, ARGO=target,
+                    // LOCAL.HealThreshold seeded from config. RETURN 1 aborts the
+                    // cast and reverts to melee; otherwise ARGN1 carries the
+                    // (possibly script-overridden) spell back (via RunWrapped).
+                    var locals = new SphereNet.Scripting.Variables.VarMap();
+                    locals.SetInt("HealThreshold", _config.NpcHealThreshold);
+                    var args = new TriggerArgs
+                    {
+                        CharSrc = target, O1 = target, N1 = (int)spell, Locals = locals
+                    };
+                    var res = _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActCast, args);
+                    if (res == TriggerResult.True)
+                        return new NpcAI.NpcCastDecision(true, spell, target); // abort → melee
+                    var newSpell = (SpellType)args.N1;
+                    if (newSpell == SpellType.None) newSpell = spell;
+                    return new NpcAI.NpcCastDecision(false, newSpell, target);
+                };
             if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCLookAtItem))
                 _npcAI.OnNpcLookAtItem = (npc, item) =>
                     _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCLookAtItem,

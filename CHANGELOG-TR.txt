@@ -4,6 +4,52 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - NPC AI parity: NPCAI config, pathfinding, ozel saldirilar, spellbook, trigger'lar (Wave 152)
+----------------------------------------
+
+EKLENEN - NPC AI / Config:
+  - NPCAI, NPCHealThreshold ve NPCWanderLookAroundChance artik .ini'den okunuyor.
+    Global NPC_AI_* flag seti hardcoded yerine NPCAI'dan besleniyor; varsayilan
+    PATH|COMBAT|PERSISTENTPATH|THREAT (0x0C41) olarak kaliyor, boylece mevcut
+    dunyalar pathfinding/threat davranisini korur. Cikplak Source-X icin NPCAI=0.
+  - Karakter bazli OVERRIDE.NPCAI, global NPCAI maskesine gore oncelikli; tek bir
+    yaratigin loot/food/path/threat davranisi ayarlanabilir (Source-X
+    CCharNPC::GetNpcAiFlags). Looting, IntFood, Path, PersistentPath ve Threat
+    kontrolleri artik karakter bazli flag'leri cozer.
+
+DUZELTME - NPC AI / Pathfinding:
+  - A* pathfinding zekaya baglandi: efektif INT < 30 olan yaratik artik engelleri
+    dolanmiyor (hedefe doner ve cizgi acildikca adim atar). NPC_AI_ALWAYSINT bu
+    esigi bypass eder (INT 300 sayilir). Source-X NPC_Pathfinding paritesi.
+
+DUZELTME - NPC AI / Ozel saldirilar:
+  - Breath ve tas atma artik yarim yerine TAM stamina ister (Source-X
+    Stat_GetVal(DEX) >= Stat_GetAdjusted(DEX)); boylece her tick yerine acilis
+    veya dinlenme sonrasi tetiklenir.
+  - Ogre/ettin/cyclops govdeleri pack'inde atilabilir tas (ItemType.ARock/Rock)
+    varsa varsayilan olarak tas atar; varsayilan atis menzili 2-9 (eskiden 2-8).
+    THROWOBJ/THROWRANGE/THROWDAM tag'li firlaticilar degismedi.
+
+DUZELTME - NPC AI / Spellbook:
+  - NPC'ler spell listesini herhangi bir spellbook tipinden (necro/paladin/
+    bushido/ninjitsu/arcanist/mystic/mastery/extra) cikariyor; klasik 64-bit
+    magery kitabini varsaymak yerine kitabin itemdef spell penceresini okuyor
+    (TDATA3 offset, TDATA4 max spell). Tanimsizsa klasik kitap fallback kaliyor.
+    Source-X NPC_AddSpellsFromBook paritesi.
+
+DUZELTME - NPC AI / Trigger'lar:
+  - @NPCActCast RETURN 1 artik basarili aksiyon olarak tuketilmek yerine cast'i
+    iptal edip melee'ye doner (Source-X NPC_FightMagery). Trigger ARGN1=spell ve
+    LOCAL.HealThreshold (NPCHealThreshold'dan) alir ve ARGN1 ile cast spell'ini
+    degistirebilir.
+  - @NPCActFight artik ARGN1=mesafe ve ARGN2=motivasyon, ARGO=hedef aliyor
+    (eskiden hedef UID'i ARGN1'deydi). Script motivasyonu degistirebilir (ARGN2
+    geri okuma), LOCAL.skill + LOCAL.spell ile cast zorlayabilir veya RETURN 1 ile
+    aksiyonu tamamen ustlenebilir.
+  - Script'in yaptigi ARGN1/ARGN2/ARGN3 mutasyonlari artik her karakter trigger
+    blogundan sonra motora geri kopyalaniyor (onceden kayboluyordu; LOCAL.* zaten
+    paylasimliydi), boylece @NPCActFight/@NPCActCast/@HitTry geri okumalari calisir.
+
 [2026-06-30] - Skill/spell parity: flag'ler, cap'ler, gain, Discordance, spell'ler (Wave 151)
 ----------------------------------------
 

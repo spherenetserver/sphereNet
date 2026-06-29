@@ -439,7 +439,7 @@ public sealed class ClientItemUseHandler
                 else if (_triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Destroy,
                         new TriggerArgs { CharSrc = _character, ItemSrc = item }) != TriggerResult.True)
                 {
-                    item.Delete();
+                    _world.RemoveItem(item);
                 }
                 break;
 
@@ -741,7 +741,7 @@ public sealed class ClientItemUseHandler
                         if (_triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Destroy,
                                 new TriggerArgs { CharSrc = _character, ItemSrc = item }) != TriggerResult.True)
                         {
-                            item.Delete();
+                            _world.RemoveItem(item);
                         }
                     }
                     else
@@ -827,7 +827,7 @@ public sealed class ClientItemUseHandler
                 if (_triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Destroy,
                         new TriggerArgs { CharSrc = _character, ItemSrc = item }) != TriggerResult.True)
                 {
-                    item.Delete();
+                    _world.RemoveItem(item);
                 }
                 break;
 
@@ -1016,6 +1016,21 @@ public sealed class ClientItemUseHandler
                 _logger.LogWarning("Suspicious dclick on bankbox/vendorbox uid={Uid}", item.Uid.Value);
                 break;
 
+            // ---- pure wearables (clothing / armor / shield / jewelry) ----
+            // Their entire "use" is being worn, which the equip gate above
+            // already handled on double-click. Without these cases they fall
+            // through to default and emit a spurious "you can't think of a way
+            // to use that" right after successfully equipping.
+            case ItemType.Clothing:
+            case ItemType.Armor:
+            case ItemType.ArmorLeather:
+            case ItemType.ArmorChain:
+            case ItemType.ArmorRing:
+            case ItemType.ArmorBone:
+            case ItemType.Shield:
+            case ItemType.Jewelry:
+                break;
+
             default:
                 if (DoorHelper.IsDoorItem(item, _world.MapData))
                 {
@@ -1142,7 +1157,7 @@ public sealed class ClientItemUseHandler
             new PacketWorldItem(crop.Uid.Value, crop.DispIdFull, crop.Amount,
                 crop.X, crop.Y, crop.Z, crop.Hue), 0);
 
-        if (seed.Amount > 1) seed.Amount--; else seed.Delete();
+        if (seed.Amount > 1) seed.Amount--; else _world.RemoveItem(seed);
         BroadcastNearby?.Invoke(_character.Position, UpdateRange,
             new PacketAnimation(_character.Uid.Value, (ushort)AnimationType.Bow), 0);
         SysMessage("You plant the seed.");

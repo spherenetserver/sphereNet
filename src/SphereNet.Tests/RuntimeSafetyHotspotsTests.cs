@@ -35,6 +35,23 @@ public class RuntimeSafetyHotspotsTests
     }
 
     [Fact]
+    public void NetState_Clear_ShrinksTransientSendBuffers()
+    {
+        using var loggerFactory = TestHarness.CreateLoggerFactory();
+        var state = new NetState(loggerFactory.CreateLogger<NetState>());
+        var sendBatch = typeof(NetState).GetField("_sendBatchBuffer", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var cryptScratch = typeof(NetState).GetField("_cryptScratch", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        sendBatch.SetValue(state, new byte[1024 * 1024]);
+        cryptScratch.SetValue(state, new byte[1024 * 1024]);
+
+        state.Clear();
+
+        Assert.Equal(4096, ((byte[])sendBatch.GetValue(state)!).Length);
+        Assert.Equal(256, ((byte[])cryptScratch.GetValue(state)!).Length);
+    }
+
+    [Fact]
     public void NetworkManager_PartialPacketTimeout_MarksConnectionClosing()
     {
         using var loggerFactory = TestHarness.CreateLoggerFactory();

@@ -184,4 +184,44 @@ public class InventoryStackSplitTests
         Assert.Equal(200, (ushort)((worldItem.Span[11] << 8) | worldItem.Span[12]));
         Assert.Equal(200, (ushort)((worldItem.Span[13] << 8) | worldItem.Span[14]));
     }
+
+    [Fact]
+    public void DropStackOntoGroundPile_BroadcastsWorldItemNotContainerItem()
+    {
+        LoadPileDefinitions();
+
+        var (world, client, _, pack) = CreatePlayerWithArrowStack(9106);
+        client.NetState.ClientVersionNumber = 70_096_000;
+        client.BroadcastNearby = (_, _, packet, _) => client.NetState.Send(packet);
+        var arrows = pack.Contents.Single(i => i.BaseId == 0x0F3F); // 200 in the pack
+
+        // An arrow pile already sitting on the ground.
+        var groundPile = world.CreateItem();
+        groundPile.BaseId = 0x0F3F;
+        groundPile.Amount = 10;
+        world.PlaceItemWithDecay(groundPile, new Point3D(101, 100, 0, 0));
+
+        // Pick up 50 and drop them directly onto the ground pile (target serial,
+        // not a tile drop) — this is the drop-on-item stack-merge path.
+        client.HandleItemPickup(arrows.Uid.Value, 50);
+        TestHarness.GetQueuedPackets(client.NetState); // drain pickup/split packets
+        client.HandleItemDrop(arrows.Uid.Value, groundPile.X, groundPile.Y, 0, groundPile.Uid.Value);
+
+        // Server state: amounts merged, dragged item consumed.
+        Assert.Equal(60, groundPile.Amount);
+        Assert.Null(world.FindItem(arrows.Uid));
+
+        // The merged pile's new amount must broadcast as a world item (0xF3) and
+        // must NOT be sent as a container-content packet (0x25) addressed to the
+        // ground item itself — the old code's self-referencing 0x25 desynced the
+        // pile label.
+        var pkts = TestHarness.GetQueuedPackets(client.NetState).ToArray();
+        Assert.Contains(pkts, p =>
+            p.Span[0] == 0xF3 &&
+            ((uint)(p.Span[4] << 24 | p.Span[5] << 16 | p.Span[6] << 8 | p.Span[7])) == groundPile.Uid.Value &&
+            (ushort)((p.Span[11] << 8) | p.Span[12]) == 60);
+        Assert.DoesNotContain(pkts, p =>
+            p.Span[0] == 0x25 &&
+            ((uint)(p.Span[1] << 24 | p.Span[2] << 16 | p.Span[3] << 8 | p.Span[4])) == groundPile.Uid.Value);
+    }
 }

@@ -487,6 +487,23 @@ public class Item : ObjBase
         _contents.Clear();
     }
 
+    /// <summary>
+    /// Fully unlink this item from the world — object table, parent container,
+    /// equipment slot and sector — and then mark it deleted. This is the
+    /// high-level counterpart to <see cref="Delete"/>, which only flags the item
+    /// and clears its own contents (leaving the item registered in the world,
+    /// so the slot/object table would retain a dead reference). Falls back to the
+    /// low-level flag-set when no world is wired (e.g. unit tests).
+    /// </summary>
+    public void RemoveFromWorld()
+    {
+        var world = ResolveWorld?.Invoke();
+        if (world != null)
+            world.RemoveItem(this);
+        else
+            Delete();
+    }
+
     // --- Container functionality ---
 
     public IReadOnlyList<Item> Contents => _contents;
@@ -1424,13 +1441,14 @@ public class Item : ObjBase
                 // DELETE nth — 1-based index
                 if (int.TryParse(args.Trim(), out int delIdx) && delIdx >= 1 && delIdx <= _contents.Count)
                 {
-                    _contents[delIdx - 1].Delete();
+                    var target = _contents[delIdx - 1];
                     _contents.RemoveAt(delIdx - 1);
+                    target.RemoveFromWorld();
                 }
                 return true;
             case "EMPTY":
                 foreach (var child in _contents.ToArray())
-                    child.Delete();
+                    child.RemoveFromWorld();
                 _contents.Clear();
                 return true;
             case "FIXWEIGHT":

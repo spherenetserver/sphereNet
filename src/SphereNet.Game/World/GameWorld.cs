@@ -43,7 +43,9 @@ public sealed class GameWorld
     private readonly Dictionary<int, Sector[,]> _sectors = [];
     private readonly List<Region> _regions = [];
     private readonly List<Room> _rooms = [];
-    private readonly ConcurrentDictionary<long, Region?> _regionCache = new();
+    // Only successful (non-null) lookups are cached — see FindRegion for why a
+    // null result must never poison an 8x8 cell.
+    private readonly ConcurrentDictionary<long, Region> _regionCache = new();
     private readonly ILogger<GameWorld> _logger;
     private readonly List<ObjBase> _timerFSnapshot = [];
 
@@ -323,8 +325,16 @@ public sealed class GameWorld
         if (obj is Item delItem && delItem.ContainedIn.IsValid)
         {
             ContainerIndexRemove(delItem.ContainedIn.Value, delItem);
-            if (_objects.TryGetValue(delItem.ContainedIn.Value, out var parentObj) && parentObj is Item parentItem)
-                parentItem.RemoveItem(delItem);
+            if (_objects.TryGetValue(delItem.ContainedIn.Value, out var parentObj))
+            {
+                if (parentObj is Item parentItem)
+                    parentItem.RemoveItem(delItem);
+                // Equipped items live in the wearer's layer array, not in a
+                // container's contents — clear the slot so the layer does not
+                // retain a dead reference to the deleted item.
+                else if (parentObj is Character parentChar && delItem.IsEquipped)
+                    parentChar.Unequip(delItem.EquipLayer);
+            }
         }
 
         var sector = GetSector(obj.Position);
@@ -565,14 +575,18 @@ public sealed class GameWorld
         // 8x8 tile grid cache key — same cell ⇒ almost always same region.
         long cacheKey = ((long)pt.Map << 40) | ((long)(pt.X >> 3) << 20) | (long)(pt.Y >> 3);
 
-        if (_regionCache.TryGetValue(cacheKey, out var cached))
-        {
-            if (cached == null || cached.Contains(pt))
-                return cached;
-        }
+        if (_regionCache.TryGetValue(cacheKey, out var cached) && cached.Contains(pt))
+            return cached;
 
         var result = FindRegionUncached(pt);
-        _regionCache[cacheKey] = result;
+        // Only cache hits. Region edges are not 8-aligned, so a single 8x8 cell
+        // can straddle a region boundary. Caching a null would poison the whole
+        // cell: a later query for a tile in the SAME cell that DOES fall inside a
+        // region would wrongly read the cached null. Non-null entries are
+        // self-validating via Contains() above — an edge tile that misses the
+        // cached region simply re-resolves rather than returning a stale hit.
+        if (result != null)
+            _regionCache[cacheKey] = result;
         return result;
     }
 

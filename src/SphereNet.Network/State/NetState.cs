@@ -19,6 +19,8 @@ public readonly record struct MovementStep(byte Direction, byte Sequence, uint F
 /// </summary>
 public sealed class NetState : IDisposable
 {
+    private const int InitialSendBatchBufferSize = 4096;
+    private const int InitialCryptScratchSize = 256;
     private const int MaxSendQueueSize = 4096;
     // Above this queue depth a connection is treated as falling behind and
     // low-priority cosmetic broadcasts are shed for it (interest management).
@@ -109,13 +111,13 @@ public sealed class NetState : IDisposable
     // Persistent outbound byte buffer. [_outStart.._outEnd) are compressed+
     // encrypted bytes not yet accepted by the socket (may span ticks in
     // non-blocking mode). In blocking mode it is fully drained each flush.
-    private byte[] _sendBatchBuffer = new byte[4096];
+    private byte[] _sendBatchBuffer = new byte[InitialSendBatchBufferSize];
     private int _outStart;
     private int _outEnd;
     // Per-connection scratch for encrypting a shared broadcast payload without
     // mutating the shared (cross-recipient) cache. Only used by crypted game
     // connections; nocrypt connections append the shared bytes directly.
-    private byte[] _cryptScratch = new byte[256];
+    private byte[] _cryptScratch = new byte[InitialCryptScratchSize];
 
     private readonly ILogger _logger;
 
@@ -290,7 +292,16 @@ public sealed class NetState : IDisposable
             DrainAllQueuesToPoolLocked();
             _outStart = 0;
             _outEnd = 0;
+            ShrinkTransientBuffersLocked();
         }
+    }
+
+    private void ShrinkTransientBuffersLocked()
+    {
+        if (_sendBatchBuffer.Length > InitialSendBatchBufferSize)
+            _sendBatchBuffer = new byte[InitialSendBatchBufferSize];
+        if (_cryptScratch.Length > InitialCryptScratchSize)
+            _cryptScratch = new byte[InitialCryptScratchSize];
     }
 
     public bool CanReceive => IsInUse && !IsClosing && _socket is { Connected: true };

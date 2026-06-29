@@ -4,6 +4,36 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-29] - World object unlink, region cache and ground stack merge fixes (Wave 149)
+----------------------------------------
+
+FIXED - World / Object lifecycle:
+  - High-level delete paths (script REMOVE, equipped-layer FINDLAYER().REMOVE,
+    container DELETE/EMPTY, and consumable item use such as food, deeds, drinks
+    and seeds) called the low-level Item.Delete() flag-set, which only marked the
+    item deleted and cleared its own contents. The item stayed registered in the
+    world object table (its serial was never freed) and, for worn items, lingered
+    in the wearer's equipment slot — dead references that inflated object counts
+    and could surface as a deleted item still counting toward equipment/weight.
+    These paths now route through the full world removal, which unlinks the item
+    from the object table, parent container, equipment slot and sector. Object
+    teardown also clears the wearer's layer when an equipped item is removed.
+
+FIXED - World / Regions:
+  - FindRegion cached lookups per 8x8 tile cell but also stored null (no-region)
+    results. Region edges are not 8-aligned, so a single cell can straddle a
+    boundary; a region-less query then poisoned the cell and a later in-region
+    query for another tile in the same cell wrongly returned null. This could let
+    region-gated behavior (guarded, no-PvP, no-magic, enter/leave, gathering,
+    weather) lapse near boundaries. Only successful lookups are cached now;
+    non-region tiles re-resolve, and cached hits stay self-validating.
+
+FIXED - Items / Inventory:
+  - Merging a dragged stack onto a target stack that sits on the ground sent a
+    container-content packet addressed to the ground item itself, desyncing its
+    amount label. The merged ground pile now broadcasts a world item update, and
+    any overflow remainder drops to the ground beside it instead of being lost.
+
 [2026-06-15] - Stack splitting and item weight system fixes (Wave 148)
 ----------------------------------------
 

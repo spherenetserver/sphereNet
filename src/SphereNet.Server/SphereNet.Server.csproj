@@ -5,7 +5,12 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <!-- Workstation GC: a low-core / low-RAM VDS is the deployment target.
+         Server GC allocates a heap per CPU and holds committed segments,
+         making RSS climb steadily under a constant allocation rate even with
+         one player (looks like a leak). Workstation + background GC keeps a
+         single, much smaller heap and releases memory back to the OS. -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
     <TieredCompilation>true</TieredCompilation>
   </PropertyGroup>
@@ -22,6 +27,11 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.6" />
+    <!-- Pin the native SQLite binary above the version pulled in transitively by
+         Microsoft.Data.Sqlite (2.1.11), which carries advisory GHSA-2m69-gcr7-jv3q
+         (NU1903). This is a zero-dependency native-only package, so it swaps the
+         binary without altering the managed SQLitePCLRaw.core/provider ABI. -->
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.50.3" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.5" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.5" />
     <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />

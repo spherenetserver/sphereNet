@@ -131,19 +131,6 @@ public sealed class ClientCombatHandler
     private int _speechBurst;
     private long _moveRejectResyncUntil;
     private long? _movementBatchNow;
-    private long _lastMoveRecvMs;
-
-    // ---- Movement reject diagnostics (Faz 0) --------------------------------
-    // Every visible "teleport" is the client snapping back (up to MAX_STEP_COUNT
-    // = 5 tiles) when the server rejects a move the client already predicted and
-    // rendered as valid. The client never sends a move its own Pathfinder.CanWalk
-    // rejected, so a reject ALWAYS means a server/client disagreement. This
-    // per-session tally reveals WHICH disagreement class dominates a walking
-    // session (throttle? descent_cap? impassable_static data mismatch? z_window
-    // parity?) so the targeted fix can be aimed instead of guessed.
-    private readonly Dictionary<string, int> _rejectTally = new();
-    private int _rejectBurst;
-    private long _lastRejectMs;
 
     // Credit-based movement state (active only when MovementCreditEnabled=true)
     private int _movementCreditMs;
@@ -203,9 +190,6 @@ public sealed class ClientCombatHandler
             // the client resend → which we reject again → a tight 0x21 feedback
             // storm on low-latency links that freezes the player and reads as a
             // teleport. One reject, then absorb.
-            _logger.LogDebug(
-                "[move_queue_resync] seq={Seq} dir=0x{Dir:X2} remaining={Remaining}ms at {X},{Y},{Z}",
-                seq, dir, _moveRejectResyncUntil - now, _character.X, _character.Y, _character.Z);
             _netState.WalkSequence = 0;
             return;
         }
@@ -220,9 +204,6 @@ public sealed class ClientCombatHandler
         Throttle.Queue ??= new Movement.MovementQueueProcessor(MovementQueueCapacity);
         if (!Throttle.Queue.Enqueue(dir, seq, fastWalkKey, now))
         {
-            _logger.LogWarning("[move_reject] reason=queue_full seq={Seq} dir=0x{Dir:X2} queue={Count} at {X},{Y},{Z}",
-                seq, dir, Throttle.Queue.Count, _character.X, _character.Y, _character.Z);
-            RecordReject(seq, "queue_full", now);
             RejectMove(seq, now);
             Throttle.Queue.Clear();
             return;
@@ -247,18 +228,8 @@ public sealed class ClientCombatHandler
         long now = _movementBatchNow ?? MoveClock();
         _netState.LastActivityTick = now;
 
-        long dtMs = _lastMoveRecvMs == 0 ? 0 : now - _lastMoveRecvMs;
-        _lastMoveRecvMs = now;
-        _logger.LogDebug(
-            "[move_recv] seq={Seq} dir={Dir} run={Run} expected={Expected} dt={Dt}ms at {X},{Y},{Z}",
-            seq, direction, running, _netState.WalkSequence, dtMs,
-            _character.X, _character.Y, _character.Z);
-
         if (_moveRejectResyncUntil > 0 && now < _moveRejectResyncUntil)
         {
-            _logger.LogDebug(
-                "[move_reject_resync] seq={Seq} dir=0x{Dir:X2} remaining={Remaining}ms at {X},{Y},{Z}",
-                seq, dir, _moveRejectResyncUntil - now, _character.X, _character.Y, _character.Z);
             // Silently drop — no 0x21 echo (see HandleMovementBatch for why):
             // echoing a reject per buffered step causes a feedback storm.
             _netState.WalkSequence = 0;
@@ -281,9 +252,6 @@ public sealed class ClientCombatHandler
         // Strict sequence validation (ServUO-style): reject out-of-order walk packets.
         if (expectedSeq != 0 && seq != expectedSeq)
         {
-            _logger.LogWarning("[move_reject] reason=seq_mismatch got={Got} expected={Expected} packet=0x{Packet:X2} batch={Batch} dir=0x{Dir:X2} run={Run} at {X},{Y},{Z}",
-                seq, expectedSeq, _netState.LastMovementOpcode, _netState.LastMovementBatchSize, dir, running, _character.X, _character.Y, _character.Z);
-            RecordReject(seq, "seq_mismatch", now);
             RejectMove(seq, now);
             return false;
         }
@@ -323,10 +291,6 @@ public sealed class ClientCombatHandler
                     if (Throttle.Queue!.IsFull || !Throttle.Queue.Enqueue(dir, seq, fastWalkKey, now))
                     {
                         Throttle.ViolationCount++;
-                        _logger.LogWarning("[move_reject] reason=credit_exhausted violations={Violations} credit={Credit}ms delay={Delay}ms queue={Queue} packet=0x{Packet:X2} batch={Batch} seq={Seq} dir=0x{Dir:X2} run={Run} at {X},{Y},{Z}",
-                            Throttle.ViolationCount, _movementCreditMs, moveDelay, Throttle.Queue.Count,
-                            _netState.LastMovementOpcode, _netState.LastMovementBatchSize, seq, dir, running, _character.X, _character.Y, _character.Z);
-                        RecordReject(seq, "credit_exhausted", now);
                         RejectMove(seq, now);
                         if (MoveViolationKickThreshold > 0 && Throttle.ViolationCount >= MoveViolationKickThreshold)
                             _netState.MarkClosing();
@@ -356,10 +320,6 @@ public sealed class ClientCombatHandler
                             new TriggerArgs { CharSrc = _character, ScriptConsole = _client });
 
                     Throttle.ViolationCount++;
-                    _logger.LogWarning("[move_reject] reason={Reason} violations={Violations} ahead={Ahead}ms delay={Delay}ms tokens={Tokens} packet=0x{Packet:X2} batch={Batch} seq={Seq} dir=0x{Dir:X2} run={Run} at {X},{Y},{Z}",
-                        rejectReason, Throttle.ViolationCount, Math.Max(0, Throttle.NextMoveTime - now), moveDelay, Throttle.WalkTokens,
-                        _netState.LastMovementOpcode, _netState.LastMovementBatchSize, seq, dir, running, _character.X, _character.Y, _character.Z);
-                    RecordReject(seq, rejectReason, now);
                     RejectMove(seq, now);
                     if (MoveViolationKickThreshold > 0 && Throttle.ViolationCount >= MoveViolationKickThreshold)
                         _netState.MarkClosing();
@@ -430,26 +390,6 @@ public sealed class ClientCombatHandler
             }
 
             byte notoriety = GetNotoriety(_character);
-            int zDelta = _character.Z - oldZ;
-            if (Math.Abs(zDelta) > 0)
-            {
-                // Per-step z-movement diagnostic (walk-teleport investigation).
-                // Debug level so it stays out of the normal INFO console; enable
-                // script/packet debug or a Debug log level to see it.
-                _logger.LogDebug(
-                    "[move_z_delta] seq={Seq} dir={Dir} run={Run} from {OldX},{OldY},{OldZ} to {NewX},{NewY},{NewZ} dz={Delta} startZ={StartZ} startTop={StartTop} fwdZ={FwdZ} last={Last} " +
-                    "fwdLand=({LZ}/{LC}/{LT}) statics={SC} items={IC} tiles=[{Dump}]",
-                    seq, direction, running, oldX, oldY, oldZ, _character.X, _character.Y, _character.Z, zDelta,
-                    moveDiag.StartZ, moveDiag.StartTop, moveDiag.ForwardNewZ,
-                    moveDiag.FwdReason,
-                    moveDiag.FwdLandZ, moveDiag.FwdLandCenter, moveDiag.FwdLandTop,
-                    moveDiag.FwdSurfaceCount, moveDiag.FwdItemSurfaceCount,
-                    moveDiag.FwdStaticDump);
-            }
-
-            _logger.LogDebug(
-                "[move_ok] seq={Seq} dir={Dir} run={Run} pos={X},{Y},{Z}",
-                seq, direction, running, _character.X, _character.Y, _character.Z);
 
             _netState.SendPriority(new PacketMoveAck(seq, notoriety));
 
@@ -472,91 +412,9 @@ public sealed class ClientCombatHandler
         }
         else
         {
-            // Attribute the reject to a specific algorithm stage so walk jams
-            // can be traced instead of logged as a vague "collision".
-            GetDirectionDelta(direction, out short dxLog, out short dyLog);
-            short tgtX = (short)(_character.X + dxLog);
-            short tgtY = (short)(_character.Y + dyLog);
-            string reason;
-            string rejectKey;
-            if (moveDiag.MobBlocked) { reason = "mob_block"; rejectKey = "mob_block"; }
-            else if (!moveDiag.ForwardOk)
-            {
-                rejectKey = ClassifyForwardReject(moveDiag);
-                reason = $"forward_blocked ({rejectKey})";
-            }
-            else if (moveDiag.DiagonalChecked && (!moveDiag.LeftOk || !moveDiag.RightOk))
-            {
-                reason = $"diagonal_edge left={moveDiag.LeftOk} right={moveDiag.RightOk}";
-                rejectKey = "diagonal_edge";
-            }
-            else { reason = "unknown"; rejectKey = "unknown"; }
-
-            _logger.LogWarning(
-                "[move_reject] {Reason} packet=0x{Packet:X2} batch={Batch} seq={Seq} dir={Dir} run={Run} from {FromX},{FromY},{FromZ} " +
-                "target {TgtX},{TgtY} startZ={StartZ} startTop={StartTop} fwdZ={FwdZ} | " +
-                "fwdLand=tile=0x{LandTile:X} ({LZ}/{LC}/{LT}) blocks={LB} consider={CL} | " +
-                "statics={ST} impassable={IMP} surfaces={SC} items={IC} mobiles={MC} last={Last} | " +
-                "tiles=[{Dump}] mobs=[{MobDump}]",
-                reason, _netState.LastMovementOpcode, _netState.LastMovementBatchSize, seq, direction, running, _character.X, _character.Y, _character.Z,
-                tgtX, tgtY, moveDiag.StartZ, moveDiag.StartTop, moveDiag.ForwardNewZ,
-                moveDiag.FwdLandTileId, moveDiag.FwdLandZ, moveDiag.FwdLandCenter, moveDiag.FwdLandTop,
-                moveDiag.FwdLandBlocks, moveDiag.FwdConsiderLand,
-                moveDiag.FwdStaticTotal, moveDiag.FwdImpassableCount,
-                moveDiag.FwdSurfaceCount, moveDiag.FwdItemSurfaceCount, moveDiag.FwdMobileCount,
-                moveDiag.FwdReason, moveDiag.FwdStaticDump, moveDiag.FwdMobileDump);
-            RecordReject(seq, rejectKey, now);
             RejectMove(seq, now);
             return false;
         }
-    }
-
-    /// <summary>Faz 0 diagnostic. Tally a reject under a normalized key and emit
-    /// a compact running session summary. Pure logging — no behaviour change.
-    /// The dominant key over a walking session names the disagreement class to
-    /// fix (e.g. throttle → convert reject to delay; descent_cap → MaxDescendZ;
-    /// impassable_static → client/server statics mismatch; z_window/no_surface →
-    /// Z-parity bug).</summary>
-    private void RecordReject(byte seq, string key, long now)
-    {
-        _rejectTally.TryGetValue(key, out int c);
-        _rejectTally[key] = c + 1;
-
-        // Consecutive rejects within 1s = a sustained desync, i.e. a larger felt
-        // rubber-band / repeated snap rather than a one-off stop at a wall.
-        if (_lastRejectMs != 0 && now - _lastRejectMs <= 1000) _rejectBurst++;
-        else _rejectBurst = 1;
-        _lastRejectMs = now;
-
-        var sb = new System.Text.StringBuilder();
-        foreach (var kv in _rejectTally)
-        {
-            if (sb.Length > 0) sb.Append(' ');
-            sb.Append(kv.Key).Append('=').Append(kv.Value);
-        }
-
-        _logger.LogWarning(
-            "[move_reject_tally] reason={Key} burst={Burst} seq={Seq} session=[{Tally}]",
-            key, _rejectBurst, seq, sb.ToString());
-    }
-
-    /// <summary>Classify a forward-tile rejection into the specific disagreement
-    /// bucket using the walk diagnostic, so a generic "forward_blocked" is split
-    /// into the actionable cause. See <see cref="RecordReject"/>.</summary>
-    private static string ClassifyForwardReject(in SphereNet.Game.Movement.WalkCheck.Diagnostic d)
-    {
-        string fr = d.FwdReason ?? "";
-        // Server-only descent cap (MaxDescendZ). ClassicUO's CalculateNewZ has NO
-        // descent limit, so the client walks the drop and the server snaps it back.
-        if (fr.StartsWith("descent_too_steep", StringComparison.Ordinal)) return "descent_cap";
-        // No walkable surface found at all. If an impassable static is present the
-        // client most likely lacks/differs that static (data mismatch); otherwise
-        // it is a surface/Z resolution parity gap.
-        if (fr == "no_candidates")
-            return d.FwdImpassableCount > 0 ? "impassable_static" : "no_surface";
-        // A surface existed but every candidate fell outside the [minZ, maxZ]
-        // window — a Z-window parity discrepancy with the client.
-        return "z_window";
     }
 
     private void RejectMove(byte seq, long now, bool redrawSelf = false)
@@ -579,11 +437,6 @@ public sealed class ClientCombatHandler
     private void RejectStaleMove(byte seq, byte dir, long now)
     {
         if (_character == null) return;
-
-        _logger.LogDebug(
-            "[move_drop_stale] seq={Seq} dir=0x{Dir:X2} at {X},{Y},{Z} - silent drop (awaiting client seq reset)",
-            seq, dir, _character.X, _character.Y, _character.Z);
-        RecordReject(seq, "stale", now);
 
         // A seq > 1 arriving while WalkSequence == 0 is an in-flight step the
         // client predicted BEFORE it processed our single corrective 0x21. The

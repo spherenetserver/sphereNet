@@ -3428,7 +3428,7 @@ public partial class Character : ObjBase
                     if (worn == null || worn.IsDeleted) return true;
                     if (tail.Equals("REMOVE", StringComparison.OrdinalIgnoreCase))
                     {
-                        worn.Delete();
+                        worn.RemoveFromWorld();
                         return true;
                     }
                     return worn.TryExecuteCommand(tail, args, source);

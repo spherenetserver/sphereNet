@@ -7,6 +7,25 @@ using SphereNet.Panel.Logging;
 // ── Locate SphereNet.Server.exe ─────────────────────────────────────────────
 
 var baseDir   = AppDomain.CurrentDomain.BaseDirectory;
+
+// ── Global crash logging ─────────────────────────────────────────────────────
+// Last-resort safety net. Background threads (e.g. the AsyncStreamReader that
+// mirrors the child server's output) run outside any try/catch, so an
+// unhandled exception there terminates the Host silently — leaving only a
+// 0xe0434352 in the Windows event log and no clue why. Persist the full
+// exception to logs/host-crash.log so the cause is always recoverable, even
+// when the console is already gone.
+AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+{
+    if (e.ExceptionObject is Exception ex)
+        WriteCrashLog(baseDir, ex, terminating: e.IsTerminating);
+};
+TaskScheduler.UnobservedTaskException += (_, e) =>
+{
+    WriteCrashLog(baseDir, e.Exception, terminating: false);
+    e.SetObserved();
+};
+
 var serverExe = Path.Combine(baseDir, "SphereNet.Server.exe");
 
 // Development fallback: look for server exe in the solution bin folder
@@ -150,6 +169,25 @@ static void OpenBrowser(string url)
 {
     try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
     catch { /* ignore if no default browser */ }
+}
+
+static void WriteCrashLog(string dir, Exception ex, bool terminating)
+{
+    // Durable record first — the console may be unavailable at this point.
+    try
+    {
+        var logDir = Path.Combine(dir, "logs");
+        Directory.CreateDirectory(logDir);
+        var line = $"==== {DateTime.Now:yyyy-MM-dd HH:mm:ss} (terminating={terminating}) ===={Environment.NewLine}{ex}{Environment.NewLine}{Environment.NewLine}";
+        File.AppendAllText(Path.Combine(logDir, "host-crash.log"), line);
+    }
+    catch { /* nothing more we can safely do */ }
+
+    try
+    {
+        Console.Error.WriteLine($"[Host] FATAL unhandled exception → logs/host-crash.log: {ex.Message}");
+    }
+    catch { /* console gone — the file write above is the record that matters */ }
 }
 
 static string? FindIni(string dir)

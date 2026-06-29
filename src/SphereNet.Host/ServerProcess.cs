@@ -133,10 +133,30 @@ public sealed class ServerProcess : IDisposable
 
         lock (_consoleLock)
         {
-            var prev = Console.ForegroundColor;
-            Console.ForegroundColor = color;
-            Console.WriteLine(raw);
-            Console.ForegroundColor = prev;
+            // Console mirroring is best-effort and runs on a background
+            // AsyncStreamReader thread (no surrounding try/catch). On a
+            // server/VDS the console handle can become invalid mid-run when
+            // the interactive session that owned it is disconnected or
+            // logged off (e.g. an RDP session dropping overnight), or when
+            // stdout is redirected. The color get/set and WriteLine then
+            // throw IOException on this thread, which — being unhandled —
+            // would terminate the entire Host process and tear down the
+            // child game server with it. Swallow any console failure so log
+            // forwarding can never crash the host.
+            try
+            {
+                if (Console.IsOutputRedirected)
+                {
+                    Console.WriteLine(raw);
+                    return;
+                }
+                var prev = Console.ForegroundColor;
+                Console.ForegroundColor = color;
+                Console.WriteLine(raw);
+                Console.ForegroundColor = prev;
+            }
+            catch (IOException) { /* console handle gone — drop the line */ }
+            catch (InvalidOperationException) { /* no console attached */ }
         }
     }
 

@@ -10,6 +10,9 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.2" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.6" />
+    <!-- See SphereNet.Server.csproj: pins the native SQLite binary above the
+         vulnerable transitive 2.1.11 (GHSA-2m69-gcr7-jv3q / NU1903). -->
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.50.3" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.5" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="xunit" Version="2.9.2" />

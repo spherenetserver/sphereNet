@@ -620,6 +620,12 @@ public sealed class ClientInventoryHandler
                 // vanished (the "stack gold onto gold and 10k disappears" bug).
                 if (container.CanStackWith(item))
                 {
+                    // A target stack on the ground is a world object, not a
+                    // container child: its amount update must go out as a world
+                    // item broadcast (0x1A), not a container-content packet
+                    // (0x25) addressed to itself. Sending 0x25 with parent ==
+                    // the item's own serial desynced the ground pile's label.
+                    bool targetOnGround = !container.ContainedIn.IsValid;
                     uint stackParent = container.ContainedIn.IsValid
                         ? container.ContainedIn.Value : container.Uid.Value;
                     int room = ushort.MaxValue - container.Amount;
@@ -629,10 +635,13 @@ public sealed class ClientInventoryHandler
                     if (moved > 0)
                     {
                         container.Amount = (ushort)(container.Amount + moved);
-                        _netState.Send(new PacketContainerItem(
-                            container.Uid.Value, container.DispIdFull, 0,
-                            container.Amount, container.X, container.Y,
-                            stackParent, container.Hue, _netState.IsClientPost6017));
+                        if (targetOnGround)
+                            BroadcastWorldItem(container);
+                        else
+                            _netState.Send(new PacketContainerItem(
+                                container.Uid.Value, container.DispIdFull, 0,
+                                container.Amount, container.X, container.Y,
+                                stackParent, container.Hue, _netState.IsClientPost6017));
                     }
                     if (remaining <= 0)
                     {
@@ -649,6 +658,14 @@ public sealed class ClientInventoryHandler
                             item.Uid.Value, item.DispIdFull, 0,
                             item.Amount, item.X, item.Y,
                             realParent.Uid.Value, item.Hue, _netState.IsClientPost6017));
+                    }
+                    else if (targetOnGround)
+                    {
+                        // Overflow remainder drops to the ground beside the
+                        // target pile so it is never lost.
+                        item.Amount = (ushort)remaining;
+                        _world.PlaceItemWithDecay(item, container.Position);
+                        BroadcastWorldItem(item);
                     }
                     _netState.Send(new PacketDropAck());
                     return;

@@ -27,8 +27,12 @@ public class SkillMagicPhase4Tests
     {
         var world = CreateWorld();
         var ch = world.CreateCharacter();
-        // Stealth rolls a random 60-90 difficulty; 3000 keeps the delta past
-        // the bell curve's zero-chance tail (StepStealth still clamps to 10).
+        // The success die in CheckSuccess rolls against Random.Shared, which is
+        // not seedable per-test, so a high skill alone still fails on the curve's
+        // tail ~2% of runs. This test only cares about the success-branch budget,
+        // so force a deterministic success via GM auto-pass; StepStealth still
+        // derives purely from the (clamped) skill value.
+        ch.PrivLevel = PrivLevel.GM;
         ch.SetSkill(SkillType.Stealth, 3000);
         ch.SetStatFlag(StatFlag.Hidden);
         world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));

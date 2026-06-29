@@ -4,6 +4,39 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-29] - Dunya nesne unlink, region cache ve zemin stack merge duzeltmeleri (Wave 149)
+----------------------------------------
+
+DUZELTME - Dunya / Nesne yasam dongusu:
+  - Ust seviye silme yollari (script REMOVE, ekipli katman FINDLAYER().REMOVE,
+    container DELETE/EMPTY ve yiyecek/deed/icecek/tohum gibi tuketilen item
+    kullanimi) dusuk seviye Item.Delete() flag-set'ini cagiriyordu; bu yalnizca
+    item'i silindi isaretleyip kendi icerigini temizliyordu. Item dunya nesne
+    tablosunda kayitli kaliyor (serial hic serbest birakilmiyor), giyili
+    item'larda ise tasiyicinin ekipman slotunda kaliyordu — bu olu referanslar
+    nesne sayisini sisiriyor ve silinmis item'in hala ekipman/agirlik icinde
+    sayilmasi olarak gorunebiliyordu. Bu yollar artik tam dunya kaldirmasindan
+    geciyor: nesne tablosu, ust container, ekipman slotu ve sektor unlink
+    ediliyor. Nesne yikimi, ekipli bir item kaldirilirken tasiyicinin katmanini
+    da temizliyor.
+
+DUZELTME - Dunya / Region:
+  - FindRegion aramalarini 8x8 tile hucresi bazinda cache'liyor ama null (region
+    yok) sonuclari da sakliyordu. Region kenarlari 8-hizali olmadigindan tek bir
+    hucre sinir uzerine binebiliyor; region disi bir sorgu hucreyi zehirleyince
+    ayni hucredeki baska bir tile icin region ici sorgu yanlislikla null
+    donuyordu. Bu, sinir yakininda region davranislarinin (guarded, no-PvP,
+    no-magic, enter/leave, gather, weather) kacmasina yol acabiliyordu. Artik
+    yalnizca basarili aramalar cache'leniyor; region disi tile'lar yeniden
+    cozuluyor, cache'lenen sonuclar ise kendini dogruluyor.
+
+DUZELTME - Item / Envanter:
+  - Suruklenen bir stack'i zemindeki hedef stack'in ustune merge ederken, zemin
+    item'in kendisine adreslenmis bir container-content paketi gonderiliyor ve
+    miktar etiketi desync oluyordu. Birlesen zemin yigini artik world item
+    guncellemesi yayinliyor; tasan kalan ise limbo'da kalmak yerine yanina
+    zemine dusuyor.
+
 [2026-06-15] - Stack ayirma ve item agirlik sistemi duzeltmeleri (Wave 148)
 ----------------------------------------
 

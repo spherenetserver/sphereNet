@@ -518,7 +518,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                 return true;
             }
             case "REMOVE":
-                if (this is Items.Item delItem) delItem.Delete();
+                if (this is Items.Item delItem) delItem.RemoveFromWorld();
                 else if (this is Characters.Character delCh) delCh.Delete();
                 return true;
             case "TIMER":

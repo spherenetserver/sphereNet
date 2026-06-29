@@ -7,7 +7,9 @@
     <Nullable>enable</Nullable>
     <AssemblyName>SphereNet.Host</AssemblyName>
     <RootNamespace>SphereNet.Host</RootNamespace>
-    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <!-- Workstation GC — see SphereNet.Server.csproj for rationale (low-core
+         VDS target; Server GC retains committed memory and inflates RSS). -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
     <TieredCompilation>true</TieredCompilation>
   </PropertyGroup>

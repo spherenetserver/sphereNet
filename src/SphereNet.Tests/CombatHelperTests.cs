@@ -7,11 +7,39 @@ using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.World;
 using SphereNet.Game.World.Regions;
+using SphereNet.Scripting.Definitions;
 
 namespace SphereNet.Tests;
 
 public class CombatHelperTests
 {
+    [Fact]
+    public void ResolveAmmoSpec_UsesWeaponDefThenFallsBack()
+    {
+        // No weapon def → legacy defaults: arrows for bows, bolts for crossbows.
+        var bow = CombatHelper.ResolveAmmoSpec(null, ItemType.WeaponBow, null);
+        Assert.Equal((ushort)0, bow.BaseId);
+        Assert.Equal(ItemType.WeaponArrow, bow.FallbackType);
+        Assert.Equal((ushort)0x0F3F, bow.Gfx);
+
+        var xbow = CombatHelper.ResolveAmmoSpec(null, ItemType.WeaponXBow, null);
+        Assert.Equal(ItemType.WeaponBolt, xbow.FallbackType);
+        Assert.Equal((ushort)0x1BFB, xbow.Gfx);
+
+        // AMMOTYPE resolves to a specific ammo baseid; AMMOANIM sets the graphic.
+        var def = new ItemDef(ResourceId.Invalid) { AmmoType = "i_custom", AmmoAnim = 0x1234 };
+        var spec = CombatHelper.ResolveAmmoSpec(def, ItemType.WeaponBow,
+            name => name == "i_custom" ? (ushort)0xABCD : (ushort)0);
+        Assert.Equal((ushort)0xABCD, spec.BaseId);
+        Assert.Equal((ushort)0x1234, spec.Gfx);
+
+        // An AMMOTYPE that fails to resolve keeps the type-based fallback.
+        var def2 = new ItemDef(ResourceId.Invalid) { AmmoType = "i_missing" };
+        var spec2 = CombatHelper.ResolveAmmoSpec(def2, ItemType.WeaponBow, _ => 0);
+        Assert.Equal((ushort)0, spec2.BaseId);
+        Assert.Equal((ushort)0x0F3F, spec2.Gfx);
+    }
+
     [Fact]
     public void GetWeaponRange_RangedWithoutDef_UsesIniDefaults()
     {

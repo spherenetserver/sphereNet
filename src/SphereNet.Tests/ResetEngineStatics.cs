@@ -34,6 +34,8 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnFacingChanged = null;
         SphereNet.Game.Objects.Characters.Character.ResolveAccountForChar = null;
         SphereNet.Game.Trade.VendorEngine.World = null;
+        SphereNet.Game.Combat.CombatEngine.OnHitDamage = null;
+        SphereNet.Game.Combat.CombatEngine.OnHitParry = null;
         SphereNet.Scripting.Definitions.CharDef.DefNameResolver = null;
         SphereNet.Game.Objects.Characters.Character.OnFameChanging = null;
         SphereNet.Game.Objects.Characters.Character.OnKarmaChanging = null;

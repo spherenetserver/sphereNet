@@ -104,8 +104,6 @@ public sealed class ClientCombatHandler
     private Character? DismountCharacter() => _client.DismountCharacter();
     private bool TryHandlePetCommand(string text) => _client.TryHandlePetCommand(text);
     private bool TryHandleCommandSpeech(string text) => _client.TryHandleCommandSpeech(text);
-    private bool HasAmmoInBackpack(ItemType ammo) => _client.HasAmmoInBackpack(ammo);
-    private void ConsumeAmmoFromBackpack(ItemType ammo) => _client.ConsumeAmmoFromBackpack(ammo);
     private void SetWarMode(bool warMode, bool syncClients, bool preserveTarget) => _client.SetWarMode(warMode, syncClients, preserveTarget);
     private void FaceTarget(Character target) => _client.FaceTarget(target);
     private static int GetSwingDelayMs(Character attacker, Item? weapon) => GameClient.GetSwingDelayMs(attacker, weapon);
@@ -824,7 +822,12 @@ public sealed class ClientCombatHandler
             _character.NextAttackTime = now + 500;
             return;
         }
-        if (_character.IsStatFlag(StatFlag.Freeze) || _character.IsStatFlag(StatFlag.Sleeping))
+        // COMBAT_PARALYZE_CANSWING (old-sphere): a paralyzed (Freeze) attacker
+        // can keep swinging; sleeping always blocks. Without the flag both
+        // freeze and sleep stop the swing.
+        bool paralyzeCanSwing = CombatHelper.IsCombatFlagSet(CombatFlags.ParalyzeCanSwing);
+        if ((_character.IsStatFlag(StatFlag.Freeze) && !paralyzeCanSwing) ||
+            _character.IsStatFlag(StatFlag.Sleeping))
         {
             _character.NextAttackTime = now + 250;
             return;
@@ -880,7 +883,9 @@ public sealed class ClientCombatHandler
             swingDelayMs = swingDelayTenths * 100;
         }
 
-        FaceTarget(target);
+        // COMBAT_NODIRCHANGE: do not auto-rotate the attacker to face the target.
+        if (!CombatHelper.IsCombatFlagSet(CombatFlags.NoDirChange))
+            FaceTarget(target);
 
         if (_triggerDispatcher != null)
         {
@@ -894,10 +899,11 @@ public sealed class ClientCombatHandler
             }
         }
 
+        (ushort BaseId, ItemType FallbackType, ushort Gfx)? ammo = null;
         if (CombatHelper.IsRangedWeapon(weapon))
         {
-            var ammoType = weapon!.ItemType == ItemType.WeaponBow ? ItemType.WeaponArrow : ItemType.WeaponBolt;
-            if (!HasAmmoInBackpack(ammoType))
+            ammo = ResolveAmmo(weapon!);
+            if (!HasAmmoInPack(ammo.Value.BaseId, ammo.Value.FallbackType))
             {
                 SysMessage(ServerMessages.Get(Msg.CombatArchNoammo));
                 // Advance the swing timer even though no swing happened. Without
@@ -922,11 +928,10 @@ public sealed class ClientCombatHandler
         // sound on a hit, the miss whoosh on a miss (emitted below). No extra
         // unconditional swing sound.
 
-        if (CombatHelper.IsRangedWeapon(weapon))
+        if (ammo != null)
         {
-            var ammoType = weapon!.ItemType == ItemType.WeaponBow ? ItemType.WeaponArrow : ItemType.WeaponBolt;
-            ConsumeAmmoFromBackpack(ammoType);
-            EmitRangedProjectile(target, ammoType);
+            ConsumeAmmoFromPack(ammo.Value.BaseId, ammo.Value.FallbackType);
+            EmitRangedProjectile(target, ammo.Value.Gfx);
         }
 
         int damage = CombatEngine.ResolveAttack(
@@ -984,18 +989,10 @@ public sealed class ClientCombatHandler
                 OnWakeNpc?.Invoke(target);
             }
 
-            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Hit,
-                new TriggerArgs { CharSrc = _character, O1 = target, N1 = damage });
-            _triggerDispatcher?.FireCharTrigger(target, CharTrigger.GetHit,
-                new TriggerArgs { CharSrc = _character, N1 = damage });
-
-            if (weapon != null)
-                _triggerDispatcher?.FireItemTrigger(weapon, ItemTrigger.Hit,
-                    new TriggerArgs { CharSrc = _character, ItemSrc = weapon, O1 = target, N1 = damage });
-            var shield = target.GetEquippedItem(Layer.TwoHanded);
-            if (shield != null)
-                _triggerDispatcher?.FireItemTrigger(shield, ItemTrigger.GetHit,
-                    new TriggerArgs { CharSrc = _character, ItemSrc = shield, N1 = damage });
+            // @Hit / @GetHit and the weapon/armor item triggers now fire inside
+            // CombatEngine.ResolveAttack (via CombatEngine.OnHitDamage), before
+            // HP is applied, so a script can modify or cancel the damage. The
+            // value returned here is already the post-trigger final damage.
 
             _logger.LogDebug("{Attacker} hit {Target} for {Dmg} damage",
                 _character.Name, target.Name, damage);
@@ -1184,11 +1181,48 @@ public sealed class ClientCombatHandler
         BroadcastNearby?.Invoke(_character.Position, UpdateRange, missSound, 0);
     }
 
-    private void EmitRangedProjectile(Character target, ItemType ammoType)
+    // Resolve which ammo a ranged weapon fires and the projectile graphic.
+    // ITEMDEF AMMOTYPE names the exact ammo item to consume (resolved to a
+    // baseid) and AMMOANIM overrides the in-flight graphic; absent either, the
+    // legacy arrow-for-bows / bolt-for-crossbows defaults apply.
+    private (ushort BaseId, ItemType FallbackType, ushort Gfx) ResolveAmmo(Item weapon) =>
+        CombatHelper.ResolveAmmoSpec(
+            SphereNet.Game.Definitions.DefinitionLoader.GetItemDef(weapon.BaseId),
+            weapon.ItemType,
+            Item.ResolveDefName);
+
+    // Ammo presence/consumption keyed by a specific baseid when AMMOTYPE
+    // resolved one, otherwise by the legacy ammo ItemType.
+    private bool HasAmmoInPack(ushort baseId, ItemType fallbackType)
+    {
+        var pack = _character?.Backpack;
+        if (pack == null) return false;
+        foreach (var it in pack.Contents)
+        {
+            bool match = baseId != 0 ? it.BaseId == baseId : it.ItemType == fallbackType;
+            if (match && it.Amount > 0) return true;
+        }
+        return false;
+    }
+
+    private void ConsumeAmmoFromPack(ushort baseId, ItemType fallbackType)
+    {
+        var pack = _character?.Backpack;
+        if (pack == null) return;
+        foreach (var it in pack.Contents)
+        {
+            bool match = baseId != 0 ? it.BaseId == baseId : it.ItemType == fallbackType;
+            if (!match || it.Amount <= 0) continue;
+            if (it.Amount <= 1) _world.RemoveItem(it);
+            else it.Amount = (ushort)(it.Amount - 1);
+            return;
+        }
+    }
+
+    private void EmitRangedProjectile(Character target, ushort effectId)
     {
         if (_character == null) return;
 
-        ushort effectId = ammoType == ItemType.WeaponBolt ? (ushort)0x1BFB : (ushort)0x0F3F;
         var projectile = new PacketEffect(
             type: 0,
             srcSerial: _character.Uid.Value,

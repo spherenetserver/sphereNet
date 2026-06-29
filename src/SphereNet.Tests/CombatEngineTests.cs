@@ -29,6 +29,23 @@ public class CombatEngineTests
     }
 
     [Fact]
+    public void GetWeaponSkill_OverrideTag_UsesNamedWeaponSkill()
+    {
+        var ch = MakeChar();
+        var blade = new Item { ItemType = ItemType.WeaponSword }; // defaults to Swordsmanship
+        ch.Equip(blade, Layer.OneHanded);
+        Assert.Equal(SkillType.Swordsmanship, CombatEngine.GetWeaponSkill(ch));
+
+        // TAG.OVERRIDE_SKILL re-routes the weapon to another combat skill.
+        blade.SetTag("OVERRIDE_SKILL", ((int)SkillType.Fencing).ToString());
+        Assert.Equal(SkillType.Fencing, CombatEngine.GetWeaponSkill(ch));
+
+        // A non-combat skill id is ignored — the ItemType default stands.
+        blade.SetTag("OVERRIDE_SKILL", ((int)SkillType.Alchemy).ToString());
+        Assert.Equal(SkillType.Swordsmanship, CombatEngine.GetWeaponSkill(ch));
+    }
+
+    [Fact]
     public void CalcHitChance_Era0_ReturnsBetween0And100()
     {
         var attacker = MakeChar();
@@ -135,6 +152,157 @@ public class CombatEngineTests
         int ar = CombatEngine.CalcArmorDefense(ch);
 
         Assert.Equal(14, ar);
+    }
+
+    [Fact]
+    public void OnHitDamage_HookCanModifyAndCancelDamage()
+    {
+        var saved = CombatEngine.OnHitDamage;
+        try
+        {
+            var attacker = MakeChar();
+            var target = MakeChar();
+            target.SetSkill(SkillType.Parrying, 0); // no parry interference
+
+            // Cancel: the hook returns 0, so a connecting hit deals no HP loss.
+            // (Loop past random misses; ResolveAttack returns -1 on a miss and
+            // the hook value on a connecting hit.)
+            CombatEngine.OnHitDamage = (_, _, _, _) => 0;
+            int canceled = -1;
+            for (int i = 0; i < 200 && canceled < 0; i++)
+            {
+                target.Hits = target.MaxHits;
+                canceled = CombatEngine.ResolveAttack(attacker, target, null);
+            }
+            Assert.Equal(0, canceled);
+            Assert.Equal(target.MaxHits, target.Hits);
+
+            // Modify: the hook forces exactly 7 damage regardless of the roll.
+            CombatEngine.OnHitDamage = (_, _, _, _) => 7;
+            int modified = -1;
+            for (int i = 0; i < 200 && modified < 0; i++)
+            {
+                target.Hits = target.MaxHits;
+                modified = CombatEngine.ResolveAttack(attacker, target, null);
+            }
+            Assert.Equal(7, modified);
+            Assert.Equal((short)(target.MaxHits - 7), target.Hits);
+        }
+        finally
+        {
+            CombatEngine.OnHitDamage = saved;
+        }
+    }
+
+    private static int ResolveUntilHit(Character attacker, Character target, Item weapon, CombatFlags flags)
+    {
+        for (int i = 0; i < 400; i++)
+        {
+            target.Hits = target.MaxHits;
+            int d = CombatEngine.ResolveAttack(attacker, target, weapon, flags, -1, 0);
+            if (d >= 0) return d;
+        }
+        return -1;
+    }
+
+    [Fact]
+    public void NpcBonusDamage_GatesDamageIncreaseForNpcsButNotPlayers()
+    {
+        var savedLookup = CombatEngine.WeaponDefLookup;
+        var savedHook = CombatEngine.OnHitDamage;
+        try
+        {
+            CombatEngine.OnHitDamage = null;
+            CombatEngine.WeaponDefLookup = _ => (10, 10); // fixed base damage
+
+            var target = MakeChar();
+            target.SetSkill(SkillType.Parrying, 0);
+
+            var npc = MakeChar();
+            npc.IsPlayer = false;
+            var npcWeapon = new Item { ItemType = ItemType.WeaponSword, BaseId = 0x0F5E };
+            npc.Equip(npcWeapon, Layer.OneHanded);
+            npc.SetTag("INCREASEDAM", "50");
+
+            // NPC without the flag: the +50% Damage Increase is ignored.
+            Assert.Equal(10, ResolveUntilHit(npc, target, npcWeapon, CombatFlags.None));
+            // NPC with COMBAT_NPC_BONUSDAMAGE: +50% applies.
+            Assert.Equal(15, ResolveUntilHit(npc, target, npcWeapon, CombatFlags.NpcBonusDamage));
+
+            // A player always gets the increase, flag or not.
+            var player = MakeChar();
+            player.IsPlayer = true;
+            var pWeapon = new Item { ItemType = ItemType.WeaponSword, BaseId = 0x0F5E };
+            player.Equip(pWeapon, Layer.OneHanded);
+            player.SetTag("INCREASEDAM", "50");
+            Assert.Equal(15, ResolveUntilHit(player, target, pWeapon, CombatFlags.None));
+        }
+        finally
+        {
+            CombatEngine.WeaponDefLookup = savedLookup;
+            CombatEngine.OnHitDamage = savedHook;
+        }
+    }
+
+    [Fact]
+    public void StackArmor_SumsAllPiecesCoveringRegion()
+    {
+        var oldFlags = Character.CombatFlags;
+        try
+        {
+            var ch = new Character();
+            var chest = new Item(); chest.SetTag("ARMOR", "30"); ch.Equip(chest, Layer.Chest);
+            var tunic = new Item(); tunic.SetTag("ARMOR", "12"); ch.Equip(tunic, Layer.Tunic);
+
+            // Without the flag only the primary chest layer counts.
+            Character.CombatFlags = 0;
+            Assert.Equal(30, CombatEngine.CalcArmorDefenseForRegion(ch, ArmorHitRegion.Chest));
+
+            // With COMBAT_STACKARMOR both torso pieces sum for that region.
+            Character.CombatFlags = (int)CombatFlags.StackArmor;
+            Assert.Equal(42, CombatEngine.CalcArmorDefenseForRegion(ch, ArmorHitRegion.Chest));
+            Assert.Equal(0, CombatEngine.CalcArmorDefenseForRegion(ch, ArmorHitRegion.Head));
+        }
+        finally
+        {
+            Character.CombatFlags = oldFlags;
+        }
+    }
+
+    [Fact]
+    public void OnHitParry_PartialBlockLeaksDamageInsteadOfFullBlock()
+    {
+        var savedParry = CombatEngine.OnHitParry;
+        try
+        {
+            var attacker = MakeChar();
+            var target = MakeChar();
+            target.SetSkill(SkillType.Parrying, 1000);        // max shield parry chance
+            var shield = new Item { ItemType = ItemType.Shield };
+            target.Equip(shield, Layer.TwoHanded);
+
+            // Partial parry: 1 point leaks through (target has no armor → it stands).
+            // Previously every successful parry was a full block (returned -1). The
+            // hook flags when a parry actually fires so we can assert on that swing.
+            bool parried = false;
+            CombatEngine.OnHitParry = (_, _, _) => { parried = true; return 1; };
+            int dmg = 0;
+            for (int i = 0; i < 4000; i++)
+            {
+                parried = false;
+                target.Hits = target.MaxHits;
+                dmg = CombatEngine.ResolveAttack(attacker, target, null);
+                if (parried) break;
+            }
+            Assert.True(parried, "expected at least one parry across the attempts");
+            Assert.Equal(1, dmg);                                  // partial damage leaked through
+            Assert.Equal((short)(target.MaxHits - 1), target.Hits); // not a full block
+
+        }
+        finally
+        {
+            CombatEngine.OnHitParry = savedParry;
+        }
     }
 
     [Fact]

@@ -1505,6 +1505,20 @@ public static partial class Program
                 GameClient.BroadcastAnimation(npc, anim, NewAnimationGesture.Fidget, 18,
                     BroadcastNearby, ForEachClientInRange);
             };
+            _npcAI.OnNpcHitTry = (attacker, target, weapon, swingTenths) =>
+            {
+                if (_triggerDispatcher == null) return swingTenths;
+                var args = new TriggerArgs { CharSrc = attacker, O1 = target, ItemSrc = weapon, N1 = swingTenths };
+                if (_triggerDispatcher.FireCharTrigger(attacker, CharTrigger.HitTry, args) == TriggerResult.True)
+                    return -1; // RETURN 1 aborts the swing
+                return Math.Max(1, args.N1);
+            };
+            _npcAI.OnNpcHitCheck = (attacker, target, weapon) =>
+            {
+                if (_triggerDispatcher == null) return false;
+                var args = new TriggerArgs { CharSrc = attacker, O1 = target, ItemSrc = weapon };
+                return _triggerDispatcher.FireCharTrigger(attacker, CharTrigger.HitCheck, args) == TriggerResult.True;
+            };
             _npcAI.OnNpcAttack = (attacker, target, damage) =>
             {
                 ushort swingAnim = GameClient.GetNpcSwingAction(attacker);
@@ -1572,18 +1586,10 @@ public static partial class Program
                 if (damage > 0)
                     GameClient.EmitBloodSplat(_world, target);
 
-                _triggerDispatcher?.FireCharTrigger(attacker, CharTrigger.Hit,
-                    new TriggerArgs { CharSrc = attacker, O1 = target, N1 = damage });
-                _triggerDispatcher?.FireCharTrigger(target, CharTrigger.GetHit,
-                    new TriggerArgs { CharSrc = attacker, N1 = damage });
-
-                if (weapon != null)
-                    _triggerDispatcher?.FireItemTrigger(weapon, ItemTrigger.Hit,
-                        new TriggerArgs { CharSrc = attacker, ItemSrc = weapon, O1 = target, N1 = damage });
-                var shield = target.GetEquippedItem(Layer.TwoHanded);
-                if (shield != null)
-                    _triggerDispatcher?.FireItemTrigger(shield, ItemTrigger.GetHit,
-                        new TriggerArgs { CharSrc = attacker, ItemSrc = shield, N1 = damage });
+                // @Hit / @GetHit and the weapon/armor item triggers fire inside
+                // CombatEngine.ResolveAttack (CombatEngine.OnHitDamage) for both
+                // the player and NPC paths, before HP is applied — see the hook
+                // wired above. The damage passed in here is already final.
             };
             _npcAI.OnNpcAttackNotify = (attacker, target) =>
             {
@@ -1870,12 +1876,57 @@ public static partial class Program
                 item.Delete();
             };
 
-            CombatEngine.OnHitParry = (defender, attacker) =>
+            CombatEngine.OnHitParry = (defender, attacker, blockedDamage) =>
             {
                 // Visible block spark on a successful parry (ModernUO 0x37B9).
                 GameClient.BroadcastParryEffect(defender, BroadcastNearby);
-                _triggerDispatcher?.FireCharTrigger(defender, CharTrigger.HitParry,
-                    new TriggerArgs { CharSrc = attacker, O1 = attacker });
+                if (_triggerDispatcher == null)
+                    return 0; // full block
+                // @HitParry: ARGN1 is the damage allowed through the parry — 0 (the
+                // default) is a full block; a script may raise it for a partial block.
+                var args = new TriggerArgs { CharSrc = attacker, O1 = attacker, N1 = 0 };
+                _triggerDispatcher.FireCharTrigger(defender, CharTrigger.HitParry, args);
+                return Math.Max(0, args.N1);
+            };
+
+            // Shared on-hit damage pipeline for both the player and NPC swing
+            // paths. Fires @Hit / @GetHit and the weapon/armor item hooks after
+            // armor/parry but before HP is applied, threading the running damage
+            // through ARGN1 so a script can raise, lower or cancel it (RETURN 1).
+            CombatEngine.OnHitDamage = (attacker, target, weapon, damage) =>
+            {
+                if (_triggerDispatcher == null)
+                    return damage;
+                int dmg = damage;
+
+                var hitArgs = new TriggerArgs { CharSrc = attacker, O1 = target, ItemSrc = weapon, N1 = dmg };
+                if (_triggerDispatcher.FireCharTrigger(attacker, CharTrigger.Hit, hitArgs) == TriggerResult.True)
+                    return 0;
+                dmg = Math.Max(0, hitArgs.N1);
+
+                var getHitArgs = new TriggerArgs { CharSrc = attacker, N1 = dmg };
+                if (_triggerDispatcher.FireCharTrigger(target, CharTrigger.GetHit, getHitArgs) == TriggerResult.True)
+                    return 0;
+                dmg = Math.Max(0, getHitArgs.N1);
+
+                if (weapon != null)
+                {
+                    var wArgs = new TriggerArgs { CharSrc = attacker, ItemSrc = weapon, O1 = target, N1 = dmg };
+                    if (_triggerDispatcher.FireItemTrigger(weapon, ItemTrigger.Hit, wArgs) == TriggerResult.True)
+                        return 0;
+                    dmg = Math.Max(0, wArgs.N1);
+                }
+
+                var shield = target.GetEquippedItem(SphereNet.Core.Enums.Layer.TwoHanded);
+                if (shield != null)
+                {
+                    var sArgs = new TriggerArgs { CharSrc = attacker, ItemSrc = shield, N1 = dmg };
+                    if (_triggerDispatcher.FireItemTrigger(shield, ItemTrigger.GetHit, sArgs) == TriggerResult.True)
+                        return 0;
+                    dmg = Math.Max(0, sArgs.N1);
+                }
+
+                return dmg;
             };
 
             // Housing — load multi definitions from multi.mul

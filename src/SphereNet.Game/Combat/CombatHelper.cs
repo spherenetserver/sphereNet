@@ -161,7 +161,10 @@ public static class CombatHelper
                     return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
             }
 
-            if (Character.CombatArcheryMovementDelay > 0 && attacker.LastMoveTick > 0)
+            // COMBAT_ARCHERYCANMOVE lets an archer fire while/just after moving,
+            // bypassing the post-move settle delay.
+            if (Character.CombatArcheryMovementDelay > 0 && attacker.LastMoveTick > 0 &&
+                !IsCombatFlagSet(CombatFlags.ArcheryCanMove))
             {
                 long sinceMove = nowMs - attacker.LastMoveTick;
                 if (sinceMove < Character.CombatArcheryMovementDelay)
@@ -199,6 +202,38 @@ public static class CombatHelper
 
     public static CombatFlags ActiveCombatFlags =>
         (CombatFlags)(Character.CombatFlags & 0xFFFFFFFF);
+
+    /// <summary>True when the given COMBATFLAGS bit is enabled in sphere.ini.</summary>
+    public static bool IsCombatFlagSet(CombatFlags flag) =>
+        (Character.CombatFlags & (int)flag) != 0;
+
+    /// <summary>
+    /// Resolve which ammo a ranged weapon fires from its ITEMDEF. AMMOTYPE names
+    /// the exact ammo item (resolved to a baseid via <paramref name="resolveDefName"/>)
+    /// and AMMOANIM overrides the in-flight projectile graphic. When the weapon
+    /// def specifies neither, the legacy defaults apply: arrows (0x0F3F) for bows,
+    /// bolts (0x1BFB) for crossbows. A zero <c>BaseId</c> means "match by the
+    /// fallback ammo ItemType" instead of a specific item id.
+    /// </summary>
+    public static (ushort BaseId, ItemType FallbackType, ushort Gfx) ResolveAmmoSpec(
+        SphereNet.Scripting.Definitions.ItemDef? weaponDef, ItemType weaponType, Func<string, ushort>? resolveDefName)
+    {
+        bool bow = weaponType == ItemType.WeaponBow;
+        ItemType fallbackType = bow ? ItemType.WeaponArrow : ItemType.WeaponBolt;
+        ushort gfx = bow ? (ushort)0x0F3F : (ushort)0x1BFB;
+        ushort baseId = 0;
+
+        if (weaponDef != null)
+        {
+            if (!string.IsNullOrWhiteSpace(weaponDef.AmmoType) && resolveDefName != null)
+            {
+                ushort resolved = resolveDefName(weaponDef.AmmoType);
+                if (resolved != 0) baseId = resolved;
+            }
+            if (weaponDef.AmmoAnim != 0) gfx = weaponDef.AmmoAnim;
+        }
+        return (baseId, fallbackType, gfx);
+    }
 
     public static int ActiveDamageEra => Character.CombatDamageEra;
     public static int ActiveHitChanceEra => Character.CombatHitChanceEra;

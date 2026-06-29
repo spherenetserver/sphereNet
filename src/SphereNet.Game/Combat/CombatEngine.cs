@@ -95,6 +95,20 @@ public static class CombatEngine
         (ArmorHitRegion.Feet, Layer.Shoes, 1),
     ];
 
+    // Layers covering each hit region when COMBAT_STACKARMOR is on: a region
+    // protected by several worn pieces (e.g. a tunic under a robe over the
+    // chest) sums all their AR instead of only the primary layer's.
+    private static readonly Dictionary<ArmorHitRegion, Layer[]> _stackArmorLayers = new()
+    {
+        [ArmorHitRegion.Head] = [Layer.Helm],
+        [ArmorHitRegion.Neck] = [Layer.Neck],
+        [ArmorHitRegion.Chest] = [Layer.Chest, Layer.Tunic, Layer.Shirt, Layer.Robe, Layer.Cape],
+        [ArmorHitRegion.Arms] = [Layer.Arms, Layer.Robe],
+        [ArmorHitRegion.Hands] = [Layer.Gloves],
+        [ArmorHitRegion.Legs] = [Layer.Legs, Layer.Pants, Layer.Skirt, Layer.Robe],
+        [ArmorHitRegion.Feet] = [Layer.Shoes],
+    };
+
     public static bool DurabilityEnabled { get; set; }
     public static int DurabilityLossChance { get; set; } = 25;
     public static int DurabilityLossMin { get; set; } = 1;
@@ -104,7 +118,23 @@ public static class CombatEngine
 
     public static Action<Item>? OnItemBroken;
     public static Func<Item, int, bool>? OnItemDamaged;
-    public static Action<Character, Character>? OnHitParry;
+    /// <summary>
+    /// Fired on a successful parry. Returns the damage that still leaks THROUGH
+    /// the parry — 0 (the default, when unwired or when no @HitParry script
+    /// overrides ARGN1) is a full block; a positive value is a partial block.
+    /// Args: defender, attacker, blockedDamage → damageThrough.
+    /// </summary>
+    public static Func<Character, Character, int, int>? OnHitParry;
+
+    /// <summary>
+    /// On-hit damage pipeline. Fires the @Hit / @GetHit char triggers and the
+    /// weapon/armor item triggers on a connecting hit — after armor/parry have
+    /// resolved a number, but BEFORE it is applied to HP — and returns the final
+    /// damage. A script may raise, lower or fully cancel it (return &lt;= 0).
+    /// Wired in the engine so the player and NPC swing paths share one trigger
+    /// pipeline. Args: attacker, target, weapon, proposedDamage → finalDamage.
+    /// </summary>
+    public static Func<Character, Character, Item?, int, int>? OnHitDamage;
 
     /// <summary>
     /// Calculate hit chance. Maps to CServerConfig::Calc_CombatChanceToHit.
@@ -313,6 +343,20 @@ public static class CombatEngine
 
     public static int CalcArmorDefenseForRegion(Character defender, ArmorHitRegion hitRegion)
     {
+        // COMBAT_STACKARMOR: sum the AR of every piece covering this region.
+        if ((Character.CombatFlags & (int)CombatFlags.StackArmor) != 0 &&
+            _stackArmorLayers.TryGetValue(hitRegion, out var layers))
+        {
+            int total = 0;
+            foreach (var layer in layers)
+            {
+                var piece = defender.GetEquippedItem(layer);
+                if (piece != null)
+                    total += Math.Max(0, piece.GetArmorDefense());
+            }
+            return total;
+        }
+
         var armor = defender.GetEquippedItem(GetArmorLayerForRegion(hitRegion));
         return Math.Max(0, armor?.GetArmorDefense() ?? 0);
     }
@@ -321,6 +365,11 @@ public static class CombatEngine
     /// Perform a full attack resolution. Returns damage dealt (0 = miss/blocked).
     /// Maps to CChar::Fight_Hit flow in Source-X.
     /// </summary>
+    /// <summary>Attacker's Damage Increase % (Source-X INCREASEDAM), from the
+    /// INCREASEDAM tag. 0 when absent or unparseable.</summary>
+    private static int GetDamageIncrease(Character ch) =>
+        ch.TryGetTag("INCREASEDAM", out string? s) && int.TryParse(s, out int v) ? v : 0;
+
     public static int ResolveAttack(
         Character attacker,
         Character target,
@@ -349,6 +398,16 @@ public static class CombatEngine
         if (dmgMax < dmgMin) dmgMax = dmgMin;
         int damage = _rand.Next(dmgMin, dmgMax + 1);
 
+        // Damage Increase (Source-X PROPCH_INCREASEDAM): applies to players
+        // always, and to NPCs only when COMBAT_NPC_BONUSDAMAGE is set, capped at
+        // ±100%. Read from the attacker's INCREASEDAM tag (absent/0 = none).
+        if (attacker.IsPlayer || flags.HasFlag(CombatFlags.NpcBonusDamage))
+        {
+            int di = Math.Clamp(GetDamageIncrease(attacker), -100, 100);
+            if (di != 0)
+                damage += damage * di / 100;
+        }
+
         // Parry check — Source-X Calc_CombatChanceToParry: a shield parries best,
         // a wielded weapon (one- or two-handed) can also parry at a lower rate.
         int parrySkill = target.GetSkill(SkillType.Parrying);
@@ -365,8 +424,13 @@ public static class CombatEngine
                 parryChance = 0;                        // bare-handed: no parry
             if (parryChance > 0 && _rand.Next(100) < parryChance)
             {
-                OnHitParry?.Invoke(target, attacker);
-                return -1; // parried — treated as a miss by the caller
+                // A parry fully blocks by default. A wired @HitParry can let some
+                // damage leak through (partial block) by returning a positive
+                // value; that reduced damage then still runs through armor.
+                int through = OnHitParry?.Invoke(target, attacker, damage) ?? 0;
+                if (through <= 0)
+                    return -1; // fully parried — treated as a miss by the caller
+                damage = Math.Min(damage, through);
             }
         }
 
@@ -390,6 +454,16 @@ public static class CombatEngine
         }
 
         damage = Math.Max(0, damage);
+
+        // On-hit damage triggers (@Hit / @GetHit and the weapon/armor item
+        // hooks) run here — after armor/parry resolved a number, but BEFORE it
+        // is applied to HP — so a script may raise, lower or fully cancel the
+        // damage. Source-X fires these around damage application; centralizing
+        // them in one hook means the player and NPC swing paths share a single
+        // pipeline (previously they each fired the triggers post-application,
+        // where a script could observe but not modify the damage).
+        if (OnHitDamage != null)
+            damage = Math.Max(0, OnHitDamage(attacker, target, weapon, damage));
 
         // Weapon poison on-hit: transfer poison from weapon to target.
         // Source-X: HIT_POISON attribute on weapon. SphereNet: POISON_SKILL tag
@@ -517,6 +591,15 @@ public static class CombatEngine
         var weapon = ch.GetEquippedItem(Layer.OneHanded) ?? ch.GetEquippedItem(Layer.TwoHanded);
         if (weapon == null)
             return SkillType.Wrestling;
+
+        // Item-level skill override: a weapon may declare a non-default combat
+        // skill via TAG.OVERRIDE_SKILL (the SkillType number), so e.g. a blade
+        // can be wielded with Fencing. Honored only when it names a real weapon
+        // skill; otherwise the ItemType-inferred default below applies.
+        if (weapon.TryGetTag("OVERRIDE_SKILL", out string? ovr) &&
+            int.TryParse(ovr, out int ovrId) &&
+            IsWeaponSkill((SkillType)ovrId))
+            return (SkillType)ovrId;
 
         return weapon.ItemType switch
         {

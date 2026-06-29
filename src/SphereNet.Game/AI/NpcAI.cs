@@ -2374,6 +2374,16 @@ public sealed class NpcAI
     /// Program.cs reschedules the NPC in the timer wheel so it acts next tick.</summary>
     public Action<Character>? OnWakeNpc { get; set; }
 
+    /// <summary>@HitTry hook fired before an NPC swing's recoil is set. Receives
+    /// the swing delay in tenths of a second and returns a (possibly modified)
+    /// delay, or a negative value to abort the swing this tick. Mirrors the
+    /// player path's @HitTry. Args: npc, target, weapon, swingDelayTenths.</summary>
+    public Func<Character, Character, Item?, int, int>? OnNpcHitTry { get; set; }
+
+    /// <summary>@HitCheck hook fired just before damage resolves. Returns true to
+    /// force a miss. Mirrors the player path's @HitCheck.</summary>
+    public Func<Character, Character, Item?, bool>? OnNpcHitCheck { get; set; }
+
     /// <summary>
     /// Try to swing attack a target with swing timer throttle.
     /// Uses the same pre-AOS Source-X swing-speed formula as players
@@ -2404,7 +2414,11 @@ public sealed class NpcAI
             npc.NextAttackTime = now + 1000;
             return false;
         }
-        if (npc.IsStatFlag(StatFlag.Freeze) || npc.IsStatFlag(StatFlag.Sleeping))
+        // COMBAT_PARALYZE_CANSWING (old-sphere): a paralyzed (Freeze) attacker
+        // can keep swinging; sleeping always blocks.
+        bool paralyzeCanSwing = CombatHelper.IsCombatFlagSet(CombatFlags.ParalyzeCanSwing);
+        if ((npc.IsStatFlag(StatFlag.Freeze) && !paralyzeCanSwing) ||
+            npc.IsStatFlag(StatFlag.Sleeping))
         {
             npc.NextAttackTime = now + 500;
             return false;
@@ -2436,6 +2450,20 @@ public sealed class NpcAI
         int swingDelayMs = SphereNet.Game.Clients.GameClient.GetSwingDelayMs(npc, weapon);
         int stagger = (int)(npc.Uid.Value * 2654435761u % 200);
 
+        // @HitTry (parity with the player path): fires before recoil is set so a
+        // script can adjust the swing delay or abort the swing this tick.
+        if (OnNpcHitTry != null)
+        {
+            int tenths = Math.Max(1, swingDelayMs / 100);
+            int newTenths = OnNpcHitTry(npc, target, weapon, tenths);
+            if (newTenths < 0)
+            {
+                npc.NextAttackTime = now + 250; // aborted; recheck shortly, no recoil burned
+                return false;
+            }
+            swingDelayMs = Math.Max(1, newTenths) * 100;
+        }
+
         var newDir = npc.Position.GetDirectionTo(target.Position);
         if (newDir != npc.Direction)
         {
@@ -2461,6 +2489,14 @@ public sealed class NpcAI
                 if (targetInnocent && region != null && region.IsFlag(RegionFlag.Guarded))
                     owner.MakeCriminal();
             }
+        }
+
+        // @HitCheck (parity with the player path): a script can force a miss
+        // before damage resolves. -1 routes the miss feedback (@HitMiss + whoosh).
+        if (OnNpcHitCheck != null && OnNpcHitCheck(npc, target, weapon))
+        {
+            OnNpcAttack?.Invoke(npc, target, -1);
+            return true;
         }
 
         short hpBefore = npc.Hits;

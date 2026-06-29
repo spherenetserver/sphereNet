@@ -4,6 +4,39 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Combat parity: flag'ler, scriptlenebilir hasar/parry, ammo ve skill override (Wave 150)
+----------------------------------------
+
+EKLENDI - Combat / Flag:
+  - Tanimli ama etkisiz duran bazi COMBATFLAGS artik swing yolunu etkiliyor:
+    NODIRCHANGE (saldiran artik hedefe donmek icin otomatik rotasyon yapmiyor),
+    ARCHERYCANMOVE (okcular hareket-sonrasi bekleme gecikmesini beklemeden ates
+    edebiliyor), PARALYZE_CANSWING (paralize/donmus saldiran swing'e devam
+    edebiliyor; uyku hala engelliyor) ve STACKARMOR (birden cok parcayla kapli
+    bir bolge yalniz birincil katmanin degil tum parcalarin AR'ini topluyor).
+  - NPC_BONUSDAMAGE: bir Damage Increase yuzdesi (INCREASEDAM tag, Source-X
+    PROPCH_INCREASEDAM, +-%100 cap) oyunculara her zaman, NPC'lere yalniz bu flag
+    acikken uygulaniyor.
+
+EKLENDI - Combat / Script:
+  - @Hit, @GetHit ve silah/zirh item hook'lari artik armor/parry'den SONRA ama
+    hasar HP'ye uygulanmadan ONCE ateşleniyor; boylece script ARGN1 ile hasari
+    artirabilir, azaltabilir veya iptal edebilir (RETURN 1 iptal). Player ve NPC
+    swing yollarinin ikisi de tek ortak pipeline'i kullaniyor; oncesinde bu
+    trigger'lar HP uygulandiktan sonra ateşleniyordu (gozlem var, modify yok).
+  - NPC swing yolu artik cozumden once @HitTry (swing delay ayarla / iptal) ve
+    @HitCheck (zorunlu miss) ateşliyor — player ile parity.
+  - Parry artik scriptlenebilir: basarili parry @HitParry ateşliyor ve hasarin
+    bir kismini (ARGN1) sizdirabiliyor; her zaman tam blok degil.
+  - Silah skill override: bir silah TAG.OVERRIDE_SKILL ile varsayilan-disi combat
+    skill bildirebiliyor (or. bir kilici Fencing ile kullanmak).
+
+EKLENDI - Combat / Menzilli:
+  - Menzilli silahlar ITEMDEF AMMOTYPE (tam olarak hangi ammo item'inin
+    tuketildigi) ve AMMOANIM (ucustaki mermi grafigi) degerlerini onurlandiriyor.
+    Silah def'i bunlardan birini belirtmezse eski yaylar-ok / xbow-bolt
+    varsayilanlari gecerli.
+
 [2026-06-29] - Dunya nesne unlink, region cache ve zemin stack merge duzeltmeleri (Wave 149)
 ----------------------------------------
 

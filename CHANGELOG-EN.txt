@@ -4,6 +4,39 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Combat parity: flags, scriptable damage/parry, ammo and skill overrides (Wave 150)
+----------------------------------------
+
+ADDED - Combat / Flags:
+  - Several COMBATFLAGS that were defined but inert now affect the swing path:
+    NODIRCHANGE (the attacker no longer auto-rotates to face the target),
+    ARCHERYCANMOVE (archers may fire without waiting out the post-move settle
+    delay), PARALYZE_CANSWING (a paralyzed/frozen attacker can keep swinging;
+    sleep still blocks), and STACKARMOR (a body region covered by several worn
+    pieces sums all their AR instead of only the primary layer's).
+  - NPC_BONUSDAMAGE: a Damage Increase % (INCREASEDAM tag, Source-X
+    PROPCH_INCREASEDAM, capped at ±100%) applies to players always and to NPCs
+    only when this flag is set.
+
+ADDED - Combat / Scripting:
+  - @Hit, @GetHit and the weapon/armor item hooks now fire after armor/parry but
+    BEFORE damage is applied to HP, so a script can raise, lower or cancel the
+    damage via ARGN1 (RETURN 1 cancels). These fire from one shared pipeline used
+    by both the player and NPC swing paths; previously they fired after HP was
+    already applied, where a script could observe but not modify the damage.
+  - The NPC swing path now fires @HitTry (adjust swing delay / abort) and
+    @HitCheck (force a miss) before resolving, matching the player path.
+  - Parry is now scriptable: a successful parry fires @HitParry and may let part
+    of the damage leak through (ARGN1), instead of always being a full block.
+  - Weapon skill override: a weapon may declare a non-default combat skill via
+    TAG.OVERRIDE_SKILL (e.g. wield a blade with Fencing).
+
+ADDED - Combat / Ranged:
+  - Ranged weapons honor their ITEMDEF AMMOTYPE (which exact ammo item is
+    consumed) and AMMOANIM (the in-flight projectile graphic). When a weapon def
+    specifies neither, the legacy arrow-for-bows / bolt-for-crossbows defaults
+    still apply.
+
 [2026-06-29] - World object unlink, region cache and ground stack merge fixes (Wave 149)
 ----------------------------------------
 

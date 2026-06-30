@@ -4,6 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Parity backbone: SERV.* world-ops verbs and parity matrix (Wave 197)
+----------------------------------------
+
+ADDED - Parity matrix measurement backbone (roadmap Faz 0):
+  - docs/PARITY_MATRIX.md itemises the Source-X SERV.* verb surface with a status
+    (Implemented / Partial / Stub / Missing / NotApplicable) and code location for
+    each, turning the subjective category scores into a concrete, regression-guarded
+    checklist. Points at the existing trigger guardrail for the trigger surface.
+
+ADDED - Script-reachable SERV.* world-ops verbs (Source-X parity):
+  - SERV.RESPAWN and SERV.RESTOCK now run from scripts (they delegate to the same
+    engine actions the admin console fires; previously console-only).
+  - SERV.CLEARLISTS drops all global script lists (optional name prefix) and returns
+    the count — the list counterpart of SERV.CLEARVARS, backed by the new
+    GameWorld.ClearGlobalLists primitive (the var store had a clear, the list store
+    did not). SERV.VARLIST / SERV.PRINTLISTS dump the global var/list contents to the
+    server log (caller-console routing deferred).
+
+================================================================================
+
 [2026-06-30] - Death parity: gender-specific player death cry (Wave 196)
 ----------------------------------------
 

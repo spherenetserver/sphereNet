@@ -1266,6 +1266,29 @@ public sealed class GameWorld
 
     public IEnumerable<KeyValuePair<string, List<string>>> GetAllGlobalLists() => _globalLists;
 
+    /// <summary>Number of global lists currently defined (Source-X PRINTLISTS header).</summary>
+    public int GlobalListCount => _globalLists.Count;
+
+    /// <summary>Clear global script lists (Source-X SERV.CLEARLISTS). With no prefix
+    /// every list is dropped; with a prefix only matching list names are removed.
+    /// Returns how many lists were cleared. Mirrors <see cref="ClearGlobalVars"/>,
+    /// whose list counterpart was missing.</summary>
+    public int ClearGlobalLists(string? prefix = null)
+    {
+        if (string.IsNullOrEmpty(prefix))
+        {
+            int count = _globalLists.Count;
+            _globalLists.Clear();
+            return count;
+        }
+        var toRemove = _globalLists.Keys
+            .Where(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        foreach (var k in toRemove)
+            _globalLists.Remove(k);
+        return toRemove.Count;
+    }
+
     public (int Chars, int Items, int Sectors) GetStats()
     {
         int chars = 0, items = 0, sectorCount = 0;

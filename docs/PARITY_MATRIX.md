@@ -1,0 +1,87 @@
+# Source-X Parity Matrix
+
+Measurement backbone for the parity roadmap (Faz 0). The roadmap's premise is that
+the largest score gains come from locking the Source-X **behaviour surface** —
+`SERV.*` verbs, object verbs/properties, and triggers — rather than adding isolated
+features. This document turns the otherwise-subjective category scores into an
+itemised status list with the code location for each entry, so later phases target
+concrete gaps instead of guesses.
+
+## Status legend
+
+| Status | Meaning |
+|---|---|
+| **Implemented** | Reachable from scripts with Source-X-equivalent behaviour. |
+| **Partial** | Works on one surface (e.g. admin console) but not all (e.g. not from `SERV.*`), or behaviour is narrowed. |
+| **Stub** | Recognised but returns a placeholder / no-op. |
+| **Missing** | Not handled anywhere. |
+| **NotApplicable** | Source-X feature with no meaning in SphereNet's design. |
+
+Each phase should keep this table in sync and ideally back it with a guardrail test
+(see `ParityMatrixServTests` for the SERV list/var primitives, and
+`TriggerCoverageGuardrailTests` for the trigger surface).
+
+---
+
+## SERV.* world-ops verbs (Faz 1 focus list)
+
+Dispatch: script reads route through `Program.ResolveServerProperty`
+(`src/SphereNet.Server/Program.Scripting.cs`); the admin console routes through
+`AdminCommandProcessor` (`src/SphereNet.Server/Admin/AdminCommandProcessor.cs`).
+
+| Verb | Status | Where | Notes |
+|---|---|---|---|
+| `RESPAWN` | Implemented | `HandleServRespawn` → `RespawnAllSpawners` | Wave 197 — was admin-console only. |
+| `RESTOCK` | Implemented | `HandleServRestock` | Wave 197 — was admin-console only. |
+| `CLEARLISTS` | Implemented | `HandleServClearLists` → `GameWorld.ClearGlobalLists` | Wave 197 — new primitive; mirrors `CLEARVARS`. Optional `[prefix]`. |
+| `VARLIST` | Implemented | `HandleServVarList` | Wave 197 — dumps `VAR.*` to the server log. Optional `[prefix]`. Caller-console routing deferred. |
+| `PRINTLISTS` | Implemented | `HandleServPrintLists` | Wave 197 — dumps list names + sizes to the server log. Caller-console routing deferred. |
+| `CLEARVARS` | Implemented | `_CLEARVARS=` → `GameWorld.ClearGlobalVars` | Pre-existing. |
+| `INFORMATION` | Partial | `AdminCommandProcessor` `INFORMATION` | Admin console only — no `SERV.INFORMATION` script read yet. |
+| `GARBAGE` | Partial | `AdminCommandProcessor` `GARBAGE` | Admin console only. |
+| `SHRINKMEM` | Partial | (≈ `GARBAGE`) | No dedicated script/console verb; GC reachable via `GARBAGE`. |
+| `BLOCKIP` / `UNBLOCKIP` | Partial | `AdminCommandProcessor` | Admin console only — not exposed to scripts (intentional: security surface). |
+| `EXPORT` / `IMPORT` / `RESTORE` | Missing | — | World-ops long tail (Faz 4); object serialisation to/from `.scp`. |
+| `SAVESTATICS` | Missing | — | Faz 4 (static world export). |
+| `LOAD` | Missing | — | Faz 4 (load a `.scp` at runtime). |
+| `SECURE` | Missing | — | Server console security toggle. |
+
+### Already-implemented SERV.* surface (not on the Faz-1 list)
+
+Confirmed live in `ResolveServerProperty`: read-only stats (`CLIENTS`, `ACCOUNTS`,
+`CHARS`, `ITEMS`, `VERSION`, `SERVNAME`), time (`TIME`, `TIMEUP`, `RTIME`, `RTICKS`,
+`TICKPERIOD`), `SAVECOUNT`, `MEM`, `REGEN0-3`, `SEASON`/`SEASONMODE`, feature flags;
+lookups `MAP*`, `SKILL.n`, `CHARDEF.`, `ITEMDEF.`, `AREA.`, `MULTIDEF.`, `LIST.`,
+`DEFLIST.`, `GMPAGE.`, `ISEVENT.`, `ACCOUNT.n`, `LOOKUPSKILL`; var/obj access
+`VAR.`/`VAR0.`, `OBJ`, `NEW`, `UID.`, `DEFMSG.`; write verbs `_SET_*`, `NEWDUPE`,
+`ALLCLIENTS`, `WRITEFILE`, `LOG`, `RESYNC`, `SAVE`, `SHUTDOWN`.
+
+---
+
+## Triggers
+
+The trigger surface is already measured and regression-guarded by
+`src/SphereNet.Tests/TriggerCoverageGuardrailTests.cs`, which recomputes the
+"defined but not fired" set from source on every run. Outstanding (infrastructure-
+gated) entries: char `NPCSeeWantItem`, `UserMailBag`; item `Level`, `Complete`, and
+the four champion-altar candle triggers. Faz 2 extends per-trigger arg/return/order
+coverage (`SRC`, `ARGO`, `ACT`, `ARGN1/2/3`, `ARGS`, `LOCAL`, `RETURN 0/1`, arg
+mutation) on top of this set.
+
+## Object verbs / properties
+
+Char/item verb + property parity is exercised across `ScriptObjectParityTests`,
+`GameSystemTests`, and the per-area parity suites. A full `r_Verb` / `r_WriteVal`
+enumeration against Source-X is the remaining Faz 0 work and will be appended here
+as it is produced.
+
+---
+
+## Next
+
+- **Faz 1**: caller-console routing for `VARLIST`/`PRINTLISTS`; `TIMERF`/`TIMERFMS`
+  delayed-verb execution; minimum-safe `FILE.*` set. `EXPORT`/`IMPORT`/`RESTORE`/
+  `SAVESTATICS`/`LOAD` deferred to the Faz 4 world-ops block (serialisation-heavy).
+- **Faz 2**: per-trigger arg/return/order matrix on the guardrail set.
+- **Faz 0 (ongoing)**: enumerate Source-X `CChar`/`CItem`/`CClient` `r_Verb` +
+  `r_WriteVal` and append the object-surface tables above.

@@ -4,6 +4,26 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Parite omurgasi: SERV.* world-ops verb'leri ve parite matrisi (Wave 197)
+----------------------------------------
+
+EKLENEN - Parite matrisi olcum omurgasi (yol haritasi Faz 0):
+  - docs/PARITY_MATRIX.md Source-X SERV.* verb yuzeyini her biri icin durum
+    (Implemented / Partial / Stub / Missing / NotApplicable) ve kod konumuyla listeler;
+    subjektif kategori skorlarini somut, regresyona karsi korumali bir kontrol listesine
+    cevirir. Trigger yuzeyi icin mevcut trigger guardrail'ine isaret eder.
+
+EKLENEN - Script'ten erisilebilir SERV.* world-ops verb'leri (Source-X paritesi):
+  - SERV.RESPAWN ve SERV.RESTOCK artik script'ten calisir (admin konsolunun tetikledigi
+    ayni engine eylemlerine delege eder; eskiden sadece konsoldu).
+  - SERV.CLEARLISTS tum global script list'lerini bosaltir (opsiyonel isim prefix'i) ve
+    sayiyi dondurur -- SERV.CLEARVARS'in list karsiligi, yeni GameWorld.ClearGlobalLists
+    primitifiyle (var deposunda clear vardi, list deposunda yoktu). SERV.VARLIST /
+    SERV.PRINTLISTS global var/list icerigini sunucu loguna dokar (caller-console
+    yonlendirmesi ertelendi).
+
+================================================================================
+
 [2026-06-30] - Death paritesi: cinsiyete ozgu oyuncu olum cigligi (Wave 196)
 ----------------------------------------
 

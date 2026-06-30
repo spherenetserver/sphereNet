@@ -209,6 +209,17 @@ public static partial class Program
             "SHUTDOWN" => HandleServShutdown(""),
             _ when upper.StartsWith("SHUTDOWN ") => HandleServShutdown(property[9..]),
 
+            // --- World-ops verbs reachable from scripts (Source-X SERV.*). These
+            // were previously console-only or absent; they delegate to the same
+            // engine actions the admin console fires. ---
+            "RESPAWN" => HandleServRespawn(),
+            "RESTOCK" => HandleServRestock(),
+            "CLEARLISTS" => HandleServClearLists(""),
+            _ when upper.StartsWith("CLEARLISTS ") => HandleServClearLists(property[11..]),
+            "VARLIST" => HandleServVarList(""),
+            _ when upper.StartsWith("VARLIST ") => HandleServVarList(property[8..]),
+            "PRINTLISTS" => HandleServPrintLists(),
+
             // Region property access
             _ when upper.StartsWith("_REGION_GET=") => HandleRegionGet(property[12..]),
 
@@ -927,6 +938,68 @@ public static partial class Program
             _log?.LogWarning(ex, "Script-driven serv.save failed");
         }
         return "";
+    }
+
+    /// <summary>Source-X <c>serv.respawn</c>: re-run every spawner (the same action
+    /// the admin console RESPAWN fires). Returns the spawner count touched.</summary>
+    private static string? HandleServRespawn()
+    {
+        try { RequestRespawnOnMainLoop(); }
+        catch (Exception ex) { _log?.LogWarning(ex, "Script-driven serv.respawn failed"); }
+        return "";
+    }
+
+    /// <summary>Source-X <c>serv.restock</c>: restock every vendor (admin console
+    /// RESTOCK equivalent).</summary>
+    private static string? HandleServRestock()
+    {
+        try { RequestRestockOnMainLoop(); }
+        catch (Exception ex) { _log?.LogWarning(ex, "Script-driven serv.restock failed"); }
+        return "";
+    }
+
+    /// <summary>Source-X <c>serv.clearlists [prefix]</c>: drop all global script
+    /// lists (or those matching a prefix). Returns the number cleared — the list
+    /// counterpart of <c>serv.clearvars</c>, which already existed.</summary>
+    private static string? HandleServClearLists(string args)
+    {
+        if (_world == null) return "0";
+        string? prefix = string.IsNullOrWhiteSpace(args) ? null : args.Trim();
+        return _world.ClearGlobalLists(prefix).ToString();
+    }
+
+    /// <summary>Source-X <c>serv.varlist [prefix]</c>: dump global VAR entries to the
+    /// server log (admin-visible). Returns the number listed. Caller-console routing
+    /// is a separate step; the log dump makes it usable for diagnostics now.</summary>
+    private static string? HandleServVarList(string args)
+    {
+        if (_world == null) return "0";
+        string? prefix = string.IsNullOrWhiteSpace(args) ? null : args.Trim();
+        int n = 0;
+        foreach (var kv in _world.GetAllGlobalVars())
+        {
+            if (prefix != null && !kv.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                continue;
+            _log?.LogInformation("VAR.{Name}={Value}", kv.Key, kv.Value);
+            n++;
+        }
+        _log?.LogInformation("VARLIST: {Count} variable(s)", n);
+        return n.ToString();
+    }
+
+    /// <summary>Source-X <c>serv.printlists</c>: dump global list names and sizes to
+    /// the server log. Returns the number of lists.</summary>
+    private static string? HandleServPrintLists()
+    {
+        if (_world == null) return "0";
+        int n = 0;
+        foreach (var kv in _world.GetAllGlobalLists())
+        {
+            _log?.LogInformation("LIST.{Name} ({Count} entries)", kv.Key, kv.Value.Count);
+            n++;
+        }
+        _log?.LogInformation("PRINTLISTS: {Count} list(s)", n);
+        return n.ToString();
     }
 
     /// <summary>Source-X <c>serv.shutdown [seconds]</c>. Without an arg,

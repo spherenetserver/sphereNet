@@ -7,6 +7,7 @@ using SphereNet.Game.Combat;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.World;
+using SphereNet.Network.Packets;
 using Xunit;
 
 namespace SphereNet.Tests;
@@ -212,6 +213,54 @@ public class CombatFlagParityTests
             Character.CombatFlags = oldFlags;
         }
     }
+
+    [Fact]
+    public void AnimHitSmooth_SetsSwingAnimationFrameDelay()
+    {
+        var oldFlags = Character.CombatFlags;
+        try
+        {
+            var world = TestHarness.CreateWorld();
+            var (client, attacker, _) = MakeMeleeFight(1313, world);
+            var packets = new List<PacketBuffer>();
+            client.BroadcastNearby = (_, _, packet, _) => packets.Add(packet.Build());
+
+            // Without the flag the 0x6E swing animation uses the default (0) delay.
+            Character.CombatFlags = 0;
+            attacker.NextAttackTime = 0;
+            attacker.SetCombatSwingState(SwingState.Ready);
+            client.TickCombat();
+            var plain = packets.FirstOrDefault(p => IsSwingAnim(p, attacker.Uid.Value));
+            Assert.NotNull(plain);
+            Assert.Equal(0, SwingAnimDelay(plain!));
+
+            // With COMBAT_ANIM_HIT_SMOOTH the swing animation carries a non-zero
+            // per-frame delay (paced to the swing time).
+            packets.Clear();
+            Character.CombatFlags = (int)CombatFlags.AnimHitSmooth;
+            attacker.NextAttackTime = 0;
+            attacker.SetCombatSwingState(SwingState.Ready);
+            client.TickCombat();
+            var smooth = packets.FirstOrDefault(p => IsSwingAnim(p, attacker.Uid.Value));
+            Assert.NotNull(smooth);
+            Assert.True(SwingAnimDelay(smooth!) > 0);
+        }
+        finally
+        {
+            Character.CombatFlags = oldFlags;
+        }
+    }
+
+    // 0x6E PacketAnimation: id(1) + serial(4) + action(2) + frameCount(2) +
+    // repeatCount(2) + forward(1) + repeat(1) + delay(1) = 14 bytes.
+    private static bool IsSwingAnim(PacketBuffer p, uint serial)
+    {
+        var s = p.Span;
+        return s.Length == 14 && s[0] == 0x6E &&
+            (((uint)s[1] << 24) | ((uint)s[2] << 16) | ((uint)s[3] << 8) | s[4]) == serial;
+    }
+
+    private static byte SwingAnimDelay(PacketBuffer p) => p.Span[13];
 
     [Fact]
     public void PreHit_ResolvesAtomically_EvenWithStayInRange()

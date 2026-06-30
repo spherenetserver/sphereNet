@@ -4,6 +4,23 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Combat paritesi: COMBAT_ANIM_HIT_SMOOTH swing animasyon tempolamasi (Wave 183)
+----------------------------------------
+
+EKLENEN - COMBAT_ANIM_HIT_SMOOTH (0x10000), ertelenen son swing flag'i:
+  - Acikken swing animasyonu sabit default hiz yerine swing suresine gore tempolanir (yavas silah
+    buna orantili yavas swing gosterir). Legacy 0x6E animasyon paketinin per-frame delay byte'i artik
+    hem player hem NPC swing yolunda swing delay'e orantili set edilir; flag kapaliyken delay 0 kalir
+    (degismez). Tam tempo client tarafindan yorumlanir; deger orantili ve byte-clamp'li. Enhanced/KR
+    client'lari (0xE2) per-frame alani olmadigindan etkilenmez.
+
+DUZELTILEN - Test kararliligi:
+  - Hasar-kesinti skill testi, seed'lenemeyen Random.Shared combat RNG'sinden bir hit tutturmak icin
+    sadece 20 swing donguyordu, bu yuzden ara sira 20'sini de iskalayip basarisiz olabiliyordu; dongu
+    artik bir hasarli hit'i pratikte kesin kilacak kadar swing calistirir.
+
+================================================================================
+
 [2026-06-30] - Combat paritesi: iki-fazli swing state machine (PreHit / StayInRange / SwingNoRange) (Wave 182)
 ----------------------------------------
 

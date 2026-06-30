@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Combat parity: COMBAT_ANIM_HIT_SMOOTH swing animation pacing (Wave 183)
+----------------------------------------
+
+ADDED - COMBAT_ANIM_HIT_SMOOTH (0x10000), the last deferred swing flag:
+  - When enabled, the swing animation is paced to the swing time (a slow weapon shows
+    a correspondingly slow swing) instead of the fixed default speed. The legacy 0x6E
+    animation packet's per-frame delay byte is now set proportionally to the swing
+    delay on both the player and NPC swing paths; with the flag off the delay stays 0
+    (unchanged). The exact pacing is client-interpreted; the value is proportional and
+    byte-clamped. Enhanced/KR clients (0xE2) have no per-frame field and are unaffected.
+
+FIXED - Test stability:
+  - The damage-interrupt skill test looped only 20 swings to land a hit through the
+    non-seedable Random.Shared combat RNG, so it could intermittently miss all 20 and
+    fail; the loop now runs enough swings that a damaging hit is effectively certain.
+
+================================================================================
+
 [2026-06-30] - Combat parity: two-phase swing state machine (PreHit / StayInRange / SwingNoRange) (Wave 182)
 ----------------------------------------
 

@@ -1545,11 +1545,13 @@ public static partial class Program
             };
             _npcAI.OnNpcAttack = (attacker, target, damage) =>
             {
-                ushort swingAnim = GameClient.GetNpcSwingAction(attacker);
-                GameClient.BroadcastAnimation(attacker, swingAnim, NewAnimationGesture.Attack, 18,
-                    BroadcastNearby, ForEachClientInRange);
-
                 var weapon = attacker.GetEquippedItem(Layer.OneHanded) ?? attacker.GetEquippedItem(Layer.TwoHanded);
+                ushort swingAnim = GameClient.GetNpcSwingAction(attacker);
+                // COMBAT_ANIM_HIT_SMOOTH paces the swing animation to the swing time.
+                byte animDelay = CombatHelper.GetSwingAnimDelay(GameClient.GetSwingDelayMs(attacker, weapon));
+                GameClient.BroadcastAnimation(attacker, swingAnim, NewAnimationGesture.Attack, 18,
+                    BroadcastNearby, ForEachClientInRange, animDelay: animDelay);
+
                 if (weapon != null &&
                     (weapon.ItemType == ItemType.WeaponBow || weapon.ItemType == ItemType.WeaponXBow))
                     GameClient.BroadcastRangedProjectile(attacker, target, weapon, BroadcastNearby);

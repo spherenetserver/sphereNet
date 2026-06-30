@@ -186,7 +186,10 @@ public class SkillDelayTests
             attacker.FightTarget = target.Uid;
             attacker.NextAttackTime = 0;
 
-            for (int i = 0; i < 20 && target.HasActiveSkillPending(); i++)
+            // Combat uses Random.Shared (non-seedable), so a single swing may miss.
+            // Loop enough swings that landing at least one damaging hit is effectively
+            // certain — the test asserts the interrupt, not a per-swing hit rate.
+            for (int i = 0; i < 80 && target.HasActiveSkillPending(); i++)
             {
                 attacker.NextAttackTime = 0;
                 attacker.SetCombatSwingState(SwingState.Ready);

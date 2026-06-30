@@ -290,6 +290,19 @@ public static class CombatHelper
     public static bool SwingIgnoresStartRange() =>
         IsCombatFlagSet(CombatFlags.SwingNoRange) && !IsCombatFlagSet(CombatFlags.PreHit);
 
+    /// <summary>Legacy 0x6E animation per-frame delay for COMBAT_ANIM_HIT_SMOOTH:
+    /// 0 when the flag is off (the fixed default swing speed), otherwise a value
+    /// scaled to the swing time so a slow weapon shows a correspondingly slow swing.
+    /// The exact pacing is client-interpreted; the value is proportional and clamped
+    /// to a byte.</summary>
+    public static byte GetSwingAnimDelay(int swingDelayMs)
+    {
+        if (!IsCombatFlagSet(CombatFlags.AnimHitSmooth)) return 0;
+        // ~7-frame attack animation paced across the swing: per-frame delay scales
+        // with the swing time, in the 0x6E delay unit. At least 1 when enabled.
+        return (byte)Math.Clamp(swingDelayMs / 70, 1, 255);
+    }
+
     /// <summary>
     /// Resolve which ammo a ranged weapon fires from its ITEMDEF. AMMOTYPE names
     /// the exact ammo item (resolved to a baseid via <paramref name="resolveDefName"/>)

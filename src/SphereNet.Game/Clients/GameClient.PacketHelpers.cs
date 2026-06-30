@@ -276,16 +276,19 @@ public sealed partial class GameClient
     /// the legacy behaviour, so callers that route through this helper keep
     /// working in contexts that only wire BroadcastNearby.
     /// </summary>
-    public void BroadcastAnimation(Character actor, ushort legacyAction, NewAnimationGesture gesture, byte mode = 0)
-        => BroadcastAnimation(actor, legacyAction, gesture, UpdateRange, BroadcastNearby, ForEachClientInRange, mode);
+    public void BroadcastAnimation(Character actor, ushort legacyAction, NewAnimationGesture gesture, byte mode = 0, byte animDelay = 0)
+        => BroadcastAnimation(actor, legacyAction, gesture, UpdateRange, BroadcastNearby, ForEachClientInRange, mode, animDelay);
 
     /// <summary>Shared version-aware animation dispatch usable from both
-    /// player-driven (GameClient) and engine-driven (NPC) combat paths.</summary>
+    /// player-driven (GameClient) and engine-driven (NPC) combat paths.
+    /// <paramref name="animDelay"/> is the legacy 0x6E per-frame delay byte —
+    /// COMBAT_ANIM_HIT_SMOOTH passes a non-zero value so a slow weapon's swing
+    /// animation is paced to the swing time instead of the fixed default speed.</summary>
     public static void BroadcastAnimation(
         Character actor, ushort legacyAction, NewAnimationGesture gesture, int range,
         Action<Point3D, int, PacketWriter, uint>? broadcastNearby,
         Action<Point3D, int, uint, Action<Character, GameClient>>? forEachClientInRange,
-        byte mode = 0)
+        byte mode = 0, byte animDelay = 0)
     {
         uint serial = actor.Uid.Value;
         if (forEachClientInRange != null)
@@ -295,12 +298,13 @@ public sealed partial class GameClient
                 if (observer.NetState.IsKingdomRebornClient || observer.NetState.IsEnhancedClient)
                     observer.Send(new PacketNewAnimation(serial, gesture, 0, mode));
                 else
-                    observer.Send(new PacketAnimation(serial, legacyAction));
+                    observer.Send(new PacketAnimation(serial, legacyAction, delay: animDelay));
             });
         }
         else
         {
-            broadcastNearby?.Invoke(actor.Position, range, new PacketAnimation(serial, legacyAction), 0);
+            broadcastNearby?.Invoke(actor.Position, range,
+                new PacketAnimation(serial, legacyAction, delay: animDelay), 0);
         }
     }
 

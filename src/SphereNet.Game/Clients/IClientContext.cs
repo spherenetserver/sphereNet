@@ -110,7 +110,7 @@ internal interface IClientContext : ITextConsole
     void Resync();
     void BroadcastDrawObject(Character ch);
     void BroadcastDeleteObject(uint uid);
-    void BroadcastAnimation(Character actor, ushort legacyAction, NewAnimationGesture gesture, byte mode = 0);
+    void BroadcastAnimation(Character actor, ushort legacyAction, NewAnimationGesture gesture, byte mode = 0, byte animDelay = 0);
     void SendDrawObject(Character ch);
     void SendDrawObjectWithHue(Character ch, ushort hue);
     void SendDrawObjectHidden(Character ch);

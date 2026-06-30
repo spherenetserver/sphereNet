@@ -112,7 +112,7 @@ public sealed class ClientCombatHandler
     private static ushort GetWeaponMissSound(Item? weapon) => GameClient.GetWeaponMissSound(weapon);
     private static ushort GetDefenderHitSound(Character defender) => GameClient.GetDefenderHitSound(defender);
     private static (uint Serial, ushort ItemId, byte Layer, ushort Hue)[] BuildEquipmentList(Character ch) => GameClient.BuildEquipmentList(ch);
-    private void BroadcastAnimation(Character actor, ushort legacyAction, NewAnimationGesture gesture, byte mode = 0) => _client.BroadcastAnimation(actor, legacyAction, gesture, mode);
+    private void BroadcastAnimation(Character actor, ushort legacyAction, NewAnimationGesture gesture, byte mode = 0, byte animDelay = 0) => _client.BroadcastAnimation(actor, legacyAction, gesture, mode, animDelay);
     private static void GetDirectionDelta(Direction dir, out short dx, out short dy) => GameClient.GetDirectionDelta(dir, out dx, out dy);
     private void TickPendingSkill() => _client.TickPendingSkill();
     private void TickPendingCraft() => _client.TickPendingCraft();
@@ -951,7 +951,9 @@ public sealed class ClientCombatHandler
             _character.Stam = (short)(_character.Stam - 1);
 
         ushort swingAction = GetSwingAction(_character, weapon);
-        BroadcastAnimation(_character, swingAction, NewAnimationGesture.Attack);
+        // COMBAT_ANIM_HIT_SMOOTH paces the swing animation to the swing time.
+        BroadcastAnimation(_character, swingAction, NewAnimationGesture.Attack,
+            animDelay: CombatHelper.GetSwingAnimDelay(swingDelayMs));
         // Source-X plays a single combat sound per swing: the per-weapon hit
         // sound on a hit, the miss whoosh on a miss (emitted below). No extra
         // unconditional swing sound.

@@ -136,7 +136,7 @@ public sealed partial class GameClient : IClientContext
     void IClientContext.Resync() => Resync();
     void IClientContext.BroadcastDrawObject(Character ch) => BroadcastDrawObject(ch);
     void IClientContext.BroadcastDeleteObject(uint uid) => BroadcastDeleteObject(uid);
-    void IClientContext.BroadcastAnimation(Character actor, ushort legacyAction, NewAnimationGesture gesture, byte mode) => BroadcastAnimation(actor, legacyAction, gesture, mode);
+    void IClientContext.BroadcastAnimation(Character actor, ushort legacyAction, NewAnimationGesture gesture, byte mode, byte animDelay) => BroadcastAnimation(actor, legacyAction, gesture, mode, animDelay);
     void IClientContext.SendDrawObject(Character ch) => SendDrawObject(ch);
     void IClientContext.SendDrawObjectWithHue(Character ch, ushort hue) => SendDrawObjectWithHue(ch, hue);
     void IClientContext.SendDrawObjectHidden(Character ch) => SendDrawObjectHidden(ch);

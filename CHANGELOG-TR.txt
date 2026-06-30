@@ -4,6 +4,26 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Notoriety display paritesi: personal-grey, pet-owner inherit, @Criminal suresi (Wave 167)
+----------------------------------------
+
+EKLENEN - Notoriety display:
+  - Personal grey (Source-X aggressor memory): viewer'i harm eden bir oyuncu —
+    aktif bir aggressor, or. global criminal olmayan bir wilderness saldirgani —
+    artik fight memory suresi boyunca O viewer'a grey gosterir; boylece kurban
+    kimin saldirdigini gorebilir. Masum kurban, saldirgana mavi kalir.
+    Sadece display; attack-crime yasalligini DEGISTIRMEZ.
+  - Evcil pet / summon artik sahibinin notoriety rengini inherit eder (Source-X
+    Noto_GetFlag pet->owner): viewer'in kendi pet'i dostça yesil, baska oyuncunun
+    pet'i o sahibin rengi, sahipsiz yaratik kendi NPC notoriety'sine duser.
+
+EKLENEN - Triggerlar:
+  - @Criminal criminal-flag suresini ARGN1 (saniye) ile ezebilir; RETURN 1 hala
+    flag'i tamamen iptal eder. OnCriminalCheck artik sureyi doner (null = iptal,
+    0 = engine default).
+
+================================================================================
+
 [2026-06-30] - Notoriety/crime paritesi II: coklu-attacker murder mark, decay persistence, trigger kontrat (Wave 166)
 ----------------------------------------
 

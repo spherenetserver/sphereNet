@@ -47,8 +47,10 @@ public partial class Character : ObjBase
     /// @Hunger trigger.</summary>
     public static Action<Character>? OnHungerDecay;
     /// <summary>Fires the @Criminal trigger before a character is flagged
-    /// criminal. Return true to cancel (script handled / forgave the crime).</summary>
-    public static Func<Character, bool>? OnCriminalCheck;
+    /// criminal. Returns null to cancel the flag (RETURN 1 / script forgave the
+    /// crime), or the criminal-flag duration in seconds (ARGN1; 0 = engine
+    /// default CriminalTimerSeconds).</summary>
+    public static Func<Character, int?>? OnCriminalCheck;
 
     // Static delegate for guild resolution (set in Program.cs)
     public static Func<Serial, Guild.GuildManager?>? ResolveGuildManager;
@@ -1063,11 +1065,17 @@ public partial class Character : ObjBase
     /// a fresh crime refreshes the countdown, matching Source-X behaviour).</summary>
     public void MakeCriminal()
     {
-        // @Criminal trigger — a script may cancel the flag (RETURN 1).
-        if (OnCriminalCheck != null && OnCriminalCheck(this))
-            return;
+        // @Criminal trigger — RETURN 1 (null) cancels the flag; a returned
+        // duration (ARGN1) overrides the default criminal-timer seconds.
+        long durationMs = CriminalTimerSeconds * 1000L;
+        if (OnCriminalCheck != null)
+        {
+            int? decision = OnCriminalCheck(this);
+            if (decision == null) return;
+            if (decision.Value > 0) durationMs = decision.Value * 1000L;
+        }
         SetStatFlag(StatFlag.Criminal);
-        CombatState.SetCriminal(CriminalTimerSeconds * 1000L);
+        CombatState.SetCriminal(durationMs);
     }
 
     /// <summary>Called once per world tick. Clears expired criminal flag and

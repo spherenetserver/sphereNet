@@ -582,12 +582,36 @@ public sealed partial class GameClient
         if (myParty != null && myParty.IsMember(subject.Uid))
             return 2;
 
+        // Personal grey (Source-X aggressor memory): a player who harmed the
+        // viewer — an active aggressor, e.g. a wilderness attacker who is not
+        // globally criminal — shows grey to THIS viewer while the fight memory
+        // lasts. The innocent victim holds no HarmedBy of the aggressor, so they
+        // stay blue to the aggressor. Display-only; does not change crime rules.
+        if (subject.IsPlayer &&
+            viewer.Memory_FindObjTypes(subject.Uid, MemoryType.HarmedBy) != null)
+            return 4;
+
         if (subject.TryGetTag("NOTO.PERMAGREY", out string? pg) && pg == "1")
             return 3;
 
         bool isActuallyPlayer = subject.IsPlayer || subject.TryGetTag("ACCOUNT", out _);
         if (!isActuallyPlayer)
+        {
+            // A tamed pet / summon inherits its owner's notoriety (Source-X
+            // Noto_GetFlag pet→owner): the viewer's own pet shows friendly green,
+            // another player's pet takes that owner's colour, and an ownerless
+            // creature falls back to its own NPC notoriety.
+            if (subject.OwnerSerial.IsValid && world != null)
+            {
+                if (subject.OwnerSerial == viewer.Uid)
+                    return 2; // your own pet — friendly green
+                var owner = world.FindChar(subject.OwnerSerial);
+                if (owner != null && !owner.IsDeleted && owner != subject &&
+                    (owner.IsPlayer || owner.TryGetTag("ACCOUNT", out _)))
+                    return ComputeNotorietyBase(world, viewer, owner);
+            }
             return GetNpcNotoriety(subject);
+        }
 
         return 1;
     }

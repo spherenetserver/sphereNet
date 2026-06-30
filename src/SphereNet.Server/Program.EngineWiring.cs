@@ -1202,9 +1202,13 @@ public static partial class Program
             };
             Character.OnCriminalCheck = ch =>
             {
-                bool cancelled = _triggerDispatcher?.FireCharTrigger(ch, CharTrigger.Criminal,
-                    new TriggerArgs { CharSrc = ch }) == TriggerResult.True;
-                if (!cancelled && _world != null && _triggerDispatcher != null)
+                // ARGN1 = criminal-flag duration seconds (default); RETURN 1 cancels
+                // the flag, otherwise the (possibly script-overridden) ARGN1 sets
+                // how long the criminal flag lasts.
+                var args = new TriggerArgs { CharSrc = ch, N1 = Character.CriminalTimerSeconds };
+                if (_triggerDispatcher?.FireCharTrigger(ch, CharTrigger.Criminal, args) == TriggerResult.True)
+                    return null;
+                if (_world != null && _triggerDispatcher != null)
                 {
                     // Nearby NPCs/guards witness the crime (@SeeCrime, <src> = criminal).
                     foreach (var witness in _world.GetCharsInRange(ch.Position, 12))
@@ -1214,7 +1218,7 @@ public static partial class Program
                             new TriggerArgs { CharSrc = ch });
                     }
                 }
-                return cancelled;
+                return args.N1;
             };
             GameRegion.ClientCountProvider = regionObj =>
             {

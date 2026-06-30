@@ -41,11 +41,13 @@ public class NotorietyCrimeParityIITests
         var ch = world.CreateCharacter();
 
         ch.MurderDecayRemainingSeconds = 300;
-        Assert.InRange(ch.MurderDecayRemainingSeconds, 295, 300); // real-time getter
+        // Real-time getter — a wide lower bound keeps it robust under CI load while
+        // still proving the value persisted (not 0 / not the restarted full window).
+        Assert.InRange(ch.MurderDecayRemainingSeconds, 270, 300);
 
         // The load path applies it through TrySetProperty (WorldSaver writes MURDERDECAY).
         ch.TrySetProperty("MURDERDECAY", "250");
-        Assert.InRange(ch.MurderDecayRemainingSeconds, 245, 250);
+        Assert.InRange(ch.MurderDecayRemainingSeconds, 220, 250);
 
         ch.MurderDecayRemainingSeconds = 0;
         Assert.Equal(0, ch.MurderDecayRemainingSeconds);

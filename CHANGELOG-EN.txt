@@ -4,6 +4,27 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Notoriety display parity: personal-grey, pet-inherits-owner, @Criminal duration (Wave 167)
+----------------------------------------
+
+ADDED - Notoriety display:
+  - Personal grey (Source-X aggressor memory): a player who harmed the viewer —
+    an active aggressor such as a wilderness attacker who is not globally criminal
+    — now shows grey to THAT viewer while the fight memory lasts, so a victim can
+    see who is attacking them. The innocent victim stays blue to the aggressor.
+    Display-only; it does not change attack-crime legality.
+  - A tamed pet / summon now inherits its owner's notoriety colour (Source-X
+    Noto_GetFlag pet->owner): the viewer's own pet shows friendly green, another
+    player's pet takes that owner's colour, and an ownerless creature falls back
+    to its NPC notoriety.
+
+ADDED - Triggers:
+  - @Criminal can override the criminal-flag duration via ARGN1 (seconds);
+    RETURN 1 still cancels the flag entirely. OnCriminalCheck now returns the
+    duration (null = cancel, 0 = engine default).
+
+================================================================================
+
 [2026-06-30] - Notoriety/crime parity II: multi-attacker murder marking, decay persistence, trigger contract (Wave 166)
 ----------------------------------------
 

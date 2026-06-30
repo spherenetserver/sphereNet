@@ -4,6 +4,27 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Item/envanter paritesi II: origin'e bounce, bank deep cap, contained-item erisim (Wave 165)
+----------------------------------------
+
+EKLENEN - Drop / container:
+  - Drag bounce-to-origin (Source-X CClientEvent): basarisiz drop artik item'i
+    backpack'e atmak yerine kaldirildigi tam container slot'una / yer tile'ina
+    geri dondurur. Kaldirma origin'i pickup'ta transient per-client state olarak
+    yakalanir (item tag'i DEGIL — tag stack-merge esitligini bozardi); equip-origin
+    ve silinmis/dolu origin pack'e duser.
+  - Bank item cap'i artik TUM bank agacini sayar (nested bag'ler dahil), boylece
+    oyuncu limit'i asmak icin container nest'leyemez (Source-X deep count). Bank
+    agacindaki herhangi bir drop, bank kokunden olculur.
+
+DEGISEN - Use:
+  - Bir container ICINDEKI item'a cift tiklamak artik container'in top parent'i
+    uzerinden erisimi dogrular (Source-X CClientUse); crafted/stale DClick'in uzak
+    ya da tasinmis container'daki item'i kullanma acigini kapatir. Yerdeki gevsek
+    item'lar mevcut tile-mesafe kontrolunu korur; GM bypass eder.
+
+================================================================================
+
 [2026-06-30] - Item/envanter kural paritesi: tasima gate, equip gate, container cap, ground-drop arg, decay veto (Wave 164)
 ----------------------------------------
 

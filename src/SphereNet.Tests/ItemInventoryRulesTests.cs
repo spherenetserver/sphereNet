@@ -250,13 +250,66 @@ public class ItemInventoryRulesTests
 
         var item = world.CreateItem();
         item.BaseId = 0x0F7A;
-        world.PlaceItem(item, player.Position);
+        pack.AddItem(item); // lifted from the pack → bounces back to the pack
 
         client.HandleItemPickup(item.Uid.Value, 0);
         client.HandleItemDrop(item.Uid.Value, 0, 0, 0, box.Uid.Value);
 
         Assert.DoesNotContain(box.Contents, i => i.Uid == item.Uid); // capped out
-        Assert.Equal(pack.Uid, item.ContainedIn);                    // bounced to pack
+        Assert.Equal(pack.Uid, item.ContainedIn);                    // bounced to origin (pack)
+    }
+
+    // ---- #4: drag bounce-to-origin on a failed drop ----
+
+    [Fact]
+    public void FailedDrop_BouncesItemBackToOriginContainer()
+    {
+        var world = CreateWorld();
+        var (client, player, pack) = MakePlayer(world, 9304);
+
+        // A pouch inside the pack; the item is lifted from the pouch.
+        var pouch = world.CreateItem();
+        pouch.BaseId = 0x0E79; pouch.ItemType = ItemType.Container;
+        pack.AddItem(pouch);
+        var item = world.CreateItem();
+        item.BaseId = 0x0F7A;
+        pouch.AddItem(item);
+
+        // A full target box rejects the drop.
+        var box = world.CreateItem();
+        box.BaseId = 0x0E75; box.ItemType = ItemType.Container;
+        box.SetTag("OVERRIDE.MAXITEMS", "0");
+        world.PlaceItem(box, player.Position);
+
+        client.HandleItemPickup(item.Uid.Value, 0);
+        client.HandleItemDrop(item.Uid.Value, 0, 0, 0, box.Uid.Value);
+
+        Assert.Equal(pouch.Uid, item.ContainedIn); // back in the pouch, not the main pack
+        Assert.Contains(pouch.Contents, i => i.Uid == item.Uid);
+    }
+
+    [Fact]
+    public void FailedDrop_BouncesGroundItemBackToGround()
+    {
+        var world = CreateWorld();
+        var (client, player, _) = MakePlayer(world, 9305);
+
+        var origin = new Point3D(102, 100, 0, 0);
+        var item = world.CreateItem();
+        item.BaseId = 0x0F7A;
+        world.PlaceItem(item, origin);
+
+        var box = world.CreateItem();
+        box.BaseId = 0x0E75; box.ItemType = ItemType.Container;
+        box.SetTag("OVERRIDE.MAXITEMS", "0");
+        world.PlaceItem(box, player.Position);
+
+        client.HandleItemPickup(item.Uid.Value, 0);
+        client.HandleItemDrop(item.Uid.Value, 0, 0, 0, box.Uid.Value);
+
+        Assert.False(item.ContainedIn.IsValid);   // back on the ground
+        Assert.Equal(origin.X, item.X);
+        Assert.Equal(origin.Y, item.Y);
     }
 
     [Fact]
@@ -283,5 +336,77 @@ public class ItemInventoryRulesTests
         Assert.Equal(player.X + 1, item.X); // relocated by the script
         long remainingMs = item.DecayTime - Environment.TickCount64;
         Assert.InRange(remainingMs, 1, 5000); // custom 5s decay, not the 10-min default
+    }
+
+    // ---- #1b: bank cap counts the whole tree (nested bags can't bypass) ----
+
+    [Fact]
+    public void BankCap_CountsNestedBags_RejectsOverDeepLimit()
+    {
+        var world = CreateWorld();
+        var (client, player, _) = MakePlayer(world, 9306);
+        world.MaxBankItems = 2; // tiny cap for the test
+
+        var bank = world.CreateItem();
+        bank.BaseId = 0x0E75; bank.ItemType = ItemType.Container;
+        player.Equip(bank, Layer.BankBox);
+
+        // A sub-bag holding one item: deep count = bag + item = 2 (the cap). The
+        // bank's SHALLOW count is just 1 (the bag), which would wrongly allow more.
+        var bag = world.CreateItem();
+        bag.BaseId = 0x0E79; bag.ItemType = ItemType.Container;
+        bank.AddItem(bag);
+        var stored = world.CreateItem(); stored.BaseId = 0x0F7A;
+        bag.AddItem(stored);
+
+        var item = world.CreateItem(); item.BaseId = 0x0F7A;
+        player.Backpack!.AddItem(item);
+
+        client.HandleItemPickup(item.Uid.Value, 0);
+        client.HandleItemDrop(item.Uid.Value, 0, 0, 0, bank.Uid.Value);
+
+        Assert.DoesNotContain(bank.Contents, i => i.Uid == item.Uid); // deep cap rejects
+    }
+
+    // ---- #6: a contained item must be reachable through its top parent ----
+
+    [Fact]
+    public void DClick_ContainedItemOutOfReach_IsBlocked()
+    {
+        var world = CreateWorld();
+        var dispatcher = new TriggerDispatcher();
+        bool fired = false;
+        dispatcher.RegisterItemEvent("EVENTSITEM", "DClick", (_, _) => { fired = true; return TriggerResult.True; });
+        var (client, _, _) = MakePlayer(world, 9307, dispatcher);
+
+        var box = world.CreateItem();
+        box.BaseId = 0x0E75; box.ItemType = ItemType.Container;
+        world.PlaceItem(box, new Point3D(150, 150, 0, 0)); // far away
+        var item = world.CreateItem(); item.BaseId = 0x0F7A;
+        box.AddItem(item);
+
+        client.HandleDoubleClick(item.Uid.Value);
+
+        Assert.False(fired); // reach check blocked use before @DClick
+    }
+
+    [Fact]
+    public void DClick_ContainedItemInReach_FiresTrigger()
+    {
+        var world = CreateWorld();
+        var dispatcher = new TriggerDispatcher();
+        bool fired = false;
+        dispatcher.RegisterItemEvent("EVENTSITEM", "DClick", (_, _) => { fired = true; return TriggerResult.True; });
+        var (client, player, _) = MakePlayer(world, 9308, dispatcher);
+
+        var box = world.CreateItem();
+        box.BaseId = 0x0E75; box.ItemType = ItemType.Container;
+        world.PlaceItem(box, player.Position); // adjacent
+        var item = world.CreateItem(); item.BaseId = 0x0F7A;
+        box.AddItem(item);
+
+        client.HandleDoubleClick(item.Uid.Value);
+
+        Assert.True(fired);
     }
 }

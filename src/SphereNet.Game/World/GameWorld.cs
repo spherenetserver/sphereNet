@@ -1075,6 +1075,25 @@ public sealed class GameWorld
         }
     }
 
+    /// <summary>Total item count in a container's whole subtree (nested
+    /// containers included). Source-X counts a bank's deep contents against its
+    /// cap so a player can't nest bags to bypass the limit. Depth-bounded (16)
+    /// to match the containment-chain guard elsewhere.</summary>
+    public int GetContainerItemCountDeep(Serial containerUid, int maxDepth = 16)
+    {
+        if (maxDepth <= 0 || !_containerIndex.TryGetValue(containerUid.Value, out var list))
+            return 0;
+        int count = 0;
+        for (int i = list.Count - 1; i >= 0; i--)
+        {
+            var item = list[i];
+            if (item.IsDeleted) continue;
+            count++;
+            count += GetContainerItemCountDeep(item.Uid, maxDepth - 1);
+        }
+        return count;
+    }
+
     /// <summary>Default ground item decay time in ms (10 minutes).</summary>
     public const long DefaultDecayTimeMs = 600_000;
 

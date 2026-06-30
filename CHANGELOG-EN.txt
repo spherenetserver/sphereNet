@@ -4,6 +4,27 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Item/inventory parity II: bounce-to-origin, bank deep cap, contained-item reach (Wave 165)
+----------------------------------------
+
+ADDED - Drop / container:
+  - Drag bounce-to-origin (Source-X CClientEvent): a failed drop now returns the
+    item to the exact container slot / ground tile it was lifted from, instead of
+    dumping it into the backpack. The lift origin is captured at pickup as
+    transient per-client state (not item tags, which would break stack-merge
+    equality); equip-origin and a gone/full origin fall back to the pack.
+  - The bank item cap now counts the WHOLE bank tree (nested bags included), so a
+    player can't nest containers to bypass the limit (Source-X deep count). A
+    drop anywhere in the bank tree is measured from the bank root.
+
+CHANGED - Use:
+  - Double-clicking an item INSIDE a container now verifies reach through the
+    container's top parent (Source-X CClientUse), closing a gap where a crafted /
+    stale DClick could use an item in a far or moved container. Loose ground
+    items keep their existing tile-distance check; GM bypasses.
+
+================================================================================
+
 [2026-06-30] - Item/inventory rule parity: move gate, equip gate, container cap, ground-drop args, decay veto (Wave 164)
 ----------------------------------------
 

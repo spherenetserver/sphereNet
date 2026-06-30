@@ -278,6 +278,10 @@ public sealed class ClientInventoryHandler
             return;
         }
 
+        // Stamp the lift origin BEFORE any reparent so a failed drop can bounce the
+        // item back where it came from (Source-X). Overwritten on every pickup.
+        CaptureDragOrigin(item);
+
         var (dragSourceSerial, dragSourcePos) = GetDragSource(item);
 
         // Fire the pickup trigger, choosing the most specific source variant:
@@ -456,6 +460,75 @@ public sealed class ClientInventoryHandler
         return (0, item.Position);
     }
 
+    // === Source-X drag bounce-to-origin (CClientEvent pickup origin) ===
+
+    /// <summary>Lift origin for the item currently being dragged. Held as
+    /// transient per-client state (one drag at a time) rather than item tags —
+    /// tags would pollute the item's tag set and break stack-merge equality.</summary>
+    private enum DragOriginKind : byte { Pack = 0, Container = 1, Ground = 2 }
+    private readonly record struct DragOrigin(DragOriginKind Kind, uint Parent, short X, short Y, sbyte Z);
+    private DragOrigin? _dragOrigin;
+
+    /// <summary>
+    /// Snapshot where an item is being lifted FROM so a failed drop can bounce it
+    /// back to that container slot / ground tile (Source-X stores the prior parent
+    /// + position), not just the backpack. Overwritten on every pickup, so it
+    /// can't go stale — a drop only follows the pickup that just set it.
+    /// </summary>
+    private void CaptureDragOrigin(Item item)
+    {
+        if (item.IsEquipped)
+            // Equip-origin bounces to the pack: re-equipping on the failure path
+            // would re-fire @EquipTest / hand-conflict logic.
+            _dragOrigin = new DragOrigin(DragOriginKind.Pack, 0, 0, 0, 0);
+        else if (item.ContainedIn.IsValid && _world.FindItem(item.ContainedIn) != null)
+            _dragOrigin = new DragOrigin(DragOriginKind.Container, item.ContainedIn.Value, item.X, item.Y, 0);
+        else
+            _dragOrigin = new DragOrigin(DragOriginKind.Ground, 0, item.X, item.Y, item.Z);
+    }
+
+    /// <summary>
+    /// Bounce a failed drop back to its lift origin — the original container slot
+    /// or ground tile — and send the matching client update. Falls back to the
+    /// backpack when the origin is gone, full, or was an equip layer. Mirrors
+    /// PlaceItemInPack's reparent + 0x25, but targets the origin.
+    /// </summary>
+    private void RestoreToOrigin(Item item)
+    {
+        if (_character == null) return;
+        var origin = _dragOrigin;
+        _dragOrigin = null;
+
+        if (origin is { Kind: DragOriginKind.Container } co)
+        {
+            var originCont = _world.FindItem(new Serial(co.Parent));
+            // The item was a leaf of this container moments ago, so there is room
+            // and no cycle; guard only against a deleted/full origin.
+            if (originCont != null && !originCont.IsDeleted &&
+                _world.GetContainerContents(originCont.Uid).Count() < Item.MaxContainerItems)
+            {
+                originCont.AddItem(item);
+                item.Position = new Point3D(co.X, co.Y, 0, _character.MapIndex);
+                _netState.Send(new PacketContainerItem(
+                    item.Uid.Value, item.DispIdFull, 0, item.Amount,
+                    co.X, co.Y, originCont.Uid.Value, item.Hue, _netState.IsClientPost6017));
+                return;
+            }
+        }
+        else if (origin is { Kind: DragOriginKind.Ground } go)
+        {
+            var pos = new Point3D(go.X, go.Y, go.Z, _character.MapIndex);
+            if (_world.GetSector(pos) != null)
+            {
+                _world.PlaceItemWithDecay(item, pos);
+                BroadcastWorldItem(item);
+                return;
+            }
+        }
+
+        PlaceItemInPack(_character, item);
+    }
+
     private void BroadcastDragAnimation(Item item, uint sourceSerial, Point3D sourcePos,
         uint targetSerial, Point3D targetPos, Point3D origin)
     {
@@ -513,7 +586,7 @@ public sealed class ClientInventoryHandler
             {
                 if (!dropTrade.IsParticipant(_character))
                 {
-                    PlaceItemInPack(_character, item);
+                    RestoreToOrigin(item);
                     _netState.Send(new PacketDropReject());
                     return;
                 }
@@ -528,7 +601,7 @@ public sealed class ClientInventoryHandler
                     });
                 if (dropOnTradeResult == TriggerResult.True)
                 {
-                    PlaceItemInPack(_character, item);
+                    RestoreToOrigin(item);
                     _netState.Send(new PacketDropReject());
                     return;
                 }
@@ -559,7 +632,7 @@ public sealed class ClientInventoryHandler
                         var owner = _world.FindChar(container.ContainedIn);
                         if (owner != null && owner != _character)
                         {
-                            PlaceItemInPack(_character, item);
+                            RestoreToOrigin(item);
                             _netState.Send(new PacketDropReject());
                             return;
                         }
@@ -572,7 +645,7 @@ public sealed class ClientInventoryHandler
                             int cDist = _character.Position.GetDistanceTo(topContainer.Position);
                             if (cDist > 3)
                             {
-                                PlaceItemInPack(_character, item);
+                                RestoreToOrigin(item);
                                 _netState.Send(new PacketDropReject());
                                 return;
                             }
@@ -592,7 +665,7 @@ public sealed class ClientInventoryHandler
                     }
                     if (depth >= 8)
                     {
-                        PlaceItemInPack(_character, item);
+                        RestoreToOrigin(item);
                         _netState.Send(new PacketDropReject());
                         return;
                     }
@@ -600,8 +673,15 @@ public sealed class ClientInventoryHandler
 
                 if (_character.PrivLevel < PrivLevel.GM)
                 {
-                    bool isBank = container.EquipLayer == Layer.BankBox;
-                    int currentCount = _world.GetContainerContents(container.Uid).Count();
+                    // A drop anywhere in the bank tree (the box itself or a nested
+                    // bag) counts against the bank cap, computed over the WHOLE
+                    // tree from the bank root so nested bags can't bypass the limit
+                    // (Source-X). A normal container counts only its own slot.
+                    var topContainer = GetTopContainer(container) ?? container;
+                    bool isBank = topContainer.EquipLayer == Layer.BankBox;
+                    int currentCount = isBank
+                        ? _world.GetContainerItemCountDeep(topContainer.Uid)
+                        : _world.GetContainerContents(container.Uid).Count();
                     int maxItems = isBank ? _world.MaxBankItems : _world.MaxContainerItems;
                     // Source-X OVERRIDE.MAXITEMS: a per-container item cap (e.g. a
                     // small pouch, a quest box, a vendor crate) overrides the
@@ -612,7 +692,7 @@ public sealed class ClientInventoryHandler
                     if (currentCount >= maxItems)
                     {
                         SysMessage(ServerMessages.Get(isBank ? Msg.BvboxFullItems : Msg.ContFullItems));
-                        PlaceItemInPack(_character, item);
+                        RestoreToOrigin(item);
                         _netState.Send(new PacketDropReject());
                         return;
                     }
@@ -625,7 +705,7 @@ public sealed class ClientInventoryHandler
                         if (totalWeightTenths + item.TotalWeightTenths > weightLimit * Item.WeightUnits)
                         {
                             SysMessage(ServerMessages.Get(isBank ? Msg.BvboxFullWeight : Msg.ContFullWeight));
-                            PlaceItemInPack(_character, item);
+                            RestoreToOrigin(item);
                             _netState.Send(new PacketDropReject());
                             return;
                         }
@@ -634,7 +714,7 @@ public sealed class ClientInventoryHandler
 
                 if (item.Uid == container.Uid || IsInsideContainer(container, item.Uid))
                 {
-                    PlaceItemInPack(_character, item);
+                    RestoreToOrigin(item);
                     _netState.Send(new PacketDropReject());
                     return;
                 }
@@ -646,7 +726,7 @@ public sealed class ClientInventoryHandler
                         new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = container });
                     if (result == TriggerResult.True)
                     {
-                        PlaceItemInPack(_character, item);
+                        RestoreToOrigin(item);
                         _netState.Send(new PacketDropReject());
                         return;
                     }
@@ -751,7 +831,7 @@ public sealed class ClientInventoryHandler
                     (_character.MapIndex != charTarget.MapIndex ||
                      _character.Position.GetDistanceTo(charTarget.Position) > 3))
                 {
-                    PlaceItemInPack(_character, item);
+                    RestoreToOrigin(item);
                     _netState.Send(new PacketDropReject());
                     return;
                 }
@@ -823,7 +903,7 @@ public sealed class ClientInventoryHandler
                 var (mapW, mapH) = md.GetMapSize(_character.MapIndex);
                 if (x < 0 || y < 0 || x >= mapW || y >= mapH)
                 {
-                    PlaceItemInPack(_character, item);
+                    RestoreToOrigin(item);
                     _netState.Send(new PacketDropReject());
                     return;
                 }
@@ -831,7 +911,7 @@ public sealed class ClientInventoryHandler
             int dropDist = Math.Max(Math.Abs(_character.X - x), Math.Abs(_character.Y - y));
             if (dropDist > 3)
             {
-                PlaceItemInPack(_character, item);
+                RestoreToOrigin(item);
                 _netState.Send(new PacketDropReject());
                 return;
             }
@@ -843,7 +923,7 @@ public sealed class ClientInventoryHandler
             var house = _housingEngine.FindHouseAt(dropPos);
             if (house != null && !house.CanAccess(_character.Uid))
             {
-                PlaceItemInPack(_character, item);
+                RestoreToOrigin(item);
                 _netState.Send(new PacketDropReject());
                 return;
             }
@@ -864,7 +944,7 @@ public sealed class ClientInventoryHandler
         var dropResult = _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.DropOnGround, dropArgs);
         if (dropResult == TriggerResult.True)
         {
-            PlaceItemInPack(_character, item);
+            RestoreToOrigin(item);
             _netState.Send(new PacketDropReject());
             return;
         }

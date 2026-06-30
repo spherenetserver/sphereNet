@@ -172,10 +172,17 @@ public sealed class ClientItemUseHandler
         var item = _world.FindItem(new Serial(uid));
         if (item != null)
         {
-            if (_character.PrivLevel < PrivLevel.GM && !item.ContainedIn.IsValid)
+            if (_character.PrivLevel < PrivLevel.GM)
             {
-                int dist = _character.Position.GetDistanceTo(item.Position);
-                if (dist > 3)
+                // Loose ground item: simple tile-distance reach. A contained item
+                // must be reachable through its top parent (Source-X CClientUse:
+                // a crafted/stale DClick can't reach into a far or moved
+                // container). CanReachTargetItem covers both the on-ground and
+                // worn-by-a-mobile top-container cases.
+                bool reachable = !item.ContainedIn.IsValid
+                    ? _character.Position.GetDistanceTo(item.Position) <= 3
+                    : CanReachTargetItem(item);
+                if (!reachable)
                 {
                     SysMessage(ServerMessages.Get(Msg.ItemuseToofar));
                     return;

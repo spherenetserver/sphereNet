@@ -2411,7 +2411,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
 
         var item = world.CreateItem();
         item.BaseId = 0x0F7A;
-        world.PlaceItem(item, initiator.Position);
+        pack.AddItem(item); // lifted from the pack → a rejected trade drop bounces back to it
 
         var tradeManager = new TradeManager();
         var dispatcher = new TriggerDispatcher();

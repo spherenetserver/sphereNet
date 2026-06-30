@@ -85,4 +85,77 @@ public class RegionSpawnParityTests
         outside.OnTick();
         Assert.True(outside.IsDeleted); // decays normally
     }
+
+    // ---- NoMining region flag ----
+
+    private sealed class MiningSink : SphereNet.Game.Skills.Information.IActiveSkillSink
+    {
+        public SphereNet.Game.Objects.Characters.Character Self { get; }
+        public System.Random Random { get; } = new(1);
+        public GameWorld World { get; }
+        public System.Collections.Generic.List<string> Messages { get; } = new();
+        public MiningSink(SphereNet.Game.Objects.Characters.Character self, GameWorld world)
+        { Self = self; World = world; }
+        public void SysMessage(string text) => Messages.Add(text);
+        public void ObjectMessage(SphereNet.Game.Objects.ObjBase target, string text) => Messages.Add(text);
+        public void Emote(string text) { }
+        public void Sound(ushort soundId) { }
+        public void Animation(ushort animId) { }
+        public Item? FindBackpackItem(ItemType type) => null;
+        public void ConsumeAmount(Item item, ushort amount = 1) { }
+        public void DeliverItem(Item item) { }
+    }
+
+    [Fact]
+    public void NoMiningRegion_RefusesMining()
+    {
+        var world = CreateWorld();
+        var region = new Region { Name = "nomine", Flags = RegionFlag.NoMining, MapIndex = 0 };
+        region.AddRect(90, 90, 110, 110);
+        world.AddRegion(region);
+
+        var ch = world.CreateCharacter();
+        ch.IsPlayer = true;
+        world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
+        var sink = new MiningSink(ch, world);
+
+        bool ok = SphereNet.Game.Skills.Information.ActiveSkillEngine.Mining(
+            sink, new Point3D(100, 100, 0, 0), null, world);
+
+        Assert.False(ok); // REGION_FLAG_NOMINING refused it (before the tile / pickaxe checks)
+    }
+
+    // ---- Sector.Number from map columns (not hardcoded 96) ----
+
+    [Fact]
+    public void SectorNumber_UsesMapColumns_NotHardcoded96()
+    {
+        var world = new GameWorld(LoggerFactory.Create(_ => { }));
+        world.InitMap(0, 4096, 4096); // 4096 / 64 = 64 columns, not 96
+        SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
+        Item.ResolveWorld = () => world;
+
+        const int size = SphereNet.Game.World.Sectors.Sector.SectorSize;
+        var sector = world.GetSector(new Point3D(2 * size, 3 * size, 0, 0));
+
+        Assert.NotNull(sector);
+        Assert.Equal(3 * 64 + 2, sector!.Number); // row*cols + col with cols = 64
+    }
+
+    // ---- item spawn TIMELO/TIMEHI/MAXDIST ----
+
+    [Fact]
+    public void ItemSpawn_HonorsMaxDistAndTimeProperties()
+    {
+        var world = CreateWorld();
+        var spawner = world.CreateItem();
+        spawner.SpawnItem = new SphereNet.Game.Components.ItemSpawnComponent(spawner, world);
+
+        Assert.True(spawner.TrySetProperty("MAXDIST", "5"));
+        Assert.Equal(5, spawner.SpawnItem.SpawnRange);
+
+        Assert.True(spawner.TrySetProperty("TIMELO", "10"));
+        Assert.True(spawner.TrySetProperty("TIMEHI", "20"));
+        Assert.True(spawner.TryGetTag("TIMELO", out var lo) && lo == "10");
+    }
 }

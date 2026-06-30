@@ -741,6 +741,14 @@ public static class ActiveSkillEngine
             return false;
         }
 
+        // Source-X REGION_FLAG_NOMINING: mining is banned in this region.
+        var miningRegion = world.FindRegion(target);
+        if (miningRegion != null && miningRegion.IsFlag(RegionFlag.NoMining))
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.Mining4));
+            return false;
+        }
+
         if (!IsMinableTile(world, target))
         {
             sink.SysMessage(ServerMessages.Get(Msg.Mining4));

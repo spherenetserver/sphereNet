@@ -1317,9 +1317,24 @@ public class Item : ObjBase
                 if (byte.TryParse(value, out byte gv)) _containerGridIndex = gv;
                 return true;
 
-            // Sphere spawner properties — round-trip as TAGs
+            // Sphere spawner properties — round-trip as TAGs and apply to the
+            // active spawn component (char OR item) so the interval / scatter range
+            // take effect. (This case is hit before the spawn-component blocks
+            // below, so the application must happen here.)
             case "SPAWNID": case "TIMELO": case "TIMEHI": case "MAXDIST":
                 SetTag(upper, value);
+                if (upper == "MAXDIST" && int.TryParse(value, out int spawnMd))
+                {
+                    if (SpawnChar != null) SpawnChar.SpawnRange = spawnMd;
+                    if (SpawnItem != null) SpawnItem.SpawnRange = spawnMd;
+                }
+                else if (upper is "TIMELO" or "TIMEHI")
+                {
+                    int spLo = int.TryParse(Tags.Get("TIMELO"), out int l) ? l : 15;
+                    int spHi = int.TryParse(Tags.Get("TIMEHI"), out int h) ? h : 30;
+                    SpawnChar?.SetDelay(spLo, spHi);
+                    SpawnItem?.SetDelay(spLo, spHi);
+                }
                 return true;
             case "ADDOBJ":
             {
@@ -1461,6 +1476,9 @@ public class Item : ObjBase
             {
                 case "PILE":
                     if (int.TryParse(value, out int pv)) SpawnItem.Pile = pv;
+                    return true;
+                case "SPAWNRANGE": // MAXDIST alias handled in the spawner-property case above
+                    if (int.TryParse(value, out int isr)) SpawnItem.SpawnRange = isr;
                     return true;
             }
         }

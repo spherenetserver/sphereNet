@@ -4,6 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Region/spawn parity: NoMining, anti-magic sub-flags, underground light, item-spawn timing (Wave 172)
+----------------------------------------
+
+ADDED - Region flag behaviours (Source-X REGION_*):
+  - NoMining (REGION_FLAG_NOMINING): mining is refused in the region.
+  - Anti-magic sub-flags now enforced: RecallOut blocks recalling out, the Recall
+    flag blocks recalling/gating IN, the Gate flag blocks gate travel, NoTeleport
+    blocks teleporting into the region, and NoMagicDamage fizzles harmful spells.
+    The legacy numeric region properties (RECALLOUT/RECALLIN/GATEOUT/GATEIN = 0)
+    keep working alongside the flags.
+
+FIXED:
+  - Underground light no longer clobbered: the periodic global-light broadcast now
+    skips clients standing in an Underground (dungeon) region, so a player in a
+    dungeon keeps the fixed dungeon light instead of suddenly seeing surface
+    daylight on the next light tick. Surface light is restored on region exit.
+  - Item spawners (IT_SPAWN_ITEM) now honour TIMELO/TIMEHI (respawn interval, in
+    minutes) and MAXDIST (scatter range) like the char spawner — and fixed a
+    latent bug where these properties were stored as tags but never applied to the
+    spawn component (affecting char spawners too).
+  - Sector.Number is computed from the map's true column count (width / 64)
+    instead of a hardcoded 96, so it is correct on non-6144-wide maps.
+
+================================================================================
+
 [2026-06-30] - NPC AI parity: wand casting (Wave 171)
 ----------------------------------------
 

@@ -860,8 +860,17 @@ public static partial class Program
             var lightPacket = new PacketGlobalLight(newLight);
             foreach (var client in _clients.Values)
             {
-                if (client.IsPlaying)
-                    client.Send(lightPacket);
+                if (!client.IsPlaying) continue;
+                // A client standing in an Underground (dungeon) region keeps the
+                // fixed region light it was sent on entry — the surface global
+                // light must not be pushed over it (the player would suddenly see
+                // daylight in a dungeon). They get the surface light again on exit
+                // via the @EnvironChange region-crossing handler.
+                var ch = client.Character;
+                if (ch != null &&
+                    _world.FindRegion(ch.Position)?.IsFlag(SphereNet.Core.Enums.RegionFlag.Underground) == true)
+                    continue;
+                client.Send(lightPacket);
             }
         }
 

@@ -249,7 +249,7 @@ public sealed class GameWorld
         var grid = new Sector[sectorCols, sectorRows];
         for (int x = 0; x < sectorCols; x++)
             for (int y = 0; y < sectorRows; y++)
-                grid[x, y] = new Sector(x, y, (byte)mapId);
+                grid[x, y] = new Sector(x, y, (byte)mapId, sectorCols);
 
         _sectors[mapId] = grid;
         _logger.LogInformation("Map {Id} initialized: {W}x{H} ({Cols}x{Rows} sectors)",

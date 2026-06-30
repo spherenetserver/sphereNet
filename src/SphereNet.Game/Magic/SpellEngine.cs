@@ -329,12 +329,19 @@ public sealed class SpellEngine
         if (caster.PrivLevel < PrivLevel.GM && caster.IsCastOnRecovery(Environment.TickCount64))
             return -1;
 
-        // Region NoMagic check
+        // Region NoMagic / NoMagicDamage check (Source-X anti-magic sub-flags).
         if (_world != null)
         {
             var region = _world.FindRegion(caster.Position);
-            if (region != null && region.NoMagic && caster.PrivLevel < Core.Enums.PrivLevel.GM)
-                return -1;
+            if (region != null && caster.PrivLevel < Core.Enums.PrivLevel.GM)
+            {
+                if (region.NoMagic)
+                    return -1;
+                // REGION_ANTIMAGIC_DAMAGE: harmful magic is suppressed in this region.
+                if (region.IsFlag(RegionFlag.NoMagicDamage) &&
+                    (def.IsFlag(SpellFlag.Damage) || def.IsFlag(SpellFlag.Curse)))
+                    return -1;
+            }
         }
 
         // Mana check
@@ -1172,18 +1179,26 @@ public sealed class SpellEngine
                 OnSysMessage?.Invoke(caster, "That location blocks magic.");
                 return;
             }
+            // Source-X anti-magic sub-flags (REGION_ANTIMAGIC_*): RECALL_OUT blocks
+            // leaving by recall, RECALL_IN (the Recall flag) blocks arriving by
+            // recall/gate, GATE blocks gate travel. The legacy numeric region
+            // properties (RECALLOUT/RECALLIN/GATEOUT/GATEIN = 0) still work too.
             if (def.Id == SpellType.Recall)
             {
-                if (srcRegion != null && srcRegion.TryGetProperty("RECALLOUT", out string? rOut) && rOut == "0")
+                if (srcRegion != null && (srcRegion.IsFlag(RegionFlag.RecallOut) ||
+                    (srcRegion.TryGetProperty("RECALLOUT", out string? rOut) && rOut == "0")))
                 { OnSysMessage?.Invoke(caster, "You cannot recall from here."); return; }
-                if (destRegion != null && destRegion.TryGetProperty("RECALLIN", out string? rIn) && rIn == "0")
+                if (destRegion != null && (destRegion.IsFlag(RegionFlag.Recall) ||
+                    (destRegion.TryGetProperty("RECALLIN", out string? rIn) && rIn == "0")))
                 { OnSysMessage?.Invoke(caster, "You cannot recall to that location."); return; }
             }
             if (def.Id == SpellType.GateTravel)
             {
-                if (srcRegion != null && srcRegion.TryGetProperty("GATEOUT", out string? gOut) && gOut == "0")
+                if (srcRegion != null && (srcRegion.IsFlag(RegionFlag.Gate) ||
+                    (srcRegion.TryGetProperty("GATEOUT", out string? gOut) && gOut == "0")))
                 { OnSysMessage?.Invoke(caster, "You cannot open a gate here."); return; }
-                if (destRegion != null && destRegion.TryGetProperty("GATEIN", out string? gIn) && gIn == "0")
+                if (destRegion != null && (destRegion.IsFlag(RegionFlag.Recall) || destRegion.IsFlag(RegionFlag.Gate) ||
+                    (destRegion.TryGetProperty("GATEIN", out string? gIn) && gIn == "0")))
                 { OnSysMessage?.Invoke(caster, "You cannot gate to that location."); return; }
             }
         }
@@ -1257,6 +1272,16 @@ public sealed class SpellEngine
                          !teleMd.IsPassable(dest.Map, dest.X, dest.Y, dest.Z)))
                     {
                         OnSysMessage?.Invoke(caster, "That location is unreachable.");
+                        break;
+                    }
+                }
+                // REGION_ANTIMAGIC_TELEPORT: can't teleport into this region.
+                if (caster.PrivLevel < Core.Enums.PrivLevel.GM)
+                {
+                    var teleRegion = _world.FindRegion(dest);
+                    if (teleRegion != null && (teleRegion.IsFlag(RegionFlag.NoTeleport) || teleRegion.NoMagic))
+                    {
+                        OnSysMessage?.Invoke(caster, "You cannot teleport to that location.");
                         break;
                     }
                 }

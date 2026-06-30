@@ -4,6 +4,31 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Region/spawn paritesi: NoMining, anti-magic sub-flag, underground isik, item-spawn timing (Wave 172)
+----------------------------------------
+
+EKLENEN - Region flag davranislari (Source-X REGION_*):
+  - NoMining (REGION_FLAG_NOMINING): bolgede mining reddedilir.
+  - Anti-magic sub-flag'leri artik uygulaniyor: RecallOut disari recall'i, Recall
+    flag'i iceri recall/gate'i, Gate flag'i gate travel'i, NoTeleport bolgeye
+    teleport'u engeller; NoMagicDamage zararli buyuleri fizzle eder. Legacy numeric
+    region property'leri (RECALLOUT/RECALLIN/GATEOUT/GATEIN = 0) flag'lerin yaninda
+    calismaya devam eder.
+
+DUZELTILEN:
+  - Underground isik artik ezilmiyor: periyodik global-isik broadcast'i Underground
+    (dungeon) bolgesindeki client'lari atlar; dungeon'daki oyuncu bir sonraki isik
+    tick'inde aniden yuzey gun isigini gormek yerine sabit dungeon isigini korur.
+    Yuzey isigi bolge cikisinda geri verilir.
+  - Item spawner'lar (IT_SPAWN_ITEM) artik TIMELO/TIMEHI (respawn araligi, dakika)
+    ve MAXDIST (scatter menzili) honor eder (char spawner gibi) — ve bu
+    property'lerin tag olarak saklanip spawn component'ine HIC uygulanmadigi latent
+    bug duzeltildi (char spawner'lari da etkiliyordu).
+  - Sector.Number sabit 96 yerine map'in gercek kolon sayisindan (genislik / 64)
+    hesaplaniyor; 6144-disi genislikteki map'lerde dogru.
+
+================================================================================
+
 [2026-06-30] - NPC AI paritesi: wand casting (Wave 171)
 ----------------------------------------
 

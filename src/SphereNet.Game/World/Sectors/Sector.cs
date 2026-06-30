@@ -17,7 +17,7 @@ public sealed class Sector : IScriptObj
 {
     public const int SectorSize = 64;
 
-    private readonly int _x, _y;
+    private readonly int _x, _y, _cols;
     private readonly byte _mapIndex;
     private readonly List<Character> _characters = [];
     private readonly List<Character> _onlinePlayers = [];
@@ -36,7 +36,7 @@ public sealed class Sector : IScriptObj
     public int SectorX => _x;
     public int SectorY => _y;
     public byte MapIndex => _mapIndex;
-    public int Number => _y * 96 + _x; // sector index (assuming 96 cols)
+    public int Number => _y * _cols + _x; // sector index = row * (map columns) + column
 
     public IReadOnlyList<Character> Characters => _characters;
     public IReadOnlyList<Character> OnlinePlayers => _onlinePlayers;
@@ -57,11 +57,12 @@ public sealed class Sector : IScriptObj
     /// <summary>Callback for world time queries (WorldHour, WorldMinute).</summary>
     public Func<(int Hour, int Minute)>? GetWorldTime { get; set; }
 
-    public Sector(int x, int y, byte mapIndex)
+    public Sector(int x, int y, byte mapIndex, int cols)
     {
         _x = x;
         _y = y;
         _mapIndex = mapIndex;
+        _cols = Math.Max(1, cols); // map sector columns (width / SectorSize)
     }
 
     public void AddCharacter(Character ch)

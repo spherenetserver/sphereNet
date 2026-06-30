@@ -602,6 +602,8 @@ public sealed class ItemSpawnComponent
     private int _spawnRange = 2;
     private int _pile = 1;
     private long _nextSpawnTick;
+    private int _minDelaySec = 60;
+    private int _maxDelaySec = 300;
 
     private const int MaxSpawnLimit = 250;
 
@@ -617,6 +619,17 @@ public sealed class ItemSpawnComponent
     }
     /// <summary>Source-X PILE: max items per spawn interval for stackable items.</summary>
     public int Pile { get => _pile; set => _pile = Math.Max(1, value); }
+
+    /// <summary>Source-X MAXDIST: max scatter distance from the spawn point.</summary>
+    public int SpawnRange { get => _spawnRange; set => _spawnRange = Math.Max(0, value); }
+
+    /// <summary>Source-X TIMELO/TIMEHI: respawn interval in minutes, converted to
+    /// the seconds the tick scheduler uses (parity with the char spawner).</summary>
+    public void SetDelay(int minMinutes, int maxMinutes)
+    {
+        _minDelaySec = Math.Max(1, minMinutes) * 60;
+        _maxDelaySec = Math.Max(_minDelaySec, Math.Max(minMinutes, maxMinutes) * 60);
+    }
 
     public ItemSpawnComponent(Item spawnItem, GameWorld world)
     {
@@ -670,8 +683,9 @@ public sealed class ItemSpawnComponent
         );
 
         // Reschedule regardless of placement outcome so a spawner that keeps
-        // rolling out-of-bounds points doesn't retry every tick.
-        _nextSpawnTick = Environment.TickCount64 + _rand.Next(60, 300) * 1000;
+        // rolling out-of-bounds points doesn't retry every tick. Interval honors
+        // the TIMELO/TIMEHI override (defaults to the 60-300s legacy window).
+        _nextSpawnTick = Environment.TickCount64 + _rand.Next(_minDelaySec, _maxDelaySec + 1) * 1000;
 
         item.SetTag("SPAWN_POINT_UUID", _spawnItem.Uuid.ToString("D"));
         if (!_world.PlaceItem(item, pos))

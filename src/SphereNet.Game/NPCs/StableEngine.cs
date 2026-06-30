@@ -18,6 +18,7 @@ public sealed class StableEngine
 
     public const int MaxStabledPets = 5;
     public const int StableCost = 30; // gold per real-time day
+    public const int StableTargetRange = 12; // max owner→pet distance to stable
 
     /// <summary>Per-owner stable capacity (Source-X CCharNPCAct_Vendor): an explicit
     /// MAXPLAYERPETS tag overrides; otherwise the base count plus one slot per ~60.0
@@ -41,6 +42,14 @@ public sealed class StableEngine
     public bool StablePet(Character owner, Character pet, GameWorld world)
     {
         if (pet.IsPlayer || !pet.HasOwner(owner.Uid))
+            return false;
+        // Source-X stable validation: a summoned/temporary creature can't be stabled,
+        // and the pet must be near the owner (the stablemaster only stables a pet the
+        // owner can reach — the target cursor enforces this for the player flow).
+        if (pet.IsSummoned)
+            return false;
+        if (owner.MapIndex != pet.MapIndex ||
+            owner.Position.GetDistanceTo(pet.Position) > StableTargetRange)
             return false;
 
         var list = GetOwnerStableList(owner);

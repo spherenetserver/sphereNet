@@ -215,6 +215,109 @@ public class VendorStableParityTests
         Assert.Null(VendorEngine.GetVendorBuyFilter(vendor));
     }
 
+    // ---- #2: opt-in vendor money pool — sell debits it, blocks when broke ----
+
+    [Fact]
+    public void ProcessSell_VendorMoneyPool_DebitsAndBlocksWhenInsufficient()
+    {
+        var world = CreateWorld();
+        VendorEngine.World = world;
+
+        var vendor = world.CreateCharacter();
+        vendor.NpcBrain = NpcBrainType.Vendor;
+        world.PlaceCharacter(vendor, new Point3D(100, 100, 0, 0));
+
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
+        var pack = AddPack(world, player);
+
+        // PRICE 100 -> server pays 50 each; 2 -> 100 total.
+        var item = world.CreateItem();
+        item.BaseId = 0x13B0; item.Amount = 2; item.SetTag("PRICE", "100");
+        pack.AddItem(item);
+
+        // Vendor can afford it: sale succeeds and the pool is debited.
+        vendor.SetTag("VENDOR_GOLD", "1000");
+        int paid = VendorEngine.ProcessSell(player, vendor,
+            new[] { new TradeEntry { ItemUid = item.Uid, ItemId = item.BaseId, Amount = 2 } });
+        Assert.Equal(100, paid);
+        Assert.Equal(900, VendorEngine.GetVendorGold(vendor));
+
+        // Now broke: a sale it cannot afford is rejected, pool and items untouched.
+        var item2 = world.CreateItem();
+        item2.BaseId = 0x13B0; item2.Amount = 2; item2.SetTag("PRICE", "100");
+        pack.AddItem(item2);
+        vendor.SetTag("VENDOR_GOLD", "30");
+        int paid2 = VendorEngine.ProcessSell(player, vendor,
+            new[] { new TradeEntry { ItemUid = item2.Uid, ItemId = item2.BaseId, Amount = 2 } });
+        Assert.Equal(0, paid2);
+        Assert.Equal(30, VendorEngine.GetVendorGold(vendor)); // unchanged
+        Assert.Equal(2, item2.Amount);                        // items kept
+    }
+
+    [Fact]
+    public void ProcessSell_NoMoneyPoolTag_PaysFreely()
+    {
+        var world = CreateWorld();
+        VendorEngine.World = world;
+
+        var vendor = world.CreateCharacter();
+        vendor.NpcBrain = NpcBrainType.Vendor;
+        world.PlaceCharacter(vendor, new Point3D(100, 100, 0, 0));
+
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
+        var pack = AddPack(world, player);
+        var item = world.CreateItem();
+        item.BaseId = 0x13B0; item.Amount = 1; item.SetTag("PRICE", "100");
+        pack.AddItem(item);
+
+        // No VENDOR_GOLD tag -> unlimited funds (legacy), sale always pays.
+        int paid = VendorEngine.ProcessSell(player, vendor,
+            new[] { new TradeEntry { ItemUid = item.Uid, ItemId = item.BaseId, Amount = 1 } });
+        Assert.Equal(50, paid);
+        Assert.False(VendorEngine.VendorTracksMoney(vendor));
+    }
+
+    // ---- #9: stable rejects summoned / out-of-range pets ----
+
+    [Fact]
+    public void StablePet_RejectsSummonedAndDistantPets()
+    {
+        var world = CreateWorld();
+        var stable = new StableEngine();
+
+        var owner = world.CreateCharacter();
+        owner.IsPlayer = true;
+        owner.MaxFollower = 5;
+        world.PlaceCharacter(owner, new Point3D(100, 100, 0, 0));
+
+        // Summoned pet (near) -> cannot be stabled.
+        var summon = world.CreateCharacter();
+        summon.NpcBrain = NpcBrainType.Animal;
+        summon.TryAssignOwnership(owner, owner);
+        summon.SetTag("SUMMON_MASTER", owner.Uid.Value.ToString());
+        world.PlaceCharacter(summon, new Point3D(101, 100, 0, 0));
+        Assert.True(summon.IsSummoned);
+        Assert.False(stable.StablePet(owner, summon, world));
+
+        // Distant pet -> out of range, cannot be stabled.
+        var farPet = world.CreateCharacter();
+        farPet.NpcBrain = NpcBrainType.Animal;
+        farPet.TryAssignOwnership(owner, owner);
+        world.PlaceCharacter(farPet, new Point3D(200, 200, 0, 0));
+        Assert.False(stable.StablePet(owner, farPet, world));
+
+        // A nearby, non-summoned owned pet stables fine.
+        var pet = world.CreateCharacter();
+        pet.NpcBrain = NpcBrainType.Animal;
+        pet.TryAssignOwnership(owner, owner);
+        world.PlaceCharacter(pet, new Point3D(101, 100, 0, 0));
+        Assert.True(stable.StablePet(owner, pet, world));
+    }
+
     // ---- #7: double-clicking a bank check redeems it to gold ----
 
     [Fact]

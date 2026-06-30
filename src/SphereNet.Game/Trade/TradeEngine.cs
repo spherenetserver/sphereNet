@@ -174,6 +174,10 @@ public static class VendorEngine
             totalCost = 0;
         }
 
+        // Credit the vendor's money pool with what the player paid (opt-in).
+        if (totalCost > 0 && VendorTracksMoney(vendor))
+            SetVendorGold(vendor, GetVendorGold(vendor) + totalCost);
+
         foreach (var (stock, amount, _) in resolved)
         {
             // Materialise the purchased item only now, on buy. Full-clone the stock
@@ -236,6 +240,11 @@ public static class VendorEngine
             validated.Add((entry, found, serverPrice));
         }
 
+        // A money-tracking vendor must be able to afford the full payout (all-or-
+        // nothing, checked before any mutation). An untracked vendor pays freely.
+        if (VendorTracksMoney(vendor) && GetVendorGold(vendor) < totalValue)
+            return 0;
+
         if (World != null)
         {
             var backpack = player.Backpack;
@@ -249,6 +258,10 @@ public static class VendorEngine
                 else
                     found.Amount -= (ushort)entry.Amount;
             }
+
+            // Debit the vendor's money pool (opt-in).
+            if (VendorTracksMoney(vendor))
+                SetVendorGold(vendor, GetVendorGold(vendor) - totalValue);
 
             // Add gold to player (split into 60000-max piles)
             int remaining = (int)totalValue;
@@ -267,6 +280,23 @@ public static class VendorEngine
 
         return (int)totalValue;
     }
+
+    // ---- Opt-in vendor money pool (Source-X m_Check_Amount). A vendor with a
+    // VENDOR_GOLD tag tracks its funds: buying credits it, selling debits it and is
+    // rejected when the vendor cannot afford the full payout. A vendor WITHOUT the
+    // tag has unlimited funds — the legacy behaviour, so existing vendors are
+    // unchanged. ----
+
+    /// <summary>True when this vendor tracks a finite gold pool (the VENDOR_GOLD tag exists).</summary>
+    public static bool VendorTracksMoney(Character vendor) =>
+        vendor.TryGetTag("VENDOR_GOLD", out string? s) && !string.IsNullOrWhiteSpace(s);
+
+    public static long GetVendorGold(Character vendor) =>
+        vendor.TryGetTag("VENDOR_GOLD", out string? s) && long.TryParse(s, out long g)
+            ? Math.Max(0, g) : 0;
+
+    private static void SetVendorGold(Character vendor, long amount) =>
+        vendor.SetTag("VENDOR_GOLD", Math.Max(0, amount).ToString());
 
     /// <summary>The set of item BaseIds a vendor will buy (Source-X NPC_FindVendableItem),
     /// resolved from its VENDOR_BUY_LIST template, or null when the vendor has no buy

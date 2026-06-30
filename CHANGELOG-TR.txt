@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Vendor/stable paritesi: opt-in vendor money pool, stable target cursor + validation (Wave 185)
+----------------------------------------
+
+EKLENEN - Opt-in vendor money pool (Source-X m_Check_Amount):
+  - VENDOR_GOLD tag'i olan vendor artik sonlu para takip eder: oyuncunun alimi pool'u kredilendirir,
+    satisi borclandirir. Vendor'un tam karsilayamayacagi satis reddedilir (item'lar kalir, pool dokunulmaz).
+    Tag'i OLMAYAN vendor sinirsiz para tutar, boylece mevcut vendor'lar degismez -- pool tamamen opt-in.
+
+EKLENEN - Stable target cursor + pet validation (Source-X stablemaster):
+  - "stable" demek artik en yakin peti otomatik secmek yerine oyuncudan stable edilecek peti
+    HEDEFLEMESINI ister (headless/scriptli cagri hala en yakin sahip-olunan pete duser).
+  - Stable artik summon/gecici yaratigi ve sahibin menzili disindaki peti (<=12 tile, ayni harita)
+    reddeder; sadece sahip-olunmayan/player hedefleri degil.
+
+================================================================================
+
 [2026-06-30] - Vendor/stable paritesi: buy-list, item clone, bank check redeem, stable skill snapshot (Wave 184)
 ----------------------------------------
 

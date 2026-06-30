@@ -21,7 +21,8 @@ public sealed partial class GameClient
     public void SendGump(GumpBuilder gump, Action<uint, uint[], (ushort, string)[]>? callback = null) =>
         Targeting.SendGump(gump, callback);
 
-    /// <summary>Set a callback-based target cursor. Used by housing, pets, etc.</summary>
-    internal void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1) =>
+    /// <summary>Set a callback-based target cursor. Used by housing, pets, the
+    /// stablemaster, etc.</summary>
+    public void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1) =>
         Targeting.SetPendingTarget(callback, cursorType);
 }

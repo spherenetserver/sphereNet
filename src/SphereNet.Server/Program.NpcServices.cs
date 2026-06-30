@@ -890,20 +890,43 @@ public static partial class Program
             case NpcBrainType.Stable:
                 if (lower.Contains("stable"))
                 {
-                    // Find a pet near the player
-                    Character? pet = null;
-                    foreach (var ch in _world.GetCharsInRange(speaker.Position, 8))
+                    // Source-X stablemaster: ask the player to TARGET the pet to stable
+                    // (instead of auto-picking the nearest). The callback validates
+                    // ownership/summoned/distance via StableEngine.StablePet.
+                    var gc = FindGameClient(speaker);
+                    if (gc != null)
                     {
-                        if (!ch.IsPlayer && !ch.IsDead && ch.NpcMaster == speaker.Uid)
+                        var stableNpc = npc;
+                        gc.SetPendingTarget((serial, x, y, z, gfx) =>
                         {
-                            pet = ch;
-                            break;
-                        }
+                            var pet = _world.FindChar(new Serial(serial));
+                            string reply = pet != null && _stableEngine.StablePet(speaker, pet, _world)
+                                ? $"Your pet {pet.Name} has been stabled."
+                                : "You cannot stable that.";
+                            var pkt = new PacketSpeechUnicodeOut(
+                                stableNpc.Uid.Value, stableNpc.BodyId, 0, 0x03B2, 3, "TRK",
+                                stableNpc.Name ?? "", reply);
+                            BroadcastNearby(stableNpc.Position, 18, pkt, 0);
+                        });
+                        response = "Which pet wouldst thou stable?";
                     }
-                    if (pet != null && _stableEngine.StablePet(speaker, pet, _world))
-                        response = $"Your pet {pet.Name} has been stabled.";
                     else
-                        response = "I don't see any of your pets nearby.";
+                    {
+                        // Headless / no client (e.g. a scripted call) — fall back to the
+                        // nearest owned pet so the flow still works server-side.
+                        Character? pet = null;
+                        foreach (var ch in _world.GetCharsInRange(speaker.Position, 8))
+                        {
+                            if (!ch.IsPlayer && !ch.IsDead && ch.NpcMaster == speaker.Uid)
+                            {
+                                pet = ch;
+                                break;
+                            }
+                        }
+                        response = pet != null && _stableEngine.StablePet(speaker, pet, _world)
+                            ? $"Your pet {pet.Name} has been stabled."
+                            : "I don't see any of your pets nearby.";
+                    }
                 }
                 else if (lower.Contains("claim"))
                 {

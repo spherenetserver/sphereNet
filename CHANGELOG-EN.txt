@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Vendor/stable parity: opt-in vendor money pool, stable target cursor + validation (Wave 185)
+----------------------------------------
+
+ADDED - Opt-in vendor money pool (Source-X m_Check_Amount):
+  - A vendor with a VENDOR_GOLD tag now tracks finite funds: a player's purchase
+    credits the pool and a sale debits it. A sale the vendor cannot fully afford is
+    rejected (items kept, pool untouched). A vendor WITHOUT the tag keeps unlimited
+    funds, so existing vendors are unchanged — the pool is entirely opt-in.
+
+ADDED - Stable target cursor + pet validation (Source-X stablemaster):
+  - Saying "stable" now asks the player to TARGET the pet to stable instead of
+    auto-picking the nearest one (a headless/scripted call still falls back to the
+    nearest owned pet).
+  - Stabling now rejects a summoned/temporary creature and a pet out of range of the
+    owner (≤12 tiles, same map), not just non-owned/player targets.
+
+================================================================================
+
 [2026-06-30] - Vendor/stable parity: buy-list, item clone, bank check redeem, stable skill snapshot (Wave 184)
 ----------------------------------------
 

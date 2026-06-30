@@ -722,9 +722,15 @@ public sealed class ClientCombatHandler
             // not NOTO_GOOD. The aggressor↔victim IAggressor/HarmedBy memory is
             // stamped by Memory_Fight_Start below regardless of region. Config
             // gate: ATTACKINGISACRIME.
+            //
+            // The criminal FLAG itself is region-independent (ServUO
+            // Mobile.CriminalAction sets Criminal=true unconditionally; only the
+            // guard RESPONSE is gated on a guarded region, handled separately). A
+            // prior guarded-region gate here let a player attack an innocent in the
+            // wilderness with no grey flag, diverging from Source-X and from the
+            // harmful-spell path, which already flags everywhere.
             bool targetIsInnocent = GetNotoriety(target) == 1; // NOTO_GOOD
-            if (Character.AttackingIsACrimeEnabled && targetIsInnocent &&
-                region != null && region.IsFlag(Core.Enums.RegionFlag.Guarded))
+            if (Character.AttackingIsACrimeEnabled && targetIsInnocent)
             {
                 _character.MakeCriminal();
             }

@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Notoriety parity: criminal flag on attacking an innocent is region-independent (Wave 194)
+----------------------------------------
+
+FIXED - Attacking an innocent only flagged the attacker criminal inside a guarded region:
+  - A melee attack on an innocent (NOTO_GOOD from the attacker's view) set the criminal
+    flag only when the attacker stood in a guarded region, so attacking a blue player in
+    the open left the aggressor blue. ServUO Mobile.CriminalAction sets Criminal = true
+    unconditionally — only the guard RESPONSE (Region.OnCriminalAction) is gated on a
+    guarded region — and the harmful-spell path here already flagged everywhere. The
+    melee path now matches: an innocent attack flags the attacker grey regardless of
+    region, with guard summoning still limited to guarded zones elsewhere.
+
+================================================================================
+
 [2026-06-30] - Speech parity: per-recipient ghost speech garbling (Wave 193)
 ----------------------------------------
 

@@ -122,6 +122,52 @@ public class CombatFlagParityTests
     }
 
     [Fact]
+    public void AttackingInnocentInWilderness_FlagsCriminalRegardlessOfRegion()
+    {
+        var oldEnabled = Character.AttackingIsACrimeEnabled;
+        try
+        {
+            Character.AttackingIsACrimeEnabled = true;
+            var world = TestHarness.CreateWorld(); // plain map: no guarded region
+            var lf = LoggerFactory.Create(_ => { });
+            var client = TestHarness.CreateClient(lf, world, new AccountManager(lf), 1320);
+            client.BroadcastNearby = (_, _, _, _) => { };
+
+            var attacker = world.CreateCharacter();
+            attacker.IsPlayer = true;
+            attacker.PrivLevel = PrivLevel.Player;
+            attacker.Str = attacker.Dex = 100;
+            attacker.Stam = attacker.MaxStam = 100;
+            attacker.SetStatFlag(StatFlag.War);
+            world.PlaceCharacter(attacker, new Point3D(100, 100, 0, 0));
+            TestHarness.AttachCharacter(client, attacker);
+
+            var sword = world.CreateItem();
+            sword.ItemType = ItemType.WeaponSword;
+            sword.BaseId = 0x0F5E;
+            attacker.Equip(sword, Layer.OneHanded);
+
+            var victim = world.CreateCharacter();
+            victim.IsPlayer = true;
+            victim.Hits = victim.MaxHits = 100;
+            world.PlaceCharacter(victim, new Point3D(101, 100, 0, 0)); // innocent blue, adjacent
+
+            Assert.False(attacker.IsCriminal);
+
+            client.HandleAttack(victim.Uid.Value);
+
+            // ServUO Mobile.CriminalAction sets Criminal=true unconditionally; only the
+            // guard RESPONSE is region-gated. Attacking an innocent in the open (no
+            // guarded region) must still flag the attacker grey.
+            Assert.True(attacker.IsCriminal);
+        }
+        finally
+        {
+            Character.AttackingIsACrimeEnabled = oldEnabled;
+        }
+    }
+
+    [Fact]
     public void NoDirChange_PreservesFacingDuringSwing()
     {
         var oldFlags = Character.CombatFlags;

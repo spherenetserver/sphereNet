@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Notoriety paritesi: masuma saldirinca suclu bayragi bolgeden bagimsiz (Wave 194)
+----------------------------------------
+
+DUZELTILDI - Masuma saldiri yalnizca guarded bolgede saldirgani suclu bayrakliyordu:
+  - Masum birine (saldirganin gozunden NOTO_GOOD) yapilan yakin dovus saldirisi, suclu
+    bayragini SADECE saldirgan guarded bir bolgede dururken set ediyordu; aciktaki mavi bir
+    oyuncuya saldirmak saldirgani mavi birakiyordu. ServUO Mobile.CriminalAction Criminal=true'yu
+    kosulsuz set eder -- sadece muhafiz YANITI (Region.OnCriminalAction) guarded bolgeye baglidir --
+    ve buradaki zararli buyu yolu zaten her yerde bayrakliyordu. Yakin dovus yolu artik eslesir:
+    masum saldirisi saldirgani bolgeden bagimsiz olarak grilestirir; muhafiz cagirma yine baska
+    yerde guarded bolgelerle sinirlidir.
+
+================================================================================
+
 [2026-06-30] - Speech paritesi: alici-bazli hayalet konusma karistirma (Wave 193)
 ----------------------------------------
 

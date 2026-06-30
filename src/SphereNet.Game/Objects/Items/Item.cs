@@ -217,6 +217,19 @@ public class Item : ObjBase
     /// Generic), so its <see cref="Amount"/> stacks and is shown on the label.</summary>
     public bool IsPile => IsPileBase(DefinitionLoader.GetItemDef(BaseId));
 
+    /// <summary>Strength required to equip this item (ITEMDEF REQSTR / Source-X
+    /// CItemBase::m_ttEquippable.m_StrReq). A per-instance OVERRIDE.REQSTR tag
+    /// wins over the def (Source-X allows a per-item requirement); 0 = none.</summary>
+    public int ReqStr
+    {
+        get
+        {
+            if (TryGetTag("OVERRIDE.REQSTR", out string? raw) && int.TryParse(raw, out int v))
+                return v;
+            return DefinitionLoader.GetItemDef(BaseId)?.ReqStr ?? 0;
+        }
+    }
+
     /// <summary>Name shown on single-click and the property tooltip. Source-X
     /// CItem::GetNameFull prefixes the amount for a stacked pile
     /// ("1234 gold coins"); a single item (or a non-pile) shows just its
@@ -2000,6 +2013,19 @@ public class Item : ObjBase
                     bool consumed = OnCorpseDecay?.Invoke(this) ?? true;
                     if (!consumed)
                         return true;
+                }
+                else
+                {
+                    // Source-X CItem::_OnTick: decay IS the item timer, so @Timer
+                    // has the final say over destruction. RETURN 1 keeps the item
+                    // — re-arm a fresh decay window so a script can defer/cancel
+                    // the rot (e.g. a quest item that must not vanish). Items with
+                    // no @Timer handler return Default/null and decay as before.
+                    if (OnTimerExpired?.Invoke(this) == TriggerResult.True)
+                    {
+                        DecayTime = Environment.TickCount64 + World.GameWorld.DefaultDecayTimeMs;
+                        return true;
+                    }
                 }
                 _isDeleted = true;
                 SpawnChar?.KillAll();

@@ -1711,6 +1711,43 @@ public partial class Character : ObjBase
         return true;
     }
 
+    /// <summary>Reason an equip was denied (Source-X CChar::CanEquipLayer).</summary>
+    public enum EquipDenial
+    {
+        None = 0,
+        InvalidLayer, // not a real wearable slot (0, Dragging/31+, out of range)
+        TooWeak,      // wearer below the item's REQSTR
+    }
+
+    /// <summary>
+    /// Central equip gate: validates the target layer is a real wearable slot and
+    /// the wearer meets the item's REQSTR. Hand-conflict resolution, @EquipTest
+    /// and ownership stay at the (packet) call site — this is the shared rule that
+    /// script/engine <see cref="Equip"/> callers would otherwise bypass. Maps to
+    /// Source-X CCharStatus.cpp CanEquipLayer / CanEquipStr. GM bypasses.
+    /// </summary>
+    public bool CanEquip(Item item, Layer layer, out EquipDenial denial)
+    {
+        denial = EquipDenial.None;
+        if (PrivLevel >= Core.Enums.PrivLevel.GM) return true;
+
+        int idx = (int)layer;
+        if (idx <= 0 || idx >= (int)Layer.Dragging || idx >= _equipment.Length)
+        {
+            denial = EquipDenial.InvalidLayer;
+            return false;
+        }
+
+        int reqStr = item.ReqStr;
+        if (reqStr > 0 && Str < reqStr)
+        {
+            denial = EquipDenial.TooWeak;
+            return false;
+        }
+
+        return true;
+    }
+
     public Item? Unequip(Layer layer)
     {
         int idx = (int)layer;

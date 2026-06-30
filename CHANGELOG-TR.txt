@@ -4,6 +4,32 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Item/envanter kural paritesi: tasima gate, equip gate, container cap, ground-drop arg, decay veto (Wave 164)
+----------------------------------------
+
+EKLENEN - Envanter kurallari:
+  - Merkezi ItemMoveRules.CanMove kapisi (Source-X CChar::CanMoveItem): donmus ya
+    da olu mover lift edemez, ATTR_MOVE_NEVER item'lar (corpse, statik mobilya)
+    asla suruklenmez. Paket pickup yoluna baglandi; GM bypass eder.
+  - Merkezi Character.CanEquip kapisi (Source-X CChar::CanEquipLayer): hedef
+    layer'in gercek giyilebilir slot oldugunu ve giyenin item REQSTR'sini
+    karsiladigini dogrular. Oyuncu equip yoluna baglandi (GM aktor bypass eder);
+    per-instance OVERRIDE.REQSTR tag'i ITEMDEF gereksinimini ezer.
+  - Per-container OVERRIDE.MAXITEMS: bir container'in item kapasitesi (or. kucuk
+    kese, quest kutusu) icine drop'ta global default'u ezer.
+
+DEGISEN - Drop / decay:
+  - @DropOn_Ground artik drop noktasini ARGN1/2/3 (x/y/z) ve DECAY local'i
+    (saniye) olarak gecirir; script drop'u tasiyabilir (harita siniri + erisim
+    yeniden dogrulanir) veya ozel rot timer'i ayarlayabilir. RETURN 1 hala drop'u
+    geri sektirir.
+  - Item decay artik yok etmeden once @Timer'a danisir (Source-X CItem: decay,
+    item timer'idir). RETURN 1 item'i tutar ve taze bir decay penceresi acar,
+    boylece script rot'u erteleyebilir/iptal edebilir; handler'i olmayan item'lar
+    eskisi gibi decay eder.
+
+================================================================================
+
 [2026-06-30] - Olum/corpse parity III: death shroud, resurrection robe, bonded-pet ghost, olum-broadcast merkezilestime (Wave 163)
 ----------------------------------------
 

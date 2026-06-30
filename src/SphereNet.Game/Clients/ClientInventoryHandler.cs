@@ -269,6 +269,15 @@ public sealed class ClientInventoryHandler
             return;
         }
 
+        // Central flag gate (Source-X CChar::CanMoveItem): ATTR_MOVE_NEVER items
+        // (corpses, static furniture) never drag, and a frozen mover can't lift.
+        // Dead is already rejected above; housing/distance/looting stay inline.
+        if (!ItemMoveRules.CanMove(_character, item, out _))
+        {
+            SendPickupFailed(1);
+            return;
+        }
+
         var (dragSourceSerial, dragSourcePos) = GetDragSource(item);
 
         // Fire the pickup trigger, choosing the most specific source variant:
@@ -594,6 +603,12 @@ public sealed class ClientInventoryHandler
                     bool isBank = container.EquipLayer == Layer.BankBox;
                     int currentCount = _world.GetContainerContents(container.Uid).Count();
                     int maxItems = isBank ? _world.MaxBankItems : _world.MaxContainerItems;
+                    // Source-X OVERRIDE.MAXITEMS: a per-container item cap (e.g. a
+                    // small pouch, a quest box, a vendor crate) overrides the
+                    // global default for THIS container.
+                    if (container.TryGetTag("OVERRIDE.MAXITEMS", out string? maxItemsRaw) &&
+                        int.TryParse(maxItemsRaw, out int overrideMax) && overrideMax >= 0)
+                        maxItems = overrideMax;
                     if (currentCount >= maxItems)
                     {
                         SysMessage(ServerMessages.Get(isBank ? Msg.BvboxFullItems : Msg.ContFullItems));
@@ -834,14 +849,51 @@ public sealed class ClientInventoryHandler
             }
         }
 
-        var dropResult = _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.DropOnGround,
-            new TriggerArgs { CharSrc = _character, ItemSrc = item });
+        // @DropOn_Ground — Source-X passes the drop point as ARGN1/2/3 (x/y/z)
+        // and a DECAY local (seconds) so a script can relocate the drop or set a
+        // custom rot timer; RETURN 1 bounces the drop. ARGN/LOCAL readback flows
+        // through the EVENTS / @Item* path (RunWrapped + the shared Locals pool).
+        long defaultDecaySec = GameWorld.DefaultDecayTimeMs / 1000;
+        var dropLocals = new SphereNet.Scripting.Variables.VarMap();
+        dropLocals.SetInt("DECAY", defaultDecaySec);
+        var dropArgs = new TriggerArgs
+        {
+            CharSrc = _character, ItemSrc = item,
+            N1 = x, N2 = y, N3 = z, Locals = dropLocals,
+        };
+        var dropResult = _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.DropOnGround, dropArgs);
         if (dropResult == TriggerResult.True)
         {
             PlaceItemInPack(_character, item);
             _netState.Send(new PacketDropReject());
             return;
         }
+
+        // Honor a script-relocated drop point, re-validating map bounds + reach so
+        // a script can't fling the item out of the world / out of range (GM keeps
+        // the same bypass the pre-trigger gate used).
+        short finalX = (short)dropArgs.N1, finalY = (short)dropArgs.N2;
+        sbyte finalZ = (sbyte)dropArgs.N3;
+        if (finalX != x || finalY != y || finalZ != z)
+        {
+            bool inBounds = true;
+            var relocMd = _world.MapData;
+            if (relocMd != null)
+            {
+                var (mw, mh) = relocMd.GetMapSize(_character.MapIndex);
+                inBounds = finalX >= 0 && finalY >= 0 && finalX < mw && finalY < mh;
+            }
+            int relocDist = Math.Max(Math.Abs(_character.X - finalX), Math.Abs(_character.Y - finalY));
+            if (inBounds && (_character.PrivLevel >= PrivLevel.GM || relocDist <= 3))
+            {
+                x = finalX; y = finalY; z = finalZ;
+            }
+        }
+
+        // Script decay override (LOCAL.DECAY seconds): >0 sets a custom timer,
+        // otherwise the default 10-minute ground decay applies.
+        long dropDecaySec = dropLocals.GetInt("DECAY", defaultDecaySec);
+        long dropDecayMs = dropDecaySec > 0 ? dropDecaySec * 1000 : GameWorld.DefaultDecayTimeMs;
 
         var groundPos = new Point3D(x, y, z, _character.MapIndex);
         var sector = _world.GetSector(groundPos);
@@ -887,7 +939,7 @@ public sealed class ClientInventoryHandler
             item.TryFlipDisplay();
         }
 
-        _world.PlaceItemWithDecay(item, groundPos);
+        _world.PlaceItemWithDecay(item, groundPos, dropDecayMs);
         _netState.Send(new PacketDropAck());
         BroadcastDragAnimation(item, _character.Uid.Value, _character.Position, 0, groundPos, groundPos);
         BroadcastNearby?.Invoke(groundPos, UpdateRange,
@@ -1011,6 +1063,17 @@ public sealed class ClientInventoryHandler
                 new TriggerArgs { CharSrc = _character, ItemSrc = item });
             if (result == TriggerResult.True)
                 return;
+        }
+
+        // Central equip gate (Source-X CChar::CanEquipLayer): block an
+        // underpowered wearer from a high-REQSTR item. GM actor bypasses; the
+        // layer-31 / ownership / hand-conflict guards are handled separately.
+        if (_character.PrivLevel < PrivLevel.GM &&
+            !target.CanEquip(item, (Layer)layer, out var equipDenial))
+        {
+            if (equipDenial == Character.EquipDenial.TooWeak)
+                SysMessage("You are not strong enough to equip that.");
+            return;
         }
 
         // Spell interruption on equip change

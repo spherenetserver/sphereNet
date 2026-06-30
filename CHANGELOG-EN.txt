@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Item/inventory rule parity: move gate, equip gate, container cap, ground-drop args, decay veto (Wave 164)
+----------------------------------------
+
+ADDED - Inventory rules:
+  - Central ItemMoveRules.CanMove gate (Source-X CChar::CanMoveItem): a frozen or
+    dead mover can't lift, and ATTR_MOVE_NEVER items (corpses, static furniture)
+    never drag. Wired into the packet pickup path; GM bypasses.
+  - Central Character.CanEquip gate (Source-X CChar::CanEquipLayer): validates the
+    target layer is a real wearable slot and the wearer meets the item's REQSTR.
+    Wired into the player equip path (GM actor bypasses); a per-instance
+    OVERRIDE.REQSTR tag overrides the ITEMDEF requirement.
+  - Per-container OVERRIDE.MAXITEMS: a container's item cap (e.g. a small pouch, a
+    quest box) now overrides the global default when dropping into it.
+
+CHANGED - Drop / decay:
+  - @DropOn_Ground now passes the drop point as ARGN1/2/3 (x/y/z) and a DECAY
+    local (seconds); a script can relocate the drop (re-validated against map
+    bounds + reach) or set a custom rot timer. RETURN 1 still bounces the drop.
+  - Item decay now consults @Timer before destruction (Source-X CItem: decay IS
+    the item timer). RETURN 1 keeps the item and re-arms a fresh decay window so a
+    script can defer/cancel the rot; items with no handler decay as before.
+
+================================================================================
+
 [2026-06-30] - Death/corpse parity III: death shroud, resurrection robe, bonded-pet ghost, death-broadcast centralization (Wave 163)
 ----------------------------------------
 

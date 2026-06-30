@@ -120,4 +120,33 @@ public class GlobalConfigScriptHookTests
         Assert.Equal("1", matched);
         Assert.False(player.TryGetTag("SPEECH_WRONG_BLOCK", out _));
     }
+
+    [Fact]
+    public void SpeechTrigger_Return0_ContinuesToNextMatchingBlock()
+    {
+        var (dispatcher, _) = CreateDispatcher("""
+            [SPEECH spk_player]
+            ON=*hello*
+            TAG.FIRST_BLOCK=1
+            RETURN 0
+
+            ON=*there*
+            TAG.SECOND_BLOCK=1
+            RETURN 1
+            """);
+        dispatcher.SpeechSelfResources.Add(ResourceId.FromString("spk_player", ResType.Speech));
+
+        var player = new Character { IsPlayer = true };
+
+        // "hello there" matches BOTH patterns. The first block RETURN 0s (does not
+        // consume the line), so the scan continues to the second block, which
+        // RETURN 1s. Source-X parity: both bodies run, final result is True.
+        var result = dispatcher.FireSpeechSelfTrigger(player, "hello there", 0);
+
+        Assert.Equal(TriggerResult.True, result);
+        Assert.True(player.TryGetProperty("TAG.FIRST_BLOCK", out var first));
+        Assert.Equal("1", first);
+        Assert.True(player.TryGetProperty("TAG.SECOND_BLOCK", out var second));
+        Assert.Equal("1", second);
+    }
 }

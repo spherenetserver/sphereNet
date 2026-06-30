@@ -4,6 +4,25 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Speech paritesi: SPEECH RETURN 0 devam eder, item @Hear coverage (Wave 181)
+----------------------------------------
+
+DEGISEN - [SPEECH] trigger taramasi (Source-X OnHearTrigger RETURN semantigi):
+  - Eslesen bir [SPEECH] ON= blogu RETURN 1 yaparsa hala satiri tuketir ve durur, ama
+    RETURN 0 yapan (ya da RETURN'suz biten) blok artik taramayi bitirmiyor — AYNI speech
+    resource'unda sonraki eslesen ON= bloguna devam ediyor. Eskiden ilk eslesen blok donus
+    degerine bakilmaksizin hep kazaniyordu, boylece "ben halletmedim" diyen bir blok sonraki
+    handler'lari engelliyordu.
+
+EKLENEN - Item @Hear coverage (Source-X item / multi OnHear):
+  - Konusulan soz artik yakindaki ITEM'lara ulasiyor: ProcessSpeech, isitme menzili icindeki
+    (karakterlerle ayni menzil) her item'da yeni @Hear item trigger'ini atesler; boylece scriptli
+    dinleyen item'lar (tabelalar, comm-crystal tarzi roleler, multi component'leri) konusmaya tepki
+    verebilir. Gate'li — per-utterance item taramasi yalnizca bir item def gercekten @Hear hook'larsa
+    calisir; kullanmayan shard'lar sifir oder. S1 = konusulan metin, N1 = talk mode.
+
+================================================================================
+
 [2026-06-30] - Skill paritesi: @SkillChange runtime skill degisimleri icin iptal-edilebilir setter guard (Wave 180)
 ----------------------------------------
 

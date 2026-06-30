@@ -908,6 +908,7 @@ public sealed class TriggerDispatcher
         ItemTrigger.Smelt => "Smelt",
         ItemTrigger.Start => "Start",
         ItemTrigger.Stop => "Stop",
+        ItemTrigger.Hear => "Hear",
         _ => trigger.ToString(),
     };
 }

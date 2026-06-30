@@ -4,6 +4,7 @@ using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Guild;
 using SphereNet.Game.Objects.Characters;
+using SphereNet.Game.Objects.Items;
 using SphereNet.Scripting.Definitions;
 using SphereNet.Game.Scripting;
 using SphereNet.Game.Party;
@@ -50,6 +51,12 @@ public sealed class SpeechEngine
 
     /// <summary>Fired when an NPC hears speech (for keyword response).</summary>
     public event Action<Character, Character, string, TalkMode>? OnNpcHear;
+
+    /// <summary>Fired when a nearby ITEM hears speech (Source-X item/multi OnHear).
+    /// Installed only when some item def actually hooks @Hear, so the per-utterance
+    /// item scan is skipped entirely on shards that don't use it. Args: speaker,
+    /// item listener, text, mode.</summary>
+    public Action<Character, Item, string, TalkMode>? OnItemHear { get; set; }
 
     /// <summary>
     /// Fired exactly once per player utterance, before any per-NPC dispatch.
@@ -137,6 +144,16 @@ public sealed class SpeechEngine
             {
                 OnNpcHear?.Invoke(speaker, listener, text, mode);
             }
+        }
+
+        // Items within hearing range receive @Hear (Source-X item/multi OnHear).
+        // Gated on OnItemHear being installed, so shards without any @Hear item def
+        // skip the item scan entirely. Same range as characters.
+        if (OnItemHear != null)
+        {
+            int itemRange = hearRange == 0 ? 9999 : hearRange;
+            foreach (var item in _world.GetItemsInRange(speaker.Position, itemRange))
+                OnItemHear(speaker, item, text, mode);
         }
 
         return false;

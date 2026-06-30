@@ -650,6 +650,15 @@ public static partial class Program
             _speech.GuildManager = _guildManager;
             _speech.OnNpcHear += OnNpcHearSpeech;
             _speech.OnPlayerSpeech = OnPlayerSpeech;
+            // @Hear on nearby items (Source-X item/multi OnHear) — installed only when
+            // some item def actually hooks @Hear, so the per-utterance item scan is
+            // skipped on shards that don't use it. S1 = spoken text, N1 = talk mode.
+            if (_triggerDispatcher.IsItemTriggerUsed(ItemTrigger.Hear))
+            {
+                _speech.OnItemHear = (speaker, item, text, mode) =>
+                    _triggerDispatcher.FireItemTrigger(item, ItemTrigger.Hear,
+                        new TriggerArgs { CharSrc = speaker, ItemSrc = item, S1 = text, N1 = (int)mode });
+            }
             _speech.OnChannelMessage += (speaker, recipient, text, mode) =>
             {
                 if (!TryGetClientFor(recipient, out var c))

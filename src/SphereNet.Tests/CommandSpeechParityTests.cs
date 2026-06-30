@@ -117,4 +117,41 @@ public class CommandSpeechParityTests
 
         Assert.True(npcHeard); // invisibility must not block hearing
     }
+
+    // ---- item @Hear coverage: nearby items hear, distant ones do not ----
+
+    [Fact]
+    public void ProcessSpeech_FiresItemHear_ForInRangeItemsOnly()
+    {
+        var world = CreateWorld();
+        var speech = new SpeechEngine(world);
+        var speaker = MakeChar(world, PrivLevel.Player); // at (100,100)
+
+        var near = world.CreateItem();
+        world.PlaceItem(near, new Point3D(102, 100, 0, 0)); // 2 tiles — within say range (18)
+        var far = world.CreateItem();
+        world.PlaceItem(far, new Point3D(100, 140, 0, 0));  // 40 tiles — out of say range
+
+        var heard = new List<Item>();
+        speech.OnItemHear = (_, item, _, _) => heard.Add(item);
+
+        speech.ProcessSpeech(speaker, "hail", TalkMode.Say);
+
+        Assert.Contains(near, heard);
+        Assert.DoesNotContain(far, heard);
+    }
+
+    [Fact]
+    public void ProcessSpeech_NoItemHearHook_SkipsItemScan()
+    {
+        var world = CreateWorld();
+        var speech = new SpeechEngine(world);
+        var speaker = MakeChar(world, PrivLevel.Player);
+
+        var item = world.CreateItem();
+        world.PlaceItem(item, new Point3D(101, 100, 0, 0));
+
+        // OnItemHear not installed → no throw, item scan skipped (gated path).
+        Assert.False(speech.ProcessSpeech(speaker, "hail", TalkMode.Say));
+    }
 }

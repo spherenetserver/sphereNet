@@ -4,6 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Speech parity: SPEECH RETURN 0 continues, item @Hear coverage (Wave 181)
+----------------------------------------
+
+CHANGED - [SPEECH] trigger scan (Source-X OnHearTrigger RETURN semantics):
+  - A matched [SPEECH] ON= block that does RETURN 1 still consumes the line and
+    stops, but a block that RETURN 0s (or falls through without a RETURN) no longer
+    ends the scan — it continues to the next matching ON= block in the SAME speech
+    resource. Previously the first matching block always won regardless of its return
+    value, so a "didn't handle it" block blocked later handlers.
+
+ADDED - Item @Hear coverage (Source-X item / multi OnHear):
+  - Spoken speech now reaches nearby ITEMS: ProcessSpeech fires the new @Hear item
+    trigger on every item within hearing range (same range as characters), so
+    scripted listening items (signs, comm-crystal-style relays, multi components) can
+    react to speech. Gated — the per-utterance item scan runs only when some item def
+    actually hooks @Hear, so shards that don't use it pay nothing. S1 = spoken text,
+    N1 = talk mode.
+
+================================================================================
+
 [2026-06-30] - Skill parity: @SkillChange as a cancelable setter guard for runtime skill changes (Wave 180)
 ----------------------------------------
 

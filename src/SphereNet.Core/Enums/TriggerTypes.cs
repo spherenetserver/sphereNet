@@ -65,6 +65,10 @@ public enum ItemTrigger
     Tooltip,
     Unequip,
 
+    // Spoken speech heard by a nearby item (Source-X item/multi OnHear coverage).
+    // Appended (not alphabetical) so existing trigger values are unchanged.
+    Hear,
+
     Qty,
 }
 

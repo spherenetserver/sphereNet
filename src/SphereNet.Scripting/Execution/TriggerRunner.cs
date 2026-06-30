@@ -352,6 +352,9 @@ public sealed class TriggerRunner
     /// Execute a SPEECH trigger on a ResourceLink by matching spoken text against ON=*keyword* patterns.
     /// Wildcard rules: *keyword* = contains, keyword* = startsWith, *keyword = endsWith, keyword = exact.
     /// All matches are case-insensitive.
+    /// Source-X parity: a matched block that does RETURN 1 consumes the line and
+    /// stops; a block that RETURN 0s (or falls through) does NOT consume it — the
+    /// scan continues to the next matching ON= block in the SAME resource.
     /// </summary>
     public TriggerResult RunSpeechTrigger(
         ResourceLink link,
@@ -365,6 +368,7 @@ public sealed class TriggerRunner
             return TriggerResult.Default;
 
         string lower = spokenText.ToLowerInvariant();
+        TriggerResult last = TriggerResult.Default;
 
         for (int i = 0; i < keys.Count; i++)
         {
@@ -378,13 +382,17 @@ public sealed class TriggerRunner
             if (!MatchSpeechPattern(pattern, lower))
                 continue;
 
-            // Found a match — collect and execute the body
+            // Found a match — collect and execute the body.
             var body = CollectTriggerBody(keys, i + 1);
             var scope = new ScriptScope { TriggerName = "SPEECH:" + pattern };
-            return _interpreter.Execute(body, target, source, args, scope);
+            var result = _interpreter.Execute(body, target, source, args, scope);
+            if (result == TriggerResult.True)
+                return TriggerResult.True; // RETURN 1 — consume the line, stop scanning
+            last = result;
+            // RETURN 0 / no return — keep looking for a later matching ON= block.
         }
 
-        return TriggerResult.Default;
+        return last;
     }
 
     /// <summary>

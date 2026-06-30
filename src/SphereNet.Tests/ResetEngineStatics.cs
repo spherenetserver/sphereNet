@@ -74,6 +74,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Housing.House.OnRedeed = null;
         SphereNet.Game.AI.NpcAI.PetFollowMaxDistance = 36;
         SphereNet.Game.Objects.Characters.Character.SpellbookRequiredEnabled = true;
+        SphereNet.Game.Death.DeathEngine.EnableDeathShroud = true;
         SphereNet.Game.Skills.SkillEngine.StatAdvCurves =
             [SphereNet.Scripting.Definitions.ValueCurve.Empty,
              SphereNet.Scripting.Definitions.ValueCurve.Empty,

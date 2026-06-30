@@ -153,4 +153,128 @@ public class DeathCorpseParityIITests
         var stranger = MakePlayer(world, 1005); // same tile, different identity
         Assert.False(death.RestoreFromCorpse(stranger));
     }
+
+    // ---- #6: death shroud / resurrection robe ----
+
+    [Fact]
+    public void EquipDeathShroud_OnPlayer_EquipsMoveNeverShroud()
+    {
+        var world = CreateWorld();
+        ClearNotoHooks();
+        var death = new DeathEngine(world);
+        var player = MakePlayer(world, 1100); // Robe layer free (only Pack equipped)
+
+        var shroud = death.EquipDeathShroud(player);
+
+        Assert.NotNull(shroud);
+        Assert.Same(shroud, player.GetEquippedItem(Layer.Robe));
+        Assert.True(shroud!.IsAttr(ObjAttributes.Move_Never)); // looters can't strip the ghost
+        Assert.True(shroud.TryGetTag("DEATHSHROUD", out _));
+    }
+
+    [Fact]
+    public void EquipDeathShroud_OnNpc_DoesNothing()
+    {
+        var world = CreateWorld();
+        ClearNotoHooks();
+        var death = new DeathEngine(world);
+        var npc = MakeNpc(world, 1101);
+
+        Assert.Null(death.EquipDeathShroud(npc));
+        Assert.Null(npc.GetEquippedItem(Layer.Robe));
+    }
+
+    [Fact]
+    public void EquipDeathShroud_WhenDisabled_DoesNothing()
+    {
+        var world = CreateWorld();
+        ClearNotoHooks();
+        var death = new DeathEngine(world);
+        var player = MakePlayer(world, 1102);
+
+        DeathEngine.EnableDeathShroud = false; // restored by ResetEngineStatics
+        Assert.Null(death.EquipDeathShroud(player));
+        Assert.Null(player.GetEquippedItem(Layer.Robe));
+    }
+
+    [Fact]
+    public void RemoveDeathShroud_RemovesShroud_KeepsRealRobe()
+    {
+        var world = CreateWorld();
+        ClearNotoHooks();
+        var death = new DeathEngine(world);
+        var player = MakePlayer(world, 1103);
+
+        // A normal robe must survive (only the tagged shroud is removed).
+        var realRobe = world.CreateItem(); realRobe.BaseId = 0x1F03;
+        player.Equip(realRobe, Layer.Robe);
+        death.RemoveDeathShroud(player);
+        Assert.Same(realRobe, player.GetEquippedItem(Layer.Robe));
+
+        // A shroud is removed, freeing the Robe layer.
+        player.Unequip(Layer.Robe);
+        death.EquipDeathShroud(player);
+        death.RemoveDeathShroud(player);
+        Assert.Null(player.GetEquippedItem(Layer.Robe));
+    }
+
+    [Fact]
+    public void EnsureResurrectionRobe_GivesRobeOnlyWhenNaked()
+    {
+        var world = CreateWorld();
+        ClearNotoHooks();
+        var death = new DeathEngine(world);
+        var player = MakePlayer(world, 1104);
+
+        var robe = death.EnsureResurrectionRobe(player);
+        Assert.NotNull(robe);
+        Assert.Same(robe, player.GetEquippedItem(Layer.Robe));
+
+        // Already covered → no duplicate robe.
+        Assert.Null(death.EnsureResurrectionRobe(player));
+    }
+
+    // ---- #5: bonded pet kept as a ghost (no server-side delete) ----
+
+    [Fact]
+    public void BondedPet_Death_KeepsMobileAliveAsGhost()
+    {
+        var world = CreateWorld();
+        ClearNotoHooks();
+        var death = new DeathEngine(world);
+
+        var pet = MakeNpc(world, 1110);
+        pet.SetStatFlag(StatFlag.Pet);
+        pet.IsBonded = true;
+        Assert.True(pet.IsBonded);
+
+        var corpse = death.ProcessDeath(pet);
+
+        // Corpse exists, the pet is dead but NOT removed from the world — the
+        // view-delta hides it from plain players and re-draws it on resurrect.
+        Assert.NotNull(corpse);
+        Assert.True(pet.IsDead);
+        Assert.False(pet.IsDeleted);
+        Assert.NotNull(world.FindObject(pet.Uid));
+
+        // Resurrection brings it back alive, ready for the view-delta re-draw.
+        pet.Resurrect();
+        Assert.False(pet.IsDead);
+        Assert.False(pet.IsDeleted);
+    }
+
+    [Fact]
+    public void UnbondedNpc_Death_RemovesMobile()
+    {
+        var world = CreateWorld();
+        ClearNotoHooks();
+        var death = new DeathEngine(world);
+
+        var npc = MakeNpc(world, 1111); // not bonded
+
+        var corpse = death.ProcessDeath(npc);
+
+        Assert.NotNull(corpse);
+        Assert.True(npc.IsDeleted); // ordinary NPC is deleted server-side
+    }
 }

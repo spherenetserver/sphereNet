@@ -565,6 +565,84 @@ public sealed class DeathEngine
         return true;
     }
 
+    // === Death shroud / resurrection robe (Source-X CChar::Death / Spell_Resurrection) ===
+
+    /// <summary>ITEMID_DEATHSHROUD — the grey robe a ghost wears.</summary>
+    private const ushort DeathShroudId = 0x204E;
+
+    /// <summary>ITEMID_ROBE — plain robe handed out on resurrection when no body
+    /// covering was restored, so the player isn't resurrected naked.</summary>
+    private const ushort ResurrectRobeId = 0x1F03;
+
+    /// <summary>
+    /// When true, a death shroud is equipped on the ghost at death and a
+    /// resurrection robe is granted on resurrection when no robe was restored.
+    /// Source-X gates the same behaviour behind a server flag.
+    /// </summary>
+    public static bool EnableDeathShroud { get; set; } = true;
+
+    /// <summary>
+    /// Equip a death shroud on the dying player's Robe layer. The real robe (if
+    /// any) has already dropped to the corpse by the time the ghost transition
+    /// runs, so the layer is free. The shroud is Move_Never (can't be dragged off
+    /// the ghost) and Newbie (never drops), tagged DEATHSHROUD so resurrection can
+    /// remove it. NPCs and already-robed bodies are skipped. Returns the shroud,
+    /// or null when none was equipped. Maps to CChar::Death's death-shroud equip.
+    /// </summary>
+    public Item? EquipDeathShroud(Character victim)
+    {
+        if (!EnableDeathShroud) return null;
+        if (!victim.IsPlayer) return null;
+        if (victim.GetEquippedItem(Layer.Robe) != null) return null;
+
+        var shroud = _world.CreateItem();
+        shroud.BaseId = DeathShroudId;
+        shroud.ItemType = ItemType.Clothing;
+        shroud.Name = "death shroud";
+        shroud.Hue = Color.Default;
+        shroud.SetAttr(ObjAttributes.Move_Never); // looters can't strip the ghost
+        shroud.SetAttr(ObjAttributes.Newbie);     // stays with the owner, never drops
+        shroud.SetTag("DEATHSHROUD", "1");
+        victim.Equip(shroud, Layer.Robe);
+        return shroud;
+    }
+
+    /// <summary>
+    /// Remove the death shroud (if present) from a character's Robe layer. Called
+    /// at the start of resurrection so a robe restored from the corpse — or a
+    /// resurrection robe — can take the Robe slot. DeleteObject unequips and
+    /// unlinks in one step.
+    /// </summary>
+    public void RemoveDeathShroud(Character ch)
+    {
+        var robe = ch.GetEquippedItem(Layer.Robe);
+        if (robe == null || !robe.TryGetTag("DEATHSHROUD", out _)) return;
+        _world.DeleteObject(robe);
+    }
+
+    /// <summary>
+    /// Grant a plain resurrection robe when the Robe layer is empty after corpse
+    /// restore, so the player isn't resurrected naked (Source-X Spell_Resurrection
+    /// hands out a robe when the corpse held no body covering). Returns the robe,
+    /// or null when one already covers the Robe layer.
+    /// </summary>
+    public Item? EnsureResurrectionRobe(Character ch)
+    {
+        if (!EnableDeathShroud) return null;
+        if (!ch.IsPlayer) return null;
+        if (ch.GetEquippedItem(Layer.Robe) != null) return null;
+
+        var robe = _world.CreateItem();
+        robe.BaseId = ResurrectRobeId;
+        robe.ItemType = ItemType.Clothing;
+        robe.Name = "robe";
+        robe.Hue = Color.Default;
+        robe.SetAttr(ObjAttributes.Newbie); // res robe stays with the owner
+        robe.SetTag("RESURRECTROBE", "1");
+        ch.Equip(robe, Layer.Robe);
+        return robe;
+    }
+
     /// <summary>
     /// Check if looting a corpse is a criminal act.
     /// Maps to CChar::CheckCorpseCrime in Source-X.

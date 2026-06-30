@@ -4,6 +4,37 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Olum/corpse parity III: death shroud, resurrection robe, bonded-pet ghost, olum-broadcast merkezilestime (Wave 163)
+----------------------------------------
+
+EKLENEN - Olum / Resurrection:
+  - Death shroud: olum aninda ghost'un Robe layer'ina Move_Never, Newbie bir robe
+    giydirilir (gercek robe zaten corpse'a dusmustur), boylece beden shroud'u
+    gosterir ve oyuncu resurrection boyunca ortulu kalir. Mevcut ghost gorunum
+    broadcast'ine biner -- ayri paket yok. Static DeathEngine.EnableDeathShroud
+    flag'i ile gate'lenir (Source-X CChar::Death).
+  - Resurrection robe: resurrection'da hicbir beden ortusu geri gelmezse (corpse
+    rejoin olmadi ya da corpse'ta robe yoktu), oyuncu ciplak dirilmesin diye duz
+    bir robe verilir (Source-X Spell_Resurrection). Once shroud cikarilir, boylece
+    corpse'tan donen robe Robe layer'ini geri alabilir.
+
+DEGISEN - Bonded pet:
+  - Olumde server tarafinda ghost olarak tutulan bonded pet artik 0xAF death
+    animasyonu + acik 0x1D delete broadcast'i almiyor. Bunlar mobile'i
+    ghost-gorebilen gozlemcilerden (staff / olu / SpiritSpeak) atip view-delta'nin
+    bir sonraki tick'te yeniden eklemesine yol aciyordu -- flicker. Bonded pet'in
+    gorunumune artik view-delta sahip: olu pet'i duz oyunculardan gizler (temiz
+    yok olus) ve resurrection'da yeniden cizer. Server tarafinda silinen siradan
+    NPC'lerin delete broadcast'i degismedi.
+
+DEGISEN - Ic yapi:
+  - Uc server olum giris noktasinin (spell-kill, lifecycle-kill, GM/AI kill)
+    paylastigi corpse broadcast + victim-client ghost gecisi tek bir
+    BroadcastDeathEffects helper'inda toplandi -- player-vs-NPC paket sirasi ve
+    bonded-pet gate artik tek yerde.
+
+================================================================================
+
 [2026-06-30] - Olum/corpse parity II: corpse-suz summon, iki-asamali decay, corpse-rez, @Resurrect arg (Wave 162)
 ----------------------------------------
 

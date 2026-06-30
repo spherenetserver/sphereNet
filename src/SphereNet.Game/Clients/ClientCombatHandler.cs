@@ -1123,13 +1123,22 @@ public sealed class ClientCombatHandler
                             targetDir);
                         BroadcastNearby?.Invoke(targetPos, UpdateRange, corpsePacket, 0);
 
-                        var dirToKiller = target.Position.GetDirectionTo(_character.Position);
-                        uint npcFallDir = (uint)dirToKiller <= 3 ? 1u : 0u;
-                        var deathAnim = new PacketDeathAnimation(target.Uid.Value, corpse.Uid.Value, npcFallDir);
-                        BroadcastNearby?.Invoke(targetPos, UpdateRange, deathAnim, 0);
+                        // A bonded pet is kept alive server-side as a ghost
+                        // (ProcessDeath does not delete it). Skip the 0xAF death
+                        // animation + 0x1D delete so ghost-capable observers
+                        // (staff / dead / SpiritSpeak) don't flicker — the
+                        // view-delta filters the dead pet from plain players and
+                        // re-draws it on resurrection.
+                        if (!target.IsBonded)
+                        {
+                            var dirToKiller = target.Position.GetDirectionTo(_character.Position);
+                            uint npcFallDir = (uint)dirToKiller <= 3 ? 1u : 0u;
+                            var deathAnim = new PacketDeathAnimation(target.Uid.Value, corpse.Uid.Value, npcFallDir);
+                            BroadcastNearby?.Invoke(targetPos, UpdateRange, deathAnim, 0);
 
-                        var removeMobile = new PacketDeleteObject(target.Uid.Value);
-                        BroadcastNearby?.Invoke(targetPos, UpdateRange, removeMobile, 0);
+                            var removeMobile = new PacketDeleteObject(target.Uid.Value);
+                            BroadcastNearby?.Invoke(targetPos, UpdateRange, removeMobile, 0);
+                        }
                     }
                 }
 
@@ -1292,6 +1301,14 @@ public sealed class ClientCombatHandler
         _character.BodyId = ghostBody;
         _character.OSkin = deathSkinHue;
         _character.Hue = Core.Types.Color.Default;
+
+        // Source-X CChar::Death equips a death shroud on the ghost. The real
+        // robe (if any) already dropped to the corpse in ProcessDeath, so the
+        // Robe layer is free. Equipped HERE — before the per-observer
+        // BuildEquipmentList(ghostEquipment) below — so the shroud rides the
+        // ghost appearance broadcast (staff observers) without a separate
+        // packet, and the player keeps a robe through resurrection.
+        _deathEngine?.EquipDeathShroud(_character);
 
         // pClient->addPlayerWarMode(off). We only need the local
         // state flip + the 0x72 PacketWarMode echo to the dying
@@ -1586,7 +1603,17 @@ public sealed class ClientCombatHandler
         // emit it, but we want it gone NOW so the resurrected player
         // isn't standing on a "ghost" corpse on every observer's
         // screen).
+        // Strip the death shroud first so a robe restored from the corpse can
+        // reclaim the Robe layer (RestoreFromCorpse skips occupied layers).
+        _deathEngine?.RemoveDeathShroud(_character);
+
         bool corpseRestored = _deathEngine?.RestoreFromCorpse(_character) ?? false;
+
+        // Source-X Spell_Resurrection hands out a robe when no body covering came
+        // back (no corpse rejoined, or the corpse held no robe) so the player
+        // isn't resurrected naked. Done before BuildEquipmentList below so the
+        // robe rides the resurrection appearance broadcast.
+        _deathEngine?.EnsureResurrectionRobe(_character);
 
         byte resFlags = BuildMobileFlags(_character);
         byte resNoto = GetNotoriety(_character);

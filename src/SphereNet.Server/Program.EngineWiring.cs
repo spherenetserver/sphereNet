@@ -1156,66 +1156,7 @@ public static partial class Program
                 if (effectiveKiller != null)
                     effectiveKiller.FightTarget = Serial.Invalid;
 
-                if (corpse != null)
-                {
-                    if (victim.IsPlayer)
-                    {
-                        var corpsePacket = new PacketWorldItem(
-                            corpse.Uid.Value, corpse.DispIdFull, corpse.Amount,
-                            corpse.X, corpse.Y, corpse.Z, corpse.Hue, victimDir);
-                        BroadcastNearby(victimPos, 18, corpsePacket, 0);
-
-                        foreach (var corpseItem in corpse.Contents)
-                        {
-                            var containerItem = new PacketContainerItem(
-                                corpseItem.Uid.Value, corpseItem.DispIdFull, 0,
-                                corpseItem.Amount, corpseItem.X, corpseItem.Y,
-                                corpse.Uid.Value, corpseItem.Hue, useGridIndex: true);
-                            BroadcastNearby(victimPos, 18, containerItem, 0);
-                        }
-
-                        var corpseEquipEntries = new List<(byte Layer, uint ItemSerial)>();
-                        var usedLayers = new HashSet<byte>();
-                        foreach (var item in corpse.Contents)
-                        {
-                            byte layer = (byte)item.EquipLayer;
-                            if (layer == (byte)Layer.None || layer == (byte)Layer.Face || layer == (byte)Layer.Pack)
-                                continue;
-                            if (!usedLayers.Add(layer))
-                                continue;
-                            corpseEquipEntries.Add((layer, item.Uid.Value));
-                        }
-
-                        var corpseEquip = new PacketCorpseEquipment(corpse.Uid.Value, corpseEquipEntries);
-                        BroadcastNearby(victimPos, 18, corpseEquip, 0);
-                    }
-                    else
-                    {
-                        var corpsePacket = new PacketWorldItem(
-                            corpse.Uid.Value, corpse.DispIdFull, corpse.Amount,
-                            corpse.X, corpse.Y, corpse.Z, corpse.Hue, victimDir);
-                        BroadcastNearby(victimPos, 18, corpsePacket, 0);
-
-                        var dirToKiller = effectiveKiller != null
-                            ? victim.Position.GetDirectionTo(effectiveKiller.Position)
-                            : victim.Direction;
-                        uint npcFallDir = (uint)dirToKiller <= 3 ? 1u : 0u;
-                        var deathAnim = new PacketDeathAnimation(victim.Uid.Value, corpse.Uid.Value, npcFallDir);
-                        BroadcastNearby(victimPos, 18, deathAnim, 0);
-
-                        var removeMobile = new PacketDeleteObject(victim.Uid.Value);
-                        BroadcastNearby(victimPos, 18, removeMobile, 0);
-                    }
-                }
-
-                foreach (var c in _clients.Values)
-                {
-                    if (c.Character == victim)
-                    {
-                        c.OnCharacterDeath();
-                        break;
-                    }
-                }
+                BroadcastDeathEffects(victim, effectiveKiller, corpse, victimPos, victimDir);
             };
             Character.OnLifecycleKill = (victim, killer) =>
             {
@@ -1235,66 +1176,7 @@ public static partial class Program
                 if (effectiveKiller != null)
                     effectiveKiller.FightTarget = Serial.Invalid;
 
-                if (corpse != null)
-                {
-                    if (victim.IsPlayer)
-                    {
-                        var corpsePacket = new PacketWorldItem(
-                            corpse.Uid.Value, corpse.DispIdFull, corpse.Amount,
-                            corpse.X, corpse.Y, corpse.Z, corpse.Hue, victimDir);
-                        BroadcastNearby(victimPos, 18, corpsePacket, 0);
-
-                        foreach (var corpseItem in corpse.Contents)
-                        {
-                            var containerItem = new PacketContainerItem(
-                                corpseItem.Uid.Value, corpseItem.DispIdFull, 0,
-                                corpseItem.Amount, corpseItem.X, corpseItem.Y,
-                                corpse.Uid.Value, corpseItem.Hue, useGridIndex: true);
-                            BroadcastNearby(victimPos, 18, containerItem, 0);
-                        }
-
-                        var corpseEquipEntries = new List<(byte Layer, uint ItemSerial)>();
-                        var usedLayers = new HashSet<byte>();
-                        foreach (var item in corpse.Contents)
-                        {
-                            byte layer = (byte)item.EquipLayer;
-                            if (layer == (byte)Layer.None || layer == (byte)Layer.Face || layer == (byte)Layer.Pack)
-                                continue;
-                            if (!usedLayers.Add(layer))
-                                continue;
-                            corpseEquipEntries.Add((layer, item.Uid.Value));
-                        }
-
-                        var corpseEquip = new PacketCorpseEquipment(corpse.Uid.Value, corpseEquipEntries);
-                        BroadcastNearby(victimPos, 18, corpseEquip, 0);
-                    }
-                    else
-                    {
-                        var corpsePacket = new PacketWorldItem(
-                            corpse.Uid.Value, corpse.DispIdFull, corpse.Amount,
-                            corpse.X, corpse.Y, corpse.Z, corpse.Hue, victimDir);
-                        BroadcastNearby(victimPos, 18, corpsePacket, 0);
-
-                        var dirToKiller = effectiveKiller != null
-                            ? victim.Position.GetDirectionTo(effectiveKiller.Position)
-                            : victim.Direction;
-                        uint npcFallDir = (uint)dirToKiller <= 3 ? 1u : 0u;
-                        var deathAnim = new PacketDeathAnimation(victim.Uid.Value, corpse.Uid.Value, npcFallDir);
-                        BroadcastNearby(victimPos, 18, deathAnim, 0);
-
-                        var removeMobile = new PacketDeleteObject(victim.Uid.Value);
-                        BroadcastNearby(victimPos, 18, removeMobile, 0);
-                    }
-                }
-
-                foreach (var c in _clients.Values)
-                {
-                    if (c.Character == victim)
-                    {
-                        c.OnCharacterDeath();
-                        break;
-                    }
-                }
+                BroadcastDeathEffects(victim, effectiveKiller, corpse, victimPos, victimDir);
             };
             Character.OnLifecycleResurrect = victim =>
             {
@@ -2598,6 +2480,22 @@ public static partial class Program
         var corpse = _deathEngine.ProcessDeath(victim, effectiveKiller);
         if (!victim.IsDead) return; // @Death cancelled the death
 
+        BroadcastDeathEffects(victim, effectiveKiller, corpse, victimPos, victimDir);
+    }
+
+    /// <summary>
+    /// Broadcast a freshly-created corpse and transition the dying mobile to its
+    /// ghost / removed state for every nearby observer. Single source of truth
+    /// for the player-vs-NPC corpse packet order, the bonded-pet ghost gate, and
+    /// the victim-client ghost transition — shared by the three death entry
+    /// points (OnTargetKilled, OnLifecycleKill, ProcessDeathWithEffects). The
+    /// @Kill/@Death trigger firing, kill credit and killer-resolution stay at
+    /// each call site since they differ per entry point.
+    /// </summary>
+    private static void BroadcastDeathEffects(
+        Character victim, Character? effectiveKiller, Item? corpse,
+        Point3D victimPos, byte victimDir)
+    {
         if (corpse != null)
         {
             if (victim.IsPlayer)
@@ -2663,15 +2561,21 @@ public static partial class Program
                     victimDir);
                 BroadcastNearby(victimPos, 18, corpsePacket, 0);
 
-                var dirToKiller = effectiveKiller != null
-                    ? victimPos.GetDirectionTo(effectiveKiller.Position)
-                    : victim.Direction;
-                uint npcFallDir = (uint)dirToKiller <= 3 ? 1u : 0u;
-                var deathAnim = new PacketDeathAnimation(victim.Uid.Value, corpse.Uid.Value, npcFallDir);
-                BroadcastNearby(victimPos, 18, deathAnim, 0);
+                // Bonded pets are kept alive server-side as ghosts; skip the
+                // death animation + explicit delete so ghost-capable observers
+                // don't flicker (view-delta owns their appearance / resurrection).
+                if (!victim.IsBonded)
+                {
+                    var dirToKiller = effectiveKiller != null
+                        ? victimPos.GetDirectionTo(effectiveKiller.Position)
+                        : victim.Direction;
+                    uint npcFallDir = (uint)dirToKiller <= 3 ? 1u : 0u;
+                    var deathAnim = new PacketDeathAnimation(victim.Uid.Value, corpse.Uid.Value, npcFallDir);
+                    BroadcastNearby(victimPos, 18, deathAnim, 0);
 
-                var removeMobile = new PacketDeleteObject(victim.Uid.Value);
-                BroadcastNearby(victimPos, 18, removeMobile, 0);
+                    var removeMobile = new PacketDeleteObject(victim.Uid.Value);
+                    BroadcastNearby(victimPos, 18, removeMobile, 0);
+                }
             }
         }
 

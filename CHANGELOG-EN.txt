@@ -4,6 +4,37 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Death/corpse parity III: death shroud, resurrection robe, bonded-pet ghost, death-broadcast centralization (Wave 163)
+----------------------------------------
+
+ADDED - Death / Resurrection:
+  - Death shroud: a Move_Never, Newbie robe is equipped on the ghost's Robe layer
+    at death (the real robe has already dropped to the corpse), so the body shows
+    the shroud and the player keeps a covering through resurrection. It rides the
+    existing ghost appearance broadcast — no separate packet. Gated by the static
+    DeathEngine.EnableDeathShroud flag (Source-X CChar::Death).
+  - Resurrection robe: when no body covering is restored on resurrection (no
+    corpse rejoined, or the corpse held no robe), a plain robe is granted so the
+    player is not resurrected naked (Source-X Spell_Resurrection). The shroud is
+    stripped first so a robe restored from the corpse can reclaim the Robe layer.
+
+CHANGED - Bonded pets:
+  - A bonded pet kept alive server-side as a ghost on death no longer receives the
+    0xAF death animation + explicit 0x1D delete broadcast. Those forced the mobile
+    off ghost-capable observers (staff / dead / SpiritSpeak) only for the
+    view-delta to re-add it the next tick — a flicker. The view-delta now owns the
+    bonded pet's appearance: it hides the dead pet from plain players (clean
+    vanish) and re-draws it on resurrection. Ordinary NPCs, which are deleted
+    server-side, keep their delete broadcast unchanged.
+
+CHANGED - Internal:
+  - The corpse broadcast + victim-client ghost transition shared by the three
+    server death entry points (spell-kill, lifecycle-kill, GM/AI kill) is folded
+    into one BroadcastDeathEffects helper — the player-vs-NPC packet order and the
+    bonded-pet gate now live in a single place.
+
+================================================================================
+
 [2026-06-30] - Death/corpse parity II: no-corpse summons, two-stage decay, corpse-rez, @Resurrect args (Wave 162)
 ----------------------------------------
 

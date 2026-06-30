@@ -248,8 +248,13 @@ public sealed class ScriptInterpreter
                         int spIdx = srvLine.IndexOf(' ');
                         string verb = spIdx > 0 ? srvLine[..spIdx].Trim() : srvLine.Trim();
                         string verbArgs = spIdx > 0 ? srvLine[(spIdx + 1)..].Trim() : "";
-                        // Execute on target but with server-level privilege (no SRC restriction)
-                        if (!target.TryExecuteCommand(verb, verbArgs, source ?? NullConsole.Instance))
+                        // Execute with SERVER privilege (Source-X g_Serv / PLEVEL 7) so the
+                        // verb bypasses the original source's PLEVEL restriction — the whole
+                        // point of TRYSRV. Previously it passed the original source (a
+                        // low-plevel player, or Guest when null), so a privileged verb still
+                        // failed. The original source's script bridge stays as the fallback
+                        // so client-scoped verbs can still reach a client.
+                        if (!target.TryExecuteCommand(verb, verbArgs, ServerConsole.Instance))
                             (source ?? NullConsole.Instance).TryExecuteScriptCommand(target, verb, verbArgs, args);
                     }
                     i++;
@@ -1591,5 +1596,15 @@ public sealed class ScriptInterpreter
         public PrivLevel GetPrivLevel() => PrivLevel.Guest;
         public void SysMessage(string text) { }
         public string GetName() => "SYSTEM";
+    }
+
+    /// <summary>Server source context for TRYSRV (Source-X g_Serv): maximum
+    /// privilege so a TRYSRV verb bypasses the original source's PLEVEL checks.</summary>
+    private sealed class ServerConsole : ITextConsole
+    {
+        public static readonly ServerConsole Instance = new();
+        public PrivLevel GetPrivLevel() => PrivLevel.Owner;
+        public void SysMessage(string text) { }
+        public string GetName() => "SERV";
     }
 }

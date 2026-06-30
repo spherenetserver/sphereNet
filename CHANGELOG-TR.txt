@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Scripting paritesi: TRYSRV sunucu yetkisiyle calisir (Wave 201)
+----------------------------------------
+
+DUZELTILDI - TRYSRV sunucu yetkisine yukseltmiyordu:
+  - TRYSRV bir verb'i sunucu olarak (Source-X g_Serv, PLEVEL 7) calistirmali, boylece
+    cagiran kaynagin yetki kisitlamasini atlamali; ama orijinal kaynagi gecirip kullaniyordu
+    -- dusuk-plevel bir oyuncu veya Guest-seviye null console -- bu yuzden TRYSRV altindaki
+    yetkili bir verb, atlamasi gereken kontrolde yine basarisiz oluyordu. Artik verb'i sunucu
+    (Owner) kaynagiyla calistirir; orijinal kaynagin script bridge'i fallback olarak kalir,
+    boylece client-kapsamli verb'ler yine bir client'a ulasir.
+
+EKLENEN - TRY-ailesi kapsami: testler TRYSRV'nin sunucu yukseltmesini ve TRYP'nin yetki
+  gate'ini sabitler (gereken PrivLevel altinda verb engellenir, esit/ustunde calisir).
+
+================================================================================
+
 [2026-07-01] - Scripting paritesi: SERV.ACCOUNT.n indeksli erisim (Wave 200)
 ----------------------------------------
 

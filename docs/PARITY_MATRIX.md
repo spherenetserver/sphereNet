@@ -82,6 +82,15 @@ as it is produced.
 | `TIMERF` | Implemented | `ObjBase.ScheduleTimerF` (delay in seconds) | Runs a delayed function; falls back to running the payload as a verb (Wave 198). |
 | `TIMERFMS` | Implemented | `ObjBase.ScheduleTimerF` (delay in ms) | Wave 198 — was missing; millisecond counterpart of `TIMERF`. |
 
+### TRY-family control verbs (`ScriptInterpreter`)
+
+| Verb | Status | Notes |
+|---|---|---|
+| `TRY` | Implemented | Run a verb / property-set on the target without halting on failure. |
+| `TRYP <plevel>` | Implemented | Gate the verb on the source's PrivLevel; aborts with a message below it. Tested (Wave 201). |
+| `TRYSRC <src>` | Implemented | Run the verb with a different source object (via `_REF_EXEC`). |
+| `TRYSRV` | Implemented | Run at SERVER privilege (Owner / PLEVEL 7), bypassing the source's PLEVEL. Wave 201 — previously passed the original (low-plevel) source, so privileged verbs failed. |
+
 ### VarObjs reference chain (`ScriptInterpreter.ResolveVarForTarget`)
 
 | Ref | Resolves to | Status | Notes |
@@ -100,7 +109,8 @@ as it is produced.
 - **Faz 1**: caller-console routing for `VARLIST`/`PRINTLISTS`; minimum-safe `FILE.*`
   set. `EXPORT`/`IMPORT`/`RESTORE`/`SAVESTATICS`/`LOAD` deferred to the Faz 4 world-ops
   block (serialisation-heavy). Done: `TIMERF`/`TIMERFMS` delayed verb+function (Wave
-  198); `VarObjs` `LINK` decoupled from `ACT` (Wave 199).
+  198); `VarObjs` `LINK` decoupled from `ACT` (Wave 199); `SERV.ACCOUNT.n` indexed
+  access (Wave 200); `TRYSRV` server-privilege + `TRYP` gate tested (Wave 201).
 - **Faz 2**: per-trigger arg/return/order matrix on the guardrail set.
 - **Faz 0 (ongoing)**: enumerate Source-X `CChar`/`CItem`/`CClient` `r_Verb` +
   `r_WriteVal` and append the object-surface tables above.

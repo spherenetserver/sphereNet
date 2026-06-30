@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Scripting parity: TRYSRV runs at server privilege (Wave 201)
+----------------------------------------
+
+FIXED - TRYSRV did not elevate to server privilege:
+  - TRYSRV is meant to run a verb as the server (Source-X g_Serv, PLEVEL 7) so it
+    bypasses the calling source's privilege restriction, but it passed the original
+    source through — a low-plevel player, or a Guest-level null console — so a
+    privileged verb under TRYSRV still failed the very check it exists to bypass. It
+    now runs the verb under a server (Owner) source; the original source's script
+    bridge stays as the fallback so client-scoped verbs still reach a client.
+
+ADDED - TRY-family coverage: tests pin TRYSRV's server elevation and TRYP's
+  privilege gate (verb blocked below the required PrivLevel, allowed at or above).
+
+================================================================================
+
 [2026-07-01] - Scripting parity: SERV.ACCOUNT.n indexed access (Wave 200)
 ----------------------------------------
 

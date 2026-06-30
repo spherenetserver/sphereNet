@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
+using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
@@ -12,6 +13,68 @@ namespace SphereNet.Tests;
 
 public class ScriptObjectParityTests
 {
+    /// <summary>Records the privilege of the console a verb was run under.</summary>
+    private sealed class PrivCapturingObj : IScriptObj
+    {
+        public PrivLevel? LastVerbPriv;
+        public int VerbRuns;
+        public string GetName() => "Capture";
+        public bool TryGetProperty(string key, out string value) { value = ""; return false; }
+        public bool TryExecuteCommand(string key, string args, ITextConsole source)
+        {
+            if (!key.Equals("MARKPRIV", StringComparison.OrdinalIgnoreCase))
+                return false;
+            LastVerbPriv = source.GetPrivLevel();
+            VerbRuns++;
+            return true;
+        }
+        public bool TrySetProperty(string key, string value) => false;
+        public TriggerResult OnTrigger(int t, IScriptObj? s, ITriggerArgs? a) => TriggerResult.Default;
+    }
+
+    private sealed class FixedPrivConsole(PrivLevel priv) : ITextConsole
+    {
+        public PrivLevel GetPrivLevel() => priv;
+        public void SysMessage(string text) { }
+        public string GetName() => "src";
+    }
+
+    private static ScriptInterpreter NewInterpreter() =>
+        new(new ExpressionParser(), LoggerFactory.Create(_ => { }).CreateLogger<ScriptInterpreter>());
+
+    [Fact]
+    public void ScriptInterpreter_TrySrv_RunsVerbAtServerPrivilege()
+    {
+        var interpreter = NewInterpreter();
+        var target = new PrivCapturingObj();
+        var guest = new FixedPrivConsole(PrivLevel.Guest);
+
+        // TRY runs the verb under the ORIGINAL (guest) source.
+        interpreter.Execute([new ScriptKey("TRY", "MARKPRIV")], target, guest, null, new ScriptScope());
+        Assert.Equal(PrivLevel.Guest, target.LastVerbPriv);
+
+        // TRYSRV elevates to server (Owner / PLEVEL 7) regardless of the guest source —
+        // the fix: it used to pass the guest source, so a privileged verb still failed.
+        interpreter.Execute([new ScriptKey("TRYSRV", "MARKPRIV")], target, guest, null, new ScriptScope());
+        Assert.Equal(PrivLevel.Owner, target.LastVerbPriv);
+    }
+
+    [Fact]
+    public void ScriptInterpreter_Tryp_GatesOnSourcePrivilege()
+    {
+        var interpreter = NewInterpreter();
+        var target = new PrivCapturingObj();
+        var guest = new FixedPrivConsole(PrivLevel.Guest);
+
+        // A plevel-4 (GM) gate blocks a guest source — the verb does not run.
+        interpreter.Execute([new ScriptKey("TRYP", "4 MARKPRIV")], target, guest, null, new ScriptScope());
+        Assert.Equal(0, target.VerbRuns);
+
+        // A plevel-0 gate passes for a guest.
+        interpreter.Execute([new ScriptKey("TRYP", "0 MARKPRIV")], target, guest, null, new ScriptScope());
+        Assert.Equal(1, target.VerbRuns);
+    }
+
     [Fact]
     public void ScriptInterpreter_Link_ResolvesObjectsOwnLink_DistinctFromAct()
     {

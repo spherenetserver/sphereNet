@@ -1,6 +1,6 @@
 # SphereNet Documentation
 
-This folder holds the technical and operational documentation for SphereNet — a .NET 9 Ultima Online private server emulator with Source-X script compatibility.
+This folder holds the technical and operational documentation for SphereNet — a .NET 10 Ultima Online private server emulator with Source-X script compatibility.
 
 For the project overview, features, and quick start, see the top-level **[README.md](../README.md)** (🇹🇷 **[README-TR.md](../README-TR.md)**).
 
@@ -15,9 +15,13 @@ For the project overview, features, and quick start, see the top-level **[README
 - **[PROTOCOL_MATRIX.md](PROTOCOL_MATRIX.md)** — Incoming client opcodes routed through `PacketManager` (kept in sync with `PacketManagerTests`).
 - **[PACKET_FLOW_GUIDE.md](PACKET_FLOW_GUIDE.md)** — How packets move from network parsing to `GameClient`, plus behavior-level packet sequences for Source-X developers.
 - **[PARITY.md](PARITY.md)** — Source-X / Sphere 56x compatibility matrix and the tests guarding each area.
+- **[PARITY_ROADMAP_TR.md](PARITY_ROADMAP_TR.md)** — 9.0 / 9.5 parity hedefi için kategori bazlı skor ve uygulama yol haritası.
+- **[STUB_INVENTORY_TR.md](STUB_INVENTORY_TR.md)** — Kodda kalan stub, no-op ve bilinçli ertelenmiş uyumluluk açıkları.
+- **[SOUND_VISUAL_MOVEMENT_PARITY_TR.md](SOUND_VISUAL_MOVEMENT_PARITY_TR.md)** — Ses, efekt, ışık, hareket ve drag/drop packet parite rehberi.
 - **[TRANSITION_GUIDE_TR.md](TRANSITION_GUIDE_TR.md)** — Source-X'ten SphereNet'e geçiş rehberi.
 - **[PACKET_GUIDE_SIMPLE_TR.md](PACKET_GUIDE_SIMPLE_TR.md)** — Paket sistemi için basit anlatım rehberi.
 - **[DEVELOPER_MAP_TR.md](DEVELOPER_MAP_TR.md)** — Kapsamlı geliştirici haritası ve paket akış rehberi.
+- **[GAMECLIENT_DECOMPOSITION_TR.md](GAMECLIENT_DECOMPOSITION_TR.md)** — `GameClient` ayrıştırmasının tamamlanan fazları ve dosya haritası.
 
 ### Operations
 - **[DEPLOY.md](DEPLOY.md)** — Files, host modes, security model (operator surfaces + checklist), and validation needed to run a shard.

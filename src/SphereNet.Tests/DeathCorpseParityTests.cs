@@ -175,6 +175,28 @@ public class DeathCorpseParityTests
         Assert.True(death.IsLootingCriminal(looter, corpse!));
     }
 
+    [Fact]
+    public void HumanDeathSound_IsGenderSpecificAndInRange()
+    {
+        var rng = new Random(7);
+        bool sawFemaleMin = false, sawFemaleMax = false, sawMaleMin = false, sawMaleMax = false;
+        for (int i = 0; i < 400; i++)
+        {
+            // ServUO GetDeathSound: female Random(0x314, 4), male Random(0x423, 5).
+            int female = DeathEngine.GetHumanDeathSound(true, rng);
+            Assert.InRange(female, 0x314, 0x317);
+            int male = DeathEngine.GetHumanDeathSound(false, rng);
+            Assert.InRange(male, 0x423, 0x427);
+
+            if (female == 0x314) sawFemaleMin = true;
+            if (female == 0x317) sawFemaleMax = true;
+            if (male == 0x423) sawMaleMin = true;
+            if (male == 0x427) sawMaleMax = true;
+        }
+        // Both ends of each gender's range are reachable, and the ranges are disjoint.
+        Assert.True(sawFemaleMin && sawFemaleMax && sawMaleMin && sawMaleMax);
+    }
+
     // ---- D: loot retention ----
 
     [Fact]

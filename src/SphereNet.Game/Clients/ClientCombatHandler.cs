@@ -1395,6 +1395,10 @@ public sealed class ClientCombatHandler
         if (deathSkinHue == 0)
             deathSkinHue = _character.Hue.Value;
 
+        // Capture gender BEFORE the ghost-body swap — the death cry is gender-specific
+        // and IsFemale reads the live body, which is about to become a ghost body.
+        bool deathSoundFemale = _character.IsFemale;
+
         ushort ghostBody = _character.BodyId == 0x0191 ? (ushort)0x0193 : (ushort)0x0192;
         _character.BodyId = ghostBody;
         _character.OSkin = deathSkinHue;
@@ -1459,7 +1463,8 @@ public sealed class ClientCombatHandler
         _netState.Send(deathEffect);
         BroadcastNearby?.Invoke(_character.Position, UpdateRange, deathEffect, _character.Uid.Value);
 
-        var deathSound = new PacketSound(0x01FE, _character.X, _character.Y, _character.Z);
+        ushort deathSoundId = (ushort)SphereNet.Game.Death.DeathEngine.GetHumanDeathSound(deathSoundFemale, Random.Shared);
+        var deathSound = new PacketSound(deathSoundId, _character.X, _character.Y, _character.Z);
         _netState.Send(deathSound);
         BroadcastNearby?.Invoke(_character.Position, UpdateRange, deathSound, _character.Uid.Value);
 

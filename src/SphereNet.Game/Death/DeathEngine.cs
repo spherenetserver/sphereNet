@@ -688,6 +688,13 @@ public sealed class DeathEngine
         return robe;
     }
 
+    /// <summary>The human death cry. Source-X / ServUO Mobile.GetDeathSound for a
+    /// human body returns a random gender-specific sound — female 0x314..0x317
+    /// (Random(0x314, 4)), male 0x423..0x427 (Random(0x423, 5)). A single fixed
+    /// sound for every player was a parity gap.</summary>
+    public static int GetHumanDeathSound(bool female, Random rng) =>
+        female ? 0x314 + rng.Next(4) : 0x423 + rng.Next(5);
+
     /// <summary>
     /// Check if looting a corpse is a criminal act.
     /// Maps to CChar::CheckCorpseCrime in Source-X.

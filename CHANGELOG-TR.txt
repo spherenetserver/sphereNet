@@ -4,6 +4,18 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Death paritesi: cinsiyete ozgu oyuncu olum cigligi (Wave 196)
+----------------------------------------
+
+DUZELTILDI - Her oyuncu olumu tek sabit ses caliyordu:
+  - Olen bir oyuncu cinsiyetten bagimsiz olarak hep 0x01FE sesi yayiyordu. ServUO/Source-X
+    Mobile.GetDeathSound insan bedeni icin rastgele cinsiyete ozgu olum cigligi dondurur --
+    kadin Random(0x314, 4) (0x314..0x317), erkek Random(0x423, 5) (0x423..0x427). Olum yolu
+    artik dogru cigligi secer (cinsiyet hayalet-beden takasindan ONCE yakalanir, cunku IsFemale
+    canli bedeni okur). DeathEngine.GetHumanDeathSound merkezilestirir.
+
+================================================================================
+
 [2026-06-30] - Vendor paritesi: dolu konteyner veya tasinmaz item satin alinmaz (Wave 195)
 ----------------------------------------
 

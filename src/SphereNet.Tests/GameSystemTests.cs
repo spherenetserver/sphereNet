@@ -1459,6 +1459,37 @@ public class GameSystemTests
     }
 
     [Fact]
+    public void ObjBase_TimerFMs_SchedulesInMillisecondsNotSeconds()
+    {
+        var world = CreateWorld();
+        var ch = world.CreateCharacter();
+
+        long before = Environment.TickCount64;
+        // TIMERFMS delay is in milliseconds; TIMERF delay is in seconds.
+        Assert.True(ch.TryExecuteCommand("TIMERFMS", "50, f_ms_payload x y", new TestConsole()));
+        Assert.True(ch.TryExecuteCommand("TIMERF", "3600, f_sec_payload", new TestConsole()));
+        long after = Environment.TickCount64;
+
+        Assert.Equal(2, ch.TimerFEntries.Count);
+        var ms = ch.TimerFEntries.Single(e => e.FunctionName == "f_ms_payload");
+        var sec = ch.TimerFEntries.Single(e => e.FunctionName == "f_sec_payload");
+
+        // Only the first comma splits the delay from the payload; name + args split on the first space.
+        Assert.Equal("x y", ms.Args);
+
+        // TIMERFMS 50 is due ~50ms out; TIMERF 3600 is due ~1 hour out.
+        Assert.InRange(ms.DueTickMs, before + 50, after + 50);
+        Assert.InRange(sec.DueTickMs, before + 3_600_000, after + 3_600_000);
+
+        // Dequeuing 1 second later releases only the millisecond timer; the
+        // second-scale timer is still pending — proving the units differ.
+        var due = ch.DequeueDueTimerF(after + 1000);
+        Assert.Single(due);
+        Assert.Equal("f_ms_payload", due[0].FunctionName);
+        Assert.Single(ch.TimerFEntries);
+    }
+
+    [Fact]
     public void GameClient_SendPacket_ParsesRawPacketSafely()
     {
         var loggerFactory = LoggerFactory.Create(_ => { });

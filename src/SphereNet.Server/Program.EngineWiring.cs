@@ -2155,7 +2155,20 @@ public static partial class Program
                 {
                     ArgString = entry.Args
                 };
-                _triggerRunner.TryRunFunction(entry.FunctionName, obj, null, trigArgs, out _);
+                // Source-X TIMERF/TIMERFMS runs a delayed VERB or function. Try the
+                // payload as a [FUNCTION] first; if no such function exists, fall back
+                // to running it as a command on the object (e.g. "SAY hi" / "REMOVE"),
+                // so bare-verb timers work and no longer silently no-op.
+                if (_triggerRunner.TryRunFunction(entry.FunctionName, obj, null, trigArgs, out _))
+                    return;
+                try
+                {
+                    obj.TryExecuteCommand(entry.FunctionName, entry.Args, new RefExecConsole());
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning(ex, "Delayed TIMERF verb '{Verb}' failed", entry.FunctionName);
+                }
             };
             SphereNet.Game.Objects.Items.Item.ResolveShipEngine = () => _shipEngine;
             SphereNet.Game.Objects.Items.Item.ResolveWorld = () => _world;

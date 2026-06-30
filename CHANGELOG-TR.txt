@@ -4,6 +4,23 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Scripting paritesi: TIMERFMS ve gecikmeli-verb timer'lari (Wave 198)
+----------------------------------------
+
+EKLENEN - TIMERFMS nesne verb'i (Source-X milisaniye timer):
+  - TIMERFMS <ms>, <payload> bir nesnede gecikmeli fonksiyon/verb'i milisaniye cinsinden
+    zamanlar; TIMERF'in saniye biriminin karsiligi (eskiden tek desteklenen birimdi).
+    Ikisi artik tek parser paylasir (ObjBase.ScheduleTimerF), yalnizca gecikme carpaninda
+    ayrisir.
+
+DUZELTILDI - [FUNCTION] olmayan gecikmeli TIMERF payload'u sessizce hicbir sey yapmiyordu:
+  - Timer yurutucu payload'u sadece script fonksiyonu olarak deniyordu; bu yuzden
+    TIMERF 5, SAY hi veya TIMERF 10, REMOVE gibi ciplak bir verb hic calismyordu. Eslesen
+    fonksiyon yoksa payload artik nesne uzerinde komut olarak yurutulur; Source-X TIMERF'i
+    (gecikmeli verb VEYA fonksiyon) yansitir.
+
+================================================================================
+
 [2026-06-30] - Parite omurgasi: SERV.* world-ops verb'leri ve parite matrisi (Wave 197)
 ----------------------------------------
 

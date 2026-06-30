@@ -251,6 +251,25 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         _timerFEntries.Add(new TimerFEntry(due, functionName.Trim(), args.Trim()));
     }
 
+    /// <summary>Parse a <c>TIMERF</c> / <c>TIMERFMS</c> argument string —
+    /// <c>"&lt;delay&gt;, &lt;funcname&gt; &lt;args&gt;"</c> — and schedule it. The delay
+    /// number is multiplied by <paramref name="delayUnitMs"/> (1000 for TIMERF's
+    /// seconds, 1 for TIMERFMS's milliseconds). Only the first comma splits the delay
+    /// from the payload, so the payload may itself contain commas.</summary>
+    internal void ScheduleTimerF(string args, long delayUnitMs)
+    {
+        int comma = args.IndexOf(',');
+        string delayPart = comma >= 0 ? args[..comma] : args;
+        string payload = comma >= 0 ? args[(comma + 1)..].Trim() : "";
+        if (string.IsNullOrWhiteSpace(payload))
+            return;
+        int space = payload.IndexOfAny([' ', '\t']);
+        string functionName = space >= 0 ? payload[..space].Trim() : payload.Trim();
+        string functionArgs = space >= 0 ? payload[(space + 1)..].Trim() : "";
+        _ = long.TryParse(delayPart.Trim(), out long delay);
+        AddTimerF(delay * delayUnitMs, functionName, functionArgs);
+    }
+
     public List<TimerFEntry> DequeueDueTimerF(long nowMs)
     {
         var due = new List<TimerFEntry>();
@@ -444,21 +463,14 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
 
         switch (key.ToUpperInvariant())
         {
+            // Source-X TIMERF schedules a delayed function/verb on this object: the
+            // delay is in SECONDS, while TIMERFMS takes MILLISECONDS (same payload).
             case "TIMERF":
-            {
-                int comma = args.IndexOf(',');
-                string delayPart = comma >= 0 ? args[..comma] : args;
-                string payload = comma >= 0 ? args[(comma + 1)..].Trim() : "";
-                if (string.IsNullOrWhiteSpace(payload))
-                    return true;
-                int space = payload.IndexOfAny(new[] { ' ', '\t' });
-                string functionName = space >= 0 ? payload[..space].Trim() : payload.Trim();
-                string functionArgs = space >= 0 ? payload[(space + 1)..].Trim() : "";
-                long delaySeconds = 0;
-                _ = long.TryParse(delayPart.Trim(), out delaySeconds);
-                AddTimerF(delaySeconds * 1000L, functionName, functionArgs);
+                ScheduleTimerF(args, delayUnitMs: 1000L);
                 return true;
-            }
+            case "TIMERFMS":
+                ScheduleTimerF(args, delayUnitMs: 1L);
+                return true;
             case "SHOW":
                 source.SysMessage($"{GetName()} [0x{Uid.Value:X8}] P={Position.X},{Position.Y},{Position.Z},{Position.Map}");
                 return true;

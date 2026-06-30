@@ -75,13 +75,19 @@ Char/item verb + property parity is exercised across `ScriptObjectParityTests`,
 enumeration against Source-X is the remaining Faz 0 work and will be appended here
 as it is produced.
 
+| Verb | Status | Where | Notes |
+|---|---|---|---|
+| `TIMERF` | Implemented | `ObjBase.ScheduleTimerF` (delay in seconds) | Runs a delayed function; falls back to running the payload as a verb (Wave 198). |
+| `TIMERFMS` | Implemented | `ObjBase.ScheduleTimerF` (delay in ms) | Wave 198 — was missing; millisecond counterpart of `TIMERF`. |
+
 ---
 
 ## Next
 
-- **Faz 1**: caller-console routing for `VARLIST`/`PRINTLISTS`; `TIMERF`/`TIMERFMS`
-  delayed-verb execution; minimum-safe `FILE.*` set. `EXPORT`/`IMPORT`/`RESTORE`/
-  `SAVESTATICS`/`LOAD` deferred to the Faz 4 world-ops block (serialisation-heavy).
+- **Faz 1**: caller-console routing for `VARLIST`/`PRINTLISTS`; minimum-safe `FILE.*`
+  set; `VarObjs` chain (`ARGO`/`ACT`/`REFn`/`OBJ`/`NEW`/`SRC`/`I`/`LINK`) consistency.
+  `EXPORT`/`IMPORT`/`RESTORE`/`SAVESTATICS`/`LOAD` deferred to the Faz 4 world-ops
+  block (serialisation-heavy). `TIMERF`/`TIMERFMS` delayed verb+function — done (Wave 198).
 - **Faz 2**: per-trigger arg/return/order matrix on the guardrail set.
 - **Faz 0 (ongoing)**: enumerate Source-X `CChar`/`CItem`/`CClient` `r_Verb` +
   `r_WriteVal` and append the object-surface tables above.

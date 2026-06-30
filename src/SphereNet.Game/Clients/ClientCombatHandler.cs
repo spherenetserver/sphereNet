@@ -1925,11 +1925,8 @@ public sealed class ClientCombatHandler
             string spellName = spellDef?.Name ?? spell.ToString();
             SysMessage(ServerMessages.GetFormatted("spell_cast_ok", spellName));
         }
-        else
-        {
-            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellFail,
-                new TriggerArgs { CharSrc = _character, N1 = (int)spell });
-        }
+        // @SpellFail on a failed completion is now fired by the engine
+        // (SpellEngine.CastDone → OnCastResolved), shared with the NPC path.
     }
 
     public void TickSpellCast()
@@ -2002,33 +1999,10 @@ public sealed class ClientCombatHandler
                     }
                 }
 
-                // Fire @SpellEffect on caster, @SpellSuccess
-                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellEffect,
-                    new TriggerArgs { CharSrc = _character, N1 = spellId });
-                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellSuccess,
-                    new TriggerArgs { CharSrc = _character, N1 = spellId });
-
-                // Consume scroll if cast was initiated from one
-                if (_character.TryGetTag("SCROLL_UID", out string? scrollUidStr))
-                {
-                    _character.RemoveTag("SCROLL_UID");
-                    if (uint.TryParse(scrollUidStr, out uint scrollUid))
-                    {
-                        var scroll = _world.FindItem(new Serial(scrollUid));
-                        if (scroll != null && !scroll.IsDeleted)
-                        {
-                            if (scroll.Amount > 1)
-                                scroll.Amount--;
-                            else
-                                scroll.Delete();
-                        }
-                    }
-                }
-            }
-            else
-            {
-                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SpellFail,
-                    new TriggerArgs { CharSrc = _character, N1 = spellId });
+                // @SpellEffect / @SpellSuccess and the wand-charge / scroll
+                // consumption are now fired by the engine in SpellEngine.CastDone
+                // (OnCastResolved), so NPC and precast casts reach them too — the
+                // client only renders the spell's visuals above.
             }
         }
     }

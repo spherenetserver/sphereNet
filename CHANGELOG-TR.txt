@@ -4,6 +4,30 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Buyu paritesi: wand/scroll tuketim fix, engine cast trigger'lari, [SPELL] ON= dispatch (Wave 178)
+----------------------------------------
+
+DUZELTILEN - Wand sarji / scroll tuketimi (Source-X Spell_CastDone consume asamasi):
+  - Wand sarji artik cast cozulmeden once, dclick'te dusulmuyor — boylece cast fizzle olur,
+    kesilir veya hedef iptal edilirse sarj kaybolmuyor. Dclick artik kaynak wand'i etiketler
+    (WAND_UID); sarj yalnizca SpellEngine.CastDone basariya commit ettiginde harcanir. Kesilen/
+    iptal edilen cast etiketi harcamadan temizler.
+  - Buyu scroll tuketimi client basari yolundan engine'e tasindi (CastDone), boylece precast
+    cast'leri de scroll'u tuketir (eskiden sizdiriyordu) ve tuketim her tamamlanma yolu icin
+    tek ortak noktada olur.
+
+EKLENEN - Engine seviyesi cast cozum trigger'lari (Source-X paritesi, NPC/direct cast):
+  - @SpellSuccess / @SpellEffect / @SpellFail artik cast tamamlandiginda tek bir engine hook'undan
+    (SpellEngine.OnCastResolved) HER caster icin (oyuncu, NPC, direct) atesler; sadece client
+    yolundan degil. Cift client fire'lari kaldirildi, boylece oyuncu cast'leri her birini hala tam
+    bir kez atesler. (Cast-start basarisizliklari ve hedef cursor'unun @SpellSelect / @SpellCast /
+    @SpellTargetCancel'i client UI akisinda kaliyor; NPC'ler cast'i @NPCActCast ile kontrol eder.)
+  - [SPELL] ON=@Trigger bloklari artik dispatch oluyor: TriggerDispatcher.FireSpellTrigger bir spell
+    def'inin kendi ON=@Success / @Effect / @Fail govdesini calistirir ([SPELL] link'i trigger
+    govdelerini zaten saklamisti), ayni OnCastResolved hook'u uzerinden baglandi.
+
+================================================================================
+
 [2026-06-30] - Multi paritesi: gemi ban / eject gemi region'ina baglandi (Wave 177)
 ----------------------------------------
 

@@ -18,7 +18,7 @@ public static class EngineTags
         "SKILL_PENDING_X", "SKILL_PENDING_Y", "SKILL_PENDING_Z",
         "CURRENT_REGION", "CURRENT_REGION_UID", "CURRENT_ROOM",
         "DRAGGING", "OBJ", "help_type", "PARTY_INVITE_FROM",
-        "SCROLL_UID", "StealthSteps", "FOCUS_BUFF",
+        "SCROLL_UID", "WAND_UID", "StealthSteps", "FOCUS_BUFF",
         "ATTACK_TARGET", "FOLLOW_TARGET", "GUARD_TARGET", "GO_TARGET",
         "TARGP", "TARG.X", "TARG.Y", "TARG.Z", "TARG.MAP", "TARG.UID",
     };

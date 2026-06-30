@@ -4,6 +4,32 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Spell parity: wand/scroll consume fix, engine cast triggers, [SPELL] ON= dispatch (Wave 178)
+----------------------------------------
+
+FIXED - Wand charge / scroll consumption (Source-X Spell_CastDone consume stage):
+  - A wand charge is no longer deducted at double-click, before the cast resolves —
+    so it is no longer lost when the cast fizzles, is interrupted, or the target is
+    cancelled. The double-click now tags the source wand (WAND_UID); the charge is
+    spent only when SpellEngine.CastDone commits to success. An interrupted/cancelled
+    cast clears the tag without spending.
+  - Spell-scroll consumption moved from the client success path into the engine
+    (CastDone), so precast casts consume the scroll too (previously they leaked it),
+    and the consume happens at one shared point for every completion path.
+
+ADDED - Engine-level cast resolution triggers (Source-X parity, NPC/direct casts):
+  - @SpellSuccess / @SpellEffect / @SpellFail now fire from one engine hook
+    (SpellEngine.OnCastResolved) at cast completion for ANY caster — player, NPC or
+    direct — instead of only the client path. The duplicate client fires were
+    removed, so player casts still fire each exactly once. (Cast-start failures and
+    the targeting cursor's @SpellSelect / @SpellCast / @SpellTargetCancel remain on
+    the client UI flow; NPCs gate casts via @NPCActCast.)
+  - [SPELL] ON=@Trigger blocks now dispatch: TriggerDispatcher.FireSpellTrigger runs
+    a spell def's own ON=@Success / @Effect / @Fail body (the [SPELL] link already
+    retained its trigger bodies), wired through the same OnCastResolved hook.
+
+================================================================================
+
 [2026-06-30] - Multi parity: ship ban / eject bound to the ship region (Wave 177)
 ----------------------------------------
 

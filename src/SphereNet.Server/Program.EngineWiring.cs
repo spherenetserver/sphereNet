@@ -1065,6 +1065,33 @@ public static partial class Program
                 _triggerDispatcher?.FireCharTrigger(caster, CharTrigger.SpellInterrupt,
                     new TriggerArgs { CharSrc = caster });
             };
+            // Shared cast-resolution pipeline (Source-X Spell_CastDone). Fires the
+            // @SpellSuccess / @SpellEffect / @SpellFail char triggers AND the
+            // per-spell [SPELL] ON= block for EVERY caster — player, NPC, direct —
+            // so casts no longer depend on the client path to raise these.
+            _spellEngine.OnCastResolved = (caster, spell, success) =>
+            {
+                if (_triggerDispatcher == null) return;
+                int spellId = (int)spell;
+                if (success)
+                {
+                    _triggerDispatcher.FireCharTrigger(caster, CharTrigger.SpellEffect,
+                        new TriggerArgs { CharSrc = caster, N1 = spellId });
+                    _triggerDispatcher.FireCharTrigger(caster, CharTrigger.SpellSuccess,
+                        new TriggerArgs { CharSrc = caster, N1 = spellId });
+                    _triggerDispatcher.FireSpellTrigger(spell, "Effect",
+                        caster, new TriggerArgs { CharSrc = caster, N1 = spellId });
+                    _triggerDispatcher.FireSpellTrigger(spell, "Success",
+                        caster, new TriggerArgs { CharSrc = caster, N1 = spellId });
+                }
+                else
+                {
+                    _triggerDispatcher.FireCharTrigger(caster, CharTrigger.SpellFail,
+                        new TriggerArgs { CharSrc = caster, N1 = spellId });
+                    _triggerDispatcher.FireSpellTrigger(spell, "Fail",
+                        caster, new TriggerArgs { CharSrc = caster, N1 = spellId });
+                }
+            };
             _spellEngine.OnPersonalLightChanged = target =>
             {
                 if (TryGetClientFor(target, out var c))

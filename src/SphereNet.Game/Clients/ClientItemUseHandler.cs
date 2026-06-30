@@ -682,21 +682,12 @@ public sealed class ClientItemUseHandler
             case ItemType.Wand:
                 if (item.More1 > 0)
                 {
+                    // Tag the source wand so the engine deducts a charge only when the
+                    // cast actually succeeds (SpellEngine.CastDone) — deducting here,
+                    // before the cast resolves, lost the charge on any fizzle /
+                    // interrupt / target-cancel.
+                    _character.SetTag("WAND_UID", item.Uid.Value.ToString());
                     HandleCastSpell((SpellType)item.More1, 0);
-                    if (item.TryGetTag("CHARGES", out string? chStr) &&
-                        int.TryParse(chStr, out int charges) && charges > 0)
-                    {
-                        charges--;
-                        if (charges <= 0)
-                        {
-                            item.More1 = 0;
-                            item.RemoveTag("CHARGES");
-                        }
-                        else
-                        {
-                            item.SetTag("CHARGES", charges.ToString());
-                        }
-                    }
                 }
                 else
                     SysMessage("This wand has no charges.");

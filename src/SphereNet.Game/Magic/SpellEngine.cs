@@ -38,6 +38,14 @@ public sealed class SpellEngine
     /// <summary>Callback fired when a spell is interrupted. Args: (Character caster, string reason).</summary>
     public Action<Character, string>? OnSpellInterrupt { get; set; }
 
+    /// <summary>Fired when a cast RESOLVES at completion — for ANY caster (player,
+    /// NPC, direct) — so the @SpellSuccess / @SpellEffect / @SpellFail triggers run
+    /// from one engine point instead of only the client path. Args: caster, spell,
+    /// success. Wired to fire the char triggers and the per-spell [SPELL] ON= block.
+    /// (Cast-START failures and the targeting cursor's @SpellSelect/@SpellCast/
+    /// @SpellTargetCancel stay on the client UI flow — NPCs gate casts via @NPCActCast.)</summary>
+    public Action<Character, SpellType, bool>? OnCastResolved { get; set; }
+
     /// <summary>Fired when a cast starts after we've turned the caster
     /// to face the target — Program.cs uses this to broadcast a 0x77
     /// MobileMoving so other clients see the new facing while the cast
@@ -142,6 +150,63 @@ public sealed class SpellEngine
         return weapon?.ItemType == ItemType.Wand;
     }
 
+    /// <summary>Consume the wand charge / spell scroll that initiated this cast,
+    /// once the cast has committed to success. The player path tags WAND_UID /
+    /// SCROLL_UID at double-click (instead of decrementing immediately); NPC wand
+    /// casts consume their own charge in the AI. Both tags are cleared here.</summary>
+    private void ConsumeCastSource(Character caster)
+    {
+        if (caster.TryGetTag("WAND_UID", out string? wandStr))
+        {
+            caster.RemoveTag("WAND_UID");
+            if (uint.TryParse(wandStr, out uint wuid))
+            {
+                var wand = _world?.FindItem(new Serial(wuid));
+                if (wand != null && !wand.IsDeleted)
+                    ConsumeWandCharge(wand);
+            }
+        }
+
+        if (caster.TryGetTag("SCROLL_UID", out string? scrollStr))
+        {
+            caster.RemoveTag("SCROLL_UID");
+            if (uint.TryParse(scrollStr, out uint suid))
+            {
+                var scroll = _world?.FindItem(new Serial(suid));
+                if (scroll != null && !scroll.IsDeleted)
+                {
+                    if (scroll.Amount > 1) scroll.Amount--;
+                    else scroll.Delete();
+                }
+            }
+        }
+    }
+
+    /// <summary>Decrement a wand's CHARGES tag; depleting it clears the bound spell
+    /// (More1). A wand with no CHARGES tag is treated as unlimited.</summary>
+    private static void ConsumeWandCharge(Item wand)
+    {
+        if (!wand.TryGetTag("CHARGES", out string? ch) || !int.TryParse(ch, out int charges))
+            return;
+        charges--;
+        if (charges <= 0)
+        {
+            wand.More1 = 0;
+            wand.RemoveTag("CHARGES");
+        }
+        else
+            wand.SetTag("CHARGES", charges.ToString());
+    }
+
+    /// <summary>Drop the cast-source tags WITHOUT consuming — used when a cast is
+    /// interrupted / aborted so a half-started wand or scroll cast does not leak its
+    /// tag into the next cast (which would then wrongly consume the charge / scroll).</summary>
+    private static void ClearCastSourceTags(Character caster)
+    {
+        caster.RemoveTag("WAND_UID");
+        caster.RemoveTag("SCROLL_UID");
+    }
+
     private static bool IsSpellDisabledByConfig(SpellType spell)
     {
         return spell switch
@@ -215,6 +280,9 @@ public sealed class SpellEngine
         if (def != null)
             ApplyCastResourceLoss(caster, def, IsCastingWithWand(caster), fizzle: false, abort: true);
 
+        // An aborted wand/scroll cast must not leave its source tag behind, or the
+        // next cast would consume the charge/scroll on success.
+        ClearCastSourceTags(caster);
         ClearCastState(caster);
 
         string msg = reason switch
@@ -437,6 +505,18 @@ public sealed class SpellEngine
     /// </summary>
     public bool CastDone(Character caster)
     {
+        // Capture the spell before the core clears cast state, then fire the
+        // shared resolution hook so NPC/direct casts reach @SpellSuccess /
+        // @SpellEffect / @SpellFail — the client path no longer fires these.
+        bool wasCasting = caster.TryGetCastingSpell(out SpellType resolvedSpell);
+        bool ok = CastDoneCore(caster);
+        if (wasCasting)
+            OnCastResolved?.Invoke(caster, resolvedSpell, ok);
+        return ok;
+    }
+
+    private bool CastDoneCore(Character caster)
+    {
         if (caster.IsDead)
         {
             ClearCastState(caster);
@@ -529,6 +609,12 @@ public sealed class SpellEngine
         if (castWithWand) manaCost = 0;             // reference: wands cost no mana
         else if (castFromScroll) manaCost /= 2;     // reference: scrolls cost half mana
         caster.Mana -= (short)Math.Min(manaCost, caster.Mana);
+
+        // Consume the wand charge / scroll ONLY now that the cast has committed to
+        // success (passed fizzle + mana). Moving this off the double-click / client
+        // success path means a charge/scroll is never lost to an interrupted,
+        // cancelled or fizzled cast, and NPC/precast casts consume correctly too.
+        ConsumeCastSource(caster);
 
         // Clear cast state
         ClearCastState(caster);

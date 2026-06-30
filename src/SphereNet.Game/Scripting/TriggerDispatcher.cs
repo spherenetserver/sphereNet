@@ -448,6 +448,30 @@ public sealed class TriggerDispatcher
         return result;
     }
 
+    /// <summary>
+    /// Fire a trigger on a [SPELL] def's own ON=@TrigName block (Source-X
+    /// Spell_OnTrigger). The [SPELL] ResourceLink already retains its trigger
+    /// bodies (SpellDef is a definition type), so this just resolves the link by
+    /// spell index and runs the body — mirroring the ITEMDEF/REGIONRESOURCE path.
+    /// ARGN1/2/3 mutations are copied back so a script can override id/amount.
+    /// </summary>
+    public TriggerResult FireSpellTrigger(SphereNet.Core.Enums.SpellType spell, string trigName, Character ch, TriggerArgs args)
+    {
+        if (Resources == null || Runner == null)
+            return TriggerResult.Default;
+
+        var link = Resources.GetResource(ResType.SpellDef, (int)spell);
+        if (link == null)
+            return TriggerResult.Default;
+
+        var wrapped = WrapArgs(args);
+        var result = Runner.RunTriggerByName(link, trigName, ch, args.ScriptConsole, wrapped);
+        args.N1 = wrapped.Number1;
+        args.N2 = wrapped.Number2;
+        args.N3 = wrapped.Number3;
+        return result;
+    }
+
     /// <summary>Register a global character event handler.</summary>
     public void RegisterCharEvent(string eventKey, string trigName, TriggerHandler handler)
     {

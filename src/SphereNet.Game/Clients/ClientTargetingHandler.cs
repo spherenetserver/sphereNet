@@ -136,6 +136,10 @@ public sealed class ClientTargetingHandler
                         new TriggerArgs { CharSrc = _character, N1 = (int)cancelledSpell });
                 }
                 _character.RemoveTag("CAST_SPELL");
+                // The cast never started — drop the wand/scroll source tags so they
+                // don't leak into and get consumed by the next cast.
+                _character.RemoveTag("WAND_UID");
+                _character.RemoveTag("SCROLL_UID");
             }
             _character.RemoveTag("TARGP");
             _character.RemoveTag("TARG.X");

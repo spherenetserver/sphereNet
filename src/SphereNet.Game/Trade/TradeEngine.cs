@@ -176,11 +176,11 @@ public static class VendorEngine
 
         foreach (var (stock, amount, _) in resolved)
         {
-            // Materialise the purchased item only now, on buy.
+            // Materialise the purchased item only now, on buy. Full-clone the stock
+            // entry (Source-X CreateDupeItem) so per-instance state — tags, durability,
+            // price, more-fields — travels with it, not just id/hue/name.
             var newItem = World.CreateItem();
-            newItem.BaseId = stock.BaseId;
-            newItem.Name = stock.Name;
-            newItem.Hue = stock.Hue;
+            newItem.CopyStackInstanceStateFrom(stock);
             newItem.Amount = (ushort)Math.Max(1, Math.Min(amount, ushort.MaxValue));
             backpack.AddItemWithStack(newItem);
 
@@ -205,6 +205,11 @@ public static class VendorEngine
         if (vendor.NpcBrain != Core.Enums.NpcBrainType.Vendor)
             return 0;
 
+        // Source-X NPC_FindVendableItem: a vendor with a BUY list only buys items on
+        // it. No list = buys anything (legacy behaviour preserved). Authoritative —
+        // rejects a crafted packet that submits an item the vendor wouldn't list.
+        var buyFilter = GetVendorBuyFilter(vendor);
+
         long totalValue = 0;
         var validated = new List<(TradeEntry Entry, Item Item, int ServerPrice)>();
         var seenSerials = new HashSet<uint>();
@@ -219,6 +224,8 @@ public static class VendorEngine
             if (found == null || found.IsDeleted || found.Amount < entry.Amount ||
                 found.ItemType == Core.Enums.ItemType.Gold || found.BaseId == 0x0EED)
                 return 0;
+            if (buyFilter != null && !buyFilter.Contains(found.BaseId))
+                return 0; // vendor does not buy this item type
 
             int serverPrice = GetServerSellPrice(vendor, found);
             if (serverPrice <= 0) return 0;
@@ -259,6 +266,27 @@ public static class VendorEngine
         }
 
         return (int)totalValue;
+    }
+
+    /// <summary>The set of item BaseIds a vendor will buy (Source-X NPC_FindVendableItem),
+    /// resolved from its VENDOR_BUY_LIST template, or null when the vendor has no buy
+    /// list — in which case it buys anything (the legacy behaviour is preserved). An
+    /// unresolvable template also yields null so selling is never silently broken.</summary>
+    public static HashSet<ushort>? GetVendorBuyFilter(Character vendor)
+    {
+        if (!vendor.TryGetTag("VENDOR_BUY_LIST", out string? tpl) || string.IsNullOrWhiteSpace(tpl))
+            return null;
+
+        var set = new HashSet<ushort>();
+        var resources = SphereNet.Game.Definitions.DefinitionLoader.StaticResources;
+        foreach (var (defName, _) in SphereNet.Game.Definitions.TemplateEngine.EnumerateSequential(tpl!))
+        {
+            ushort id = resources != null
+                ? SphereNet.Game.Definitions.TemplateEngine.ResolveDispId(resources, defName)
+                : (ushort)0;
+            if (id != 0) set.Add(id);
+        }
+        return set.Count > 0 ? set : null;
     }
 
     /// <summary>Look up server-side price for an item. Checks vendor stock PRICE tags, item def, fallback to baseId formula.</summary>

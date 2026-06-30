@@ -19,6 +19,22 @@ public sealed class StableEngine
     public const int MaxStabledPets = 5;
     public const int StableCost = 30; // gold per real-time day
 
+    /// <summary>Per-owner stable capacity (Source-X CCharNPCAct_Vendor): an explicit
+    /// MAXPLAYERPETS tag overrides; otherwise the base count plus one slot per ~60.0
+    /// of combined handling skill (Taming + Animal Lore + Veterinary). Never below the
+    /// base, so an unskilled owner keeps the default 5.</summary>
+    public static int GetMaxStabledPets(Character owner)
+    {
+        if (owner.TryGetTag("MAXPLAYERPETS", out string? tag) &&
+            int.TryParse(tag, out int max) && max > 0)
+            return max;
+
+        int handling = owner.GetSkill(SkillType.Taming)
+                     + owner.GetSkill(SkillType.AnimalLore)
+                     + owner.GetSkill(SkillType.Veterinary); // tenths, 0..3600
+        return MaxStabledPets + handling / 600;
+    }
+
     /// <summary>
     /// Stable a pet for the given owner. Removes pet from world.
     /// </summary>
@@ -29,7 +45,7 @@ public sealed class StableEngine
 
         var list = GetOwnerStableList(owner);
 
-        if (list.Count >= MaxStabledPets)
+        if (list.Count >= GetMaxStabledPets(owner))
             return false;
 
         var skillSnap = new Dictionary<int, ushort>();
@@ -37,7 +53,9 @@ public sealed class StableEngine
         {
             if (st == SkillType.None || st >= SkillType.Qty) continue;
             ushort sv = pet.GetSkill(st);
-            if (sv > 0) skillSnap[(int)st] = Math.Min(sv, (ushort)1000);
+            // Snapshot the FULL skill value (the engine supports up to 1200 / 120.0);
+            // the old 1000 clip silently dropped GM+ pet skills on stabling.
+            if (sv > 0) skillSnap[(int)st] = Math.Min(sv, (ushort)1200);
         }
 
         list.Add(new StabledPet

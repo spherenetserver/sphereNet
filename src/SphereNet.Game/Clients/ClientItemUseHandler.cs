@@ -316,6 +316,38 @@ public sealed class ClientItemUseHandler
     /// players see the exact upstream UX. Anything not matched falls through
     /// to DEFMSG_ITEMUSE_CANTTHINK like upstream.
     /// </summary>
+    /// <summary>Convert a bank check item into gold in the container it occupies
+    /// (bank box or backpack) and consume the check. Source-X check redeem flow:
+    /// new gold pile(s) sent via 0x25, the check removed via 0x1D.</summary>
+    private void RedeemBankCheck(Item check, int amount)
+    {
+        if (_character == null) return;
+        var container = check.ContainedIn.IsValid ? _world.FindItem(check.ContainedIn) : null;
+        container ??= _character.Backpack;
+        if (container == null) return;
+
+        int remaining = amount;
+        while (remaining > 0)
+        {
+            int pile = Math.Min(remaining, 60000);
+            var gold = _world.CreateItem();
+            gold.BaseId = 0x0EED;
+            gold.ItemType = ItemType.Gold;
+            gold.Amount = (ushort)pile;
+            gold.Name = "Gold";
+            var actual = container.AddItemWithStack(gold);
+            if (actual != gold) _world.RemoveItem(gold);
+            _netState.Send(new PacketContainerItem(
+                actual.Uid.Value, actual.DispIdFull, 0, actual.Amount,
+                actual.X, actual.Y, container.Uid.Value, actual.Hue,
+                _netState.IsClientPost6017));
+            remaining -= pile;
+        }
+
+        _netState.Send(new PacketDeleteObject(check.Uid.Value));
+        _world.RemoveItem(check);
+    }
+
     private void HandleItemUse(Item item)
     {
         if (_character == null) return;
@@ -333,6 +365,15 @@ public sealed class ClientItemUseHandler
         if (_character.IsStatFlag(StatFlag.Freeze))
         {
             SysMessage(ServerMessages.Get("msg_frozen"));
+            return;
+        }
+
+        // Bank check redeem (Source-X): double-clicking a check converts it to gold
+        // in the container it sits in (bank box or backpack) and consumes the check.
+        if (item.TryGetTag("BANKCHECK_AMOUNT", out string? checkStr) &&
+            int.TryParse(checkStr, out int checkAmount) && checkAmount > 0)
+        {
+            RedeemBankCheck(item, checkAmount);
             return;
         }
 
@@ -2167,12 +2208,16 @@ public sealed class ClientItemUseHandler
             return;
         }
 
-        // Build list of items the vendor will buy from the player's backpack
+        // Build list of items the vendor will buy from the player's backpack.
+        // A vendor with a BUY list only lists items on it (Source-X
+        // NPC_FindVendableItem); no list = buys anything (legacy behaviour).
+        var buyFilter = SphereNet.Game.Trade.VendorEngine.GetVendorBuyFilter(vendor);
         var sellItems = new List<VendorItem>();
         foreach (var item in _world.GetContainerContents(backpack.Uid))
         {
             if (item.ItemType == ItemType.Gold) continue; // don't sell gold
             if (item.IsDeleted) continue;
+            if (buyFilter != null && !buyFilter.Contains(item.BaseId)) continue;
 
             int price = GetVendorItemSellPrice(vendor, item);
             if (price <= 0) continue;

@@ -4,6 +4,36 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Vendor/stable parity: buy-list, item clone, bank check redeem, stable skill snapshot (Wave 184)
+----------------------------------------
+
+FIXED - Stable skill snapshot (data loss):
+  - Stabling a pet clipped every skill to 1000 (100.0), silently dropping the value of
+    GM+ pets on retrieval. The snapshot now keeps the full value (up to 1200), so a
+    claimed pet returns with the skills it went in with.
+
+FIXED - Bought item is now a full clone (Source-X CreateDupeItem):
+  - Buying from a vendor copied only id/name/hue/amount, dropping the stock entry's
+    tags, durability, price and more-fields. The purchase now full-clones the stock
+    item's per-instance state.
+
+ADDED - Vendor buy-list restriction (Source-X NPC_FindVendableItem):
+  - A vendor with a BUY list now only buys items on that list — the sell gump hides
+    other backpack items and the authoritative sell path rejects them (anti-exploit).
+    A vendor with NO buy list still buys anything, so existing vendors are unchanged.
+
+ADDED - Bank check redeem:
+  - Double-clicking a bank check now converts it to gold in the container it sits in
+    (bank box or backpack) and consumes the check (previously checks were one-way —
+    created but never redeemable).
+
+ADDED - Stable capacity from skills / MAXPLAYERPETS:
+  - Stable slots are no longer a flat 5: an explicit MAXPLAYERPETS tag overrides,
+    otherwise the base plus one slot per ~60.0 combined Taming + Animal Lore +
+    Veterinary. Never below the base, so unskilled owners keep 5.
+
+================================================================================
+
 [2026-06-30] - Combat parity: COMBAT_ANIM_HIT_SMOOTH swing animation pacing (Wave 183)
 ----------------------------------------
 

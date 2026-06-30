@@ -4,6 +4,33 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Vendor/stable paritesi: buy-list, item clone, bank check redeem, stable skill snapshot (Wave 184)
+----------------------------------------
+
+DUZELTILEN - Stable skill snapshot (data loss):
+  - Pet stable'a konunca her skill 1000'e (100.0) kirpiliyor, GM+ pet'lerin degeri geri alimda
+    sessizce dusuyordu. Snapshot artik tam degeri (1200'e kadar) saklar; claim edilen pet girdigi
+    skill'lerle geri doner.
+
+DUZELTILEN - Satin alinan item artik tam klon (Source-X CreateDupeItem):
+  - Vendor'dan alim sadece id/name/hue/amount kopyaliyor, stok girisinin tag/durability/price/more
+    alanlarini dusuruyordu. Alim artik stok item'in per-instance state'ini tam klonlar.
+
+EKLENEN - Vendor buy-list kisitlamasi (Source-X NPC_FindVendableItem):
+  - BUY listesi olan vendor artik yalnizca o listedeki item'lari alir -- sell gump diger backpack
+    item'larini gizler ve authoritative sell yolu reddeder (anti-exploit). BUY listesi OLMAYAN
+    vendor hala her seyi alir, boylece mevcut vendor'lar degismez.
+
+EKLENEN - Bank check redeem:
+  - Bank check'e cift tiklamak artik onu icinde bulundugu container'da (bank box veya backpack)
+    gold'a cevirir ve check'i tuketir (eskiden check tek yonluydu -- yaratiliyor ama bozulamiyordu).
+
+EKLENEN - Skill / MAXPLAYERPETS'ten stable kapasitesi:
+  - Stable slot'lari artik sabit 5 degil: acik MAXPLAYERPETS tag'i override eder, yoksa base + her
+    ~60.0 Taming + Animal Lore + Veterinary toplamina 1 slot. Base'in altina inmez, skillsiz sahip 5'te kalir.
+
+================================================================================
+
 [2026-06-30] - Combat paritesi: COMBAT_ANIM_HIT_SMOOTH swing animasyon tempolamasi (Wave 183)
 ----------------------------------------
 

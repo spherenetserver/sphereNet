@@ -1768,7 +1768,12 @@ public sealed class ClientWorldFeaturesHandler
                 if (_character.TryGetTag("PARTY_INVITE_FROM", out string? declineInviterStr) &&
                     uint.TryParse(declineInviterStr, out uint declineInviterUid))
                 {
-                    SendToChar?.Invoke(new Serial(declineInviterUid), null!); // notify inviter
+                    // Notify the inviter their invitation was declined. Previously this
+                    // sent a null packet (null!) — a NullReferenceException waiting in the
+                    // send pipeline. party_decline_1: "<name>: Does not wish to join the party."
+                    string declineNote = ServerMessages.GetFormatted("party_decline_1", _character.Name ?? "Someone");
+                    SendToChar?.Invoke(new Serial(declineInviterUid),
+                        new PacketSpeechUnicodeOut(0xFFFFFFFF, 0xFFFF, 6, 0x0035, 3, "TRK", "System", declineNote));
                 }
                 _character.RemoveTag("PARTY_INVITE_FROM");
                 SysMessage(ServerMessages.Get("party_decline_2"));

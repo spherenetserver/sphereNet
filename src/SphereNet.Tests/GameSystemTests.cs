@@ -1133,6 +1133,64 @@ public class GameSystemTests
     }
 
     [Fact]
+    public void GuildStone_AllianceVerbs_RecordMutualDeclarationAndBreak()
+    {
+        var world = CreateWorld();
+        var stone = world.CreateItem();
+        stone.ItemType = ItemType.StoneGuild;
+        world.PlaceItem(stone, new Point3D(100, 100, 0, 0));
+
+        var other = new Serial(0xABCDE);
+        var guild = new GuildDef(stone.Uid);
+
+        var oldResolveGuild = Item.ResolveGuild;
+        try
+        {
+            Item.ResolveGuild = uid => uid == stone.Uid ? guild : null;
+
+            // Our declaration alone is one-sided — not yet an active alliance.
+            Assert.True(stone.TryExecuteCommand("DECLAREALLY", $"0{other.Value:X}", new NullConsole()));
+            Assert.True(guild.GetRelation(other)!.WeDeclaredAlliance);
+            Assert.False(guild.IsAlliedWith(other));
+
+            // The other guild reciprocates (INVITEALLY uid, 0 = they declared) → mutual.
+            Assert.True(stone.TryExecuteCommand("INVITEALLY", $"0{other.Value:X}, 0", new NullConsole()));
+            Assert.True(guild.IsAlliedWith(other));
+
+            // Withdrawing our own declaration breaks the alliance.
+            Assert.True(stone.TryExecuteCommand("DECLAREUNALLY", $"0{other.Value:X}", new NullConsole()));
+            Assert.False(guild.IsAlliedWith(other));
+        }
+        finally
+        {
+            Item.ResolveGuild = oldResolveGuild;
+        }
+    }
+
+    [Fact]
+    public void GuildManager_AbbrevSuffix_ShownOnlyForVisibleMembers()
+    {
+        var gm = new GuildManager();
+        var master = new Serial(1);
+        var outsider = new Serial(2);
+        var guild = gm.CreateGuild(new Serial(100), "The Order", master);
+        guild.Abbreviation = "TO";
+
+        // A visible member shows " [TO]"; an unguilded character shows nothing.
+        Assert.Equal(" [TO]", gm.GetAbbrevSuffix(master));
+        Assert.Equal("", gm.GetAbbrevSuffix(outsider));
+
+        // Hiding the abbreviation (TOGGLEABBREVIATION) suppresses the suffix.
+        guild.FindMember(master)!.ShowAbbrev = false;
+        Assert.Equal("", gm.GetAbbrevSuffix(master));
+
+        // A guild with no abbreviation never appends a suffix.
+        guild.FindMember(master)!.ShowAbbrev = true;
+        guild.Abbreviation = "";
+        Assert.Equal("", gm.GetAbbrevSuffix(master));
+    }
+
+    [Fact]
     public void GameClient_HairDye_ChangesHairAndBeardHue()
     {
         var loggerFactory = LoggerFactory.Create(_ => { });

@@ -141,4 +141,182 @@ public class ChatSystemTests
         engine.SetChatName(uid, "Yunus");
         Assert.Equal("Yunus", engine.GetChatName(uid));
     }
+
+    // --- Conference moderation: owner, password, kick, voice/moderator roles ---
+
+    [Fact]
+    public void ChatEngine_AdHocCreator_BecomesOwnerAndModerator()
+    {
+        var engine = new ChatEngine();
+        var owner = new Serial(1);
+        var channel = engine.Join(owner, "Trade");
+        Assert.NotNull(channel);
+        Assert.Equal(owner, channel!.Owner);
+        Assert.True(channel.IsModerator(owner));
+        Assert.Equal((ushort)1, channel.UserType(owner)); // owner shows as moderator
+    }
+
+    [Fact]
+    public void ChatEngine_PasswordProtectedChannel_RejectsWrongOrMissingPassword()
+    {
+        var engine = new ChatEngine();
+        var owner = new Serial(1);
+        var guest = new Serial(2);
+
+        // Owner creates a protected channel.
+        Assert.NotNull(engine.Join(owner, "Secret", "letmein"));
+        Assert.True(engine.GetChannel("Secret")!.HasPassword);
+
+        // Missing and wrong passwords are rejected; the guest stays out.
+        Assert.Null(engine.Join(guest, "Secret"));
+        Assert.Null(engine.Join(guest, "Secret", "nope"));
+        Assert.Null(engine.GetMemberChannel(guest));
+
+        // Correct password joins.
+        Assert.NotNull(engine.Join(guest, "Secret", "letmein"));
+        Assert.Equal("Secret", engine.GetMemberChannel(guest)!.Name);
+    }
+
+    [Fact]
+    public void ChatEngine_Kick_OnlyModeratorRemovesOtherMember()
+    {
+        var engine = new ChatEngine();
+        var owner = new Serial(1);
+        var member = new Serial(2);
+        engine.Join(owner, "Trade");
+        engine.Join(member, "Trade");
+
+        // A non-moderator cannot kick.
+        Assert.Null(engine.Kick(member, owner));
+        // The owner cannot kick themselves.
+        Assert.Null(engine.Kick(owner, owner));
+
+        // The owner kicks the member out.
+        var channel = engine.Kick(owner, member);
+        Assert.NotNull(channel);
+        Assert.Null(engine.GetMemberChannel(member));
+        Assert.DoesNotContain(member, engine.GetChannel("Trade")!.Members);
+    }
+
+    [Fact]
+    public void ChatEngine_ModeratedChannel_GatesSpeechByVoiceAndModerator()
+    {
+        var engine = new ChatEngine();
+        var owner = new Serial(1);
+        var member = new Serial(2);
+        var channel = engine.Join(owner, "Trade")!;
+        engine.Join(member, "Trade");
+
+        // Turn the channel moderated (default-voice off): only mod/voiced may talk.
+        Assert.True(engine.SetDefaultVoice(owner, false));
+        Assert.True(channel.CanSpeak(owner));   // moderator
+        Assert.False(channel.CanSpeak(member)); // plain member silenced
+        Assert.Equal((ushort)0, channel.UserType(member));
+
+        // Grant the member voice.
+        Assert.True(engine.SetVoice(owner, member, true));
+        Assert.True(channel.CanSpeak(member));
+        Assert.Equal((ushort)2, channel.UserType(member)); // voiced marker
+
+        // A non-moderator cannot grant voice or moderator status.
+        var other = new Serial(3);
+        engine.Join(other, "Trade");
+        Assert.False(engine.SetVoice(member, other, true));
+        Assert.False(engine.SetModerator(member, other, true));
+
+        // Promote the member to moderator: UserType flips to 1 and revoking voice
+        // no longer silences them.
+        Assert.True(engine.SetModerator(owner, member, true));
+        Assert.Equal((ushort)1, channel.UserType(member));
+        Assert.True(channel.CanSpeak(member));
+    }
+
+    [Fact]
+    public void ChatEngine_Rename_ReKeysAndRejectsTakenOrStatic()
+    {
+        var engine = new ChatEngine("General");
+        var owner = new Serial(1);
+        var staticMember = new Serial(2);
+        engine.Join(owner, "Trade");
+        engine.Join(staticMember, "General");
+
+        // Static channels cannot be renamed.
+        Assert.Null(engine.Rename(staticMember, "Lobby"));
+
+        // A taken name is rejected.
+        Assert.Null(engine.Rename(owner, "General"));
+        // An empty name is rejected.
+        Assert.Null(engine.Rename(owner, "   "));
+
+        // A free name re-keys the channel and preserves membership.
+        var renamed = engine.Rename(owner, "Bazaar");
+        Assert.NotNull(renamed);
+        Assert.Null(engine.GetChannel("Trade"));
+        Assert.Equal("Bazaar", engine.GetMemberChannel(owner)!.Name);
+        Assert.Contains(owner, engine.GetChannel("Bazaar")!.Members);
+    }
+
+    [Fact]
+    public void ChatEngine_SetPassword_TogglesProtectionForLaterJoins()
+    {
+        var engine = new ChatEngine();
+        var owner = new Serial(1);
+        var guest = new Serial(2);
+        engine.Join(owner, "Trade");
+
+        // A non-member cannot set the password.
+        Assert.False(engine.SetPassword(guest, "secret"));
+
+        // The owner sets a password; a later join needs it.
+        Assert.True(engine.SetPassword(owner, "secret"));
+        Assert.True(engine.GetChannel("Trade")!.HasPassword);
+        Assert.Null(engine.Join(guest, "Trade"));
+        Assert.NotNull(engine.Join(guest, "Trade", "secret"));
+
+        // Clearing the password re-opens the channel.
+        Assert.True(engine.SetPassword(owner, null));
+        Assert.False(engine.GetChannel("Trade")!.HasPassword);
+    }
+
+    // --- Ignore list (0x66/0x67/0x68) ---
+
+    [Fact]
+    public void ChatEngine_Ignore_AddRemoveAndSelfGuard()
+    {
+        var engine = new ChatEngine();
+        var a = new Serial(1);
+        var b = new Serial(2);
+
+        Assert.False(engine.IsIgnoring(a, b));
+
+        // Adding registers the ignore; a second add is a no-op (no change).
+        Assert.True(engine.SetIgnored(a, b, true));
+        Assert.True(engine.IsIgnoring(a, b));
+        Assert.False(engine.SetIgnored(a, b, true));
+
+        // Ignore is directional: b is not ignoring a.
+        Assert.False(engine.IsIgnoring(b, a));
+
+        // A character cannot ignore itself or an invalid target.
+        Assert.False(engine.SetIgnored(a, a, true));
+        Assert.False(engine.SetIgnored(a, Serial.Invalid, true));
+
+        // Removing clears it; removing again reports no change.
+        Assert.True(engine.SetIgnored(a, b, false));
+        Assert.False(engine.IsIgnoring(a, b));
+        Assert.False(engine.SetIgnored(a, b, false));
+    }
+
+    [Fact]
+    public void ChatEngine_ToggleIgnore_FlipsAndReturnsNewState()
+    {
+        var engine = new ChatEngine();
+        var a = new Serial(1);
+        var b = new Serial(2);
+
+        Assert.True(engine.ToggleIgnored(a, b));   // now ignored
+        Assert.True(engine.IsIgnoring(a, b));
+        Assert.False(engine.ToggleIgnored(a, b));  // back to allowed
+        Assert.False(engine.IsIgnoring(a, b));
+    }
 }

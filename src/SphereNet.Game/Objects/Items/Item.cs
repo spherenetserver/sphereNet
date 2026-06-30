@@ -1839,6 +1839,51 @@ public class Item : ObjBase
                 }
                 return true;
             }
+            case "DECLAREALLY":
+            {
+                // Declare (our side of) an alliance with another stone. The alliance
+                // only becomes active once the other guild reciprocates (IsAlly).
+                var guild = ResolveGuild?.Invoke(Uid);
+                if (guild != null)
+                {
+                    uint uid = ParseHexOrDecUInt(args.Trim());
+                    if (uid != 0) guild.AddAlly(new Serial(uid));
+                }
+                return true;
+            }
+            case "DECLAREUNALLY":
+            {
+                // Withdraw our alliance declaration (mirror of DECLAREPEACE for wars).
+                var guild = ResolveGuild?.Invoke(Uid);
+                if (guild != null)
+                {
+                    uint uid = ParseHexOrDecUInt(args.Trim());
+                    if (uid != 0) guild.RemoveAlly(new Serial(uid));
+                }
+                return true;
+            }
+            case "INVITEALLY":
+            {
+                // INVITEALLY stone_uid, who_declared (0=they, 1=we) — the alliance
+                // counterpart of INVITEWAR; records one side of the mutual accept.
+                var guild = ResolveGuild?.Invoke(Uid);
+                if (guild != null)
+                {
+                    var parts = args.Split(',', StringSplitOptions.TrimEntries);
+                    if (parts.Length >= 2)
+                    {
+                        uint uid = ParseHexOrDecUInt(parts[0]);
+                        bool weDeclared = parts[1].Trim() == "1";
+                        if (uid != 0)
+                        {
+                            var rel = guild.GetOrCreateRelation(new Serial(uid));
+                            if (weDeclared) rel.WeDeclaredAlliance = true;
+                            else rel.TheyDeclaredAlliance = true;
+                        }
+                    }
+                }
+                return true;
+            }
             case "APPLYTOJOIN":
             {
                 var guild = ResolveGuild?.Invoke(Uid);

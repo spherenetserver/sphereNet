@@ -150,6 +150,12 @@ public sealed class ClientInventoryHandler
             int stones = tenths / Item.WeightUnits;
             label += ServerMessages.GetFormatted(Msg.ContItems, contItem.Contents.Count, stones);
         }
+        else if (obj is Character guildedCh)
+        {
+            // A guilded player's overhead name carries the guild abbreviation
+            // (e.g. "Lord Yunus [ABC]") when the member keeps it visible.
+            label += GuildAbbrevSuffix(guildedCh);
+        }
 
         _netState.Send(new PacketSpeechUnicodeOut(
             uid, (ushort)(obj is Character c ? c.BodyId : 0),
@@ -169,6 +175,11 @@ public sealed class ClientInventoryHandler
             }
         }
     }
+
+    /// <summary>The " [ABBR]" suffix appended to a guilded player's overhead name,
+    /// or empty when they are unguilded or have hidden their abbreviation.</summary>
+    private string GuildAbbrevSuffix(Character ch) =>
+        _client.GuildM?.GetAbbrevSuffix(ch.Uid) ?? "";
 
     private bool IsInsideContainer(Item container, Serial parentUid, int maxDepth = 16)
     {

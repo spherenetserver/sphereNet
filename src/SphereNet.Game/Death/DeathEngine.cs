@@ -723,11 +723,14 @@ public sealed class DeathEngine
         if (!owner.IsPlayer) return false;                  // creature corpse — free loot
         if (owner.IsCriminal || owner.IsMurderer) return false; // looting a red/criminal is allowed
 
-        // Party member with loot rights is not criminal
+        // Looting a party member's corpse is not criminal when that member granted
+        // loot rights. The flag belongs to the CORPSE OWNER ("party may loot me"), not
+        // the looter — checking the looter's own flag was inverted (a looter who
+        // enabled their own flag could freely loot every party member).
         if (PartyManager != null)
         {
             var party = PartyManager.FindParty(looter.Uid);
-            if (party != null && party.IsMember(ownerSerial) && party.GetLootFlag(looter.Uid))
+            if (party != null && party.IsMember(ownerSerial) && party.GetLootFlag(ownerSerial))
                 return false;
         }
 

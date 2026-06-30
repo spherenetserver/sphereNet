@@ -4,6 +4,119 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Speech parity: per-recipient ghost speech garbling (Wave 193)
+----------------------------------------
+
+FIXED - A dead player's speech was garbled identically for every listener:
+  - A ghost's words were replaced once with a fixed "OooOoo" and broadcast that way
+    to everyone in range — including other ghosts, staff and the speaker. Source-X
+    (ServUO Mobile.MutateSpeech / CheckHearsMutatedSpeech) garbles per listener: the
+    speaker, other ghosts and staff read the clear words, while each living listener
+    who cannot hear the dead sees an independently-scrambled o/O string (spaces kept,
+    length preserved). Delivery now runs through ForEachClientInRange for a dead
+    speaker, choosing clear vs garbled per recipient (GhostSpeech.HearsGhostClearly).
+    The NPC/guild routing copy stays garbled, so NPCs still ignore a ghost's words.
+
+================================================================================
+
+[2026-06-30] - Macro/message parity: macro engine tests, name macro tags (Wave 192)
+----------------------------------------
+
+ADDED - <CNAME> and <NAME_TITLE> message macros (Source-X name variants):
+  - DEFMSG / speech templates may now use <CNAME> (the speaker's name with a
+    capitalised first letter) and <NAME_TITLE> (the name prefixed with its title,
+    e.g. "Lord Yunus"; falls back to the bare name when no title is supplied)
+    alongside the existing <NAME> and <SEX a/b>. MessageMacros.Context gained an
+    optional Title. The bare <NAME> pattern still cannot collide with the variants.
+
+TESTS - Macro record/playback engine coverage (was zero):
+  - The macro engine's deterministic control flow is now under test: capture step
+    cap, target self/object/location classification, record↔playback mutual
+    exclusivity, empty-recording discard, stop-on-missing-client during Tick (driven
+    by an injected nowMs and getClient), and disconnect cleanup. No behaviour change.
+
+================================================================================
+
+[2026-06-30] - Party parity: decline notification, corpse-loot flag fix (Wave 191)
+----------------------------------------
+
+FIXED - Party decline (0xBF 0x06 sub 0x09) sent a null packet to the inviter:
+  - Declining an invitation invoked the inviter's send path with a null packet
+    (null!) — a latent NullReferenceException in the send pipeline. The inviter now
+    receives the proper notification ("<name>: Does not wish to join the party.",
+    party_decline_1) as a system message.
+
+FIXED - Corpse-loot crime checked the wrong party member's loot flag:
+  - Looting a party member's corpse consulted the LOOTER's loot flag instead of the
+    corpse OWNER's. The flag means "the party may loot ME", so it belongs to the
+    owner: as written, a looter who enabled their own flag could freely loot every
+    party member's corpse without criminal penalty. The check now reads the owner's
+    flag (DeathEngine.IsLootingCriminal).
+
+================================================================================
+
+[2026-06-30] - Guild parity: alliance declaration verbs, overhead abbreviation (Wave 190)
+----------------------------------------
+
+ADDED - Alliance declaration verbs on guild/town stones (symmetric to the war set):
+  - DECLAREALLY <stone> records our side of an alliance; INVITEALLY <stone>, <who>
+    records the other side's accept (who = 1 we / 0 they), mirroring INVITEWAR; the
+    alliance only goes active once both sides have declared (IsAlly). DECLAREUNALLY
+    <stone> withdraws our declaration (mirror of DECLAREPEACE). Previously the
+    underlying AddAlly/RemoveAlly were only reachable from save-load, so alliances
+    could not be formed at runtime from a guild stone script.
+
+ADDED - Guild abbreviation on the overhead name:
+  - A guilded player's single-click overhead label now carries the guild abbreviation
+    (e.g. "Lord Yunus [TO]") when the guild has one and the member keeps it visible
+    (TOGGLEABBREVIATION). The suffix is computed on-demand per click (not in the delta-
+    tracked name path) and is suppressed for unguilded characters, hidden members and
+    enemy/ally relationship records. GuildManager.GetAbbrevSuffix centralises the rule.
+
+================================================================================
+
+[2026-06-30] - Chat parity: conference moderation, private message, ignore list (Wave 189)
+----------------------------------------
+
+ADDED - Conference channel moderation (Source-X chat owner/moderator model):
+  - A channel now tracks an owner, moderators, voiced members, an optional password
+    and a default-voice flag. The member who creates an ad-hoc channel becomes its
+    owner (and an implicit moderator). Channel state lives on ChatChannel; routing
+    and packets stay in GameClient.
+
+ADDED - Password-protected channels:
+  - A protected channel rejects a join with a wrong or missing password. The 0x62/0x63
+    payload parser extracts a trailing "{password}" suffix from the channel name, and
+    0x41 sets/clears the password (moderator only). The channel list (0xB2 CreateChannel)
+    advertises the password flag so the client shows the lock marker.
+
+ADDED - Moderator actions (0xB3 sub-commands):
+  - 0x76 kick, 0x6C/0x6D add/remove moderator, 0x69/0x6A grant/revoke voice, 0x77/0x78
+    default-voice toggle, 0x64 rename. Each action is gated on the actor being a
+    moderator of the channel they are in; rename re-keys the channel and rejects static,
+    empty or taken names. AddUser (0xB2 0x03EE) now carries a userType marker
+    (1 = moderator, 2 = voiced) so clients render the role beside the name.
+
+ADDED - Moderated talk gating and emote:
+  - With default-voice off, only moderators and explicitly voiced members may speak
+    (CanSpeak gate); promoting a member to moderator overrides a revoked voice. 0x7A
+    routes an emote (0xB2 EmoteMessage) instead of a normal channel message. The voice,
+    moderator and default-voice toggles (0x6B / 0x6E / 0x79) and the OSI leave alias
+    (0x58) are wired alongside their explicit on/off counterparts.
+
+ADDED - Private messages (0xB3 0x65):
+  - A player may whisper another by chat handle ("<recipient> <text>"). The sender
+    always sees their own copy; the recipient receives it unless they are ignoring the
+    sender.
+
+ADDED - Ignore list (0xB3 0x66 / 0x67 / 0x68):
+  - Per-character, channel-independent ignore set (add / remove / toggle) resolved by
+    chat handle. A character cannot ignore itself. Channel lines and private messages
+    from an ignored sender are suppressed server-side for that recipient (matching the
+    OSI conference behaviour) while everyone else still receives them.
+
+================================================================================
+
 [2026-06-30] - Gathering parity: weight-based carry gate, partial node regen (Wave 188)
 ----------------------------------------
 

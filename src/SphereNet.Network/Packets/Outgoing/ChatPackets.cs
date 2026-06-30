@@ -44,8 +44,8 @@ public sealed class PacketChatSystem : PacketWriter
     public static PacketChatSystem MakeUsernameAccepted(string username) =>
         new(UsernameAccepted, null, username, null, null);
 
-    public static PacketChatSystem MakeAddUser(string username) =>
-        new(AddUser, 0, username, null, null);
+    public static PacketChatSystem MakeAddUser(string username, ushort userType = 0) =>
+        new(AddUser, userType, username, null, null);
 
     public static PacketChatSystem MakeRemoveUser(string username) =>
         new(RemoveUser, null, username, null, null);

@@ -152,6 +152,26 @@ public class ServerMessagesTests
     }
 
     [Fact]
+    public void MessageMacros_Resolves_CNameTag_CapitalisesFirstLetter()
+    {
+        var ctx = new MessageMacros.Context(IsFemale: false, Name: "bob");
+        // <CNAME> capitalises; the bare <NAME> keeps the original casing, and the
+        // two tags never collide (the <NAME> regex needs a '>' straight after NAME).
+        Assert.Equal("Bob waves at bob.", MessageMacros.Resolve("<CNAME> waves at <NAME>.", ctx));
+    }
+
+    [Fact]
+    public void MessageMacros_Resolves_NameTitleTag_PrefixesTitle()
+    {
+        var titled = MessageMacros.Context.FromCharacter(isFemale: false, name: "Yunus", title: "Lord");
+        Assert.Equal("Lord Yunus arrives.", MessageMacros.Resolve("<NAME_TITLE> arrives.", titled));
+
+        // Without a title the tag falls back to the bare name.
+        var untitled = MessageMacros.Context.FromCharacter(isFemale: false, name: "Yunus");
+        Assert.Equal("Yunus arrives.", MessageMacros.Resolve("<NAME_TITLE> arrives.", untitled));
+    }
+
+    [Fact]
     public void AllKeys_AreUniqueAndLowercase()
     {
         var keys = ServerMessages.AllKeys.ToArray();

@@ -4,6 +4,116 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Speech paritesi: alici-bazli hayalet konusma karistirma (Wave 193)
+----------------------------------------
+
+DUZELTILDI - Olu bir oyuncunun konusmasi her dinleyici icin ayni sekilde karistiriliyordu:
+  - Bir hayaletin sozleri tek seferde sabit bir "OooOoo" ile degistirilip menzildeki
+    HERKESE oyle yayinlaniyordu -- diger hayaletler, staff ve konusanin kendisi dahil.
+    Source-X (ServUO Mobile.MutateSpeech / CheckHearsMutatedSpeech) dinleyici-bazli
+    karistirir: konusan, diger hayaletler ve staff net sozleri okur; oluyu duyamayan her
+    canli dinleyici bagimsiz karistirilmis bir o/O dizisi gorur (bosluklar korunur, uzunluk
+    ayni). Olu konusan icin teslimat artik ForEachClientInRange uzerinden, her alici icin
+    net/karisik secimiyle calisir (GhostSpeech.HearsGhostClearly). NPC/guild yonlendirme
+    kopyasi karisik kalir, boylece NPC'ler hayaletin sozlerini yine yok sayar.
+
+================================================================================
+
+[2026-06-30] - Macro/mesaj paritesi: macro engine testleri, isim macro tag'leri (Wave 192)
+----------------------------------------
+
+EKLENEN - <CNAME> ve <NAME_TITLE> mesaj macro'lari (Source-X isim varyantlari):
+  - DEFMSG / speech template'leri artik mevcut <NAME> ve <SEX a/b> yaninda <CNAME>
+    (konusanin ismi, ilk harf buyuk) ve <NAME_TITLE> (isim, title onekiyle, orn.
+    "Lord Yunus"; title yoksa cıplak isme duser) kullanabilir. MessageMacros.Context'e
+    opsiyonel Title eklendi. Cıplak <NAME> deseni varyantlarla cakisamaz.
+
+TESTLER - Macro kayit/oynatma engine kapsami (sifirdı):
+  - Macro engine'in deterministik kontrol akisi artik test altinda: capture step
+    limiti, target self/object/location siniflandirmasi, kayit<->oynatma karsilikli
+    dislama, bos-kayit eleme, Tick sirasinda client-yok durunca durma (enjekte edilen
+    nowMs ve getClient ile), ve baglanti kopunca temizlik. Davranis degisikligi yok.
+
+================================================================================
+
+[2026-06-30] - Party paritesi: red bildirimi, ceset-loot bayragi duzeltmesi (Wave 191)
+----------------------------------------
+
+DUZELTILDI - Party red (0xBF 0x06 alt 0x09) davet edene null paket gonderiyordu:
+  - Bir daveti reddetmek, davet edenin gonderim yolunu null bir paketle (null!) cagiriyordu
+    -- gonderim pipeline'inda gizli bir NullReferenceException. Davet eden artik dogru
+    bildirimi ("<isim>: Does not wish to join the party.", party_decline_1) sistem mesaji
+    olarak alir.
+
+DUZELTILDI - Ceset-loot suc kontrolu yanlis party uyesinin loot bayragina bakiyordu:
+  - Bir party uyesinin cesedini loot'lamak, ceset SAHIBININ degil LOOT'LAYANIN loot
+    bayragina bakiyordu. Bayrak "party BENI loot'layabilir" demektir, yani sahibe aittir:
+    yazildigi haliyle kendi bayragini acan bir loot'layici, her party uyesinin cesedini
+    suc cezasi olmadan serbestce loot'layabiliyordu. Kontrol artik sahibin bayragini okur
+    (DeathEngine.IsLootingCriminal).
+
+================================================================================
+
+[2026-06-30] - Guild paritesi: ittifak ilan verb'leri, isim ustu kisaltma (Wave 190)
+----------------------------------------
+
+EKLENEN - Guild/town stone'da ittifak ilan verb'leri (savas setine simetrik):
+  - DECLAREALLY <stone> ittifakin bizim tarafimizi kaydeder; INVITEALLY <stone>, <kim>
+    karsi tarafin kabulunu kaydeder (kim = 1 biz / 0 onlar), INVITEWAR'i yansitir; ittifak
+    yalnizca iki taraf da ilan ettiginde aktiflesir (IsAlly). DECLAREUNALLY <stone> bizim
+    ilanimizi geri ceker (DECLAREPEACE'in karsiligi). Onceden alttaki AddAlly/RemoveAlly
+    sadece save-load'dan erisilebiliyordu, yani ittifaklar bir guild stone script'inden
+    runtime'da kurulamiyordu.
+
+EKLENEN - Isim ustu guild kisaltmasi:
+  - Bir guild'li oyuncunun tek-tik isim ustu etiketi artik guild kisaltmasini tasir
+    (orn. "Lord Yunus [TO]"), guild'in bir kisaltmasi varsa ve uye onu gorunur tuttuysa
+    (TOGGLEABBREVIATION). Ek, her tikta on-demand hesaplanir (delta-takipli isim yolunda
+    DEGIL) ve guild'siz karakterler, gizleyen uyeler ve dusman/muttefik iliski kayitlari
+    icin bastirilir. Kurali GuildManager.GetAbbrevSuffix merkezilestirir.
+
+================================================================================
+
+[2026-06-30] - Chat paritesi: konferans moderasyonu, ozel mesaj, ignore listesi (Wave 189)
+----------------------------------------
+
+EKLENEN - Konferans kanali moderasyonu (Source-X chat owner/moderator modeli):
+  - Kanal artik bir owner, moderatorler, sesli (voiced) uyeler, opsiyonel parola ve
+    default-voice bayragi tutar. Ad-hoc kanali olusturan uye onun owner'i (ve ortuk
+    moderatoru) olur. Kanal state'i ChatChannel'de; yonlendirme ve paketler GameClient'te.
+
+EKLENEN - Parola korumali kanallar:
+  - Korumali kanal yanlis veya eksik parolayla join'i reddeder. 0x62/0x63 payload parser'i
+    kanal adindan sondaki "{parola}" ekini ayiklar, 0x41 parolayi set/clear eder (sadece
+    moderator). Kanal listesi (0xB2 CreateChannel) parola bayragini bildirir, client kilit
+    isaretini gosterir.
+
+EKLENEN - Moderator islemleri (0xB3 alt-komutlari):
+  - 0x76 kick, 0x6C/0x6D moderator ekle/cikar, 0x69/0x6A ses ver/al, 0x77/0x78 default-voice
+    ac/kapat, 0x64 yeniden adlandir. Her islem aktörün icinde bulundugu kanalin moderatoru
+    olmasina baglidir; rename kanali yeniden anahtarlar, statik/bos/alinmis adlari reddeder.
+    AddUser (0xB2 0x03EE) artik bir userType isareti tasir (1 = moderator, 2 = voiced),
+    client rolu adin yaninda gosterir.
+
+EKLENEN - Moderasyonlu konusma gate'i ve emote:
+  - Default-voice kapaliyken sadece moderatorler ve acikca ses verilmis uyeler konusabilir
+    (CanSpeak gate'i); bir uyeyi moderator yapmak alinmis sesi gecersiz kilar. 0x7A normal
+    kanal mesaji yerine bir emote (0xB2 EmoteMessage) yonlendirir. Voice/moderator/default-voice
+    toggle'lari (0x6B / 0x6E / 0x79) ve OSI leave alias'i (0x58) acik on/off karsiliklariyla
+    birlikte baglandi.
+
+EKLENEN - Ozel mesaj (0xB3 0x65):
+  - Bir oyuncu bir digerine chat handle ile fisildayabilir ("<alici> <metin>"). Gonderen her
+    zaman kendi kopyasini gorur; alici, gondereni ignore'lamamissa mesaji alir.
+
+EKLENEN - Ignore listesi (0xB3 0x66 / 0x67 / 0x68):
+  - Karakter-basina, kanaldan bagimsiz ignore kumesi (ekle / cikar / toggle), chat handle ile
+    cozulur. Bir karakter kendini ignore'layamaz. Ignore'lanan bir gonderenin kanal satirlari ve
+    ozel mesajlari o alici icin sunucu tarafinda bastirilir (OSI konferans davranisi); diger
+    herkes mesaji almaya devam eder.
+
+================================================================================
+
 [2026-06-30] - Gathering paritesi: agirlik-tabanli tasima gate'i, partial node regen (Wave 188)
 ----------------------------------------
 

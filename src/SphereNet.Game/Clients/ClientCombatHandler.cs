@@ -587,16 +587,22 @@ public sealed class ClientCombatHandler
         if (TryHandleCommandSpeech(text))
             return;
 
-        if (_character.IsDead)
+        bool isGhost = _character.IsDead;
+        // A ghost's words are garbled to the living who can't hear the dead. Keep the
+        // clear text for the speaker, other ghosts and staff; route a garbled copy
+        // through ProcessSpeech so NPCs/guild chat see scrambled text as before.
+        string clearText = text;
+        string routeText = text;
+        if (isGhost)
         {
-            text = "OooOoo";
-            hue = 0x0481;
+            hue = 0x0481; // ghost speech hue
+            routeText = GhostSpeech.Garble(clearText);
         }
 
         _character.ClearHiddenState();
 
         // Pet commands — "all follow", "all guard", "petname follow" etc.
-        if (!_character.IsDead && TryHandlePetCommand(text))
+        if (!isGhost && TryHandlePetCommand(text))
         {
             // Still broadcast the speech so others hear it
         }
@@ -604,7 +610,7 @@ public sealed class ClientCombatHandler
         // ProcessSpeech returns true when the utterance must NOT be broadcast —
         // either the speaker's @Speech self-trigger cancelled it (Source-X
         // Event_Talk RETURN 1) or it was routed as guild/alliance chat.
-        if (_speech?.ProcessSpeech(_character, text, (TalkMode)type, hue, font) == true)
+        if (_speech?.ProcessSpeech(_character, routeText, (TalkMode)type, hue, font) == true)
             return;
 
         // Guild/alliance chat is non-spatial: SpeechEngine.RouteChannelMessage
@@ -621,13 +627,33 @@ public sealed class ClientCombatHandler
             _ => 18  // say
         };
 
-        var speechPacket = new PacketSpeechUnicodeOut(
-            _character.Uid.Value, _character.BodyId,
-            type, hue, font, "TRK", _character.Name, text
-        );
-        Send(speechPacket);
-        BroadcastNearby?.Invoke(_character.Position, range, speechPacket, _character.Uid.Value);
+        if (isGhost && ForEachClientInRange != null)
+        {
+            // Per-recipient ghost speech: the speaker (a ghost) and any other ghost /
+            // staff observer reads the clear words; every other living listener gets
+            // an independently-scrambled garble (Source-X MutateSpeech per listener).
+            Send(MakeSpeechPacket(type, hue, font, clearText));
+            ForEachClientInRange.Invoke(_character.Position, range, _character.Uid.Value,
+                (recipient, recipientClient) =>
+                {
+                    string heard = GhostSpeech.HearsGhostClearly(recipient)
+                        ? clearText
+                        : GhostSpeech.Garble(clearText);
+                    recipientClient.Send(MakeSpeechPacket(type, hue, font, heard));
+                });
+            return;
+        }
+
+        // The speaker always sees their own words clearly; a ghost without a
+        // per-recipient broadcaster falls back to garbling for every nearby listener.
+        Send(MakeSpeechPacket(type, hue, font, clearText));
+        BroadcastNearby?.Invoke(_character.Position, range,
+            MakeSpeechPacket(type, hue, font, isGhost ? routeText : clearText),
+            _character.Uid.Value);
     }
+
+    private PacketSpeechUnicodeOut MakeSpeechPacket(byte type, ushort hue, ushort font, string text) =>
+        new(_character!.Uid.Value, _character.BodyId, type, hue, font, "TRK", _character.Name, text);
 
     // ==================== Combat ====================
 

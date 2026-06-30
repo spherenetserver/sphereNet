@@ -145,6 +145,36 @@ public class DeathCorpseParityTests
         Assert.False(death.IsLootingCriminal(owner, corpse!)); // own corpse exempt
     }
 
+    [Fact]
+    public void Looting_PartyMemberCorpse_GatedOnOwnersLootFlag()
+    {
+        var world = CreateWorld();
+        ClearNotoHooks();
+        var pm = new SphereNet.Game.Party.PartyManager();
+        var death = new DeathEngine(world) { LootingIsACrime = true, PartyManager = pm };
+
+        var owner = MakePlayer(world, 1000); // innocent victim (stays as ghost)
+        var corpse = death.ProcessDeath(owner);
+        Assert.NotNull(corpse);
+
+        var looter = MakePlayer(world, 1002);
+
+        // Same party, but the owner has not granted loot rights → still criminal.
+        var party = pm.CreateParty(owner.Uid);
+        party.AddMember(looter.Uid);
+        Assert.True(death.IsLootingCriminal(looter, corpse!));
+
+        // The OWNER grants loot rights ("the party may loot me") → no longer criminal.
+        party.SetLootFlag(owner.Uid, true);
+        Assert.False(death.IsLootingCriminal(looter, corpse!));
+
+        // The flag belongs to the corpse owner, not the looter: enabling only the
+        // looter's own flag must NOT re-permit looting (guards the previously inverted check).
+        party.SetLootFlag(owner.Uid, false);
+        party.SetLootFlag(looter.Uid, true);
+        Assert.True(death.IsLootingCriminal(looter, corpse!));
+    }
+
     // ---- D: loot retention ----
 
     [Fact]

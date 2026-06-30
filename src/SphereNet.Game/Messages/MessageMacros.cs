@@ -22,10 +22,20 @@ public static class MessageMacros
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     // <NAME> -- replaced with the speaker's name. Source-X also exposes
-    // <CNAME> (capitalised) and <NAME_TITLE>; only the bare form is needed
-    // for any DEFMSG default in the current tbl.
+    // <CNAME> (capitalised first letter) and <NAME_TITLE> (name with its title
+    // prefix, e.g. "Lord Yunus"). The bare <NAME> regex requires a '>' right after
+    // NAME, so it never matches inside <CNAME> or <NAME_TITLE>; the variants are
+    // still resolved first for clarity.
     private static readonly Regex s_nameRx = new(
         @"<NAME>",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static readonly Regex s_cnameRx = new(
+        @"<CNAME>",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static readonly Regex s_nameTitleRx = new(
+        @"<NAME_TITLE>",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>
@@ -34,12 +44,12 @@ public static class MessageMacros
     /// through unchanged so a downstream consumer (or a script) may finish
     /// the substitution.
     /// </summary>
-    public readonly record struct Context(bool? IsFemale, string? Name)
+    public readonly record struct Context(bool? IsFemale, string? Name, string? Title = null)
     {
         public static readonly Context Empty = new(null, null);
 
-        public static Context FromCharacter(bool isFemale, string? name = null) =>
-            new(isFemale, name);
+        public static Context FromCharacter(bool isFemale, string? name = null, string? title = null) =>
+            new(isFemale, name, title);
     }
 
     /// <summary>
@@ -63,6 +73,16 @@ public static class MessageMacros
         if (ctx.Name is not null)
         {
             string name = ctx.Name;
+
+            // <NAME_TITLE> -- name prefixed with its title ("Lord Yunus"); falls
+            // back to the bare name when no title is supplied.
+            string nameTitle = string.IsNullOrEmpty(ctx.Title) ? name : $"{ctx.Title} {name}";
+            result = s_nameTitleRx.Replace(result, nameTitle);
+
+            // <CNAME> -- name with a capitalised first letter.
+            string cname = name.Length > 0 ? char.ToUpperInvariant(name[0]) + name[1..] : name;
+            result = s_cnameRx.Replace(result, cname);
+
             result = s_nameRx.Replace(result, name);
         }
 

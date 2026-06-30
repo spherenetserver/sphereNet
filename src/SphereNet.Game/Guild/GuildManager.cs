@@ -287,6 +287,21 @@ public sealed class GuildManager
     public GuildDef? FindGuildFor(Serial charUid) =>
         _guilds.Values.FirstOrDefault(g => g.FindMember(charUid) != null);
 
+    /// <summary>The bracketed guild abbreviation a character shows after their
+    /// overhead name (" [ABC]"), or empty when they are in no guild, the guild has
+    /// no abbreviation, or the member has hidden it (TOGGLEABBREVIATION). Relationship
+    /// (enemy/ally) member records are excluded — only real members display it.</summary>
+    public string GetAbbrevSuffix(Serial charUid)
+    {
+        var guild = FindGuildFor(charUid);
+        if (guild == null || string.IsNullOrWhiteSpace(guild.Abbreviation))
+            return "";
+        var member = guild.FindMember(charUid);
+        if (member == null || !member.ShowAbbrev || (byte)member.Priv >= 100)
+            return "";
+        return $" [{guild.Abbreviation}]";
+    }
+
     public GuildDef CreateGuild(Serial stoneUid, string name, Serial masterUid)
     {
         var guild = new GuildDef(stoneUid) { Name = name };

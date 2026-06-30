@@ -4,6 +4,23 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Pet paritesi: pet figurine shrink / restore (Wave 187)
+----------------------------------------
+
+EKLENEN - Pet figurine (Source-X shrink / restore), vendor/trade/bank/stable audit'inin son maddesi:
+  - Kontrol edilen bir pet artik durumunun TAM snapshot'ini (isim, body, stat'lar, brain, AI mode,
+    charDef, 1200'e kadar skill'ler, friend'ler, orijinal UUID) tasiyan bir figurine item'a paketlenip
+    sonra ondan yeniden yaratilabilir -- stable claim/restore'u aynalar, sahibin tag listesi yerine
+    item uzerinde saklanir (PetFigurine).
+  - "<pet> shrink" / "all shrink" pet'i backpack'teki bir figurine'e paketler (pet dunyadan ayrilir);
+    figurine'e cift tiklamak pet'i oyuncunun yaninda geri yaratir ve figurine'i tuketir. Restore
+    follower-cap farkindadir (cap doluysa sahip figurine'i korur) ve shrink summon/sahipsiz yaratiklari
+    reddeder, stable gibi.
+  - Onceki figurine cift-tiklamasi (yalnizca More1 serial ile hala-canli dunya char'ini yeniden
+    yerlestiriyordu) snapshot'siz figurine'ler icin fallback olarak korundu.
+
+================================================================================
+
 [2026-06-30] - Bank paritesi: self bank box banker-yakinligiyla gate'lendi (Wave 186)
 ----------------------------------------
 

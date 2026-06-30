@@ -888,6 +888,24 @@ public sealed class ClientItemUseHandler
             // ---- figurine (pet shrink/unshrink) ----
             case ItemType.Figurine:
             {
+                // Snapshot figurine (Source-X pet shrink/restore): recreate the stored
+                // pet beside the player and consume the figurine.
+                if (SphereNet.Game.NPCs.PetFigurine.IsPetFigurine(item))
+                {
+                    var restored = SphereNet.Game.NPCs.PetFigurine.Restore(
+                        _character, item, _world, _character.Position);
+                    if (restored != null)
+                    {
+                        _netState.Send(new PacketDeleteObject(item.Uid.Value));
+                        SysMessage("Your pet materializes beside you.");
+                    }
+                    else
+                    {
+                        SysMessage("You have too many followers to restore that now.");
+                    }
+                    break;
+                }
+
                 uint linkedSerial = item.More1;
                 if (linkedSerial != 0 && _world != null)
                 {
@@ -1580,7 +1598,7 @@ public sealed class ClientItemUseHandler
         "drop" or "drop all" or "equip" or "status" or
         "attack" or "kill" or "guard" or "follow" or "go" or
         "friend" or "unfriend" or "transfer" or "release" or
-        "price" or "bought" or "samples" or "stock" or "cash" => true,
+        "price" or "bought" or "samples" or "stock" or "cash" or "shrink" => true,
         _ => false
     };
 
@@ -1679,6 +1697,36 @@ public sealed class ClientItemUseHandler
                     new TriggerArgs { CharSrc = _character, O1 = _character });
                 NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetSuccess));
                 return true;
+
+            case "shrink":
+            {
+                // Source-X pet shrink: pack the pet into a figurine the player can
+                // carry and later restore. The pet is removed from the world (its
+                // deletion broadcasts to observers); the figurine appears in the pack.
+                var pack = _character.Backpack;
+                if (pack == null)
+                {
+                    NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetFailure));
+                    return true;
+                }
+                var figurine = _world.CreateItem();
+                figurine.BaseId = 0x2106; // statuette graphic
+                if (SphereNet.Game.NPCs.PetFigurine.Shrink(_character, pet, figurine, _world))
+                {
+                    pack.AddItem(figurine);
+                    _netState.Send(new PacketContainerItem(
+                        figurine.Uid.Value, figurine.DispIdFull, 0, figurine.Amount,
+                        figurine.X, figurine.Y, pack.Uid.Value, figurine.Hue,
+                        _netState.IsClientPost6017));
+                    SysMessage("Your pet has been packed into a figurine.");
+                }
+                else
+                {
+                    _world.RemoveItem(figurine);
+                    NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetFailure));
+                }
+                return true;
+            }
 
             case "stay":
             case "stop":

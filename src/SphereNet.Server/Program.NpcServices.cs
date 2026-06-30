@@ -323,15 +323,17 @@ public static partial class Program
     /// inside REGION_FLAG_GUARDED zones. Future global keywords (e.g. "i resign
     /// from my guild" outside guild stones) hook in here too.
     /// </summary>
-    private static void OnPlayerSpeech(Character speaker, string text, TalkMode mode)
+    /// <summary>Returns true when the speaker's @Speech self-trigger cancelled the
+    /// utterance (RETURN 1) — the caller then suppresses broadcast and NPC hear.</summary>
+    private static bool OnPlayerSpeech(Character speaker, string text, TalkMode mode)
     {
-        if (string.IsNullOrEmpty(text)) return;
+        if (string.IsNullOrEmpty(text)) return false;
         if (_triggerDispatcher?.FireSpeechSelfTrigger(speaker, text, (int)mode) == TriggerResult.True)
-            return;
+            return true; // @Speech RETURN 1 — cancel the whole utterance
 
         string lower = text.ToLowerInvariant();
         bool calledGuards = lower.Contains("guards") || lower == "help" || lower.Contains("help guards");
-        if (!calledGuards) return;
+        if (!calledGuards) return false;
 
         var region = _world.FindRegion(speaker.Position);
         if (region == null || !region.IsFlag(SphereNet.Core.Enums.RegionFlag.Guarded))
@@ -340,7 +342,7 @@ public static partial class Program
                 speaker.Name, region?.Name ?? "(none)",
                 region?.IsFlag(SphereNet.Core.Enums.RegionFlag.Guarded) ?? false,
                 speaker.Position);
-            return;
+            return false;
         }
 
         var hostiles = FindAllGuardTargets(speaker);
@@ -349,7 +351,7 @@ public static partial class Program
         if (hostiles.Count == 0)
         {
             gc?.SysMessage("All looks quiet here.");
-            return;
+            return false;
         }
 
         int killCount = 0;
@@ -391,6 +393,7 @@ public static partial class Program
         }
 
         gc?.SysMessage(killCount > 0 ? "Guards strike down your attacker." : "The guards have been called.");
+        return false;
     }
 
     private static List<Character> FindAllGuardTargets(Character speaker)
@@ -702,13 +705,23 @@ public static partial class Program
             },
             out _);
 
-        // Fire trigger first — let scripts handle custom keywords
-        var trigResult = _triggerDispatcher?.FireCharTrigger(npc, CharTrigger.NPCHearGreeting,
-            new TriggerArgs { CharSrc = speaker, S1 = text });
-        if (trigResult == TriggerResult.True)
+        // @NPCHearGreeting fires only on FIRST contact with this speaker (Source-X
+        // NPC_OnHear: greeting when there is no MEMORY_SPEAK, then record it).
+        // Firing it on every line would let a RETURN-1 greeting swallow all of the
+        // speaker's subsequent speech, and re-greet endlessly. Per-line keyword
+        // reactions go through the SPEECH triggers below, which still run each line.
+        bool firstContact = npc.Memory_FindObjTypes(speaker.Uid,
+            SphereNet.Core.Enums.MemoryType.Speak) == null;
+        if (firstContact)
         {
-            _log.LogDebug("[npc_hear] {Npc} @NPCHearGreeting consumed text='{Text}'", npc.Name, text);
-            return;
+            npc.Memory_AddObjTypes(speaker.Uid, SphereNet.Core.Enums.MemoryType.Speak);
+            var trigResult = _triggerDispatcher?.FireCharTrigger(npc, CharTrigger.NPCHearGreeting,
+                new TriggerArgs { CharSrc = speaker, S1 = text });
+            if (trigResult == TriggerResult.True)
+            {
+                _log.LogDebug("[npc_hear] {Npc} @NPCHearGreeting consumed text='{Text}'", npc.Name, text);
+                return;
+            }
         }
 
         // Service-NPC well-known keywords (buy/sell/bank/balance/withdraw/

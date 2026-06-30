@@ -601,7 +601,11 @@ public sealed class ClientCombatHandler
             // Still broadcast the speech so others hear it
         }
 
-        _speech?.ProcessSpeech(_character, text, (TalkMode)type, hue, font);
+        // ProcessSpeech returns true when the utterance must NOT be broadcast —
+        // either the speaker's @Speech self-trigger cancelled it (Source-X
+        // Event_Talk RETURN 1) or it was routed as guild/alliance chat.
+        if (_speech?.ProcessSpeech(_character, text, (TalkMode)type, hue, font) == true)
+            return;
 
         // Guild/alliance chat is non-spatial: SpeechEngine.RouteChannelMessage
         // delivers it per member (speaker echo included), so the local echo

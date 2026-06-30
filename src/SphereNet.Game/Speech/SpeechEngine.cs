@@ -58,7 +58,10 @@ public sealed class SpeechEngine
     /// independently. Source-X equivalent: CClient::Event_TalkBroadcast's
     /// region-level keyword check.
     /// </summary>
-    public event Action<Character, string, TalkMode>? OnPlayerSpeech;
+    /// <summary>Fired for player speech before it is heard/broadcast. Returns true
+    /// when the speaker's own @Speech self-trigger cancelled the utterance
+    /// (Source-X Event_Talk → OnTriggerSpeech RETURN 1): no broadcast, no NPC hear.</summary>
+    public Func<Character, string, TalkMode, bool>? OnPlayerSpeech { get; set; }
 
     /// <summary>
     /// Fired once per recipient when a guild/alliance message is routed.
@@ -90,11 +93,12 @@ public sealed class SpeechEngine
         // Command dispatch is handled centrally in GameClient.HandleSpeech.
         // SpeechEngine is kept focused on non-command speech routing.
 
-        // Player-only global keywords ("guards", "help guards", ...) fire here
-        // exactly once. Per-NPC OnNpcHear below still runs so vendors/healers
-        // can react to the same utterance independently.
-        if (speaker.IsPlayer)
-            OnPlayerSpeech?.Invoke(speaker, text, mode);
+        // Player-only global keywords ("guards", "help guards", ...) and the
+        // speaker's own @Speech self-trigger fire here exactly once. If the
+        // self-trigger returns RETURN 1 the whole utterance is cancelled (Source-X
+        // Event_Talk): no broadcast (caller checks this return) and no NPC hear.
+        if (speaker.IsPlayer && OnPlayerSpeech?.Invoke(speaker, text, mode) == true)
+            return true;
 
         // Guild/Alliance chat: not spatial, routed separately
         if (mode == TalkMode.Guild || mode == TalkMode.Alliance)
@@ -125,8 +129,8 @@ public sealed class SpeechEngine
             if (listener == speaker) continue;
             if (listener.IsDead && mode != TalkMode.Yell) continue;
 
-            // Hidden/invisible check for whisper
-            if (mode == TalkMode.Whisper && listener.IsInvisible) continue;
+            // Being hidden/invisible does NOT stop you from hearing (Source-X
+            // CanHear has no such gate) — a hidden GM still hears a whisper.
 
             // NPC keyword handling
             if (!listener.IsPlayer)
@@ -431,24 +435,42 @@ public sealed class CommandHandler
     public bool Execute(Character gm, string commandLine) =>
         TryExecute(gm, commandLine) == CommandResult.Executed;
 
+    /// <summary>Minimum privilege to set a property / run an object verb on a
+    /// character via the speech-command fallback (Source-X SET verb = Counsel).
+    /// Below this the dispatch never reaches Character/ObjBase.TrySetProperty.</summary>
+    private const PrivLevel PropertyCommandMinLevel = PrivLevel.Counsel;
+
+    /// <summary>Property verbs that are never settable via a speech command, at any
+    /// privilege level (they change the privilege itself).</summary>
+    private static bool IsBlockedPropertyVerb(string verb) =>
+        verb.Equals("PRIVLEVEL", StringComparison.OrdinalIgnoreCase) ||
+        verb.Equals("PLEVEL", StringComparison.OrdinalIgnoreCase) ||
+        verb.Equals("FLAGS", StringComparison.OrdinalIgnoreCase);
+
     public CommandResult TryExecute(Character gm, string commandLine)
     {
         if (string.IsNullOrWhiteSpace(commandLine))
             return CommandResult.NotFound;
 
         // Source-X parity: handle "verb=value" syntax (e.g. ".events=e_human_player")
-        // Convert to property assignment on the character.
+        // Convert to property assignment on the character. Setting a property via
+        // command is a STAFF verb (Source-X Event_Command → CanUsePrivVerb,
+        // GetPrivCommandLevel("SET") = Counsel) — without the privilege gate a plain
+        // player could escalate or cheat with ".GM=1", ".INVUL=1", ".MAGERY=1200",
+        // ".STR=5000", ".EVENTS=...", ".NAME=...", etc. PRIVLEVEL/PLEVEL/FLAGS are
+        // never settable this way at any level.
         int eqIdx = commandLine.IndexOf('=');
         if (eqIdx > 0)
         {
             string propKey = commandLine[..eqIdx].Trim();
             string propVal = commandLine[(eqIdx + 1)..].Trim();
-            if (propKey.Length > 0
-                && !propKey.Equals("PRIVLEVEL", StringComparison.OrdinalIgnoreCase)
-                && !propKey.Equals("PLEVEL", StringComparison.OrdinalIgnoreCase)
-                && !propKey.Equals("FLAGS", StringComparison.OrdinalIgnoreCase)
-                && gm.TrySetProperty(propKey, propVal))
-                return CommandResult.Executed;
+            if (propKey.Length > 0)
+            {
+                if (IsBlockedPropertyVerb(propKey) || gm.PrivLevel < PropertyCommandMinLevel)
+                    return CommandResult.InsufficientPriv;
+                if (gm.TrySetProperty(propKey, propVal))
+                    return CommandResult.Executed;
+            }
         }
 
         int spaceIdx = commandLine.IndexOf(' ');
@@ -476,15 +498,17 @@ public sealed class CommandHandler
                 return CommandResult.Executed;
 
             // Source-X parity: try as object command/property on the character.
-            // This allows ".events +e_human_player", ".name NewName", etc.
-            if (gm.TryExecuteCommand(verb, args, NullConsole.Instance))
-                return CommandResult.Executed;
-            if (args.Length > 0
-                && !verb.Equals("PRIVLEVEL", StringComparison.OrdinalIgnoreCase)
-                && !verb.Equals("PLEVEL", StringComparison.OrdinalIgnoreCase)
-                && !verb.Equals("FLAGS", StringComparison.OrdinalIgnoreCase)
-                && gm.TrySetProperty(verb, args))
-                return CommandResult.Executed;
+            // This allows ".events +e_human_player", ".name NewName", etc. Same
+            // staff-privilege gate as the "verb=value" path above — a plain player
+            // must not be able to run object/property verbs on themselves.
+            if (gm.PrivLevel >= PropertyCommandMinLevel)
+            {
+                if (gm.TryExecuteCommand(verb, args, NullConsole.Instance))
+                    return CommandResult.Executed;
+                if (args.Length > 0 && !IsBlockedPropertyVerb(verb)
+                    && gm.TrySetProperty(verb, args))
+                    return CommandResult.Executed;
+            }
 
             // Source-X CClient.cpp:921 — generic X-prefix targeting fallback.
             // Any unknown verb starting with 'X' (.xhits, .xkill, .xinvul,

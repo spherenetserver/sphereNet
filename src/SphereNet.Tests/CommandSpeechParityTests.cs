@@ -1,0 +1,120 @@
+using Microsoft.Extensions.Logging;
+using SphereNet.Core.Enums;
+using SphereNet.Core.Types;
+using SphereNet.Game.Objects.Characters;
+using SphereNet.Game.Objects.Items;
+using SphereNet.Game.Speech;
+using SphereNet.Game.World;
+using Xunit;
+
+namespace SphereNet.Tests;
+
+// Source-X speech/command parity (wiki/12.txt audit): a plain player cannot set
+// properties via the command prefix (the P0 escalation hole), the speaker's
+// @Speech self-trigger can cancel an utterance, and being invisible does not stop
+// a listener from hearing.
+public class CommandSpeechParityTests
+{
+    private static GameWorld CreateWorld()
+    {
+        var world = new GameWorld(LoggerFactory.Create(_ => { }));
+        world.InitMap(0, 6144, 4096);
+        SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
+        Item.ResolveWorld = () => world;
+        return world;
+    }
+
+    private static Character MakeChar(GameWorld world, PrivLevel priv, int x = 100)
+    {
+        var ch = world.CreateCharacter();
+        ch.IsPlayer = true;
+        ch.PrivLevel = priv;
+        ch.Str = 10;
+        world.PlaceCharacter(ch, new Point3D((short)x, 100, 0, 0));
+        return ch;
+    }
+
+    // ---- P0: players cannot set properties via the command prefix ----
+
+    [Theory]
+    [InlineData("GM=1")]
+    [InlineData("INVUL=1")]
+    [InlineData("MAGERY=1200")]
+    [InlineData("STR=5000")]
+    [InlineData("NAME=Cheater")]
+    [InlineData("EVENTS=e_evil")]
+    public void CommandPropertySet_Player_IsRejected(string commandLine)
+    {
+        var world = CreateWorld();
+        var cmds = new CommandHandler();
+        var player = MakeChar(world, PrivLevel.Player);
+
+        var result = cmds.TryExecute(player, commandLine);
+
+        Assert.Equal(CommandResult.InsufficientPriv, result);
+        Assert.Equal(10, player.Str); // STR=5000 must not have applied
+    }
+
+    [Fact]
+    public void CommandPropertySet_Staff_IsAllowed()
+    {
+        var world = CreateWorld();
+        var cmds = new CommandHandler();
+        var staff = MakeChar(world, PrivLevel.GM);
+
+        var result = cmds.TryExecute(staff, "STR=100");
+
+        Assert.Equal(CommandResult.Executed, result);
+        Assert.Equal(100, staff.Str);
+    }
+
+    // ---- P1: @Speech self-trigger RETURN 1 cancels the utterance ----
+
+    [Fact]
+    public void ProcessSpeech_SelfTriggerCancels_SuppressesNpcHear()
+    {
+        var world = CreateWorld();
+        var speech = new SpeechEngine(world);
+        var speaker = MakeChar(world, PrivLevel.Player);
+
+        var npc = world.CreateCharacter();
+        npc.NpcBrain = NpcBrainType.Human;
+        world.PlaceCharacter(npc, new Point3D(101, 100, 0, 0));
+
+        bool npcHeard = false;
+        speech.OnNpcHear += (_, _, _, _) => npcHeard = true;
+
+        // Self @Speech returns cancel → ProcessSpeech reports "do not broadcast"
+        // and the NPC-hear loop is skipped.
+        speech.OnPlayerSpeech = (_, _, _) => true;
+        Assert.True(speech.ProcessSpeech(speaker, "hello", TalkMode.Say));
+        Assert.False(npcHeard);
+
+        // Not cancelled → normal flow, NPC hears.
+        speech.OnPlayerSpeech = (_, _, _) => false;
+        Assert.False(speech.ProcessSpeech(speaker, "hello", TalkMode.Say));
+        Assert.True(npcHeard);
+    }
+
+    // ---- P2: invisible listeners still hear ----
+
+    [Fact]
+    public void ProcessSpeech_InvisibleNpc_StillHearsWhisper()
+    {
+        var world = CreateWorld();
+        var speech = new SpeechEngine(world);
+        var speaker = MakeChar(world, PrivLevel.Player);
+
+        var npc = world.CreateCharacter();
+        npc.NpcBrain = NpcBrainType.Human;
+        npc.SetStatFlag(StatFlag.Invisible);
+        world.PlaceCharacter(npc, new Point3D(101, 100, 0, 0));
+
+        bool npcHeard = false;
+        speech.OnNpcHear += (_, listener, _, _) => { if (listener == npc) npcHeard = true; };
+
+        speech.ProcessSpeech(speaker, "psst", TalkMode.Whisper);
+
+        Assert.True(npcHeard); // invisibility must not block hearing
+    }
+}

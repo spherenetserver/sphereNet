@@ -4,8 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-30] - Crafting/gathering parity: smelt hue, gather triggers, terrain validation (Wave 159)
+[2026-06-30] - Speech/command security + parity: privilege gate, speech cancel, greeting memory (Wave 160)
 ----------------------------------------
+
+SECURITY - Commands:
+  - Setting a property via the command prefix now requires staff privilege
+    (Counsel+). A plain player could previously escalate or cheat by typing
+    ".GM=1", ".INVUL=1", ".MAGERY=1200", ".STR=5000", ".NAME=...", ".EVENTS=..."
+    etc. — the "verb=value" and object-verb fallbacks called TrySetProperty before
+    any privilege check (Source-X Event_Command → CanUsePrivVerb). PRIVLEVEL /
+    PLEVEL / FLAGS remain unsettable at any level.
+
+FIXED - Speech:
+  - A speaker's @Speech self-trigger RETURN 1 now cancels the utterance (Source-X
+    Event_Talk): no nearby broadcast and no NPC hear. ProcessSpeech's result was
+    previously ignored, so the speech always went out.
+  - Being hidden/invisible no longer stops a listener from hearing a whisper
+    (Source-X CanHear has no such gate) — a hidden GM still hears.
+
+FIXED - NPC hearing:
+  - @NPCHearGreeting now fires only on FIRST contact with a speaker (Source-X
+    NPC_OnHear records MEMORY_SPEAK), not on every line. It used to fire each
+    utterance, so a RETURN-1 greeting could swallow all of a player's speech and
+    the NPC re-greeted endlessly.
+
+
 
 FIXED - Smelting:
   - Smelting now carries the ore's hue onto the ingot, so a coloured/special ore

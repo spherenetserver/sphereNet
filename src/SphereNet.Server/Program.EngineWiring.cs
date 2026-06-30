@@ -609,7 +609,7 @@ public static partial class Program
             _speech.PartyManager = _partyManager;
             _speech.GuildManager = _guildManager;
             _speech.OnNpcHear += OnNpcHearSpeech;
-            _speech.OnPlayerSpeech += OnPlayerSpeech;
+            _speech.OnPlayerSpeech = OnPlayerSpeech;
             _speech.OnChannelMessage += (speaker, recipient, text, mode) =>
             {
                 if (!TryGetClientFor(recipient, out var c))

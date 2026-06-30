@@ -458,8 +458,12 @@ public sealed class GameWorld
     /// </summary>
     public Action<Character>? OnNpcSpawned { get; set; }
 
-    /// <summary>Move a character to a new position.</summary>
-    public void MoveCharacter(Character ch, Point3D newPos)
+    /// <summary>Move a character to a new position. When <paramref name="fireRegionEvents"/>
+    /// is false the region-change detection is skipped — used when a movable multi
+    /// (ship) carries a deck character: the ship's region moves WITH the character,
+    /// so they never logically cross a region boundary and must not fire @Enter/@Exit
+    /// or flip CURRENT_REGION as the hull sails.</summary>
+    public void MoveCharacter(Character ch, Point3D newPos, bool fireRegionEvents = true)
     {
         var newSector = GetSector(newPos);
         if (newSector == null) return;
@@ -487,7 +491,7 @@ public sealed class GameWorld
 
         CharacterMoved?.Invoke(ch, oldPos);
 
-        if (ch.IsPlayer)
+        if (ch.IsPlayer && fireRegionEvents)
         {
             var oldRegion = FindRegion(oldPos);
             var newRegion = FindRegion(newPos);
@@ -674,6 +678,28 @@ public sealed class GameWorld
         }
         list.Sort((a, b) => a.Area.CompareTo(b.Area));
         return list;
+    }
+
+    /// <summary>The smallest region with a strictly larger area than <paramref name="self"/>
+    /// that contains <paramref name="pt"/> — i.e. the background region a movable multi
+    /// (ship) nests inside. Recomputed as the multi sails so its inherited flags stay
+    /// current. Excludes <paramref name="self"/> by reference so the multi's own region
+    /// (which would otherwise win FindRegion by smallest area) is skipped.</summary>
+    public Region? FindParentRegion(Region self, Point3D pt)
+    {
+        Region? best = null;
+        long bestArea = long.MaxValue;
+        long selfArea = self.TotalArea;
+        foreach (var region in _regions)
+        {
+            if (ReferenceEquals(region, self)) continue;
+            if (region.MapIndex != pt.Map) continue;
+            if (!region.Contains(pt)) continue;
+            long area = region.TotalArea;
+            if (area <= selfArea) continue;
+            if (area < bestArea) { bestArea = area; best = region; }
+        }
+        return best;
     }
 
     public Region? FindRegionByUid(uint uid)

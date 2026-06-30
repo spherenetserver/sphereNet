@@ -136,6 +136,16 @@ public class Region : IScriptObj
         _cachedArea = -1;
     }
 
+    /// <summary>Replace all rects with a single footprint rect. Used by movable
+    /// multis (ships): the ship's region tracks the hull as it sails, so its rect
+    /// is re-set every move rather than accumulated.</summary>
+    public void SetFootprint(short x1, short y1, short x2, short y2)
+    {
+        _rects.Clear();
+        _rects.Add(new RegionRect(x1, y1, x2, y2));
+        _cachedArea = -1;
+    }
+
     public bool Contains(Point3D pt)
     {
         if (pt.Map != _mapIndex) return false;

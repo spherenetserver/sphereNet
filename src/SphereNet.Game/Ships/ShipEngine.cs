@@ -5,6 +5,7 @@ using SphereNet.Game.Objects;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.World;
+using SphereNet.Game.World.Regions;
 using SphereNet.MapData;
 
 namespace SphereNet.Game.Ships;
@@ -111,6 +112,7 @@ public sealed class ShipEngine
         }
 
         _ships[multiItem.Uid] = ship;
+        CreateShipRegion(ship);
         return ship;
     }
 
@@ -153,6 +155,7 @@ public sealed class ShipEngine
             if (item != null) _world.RemoveItem(item);
         }
 
+        RemoveShipRegion(ship);
         _world.RemoveItem(ship.MultiItem);
         _ships.Remove(multiItemUid);
         return deed;
@@ -271,7 +274,7 @@ public sealed class ShipEngine
             RotatePoint(ref rx, ref ry, rotSteps);
 
             var p = ch.Position;
-            _world.MoveCharacter(ch, new Point3D((short)(cx + rx), (short)(cy + ry), p.Z, p.Map));
+            _world.MoveCharacter(ch, new Point3D((short)(cx + rx), (short)(cy + ry), p.Z, p.Map), fireRegionEvents: false);
             ch.Direction = newFacing;
         }
 
@@ -287,6 +290,9 @@ public sealed class ShipEngine
             var p = item.Position;
             _world.PlaceItem(item, new Point3D((short)(cx + rx), (short)(cy + ry), p.Z, p.Map));
         }
+
+        // The rotated hull has a new footprint shape — re-rect the ship region.
+        UpdateShipRegion(ship);
 
         ship.DirFace = newFacing;
         OnShipTurned?.Invoke(ship);
@@ -589,10 +595,15 @@ public sealed class ShipEngine
         if (regionHook != null)
         {
             var anchor = ship.MultiItem.Position;
-            var oldRegion = _world.FindRegion(anchor);
-            var newRegion = _world.FindRegion(new Point3D(
+            var newAnchor = new Point3D(
                 (short)(anchor.X + dx), (short)(anchor.Y + dy),
-                (sbyte)(anchor.Z + dz), anchor.Map));
+                (sbyte)(anchor.Z + dz), anchor.Map);
+            // Resolve the BACKGROUND region the hull sits in (excluding the ship's
+            // own region, which now wins FindRegion by smallest area) so a sail
+            // across a sea/harbour boundary still fires @RegionLeave/@RegionEnter.
+            var shipRegion = ship.RegionUid != 0 ? _world.FindRegionByUid(ship.RegionUid) : null;
+            var oldRegion = shipRegion != null ? _world.FindParentRegion(shipRegion, anchor) : _world.FindRegion(anchor);
+            var newRegion = shipRegion != null ? _world.FindParentRegion(shipRegion, newAnchor) : _world.FindRegion(newAnchor);
             if (!ReferenceEquals(oldRegion, newRegion) && !regionHook(ship, oldRegion, newRegion))
                 return false;
         }
@@ -619,13 +630,15 @@ public sealed class ShipEngine
                 (sbyte)(p.Z + dz), p.Map));
         }
 
-        // Move deck characters
+        // Move deck characters. The ship's region moves WITH them, so suppress
+        // region enter/exit — they are not crossing a boundary, the boundary
+        // travels with the hull.
         foreach (var ch in deckChars)
         {
             var p = ch.Position;
             _world.MoveCharacter(ch, new Point3D(
                 (short)(p.X + dx), (short)(p.Y + dy),
-                (sbyte)(p.Z + dz), p.Map));
+                (sbyte)(p.Z + dz), p.Map), fireRegionEvents: false);
         }
 
         // Move loose items on deck (not in containers, not components)
@@ -637,6 +650,9 @@ public sealed class ShipEngine
                 (short)(p.X + dx), (short)(p.Y + dy),
                 (sbyte)(p.Z + dz), p.Map));
         }
+
+        // Re-position the ship's region to follow the hull to its new footprint.
+        UpdateShipRegion(ship);
 
         OnShipMoved?.Invoke(ship);
         return true;
@@ -674,6 +690,73 @@ public sealed class ShipEngine
                     return false;
         }
         return true;
+    }
+
+    // =====================================================================
+    // Dynamic ship region (Source-X CItemMulti::MultiRealizeRegion + CRegionWorld
+    // repositioning as the multi moves). A ship gets a world region matching its
+    // hull footprint, flagged Ship and inheriting the surrounding region's flags
+    // (a guarded harbour / no-pvp zone carries through, with Ship added). Because
+    // the ship sails between regions, inheritance is RECOMPUTED every move — reset
+    // to base flags, then re-inherit from the current parent — never accumulated.
+    // =====================================================================
+
+    /// <summary>Realize the ship's region once (placement / load). Idempotent.</summary>
+    private void CreateShipRegion(Ship ship)
+    {
+        if (ship.RegionUid != 0) return;
+        var mi = ship.MultiItem;
+        var def = _multiDefs.Get(mi.BaseId);
+        if (def == null) return;
+
+        var region = new Region
+        {
+            Name = string.IsNullOrEmpty(mi.Name) ? "ship" : mi.Name,
+            MapIndex = mi.MapIndex,
+            Flags = RegionFlag.Ship | RegionFlag.InheritParentFlags,
+        };
+        region.AddRect(
+            (short)(mi.X + def.MinX), (short)(mi.Y + def.MinY),
+            (short)(mi.X + def.MaxX), (short)(mi.Y + def.MaxY));
+        _world.AddRegion(region);
+        ship.RegionUid = region.Uid;
+        UpdateShipRegion(ship); // set P + inherit from current surroundings
+    }
+
+    /// <summary>Re-position the ship region to the current hull footprint and
+    /// recompute its inherited flags. Called after every move / turn.</summary>
+    private void UpdateShipRegion(Ship ship)
+    {
+        if (ship.RegionUid == 0) return;
+        var region = _world.FindRegionByUid(ship.RegionUid);
+        if (region == null) return;
+        var mi = ship.MultiItem;
+        var def = _multiDefs.Get(mi.BaseId);
+        if (def == null) return;
+
+        region.MapIndex = mi.MapIndex;
+        region.SetFootprint(
+            (short)(mi.X + def.MinX), (short)(mi.Y + def.MinY),
+            (short)(mi.X + def.MaxX), (short)(mi.Y + def.MaxY));
+        var center = new Point3D(mi.X, mi.Y, mi.Z, mi.MapIndex);
+        region.P = center;
+
+        // Reset to base flags, then re-inherit from the region the hull now sits
+        // in. Flags-only (like houses) so the deck never double-fires @Enter/@Exit.
+        region.Flags = RegionFlag.Ship | RegionFlag.InheritParentFlags;
+        var parent = _world.FindParentRegion(region, center);
+        if (parent != null)
+            region.InheritFromParent(parent);
+
+        _world.InvalidateRegionCache();
+    }
+
+    /// <summary>Tear down the ship's region (dry-dock / decommission).</summary>
+    private void RemoveShipRegion(Ship ship)
+    {
+        if (ship.RegionUid == 0) return;
+        _world.RemoveRegion(ship.RegionUid);
+        ship.RegionUid = 0;
     }
 
     private bool HandleShipGate(Ship ship, string args)
@@ -763,6 +846,7 @@ public sealed class ShipEngine
             }
 
             _ships[item.Uid] = ship;
+            CreateShipRegion(ship);
         }
     }
 

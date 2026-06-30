@@ -5,6 +5,7 @@ using SphereNet.Game.Housing;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.Ships;
 using SphereNet.Game.World;
+using SphereNet.Game.World.Regions;
 using Xunit;
 
 namespace SphereNet.Tests;
@@ -86,5 +87,100 @@ public class ShipHousingParityTests
         house.SecureForLoad(new Serial(0x2002));
         house.SecureForLoad(new Serial(0x2003));
         Assert.Equal(3, house.SecureContainers.Count);
+    }
+
+    // ---- #5: dynamic ship region (CItemMulti::MultiRealizeRegion + CRegionWorld move) ----
+
+    private static MultiRegistry MakeShipRegistry(ushort id = 0x4000)
+    {
+        var def = new MultiDef { Id = id, Name = "small boat" };
+        // 1x1 hull so the footprint is a single tile — keeps region geometry simple.
+        def.Components.Add(new MultiComponent { TileId = 0x3E40, DeltaX = 0, DeltaY = 0, DeltaZ = 0, Visible = true });
+        def.RecalcBounds();
+        var reg = new MultiRegistry();
+        reg.Register(def);
+        return reg;
+    }
+
+    [Fact]
+    public void PlaceShip_CreatesShipRegion_WithShipFlag()
+    {
+        var world = CreateWorld();
+        var engine = new ShipEngine(world, MakeShipRegistry(), null);
+        var owner = world.CreateCharacter();
+        world.PlaceCharacter(owner, new Point3D(50, 50, 0, 0));
+
+        var ship = engine.PlaceShip(owner, 0x4000, new Point3D(200, 200, 0, 0), Direction.North);
+        Assert.NotNull(ship);
+        Assert.NotEqual(0u, ship!.RegionUid);
+
+        var r = world.FindRegion(new Point3D(200, 200, 0, 0));
+        Assert.NotNull(r);
+        Assert.True(r!.IsFlag(RegionFlag.Ship));
+
+        // Dry-dock tears the region down.
+        engine.RemoveShip(ship.MultiItem.Uid, owner);
+        var after = world.FindRegion(new Point3D(200, 200, 0, 0));
+        Assert.True(after == null || !after.IsFlag(RegionFlag.Ship));
+    }
+
+    [Fact]
+    public void ShipRegion_FollowsHull_OnMove()
+    {
+        var world = CreateWorld();
+        var engine = new ShipEngine(world, MakeShipRegistry(), null); // null map = open water
+        var owner = world.CreateCharacter();
+        world.PlaceCharacter(owner, new Point3D(50, 50, 0, 0));
+
+        var ship = engine.PlaceShip(owner, 0x4000, new Point3D(200, 200, 0, 0), Direction.North);
+        Assert.NotNull(ship);
+        ship!.Anchored = false;
+
+        Assert.True(engine.Move(ship, Direction.East, 5));
+
+        // Region followed the hull east; the vacated tile is no longer the ship region.
+        var atNew = world.FindRegion(new Point3D(205, 200, 0, 0));
+        Assert.NotNull(atNew);
+        Assert.True(atNew!.IsFlag(RegionFlag.Ship));
+
+        var atOld = world.FindRegion(new Point3D(200, 200, 0, 0));
+        Assert.True(atOld == null || !atOld.IsFlag(RegionFlag.Ship));
+    }
+
+    [Fact]
+    public void ShipRegion_RecomputesInheritedFlags_AsItSails()
+    {
+        var world = CreateWorld();
+
+        // Two adjacent background regions: a guarded harbour (west) and an open
+        // no-pvp sea (east). Both far larger than the 1x1 hull.
+        var harbour = new Region { Name = "harbour", MapIndex = 0, Flags = RegionFlag.Guarded };
+        harbour.AddRect(100, 100, 199, 300);
+        world.AddRegion(harbour);
+        var sea = new Region { Name = "sea", MapIndex = 0, Flags = RegionFlag.NoPvP };
+        sea.AddRect(200, 100, 300, 300);
+        world.AddRegion(sea);
+
+        var engine = new ShipEngine(world, MakeShipRegistry(), null);
+        var owner = world.CreateCharacter();
+        world.PlaceCharacter(owner, new Point3D(50, 50, 0, 0));
+
+        // Start in the harbour: ship region inherits Guarded, not NoPvP.
+        var ship = engine.PlaceShip(owner, 0x4000, new Point3D(150, 200, 0, 0), Direction.North);
+        Assert.NotNull(ship);
+        ship!.Anchored = false;
+
+        var rWest = world.FindRegion(new Point3D(150, 200, 0, 0));
+        Assert.True(rWest!.IsFlag(RegionFlag.Ship));
+        Assert.True(rWest.IsFlag(RegionFlag.Guarded));
+        Assert.False(rWest.IsFlag(RegionFlag.NoPvP));
+
+        // Sail east into the sea — inheritance is RECOMPUTED, not accumulated:
+        // Guarded drops, NoPvP is picked up.
+        Assert.True(engine.Move(ship, Direction.East, 50));
+        var rEast = world.FindRegion(new Point3D(200, 200, 0, 0));
+        Assert.True(rEast!.IsFlag(RegionFlag.Ship));
+        Assert.True(rEast.IsFlag(RegionFlag.NoPvP));
+        Assert.False(rEast.IsFlag(RegionFlag.Guarded));
     }
 }

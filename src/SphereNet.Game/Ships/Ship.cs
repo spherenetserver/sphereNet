@@ -26,6 +26,10 @@ public sealed class Ship
     private long _nextMoveTick;
     private readonly List<Serial> _components = [];
 
+    // Source-X CItemShip / CCMultiMovable — the dynamic world region tracking the
+    // hull's footprint (REGION_FLAG_SHIP). Recomputed as the ship sails. 0 = none.
+    private uint _regionUid;
+
     public Item MultiItem => _multiItem;
     public Serial Owner { get => _owner; set => _owner = value; }
     public Serial Pilot { get => _pilot; set => _pilot = value; }
@@ -38,6 +42,7 @@ public sealed class Ship
     public ShipSpeedMode SpeedMode { get => _speedMode; set => _speedMode = value; }
     public long NextMoveTick { get => _nextMoveTick; set => _nextMoveTick = value; }
     public IReadOnlyList<Serial> Components => _components;
+    public uint RegionUid { get => _regionUid; set => _regionUid = value; }
 
     public Ship(Item multiItem)
     {

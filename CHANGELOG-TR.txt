@@ -4,6 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Multi paritesi: gemi sefer ettikce hull'u takip eden dinamik region (Wave 176)
+----------------------------------------
+
+EKLENEN - Gemi region modeli (Source-X CItemMulti::MultiRealizeRegion + CRegionWorld move):
+  - Gemi artik hull footprint'ine uyan dinamik bir dunya region'i yaratir; Ship flag'li
+    ve cevredeki region'in flag'lerini miras alir (guarded liman / no-pvp deniz aynen
+    gecer, ustune Ship eklenir). Yerlestirmede ve load'da yaratilir, dry-dock'ta yikilir.
+    Footprint uzerindeki en kucuk-alanli region oldugu icin FindRegion guvertede buna
+    cozulur; boylece Ship-flag ve region-flag bagimli sistemler gemide gecerli olur.
+  - Evden farkli olarak gemi HAREKET eder; bu yuzden region her hareket ve donusten
+    sonra yeni footprint'e tasinir ve miras alinan flag'ler YENIDEN HESAPLANIR (base'e
+    sifirla, hull'un su an bulundugu region'dan tekrar miras al) -- birikmez. Guarded
+    bolgeden cikan gemi Guarded'i dogru sekilde kaybeder.
+  - Geminin @RegionLeave / @RegionEnter sinir kontrolu artik hull'un icinde bulundugu
+    ARKA PLAN region'ini cozer (geminin kendi region'i haric -- yoksa en kucuk-alanli
+    olarak FindRegion'i kazanirdi), boylece deniz / liman sinirini gecmek hala atesler.
+  - Hareket eden / donen geminin tasidigi guverte karakterleri artik region enter/exit
+    atesleyip CURRENT_REGION'u degistirmez: region hull ile birlikte hareket eder,
+    yani sinir gecmiyorlar (yeni MoveCharacter fireRegionEvents=false yolu).
+
+================================================================================
+
 [2026-06-30] - Multi paritesi: ev footprint region'i, leading-edge gemi collision, yerlestirme Z-duzluk (Wave 175)
 ----------------------------------------
 

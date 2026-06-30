@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Multi parity: dynamic ship region tracking the hull as it sails (Wave 176)
+----------------------------------------
+
+ADDED - Ship region model (Source-X CItemMulti::MultiRealizeRegion + CRegionWorld move):
+  - A ship now realizes a dynamic world region matching its hull footprint, flagged
+    Ship and inheriting the surrounding region's flags (a guarded harbour / no-pvp
+    sea carries through, with Ship added). Created on placement and on load, torn
+    down on dry-dock. Being the smallest-area region over the footprint, FindRegion
+    resolves to it on deck, so Ship-flag and region-flag-dependent systems apply
+    aboard.
+  - Unlike a house, the ship MOVES, so the region is re-positioned to the new
+    footprint after every move and turn, and its inherited flags are RECOMPUTED
+    (reset to base, re-inherit from the region the hull now sits in) rather than
+    accumulated — a ship sailing out of a guarded zone correctly loses Guarded.
+  - The ship's @RegionLeave / @RegionEnter boundary check now resolves the
+    BACKGROUND region the hull sits in (excluding the ship's own region, which would
+    otherwise win FindRegion by smallest area), so crossing a sea / harbour boundary
+    still fires.
+  - Deck characters carried by a moving / turning ship no longer fire region
+    enter/exit or flip CURRENT_REGION: the region travels with the hull, so they are
+    not crossing a boundary (new MoveCharacter fireRegionEvents=false path).
+
+================================================================================
+
 [2026-06-30] - Multi parity: house footprint region, leading-edge ship collision, placement Z-flatness (Wave 175)
 ----------------------------------------
 

@@ -2648,6 +2648,10 @@ public static partial class Program
             // Load ROOMDEF definitions from scripts
             LoadRoomDefs();
 
+            // Source-X region nesting: regions flagged INHERIT_PARENT_* pull their
+            // containing region's flags/tags/events (one-time pass after all load).
+            _world.ApplyRegionInheritance();
+
             // Load craft recipes — must come AFTER defLoader.LoadAll() so AllItemDefs is populated
             int recipeCount = _craftingEngine.LoadRecipesFromDefs(_resources);
             if (recipeCount > 0)

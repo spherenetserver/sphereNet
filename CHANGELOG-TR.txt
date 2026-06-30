@@ -4,6 +4,19 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Region paritesi: InheritParent flag/tag/event inheritance (Wave 173)
+----------------------------------------
+
+EKLENEN - Region nesting (Source-X REGION_FLAG_INHERIT_PARENT_*):
+  - InheritParentFlags / InheritParentTags / InheritParentEvents flag'li bir bolge
+    artik karsilik gelen state'i iceren parent bolgeden load aninda cekiyor.
+    "Parent", bolgenin temsili noktasini (P= veya ilk rect'in merkezi) iceren ve
+    daha buyuk alanli en kucuk bolgedir. Inheritance additive'dir (bolge kendi
+    flag/tag/event'lerini korur) ve inherit-kontrol bit'leri propagate edilmez.
+    Tum AREADEF'ler yuklendikten sonra bir kez calisir.
+
+================================================================================
+
 [2026-06-30] - Region/spawn paritesi: NoMining, anti-magic sub-flag, underground isik, item-spawn timing (Wave 172)
 ----------------------------------------
 

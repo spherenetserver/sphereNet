@@ -578,6 +578,35 @@ public sealed class GameWorld
 
     public void InvalidateRegionCache() => _regionCache.Clear();
 
+    /// <summary>Source-X region nesting: a region that opted into inheritance (an
+    /// InheritParent* flag) pulls its containing parent's flags / tags / events.
+    /// The "parent" is the smallest region with a larger total area that contains
+    /// this region's representative point. Run once after all AREADEFs load.</summary>
+    public void ApplyRegionInheritance()
+    {
+        const RegionFlag inheritMask = RegionFlag.InheritParentFlags
+            | RegionFlag.InheritParentTags | RegionFlag.InheritParentEvents;
+        foreach (var region in _regions)
+        {
+            if ((region.Flags & inheritMask) == 0) continue;
+            var pt = region.RepresentativePoint;
+            if (pt == null) continue;
+
+            Region? parent = null;
+            long parentArea = long.MaxValue;
+            foreach (var other in _regions)
+            {
+                if (other == region || other.MapIndex != region.MapIndex) continue;
+                if (other.TotalArea <= region.TotalArea) continue;
+                if (!other.Contains(pt.Value)) continue;
+                if (other.TotalArea < parentArea) { parentArea = other.TotalArea; parent = other; }
+            }
+            if (parent != null)
+                region.InheritFromParent(parent);
+        }
+        _regionCache.Clear();
+    }
+
     public Region? FindRegion(Point3D pt)
     {
         // 8x8 tile grid cache key — same cell ⇒ almost always same region.

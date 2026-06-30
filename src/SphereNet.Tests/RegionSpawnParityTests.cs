@@ -158,4 +158,60 @@ public class RegionSpawnParityTests
         Assert.True(spawner.TrySetProperty("TIMEHI", "20"));
         Assert.True(spawner.TryGetTag("TIMELO", out var lo) && lo == "10");
     }
+
+    // ---- InheritParent* region flags ----
+
+    [Fact]
+    public void InheritParentFlags_PullsContainingRegionFlags()
+    {
+        var world = CreateWorld();
+        var outer = new Region { Name = "outer", Flags = RegionFlag.NoMagic, MapIndex = 0 };
+        outer.AddRect(0, 0, 1000, 1000);
+        world.AddRegion(outer);
+        var inner = new Region
+        { Name = "inner", Flags = RegionFlag.InheritParentFlags | RegionFlag.Guarded, MapIndex = 0 };
+        inner.AddRect(100, 100, 110, 110);
+        world.AddRegion(inner);
+
+        Assert.False(inner.NoMagic); // not yet inherited
+
+        world.ApplyRegionInheritance();
+
+        Assert.True(inner.NoMagic);   // inherited from the containing region
+        Assert.True(inner.IsGuarded); // keeps its own flag
+        Assert.False(outer.IsFlag(RegionFlag.InheritParentFlags)); // inherit bit not pushed to the parent
+    }
+
+    [Fact]
+    public void InheritParentTags_PullsContainingRegionTags()
+    {
+        var world = CreateWorld();
+        var outer = new Region { Name = "outer", MapIndex = 0 };
+        outer.AddRect(0, 0, 1000, 1000);
+        outer.SetTag("ZONE", "wilderness");
+        world.AddRegion(outer);
+        var inner = new Region { Name = "inner", Flags = RegionFlag.InheritParentTags, MapIndex = 0 };
+        inner.AddRect(100, 100, 110, 110);
+        world.AddRegion(inner);
+
+        world.ApplyRegionInheritance();
+
+        Assert.True(inner.TryGetTag("ZONE", out var z) && z == "wilderness");
+    }
+
+    [Fact]
+    public void NoInheritFlag_DoesNotInherit()
+    {
+        var world = CreateWorld();
+        var outer = new Region { Name = "outer", Flags = RegionFlag.NoMagic, MapIndex = 0 };
+        outer.AddRect(0, 0, 1000, 1000);
+        world.AddRegion(outer);
+        var inner = new Region { Name = "inner", Flags = RegionFlag.Guarded, MapIndex = 0 }; // no InheritParent
+        inner.AddRect(100, 100, 110, 110);
+        world.AddRegion(inner);
+
+        world.ApplyRegionInheritance();
+
+        Assert.False(inner.NoMagic); // did not opt in → not inherited
+    }
 }

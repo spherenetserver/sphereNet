@@ -77,6 +77,40 @@ public class Region : IScriptObj
     public void AddRegionType(ResourceId rid) => _regionTypes.Add(rid);
     public void RemoveRegionType(ResourceId rid) => _regionTypes.Remove(rid);
 
+    /// <summary>A point guaranteed to lie inside this region — the explicit P= point
+    /// when set, otherwise the centre of the first rect. Used to locate the
+    /// geometric parent for flag inheritance.</summary>
+    public Point3D? RepresentativePoint
+    {
+        get
+        {
+            if (_p.HasValue) return _p.Value;
+            if (_rects.Count == 0) return null;
+            var r = _rects[0];
+            return new Point3D((short)((r.X1 + r.X2) / 2), (short)((r.Y1 + r.Y2) / 2), 0, _mapIndex);
+        }
+    }
+
+    /// <summary>Source-X REGION_FLAG_INHERIT_PARENT_*: merge a containing (parent)
+    /// region's flags / tags / events into this region. Only the inheritance this
+    /// region opted into (via its InheritParent* flags) is copied; the
+    /// inherit-control bits themselves are not propagated. Applied once at load.</summary>
+    public void InheritFromParent(Region parent)
+    {
+        if (IsFlag(RegionFlag.InheritParentFlags))
+        {
+            const RegionFlag inheritBits = RegionFlag.InheritParentFlags
+                | RegionFlag.InheritParentTags | RegionFlag.InheritParentEvents;
+            _flags |= parent._flags & ~inheritBits;
+        }
+        if (IsFlag(RegionFlag.InheritParentTags))
+            foreach (var kv in parent._tags)
+                if (!_tags.ContainsKey(kv.Key)) _tags[kv.Key] = kv.Value;
+        if (IsFlag(RegionFlag.InheritParentEvents))
+            foreach (var ev in parent._events)
+                if (!_events.Contains(ev)) _events.Add(ev);
+    }
+
     public bool IsGuarded => IsFlag(RegionFlag.Guarded);
     public bool NoMagic => IsFlag(RegionFlag.NoMagic);
     public bool NoPvP => IsFlag(RegionFlag.NoPvP);

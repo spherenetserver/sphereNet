@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Region parity: InheritParent flag/tag/event inheritance (Wave 173)
+----------------------------------------
+
+ADDED - Region nesting (Source-X REGION_FLAG_INHERIT_PARENT_*):
+  - A region flagged InheritParentFlags / InheritParentTags / InheritParentEvents
+    now pulls the corresponding state from its containing parent region at load.
+    The "parent" is the smallest region with a larger area that contains the
+    region's representative point (P=, or the centre of its first rect). Inheritance
+    is additive (the region keeps its own flags/tags/events) and the inherit-control
+    bits themselves are not propagated. Runs once after all AREADEFs load.
+
+================================================================================
+
 [2026-06-30] - Region/spawn parity: NoMining, anti-magic sub-flags, underground light, item-spawn timing (Wave 172)
 ----------------------------------------
 

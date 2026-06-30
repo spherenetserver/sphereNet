@@ -954,6 +954,13 @@ public sealed class NpcAI
         var weapon = npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
         var range = CombatHelper.GetWeaponRange(weapon);
 
+        // Two-phase swing: land a started swing's hit once its windup elapses,
+        // regardless of current range (so a moved-away NPC still resolves it).
+        // Atomic swings carry no pending hit, so this is a no-op by default.
+        long nowTick = Environment.TickCount64;
+        if (npc.HasPendingHit && nowTick >= npc.SwingHitTime)
+            ResolveNpcHit(npc, nowTick);
+
         // Ranged kiting (Source-X NPC_FightArchery): when the target has closed
         // inside the weapon's minimum range a ranged attacker cannot fire, so
         // back off to reopen the gap (≈50%) instead of standing locked in melee.
@@ -964,7 +971,8 @@ public sealed class NpcAI
             return;
         }
 
-        if (dist <= range.Max)
+        // COMBAT_SWING_NORANGE: a swing may start even when out of range.
+        if (dist <= range.Max || CombatHelper.SwingIgnoresStartRange())
         {
             // Surround/flank sidesteps only happen on ticks where the swing
             // did NOT fire (recoil window). Moving in the same tick as a
@@ -2586,6 +2594,10 @@ public sealed class NpcAI
         long now = Environment.TickCount64;
         if (now < npc.NextAttackTime)
             return false;
+        // A started swing whose hit hasn't landed yet must not be overwritten;
+        // the NPC tick pumps the pending hit (resolved inline for atomic swings).
+        if (npc.HasPendingHit)
+            return false;
 
         // Same gating Source-X applies to player attackers — see
         // GameClient.TrySwingAt for rationale.
@@ -2616,7 +2628,8 @@ public sealed class NpcAI
         Item? weapon = npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
 
         var prep = CombatHelper.ValidateSwingPrep(
-            _world, npc, target, weapon, PrivLevel.Player, now, _world.CanSeeLOS);
+            _world, npc, target, weapon, PrivLevel.Player, now, _world.CanSeeLOS,
+            ignoreRangeLos: CombatHelper.SwingIgnoresStartRange());
         switch (prep.Result)
         {
             case CombatHelper.SwingPrepResult.Abort:
@@ -2651,8 +2664,12 @@ public sealed class NpcAI
             OnNpcFacingChanged?.Invoke(npc);
         }
 
-        npc.NextAttackTime = now + swingDelayMs + stagger;
-        npc.BeginSwingRecoil(now, swingDelayMs + stagger);
+        // Two-phase swing windup (Source-X): commit recoil + a pending hit now.
+        // A zero windup resolves the hit inline below (the atomic default);
+        // STAYINRANGE / SWING_NORANGE defer it to the NPC tick's pending-hit pump.
+        int recoilMs = swingDelayMs + stagger;
+        int hitDelayMs = CombatHelper.GetSwingHitDelayMs(recoilMs);
+        npc.BeginSwingWindup(now, hitDelayMs, recoilMs, target.Uid, now + recoilMs * 2L);
 
         if (npc.Stam > 0)
             npc.Stam = (short)(npc.Stam - 1);
@@ -2671,12 +2688,45 @@ public sealed class NpcAI
             }
         }
 
+        if (now >= npc.SwingHitTime)
+            ResolveNpcHit(npc, now);
+        return true;
+    }
+
+    /// <summary>Resolve a started NPC swing's hit (Source-X hit phase). Re-checks
+    /// reach/LoS per the combat flags (STAYINRANGE -> miss, SWING_NORANGE -> wait),
+    /// fires @HitCheck, runs ResolveAttack and the NPC hit feedback. Called inline
+    /// for an atomic swing, or from the NPC tick once the windup elapses.</summary>
+    private void ResolveNpcHit(Character npc, long now)
+    {
+        if (!npc.HasPendingHit) return;
+
+        var target = _world.FindChar(npc.PendingHitTarget);
+        var weapon = npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
+
+        switch (CombatHelper.EvaluateHitTime(_world, npc, target, weapon,
+            PrivLevel.Player, now, npc.PendingHitDeadline, _world.CanSeeLOS))
+        {
+            case CombatHelper.HitTimeDecision.Wait:
+                return; // keep the pending hit; retry next tick
+            case CombatHelper.HitTimeDecision.Drop:
+                npc.ClearPendingHit();
+                return;
+            case CombatHelper.HitTimeDecision.Miss:
+                npc.ClearPendingHit();
+                if (target != null) OnNpcAttack?.Invoke(npc, target, -1);
+                return;
+        }
+
+        npc.ClearPendingHit();
+        if (target == null) return;
+
         // @HitCheck (parity with the player path): a script can force a miss
         // before damage resolves. -1 routes the miss feedback (@HitMiss + whoosh).
         if (OnNpcHitCheck != null && OnNpcHitCheck(npc, target, weapon))
         {
             OnNpcAttack?.Invoke(npc, target, -1);
-            return true;
+            return;
         }
 
         short hpBefore = npc.Hits;
@@ -2718,7 +2768,6 @@ public sealed class NpcAI
             EmitSound(npc, CreatureSoundType.Die);
             OnNpcKill?.Invoke(npc, npc);
         }
-        return true;
     }
 
     // --- Movement helpers ---

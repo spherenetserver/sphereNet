@@ -778,6 +778,13 @@ public sealed class ClientCombatHandler
 
         long now = Environment.TickCount64;
         _character.RefreshCombatSwingState(now);
+
+        // Two-phase swing: land a started swing's hit once its windup elapses,
+        // before gating the next swing on recoil. Atomic swings carry no pending
+        // hit (resolved inline), so this is a no-op for the default case.
+        if (_character.HasPendingHit && now >= _character.SwingHitTime)
+            ResolvePlayerHit(now);
+
         if (now < _character.NextAttackTime) return;
 
         var target = _world.FindChar(_character.FightTarget);
@@ -791,7 +798,8 @@ public sealed class ClientCombatHandler
                   ?? _character.GetEquippedItem(Layer.TwoHanded);
         int maxRange = CombatHelper.GetWeaponRange(weapon).Max;
         int dist = CombatHelper.GetChebyshevDistance(_character, target);
-        if (dist > maxRange)
+        // COMBAT_SWING_NORANGE: a swing may start even when out of range.
+        if (dist > maxRange && !CombatHelper.SwingIgnoresStartRange())
             return;
 
         TrySwingAt(target);
@@ -803,6 +811,10 @@ public sealed class ClientCombatHandler
 
         long now = Environment.TickCount64;
         _character.RefreshCombatSwingState(now);
+        // A started swing whose hit hasn't landed yet (windup in flight) must not
+        // be overwritten by a new swing — TickCombat pumps the pending hit.
+        if (_character.HasPendingHit)
+            return;
         if (now < _character.NextAttackTime)
             return;
         if (_character.CombatSwingState is SwingState.Swinging or SwingState.Equipping)
@@ -856,7 +868,8 @@ public sealed class ClientCombatHandler
                   ?? _character.GetEquippedItem(Layer.TwoHanded);
 
         var prep = CombatHelper.ValidateSwingPrep(
-            _world, _character, target, weapon, _character.PrivLevel, now, _world.CanSeeLOS);
+            _world, _character, target, weapon, _character.PrivLevel, now, _world.CanSeeLOS,
+            ignoreRangeLos: CombatHelper.SwingIgnoresStartRange());
         switch (prep.Result)
         {
             case CombatHelper.SwingPrepResult.Abort:
@@ -926,7 +939,13 @@ public sealed class ClientCombatHandler
             }
         }
 
-        _character.BeginSwingRecoil(now, swingDelayMs);
+        // Two-phase swing (Source-X windup -> hit): commit the swing now (animation
+        // + recoil + a pending hit). With a zero windup the hit resolves in this
+        // same call (atomic — the flagless default and PREHIT); STAYINRANGE /
+        // SWING_NORANGE open a window so the hit lands later from TickCombat's
+        // pending-hit pump. `ammo` (presence) was validated just above.
+        int hitDelayMs = CombatHelper.GetSwingHitDelayMs(swingDelayMs);
+        _character.BeginSwingWindup(now, hitDelayMs, swingDelayMs, target.Uid, now + swingDelayMs * 2L);
 
         if (_character.Stam > 0)
             _character.Stam = (short)(_character.Stam - 1);
@@ -937,10 +956,50 @@ public sealed class ClientCombatHandler
         // sound on a hit, the miss whoosh on a miss (emitted below). No extra
         // unconditional swing sound.
 
-        if (ammo != null)
+        if (now >= _character.SwingHitTime)
+            ResolvePlayerHit(now);
+    }
+
+    /// <summary>Resolve a started swing's hit (Source-X hit phase). Re-checks
+    /// reach/LoS per the combat flags (STAYINRANGE -> miss, SWING_NORANGE -> wait),
+    /// consumes ammo, runs ResolveAttack and emits all hit/miss feedback. Called
+    /// inline for an atomic swing, or from TickCombat once the windup elapses.</summary>
+    private void ResolvePlayerHit(long now)
+    {
+        if (_character == null || !_character.HasPendingHit) return;
+
+        var target = _world.FindChar(_character.PendingHitTarget);
+        var weapon = _character.GetEquippedItem(Layer.OneHanded)
+                  ?? _character.GetEquippedItem(Layer.TwoHanded);
+
+        switch (CombatHelper.EvaluateHitTime(_world, _character, target, weapon,
+            _character.PrivLevel, now, _character.PendingHitDeadline, _world.CanSeeLOS))
         {
-            ConsumeAmmoFromPack(ammo.Value.BaseId, ammo.Value.FallbackType);
-            EmitRangedProjectile(target, ammo.Value.Gfx);
+            case CombatHelper.HitTimeDecision.Wait:
+                return; // keep the pending hit; retry on a later tick
+            case CombatHelper.HitTimeDecision.Drop:
+                _character.ClearPendingHit();
+                return;
+            case CombatHelper.HitTimeDecision.Miss:
+                _character.ClearPendingHit();
+                if (target != null)
+                {
+                    EmitMissFeedback(target, weapon);
+                    _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.HitMiss,
+                        new TriggerArgs { CharSrc = _character, O1 = target });
+                }
+                return;
+        }
+
+        _character.ClearPendingHit();
+        if (target == null) return;
+
+        // Ammo consume + projectile (presence was validated at swing start).
+        if (CombatHelper.IsRangedWeapon(weapon))
+        {
+            var ammoSpec = ResolveAmmo(weapon!);
+            ConsumeAmmoFromPack(ammoSpec.BaseId, ammoSpec.FallbackType);
+            EmitRangedProjectile(target, ammoSpec.Gfx);
         }
 
         int damage = CombatEngine.ResolveAttack(

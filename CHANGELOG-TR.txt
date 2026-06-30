@@ -4,6 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Combat paritesi: iki-fazli swing state machine (PreHit / StayInRange / SwingNoRange) (Wave 182)
+----------------------------------------
+
+EKLENEN - Iki-fazli windup -> hit swing (Source-X WAR_SWING_TYPE); tanimli ama etkisiz olan
+          COMBATFLAGS'lere anlam kazandirir:
+  - Swing artik windup (animasyon + recoil + bekleyen hit) ve hit fazi (ResolveAttack + feedback)
+    olarak ikiye ayrilir. Hit, windup dolunca cozulur ve o anda menzil/LoS yeniden kontrol edilir.
+    Player ve NPC swing yollari ayni modeli paylasir.
+  - COMBAT_STAYINRANGE (0x200): hedef hit inmeden once menzil/LoS disina cikarsa, swing baglanmak
+    yerine ISKALAR.
+  - COMBAT_SWING_NORANGE (0x8000): swing menzil disinda / LoS olmadan BASLAYABILIR; hasar menzil +
+    LoS yeniden saglanana kadar tutulur (hic saglanmazsa dusurulur).
+  - COMBAT_PREHIT (0x4): hit'i swing basina (atomik) zorlar ve SWING_NORANGE'i devre disi birakir;
+    Source-X oncelik sirasiyla eslesir.
+  - ONEMLI: flag'siz default SIFIR uzunlukta windup tutar, boylece hit swing'in basladigi ayni
+    tick'te cozulur -- onceki atomik davranisla bayt-bayt ayni. Hicbir mevcut combat testi
+    degismedi; windup yalnizca yukaridaki flag'ler icin acilir.
+  - Ertelendi: COMBAT_ANIM_HIT_SMOOTH (animasyon-tempolama paket alani) -- kozmetik ve client-surum
+    dogrulamasi gerektirir; follow-up olarak izleniyor.
+
+================================================================================
+
 [2026-06-30] - Speech paritesi: SPEECH RETURN 0 devam eder, item @Hear coverage (Wave 181)
 ----------------------------------------
 

@@ -147,4 +147,93 @@ public class CombatFlagParityTests
             Character.CombatFlags = oldFlags;
         }
     }
+
+    // ---- Two-phase swing (windup -> hit): STAYINRANGE / SWING_NORANGE / PREHIT ----
+
+    [Fact]
+    public void StayInRange_MovedOutBeforeHit_Misses()
+    {
+        var oldFlags = Character.CombatFlags;
+        try
+        {
+            // STAYINRANGE opens a windup window and re-checks reach when the hit lands.
+            Character.CombatFlags = (int)CombatFlags.StayInRange;
+            var world = TestHarness.CreateWorld();
+            var (client, attacker, target) = MakeMeleeFight(1310, world);
+
+            // First tick starts the swing windup — the hit is deferred, no damage yet.
+            client.TickCombat();
+            Assert.True(attacker.HasPendingHit);
+            Assert.Equal(100, target.Hits);
+
+            // The target steps out of reach before the windup elapses → the hit misses.
+            world.MoveCharacter(target, new Point3D(120, 100, 0, 0));
+            attacker.SwingHitTime = Environment.TickCount64 - 1; // force the windup elapsed
+            client.TickCombat();
+
+            Assert.False(attacker.HasPendingHit); // resolved (as a miss)
+            Assert.Equal(100, target.Hits);       // ResolveAttack never ran — no damage
+        }
+        finally
+        {
+            Character.CombatFlags = oldFlags;
+        }
+    }
+
+    [Fact]
+    public void SwingNoRange_StartsOutOfRange_WaitsThenResolvesInRange()
+    {
+        var oldFlags = Character.CombatFlags;
+        try
+        {
+            // SWING_NORANGE lets the swing START out of range; the hit waits for reach.
+            Character.CombatFlags = (int)CombatFlags.SwingNoRange;
+            var world = TestHarness.CreateWorld();
+            var (client, attacker, target) = MakeMeleeFight(1311, world);
+            world.MoveCharacter(target, new Point3D(110, 100, 0, 0)); // out of melee reach
+
+            // The swing starts despite being out of range.
+            client.TickCombat();
+            Assert.True(attacker.HasPendingHit);
+
+            // Windup elapses but the target is still out of reach → the hit WAITS.
+            attacker.SwingHitTime = Environment.TickCount64 - 1;
+            client.TickCombat();
+            Assert.True(attacker.HasPendingHit); // still pending, waiting for range
+
+            // Target closes to melee range → the pending hit resolves.
+            world.MoveCharacter(target, new Point3D(101, 100, 0, 0));
+            attacker.SwingHitTime = Environment.TickCount64 - 1;
+            client.TickCombat();
+            Assert.False(attacker.HasPendingHit); // resolved now that it is in range
+        }
+        finally
+        {
+            Character.CombatFlags = oldFlags;
+        }
+    }
+
+    [Fact]
+    public void PreHit_ResolvesAtomically_EvenWithStayInRange()
+    {
+        var oldFlags = Character.CombatFlags;
+        try
+        {
+            // PREHIT forces the hit to land at swing start (atomic) and disables the
+            // STAYINRANGE / SWING_NORANGE windup deferral.
+            Character.CombatFlags = (int)(CombatFlags.PreHit | CombatFlags.StayInRange);
+            var world = TestHarness.CreateWorld();
+            var (client, attacker, _) = MakeMeleeFight(1312, world);
+
+            client.TickCombat();
+
+            // The hit resolved in the same tick — no pending hit lingers.
+            Assert.False(attacker.HasPendingHit);
+            Assert.Equal(SwingState.Swinging, attacker.CombatSwingState);
+        }
+        finally
+        {
+            Character.CombatFlags = oldFlags;
+        }
+    }
 }

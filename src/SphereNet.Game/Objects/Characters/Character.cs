@@ -1205,6 +1205,36 @@ public partial class Character : ObjBase
         SetCombatSwingState(SwingState.Swinging, NextAttackTime);
     }
 
+    // ---- Two-phase swing (Source-X windup -> hit). Runtime-only state. ----
+
+    /// <summary>Tick at which a started swing's hit resolves. 0 = no pending hit.</summary>
+    public long SwingHitTime { get; set; }
+    /// <summary>The target a started-but-not-yet-resolved swing will hit.</summary>
+    public Serial PendingHitTarget { get; set; } = Serial.Invalid;
+    /// <summary>Latest tick a SWING_NORANGE hit may keep waiting for reach/LoS.</summary>
+    public long PendingHitDeadline { get; set; }
+    public bool HasPendingHit => PendingHitTarget.IsValid;
+
+    /// <summary>Start a swing's windup: arm the pending hit at <paramref name="hitDelayMs"/>
+    /// from now, begin the recoil (next swing at <paramref name="recoilMs"/>), and enter
+    /// the Swinging state. With hitDelayMs == 0 the caller resolves the hit immediately
+    /// (atomic) — identical to the old <see cref="BeginSwingRecoil"/> path.</summary>
+    public void BeginSwingWindup(long nowMs, int hitDelayMs, int recoilMs, Serial targetUid, long deadlineMs)
+    {
+        SwingHitTime = nowMs + Math.Max(hitDelayMs, 0);
+        PendingHitTarget = targetUid;
+        PendingHitDeadline = deadlineMs;
+        NextAttackTime = nowMs + Math.Max(recoilMs, 0);
+        SetCombatSwingState(SwingState.Swinging, NextAttackTime);
+    }
+
+    public void ClearPendingHit()
+    {
+        PendingHitTarget = Serial.Invalid;
+        SwingHitTime = 0;
+        PendingHitDeadline = 0;
+    }
+
     public void BeginEquipSwingWait(long nowMs, int delayMs, bool noWait)
     {
         if (noWait)

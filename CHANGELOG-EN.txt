@@ -4,6 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Combat parity: two-phase swing state machine (PreHit / StayInRange / SwingNoRange) (Wave 182)
+----------------------------------------
+
+ADDED - Two-phase windup -> hit swing (Source-X WAR_SWING_TYPE), giving meaning to
+        COMBATFLAGS that were defined but inert:
+  - A swing now splits into a windup (animation + recoil + a pending hit) and a hit
+    phase (ResolveAttack + feedback). The hit resolves when the windup elapses, and
+    reach/LoS are re-checked at that moment. Both the player and NPC swing paths share
+    the model.
+  - COMBAT_STAYINRANGE (0x200): if the target leaves reach/LoS before the hit lands,
+    the swing MISSES instead of connecting.
+  - COMBAT_SWING_NORANGE (0x8000): the swing may START out of range / without LoS; the
+    damage is held until reach + LoS are regained (or dropped if never regained).
+  - COMBAT_PREHIT (0x4): forces the hit back to swing-start (atomic) and disables
+    SWING_NORANGE, matching Source-X precedence.
+  - IMPORTANT: the flagless default keeps a ZERO-length windup, so the hit resolves in
+    the same tick the swing starts — byte-for-byte the previous atomic behaviour. No
+    existing combat test changed; the windup only opens for the flags above.
+  - Deferred: COMBAT_ANIM_HIT_SMOOTH (animation-pacing packet field) — cosmetic and
+    needs client-version verification; tracked as a follow-up.
+
+================================================================================
+
 [2026-06-30] - Speech parity: SPEECH RETURN 0 continues, item @Hear coverage (Wave 181)
 ----------------------------------------
 

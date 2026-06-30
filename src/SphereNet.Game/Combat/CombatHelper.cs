@@ -131,7 +131,8 @@ public static class CombatHelper
         Item? weapon,
         PrivLevel privLevel,
         long nowMs,
-        Func<Point3D, Point3D, bool>? canSeeLos = null)
+        Func<Point3D, Point3D, bool>? canSeeLos = null,
+        bool ignoreRangeLos = false)
     {
         if (attacker.IsDead || target.IsDead)
             return new SwingPrepFailure(SwingPrepResult.Abort, 0);
@@ -147,18 +148,23 @@ public static class CombatHelper
             if (HasShieldEquipped(attacker))
                 return new SwingPrepFailure(SwingPrepResult.Abort, 0, Msg.ItemuseBowShield);
 
-            int dist = GetChebyshevDistance(attacker, target);
-            var (minRange, maxRange) = GetWeaponRange(weapon);
-            if (dist < minRange)
-                return new SwingPrepFailure(SwingPrepResult.RetryLater, 250, Msg.CombatArchTooclose);
-            if (dist > maxRange)
-                return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
-
-            if (privLevel < PrivLevel.GM)
+            // COMBAT_SWING_NORANGE: the swing may START at any range / without LoS;
+            // reach + LoS are re-checked when the hit resolves instead.
+            if (!ignoreRangeLos)
             {
-                canSeeLos ??= world.CanSeeLOS;
-                if (!canSeeLos(attacker.Position, target.Position))
+                int dist = GetChebyshevDistance(attacker, target);
+                var (minRange, maxRange) = GetWeaponRange(weapon);
+                if (dist < minRange)
+                    return new SwingPrepFailure(SwingPrepResult.RetryLater, 250, Msg.CombatArchTooclose);
+                if (dist > maxRange)
                     return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
+
+                if (privLevel < PrivLevel.GM)
+                {
+                    canSeeLos ??= world.CanSeeLOS;
+                    if (!canSeeLos(attacker.Position, target.Position))
+                        return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
+                }
             }
 
             // COMBAT_ARCHERYCANMOVE lets an archer fire while/just after moving,
@@ -176,14 +182,17 @@ public static class CombatHelper
         }
         else
         {
-            if (GetChebyshevDistance(attacker, target) > 1)
-                return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
-
-            if (privLevel < PrivLevel.GM)
+            if (!ignoreRangeLos)
             {
-                canSeeLos ??= world.CanSeeLOS;
-                if (!canSeeLos(attacker.Position, target.Position))
+                if (GetChebyshevDistance(attacker, target) > 1)
                     return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
+
+                if (privLevel < PrivLevel.GM)
+                {
+                    canSeeLos ??= world.CanSeeLOS;
+                    if (!canSeeLos(attacker.Position, target.Position))
+                        return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
+                }
             }
 
             if (Character.CombatMeleeMovementDelay > 0 && attacker.LastMoveTick > 0)
@@ -206,6 +215,80 @@ public static class CombatHelper
     /// <summary>True when the given COMBATFLAGS bit is enabled in sphere.ini.</summary>
     public static bool IsCombatFlagSet(CombatFlags flag) =>
         (Character.CombatFlags & (int)flag) != 0;
+
+    // =====================================================================
+    // Two-phase swing (Source-X windup -> hit). The default (flagless) case
+    // keeps a zero-length windup so the hit resolves in the same tick the
+    // swing starts — byte-for-byte the previous atomic behaviour. A windup
+    // window only opens for STAYINRANGE / SWING_NORANGE (and PREHIT forces the
+    // hit back to swing-start and disables SWING_NORANGE).
+    // =====================================================================
+
+    /// <summary>Outcome of the hit-time reach/LoS re-check.</summary>
+    public enum HitTimeDecision { Resolve, Miss, Wait, Drop }
+
+    /// <summary>Whether the attacker is within the weapon's reach AND has LoS to
+    /// the target right now (used to re-validate at hit time).</summary>
+    public static bool InWeaponReachAndLos(
+        GameWorld world, Character attacker, Character target, Item? weapon,
+        PrivLevel privLevel, Func<Point3D, Point3D, bool>? canSeeLos = null)
+    {
+        int dist = GetChebyshevDistance(attacker, target);
+        if (IsRangedWeapon(weapon))
+        {
+            var (min, max) = GetWeaponRange(weapon);
+            if (dist < min || dist > max) return false;
+        }
+        else if (dist > 1)
+        {
+            return false;
+        }
+        if (privLevel < PrivLevel.GM)
+        {
+            canSeeLos ??= world.CanSeeLOS;
+            if (!canSeeLos(attacker.Position, target.Position)) return false;
+        }
+        return true;
+    }
+
+    /// <summary>Decide what to do with a pending hit when its windup elapses
+    /// (Source-X StayInRange / SwingNoRange semantics).</summary>
+    public static HitTimeDecision EvaluateHitTime(
+        GameWorld world, Character attacker, Character? target, Item? weapon,
+        PrivLevel privLevel, long nowMs, long deadlineMs, Func<Point3D, Point3D, bool>? canSeeLos = null)
+    {
+        if (target == null || target.IsDead || target.IsDeleted)
+            return HitTimeDecision.Drop;
+
+        if (InWeaponReachAndLos(world, attacker, target, weapon, privLevel, canSeeLos))
+            return HitTimeDecision.Resolve;
+
+        // Out of reach / LoS when the hit should land:
+        bool preHit = IsCombatFlagSet(CombatFlags.PreHit);
+        if (IsCombatFlagSet(CombatFlags.StayInRange) && !preHit)
+            return HitTimeDecision.Miss;                 // moved out -> miss
+        if (IsCombatFlagSet(CombatFlags.SwingNoRange) && !preHit)
+            return nowMs >= deadlineMs ? HitTimeDecision.Drop : HitTimeDecision.Wait;
+        // Default: resolve anyway — a flagless swing only starts in range, so the
+        // hit landing in the same tick is exactly the previous atomic behaviour.
+        return HitTimeDecision.Resolve;
+    }
+
+    /// <summary>Windup length before the hit lands. 0 = atomic (hit at swing
+    /// start), which is the flagless default and the PREHIT case. STAYINRANGE /
+    /// SWING_NORANGE (without PREHIT) open a full-swing window so the reach/LoS
+    /// re-check has meaning.</summary>
+    public static int GetSwingHitDelayMs(int swingDelayMs)
+    {
+        if (IsCombatFlagSet(CombatFlags.PreHit)) return 0;
+        bool window = IsCombatFlagSet(CombatFlags.StayInRange) || IsCombatFlagSet(CombatFlags.SwingNoRange);
+        return window ? Math.Max(0, swingDelayMs) : 0;
+    }
+
+    /// <summary>True when the swing may START out of range / without LoS
+    /// (COMBAT_SWING_NORANGE, unless PREHIT overrides it).</summary>
+    public static bool SwingIgnoresStartRange() =>
+        IsCombatFlagSet(CombatFlags.SwingNoRange) && !IsCombatFlagSet(CombatFlags.PreHit);
 
     /// <summary>
     /// Resolve which ammo a ranged weapon fires from its ITEMDEF. AMMOTYPE names

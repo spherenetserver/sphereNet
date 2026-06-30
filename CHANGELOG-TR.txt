@@ -4,6 +4,19 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Vendor paritesi: dolu konteyner veya tasinmaz item satin alinmaz (Wave 195)
+----------------------------------------
+
+DUZELTILDI - Vendor'a dolu bir konteyner satmak icerigini yok ediyordu:
+  - VendorEngine.ProcessSell miktari, altini ve opsiyonel buy-list filtresini dogruluyordu
+    ama item'in kendisini DEGIL; boylece buy-list'i olmayan bir vendor (her seyi alir) bir
+    cantayi kabul edip Delete() ediyordu -- canta icindeki her item'i cantanin satis fiyatina
+    sessizce yiyordu (item-loss exploit). Satis yolu artik tasinmaz (Move_Never) bir item'i ve
+    icinde hala item bulunan herhangi bir konteyneri reddeder; ServUO BaseVendor satis korumasini
+    yansitir (!Movable ve Items.Count != 0 olan Container atlanir). Bos konteyner satilabilir kalir.
+
+================================================================================
+
 [2026-06-30] - Notoriety paritesi: masuma saldirinca suclu bayragi bolgeden bagimsiz (Wave 194)
 ----------------------------------------
 

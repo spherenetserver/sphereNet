@@ -228,6 +228,14 @@ public static class VendorEngine
             if (found == null || found.IsDeleted || found.Amount < entry.Amount ||
                 found.ItemType == Core.Enums.ItemType.Gold || found.BaseId == 0x0EED)
                 return 0;
+            // A vendor never buys an immovable item, nor a NON-EMPTY container: the
+            // sale deletes the item, which would silently destroy a bag's contents
+            // for the bag's price (item-loss exploit, worse on a no-buy-list vendor
+            // that buys anything). Mirrors ServUO BaseVendor's sell guard
+            // (skip !Movable and (Container && Items.Count != 0)).
+            if (found.IsAttr(Core.Enums.ObjAttributes.Move_Never) ||
+                (found.ItemType == Core.Enums.ItemType.Container && found.Contents.Count > 0))
+                return 0;
             if (buyFilter != null && !buyFilter.Contains(found.BaseId))
                 return 0; // vendor does not buy this item type
 

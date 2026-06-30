@@ -129,4 +129,62 @@ public class VendorTradeTests
         Assert.True(cost > 0);             // fallback (baseId/10+5) priced, not rejected
         Assert.Equal(9, stockItem.Amount);
     }
+
+    [Fact]
+    public void Vendor_Sell_RejectsNonEmptyContainer_NoItemLoss()
+    {
+        var world = CreateWorld();
+        var vendor = new Character { Name = "vendor", NpcBrain = NpcBrainType.Vendor };
+        world.PlaceCharacter(vendor, new Point3D(100, 100, 0, 0)); // no BUY list => buys anything
+
+        var seller = new Character { Name = "seller" };
+        world.PlaceCharacter(seller, new Point3D(101, 100, 0, 0));
+        var pack = world.CreateItem();
+        seller.Equip(pack, Layer.Pack);
+
+        // A bag holding a valuable item, sitting in the seller's backpack.
+        var bag = world.CreateItem();
+        bag.ItemType = ItemType.Container;
+        bag.BaseId = 0x0E75;
+        pack.AddItem(bag);
+        var loot = world.CreateItem();
+        loot.BaseId = 0x0F0E;
+        loot.Amount = 1;
+        bag.AddItem(loot);
+
+        int paid = VendorEngine.ProcessSell(seller, vendor,
+            [new TradeEntry { ItemUid = bag.Uid, ItemId = bag.BaseId, Amount = 1, Price = 1 }]);
+
+        // The sale is refused, and neither the bag nor its contents are destroyed —
+        // without the guard, Delete()-ing the bag would have silently eaten the loot.
+        Assert.Equal(0, paid);
+        Assert.False(bag.IsDeleted);
+        Assert.False(loot.IsDeleted);
+    }
+
+    [Fact]
+    public void Vendor_Sell_AllowsEmptyContainer()
+    {
+        var world = CreateWorld();
+        var vendor = new Character { Name = "vendor", NpcBrain = NpcBrainType.Vendor };
+        world.PlaceCharacter(vendor, new Point3D(100, 100, 0, 0));
+
+        var seller = new Character { Name = "seller" };
+        world.PlaceCharacter(seller, new Point3D(101, 100, 0, 0));
+        var pack = world.CreateItem();
+        seller.Equip(pack, Layer.Pack);
+
+        // An EMPTY container is still sellable (matches ServUO: only non-empty is barred).
+        var emptyBag = world.CreateItem();
+        emptyBag.ItemType = ItemType.Container;
+        emptyBag.BaseId = 0x0E75;
+        emptyBag.SetTag("PRICE", "10");
+        pack.AddItem(emptyBag);
+
+        int paid = VendorEngine.ProcessSell(seller, vendor,
+            [new TradeEntry { ItemUid = emptyBag.Uid, ItemId = emptyBag.BaseId, Amount = 1, Price = 5 }]);
+
+        Assert.True(paid > 0);
+        Assert.True(emptyBag.IsDeleted); // sold and consumed
+    }
 }

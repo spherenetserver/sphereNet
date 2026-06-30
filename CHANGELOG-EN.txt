@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Vendor parity: refuse to buy a non-empty container or immovable item (Wave 195)
+----------------------------------------
+
+FIXED - Selling a non-empty container to a vendor destroyed its contents:
+  - VendorEngine.ProcessSell validated amount, gold and the optional buy-list filter
+    but not the item itself, so a vendor with no buy list (buys anything) would accept
+    a bag and Delete() it — silently eating every item inside for the bag's sell price
+    (an item-loss exploit). The sell path now refuses an immovable item (Move_Never)
+    and any container that still holds items, mirroring ServUO BaseVendor's sell guard
+    (skip !Movable and a Container with Items.Count != 0). An empty container stays
+    sellable.
+
+================================================================================
+
 [2026-06-30] - Notoriety parity: criminal flag on attacking an innocent is region-independent (Wave 194)
 ----------------------------------------
 

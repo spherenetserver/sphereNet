@@ -4,8 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-30] - Ship/housing parity: component types, diagonal sailing, custom-house load, lockdown persistence (Wave 157)
+[2026-06-30] - Vendor/trade/stable parity: pet-claim safety, buy price, trigger ordering (Wave 158)
 ----------------------------------------
+
+FIXED - Stable:
+  - Claiming a stabled pet no longer loses it when the owner's follower cap is
+    full. The pet is only removed from the stable AFTER ownership is successfully
+    re-assigned; if the cap check fails the temp NPC is deleted and the pet stays
+    stabled (Source-X CCharNPCAct_Vendor). Previously it was removed from the
+    stable list first and then spawned ownerless into the world.
+
+FIXED - Vendor:
+  - The server buy price now comes from the selected stock entry's own PRICE tag
+    instead of the first same-BaseId entry's price. Two stock entries sharing a
+    BaseId at different prices could otherwise let the server charge a different
+    price than the client's selected row.
+  - The per-item @Buy / @Sell trigger now fires BEFORE the transfer and RETURN 1
+    vetoes that line (Source-X). It used to fire after the trade had already
+    completed, so its return value was ignored.
+
+FIXED - Secure trade:
+  - @TradeAccepted now fires BEFORE any item changes hands; RETURN 1 from either
+    party cancels the whole trade and returns the items to their owners (Source-X
+    CItemContainer). It used to fire after the swap, so the cancel was a no-op.
+
+
 
 FIXED - Ships:
   - Ship components are now classified by their ITEMDEF TYPE (tiller / plank /

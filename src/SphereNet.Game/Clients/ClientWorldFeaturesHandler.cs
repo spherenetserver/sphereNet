@@ -330,17 +330,22 @@ public sealed class ClientWorldFeaturesHandler
             });
         }
 
+        // @Buy fires per item BEFORE the purchase; RETURN 1 drops that line.
+        entries = FilterVendorEntriesByTrigger(vendor, entries, ItemTrigger.Buy);
+        if (entries.Count == 0)
+        {
+            NpcSpeech(vendor, ServerMessages.Get("npc_vendor_ty"));
+            RefreshBackpackContents();
+            return;
+        }
+
         int result = VendorEngine.ProcessBuy(_character, vendor, entries);
         if (result < 0)
             NpcSpeech(vendor, ServerMessages.Get("npc_vendor_nomoney1"));
+        else if (result == 0)
+            NpcSpeech(vendor, ServerMessages.Get("npc_vendor_ty"));
         else
-        {
-            FireVendorItemTriggers(vendor, entries, ItemTrigger.Buy);
-            if (result == 0)
-                NpcSpeech(vendor, ServerMessages.Get("npc_vendor_ty"));
-            else
-                NpcSpeech(vendor, ServerMessages.GetFormatted("npc_vendor_b1", result, result == 1 ? "" : "s"));
-        }
+            NpcSpeech(vendor, ServerMessages.GetFormatted("npc_vendor_b1", result, result == 1 ? "" : "s"));
 
         RefreshBackpackContents();
         SendCharacterStatus(_character);
@@ -385,9 +390,16 @@ public sealed class ClientWorldFeaturesHandler
             });
         }
 
+        // @Sell fires per item BEFORE the sale; RETURN 1 drops that line.
+        entries = FilterVendorEntriesByTrigger(vendor, entries, ItemTrigger.Sell);
+        if (entries.Count == 0)
+        {
+            NpcSpeech(vendor, ServerMessages.Get("npc_vendor_ty"));
+            RefreshBackpackContents();
+            return;
+        }
+
         int result = VendorEngine.ProcessSell(_character, vendor, entries);
-        if (_triggerDispatcher != null && result > 0)
-            FireVendorItemTriggers(vendor, entries, ItemTrigger.Sell);
         NpcSpeech(vendor, ServerMessages.GetFormatted("npc_vendor_sell_ty", result, result == 1 ? "" : "s"));
         RefreshBackpackContents();
         SendCharacterStatus(_character);
@@ -407,16 +419,22 @@ public sealed class ClientWorldFeaturesHandler
         return Math.Max(1, GetVendorItemPrice(vendor, item) / 2);
     }
 
-    private void FireVendorItemTriggers(Character vendor, IReadOnlyList<TradeEntry> entries, ItemTrigger trigger)
+    /// <summary>Fire the per-item @Buy / @Sell trigger BEFORE the transfer and
+    /// return the entries that were NOT cancelled. Source-X runs @Buy/@Sell ahead
+    /// of moving the item so RETURN 1 can veto that line (it used to fire after
+    /// the trade had already completed, with its return value ignored).</summary>
+    private List<TradeEntry> FilterVendorEntriesByTrigger(Character vendor, IReadOnlyList<TradeEntry> entries, ItemTrigger trigger)
     {
-        if (_triggerDispatcher == null || _character == null) return;
+        if (_triggerDispatcher == null || _character == null)
+            return entries.ToList();
 
+        var kept = new List<TradeEntry>(entries.Count);
         foreach (var entry in entries)
         {
             var item = _world.FindItem(entry.ItemUid);
-            if (item == null) continue;
+            if (item == null) { kept.Add(entry); continue; }
 
-            _triggerDispatcher.FireItemTrigger(item, trigger, new TriggerArgs
+            var result = _triggerDispatcher.FireItemTrigger(item, trigger, new TriggerArgs
             {
                 CharSrc = _character,
                 ItemSrc = item,
@@ -424,7 +442,10 @@ public sealed class ClientWorldFeaturesHandler
                 N1 = entry.Amount,
                 N2 = entry.Price
             });
+            if (result != TriggerResult.True) // RETURN 1 vetoes this line
+                kept.Add(entry);
         }
+        return kept;
     }
 
     /// <summary>
@@ -584,6 +605,16 @@ public sealed class ClientWorldFeaturesHandler
         var cont1 = trade.InitiatorContainer;
         var cont2 = trade.PartnerContainer;
 
+        // @TradeAccepted fires BEFORE any item changes hands (Source-X
+        // CItemContainer): RETURN 1 from either side cancels the whole trade, so
+        // the items go back to their owners instead of being swapped.
+        if (FireTradeTrigger(initiator, CharTrigger.TradeAccepted, trade, partner) == TriggerResult.True ||
+            FireTradeTrigger(partner, CharTrigger.TradeAccepted, trade, initiator) == TriggerResult.True)
+        {
+            CancelTrade(trade);
+            return;
+        }
+
         foreach (var item in cont1.Contents.ToList())
             TradeManager.ReturnItemToCharacter(_world, partner, item);
         foreach (var item in cont2.Contents.ToList())
@@ -595,8 +626,6 @@ public sealed class ClientWorldFeaturesHandler
             trade.GetPartner(_character!),
             trade.GetPartnerContainer(_character!).Uid.Value);
 
-        FireTradeTrigger(initiator, CharTrigger.TradeAccepted, trade, partner);
-        FireTradeTrigger(partner, CharTrigger.TradeAccepted, trade, initiator);
         FireTradeTrigger(initiator, CharTrigger.TradeClose, trade, partner);
         FireTradeTrigger(partner, CharTrigger.TradeClose, trade, initiator);
 
@@ -624,14 +653,14 @@ public sealed class ClientWorldFeaturesHandler
         SendTradeUpdateToPartner?.Invoke(partner, trade);
     }
 
-    private void FireTradeTrigger(Character target, CharTrigger trigger, SecureTrade trade, Character other)
+    private TriggerResult FireTradeTrigger(Character target, CharTrigger trigger, SecureTrade trade, Character other)
     {
-        _triggerDispatcher?.FireCharTrigger(target, trigger, new TriggerArgs
+        return _triggerDispatcher?.FireCharTrigger(target, trigger, new TriggerArgs
         {
             CharSrc = other,
             O1 = other,
             N1 = (int)trade.SessionId.Value
-        });
+        }) ?? TriggerResult.Default;
     }
 
 

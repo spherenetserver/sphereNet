@@ -4,8 +4,31 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-30] - Gemi/housing parity: component tipleri, diagonal sailing, custom-house load, lockdown persistence (Wave 157)
+[2026-06-30] - Vendor/trade/stable parity: pet-claim guvenligi, buy fiyati, trigger sirasi (Wave 158)
 ----------------------------------------
+
+DUZELTME - Stable:
+  - Stabled bir peti geri almak, sahibin follower cap'i doluyken artik peti
+    kaybetmiyor. Pet ancak ownership basariyla yeniden atandiktan SONRA stable'dan
+    cikariliyor; cap kontrolu basarisizsa gecici NPC siliniyor ve pet stable'da
+    kaliyor (Source-X CCharNPCAct_Vendor). Onceden once stable listesinden cikarilip
+    sonra dunyaya sahipsiz olarak konuluyordu.
+
+DUZELTME - Vendor:
+  - Sunucu buy fiyati artik ayni BaseId'li ilk girisin fiyati yerine SECILEN stock
+    girisinin kendi PRICE tag'inden geliyor. Ayni BaseId'yi farkli fiyatlarla
+    paylasan iki stock girisi, sunucunun client'in sectigi satirdan farkli fiyat
+    almasina yol acabiliyordu.
+  - Item-basina @Buy / @Sell trigger'i artik transferden ONCE fire ediyor ve RETURN 1
+    o satiri veto ediyor (Source-X). Eskiden trade tamamlandiktan sonra fire ediyordu,
+    donus degeri yok sayiliyordu.
+
+DUZELTME - Secure trade:
+  - @TradeAccepted artik hicbir item el degistirmeden ONCE fire ediyor; iki taraftan
+    birinin RETURN 1'i tum trade'i iptal edip itemleri sahiplerine geri veriyor
+    (Source-X CItemContainer). Eskiden swap'tan sonra fire ediyordu, iptal no-op'tu.
+
+
 
 DUZELTME - Gemiler:
   - Gemi component'leri artik her zaman ShipOther yerine ITEMDEF TYPE'a gore

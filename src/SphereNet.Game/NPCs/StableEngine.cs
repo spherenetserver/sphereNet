@@ -79,8 +79,6 @@ public sealed class StableEngine
             return null;
 
         var data = list[index];
-        list.RemoveAt(index);
-        PersistOwnerStableList(owner, list);
 
         var pet = world.CreateCharacter();
         pet.Name = data.Name;
@@ -97,7 +95,22 @@ public sealed class StableEngine
         pet.PetAIMode = data.PetAIMode;
         if (data.CharDefIndex != 0)
             pet.CharDefIndex = data.CharDefIndex;
-        pet.TryAssignOwnership(owner, owner, summoned: false, enforceFollowerCap: true);
+
+        // Source-X CCharNPCAct_Vendor: don't release the stabled pet until it can
+        // actually be re-owned. If the follower cap is full, TryAssignOwnership
+        // fails — delete the temp NPC and leave the pet in the stable instead of
+        // dropping it from the list AND spawning it ownerless into the world.
+        if (!pet.TryAssignOwnership(owner, owner, summoned: false, enforceFollowerCap: true))
+        {
+            world.DeleteObject(pet);
+            pet.Delete();
+            return null;
+        }
+
+        // Ownership succeeded — now it is safe to commit the stable removal.
+        list.RemoveAt(index);
+        PersistOwnerStableList(owner, list);
+
         if (data.ControllerUid != 0 && data.ControllerUid != owner.Uid.Value)
             pet.TrySetProperty("CONTROLLER_UID", data.ControllerUid.ToString());
 

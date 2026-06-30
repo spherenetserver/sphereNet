@@ -139,7 +139,14 @@ public static class VendorEngine
             if (stockItem.Amount < entry.Amount)
                 return -1; // not enough in stock
 
-            int serverPrice = GetServerBuyPrice(vendor, stockItem.BaseId);
+            // Price from THIS stock entry's own PRICE tag — not a GetServerBuyPrice
+            // lookup by BaseId, which returns the first same-BaseId stock item's
+            // price. With two same-id entries at different prices the server could
+            // otherwise charge a different price than the client's selected row.
+            int serverPrice = (stockItem.TryGetTag("PRICE", out string? rowPrice)
+                    && int.TryParse(rowPrice, out int rp) && rp > 0)
+                ? rp
+                : GetServerBuyPrice(vendor, stockItem.BaseId);
             if (serverPrice <= 0) return -1;
             totalCost += (long)serverPrice * entry.Amount;
             resolved.Add((stockItem, (int)entry.Amount, serverPrice));

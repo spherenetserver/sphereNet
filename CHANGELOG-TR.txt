@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - NPC AI paritesi: wand casting (Wave 171)
+----------------------------------------
+
+EKLENEN - NPC AI:
+  - Buyu yapan ve sarjli wand tutan (IT_WAND, More1'de spell id + CHARGES tag)
+    bir NPC artik wand'in spell'ini ~%50 ihtimalle atar (Source-X NPC_FightMagery
+    wand kaynagi). Wand yolu mana-free'dir ve kitap mana kapilarini atlar; bu
+    yuzden NPC manasi dusukken bile ateslenir — ve spellbook'u olmayan wand-only
+    bir NPC bundan cast edebilir. Her wand cast bir sarj harcar; sifirda wand'in
+    spell'i temizlenir (oyuncu cift-tik wand yolu ile ayni). CHARGES tag'i olmayan
+    wand sonsuz kabul edilir. Additive — sadece wand takan NPC'ler etkilenir.
+
+================================================================================
+
 [2026-06-30] - NPC AI paritesi: config heal threshold, @NPCActFight skip-hardcoded, @NPCActCast target (Wave 170)
 ----------------------------------------
 

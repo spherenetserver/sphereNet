@@ -1232,6 +1232,27 @@ public sealed class NpcAI
     {
         if (npc.Int < 5)
             return false;
+
+        // Source-X NPC_FightMagery wand path: a casting NPC holding a charged wand
+        // (IT_WAND with a spell in More1 + CHARGES) throws the wand's spell ~50% of
+        // the time. A wand is mana-free with minimal difficulty (SpellEngine's
+        // IsCastingWithWand discount applies because it is equipped), so this fires
+        // even when mana is too low for a book spell — and works for a wand-only NPC
+        // with no spellbook. Needs casting range and a non-NoMagic region.
+        Item? wand = FindNpcWand(npc);
+        if (wand != null && dist <= GetNpcSight(npc) && _rand.Next(2) == 0)
+        {
+            var noMagic = _world.FindRegion(npc.Position);
+            if (noMagic == null || !noMagic.NoMagic)
+            {
+                if (CastViaTrigger(npc, target, (SpellType)wand.More1))
+                {
+                    ConsumeWandCharge(wand);
+                    return true;
+                }
+            }
+        }
+
         if (npc.NpcSpells.Count == 0)
         {
             // No scripted spell list — derive one from a carried/equipped
@@ -1585,6 +1606,38 @@ public sealed class NpcAI
             foreach (var it in pack.Contents)
                 if (!it.IsDeleted && IsSpellbookType(it.ItemType)) return it;
         return null;
+    }
+
+    /// <summary>An equipped wand (IT_WAND) that can still cast — it holds a spell in
+    /// More1 and is not out of charges. A wand with no CHARGES tag is treated as
+    /// infinite (matching the player double-click wand path).</summary>
+    private static Item? FindNpcWand(Character npc)
+    {
+        var held = npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
+        if (held == null || held.ItemType != ItemType.Wand || held.More1 == 0)
+            return null;
+        if (held.TryGetTag("CHARGES", out string? ch) && int.TryParse(ch, out int charges) && charges <= 0)
+            return null;
+        return held;
+    }
+
+    /// <summary>Decrement a wand's CHARGES after a cast; at zero, clear its spell and
+    /// the tag (mirrors ClientItemUseHandler's player wand path). A wand with no
+    /// CHARGES tag is infinite and is left untouched.</summary>
+    private static void ConsumeWandCharge(Item wand)
+    {
+        if (!wand.TryGetTag("CHARGES", out string? ch) || !int.TryParse(ch, out int charges))
+            return;
+        charges--;
+        if (charges <= 0)
+        {
+            wand.More1 = 0;
+            wand.RemoveTag("CHARGES");
+        }
+        else
+        {
+            wand.SetTag("CHARGES", charges.ToString());
+        }
     }
 
     /// <summary>Threat weight: how strongly the NPC should prefer a target based

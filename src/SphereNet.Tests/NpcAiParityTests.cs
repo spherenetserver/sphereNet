@@ -373,4 +373,45 @@ public class NpcAiParityTests
 
         Assert.False(breathed); // LOCAL.skiphardcoded bypassed the breath special
     }
+
+    // ---- NPC wand casting (Source-X NPC_FightMagery wand source) ----
+
+    [Fact]
+    public void NpcWand_CastsWandSpell_AndConsumesCharge()
+    {
+        var world = CreateWorld();
+        var ai = new NpcAI(world, new SphereConfig());
+        SpellType castSpell = SpellType.None;
+        ai.OnNpcCastSpell = (_, _, spell) => castSpell = spell;
+        ai.OnNpcTickSpellCast = _ => false;
+
+        var caster = world.CreateCharacter();
+        caster.NpcBrain = NpcBrainType.Monster;
+        caster.Hits = caster.MaxHits = 200; caster.Stam = caster.MaxStam = 100;
+        caster.Mana = caster.MaxMana = 200; caster.Int = 50;
+        var pack = world.CreateItem(); pack.ItemType = ItemType.Container; pack.BaseId = 0x0E75;
+        caster.Backpack = pack; caster.Equip(pack, Layer.Pack);
+        // A charged wand and NO spellbook — the NPC casts purely from the wand.
+        var wand = world.CreateItem();
+        wand.ItemType = ItemType.Wand; wand.More1 = (uint)SpellType.Fireball;
+        wand.SetTag("CHARGES", "3");
+        caster.Equip(wand, Layer.OneHanded);
+        world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));
+
+        var victim = world.CreateCharacter();
+        victim.IsPlayer = true; victim.IsOnline = true; victim.Hits = victim.MaxHits = 5000;
+        world.PlaceCharacter(victim, new Point3D(104, 100, 0, 0));
+        world.AddOnlinePlayer(victim);
+        world.OnTick();
+
+        caster.FightTarget = victim.Uid;
+        for (int i = 0; i < 100 && castSpell == SpellType.None; i++)
+        {
+            caster.NextNpcActionTime = 0; caster.NextAttackTime = 0;
+            ai.OnTickAction(caster);
+        }
+
+        Assert.Equal(SpellType.Fireball, castSpell); // cast the wand's stored spell
+        Assert.True(wand.TryGetTag("CHARGES", out var c) && int.Parse(c!) == 2); // one charge spent
+    }
 }

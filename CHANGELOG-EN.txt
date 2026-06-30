@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - NPC AI parity: wand casting (Wave 171)
+----------------------------------------
+
+ADDED - NPC AI:
+  - A casting NPC holding a charged wand (IT_WAND with a spell id in More1 and a
+    CHARGES tag) now throws the wand's spell ~50% of the time (Source-X
+    NPC_FightMagery wand source). The wand path is mana-free and bypasses the book
+    mana gates, so it fires even when the NPC is low on mana — and a wand-only NPC
+    with no spellbook can cast from it. Each wand cast consumes a charge; at zero
+    the wand's spell clears (mirroring the player double-click wand path). A wand
+    with no CHARGES tag is treated as infinite. Additive — only NPCs with an
+    equipped wand are affected.
+
+================================================================================
+
 [2026-06-30] - NPC AI parity: config heal threshold, @NPCActFight skip-hardcoded, @NPCActCast target (Wave 170)
 ----------------------------------------
 

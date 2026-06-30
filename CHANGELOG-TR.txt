@@ -4,7 +4,33 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-30] - Crafting/gathering parity II: tool zorunlulugu, type resource, node tutarliligi, sayfalama (Wave 161)
+[2026-06-30] - Olum/corpse parity II: corpse-suz summon, iki-asamali decay, corpse-rez, @Resurrect arg (Wave 162)
+----------------------------------------
+
+EKLENEN - Olum / Corpse:
+  - Summon yaratiklari ve DEATH_NOCORPSE (DEATHFLAGS bit 0x02) corpse birakmiyor —
+    yok oluyorlar (Source-X MakeCorpse). DEATH_NOLOOTDROP (0x04) corpse yapar ama loot
+    dusurmez. Corpse'lar Move_Never (corpse loot edilir, suruklenmez).
+  - Player corpse'lari artik iki asamada decay oluyor (Source-X): ilk decay corpse'u
+    sahibinin artik rejoin edemeyecegi ve icerigini ikinci pencere boyunca tutan bir
+    bones yiginina cevirir; loot ancak ikinci decay'de sacilir. NPC corpse degismedi
+    (tek decay, icerik silinir).
+
+DUZELTME - Resurrection:
+  - Corpse uzerinde resurrect Source-X FindMyCorpse gibi gated: corpse top-level
+    (container icinde degil), NOREJOIN flag'siz (cozunmus bones degil), LOS icinde ve
+    resurrect olan karaktere ait olmali.
+  - @Resurrect artik karakterin kendi corpse'unu (ARGO) ve rez-sonrasi hit%'i (ARGN1,
+    varsayilan 50) geciriyor; script ARGN1 ile hit%'i degistirebilir. RETURN 1 hala
+    resurrection'i bloke eder.
+  - Healing ve Veterinary artik bir corpse'u hedef alip olu sahibini resurrect edebiliyor
+    (Source-X corpse-target Skill_Healing), sadece canli karakter degil.
+
+DUZELTME - Testler:
+  - Alakasiz bir RNG mesajini fazla-eslesen bir fishing gather-test assertion'i sikilastirildi,
+    araliksiz (intermittent) test hatasi giderildi.
+
+
 ----------------------------------------
 
 EKLENEN - Gathering:

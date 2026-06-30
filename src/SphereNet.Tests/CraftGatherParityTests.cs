@@ -49,8 +49,16 @@ public class CraftGatherParityTests
         sink.Pack[toolType] = tool;
     }
 
-    private static GameWorld MakeWorld() =>
-        new(Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance); // no MapData
+    private static GameWorld MakeWorld()
+    {
+        // no MapData (terrain guards stay permissive). Pin the ResolveWorld statics
+        // to THIS world so a prior test's stale world can't leak in (the suite
+        // shares these statics; without pinning, test order flips behaviour).
+        var world = new GameWorld(Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance);
+        SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
+        Item.ResolveWorld = () => world;
+        return world;
+    }
 
     private static Character MakeChar()
     {
@@ -75,7 +83,10 @@ public class CraftGatherParityTests
 
         ActiveSkillEngine.Fishing(sink, new Point3D(101, 100, 0, 0), null, world);
 
-        Assert.DoesNotContain(sink.Log, e => e.Text.Contains("can't fish", StringComparison.OrdinalIgnoreCase));
+        // Match the terrain-guard message specifically ("can't fish THERE"); the
+        // unrelated RNG gather-fail line ("can't fish from where you are standing")
+        // must not be caught by this assertion.
+        Assert.DoesNotContain(sink.Log, e => e.Text.Contains("fish there", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(sink.Log, e => e.Text.Contains("fishing pole", StringComparison.OrdinalIgnoreCase));
     }
 

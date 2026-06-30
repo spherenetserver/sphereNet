@@ -135,6 +135,19 @@ public sealed class DeathEngine
         // real body, and the corpse on the ground renders as a ghost shape
         // instead of a normal humanoid corpse. Source-X ordering avoids
         // exactly this.
+        // Source-X MakeCorpse: summoned creatures and a DEATH_NOCORPSE flag leave
+        // no corpse — they simply vanish (DeleteObject refreshes nearby clients).
+        int deathFlags = GetDeathFlags(victim);
+        if (ShouldLeaveNoCorpse(victim, deathFlags))
+        {
+            if (!victim.IsPlayer && !victim.IsBonded)
+            {
+                _world.DeleteObject(victim);
+                victim.Delete();
+            }
+            return null;
+        }
+
         var corpse = CreateCorpse(victim);
         corpse.SetTag("OWNER_UID", victim.Uid.Value.ToString());
         corpse.SetTag("OWNER_UUID", victim.Uuid.ToString("D"));
@@ -145,11 +158,15 @@ public sealed class DeathEngine
             corpse.SetTag("KILLER_UUID", effectiveKiller.Uuid.ToString("D"));
         }
 
-        // Drop equipped items and backpack contents to corpse
-        if (victim.IsPlayer)
-            DropLootToCorpse(victim, corpse);
-        else
-            DropNpcLootToCorpse(victim, corpse);
+        // Drop equipped items and backpack contents to corpse — unless DEATH_NOLOOTDROP
+        // keeps everything on the (now-dead) body. (DEATH_NOLOOTDROP = 0x04.)
+        if ((deathFlags & 0x04) == 0)
+        {
+            if (victim.IsPlayer)
+                DropLootToCorpse(victim, corpse);
+            else
+                DropNpcLootToCorpse(victim, corpse);
+        }
 
         // @DeathCorpse — fired on the victim once the corpse exists and the
         // loot has been transferred (Source-X CChar::Death fires it right
@@ -184,6 +201,31 @@ public sealed class DeathEngine
         }
 
         return corpse;
+    }
+
+    /// <summary>Source-X DEATHFLAGS (CChar.h): a per-character bitmask controlling
+    /// corpse/loot/fame behaviour on death. Parsed from the DEATHFLAGS tag (hex or
+    /// decimal). 0 when unset.</summary>
+    private static int GetDeathFlags(Character victim)
+    {
+        if (!victim.TryGetTag("DEATHFLAGS", out string? df) || string.IsNullOrWhiteSpace(df))
+            return 0;
+        df = df.Trim();
+        bool ok = df.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+            ? int.TryParse(df.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out int v)
+            : int.TryParse(df, out v);
+        return ok ? v : 0;
+    }
+
+    /// <summary>Source-X MakeCorpse: no corpse for DEATH_NOCORPSE (0x02), or for a
+    /// summoned creature unless DEATH_NOCONJUREDEFFECT (0x08) / DEATH_HASCORPSE
+    /// (0x10) is set. Players always leave a corpse.</summary>
+    private static bool ShouldLeaveNoCorpse(Character victim, int deathFlags)
+    {
+        if (victim.IsPlayer) return false;
+        if ((deathFlags & 0x02) != 0) return true;
+        if (victim.IsSummoned && (deathFlags & (0x08 | 0x10)) == 0) return true;
+        return false;
     }
 
     /// <summary>Whether killer→victim is an unprovoked kill of an innocent, the
@@ -298,6 +340,7 @@ public sealed class DeathEngine
         corpse.ItemType = ItemType.Corpse;
         corpse.Hue = victim.Hue;
         corpse.Direction = (byte)((byte)victim.Direction & 0x07); // facing snapshot for carve/forensics
+        corpse.SetAttr(ObjAttributes.Move_Never); // a corpse can't be dragged, only looted (Source-X)
 
         // Forensics reads DEATH_TIME / CORPSE_CARVED / CORPSE_SLEEPING. Stamp the
         // death time so the skill can report how long ago the death occurred; the
@@ -444,21 +487,22 @@ public sealed class DeathEngine
         {
             if (item.ItemType != ItemType.Corpse) continue;
 
-            if (item.TryGetTag("OWNER_UUID", out string? uuidStr) &&
-                Guid.TryParse(uuidStr, out Guid uuid) &&
-                uuid == resurrected.Uuid)
-            {
-                corpse = item;
-                break;
-            }
+            // Source-X FindMyCorpse gates: the corpse must be top-level (not in a
+            // container), not flagged NOREJOIN (e.g. a decayed bones pile the owner
+            // can no longer rejoin), in line of sight, and owned by this character.
+            if (item.ContainedIn.IsValid) continue;
+            if (item.TryGetTag("NOREJOIN", out _)) continue;
+            if (!_world.CanSeeLOS(resurrected.Position, item.Position)) continue;
 
-            if (item.TryGetTag("OWNER_UID", out string? ownerStr) &&
-                uint.TryParse(ownerStr, out uint ownerUid) &&
-                ownerUid == resurrected.Uid.Value)
-            {
-                corpse = item;
-                break;
-            }
+            bool owned =
+                (item.TryGetTag("OWNER_UUID", out string? uuidStr) &&
+                 Guid.TryParse(uuidStr, out Guid uuid) && uuid == resurrected.Uuid) ||
+                (item.TryGetTag("OWNER_UID", out string? ownerStr) &&
+                 uint.TryParse(ownerStr, out uint ownerUid) && ownerUid == resurrected.Uid.Value);
+            if (!owned) continue;
+
+            corpse = item;
+            break;
         }
         if (corpse == null) return false;
 

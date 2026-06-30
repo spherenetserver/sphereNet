@@ -4,7 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-30] - Crafting/gathering parity II: tool requirement, type resources, node consistency, paging (Wave 161)
+[2026-06-30] - Death/corpse parity II: no-corpse summons, two-stage decay, corpse-rez, @Resurrect args (Wave 162)
+----------------------------------------
+
+ADDED - Death / Corpse:
+  - Summoned creatures and DEATH_NOCORPSE (DEATHFLAGS bit 0x02) leave no corpse —
+    they vanish (Source-X MakeCorpse). DEATH_NOLOOTDROP (0x04) makes a corpse but
+    keeps the loot off it. Corpses are flagged Move_Never (a corpse is looted, not
+    dragged).
+  - Player corpses now decay in two stages (Source-X): the first decay turns the
+    corpse into a bones pile its owner can no longer rejoin and which keeps its
+    contents for a second window; only the second decay scatters the loot. NPC
+    corpses are unchanged (single decay, contents deleted).
+
+FIXED - Resurrection:
+  - Resurrecting onto a corpse is gated like Source-X FindMyCorpse: the corpse must
+    be top-level (not in a container), not flagged NOREJOIN (a decayed bones pile),
+    in line of sight, and owned by the resurrecting character.
+  - @Resurrect now passes the character's own corpse (ARGO) and the post-rez hit%
+    (ARGN1, default 50); a script may override the hit% via ARGN1. RETURN 1 still
+    blocks the resurrection.
+  - Healing and Veterinary can now target a corpse to resurrect its dead owner
+    (Source-X corpse-target Skill_Healing), not only a living character.
+
+FIXED - Tests:
+  - Tightened a fishing gathering-test assertion that over-matched an unrelated
+    RNG message, removing an intermittent test failure.
+
+
 ----------------------------------------
 
 ADDED - Gathering:

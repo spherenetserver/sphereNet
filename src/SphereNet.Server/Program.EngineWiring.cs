@@ -2109,11 +2109,30 @@ public static partial class Program
                     if (owner != null && owner.IsPlayer)
                         isPlayerCorpse = true;
                 }
+                bool staged = corpse.TryGetTag("NOREJOIN", out _);
 
+                // Source-X CItem two-stage player-corpse decay: on the FIRST decay a
+                // player corpse with loot turns into a bones pile its owner can no
+                // longer rejoin, keeping its contents for a second decay window —
+                // it does NOT scatter the loot yet. (NPC corpses and the bones'
+                // second decay fall through to the scatter/delete below.)
+                if (isPlayerCorpse && !staged && corpse.Contents.Count > 0)
+                {
+                    corpse.BaseId = 0x0ECA;       // bone pile graphic
+                    corpse.Name = "bones";
+                    corpse.SetTag("NOREJOIN", "1");
+                    corpse.RemoveTag("OWNER_UID"); // cut the owner link (no rejoin)
+                    corpse.RemoveTag("OWNER_UUID");
+                    corpse.DecayTime = Environment.TickCount64 + GameWorld.DefaultDecayTimeMs;
+                    return false; // keep — staged to bones
+                }
+
+                // Player loot scatters to the ground; NPC corpse contents are deleted.
+                bool dropToGround = isPlayerCorpse || staged;
                 foreach (var child in corpse.Contents.ToArray())
                 {
                     corpse.RemoveItem(child);
-                    if (isPlayerCorpse)
+                    if (dropToGround)
                     {
                         _world.PlaceItem(child, corpse.Position);
                         if (child.DecayTime <= 0)
@@ -2124,6 +2143,7 @@ public static partial class Program
                         child.Delete();
                     }
                 }
+                return true; // consumed — delete the corpse/bones
             };
             SphereNet.Game.Objects.Items.Item.OnTimerExpired = item =>
             {

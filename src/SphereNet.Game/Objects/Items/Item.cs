@@ -34,12 +34,12 @@ public class Item : ObjBase
     /// about the new house without waiting for the next save cycle.</summary>
     public static Action<Item>? OnHouseRegister;
 
-    /// <summary>Invoked when a corpse is about to be destroyed by the
-    /// per-item decay timer. Program.cs wires this to a handler that
-    /// drops the corpse's remaining contents to the ground at its
-    /// position. Done via a callback instead of a direct GameWorld
-    /// reference so Item.cs stays free of world / placement plumbing.</summary>
-    public static Action<Item>? OnCorpseDecay;
+    /// <summary>Invoked when a corpse's decay timer elapses. Program.cs wires this
+    /// to a handler that scatters the corpse contents (or, for a player corpse,
+    /// stages it to bones for a second decay window). Returns true when the corpse
+    /// was consumed and should be deleted, false when it was staged (re-armed) and
+    /// must be kept. Done via a callback so Item.cs stays free of world plumbing.</summary>
+    public static Func<Item, bool>? OnCorpseDecay;
 
     /// <summary>Invoked when an item's TIMER expires. Program.cs wires this
     /// to fire the @Timer trigger via TriggerDispatcher. Returns the
@@ -1993,9 +1993,13 @@ public class Item : ObjBase
             }
             else
             {
-                if (_type == ItemType.Corpse && _contents.Count > 0)
+                if (_type == ItemType.Corpse)
                 {
-                    OnCorpseDecay?.Invoke(this);
+                    // The handler scatters contents, or stages a player corpse to
+                    // bones (returns false → it re-armed DecayTime; keep the item).
+                    bool consumed = OnCorpseDecay?.Invoke(this) ?? true;
+                    if (!consumed)
+                        return true;
                 }
                 _isDeleted = true;
                 SpawnChar?.KillAll();

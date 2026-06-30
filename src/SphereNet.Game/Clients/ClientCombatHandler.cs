@@ -1519,19 +1519,46 @@ public sealed class ClientCombatHandler
     /// the ghost mobile, 0x78 overwrites it), and view-cache resync so
     /// the next BuildViewDelta tick sees the new living body.
     /// </summary>
+    /// <summary>The character's own corpse within rejoin range, if any (for the
+    /// @Resurrect trigger's ARGO). Matches by owner UUID, then UID.</summary>
+    private Item? FindOwnCorpseNear(Character ch)
+    {
+        foreach (var it in _world.GetItemsInRange(ch.Position, 2))
+        {
+            if (it.ItemType != ItemType.Corpse) continue;
+            if ((it.TryGetTag("OWNER_UUID", out string? u) && Guid.TryParse(u, out var g) && g == ch.Uuid) ||
+                (it.TryGetTag("OWNER_UID", out string? o) && uint.TryParse(o, out uint ou) && ou == ch.Uid.Value))
+                return it;
+        }
+        return null;
+    }
+
     public void OnResurrect()
     {
         if (_character == null || !_character.IsDead) return;
 
+        // @Resurrect — Source-X passes the character's own corpse (ARGO) and the
+        // post-rez hit% (ARGN1, default 50 = Resurrect()'s MaxHits/2). RETURN 1
+        // blocks the resurrection; otherwise a script may override the hit% via
+        // ARGN1 (read back through the char-trigger arg copy-back).
+        int rezHitPct = 50;
         if (_triggerDispatcher != null)
         {
-            var result = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.Resurrect,
-                new TriggerArgs { CharSrc = _character });
+            var rezArgs = new TriggerArgs
+            {
+                CharSrc = _character,
+                O1 = FindOwnCorpseNear(_character),
+                N1 = rezHitPct,
+            };
+            var result = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.Resurrect, rezArgs);
             if (result == TriggerResult.True)
                 return;
+            rezHitPct = rezArgs.N1;
         }
 
         _character.Resurrect();
+        if (rezHitPct > 0 && _character.MaxHits > 0)
+            _character.Hits = (short)Math.Clamp(_character.MaxHits * rezHitPct / 100, 1, _character.MaxHits);
 
         ushort restoredBody = _character.BodyId switch
         {

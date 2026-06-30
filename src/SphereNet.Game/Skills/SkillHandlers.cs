@@ -156,6 +156,23 @@ public sealed class SkillHandlers
     /// to the matching <see cref="ActiveSkillEngine"/> method. Falls back to
     /// the legacy <see cref="UseSkill"/> path for unsupported skills.
     /// </summary>
+    /// <summary>Resolve a Healing/Veterinary target. A Character heals directly; a
+    /// corpse item resurrects its dead owner (Source-X corpse-target resurrection
+    /// via Skill_Healing) — the healer must be near the corpse and the owner must
+    /// still be dead (a fresh corpse, not a decayed bones pile with no owner link).</summary>
+    private Character? ResolveHealTarget(ObjBase? target)
+    {
+        if (target is Character c) return c;
+        if (target is Item corpse && corpse.ItemType == ItemType.Corpse &&
+            corpse.TryGetTag("OWNER_UID", out string? o) && uint.TryParse(o, out uint uid))
+        {
+            var owner = _world.FindChar(new Serial(uid));
+            if (owner != null && owner.IsDead && !owner.IsDeleted)
+                return owner;
+        }
+        return null;
+    }
+
     public bool UseActiveSkill(IActiveSkillSink sink, SkillType skill, ObjBase? target, Point3D? point = null)
     {
         var ch = sink.Self;
@@ -170,7 +187,7 @@ public sealed class SkillHandlers
             case SkillType.Meditation:       return ActiveSkillEngine.Meditation(sink);
             case SkillType.SpiritSpeak:      return ActiveSkillEngine.SpiritSpeak(sink);
             case SkillType.Begging:          return ActiveSkillEngine.Begging(sink, target as Character);
-            case SkillType.Healing:          return ActiveSkillEngine.Healing(sink, target as Character);
+            case SkillType.Healing:          return ActiveSkillEngine.Healing(sink, ResolveHealTarget(target));
             case SkillType.Taming:           return ActiveSkillEngine.Taming(sink, target as Character);
             case SkillType.Stealing:         return ActiveSkillEngine.Stealing(sink, target as Item);
             case SkillType.Snooping:         return ActiveSkillEngine.Snooping(sink, target as Item);
@@ -181,7 +198,7 @@ public sealed class SkillHandlers
             case SkillType.Veterinary:
                 // Source-X SKILL_VETERINARY routes to Skill_Healing (bandages,
                 // poison cure, pet resurrect) rather than a separate weak path.
-                return ActiveSkillEngine.Healing(sink, target as Character);
+                return ActiveSkillEngine.Healing(sink, ResolveHealTarget(target));
             case SkillType.Tracking:         return ActiveSkillEngine.Tracking(sink, ActiveSkillEngine.TrackingCategory.Animals);
             case SkillType.Mining:           return ActiveSkillEngine.Mining(sink, point ?? ch.Position, _gatheringEngine, _world);
             case SkillType.Fishing:          return ActiveSkillEngine.Fishing(sink, point ?? ch.Position, _gatheringEngine, _world);

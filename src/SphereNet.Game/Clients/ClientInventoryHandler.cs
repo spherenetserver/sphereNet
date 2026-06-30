@@ -194,6 +194,28 @@ public sealed class ClientInventoryHandler
         return current;
     }
 
+    /// <summary>True when a live banker NPC is within reach (Source-X bank-open
+    /// proximity). The bank box is only manipulable while near a banker — the box was
+    /// opened at one — so pickup/drop into the self bank box re-checks this.</summary>
+    private bool IsNearBanker(Character ch)
+    {
+        foreach (var other in _world.GetCharsInRange(ch.Position, 3))
+        {
+            if (!other.IsDead && other.NpcBrain == NpcBrainType.Banker &&
+                other.MapIndex == ch.MapIndex)
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>True when <paramref name="item"/>'s top-level container is THIS
+    /// character's own bank box (directly or via a nested bag).</summary>
+    private bool IsInSelfBankBox(Character ch, Item item)
+    {
+        var top = GetTopContainer(item);
+        return top != null && top.EquipLayer == Layer.BankBox && top.ContainedIn == ch.Uid;
+    }
+
     /// <summary>Walk up the containment chain to the nearest enclosing corpse, or
     /// null if the item is not (transitively) inside a corpse. Used by the looting-
     /// crime check so taking an item from a sub-pack inside a corpse still counts.</summary>
@@ -323,6 +345,12 @@ public sealed class ClientInventoryHandler
                         if (wearer != null && wearer != _character && wearer.IsPlayer)
                         {
                             SendPickupFailed(1); return;
+                        }
+                        // Self bank box: only reachable while near a banker.
+                        if (wearer == _character && topCont.EquipLayer == Layer.BankBox &&
+                            !IsNearBanker(_character))
+                        {
+                            SendPickupFailed(4); return;
                         }
                         if (wearer != null)
                         {
@@ -622,12 +650,24 @@ public sealed class ClientInventoryHandler
             if (container != null)
             {
                 // Distance check: player must be near the container (or its parent on world).
-                // Bank boxes (equipped on the player) are always reachable; other containers
-                // must be within 3 tiles. Without this a crafted packet can move items into
-                // distant containers the client happened to open earlier.
+                // The self pack is always reachable; the self bank box only while near a
+                // banker; another player's pack/bank never; a world container within 3 tiles.
+                // Without this a crafted packet can move items into distant containers the
+                // client happened to open earlier.
                 if (_character.PrivLevel < PrivLevel.GM)
                 {
-                    if (container.EquipLayer == Layer.BankBox || container.EquipLayer == Layer.Pack)
+                    if (IsInSelfBankBox(_character, container))
+                    {
+                        // Self bank box (direct or via a nested bag) — re-check banker
+                        // proximity; the box was opened at one.
+                        if (!IsNearBanker(_character))
+                        {
+                            RestoreToOrigin(item);
+                            _netState.Send(new PacketDropReject());
+                            return;
+                        }
+                    }
+                    else if (container.EquipLayer == Layer.BankBox || container.EquipLayer == Layer.Pack)
                     {
                         var owner = _world.FindChar(container.ContainedIn);
                         if (owner != null && owner != _character)

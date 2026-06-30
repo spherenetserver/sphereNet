@@ -4,6 +4,18 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Bank paritesi: self bank box banker-yakinligiyla gate'lendi (Wave 186)
+----------------------------------------
+
+DUZELTILEN - Uzaktan bank box erisimi (Source-X bank-open proximity):
+  - Oyuncunun kendi bank box'indaki item'lar her mesafeden alinip birakilabiliyordu -- self bank box
+    kosulsuz erisilebilir kabul ediliyordu, boylece client banker'dan uzaklastiktan sonra onu
+    kullanmaya devam edebiliyordu. Self bank box'a (dogrudan veya nested bag uzerinden) pickup/drop
+    artik 3 tile icinde canli bir banker NPC gerektirir; acmak icin gereken yakinlikla ayni. GM erisimi
+    degismez, diger container'lar / self pack etkilenmez.
+
+================================================================================
+
 [2026-06-30] - Vendor/stable paritesi: opt-in vendor money pool, stable target cursor + validation (Wave 185)
 ----------------------------------------
 

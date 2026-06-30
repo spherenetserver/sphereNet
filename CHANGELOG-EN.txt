@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Bank parity: self bank box gated by banker proximity (Wave 186)
+----------------------------------------
+
+FIXED - Remote bank-box access (Source-X bank-open proximity):
+  - Items inside the player's own bank box could be picked up or dropped from any
+    distance — the self bank box was treated as unconditionally reachable, so a client
+    could keep manipulating it after walking away from the banker. Pickup and drop into
+    the self bank box (directly or via a nested bag) now require a live banker NPC
+    within 3 tiles, matching the proximity required to open it. GM access is unchanged,
+    and other containers / the self pack are unaffected.
+
+================================================================================
+
 [2026-06-30] - Vendor/stable parity: opt-in vendor money pool, stable target cursor + validation (Wave 185)
 ----------------------------------------
 

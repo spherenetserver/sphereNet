@@ -687,11 +687,16 @@ public sealed class ClientCombatHandler
                 Send(new PacketAttackResponse(0));
                 return;
             }
-            // Attacking an innocent (neither criminal nor murderer) in a
-            // guarded / non-PvP region flags the aggressor criminal. Attacking
-            // a red/gray player is self-defense — no flag. Config gate:
-            // ATTACKINGISACRIME.
-            bool targetIsInnocent = target.IsPlayer && !target.IsCriminal && !target.IsMurderer;
+            // Source-X CCharFight: attacking is a crime only when the target is
+            // NOTO_GOOD (innocent blue) FROM THE ATTACKER'S OWN VIEW. GetNotoriety
+            // folds in the attacker's personal grey — a target they hold SawCrime
+            // or HarmedBy of (one who struck first, or whose crime they witnessed)
+            // is no longer innocent to them, so retaliating is self-defence, not a
+            // crime. A globally criminal/murderer/guild/party target is likewise
+            // not NOTO_GOOD. The aggressor↔victim IAggressor/HarmedBy memory is
+            // stamped by Memory_Fight_Start below regardless of region. Config
+            // gate: ATTACKINGISACRIME.
+            bool targetIsInnocent = GetNotoriety(target) == 1; // NOTO_GOOD
             if (Character.AttackingIsACrimeEnabled && targetIsInnocent &&
                 region != null && region.IsFlag(Core.Enums.RegionFlag.Guarded))
             {

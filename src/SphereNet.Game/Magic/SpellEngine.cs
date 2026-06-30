@@ -785,11 +785,16 @@ public sealed class SpellEngine
         // by the original caster (even if they also have Reflection up).
         bool harmful = def.IsFlag(SpellFlag.Damage) || def.IsFlag(SpellFlag.Curse);
 
-        // A harmful spell cast on an innocent player is a crime (Source-X
-        // notoriety) — the caster goes grey, just like a melee attack. Checked
-        // before the reflect swap so it credits the real aggressor.
+        // A harmful spell on a player who is innocent FROM THE CASTER'S VIEW is a
+        // crime (Source-X notoriety) — the caster goes grey, like a melee attack.
+        // A target the caster holds SawCrime / HarmedBy of (one who struck first,
+        // or whose crime the caster witnessed) is not innocent to them, so the
+        // spell is self-defence rather than a crime. Checked before the reflect
+        // swap so it credits the real aggressor.
+        bool targetInnocentToCaster = !target.IsFlaggedAsCriminal &&
+            caster.Memory_FindObjTypes(target.Uid, MemoryType.SawCrime | MemoryType.HarmedBy) == null;
         if (harmful && caster != target && caster.IsPlayer && target.IsPlayer &&
-            Character.AttackingIsACrimeEnabled && !target.IsFlaggedAsCriminal)
+            Character.AttackingIsACrimeEnabled && targetInnocentToCaster)
             caster.MakeCriminal();
 
         if (harmful && caster != target && target.IsStatFlag(StatFlag.Reflection))

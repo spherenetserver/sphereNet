@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Attack-as-crime personal notoriety'ye baglandi (self-defense) (Wave 169)
+----------------------------------------
+
+DEGISEN - Attack / spell suc (Source-X CCharFight NOTO_GOOD):
+  - Saldiri yalnizca hedef SALDIRANIN KENDI BAKISINDA NOTO_GOOD (masum mavi) ise
+    suctur. Personal grey artik saldiranin SawCrime / HarmedBy memory'sini icerdigi
+    icin, once vuran bir saldirgana — ya da sucunu gordugu birine — karsilik vermek
+    self-defense'tir ve savunani artik criminal yapmaz. Global criminal / murderer /
+    guild / party hedef de NOTO_GOOD degildir. Saldirgan ve kurban IAggressor /
+    HarmedBy memory'sini yine tutar; guarded bolgede gercek bir masuma saldirmak
+    saldirgani yine flag'ler.
+  - Ayni personal-view kurali zararli buyu sucunu de gate'ler: caster'in SawCrime /
+    HarmedBy tuttugu bir hedefe buyu self-defense'tir, suc degil.
+
+================================================================================
+
 [2026-06-30] - Crime/notoriety paritesi: CheckCrimeSeen witness pipeline, fame/karma split (Wave 168)
 ----------------------------------------
 

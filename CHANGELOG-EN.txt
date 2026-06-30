@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Attack-as-crime tied to personal notoriety (self-defense) (Wave 169)
+----------------------------------------
+
+CHANGED - Attack / spell as crime (Source-X CCharFight NOTO_GOOD):
+  - Attacking is a crime only when the target is NOTO_GOOD (innocent blue) FROM
+    THE ATTACKER'S OWN VIEW. Because personal grey now folds in the attacker's
+    SawCrime / HarmedBy memory, retaliating against an aggressor who struck first
+    — or against someone whose crime the attacker witnessed — is self-defense and
+    no longer flags the defender criminal. A globally criminal / murderer /
+    guild / party target is likewise not NOTO_GOOD. The aggressor and victim still
+    record their IAggressor / HarmedBy memory, and attacking a true innocent in a
+    guarded region still flags the aggressor.
+  - The same personal-view rule now gates the harmful-spell crime: a spell on a
+    target the caster holds SawCrime / HarmedBy of is self-defense, not a crime.
+
+================================================================================
+
 [2026-06-30] - Crime/notoriety parity: CheckCrimeSeen witness pipeline, fame/karma split (Wave 168)
 ----------------------------------------
 

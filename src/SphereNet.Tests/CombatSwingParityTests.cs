@@ -217,4 +217,43 @@ public class CombatSwingParityTests
         ((uint)span[offset + 1] << 16) |
         ((uint)span[offset + 2] << 8) |
         span[offset + 3];
+
+    // Source-X attack-as-crime is keyed to the attacker's personal notoriety view
+    // (NOTO_GOOD): attacking a true innocent in a guarded region is a crime, but
+    // the victim retaliating against their aggressor — now grey to them via the
+    // HarmedBy memory — is self-defence, not a crime.
+    [Fact]
+    public void HandleAttack_InnocentInGuardedRegion_FlagsAggressor_ButVictimRetaliationIsNot()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = TestHarness.CreateWorld();
+        var accounts = new AccountManager(loggerFactory);
+
+        var region = new SphereNet.Game.World.Regions.Region
+        { Name = "town", Flags = RegionFlag.Guarded, MapIndex = 0 };
+        region.AddRect(90, 90, 110, 110);
+        world.AddRegion(region);
+
+        var clientA = TestHarness.CreateClient(loggerFactory, world, accounts, 1210);
+        var attacker = world.CreateCharacter();
+        attacker.IsPlayer = true; attacker.Hits = attacker.MaxHits = 100;
+        world.PlaceCharacter(attacker, new Point3D(100, 100, 0, 0));
+        TestHarness.AttachCharacter(clientA, attacker);
+
+        var clientB = TestHarness.CreateClient(loggerFactory, world, accounts, 1211);
+        var victim = world.CreateCharacter();
+        victim.IsPlayer = true; victim.Hits = victim.MaxHits = 100;
+        world.PlaceCharacter(victim, new Point3D(101, 100, 0, 0));
+        TestHarness.AttachCharacter(clientB, victim);
+
+        // Aggressor strikes an innocent in a guarded region → flagged criminal,
+        // and the victim records HarmedBy(aggressor) via Memory_Fight_Start.
+        clientA.HandleAttack(victim.Uid.Value);
+        Assert.True(attacker.IsStatFlag(StatFlag.Criminal));
+
+        // Victim retaliates — the aggressor is no longer NOTO_GOOD to them, so this
+        // is self-defence and must NOT flag the victim criminal.
+        clientB.HandleAttack(attacker.Uid.Value);
+        Assert.False(victim.IsStatFlag(StatFlag.Criminal));
+    }
 }

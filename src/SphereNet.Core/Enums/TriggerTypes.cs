@@ -161,6 +161,7 @@ public enum CharTrigger : short
     Resurrect,
     Reveal,
     SeeCrime,
+    SeeSnoop,
     SkillAbort,
     SkillChange,
     SkillFail,

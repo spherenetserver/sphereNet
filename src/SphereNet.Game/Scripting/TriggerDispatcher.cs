@@ -763,6 +763,7 @@ public sealed class TriggerDispatcher
         CharTrigger.ReceiveItem => "ReceiveItem",
         CharTrigger.Rename => "Rename",
         CharTrigger.SeeCrime => "SeeCrime",
+        CharTrigger.SeeSnoop => "SeeSnoop",
         CharTrigger.StatChange => "StatChange",
         CharTrigger.StepStealth => "StepStealth",
         CharTrigger.TradeAccepted => "TradeAccepted",

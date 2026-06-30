@@ -582,13 +582,14 @@ public sealed partial class GameClient
         if (myParty != null && myParty.IsMember(subject.Uid))
             return 2;
 
-        // Personal grey (Source-X aggressor memory): a player who harmed the
-        // viewer — an active aggressor, e.g. a wilderness attacker who is not
-        // globally criminal — shows grey to THIS viewer while the fight memory
-        // lasts. The innocent victim holds no HarmedBy of the aggressor, so they
-        // stay blue to the aggressor. Display-only; does not change crime rules.
+        // Personal grey (Source-X Noto_CalcFlag MEMORY_SAWCRIME | MEMORY_AGGREIVED):
+        // the subject shows grey to THIS viewer when the viewer remembers them as
+        // a witnessed criminal (SawCrime) or as an aggressor who harmed them
+        // (HarmedBy — SphereNet's aggrieved memory). A wilderness attacker / thief
+        // who is not globally criminal is thus grey to their victim and to anyone
+        // who saw the crime, while staying blue to everyone else. Display-only.
         if (subject.IsPlayer &&
-            viewer.Memory_FindObjTypes(subject.Uid, MemoryType.HarmedBy) != null)
+            viewer.Memory_FindObjTypes(subject.Uid, MemoryType.SawCrime | MemoryType.HarmedBy) != null)
             return 4;
 
         if (subject.TryGetTag("NOTO.PERMAGREY", out string? pg) && pg == "1")

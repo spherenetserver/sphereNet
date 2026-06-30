@@ -580,21 +580,16 @@ public sealed class SkillHandlers
         return success;
     }
 
-    private bool HandleStealing(Character ch, Point3D? target)
-    {
-        bool success = SkillEngine.UseQuick(ch, SkillType.Stealing, 60);
-        if (!success && Random.Shared.Next(2) == 0)
-            ch.MakeCriminal();
-        return success;
-    }
+    // Targetless fallback path (UseSkill). Real theft/snoop goes through
+    // ActiveSkillEngine.Stealing/Snooping (a targeted item), where the Source-X
+    // CheckCrimeSeen witness pipeline runs. Without a victim/item there is nothing
+    // to witness, so this fallback no longer flags criminal on its own (the old
+    // blind coin flip diverged from the witness model).
+    private bool HandleStealing(Character ch, Point3D? target) =>
+        SkillEngine.UseQuick(ch, SkillType.Stealing, 60);
 
-    private bool HandleSnooping(Character ch, Point3D? target)
-    {
-        bool success = SkillEngine.UseQuick(ch, SkillType.Snooping, 50);
-        if (!success && Character.SnoopCriminalEnabled)
-            ch.MakeCriminal();
-        return success;
-    }
+    private bool HandleSnooping(Character ch, Point3D? target) =>
+        SkillEngine.UseQuick(ch, SkillType.Snooping, 50);
 
     private bool HandleLockpicking(Character ch, Point3D? target)
     {

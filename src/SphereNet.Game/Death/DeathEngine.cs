@@ -91,17 +91,29 @@ public sealed class DeathEngine
         if (victim.IsMounted)
             DismountHook?.Invoke(victim);
 
-        // Karma/Fame/murder credit for the killer — skipped when @Kill returned 1.
+        // Karma/Fame/murder credit — skipped when @Kill returned 1.
         if (effectiveKiller != null && !skipKillerCredit)
         {
-            ApplyKarmaFameChange(effectiveKiller, victim);
+            // Source-X CChar::Death credits EVERY damaging attacker and divides the
+            // fame/karma/experience reward by the attacker count (Noto_Kill's
+            // iTotalKillers), so a group splits the spoils instead of the final
+            // blow taking all of it. Deduped, pets credited to their master.
+            var offenders = new List<Character>();
+            var creditedUids = new HashSet<uint>();
+            foreach (var offender in EnumerateOffenders(victim, effectiveKiller))
+                if (creditedUids.Add(offender.Uid.Value))
+                    offenders.Add(offender);
+            int attackerCount = Math.Max(1, offenders.Count);
 
-            // Experience award (Source-X ChangeExperience on kill): the
-            // victim's own EXP value is the prize. Characters without EXP
-            // grant nothing, so the system stays inert unless scripts or
-            // CHARDEFs assign experience values.
-            if (!victim.IsPlayer && victim.Exp > 0)
-                effectiveKiller.ChangeExperience(victim.Exp);
+            foreach (var offender in offenders)
+            {
+                ApplyKarmaFameChange(offender, victim, attackerCount);
+
+                // Experience award (Source-X ChangeExperience on kill): the
+                // victim's own EXP value is the prize, split across attackers.
+                if (!victim.IsPlayer && victim.Exp > 0)
+                    offender.ChangeExperience(victim.Exp / attackerCount);
+            }
 
             // PvP murder tracking — Source-X Noto_Kill marks EVERY unprovoked
             // attacker of an innocent, not just the final-blow killer, so ganking
@@ -278,29 +290,25 @@ public sealed class DeathEngine
         return true;
     }
 
-    /// <summary>Apply Karma/Fame changes when killer kills victim.
-    /// Source-X: Calc_FameKill + Calc_KarmaKill + Calc_KarmaScale.</summary>
-    private static void ApplyKarmaFameChange(Character killer, Character victim)
+    /// <summary>Apply Karma/Fame changes when killer kills victim, divided by the
+    /// total attacker count (Source-X Noto_Kill's iTotalKillers split):
+    /// Calc_FameKill + Calc_KarmaKill + Calc_KarmaScale, each share /attackerCount.</summary>
+    private static void ApplyKarmaFameChange(Character killer, Character victim, int attackerCount)
     {
-        // Fame: Source-X Calc_FameKill — PC kill /10, NPC kill /200. No per-kill
-        // magnitude cap (Source-X only clamps the running total to 0..10000, which
-        // ApplyFame does). A zero-fame victim (rabbit, bird) still grants zero — no
-        // forced minimum — so trash mobs can't be farmed one fame point at a time.
+        if (attackerCount < 1) attackerCount = 1;
+
+        // Fame: Source-X Calc_FameKill — PC kill /10, NPC kill /200 — then split by
+        // the attacker count. No per-kill magnitude cap (Source-X only clamps the
+        // running total to 0..10000, which ApplyFame does). A zero-fame victim
+        // still grants zero — no forced minimum — so trash mobs can't be farmed.
         int rawFame = Math.Max(0, (int)victim.Fame);
-        int fameGain = victim.IsPlayer ? rawFame / 10 : rawFame / 200;
+        int fameGain = (victim.IsPlayer ? rawFame / 10 : rawFame / 200) / attackerCount;
         ApplyFame(killer, fameGain);
 
-        // Source-X: no karma loss for killing criminal/red
+        // Source-X Calc_KarmaKill: killing a criminal / red incurs NO karma change
+        // — the would-be loss is clamped to 0 and no positive karma is awarded.
         if (victim.IsCriminal || victim.IsMurderer)
-        {
-            if (victim.Karma < 0)
-            {
-                int gain = Math.Clamp(-victim.Karma / 10, 1, 50);
-                gain = ScaleKarma(killer.Karma, gain);
-                ApplyKarma(killer, gain);
-            }
             return;
-        }
 
         // Source-X Calc_KarmaKill: karma change = negative of victim karma
         int karmaChange = -victim.Karma;
@@ -317,7 +325,9 @@ public sealed class DeathEngine
             karmaChange /= 20;
         }
 
-        karmaChange = ScaleKarma(killer.Karma, karmaChange);
+        // Split across attackers BEFORE the diminishing-returns scale (Source-X
+        // passes Calc_KarmaKill / iTotalKillers into Noto_Karma, which then scales).
+        karmaChange = ScaleKarma(killer.Karma, karmaChange / attackerCount);
         ApplyKarma(killer, karmaChange);
     }
 

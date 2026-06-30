@@ -4,6 +4,33 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Crime/notoriety paritesi: CheckCrimeSeen witness pipeline, fame/karma split (Wave 168)
+----------------------------------------
+
+EKLENEN - Crime witness pipeline (Source-X CChar::CheckCrimeSeen):
+  - Bir suc islendiginde, gorus menzilindeki LOS'lu her karakter — covert suc icin
+    perception skill yarisini (gorenin vs suclunun skill'i) kazanan — sucu fark
+    eder: witness per-viewer MEMORY_SAWCRIME tutar (suclu O kisiye personal grey
+    gosterilir), guarded-region NPC witness guard cagirir (global criminal flag),
+    @SeeCrime / @SeeSnoop atesler. Kimsenin gormedigi sucun sonucu yoktur.
+  - Stealing ve snooping artik bu witness pipeline'i kullanir (eski kor %50 /
+    config-toggle MakeCriminal yerine): gorulmeyen hirsizlik sonucsuz, gorulen
+    hirsiz witness'lara grey (guarded alanda global criminal). Snoop snoop-criminal
+    sansina uyar.
+  - Personal grey artik MEMORY_SAWCRIME'a da bakiyor (aggressor HarmedBy memory'ye
+    ek), Source-X Noto_CalcFlag'in SAWCRIME | AGGREIVED'ine hizali.
+  - Yeni @SeeSnoop karakter trigger'i.
+
+DEGISEN - Death credit (Source-X Noto_Kill):
+  - Bir kill'de fame, karma ve experience artik hasar veren TUM attacker'lara
+    bolunur (iTotalKillers); grup spoils'u boler, son-vurus hepsini almaz. Solo
+    kill degismedi.
+  - Bir criminal / red oldurmek artik HIC karma vermez — kayip 0'a clamp'lenir ve
+    pozitif karma verilmez (eskiden criminal kurbanin negatif karma'si oldurene
+    kucuk pozitif kazanc veriyordu).
+
+================================================================================
+
 [2026-06-30] - Notoriety display paritesi: personal-grey, pet-owner inherit, @Criminal suresi (Wave 167)
 ----------------------------------------
 

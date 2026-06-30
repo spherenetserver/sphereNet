@@ -1220,6 +1220,22 @@ public static partial class Program
                 }
                 return args.N1;
             };
+
+            // A witness who noticed a crime (CrimeWitnessService.CheckCrimeSeen)
+            // fires @SeeCrime — or @SeeSnoop for a snoop — on the witness, with
+            // <src> = the criminal and ARGO = the victim. @SeeSnoop RETURN 1 makes
+            // that witness ignore the snoop; ARGN1 on either asks the engine to
+            // flag the criminal globally (call guards) instead of personal grey.
+            SphereNet.Game.Objects.Characters.CrimeWitnessService.OnCrimeNoticed =
+                (witness, criminal, mark, isSnoop) =>
+                {
+                    var trig = isSnoop ? CharTrigger.SeeSnoop : CharTrigger.SeeCrime;
+                    var args = new TriggerArgs { CharSrc = criminal, O1 = mark, N1 = 0 };
+                    var result = _triggerDispatcher?.FireCharTrigger(witness, trig, args);
+                    if (isSnoop && result == TriggerResult.True)
+                        return null; // @SeeSnoop RETURN 1 — witness ignores it
+                    return args.N1 != 0;
+                };
             GameRegion.ClientCountProvider = regionObj =>
             {
                 int count = 0;

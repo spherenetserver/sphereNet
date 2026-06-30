@@ -4,6 +4,35 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Crime/notoriety parity: CheckCrimeSeen witness pipeline, fame/karma split (Wave 168)
+----------------------------------------
+
+ADDED - Crime witness pipeline (Source-X CChar::CheckCrimeSeen):
+  - When a crime is committed, every character in view range with line of sight —
+    and, for a covert crime, the winner of the perception skill contest (the
+    viewer's vs the criminal's skill) — notices it: the witness records a per-
+    viewer MEMORY_SAWCRIME (so the criminal shows grey to THEM via personal grey),
+    a guarded-region NPC witness calls the guards (global criminal flag), and
+    @SeeCrime / @SeeSnoop fire so a script can react or escalate. A crime no one
+    sees has no consequence.
+  - Stealing and snooping now run this witness pipeline instead of the old blind
+    50% / config-toggle MakeCriminal: an unseen theft is consequence-free, a
+    witnessed one makes the thief grey to the witnesses (and globally criminal in
+    a guarded area). Snooping respects the snoop-criminal chance.
+  - Personal grey now also keys on MEMORY_SAWCRIME (in addition to the aggressor
+    HarmedBy memory), matching Source-X Noto_CalcFlag's SAWCRIME | AGGREIVED.
+  - New @SeeSnoop character trigger.
+
+CHANGED - Death credit (Source-X Noto_Kill):
+  - Fame, karma and experience on a kill are now divided across every damaging
+    attacker (iTotalKillers), so a group splits the spoils instead of the final
+    blow taking all of it. A solo kill is unchanged.
+  - Killing a criminal / red now yields NO karma — the would-be loss is clamped
+    to 0 and no positive karma is awarded (previously a criminal victim's negative
+    karma granted the killer a small positive gain).
+
+================================================================================
+
 [2026-06-30] - Notoriety display parity: personal-grey, pet-inherits-owner, @Criminal duration (Wave 167)
 ----------------------------------------
 

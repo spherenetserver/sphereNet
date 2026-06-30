@@ -254,16 +254,16 @@ public static class ActiveSkillEngine
             }
             ch.Backpack!.AddItem(target);
         }
-        else
-        {
-            // Source-X: ~50% chance to be noticed -> caught flag + MakeCriminal.
-            if (sink.Random.Next(2) == 0)
-            {
-                if (owner != null)
-                    sink.SysMessage(ServerMessages.GetFormatted(Msg.StealingMark, owner.Name));
-                ch.MakeCriminal();
-            }
-        }
+
+        // Source-X CChar::Skill_Stealing: every nearby witness who wins the
+        // perception contest notices the theft — whether or not it succeeded —
+        // and remembers it (personal grey via MEMORY_SAWCRIME); a guarded-area
+        // guard flags the thief globally. A theft no one sees has no consequence,
+        // replacing the old blind 50% MakeCriminal coin flip.
+        if (CrimeWitnessService.CheckCrimeSeen(sink.World, ch, owner, SkillType.Stealing, sink.Random)
+            && owner != null)
+            sink.SysMessage(ServerMessages.GetFormatted(Msg.StealingMark, owner.Name));
+
         return success;
     }
 
@@ -290,11 +290,16 @@ public static class ActiveSkillEngine
         sink.SysMessage(ServerMessages.Get(Msg.SnoopingAttempting));
         bool success = SkillEngine.UseQuick(ch, SkillType.Snooping, sink.Random.Next(50));
         if (!success)
-        {
             sink.SysMessage(ServerMessages.Get(Msg.SnoopingFailed));
-            if (Character.SnoopCriminalEnabled)
-                ch.MakeCriminal();
-        }
+
+        // Source-X CChar::Skill_Snooping: nearby witnesses may notice the snoop
+        // (perception contest + the snoop-criminal chance). @SeeSnoop fires, the
+        // witness remembers it (personal grey), and a guarded-area guard flags the
+        // snooper. Gated by the SnoopCriminal config toggle.
+        if (Character.SnoopCriminalEnabled)
+            CrimeWitnessService.CheckCrimeSeen(sink.World, ch, ownerChar, SkillType.Snooping,
+                sink.Random, isSnoop: true);
+
         return success;
     }
 

@@ -36,6 +36,19 @@ public sealed class AccountManager
     public Account? FindAccount(string name) =>
         _accounts.GetValueOrDefault(name);
 
+    /// <summary>Return the account at a zero-based index in a STABLE (name-ordered)
+    /// sequence, or null when out of range. Source-X <c>SERV.ACCOUNT.n</c> indexed
+    /// access — admin dialogs iterate 0..Count-1 to list accounts, so the order must
+    /// be deterministic across reads (a raw dictionary enumeration is not).</summary>
+    public Account? GetByIndex(int index)
+    {
+        if (index < 0 || index >= _accounts.Count)
+            return null;
+        return _accounts.Values
+            .OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+            .ElementAt(index);
+    }
+
     /// <summary>
     /// Authenticate: find or auto-create, then check password.
     /// Returns null if auth fails.

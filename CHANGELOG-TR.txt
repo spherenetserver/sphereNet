@@ -4,6 +4,19 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Scripting paritesi: SERV.ACCOUNT.n indeksli erisim (Wave 200)
+----------------------------------------
+
+DUZELTILDI - SERV.ACCOUNT.<n> (indeksli hesap erisimi) "0" dondurmek uzere stub'lanmisti:
+  - Source-X admin dialoglari hesaplari listelemek icin SERV.ACCOUNT.0 .. SERV.ACCOUNT.<count-1>
+    iterasyonu yapar, ama indeks yolu hep "0" donuyordu. Artik n'inci hesabi yeni
+    AccountManager.GetByIndex ile cozer; isme gore siralar, boylece indeks okumalar arasinda
+    kararlidir (ham dictionary enumeration degildir). SERV.ACCOUNT.<key>.<prop> de artik hem
+    isim hem indeks icin calisir (orn. SERV.ACCOUNT.0.PLEVEL), property'yi cozulen hesaptan
+    okur; aralik disi indeks yine "0" verir.
+
+================================================================================
+
 [2026-07-01] - Scripting paritesi: script <LINK> nesnenin kendi link'ini okur (Wave 199)
 ----------------------------------------
 

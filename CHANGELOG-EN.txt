@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Scripting parity: SERV.ACCOUNT.n indexed access (Wave 200)
+----------------------------------------
+
+FIXED - SERV.ACCOUNT.<n> (indexed account access) was stubbed to return "0":
+  - Source-X admin dialogs iterate SERV.ACCOUNT.0 .. SERV.ACCOUNT.<count-1> to list
+    accounts, but the index path always returned "0". It now resolves the n-th account
+    via the new AccountManager.GetByIndex, which orders by name so the index is stable
+    across reads (a raw dictionary enumeration is not). SERV.ACCOUNT.<key>.<prop> also
+    works now for both names and indices (e.g. SERV.ACCOUNT.0.PLEVEL), reading the
+    property off the resolved account; an out-of-range index still yields "0".
+
+================================================================================
+
 [2026-07-01] - Scripting parity: script <LINK> reads the object's own link (Wave 199)
 ----------------------------------------
 

@@ -37,6 +37,8 @@ Dispatch: script reads route through `Program.ResolveServerProperty`
 | `VARLIST` | Implemented | `HandleServVarList` | Wave 197 — dumps `VAR.*` to the server log. Optional `[prefix]`. Caller-console routing deferred. |
 | `PRINTLISTS` | Implemented | `HandleServPrintLists` | Wave 197 — dumps list names + sizes to the server log. Caller-console routing deferred. |
 | `CLEARVARS` | Implemented | `_CLEARVARS=` → `GameWorld.ClearGlobalVars` | Pre-existing. |
+| `ACCOUNT.<name>[.prop]` | Implemented | `ResolveServAccount` | Name lookup + sub-property read. |
+| `ACCOUNT.<n>[.prop]` | Implemented | `ResolveServAccount` → `AccountManager.GetByIndex` | Wave 200 — indexed access (stable name order); was stubbed to "0". |
 | `INFORMATION` | Partial | `AdminCommandProcessor` `INFORMATION` | Admin console only — no `SERV.INFORMATION` script read yet. |
 | `GARBAGE` | Partial | `AdminCommandProcessor` `GARBAGE` | Admin console only. |
 | `SHRINKMEM` | Partial | (≈ `GARBAGE`) | No dedicated script/console verb; GC reachable via `GARBAGE`. |

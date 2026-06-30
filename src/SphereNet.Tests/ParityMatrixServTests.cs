@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using SphereNet.Game.Accounts;
 using SphereNet.Game.World;
 using Xunit;
 
@@ -65,5 +66,25 @@ public class ParityMatrixServTests
 
         Assert.Equal(1, world.ClearGlobalVars());
         Assert.Null(world.GetGlobalVar("score"));
+    }
+
+    [Fact]
+    public void AccountManager_GetByIndex_GivesStableNameOrderedAccess()
+    {
+        var accounts = new AccountManager(LoggerFactory.Create(_ => { }));
+        // Created out of alphabetical order — SERV.ACCOUNT.n must still index a stable
+        // (name-ordered) sequence so admin dialogs can iterate 0..Count-1.
+        accounts.CreateAccount("charlie", "p");
+        accounts.CreateAccount("alice", "p");
+        accounts.CreateAccount("bob", "p");
+
+        Assert.Equal(3, accounts.Count);
+        Assert.Equal("alice", accounts.GetByIndex(0)!.Name);
+        Assert.Equal("bob", accounts.GetByIndex(1)!.Name);
+        Assert.Equal("charlie", accounts.GetByIndex(2)!.Name);
+
+        // Out of range → null (the SERV.ACCOUNT.n resolver maps that to "0").
+        Assert.Null(accounts.GetByIndex(3));
+        Assert.Null(accounts.GetByIndex(-1));
     }
 }

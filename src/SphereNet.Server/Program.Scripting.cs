@@ -1250,17 +1250,26 @@ public static partial class Program
     {
         if (_accounts == null) return null;
 
-        // SERV.ACCOUNT.name → account reference
-        // For script property lookups we return the account name or "0" if not found
-        var acct = _accounts.FindAccount(rest);
-        if (acct != null)
+        // Split "<key>.<subprop>" — the key is an account NAME or a zero-based INDEX,
+        // and the optional sub-property is read off the resolved account.
+        int dot = rest.IndexOf('.');
+        string key = dot >= 0 ? rest[..dot] : rest;
+        string subProp = dot >= 0 ? rest[(dot + 1)..] : "";
+
+        // Name takes priority (a name that happens to be numeric still wins).
+        var acct = _accounts.FindAccount(key);
+        bool numericKey = int.TryParse(key, out int idx) && idx >= 0;
+        if (acct == null && numericKey)
+            acct = _accounts.GetByIndex(idx); // SERV.ACCOUNT.n — indexed access
+
+        if (acct == null)
+            // An out-of-range index resolves to "0" (admin dialogs iterate past the
+            // end); an unknown name falls through so other resolvers can try.
+            return numericKey ? "0" : null;
+
+        if (subProp.Length == 0)
             return acct.Name;
-
-        // SERV.ACCOUNT.n (zero-based index) — not easily supported with dictionary, return "0"
-        if (int.TryParse(rest, out _))
-            return "0";
-
-        return null;
+        return acct.TryGetProperty(subProp, out string value) ? value : "0";
     }
 
 

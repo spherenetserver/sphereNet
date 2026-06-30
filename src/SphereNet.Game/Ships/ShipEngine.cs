@@ -229,9 +229,22 @@ public sealed class ShipEngine
         int newIdx = DirTo4Index(newFacing);
         int rotSteps = ((newIdx - oldIdx) + 4) % 4; // 1=right90, 2=180, 3=left90
 
-        // Update multi item ID: baseId & ~3 | newIdx
         ushort baseId = (ushort)(ship.MultiItem.BaseId & ~3);
-        ship.MultiItem.BaseId = (ushort)(baseId | newIdx);
+        ushort newBaseId = (ushort)(baseId | newIdx);
+
+        // Preflight the rotated footprint (Source-X CCMultiMovable turn fit-check):
+        // if the new facing's bounding rect would not fit (any non-water tile),
+        // abort the turn BEFORE mutating anything — otherwise the ship is left
+        // half-rotated with no rollback. Magic ships turn anywhere.
+        if (!ship.MultiItem.IsAttr(ObjAttributes.Magic))
+        {
+            var newDef = _multiDefs.Get(newBaseId);
+            if (newDef != null && !CanPlaceShip(ship.MultiItem.Position, newDef))
+                return false;
+        }
+
+        // Update multi item ID: baseId & ~3 | newIdx
+        ship.MultiItem.BaseId = newBaseId;
 
         // Rotate component positions around the multi center
         short cx = ship.MultiItem.X;

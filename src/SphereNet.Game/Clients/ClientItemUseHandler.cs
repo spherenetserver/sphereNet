@@ -741,20 +741,30 @@ public sealed class ClientItemUseHandler
                     // foundation (MultiCustom) instead of a fixed multi.
                     bool customFoundation = item.TryGetTag("CUSTOMHOUSE", out string? customTag)
                         && customTag != "0";
-                    var house = _housingEngine.PlaceHouse(_character, item.BaseId, _character.Position, customFoundation);
-                    if (house != null)
+                    var deedItem = item;
+                    // Source-X deed placement asks for a target tile rather than
+                    // dropping the house at the player's feet. The house anchor lands
+                    // on the chosen point (the multi def offsets extend the footprint).
+                    SysMessage("Where would you like to place the house?");
+                    SetPendingTarget((serial, tx, ty, tz, gfx) =>
                     {
-                        SysMessage(ServerMessages.Get("house_placed"));
-                        if (_triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Destroy,
-                                new TriggerArgs { CharSrc = _character, ItemSrc = item }) != TriggerResult.True)
+                        if (deedItem.IsDeleted) return;
+                        var pos = new Point3D(tx, ty, tz, _character.MapIndex);
+                        var house = _housingEngine.PlaceHouse(_character, deedItem.BaseId, pos, customFoundation);
+                        if (house != null)
                         {
-                            _world.RemoveItem(item);
+                            SysMessage(ServerMessages.Get("house_placed"));
+                            if (_triggerDispatcher?.FireItemTrigger(deedItem, ItemTrigger.Destroy,
+                                    new TriggerArgs { CharSrc = _character, ItemSrc = deedItem }) != TriggerResult.True)
+                            {
+                                _world.RemoveItem(deedItem);
+                            }
                         }
-                    }
-                    else
-                    {
-                        SysMessage(ServerMessages.Get("house_cant_place"));
-                    }
+                        else
+                        {
+                            SysMessage(ServerMessages.Get("house_cant_place"));
+                        }
+                    });
                 }
                 break;
 

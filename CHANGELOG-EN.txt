@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Ship/housing parity: turn preflight, collapse moving-crate, deed targeting, @HouseCheck (Wave 174)
+----------------------------------------
+
+FIXED - Ship:
+  - Turning a ship now preflights the new facing's footprint and ABORTS before any
+    mutation if it would not fit (water/passable), instead of swapping the BaseId
+    and rotating all components / deck characters / items with no fit check and no
+    rollback — which could leave a ship half-rotated onto land. Magic ships still
+    turn anywhere.
+
+FIXED - Housing:
+  - A collapsing house no longer scatters its locked-down / secured items on the
+    ground to decay (item loss). They are reparented into a MOVING CRATE — a
+    secured container moves whole — and the crate is delivered to the owner's bank
+    box (fallback: the house tile). Reparenting, not copying, so no dupe.
+
+ADDED - Housing:
+  - House deeds now ask for a TARGET tile (Source-X) and place the house there,
+    instead of dropping it at the player's feet on double-click.
+  - @HouseCheck script hook: a script may veto house placement (RETURN 1) after the
+    engine's NoBuild / footprint / terrain checks pass; ARGN1/2/3 = x/y/z.
+
+================================================================================
+
 [2026-06-30] - Region parity: InheritParent flag/tag/event inheritance (Wave 173)
 ----------------------------------------
 

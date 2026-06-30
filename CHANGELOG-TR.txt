@@ -4,6 +4,29 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Ship/housing paritesi: turn preflight, collapse moving-crate, deed targeting, @HouseCheck (Wave 174)
+----------------------------------------
+
+DUZELTILEN - Ship:
+  - Gemi donusu artik yeni facing'in footprint'ini preflight eder ve sigmazsa
+    (su/passable) HERHANGI bir mutasyondan ONCE iptal eder; eskiden BaseId'yi
+    degistirip tum component/deck-char/item'i fit kontrolu ve rollback OLMADAN
+    donduruyordu — gemiyi karaya yari-donmus birakabilirdi. Magic gemiler her yere doner.
+
+DUZELTILEN - Housing:
+  - Cokken bir ev artik lockdown/secure item'larini yere sacip decay'e birakmiyor
+    (item kaybi). Bir MOVING CRATE'e reparent ediliyorlar — secure container butun
+    tasiniyor — ve crate owner'in bank box'ina teslim ediliyor (fallback: ev tile'i).
+    Reparent (kopya degil) → dupe yok.
+
+EKLENEN - Housing:
+  - Ev deed'leri artik HEDEF tile soruyor (Source-X) ve evi oraya kuruyor; cift-tikta
+    oyuncunun ayagina birakmiyor.
+  - @HouseCheck script hook: bir script ev kurmayi veto edebilir (RETURN 1); motorun
+    NoBuild / footprint / terrain kontrolleri gectikten sonra; ARGN1/2/3 = x/y/z.
+
+================================================================================
+
 [2026-06-30] - Region paritesi: InheritParent flag/tag/event inheritance (Wave 173)
 ----------------------------------------
 

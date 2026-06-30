@@ -1968,6 +1968,11 @@ public static partial class Program
             SphereNet.Game.Housing.House.OnRedeed = deed =>
                 _triggerDispatcher?.FireItemTrigger(deed, ItemTrigger.Redeed,
                     new TriggerArgs { ItemSrc = deed });
+            // @HouseCheck — a script may veto house placement (RETURN 1) after the
+            // engine's NoBuild / footprint / terrain checks pass; ARGN1/2/3 = x/y/z.
+            SphereNet.Game.Housing.HousingEngine.OnHouseCheck = (placer, pos) =>
+                _triggerDispatcher?.FireCharTriggerByName(placer, "HouseCheck",
+                    new TriggerArgs { CharSrc = placer, N1 = pos.X, N2 = pos.Y, N3 = pos.Z }) == TriggerResult.True;
             _shipEngine.DeserializeFromWorld();
             if (_shipEngine.ShipCount > 0)
                 _log.LogInformation("Restored {Count} ships from world save", _shipEngine.ShipCount);

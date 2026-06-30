@@ -261,15 +261,42 @@ public sealed class House
         }
         _components.Clear();
 
-        // Release locked-down / secured PLAYER items from house protection.
-        // These are NOT structure components, so they must NOT be deleted —
-        // instead they revert to normal ground items and get a decay timer so
-        // the world doesn't accumulate orphaned, unprotected loot forever.
-        foreach (var protUid in _lockdowns.Concat(_secureContainers))
+        // Source-X collapse: locked-down / secured PLAYER items are NOT structure
+        // components (must not be deleted) and must NOT be scattered on the ground
+        // to decay individually (item loss). They go into a MOVING CRATE — each
+        // item is reparented into the crate (a secured container moves whole), and
+        // the crate is delivered to the owner's bank box when reachable, otherwise
+        // dropped on the house tile. Reparenting (not copying) means no dupe.
+        var protectedUids = _lockdowns.Concat(_secureContainers).ToList();
+        if (protectedUids.Count > 0)
         {
-            var item = world.FindItem(protUid);
-            if (item != null && item.DecayTime <= 0)
-                item.DecayTime = Environment.TickCount64 + GameWorld.DefaultDecayTimeMs;
+            var crate = world.CreateItem();
+            crate.BaseId = 0x0E3D; // ITEMID_CRATE1 (wooden crate)
+            crate.ItemType = Core.Enums.ItemType.Container;
+            crate.Name = "a moving crate";
+
+            foreach (var protUid in protectedUids)
+            {
+                var item = world.FindItem(protUid);
+                if (item == null || item.IsDeleted) continue;
+                // Detach from its current container or ground sector, then place it
+                // in the crate (a fresh slot). Contents of a secured container ride
+                // along inside it.
+                if (item.ContainedIn.IsValid)
+                    world.FindItem(item.ContainedIn)?.RemoveItem(item);
+                else
+                    world.HideFromSector(item);
+                item.Position = new Point3D(0, 0, 0, crate.MapIndex);
+                crate.AddItem(item);
+                item.DecayTime = 0; // protected inside the crate
+            }
+
+            var owner = _owner.IsValid ? world.FindChar(_owner) : null;
+            var bank = owner?.GetEquippedItem(Core.Enums.Layer.BankBox);
+            if (bank != null)
+                bank.AddItem(crate);
+            else
+                world.PlaceItemWithDecay(crate, _multiItem.Position);
         }
         _lockdowns.Clear();
         _secureContainers.Clear();
@@ -376,6 +403,11 @@ public sealed class HousingEngine
     /// committed design (0xD8) itself, and server walk geometry comes from
     /// WalkCheck's virtual multi/design components.
     /// </summary>
+    /// <summary>Fired before a house is placed (Source-X @HouseCheck). Args: the
+    /// placing character and the chosen anchor point. Return true to VETO the
+    /// placement (the engine's own NoBuild/footprint/terrain checks ran first).</summary>
+    public static Func<Character, Point3D, bool>? OnHouseCheck { get; set; }
+
     public House? PlaceHouse(Character owner, ushort multiId, Point3D position, bool customFoundation = false)
     {
         if (MaxHousesPerPlayer >= 0 && GetHousesByOwner(owner.Uid).Count >= MaxHousesPerPlayer)
@@ -389,6 +421,11 @@ public sealed class HousingEngine
 
         // Check placement area
         if (!CanPlaceHouse(position, def))
+            return null;
+
+        // @HouseCheck (Source-X) — a script may veto placement after the engine's
+        // built-in checks pass (e.g. custom land claims / faction rules).
+        if (OnHouseCheck != null && OnHouseCheck(owner, position))
             return null;
 
         // Create multi item

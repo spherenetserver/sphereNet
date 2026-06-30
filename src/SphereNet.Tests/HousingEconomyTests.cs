@@ -454,4 +454,65 @@ public class HousingEconomyTests
 
     private static uint GetSingleActiveGump(SphereNet.Game.Clients.GameClient client)
         => Assert.Single(client.Gumps.ActiveGumps);
+
+    // ---- #6: collapse moves locked items into a crate (no item loss) ----
+
+    [Fact]
+    public void HouseCollapse_MovesLockedItemsIntoCrate_DeliveredToBank()
+    {
+        var world = CreateWorld();
+        var engine = new HousingEngine(world, new MultiRegistry());
+
+        var owner = world.CreateCharacter();
+        world.PlaceCharacter(owner, new Point3D(100, 100, 0, 0));
+        var bank = world.CreateItem();
+        bank.ItemType = ItemType.Container; bank.BaseId = 0x0E75;
+        owner.Equip(bank, Layer.BankBox);
+
+        var multi = world.CreateItem();
+        multi.ItemType = ItemType.Multi;
+        multi.SetTag("HOUSE.OWNER", $"0{owner.Uid.Value:X}");
+        world.PlaceItem(multi, new Point3D(100, 100, 0, 0));
+        var house = engine.RegisterExistingMulti(multi);
+        Assert.NotNull(house);
+
+        // A locked-down item sitting on the house floor.
+        var locked = world.CreateItem();
+        locked.BaseId = 0x0F0E;
+        world.PlaceItem(locked, new Point3D(101, 100, 0, 0));
+        Assert.True(house!.Lockdown(locked.Uid, owner.Uid));
+
+        house.Redeed(world);
+
+        // The item survived (not dropped to decay) and is inside a moving crate
+        // delivered to the owner's bank — reparented, not duplicated.
+        Assert.False(locked.IsDeleted);
+        var crate = world.FindItem(locked.ContainedIn);
+        Assert.NotNull(crate);
+        Assert.Equal("a moving crate", crate!.Name);
+        Assert.Equal(bank.Uid, crate.ContainedIn);
+    }
+
+    // ---- #3: @HouseCheck veto hook ----
+
+    [Fact]
+    public void PlaceHouse_HouseCheckHook_VetoesPlacement()
+    {
+        var world = CreateWorld();
+        var registry = new MultiRegistry();
+        var def = new MultiDef { Id = 0x0064, Name = "test house" };
+        def.Components.Add(new MultiComponent { TileId = 0x0001, DeltaX = 0, DeltaY = 0, DeltaZ = 0, Visible = true });
+        def.RecalcBounds();
+        registry.Register(def);
+        var engine = new HousingEngine(world, registry) { MaxHousesPerPlayer = -1, MaxHousesPerAccount = -1 };
+
+        var owner = world.CreateCharacter();
+        world.PlaceCharacter(owner, new Point3D(100, 100, 0, 0)); // away from the build spot
+
+        HousingEngine.OnHouseCheck = (_, _) => true; // veto
+        Assert.Null(engine.PlaceHouse(owner, 0x0064, new Point3D(200, 200, 0, 0)));
+
+        HousingEngine.OnHouseCheck = null; // allow
+        Assert.NotNull(engine.PlaceHouse(owner, 0x0064, new Point3D(200, 200, 0, 0)));
+    }
 }

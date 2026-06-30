@@ -4,6 +4,31 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Crafting/gathering parity II: tool zorunlulugu, type resource, node tutarliligi, sayfalama (Wave 161)
+----------------------------------------
+
+EKLENEN - Gathering:
+  - Mining pickaxe, lumberjacking axe, fishing fishing pole gerektiriyor (elde veya
+    pack'te); tool asiniyor ve sonunda kiriliyor (Source-X). Artik elinle gather yapamiyorsun.
+  - Bir resource node artik ilk vurusta rolledigi resource'u tutuyor, her vurusta yeniden
+    rollemiyor (iron→gold), ve regen timer'i yaratimda baslamiyor — kismi-kazilmis bir damar
+    artik erken resetlenmiyor. Depletion pool tam int olarak saklaniyor.
+
+DUZELTME - Crafting:
+  - Recipe resource'lari artik item TYPE'a gore eslesebiliyor (Source-X RES_TYPEDEF — orn.
+    "herhangi ingot"), sadece belirli BaseId'ye degil. t_* resource eskiden tip id'sini bogus
+    BaseId olarak sakliyordu, recipe craft edilemiyordu; type resource artik o tipteki herhangi
+    item'i alt-container'lar dahil sayiyor/tuketiyor.
+  - Craft menusu sayfalandi (Prev/Next), ilk ekrandan sonraki recipe'lere ulasilabiliyor —
+    uzun recipe listeleri y>390'da sessizce kesiliyordu.
+
+DUZELTME - Smelting / Delivery:
+  - Custom ore TAG.SMELT_TO ile standart-disi bir ingot'a smelt olabiliyor (ore item'inda veya
+    itemdef'inde); standart ore hala demir-ingot grafigini ore hue'su ile kullaniyor.
+  - Toplanan/smelt edilen bir item backpack doluyken artik sessizce kaybolmak yerine yere
+    dusuyor (eski yol dolu 500-item pack'e "ekliyor" — no-op — sonra client'a oradaymis gibi
+    soyluyordu, desync). Source-X ItemBounce.
+
 [2026-06-30] - Speech/command guvenlik + parity: yetki gate, speech iptal, greeting memory (Wave 160)
 ----------------------------------------
 

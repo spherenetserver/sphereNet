@@ -16,6 +16,10 @@ public readonly struct CraftResource
 {
     public ushort ItemId { get; init; }
     public int Amount { get; init; }
+    /// <summary>When set, the resource matches by item TYPE (Source-X RES_TYPEDEF —
+    /// e.g. "any t_ingot") rather than a specific item id. Lets a recipe consume any
+    /// item of a category instead of a single hardcoded BaseId.</summary>
+    public ItemType? Type { get; init; }
 }
 
 /// <summary>
@@ -101,7 +105,7 @@ public sealed class CraftingEngine
         // Check resource availability
         foreach (var res in recipe.Resources)
         {
-            if (CountResource(crafter, res.ItemId) < res.Amount)
+            if (CountResource(crafter, res) < res.Amount)
                 return false;
         }
 
@@ -138,7 +142,7 @@ public sealed class CraftingEngine
             // Re-verify resources before consuming (gump callback delay may have changed state)
             foreach (var res in recipe.Resources)
             {
-                if (CountResource(crafter, res.ItemId) < res.Amount)
+                if (CountResource(crafter, res) < res.Amount)
                     return null;
             }
 
@@ -148,14 +152,14 @@ public sealed class CraftingEngine
             ushort resourceHue = 0;
             if (recipe.Resources.Count > 0)
             {
-                var primaryRes = FindResourceItem(crafter, recipe.Resources[0].ItemId);
+                var primaryRes = FindResourceItem(crafter, recipe.Resources[0]);
                 if (primaryRes != null) resourceHue = primaryRes.Hue.Value;
             }
 
             // Consume resources
             foreach (var res in recipe.Resources)
             {
-                ConsumeResource(crafter, res.ItemId, res.Amount);
+                ConsumeResource(crafter, res, res.Amount);
             }
 
             // Create the item
@@ -200,7 +204,7 @@ public sealed class CraftingEngine
             {
                 int lostAmount = res.Amount * lossPercent / 100;
                 if (lostAmount > 0)
-                    ConsumeResource(crafter, res.ItemId, lostAmount);
+                    ConsumeResource(crafter, res, lostAmount);
             }
 
             return null;
@@ -218,12 +222,37 @@ public sealed class CraftingEngine
         return Math.Max(10, Math.Min(200, quality));
     }
 
+    /// <summary>Count a recipe resource in the character's backpack — by item TYPE
+    /// (RES_TYPEDEF) or by specific item id.</summary>
+    private static int CountResource(Character ch, CraftResource res)
+    {
+        var pack = ch.Backpack;
+        if (pack == null) return 0;
+        return res.Type.HasValue
+            ? CountInContainerByType(pack, res.Type.Value)
+            : CountInContainer(pack, res.ItemId);
+    }
+
     /// <summary>Count how many of a specific item ID the character has in their backpack.</summary>
     private static int CountResource(Character ch, ushort itemId)
     {
         var pack = ch.Backpack;
         if (pack == null) return 0;
         return CountInContainer(pack, itemId);
+    }
+
+    private static int CountInContainerByType(Item container, ItemType type, int depth = 0)
+    {
+        if (depth > 10) return 0;
+        int count = 0;
+        foreach (var item in container.Contents)
+        {
+            if (item.IsDeleted) continue;
+            if (item.ItemType == type)
+                count += item.Amount;
+            count += CountInContainerByType(item, type, depth + 1);
+        }
+        return count;
     }
 
     /// <summary>Find the first backpack item matching an item ID (used to read
@@ -328,10 +357,34 @@ public sealed class CraftingEngine
         return false;
     }
 
+    /// <summary>Find the first matching item for a recipe resource (by TYPE or id),
+    /// used to read the material hue before consumption.</summary>
+    private static Item? FindResourceItem(Character ch, CraftResource res)
+    {
+        var pack = ch.Backpack;
+        if (pack == null) return null;
+        return res.Type.HasValue
+            ? FindInContainerByType(pack, res.Type.Value, 0)
+            : FindInContainer(pack, res.ItemId, 0);
+    }
+
     private static Item? FindResourceItem(Character ch, ushort itemId)
     {
         var pack = ch.Backpack;
         return pack == null ? null : FindInContainer(pack, itemId, 0);
+    }
+
+    private static Item? FindInContainerByType(Item container, ItemType type, int depth)
+    {
+        if (depth > 10) return null;
+        foreach (var item in container.Contents)
+        {
+            if (item.IsDeleted) continue;
+            if (item.ItemType == type) return item;
+            var found = FindInContainerByType(item, type, depth + 1);
+            if (found != null) return found;
+        }
+        return null;
     }
 
     private static Item? FindInContainer(Item container, ushort itemId, int depth)
@@ -359,6 +412,18 @@ public sealed class CraftingEngine
         return count;
     }
 
+    /// <summary>Consume a recipe resource (by TYPE or id). Returns true if fully consumed.</summary>
+    private static bool ConsumeResource(Character ch, CraftResource res, int amount)
+    {
+        var pack = ch.Backpack;
+        if (pack == null) return false;
+        if (res.Type.HasValue)
+            ConsumeFromContainerByType(pack, res.Type.Value, ref amount);
+        else
+            ConsumeFromContainer(pack, res.ItemId, ref amount);
+        return amount == 0;
+    }
+
     /// <summary>Consume a specific amount of items from the backpack. Returns true if fully consumed.</summary>
     private static bool ConsumeResource(Character ch, ushort itemId, int amount)
     {
@@ -366,6 +431,34 @@ public sealed class CraftingEngine
         if (pack == null) return false;
         ConsumeFromContainer(pack, itemId, ref amount);
         return amount == 0;
+    }
+
+    private static void ConsumeFromContainerByType(Item container, ItemType type, ref int remaining, int depth = 0)
+    {
+        if (depth > 10) return;
+        for (int i = container.Contents.Count - 1; i >= 0 && remaining > 0; i--)
+        {
+            var item = container.Contents[i];
+            if (item.IsDeleted) continue;
+            if (item.ItemType == type)
+            {
+                if (item.Amount <= remaining)
+                {
+                    remaining -= item.Amount;
+                    container.RemoveItem(item);
+                    item.Delete();
+                }
+                else
+                {
+                    item.Amount -= (ushort)remaining;
+                    remaining = 0;
+                }
+            }
+            else
+            {
+                ConsumeFromContainerByType(item, type, ref remaining, depth + 1);
+            }
+        }
     }
 
     private static void ConsumeFromContainer(Item container, ushort itemId, ref int remaining, int depth = 0)
@@ -513,18 +606,22 @@ public sealed class CraftingEngine
                 if (!int.TryParse(amtStr, out int amount) || amount <= 0) continue;
 
                 var rid = resources.ResolveDefName(resName);
-                ushort resItemId;
-                if (rid.IsValid)
+                if (!rid.IsValid) continue;
+
+                // A RESOURCES entry can name an item TYPE (t_ingot) or a specific
+                // item (i_ingot_iron). A type entry resolves to a TypeDef and must
+                // match by ItemType — storing the type index as a BaseId (the old
+                // behaviour) made the recipe uncraftable.
+                if (rid.Type == Core.Enums.ResType.TypeDef)
                 {
-                    var resDef = DefinitionLoader.GetItemDef(rid.Index);
-                    resItemId = resDef?.DispIndex ?? (ushort)rid.Index;
+                    recipe.Resources.Add(new CraftResource { Type = (ItemType)rid.Index, Amount = amount });
                 }
                 else
                 {
-                    continue;
+                    var resDef = DefinitionLoader.GetItemDef(rid.Index);
+                    ushort resItemId = resDef?.DispIndex ?? (ushort)rid.Index;
+                    recipe.Resources.Add(new CraftResource { ItemId = resItemId, Amount = amount });
                 }
-
-                recipe.Resources.Add(new CraftResource { ItemId = resItemId, Amount = amount });
             }
         }
 

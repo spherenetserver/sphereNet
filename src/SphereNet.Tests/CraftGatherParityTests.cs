@@ -25,6 +25,7 @@ public class CraftGatherParityTests
         public GameWorld World { get; }
         public List<(string Channel, string Text)> Log { get; } = new();
         public List<Item> Delivered { get; } = new();
+        public Dictionary<ItemType, Item> Pack { get; } = new();
 
         public RecordingActiveSink(Character self, GameWorld world)
         {
@@ -36,9 +37,16 @@ public class CraftGatherParityTests
         public void Emote(string text) => Log.Add(("EMOTE", text));
         public void Sound(ushort soundId) { }
         public void Animation(ushort animId) { }
-        public Item? FindBackpackItem(ItemType type) => null;
+        public Item? FindBackpackItem(ItemType type) => Pack.TryGetValue(type, out var i) ? i : null;
         public void ConsumeAmount(Item item, ushort amount = 1) { }
         public void DeliverItem(Item item) => Delivered.Add(item);
+    }
+
+    private static void GiveTool(RecordingActiveSink sink, GameWorld world, ItemType toolType)
+    {
+        var tool = world.CreateItem();
+        tool.ItemType = toolType;
+        sink.Pack[toolType] = tool;
     }
 
     private static GameWorld MakeWorld() =>
@@ -63,10 +71,12 @@ public class CraftGatherParityTests
         var world = MakeWorld();
         var ch = MakeChar();
         var sink = new RecordingActiveSink(ch, world);
+        GiveTool(sink, world, ItemType.FishPole);
 
         ActiveSkillEngine.Fishing(sink, new Point3D(101, 100, 0, 0), null, world);
 
         Assert.DoesNotContain(sink.Log, e => e.Text.Contains("can't fish", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(sink.Log, e => e.Text.Contains("fishing pole", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -75,9 +85,39 @@ public class CraftGatherParityTests
         var world = MakeWorld();
         var ch = MakeChar();
         var sink = new RecordingActiveSink(ch, world);
+        GiveTool(sink, world, ItemType.WeaponAxe);
 
         ActiveSkillEngine.Lumberjacking(sink, new Point3D(101, 100, 0, 0), null, world);
 
         Assert.DoesNotContain(sink.Log, e => e.Text.Contains("no tree", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(sink.Log, e => e.Text.Contains("axe to chop", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // ---- #2: gathering requires a tool ----
+
+    [Fact]
+    public void Fishing_WithoutPole_IsRejected()
+    {
+        var world = MakeWorld();
+        var ch = MakeChar();
+        var sink = new RecordingActiveSink(ch, world); // no pole
+
+        bool ok = ActiveSkillEngine.Fishing(sink, new Point3D(101, 100, 0, 0), null, world);
+
+        Assert.False(ok);
+        Assert.Contains(sink.Log, e => e.Text.Contains("fishing pole", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Mining_WithoutPickaxe_IsRejected()
+    {
+        var world = MakeWorld();
+        var ch = MakeChar();
+        var sink = new RecordingActiveSink(ch, world); // no pickaxe
+
+        bool ok = ActiveSkillEngine.Mining(sink, new Point3D(101, 100, 0, 0), null, world);
+
+        Assert.False(ok);
+        Assert.Contains(sink.Log, e => e.Text.Contains("pickaxe", StringComparison.OrdinalIgnoreCase));
     }
 }

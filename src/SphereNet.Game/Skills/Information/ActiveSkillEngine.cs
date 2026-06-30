@@ -742,6 +742,15 @@ public static class ActiveSkillEngine
             return false;
         }
 
+        // Source-X requires a pickaxe to mine; it wears out with use.
+        var pickaxe = FindGatherTool(sink, ItemType.WeaponMacePick);
+        if (pickaxe == null)
+        {
+            sink.SysMessage("You need a pickaxe to mine.");
+            return false;
+        }
+        DamageGatherTool(sink, pickaxe);
+
         if (gatheringEngine != null)
         {
             var result = gatheringEngine.TryGatherForSink(ch, SkillType.Mining, target);
@@ -824,6 +833,34 @@ public static class ActiveSkillEngine
         return false;
     }
 
+    /// <summary>Find a gathering tool of the given type in the actor's hands or
+    /// backpack (Source-X requires the tool to be present to mine/chop/fish).</summary>
+    private static Item? FindGatherTool(IActiveSkillSink sink, ItemType toolType)
+    {
+        var ch = sink.Self;
+        var hand = ch.GetEquippedItem(Layer.OneHanded) ?? ch.GetEquippedItem(Layer.TwoHanded);
+        if (hand != null && !hand.IsDeleted && hand.ItemType == toolType)
+            return hand;
+        return sink.FindBackpackItem(toolType);
+    }
+
+    /// <summary>Wear a gathering tool on use (Source-X). Decrements UsesRemaining
+    /// when the item tracks it, otherwise a small per-use break chance (~2%, ≈ 50
+    /// uses). A worn-out tool is consumed/broken.</summary>
+    private static void DamageGatherTool(IActiveSkillSink sink, Item tool)
+    {
+        if (tool.UsesRemaining > 0)
+        {
+            tool.UsesRemaining--;
+            if (tool.UsesRemaining == 0)
+                sink.ConsumeAmount(tool);
+        }
+        else if (sink.Random.Next(50) == 0)
+        {
+            sink.ConsumeAmount(tool);
+        }
+    }
+
     /// <summary>True when the target tile is water (Source-X fishing terrain
     /// check). Uses the tiledata wet flag, which is reliable, not a name match.
     /// Permissive when no map data is loaded (bare test setups).</summary>
@@ -888,6 +925,15 @@ public static class ActiveSkillEngine
             sink.SysMessage("You can't fish there.");
             return false;
         }
+
+        // Source-X requires a fishing pole; it wears out with use.
+        var pole = FindGatherTool(sink, ItemType.FishPole);
+        if (pole == null)
+        {
+            sink.SysMessage("You need a fishing pole to fish.");
+            return false;
+        }
+        DamageGatherTool(sink, pole);
 
         if (gatheringEngine != null)
         {
@@ -955,6 +1001,15 @@ public static class ActiveSkillEngine
             sink.SysMessage("There is no tree there to chop.");
             return false;
         }
+
+        // Source-X requires an axe to chop; it wears out with use.
+        var axe = FindGatherTool(sink, ItemType.WeaponAxe);
+        if (axe == null)
+        {
+            sink.SysMessage("You need an axe to chop wood.");
+            return false;
+        }
+        DamageGatherTool(sink, axe);
 
         if (gatheringEngine != null)
         {

@@ -35,6 +35,9 @@ public sealed class GatheringEngine
     // Amount could never reach 0 — the node stayed at 1 forever and mining was
     // effectively infinite. Tags have no such clamp.
     private const string TagPool = "RES_POOL";
+    // Resource the node fixed on first strike — keeps a vein yielding the same
+    // thing on every swing instead of re-rolling iron→gold each time.
+    private const string TagResourceId = "RES_ID";
 
     private static int GetPool(Item marker) =>
         marker.TryGetTag(TagPool, out string? p) && int.TryParse(p, out int v) ? v : 0;
@@ -100,17 +103,26 @@ public sealed class GatheringEngine
         if (matchedType == null || matchedType.Resources.Count == 0)
             return new GatherResult { Handled = false };
 
-        var resRid = matchedType.SelectRandomResource(_rng);
-        var resDef = DefinitionLoader.GetRegionResourceDef(resRid.Index);
+        string skillTag = skill.ToString();
+        var marker = FindMarker(target, skillTag);
+
+        // An established vein keeps its resource: reuse the marker's stored id so
+        // the node yields the same thing every swing instead of re-rolling.
+        RegionResourceDef? resDef = null;
+        if (marker != null && marker.TryGetTag(TagResourceId, out string? ridStr)
+            && int.TryParse(ridStr, out int ridIdx))
+            resDef = DefinitionLoader.GetRegionResourceDef(ridIdx);
+        if (resDef == null)
+        {
+            var resRid = matchedType.SelectRandomResource(_rng);
+            resDef = DefinitionLoader.GetRegionResourceDef(resRid.Index);
+        }
         if (resDef == null)
             return new GatherResult { Handled = false };
 
-        // mr_nothing: weighted "found nothing" result
+        // mr_nothing: weighted "found nothing" result (never persisted on a node)
         if (resDef.Reap == 0)
             return new GatherResult { Handled = true, Success = false };
-
-        string skillTag = skill.ToString();
-        var marker = FindMarker(target, skillTag);
 
         if (marker != null && GetPool(marker) <= 0)
             return new GatherResult { Handled = true, Depleted = true };
@@ -163,7 +175,7 @@ public sealed class GatheringEngine
                 int amtMin = Math.Max(1, resDef.AmountMin);
                 int amtMax = Math.Max(amtMin + 1, resDef.AmountMax + 1); // guard Min>Max bad data
                 int poolAmount = _rng.Next(amtMin, amtMax);
-                marker = CreateMarker(target, skillTag, (ushort)poolAmount, resDef.Regen);
+                marker = CreateMarker(target, skillTag, poolAmount, resDef);
             }
 
             // Never hand out more than the pool actually holds — otherwise a
@@ -237,7 +249,7 @@ public sealed class GatheringEngine
         return null;
     }
 
-    private Item CreateMarker(Point3D tile, string skillTag, ushort amount, int regenSeconds)
+    private Item CreateMarker(Point3D tile, string skillTag, int amount, RegionResourceDef resDef)
     {
         var marker = _world.CreateItem();
         marker.BaseId = MarkerBaseId;
@@ -246,9 +258,12 @@ public sealed class GatheringEngine
         marker.SetAttr(ObjAttributes.Invis | ObjAttributes.Move_Never);
         marker.SetTag(TagResourceMarker, "1");
         marker.SetTag(TagSkillType, skillTag);
+        marker.SetTag(TagResourceId, resDef.Id.Index.ToString());
 
-        long regenMs = regenSeconds > 0 ? regenSeconds * 1000L : 36_000_000L;
-        marker.DecayTime = Environment.TickCount64 + regenMs;
+        // No decay timer at creation: the node persists until it is fully
+        // depleted, and only THEN starts its regen timer (set where the pool hits
+        // zero). Starting decay at creation reset a partly-mined vein early.
+        marker.DecayTime = 0;
 
         _world.PlaceItem(marker, tile);
         return marker;

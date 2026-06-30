@@ -98,21 +98,29 @@ public sealed partial class GameClient
         public void DeliverItem(Item item)
         {
             var pack = Self.Backpack;
-            if (pack == null)
+            if (pack != null)
             {
-                _client.World.PlaceItemWithDecay(item, Self.Position);
-                return;
+                var actual = pack.AddItemWithStack(item);
+                bool stacked = actual != item;                        // merged into a pile
+                bool placed = stacked || item.ContainedIn == pack.Uid; // or newly added
+                if (placed)
+                {
+                    if (stacked)
+                        item.Delete();
+                    _client.NetState.Send(new PacketContainerItem(
+                        actual.Uid.Value, actual.DispIdFull, 0,
+                        actual.Amount, actual.X, actual.Y,
+                        pack.Uid.Value, actual.Hue,
+                        _client.NetState.IsClientPost6017));
+                    return;
+                }
+                // Pack is full (no room and nothing to stack onto): Source-X
+                // ItemBounce drops the item at the actor's feet rather than
+                // silently losing it (the old code "added" it to a 500-item-full
+                // pack — a no-op — then told the client it was there: a desync).
             }
 
-            var actual = pack.AddItemWithStack(item);
-            if (actual != item)
-                item.Delete();
-
-            _client.NetState.Send(new PacketContainerItem(
-                actual.Uid.Value, actual.DispIdFull, 0,
-                actual.Amount, actual.X, actual.Y,
-                pack.Uid.Value, actual.Hue,
-                _client.NetState.IsClientPost6017));
+            _client.World.PlaceItemWithDecay(item, Self.Position);
         }
 
         public void ResurrectTarget(Objects.Characters.Character target)

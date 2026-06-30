@@ -4,6 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Crafting/gathering parity II: tool requirement, type resources, node consistency, paging (Wave 161)
+----------------------------------------
+
+ADDED - Gathering:
+  - Mining requires a pickaxe, lumberjacking an axe, and fishing a fishing pole
+    (in hand or pack); the tool wears out and eventually breaks (Source-X). You can
+    no longer gather barehanded.
+  - A resource node now keeps the resource it rolled on the first strike instead of
+    re-rolling (iron→gold) on every swing, and its regen timer no longer starts at
+    creation — a partly-mined vein is no longer reset early. The depletion pool is
+    stored as a full int.
+
+FIXED - Crafting:
+  - Recipe resources can now match by item TYPE (Source-X RES_TYPEDEF — e.g. "any
+    ingot"), not just a specific BaseId. A t_* resource used to resolve to a type
+    id stored as a bogus BaseId, making the recipe uncraftable; type resources now
+    count/consume any item of that type across sub-containers.
+  - The crafting menu is paginated (Prev/Next), so recipes past the first screen are
+    reachable — long recipe lists were silently cut off at y>390.
+
+FIXED - Smelting / Delivery:
+  - Custom ore can smelt to a non-standard ingot via TAG.SMELT_TO (on the ore item
+    or its itemdef); standard ore still uses the iron-ingot graphic with the ore
+    hue carried over.
+  - A gathered/smelted item now drops to the ground when the backpack is full
+    instead of being silently lost (the old path "added" it to a full 500-item pack
+    — a no-op — then told the client it was there, a desync). Source-X ItemBounce.
+
 [2026-06-30] - Speech/command security + parity: privilege gate, speech cancel, greeting memory (Wave 160)
 ----------------------------------------
 

@@ -1289,17 +1289,21 @@ public sealed class ClientItemUseHandler
         }
 
         var oreHue = ore.Hue;
+        ushort ingotId = ResolveSmeltIngotId(ore);
         ConsumeOreStack(ore);
 
         var ingot = _world.CreateItem();
-        ingot.BaseId = 0x1BF2;
+        ingot.BaseId = ingotId;
         ingot.ItemType = ItemType.Ingot;
         // Carry the ore's hue onto the ingot so a coloured/special ore (valorite,
         // verite, …) smelts to its matching coloured ingot instead of always
         // becoming plain iron — coloured ingots share the iron ingot graphic and
         // differ only by hue.
         ingot.Hue = oreHue;
-        ingot.Name = oreHue.Value != 0 ? "ingot" : "iron ingot";
+        var ingotDef = DefinitionLoader.GetItemDef(ingotId);
+        ingot.Name = ingotDef != null && !string.IsNullOrWhiteSpace(ingotDef.Name)
+            ? DefinitionLoader.ResolveNames(ingotDef.Name)
+            : (oreHue.Value != 0 ? "ingot" : "iron ingot");
         ingot.Amount = (ushort)Math.Min(amount, ushort.MaxValue);
 
         var pack = _character.Backpack;
@@ -1324,6 +1328,34 @@ public sealed class ClientItemUseHandler
             _triggerDispatcher?.FireItemTrigger(ingot, ItemTrigger.Create,
                 new TriggerArgs { CharSrc = _character, ItemSrc = ingot });
         }
+    }
+
+    /// <summary>Resolve the ingot id an ore smelts into. Custom ore can name a
+    /// non-standard ingot via TAG.SMELT_TO on the ore item or its itemdef; standard
+    /// ore falls back to the iron ingot graphic (0x1BF2), the ore hue is carried
+    /// over by the caller so coloured ore yields its coloured ingot.</summary>
+    private static ushort ResolveSmeltIngotId(Item ore)
+    {
+        string? raw = null;
+        if (ore.TryGetTag("SMELT_TO", out string? itemTag) && !string.IsNullOrWhiteSpace(itemTag))
+            raw = itemTag;
+        else
+        {
+            var def = DefinitionLoader.GetItemDef(ore.BaseId);
+            if (def != null && def.TagDefs.Has("SMELT_TO"))
+                raw = def.TagDefs.Get("SMELT_TO");
+        }
+
+        if (!string.IsNullOrWhiteSpace(raw))
+        {
+            raw = raw.Trim();
+            bool ok = raw.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                ? ushort.TryParse(raw.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out ushort id)
+                : ushort.TryParse(raw, out id);
+            if (ok && id != 0)
+                return id;
+        }
+        return 0x1BF2;
     }
 
     private void ConsumeOreStack(Item ore)

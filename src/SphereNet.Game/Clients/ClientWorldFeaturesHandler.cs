@@ -104,7 +104,15 @@ public sealed class ClientWorldFeaturesHandler
     /// Open a crafting gump for the given skill.
     /// Lists available recipes and lets the player select one to craft.
     /// </summary>
-    public void OpenCraftingGump(SkillType craftSkill)
+    /// <summary>Recipes shown per craft-menu page (rows that fit between y=50..390).</summary>
+    private const int CraftRecipesPerPage = 15;
+    private const int CraftButtonNextPage = 1;
+    private const int CraftButtonPrevPage = 2;
+    private const int CraftButtonRecipeBase = 100;
+
+    public void OpenCraftingGump(SkillType craftSkill) => OpenCraftingGump(craftSkill, 0);
+
+    private void OpenCraftingGump(SkillType craftSkill, int page)
     {
         if (_character == null || _craftingEngine == null) return;
 
@@ -115,46 +123,66 @@ public sealed class ClientWorldFeaturesHandler
             return;
         }
 
+        // Clamp the page so a stale Next/Prev (or a recipe-count change) can't land
+        // on an empty page — long recipe lists are paged instead of truncated, so
+        // every recipe is reachable (the old single page cut off at y>390).
+        int pageCount = (recipes.Count + CraftRecipesPerPage - 1) / CraftRecipesPerPage;
+        page = Math.Clamp(page, 0, Math.Max(0, pageCount - 1));
+        int skip = page * CraftRecipesPerPage;
+
         var gump = new GumpBuilder(_character.Uid.Value, 0, 530, 437);
         gump.AddResizePic(0, 0, 5054, 530, 437);
-        gump.AddText(15, 15, 0, $"{craftSkill} Menu");
+        gump.AddText(15, 15, 0, $"{craftSkill} Menu (page {page + 1}/{pageCount})");
 
-        // Page 0 — recipe list
         int y = 50;
-        int buttonId = 100;
-        foreach (var recipe in recipes)
+        for (int i = skip; i < recipes.Count && i < skip + CraftRecipesPerPage; i++)
         {
-            if (y > 390) break;
-
+            var recipe = recipes[i];
             string name = string.IsNullOrEmpty(recipe.ResultName)
                 ? $"Item 0x{recipe.ResultItemId:X4}"
                 : recipe.ResultName;
             bool canMake = _craftingEngine.CanCraft(_character, recipe);
             int hue = canMake ? 0x0044 : 0x0020; // green vs red
 
-            gump.AddButton(15, y, 4005, 4007, buttonId);
+            gump.AddButton(15, y, 4005, 4007, CraftButtonRecipeBase + (i - skip));
             gump.AddText(55, y, hue, name);
 
-            // Show resource info
             if (recipe.Resources.Count > 0)
             {
-                var resText = string.Join(", ", recipe.Resources.Select(r => $"{r.Amount}x 0x{r.ItemId:X4}"));
+                var resText = string.Join(", ", recipe.Resources.Select(r =>
+                    r.Type.HasValue ? $"{r.Amount}x {r.Type.Value}" : $"{r.Amount}x 0x{r.ItemId:X4}"));
                 gump.AddText(280, y, 0, resText);
             }
 
             y += 22;
-            buttonId++;
         }
 
-        // Cancel button
+        // Prev / Next paging buttons
+        if (page > 0)
+        {
+            gump.AddButton(200, 400, 4014, 4016, CraftButtonPrevPage);
+            gump.AddText(240, 400, 0, "Prev");
+        }
+        if (page < pageCount - 1)
+        {
+            gump.AddButton(320, 400, 4005, 4007, CraftButtonNextPage);
+            gump.AddText(360, 400, 0, "Next");
+        }
+
         gump.AddButton(15, 400, 4017, 4019, 0);
         gump.AddText(55, 400, 0, "Close");
 
+        int capturedSkip = skip;
+        int capturedPage = page;
         SendGump(gump, (pressedButton, switches, textEntries) =>
         {
-            if (pressedButton >= 100)
+            if (pressedButton == CraftButtonNextPage)
+                OpenCraftingGump(craftSkill, capturedPage + 1);
+            else if (pressedButton == CraftButtonPrevPage)
+                OpenCraftingGump(craftSkill, capturedPage - 1);
+            else if (pressedButton >= CraftButtonRecipeBase)
             {
-                int index = (int)(pressedButton - 100);
+                int index = capturedSkip + ((int)pressedButton - CraftButtonRecipeBase);
                 if (index < recipes.Count)
                     BeginPendingCraft(recipes[index], craftSkill, reopenGump: true);
             }

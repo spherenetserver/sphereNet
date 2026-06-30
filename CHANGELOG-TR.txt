@@ -4,6 +4,23 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Multi paritesi: gemi ban / eject gemi region'ina baglandi (Wave 177)
+----------------------------------------
+
+EKLENEN - Gemi ban / eject (Source-X multi ban listesi, gemi region'i uzerinden uygulanir):
+  - Gemi artik bir ban listesi tutar. Bordalama gemi dinamik region'i uzerinden gate'lenir:
+    region-bagli olarak bir gemiye cozulen tile'a, o gemiden banlanmis biri hareket ederse
+    reddedilir -- ev ban gate'iyle birebir ayni. Sahip asla engellenmez.
+  - Su an guvertede olan birini banlamak onu eject eder -- hull'un sancak (starboard) kenarinin
+    hemen disindaki tile'a konur (bu hareket region enter/exit'i normal atesler, cunku gercekten
+    gemiden ayriliyorlar), ardindan bordalama gate'i onu disarida tutar.
+  - Gemi aramasi region-bagli: FindShipAt bir tile altindaki Ship-flag region'i uzerinden gemiyi
+    cozer, boylece guverte uyeligi ayri bir bounding-box testi yerine motorun zaten tuttugu
+    footprint ile eslesir.
+  - Ban listeleri save / load arasinda kalici (SHIP.BANS tag).
+
+================================================================================
+
 [2026-06-30] - Multi paritesi: gemi sefer ettikce hull'u takip eden dinamik region (Wave 176)
 ----------------------------------------
 

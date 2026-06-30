@@ -183,4 +183,84 @@ public class ShipHousingParityTests
         Assert.True(rEast.IsFlag(RegionFlag.NoPvP));
         Assert.False(rEast.IsFlag(RegionFlag.Guarded));
     }
+
+    // ---- ban / eject bound to the ship region ----
+
+    [Fact]
+    public void FindShipAt_ResolvesShipThroughRegion()
+    {
+        var world = CreateWorld();
+        var engine = new ShipEngine(world, MakeShipRegistry(), null);
+        var owner = world.CreateCharacter();
+        world.PlaceCharacter(owner, new Point3D(50, 50, 0, 0));
+
+        var ship = engine.PlaceShip(owner, 0x4000, new Point3D(200, 200, 0, 0), Direction.North);
+        Assert.NotNull(ship);
+
+        Assert.Same(ship, engine.FindShipAt(new Point3D(200, 200, 0, 0)));
+        Assert.Null(engine.FindShipAt(new Point3D(220, 220, 0, 0)));
+    }
+
+    [Fact]
+    public void BanFromShip_EjectsAboardPlayer_AndBlocksReboard()
+    {
+        var world = CreateWorld();
+        var engine = new ShipEngine(world, MakeShipRegistry(), null);
+        var owner = world.CreateCharacter();
+        world.PlaceCharacter(owner, new Point3D(50, 50, 0, 0));
+
+        var ship = engine.PlaceShip(owner, 0x4000, new Point3D(200, 200, 0, 0), Direction.North);
+        Assert.NotNull(ship);
+
+        // A player standing on the deck.
+        var intruder = world.CreateCharacter();
+        world.PlaceCharacter(intruder, new Point3D(200, 200, 0, 0));
+        Assert.Same(ship, engine.FindShipAt(intruder.Position)); // aboard
+
+        Assert.True(engine.BanFromShip(ship!, intruder.Uid));
+        Assert.True(ship!.IsBanned(intruder.Uid));
+        // Ejected: no longer resolves to the ship region.
+        Assert.Null(engine.FindShipAt(intruder.Position));
+        // And the boarding gate now refuses them.
+        Assert.False(ship.CanBoard(intruder.Uid));
+        // The owner is never barred.
+        Assert.True(ship.CanBoard(owner.Uid));
+    }
+
+    [Fact]
+    public void Owner_CannotBeBanned()
+    {
+        var world = CreateWorld();
+        var engine = new ShipEngine(world, MakeShipRegistry(), null);
+        var owner = world.CreateCharacter();
+        world.PlaceCharacter(owner, new Point3D(50, 50, 0, 0));
+        var ship = engine.PlaceShip(owner, 0x4000, new Point3D(200, 200, 0, 0), Direction.North);
+
+        Assert.False(engine.BanFromShip(ship!, owner.Uid));
+        Assert.False(ship!.IsBanned(owner.Uid));
+        Assert.True(ship.CanBoard(owner.Uid));
+    }
+
+    [Fact]
+    public void ShipBans_Persist_AcrossSaveLoad()
+    {
+        var world = CreateWorld();
+        var registry = MakeShipRegistry();
+        var engine = new ShipEngine(world, registry, null);
+        var owner = world.CreateCharacter();
+        world.PlaceCharacter(owner, new Point3D(50, 50, 0, 0));
+        var ship = engine.PlaceShip(owner, 0x4000, new Point3D(200, 200, 0, 0), Direction.North);
+        Assert.NotNull(ship);
+
+        var banned = new Serial(0x9001);
+        ship!.AddBan(banned);
+        engine.SerializeAllToTags();
+
+        // A fresh engine rebuilds ships (and their regions) from the world tags.
+        var engine2 = new ShipEngine(world, registry, null);
+        engine2.DeserializeFromWorld();
+        var loaded = engine2.GetShip(ship.MultiItem.Uid);
+        Assert.NotNull(loaded);
+        Assert.True(loaded!.IsBanned(banned));
+    }
 }

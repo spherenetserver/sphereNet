@@ -33,6 +33,10 @@ public sealed class MovementEngine
     /// <summary>Optional housing ban check. Returns false if character cannot enter the tile.</summary>
     public Func<Objects.Characters.Character, Point3D, bool>? CanEnterHouse { get; set; }
 
+    /// <summary>Optional ship-boarding ban check (enforced through the ship region).
+    /// Returns false if the character is barred from the ship occupying the tile.</summary>
+    public Func<Objects.Characters.Character, Point3D, bool>? CanBoardShip { get; set; }
+
     public static int WalkDelayFoot { get; set; } = 400;
     public static int WalkDelayMount { get; set; } = 200;
     public static int RunDelayFoot { get; set; } = 200;
@@ -118,6 +122,12 @@ public sealed class MovementEngine
         }
 
         if (CanEnterHouse != null && !CanEnterHouse(ch, target))
+        {
+            diag = diag with { MobBlocked = true };
+            return false;
+        }
+
+        if (CanBoardShip != null && !CanBoardShip(ch, target))
         {
             diag = diag with { MobBlocked = true };
             return false;

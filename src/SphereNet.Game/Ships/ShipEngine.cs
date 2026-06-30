@@ -759,6 +759,47 @@ public sealed class ShipEngine
         ship.RegionUid = 0;
     }
 
+    /// <summary>The ship whose dynamic region contains <paramref name="pt"/>, or null.
+    /// Deck membership is resolved through the Ship-flag region (region-bound, so it
+    /// matches exactly the footprint the engine maintains) rather than a separate
+    /// bounding-box test. Used by the boarding gate and eject.</summary>
+    public Ship? FindShipAt(Point3D pt)
+    {
+        var region = _world.FindRegion(pt);
+        if (region == null || !region.IsFlag(RegionFlag.Ship)) return null;
+        foreach (var ship in _ships.Values)
+            if (ship.RegionUid == region.Uid)
+                return ship;
+        return null;
+    }
+
+    /// <summary>Ban a player from the ship and, if they are currently aboard, eject
+    /// them. The boarding gate (CanBoard) then keeps them off. Owner-proof.</summary>
+    public bool BanFromShip(Ship ship, Serial uid)
+    {
+        if (uid == ship.Owner) return false; // never ban the owner
+        bool added = ship.AddBan(uid);
+        // Eject any matching character already standing on the deck.
+        foreach (var ch in ListDeckCharacters(ship))
+            if (ch.Uid == uid)
+                EjectFromShip(ship, ch);
+        return added;
+    }
+
+    /// <summary>Lift a ship ban.</summary>
+    public bool UnbanFromShip(Ship ship, Serial uid) => ship.RemoveBan(uid);
+
+    /// <summary>Put a character off the ship onto the tile just beyond the starboard
+    /// edge of the hull (Source-X eject drops the target at the multi's edge). The
+    /// move fires region enter/exit normally — they really are leaving the ship.</summary>
+    public void EjectFromShip(Ship ship, Character ch)
+    {
+        var def = _multiDefs.Get(ship.MultiItem.BaseId);
+        var mi = ship.MultiItem;
+        short offX = def != null ? (short)(mi.X + def.MaxX + 1) : (short)(mi.X + 1);
+        _world.MoveCharacter(ch, new Point3D(offX, ch.Y, ch.Z, mi.MapIndex));
+    }
+
     private bool HandleShipGate(Ship ship, string args)
     {
         // SHIPGATE x,y,z,map — teleport entire ship
@@ -797,6 +838,11 @@ public sealed class ShipEngine
 
             if (ship.Components.Count > 0)
                 item.SetTag("SHIP.COMPONENTS", string.Join(",", ship.Components.Select(s => $"0{s.Value:X}")));
+
+            if (ship.Bans.Count > 0)
+                item.SetTag("SHIP.BANS", string.Join(",", ship.Bans.Select(s => $"0{s.Value:X}")));
+            else
+                item.RemoveTag("SHIP.BANS");
         }
     }
 
@@ -842,6 +888,15 @@ public sealed class ShipEngine
                         ship.AddComponent(compItem);
                     else
                         ship.AddComponentUid(new Serial(val));
+                }
+            }
+
+            if (item.TryGetTag("SHIP.BANS", out string? bansStr) && !string.IsNullOrWhiteSpace(bansStr))
+            {
+                foreach (var part in bansStr.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    uint val = ParseHexSerial(part);
+                    if (val != 0) ship.AddBan(new Serial(val));
                 }
             }
 

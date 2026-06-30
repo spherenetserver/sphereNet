@@ -30,6 +30,10 @@ public sealed class Ship
     // hull's footprint (REGION_FLAG_SHIP). Recomputed as the ship sails. 0 = none.
     private uint _regionUid;
 
+    // Players barred from boarding (Source-X multi ban list, enforced through the
+    // ship region). The owner always boards; everyone else is blocked only when banned.
+    private readonly HashSet<Serial> _bans = [];
+
     public Item MultiItem => _multiItem;
     public Serial Owner { get => _owner; set => _owner = value; }
     public Serial Pilot { get => _pilot; set => _pilot = value; }
@@ -43,6 +47,15 @@ public sealed class Ship
     public long NextMoveTick { get => _nextMoveTick; set => _nextMoveTick = value; }
     public IReadOnlyList<Serial> Components => _components;
     public uint RegionUid { get => _regionUid; set => _regionUid = value; }
+    public IReadOnlyCollection<Serial> Bans => _bans;
+
+    public bool AddBan(Serial uid) => _bans.Add(uid);
+    public bool RemoveBan(Serial uid) => _bans.Remove(uid);
+    public bool IsBanned(Serial uid) => _bans.Contains(uid);
+
+    /// <summary>Whether a character may board / stay on the ship. The owner always
+    /// may; everyone else is barred only when on the ban list (Source-X multi ban).</summary>
+    public bool CanBoard(Serial uid) => uid == _owner || !_bans.Contains(uid);
 
     public Ship(Item multiItem)
     {

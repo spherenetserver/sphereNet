@@ -435,6 +435,14 @@ public static partial class Program
                 return house.CanAccess(mover.Uid);
             };
 
+            _movement.CanBoardShip = (mover, dest) =>
+            {
+                if (mover.PrivLevel >= PrivLevel.GM) return true;
+                var ship = _shipEngine?.FindShipAt(dest);
+                if (ship == null) return true;
+                return ship.CanBoard(mover.Uid);
+            };
+
             _movement.OnTeleport = (mover, dest, oldMap) =>
             {
                 if (TryGetClientFor(mover, out var c))

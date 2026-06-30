@@ -1172,15 +1172,17 @@ public sealed class ScriptInterpreter
                 return objVal;
             return "0";
         }
+        // LINK is the CURRENT object's link property (Source-X m_uidLink) — e.g. a
+        // lever's linked door — NOT a trigger-arg object. Delegate to the target,
+        // which resolves both <LINK> (the linked uid) and <LINK.prop> (the linked
+        // object's property). Previously LINK collided with ACT (both returned
+        // Object2), so <LINK> never reflected the object's actual link.
         if (varName.Equals("LINK", StringComparison.OrdinalIgnoreCase))
-            return GetObjectRef(args?.Object2);
+            return target.TryGetProperty("LINK", out string linkUid) && !string.IsNullOrEmpty(linkUid)
+                ? linkUid
+                : "0";
         if (varName.StartsWith("LINK.", StringComparison.OrdinalIgnoreCase))
-        {
-            string subProp = varName[5..];
-            if (args?.Object2 != null && args.Object2.TryGetProperty(subProp, out string linkVal))
-                return linkVal;
-            return "0";
-        }
+            return target.TryGetProperty(varName, out string linkVal) ? linkVal : "0";
         if (varName.Equals("TARGP", StringComparison.OrdinalIgnoreCase))
         {
             if ((source ?? NullConsole.Instance).TryResolveScriptVariable(varName, target, args, out string targPoint))

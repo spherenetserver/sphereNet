@@ -2,6 +2,8 @@ using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Characters;
+using SphereNet.Game.Objects.Items;
+using SphereNet.Game.World;
 using SphereNet.Scripting.Execution;
 using SphereNet.Scripting.Expressions;
 using SphereNet.Scripting.Parsing;
@@ -10,6 +12,51 @@ namespace SphereNet.Tests;
 
 public class ScriptObjectParityTests
 {
+    [Fact]
+    public void ScriptInterpreter_Link_ResolvesObjectsOwnLink_DistinctFromAct()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = new GameWorld(loggerFactory);
+        world.InitMap(0, 6144, 4096);
+        SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
+        Item.ResolveWorld = () => world;
+
+        var interpreter = new ScriptInterpreter(
+            new ExpressionParser(),
+            loggerFactory.CreateLogger<ScriptInterpreter>());
+
+        var door = world.CreateItem();
+        door.Name = "oak door";
+        var lever = world.CreateItem();
+        lever.Name = "lever";
+        lever.Link = door.Uid; // the lever's m_uidLink points at the door
+
+        // A different object sits in the ACT / Object2 slot, to prove LINK no longer
+        // collides with ACT (both used to resolve Object2).
+        var bystander = new Character { Name = "Bystander" };
+        bystander.SetUid(new Serial(0x00009999));
+        var args = new TriggerArgs { Object2 = bystander };
+
+        var scope = new ScriptScope();
+        var lines = new[]
+        {
+            new ScriptKey("TAG.LINKUID", "<LINK>"),
+            new ScriptKey("TAG.LINKNAME", "<LINK.NAME>"),
+            new ScriptKey("TAG.ACTNAME", "<ACT.NAME>"),
+        };
+
+        interpreter.Execute(lines, lever, null, args, scope);
+
+        // <LINK> reflects the lever's actual link, not the ACT object.
+        Assert.True(lever.TryGetProperty("TAG.LINKUID", out var linkUid));
+        Assert.Equal($"0{door.Uid.Value:X}", linkUid);
+        Assert.True(lever.TryGetProperty("TAG.LINKNAME", out var linkName));
+        Assert.Equal("oak door", linkName);
+        // ACT still resolves Object2 — the two references are now independent.
+        Assert.True(lever.TryGetProperty("TAG.ACTNAME", out var actName));
+        Assert.Equal("Bystander", actName);
+    }
+
     [Fact]
     public void ScriptInterpreter_LocalFloatAndRefValues_RoundTripThroughAngleExpressions()
     {

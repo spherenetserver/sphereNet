@@ -4,6 +4,19 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Scripting paritesi: script <LINK> nesnenin kendi link'ini okur (Wave 199)
+----------------------------------------
+
+DUZELTILDI - Script'te <LINK>, nesnenin link'i yerine ACT nesnesine takma-ad'lanmisti:
+  - Interpreter hem <ACT> hem <LINK>'i trigger'in ikinci nesnesine (Object2) cozuyordu;
+    bu yuzden <LINK> bir nesnenin gercek m_uidLink'ini hic yansitmiyordu -- orn. bir kolun
+    bagli oldugu kapi <LINK> / <LINK.NAME>'den erisilemiyordu. <LINK> (ve <LINK.prop>) artik
+    mevcut nesnenin LINK property'sine delege eder; bu property item ve karakterler icin bagli
+    nesneyi ve alt-property'lerini zaten cozer. <ACT> hala Object2'yi cozer, yani iki referans
+    artik bagimsiz (VarObjs zinciri tutarliligi).
+
+================================================================================
+
 [2026-06-30] - Scripting paritesi: TIMERFMS ve gecikmeli-verb timer'lari (Wave 198)
 ----------------------------------------
 

@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Scripting parity: script <LINK> reads the object's own link (Wave 199)
+----------------------------------------
+
+FIXED - <LINK> in scripts was aliased to the ACT object instead of the object's link:
+  - The interpreter resolved both <ACT> and <LINK> to the trigger's second object
+    (Object2), so <LINK> never reflected an object's actual m_uidLink — e.g. a lever's
+    linked door was unreachable from <LINK> / <LINK.NAME>. <LINK> (and <LINK.prop>) now
+    delegate to the current object's LINK property, which already resolves the linked
+    object and its sub-properties for both items and characters. <ACT> still resolves
+    Object2, so the two references are now independent (VarObjs chain consistency).
+
+================================================================================
+
 [2026-06-30] - Scripting parity: TIMERFMS and delayed-verb timers (Wave 198)
 ----------------------------------------
 

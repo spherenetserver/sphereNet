@@ -4,8 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-30] - Vendor/trade/stable parity: pet-claim safety, buy price, trigger ordering (Wave 158)
+[2026-06-30] - Crafting/gathering parity: smelt hue, gather triggers, terrain validation (Wave 159)
 ----------------------------------------
+
+FIXED - Smelting:
+  - Smelting now carries the ore's hue onto the ingot, so a coloured/special ore
+    (valorite, verite, …) produces its matching coloured ingot instead of always
+    becoming plain iron (coloured ingots share the iron ingot graphic and differ
+    only by hue).
+
+FIXED - Gathering / Triggers:
+  - @ResourceTest RETURN 1 now blocks the gather, and @ResourceGather RETURN 1
+    cancels the reap; @ResourceGather can also override the reaped item id (ARGN1)
+    and amount (ARGN2). Resource triggers now copy the script's ARGN1/2/3 mutations
+    back (same mechanism as the char-trigger path) — previously their return value
+    and arg changes were ignored.
+
+FIXED - Gathering / Terrain:
+  - Fishing now requires a water tile and Lumberjacking a tree at the target
+    (Source-X CWorldMap), so you can no longer fish on dry land or chop wood on
+    open ground. Mining already validated its tile. The checks stay permissive when
+    no map tiledata is loaded.
+
+
 
 FIXED - Stable:
   - Claiming a stabled pet no longer loses it when the owner's follower cap is

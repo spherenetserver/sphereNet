@@ -122,6 +122,7 @@ public sealed class GatheringEngine
         int difficulty = (resDef.SkillMin + resDef.SkillMax) / 2;
         int diffPct = difficulty / 10;
 
+        // @ResourceTest — Source-X lets the script block gathering (RETURN 1).
         if (_triggerDispatcher != null)
         {
             var args = new TriggerArgs
@@ -130,24 +131,32 @@ public sealed class GatheringEngine
                 N1 = resDef.SkillMin,
                 N2 = resDef.SkillMax,
             };
-            _triggerDispatcher.FireResourceTrigger(resDef, "ResourceTest", ch, args);
+            if (_triggerDispatcher.FireResourceTrigger(resDef, "ResourceTest", ch, args) == TriggerResult.True)
+                return new GatherResult { Handled = true, Success = false };
         }
 
         bool success = SkillEngine.UseQuick(ch, skill, diffPct);
 
         if (success)
         {
+            int reapAmount = _rng.Next(resDef.ReapAmountMin, resDef.ReapAmountMax + 1);
+            ushort reapItemId = resDef.Reap;
+
+            // @ResourceGather — RETURN 1 cancels the reap; the script may also
+            // override the reaped item (ARGN1) and amount (ARGN2). Source-X CCharSkill.
             if (_triggerDispatcher != null)
             {
                 var args = new TriggerArgs
                 {
                     CharSrc = ch,
                     N1 = resDef.Reap,
+                    N2 = reapAmount,
                 };
-                _triggerDispatcher.FireResourceTrigger(resDef, "ResourceGather", ch, args);
+                if (_triggerDispatcher.FireResourceTrigger(resDef, "ResourceGather", ch, args) == TriggerResult.True)
+                    return new GatherResult { Handled = true, Success = false };
+                if (args.N1 > 0 && args.N1 <= ushort.MaxValue) reapItemId = (ushort)args.N1;
+                if (args.N2 > 0) reapAmount = args.N2;
             }
-
-            int reapAmount = _rng.Next(resDef.ReapAmountMin, resDef.ReapAmountMax + 1);
 
             if (marker == null)
             {
@@ -174,11 +183,11 @@ public sealed class GatheringEngine
             }
 
             var item = _world.CreateItem();
-            item.BaseId = resDef.Reap;
+            item.BaseId = reapItemId;
             // Carry the itemdef display name so single-click labels and the
             // vendor/sell lists name the resource ("iron ore") instead of an
             // empty string. GetName() pluralizes per Amount on read.
-            var reapDef = DefinitionLoader.GetItemDef(resDef.Reap);
+            var reapDef = DefinitionLoader.GetItemDef(reapItemId);
             if (reapDef != null && !string.IsNullOrWhiteSpace(reapDef.Name))
                 item.Name = reapDef.Name;
             item.Amount = (ushort)reapAmount;

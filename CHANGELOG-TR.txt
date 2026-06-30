@@ -4,8 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-30] - Vendor/trade/stable parity: pet-claim guvenligi, buy fiyati, trigger sirasi (Wave 158)
+[2026-06-30] - Crafting/gathering parity: smelt hue, gather trigger'lari, terrain dogrulamasi (Wave 159)
 ----------------------------------------
+
+DUZELTME - Smelting:
+  - Smelting artik ore'un hue'sunu ingot'a tasiyor, boylece renkli/ozel bir ore
+    (valorite, verite, …) her zaman duz demir olmak yerine eslesen renkli ingot'unu
+    uretiyor (renkli ingot'lar demir ingot grafigini paylasir, sadece hue ile ayrilir).
+
+DUZELTME - Gathering / Trigger'lar:
+  - @ResourceTest RETURN 1 artik gather'i bloke ediyor, @ResourceGather RETURN 1
+    reap'i iptal ediyor; @ResourceGather ayrica reaped item id'sini (ARGN1) ve
+    miktari (ARGN2) override edebiliyor. Resource trigger'lar artik script'in
+    ARGN1/2/3 mutasyonlarini geri kopyaliyor (char-trigger yoluyla ayni mekanizma)
+    — onceden donus degeri ve arg degisiklikleri yok sayiliyordu.
+
+DUZELTME - Gathering / Terrain:
+  - Fishing artik hedefte su tile'i, Lumberjacking ise agac gerektiriyor (Source-X
+    CWorldMap), boylece artik kuru karada balik tutamiyor veya acik arazide odun
+    kesemiyorsun. Mining zaten tile'ini dogruluyordu. Kontroller harita tiledata'si
+    yuklu degilken permissive kaliyor.
+
+
 
 DUZELTME - Stable:
   - Stabled bir peti geri almak, sahibin follower cap'i doluyken artik peti

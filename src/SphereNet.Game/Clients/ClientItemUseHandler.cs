@@ -1288,12 +1288,18 @@ public sealed class ClientItemUseHandler
             return;
         }
 
+        var oreHue = ore.Hue;
         ConsumeOreStack(ore);
 
         var ingot = _world.CreateItem();
         ingot.BaseId = 0x1BF2;
         ingot.ItemType = ItemType.Ingot;
-        ingot.Name = "iron ingot";
+        // Carry the ore's hue onto the ingot so a coloured/special ore (valorite,
+        // verite, …) smelts to its matching coloured ingot instead of always
+        // becoming plain iron — coloured ingots share the iron ingot graphic and
+        // differ only by hue.
+        ingot.Hue = oreHue;
+        ingot.Name = oreHue.Value != 0 ? "ingot" : "iron ingot";
         ingot.Amount = (ushort)Math.Min(amount, ushort.MaxValue);
 
         var pack = _character.Backpack;

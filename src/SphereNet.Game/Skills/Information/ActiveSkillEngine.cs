@@ -824,6 +824,50 @@ public static class ActiveSkillEngine
         return false;
     }
 
+    /// <summary>True when the target tile is water (Source-X fishing terrain
+    /// check). Uses the tiledata wet flag, which is reliable, not a name match.
+    /// Permissive when no map data is loaded (bare test setups).</summary>
+    private static bool IsWaterTile(World.GameWorld world, Point3D target)
+    {
+        var mapData = world.MapData;
+        if (mapData == null) return true;
+
+        var terrain = mapData.GetTerrainTile(target.Map, target.X, target.Y);
+        if (mapData.GetLandTileData(terrain.TileId).IsWet) return true;
+
+        // Some deep-water is rendered through statics rather than the land tile.
+        foreach (var st in mapData.GetStatics(target.Map, target.X, target.Y))
+        {
+            if (mapData.GetItemTileData(st.TileId).IsWet) return true;
+        }
+        return false;
+    }
+
+    /// <summary>True when the target tile carries a tree (Source-X lumberjacking
+    /// terrain check). Trees are statics named tree/log; some forests also name
+    /// the land tile. Mirrors the IsMinableTile name-matching pattern. Permissive
+    /// when no map data is loaded (bare test setups).</summary>
+    private static bool IsTreeTile(World.GameWorld world, Point3D target)
+    {
+        var mapData = world.MapData;
+        if (mapData == null) return true;
+
+        foreach (var st in mapData.GetStatics(target.Map, target.X, target.Y))
+        {
+            var name = mapData.GetItemTileData(st.TileId).Name;
+            if (!string.IsNullOrEmpty(name) &&
+                (name.Contains("tree", StringComparison.OrdinalIgnoreCase) ||
+                 name.Contains("log", StringComparison.OrdinalIgnoreCase)))
+                return true;
+        }
+
+        var terrain = mapData.GetTerrainTile(target.Map, target.X, target.Y);
+        var land = mapData.GetLandTileData(terrain.TileId).Name;
+        return !string.IsNullOrEmpty(land) &&
+            (land.Contains("forest", StringComparison.OrdinalIgnoreCase) ||
+             land.Contains("tree", StringComparison.OrdinalIgnoreCase));
+    }
+
     // -------------------------------------------------------------- Fishing
 
     public static bool Fishing(IActiveSkillSink sink, Point3D target, GatheringEngine? gatheringEngine, World.GameWorld world)
@@ -835,6 +879,13 @@ public static class ActiveSkillEngine
         if (GetDistance(ch.Position, target) > 6)
         {
             sink.SysMessage(ServerMessages.Get(Msg.FishingReach));
+            return false;
+        }
+
+        // Source-X CWorldMap: fishing requires a water tile at the target.
+        if (!IsWaterTile(world, target))
+        {
+            sink.SysMessage("You can't fish there.");
             return false;
         }
 
@@ -895,6 +946,13 @@ public static class ActiveSkillEngine
         if (GetDistance(ch.Position, target) > 2)
         {
             sink.SysMessage(ServerMessages.Get(Msg.LumberjackingReach));
+            return false;
+        }
+
+        // Source-X CWorldMap: lumberjacking requires a tree at the target.
+        if (!IsTreeTile(world, target))
+        {
+            sink.SysMessage("There is no tree there to chop.");
             return false;
         }
 

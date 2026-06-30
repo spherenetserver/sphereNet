@@ -438,7 +438,14 @@ public sealed class TriggerDispatcher
         if (link == null)
             return TriggerResult.Default;
 
-        return Runner.RunTriggerByName(link, trigName, ch, args.ScriptConsole, WrapArgs(args));
+        // Copy the script's ARGN1/2/3 mutations back (e.g. @ResourceGather changing
+        // the reaped item id / amount), matching the char-trigger RunWrapped path.
+        var wrapped = WrapArgs(args);
+        var result = Runner.RunTriggerByName(link, trigName, ch, args.ScriptConsole, wrapped);
+        args.N1 = wrapped.Number1;
+        args.N2 = wrapped.Number2;
+        args.N3 = wrapped.Number3;
+        return result;
     }
 
     /// <summary>Register a global character event handler.</summary>

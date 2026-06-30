@@ -82,6 +82,40 @@ public static partial class Program
         _mainLoopActions.Enqueue(() => HandleSaveFormatChange(fmtName, shards));
     }
 
+    /// <summary>Console/IPC/panel RESPAWN: top every spawner in the world up to its
+    /// max. Queued onto the main loop because it mutates world/sector state.</summary>
+    private static void RequestRespawnOnMainLoop()
+    {
+        _mainLoopActions.Enqueue(() =>
+        {
+            int n = _world.RespawnAllSpawners();
+            _log.LogInformation("[respawn] topped up {Count} spawners", n);
+        });
+    }
+
+    /// <summary>Console/IPC/panel RESTOCK: fire @NPCRestock on every vendor so each
+    /// rebuilds its stock (Source-X global RESTOCK). Main-loop only.</summary>
+    private static void RequestRestockOnMainLoop()
+    {
+        _mainLoopActions.Enqueue(() =>
+        {
+            if (_triggerDispatcher == null) return;
+            int n = 0;
+            foreach (var obj in _world.GetAllObjects())
+            {
+                if (obj is not SphereNet.Game.Objects.Characters.Character ch) continue;
+                if (ch.IsPlayer || ch.IsDeleted) continue;
+                if (ch.NpcBrain != SphereNet.Core.Enums.NpcBrainType.Vendor) continue;
+                _triggerDispatcher.FireCharTrigger(ch,
+                    SphereNet.Core.Enums.CharTrigger.NPCRestock,
+                    new SphereNet.Game.Scripting.TriggerArgs { CharSrc = ch });
+                ch.RemoveTag("RESTOCK_TIME"); // let ActVendor restock again on its timer too
+                n++;
+            }
+            _log.LogInformation("[restock] restocked {Count} vendors", n);
+        });
+    }
+
     private static object GetRuntimeMetrics()
     {
         var tick = GetTickTelemetrySnapshot();

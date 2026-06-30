@@ -4,8 +4,37 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-30] - Notoriety parity: murderer esigi, kosullu murder mark, fame cap (Wave 155)
+[2026-06-30] - Region/spawn parity: RegionFlag degerleri, NODECAY, spawn placement, RESPAWN/RESTOCK (Wave 156)
 ----------------------------------------
+
+DUZELTME - Region / Flag'ler:
+  - RegionFlag numeric degerleri artik Source-X CRegion.h ile eslesiyor (NoMagic=0x1,
+    Gate=0x8, NoBuild=0x80, Announce=0x200, Underground=0x800, NoDecay=0x1000,
+    Safe=0x2000, Guarded=0x4000, NoPvP=0x8000, Arena=0x10000, NoMining=0x20000, +
+    anti-magic / ship / house / inherit bitleri). Source-X / mortechUO script'inden
+    gelen legacy numeric FLAGS=04000 artik Safe yerine Guarded okunuyor. SphereNet'e
+    ozgu flag'ler (Mark/SafeZone/NoPeraCrime/Jail/RedZone/GuardedOff) yuksek bitlere
+    tasindi, gercek bir REGION_FLAG_* degeriyle cakismiyor. Tum kod flag'leri isimle
+    referans aldigindan symbolic FLAGS listelerinde davranis degismedi.
+  - NODECAY region flag'i eklendi: NODECAY bolgesindeki yerdeki bir item artik
+    decay olmuyor (Source-X REGION_FLAG_NODECAY); bolgeden cikinca normal decay olur.
+
+DUZELTME - Spawn'lar:
+  - NPC'yi acik bir pozisyona koyan @Spawn artik korunuyor — engine script'in sectigi
+    spawn noktasini tekrar random'lamiyor (Source-X CCSpawn).
+  - Yerlesimi reddedilen (out-of-bounds) spawn item/NPC'leri artik sektoru olmayan
+    orphan olarak tutulmak yerine siliniyor. PlaceItem/PlaceCharacter bunun icin
+    basari bool'u donduruyor.
+  - Yanlis yapilandirilmis char spawner (chardef ve spawn group yok) artik her item
+    tick'inde tekrar girip bail etmek yerine timer'ini yeniden kuruyor (spawn-tick fırtınası).
+
+DUZELTME - World komutlari:
+  - RESPAWN ve RESTOCK console/IPC/panel komutlari artik gercek implementasyona bagli:
+    RESPAWN her char/item spawner'i max'a kadar dolduruyor (sektor sleep'ten bagimsiz),
+    RESTOCK her vendor'da @NPCRestock fire ediyor. Onceden "requested" yazip hicbir sey
+    yapmiyorlardi.
+
+
 
 DUZELTME - Notoriety / Murder:
   - Murderer (red) esigi artik MurderMinCount'tan kesinlikle buyuk (Source-X

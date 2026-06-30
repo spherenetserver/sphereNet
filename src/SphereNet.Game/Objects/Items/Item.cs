@@ -1967,20 +1967,40 @@ public class Item : ObjBase
         return true;
     }
 
+    /// <summary>True when this is a loose ground item sitting in a region flagged
+    /// REGION_FLAG_NODECAY. Contained items decay with their container, so only
+    /// top-level ground items are protected (Source-X CItem decay region check).</summary>
+    private bool IsInNoDecayRegion()
+    {
+        if (ContainedIn.IsValid) return false;
+        var region = ResolveWorld?.Invoke()?.FindRegion(Position);
+        return region != null && region.IsFlag(Core.Enums.RegionFlag.NoDecay);
+    }
+
     public override bool OnTick()
     {
         if (_isDeleted) return false;
 
-        // Item decay: if DecayTime is set and elapsed, mark deleted
+        // Item decay: if DecayTime is set and elapsed, mark deleted — unless the
+        // item is a loose ground item in a NODECAY region (Source-X
+        // REGION_FLAG_NODECAY: things on the ground don't decay here), in which
+        // case re-arm the timer so it decays normally once it leaves the region.
         if (DecayTime > 0 && Environment.TickCount64 >= DecayTime)
         {
-            if (_type == ItemType.Corpse && _contents.Count > 0)
+            if (IsInNoDecayRegion())
             {
-                OnCorpseDecay?.Invoke(this);
+                DecayTime = Environment.TickCount64 + World.GameWorld.DefaultDecayTimeMs;
             }
-            _isDeleted = true;
-            SpawnChar?.KillAll();
-            return false;
+            else
+            {
+                if (_type == ItemType.Corpse && _contents.Count > 0)
+                {
+                    OnCorpseDecay?.Invoke(this);
+                }
+                _isDeleted = true;
+                SpawnChar?.KillAll();
+                return false;
+            }
         }
 
         // TIMER expiry — Source-X CItem::_OnTick parity:

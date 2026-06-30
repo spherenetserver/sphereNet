@@ -83,7 +83,13 @@ public sealed class SpawnComponent
             PauseTimer();
             return;
         }
-        if (_charDefId == 0 && _spawnGroup == null) return;
+        if (_charDefId == 0 && _spawnGroup == null)
+        {
+            // Misconfigured spawner (no def/group): reschedule so it doesn't
+            // re-enter and bail on every item tick of the active sector.
+            SetNextSpawnTime();
+            return;
+        }
 
         SpawnOne();
 
@@ -239,7 +245,10 @@ public sealed class SpawnComponent
         ch.HomeDist = (short)_spawnRange;
         ch.SetTag("SPAWNITEM", $"0{_spawnItem.Uid.Value:x8}");
 
-        // @Spawn — script can modify NPC or abort (return TRUE → delete NPC)
+        // @Spawn — script can modify NPC, set its position, or abort
+        // (return TRUE → delete NPC). Capture the position first so we can tell
+        // whether the script chose an explicit spawn point.
+        Point3D posBefore = ch.Position;
         if (OnSpawnTrigger != null)
         {
             var spawnArgs = new SpawnTriggerArgs { SpawnedChar = ch };
@@ -252,9 +261,21 @@ public sealed class SpawnComponent
             }
         }
 
-        Point3D pos = FindSpawnPosition(charDef);
+        // Source-X CCSpawn: if @Spawn gave the NPC a valid point, keep it; only
+        // pick a random position when the script did not place it explicitly.
+        bool scriptPlaced = (ch.Position.X != posBefore.X || ch.Position.Y != posBefore.Y
+            || ch.Position.Z != posBefore.Z || ch.Position.Map != posBefore.Map)
+            && (ch.Position.X != 0 || ch.Position.Y != 0);
+        Point3D pos = scriptPlaced ? ch.Position : FindSpawnPosition(charDef);
         ch.SetTag("SPAWN_POINT_UUID", _spawnItem.Uuid.ToString("D"));
-        _world.PlaceCharacter(ch, pos);
+        if (!_world.PlaceCharacter(ch, pos))
+        {
+            // Placement refused (out of bounds) — delete instead of leaving an
+            // orphan NPC with no sector (Source-X deletes on MoveNear/MoveTo fail).
+            _world.DeleteObject(ch);
+            ch.Delete();
+            return;
+        }
         _spawnedUids.Add(ch.Uid);
 
         // @AddObj — notify script that NPC was registered
@@ -377,6 +398,22 @@ public sealed class SpawnComponent
         KillAll();
         _stopped = false;
         ForceSpawn();
+    }
+
+    /// <summary>World-level RESPAWN: top this spawner straight up to its max now,
+    /// independent of sector sleep (admin/console/IPC RESPAWN command).</summary>
+    public void RespawnNow()
+    {
+        if (_stopped) return;
+        CleanupDead();
+        if (_charDefId == 0 && _spawnGroup == null) return;
+        int guard = 0;
+        while (_spawnedUids.Count < _maxCount && guard++ < _maxCount + 8)
+            SpawnOne();
+        if (_spawnedUids.Count >= _maxCount)
+            PauseTimer();
+        else
+            SetNextSpawnTime();
     }
 
     /// <summary>Source-X START verb: resume spawning.</summary>
@@ -595,6 +632,22 @@ public sealed class ItemSpawnComponent
         if (_spawnedUids.Count >= _maxCount) return;
         if (_itemDefId == 0) return;
 
+        SpawnOneItem();
+    }
+
+    /// <summary>World-level RESPAWN: top this item spawner up to its max now,
+    /// independent of sector sleep (admin/console/IPC RESPAWN command).</summary>
+    public void RespawnNow()
+    {
+        CleanupDeleted();
+        if (_itemDefId == 0) return;
+        int guard = 0;
+        while (_spawnedUids.Count < _maxCount && guard++ < _maxCount + 8)
+            SpawnOneItem();
+    }
+
+    private void SpawnOneItem()
+    {
         var item = _world.CreateItem();
         item.BaseId = _itemDefId;
 
@@ -616,11 +669,20 @@ public sealed class ItemSpawnComponent
             _spawnItem.MapIndex
         );
 
-        item.SetTag("SPAWN_POINT_UUID", _spawnItem.Uuid.ToString("D"));
-        _world.PlaceItem(item, pos);
-        _spawnedUids.Add(item.Uid);
-
+        // Reschedule regardless of placement outcome so a spawner that keeps
+        // rolling out-of-bounds points doesn't retry every tick.
         _nextSpawnTick = Environment.TickCount64 + _rand.Next(60, 300) * 1000;
+
+        item.SetTag("SPAWN_POINT_UUID", _spawnItem.Uuid.ToString("D"));
+        if (!_world.PlaceItem(item, pos))
+        {
+            // Out-of-bounds placement — delete instead of leaving an orphan item
+            // with no sector (Source-X deletes on placement failure).
+            _world.DeleteObject(item);
+            item.Delete();
+            return;
+        }
+        _spawnedUids.Add(item.Uid);
     }
 
     public void ResetTimer()

@@ -4,8 +4,39 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-30] - Notoriety parity: murderer threshold, conditional murder mark, fame cap (Wave 155)
+[2026-06-30] - Region/spawn parity: RegionFlag values, NODECAY, spawn placement, RESPAWN/RESTOCK (Wave 156)
 ----------------------------------------
+
+FIXED - Regions / Flags:
+  - RegionFlag numeric values now match Source-X CRegion.h (NoMagic=0x1, Gate=0x8,
+    NoBuild=0x80, Announce=0x200, Underground=0x800, NoDecay=0x1000, Safe=0x2000,
+    Guarded=0x4000, NoPvP=0x8000, Arena=0x10000, NoMining=0x20000, plus the
+    anti-magic / ship / house / inherit bits). A legacy numeric FLAGS=04000 from a
+    Source-X / mortechUO script is now read as Guarded instead of Safe. SphereNet-
+    specific flags (Mark/SafeZone/NoPeraCrime/Jail/RedZone/GuardedOff) moved to high
+    bits so they never collide with a real REGION_FLAG_* value. All code references
+    the flags by name, so behaviour is unchanged for symbolic FLAGS lists.
+  - Added the NODECAY region flag: a loose ground item in a NODECAY region no longer
+    decays (Source-X REGION_FLAG_NODECAY); it decays normally once it leaves.
+
+FIXED - Spawns:
+  - @Spawn that places the NPC at an explicit position is honored — the engine no
+    longer re-randomizes the location over a script-chosen spawn point (Source-X
+    CCSpawn).
+  - Spawned items/NPCs whose placement is refused (out of bounds) are now deleted
+    instead of being tracked as orphans with no sector. PlaceItem/PlaceCharacter
+    return a success bool for this.
+  - A misconfigured char spawner (no chardef and no spawn group) now reschedules
+    its timer instead of re-entering and bailing on every item tick of its sector
+    (spawn-tick storm).
+
+FIXED - World commands:
+  - The RESPAWN and RESTOCK console/IPC/panel commands are now wired to real
+    implementations: RESPAWN tops every char/item spawner up to its max
+    (independent of sector sleep), RESTOCK fires @NPCRestock on every vendor. They
+    previously printed "requested" and did nothing.
+
+
 
 FIXED - Notoriety / Murder:
   - The murderer (red) threshold is now strictly greater-than MurderMinCount

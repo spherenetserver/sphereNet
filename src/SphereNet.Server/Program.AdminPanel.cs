@@ -116,6 +116,9 @@ public static partial class Program
             _consoleProcessor.OnScriptDebugToggleRequested += ToggleScriptDebug;
             _consoleProcessor.OnBotRequested += (count, behavior) => HandleBotCommand(count, behavior, false);
             _consoleProcessor.OnStressRequested += (items, npcs, hostile) => _stressEngine?.QueueGenerate(items, npcs, hostile);
+            // Global RESPAWN/RESTOCK — run on the main loop (they mutate world state).
+            _consoleProcessor.OnRespawnRequested += RequestRespawnOnMainLoop;
+            _consoleProcessor.OnRestockRequested += RequestRestockOnMainLoop;
 
             // Audit logging for admin commands
             _telnet.Processor.OnCommandExecuted += (source, cmd) =>

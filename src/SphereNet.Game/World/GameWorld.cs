@@ -416,7 +416,10 @@ public sealed class GameWorld
     // --- Placement ---
 
     /// <summary>Place an item in the world at a position.</summary>
-    public void PlaceItem(Item item, Point3D pos)
+    /// <summary>Place an item in the world at the given point. Returns false when
+    /// the point is out of bounds (no sector) and the item was NOT placed — the
+    /// caller must then delete the item rather than leave it orphaned.</summary>
+    public bool PlaceItem(Item item, Point3D pos)
     {
         var sector = GetSector(pos);
         if (sector == null)
@@ -429,12 +432,13 @@ public sealed class GameWorld
             _logger.LogWarning(
                 "PlaceItem: refusing placement of 0x{Uid:X} at out-of-bounds {X},{Y},{Z} map={Map}",
                 item.Uid.Value, pos.X, pos.Y, pos.Z, pos.Map);
-            return;
+            return false;
         }
         RemoveFromSector(item);
         item.Position = pos;
         item.ContainedIn = Serial.Invalid;
         sector.AddItem(item);
+        return true;
     }
 
     /// <summary>Source-X CCharBase::Region_Notify hook. Fired for every
@@ -497,7 +501,10 @@ public sealed class GameWorld
     }
 
     /// <summary>Place a character in the world.</summary>
-    public void PlaceCharacter(Character ch, Point3D pos)
+    /// <summary>Place a character at the given point. Returns false when the point
+    /// is out of bounds (no sector) and the character was NOT placed — a spawner
+    /// must then delete the would-be NPC rather than leave it orphaned.</summary>
+    public bool PlaceCharacter(Character ch, Point3D pos)
     {
         var sector = GetSector(pos);
         if (sector == null)
@@ -508,7 +515,7 @@ public sealed class GameWorld
             _logger.LogWarning(
                 "PlaceCharacter: refusing placement of 0x{Uid:X} at out-of-bounds {X},{Y},{Z} map={Map}",
                 ch.Uid.Value, pos.X, pos.Y, pos.Z, pos.Map);
-            return;
+            return false;
         }
         ch.Position = pos;
         sector.AddCharacter(ch);
@@ -518,6 +525,7 @@ public sealed class GameWorld
             CharacterPlaced?.Invoke(ch);
 
         RemoveFromOtherSectors(ch, sector);
+        return true;
     }
 
     /// <summary>
@@ -1080,6 +1088,21 @@ public sealed class GameWorld
 
     /// <summary>Enumerate all objects in the world (items + characters), including contained items.</summary>
     public IEnumerable<ObjBase> GetAllObjects() => _objects.Values.ToArray();
+
+    /// <summary>Admin/console RESPAWN: top every char/item spawner in the world up
+    /// to its max immediately, independent of sector sleep (Source-X global
+    /// RESPAWN). Must run on the main loop. Returns the number of spawners ticked.</summary>
+    public int RespawnAllSpawners()
+    {
+        int count = 0;
+        foreach (var obj in GetAllObjects())
+        {
+            if (obj is not Item item || item.IsDeleted) continue;
+            if (item.SpawnChar != null) { item.SpawnChar.RespawnNow(); count++; }
+            if (item.SpawnItem != null) { item.SpawnItem.RespawnNow(); count++; }
+        }
+        return count;
+    }
 
     /// <summary>
     /// Collect ground items whose decay timer has expired into <paramref name="buffer"/>,

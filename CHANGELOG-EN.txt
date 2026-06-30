@@ -4,6 +4,32 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Multi parity: house footprint region, leading-edge ship collision, placement Z-flatness (Wave 175)
+----------------------------------------
+
+ADDED - Housing region model (Source-X CItemMulti::MultiRealizeRegion):
+  - A placed house now realizes a dynamic world region matching its footprint,
+    flagged House and inheriting the containing region's flags (a guarded / no-pvp /
+    safe town carries through, with House added). Being the smallest-area region over
+    the footprint, FindRegion resolves to it inside the house, so House-flag and
+    region-flag-dependent systems now apply indoors. The region is created on
+    placement and on load, and torn down on collapse / redeed. Houses are static so
+    the region never needs to track movement. (Ship regions remain a separate phase.)
+
+FIXED - Ship movement collision (Source-X CCMultiMovable::Move):
+  - A moving ship now tests only the LEADING EDGE in the move direction (both
+    perpendicular edges for a diagonal) for water, instead of re-scanning its whole
+    footprint. The cells the ship already occupies are water by definition; testing
+    them again was redundant. Behaviour is unchanged for solid water but matches the
+    engine's edge-scan model and is the basis for future deck-object collection.
+
+FIXED - House placement Z-flatness (Source-X CItemMulti::Multi_Create):
+  - House placement now rejects a footprint cell whose surface Z differs from the
+    placement Z by more than 4, so a house can no longer straddle a slope or cliff.
+    Guarded by map data being loaded (no effect in headless / no-MUL runs).
+
+================================================================================
+
 [2026-06-30] - Ship/housing parity: turn preflight, collapse moving-crate, deed targeting, @HouseCheck (Wave 174)
 ----------------------------------------
 

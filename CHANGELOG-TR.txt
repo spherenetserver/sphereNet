@@ -4,6 +4,32 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Multi paritesi: ev footprint region'i, leading-edge gemi collision, yerlestirme Z-duzluk (Wave 175)
+----------------------------------------
+
+EKLENEN - Ev region modeli (Source-X CItemMulti::MultiRealizeRegion):
+  - Yerlestirilen ev artik footprint'ine uyan dinamik bir dunya region'i yaratir;
+    House flag'li ve icinde bulundugu region'in flag'lerini miras alir (guarded /
+    no-pvp / safe bir sehir aynen gecer, ustune House eklenir). Footprint uzerindeki
+    en kucuk-alanli region oldugu icin FindRegion ev icinde buna cozulur; boylece
+    House-flag ve region-flag bagimli sistemler ev icinde de gecerli olur. Region
+    yerlestirmede ve load'da yaratilir, collapse / redeed'de yikilir. Evler statik
+    oldugu icin region hareket takip etmez. (Gemi region'lari ayri faz olarak kaldi.)
+
+DUZELTILEN - Gemi hareket collision (Source-X CCMultiMovable::Move):
+  - Hareket eden gemi artik tum footprint'i yeniden taramak yerine sadece hareket
+    yonundeki LEADING EDGE'i (diyagonalde her iki dik kenari) su mu diye test eder.
+    Geminin zaten uzerinde durdugu hucreler tanim geregi su; onlari tekrar test etmek
+    gereksizdi. Solid su icin davranis ayni ama motorun edge-scan modeline uyar ve
+    ileride deck-object toplama icin temel olusturur.
+
+DUZELTILEN - Ev yerlestirme Z-duzluk (Source-X CItemMulti::Multi_Create):
+  - Ev yerlestirme artik yuzey Z'si yerlestirme Z'sinden 4'ten fazla farkli olan
+    footprint hucresini reddeder; ev artik bir egim/ucurum uzerine binemez. Harita
+    verisi yuklu olmasiyla korunur (headless / MUL'suz calismada etkisiz).
+
+================================================================================
+
 [2026-06-30] - Ship/housing paritesi: turn preflight, collapse moving-crate, deed targeting, @HouseCheck (Wave 174)
 ----------------------------------------
 

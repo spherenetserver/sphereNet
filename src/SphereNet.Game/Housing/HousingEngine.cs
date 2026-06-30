@@ -3,6 +3,7 @@ using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.World;
+using SphereNet.Game.World.Regions;
 using SphereNet.MapData;
 
 namespace SphereNet.Game.Housing;
@@ -117,6 +118,10 @@ public sealed class House
     private long _lastRefreshTick;
     private HouseDecayStage _decayStage = HouseDecayStage.LikeNew;
 
+    // Source-X CItemMulti::MultiRealizeRegion — the dynamic world region created
+    // for this house's footprint (REGION_FLAG_HOUSE). 0 = none.
+    private uint _regionUid;
+
     public Item MultiItem => _multiItem;
     public Serial Owner { get => _owner; set => _owner = value; }
     public HouseType Type { get => _houseType; set => _houseType = value; }
@@ -127,6 +132,7 @@ public sealed class House
     public int BaseStorage { get => _baseStorage; set => _baseStorage = value; }
     public long LastRefreshTick { get => _lastRefreshTick; set => _lastRefreshTick = value; }
     public HouseDecayStage DecayStage { get => _decayStage; set => _decayStage = value; }
+    public uint RegionUid { get => _regionUid; set => _regionUid = value; }
     public IReadOnlyCollection<Serial> CoOwners => _coOwners;
     public IReadOnlyCollection<Serial> Friends => _friends;
     public IReadOnlyCollection<Serial> Bans => _bans;
@@ -391,6 +397,7 @@ public sealed class HousingEngine
 
         var house = new House(multiItem) { Owner = new Serial(ownerVal) };
         _houses[multiItem.Uid] = house;
+        CreateHouseRegion(house);
         return house;
     }
 
@@ -465,6 +472,7 @@ public sealed class HousingEngine
         }
 
         _houses[multiItem.Uid] = house;
+        CreateHouseRegion(house);
         owner.Memory_AddObjTypes(multiItem.Uid, MemoryType.Guard);
         return house;
     }
@@ -498,6 +506,16 @@ public sealed class HousingEngine
                 if (md != null && !md.IsPassable(checkPos.Map, checkPos.X, checkPos.Y, checkPos.Z))
                     return false;
 
+                // Source-X CItemMulti::Multi_Create — every footprint cell's surface
+                // must be flat relative to the placement Z (abs(cellZ - z) > 4 rejects).
+                // A house cannot straddle a slope/cliff.
+                if (md != null)
+                {
+                    md.GetAverageZ(checkPos.Map, checkPos.X, checkPos.Y, out _, out int cellZ, out _);
+                    if (Math.Abs(cellZ - position.Z) > 4)
+                        return false;
+                }
+
                 foreach (var ch in _world.GetCharsInRange(checkPos, 0))
                 {
                     if (!ch.IsDead) return false;
@@ -518,6 +536,7 @@ public sealed class HousingEngine
             requestor.PrivLevel < PrivLevel.GM)
             return null;
 
+        RemoveHouseRegion(house);
         var deed = house.Redeed(_world);
         _houses.Remove(multiItemUid);
         return deed;
@@ -538,6 +557,51 @@ public sealed class HousingEngine
                 return house;
         }
         return null;
+    }
+
+    /// <summary>Source-X CItemMulti::MultiRealizeRegion — give the house a dynamic
+    /// world region matching its footprint, flagged REGION_FLAG_HOUSE and inheriting
+    /// the containing region's flags (guarded / pvp / safe carry through, with House
+    /// added). The region is the smallest-area one over the footprint, so FindRegion
+    /// resolves to it inside the house. Static (houses never move), so it is created
+    /// once on placement/load and torn down on collapse/redeed. Idempotent.</summary>
+    private void CreateHouseRegion(House house)
+    {
+        if (house.RegionUid != 0) return; // already realized
+        var mi = house.MultiItem;
+        var def = _multiDefs.Get(mi.BaseId);
+        if (def == null) return;
+
+        short x1 = (short)(mi.X + def.MinX);
+        short y1 = (short)(mi.Y + def.MinY);
+        short x2 = (short)(mi.X + def.MaxX);
+        short y2 = (short)(mi.Y + def.MaxY);
+        var center = new Point3D((short)(mi.X), (short)(mi.Y), mi.Z, mi.MapIndex);
+
+        // Parent = the region this footprint sits in BEFORE the house region exists.
+        var parent = _world.FindRegion(center);
+
+        var region = new Region
+        {
+            Name = string.IsNullOrEmpty(mi.Name) ? "house" : mi.Name,
+            MapIndex = mi.MapIndex,
+            Flags = RegionFlag.House | RegionFlag.InheritParentFlags,
+            P = center,
+        };
+        region.AddRect(x1, y1, x2, y2);
+        if (parent != null)
+            region.InheritFromParent(parent);
+
+        _world.AddRegion(region);
+        house.RegionUid = region.Uid;
+    }
+
+    /// <summary>Tear down the dynamic region created by <see cref="CreateHouseRegion"/>.</summary>
+    private void RemoveHouseRegion(House house)
+    {
+        if (house.RegionUid == 0) return;
+        _world.RemoveRegion(house.RegionUid);
+        house.RegionUid = 0;
     }
 
     public bool CanPickupHouseItem(Character actor, Item item)
@@ -645,6 +709,7 @@ public sealed class HousingEngine
         // Remove collapsed houses
         foreach (var house in collapsed)
         {
+            RemoveHouseRegion(house);
             var deed = house.Redeed(_world);
             if (deed != null && house.Owner.IsValid)
             {
@@ -763,6 +828,7 @@ public sealed class HousingEngine
             ParseSerialList(item, "HOUSE.COMPONENTS", uid => house.AddComponent(uid));
 
             _houses[item.Uid] = house;
+            CreateHouseRegion(house);
         }
     }
 

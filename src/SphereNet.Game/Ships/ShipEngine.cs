@@ -205,8 +205,8 @@ public sealed class ShipEngine
             short newX = (short)(ship.MultiItem.X + dx);
             short newY = (short)(ship.MultiItem.Y + dy);
 
-            // Edge water check for ship footprint
-            if (!CanMoveShipTo(ship, newX, newY))
+            // Leading-edge water check in the move direction (Source-X)
+            if (!CanMoveShipTo(ship, newX, newY, dx, dy))
                 return false;
 
             MoveDelta(ship, dx, dy, 0);
@@ -642,7 +642,7 @@ public sealed class ShipEngine
         return true;
     }
 
-    private bool CanMoveShipTo(Ship ship, short newX, short newY)
+    private bool CanMoveShipTo(Ship ship, short newX, short newY, short dx, short dy)
     {
         // ATTR_MAGIC ships can fly over land (Source-X CanMoveTo)
         if (ship.MultiItem.IsAttr(ObjAttributes.Magic))
@@ -651,13 +651,27 @@ public sealed class ShipEngine
         var def = _multiDefs.Get(ship.MultiItem.BaseId);
         if (def == null) return false;
 
-        for (short ddx = def.MinX; ddx <= def.MaxX; ddx++)
+        byte map = ship.MultiItem.MapIndex;
+        int sx = Math.Sign(dx);
+        int sy = Math.Sign(dy);
+
+        // Source-X CCMultiMovable::Move tests only the LEADING EDGE in the move
+        // direction (both perpendicular edges for a diagonal) — the trailing cells
+        // the ship already occupies are water by definition. Each leading tile must
+        // be water (CanMoveTo); any non-water tile stops the ship.
+        if (sy != 0) // leading N/S row
         {
-            for (short ddy = def.MinY; ddy <= def.MaxY; ddy++)
-            {
-                if (!IsWaterAt(ship.MultiItem.MapIndex, (short)(newX + ddx), (short)(newY + ddy)))
+            short ly = (short)(newY + (sy > 0 ? def.MaxY : def.MinY));
+            for (short lx = (short)(newX + def.MinX); lx <= newX + def.MaxX; lx++)
+                if (!IsWaterAt(map, lx, ly))
                     return false;
-            }
+        }
+        if (sx != 0) // leading E/W column
+        {
+            short lx = (short)(newX + (sx > 0 ? def.MaxX : def.MinX));
+            for (short ly = (short)(newY + def.MinY); ly <= newY + def.MaxY; ly++)
+                if (!IsWaterAt(map, lx, ly))
+                    return false;
         }
         return true;
     }

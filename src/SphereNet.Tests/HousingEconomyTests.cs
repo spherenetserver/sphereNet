@@ -7,6 +7,7 @@ using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.Trade;
 using SphereNet.Game.World;
+using SphereNet.Game.World.Regions;
 
 namespace SphereNet.Tests;
 
@@ -514,5 +515,71 @@ public class HousingEconomyTests
 
         HousingEngine.OnHouseCheck = null; // allow
         Assert.NotNull(engine.PlaceHouse(owner, 0x0064, new Point3D(200, 200, 0, 0)));
+    }
+
+    // ---- #5: dynamic footprint region (CItemMulti::MultiRealizeRegion) ----
+
+    private static MultiDef MakeFourTileHouse(ushort id = 0x0064)
+    {
+        var def = new MultiDef { Id = id, Name = "test house" };
+        def.Components.Add(new MultiComponent { TileId = 0x0001, DeltaX = 0, DeltaY = 0, DeltaZ = 0, Visible = true });
+        def.Components.Add(new MultiComponent { TileId = 0x0001, DeltaX = 1, DeltaY = 0, DeltaZ = 0, Visible = true });
+        def.Components.Add(new MultiComponent { TileId = 0x0001, DeltaX = 0, DeltaY = 1, DeltaZ = 0, Visible = true });
+        def.Components.Add(new MultiComponent { TileId = 0x0001, DeltaX = 1, DeltaY = 1, DeltaZ = 0, Visible = true });
+        def.RecalcBounds();
+        return def;
+    }
+
+    [Fact]
+    public void PlaceHouse_CreatesFootprintRegion_WithHouseFlag()
+    {
+        var world = CreateWorld();
+        var registry = new MultiRegistry();
+        registry.Register(MakeFourTileHouse());
+        var engine = new HousingEngine(world, registry) { MaxHousesPerPlayer = -1, MaxHousesPerAccount = -1 };
+
+        var owner = world.CreateCharacter();
+        world.PlaceCharacter(owner, new Point3D(100, 100, 0, 0));
+
+        var house = engine.PlaceHouse(owner, 0x0064, new Point3D(200, 200, 0, 0));
+        Assert.NotNull(house);
+        Assert.NotEqual(0u, house!.RegionUid);
+
+        // Every footprint cell resolves to the house region.
+        var rIn = world.FindRegion(new Point3D(201, 201, 0, 0));
+        Assert.NotNull(rIn);
+        Assert.True(rIn!.IsFlag(RegionFlag.House));
+
+        // Collapse/redeed tears the region down.
+        engine.RemoveHouse(house.MultiItem.Uid, owner);
+        var rAfter = world.FindRegion(new Point3D(201, 201, 0, 0));
+        Assert.True(rAfter == null || !rAfter.IsFlag(RegionFlag.House));
+    }
+
+    [Fact]
+    public void HouseRegion_InheritsParentRegionFlags()
+    {
+        var world = CreateWorld();
+
+        // Background region (e.g. a guarded town) covering the build site.
+        var town = new Region { Name = "town", MapIndex = 0, Flags = RegionFlag.Guarded };
+        town.AddRect(150, 150, 250, 250);
+        world.AddRegion(town);
+
+        var registry = new MultiRegistry();
+        registry.Register(MakeFourTileHouse());
+        var engine = new HousingEngine(world, registry) { MaxHousesPerPlayer = -1, MaxHousesPerAccount = -1 };
+
+        var owner = world.CreateCharacter();
+        world.PlaceCharacter(owner, new Point3D(100, 100, 0, 0));
+
+        var house = engine.PlaceHouse(owner, 0x0064, new Point3D(200, 200, 0, 0));
+        Assert.NotNull(house);
+
+        var rIn = world.FindRegion(new Point3D(200, 200, 0, 0));
+        Assert.NotNull(rIn);
+        // House region wins (smaller area) but inherits the town's Guarded flag.
+        Assert.True(rIn!.IsFlag(RegionFlag.House));
+        Assert.True(rIn.IsFlag(RegionFlag.Guarded));
     }
 }

@@ -576,6 +576,16 @@ public sealed class GameWorld
         _regionCache.Clear();
     }
 
+    /// <summary>Remove a dynamically-created region (e.g. a collapsed house's
+    /// footprint region) by its uid. Static AREADEF regions are never removed.</summary>
+    public bool RemoveRegion(uint uid)
+    {
+        int removed = _regions.RemoveAll(r => r.Uid == uid);
+        if (removed > 0)
+            _regionCache.Clear();
+        return removed > 0;
+    }
+
     public void InvalidateRegionCache() => _regionCache.Clear();
 
     /// <summary>Source-X region nesting: a region that opted into inheritance (an

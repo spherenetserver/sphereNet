@@ -106,7 +106,12 @@ public sealed class DeathEngine
             // PvP murder tracking — @MurderMark fires before the count is
             // recorded (Source-X Noto_Kill): a script may adjust the new count or
             // block the mark (and the criminal flag) entirely by returning null.
-            if (victim.IsPlayer && effectiveKiller.IsPlayer)
+            // Source-X only marks a murder for an UNPROVOKED kill of an innocent
+            // (NotoThem < NOTO_GUILD_SAME): killing a criminal/murderer, or someone
+            // who aggressed the killer first (the killer holds a HarmedBy memory of
+            // the victim → self-defence), is not murder.
+            if (victim.IsPlayer && effectiveKiller.IsPlayer
+                && IsUnprovokedInnocentKill(effectiveKiller, victim))
             {
                 int proposed = effectiveKiller.Kills + 1;
                 int? finalCount = Character.OnMurderMark == null
@@ -181,17 +186,31 @@ public sealed class DeathEngine
         return corpse;
     }
 
+    /// <summary>Whether killer→victim is an unprovoked kill of an innocent, the
+    /// only case Source-X Noto_Kill counts as murder (NotoThem &lt; NOTO_GUILD_SAME).
+    /// False when the victim is a criminal/murderer (red or grey), or aggressed the
+    /// killer first — in which case the killer holds a HarmedBy memory of the victim
+    /// (Memory_Fight_Start tags the defender HarmedBy and the aggressor IAggressor).</summary>
+    private static bool IsUnprovokedInnocentKill(Character killer, Character victim)
+    {
+        if (victim.IsCriminal || victim.IsMurderer || victim.IsStatFlag(StatFlag.Criminal))
+            return false;
+        var killerMemOfVictim = killer.Memory_FindObj(victim.Uid);
+        if (killerMemOfVictim != null && killerMemOfVictim.IsMemoryTypes(MemoryType.HarmedBy))
+            return false; // victim struck first — self-defence, not murder
+        return true;
+    }
+
     /// <summary>Apply Karma/Fame changes when killer kills victim.
     /// Source-X: Calc_FameKill + Calc_KarmaKill + Calc_KarmaScale.</summary>
     private static void ApplyKarmaFameChange(Character killer, Character victim)
     {
-        // Fame: Source-X Calc_FameKill — PC kill /10, NPC kill /200
+        // Fame: Source-X Calc_FameKill — PC kill /10, NPC kill /200. No per-kill
+        // magnitude cap (Source-X only clamps the running total to 0..10000, which
+        // ApplyFame does). A zero-fame victim (rabbit, bird) still grants zero — no
+        // forced minimum — so trash mobs can't be farmed one fame point at a time.
         int rawFame = Math.Max(0, (int)victim.Fame);
         int fameGain = victim.IsPlayer ? rawFame / 10 : rawFame / 200;
-        // Clamp the magnitude but DON'T force a minimum of 1 — a zero-fame victim
-        // (rabbit, bird) must grant zero fame, otherwise players farm trash mobs
-        // for fame one point at a time.
-        fameGain = Math.Min(fameGain, 200);
         ApplyFame(killer, fameGain);
 
         // Source-X: no karma loss for killing criminal/red

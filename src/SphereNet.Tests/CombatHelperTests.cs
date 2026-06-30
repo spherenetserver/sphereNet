@@ -144,7 +144,8 @@ public class CombatHelperTests
         var world = TestHarness.CreateWorld();
         var viewer = MakeChar(world, 100, 100);
         var murderer = MakeChar(world, 200, 200);
-        murderer.Kills = (short)Character.MurderMinCount;
+        // Source-X: red appears when murders EXCEED the threshold (6th kill at default 5).
+        murderer.Kills = (short)(Character.MurderMinCount + 1);
 
         Assert.Equal(6, GameClient.ComputeNotoriety(world, viewer, murderer));
     }

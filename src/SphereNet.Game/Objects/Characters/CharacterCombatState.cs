@@ -46,7 +46,10 @@ public sealed class CharacterCombatState
 
     public bool IsCriminal => _criminalTimer > 0 && Environment.TickCount64 < _criminalTimer;
 
-    public bool IsMurderer => _kills >= Character.MurderMinCount;
+    // Source-X Noto_IsMurderer: murders must EXCEED the threshold (m_wMurders >
+    // m_iMurderMinCount), so with the default 5 the red title appears on the 6th
+    // kill, not the 5th. Using >= flagged red one kill too early.
+    public bool IsMurderer => _kills > Character.MurderMinCount;
 
     public int CriminalTimerRemainingSeconds
     {

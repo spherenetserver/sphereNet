@@ -4,8 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-30] - Death/corpse parity: @Death/@Kill returns, forensics tags, loot retention, looting crime (Wave 154)
+[2026-06-30] - Notoriety parity: murderer threshold, conditional murder mark, fame cap (Wave 155)
 ----------------------------------------
+
+FIXED - Notoriety / Murder:
+  - The murderer (red) threshold is now strictly greater-than MurderMinCount
+    (Source-X Noto_IsMurderer: murders > count), so with the default 5 the red
+    title appears on the 6th kill, not the 5th. It was flagging red one kill early.
+  - A PvP kill now only counts as a murder when it is an UNPROVOKED kill of an
+    innocent (Source-X Noto_Kill: NotoThem < NOTO_GUILD_SAME). Killing a criminal
+    or murderer (grey/red), or someone who aggressed the killer first (the killer
+    holds a HarmedBy memory of the victim → self-defence), no longer adds a murder
+    count or criminal flag. Previously every player-vs-player kill was marked as
+    murder + criminal.
+
+FIXED - Notoriety / Fame:
+  - The artificial 200-point per-kill fame cap is removed (Source-X Calc_FameKill
+    has no per-kill cap, only the 0..10000 running-total clamp, which is still
+    applied). Killing a high-fame player now grants the full fame/10.
+
+
 
 FIXED - Death / Triggers:
   - @Death and @Kill RETURN 1 are now honored. The firing is centralized in

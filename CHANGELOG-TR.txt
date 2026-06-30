@@ -4,8 +4,25 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-30] - Olum/corpse parity: @Death/@Kill donusleri, forensics tag'leri, loot koruma, looting crime (Wave 154)
+[2026-06-30] - Notoriety parity: murderer esigi, kosullu murder mark, fame cap (Wave 155)
 ----------------------------------------
+
+DUZELTME - Notoriety / Murder:
+  - Murderer (red) esigi artik MurderMinCount'tan kesinlikle buyuk (Source-X
+    Noto_IsMurderer: murders > count), boylece varsayilan 5'te red title 5. degil
+    6. kill'de cikiyor. Onceden bir kill erken red yaziyordu.
+  - Bir PvP kill artik sadece MASUM birinin PROVOKE EDILMEMIS oldurulmesi oldugunda
+    murder sayiliyor (Source-X Noto_Kill: NotoThem < NOTO_GUILD_SAME). Bir criminal
+    veya murderer (grey/red) oldurmek, ya da once saldirana (killer kurbana karsi
+    HarmedBy memory tutar → self-defence) oldurmek artik murder count veya criminal
+    flag eklemiyor. Onceden her oyuncu-oyuncu kill murder + criminal yaziliyordu.
+
+DUZELTME - Notoriety / Fame:
+  - Yapay 200-puanlik kill-basi fame cap'i kaldirildi (Source-X Calc_FameKill'de
+    kill-basi cap yok, sadece 0..10000 toplam clamp var, o hala uygulaniyor).
+    Yuksek fame'li bir oyuncuyu oldurmek artik tam fame/10 veriyor.
+
+
 
 DUZELTME - Olum / Trigger'lar:
   - @Death ve @Kill RETURN 1 artik dikkate aliniyor. Firing DeathEngine.ProcessDeath

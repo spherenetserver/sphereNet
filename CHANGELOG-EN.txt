@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Skill parity: @SkillChange as a cancelable setter guard for runtime skill changes (Wave 180)
+----------------------------------------
+
+ADDED - @SkillChange on runtime skill value-sets (Source-X setter guard):
+  - A GM .ADDSKILL command and a script property assignment (e.g. MAGERY=80) now fire
+    a cancelable @SkillChange BEFORE the value is set, so a script can rewrite the new
+    value (ARGN2) or RETURN 1 to veto the change. Previously only a skill GAIN raised
+    @SkillChange; these runtime setters changed the value silently.
+  - Implemented as Character.SetSkillRuntime (fires Character.OnSkillChange, then
+    applies the possibly-adjusted value); the GM command and script setter route
+    through it. World-load, spawn, decay and gain keep using the raw SetSkill and do
+    NOT fire the guard, so save/restore stays side-effect-free. Installed only when
+    @SkillChange is hooked.
+
+================================================================================
+
 [2026-06-30] - Skill parity: @SkillGain fires pre-roll with chance/cap tuning + cancel (Wave 179)
 ----------------------------------------
 

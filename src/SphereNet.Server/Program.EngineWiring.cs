@@ -341,6 +341,23 @@ public static partial class Program
                 };
             }
 
+            // @SkillChange as a cancelable SETTER guard (Source-X) for RUNTIME value
+            // changes — GM .ADDSKILL and script property assignment (MAGERY=80) — so a
+            // script can adjust the new value (ARGN2) or RETURN 1 to veto it. Gated so
+            // unscripted shards skip it; load/spawn/decay/gain use the raw setter and do
+            // NOT fire here (gain keeps its own post @SkillChange notification below).
+            if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.SkillChange))
+            {
+                SphereNet.Game.Objects.Characters.Character.OnSkillChange =
+                    (SphereNet.Game.Objects.Characters.Character ch, SkillType skill, int oldVal, ref int newVal) =>
+                {
+                    var args = new TriggerArgs { CharSrc = ch, N1 = (int)skill, N2 = newVal, N3 = newVal - oldVal };
+                    bool cancel = _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillChange, args) == TriggerResult.True;
+                    newVal = args.N2;
+                    return cancel;
+                };
+            }
+
             // Post-gain notification (Source-X parity): @SkillChange + blue system
             // message + skill-list refresh. @SkillGain itself fires PRE-roll above.
             SkillEngine.OnSkillGain = (ch, skill, newVal) =>

@@ -1692,6 +1692,28 @@ public partial class Character : ObjBase
             _skillValues[(int)skill] = Math.Min(value, (ushort)1200);
     }
 
+    /// <summary>Pre-set @SkillChange hook (Source-X CTRIG_SkillChange as a setter
+    /// guard): fired before a RUNTIME skill value-set so a script can modify the new
+    /// value (by ref) or cancel it (return true). Load / spawn / decay / gain use the
+    /// raw <see cref="SetSkill"/> and never fire this. Installed only when @SkillChange
+    /// is actually hooked, so the common path is a single null check.</summary>
+    public delegate bool SkillChangeHook(Character ch, SkillType skill, int oldValue, ref int newValue);
+    public static SkillChangeHook? OnSkillChange { get; set; }
+
+    /// <summary>Runtime skill setter: fires the cancelable pre-set @SkillChange hook,
+    /// then applies the (possibly script-adjusted) value. Returns false if a script
+    /// cancelled the change. Use for player- / script-initiated changes (GM command,
+    /// property assignment); world-load and spawn use the raw <see cref="SetSkill"/>.</summary>
+    public bool SetSkillRuntime(SkillType skill, int value)
+    {
+        int oldValue = GetSkill(skill);
+        int newValue = value;
+        if (OnSkillChange != null && OnSkillChange(this, skill, oldValue, ref newValue))
+            return false;
+        SetSkill(skill, (ushort)Math.Clamp(newValue, 0, 1200));
+        return true;
+    }
+
     public byte GetSkillLock(SkillType skill) =>
         (int)skill < _skillLocks.Length ? _skillLocks[(int)skill] : (byte)2;
 
@@ -3357,7 +3379,7 @@ public partial class Character : ObjBase
         if (!_skillNameMap.TryGetValue(upperKey, out var skillType))
             return false;
         if (ushort.TryParse(normalized, out ushort skillVal))
-            SetSkill(skillType, skillVal);
+            SetSkillRuntime(skillType, skillVal); // runtime set — fires cancelable @SkillChange
         return true;
     }
 

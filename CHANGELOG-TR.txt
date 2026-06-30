@@ -4,6 +4,21 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Skill paritesi: @SkillChange runtime skill degisimleri icin iptal-edilebilir setter guard (Wave 180)
+----------------------------------------
+
+EKLENEN - Runtime skill value-set'lerde @SkillChange (Source-X setter guard):
+  - GM .ADDSKILL komutu ve script property atamasi (orn. MAGERY=80) artik deger SET edilmeden
+    ONCE iptal-edilebilir bir @SkillChange atesler; boylece script yeni degeri (ARGN2) yeniden
+    yazabilir veya RETURN 1 ile degisimi veto edebilir. Eskiden yalnizca skill GAIN @SkillChange
+    ateslerdi; bu runtime setter'lar degeri sessizce degistiriyordu.
+  - Character.SetSkillRuntime olarak uygulandi (Character.OnSkillChange'i atesler, sonra olasi
+    ayarlanmis degeri uygular); GM komutu ve script setter buradan gecer. World-load, spawn, decay
+    ve gain ham SetSkill'i kullanmaya devam eder ve guard'i ATESLEMEZ — boylece save/restore
+    yan-etkisiz kalir. Yalnizca @SkillChange hook'lanınca kurulur.
+
+================================================================================
+
 [2026-06-30] - Skill paritesi: @SkillGain roll oncesi atesler, chance/cap ayari + iptal (Wave 179)
 ----------------------------------------
 

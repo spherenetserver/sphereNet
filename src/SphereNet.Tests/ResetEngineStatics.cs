@@ -81,6 +81,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.SpellbookRequiredEnabled = true;
         SphereNet.Game.Death.DeathEngine.EnableDeathShroud = true;
         SphereNet.Game.Skills.SkillEngine.OnSkillGainCheck = null;
+        SphereNet.Game.Objects.Characters.Character.OnSkillChange = null;
         SphereNet.Game.Skills.SkillEngine.StatAdvCurves =
             [SphereNet.Scripting.Definitions.ValueCurve.Empty,
              SphereNet.Scripting.Definitions.ValueCurve.Empty,

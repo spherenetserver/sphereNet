@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
+using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Scripting;
 using SphereNet.Game.Skills;
 using SphereNet.Game.World;
@@ -64,6 +65,36 @@ public class SkillStatChangeTriggerTests
         finally
         {
             SkillEngine.OnSkillGain = oldHook;
+        }
+    }
+
+    [Fact]
+    public void SetSkillRuntime_FiresCancelableSkillChange_AndModifies()
+    {
+        var saved = Character.OnSkillChange;
+        try
+        {
+            var world = CreateWorld();
+            var ch = world.CreateCharacter();
+            ch.SetSkill(SkillType.Magery, 100);
+
+            // No hook installed: the runtime set applies the value as-is.
+            Assert.True(ch.SetSkillRuntime(SkillType.Magery, 200));
+            Assert.Equal(200, ch.GetSkill(SkillType.Magery));
+
+            // RETURN-1 veto: hook returns true → value unchanged, set reports cancelled.
+            Character.OnSkillChange = (Character c, SkillType s, int oldV, ref int newV) => true;
+            Assert.False(ch.SetSkillRuntime(SkillType.Magery, 500));
+            Assert.Equal(200, ch.GetSkill(SkillType.Magery));
+
+            // ARGN rewrite: hook changes the new value → the modified value lands.
+            Character.OnSkillChange = (Character c, SkillType s, int oldV, ref int newV) => { newV = 333; return false; };
+            Assert.True(ch.SetSkillRuntime(SkillType.Magery, 500));
+            Assert.Equal(333, ch.GetSkill(SkillType.Magery));
+        }
+        finally
+        {
+            Character.OnSkillChange = saved;
         }
     }
 

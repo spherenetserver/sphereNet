@@ -4,6 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Notoriety/crime paritesi II: coklu-attacker murder mark, decay persistence, trigger kontrat (Wave 166)
+----------------------------------------
+
+DEGISEN - Murder / crime:
+  - Masum bir oyuncuyu olduren HER provoke-edilmemis attacker'a artik murder
+    yazilir, sadece son-vurusu yapan kill'e degil (Source-X Noto_Kill hasar
+    listesini dolasir) — masum birini gank'lemek tum grubu isaretler. Her attacker
+    pet->master cozulur, deduplike edilir ve ayni provoke-edilmemis-masum-kill
+    kontrolunden gecer (self-defence / criminal-ya-da-red kurban muaf).
+  - Murder-decay sayaci artik persist ediliyor (MURDERDECAY): bir katilin kill
+    sayisi her reload'da tam decay penceresini bastan baslatmak yerine save/load
+    boyunca yaslanmaya devam eder.
+
+EKLENEN - Triggerlar:
+  - @MurderMark'a ARGN2 make-criminal toggle eklendi: script murder sayisini
+    kaydederken gecici criminal flag'i bastirabilir (RETURN 1 hala mark + flag'i
+    tamamen bloklar).
+  - @MurderDecay bir sonraki decay'e kalan saniyeyi geri okuyabilir (ARGN2);
+    script decay araligini karakter bazinda ezebilir (0 = engine default).
+
+================================================================================
+
 [2026-06-30] - Item/envanter paritesi II: origin'e bounce, bank deep cap, contained-item erisim (Wave 165)
 ----------------------------------------
 

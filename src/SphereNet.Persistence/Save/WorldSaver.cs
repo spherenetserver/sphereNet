@@ -499,6 +499,8 @@ public sealed class WorldSaver
         if (ch.Kills != 0) w.WriteProperty("KILLS", ch.Kills.ToString());
         if (ch.CriminalTimerRemainingSeconds > 0)
             w.WriteProperty("CRIMINALTIMER", ch.CriminalTimerRemainingSeconds.ToString());
+        if (ch.MurderDecayRemainingSeconds > 0)
+            w.WriteProperty("MURDERDECAY", ch.MurderDecayRemainingSeconds.ToString());
         if (!string.IsNullOrEmpty(ch.Title)) w.WriteProperty("TITLE", ch.Title);
         w.WriteProperty("FLAGS", $"0{(uint)ch.StatFlags:x}");
         w.WriteProperty("NPC", ((int)ch.NpcBrain).ToString());

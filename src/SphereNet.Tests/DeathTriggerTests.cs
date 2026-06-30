@@ -54,7 +54,7 @@ public class DeathTriggerTests
         Character? murderVictim = null;
         Character.OnFameChanging = (_, d) => { fameDelta = d; return d; };
         Character.OnKarmaChanging = (_, d) => { karmaDelta = d; return d; };
-        Character.OnMurderMark = (_, v, n) => { murderProposed = n; murderVictim = v; return n; };
+        Character.OnMurderMark = (_, v, n) => { murderProposed = n; murderVictim = v; return new Character.MurderMarkDecision(n, true); };
 
         death.ProcessDeath(victim, killer);
 
@@ -83,7 +83,7 @@ public class DeathTriggerTests
         var killer = MakePlayer(world, 100, karma: 0, fame: 0);
         var victim = MakePlayer(world, 101, karma: 1000, fame: 1000);
 
-        Character.OnMurderMark = (_, _, _) => null; // block the mark
+        Character.OnMurderMark = (_, _, _) => new Character.MurderMarkDecision(null, false); // block the mark
 
         death.ProcessDeath(victim, killer);
 
@@ -115,7 +115,7 @@ public class DeathTriggerTests
         var killer = MakePlayer(world, 100, karma: 0, fame: 0);
         var victim = MakePlayer(world, 101, karma: 1000, fame: 1000);
 
-        Character.OnMurderMark = (_, _, proposed) => proposed + 4; // script rewrites count
+        Character.OnMurderMark = (_, _, proposed) => new Character.MurderMarkDecision(proposed + 4, true); // script rewrites count
 
         death.ProcessDeath(victim, killer);
 

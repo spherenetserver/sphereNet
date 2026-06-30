@@ -30,7 +30,7 @@ public class NotorietyDecayTriggerTests
         world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
 
         var decays = new List<int>();
-        Character.OnMurderDecay = (self, newKills) => { if (self == ch) decays.Add(newKills); };
+        Character.OnMurderDecay = (self, newKills) => { if (self == ch) decays.Add(newKills); return 0; };
 
         long decayMs = Character.MurderDecayTimeSeconds * 1000L;
         const long t0 = 1_000_000;
@@ -57,7 +57,7 @@ public class NotorietyDecayTriggerTests
         world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
 
         int fires = 0;
-        Character.OnMurderDecay = (_, _) => fires++;
+        Character.OnMurderDecay = (_, _) => { fires++; return 0; };
 
         long decayMs = Character.MurderDecayTimeSeconds * 1000L;
         ch.TickNotorietyDecay(1_000_000);

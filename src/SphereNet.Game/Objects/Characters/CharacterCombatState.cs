@@ -62,6 +62,20 @@ public sealed class CharacterCombatState
         set => _criminalTimer = value > 0 ? Environment.TickCount64 + value * 1000L : 0;
     }
 
+    /// <summary>Seconds until the next murder count decays off. Persisted so a
+    /// murderer's kills keep ageing across save/load instead of restarting the
+    /// full decay window every reload (Source-X stores the decay timer).</summary>
+    public int MurderDecayRemainingSeconds
+    {
+        get
+        {
+            if (_nextMurderDecayTick <= 0) return 0;
+            long remain = _nextMurderDecayTick - Environment.TickCount64;
+            return remain > 0 ? (int)(remain / 1000) : 0;
+        }
+        set => _nextMurderDecayTick = value > 0 ? Environment.TickCount64 + value * 1000L : 0;
+    }
+
     /// <summary>Arm/refresh the criminal timer (duration in ms).</summary>
     public void SetCriminal(long durationMs) =>
         _criminalTimer = Environment.TickCount64 + durationMs;
@@ -99,8 +113,11 @@ public sealed class CharacterCombatState
             else if (nowMs >= _nextMurderDecayTick)
             {
                 _kills--;
-                _nextMurderDecayTick = nowMs + Character.MurderDecayTimeSeconds * 1000L;
-                Character.OnMurderDecay?.Invoke(_owner, _kills);
+                // @MurderDecay may override the seconds until the next decay (ARGN2);
+                // 0 / no handler falls back to the configured default interval.
+                int nextOverride = Character.OnMurderDecay?.Invoke(_owner, _kills) ?? 0;
+                long interval = nextOverride > 0 ? nextOverride : Character.MurderDecayTimeSeconds;
+                _nextMurderDecayTick = nowMs + interval * 1000L;
             }
         }
         else

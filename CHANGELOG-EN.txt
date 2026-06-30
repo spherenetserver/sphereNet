@@ -4,6 +4,28 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Notoriety/crime parity II: multi-attacker murder marking, decay persistence, trigger contract (Wave 166)
+----------------------------------------
+
+CHANGED - Murder / crime:
+  - A murder is now marked against EVERY unprovoked attacker of an innocent
+    player, not just the final-blow killer (Source-X Noto_Kill loops the damage
+    list) — ganking an innocent flags the whole group. Each attacker is resolved
+    pet->master, deduped, and gated through the same unprovoked-innocent-kill
+    check (self-defence / criminal-or-red victims are exempt).
+  - The murder-decay countdown is now persisted (MURDERDECAY): a murderer's kill
+    count keeps ageing across save/load instead of restarting the full decay
+    window on every reload.
+
+ADDED - Triggers:
+  - @MurderMark gains an ARGN2 make-criminal toggle: a script can record the
+    murder count while suppressing the temporary criminal flag (RETURN 1 still
+    blocks the mark + flag entirely).
+  - @MurderDecay can read back the seconds until the NEXT decay (ARGN2), letting
+    a script override the decay interval per character (0 = engine default).
+
+================================================================================
+
 [2026-06-30] - Item/inventory parity II: bounce-to-origin, bank deep cap, contained-item reach (Wave 165)
 ----------------------------------------
 

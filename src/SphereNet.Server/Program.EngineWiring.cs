@@ -2177,10 +2177,13 @@ public static partial class Program
             // O1 = victim; RETURN 1 blocks the mark and the criminal flag.
             SphereNet.Game.Objects.Characters.Character.OnMurderMark = (killer, victim, proposed) =>
             {
-                var args = new TriggerArgs { CharSrc = killer, N1 = proposed, O1 = victim };
+                // N1 = proposed murder count, N2 = make-criminal toggle (default 1).
+                // RETURN 1 blocks the mark + criminal flag; ARGN2=0 records the
+                // murder without arming the temporary criminal flag (Source-X).
+                var args = new TriggerArgs { CharSrc = killer, N1 = proposed, N2 = 1, O1 = victim };
                 if (_triggerDispatcher?.FireCharTrigger(killer, CharTrigger.MurderMark, args) == TriggerResult.True)
-                    return null;
-                return args.N1;
+                    return new SphereNet.Game.Objects.Characters.Character.MurderMarkDecision(null, false);
+                return new SphereNet.Game.Objects.Characters.Character.MurderMarkDecision(args.N1, args.N2 != 0);
             };
 
             // Combat (attacker) list lifecycle — @CombatAdd / @CombatDelete fire on
@@ -2197,10 +2200,14 @@ public static partial class Program
                 _triggerDispatcher?.FireCharTrigger(self, CharTrigger.CombatEnd,
                     new TriggerArgs { CharSrc = self });
 
-            // @MurderDecay — one murder count aged off. N1 = new kill count.
+            // @MurderDecay — one murder count aged off. N1 = new kill count;
+            // ARGN2 (read back) overrides the seconds until the next decay.
             SphereNet.Game.Objects.Characters.Character.OnMurderDecay = (self, newKills) =>
-                _triggerDispatcher?.FireCharTrigger(self, CharTrigger.MurderDecay,
-                    new TriggerArgs { CharSrc = self, N1 = newKills });
+            {
+                var args = new TriggerArgs { CharSrc = self, N1 = newKills, N2 = 0 };
+                _triggerDispatcher?.FireCharTrigger(self, CharTrigger.MurderDecay, args);
+                return args.N2;
+            };
 
             // Account resolution from character UID
             SphereNet.Game.Objects.Characters.Character.ResolveAccountForChar = uid =>

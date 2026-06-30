@@ -103,26 +103,10 @@ public sealed class DeathEngine
             if (!victim.IsPlayer && victim.Exp > 0)
                 effectiveKiller.ChangeExperience(victim.Exp);
 
-            // PvP murder tracking — @MurderMark fires before the count is
-            // recorded (Source-X Noto_Kill): a script may adjust the new count or
-            // block the mark (and the criminal flag) entirely by returning null.
-            // Source-X only marks a murder for an UNPROVOKED kill of an innocent
-            // (NotoThem < NOTO_GUILD_SAME): killing a criminal/murderer, or someone
-            // who aggressed the killer first (the killer holds a HarmedBy memory of
-            // the victim → self-defence), is not murder.
-            if (victim.IsPlayer && effectiveKiller.IsPlayer
-                && IsUnprovokedInnocentKill(effectiveKiller, victim))
-            {
-                int proposed = effectiveKiller.Kills + 1;
-                int? finalCount = Character.OnMurderMark == null
-                    ? proposed
-                    : Character.OnMurderMark(effectiveKiller, victim, proposed);
-                if (finalCount.HasValue)
-                {
-                    effectiveKiller.Kills = (short)Math.Clamp(finalCount.Value, 0, short.MaxValue);
-                    effectiveKiller.SetCriminal(120_000); // 2 minutes criminal flag
-                }
-            }
+            // PvP murder tracking — Source-X Noto_Kill marks EVERY unprovoked
+            // attacker of an innocent, not just the final-blow killer, so ganking
+            // an innocent flags the whole group.
+            MarkMurderers(victim, effectiveKiller);
         }
 
         // Source-X CChar::Death order is critical for players:
@@ -233,6 +217,57 @@ public sealed class DeathEngine
     /// False when the victim is a criminal/murderer (red or grey), or aggressed the
     /// killer first — in which case the killer holds a HarmedBy memory of the victim
     /// (Memory_Fight_Start tags the defender HarmedBy and the aggressor IAggressor).</summary>
+    /// <summary>
+    /// Mark a murder against every attacker of an innocent player victim — the
+    /// final-blow killer plus everyone in the victim's attacker log — instead of
+    /// just the killer (Source-X Noto_Kill loops the damage list). Each offender
+    /// is resolved pet→master, deduped, and gated through @MurderMark (which can
+    /// adjust the count, suppress the criminal flag, or block the mark).
+    /// </summary>
+    private void MarkMurderers(Character victim, Character effectiveKiller)
+    {
+        if (!victim.IsPlayer) return;
+
+        var marked = new HashSet<uint>();
+        foreach (var offender in EnumerateOffenders(victim, effectiveKiller))
+        {
+            if (!offender.IsPlayer) continue;
+            if (!marked.Add(offender.Uid.Value)) continue;
+            if (!IsUnprovokedInnocentKill(offender, victim)) continue;
+
+            int proposed = offender.Kills + 1;
+            var decision = Character.OnMurderMark == null
+                ? new Character.MurderMarkDecision(proposed, true)
+                : Character.OnMurderMark(offender, victim, proposed);
+            if (decision.Count.HasValue)
+            {
+                offender.Kills = (short)Math.Clamp(decision.Count.Value, 0, short.MaxValue);
+                if (decision.MakeCriminal)
+                    offender.SetCriminal(120_000); // 2 minutes criminal flag
+            }
+        }
+    }
+
+    /// <summary>The final-blow killer first, then every logged attacker, each
+    /// resolved to its effective offender (a pet's hits credit its master).
+    /// Ignored attackers (ATTACKER.n.IGNORE) are skipped.</summary>
+    private IEnumerable<Character> EnumerateOffenders(Character victim, Character effectiveKiller)
+    {
+        yield return effectiveKiller;
+        foreach (var rec in victim.Attackers)
+        {
+            if (rec.Ignored) continue;
+            var attacker = _world.FindChar(rec.Uid);
+            if (attacker == null || attacker.IsDeleted) continue;
+            if (attacker.NpcMaster.IsValid)
+            {
+                var master = _world.FindChar(attacker.NpcMaster);
+                if (master != null && !master.IsDeleted) { yield return master; continue; }
+            }
+            yield return attacker;
+        }
+    }
+
     private static bool IsUnprovokedInnocentKill(Character killer, Character victim)
     {
         if (victim.IsCriminal || victim.IsMurderer || victim.IsStatFlag(StatFlag.Criminal))

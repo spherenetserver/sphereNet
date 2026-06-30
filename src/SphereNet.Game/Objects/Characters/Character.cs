@@ -411,6 +411,12 @@ public partial class Character : ObjBase
         set => CombatState.CriminalTimerRemainingSeconds = value;
     }
 
+    public int MurderDecayRemainingSeconds
+    {
+        get => CombatState.MurderDecayRemainingSeconds;
+        set => CombatState.MurderDecayRemainingSeconds = value;
+    }
+
     /// <summary>Seconds a character stays criminal (gray) after committing a crime. Set from sphere.ini CRIMINALTIMER.</summary>
     public static int CriminalTimerSeconds { get; set; } = 180;
     /// <summary>Murder count threshold that triggers the murderer (red) flag. sphere.ini MURDERMINCOUNT.</summary>
@@ -493,10 +499,15 @@ public partial class Character : ObjBase
     /// (Source-X @ExpLevelChange). Arg: the new level.</summary>
     public static Action<Character, short>? OnExpLevelChanged { get; set; }
 
+    /// <summary>Decision returned from the @MurderMark hook: the final kill count
+    /// (null = block the mark + criminal flag entirely), and whether the kill also
+    /// arms the temporary criminal flag (Source-X ARGN2 make-criminal toggle).</summary>
+    public readonly record struct MurderMarkDecision(int? Count, bool MakeCriminal);
+
     /// <summary>Fired before a player-vs-player kill records a murder count
-    /// (Source-X @MurderMark). Args: victim, proposed new murder count. Return
-    /// null to block the mark entirely, or the final count to record.</summary>
-    public static Func<Character, Character, int, int?>? OnMurderMark { get; set; }
+    /// (Source-X @MurderMark). Args: killer, victim, proposed new murder count.
+    /// Returns the recorded count + whether to arm the criminal flag.</summary>
+    public static Func<Character, Character, int, MurderMarkDecision>? OnMurderMark { get; set; }
 
     /// <summary>Fired when a new attacker first enters this character's combat
     /// (attacker) list (Source-X @CombatAdd). Arg: attacker UID.</summary>
@@ -511,8 +522,9 @@ public partial class Character : ObjBase
     public static Action<Character>? OnCombatEnd { get; set; }
 
     /// <summary>Fired when one murder count decays off (Source-X @MurderDecay).
-    /// Arg: the new (decremented) kill count.</summary>
-    public static Action<Character, int>? OnMurderDecay { get; set; }
+    /// Args: self, the new (decremented) kill count. Returns the seconds until the
+    /// NEXT decay (ARGN2 readback; 0 = engine default MurderDecayTimeSeconds).</summary>
+    public static Func<Character, int, int>? OnMurderDecay { get; set; }
 
     /// <summary>Overrides the notoriety byte a viewer sees of a subject
     /// (Source-X @NotoSend). Args: viewer, subject, computed noto. Returns the
@@ -2964,6 +2976,7 @@ public partial class Character : ObjBase
             case "RESENERGY": if (short.TryParse(normalized, out short rev)) _resEnergy = rev; return true;
             case "KILLS": if (short.TryParse(normalized, out short killsVal)) Kills = killsVal; return true;
             case "CRIMINALTIMER": if (int.TryParse(normalized, out int ctSec) && ctSec > 0) CriminalTimerRemainingSeconds = ctSec; return true;
+            case "MURDERDECAY": if (int.TryParse(normalized, out int mdSec) && mdSec > 0) MurderDecayRemainingSeconds = mdSec; return true;
             case "POISONLEVEL":
                 if (byte.TryParse(normalized, out byte plv))
                 {

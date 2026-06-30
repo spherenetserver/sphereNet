@@ -200,6 +200,13 @@ public sealed class House
         return _secureContainers.Remove(containerUid);
     }
 
+    /// <summary>Restore a persisted lockdown/secure on world load WITHOUT the priv
+    /// or capacity checks. A saved house may legitimately hold more than the
+    /// current MaxLockdowns/MaxSecure (config or storage changed since the save);
+    /// re-running the normal checks would silently drop the overflow entries.</summary>
+    public void LockdownForLoad(Serial itemUid) => _lockdowns.Add(itemUid);
+    public void SecureForLoad(Serial containerUid) => _secureContainers.Add(containerUid);
+
     /// <summary>Check if an item is locked down or secured.</summary>
     public bool IsLockedDown(Serial itemUid) => _lockdowns.Contains(itemUid);
     public bool IsSecured(Serial itemUid) => _secureContainers.Contains(itemUid);
@@ -690,7 +697,11 @@ public sealed class HousingEngine
         foreach (var obj in _world.GetAllObjects())
         {
             if (obj is not Item item) continue;
-            if (item.ItemType != ItemType.Multi) continue;
+            // Both classic (Multi) and customizable-foundation (MultiCustom)
+            // houses must be rebuilt — PlaceHouse stamps custom foundations as
+            // MultiCustom, so reading only Multi dropped every custom house from
+            // the registry after a restart (it then decayed/escaped management).
+            if (item.ItemType is not (ItemType.Multi or ItemType.MultiCustom)) continue;
             if (!item.TryGetTag("HOUSE.OWNER", out string? ownerStr)) continue;
 
             uint ownerVal = ParseHexSerial(ownerStr);
@@ -710,8 +721,8 @@ public sealed class HousingEngine
             ParseSerialList(item, "HOUSE.COOWNERS", uid => house.AddCoOwner(uid));
             ParseSerialList(item, "HOUSE.FRIENDS", uid => house.AddFriend(uid));
             ParseSerialList(item, "HOUSE.BANS", uid => house.AddBan(uid));
-            ParseSerialList(item, "HOUSE.LOCKDOWNS", uid => house.Lockdown(uid, house.Owner));
-            ParseSerialList(item, "HOUSE.SECURE", uid => house.SecureContainer(uid, house.Owner));
+            ParseSerialList(item, "HOUSE.LOCKDOWNS", uid => house.LockdownForLoad(uid));
+            ParseSerialList(item, "HOUSE.SECURE", uid => house.SecureForLoad(uid));
             ParseSerialList(item, "HOUSE.COMPONENTS", uid => house.AddComponent(uid));
 
             _houses[item.Uid] = house;

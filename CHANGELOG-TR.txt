@@ -4,8 +4,30 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-30] - Region/spawn parity: RegionFlag degerleri, NODECAY, spawn placement, RESPAWN/RESTOCK (Wave 156)
+[2026-06-30] - Gemi/housing parity: component tipleri, diagonal sailing, custom-house load, lockdown persistence (Wave 157)
 ----------------------------------------
+
+DUZELTME - Gemiler:
+  - Gemi component'leri artik her zaman ShipOther yerine ITEMDEF TYPE'a gore
+    siniflandiriliyor (tiller / plank / side / hold), boylece yeni yerlestirilen bir
+    gemide direksiyon, binme plank'lari ve kargo hold'u calisiyor.
+  - Diagonal gemi komutlari (SHIPFORELEFT / FORERIGHT / BACKLEFT / BACKRIGHT) gemiyi
+    tekrar caprazlamasina hareket ettiriyor — hareket yonu artik 4 ana yone
+    indirgenmiyor (sadece facing 4 yonlu).
+  - Deck-object secimi artik XY footprint'in yani sira Z'ye de bakiyor (Source-X
+    CCMultiMovable): deck'in cok ustunde/altinda olan bir obje (hull altinda yuzen
+    biri, ustte ucan bir kus) artik gemiyle birlikte tasinmiyor.
+
+DUZELTME - Housing:
+  - Custom-foundation evleri world load'da geri yukleniyor: DeserializeFromWorld artik
+    sadece Multi degil MultiCustom item'lari da okuyor. Ozellestirilmis bir ev artik
+    restart sonrasi house registry'den dusmuyor (yonetilmeden decay olmaya birakiliyordu).
+  - Kayitli lockdown/secure girisleri canli kapasite kontrolleri tekrar
+    calistirilmadan yukleniyor, boylece guncel MaxLockdowns/MaxSecure'dan fazlasini
+    tutan kayitli bir ev (save'den beri config veya storage degisti) artik fazla
+    girisleri sessizce kaybetmiyor.
+
+
 
 DUZELTME - Region / Flag'ler:
   - RegionFlag numeric degerleri artik Source-X CRegion.h ile eslesiyor (NoMagic=0x1,

@@ -171,7 +171,11 @@ public sealed class ShipEngine
         if (ship.Anchored)
             return false;
 
-        ship.DirMove = Normalize4Dir(dir);
+        // Ship MOVEMENT keeps all 8 directions (a ship sails diagonally for the
+        // SHIPFORELEFT/BACKRIGHT/etc. commands); only the FACING is 4-direction.
+        // Normalizing the move direction here collapsed every diagonal command to
+        // a cardinal one.
+        ship.DirMove = dir;
         ship.MovementType = moveType;
 
         if (moveType == ShipMovementType.Stop)
@@ -192,8 +196,9 @@ public sealed class ShipEngine
     {
         if (ship.Anchored) return false;
 
-        var d = Normalize4Dir(dir);
-        GetDirDelta(d, out short dx, out short dy);
+        // Keep the full 8-direction move (GetDirDelta yields diagonal deltas and
+        // CanMoveShipTo/MoveDelta handle any dx/dy) so diagonal sailing works.
+        GetDirDelta(dir, out short dx, out short dy);
 
         for (int i = 0; i < distance; i++)
         {
@@ -534,7 +539,16 @@ public sealed class ShipEngine
         if (obj.MapIndex != ship.MultiItem.MapIndex) return false;
         short dx = (short)(obj.X - ship.MultiItem.X);
         short dy = (short)(obj.Y - ship.MultiItem.Y);
-        return dx >= def.MinX && dx <= def.MaxX && dy >= def.MinY && dy <= def.MaxY;
+        if (dx < def.MinX || dx > def.MaxX || dy < def.MinY || dy > def.MaxY)
+            return false;
+
+        // Source-X CCMultiMovable::ListObjs also gates on Z: an object must sit
+        // near the deck plane to ride the ship. Without this, anything in the XY
+        // footprint at any height (a swimmer below the hull, a bird overhead, an
+        // item on a bridge above) was dragged along. Use a generous window around
+        // the ship anchor Z so genuine deck objects are never left behind.
+        int zdiff = obj.Z - ship.MultiItem.Z;
+        return zdiff >= -2 && zdiff <= 20;
     }
 
     /// <summary>
@@ -839,8 +853,26 @@ public sealed class ShipEngine
     /// </summary>
     private static ItemType ClassifyShipComponent(ushort tileId)
     {
-        // Tiller man tile IDs (approximate ranges for various ship types)
-        // These are heuristic — the actual categorization happens via ITEMDEF TYPE in scripts
+        // Source-X: a ship component's category comes from its ITEMDEF TYPE
+        // (t_ship_tiller / t_ship_plank / t_ship_side / t_ship_hold, …). Honor
+        // that when the tile's itemdef carries a ship-component type; otherwise
+        // it's deck/other. Without this every component was ShipOther, so the
+        // tiller (steering), hold (cargo) and planks (boarding) never worked on a
+        // freshly-placed ship.
+        var def = Definitions.DefinitionLoader.GetItemDef(tileId);
+        if (def != null)
+        {
+            switch (def.Type)
+            {
+                case ItemType.ShipTiller:
+                case ItemType.ShipPlank:
+                case ItemType.ShipSide:
+                case ItemType.ShipSideLocked:
+                case ItemType.ShipHold:
+                case ItemType.ShipHoldLock:
+                    return def.Type;
+            }
+        }
         return ItemType.ShipOther;
     }
 

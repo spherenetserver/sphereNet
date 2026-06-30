@@ -4,8 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-30] - Region/spawn parity: RegionFlag values, NODECAY, spawn placement, RESPAWN/RESTOCK (Wave 156)
+[2026-06-30] - Ship/housing parity: component types, diagonal sailing, custom-house load, lockdown persistence (Wave 157)
 ----------------------------------------
+
+FIXED - Ships:
+  - Ship components are now classified by their ITEMDEF TYPE (tiller / plank /
+    side / hold) instead of always being ShipOther, so steering, boarding planks
+    and the cargo hold work on a freshly-placed ship.
+  - Diagonal ship commands (SHIPFORELEFT / FORERIGHT / BACKLEFT / BACKRIGHT) move
+    the ship diagonally again — the movement direction is no longer collapsed to
+    the 4 cardinal directions (only the facing is 4-way).
+  - Deck-object selection now gates on Z as well as the XY footprint (Source-X
+    CCMultiMovable): an object well above or below the deck (a swimmer under the
+    hull, a bird overhead) is no longer dragged along with the ship.
+
+FIXED - Housing:
+  - Custom-foundation houses are restored on world load: DeserializeFromWorld now
+    reads MultiCustom items, not only Multi. A customized house no longer falls out
+    of the house registry after a restart (which left it to decay unmanaged).
+  - Persisted lockdown/secure entries are loaded without re-running the live
+    capacity checks, so a saved house that holds more than the current
+    MaxLockdowns/MaxSecure (config or storage changed since the save) no longer
+    silently loses the overflow entries.
+
+
 
 FIXED - Regions / Flags:
   - RegionFlag numeric values now match Source-X CRegion.h (NoMagic=0x1, Gate=0x8,

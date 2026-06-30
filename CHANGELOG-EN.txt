@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Skill parity: @SkillGain fires pre-roll with chance/cap tuning + cancel (Wave 179)
+----------------------------------------
+
+CHANGED - @SkillGain timing (Source-X Skill_Experience):
+  - @SkillGain now fires BEFORE the gain roll instead of after the gain, so a script
+    can raise/lower the per-mille gain chance (ARGN2) or the effective skill cap
+    (ARGN3), or RETURN 1 to cancel the gain attempt entirely. Previously it fired
+    post-gain with the new value and its return was ignored.
+  - The new pre-roll hook (SkillEngine.OnSkillGainCheck) is installed only when a
+    script actually hooks @SkillGain, so unscripted shards pay a single null check.
+  - @SkillChange and the blue "your skill increased" message still fire post-gain on
+    the actual value change — only @SkillGain moved.
+
+================================================================================
+
 [2026-06-30] - Spell parity: wand/scroll consume fix, engine cast triggers, [SPELL] ON= dispatch (Wave 178)
 ----------------------------------------
 

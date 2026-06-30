@@ -94,6 +94,42 @@ public class SkillGainParityTests
     }
 
     [Fact]
+    public void SkillGainCheck_PreRollHook_CancelsAndTunesChance()
+    {
+        var saved = SkillEngine.OnSkillGainCheck;
+        try
+        {
+            var ch = CreatePlayer();
+            ch.SetSkill(SkillType.Hiding, 100);
+            ch.SetSkillLock(SkillType.Hiding, 0); // Up (gainable)
+
+            // (a) RETURN-1 style cancel: the pre-roll hook returns true → no gain.
+            SkillEngine.OnSkillGainCheck = (Character c, SkillType s, ref int chance, ref int max) => true;
+            for (int i = 0; i < 5000; i++)
+                SkillEngine.GainExperience(ch, SkillType.Hiding, 50);
+            Assert.Equal(100, ch.GetSkill(SkillType.Hiding)); // cancelled before the roll
+
+            // (b) chance override: force the per-mille chance to its max → gains promptly.
+            SkillEngine.OnSkillGainCheck = (Character c, SkillType s, ref int chance, ref int max) =>
+            {
+                chance = 1000;
+                return false;
+            };
+            bool gained = false;
+            for (int i = 0; i < 200 && !gained; i++)
+            {
+                SkillEngine.GainExperience(ch, SkillType.Hiding, 50);
+                gained = ch.GetSkill(SkillType.Hiding) > 100;
+            }
+            Assert.True(gained, "a forced chance=1000 must produce a gain");
+        }
+        finally
+        {
+            SkillEngine.OnSkillGainCheck = saved;
+        }
+    }
+
+    [Fact]
     public void LockedSkill_NeverChanges()
     {
         var ch = CreatePlayer();

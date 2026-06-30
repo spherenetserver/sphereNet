@@ -324,12 +324,27 @@ public static partial class Program
                 _triggerDispatcher.FireCharTrigger(ch, CharTrigger.EnvironChange,
                     new TriggerArgs { CharSrc = ch, N1 = light });
 
-            // Wire @SkillGain trigger + blue system message (Source-X parity)
+            // @SkillGain (Source-X Skill_Experience) — pre-roll hook: fires before the
+            // gain roll so a script can tune the gain chance (ARGN2) / effective cap
+            // (ARGN3) or RETURN 1 to cancel the attempt. Installed only when hooked so
+            // unscripted shards skip it on every gain attempt.
+            if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.SkillGain))
+            {
+                SkillEngine.OnSkillGainCheck =
+                    (SphereNet.Game.Objects.Characters.Character ch, SkillType skill, ref int chance, ref int skillMax) =>
+                {
+                    var args = new TriggerArgs { CharSrc = ch, N1 = (int)skill, N2 = chance, N3 = skillMax };
+                    bool cancel = _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillGain, args) == TriggerResult.True;
+                    chance = args.N2;
+                    skillMax = args.N3;
+                    return cancel;
+                };
+            }
+
+            // Post-gain notification (Source-X parity): @SkillChange + blue system
+            // message + skill-list refresh. @SkillGain itself fires PRE-roll above.
             SkillEngine.OnSkillGain = (ch, skill, newVal) =>
             {
-                _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillGain,
-                    new TriggerArgs { CharSrc = ch, N1 = (int)skill, N2 = newVal });
-
                 // @SkillChange (Source-X CTRIG_SkillChange) fires on a runtime skill
                 // value change. Wired here on the gain hook (the dominant runtime
                 // change); load/spawn use the raw setter and do not fire.

@@ -4,6 +4,21 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Skill paritesi: @SkillGain roll oncesi atesler, chance/cap ayari + iptal (Wave 179)
+----------------------------------------
+
+DEGISEN - @SkillGain zamanlamasi (Source-X Skill_Experience):
+  - @SkillGain artik gain'den SONRA degil, gain ROLL'undan ONCE atesler; boylece script
+    per-mille gain chance'i (ARGN2) veya etkili skill cap'i (ARGN3) artirip/azaltabilir
+    ya da RETURN 1 ile gain denemesini tamamen iptal edebilir. Eskiden gain'den sonra yeni
+    deger ile ateslerdi ve donus degeri yutuluyordu.
+  - Yeni roll-oncesi hook (SkillEngine.OnSkillGainCheck) yalnizca bir script @SkillGain'i
+    gercekten hook'larsa kurulur; boylece scriptsiz shard'lar tek bir null check oder.
+  - @SkillChange ve mavi "skill'in artti" mesaji hala gain'den sonra gercek deger
+    degisiminde atesler — sadece @SkillGain tasindi.
+
+================================================================================
+
 [2026-06-30] - Buyu paritesi: wand/scroll tuketim fix, engine cast trigger'lari, [SPELL] ON= dispatch (Wave 178)
 ----------------------------------------
 

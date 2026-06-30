@@ -39,6 +39,13 @@ public static class SkillEngine
     /// <summary>Callback fired when a skill gain occurs. Args: (Character, SkillType, newValue).</summary>
     public static Action<Character, SkillType, int>? OnSkillGain { get; set; }
 
+    /// <summary>Pre-roll gain hook (Source-X Skill_Experience @SkillGain): fired
+    /// BEFORE the gain roll so a script can tune the per-mille gain chance or the
+    /// effective skill cap, or cancel the gain attempt by returning true. Installed
+    /// only when @SkillGain is actually hooked, so unscripted shards pay nothing.</summary>
+    public delegate bool SkillGainCheckHook(Character ch, SkillType skill, ref int chance, ref int skillMax);
+    public static SkillGainCheckHook? OnSkillGainCheck { get; set; }
+
     /// <summary>Callback fired when a stat gain occurs. Args: (Character, statIndex: 0=STR 1=DEX 2=INT, newValue).</summary>
     public static Action<Character, int, int>? OnStatGain { get; set; }
 
@@ -176,6 +183,13 @@ public static class SkillEngine
         int chance = def != null && !def.AdvRate.IsEmpty
             ? def.AdvRate.GetChancePercent(currentSkill)
             : CalcAdvanceRate(currentSkill);
+
+        // @SkillGain (Source-X Skill_Experience) — fired BEFORE the gain roll so a
+        // script can raise/lower the per-mille chance or the effective cap, or
+        // cancel the gain attempt (RETURN 1). Only installed when @SkillGain is
+        // hooked, so this is a single null check on the common path.
+        if (OnSkillGainCheck != null && OnSkillGainCheck(ch, skill, ref chance, ref skillMax))
+            return;
 
         if (chance <= 0)
             return;

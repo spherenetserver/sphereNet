@@ -1368,8 +1368,11 @@ public static partial class Program
                         ? (SkillType)(int)locals.GetInt("skill") : SkillType.None;
                     var forcedSpell = locals.Has("spell")
                         ? (SpellType)(int)locals.GetInt("spell") : SpellType.None;
+                    // LOCAL.skiphardcoded = bypass the engine's breath/throw specials
+                    // (Source-X fSkipHardcoded) while keeping flee/magery/melee.
+                    bool skipHardcoded = locals.Has("skiphardcoded") && locals.GetInt("skiphardcoded") != 0;
                     return new NpcAI.NpcFightDecision(
-                        res == TriggerResult.True, args.N2, forcedSkill, forcedSpell);
+                        res == TriggerResult.True, args.N2, forcedSkill, forcedSpell, skipHardcoded);
                 };
             if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCActWander))
                 _npcAI.OnNpcActWander = npc =>
@@ -1385,7 +1388,8 @@ public static partial class Program
                     // Source-X NPC_FightMagery args: ARGN1=spell, ARGO=target,
                     // LOCAL.HealThreshold seeded from config. RETURN 1 aborts the
                     // cast and reverts to melee; otherwise ARGN1 carries the
-                    // (possibly script-overridden) spell back (via RunWrapped).
+                    // (possibly script-overridden) spell back (via RunWrapped), and
+                    // LOCAL.target = a uid redirects the cast (Source-X REF1 target).
                     var locals = new SphereNet.Scripting.Variables.VarMap();
                     locals.SetInt("HealThreshold", _config.NpcHealThreshold);
                     var args = new TriggerArgs
@@ -1397,7 +1401,14 @@ public static partial class Program
                         return new NpcAI.NpcCastDecision(true, spell, target); // abort → melee
                     var newSpell = (SpellType)args.N1;
                     if (newSpell == SpellType.None) newSpell = spell;
-                    return new NpcAI.NpcCastDecision(false, newSpell, target);
+                    var newTarget = target;
+                    if (locals.Has("target"))
+                    {
+                        var redirect = _world.FindChar(new Serial((uint)locals.GetInt("target")));
+                        if (redirect != null && !redirect.IsDeleted)
+                            newTarget = redirect;
+                    }
+                    return new NpcAI.NpcCastDecision(false, newSpell, newTarget);
                 };
             if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCLookAtItem))
                 _npcAI.OnNpcLookAtItem = (npc, item) =>

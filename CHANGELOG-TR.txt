@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - NPC AI paritesi: config heal threshold, @NPCActFight skip-hardcoded, @NPCActCast target (Wave 170)
+----------------------------------------
+
+DEGISEN - NPC AI:
+  - Buyu yapan NPC'nin self-heal karari artik config'deki yara esigini kullaniyor
+    (NPCHEALTHRESHOLD, default %30); hardcoded %50 yerine (Source-X NPC_FightCast
+    iHealThreshold). Esigin yarisi altinda GreaterHeal tercih edilir.
+
+EKLENEN - NPC AI triggerlar:
+  - @NPCActFight LOCAL.skiphardcoded = 1 motorun hardcoded breath / throw
+    ozelliklerini atlamasini saglar ama flee / magery / melee'yi korur (Source-X
+    fSkipHardcoded); RETURN 1'den (tum aksiyonu bastiran) farkli.
+  - @NPCActCast LOCAL.target = bir uid cast'i baska bir hedefe yonlendirir
+    (Source-X REF1 target override); mevcut ARGN1 spell override ve RETURN 1
+    abort'a ek olarak.
+
+================================================================================
+
 [2026-06-30] - Attack-as-crime personal notoriety'ye baglandi (self-defense) (Wave 169)
 ----------------------------------------
 

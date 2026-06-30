@@ -117,10 +117,13 @@ public sealed class NpcAI
 
     /// <summary>Resolved @NPCActFight decision. <see cref="Handled"/> = RETURN 1
     /// (skip the engine's fight logic this tick). Otherwise <see cref="Motivation"/>
-    /// is the (possibly script-mutated) motivation and <see cref="ForcedSpell"/> /
-    /// <see cref="ForcedSkill"/> carry a script-forced cast (LOCAL.spell / LOCAL.skill).</summary>
+    /// is the (possibly script-mutated) motivation, <see cref="ForcedSpell"/> /
+    /// <see cref="ForcedSkill"/> carry a script-forced cast (LOCAL.spell / LOCAL.skill),
+    /// and <see cref="SkipHardcoded"/> (LOCAL.skiphardcoded) bypasses the engine's
+    /// hardcoded breath/throw specials while keeping its magery/melee.</summary>
     public readonly record struct NpcFightDecision(
-        bool Handled, int Motivation, SkillType ForcedSkill, SpellType ForcedSpell);
+        bool Handled, int Motivation, SkillType ForcedSkill, SpellType ForcedSpell,
+        bool SkipHardcoded = false);
     public Func<Character, bool>? OnNpcActWander { get; set; }
     public Func<Character, Character, bool>? OnNpcActFollow { get; set; }
     /// <summary>@NPCActCast hook. Source-X NPC_FightMagery fires it per candidate
@@ -746,6 +749,11 @@ public sealed class NpcAI
     /// </summary>
     private void ActFight(Character npc, Character target, int motivation)
     {
+        // Source-X NPC_Act_Fight fSkipHardcoded: a script can keep the engine's
+        // flee/magery/melee but bypass the hardcoded breath/throw specials by
+        // setting LOCAL.SKIPHARDCODED=1 in @NPCActFight (distinct from RETURN 1,
+        // which suppresses the whole action).
+        bool skipHardcoded = false;
         if (OnNpcActFight != null)
         {
             int dist0 = npc.Position.GetDistanceTo(target.Position);
@@ -762,6 +770,7 @@ public sealed class NpcAI
             }
             if (decision.ForcedSkill != SkillType.None)
                 return;
+            skipHardcoded = decision.SkipHardcoded;
             motivation = decision.Motivation; // ARGN2 readback (may flip to flee)
         }
 
@@ -882,7 +891,7 @@ public sealed class NpcAI
         // (Stat_GetVal(STAT_DEX) >= Stat_GetAdjusted(STAT_DEX)) so these
         // specials fire on the opening exchange / after a rest, not every tick.
         bool fullStam = npc.MaxStam <= 0 || npc.Stam >= npc.MaxStam;
-        if (canBreath && dist <= 8 && fullStam && hasLOS)
+        if (!skipHardcoded && canBreath && dist <= 8 && fullStam && hasLOS)
         {
             long now = Environment.TickCount64;
             long nextBreath = 0;
@@ -909,7 +918,7 @@ public sealed class NpcAI
         // throws on the tag alone (SphereNet flag semantics, THROWDAM/THROWRANGE).
         bool throwObjTag = npc.TryGetTag("THROWOBJ", out _);
         bool defaultThrower = !throwObjTag && IsRockThrowerBody(npc.BodyId) && HasThrowableRock(npc);
-        if (dist >= 2 && fullStam && hasLOS && (throwObjTag || defaultThrower))
+        if (!skipHardcoded && dist >= 2 && fullStam && hasLOS && (throwObjTag || defaultThrower))
         {
             int throwDmg = Math.Max(1, npc.Dex / 4 + _rand.Next(npc.Dex / 4 + 1));
             int throwMin = 2, throwMax = 9;
@@ -1325,12 +1334,15 @@ public sealed class NpcAI
             if (spells.Contains(SpellType.ArchCure)) return (SpellType.ArchCure, npc);
         }
 
-        // 2. Self-heal if HP < 50% — flat 33% chance at any wound level (aggressive
-        //    bias: even a critically-hurt caster still spends ~2/3 of its casts on
-        //    offense instead of turtling on heals). Below 25% it prefers GreaterHeal.
-        if (npc.MaxHits > 0 && npc.Hits < npc.MaxHits / 2 && _rand.Next(3) == 0)
+        // 2. Self-heal below the configured wound threshold (Source-X NPC_FightCast
+        //    iHealThreshold, default 30% — sphere.ini NPCHEALTHRESHOLD) instead of a
+        //    hardcoded 50%. Flat 33% chance at any wound level (aggressive bias: even
+        //    a hurt caster spends ~2/3 of its casts on offense). Below half the
+        //    threshold it prefers GreaterHeal.
+        int healThreshold = _config.NpcHealThreshold > 0 ? _config.NpcHealThreshold : 30;
+        if (npc.MaxHits > 0 && npc.Hits * 100 < npc.MaxHits * healThreshold && _rand.Next(3) == 0)
         {
-            if (npc.Hits < npc.MaxHits / 4 && spells.Contains(SpellType.GreaterHeal))
+            if (npc.Hits * 200 < npc.MaxHits * healThreshold && spells.Contains(SpellType.GreaterHeal))
                 return (SpellType.GreaterHeal, npc);
             if (spells.Contains(SpellType.Heal)) return (SpellType.Heal, npc);
             if (spells.Contains(SpellType.GreaterHeal)) return (SpellType.GreaterHeal, npc);

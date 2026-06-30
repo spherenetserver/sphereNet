@@ -1024,17 +1024,17 @@ public sealed class ClientCombatHandler
 
             if (target.Hits <= 0 && !target.IsDead && _deathEngine != null)
             {
-                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Kill,
-                    new TriggerArgs { CharSrc = _character, O1 = target });
-                _triggerDispatcher?.FireCharTrigger(target, CharTrigger.Death,
-                    new TriggerArgs { CharSrc = _character });
-
-                View.KnownChars.Remove(target.Uid.Value);
-
                 var targetPos = target.Position;
                 byte targetDir = (byte)((byte)target.Direction & 0x07);
+                // @Kill/@Death fire inside ProcessDeath; @Death RETURN 1 can cancel
+                // the death (corpse == null + a still-living target), in which case
+                // the target keeps fighting and is not removed from view.
                 var corpse = _deathEngine.ProcessDeath(target, _character);
-                _character.FightTarget = Serial.Invalid;
+                if (target.IsDead)
+                {
+                    View.KnownChars.Remove(target.Uid.Value);
+                    _character.FightTarget = Serial.Invalid;
+                }
 
                 if (corpse != null)
                 {
@@ -1133,17 +1133,17 @@ public sealed class ClientCombatHandler
                 // to ghost (body+hue swap, 0x77 broadcast, 0x20 self, 0x2C
                 // death status). Without this the killer sees the corpse but
                 // the victim's screen freezes with a still-alive paperdoll.
-                if (target.IsPlayer && OnCharacterDeathOfOther != null)
+                if (corpse != null && target.IsPlayer && OnCharacterDeathOfOther != null)
                     OnCharacterDeathOfOther.Invoke(target);
             }
 
             // Reactive armor may have killed the attacker
             if (_character.Hits <= 0 && !_character.IsDead && _deathEngine != null)
             {
-                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Death,
-                    new TriggerArgs { CharSrc = target });
+                // @Kill/@Death fire inside ProcessDeath; @Death RETURN 1 cancels it.
                 _deathEngine.ProcessDeath(_character, target);
-                OnCharacterDeath();
+                if (_character.IsDead)
+                    OnCharacterDeath();
             }
         }
         else if (damage == 0)

@@ -4,8 +4,39 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-30] - Item parity: layer numbering + full-fidelity stack split (Wave 153)
+[2026-06-30] - Death/corpse parity: @Death/@Kill returns, forensics tags, loot retention, looting crime (Wave 154)
 ----------------------------------------
+
+FIXED - Death / Triggers:
+  - @Death and @Kill RETURN 1 are now honored. The firing is centralized in
+    DeathEngine.ProcessDeath (every death entry point — combat, spell, NPC, GM,
+    reactive-armor — routes through it): @Death RETURN 1 cancels the death entirely
+    (no corpse, the victim stays alive), @Kill RETURN 1 skips that killer's credit
+    (notoriety/karma/fame/murder/experience) while the death still proceeds.
+    Previously the triggers were fired-and-ignored at each call site. An
+    invulnerable character also no longer dies (Source-X STATF_INVUL).
+
+FIXED - Death / Forensics:
+  - Corpses now stamp DEATH_TIME (and CORPSE_SLEEPING when applicable), and carving
+    sets CORPSE_CARVED — the exact tags the Forensics skill reads. Carving used to
+    write a "CARVED" tag that was never read back, so Forensics always reported a
+    corpse as un-carved with an unknown time of death.
+
+FIXED - Death / Loot retention:
+  - Corpse loot transfer now also keeps move-never, no-trade and stays-with-owner
+    (cursed2) items on the owner, in addition to blessed/newbie/no-drop. A
+    move-never item could previously land in a lootable corpse where no player
+    could pick it up.
+
+FIXED - Death / Looting crime:
+  - Looting another player's corpse is now wired into the item-pickup path and
+    flags the looter criminal (Source-X CheckCorpseCrime). It is correctly gated:
+    only a still-present, innocent player owner makes looting a crime — monster
+    corpses (the NPC is deleted on death) and criminal/own/party/guild-shared
+    corpses are free to loot. The IsLootingCriminal helper was computed but never
+    applied at pickup before.
+
+
 
 FIXED - Items / Equipment layers:
   - The Layer enum now matches UO LAYER_TYPE numbering: LAYER_FACE=15 and

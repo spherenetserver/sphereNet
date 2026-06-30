@@ -4,8 +4,37 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-06-30] - Item parity: layer numaralandirma + tam-sadakatli stack split (Wave 153)
+[2026-06-30] - Olum/corpse parity: @Death/@Kill donusleri, forensics tag'leri, loot koruma, looting crime (Wave 154)
 ----------------------------------------
+
+DUZELTME - Olum / Trigger'lar:
+  - @Death ve @Kill RETURN 1 artik dikkate aliniyor. Firing DeathEngine.ProcessDeath
+    icinde merkezilestirildi (tum olum giris noktalari — combat, spell, NPC, GM,
+    reactive-armor — buradan gecer): @Death RETURN 1 olumu tamamen iptal eder (corpse
+    yok, kurban hayatta kalir), @Kill RETURN 1 o killer'in kredisini (notoriety/karma/
+    fame/murder/experience) atlar ama olum yine gerceklesir. Onceden trigger'lar her
+    call-site'da fire-and-ignore ediliyordu. Invulnerable bir karakter de artik olmuyor
+    (Source-X STATF_INVUL).
+
+DUZELTME - Olum / Forensics:
+  - Corpse'lar artik DEATH_TIME (ve uygun oldugunda CORPSE_SLEEPING) damgaliyor, carve
+    CORPSE_CARVED set ediyor — Forensics skill'inin okudugu tam tag'ler. Carve eskiden
+    hic okunmayan "CARVED" tag'i yaziyordu, bu yuzden Forensics corpse'u her zaman
+    carve-edilmemis ve olum zamani bilinmeyen olarak raporluyordu.
+
+DUZELTME - Olum / Loot koruma:
+  - Corpse loot aktarimi artik blessed/newbie/no-drop'a ek olarak move-never, no-trade
+    ve stays-with-owner (cursed2) item'lari da sahibinde tutuyor. Move-never bir item
+    onceden hicbir oyuncunun alamayacagi lootable bir corpse'a dusebiliyordu.
+
+DUZELTME - Olum / Looting crime:
+  - Baska bir oyuncunun corpse'unu loot etmek artik item-pickup yoluna baglandi ve
+    looter'i criminal yapiyor (Source-X CheckCorpseCrime). Dogru sekilde gated: sadece
+    hala mevcut, masum bir oyuncu sahibi looting'i suc yapar — monster corpse'lari (NPC
+    olunce silinir) ve criminal/kendi/party/guild-paylasimli corpse'lar serbestce loot
+    edilebilir. IsLootingCriminal helper'i hesaplaniyordu ama pickup'ta hic uygulanmiyordu.
+
+
 
 DUZELTME - Item / Equipment layer'lari:
   - Layer enum'u artik UO LAYER_TYPE numaralandirmasiyla eslesiyor: LAYER_FACE=15

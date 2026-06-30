@@ -1146,15 +1146,13 @@ public static partial class Program
                     victim.Uid.Value, killer?.Uid.Value ?? 0);
                 var effectiveKiller = killer != null ? ResolveEffectiveOffender(killer) : null;
 
-                if (effectiveKiller != null)
-                    _triggerDispatcher?.FireCharTrigger(effectiveKiller, CharTrigger.Kill,
-                        new TriggerArgs { CharSrc = effectiveKiller, O1 = victim });
-                _triggerDispatcher?.FireCharTrigger(victim, CharTrigger.Death,
-                    new TriggerArgs { CharSrc = effectiveKiller });
-
+                // @Kill/@Death are fired inside ProcessDeath so RETURN 1 can skip
+                // killer credit / cancel the death (a still-living victim after the
+                // call means the death was vetoed).
                 var victimPos = victim.Position;
                 byte victimDir = (byte)((byte)victim.Direction & 0x07);
                 var corpse = _deathEngine.ProcessDeath(victim, effectiveKiller);
+                if (!victim.IsDead) return; // @Death cancelled the death
                 if (effectiveKiller != null)
                     effectiveKiller.FightTarget = Serial.Invalid;
 
@@ -1227,15 +1225,13 @@ public static partial class Program
 
                 var effectiveKiller = killer != null ? ResolveEffectiveOffender(killer) : null;
 
-                if (effectiveKiller != null)
-                    _triggerDispatcher?.FireCharTrigger(effectiveKiller, CharTrigger.Kill,
-                        new TriggerArgs { CharSrc = effectiveKiller, O1 = victim });
-                _triggerDispatcher?.FireCharTrigger(victim, CharTrigger.Death,
-                    new TriggerArgs { CharSrc = effectiveKiller });
-
+                // @Kill/@Death are fired inside ProcessDeath so RETURN 1 can skip
+                // killer credit / cancel the death (a still-living victim after the
+                // call means the death was vetoed).
                 var victimPos = victim.Position;
                 byte victimDir = (byte)((byte)victim.Direction & 0x07);
                 var corpse = _deathEngine.ProcessDeath(victim, effectiveKiller);
+                if (!victim.IsDead) return; // @Death cancelled the death
                 if (effectiveKiller != null)
                     effectiveKiller.FightTarget = Serial.Invalid;
 
@@ -2575,15 +2571,12 @@ public static partial class Program
         var actualKiller = killer != null && ReferenceEquals(killer, victim) ? null : killer;
         var effectiveKiller = actualKiller != null ? ResolveEffectiveOffender(actualKiller) : null;
 
-        if (effectiveKiller != null)
-            _triggerDispatcher?.FireCharTrigger(effectiveKiller, CharTrigger.Kill,
-                new TriggerArgs { CharSrc = effectiveKiller, O1 = victim });
-        _triggerDispatcher?.FireCharTrigger(victim, CharTrigger.Death,
-            new TriggerArgs { CharSrc = effectiveKiller });
-
+        // @Kill/@Death fire inside ProcessDeath; RETURN 1 can skip killer credit
+        // or cancel the death (a still-living victim after the call = vetoed).
         var victimPos = victim.Position;
         byte victimDir = (byte)((byte)victim.Direction & 0x07);
         var corpse = _deathEngine.ProcessDeath(victim, effectiveKiller);
+        if (!victim.IsDead) return; // @Death cancelled the death
 
         if (corpse != null)
         {

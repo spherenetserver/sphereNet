@@ -194,6 +194,22 @@ public sealed class ClientInventoryHandler
         return current;
     }
 
+    /// <summary>Walk up the containment chain to the nearest enclosing corpse, or
+    /// null if the item is not (transitively) inside a corpse. Used by the looting-
+    /// crime check so taking an item from a sub-pack inside a corpse still counts.</summary>
+    private Item? FindEnclosingCorpse(Item item)
+    {
+        var current = item;
+        for (int i = 0; i < 16 && current.ContainedIn.IsValid; i++)
+        {
+            var parent = _world.FindItem(current.ContainedIn);
+            if (parent == null) break;
+            if (parent.ItemType == ItemType.Corpse) return parent;
+            current = parent;
+        }
+        return null;
+    }
+
     /// <summary>Convert a notoriety byte (1-7) to the hue used for
     /// overhead labels and system speech. Values mirror Source-X
     /// CServerConfig::m_iColorNoto* defaults:
@@ -303,6 +319,17 @@ public sealed class ClientInventoryHandler
                     }
                 }
             }
+        }
+
+        // Looting crime (Source-X CheckCorpseCrime): taking an item out of another
+        // player's corpse — when the owner is still present and innocent toward the
+        // looter — flags the looter criminal. IsLootingCriminal already exempts the
+        // own/party/guild/criminal-owner and deleted-owner (NPC corpse) cases.
+        if (_character.PrivLevel < PrivLevel.GM && _client.DeathEng is { } deathEng)
+        {
+            var lootCorpse = FindEnclosingCorpse(item);
+            if (lootCorpse != null && deathEng.IsLootingCriminal(_character, lootCorpse))
+                _character.MakeCriminal();
         }
 
         // Stack splitting: the client keeps dragging the serial it clicked.

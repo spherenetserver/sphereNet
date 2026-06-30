@@ -54,6 +54,10 @@ public sealed class DeathEngine
         if (victim.IsDead)
             return null;
 
+        // Source-X CChar::Death: an invulnerable character cannot die.
+        if (victim.IsStatFlag(StatFlag.Invul))
+            return null;
+
         Character? effectiveKiller = killer;
         if (killer != null && killer.NpcMaster.IsValid)
         {
@@ -61,6 +65,21 @@ public sealed class DeathEngine
             if (master != null && !master.IsDeleted)
                 effectiveKiller = master;
         }
+
+        // @Death — Source-X fires it before any death processing; RETURN 1 cancels
+        // the death entirely (no corpse, the victim is not killed). Centralised
+        // here so every death entry point (combat, spell, NPC, GM, offline) honours
+        // it instead of firing-and-ignoring at each call site.
+        if (TriggerDispatcher?.FireCharTrigger(victim, CharTrigger.Death,
+                new TriggerArgs { CharSrc = effectiveKiller, O1 = effectiveKiller }) == TriggerResult.True)
+            return null;
+
+        // @Kill on the killer — RETURN 1 skips the kill credit (notoriety/karma/
+        // fame/murder/experience) for this killer, but the death still proceeds.
+        bool skipKillerCredit = false;
+        if (effectiveKiller != null && TriggerDispatcher != null)
+            skipKillerCredit = TriggerDispatcher.FireCharTrigger(effectiveKiller, CharTrigger.Kill,
+                new TriggerArgs { CharSrc = effectiveKiller, O1 = victim }) == TriggerResult.True;
 
         // Kill the character
         victim.Kill();
@@ -72,8 +91,8 @@ public sealed class DeathEngine
         if (victim.IsMounted)
             DismountHook?.Invoke(victim);
 
-        // Karma/Fame changes for killer
-        if (effectiveKiller != null)
+        // Karma/Fame/murder credit for the killer — skipped when @Kill returned 1.
+        if (effectiveKiller != null && !skipKillerCredit)
         {
             ApplyKarmaFameChange(effectiveKiller, victim);
 
@@ -259,6 +278,14 @@ public sealed class DeathEngine
         corpse.SetTag("CORPSE_NAME", victimName);
         corpse.ItemType = ItemType.Corpse;
         corpse.Hue = victim.Hue;
+        corpse.Direction = (byte)((byte)victim.Direction & 0x07); // facing snapshot for carve/forensics
+
+        // Forensics reads DEATH_TIME / CORPSE_CARVED / CORPSE_SLEEPING. Stamp the
+        // death time so the skill can report how long ago the death occurred; the
+        // carved/sleeping flags default to unset and are set when carved/sleeping.
+        corpse.SetTag("DEATH_TIME", Environment.TickCount64.ToString());
+        if (victim.IsStatFlag(StatFlag.Sleeping))
+            corpse.SetTag("CORPSE_SLEEPING", "1");
 
         _world.PlaceItem(corpse, victim.Position);
         return corpse;
@@ -280,8 +307,7 @@ public sealed class DeathEngine
             var item = victim.Unequip(layer);
             if (item != null)
             {
-                if (item.IsAttr(ObjAttributes.Blessed) || item.IsAttr(ObjAttributes.Blessed2) ||
-                    item.IsAttr(ObjAttributes.Newbie) || item.IsAttr(ObjAttributes.Nodropt))
+                if (StaysWithOwnerOnDeath(item))
                 {
                     victim.Equip(item, layer);
                     continue;
@@ -298,8 +324,7 @@ public sealed class DeathEngine
             var contents = new List<Item>(pack.Contents);
             foreach (var item in contents)
             {
-                if (item.IsAttr(ObjAttributes.Blessed) || item.IsAttr(ObjAttributes.Blessed2) ||
-                    item.IsAttr(ObjAttributes.Newbie) || item.IsAttr(ObjAttributes.Nodropt))
+                if (StaysWithOwnerOnDeath(item))
                     continue;
 
                 pack.RemoveItem(item);
@@ -307,6 +332,18 @@ public sealed class DeathEngine
             }
         }
     }
+
+    /// <summary>Items that are NOT transferred to the corpse on death and remain
+    /// with the owner (re-equipped or kept in the pack). Source-X MakeCorpse keeps
+    /// blessed/newbie/move-never/no-trade items (plus the shard's insured/quest
+    /// equivalents). SphereNet maps: Blessed/Blessed2/Newbie/Nodropt (no-drop),
+    /// Move_Never (cannot be moved by players, so must not land in a lootable
+    /// corpse), NotRading (no-trade) and Cursed2 (stays-with-owner cursed).</summary>
+    private static bool StaysWithOwnerOnDeath(Item item) =>
+        item.IsAttr(ObjAttributes.Blessed) || item.IsAttr(ObjAttributes.Blessed2) ||
+        item.IsAttr(ObjAttributes.Newbie) || item.IsAttr(ObjAttributes.Nodropt) ||
+        item.IsAttr(ObjAttributes.Move_Never) || item.IsAttr(ObjAttributes.NotRading) ||
+        item.IsAttr(ObjAttributes.Cursed2);
 
     /// <summary>Drop NPC loot to corpse (all inventory + level-based loot).</summary>
     private void DropNpcLootToCorpse(Character victim, Item corpse)
@@ -485,28 +522,37 @@ public sealed class DeathEngine
             ownerUid == looter.Uid.Value)
             return false;
 
-        if (corpse.TryGetTag("OWNER_UID", out string? ownerUidStr) &&
-            uint.TryParse(ownerUidStr, out uint ownerUid2))
+        // Resolve the still-living owner. Source-X CheckCorpseCrime keys off the
+        // corpse's owner-ghost link: if the owner no longer exists, looting is never
+        // a crime. A normal NPC is deleted on death (its corpse has no living
+        // owner), so monster corpses are free to loot; only a corpse whose owner is
+        // a still-present, innocent player makes looting criminal.
+        if (!corpse.TryGetTag("OWNER_UID", out string? ownerUidStr) ||
+            !uint.TryParse(ownerUidStr, out uint ownerUid2))
+            return false;
+
+        var ownerSerial = new Serial(ownerUid2);
+        var owner = _world.FindChar(ownerSerial);
+        if (owner == null || owner.IsDeleted) return false; // owner gone (NPC corpse)
+        if (!owner.IsPlayer) return false;                  // creature corpse — free loot
+        if (owner.IsCriminal || owner.IsMurderer) return false; // looting a red/criminal is allowed
+
+        // Party member with loot rights is not criminal
+        if (PartyManager != null)
         {
-            var ownerSerial = new Serial(ownerUid2);
+            var party = PartyManager.FindParty(looter.Uid);
+            if (party != null && party.IsMember(ownerSerial) && party.GetLootFlag(looter.Uid))
+                return false;
+        }
 
-            // Party member with loot rights is not criminal
-            if (PartyManager != null)
-            {
-                var party = PartyManager.FindParty(looter.Uid);
-                if (party != null && party.IsMember(ownerSerial) && party.GetLootFlag(looter.Uid))
-                    return false;
-            }
-
-            // Guild member is not criminal (same guild = shared loot rights)
-            var guildMgr = Character.ResolveGuildManager?.Invoke(looter.Uid);
-            if (guildMgr != null)
-            {
-                var looterGuild = guildMgr.FindGuildFor(looter.Uid);
-                var ownerGuild = guildMgr.FindGuildFor(ownerSerial);
-                if (looterGuild != null && ownerGuild != null && looterGuild == ownerGuild)
-                    return false;
-            }
+        // Guild member is not criminal (same guild = shared loot rights)
+        var guildMgr = Character.ResolveGuildManager?.Invoke(looter.Uid);
+        if (guildMgr != null)
+        {
+            var looterGuild = guildMgr.FindGuildFor(looter.Uid);
+            var ownerGuild = guildMgr.FindGuildFor(ownerSerial);
+            if (looterGuild != null && ownerGuild != null && looterGuild == ownerGuild)
+                return false;
         }
 
         return true;
@@ -520,7 +566,10 @@ public sealed class DeathEngine
     {
         var results = new List<Item>();
         if (corpse.ItemType != ItemType.Corpse) return results;
-        if (corpse.TryGetTag("CARVED", out _)) return results; // once per corpse (reference m_carved)
+        // Once per corpse (Source-X m_carved). Forensics reads CORPSE_CARVED, so
+        // use that tag name here too (the old "CARVED" tag was never read back).
+        if (corpse.TryGetTag("CORPSE_CARVED", out _) || corpse.TryGetTag("CARVED", out _))
+            return results;
 
         if (TriggerDispatcher?.FireItemTrigger(corpse, ItemTrigger.CarveCorpse, new TriggerArgs
         {
@@ -608,7 +657,7 @@ public sealed class DeathEngine
             }
         }
 
-        corpse.SetTag("CARVED", "1");
+        corpse.SetTag("CORPSE_CARVED", "1");
         return results;
     }
 

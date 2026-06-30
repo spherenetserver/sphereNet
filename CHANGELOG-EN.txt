@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Gathering parity: weight-based carry gate, partial node regen (Wave 188)
+----------------------------------------
+
+ADDED - Weight-based CanCarry on gather/craft delivery (Source-X CanCarry):
+  - A gathered or crafted item that would push the actor over its carry weight now
+    bounces to the ground instead of going into the pack (previously only a full-by-
+    ITEM-COUNT pack bounced; weight was ignored). New Character.MaxWeight / CanCarry
+    helpers (Str*7/2 + 40 + mod). Staff bypass the gate.
+
+ADDED - Partial resource-node regen (Source-X gradual vein regrow):
+  - A resource vein now slowly refills over time — one unit per (Regen / max) seconds,
+    capped at its original pool — instead of only resetting after it is fully depleted.
+    A recovering node clears its decay timer so it is not deleted mid-regrow. The node
+    stores its full size and last-change time (RES_MAX / RES_LAST tags) alongside the
+    remaining pool.
+
+================================================================================
+
 [2026-06-30] - Pet parity: pet figurine shrink / restore (Wave 187)
 ----------------------------------------
 

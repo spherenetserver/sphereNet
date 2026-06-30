@@ -38,12 +38,51 @@ public sealed class GatheringEngine
     // Resource the node fixed on first strike — keeps a vein yielding the same
     // thing on every swing instead of re-rolling iron→gold each time.
     private const string TagResourceId = "RES_ID";
+    // Original (full) pool size and the timestamp of the last pool change —
+    // together these drive partial regen (Source-X: a vein slowly refills over
+    // time instead of only resetting once fully depleted).
+    private const string TagPoolMax = "RES_MAX";
+    private const string TagLast = "RES_LAST";
 
-    private static int GetPool(Item marker) =>
+    internal static int GetPool(Item marker) =>
         marker.TryGetTag(TagPool, out string? p) && int.TryParse(p, out int v) ? v : 0;
 
     private static void SetPool(Item marker, int value) =>
         marker.SetTag(TagPool, Math.Max(0, value).ToString());
+
+    private static int GetPoolMax(Item marker) =>
+        marker.TryGetTag(TagPoolMax, out string? p) && int.TryParse(p, out int v) ? v : GetPool(marker);
+
+    private static long GetLast(Item marker) =>
+        marker.TryGetTag(TagLast, out string? p) && long.TryParse(p, out long v) ? v : 0;
+
+    private static void SetLast(Item marker, long ms) =>
+        marker.SetTag(TagLast, ms.ToString());
+
+    /// <summary>Partially regenerate a vein's pool by the time elapsed since its last
+    /// change (Source-X gradual regen): one resource per (Regen / max) seconds, capped
+    /// at the original pool. A recovering node clears its decay timer so it isn't
+    /// deleted mid-regrow.</summary>
+    internal static void RegenMarker(Item marker, RegionResourceDef resDef, long now)
+    {
+        int pool = GetPool(marker);
+        int max = GetPoolMax(marker);
+        if (pool >= max) return;
+
+        long last = GetLast(marker);
+        if (last <= 0) { SetLast(marker, now); return; }
+
+        long fullRegenMs = resDef.Regen > 0 ? resDef.Regen * 1000L : 36_000_000L;
+        long perUnitMs = Math.Max(1, fullRegenMs / Math.Max(1, max));
+        long ticks = (now - last) / perUnitMs;
+        if (ticks <= 0) return;
+
+        int newPool = (int)Math.Min(max, pool + ticks);
+        SetPool(marker, newPool);
+        SetLast(marker, last + ticks * perUnitMs);
+        if (newPool > 0)
+            marker.DecayTime = 0; // recovering — don't decay-delete the vein
+    }
 
     /// <summary>Sphere worldgem-bit graphic. Resource markers use it so staff
     /// can see and inspect veins with AllShow (the old 0x1 "nodraw" graphic
@@ -124,6 +163,11 @@ public sealed class GatheringEngine
         if (resDef.Reap == 0)
             return new GatherResult { Handled = true, Success = false };
 
+        // Top the vein up by the time elapsed since the last gather (partial regen)
+        // before deciding whether it is depleted.
+        if (marker != null)
+            RegenMarker(marker, resDef, Environment.TickCount64);
+
         if (marker != null && GetPool(marker) <= 0)
             return new GatherResult { Handled = true, Depleted = true };
 
@@ -188,6 +232,7 @@ public sealed class GatheringEngine
 
             int remaining = pool - reapAmount;
             SetPool(marker, remaining);
+            SetLast(marker, Environment.TickCount64); // reset the regen clock on each gather
             if (remaining <= 0)
             {
                 long regenMs = resDef.Regen > 0 ? resDef.Regen * 1000L : 36_000_000L;
@@ -255,6 +300,8 @@ public sealed class GatheringEngine
         marker.BaseId = MarkerBaseId;
         marker.Name = "worldgem bit";
         SetPool(marker, amount); // remaining pool — tag, not Amount (see TagPool)
+        marker.SetTag(TagPoolMax, amount.ToString()); // full size, for partial regen
+        SetLast(marker, Environment.TickCount64);
         marker.SetAttr(ObjAttributes.Invis | ObjAttributes.Move_Never);
         marker.SetTag(TagResourceMarker, "1");
         marker.SetTag(TagSkillType, skillTag);

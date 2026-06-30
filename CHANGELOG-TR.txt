@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-06-30] - Gathering paritesi: agirlik-tabanli tasima gate'i, partial node regen (Wave 188)
+----------------------------------------
+
+EKLENEN - Gather/craft teslimatinda agirlik-tabanli CanCarry (Source-X CanCarry):
+  - Aktörü tasima agirligi uzerine itecek gather/craft item'i artik pack'e girmek yerine yere
+    duser (eskiden sadece ITEM-SAYISI dolu pack duserdi; agirlik yok sayiliyordu). Yeni
+    Character.MaxWeight / CanCarry helper'lari (Str*7/2 + 40 + mod). Staff gate'i bypass eder.
+
+EKLENEN - Partial resource-node regen (Source-X kademeli vein regrow):
+  - Resource vein artik zamanla yavasca dolar -- her (Regen / max) saniyede 1 birim, orijinal pool'da
+    sinirli -- yalnizca tam tukenince resetlenmek yerine. Toparlanan node decay timer'ini temizler ki
+    regrow ortasinda silinmesin. Node tam boyutunu ve son-degisim zamanini (RES_MAX / RES_LAST tag'leri)
+    kalan pool'un yaninda saklar.
+
+================================================================================
+
 [2026-06-30] - Pet paritesi: pet figurine shrink / restore (Wave 187)
 ----------------------------------------
 

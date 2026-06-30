@@ -98,6 +98,10 @@ public sealed partial class GameClient
         public void DeliverItem(Item item)
         {
             var pack = Self.Backpack;
+            // Source-X CanCarry: a gathered/crafted item that would overload the actor
+            // bounces to the ground instead of going into the pack. Staff bypass.
+            if (pack != null && Self.PrivLevel < SphereNet.Core.Enums.PrivLevel.GM && !Self.CanCarry(item))
+                pack = null;
             if (pack != null)
             {
                 var actual = pack.AddItemWithStack(item);

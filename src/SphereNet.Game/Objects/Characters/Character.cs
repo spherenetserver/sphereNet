@@ -1853,6 +1853,18 @@ public partial class Character : ObjBase
         return total / Item.WeightUnits;
     }
 
+    /// <summary>Maximum carry weight in whole stones (Source-X: Str*7/2 + 40 + mod).</summary>
+    public int MaxWeight => (_str * 7 / 2) + 40 + _modMaxWeight;
+
+    /// <summary>True when this character can carry <paramref name="item"/>'s weight on
+    /// top of what it already holds (Source-X CChar::CanCarry). Used to bounce a
+    /// freshly gathered/crafted item to the ground instead of overloading the pack.</summary>
+    public bool CanCarry(Item item)
+    {
+        int incomingTenths = item.Weight * Math.Max(1, (int)item.Amount);
+        return (GetTotalWeight() * Item.WeightUnits) + incomingTenths <= MaxWeight * Item.WeightUnits;
+    }
+
     private int GetItemTreeWeight(Item item)
     {
         int w = item.Weight * Math.Max(1, (int)item.Amount);

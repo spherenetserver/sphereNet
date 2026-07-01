@@ -3147,6 +3147,17 @@ public partial class Character : ObjBase
                 return true;
             case "TIMERF": // restore a persisted TIMERF/TIMERFMS timer (world load)
                 return TryLoadTimerFEntry(value);
+            case "POISON": // restore an active poison (world load): level|ticks|remainingMs|source
+            {
+                var pp = value.Split('|');
+                if (pp.Length >= 3 && byte.TryParse(pp[0], out byte plvl)
+                    && int.TryParse(pp[1], out int pticks) && long.TryParse(pp[2], out long premMs))
+                {
+                    Serial psrc = pp.Length > 3 ? ParseSerial(pp[3]) : Serial.Invalid;
+                    Poison.Restore(plvl, pticks, premMs, psrc);
+                }
+                return true;
+            }
             case "CONTROLLER":
             case "CONTROLLER_UID":
             {

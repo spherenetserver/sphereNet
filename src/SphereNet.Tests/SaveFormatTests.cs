@@ -148,6 +148,47 @@ public class SaveFormatTests
     }
 
     [Fact]
+    public void Roundtrip_PreservesActivePoison()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_poison_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            var src = MakeWorld();
+
+            var ch = src.CreateCharacter();
+            ch.Name = "Victim";
+            ch.BodyId = 0x0190;
+            ch.MaxHits = 100; ch.Hits = 100;
+            src.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
+
+            var poisoner = new Serial(0x40001234);
+            ch.ApplyPoison(3, poisoner); // greater poison → 12 ticks
+            // Advance one tick so the remaining count (11) is non-fresh — proving load
+            // restores the exact remaining state rather than re-applying a fresh poison.
+            ch.ProcessPoisonTick(Environment.TickCount64 + 10_000);
+            Assert.Equal(11, ch.Poison.TicksRemaining);
+
+            Assert.True(saver.Save(src, tmp));
+
+            var dst = MakeWorld();
+            loader.Load(dst, tmp);
+
+            var reloaded = dst.FindChar(ch.Uid);
+            Assert.NotNull(reloaded);
+            Assert.True(reloaded!.IsPoisoned);
+            Assert.Equal((byte)3, reloaded.PoisonLevel);
+            Assert.Equal(11, reloaded.Poison.TicksRemaining); // remaining, not re-freshed to 12
+            Assert.Equal(poisoner, reloaded.Poison.Source);    // poisoner kept for kill attribution
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public void FormatDetection_RoundtripsViaExtension()
     {
         Assert.Equal(SaveFormat.Text, SaveIO.FormatFromPath("foo.scp"));

@@ -61,6 +61,27 @@ public sealed class CharacterPoisonState
     public bool IsPoisoned => _level > 0;
     public Serial Source => _source;
 
+    /// <summary>Ticks left in the current poison (0 when not poisoned).</summary>
+    public int TicksRemaining => _ticksRemaining;
+
+    /// <summary>Milliseconds until the next tick, clamped to ≥ 0 — for save as
+    /// remaining time (the absolute tick resets on restart).</summary>
+    public long RemainingTickMs => _nextTick > 0 ? Math.Max(0, _nextTick - Environment.TickCount64) : 0;
+
+    /// <summary>Restore a persisted poison (world load): re-arm the level, remaining
+    /// ticks, next-tick time and poisoner exactly, without the fresh-poison reset that
+    /// <see cref="Apply"/> does. Ignored when the level or tick count is out of range.</summary>
+    public void Restore(byte level, int ticksRemaining, long remainingMs, Serial source)
+    {
+        if (level == 0 || level > 5 || ticksRemaining <= 0)
+            return;
+        _level = level;
+        _ticksRemaining = ticksRemaining;
+        _nextTick = Environment.TickCount64 + Math.Max(0, remainingMs);
+        _source = source;
+        _owner.SetStatFlag(StatFlag.Poisoned);
+    }
+
     /// <summary>Apply poison. Level: 1=lesser .. 5=lethal. A weaker poison
     /// never downgrades an active stronger one.</summary>
     public void Apply(byte level, Serial source)

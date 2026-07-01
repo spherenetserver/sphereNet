@@ -4,6 +4,25 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Persistence parity: active poison survives save-load (Wave 209)
+----------------------------------------
+
+FIXED - An active poison was lost on save-load:
+  - A poisoned character's level, remaining ticks, next-tick schedule and poisoner were
+    never written to the world save, so the poison silently ended on restart (and a
+    poison kill lost its attribution). The poison is now saved as remaining time + tick
+    count (like item decay / TIMERF) and restored exactly on load via a new
+    CharacterPoisonState.Restore, so it resumes rather than re-arming fresh.
+
+KNOWN - Active spell buffs/debuffs still become permanent across a restart:
+  - Stat effects (Bless/Curse/Strength/Weaken/...) modify the character stat directly
+    and are runtime-only, so save-load keeps the buffed stat but drops the expiration —
+    the buff never wears off after a restart. Fixing this needs a design decision
+    (persist the effect list so it expires, or revert effects at save so base stats are
+    stored); tracked in PARITY_MATRIX.md rather than rushed here.
+
+================================================================================
+
 [2026-07-01] - Persistence parity: TIMERF timers survive save-load (Wave 208)
 ----------------------------------------
 

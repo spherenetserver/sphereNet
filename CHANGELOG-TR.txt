@@ -4,6 +4,25 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Persistence paritesi: aktif zehir save-load'da hayatta kalir (Wave 209)
+----------------------------------------
+
+DUZELTILDI - Aktif bir zehir save-load'da kayboluyordu:
+  - Zehirli bir karakterin seviyesi, kalan tick'leri, sonraki-tick zamanlamasi ve zehirleyeni
+    dunya save'ine hic yazilmiyordu; bu yuzden zehir restart'ta sessizce sona eriyordu (ve bir
+    zehir oldurmesi attribution'ini kaybediyordu). Zehir artik kalan-zaman + tick sayisi olarak
+    kaydedilir (item decay / TIMERF gibi) ve load'da yeni CharacterPoisonState.Restore ile aynen
+    geri yuklenir, boylece tazeden kurulmak yerine devam eder.
+
+BILINEN - Aktif buff/debuff'lar restart'ta hala kalici hale gelir:
+  - Stat efektleri (Bless/Curse/Strength/Weaken/...) karakter stat'ini dogrudan degistirir ve
+    runtime-only'dir; bu yuzden save-load buff'lu stat'i tutar ama suresini dusurur -- buff
+    restart'tan sonra hic gecmez. Bunu duzeltmek bir tasarim karari gerektirir (efekt listesini
+    persist et ki gecsin, ya da save'de efektleri geri al ki base stat kaydedilsin);
+    aceleye getirmek yerine PARITY_MATRIX.md'de izlenir.
+
+================================================================================
+
 [2026-07-01] - Persistence paritesi: TIMERF timer'lari save-load'da hayatta kalir (Wave 208)
 ----------------------------------------
 

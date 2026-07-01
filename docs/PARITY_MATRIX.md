@@ -94,6 +94,8 @@ Save-load round-trip of trigger-relevant runtime state. Guarded by `SaveFormatTe
 | Global `VAR.*` / `LIST` | Implemented | Saved (`[GLOBALS]` / `[LIST name]`) and loaded. |
 | Item decay / `TIMERMS` | Implemented | Saved as remaining time. |
 | Object `TIMERF` / `TIMERFMS` timers | Implemented | Wave 208 — pending delayed function/verb timers were never saved (lost on restart); now persisted per object as remaining time and re-scheduled on load. |
+| Active poison (level, remaining ticks, poisoner) | Implemented | Wave 209 — was lost on restart; now saved as remaining time + tick count and restored exactly. |
+| Active spell effects (buffs/debuffs) | **Open** | Stat buffs modify the character stat directly and are runtime-only, so the buffed stat is saved while the expiration is not — a buff becomes permanent after restart. Fix needs a design call (persist effects vs revert-at-save); see changelog note. |
 | Tags, memories, equipment | Implemented | Per-object save/load. |
 
 ## Object verbs / properties

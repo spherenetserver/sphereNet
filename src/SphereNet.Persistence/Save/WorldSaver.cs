@@ -646,6 +646,15 @@ public sealed class WorldSaver
 
         WriteTimerF(w, ch, now);
 
+        // Active poison (level, remaining ticks + time, poisoner). Saved as remaining
+        // time so it resumes after load instead of silently ending on restart.
+        if (ch.Poison.IsPoisoned && ch.Poison.TicksRemaining > 0)
+        {
+            string src = ch.Poison.Source.IsValid ? $"0{ch.Poison.Source.Value:X}" : "0";
+            w.WriteProperty("POISON",
+                $"{ch.Poison.Level}|{ch.Poison.TicksRemaining}|{ch.Poison.RemainingTickMs}|{src}");
+        }
+
         foreach (var (key, val) in ch.Tags.GetAll())
         {
             string upper = key.ToUpperInvariant();

@@ -39,8 +39,72 @@ public class ScriptObjectParityTests
         public string GetName() => "src";
     }
 
+    private sealed class PropertyBagObj(string name) : IScriptObj
+    {
+        private readonly Dictionary<string, string> _properties = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> _ctags = new(StringComparer.OrdinalIgnoreCase);
+
+        public string GetName() => name;
+        public void SetProperty(string key, string value) => _properties[key] = value;
+
+        public bool TryGetProperty(string key, out string value)
+        {
+            if (TryGetClientTagKey(key, out string ctagKey))
+            {
+                value = _ctags.TryGetValue(ctagKey, out string? ctagValue) ? ctagValue : "0";
+                return true;
+            }
+
+            return _properties.TryGetValue(key, out value!);
+        }
+
+        public bool TryExecuteCommand(string key, string args, ITextConsole source) => false;
+
+        public bool TrySetProperty(string key, string value)
+        {
+            if (TryGetClientTagKey(key, out string ctagKey))
+            {
+                _ctags[ctagKey] = value;
+                return true;
+            }
+
+            _properties[key] = value;
+            return true;
+        }
+
+        public TriggerResult OnTrigger(int t, IScriptObj? s, ITriggerArgs? a) => TriggerResult.Default;
+
+        private static bool TryGetClientTagKey(string key, out string tagKey)
+        {
+            if (key.StartsWith("CTAG.", StringComparison.OrdinalIgnoreCase) ||
+                key.StartsWith("CTAG0.", StringComparison.OrdinalIgnoreCase) ||
+                key.StartsWith("DCTAG.", StringComparison.OrdinalIgnoreCase) ||
+                key.StartsWith("DCTAG0.", StringComparison.OrdinalIgnoreCase))
+            {
+                int dot = key.IndexOf('.');
+                tagKey = dot >= 0 ? key[(dot + 1)..] : "";
+                return true;
+            }
+
+            tagKey = "";
+            return false;
+        }
+    }
+
     private static ScriptInterpreter NewInterpreter() =>
         new(new ExpressionParser(), LoggerFactory.Create(_ => { }).CreateLogger<ScriptInterpreter>());
+
+    private static List<ScriptKey> ParseKeys(params string[] lines)
+    {
+        var keys = new List<ScriptKey>(lines.Length);
+        foreach (var line in lines)
+        {
+            var key = new ScriptKey();
+            key.Parse(line);
+            keys.Add(key);
+        }
+        return keys;
+    }
 
     [Fact]
     public void ExpressionParser_TryEvaluate_DistinguishesNumbersFromStrings()
@@ -241,6 +305,34 @@ public class ScriptObjectParityTests
     }
 
     [Fact]
+    public void ScriptInterpreter_DefPrefixes_ResolveThroughServerResolver()
+    {
+        var interpreter = NewInterpreter();
+        interpreter.ServerPropertyResolver = request => request.ToUpperInvariant() switch
+        {
+            "DEF0.ADMIN_HIDEHIGHPRIV" => "1",
+            "DEF.TREF_SERV" => "01",
+            "DEF.ADMIN_FLAG_1" => "Invulnerability",
+            _ => null
+        };
+
+        var target = new Character { Name = "Target" };
+        var lines = ParseKeys(
+            "TAG.HIDE=<Def0.Admin_Hidehighpriv>",
+            "TAG.REF=<Def.TRef_Serv>",
+            "TAG.TEXT=<Def.Admin_Flag_1>");
+
+        interpreter.Execute(lines, target, null, null, new ScriptScope());
+
+        Assert.True(target.TryGetProperty("TAG.HIDE", out var hide));
+        Assert.Equal("1", hide);
+        Assert.True(target.TryGetProperty("TAG.REF", out var refType));
+        Assert.Equal("01", refType);
+        Assert.True(target.TryGetProperty("TAG.TEXT", out var text));
+        Assert.Equal("Invulnerability", text);
+    }
+
+    [Fact]
     public void ScriptInterpreter_UidCommand_RoutesThroughRefExecBridge()
     {
         var loggerFactory = LoggerFactory.Create(_ => { });
@@ -270,10 +362,7 @@ public class ScriptObjectParityTests
     [Fact]
     public void ScriptInterpreter_ServAllClients_RoutesThroughServerIteratorBridge()
     {
-        var loggerFactory = LoggerFactory.Create(_ => { });
-        var interpreter = new ScriptInterpreter(
-            new ExpressionParser(),
-            loggerFactory.CreateLogger<ScriptInterpreter>());
+        var interpreter = NewInterpreter();
 
         string? allClients = null;
         interpreter.ServerPropertyResolver = request =>
@@ -287,14 +376,80 @@ public class ScriptObjectParityTests
         target.SetUid(new Serial(0x00000100));
         var args = new TriggerArgs { Source = target };
 
-        var lines = new[]
-        {
-            new ScriptKey("SERV.ALLCLIENTS", "f_test"),
-        };
+        var lines = ParseKeys("Serv.AllClients f_Admin_GetPlayers");
 
         interpreter.Execute(lines, target, null, args, new ScriptScope());
 
         Assert.True(target.TryGetProperty("UID", out var uid));
-        Assert.Equal($"_ALLCLIENTS={uid}|f_test", allClients);
+        Assert.Equal($"_ALLCLIENTS={uid}|f_Admin_GetPlayers", allClients);
+    }
+
+    [Fact]
+    public void ScriptInterpreter_AdminPlayerCollector_WritesSourceClientTags()
+    {
+        var interpreter = NewInterpreter();
+        var gm = new Character { Name = "GM" };
+        gm.SetUid(new Serial(0x00000100));
+        var player = new Character { Name = "Player" };
+        player.SetUid(new Serial(0x00000200));
+        var args = new TriggerArgs(gm)
+        {
+            Object1 = player,
+            Object2 = gm,
+        };
+
+        var lines = ParseKeys(
+            "Src.CTag0.Dialog.Admin.Clients ++",
+            "Src.CTag0.Dialog.Admin.C<dSrc.CTag0.Dialog.Admin.Clients>=<UID>");
+
+        interpreter.Execute(lines, player, null, args, new ScriptScope());
+
+        Assert.True(gm.TryGetProperty("CTAG0.Dialog.Admin.Clients", out var count));
+        Assert.Equal("1", count);
+        Assert.True(player.TryGetProperty("UID", out var playerUid));
+        Assert.True(gm.TryGetProperty("CTAG0.Dialog.Admin.C1", out var listedUid));
+        Assert.Equal(playerUid, listedUid);
+    }
+
+    [Fact]
+    public void ScriptInterpreter_AdminGetPlayers_IncludesHiddenHigherPrivWhenDef0Allows()
+    {
+        var interpreter = NewInterpreter();
+        interpreter.ServerPropertyResolver = request =>
+        {
+            if (request.Equals("DEF0.Admin_Hidehighpriv", StringComparison.OrdinalIgnoreCase))
+                return "1";
+            if (request.Equals("statf_insubstantial", StringComparison.OrdinalIgnoreCase))
+                return ((uint)StatFlag.Insubstantial).ToString();
+            return null;
+        };
+
+        var gm = new PropertyBagObj("GM");
+        gm.SetProperty("UID", "0100");
+        gm.SetProperty("ACCOUNT.PLEVEL", ((int)PrivLevel.GM).ToString());
+        var player = new PropertyBagObj("Owner");
+        player.SetProperty("UID", "0200");
+        player.SetProperty("ACCOUNT.PLEVEL", ((int)PrivLevel.Owner).ToString());
+        player.SetProperty("FLAGS", ((uint)StatFlag.Insubstantial).ToString());
+
+        var args = new TriggerArgs(gm)
+        {
+            Object1 = player,
+            Object2 = gm,
+        };
+        var lines = ParseKeys(
+            "If ((<Src.Account.Plevel> < <Account.Plevel>) && (<Flags> & statf_insubstantial) && !(<Def0.Admin_Hidehighpriv>))",
+            "Return",
+            "Endif",
+            "Src.CTag0.Dialog.Admin.Clients ++",
+            "Src.CTag0.Dialog.Admin.C<dSrc.CTag0.Dialog.Admin.Clients>=<UID>");
+
+        interpreter.Execute(lines, player, null, args, new ScriptScope());
+
+        Assert.True(gm.TryGetProperty("CTAG0.Dialog.Admin.Clients", out var count));
+        Assert.Equal("1", count);
+        Assert.True(player.TryGetProperty("UID", out var playerUid));
+        Assert.True(gm.TryGetProperty("CTAG0.Dialog.Admin.C1", out var listedUid));
+        Assert.Equal(playerUid, listedUid);
     }
 }

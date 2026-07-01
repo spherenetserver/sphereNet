@@ -178,6 +178,10 @@ public static partial class Program
             // --- DEFMSG.name — default message lookup ---
             _ when upper.StartsWith("DEFMSG.") => ResolveDefMsg(property[7..]),
 
+            // --- DEF.name / DEF0.name — generic [DEFNAME] lookup ---
+            _ when upper.StartsWith("DEF0.") => ResolveDefValue(property[5..], decimalNumeric: true),
+            _ when upper.StartsWith("DEF.") => ResolveDefValue(property[4..], decimalNumeric: false),
+
             // --- Commands (write operations, prefixed with _SET_/_CLEARVARS/_NEWDUPE) ---
             _ when upper.StartsWith("_SET_VAR.") => HandleSetGlobalVar(property[9..]),
             _ when upper.StartsWith("_SET_OBJ=") => HandleSetObj(property[9..]),
@@ -544,6 +548,39 @@ public static partial class Program
         if (_resources != null && _resources.TryGetDefMessage(msgName, out string defMsg))
             return defMsg;
         return "";
+    }
+
+    private static string? ResolveDefValue(string defName, bool decimalNumeric)
+    {
+        if (_resources == null || string.IsNullOrWhiteSpace(defName))
+            return "0";
+
+        string key = defName.Trim();
+        if (_resources.TryGetDefValue(key, out string textValue))
+            return StripSurroundingQuotes(textValue);
+
+        var rid = _resources.ResolveDefName(key);
+        if (rid.IsValid)
+            return decimalNumeric ? rid.Index.ToString() : $"0{rid.Index:X}";
+
+        string? builtIn = ResolveDefConstant(key.ToUpperInvariant());
+        if (builtIn == null)
+            return "0";
+
+        if (decimalNumeric)
+            return builtIn;
+
+        if (long.TryParse(builtIn, out long numeric))
+            return $"0{numeric:X}";
+
+        return builtIn;
+    }
+
+    private static string StripSurroundingQuotes(string s)
+    {
+        if (s.Length >= 2 && s[0] == '"' && s[^1] == '"')
+            return s[1..^1];
+        return s;
     }
 
     private static string? ResolveDefConstant(string upperToken)

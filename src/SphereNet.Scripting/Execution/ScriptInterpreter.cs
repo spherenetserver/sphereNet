@@ -1441,6 +1441,26 @@ public sealed class ScriptInterpreter
             return "0";
         }
 
+        // DEF.X / DEF0.X — generic [DEFNAME] lookup. Dialog rendering had
+        // its own resolver for these, but functions such as admin /
+        // f_Admin_GetPlayers run through the interpreter and need the same
+        // Source-X surface.
+        if (varName.StartsWith("DEF.", StringComparison.OrdinalIgnoreCase) ||
+            varName.StartsWith("DEF0.", StringComparison.OrdinalIgnoreCase))
+        {
+            string? v = ServerPropertyResolver?.Invoke(varName);
+            if (v != null) return v;
+
+            int dot = varName.IndexOf('.');
+            if (dot >= 0 && dot + 1 < varName.Length)
+            {
+                v = ServerPropertyResolver?.Invoke(varName[(dot + 1)..]);
+                if (v != null) return v;
+            }
+
+            return "0";
+        }
+
         // Standalone server properties: RTIME, RTICKS, RTIME.FORMAT, RTICKS.FORMAT, RTICKS.FROMTIME
         if (varName.StartsWith("RTIME", StringComparison.OrdinalIgnoreCase) ||
             varName.StartsWith("RTICKS", StringComparison.OrdinalIgnoreCase))

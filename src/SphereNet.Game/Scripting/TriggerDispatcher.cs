@@ -231,7 +231,7 @@ public sealed class TriggerDispatcher
                 {
                     var tevLink = Resources.GetResource(tevRid);
                     if (tevLink == null) continue;
-                    var result = Runner.RunTriggerByName(tevLink, trigName, item, args.ScriptConsole, WrapArgs(args));
+                    var result = RunWrapped(tevLink, trigName, item, args);
                     if (result == TriggerResult.True)
                         return TriggerResult.True;
                 }
@@ -241,7 +241,7 @@ public sealed class TriggerDispatcher
             var itemDefLink = Resources.GetResource(ResType.ItemDef, item.BaseId);
             if (itemDefLink != null)
             {
-                var result = Runner.RunTriggerByName(itemDefLink, trigName, item, args.ScriptConsole, WrapArgs(args));
+                var result = RunWrapped(itemDefLink, trigName, item, args);
                 if (result == TriggerResult.True)
                     return TriggerResult.True;
             }
@@ -259,7 +259,7 @@ public sealed class TriggerDispatcher
                 var scriptLink = Resources.GetResource(ResType.ItemDef, scriptDefIdx);
                 if (scriptLink != null)
                 {
-                    var result = Runner.RunTriggerByName(scriptLink, trigName, item, args.ScriptConsole, WrapArgs(args));
+                    var result = RunWrapped(scriptLink, trigName, item, args);
                     if (result == TriggerResult.True)
                         return TriggerResult.True;
                 }
@@ -302,7 +302,7 @@ public sealed class TriggerDispatcher
                     : null;
                 if (typeLink != null)
                 {
-                    var result = Runner.RunTriggerByName(typeLink, trigName, item, args.ScriptConsole, WrapArgs(args));
+                    var result = RunWrapped(typeLink, trigName, item, args);
                     if (result == TriggerResult.True)
                         return TriggerResult.True;
                 }
@@ -401,7 +401,7 @@ public sealed class TriggerDispatcher
         {
             var link = Resources.GetResource(eventRid);
             if (link == null) continue;
-            Runner.RunTriggerByName(link, trigName, ch, args.ScriptConsole, WrapArgs(args));
+            RunWrapped(link, trigName, ch, args);
         }
 
         RunResourceEventHandlers(GlobalRegionEvents, trigName, ch, args);
@@ -419,7 +419,7 @@ public sealed class TriggerDispatcher
         {
             var link = Resources.GetResource(eventRid);
             if (link == null) continue;
-            Runner.RunTriggerByName(link, trigName, ch, args.ScriptConsole, WrapArgs(args));
+            RunWrapped(link, trigName, ch, args);
         }
 
         RunResourceEventHandlers(GlobalRegionEvents, trigName, ch, args);
@@ -499,7 +499,7 @@ public sealed class TriggerDispatcher
             var link = Resources.GetResource(eventRid);
             if (link == null) continue;
 
-            var result = Runner.RunTriggerByName(link, trigName, target, args.ScriptConsole, WrapArgs(args));
+            var result = RunWrapped(link, trigName, target, args);
             if (result == TriggerResult.True)
                 return TriggerResult.True;
         }

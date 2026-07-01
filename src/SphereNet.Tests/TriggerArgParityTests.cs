@@ -78,4 +78,40 @@ public class TriggerArgParityTests
             File.Delete(tempFile);
         }
     }
+
+    [Fact]
+    public void TriggerArgs_ArgnMutation_PropagatesFromGlobalEventTriggers()
+    {
+        string tempFile = Path.Combine(Path.GetTempPath(), $"spherenet_argn_glob_{Guid.NewGuid():N}.scp");
+        File.WriteAllText(tempFile, """
+            [EVENTS e_global_argn_probe]
+            ON=@Attack
+            ARGN1=42
+            """);
+        try
+        {
+            var stack = ScriptTestBootstrap.CreateRuntimeStack();
+            stack.Resources.LoadResourceFile(tempFile);
+
+            var world = TestHarness.CreateWorld();
+            var ch = world.CreateCharacter();
+            ch.IsPlayer = true;
+            world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
+
+            // Attach as a GLOBAL player event. This path (RunResourceEventHandlers) —
+            // like item ITEMDEF/TEVENTS/TYPEDEF and region/room events — previously
+            // bypassed RunWrapped, so ARGN mutations from these trigger sources were
+            // silently dropped even though object-EVENTS and char-def triggers kept them.
+            stack.Dispatcher.GlobalPlayerEvents.Add(stack.Resources.ResolveDefName("e_global_argn_probe"));
+
+            var args = new SphereNet.Game.Scripting.TriggerArgs { CharSrc = ch, N1 = 1 };
+            stack.Dispatcher.FireCharTrigger(ch, CharTrigger.Attack, args);
+
+            Assert.Equal(42, args.N1); // was 1 before the fix
+        }
+        finally
+        {
+            File.Delete(tempFile);
+        }
+    }
 }

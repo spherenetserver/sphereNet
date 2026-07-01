@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Trigger parity: ARGN write-back from every trigger source (Wave 203)
+----------------------------------------
+
+FIXED - ARGN mutations were dropped from most trigger sources:
+  - Only object EVENTS lists and character def triggers ran through RunWrapped, the
+    method that copies a script's ARGN1/2/3 changes back into the caller's args. Item
+    ITEMDEF / TEVENTS / TYPEDEF triggers (where most item behaviour lives), region and
+    room events, and all global (EVENTSPLAYER / EVENTSPET / EVENTSITEM / EVENTSREGION)
+    events called the runner directly and discarded the mutations — so an item @DClick
+    that set ARGN1, or a global event adjusting a trigger number, had no effect on the
+    caller. Every trigger firing path now goes through RunWrapped, so ARGN write-back is
+    uniform regardless of where the trigger is defined.
+
+================================================================================
+
 [2026-07-01] - Trigger parity: ARGN3 seeding and ARGN mutation (Wave 202)
 ----------------------------------------
 

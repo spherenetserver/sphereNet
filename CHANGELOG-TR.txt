@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Trigger paritesi: her trigger kaynagindan ARGN write-back (Wave 203)
+----------------------------------------
+
+DUZELTILDI - ARGN mutasyonlari cogu trigger kaynagindan dusuyordu:
+  - Yalnizca nesne EVENTS listeleri ve karakter def trigger'lari RunWrapped'ten geciyordu --
+    script'in ARGN1/2/3 degisikliklerini cagirana geri kopyalayan metot. Item ITEMDEF /
+    TEVENTS / TYPEDEF trigger'lari (item davranisinin cogu burada), region ve room event'leri,
+    ve tum global (EVENTSPLAYER / EVENTSPET / EVENTSITEM / EVENTSREGION) event'ler runner'i
+    dogrudan cagirip mutasyonlari atiyordu -- yani ARGN1 set eden bir item @DClick veya bir
+    trigger sayisini ayarlayan global event cagirana etki etmiyordu. Her trigger atesleme yolu
+    artik RunWrapped'ten gecer; ARGN write-back trigger nerede tanimli olursa olsun tekduze.
+
+================================================================================
+
 [2026-07-01] - Trigger paritesi: ARGN3 seed'i ve ARGN mutasyonu (Wave 202)
 ----------------------------------------
 

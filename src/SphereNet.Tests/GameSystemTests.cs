@@ -1644,6 +1644,42 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         Assert.Equal("1", touched);
     }
 
+    [Fact]
+    public void ProgramAllClientsSnapshot_UsesWorldOnlinePlayersWhenClientRegistryIsEmpty()
+    {
+        var world = CreateWorld();
+        var gm = world.CreateCharacter();
+        gm.IsPlayer = true;
+        world.PlaceCharacter(gm, new Point3D(100, 100, 0, 0));
+        gm.IsOnline = true;
+        world.AddOnlinePlayer(gm);
+
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        world.PlaceCharacter(player, new Point3D(101, 100, 0, 0));
+        player.IsOnline = true;
+        world.AddOnlinePlayer(player);
+
+        var method = typeof(SphereNet.Server.Program)
+            .GetMethods(BindingFlags.Static | BindingFlags.NonPublic)
+            .Single(m => m.Name == "BuildAllClientsSnapshot" && m.GetParameters().Length == 3);
+
+        var result = (System.Collections.IEnumerable)method.Invoke(null,
+            [
+                world,
+                Array.Empty<SphereNet.Game.Clients.GameClient>(),
+                new Dictionary<Serial, SphereNet.Game.Clients.GameClient>()
+            ])!;
+
+        var targets = result.Cast<object>()
+            .Select(entry => (Character)entry.GetType().GetField("Item1")!.GetValue(entry)!)
+            .ToList();
+
+        Assert.Equal(2, targets.Count);
+        Assert.Contains(gm, targets);
+        Assert.Contains(player, targets);
+    }
+
     private static List<ScriptKey> ParseKeys(params string[] lines)
     {
         var keys = new List<ScriptKey>(lines.Length);

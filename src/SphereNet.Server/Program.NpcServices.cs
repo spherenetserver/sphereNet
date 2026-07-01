@@ -59,6 +59,8 @@ public static partial class Program
     private static SphereNet.Game.Clients.GameClient? FindGameClient(Character ch)
     {
         if (!ch.IsPlayer) return null;
+        if (_clientsByCharUid.TryGetValue(ch.Uid, out var indexed) && indexed.Character == ch)
+            return indexed;
         foreach (var c in _clients.Values)
             if (c.Character == ch) return c;
         return null;

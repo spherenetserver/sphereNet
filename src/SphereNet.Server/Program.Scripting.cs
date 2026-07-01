@@ -830,21 +830,22 @@ public static partial class Program
         string head = sp > 0 ? payload[..sp] : payload;
         string tail = sp > 0 ? payload[(sp + 1)..].TrimStart() : "";
 
-        var snapshot = _clients.Values.Where(c => c.IsPlaying && c.Character != null).ToList();
+        var snapshot = BuildAllClientsSnapshot();
         // Diagnostic for the admin online-player list ("admin" command tallies
         // clients into CTAG0 via this path). [allclients] shows whether SRC
         // resolved and how many clients the callback runs for — an empty list
         // there means the function never ran / SRC was wrong.
         _log.LogDebug("[allclients] src=0x{Src:X} '{SrcName}' payload='{Payload}' clients={Count}",
             srcChar.Uid.Value, srcChar.Name ?? "?", payload, snapshot.Count);
-        foreach (var client in snapshot)
+        var sourceClient = FindGameClient(srcChar);
+        foreach (var (target, targetClient) in snapshot)
         {
-            var target = client.Character!;
             var trigArgs = new SphereNet.Scripting.Execution.TriggerArgs(srcChar)
             {
                 Object1 = target,
                 Object2 = srcChar,
             };
+            ITextConsole? callbackConsole = targetClient ?? sourceClient;
 
             // Function form (e.g. "f_Admin_GetPlayers") takes priority: a
             // [FUNCTION] with this name runs as the per-client callback, with
@@ -857,14 +858,63 @@ public static partial class Program
             // list came back empty.
             bool dispatched = false;
             if (_triggerRunner != null &&
-                _triggerRunner.TryRunFunction(payload, target, client, trigArgs, out _))
+                _triggerRunner.TryRunFunction(payload, target, callbackConsole, trigArgs, out _))
                 dispatched = true;
-            if (!dispatched && target.TryExecuteCommand(head, tail, client))
+            if (!dispatched && target.TryExecuteCommand(head, tail, callbackConsole ?? new RefExecConsole()))
                 dispatched = true;
-            if (!dispatched)
-                client.TryExecuteScriptCommand(target, head, tail, trigArgs);
+            if (!dispatched && callbackConsole != null)
+                callbackConsole.TryExecuteScriptCommand(target, head, tail, trigArgs);
         }
         return "";
+    }
+
+    private static List<(Character Target, GameClient? Client)> BuildAllClientsSnapshot()
+    {
+        return BuildAllClientsSnapshot(_world, _clients.Values.ToList(), _clientsByCharUid);
+    }
+
+    private static List<(Character Target, GameClient? Client)> BuildAllClientsSnapshot(
+        GameWorld? world,
+        IReadOnlyCollection<GameClient> clients,
+        IReadOnlyDictionary<Serial, GameClient> indexedClients)
+    {
+        var snapshot = new List<(Character Target, GameClient? Client)>();
+        var seen = new HashSet<Serial>();
+
+        GameClient? ResolveClient(Character ch)
+        {
+            if (indexedClients.TryGetValue(ch.Uid, out var indexed) && indexed.Character == ch)
+                return indexed;
+            foreach (var client in clients)
+            {
+                if (client.Character == ch)
+                    return client;
+            }
+            return null;
+        }
+
+        void Add(Character? ch, GameClient? client)
+        {
+            if (ch == null || ch.IsDeleted || !ch.IsPlayer || !ch.IsOnline)
+                return;
+            if (!seen.Add(ch.Uid))
+                return;
+            snapshot.Add((ch, client ?? ResolveClient(ch)));
+        }
+
+        if (world != null)
+        {
+            foreach (var ch in world.OnlinePlayers)
+                Add(ch, ResolveClient(ch));
+        }
+
+        foreach (var client in clients)
+        {
+            if (client.IsPlaying)
+                Add(client.Character, client);
+        }
+
+        return snapshot;
     }
 
     private static string? HandleServWriteFile(string raw)

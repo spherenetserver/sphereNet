@@ -1289,6 +1289,20 @@ public sealed class GameWorld
         return toRemove.Count;
     }
 
+    /// <summary>Every sector of every map with its map id — used by the world
+    /// saver to persist per-sector environment overrides (Source-X CSector::r_Write).</summary>
+    public IEnumerable<(int MapId, Sector Sector)> EnumerateSectors()
+    {
+        foreach (var (mapId, grid) in _sectors.OrderBy(kv => kv.Key))
+        {
+            int cols = grid.GetLength(0);
+            int rows = grid.GetLength(1);
+            for (int x = 0; x < cols; x++)
+                for (int y = 0; y < rows; y++)
+                    yield return (mapId, grid[x, y]);
+        }
+    }
+
     public (int Chars, int Items, int Sectors) GetStats()
     {
         int chars = 0, items = 0, sectorCount = 0;

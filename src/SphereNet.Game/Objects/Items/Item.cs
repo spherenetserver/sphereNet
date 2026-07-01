@@ -736,7 +736,8 @@ public class Item : ObjBase
             case "TYPE": value = FormatItemType(_type); return true;
             case "AMOUNT": value = _amount.ToString(); return true;
             case "CONT": value = _containedIn.IsValid ? $"0{_containedIn.Value:X}" : ""; return true;
-            case "HITS": value = HitsCur.ToString(); return true;
+            case "HITS":
+            case "HITPOINTS": value = HitsCur.ToString(); return true; // Source-X IC_HITPOINTS == IC_HITS
             case "MAXHITS":
             case "HITSMAX": value = HitsMax.ToString(); return true;
             case "LAYER": value = ((byte)EquipLayer).ToString(); return true;
@@ -762,7 +763,9 @@ public class Item : ObjBase
             case "PRICE": value = _price.ToString(); return true;
             case "QUALITY": value = _quality.ToString(); return true;
             case "CRAFTER": value = _crafter.IsValid ? $"0{_crafter.Value:X}" : ""; return true;
-            case "USESREMAINING": value = _usesRemaining.ToString(); return true;
+            case "USESREMAINING":
+            case "USESCUR": value = _usesRemaining.ToString(); return true; // Source-X IC_USESCUR alias
+            case "USESMAX": value = (TryGetTag("USESMAX", out string? um) ? um : "0") ?? "0"; return true;
             case "DECAY":
             {
                 if (DecayTime <= 0) { value = "-1"; return true; }
@@ -1195,6 +1198,7 @@ public class Item : ObjBase
                 if (ushort.TryParse(value, out ushort av)) Amount = av;
                 return true;
             case "HITS":
+            case "HITPOINTS":
                 if (int.TryParse(value, out int hits)) HitsCur = hits;
                 return true;
             case "MAXHITS":
@@ -1288,7 +1292,11 @@ public class Item : ObjBase
                 _crafter = new Serial(ParseHexOrDecUInt(value));
                 return true;
             case "USESREMAINING":
+            case "USESCUR":
                 if (ushort.TryParse(value, out ushort ur)) _usesRemaining = ur;
+                return true;
+            case "USESMAX":
+                SetTag("USESMAX", value);
                 return true;
             case "DECAY":
                 if (long.TryParse(value, out long decaySec) && decaySec > 0)
@@ -1547,6 +1555,57 @@ public class Item : ObjBase
                     child.RemoveFromWorld();
                 _contents.Clear();
                 return true;
+
+            // Source-X CIV_CONSUME: consume N (default 1) from this stack;
+            // the item is removed when the whole amount is used up.
+            case "CONSUME":
+            {
+                int n = 1;
+                if (!string.IsNullOrWhiteSpace(args) && int.TryParse(args.Trim(), out int reqN) && reqN > 0)
+                    n = reqN;
+                if (n >= _amount)
+                    RemoveFromWorld();
+                else
+                    Amount = (ushort)(_amount - n);
+                return true;
+            }
+
+            // Source-X CIV_BOUNCE: put the item back into its top-level
+            // owner's backpack (a loose ground item stays put).
+            case "BOUNCE":
+            {
+                var world = ResolveWorld?.Invoke();
+                if (world == null) return true;
+                ObjBase cur = this;
+                for (int depth = 0; depth < 64; depth++)
+                {
+                    if (cur is not Item ci || !ci.ContainedIn.IsValid) break;
+                    var parent = world.FindObject(ci.ContainedIn);
+                    if (parent == null) break;
+                    cur = parent;
+                }
+                if (cur is Character owner && owner.Backpack != null && owner.Backpack != this)
+                {
+                    if (IsEquipped && ContainedIn == owner.Uid)
+                        owner.Unequip(EquipLayer);
+                    var oldParent = ContainedIn.IsValid ? world.FindObject(ContainedIn) as Item : null;
+                    oldParent?.RemoveItem(this);
+                    IsEquipped = false;
+                    owner.Backpack.AddItem(this);
+                }
+                return true;
+            }
+
+            // Source-X CIV_DECAY: arm (or re-arm) the decay timer — args are
+            // seconds; empty falls back to the shard default decay window.
+            case "DECAY":
+            {
+                long decayMs = World.GameWorld.DefaultDecayTimeMs;
+                if (!string.IsNullOrWhiteSpace(args) && long.TryParse(args.Trim(), out long decSec) && decSec > 0)
+                    decayMs = decSec * 1000L;
+                DecayTime = Environment.TickCount64 + decayMs;
+                return true;
+            }
             case "FIXWEIGHT":
                 // Weight is computed on demand (TotalWeight walks contents);
                 // refresh the client view so tooltips pick the value up.
@@ -2111,6 +2170,27 @@ public class Item : ObjBase
             timerFired = true;
             SetTimeout(0);
             OnTimerExpired?.Invoke(this);
+
+            // Source-X CItem::_OnTick trap state machine: an armed trap relaxes
+            // to inactive, an inactive one either re-arms (MOREZ periodic) or
+            // returns to the idle IT_TRAP waiting for the next trigger.
+            switch (_type)
+            {
+                case ItemType.TrapActive:
+                    SetTrapState(ItemType.TrapInactive, (ushort)More1, MoreP.X);
+                    break;
+                case ItemType.TrapInactive:
+                    if (MoreP.Z != 0)
+                        SetTrapState(ItemType.TrapActive, (ushort)More1, MoreP.Y);
+                    else
+                        SetTrapState(ItemType.Trap, BaseId, -1);
+                    break;
+                case ItemType.ShipPlank:
+                    // Source-X Ship_Plank autoclose: an open plank swings shut
+                    // 5 seconds after opening.
+                    ClosePlank();
+                    break;
+            }
         }
 
         // Source-X parity: the item's timer IS the spawn timer.
@@ -2124,6 +2204,99 @@ public class Item : ObjBase
         SpawnItem?.OnTick(now);
 
         return true;
+    }
+
+    /// <summary>
+    /// Source-X CItem::SetTrapState — hop the trap between IT_TRAP /
+    /// IT_TRAP_ACTIVE / IT_TRAP_INACTIVE. MORE1 holds the counterpart graphic
+    /// (0 = dispid+1); the current graphic is saved back into MORE1 on swap so
+    /// the pair ping-pongs. <paramref name="timeSec"/> 0 = 3s default, negative
+    /// = no timer.
+    /// </summary>
+    public void SetTrapState(ItemType state, ushort id, int timeSec)
+    {
+        if (id == 0)
+        {
+            id = (ushort)More1;
+            if (id == 0) id = (ushort)(BaseId + 1);
+        }
+        if (timeSec == 0)
+            timeSec = 3;
+
+        if (id != BaseId)
+        {
+            More1 = BaseId; // save the old graphic (Source-X m_itTrap.m_AnimID)
+            BaseId = id;
+        }
+        _type = state;
+        SetTimeout(timeSec > 0 ? Environment.TickCount64 + timeSec * 1000L : 0);
+        MarkDirty((DirtyFlag)0xFFFFFFFF);
+        OnVisualUpdate?.Invoke(this);
+    }
+
+    /// <summary>
+    /// Source-X CItem::Ship_Plank open: an IT_SHIP_SIDE(_LOCKED) becomes an
+    /// open IT_SHIP_PLANK for 5 seconds (autoclose timer). The original side
+    /// type is remembered in MORE2 (m_itShipPlank.m_wSideType); the graphic
+    /// pair ping-pongs through MORE1 like a door.
+    /// </summary>
+    public bool OpenPlank()
+    {
+        if (_type == ItemType.ShipPlank)
+            return true; // already open
+        if (_type is not (ItemType.ShipSide or ItemType.ShipSideLocked))
+            return false;
+
+        More2 = (uint)_type; // remember the side type for the close
+        if (More1 != 0)
+        {
+            ushort alt = (ushort)More1;
+            More1 = BaseId;
+            BaseId = alt;
+        }
+        _type = ItemType.ShipPlank;
+        SetTimeout(Environment.TickCount64 + 5000); // autoclose in 5s
+        MarkDirty((DirtyFlag)0xFFFFFFFF);
+        OnVisualUpdate?.Invoke(this);
+        return true;
+    }
+
+    /// <summary>Source-X Ship_Plank close: restore the stored side type and
+    /// graphic, clear the autoclose timer.</summary>
+    public bool ClosePlank()
+    {
+        if (_type != ItemType.ShipPlank)
+            return false;
+
+        var sideType = More2 is > 0 and <= ushort.MaxValue &&
+                       Enum.IsDefined(typeof(ItemType), (ushort)More2)
+            ? (ItemType)More2
+            : ItemType.ShipSide;
+        if (More1 != 0)
+        {
+            ushort alt = (ushort)More1;
+            More1 = BaseId;
+            BaseId = alt;
+        }
+        _type = sideType;
+        SetTimeout(0);
+        MarkDirty((DirtyFlag)0xFFFFFFFF);
+        OnVisualUpdate?.Invoke(this);
+        return true;
+    }
+
+    /// <summary>
+    /// Source-X CItem::Use_Trap — the trap was sprung (dclick or step). Arms an
+    /// idle trap (graphic swap + MOREX-second active window) and returns the
+    /// base damage (MORE2, default 2).
+    /// </summary>
+    public int UseTrap()
+    {
+        if (ItemType == ItemType.Trap)
+            SetTrapState(ItemType.TrapActive, (ushort)More1, MoreP.X);
+
+        if (More2 == 0) More2 = 2;
+        return (int)More2;
     }
 
     /// <summary>

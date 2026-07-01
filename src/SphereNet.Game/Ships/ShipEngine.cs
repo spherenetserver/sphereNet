@@ -583,6 +583,47 @@ public sealed class ShipEngine
     }
 
     /// <summary>
+    /// Source-X CanMoveTo (GetHeightPoint2 with CAN_I_WATER): the cell must be
+    /// pure sailable water — water terrain AND no blocking STATIC (dock, rock,
+    /// bridge piling) AND no other ship's hull occupying it. The old land-only
+    /// check let ships sail straight through docks and other vessels.
+    /// </summary>
+    public bool CanSailInto(Ship ship, int mapId, short x, short y, sbyte z)
+    {
+        if (!IsWaterAt(mapId, x, y))
+            return false;
+
+        // Blocking statics near the water plane (a bridge far above is fine).
+        if (_mapData != null)
+        {
+            foreach (var st in _mapData.GetStatics(mapId, x, y))
+            {
+                var td = _mapData.GetItemTileData(st.TileId);
+                bool blocks = (td.Flags & SphereNet.MapData.Tiles.TileFlag.Impassable) != 0;
+                bool wetStatic = (td.Flags & SphereNet.MapData.Tiles.TileFlag.Wet) != 0;
+                if (blocks && !wetStatic && Math.Abs(st.Z - z) <= 10)
+                    return false;
+            }
+        }
+
+        // Another ship's hull in the cell blocks (Source-X: multis participate
+        // in GetHeightPoint2's block flags).
+        foreach (var other in AllShips)
+        {
+            if (other == ship) continue;
+            var odef = _multiDefs.Get(other.MultiItem.BaseId);
+            if (odef == null) continue;
+            if (other.MultiItem.MapIndex != mapId) continue;
+            int rdx = x - other.MultiItem.X;
+            int rdy = y - other.MultiItem.Y;
+            if (rdx >= odef.MinX && rdx <= odef.MaxX && rdy >= odef.MinY && rdy <= odef.MaxY)
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// Move all ship objects by delta.
     /// Source: CCMultiMovable.cpp:274-421
     /// </summary>
@@ -675,18 +716,19 @@ public sealed class ShipEngine
         // direction (both perpendicular edges for a diagonal) — the trailing cells
         // the ship already occupies are water by definition. Each leading tile must
         // be water (CanMoveTo); any non-water tile stops the ship.
+        sbyte shipZ = ship.MultiItem.Position.Z;
         if (sy != 0) // leading N/S row
         {
             short ly = (short)(newY + (sy > 0 ? def.MaxY : def.MinY));
             for (short lx = (short)(newX + def.MinX); lx <= newX + def.MaxX; lx++)
-                if (!IsWaterAt(map, lx, ly))
+                if (!CanSailInto(ship, map, lx, ly, shipZ))
                     return false;
         }
         if (sx != 0) // leading E/W column
         {
             short lx = (short)(newX + (sx > 0 ? def.MaxX : def.MinX));
             for (short ly = (short)(newY + def.MinY); ly <= newY + def.MaxY; ly++)
-                if (!IsWaterAt(map, lx, ly))
+                if (!CanSailInto(ship, map, lx, ly, shipZ))
                     return false;
         }
         return true;

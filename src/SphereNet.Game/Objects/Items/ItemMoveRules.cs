@@ -23,6 +23,7 @@ public static class ItemMoveRules
         MoverDead,      // a ghost can't carry items
         MoverFrozen,    // paralysed / frozen movers can't act
         ItemImmovable,  // ATTR_MOVE_NEVER (corpses, static furniture)
+        ItemCursed,     // ATTR_CURSED/CURSED2 while equipped (Source-X cantmove_cursed)
     }
 
     /// <summary>
@@ -38,6 +39,12 @@ public static class ItemMoveRules
         if (mover.IsDead) { denial = MoveDenial.MoverDead; return false; }
         if (mover.IsStatFlag(StatFlag.Freeze)) { denial = MoveDenial.MoverFrozen; return false; }
         if (item.IsAttr(ObjAttributes.Move_Never)) { denial = MoveDenial.ItemImmovable; return false; }
+
+        // Source-X CChar::CanMoveItem: an equipped cursed item cannot be removed
+        // (ATTR_CURSED | ATTR_CURSED2 while on a layer → "appears to be cursed.").
+        if (item.IsEquipped &&
+            (item.IsAttr(ObjAttributes.Cursed) || item.IsAttr(ObjAttributes.Cursed2)))
+        { denial = MoveDenial.ItemCursed; return false; }
 
         return true;
     }

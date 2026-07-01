@@ -167,6 +167,7 @@ public class VendorTradeTests
     {
         var world = CreateWorld();
         var vendor = new Character { Name = "vendor", NpcBrain = NpcBrainType.Vendor };
+        vendor.SetTag("VENDOR_GOLD", "1000"); // W-F: purse always tracked — fund it
         world.PlaceCharacter(vendor, new Point3D(100, 100, 0, 0));
 
         var seller = new Character { Name = "seller" };

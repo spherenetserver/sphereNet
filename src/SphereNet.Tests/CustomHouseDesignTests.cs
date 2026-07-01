@@ -271,9 +271,10 @@ public class CustomHouseDesignTests
         Assert.NotNull(house);
         var multi = house!.MultiItem;
         Assert.Equal(SphereNet.Core.Enums.ItemType.MultiCustom, multi.ItemType);
-        // Only the multi item itself — design tiles are virtual, not real items.
+        // The multi item + the two house keys (W-G: pack + bank spare) — design
+        // tiles stay virtual, no component items are created.
         int itemsAfter = world.GetAllObjects().OfType<SphereNet.Game.Objects.Items.Item>().Count();
-        Assert.Equal(itemsBefore + 1, itemsAfter);
+        Assert.Equal(itemsBefore + 3, itemsAfter);
         Assert.True(multi.TryGetTag(HouseDesign.RevisionTag, out string? rev));
         Assert.Equal("1", rev);
 

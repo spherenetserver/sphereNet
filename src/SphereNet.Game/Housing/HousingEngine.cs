@@ -173,29 +173,48 @@ public sealed class House
     public bool CanLockdown(Serial charUid) =>
         GetPriv(charUid) is HousePriv.Owner or HousePriv.CoOwner;
 
-    /// <summary>Lock down an item in the house.</summary>
+    /// <summary>Lock down an item in the house. Source-X CItemMulti::LockItem:
+    /// the item itself gains ATTR_LOCKEDDOWN and links back to the multi —
+    /// previously only the house-side hash set was updated, so anything that
+    /// reads the item's attributes (WalkCheck, scripts) saw it as loose.</summary>
     public bool Lockdown(Serial itemUid, Serial byChar)
     {
         if (!CanLockdown(byChar)) return false;
         if (_lockdowns.Count >= MaxLockdowns) return false;
         _lockdowns.Add(itemUid);
+        var item = Objects.ObjBase.ResolveWorld?.Invoke()?.FindItem(itemUid);
+        if (item != null)
+        {
+            item.SetAttr(SphereNet.Core.Enums.ObjAttributes.LockedDown);
+            item.Link = _multiItem.Uid; // Source-X m_uidLink → the multi
+        }
         return true;
     }
 
-    /// <summary>Release a locked down item.</summary>
+    /// <summary>Release a locked down item (Source-X UnlockItem).</summary>
     public bool ReleaseLockdown(Serial itemUid, Serial byChar)
     {
         if (!CanLockdown(byChar)) return false;
-        return _lockdowns.Remove(itemUid);
+        if (!_lockdowns.Remove(itemUid)) return false;
+        var item = Objects.ObjBase.ResolveWorld?.Invoke()?.FindItem(itemUid);
+        item?.ClearAttr(SphereNet.Core.Enums.ObjAttributes.LockedDown);
+        return true;
     }
 
-    /// <summary>Secure a container in the house.</summary>
+    /// <summary>Secure a container in the house (Source-X Secure: ATTR_SECURE
+    /// on the container + link to the multi).</summary>
     public bool SecureContainer(Serial containerUid, Serial byChar)
     {
         if (!CanLockdown(byChar)) return false;
         if (_secureContainers.Count >= MaxSecure) return false;
         if (_secureContainers.Contains(containerUid)) return false;
         _secureContainers.Add(containerUid);
+        var item = Objects.ObjBase.ResolveWorld?.Invoke()?.FindItem(containerUid);
+        if (item != null)
+        {
+            item.SetAttr(SphereNet.Core.Enums.ObjAttributes.Secure);
+            item.Link = _multiItem.Uid;
+        }
         return true;
     }
 
@@ -203,7 +222,10 @@ public sealed class House
     public bool ReleaseSecure(Serial containerUid, Serial byChar)
     {
         if (!CanLockdown(byChar)) return false;
-        return _secureContainers.Remove(containerUid);
+        if (!_secureContainers.Remove(containerUid)) return false;
+        var item = Objects.ObjBase.ResolveWorld?.Invoke()?.FindItem(containerUid);
+        item?.ClearAttr(SphereNet.Core.Enums.ObjAttributes.Secure);
+        return true;
     }
 
     /// <summary>Restore a persisted lockdown/secure on world load WITHOUT the priv
@@ -274,6 +296,33 @@ public sealed class House
         // the crate is delivered to the owner's bank box when reachable, otherwise
         // dropped on the house tile. Reparenting (not copying) means no dupe.
         var protectedUids = _lockdowns.Concat(_secureContainers).ToList();
+
+        // Source-X TransferAllItemsToMovingCrate(TRANSFER_ALL): LOOSE items left
+        // inside the house footprint also go to the crate — previously they were
+        // orphaned on the ground (lost their house link, decayed away).
+        var footprint = _regionUid != 0 ? world.FindRegionByUid(_regionUid) : null;
+        if (footprint != null)
+        {
+            var protectedSet = new HashSet<Serial>(protectedUids);
+            foreach (var rect in footprint.Rects)
+            {
+                int range = Math.Max(rect.X2 - rect.X1, rect.Y2 - rect.Y1) / 2 + 1;
+                var center = new Point3D(
+                    (short)((rect.X1 + rect.X2) / 2), (short)((rect.Y1 + rect.Y2) / 2),
+                    _multiItem.Z, _multiItem.MapIndex);
+                foreach (var loose in world.GetItemsInRange(center, range).ToList())
+                {
+                    if (loose.IsDeleted || !loose.IsOnGround) continue;
+                    if (loose == _multiItem || _components.Contains(loose.Uid)) continue;
+                    if (loose.IsAttr(Core.Enums.ObjAttributes.Static) ||
+                        loose.IsAttr(Core.Enums.ObjAttributes.Move_Never)) continue;
+                    if (!footprint.Contains(loose.Position)) continue;
+                    protectedSet.Add(loose.Uid);
+                }
+            }
+            protectedUids = protectedSet.ToList();
+        }
+
         if (protectedUids.Count > 0)
         {
             var crate = world.CreateItem();
@@ -466,6 +515,9 @@ public sealed class HousingEngine
                     (sbyte)(position.Z + comp.DeltaZ),
                     position.Map
                 );
+                // Source-X links every component back to the multi (m_uidLink);
+                // the door lock code IS the house link, so the house key opens it.
+                compItem.Link = multiItem.Uid;
                 _world.PlaceItem(compItem, compPos);
                 house.AddComponent(compItem.Uid);
             }
@@ -474,7 +526,32 @@ public sealed class HousingEngine
         _houses[multiItem.Uid] = house;
         CreateHouseRegion(house);
         owner.Memory_AddObjTypes(multiItem.Uid, MemoryType.Guard);
+
+        // Source-X Multi_Setup GenerateKey: a house key into the owner's pack
+        // and a spare copy into the bank. There was previously NO key at all —
+        // the "you have the key" messages could never be true for houses.
+        CreateHouseKey(owner, multiItem, toBank: false);
+        CreateHouseKey(owner, multiItem, toBank: true);
         return house;
+    }
+
+    /// <summary>Create one house key linked to the multi (TAG.LINK is the code
+    /// the lock-matching uses; Link mirrors it for scripts).</summary>
+    private void CreateHouseKey(Character owner, Item multiItem, bool toBank)
+    {
+        var key = _world.CreateItem();
+        key.BaseId = 0x100F; // gold key
+        key.ItemType = ItemType.Key;
+        key.Name = "a house key";
+        key.SetTag("LINK", multiItem.Uid.Value.ToString());
+        key.Link = multiItem.Uid;
+
+        var dest = toBank ? owner.GetEquippedItem(Layer.BankBox) : owner.Backpack;
+        dest ??= owner.Backpack;
+        if (dest != null)
+            dest.AddItem(key);
+        else
+            _world.PlaceItemWithDecay(key, owner.Position);
     }
 
     /// <summary>Check if a house can be placed at the given position.</summary>

@@ -71,13 +71,16 @@ public class NotorietyDisplayParityTests
     }
 
     [Fact]
-    public void OwnPet_ShowsFriendlyGreenToOwner()
+    public void OwnPet_ShowsNeutralToOwner()
     {
+        // Source-X Noto_CalcFlag: your own pet renders NOTO_NEUTRAL by default
+        // (only the OF_PetBehaviorOwnerNeutral flag switches to true notoriety).
+        // Pre-W-D SphereNet showed it friendly green.
         var world = CreateWorld();
         var owner = MakePlayer(world, 100);
         var pet = MakePet(world, 101, owner);
 
-        Assert.Equal(2, GameClient.ComputeNotoriety(world, owner, pet));
+        Assert.Equal(3, GameClient.ComputeNotoriety(world, owner, pet));
     }
 
     [Fact]

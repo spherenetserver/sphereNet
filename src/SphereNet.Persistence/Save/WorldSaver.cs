@@ -801,16 +801,20 @@ public sealed class WorldSaver
         {
             var flags = mem.GetMemoryTypes();
             if (flags == 0) continue;
-            // Only persist non-transient memories
-            const SphereNet.Core.Enums.MemoryType persistent =
-                SphereNet.Core.Enums.MemoryType.IPet |
-                SphereNet.Core.Enums.MemoryType.Guard |
-                SphereNet.Core.Enums.MemoryType.Guild |
-                SphereNet.Core.Enums.MemoryType.Town |
-                SphereNet.Core.Enums.MemoryType.Friend;
-            if ((flags & persistent) == 0) continue;
-            w.WriteProperty("MEMORY", $"0{mem.Link.Value:X8},{(ushort)flags}");
+            // Source-X saves EVERY memory item (they are ordinary equipped items
+            // with timers), so fight/aggressor/sawcrime state survives a restart
+            // — criminal-to-whom and murder attribution no longer reset. Format:
+            // link,flags,remainingTimeoutMs(-1 = none),unixCreated.
+            long memRemaining = mem.Timeout > 0 ? Math.Max(1, mem.Timeout - now) : -1;
+            w.WriteProperty("MEMORY",
+                $"0{mem.Link.Value:X8},{(ushort)flags},{memRemaining},{mem.More1}");
         }
+
+        // Attacker log (Source-X m_lastAttackers): damage totals + ignore flags
+        // per aggressor, so loot rights / kill credit survive a save-load.
+        foreach (var rec in ch.Attackers)
+            w.WriteProperty("ATTACKER",
+                $"0{rec.Uid.Value:X8},{rec.TotalDamage},{(rec.Ignored ? 1 : 0)}");
 
         WriteTimerF(w, ch, now);
 
@@ -897,6 +901,27 @@ public sealed class WorldSaver
                     sw.WriteLine($"OPEN={map},{x},{y},{z}");
                 sw.WriteLine();
             }
+
+            // Per-sector environment overrides (Source-X CSector::r_Write saves
+            // LIGHT / SEASON / RAINCHANCE / COLDCHANCE per sector). Only sectors
+            // that differ from defaults are written; a GM-set local night or
+            // winter no longer resets on restart.
+            bool wroteSectorHeader = false;
+            foreach (var (mapId, sector) in world.EnumerateSectors())
+            {
+                if (sector.Weather == 0 && sector.Season == 0 && sector.Light == 0 &&
+                    sector.RainChance == 15 && sector.ColdChance == 5)
+                    continue;
+                if (!wroteSectorHeader)
+                {
+                    sw.WriteLine("[SECTORS]");
+                    wroteSectorHeader = true;
+                }
+                sw.WriteLine($"ENV={mapId},{sector.SectorX},{sector.SectorY}," +
+                    $"{sector.Weather},{sector.Season},{sector.Light},{sector.RainChance},{sector.ColdChance}");
+            }
+            if (wroteSectorHeader)
+                sw.WriteLine();
 
             sw.WriteLine("[EOF]");
         }

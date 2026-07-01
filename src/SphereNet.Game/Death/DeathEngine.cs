@@ -70,16 +70,21 @@ public sealed class DeathEngine
         // the death entirely (no corpse, the victim is not killed). Centralised
         // here so every death entry point (combat, spell, NPC, GM, offline) honours
         // it instead of firing-and-ignoring at each call site.
+        // Source-X OnTrigger(CTRIG_Death, <empty>, this): SRC is the dying char
+        // itself, not the killer. The killer stays reachable as ARGO (a SphereNet
+        // extension — Source-X seeds no args here, so faithful scripts never read it).
         if (TriggerDispatcher?.FireCharTrigger(victim, CharTrigger.Death,
-                new TriggerArgs { CharSrc = effectiveKiller, O1 = effectiveKiller }) == TriggerResult.True)
+                new TriggerArgs { CharSrc = victim, O1 = effectiveKiller }) == TriggerResult.True)
             return null;
 
         // @Kill on the killer — RETURN 1 skips the kill credit (notoriety/karma/
         // fame/murder/experience) for this killer, but the death still proceeds.
+        // Source-X Init(GetAttackersCount(), 0, 0, this): ARGN1 = the victim's
+        // attacker-log count, ARGO = the victim.
         bool skipKillerCredit = false;
         if (effectiveKiller != null && TriggerDispatcher != null)
             skipKillerCredit = TriggerDispatcher.FireCharTrigger(effectiveKiller, CharTrigger.Kill,
-                new TriggerArgs { CharSrc = effectiveKiller, O1 = victim }) == TriggerResult.True;
+                new TriggerArgs { CharSrc = effectiveKiller, O1 = victim, N1 = victim.Attackers.Count }) == TriggerResult.True;
 
         // Kill the character
         victim.Kill();

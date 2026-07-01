@@ -163,9 +163,13 @@ public static class CombatEngine
             }
             default: // Sphere custom (era 0) — Source-X Calc_CombatChanceToHit
             {
-                // Sleeping/frozen target: near-guaranteed hit window.
+                // Sleeping/frozen target: Source-X returns rand(10) as the skill-
+                // check DIFFICULTY (trivially easy → a near-certain hit). In this
+                // percent model that means a fixed high chance, not a random one —
+                // the old `rand(10)*10` averaged 45% and made paralyzed targets
+                // dodge more than half the swings.
                 if (target.IsStatFlag(StatFlag.Freeze))
-                    return Math.Clamp(_rand.Next(10) * 10, 0, 100);
+                    return 95;
 
                 int iSkillVal = attackSkill;
                 // Offence: weapon skill + tactics, averaged.
@@ -341,6 +345,55 @@ public static class CombatEngine
         return Layer.Chest;
     }
 
+    // Source-X sm_ArmorLayers coverage percentages (CCharFight.cpp:409): the
+    // share of the humanoid body each region contributes to the whole-body AR.
+    private static readonly (ArmorHitRegion Region, int Coverage)[] _armorCoverage =
+    [
+        (ArmorHitRegion.Head, 15),
+        (ArmorHitRegion.Neck, 7),
+        (ArmorHitRegion.Chest, 35),
+        (ArmorHitRegion.Arms, 14),
+        (ArmorHitRegion.Hands, 7),
+        (ArmorHitRegion.Legs, 22),
+        (ArmorHitRegion.Feet, 0),
+    ];
+
+    /// <summary>
+    /// Whole-body armor rating (Source-X CChar::CalcArmorDefense): each body
+    /// region takes the best (or, with COMBAT_STACKARMOR, the summed) AR of
+    /// the pieces covering it, weighted by the region's body-coverage percent.
+    /// Every worn piece thus softens EVERY blow proportionally — the old
+    /// single-region model made a helm matter only on the ~14% of hits that
+    /// landed on the head.
+    /// </summary>
+    public static int CalcArmorDefense(Character defender)
+    {
+        bool stack = (Character.CombatFlags & (int)CombatFlags.StackArmor) != 0;
+        int total = 0;
+        foreach (var (region, coverage) in _armorCoverage)
+        {
+            if (coverage == 0) continue;
+            int regionAr = 0;
+            if (_stackArmorLayers.TryGetValue(region, out var layers))
+            {
+                foreach (var layer in layers)
+                {
+                    int def = Math.Max(0, defender.GetEquippedItem(layer)?.GetArmorDefense() ?? 0);
+                    regionAr = stack ? regionAr + def : Math.Max(regionAr, def);
+                }
+            }
+            total += coverage * regionAr;
+        }
+
+        int ar = Math.Max(0, total / 100 + defender.ModAr);
+
+        // Discordance temporarily lowers the target's defenses.
+        int discord = GetActiveDiscordPct(defender);
+        if (discord > 0)
+            ar -= ar * discord / 100;
+        return Math.Max(0, ar);
+    }
+
     public static int CalcArmorDefenseForRegion(Character defender, ArmorHitRegion hitRegion)
     {
         int ar;
@@ -417,9 +470,34 @@ public static class CombatEngine
         // Hit check. A failed roll is a true miss: return -1 so the caller can
         // distinguish it from a connecting hit that armor fully absorbs (which
         // returns 0 — Source-X still plays the hit sound/animation for that).
-        int hitChance = CalcHitChance(attacker, target, hitEra);
-        if (_rand.Next(100) >= hitChance)
-            return -1; // miss
+        //
+        // Era 0 is the Source-X two-stage roll: Calc_CombatChanceToHit returns
+        // a RANDOM difficulty 0..iDiff which then runs Skill_CheckSuccess on
+        // the attacker's weapon skill (bell curve). The drawn difficulty is
+        // m_Act_Difficulty — it also feeds the passive skill gain below. The
+        // old single percent-roll flattened the compounded variance.
+        int hitChance;
+        if (hitEra == 0)
+        {
+            // Frozen/sleeping target: the reference returns rand(10) — a
+            // trivially easy difficulty — instead of the computed iDiff.
+            int diffCap = target.IsStatFlag(StatFlag.Freeze)
+                ? 9
+                : CalcHitChance(attacker, target, 0);
+            int actDifficulty = _rand.Next(diffCap + 1);
+            int effSkill = GetHitChanceSkill(attacker, GetWeaponSkill(attacker));
+            bool hitLanded = attacker.PrivLevel >= PrivLevel.GM ||
+                Skills.SkillEngine.CheckSuccessValue(effSkill, actDifficulty);
+            hitChance = actDifficulty; // m_Act_Difficulty for the gain rolls
+            if (!hitLanded)
+                return -1; // miss
+        }
+        else
+        {
+            hitChance = CalcHitChance(attacker, target, hitEra);
+            if (_rand.Next(100) >= hitChance)
+                return -1; // miss
+        }
 
         // Calculate raw damage
         var (dmgMin, dmgMax) = CalcWeaponDamage(attacker, weapon, damageEra);
@@ -438,8 +516,9 @@ public static class CombatEngine
                 damage += damage * di / 100;
         }
 
-        // Parry check — Source-X Calc_CombatChanceToParry: a shield parries best,
-        // a wielded weapon (one- or two-handed) can also parry at a lower rate.
+        // Parry check — Source-X Calc_CombatChanceToParry (legacy formula):
+        // shield = parry/40, wielded weapon = parry/80, +5 at GM parry, and
+        // DEX below 80 erodes the chance proportionally.
         int parrySkill = target.GetSkill(SkillType.Parrying);
         if (parrySkill > 0)
         {
@@ -447,20 +526,34 @@ public static class CombatEngine
             var oneHanded = target.GetEquippedItem(Layer.OneHanded);
             int parryChance;
             if (twoHanded != null && twoHanded.ItemType == ItemType.Shield)
-                parryChance = parrySkill / 30;          // shield
+                parryChance = parrySkill / 40;          // shield
             else if (twoHanded != null || oneHanded != null)
                 parryChance = parrySkill / 80;          // weapon parry
             else
                 parryChance = 0;                        // bare-handed: no parry
-            if (parryChance > 0 && _rand.Next(100) < parryChance)
+            if (parryChance > 0 && parrySkill >= 1000)
+                parryChance += 5;
+            int targetDex = target.Dex;
+            if (parryChance > 0 && targetDex < 80)
+                parryChance = parryChance * (100 - (80 - targetDex)) / 100;
+
+            if (parryChance > 0)
             {
-                // A parry fully blocks by default. A wired @HitParry can let some
-                // damage leak through (partial block) by returning a positive
-                // value; that reduced damage then still runs through armor.
-                int through = OnHitParry?.Invoke(target, attacker, damage) ?? 0;
-                if (through <= 0)
-                    return -1; // fully parried — treated as a miss by the caller
-                damage = Math.Min(damage, through);
+                // Source-X rolls the parry through Skill_UseQuick, which also
+                // trains Parrying on the attempt.
+                if (target.IsPlayer)
+                    Skills.SkillEngine.GainExperience(target, SkillType.Parrying, hitChance);
+
+                if (_rand.Next(100) < parryChance)
+                {
+                    // A parry fully blocks by default. A wired @HitParry can let
+                    // some damage leak through (partial block) by returning a
+                    // positive value; that damage then still runs through armor.
+                    int through = OnHitParry?.Invoke(target, attacker, damage) ?? 0;
+                    if (through <= 0)
+                        return -1; // fully parried — treated as a miss by the caller
+                    damage = Math.Min(damage, through);
+                }
             }
         }
 
@@ -472,15 +565,17 @@ public static class CombatEngine
         }
         else
         {
-            var hitRegion = RollArmorHitRegion();
-            int armorRating = CalcArmorDefenseForRegion(target, hitRegion);
+            // Source-X OnTakeDamage pre-AOS path: the WHOLE-BODY coverage-
+            // weighted AR mitigates every hit; the random region roll only
+            // picks which worn piece takes the durability wear.
+            int armorRating = CalcArmorDefense(target);
             int arMax = armorRating * _rand.Next(7, 36) / 100;
             int arMin = arMax / 2;
             int defense = _rand.Next(arMin, arMax + 1);
             damage -= defense;
 
             if (DurabilityEnabled)
-                ApplyArmorDurabilityLoss(target, hitRegion);
+                ApplyArmorDurabilityLoss(target, RollArmorHitRegion());
         }
 
         damage = Math.Max(0, damage);
@@ -561,6 +656,26 @@ public static class CombatEngine
             {
                 if (weapon != null)
                     ApplyDurabilityLoss(weapon);
+            }
+        }
+
+        // Passive combat skill gain — Source-X Fight_Hit tail: every landed
+        // swing trains the active weapon skill AND Tactics for a player
+        // attacker, unless the victim is a player standing in a NO_PVP region.
+        // The gain difficulty mirrors m_Act_Difficulty (the 0-100 hit-chance
+        // value), so easy prey stops training via the GAINRADIUS gate.
+        if (attacker.IsPlayer)
+        {
+            bool noPvpBlock = false;
+            if (target.IsPlayer)
+            {
+                var region = Objects.ObjBase.ResolveWorld?.Invoke()?.FindRegion(target.Position);
+                noPvpBlock = region != null && region.IsFlag(RegionFlag.NoPvP);
+            }
+            if (!noPvpBlock)
+            {
+                Skills.SkillEngine.GainExperience(attacker, GetWeaponSkill(attacker), hitChance);
+                Skills.SkillEngine.GainExperience(attacker, SkillType.Tactics, hitChance);
             }
         }
 

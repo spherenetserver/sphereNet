@@ -425,6 +425,10 @@ public partial class Character : ObjBase
     public static int MurderMinCount { get; set; } = 5;
     /// <summary>Seconds between automatic murder-count decays (online time). sphere.ini MURDERDECAYTIME.</summary>
     public static int MurderDecayTimeSeconds { get; set; } = 28800;
+    /// <summary>Karma below which a player is red with zero murders. sphere.ini PLAYEREVIL (Source-X m_iPlayerKarmaEvil).</summary>
+    public static int PlayerKarmaEvil { get; set; } = -8000;
+    /// <summary>Karma below which a player is grey. sphere.ini PLAYERNEUTRAL (Source-X m_iPlayerKarmaNeutral).</summary>
+    public static int PlayerKarmaNeutral { get; set; } = -2000;
     /// <summary>Whether attacking an innocent turns the aggressor criminal. sphere.ini ATTACKINGISACRIME.</summary>
     public static bool AttackingIsACrimeEnabled { get; set; } = true;
     /// <summary>Whether helping a criminal fight an innocent flags you criminal. sphere.ini HELPINGCRIMINALSISACRIME.</summary>
@@ -2124,7 +2128,8 @@ public partial class Character : ObjBase
             case "STR": value = _str.ToString(); return true;
             case "DEX": value = _dex.ToString(); return true;
             case "INT": value = _int.ToString(); return true;
-            case "HITS": value = _hits.ToString(); return true;
+            case "HITS":
+            case "HITPOINTS": value = _hits.ToString(); return true; // Source-X CHC_HITPOINTS == CHC_HITS
             case "MANA": value = _mana.ToString(); return true;
             case "STAM": value = _stam.ToString(); return true;
             case "MAXHITS": value = _maxHits.ToString(); return true;
@@ -2966,7 +2971,8 @@ public partial class Character : ObjBase
             case "STR": if (short.TryParse(normalized, out short sv)) Str = sv; return true;
             case "DEX": if (short.TryParse(normalized, out short dv)) Dex = dv; return true;
             case "INT": if (short.TryParse(normalized, out short iv)) Int = iv; return true;
-            case "HITS": if (short.TryParse(normalized, out short hv)) Hits = hv; return true;
+            case "HITS":
+            case "HITPOINTS": if (short.TryParse(normalized, out short hv)) Hits = hv; return true;
             case "MANA": if (short.TryParse(normalized, out short mv)) Mana = mv; return true;
             case "STAM": if (short.TryParse(normalized, out short stv)) Stam = stv; return true;
             case "MAXHITS": if (short.TryParse(normalized, out short mhv)) MaxHits = mhv; return true;

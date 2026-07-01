@@ -934,10 +934,13 @@ public sealed class ClientCombatHandler
         int swingDelayTenths = Math.Max(1, swingDelayMs / 100);
         if (_triggerDispatcher != null)
         {
+            // Source-X @HitTry contract (CCharFight Init(iARGN1Var,0,0,pWeapon),
+            // OnTrigger(..., pCharTarg)): SRC = the victim, ARGO = the weapon,
+            // ARGN1 = swing tenths (writable).
             var hitTryArgs = new TriggerArgs
             {
-                CharSrc = _character,
-                O1 = target,
+                CharSrc = target,
+                O1 = weapon,
                 ItemSrc = weapon,
                 N1 = swingDelayTenths,
             };
@@ -953,12 +956,21 @@ public sealed class ClientCombatHandler
 
         if (_triggerDispatcher != null)
         {
-            var hitCheckArgs = new TriggerArgs { CharSrc = _character, O1 = target, ItemSrc = weapon };
+            // Source-X @HitCheck: SRC = the victim, ARGN1 = war swing state,
+            // ARGN2 = damage type.
+            var hitCheckArgs = new TriggerArgs
+            {
+                CharSrc = target,
+                O1 = weapon,
+                ItemSrc = weapon,
+                N1 = (int)_character.CombatSwingState,
+                N2 = (int)CombatEngine.GetWeaponDamageType(weapon),
+            };
             if (_triggerDispatcher.FireCharTrigger(_character, CharTrigger.HitCheck, hitCheckArgs) == TriggerResult.True)
             {
                 EmitMissFeedback(target, weapon);
                 _triggerDispatcher.FireCharTrigger(_character, CharTrigger.HitMiss,
-                    new TriggerArgs { CharSrc = _character, O1 = target });
+                    new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon });
                 return;
             }
         }
@@ -1029,8 +1041,9 @@ public sealed class ClientCombatHandler
                 if (target != null)
                 {
                     EmitMissFeedback(target, weapon);
+                    // Source-X @HitMiss: SRC = the victim, ARGO = the weapon.
                     _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.HitMiss,
-                        new TriggerArgs { CharSrc = _character, O1 = target });
+                        new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon });
                 }
                 return;
         }
@@ -1282,8 +1295,9 @@ public sealed class ClientCombatHandler
         }
         else
         {
+            // Source-X @HitMiss: SRC = the victim, ARGO = the weapon.
             _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.HitMiss,
-                new TriggerArgs { CharSrc = _character, O1 = target });
+                new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon });
 
             BroadcastNearby?.Invoke(_character.Position, UpdateRange,
                 new PacketSound(GetWeaponMissSound(weapon), _character.X, _character.Y, _character.Z), 0);
@@ -1884,16 +1898,31 @@ public sealed class ClientCombatHandler
                 new TriggerArgs { CharSrc = _character, N1 = (int)spell }) == TriggerResult.True)
             return;
 
-        // Fire @SpellCast — if script blocks, don't cast
+        var spellDef = _spellEngine.GetSpellDef(spell);
+
+        // Fire @SpellCast — if script blocks, don't cast. Source-X contract:
+        // ARGN1 = spell, ARGN2 = difficulty (skill req / 10), ARGN3 = cast
+        // wait time in tenths — writable, the classic "change the cast delay
+        // from script" hook.
+        int castTimeOverrideMs = 0;
         if (_triggerDispatcher != null)
         {
-            var result = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SpellCast,
-                new TriggerArgs { CharSrc = _character, N1 = (int)spell });
+            int seededWaitTenths = spellDef != null
+                ? spellDef.GetCastTime(_character.GetSkill(spellDef.GetPrimarySkill()))
+                : 0;
+            var castArgs = new TriggerArgs
+            {
+                CharSrc = _character,
+                N1 = (int)spell,
+                N2 = (spellDef?.GetDifficulty() ?? 0) / 10,
+                N3 = seededWaitTenths,
+            };
+            var result = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SpellCast, castArgs);
             if (result == TriggerResult.True)
                 return;
+            if (castArgs.N3 != seededWaitTenths && castArgs.N3 > 0)
+                castTimeOverrideMs = castArgs.N3 * 100;
         }
-
-        var spellDef = _spellEngine.GetSpellDef(spell);
 
         // Reference Cmd_Skill_Magery: Polymorph/Summon casts open their
         // script selection menu when one exists (@SkillMenu with the menu
@@ -1921,7 +1950,7 @@ public sealed class ClientCombatHandler
         // Precast: power words + animation first, target cursor after timer.
         if (targetUid == 0 && spellDef != null && SpellEngine.IsPrecastEnabled(spellDef))
         {
-            StartPrecast(spell);
+            StartPrecast(spell, castTimeOverrideMs);
             return;
         }
 
@@ -1960,6 +1989,8 @@ public sealed class ClientCombatHandler
         int castTime = _spellEngine.CastStart(_character, spell, new Serial(targetUid), targetPos);
         if (castTime > 0)
         {
+            if (castTimeOverrideMs > 0)
+                castTime = castTimeOverrideMs; // @SpellCast ARGN3 rewrite
             _character.SetCastTimerEnd(Environment.TickCount64 + castTime);
         }
         else
@@ -1971,13 +2002,15 @@ public sealed class ClientCombatHandler
         }
     }
 
-    private void StartPrecast(SpellType spell)
+    private void StartPrecast(SpellType spell, int castTimeOverrideMs = 0)
     {
         if (_character == null || _spellEngine == null) return;
 
         int castTime = _spellEngine.CastStart(_character, spell, _character.Uid, _character.Position);
         if (castTime > 0)
         {
+            if (castTimeOverrideMs > 0)
+                castTime = castTimeOverrideMs; // @SpellCast ARGN3 rewrite
             _character.SpellPrecast = true;
             _character.SetCastTimerEnd(Environment.TickCount64 + castTime);
             return;

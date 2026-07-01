@@ -97,10 +97,58 @@ public sealed class TriggerDispatcher
     public Action<string>? DebugLog { get; set; }
 
     /// <summary>
-    /// Fire a character trigger. Maps to CChar::OnTrigger.
+    /// Fire a character trigger. Maps to CChar::OnTrigger. For the Skill*
+    /// family, Source-X additionally runs the [SKILL n] resource-section stage
+    /// (Skill_OnTrigger: ON=@START/@STROKE/@SUCCESS/...) with the same args —
+    /// those blocks never executed in SphereNet before W-E. ARGN1 = skill id.
     /// </summary>
     public TriggerResult FireCharTrigger(Character ch, CharTrigger trigger, TriggerArgs args)
-        => FireCharTriggerByName(ch, GetCharTriggerName(trigger), args);
+    {
+        var result = FireCharTriggerByName(ch, GetCharTriggerName(trigger), args);
+        if (result == TriggerResult.True)
+            return result;
+
+        string? stage = GetSkillSectionStage(trigger);
+        if (stage != null)
+        {
+            var skillResult = FireSkillTrigger(args.N1, stage, ch, args);
+            if (skillResult != TriggerResult.Default)
+                return skillResult;
+        }
+        return result;
+    }
+
+    /// <summary>Source-X SKTRIG_* stage name for a char-level skill trigger,
+    /// or null when the trigger has no [SKILL] section counterpart.</summary>
+    private static string? GetSkillSectionStage(CharTrigger trigger) => trigger switch
+    {
+        CharTrigger.SkillPreStart => "PreStart",
+        CharTrigger.SkillStart => "Start",
+        CharTrigger.SkillStroke => "Stroke",
+        CharTrigger.SkillSuccess => "Success",
+        CharTrigger.SkillFail => "Fail",
+        CharTrigger.SkillAbort => "Abort",
+        CharTrigger.SkillGain => "Gain",
+        CharTrigger.SkillSelect => "Select",
+        CharTrigger.SkillUseQuick => "UseQuick",
+        CharTrigger.SkillWait => "Wait",
+        CharTrigger.SkillTargetCancel => "TargetCancel",
+        _ => null,
+    };
+
+    /// <summary>Run a [SKILL n] resource-section trigger stage (Source-X
+    /// Skill_OnTrigger). Same wrapped-args contract as FireSpellTrigger.</summary>
+    public TriggerResult FireSkillTrigger(int skillId, string trigName, Character ch, TriggerArgs args)
+    {
+        if (Resources == null || Runner == null || skillId < 0)
+            return TriggerResult.Default;
+
+        var link = Resources.GetResource(ResType.SkillDef, skillId);
+        if (link == null)
+            return TriggerResult.Default;
+
+        return RunWrapped(link, trigName, ch, args);
+    }
 
     /// <summary>Name-based variant — used by the enum path above and by the
     /// script TRIGGER verb (Source-X CV_TRIGGER), which may fire arbitrary
@@ -760,7 +808,7 @@ public sealed class TriggerDispatcher
         CharTrigger.Hunger => "Hunger",
         CharTrigger.Eat => "Eat",
         CharTrigger.Follow => "Follow",
-        CharTrigger.Jail => "Jail",
+        CharTrigger.Jail => "Jailed", // Source-X CChar sm_szTrigName: @Jailed (not @Jail)
         CharTrigger.HouseDesignCommit => "HouseDesignCommit",
         CharTrigger.HouseDesignExit => "HouseDesignExit",
         CharTrigger.MurderDecay => "MurderDecay",
@@ -841,7 +889,7 @@ public sealed class TriggerDispatcher
         CharTrigger.itemPickupSelf => "itemPickup_Self",
         CharTrigger.itemPickupStack => "itemPickup_Stack",
         CharTrigger.itemSell => "itemSell",
-        CharTrigger.itemSpellEffect => "itemSpellEffect",
+        CharTrigger.itemSpellEffect => "itemSPELL", // Source-X CChar sm_szTrigName: @itemSPELL
         CharTrigger.itemStep => "itemStep",
         CharTrigger.itemTargOnCancel => "itemTargOn_Cancel",
         CharTrigger.itemTargOnChar => "itemTargOn_Char",
@@ -907,9 +955,10 @@ public sealed class TriggerDispatcher
         ItemTrigger.Redeed => "Redeed",
         ItemTrigger.RegionEnter => "RegionEnter",
         ItemTrigger.RegionLeave => "RegionLeave",
-        ItemTrigger.ShipMove => "ShipMove",
-        ItemTrigger.ShipStop => "ShipStop",
-        ItemTrigger.ShipTurn => "ShipTurn",
+        // Source-X CItem sm_szTrigName uses the underscore forms.
+        ItemTrigger.ShipMove => "Ship_Move",
+        ItemTrigger.ShipStop => "Ship_Stop",
+        ItemTrigger.ShipTurn => "Ship_Turn",
         ItemTrigger.Smelt => "Smelt",
         ItemTrigger.Start => "Start",
         ItemTrigger.Stop => "Stop",

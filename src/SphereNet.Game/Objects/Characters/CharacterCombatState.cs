@@ -183,6 +183,19 @@ public sealed class CharacterCombatState
 
     public void ClearAttackers() => _attackers.Clear();
 
+    /// <summary>Re-add a saved attacker entry on world load — no reacquire
+    /// bump, no @CombatAdd, no last-hit refresh side effects (unlike
+    /// <see cref="RecordAttack"/>); the last-hit tick restarts at load time.</summary>
+    public void RestoreAttacker(Serial attackerUid, int totalDamage, bool ignored)
+    {
+        if (attackerUid == _owner.Uid || attackerUid == Serial.Invalid)
+            return;
+        for (int i = 0; i < _attackers.Count; i++)
+            if (_attackers[i].Uid == attackerUid)
+                return;
+        _attackers.Add(new AttackerRecord(attackerUid, totalDamage, Environment.TickCount64, ignored));
+    }
+
     /// <summary>Index of <paramref name="uid"/> in the attacker log, or -1.</summary>
     public int GetIndex(Serial uid)
     {

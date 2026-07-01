@@ -434,7 +434,56 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             return true;
         }
 
+        // DISTANCE.<uid> / DISTANCE.<x>,<y> — Source-X OC_DISTANCE: tile
+        // distance from this object's TOP-LEVEL position to another object or
+        // map point (a contained item measures from its wearer/container).
+        if (key.StartsWith("DISTANCE.", StringComparison.OrdinalIgnoreCase))
+        {
+            string arg = key[9..].Trim();
+            var myPos = GetTopLevelPosition();
+            if (arg.Contains(','))
+            {
+                var p = arg.Split(',');
+                if (p.Length >= 2 && short.TryParse(p[0], out short px) && short.TryParse(p[1], out short py))
+                {
+                    value = myPos.GetDistanceTo(new Point3D(px, py, myPos.Z, myPos.Map)).ToString();
+                    return true;
+                }
+            }
+            else if (arg.Length > 0)
+            {
+                string hex = arg.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? arg[2..] : arg;
+                if (uint.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out uint distUid))
+                {
+                    var other = ResolveWorld?.Invoke()?.FindObject(new Serial(distUid));
+                    if (other != null)
+                    {
+                        value = myPos.GetDistanceTo(other.GetTopLevelPosition()).ToString();
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
         return false;
+    }
+
+    /// <summary>Top-level map position: a character's own position, or — for a
+    /// contained/equipped item — the position of the outermost container or
+    /// wearer (Source-X GetTopLevelObj()->GetTopPoint()).</summary>
+    public Point3D GetTopLevelPosition()
+    {
+        var world = ResolveWorld?.Invoke();
+        ObjBase cur = this;
+        for (int depth = 0; depth < 64 && world != null; depth++)
+        {
+            if (cur is not Items.Item ci || !ci.ContainedIn.IsValid) break;
+            var parent = world.FindObject(ci.ContainedIn);
+            if (parent == null) break;
+            cur = parent;
+        }
+        return cur.Position;
     }
 
     public virtual bool TryExecuteCommand(string key, string args, ITextConsole source)

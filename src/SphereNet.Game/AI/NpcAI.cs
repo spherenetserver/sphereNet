@@ -2042,7 +2042,8 @@ public sealed class NpcAI
     }
 
     /// <summary>
-    /// Source-X: NPC_GetHostilityLevelToward — base hostility by creature type.
+    /// Source-X: NPC_GetHostilityLevelToward — hostility from alignment (karma),
+    /// creature ally-group families, brain kinship and fight memories.
     /// 100=extreme hatred, 0=neutral, -100=love.
     /// </summary>
     private int GetHostilityLevel(Character npc, Character target)
@@ -2059,29 +2060,121 @@ public sealed class NpcAI
         if (eval != target)
             target = eval;
 
-        // Players and berserk always hostile
-        if (target.IsPlayer || npc.NpcBrain == NpcBrainType.Berserk)
-            return 100;
+        int hostility = 0;
+        bool memBase = false;
 
-        // NPC vs NPC
-        if (!target.IsPlayer)
+        var npcRegion = _world.FindRegion(npc.Position);
+        bool guarded = npcRegion != null && npcRegion.IsFlag(RegionFlag.Guarded);
+
+        if (IsEvilForHostility(npc) && !guarded && target.IsPlayer)
         {
-            if (!_config.MonsterFight)
-                return 0;
-
-            // Same body type → never attack own kind
-            if (npc.BodyId == target.BodyId)
-                return -100;
-
-            // Same brain type → mild alliance
-            if (npc.NpcBrain == target.NpcBrain)
-                return -30;
-
-            return 100;
+            // An evil creature hates every player outside guarded towns,
+            // regardless of the player's karma.
+            hostility = 51;
+        }
+        else if (npc.NpcBrain == NpcBrainType.Berserk)
+        {
+            hostility = 100; // berserk hates everyone all the time
+        }
+        else if (!target.IsPlayer && target.NpcBrain != NpcBrainType.Berserk && !_config.MonsterFight)
+        {
+            // MONSTERFIGHT off: monsters don't hunt other monsters; the low
+            // base still lets fight memories flip it for self-defence.
+            hostility = -50;
+            memBase = true;
+        }
+        else
+        {
+            // Alignment: evil hates good karma, the virtuous hate the vile.
+            int karmaTarg = target.Karma;
+            if (IsEvilForHostility(npc))
+            {
+                if (karmaTarg > 0)
+                    hostility += karmaTarg / 1024;
+            }
+            else if (npc.Karma > 300 && karmaTarg < -100)
+            {
+                hostility += -karmaTarg / 1024;
+            }
         }
 
-        return 0;
+        if (!memBase)
+        {
+            // BodyId 0 (unset) must never match another unset body as "kin".
+            bool bodiesKnown = npc.BodyId != 0 && target.BodyId != 0;
+            if (!target.IsPlayer)
+            {
+                if (bodiesKnown && npc.BodyId == target.BodyId)
+                    hostility -= 100;               // never attack my own kind
+                else if (bodiesKnown && GetAllyGroup(npc.BodyId) == GetAllyGroup(target.BodyId))
+                    hostility -= 50;                // same creature family (orc ↔ orc mage)
+                else if (npc.NpcBrain == target.NpcBrain)
+                    hostility -= 30;                // my basic kind
+            }
+            else if (bodiesKnown && !IsPlayableBody(npc.BodyId) &&
+                     GetAllyGroup(npc.BodyId) == GetAllyGroup(target.BodyId))
+            {
+                // Source-X: only a NON-playable-bodied NPC softens toward a
+                // player who shares its ally group (human townsfolk don't get
+                // this — their friendliness comes from alignment/brain).
+                hostility -= 51;
+            }
+        }
+
+        // Grudges: prior fight/aggression memories push toward attack.
+        if (npc.Memory_FindObjTypes(target.Uid,
+                MemoryType.Fight | MemoryType.HarmedBy | MemoryType.IrritatedBy |
+                MemoryType.SawCrime | MemoryType.Aggreived) != null)
+        {
+            hostility += 50;
+            if (!target.IsPlayer && target.NpcBrain == NpcBrainType.Berserk)
+                hostility += 60;
+        }
+
+        return hostility;
     }
+
+    /// <summary>Source-X Noto_IsEvil for the hostility model. Monster/Dragon
+    /// use karma &lt;= 0 (instead of the reference's &lt; 0) so legacy chardefs
+    /// that omit KARMA keep their aggressive default.</summary>
+    private static bool IsEvilForHostility(Character npc)
+    {
+        short karma = npc.Karma;
+        return npc.NpcBrain switch
+        {
+            NpcBrainType.Monster or NpcBrainType.Dragon => karma <= 0,
+            NpcBrainType.Berserk => true,
+            NpcBrainType.Animal => karma <= -800,
+            _ => karma <= -3000,
+        };
+    }
+
+    /// <summary>Playable-character bodies (Source-X IsPlayableCharacter).</summary>
+    private static bool IsPlayableBody(ushort bodyId) => bodyId is 400 or 401 or 402 or 403;
+
+    /// <summary>Source-X NPC_GetAllyGroupType — collapse body ids into creature
+    /// families so an orc treats an orc captain/mage as kin. Ids from
+    /// uofiles_enums_creid.h; unlisted bodies are their own group.</summary>
+    private static ushort GetAllyGroup(ushort bodyId) => bodyId switch
+    {
+        400 or 401 or 402 or 403 => 400,                        // humans + ghosts
+        0x01 or 0x53 or 0x87 => 0x01,                           // ogres
+        0x02 or 0x12 => 0x02,                                   // ettins
+        0x35 or 0x36 or 0x37 => 0x36,                           // trolls
+        0x11 or 0x29 or 0x07 or 0x8A or 0x8B or 0x8C => 0x11,   // orcs
+        0x34 or 0x15 or 0x59 or 0x5A or 0x5C or 0x5D => 0x34,   // snakes/serpents
+        0x09 or 0x0A or 0x2B or 0x66 => 0x09,                   // demons
+        0x0C or 0x3B or 0x3C or 0x3D or 0x67 => 0x3C,           // dragons/drakes
+        0x04 or 0x43 => 0x04,                                   // gargoyles
+        0x16 or 0x44 or 0x45 => 0x16,                           // gazers
+        0x18 or 0x4E or 0x4F => 0x18,                           // liches
+        0x21 or 0x23 or 0x24 => 0x21,                           // lizardmen
+        0x2A or 0x2C or 0x2D or 0x8E or 0x8F => 0x2A,           // ratmen
+        0x1E or 0x49 => 0x1E,                                   // harpies
+        0x32 or 0x38 or 0x39 or 0x93 or 0x94 => 0x32,           // skeletons
+        0x33 or 0x5E or 0x60 => 0x33,                           // slimes/oozes
+        _ => bodyId,
+    };
 
     /// <summary>
     /// Source-X: Fight_IsAttackable — checks if a character can be targeted.

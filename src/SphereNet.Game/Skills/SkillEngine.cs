@@ -108,6 +108,20 @@ public static class SkillEngine
         return successChance >= _rand.Next(1000);
     }
 
+    /// <summary>Bell-curve success roll against a raw skill VALUE instead of a
+    /// character's stored skill — used by the era-0 combat hit roll, where the
+    /// effective weapon skill of an NPC is inferred from its stats rather than
+    /// read from the (usually empty) skill table.</summary>
+    public static bool CheckSuccessValue(int skillValue, int difficulty)
+    {
+        if (difficulty < 0)
+            return false;
+        int successChance = CalcSCurve(skillValue - difficulty * 10, SkillVariance);
+        if (successChance <= 0)
+            return false;
+        return successChance >= _rand.Next(1000);
+    }
+
     /// <summary>
     /// Quick skill use: check + experience in one call.
     /// Maps to Skill_UseQuick in Source-X.

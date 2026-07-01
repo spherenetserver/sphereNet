@@ -121,6 +121,10 @@ public sealed class PartyManager
 {
     private readonly List<PartyDef> _parties = [];
 
+    /// <summary>Every active party — used by the periodic party stats push
+    /// (Source-X CPartyDef::AddStatsUpdate streams member HP bars).</summary>
+    public IReadOnlyList<PartyDef> Parties => _parties;
+
     /// <summary>Find the party a character belongs to.</summary>
     public PartyDef? FindParty(Serial charUid) =>
         _parties.FirstOrDefault(p => p.IsMember(charUid));

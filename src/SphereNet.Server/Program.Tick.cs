@@ -906,6 +906,12 @@ public static partial class Program
             }
         }
 
+        // Party member HP bars (Source-X CPartyDef::AddStatsUpdate): push every
+        // member's health to every OTHER online member so the party gump bars
+        // track them beyond visual range. ~2s cadence (40 ticks at 50ms).
+        if (_world.TickCount % 40 == 0 && _partyManager != null)
+            PushPartyStats();
+
         // Ship movement ticks
         _shipEngine?.OnTickAll();
 
@@ -920,6 +926,39 @@ public static partial class Program
         ProcessIdleTimeout();
         _telnet?.Tick();
         _webStatus?.Tick();
+    }
+
+    /// <summary>Send each party member's health bar to every other online
+    /// member (Source-X CPartyDef::AddStatsUpdate). Distance-independent —
+    /// that is the point: the party gump tracks members out of visual range.</summary>
+    private static void PushPartyStats()
+    {
+        foreach (var party in _partyManager.Parties)
+        {
+            if (party.MemberCount < 2) continue;
+
+            // Resolve online members once per party.
+            var online = new List<(SphereNet.Game.Objects.Characters.Character Ch, GameClient Client)>(party.MemberCount);
+            foreach (var uid in party.Members)
+            {
+                var ch = _world.FindChar(uid);
+                if (ch == null || ch.IsDeleted) continue;
+                if (TryGetClientFor(ch, out var gc))
+                    online.Add((ch, gc));
+            }
+            if (online.Count < 2) continue;
+
+            foreach (var (subject, _) in online)
+            {
+                var pkt = new SphereNet.Network.Packets.Outgoing.PacketUpdateHealth(
+                    subject.Uid.Value, subject.MaxHits, subject.Hits);
+                foreach (var (other, client) in online)
+                {
+                    if (other == subject) continue;
+                    client.Send(pkt);
+                }
+            }
+        }
     }
 
     private static void ProcessIdleTimeout()

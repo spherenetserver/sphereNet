@@ -174,8 +174,9 @@ public static class VendorEngine
             totalCost = 0;
         }
 
-        // Credit the vendor's money pool with what the player paid (opt-in).
-        if (totalCost > 0 && VendorTracksMoney(vendor))
+        // Credit the vendor's money pool with what the player paid (Source-X
+        // pVendor->GetBank()->m_itEqBankBox.m_Check_Amount += iCostTotal).
+        if (totalCost > 0)
             SetVendorGold(vendor, GetVendorGold(vendor) + totalCost);
 
         foreach (var (stock, amount, _) in resolved)
@@ -204,8 +205,18 @@ public static class VendorEngine
     /// Process a sell request from player to vendor.
     /// Returns total gold earned.
     /// </summary>
-    public static int ProcessSell(Character player, Character vendor, IReadOnlyList<TradeEntry> items)
+    public static int ProcessSell(Character player, Character vendor, IReadOnlyList<TradeEntry> items) =>
+        ProcessSell(player, vendor, items, out _);
+
+    /// <summary>
+    /// Sell with shortfall reporting: Source-X fills line by line and BREAKS
+    /// with a shortfall flag when the vendor's purse runs out — a partial fill,
+    /// not all-or-nothing. <paramref name="shortfall"/> lets the caller bark
+    /// the "I have no money" line.
+    /// </summary>
+    public static int ProcessSell(Character player, Character vendor, IReadOnlyList<TradeEntry> items, out bool shortfall)
     {
+        shortfall = false;
         if (vendor.NpcBrain != Core.Enums.NpcBrainType.Vendor)
             return 0;
 
@@ -248,9 +259,24 @@ public static class VendorEngine
             validated.Add((entry, found, serverPrice));
         }
 
-        // A money-tracking vendor must be able to afford the full payout (all-or-
-        // nothing, checked before any mutation). An untracked vendor pays freely.
-        if (VendorTracksMoney(vendor) && GetVendorGold(vendor) < totalValue)
+        // Source-X fills line by line against the vendor's purse and BREAKS
+        // with a shortfall when the next line can't be paid — earlier lines
+        // still complete (partial fill).
+        long purse = GetVendorGold(vendor);
+        long payout = 0;
+        var affordable = new List<(TradeEntry Entry, Item Item, int ServerPrice)>(validated.Count);
+        foreach (var line in validated)
+        {
+            long linePrice = (long)line.ServerPrice * line.Entry.Amount;
+            if (payout + linePrice > purse)
+            {
+                shortfall = true;
+                break;
+            }
+            payout += linePrice;
+            affordable.Add(line);
+        }
+        if (affordable.Count == 0)
             return 0;
 
         if (World != null)
@@ -259,7 +285,7 @@ public static class VendorEngine
             if (backpack == null)
                 return 0;
 
-            foreach (var (entry, found, _) in validated)
+            foreach (var (entry, found, _) in affordable)
             {
                 if (found.Amount <= entry.Amount)
                     found.Delete();
@@ -267,12 +293,11 @@ public static class VendorEngine
                     found.Amount -= (ushort)entry.Amount;
             }
 
-            // Debit the vendor's money pool (opt-in).
-            if (VendorTracksMoney(vendor))
-                SetVendorGold(vendor, GetVendorGold(vendor) - totalValue);
+            // Debit the vendor's purse by what was actually paid out.
+            SetVendorGold(vendor, purse - payout);
 
             // Add gold to player (split into 60000-max piles)
-            int remaining = (int)totalValue;
+            int remaining = (int)payout;
             while (remaining > 0 && backpack != null)
             {
                 int pile = Math.Min(remaining, 60000);
@@ -286,16 +311,18 @@ public static class VendorEngine
             }
         }
 
-        return (int)totalValue;
+        return (int)payout;
     }
 
-    // ---- Opt-in vendor money pool (Source-X m_Check_Amount). A vendor with a
-    // VENDOR_GOLD tag tracks its funds: buying credits it, selling debits it and is
-    // rejected when the vendor cannot afford the full payout. A vendor WITHOUT the
-    // tag has unlimited funds — the legacy behaviour, so existing vendors are
-    // unchanged. ----
+    // ---- Vendor money pool (Source-X m_Check_Amount): ALWAYS tracked. Buying
+    // credits the vendor's purse, selling debits it; the purse is topped up to
+    // RestockGold at every restock, so a freshly opened vendor can buy. A
+    // vendor with no VENDOR_GOLD tag simply has an empty purse until then. ----
 
-    /// <summary>True when this vendor tracks a finite gold pool (the VENDOR_GOLD tag exists).</summary>
+    /// <summary>Gold the vendor purse is topped up to at each restock.</summary>
+    public static int RestockGold { get; set; } = 2000;
+
+    /// <summary>Source-X always tracks vendor funds; kept for API compatibility.</summary>
     public static bool VendorTracksMoney(Character vendor) =>
         vendor.TryGetTag("VENDOR_GOLD", out string? s) && !string.IsNullOrWhiteSpace(s);
 
@@ -355,12 +382,34 @@ public static class VendorEngine
         return Math.Max(1, itemId / 10 + 5);
     }
 
-    /// <summary>Get the server-side sell price (what vendor pays). Usually half of buy price.</summary>
+    /// <summary>Default VENDORMARKUP percent (Source-X g_Cfg.m_iVendorMarkup).</summary>
+    public static int DefaultVendorMarkup { get; set; } = 15;
+
+    /// <summary>Source-X NPC_GetVendorMarkup: vendor tag → region tag → config
+    /// default. The markup is the vendor's profit margin percent.</summary>
+    public static int GetVendorMarkup(Character vendor)
+    {
+        if (vendor.TryGetTag("VENDORMARKUP", out string? v) && int.TryParse(v, out int mv))
+            return Math.Clamp(mv, 0, 99);
+        var region = World?.FindRegion(vendor.Position);
+        if (region != null && region.TryGetTag("VENDORMARKUP", out string? rv) &&
+            int.TryParse(rv, out int rmv))
+            return Math.Clamp(rmv, 0, 99);
+        return Math.Clamp(DefaultVendorMarkup, 0, 99);
+    }
+
+    /// <summary>Server-side sell price (what the vendor pays the player).
+    /// The stock PRICE is the buy (marked-up) price, so the payout works the
+    /// markup out of it twice: base = price/(1+m), payout = base*(1-m) —
+    /// Source-X GetVendorPrice with iConvertFactor = -markup. The old fixed
+    /// buy/2 ignored VENDORMARKUP entirely.</summary>
     internal static int GetServerSellPrice(Character vendor, Item item)
     {
-        if (item.TryGetTag("PRICE", out string? priceStr) && int.TryParse(priceStr, out int p))
-            return Math.Max(1, p / 2);
-        return Math.Max(1, GetServerBuyPrice(vendor, item.BaseId) / 2);
+        int buyPrice = item.TryGetTag("PRICE", out string? priceStr) && int.TryParse(priceStr, out int p)
+            ? Math.Max(1, p)
+            : Math.Max(1, GetServerBuyPrice(vendor, item.BaseId));
+        int markup = GetVendorMarkup(vendor);
+        return Math.Max(1, buyPrice * (100 - markup) / (100 + markup));
     }
 
     /// <summary>Count gold in player's backpack recursively.</summary>
@@ -441,6 +490,12 @@ public static class VendorEngine
     {
         if (World == null) return;
         if (vendor.NpcBrain != Core.Enums.NpcBrainType.Vendor) return;
+
+        // Restock refills the vendor's purse first (Source-X: the vendor bank
+        // is the buy fund) — even for vendors with no VENDORINV stock list, so
+        // a buy-only vendor can still purchase from players.
+        if (GetVendorGold(vendor) < RestockGold)
+            SetVendorGold(vendor, RestockGold);
 
         if (!vendor.TryGetTag("VENDORINV", out string? invDef) || string.IsNullOrEmpty(invDef))
             return;

@@ -307,6 +307,13 @@ public sealed class SpellEngine
     /// </summary>
     public bool TryInterruptFromDamage(Character caster, int damage)
     {
+        // Source-X CChar::OnTakeDamage: taking damage removes paralyze (the
+        // LAYER_SPELL_Paralyze memory is deleted) unless DAMAGE_NOUNPARALYZE.
+        // Every damage path — melee, NPC swing, spell — routes through this
+        // method, so the break lives beside the other on-damage disturbs.
+        if (damage > 0 && caster.IsStatFlag(StatFlag.Freeze))
+            BreakParalyze(caster);
+
         if (!caster.IsCasting)
             return false;
 
@@ -928,12 +935,66 @@ public sealed class SpellEngine
             effect += effect * caster.GetSkill(SkillType.EvalInt) / 1000;
         }
 
-        // Magic resist
+        // Magic resist percent — computed BEFORE the trigger so a script can
+        // read and override it (LOCAL.Resist), applied after.
+        int resistPct = 0;
         if (def.IsFlag(SpellFlag.Resist) && caster != target)
+            resistPct = CalcMagicResist(target, def, caster);
+
+        // @SpellEffect — Source-X CChar::OnSpellEffect fires this on the
+        // AFFECTED char (not the caster) with SRC = caster, ARGN1 = spell,
+        // ARGN2 = skill level, and the LOCAL contract (Effect / Resist /
+        // Duration / Sound / DamageType / CreateObject1 / Explode). RETURN 1
+        // cancels the effect on this target; Effect / Resist / Duration
+        // mutations are read back. The per-spell [SPELL] @EFFECT stage runs
+        // right after with the same shared args, as in the reference.
+        if (TriggerDispatcher != null)
         {
-            int resist = CalcMagicResist(target, def, caster);
-            effect -= effect * resist / 100;
+            var fxLocals = new SphereNet.Scripting.Variables.VarMap();
+            int defDurationTenths = def.GetDuration(caster.GetSkill(def.GetPrimarySkill()));
+            fxLocals.SetInt("DamageType", 0);
+            fxLocals.SetInt("CreateObject1", def.EffectId);
+            fxLocals.SetInt("Explode", 0);
+            fxLocals.SetInt("Sound", def.Sound);
+            fxLocals.SetInt("Effect", effect);
+            fxLocals.SetInt("Resist", resistPct);
+            fxLocals.SetInt("Duration", defDurationTenths);
+            var fxArgs = new TriggerArgs
+            {
+                CharSrc = caster,
+                N1 = (int)def.Id,
+                N2 = skillLevel,
+                Locals = fxLocals,
+            };
+            if (TriggerDispatcher.FireCharTrigger(target, CharTrigger.SpellEffect, fxArgs) == TriggerResult.True)
+                return;
+            if (TriggerDispatcher.FireSpellTrigger(def.Id, "Effect", target, fxArgs) == TriggerResult.True)
+                return;
+
+            effect = (int)fxLocals.GetInt("Effect", effect);
+            resistPct = (int)fxLocals.GetInt("Resist", resistPct);
+            long durOverride = fxLocals.GetInt("Duration", defDurationTenths);
+            _durationOverrideTenths = durOverride != defDurationTenths && durOverride > 0
+                ? (int)durOverride : null;
         }
+
+        try
+        {
+            ApplyCharEffectResolved(caster, target, def, effect, resistPct);
+        }
+        finally
+        {
+            _durationOverrideTenths = null;
+        }
+    }
+
+    /// <summary>Post-trigger application: resist subtraction + the per-flag
+    /// dispatch. Split out so the @SpellEffect duration override is scoped
+    /// with try/finally around every ScheduleEffectExpiry call.</summary>
+    private void ApplyCharEffectResolved(Character caster, Character target, SpellDef def, int effect, int resistPct)
+    {
+        if (resistPct > 0)
+            effect -= effect * resistPct / 100;
 
         // Damage spells
         if (def.IsFlag(SpellFlag.Damage))
@@ -1416,6 +1477,9 @@ public sealed class SpellEngine
                 break;
             case SpellType.Dispel:
             case SpellType.MassDispel:
+                // Source-X Dispel removes the target's dispellable ATTR_MAGIC
+                // spell memories (buffs/curses), not only conjured creatures.
+                StripDispellableEffects(target);
                 if (target.IsStatFlag(StatFlag.Conjured) && !target.IsDead)
                 {
                     if (IsMagicFlag(MagicConfigFlags.DispelKillSummons))
@@ -1575,10 +1639,14 @@ public sealed class SpellEngine
     /// at 0 a 30-second floor kicks in so buffs don't expire instantly
     /// on scripts that forgot the field. Re-casting on the same target
     /// refreshes the timer and merges the delta rather than stacking.</summary>
+    /// <summary>@SpellEffect LOCAL.Duration override (tenths), scoped to the
+    /// current ApplyCharEffect dispatch; null = use the spell def curve.</summary>
+    private int? _durationOverrideTenths;
+
     private ActiveSpellEffect ScheduleEffectExpiry(Character caster, Character target, SpellType spell, SpellDef def)
     {
         int casterSkill = caster.GetSkill(def.GetPrimarySkill());
-        int durationTenths = def.GetDuration(casterSkill);
+        int durationTenths = _durationOverrideTenths ?? def.GetDuration(casterSkill);
         if (durationTenths <= 0) durationTenths = 300; // 30s floor
         long expireTick = Environment.TickCount64 + (long)durationTenths * 100L;
 
@@ -1605,6 +1673,39 @@ public sealed class SpellEngine
         // @SpellEffectAdd (Source-X CCharSpell) — SRC = caster, ARGN1 = spell.
         Character.OnSpellEffectAdd?.Invoke(target, caster, (int)spell);
         return eff;
+    }
+
+    /// <summary>Break an active paralyze early (Source-X: the paralyze spell
+    /// memory is deleted when the victim takes damage). Clears the Freeze
+    /// flag and retires the matching active-effect entry so its later expiry
+    /// doesn't double-fire the removal event.</summary>
+    public void BreakParalyze(Character victim)
+    {
+        victim.ClearStatFlag(StatFlag.Freeze);
+        for (int i = _activeEffects.Count - 1; i >= 0; i--)
+        {
+            if (_activeEffects[i].Target != victim || _activeEffects[i].Spell != SpellType.Paralyze)
+                continue;
+            _activeEffects.RemoveAt(i);
+            Character.OnSpellEffectRemove?.Invoke(victim, (int)SpellType.Paralyze);
+        }
+    }
+
+    /// <summary>Dispel: revert and remove every temporary spell effect on the
+    /// target (Source-X removes the dispellable ATTR_MAGIC spell-memory items
+    /// — Bless/Curse/NightSight/Protection/Reflect/Paralyze and the rest of
+    /// the LAYER_SPELL family).</summary>
+    public void StripDispellableEffects(Character target)
+    {
+        for (int i = _activeEffects.Count - 1; i >= 0; i--)
+        {
+            var eff = _activeEffects[i];
+            if (eff.Target != target)
+                continue;
+            _activeEffects.RemoveAt(i);
+            RevertDeltas(eff);
+            Character.OnSpellEffectRemove?.Invoke(target, (int)eff.Spell);
+        }
     }
 
     /// <summary>Walk the active-effect list once per world tick and undo

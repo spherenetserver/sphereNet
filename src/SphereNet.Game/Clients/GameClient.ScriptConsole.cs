@@ -535,130 +535,165 @@ public sealed partial class GameClient
         return noto;
     }
 
+    // Source-X Noto_CalcFlag decision order (CCharNotoriety.cpp): OVERRIDE.NOTO →
+    // incognito → invul → arena → [not-self: party → pet-owner/inherit → guild
+    // same/ally/war] → evil → viewer-memory grey → criminal → neutral/permagrey →
+    // good. Party/guild come BEFORE criminal/murderer: a same-party or same-guild
+    // murderer renders GREEN to his fellows.
     private static byte ComputeNotorietyBase(GameWorld? world, Character? viewer, Character subject)
     {
+        // TAG.OVERRIDE.NOTO on the subject wins over every computed branch.
+        if (subject.TryGetTag("OVERRIDE.NOTO", out string? notoOverride) &&
+            byte.TryParse(notoOverride, out byte forced) && forced >= 1 && forced <= 7)
+            return forced;
+
         if (viewer == null)
             return 3;
-        if (subject == viewer)
-            return 1;
+
+        // Incognito checked BEFORE invul (an incognito+invul char shows neutral).
+        if (subject.IsStatFlag(StatFlag.Incognito))
+            return 3;
 
         if (subject.IsStatFlag(StatFlag.Invul))
             return 7;
-
-        if (subject.IsStatFlag(StatFlag.Incognito))
-            return 3;
 
         var targetRegion = world?.FindRegion(subject.Position);
         if (targetRegion != null && targetRegion.IsFlag(RegionFlag.Arena))
             return 3;
 
-        bool isRedZone = targetRegion != null && targetRegion.IsFlag(RegionFlag.RedZone);
-        if (isRedZone)
+        // Source-X fSelfCheck: looking at yourself skips party/guild/pet but
+        // still resolves evil/criminal — a murderer sees himself red.
+        bool selfCheck = subject == viewer;
+        bool subjectIsPlayerChar = subject.IsPlayer || subject.TryGetTag("ACCOUNT", out _);
+
+        if (!selfCheck)
         {
-            if (subject.IsMurderer) return 6;
-            if (subject.Karma > 0) return 1;
-        }
+            // Same party → green, before any criminal/murderer branch.
+            var myParty = Character.ResolvePartyFinder?.Invoke(viewer.Uid);
+            if (myParty != null && myParty.IsMember(subject.Uid))
+                return 2;
 
-        if (subject.IsMurderer)
-            return 6;
-
-        if (subject.IsCriminal || subject.IsStatFlag(StatFlag.Criminal))
-            return 4;
-
-        var guildMgr = Character.ResolveGuildManager?.Invoke(viewer.Uid);
-        if (guildMgr != null)
-        {
-            var myGuild = guildMgr.FindGuildFor(viewer.Uid);
-            var theirGuild = guildMgr.FindGuildFor(subject.Uid);
-            if (myGuild != null && theirGuild != null)
+            if (!subjectIsPlayerChar && subject.OwnerSerial.IsValid && world != null)
             {
-                if (myGuild == theirGuild) return 2;
-                if (myGuild.IsAlliedWith(theirGuild.StoneUid)) return 2;
-                if (myGuild.IsAtWarWith(theirGuild.StoneUid)) return 5;
-            }
-        }
-
-        var myParty = Character.ResolvePartyFinder?.Invoke(viewer.Uid);
-        if (myParty != null && myParty.IsMember(subject.Uid))
-            return 2;
-
-        // Personal grey (Source-X Noto_CalcFlag MEMORY_SAWCRIME | MEMORY_AGGREIVED):
-        // the subject shows grey to THIS viewer when the viewer remembers them as
-        // a witnessed criminal (SawCrime) or as an aggressor who harmed them
-        // (HarmedBy — SphereNet's aggrieved memory). A wilderness attacker / thief
-        // who is not globally criminal is thus grey to their victim and to anyone
-        // who saw the crime, while staying blue to everyone else. Display-only.
-        if (subject.IsPlayer &&
-            viewer.Memory_FindObjTypes(subject.Uid, MemoryType.SawCrime | MemoryType.HarmedBy) != null)
-            return 4;
-
-        if (subject.TryGetTag("NOTO.PERMAGREY", out string? pg) && pg == "1")
-            return 3;
-
-        bool isActuallyPlayer = subject.IsPlayer || subject.TryGetTag("ACCOUNT", out _);
-        if (!isActuallyPlayer)
-        {
-            // A tamed pet / summon inherits its owner's notoriety (Source-X
-            // Noto_GetFlag pet→owner): the viewer's own pet shows friendly green,
-            // another player's pet takes that owner's colour, and an ownerless
-            // creature falls back to its own NPC notoriety.
-            if (subject.OwnerSerial.IsValid && world != null)
-            {
+                // Your own pet renders NEUTRAL by default in Source-X (the
+                // OF_PetBehaviorOwnerNeutral flag flips it to true notoriety).
                 if (subject.OwnerSerial == viewer.Uid)
-                    return 2; // your own pet — friendly green
+                    return 3;
+                // Another player's pet inherits its master's notoriety.
                 var owner = world.FindChar(subject.OwnerSerial);
                 if (owner != null && !owner.IsDeleted && owner != subject &&
                     (owner.IsPlayer || owner.TryGetTag("ACCOUNT", out _)))
                     return ComputeNotorietyBase(world, viewer, owner);
             }
-            return GetNpcNotoriety(subject);
+
+            // Guild relations — same/ally → green, declared war → orange.
+            var guildMgr = Character.ResolveGuildManager?.Invoke(viewer.Uid);
+            if (guildMgr != null)
+            {
+                var myGuild = guildMgr.FindGuildFor(viewer.Uid);
+                var theirGuild = guildMgr.FindGuildFor(subject.Uid);
+                if (myGuild != null && theirGuild != null)
+                {
+                    if (myGuild == theirGuild) return 2;
+                    if (myGuild.IsAlliedWith(theirGuild.StoneUid)) return 2;
+                    if (myGuild.IsAtWarWith(theirGuild.StoneUid)) return 5;
+                }
+            }
+        }
+
+        // skip_guilds:
+        if (IsNotoEvil(subject, targetRegion))
+            return 6;
+
+        // Personal grey (MEMORY_SAWCRIME | MEMORY_AGGREIVED): grey to THIS
+        // viewer only — the victim/witness of an otherwise-blue aggressor.
+        if (!selfCheck && subject.IsPlayer &&
+            viewer.Memory_FindObjTypes(subject.Uid, MemoryType.SawCrime | MemoryType.HarmedBy) != null)
+            return 4;
+
+        if (subject.IsCriminal || subject.IsStatFlag(StatFlag.Criminal))
+            return 4;
+
+        if (IsNotoNeutral(subject) ||
+            (subject.TryGetTag("NOTO.PERMAGREY", out string? pg) && pg == "1"))
+            return 3;
+
+        if (!subjectIsPlayerChar)
+        {
+            // Non-evil, non-neutral NPC: Source-X resolves GOOD here; keep the
+            // SphereNet role colours for protected townsfolk (healer/banker
+            // render invul-yellow because their STATF_INVUL isn't modeled).
+            return subject.NpcBrain switch
+            {
+                NpcBrainType.Healer or NpcBrainType.Banker => 7,
+                _ => 1,
+            };
         }
 
         return 1;
     }
 
-    internal byte GetNotoriety(Character ch) => ComputeNotoriety(_world, _character, ch);
-
-    /// <summary>Notoriety for non-player mobiles. Source-X Noto_CalcFlag
-    /// for NPCs mixes brain type and karma:
-    ///  - monster / berserk / dragon brain → red (always hostile)
-    ///  - healer / banker → yellow (protected / invul-by-role)
-    ///  - vendor / stable / guard / human → blue (friendly townfolk)
-    ///  - animal → grey (neutral wildlife, huntable)
-    ///  - karma overrides: very negative → red, negative → grey criminal,
-    ///    very positive → blue — lets scripts flip a normally-blue
-    ///    townsfolk into a red renegade via SET KARMA.</summary>
-    /// <summary>Source-X Noto_IsEvil + Noto_CalcFlag for NPCs. Evil thresholds
-    /// differ per brain type: Monster/Dragon karma&lt;0, Berserk always,
-    /// Animal karma&lt;=-800, NPC karma&lt;=-3000.</summary>
-    private static byte GetNpcNotoriety(Character ch)
+    /// <summary>Source-X CChar::Noto_IsEvil — murderer, karma-evil player
+    /// (PLAYEREVIL), brain-based NPC karma thresholds, and the guarded
+    /// RED-zone inversion (murderers are normal there, good karma is not).</summary>
+    private static bool IsNotoEvil(Character subject, SphereNet.Game.World.Regions.Region? region)
     {
-        switch (ch.NpcBrain)
+        short karma = subject.Karma;
+
+        // Red zone inverts: murderers pass as normal, low karma is evil.
+        if (region != null && region.IsFlag(RegionFlag.RedZone))
+        {
+            if (subject.IsMurderer)
+                return false;
+            if (subject.IsPlayer)
+                return karma < Character.PlayerKarmaEvil;
+            return karma < 0;
+        }
+
+        if (subject.IsMurderer)
+            return true;
+
+        switch (subject.NpcBrain)
         {
             case NpcBrainType.Monster:
             case NpcBrainType.Dragon:
+                if (!subject.IsPlayer) return karma < 0;
+                break;
             case NpcBrainType.Berserk:
-                return 6; // always hostile / red
-            case NpcBrainType.Healer:
-            case NpcBrainType.Banker:
-                return 7; // yellow — invul by role
-            case NpcBrainType.Guard:
-                return 1; // blue — law enforcement
-            case NpcBrainType.Vendor:
-            case NpcBrainType.Stable:
-            case NpcBrainType.Human:
-                if (ch.Karma <= -3000) return 6; // evil NPC
-                if (ch.Karma <= -500) return 4;  // criminal NPC
-                return 1; // friendly
+                if (!subject.IsPlayer) return true;
+                break;
             case NpcBrainType.Animal:
-                if (ch.Karma <= -800) return 6; // evil animal
-                return 3; // neutral wildlife
-            default:
-                if (ch.Karma <= -3000) return 6;
-                if (ch.Karma <= -500) return 4;
-                return ch.Karma > 500 ? (byte)1 : (byte)3;
+                if (!subject.IsPlayer) return karma <= -800;
+                break;
         }
+
+        if (subject.IsPlayer)
+            return karma < Character.PlayerKarmaEvil;
+        return karma <= -3000;
     }
+
+    /// <summary>Source-X CChar::Noto_IsNeutral — brain/karma neutrality
+    /// thresholds; players use PLAYERNEUTRAL.</summary>
+    private static bool IsNotoNeutral(Character subject)
+    {
+        short karma = subject.Karma;
+        if (!subject.IsPlayer)
+        {
+            switch (subject.NpcBrain)
+            {
+                case NpcBrainType.Monster:
+                case NpcBrainType.Berserk:
+                    return karma <= 0;
+                case NpcBrainType.Animal:
+                    return karma <= 100;
+            }
+        }
+        if (subject.IsPlayer)
+            return karma < Character.PlayerKarmaNeutral;
+        return karma < 0;
+    }
+
+    internal byte GetNotoriety(Character ch) => ComputeNotoriety(_world, _character, ch);
 
     // ==================== ITextConsole ====================
 

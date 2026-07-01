@@ -427,8 +427,13 @@ public sealed class ClientWorldFeaturesHandler
             return;
         }
 
-        int result = VendorEngine.ProcessSell(_character, vendor, entries);
-        NpcSpeech(vendor, ServerMessages.GetFormatted("npc_vendor_sell_ty", result, result == 1 ? "" : "s"));
+        int result = VendorEngine.ProcessSell(_character, vendor, entries, out bool shortfall);
+        // Source-X partial fill: the purse ran dry mid-sale — bark the shortfall
+        // so the player knows why only part (or none) of the batch was bought.
+        if (shortfall)
+            NpcSpeech(vendor, "I cannot afford to buy all of that from thee.");
+        if (result > 0 || !shortfall)
+            NpcSpeech(vendor, ServerMessages.GetFormatted("npc_vendor_sell_ty", result, result == 1 ? "" : "s"));
         RefreshBackpackContents();
         SendCharacterStatus(_character);
     }
@@ -441,10 +446,12 @@ public sealed class ClientWorldFeaturesHandler
         return Math.Max(1, item.BaseId / 10 + 5); // default price
     }
 
-    /// <summary>Get the sell price (what vendor pays the player). Usually half of buy price.</summary>
+    /// <summary>Get the sell price (what vendor pays the player) — same
+    /// VENDORMARKUP math the server-side check uses, so the displayed list
+    /// matches the payout.</summary>
     internal static int GetVendorItemSellPrice(Character vendor, Item item)
     {
-        return Math.Max(1, GetVendorItemPrice(vendor, item) / 2);
+        return VendorEngine.GetServerSellPrice(vendor, item);
     }
 
     /// <summary>Fire the per-item @Buy / @Sell trigger BEFORE the transfer and
@@ -823,30 +830,55 @@ public sealed class ClientWorldFeaturesHandler
         }
         else if (myMember.Priv == GuildPriv.Master)
         {
+            // Two columns — the master verb surface mirrors the Source-X
+            // guild-stone MASTERMENU (CItemStone_functions.tbl).
             gump.AddButton(30, btnY, 4005, 4007, 2); // Disband
             gump.AddText(70, btnY, 0, "Disband Guild");
+            gump.AddButton(260, btnY, 4005, 4007, 15); // Dismiss member
+            gump.AddText(300, btnY, 0, "Dismiss Member");
             btnY += 25;
             gump.AddButton(30, btnY, 4005, 4007, 10); // Accept candidates
             gump.AddText(70, btnY, 0, "Accept Candidate");
+            gump.AddButton(260, btnY, 4005, 4007, 16); // Declare alliance
+            gump.AddText(300, btnY, 0, "Declare Alliance");
             btnY += 25;
             gump.AddButton(30, btnY, 4005, 4007, 11); // Set title
             gump.AddText(70, btnY, 0, "Set Member Title");
+            gump.AddButton(260, btnY, 4005, 4007, 17); // Break alliance
+            gump.AddText(300, btnY, 0, "Break Alliance");
             btnY += 25;
             gump.AddButton(30, btnY, 4005, 4007, 12); // Declare war
             gump.AddText(70, btnY, 0, "Declare War");
-            btnY += 25;
-            gump.AddButton(30, btnY, 4005, 4007, 13); // Declare peace
-            gump.AddText(70, btnY, 0, "Declare Peace");
+            gump.AddButton(260, btnY, 4005, 4007, 13); // Declare peace
+            gump.AddText(300, btnY, 0, "Declare Peace");
             btnY += 25;
             gump.AddButton(30, btnY, 4005, 4007, 14); // Set charter
             gump.AddText(70, btnY, 0, "Set Charter");
             gump.AddTextEntry(170, btnY, 250, 20, 0, 1, guild.Charter);
+            btnY += 25;
+            gump.AddButton(30, btnY, 4005, 4007, 18); // Rename guild
+            gump.AddText(70, btnY, 0, "Set Name");
+            gump.AddTextEntry(170, btnY, 250, 20, 0, 2, guild.Name);
+            btnY += 25;
+            gump.AddButton(30, btnY, 4005, 4007, 19); // Set abbreviation
+            gump.AddText(70, btnY, 0, "Set Abbreviation");
+            gump.AddTextEntry(170, btnY, 100, 20, 0, 3, guild.Abbreviation);
             btnY += 25;
         }
         else
         {
             gump.AddButton(30, btnY, 4005, 4007, 3); // Leave
             gump.AddText(70, btnY, 0, "Leave Guild");
+            btnY += 25;
+        }
+        if (myMember != null)
+        {
+            // Member-level verbs: abbreviation display toggle + fealty vote
+            // (Source-X TOGGLEABBREVIATION / DECLAREFEALTY).
+            gump.AddButton(30, btnY, 4005, 4007, 20);
+            gump.AddText(70, btnY, 0, myMember.ShowAbbrev ? "Hide Abbreviation" : "Show Abbreviation");
+            gump.AddButton(260, btnY, 4005, 4007, 21);
+            gump.AddText(300, btnY, 0, "Declare Fealty");
             btnY += 25;
         }
         if (!string.IsNullOrEmpty(guild.WebUrl))
@@ -970,6 +1002,135 @@ public sealed class ClientWorldFeaturesHandler
                     guild.Charter = charterEntry.Text.Trim();
                     SysMessage(ServerMessages.Get("guild_charter_updated"));
                 }
+                break;
+            }
+            case 15: // Dismiss member (Source-X DISMISSMEMBER) — master only
+            {
+                if (guild.FindMember(_character.Uid)?.Priv != GuildPriv.Master)
+                {
+                    SysMessage(ServerMessages.Get("msg_insufficient_priv"));
+                    break;
+                }
+                SysMessage("Target the member to dismiss.");
+                SetPendingTarget((serial, x, y, z, graphic) =>
+                {
+                    var target = _world.FindChar(new Serial(serial));
+                    if (target == null) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
+                    if (target.Uid == _character.Uid) { SysMessage("Use Disband or Leave instead."); return; }
+                    if (guild.FindMember(target.Uid) == null)
+                    {
+                        SysMessage(ServerMessages.Get("guild_not_member"));
+                        return;
+                    }
+                    guild.RemoveMember(target.Uid);
+                    SysMessage($"{target.Name} has been dismissed from the guild.");
+                });
+                break;
+            }
+            case 16: // Declare alliance (Source-X DECLAREPEACE/ally path) — master only
+            {
+                if (guild.FindMember(_character.Uid)?.Priv != GuildPriv.Master)
+                {
+                    SysMessage(ServerMessages.Get("msg_insufficient_priv"));
+                    break;
+                }
+                SysMessage("Target the guild stone to ally with.");
+                SetPendingTarget((serial, x, y, z, graphic) =>
+                {
+                    var targetItem = _world.FindItem(new Serial(serial));
+                    if (targetItem == null) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
+                    var allyGuild = _guildManager.GetGuild(targetItem.Uid);
+                    if (allyGuild == null || allyGuild == guild) { SysMessage(ServerMessages.Get("guild_not_stone")); return; }
+                    guild.AddAlly(targetItem.Uid);
+                    allyGuild.AddAlly(stone.Uid); // alliances are mutual
+                    SysMessage($"Alliance declared with {allyGuild.Name}.");
+                });
+                break;
+            }
+            case 17: // Break alliance — master only
+            {
+                if (guild.FindMember(_character.Uid)?.Priv != GuildPriv.Master)
+                {
+                    SysMessage(ServerMessages.Get("msg_insufficient_priv"));
+                    break;
+                }
+                SysMessage("Target the allied guild stone.");
+                SetPendingTarget((serial, x, y, z, graphic) =>
+                {
+                    var targetItem = _world.FindItem(new Serial(serial));
+                    if (targetItem == null) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
+                    guild.RemoveAlly(targetItem.Uid);
+                    _guildManager.GetGuild(targetItem.Uid)?.RemoveAlly(stone.Uid);
+                    SysMessage("The alliance has been dissolved.");
+                });
+                break;
+            }
+            case 18: // Rename guild (Source-X SETNAME) — master only
+            {
+                if (guild.FindMember(_character.Uid)?.Priv != GuildPriv.Master)
+                {
+                    SysMessage(ServerMessages.Get("msg_insufficient_priv"));
+                    break;
+                }
+                var nameEntry = textEntries.FirstOrDefault(e => e.Id == 2);
+                if (!string.IsNullOrWhiteSpace(nameEntry.Text))
+                {
+                    guild.Name = nameEntry.Text.Trim();
+                    SysMessage($"The guild is now known as {guild.Name}.");
+                }
+                break;
+            }
+            case 19: // Set abbreviation (Source-X SETABBREVIATION) — master only
+            {
+                if (guild.FindMember(_character.Uid)?.Priv != GuildPriv.Master)
+                {
+                    SysMessage(ServerMessages.Get("msg_insufficient_priv"));
+                    break;
+                }
+                var abbrevEntry = textEntries.FirstOrDefault(e => e.Id == 3);
+                if (!string.IsNullOrWhiteSpace(abbrevEntry.Text))
+                {
+                    guild.Abbreviation = abbrevEntry.Text.Trim();
+                    SysMessage($"Guild abbreviation set to [{guild.Abbreviation}].");
+                }
+                break;
+            }
+            case 20: // Toggle abbreviation display (Source-X TOGGLEABBREVIATION)
+            {
+                var toggleMember = guild.FindMember(_character.Uid);
+                if (toggleMember == null)
+                {
+                    SysMessage(ServerMessages.Get("msg_insufficient_priv"));
+                    break;
+                }
+                toggleMember.ShowAbbrev = !toggleMember.ShowAbbrev;
+                SysMessage(toggleMember.ShowAbbrev
+                    ? "Your guild abbreviation is now shown."
+                    : "Your guild abbreviation is now hidden.");
+                break;
+            }
+            case 21: // Declare fealty (Source-X DECLAREFEALTY) — vote, then recount
+            {
+                var voter = guild.FindMember(_character.Uid);
+                if (voter == null)
+                {
+                    SysMessage(ServerMessages.Get("msg_insufficient_priv"));
+                    break;
+                }
+                SysMessage("Target the member you pledge your loyalty to.");
+                SetPendingTarget((serial, x, y, z, graphic) =>
+                {
+                    var target = _world.FindChar(new Serial(serial));
+                    if (target == null) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
+                    if (guild.FindMember(target.Uid) == null)
+                    {
+                        SysMessage(ServerMessages.Get("guild_not_member"));
+                        return;
+                    }
+                    voter.LoyalTo = target.Uid;
+                    guild.ElectMaster(); // recount — mastership follows the votes
+                    SysMessage($"You are now loyal to {target.Name}.");
+                });
                 break;
             }
         }

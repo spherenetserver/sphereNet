@@ -303,10 +303,13 @@ public sealed class ClientInventoryHandler
         }
 
         // Central flag gate (Source-X CChar::CanMoveItem): ATTR_MOVE_NEVER items
-        // (corpses, static furniture) never drag, and a frozen mover can't lift.
+        // (corpses, static furniture) never drag, a frozen mover can't lift, and
+        // an equipped cursed item refuses to leave its layer.
         // Dead is already rejected above; housing/distance/looting stay inline.
-        if (!ItemMoveRules.CanMove(_character, item, out _))
+        if (!ItemMoveRules.CanMove(_character, item, out var moveDenial))
         {
+            if (moveDenial == ItemMoveRules.MoveDenial.ItemCursed)
+                SysMessage(ServerMessages.Get(Msg.CantmoveCursed));
             SendPickupFailed(1);
             return;
         }

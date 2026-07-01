@@ -80,24 +80,31 @@ public class ItemUseParityTests
     }
 
     [Fact]
-    public void TrapDoubleClick_RoutesThroughRemoveTrapAndDisarmsActiveTrap()
+    public void TrapDoubleClick_SpringsTheTrapAndDamagesUser()
     {
+        // Source-X CCharUse Do_Use_Item IT_TRAP: using a trap SPRINGS it (Use_Trap
+        // + OnTakeDamage on the user in touch range). It does NOT route to the
+        // RemoveTrap skill — the pre-W-A SphereNet behaviour was inverted.
         var loggerFactory = TestHarness.CreateLoggerFactory();
         var world = TestHarness.CreateWorld();
         var accounts = new AccountManager(loggerFactory);
         var client = CreatePlayingClient(loggerFactory, world, accounts, out _, out var player);
-        player.PrivLevel = PrivLevel.GM;
-        player.SetSkill(SkillType.RemoveTrap, 1000);
 
         var trap = world.CreateItem();
-        trap.ItemType = ItemType.TrapActive;
+        trap.BaseId = 0x1100;
+        trap.ItemType = ItemType.Trap;
+        trap.More2 = 9; // base damage
         world.PlaceItem(trap, player.Position);
 
+        player.MaxHits = 50;
+        player.Hits = 50;
+        short hitsBefore = player.Hits;
         client.SetEngines(skillHandlers: new SkillHandlers(world));
         client.HandleDoubleClick(trap.Uid.Value);
 
-        Assert.Equal(ItemType.Trap, trap.ItemType);
-        Assert.False(client.HasPendingTarget);
+        Assert.Equal(ItemType.TrapActive, trap.ItemType); // idle trap armed itself
+        Assert.Equal(hitsBefore - 9, player.Hits);        // user took MORE2 damage
+        Assert.False(client.HasPendingTarget);            // no RemoveTrap cursor
     }
 
     [Fact]

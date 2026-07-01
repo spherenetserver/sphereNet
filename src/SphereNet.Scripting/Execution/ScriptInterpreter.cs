@@ -629,6 +629,32 @@ public sealed class ScriptInterpreter
             return;
         }
 
+        // SERV.B <text> — broadcast to every connected client (Source-X SV_B /
+        // CWorldComm::Broadcast). Was console-only; a script's serv.b was a no-op.
+        if (cmd.Equals("SERV.B", StringComparison.OrdinalIgnoreCase) ||
+            cmd.Equals("SERV.BROADCAST", StringComparison.OrdinalIgnoreCase))
+        {
+            ServerPropertyResolver?.Invoke($"_BROADCAST={resolvedArg}");
+            return;
+        }
+
+        // SERV.GARBAGE — force the maintenance/GC pass (console GARBAGE).
+        if (cmd.Equals("SERV.GARBAGE", StringComparison.OrdinalIgnoreCase))
+        {
+            ServerPropertyResolver?.Invoke("_GARBAGE=");
+            return;
+        }
+
+        // SERV.INFORMATION — server status lines to the caller's console
+        // (same caller-routing protocol as SERV.VARLIST).
+        if (cmd.Equals("SERV.INFORMATION", StringComparison.OrdinalIgnoreCase))
+        {
+            string srcUid = args?.Source != null && args.Source.TryGetProperty("UID", out string suid)
+                ? suid : "0";
+            ServerPropertyResolver?.Invoke($"_INFORMATION={srcUid}");
+            return;
+        }
+
         if (cmd.Equals("SERV.EXPORT", StringComparison.OrdinalIgnoreCase) ||
             cmd.Equals("EXPORT", StringComparison.OrdinalIgnoreCase))
         {

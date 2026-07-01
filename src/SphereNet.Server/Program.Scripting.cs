@@ -205,6 +205,9 @@ public static partial class Program
             _ when upper.StartsWith("_GMPAGE=") => HandleServGmPage(property[8..]),
             _ when upper.StartsWith("_VARLIST=") => HandleServVarListToCaller(property[9..]),
             _ when upper.StartsWith("_PRINTLISTS=") => HandleServPrintListsToCaller(property[12..]),
+            _ when upper.StartsWith("_BROADCAST=") => HandleServBroadcast(property[11..]),
+            _ when upper.StartsWith("_GARBAGE") => HandleServGarbage(),
+            _ when upper.StartsWith("_INFORMATION=") => HandleServInformationToCaller(property[13..]),
             _ when upper.StartsWith("_EXPORT=") => HandleServExport(property[8..]),
             _ when upper.StartsWith("_LOAD=") => HandleServLoad(property[6..]),
             _ when upper.StartsWith("_IMPORT=") => HandleServImport(property[8..]),
@@ -1084,6 +1087,53 @@ public static partial class Program
         if (_world != null && TryParseSerial(src, out var uid) && _world.FindObject(uid) is Character ch)
             return FindGameClient(ch);
         return null;
+    }
+
+    /// <summary>Source-X <c>serv.b &lt;text&gt;</c> (SV_B → CWorldComm::Broadcast):
+    /// send a system message to every logged-in player. Previously console-only,
+    /// so announce scripts calling serv.b were silent no-ops.</summary>
+    private static string HandleServBroadcast(string text)
+    {
+        string msg = text.Trim();
+        if (msg.Length == 0) return "0";
+        BroadcastToAllPlayers(msg, 0x03B2);
+        _log?.LogInformation("[script] SERV.B {Text}", msg);
+        return "1";
+    }
+
+    /// <summary>Source-X <c>serv.garbage</c> — run the console GARBAGE action
+    /// from scripts (GC pass; the FixWeirdness world-integrity sweep is a
+    /// separate open parity item).</summary>
+    private static string HandleServGarbage()
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        _log?.LogInformation("[script] SERV.GARBAGE — GC complete, memory {Mem} KB",
+            GC.GetTotalMemory(true) / 1024);
+        return "1";
+    }
+
+    /// <summary>Source-X <c>serv.information</c> as a script command: dump the
+    /// server status lines to the invoking client's console (log fallback),
+    /// mirroring the admin-console INFORMATION output.</summary>
+    private static string HandleServInformationToCaller(string src)
+    {
+        Action<string> sink;
+        var console = ResolveCallerConsole(src.Trim());
+        if (console != null) sink = console.SysMessage;
+        else sink = line => _log?.LogInformation("{Line}", line);
+
+        sink("SphereNet Server v1.0");
+        if (_config != null) sink($"Server: {_config.ServName}");
+        if (_world != null)
+        {
+            var (c, i, s) = _world.GetStats();
+            sink($"Characters: {c}, Items: {i}, Sectors: {s}");
+        }
+        sink($"Accounts: {_accounts?.Count ?? 0}");
+        sink($"Memory: {GC.GetTotalMemory(false) / 1024} KB");
+        return "1";
     }
 
     /// <summary>Enumerate global VARs (optionally prefix-filtered) into a sink. Returns

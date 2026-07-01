@@ -137,6 +137,10 @@ public sealed class SphereConfig
     // Crime & Notoriety
     public int CriminalTimer { get; set; } = 180;
     public int MurderMinCount { get; set; } = 5;
+    // Source-X PLAYEREVIL / PLAYERNEUTRAL (m_iPlayerKarmaEvil/-Neutral): karma
+    // thresholds below which a player renders red / grey with zero murders.
+    public int PlayerKarmaEvil { get; set; } = -8000;
+    public int PlayerKarmaNeutral { get; set; } = -2000;
     public int MurderDecayTime { get; set; } = 28800;
     public bool LootingIsACrime { get; set; } = true;
     public bool AttackingIsACrime { get; set; } = true;
@@ -462,6 +466,8 @@ public sealed class SphereConfig
 
         CriminalTimer = ini.GetInt(section, "CriminalTimer", CriminalTimer);
         MurderMinCount = ini.GetInt(section, "MurderMinCount", MurderMinCount);
+        PlayerKarmaEvil = ini.GetInt(section, "PlayerEvil", ini.GetInt(section, "PLAYEREVIL", PlayerKarmaEvil));
+        PlayerKarmaNeutral = ini.GetInt(section, "PlayerNeutral", ini.GetInt(section, "PLAYERNEUTRAL", PlayerKarmaNeutral));
         MurderDecayTime = ini.GetInt(section, "MurderDecayTime", MurderDecayTime);
         LootingIsACrime = ini.GetBool(section, "LootingIsACrime", LootingIsACrime);
         AttackingIsACrime = ini.GetBool(section, "AttackingIsACrime", AttackingIsACrime);

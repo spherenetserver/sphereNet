@@ -618,6 +618,8 @@ public static partial class Program
         Character.CriminalTimerSeconds     = _config.CriminalTimer;
         Character.MurderMinCount           = _config.MurderMinCount;
         Character.MurderDecayTimeSeconds   = _config.MurderDecayTime;
+        Character.PlayerKarmaEvil          = _config.PlayerKarmaEvil;
+        Character.PlayerKarmaNeutral       = _config.PlayerKarmaNeutral;
         Character.AttackingIsACrimeEnabled        = _config.AttackingIsACrime;
         Character.HelpingCriminalsIsACrimeEnabled = _config.HelpingCriminalsIsACrime;
         Character.SnoopCriminalEnabled            = _config.SnoopCriminal;

@@ -1008,7 +1008,30 @@ public sealed class WorldLoader
                     if (parts.Length >= 2 && TryParseHexOrDec(parts[0], out uint mUid) &&
                         ushort.TryParse(parts[1], out ushort mFlags))
                     {
-                        ch.Memory_CreateObj(new Serial(mUid), (SphereNet.Core.Enums.MemoryType)mFlags);
+                        var mem = ch.Memory_CreateObj(new Serial(mUid), (SphereNet.Core.Enums.MemoryType)mFlags);
+                        // Extended format (W-D): remaining timeout ms (-1 = none)
+                        // + original unix creation stamp. Older 2-field saves keep
+                        // the fresh timeout CreateObj armed.
+                        if (parts.Length >= 3 && long.TryParse(parts[2], out long memRemainMs))
+                        {
+                            if (memRemainMs < 0)
+                                mem.SetTimeout(-1);
+                            else
+                                mem.SetTimeout(Environment.TickCount64 + Math.Max(1, memRemainMs));
+                        }
+                        if (parts.Length >= 4 && uint.TryParse(parts[3], out uint memCreated) && memCreated != 0)
+                            mem.More1 = memCreated;
+                    }
+                    break;
+                }
+                if (upper == "ATTACKER")
+                {
+                    var parts = val.Split(',');
+                    if (parts.Length >= 2 && TryParseHexOrDec(parts[0], out uint aUid) &&
+                        int.TryParse(parts[1], out int aDamage))
+                    {
+                        bool ignored = parts.Length >= 3 && parts[2] == "1";
+                        ch.CombatState.RestoreAttacker(new Serial(aUid), aDamage, ignored);
                     }
                     break;
                 }
@@ -1086,6 +1109,35 @@ public sealed class WorldLoader
                             sbyte.TryParse(parts[3], out sbyte dZ))
                         {
                             world.SetMapStaticDoorOpen(dMap, dX, dY, dZ, true);
+                        }
+                    }
+                }
+            }
+            else if (upper == "SECTORS")
+            {
+                while (reader.NextProperty(out string key, out string val))
+                {
+                    if (!key.Equals("ENV", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var parts = val.Split(',');
+                    if (parts.Length >= 8 &&
+                        int.TryParse(parts[0], out int sMap) &&
+                        int.TryParse(parts[1], out int sX) &&
+                        int.TryParse(parts[2], out int sY) &&
+                        byte.TryParse(parts[3], out byte sWeather) &&
+                        byte.TryParse(parts[4], out byte sSeason) &&
+                        byte.TryParse(parts[5], out byte sLight) &&
+                        short.TryParse(parts[6], out short sRain) &&
+                        short.TryParse(parts[7], out short sCold))
+                    {
+                        var sector = world.GetSector(sMap, sX, sY);
+                        if (sector != null)
+                        {
+                            sector.Weather = sWeather;
+                            sector.Season = sSeason;
+                            sector.Light = sLight;
+                            sector.RainChance = sRain;
+                            sector.ColdChance = sCold;
                         }
                     }
                 }

@@ -537,9 +537,22 @@ public static partial class Program
                 var (weatherType, weatherIntensity, weatherTemp) = _weatherEngine.GetWeatherForRegion(newRegion.Name);
                 gc.Send(new PacketWeather((byte)weatherType, weatherIntensity, weatherTemp));
 
-                gc.SysMessage(SphereNet.Game.Messages.ServerMessages.GetFormatted(
-                    SphereNet.Game.Messages.Msg.MsgRegionEnter, newRegion.Name));
-                if (newRegion.IsFlag(SphereNet.Core.Enums.RegionFlag.Guarded))
+                // Source-X CCharAct: the region-name callout fires ONLY when the
+                // region sets REGION_FLAG_ANNOUNCE (TAG.ANNOUNCEMENT overrides
+                // the text). The old unconditional send spammed the name on
+                // every boundary crossing, named or not.
+                if (newRegion.IsFlag(SphereNet.Core.Enums.RegionFlag.Announce))
+                {
+                    string announce = newRegion.TryGetTag("ANNOUNCEMENT", out var custom) &&
+                        !string.IsNullOrEmpty(custom) ? custom! : newRegion.Name;
+                    gc.SysMessage(SphereNet.Game.Messages.ServerMessages.GetFormatted(
+                        SphereNet.Game.Messages.Msg.MsgRegionEnter, announce));
+                }
+                // Guarded callout only on the unguarded→guarded transition —
+                // crossing between two adjacent guarded sub-regions stays quiet
+                // (Source-X gates on pNewArea->IsGuarded() != m_pArea->IsGuarded()).
+                if (newRegion.IsFlag(SphereNet.Core.Enums.RegionFlag.Guarded) &&
+                    (oldRegion == null || !oldRegion.IsFlag(SphereNet.Core.Enums.RegionFlag.Guarded)))
                 {
                     // Source-X CChar::Region_Notify: SysMessagef(DEFMSG_REGION_GUARDS_1,
                     // <GUARDOWNER tag value>). When the AREADEF omits TAG.GUARDOWNER
@@ -1108,21 +1121,18 @@ public static partial class Program
                     new TriggerArgs { CharSrc = caster });
             };
             // Shared cast-resolution pipeline (Source-X Spell_CastDone). Fires the
-            // @SpellSuccess / @SpellEffect / @SpellFail char triggers AND the
-            // per-spell [SPELL] ON= block for EVERY caster — player, NPC, direct —
-            // so casts no longer depend on the client path to raise these.
+            // @SpellSuccess / @SpellFail char triggers AND the per-spell [SPELL]
+            // ON= block for EVERY caster — player, NPC, direct. @SpellEffect is
+            // NOT fired here: Source-X fires it on each AFFECTED char with the
+            // full LOCAL contract, which SpellEngine.ApplyCharEffect now does.
             _spellEngine.OnCastResolved = (caster, spell, success) =>
             {
                 if (_triggerDispatcher == null) return;
                 int spellId = (int)spell;
                 if (success)
                 {
-                    _triggerDispatcher.FireCharTrigger(caster, CharTrigger.SpellEffect,
-                        new TriggerArgs { CharSrc = caster, N1 = spellId });
                     _triggerDispatcher.FireCharTrigger(caster, CharTrigger.SpellSuccess,
                         new TriggerArgs { CharSrc = caster, N1 = spellId });
-                    _triggerDispatcher.FireSpellTrigger(spell, "Effect",
-                        caster, new TriggerArgs { CharSrc = caster, N1 = spellId });
                     _triggerDispatcher.FireSpellTrigger(spell, "Success",
                         caster, new TriggerArgs { CharSrc = caster, N1 = spellId });
                 }
@@ -1530,10 +1540,12 @@ public static partial class Program
                 GameClient.BroadcastAnimation(npc, anim, NewAnimationGesture.Fidget, 18,
                     BroadcastNearby, ForEachClientInRange);
             };
+            // Source-X @HitTry/@HitCheck contract: the trigger runs on the
+            // attacker but SRC = the victim and ARGO = the weapon.
             _npcAI.OnNpcHitTry = (attacker, target, weapon, swingTenths) =>
             {
                 if (_triggerDispatcher == null) return swingTenths;
-                var args = new TriggerArgs { CharSrc = attacker, O1 = target, ItemSrc = weapon, N1 = swingTenths };
+                var args = new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon, N1 = swingTenths };
                 if (_triggerDispatcher.FireCharTrigger(attacker, CharTrigger.HitTry, args) == TriggerResult.True)
                     return -1; // RETURN 1 aborts the swing
                 return Math.Max(1, args.N1);
@@ -1541,7 +1553,14 @@ public static partial class Program
             _npcAI.OnNpcHitCheck = (attacker, target, weapon) =>
             {
                 if (_triggerDispatcher == null) return false;
-                var args = new TriggerArgs { CharSrc = attacker, O1 = target, ItemSrc = weapon };
+                var args = new TriggerArgs
+                {
+                    CharSrc = target,
+                    O1 = weapon,
+                    ItemSrc = weapon,
+                    N1 = (int)attacker.CombatSwingState,
+                    N2 = (int)CombatEngine.GetWeaponDamageType(weapon),
+                };
                 return _triggerDispatcher.FireCharTrigger(attacker, CharTrigger.HitCheck, args) == TriggerResult.True;
             };
             _npcAI.OnNpcAttack = (attacker, target, damage) =>
@@ -1565,8 +1584,9 @@ public static partial class Program
                     BroadcastNearby(attacker.Position, 18,
                         new PacketSound(GameClient.GetWeaponMissSoundPublic(weapon),
                             attacker.X, attacker.Y, attacker.Z), 0);
+                    // Source-X @HitMiss: SRC = the victim, ARGO = the weapon.
                     _triggerDispatcher?.FireCharTrigger(attacker, CharTrigger.HitMiss,
-                        new TriggerArgs { CharSrc = attacker, O1 = target });
+                        new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon });
                     return;
                 }
 
@@ -1926,12 +1946,19 @@ public static partial class Program
                     return damage;
                 int dmg = damage;
 
-                var hitArgs = new TriggerArgs { CharSrc = attacker, O1 = target, ItemSrc = weapon, N1 = dmg };
+                int dmgType = (int)CombatEngine.GetWeaponDamageType(weapon);
+
+                // Source-X @Hit (Fight_Hit Init(iDmg, iDmgType, 0, pWeapon),
+                // OnTrigger(..., pCharTarg)): SRC = the victim, ARGO = the
+                // weapon, ARGN1 = damage (writable), ARGN2 = damage type.
+                var hitArgs = new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon, N1 = dmg, N2 = dmgType };
                 if (_triggerDispatcher.FireCharTrigger(attacker, CharTrigger.Hit, hitArgs) == TriggerResult.True)
                     return 0;
                 dmg = Math.Max(0, hitArgs.N1);
 
-                var getHitArgs = new TriggerArgs { CharSrc = attacker, N1 = dmg };
+                // Source-X @GetHit: SRC = the attacker, ARGN1 = damage
+                // (writable), ARGN2 = damage type.
+                var getHitArgs = new TriggerArgs { CharSrc = attacker, N1 = dmg, N2 = dmgType };
                 if (_triggerDispatcher.FireCharTrigger(target, CharTrigger.GetHit, getHitArgs) == TriggerResult.True)
                     return 0;
                 dmg = Math.Max(0, getHitArgs.N1);

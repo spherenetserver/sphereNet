@@ -594,6 +594,102 @@ public class SaveFormatTests
     }
 
     [Fact]
+    public void Roundtrip_PreservesCombatMemoriesAndAttackerLog()
+    {
+        // W-D (wiki/hedef.txt 12.2): Source-X saves EVERY memory item (they are
+        // equipped items with timers) and the attacker log. SphereNet used to
+        // persist only IPet/Guard/Guild/Town/Friend, so criminal-to-whom and
+        // kill attribution reset on restart.
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_combatmem_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            var src = MakeWorld();
+
+            var victim = src.CreateCharacter();
+            victim.Name = "Victim";
+            victim.BodyId = 0x0190;
+            victim.IsPlayer = true;
+            src.PlaceCharacter(victim, new Point3D(1000, 1000, 0, 0));
+
+            var aggressor = src.CreateCharacter();
+            aggressor.Name = "Aggressor";
+            aggressor.BodyId = 0x0190;
+            aggressor.IsPlayer = true;
+            src.PlaceCharacter(aggressor, new Point3D(1001, 1000, 0, 0));
+
+            // Victim remembers the aggressor (personal-grey memory) and has him
+            // in the attacker log with accumulated damage.
+            victim.Memory_AddObjTypes(aggressor.Uid, MemoryType.HarmedBy);
+            victim.CombatState.RecordAttack(aggressor.Uid, 37);
+
+            Assert.True(saver.Save(src, tmp));
+
+            var dst = MakeWorld();
+            loader.Load(dst, tmp);
+
+            var reVictim = dst.FindChar(victim.Uid);
+            Assert.NotNull(reVictim);
+            // The transient HarmedBy memory survived the restart...
+            Assert.NotNull(reVictim!.Memory_FindObjTypes(aggressor.Uid, MemoryType.HarmedBy));
+            // ...and the attacker log kept the damage total.
+            var rec = Assert.Single(reVictim.Attackers);
+            Assert.Equal(aggressor.Uid, rec.Uid);
+            Assert.Equal(37, rec.TotalDamage);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void Roundtrip_PreservesSectorEnvironment()
+    {
+        // W-D (wiki/hedef.txt 12.1): Source-X CSector::r_Write persists per-
+        // sector LIGHT/SEASON/RAINCHANCE/COLDCHANCE; SphereNet dropped them all.
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_sectorenv_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            var src = MakeWorld();
+
+            var sector = src.GetSector(0, 3, 4);
+            Assert.NotNull(sector);
+            sector!.Season = 3;      // winter
+            sector.Light = 25;       // GM-set local darkness
+            sector.RainChance = 80;
+            sector.ColdChance = 60;
+            sector.Weather = 2;      // snowing
+
+            Assert.True(saver.Save(src, tmp));
+
+            var dst = MakeWorld();
+            loader.Load(dst, tmp);
+
+            var reSector = dst.GetSector(0, 3, 4);
+            Assert.NotNull(reSector);
+            Assert.Equal(3, reSector!.Season);
+            Assert.Equal(25, reSector.Light);
+            Assert.Equal(80, reSector.RainChance);
+            Assert.Equal(60, reSector.ColdChance);
+            Assert.Equal(2, reSector.Weather);
+
+            // Untouched sectors stay at defaults (nothing was written for them).
+            var untouched = dst.GetSector(0, 1, 1);
+            Assert.NotNull(untouched);
+            Assert.Equal(0, untouched!.Season);
+            Assert.Equal(15, untouched.RainChance);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public void Roundtrip_PreservesActiveSpellEffectAndExpires()
     {
         string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_spelleffect_{Guid.NewGuid():N}");

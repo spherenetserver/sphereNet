@@ -178,10 +178,12 @@ public class VendorPacketRoundtripTests
         var vendor = world.CreateCharacter();
         vendor.Name = "vendor";
         vendor.NpcBrain = NpcBrainType.Vendor;
+        vendor.SetTag("VENDOR_GOLD", "1000"); // funded purse — W-F: the pool is always tracked
         world.PlaceCharacter(vendor, new Point3D(100, 100, 0, 0));
         var player = MakePlayer(world, gold: 0);
 
-        // Sellable item in the player's pack, PRICE 10 -> server pays 10/2 = 5 each.
+        // Sellable item in the player's pack, PRICE 10 (the marked-up buy price).
+        // W-F markup math (default 15%): payout each = 10*(100-15)/(100+15) = 7.
         var sellItem = world.CreateItem();
         sellItem.BaseId = 0x13B0;
         sellItem.Amount = 2;
@@ -194,6 +196,6 @@ public class VendorPacketRoundtripTests
         new PacketVendorSell().OnReceive(new PacketBuffer(bytes), state);
 
         Assert.True(sellItem.IsDeleted);                  // whole stack sold
-        Assert.Equal(10, VendorEngine.CountGold(player)); // 2 * 5 paid out
+        Assert.Equal(14, VendorEngine.CountGold(player)); // 2 * 7 paid out
     }
 }

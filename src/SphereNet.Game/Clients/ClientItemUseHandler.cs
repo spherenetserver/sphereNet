@@ -442,6 +442,37 @@ public sealed class ClientItemUseHandler
                     SysMessage(ServerMessages.Get(Msg.LockHoldNoKey));
                 break;
 
+            // ---- ship plank / side (Source-X CItem::Ship_Plank) ----
+            case ItemType.ShipSide:
+                // Open the plank; it autocloses after 5 seconds.
+                item.OpenPlank();
+                break;
+            case ItemType.ShipSideLocked:
+                if (FindBackpackKeyFor(item) != null)
+                {
+                    item.OpenPlank();
+                }
+                else
+                {
+                    SysMessage(ServerMessages.Get(Msg.ItemuseLocked));
+                    SysMessage(ServerMessages.Get(Msg.LockContNoKey));
+                }
+                break;
+            case ItemType.ShipPlank:
+                // An open plank: dclick from off the plank steps you aboard
+                // (Source-X teleports the user to the plank); standing on it,
+                // dclick swings it shut.
+                if (_character.Position.X != item.X || _character.Position.Y != item.Y)
+                {
+                    _character.MoveTo(new Point3D(item.X, item.Y, (sbyte)(item.Z + 3), item.MapIndex));
+                    SendSelfRedraw();
+                }
+                else
+                {
+                    item.ClosePlank();
+                }
+                break;
+
             // ---- doors ----
             case ItemType.Door:
             case ItemType.DoorOpen:
@@ -453,8 +484,26 @@ public sealed class ClientItemUseHandler
 
             case ItemType.Trap:
             case ItemType.TrapActive:
-                RouteSkillTarget(SkillType.RemoveTrap, item.Uid);
+            {
+                // Source-X CCharUse Do_Use_Item IT_TRAP: using a trap SPRINGS it
+                // (arms the graphic, damages the user when in touch range) — it
+                // does not open the RemoveTrap skill; disarming goes through the
+                // skill list target flow.
+                int trapDmg = item.UseTrap();
+                // Source-X gates the damage on CanTouch — the shard-wide reach
+                // distance (3 tiles, same as the use-reach gate above).
+                if (_character.Position.GetDistanceTo(item.Position) <= 3)
+                {
+                    _character.Hits -= (short)Math.Min(trapDmg, _character.Hits);
+                    SysMessage("You set off a trap!");
+                    if (_character.Hits <= 0 && !_character.IsDead)
+                    {
+                        if (Character.OnLifecycleKill != null) Character.OnLifecycleKill(_character, null);
+                        else _character.Kill();
+                    }
+                }
                 break;
+            }
 
             // ---- consumables / potions / books ----
             case ItemType.Potion:
@@ -861,8 +910,10 @@ public sealed class ClientItemUseHandler
                             item.X, item.Y, item.Z, item.Hue), 0);
                     _netState.Send(new PacketSound(0x0F, _character.X, _character.Y, _character.Z));
                 }
+                // ARGN1 = fStanding (Source-X @Step contract): 1 — the char is
+                // standing at/using the item rather than walking onto it.
                 _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Step,
-                    new TriggerArgs { CharSrc = _character, ItemSrc = item });
+                    new TriggerArgs { CharSrc = _character, ItemSrc = item, N1 = 1 });
                 break;
 
             // ---- beverages ----
@@ -946,7 +997,7 @@ public sealed class ClientItemUseHandler
                 else
                 {
                     _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Step,
-                        new TriggerArgs { CharSrc = _character, ItemSrc = item });
+                        new TriggerArgs { CharSrc = _character, ItemSrc = item, N1 = 1 });
                 }
                 break;
             }
@@ -1275,10 +1326,15 @@ public sealed class ClientItemUseHandler
     {
         if (_character?.Backpack == null) return null;
         uint linkId = locked.Uid.Value;
+        // Source-X lock codes: a key matches the locked item itself OR the
+        // structure the lock belongs to (house door → the multi) — the house
+        // key's code is the multi uid, mirrored on every component's Link.
+        uint structId = locked.Link.IsValid ? locked.Link.Value : 0;
         foreach (var it in _character.Backpack.Contents)
         {
             if (it.ItemType is not (ItemType.Key or ItemType.Keyring)) continue;
-            if (it.TryGetTag("LINK", out string? lk) && uint.TryParse(lk, out uint kv) && kv == linkId)
+            if (it.TryGetTag("LINK", out string? lk) && uint.TryParse(lk, out uint kv) &&
+                (kv == linkId || (structId != 0 && kv == structId)))
                 return it;
         }
         return null;

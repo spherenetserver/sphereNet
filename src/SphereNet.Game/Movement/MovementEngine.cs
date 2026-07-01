@@ -265,8 +265,10 @@ public sealed class MovementEngine
             // Source-X parity: @Step trigger gets first chance. RETURN 1
             // cancels the hard-coded effect (trap, teleport, moongate, …)
             // so scripts can fully replace native behaviour.
+            // ARGN1 = fStanding (Source-X CCharAct m_iN1): 0 here — the char is
+            // walking onto the item, not standing on it.
             var stepResult = _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Step,
-                new TriggerArgs { CharSrc = ch, ItemSrc = item });
+                new TriggerArgs { CharSrc = ch, ItemSrc = item, N1 = 0 });
             if (stepResult == TriggerResult.True)
                 continue;
 
@@ -274,7 +276,9 @@ public sealed class MovementEngine
             {
                 case ItemType.Trap:
                 case ItemType.TrapActive:
-                    int trapDamage = 5 + Random.Shared.Next(15);
+                    // Source-X CCharAct CheckLocation: stepping springs the trap —
+                    // Use_Trap() arms it and yields the MORE2 base damage.
+                    int trapDamage = item.UseTrap();
                     ch.Hits -= (short)Math.Min(trapDamage, ch.Hits);
                     if (ch.Hits <= 0 && !ch.IsDead)
                     {

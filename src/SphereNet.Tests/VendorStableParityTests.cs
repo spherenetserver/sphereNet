@@ -232,7 +232,8 @@ public class VendorStableParityTests
         world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
         var pack = AddPack(world, player);
 
-        // PRICE 100 -> server pays 50 each; 2 -> 100 total.
+        // PRICE 100 is the marked-up buy price; with the default 15% markup the
+        // vendor pays 100*(100-15)/(100+15) = 73 each; 2 -> 146 total (W-F).
         var item = world.CreateItem();
         item.BaseId = 0x13B0; item.Amount = 2; item.SetTag("PRICE", "100");
         pack.AddItem(item);
@@ -241,24 +242,28 @@ public class VendorStableParityTests
         vendor.SetTag("VENDOR_GOLD", "1000");
         int paid = VendorEngine.ProcessSell(player, vendor,
             new[] { new TradeEntry { ItemUid = item.Uid, ItemId = item.BaseId, Amount = 2 } });
-        Assert.Equal(100, paid);
-        Assert.Equal(900, VendorEngine.GetVendorGold(vendor));
+        Assert.Equal(146, paid);
+        Assert.Equal(854, VendorEngine.GetVendorGold(vendor));
 
-        // Now broke: a sale it cannot afford is rejected, pool and items untouched.
+        // Now broke: a sale it cannot afford is skipped (shortfall), pool and
+        // items untouched.
         var item2 = world.CreateItem();
         item2.BaseId = 0x13B0; item2.Amount = 2; item2.SetTag("PRICE", "100");
         pack.AddItem(item2);
         vendor.SetTag("VENDOR_GOLD", "30");
         int paid2 = VendorEngine.ProcessSell(player, vendor,
-            new[] { new TradeEntry { ItemUid = item2.Uid, ItemId = item2.BaseId, Amount = 2 } });
+            new[] { new TradeEntry { ItemUid = item2.Uid, ItemId = item2.BaseId, Amount = 2 } }, out bool shortfall);
         Assert.Equal(0, paid2);
+        Assert.True(shortfall);
         Assert.Equal(30, VendorEngine.GetVendorGold(vendor)); // unchanged
         Assert.Equal(2, item2.Amount);                        // items kept
     }
 
     [Fact]
-    public void ProcessSell_NoMoneyPoolTag_PaysFreely()
+    public void ProcessSell_UnfundedVendor_PaysNothing_UntilRestockFundsPurse()
     {
+        // W-F: the vendor purse is ALWAYS tracked (Source-X m_Check_Amount) —
+        // an unfunded vendor buys nothing; a restock tops the purse up.
         var world = CreateWorld();
         VendorEngine.World = world;
 
@@ -274,11 +279,20 @@ public class VendorStableParityTests
         item.BaseId = 0x13B0; item.Amount = 1; item.SetTag("PRICE", "100");
         pack.AddItem(item);
 
-        // No VENDOR_GOLD tag -> unlimited funds (legacy), sale always pays.
         int paid = VendorEngine.ProcessSell(player, vendor,
+            new[] { new TradeEntry { ItemUid = item.Uid, ItemId = item.BaseId, Amount = 1 } }, out bool shortfall);
+        Assert.Equal(0, paid);
+        Assert.True(shortfall);
+        Assert.False(item.IsDeleted); // nothing was taken
+
+        // Fund the purse the way the engine does — restock.
+        VendorEngine.RestockVendor(vendor);
+        Assert.True(VendorEngine.GetVendorGold(vendor) >= 100);
+
+        int paid2 = VendorEngine.ProcessSell(player, vendor,
             new[] { new TradeEntry { ItemUid = item.Uid, ItemId = item.BaseId, Amount = 1 } });
-        Assert.Equal(50, paid);
-        Assert.False(VendorEngine.VendorTracksMoney(vendor));
+        Assert.Equal(73, paid2); // 100*(100-15)/(100+15) with the default markup
+        Assert.True(item.IsDeleted);
     }
 
     // ---- #9: stable rejects summoned / out-of-range pets ----

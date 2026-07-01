@@ -21,6 +21,12 @@ public sealed class ExpressionParser
     /// </summary>
     public Func<string, string?>? VariableResolver { get; set; }
 
+    /// <summary>Cleared by <see cref="ParsePrimary"/> when an atom resolves to a
+    /// non-numeric string (an unresolved bareword or a &lt;...&gt; that isn't a
+    /// number). Only meaningful across a single <see cref="TryEvaluate"/> call, which
+    /// saves/restores it; the plain <see cref="Evaluate"/> path ignores it.</summary>
+    private bool _numericOk = true;
+
     /// <summary>
     /// Dialog-response accessor. Set while executing a [Dialog X Button] On=
     /// block so <c>&lt;ArgN&gt;</c>, <c>&lt;Argtxt[N]&gt;</c>, <c>&lt;Argchk[N]&gt;</c>
@@ -117,6 +123,32 @@ public sealed class ExpressionParser
         int pos = 0;
         string text = expr.ToString();
         return ParseExpression(text, ref pos);
+    }
+
+    /// <summary>Evaluate <paramref name="expr"/> as a number, reporting whether it was
+    /// actually a numeric expression. Returns false when any atom is a non-numeric
+    /// string (an unresolved bareword such as a defname, or a &lt;...&gt; that resolved
+    /// to text) or when trailing content is left unparsed — letting a caller (e.g. the
+    /// RETURN handler) tell "this is the number 0" from "this is a string".</summary>
+    public bool TryEvaluate(ReadOnlySpan<char> expr, out long value)
+    {
+        expr = expr.Trim();
+        if (expr.IsEmpty) { value = 0; return false; }
+
+        bool prev = _numericOk;
+        _numericOk = true;
+        try
+        {
+            int pos = 0;
+            string text = expr.ToString();
+            value = ParseExpression(text, ref pos);
+            SkipWhitespace(text, ref pos);
+            return _numericOk && pos >= text.Length; // fully consumed, no string atom
+        }
+        finally
+        {
+            _numericOk = prev;
+        }
     }
 
     public double EvaluateFloat(ReadOnlySpan<char> expr)
@@ -398,6 +430,7 @@ public sealed class ExpressionParser
                 long.TryParse(expanded.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out v))
                 return v;
 
+            _numericOk = false; // <...> resolved to a non-numeric string
             return 0;
         }
 
@@ -453,6 +486,7 @@ public sealed class ExpressionParser
             if (val.Length > 1 && val[0] == '0' &&
                 long.TryParse(val, System.Globalization.NumberStyles.HexNumber, null, out fv))
                 return fv;
+            _numericOk = false; // bareword resolved to a non-numeric string / was unresolved
             return 0;
         }
 

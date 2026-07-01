@@ -81,6 +81,7 @@ Per-trigger **arg contract** (`SRC`, `ARGO`, `ACT`, `ARGN1/2/3`, `ARGS`, `LOCAL`
 | `ARGS` mutation (`ARGS=text`) | Implemented | Wave 204 — the string arg was read-only (no assignment path, no copy-back); now writable and copied back (the `@Speech`-style text-rewrite enabler). |
 | `ARGO`, `SRC`, `LOCAL`, `REFn` | Implemented | pre-existing; `LINK` decoupled from `ACT` in Wave 199. |
 | `RETURN 1` short-circuit / order | Implemented | firing order EVENTS → TEVENTS → base def → global → `f_onchar_*`, any `RETURN 1` blocks. |
+| `RETURN <value>` string vs number | Implemented | Wave 205 — RETURN evaluated its arg as a long and stored the number, so a [FUNCTION] returning a name/defname/message collapsed to a digit; `ExpressionParser.TryEvaluate` now reports whether the arg was genuinely numeric, and RETURN keeps a string value. |
 | Firing tests: `TriggerArgParityTests` | — | ARGN seed + mutation round-trip. |
 
 ## Object verbs / properties

@@ -43,6 +43,31 @@ public class ScriptObjectParityTests
         new(new ExpressionParser(), LoggerFactory.Create(_ => { }).CreateLogger<ScriptInterpreter>());
 
     [Fact]
+    public void ExpressionParser_TryEvaluate_DistinguishesNumbersFromStrings()
+    {
+        // RETURN calls TryEvaluate on the ALREADY-resolved arg (ResolveArgs has expanded
+        // every <...> by then), so the inputs here are bracket-free — a number/expression
+        // or a plain resolved string.
+        var parser = new ExpressionParser();
+
+        string Probe(string e)
+        {
+            bool ok = parser.TryEvaluate(e.AsSpan(), out long v);
+            return ok ? v.ToString() : "str";
+        }
+
+        // Numbers, hex, expressions and literal zero are numeric.
+        Assert.Equal("42", Probe("42"));
+        Assert.Equal("10", Probe("0x0A"));
+        Assert.Equal("42", Probe("20+22"));
+        Assert.Equal("0", Probe("0"));
+        // A resolved name / word and empty are NOT numeric, so RETURN keeps the text.
+        Assert.Equal("str", Probe("Griswold"));
+        Assert.Equal("str", Probe("hello world"));
+        Assert.Equal("str", Probe(""));
+    }
+
+    [Fact]
     public void ScriptInterpreter_TrySrv_RunsVerbAtServerPrivilege()
     {
         var interpreter = NewInterpreter();

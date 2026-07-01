@@ -219,8 +219,10 @@ public sealed class ScriptInterpreter
                 case "RETURN":
                 {
                     string argStr = ResolveArgs(key.Arg, target, source, args, scope);
-                    long val = EvaluateWithResolver(argStr, target, source, args, scope);
-                    scope.ReturnValue = val.ToString();
+                    bool numeric = TryEvaluateWithResolver(argStr, target, source, args, scope, out long val);
+                    // A numeric RETURN stores the evaluated number; a string RETURN (a
+                    // [FUNCTION] returning a name/defname/message) keeps its text.
+                    scope.ReturnValue = numeric ? val.ToString() : argStr;
                     scope.IsReturning = true;
                     result = val != 0 ? TriggerResult.True : TriggerResult.Default;
                     i = lines.Count;
@@ -784,8 +786,8 @@ public sealed class ScriptInterpreter
                     case "RETURN":
                     {
                         string argStr = ResolveArgs(lines[i].Arg, target, source, args, scope);
-                        long val = EvaluateWithResolver(argStr, target, source, args, scope);
-                        scope.ReturnValue = val.ToString();
+                        bool numeric = TryEvaluateWithResolver(argStr, target, source, args, scope, out long val);
+                        scope.ReturnValue = numeric ? val.ToString() : argStr;
                         scope.IsReturning = true;
                         return lines.Count;
                     }
@@ -1091,6 +1093,27 @@ public sealed class ScriptInterpreter
         try
         {
             return _expr.Evaluate(expr.AsSpan());
+        }
+        finally
+        {
+            _expr.VariableResolver = oldResolver;
+            _expr.FunctionResolver = oldFunctionResolver;
+        }
+    }
+
+    /// <summary>Evaluate with the target-bound resolvers, reporting whether the string
+    /// was a genuine numeric expression (vs a string literal — e.g. a RETURN of a name
+    /// or defname). Lets RETURN preserve string values instead of collapsing to 0.</summary>
+    private bool TryEvaluateWithResolver(string expr, IScriptObj target, ITextConsole? source, ITriggerArgs? args, ScriptScope? scope, out long value)
+    {
+        if (string.IsNullOrWhiteSpace(expr)) { value = 0; return false; }
+        var oldResolver = _expr.VariableResolver;
+        var oldFunctionResolver = _expr.FunctionResolver;
+        _expr.VariableResolver = varName => ResolveVarForTarget(varName, target, source, args, scope);
+        _expr.FunctionResolver = exprText => TryResolveFunctionExpression(exprText, target, source, args, scope);
+        try
+        {
+            return _expr.TryEvaluate(expr.AsSpan(), out value);
         }
         finally
         {

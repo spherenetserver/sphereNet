@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Scripting parity: RETURN preserves string values (Wave 205)
+----------------------------------------
+
+FIXED - RETURN coerced string values to a number:
+  - Both RETURN handlers evaluated the argument as a long and stored that number, so a
+    [FUNCTION] returning a name, defname or message (RETURN of a resolved string)
+    collapsed to a digit instead of its text. The expression evaluator only returned a
+    long with no way to signal "this was not numeric", so the two cases were
+    indistinguishable.
+  - Added ExpressionParser.TryEvaluate, which reports whether the whole expression was a
+    genuine numeric value — it clears an internal flag when an atom resolves to a
+    non-numeric string (an unresolved bareword, or a <...> that expanded to text) or
+    when content is left unparsed. RETURN now keeps the string when the arg is not
+    numeric, and still evaluates numbers, hex and expressions. Plain Evaluate is
+    untouched, so no numeric path changes.
+
+================================================================================
+
 [2026-07-01] - Trigger parity: ARGS string mutation (Wave 204)
 ----------------------------------------
 

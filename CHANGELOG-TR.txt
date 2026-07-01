@@ -4,6 +4,22 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Scripting paritesi: RETURN string degerleri korur (Wave 205)
+----------------------------------------
+
+DUZELTILDI - RETURN string degerleri sayiya ceviriyordu:
+  - Her iki RETURN handler'i argumani long olarak eval edip o sayiyi sakliyordu; boylece
+    bir [FUNCTION]'in isim/defname/mesaj dondurmesi (cozulmus bir string RETURN'u) metni
+    yerine bir rakama cokuyordu. Expression evaluator sadece long donuyor, "bu sayisal
+    degildi" sinyali veremiyordu, bu yuzden iki durum ayirt edilemiyordu.
+  - ExpressionParser.TryEvaluate eklendi: tum ifadenin gercekten sayisal olup olmadigini
+    bildirir -- bir atom sayisal-olmayan bir string'e cozulunce (cozulmemis bir bareword
+    veya metne genisleyen bir <...>) ya da icerik ayristirilmadan kalinca dahili bir bayragi
+    temizler. RETURN artik arguman sayisal degilse string'i korur, ve hala sayi/hex/ifadeleri
+    eval eder. Duz Evaluate degismedi, sayisal yol etkilenmez.
+
+================================================================================
+
 [2026-07-01] - Trigger paritesi: ARGS string mutasyonu (Wave 204)
 ----------------------------------------
 

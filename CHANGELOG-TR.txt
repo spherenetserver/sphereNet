@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Trigger paritesi: ARGS string mutasyonu (Wave 204)
+----------------------------------------
+
+DUZELTILDI - Script'ler bir trigger'in string argumanini (ARGS) yeniden yazamiyordu:
+  - <ARGS> seed'lenip okunabiliyordu, ama ARGS=<yeni metin> gibi bir satir no-op'a dusuyordu
+    (interpreter'da ARGS atama yolu yoktu) ve RunWrapped string'i geri kopyalamiyordu; yani
+    trigger metni salt-okunurdu. ARGS atamasi artik trigger arg'ini yazar ve yeniden yazim
+    cagirana kopyalanir -- bir script'in trigger metnini yeniden sekillendirmesi icin gereken
+    mekanizma (Source-X @Speech-tarzi rewrite). ARGN copy-back'i inline tekrarlayan
+    FireResourceTrigger ve FireSpellTrigger artik RunWrapped'i paylasir, boylece ARGS
+    write-back'i de alirlar.
+
+================================================================================
+
 [2026-07-01] - Trigger paritesi: her trigger kaynagindan ARGN write-back (Wave 203)
 ----------------------------------------
 

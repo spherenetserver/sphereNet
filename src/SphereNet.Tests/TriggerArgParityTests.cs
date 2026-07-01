@@ -114,4 +114,39 @@ public class TriggerArgParityTests
             File.Delete(tempFile);
         }
     }
+
+    [Fact]
+    public void TriggerArgs_Args_SeededAndMutationCopiesBack()
+    {
+        string tempFile = Path.Combine(Path.GetTempPath(), $"spherenet_args_{Guid.NewGuid():N}.scp");
+        File.WriteAllText(tempFile, """
+            [EVENTS e_args_probe]
+            ON=@Attack
+            TAG.GOTARGS=<ARGS>
+            ARGS=rewritten by script
+            """);
+        try
+        {
+            var stack = ScriptTestBootstrap.CreateRuntimeStack();
+            stack.Resources.LoadResourceFile(tempFile);
+
+            var world = TestHarness.CreateWorld();
+            var ch = world.CreateCharacter();
+            ch.IsPlayer = true;
+            ch.Events.Add(stack.Resources.ResolveDefName("e_args_probe"));
+            world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
+
+            var args = new SphereNet.Game.Scripting.TriggerArgs { CharSrc = ch, S1 = "original text" };
+            stack.Dispatcher.FireCharTrigger(ch, CharTrigger.Attack, args);
+
+            // <ARGS> was seeded from the caller's S1...
+            Assert.True(ch.TryGetTag("GOTARGS", out var gotArgs) && gotArgs == "original text");
+            // ...and the script's ARGS rewrite copies back (Source-X @Speech-style text rewrite).
+            Assert.Equal("rewritten by script", args.S1);
+        }
+        finally
+        {
+            File.Delete(tempFile);
+        }
+    }
 }

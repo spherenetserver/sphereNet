@@ -108,6 +108,16 @@ public sealed class ScriptInterpreter
                 continue;
             }
 
+            // Handle ARGS assignment — a script rewrites the trigger's string argument
+            // (Source-X @Speech text rewrite, @DropOn item filter). Like ARGN, the
+            // assignment used to fall through to a no-op; RunWrapped copies it back.
+            if (key.HasArg && args is TriggerArgs argsTarget && cmd == "ARGS")
+            {
+                argsTarget.ArgString = ResolveArgs(key.Arg, target, source, args, scope);
+                i++;
+                continue;
+            }
+
             // Handle REFn=value (Key="REF1", Arg="<UID>")
             if (cmd.StartsWith("REF", StringComparison.Ordinal) && cmd.Length > 3 &&
                 char.IsDigit(cmd[3]) && !cmd.Contains('.'))

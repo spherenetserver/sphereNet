@@ -77,7 +77,9 @@ Per-trigger **arg contract** (`SRC`, `ARGO`, `ACT`, `ARGN1/2/3`, `ARGS`, `LOCAL`
 | `ARGN3` seed + read | Implemented | Wave 202 — `WrapArgs` never seeded `Number3`, so `<ARGN3>` read 0 (e.g. `@DropOn_*` drop-Z). |
 | `ARGN1/2/3` mutation (`ARGN3=x`) | Implemented | Wave 202 — the interpreter had no ARGN assignment path, so scripts could not modify trigger numbers; `RunWrapped` copies the mutation back. |
 | ARGN write-back from every trigger source | Implemented | Wave 203 — item `ITEMDEF`/`TEVENTS`/`TYPEDEF`, region/room and global events bypassed `RunWrapped`, so their ARGN mutations were dropped; all firing paths now go through it. |
-| `ARGS`, `ARGO`, `SRC`, `LOCAL`, `REFn` | Implemented | pre-existing; `LINK` decoupled from `ACT` in Wave 199. |
+| `ARGS` seed + read | Implemented | via `WrapArgs` (constructor). |
+| `ARGS` mutation (`ARGS=text`) | Implemented | Wave 204 — the string arg was read-only (no assignment path, no copy-back); now writable and copied back (the `@Speech`-style text-rewrite enabler). |
+| `ARGO`, `SRC`, `LOCAL`, `REFn` | Implemented | pre-existing; `LINK` decoupled from `ACT` in Wave 199. |
 | `RETURN 1` short-circuit / order | Implemented | firing order EVENTS → TEVENTS → base def → global → `f_onchar_*`, any `RETURN 1` blocks. |
 | Firing tests: `TriggerArgParityTests` | — | ARGN seed + mutation round-trip. |
 

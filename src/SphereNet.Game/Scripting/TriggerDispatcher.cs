@@ -438,14 +438,9 @@ public sealed class TriggerDispatcher
         if (link == null)
             return TriggerResult.Default;
 
-        // Copy the script's ARGN1/2/3 mutations back (e.g. @ResourceGather changing
-        // the reaped item id / amount), matching the char-trigger RunWrapped path.
-        var wrapped = WrapArgs(args);
-        var result = Runner.RunTriggerByName(link, trigName, ch, args.ScriptConsole, wrapped);
-        args.N1 = wrapped.Number1;
-        args.N2 = wrapped.Number2;
-        args.N3 = wrapped.Number3;
-        return result;
+        // Copy the script's ARGN/ARGS mutations back (e.g. @ResourceGather changing
+        // the reaped item id / amount) via the shared RunWrapped path.
+        return RunWrapped(link, trigName, ch, args);
     }
 
     /// <summary>
@@ -464,12 +459,7 @@ public sealed class TriggerDispatcher
         if (link == null)
             return TriggerResult.Default;
 
-        var wrapped = WrapArgs(args);
-        var result = Runner.RunTriggerByName(link, trigName, ch, args.ScriptConsole, wrapped);
-        args.N1 = wrapped.Number1;
-        args.N2 = wrapped.Number2;
-        args.N3 = wrapped.Number3;
-        return result;
+        return RunWrapped(link, trigName, ch, args);
     }
 
     /// <summary>Register a global character event handler.</summary>
@@ -660,6 +650,7 @@ public sealed class TriggerDispatcher
         args.N1 = wrapped.Number1;
         args.N2 = wrapped.Number2;
         args.N3 = wrapped.Number3;
+        args.S1 = wrapped.ArgString; // ARGS the script rewrote (Source-X m_s1 readback)
         return result;
     }
 

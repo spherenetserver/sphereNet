@@ -1412,13 +1412,19 @@ public class GameSystemTests
         var lines = ParseKeys(
             "SERV.WRITEFILE audit/external.log|boot ok",
             "SERV.LOG bridge ok",
-            "SERV.GMPAGE stuck");
+            "SERV.GMPAGE stuck",
+            "SERV.VARLIST quest_",
+            "SERV.PRINTLISTS");
 
         interpreter.Execute(lines, target, new TestConsole(), args, scope);
 
         Assert.Contains("_WRITEFILE=audit/external.log|boot ok", captured);
         Assert.Contains("_LOG=bridge ok", captured);
         Assert.Contains(captured, r => r.StartsWith("_GMPAGE=", StringComparison.Ordinal) && r.EndsWith("|stuck", StringComparison.Ordinal));
+        // VARLIST/PRINTLISTS carry the caller's UID so the server can route the dump to
+        // that client's console instead of only the server log.
+        Assert.Contains(captured, r => r.StartsWith("_VARLIST=", StringComparison.Ordinal) && r.EndsWith("|quest_", StringComparison.Ordinal));
+        Assert.Contains(captured, r => r.StartsWith("_PRINTLISTS=", StringComparison.Ordinal));
     }
 
     [Fact]

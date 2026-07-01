@@ -34,8 +34,8 @@ Dispatch: script reads route through `Program.ResolveServerProperty`
 | `RESPAWN` | Implemented | `HandleServRespawn` → `RespawnAllSpawners` | Wave 197 — was admin-console only. |
 | `RESTOCK` | Implemented | `HandleServRestock` | Wave 197 — was admin-console only. |
 | `CLEARLISTS` | Implemented | `HandleServClearLists` → `GameWorld.ClearGlobalLists` | Wave 197 — new primitive; mirrors `CLEARVARS`. Optional `[prefix]`. |
-| `VARLIST` | Implemented | `HandleServVarList` | Wave 197 — dumps `VAR.*` to the server log. Optional `[prefix]`. Caller-console routing deferred. |
-| `PRINTLISTS` | Implemented | `HandleServPrintLists` | Wave 197 — dumps list names + sizes to the server log. Caller-console routing deferred. |
+| `VARLIST` | Implemented | `HandleServVarList` / `HandleServVarListToCaller` | Optional `[prefix]`. As a command, dumps `VAR.*` to the invoking client's console (log fallback); as a `<...>` read, returns the count. Wave 207 added caller-console routing. |
+| `PRINTLISTS` | Implemented | `HandleServPrintLists` / `HandleServPrintListsToCaller` | As a command, dumps list names + sizes to the caller's console (Wave 207); read form returns the count. |
 | `CLEARVARS` | Implemented | `_CLEARVARS=` → `GameWorld.ClearGlobalVars` | Pre-existing. |
 | `ACCOUNT.<name>[.prop]` | Implemented | `ResolveServAccount` | Name lookup + sub-property read. |
 | `ACCOUNT.<n>[.prop]` | Implemented | `ResolveServAccount` → `AccountManager.GetByIndex` | Wave 200 — indexed access (stable name order); was stubbed to "0". |
@@ -121,9 +121,9 @@ as it is produced.
 
 ## Next
 
-- **Faz 1**: caller-console routing for `VARLIST`/`PRINTLISTS`; minimum-safe `FILE.*`
-  set. `EXPORT`/`IMPORT`/`RESTORE`/`SAVESTATICS`/`LOAD` deferred to the Faz 4 world-ops
-  block (serialisation-heavy). Done: `TIMERF`/`TIMERFMS` delayed verb+function (Wave
+- **Faz 1**: minimum-safe `FILE.*` set. `EXPORT`/`IMPORT`/`RESTORE`/`SAVESTATICS`/`LOAD`
+  deferred to the Faz 4 world-ops block (serialisation-heavy). Done: `VARLIST`/
+  `PRINTLISTS` caller-console routing (Wave 207); `TIMERF`/`TIMERFMS` delayed verb+function (Wave
   198); `VarObjs` `LINK` decoupled from `ACT` (Wave 199); `SERV.ACCOUNT.n` indexed
   access (Wave 200); `TRYSRV` server-privilege + `TRYP` gate tested (Wave 201).
 - **Faz 2**: per-trigger arg/return/order matrix on the guardrail set.

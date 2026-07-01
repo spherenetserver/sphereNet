@@ -4,6 +4,18 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Scripting paritesi: SERV.VARLIST / PRINTLISTS cagirana yazar (Wave 207)
+----------------------------------------
+
+DEGISTI - SERV.VARLIST ve SERV.PRINTLISTS artik cagiran client'a cikti verir:
+  - Komut olarak cagiranin UID'sini script bridge uzerinden tasirlar (SERV.ALLCLIENTS /
+    SERV.GMPAGE gibi), boylece sunucu global VAR / list icerigini yalnizca sunucu loguna degil
+    o GM'in konsoluna doker (Wave-197'de ertelenen yari). Online cagiran yoksa log fallback'i
+    korunur, ve <...> okuma formu hala sayiyi dondurur. VAR enumerasyonu paylasilan bir sink'e
+    ayristirildi, boylece log ve konsol yollari tek implementasyonu paylasir.
+
+================================================================================
+
 [2026-07-01] - Speech paritesi: @Speech metin yeniden yazimi uctan uca baglandi (Wave 206)
 ----------------------------------------
 

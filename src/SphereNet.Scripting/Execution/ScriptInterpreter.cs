@@ -609,6 +609,26 @@ public sealed class ScriptInterpreter
             return;
         }
 
+        // SERV.VARLIST [prefix] / SERV.PRINTLISTS — diagnostic dumps written to the
+        // caller's console (Source-X output goes to the invoking client), not just the
+        // server log. srcUid is carried so the server side can find that console.
+        if (cmd.Equals("SERV.VARLIST", StringComparison.OrdinalIgnoreCase) ||
+            cmd.Equals("VARLIST", StringComparison.OrdinalIgnoreCase))
+        {
+            string srcUid = args?.Source != null && args.Source.TryGetProperty("UID", out string suid)
+                ? suid : "0";
+            ServerPropertyResolver?.Invoke($"_VARLIST={srcUid}|{resolvedArg}");
+            return;
+        }
+        if (cmd.Equals("SERV.PRINTLISTS", StringComparison.OrdinalIgnoreCase) ||
+            cmd.Equals("PRINTLISTS", StringComparison.OrdinalIgnoreCase))
+        {
+            string srcUid = args?.Source != null && args.Source.TryGetProperty("UID", out string suid)
+                ? suid : "0";
+            ServerPropertyResolver?.Invoke($"_PRINTLISTS={srcUid}");
+            return;
+        }
+
         if (cmd.Equals("SERV.WRITEFILE", StringComparison.OrdinalIgnoreCase) ||
             cmd.Equals("WRITEFILE", StringComparison.OrdinalIgnoreCase))
         {

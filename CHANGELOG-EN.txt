@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Scripting parity: SERV.VARLIST / PRINTLISTS write to the caller (Wave 207)
+----------------------------------------
+
+CHANGED - SERV.VARLIST and SERV.PRINTLISTS now output to the invoking client:
+  - As commands they carry the caller's UID through the script bridge (like
+    SERV.ALLCLIENTS / SERV.GMPAGE), so the server dumps the global VAR / list contents
+    to that GM's console instead of only the server log (the Wave-197 deferred half). A
+    log fallback is kept when there is no online caller, and the <...> read form still
+    returns the count. The VAR enumeration was factored into a shared sink so the log
+    and console paths share one implementation.
+
+================================================================================
+
 [2026-07-01] - Speech parity: @Speech text rewrite wired end-to-end (Wave 206)
 ----------------------------------------
 

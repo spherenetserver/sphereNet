@@ -199,6 +199,8 @@ public static partial class Program
             _ when upper.StartsWith("_WRITEFILE=") => HandleServWriteFile(property[11..]),
             _ when upper.StartsWith("_LOG=") => HandleServLog(property[5..]),
             _ when upper.StartsWith("_GMPAGE=") => HandleServGmPage(property[8..]),
+            _ when upper.StartsWith("_VARLIST=") => HandleServVarListToCaller(property[9..]),
+            _ when upper.StartsWith("_PRINTLISTS=") => HandleServPrintListsToCaller(property[12..]),
 
             // serv.resync / serv.save / serv.shutdown — admin write
             // verbs reachable from dialog buttons (d_admin_function).
@@ -973,32 +975,79 @@ public static partial class Program
     /// is a separate step; the log dump makes it usable for diagnostics now.</summary>
     private static string? HandleServVarList(string args)
     {
-        if (_world == null) return "0";
         string? prefix = string.IsNullOrWhiteSpace(args) ? null : args.Trim();
+        return DumpGlobalVars(prefix, line => _log?.LogInformation("{Line}", line)).ToString();
+    }
+
+    /// <summary>Resolve the caller from a serial into a text console (an online GM's
+    /// client), or null when unresolved.</summary>
+    private static ITextConsole? ResolveCallerConsole(string src)
+    {
+        if (_world != null && TryParseSerial(src, out var uid) && _world.FindObject(uid) is Character ch)
+            return FindGameClient(ch);
+        return null;
+    }
+
+    /// <summary>Enumerate global VARs (optionally prefix-filtered) into a sink. Returns
+    /// the count; a trailing summary line is emitted too.</summary>
+    private static int DumpGlobalVars(string? prefix, Action<string> sink)
+    {
+        if (_world == null) return 0;
         int n = 0;
         foreach (var kv in _world.GetAllGlobalVars())
         {
             if (prefix != null && !kv.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                 continue;
-            _log?.LogInformation("VAR.{Name}={Value}", kv.Key, kv.Value);
+            sink($"VAR.{kv.Key}={kv.Value}");
             n++;
         }
-        _log?.LogInformation("VARLIST: {Count} variable(s)", n);
+        sink($"VARLIST: {n} variable(s)");
+        return n;
+    }
+
+    /// <summary>Source-X <c>serv.varlist [prefix]</c> as a command: dump the global VAR
+    /// list to the invoking client's console (falling back to the server log when there
+    /// is no online caller). Format: <c>srcUid|prefix</c>.</summary>
+    private static string? HandleServVarListToCaller(string data)
+    {
+        int pipe = data.IndexOf('|');
+        string src = pipe >= 0 ? data[..pipe].Trim() : "0";
+        string prefixArg = pipe >= 0 ? data[(pipe + 1)..].Trim() : "";
+        string? prefix = string.IsNullOrWhiteSpace(prefixArg) ? null : prefixArg;
+
+        var console = ResolveCallerConsole(src);
+        int n = console != null
+            ? DumpGlobalVars(prefix, console.SysMessage)
+            : DumpGlobalVars(prefix, line => _log?.LogInformation("{Line}", line));
         return n.ToString();
     }
 
     /// <summary>Source-X <c>serv.printlists</c>: dump global list names and sizes to
     /// the server log. Returns the number of lists.</summary>
     private static string? HandleServPrintLists()
+        => DumpGlobalLists(line => _log?.LogInformation("{Line}", line)).ToString();
+
+    private static int DumpGlobalLists(Action<string> sink)
     {
-        if (_world == null) return "0";
+        if (_world == null) return 0;
         int n = 0;
         foreach (var kv in _world.GetAllGlobalLists())
         {
-            _log?.LogInformation("LIST.{Name} ({Count} entries)", kv.Key, kv.Value.Count);
+            sink($"LIST.{kv.Key} ({kv.Value.Count} entries)");
             n++;
         }
-        _log?.LogInformation("PRINTLISTS: {Count} list(s)", n);
+        sink($"PRINTLISTS: {n} list(s)");
+        return n;
+    }
+
+    /// <summary>Source-X <c>serv.printlists</c> as a command: dump global list names and
+    /// sizes to the invoking client's console (log fallback). Format: <c>srcUid</c>.</summary>
+    private static string? HandleServPrintListsToCaller(string data)
+    {
+        var console = ResolveCallerConsole(data.Trim());
+        int n = console != null
+            ? DumpGlobalLists(console.SysMessage)
+            : DumpGlobalLists(line => _log?.LogInformation("{Line}", line));
         return n.ToString();
     }
 

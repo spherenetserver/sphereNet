@@ -43,7 +43,7 @@ Dispatch: script reads route through `Program.ResolveServerProperty`
 | `GARBAGE` | Partial | `AdminCommandProcessor` `GARBAGE` | Admin console only. |
 | `SHRINKMEM` | Partial | (≈ `GARBAGE`) | No dedicated script/console verb; GC reachable via `GARBAGE`. |
 | `BLOCKIP` / `UNBLOCKIP` | Partial | `AdminCommandProcessor` | Admin console only — not exposed to scripts (intentional: security surface). |
-| `EXPORT` / `IMPORT` / `RESTORE` | Partial | `HandleServExport` / `HandleServImport` / `HandleServLoad` / `HandleServRestore` | Wave 213-216 — text `.scp` object/world export and non-destructive runtime import are wired under `WorldSaveDir`; `RESTORE` pre-replaces colliding world serials; `EXPORT`/`IMPORT file, flags, distance` support Source-X-style object-centered scope filtering. |
+| `EXPORT` / `IMPORT` / `RESTORE` | Partial | `HandleServExport` / `HandleServImport` / `HandleServLoad` / `HandleServRestore` | Wave 213-217 — text `.scp` object/world export and non-destructive runtime import are wired under `WorldSaveDir`; `RESTORE` pre-replaces colliding world serials with rollback snapshot hardening; `EXPORT`/`IMPORT file, flags, distance` support Source-X-style object-centered scope filtering. |
 | `SAVESTATICS` | Partial | `HandleServSaveStatics` → `WorldSaver.ExportStatics` | Wave 213/215 — exports `ATTR_STATIC` world items to text `.scp`; no-arg calls write `spherestatics.scp`, and saver-level scoped statics are available. Native static-map file generation remains a later slice. |
 | `LOAD` | Implemented | `HandleServLoad` → `WorldLoader.LoadFile` | Wave 213 — loads one `.scp`/save-format file at runtime with two-pass item/char parsing and container/equipment relinking. |
 | `SECURE` | Missing | — | Server console security toggle. |
@@ -136,8 +136,8 @@ as it is produced.
 ## Next
 
 - **Faz 1**: minimum-safe `FILE.*` set. `EXPORT`/`IMPORT`/`RESTORE`/`SAVESTATICS`/`LOAD`
-  now have the first Faz 4 world-ops slices (Wave 213-216); native static-map output
-  and RESTORE rollback hardening remain open. Done: `VARLIST`/
+  now have the first Faz 4 world-ops slices (Wave 213-217); native static-map output
+  remains open. Done: `VARLIST`/
   `PRINTLISTS` caller-console routing (Wave 207); `TIMERF`/`TIMERFMS` delayed verb+function (Wave
   198); `VarObjs` `LINK` decoupled from `ACT` (Wave 199); `SERV.ACCOUNT.n` indexed
   access (Wave 200); `TRYSRV` server-privilege + `TRYP` gate tested (Wave 201).

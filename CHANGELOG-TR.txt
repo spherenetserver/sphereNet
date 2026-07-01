@@ -4,6 +4,20 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - World-ops paritesi: RESTORE rollback hardening (Wave 217)
+----------------------------------------
+
+DUZELTILDI - SERV.RESTORE hata durumunda eski objeyi sessizce kaybetmesin:
+  - RESTORE, çakışan serial'leri silmeden önce WorldSaver.ExportObjects ile temp
+    rollback .scp snapshot alır.
+  - Dosya yüklemesi çakışan objeler silindikten sonra exception verirse, restore
+    dosyasından gelebilecek yarım yeni kayıtlar temizlenir ve backup snapshot
+    normal LoadFile yolu ile geri yüklenir.
+  - Rollback davranışı, restore dosyasının backup sonrası bozulduğu hata senaryosu
+    ile test edildi.
+
+================================================================================
+
 [2026-07-01] - World-ops paritesi: scoped IMPORT (Wave 216)
 ----------------------------------------
 

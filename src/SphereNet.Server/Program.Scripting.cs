@@ -1210,7 +1210,9 @@ public static partial class Program
             if (path == null || !File.Exists(path))
                 return "0";
 
-            var (items, chars, replaced) = _loader.RestoreFile(_world, path, _accounts);
+            Func<IReadOnlyList<ObjBase>, string, int>? backupWriter =
+                _saver != null ? _saver.ExportObjects : null;
+            var (items, chars, replaced) = _loader.RestoreFile(_world, path, _accounts, backupWriter);
             InitializeSpawnItems();
             _spellEngine?.RestorePersistedEffectsFromWorld();
             int total = items + chars;

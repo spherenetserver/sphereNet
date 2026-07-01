@@ -126,6 +126,34 @@ public sealed class WorldSaver
         return 0;
     }
 
+    /// <summary>Export a bounded object set to one classic text <c>.scp</c>
+    /// file. Used by destructive world-ops as a rollback snapshot.</summary>
+    public int ExportObjects(IEnumerable<ObjBase> objects, string path)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
+        long now = Environment.TickCount64;
+        int count = 0;
+        using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+        using var writer = new TextSaveWriter(fs);
+        writer.WriteHeaderComment($"SphereNet object set export at {DateTime.UtcNow:u}");
+
+        foreach (var obj in objects)
+        {
+            if (obj is Item item && !item.IsDeleted)
+            {
+                WriteItem(writer, item, now);
+                count++;
+            }
+            else if (obj is Character ch && !ch.IsDeleted)
+            {
+                WriteChar(writer, ch, now);
+                count++;
+            }
+        }
+
+        return count;
+    }
+
     /// <summary>Export the current dynamic world into one mixed text
     /// <c>.scp</c> file. Uses the same snapshot/filtering as normal world save
     /// (for example, virtual vendor stock is skipped).</summary>

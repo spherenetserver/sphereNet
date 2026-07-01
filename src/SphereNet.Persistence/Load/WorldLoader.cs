@@ -3,6 +3,7 @@ using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
 using SphereNet.Game.Definitions;
+using SphereNet.Game.Objects;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.World;
@@ -106,18 +107,45 @@ public sealed class WorldLoader
     /// registered world object whose serial is present in the file. Unlike
     /// <see cref="LoadFile"/>, this matches Source-X's destructive restore
     /// intent for colliding serials while leaving unrelated world state alone.</summary>
-    public (int Items, int Chars, int Replaced) RestoreFile(GameWorld world, string path, AccountManager? accounts = null)
+    public (int Items, int Chars, int Replaced) RestoreFile(GameWorld world, string path, AccountManager? accounts = null,
+        Func<IReadOnlyList<ObjBase>, string, int>? backupWriter = null)
     {
         if (!File.Exists(path))
             return (0, 0, 0);
 
         var restoreSerials = CollectWorldRecordSerials(path);
+        var existing = CollectExistingWorldRecords(world, restoreSerials);
+        string? backupPath = null;
+        if (backupWriter != null && existing.Count > 0)
+        {
+            backupPath = Path.Combine(Path.GetTempPath(), $"sphnet_restore_rollback_{Guid.NewGuid():N}.scp");
+            int backedUp = backupWriter(existing, backupPath);
+            _logger.LogInformation("Runtime restore rollback snapshot: {Count} object(s) -> {Path}",
+                backedUp, Path.GetFileName(backupPath));
+        }
+
         int replaced = ReplaceExistingWorldRecords(world, restoreSerials);
-        var (items, chars) = LoadFile(world, path, accounts);
+        (int items, int chars) loaded;
+        try
+        {
+            loaded = LoadFile(world, path, accounts);
+        }
+        catch (Exception ex) when (backupPath != null && File.Exists(backupPath))
+        {
+            TryRollbackRestore(world, backupPath, restoreSerials, accounts, ex);
+            throw;
+        }
+        finally
+        {
+            if (backupPath != null)
+            {
+                try { File.Delete(backupPath); } catch { }
+            }
+        }
 
         _logger.LogInformation("Runtime restore: {Path} -> {Items} items, {Chars} chars, {Replaced} replaced",
-            Path.GetFileName(path), items, chars, replaced);
-        return (items, chars, replaced);
+            Path.GetFileName(path), loaded.items, loaded.chars, replaced);
+        return (loaded.items, loaded.chars, replaced);
     }
 
     /// <summary>Load world data from save files.</summary>
@@ -730,6 +758,38 @@ public sealed class WorldLoader
         if (replaced > 0)
             _logger.LogInformation("Runtime restore pre-replaced {Count} existing object(s)", replaced);
         return replaced;
+    }
+
+    private static List<ObjBase> CollectExistingWorldRecords(GameWorld world, IReadOnlyList<Serial> restoreSerials)
+    {
+        var existing = new List<ObjBase>();
+        foreach (var serial in restoreSerials)
+        {
+            var obj = world.FindObject(serial);
+            if (obj != null)
+                existing.Add(obj);
+        }
+        return existing;
+    }
+
+    private void TryRollbackRestore(GameWorld world, string backupPath, IReadOnlyList<Serial> restoreSerials,
+        AccountManager? accounts, Exception originalException)
+    {
+        _logger.LogWarning(originalException,
+            "Runtime restore failed after replace; rolling back {Count} serial(s) from {Backup}",
+            restoreSerials.Count, Path.GetFileName(backupPath));
+
+        try
+        {
+            ReplaceExistingWorldRecords(world, restoreSerials);
+            var (items, chars) = LoadFile(world, backupPath, accounts);
+            _logger.LogInformation("Runtime restore rollback complete: {Items} item(s), {Chars} char(s)",
+                items, chars);
+        }
+        catch (Exception rollbackEx)
+        {
+            _logger.LogError(rollbackEx, "Runtime restore rollback failed");
+        }
     }
 
     private int LoadCharFile(GameWorld world, string path, List<(Character, string)> accountLinks,

@@ -32,6 +32,18 @@ public class SaveFormatTests
         return w;
     }
 
+    private static void WriteBinaryItemFile(string path, Serial serial, string name, ushort amount, Point3D position)
+    {
+        using var writer = SaveIO.OpenWriter(path, SaveFormat.Binary);
+        writer.BeginRecord("WORLDITEM");
+        writer.WriteProperty("SERIAL", $"0{serial.Value:X8}");
+        writer.WriteProperty("ID", "0EED");
+        writer.WriteProperty("NAME", name);
+        writer.WriteProperty("P", position.ToString());
+        writer.WriteProperty("AMOUNT", amount.ToString());
+        writer.EndRecord();
+    }
+
     private static (List<Character> chars, List<Item> items) Seed(GameWorld world, int charCount, int itemCount)
     {
         var chars = new List<Character>(charCount);
@@ -300,6 +312,54 @@ public class SaveFormatTests
             Assert.Equal(77, restored.Amount);
             Assert.Equal("replacement coins", restored.Name);
             Assert.NotSame(original, restored);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void WorldOps_RestoreFile_RollsBackExistingSerialWhenLoadFails()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_restore_rollback_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            var serial = new Serial(0x4000BEEF);
+            var position = new Point3D(2000, 2000, 0, 0);
+
+            string originalPath = Path.Combine(tmp, "original.sbin");
+            WriteBinaryItemFile(originalPath, serial, "old coins", 42, position);
+
+            var dst = MakeWorld();
+            var (loadedItems, loadedChars) = loader.LoadFile(dst, originalPath);
+            Assert.Equal(1, loadedItems);
+            Assert.Equal(0, loadedChars);
+
+            var original = dst.FindItem(serial)!;
+            Assert.Equal("old coins", original.Name);
+            Assert.Equal(42, original.Amount);
+
+            string restorePath = Path.Combine(tmp, "restore.sbin");
+            WriteBinaryItemFile(restorePath, serial, "new coins", 77, position);
+
+            int backedUp = 0;
+            Assert.ThrowsAny<Exception>(() => loader.RestoreFile(dst, restorePath, backupWriter: (objects, backupPath) =>
+            {
+                backedUp = saver.ExportObjects(objects, backupPath);
+                File.WriteAllBytes(restorePath, new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 });
+                return backedUp;
+            }));
+
+            Assert.Equal(1, backedUp);
+            Assert.True(original.IsDeleted);
+
+            var restored = dst.FindItem(serial)!;
+            Assert.NotSame(original, restored);
+            Assert.Equal("old coins", restored.Name);
+            Assert.Equal(42, restored.Amount);
         }
         finally
         {

@@ -4,6 +4,25 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Trigger parity: ARGN3 seeding and ARGN mutation (Wave 202)
+----------------------------------------
+
+FIXED - <ARGN3> read 0 inside every trigger:
+  - TriggerDispatcher.WrapArgs built the script args with only ARGN1/ARGN2 (the
+    constructor's two number slots) and never seeded Number3, so a trigger fired with
+    N3 set — e.g. @DropOn_* passing the drop Z, @SkillUseQuick passing the result —
+    saw <ARGN3> as 0. WrapArgs now seeds Number3 as well.
+
+FIXED - Scripts could not modify ARGN1/ARGN2/ARGN3:
+  - The interpreter had no assignment path for ARGN, so a line like ARGN3=99 fell
+    through to a no-op property-set — trigger numbers were effectively read-only,
+    defeating the RunWrapped copy-back for script-driven changes (Source-X @Hit damage,
+    @DropOn drop-Z, @NPCActFight dist/motivation). ARGN1/ARGN2/ARGN3 (and bare ARGN =
+    ARGN1) assignment now writes the trigger args, and the value is copied back to the
+    caller after the block.
+
+================================================================================
+
 [2026-07-01] - Scripting parity: TRYSRV runs at server privilege (Wave 201)
 ----------------------------------------
 

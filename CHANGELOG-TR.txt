@@ -4,6 +4,24 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Trigger paritesi: ARGN3 seed'i ve ARGN mutasyonu (Wave 202)
+----------------------------------------
+
+DUZELTILDI - <ARGN3> her trigger icinde 0 okuyordu:
+  - TriggerDispatcher.WrapArgs script args'i sadece ARGN1/ARGN2 ile (constructor'in iki sayi
+    slotu) kuruyordu ve Number3'u hic seed etmiyordu; bu yuzden N3 set edilmis bir trigger --
+    orn. @DropOn_* drop Z'yi gecen, @SkillUseQuick sonucu gecen -- <ARGN3>'u 0 goruyordu.
+    WrapArgs artik Number3'u de seed eder.
+
+DUZELTILDI - Script'ler ARGN1/ARGN2/ARGN3'u degistiremiyordu:
+  - Interpreter'in ARGN icin atama yolu yoktu; ARGN3=99 gibi bir satir no-op property-set'e
+    dusuyordu -- trigger sayilari fiilen salt-okunurdu ve RunWrapped copy-back'i script kaynakli
+    degisiklikler icin ise yaramiyordu (Source-X @Hit hasar, @DropOn drop-Z, @NPCActFight
+    dist/motivation). ARGN1/ARGN2/ARGN3 (ve ciplak ARGN = ARGN1) atamasi artik trigger args'ini
+    yazar ve deger blok sonrasi cagirana geri kopyalanir.
+
+================================================================================
+
 [2026-07-01] - Scripting paritesi: TRYSRV sunucu yetkisiyle calisir (Wave 201)
 ----------------------------------------
 

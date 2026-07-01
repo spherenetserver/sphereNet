@@ -89,6 +89,25 @@ public sealed class ScriptInterpreter
                 continue;
             }
 
+            // Handle ARGN1 / ARGN2 / ARGN3 (bare ARGN == ARGN1) assignment — a script
+            // mutates the trigger's numeric args (Source-X @Hit damage, @DropOn drop-Z,
+            // @NPCActFight dist/motivation). TriggerDispatcher.RunWrapped copies these
+            // back into the caller's TriggerArgs after the block. Without this the
+            // assignment fell through to a no-op TrySetProperty, so ARGN was read-only.
+            if (key.HasArg && args is TriggerArgs argnTarget &&
+                cmd is "ARGN" or "ARGN1" or "ARGN2" or "ARGN3")
+            {
+                string rawVal = ResolveArgs(key.Arg, target, source, args, scope).Trim();
+                if (TryParseArgN(rawVal, out int argnVal))
+                {
+                    if (cmd == "ARGN2") argnTarget.Number2 = argnVal;
+                    else if (cmd == "ARGN3") argnTarget.Number3 = argnVal;
+                    else argnTarget.Number1 = argnVal;
+                }
+                i++;
+                continue;
+            }
+
             // Handle REFn=value (Key="REF1", Arg="<UID>")
             if (cmd.StartsWith("REF", StringComparison.Ordinal) && cmd.Length > 3 &&
                 char.IsDigit(cmd[3]) && !cmd.Contains('.'))
@@ -1137,6 +1156,15 @@ public sealed class ScriptInterpreter
             return CallFunctionWithScope(funcName, target, source, args, scope);
 
         return CallFunction?.Invoke(funcName, target, source, args) ?? TriggerResult.Default;
+    }
+
+    /// <summary>Parse an ARGN assignment value: decimal, or hex with a 0x prefix.</summary>
+    private static bool TryParseArgN(string s, out int value)
+    {
+        s = s.Trim();
+        if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            return int.TryParse(s.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out value);
+        return int.TryParse(s, out value);
     }
 
     private string? ResolveVarForTarget(string varName, IScriptObj target, ITextConsole? source, ITriggerArgs? args, ScriptScope? scope = null)

@@ -669,6 +669,11 @@ public sealed class TriggerDispatcher
         var wrapped = new SphereNet.Scripting.Execution.TriggerArgs(
             args.CharSrc ?? (IScriptObj?)args.ItemSrc,
             args.N1, args.N2, args.S1);
+        // Seed ARGN3 into the script args. The constructor only takes N1/N2, so
+        // without this <ARGN3> read as 0 inside every trigger even though the caller
+        // set it (e.g. @DropOn_* drop-Z, @SkillUseQuick result) — and the N3 write-
+        // back below then read the un-seeded 0 too.
+        wrapped.Number3 = args.N3;
         wrapped.Object1 = args.O1;
         wrapped.Object2 = args.CharSrc ?? (IScriptObj?)args.ItemSrc;
         // Reference, not copy: every chain step's wrapped args share the one

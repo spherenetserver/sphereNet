@@ -60,15 +60,25 @@ lookups `MAP*`, `SKILL.n`, `CHARDEF.`, `ITEMDEF.`, `AREA.`, `MULTIDEF.`, `LIST.`
 
 ---
 
-## Triggers
+## Triggers (Faz 2)
 
-The trigger surface is already measured and regression-guarded by
+The trigger surface is measured and regression-guarded by
 `src/SphereNet.Tests/TriggerCoverageGuardrailTests.cs`, which recomputes the
 "defined but not fired" set from source on every run. Outstanding (infrastructure-
 gated) entries: char `NPCSeeWantItem`, `UserMailBag`; item `Level`, `Complete`, and
-the four champion-altar candle triggers. Faz 2 extends per-trigger arg/return/order
-coverage (`SRC`, `ARGO`, `ACT`, `ARGN1/2/3`, `ARGS`, `LOCAL`, `RETURN 0/1`, arg
-mutation) on top of this set.
+the four champion-altar candle triggers.
+
+Per-trigger **arg contract** (`SRC`, `ARGO`, `ACT`, `ARGN1/2/3`, `ARGS`, `LOCAL`,
+`RETURN 0/1`, arg mutation) — the Faz 2 core:
+
+| Aspect | Status | Notes |
+|---|---|---|
+| `ARGN1`/`ARGN2` seed + read | Implemented | via `WrapArgs`. |
+| `ARGN3` seed + read | Implemented | Wave 202 — `WrapArgs` never seeded `Number3`, so `<ARGN3>` read 0 (e.g. `@DropOn_*` drop-Z). |
+| `ARGN1/2/3` mutation (`ARGN3=x`) | Implemented | Wave 202 — the interpreter had no ARGN assignment path, so scripts could not modify trigger numbers; `RunWrapped` copies the mutation back. |
+| `ARGS`, `ARGO`, `SRC`, `LOCAL`, `REFn` | Implemented | pre-existing; `LINK` decoupled from `ACT` in Wave 199. |
+| `RETURN 1` short-circuit / order | Implemented | firing order EVENTS → TEVENTS → base def → global → `f_onchar_*`, any `RETURN 1` blocks. |
+| Firing tests: `TriggerArgParityTests` | — | ARGN seed + mutation round-trip. |
 
 ## Object verbs / properties
 

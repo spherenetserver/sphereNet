@@ -349,6 +349,21 @@ public sealed class WorldSaver
         writer.EndRecord();
     }
 
+    /// <summary>Persist an object's pending TIMERF/TIMERFMS entries as remaining-time
+    /// (not the absolute due tick, which resets on restart) so a delayed function/verb
+    /// survives save-load — Source-X keeps object timers across a world save.</summary>
+    private static void WriteTimerF(ISaveWriter w, SphereNet.Game.Objects.ObjBase obj, long now)
+    {
+        foreach (var t in obj.TimerFEntries)
+        {
+            long remainingMs = t.DueTickMs - now;
+            if (remainingMs < 0) remainingMs = 0;
+            // remainingMs | functionName | args — functionName holds no '|'; args may,
+            // so the loader splits on the first two delimiters only.
+            w.WriteProperty("TIMERF", $"{remainingMs}|{t.FunctionName}|{t.Args}");
+        }
+    }
+
     private void WriteItem(ISaveWriter w, Item item, long now)
     {
         EngineTags.StripEphemeral(item);
@@ -404,6 +419,8 @@ public sealed class WorldSaver
             if (remainingSec > 0)
                 w.WriteProperty("DECAY", remainingSec.ToString());
         }
+
+        WriteTimerF(w, item, now);
 
         foreach (var r in item.Events)
         {
@@ -626,6 +643,8 @@ public sealed class WorldSaver
             if ((flags & persistent) == 0) continue;
             w.WriteProperty("MEMORY", $"0{mem.Link.Value:X8},{(ushort)flags}");
         }
+
+        WriteTimerF(w, ch, now);
 
         foreach (var (key, val) in ch.Tags.GetAll())
         {

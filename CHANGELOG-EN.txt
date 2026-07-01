@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Persistence parity: TIMERF timers survive save-load (Wave 208)
+----------------------------------------
+
+FIXED - A pending TIMERF / TIMERFMS timer was lost on save-load:
+  - Per-object delayed function/verb timers (AddTimerF) were never written to the world
+    save, so a scheduled delayed action was dropped when the server restarted — unlike
+    Source-X, which keeps object timers across a save. Each pending entry is now saved
+    per object as remaining time (not the absolute tick, which resets on restart) and
+    re-scheduled on load, mirroring how item decay/TIMERMS already persist. The saver
+    emits one TIMERF property per entry (remainingMs|function|args); the loader routes
+    it through TrySetProperty, which re-adds the timer with the remaining delay.
+
+================================================================================
+
 [2026-07-01] - Scripting parity: SERV.VARLIST / PRINTLISTS write to the caller (Wave 207)
 ----------------------------------------
 

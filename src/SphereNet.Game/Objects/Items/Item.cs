@@ -1295,6 +1295,9 @@ public class Item : ObjBase
                     DecayTime = Environment.TickCount64 + decaySec * 1000;
                 return true;
 
+            case "TIMERF": // restore a persisted TIMERF/TIMERFMS timer (world load)
+                return TryLoadTimerFEntry(value);
+
             // TDATA instance
             case "TDATA1": _tdata1 = ParseHexOrDecUInt(value); return true;
             case "TDATA2": _tdata2 = ParseHexOrDecUInt(value); return true;

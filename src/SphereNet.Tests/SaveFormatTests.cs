@@ -108,6 +108,46 @@ public class SaveFormatTests
     }
 
     [Fact]
+    public void Roundtrip_PreservesPendingTimerF()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_timerf_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            var src = MakeWorld();
+
+            var item = src.CreateItem();
+            item.BaseId = 0x0EED;
+            src.PlaceItem(item, new Point3D(2000, 2000, 0, 0));
+            // A delayed function ~1h out, args containing spaces (only the first two '|'
+            // delimiters are structural).
+            item.AddTimerF(3_600_000, "f_delayed", "arg one two");
+
+            Assert.True(saver.Save(src, tmp));
+
+            var dst = MakeWorld();
+            loader.Load(dst, tmp);
+
+            var reloaded = dst.FindItem(item.Uid);
+            Assert.NotNull(reloaded);
+            var entry = Assert.Single(reloaded!.TimerFEntries);
+            Assert.Equal("f_delayed", entry.FunctionName);
+            Assert.Equal("arg one two", entry.Args); // args + spaces survive
+
+            // The remaining time is preserved (not reset to 0 or the timer dropped):
+            // not due now, still pending, fires only well after load.
+            long now = Environment.TickCount64;
+            Assert.Empty(reloaded.DequeueDueTimerF(now));
+            Assert.Single(reloaded.DequeueDueTimerF(now + 10_000_000));
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public void FormatDetection_RoundtripsViaExtension()
     {
         Assert.Equal(SaveFormat.Text, SaveIO.FormatFromPath("foo.scp"));
@@ -688,6 +728,58 @@ public class SaveFormatTests
             Assert.NotNull(gold2);
             Assert.True(gold2!.TryGetTag("SAVE.SOURCEONLY", out var sourceOnly2));
             Assert.Equal("value", sourceOnly2);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void WorldLoader_LoadsItemsEmbeddedInSphereCharsFile()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_spherechars_items_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            File.WriteAllText(Path.Combine(tmp, "spherechars.scp"),
+                """
+                [WORLDCHAR c_man]
+                SERIAL=01
+                NAME=PlayerWithBank
+                ACCOUNT=mortal
+                P=1501,1600,5,0
+                BODY=0190
+
+                [WORLDITEM i_bankbox]
+                SERIAL=040020190
+                ID=0E75
+                ATTR=014
+                LAYER=29
+                CONT=01
+
+                [EOF]
+
+                """);
+
+            var lf = LoggerFactory.Create(b => { });
+            var loader = new WorldLoader(lf);
+            var world = MakeWorld();
+            var accounts = new AccountManager(lf);
+            accounts.CreateAccount("mortal", "pw");
+
+            var (items, chars) = loader.Load(world, tmp, accounts);
+
+            Assert.Equal(1, items);
+            Assert.Equal(1, chars);
+
+            var ch = world.FindChar(new Serial(0x00000001));
+            Assert.NotNull(ch);
+
+            var bank = world.FindItem(new Serial(0x40020190));
+            Assert.NotNull(bank);
+            Assert.Equal(ch!.Uid, bank!.ContainedIn);
+            Assert.Same(bank, ch.GetEquippedItem(Layer.BankBox));
         }
         finally
         {

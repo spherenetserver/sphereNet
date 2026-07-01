@@ -85,6 +85,17 @@ Per-trigger **arg contract** (`SRC`, `ARGO`, `ACT`, `ARGN1/2/3`, `ARGS`, `LOCAL`
 | `RETURN <value>` string vs number | Implemented | Wave 205 — RETURN evaluated its arg as a long and stored the number, so a [FUNCTION] returning a name/defname/message collapsed to a digit; `ExpressionParser.TryEvaluate` now reports whether the arg was genuinely numeric, and RETURN keeps a string value. |
 | Firing tests: `TriggerArgParityTests` | — | ARGN seed + mutation round-trip. |
 
+## Persistence (Faz 4)
+
+Save-load round-trip of trigger-relevant runtime state. Guarded by `SaveFormatTests`.
+
+| State | Status | Notes |
+|---|---|---|
+| Global `VAR.*` / `LIST` | Implemented | Saved (`[GLOBALS]` / `[LIST name]`) and loaded. |
+| Item decay / `TIMERMS` | Implemented | Saved as remaining time. |
+| Object `TIMERF` / `TIMERFMS` timers | Implemented | Wave 208 — pending delayed function/verb timers were never saved (lost on restart); now persisted per object as remaining time and re-scheduled on load. |
+| Tags, memories, equipment | Implemented | Per-object save/load. |
+
 ## Object verbs / properties
 
 Char/item verb + property parity is exercised across `ScriptObjectParityTests`,

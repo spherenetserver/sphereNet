@@ -4,6 +4,21 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Persistence paritesi: TIMERF timer'lari save-load'da hayatta kalir (Wave 208)
+----------------------------------------
+
+DUZELTILDI - Bekleyen bir TIMERF / TIMERFMS timer'i save-load'da kayboluyordu:
+  - Nesne-basina gecikmeli fonksiyon/verb timer'lari (AddTimerF) dunya save'ine hic
+    yazilmiyordu; bu yuzden zamanlanmis gecikmeli bir eylem sunucu yeniden baslayinca
+    dusuyordu -- object timer'larini save boyunca koruyan Source-X'in aksine. Her bekleyen
+    giris artik nesne-basina kalan-zaman olarak kaydedilir (yeniden baslayinca sifirlanan
+    mutlak tick degil) ve load'da yeniden zamanlanir; item decay/TIMERMS'in zaten kalici
+    olmasini yansitir. Saver her giris icin bir TIMERF property'si yazar (remainingMs|
+    function|args); loader onu TrySetProperty uzerinden yonlendirir, o da timer'i kalan
+    gecikmeyle yeniden ekler.
+
+================================================================================
+
 [2026-07-01] - Scripting paritesi: SERV.VARLIST / PRINTLISTS cagirana yazar (Wave 207)
 ----------------------------------------
 

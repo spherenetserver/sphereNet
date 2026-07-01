@@ -3145,6 +3145,8 @@ public partial class Character : ObjBase
             case "BONDED":
                 IsBonded = normalized != "0" && !string.IsNullOrEmpty(normalized);
                 return true;
+            case "TIMERF": // restore a persisted TIMERF/TIMERFMS timer (world load)
+                return TryLoadTimerFEntry(value);
             case "CONTROLLER":
             case "CONTROLLER_UID":
             {

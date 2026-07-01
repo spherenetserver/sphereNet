@@ -270,6 +270,21 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         AddTimerF(delay * delayUnitMs, functionName, functionArgs);
     }
 
+    /// <summary>Restore a persisted TIMERF entry ("remainingMs|functionName|args",
+    /// written by the world saver) by re-scheduling it that many ms from now. Returns
+    /// true when the line parsed. functionName carries no '|'; args may, so only the
+    /// first two delimiters are structural.</summary>
+    public bool TryLoadTimerFEntry(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+        var parts = value.Split('|', 3);
+        if (parts.Length < 2 || !long.TryParse(parts[0], out long remainingMs))
+            return false;
+        AddTimerF(remainingMs, parts[1], parts.Length > 2 ? parts[2] : "");
+        return true;
+    }
+
     public List<TimerFEntry> DequeueDueTimerF(long nowMs)
     {
         var due = new List<TimerFEntry>();

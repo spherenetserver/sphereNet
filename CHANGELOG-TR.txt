@@ -4,6 +4,21 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Speech paritesi: @Speech metin yeniden yazimi uctan uca baglandi (Wave 206)
+----------------------------------------
+
+EKLENEN - Bir oyuncunun @Speech trigger'i artik konusulan metni yeniden yazabilir:
+  - ARGS-mutasyon mekanizmasi (Wave 204) artik speech yoluna tasindi. Konusanin @Speech
+    self-trigger'i utterance'i ARGS olarak calisir; script onu yeniden yazarsa (ARGS=<yeni
+    metin>), yeniden yazilan sozler geri okunur ve NPC-hear yonlendirmesi, guild/alliance
+    yonlendirmesi ve mekansal broadcast'in hepsinin kullandigi sey haline gelir -- @Speech'in
+    satiri yeniden sekillendirebildigi Source-X'e uygun. RETURN 1 hala tum utterance'i iptal
+    eder. FireSpeechSelfTrigger yeniden-yazilan metni donduren bir overload kazandi;
+    OnPlayerSpeech artik (Cancel, Text) doner ve ProcessSpeech bir out finalText; bir hayaletin
+    karistirilmis konusmasi rewrite'tan etkilenmez.
+
+================================================================================
+
 [2026-07-01] - Scripting paritesi: RETURN string degerleri korur (Wave 205)
 ----------------------------------------
 

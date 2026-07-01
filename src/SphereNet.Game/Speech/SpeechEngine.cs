@@ -65,10 +65,12 @@ public sealed class SpeechEngine
     /// independently. Source-X equivalent: CClient::Event_TalkBroadcast's
     /// region-level keyword check.
     /// </summary>
-    /// <summary>Fired for player speech before it is heard/broadcast. Returns true
-    /// when the speaker's own @Speech self-trigger cancelled the utterance
-    /// (Source-X Event_Talk → OnTriggerSpeech RETURN 1): no broadcast, no NPC hear.</summary>
-    public Func<Character, string, TalkMode, bool>? OnPlayerSpeech { get; set; }
+    /// <summary>Fired for player speech before it is heard/broadcast. Returns
+    /// (Cancel, Text): Cancel is true when the speaker's own @Speech self-trigger
+    /// cancelled the utterance (Source-X Event_Talk → OnTriggerSpeech RETURN 1) — no
+    /// broadcast, no NPC hear; Text is the utterance the trigger may have rewritten
+    /// via ARGS (Source-X @Speech text rewrite), else the original text.</summary>
+    public Func<Character, string, TalkMode, (bool Cancel, string Text)>? OnPlayerSpeech { get; set; }
 
     /// <summary>
     /// Fired once per recipient when a guild/alliance message is routed.
@@ -93,7 +95,14 @@ public sealed class SpeechEngine
     /// Returns true if the speech was handled (e.g., as a command).
     /// </summary>
     public bool ProcessSpeech(Character speaker, string text, TalkMode mode, ushort hue = 0x03B2, ushort font = 3)
+        => ProcessSpeech(speaker, text, mode, hue, font, out _);
+
+    /// <summary>Speech routing that also reports <paramref name="finalText"/> — the
+    /// utterance after the speaker's @Speech trigger may have rewritten it — so the
+    /// caller broadcasts the rewritten words.</summary>
+    public bool ProcessSpeech(Character speaker, string text, TalkMode mode, ushort hue, ushort font, out string finalText)
     {
+        finalText = text;
         if (string.IsNullOrEmpty(text))
             return false;
 
@@ -103,9 +112,20 @@ public sealed class SpeechEngine
         // Player-only global keywords ("guards", "help guards", ...) and the
         // speaker's own @Speech self-trigger fire here exactly once. If the
         // self-trigger returns RETURN 1 the whole utterance is cancelled (Source-X
-        // Event_Talk): no broadcast (caller checks this return) and no NPC hear.
-        if (speaker.IsPlayer && OnPlayerSpeech?.Invoke(speaker, text, mode) == true)
-            return true;
+        // Event_Talk): no broadcast (caller checks this return) and no NPC hear. The
+        // trigger may also rewrite the text via ARGS — the rest of the routing (guild,
+        // NPC hear) and the caller's broadcast then use the rewritten words.
+        if (speaker.IsPlayer && OnPlayerSpeech != null)
+        {
+            var (cancel, rewritten) = OnPlayerSpeech(speaker, text, mode);
+            if (cancel)
+                return true;
+            if (!string.IsNullOrEmpty(rewritten))
+            {
+                text = rewritten;
+                finalText = rewritten;
+            }
+        }
 
         // Guild/Alliance chat: not spatial, routed separately
         if (mode == TalkMode.Guild || mode == TalkMode.Alliance)

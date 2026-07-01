@@ -86,14 +86,39 @@ public class CommandSpeechParityTests
 
         // Self @Speech returns cancel → ProcessSpeech reports "do not broadcast"
         // and the NPC-hear loop is skipped.
-        speech.OnPlayerSpeech = (_, _, _) => true;
+        speech.OnPlayerSpeech = (_, t, _) => (true, t);
         Assert.True(speech.ProcessSpeech(speaker, "hello", TalkMode.Say));
         Assert.False(npcHeard);
 
         // Not cancelled → normal flow, NPC hears.
-        speech.OnPlayerSpeech = (_, _, _) => false;
+        speech.OnPlayerSpeech = (_, t, _) => (false, t);
         Assert.False(speech.ProcessSpeech(speaker, "hello", TalkMode.Say));
         Assert.True(npcHeard);
+    }
+
+    [Fact]
+    public void ProcessSpeech_SelfTriggerRewritesText_PropagatesToHearAndBroadcast()
+    {
+        var world = CreateWorld();
+        var speech = new SpeechEngine(world);
+        var speaker = MakeChar(world, PrivLevel.Player);
+
+        var npc = world.CreateCharacter();
+        npc.NpcBrain = NpcBrainType.Human;
+        world.PlaceCharacter(npc, new Point3D(101, 100, 0, 0));
+
+        string? heardText = null;
+        speech.OnNpcHear += (_, _, t, _) => heardText = t;
+
+        // @Speech rewrites the utterance via ARGS (Source-X text rewrite): the NPC
+        // hears the rewritten words and the caller's broadcast text (finalText) matches.
+        speech.OnPlayerSpeech = (_, _, _) => (false, "reworded");
+
+        bool cancelled = speech.ProcessSpeech(speaker, "original", TalkMode.Say, 0x03B2, 3, out string finalText);
+
+        Assert.False(cancelled);
+        Assert.Equal("reworded", finalText);
+        Assert.Equal("reworded", heardText); // the NPC-hear routing used the rewrite
     }
 
     // ---- P2: invisible listeners still hear ----

@@ -323,17 +323,23 @@ public static partial class Program
     /// inside REGION_FLAG_GUARDED zones. Future global keywords (e.g. "i resign
     /// from my guild" outside guild stones) hook in here too.
     /// </summary>
-    /// <summary>Returns true when the speaker's @Speech self-trigger cancelled the
-    /// utterance (RETURN 1) — the caller then suppresses broadcast and NPC hear.</summary>
-    private static bool OnPlayerSpeech(Character speaker, string text, TalkMode mode)
+    /// <summary>Returns (Cancel, Text): Cancel is true when the speaker's @Speech
+    /// self-trigger cancelled the utterance (RETURN 1) — the caller then suppresses
+    /// broadcast and NPC hear; Text is the utterance the trigger may have rewritten via
+    /// ARGS (Source-X @Speech text rewrite), else the original.</summary>
+    private static (bool Cancel, string Text) OnPlayerSpeech(Character speaker, string text, TalkMode mode)
     {
-        if (string.IsNullOrEmpty(text)) return false;
-        if (_triggerDispatcher?.FireSpeechSelfTrigger(speaker, text, (int)mode) == TriggerResult.True)
-            return true; // @Speech RETURN 1 — cancel the whole utterance
+        if (string.IsNullOrEmpty(text)) return (false, text);
+        if (_triggerDispatcher != null)
+        {
+            if (_triggerDispatcher.FireSpeechSelfTrigger(speaker, text, (int)mode, out string rewritten) == TriggerResult.True)
+                return (true, text); // @Speech RETURN 1 — cancel the whole utterance
+            text = rewritten;        // @Speech may have rewritten <ARGS>
+        }
 
         string lower = text.ToLowerInvariant();
         bool calledGuards = lower.Contains("guards") || lower == "help" || lower.Contains("help guards");
-        if (!calledGuards) return false;
+        if (!calledGuards) return (false, text);
 
         var region = _world.FindRegion(speaker.Position);
         if (region == null || !region.IsFlag(SphereNet.Core.Enums.RegionFlag.Guarded))
@@ -342,7 +348,7 @@ public static partial class Program
                 speaker.Name, region?.Name ?? "(none)",
                 region?.IsFlag(SphereNet.Core.Enums.RegionFlag.Guarded) ?? false,
                 speaker.Position);
-            return false;
+            return (false, text);
         }
 
         var hostiles = FindAllGuardTargets(speaker);
@@ -351,7 +357,7 @@ public static partial class Program
         if (hostiles.Count == 0)
         {
             gc?.SysMessage("All looks quiet here.");
-            return false;
+            return (false, text);
         }
 
         int killCount = 0;
@@ -393,7 +399,7 @@ public static partial class Program
         }
 
         gc?.SysMessage(killCount > 0 ? "Guards strike down your attacker." : "The guards have been called.");
-        return false;
+        return (false, text);
     }
 
     private static List<Character> FindAllGuardTargets(Character speaker)

@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Speech parity: @Speech text rewrite wired end-to-end (Wave 206)
+----------------------------------------
+
+ADDED - A player's @Speech trigger can now rewrite the spoken text:
+  - The ARGS-mutation mechanism (Wave 204) is now carried through the speech path. The
+    speaker's @Speech self-trigger runs with the utterance as ARGS; if the script
+    rewrites it (ARGS=<new text>), the rewritten words are read back and become what
+    the NPC-hear routing, guild/alliance routing and the spatial broadcast all use —
+    matching Source-X, where @Speech can reshape the line. RETURN 1 still cancels the
+    whole utterance. FireSpeechSelfTrigger gained an overload that returns the rewritten
+    text; OnPlayerSpeech now returns (Cancel, Text) and ProcessSpeech an out finalText;
+    a ghost's garbled speech is left untouched by the rewrite.
+
+================================================================================
+
 [2026-07-01] - Scripting parity: RETURN preserves string values (Wave 205)
 ----------------------------------------
 

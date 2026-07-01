@@ -352,21 +352,27 @@ public sealed class TriggerDispatcher
             }
         }
 
-        return RunSpeechResourceHandlers(SpeechPetResources, npc, speaker, text, mode);
+        return RunSpeechResourceHandlers(SpeechPetResources, npc, speaker, text, mode, out _);
     }
 
     public TriggerResult FireSpeechSelfTrigger(Character speaker, string text, int mode)
-    {
-        return RunSpeechResourceHandlers(SpeechSelfResources, speaker, speaker, text, mode);
-    }
+        => RunSpeechResourceHandlers(SpeechSelfResources, speaker, speaker, text, mode, out _);
+
+    /// <summary>Fire the speaker's @Speech self-trigger; <paramref name="rewrittenText"/>
+    /// returns the utterance the script may have rewritten via ARGS (Source-X @Speech
+    /// text rewrite), or the original text when unchanged.</summary>
+    public TriggerResult FireSpeechSelfTrigger(Character speaker, string text, int mode, out string rewrittenText)
+        => RunSpeechResourceHandlers(SpeechSelfResources, speaker, speaker, text, mode, out rewrittenText);
 
     private TriggerResult RunSpeechResourceHandlers(
         IReadOnlyList<ResourceId> speechResources,
         Character target,
         Character speaker,
         string text,
-        int mode)
+        int mode,
+        out string rewrittenText)
     {
+        rewrittenText = text;
         if (Resources == null || Runner == null || speechResources.Count == 0)
             return TriggerResult.Default;
 
@@ -382,6 +388,9 @@ public sealed class TriggerDispatcher
             if (link == null) continue;
 
             var result = Runner.RunSpeechTrigger(link, text, target, null, args);
+            // A script may rewrite the utterance via ARGS; carry it to the next block
+            // and back to the caller (the interpreter writes it onto args.ArgString).
+            rewrittenText = args.ArgString;
             if (result == TriggerResult.True)
                 return TriggerResult.True;
         }

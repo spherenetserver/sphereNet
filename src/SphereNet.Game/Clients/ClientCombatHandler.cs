@@ -609,9 +609,19 @@ public sealed class ClientCombatHandler
 
         // ProcessSpeech returns true when the utterance must NOT be broadcast —
         // either the speaker's @Speech self-trigger cancelled it (Source-X
-        // Event_Talk RETURN 1) or it was routed as guild/alliance chat.
-        if (_speech?.ProcessSpeech(_character, routeText, (TalkMode)type, hue, font) == true)
-            return;
+        // Event_Talk RETURN 1) or it was routed as guild/alliance chat. finalText is
+        // the utterance after the @Speech trigger may have rewritten it via ARGS.
+        string finalText = routeText;
+        if (_speech != null)
+        {
+            if (_speech.ProcessSpeech(_character, routeText, (TalkMode)type, hue, font, out finalText))
+                return;
+        }
+        // A living speaker's rewritten text becomes what is broadcast. Ghost speech
+        // stays garbled per-recipient (the rewrite ran on the scrambled copy), so its
+        // clear text is left untouched.
+        if (!isGhost)
+            clearText = finalText;
 
         // Guild/alliance chat is non-spatial: SpeechEngine.RouteChannelMessage
         // delivers it per member (speaker echo included), so the local echo

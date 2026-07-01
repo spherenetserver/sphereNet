@@ -1414,7 +1414,15 @@ public class GameSystemTests
             "SERV.LOG bridge ok",
             "SERV.GMPAGE stuck",
             "SERV.VARLIST quest_",
-            "SERV.PRINTLISTS");
+            "SERV.PRINTLISTS",
+            "SERV.EXPORT exports/one",
+            "SERV.EXPORT exports/scope, 3, 10",
+            "SERV.LOAD exports/one.scp",
+            "SERV.IMPORT exports/one.scp",
+            "SERV.IMPORT exports/scope.scp, 3, 10",
+            "SERV.RESTORE exports/one.scp",
+            "SERV.SAVESTATICS exports/statics",
+            "SERV.SAVESTATICS");
 
         interpreter.Execute(lines, target, new TestConsole(), args, scope);
 
@@ -1425,6 +1433,15 @@ public class GameSystemTests
         // that client's console instead of only the server log.
         Assert.Contains(captured, r => r.StartsWith("_VARLIST=", StringComparison.Ordinal) && r.EndsWith("|quest_", StringComparison.Ordinal));
         Assert.Contains(captured, r => r.StartsWith("_PRINTLISTS=", StringComparison.Ordinal));
+        Assert.Contains(captured, r => r.StartsWith("_EXPORT=", StringComparison.Ordinal) && r.EndsWith("|exports/one", StringComparison.Ordinal));
+        Assert.Contains(captured, r => r.StartsWith("_EXPORT=", StringComparison.Ordinal) && r.EndsWith("|exports/scope, 3, 10", StringComparison.Ordinal));
+        Assert.Contains("_LOAD=exports/one.scp", captured);
+        Assert.Equal(1, captured.Count(r => r == "_LOAD=exports/one.scp"));
+        Assert.Contains(captured, r => r.StartsWith("_IMPORT=", StringComparison.Ordinal) && r.EndsWith("|exports/one.scp", StringComparison.Ordinal));
+        Assert.Contains(captured, r => r.StartsWith("_IMPORT=", StringComparison.Ordinal) && r.EndsWith("|exports/scope.scp, 3, 10", StringComparison.Ordinal));
+        Assert.Contains("_RESTORE=exports/one.scp", captured);
+        Assert.Contains("_SAVESTATICS=exports/statics", captured);
+        Assert.Contains("_SAVESTATICS=", captured);
     }
 
     [Fact]

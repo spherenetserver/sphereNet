@@ -25,6 +25,7 @@ public partial class Character
     private Serial _skillPendingTarget = Serial.Invalid;
     private bool _hasSkillPendingPoint;
     private Point3D _skillPendingPoint;
+    private readonly List<string> _pendingSpellEffectRecords = [];
 
     public byte GetStatLock(int statIdx)
     {
@@ -182,4 +183,14 @@ public partial class Character
         point = _skillPendingPoint;
         return true;
     }
+
+    public IReadOnlyList<string> PendingSpellEffectRecords => _pendingSpellEffectRecords;
+
+    public void AddPendingSpellEffectRecord(string record)
+    {
+        if (!string.IsNullOrWhiteSpace(record))
+            _pendingSpellEffectRecords.Add(record);
+    }
+
+    public void ClearPendingSpellEffectRecords() => _pendingSpellEffectRecords.Clear();
 }

@@ -4,6 +4,94 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - World-ops parity: scoped IMPORT (Wave 216)
+----------------------------------------
+
+ADDED - SERV.IMPORT now has the matching flag/distance filter:
+  - SERV.IMPORT supports `IMPORT file, flags, distance`. The command target is
+    used as the center; flags are interpreted as 1=items, 2=chars, 3=both.
+  - Scoped import reduces the source file to a temporary filtered text .scp and
+    then reuses the existing LoadFile path, preserving duplicate-serial,
+    container/equipment relink and SPELLEFFECT restore behavior.
+  - Items under selected containers/chars are imported with their parent chain.
+
+================================================================================
+
+[2026-07-01] - World-ops parity: scoped EXPORT / SAVESTATICS (Wave 215)
+----------------------------------------
+
+ADDED - Source-X-style distance/flag export slice:
+  - SERV.EXPORT now supports `EXPORT file, flags, distance`. The script SRC
+    object is used as the center; flags are interpreted as 1=items, 2=chars,
+    3=both.
+  - Scoped export preserves the normal world-save filters: static items stay out
+    of dynamic export and vendor stock is still excluded. Items under selected
+    containers/chars are written with the selected root so CONT links stay valid
+    on import.
+  - WorldSaver.ExportStatics can use the same scope filter; argument-less
+    SERV.SAVESTATICS now writes WorldSaveDir/spherestatics.scp.
+
+================================================================================
+
+[2026-07-01] - World-ops parity: RESTORE replaces colliding serials (Wave 214)
+----------------------------------------
+
+FIXED - SERV.RESTORE is no longer a LOAD/IMPORT alias:
+  - WorldLoader.RestoreFile pre-scans WORLDITEM/WORLDCHAR SERIAL records and
+    removes currently registered world objects with those serials before loading
+    the file back in.
+  - SERV.LOAD / SERV.IMPORT remain non-destructive; duplicate serials keep the
+    existing object and skip the imported record. The script bridge now routes
+    RESTORE through a separate _RESTORE channel.
+  - World-ops restore behavior is covered by a test that locks the duplicate
+    LOAD versus destructive RESTORE distinction.
+
+================================================================================
+
+[2026-07-01] - World-ops parity: SERV.EXPORT / LOAD first slice (Wave 213)
+----------------------------------------
+
+ADDED - Safe first slice of the Source-X world-ops long tail:
+  - SERV.EXPORT can now write one object, or WORLD/ALL for the dynamic world, as
+    classic text .scp records under WorldSaveDir. Export intentionally uses
+    script-compatible text even when normal saves use binary/gzip.
+  - SERV.LOAD / SERV.IMPORT / SERV.RESTORE load one .scp/save-format file at
+    runtime with two-pass item/char parsing; container/equipment links are resolved
+    after load. RESTORE is a non-destructive import alias in this slice; destructive
+    replace semantics stay deferred for a data-integrity-focused slice.
+  - SERV.SAVESTATICS exports ATTR_STATIC items to a text .scp file.
+  - Paths are jailed under WorldSaveDir; absolute paths, "..", and drive prefixes
+    are rejected.
+
+================================================================================
+
+[2026-07-01] - Persistence parity: spawn/restock timer audit (Wave 212)
+----------------------------------------
+
+FIXED - Spawn and vendor restock timings could drift across restart:
+  - IT_SPAWN_CHAR component initialization no longer overwrites a loaded TIMERMS
+    remaining-time value; the saved spawn timer is rebound to the same target tick.
+  - IT_SPAWN_ITEM now mirrors its next spawn time to the object Timeout, so WorldSaver
+    can write it as TIMERMS and component init can preserve the same remaining-time
+    pattern after load.
+  - Vendor RESTOCK_TIME is now written as UTC Unix milliseconds instead of process-local
+    TickCount64, matching TradeEngine and staying meaningful across save-load.
+
+================================================================================
+
+[2026-07-01] - Persistence parity: active spell effects survive save-load (Wave 211)
+----------------------------------------
+
+FIXED - An active buff/debuff could become a permanent stat exploit after restart:
+  - Timed spell effects such as Bless/Curse/Strength/Weaken are now written to the
+    world save as remaining-time SPELLEFFECT records. The save keeps base stats clean;
+    after load, SpellEngine restores the effect, reapplies live stat/flag/visual state,
+    and lets the effect expire normally.
+  - Incognito/Polymorph/NightSight state reverted for save is now fully re-applied
+    after save, and the reapply path runs from finally even when saving fails.
+
+================================================================================
+
 [2026-07-01] - Network: server-initiated RTT ping disabled by default (Wave 210)
 ----------------------------------------
 

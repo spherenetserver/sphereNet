@@ -5145,7 +5145,7 @@ public partial class Character : ObjBase
             spawned++;
         }
 
-        SetTag("VENDOR_LAST_RESTOCK", Environment.TickCount64.ToString());
+        SetTag("VENDOR_LAST_RESTOCK", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString());
     }
 
     // Script number parser: accepts 0xNN hex, decimal. Unlike

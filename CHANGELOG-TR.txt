@@ -4,6 +4,94 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - World-ops paritesi: scoped IMPORT (Wave 216)
+----------------------------------------
+
+EKLENDI - SERV.IMPORT, EXPORT ile simetrik flag/distance filtresi kazandı:
+  - SERV.IMPORT artık `IMPORT file, flags, distance` biçimini destekler. Komutun
+    çalıştığı obje merkez alınır; flags 1=item, 2=char, 3=both olarak yorumlanır.
+  - Scoped import, kaynak dosyayı geçici filtrelenmiş text .scp'ye indirger ve
+    mevcut LoadFile yolunu kullanır; duplicate serial, container/equipment relink
+    ve SPELLEFFECT restore davranışları değişmeden kalır.
+  - Seçili container/char altındaki item zinciri parent ile birlikte import edilir.
+
+================================================================================
+
+[2026-07-01] - World-ops paritesi: scoped EXPORT / SAVESTATICS (Wave 215)
+----------------------------------------
+
+EKLENDI - Source-X tarzı mesafe/flag export dilimi:
+  - SERV.EXPORT artık `EXPORT file, flags, distance` biçimini destekler. Script
+    SRC objesi merkez alınır; flags 1=item, 2=char, 3=both olarak yorumlanır.
+  - Scoped export normal world-save filtrelerini korur; static item'lar normal
+    export'a karışmaz, vendor stock yine dışarıda kalır. Seçili container/char
+    altındaki item zinciri birlikte yazılır, böylece CONT referansları importta
+    havada kalmaz.
+  - WorldSaver.ExportStatics aynı scope filtresini alabilir; SERV.SAVESTATICS
+    argümansız çağrıldığında WorldSaveDir/spherestatics.scp hedefini kullanır.
+
+================================================================================
+
+[2026-07-01] - World-ops paritesi: RESTORE çakışan serial replace (Wave 214)
+----------------------------------------
+
+DÜZELTİLDİ - SERV.RESTORE artık LOAD/IMPORT alias'ı değil:
+  - WorldLoader.RestoreFile, dosyadaki WORLDITEM/WORLDCHAR SERIAL kayıtlarını
+    yüklemeden önce tarar ve dünyada aynı serial ile duran objeleri silip
+    dosyadaki haliyle yeniden yükler.
+  - SERV.LOAD / SERV.IMPORT non-destructive kalır; duplicate serial'ler eski
+    objeyi koruyup import'u pas geçer. Script bridge artık RESTORE için ayrı
+    _RESTORE kanalını kullanır.
+  - World-ops restore davranışı, duplicate LOAD ve destructive RESTORE farkını
+    kilitleyen testle kapsandı.
+
+================================================================================
+
+[2026-07-01] - World-ops paritesi: SERV.EXPORT / LOAD ilk dilim (Wave 213)
+----------------------------------------
+
+EKLENDI - Source-X world-ops uzun kuyruğunun güvenli ilk dilimi:
+  - SERV.EXPORT artık tek bir objeyi veya WORLD/ALL ile dinamik dünyayı klasik
+    text .scp record'ları olarak WorldSaveDir altına yazar. Normal save formatı
+    binary/gzip olsa bile export script uyumlu text format kullanır.
+  - SERV.LOAD / SERV.IMPORT / SERV.RESTORE tek bir .scp/save-format dosyasını
+    runtime'da iki-pass item/char parse ile yükler; container/equipment linkleri
+    load sonunda çözülür. RESTORE bu dilimde non-destructive import alias'ıdır;
+    yıkıcı replace semantiği veri-bütünlüğü nedeniyle sonraki bounded slice'a kaldı.
+  - SERV.SAVESTATICS ATTR_STATIC item'ları text .scp'ye export eder.
+  - Path'ler WorldSaveDir altında jail edilir; absolute path, ".." ve drive
+    prefix'leri reddedilir.
+
+================================================================================
+
+[2026-07-01] - Persistence paritesi: spawn/restock timer denetimi (Wave 212)
+----------------------------------------
+
+DUZELTILDI - Spawn ve vendor restock zamanlari restart'ta kayabiliyordu:
+  - IT_SPAWN_CHAR component init, load'dan gelen TIMERMS remaining-time degerini
+    artik ezmez; kaydedilmis spawn timer'i ayni mutlak hedef tick'e geri baglanir.
+  - IT_SPAWN_ITEM kendi sonraki spawn zamanini object Timeout'a aynalar, boylece
+    WorldSaver bunu TIMERMS olarak yazabilir ve load sonrasi component init ayni
+    remaining-time desenini korur.
+  - Vendor RESTOCK_TIME tag'i artik process-local TickCount64 yerine UTC Unix ms
+    olarak yazilir; TradeEngine ile ayni zaman tabanini kullanir ve save-load
+    sonrasi anlamli kalir.
+
+================================================================================
+
+[2026-07-01] - Persistence paritesi: aktif spell efektleri save-load'da hayatta kalir (Wave 211)
+----------------------------------------
+
+DUZELTILDI - Aktif buff/debuff restart'ta kalici stat exploit'ine donusebiliyordu:
+  - Bless/Curse/Strength/Weaken gibi sureli spell efektleri artik kalan-zamanli
+    SPELLEFFECT kaydi olarak dunya save'ine yazilir. Save sirasinda base stat
+    temiz kalir; load sonrasi SpellEngine kaydi geri kurar, stat/flag/gorsel
+    state'i yeniden uygular ve sure dolunca efekt normal sekilde geri alinir.
+  - Save oncesi revert edilen Incognito/Polymorph/NightSight state'i save sonrasi
+    tam olarak geri uygulanir; save hatasi olsa bile reapply finally ile calisir.
+
+================================================================================
+
 [2026-07-01] - Network: sunucu-kaynakli RTT ping varsayilan kapatildi (Wave 210)
 ----------------------------------------
 

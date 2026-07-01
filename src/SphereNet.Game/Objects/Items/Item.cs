@@ -2132,7 +2132,7 @@ public class Item : ObjBase
     /// Called from WorldLoader/LegacySphereImporter after item load, and at
     /// runtime when TYPE is set to a spawn type via script.
     /// </summary>
-    public void InitializeSpawnComponent(World.GameWorld world, ResourceHolder resources)
+    public void InitializeSpawnComponent(World.GameWorld world, ResourceHolder resources, long preservedTimeoutMs = 0)
     {
         if (_type == ItemType.SpawnChar)
         {
@@ -2151,7 +2151,7 @@ public class Item : ObjBase
                     SpawnChar.MaxCount = maxCount;
             }
 
-            SpawnChar.ResetTimer();
+            SpawnChar.ResetTimer(preservedTimeoutMs);
         }
         else if (_type == ItemType.SpawnItem)
         {
@@ -2164,7 +2164,7 @@ public class Item : ObjBase
             if (_amount > 1)
                 SpawnItem.MaxCount = _amount;
 
-            SpawnItem.ResetTimer();
+            SpawnItem.ResetTimer(preservedTimeoutMs);
         }
     }
 

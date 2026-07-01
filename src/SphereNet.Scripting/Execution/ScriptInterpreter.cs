@@ -629,6 +629,43 @@ public sealed class ScriptInterpreter
             return;
         }
 
+        if (cmd.Equals("SERV.EXPORT", StringComparison.OrdinalIgnoreCase) ||
+            cmd.Equals("EXPORT", StringComparison.OrdinalIgnoreCase))
+        {
+            string targetUid = target.TryGetProperty("UID", out string tuid) ? tuid : "0";
+            ServerPropertyResolver?.Invoke($"_EXPORT={targetUid}|{resolvedArg}");
+            return;
+        }
+
+        if (cmd.Equals("SERV.LOAD", StringComparison.OrdinalIgnoreCase) ||
+            cmd.Equals("LOAD", StringComparison.OrdinalIgnoreCase))
+        {
+            ServerPropertyResolver?.Invoke($"_LOAD={resolvedArg}");
+            return;
+        }
+
+        if (cmd.Equals("SERV.IMPORT", StringComparison.OrdinalIgnoreCase) ||
+            cmd.Equals("IMPORT", StringComparison.OrdinalIgnoreCase))
+        {
+            string targetUid = target.TryGetProperty("UID", out string tuid) ? tuid : "0";
+            ServerPropertyResolver?.Invoke($"_IMPORT={targetUid}|{resolvedArg}");
+            return;
+        }
+
+        if (cmd.Equals("SERV.RESTORE", StringComparison.OrdinalIgnoreCase) ||
+            cmd.Equals("RESTORE", StringComparison.OrdinalIgnoreCase))
+        {
+            ServerPropertyResolver?.Invoke($"_RESTORE={resolvedArg}");
+            return;
+        }
+
+        if (cmd.Equals("SERV.SAVESTATICS", StringComparison.OrdinalIgnoreCase) ||
+            cmd.Equals("SAVESTATICS", StringComparison.OrdinalIgnoreCase))
+        {
+            ServerPropertyResolver?.Invoke($"_SAVESTATICS={resolvedArg}");
+            return;
+        }
+
         if (cmd.Equals("SERV.WRITEFILE", StringComparison.OrdinalIgnoreCase) ||
             cmd.Equals("WRITEFILE", StringComparison.OrdinalIgnoreCase))
         {

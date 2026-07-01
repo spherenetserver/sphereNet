@@ -43,9 +43,9 @@ Dispatch: script reads route through `Program.ResolveServerProperty`
 | `GARBAGE` | Partial | `AdminCommandProcessor` `GARBAGE` | Admin console only. |
 | `SHRINKMEM` | Partial | (≈ `GARBAGE`) | No dedicated script/console verb; GC reachable via `GARBAGE`. |
 | `BLOCKIP` / `UNBLOCKIP` | Partial | `AdminCommandProcessor` | Admin console only — not exposed to scripts (intentional: security surface). |
-| `EXPORT` / `IMPORT` / `RESTORE` | Missing | — | World-ops long tail (Faz 4); object serialisation to/from `.scp`. |
-| `SAVESTATICS` | Missing | — | Faz 4 (static world export). |
-| `LOAD` | Missing | — | Faz 4 (load a `.scp` at runtime). |
+| `EXPORT` / `IMPORT` / `RESTORE` | Partial | `HandleServExport` / `HandleServImport` / `HandleServLoad` / `HandleServRestore` | Wave 213-216 — text `.scp` object/world export and non-destructive runtime import are wired under `WorldSaveDir`; `RESTORE` pre-replaces colliding world serials; `EXPORT`/`IMPORT file, flags, distance` support Source-X-style object-centered scope filtering. |
+| `SAVESTATICS` | Partial | `HandleServSaveStatics` → `WorldSaver.ExportStatics` | Wave 213/215 — exports `ATTR_STATIC` world items to text `.scp`; no-arg calls write `spherestatics.scp`, and saver-level scoped statics are available. Native static-map file generation remains a later slice. |
+| `LOAD` | Implemented | `HandleServLoad` → `WorldLoader.LoadFile` | Wave 213 — loads one `.scp`/save-format file at runtime with two-pass item/char parsing and container/equipment relinking. |
 | `SECURE` | Missing | — | Server console security toggle. |
 
 ### Already-implemented SERV.* surface (not on the Faz-1 list)
@@ -95,7 +95,8 @@ Save-load round-trip of trigger-relevant runtime state. Guarded by `SaveFormatTe
 | Item decay / `TIMERMS` | Implemented | Saved as remaining time. |
 | Object `TIMERF` / `TIMERFMS` timers | Implemented | Wave 208 — pending delayed function/verb timers were never saved (lost on restart); now persisted per object as remaining time and re-scheduled on load. |
 | Active poison (level, remaining ticks, poisoner) | Implemented | Wave 209 — was lost on restart; now saved as remaining time + tick count and restored exactly. |
-| Active spell effects (buffs/debuffs) | **Open** | Stat buffs modify the character stat directly and are runtime-only, so the buffed stat is saved while the expiration is not — a buff becomes permanent after restart. Fix needs a design call (persist effects vs revert-at-save); see changelog note. |
+| Active spell effects (buffs/debuffs) | Implemented | Wave 211 — temporary spell effects are saved as remaining-time `SPELLEFFECT` records, restored into `SpellEngine` on load, re-applied to live stats/flags/visuals, and expire normally instead of becoming permanent after restart. |
+| Spawn timers / vendor restock time | Implemented | Wave 212 — spawn component schedules now preserve loaded `TIMERMS` remaining time across component init, item spawners mirror their next tick to object timeout, and vendor `RESTOCK_TIME` uses restart-safe Unix milliseconds. |
 | Tags, memories, equipment | Implemented | Per-object save/load. |
 
 ## Object verbs / properties
@@ -135,7 +136,8 @@ as it is produced.
 ## Next
 
 - **Faz 1**: minimum-safe `FILE.*` set. `EXPORT`/`IMPORT`/`RESTORE`/`SAVESTATICS`/`LOAD`
-  deferred to the Faz 4 world-ops block (serialisation-heavy). Done: `VARLIST`/
+  now have the first Faz 4 world-ops slices (Wave 213-216); native static-map output
+  and RESTORE rollback hardening remain open. Done: `VARLIST`/
   `PRINTLISTS` caller-console routing (Wave 207); `TIMERF`/`TIMERFMS` delayed verb+function (Wave
   198); `VarObjs` `LINK` decoupled from `ACT` (Wave 199); `SERV.ACCOUNT.n` indexed
   access (Wave 200); `TRYSRV` server-privilege + `TRYP` gate tested (Wave 201).

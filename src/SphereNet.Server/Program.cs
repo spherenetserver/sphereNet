@@ -756,6 +756,10 @@ public static partial class Program
 
         LoadDefinitionsAndRegions();
 
+        int restoredSpellEffects = _spellEngine.RestorePersistedEffectsFromWorld();
+        if (restoredSpellEffects > 0)
+            _log.LogInformation("Restored {Count} active spell effects from world save", restoredSpellEffects);
+
         if (!StartNetwork())
             return;
 

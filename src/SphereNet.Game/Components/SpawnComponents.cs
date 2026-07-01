@@ -556,10 +556,15 @@ public sealed class SpawnComponent
     }
 
     /// <summary>Reset the spawn timer using current delay values.</summary>
-    public void ResetTimer()
+    public void ResetTimer(long preservedTimeoutMs = 0)
     {
         if (_spawnedUids.Count >= _maxCount)
             PauseTimer();
+        else if (preservedTimeoutMs > Environment.TickCount64)
+        {
+            _nextSpawnTick = preservedTimeoutMs;
+            _spawnItem.SetTimeout(_nextSpawnTick);
+        }
         else
             SetNextSpawnTime();
     }
@@ -685,7 +690,7 @@ public sealed class ItemSpawnComponent
         // Reschedule regardless of placement outcome so a spawner that keeps
         // rolling out-of-bounds points doesn't retry every tick. Interval honors
         // the TIMELO/TIMEHI override (defaults to the 60-300s legacy window).
-        _nextSpawnTick = Environment.TickCount64 + _rand.Next(_minDelaySec, _maxDelaySec + 1) * 1000;
+        SetNextSpawnTime();
 
         item.SetTag("SPAWN_POINT_UUID", _spawnItem.Uuid.ToString("D"));
         if (!_world.PlaceItem(item, pos))
@@ -699,9 +704,23 @@ public sealed class ItemSpawnComponent
         _spawnedUids.Add(item.Uid);
     }
 
-    public void ResetTimer()
+    public void ResetTimer(long preservedTimeoutMs = 0)
     {
+        if (preservedTimeoutMs > Environment.TickCount64)
+        {
+            _nextSpawnTick = preservedTimeoutMs;
+            _spawnItem.SetTimeout(_nextSpawnTick);
+            return;
+        }
+
         _nextSpawnTick = Environment.TickCount64 + _rand.Next(5, 30) * 1000;
+        _spawnItem.SetTimeout(_nextSpawnTick);
+    }
+
+    private void SetNextSpawnTime()
+    {
+        _nextSpawnTick = Environment.TickCount64 + _rand.Next(_minDelaySec, _maxDelaySec + 1) * 1000;
+        _spawnItem.SetTimeout(_nextSpawnTick);
     }
 
     private void CleanupDeleted()

@@ -41,6 +41,85 @@ public sealed class WorldLoader
         _logger = loggerFactory.CreateLogger<WorldLoader>();
     }
 
+    public readonly record struct WorldImportScope(Point3D Center, int Distance, int Flags)
+    {
+        public bool IncludeItems => (Flags & 1) != 0;
+        public bool IncludeChars => (Flags & 2) != 0;
+
+        public bool Contains(Point3D point)
+        {
+            int distance = Math.Max(0, Distance);
+            return point.Map == Center.Map && Center.GetDistanceTo(point) <= distance;
+        }
+    }
+
+    /// <summary>Load one runtime <c>.scp</c>/<c>.sbin</c> file. This is used by
+    /// Source-X-style SERV.LOAD / IMPORT / RESTORE world-ops where a script
+    /// injects a bounded object file while the server is running.</summary>
+    public (int Items, int Chars) LoadFile(GameWorld world, string path, AccountManager? accounts = null,
+        WorldImportScope? scope = null)
+    {
+        if (!File.Exists(path))
+            return (0, 0);
+
+        string loadPath = path;
+        string? filteredPath = null;
+        if (scope.HasValue)
+        {
+            filteredPath = Path.Combine(Path.GetTempPath(), $"sphnet_import_{Guid.NewGuid():N}.scp");
+            int filteredRecords = WriteScopedRuntimeLoadFile(path, filteredPath, scope.Value);
+            _logger.LogInformation("Runtime scoped import filter: {Path} -> {Records} world record(s)",
+                Path.GetFileName(path), filteredRecords);
+            loadPath = filteredPath;
+        }
+
+        int itemCount = 0, charCount = 0;
+        var charAccountLinks = new List<(Character Char, string AccountName)>();
+        var charEquipLinks = new List<(Character Char, Serial ItemSerial, byte Layer)>();
+        var itemContLinks = new List<(Item Item, Serial ContSerial, byte Layer)>();
+
+        world.SuppressDirtyNotify = true;
+        try
+        {
+            itemCount = LoadItemFile(world, loadPath, itemContLinks);
+            charCount = LoadCharFile(world, loadPath, charAccountLinks, charEquipLinks);
+            LoadDataFile(world, loadPath);
+        }
+        finally
+        {
+            world.SuppressDirtyNotify = false;
+            world.ConsumeDirtyObjects();
+            if (filteredPath != null)
+            {
+                try { File.Delete(filteredPath); } catch { }
+            }
+        }
+
+        LinkLoadedAccounts(charAccountLinks, accounts);
+        ResolveLoadedObjectLinks(world, itemContLinks, charEquipLinks);
+        _logger.LogInformation("Runtime load: {Path} -> {Items} items, {Chars} chars",
+            Path.GetFileName(path), itemCount, charCount);
+        return (itemCount, charCount);
+    }
+
+    /// <summary>Restore one runtime object file, replacing any currently
+    /// registered world object whose serial is present in the file. Unlike
+    /// <see cref="LoadFile"/>, this matches Source-X's destructive restore
+    /// intent for colliding serials while leaving unrelated world state alone.</summary>
+    public (int Items, int Chars, int Replaced) RestoreFile(GameWorld world, string path, AccountManager? accounts = null)
+    {
+        if (!File.Exists(path))
+            return (0, 0, 0);
+
+        var restoreSerials = CollectWorldRecordSerials(path);
+        int replaced = ReplaceExistingWorldRecords(world, restoreSerials);
+        var (items, chars) = LoadFile(world, path, accounts);
+
+        _logger.LogInformation("Runtime restore: {Path} -> {Items} items, {Chars} chars, {Replaced} replaced",
+            Path.GetFileName(path), items, chars, replaced);
+        return (items, chars, replaced);
+    }
+
     /// <summary>Load world data from save files.</summary>
     public (int Items, int Chars) Load(GameWorld world, string savePath, AccountManager? accounts = null)
     {
@@ -63,7 +142,12 @@ public sealed class WorldLoader
             var staticPaths = ResolveSaveFiles(savePath, "spherestatics");
             var multiPaths = ResolveSaveFiles(savePath, "spheremultis");
 
-            foreach (string path in itemPaths)
+            var itemSectionPaths = itemPaths
+                .Concat(charPaths)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (string path in itemSectionPaths)
             {
                 int n = LoadItemFile(world, path, itemContLinks);
                 itemCount += n;
@@ -84,10 +168,16 @@ public sealed class WorldLoader
                 _logger.LogInformation("Multis: {Path} -> {Count}", Path.GetFileName(path), n);
             }
 
-            // Sphere/Source-X sphereworld.scp contains both [WORLDITEM] and
-            // [WORLDCHAR] sections. LoadItemFile above only processed items;
-            // now make a second pass over the same files to pick up NPCs.
-            foreach (string path in itemPaths)
+            // Sphere/Source-X saves can mix [WORLDITEM] and [WORLDCHAR]
+            // sections in either sphereworld.scp or spherechars.scp. Make a
+            // second pass over both logical files to pick up mobiles after the
+            // item pass has captured all container/equipment references.
+            var charSectionPaths = itemPaths
+                .Concat(charPaths)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (string path in charSectionPaths)
             {
                 int n = LoadCharFile(world, path, charAccountLinks, charEquipLinks);
                 if (n > 0)
@@ -95,13 +185,6 @@ public sealed class WorldLoader
                     charCount += n;
                     _logger.LogInformation("WorldChars: {Path} -> {Count}", Path.GetFileName(path), n);
                 }
-            }
-
-            foreach (string path in charPaths)
-            {
-                int n = LoadCharFile(world, path, charAccountLinks, charEquipLinks);
-                charCount += n;
-                _logger.LogInformation("Chars: {Path} -> {Count}", Path.GetFileName(path), n);
             }
 
             // spheredata.scp — globals, lists, world scripts
@@ -218,6 +301,98 @@ public sealed class WorldLoader
                 _migratedUuids);
 
         return (itemCount, charCount);
+    }
+
+    private void LinkLoadedAccounts(List<(Character Char, string AccountName)> charAccountLinks,
+        AccountManager? accounts)
+    {
+        if (accounts == null)
+            return;
+
+        int linked = 0;
+        foreach (var (ch, accName) in charAccountLinks)
+        {
+            var acc = accounts.FindAccount(accName);
+            if (acc != null)
+            {
+                ch.IsPlayer = true;
+
+                bool alreadyLinked = false;
+                for (int i = 0; i < 7; i++)
+                {
+                    if (acc.GetCharSlot(i) == ch.Uid)
+                    {
+                        alreadyLinked = true;
+                        break;
+                    }
+                }
+
+                if (!alreadyLinked)
+                {
+                    int slot = acc.FindFreeSlot();
+                    if (slot >= 0)
+                    {
+                        acc.SetCharSlot(slot, ch.Uid);
+                        linked++;
+                    }
+                }
+            }
+            else
+            {
+                _logger.LogWarning("Orphan player character 0x{Uid:X8} ({Name}) — account '{Account}' not found",
+                    ch.Uid.Value, ch.Name, accName);
+            }
+        }
+
+        if (charAccountLinks.Count > 0)
+            _logger.LogInformation("Linked {Count}/{Total} characters to accounts", linked, charAccountLinks.Count);
+    }
+
+    private void ResolveLoadedObjectLinks(GameWorld world,
+        List<(Item Item, Serial ContSerial, byte Layer)> itemContLinks,
+        List<(Character Char, Serial ItemSerial, byte Layer)> charEquipLinks)
+    {
+        foreach (var (item, contSerial, layer) in itemContLinks)
+        {
+            var parent = world.FindObject(contSerial);
+            if (parent is Character parentChar)
+            {
+                parentChar.Equip(item, (Layer)layer);
+            }
+            else if (parent is Item parentItem)
+            {
+                if (parentItem.Uid == item.Uid)
+                {
+                    _logger.LogWarning("Item {Uid:X8} references itself as container, placing on ground",
+                        item.Uid.Value);
+                    world.PlaceItem(item, item.Position);
+                }
+                else
+                {
+                    parentItem.AddItem(item);
+                }
+            }
+            else
+            {
+                world.PlaceItem(item, item.Position);
+            }
+        }
+
+        foreach (var (ch, itemSerial, layer) in charEquipLinks)
+        {
+            var item = world.FindItem(itemSerial);
+            if (item == null)
+            {
+                _logger.LogWarning("Character 0x{CharUid:X8} references missing EQUIP item 0x{ItemUid:X8} on layer {Layer}",
+                    ch.Uid.Value, itemSerial.Value, layer);
+                continue;
+            }
+
+            if (item.ContainedIn.IsValid && world.FindItem(item.ContainedIn) is { } parentItem)
+                parentItem.RemoveItem(item);
+
+            ch.Equip(item, (Layer)layer);
+        }
     }
 
     /// <summary>Resolve actual on-disk paths for a logical save name
@@ -360,6 +535,201 @@ public sealed class WorldLoader
                     count, sw.Elapsed.TotalSeconds.ToString("F1"));
         }
         return count;
+    }
+
+    private enum RuntimeWorldRecordKind
+    {
+        Other,
+        Item,
+        Character
+    }
+
+    private sealed class RuntimeWorldRecord
+    {
+        public RuntimeWorldRecord(string section, List<(string Key, string Value)> properties,
+            RuntimeWorldRecordKind kind)
+        {
+            Section = section;
+            Properties = properties;
+            Kind = kind;
+        }
+
+        public string Section { get; }
+        public List<(string Key, string Value)> Properties { get; }
+        public RuntimeWorldRecordKind Kind { get; }
+        public Serial Serial { get; set; } = Serial.Invalid;
+        public Serial Container { get; set; } = Serial.Invalid;
+        public Point3D? Position { get; set; }
+    }
+
+    private int WriteScopedRuntimeLoadFile(string sourcePath, string filteredPath, WorldImportScope scope)
+    {
+        var records = ReadRuntimeWorldRecords(sourcePath);
+        var keep = SelectScopedRuntimeRecords(records, scope);
+
+        Directory.CreateDirectory(Path.GetDirectoryName(filteredPath) ?? ".");
+        using var fs = new FileStream(filteredPath, FileMode.Create, FileAccess.Write, FileShare.None);
+        using var writer = new TextSaveWriter(fs);
+        writer.WriteHeaderComment($"SphereNet scoped import filter from {Path.GetFileName(sourcePath)} at {DateTime.UtcNow:u}");
+
+        int keptWorldRecords = 0;
+        foreach (var record in records)
+        {
+            bool isWorldRecord = record.Kind != RuntimeWorldRecordKind.Other;
+            if (isWorldRecord && !keep.Contains(record))
+                continue;
+
+            writer.BeginRecord(record.Section);
+            foreach (var (key, value) in record.Properties)
+                writer.WriteProperty(key, value);
+            writer.EndRecord();
+
+            if (isWorldRecord)
+                keptWorldRecords++;
+        }
+
+        return keptWorldRecords;
+    }
+
+    private static List<RuntimeWorldRecord> ReadRuntimeWorldRecords(string path)
+    {
+        var records = new List<RuntimeWorldRecord>();
+        using var reader = SaveIO.OpenReader(path);
+
+        while (reader.NextRecord(out string section))
+        {
+            RuntimeWorldRecordKind kind = RuntimeWorldRecordKind.Other;
+            if (ParseSectionType(section, "WORLDITEM", out _))
+                kind = RuntimeWorldRecordKind.Item;
+            else if (ParseSectionType(section, "WORLDCHAR", out _))
+                kind = RuntimeWorldRecordKind.Character;
+
+            var props = new List<(string Key, string Value)>();
+            while (reader.NextProperty(out string key, out string val))
+                props.Add((key, val));
+
+            var record = new RuntimeWorldRecord(section, props, kind);
+            if (kind != RuntimeWorldRecordKind.Other)
+                PopulateRuntimeWorldRecordMetadata(record);
+            records.Add(record);
+        }
+
+        return records;
+    }
+
+    private static void PopulateRuntimeWorldRecordMetadata(RuntimeWorldRecord record)
+    {
+        foreach (var (key, value) in record.Properties)
+        {
+            if (key.Equals("SERIAL", StringComparison.OrdinalIgnoreCase))
+            {
+                if (TryParseHexOrDec(value, out uint serial))
+                    record.Serial = new Serial(serial);
+            }
+            else if (record.Kind == RuntimeWorldRecordKind.Item &&
+                     key.Equals("CONT", StringComparison.OrdinalIgnoreCase))
+            {
+                if (TryParseHexOrDec(value, out uint cont))
+                    record.Container = new Serial(cont);
+            }
+            else if (key.Equals("P", StringComparison.OrdinalIgnoreCase))
+            {
+                if (Point3D.TryParse(value.AsSpan(), out var point))
+                    record.Position = point;
+            }
+        }
+    }
+
+    private static HashSet<RuntimeWorldRecord> SelectScopedRuntimeRecords(
+        IReadOnlyList<RuntimeWorldRecord> records, WorldImportScope scope)
+    {
+        var keep = new HashSet<RuntimeWorldRecord>();
+        var bySerial = new Dictionary<uint, RuntimeWorldRecord>();
+
+        foreach (var record in records)
+        {
+            if (record.Serial.IsValid && !bySerial.ContainsKey(record.Serial.Value))
+                bySerial.Add(record.Serial.Value, record);
+        }
+
+        foreach (var record in records)
+        {
+            if (record.Kind == RuntimeWorldRecordKind.Character)
+            {
+                if (scope.IncludeChars && record.Position is { } point && scope.Contains(point))
+                    keep.Add(record);
+            }
+            else if (record.Kind == RuntimeWorldRecordKind.Item)
+            {
+                if (scope.IncludeItems && !record.Container.IsValid &&
+                    record.Position is { } point && scope.Contains(point))
+                    keep.Add(record);
+            }
+        }
+
+        bool changed;
+        do
+        {
+            changed = false;
+            foreach (var record in records)
+            {
+                if (record.Kind != RuntimeWorldRecordKind.Item || keep.Contains(record) ||
+                    !scope.IncludeItems || !record.Container.IsValid)
+                    continue;
+
+                if (bySerial.TryGetValue(record.Container.Value, out var parent) && keep.Contains(parent))
+                    changed |= keep.Add(record);
+            }
+        } while (changed);
+
+        return keep;
+    }
+
+    private static List<Serial> CollectWorldRecordSerials(string path)
+    {
+        var serials = new List<Serial>();
+        var seen = new HashSet<uint>();
+        using var reader = SaveIO.OpenReader(path);
+
+        while (reader.NextRecord(out string section))
+        {
+            bool isWorldRecord =
+                ParseSectionType(section, "WORLDITEM", out _) ||
+                ParseSectionType(section, "WORLDCHAR", out _);
+
+            while (reader.NextProperty(out string key, out string val))
+            {
+                if (!isWorldRecord || !key.Equals("SERIAL", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (TryParseHexOrDec(val, out uint serial) && serial != 0 && seen.Add(serial))
+                    serials.Add(new Serial(serial));
+            }
+        }
+
+        return serials;
+    }
+
+    private int ReplaceExistingWorldRecords(GameWorld world, IReadOnlyList<Serial> restoreSerials)
+    {
+        int replaced = 0;
+        foreach (var serial in restoreSerials)
+        {
+            var existing = world.FindObject(serial);
+            if (existing == null)
+                continue;
+
+            world.DeleteObject(existing);
+            if (existing is Item item)
+                item.Delete();
+            else if (existing is Character ch)
+                ch.Delete();
+            replaced++;
+        }
+
+        if (replaced > 0)
+            _logger.LogInformation("Runtime restore pre-replaced {Count} existing object(s)", replaced);
+        return replaced;
     }
 
     private int LoadCharFile(GameWorld world, string path, List<(Character, string)> accountLinks,
@@ -548,6 +918,9 @@ public sealed class WorldLoader
             case "OINT":
                 if (short.TryParse(val, out short oint))
                     ch.OInt = oint;
+                break;
+            case "SPELLEFFECT":
+                ch.AddPendingSpellEffectRecord(val);
                 break;
             default:
                 if (upper.StartsWith("SKILL[", StringComparison.Ordinal) && upper.Contains(']'))

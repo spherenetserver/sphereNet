@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Combat;
@@ -86,9 +88,8 @@ public sealed class SpellEngine
 
     /// <summary>One entry per active time-limited spell effect. Captures
     /// what was applied (stat deltas, light level, flag) so UndoEffect can
-    /// revert exactly those changes when the timer fires. Runtime-only —
-    /// effects do not persist across server restart, matching Source-X buff
-    /// semantics.</summary>
+    /// revert exactly those changes when the timer fires. Saved as remaining
+    /// time so Source-X-style spell memory survives restart.</summary>
     private sealed class ActiveSpellEffect
     {
         public required Character Target { get; init; }
@@ -98,11 +99,14 @@ public sealed class SpellEngine
         public short DexDelta { get; set; }
         public short IntDelta { get; set; }
         public byte OldLightLevel { get; set; }
+        public byte NewLightLevel { get; set; }
         public bool LightChanged { get; set; }
         public StatFlag AppliedFlag { get; set; }
         public ushort OldBodyId { get; set; }
+        public ushort NewBodyId { get; set; }
         public bool BodyChanged { get; set; }
         public string? OldName { get; set; }
+        public string? NewName { get; set; }
         public bool NameChanged { get; set; }
     }
 
@@ -119,6 +123,7 @@ public sealed class SpellEngine
     /// entry is removed and <see cref="UndoEffect"/> reverts its recorded
     /// deltas.</summary>
     private readonly List<ActiveSpellEffect> _activeEffects = [];
+    private const int PersistedEffectVersion = 1;
 
     /// <summary>Get a spell definition by type (for flag checks, etc.).</summary>
     public SpellDef? GetSpellDef(SpellType spell) => _spells.Get(spell);
@@ -1471,9 +1476,10 @@ public sealed class SpellEngine
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
                 eff.AppliedFlag = StatFlag.NightSight;
                 eff.OldLightLevel = target.LightLevel;
+                eff.NewLightLevel = 30;
                 eff.LightChanged = true;
                 target.SetStatFlag(StatFlag.NightSight);
-                target.LightLevel = 30;
+                target.LightLevel = eff.NewLightLevel;
                 OnPersonalLightChanged?.Invoke(target);
                 break;
             }
@@ -1503,8 +1509,9 @@ public sealed class SpellEngine
                 // on expiry). Source-X also randomizes skin/hair; name is the
                 // visible part other players key off.
                 eff.OldName = target.Name;
+                eff.NewName = s_incognitoNames[_rand.Next(s_incognitoNames.Length)];
                 eff.NameChanged = true;
-                target.Name = s_incognitoNames[_rand.Next(s_incognitoNames.Length)];
+                target.Name = eff.NewName;
                 target.SetStatFlag(StatFlag.Incognito);
                 Character.OnAppearanceChanged?.Invoke(target);
                 break;
@@ -1523,7 +1530,9 @@ public sealed class SpellEngine
                 if (target.OBody == 0)
                     target.OBody = target.BodyId;
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                eff.AppliedFlag = StatFlag.Polymorph;
                 eff.OldBodyId = target.OBody;
+                eff.NewBodyId = newBody;
                 eff.BodyChanged = true;
                 target.BodyId = newBody;
                 target.SetStatFlag(StatFlag.Polymorph);
@@ -1649,6 +1658,27 @@ public sealed class SpellEngine
         }
     }
 
+    private void ApplyDeltas(ActiveSpellEffect eff)
+    {
+        var t = eff.Target;
+        if (eff.StrDelta != 0) t.Str += eff.StrDelta;
+        if (eff.DexDelta != 0) t.Dex += eff.DexDelta;
+        if (eff.IntDelta != 0) t.Int += eff.IntDelta;
+        if (eff.AppliedFlag != StatFlag.None) t.SetStatFlag(eff.AppliedFlag);
+        if (eff.NameChanged && eff.NewName != null)
+        {
+            t.Name = eff.NewName;
+            Character.OnAppearanceChanged?.Invoke(t);
+        }
+        if (eff.BodyChanged && eff.NewBodyId != 0)
+            t.BodyId = eff.NewBodyId;
+        if (eff.LightChanged)
+        {
+            t.LightLevel = eff.NewLightLevel;
+            OnPersonalLightChanged?.Invoke(t);
+        }
+    }
+
     /// <summary>Revert polymorph body on death when MAGICF bit 0x0008 is set.</summary>
     public void RevertPolymorphOnDeath(Character ch)
     {
@@ -1691,6 +1721,148 @@ public sealed class SpellEngine
         return ch.OBody != 0 ? ch.OBody : ch.BodyId;
     }
 
+    public IEnumerable<string> GetPersistedEffectRecords(Character ch, long now)
+    {
+        foreach (var eff in _activeEffects)
+        {
+            if (eff.Target != ch || eff.Target.IsDeleted)
+                continue;
+            yield return SerializeEffect(eff, now);
+        }
+    }
+
+    public int RestorePersistedEffectsFromWorld()
+    {
+        int count = 0;
+        foreach (var obj in _world.GetAllObjects())
+        {
+            if (obj is Character ch)
+                count += RestorePersistedEffects(ch);
+        }
+        return count;
+    }
+
+    public int RestorePersistedEffects(Character ch)
+    {
+        if (ch.PendingSpellEffectRecords.Count == 0)
+            return 0;
+
+        int count = 0;
+        long now = Environment.TickCount64;
+        foreach (string record in ch.PendingSpellEffectRecords)
+        {
+            if (!TryDeserializeEffect(ch, record, now, out var eff))
+                continue;
+            _activeEffects.Add(eff);
+            ApplyDeltas(eff);
+            count++;
+        }
+        ch.ClearPendingSpellEffectRecords();
+        return count;
+    }
+
+    private static string SerializeEffect(ActiveSpellEffect eff, long now)
+    {
+        long remainingMs = Math.Max(0, eff.ExpireTick - now);
+        return string.Join('|',
+            PersistedEffectVersion.ToString(CultureInfo.InvariantCulture),
+            ((ushort)eff.Spell).ToString(CultureInfo.InvariantCulture),
+            remainingMs.ToString(CultureInfo.InvariantCulture),
+            eff.StrDelta.ToString(CultureInfo.InvariantCulture),
+            eff.DexDelta.ToString(CultureInfo.InvariantCulture),
+            eff.IntDelta.ToString(CultureInfo.InvariantCulture),
+            eff.OldLightLevel.ToString(CultureInfo.InvariantCulture),
+            eff.NewLightLevel.ToString(CultureInfo.InvariantCulture),
+            eff.LightChanged ? "1" : "0",
+            ((uint)eff.AppliedFlag).ToString(CultureInfo.InvariantCulture),
+            eff.OldBodyId.ToString(CultureInfo.InvariantCulture),
+            eff.NewBodyId.ToString(CultureInfo.InvariantCulture),
+            eff.BodyChanged ? "1" : "0",
+            EncodeEffectString(eff.OldName),
+            EncodeEffectString(eff.NewName),
+            eff.NameChanged ? "1" : "0");
+    }
+
+    private static bool TryDeserializeEffect(Character target, string record, long now, out ActiveSpellEffect eff)
+    {
+        eff = null!;
+        var parts = record.Split('|');
+        if (parts.Length != 16)
+            return false;
+
+        if (!int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int version) ||
+            version != PersistedEffectVersion)
+            return false;
+        if (!ushort.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort spellRaw))
+            return false;
+        if (!long.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out long remainingMs))
+            return false;
+        if (!short.TryParse(parts[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out short strDelta))
+            return false;
+        if (!short.TryParse(parts[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out short dexDelta))
+            return false;
+        if (!short.TryParse(parts[5], NumberStyles.Integer, CultureInfo.InvariantCulture, out short intDelta))
+            return false;
+        if (!byte.TryParse(parts[6], NumberStyles.Integer, CultureInfo.InvariantCulture, out byte oldLight))
+            return false;
+        if (!byte.TryParse(parts[7], NumberStyles.Integer, CultureInfo.InvariantCulture, out byte newLight))
+            return false;
+        if (!uint.TryParse(parts[9], NumberStyles.Integer, CultureInfo.InvariantCulture, out uint flagRaw))
+            return false;
+        if (!ushort.TryParse(parts[10], NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort oldBody))
+            return false;
+        if (!ushort.TryParse(parts[11], NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort newBody))
+            return false;
+        if (!TryDecodeEffectString(parts[13], out string? oldName))
+            return false;
+        if (!TryDecodeEffectString(parts[14], out string? newName))
+            return false;
+
+        eff = new ActiveSpellEffect
+        {
+            Target = target,
+            Spell = (SpellType)spellRaw,
+            ExpireTick = now + Math.Max(0, remainingMs),
+            StrDelta = strDelta,
+            DexDelta = dexDelta,
+            IntDelta = intDelta,
+            OldLightLevel = oldLight,
+            NewLightLevel = newLight,
+            LightChanged = parts[8] == "1",
+            AppliedFlag = (StatFlag)flagRaw,
+            OldBodyId = oldBody,
+            NewBodyId = newBody,
+            BodyChanged = parts[12] == "1",
+            OldName = oldName,
+            NewName = newName,
+            NameChanged = parts[15] == "1",
+        };
+        return true;
+    }
+
+    private static string EncodeEffectString(string? value)
+    {
+        if (value == null)
+            return "";
+        return Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
+    }
+
+    private static bool TryDecodeEffectString(string value, out string? decoded)
+    {
+        decoded = null;
+        if (value.Length == 0)
+            return true;
+        try
+        {
+            decoded = Encoding.UTF8.GetString(Convert.FromBase64String(value));
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>Revert all active buff deltas so character stats are saved
     /// clean (base values only). Call before WorldSaver runs.</summary>
     public void RevertAllForSave()
@@ -1704,18 +1876,7 @@ public sealed class SpellEngine
     public void ReapplyAllAfterSave()
     {
         foreach (var eff in _activeEffects)
-        {
-            var t = eff.Target;
-            if (eff.StrDelta != 0) t.Str += eff.StrDelta;
-            if (eff.DexDelta != 0) t.Dex += eff.DexDelta;
-            if (eff.IntDelta != 0) t.Int += eff.IntDelta;
-            if (eff.AppliedFlag != StatFlag.None) t.SetStatFlag(eff.AppliedFlag);
-            if (eff.LightChanged)
-            {
-                t.LightLevel = 30;
-                OnPersonalLightChanged?.Invoke(t);
-            }
-        }
+            ApplyDeltas(eff);
     }
 }
 

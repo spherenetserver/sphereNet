@@ -168,8 +168,14 @@ public static partial class Program
             _spellEngine.RevertAllForSave();
             string basePath = AppDomain.CurrentDomain.BaseDirectory;
             string sp = ResolvePath(basePath, _config.WorldSaveDir);
-            _saver.Save(_world, sp);
-            _spellEngine.ReapplyAllAfterSave();
+            try
+            {
+                _saver.Save(_world, sp);
+            }
+            finally
+            {
+                _spellEngine.ReapplyAllAfterSave();
+            }
             SaveAccountsToDisk();
             _saveCount++;
             sw.Stop();

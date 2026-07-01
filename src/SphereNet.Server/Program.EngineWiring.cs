@@ -1088,6 +1088,7 @@ public static partial class Program
             };
             _spellRegistry = new SpellRegistry();
             _spellEngine = new SpellEngine(_world, _spellRegistry);
+            _saver.GetSpellEffectRecords = _spellEngine.GetPersistedEffectRecords;
             _spellEngine.TriggerDispatcher = _triggerDispatcher;
             _spellEngine.OnPlaySound = (pos, soundId) =>
             {

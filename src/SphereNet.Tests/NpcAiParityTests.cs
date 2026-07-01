@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
@@ -32,6 +33,31 @@ public class NpcAiParityTests
         ch.Backpack = pack;
         ch.Equip(pack, Layer.Pack);
         return pack;
+    }
+
+    [Fact]
+    public void VendorRestockTime_UsesUnixMillisecondsForPersistence()
+    {
+        var world = CreateWorld();
+        var vendor = world.CreateCharacter();
+        vendor.NpcBrain = NpcBrainType.Vendor;
+        vendor.Name = "Vendor";
+        vendor.BodyId = 0x0190;
+        vendor.Str = 50; vendor.Dex = 50; vendor.Int = 50;
+        world.PlaceCharacter(vendor, new Point3D(1000, 1000, 0, 0));
+        vendor.SetTag("RESTOCK_TIME", "1");
+
+        var ai = new NpcAI(world, new SphereConfig());
+        int restocks = 0;
+        ai.OnVendorRestock = _ => restocks++;
+
+        var actVendor = typeof(NpcAI).GetMethod("ActVendor",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        actVendor.Invoke(ai, [vendor]);
+
+        Assert.Equal(1, restocks);
+        Assert.True(vendor.TryGetTag("RESTOCK_TIME", out string? value));
+        Assert.True(long.Parse(value!) > 1_000_000_000_000L);
     }
 
     // ---- Phase A: config parity ----

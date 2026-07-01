@@ -47,9 +47,28 @@ public sealed class WorldSaver
     /// (e.g. hash → "c_man"). Used for Source-X compatible section headers.</summary>
     public Func<int, string?>? ResolveCharDefName { get; set; }
 
+    /// <summary>Returns active spell-effect records for a character as
+    /// remaining-time save strings. Wired by the host because SpellEngine owns
+    /// the runtime effect list.</summary>
+    public Func<Character, long, IEnumerable<string>>? GetSpellEffectRecords { get; set; }
+
     public WorldSaver(ILoggerFactory loggerFactory)
     {
         _logger = loggerFactory.CreateLogger<WorldSaver>();
+    }
+
+    public readonly record struct WorldExportScope(Point3D Center, int Distance, int Flags)
+    {
+        public bool IncludeItems => (Flags & 1) != 0;
+        public bool IncludeChars => (Flags & 2) != 0;
+
+        public bool Contains(Point3D point)
+        {
+            int distance = Math.Max(0, Distance);
+            return point.Map == Center.Map &&
+                   Math.Abs((int)point.X - Center.X) <= distance &&
+                   Math.Abs((int)point.Y - Center.Y) <= distance;
+        }
     }
 
     public bool Save(GameWorld world, string savePath)
@@ -81,6 +100,73 @@ public sealed class WorldSaver
         }
     }
 
+    /// <summary>Export a single object as a classic text <c>.scp</c> record.
+    /// Source-X world-ops use the script save format, so this intentionally
+    /// writes text regardless of the server's normal binary/gzip save mode.</summary>
+    public int ExportObject(ObjBase obj, string path)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
+        long now = Environment.TickCount64;
+        using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+        using var writer = new TextSaveWriter(fs);
+        writer.WriteHeaderComment($"SphereNet object export at {DateTime.UtcNow:u}");
+
+        if (obj is Item item && !item.IsDeleted)
+        {
+            WriteItem(writer, item, now);
+            return 1;
+        }
+
+        if (obj is Character ch && !ch.IsDeleted)
+        {
+            WriteChar(writer, ch, now);
+            return 1;
+        }
+
+        return 0;
+    }
+
+    /// <summary>Export the current dynamic world into one mixed text
+    /// <c>.scp</c> file. Uses the same snapshot/filtering as normal world save
+    /// (for example, virtual vendor stock is skipped).</summary>
+    public int ExportWorld(GameWorld world, string path, WorldExportScope? scope = null)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
+        var snapshot = CaptureSnapshot(world, scope);
+        using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+        using var writer = new TextSaveWriter(fs);
+        writer.WriteHeaderComment($"SphereNet world export at {DateTime.UtcNow:u}");
+        foreach (var record in snapshot.Items)
+            WriteRecord(writer, record);
+        foreach (var record in snapshot.Characters)
+            WriteRecord(writer, record);
+        return snapshot.Items.Count + snapshot.Characters.Count;
+    }
+
+    /// <summary>Export static world items into one text <c>.scp</c> file.
+    /// This is the bounded first slice of Source-X <c>SAVESTATICS</c>: dynamic
+    /// items/chars stay in the normal world export while ATTR_STATIC items are
+    /// written here for inspection or later import.</summary>
+    public int ExportStatics(GameWorld world, string path, WorldExportScope? scope = null)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
+        long now = Environment.TickCount64;
+        int count = 0;
+        using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+        using var writer = new TextSaveWriter(fs);
+        writer.WriteHeaderComment($"SphereNet statics export at {DateTime.UtcNow:u}");
+        foreach (var obj in world.GetAllObjects())
+        {
+            if (obj is not Item item || item.IsDeleted || !item.IsAttr(Core.Enums.ObjAttributes.Static))
+                continue;
+            if (scope is { } s && (!s.IncludeItems || !s.Contains(item.Position)))
+                continue;
+            WriteItem(writer, item, now);
+            count++;
+        }
+        return count;
+    }
+
     /// <summary>Write one logical save ("sphereworld" or "spherechars"). Three
     /// code paths, selected by <see cref="ShardCount"/>:
     /// <list type="bullet">
@@ -89,9 +175,12 @@ public sealed class WorldSaver
     /// spill to the next. Small worlds stay single-file + no manifest.</item>
     /// <item><c>2-16</c> → fixed UID-hash parallel shards, always manifest.</item>
     /// </list></summary>
-    private WorldSaveSnapshot CaptureSnapshot(GameWorld world)
+    private WorldSaveSnapshot CaptureSnapshot(GameWorld world, WorldExportScope? scope = null)
     {
         var allObjects = world.GetAllObjects().ToArray();
+        var byUid = scope.HasValue
+            ? allObjects.ToDictionary(obj => obj.Uid.Value)
+            : null;
         var items = new List<SaveRecord>();
         var chars = new List<SaveRecord>();
         long now = Environment.TickCount64;
@@ -120,17 +209,68 @@ public sealed class WorldSaver
                 if (vendorStock.Contains(item.Uid.Value) ||
                     (item.ContainedIn.IsValid && vendorStock.Contains(item.ContainedIn.Value)))
                     continue; // virtual vendor stock — never persisted
+                if (!ShouldExportItem(item, scope, byUid))
+                    continue;
                 items.Add(CaptureItem(item, now));
             }
             else if (obj is Character ch)
             {
                 if (ch.IsDeleted)
                     continue;
+                if (!ShouldExportChar(ch, scope))
+                    continue;
                 chars.Add(CaptureChar(ch, now));
             }
         }
 
         return new WorldSaveSnapshot(items, chars);
+    }
+
+    private static bool ShouldExportChar(Character ch, WorldExportScope? scope)
+    {
+        if (!scope.HasValue)
+            return true;
+
+        var s = scope.Value;
+        return s.IncludeChars && s.Contains(ch.Position);
+    }
+
+    private static bool ShouldExportItem(Item item, WorldExportScope? scope,
+        IReadOnlyDictionary<uint, ObjBase>? byUid)
+    {
+        if (!scope.HasValue)
+            return true;
+
+        var s = scope.Value;
+        if (!s.IncludeItems)
+            return false;
+
+        if (!item.ContainedIn.IsValid)
+            return s.Contains(item.Position);
+
+        if (byUid == null)
+            return false;
+
+        Serial parentSerial = item.ContainedIn;
+        for (int guard = 0; guard < 64 && parentSerial.IsValid; guard++)
+        {
+            if (!byUid.TryGetValue(parentSerial.Value, out var parent))
+                return false;
+
+            if (parent is Character ch)
+                return s.IncludeChars && s.Contains(ch.Position);
+
+            if (parent is not Item parentItem || parentItem.IsDeleted ||
+                parentItem.IsAttr(Core.Enums.ObjAttributes.Static))
+                return false;
+
+            if (!parentItem.ContainedIn.IsValid)
+                return s.Contains(parentItem.Position);
+
+            parentSerial = parentItem.ContainedIn;
+        }
+
+        return false;
     }
 
     private int SaveSharded(IReadOnlyList<SaveRecord> records, string savePath, string baseName, bool isItems)
@@ -645,6 +785,15 @@ public sealed class WorldSaver
         }
 
         WriteTimerF(w, ch, now);
+
+        if (GetSpellEffectRecords != null)
+        {
+            foreach (string record in GetSpellEffectRecords(ch, now))
+            {
+                if (!string.IsNullOrWhiteSpace(record))
+                    w.WriteProperty("SPELLEFFECT", record);
+            }
+        }
 
         // Active poison (level, remaining ticks + time, poisoner). Saved as remaining
         // time so it resumes after load instead of silently ending on restart.

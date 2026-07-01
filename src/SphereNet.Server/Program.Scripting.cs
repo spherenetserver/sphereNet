@@ -201,6 +201,11 @@ public static partial class Program
             _ when upper.StartsWith("_GMPAGE=") => HandleServGmPage(property[8..]),
             _ when upper.StartsWith("_VARLIST=") => HandleServVarListToCaller(property[9..]),
             _ when upper.StartsWith("_PRINTLISTS=") => HandleServPrintListsToCaller(property[12..]),
+            _ when upper.StartsWith("_EXPORT=") => HandleServExport(property[8..]),
+            _ when upper.StartsWith("_LOAD=") => HandleServLoad(property[6..]),
+            _ when upper.StartsWith("_IMPORT=") => HandleServImport(property[8..]),
+            _ when upper.StartsWith("_RESTORE=") => HandleServRestore(property[9..]),
+            _ when upper.StartsWith("_SAVESTATICS=") => HandleServSaveStatics(property[13..]),
 
             // serv.resync / serv.save / serv.shutdown — admin write
             // verbs reachable from dialog buttons (d_admin_function).
@@ -221,6 +226,12 @@ public static partial class Program
             "VARLIST" => HandleServVarList(""),
             _ when upper.StartsWith("VARLIST ") => HandleServVarList(property[8..]),
             "PRINTLISTS" => HandleServPrintLists(),
+            _ when upper.StartsWith("EXPORT ") => HandleServExport("0|" + property[7..]),
+            _ when upper.StartsWith("LOAD ") => HandleServLoad(property[5..]),
+            _ when upper.StartsWith("IMPORT ") => HandleServImport("0|" + property[7..]),
+            _ when upper.StartsWith("RESTORE ") => HandleServRestore(property[8..]),
+            "SAVESTATICS" => HandleServSaveStatics(""),
+            _ when upper.StartsWith("SAVESTATICS ") => HandleServSaveStatics(property[12..]),
 
             // Region property access
             _ when upper.StartsWith("_REGION_GET=") => HandleRegionGet(property[12..]),
@@ -1049,6 +1060,264 @@ public static partial class Program
             ? DumpGlobalLists(console.SysMessage)
             : DumpGlobalLists(line => _log?.LogInformation("{Line}", line));
         return n.ToString();
+    }
+
+    private static string? HandleServExport(string data)
+    {
+        try
+        {
+            if (_world == null || _saver == null)
+                return "0";
+
+            int pipe = data.IndexOf('|');
+            string src = pipe >= 0 ? data[..pipe].Trim() : "0";
+            string payload = pipe >= 0 ? data[(pipe + 1)..].Trim() : data.Trim();
+            if (string.IsNullOrWhiteSpace(payload))
+                return "0";
+
+            ObjBase? target = null;
+            string pathArg = payload;
+            if (TryParseScopedWorldOpsArgs(payload, out var scopedExport))
+            {
+                if (!TryParseSerial(src, out var centerUid) || _world.FindObject(centerUid) is not { } center)
+                    return "0";
+
+                string? scopedPath = ResolveWorldOpsPath(scopedExport.Path, forWrite: true);
+                if (scopedPath == null)
+                    return "0";
+
+                var scope = new WorldSaver.WorldExportScope(center.Position, scopedExport.Distance, scopedExport.Flags);
+                int scopedCount = _saver.ExportWorld(_world, scopedPath, scope);
+                _log?.LogInformation(
+                    "SERV.EXPORT wrote {Count} scoped record(s) to {Path} around 0x{Uid:X8} flags={Flags} distance={Distance}",
+                    scopedCount, scopedPath, center.Uid.Value, scopedExport.Flags, scopedExport.Distance);
+                return scopedCount.ToString();
+            }
+
+            string first = FirstToken(payload, out string rest);
+
+            if (first.Equals("WORLD", StringComparison.OrdinalIgnoreCase) ||
+                first.Equals("ALL", StringComparison.OrdinalIgnoreCase))
+            {
+                pathArg = rest;
+            }
+            else if (TryParseSerial(first, out var uid) && _world.FindObject(uid) is { } explicitObj)
+            {
+                target = explicitObj;
+                pathArg = rest;
+            }
+            else if (TryParseSerial(src, out var srcUid))
+            {
+                target = _world.FindObject(srcUid);
+            }
+
+            string? path = ResolveWorldOpsPath(pathArg, forWrite: true);
+            if (path == null)
+                return "0";
+
+            int count = target != null
+                ? _saver.ExportObject(target, path)
+                : _saver.ExportWorld(_world, path);
+            _log?.LogInformation("SERV.EXPORT wrote {Count} record(s) to {Path}", count, path);
+            return count.ToString();
+        }
+        catch (Exception ex)
+        {
+            _log?.LogWarning(ex, "SERV.EXPORT failed");
+            return "0";
+        }
+    }
+
+    private static string? HandleServLoad(string args)
+    {
+        try
+        {
+            if (_world == null || _loader == null)
+                return "0";
+
+            string? path = ResolveWorldOpsPath(args, forWrite: false);
+            if (path == null || !File.Exists(path))
+                return "0";
+
+            var (items, chars) = _loader.LoadFile(_world, path, _accounts);
+            InitializeSpawnItems();
+            _spellEngine?.RestorePersistedEffectsFromWorld();
+            int total = items + chars;
+            _log?.LogInformation("SERV.LOAD imported {Items} item(s), {Chars} char(s) from {Path}",
+                items, chars, path);
+            return total.ToString();
+        }
+        catch (Exception ex)
+        {
+            _log?.LogWarning(ex, "SERV.LOAD/IMPORT failed");
+            return "0";
+        }
+    }
+
+    private static string? HandleServImport(string data)
+    {
+        try
+        {
+            if (_world == null || _loader == null)
+                return "0";
+
+            int pipe = data.IndexOf('|');
+            string centerUidText = pipe >= 0 ? data[..pipe].Trim() : "0";
+            string payload = pipe >= 0 ? data[(pipe + 1)..].Trim() : data.Trim();
+            if (string.IsNullOrWhiteSpace(payload))
+                return "0";
+
+            WorldLoader.WorldImportScope? scope = null;
+            string pathArg = payload;
+            if (TryParseScopedWorldOpsArgs(payload, out var scopedImport))
+            {
+                if (!TryParseSerial(centerUidText, out var centerUid) ||
+                    _world.FindObject(centerUid) is not { } center)
+                    return "0";
+
+                scope = new WorldLoader.WorldImportScope(center.Position, scopedImport.Distance, scopedImport.Flags);
+                pathArg = scopedImport.Path;
+            }
+
+            string? path = ResolveWorldOpsPath(pathArg, forWrite: false);
+            if (path == null || !File.Exists(path))
+                return "0";
+
+            var (items, chars) = _loader.LoadFile(_world, path, _accounts, scope);
+            InitializeSpawnItems();
+            _spellEngine?.RestorePersistedEffectsFromWorld();
+            int total = items + chars;
+            _log?.LogInformation(
+                "SERV.IMPORT imported {Items} item(s), {Chars} char(s) from {Path}{Scope}",
+                items, chars, path, scope.HasValue ? " with scope" : "");
+            return total.ToString();
+        }
+        catch (Exception ex)
+        {
+            _log?.LogWarning(ex, "SERV.IMPORT failed");
+            return "0";
+        }
+    }
+
+    private static string? HandleServRestore(string args)
+    {
+        try
+        {
+            if (_world == null || _loader == null)
+                return "0";
+
+            string? path = ResolveWorldOpsPath(args, forWrite: false);
+            if (path == null || !File.Exists(path))
+                return "0";
+
+            var (items, chars, replaced) = _loader.RestoreFile(_world, path, _accounts);
+            InitializeSpawnItems();
+            _spellEngine?.RestorePersistedEffectsFromWorld();
+            int total = items + chars;
+            _log?.LogInformation(
+                "SERV.RESTORE restored {Items} item(s), {Chars} char(s), replaced {Replaced} object(s) from {Path}",
+                items, chars, replaced, path);
+            return total.ToString();
+        }
+        catch (Exception ex)
+        {
+            _log?.LogWarning(ex, "SERV.RESTORE failed");
+            return "0";
+        }
+    }
+
+    private static string? HandleServSaveStatics(string args)
+    {
+        try
+        {
+            if (_world == null || _saver == null)
+                return "0";
+
+            string pathArg = string.IsNullOrWhiteSpace(args) ? "spherestatics.scp" : args;
+            string? path = ResolveWorldOpsPath(pathArg, forWrite: true);
+            if (path == null)
+                return "0";
+
+            int count = _saver.ExportStatics(_world, path);
+            _log?.LogInformation("SERV.SAVESTATICS wrote {Count} static item(s) to {Path}", count, path);
+            return count.ToString();
+        }
+        catch (Exception ex)
+        {
+            _log?.LogWarning(ex, "SERV.SAVESTATICS failed");
+            return "0";
+        }
+    }
+
+    private static string FirstToken(string text, out string rest)
+    {
+        string trimmed = text.Trim();
+        int sp = trimmed.IndexOfAny(new[] { ' ', '\t' });
+        if (sp < 0)
+        {
+            rest = "";
+            return trimmed;
+        }
+        rest = trimmed[(sp + 1)..].TrimStart();
+        return trimmed[..sp];
+    }
+
+    private readonly record struct ScopedWorldOpsArgs(string Path, int Flags, int Distance);
+
+    private static bool TryParseScopedWorldOpsArgs(string payload, out ScopedWorldOpsArgs args)
+    {
+        args = default;
+        string[] parts;
+
+        if (payload.Contains(',', StringComparison.Ordinal))
+        {
+            parts = payload.Split(',', StringSplitOptions.TrimEntries);
+        }
+        else
+        {
+            parts = payload.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        }
+
+        if (parts.Length != 3 || string.IsNullOrWhiteSpace(parts[0]) ||
+            !int.TryParse(parts[1], out int flags) ||
+            !int.TryParse(parts[2], out int distance) ||
+            flags <= 0 || distance < 0)
+            return false;
+
+        flags &= 3;
+        if (flags == 0)
+            return false;
+
+        args = new ScopedWorldOpsArgs(parts[0], flags, distance);
+        return true;
+    }
+
+    private static string? ResolveWorldOpsPath(string raw, bool forWrite)
+    {
+        string path = raw.Trim().Trim('"').Replace('\\', '/');
+        if (path.Length == 0 || path.Contains("..", StringComparison.Ordinal) ||
+            path.StartsWith('/') || path.Contains(':'))
+            return null;
+
+        if (!path.EndsWith(".scp", StringComparison.OrdinalIgnoreCase) &&
+            !path.EndsWith(".scp.gz", StringComparison.OrdinalIgnoreCase) &&
+            !path.EndsWith(".sbin", StringComparison.OrdinalIgnoreCase) &&
+            !path.EndsWith(".sbin.gz", StringComparison.OrdinalIgnoreCase))
+            path += ".scp";
+
+        string basePath = ResolvePath(AppDomain.CurrentDomain.BaseDirectory,
+            _config?.WorldSaveDir ?? "save/");
+        string fullBase = Path.GetFullPath(basePath);
+        string full = Path.GetFullPath(Path.Combine(fullBase, path));
+        string fullBaseWithSep = fullBase.EndsWith(Path.DirectorySeparatorChar)
+            ? fullBase
+            : fullBase + Path.DirectorySeparatorChar;
+        if (!full.Equals(fullBase, StringComparison.OrdinalIgnoreCase) &&
+            !full.StartsWith(fullBaseWithSep, StringComparison.OrdinalIgnoreCase))
+            return null;
+        if (forWrite)
+            Directory.CreateDirectory(Path.GetDirectoryName(full) ?? fullBase);
+        return full;
     }
 
     /// <summary>Source-X <c>serv.shutdown [seconds]</c>. Without an arg,

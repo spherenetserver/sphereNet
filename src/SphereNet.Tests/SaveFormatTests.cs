@@ -3,6 +3,7 @@ using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
+using SphereNet.Game.Magic;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.World;
@@ -10,6 +11,7 @@ using SphereNet.Persistence.Accounts;
 using SphereNet.Persistence.Formats;
 using SphereNet.Persistence.Load;
 using SphereNet.Persistence.Save;
+using SphereNet.Scripting.Resources;
 using Xunit;
 
 namespace SphereNet.Tests;
@@ -148,6 +150,349 @@ public class SaveFormatTests
     }
 
     [Fact]
+    public void Roundtrip_PreservesSpawnerTimerAcrossComponentInit()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_spawn_timer_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            saver.Format = SaveFormat.Text;
+            saver.ShardCount = 0;
+
+            var src = MakeWorld();
+            var spawner = src.CreateItem();
+            spawner.BaseId = 0x1F13;
+            spawner.ItemType = ItemType.SpawnChar;
+            spawner.More1 = 0x0190;
+            src.PlaceItem(spawner, new Point3D(1000, 1000, 0, 0));
+            spawner.SetTimeout(Environment.TickCount64 + 3_600_000);
+
+            var itemSpawner = src.CreateItem();
+            itemSpawner.BaseId = 0x1F14;
+            itemSpawner.ItemType = ItemType.SpawnItem;
+            itemSpawner.SpawnItem = new SphereNet.Game.Components.ItemSpawnComponent(itemSpawner, src);
+            itemSpawner.SpawnItem.ResetTimer();
+            Assert.True(itemSpawner.Timeout > Environment.TickCount64);
+            src.PlaceItem(itemSpawner, new Point3D(1001, 1000, 0, 0));
+
+            Assert.True(saver.Save(src, tmp));
+            string itemSave = File.ReadAllText(Path.Combine(tmp, "sphereworld.scp"));
+            Assert.Contains("TIMERMS=", itemSave);
+
+            var dst = MakeWorld();
+            loader.Load(dst, tmp);
+
+            var reloaded = dst.FindItem(spawner.Uid);
+            Assert.NotNull(reloaded);
+            long loadedTimeout = reloaded!.Timeout;
+            Assert.True(loadedTimeout > Environment.TickCount64 + 3_000_000);
+
+            reloaded.ItemType = ItemType.SpawnChar;
+            var resources = new ResourceHolder(LoggerFactory.Create(_ => { }).CreateLogger<ResourceHolder>());
+            reloaded.InitializeSpawnComponent(dst, resources, loadedTimeout);
+
+            Assert.Equal(loadedTimeout, reloaded.Timeout);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void WorldOps_ExportAndLoadFile_RoundtripsMixedScp()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_worldops_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            var src = MakeWorld();
+
+            var item = src.CreateItem();
+            item.BaseId = 0x0EED;
+            item.Amount = 42;
+            item.Name = "coins";
+            src.PlaceItem(item, new Point3D(2000, 2000, 0, 0));
+
+            var ch = src.CreateCharacter();
+            ch.Name = "Importer";
+            ch.BodyId = 0x0190;
+            ch.Str = 55; ch.Dex = 44; ch.Int = 33;
+            src.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
+
+            var staticItem = src.CreateItem();
+            staticItem.BaseId = 0x0B80;
+            staticItem.Name = "static sign";
+            staticItem.SetAttr(ObjAttributes.Static);
+            src.PlaceItem(staticItem, new Point3D(2010, 2000, 0, 0));
+
+            string worldPath = Path.Combine(tmp, "export_world.scp");
+            Assert.Equal(2, saver.ExportWorld(src, worldPath)); // dynamic item + char; static skipped
+            Assert.Contains("[WORLDITEM", File.ReadAllText(worldPath));
+            Assert.Contains("[WORLDCHAR", File.ReadAllText(worldPath));
+
+            var dst = MakeWorld();
+            var (items, chars) = loader.LoadFile(dst, worldPath);
+            Assert.Equal(1, items);
+            Assert.Equal(1, chars);
+            Assert.Equal(42, dst.FindItem(item.Uid)!.Amount);
+            Assert.Equal("Importer", dst.FindChar(ch.Uid)!.Name);
+
+            string staticPath = Path.Combine(tmp, "statics.scp");
+            Assert.Equal(1, saver.ExportStatics(src, staticPath));
+            var staticDst = MakeWorld();
+            var (staticItems, staticChars) = loader.LoadFile(staticDst, staticPath);
+            Assert.Equal(1, staticItems);
+            Assert.Equal(0, staticChars);
+            Assert.True(staticDst.FindItem(staticItem.Uid)!.IsAttr(ObjAttributes.Static));
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void WorldOps_RestoreFile_ReplacesExistingSerial()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_restore_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            var src = MakeWorld();
+
+            var item = src.CreateItem();
+            item.BaseId = 0x0EED;
+            item.Amount = 42;
+            item.Name = "coins";
+            src.PlaceItem(item, new Point3D(2000, 2000, 0, 0));
+
+            string path = Path.Combine(tmp, "one.scp");
+            Assert.Equal(1, saver.ExportObject(item, path));
+
+            var dst = MakeWorld();
+            var (loadedItems, loadedChars) = loader.LoadFile(dst, path);
+            Assert.Equal(1, loadedItems);
+            Assert.Equal(0, loadedChars);
+
+            var original = dst.FindItem(item.Uid)!;
+            Assert.Equal(42, original.Amount);
+
+            item.Amount = 77;
+            item.Name = "replacement coins";
+            Assert.Equal(1, saver.ExportObject(item, path));
+
+            var (duplicateLoadItems, duplicateLoadChars) = loader.LoadFile(dst, path);
+            Assert.Equal(0, duplicateLoadItems);
+            Assert.Equal(0, duplicateLoadChars);
+            Assert.Equal(42, dst.FindItem(item.Uid)!.Amount);
+
+            var (restoredItems, restoredChars, replaced) = loader.RestoreFile(dst, path);
+            Assert.Equal(1, replaced);
+            Assert.Equal(1, restoredItems);
+            Assert.Equal(0, restoredChars);
+            Assert.True(original.IsDeleted);
+
+            var restored = dst.FindItem(item.Uid)!;
+            Assert.Equal(77, restored.Amount);
+            Assert.Equal("replacement coins", restored.Name);
+            Assert.NotSame(original, restored);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void WorldOps_ScopedExport_FiltersByFlagsDistanceAndKeepsContainerGraph()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_scope_export_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            var src = MakeWorld();
+
+            var center = src.CreateCharacter();
+            center.Name = "scope center";
+            center.BodyId = 0x0190;
+            src.PlaceCharacter(center, new Point3D(1000, 1000, 0, 0));
+
+            var nearChar = src.CreateCharacter();
+            nearChar.Name = "near char";
+            nearChar.BodyId = 0x0190;
+            src.PlaceCharacter(nearChar, new Point3D(1005, 1000, 0, 0));
+
+            var farChar = src.CreateCharacter();
+            farChar.Name = "far char";
+            farChar.BodyId = 0x0190;
+            src.PlaceCharacter(farChar, new Point3D(1030, 1000, 0, 0));
+
+            var nearItem = src.CreateItem();
+            nearItem.BaseId = 0x0EED;
+            nearItem.Name = "near coins";
+            src.PlaceItem(nearItem, new Point3D(1002, 1000, 0, 0));
+
+            var farItem = src.CreateItem();
+            farItem.BaseId = 0x0EED;
+            farItem.Name = "far coins";
+            src.PlaceItem(farItem, new Point3D(1030, 1000, 0, 0));
+
+            var chest = src.CreateItem();
+            chest.BaseId = 0x0E75;
+            chest.Name = "near chest";
+            src.PlaceItem(chest, new Point3D(1001, 1001, 0, 0));
+
+            var gem = src.CreateItem();
+            gem.BaseId = 0x0F21;
+            gem.Name = "chest gem";
+            chest.AddItem(gem);
+
+            var staticNear = src.CreateItem();
+            staticNear.BaseId = 0x0B80;
+            staticNear.Name = "near static";
+            staticNear.SetAttr(ObjAttributes.Static);
+            src.PlaceItem(staticNear, new Point3D(1001, 1000, 0, 0));
+
+            var staticFar = src.CreateItem();
+            staticFar.BaseId = 0x0B80;
+            staticFar.Name = "far static";
+            staticFar.SetAttr(ObjAttributes.Static);
+            src.PlaceItem(staticFar, new Point3D(1030, 1000, 0, 0));
+
+            var bothScope = new WorldSaver.WorldExportScope(center.Position, 10, 3);
+            string bothPath = Path.Combine(tmp, "both.scp");
+            Assert.Equal(5, saver.ExportWorld(src, bothPath, bothScope));
+
+            string bothText = File.ReadAllText(bothPath);
+            Assert.Contains("near char", bothText);
+            Assert.Contains("near coins", bothText);
+            Assert.Contains("near chest", bothText);
+            Assert.Contains("chest gem", bothText);
+            Assert.DoesNotContain("far char", bothText);
+            Assert.DoesNotContain("far coins", bothText);
+            Assert.DoesNotContain("near static", bothText);
+
+            var dst = MakeWorld();
+            var (items, chars) = loader.LoadFile(dst, bothPath);
+            Assert.Equal(3, items);
+            Assert.Equal(2, chars);
+            Assert.Equal(chest.Uid, dst.FindItem(gem.Uid)!.ContainedIn);
+
+            string itemsOnlyPath = Path.Combine(tmp, "items.scp");
+            Assert.Equal(3, saver.ExportWorld(src, itemsOnlyPath,
+                new WorldSaver.WorldExportScope(center.Position, 10, 1)));
+            string itemsOnlyText = File.ReadAllText(itemsOnlyPath);
+            Assert.Contains("near coins", itemsOnlyText);
+            Assert.DoesNotContain("[WORLDCHAR", itemsOnlyText);
+
+            string charsOnlyPath = Path.Combine(tmp, "chars.scp");
+            Assert.Equal(2, saver.ExportWorld(src, charsOnlyPath,
+                new WorldSaver.WorldExportScope(center.Position, 10, 2)));
+            string charsOnlyText = File.ReadAllText(charsOnlyPath);
+            Assert.Contains("near char", charsOnlyText);
+            Assert.DoesNotContain("[WORLDITEM", charsOnlyText);
+
+            string staticsPath = Path.Combine(tmp, "statics.scp");
+            Assert.Equal(1, saver.ExportStatics(src, staticsPath, bothScope));
+            string staticsText = File.ReadAllText(staticsPath);
+            Assert.Contains("near static", staticsText);
+            Assert.DoesNotContain("far static", staticsText);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void WorldOps_ScopedImport_FiltersByFlagsDistanceAndKeepsContainerGraph()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_scope_import_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            var src = MakeWorld();
+
+            var center = src.CreateCharacter();
+            center.Name = "scope center";
+            center.BodyId = 0x0190;
+            src.PlaceCharacter(center, new Point3D(1000, 1000, 0, 0));
+
+            var nearChar = src.CreateCharacter();
+            nearChar.Name = "near import char";
+            nearChar.BodyId = 0x0190;
+            src.PlaceCharacter(nearChar, new Point3D(1005, 1000, 0, 0));
+
+            var farChar = src.CreateCharacter();
+            farChar.Name = "far import char";
+            farChar.BodyId = 0x0190;
+            src.PlaceCharacter(farChar, new Point3D(1030, 1000, 0, 0));
+
+            var nearItem = src.CreateItem();
+            nearItem.BaseId = 0x0EED;
+            nearItem.Name = "near import coins";
+            src.PlaceItem(nearItem, new Point3D(1002, 1000, 0, 0));
+
+            var farItem = src.CreateItem();
+            farItem.BaseId = 0x0EED;
+            farItem.Name = "far import coins";
+            src.PlaceItem(farItem, new Point3D(1030, 1000, 0, 0));
+
+            var chest = src.CreateItem();
+            chest.BaseId = 0x0E75;
+            chest.Name = "near import chest";
+            src.PlaceItem(chest, new Point3D(1001, 1001, 0, 0));
+
+            var gem = src.CreateItem();
+            gem.BaseId = 0x0F21;
+            gem.Name = "import chest gem";
+            chest.AddItem(gem);
+
+            string path = Path.Combine(tmp, "world.scp");
+            Assert.Equal(7, saver.ExportWorld(src, path));
+
+            var bothDst = MakeWorld();
+            var bothScope = new WorldLoader.WorldImportScope(center.Position, 10, 3);
+            var (bothItems, bothChars) = loader.LoadFile(bothDst, path, scope: bothScope);
+            Assert.Equal(3, bothItems);
+            Assert.Equal(2, bothChars);
+            Assert.NotNull(bothDst.FindChar(center.Uid));
+            Assert.NotNull(bothDst.FindChar(nearChar.Uid));
+            Assert.Null(bothDst.FindChar(farChar.Uid));
+            Assert.NotNull(bothDst.FindItem(nearItem.Uid));
+            Assert.NotNull(bothDst.FindItem(chest.Uid));
+            Assert.Equal(chest.Uid, bothDst.FindItem(gem.Uid)!.ContainedIn);
+            Assert.Null(bothDst.FindItem(farItem.Uid));
+
+            var itemsOnlyDst = MakeWorld();
+            var (itemsOnlyItems, itemsOnlyChars) = loader.LoadFile(itemsOnlyDst, path,
+                scope: new WorldLoader.WorldImportScope(center.Position, 10, 1));
+            Assert.Equal(3, itemsOnlyItems);
+            Assert.Equal(0, itemsOnlyChars);
+            Assert.NotNull(itemsOnlyDst.FindItem(nearItem.Uid));
+            Assert.Null(itemsOnlyDst.FindChar(nearChar.Uid));
+
+            var charsOnlyDst = MakeWorld();
+            var (charsOnlyItems, charsOnlyChars) = loader.LoadFile(charsOnlyDst, path,
+                scope: new WorldLoader.WorldImportScope(center.Position, 10, 2));
+            Assert.Equal(0, charsOnlyItems);
+            Assert.Equal(2, charsOnlyChars);
+            Assert.NotNull(charsOnlyDst.FindChar(nearChar.Uid));
+            Assert.Null(charsOnlyDst.FindItem(nearItem.Uid));
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public void Roundtrip_PreservesActivePoison()
     {
         string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_poison_{Guid.NewGuid():N}");
@@ -181,6 +526,81 @@ public class SaveFormatTests
             Assert.Equal((byte)3, reloaded.PoisonLevel);
             Assert.Equal(11, reloaded.Poison.TicksRemaining); // remaining, not re-freshed to 12
             Assert.Equal(poisoner, reloaded.Poison.Source);    // poisoner kept for kill attribution
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void Roundtrip_PreservesActiveSpellEffectAndExpires()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_spelleffect_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            saver.Format = SaveFormat.Text;
+            saver.ShardCount = 0;
+
+            var registry = new SpellRegistry();
+            registry.Register(new SpellDef
+            {
+                Id = SpellType.Bless,
+                Flags = SpellFlag.TargChar | SpellFlag.Bless | SpellFlag.Good,
+                EffectBase = 50,
+                EffectScale = 50,
+                DurationBase = 600,
+                DurationScale = 600,
+            });
+
+            var src = MakeWorld();
+            var ch = src.CreateCharacter();
+            ch.Name = "Blessed";
+            ch.BodyId = 0x0190;
+            ch.Str = 50; ch.Dex = 50; ch.Int = 50;
+            ch.MaxHits = 100; ch.Hits = 100;
+            ch.PrivLevel = PrivLevel.GM;
+            src.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
+
+            var engine = new SpellEngine(src, registry);
+            saver.GetSpellEffectRecords = engine.GetPersistedEffectRecords;
+
+            Assert.True(engine.CastStart(ch, SpellType.Bless, ch.Uid, ch.Position) >= 0);
+            Assert.True(engine.CastDone(ch));
+            Assert.Equal(60, ch.Str);
+
+            engine.RevertAllForSave();
+            try
+            {
+                Assert.True(saver.Save(src, tmp));
+            }
+            finally
+            {
+                engine.ReapplyAllAfterSave();
+            }
+
+            Assert.Equal(60, ch.Str);
+            string charSave = File.ReadAllText(Path.Combine(tmp, "spherechars.scp"));
+            Assert.Contains("STR=50", charSave);
+            Assert.Contains("SPELLEFFECT=1|17|", charSave);
+
+            var dst = MakeWorld();
+            loader.Load(dst, tmp);
+
+            var reloaded = dst.FindChar(ch.Uid);
+            Assert.NotNull(reloaded);
+            Assert.Equal(50, reloaded!.Str);
+            Assert.Single(reloaded.PendingSpellEffectRecords);
+
+            var restoredEngine = new SpellEngine(dst, registry);
+            Assert.Equal(1, restoredEngine.RestorePersistedEffectsFromWorld());
+            Assert.Empty(reloaded.PendingSpellEffectRecords);
+            Assert.Equal(60, reloaded.Str);
+
+            restoredEngine.ProcessExpirations(Environment.TickCount64 + 120_000);
+            Assert.Equal(50, reloaded.Str);
         }
         finally
         {

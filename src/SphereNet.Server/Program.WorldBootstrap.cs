@@ -160,7 +160,8 @@ public static partial class Program
             if (item.ItemType != ItemType.SpawnChar)
                 continue;
 
-            item.InitializeSpawnComponent(_world, _resources);
+            long loadedTimeout = item.Timeout;
+            item.InitializeSpawnComponent(_world, _resources, loadedTimeout);
 
             // Apply Sphere SPAWNID/TIMELO/TIMEHI/MAXDIST tags
             if (!string.IsNullOrEmpty(spawnId) && item.SpawnChar != null)
@@ -220,7 +221,7 @@ public static partial class Program
                 }
 
                 // Tags override MOREP — reset timer with final values
-                item.SpawnChar.ResetTimer();
+                item.SpawnChar.ResetTimer(loadedTimeout);
             }
 
             spawns++;

@@ -2189,7 +2189,7 @@ public sealed class NpcAI
         // Periodic restock check (vendor brain only)
         if (npc.NpcBrain == NpcBrainType.Vendor)
         {
-            long now = Environment.TickCount64;
+            long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             if (!npc.TryGetTag("RESTOCK_TIME", out string? rtStr) || !long.TryParse(rtStr, out long lastRestock)
                 || now - lastRestock >= VendorRestockIntervalMs)
             {

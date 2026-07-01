@@ -4,6 +4,23 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Network: sunucu-kaynakli RTT ping varsayilan kapatildi (Wave 210)
+----------------------------------------
+
+DUZELTILDI - Client ping gostergesi sacma degerler gosteriyordu (yuz binlerce ms):
+  - Sunucu, kendi RTT'sini olcmek icin her client'a 30sn'de bir istenmemis (unsolicited)
+    0x73 ping gonderiyordu. Stok ClassicUO client'i GELEN her 0x73'u kendi ping ortalamasina
+    besliyor (Time.Ticks eksi, yalnizca client kendi ping'ini gonderdiginde ilerleyen bir
+    baseline), boylece sunucunun ping'leri client'in kendi uptime'ini "ping" olarak gostermesine
+    yol aciyordu -- ortalama 500k ms seviyesinde, milyonlara sicrayan, sadece client kendi
+    ping'ini gonderdikten sonraki an gercek 8-12ms'ye dusen. Sunucu tarafi RttMs degeri hicbir
+    yerde kullanilmiyordu. Ozellik artik kapali geliyor (RttPingIntervalMs=0); client'in kendi
+    ping'i hala calisiyor (sunucu client-kaynakli ping'leri echo'luyor). RttPingIntervalMs'i
+    yalnizca istenmemis ping'leri yok sayan bir client ile pozitif yap. NOT: .ini dosyanda
+    RttPingIntervalMs ayarliysa, orada da 0 yap.
+
+================================================================================
+
 [2026-07-01] - Persistence paritesi: aktif zehir save-load'da hayatta kalir (Wave 209)
 ----------------------------------------
 

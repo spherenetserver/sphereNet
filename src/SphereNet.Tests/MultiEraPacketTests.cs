@@ -222,30 +222,48 @@ public class MultiEraPacketTests
     [Fact]
     public void RTT_PingResponse_UpdatesRttMs()
     {
-        var state = CreateNetState();
-        state.ClientVersionNumber = 70_020_000;
+        var savedInterval = NetState.RttPingIntervalMs;
+        try
+        {
+            NetState.RttPingIntervalMs = 30_000; // feature is disabled by default
+            var state = CreateNetState();
+            state.ClientVersionNumber = 70_020_000;
 
-        long before = Environment.TickCount64;
-        state.SendRttPing(before);
+            long before = Environment.TickCount64;
+            state.SendRttPing(before);
 
-        Assert.False(state.HasRtt);
+            Assert.False(state.HasRtt);
 
-        byte sentSeq = GetRttPingSeq(state);
-        state.OnPingReceived(sentSeq);
+            byte sentSeq = GetRttPingSeq(state);
+            state.OnPingReceived(sentSeq);
 
-        Assert.True(state.HasRtt);
-        Assert.True(state.RttMs >= 0);
+            Assert.True(state.HasRtt);
+            Assert.True(state.RttMs >= 0);
+        }
+        finally
+        {
+            NetState.RttPingIntervalMs = savedInterval;
+        }
     }
 
     [Fact]
     public void RTT_MismatchedSeq_DoesNotUpdateRtt()
     {
-        var state = CreateNetState();
+        var savedInterval = NetState.RttPingIntervalMs;
+        try
+        {
+            NetState.RttPingIntervalMs = 30_000; // feature is disabled by default
+            var state = CreateNetState();
 
-        state.SendRttPing(Environment.TickCount64);
-        state.OnPingReceived(0x01); // client-initiated seq (no 0x80 bit)
+            state.SendRttPing(Environment.TickCount64);
+            state.OnPingReceived(0x01); // client-initiated seq (no 0x80 bit)
 
-        Assert.False(state.HasRtt);
+            Assert.False(state.HasRtt);
+        }
+        finally
+        {
+            NetState.RttPingIntervalMs = savedInterval;
+        }
     }
 
     [Fact]
@@ -292,12 +310,21 @@ public class MultiEraPacketTests
     [Fact]
     public void RTT_ServerInitiated_UsesHighBitSeq()
     {
-        var state = CreateNetState();
+        var savedInterval = NetState.RttPingIntervalMs;
+        try
+        {
+            NetState.RttPingIntervalMs = 30_000; // feature is disabled by default
+            var state = CreateNetState();
 
-        state.SendRttPing(Environment.TickCount64);
-        byte seq = GetRttPingSeq(state);
+            state.SendRttPing(Environment.TickCount64);
+            byte seq = GetRttPingSeq(state);
 
-        Assert.True((seq & 0x80) != 0);
+            Assert.True((seq & 0x80) != 0);
+        }
+        finally
+        {
+            NetState.RttPingIntervalMs = savedInterval;
+        }
     }
 
     [Fact]
@@ -320,10 +347,12 @@ public class MultiEraPacketTests
     // --- Config Defaults ---
 
     [Fact]
-    public void SphereConfig_RttPingIntervalMs_Default30000()
+    public void SphereConfig_RttPingIntervalMs_DisabledByDefault()
     {
+        // Server-initiated 0x73 pings corrupt the stock ClassicUO ping meter, so the
+        // feature ships disabled (0) — see SphereConfig.RttPingIntervalMs.
         var config = new SphereNet.Core.Configuration.SphereConfig();
-        Assert.Equal(30_000, config.RttPingIntervalMs);
+        Assert.Equal(0, config.RttPingIntervalMs);
     }
 
     // --- Version-Branched Integration (Game Flow) ---

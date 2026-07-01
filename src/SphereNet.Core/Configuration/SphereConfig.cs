@@ -125,8 +125,14 @@ public sealed class SphereConfig
     public int SpeedHackHistorySize { get; set; } = 20;
     public int SpeedHackCooldownMs { get; set; } = 60_000;
 
-    // RTT Measurement
-    public int RttPingIntervalMs { get; set; } = 30_000;
+    // RTT Measurement. Disabled (0) by default: the server-initiated 0x73 ping is
+    // unsolicited, and the standard ClassicUO client feeds EVERY incoming 0x73 into its
+    // own ping meter (NetStatistics.PingReceived computes Time.Ticks - _startTickValue,
+    // where _startTickValue only advances on a client-sent ping). So the server's pings
+    // make the client display a bogus "ping" (its own uptime — hundreds of thousands of
+    // ms). The server-side RttMs is not consumed anywhere, so keep this off unless a
+    // client that ignores unsolicited pings is in use.
+    public int RttPingIntervalMs { get; set; } = 0;
 
     // Crime & Notoriety
     public int CriminalTimer { get; set; } = 180;

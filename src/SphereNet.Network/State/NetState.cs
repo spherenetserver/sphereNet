@@ -151,7 +151,9 @@ public sealed class NetState : IDisposable
     private long _rttLastPingSentTick;
     public int RttMs => _rttMs;
     public bool HasRtt => _rttMs >= 0;
-    public static int RttPingIntervalMs { get; set; } = 30_000;
+    // 0 = disabled. Server-initiated 0x73 pings corrupt the stock ClassicUO ping meter
+    // (it treats every incoming 0x73 as a reply to its own ping), so leave this off.
+    public static int RttPingIntervalMs { get; set; } = 0;
 
     // Client info
     public string AccountName { get; set; } = "";

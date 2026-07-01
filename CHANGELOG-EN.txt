@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-01] - Network: server-initiated RTT ping disabled by default (Wave 210)
+----------------------------------------
+
+FIXED - The client ping meter showed absurd values (hundreds of thousands of ms):
+  - The server sent an unsolicited 0x73 ping to each client every 30s to measure its
+    own RTT. The stock ClassicUO client feeds EVERY incoming 0x73 into its own ping
+    average (Time.Ticks minus a baseline that only advances when the client itself sends
+    a ping), so the server's pings made the client display its own uptime as "ping" —
+    an average in the 500k ms range with spikes to millions, dropping to the real 8-12ms
+    only in the instant after the client sent its own ping. The server-side RttMs value
+    was never consumed anywhere. The feature now ships disabled (RttPingIntervalMs=0);
+    the client's own ping still works (the server echoes client-initiated pings). Set
+    RttPingIntervalMs to a positive value only with a client that ignores unsolicited
+    pings. NOTE: if RttPingIntervalMs is set in your .ini, change it to 0 there too.
+
+================================================================================
+
 [2026-07-01] - Persistence parity: active poison survives save-load (Wave 209)
 ----------------------------------------
 

@@ -20,6 +20,8 @@ When a trigger runs, the script body executes **on the object the trigger belong
 
 > Source of truth: `TriggerDispatcher.cs` (`WrapArgs`, name maps), `TriggerTypes.cs` (enums), and every `FireCharTrigger` / `FireItemTrigger` call site. Only triggers with a real fire site are listed; enum-only triggers are in the last section.
 
+Current guardrail snapshot (2026-06-30): the only character triggers defined but not fired are `NPCSeeWantItem` and `UserMailBag`. The only item triggers defined but not fired are `Level`, `Complete`, `AddRedCandle`, `AddWhiteCandle`, `DelRedCandle`, and `DelWhiteCandle`. This is locked by `TriggerCoverageGuardrailTests`.
+
 ---
 
 ## Character triggers
@@ -34,15 +36,22 @@ When a trigger runs, the script body executes **on the object the trigger belong
 | `@GetHit` | When a hit is taken | victim | attacker | – | N1=damage | – | ignored |
 | `@HitMiss` | Miss (damage=0) or HitCheck block | attacker | attacker | target | – | – | ignored |
 | `@HitParry` | Defender blocks with shield/weapon | defender | attacker | attacker | – | – | ignored |
+| `@HitIgnore` | An attacker marked with `ATTACKER.n.IGNORE=1` lands a hit | victim | victim | attacker | – | – | clears the ignore flag |
 | `@Kill` | A target is killed | killer | killer | victim | – | – | ignored |
 | `@Death` | A character dies | the dead | killer (null / attacker on reactive) | – | – | – | ignored |
+| `@DeathCorpse` | Corpse exists and loot has transferred | the dead | the dead | corpse | – | – | ignored |
 | `@Resurrect` | At resurrection | the revived | the revived | – | – | – | cancels the resurrect |
 | `@UserWarmode` | Client war-mode toggle (before flip) | player | player | – | N1=1(war)/0(peace) | – | cancels the toggle |
 | `@SpellCast` | Casting begins | caster | caster | – | N1=spell id | – | cancels the cast |
 | `@SpellFail` | Cast fails | caster | caster | – | N1=spell id | – | ignored |
 | `@SpellEffect` | Cast completes (effect moment) | caster | caster | – | N1=spell id | – | ignored |
+| `@SpellEffectAdd` | A timed spell effect/buff is applied | target | caster or target | – | N1=spell id | – | ignored |
+| `@SpellEffectRemove` | A timed spell effect/buff expires, refreshes, or is cleaned up | target | target | – | N1=spell id | – | ignored |
+| `@SpellEffectTick` | Periodic spell-effect tick (poison bridge) before damage applies | victim | victim | spell memory shim | N1=spell id, N2=strength | LOCAL.EFFECT/DELAY/CHARGES/DAMAGETYPE | cures/destroys the effect |
 | `@SpellSuccess` | Cast completes successfully | caster | caster | – | N1=spell id | – | ignored |
 | `@SpellInterrupt` | Cast interrupted (e.g. by damage) | caster | caster | – | – | – | ignored |
+| `@SpellSelect` | Cast request is selected before normal cast checks | caster | caster | – | N1=spell id | – | cancels selection |
+| `@SpellBook` | Spellbook is opened | player | player | spellbook | – | – | keeps it shut |
 | `@SpellTargetCancel` | Spell target cursor cancelled | player | player | – | N1=spell id | – | ignored |
 | `@SkillPreStart` | First stage before a skill use | player | player | – | N1=skill id | – | cancels the skill |
 | `@SkillStart` | Skill start | player | player | – | N1=skill id | – | cancels the skill |
@@ -50,20 +59,28 @@ When a trigger runs, the script body executes **on the object the trigger belong
 | `@SkillSuccess` | Skill succeeds | player | player | – | N1=skill id | – | ignored |
 | `@SkillFail` | Skill fails | player | player | – | N1=skill id | – | ignored |
 | `@SkillGain` | Skill value increases | character | character | – | N1=skill id, N2=new value | – | ignored |
+| `@SkillChange` | Skill value is about to be changed | character | character | – | N1=skill id, N2=old value, N3=new value | – | cancels / rewrites new value |
+| `@StatChange` | Stat value changes through gain/decay | character | character | – | N1=stat index, N2=new value | – | ignored |
 | `@SkillAbort` | Active skill interrupted | character | character | – | N1=skill id | – | ignored |
 | `@SkillSelect` | A scripted skill is selected | character | character | – | N1=skill id | – | cancels the skill |
+| `@SkillMenu` | Skill/craft menu selection path | player | player | – | N1=skill/menu id | – | cancels selection |
+| `@SkillWait` | Delayed skill is waiting/stroking per tick | player | player | – | N1=skill id | – | cancels waiting skill |
+| `@SkillUseQuick` | Instant skill check after the success roll | character | character | – | N1=skill id, N2=difficulty, N3=result | – | cancels or rewrites result |
 | `@SkillMakeItem` | A recipe is chosen in the craft gump | player | player | – | N1=craft skill id | – | ignored |
 | `@SkillTargetCancel` | Skill target cursor cancelled | player | player | – | N1=skill id | – | ignored |
 | `@LogIn` | Character enters the world | player | player | – | – | – | ignored |
 | `@LogOut` | Connection drops | player | player | – | – | – | ignored |
 | `@Mount` | Mounting | rider | rider | mount (Character) | – | – | ignored |
 | `@Dismount` | Dismounting | rider | rider | mount (Character) | – | – | ignored |
+| `@Reveal` | Hidden/invisible state is about to drop | character | character | – | – | – | keeps concealment |
 | `@Click` | Single-click (char target) | clicked char | clicker | – | – | – | cancels the name label |
 | `@AfterClick` | After Click (name shown) | clicked char | clicker | – | – | – | ignored |
 | `@DClick` | Double-click (char target) | target char | clicker | – | – | – | cancels the default action |
 | `@ClientTooltip` | AOS tooltip requested (char) | char | viewer | – | – | – | cancels the default tooltip |
 | `@ContextMenuRequest` | Context menu opens (char) | char | opener | – | N1=0 | – | ignored |
 | `@ContextMenuSelect` | Context menu selection (char) | char | selector | – | N1=entry tag | – | ignored |
+| `@HouseDesignCommit` | Custom house design commit command | player | player | – | – | – | ignored |
+| `@HouseDesignExit` | Custom house design close/exit command | player | player | – | – | – | ignored |
 | `@Create` | NPC/character created (def applied) | new NPC | the NPC | – | – | – | ignored |
 | `@CreateLoot` | Loot stage during NPC creation | new NPC | the NPC (or creator) | – | – | – | ignored |
 | `@Destroy` | Character deleted (`.remove`) | the deleted | the remover | – | – | – | ignored |
@@ -87,23 +104,51 @@ When a trigger runs, the script body executes **on the object the trigger belong
 | `@Hunger` | Hunger decay tick | char | char | – | – | – | ignored |
 | `@Criminal` | Before a crime flag is set | char | char | – | – | – | cancels the criminal flag |
 | `@SeeCrime` | A nearby NPC witnesses a crime | witness NPC | the criminal | – | – | – | ignored |
+| `@MurderMark` | PvP murder count is about to be recorded | killer | killer | victim | N1=proposed count, N2=criminal flag toggle | – | blocks mark and criminal flag |
+| `@MurderDecay` | One murder count decays off | murderer | murderer | – | N1=new kill count, N2=next-decay seconds override | – | ignored |
+| `@KarmaChange` | Karma delta is about to apply | character | character | – | N1=delta | – | cancels or rewrites delta |
+| `@FameChange` | Fame delta is about to apply | character | character | – | N1=delta | – | cancels or rewrites delta |
+| `@NotoSend` | A viewer is about to receive a notoriety byte for a subject | subject | viewer | – | N1=computed notoriety | – | rewrites displayed noto |
+| `@SeeSnoop` | A snoop is observed | witness | snooper | – | – | – | ignored |
 | `@StepStealth` | Stepping while hidden | char | char | – | – | – | ignored |
+| `@PersonalSpace` | Movement shoves past another character's tile | mover | mover | blocker | – | – | ignored |
+| `@PetDesert` | Pet loyalty reaches zero and it is about to go wild | pet | pet | owner | – | – | cancels desertion |
+| `@Jail` | Character is sent to jail | jailed char | jailed char | – | N1=sentence minutes | – | ignored |
+| `@EnvironChange` | Perceived light level changes | character | character | – | N1=new light level | – | ignored |
+| `@ExpChange` | Experience delta is about to apply | character | character | – | N1=delta | – | cancels or rewrites delta |
+| `@ExpLevelChange` | Experience level changes | character | character | – | N1=new level | – | ignored |
 | `@PartyInvite` | On party invite | invitee | inviter | – | – | – | ignored |
+| `@PartyDisband` | Party drops to zero / disbands | last member | last member | – | – | – | ignored |
 | `@PartyLeave` | Leaving a party | leaver | leaver | – | – | – | ignored |
 | `@PartyRemove` | Removed from a party | removed | remover | – | – | – | ignored |
 | `@TradeCreate` | Secure trade starts | each side | other side | other side | N1=session id | – | ignored |
 | `@TradeAccepted` | Both sides accept | each side | other side | other side | N1=session id | – | ignored |
 | `@TradeClose` | Trade closes | each side | other side | other side | N1=session id | – | ignored |
+| `@CombatAdd` | A new attacker enters the character's attacker list | character | character | attacker | – | – | ignored |
+| `@CombatDelete` | An attacker leaves the character's attacker list | character | character | attacker | – | – | ignored |
+| `@CombatEnd` | Attacker list transitions to empty | character | character | – | – | – | ignored |
 | `@NPCRestock` | Vendor restock | vendor NPC | vendor (or buyer on the ItemUse path) | – | – | – | ignored |
 | `@NPCAction` | Vendor buy/sell action | vendor NPC | buyer | – | – | S1="BUY"/"SELL" | ignored |
 | `@NPCHearGreeting` | NPC hears a greeting | NPC | speaker | – | – | S1=spoken text | treats speech as handled |
 | `@NPCHearUnknown` | NPC hears unrecognized speech | NPC | speaker | – | – | S1=text | ignored |
+| `@NPCSeeNewPlayer` | NPC perceives a player it has not seen recently | NPC | NPC | newly-seen player | – | – | ignored |
 | `@NPCLookAtChar` | AI sees a character | NPC | seen char | – | N1=target uid | – | overrides the AI action |
 | `@NPCLookAtItem` | AI sees an item | NPC | NPC | item | N1=item uid | – | overrides the AI action |
 | `@NPCActFight` | AI picks a combat action | NPC | target char | – | N1=target uid | – | overrides the action |
 | `@NPCActWander` | AI wanders | NPC | NPC | – | – | – | overrides the action |
 | `@NPCActFollow` | AI follow action | NPC | followed | followed | – | – | overrides the action |
 | `@NPCActCast` | AI decides to cast | NPC | target | target | N1=spell id | – | overrides the action |
+| `@NPCSpecialAction` | NPC special action such as breath/throw is about to run | NPC | target | target | – | – | cancels special action |
+| `@NPCLostTeleport` | Severely lost NPC is about to teleport home | NPC | NPC | – | – | – | cancels teleport |
+| `@CallGuards` | Guard keyword reports a hostile/criminal | speaker | speaker | hostile | – | – | cancels reporting that hostile |
+| `@UserVirtue` | Virtue button path | player | player | – | N1=subcommand/virtue id | – | ignored |
+| `@UserKRToolbar` | KR toolbar extended command | player | player | – | N1=0x24 | – | ignored |
+| `@UserQuestArrowClick` | Quest arrow click extended command | player | player | – | N1=0x07 | – | ignored |
+| `@UserBugReport` | Crash/bug report packet | player | player | – | N1=0x00F4 | – | ignored |
+| `@UserUltimaStoreButton` | Ultima Store button packet | player | player | – | N1=0x00FA | – | ignored |
+| `@UserGlobalChatButton` | Chat window open packet | player | player | – | N1=0x00B5 | – | ignored |
+| `@UserExWalkLimit` | Fast-walk token bucket is exhausted | player | player | – | – | – | ignored |
+| `@UserSpecialMove` | Encoded combat special move command | player | player | – | N1=ability index | – | ignored |
 
 Notes:
 - `@RegionEnter/Leave/Step` and `@Room*` do **not** set `<src>` (only `S1`); the region/room name is in `<args>`. The region's own EVENTS `@Enter/@Exit/@Step` blocks fire separately via `FireRegionEvents` with `<src>` set.
@@ -140,10 +185,15 @@ Notes:
 | `@GetHit` | Shield/armor takes a hit | shield | attacker | – | N1=damage | – | ignored |
 | `@Damage` | Item loses durability | item | (not set) | – | N1=durability lost | – | cancels the durability loss |
 | `@Dye` | Dye applied (dye reply / dye vat) | item | dyer | dye vat (vat path) | N1=hue | – | cancels the dye |
+| `@SpellEffect` | Item-targeted spell effect resolves | item | caster | caster | N1=spell id | S1=spell name | cancels native item spell effect |
+| `@Smelt` | Ore is targeted for smelting | ore item | smelter | target item | – | S1=smelt message | cancels smelt |
 | `@Buy` | Bought from a vendor | item | buyer | vendor | N1=amount, N2=price | – | ignored |
 | `@Sell` | Sold to a vendor | item | seller | vendor | N1=amount, N2=price | – | ignored |
+| `@MemoryEquip` | Memory item is equipped on a character | memory item | (not set) | – | – | – | ignored |
+| `@Redeed` | A house/multi collapses into a deed | deed item | deed item | – | – | – | ignored |
 | `@ClientTooltip` | AOS tooltip (item) | item | viewer | – | – | – | cancels the default tooltip |
 | `@ClientTooltipAfterDefault` | After default tooltip lines added | item | viewer | – | – | – | ignored |
+| `@ToolTip` | Single-click tooltip hook before `@Click` | item | viewer | – | – | – | ignored |
 | `@ContextMenuRequest` | Context menu opens (item) | item | opener | – | N1=0 | – | ignored |
 | `@ContextMenuSelect` | Context menu selection (item) | item | selector | – | N1=entry tag | – | ignored |
 | `@TargOn_Char` | Item-sourced target → char | source item | targeter | target char | N1=x, N2=y, N3=z | S1=graphic | cancels the targeting |
@@ -155,6 +205,14 @@ Notes:
 | `@Spawn` | Spawner produces | spawner item | spawned char | spawned char | N1=spawn def index | – | cancels the spawn |
 | `@AddObj` | Spawner object added | spawner item | added char | added char | – | – | ignored |
 | `@DelObj` | Spawner object removed | spawner item | removed char | removed char | – | – | ignored |
+| `@Start` | Spawner START verb toggles spawning on | spawner item | spawner item | – | – | – | ignored |
+| `@Stop` | Spawner STOP verb toggles spawning off | spawner item | spawner item | – | – | – | ignored |
+| `@ShipMove` | Ship/movable multi moves | ship multi | pilot | – | – | – | ignored |
+| `@ShipStop` | Ship/movable multi stops | ship multi | pilot | – | – | – | ignored |
+| `@ShipTurn` | Ship/movable multi turns | ship multi | pilot | – | – | – | ignored |
+| `@RegionLeave` | Ship/movable multi leaves a region boundary | ship multi | pilot | old region | – | – | blocks the move step |
+| `@RegionEnter` | Ship/movable multi enters a region boundary | ship multi | pilot | new region | – | – | blocks the move step |
+| `@Hear` | Nearby item hears speech | item | speaker | – | N1=talk mode | S1=spoken text | ignored |
 
 Notes:
 - `@TargOn_*`: `<argn1/2/3>` are the target point's x/y/z; `<args>` is the targeted graphic id (as a string).
@@ -180,13 +238,16 @@ These exist in `TriggerTypes.cs` (and have name mappings) but have **no** litera
 
 Each trigger carries a wiring priority by shard impact (P0 highest). The buckets are encoded in `TriggerCoverageGuardrailTests` and partition the backlog exactly.
 
-**Character (18)**
+**Character (2)**
 
-- **P0 (2)** — remaining deferred (low marginal value / infrastructure): `HitIgnore`, `NPCSeeWantItem`. *(Wired since: `NPCSeeNewPlayer` — new per-NPC seen-player memory (`Character.SeeNewPlayer`) fires it on a first sighting; NpcAI scans nearby players, gated by the hook + throttled. `NPCSeeWantItem` is redundant with the already-firing `@NPCLookAtItem` on the NPC ground-item scan; `HitIgnore` needs an attacker "ignore" flag that no behaviour sets.)*
-  - **Wired** (the rest of the original P0 set): `KarmaChange`, `FameChange`, `MurderMark` (`DeathEngine` + `Character.On*`); `SkillChange`, `StatChange` (`SkillEngine` gain hooks, runtime gain only); `CombatAdd`, `CombatDelete`, `CombatEnd` (`Character` attacker-list hooks); `NPCRefuseItem` (drop-on-NPC accept gate); `NPCSpecialAction` (breath/throw); `MurderDecay` (`Character` notoriety-decay hook); `NotoSend` (`ComputeNotoriety` via `Character.OnNotoSend`, installed only when the **IsTrigUsed gate** — `TriggerDispatcher.IsCharTriggerUsed` / `BuildUsedTriggerCache` — reports `@NotoSend` hooked, so the per-observer hot path stays a null check otherwise).
-  - **Deferred — infrastructure first:** `HitIgnore` (no attacker "ignore" flag / NPC ignore-scan); `NPCSeeNewPlayer` (no per-NPC seen-player memory; `@NPCLookAtChar` already fires on every scan); `NPCSeeWantItem` (NPCs only scan corpses; no ground-item "want" logic). Skill/stat **decay** trigger coverage is also a follow-up.
-- **P1 (2)** — moderate: ExpChange, ExpLevelChange. *(Wired since: `Eat`, `SkillMenu`, `SkillWait` (IsTrigUsed-gated), `Follow`, `PartyDisband`, `SpellSelect`, `SpellBook`, `PersonalSpace` (movement shove), `EffectAdd` (spell effect applied, IsTrigUsed-gated), `PetDesert` (pet loyalty loop already existed), `Jail` (GM JAIL command — jail system already existed), `CallGuards` (the "guards" keyword guard-summon already existed), `EnvironChange` (new per-character light tracking), `SkillUseQuick` (check/gain split: `SkillEngine.UseQuick` fires it before the success check via the IsTrigUsed-gated `Character.OnSkillUseQuick` hook — N1 = skill, N2 = difficulty, RETURN 1 cancels before any roll or gain). Deferred: `ExpChange`/`ExpLevelChange` — no runtime experience/level system (`Exp`/`Level` are persistence-only fields).)*
-  - **EnvironChange note:** covers the dominant per-character signal (dungeon/surface light change on movement). Day/night global-light EnvironChange (firing for stationary players on a global light tick) is a follow-up.
-- **P2 (14)** — low: the `User*` modern-client buttons (UserBugReport, UserExWalkLimit, UserGlobalChatButton, UserKRToolbar, UserMailBag, UserQuestArrowClick, UserSpecialMove, UserUltimaStoreButton, UserVirtue), HouseDesignCommit, HouseDesignExit, ToolTip, Targon_Cancel, NPCLostTeleport.
+- **P0/P1:** none currently documented as unfired.
+- **P2:** `NPCSeeWantItem`, `UserMailBag`.
+  - `NPCSeeWantItem` is intentionally deferred because the current NPC ground-item scan already fires `@NPCLookAtItem`; a true "want item" trigger needs item-desire/pickup logic that does not exist yet.
+  - `UserMailBag` is intentionally deferred because the supported client protocol set has no carrier packet for it.
 
-**Item (13)** — all **P2**: SpellEffect, RegionEnter, RegionLeave, Smelt, Start, Stop, Level, Complete, AddRedCandle, AddWhiteCandle, DelRedCandle, DelWhiteCandle, Tooltip. *(Wired since: `ShipMove`/`ShipStop`/`ShipTurn` (ShipEngine hooks), `Redeed` (House.OnRedeed at deed creation), `MemoryEquip` (Memory_CreateObj via Character.OnMemoryEquip, installed only when hooked — the item IsTrigUsed gate `TriggerDispatcher.IsItemTriggerUsed` keeps the frequent combat-memory path a null check otherwise); `PickupSelf` (item dragged off the picker's own equipment layers) and `PickupStack` (a partial amount split out of a larger stack), selected by `SelectPickupTrigger` in `HandleItemPickup` alongside the existing `PickupGround`/`PickupPack` cases. Deferred — need infrastructure: champion-spawn candles (`Add/Del*Candle` — no altar system), item leveling (`Level`/`Complete`), item region tracking (`RegionEnter`/`Leave`), `Smelt` (no ore→ingot completion hook), `Start`/`Stop` (no item timer start/stop event), `SpellEffect` (no spell-on-item path), `Tooltip` (covered by `ClientTooltip` 0xD6).)* (`ResourceGather` / `ResourceTest` are fired via the resource path above, not as item triggers, so they are excluded.)
+**Item (6)** — all **P2**:
+
+- `Level`, `Complete`
+- `AddRedCandle`, `AddWhiteCandle`, `DelRedCandle`, `DelWhiteCandle`
+
+Deferred reasons: item leveling is not implemented, and champion altar/candle infrastructure is not implemented. `ResourceGather` / `ResourceTest` are fired via the resource path, not the normal item path, so they are excluded from this backlog.

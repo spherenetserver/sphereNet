@@ -45,7 +45,7 @@ incoming handler below must be documented here, and tests fail if registry/docs 
 - `0x9F` Vendor sell
 - `0xA4` System info
 - `0xAC` Gump text entry
-- `0xB2` Legacy chat text
+- `0xB2` Legacy chat text-in accepted/ignored; outgoing conference chat uses `0xB2`
 - `0xB3` Chat action (talk/join/create/leave — conference chat system)
 - `0xB5` Chat window open (sends channel list, fires @UserGlobalChatButton)
 - `0xBE` Assist version
@@ -55,6 +55,7 @@ incoming handler below must be documented here, and tests fail if registry/docs 
 - `0xD9` Hardware info
 - `0xE1` Client type
 - `0xE3` KR encryption negotiation
+- `0xF4` Crash report (logs and fires @UserBugReport)
 - `0xFA` Ultima Store button (fires @UserUltimaStoreButton)
 
 ## Known Ignored
@@ -66,7 +67,6 @@ incoming handler below must be documented here, and tests fail if registry/docs 
 - `0x9B` Help request
 - `0xD1` Logout request
 - `0xD4` New book header (AOS+ variable-length format)
-- `0xF4` Crash report (silently accepted and logged)
 
 ## Deferred
 - `0x66` Book page editing is parser-supported but gameplay persistence is limited.

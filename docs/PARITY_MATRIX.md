@@ -39,8 +39,9 @@ Dispatch: script reads route through `Program.ResolveServerProperty`
 | `CLEARVARS` | Implemented | `_CLEARVARS=` → `GameWorld.ClearGlobalVars` | Pre-existing. |
 | `ACCOUNT.<name>[.prop]` | Implemented | `ResolveServAccount` | Name lookup + sub-property read. |
 | `ACCOUNT.<n>[.prop]` | Implemented | `ResolveServAccount` → `AccountManager.GetByIndex` | Wave 200 — indexed access (stable name order); was stubbed to "0". |
-| `INFORMATION` | Partial | `AdminCommandProcessor` `INFORMATION` | Admin console only — no `SERV.INFORMATION` script read yet. |
-| `GARBAGE` | Partial | `AdminCommandProcessor` `GARBAGE` | Admin console only. |
+| `INFORMATION` | Implemented | `HandleServInformationToCaller` (`_INFORMATION=` protocol) | W-E — status lines to the invoking client's console (log fallback). |
+| `GARBAGE` | Implemented | `HandleServGarbage` (`_GARBAGE=`) | W-E — GC pass from scripts; the FixWeirdness world-integrity sweep is still open (hedef 12.4). |
+| `B` / `BROADCAST` | Implemented | `HandleServBroadcast` (`_BROADCAST=`) | W-E — was console-only; `serv.b` from scripts was a silent no-op. |
 | `SHRINKMEM` | Partial | (≈ `GARBAGE`) | No dedicated script/console verb; GC reachable via `GARBAGE`. |
 | `BLOCKIP` / `UNBLOCKIP` | Partial | `AdminCommandProcessor` | Admin console only — not exposed to scripts (intentional: security surface). |
 | `EXPORT` / `IMPORT` / `RESTORE` | Partial | `HandleServExport` / `HandleServImport` / `HandleServLoad` / `HandleServRestore` | Wave 213-217 — text `.scp` object/world export and non-destructive runtime import are wired under `WorldSaveDir`; `RESTORE` pre-replaces colliding world serials with rollback snapshot hardening; `EXPORT`/`IMPORT file, flags, distance` support Source-X-style object-centered scope filtering. |
@@ -83,7 +84,14 @@ Per-trigger **arg contract** (`SRC`, `ARGO`, `ACT`, `ARGN1/2/3`, `ARGS`, `LOCAL`
 | `ARGO`, `SRC`, `LOCAL`, `REFn` | Implemented | pre-existing; `LINK` decoupled from `ACT` in Wave 199. |
 | `RETURN 1` short-circuit / order | Implemented | firing order EVENTS → TEVENTS → base def → global → `f_onchar_*`, any `RETURN 1` blocks. |
 | `RETURN <value>` string vs number | Implemented | Wave 205 — RETURN evaluated its arg as a long and stored the number, so a [FUNCTION] returning a name/defname/message collapsed to a digit; `ExpressionParser.TryEvaluate` now reports whether the arg was genuinely numeric, and RETURN keeps a string value. |
-| Firing tests: `TriggerArgParityTests` | — | ARGN seed + mutation round-trip. |
+| Trigger names `@Jailed` / `@Ship_Move,_Stop,_Turn` / `@itemSPELL` | Implemented | W-A — SphereNet emitted `@Jail`/`@ShipMove`/`@itemSpellEffect`, so Source-X-named blocks never matched. |
+| `@Hit` family SRC/ARGO contract | Implemented | W-B — SRC = the victim, ARGO = the weapon on `@Hit/@HitTry/@HitCheck/@HitMiss` (was attacker/target); `@Hit` seeds ARGN2 = damage type, `@HitCheck` ARGN1 = swing state + ARGN2, `@GetHit` ARGN2. Open: `LOCAL.Anim/AnimDelay/Arrow` + elemental locals. |
+| `@Death` SRC / `@Kill` ARGN1 / item `@Step` ARGN1 | Implemented | W-A — SRC = the dying char (killer on ARGO), ARGN1 = victim's attacker count, ARGN1 = fStanding. |
+| `@SpellEffect` on the affected char + LOCAL contract | Implemented | W-C — fires on the target with SRC = caster, ARGN2 = skill level, LOCAL.Effect/Resist/Duration seeded & read back; per-spell `[SPELL] @EFFECT` runs per-target. Was caster-only with N1 alone. |
+| `@SpellCast` ARGN2/ARGN3 | Implemented | W-C — difficulty + writable cast wait (tenths). Open: WOP locals. |
+| `[SKILL n]` section stages (`Skill_OnTrigger`) | Implemented | W-E — `FireSkillTrigger` runs the resource-section stage alongside every char `@Skill*` trigger; those ON= blocks never executed before. |
+| `[SPELL]` section stages beyond Effect/Success/Fail | Missing | `@START/@SELECT/@TARGETCANCEL/@EFFECTADD/@EFFECTREMOVE/@EFFECTTICK` (hedef 1.10). |
+| Firing tests: `TriggerArgParityTests`, `ParityWaveA-ETests` | — | ARGN seed + mutation round-trip; per-wave contract fixtures. |
 
 ## Persistence (Faz 4)
 
@@ -98,6 +106,8 @@ Save-load round-trip of trigger-relevant runtime state. Guarded by `SaveFormatTe
 | Active spell effects (buffs/debuffs) | Implemented | Wave 211 — temporary spell effects are saved as remaining-time `SPELLEFFECT` records, restored into `SpellEngine` on load, re-applied to live stats/flags/visuals, and expire normally instead of becoming permanent after restart. |
 | Spawn timers / vendor restock time | Implemented | Wave 212 — spawn component schedules now preserve loaded `TIMERMS` remaining time across component init, item spawners mirror their next tick to object timeout, and vendor `RESTOCK_TIME` uses restart-safe Unix milliseconds. |
 | Tags, memories, equipment | Implemented | Per-object save/load. |
+| Combat memories + attacker log | Implemented | W-D — ALL memory types now persist with remaining timeout + creation stamp (was only IPet/Guard/Guild/Town/Friend); the attacker log (damage totals, ignore flags) is saved as `ATTACKER=` records. |
+| Sector environment (light/season/weather/rain/cold) | Implemented | W-D — `[SECTORS] ENV=` records in spheredata for non-default sectors (Source-X `CSector::r_Write`); previously reset every restart. |
 
 ## Object verbs / properties
 
@@ -110,6 +120,12 @@ as it is produced.
 |---|---|---|---|
 | `TIMERF` | Implemented | `ObjBase.ScheduleTimerF` (delay in seconds) | Runs a delayed function; falls back to running the payload as a verb (Wave 198). |
 | `TIMERFMS` | Implemented | `ObjBase.ScheduleTimerF` (delay in ms) | Wave 198 — was missing; millisecond counterpart of `TIMERF`. |
+| item `CONSUME` / `BOUNCE` / `DECAY` | Implemented | `Item.TryExecuteCommand` | W-E — stack consume, bounce-to-owner-pack (unequips first), decay-timer arm. |
+| `DISTANCE.<uid \| x,y>` (property) | Implemented | `ObjBase.TryGetProperty` + `GetTopLevelPosition` | W-E — OC_DISTANCE; contained items measure from the wearer/container. Bare `<DISTANCE>` (to SRC) still unresolved. |
+| `HITPOINTS` / `USESCUR` / `USESMAX` aliases | Implemented | char + item get/set | W-E — Source-X exposes them as first-class keys; `<src.hitpoints>` read empty before. |
+| Client-scoped verbs via `UID.<player>.DIALOG` etc. | Implemented | `HandleRefExec` fallback (`Program.Scripting.cs`) | Pre-existing — routes DIALOG/SDIALOG/MENU/INPDLG to the target player's client; the audit's "missing object-verb DIALOG" was largely covered by this path. |
+| `Use_Trap` state machine | Implemented | `Item.UseTrap` / `SetTrapState` | W-A — dclick/step springs the trap (MORE2 damage, MORE1 graphic swap, MOREX/MOREY/MOREZ timing); dclick previously opened RemoveTrap instead. |
+| Equipped-cursed move gate | Implemented | `ItemMoveRules.CanMove` | W-A — ATTR_CURSED/CURSED2 while equipped refuses to move (`cantmove_cursed`). |
 
 ### TRY-family control verbs (`ScriptInterpreter`)
 

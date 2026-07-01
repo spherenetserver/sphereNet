@@ -7,7 +7,11 @@ Bu doküman, kodda **tanımlı görünüp fiilen çalışmayan** veya **yalnızc
 İlgili test guardrail: `src/SphereNet.Tests/TriggerCoverageGuardrailTests.cs`  
 Ses/görüntü/hareket parity: `docs/SOUND_VISUAL_MOVEMENT_PARITY_TR.md`
 
-Son güncelleme: 2026-06-10
+Son güncelleme: 2026-06-30
+
+Güncel doğrulama: `dotnet test .\src\SphereNet.Tests\SphereNet.Tests.csproj --nologo` -> 1011/1011 başarılı.
+
+Güncel kısa durum: `SERV.*`, arbitrary verb fallback ve `RETURN/ARGS/ARGN/ARGO/LOCAL` altyapısı temel olarak çalışıyor; bunlar "yok" kabul edilmemelidir. Kalan açıklar daha çok Source-X server/admin verb uzun kuyruğu, bazı indeksli server property erişimleri ve az sayıda altyapı gerektiren trigger'dır.
 
 > **Tarama yapmadan önce oku:** Yeni bir "eksik var mı" taraması yapılacaksa
 > önce bu dosya + `docs/PARITY.md` + `src/SphereNet.Tests/TriggerCoverageGuardrailTests.cs`
@@ -30,10 +34,10 @@ Son güncelleme: 2026-06-10
 | ~~P1~~ ✅ | Item script `OPEN` / `DCLICK` / `USE` | **Çözüldü (2026-06-09):** `Item.OnScriptOpen` / `OnScriptDClick` hook'larıyla GameClient paket yoluna köprülendi |
 | ~~P1~~ ✅ | `Character.DISMOUNT` script fiili | **Çözüldü (2026-06-09):** `Character.OnScriptDismount` → `MountEngine.Dismount` (client yolu + headless fallback) |
 | ~~P1~~ ✅ | Help menüsü stuck/page | **Çözüldü (2026-06-09):** stuck → güvenli noktaya taşıma (jail/combat'ta reddedilir), page → `.PAGE` komut yolu + kayıt listesi, page list gump'ı |
-| P2 | Trigger backlog | 3 char + 11 item trigger ateşlenmiyor (2026-06-10: DeathCorpse, Reveal, SpellEffectAdd/Remove eklendi ve ateşleniyor; kalan: NPCSeeWantItem, UserMailBag, SpellEffectTick — SPELLFLAG_TICK altyapısı yok) |
+| P2 | Trigger backlog | Guardrail'e göre kalan gerçek backlog: char `NPCSeeWantItem`, `UserMailBag`; item `Level`, `Complete`, `AddRedCandle`, `AddWhiteCandle`, `DelRedCandle`, `DelWhiteCandle`. |
 | ~~P2~~ ✅ | Region geçişinde client ışık paketi | **Zaten bağlıymış:** `Program.EngineWiring.cs` OnRegionChanged → 0x4F + sezon + bölgesel weather (envanter eskimişti) |
 
-**Kalan açık alanlar (özet, hepsi bilinçli erteleme):** 0xB2 legacy text-in + 0xF9 (çok eski/KR varyantları; conference chat 0xB3/0xB5 ile çalışıyor), `UserMailBag` (paket yok), `NPCSeeWantItem` (@NPCLookAtItem ile örtüşük), item `RegionEnter`/`RegionLeave` (merkezi item-taşıma yolu yok), item `Level`/`Complete` + candle trigger'ları (item-level / champion altar altyapısı yok), sector ambient ses (Source-X referansında yok — spekülatif maddeydi).
+**Kalan açık alanlar (özet, hepsi bilinçli erteleme):** 0xB2 legacy text-in + 0xF9 (çok eski/KR varyantları; conference chat 0xB3/0xB5 ile çalışıyor), `UserMailBag` (paket yok), `NPCSeeWantItem` (`@NPCLookAtItem` ile örtüşük), item `Level`/`Complete` + candle trigger'ları (item-level / champion altar altyapısı yok), sector ambient ses (Source-X referansında yok — spekülatif maddeydi), `SERV.*` admin/maintenance uzun kuyruğu.
 
 **2026-06-10 dalgası — kapatılanlar:**
 - **Dialog sistemi:** `LOCAL.` atamaları artık string değerleri koruyor (virgüllü
@@ -49,8 +53,8 @@ Son güncelleme: 2026-06-10
   (Character.ClearHiddenState merkez yolu, RETURN 1 gizliliği korur),
   `@SpellEffectAdd` / `@SpellEffectRemove` (SpellEngine zamanlı efekt yaşam
   döngüsü; save-anı revert/reapply bilinçli olarak sessiz). `@SpellEffectTick`
-  enum'da ama ateşlenmiyor — motorun SPELLFLAG_TICK periyodik efekt mekanizması
-  yok (guardrail backlog'unda belgeli).
+  artık poison tick köprüsü üzerinden ateşlenir; `LOCAL.EFFECT/DELAY/CHARGES`
+  seed edilir ve script değişiklikleri geri okunur.
 - **Script tarafı:** `FormatDays` (sphere_functions_datetime.scp) ve
   `FamilyCount` (sphere_functions.scp; aile sistemi bu sete taşınmadığı için
   şimdilik 0 döner) fonksiyonları eklendi — helppage sayfa 4 artık çözülür.
@@ -117,9 +121,11 @@ Dosya: `GameClient.ScriptConsole.cs`, `Program.Scripting.cs`
 | `BYE` | ✅ Açık script dialog'larını kapatır + dialog subject'i temizler |
 | `DIALOGCLOSE` | ✅ Açık dialog kaydı (`_openScriptDialogs`) + `0xBF 0x04` close gump |
 | `ISDIALOGOPEN.*` | ✅ Gerçek değer (kayıttan) |
-| Yakalanmayan `SERV.*` | ✅ Fiil başına bir kez warning log, sonrası debug; GM çağırana SysMessage |
+| Yakalanmayan `SERV.*` | Compat-safe: fiil başına bir kez warning log, sonrası debug; GM çağırana SysMessage. Bu crash'i önler ama Source-X fiilinin davranışını uygulamış sayılmaz. |
 | `SERV.CHATFLAGS` | Sabit `"0"` |
 | `SERV.ACCOUNT.n` (sayısal) | `"0"` |
+| `DEFMSG name=value` | Kısmi: setter bridge var ama runtime message override/persist semantiği henüz tamam değil |
+| `SERV.*` admin uzun kuyruğu | Kısmi: `SAVE`/`RESYNC`/`SHUTDOWN` ve yaygın bridge'ler var; `EXPORT`/`IMPORT`/`RESTORE`/`VARLIST` vb. Source-X maintenance fiilleri takip işi |
 
 ### Çalışan örnekler
 
@@ -173,14 +179,14 @@ Hareket ack/reject, savaş, çoğu skill handler, party, secure trade, gemi, sta
 
 | Alan | Eksik |
 |------|--------|
-| Custom housing UI | ✅ House sign gump "Customize House" → `CustomHousingEngine` oturumu; 0xD7 komutları + 0xD8 stream + DESIGN_n tag persistence. Eksik kalan: foundation yerleştirme aracı (custom foundation deed), commit sonrası fiziksel multi component rebuild |
+| Custom housing UI | ✅ House sign gump "Customize House" → `CustomHousingEngine` oturumu; 0xD7 komutları + 0xD8 stream + DESIGN_n tag persistence. Custom foundation deed ve commit sonrası sanal yürüme geometrisi bağlı; fiziksel component rebuild bilinçli olarak kullanılmıyor. |
 | Guild/ittifak kanal | ✅ `OnChannelMessage(speaker, recipient, text, mode)` EngineWiring'de subscribe; karşılıklı ittifak (mutual ally) filtresiyle |
 | Global/legacy chat | ✅ **Conference chat uygulandı (2026-06-10):** `ChatEngine` (kanallar/üyelik), 0xB3 talk/join/create/leave, 0xB2 giden mesajlar (ClassicUO parser'ına karşı doğrulandı), 0xB5 açılışta kanal listesi + otomatik isim kabulü. Kalan: 0xB2 legacy text-in (çok eski clientlar) ve `CHATFLAGS` ini ayrıntıları — bilinçli erteleme |
 | In-client web | ✅ 0xA5 `PacketWebLink` + `WEBLINK` verb |
 | Help stuck/page | ✅ Stuck güvenli noktaya taşır (jail/combat reddi), page `.PAGE` yoluna bağlı, page list gump'ı |
 | XP / level | ✅ `Character.ChangeExperience` pipeline: `@ExpChange` (ARGN1 ayarlanabilir/iptal), level eşiğinde `@ExpLevelChange`; NPC kill'de kurbanın EXP'i ödül; `LevelNextAt`/`LevelModeDouble` ayarları |
 | Memory inspection | `MEMORYFINDTYPE` kısmi; guild stone pozisyonu master'a fallback |
-| Region ışık | `@EnvironChange` var; client `PacketGlobalLight` yok |
+| Region ışık | ✅ Region geçişinde `PacketGlobalLight` + sessiz `PacketSeason` + bölgesel `PacketWeather`; `@EnvironChange` de yeni ışık seviyesini alır |
 | Sector ambient ses | Source-X `CSector` rüzgar sesi yok (bilinçli erteleme — kozmetik) |
 | Item drop sesi | ✅ `GetDropSound`: altın için miktara göre 0x2E4-0x2E6, diğerleri 0x42 |
 | `GenericSounds` | `sphere.ini` karşılığı yok |
@@ -201,9 +207,9 @@ Kaynak: `TriggerCoverageGuardrailTests.cs`
 
 ### Item trigger'ları — ateşlenmiyor (hepsi P2)
 
-`RegionEnter`, `RegionLeave` (merkezi item-taşıma yolu yok; Position gemiler gibi sıcak yollarda doğrudan set ediliyor), `Level`, `Complete`, candle trigger'ları (champion altar yok)
+`Level`, `Complete`, candle trigger'ları (`AddRedCandle`, `AddWhiteCandle`, `DelRedCandle`, `DelWhiteCandle`) — item-level / champion altar altyapısı yok.
 
-**Ateşleniyor (2026-06-09/10):** `Tooltip` (single click, IsTrigUsed gate ile, `@Click`'ten önce), `Start`/`Stop` (spawner START/STOP verb'leri).
+**Ateşleniyor (2026-06-09/10+):** `Tooltip` (single click, IsTrigUsed gate ile, `@Click`'ten önce), `Start`/`Stop` (spawner START/STOP verb'leri), `Smelt` (ore -> ingot path), `SpellEffect` (item-targeted spell path), `RegionEnter`/`RegionLeave` (movable multi/ship region boundary; RETURN 1 hareketi bloklar).
 
 **Çalışan örnekler (char):** `@UserWarmode`, `@UserStats`, `@PersonalSpace`, `@EnvironChange`, `@Jail`, `@PartyDisband`, combat/skill/party/ship çoğu.
 
@@ -243,17 +249,19 @@ Kaynak: `TriggerCoverageGuardrailTests.cs`
 6. ~~`SERV.*` bilinmeyen fiil → log/SysMessage~~ ✅ (2026-06-09)
 7. ~~Trigger P1 (ExpChange/ExpLevelChange) + kolay P2'ler (UserVirtue, UserKRToolbar)~~ ✅ (2026-06-09)
 8. ~~Custom housing devamı: foundation yerleştirme deed'i, commit edilen tasarımın sunucu yürüme geometrisi~~ ✅ (2026-06-09)
-9. Kalan P2 trigger'lar (User* butonları için paket handler'ları gerekiyor: 0xFA, 0xF4 vb.)
-10. Global/legacy chat (0xB2/0xF9) — bilinçli erteleme; talep olursa ayrı dalga
+9. Kalan P2 trigger'lar: `UserMailBag`, `NPCSeeWantItem`, item `Level`/`Complete` ve candle trigger'ları.
+10. Global/legacy chat (0xB2 text-in / 0xF9) — bilinçli erteleme; talep olursa ayrı dalga
+11. `SERV.*` admin/maintenance uzun kuyruğu: `VARLIST`, `PRINTLISTS`, `CLEARLISTS`, `EXPORT`, `IMPORT`, `RESTORE`, `SAVESTATICS`, `SECURE`, `SHRINKMEM`, `INFORMATION`, `LOAD`, `GARBAGE`, indeksli `SERV.ACCOUNT.n`.
 
 ---
 
-## 10. Parity dokümanı düzeltmesi
+## 10. Parity dokümanı ilişkisi
 
-`SOUND_VISUAL_MOVEMENT_PARITY_TR.md` içindeki bazı maddeler güncellenmeli:
+`SOUND_VISUAL_MOVEMENT_PARITY_TR.md` güncel ses/görüntü/hareket durumunu tutar:
 
 - `0xC0` / `0xC7` / `0x23` artık `ExtendedPackets.cs` + `ObjBase` / `Inventory` ile mevcut.
 - `ObjBase.SOUND` üst handler ile çalışıyor; switch içi stub ölü kod.
 - `Character.FACE` → `OnFacingChanged` wired (`Program.EngineWiring.cs`).
+- Region geçişinde `PacketGlobalLight`, sessiz `PacketSeason` ve bölgesel `PacketWeather` gönderiliyor.
 
 Bu envanter dosyası o parity belgesinin **tamamlayıcısıdır**; ses/görüntü detayı için oraya bakın.

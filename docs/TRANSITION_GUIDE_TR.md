@@ -39,7 +39,7 @@ Yeni bir paket eklemek için:
 
 SphereNet, Source-X'e göre daha modüler bir yapıdadır.
 
-- **Triggerlar**: `SphereNet.Game/Scripting/TriggerRunner.cs` içinde yönetilir. `@Hit`, `@Death`, `@GetHit` gibi klasik triggerlar burada dispatch edilir.
+- **Triggerlar**: Oyun tarafında `SphereNet.Game/Scripting/TriggerDispatcher.cs` dispatch sırasını yönetir; script gövdesini `SphereNet.Scripting/Execution/TriggerRunner.cs` çalıştırır. `@Hit`, `@Death`, `@GetHit` gibi klasik triggerlar bu iki katmandan geçer.
 - **Skill Sistemi**: `SphereNet.Game/Skills/` altında `ActiveSkillEngine` tarafından yönetilir.
 - **Combat**: `SphereNet.Game/Combat/` altındaki motorlar (SwingEngine vb.) tarafından yürütülür.
 
@@ -56,7 +56,7 @@ Geliştirme yaparken eksikleri şu şekilde takip edebilirsiniz:
 1.  **Protocol Matrix**: `docs/PROTOCOL_MATRIX.md` içindeki "Deferred" veya listelenmemiş opcode'lar üzerinde çalışabilirsiniz.
 2.  **Parity Matrix**: `docs/PARITY.md` içindeki "Partial" veya "Open" alanlar önceliklidir.
 3.  **TODO Yorumları**: Kod içinde `// TODO:` araması yaparak yapılması planlanan işleri görebilirsiniz.
-4.  **Testler**: SphereNet "Test-Driven" bir yaklaşıma sahiptir. Yeni bir özellik eklediğinizde `tests/` altında bir unit test eklemeniz beklenir. Mevcut testleri inceleyerek (örn: `SphereNet.Game.Tests`) nasıl test yazılacağını görebilirsiniz.
+4.  **Testler**: SphereNet "Test-Driven" bir yaklaşıma sahiptir. Yeni bir özellik eklediğinizde `src/SphereNet.Tests/` altında bir unit test eklemeniz beklenir. Mevcut testleri inceleyerek (örn: `GameSystemTests`, `TriggerCoverageGuardrailTests`, `ScriptObjectParityTests`) nasıl test yazılacağını görebilirsiniz.
 
 ## 6. Hızlı Başlangıç İpucu
 

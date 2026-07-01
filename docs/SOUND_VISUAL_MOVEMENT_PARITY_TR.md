@@ -131,16 +131,16 @@ Statü değişimi (hide, polymorph, warmode):
 |----------|------------------|--------|-------|
 | `PacketPlaySound` | `PacketSound` | `0x54` | ✅ Var |
 | `PacketPlayMusic` | `PacketPlayMusic` | `0x6D` | ✅ Var (sınırlı kullanım) |
-| `PacketWeather` | `PacketWeather` | `0x65` | ⚠️ Kısmi (login/global; yürürken sector geçişi eksik) |
-| `PacketSeason` | `PacketSeason` | `0xBC` | ⚠️ Kısmi (login + admin broadcast) |
-| `PacketGlobalLight` | `PacketGlobalLight` | `0x4F` | ⚠️ Kısmi (login + world tick; region geçişinde client’a gönderilmiyor) |
+| `PacketWeather` | `PacketWeather` | `0x65` | ✅ Login/global + region geçiş resync |
+| `PacketSeason` | `PacketSeason` | `0xBC` | ✅ Login + admin broadcast + region geçiş resync |
+| `PacketGlobalLight` | `PacketGlobalLight` | `0x4F` | ✅ Login + world tick + region geçiş resync |
 | Personal light | `PacketPersonalLight` | `0x4E` | ✅ Login/spell |
 | `PacketAction` | `PacketAnimation` | `0x6E` | ✅ Var |
 | `PacketActionNew` | `PacketNewAnimation` | `0xE2` | ✅ Var + client tipine göre seçim |
 | `PacketEffect` basic | `PacketEffect` | `0x70` | ✅ Var |
-| `PacketEffect` hued | — | `0xC0` | ❌ Yok |
-| `PacketEffect` particle | — | `0xC7` | ❌ Yok |
-| `PacketDragAnimation` | — | `0x23` | ❌ Yok |
+| `PacketEffect` hued | `PacketEffectHued` | `0xC0` | ✅ Var |
+| `PacketEffect` particle | `PacketEffectParticle` | `0xC7` | ✅ Var |
+| `PacketDragAnimation` | `PacketDragAnimation` | `0x23` | ✅ Pickup + ground-drop path |
 | `PacketSwing` | `PacketSwing` | `0x2F` | ✅ Saldırgan client’a |
 | `PacketDeath` / menu | `PacketDeathAnimation` / `PacketDeathStatus` | `0xAF` / `0x2C` | ✅ Var |
 | `PacketWorldItem` | `PacketWorldItem` / `PacketWorldItemSA` | `0x1A` / `0xF3` | ✅ Var |
@@ -183,23 +183,17 @@ Statü değişimi (hide, polymorph, warmode):
 
 | # | Konu | Source-X | SphereNet | Etki |
 |---|------|----------|-----------|------|
-| 1 | **Item `SOUND`/`EFFECT` (ObjBase)** | Tüm objeler broadcast eder | `ObjBase.cs` stub; sadece `Character.cs` tam | Script `SOUND=` item/NPC base’de sessiz |
-| 2 | **Efekt varyantları `0xC0` / `0xC7`** | Renkli ve parçacık efektler | Yalnızca `0x70` | Birçok büyü/script efekti yanlış veya eksik görünür |
-| 3 | **Region geçişinde ışık paketi** | `addLight()` → `0x4F` | `UpdateEnvironLight` sadece trigger; paket yok | Yeraltı/üst geçişinde client ışığı güncellenmez |
-| 4 | **Yürürken hava/mevsim sector güncellemesi** | Sector değişince `addWeather`/`addSeason` | Sadece login + global admin | Bölge geçişinde yağmur/kar senkronu kayabilir |
-| 5 | **`FACE` komutu broadcast** | `UpdateDir` → `0x77` yakına | `Character.cs` sadece `_direction` set eder | Script `.face` yönü diğer clientlara yansımaz |
-| 6 | **`PacketDragAnimation` `0x23`** | Pickup/drop sürükleme animasyonu | Yok | Envanter sürükleme görseli eksik |
+| 1 | **Gemi hareketi `0xF6`** | Tam bileşen listesi | `PacketBoatSmoothMove` sadeleştirilmiş | Multi component pozisyonları Source-X kadar ayrıntılı değil |
+| 2 | **Container-drop drag animasyonu** | Drag animation farklı drop hedeflerinde zengin | `0x23` pickup + ground-drop path'te bağlı | Container içi animasyon paritesi daha sınırlı |
 
 ### 🟡 Orta
 
 | # | Konu | Source-X | SphereNet |
 |---|------|----------|-----------|
-| 7 | Drop sesi item bazlı | `GetDropSound(pObjOn)` | Sabit `0x0042` |
-| 8 | `GenericSounds` config | `sphere.ini` → `addSound` gate | Karşılık yok; sesler her zaman açık |
-| 9 | Sector ambient ses (rüzgar vb.) | `CSector` tick → periyodik `addSound` | Yok |
-| 10 | `EFFECT` script hue/render | `0xC0`/`0xC7` | `Character.EFFECT` yorumda “henüz yok” |
-| 11 | Gemi hareketi `0xF6` | Tam bileşen listesi | `PacketBoatSmoothMove` sadeleştirilmiş |
-| 12 | Kendi hareketinde `addPlayerView` | Self client view refresh | `BroadcastMoveNearby` ile kısmen; tam `addPlayerView` eşdeğeri belirsiz |
+| 3 | Drop sesi item/tiledata bazlı | `GetDropSound(pObjOn)` | Altın miktarı ayrışıyor; diğerleri hâlâ genel 0x42 |
+| 4 | `GenericSounds` config | `sphere.ini` → `addSound` gate | Karşılık yok; sesler her zaman açık |
+| 5 | Sector ambient ses (rüzgar vb.) | `CSector` tick → periyodik `addSound` | Yok |
+| 6 | Kendi hareketinde `addPlayerView` | Self client view refresh | `BroadcastMoveNearby` ile kısmen; tam `addPlayerView` eşdeğeri belirsiz |
 
 ### 🟢 İyi / parite sağlanmış
 
@@ -208,7 +202,7 @@ Statü değişimi (hide, polymorph, warmode):
 - `0x20` + sequence reset: death, polymorph, teleport, login
 - Animasyon: `0x6E` + `0xE2` client tipi seçimi (`BroadcastAnimation`)
 - Savaş sesleri ve çoğu skill/item feedback
-- Item drop artık `PacketSound` içeriyor (`Inventory.cs` — PACKET_FLOW_GUIDE eski notu güncel değil)
+- Item drop artık `PacketSound` içeriyor (`ClientInventoryHandler.cs`)
 - NPC facing: `OnNpcFacingChanged` → `BroadcastFacingUpdate`
 - Ölüm paket dizisi: `0xAF`, `0x2C`, ghost `0x77`/`0x20`
 
@@ -269,12 +263,11 @@ HAREKET / GÖRÜNÜM
 
 ## 8. Sonraki adımlar (önerilen sıra)
 
-1. `ObjBase.SOUND` / `EFFECT` → `BroadcastNearby` ile `Character.cs` ile aynı mantık
-2. `PacketEffectHued` (`0xC0`) + `PacketEffectParticle` (`0xC7`) sınıfları
-3. `OnRegionChanged` içinde `PacketGlobalLight` + bölgesel `PacketWeather`
-4. `FACE` komutunda `BroadcastFacingUpdate` veya `PacketMobileMoving`
-5. `PacketDragAnimation` — envanter pickup/drop path
-6. `GetDropSound` item def / tile bazlı ses tablosu
+1. `PacketBoatSmoothMove` için Source-X `PacketMoveShip` bileşen listesi paritesi
+2. `0x23` drag animation container-drop path'i
+3. `GetDropSound` item def / tile bazlı ses tablosu
+4. `GenericSounds` config gate
+5. Sector ambient sesleri
 
 ---
 

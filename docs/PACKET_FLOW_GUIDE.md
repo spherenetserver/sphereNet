@@ -7,8 +7,8 @@ edebilmesi için yazıldı. Amaç şudur:
 - Hangi dosyada hangi handler'a bağlanıyor?
 - Davranış hangi `GameClient` dosyasında çalışıyor?
 - Server client'a cevap olarak hangi outgoing paketi gönderiyor?
-- Item drop sound, item flip, world item refresh gibi Source-X parity eksikleri
-  nerede aranmalı?
+- Item drop sound, item flip, world item refresh gibi Source-X parity akışları
+  nerede doğrulanmalı?
 
 Kısa opcode listesi için ayrıca [PROTOCOL_MATRIX.md](PROTOCOL_MATRIX.md)
 dosyasına bakılabilir. Bu dosya ise akışı ve dosya yerlerini anlatır.
@@ -200,7 +200,7 @@ Bu method, server'ın hangi incoming paketleri tanıdığını en net gösteren 
 | `PacketDrawObject` `0x78` | Mobile + equipment draw | `Outgoing/ExtendedPackets.cs` | `GameClient.PacketHelpers.cs`, view update |
 | `PacketUpdateMobile` `0x77` | Mobile position/appearance update | `Outgoing/ExtendedPackets.cs` | `GameClient.PacketHelpers.cs`, view update |
 | `PacketDrawPlayer` `0x20` | Self draw/update | `Outgoing/GamePackets.cs` | login/resync/movement paths |
-| `PacketSound` `0x54` | Ses efekti | `Outgoing/ExtendedPackets.cs` | doors, combat, skill/item use; inventory drop'ta eksik |
+| `PacketSound` `0x54` | Ses efekti | `Outgoing/ExtendedPackets.cs` | doors, combat, skill/item use, inventory drop |
 | `PacketEffect` `0x70` | Görsel efekt | `Outgoing/ExtendedPackets.cs` | spell/combat/death/script effects |
 | `PacketTarget` `0x6C` | Target cursor aç | `Outgoing/GamePackets.cs` | `GameClient.PacketHelpers.cs` |
 | `PacketGumpDialog` `0xB0` | Gump aç | `Outgoing/ExtendedPackets.cs` | gump/dialog path |
@@ -430,17 +430,18 @@ Parity notları:
   refresh'te gönderiliyor.
 - Stack merge sonrası amount redraw da view delta'ya kalıyor.
 
-Item drop sound eklemek için bakılacak yer:
+Item drop sound davranışını doğrulamak için bakılacak yer:
 
 ```text
 src/SphereNet.Game/Clients/GameClient.Inventory.cs
   -> HandleItemDrop
-  -> başarılı ground/container branch sonrası
+  -> başarılı ground/stack-merge branch sonrası
   -> BroadcastNearby(... new PacketSound(...))
 ```
 
-Ama doğru sound ID seçimi için item/tiledata tarafında Source-X karşılığı ayrıca
-incelenmeli.
+Güncel kod `GetDropSound` ile altın miktarına göre 0x2E4-0x2E6, diğerleri için
+0x42 seçer. Daha ileri Source-X paritesi için item/tiledata bazlı ses tablosu
+ayrıca incelenmelidir.
 
 ---
 
@@ -541,11 +542,11 @@ davranışın o packet'i çağırmaması.
 | `0x54` sound | state taşımaz, düşerse desync olmaz |
 | `0x1C` / `0xAE` speech | cosmetic text |
 
-Item yere düşünce ses çıkmaması için en olası sebep:
+Item yere düşünce ses doğrulaması için en olası kontrol noktası:
 
 ```text
 PacketSound var
-ama GameClient.Inventory.HandleItemDrop içinde çağrılmıyor
+GameClient.Inventory.HandleItemDrop içinde ground/stack-merge başarı yolunda çağrılıyor
 ```
 
 ---
@@ -756,7 +757,7 @@ SphereNet'te packet sistemi büyük ölçüde merkezi ve reusable. Eksik hissett
 Source-X davranışlarının çoğu "packet yok" değil, "davranış içinde doğru packet
 çağrısı eksik" tipindedir.
 
-Özellikle item drop sound ve item flip için bakılacak ilk yerler:
+Özellikle item drop sound, item flip ve view refresh için bakılacak ilk yerler:
 
 - `GameClient.Inventory.cs`
 - `GameClient.ItemUse.cs`
@@ -1171,12 +1172,11 @@ PlaceItemWithDecay
 
 Current parity notes:
 
-- No drop sound is sent from `HandleItemDrop`.
+- Drop sound is sent from `HandleItemDrop` on accepted ground/stack-merge paths.
 - Ground placement does not immediately broadcast a `PacketWorldItem`; it relies
   on dirty/view refresh. This is usually fine, but Source-X often feels more
   immediate for some item actions.
-- Stack merge does not explicitly send a sound or immediate amount update from
-  the drop path; it depends on dirty/view refresh.
+- Stack merge sends a sound; amount redraw still depends on dirty/view refresh.
 
 ---
 
@@ -1258,16 +1258,17 @@ Sound and effects are normal outgoing packets, not special engine events.
 | `0x54` | `PacketSound` | doors, combat, item use, skill feedback |
 | `0x70` | `PacketEffect` | spells, combat, death, scripted effects |
 
-To add Source-X-like item drop sound, the likely hook is:
+To verify Source-X-like item drop sound, the relevant hook is:
 
 ```text
 GameClient.Inventory.HandleItemDrop
-  -> after accepted ground/container/drop branch
+  -> after accepted ground/stack-merge branch
   -> BroadcastNearby(... new PacketSound(...))
 ```
 
-The missing part is not the packet system. It is choosing the correct sound ID
-from item/tile data or Source-X rules, then calling the existing `PacketSound`.
+The packet system and ground/stack-merge call are present. The remaining parity
+work is richer item/tile-data sound selection beyond the current `GetDropSound`
+rules.
 
 `NetState` treats sound packets as droppable under heavy backpressure. Dropping a
 sound may lose feedback but will not desync the client.
@@ -1403,7 +1404,7 @@ When a Source-X behavior feels wrong, for example "item drops but no sound" or
 9. Add the missing `PacketWriter` call or dirty/view update.
 10. Add a test that asserts the expected packet sequence.
 
-For item drop sound specifically: `PacketSound` exists; `HandleItemDrop` simply
-does not call it today. For item flip: the server can mutate item graphic state,
-but a full Source-X-like double-click/flip/refresh/sound path is not wired as a
-general item behavior yet.
+For item drop sound specifically: `PacketSound` exists and `HandleItemDrop` calls
+it on accepted ground/stack-merge paths. For item flip: the server can mutate item
+graphic state, but a full Source-X-like double-click/flip/refresh/sound path is
+not wired as a general item behavior yet.

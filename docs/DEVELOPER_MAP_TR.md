@@ -38,7 +38,7 @@ SphereNet'te kodlar görevlerine göre klasörlenmiştir:
 | **Ağ-Oyun Köprüsü** | `src/SphereNet.Server/Program.NetworkHandlers.cs` | `CClient::OnEvent` |
 | **Karakter Davranışı** | `src/SphereNet.Game/Clients/GameClient.*.cs` | `CClient.cpp`, `CClientEvent.cpp` |
 | **Eşya Davranışı** | `src/SphereNet.Game/Objects/Items/Item.cs` | `CItem.cpp` |
-| **Trigger Sistemi** | `src/SphereNet.Game/Scripting/TriggerRunner.cs` | `OnTrigger` metodları |
+| **Trigger Sistemi** | `src/SphereNet.Game/Scripting/TriggerDispatcher.cs` + `src/SphereNet.Scripting/Execution/TriggerRunner.cs` | `OnTrigger` metodları |
 
 ---
 

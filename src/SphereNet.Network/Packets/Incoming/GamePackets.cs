@@ -558,8 +558,12 @@ public sealed class PacketBulletinBoard : PacketHandler
 
         switch (subCmd)
         {
-            case 3: // Request message list
-                state.OnBulletinBoardRequestList(boardSerial);
+            case 3: // Request message HEADER (Source-X BBOARDF_REQ_HEAD carries the msg uid)
+                if (buffer.Remaining >= 4)
+                {
+                    uint headSerial = buffer.ReadUInt32();
+                    state.OnBulletinBoardRequestHead(boardSerial, headSerial);
+                }
                 break;
             case 4: // Request specific message
                 if (buffer.Remaining >= 4)

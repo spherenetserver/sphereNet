@@ -330,36 +330,111 @@ public sealed partial class GameClient
         }
     }
 
-    /// <summary>Handle bulletin board list request (0x71 sub 3).</summary>
-    public void HandleBulletinBoardRequestList(uint boardSerial)
+    // Bulletin board (Source-X CItemMessage model): each posted message is a
+    // child item inside the board container — Name = subject, LINK = author
+    // char, tags AUTHOR / TIME / BODY_n hold the display fields.
+    private const int MaxBoardMessages = 32;
+    private const ushort BoardMessageGraphic = 0x0EB0; // rolled-up scroll
+
+    private Item? ResolveBoardMessage(uint boardSerial, uint msgSerial, out Item? board)
     {
-        if (_character == null) return;
-        _logger.LogDebug("[bboard_list] char=0x{Uid:X8} board=0x{Board:X8}",
-            _character.Uid.Value, boardSerial);
-        // Bulletin board content is managed via scripts/TAGs
+        board = _world.FindItem(new Serial(boardSerial));
+        if (board == null || board.ItemType != ItemType.BBoard) return null;
+        var msg = _world.FindItem(new Serial(msgSerial));
+        return msg != null && msg.ContainedIn == board.Uid ? msg : null;
     }
 
-    /// <summary>Handle bulletin board message read (0x71 sub 4).</summary>
+    private static string[] ReadBoardBody(Item msg)
+    {
+        var lines = new List<string>();
+        for (int i = 1; i <= 32; i++)
+        {
+            string? line = msg.Tags.Get($"BODY_{i}");
+            if (line == null) break;
+            lines.Add(line);
+        }
+        return lines.Count > 0 ? lines.ToArray() : [""];
+    }
+
+    /// <summary>Handle bulletin board header request (0x71 sub 3, Source-X
+    /// BBOARDF_REQ_HEAD): reply with the message summary (sub 1).</summary>
+    public void HandleBulletinBoardRequestHead(uint boardSerial, uint msgSerial)
+    {
+        if (_character == null) return;
+        var msg = ResolveBoardMessage(boardSerial, msgSerial, out _);
+        if (msg == null) return;
+        _netState.Send(new PacketBulletinBoardOut(boardSerial, msgSerial,
+            msg.Tags.Get("AUTHOR") ?? "", msg.Name ?? "", msg.Tags.Get("TIME") ?? "", null));
+    }
+
+    /// <summary>Handle bulletin board message read (0x71 sub 4, BBOARDF_REQ_FULL):
+    /// reply with the full message body (sub 2).</summary>
     public void HandleBulletinBoardRequestMessage(uint boardSerial, uint msgSerial)
     {
         if (_character == null) return;
-        _logger.LogDebug("[bboard_read] board=0x{Board:X8} msg=0x{Msg:X8}", boardSerial, msgSerial);
+        var msg = ResolveBoardMessage(boardSerial, msgSerial, out _);
+        if (msg == null) return;
+        _netState.Send(new PacketBulletinBoardOut(boardSerial, msgSerial,
+            msg.Tags.Get("AUTHOR") ?? "", msg.Name ?? "", msg.Tags.Get("TIME") ?? "",
+            ReadBoardBody(msg)));
     }
 
-    /// <summary>Handle bulletin board post (0x71 sub 5).</summary>
+    /// <summary>Handle bulletin board post (0x71 sub 5): create the message
+    /// item inside the board; the oldest message rolls off past the cap.</summary>
     public void HandleBulletinBoardPost(uint boardSerial, uint replyTo, string subject, string[] bodyLines)
     {
         if (_character == null) return;
-        _logger.LogDebug("[bboard_post] board=0x{Board:X8} subject='{Subject}' lines={Lines}",
-            boardSerial, subject, bodyLines.Length);
+        var board = _world.FindItem(new Serial(boardSerial));
+        if (board == null || board.ItemType != ItemType.BBoard) return;
+        if (_character.Position.GetDistanceTo(board.GetTopLevelPosition()) > 4)
+        {
+            SysMessage("You can't reach the board.");
+            return;
+        }
+
+        if (board.Contents.Count >= MaxBoardMessages)
+        {
+            var oldest = board.Contents[0];
+            board.RemoveItem(oldest);
+            oldest.Delete();
+        }
+
+        var msg = _world.CreateItem();
+        msg.BaseId = BoardMessageGraphic;
+        msg.Name = string.IsNullOrEmpty(subject) ? "(no subject)" : subject;
+        msg.Link = _character.Uid;
+        msg.SetTag("AUTHOR", _character.Name ?? "");
+        msg.SetTag("TIME", DateTime.UtcNow.ToString("MMM d, yyyy",
+            System.Globalization.CultureInfo.InvariantCulture));
+        if (replyTo != 0)
+            msg.SetTag("REPLYTO", $"0{replyTo:X}");
+        for (int i = 0; i < bodyLines.Length && i < 32; i++)
+            msg.SetTag($"BODY_{i + 1}", bodyLines[i]);
+        board.AddItem(msg);
+
+        // The client learns about the new message through a container-item
+        // update, then requests its header.
+        _netState.Send(new PacketContainerItem(
+            msg.Uid.Value, msg.DispIdFull, 0, 1, 0, 0,
+            board.Uid.Value, msg.Hue, _netState.IsClientPost6017));
         SysMessage(ServerMessages.Get("msg_message_posted"));
     }
 
-    /// <summary>Handle bulletin board delete (0x71 sub 6).</summary>
+    /// <summary>Handle bulletin board delete (0x71 sub 6): only the author
+    /// or a GM may remove a message.</summary>
     public void HandleBulletinBoardDelete(uint boardSerial, uint msgSerial)
     {
         if (_character == null) return;
-        _logger.LogDebug("[bboard_delete] board=0x{Board:X8} msg=0x{Msg:X8}", boardSerial, msgSerial);
+        var msg = ResolveBoardMessage(boardSerial, msgSerial, out var board);
+        if (msg == null || board == null) return;
+        if (msg.Link != _character.Uid && _character.PrivLevel < PrivLevel.GM)
+        {
+            SysMessage("That is not your message.");
+            return;
+        }
+        board.RemoveItem(msg);
+        msg.Delete();
+        _netState.Send(new PacketDeleteObject(msgSerial));
     }
 
     /// <summary>Handle map detail request (0x90).</summary>

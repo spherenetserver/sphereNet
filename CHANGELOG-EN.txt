@@ -4,6 +4,25 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-02] - Parity wave W-H10: bulletin boards (IT_BBOARD) end to end
+----------------------------------------
+
+ADDED - Bulletin boards (Source-X addBulletinBoard/CItemMessage):
+  - Dclicking a board sends 0x71 sub 0 (board name) plus the message items
+    as container contents; the client then requests each header itself.
+  - Posting (sub 5) creates a real message item inside the board (Name =
+    subject, LINK = author, AUTHOR/TIME/BODY_n tags) — persists with saves.
+    Past 32 messages the oldest rolls off; a reach check applies.
+  - A header request (sub 3) answers with the sub 1 summary, a full read
+    (sub 4) with the sub 2 body (author/subject/date + lines).
+  - Deletion (sub 6) is restricted to the author or a GM.
+
+FIXED - The 0x71 sub 3 parse DROPPED the message uid:
+  - Source-X BBOARDF_REQ_HEAD carries the message uid; the handler chain
+    (NetState/NetworkManager/Program) was renamed to RequestHead(board,msg).
+
+================================================================================
+
 [2026-07-02] - Parity wave W-H9: map display (IT_MAP), pin protocol, ISMYPET
 ----------------------------------------
 

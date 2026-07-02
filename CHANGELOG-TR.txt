@@ -4,6 +4,26 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-02] - Parite dalgası W-H10: bülten tahtası (IT_BBOARD) uçtan uca
+----------------------------------------
+
+EKLENDI - Bülten tahtası (Source-X addBulletinBoard/CItemMessage):
+  - Tahtaya çift tık 0x71 sub 0 (tahta adı) + mesaj item'larını konteyner
+    içeriği olarak gönderir; client her mesajın başlığını kendisi ister.
+  - Mesaj gönderme (sub 5) tahtanın içinde gerçek mesaj item'ı yaratır
+    (Name=konu, LINK=yazar, AUTHOR/TIME/BODY_n tag'leri) — save ile kalıcı.
+    32 mesaj üstünde en eski otomatik silinir; menzil kontrolü var.
+  - Başlık isteği (sub 3) sub 1 özetiyle, tam okuma (sub 4) sub 2
+    gövdesiyle yanıtlanır (yazar/konu/tarih + satırlar).
+  - Silme (sub 6) yalnız yazara ya da GM'e açık.
+
+DUZELTILDI - 0x71 sub 3 parse'ı mesaj uid'sini DÜŞÜRÜYORDU:
+  - Source-X BBOARDF_REQ_HEAD mesaj uid taşır; handler zinciri
+    (NetState/NetworkManager/Program) RequestHead(board,msg) olarak
+    yeniden adlandırıldı.
+
+================================================================================
+
 [2026-07-02] - Parite dalgası W-H9: harita gösterimi (IT_MAP), pin protokolü, ISMYPET
 ----------------------------------------
 

@@ -787,7 +787,7 @@ public sealed class NetworkManager : IDisposable
         // Phase 2
         Action<NetState, uint, List<(ushort PageNum, string[] Lines)>>? bookPage = null,
         Action<NetState, uint, bool, string, string>? bookHeader = null,
-        Action<NetState, uint>? bulletinBoardRequestList = null,
+        Action<NetState, uint, uint>? bulletinBoardRequestHead = null,
         Action<NetState, uint, uint>? bulletinBoardRequestMessage = null,
         Action<NetState, uint, uint, string, string[]>? bulletinBoardPost = null,
         Action<NetState, uint, uint>? bulletinBoardDelete = null,
@@ -849,7 +849,7 @@ public sealed class NetworkManager : IDisposable
             // Phase 2
             state.BookPageHandler = bookPage;
             state.BookHeaderHandler = bookHeader;
-            state.BulletinBoardRequestListHandler = bulletinBoardRequestList;
+            state.BulletinBoardRequestHeadHandler = bulletinBoardRequestHead;
             state.BulletinBoardRequestMessageHandler = bulletinBoardRequestMessage;
             state.BulletinBoardPostHandler = bulletinBoardPost;
             state.BulletinBoardDeleteHandler = bulletinBoardDelete;

@@ -819,8 +819,20 @@ public sealed class ClientItemUseHandler
 
             // ---- bulletin / game / clock / spawn / animations ----
             case ItemType.BBoard:
-                SysMessage("You open the bulletin board."); // bbox gump pending
+            {
+                // Source-X CClient::addBulletinBoard: board name (0x71 sub 0)
+                // plus the message items as container contents — the client
+                // then requests each header itself.
+                _netState.Send(new PacketBulletinBoardOut(item.Uid.Value,
+                    string.IsNullOrEmpty(item.Name) ? "bulletin board" : item.Name));
+                foreach (var msg in item.Contents)
+                {
+                    _netState.Send(new PacketContainerItem(
+                        msg.Uid.Value, msg.DispIdFull, 0, 1, 0, 0,
+                        item.Uid.Value, msg.Hue, _netState.IsClientPost6017));
+                }
                 break;
+            }
             case ItemType.GameBoard:
                 if (item.ContainedIn.IsValid)
                     SysMessage(ServerMessages.Get(Msg.ItemuseGameboardFail));

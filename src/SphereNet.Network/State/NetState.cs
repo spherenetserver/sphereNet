@@ -783,7 +783,7 @@ public sealed class NetState : IDisposable
     // Phase 2: Content Features
     public Action<NetState, uint, List<(ushort PageNum, string[] Lines)>>? BookPageHandler { get; set; }
     public Action<NetState, uint, bool, string, string>? BookHeaderHandler { get; set; }
-    public Action<NetState, uint>? BulletinBoardRequestListHandler { get; set; }
+    public Action<NetState, uint, uint>? BulletinBoardRequestHeadHandler { get; set; }
     public Action<NetState, uint, uint>? BulletinBoardRequestMessageHandler { get; set; }
     public Action<NetState, uint, uint, string, string[]>? BulletinBoardPostHandler { get; set; }
     public Action<NetState, uint, uint>? BulletinBoardDeleteHandler { get; set; }
@@ -968,8 +968,8 @@ public sealed class NetState : IDisposable
     internal void OnBookHeader(uint serial, bool writable, string title, string author)
         => BookHeaderHandler?.Invoke(this, serial, writable, title, author);
 
-    internal void OnBulletinBoardRequestList(uint boardSerial)
-        => BulletinBoardRequestListHandler?.Invoke(this, boardSerial);
+    internal void OnBulletinBoardRequestHead(uint boardSerial, uint msgSerial)
+        => BulletinBoardRequestHeadHandler?.Invoke(this, boardSerial, msgSerial);
 
     internal void OnBulletinBoardRequestMessage(uint boardSerial, uint msgSerial)
         => BulletinBoardRequestMessageHandler?.Invoke(this, boardSerial, msgSerial);

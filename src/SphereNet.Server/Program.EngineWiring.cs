@@ -2891,7 +2891,7 @@ public static partial class Program
                 // Phase 2
                 bookPage: OnBookPage,
                 bookHeader: OnBookHeader,
-                bulletinBoardRequestList: OnBulletinBoardRequestList,
+                bulletinBoardRequestHead: OnBulletinBoardRequestHead,
                 bulletinBoardRequestMessage: OnBulletinBoardRequestMessage,
                 bulletinBoardPost: OnBulletinBoardPost,
                 bulletinBoardDelete: OnBulletinBoardDelete,

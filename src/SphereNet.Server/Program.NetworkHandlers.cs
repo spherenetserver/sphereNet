@@ -1042,10 +1042,10 @@ public static partial class Program
             client.HandleBookHeader(serial, writable, title, author);
     }
 
-    private static void OnBulletinBoardRequestList(NetState state, uint boardSerial)
+    private static void OnBulletinBoardRequestHead(NetState state, uint boardSerial, uint msgSerial)
     {
         if (_clients.TryGetValue(state.Id, out var client))
-            client.HandleBulletinBoardRequestList(boardSerial);
+            client.HandleBulletinBoardRequestHead(boardSerial, msgSerial);
     }
 
     private static void OnBulletinBoardRequestMessage(NetState state, uint boardSerial, uint msgSerial)

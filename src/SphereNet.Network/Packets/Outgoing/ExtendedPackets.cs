@@ -1408,6 +1408,77 @@ public sealed class PacketMapChange : PacketWriter
     }
 }
 
+/// <summary>0x71 server→client — bulletin board (Source-X PacketBulletinBoard).
+/// Sub 0 opens the board (name), sub 1 sends a message header, sub 2 the
+/// full message body. Strings are length-prefixed fixed ASCII where the
+/// length byte counts the null terminator (Source-X convention).</summary>
+public sealed class PacketBulletinBoardOut : PacketWriter
+{
+    private readonly byte _sub;
+    private readonly uint _board, _msg;
+    private readonly string _name, _author, _subject, _time;
+    private readonly string[]? _body;
+
+    /// <summary>Sub 0 — open the board.</summary>
+    public PacketBulletinBoardOut(uint board, string name) : base(0x71)
+    {
+        _sub = 0;
+        _board = board;
+        _name = name;
+        _author = _subject = _time = "";
+    }
+
+    /// <summary>Sub 1 (header, body = null) or sub 2 (full message).</summary>
+    public PacketBulletinBoardOut(uint board, uint msg, string author, string subject,
+        string time, string[]? body) : base(0x71)
+    {
+        _sub = body == null ? (byte)1 : (byte)2;
+        _board = board;
+        _msg = msg;
+        _author = author;
+        _subject = subject;
+        _time = time;
+        _body = body;
+        _name = "";
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(1024);
+        buf.WriteByte(_sub);
+        buf.WriteUInt32(_board);
+        if (_sub == 0)
+        {
+            buf.WriteAsciiNull(_name);
+        }
+        else
+        {
+            buf.WriteUInt32(_msg);
+            if (_sub == 1)
+                buf.WriteUInt32(0); // parent/reply-to slot, header form only
+            WriteLenString(buf, _author);
+            WriteLenString(buf, _subject);
+            WriteLenString(buf, _time);
+            if (_sub == 2)
+            {
+                buf.WriteUInt32(0);
+                buf.WriteUInt16((ushort)_body!.Length);
+                foreach (var line in _body)
+                    WriteLenString(buf, line, extraPad: 1);
+            }
+        }
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+
+    private static void WriteLenString(PacketBuffer buf, string s, int extraPad = 0)
+    {
+        int len = Math.Min(255, s.Length + 1 + extraPad);
+        buf.WriteByte((byte)len);
+        buf.WriteAsciiFixed(s, len);
+    }
+}
+
 /// <summary>0x90 — display a map gump (Source-X PacketDisplayMap):
 /// map item serial, the north-facing map gump art, world-coordinate bounds
 /// and the gump pixel size.</summary>

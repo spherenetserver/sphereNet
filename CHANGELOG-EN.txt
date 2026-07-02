@@ -4,6 +4,163 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-02] - Parity wave W-H4: ISSTUCK/CANMOVE, GO variants, CONTCONSUME, WOP styling
+----------------------------------------
+
+ADDED - Char properties (Source-X CHC_*):
+  - ISSTUCK: returns 1 for a frozen/petrified char or one with all four
+    cardinal exits blocked. CANMOVE.<dir>: whether the char can take one
+    step that way (NPC AI scripts probe walls with it).
+
+ADDED - Char verb GO variants:
+  - GOUID/GOITEMID <uid> teleports to the object's top-level position,
+    GOCHAR <name> to the first character matching the name (previously
+    GM-speech only; as object verbs they were silent no-ops).
+
+ADDED - Item verb CONTCONSUME:
+  - Consumes N of a given id from the container's contents, recursing into
+    sub-containers (Source-X ContentConsume) — the material-sink verb of
+    craft/quest scripts.
+
+ADDED - @SpellCast LOCAL.WOPColor / LOCAL.WOPFont:
+  - The mantra's hue and font can be overridden from script; SpellEngine
+    speaks through the new styled OnSpellWordsEx hook (the old OnSpellWords
+    stays backward compatible).
+
+================================================================================
+
+[2026-07-02] - Parity wave W-H3: spider webs, @EffectTick stage, SECURE/SHRINKMEM, verb aliases
+----------------------------------------
+
+ADDED - IT_WEB behavior (Source-X Use_Item_Web):
+  - Stepping into a web sticks the char (giant spiders/ghosts/staff pass
+    through); dclick struggles with STR — a torn web leaves spider silk and
+    frees whoever was stuck. The frozen-char use gate got a web exception so
+    a stuck char can actually struggle.
+
+ADDED - [SPELL n] @EffectTick section stage:
+  - The poison tick bridge now runs the [SPELL] section @EffectTick alongside
+    the char-level @SpellEffectTick with the same LOCAL pool (EFFECT/DELAY/
+    CHARGES); RETURN 1 ends the effect.
+
+ADDED - SERV.SECURE and SERV.SHRINKMEM script bridge:
+  - SERV.SECURE toggles secure mode; while on, script-initiated SHUTDOWN is
+    refused. SERV.SHRINKMEM runs a compacting GC pass.
+
+ADDED - Object verb aliases:
+  - Char WAKE (the missing counterpart of SLEEP), object DESTROY (hard
+    removal bypassing the @Destroy veto), SMSG/SMSGL/SMSGLEX/SMSGU
+    sysmessage aliases.
+
+================================================================================
+
+[2026-07-02] - Parity wave W-H2: GARBAGE integrity sweep, house verbs, LOCAL leftovers
+----------------------------------------
+
+ADDED - GARBAGE is now the Source-X FixWeirdness world-integrity sweep:
+  - GameWorld.GarbageCollection: graphicless items deleted (0x2103), items
+    with a missing container recovered to the ground or deleted when
+    unreachable (0x2205), phantom equips dropped into the pack (0x2202),
+    items missing from their container's content list relinked (0x2106),
+    decay-flagged items with no timer re-armed (0x2236). Memory/Special-layer
+    items are left alone; every action is logged with its reason code.
+  - Both SERV.GARBAGE (script) and the console GARBAGE run the sweep + GC.
+
+ADDED - CItemMulti management verbs drive the LIVE House:
+  - ADDCOOWNER/DELCOOWNER/ADDFRIEND/DELFRIEND/ADDBAN/DELBAN/ADDACCESS/
+    DELACCESS/LOCKITEM/UNLOCKITEM/SECURE/RELEASE/REDEED on a multi item now
+    mutate runtime House state (previously they only landed in tags until a
+    world reload). REDEED delivers the deed to the owner's backpack.
+
+ADDED - Trigger LOCAL leftovers:
+  - @HitTry LOCAL.Anim / LOCAL.AnimDelay: scripts can override the player
+    swing animation and its frame pacing.
+  - @SpellCast LOCAL.WOP: power words can be rewritten from script, or
+    cleared for a silent cast (precast included).
+
+================================================================================
+
+[2026-07-02] - Parity wave W-H1: ammo economy, [SPELL] stages, dispensers
+----------------------------------------
+
+ADDED - Source-X ranged ammo economy:
+  - 40% of a player's missed arrows fall at the victim's feet (recoverable,
+    decays); @HitMiss seeds LOCAL.Arrow and LOCAL.ArrowHandled=1 lets a
+    script take over. 40% of arrows that strike an NPC stick in its pack and
+    surface on the corpse loot. NPC archers consume ammo from their packs.
+
+ADDED - [SPELL n] section lifecycle stages:
+  - @Start (with @SpellCast), @Select and @TargetCancel run alongside the
+    char triggers; @EffectAdd/@EffectRemove fire when a buff applies/expires
+    (timeout, refresh, paralyze break, dispel and death cleanup included).
+
+ADDED - Item-use parity slice:
+  - IT_SEXTANT reports real degree/minute coordinates (centered on Lord
+    British's throne).
+  - IT_ITEM_STONE dispensers work: give the MORE1 item, burn MORE2 charges
+    (0 = infinite, exhausted = "dead"), honour the MOREX regen window.
+  - Comm crystal relay: speech near a crystal is re-spoken at its linked
+    partner; @Hear RETURN 1 suppresses the relay.
+
+================================================================================
+
+[2026-07-02] - Parity waves W-A..W-G: Source-X behavior surface alignment
+----------------------------------------
+
+The first seven waves of the category-by-category Source-X audit
+(wiki/hedef.txt) were applied in one pass. Test suite grew 1040 -> 1076
+(all green, ParityWaveA-G guardrail suites). Highlights:
+
+FIXED - Trigger contracts:
+  - Trigger names aligned with the Source-X tables: @Jailed, @Ship_Move/
+    _Stop/_Turn, @itemSPELL (scripts using the reference names never fired).
+  - @Hit/@HitTry/@HitCheck/@HitMiss: SRC=victim, ARGO=weapon; damage-type
+    ARGN2 on @Hit/@GetHit/@HitCheck; @HitCheck ARGN1=swing state.
+  - @Death SRC=the dying char (killer on ARGO), @Kill ARGN1=attacker count,
+    item @Step ARGN1=standing flag.
+  - @SpellEffect fires on the AFFECTED char (SRC=caster, ARGN2=skill level,
+    writable LOCAL.Effect/Resist/Duration, RETURN 1 cancels per target);
+    @SpellCast seeds ARGN2=difficulty + writable ARGN3 cast time.
+  - [SKILL n] section stages (ON=@Start/@Stroke/...) execute for the first time.
+
+FIXED - Combat core:
+  - Players now gain weapon skill + Tactics from combat (never gained before).
+  - Era-0 hit roll is the two-stage model: random difficulty 0..iDiff checked
+    against the weapon-skill bell curve; frozen targets are near-certain hits.
+  - Coverage-weighted whole-body AR replaces the single-region reduction;
+    legacy parry formula (shield/40, DEX<80 erosion, GM +5, trains Parrying).
+  - IT_TRAP dclick SPRINGS the trap (full Use_Trap state machine); equipped
+    cursed items refuse to move; paralyze breaks on damage; Dispel strips
+    active buffs/curses.
+
+FIXED - Notoriety follows the Source-X decision order:
+  - Party/guild resolve BEFORE criminal/murderer (a party-member murderer
+    renders green); TAG.OVERRIDE.NOTO honored; PLAYEREVIL/PLAYERNEUTRAL
+    karma thresholds added (sphere.ini); murderers see themselves red; your
+    own pet renders neutral (the Source-X default).
+
+ADDED - NPC AI / economy / social:
+  - NPC hostility: karma alignment + CREID ally-group families (orcs no
+    longer attack orc mages) + fight-memory grudges.
+  - The vendor purse is always tracked (restock funds it, partial sell fill
+    with a shortfall bark); VENDORMARKUP drives the sell payout.
+  - Guild stone gump: dismiss member, declare/break alliance, set name/
+    abbreviation, fealty vote. Party member health bars update beyond
+    visual range.
+  - Region names are announced only in ANNOUNCE-flagged regions.
+
+ADDED - Housing/ships/persistence:
+  - House placement generates a pack key + bank spare; lockdown/secure stamp
+    the item ATTR; redeed sweeps loose floor items into the moving crate.
+  - Ship planks open/close (5s autoclose); ships collide with statics and
+    other hulls.
+  - Sector environment (light/season/weather), ALL memory types (with
+    remaining timeouts) and the attacker log survive save-load.
+  - SERV.B / SERV.GARBAGE / SERV.INFORMATION bridged to scripts; DISTANCE,
+    HITPOINTS/USESCUR aliases, item CONSUME/BOUNCE/DECAY verbs.
+
+================================================================================
+
 [2026-07-01] - World-ops parity: RESTORE rollback hardening (Wave 217)
 ----------------------------------------
 

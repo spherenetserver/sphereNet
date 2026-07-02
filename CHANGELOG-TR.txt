@@ -4,6 +4,159 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-02] - Parite dalgası W-H4: ISSTUCK/CANMOVE, GO varyantları, CONTCONSUME, WOP stili
+----------------------------------------
+
+EKLENDI - Char property'leri (Source-X CHC_*):
+  - ISSTUCK: donmuş/taşlaşmış karakter ya da dört ana yönü de kapalı karakter
+    1 döner. CANMOVE.<yön>: karakter o yöne bir adım atabilir mi (NPC AI
+    scriptleri duvar yoklamasında kullanır).
+
+EKLENDI - Char verb GO varyantları:
+  - GOUID/GOITEMID <uid> hedef objenin top-level pozisyonuna, GOCHAR <isim>
+    isme uyan ilk karaktere ışınlar (eskiden yalnız GM konuşma komutuydu,
+    obje-verb olarak sessiz no-op'tu).
+
+EKLENDI - Item verb CONTCONSUME:
+  - Konteyner içeriğinden (alt konteynerlere inerek) verilen id'den N adet
+    tüketir (Source-X ContentConsume) — craft/quest scriptlerinin malzeme
+    düşme verb'i.
+
+EKLENDI - @SpellCast LOCAL.WOPColor / LOCAL.WOPFont:
+  - Güç sözlerinin rengi ve fontu script'ten değiştirilebilir; SpellEngine
+    yeni OnSpellWordsEx hook'u ile stilli konuşur (eski OnSpellWords geriye
+    uyumlu kalır).
+
+================================================================================
+
+[2026-07-02] - Parite dalgası W-H3: örümcek ağı, @EffectTick aşaması, SECURE/SHRINKMEM, verb alias'ları
+----------------------------------------
+
+EKLENDI - IT_WEB davranışı (Source-X Use_Item_Web):
+  - Ağa basan karakter yapışır (dev örümcek/hayalet/staff geçer); çift tık
+    STR gücüyle debelenme — ağın canı biterse örümcek ipeği bırakır ve
+    yapışan kurtulur. Donmuş-karakter kapısına web istisnası eklendi
+    (yapışmışken debelenebilmek için).
+
+EKLENDI - [SPELL n] @EffectTick section aşaması:
+  - Zehir tick köprüsü artık char-level @SpellEffectTick'in yanında [SPELL]
+    section @EffectTick'i de aynı LOCAL havuzuyla (EFFECT/DELAY/CHARGES)
+    çalıştırır; RETURN 1 efekti bitirir.
+
+EKLENDI - SERV.SECURE ve SERV.SHRINKMEM script köprüsü:
+  - SERV.SECURE güvenli modu açar/kapar; açıkken script kaynaklı SHUTDOWN
+    reddedilir. SERV.SHRINKMEM sıkıştırmalı GC turu koşar.
+
+EKLENDI - Obje verb alias'ları:
+  - Char WAKE (SLEEP'in eksik karşılığı), obje DESTROY (@Destroy veto'sunu
+    atlayan sert silme), SMSG/SMSGL/SMSGLEX/SMSGU sysmessage alias'ları.
+
+================================================================================
+
+[2026-07-02] - Parite dalgası W-H2: GARBAGE bütünlük taraması, ev verb'leri, LOCAL kalanları
+----------------------------------------
+
+EKLENDI - GARBAGE artık Source-X FixWeirdness dünya bütünlük taraması:
+  - GameWorld.GarbageCollection: grafiksiz item silinir (0x2103), konteyneri
+    kaybolmuş item yere kurtarılır ya da erişilemiyorsa silinir (0x2205),
+    hayalet equip çantaya indirilir (0x2202), konteyner listesinden düşmüş
+    item yeniden bağlanır (0x2106), timer'sız decay item'ına timer kurulur
+    (0x2236). Memory/Special-layer item'lara dokunulmaz; nedenler loglanır.
+  - SERV.GARBAGE (script) ve konsol GARBAGE taramayı + GC'yi birlikte koşar.
+
+EKLENDI - CItemMulti yönetim verb'leri canlı House'u sürüyor:
+  - Multi item üzerinde ADDCOOWNER/DELCOOWNER/ADDFRIEND/DELFRIEND/ADDBAN/
+    DELBAN/ADDACCESS/DELACCESS/LOCKITEM/UNLOCKITEM/SECURE/RELEASE/REDEED
+    artık runtime House durumunu değiştirir (eskiden tag'e yazılıp world
+    reload bekliyordu). REDEED deed'i sahibinin çantasına teslim eder.
+
+EKLENDI - Trigger LOCAL kalanları:
+  - @HitTry LOCAL.Anim / LOCAL.AnimDelay: oyuncu swing animasyonu ve kare
+    temposu script'ten değiştirilebilir.
+  - @SpellCast LOCAL.WOP: güç sözleri script'ten yeniden yazılabilir veya
+    boşaltılarak sessiz cast yapılır (precast dahil).
+
+================================================================================
+
+[2026-07-02] - Parite dalgası W-H1: mühimmat ekonomisi, [SPELL] aşamaları, dispenser'lar
+----------------------------------------
+
+EKLENDI - Source-X menzilli mühimmat ekonomisi:
+  - Iskalayan oyuncu okunun %40'ı kurbanın ayağına düşer (decay'li, geri
+    toplanabilir); @HitMiss LOCAL.Arrow seed'lenir, LOCAL.ArrowHandled=1 ile
+    script devralabilir. NPC'ye isabette okların %40'ı hedefin çantasına
+    saplanır (ceset yağmasında çıkar). NPC okçular çantalarındaki oku tüketir.
+
+EKLENDI - [SPELL n] section yaşam döngüsü aşamaları:
+  - @Start (@SpellCast ile), @Select, @TargetCancel char trigger'larıyla
+    birlikte; @EffectAdd/@EffectRemove buff uygulanınca/kalkınca (süre dolumu,
+    yenileme, paralyze kırılması, dispel, ölüm temizliği dahil) ateşlenir.
+
+EKLENDI - Item kullanım parite dilimi:
+  - IT_SEXTANT gerçek derece/dakika koordinatı söyler (LB tahtı merkezli).
+  - IT_ITEM_STONE dispenser çalışır: MORE1 item'ını verir, MORE2 şarjını
+    yakar (0=sonsuz, bitince "ölü"), MOREX regen süresine uyar.
+  - Comm crystal relay: kristalin yanında söylenen söz Link'li eş kristalin
+    çevresine iletilir; @Hear RETURN 1 relay'i keser.
+
+================================================================================
+
+[2026-07-02] - Parite dalgaları W-A..W-G: Source-X davranış yüzeyi hizalaması
+----------------------------------------
+
+Kategori bazlı Source-X denetiminin (wiki/hedef.txt) ilk yedi dalgası tek
+seferde uygulandı. Test süiti 1040 -> 1076 (tamamı yeşil, ParityWaveA-G
+guardrail süitleri). Öne çıkanlar:
+
+DUZELTILDI - Trigger sözleşmeleri:
+  - Trigger adları Source-X tablolarına hizalandı: @Jailed, @Ship_Move/_Stop/
+    _Turn, @itemSPELL (eski adlarla scriptler hiç ateşlenmiyordu).
+  - @Hit/@HitTry/@HitCheck/@HitMiss: SRC=kurban, ARGO=silah; @Hit/@GetHit/
+    @HitCheck ARGN2=hasar tipi; @HitCheck ARGN1=swing durumu.
+  - @Death SRC=ölen karakter (katil ARGO'da), @Kill ARGN1=saldırgan sayısı,
+    item @Step ARGN1=duruyor bayrağı.
+  - @SpellEffect ETKILENEN char üzerinde ateşlenir (SRC=caster, ARGN2=skill,
+    LOCAL.Effect/Resist/Duration yazılabilir, RETURN 1 hedef bazlı iptal);
+    @SpellCast ARGN2=güçlük + yazılabilir ARGN3 cast süresi.
+  - [SKILL n] section aşamaları (ON=@Start/@Stroke/...) ilk kez çalışıyor.
+
+DUZELTILDI - Savaş çekirdeği:
+  - Oyuncular savaşta silah becerisi + Tactics kazanıyor (hiç kazanılmıyordu).
+  - Era-0 isabet çift-zar modeli: rastgele güçlük 0..iDiff, silah becerisine
+    karşı bell-curve zarı; donmuş hedefe neredeyse kesin isabet.
+  - Zırh kapsama-ağırlıklı tüm-vücut AR (tek-bölge modeli yerine); parry
+    legacy formül (kalkan/40, DEX<80 erozyonu, GM +5, Parrying kazanımı).
+  - IT_TRAP çift-tık tuzağı TETIKLER (tam Use_Trap state makinesi); lanetli
+    kuşanılmış eşya çıkarılamaz; paralyze hasarla kırılır; Dispel aktif
+    buff/curse'leri temizler.
+
+DUZELTILDI - Notoriety Source-X karar sırası:
+  - Parti/guild üyeliği criminal/murderer'dan ÖNCE değerlendirilir (parti
+    üyesi katil artık yeşil); TAG.OVERRIDE.NOTO çalışır; PLAYEREVIL/
+    PLAYERNEUTRAL karma eşikleri (sphere.ini) eklendi; katil kendini kırmızı
+    görür; kendi pet gri (Source-X varsayılanı).
+
+EKLENDI - NPC AI / ekonomi / sosyal:
+  - NPC düşmanlığı: karma hizalaması + CREID ally-group aileleri (ork artık
+    ork-mage'e saldırmıyor) + hafıza kinleri.
+  - Vendor kesesi her zaman izlenir (restock doldurur, kısmi satış +
+    "param yok" mesajı); VENDORMARKUP satış fiyatını belirler.
+  - Guild gump: üye atma, ittifak ilan/bozma, isim/kısaltma, sadakat oyu.
+    Parti üyelerinin can barları menzil dışında da güncellenir.
+  - Bölge adı yalnız ANNOUNCE flag'li bölgelerde duyurulur.
+
+EKLENDI - Housing/gemi/persistence:
+  - Ev yerleşiminde çanta anahtarı + banka yedeği üretilir; lockdown/secure
+    item'a ATTR basar; redeed serbest yer eşyalarını moving crate'e süpürür.
+  - Gemi plank'ı açılır/kapanır (5 sn auto-close); gemiler statiklere ve
+    diğer gemilere çarpar.
+  - Sektör ortamı (ışık/mevsim/hava), TÜM hafıza tipleri (kalan süreyle) ve
+    attacker listesi save-load'da korunur.
+  - SERV.B / SERV.GARBAGE / SERV.INFORMATION script'e köprülendi; DISTANCE,
+    HITPOINTS/USESCUR alias'ları, item CONSUME/BOUNCE/DECAY verb'leri.
+
+================================================================================
+
 [2026-07-01] - World-ops paritesi: RESTORE rollback hardening (Wave 217)
 ----------------------------------------
 

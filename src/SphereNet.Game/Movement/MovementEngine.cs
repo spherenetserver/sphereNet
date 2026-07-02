@@ -274,6 +274,19 @@ public sealed class MovementEngine
 
             switch (item.ItemType)
             {
+                case ItemType.Web:
+                    // Source-X Use_Item_Web: walking into a web sticks the char
+                    // (giant spiders, ghosts and staff pass through). Freeze
+                    // holds them until the web is destroyed by struggling
+                    // (dclick, STR-based) or an outside hit knocks them free.
+                    if (!ch.IsDead && ch.PrivLevel < PrivLevel.Counsel && ch.BodyId != 0x1C &&
+                        !ch.IsStatFlag(StatFlag.Insubstantial))
+                    {
+                        if (item.HitsCur <= 0)
+                            item.HitsCur = 60 + Random.Shared.Next(250);
+                        ch.SetStatFlag(StatFlag.Freeze);
+                    }
+                    break;
                 case ItemType.Trap:
                 case ItemType.TrapActive:
                     // Source-X CCharAct CheckLocation: stepping springs the trap —

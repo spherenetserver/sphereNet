@@ -362,7 +362,9 @@ public sealed class ClientItemUseHandler
             SysMessage(ServerMessages.Get("death_cant_while_dead"));
             return;
         }
-        if (_character.IsStatFlag(StatFlag.Freeze))
+        // Frozen chars can't use items — EXCEPT struggling against the web
+        // that holds them (Source-X Use_Item_Web runs while stuck).
+        if (_character.IsStatFlag(StatFlag.Freeze) && item.ItemType != ItemType.Web)
         {
             SysMessage(ServerMessages.Get("msg_frozen"));
             return;
@@ -675,8 +677,79 @@ public sealed class ClientItemUseHandler
                 SysMessage(ServerMessages.Get(Msg.ItemuseTelescope));
                 break;
             case ItemType.Sextant:
-                SysMessage($"Location: {_character.X}, {_character.Y}, {_character.Z}");
+                // Source-X Use_Sextant: real UO sextant coordinates in degrees
+                // and minutes N/S–E/W relative to the world center (Lord
+                // British's throne 1323,1624; map plane 5120x4096), not raw
+                // map integers.
+                SysMessage(FormatSextant(_character.Position));
                 break;
+
+            // ---- spider web (Source-X Use_Item_Web) ----
+            // Struggling damages the web with the char's STR; a destroyed web
+            // leaves spider silk and frees anyone stuck on its tile.
+            case ItemType.Web:
+            {
+                if (item.HitsCur <= 0)
+                    item.HitsCur = 60 + Random.Shared.Next(250);
+                item.HitsCur -= Math.Max(1, (int)_character.Str);
+                if (item.HitsCur <= 0)
+                {
+                    var webPos = item.Position;
+                    _world.RemoveItem(item);
+                    var silk = _world.CreateItem();
+                    silk.BaseId = 0x0DF8; // spider silk
+                    silk.Amount = 1;
+                    _world.PlaceItemWithDecay(silk, webPos);
+                    if (_character.IsStatFlag(StatFlag.Freeze))
+                        _character.ClearStatFlag(StatFlag.Freeze);
+                    SysMessage("You destroy the web.");
+                }
+                else
+                {
+                    SysMessage("You struggle against the web.");
+                }
+                break;
+            }
+
+            // ---- item stone (Source-X IT_ITEM_STONE dispenser) ----
+            // MORE1 = the item id given, MORE2 = charges (0 = infinite,
+            // 0xFFFF = exhausted/"dead"), MOREX = regen seconds between uses.
+            case ItemType.ItemStone:
+            {
+                if (item.More2 == ushort.MaxValue)
+                {
+                    SysMessage("It is dead.");
+                    break;
+                }
+                int regenSec = item.MoreP.X;
+                if (regenSec > 0)
+                {
+                    long now2 = Environment.TickCount64;
+                    if (item.Timeout > now2)
+                    {
+                        SysMessage($"The stone has not recharged yet ({(item.Timeout - now2) / 1000}s).");
+                        break;
+                    }
+                    item.SetTimeout(now2 + regenSec * 1000L);
+                }
+                if (item.More1 == 0) break;
+
+                var given = _world.CreateItem();
+                given.BaseId = (ushort)item.More1;
+                given.Amount = 1;
+                if (_character.Backpack != null)
+                    _character.Backpack.AddItemWithStack(given);
+                else
+                    _world.PlaceItemWithDecay(given, _character.Position);
+
+                if (item.More2 != 0)
+                {
+                    item.More2 -= 1;
+                    if (item.More2 == 0)
+                        item.More2 = ushort.MaxValue; // exhausted
+                }
+                break;
+            }
             case ItemType.SpyGlass:
                 SysMessage(ServerMessages.Get(Msg.ItemuseTelescope));
                 break;
@@ -1320,6 +1393,25 @@ public sealed class ClientItemUseHandler
             return null;
         }
         return null;
+    }
+
+    /// <summary>UO sextant math (Source-X Use_Sextant): degrees/minutes from
+    /// the world center 1323,1624 across the 5120x4096 wrap plane.</summary>
+    internal static string FormatSextant(Point3D p)
+    {
+        const int xCenter = 1323, yCenter = 1624, xWidth = 5120, yHeight = 4096;
+        double absLong = (double)((p.X - xCenter) * 360) / xWidth;
+        double absLat = (double)((p.Y - yCenter) * 360) / yHeight;
+        if (absLong > 180.0) absLong = -180.0 + (absLong % 180.0);
+        if (absLong < -180.0) absLong = 180.0 + (absLong % 180.0);
+        if (absLat > 180.0) absLat = -180.0 + (absLat % 180.0);
+        if (absLat < -180.0) absLat = 180.0 + (absLat % 180.0);
+        bool east = absLong >= 0, south = absLat >= 0;
+        absLong = Math.Abs(absLong);
+        absLat = Math.Abs(absLat);
+        int xLong = (int)absLong, yLat = (int)absLat;
+        int xMins = (int)(absLong % 1.0 * 60), yMins = (int)(absLat % 1.0 * 60);
+        return $"{yLat}° {yMins}'{(south ? "S" : "N")}, {xLong}° {xMins}'{(east ? "E" : "W")}";
     }
 
     private Item? FindBackpackKeyFor(Item locked)

@@ -2874,6 +2874,54 @@ public partial class Character : ObjBase
             return true;
         }
 
+        // Source-X CHC_ISSTUCK (IsStuck(true)): frozen/petrified counts as
+        // stuck; otherwise stuck means no adjacent cardinal tile is passable.
+        if (upper == "ISSTUCK")
+        {
+            if (IsStatFlag(StatFlag.Freeze) || IsStatFlag(StatFlag.Stone))
+            {
+                value = "1";
+                return true;
+            }
+            var stuckWorld = ObjBase.ResolveWorld?.Invoke();
+            var stuckMap = stuckWorld?.MapData;
+            if (stuckMap == null) { value = "0"; return true; }
+            bool anyOpen =
+                stuckMap.IsPassable(MapIndex, X, Y - 1, Z) ||
+                stuckMap.IsPassable(MapIndex, X + 1, Y, Z) ||
+                stuckMap.IsPassable(MapIndex, X, Y + 1, Z) ||
+                stuckMap.IsPassable(MapIndex, X - 1, Y, Z);
+            value = anyOpen ? "0" : "1";
+            return true;
+        }
+
+        // Source-X CHC_CANMOVE.<dir>: can the char take one step that way —
+        // NPC AI scripts probe walls with it before pathing.
+        if (upper.StartsWith("CANMOVE.", StringComparison.Ordinal) ||
+            upper.StartsWith("CANMOVE ", StringComparison.Ordinal))
+        {
+            string dirStr = upper[8..].Trim();
+            (int dx, int dy)? delta = dirStr switch
+            {
+                "N" or "NORTH" or "0" => (0, -1),
+                "NE" or "NORTHEAST" or "1" => (1, -1),
+                "E" or "EAST" or "2" => (1, 0),
+                "SE" or "SOUTHEAST" or "3" => (1, 1),
+                "S" or "SOUTH" or "4" => (0, 1),
+                "SW" or "SOUTHWEST" or "5" => (-1, 1),
+                "W" or "WEST" or "6" => (-1, 0),
+                "NW" or "NORTHWEST" or "7" => (-1, -1),
+                _ => null,
+            };
+            if (delta == null) { value = "0"; return true; }
+            var moveWorld = ObjBase.ResolveWorld?.Invoke();
+            bool canStep = !IsStatFlag(StatFlag.Freeze) && !IsStatFlag(StatFlag.Stone) &&
+                moveWorld?.MapData != null &&
+                moveWorld.MapData.IsPassable(MapIndex, X + delta.Value.dx, Y + delta.Value.dy, Z);
+            value = canStep ? "1" : "0";
+            return true;
+        }
+
         return base.TryGetProperty(key, out value);
     }
 
@@ -3708,6 +3756,42 @@ public partial class Character : ObjBase
                 }
                 return true;
             }
+            // Source-X GO* teleport variants — previously GM-speech-only, so
+            // scripted <char>.GOUID/<char>.GOCHAR were silent no-ops.
+            case "GOUID":
+            case "GOITEMID":
+            {
+                var world = Objects.ObjBase.ResolveWorld?.Invoke();
+                if (world == null) return true;
+                string uidStr = args.Trim();
+                if (uidStr.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) uidStr = uidStr[2..];
+                else if (uidStr.StartsWith('0') && uidStr.Length > 1) uidStr = uidStr[1..];
+                if (uint.TryParse(uidStr, System.Globalization.NumberStyles.HexNumber, null, out uint goUid))
+                {
+                    var dest = world.FindObject(new Serial(goUid));
+                    if (dest != null)
+                        MoveTo(dest.GetTopLevelPosition());
+                }
+                return true;
+            }
+            case "GOCHAR":
+            {
+                // GOCHAR <name> — teleport to the first character matching the name.
+                var world = Objects.ObjBase.ResolveWorld?.Invoke();
+                string wanted = args.Trim();
+                if (world == null || wanted.Length == 0) return true;
+                foreach (var obj in world.GetAllObjects())
+                {
+                    if (obj is Character gc && !gc.IsDeleted &&
+                        gc != this &&
+                        string.Equals(gc.Name, wanted, StringComparison.OrdinalIgnoreCase))
+                    {
+                        MoveTo(gc.Position);
+                        break;
+                    }
+                }
+                return true;
+            }
             case "FACE":
             {
                 if (byte.TryParse(args, out byte dir))
@@ -3998,6 +4082,12 @@ public partial class Character : ObjBase
             case "SLEEP":
             {
                 SetStatFlag(StatFlag.Sleeping);
+                return true;
+            }
+            case "WAKE":
+            {
+                // Source-X CHV_WAKE — the missing counterpart of SLEEP.
+                ClearStatFlag(StatFlag.Sleeping);
                 return true;
             }
             case "SUICIDE":

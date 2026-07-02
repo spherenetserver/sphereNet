@@ -63,6 +63,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnHitIgnored = null;
         SphereNet.Game.Objects.Characters.Character.OnNpcLostTeleport = null;
         SphereNet.Game.Objects.Items.Item.OnTimerExpired = null;
+        SphereNet.Game.Objects.Items.Item.ResolveHouse = null;
         SphereNet.Game.Objects.Items.Item.OnSpawnStartStop = null;
         SphereNet.Game.Objects.Items.Item.OnScriptOpen = null;
         SphereNet.Game.Objects.Items.Item.OnScriptDClick = null;

@@ -115,6 +115,24 @@ public sealed class TriggerDispatcher
             if (skillResult != TriggerResult.Default)
                 return skillResult;
         }
+
+        // [SPELL n] section stages that mirror the char-level spell triggers
+        // (Source-X Spell_OnTrigger SPTRIG_SELECT/START/TARGETCANCEL). ARGN1 =
+        // spell id. Success/Fail/Effect fire from their engine sites already,
+        // so only the three stages with no other firing path map here.
+        string? spellStage = trigger switch
+        {
+            CharTrigger.SpellSelect => "Select",
+            CharTrigger.SpellCast => "Start",
+            CharTrigger.SpellTargetCancel => "TargetCancel",
+            _ => null,
+        };
+        if (spellStage != null && args.N1 > 0)
+        {
+            var spellResult = FireSpellTrigger((SphereNet.Core.Enums.SpellType)args.N1, spellStage, ch, args);
+            if (spellResult != TriggerResult.Default)
+                return spellResult;
+        }
         return result;
     }
 

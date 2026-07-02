@@ -215,12 +215,16 @@ public sealed class AdminCommandProcessor
             }
 
             case "GARBAGE":
-                output("Forcing garbage collection...");
+            {
+                // Source-X GARBAGE = FixWeirdness world-integrity sweep + GC.
+                var (checkedCount, fixedCount, deleted) = _world.GarbageCollection(output);
+                output($"World sweep: {checkedCount} items checked, {fixedCount} fixed, {deleted} deleted.");
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
                 GC.Collect();
                 output($"GC complete. Memory: {GC.GetTotalMemory(true) / 1024} KB");
                 break;
+            }
 
             case "BLOCKIP":
                 if (!string.IsNullOrWhiteSpace(args))

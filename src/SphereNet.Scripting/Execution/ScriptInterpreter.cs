@@ -645,6 +645,22 @@ public sealed class ScriptInterpreter
             return;
         }
 
+        // SERV.SHRINKMEM — Source-X SetProcessWorkingSetSize; here a managed
+        // compacting GC pass.
+        if (cmd.Equals("SERV.SHRINKMEM", StringComparison.OrdinalIgnoreCase))
+        {
+            ServerPropertyResolver?.Invoke("_SHRINKMEM=");
+            return;
+        }
+
+        // SERV.SECURE — toggle secure mode (blocks the script/console
+        // SHUTDOWN while enabled, Source-X SetSecure).
+        if (cmd.Equals("SERV.SECURE", StringComparison.OrdinalIgnoreCase))
+        {
+            ServerPropertyResolver?.Invoke("_SECUREMODE=");
+            return;
+        }
+
         // SERV.INFORMATION — server status lines to the caller's console
         // (same caller-routing protocol as SERV.VARLIST).
         if (cmd.Equals("SERV.INFORMATION", StringComparison.OrdinalIgnoreCase))

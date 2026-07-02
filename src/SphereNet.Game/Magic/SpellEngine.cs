@@ -61,6 +61,11 @@ public sealed class SpellEngine
     /// send a 0x1C speech packet visible to nearby clients.</summary>
     public Action<Character, string>? OnSpellWords { get; set; }
 
+    /// <summary>Styled power-words callback (@SpellCast LOCAL.WOPColor /
+    /// LOCAL.WOPFont overrides): caster, words, hue (0 = caster default),
+    /// font (0 = default). Preferred over <see cref="OnSpellWords"/> when set.</summary>
+    public Action<Character, string, ushort, byte>? OnSpellWordsEx { get; set; }
+
     /// <summary>Callback fired when a CLIENTLESS caster's spell completes —
     /// the player completion path (TickSpellCast) sends its own bolt/impact
     /// effect, but NPC casts have no client and were entirely invisible.
@@ -389,8 +394,12 @@ public sealed class SpellEngine
     /// <summary>
     /// Begin casting a spell. Maps to Spell_CastStart.
     /// Returns cast time in milliseconds, or -1 on failure.
+    /// <paramref name="wopOverride"/> comes from @SpellCast LOCAL.WOP:
+    /// null = the spell's own power words, "" = silent cast, anything else
+    /// replaces the spoken mantra.
     /// </summary>
-    public int CastStart(Character caster, SpellType spell, Serial targetUid, Point3D targetPos)
+    public int CastStart(Character caster, SpellType spell, Serial targetUid, Point3D targetPos,
+        string? wopOverride = null, ushort wopHue = 0, byte wopFont = 0)
     {
         var def = _spells.Get(spell);
         if (def == null || def.IsFlag(SpellFlag.Disabled))
@@ -498,9 +507,14 @@ public sealed class SpellEngine
             }
         }
 
-        var powerWords = def.GetPowerWords();
+        var powerWords = wopOverride ?? def.GetPowerWords();
         if (!string.IsNullOrEmpty(powerWords))
-            OnSpellWords?.Invoke(caster, powerWords);
+        {
+            if (OnSpellWordsEx != null)
+                OnSpellWordsEx(caster, powerWords, wopHue, wopFont);
+            else
+                OnSpellWords?.Invoke(caster, powerWords);
+        }
 
         bool isAreaSpell = targetUid == caster.Uid;
         ushort castAnim = isAreaSpell
@@ -1662,6 +1676,7 @@ public sealed class SpellEngine
                 // Source-X re-equips the spell memory on refresh: the old
                 // effect's removal is observable before the new add.
                 Character.OnSpellEffectRemove?.Invoke(target, (int)spell);
+                FireSpellSectionStage(spell, "EffectRemove", target);
                 break;
             }
         }
@@ -1672,7 +1687,18 @@ public sealed class SpellEngine
         Character.OnEffectAdd?.Invoke(target, (int)spell);
         // @SpellEffectAdd (Source-X CCharSpell) — SRC = caster, ARGN1 = spell.
         Character.OnSpellEffectAdd?.Invoke(target, caster, (int)spell);
+        // [SPELL n] @EffectAdd resource-section stage (SPTRIG_EFFECTADD).
+        FireSpellSectionStage(spell, "EffectAdd", target);
         return eff;
+    }
+
+    /// <summary>Run a [SPELL n] section stage on the affected char — the
+    /// SPTRIG_EFFECTADD/EFFECTREMOVE lifecycle hooks that previously never
+    /// fired. No-op without a dispatcher or a matching ON= block.</summary>
+    private void FireSpellSectionStage(SpellType spell, string stage, Character target)
+    {
+        TriggerDispatcher?.FireSpellTrigger(spell, stage, target,
+            new TriggerArgs { CharSrc = target, N1 = (int)spell });
     }
 
     /// <summary>Break an active paralyze early (Source-X: the paralyze spell
@@ -1688,6 +1714,7 @@ public sealed class SpellEngine
                 continue;
             _activeEffects.RemoveAt(i);
             Character.OnSpellEffectRemove?.Invoke(victim, (int)SpellType.Paralyze);
+            FireSpellSectionStage(SpellType.Paralyze, "EffectRemove", victim);
         }
     }
 
@@ -1705,6 +1732,7 @@ public sealed class SpellEngine
             _activeEffects.RemoveAt(i);
             RevertDeltas(eff);
             Character.OnSpellEffectRemove?.Invoke(target, (int)eff.Spell);
+            FireSpellSectionStage(eff.Spell, "EffectRemove", target);
         }
     }
 
@@ -1725,6 +1753,7 @@ public sealed class SpellEngine
             _activeEffects.RemoveAt(i);
             RevertDeltas(eff);
             Character.OnSpellEffectRemove?.Invoke(eff.Target, (int)eff.Spell);
+            FireSpellSectionStage(eff.Spell, "EffectRemove", eff.Target);
         }
     }
 
@@ -1794,6 +1823,7 @@ public sealed class SpellEngine
             RevertDeltas(eff);
             _activeEffects.RemoveAt(i);
             Character.OnSpellEffectRemove?.Invoke(ch, (int)eff.Spell);
+            FireSpellSectionStage(eff.Spell, "EffectRemove", ch);
             return;
         }
     }
@@ -1808,6 +1838,7 @@ public sealed class SpellEngine
             RevertDeltas(eff);
             _activeEffects.RemoveAt(i);
             Character.OnSpellEffectRemove?.Invoke(ch, (int)eff.Spell);
+            FireSpellSectionStage(eff.Spell, "EffectRemove", ch);
         }
     }
 

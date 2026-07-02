@@ -542,6 +542,12 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             case "EMOTE":
             case "SYSMESSAGE":
             case "SYSMESSAGEF":
+            // Source-X SMSG family — localized-message aliases of SYSMESSAGE
+            // (CChar.cpp CHV_SMSG*). Scripts using them were silent no-ops.
+            case "SMSG":
+            case "SMSGL":
+            case "SMSGLEX":
+            case "SMSGU":
                 source.SysMessage(args);
                 return true;
             case "SYSMESSAGEUA":
@@ -594,6 +600,9 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                 return true;
             }
             case "REMOVE":
+            // Source-X CHV_DESTROY: hard removal that bypasses the @Destroy
+            // veto — same engine path as REMOVE in SphereNet.
+            case "DESTROY":
                 if (this is Items.Item delItem) delItem.RemoveFromWorld();
                 else if (this is Characters.Character delCh) delCh.Delete();
                 return true;

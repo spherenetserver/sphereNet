@@ -1173,6 +1173,111 @@ public sealed class GameWorld
     /// <summary>Enumerate all objects in the world (items + characters), including contained items.</summary>
     public IEnumerable<ObjBase> GetAllObjects() => _objects.Values.ToArray();
 
+    /// <summary>
+    /// Source-X CWorld::GarbageCollection → FixWeirdness: sweep every item and
+    /// repair or delete the malformed ones so the world file self-heals across
+    /// saves — dangling CONT links, equipped-flag mismatches, containment-flag
+    /// mismatches, decay-flagged ground items with no timer, graphicless items.
+    /// Memory-item / special-layer objects are engine state, not inventory, and
+    /// are left alone. Returns (checked, fixed, deleted); reasons go to
+    /// <paramref name="log"/> Source-X-style.
+    /// </summary>
+    public (int Checked, int Fixed, int Deleted) GarbageCollection(Action<string>? log = null)
+    {
+        int checkedCount = 0, fixedCount = 0, deletedCount = 0;
+
+        foreach (var obj in GetAllObjects())
+        {
+            if (obj is not Item item || item.IsDeleted)
+                continue;
+            checkedCount++;
+
+            // Engine-state items (spell/fight memories and other Special-layer
+            // equips) are managed by their subsystems.
+            if (item.ItemType == SphereNet.Core.Enums.ItemType.EqMemoryObj ||
+                (item.IsEquipped && item.EquipLayer == SphereNet.Core.Enums.Layer.Special))
+                continue;
+
+            // 0x2103: an item with no graphic can never render or be used.
+            if (item.BaseId == 0)
+            {
+                log?.Invoke($"GC: deleted graphicless item 0x{item.Uid.Value:X} (0x2103)");
+                RemoveItem(item);
+                deletedCount++;
+                continue;
+            }
+
+            if (item.ContainedIn.IsValid)
+            {
+                var parent = FindObject(item.ContainedIn);
+                bool parentGone = parent == null ||
+                    (parent is Item pi && pi.IsDeleted) ||
+                    (parent is Character pc && pc.IsDeleted);
+                if (parentGone)
+                {
+                    // 0x2205: mislinked — the container/wearer no longer exists.
+                    // Recover to the ground when the position is placeable,
+                    // otherwise the item is unreachable garbage.
+                    item.IsEquipped = false;
+                    item.ContainedIn = SphereNet.Core.Types.Serial.Invalid;
+                    if (GetSector(item.Position) != null)
+                    {
+                        PlaceItemWithDecay(item, item.Position);
+                        log?.Invoke($"GC: recovered mislinked item 0x{item.Uid.Value:X} to the ground (0x2205)");
+                        fixedCount++;
+                    }
+                    else
+                    {
+                        log?.Invoke($"GC: deleted unreachable mislinked item 0x{item.Uid.Value:X} (0x2205)");
+                        RemoveItem(item);
+                        deletedCount++;
+                    }
+                    continue;
+                }
+
+                if (item.IsEquipped && parent is Character wearer)
+                {
+                    // 0x2202: flagged equipped but not actually on the layer —
+                    // drop it into the wearer's pack.
+                    if (wearer.GetEquippedItem(item.EquipLayer) != item)
+                    {
+                        item.IsEquipped = false;
+                        if (wearer.Backpack != null && wearer.Backpack != item)
+                        {
+                            wearer.Backpack.AddItem(item);
+                            log?.Invoke($"GC: unequipped phantom-equip item 0x{item.Uid.Value:X} into pack (0x2202)");
+                            fixedCount++;
+                        }
+                        else
+                        {
+                            log?.Invoke($"GC: deleted phantom-equip item 0x{item.Uid.Value:X} (0x2202)");
+                            RemoveItem(item);
+                            deletedCount++;
+                        }
+                    }
+                }
+                else if (!item.IsEquipped && parent is Item container &&
+                         !container.Contents.Contains(item))
+                {
+                    // 0x2106: flagged contained but missing from the container's
+                    // content list — relink so it is reachable again.
+                    container.AddItem(item);
+                    log?.Invoke($"GC: relinked orphaned contained item 0x{item.Uid.Value:X} (0x2106)");
+                    fixedCount++;
+                }
+            }
+            else if (item.IsAttr(SphereNet.Core.Enums.ObjAttributes.Decay) && item.DecayTime == 0)
+            {
+                // 0x2236: decay-flagged ground item with no timer never rots.
+                item.DecayTime = Environment.TickCount64 + DefaultDecayTimeMs;
+                log?.Invoke($"GC: armed missing decay timer on 0x{item.Uid.Value:X} (0x2236)");
+                fixedCount++;
+            }
+        }
+
+        return (checkedCount, fixedCount, deletedCount);
+    }
+
     /// <summary>Admin/console RESPAWN: top every char/item spawner in the world up
     /// to its max immediately, independent of sector sleep (Source-X global
     /// RESPAWN). Must run on the main loop. Returns the number of spawners ticked.</summary>

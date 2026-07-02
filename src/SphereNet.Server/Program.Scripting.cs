@@ -208,6 +208,8 @@ public static partial class Program
             _ when upper.StartsWith("_BROADCAST=") => HandleServBroadcast(property[11..]),
             _ when upper.StartsWith("_GARBAGE") => HandleServGarbage(),
             _ when upper.StartsWith("_INFORMATION=") => HandleServInformationToCaller(property[13..]),
+            _ when upper.StartsWith("_SHRINKMEM") => HandleServShrinkMem(),
+            _ when upper.StartsWith("_SECUREMODE") => HandleServSecure(),
             _ when upper.StartsWith("_EXPORT=") => HandleServExport(property[8..]),
             _ when upper.StartsWith("_LOAD=") => HandleServLoad(property[6..]),
             _ when upper.StartsWith("_IMPORT=") => HandleServImport(property[8..]),
@@ -1101,17 +1103,54 @@ public static partial class Program
         return "1";
     }
 
-    /// <summary>Source-X <c>serv.garbage</c> — run the console GARBAGE action
-    /// from scripts (GC pass; the FixWeirdness world-integrity sweep is a
-    /// separate open parity item).</summary>
+    /// <summary>Source-X <c>serv.garbage</c> — the FixWeirdness world-integrity
+    /// sweep (repair/delete malformed items with reason logging) followed by a
+    /// managed GC pass, mirroring CWorld::GarbageCollection.</summary>
     private static string HandleServGarbage()
     {
+        if (_world != null)
+        {
+            var (checkedCount, fixedCount, deleted) = _world.GarbageCollection(
+                line => _log?.LogInformation("{Line}", line));
+            _log?.LogInformation(
+                "[script] SERV.GARBAGE — {Checked} items checked, {Fixed} fixed, {Deleted} deleted",
+                checkedCount, fixedCount, deleted);
+        }
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
         _log?.LogInformation("[script] SERV.GARBAGE — GC complete, memory {Mem} KB",
             GC.GetTotalMemory(true) / 1024);
         return "1";
+    }
+
+    /// <summary>Source-X SECURE toggle state: while on, script/console SHUTDOWN
+    /// is refused (guards against a stray script killing the shard).</summary>
+    private static bool _secureMode;
+    public static bool SecureMode => _secureMode;
+
+    /// <summary>Source-X <c>serv.shrinkmem</c> (SetProcessWorkingSetSize):
+    /// mapped to a compacting managed GC pass.</summary>
+    private static string HandleServShrinkMem()
+    {
+        long before = GC.GetTotalMemory(false);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        long after = GC.GetTotalMemory(true);
+        _log?.LogInformation("[script] SERV.SHRINKMEM — {Before} KB -> {After} KB",
+            before / 1024, after / 1024);
+        return "1";
+    }
+
+    /// <summary>Source-X <c>serv.secure</c> — toggle secure mode. While enabled,
+    /// SHUTDOWN from scripts is refused.</summary>
+    private static string HandleServSecure()
+    {
+        _secureMode = !_secureMode;
+        _log?.LogInformation("[script] SERV.SECURE — secure mode {State}",
+            _secureMode ? "ON" : "OFF");
+        return _secureMode ? "1" : "0";
     }
 
     /// <summary>Source-X <c>serv.information</c> as a script command: dump the
@@ -1465,6 +1504,13 @@ public static partial class Program
     /// what actually exits when <c>_running</c> flips to false.</summary>
     private static string? HandleServShutdown(string args)
     {
+        // Secure mode (SERV.SECURE) refuses a script-initiated shutdown.
+        if (_secureMode)
+        {
+            _log?.LogWarning("[script] SERV.SHUTDOWN refused — secure mode is ON");
+            return "0";
+        }
+
         int delaySec = 0;
         if (!string.IsNullOrWhiteSpace(args))
             int.TryParse(args.Trim(), out delaySec);

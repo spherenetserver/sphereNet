@@ -1570,6 +1570,28 @@ public class Item : ObjBase
                 return true;
             }
 
+            // Source-X CIV_CONTCONSUME: consume N of an item id from this
+            // container's contents, recursing into sub-containers.
+            case "CONTCONSUME":
+            {
+                var p = args.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (p.Length == 0) return true;
+
+                ushort wantedId = ResolveDefName?.Invoke(p[0]) ?? 0;
+                if (wantedId == 0)
+                {
+                    string idStr = p[0];
+                    if (idStr.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) idStr = idStr[2..];
+                    else if (idStr.StartsWith('0') && idStr.Length > 1) idStr = idStr[1..];
+                    ushort.TryParse(idStr, System.Globalization.NumberStyles.HexNumber, null, out wantedId);
+                }
+                if (wantedId == 0) return true;
+
+                int need = p.Length > 1 && int.TryParse(p[1], out int n) && n > 0 ? n : 1;
+                ConsumeFromContents(this, wantedId, ref need);
+                return true;
+            }
+
             // Source-X CIV_BOUNCE: put the item back into its top-level
             // owner's backpack (a loose ground item stays put).
             case "BOUNCE":
@@ -1782,6 +1804,77 @@ public class Item : ObjBase
                         Tags.Set("HOUSE.OWNER", uidStr);
                         OnHouseRegister?.Invoke(this);
                     }
+                }
+                return true;
+            }
+
+            // Source-X CItemMulti verb surface (sm_szVerbKeys): the house
+            // management verbs drive the LIVE House object at runtime —
+            // previously they only landed in tags and had no effect until a
+            // world reload. Resolved through the ResolveHouse hook (wired by
+            // the housing engine); args are a serial for the list verbs.
+            case "ADDCOOWNER":
+            case "DELCOOWNER":
+            case "ADDFRIEND":
+            case "DELFRIEND":
+            case "ADDBAN":
+            case "DELBAN":
+            case "ADDACCESS":
+            case "DELACCESS":
+            case "LOCKITEM":
+            case "UNLOCKITEM":
+            case "SECURE":
+            case "RELEASE":
+            case "REDEED":
+            {
+                if (_type is not (ItemType.Multi or ItemType.MultiCustom))
+                    break; // not a house — fall through to the generic paths
+                var house = ResolveHouse?.Invoke(Uid);
+                if (house == null)
+                    return true; // house registry not wired / unknown multi — swallow
+
+                string keyUpper = key.ToUpperInvariant();
+                if (keyUpper == "REDEED")
+                {
+                    var world = ResolveWorld?.Invoke();
+                    if (world != null)
+                    {
+                        var deed = house.Redeed(world);
+                        if (deed != null)
+                        {
+                            var owner = house.Owner.IsValid ? world.FindChar(house.Owner) : null;
+                            if (owner?.Backpack != null)
+                                owner.Backpack.AddItem(deed);
+                            else
+                                world.PlaceItemWithDecay(deed, Position);
+                        }
+                    }
+                    return true;
+                }
+
+                uint argUid = ParseHexOrDecUInt(args.Trim());
+                if (argUid == 0)
+                    return true;
+                var subject = new Serial(argUid);
+                // Script-driven management acts with owner authority.
+                var actor = house.Owner;
+                switch (keyUpper)
+                {
+                    case "ADDCOOWNER": house.AddCoOwner(subject); break;
+                    case "DELCOOWNER": house.RemoveCoOwner(subject); break;
+                    case "ADDFRIEND": house.AddFriend(subject); break;
+                    case "DELFRIEND": house.RemoveFriend(subject); break;
+                    case "ADDBAN": house.AddBan(subject); break;
+                    case "DELBAN": house.RemoveBan(subject); break;
+                    case "ADDACCESS": house.AddAccess(subject); break;
+                    case "DELACCESS": house.RemoveAccess(subject); break;
+                    case "LOCKITEM": house.Lockdown(subject, actor); break;
+                    case "UNLOCKITEM": house.ReleaseLockdown(subject, actor); break;
+                    case "SECURE": house.SecureContainer(subject, actor); break;
+                    case "RELEASE":
+                        if (!house.ReleaseSecure(subject, actor))
+                            house.ReleaseLockdown(subject, actor);
+                        break;
                 }
                 return true;
             }
@@ -2204,6 +2297,30 @@ public class Item : ObjBase
         SpawnItem?.OnTick(now);
 
         return true;
+    }
+
+    /// <summary>Recursive stack consume by base id (Source-X ContentConsume):
+    /// walks the container tree eating stacks until <paramref name="need"/>
+    /// is satisfied.</summary>
+    private static void ConsumeFromContents(Item container, ushort wantedId, ref int need)
+    {
+        foreach (var child in container.Contents.ToArray())
+        {
+            if (need <= 0) return;
+            if (child.BaseId == wantedId)
+            {
+                int take = Math.Min(need, child.Amount);
+                need -= take;
+                if (take >= child.Amount)
+                    child.RemoveFromWorld();
+                else
+                    child.Amount -= (ushort)take;
+            }
+            else if (child.Contents.Count > 0)
+            {
+                ConsumeFromContents(child, wantedId, ref need);
+            }
+        }
     }
 
     /// <summary>

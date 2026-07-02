@@ -932,22 +932,33 @@ public sealed class ClientCombatHandler
 
         int swingDelayMs = GetSwingDelayMs(_character, weapon);
         int swingDelayTenths = Math.Max(1, swingDelayMs / 100);
+        int animOverride = -1;
+        int animDelayOverride = -1;
         if (_triggerDispatcher != null)
         {
             // Source-X @HitTry contract (CCharFight Init(iARGN1Var,0,0,pWeapon),
             // OnTrigger(..., pCharTarg)): SRC = the victim, ARGO = the weapon,
-            // ARGN1 = swing tenths (writable).
+            // ARGN1 = swing tenths (writable), LOCAL.Anim / LOCAL.AnimDelay
+            // (tenths) override the swing animation and its frame pacing.
+            var hitTryLocals = new SphereNet.Scripting.Variables.VarMap();
+            hitTryLocals.SetInt("Anim", -1);
+            hitTryLocals.SetInt("AnimDelay", 7);
             var hitTryArgs = new TriggerArgs
             {
                 CharSrc = target,
                 O1 = weapon,
                 ItemSrc = weapon,
                 N1 = swingDelayTenths,
+                Locals = hitTryLocals,
             };
             if (_triggerDispatcher.FireCharTrigger(_character, CharTrigger.HitTry, hitTryArgs) == TriggerResult.True)
                 return;
             swingDelayTenths = Math.Max(1, hitTryArgs.N1);
             swingDelayMs = swingDelayTenths * 100;
+            animOverride = (int)hitTryLocals.GetInt("Anim", -1);
+            long animDelay = hitTryLocals.GetInt("AnimDelay", 7);
+            if (animDelay != 7)
+                animDelayOverride = (int)Math.Clamp(animDelay, 0, 255);
         }
 
         // COMBAT_NODIRCHANGE: do not auto-rotate the attacker to face the target.
@@ -1004,10 +1015,17 @@ public sealed class ClientCombatHandler
         if (_character.Stam > 0)
             _character.Stam = (short)(_character.Stam - 1);
 
-        ushort swingAction = GetSwingAction(_character, weapon);
+        // @HitTry LOCAL.Anim / LOCAL.AnimDelay override the swing animation and
+        // its frame pacing (Source-X reads them back after the trigger).
+        ushort swingAction = animOverride >= 0
+            ? (ushort)animOverride
+            : GetSwingAction(_character, weapon);
         // COMBAT_ANIM_HIT_SMOOTH paces the swing animation to the swing time.
+        byte swingAnimDelay = animDelayOverride >= 0
+            ? (byte)animDelayOverride
+            : CombatHelper.GetSwingAnimDelay(swingDelayMs);
         BroadcastAnimation(_character, swingAction, NewAnimationGesture.Attack,
-            animDelay: CombatHelper.GetSwingAnimDelay(swingDelayMs));
+            animDelay: swingAnimDelay);
         // Source-X plays a single combat sound per swing: the per-weapon hit
         // sound on a hit, the miss whoosh on a miss (emitted below). No extra
         // unconditional swing sound.
@@ -1146,6 +1164,24 @@ public sealed class ClientCombatHandler
             BroadcastNearby?.Invoke(target.Position, UpdateRange, healthPacket, 0);
 
             GameClient.EmitBloodSplat(_world, target);
+
+            // Source-X hit economy: 40% of arrows that strike an NPC stick in
+            // the body — they ride in its pack and surface on the corpse loot.
+            if (CombatHelper.IsRangedWeapon(weapon) && !target.IsPlayer &&
+                target.Backpack != null && Random.Shared.Next(100) < 40)
+            {
+                var stuckAmmo = ResolveAmmo(weapon!);
+                var stuck = _world.CreateItem();
+                if (stuckAmmo.BaseId != 0)
+                    stuck.BaseId = stuckAmmo.BaseId;
+                else
+                {
+                    stuck.ItemType = stuckAmmo.FallbackType;
+                    stuck.BaseId = stuckAmmo.FallbackType == ItemType.WeaponArrow ? (ushort)0x0F3F : (ushort)0x1BFB;
+                }
+                stuck.Amount = 1;
+                target.Backpack.AddItemWithStack(stuck);
+            }
 
             if (target.Hits <= 0 && !target.IsDead && _deathEngine != null)
             {
@@ -1296,12 +1332,44 @@ public sealed class ClientCombatHandler
         else
         {
             // Source-X @HitMiss: SRC = the victim, ARGO = the weapon.
+            // LOCAL.Arrow marks that ranged ammo was spent on this miss; a
+            // script sets LOCAL.ArrowHandled=1 to take over the ammo fate.
+            bool rangedMiss = CombatHelper.IsRangedWeapon(weapon);
+            var missLocals = new SphereNet.Scripting.Variables.VarMap();
+            if (rangedMiss) missLocals.SetInt("Arrow", 1);
             _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.HitMiss,
-                new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon });
+                new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon, Locals = missLocals });
+
+            // Source-X miss economy: 40% of the time the player's arrow falls
+            // at the victim's feet (recoverable, decays); otherwise it is gone
+            // (it was already consumed from the pack at the shot).
+            if (rangedMiss && missLocals.GetInt("ArrowHandled") == 0 &&
+                Random.Shared.Next(100) < 40)
+            {
+                var missAmmo = ResolveAmmo(weapon!);
+                DropRecoveredAmmo(missAmmo.BaseId, missAmmo.FallbackType, target.Position);
+            }
 
             BroadcastNearby?.Invoke(_character.Position, UpdateRange,
                 new PacketSound(GetWeaponMissSound(weapon), _character.X, _character.Y, _character.Z), 0);
         }
+    }
+
+    /// <summary>Materialise one recovered ammo item (Source-X MoveToDecay of the
+    /// split arrow): dropped on the ground at <paramref name="pos"/> with the
+    /// normal decay window.</summary>
+    private void DropRecoveredAmmo(ushort baseId, ItemType fallbackType, Point3D pos)
+    {
+        var ammo = _world.CreateItem();
+        if (baseId != 0)
+            ammo.BaseId = baseId;
+        else
+        {
+            ammo.ItemType = fallbackType;
+            ammo.BaseId = fallbackType == ItemType.WeaponArrow ? (ushort)0x0F3F : (ushort)0x1BFB;
+        }
+        ammo.Amount = 1;
+        _world.PlaceItemWithDecay(ammo, pos);
     }
 
     private void EmitMissFeedback(Character target, Item? weapon)
@@ -1903,25 +1971,41 @@ public sealed class ClientCombatHandler
         // Fire @SpellCast — if script blocks, don't cast. Source-X contract:
         // ARGN1 = spell, ARGN2 = difficulty (skill req / 10), ARGN3 = cast
         // wait time in tenths — writable, the classic "change the cast delay
-        // from script" hook.
+        // from script" hook. LOCAL.WOP carries the power words: a script may
+        // rewrite them or clear them for a silent cast.
         int castTimeOverrideMs = 0;
+        string? wopOverride = null;
+        ushort wopHue = 0;
+        byte wopFont = 0;
         if (_triggerDispatcher != null)
         {
             int seededWaitTenths = spellDef != null
                 ? spellDef.GetCastTime(_character.GetSkill(spellDef.GetPrimarySkill()))
                 : 0;
+            string seededWop = spellDef?.GetPowerWords() ?? "";
+            var castLocals = new SphereNet.Scripting.Variables.VarMap();
+            castLocals.Set("WOP", seededWop);
+            castLocals.SetInt("WOPColor", 0);
+            castLocals.SetInt("WOPFont", 0);
             var castArgs = new TriggerArgs
             {
                 CharSrc = _character,
                 N1 = (int)spell,
                 N2 = (spellDef?.GetDifficulty() ?? 0) / 10,
                 N3 = seededWaitTenths,
+                Locals = castLocals,
             };
             var result = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SpellCast, castArgs);
             if (result == TriggerResult.True)
                 return;
             if (castArgs.N3 != seededWaitTenths && castArgs.N3 > 0)
                 castTimeOverrideMs = castArgs.N3 * 100;
+            // VarMap removes a key set to "" — a cleared WOP means silence.
+            string wopNow = castLocals.Get("WOP") ?? "";
+            if (wopNow != seededWop)
+                wopOverride = wopNow;
+            wopHue = (ushort)Math.Clamp(castLocals.GetInt("WOPColor", 0), 0, ushort.MaxValue);
+            wopFont = (byte)Math.Clamp(castLocals.GetInt("WOPFont", 0), 0, byte.MaxValue);
         }
 
         // Reference Cmd_Skill_Magery: Polymorph/Summon casts open their
@@ -1950,7 +2034,7 @@ public sealed class ClientCombatHandler
         // Precast: power words + animation first, target cursor after timer.
         if (targetUid == 0 && spellDef != null && SpellEngine.IsPrecastEnabled(spellDef))
         {
-            StartPrecast(spell, castTimeOverrideMs);
+            StartPrecast(spell, castTimeOverrideMs, wopOverride, wopHue, wopFont);
             return;
         }
 
@@ -1986,7 +2070,8 @@ public sealed class ClientCombatHandler
                 targetPos = targetChar.Position;
         }
 
-        int castTime = _spellEngine.CastStart(_character, spell, new Serial(targetUid), targetPos);
+        int castTime = _spellEngine.CastStart(_character, spell, new Serial(targetUid), targetPos,
+            wopOverride, wopHue, wopFont);
         if (castTime > 0)
         {
             if (castTimeOverrideMs > 0)
@@ -2002,11 +2087,13 @@ public sealed class ClientCombatHandler
         }
     }
 
-    private void StartPrecast(SpellType spell, int castTimeOverrideMs = 0)
+    private void StartPrecast(SpellType spell, int castTimeOverrideMs = 0, string? wopOverride = null,
+        ushort wopHue = 0, byte wopFont = 0)
     {
         if (_character == null || _spellEngine == null) return;
 
-        int castTime = _spellEngine.CastStart(_character, spell, _character.Uid, _character.Position);
+        int castTime = _spellEngine.CastStart(_character, spell, _character.Uid, _character.Position,
+            wopOverride, wopHue, wopFont);
         if (castTime > 0)
         {
             if (castTimeOverrideMs > 0)

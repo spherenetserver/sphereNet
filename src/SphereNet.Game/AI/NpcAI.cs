@@ -2826,6 +2826,21 @@ public sealed class NpcAI
         int damage = CombatEngine.ResolveAttack(npc, target, weapon, CombatHelper.ActiveCombatFlags);
         OnNpcAttack?.Invoke(npc, target, damage);
 
+        // Source-X: NPC archers spend ammo too. Lenient — an NPC with no ammo
+        // in its pack keeps swinging (legacy loot templates rarely stock
+        // arrows), but a stocked pack depletes shot by shot.
+        if (weapon != null && CombatHelper.IsRangedWeapon(weapon) && npc.Backpack != null)
+        {
+            foreach (var it in npc.Backpack.Contents)
+            {
+                if (it.ItemType is not (ItemType.WeaponArrow or ItemType.WeaponBolt) || it.Amount == 0)
+                    continue;
+                if (it.Amount <= 1) it.RemoveFromWorld();
+                else it.Amount -= 1;
+                break;
+            }
+        }
+
         if (damage > 0)
         {
             // Source-X SoundChar(CRESND_HIT): an armed strike makes the weapon

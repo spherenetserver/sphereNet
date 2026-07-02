@@ -261,6 +261,12 @@ public static partial class Program
                     if (_triggerDispatcher.FireCharTrigger(victim, CharTrigger.SpellEffectTick, args)
                         == TriggerResult.True)
                         return false;
+                    // [SPELL n] @EffectTick resource-section stage (Source-X
+                    // SPTRIG_EFFECTTICK) — shares the same args/LOCAL pool, so
+                    // a section script can adjust EFFECT/DELAY/CHARGES too.
+                    if (_triggerDispatcher.FireSpellTrigger((SpellType)ctx.SpellId, "EffectTick",
+                            victim, args) == TriggerResult.True)
+                        return false;
                     ctx.Damage = (int)locals.GetInt("EFFECT", ctx.Damage);
                     ctx.Charges = (int)locals.GetInt("CHARGES", ctx.Charges);
                     if (double.TryParse(locals.Get("DELAY"),
@@ -663,15 +669,34 @@ public static partial class Program
             _speech.GuildManager = _guildManager;
             _speech.OnNpcHear += OnNpcHearSpeech;
             _speech.OnPlayerSpeech = OnPlayerSpeech;
-            // @Hear on nearby items (Source-X item/multi OnHear) — installed only when
-            // some item def actually hooks @Hear, so the per-utterance item scan is
-            // skipped on shards that don't use it. S1 = spoken text, N1 = talk mode.
-            if (_triggerDispatcher.IsItemTriggerUsed(ItemTrigger.Hear))
+            // @Hear on nearby items (Source-X item/multi OnHear) + the native
+            // comm-crystal relay (CItemCommCrystal::OnHear): a linked crystal
+            // re-speaks anything said near its partner. The handler is installed
+            // unconditionally now — the crystal relay needs the per-utterance
+            // item scan even when no script hooks @Hear; the trigger fire itself
+            // stays gated. S1 = spoken text, N1 = talk mode.
+            bool itemHearScripted = _triggerDispatcher.IsItemTriggerUsed(ItemTrigger.Hear);
+            _speech.OnItemHear = (speaker, item, text, mode) =>
             {
-                _speech.OnItemHear = (speaker, item, text, mode) =>
-                    _triggerDispatcher.FireItemTrigger(item, ItemTrigger.Hear,
+                TriggerResult r = TriggerResult.Default;
+                if (itemHearScripted)
+                    r = _triggerDispatcher.FireItemTrigger(item, ItemTrigger.Hear,
                         new TriggerArgs { CharSrc = speaker, ItemSrc = item, S1 = text, N1 = (int)mode });
-            }
+
+                if (r != TriggerResult.True &&
+                    item.ItemType == SphereNet.Core.Enums.ItemType.CommCrystal &&
+                    item.Link.IsValid)
+                {
+                    var dest = _world.FindItem(item.Link);
+                    if (dest != null && !dest.IsDeleted && dest != item)
+                    {
+                        string crystalName = string.IsNullOrEmpty(dest.Name) ? "a communication crystal" : dest.Name;
+                        BroadcastNearby(dest.Position, 12,
+                            new PacketSpeechUnicodeOut(dest.Uid.Value, 0, 0, 0x03B2, 3, "TRK",
+                                crystalName, text), 0);
+                    }
+                }
+            };
             _speech.OnChannelMessage += (speaker, recipient, text, mode) =>
             {
                 if (!TryGetClientFor(recipient, out var c))
@@ -1173,14 +1198,20 @@ public static partial class Program
                     caster.Hue, flags, noto);
                 BroadcastNearby(caster.Position, 18, pkt, 0);
             };
-            _spellEngine.OnSpellWords = (caster, words) =>
+            // Styled hook: @SpellCast LOCAL.WOPColor / LOCAL.WOPFont override the
+            // mantra's hue and font; 0 falls back to the caster defaults.
+            _spellEngine.OnSpellWordsEx = (caster, words, wopHue, wopFont) =>
             {
+                ushort hue = wopHue != 0
+                    ? wopHue
+                    : caster.SpeechColor != 0 ? caster.SpeechColor : (ushort)0x03B2;
+                byte font = wopFont != 0 ? wopFont : (byte)3;
                 var pkt = new PacketSpeechUnicodeOut(
                     caster.Uid.Value,
                     caster.BodyId,
                     0x00,
-                    caster.SpeechColor != 0 ? caster.SpeechColor : (ushort)0x03B2,
-                    3,
+                    hue,
+                    font,
                     "TRK",
                     caster.Name ?? "",
                     words);

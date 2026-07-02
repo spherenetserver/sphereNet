@@ -4,6 +4,25 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-02] - Parite dalgası W-H5: NPC eğitmenliği ve yer yemeği arama
+----------------------------------------
+
+EKLENDI - NPC beceri eğitmenliği (Source-X NPC_OnTrainHear/Pay):
+  - "train" kasabalı NPC'nin öğretebildiği becerileri listeler (ustalaştığı,
+    >= 10.0); "train <beceri>" fiyat teklif eder (isim tam ya da önek
+    eşleşmesi). Eğitmen kendi becerisinin %30'una kadar, 42.0 tavanıyla
+    öğretir (Source-X TRAINSKILLPERCENT/TRAINSKILLMAX varsayılanları).
+  - Teklif açıkken eğitmene verilen altın beceri satın alır: 1 altın = 0.1
+    beceri; tavanı aşan fazla altın öğrenciye iade edilir, tavana ulaşınca
+    teklif kapanır.
+
+EKLENDI - NPC yer yemeği arama (Source-X NPC_Act_Food):
+  - Aç yaratıklar artık yalnız çantadan yemek yemiyor: açlık arttıkça
+    genişleyen menzilde (görüşün (100-tokluk)%'i) yerdeki yiyeceği bulur,
+    ona doğru yürür, bitişikteyse yer. Otçul otlama davranışı korunur.
+
+================================================================================
+
 [2026-07-02] - Parite dalgası W-H4: ISSTUCK/CANMOVE, GO varyantları, CONTCONSUME, WOP stili
 ----------------------------------------
 

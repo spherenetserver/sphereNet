@@ -2339,8 +2339,10 @@ public sealed class NpcAI
             WanderHome(npc);
     }
 
-    /// <summary>Hungry NPC feeds: consume a food item from its pack, otherwise
-    /// (animals) graze. Tops up the food meter. Returns true if it fed.</summary>
+    /// <summary>Hungry NPC feeds: consume a food item from its pack, hunt down
+    /// edibles lying on the ground (Source-X NPC_Act_Food world search — the
+    /// hungrier, the farther it will walk for a meal), otherwise (animals)
+    /// graze. Tops up the food meter. Returns true if it acted on food.</summary>
     private bool TryEatFood(Character npc)
     {
         if (npc.NpcFood >= 50) return false;
@@ -2360,6 +2362,37 @@ public sealed class NpcAI
                 }
             }
         }
+
+        // Ground food: Source-X scans out to sight*(100-food)/100 tiles — a
+        // starving creature roams the whole view, a peckish one only sniffs
+        // nearby. Adjacent food is eaten on the spot; otherwise walk toward it.
+        int searchRange = Math.Clamp(14 * (100 - npc.NpcFood) / 100, 2, 14);
+        Item? meal = null;
+        int best = int.MaxValue;
+        foreach (var it in _world.GetItemsInRange(npc.Position, searchRange))
+        {
+            if (it.IsDeleted || !it.IsOnGround) continue;
+            if (it.ItemType is not (ItemType.Food or ItemType.Fruit or ItemType.Grain or ItemType.FoodRaw))
+                continue;
+            int d = npc.Position.GetDistanceTo(it.Position);
+            if (d < best) { best = d; meal = it; }
+        }
+        if (meal != null)
+        {
+            if (best <= 1)
+            {
+                if (meal.Amount > 1) meal.Amount--;
+                else _world.RemoveItem(meal);
+                npc.NpcFood = (ushort)Math.Min(60, npc.NpcFood + 10);
+                EmitSound(npc, CreatureSoundType.Idle);
+            }
+            else
+            {
+                MoveToward(npc, meal.Position);
+            }
+            return true;
+        }
+
         // Grazers eat the grass wherever they roam.
         if (npc.NpcBrain == NpcBrainType.Animal && _rand.Next(4) == 0)
         {

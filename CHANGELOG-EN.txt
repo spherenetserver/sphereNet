@@ -4,6 +4,25 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-02] - Parity wave W-H5: NPC skill training and ground-food seeking
+----------------------------------------
+
+ADDED - NPC skill training (Source-X NPC_OnTrainHear/Pay):
+  - "train" makes a townsfolk NPC list the skills it can teach (mastered,
+    >= 10.0); "train <skill>" quotes a price (exact or prefix name match).
+    A trainer teaches up to 30% of its own skill, hard-capped at 42.0
+    (Source-X TRAINSKILLPERCENT/TRAINSKILLMAX defaults).
+  - Gold handed to the trainer while the offer is open buys skill: 1 gp =
+    0.1 skill; overpayment beyond the cap bounces back to the student and
+    reaching the cap closes the offer.
+
+ADDED - NPC ground-food seeking (Source-X NPC_Act_Food):
+  - Hungry creatures no longer eat only from their packs: within a range
+    that widens with hunger (sight * (100-food)%), they find edibles on the
+    ground, walk toward them and eat when adjacent. Grazing is preserved.
+
+================================================================================
+
 [2026-07-02] - Parity wave W-H4: ISSTUCK/CANMOVE, GO variants, CONTCONSUME, WOP styling
 ----------------------------------------
 

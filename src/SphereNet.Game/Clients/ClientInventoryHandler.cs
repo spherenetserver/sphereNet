@@ -64,6 +64,51 @@ public sealed class ClientInventoryHandler
     private void SendPickupFailed(byte reason) => _client.SendPickupFailed(reason);
     private TradeManager? _tradeManager => _client.TradeM;
     private void PlaceItemInPack(Character target, Item item) => _client.PlaceItemInPack(target, item);
+
+    /// <summary>Source-X NPC_OnTrainPay: consume gold handed to the trainer as
+    /// skill points (1 gp = 0.1) up to the offered cap. Returns false when the
+    /// pending offer doesn't match this NPC (normal gift handling continues).
+    /// Leftover gold above the cap bounces back to the student's pack.</summary>
+    private bool TryApplyTrainPayment(Character trainer, Item gold, string pending)
+    {
+        if (_character == null) return false;
+        var parts = pending.Split('|');
+        if (parts.Length < 3 ||
+            !uint.TryParse(parts[0], out uint npcUid) || npcUid != trainer.Uid.Value ||
+            !int.TryParse(parts[1], out int skillId) ||
+            !int.TryParse(parts[2], out int maxTrain) ||
+            skillId < 0 || skillId >= (int)SkillType.Qty)
+            return false;
+
+        var skill = (SkillType)skillId;
+        int current = _character.GetSkill(skill);
+        if (current >= maxTrain)
+        {
+            _character.RemoveTag("TRAIN_PENDING");
+            PlaceItemInPack(_character, gold);
+            SysMessage("You already know all this trainer can teach.");
+            return true;
+        }
+
+        int points = Math.Min(gold.Amount, maxTrain - current);
+        _character.SetSkill(skill, (ushort)(current + points));
+        SysMessage($"Your {skill} rises to {(current + points) / 10.0:0.#}.");
+
+        if (current + points >= maxTrain)
+            _character.RemoveTag("TRAIN_PENDING");
+
+        // The trainer keeps the fee; any overpayment returns to the student.
+        if (points >= gold.Amount)
+        {
+            gold.RemoveFromWorld();
+        }
+        else
+        {
+            gold.Amount -= (ushort)points;
+            PlaceItemInPack(_character, gold);
+        }
+        return true;
+    }
     private void SendTradeUpdateToBoth(SecureTrade trade) => _client.SendTradeUpdateToBoth(trade);
     private Action<Character, Item, Item>? SendTradeItemToPartner => _client.SendTradeItemToPartner;
     private SpellEngine? _spellEngine => _client.Spells;
@@ -906,6 +951,18 @@ public sealed class ClientInventoryHandler
                 if (charTarget.IsPlayer && _tradeManager != null)
                 {
                     InitiateTrade(charTarget, item);
+                    _netState.Send(new PacketDropAck());
+                    return;
+                }
+
+                // Source-X NPC_OnTrainPay: gold handed to a trainer with a pending
+                // "train <skill>" offer buys skill points — 1 gp per 0.1, capped
+                // at the trainer's limit. Leftover gold bounces back.
+                if (!charTarget.IsPlayer &&
+                    (item.ItemType == ItemType.Gold || item.BaseId == 0x0EED) &&
+                    _character.TryGetTag("TRAIN_PENDING", out string? trainPending) &&
+                    TryApplyTrainPayment(charTarget, item, trainPending!))
+                {
                     _netState.Send(new PacketDropAck());
                     return;
                 }

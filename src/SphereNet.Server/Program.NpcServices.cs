@@ -89,6 +89,18 @@ public static partial class Program
         string lowerName = (npc.Name ?? "").ToLowerInvariant();
         NpcBrainType brain = npc.NpcBrain;
 
+        // Source-X NPC_OnTrainHear: "train [skill]" — a townsfolk NPC teaches
+        // the skills it masters. Bare "train" lists them; a named skill quotes
+        // the price and arms the gold-payment step (TRAIN_PENDING on the
+        // student, consumed by the drop-gold-on-NPC path).
+        if (lower.StartsWith("train") && speaker.IsPlayer &&
+            brain is NpcBrainType.Human or NpcBrainType.Vendor or NpcBrainType.Banker
+                or NpcBrainType.Stable or NpcBrainType.Healer or NpcBrainType.None &&
+            TryHandleTrainKeyword(speaker, npc, text))
+        {
+            return true;
+        }
+
         // Mirror the legacy widening: NPC=NPC_HUMAN service NPCs whose
         // names carry the role keyword should still respond as the
         // matching brain (banker / vendor / healer / stable).
@@ -188,6 +200,85 @@ public static partial class Program
     /// Service NPC keyword response. We don't yet have a dedicated NPC
     /// overhead-speech broadcast, so the line is delivered as a system
     /// </summary>
+    // Source-X sphere.ini TRAINSKILLPERCENT / TRAINSKILLMAX defaults: an NPC
+    // teaches up to 30% of its own skill, hard-capped at 42.0.
+    private const int TrainSkillPercent = 30;
+    private const int TrainSkillMax = 420;
+
+    /// <summary>Handle the "train [skill]" keyword (Source-X NPC_OnTrainHear).
+    /// Returns false when the utterance is not really a train request (lets
+    /// the rest of the speech chain run).</summary>
+    private static bool TryHandleTrainKeyword(Character speaker, Character npc, string text)
+    {
+        string rest = text.Trim();
+        rest = rest.Length > 5 ? rest[5..].Trim() : "";
+
+        if (rest.Length == 0)
+        {
+            // List teachable skills: everything the NPC masters (>= 10.0) and
+            // can still raise for this student.
+            var teachable = new List<string>();
+            for (int i = 0; i < (int)SphereNet.Core.Enums.SkillType.Qty; i++)
+            {
+                var sk = (SphereNet.Core.Enums.SkillType)i;
+                int npcVal = npc.GetSkill(sk);
+                if (npcVal < 100) continue;
+                int cap = Math.Min(npcVal * TrainSkillPercent / 100, TrainSkillMax);
+                if (speaker.GetSkill(sk) < cap)
+                    teachable.Add(sk.ToString());
+            }
+            NpcSpeak(npc, teachable.Count == 0
+                ? "There is nothing I can teach thee."
+                : $"I can teach thee: {string.Join(", ", teachable)}.");
+            return true;
+        }
+
+        // Named skill: exact enum match first, then prefix match ("anatom").
+        string wanted = rest.Replace(" ", "");
+        SphereNet.Core.Enums.SkillType? found = null;
+        if (Enum.TryParse(wanted, ignoreCase: true, out SphereNet.Core.Enums.SkillType parsed) &&
+            (int)parsed >= 0 && (int)parsed < (int)SphereNet.Core.Enums.SkillType.Qty)
+        {
+            found = parsed;
+        }
+        else
+        {
+            for (int i = 0; i < (int)SphereNet.Core.Enums.SkillType.Qty; i++)
+            {
+                var sk = (SphereNet.Core.Enums.SkillType)i;
+                if (sk.ToString().StartsWith(wanted, StringComparison.OrdinalIgnoreCase))
+                {
+                    found = sk;
+                    break;
+                }
+            }
+        }
+        if (found == null)
+            return false; // not a skill name — let the speech chain continue
+
+        var skill = found.Value;
+        int trainerVal = npc.GetSkill(skill);
+        if (trainerVal < 100)
+        {
+            NpcSpeak(npc, "I know not enough of that myself.");
+            return true;
+        }
+        int maxTrain = Math.Min(trainerVal * TrainSkillPercent / 100, TrainSkillMax);
+        int current = speaker.GetSkill(skill);
+        if (current >= maxTrain)
+        {
+            NpcSpeak(npc, "Thou knowest already more than I can teach thee.");
+            return true;
+        }
+
+        // 1 gold per 0.1 skill point (Source-X m_iTrainSkillCost default).
+        int cost = maxTrain - current;
+        speaker.SetTag("TRAIN_PENDING", $"{npc.Uid.Value}|{(int)skill}|{maxTrain}");
+        NpcSpeak(npc,
+            $"I can train thy {skill} up to {maxTrain / 10.0:0.#} for {cost} gold. Hand me the gold to begin.");
+        return true;
+    }
+
     private static void NpcSpeak(Character npc, string line)
     {
         if (string.IsNullOrEmpty(line)) return;

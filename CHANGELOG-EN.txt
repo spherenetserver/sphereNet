@@ -4,6 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-02] - Parity wave W-H7: ship wheel (pilot), OPENTRADEWINDOW
+----------------------------------------
+
+ADDED - Ship pilot/wheel support (Source-X SetPilot + PacketWheelBoatMove):
+  - The ship SETPILOT verb assigns the helmsman (arg = uid) or releases the
+    wheel with an empty arg.
+  - The 0xBF 0x33 wheel-boat move subcommand is registered and handled: a
+    char aboard (only the assigned pilot when one is set) steers with the
+    mouse — speed 0 stops, 1 moves one tile, 2+ sails continuously.
+
+ADDED - Client verb OPENTRADEWINDOW:
+  - Opens a secure trade with the target char from script (arg = uid, or
+    the current target object).
+
+NOTE - Deliberately deferred: MDB.* (secondary MySQL reference object — low
+  usage, mechanical spread over 8 files) and the item SMELT/CARVECORPSE
+  verbs (need char context); both stay open on the target list.
+
+================================================================================
+
 [2026-07-02] - Parity wave W-H6: custom house fixtures, EQUIP* verbs, client CAST
 ----------------------------------------
 

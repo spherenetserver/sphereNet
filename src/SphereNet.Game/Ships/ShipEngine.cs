@@ -454,6 +454,23 @@ public sealed class ShipEngine
                 if (!ship.MultiItem.IsAttr(ObjAttributes.Magic)) return false;
                 return HandleShipLand(ship);
 
+            // --- Pilot (Source-X SetPilot): the assigned pilot steers via the
+            // 0xBF 0x33 wheel-move packet; empty arg releases the wheel. ---
+            case "SETPILOT":
+            {
+                string pilotArg = args.Trim();
+                if (pilotArg.Length == 0)
+                {
+                    ship.Pilot = Serial.Invalid;
+                    return true;
+                }
+                if (pilotArg.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) pilotArg = pilotArg[2..];
+                else if (pilotArg.StartsWith('0') && pilotArg.Length > 1) pilotArg = pilotArg[1..];
+                if (uint.TryParse(pilotArg, System.Globalization.NumberStyles.HexNumber, null, out uint pilotUid))
+                    ship.Pilot = new Serial(pilotUid);
+                return true;
+            }
+
             default:
                 return false;
         }

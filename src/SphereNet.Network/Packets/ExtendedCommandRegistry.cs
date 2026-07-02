@@ -23,6 +23,7 @@ public static class ExtendedCommandRegistry
         0x0028, // guild button
         0x002C, // virtue invoke
         0x0032, // quest button
+        0x0033, // wheel-boat move (High Seas steering)
     ];
 
     public static IReadOnlyCollection<ushort> KnownSubCommands => s_knownSubCommands;

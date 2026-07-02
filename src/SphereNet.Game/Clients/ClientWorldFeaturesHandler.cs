@@ -1643,6 +1643,29 @@ public sealed class ClientWorldFeaturesHandler
             handler(this, data);
     }
 
+    /// <summary>0xBF 0x33 — wheel-boat steering (Source-X PacketWheelBoatMove /
+    /// SetPilot). Payload: serial(4), moving dir, facing dir, speed
+    /// (0 = stop, 1 = one tile, 2+ = continuous). The steering char must be
+    /// aboard; an assigned pilot excludes everyone else at the wheel.</summary>
+    private void HandleExtendedWheelBoatMove(byte[] data)
+    {
+        if (_character == null || data.Length < 7) return;
+        var engine = Item.ResolveShipEngine?.Invoke();
+        if (engine == null) return;
+
+        var ship = engine.FindShipAt(_character.Position);
+        if (ship == null) return;
+        if (ship.Pilot.IsValid && ship.Pilot != _character.Uid) return;
+
+        byte dir = (byte)(data[4] & 0x07);
+        byte speed = data[6];
+        if (speed == 0)
+            engine.Stop(ship);
+        else
+            engine.SetMoveDir(ship, (Direction)dir,
+                speed >= 2 ? ShipMovementType.Normal : ShipMovementType.OneTile);
+    }
+
     private static IReadOnlyDictionary<ushort, Action<ClientWorldFeaturesHandler, byte[]>> BuildExtendedCommandHandlers()
     {
         var handlers = new Dictionary<ushort, Action<ClientWorldFeaturesHandler, byte[]>>
@@ -1669,6 +1692,7 @@ public sealed class ClientWorldFeaturesHandler
                 client.HandleExtendedVirtueInvoke(data);
             },
             [0x0032] = static (client, _) => client.FireExtendedButtonTrigger(CharTrigger.UserQuestButton, 0x0032),
+            [0x0033] = static (client, data) => client.HandleExtendedWheelBoatMove(data),
         };
 
         if (handlers.Keys.Any(subCmd => !ExtendedCommandRegistry.IsKnown(subCmd)) ||

@@ -4,6 +4,25 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-02] - Parite dalgası W-H7: gemi dümeni (pilot), OPENTRADEWINDOW
+----------------------------------------
+
+EKLENDI - Gemi pilot/dümen desteği (Source-X SetPilot + PacketWheelBoatMove):
+  - Gemi SETPILOT verb'ü dümenciyi atar (arg=uid) ya da boş arg ile bırakır.
+  - 0xBF 0x33 wheel-boat move alt komutu kayıtlı ve işleniyor: güvertedeki
+    (atanmış pilot varsa yalnız o) karakter fare ile yön/hız verir —
+    hız 0 durdurur, 1 tek kare, 2+ sürekli seyir.
+
+EKLENDI - Client verb OPENTRADEWINDOW:
+  - Script'ten hedef karakterle güvenli ticaret penceresi açar (arg=uid ya
+    da mevcut hedef obje).
+
+NOT - Bilinçli ertelenenler: MDB.* (ikincil MySQL referans objesi — düşük
+  kullanım, 8 dosyaya mekanik yayılım) ve item SMELT/CARVECORPSE verb'leri
+  (char bağlamı gerektirir); hedef listesinde açık kalır.
+
+================================================================================
+
 [2026-07-02] - Parite dalgası W-H6: custom ev fixture'ları, EQUIP* verb'leri, client CAST
 ----------------------------------------
 

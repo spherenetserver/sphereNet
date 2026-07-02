@@ -711,6 +711,27 @@ public sealed class ClientScriptConsoleHandler
             return true;
         }
 
+        if (upper == "OPENTRADEWINDOW" || upper.StartsWith("OPENTRADEWINDOW ", StringComparison.Ordinal))
+        {
+            // Source-X CV_OPENTRADEWINDOW: open a secure trade with the char
+            // named by the arg uid (or the current target object).
+            string tradeArg = upper == "OPENTRADEWINDOW"
+                ? args.Trim()
+                : (cmd["OPENTRADEWINDOW ".Length..] + (string.IsNullOrEmpty(args) ? "" : $" {args}")).Trim();
+            Character? partner = target as Character;
+            if (tradeArg.Length > 0)
+            {
+                string uidStr = tradeArg;
+                if (uidStr.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) uidStr = uidStr[2..];
+                else if (uidStr.StartsWith('0') && uidStr.Length > 1) uidStr = uidStr[1..];
+                if (uint.TryParse(uidStr, System.Globalization.NumberStyles.HexNumber, null, out uint tradeUid))
+                    partner = _world.FindChar(new Serial(tradeUid));
+            }
+            if (partner != null && partner != _character)
+                _client.InitiateTrade(partner);
+            return true;
+        }
+
         if (upper == "OPENPAPERDOLL" || upper.StartsWith("OPENPAPERDOLL ", StringComparison.Ordinal))
         {
             // Source-X CV_OPENPAPERDOLL: open the paperdoll — the target

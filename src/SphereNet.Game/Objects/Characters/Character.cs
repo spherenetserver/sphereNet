@@ -6,6 +6,7 @@ using SphereNet.Game.Combat;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Messages;
 using SphereNet.Game.Objects.Items;
+using SphereNet.Game.Skills.Information;
 
 namespace SphereNet.Game.Objects.Characters;
 
@@ -417,6 +418,26 @@ public partial class Character : ObjBase
     {
         get => CombatState.MurderDecayRemainingSeconds;
         set => CombatState.MurderDecayRemainingSeconds = value;
+    }
+
+    /// <summary>Wearable layer for an item: ITEMDEF LAYER first, then the
+    /// tiledata Wearable quality byte (same rule the client equip path uses).</summary>
+    private static Layer ResolveWearLayer(Item item)
+    {
+        var itemDef = DefinitionLoader.GetItemDef(item.BaseId);
+        Layer layer = itemDef?.Layer ?? Layer.None;
+        if (layer == Layer.None)
+        {
+            var md = ResolveWorld?.Invoke()?.MapData;
+            if (md != null)
+            {
+                var tile = md.GetItemTileData(item.BaseId);
+                if ((tile.Flags & SphereNet.MapData.Tiles.TileFlag.Wearable) != 0 &&
+                    tile.Quality > 0 && tile.Quality <= (byte)Layer.Horse)
+                    layer = (Layer)tile.Quality;
+            }
+        }
+        return layer;
     }
 
     /// <summary>Seconds a character stays criminal (gray) after committing a crime. Set from sphere.ini CRIMINALTIMER.</summary>
@@ -4088,6 +4109,65 @@ public partial class Character : ObjBase
             {
                 // Source-X CHV_WAKE — the missing counterpart of SLEEP.
                 ClearStatFlag(StatFlag.Sleeping);
+                return true;
+            }
+            case "EQUIPHALO":
+            {
+                // Source-X CHV_EQUIPHALO: conjure a glowing light source into
+                // the off-hand (ITEMID_LIGHT_SRC); optional arg = seconds to last.
+                var haloWorld = Objects.ObjBase.ResolveWorld?.Invoke();
+                if (haloWorld == null) return true;
+                var halo = haloWorld.CreateItem();
+                halo.BaseId = 0x1647;
+                halo.ItemType = ItemType.LightLit;
+                halo.Name = "a glowing halo";
+                halo.SetAttr(ObjAttributes.Move_Never);
+                if (long.TryParse(args.Trim(), out long haloSec) && haloSec > 0)
+                    halo.SetTimeout(Environment.TickCount64 + haloSec * 1000L);
+                Equip(halo, Layer.TwoHanded);
+                return true;
+            }
+            case "EQUIPARMOR":
+            {
+                // Source-X ItemEquipArmor: pull wearable armor out of the pack
+                // into every free armor layer.
+                if (Backpack == null) return true;
+                foreach (var candidate in Backpack.Contents.ToArray())
+                {
+                    if (candidate.GetArmorDefense() <= 0) continue;
+                    var layer = ResolveWearLayer(candidate);
+                    if (layer == Layer.None || GetEquippedItem(layer) != null) continue;
+                    if (!CanEquip(candidate, layer, out _)) continue;
+                    Backpack.RemoveItem(candidate);
+                    Equip(candidate, layer);
+                }
+                return true;
+            }
+            case "EQUIPWEAPON":
+            {
+                // Source-X ItemEquipWeapon: equip the best weapon in the pack
+                // (highest attack rating as the proxy) when the hands are free.
+                if (Backpack == null || GetEquippedItem(Layer.OneHanded) != null ||
+                    GetEquippedItem(Layer.TwoHanded) != null)
+                    return true;
+                Item? best = null;
+                int bestScore = -1;
+                foreach (var candidate in Backpack.Contents)
+                {
+                    var layer = ResolveWearLayer(candidate);
+                    if (layer is not (Layer.OneHanded or Layer.TwoHanded)) continue;
+                    int score = candidate.GetWeaponAttack();
+                    if (score > bestScore) { bestScore = score; best = candidate; }
+                }
+                if (best != null && bestScore > 0)
+                {
+                    var layer = ResolveWearLayer(best);
+                    if (CanEquip(best, layer, out _))
+                    {
+                        Backpack.RemoveItem(best);
+                        Equip(best, layer);
+                    }
+                }
                 return true;
             }
             case "SUICIDE":

@@ -4,6 +4,28 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-02] - Parite dalgası W-H6: custom ev fixture'ları, EQUIP* verb'leri, client CAST
+----------------------------------------
+
+EKLENDI - Custom housing commit gerçek fixture üretir (Source-X CommitChanges):
+  - Tasarımdaki ETKİLEŞİMLİ karolar — kapılar ve konteynerler — commit'te
+    gerçek item olur (açılır, kapanır, eşya tutar); duvar/zemin sanal kalır.
+    Kapı fixture'ları multi'ye Link'lenir (ev anahtarı açar), Move_Never
+    basılır ve ev komponenti olarak kaydedilir. Yeni commit önceki fixture
+    setini söküp yenisini kurar (COMMIT_FIXTURES takibi). Tespit önce
+    ITEMDEF TYPE, sonra tiledata Door/Container bayraklarıyla yapılır.
+
+EKLENDI - Char verb'leri EQUIPHALO / EQUIPARMOR / EQUIPWEAPON:
+  - EQUIPHALO parlayan bir ışık kaynağı kuşandırır (arg = saniye ömür);
+    EQUIPARMOR çantadaki zırhları boş katmanlara giydirir; EQUIPWEAPON en
+    yüksek vuruş değerli silahı eller boşken kuşandırır.
+
+EKLENDI - Client verb'leri OPENPAPERDOLL ve CAST:
+  - OPENPAPERDOLL hedefin (yoksa kendinin) paperdoll'unu açar; CAST numara
+    ya da defname ile script'ten büyü başlatır (hedefli büyü imleci açar).
+
+================================================================================
+
 [2026-07-02] - Parite dalgası W-H5: NPC eğitmenliği ve yer yemeği arama
 ----------------------------------------
 

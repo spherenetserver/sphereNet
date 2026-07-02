@@ -4,6 +4,28 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-02] - Parity wave W-H6: custom house fixtures, EQUIP* verbs, client CAST
+----------------------------------------
+
+ADDED - Custom-house commit materializes real fixtures (Source-X CommitChanges):
+  - INTERACTIVE design tiles — doors and containers — become real items on
+    commit (they open, close and hold contents); walls/floors stay virtual.
+    Door fixtures link to the multi (the house key opens them), get
+    Move_Never and register as house components. A recommit tears down the
+    previous fixture set (COMMIT_FIXTURES tracking). Detection uses ITEMDEF
+    TYPE first, then the tiledata Door/Container flags.
+
+ADDED - Char verbs EQUIPHALO / EQUIPARMOR / EQUIPWEAPON:
+  - EQUIPHALO equips a glowing light source (arg = lifetime seconds);
+    EQUIPARMOR dresses pack armor into free layers; EQUIPWEAPON equips the
+    highest-attack weapon when the hands are free.
+
+ADDED - Client verbs OPENPAPERDOLL and CAST:
+  - OPENPAPERDOLL opens the target's (or own) paperdoll; CAST starts a spell
+    from script by number or defname (targeted spells open the cursor).
+
+================================================================================
+
 [2026-07-02] - Parity wave W-H5: NPC skill training and ground-food seeking
 ----------------------------------------
 

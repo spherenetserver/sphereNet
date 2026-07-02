@@ -190,8 +190,71 @@ public sealed class CustomHousingEngine
 
         session.Working.Revision++;
         session.Working.SaveToTags(multi);
+        MaterializeFixtures(multi, session.Working);
         _sessions.Remove(ch.Uid);
         return session.Working.Revision;
+    }
+
+    private const string FixturesTag = "COMMIT_FIXTURES";
+
+    /// <summary>
+    /// Source-X CItemMultiCustom::CommitChanges: INTERACTIVE design tiles —
+    /// doors and containers — become REAL items on commit so they actually
+    /// open, close and hold contents; walls/floors stay virtual render+walk
+    /// geometry. Fixtures from the previous commit are replaced wholesale
+    /// (tracked in the COMMIT_FIXTURES tag).
+    /// </summary>
+    private void MaterializeFixtures(Item multi, HouseDesign design)
+    {
+        // Tear down the previous commit's fixtures.
+        if (multi.TryGetTag(FixturesTag, out string? prev) && !string.IsNullOrEmpty(prev))
+        {
+            foreach (var part in prev.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (!uint.TryParse(part, out uint oldUid)) continue;
+                var old = _world.FindItem(new Serial(oldUid));
+                if (old != null && !old.IsDeleted)
+                    _world.RemoveItem(old);
+            }
+        }
+
+        var house = _housing.GetHouse(multi.Uid);
+        var created = new List<string>();
+        var md = _world.MapData;
+        foreach (var tile in design.Tiles)
+        {
+            // Interactive detection: ITEMDEF TYPE first (works without map
+            // files), then the tiledata Door/Container flags.
+            var defType = Definitions.DefinitionLoader.GetItemDef(tile.TileId)?.Type;
+            bool isDoor = defType is SphereNet.Core.Enums.ItemType.Door
+                    or SphereNet.Core.Enums.ItemType.DoorOpen
+                    or SphereNet.Core.Enums.ItemType.DoorLocked ||
+                World.DoorHelper.IsDoorGraphic(md, tile.TileId);
+            bool isContainer = !isDoor &&
+                (defType == SphereNet.Core.Enums.ItemType.Container ||
+                 (md != null &&
+                  (md.GetItemTileData(tile.TileId).Flags & SphereNet.MapData.Tiles.TileFlag.Container) != 0));
+            if (!isDoor && !isContainer)
+                continue;
+
+            var fixture = _world.CreateItem();
+            fixture.BaseId = tile.TileId;
+            fixture.ItemType = isDoor
+                ? SphereNet.Core.Enums.ItemType.Door
+                : SphereNet.Core.Enums.ItemType.Container;
+            fixture.SetAttr(SphereNet.Core.Enums.ObjAttributes.Move_Never);
+            fixture.Link = multi.Uid; // house key opens a door fixture
+            _world.PlaceItem(fixture, new Core.Types.Point3D(
+                (short)(multi.X + tile.X), (short)(multi.Y + tile.Y),
+                (sbyte)(multi.Position.Z + tile.Z), multi.MapIndex));
+            house?.AddComponent(fixture.Uid);
+            created.Add(fixture.Uid.Value.ToString());
+        }
+
+        if (created.Count > 0)
+            multi.SetTag(FixturesTag, string.Join(',', created));
+        else
+            multi.RemoveTag(FixturesTag);
     }
 
     /// <summary>End the session without committing (close/exit).</summary>

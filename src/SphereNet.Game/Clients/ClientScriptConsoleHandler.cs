@@ -711,6 +711,34 @@ public sealed class ClientScriptConsoleHandler
             return true;
         }
 
+        if (upper == "OPENPAPERDOLL" || upper.StartsWith("OPENPAPERDOLL ", StringComparison.Ordinal))
+        {
+            // Source-X CV_OPENPAPERDOLL: open the paperdoll — the target
+            // object's when it is a char, else the client's own.
+            var pdTarget = target as Character ?? _character;
+            if (pdTarget != null)
+                _client.SendPaperdoll(pdTarget);
+            return true;
+        }
+
+        if (upper == "CAST" || upper.StartsWith("CAST ", StringComparison.Ordinal))
+        {
+            // Source-X CV_CAST: begin casting a spell on this client — by
+            // number or spell defname (s_ prefix optional).
+            string spellArg = upper == "CAST"
+                ? args.Trim()
+                : (cmd["CAST ".Length..] + (string.IsNullOrEmpty(args) ? "" : $" {args}")).Trim();
+            if (spellArg.Length == 0) return true;
+            SphereNet.Core.Enums.SpellType castSpell;
+            if (int.TryParse(spellArg, out int spellNum) && spellNum > 0)
+                castSpell = (SphereNet.Core.Enums.SpellType)spellNum;
+            else if (!Enum.TryParse(spellArg.Replace(" ", "").Replace("s_", "",
+                         StringComparison.OrdinalIgnoreCase), ignoreCase: true, out castSpell))
+                return true;
+            _client.HandleCastSpell(castSpell, 0);
+            return true;
+        }
+
         if (upper == "WEBLINK" || upper.StartsWith("WEBLINK ", StringComparison.Ordinal))
         {
             // Source-X CV_WEBLINK — open a browser on the client (0xA5).

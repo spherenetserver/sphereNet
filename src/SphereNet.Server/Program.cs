@@ -119,6 +119,7 @@ public static partial class Program
     private static ScriptSystemHooks _systemHooks = null!;
     private static ScriptDbAdapter _scriptDb = null!;
     private static ScriptDbAdapter _scriptLdb = null!;
+    private static ScriptDbAdapter _scriptMdb = null!;
     private static ScriptFileHandle? _scriptFile;
     private static readonly ServerHookContext _serverHookContext = new();
     private static TelnetConsole? _telnet;

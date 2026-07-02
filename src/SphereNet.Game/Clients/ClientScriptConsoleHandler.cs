@@ -63,6 +63,7 @@ public sealed class ClientScriptConsoleHandler
     private ScriptFileHandle? _scriptFile => _client.ScriptFile;
     private ScriptDbAdapter? _scriptDb => _client.ScriptDb;
     private ScriptDbAdapter? _scriptLdb => _client.ScriptLdb;
+    private ScriptDbAdapter? _scriptMdb => _client.ScriptMdb;
     private string _scriptDatabaseRoot => _client.ScriptDatabaseRoot;
     private ClientTargetState Targets => _client.Targets;
     private ClientGumpRegistry Gumps => _client.Gumps;
@@ -711,6 +712,43 @@ public sealed class ClientScriptConsoleHandler
             return true;
         }
 
+        if (upper == "SMELT" || upper.StartsWith("SMELT ", StringComparison.Ordinal))
+        {
+            // Source-X CIV_SMELT: smelt this ore with SRC as the smith. Arg =
+            // forge uid; without one the nearest forge in reach is used.
+            if (target is not Item ore || _character == null) return true;
+            string forgeArg = upper == "SMELT"
+                ? args.Trim()
+                : (cmd["SMELT ".Length..] + (string.IsNullOrEmpty(args) ? "" : $" {args}")).Trim();
+            Serial forgeUid = Serial.Invalid;
+            if (forgeArg.Length > 0)
+            {
+                string uidStr = forgeArg;
+                if (uidStr.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) uidStr = uidStr[2..];
+                else if (uidStr.StartsWith('0') && uidStr.Length > 1) uidStr = uidStr[1..];
+                if (uint.TryParse(uidStr, System.Globalization.NumberStyles.HexNumber, null, out uint fu))
+                    forgeUid = new Serial(fu);
+            }
+            if (!forgeUid.IsValid)
+            {
+                foreach (var near in _world.GetItemsInRange(_character.Position, 3))
+                {
+                    if (near.ItemType == ItemType.Forge) { forgeUid = near.Uid; break; }
+                }
+            }
+            _client.ItemUse.SmeltFromScript(ore, forgeUid);
+            return true;
+        }
+
+        if (upper == "CARVECORPSE")
+        {
+            // Source-X CIV_CARVECORPSE: SRC carves this corpse (meat/hides/
+            // feathers per the dead creature's body).
+            if (target is Item corpse && corpse.ItemType == ItemType.Corpse && _character != null)
+                _client.DeathEng?.CarveCorpse(_character, corpse);
+            return true;
+        }
+
         if (upper == "OPENTRADEWINDOW" || upper.StartsWith("OPENTRADEWINDOW ", StringComparison.Ordinal))
         {
             // Source-X CV_OPENTRADEWINDOW: open a secure trade with the char
@@ -924,6 +962,58 @@ public sealed class ClientScriptConsoleHandler
                         SysMessage(ServerMessages.GetFormatted("db_execute_fail", err));
                     else
                         _logger.LogDebug("DB.EXECUTE affected {Rows} rows", affected);
+                    return true;
+                }
+            }
+            return true;
+        }
+
+        // Source-X MDB.* — the secondary MySQL reference object; same verb
+        // surface as DB.* on its own connection.
+        if (upper.StartsWith("MDB.", StringComparison.Ordinal))
+        {
+            if (_scriptMdb == null)
+            {
+                _logger.LogWarning("MDB adapter is not configured for script runtime.");
+                return true;
+            }
+
+            string mdbVerb = upper.Length > 4 ? upper[4..] : "";
+            switch (mdbVerb)
+            {
+                case "CONNECT":
+                {
+                    bool ok;
+                    string err;
+                    string trimmed = args.Trim();
+                    string[] dbArgs = trimmed.Split('|', 2, StringSplitOptions.TrimEntries);
+                    if (dbArgs.Length == 2)
+                        ok = _scriptMdb.Connect(dbArgs[0], dbArgs[1], out err);
+                    else if (!string.IsNullOrWhiteSpace(trimmed) && !trimmed.Contains('='))
+                        ok = _scriptMdb.Connect(trimmed, out err);
+                    else
+                        ok = _scriptMdb.ConnectDefault(out err);
+                    if (!ok)
+                        SysMessage(ServerMessages.GetFormatted("db_connect_fail", err));
+                    return true;
+                }
+                case "CLOSE":
+                    _scriptMdb.Close();
+                    return true;
+                case "QUERY":
+                {
+                    if (!_scriptMdb.Query(args, out int rows, out string err))
+                        SysMessage(ServerMessages.GetFormatted("db_query_fail", err));
+                    else
+                        _logger.LogDebug("MDB.QUERY returned {Rows} rows", rows);
+                    return true;
+                }
+                case "EXECUTE":
+                {
+                    if (!_scriptMdb.Execute(args, out int affected, out string err))
+                        SysMessage(ServerMessages.GetFormatted("db_execute_fail", err));
+                    else
+                        _logger.LogDebug("MDB.EXECUTE affected {Rows} rows", affected);
                     return true;
                 }
             }
@@ -1592,6 +1682,25 @@ public sealed class ClientScriptConsoleHandler
         {
             value = dbVal;
             return true;
+        }
+        if (varName.Equals("MDB.CONNECTED", StringComparison.OrdinalIgnoreCase))
+        {
+            value = _scriptMdb?.IsConnected == true ? "1" : "0";
+            return true;
+        }
+        if (varName.StartsWith("MDB.ESCAPEDATA.", StringComparison.OrdinalIgnoreCase) && _scriptMdb != null)
+        {
+            value = _scriptMdb.EscapeData(varName[15..]);
+            return true;
+        }
+        if (_scriptMdb != null && varName.StartsWith("MDB.ROW.", StringComparison.OrdinalIgnoreCase))
+        {
+            string mdbKey = "db.row." + varName[8..];
+            if (_scriptMdb.TryResolveRowValue(mdbKey, out string mdbVal))
+            {
+                value = mdbVal;
+                return true;
+            }
         }
         if (varName.Equals("LDB.CONNECTED", StringComparison.OrdinalIgnoreCase))
         {

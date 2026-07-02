@@ -66,11 +66,13 @@ internal interface IClientContext : ITextConsole
     ClientGumpRegistry Gumps { get; }
     ClientTargetState Targets { get; }
     ClientDialogHandler Dialogs { get; }
+    ClientItemUseHandler ItemUse { get; }
 
     // --- script services ---
     ScriptFileHandle? ScriptFile { get; }
     ScriptDbAdapter? ScriptDb { get; }
     ScriptDbAdapter? ScriptLdb { get; }
+    ScriptDbAdapter? ScriptMdb { get; }
     string ScriptDatabaseRoot { get; }
 
     // --- shared mutable state bridges ---

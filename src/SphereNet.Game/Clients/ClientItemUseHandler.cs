@@ -1517,6 +1517,10 @@ public sealed class ClientItemUseHandler
         return _character.Position.GetDistanceTo(obj.Position) <= 3;
     }
 
+    /// <summary>Script entry for the item SMELT verb (Source-X CIV_SMELT):
+    /// same flow as the targeted smelt, forge supplied by the script.</summary>
+    internal void SmeltFromScript(Item ore, Serial forgeUid) => HandleSmeltTarget(ore, forgeUid);
+
     private void HandleSmeltTarget(Item ore, Serial target)
     {
         if (_character == null) return;

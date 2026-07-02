@@ -257,6 +257,7 @@ public static partial class Program
             _mapData?.Dispose();
             _scriptDb.Close();
             _scriptLdb.Close();
+            _scriptMdb.Close();
             _scriptFile?.Dispose();
 
             _log.LogInformation("SphereNet stopped.");

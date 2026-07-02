@@ -4,6 +4,23 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-02] - Parite dalgası W-H11: SMELT/CARVECORPSE verb'leri, MDB.*
+----------------------------------------
+
+EKLENDI - Item verb'leri SMELT ve CARVECORPSE (Source-X CIV_*):
+  - SMELT cevheri SRC adına eritir: arg forge uid'i, verilmezse menzildeki
+    en yakın forge kullanılır; mevcut hedefli eritme akışına bağlanır
+    (@Smelt trigger'ı, renkli cevher, TAG.SMELT_TO korunur).
+  - CARVECORPSE cesedi SRC adına parçalar (et/deri/tüy, CORPSE_CARVED
+    işareti) — DeathEngine.CarveCorpse'a bağlanır.
+
+EKLENDI - MDB.* ikincil MySQL referans objesi (Source-X MDB):
+  - DB.* ile aynı verb yüzeyi kendi bağımsız bağlantısında: MDB.CONNECT/
+    CLOSE/QUERY/EXECUTE; property okumaları MDB.CONNECTED, MDB.ROW.*,
+    MDB.ESCAPEDATA. ini otomatik bağlanmaz — script açıkça bağlanır.
+
+================================================================================
+
 [2026-07-02] - Parite dalgası W-H10: bülten tahtası (IT_BBOARD) uçtan uca
 ----------------------------------------
 

@@ -216,7 +216,8 @@ public static partial class Program
                 _skillHandlers, _craftingEngine, _housingEngine, _triggerDispatcher, _guildManager, _mountEngine,
                 _customHousing, _chatEngine);
             client.SetScriptServices(_systemHooks, _scriptDb, ResolveDefMessage, _scriptFile, _scriptLdb,
-                _scriptDirs.Count > 0 ? _scriptDirs[0] : Path.GetDirectoryName(_config.ScpFilesDir));
+                _scriptDirs.Count > 0 ? _scriptDirs[0] : Path.GetDirectoryName(_config.ScpFilesDir),
+                _scriptMdb);
             client.BroadcastNearby = BroadcastNearby;
             client.BroadcastMoveNearby = BroadcastMoveNearby;
             client.ForEachClientInRange = ForEachClientInRange;

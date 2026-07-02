@@ -60,10 +60,12 @@ public sealed partial class GameClient : IClientContext
     ClientGumpRegistry IClientContext.Gumps => Gumps;
     ClientTargetState IClientContext.Targets => Targets;
     ClientDialogHandler IClientContext.Dialogs => Dialogs;
+    ClientItemUseHandler IClientContext.ItemUse => ItemUse;
 
     ScriptFileHandle? IClientContext.ScriptFile => ScriptFile;
     ScriptDbAdapter? IClientContext.ScriptDb => ScriptDb;
     ScriptDbAdapter? IClientContext.ScriptLdb => ScriptLdb;
+    ScriptDbAdapter? IClientContext.ScriptMdb => ScriptMdb;
     string IClientContext.ScriptDatabaseRoot => ScriptDatabaseRoot;
 
     string? IClientContext.PendingDialogCloseFunction

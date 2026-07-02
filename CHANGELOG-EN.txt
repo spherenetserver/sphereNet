@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-02] - Parity wave W-H11: SMELT/CARVECORPSE verbs, MDB.*
+----------------------------------------
+
+ADDED - Item verbs SMELT and CARVECORPSE (Source-X CIV_*):
+  - SMELT smelts the ore on SRC's behalf: the arg is a forge uid, else the
+    nearest forge in reach is used; it joins the existing targeted smelt
+    flow (@Smelt trigger, coloured ore and TAG.SMELT_TO preserved).
+  - CARVECORPSE carves the corpse as SRC (meat/hides/feathers, the
+    CORPSE_CARVED mark) — wired to DeathEngine.CarveCorpse.
+
+ADDED - MDB.* secondary MySQL reference object (Source-X MDB):
+  - The DB.* verb surface on its own independent connection: MDB.CONNECT/
+    CLOSE/QUERY/EXECUTE; property reads MDB.CONNECTED, MDB.ROW.*,
+    MDB.ESCAPEDATA. No ini auto-connect — scripts connect it explicitly.
+
+================================================================================
+
 [2026-07-02] - Parity wave W-H10: bulletin boards (IT_BBOARD) end to end
 ----------------------------------------
 

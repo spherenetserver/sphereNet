@@ -153,6 +153,9 @@ public static partial class Program
             RegisterDbProviders();
             _scriptDb = new ScriptDbAdapter(_loggerFactory.CreateLogger<ScriptDbAdapter>());
             _scriptLdb = new ScriptDbAdapter(_loggerFactory.CreateLogger<ScriptDbAdapter>());
+            // Source-X MDB: a second, independent MySQL reference object —
+            // scripts connect it explicitly (no ini auto-connect).
+            _scriptMdb = new ScriptDbAdapter(_loggerFactory.CreateLogger<ScriptDbAdapter>());
             InitDbConnections(_config, _scriptDb);
             if (_config.HasFileCommands)
             {

@@ -1408,6 +1408,67 @@ public sealed class PacketMapChange : PacketWriter
     }
 }
 
+/// <summary>0x90 — display a map gump (Source-X PacketDisplayMap):
+/// map item serial, the north-facing map gump art, world-coordinate bounds
+/// and the gump pixel size.</summary>
+public sealed class PacketMapDisplay : PacketWriter
+{
+    private readonly uint _mapSerial;
+    private readonly ushort _left, _top, _right, _bottom, _width, _height;
+
+    public PacketMapDisplay(uint mapSerial, ushort left, ushort top, ushort right, ushort bottom,
+        ushort width = 200, ushort height = 200) : base(0x90)
+    {
+        _mapSerial = mapSerial;
+        _left = left; _top = top; _right = right; _bottom = bottom;
+        _width = width; _height = height;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateFixed(19);
+        buf.WriteUInt32(_mapSerial);
+        buf.WriteUInt16(0x139D); // GUMP_MAP_2_NORTH
+        buf.WriteUInt16(_left);
+        buf.WriteUInt16(_top);
+        buf.WriteUInt16(_right);
+        buf.WriteUInt16(_bottom);
+        buf.WriteUInt16(_width);
+        buf.WriteUInt16(_height);
+        return buf;
+    }
+}
+
+/// <summary>0x56 server→client — map plot command (Source-X PacketMapPlot).
+/// Modes: 1 = draw pin, 5 = clear, 7 = plot-mode reply (edit flag carries
+/// the new state).</summary>
+public sealed class PacketMapPlot : PacketWriter
+{
+    private readonly uint _mapSerial;
+    private readonly byte _mode;
+    private readonly bool _edit;
+    private readonly ushort _x, _y;
+
+    public PacketMapPlot(uint mapSerial, byte mode, bool edit, ushort x = 0, ushort y = 0) : base(0x56)
+    {
+        _mapSerial = mapSerial;
+        _mode = mode;
+        _edit = edit;
+        _x = x; _y = y;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateFixed(11);
+        buf.WriteUInt32(_mapSerial);
+        buf.WriteByte(_mode);
+        buf.WriteByte(_edit ? (byte)1 : (byte)0);
+        buf.WriteUInt16(_x);
+        buf.WriteUInt16(_y);
+        return buf;
+    }
+}
+
 /// <summary>0xBF sub 0x19 — Stat lock info. Tells client current lock
 /// state for STR/DEX/INT (0=up, 1=down, 2=locked).</summary>
 public sealed class PacketStatLockInfo : PacketWriter

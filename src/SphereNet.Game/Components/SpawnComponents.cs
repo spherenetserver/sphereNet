@@ -39,6 +39,11 @@ public sealed class SpawnComponent
     private const int MaxSpawnLimit = 250;
 
     public int CurrentCount => _spawnedUids.Count;
+
+    /// <summary>Source-X IT_SPAWN_CHAMPION: bypass the amount cap and never
+    /// pause the timer (CCSpawn special-cases the champion type throughout).</summary>
+    public bool IsChampion { get; set; }
+
     public int MaxCount
     {
         get => _maxCount;
@@ -78,7 +83,9 @@ public sealed class SpawnComponent
 
         if (_nextSpawnTick < 0) return; // paused at max count
         if (currentTick < _nextSpawnTick) return;
-        if (_spawnedUids.Count >= _maxCount)
+        // Source-X IT_SPAWN_CHAMPION: a champion spawner ignores the amount
+        // cap and never pauses its timer — the wave keeps coming.
+        if (!IsChampion && _spawnedUids.Count >= _maxCount)
         {
             PauseTimer();
             return;
@@ -93,7 +100,7 @@ public sealed class SpawnComponent
 
         SpawnOne();
 
-        if (_spawnedUids.Count >= _maxCount)
+        if (!IsChampion && _spawnedUids.Count >= _maxCount)
             PauseTimer();
         else
             SetNextSpawnTime();

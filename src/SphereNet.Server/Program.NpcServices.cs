@@ -790,6 +790,19 @@ public static partial class Program
             "[npc_hear] {Speaker} -> {Npc} brain={Brain} text='{Text}'",
             speaker.Name, npc.Name, npc.NpcBrain, text);
 
+        // Source-X NPC_OnHear: the NPC turns to face whoever addresses it
+        // (unless mid-fight). The little head-turn is what makes townsfolk
+        // feel alive when spoken to.
+        if (!npc.FightTarget.IsValid && npc.Position != speaker.Position)
+        {
+            var faceDir = npc.Position.GetDirectionTo(speaker.Position);
+            if (npc.Direction != faceDir)
+            {
+                npc.Direction = faceDir;
+                BroadcastFacingUpdate(npc);
+            }
+        }
+
         // Source-X global speech function hook — silent when missing.
         // Many imported script packs don't define this; warning on every
         // spoken line would drown the log.

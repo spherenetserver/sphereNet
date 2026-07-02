@@ -4,6 +4,49 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-02] - Parite dalgası W-H9: harita gösterimi (IT_MAP), pin protokolü, ISMYPET
+----------------------------------------
+
+EKLENDI - IT_MAP gösterimi (Source-X CClient::addDrawMap):
+  - Haritaya çift tık artık 0x90 harita gump'ını dünya koordinat
+    sınırlarıyla (MORE1=üst/sol, MORE2=alt/sağ kelimeleri) gönderir ve
+    kayıtlı pin'leri 0x56 ile tek tek çizer — hazine haritaları görünür.
+  - Boş harita (t_map_blank ya da geçersiz dikdörtgen) yalnız "boş" mesajı
+    verir.
+
+DUZELTILDI - 0x56 pin düzenleme komutları Source-X MAPCMD'ye hizalandı:
+  - Eski eşleme yanlıştı (6=insert, 7=move sanılıyordu). Doğrusu: 1 ekle
+    (sona), 2 araya ekle, 3 taşı, 4 sil (kuyruk kayar), 5 tümünü temizle,
+    6 çizim modu aç/kapa — sunucu mod 7 ile yeni durumu yanıtlar.
+  - Pin'ler 1-tabanlı PIN_n tag'lerinde yaşar (script PIN.n yüzeyiyle aynı).
+
+EKLENDI - <ISMYPET> (Source-X CHC_ISMYPET):
+  - Interpreter'da SRC bağlamıyla çözülür: hedef karakter SRC'nin evcil
+    hayvanıysa 1. OWNER/NPCMASTER property okuması da eklendi (sahip uid).
+
+================================================================================
+
+[2026-07-02] - Parite dalgası W-H8: champion spawner, NPC başını çevirme, CANCAST, rune koordinatı
+----------------------------------------
+
+EKLENDI - IT_SPAWN_CHAMPION (Source-X CCSpawn champion özel yolu):
+  - Champion spawner'ları adet tavanını yok sayar ve timer'ını asla
+    duraklatmaz — dalga sürer. TYPE=t_spawn_champion runtime'da da tanınır.
+
+EKLENDI - NPC hitap edilince konuşana döner (Source-X NPC_OnHear):
+  - Dövüşte olmayan NPC, kendisine seslenen karaktere yüzünü çevirir ve
+    dönüş çevredeki client'lara yayınlanır.
+
+EKLENDI - CANCAST.<büyü> char property'si (Source-X CHC_CANCAST):
+  - Numara ya da büyü adıyla; mana, birincil beceri şartı ve bölge
+    anti-magic kontrolünü motor hook'u üzerinden yanıtlar.
+
+EKLENDI - İşaretli recall rune'u çift tıkta hedefini söyler:
+  - "rune adı: 40° 12'N, 12° 5'E" biçiminde sextant koordinatı; boş rune
+    eski isim ipucunu verir.
+
+================================================================================
+
 [2026-07-02] - Parite dalgası W-H7: gemi dümeni (pilot), OPENTRADEWINDOW
 ----------------------------------------
 

@@ -53,6 +53,10 @@ public partial class Character : ObjBase
     /// default CriminalTimerSeconds).</summary>
     public static Func<Character, int?>? OnCriminalCheck;
 
+    /// <summary>CANCAST.&lt;spell&gt; property backend (Source-X CHC_CANCAST):
+    /// wired to a SpellEngine check (mana, skill req, region antimagic).</summary>
+    public static Func<Character, int, bool>? OnCanCastCheck;
+
     // Static delegate for guild resolution (set in Program.cs)
     public static Func<Serial, Guild.GuildManager?>? ResolveGuildManager;
     // Static delegate for party resolution (set in Program.cs)
@@ -2343,6 +2347,8 @@ public partial class Character : ObjBase
             case "ACTDIFF": value = _actDiff.ToString(); return true;
             case "ACTION": value = ((int)_action).ToString(); return true;
             case "FIGHTTARGET": value = FightTarget.IsValid ? $"0{FightTarget.Value:X}" : "0"; return true;
+            case "OWNER":
+            case "NPCMASTER": value = NpcMaster.IsValid ? $"0{NpcMaster.Value:X}" : "0"; return true;
             case "SWINGSTATE": value = ((int)CombatSwingState).ToString(); return true;
             case "SWINGSTATE.NAME": value = CombatSwingState.ToString(); return true;
             case "SWINGREMAIN":
@@ -2913,6 +2919,21 @@ public partial class Character : ObjBase
                 stuckMap.IsPassable(MapIndex, X, Y + 1, Z) ||
                 stuckMap.IsPassable(MapIndex, X - 1, Y, Z);
             value = anyOpen ? "0" : "1";
+            return true;
+        }
+
+        // Source-X CHC_CANCAST.<spell>: could this char cast the spell right
+        // now (mana / skill req / region antimagic — via the engine hook).
+        if (upper.StartsWith("CANCAST.", StringComparison.Ordinal) ||
+            upper.StartsWith("CANCAST ", StringComparison.Ordinal))
+        {
+            string spellStr = upper[8..].Trim();
+            int spellId = 0;
+            if (int.TryParse(spellStr, out int sid) && sid > 0)
+                spellId = sid;
+            else if (Enum.TryParse(spellStr.Replace(" ", ""), ignoreCase: true, out SpellType spEnum))
+                spellId = (int)spEnum;
+            value = spellId > 0 && (OnCanCastCheck?.Invoke(this, spellId) ?? false) ? "1" : "0";
             return true;
         }
 

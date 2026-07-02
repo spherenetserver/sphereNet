@@ -1169,6 +1169,24 @@ public static partial class Program
                         caster, new TriggerArgs { CharSrc = caster, N1 = spellId });
                 }
             };
+            // CANCAST.<spell> property backend: mana, primary-skill requirement
+            // and region antimagic — the checks Spell_CanCast front-loads.
+            SphereNet.Game.Objects.Characters.Character.OnCanCastCheck = (ch, spellId) =>
+            {
+                var canCastDef = _spellEngine?.GetSpellDef((SpellType)spellId);
+                if (canCastDef == null || ch.IsDead || ch.IsStatFlag(StatFlag.Freeze))
+                    return false;
+                if (ch.Mana < canCastDef.ManaCost)
+                    return false;
+                foreach (var (reqSkill, reqVal) in canCastDef.SkillReq)
+                    if (ch.GetSkill(reqSkill) < reqVal)
+                        return false;
+                var castRegion = _world.FindRegion(ch.Position);
+                if (castRegion != null && castRegion.IsFlag(SphereNet.Core.Enums.RegionFlag.NoMagic))
+                    return false;
+                return true;
+            };
+
             _spellEngine.OnPersonalLightChanged = target =>
             {
                 if (TryGetClientFor(target, out var c))

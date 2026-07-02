@@ -1189,7 +1189,7 @@ public class Item : ObjBase
                 if (parsed != ItemType.Invalid)
                 {
                     _type = parsed;
-                    if (parsed is ItemType.SpawnChar or ItemType.SpawnItem)
+                    if (parsed is ItemType.SpawnChar or ItemType.SpawnItem or ItemType.SpawnChampion)
                         OnSpawnTypeChanged?.Invoke(this);
                 }
                 return true;
@@ -2424,11 +2424,14 @@ public class Item : ObjBase
     /// </summary>
     public void InitializeSpawnComponent(World.GameWorld world, ResourceHolder resources, long preservedTimeoutMs = 0)
     {
-        if (_type == ItemType.SpawnChar)
+        if (_type is ItemType.SpawnChar or ItemType.SpawnChampion)
         {
             if (SpawnChar == null)
                 SpawnChar = new SpawnComponent(this, world);
 
+            // Source-X IT_SPAWN_CHAMPION rides the char-spawn machinery but
+            // ignores the amount cap and never pauses (CCSpawn special case).
+            SpawnChar.IsChampion = _type == ItemType.SpawnChampion;
             SpawnChar.SetFromMore1(_more1, resources);
             SpawnChar.ApplyMoreP();
 
@@ -2515,7 +2518,7 @@ public class Item : ObjBase
     private string FormatMore1()
     {
         if (_more1 == 0) return "0";
-        if (_type == ItemType.SpawnChar)
+        if (_type is ItemType.SpawnChar or ItemType.SpawnChampion)
         {
             if (SpawnChar?.SpawnGroup != null && !string.IsNullOrEmpty(SpawnChar.SpawnGroup.DefName))
                 return SpawnChar.SpawnGroup.DefName;

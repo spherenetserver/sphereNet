@@ -371,7 +371,11 @@ public sealed partial class GameClient
         // Map detail rendering is handled client-side with MUL data
     }
 
-    /// <summary>Handle map pin edit (0x56).</summary>
+    /// <summary>Handle map pin edit (0x56). Source-X MAPCMD semantics:
+    /// 1 add (append), 2 insert at index, 3 move, 4 delete, 5 clear all,
+    /// 6 toggle plot mode (server replies mode 7 with the new state).
+    /// Pins live as 1-based PIN_n tags (the script PIN.n surface); the
+    /// client's pin index is 0-based.</summary>
     public void HandleMapPinEdit(uint serial, byte action, byte pinId, ushort x, ushort y)
     {
         if (_character == null) return;
@@ -382,17 +386,50 @@ public sealed partial class GameClient
         _logger.LogDebug("[map_pin] item=0x{Item:X8} action={Action} pin={PinId} x={X} y={Y}",
             serial, action, pinId, x, y);
 
+        const int maxPins = 128;
+        int count = 0;
+        while (count < maxPins && !string.IsNullOrEmpty(item.Tags.Get($"PIN_{count + 1}")))
+            count++;
+
         switch (action)
         {
-            case 1: // Add pin
-                item.SetTag($"PIN_{pinId}", $"{x},{y}");
+            case 1: // add — append to the end
+                if (count < maxPins)
+                    item.SetTag($"PIN_{count + 1}", $"{x},{y}");
                 break;
-            case 6: // Insert pin
-                item.SetTag($"PIN_{pinId}", $"{x},{y}");
+            case 2: // insert between two pins — shift the tail up
+            {
+                if (count >= maxPins || pinId > count) break;
+                for (int i = count; i > pinId; i--)
+                    item.SetTag($"PIN_{i + 1}", item.Tags.Get($"PIN_{i}") ?? "");
+                item.SetTag($"PIN_{pinId + 1}", $"{x},{y}");
                 break;
-            case 7: // Move pin
-                item.SetTag($"PIN_{pinId}", $"{x},{y}");
+            }
+            case 3: // move
+                if (pinId < count)
+                    item.SetTag($"PIN_{pinId + 1}", $"{x},{y}");
                 break;
+            case 4: // delete — shift the tail down
+            {
+                if (pinId >= count) break;
+                for (int i = pinId + 1; i < count; i++)
+                    item.SetTag($"PIN_{i}", item.Tags.Get($"PIN_{i + 1}") ?? "");
+                item.RemoveTag($"PIN_{count}");
+                break;
+            }
+            case 5: // clear all pins
+                for (int i = 1; i <= count; i++)
+                    item.RemoveTag($"PIN_{i}");
+                break;
+            case 6: // toggle plot mode — reply MAP_SENT with the new state
+            {
+                bool plot = item.Tags.Get("PLOTMODE") == "1";
+                bool newPlot = !plot;
+                if (newPlot) item.SetTag("PLOTMODE", "1");
+                else item.RemoveTag("PLOTMODE");
+                _netState.Send(new PacketMapPlot(serial, 7, newPlot));
+                break;
+            }
         }
     }
 

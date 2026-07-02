@@ -1337,6 +1337,21 @@ public sealed class ScriptInterpreter
                 return objVal;
             return "0";
         }
+        // Source-X CHC_ISMYPET: is this char a pet owned by SRC? It needs the
+        // caller context, so it resolves here — a plain Character property
+        // read has no SRC to compare against.
+        if (varName.Equals("ISMYPET", StringComparison.OrdinalIgnoreCase))
+        {
+            string srcUid = args?.Source is IScriptObj srcObj &&
+                srcObj.TryGetProperty("UID", out string su) ? su : "";
+            string ownerUid = target.TryGetProperty("NPCMASTER", out string ou) ? ou : "";
+            static bool TryUid(string s, out ulong v) =>
+                ulong.TryParse(s.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? s[2..] : s,
+                    System.Globalization.NumberStyles.HexNumber, null, out v);
+            return TryUid(srcUid, out ulong a) && TryUid(ownerUid, out ulong b) && a != 0 && a == b
+                ? "1" : "0";
+        }
+
         // LINK is the CURRENT object's link property (Source-X m_uidLink) — e.g. a
         // lever's linked door — NOT a trigger-arg object. Delegate to the target,
         // which resolves both <LINK> (the linked uid) and <LINK.prop> (the linked

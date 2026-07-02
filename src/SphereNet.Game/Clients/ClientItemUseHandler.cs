@@ -755,7 +755,7 @@ public sealed class ClientItemUseHandler
                 break;
             case ItemType.Map:
             case ItemType.MapBlank:
-                SysMessage("You unroll the map."); // gump pending
+                OpenMapGump(item);
                 break;
 
             // ---- ore / forge / ingot (overridable via @DClick trigger) ----
@@ -806,8 +806,16 @@ public sealed class ClientItemUseHandler
                     SysMessage(ServerMessages.Get("itemuse_shrine"));
                 break;
             case ItemType.Rune:
-                SysMessage(ServerMessages.Get(Msg.ItemuseRuneName));
+            {
+                // Source-X: dclicking a marked rune tells where it leads (name
+                // + sextant coordinates); a blank rune just gives the name hint.
+                var mark = item.MoreP;
+                if (mark.X > 0 || mark.Y > 0)
+                    SysMessage($"{(string.IsNullOrEmpty(item.Name) ? "a recall rune" : item.Name)}: {FormatSextant(mark)}");
+                else
+                    SysMessage(ServerMessages.Get(Msg.ItemuseRuneName));
                 break;
+            }
 
             // ---- bulletin / game / clock / spawn / animations ----
             case ItemType.BBoard:
@@ -1393,6 +1401,40 @@ public sealed class ClientItemUseHandler
             return null;
         }
         return null;
+    }
+
+    /// <summary>Source-X CClient::addDrawMap: display the map gump (0x90) and
+    /// replay the stored pins (0x56 draw-pin per PIN_n tag). A blank map —
+    /// t_map_blank or an empty/invalid world rect — only reports blank.
+    /// Rect words follow the CItem m_itMap layout: MORE1 = top(lo)/left(hi),
+    /// MORE2 = bottom(lo)/right(hi).</summary>
+    private void OpenMapGump(Item item)
+    {
+        ushort top = (ushort)(item.More1 & 0xFFFF);
+        ushort left = (ushort)(item.More1 >> 16);
+        ushort bottom = (ushort)(item.More2 & 0xFFFF);
+        ushort right = (ushort)(item.More2 >> 16);
+        if (item.ItemType == ItemType.MapBlank || right <= left || bottom <= top)
+        {
+            SysMessage("This map is blank.");
+            return;
+        }
+
+        _netState.Send(new PacketMapDisplay(item.Uid.Value, left, top, right, bottom));
+        // Source-X addMapMode(MAP_UNSENT): reset the client's pin list before
+        // replaying ours, plot mode off.
+        _netState.Send(new PacketMapPlot(item.Uid.Value, 5, false));
+        for (int i = 1; ; i++)
+        {
+            string? pin = item.Tags.Get($"PIN_{i}");
+            if (string.IsNullOrEmpty(pin)) break;
+            var parts = pin.Split(',');
+            if (parts.Length == 2 &&
+                ushort.TryParse(parts[0], out ushort px) && ushort.TryParse(parts[1], out ushort py))
+            {
+                _netState.Send(new PacketMapPlot(item.Uid.Value, 1, false, px, py));
+            }
+        }
     }
 
     /// <summary>UO sextant math (Source-X Use_Sextant): degrees/minutes from

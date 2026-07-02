@@ -4,6 +4,48 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-02] - Parity wave W-H9: map display (IT_MAP), pin protocol, ISMYPET
+----------------------------------------
+
+ADDED - IT_MAP display (Source-X CClient::addDrawMap):
+  - Dclicking a map now sends the 0x90 map gump with its world-coordinate
+    bounds (MORE1 = top/left, MORE2 = bottom/right words) and replays the
+    stored pins one by one via 0x56 — treasure maps render.
+  - A blank map (t_map_blank or an invalid rect) only reports blank.
+
+FIXED - 0x56 pin-edit commands realigned to Source-X MAPCMD:
+  - The old mapping was wrong (assumed 6=insert, 7=move). Correct: 1 add
+    (append), 2 insert, 3 move, 4 delete (tail shifts), 5 clear all,
+    6 toggle plot mode — the server replies mode 7 with the new state.
+  - Pins live as 1-based PIN_n tags (same surface as the script PIN.n).
+
+ADDED - <ISMYPET> (Source-X CHC_ISMYPET):
+  - Resolves in the interpreter against SRC: 1 when the target char is
+    SRC's pet. An OWNER/NPCMASTER property read (owner uid) was added too.
+
+================================================================================
+
+[2026-07-02] - Parity wave W-H8: champion spawner, NPC head-turn, CANCAST, rune coords
+----------------------------------------
+
+ADDED - IT_SPAWN_CHAMPION (Source-X CCSpawn champion special case):
+  - Champion spawners ignore the amount cap and never pause their timer —
+    the wave keeps coming. TYPE=t_spawn_champion is recognized at runtime too.
+
+ADDED - NPCs turn to face whoever addresses them (Source-X NPC_OnHear):
+  - An NPC not in combat rotates toward the speaker and the facing change is
+    broadcast to nearby clients.
+
+ADDED - CANCAST.<spell> char property (Source-X CHC_CANCAST):
+  - By number or spell name; answers mana, primary-skill requirement and
+    region anti-magic checks through the engine hook.
+
+ADDED - Dclicking a marked recall rune reports its destination:
+  - Sextant coordinates in the "rune name: 40° 12'N, 12° 5'E" form; a blank
+    rune keeps the old name hint.
+
+================================================================================
+
 [2026-07-02] - Parity wave W-H7: ship wheel (pilot), OPENTRADEWINDOW
 ----------------------------------------
 

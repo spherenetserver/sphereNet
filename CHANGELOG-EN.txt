@@ -4,6 +4,40 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-03] - Field-report wave: door hinge shift, pet self-defense, mountain walk, 56T saves
+----------------------------------------
+
+FIXED - Doors appeared to open backwards:
+  - Opening only flipped the art +1; the Source-X Use_Door HINGE SHIFT
+    (per 0-15 door-set slot) was never applied, so the open art rendered
+    anchored at the wrong tile. The reference door-base table is ported
+    verbatim (declaration order, overlap quirks); player, NPC and
+    map-static door paths all move the leaf now. The map-static path
+    also restored the wrong closing art (tileId-1 below the closed art).
+
+FIXED - A following/staying pet never defended itself:
+  - Follow/Come/Stay never read FightTarget, so an attacked pet just
+    stood there. Pets now fight back (Source-X Memory_FightStart);
+    follow/come/stay/stop orders call the pet off.
+
+FIXED - NPCs walked over mountains:
+  - IsPassable only checked land for water; the land IMPASSABLE flag
+    (mountain rock) was never consulted, and each slope step passes the
+    +-12 z gate on its own. Impassable land now blocks unless a
+    surface/bridge static covers the spot.
+
+ADDED - Sphere 0.56T save compatibility:
+  - A real-data test loads C:\56T\save (76k items, 4.2k chars). Item
+    TIMER=seconds now restores the decay/spawn schedule, book AUTHOR
+    maps to its tag, DISCORDANCE resolves to the Enticement skill and
+    char TIMER (transient AI tick) is accepted. Unknown 56T-custom keys
+    stay preserved as SAVE.* tags.
+
+ADDED - In-game world-ops routing:
+  - EXPORT/IMPORT/RESTORE/SAVESTATICS/LOAD (already implemented on the
+    script surface) are now reachable from .serv.* in game.
+
+================================================================================
 [2026-07-03] - NEWNPC verb, Source-X ghost manifest model
 ----------------------------------------
 

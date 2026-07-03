@@ -1335,8 +1335,15 @@ public class Item : ObjBase
                 SetTag("USESMAX", value);
                 return true;
             case "DECAY":
+            case "TIMER": // legacy Sphere saves: TIMER=seconds — decay IS the
+                          // item timer (Source-X _OnTick), so a spawner's
+                          // pending @Timer resumes its schedule after import.
                 if (long.TryParse(value, out long decaySec) && decaySec > 0)
                     DecayTime = Environment.TickCount64 + decaySec * 1000;
+                return true;
+
+            case "AUTHOR": // books / bulletin messages read the AUTHOR tag
+                SetTag("AUTHOR", value);
                 return true;
 
             case "TIMERF": // restore a persisted TIMERF/TIMERFMS timer (world load)

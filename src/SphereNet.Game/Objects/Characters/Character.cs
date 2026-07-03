@@ -3193,6 +3193,11 @@ public partial class Character : ObjBase
                 // script path can't push hunger past the client/regen ceiling.
                 if (ushort.TryParse(normalized, out ushort foodVal)) Food = foodVal;
                 return true;
+            case "TIMER":
+                // Legacy Sphere saves stamp the char's transient AI-tick
+                // countdown; scheduling restarts fresh after import — accept
+                // and discard instead of parking a meaningless SAVE. tag.
+                return true;
             case "RESPHYSICAL": if (short.TryParse(normalized, out short rpv)) _resPhysical = rpv; return true;
             case "RESFIRE": if (short.TryParse(normalized, out short rfv)) _resFire = rfv; return true;
             case "RESCOLD": if (short.TryParse(normalized, out short rcv)) _resCold = rcv; return true;
@@ -3574,6 +3579,7 @@ public partial class Character : ObjBase
         map["ITEMID"] = SkillType.ItemId;
         map["ITEMIDENTIFICATION"] = SkillType.ItemId;
         map["MACEFIGHTING"] = SkillType.MaceFighting;
+        map["DISCORDANCE"] = SkillType.Enticement; // post-UOR name for skill 15
         map["MAGICRESISTANCE"] = SkillType.MagicResistance;
         map["RESISTINGSPELLS"] = SkillType.MagicResistance;
         map["REMOVETRAP"] = SkillType.RemoveTrap;

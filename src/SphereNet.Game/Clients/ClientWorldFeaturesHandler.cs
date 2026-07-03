@@ -1443,13 +1443,28 @@ public sealed class ClientWorldFeaturesHandler
             return false;
 
         bool open = _world.IsMapStaticDoorOpen(_character.MapIndex, x, y, z);
-        ushort newTile = open ? (ushort)(tileId - 1) : (ushort)(tileId + 1);
-        _world.SetMapStaticDoorOpen(_character.MapIndex, x, y, z, !open);
+        // Classic-set doors: derive the pair arts from the doordir slot so
+        // closing restores the STATIC's own art (the old tileId−1 walked
+        // below the closed art when the map static was the closed leaf), and
+        // shift the open visual by the Source-X hinge offset.
+        int doorDir = DoorHelper.GetDoorDir(tileId);
+        ushort closedArt = doorDir >= 0 ? (ushort)(tileId - (doorDir & 1)) : (ushort)(tileId - 1);
+        ushort openArt = doorDir >= 0 ? (ushort)(closedArt + 1) : (ushort)(tileId + 1);
+        bool opening = !open;
+        ushort newTile = opening ? openArt : closedArt;
+        short vx = x, vy = y;
+        if (opening && doorDir >= 0)
+        {
+            var (sx, sy) = DoorHelper.GetDoorShift(doorDir & ~1);
+            vx += sx;
+            vy += sy;
+        }
+        _world.SetMapStaticDoorOpen(_character.MapIndex, x, y, z, opening);
 
         uint serial = clientSerial != 0
             ? clientSerial
             : (uint)(Serial.ItemFlag | (uint)((x & 0x7FFF) << 16) | (uint)((y & 0x3FFF) << 3) | (uint)(z & 0x07));
-        BroadcastMapStaticDoorUpdate(serial, newTile, x, y, z, hue, opening: !open);
+        BroadcastMapStaticDoorUpdate(serial, newTile, vx, vy, z, hue, opening);
         return true;
     }
 
@@ -1481,6 +1496,9 @@ public sealed class ClientWorldFeaturesHandler
         }
 
         bool isOpen = door.TryGetTag("DOOR_OPEN", out string? openStr) && openStr == "1";
+        int doorDir = DoorHelper.GetDoorDir(door.DispIdFull);
+        if (doorDir >= 0)
+            isOpen = (doorDir & 1) != 0; // the graphic is the state for classic sets
         bool isPortcullis = door.ItemType is ItemType.Portculis or ItemType.PortLocked;
         int offset = isPortcullis ? 2 : 1;
 
@@ -1495,6 +1513,12 @@ public sealed class ClientWorldFeaturesHandler
             door.RemoveTag("DOOR_OPEN");
         else
             door.SetTag("DOOR_OPEN", "1");
+
+        // Source-X Use_Door: the leaf swings around its hinge, so the item
+        // MOVES as it opens/closes. Without the shift the open art renders
+        // anchored at the closed tile — the door looks like it opens
+        // backwards / into the wall.
+        DoorHelper.MoveDoorLeaf(door, doorDir);
 
         // Play door sound and broadcast updated item to nearby clients
         ushort soundId = (ushort)(isOpen ? 0x00F1 : 0x00EA); // close/open sounds

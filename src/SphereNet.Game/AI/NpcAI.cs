@@ -2708,6 +2708,24 @@ public sealed class NpcAI
             }
         }
 
+        // Self-defense (Source-X Memory_FightStart): an attacked pet fights
+        // back regardless of its order state. Follow/Come/Stay never read
+        // FightTarget, so a pet under attack just stood there while the
+        // aggressor beat it down. Explicit orders clear FightTarget, so the
+        // fight ends when the owner calls the pet off.
+        if (npc.PetAIMode is PetAIMode.Follow or PetAIMode.Come or PetAIMode.Stay &&
+            npc.FightTarget.IsValid)
+        {
+            var aggressor = _world.FindChar(npc.FightTarget);
+            if (aggressor != null && !aggressor.IsDead && !aggressor.IsDeleted &&
+                IsAttackable(aggressor))
+            {
+                ActFight(npc, aggressor, 50);
+                return;
+            }
+            npc.FightTarget = Serial.Invalid;
+        }
+
         switch (npc.PetAIMode)
         {
             case PetAIMode.Follow:

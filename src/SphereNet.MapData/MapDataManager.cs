@@ -174,6 +174,13 @@ public sealed class MapDataManager : IDisposable
     public void SetSyntheticItemTile(ushort tileId, ItemTileData data) =>
         _synthItemTiles[tileId] = data;
 
+    private readonly Dictionary<int, LandTileData> _synthLandTiles = [];
+
+    /// <summary>Register synthetic tiledata for a LAND tile id (test fixture) —
+    /// lets tests express water or impassable mountain terrain.</summary>
+    public void SetSyntheticLandTile(ushort tileId, LandTileData data) =>
+        _synthLandTiles[tileId] = data;
+
     public (int Width, int Height) GetMapSize(int mapId)
     {
         if (_synthMaps.TryGetValue(mapId, out var synth))
@@ -251,8 +258,12 @@ public sealed class MapDataManager : IDisposable
         return [];
     }
 
-    public LandTileData GetLandTileData(int tileId) =>
-        _tileData?.GetLandTile(tileId) ?? default;
+    public LandTileData GetLandTileData(int tileId)
+    {
+        if (_synthLandTiles.TryGetValue(tileId, out var synth))
+            return synth;
+        return _tileData?.GetLandTile(tileId) ?? default;
+    }
 
     public ItemTileData GetItemTileData(int tileId)
     {
@@ -447,14 +458,18 @@ public sealed class MapDataManager : IDisposable
     /// </summary>
     public bool IsPassable(int mapId, int x, int y, int z)
     {
-        // Check terrain (land) tile — water tiles are not walkable
-        // unless there is a walkable surface/bridge static above (e.g. dock, bridge, ship)
+        // Check terrain (land) tile — water tiles are not walkable, and
+        // IMPASSABLE land (mountain rock, cliff faces) blocks too — unless a
+        // walkable surface/bridge static covers the spot (dock, bridge, ship).
+        // The land-impassable flag was never consulted here, so NPC movement
+        // (which validates through IsPassable, not the player WalkCheck)
+        // hiked straight over mountains: each slope step passes the ±12 z
+        // gate on its own.
         var terrain = GetTerrainTile(mapId, x, y);
         var landData = GetLandTileData(terrain.TileId);
-        if (landData.IsWet)
+        if (landData.IsWet || landData.IsImpassable)
         {
-            bool hasSurface = false;
-            hasSurface = AnyStatic(mapId, x, y, s =>
+            bool hasSurface = AnyStatic(mapId, x, y, s =>
             {
                 var sd = GetItemTileData(s.TileId);
                 return (sd.IsSurface || sd.IsBridge) && z >= s.Z && z <= s.Z + sd.CalcHeight + 2;

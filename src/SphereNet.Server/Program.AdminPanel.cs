@@ -127,11 +127,23 @@ public static partial class Program
                 if (_consoleProcessor == null || string.IsNullOrWhiteSpace(cmd))
                     return false;
                 _clientsByCharUid.TryGetValue(gm.Uid, out var invoker);
-                _consoleProcessor.ProcessCommand(cmd, line =>
+                void Echo(string line)
                 {
                     if (invoker != null) invoker.SysMessage(line);
                     else _log.LogInformation("[serv:{Gm}] {Line}", gm.Name, line);
-                });
+                }
+                // World-ops (EXPORT/IMPORT/RESTORE/SAVESTATICS/LOAD) live in the
+                // script-side server resolver, not the console processor — route
+                // them there so .serv.export etc. work in-game too.
+                string upperCmd = cmd.TrimStart().ToUpperInvariant();
+                if (upperCmd.StartsWith("EXPORT") || upperCmd.StartsWith("IMPORT") ||
+                    upperCmd.StartsWith("RESTORE") || upperCmd.StartsWith("SAVESTATICS") ||
+                    upperCmd.StartsWith("LOAD"))
+                {
+                    Echo(ResolveServerProperty(cmd) ?? "(no result)");
+                    return true;
+                }
+                _consoleProcessor.ProcessCommand(cmd, Echo);
                 return true;
             };
 

@@ -38,6 +38,40 @@ public class NpcDoorOpeningTests
     }
 
     [Fact]
+    public void TryOpenDoorState_ClassicDoor_ShiftsAroundTheHinge()
+    {
+        var world = CreateWorld();
+        var door = world.CreateItem();
+        door.BaseId = 0x06A5; // wooden_1 slot 0 → open shift (-1,+1)
+        door.ItemType = ItemType.Door;
+        world.PlaceItem(door, new Point3D(1000, 1000, 0, 0));
+
+        Assert.True(DoorHelper.TryOpenDoorState(door));
+        // Source-X Use_Door: the leaf swings — art +1 AND position moves.
+        Assert.Equal(0x06A6, door.BaseId);
+        Assert.Equal(999, door.X);
+        Assert.Equal(1001, door.Y);
+    }
+
+    [Fact]
+    public void GetDoorDir_MatchesTheSourceXTable()
+    {
+        Assert.Equal(0, DoorHelper.GetDoorDir(0x06A5));  // wooden_1 closed CCW
+        Assert.Equal(1, DoorHelper.GetDoorDir(0x06A6));  // its open art
+        Assert.Equal(15, DoorHelper.GetDoorDir(0x06B4)); // last slot of the set
+        Assert.Equal(0, DoorHelper.GetDoorDir(0x190E));  // bar door anomaly
+        Assert.Equal(1, DoorHelper.GetDoorDir(0x190F));
+        Assert.Equal(-1, DoorHelper.GetDoorDir(0x0001)); // not a door
+        // Odd slots are the exact negation of their even pair.
+        for (int d = 0; d < 16; d += 2)
+        {
+            var (ox, oy) = DoorHelper.GetDoorShift(d);
+            var (cx, cy) = DoorHelper.GetDoorShift(d + 1);
+            Assert.Equal((-ox, -oy), ((short, short))(cx, cy));
+        }
+    }
+
+    [Fact]
     public void TryOpenDoorState_Portcullis_UsesOffsetTwo()
     {
         var world = CreateWorld();

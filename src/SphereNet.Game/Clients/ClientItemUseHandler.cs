@@ -1897,6 +1897,7 @@ public sealed class ClientItemUseHandler
         {
             case "follow me":
                 pet.PetAIMode = PetAIMode.Follow;
+                pet.FightTarget = Serial.Invalid; // an order calls the pet off its fight
                 pet.SetTag("FOLLOW_TARGET", _character.Uid.Value.ToString());
                 // @Follow (Source-X) — pet begins following its master. <src> = master.
                 _triggerDispatcher?.FireCharTrigger(pet, CharTrigger.Follow,
@@ -1906,6 +1907,7 @@ public sealed class ClientItemUseHandler
 
             case "come":
                 pet.PetAIMode = PetAIMode.Come;
+                pet.FightTarget = Serial.Invalid; // an order calls the pet off its fight
                 pet.SetTag("FOLLOW_TARGET", _character.Uid.Value.ToString());
                 _triggerDispatcher?.FireCharTrigger(pet, CharTrigger.Follow,
                     new TriggerArgs { CharSrc = _character, O1 = _character });
@@ -1945,6 +1947,7 @@ public sealed class ClientItemUseHandler
             case "stay":
             case "stop":
                 pet.PetAIMode = PetAIMode.Stay;
+                pet.FightTarget = Serial.Invalid; // an order calls the pet off its fight
                 NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetSuccess));
                 return true;
 

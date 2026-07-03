@@ -3,6 +3,38 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-03] - Saha raporu dalgasi: kapi mentese kaymasi, pet savunmasi, dag yurume, 56T save
+----------------------------------------
+
+DUZELTILDI - Kapilar ters aciliyor gorunuyordu:
+  - Acilis yalniz grafigi +1 ceviriyordu; Source-X Use_Door MENTESE
+    KAYMASI (kapi setindeki 0-15 slota gore) hic uygulanmiyordu — acik
+    grafik yanlis tile'da render oluyordu. Referans kapi tablosu birebir
+    port edildi; oyuncu, NPC ve map-static kapi yollari kanadi tasir.
+    Map-static yolda yanlis kapanma grafigi de duzeltildi.
+
+DUZELTILDI - Takipteki/duran pet kendini savunmuyordu:
+  - Follow/Come/Stay modlari FightTarget'i okumuyordu. Pet artik
+    saldirana karsilik verir; follow/come/stay/stop emirleri kavgayi
+    keser. (Binicili binek savasamaz — o davranis normal.)
+
+DUZELTILDI - NPC'ler daglarin uzerinden yuruyordu:
+  - IsPassable land'de yalniz su kontrolu yapiyordu; land IMPASSABLE
+    bayragi (dag kayasi) hic okunmuyordu. Impassable land artik bloklar
+    (uzerinde surface/bridge static olan gecitler muaf).
+
+EKLENDI - Sphere 0.56T save uyumu:
+  - Gercek-veri testi C:\56T\save'i yukler (76k item, 4.2k char). Item
+    TIMER=saniye decay/spawn programini restore eder, kitap AUTHOR
+    tag'ine esler, DISCORDANCE Enticement skill'ine cozulur, char TIMER
+    kabul edilir. Bilinmeyen 56T-custom key'ler SAVE.* tag'i olarak
+    korunur.
+
+EKLENDI - Oyun-ici world-ops yonlendirmesi:
+  - EXPORT/IMPORT/RESTORE/SAVESTATICS/LOAD (script yuzeyinde zaten
+    vardi) artik oyun icinden .serv.* ile erisilir.
+
+================================================================================
 [2026-07-03] - NEWNPC verb'u, Source-X ghost manifest modeli
 ----------------------------------------
 

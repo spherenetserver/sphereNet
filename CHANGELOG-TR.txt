@@ -3,6 +3,29 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-03] - Combat parite dalgasi C6: CombatFlags guardrail ve dokuman tazeleme
+----------------------------------------
+
+EKLENDI - CombatFlags sozlesme guardrail'i (CombatFlagGuardrailTests):
+  - Enum, Source-X COMBATFLAGS_TYPE'a isim+deger olarak pinlendi ve her
+    uye bagli oldugu davranis noktasini kaydetmek zorunda — davranissiz
+    yeni bir flag ("enum var ama davranis yok", C-dalga denetiminin dort
+    tane buldugu kacak) artik testte patlar.
+  - 14 isimlik AOS on-hit yuzeyi pinlendi; Source-X'te de unimplemented
+    olan adlar (HitLowerAtk/Def, HitCurse, HitFatigue) davranis gelmeden
+    listeye giremez.
+
+DEGISTI - C1-C5 combat sozlesmeleri icin dokumanlar tazelendi:
+  - docs/TRIGGERS.md combat satirlari @HitTry/@HitCheck/@Hit/@GetHit/
+    @HitMiss/@HitParry'nin gercek SRC/ARGO/ARGN ve LOCAL sozlesmelerini
+    anlatiyor (yazilabilir hasar, armor-hasar local'lari, RETURN 1
+    semantigi dahil).
+  - docs/PARITY_MATRIX.md "LOCAL.Anim/Arrow + elemental locals" acigini
+    kapatti; C1-C5 satirlari ve acik kalanlar (@Hit LOCAL.Arrow hit-yolu
+    devri, slayer magic-damage yolu) kaydedildi.
+
+================================================================================
+
 [2026-07-03] - Combat parite dalgasi C5: AOS on-hit property'leri
 ----------------------------------------
 

@@ -30,12 +30,12 @@ Current guardrail snapshot (2026-06-30): the only character triggers defined but
 |---|---|---|---|---|---|---|---|
 | `@Attack` | Player starts an attack | attacker | attacker | target | – | – | cancels the attack |
 | `@CombatStart` | Combat begins after an attack passes | attacker | attacker | target | – | – | cancels combat |
-| `@HitTry` | Each swing attempt (before the swing) | attacker | attacker | target | N1=swing delay (1/10s); writing N1 changes it | – | cancels the hit |
-| `@HitCheck` | After HitTry, while resolving the hit | attacker | attacker | target | – | – | turns it into a miss (fires `@HitMiss`) |
-| `@Hit` | Damage > 0 (a landed hit) | attacker | attacker | target | N1=damage | – | ignored |
-| `@GetHit` | When a hit is taken | victim | attacker | – | N1=damage | – | ignored |
-| `@HitMiss` | Miss (damage=0) or HitCheck block | attacker | attacker | target | – | – | ignored |
-| `@HitParry` | Defender blocks with shield/weapon | defender | attacker | attacker | – | – | ignored |
+| `@HitTry` | Each swing attempt (before the swing) | attacker | victim | weapon | N1=swing delay (1/10s, writable); `LOCAL.Anim`/`LOCAL.AnimDelay` override the swing animation | – | cancels the swing |
+| `@HitCheck` | Swing start, BEFORE range/LoS validation | attacker | victim | weapon | N1=war swing state, N2=damage type; `LOCAL.Recoil_NoRange` (seeded from SWING_NORANGE, writable — drives the per-swing range-ignore + windup window) | – | forces a miss (fires `@HitMiss`) |
+| `@Hit` | A connecting hit, before HP applies | attacker | victim | weapon | N1=damage (writable), N2=damage type; `LOCAL.ItemDamageChance` (weapon wear %, seed 25), `LOCAL.ItemPoisonReductionChance/Amount` (poison charge spend) — shared with the weapon item `@Hit` | – | cancels the hit (0 damage) |
+| `@GetHit` | When a hit is taken, before HP applies | victim | attacker | – | N1=damage (writable), N2=damage type; `LOCAL.ItemDamageLayer` (random armor layer, writable — the item `@GetHit` + durability wear target), `LOCAL.ItemDamageChance` (seed 25), `LOCAL.DamagePercent*` (elemental split, read-only) | – | cancels the hit + skips the armor wear |
+| `@HitMiss` | A resolved miss or a `@HitCheck` block | attacker | victim | weapon | `LOCAL.Arrow` = the live pack ammo stack UID (ranged); `LOCAL.ArrowHandled=1` hands the ammo's fate to the script | – | skips the ammo economy (nothing consumed/dropped) |
+| `@HitParry` | Defender blocks with shield/weapon | defender | attacker | attacker | N1=damage allowed through (0=full block, writable for a partial block) | – | ignored |
 | `@HitIgnore` | An attacker marked with `ATTACKER.n.IGNORE=1` lands a hit | victim | victim | attacker | – | – | clears the ignore flag |
 | `@Kill` | A target is killed | killer | killer | victim | – | – | ignored |
 | `@Death` | A character dies | the dead | killer (null / attacker on reactive) | – | – | – | ignored |

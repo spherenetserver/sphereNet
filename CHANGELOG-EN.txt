@@ -4,6 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-03] - Combat parity wave C6: CombatFlags guardrail and doc refresh
+----------------------------------------
+
+ADDED - CombatFlags contract guardrail (CombatFlagGuardrailTests):
+  - The enum is pinned name+value against Source-X COMBATFLAGS_TYPE, and
+    every member must register its wired behavior site — a new flag with
+    no behavior ("enum exists, behavior missing", the leak the C-wave
+    audit found four of) now fails the test.
+  - The 14-name AOS on-hit surface is pinned, with the Source-X-deferred
+    names (HitLowerAtk/Def, HitCurse, HitFatigue) locked out until a
+    behavior lands.
+
+CHANGED - Docs refreshed for the C1-C5 combat contracts:
+  - docs/TRIGGERS.md combat rows now describe the real SRC/ARGO/ARGN and
+    LOCAL contracts of @HitTry/@HitCheck/@Hit/@GetHit/@HitMiss/@HitParry,
+    including the writable damage, the armor-damage locals and the
+    RETURN 1 semantics.
+  - docs/PARITY_MATRIX.md closes the "LOCAL.Anim/Arrow + elemental
+    locals" open item and records the C1-C5 rows with what stays open
+    (@Hit LOCAL.Arrow hit-path takeover, the slayer magic-damage path).
+
+================================================================================
+
 [2026-07-03] - Combat parity wave C5: AOS on-hit properties
 ----------------------------------------
 

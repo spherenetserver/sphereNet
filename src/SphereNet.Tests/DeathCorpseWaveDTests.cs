@@ -141,6 +141,21 @@ public class DeathCorpseWaveDTests
         Assert.Null(victim.Memory_FindObjTypes(foe.Uid, MemoryType.Fight | MemoryType.HarmedBy));
     }
 
+    // ---- Ghost manifest (Source-X STATF_INSUBSTANTIAL model) ----
+
+    [Fact]
+    public void Resurrect_ClearsTheInsubstantialManifestFlag()
+    {
+        var ch = new Character { MaxHits = 100 };
+        ch.Kill();
+        ch.SetStatFlag(StatFlag.Insubstantial); // peace ghost
+
+        ch.Resurrect();
+
+        Assert.False(ch.IsStatFlag(StatFlag.Insubstantial));
+        Assert.False(ch.IsDead);
+    }
+
     // ---- D2: configurable resurrection HP percent ----
 
     [Fact]

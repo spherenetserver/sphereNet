@@ -1,4 +1,4 @@
-using SphereNet.Core.Types;
+﻿using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.World;
@@ -89,7 +89,11 @@ public sealed class ClientViewUpdater
             if (isHidden && !canSeeHidden)
                 return;
 
-            bool ghostManifested = ch.IsDead && ch.IsInWarMode;
+            // Source-X: the manifest state IS STATF_INSUBSTANTIAL (war toggle
+            // flips it; scripts may set/clear it too). War mode kept as a
+            // fallback for ghosts saved before the flag existed.
+            bool ghostManifested = ch.IsDead &&
+                (!ch.IsStatFlag(Core.Enums.StatFlag.Insubstantial) || ch.IsInWarMode);
             if (ch.IsDead && !me.IsDead && !ghostManifested)
             {
                 bool canSeeGhosts = me.AllShow ||

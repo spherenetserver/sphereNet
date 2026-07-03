@@ -1579,6 +1579,9 @@ public sealed class ClientCombatHandler
         // suppress the broadcast and rely on per-observer dispatch.
         if (_character.IsInWarMode)
             SetWarMode(false, syncClients: false, preserveTarget: false);
+        // Source-X CChar::Death: the fresh ghost starts insubstantial
+        // (invisible to the living) until it manifests via the war toggle.
+        _character.SetStatFlag(Core.Enums.StatFlag.Insubstantial);
         // The 0x72 echo is mandatory regardless — ClassicUO's input
         // handler latches on it to release the war-mode toggle and
         // unblock the death menu.

@@ -601,6 +601,11 @@ public partial class Character : ObjBase
     /// the desertion — the pet keeps serving.</summary>
     public static Func<Character, Character?, bool>? OnPetDesert { get; set; }
 
+    /// <summary>Script NEWNPC verb (Source-X SSV_NEWNPC). Args: invoker,
+    /// chardef name/id → the spawned NPC (null on unknown def). Wired to the
+    /// client spawn pipeline in Program.</summary>
+    public static Func<Character, string, Character?>? SpawnNpcFromScript { get; set; }
+
     /// <summary>Fired when a character is sent to jail (Source-X @Jail). Args:
     /// jailed character, sentence minutes (0 = indefinite).</summary>
     public static Action<Character, int>? OnJailed { get; set; }
@@ -1990,6 +1995,8 @@ public partial class Character : ObjBase
                 return;
         }
         ClearStatFlag(StatFlag.Dead);
+        // Source-X Spell_Resurrection: StatFlag_Clear(STATF_DEAD|STATF_INSUBSTANTIAL).
+        ClearStatFlag(StatFlag.Insubstantial);
         CurePoison();
         ClearStatFlag(StatFlag.Hidden);
         // Source-X: MaxHits × HITPOINTPERCENTONREZ / 100 (sphere.ini), floored
@@ -4100,6 +4107,15 @@ public partial class Character : ObjBase
                         SendPacketToOwner?.Invoke(this, new SphereNet.Network.Packets.Outgoing.PacketPlayMusic(musicId));
                     }
                 }
+                return true;
+            }
+            case "NEWNPC":
+            {
+                // Source-X SSV_NEWNPC. Source-X creates the NPC unplaced until
+                // NEW.P= — SphereNet has no unplaced-char limbo, so the NPC
+                // lands at the invoker's feet (the usable default) and is
+                // reachable as <SERV.LASTNEWCHAR>.
+                SpawnNpcFromScript?.Invoke(this, args?.Trim() ?? "");
                 return true;
             }
             case "VISIBLE":

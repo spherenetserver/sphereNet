@@ -2244,6 +2244,18 @@ public static partial class Program
             SphereNet.Game.Objects.Items.Item.ResolveHouse = uid => _housingEngine?.GetHouse(uid);
             SphereNet.Game.Objects.Items.Item.RedeedHouse = uid => _housingEngine?.RedeedFromScript(uid);
             SphereNet.Game.Objects.Items.Item.RedeedShip = uid => _shipEngine?.RedeedFromScript(uid);
+            // Script NEWNPC: route through the invoker's client spawn pipeline
+            // (any online client works — the method only touches world state);
+            // on an empty server the spawn is skipped.
+            SphereNet.Game.Objects.Characters.Character.SpawnNpcFromScript = (invoker, defName) =>
+            {
+                if (string.IsNullOrWhiteSpace(defName)) return null;
+                if (_clientsByCharUid.TryGetValue(invoker.Uid, out var cli))
+                    return cli.SpawnNpcForScript(defName, invoker.Position);
+                foreach (var anyClient in _clientsByCharUid.Values)
+                    return anyClient.SpawnNpcForScript(defName, invoker.Position);
+                return null;
+            };
             if (_housingEngine != null)
                 _housingEngine.IsShipAt = pt => _shipEngine?.FindShipAt(pt) != null;
             // MULTICREATE verb -> HousingEngine runtime registration

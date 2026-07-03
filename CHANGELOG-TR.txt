@@ -3,6 +3,22 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-03] - NEWNPC verb'u, Source-X ghost manifest modeli
+----------------------------------------
+
+EKLENDI - NEWNPC script verb'u (Source-X SSV_NEWNPC):
+  - Chardef NPC'yi tam GM-add boru hattiyla (@Create, brain finalizasyonu,
+    @CreateLoot, gorunum yayini) cagiranin ayaginda dogurur;
+    SERV.LASTNEWCHAR ile erisilir. RECALL arastirmayla kapandi:
+    Source-X'te de char verb'u degil (yalniz buyu).
+
+DEGISTI - Ghost manifest artik STATF_INSUBSTANTIAL'dan okunur (Source-X):
+  - Taze ghost insubstantial dogar; olu-halde war toggle flag'i cevirir
+    (war = manifest); dirilis temizler; view filtresi flag'i okur (eski
+    save'ler icin war-mode fallback). Scriptler artik referansla ayni
+    biti gorur ve set edebilir.
+
+================================================================================
 [2026-07-03] - Movement dalgasi M2: sentetik harita fixture'i, CI-stabil z-kural testleri
 ----------------------------------------
 

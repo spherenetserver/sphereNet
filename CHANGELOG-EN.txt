@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-03] - NEWNPC verb, Source-X ghost manifest model
+----------------------------------------
+
+ADDED - The NEWNPC script verb (Source-X SSV_NEWNPC):
+  - Spawns a chardef NPC through the full GM-add pipeline (@Create, brain
+    finalisation, @CreateLoot, appearance broadcast) at the invoker's
+    feet, reachable as SERV.LASTNEWCHAR. RECALL was closed by research:
+    it is not a char verb in Source-X either (only the spell).
+
+CHANGED - Ghost manifest now keys off STATF_INSUBSTANTIAL (Source-X):
+  - A fresh ghost is born insubstantial; the war toggle while dead flips
+    the flag (war = manifest); resurrection clears it; the view filter
+    reads the flag (war-mode fallback for pre-existing saves). Scripts
+    now see and can set the same bit as the reference.
+
+================================================================================
 [2026-07-03] - Movement wave M2: synthetic map fixture, CI-stable z-rule tests
 ----------------------------------------
 

@@ -278,6 +278,18 @@ public sealed partial class GameClient
         else
             _character.ClearStatFlag(StatFlag.War);
 
+        // Source-X ghost manifest (Event_CombatMode): a dead char's war toggle
+        // flips STATF_INSUBSTANTIAL — war = manifest (visible to the living),
+        // peace = insubstantial. The view filter reads this flag, and scripts
+        // see/set the same bit as in the reference.
+        if (_character.IsDead)
+        {
+            if (warMode)
+                _character.ClearStatFlag(StatFlag.Insubstantial);
+            else
+                _character.SetStatFlag(StatFlag.Insubstantial);
+        }
+
         if (!warMode && !preserveTarget)
         {
             _character.FightTarget = Serial.Invalid;

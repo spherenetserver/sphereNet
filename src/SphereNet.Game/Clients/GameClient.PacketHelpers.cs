@@ -1411,6 +1411,43 @@ public sealed partial class GameClient
         return 0;
     }
 
+    /// <summary>Script NEWNPC (Source-X CScriptObj SSV_NEWNPC): spawn a chardef
+    /// NPC at <paramref name="pos"/> through the full GM-add pipeline —
+    /// @Create, brain finalisation, @CreateLoot, stat refill and appearance
+    /// broadcast. Records the NPC as SERV.LASTNEWCHAR. Returns null when the
+    /// defname/id resolves to no chardef.</summary>
+    public Character? SpawnNpcForScript(string defNameOrId, Point3D pos)
+    {
+        var resources = _commands?.Resources;
+        if (resources == null || string.IsNullOrWhiteSpace(defNameOrId)) return null;
+        string cleaned = defNameOrId.Trim();
+
+        int defIndex = -1;
+        var rid = resources.ResolveDefName(cleaned);
+        if (rid.IsValid && rid.Type == ResType.CharDef)
+            defIndex = rid.Index;
+        else
+        {
+            string num = cleaned.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? cleaned[2..] : cleaned;
+            if (ushort.TryParse(num, System.Globalization.NumberStyles.HexNumber, null, out ushort idHex) &&
+                resources.GetResource(ResType.CharDef, idHex) != null)
+                defIndex = idHex;
+        }
+        if (defIndex < 0) return null;
+
+        var npc = CreateNpcFromDef(defIndex, cleaned);
+        _world.PlaceCharacter(npc, pos);
+        _triggerDispatcher?.FireCharTrigger(npc, CharTrigger.Create, new TriggerArgs { CharSrc = npc });
+        FinalizeNpcBrain(npc);
+        _triggerDispatcher?.FireCharTrigger(npc, CharTrigger.CreateLoot, new TriggerArgs { CharSrc = npc });
+        npc.Hits = npc.MaxHits;
+        npc.Stam = npc.MaxStam;
+        npc.Mana = npc.MaxMana;
+        BroadcastDrawObject(npc);
+        _world.LastNewChar = npc.Uid;
+        return npc;
+    }
+
     private Character CreateNpcFromDef(int defIndexOrBaseId, string fallbackName)
     {
         var npc = _world.CreateCharacter();

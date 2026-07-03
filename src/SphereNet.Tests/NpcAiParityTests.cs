@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
@@ -203,7 +203,7 @@ public class NpcAiParityTests
         bool abortAsked = false;
         bool nativeCastFired = false;
         // @NPCActCast hook always aborts (Source-X RETURN 1).
-        ai.OnNpcActCast = (npc, target, spell) =>
+        ai.OnNpcActCast = (npc, target, spell, _) =>
         {
             abortAsked = true;
             return new NpcAI.NpcCastDecision(Abort: true, spell, target);
@@ -247,7 +247,7 @@ public class NpcAiParityTests
         var ai = new NpcAI(world, new SphereConfig());
 
         SpellType castSpell = SpellType.None;
-        ai.OnNpcActCast = (npc, target, spell) =>
+        ai.OnNpcActCast = (npc, target, spell, _) =>
             // Proceed, but force Flamestrike regardless of the AI's pick.
             new NpcAI.NpcCastDecision(Abort: false, SpellType.Flamestrike, target);
         ai.OnNpcCastSpell = (_, _, spell) => castSpell = spell;
@@ -306,7 +306,7 @@ public class NpcAiParityTests
 
         Character? redirect = null;
         Character? castTarget = null;
-        ai.OnNpcActCast = (npc, target, spell) =>
+        ai.OnNpcActCast = (npc, target, spell, _) =>
             new NpcAI.NpcCastDecision(Abort: false, spell, redirect); // redirect the cast
         ai.OnNpcCastSpell = (_, t, _) => castTarget = t;
         ai.OnNpcTickSpellCast = _ => false;
@@ -417,9 +417,11 @@ public class NpcAiParityTests
         caster.Mana = caster.MaxMana = 200; caster.Int = 50;
         var pack = world.CreateItem(); pack.ItemType = ItemType.Container; pack.BaseId = 0x0E75;
         caster.Backpack = pack; caster.Equip(pack, Layer.Pack);
-        // A charged wand and NO spellbook — the NPC casts purely from the wand.
+        // A charged MAGIC wand and NO spellbook — the NPC casts purely from
+        // the wand (Source-X NPC_FightMagery requires ATTR_MAGIC on it).
         var wand = world.CreateItem();
         wand.ItemType = ItemType.Wand; wand.More1 = (uint)SpellType.Fireball;
+        wand.Attributes |= ObjAttributes.Magic;
         wand.SetTag("CHARGES", "3");
         caster.Equip(wand, Layer.OneHanded);
         world.PlaceCharacter(caster, new Point3D(100, 100, 0, 0));

@@ -4,6 +4,41 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-03] - NPC AI wave N1: dormant NPC_AI flags, trigger contracts, CAN-flag hex fix
+----------------------------------------
+
+ADDED - Dormant NPC_AI_* flag behaviors:
+  - NPC_AI_FOOD now routes through the feeding pass (previously only
+    INTFOOD did); the basic/intelligent distinction is collapsed into the
+    one implementation.
+  - NPC_AI_COMBAT gates the ally heal/cure targeting: without it the
+    Source-X friend list is self-only, so group support no longer runs
+    unconditionally. Self-heal stays ungated.
+  - NPC_AI_EXTRA (NPC_ExtraAI): humanoid-brain NPCs fire @NPCAction
+    (RETURN 1 skips the pass), equip a weapon and shield from the pack in
+    war mode, and carry a hand light by night / stow it by day. Lighting
+    the torch (IT_LIGHT_OUT -> LIT) stays deferred.
+  - NPC_AI_MOVEOBSTACLES: a hands-capable, smart-enough NPC shifts a
+    movable blocking item onto its own tile before giving up the path.
+  - NPC_AI_VEND_TIME stays deferred: it is define-only in Source-X too.
+
+CHANGED - NPC trigger contracts:
+  - @NPCActCast now carries ARGN2 = wand-use (the documented Source-X
+    contract; upstream's own value is always 0 due to an early reset).
+  - @NPCLookAtItem matches Source-X: ARGN1 = distance, ARGN2 = want-score
+    (writable, read back), ARGO = the item; RETURN 1 takes the item over,
+    RETURN 0 ignores it; move-never/locked/secure items never fire it.
+  - NPC wands require ATTR_MAGIC (Source-X NPC_FightMagery); a wand with
+    no CHARGES tag stays infinite for legacy-import compatibility.
+
+FIXED - CHARDEF CAN flags parsed leading-zero values as decimal:
+  - Sphere's numeric convention treats a leading zero as hex, so a legacy
+    chardef's CAN=0300 (mt_equip|mt_usehands) resolved to decimal 300 and
+    mis-flagged every imported chardef. The item-side parsers already
+    followed the convention; the chardef CAN parser now does too.
+
+================================================================================
+
 [2026-07-03] - Combat parity wave C7: hit-path ammo takeover, slayer magic path
 ----------------------------------------
 

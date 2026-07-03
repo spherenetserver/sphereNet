@@ -457,6 +457,16 @@ public sealed class CharDef : BaseDef
                 flags |= hx;
                 continue;
             }
+            // Sphere numeric convention: a leading zero means HEX — a legacy
+            // chardef's CAN=0300 is mt_equip|mt_usehands (0x300), not 300
+            // (the ItemDef parsers already follow this; this one read the
+            // token as decimal and mis-flagged every imported chardef).
+            if (tok.Length > 1 && tok[0] == '0' &&
+                uint.TryParse(tok.AsSpan(), System.Globalization.NumberStyles.HexNumber, null, out uint lzHex))
+            {
+                flags |= lzHex;
+                continue;
+            }
             if (uint.TryParse(tok, out uint dec))
             {
                 flags |= dec;

@@ -129,10 +129,22 @@ public sealed class NpcAI
     /// <summary>@NPCActCast hook. Source-X NPC_FightMagery fires it per candidate
     /// spell with ARGN1=spell, ARGN2=wand-use, ARGO=target, LOCAL.HealThreshold.
     /// RETURN 1 aborts the cast and reverts to melee; otherwise the (possibly
-    /// script-mutated) spell/target are cast. Returns the resolved decision; a
+    /// script-mutated) spell/target are cast. The bool arg is the wand-use flag
+    /// (ARGN2 — the documented Source-X contract; upstream's own value is
+    /// always 0 due to an early reset quirk). Returns the resolved decision; a
     /// null result (no hook) means "proceed with the given spell/target".</summary>
-    public Func<Character, Character, SpellType, NpcCastDecision>? OnNpcActCast { get; set; }
-    public Func<Character, Item, bool>? OnNpcLookAtItem { get; set; }
+    public Func<Character, Character, SpellType, bool, NpcCastDecision>? OnNpcActCast { get; set; }
+
+    /// <summary>@NPCLookAtItem hook (Source-X NPC_LookAtItem, CCharNPCAct.cpp:940):
+    /// ARGN1 = distance, ARGN2 = want-score (writable), ARGO = the item.
+    /// RETURN 1 = the script took the item over; RETURN 0 = ignore the item.
+    /// Args: (npc, item, dist, wantScore).</summary>
+    public Func<Character, Item, int, int, NpcLookDecision>? OnNpcLookAtItem { get; set; }
+
+    /// <summary>Resolved @NPCLookAtItem outcome. <see cref="Handled"/> = RETURN 1
+    /// (script owns the item), <see cref="Ignore"/> = RETURN 0 (leave it alone);
+    /// otherwise <see cref="Want"/> is the possibly script-adjusted want-score.</summary>
+    public readonly record struct NpcLookDecision(bool Handled, bool Ignore, int Want);
 
     /// <summary>Outcome of the @NPCActCast trigger. <see cref="Abort"/> true =
     /// RETURN 1 (revert to melee, no cast). Otherwise <see cref="Spell"/> /
@@ -371,6 +383,117 @@ public sealed class NpcAI
                 ActHuman(npc);
                 break;
         }
+
+        // Source-X CChar::_OnTick tail (CCharAct.cpp:5959): NPC_AI_EXTRA runs
+        // the humanoid extra pass after the brain action.
+        if (!npc.IsDead && GetNpcFlags(npc).HasFlag(NpcAIFlags.Extra))
+            RunExtraAI(npc);
+    }
+
+    /// <summary>@NPCAction hook (fired by the NPC_AI_EXTRA pass; RETURN 1
+    /// skips the hardcoded extra behaviors this tick).</summary>
+    public Func<Character, bool>? OnNpcAction { get; set; }
+
+    /// <summary>Light level at a position (WeatherEngine.GetLightLevel;
+    /// 0 = bright .. 30 = black). Unwired = always day.</summary>
+    public Func<Point3D, byte>? GetLightLevel { get; set; }
+
+    /// <summary>An NPC shifted a blocking item out of its way
+    /// (NPC_AI_MOVEOBSTACLES) — broadcast the item's new position.</summary>
+    public Action<Character, Item>? OnNpcMovedItem { get; set; }
+
+    /// <summary>Light levels at or above this read as "night" for the
+    /// NPC_AI_EXTRA light-source behavior.</summary>
+    private const byte NightLightLevel = 20;
+
+    /// <summary>Source-X NPC_ExtraAI (CCharNPCAct.cpp:2670) — the NPC_AI_EXTRA
+    /// pass for humanoid-brain NPCs: fire @NPCAction (RETURN 1 skips the pass),
+    /// then in war mode equip a weapon/shield from the pack; in peace equip a
+    /// hand light source by night and stow it by day. (Lighting the torch —
+    /// the IT_LIGHT_OUT → IT_LIGHT_LIT flip — is deferred; the visible
+    /// carry-a-light behavior is what this pass reproduces.)</summary>
+    private void RunExtraAI(Character npc)
+    {
+        if (!IsHumanoidBrain(npc.NpcBrain))
+            return;
+        if (OnNpcAction != null && OnNpcAction(npc))
+            return;
+
+        var can = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.Can ?? CanFlags.None;
+        if ((can & (CanFlags.C_Equip | CanFlags.C_UseHands)) == 0)
+            return;
+
+        var pack = npc.Backpack;
+
+        if (npc.IsStatFlag(StatFlag.War))
+        {
+            var hand1 = npc.GetEquippedItem(Layer.OneHanded);
+            if ((hand1 == null || !IsWeaponItemType(hand1.ItemType)) && pack != null)
+            {
+                var weapon = FindInPack(pack, it => IsWeaponItemType(it.ItemType));
+                if (weapon != null)
+                {
+                    pack.RemoveItem(weapon);
+                    npc.Equip(weapon, Layer.OneHanded);
+                }
+            }
+
+            var hand2 = npc.GetEquippedItem(Layer.TwoHanded);
+            if (hand2 == null && pack != null)
+            {
+                var shield = FindInPack(pack, it => it.ItemType == ItemType.Shield);
+                if (shield != null)
+                {
+                    pack.RemoveItem(shield);
+                    npc.Equip(shield, Layer.TwoHanded);
+                }
+            }
+            return;
+        }
+
+        // Peace: carry a light source through the night, stow it by day.
+        bool dark = (GetLightLevel?.Invoke(npc.Position) ?? 0) >= NightLightLevel;
+        var held = npc.GetEquippedItem(Layer.TwoHanded);
+        bool holdingLight = held != null &&
+            held.ItemType is ItemType.LightLit or ItemType.LightOut;
+        if (dark)
+        {
+            if (!holdingLight && held == null && pack != null)
+            {
+                var light = FindInPack(pack,
+                    it => it.ItemType is ItemType.LightLit or ItemType.LightOut);
+                if (light != null)
+                {
+                    pack.RemoveItem(light);
+                    npc.Equip(light, Layer.TwoHanded);
+                }
+            }
+        }
+        else if (holdingLight && pack != null)
+        {
+            npc.Unequip(Layer.TwoHanded);
+            pack.AddItem(held!);
+        }
+    }
+
+    /// <summary>Source-X NPCBRAIN_HUMAN group: the human-like brains the
+    /// EXTRA pass applies to.</summary>
+    private static bool IsHumanoidBrain(NpcBrainType brain) => brain is
+        NpcBrainType.Human or NpcBrainType.Healer or NpcBrainType.Guard or
+        NpcBrainType.Banker or NpcBrainType.Vendor or NpcBrainType.Stable;
+
+    private static bool IsWeaponItemType(ItemType type) => type is
+        ItemType.WeaponSword or ItemType.WeaponAxe or ItemType.WeaponFence or
+        ItemType.WeaponMaceSmith or ItemType.WeaponMaceSharp or ItemType.WeaponMaceStaff or
+        ItemType.WeaponMaceCrook or ItemType.WeaponMacePick or ItemType.WeaponWhip or
+        ItemType.WeaponBow or ItemType.WeaponXBow or ItemType.WeaponThrowing;
+
+    private static Item? FindInPack(Item pack, Func<Item, bool> match)
+    {
+        foreach (var it in pack.Contents)
+            if (!it.IsDeleted && match(it))
+                return it;
+        return null;
     }
 
     /// <summary>
@@ -666,11 +789,22 @@ public sealed class NpcAI
             return true;
         }
 
-        // Adjacent — grab one random item.
+        // Adjacent — grab one random item. @NPCLookAtItem sees ARGN1=dist,
+        // ARGN2=want (seeded 100 — the engine already decided to loot; a
+        // script may lower it below the roll to skip, RETURN 1 to take over
+        // or RETURN 0 to leave the piece alone).
         if (corpse.Contents.Count > 0)
         {
             var loot = corpse.Contents[_rand.Next(corpse.Contents.Count)];
-            if (OnNpcLookAtItem?.Invoke(npc, loot) != true) // script may veto/handle
+            int want = 100;
+            if (OnNpcLookAtItem != null && !IsLookAtItemExcluded(loot))
+            {
+                var d = OnNpcLookAtItem(npc, loot, best, 100);
+                if (d.Handled || d.Ignore)
+                    return true;
+                want = d.Want;
+            }
+            if (want > _rand.Next(100))
             {
                 corpse.RemoveItem(loot);
                 npc.Backpack.AddItem(loot);
@@ -1253,7 +1387,7 @@ public sealed class NpcAI
             var noMagic = _world.FindRegion(npc.Position);
             if (noMagic == null || !noMagic.NoMagic)
             {
-                if (CastViaTrigger(npc, target, (SpellType)wand.More1))
+                if (CastViaTrigger(npc, target, (SpellType)wand.More1, wandUse: true))
                 {
                     ConsumeWandCharge(wand);
                     return true;
@@ -1323,11 +1457,11 @@ public sealed class NpcAI
     /// falls back to melee (returns false); otherwise the possibly-overridden
     /// spell/target are cast (returns true). With no script hook this always
     /// casts the given spell.</summary>
-    private bool CastViaTrigger(Character npc, Character target, SpellType spell)
+    private bool CastViaTrigger(Character npc, Character target, SpellType spell, bool wandUse = false)
     {
         if (OnNpcActCast != null)
         {
-            var d = OnNpcActCast(npc, target, spell);
+            var d = OnNpcActCast(npc, target, spell, wandUse);
             if (d.Abort)
                 return false; // RETURN 1 — revert to melee, no cast this attempt
             if (d.Spell != SpellType.None) spell = d.Spell;
@@ -1351,7 +1485,7 @@ public sealed class NpcAI
     /// Beneficial spells (heal/cure) return the wounded recipient (self or a
     /// hurt ally); harmful spells return the enemy. Previously every spell was
     /// cast on the enemy, so "self-heal" actually healed the enemy.</summary>
-    private (SpellType Spell, Character CastTarget) ChooseBestSpell(Character npc, Character target, int dist)
+    internal (SpellType Spell, Character CastTarget) ChooseBestSpell(Character npc, Character target, int dist)
     {
         var spells = npc.NpcSpells;
         bool targetReflects = target.IsStatFlag(StatFlag.Reflection);
@@ -1378,9 +1512,12 @@ public sealed class NpcAI
         }
 
         // 2b. Group support — heal/cure a wounded ally (Source-X NPC_FightCast
-        //     GOOD-spell path). Only caster NPCs with a heal/cure spell scan.
+        //     GOOD-spell path). Only caster NPCs with a heal/cure spell scan,
+        //     and only under NPC_AI_COMBAT: without the flag Source-X's friend
+        //     list is just the caster itself (CCharNPCAct_Magic.cpp:322).
         bool hasHeal = spells.Contains(SpellType.Heal) || spells.Contains(SpellType.GreaterHeal);
-        if ((hasHeal || spells.Contains(SpellType.Cure)) && _rand.Next(2) == 0)
+        if (GetNpcFlags(npc).HasFlag(NpcAIFlags.Combat) &&
+            (hasHeal || spells.Contains(SpellType.Cure)) && _rand.Next(2) == 0)
         {
             var ally = FindWoundedAlly(npc);
             if (ally != null)
@@ -1617,12 +1754,16 @@ public sealed class NpcAI
     }
 
     /// <summary>An equipped wand (IT_WAND) that can still cast — it holds a spell in
-    /// More1 and is not out of charges. A wand with no CHARGES tag is treated as
-    /// infinite (matching the player double-click wand path).</summary>
-    private static Item? FindNpcWand(Character npc)
+    /// More1, carries ATTR_MAGIC (Source-X NPC_FightMagery requires it,
+    /// CCharNPCAct_Magic.cpp:166) and is not out of charges. A wand with no
+    /// CHARGES tag stays infinite (matching the player double-click wand path
+    /// and the mortechUO imports, which carry no charge tag).</summary>
+    internal static Item? FindNpcWand(Character npc)
     {
         var held = npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
         if (held == null || held.ItemType != ItemType.Wand || held.More1 == 0)
+            return null;
+        if (!held.Attributes.HasFlag(ObjAttributes.Magic))
             return null;
         if (held.TryGetTag("CHARGES", out string? ch) && int.TryParse(ch, out int charges) && charges <= 0)
             return null;
@@ -2327,9 +2468,14 @@ public sealed class NpcAI
             return;
         }
 
-        // Hungry animals/NPCs with IntFood feed: eat from pack or graze
-        // (Source-X NPC_Act_Food).
-        if ((GetNpcFlags(npc).HasFlag(NpcAIFlags.IntFood) || npc.TryGetTag("INTFOOD", out _))
+        // Hungry animals/NPCs feed: eat from pack or graze (Source-X
+        // NPC_Food / NPC_Act_Food). Both NPC_AI_FOOD (the basic per-tick
+        // search) and NPC_AI_INTFOOD (the smarter variant) route through the
+        // same feeding pass here — SphereNet has one implementation, so the
+        // basic/intelligent distinction is collapsed.
+        var foodFlags = GetNpcFlags(npc);
+        if ((foodFlags.HasFlag(NpcAIFlags.Food) || foodFlags.HasFlag(NpcAIFlags.IntFood) ||
+             npc.TryGetTag("INTFOOD", out _))
             && TryEatFood(npc))
             return;
 
@@ -2439,9 +2585,48 @@ public sealed class NpcAI
         foreach (var item in _world.GetItemsInRange(npc.Position, 3))
         {
             if (item.IsDeleted || item.ContainedIn.IsValid) continue;
-            if (OnNpcLookAtItem.Invoke(npc, item))
+            if (IsLookAtItemExcluded(item)) continue;
+            int dist = npc.Position.GetDistanceTo(item.Position);
+            if (OnNpcLookAtItem.Invoke(npc, item, dist, 0).Handled)
                 return;
         }
+    }
+
+    /// <summary>Items @NPCLookAtItem never fires for (Source-X gates the
+    /// trigger on ATTR_MOVE_NEVER | ATTR_LOCKEDDOWN | ATTR_SECURE).</summary>
+    private static bool IsLookAtItemExcluded(Item item) =>
+        (item.Attributes & (ObjAttributes.Move_Never | ObjAttributes.LockedDown |
+            ObjAttributes.Secure)) != 0;
+
+    /// <summary>NPC_AI_MOVEOBSTACLES: try to shift a movable, blocking item on
+    /// <paramref name="blocked"/> onto the NPC's own tile (Source-X moves it to
+    /// the char's position). Gated on the flag, CAN_C_USEHANDS and the Source-X
+    /// smartness roll (INT &gt; rand(100)). Returns true when an item moved.</summary>
+    internal bool TryClearObstacle(Character npc, Point3D blocked)
+    {
+        if (!GetNpcFlags(npc).HasFlag(NpcAIFlags.MoveObstacles))
+            return false;
+        var can = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.Can ?? CanFlags.None;
+        if (!can.HasFlag(CanFlags.C_UseHands))
+            return false;
+        if (npc.Int <= _rand.Next(100))
+            return false;
+
+        foreach (var item in _world.GetItemsInRange(blocked, 1))
+        {
+            if (item.IsDeleted || item.ContainedIn.IsValid) continue;
+            if (item.X != blocked.X || item.Y != blocked.Y) continue;
+            if (Math.Abs(item.Z - npc.Z) > 3) continue;
+            var def = DefinitionLoader.GetItemDef(item.BaseId);
+            if (def == null || !def.Can.HasFlag(CanFlags.I_Block)) continue; // only actual blockers
+            if ((item.Attributes & (ObjAttributes.Move_Never | ObjAttributes.LockedDown |
+                ObjAttributes.Secure | ObjAttributes.Static)) != 0) continue;
+
+            item.Position = npc.Position;
+            OnNpcMovedItem?.Invoke(npc, item);
+            return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -3177,6 +3362,10 @@ public sealed class NpcAI
         // the path and recompute next tick.
         if (!CanNpcMoveTo(npc, nextStep))
         {
+            // NPC_AI_MOVEOBSTACLES (Source-X NPC_WalkToPoint, CCharNPCAct.cpp:525):
+            // a hands-capable, smart-enough NPC shifts a movable blocking item
+            // onto its own tile before giving the path up.
+            TryClearObstacle(npc, nextStep);
             _pathCache.Remove(uid);
             _pathIndex.Remove(uid);
             _pathTime.Remove(uid);

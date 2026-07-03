@@ -3,6 +3,41 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-03] - NPC AI dalgasi N1: uyuyan NPC_AI flag'leri, trigger sozlesmeleri, CAN hex fix
+----------------------------------------
+
+EKLENDI - Uyuyan NPC_AI_* flag davranislari:
+  - NPC_AI_FOOD artik beslenme gecidinden akar (eskiden sadece INTFOOD);
+    basic/intelligent ayrimi tek implementasyonda birlestirildi.
+  - NPC_AI_COMBAT ally heal/cure hedeflemesini kapilar: flag olmadan
+    Source-X'in arkadas listesi sadece NPC'nin kendisidir. Self-heal
+    kapisiz kalir.
+  - NPC_AI_EXTRA (NPC_ExtraAI): humanoid brain'li NPC'ler @NPCAction
+    atesler (RETURN 1 pasi atlar), savasta pack'ten silah+kalkan kusanir,
+    gece elinde isik tasir / gunduz paketine koyar. Mesaleyi yakma
+    (IT_LIGHT_OUT -> LIT) ertelendi.
+  - NPC_AI_MOVEOBSTACLES: eli olan ve yeterince zeki NPC, yolunu tikayan
+    tasinabilir item'i kendi tile'ina ceker.
+  - NPC_AI_VEND_TIME ertelendi: Source-X'te de yalnizca define.
+
+DEGISTI - NPC trigger sozlesmeleri:
+  - @NPCActCast artik ARGN2 = wand-use tasir (dokumante Source-X
+    sozlesmesi; upstream'in kendi degeri erken sifirlama nedeniyle hep 0).
+  - @NPCLookAtItem Source-X ile ayni: ARGN1 = mesafe, ARGN2 = want-score
+    (yazilabilir, geri okunur), ARGO = item; RETURN 1 devralir, RETURN 0
+    yoksayar; move-never/kilitli/secure item'larda hic ateslenmez.
+  - NPC wand'lari ATTR_MAGIC ister (Source-X NPC_FightMagery); CHARGES
+    tag'i olmayan wand legacy-import uyumu icin sonsuz kalir.
+
+DUZELTILDI - CHARDEF CAN flag'leri basi sifirli degerleri decimal okuyordu:
+  - Sphere sayi konvansiyonunda bastaki sifir hex demektir; legacy bir
+    chardef'in CAN=0300 (mt_equip|mt_usehands) satiri decimal 300'e
+    cozulup TUM import'lu chardef'lerin can-flag'lerini bozuyordu.
+    Item tarafi parser'lari zaten dogruydu; chardef CAN parser'i da
+    artik ayni konvansiyonu izliyor.
+
+================================================================================
+
 [2026-07-03] - Combat parite dalgasi C7: hit-yolu ammo devri, slayer magic yolu
 ----------------------------------------
 

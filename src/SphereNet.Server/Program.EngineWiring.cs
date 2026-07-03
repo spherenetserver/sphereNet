@@ -1522,18 +1522,19 @@ public static partial class Program
                     _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActFollow,
                         new TriggerArgs { CharSrc = target, O1 = target }) == TriggerResult.True;
             if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCActCast))
-                _npcAI.OnNpcActCast = (npc, target, spell) =>
+                _npcAI.OnNpcActCast = (npc, target, spell, wandUse) =>
                 {
-                    // Source-X NPC_FightMagery args: ARGN1=spell, ARGO=target,
-                    // LOCAL.HealThreshold seeded from config. RETURN 1 aborts the
-                    // cast and reverts to melee; otherwise ARGN1 carries the
-                    // (possibly script-overridden) spell back (via RunWrapped), and
-                    // LOCAL.target = a uid redirects the cast (Source-X REF1 target).
+                    // Source-X NPC_FightMagery args: ARGN1=spell, ARGN2=wand-use,
+                    // ARGO=target, LOCAL.HealThreshold seeded from config. RETURN 1
+                    // aborts the cast and reverts to melee; otherwise ARGN1 carries
+                    // the (possibly script-overridden) spell back (via RunWrapped),
+                    // and LOCAL.target = a uid redirects the cast (Source-X REF1).
                     var locals = new SphereNet.Scripting.Variables.VarMap();
                     locals.SetInt("HealThreshold", _config.NpcHealThreshold);
                     var args = new TriggerArgs
                     {
-                        CharSrc = target, O1 = target, N1 = (int)spell, Locals = locals
+                        CharSrc = target, O1 = target, N1 = (int)spell,
+                        N2 = wandUse ? 1 : 0, Locals = locals
                     };
                     var res = _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCActCast, args);
                     if (res == TriggerResult.True)
@@ -1550,9 +1551,24 @@ public static partial class Program
                     return new NpcAI.NpcCastDecision(false, newSpell, newTarget);
                 };
             if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCLookAtItem))
-                _npcAI.OnNpcLookAtItem = (npc, item) =>
-                    _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCLookAtItem,
-                        new TriggerArgs { CharSrc = npc, O1 = item, N1 = (int)item.Uid.Value }) == TriggerResult.True;
+                _npcAI.OnNpcLookAtItem = (npc, item, dist, want) =>
+                {
+                    // Source-X NPC_LookAtItem contract (CCharNPCAct.cpp:954):
+                    // ARGN1 = distance, ARGN2 = want-score (writable), ARGO =
+                    // the item. RETURN 1 = script took the item over, RETURN 0
+                    // = ignore it; otherwise ARGN2 reads back.
+                    var args = new TriggerArgs
+                    {
+                        CharSrc = npc, O1 = item, ItemSrc = item, N1 = dist, N2 = want
+                    };
+                    var res = _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCLookAtItem, args);
+                    return new NpcAI.NpcLookDecision(
+                        res == TriggerResult.True, res == TriggerResult.False, args.N2);
+                };
+            if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCAction))
+                _npcAI.OnNpcAction = npc =>
+                    _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCAction,
+                        new TriggerArgs { CharSrc = npc }) == TriggerResult.True;
 
             _npcAI.OnNpcSay = (npc, text) =>
             {
@@ -1581,6 +1597,13 @@ public static partial class Program
                         door.X, door.Y, door.Z, door.Hue), 0);
                 return true;
             };
+            // NPC_AI_EXTRA night detection + NPC_AI_MOVEOBSTACLES broadcast.
+            if (_weatherEngine != null)
+                _npcAI.GetLightLevel = _weatherEngine.GetLightLevel;
+            _npcAI.OnNpcMovedItem = (npc, item) =>
+                BroadcastNearby(item.Position, 18,
+                    new PacketWorldItem(item.Uid.Value, item.DispIdFull, item.Amount,
+                        item.X, item.Y, item.Z, item.Hue), 0);
             _npcAI.OnNpcFidget = npc =>
             {
                 var fidget = Random.Shared.Next(2) == 0

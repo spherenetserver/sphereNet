@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-03] - Housing wave H1b: house placement footprint validation
+----------------------------------------
+
+FIXED - House placement validation gaps (Source-X Multi_Create loop):
+  - NOBUILDING is now checked across the footprint plus a +5-tile margin
+    (previously only the single anchor point).
+  - A docked ship hull under the footprint blocks placement (new ship
+    engine hook); blocking ground items (ITEMDEF I_Block) reject cells.
+  - The living-character check was silently a no-op (a range-0 scan
+    returns nothing); it now works, with the GM pass-through the
+    reference has.
+
+================================================================================
 [2026-07-03] - Housing/ship wave H1: redeed cargo crate, REDEED teardown, placement overlap
 ----------------------------------------
 

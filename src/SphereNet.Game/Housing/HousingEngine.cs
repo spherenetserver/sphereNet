@@ -554,15 +554,31 @@ public sealed class HousingEngine
             _world.PlaceItemWithDecay(key, owner.Position);
     }
 
-    /// <summary>Check if a house can be placed at the given position.</summary>
+    /// <summary>Host hook: is another SHIP hull at this point? Wired to the
+    /// ship engine so house placement can't overlap a docked hull.</summary>
+    public Func<Point3D, bool>? IsShipAt { get; set; }
+
+    /// <summary>Check if a house can be placed at the given position
+    /// (Source-X CItemMulti::Multi_Create intensive loop).</summary>
     public bool CanPlaceHouse(Point3D position, MultiDef def)
     {
-        // Check for NOBUILDING region
-        var region = _world.FindRegion(position);
-        if (region != null && region.IsFlag(RegionFlag.NoBuild))
-            return false;
+        var md = _world.MapData;
 
-        // Check for existing structures in the footprint
+        // Source-X re-checks REGION_FLAG_NOBUILDING over the footprint plus a
+        // +5-tile margin (CItemMulti.cpp:3404-3429) — not just the anchor.
+        for (short mx = (short)(def.MinX - 5); mx <= def.MaxX + 5; mx++)
+        {
+            for (short my = (short)(def.MinY - 5); my <= def.MaxY + 5; my++)
+            {
+                var marginPos = new Point3D(
+                    (short)(position.X + mx), (short)(position.Y + my),
+                    position.Z, position.Map);
+                var region = _world.FindRegion(marginPos);
+                if (region != null && region.IsFlag(RegionFlag.NoBuild))
+                    return false;
+            }
+        }
+
         for (short dx = def.MinX; dx <= def.MaxX; dx++)
         {
             for (short dy = def.MinY; dy <= def.MaxY; dy++)
@@ -576,10 +592,12 @@ public sealed class HousingEngine
 
                 if (FindHouseAt(checkPos) != null)
                     return false;
+                // A docked ship hull blocks the footprint too.
+                if (IsShipAt != null && IsShipAt(checkPos))
+                    return false;
 
                 // Reject blocked terrain (water, mountains, impassable statics)
                 // in the footprint — a house can't sit on un-walkable ground.
-                var md = _world.MapData;
                 if (md != null && !md.IsPassable(checkPos.Map, checkPos.X, checkPos.Y, checkPos.Z))
                     return false;
 
@@ -593,9 +611,26 @@ public sealed class HousingEngine
                         return false;
                 }
 
-                foreach (var ch in _world.GetCharsInRange(checkPos, 0))
+                // Living chars block the cell — GM staff pass through
+                // (Source-X CItemMulti.cpp:3330). NOTE: range 1 + exact X/Y
+                // filter; the old GetCharsInRange(pos, 0) returned nothing,
+                // so the char check was silently a no-op.
+                foreach (var ch in _world.GetCharsInRange(checkPos, 1))
                 {
-                    if (!ch.IsDead) return false;
+                    if (ch.X != checkPos.X || ch.Y != checkPos.Y) continue;
+                    if (ch.IsDead || ch.PrivLevel >= PrivLevel.GM) continue;
+                    return false;
+                }
+
+                // Blocking loose items reject the cell (Source-X rejects
+                // CAN_I_BLOCK statics in the intensive loop).
+                foreach (var it in _world.GetItemsInRange(checkPos, 1))
+                {
+                    if (it.X != checkPos.X || it.Y != checkPos.Y) continue;
+                    if (it.IsDeleted || it.ContainedIn.IsValid) continue;
+                    var idef = Definitions.DefinitionLoader.GetItemDef(it.BaseId);
+                    if (idef != null && idef.Can.HasFlag(CanFlags.I_Block))
+                        return false;
                 }
             }
         }

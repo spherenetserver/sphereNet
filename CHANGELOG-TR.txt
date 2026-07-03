@@ -3,6 +3,19 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-03] - Housing dalgasi H1b: ev yerlestirme footprint dogrulamasi
+----------------------------------------
+
+DUZELTILDI - Ev yerlestirme dogrulama bosluklari (Source-X Multi_Create):
+  - NOBUILDING artik footprint + 5-tile marjda taranir (eskiden yalniz
+    tek anchor noktasi).
+  - Footprint altindaki demirli gemi govdesi yerlestirmeyi engeller (yeni
+    ship engine hook'u); yerdeki blocking item'lar (ITEMDEF I_Block)
+    hucreyi reddeder.
+  - Yasayan-karakter kontrolu sessizce calismiyordu (range-0 taramasi bos
+    doner); artik calisiyor ve referanstaki GM gecis muafiyeti eklendi.
+
+================================================================================
 [2026-07-03] - Housing/ship dalgasi H1: redeed kargo crate'i, REDEED teardown, yerlestirme cakismasi
 ----------------------------------------
 

@@ -62,6 +62,50 @@ public class HousingShipWaveH1Tests
             MakeShipRegistry().Get(0x4000)!));
     }
 
+    // ---- H1b: house placement footprint checks ----
+
+    [Fact]
+    public void HousePlacement_BlockedByLivingChar_ButGmPassesThrough()
+    {
+        var world = TestHarness.CreateWorld();
+        var multiRegistry = MakeShipRegistry(0x407C); // 1x1 footprint def
+        var housing = new HousingEngine(world, multiRegistry);
+        var def = multiRegistry.Get(0x407C)!;
+
+        var bystander = world.CreateCharacter();
+        bystander.MaxHits = 10; bystander.Hits = 10;
+        world.PlaceCharacter(bystander, new Point3D(300, 300, 0, 0));
+
+        // A living char in the footprint blocks placement — the old range-0
+        // scan returned nothing, so this check was silently a no-op.
+        Assert.False(housing.CanPlaceHouse(new Point3D(300, 300, 0, 0), def));
+
+        // GM staff pass through (Source-X CItemMulti.cpp:3330).
+        bystander.PrivLevel = Core.Enums.PrivLevel.GM;
+        Assert.True(housing.CanPlaceHouse(new Point3D(300, 300, 0, 0), def));
+    }
+
+    [Fact]
+    public void HousePlacement_BlockedByNoBuildMargin_AndByShipHull()
+    {
+        var world = TestHarness.CreateWorld();
+        var multiRegistry = MakeShipRegistry(0x407C);
+        var housing = new HousingEngine(world, multiRegistry);
+        var def = multiRegistry.Get(0x407C)!;
+
+        // NoBuild region 3 tiles away — inside the Source-X +5 margin.
+        var noBuild = new SphereNet.Game.World.Regions.Region
+        { Name = "nobuild_test", Flags = Core.Enums.RegionFlag.NoBuild, MapIndex = 0 };
+        noBuild.AddRect(303, 300, 305, 302);
+        world.AddRegion(noBuild);
+        Assert.False(housing.CanPlaceHouse(new Point3D(300, 300, 0, 0), def));
+
+        // A docked hull under the footprint blocks placement too.
+        housing.IsShipAt = pt => pt.X == 500 && pt.Y == 500;
+        Assert.False(housing.CanPlaceHouse(new Point3D(500, 500, 0, 0), def));
+        Assert.True(housing.CanPlaceHouse(new Point3D(600, 600, 0, 0), def));
+    }
+
     [Fact]
     public void RedeedFromScript_TearsDownRegistryAndRegion()
     {

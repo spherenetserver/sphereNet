@@ -912,8 +912,12 @@ public sealed class SpellEngine
         // swap so it credits the real aggressor.
         bool targetInnocentToCaster = !target.IsFlaggedAsCriminal &&
             caster.Memory_FindObjTypes(target.Uid, MemoryType.SawCrime | MemoryType.HarmedBy) == null;
+        // COMBAT_ATTACK_NOAGGREIVED skips the aggrieved-based criminal marking
+        // (Source-X OnAttackedBy is the single choke point for melee and
+        // spells alike; SphereNet gates both sites with the same flag).
         if (harmful && caster != target && caster.IsPlayer && target.IsPlayer &&
-            Character.AttackingIsACrimeEnabled && targetInnocentToCaster)
+            Character.AttackingIsACrimeEnabled && targetInnocentToCaster &&
+            (Character.CombatFlags & (int)Combat.CombatFlags.AttackNoAggreived) == 0)
             caster.MakeCriminal();
 
         if (harmful && caster != target && target.IsStatFlag(StatFlag.Reflection))

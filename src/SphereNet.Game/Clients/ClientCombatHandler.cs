@@ -713,6 +713,19 @@ public sealed class ClientCombatHandler
             }
         }
 
+        // COMBAT_NOPETDESERT (Source-X OnHarmedBy, CCharFight.cpp:312):
+        // attacking your own pet makes it desert you — unless the flag allows
+        // friendly fire. @PetDesert may still RETURN 1 to keep it serving.
+        if (!target.IsPlayer && target.OwnerSerial == _character.Uid &&
+            !CombatHelper.IsCombatFlagSet(CombatFlags.NoPetDesert))
+        {
+            if (Character.OnPetDesert == null || !Character.OnPetDesert(target, _character))
+            {
+                SysMessage(ServerMessages.GetFormatted("pet_gone_wild", target.Name));
+                target.ClearOwnership(clearFriends: false);
+            }
+        }
+
         // Region PvP enforcement
         if (target.IsPlayer && _character.IsPlayer)
         {
@@ -739,8 +752,12 @@ public sealed class ClientCombatHandler
             // prior guarded-region gate here let a player attack an innocent in the
             // wilderness with no grey flag, diverging from Source-X and from the
             // harmful-spell path, which already flags everywhere.
+            // COMBAT_ATTACK_NOAGGREIVED (old sphere, Source-X OnAttackedBy
+            // CCharFight.cpp:349): skips the aggrieved bookkeeping entirely,
+            // so starting a fight never marks the attacker criminal here.
             bool targetIsInnocent = GetNotoriety(target) == 1; // NOTO_GOOD
-            if (Character.AttackingIsACrimeEnabled && targetIsInnocent)
+            if (Character.AttackingIsACrimeEnabled && targetIsInnocent &&
+                !CombatHelper.IsCombatFlagSet(CombatFlags.AttackNoAggreived))
             {
                 _character.MakeCriminal();
             }

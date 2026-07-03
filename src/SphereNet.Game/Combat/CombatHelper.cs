@@ -63,8 +63,24 @@ public static class CombatHelper
                 return true;
         }
 
+        // Source-X Fight_CanHit ship gate (CCharFight.cpp:1725): combat across
+        // a ship boundary — one side aboard, the other not (different regions)
+        // — is blocked unless COMBAT_ALLOWHITFROMSHIP. Both on the SAME ship
+        // may always fight.
+        if (!IsCombatFlagSet(CombatFlags.AllowHitFromShip) && atkRegion != tgtRegion &&
+            ((atkRegion != null && atkRegion.IsFlag(RegionFlag.Ship)) ||
+             (tgtRegion != null && tgtRegion.IsFlag(RegionFlag.Ship))))
+            return true;
+
         return false;
     }
+
+    /// <summary>Source-X Cmd_Use_Obj self-dclick gate (CClientEvent.cpp:2368):
+    /// without COMBAT_DCLICKSELF_UNMOUNTS, a mounted char in war mode with an
+    /// active fight opens the paperdoll instead of accidentally dismounting.</summary>
+    public static bool DClickSelfKeepsMount(Character ch) =>
+        !IsCombatFlagSet(CombatFlags.DClickSelfUnmounts) &&
+        ch.IsInWarMode && ch.FightTarget.IsValid;
 
     /// <summary>COMBAT_FACECOMBAT: player must face target within ±1 direction.</summary>
     public static bool IsFacingTarget(Character attacker, Character target)

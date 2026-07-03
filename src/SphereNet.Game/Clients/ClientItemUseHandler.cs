@@ -118,6 +118,14 @@ public sealed class ClientItemUseHandler
             // If mounted, dismount on self-dclick
             if (_character.IsMounted && _mountEngine != null)
             {
+                // COMBAT_DCLICKSELF_UNMOUNTS gate: mid-fight the paperdoll
+                // opens instead, so a war-mode dclick can't accidentally
+                // dismount — unless the flag opts into the unmount.
+                if (SphereNet.Game.Combat.CombatHelper.DClickSelfKeepsMount(_character))
+                {
+                    SendPaperdoll(_character);
+                    return;
+                }
                 uint oldMountItemUid = _character.GetEquippedItem(Layer.Horse)?.Uid.Value ?? 0;
                 BroadcastNearby?.Invoke(_character.Position, UpdateRange,
                     new PacketSound(0x0140, _character.X, _character.Y, _character.Z), 0);

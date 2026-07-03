@@ -626,7 +626,19 @@ public static partial class Program
         Character.SnoopCriminalEnabled            = _config.SnoopCriminal;
         Character.ReagentsRequiredEnabled  = _config.ReagentsRequired;
         Character.SpellbookRequiredEnabled = _config.SpellbookRequired;
-        Character.CombatFlags              = _config.CombatFlags;
+        // Source-X CServerConfig RC_COMBATFLAGS normalize: PREHIT and
+        // SWING_NORANGE cannot coexist — SWING_NORANGE is turned off with a
+        // warning. The runtime already treats PREHIT as dominant; clearing the
+        // bit here keeps flag read-backs consistent with the behavior.
+        int combatFlags = _config.CombatFlags;
+        const int prehitAndNoRange =
+            (int)(SphereNet.Game.Combat.CombatFlags.PreHit | SphereNet.Game.Combat.CombatFlags.SwingNoRange);
+        if ((combatFlags & prehitAndNoRange) == prehitAndNoRange)
+        {
+            combatFlags &= ~(int)SphereNet.Game.Combat.CombatFlags.SwingNoRange;
+            _log.LogWarning("CombatFlags: COMBAT_PREHIT and COMBAT_SWING_NORANGE cannot coexist. Turning off COMBAT_SWING_NORANGE.");
+        }
+        Character.CombatFlags              = combatFlags;
         Character.CombatDamageEra          = _config.CombatDamageEra;
         Character.CombatHitChanceEra       = _config.CombatHitChanceEra;
         Character.CombatSpeedEra           = _config.CombatSpeedEra;

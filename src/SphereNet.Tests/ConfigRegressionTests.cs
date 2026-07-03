@@ -45,6 +45,9 @@ public class ConfigRegressionTests
             ColorInvisSpell=04002
             ColorHidden=04003
             PetsInheritNotoriety=07a
+            ChatFlags=0x10
+            GenericSounds=0
+            HearAll=1
             """);
 
         try
@@ -89,6 +92,9 @@ public class ConfigRegressionTests
             Assert.Equal(0x4002, config.ColorInvisSpell);
             Assert.Equal(0x4003, config.ColorHidden);
             Assert.Equal(0x07A, config.PetsInheritNotoriety);
+            Assert.Equal(0x10, config.ChatFlags);
+            Assert.False(config.GenericSounds);
+            Assert.True((config.LogMask & SphereConfig.LogMaskPlayerSpeak) != 0);
         }
         finally
         {

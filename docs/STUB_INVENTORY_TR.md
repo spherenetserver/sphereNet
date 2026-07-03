@@ -4,12 +4,12 @@ Bu doküman, kodda **tanımlı görünüp fiilen çalışmayan** veya **yalnızc
 
 **Not — terminoloji:** Metinde *oyun karakteri* için `Character` sınıfı (`Character.cs`) kullanılır. Türkçe *karakter* kelimesi yazı kodlaması (UTF-8) anlamında değildir; bu dosya UTF-8 ile kaydedilmiştir.
 
-İlgili test guardrail: `src/SphereNet.Tests/TriggerCoverageGuardrailTests.cs`  
+İlgili test guardrail: `src/SphereNet.Tests/TriggerCoverageGuardrailTests.cs`, `src/SphereNet.Tests/SourceXVerbInventoryGuardrailTests.cs`
 Ses/görüntü/hareket parity: `docs/SOUND_VISUAL_MOVEMENT_PARITY_TR.md`
 
-Son güncelleme: 2026-06-30
+Son güncelleme: 2026-07-03
 
-Güncel doğrulama: `dotnet test .\src\SphereNet.Tests\SphereNet.Tests.csproj --nologo` -> 1011/1011 başarılı.
+Güncel doğrulama: `dotnet test .\sphereNet.sln --nologo` -> 1122/1122 başarılı.
 
 Güncel kısa durum: `SERV.*`, arbitrary verb fallback ve `RETURN/ARGS/ARGN/ARGO/LOCAL` altyapısı temel olarak çalışıyor; bunlar "yok" kabul edilmemelidir. Kalan açıklar daha çok Source-X server/admin verb uzun kuyruğu, bazı indeksli server property erişimleri ve az sayıda altyapı gerektiren trigger'dır.
 
@@ -122,9 +122,9 @@ Dosya: `GameClient.ScriptConsole.cs`, `Program.Scripting.cs`
 | `DIALOGCLOSE` | ✅ Açık dialog kaydı (`_openScriptDialogs`) + `0xBF 0x04` close gump |
 | `ISDIALOGOPEN.*` | ✅ Gerçek değer (kayıttan) |
 | Yakalanmayan `SERV.*` | Compat-safe: fiil başına bir kez warning log, sonrası debug; GM çağırana SysMessage. Bu crash'i önler ama Source-X fiilinin davranışını uygulamış sayılmaz. |
-| `SERV.CHATFLAGS` | Sabit `"0"` |
+| `SERV.CHATFLAGS` | W-I1: `sphere.ini` -> `SphereConfig.ChatFlags` -> `SERV.CHATFLAGS`; artık sabit değil |
 | `SERV.ACCOUNT.n` (sayısal) | `"0"` |
-| `DEFMSG name=value` | Kısmi: setter bridge var ama runtime message override/persist semantiği henüz tamam değil |
+| `DEFMSG name=value` | W-I1: runtime override artık `ServerMessages` katmanına yazar ve `DEFMSG.*` lookup tarafından okunur; persist semantiği açık |
 | `SERV.*` admin uzun kuyruğu | Kısmi: `SAVE`/`RESYNC`/`SHUTDOWN` ve yaygın bridge'ler var; `EXPORT`/`IMPORT`/`RESTORE`/`VARLIST` vb. Source-X maintenance fiilleri takip işi |
 
 ### Çalışan örnekler
@@ -181,7 +181,7 @@ Hareket ack/reject, savaş, çoğu skill handler, party, secure trade, gemi, sta
 |------|--------|
 | Custom housing UI | ✅ House sign gump "Customize House" → `CustomHousingEngine` oturumu; 0xD7 komutları + 0xD8 stream + DESIGN_n tag persistence. Custom foundation deed ve commit sonrası sanal yürüme geometrisi bağlı; fiziksel component rebuild bilinçli olarak kullanılmıyor. |
 | Guild/ittifak kanal | ✅ `OnChannelMessage(speaker, recipient, text, mode)` EngineWiring'de subscribe; karşılıklı ittifak (mutual ally) filtresiyle |
-| Global/legacy chat | ✅ **Conference chat uygulandı (2026-06-10):** `ChatEngine` (kanallar/üyelik), 0xB3 talk/join/create/leave, 0xB2 giden mesajlar (ClassicUO parser'ına karşı doğrulandı), 0xB5 açılışta kanal listesi + otomatik isim kabulü. Kalan: 0xB2 legacy text-in (çok eski clientlar) ve `CHATFLAGS` ini ayrıntıları — bilinçli erteleme |
+| Global/legacy chat | ✅ **Conference chat uygulandı (2026-06-10):** `ChatEngine` (kanallar/üyelik), 0xB3 talk/join/create/leave, 0xB2 giden mesajlar (ClassicUO parser'ına karşı doğrulandı), 0xB5 açılışta kanal listesi + otomatik isim kabulü. W-I1 ile `SERV.CHATFLAGS` config değeri görünür oldu. Kalan: 0xB2 legacy text-in (çok eski clientlar) ve flag'lerin tüm davranış etkileri — bilinçli erteleme |
 | In-client web | ✅ 0xA5 `PacketWebLink` + `WEBLINK` verb |
 | Help stuck/page | ✅ Stuck güvenli noktaya taşır (jail/combat reddi), page `.PAGE` yoluna bağlı, page list gump'ı |
 | XP / level | ✅ `Character.ChangeExperience` pipeline: `@ExpChange` (ARGN1 ayarlanabilir/iptal), level eşiğinde `@ExpLevelChange`; NPC kill'de kurbanın EXP'i ödül; `LevelNextAt`/`LevelModeDouble` ayarları |
@@ -189,7 +189,7 @@ Hareket ack/reject, savaş, çoğu skill handler, party, secure trade, gemi, sta
 | Region ışık | ✅ Region geçişinde `PacketGlobalLight` + sessiz `PacketSeason` + bölgesel `PacketWeather`; `@EnvironChange` de yeni ışık seviyesini alır |
 | Sector ambient ses | Source-X `CSector` rüzgar sesi yok (bilinçli erteleme — kozmetik) |
 | Item drop sesi | ✅ `GetDropSound`: altın için miktara göre 0x2E4-0x2E6, diğerleri 0x42 |
-| `GenericSounds` | `sphere.ini` karşılığı yok |
+| `GenericSounds` | W-I1: `sphere.ini` karşılığı var ve `SERV.GENERICSOUNDS` olarak görünür; body/action bazlı generic sound table paritesi ayrı ses işi |
 
 ---
 
@@ -251,7 +251,7 @@ Kaynak: `TriggerCoverageGuardrailTests.cs`
 8. ~~Custom housing devamı: foundation yerleştirme deed'i, commit edilen tasarımın sunucu yürüme geometrisi~~ ✅ (2026-06-09)
 9. Kalan P2 trigger'lar: `UserMailBag`, `NPCSeeWantItem`, item `Level`/`Complete` ve candle trigger'ları.
 10. Global/legacy chat (0xB2 text-in / 0xF9) — bilinçli erteleme; talep olursa ayrı dalga
-11. `SERV.*` admin/maintenance uzun kuyruğu: `VARLIST`, `PRINTLISTS`, `CLEARLISTS`, `EXPORT`, `IMPORT`, `RESTORE`, `SAVESTATICS`, `SECURE`, `SHRINKMEM`, `INFORMATION`, `LOAD`, `GARBAGE`, indeksli `SERV.ACCOUNT.n`.
+11. `SERV.*` admin/maintenance uzun kuyruğu: native `SAVESTATICS` map çıktısı, script-safe `BLOCKIP`/`UNBLOCKIP`, `CALCCRYPT`, `CONSOLE` ve güvenlik yüzeyi yüksek admin komutları.
 
 ---
 

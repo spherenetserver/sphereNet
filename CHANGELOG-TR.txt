@@ -2,6 +2,25 @@
  SphereNet Changelog (Turkce)
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
+
+[2026-07-03] - Parite dalgasi W-I1: Source-X envanter guardrail'i, HEARALL/DEFMSG/config
+----------------------------------------
+
+EKLENDI - Source-X verb/function envanteri CI guardrail'i:
+  - CObjBase/CChar/CItem/CClient function tablolarini ve CServer::sm_szVerbKeys
+    listesini Source-X referansindan okuyup pinleyen SourceXVerbInventoryGuardrailTests
+    eklendi. Yeni upstream yuzey veya backlog drift'i artik testte gorunur.
+
+DUZELTILDI - SERV.HEARALL / SERV.CHATFLAGS / SERV.GENERICSOUNDS:
+  - CHATFLAGS ve GENERICSOUNDS sphere.ini -> SphereConfig yoluna baglandi.
+  - SERV.HEARALL Source-X LOGM_PLAYER_SPEAK bitini okur/toggle eder; script
+    komutu SERV.HEARALL [0|1] artik server resolver'a gider.
+
+DUZELTILDI - DEFMSG runtime override:
+  - DEFMSG name=value artik ServerMessages override katmanina yazar.
+  - DEFMSG.* lookup runtime override'i gorur. Kalici save/load semantigi ayri
+    parite isi olarak kalir.
+
 ================================================================================
 
 [2026-07-02] - Smoke test düzeltmeleri: web status kilidi, CWD yol çözümü, T2A harita sınırı

@@ -18,8 +18,9 @@ concrete gaps instead of guesses.
 | **NotApplicable** | Source-X feature with no meaning in SphereNet's design. |
 
 Each phase should keep this table in sync and ideally back it with a guardrail test
-(see `ParityMatrixServTests` for the SERV list/var primitives, and
-`TriggerCoverageGuardrailTests` for the trigger surface).
+(see `ParityMatrixServTests` for the SERV list/var primitives,
+`SourceXVerbInventoryGuardrailTests` for the Source-X function/verb inventory,
+and `TriggerCoverageGuardrailTests` for the trigger surface).
 
 ---
 
@@ -42,12 +43,15 @@ Dispatch: script reads route through `Program.ResolveServerProperty`
 | `INFORMATION` | Implemented | `HandleServInformationToCaller` (`_INFORMATION=` protocol) | W-E — status lines to the invoking client's console (log fallback). |
 | `GARBAGE` | Implemented | `HandleServGarbage` (`_GARBAGE=`) | W-E — GC pass from scripts; the FixWeirdness world-integrity sweep is still open (hedef 12.4). |
 | `B` / `BROADCAST` | Implemented | `HandleServBroadcast` (`_BROADCAST=`) | W-E — was console-only; `serv.b` from scripts was a silent no-op. |
-| `SHRINKMEM` | Partial | (≈ `GARBAGE`) | No dedicated script/console verb; GC reachable via `GARBAGE`. |
+| `SHRINKMEM` | Implemented | `HandleServShrinkMem` (`_SHRINKMEM=`) | W-H3 — dedicated Source-X bridge mapped to compacting managed GC. |
+| `HEARALL` | Implemented | `HandleServHearAll` (`_HEARALL=`) | W-I1 — exposes/toggles the `LOGM_PLAYER_SPEAK` bit (`0x002000`); `<SERV.HEARALL>` reads current state. |
+| `CHATFLAGS` | Implemented | `SphereConfig.ChatFlags` / `ResolveServerProperty` | W-I1 — loaded from `sphere.ini` and exposed through `SERV.CHATFLAGS`. |
+| `GENERICSOUNDS` | Implemented | `SphereConfig.GenericSounds` / `ResolveServerProperty` | W-I1 — loaded from `sphere.ini` and exposed through `SERV.GENERICSOUNDS`; deeper generic sound table parity remains a sound-system task. |
 | `BLOCKIP` / `UNBLOCKIP` | Partial | `AdminCommandProcessor` | Admin console only — not exposed to scripts (intentional: security surface). |
 | `EXPORT` / `IMPORT` / `RESTORE` | Partial | `HandleServExport` / `HandleServImport` / `HandleServLoad` / `HandleServRestore` | Wave 213-217 — text `.scp` object/world export and non-destructive runtime import are wired under `WorldSaveDir`; `RESTORE` pre-replaces colliding world serials with rollback snapshot hardening; `EXPORT`/`IMPORT file, flags, distance` support Source-X-style object-centered scope filtering. |
 | `SAVESTATICS` | Partial | `HandleServSaveStatics` → `WorldSaver.ExportStatics` | Wave 213/215 — exports `ATTR_STATIC` world items to text `.scp`; no-arg calls write `spherestatics.scp`, and saver-level scoped statics are available. Native static-map file generation remains a later slice. |
 | `LOAD` | Implemented | `HandleServLoad` → `WorldLoader.LoadFile` | Wave 213 — loads one `.scp`/save-format file at runtime with two-pass item/char parsing and container/equipment relinking. |
-| `SECURE` | Missing | — | Server console security toggle. |
+| `SECURE` | Implemented | `HandleServSecure` (`_SECUREMODE=`) | W-H3 — toggles secure mode and blocks script/console `SHUTDOWN` while enabled. |
 
 ### Already-implemented SERV.* surface (not on the Faz-1 list)
 
@@ -90,7 +94,7 @@ Per-trigger **arg contract** (`SRC`, `ARGO`, `ACT`, `ARGN1/2/3`, `ARGS`, `LOCAL`
 | `@SpellEffect` on the affected char + LOCAL contract | Implemented | W-C — fires on the target with SRC = caster, ARGN2 = skill level, LOCAL.Effect/Resist/Duration seeded & read back; per-spell `[SPELL] @EFFECT` runs per-target. Was caster-only with N1 alone. |
 | `@SpellCast` ARGN2/ARGN3 | Implemented | W-C — difficulty + writable cast wait (tenths). Open: WOP locals. |
 | `[SKILL n]` section stages (`Skill_OnTrigger`) | Implemented | W-E — `FireSkillTrigger` runs the resource-section stage alongside every char `@Skill*` trigger; those ON= blocks never executed before. |
-| `[SPELL]` section stages beyond Effect/Success/Fail | Missing | `@START/@SELECT/@TARGETCANCEL/@EFFECTADD/@EFFECTREMOVE/@EFFECTTICK` (hedef 1.10). |
+| `[SPELL]` section stages beyond Effect/Success/Fail | Implemented | W-H1/W-H3 covered `@Start`, `@Select`, `@TargetCancel`, `@EffectAdd`, `@EffectRemove`, and `@EffectTick`. |
 | Firing tests: `TriggerArgParityTests`, `ParityWaveA-ETests` | — | ARGN seed + mutation round-trip; per-wave contract fixtures. |
 
 ## Persistence (Faz 4)

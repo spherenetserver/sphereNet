@@ -310,6 +310,7 @@ public sealed class SphereConfig
     public string SentryDsn { get; set; } = "";
 
     // Logging
+    public const int LogMaskPlayerSpeak = 0x002000;
     public int LogMask { get; set; } = 0x03F00;
     public bool DebugPackets { get; set; }
     public bool ScriptDebug { get; set; }
@@ -337,6 +338,10 @@ public sealed class SphereConfig
     public string DebugPacketOpcodes { get; set; } = "";
     public string CommandPrefix { get; set; } = ".";
     public int DefaultCommandLevel { get; set; }
+
+    // Chat / sound compatibility flags
+    public int ChatFlags { get; set; }
+    public bool GenericSounds { get; set; } = true;
 
     // Source-X style MySQL settings (legacy single-connection)
     public int MySQL { get; set; }
@@ -602,6 +607,12 @@ public sealed class SphereConfig
         DebugPacketOpcodes = ini.GetValue(section, "DebugPacketOpcodes") ?? DebugPacketOpcodes;
         CommandPrefix = ini.GetValue(section, "CommandPrefix") ?? CommandPrefix;
         DefaultCommandLevel = ini.GetInt(section, "DefaultCommandLevel", DefaultCommandLevel);
+        ChatFlags = ini.GetInt(section, "ChatFlags", ChatFlags);
+        GenericSounds = ini.GetBool(section, "GenericSounds", GenericSounds);
+        if (ini.GetBool(section, "HearAll", (LogMask & LogMaskPlayerSpeak) != 0))
+            LogMask |= LogMaskPlayerSpeak;
+        else
+            LogMask &= ~LogMaskPlayerSpeak;
         MySQL = ini.GetInt(section, "MySQL", MySQL);
         MySQLHost = ini.GetValue(section, "MySQLHost") ?? MySQLHost;
         MySQLUser = ini.GetValue(section, "MySQLUser") ?? MySQLUser;

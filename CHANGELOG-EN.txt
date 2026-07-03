@@ -4,6 +4,27 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-03] - Parity wave W-I1: Source-X inventory guardrail, HEARALL/DEFMSG/config
+----------------------------------------
+
+ADDED - Source-X verb/function inventory CI guardrail:
+  - Added SourceXVerbInventoryGuardrailTests, which pins the Source-X
+    CObjBase/CChar/CItem/CClient function tables and CServer::sm_szVerbKeys.
+    New upstream surface or backlog drift now shows up in tests.
+
+FIXED - SERV.HEARALL / SERV.CHATFLAGS / SERV.GENERICSOUNDS:
+  - CHATFLAGS and GENERICSOUNDS are now loaded from sphere.ini into
+    SphereConfig and exposed through SERV.CHATFLAGS / SERV.GENERICSOUNDS.
+  - SERV.HEARALL reads/toggles the Source-X LOGM_PLAYER_SPEAK bit; the
+    script command SERV.HEARALL [0|1] now routes through the server resolver.
+
+FIXED - DEFMSG runtime override:
+  - DEFMSG name=value now writes to the ServerMessages override layer.
+  - DEFMSG.* lookup sees runtime overrides. Persistent save/load semantics
+    remain a separate parity task.
+
+================================================================================
+
 [2026-07-02] - Smoke test fixes: web status deadlock, CWD path resolution, T2A map bound
 ----------------------------------------
 A headless boot smoke test with the real mortechUO script pack (554 .scp)

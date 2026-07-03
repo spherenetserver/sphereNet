@@ -4,7 +4,7 @@ This matrix tracks compatibility work by the same categories used for project
 scoring. Every non-covered item names either a regression test to add/extend or
 an explicit deferred reason so the backlog does not turn into folklore.
 
-Current verification snapshot (2026-06-30): `dotnet test .\src\SphereNet.Tests\SphereNet.Tests.csproj --nologo` passes 1011/1011 tests. The current overall Source-X parity estimate is about 7.8/10; the 9.x execution plan is tracked in [PARITY_ROADMAP_TR.md](PARITY_ROADMAP_TR.md).
+Current verification snapshot (2026-07-03): `dotnet test .\sphereNet.sln --nologo` passes 1122/1122 tests. The current overall Source-X parity estimate is about 8.8/10; the remaining 9.x work is concentrated in ship/statics packet fidelity, native statics output, client/admin verb long tail, and a few infrastructure-gated triggers.
 
 Important terminology note: `SERV.*`, arbitrary verb fallback, and trigger return/argument propagation are not missing as core systems. They are implemented for the common runtime paths. Remaining gaps are mostly the long-tail Source-X server/admin verbs and a few exact context/VarObj edge cases.
 
@@ -23,11 +23,12 @@ Important terminology note: `SERV.*`, arbitrary verb fallback, and trigger retur
 | Expression float pipeline | Covered | `ExpressionRegressionTests`, `ScriptObjectParityTests` | `FEVAL`, `FLOATVAL`, `FHVAL`, `FVAL`, leading-zero hex and local `FLOAT.*` are covered. |
 | String helper functions | Covered | `ExpressionRegressionTests` | `STRREPLACE`, `STRJOIN`, safe regex, `ISOBSCENE=0` compatibility fallback. |
 | `LOCAL.*`, `DLOCAL.*`, `REFn.*` | Covered | `ScriptObjectParityTests` | Scope locals, decimal-forced locals, ref property reads and ref command bridge are covered. |
+| Source-X verb inventory guardrail | Covered | `SourceXVerbInventoryGuardrailTests` | Pins upstream `CObjBase`/`CChar`/`CItem`/`CClient` function tables and `CServer::sm_szVerbKeys` so new Source-X surface or backlog drift becomes visible in CI. |
 | `SERV.*`, `UID.*` common runtime paths | Covered | `ScriptObjectParityTests`, `GameSystemTests` | Server property reads, direct UID reads/dispatch, `SERV.ALLCLIENTS`, `SERV.WRITEFILE`, `SERV.LOG`, `SERV.GMPAGE`, `SERV.NEWITEM`, `SERV.NEWDUPE`, `SERV.SEASON`, `SAVE`/`RESYNC`/`SHUTDOWN` bridge and account/char/item/map/skill lookups are covered. |
 | Arbitrary verb / function fallback | Covered | `GameSystemTests`, `ScriptObjectParityTests` | Unknown script commands fall through to named `[FUNCTION]` calls; the same pattern exists for `SRC.` commands after property/verb/script-command dispatch. |
 | Trigger return/argument propagation | Covered | `TriggerCoverageGuardrailTests`, `GameSystemTests`, focused parity tests | `RETURN`, `ARGS`, `ARGV`, `ARGN1/2/3`, `ARGO`, `ACT`, shared `LOCAL.*`, and ARGN copy-back through chained trigger blocks are covered. |
-| Source-X server/admin verb long tail | Partial | Extend `ScriptObjectParityTests` and admin command integration tests | `CServer::r_Verb` contains additional maintenance verbs such as `VARLIST`, `PRINTLISTS`, `CLEARLISTS`, `EXPORT`, `IMPORT`, `RESTORE`, `SAVESTATICS`, `SECURE`, `SHRINKMEM`, `INFORMATION`, `LOAD`, `GARBAGE`, full `BLOCKIP`/`UNBLOCKIP`, indexed `SERV.ACCOUNT.n`, and richer `RESPAWN`/`RESTOCK` script entry points. |
-| `DEFMSG` runtime override | Partial | Add `ScriptObjectParityTests` coverage | `DEFMSG.*` reads exist, but `DEFMSG name=value` still needs persistent runtime override semantics. |
+| Source-X server/admin verb long tail | Partial | `SourceXVerbInventoryGuardrailTests`, `ParityMatrixServTests`, `ParityWaveI1Tests` | `VARLIST`, `PRINTLISTS`, `CLEARLISTS`, `EXPORT`, `IMPORT`, `RESTORE`, `SECURE`, `SHRINKMEM`, `INFORMATION`, `LOAD`, `GARBAGE`, indexed `SERV.ACCOUNT.n`, `CHATFLAGS`, `GENERICSOUNDS`, and `HEARALL` are now accounted for. Remaining long tail: native `SAVESTATICS` map output, script-safe `BLOCKIP`/`UNBLOCKIP`, `CALCCRYPT`, and console/security-sensitive admin operations. |
+| `DEFMSG` runtime override | Partial | `ParityWaveI1Tests`, `ServerMessagesTests` | `DEFMSG.*` reads and `DEFMSG name=value` runtime override now flow through `ServerMessages`. Persistent save/load of runtime changes is still open. |
 | `HOUSE.n` script API | Covered | `HousingEconomyTests` | Owned-house indexing, owner/co-owner/friend/ban lists, lockdown/secure predicates and decay stages are covered. |
 | Duplicate spell definition model | Covered | `DefinitionAndSpellRegressionTests` | Runtime uses `SphereNet.Game.Magic.SpellDef`; obsolete scripting duplicate was removed. |
 

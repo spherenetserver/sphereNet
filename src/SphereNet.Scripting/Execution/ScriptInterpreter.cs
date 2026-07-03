@@ -661,6 +661,13 @@ public sealed class ScriptInterpreter
             return;
         }
 
+        // SERV.HEARALL toggles player-speech logging through the server resolver.
+        if (cmd.Equals("SERV.HEARALL", StringComparison.OrdinalIgnoreCase))
+        {
+            ServerPropertyResolver?.Invoke($"_HEARALL={resolvedArg}");
+            return;
+        }
+
         // SERV.INFORMATION — server status lines to the caller's console
         // (same caller-routing protocol as SERV.VARLIST).
         if (cmd.Equals("SERV.INFORMATION", StringComparison.OrdinalIgnoreCase))

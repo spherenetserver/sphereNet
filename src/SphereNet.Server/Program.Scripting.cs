@@ -94,7 +94,7 @@ public static partial class Program
             "REGEN3" => (_config?.RegenFood ?? 86400).ToString(),
 
             // --- Misc ---
-            "HEARALL" => "0",
+            "HEARALL" => IsHearAllEnabled() ? "1" : "0",
             "GMPAGES" => _scriptGmPages.Count.ToString(),
             "GUILDS" => "0",
             "AGE" => ((int)(DateTime.UtcNow - _serverStartTime).TotalDays).ToString(),
@@ -105,9 +105,8 @@ public static partial class Program
             "SEASONMODE" => (_weatherEngine?.CurrentSeasonMode ?? SeasonMode.Auto).ToString(),
             "FEATURETOL" => (_config?.FeatureTOL ?? 0).ToString(),
             "FEATURET2A" => (_config?.FeatureT2A ?? 0).ToString(),
-            // Chat system flags are script-visible even when chat is disabled.
-            // Return 0 until a fuller chat subsystem is wired.
-            "CHATFLAGS" => "0",
+            "CHATFLAGS" => (_config?.ChatFlags ?? 0).ToString(),
+            "GENERICSOUNDS" => (_config?.GenericSounds == false ? "0" : "1"),
 
             // --- Reference lookups via SERV.xxx ---
             "LASTNEWITEM" => _world?.LastNewItem.Value.ToString() ?? "0",
@@ -210,6 +209,7 @@ public static partial class Program
             _ when upper.StartsWith("_INFORMATION=") => HandleServInformationToCaller(property[13..]),
             _ when upper.StartsWith("_SHRINKMEM") => HandleServShrinkMem(),
             _ when upper.StartsWith("_SECUREMODE") => HandleServSecure(),
+            _ when upper.StartsWith("_HEARALL=") => HandleServHearAll(property[9..]),
             _ when upper.StartsWith("_EXPORT=") => HandleServExport(property[8..]),
             _ when upper.StartsWith("_LOAD=") => HandleServLoad(property[6..]),
             _ when upper.StartsWith("_IMPORT=") => HandleServImport(property[8..]),
@@ -235,6 +235,7 @@ public static partial class Program
             "VARLIST" => HandleServVarList(""),
             _ when upper.StartsWith("VARLIST ") => HandleServVarList(property[8..]),
             "PRINTLISTS" => HandleServPrintLists(),
+            _ when upper.StartsWith("HEARALL ") => HandleServHearAll(property[8..]),
             _ when upper.StartsWith("EXPORT ") => HandleServExport("0|" + property[7..]),
             _ when upper.StartsWith("LOAD ") => HandleServLoad(property[5..]),
             _ when upper.StartsWith("IMPORT ") => HandleServImport("0|" + property[7..]),
@@ -550,9 +551,24 @@ public static partial class Program
 
     private static string? ResolveDefMsg(string msgName)
     {
+        string key = NormalizeDefMsgKey(msgName);
+        if (ServerMessages.HasKey(key))
+            return ServerMessages.Get(key);
         if (_resources != null && _resources.TryGetDefMessage(msgName, out string defMsg))
             return defMsg;
-        return "";
+        if (_resources != null && _resources.TryGetDefMessage(key, out defMsg))
+            return defMsg;
+        return ServerMessages.Get(key);
+    }
+
+    private static string NormalizeDefMsgKey(string raw)
+    {
+        string key = (raw ?? "").Trim();
+        if (key.StartsWith("DEFMSG.", StringComparison.OrdinalIgnoreCase))
+            key = key[7..];
+        if (key.StartsWith("DEFMSG_", StringComparison.OrdinalIgnoreCase))
+            key = key[7..];
+        return key.Trim().ToLowerInvariant();
     }
 
     private static string? ResolveDefValue(string defName, bool decimalNumeric)
@@ -701,8 +717,49 @@ public static partial class Program
 
     private static string? HandleSetDefMsg(string assignment)
     {
-        // DEFMSG name=value — we just log it, no persistent message override in our impl yet
+        int eq = assignment.IndexOf('=');
+        if (eq <= 0)
+            return "";
+
+        string key = NormalizeDefMsgKey(assignment[..eq]);
+        string value = assignment[(eq + 1)..].Trim();
+        if (key.Length == 0)
+            return "";
+
+        ServerMessages.SetOverride(key, value);
+        _log?.LogInformation("[script] DEFMSG.{Key} overridden at runtime", key);
         return "";
+    }
+
+    private static bool IsHearAllEnabled()
+        => _config != null && (_config.LogMask & SphereConfig.LogMaskPlayerSpeak) != 0;
+
+    private static string HandleServHearAll(string arg)
+    {
+        if (_config == null)
+            return "0";
+
+        string trimmed = (arg ?? "").Trim();
+        bool enabled = IsHearAllEnabled();
+        if (trimmed.Length == 0)
+        {
+            enabled = !enabled;
+        }
+        else
+        {
+            enabled = !(trimmed == "0" ||
+                        trimmed.Equals("false", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.Equals("off", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.Equals("no", StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (enabled)
+            _config.LogMask |= SphereConfig.LogMaskPlayerSpeak;
+        else
+            _config.LogMask &= ~SphereConfig.LogMaskPlayerSpeak;
+
+        _log?.LogInformation("[script] SERV.HEARALL - {State}", enabled ? "ON" : "OFF");
+        return enabled ? "1" : "0";
     }
 
     /// <summary>Get property from object referenced by UID. Format: "uidHex|property"</summary>

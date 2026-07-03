@@ -40,6 +40,11 @@ public sealed class DeathEngine
     /// mount engine + appearance broadcasts; null in bare test setups.</summary>
     public Action<Character>? DismountHook { get; set; }
 
+    /// <summary>Host hook: cancel any open secure trade the victim is part of
+    /// (Source-X CChar::Death Trade_Delete) — otherwise the trade contents
+    /// bypass the corpse loot drop and the partner keeps a stale window.</summary>
+    public Action<Character>? CancelTradesHook { get; set; }
+
     public DeathEngine(GameWorld world)
     {
         _world = world;
@@ -86,8 +91,23 @@ public sealed class DeathEngine
             skipKillerCredit = TriggerDispatcher.FireCharTrigger(effectiveKiller, CharTrigger.Kill,
                 new TriggerArgs { CharSrc = effectiveKiller, O1 = victim, N1 = victim.Attackers.Count }) == TriggerResult.True;
 
+        // Sleeping is cleared by Kill() below (Source-X clears it before
+        // MakeCorpse too) — capture it first for the corpse forensics stamp.
+        bool wasSleeping = victim.IsStatFlag(StatFlag.Sleeping);
+
         // Kill the character
         victim.Kill();
+
+        // Source-X CChar::Death deletes any open trade window before the
+        // corpse forms; the trade items return to the pack and so reach the
+        // corpse with the rest of the loot.
+        CancelTradesHook?.Invoke(victim);
+
+        // Source-X CChar::Death clears the victim's FIGHT / HARMEDBY
+        // memories — the ghost holds no grudges (and no self-defence
+        // rights) from the fight that killed it.
+        foreach (var mem in new List<Item>(victim.Memories))
+            victim.Memory_ClearTypes(mem, MemoryType.Fight | MemoryType.HarmedBy);
 
         // Source-X CChar::Death order: the rider leaves the saddle before the
         // corpse is made — otherwise the mount-layer item is snapshotted into
@@ -126,6 +146,20 @@ public sealed class DeathEngine
             MarkMurderers(victim, effectiveKiller);
         }
 
+        int deathFlags = GetDeathFlags(victim);
+
+        // Source-X CChar::Death player penalties (CCharAct.cpp:4443-4470):
+        // a tenth of the experience is lost (min 1), a tenth of the fame
+        // unless DEATHFLAGS & DEATH_NOFAMECHANGE (0x01), and the deaths
+        // counter increments.
+        if (victim.IsPlayer)
+        {
+            victim.ChangeExperience(-Math.Max(1, victim.Exp / 10));
+            if ((deathFlags & 0x01) == 0)
+                ApplyFame(victim, -(victim.Fame / 10));
+            victim.Deaths = (short)Math.Min(victim.Deaths + 1, short.MaxValue);
+        }
+
         // Source-X CChar::Death order is critical for players:
         //   1) MakeCorpse  (corpse.Amount = current/original body ID)
         //   2) Broadcast PacketDeath (0xAF) to nearby
@@ -138,7 +172,6 @@ public sealed class DeathEngine
         // exactly this.
         // Source-X MakeCorpse: summoned creatures and a DEATH_NOCORPSE flag leave
         // no corpse — they simply vanish (DeleteObject refreshes nearby clients).
-        int deathFlags = GetDeathFlags(victim);
         if (ShouldLeaveNoCorpse(victim, deathFlags))
         {
             if (!victim.IsPlayer && !victim.IsBonded)
@@ -149,7 +182,7 @@ public sealed class DeathEngine
             return null;
         }
 
-        var corpse = CreateCorpse(victim);
+        var corpse = CreateCorpse(victim, wasSleeping);
         corpse.SetTag("OWNER_UID", victim.Uid.Value.ToString());
         corpse.SetTag("OWNER_UUID", victim.Uuid.ToString("D"));
 
@@ -379,7 +412,7 @@ public sealed class DeathEngine
     }
 
     /// <summary>Create a corpse item at the victim's position.</summary>
-    private Item CreateCorpse(Character victim)
+    private Item CreateCorpse(Character victim, bool wasSleeping = false)
     {
         var corpse = _world.CreateItem();
         corpse.BaseId = 0x2006; // ITEMID_CORPSE
@@ -396,8 +429,14 @@ public sealed class DeathEngine
         // death time so the skill can report how long ago the death occurred; the
         // carved/sleeping flags default to unset and are set when carved/sleeping.
         corpse.SetTag("DEATH_TIME", Environment.TickCount64.ToString());
-        if (victim.IsStatFlag(StatFlag.Sleeping))
+        if (wasSleeping || victim.IsStatFlag(StatFlag.Sleeping))
             corpse.SetTag("CORPSE_SLEEPING", "1");
+
+        // Source-X MakeCorpse: corpses of bonded pets, summoned creatures and
+        // sleeping bodies are born uncarvable (m_itCorpse.m_carved = 1).
+        if (victim.IsBonded || victim.IsSummoned || wasSleeping ||
+            victim.IsStatFlag(StatFlag.Sleeping))
+            corpse.SetTag("CORPSE_CARVED", "1");
 
         _world.PlaceItem(corpse, victim.Position);
         return corpse;
@@ -771,6 +810,11 @@ public sealed class DeathEngine
         // use that tag name here too (the old "CARVED" tag was never read back).
         if (corpse.TryGetTag("CORPSE_CARVED", out _) || corpse.TryGetTag("CARVED", out _))
             return results;
+
+        // Source-X CheckCorpseCrime(fLooting=false): carving an innocent
+        // player's corpse is as criminal as looting it.
+        if (IsLootingCriminal(carver, corpse))
+            carver.MakeCriminal();
 
         if (TriggerDispatcher?.FireItemTrigger(corpse, ItemTrigger.CarveCorpse, new TriggerArgs
         {

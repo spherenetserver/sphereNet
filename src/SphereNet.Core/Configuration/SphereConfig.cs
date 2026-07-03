@@ -134,6 +134,15 @@ public sealed class SphereConfig
     // client that ignores unsolicited pings is in use.
     public int RttPingIntervalMs { get; set; } = 0;
 
+    /// <summary>Source-X HITPOINTPERCENTONREZ (m_iHitpointPercentOnRez): the %
+    /// of max hits a character resurrects with. Reference default 10.</summary>
+    public int HitpointPercentOnRez { get; set; } = 10;
+
+    /// <summary>Source-X PACKETDEATHANIMATION (m_iPacketDeathAnimation): send
+    /// the 0x2C death-screen packet to a dying client. 0 disables it — the
+    /// client then skips ClassicUO's 1.5s death-screen freeze entirely.</summary>
+    public int PacketDeathAnimation { get; set; } = 1;
+
     // Crime & Notoriety
     public int CriminalTimer { get; set; } = 180;
     public int MurderMinCount { get; set; } = 5;
@@ -469,6 +478,8 @@ public sealed class SphereConfig
         SpeedHackCooldownMs = ini.GetInt(section, "SpeedHackCooldownMs", SpeedHackCooldownMs);
         RttPingIntervalMs = ini.GetInt(section, "RttPingIntervalMs", RttPingIntervalMs);
 
+        HitpointPercentOnRez = ini.GetInt(section, "HitpointPercentOnRez", HitpointPercentOnRez);
+        PacketDeathAnimation = ini.GetInt(section, "PacketDeathAnimation", PacketDeathAnimation);
         CriminalTimer = ini.GetInt(section, "CriminalTimer", CriminalTimer);
         MurderMinCount = ini.GetInt(section, "MurderMinCount", MurderMinCount);
         PlayerKarmaEvil = ini.GetInt(section, "PlayerEvil", ini.GetInt(section, "PLAYEREVIL", PlayerKarmaEvil));

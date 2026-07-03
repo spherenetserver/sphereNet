@@ -609,6 +609,18 @@ public sealed class ClientWorldFeaturesHandler
         FinalizeTradeCancel(trade, partner, sendSelfClose: true);
     }
 
+    /// <summary>Server-initiated trade cancel — Source-X CChar::Death deletes
+    /// any open trade window when a participant dies. Runs the same finalize
+    /// path as a client-side close (items return to packs, both windows close,
+    /// @TradeClose fires) so the returned items reach the corpse loot drop.</summary>
+    public void CancelActiveTradeOnDeath()
+    {
+        if (_character == null || _tradeManager == null) return;
+        var trade = _tradeManager.FindTradeFor(_character);
+        if (trade == null) return;
+        FinalizeTradeCancel(trade, trade.GetPartner(_character), sendSelfClose: true);
+    }
+
     private void FinalizeTradeCancel(SecureTrade trade, Character partner, bool sendSelfClose)
     {
         if (_character == null || _tradeManager == null) return;

@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Death;
@@ -52,7 +52,9 @@ public class DeathTriggerTests
 
         int? fameDelta = null, karmaDelta = null, murderProposed = null;
         Character? murderVictim = null;
-        Character.OnFameChanging = (_, d) => { fameDelta = d; return d; };
+        // Filter on the killer: the dying player now also loses fame/10
+        // through the same hook (wave D1 death penalty).
+        Character.OnFameChanging = (ch, d) => { if (ch == killer) fameDelta = d; return d; };
         Character.OnKarmaChanging = (_, d) => { karmaDelta = d; return d; };
         Character.OnMurderMark = (_, v, n) => { murderProposed = n; murderVictim = v; return new Character.MurderMarkDecision(n, true); };
 

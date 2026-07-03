@@ -3,6 +3,46 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-03] - Death/corpse dalgalari D1-D2: olum cezalari, carve suclamasi, death-screen config
+----------------------------------------
+
+EKLENDI - Oyuncu olum cezalari (Source-X CChar::Death):
+  - Olen oyuncu tecrubesinin onda birini (min 1) ve fame'inin onda birini
+    kaybeder (DEATHFLAGS & DEATH_NOFAMECHANGE fame kaybini engeller);
+    deaths sayaci artar. Fame kaybi @FameChange'den gecer.
+
+DUZELTILDI - Olum ani durum temizligi:
+  - Kill() artik Hidden/Invisible/Freeze/Stone/Sleeping/Hovering temizler
+    (Source-X Reveal + StatFlag_Clear) — gizliyken olen karakter eskiden
+    gorunmez ghost kaliyordu.
+  - Kurbanin FIGHT/HARMEDBY anilari olumde silinir.
+
+EKLENDI - Ceset kesme kurallari:
+  - Masum bir oyuncunun cesedini kesmek artik kesen kisiyi criminal yapar,
+    yagmalamak gibi (Source-X CheckCorpseCrime, fLooting=false).
+  - Bonded pet, summon ve uyuyan beden cesetleri kesilemez dogar
+    (Source-X m_carved = 1).
+
+EKLENDI - sphere.ini HitpointPercentOnRez (Source-X default 10):
+  - Dirilis HP yuzdesi artik config'te; eskiden sabit %50 idi. Eski
+    davranisi isteyen shard HitpointPercentOnRez=50 yazar.
+
+EKLENDI - sphere.ini PacketDeathAnimation (Source-X default 1):
+  - 0 iken 0x2C death-screen paketi gonderilmez; ClassicUO 1.5 saniyelik
+    death-screen render donmasina hic girmez — ghost redraw dizisi tum
+    gecisi tasir (referanstaki addPlayerUpdate fallback'i).
+
+DUZELTILDI - Acik secure trade katilimcinin olumunu atlatiyordu:
+  - Olen tarafin trade'i ceset olusmadan iptal edilir: item'lar paketlere
+    doner (boylece corpse loot'una ulasir), iki pencere kapanir ve
+    @TradeClose ateslenir. Client'siz kurban paketsiz fallback yolunu izler.
+
+NOT - @CreateLoot SphereNet'te spawn-zamani trigger olarak kalir (bilincli
+  sapma): olum anindaki ITEM= materyalizasyonunu mevcut ertelenmis-loot
+  dususu karsilar; olumde ikinci ateslemede loot ikiye katlanirdi.
+
+================================================================================
+
 [2026-07-03] - NPC AI dalgasi N1: uyuyan NPC_AI flag'leri, trigger sozlesmeleri, CAN hex fix
 ----------------------------------------
 

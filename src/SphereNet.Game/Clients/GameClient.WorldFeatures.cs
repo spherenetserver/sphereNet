@@ -34,6 +34,10 @@ public sealed partial class GameClient
 
     internal void AbortActiveTradeOnDisconnect() => WorldFeatures.AbortActiveTradeOnDisconnect();
 
+    /// <summary>Cancel an open secure trade because this character died
+    /// (Source-X CChar::Death Trade_Delete).</summary>
+    public void CancelActiveTradeOnDeath() => WorldFeatures.CancelActiveTradeOnDeath();
+
     public void InitiateTrade(Character partner, Item? firstItem = null) =>
         WorldFeatures.InitiateTrade(partner, firstItem);
 

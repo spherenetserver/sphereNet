@@ -1948,11 +1948,31 @@ public partial class Character : ObjBase
     public void Attacker_Delete(Serial uid) => CombatState.Delete(uid);
 
     // --- Death ---
+
+    /// <summary>Resurrection HP percentage (Source-X sphere.ini
+    /// HITPOINTPERCENTONREZ, m_iHitpointPercentOnRez default 10).</summary>
+    public static int HitpointPercentOnRez { get; set; } = 10;
+
+    /// <summary>sphere.ini PACKETDEATHANIMATION (Source-X m_iPacketDeathAnimation,
+    /// default on): send the 0x2C death-screen packet to a dying client. When
+    /// off, the client never enters ClassicUO's 1.5s death-screen freeze and
+    /// the plain player-update redraw carries the ghost transition.</summary>
+    public static bool PacketDeathAnimationEnabled { get; set; } = true;
+
     public void Kill()
     {
         _hits = 0;
         CurePoison();
         FightTarget = Serial.Invalid;
+        // Source-X CChar::Death: Reveal() + StatFlag_Clear(STONE|FREEZE|
+        // HIDDEN|SLEEPING|HOVERING) — the ghost must not inherit held states
+        // (a hidden victim previously stayed an unseen ghost).
+        ClearStatFlag(StatFlag.Hidden);
+        ClearStatFlag(StatFlag.Invisible);
+        ClearStatFlag(StatFlag.Freeze);
+        ClearStatFlag(StatFlag.Stone);
+        ClearStatFlag(StatFlag.Sleeping);
+        ClearStatFlag(StatFlag.Hovering);
         SetStatFlag(StatFlag.Dead);
         MarkDirty(DirtyFlag.StatFlags | DirtyFlag.Stats);
     }
@@ -1963,9 +1983,9 @@ public partial class Character : ObjBase
         ClearStatFlag(StatFlag.Dead);
         CurePoison();
         ClearStatFlag(StatFlag.Hidden);
-        // At least 1 HP — integer halving of MaxHits==1 would resurrect at 0 HP,
-        // re-killing the character on the next tick.
-        _hits = (short)Math.Max(1, _maxHits / 2);
+        // Source-X: MaxHits × HITPOINTPERCENTONREZ / 100 (sphere.ini), floored
+        // at 1 HP — a 0-HP resurrect would re-kill the character next tick.
+        _hits = (short)Math.Max(1, _maxHits * Math.Clamp(HitpointPercentOnRez, 0, 100) / 100);
         CombatState.ClearAttackers();
         FightTarget = Serial.Invalid;
 

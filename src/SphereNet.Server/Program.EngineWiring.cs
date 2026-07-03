@@ -1428,6 +1428,25 @@ public static partial class Program
             _deathEngine.PartyManager = _partyManager;
             _deathEngine.TriggerDispatcher = _triggerDispatcher;
             _tradeManager = new TradeManager();
+            // Source-X CChar::Death Trade_Delete: an open secure trade is
+            // cancelled before the corpse forms so the returned items reach
+            // the loot drop. Client route closes both windows; the clientless
+            // fallback (offline/GM kill) just returns the items.
+            _deathEngine.CancelTradesHook = victim =>
+            {
+                var trade = _tradeManager?.FindTradeFor(victim);
+                if (trade == null || _tradeManager == null) return;
+                if (_clientsByCharUid.TryGetValue(victim.Uid, out var victimClient))
+                {
+                    victimClient.CancelActiveTradeOnDeath();
+                    return;
+                }
+                TradeManager.ReturnTradeItems(_world, trade);
+                trade.Cancel();
+                _tradeManager.EndTrade(trade);
+                trade.InitiatorContainer.Delete();
+                trade.PartnerContainer.Delete();
+            };
             _npcAI = new NpcAI(_world, _config);
             _npcTimerWheel = new SphereNet.Game.Scheduling.TimerWheel(Environment.TickCount64);
             _recordingEngine = new SphereNet.Game.Recording.RecordingEngine(

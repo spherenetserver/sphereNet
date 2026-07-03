@@ -1782,7 +1782,12 @@ public sealed class ClientCombatHandler
 
         SendCharacterStatus(_character);
         SysMessage(ServerMessages.Get("combat_dead"));
-        _netState.Send(new PacketDeathStatus(PacketDeathStatus.ActionDead));
+        // sphere.ini PACKETDEATHANIMATION (Source-X m_iPacketDeathAnimation):
+        // 0x2C makes ClassicUO suspend world rendering for 1.5s (its death
+        // screen). When disabled, the ghost redraw above already carries the
+        // full transition — Source-X's addPlayerUpdate() fallback.
+        if (Character.PacketDeathAnimationEnabled)
+            _netState.Send(new PacketDeathStatus(PacketDeathStatus.ActionDead));
     }
 
     /// <summary>

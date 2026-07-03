@@ -616,6 +616,8 @@ public static partial class Program
 
         // Wire notoriety tuning from sphere.ini into Character statics so that
         // MakeCriminal() / TickNotorietyDecay() use the configured values.
+        Character.HitpointPercentOnRez     = _config.HitpointPercentOnRez;
+        Character.PacketDeathAnimationEnabled = _config.PacketDeathAnimation != 0;
         Character.CriminalTimerSeconds     = _config.CriminalTimer;
         Character.MurderMinCount           = _config.MurderMinCount;
         Character.MurderDecayTimeSeconds   = _config.MurderDecayTime;

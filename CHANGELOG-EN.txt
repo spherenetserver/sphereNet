@@ -4,6 +4,49 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-03] - Death/corpse waves D1-D2: death penalties, carve crime, death-screen config
+----------------------------------------
+
+ADDED - Player death penalties (Source-X CChar::Death):
+  - A dying player loses a tenth of their experience (min 1) and a tenth
+    of their fame (suppressed by DEATHFLAGS & DEATH_NOFAMECHANGE); the
+    deaths counter increments. The fame loss runs through @FameChange.
+
+FIXED - Death-time state cleanup:
+  - Kill() now clears Hidden/Invisible/Freeze/Stone/Sleeping/Hovering
+    (Source-X Reveal + StatFlag_Clear) — a character that died while
+    hidden previously stayed an unseen ghost.
+  - The victim's FIGHT/HARMEDBY memories are cleared at death.
+
+ADDED - Corpse carving rules:
+  - Carving an innocent player's corpse now flags the carver criminal,
+    like looting it (Source-X CheckCorpseCrime with fLooting=false).
+  - Corpses of bonded pets, summoned creatures and sleeping bodies are
+    born uncarvable (Source-X m_carved = 1).
+
+ADDED - sphere.ini HitpointPercentOnRez (Source-X default 10):
+  - The resurrection HP percent is configurable; it was a hardcoded 50%.
+    Shards that want the old behavior set HitpointPercentOnRez=50.
+
+ADDED - sphere.ini PacketDeathAnimation (Source-X default 1):
+  - When 0, the 0x2C death-screen packet is not sent, so ClassicUO never
+    enters its 1.5-second death-screen render freeze; the ghost redraw
+    sequence carries the full transition (the reference addPlayerUpdate
+    fallback).
+
+FIXED - Open secure trades survive a participant's death:
+  - The dying side's trade is cancelled before the corpse forms: items
+    return to the packs (and so reach the corpse loot), both windows
+    close and @TradeClose fires. A clientless victim takes a packetless
+    fallback path.
+
+NOTE - @CreateLoot stays a spawn-time trigger in SphereNet (deliberate
+  divergence): death-time ITEM= materialisation is covered by the
+  existing deferred-loot drop, and firing the script again at death
+  would double the loot.
+
+================================================================================
+
 [2026-07-03] - NPC AI wave N1: dormant NPC_AI flags, trigger contracts, CAN-flag hex fix
 ----------------------------------------
 

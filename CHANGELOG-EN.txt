@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-03] - Movement wave M1: map edge-case crash fixes
+----------------------------------------
+
+FIXED - Negative coordinates slipped past the sector bounds guard:
+  - Truncating integer division resolved X/Y in [-63,-1] to sector 0, so
+    off-map placements/moves/teleports were accepted and the map readers
+    then crashed on a negative cell index. GetSector now rejects the
+    negative side explicitly.
+
+FIXED - Pathfinder explored off-map neighbor tiles:
+  - An NPC pathfinding from the x=0 / y=0 map edge passed -1 into the
+    map readers (crash reachable by ordinary NPC AI); the far edge read
+    garbage cells. Neighbors are now bounds-checked against the map size.
+
+FIXED - The GM/AllMove/CanPassWalls walk bypass could step off the map;
+  the bypass branch now validates the target sector too.
+
+================================================================================
 [2026-07-03] - Death/corpse wave D3: kill record, corpse hair, antimagic rez, summon burst
 ----------------------------------------
 

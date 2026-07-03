@@ -84,6 +84,15 @@ public sealed class Pathfinder
                     short nx = (short)(current.X + dx);
                     short ny = (short)(current.Y + dy);
 
+                    // Map-edge guard: an NPC standing on the x=0 / y=0 edge
+                    // would otherwise pass -1 into the map readers (negative
+                    // cell index crash); the far edge reads garbage cells.
+                    if (nx < 0 || ny < 0 ||
+                        (_world.MapData != null &&
+                         (nx >= _world.MapData.GetMapSize(mapIndex).Width ||
+                          ny >= _world.MapData.GetMapSize(mapIndex).Height)))
+                        continue;
+
                     // Each tile has its own surface Z (terrain vs. static floors,
                     // bridges, steps). Using current.Z for every neighbor makes
                     // pathfinding fail as soon as terrain height changes by one

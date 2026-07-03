@@ -258,6 +258,11 @@ public sealed class GameWorld
 
     public Sector? GetSector(Point3D pt)
     {
+        // C# integer division truncates toward zero, so X in [-63,-1] would
+        // land in sector 0 and slip past the bounds guard — an off-map char
+        // then crashes the map readers (negative cell index). Reject the
+        // negative side explicitly; the upper bound is caught below.
+        if (pt.X < 0 || pt.Y < 0) return null;
         int sx = pt.X / Sector.SectorSize;
         int sy = pt.Y / Sector.SectorSize;
         return GetSector(pt.Map, sx, sy);

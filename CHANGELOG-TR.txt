@@ -3,6 +3,24 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-03] - Movement dalgasi M1: harita edge-case crash duzeltmeleri
+----------------------------------------
+
+DUZELTILDI - Negatif koordinatlar sektor sinir korumasini deliyordu:
+  - Sifira-dogru tam bolme X/Y [-63,-1] araligini sektor 0'a cozuyordu;
+    off-map yerlestirme/tasima/teleport kabul ediliyor ve map okuyuculari
+    negatif hucre indeksinde cokuyordu. GetSector artik negatif tarafi
+    acikca reddeder.
+
+DUZELTILDI - Pathfinder harita disi komsu tile'lari kesfediyordu:
+  - x=0 / y=0 kenarindan pathfinding yapan NPC map okuyucuya -1 gecirir
+    (siradan NPC AI ile tetiklenebilir crash); uzak kenar cop hucre okurdu.
+    Komsular artik harita boyutuna karsi sinir-kontrollu.
+
+DUZELTILDI - GM/AllMove/CanPassWalls yuruyus bypass'i haritadan disari
+  adim atabiliyordu; bypass dali da artik hedef sektoru dogrular.
+
+================================================================================
 [2026-07-03] - Death/corpse dalgasi D3: kill kaydi, ceset saci, antimagic rez, summon patlamasi
 ----------------------------------------
 

@@ -94,6 +94,10 @@ public sealed class MovementEngine
         if ((ch.PrivLevel >= PrivLevel.GM && ch.AllMove) || CharDefHelper.CanPassWalls(ch) || _world.MapData == null)
         {
             target = new Point3D((short)(ch.X + dx), (short)(ch.Y + dy), ch.Z, ch.MapIndex);
+            // Even the bypass branch may not step off the map — an off-map
+            // char crashes the map readers on the next query.
+            if (_world.GetSector(target) == null)
+                return false;
         }
         else
         {

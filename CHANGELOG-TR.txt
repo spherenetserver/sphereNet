@@ -3,6 +3,25 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-03] - Housing/ship dalgasi H1: redeed kargo crate'i, REDEED teardown, yerlestirme cakismasi
+----------------------------------------
+
+DUZELTILDI - Ship redeed hold kargosunu siliyordu:
+  - RemoveShip artik component iceriklerini moving crate'e tasir; crate
+    sahibin bankasina gider, yoksa gemi noktasina decay'li birakilir —
+    gemilerde eksik olan Source-X TransferAllItemsToMovingCrate davranisi.
+
+DUZELTILDI - REDEED verb'i evi registry'den sizdiriyordu:
+  - Dogrudan house.Redeed cagiriyordu; registry'de bayat kayit (yanan ev
+    slotu) ve hayalet dinamik region kaliyordu. Verb artik housing
+    engine'in tam teardown yolundan gecer.
+
+DUZELTILDI - Ship yerlestirme govde cakismasina bakmiyordu:
+  - CanPlaceShip yalniz su kontrolu yapiyordu; iki gemi ust uste spawn
+    edilebiliyordu. Footprint artik baska bir geminin kapladigi hucreyi
+    reddeder.
+
+================================================================================
 [2026-07-03] - Movement dalgasi M1: harita edge-case crash duzeltmeleri
 ----------------------------------------
 

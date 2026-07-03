@@ -619,6 +619,19 @@ public sealed class HousingEngine
         return deed;
     }
 
+    /// <summary>Script/verb-driven redeed (server authority — no priv gate):
+    /// the FULL teardown, so the registry entry and the dynamic house region
+    /// never leak (the REDEED verb previously called house.Redeed directly).</summary>
+    public Item? RedeedFromScript(Serial multiItemUid)
+    {
+        if (!_houses.TryGetValue(multiItemUid, out var house))
+            return null;
+        RemoveHouseRegion(house);
+        var deed = house.Redeed(_world);
+        _houses.Remove(multiItemUid);
+        return deed;
+    }
+
     /// <summary>Find the house that contains the given position.</summary>
     public House? FindHouseAt(Point3D pos)
     {

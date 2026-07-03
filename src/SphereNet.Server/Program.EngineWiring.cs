@@ -2242,6 +2242,7 @@ public static partial class Program
             // Wire Item static delegates for ship resolution
             SphereNet.Game.Objects.Items.Item.ResolveShip = uid => _shipEngine.GetShip(uid);
             SphereNet.Game.Objects.Items.Item.ResolveHouse = uid => _housingEngine?.GetHouse(uid);
+            SphereNet.Game.Objects.Items.Item.RedeedHouse = uid => _housingEngine?.RedeedFromScript(uid);
             // MULTICREATE verb -> HousingEngine runtime registration
             SphereNet.Game.Objects.Items.Item.OnHouseRegister =
                 item => _housingEngine?.RegisterExistingMulti(item);

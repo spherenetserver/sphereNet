@@ -20,6 +20,11 @@ public class Item : ObjBase
     // Static delegates set by Program.cs for cross-module resolution
     public static Func<Serial, Ships.Ship?>? ResolveShip;
     public static Func<Serial, House?>? ResolveHouse;
+
+    /// <summary>Engine-routed REDEED (HousingEngine full teardown): removes
+    /// the registry entry and the dynamic house region too. A direct
+    /// house.Redeed left a ghost region and a stale house-count slot.</summary>
+    public static Func<Serial, Item?>? RedeedHouse;
     public static Func<Ships.ShipEngine?>? ResolveShipEngine;
     public new static Func<World.GameWorld>? ResolveWorld;
     public static Func<Serial, Guild.GuildDef?>? ResolveGuild;
@@ -1866,7 +1871,7 @@ public class Item : ObjBase
                     var world = ResolveWorld?.Invoke();
                     if (world != null)
                     {
-                        var deed = house.Redeed(world);
+                        var deed = RedeedHouse != null ? RedeedHouse(Uid) : house.Redeed(world);
                         if (deed != null)
                         {
                             var owner = house.Owner.IsValid ? world.FindChar(house.Owner) : null;

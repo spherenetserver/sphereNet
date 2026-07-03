@@ -119,13 +119,18 @@ public sealed class ShipEngine
     /// <summary>Check if a ship can be placed at position (all footprint must be water).</summary>
     public bool CanPlaceShip(Point3D pos, MultiDef def)
     {
-        if (_mapData == null) return true; // No map data = allow
-
         for (short dx = def.MinX; dx <= def.MaxX; dx++)
         {
             for (short dy = def.MinY; dy <= def.MaxY; dy++)
             {
-                if (!IsWaterAt(pos.Map, (short)(pos.X + dx), (short)(pos.Y + dy)))
+                short cx = (short)(pos.X + dx), cy = (short)(pos.Y + dy);
+                // Water check needs map data (tests run without it).
+                if (_mapData != null && !IsWaterAt(pos.Map, cx, cy))
+                    return false;
+                // Source-X Multi_Create block loop: placement may not overlap
+                // another hull (movement's CanSailInto already checks this;
+                // placement previously bypassed it, stacking ships).
+                if (FindShipAt(new Point3D(cx, cy, pos.Z, pos.Map)) != null)
                     return false;
             }
         }
@@ -147,6 +152,40 @@ public sealed class ShipEngine
         deed.Name = ship.MultiItem.Name + " deed";
         deed.SetTag("SHIP_MULTI_UUID", ship.MultiItem.Uuid.ToString("D"));
         deed.SetTag("SHIP_MULTI_BASEID", ship.MultiItem.BaseId.ToString());
+
+        // Source-X ship Redeed: TransferAllItemsToMovingCrate — the hold's
+        // cargo moves to a crate (owner's bank, else dropped with decay at
+        // the ship's spot) instead of being deleted with the components.
+        List<Item>? cargo = null;
+        foreach (var compUid in ship.Components)
+        {
+            var comp = _world.FindItem(compUid);
+            if (comp == null || comp.Contents.Count == 0) continue;
+            cargo ??= [];
+            foreach (var it in new List<Item>(comp.Contents))
+            {
+                comp.RemoveItem(it);
+                cargo.Add(it);
+            }
+        }
+        if (cargo != null)
+        {
+            var crate = _world.CreateItem();
+            crate.BaseId = 0x0E3D; // ITEMID_CRATE1
+            crate.ItemType = ItemType.Container;
+            crate.Name = "a moving crate";
+            foreach (var it in cargo)
+            {
+                crate.AddItem(it);
+                it.DecayTime = 0; // protected inside the crate
+            }
+            var ownerCh = ship.Owner.IsValid ? _world.FindChar(ship.Owner) : null;
+            var bank = ownerCh?.GetEquippedItem(Layer.BankBox);
+            if (bank != null)
+                bank.AddItem(crate);
+            else
+                _world.PlaceItemWithDecay(crate, ship.MultiItem.Position);
+        }
 
         // Remove all component items
         foreach (var compUid in ship.Components)

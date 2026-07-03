@@ -146,6 +146,31 @@ public sealed class ShipEngine
         if (ship.Owner != requestor.Uid && requestor.PrivLevel < PrivLevel.GM)
             return null;
 
+        return RemoveShipCore(ship, multiItemUid);
+    }
+
+    /// <summary>Script/verb-driven dry-dock (server authority — no priv gate):
+    /// the REDEED verb on a ship multi. The deed is delivered to the owner's
+    /// backpack, else dropped (with decay) at the ship's spot.</summary>
+    public Item? RedeedFromScript(Serial multiItemUid)
+    {
+        if (!_ships.TryGetValue(multiItemUid, out var ship))
+            return null;
+        var pos = ship.MultiItem.Position;
+        var owner = ship.Owner.IsValid ? _world.FindChar(ship.Owner) : null;
+        var deed = RemoveShipCore(ship, multiItemUid);
+        if (deed != null)
+        {
+            if (owner?.Backpack != null)
+                owner.Backpack.AddItem(deed);
+            else
+                _world.PlaceItemWithDecay(deed, pos);
+        }
+        return deed;
+    }
+
+    private Item? RemoveShipCore(Ship ship, Serial multiItemUid)
+    {
         // Create deed — preserve ship UUID for identity continuity
         var deed = _world.CreateItem();
         deed.BaseId = 0x14F0; // ITEMID_DEED1
@@ -767,6 +792,13 @@ public sealed class ShipEngine
         byte map = ship.MultiItem.MapIndex;
         int sx = Math.Sign(dx);
         int sy = Math.Sign(dy);
+
+        // Source-X ptFore.IsValidPoint(): the hull may not sail off the map —
+        // a negative coordinate would reach the map readers as a bad index.
+        var (mw, mh) = _mapData?.GetMapSize(map) ?? (7168, 4096);
+        if (newX + def.MinX < 0 || newY + def.MinY < 0 ||
+            newX + def.MaxX >= mw || newY + def.MaxY >= mh)
+            return false;
 
         // Source-X CCMultiMovable::Move tests only the LEADING EDGE in the move
         // direction (both perpendicular edges for a diagonal) — the trailing cells

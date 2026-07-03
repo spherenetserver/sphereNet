@@ -181,14 +181,26 @@ public sealed class House
     {
         if (!CanLockdown(byChar)) return false;
         if (_lockdowns.Count >= MaxLockdowns) return false;
-        _lockdowns.Add(itemUid);
         var item = Objects.ObjBase.ResolveWorld?.Invoke()?.FindItem(itemUid);
+        // Source-X: only items INSIDE the house region may be locked down —
+        // an owner could previously lock items anywhere in the world.
+        if (item != null && !IsInsideHouse(item.Position)) return false;
+        _lockdowns.Add(itemUid);
         if (item != null)
         {
             item.SetAttr(SphereNet.Core.Enums.ObjAttributes.LockedDown);
             item.Link = _multiItem.Uid; // Source-X m_uidLink → the multi
         }
         return true;
+    }
+
+    /// <summary>Inside-the-house-region test for lockdown/secure targets.
+    /// A house with no realized region (bare tests) accepts everything.</summary>
+    private bool IsInsideHouse(Core.Types.Point3D pos)
+    {
+        if (_regionUid == 0) return true;
+        var region = Objects.ObjBase.ResolveWorld?.Invoke()?.FindRegionByUid(_regionUid);
+        return region == null || region.Contains(pos);
     }
 
     /// <summary>Release a locked down item (Source-X UnlockItem).</summary>
@@ -208,8 +220,10 @@ public sealed class House
         if (!CanLockdown(byChar)) return false;
         if (_secureContainers.Count >= MaxSecure) return false;
         if (_secureContainers.Contains(containerUid)) return false;
+        var secureItem = Objects.ObjBase.ResolveWorld?.Invoke()?.FindItem(containerUid);
+        if (secureItem != null && !IsInsideHouse(secureItem.Position)) return false;
         _secureContainers.Add(containerUid);
-        var item = Objects.ObjBase.ResolveWorld?.Invoke()?.FindItem(containerUid);
+        var item = secureItem;
         if (item != null)
         {
             item.SetAttr(SphereNet.Core.Enums.ObjAttributes.Secure);

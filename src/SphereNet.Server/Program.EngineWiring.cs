@@ -2243,6 +2243,7 @@ public static partial class Program
             SphereNet.Game.Objects.Items.Item.ResolveShip = uid => _shipEngine.GetShip(uid);
             SphereNet.Game.Objects.Items.Item.ResolveHouse = uid => _housingEngine?.GetHouse(uid);
             SphereNet.Game.Objects.Items.Item.RedeedHouse = uid => _housingEngine?.RedeedFromScript(uid);
+            SphereNet.Game.Objects.Items.Item.RedeedShip = uid => _shipEngine?.RedeedFromScript(uid);
             if (_housingEngine != null)
                 _housingEngine.IsShipAt = pt => _shipEngine?.FindShipAt(pt) != null;
             // MULTICREATE verb -> HousingEngine runtime registration

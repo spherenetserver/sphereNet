@@ -25,6 +25,10 @@ public class Item : ObjBase
     /// the registry entry and the dynamic house region too. A direct
     /// house.Redeed left a ghost region and a stale house-count slot.</summary>
     public static Func<Serial, Item?>? RedeedHouse;
+
+    /// <summary>Ship-engine REDEED (dry-dock: cargo crate + full teardown,
+    /// deed delivered to the owner). Ships had no in-game decommission path.</summary>
+    public static Func<Serial, Item?>? RedeedShip;
     public static Func<Ships.ShipEngine?>? ResolveShipEngine;
     public new static Func<World.GameWorld>? ResolveWorld;
     public static Func<Serial, Guild.GuildDef?>? ResolveGuild;
@@ -1863,7 +1867,13 @@ public class Item : ObjBase
                     break; // not a house — fall through to the generic paths
                 var house = ResolveHouse?.Invoke(Uid);
                 if (house == null)
-                    return true; // house registry not wired / unknown multi — swallow
+                {
+                    // Not a registered house: a SHIP multi dry-docks through
+                    // the ship engine (cargo crate + teardown + deed).
+                    if (key.Equals("REDEED", StringComparison.OrdinalIgnoreCase) && RedeedShip != null)
+                        RedeedShip(Uid);
+                    return true;
+                }
 
                 string keyUpper = key.ToUpperInvariant();
                 if (keyUpper == "REDEED")

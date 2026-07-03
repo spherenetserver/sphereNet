@@ -106,6 +106,42 @@ public class HousingShipWaveH1Tests
         Assert.True(housing.CanPlaceHouse(new Point3D(600, 600, 0, 0), def));
     }
 
+    // ---- P3 tail: ship boundary, ship script-redeed ----
+
+    [Fact]
+    public void ShipCannotSailOffTheMapEdge()
+    {
+        var world = TestHarness.CreateWorld();
+        var engine = new ShipEngine(world, MakeShipRegistry(), null);
+        var owner = world.CreateCharacter();
+        world.PlaceCharacter(owner, new Point3D(50, 50, 0, 0));
+
+        var ship = engine.PlaceShip(owner, 0x4000, new Point3D(0, 200, 0, 0), Direction.West);
+        Assert.NotNull(ship);
+        // Leading west edge at x=0: the move must be refused, not wrap to -1.
+        Assert.False(engine.Move(ship!, Direction.West));
+        Assert.Equal(0, ship!.MultiItem.X);
+    }
+
+    [Fact]
+    public void ShipRedeedFromScript_DeliversDeedAndTearsDown()
+    {
+        var world = TestHarness.CreateWorld();
+        var engine = new ShipEngine(world, MakeShipRegistry(), null);
+        var owner = world.CreateCharacter();
+        var pack = world.CreateItem();
+        pack.ItemType = ItemType.Container;
+        owner.Equip(pack, Layer.Pack);
+        world.PlaceCharacter(owner, new Point3D(50, 50, 0, 0));
+
+        var ship = engine.PlaceShip(owner, 0x4000, new Point3D(200, 200, 0, 0), Direction.North);
+        var deed = engine.RedeedFromScript(ship!.MultiItem.Uid);
+
+        Assert.NotNull(deed);
+        Assert.Equal(pack.Uid, deed!.ContainedIn); // delivered to the owner
+        Assert.Null(engine.GetShip(ship.MultiItem.Uid));
+    }
+
     [Fact]
     public void RedeedFromScript_TearsDownRegistryAndRegion()
     {

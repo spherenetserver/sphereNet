@@ -37,6 +37,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Combat.CombatEngine.OnHitDamage = null;
         SphereNet.Game.Combat.CombatEngine.OnHitParry = null;
         SphereNet.Game.Objects.Items.Item.RedeedHouse = null;
+        SphereNet.Game.Objects.Items.Item.RedeedShip = null;
         SphereNet.Game.Combat.CombatEngine.OnLeechEffect = null;
         SphereNet.Game.Combat.CombatEngine.OnHitAreaDamage = null;
         SphereNet.Game.Combat.CombatEngine.OnHitSpell = null;

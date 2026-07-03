@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-03] - Housing/ship wave P3: ship map boundary, lockdown footprint, ship dry-dock
+----------------------------------------
+
+FIXED - A ship could sail off the map edge; the leading hull edge is now
+  validated against the map bounds (negative coordinates included).
+
+FIXED - Lockdown/secure accepted items anywhere in the world; the target
+  must now lie inside the house region.
+
+ADDED - The REDEED verb dry-docks ship multis through the ship engine:
+  cargo moves to the crate, the hull tears down fully and the deed is
+  delivered to the owner. Ships previously had no decommission path.
+
+================================================================================
 [2026-07-03] - Script-surface wave S1: unknown-key diagnostics, VISIBLE/SFX verbs
 ----------------------------------------
 

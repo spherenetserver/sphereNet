@@ -3,6 +3,20 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-03] - Housing/ship dalgasi P3: gemi harita siniri, lockdown footprint, dry-dock
+----------------------------------------
+
+DUZELTILDI - Gemi harita kenarindan disari yelken acabiliyordu; oncu govde
+  kenari artik harita sinirlarina karsi dogrulanir (negatif dahil).
+
+DUZELTILDI - Lockdown/secure dunyanin herhangi bir yerindeki item'i kabul
+  ediyordu; hedef artik ev bolgesinin icinde olmali.
+
+EKLENDI - REDEED verb'i gemi multi'lerini ship engine uzerinden dry-dock
+  eder: kargo crate'e tasinir, govde tam sokulur, deed sahibine teslim
+  edilir. Gemilerin daha once decommission yolu yoktu.
+
+================================================================================
 [2026-07-03] - Script-yuzey dalgasi S1: unknown-key diagnostigi, VISIBLE/SFX verb'leri
 ----------------------------------------
 

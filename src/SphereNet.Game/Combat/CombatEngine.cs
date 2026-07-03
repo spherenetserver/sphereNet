@@ -120,6 +120,16 @@ public sealed class HitDamageContext
     /// level+charges poison model spends 1 per delivery by default).</summary>
     public int PoisonReductionAmount { get; set; } = 1;
 
+    /// <summary>UID of the pack ammo stack a ranged shot draws from (0 for
+    /// melee) — exposed to @Hit and the weapon item @Hit as LOCAL.Arrow
+    /// (Source-X CCharFight.cpp:2158).</summary>
+    public uint AmmoUid { get; init; }
+
+    /// <summary>Set when a @Hit-chain script wrote LOCAL.ArrowHandled=1: the
+    /// script owns the ammo's fate, so the caller must neither consume the
+    /// stack nor run the stick-in-body economy (Source-X pAmmo = nullptr).</summary>
+    public bool ArrowHandled { get; set; }
+
     /// <summary>COMBAT_ELEMENTAL_ENGINE active — the DamagePercent* split below
     /// is exposed to @GetHit as read-only locals.</summary>
     public bool Elemental { get; init; }
@@ -537,8 +547,24 @@ public static class CombatEngine
         Item? weapon,
         CombatFlags flags = CombatFlags.None,
         int hitEra = -1,
-        int damageEra = -1)
+        int damageEra = -1) =>
+        ResolveAttack(attacker, target, weapon, flags, hitEra, damageEra, 0, out _);
+
+    /// <summary>Full overload for the ranged path: <paramref name="ammoUid"/>
+    /// is the pack ammo stack the shot draws from (exposed to the @Hit chain
+    /// as LOCAL.Arrow); <paramref name="ammoHandled"/> reports a script's
+    /// LOCAL.ArrowHandled=1 takeover so the caller skips the ammo economy.</summary>
+    public static int ResolveAttack(
+        Character attacker,
+        Character target,
+        Item? weapon,
+        CombatFlags flags,
+        int hitEra,
+        int damageEra,
+        uint ammoUid,
+        out bool ammoHandled)
     {
+        ammoHandled = false;
         if (hitEra < 0) hitEra = Character.CombatHitChanceEra;
         if (damageEra < 0) damageEra = Character.CombatDamageEra;
 
@@ -672,6 +698,7 @@ public static class CombatEngine
             Weapon = weapon,
             Damage = damage,
             ItemDamageLayer = ArmorDamageLayers[_rand.Next(ArmorDamageLayers.Length)],
+            AmmoUid = ammoUid,
             Elemental = elemental,
             DamPercentPhysical = split.Phys,
             DamPercentFire = split.Fire,
@@ -681,6 +708,7 @@ public static class CombatEngine
         };
         if (OnHitDamage != null)
             damage = Math.Max(0, OnHitDamage(hitCtx));
+        ammoHandled = hitCtx.ArrowHandled;
 
         // Source-X OnTakeDamage tail of the @GetHit block: the (script-final)
         // ItemDamageLayer item wears ItemDamageChance% of the time — in BOTH

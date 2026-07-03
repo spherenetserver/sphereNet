@@ -4,6 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-03] - Combat parity wave C7: hit-path ammo takeover, slayer magic path
+----------------------------------------
+
+ADDED - @Hit LOCAL.Arrow (hit-path ammo takeover):
+  - The @Hit chain now sees LOCAL.Arrow = the live pack ammo stack UID on
+    a ranged hit (previously miss-only); LOCAL.ArrowHandled=1 hands the
+    ammo to the script — the engine neither consumes the stack nor runs
+    the 40% stick-in-body economy then, matching Source-X's nulled pAmmo.
+
+ADDED - COMBAT_SLAYER on the magic path:
+  - Spell damage now applies the slayer scaling with the equipped
+    spellbook as the slayer source (wielded weapon fallback, talisman
+    inside the shared scaler), mirroring the Source-X DAMAGE_MAGIC branch.
+
+ADDED - Hit-area splash sparkle:
+  - Each splashed victim shows the Source-X sparkle effect (0x3779) in
+    addition to the per-element epicenter sound.
+
+================================================================================
+
 [2026-07-03] - Combat parity wave C6: CombatFlags guardrail and doc refresh
 ----------------------------------------
 

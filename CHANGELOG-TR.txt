@@ -3,6 +3,27 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-03] - Combat parite dalgasi C7: hit-yolu ammo devri, slayer magic yolu
+----------------------------------------
+
+EKLENDI - @Hit LOCAL.Arrow (hit-yolu ammo devri):
+  - @Hit zinciri artik menzilli isabette LOCAL.Arrow = canli paket ammo
+    yigini UID'sini gorur (eskiden sadece miss'te); LOCAL.ArrowHandled=1
+    ammo'yu script'e devreder — engine ne yigini tuketir ne de %40
+    govdeye-saplanma ekonomisini calistirir (Source-X'in null'lanan
+    pAmmo'suna denk).
+
+EKLENDI - Magic yolunda COMBAT_SLAYER:
+  - Buyu hasari artik slayer olceklemesini ekipli spellbook'u kaynak
+    alarak uygular (silah fallback, talisman ortak olcekleyicinin icinde)
+    — Source-X DAMAGE_MAGIC dalinin karsiligi.
+
+EKLENDI - Hit-area splash sparkle:
+  - Sicrayan her kurbanda Source-X sparkle efekti (0x3779) gosterilir;
+    element bazli merkez sesi zaten vardi.
+
+================================================================================
+
 [2026-07-03] - Combat parite dalgasi C6: CombatFlags guardrail ve dokuman tazeleme
 ----------------------------------------
 

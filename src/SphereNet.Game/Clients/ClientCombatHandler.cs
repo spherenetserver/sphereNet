@@ -1116,12 +1116,16 @@ public sealed class ClientCombatHandler
             _character,
             target,
             weapon,
-            CombatHelper.ActiveCombatFlags);
+            CombatHelper.ActiveCombatFlags,
+            -1, -1,
+            ammoStack?.Uid.Value ?? 0,
+            out bool ammoHandled);
 
-        // A landed swing — damaging or fully absorbed — spends the ammo. The
-        // miss branch below handles its own consumption, honoring the script's
-        // LOCAL.ArrowHandled takeover.
-        if (damage >= 0 && ammoStack != null)
+        // A landed swing — damaging or fully absorbed — spends the ammo. A
+        // @Hit-chain LOCAL.ArrowHandled=1 hands the ammo to the script instead
+        // (Source-X nulls pAmmo); the miss branch below handles its own
+        // consumption the same way via the @HitMiss locals.
+        if (damage >= 0 && ammoStack != null && !ammoHandled)
             ConsumeFromStack(ammoStack);
 
         if (damage < 0)
@@ -1208,7 +1212,8 @@ public sealed class ClientCombatHandler
 
             // Source-X hit economy: 40% of arrows that strike an NPC stick in
             // the body — they ride in its pack and surface on the corpse loot.
-            if (CombatHelper.IsRangedWeapon(weapon) && !target.IsPlayer &&
+            // Skipped when a @Hit script took the ammo over (ArrowHandled).
+            if (CombatHelper.IsRangedWeapon(weapon) && !target.IsPlayer && !ammoHandled &&
                 target.Backpack != null && Random.Shared.Next(100) < 40)
             {
                 var stuckAmmo = ResolveAmmo(weapon!);

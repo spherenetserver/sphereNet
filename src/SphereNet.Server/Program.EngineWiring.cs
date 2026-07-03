@@ -2036,6 +2036,13 @@ public static partial class Program
                     ch.RecordAttack(attacker.Uid, dealt);
                     hitAny = true;
 
+                    // Source-X sparkle (ITEMID_FX_SPARKLE_2 = 0x3779) on each
+                    // splashed victim.
+                    BroadcastNearby(ch.Position, 18, new PacketEffect(
+                        3, ch.Uid.Value, ch.Uid.Value, 0x3779,
+                        ch.X, ch.Y, ch.Z, ch.X, ch.Y, ch.Z,
+                        1, 15, false, false), 0);
+
                     if (!ch.IsPlayer && !ch.IsDead && !ch.FightTarget.IsValid)
                     {
                         ch.FightTarget = attacker.Uid;

@@ -125,6 +125,10 @@ public sealed class TriggerDispatcher
         hitLocals.SetInt("ItemDamageChance", ctx.WeaponDamageChance);
         hitLocals.SetInt("ItemPoisonReductionChance", ctx.PoisonReductionChance);
         hitLocals.SetInt("ItemPoisonReductionAmount", ctx.PoisonReductionAmount);
+        // Ranged: LOCAL.Arrow = the live pack ammo stack UID; a script may
+        // write LOCAL.ArrowHandled=1 to take the ammo over (CCharFight:2158).
+        if (ctx.AmmoUid != 0)
+            hitLocals.SetInt("Arrow", ctx.AmmoUid);
         var hitArgs = new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon, N1 = dmg, N2 = dmgType, Locals = hitLocals };
         if (FireCharTrigger(attacker, CharTrigger.Hit, hitArgs) == TriggerResult.True)
         {
@@ -170,10 +174,12 @@ public sealed class TriggerDispatcher
             dmg = Math.Max(0, wArgs.N1);
         }
         // Script-final weapon wear / poison-spend knobs back into the context
-        // for CombatEngine's post-trigger rolls.
+        // for CombatEngine's post-trigger rolls; ArrowHandled hands the ammo
+        // fate to the script (checked after BOTH @Hit stages, like Source-X).
         ctx.WeaponDamageChance = (int)hitLocals.GetInt("ItemDamageChance");
         ctx.PoisonReductionChance = (int)hitLocals.GetInt("ItemPoisonReductionChance");
         ctx.PoisonReductionAmount = (int)hitLocals.GetInt("ItemPoisonReductionAmount");
+        ctx.ArrowHandled = hitLocals.GetInt("ArrowHandled") != 0;
 
         // Item @GetHit on the worn piece at the (script-final) layer — Source-X
         // fires it with the SAME args/locals ("ItemDamageLayer" is read-only

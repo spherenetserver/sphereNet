@@ -1032,6 +1032,21 @@ public sealed class SpellEngine
             int damage = Math.Max(0, effect);
             // Apply elemental resist
             damage = CombatEngine.ApplyElementalResist(target, damage, dmgType);
+
+            // COMBAT_SLAYER on the magic path (Source-X OnTakeDamage with
+            // DAMAGE_MAGIC, CCharFight.cpp:824): the slayer source is the
+            // equipped spellbook, else the wielded weapon; the talisman
+            // fallback lives inside ApplySlayerDamage.
+            if (damage > 0 && (Character.CombatFlags & (int)Combat.CombatFlags.Slayer) != 0)
+            {
+                var oneHand = caster.GetEquippedItem(Layer.OneHanded);
+                var twoHand = caster.GetEquippedItem(Layer.TwoHanded);
+                var slayerSource = oneHand?.ItemType == ItemType.Spellbook ? oneHand
+                    : twoHand?.ItemType == ItemType.Spellbook ? twoHand
+                    : oneHand ?? twoHand;
+                damage = CombatEngine.ApplySlayerDamage(caster, target, damage, slayerSource);
+            }
+
             if (damage > 0)
             {
                 target.Hits -= (short)Math.Min(damage, short.MaxValue);

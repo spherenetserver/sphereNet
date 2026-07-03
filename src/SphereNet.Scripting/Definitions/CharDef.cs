@@ -174,6 +174,13 @@ public sealed class CharDef : BaseDef
             case "SUBSECTION": Subsection = value.Trim(); break;
             case "DESCRIPTION": Description = value.Trim(); break;
             case "FOLLOWERSLOTS": int.TryParse(value, out int fs); FollowerSlots = fs; break;
+            // Source-X CCPropsChar FACTION_GROUP/FACTION_SPECIES (the Slayer
+            // system's NPC side) — stored as def-tags so ApplyNpcDefinitionTags
+            // lands them on every spawned instance.
+            case "FACTION_GROUP":
+            case "FACTION_SPECIES":
+                TagDefs.Set(key, value.Trim());
+                break;
             case "DAMPHYSICAL": short.TryParse(value, out short dpv); DamPhysical = dpv; break;
             case "DAMFIRE": short.TryParse(value, out short dfv); DamFire = dfv; break;
             case "DAMCOLD": short.TryParse(value, out short dcv); DamCold = dcv; break;

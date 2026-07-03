@@ -2314,6 +2314,10 @@ public partial class Character : ObjBase
             case "RESCOLDMAX": value = _resColdMax.ToString(); return true;
             case "RESPOISONMAX": value = _resPoisonMax.ToString(); return true;
             case "RESENERGYMAX": value = _resEnergyMax.ToString(); return true;
+            // Slayer-system NPC faction (Source-X CCPropsChar) — tag-backed so
+            // it persists with the char and flows in from CHARDEF def-tags.
+            case "FACTION_GROUP": value = TryGetTag("FACTION_GROUP", out var facG) ? facG ?? "0" : "0"; return true;
+            case "FACTION_SPECIES": value = TryGetTag("FACTION_SPECIES", out var facS) ? facS ?? "0" : "0"; return true;
             case "DAMPHYSICAL": value = _damPhysical.ToString(); return true;
             case "DAMFIRE": value = _damFire.ToString(); return true;
             case "DAMCOLD": value = _damCold.ToString(); return true;
@@ -3265,6 +3269,8 @@ public partial class Character : ObjBase
             case "RESCOLDMAX": if (short.TryParse(normalized, out short rcmv)) _resColdMax = rcmv; return true;
             case "RESPOISONMAX": if (short.TryParse(normalized, out short rpmv)) _resPoisonMax = rpmv; return true;
             case "RESENERGYMAX": if (short.TryParse(normalized, out short remv)) _resEnergyMax = remv; return true;
+            case "FACTION_GROUP": SetTag("FACTION_GROUP", normalized); return true;
+            case "FACTION_SPECIES": SetTag("FACTION_SPECIES", normalized); return true;
             case "DAMPHYSICAL": if (short.TryParse(normalized, out short dpv)) _damPhysical = dpv; return true;
             case "DAMFIRE": if (short.TryParse(normalized, out short dfv)) _damFire = dfv; return true;
             case "DAMCOLD": if (short.TryParse(normalized, out short dcv)) _damCold = dcv; return true;

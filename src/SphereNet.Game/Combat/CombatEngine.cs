@@ -679,6 +679,12 @@ public static class CombatEngine
                 ApplyDurabilityLoss(itemHit);
         }
 
+        // COMBAT_SLAYER (Source-X OnTakeDamage, CCharFight.cpp:821): the
+        // weapon's (or talisman's) SLAYER vs the victim's FACTION scales the
+        // damage after the trigger chain has settled it.
+        if (damage > 0 && flags.HasFlag(CombatFlags.Slayer))
+            damage = ApplySlayerDamage(attacker, target, damage, weapon);
+
         // Weapon poison on-hit: transfer poison from weapon to target.
         // Source-X: HIT_POISON attribute on weapon. SphereNet: POISON_SKILL tag
         // set by Poisoning skill. Uses 1 charge per hit; cleared at 0.
@@ -888,6 +894,46 @@ public static class CombatEngine
         // Source-X lets full resists zero the hit (CCharFight.cpp:730) — no
         // forced 1-damage floor.
         return total;
+    }
+
+    /// <summary>COMBAT_SLAYER damage scaling (Source-X OnTakeDamage,
+    /// CCharFight.cpp:835-877). The attacker's weapon SLAYER is consulted
+    /// first; when it yields nothing, the equipped talisman is the fallback.
+    /// An NPC victim takes the slayer bonus (Lesser +200% / Super +100%); a
+    /// player victim hit by an NPC wielding a Super Slayer of the player's
+    /// opposing faction group takes the Source-X penalty arithmetic (-100%).
+    /// (Source-X also consults the spellbook for magic damage — SphereNet's
+    /// spell damage does not flow through ResolveAttack, so that path is
+    /// deferred.)</summary>
+    public static int ApplySlayerDamage(Character attacker, Character target, int damage, Item? weapon)
+    {
+        var victimFaction = SlayerFaction.FromChar(target);
+        if (victimFaction.IsNone)
+            return damage;
+
+        int bonusPct = 0;
+        if (weapon != null)
+            bonusPct = SlayerBonusPercent(SlayerFaction.FromItem(weapon), victimFaction, attacker, target);
+        if (bonusPct == 0)
+        {
+            var talisman = attacker.GetEquippedItem(Layer.Talisman);
+            if (talisman != null)
+                bonusPct = SlayerBonusPercent(SlayerFaction.FromItem(talisman), victimFaction, attacker, target);
+        }
+
+        return damage + damage * bonusPct / 100;
+    }
+
+    private static int SlayerBonusPercent(SlayerFaction slayer, SlayerFaction victimFaction,
+        Character attacker, Character target)
+    {
+        if (slayer.IsNone)
+            return 0;
+        if (!target.IsPlayer)
+            return slayer.GetSlayerDamageBonusPercent(victimFaction);
+        if (!attacker.IsPlayer)
+            return slayer.GetSlayerDamagePenaltyPercent(victimFaction);
+        return 0;
     }
 
     /// <summary>Attacker's elemental damage split percentages. Source-X

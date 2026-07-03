@@ -3,6 +3,63 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-03] - Combat parite dalgalari C1-C4: @GetHit sozlesmesi, trigger locals, flag'ler, Slayer
+----------------------------------------
+
+DEGISTI - @GetHit armor-hasar sozlesmesi (dalga C1):
+  - On-hit trigger borusu HitDamageContext ile TriggerDispatcher.RunHitDamageTriggers'a
+    tasindi. @GetHit artik LOCAL.ItemDamageLayer (Source-X sm_ArmorDamageLayers
+    listesinden rastgele) ve LOCAL.ItemDamageChance seed'ler; item @GetHit
+    script-final layer'daki giyili parcada ateslenir (eskiden sadece TwoHanded
+    shield).
+  - Armor durability asinmasi trigger zinciri SONRASI ItemDamageChance ile
+    HER IKI armor modunda da atilir (elemental modda armor hic asinmiyordu);
+    RETURN 1 iptali asinma zarini da atlar.
+
+DUZELTILDI - Elemental hasar bolusumu (dalga C1):
+  - Zorunlu 1-hasar tabani kaldirildi: tam resist'lenen elemental vurus artik
+    Source-X gibi 0 verir.
+  - Set edilmemis physical yuzdesi, elemental yuzdelerin 100'den biraktigi
+    kalan olarak varsayilir (spawn def-apply aninda tutarli uygulanir).
+
+EKLENDI - Trigger local sozlesmeleri (dalga C2):
+  - @HitCheck menzil/LoS dogrulamasindan ONCE ateslenir (Source-X sirasi) ve
+    LOCAL.Recoil_NoRange seed'ler; readback per-swing menzil-yoksay kararini
+    ve windup penceresini surer.
+  - @HitMiss LOCAL.Arrow canli paket ammo yigininin UID'sini tasir; ammo
+    tuketimi sonuc cozumune tasindi — LOCAL.ArrowHandled veya RETURN 1
+    ammo'nun kaderini script'e devreder.
+  - @Hit LOCAL.ItemDamageChance ve ItemPoisonReductionChance/Amount seed'ler
+    (weapon item @Hit ayni havuzu paylasir); readback'ler silah asinmasini ve
+    zehir sarj harcamasini kapilar.
+
+EKLENDI - Bagli olmayan combat flag davranislari (dalga C3):
+  - COMBAT_ALLOWHITFROMSHIP: gemi region siniri uzerinden savas flag olmadan
+    engellenir; ayni gemide savas serbest kalir.
+  - COMBAT_DCLICKSELF_UNMOUNTS: war modunda aktif dovusu olan binekli karakter
+    self-dclick'te attan inmek yerine paperdoll acar; flag inmeyi acar.
+  - COMBAT_NOPETDESERT: kendi pet'ine saldirmak pet'i basibos birakir
+    (@PetDesert RETURN 1 ile iptal edilebilir); flag friendly-fire'a izin verir.
+  - COMBAT_ATTACK_NOAGGREIVED: masuma saldiri baslatmanin criminal isareti
+    melee ve zararli-buyu yollarinda atlanir.
+  - Config yukleme COMBAT_PREHIT|COMBAT_SWING_NORANGE'i normalize eder:
+    SWING_NORANGE uyariyla kapatilir (Source-X RC_COMBATFLAGS).
+
+EKLENDI - Slayer sistemi (COMBAT_SLAYER, dalga C4):
+  - SlayerFaction, CFactionDef'in birebir portu: faction gruplari, karsit/
+    super/lesser eslesme tablolari ve hasar sabitleri (lesser +%200, super
+    +%100, karsit-grup cezasi -%100) — script verisi Source-X ile ayni
+    davransin diye tuhafliklar dahil korundu.
+  - Script yuzeyi Source-X ile ayni: chardef/char'da FACTION_GROUP/
+    FACTION_SPECIES, itemdef/item'da SLAYER_GROUP/SLAYER_SPECIES (def-tag
+    akisiyla spawn'a iner, tag-backed kalicilik).
+  - ResolveAttack, COMBAT_SLAYER altinda oturmus hasari olcekler: once silah
+    slayer'i, sonra ekipli talisman; NPC kurban bonus alir, oyuncu kurban
+    NPC'nin super slayer'indan Source-X karsit-grup cezasini yer.
+    Magic-damage/spellbook yolu ertelendi.
+
+================================================================================
+
 [2026-07-03] - Parite dalgasi W-I1: Source-X envanter guardrail'i, HEARALL/DEFMSG/config
 ----------------------------------------
 

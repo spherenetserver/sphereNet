@@ -742,6 +742,12 @@ public class Item : ObjBase
             case "HITSMAX": value = HitsMax.ToString(); return true;
             case "LAYER": value = ((byte)EquipLayer).ToString(); return true;
 
+            // Slayer-system item side (Source-X CCPropsItemEquippable) —
+            // tag-backed; ITEMDEF-level values live in the def-tags and are
+            // consulted by the combat engine's fallback.
+            case "SLAYER_GROUP": value = TryGetTag("SLAYER_GROUP", out var slyG) ? slyG ?? "0" : "0"; return true;
+            case "SLAYER_SPECIES": value = TryGetTag("SLAYER_SPECIES", out var slyS) ? slyS ?? "0" : "0"; return true;
+
             // Faz 1: Core fields
             case "MORE1": case "MORE": value = FormatMore1(); return true;
             case "MORE2": value = $"0{_more2:X}"; return true;
@@ -1231,6 +1237,9 @@ public class Item : ObjBase
                 if (byte.TryParse(value, out byte layerVal))
                     EquipLayer = (Layer)layerVal;
                 return true;
+
+            case "SLAYER_GROUP": SetTag("SLAYER_GROUP", value.Trim()); return true;
+            case "SLAYER_SPECIES": SetTag("SLAYER_SPECIES", value.Trim()); return true;
 
             // Faz 1: Core fields
             case "MORE1": case "MORE":

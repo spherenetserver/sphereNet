@@ -4,6 +4,64 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-03] - Combat parity waves C1-C4: @GetHit contract, trigger locals, flags, Slayer
+----------------------------------------
+
+CHANGED - @GetHit armor-damage contract (wave C1):
+  - The on-hit trigger pipeline moved into TriggerDispatcher.RunHitDamageTriggers
+    with a HitDamageContext. @GetHit now seeds LOCAL.ItemDamageLayer (random
+    pick from the Source-X sm_ArmorDamageLayers set) and LOCAL.ItemDamageChance;
+    the item @GetHit fires on the worn piece at the script-final layer instead
+    of only a TwoHanded shield.
+  - Armor durability wear rolls ItemDamageChance after the trigger chain in
+    BOTH armor modes (elemental combat previously never wore armor); a
+    RETURN 1 cancel skips the wear roll.
+
+FIXED - Elemental damage split (wave C1):
+  - Removed the forced 1-damage floor: a fully-resisted elemental hit now
+    deals 0, like Source-X.
+  - An unset physical percent defaults to the remainder the elemental
+    percents leave of 100, applied consistently at spawn def-apply time.
+
+ADDED - Trigger local contracts (wave C2):
+  - @HitCheck fires before the swing range/LoS validation (Source-X order)
+    and seeds LOCAL.Recoil_NoRange; the read-back drives the per-swing
+    range-ignore decision and the windup window.
+  - @HitMiss LOCAL.Arrow carries the live pack ammo stack UID; ammo
+    consumption moved to outcome resolution so LOCAL.ArrowHandled or
+    RETURN 1 hands the ammo's fate to the script.
+  - @Hit seeds LOCAL.ItemDamageChance and ItemPoisonReductionChance/Amount
+    (shared with the weapon item @Hit); the read-backs gate the weapon
+    durability wear and the poison charge spend.
+
+ADDED - Dormant combat flag behaviors (wave C3):
+  - COMBAT_ALLOWHITFROMSHIP: combat across a ship region boundary is blocked
+    unless the flag is set; same-ship combat stays allowed.
+  - COMBAT_DCLICKSELF_UNMOUNTS: a mounted char in war mode with an active
+    fight opens the paperdoll on self-dclick instead of dismounting, unless
+    the flag opts into the unmount.
+  - COMBAT_NOPETDESERT: attacking your own pet makes it desert (cancellable
+    via @PetDesert) unless the flag allows friendly fire.
+  - COMBAT_ATTACK_NOAGGREIVED: skips the criminal marking when starting a
+    fight against an innocent, on the melee and harmful-spell paths.
+  - Config load normalizes COMBAT_PREHIT|COMBAT_SWING_NORANGE by clearing
+    SWING_NORANGE with a warning (Source-X RC_COMBATFLAGS).
+
+ADDED - Slayer system (COMBAT_SLAYER, wave C4):
+  - SlayerFaction is a verbatim CFactionDef port: faction groups, the
+    opposite/super/lesser matching tables and the damage constants (lesser
+    +200%, super +100%, opposite-group penalty -100%), quirks included so
+    script data behaves identically to Source-X.
+  - Script surface matches Source-X: FACTION_GROUP/FACTION_SPECIES on
+    chardefs and chars, SLAYER_GROUP/SLAYER_SPECIES on itemdefs and items
+    (def-tag flow to spawns, tag-backed persistence).
+  - ResolveAttack scales the settled damage under COMBAT_SLAYER: weapon
+    slayer first, the equipped talisman as fallback; NPC victims take the
+    bonus, a player victim takes the Source-X opposite-group penalty from
+    an NPC's super slayer. The magic-damage/spellbook path is deferred.
+
+================================================================================
+
 [2026-07-03] - Parity wave W-I1: Source-X inventory guardrail, HEARALL/DEFMSG/config
 ----------------------------------------
 

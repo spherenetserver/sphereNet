@@ -155,6 +155,13 @@ public sealed class ItemDef : BaseDef
             case "RESLEVEL": byte.TryParse(value, out byte rsl); ResLevel = rsl; break;
             case "RESDISPDNHUE": ParseHexOrDec(value, out ushort rdh); ResDispDnHue = rdh; break;
             case "RESDISPDNID": ParseHexOrDec(value, out ushort rdi); ResDispDnId = rdi; break;
+            // Source-X CCPropsItemEquippable SLAYER_GROUP/SLAYER_SPECIES (the
+            // Slayer system's item side) — stored as def-tags; the combat
+            // engine reads them with an instance-tag-first fallback.
+            case "SLAYER_GROUP":
+            case "SLAYER_SPECIES":
+                TagDefs.Set(key, value.Trim());
+                break;
             default:
                 if (key.StartsWith("TAG.", StringComparison.OrdinalIgnoreCase))
                     TagDefs.Set(key[4..], value);

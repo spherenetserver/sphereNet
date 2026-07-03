@@ -1605,6 +1605,12 @@ public static partial class Program
             _npcAI.OnNpcHitCheck = (attacker, target, weapon) =>
             {
                 if (_triggerDispatcher == null) return false;
+                // LOCAL.Recoil_NoRange is seeded read-only here so shared
+                // @HitCheck scripts read the same contract as the player path;
+                // the NPC swing's range gate ran earlier in its tick, so a
+                // write-back has nothing left to drive.
+                var locals = new SphereNet.Scripting.Variables.VarMap();
+                locals.SetInt("Recoil_NoRange", CombatHelper.SwingIgnoresStartRange() ? 1 : 0);
                 var args = new TriggerArgs
                 {
                     CharSrc = target,
@@ -1612,6 +1618,7 @@ public static partial class Program
                     ItemSrc = weapon,
                     N1 = (int)attacker.CombatSwingState,
                     N2 = (int)CombatEngine.GetWeaponDamageType(weapon),
+                    Locals = locals,
                 };
                 return _triggerDispatcher.FireCharTrigger(attacker, CharTrigger.HitCheck, args) == TriggerResult.True;
             };

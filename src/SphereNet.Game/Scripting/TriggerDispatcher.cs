@@ -117,7 +117,15 @@ public sealed class TriggerDispatcher
 
         // Source-X @Hit (Fight_Hit Init(iDmg, iDmgType, 0, pWeapon)): SRC = the
         // victim, ARGO = the weapon, ARGN1 = damage (writable), ARGN2 = type.
-        var hitArgs = new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon, N1 = dmg, N2 = dmgType };
+        // LOCAL.ItemDamageChance gates the weapon's durability wear and
+        // LOCAL.ItemPoisonReductionChance/Amount the poison-charge spend
+        // (CCharFight.cpp:2148); the weapon item @Hit below shares the SAME
+        // locals pool, matching Source-X's shared pScriptArgs.
+        var hitLocals = new SphereNet.Scripting.Variables.VarMap();
+        hitLocals.SetInt("ItemDamageChance", ctx.WeaponDamageChance);
+        hitLocals.SetInt("ItemPoisonReductionChance", ctx.PoisonReductionChance);
+        hitLocals.SetInt("ItemPoisonReductionAmount", ctx.PoisonReductionAmount);
+        var hitArgs = new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon, N1 = dmg, N2 = dmgType, Locals = hitLocals };
         if (FireCharTrigger(attacker, CharTrigger.Hit, hitArgs) == TriggerResult.True)
         {
             ctx.Cancelled = true;
@@ -153,7 +161,7 @@ public sealed class TriggerDispatcher
 
         if (weapon != null)
         {
-            var wArgs = new TriggerArgs { CharSrc = attacker, ItemSrc = weapon, O1 = target, N1 = dmg };
+            var wArgs = new TriggerArgs { CharSrc = attacker, ItemSrc = weapon, O1 = target, N1 = dmg, N2 = dmgType, Locals = hitLocals };
             if (FireItemTrigger(weapon, ItemTrigger.Hit, wArgs) == TriggerResult.True)
             {
                 ctx.Cancelled = true;
@@ -161,6 +169,11 @@ public sealed class TriggerDispatcher
             }
             dmg = Math.Max(0, wArgs.N1);
         }
+        // Script-final weapon wear / poison-spend knobs back into the context
+        // for CombatEngine's post-trigger rolls.
+        ctx.WeaponDamageChance = (int)hitLocals.GetInt("ItemDamageChance");
+        ctx.PoisonReductionChance = (int)hitLocals.GetInt("ItemPoisonReductionChance");
+        ctx.PoisonReductionAmount = (int)hitLocals.GetInt("ItemPoisonReductionAmount");
 
         // Item @GetHit on the worn piece at the (script-final) layer — Source-X
         // fires it with the SAME args/locals ("ItemDamageLayer" is read-only

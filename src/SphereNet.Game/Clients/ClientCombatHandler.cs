@@ -840,8 +840,12 @@ public sealed class ClientCombatHandler
                   ?? _character.GetEquippedItem(Layer.TwoHanded);
         int maxRange = CombatHelper.GetWeaponRange(weapon).Max;
         int dist = CombatHelper.GetChebyshevDistance(_character, target);
-        // COMBAT_SWING_NORANGE: a swing may start even when out of range.
-        if (dist > maxRange && !CombatHelper.SwingIgnoresStartRange())
+        // COMBAT_SWING_NORANGE: a swing may start even when out of range. A
+        // hooked @HitCheck also opens this fast-path gate — the script may
+        // enable it per-swing via LOCAL.Recoil_NoRange (Source-X fires
+        // @HitCheck before Fight_CanHit's range validation).
+        if (dist > maxRange && !CombatHelper.SwingIgnoresStartRange() &&
+            _triggerDispatcher?.IsCharTriggerUsed(CharTrigger.HitCheck) != true)
             return;
 
         TrySwingAt(target);
@@ -909,9 +913,39 @@ public sealed class ClientCombatHandler
         var weapon = _character.GetEquippedItem(Layer.OneHanded)
                   ?? _character.GetEquippedItem(Layer.TwoHanded);
 
+        // Source-X @HitCheck (Fight_Hit entry, BEFORE Fight_CanHit's range/LoS
+        // validation): SRC = the victim, ARGN1 = war swing state, ARGN2 =
+        // damage type, LOCAL.Recoil_NoRange = the per-swing SWING_NORANGE
+        // decision — seeded from the combat flags and read back to drive the
+        // range validation and windup window below. RETURN 1 forces a miss
+        // (SphereNet adaptation of the Source-X swing-state return).
+        bool swingNoRange = CombatHelper.SwingIgnoresStartRange();
+        if (_triggerDispatcher != null)
+        {
+            var hitCheckLocals = new SphereNet.Scripting.Variables.VarMap();
+            hitCheckLocals.SetInt("Recoil_NoRange", swingNoRange ? 1 : 0);
+            var hitCheckArgs = new TriggerArgs
+            {
+                CharSrc = target,
+                O1 = weapon,
+                ItemSrc = weapon,
+                N1 = (int)_character.CombatSwingState,
+                N2 = (int)CombatEngine.GetWeaponDamageType(weapon),
+                Locals = hitCheckLocals,
+            };
+            if (_triggerDispatcher.FireCharTrigger(_character, CharTrigger.HitCheck, hitCheckArgs) == TriggerResult.True)
+            {
+                EmitMissFeedback(target, weapon);
+                _triggerDispatcher.FireCharTrigger(_character, CharTrigger.HitMiss,
+                    new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon });
+                return;
+            }
+            swingNoRange = hitCheckLocals.GetInt("Recoil_NoRange") != 0;
+        }
+
         var prep = CombatHelper.ValidateSwingPrep(
             _world, _character, target, weapon, _character.PrivLevel, now, _world.CanSeeLOS,
-            ignoreRangeLos: CombatHelper.SwingIgnoresStartRange());
+            ignoreRangeLos: swingNoRange);
         switch (prep.Result)
         {
             case CombatHelper.SwingPrepResult.Abort:
@@ -965,27 +999,6 @@ public sealed class ClientCombatHandler
         if (!CombatHelper.IsCombatFlagSet(CombatFlags.NoDirChange))
             FaceTarget(target);
 
-        if (_triggerDispatcher != null)
-        {
-            // Source-X @HitCheck: SRC = the victim, ARGN1 = war swing state,
-            // ARGN2 = damage type.
-            var hitCheckArgs = new TriggerArgs
-            {
-                CharSrc = target,
-                O1 = weapon,
-                ItemSrc = weapon,
-                N1 = (int)_character.CombatSwingState,
-                N2 = (int)CombatEngine.GetWeaponDamageType(weapon),
-            };
-            if (_triggerDispatcher.FireCharTrigger(_character, CharTrigger.HitCheck, hitCheckArgs) == TriggerResult.True)
-            {
-                EmitMissFeedback(target, weapon);
-                _triggerDispatcher.FireCharTrigger(_character, CharTrigger.HitMiss,
-                    new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon });
-                return;
-            }
-        }
-
         (ushort BaseId, ItemType FallbackType, ushort Gfx)? ammo = null;
         if (CombatHelper.IsRangedWeapon(weapon))
         {
@@ -1007,9 +1020,10 @@ public sealed class ClientCombatHandler
         // Two-phase swing (Source-X windup -> hit): commit the swing now (animation
         // + recoil + a pending hit). With a zero windup the hit resolves in this
         // same call (atomic — the flagless default and PREHIT); STAYINRANGE /
-        // SWING_NORANGE open a window so the hit lands later from TickCombat's
-        // pending-hit pump. `ammo` (presence) was validated just above.
-        int hitDelayMs = CombatHelper.GetSwingHitDelayMs(swingDelayMs);
+        // SWING_NORANGE (or a @HitCheck LOCAL.Recoil_NoRange override) open a
+        // window so the hit lands later from TickCombat's pending-hit pump.
+        // `ammo` (presence) was validated just above.
+        int hitDelayMs = CombatHelper.GetSwingHitDelayMs(swingDelayMs, swingNoRange);
         _character.BeginSwingWindup(now, hitDelayMs, swingDelayMs, target.Uid, now + swingDelayMs * 2L);
 
         if (_character.Stam > 0)
@@ -1069,11 +1083,15 @@ public sealed class ClientCombatHandler
         _character.ClearPendingHit();
         if (target == null) return;
 
-        // Ammo consume + projectile (presence was validated at swing start).
+        // Projectile now; the ammo stack is located here but only consumed
+        // after the hit/miss outcome resolves, so @HitMiss can expose its UID
+        // as LOCAL.Arrow and a script may take over its fate (ArrowHandled) —
+        // Source-X finds pAmmo during the swing and consumes it per-branch.
+        Item? ammoStack = null;
         if (CombatHelper.IsRangedWeapon(weapon))
         {
             var ammoSpec = ResolveAmmo(weapon!);
-            ConsumeAmmoFromPack(ammoSpec.BaseId, ammoSpec.FallbackType);
+            ammoStack = FindAmmoInPack(ammoSpec.BaseId, ammoSpec.FallbackType);
             EmitRangedProjectile(target, ammoSpec.Gfx);
         }
 
@@ -1082,6 +1100,12 @@ public sealed class ClientCombatHandler
             target,
             weapon,
             CombatHelper.ActiveCombatFlags);
+
+        // A landed swing — damaging or fully absorbed — spends the ammo. The
+        // miss branch below handles its own consumption, honoring the script's
+        // LOCAL.ArrowHandled takeover.
+        if (damage >= 0 && ammoStack != null)
+            ConsumeFromStack(ammoStack);
 
         if (damage < 0)
         {
@@ -1332,22 +1356,30 @@ public sealed class ClientCombatHandler
         else
         {
             // Source-X @HitMiss: SRC = the victim, ARGO = the weapon.
-            // LOCAL.Arrow marks that ranged ammo was spent on this miss; a
-            // script sets LOCAL.ArrowHandled=1 to take over the ammo fate.
+            // LOCAL.Arrow = the UID of the pack ammo stack the shot came from
+            // (CCharFight.cpp:2032). LOCAL.ArrowHandled=1 — or RETURN 1 —
+            // hands the ammo's fate to the script: nothing is consumed or
+            // dropped by the engine then.
             bool rangedMiss = CombatHelper.IsRangedWeapon(weapon);
             var missLocals = new SphereNet.Scripting.Variables.VarMap();
-            if (rangedMiss) missLocals.SetInt("Arrow", 1);
-            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.HitMiss,
-                new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon, Locals = missLocals });
+            if (rangedMiss && ammoStack != null)
+                missLocals.SetInt("Arrow", ammoStack.Uid.Value);
+            var missResult = _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.HitMiss,
+                new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon, Locals = missLocals })
+                ?? TriggerResult.Default;
 
-            // Source-X miss economy: 40% of the time the player's arrow falls
-            // at the victim's feet (recoverable, decays); otherwise it is gone
-            // (it was already consumed from the pack at the shot).
-            if (rangedMiss && missLocals.GetInt("ArrowHandled") == 0 &&
-                Random.Shared.Next(100) < 40)
+            // Source-X miss economy: the shot always spends one ammo; 40% of
+            // the time it falls at the victim's feet (recoverable, decays),
+            // otherwise it is simply gone.
+            if (rangedMiss && ammoStack != null && missResult != TriggerResult.True &&
+                missLocals.GetInt("ArrowHandled") == 0)
             {
-                var missAmmo = ResolveAmmo(weapon!);
-                DropRecoveredAmmo(missAmmo.BaseId, missAmmo.FallbackType, target.Position);
+                ConsumeFromStack(ammoStack);
+                if (Random.Shared.Next(100) < 40)
+                {
+                    var missAmmo = ResolveAmmo(weapon!);
+                    DropRecoveredAmmo(missAmmo.BaseId, missAmmo.FallbackType, target.Position);
+                }
             }
 
             BroadcastNearby?.Invoke(_character.Position, UpdateRange,
@@ -1408,18 +1440,26 @@ public sealed class ClientCombatHandler
         return false;
     }
 
-    private void ConsumeAmmoFromPack(ushort baseId, ItemType fallbackType)
+    /// <summary>The pack ammo stack a shot draws from (Source-X pAmmo) — found
+    /// at the shot, consumed only once the hit/miss outcome resolves so the
+    /// @HitMiss LOCAL.Arrow contract can expose (and a script can take over)
+    /// the live item.</summary>
+    private Item? FindAmmoInPack(ushort baseId, ItemType fallbackType)
     {
         var pack = _character?.Backpack;
-        if (pack == null) return;
+        if (pack == null) return null;
         foreach (var it in pack.Contents)
         {
             bool match = baseId != 0 ? it.BaseId == baseId : it.ItemType == fallbackType;
-            if (!match || it.Amount <= 0) continue;
-            if (it.Amount <= 1) _world.RemoveItem(it);
-            else it.Amount = (ushort)(it.Amount - 1);
-            return;
+            if (match && it.Amount > 0) return it;
         }
+        return null;
+    }
+
+    private void ConsumeFromStack(Item stack)
+    {
+        if (stack.Amount <= 1) _world.RemoveItem(stack);
+        else stack.Amount = (ushort)(stack.Amount - 1);
     }
 
     private void EmitRangedProjectile(Character target, ushort effectId)

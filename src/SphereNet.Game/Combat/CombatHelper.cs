@@ -277,11 +277,14 @@ public static class CombatHelper
     /// <summary>Windup length before the hit lands. 0 = atomic (hit at swing
     /// start), which is the flagless default and the PREHIT case. STAYINRANGE /
     /// SWING_NORANGE (without PREHIT) open a full-swing window so the reach/LoS
-    /// re-check has meaning.</summary>
-    public static int GetSwingHitDelayMs(int swingDelayMs)
+    /// re-check has meaning. <paramref name="swingNoRange"/> overrides the
+    /// SWING_NORANGE flag for this swing (the @HitCheck LOCAL.Recoil_NoRange
+    /// contract); null keeps the global flag.</summary>
+    public static int GetSwingHitDelayMs(int swingDelayMs, bool? swingNoRange = null)
     {
         if (IsCombatFlagSet(CombatFlags.PreHit)) return 0;
-        bool window = IsCombatFlagSet(CombatFlags.StayInRange) || IsCombatFlagSet(CombatFlags.SwingNoRange);
+        bool window = IsCombatFlagSet(CombatFlags.StayInRange) ||
+            (swingNoRange ?? IsCombatFlagSet(CombatFlags.SwingNoRange));
         return window ? Math.Max(0, swingDelayMs) : 0;
     }
 

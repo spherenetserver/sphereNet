@@ -104,6 +104,22 @@ public sealed class HitDamageContext
     /// before it).</summary>
     public bool Cancelled { get; set; }
 
+    /// <summary>% chance the attacker's weapon takes durability wear on a hit
+    /// (LOCAL.ItemDamageChance in the @Hit trigger args, script-writable;
+    /// Source-X seeds 25 — a separate roll from the @GetHit armor-side
+    /// ItemDamageChance above).</summary>
+    public int WeaponDamageChance { get; set; } = 25;
+
+    /// <summary>% chance a poisoned weapon loses poison charges after
+    /// delivering (LOCAL.ItemPoisonReductionChance, script-writable;
+    /// Source-X seeds 100).</summary>
+    public int PoisonReductionChance { get; set; } = 100;
+
+    /// <summary>Poison charges removed when the reduction chance passes
+    /// (LOCAL.ItemPoisonReductionAmount, script-writable; SphereNet's
+    /// level+charges poison model spends 1 per delivery by default).</summary>
+    public int PoisonReductionAmount { get; set; } = 1;
+
     /// <summary>COMBAT_ELEMENTAL_ENGINE active — the DamagePercent* split below
     /// is exposed to @GetHit as read-only locals.</summary>
     public bool Elemental { get; init; }
@@ -679,7 +695,12 @@ public static class CombatEngine
                 int charges = 1;
                 if (weapon.TryGetTag("POISON_CHARGES", out string? chargesStr))
                     int.TryParse(chargesStr, out charges);
-                charges--;
+                // Source-X @Hit LOCAL.ItemPoisonReductionChance/Amount: the
+                // script controls whether (and by how much) delivering the
+                // poison spends the weapon's charges. Defaults (100% / 1)
+                // reproduce the fixed 1-per-hit spend.
+                if (_rand.Next(100) < hitCtx.PoisonReductionChance)
+                    charges -= Math.Max(0, hitCtx.PoisonReductionAmount);
                 if (charges <= 0)
                 {
                     weapon.RemoveTag("POISON_SKILL");
@@ -725,11 +746,11 @@ public static class CombatEngine
                 attacker.RecordAttack(target.Uid, reflect);
             }
 
-            if (DurabilityEnabled)
-            {
-                if (weapon != null)
-                    ApplyDurabilityLoss(weapon);
-            }
+            // Source-X @Hit LOCAL.ItemDamageChance: the weapon wears only
+            // WeaponDamageChance% of the time (script-writable, seeded 25).
+            if (DurabilityEnabled && weapon != null &&
+                _rand.Next(100) < hitCtx.WeaponDamageChance)
+                ApplyDurabilityLoss(weapon);
         }
 
         // Passive combat skill gain — Source-X Fight_Hit tail: every landed

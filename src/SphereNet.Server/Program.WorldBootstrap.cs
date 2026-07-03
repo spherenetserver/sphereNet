@@ -670,12 +670,18 @@ public static partial class Program
     }
 
     /// <summary>
-    /// Resolve a config path: if absolute, use as-is; if relative, resolve from basePath.
+    /// Resolve a config path: absolute is used as-is; a relative path prefers
+    /// the working directory when it exists there (same CWD-first rule
+    /// FindConfigFile/FindDir use — running the server from a data directory
+    /// keeps saves/accounts THERE), falling back to the exe directory.
     /// </summary>
     private static string ResolvePath(string basePath, string configPath)
     {
         if (Path.IsPathRooted(configPath))
             return configPath;
+        string cwdPath = Path.Combine(Directory.GetCurrentDirectory(), configPath);
+        if (Directory.Exists(cwdPath) || File.Exists(cwdPath))
+            return cwdPath;
         return Path.Combine(basePath, configPath);
     }
 }

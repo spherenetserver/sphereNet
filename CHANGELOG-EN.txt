@@ -4,6 +4,33 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-02] - Smoke test fixes: web status deadlock, CWD path resolution, T2A map bound
+----------------------------------------
+A headless boot smoke test with the real mortechUO script pack (554 .scp)
+and UOP maps: 32845 itemdefs / 822 chardefs / 168 spells / 1645 recipes /
+1271 teleporters loaded; telnet console (status/save/garbage/account add),
+an account save-restart-load round trip and the web status endpoint were
+exercised. Three real bugs found and fixed:
+
+FIXED - The web status endpoint never answered (requests timed out):
+  - WebStatusServer.Tick started a NEW BeginGetContext every tick; the
+    previous pending accepts were abandoned and an arriving request was
+    consumed by an accept nobody reaped (plus a per-tick async-op pileup).
+    A single pending accept now survives across ticks.
+
+FIXED - Relative save/accounts paths always resolved to the exe directory:
+  - ResolvePath now applies the same CWD-first rule as FindConfigFile/
+    FindDir: a relative path existing in the working directory wins, else
+    it falls back to the exe directory. A server run from a data directory
+    now writes its saves there.
+
+FIXED - MAP0/MAP1 default 6144 -> 7168 (config/sphere.ini):
+  - Width 6144 left the T2A/Lost Lands area (x>6144) outside the world;
+    mortechUO teleport defs use x 6992-7153 and 10 Lost Lands teleporters
+    failed to place. The UOP map0 file carries 7168.
+
+================================================================================
+
 [2026-07-02] - Parity wave W-H11: SMELT/CARVECORPSE verbs, MDB.*
 ----------------------------------------
 

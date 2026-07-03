@@ -4,6 +4,33 @@
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-02] - Smoke test düzeltmeleri: web status kilidi, CWD yol çözümü, T2A harita sınırı
+----------------------------------------
+Gerçek mortechUO script paketi (554 .scp) + UOP harita ile headless boot
+smoke testi yapıldı: 32845 itemdef / 822 chardef / 168 büyü / 1645 tarif /
+1271 teleporter yüklendi, telnet konsol (status/save/garbage/account add),
+save-restart-load hesap turu ve web status doğrulandı. Bulunan üç gerçek
+hata düzeltildi:
+
+DUZELTILDI - Web status endpoint'i hiç yanıt vermiyordu (istek zaman aşımı):
+  - WebStatusServer.Tick her tick'te YENİ bir BeginGetContext başlatıyordu;
+    önceki bekleyen accept'ler terk ediliyor, gelen istek kimsenin
+    okumadığı accept'e düşüyordu (+ tick başına async op birikimi). Tek
+    bekleyen accept tick'ler arası korunuyor artık.
+
+DUZELTILDI - Göreli save/accounts yolları her zaman exe dizinine çözülüyordu:
+  - ResolvePath artık FindConfigFile/FindDir ile aynı CWD-öncelikli kuralı
+    uygular: göreli yol çalışma dizininde mevcutsa orası kullanılır, yoksa
+    exe dizinine düşer. Veri dizininden çalıştırılan sunucu save'lerini
+    artık oraya yazar.
+
+DUZELTILDI - MAP0/MAP1 varsayılanı 6144 → 7168 (config/sphere.ini):
+  - 6144 genişlik T2A/Lost Lands bölgesini (x>6144) dünya dışında
+    bırakıyordu; mortechUO teleport defleri x 6992-7153 kullanır ve 10
+    Lost Lands teleporter'ı yerleşemiyordu. UOP map0 dosyası 7168 içerir.
+
+================================================================================
+
 [2026-07-02] - Parite dalgası W-H11: SMELT/CARVECORPSE verb'leri, MDB.*
 ----------------------------------------
 

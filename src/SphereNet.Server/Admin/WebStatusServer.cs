@@ -60,6 +60,8 @@ public sealed class WebStatusServer : IDisposable
         }
     }
 
+    private IAsyncResult? _pendingAccept;
+
     public void Tick()
     {
         if (!_running || _listener == null) return;
@@ -69,12 +71,18 @@ public sealed class WebStatusServer : IDisposable
             HttpListenerContext? ctx;
             try
             {
-                var result = _listener.BeginGetContext(null, null);
-                if (!result.AsyncWaitHandle.WaitOne(0)) return;
-                ctx = _listener.EndGetContext(result);
+                // ONE pending accept survives across ticks. Starting a fresh
+                // BeginGetContext every tick abandons the previous one — an
+                // arriving request is then consumed by an accept nobody ever
+                // reaps (client times out) and the pending ops pile up.
+                _pendingAccept ??= _listener.BeginGetContext(null, null);
+                if (!_pendingAccept.AsyncWaitHandle.WaitOne(0)) return;
+                ctx = _listener.EndGetContext(_pendingAccept);
+                _pendingAccept = null;
             }
             catch (Exception ex)
             {
+                _pendingAccept = null;
                 if (_running)
                     _logger.LogWarning(ex, "Web status listener error");
                 return;

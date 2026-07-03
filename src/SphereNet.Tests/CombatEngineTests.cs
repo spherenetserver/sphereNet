@@ -167,7 +167,7 @@ public class CombatEngineTests
             // Cancel: the hook returns 0, so a connecting hit deals no HP loss.
             // (Loop past random misses; ResolveAttack returns -1 on a miss and
             // the hook value on a connecting hit.)
-            CombatEngine.OnHitDamage = (_, _, _, _) => 0;
+            CombatEngine.OnHitDamage = _ => 0;
             int canceled = -1;
             for (int i = 0; i < 200 && canceled < 0; i++)
             {
@@ -178,7 +178,7 @@ public class CombatEngineTests
             Assert.Equal(target.MaxHits, target.Hits);
 
             // Modify: the hook forces exactly 7 damage regardless of the roll.
-            CombatEngine.OnHitDamage = (_, _, _, _) => 7;
+            CombatEngine.OnHitDamage = _ => 7;
             int modified = -1;
             for (int i = 0; i < 200 && modified < 0; i++)
             {

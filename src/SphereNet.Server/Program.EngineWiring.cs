@@ -1992,48 +1992,11 @@ public static partial class Program
             // paths. Fires @Hit / @GetHit and the weapon/armor item hooks after
             // armor/parry but before HP is applied, threading the running damage
             // through ARGN1 so a script can raise, lower or cancel it (RETURN 1).
-            CombatEngine.OnHitDamage = (attacker, target, weapon, damage) =>
-            {
-                if (_triggerDispatcher == null)
-                    return damage;
-                int dmg = damage;
-
-                int dmgType = (int)CombatEngine.GetWeaponDamageType(weapon);
-
-                // Source-X @Hit (Fight_Hit Init(iDmg, iDmgType, 0, pWeapon),
-                // OnTrigger(..., pCharTarg)): SRC = the victim, ARGO = the
-                // weapon, ARGN1 = damage (writable), ARGN2 = damage type.
-                var hitArgs = new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon, N1 = dmg, N2 = dmgType };
-                if (_triggerDispatcher.FireCharTrigger(attacker, CharTrigger.Hit, hitArgs) == TriggerResult.True)
-                    return 0;
-                dmg = Math.Max(0, hitArgs.N1);
-
-                // Source-X @GetHit: SRC = the attacker, ARGN1 = damage
-                // (writable), ARGN2 = damage type.
-                var getHitArgs = new TriggerArgs { CharSrc = attacker, N1 = dmg, N2 = dmgType };
-                if (_triggerDispatcher.FireCharTrigger(target, CharTrigger.GetHit, getHitArgs) == TriggerResult.True)
-                    return 0;
-                dmg = Math.Max(0, getHitArgs.N1);
-
-                if (weapon != null)
-                {
-                    var wArgs = new TriggerArgs { CharSrc = attacker, ItemSrc = weapon, O1 = target, N1 = dmg };
-                    if (_triggerDispatcher.FireItemTrigger(weapon, ItemTrigger.Hit, wArgs) == TriggerResult.True)
-                        return 0;
-                    dmg = Math.Max(0, wArgs.N1);
-                }
-
-                var shield = target.GetEquippedItem(SphereNet.Core.Enums.Layer.TwoHanded);
-                if (shield != null)
-                {
-                    var sArgs = new TriggerArgs { CharSrc = attacker, ItemSrc = shield, N1 = dmg };
-                    if (_triggerDispatcher.FireItemTrigger(shield, ItemTrigger.GetHit, sArgs) == TriggerResult.True)
-                        return 0;
-                    dmg = Math.Max(0, sArgs.N1);
-                }
-
-                return dmg;
-            };
+            // The pipeline itself lives in TriggerDispatcher.RunHitDamageTriggers
+            // (Source-X @GetHit armor-damage locals + item @GetHit on the rolled
+            // LOCAL.ItemDamageLayer piece).
+            CombatEngine.OnHitDamage = ctx =>
+                _triggerDispatcher?.RunHitDamageTriggers(ctx) ?? ctx.Damage;
 
             // Housing — load multi definitions from multi.mul
             var multiRegistry = new SphereNet.Game.Housing.MultiRegistry();

@@ -78,6 +78,43 @@ public enum ArmorHitRegion
 }
 
 /// <summary>
+/// On-hit trigger context threaded through <see cref="CombatEngine.OnHitDamage"/>
+/// (the Source-X CChar::OnTakeDamage @GetHit block, CCharFight.cpp:750). The
+/// engine seeds the armor-damage roll and the elemental split; the hook exposes
+/// them to scripts as LOCAL.* and writes script changes back before the engine
+/// rolls the durability wear.
+/// </summary>
+public sealed class HitDamageContext
+{
+    public required Character Attacker { get; init; }
+    public required Character Target { get; init; }
+    public Item? Weapon { get; init; }
+    public int Damage { get; set; }
+
+    /// <summary>Layer whose worn item takes the item @GetHit trigger and the
+    /// durability wear (LOCAL.ItemDamageLayer, script-writable).</summary>
+    public Layer ItemDamageLayer { get; set; }
+
+    /// <summary>% chance the ItemDamageLayer item takes durability wear
+    /// (LOCAL.ItemDamageChance, script-writable; Source-X seeds 25).</summary>
+    public int ItemDamageChance { get; set; } = 25;
+
+    /// <summary>Set by the hook when a trigger RETURNed 1: the hit is fully
+    /// cancelled and skips the armor durability roll (Source-X returns 0
+    /// before it).</summary>
+    public bool Cancelled { get; set; }
+
+    /// <summary>COMBAT_ELEMENTAL_ENGINE active — the DamagePercent* split below
+    /// is exposed to @GetHit as read-only locals.</summary>
+    public bool Elemental { get; init; }
+    public int DamPercentPhysical { get; init; }
+    public int DamPercentFire { get; init; }
+    public int DamPercentCold { get; init; }
+    public int DamPercentPoison { get; init; }
+    public int DamPercentEnergy { get; init; }
+}
+
+/// <summary>
 /// Core combat engine. Maps to CChar::Fight_* functions in Source-X CCharFight.cpp.
 /// Handles hit/miss, damage calculation, armor, and weapon skill routing.
 /// </summary>
@@ -130,11 +167,21 @@ public static class CombatEngine
     /// On-hit damage pipeline. Fires the @Hit / @GetHit char triggers and the
     /// weapon/armor item triggers on a connecting hit — after armor/parry have
     /// resolved a number, but BEFORE it is applied to HP — and returns the final
-    /// damage. A script may raise, lower or fully cancel it (return &lt;= 0).
-    /// Wired in the engine so the player and NPC swing paths share one trigger
-    /// pipeline. Args: attacker, target, weapon, proposedDamage → finalDamage.
+    /// damage. A script may raise, lower or fully cancel it (return &lt;= 0 or
+    /// set <see cref="HitDamageContext.Cancelled"/>). Wired in the engine so
+    /// the player and NPC swing paths share one trigger pipeline.
     /// </summary>
-    public static Func<Character, Character, Item?, int, int>? OnHitDamage;
+    public static Func<HitDamageContext, int>? OnHitDamage;
+
+    /// <summary>Armor layers a hit may pick for the item @GetHit trigger and
+    /// the durability wear (Source-X sm_ArmorDamageLayers, CCharFight.cpp:388).
+    /// Hand layers (weapons/shields) are excluded.</summary>
+    public static readonly Layer[] ArmorDamageLayers =
+    [
+        Layer.Shoes, Layer.Pants, Layer.Shirt, Layer.Helm, Layer.Gloves, Layer.Neck,
+        Layer.Waist, Layer.Chest, Layer.Tunic, Layer.Arms, Layer.Cape, Layer.Robe,
+        Layer.Skirt, Layer.Legs,
+    ];
 
     /// <summary>
     /// Calculate hit chance. Maps to CServerConfig::Calc_CombatChanceToHit.
@@ -566,16 +613,13 @@ public static class CombatEngine
         else
         {
             // Source-X OnTakeDamage pre-AOS path: the WHOLE-BODY coverage-
-            // weighted AR mitigates every hit; the random region roll only
-            // picks which worn piece takes the durability wear.
+            // weighted AR mitigates every hit; which worn piece takes the
+            // durability wear is the @GetHit ItemDamageLayer roll below.
             int armorRating = CalcArmorDefense(target);
             int arMax = armorRating * _rand.Next(7, 36) / 100;
             int arMin = arMax / 2;
             int defense = _rand.Next(arMin, arMax + 1);
             damage -= defense;
-
-            if (DurabilityEnabled)
-                ApplyArmorDurabilityLoss(target, RollArmorHitRegion());
         }
 
         damage = Math.Max(0, damage);
@@ -585,10 +629,39 @@ public static class CombatEngine
         // is applied to HP — so a script may raise, lower or fully cancel the
         // damage. Source-X fires these around damage application; centralizing
         // them in one hook means the player and NPC swing paths share a single
-        // pipeline (previously they each fired the triggers post-application,
-        // where a script could observe but not modify the damage).
+        // pipeline. The context carries the Source-X @GetHit armor-damage roll
+        // (LOCAL.ItemDamageLayer / ItemDamageChance) and the elemental split
+        // (LOCAL.DamagePercent*) for the hook to expose to scripts.
+        bool elemental = flags.HasFlag(CombatFlags.ElementalEngine);
+        var split = elemental ? GetElementalSplit(attacker) : default;
+        var hitCtx = new HitDamageContext
+        {
+            Attacker = attacker,
+            Target = target,
+            Weapon = weapon,
+            Damage = damage,
+            ItemDamageLayer = ArmorDamageLayers[_rand.Next(ArmorDamageLayers.Length)],
+            Elemental = elemental,
+            DamPercentPhysical = split.Phys,
+            DamPercentFire = split.Fire,
+            DamPercentCold = split.Cold,
+            DamPercentPoison = split.Poison,
+            DamPercentEnergy = split.Energy,
+        };
         if (OnHitDamage != null)
-            damage = Math.Max(0, OnHitDamage(attacker, target, weapon, damage));
+            damage = Math.Max(0, OnHitDamage(hitCtx));
+
+        // Source-X OnTakeDamage tail of the @GetHit block: the (script-final)
+        // ItemDamageLayer item wears ItemDamageChance% of the time — in BOTH
+        // armor modes, so elemental combat wears armor too. A RETURN 1 anywhere
+        // in the chain (Cancelled) returned before this roll in Source-X.
+        if (!hitCtx.Cancelled && DurabilityEnabled &&
+            _rand.Next(100) < hitCtx.ItemDamageChance)
+        {
+            var itemHit = target.GetEquippedItem(hitCtx.ItemDamageLayer);
+            if (itemHit != null)
+                ApplyDurabilityLoss(itemHit);
+        }
 
         // Weapon poison on-hit: transfer poison from weapon to target.
         // Source-X: HIT_POISON attribute on weapon. SphereNet: POISON_SKILL tag
@@ -680,14 +753,6 @@ public static class CombatEngine
         }
 
         return damage;
-    }
-
-    private static void ApplyArmorDurabilityLoss(Character target, ArmorHitRegion hitRegion)
-    {
-        var layer = GetArmorLayerForRegion(hitRegion);
-        var armor = target.GetEquippedItem(layer);
-        if (armor != null)
-            ApplyDurabilityLoss(armor);
     }
 
     private static void ApplyDurabilityLoss(Item item)
@@ -784,16 +849,12 @@ public static class CombatEngine
     /// </summary>
     public static int ApplyElementalDamageSplit(Character attacker, Character target, int damage, Item? weapon)
     {
-        int physPct = attacker.DamPhysical;
-        int firePct = attacker.DamFire;
-        int coldPct = attacker.DamCold;
-        int poisonPct = attacker.DamPoison;
-        int energyPct = attacker.DamEnergy;
-
         // If no elemental split defined, fall back to weapon damage type
-        if (firePct == 0 && coldPct == 0 && poisonPct == 0 && energyPct == 0)
+        if (attacker.DamFire == 0 && attacker.DamCold == 0 &&
+            attacker.DamPoison == 0 && attacker.DamEnergy == 0)
             return ApplyElementalResist(target, damage, GetWeaponDamageType(weapon));
 
+        var (physPct, firePct, coldPct, poisonPct, energyPct) = GetElementalSplit(attacker);
         int sum = physPct + firePct + coldPct + poisonPct + energyPct;
         if (sum <= 0) sum = 100;
 
@@ -803,7 +864,22 @@ public static class CombatEngine
         if (coldPct > 0) total += ApplyElementalResist(target, damage * coldPct / sum, DamageType.Cold);
         if (poisonPct > 0) total += ApplyElementalResist(target, damage * poisonPct / sum, DamageType.Poison);
         if (energyPct > 0) total += ApplyElementalResist(target, damage * energyPct / sum, DamageType.Energy);
-        return Math.Max(1, total);
+        // Source-X lets full resists zero the hit (CCharFight.cpp:730) — no
+        // forced 1-damage floor.
+        return total;
+    }
+
+    /// <summary>Attacker's elemental damage split percentages. Source-X
+    /// OnTakeDamage (CCharFight.cpp:721): an unset physical share is assumed
+    /// to be the remainder the elemental percents leave of 100.</summary>
+    public static (int Phys, int Fire, int Cold, int Poison, int Energy) GetElementalSplit(Character attacker)
+    {
+        int fire = attacker.DamFire, cold = attacker.DamCold,
+            poison = attacker.DamPoison, energy = attacker.DamEnergy;
+        int phys = attacker.DamPhysical;
+        if (phys == 0)
+            phys = Math.Max(0, 100 - (fire + cold + poison + energy));
+        return (phys, fire, cold, poison, energy);
     }
 
     /// <summary>

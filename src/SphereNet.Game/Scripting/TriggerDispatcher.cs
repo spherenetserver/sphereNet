@@ -97,6 +97,91 @@ public sealed class TriggerDispatcher
     public Action<string>? DebugLog { get; set; }
 
     /// <summary>
+    /// Full on-hit trigger pipeline for a connecting swing (Source-X
+    /// CChar::Fight_Hit @Hit + CChar::OnTakeDamage @GetHit block,
+    /// CCharFight.cpp:750). Fires, in order: attacker @Hit, defender @GetHit
+    /// (with the LOCAL.ItemDamageLayer / ItemDamageChance armor-damage roll and
+    /// the LOCAL.DamagePercent* elemental split), weapon item @Hit, and item
+    /// @GetHit on the worn piece at the script-final ItemDamageLayer. ARGN1
+    /// (damage) threads through every stage; RETURN 1 anywhere cancels the hit
+    /// (ctx.Cancelled) and returns 0. Script writes to the armor-damage locals
+    /// copy back into ctx for CombatEngine's durability roll.
+    /// </summary>
+    public int RunHitDamageTriggers(Combat.HitDamageContext ctx)
+    {
+        var attacker = ctx.Attacker;
+        var target = ctx.Target;
+        var weapon = ctx.Weapon;
+        int dmg = ctx.Damage;
+        int dmgType = (int)Combat.CombatEngine.GetWeaponDamageType(weapon);
+
+        // Source-X @Hit (Fight_Hit Init(iDmg, iDmgType, 0, pWeapon)): SRC = the
+        // victim, ARGO = the weapon, ARGN1 = damage (writable), ARGN2 = type.
+        var hitArgs = new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon, N1 = dmg, N2 = dmgType };
+        if (FireCharTrigger(attacker, CharTrigger.Hit, hitArgs) == TriggerResult.True)
+        {
+            ctx.Cancelled = true;
+            return 0;
+        }
+        dmg = Math.Max(0, hitArgs.N1);
+
+        // Source-X @GetHit: SRC = the attacker, ARGN1 = damage (writable),
+        // ARGN2 = damage type. LOCAL.ItemDamageLayer picks which worn piece
+        // takes the item @GetHit and the durability wear (script-writable),
+        // LOCAL.ItemDamageChance the wear chance; the elemental split is
+        // exposed as LOCAL.DamagePercent*.
+        var getHitLocals = new SphereNet.Scripting.Variables.VarMap();
+        getHitLocals.SetInt("ItemDamageLayer", (int)ctx.ItemDamageLayer);
+        getHitLocals.SetInt("ItemDamageChance", ctx.ItemDamageChance);
+        if (ctx.Elemental)
+        {
+            getHitLocals.SetInt("DamagePercentPhysical", ctx.DamPercentPhysical);
+            getHitLocals.SetInt("DamagePercentFire", ctx.DamPercentFire);
+            getHitLocals.SetInt("DamagePercentCold", ctx.DamPercentCold);
+            getHitLocals.SetInt("DamagePercentPoison", ctx.DamPercentPoison);
+            getHitLocals.SetInt("DamagePercentEnergy", ctx.DamPercentEnergy);
+        }
+        var getHitArgs = new TriggerArgs { CharSrc = attacker, N1 = dmg, N2 = dmgType, Locals = getHitLocals };
+        if (FireCharTrigger(target, CharTrigger.GetHit, getHitArgs) == TriggerResult.True)
+        {
+            ctx.Cancelled = true;
+            return 0;
+        }
+        dmg = Math.Max(0, getHitArgs.N1);
+        // The char @GetHit script may redirect the armor-damage roll.
+        ctx.ItemDamageLayer = (Layer)getHitLocals.GetInt("ItemDamageLayer");
+
+        if (weapon != null)
+        {
+            var wArgs = new TriggerArgs { CharSrc = attacker, ItemSrc = weapon, O1 = target, N1 = dmg };
+            if (FireItemTrigger(weapon, ItemTrigger.Hit, wArgs) == TriggerResult.True)
+            {
+                ctx.Cancelled = true;
+                return 0;
+            }
+            dmg = Math.Max(0, wArgs.N1);
+        }
+
+        // Item @GetHit on the worn piece at the (script-final) layer — Source-X
+        // fires it with the SAME args/locals ("ItemDamageLayer" is read-only
+        // from here on, but the item script may still adjust ItemDamageChance).
+        var armorHit = target.GetEquippedItem(ctx.ItemDamageLayer);
+        if (armorHit != null)
+        {
+            var aArgs = new TriggerArgs { CharSrc = attacker, ItemSrc = armorHit, O1 = target, N1 = dmg, N2 = dmgType, Locals = getHitLocals };
+            if (FireItemTrigger(armorHit, ItemTrigger.GetHit, aArgs) == TriggerResult.True)
+            {
+                ctx.Cancelled = true;
+                return 0;
+            }
+            dmg = Math.Max(0, aArgs.N1);
+        }
+        ctx.ItemDamageChance = (int)getHitLocals.GetInt("ItemDamageChance");
+
+        return dmg;
+    }
+
+    /// <summary>
     /// Fire a character trigger. Maps to CChar::OnTrigger. For the Skill*
     /// family, Source-X additionally runs the [SKILL n] resource-section stage
     /// (Skill_OnTrigger: ON=@START/@STROKE/@SUCCESS/...) with the same args —

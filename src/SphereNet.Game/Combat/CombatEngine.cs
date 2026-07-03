@@ -189,6 +189,21 @@ public static class CombatEngine
     /// </summary>
     public static Func<HitDamageContext, int>? OnHitDamage;
 
+    /// <summary>Leech feedback on an AOS on-hit drain (Source-X sound 0x44D
+    /// at the attacker). Wired to a nearby-sound broadcast.</summary>
+    public static Action<Character>? OnLeechEffect;
+
+    /// <summary>HITAREA* splash (Source-X OnTakeDamageInflictArea): damage
+    /// the chars around the struck target. Args: attacker, epicenter target,
+    /// damage, damage type.</summary>
+    public static Action<Character, Character, int, DamageType>? OnHitAreaDamage;
+
+    /// <summary>HITFIREBALL/HARM/LIGHTNING/MAGICARROW/DISPEL proc (Source-X
+    /// OnSpellEffect from Fight_Hit): cast the spell's effect directly on the
+    /// victim — no cast time, mana or reagents. Args: attacker, target,
+    /// SpellType id.</summary>
+    public static Action<Character, Character, int>? OnHitSpell;
+
     /// <summary>Armor layers a hit may pick for the item @GetHit trigger and
     /// the durability wear (Source-X sm_ArmorDamageLayers, CCharFight.cpp:388).
     /// Hand layers (weapons/shields) are excluded.</summary>
@@ -685,6 +700,12 @@ public static class CombatEngine
         if (damage > 0 && flags.HasFlag(CombatFlags.Slayer))
             damage = ApplySlayerDamage(attacker, target, damage, weapon);
 
+        // AOS on-hit properties (Source-X Fight_Hit tail, CCharFight.cpp:2270):
+        // leeches, mana drain, hit-area splashes and on-hit spell procs run on
+        // any hit that dealt damage.
+        if (damage > 0)
+            ApplyAosOnHitEffects(attacker, target, damage, weapon, flags);
+
         // Weapon poison on-hit: transfer poison from weapon to target.
         // Source-X: HIT_POISON attribute on weapon. SphereNet: POISON_SKILL tag
         // set by Poisoning skill. Uses 1 charge per hit; cleared at 0.
@@ -933,6 +954,115 @@ public static class CombatEngine
             return slayer.GetSlayerDamageBonusPercent(victimFaction);
         if (!attacker.IsPlayer)
             return slayer.GetSlayerDamagePenaltyPercent(victimFaction);
+        return 0;
+    }
+
+    /// <summary>AOS on-hit properties (Source-X Fight_Hit tail,
+    /// CCharFight.cpp:2270-2361), with the reference formulas:
+    /// HITLEECHLIFE heals rand(0 .. dmg×prop×30/10000), HITLEECHMANA
+    /// rand(0 .. dmg×prop×40/10000), HITLEECHSTAM restores the full damage
+    /// prop% of the time, HITMANADRAIN steals 20% of the damage from the
+    /// victim's mana prop% of the time. With a weapon equipped, HITAREA*
+    /// splash half the damage around the victim (the elemental variants only
+    /// under COMBAT_ELEMENTAL_ENGINE) and HITDISPEL/FIREBALL/HARM/LIGHTNING/
+    /// MAGICARROW proc their spell — both via engine hooks. Property values
+    /// are read from the attacker plus the weapon and talisman (instance tag,
+    /// then ITEMDEF def-tag).</summary>
+    public static void ApplyAosOnHitEffects(Character attacker, Character target, int damage,
+        Item? weapon, CombatFlags flags)
+    {
+        bool leeched = false;
+
+        int leechLife = GetOnHitPropertyValue(attacker, weapon, "HITLEECHLIFE");
+        if (leechLife > 0)
+        {
+            int heal = _rand.Next(damage * leechLife * 30 / 10000 + 1);
+            attacker.Hits = (short)Math.Min(attacker.MaxHits, attacker.Hits + heal);
+            leeched = true;
+        }
+
+        int leechMana = GetOnHitPropertyValue(attacker, weapon, "HITLEECHMANA");
+        if (leechMana > 0)
+        {
+            int gain = _rand.Next(damage * leechMana * 40 / 10000 + 1);
+            attacker.Mana = (short)Math.Min(attacker.MaxMana, attacker.Mana + gain);
+            leeched = true;
+        }
+
+        if (GetOnHitPropertyValue(attacker, weapon, "HITLEECHSTAM") > _rand.Next(100))
+        {
+            attacker.Stam = (short)Math.Min(attacker.MaxStam, attacker.Stam + damage);
+            leeched = true;
+        }
+
+        int manaDrain = 0;
+        if (GetOnHitPropertyValue(attacker, weapon, "HITMANADRAIN") > _rand.Next(100))
+            manaDrain = damage * 20 / 100;
+        manaDrain = Math.Min(manaDrain, (int)target.Mana);
+        if (manaDrain > 0)
+        {
+            target.Mana = (short)(target.Mana - manaDrain);
+            attacker.Mana = (short)Math.Min(attacker.MaxMana, attacker.Mana + manaDrain);
+            leeched = true;
+        }
+
+        if (leeched)
+            OnLeechEffect?.Invoke(attacker);
+
+        // The weapon-borne procs (Source-X gates the whole block on pWeapon).
+        if (weapon == null)
+            return;
+
+        if (GetOnHitPropertyValue(attacker, weapon, "HITAREAPHYSICAL") > _rand.Next(100))
+            OnHitAreaDamage?.Invoke(attacker, target, damage / 2, DamageType.Physical);
+        if (flags.HasFlag(CombatFlags.ElementalEngine))
+        {
+            if (GetOnHitPropertyValue(attacker, weapon, "HITAREAFIRE") > _rand.Next(100))
+                OnHitAreaDamage?.Invoke(attacker, target, damage / 2, DamageType.Fire);
+            if (GetOnHitPropertyValue(attacker, weapon, "HITAREACOLD") > _rand.Next(100))
+                OnHitAreaDamage?.Invoke(attacker, target, damage / 2, DamageType.Cold);
+            if (GetOnHitPropertyValue(attacker, weapon, "HITAREAPOISON") > _rand.Next(100))
+                OnHitAreaDamage?.Invoke(attacker, target, damage / 2, DamageType.Poison);
+            if (GetOnHitPropertyValue(attacker, weapon, "HITAREAENERGY") > _rand.Next(100))
+                OnHitAreaDamage?.Invoke(attacker, target, damage / 2, DamageType.Energy);
+        }
+
+        if (GetOnHitPropertyValue(attacker, weapon, "HITDISPEL") > _rand.Next(100))
+            OnHitSpell?.Invoke(attacker, target, (int)SpellType.Dispel);
+        if (GetOnHitPropertyValue(attacker, weapon, "HITFIREBALL") > _rand.Next(100))
+            OnHitSpell?.Invoke(attacker, target, (int)SpellType.Fireball);
+        if (GetOnHitPropertyValue(attacker, weapon, "HITHARM") > _rand.Next(100))
+            OnHitSpell?.Invoke(attacker, target, (int)SpellType.Harm);
+        if (GetOnHitPropertyValue(attacker, weapon, "HITLIGHTNING") > _rand.Next(100))
+            OnHitSpell?.Invoke(attacker, target, (int)SpellType.Lightning);
+        if (GetOnHitPropertyValue(attacker, weapon, "HITMAGICARROW") > _rand.Next(100))
+            OnHitSpell?.Invoke(attacker, target, (int)SpellType.MagicArrow);
+    }
+
+    /// <summary>An AOS on-hit property's effective value: the attacker's own
+    /// tag plus the weapon's and the equipped talisman's (instance tag first,
+    /// ITEMDEF def-tag fallback). Source-X reads a char-level aggregate;
+    /// SphereNet aggregates at read time from the realistic carriers.</summary>
+    public static int GetOnHitPropertyValue(Character attacker, Item? weapon, string prop)
+    {
+        int total = 0;
+        if (attacker.TryGetTag(prop, out var raw) && int.TryParse(raw, out int own))
+            total += own;
+        if (weapon != null)
+            total += GetItemNumProperty(weapon, prop);
+        var talisman = attacker.GetEquippedItem(Layer.Talisman);
+        if (talisman != null && talisman != weapon)
+            total += GetItemNumProperty(talisman, prop);
+        return total;
+    }
+
+    private static int GetItemNumProperty(Item item, string prop)
+    {
+        if (item.TryGetTag(prop, out var raw) && int.TryParse(raw, out int v))
+            return v;
+        var def = Definitions.DefinitionLoader.GetItemDef(item.BaseId);
+        if (def != null && int.TryParse(def.TagDefs.Get(prop), out int dv))
+            return dv;
         return 0;
     }
 

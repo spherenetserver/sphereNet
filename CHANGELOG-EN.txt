@@ -4,6 +4,37 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-03] - Combat parity wave C5: AOS on-hit properties
+----------------------------------------
+
+ADDED - Life/mana/stam leech and mana drain (Source-X Fight_Hit formulas):
+  - HITLEECHLIFE heals rand(0 .. dmg x prop x 30/10000), HITLEECHMANA the
+    x40 window, HITLEECHSTAM restores the full damage prop% of the time,
+    HITMANADRAIN transfers 20% of the damage from the victim's mana
+    (clamped) prop% of the time. Any leech plays the 0x44D sound.
+
+ADDED - On-hit spell procs (weapon required, like Source-X):
+  - HITDISPEL/HITFIREBALL/HITHARM/HITLIGHTNING/HITMAGICARROW apply the
+    spell's effect directly on the victim at the attacker's Magery — no
+    cast time, mana or reagents (SpellEngine.ApplyOnHitSpell).
+
+ADDED - Hit-area splashes:
+  - HITAREAPHYSICAL always, the FIRE/COLD/POISON/ENERGY variants only
+    under COMBAT_ELEMENTAL_ENGINE: half the damage splashes the chars
+    within 5 tiles of the victim through their own resists, skipping the
+    two principals, the attacker's pets and the dead, with the
+    per-element impact sound at the epicenter.
+
+ADDED - Property surface:
+  - The 14 property names are tag-backed on chars and items and accepted
+    as CHARDEF/ITEMDEF lines (def-tag flow). The effective value sums the
+    attacker's own tag with the weapon's and equipped talisman's
+    (instance tag first, ITEMDEF def-tag fallback).
+  - HitLowerAtk/Def, HitCurse and HitFatigue stay deferred — they are
+    unimplemented in Source-X as well.
+
+================================================================================
+
 [2026-07-03] - Combat parity waves C1-C4: @GetHit contract, trigger locals, flags, Slayer
 ----------------------------------------
 

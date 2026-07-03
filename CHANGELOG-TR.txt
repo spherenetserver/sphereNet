@@ -3,6 +3,37 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-03] - Combat parite dalgasi C5: AOS on-hit property'leri
+----------------------------------------
+
+EKLENDI - Can/mana/stamina leech ve mana drain (Source-X Fight_Hit formulleri):
+  - HITLEECHLIFE rand(0 .. hasar x prop x 30/10000) kadar iyilestirir,
+    HITLEECHMANA x40 penceresi, HITLEECHSTAM prop% sansla hasarin tamamini
+    geri verir, HITMANADRAIN prop% sansla hasarin %20'sini kurbanin
+    manasindan (clamp'li) transfer eder. Herhangi bir leech 0x44D sesini calar.
+
+EKLENDI - On-hit spell proc'lari (Source-X gibi silah gerekli):
+  - HITDISPEL/HITFIREBALL/HITHARM/HITLIGHTNING/HITMAGICARROW buyu efektini
+    kurbana dogrudan uygular — cast suresi, mana veya reagent olmadan,
+    saldirganin Magery'siyle (SpellEngine.ApplyOnHitSpell).
+
+EKLENDI - Hit-area splash'leri:
+  - HITAREAPHYSICAL her zaman, FIRE/COLD/POISON/ENERGY varyantlari yalniz
+    COMBAT_ELEMENTAL_ENGINE altinda: hasarin yarisi kurbanin 5 tile
+    cevresindekilere kendi resist'lerinden gecerek sicrar; iki taraf,
+    saldirganin petleri ve oluler atlanir, merkezde element sesine gore
+    darbe sesi calar.
+
+EKLENDI - Property yuzeyi:
+  - 14 property adi char ve item'larda tag-backed calisir, CHARDEF/ITEMDEF
+    satiri olarak da kabul edilir (def-tag akisi). Efektif deger saldirgan
+    tag'i + silah + ekipli talisman toplamidir (once instance tag, sonra
+    ITEMDEF def-tag fallback).
+  - HitLowerAtk/Def, HitCurse ve HitFatigue ertelendi — Source-X'te de
+    unimplemented durumdalar.
+
+================================================================================
+
 [2026-07-03] - Combat parite dalgalari C1-C4: @GetHit sozlesmesi, trigger locals, flag'ler, Slayer
 ----------------------------------------
 

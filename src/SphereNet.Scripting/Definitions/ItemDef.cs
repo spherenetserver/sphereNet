@@ -162,6 +162,11 @@ public sealed class ItemDef : BaseDef
             case "SLAYER_SPECIES":
                 TagDefs.Set(key, value.Trim());
                 break;
+            // AOS on-hit combat properties (HITLEECHLIFE, HITFIREBALL, ...):
+            // same def-tag flow as the SLAYER pair.
+            case var _ when AosOnHitProperties.Contains(key):
+                TagDefs.Set(key.ToUpperInvariant(), value.Trim());
+                break;
             default:
                 if (key.StartsWith("TAG.", StringComparison.OrdinalIgnoreCase))
                     TagDefs.Set(key[4..], value);

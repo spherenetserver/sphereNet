@@ -181,6 +181,11 @@ public sealed class CharDef : BaseDef
             case "FACTION_SPECIES":
                 TagDefs.Set(key, value.Trim());
                 break;
+            // AOS on-hit combat properties (HITLEECHLIFE, HITFIREBALL, ...):
+            // same def-tag flow as the faction pair.
+            case var _ when AosOnHitProperties.Contains(key):
+                TagDefs.Set(key.ToUpperInvariant(), value.Trim());
+                break;
             case "DAMPHYSICAL": short.TryParse(value, out short dpv); DamPhysical = dpv; break;
             case "DAMFIRE": short.TryParse(value, out short dfv); DamFire = dfv; break;
             case "DAMCOLD": short.TryParse(value, out short dcv); DamCold = dcv; break;

@@ -731,6 +731,16 @@ public class Item : ObjBase
     {
         value = "";
         var upper = key.ToUpperInvariant();
+
+        // AOS on-hit combat properties (HITLEECHLIFE, HITFIREBALL, ...) are
+        // tag-backed like the SLAYER pair; ITEMDEF-level values live in the
+        // def-tags and are read by the combat engine's fallback.
+        if (AosOnHitProperties.Contains(upper))
+        {
+            value = TryGetTag(upper, out var aosv) ? aosv ?? "0" : "0";
+            return true;
+        }
+
         switch (upper)
         {
             case "TYPE": value = FormatItemType(_type); return true;
@@ -1187,6 +1197,14 @@ public class Item : ObjBase
     public override bool TrySetProperty(string key, string value)
     {
         var upper = key.ToUpperInvariant();
+
+        // AOS on-hit combat properties are tag-backed (see TryGetProperty).
+        if (AosOnHitProperties.Contains(upper))
+        {
+            SetTag(upper, value.Trim());
+            return true;
+        }
+
         switch (upper)
         {
             case "TYPE":

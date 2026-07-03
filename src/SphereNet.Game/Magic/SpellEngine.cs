@@ -893,6 +893,17 @@ public sealed class SpellEngine
         }
     }
 
+    /// <summary>AOS on-hit weapon proc (Source-X Fight_Hit → OnSpellEffect,
+    /// CCharFight.cpp:2347-2360): applies the spell's effect directly on the
+    /// victim — no cast time, mana or reagents — at the attacker's Magery.</summary>
+    public void ApplyOnHitSpell(Character attacker, Character target, SpellType spell)
+    {
+        var def = GetSpellDef(spell);
+        if (def == null)
+            return;
+        ApplyCharEffect(attacker, target, def, attacker.GetSkill(SkillType.Magery));
+    }
+
     /// <summary>Apply spell effect to a single character target.</summary>
     private void ApplyCharEffect(Character caster, Character target, SpellDef def, int skillLevel)
     {

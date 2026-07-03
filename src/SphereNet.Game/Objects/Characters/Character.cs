@@ -1999,6 +1999,15 @@ public partial class Character : ObjBase
         value = "";
         var upper = key.ToUpperInvariant();
 
+        // AOS on-hit combat properties (HITLEECHLIFE, HITFIREBALL, ...) are
+        // tag-backed like the Slayer faction pair — persisted with the char
+        // and readable by the combat engine's on-hit pipeline.
+        if (AosOnHitProperties.Contains(upper))
+        {
+            value = TryGetTag(upper, out var aosv) ? aosv ?? "0" : "0";
+            return true;
+        }
+
         // <MemoryFindType.<def>[.isValid|.Link[.<prop>]]> — Source-X
         // memory inspection. We only have a partial memory engine so we
         // synthesize the two cases the admin dialogs care about:
@@ -3030,6 +3039,13 @@ public partial class Character : ObjBase
     {
         if (!TryNormalizeScriptValue(value, out string normalized))
             normalized = value;
+
+        // AOS on-hit combat properties are tag-backed (see TryGetProperty).
+        if (AosOnHitProperties.Contains(key))
+        {
+            SetTag(key.ToUpperInvariant(), normalized);
+            return true;
+        }
 
         // SELL=/BUY= are vendor-restock VERBS, not properties; the
         // ScriptInterpreter's ExecuteLine first tries TrySetProperty

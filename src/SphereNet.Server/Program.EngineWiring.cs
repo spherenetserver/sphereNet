@@ -2005,6 +2005,61 @@ public static partial class Program
             CombatEngine.OnHitDamage = ctx =>
                 _triggerDispatcher?.RunHitDamageTriggers(ctx) ?? ctx.Damage;
 
+            // AOS on-hit hooks (Source-X Fight_Hit tail, CCharFight.cpp:2270).
+            // Leech feedback: Source-X plays 0x44D at the attacker.
+            CombatEngine.OnLeechEffect = ch =>
+                BroadcastNearby(ch.Position, 18, new PacketSound(0x044D, ch.X, ch.Y, ch.Z), 0);
+
+            // HITFIREBALL/HARM/LIGHTNING/MAGICARROW/DISPEL: cast the spell's
+            // effect directly on the victim at the attacker's Magery.
+            CombatEngine.OnHitSpell = (attacker, target, spellId) =>
+                _spellEngine?.ApplyOnHitSpell(attacker, target, (SpellType)spellId);
+
+            // HITAREA* splash (Source-X OnTakeDamageInflictArea, 5-tile ML
+            // radius): everyone around the struck victim takes the half-damage
+            // through their own resists — skipping the two principals, the
+            // attacker's pets and the dead. Per-element impact sound at the
+            // epicenter (0x10E/0x11D/0xFC/0x205/0x1F1).
+            CombatEngine.OnHitAreaDamage = (attacker, epicenter, dmg, dmgType) =>
+            {
+                if (dmg <= 0) return;
+                bool hitAny = false;
+                foreach (var ch in _world.GetCharsInRange(epicenter.Position, 5))
+                {
+                    if (ch == attacker || ch == epicenter || ch.IsDead) continue;
+                    if (ch.OwnerSerial == attacker.Uid) continue;
+                    if (!_world.CanSeeLOS(attacker.Position, ch.Position)) continue;
+
+                    int dealt = CombatEngine.ApplyElementalResist(ch, dmg, dmgType);
+                    if (dealt <= 0) continue;
+                    ch.Hits -= (short)Math.Min(dealt, short.MaxValue);
+                    ch.RecordAttack(attacker.Uid, dealt);
+                    hitAny = true;
+
+                    if (!ch.IsPlayer && !ch.IsDead && !ch.FightTarget.IsValid)
+                    {
+                        ch.FightTarget = attacker.Uid;
+                        ch.NextNpcActionTime = 0;
+                    }
+                    if (ch.Hits <= 0 && !ch.IsDead)
+                        _deathEngine?.ProcessDeath(ch, attacker);
+                }
+
+                if (hitAny)
+                {
+                    ushort sound = dmgType switch
+                    {
+                        DamageType.Fire => 0x011D,
+                        DamageType.Cold => 0x00FC,
+                        DamageType.Poison => 0x0205,
+                        DamageType.Energy => 0x01F1,
+                        _ => 0x010E,
+                    };
+                    BroadcastNearby(epicenter.Position, 18,
+                        new PacketSound(sound, epicenter.X, epicenter.Y, epicenter.Z), 0);
+                }
+            };
+
             // Housing — load multi definitions from multi.mul
             var multiRegistry = new SphereNet.Game.Housing.MultiRegistry();
             if (_mapData != null)

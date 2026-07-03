@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-03] - Script-surface wave S1: unknown-key diagnostics, VISIBLE/SFX verbs
+----------------------------------------
+
+ADDED - Unknown def-key diagnostics:
+  - ITEMDEF/CHARDEF lines with unrecognized keys were dropped silently;
+    they are now counted per def-type+key and a top-10 summary is logged
+    after every definition load, so a real pack reports what it loses.
+
+ADDED - Legacy verbs:
+  - VISIBLE (drops invisibility and hiding, the CHV_VISIBLE reference)
+    and SFX (the legacy alias of SOUND). NEWNPC/RECALL stay deferred
+    (spawn machinery / rune-travel flow are separate work).
+
+================================================================================
 [2026-07-03] - Housing wave H1b: house placement footprint validation
 ----------------------------------------
 

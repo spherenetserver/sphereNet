@@ -239,7 +239,13 @@ public sealed class CharDef : BaseDef
                     break;
                 }
                 if (key.StartsWith("TAG.", StringComparison.OrdinalIgnoreCase))
+                {
                     TagDefs.Set(key[4..], value);
+                    break;
+                }
+                // Previously dropped with zero visibility — count it so a
+                // real pack load can report what it lost.
+                UnknownKeyDiagnostics.Record("CHARDEF", key);
                 break;
         }
     }

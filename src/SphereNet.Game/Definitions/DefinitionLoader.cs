@@ -117,6 +117,7 @@ public sealed class DefinitionLoader
     public void LoadAll()
     {
         _resourcesStatic = _resources;
+        SphereNet.Scripting.Definitions.UnknownKeyDiagnostics.Clear();
         ClearRegistries();
         _spells.Clear();
         ResetCounters();
@@ -155,6 +156,13 @@ public sealed class DefinitionLoader
         ResolveRegionResourceReapDefNames();
 
         Skills.SkillEngine.StatAdvCurves = _resources.StatAdvance;
+
+        // Script-pack visibility: report the def keys no parser recognized —
+        // they used to vanish silently, hiding real-pack property loss.
+        if (SphereNet.Scripting.Definitions.UnknownKeyDiagnostics.TotalDropped > 0)
+            Diagnostic?.Invoke(
+                $"[defs] {SphereNet.Scripting.Definitions.UnknownKeyDiagnostics.TotalDropped} unrecognized def keys dropped; top: " +
+                string.Join(", ", SphereNet.Scripting.Definitions.UnknownKeyDiagnostics.Summary(10)));
     }
 
     private void ResetCounters()

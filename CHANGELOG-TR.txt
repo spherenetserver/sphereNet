@@ -3,6 +3,20 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-03] - Script-yuzey dalgasi S1: unknown-key diagnostigi, VISIBLE/SFX verb'leri
+----------------------------------------
+
+EKLENDI - Bilinmeyen def-key diagnostigi:
+  - Taninmayan key'li ITEMDEF/CHARDEF satirlari sessizce dusuyordu; artik
+    def-tipi+key bazinda sayilir ve her definition yuklemesinden sonra
+    top-10 ozeti loglanir — gercek pack neyi kaybettigini raporlar.
+
+EKLENDI - Legacy verb'ler:
+  - VISIBLE (gorunmezligi ve gizlenmeyi kaldirir, CHV_VISIBLE karsiligi)
+    ve SFX (SOUND'un legacy alias'i). NEWNPC/RECALL ertelendi (spawn
+    makinesi / rune-travel akisi ayri isler).
+
+================================================================================
 [2026-07-03] - Housing dalgasi H1b: ev yerlestirme footprint dogrulamasi
 ----------------------------------------
 

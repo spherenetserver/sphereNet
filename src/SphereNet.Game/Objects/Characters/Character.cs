@@ -4102,6 +4102,15 @@ public partial class Character : ObjBase
                 }
                 return true;
             }
+            case "VISIBLE":
+            {
+                // Source-X CHV_VISIBLE: drop invisibility/hiding outright —
+                // legacy scripts pair it with INVIS.
+                ClearStatFlag(StatFlag.Invisible);
+                ClearStatFlag(StatFlag.Hidden);
+                MarkDirty(DirtyFlag.StatFlags);
+                return true;
+            }
             case "INVIS":
             {
                 // If argument given, set explicitly; otherwise toggle

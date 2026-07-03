@@ -520,7 +520,9 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             }
         }
 
-        if (trimmedKey.Equals("SOUND", StringComparison.OrdinalIgnoreCase))
+        // SFX is the legacy Sphere alias of SOUND (55i-era scripts use both).
+        if (trimmedKey.Equals("SOUND", StringComparison.OrdinalIgnoreCase) ||
+            trimmedKey.Equals("SFX", StringComparison.OrdinalIgnoreCase))
             return EmitScriptSound(args);
         if (trimmedKey.Equals("EFFECT", StringComparison.OrdinalIgnoreCase))
             return EmitScriptEffect(args);

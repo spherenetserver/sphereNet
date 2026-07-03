@@ -3,6 +3,23 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-03] - Movement dalgasi M2: sentetik harita fixture'i, CI-stabil z-kural testleri
+----------------------------------------
+
+EKLENDI - MapDataManager sentetik harita fixture'i:
+  - AddSyntheticMap / AddSyntheticStatic / SetSyntheticItemTile, her
+    terrain/static/tiledata sorgusunun dosya okuyucularindan ONCE
+    danistigi kucuk bir in-memory harita kurar (duz zemin, elle
+    yerlestirilen static'ler, tiledata). Gercek MUL/UOP yolu degismedi.
+
+EKLENDI - CI-stabil z-kural assertion'lari (SyntheticMapZRuleTests):
+  - Bridge yarim-yukseklik merdiven tirmanisi, yuksek-ledge reddi +
+    limit-ici inis serbestligi ve impassable duvar bloklamasi - hepsi
+    gercek WalkCheck mantigina karsi, MUL verisi olmadan kosar. Gercek-MUL
+    merdiven diagnostikleri CI'da self-skip yapiyordu; hicbir z kurali
+    hicbir yerde assert edilmiyordu.
+
+================================================================================
 [2026-07-03] - Oyun-ici SERV koprusu, ship REDEED kapi duzeltmesi, guard testleri
 ----------------------------------------
 

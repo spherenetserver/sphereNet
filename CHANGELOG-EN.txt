@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-03] - Movement wave M2: synthetic map fixture, CI-stable z-rule tests
+----------------------------------------
+
+ADDED - MapDataManager synthetic map fixture:
+  - AddSyntheticMap / AddSyntheticStatic / SetSyntheticItemTile build a
+    tiny in-memory map (flat land, hand-placed statics, tiledata) that
+    every terrain/static/tiledata query consults BEFORE the file readers.
+    The real MUL/UOP path is untouched.
+
+ADDED - CI-stable z-rule assertions (SyntheticMapZRuleTests):
+  - Bridge half-height stair climbing step by step, tall-ledge rejection
+    with in-limit descent allowed, and impassable-wall blocking — all run
+    against the real WalkCheck logic without any MUL data. The real-MUL
+    stair diagnostics previously self-skipped in CI, so no z rule was
+    asserted anywhere.
+
+================================================================================
 [2026-07-03] - In-game SERV bridge, ship REDEED verb-gate fix, guard tests
 ----------------------------------------
 

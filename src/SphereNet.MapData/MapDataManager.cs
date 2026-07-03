@@ -142,8 +142,42 @@ public sealed class MapDataManager : IDisposable
         return null;
     }
 
+    // ---- Synthetic map fixture ---------------------------------------------
+    // CI-stable stair/z tests: the real stair diagnostics need the mortechUO
+    // MUL pack and self-skip without it, so no z-rule assertion ran in CI.
+    // A test builds a tiny in-memory map (flat land + hand-placed statics +
+    // tiledata entries); these are consulted BEFORE the file readers.
+    private readonly Dictionary<int, (int W, int H, sbyte LandZ, ushort LandTile)> _synthMaps = [];
+    private readonly Dictionary<(int Map, int Bx, int By), List<StaticItem>> _synthStaticBlocks = [];
+    private readonly Dictionary<int, ItemTileData> _synthItemTiles = [];
+
+    /// <summary>Register a synthetic flat map (test fixture).</summary>
+    public void AddSyntheticMap(int mapId, int width, int height, sbyte landZ = 0, ushort landTile = 3) =>
+        _synthMaps[mapId] = (width, height, landZ, landTile);
+
+    /// <summary>Place a synthetic static at a world tile (test fixture).</summary>
+    public void AddSyntheticStatic(int mapId, int x, int y, ushort tileId, sbyte z)
+    {
+        var key = (mapId, x / MapBlock.BlockSize, y / MapBlock.BlockSize);
+        if (!_synthStaticBlocks.TryGetValue(key, out var list))
+            _synthStaticBlocks[key] = list = [];
+        list.Add(new StaticItem
+        {
+            TileId = tileId,
+            XOffset = (byte)(x % MapBlock.BlockSize),
+            YOffset = (byte)(y % MapBlock.BlockSize),
+            Z = z,
+        });
+    }
+
+    /// <summary>Register synthetic tiledata for a static tile id (test fixture).</summary>
+    public void SetSyntheticItemTile(ushort tileId, ItemTileData data) =>
+        _synthItemTiles[tileId] = data;
+
     public (int Width, int Height) GetMapSize(int mapId)
     {
+        if (_synthMaps.TryGetValue(mapId, out var synth))
+            return (synth.W, synth.H);
         if (_mapReaders.TryGetValue(mapId, out var reader))
             return (reader.Width, reader.Height);
         if (_uopMapReaders.TryGetValue(mapId, out var uopReader))
@@ -153,6 +187,8 @@ public sealed class MapDataManager : IDisposable
 
     public MapCell GetTerrainTile(int mapId, int x, int y)
     {
+        if (_synthMaps.TryGetValue(mapId, out var synth))
+            return new MapCell { TileId = synth.LandTile, Z = synth.LandZ };
         if (_mapReaders.TryGetValue(mapId, out var reader))
             return reader.GetCell(x, y);
         if (_uopMapReaders.TryGetValue(mapId, out var uopReader))
@@ -162,6 +198,15 @@ public sealed class MapDataManager : IDisposable
 
     public StaticItem[] GetStatics(int mapId, int x, int y)
     {
+        if (_synthMaps.ContainsKey(mapId))
+        {
+            var span = GetStaticBlock(mapId, x, y, out int ox, out int oy);
+            var result = new List<StaticItem>();
+            foreach (var s in span)
+                if (s.XOffset == ox && s.YOffset == oy)
+                    result.Add(s);
+            return [.. result];
+        }
         if (_staticReaders.TryGetValue(mapId, out var reader))
             return reader.GetStatics(x, y);
         return [];
@@ -169,17 +214,38 @@ public sealed class MapDataManager : IDisposable
 
     public void ForEachStatic(int mapId, int x, int y, Action<StaticItem> action)
     {
+        if (_synthMaps.ContainsKey(mapId))
+        {
+            foreach (var s in GetStatics(mapId, x, y))
+                action(s);
+            return;
+        }
         if (_staticReaders.TryGetValue(mapId, out var reader))
             reader.ForEachStatic(x, y, action);
     }
 
-    public bool AnyStatic(int mapId, int x, int y, Func<StaticItem, bool> predicate) =>
-        _staticReaders.TryGetValue(mapId, out var reader) && reader.AnyStatic(x, y, predicate);
+    public bool AnyStatic(int mapId, int x, int y, Func<StaticItem, bool> predicate)
+    {
+        if (_synthMaps.ContainsKey(mapId))
+        {
+            foreach (var s in GetStatics(mapId, x, y))
+                if (predicate(s)) return true;
+            return false;
+        }
+        return _staticReaders.TryGetValue(mapId, out var reader) && reader.AnyStatic(x, y, predicate);
+    }
 
     public ReadOnlySpan<StaticItem> GetStaticBlock(int mapId, int x, int y, out int offX, out int offY)
     {
         offX = x % MapBlock.BlockSize;
         offY = y % MapBlock.BlockSize;
+        if (_synthMaps.ContainsKey(mapId))
+        {
+            return _synthStaticBlocks.TryGetValue(
+                (mapId, x / MapBlock.BlockSize, y / MapBlock.BlockSize), out var list)
+                ? list.ToArray()
+                : [];
+        }
         if (_staticReaders.TryGetValue(mapId, out var reader))
             return reader.ReadBlock(x / MapBlock.BlockSize, y / MapBlock.BlockSize);
         return [];
@@ -188,8 +254,12 @@ public sealed class MapDataManager : IDisposable
     public LandTileData GetLandTileData(int tileId) =>
         _tileData?.GetLandTile(tileId) ?? default;
 
-    public ItemTileData GetItemTileData(int tileId) =>
-        _tileData?.GetItemTile(tileId) ?? default;
+    public ItemTileData GetItemTileData(int tileId)
+    {
+        if (_synthItemTiles.TryGetValue(tileId, out var synth))
+            return synth;
+        return _tileData?.GetItemTile(tileId) ?? default;
+    }
 
     public MultiDef? GetMulti(int multiId) =>
         _multiReader?.GetMulti(multiId);

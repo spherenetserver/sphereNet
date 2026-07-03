@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Xunit.Sdk;
 
 [assembly: SphereNet.Tests.ResetEngineStatics]
@@ -38,6 +38,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Combat.CombatEngine.OnHitParry = null;
         SphereNet.Game.Objects.Items.Item.RedeedHouse = null;
         SphereNet.Game.Objects.Items.Item.RedeedShip = null;
+        SphereNet.Game.Speech.CommandHandler.ServerCommandBridge = null;
         SphereNet.Game.Combat.CombatEngine.OnLeechEffect = null;
         SphereNet.Game.Combat.CombatEngine.OnHitAreaDamage = null;
         SphereNet.Game.Combat.CombatEngine.OnHitSpell = null;

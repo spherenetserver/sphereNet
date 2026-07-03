@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-03] - In-game SERV bridge, ship REDEED verb-gate fix, guard tests
+----------------------------------------
+
+ADDED - In-game .serv.* commands (Admin/Owner, plevel 6+):
+  - The command handler routes SERV.-prefixed lines to the same processor
+    the telnet console uses and echoes every output line to the invoker.
+    Previously SERV.* only worked from telnet and scripts.
+
+FIXED - The ship REDEED verb route was unreachable:
+  - Ship multis carry ItemType.Ship but the verb gate only admitted
+    Multi/MultiCustom; caught by the new verb-path integration test.
+
+ADDED - Tests: ship REDEED through the item verb (deed delivery), and the
+  lockdown/secure outside-house-region refusal.
+
+================================================================================
 [2026-07-03] - Housing/ship wave P3: ship map boundary, lockdown footprint, ship dry-dock
 ----------------------------------------
 

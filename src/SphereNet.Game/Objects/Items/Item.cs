@@ -1863,8 +1863,11 @@ public class Item : ObjBase
             case "RELEASE":
             case "REDEED":
             {
-                if (_type is not (ItemType.Multi or ItemType.MultiCustom))
-                    break; // not a house — fall through to the generic paths
+                // Ship multis carry ItemType.Ship — without it here the ship
+                // REDEED route below was unreachable (caught by the verb-path
+                // integration test).
+                if (_type is not (ItemType.Multi or ItemType.MultiCustom or ItemType.Ship))
+                    break; // not a multi — fall through to the generic paths
                 var house = ResolveHouse?.Invoke(Uid);
                 if (house == null)
                 {

@@ -3,6 +3,23 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-03] - Oyun-ici SERV koprusu, ship REDEED kapi duzeltmesi, guard testleri
+----------------------------------------
+
+EKLENDI - Oyun-ici .serv.* komutlari (Admin/Owner, plevel 6+):
+  - Komut isleyici SERV. onekli satirlari telnet konsolunun kullandigi
+    isleme yonlendirir ve her cikti satirini komutu verene iletir.
+    SERV.* daha once yalniz telnet ve script'lerden calisiyordu.
+
+DUZELTILDI - Ship REDEED verb rotasi erisilemezdi:
+  - Gemi multi'leri ItemType.Ship tasir ama verb kapisi yalniz
+    Multi/MultiCustom kabul ediyordu; yeni verb-yolu integration
+    testi yakaladi.
+
+EKLENDI - Testler: item verb uzerinden ship REDEED (deed teslimi) ve
+  lockdown/secure ev-bolgesi-disi reddi.
+
+================================================================================
 [2026-07-03] - Housing/ship dalgasi P3: gemi harita siniri, lockdown footprint, dry-dock
 ----------------------------------------
 

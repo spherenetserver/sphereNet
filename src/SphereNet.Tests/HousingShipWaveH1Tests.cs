@@ -143,6 +143,51 @@ public class HousingShipWaveH1Tests
     }
 
     [Fact]
+    public void ShipRedeed_ThroughTheItemVerb_RoutesToTheEngine()
+    {
+        var world = TestHarness.CreateWorld();
+        var engine = new ShipEngine(world, MakeShipRegistry(), null);
+        var owner = world.CreateCharacter();
+        var pack = world.CreateItem();
+        pack.ItemType = ItemType.Container;
+        owner.Equip(pack, Layer.Pack);
+        world.PlaceCharacter(owner, new Point3D(50, 50, 0, 0));
+        var ship = engine.PlaceShip(owner, 0x4000, new Point3D(200, 200, 0, 0), Direction.North);
+
+        // Production wiring: the verb goes through the static hook.
+        SphereNet.Game.Objects.Items.Item.RedeedShip = uid => engine.RedeedFromScript(uid);
+
+        // The multi item carries ItemType.Ship — this integration path caught
+        // that the verb gate only admitted Multi/MultiCustom.
+        Assert.True(ship!.MultiItem.TryExecuteCommand("REDEED", "", null!));
+        Assert.Null(engine.GetShip(ship.MultiItem.Uid));
+        Assert.Contains(pack.Contents, i => i.Name.EndsWith("deed"));
+    }
+
+    [Fact]
+    public void LockdownAndSecure_RefuseItemsOutsideTheHouseRegion()
+    {
+        var world = TestHarness.CreateWorld();
+        var multiRegistry = MakeShipRegistry(0x407C);
+        var housing = new HousingEngine(world, multiRegistry);
+        var owner = world.CreateCharacter();
+        owner.IsPlayer = true;
+        world.PlaceCharacter(owner, new Point3D(50, 50, 0, 0));
+        var house = housing.PlaceHouse(owner, 0x407C, new Point3D(300, 300, 0, 0));
+        Assert.NotNull(house);
+
+        var outside = world.CreateItem();
+        world.PlaceItem(outside, new Point3D(350, 350, 0, 0));
+        Assert.False(house!.Lockdown(outside.Uid, owner.Uid));
+        outside.ItemType = ItemType.Container;
+        Assert.False(house.SecureContainer(outside.Uid, owner.Uid));
+
+        var inside = world.CreateItem();
+        world.PlaceItem(inside, new Point3D(300, 300, 0, 0));
+        Assert.True(house.Lockdown(inside.Uid, owner.Uid));
+    }
+
+    [Fact]
     public void RedeedFromScript_TearsDownRegistryAndRegion()
     {
         var world = TestHarness.CreateWorld();

@@ -52,3 +52,4 @@ public class ScriptSurfaceWaveS1Tests
         Assert.True(item.TryExecuteCommand("SFX", "0x0042", null!));
     }
 }
+

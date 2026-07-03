@@ -484,10 +484,29 @@ public sealed class CommandHandler
         verb.Equals("PLEVEL", StringComparison.OrdinalIgnoreCase) ||
         verb.Equals("FLAGS", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>In-game SERV.* bridge: routes ".serv.xxx [args]" lines to the
+    /// server command surface (the same processor telnet uses) and echoes the
+    /// output back to the invoker. Admin (plevel 6) and Owner only. Wired in
+    /// Program; null = unavailable (bare tests).</summary>
+    public static Func<Character, string, bool>? ServerCommandBridge { get; set; }
+
     public CommandResult TryExecute(Character gm, string commandLine)
     {
         if (string.IsNullOrWhiteSpace(commandLine))
             return CommandResult.NotFound;
+
+        // ".serv.save", ".serv.resync", ".serv broadcast x"… — previously these
+        // fell through to the character verb path and silently failed; SERV.*
+        // only worked from the telnet console and scripts.
+        if (commandLine.StartsWith("SERV.", StringComparison.OrdinalIgnoreCase) ||
+            commandLine.StartsWith("SERV ", StringComparison.OrdinalIgnoreCase))
+        {
+            if (gm.PrivLevel < PrivLevel.Admin)
+                return CommandResult.InsufficientPriv;
+            if (ServerCommandBridge != null && ServerCommandBridge(gm, commandLine[5..].Trim()))
+                return CommandResult.Executed;
+            return CommandResult.NotFound;
+        }
 
         // Source-X parity: handle "verb=value" syntax (e.g. ".events=e_human_player")
         // Convert to property assignment on the character. Setting a property via

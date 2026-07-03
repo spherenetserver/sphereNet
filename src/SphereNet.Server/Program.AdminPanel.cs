@@ -120,6 +120,21 @@ public static partial class Program
             _consoleProcessor.OnRespawnRequested += RequestRespawnOnMainLoop;
             _consoleProcessor.OnRestockRequested += RequestRestockOnMainLoop;
 
+            // In-game ".serv.xxx" bridge (Admin/Owner): route through the SAME
+            // processor telnet uses, echoing every output line to the invoker.
+            SphereNet.Game.Speech.CommandHandler.ServerCommandBridge = (gm, cmd) =>
+            {
+                if (_consoleProcessor == null || string.IsNullOrWhiteSpace(cmd))
+                    return false;
+                _clientsByCharUid.TryGetValue(gm.Uid, out var invoker);
+                _consoleProcessor.ProcessCommand(cmd, line =>
+                {
+                    if (invoker != null) invoker.SysMessage(line);
+                    else _log.LogInformation("[serv:{Gm}] {Line}", gm.Name, line);
+                });
+                return true;
+            };
+
             // Audit logging for admin commands
             _telnet.Processor.OnCommandExecuted += (source, cmd) =>
                 _log.LogWarning("[AUDIT] [{Source}] {Command}", source, cmd);

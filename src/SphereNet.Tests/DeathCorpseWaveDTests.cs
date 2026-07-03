@@ -182,4 +182,94 @@ public class DeathCorpseWaveDTests
 
         Assert.Equal(victim, cancelledFor);
     }
+
+    // ---- D3: kill record, hair copy, antimagic rez, conjured effect ----
+
+    [Fact]
+    public void Death_EmitsTheKillRecord_WithKillersOrAccident()
+    {
+        var (world, engine) = Setup();
+        string? message = null;
+        engine.KillMessageHook = (_, msg) => message = msg;
+
+        var killer = MakePlayer(world, 101);
+        killer.Name = "Slayer";
+        var victim = MakePlayer(world);
+        victim.Name = "Victim";
+        engine.ProcessDeath(victim, killer);
+        Assert.NotNull(message);
+        Assert.Contains("'Slayer'", message);
+
+        message = null;
+        var lonely = MakePlayer(world, 102);
+        engine.ProcessDeath(lonely); // no killer
+        Assert.NotNull(message);
+        Assert.Contains("accident", message);
+    }
+
+    [Fact]
+    public void PlayerCorpse_CarriesHairCopies_ThatAreDiscardedOnRejoin()
+    {
+        var (world, engine) = Setup();
+        var victim = MakePlayer(world);
+        var hair = world.CreateItem();
+        hair.BaseId = 0x203C;
+        victim.Equip(hair, Layer.Hair);
+
+        var corpse = engine.ProcessDeath(victim);
+        Assert.NotNull(corpse);
+
+        // The corpse renders the hair via a marked copy; the original stays
+        // on the ghost (Source-X CreateDupeItem).
+        var copy = corpse!.Contents.FirstOrDefault(i => i.TryGetTag("CORPSE_HAIR", out _));
+        Assert.NotNull(copy);
+        Assert.Equal(hair, victim.GetEquippedItem(Layer.Hair));
+
+        // On rejoin the copy is discarded, not restored as loot.
+        var pack = world.CreateItem();
+        pack.ItemType = ItemType.Container;
+        victim.Equip(pack, Layer.Pack);
+        Assert.True(engine.RestoreFromCorpse(victim));
+        Assert.True(copy!.IsDeleted);
+        Assert.DoesNotContain(copy, pack.Contents);
+    }
+
+    [Fact]
+    public void Resurrect_IsRefusedInAnAntimagicRegion()
+    {
+        var world = TestHarness.CreateWorld();
+        var region = new SphereNet.Game.World.Regions.Region
+        { Name = "am_test", Flags = RegionFlag.NoMagic, MapIndex = 0 };
+        region.AddRect(90, 90, 110, 110);
+        world.AddRegion(region);
+
+        var ghost = MakePlayer(world);
+        ghost.Kill();
+
+        ghost.Resurrect();
+        Assert.True(ghost.IsDead); // refused (Source-X DEFMSG_SPELL_RES_AM)
+
+        // Outside the region the rez proceeds.
+        world.MoveCharacter(ghost, new Point3D(150, 150, 0, 0));
+        ghost.Resurrect();
+        Assert.False(ghost.IsDead);
+    }
+
+    [Fact]
+    public void CorpselessSummonDeath_BurstsTheVanishEffect()
+    {
+        var (world, engine) = Setup();
+        Character? burstFor = null;
+        engine.ConjuredVanishEffectHook = ch => burstFor = ch;
+
+        var summon = world.CreateCharacter();
+        summon.MaxHits = 50; summon.Hits = 50;
+        summon.SetTag("SUMMON_EXPIRE_TICK", "1"); // marks it summoned
+        world.PlaceCharacter(summon, new Point3D(100, 100, 0, 0));
+
+        var corpse = engine.ProcessDeath(summon);
+
+        Assert.Null(corpse);          // summons leave no corpse
+        Assert.Equal(summon, burstFor);
+    }
 }

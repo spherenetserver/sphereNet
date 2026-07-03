@@ -4,6 +4,33 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-03] - Death/corpse wave D3: kill record, corpse hair, antimagic rez, summon burst
+----------------------------------------
+
+ADDED - Kill record (Source-X LOGM_KILLS + party echo):
+  - A player death logs "'<victim>' was killed by 'A', 'B'." (or
+    "accident.") and echoes the line to the victim's party members.
+
+ADDED - Corpses render hair and beard:
+  - Hair/beard are copied onto the corpse as marked render dupes
+    (Source-X CreateDupeItem); the originals stay on the ghost and the
+    dupes are discarded on corpse rejoin instead of restoring as loot.
+
+ADDED - Antimagic resurrection gate:
+  - A NoMagic region refuses the resurrection (Source-X
+    REGION_ANTIMAGIC_ALL); a GM ghost bypasses.
+
+ADDED - Corpseless summon death bursts the spell-fizzle effect (0x3735)
+  instead of silently vanishing (Source-X MakeCorpse).
+
+NOTE - Deferred with reasons (wiki/death-corpse.txt): the corpse
+  max-weight anti-exploit (no container weight-capacity model exists to
+  hook), blessed-items-to-pack (deliberate feel choice), the dead-season/
+  waypoint client niceties, and the ghost manifest model (needs a
+  visibility-model decision).
+
+================================================================================
+
 [2026-07-03] - Death/corpse waves D1-D2: death penalties, carve crime, death-screen config
 ----------------------------------------
 

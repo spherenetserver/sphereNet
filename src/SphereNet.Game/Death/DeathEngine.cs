@@ -45,6 +45,14 @@ public sealed class DeathEngine
     /// bypass the corpse loot drop and the partner keeps a stale window.</summary>
     public Action<Character>? CancelTradesHook { get; set; }
 
+    /// <summary>Host hook: the "killed by ..." record (Source-X LOGM_KILLS log
+    /// + party SysMessageAll). Args: the victim, the formatted message.</summary>
+    public Action<Character, string>? KillMessageHook { get; set; }
+
+    /// <summary>Host hook: the vanish burst when a summon dies corpseless
+    /// (Source-X MakeCorpse ITEMID_FX_SPELL_FAIL).</summary>
+    public Action<Character>? ConjuredVanishEffectHook { get; set; }
+
     public DeathEngine(GameWorld world)
     {
         _world = world;
@@ -146,6 +154,19 @@ public sealed class DeathEngine
             MarkMurderers(victim, effectiveKiller);
         }
 
+        // Source-X kill record (CCharAct.cpp:4357-4389): "'<victim>' was
+        // killed by 'A', 'B'." — logged for player deaths and echoed to the
+        // victim's party (an unattributed death reads "accident").
+        if (KillMessageHook != null && victim.IsPlayer)
+        {
+            string names = effectiveKiller == null
+                ? ""
+                : string.Join(", ", EnumerateOffenders(victim, effectiveKiller)
+                    .Select(o => $"'{o.GetDisplayName()}'").Distinct());
+            KillMessageHook(victim,
+                $"'{victim.GetDisplayName()}' was killed by {(names.Length > 0 ? names : "accident")}.");
+        }
+
         int deathFlags = GetDeathFlags(victim);
 
         // Source-X CChar::Death player penalties (CCharAct.cpp:4443-4470):
@@ -174,6 +195,10 @@ public sealed class DeathEngine
         // no corpse — they simply vanish (DeleteObject refreshes nearby clients).
         if (ShouldLeaveNoCorpse(victim, deathFlags))
         {
+            // Source-X MakeCorpse: a summon that leaves no corpse bursts a
+            // spell-fizzle effect instead of silently vanishing.
+            if (victim.IsSummoned)
+                ConjuredVanishEffectHook?.Invoke(victim);
             if (!victim.IsPlayer && !victim.IsBonded)
             {
                 _world.DeleteObject(victim);
@@ -482,6 +507,24 @@ public sealed class DeathEngine
                 corpse.AddItem(item);
             }
         }
+
+        // Source-X UnEquipAllItems: hair and beard are COPIED onto the corpse
+        // (CreateDupeItem) so it renders with them; the originals stay on the
+        // ghost and the dupes are discarded on corpse rejoin (RaiseCorpse
+        // skips IT_HAIR/IT_BEARD).
+        foreach (var hairLayer in new[] { Layer.Hair, Layer.FacialHair })
+        {
+            var hair = victim.GetEquippedItem(hairLayer);
+            if (hair == null) continue;
+            var dupe = _world.CreateItem();
+            dupe.BaseId = hair.BaseId;
+            dupe.Hue = hair.Hue;
+            dupe.ItemType = hair.ItemType;
+            dupe.Name = hair.GetName();
+            dupe.SetTag("EQUIPLAYER", ((byte)hairLayer).ToString());
+            dupe.SetTag("CORPSE_HAIR", "1"); // a render copy, never loot/restore
+            corpse.AddItem(dupe);
+        }
     }
 
     /// <summary>Items that are NOT transferred to the corpse on death and remain
@@ -603,6 +646,15 @@ public sealed class DeathEngine
         foreach (var item in contents)
         {
             corpse.RemoveItem(item);
+
+            // The corpse-render hair/beard dupes are not real loot — the
+            // originals never left the ghost (Source-X RaiseCorpse skips
+            // IT_HAIR/IT_BEARD on rejoin).
+            if (item.TryGetTag("CORPSE_HAIR", out _))
+            {
+                item.Delete();
+                continue;
+            }
 
             Layer? targetLayer = null;
             if (item.TryGetTag("EQUIPLAYER", out string? layerStr) &&

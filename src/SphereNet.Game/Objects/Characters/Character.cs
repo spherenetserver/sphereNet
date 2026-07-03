@@ -1980,6 +1980,15 @@ public partial class Character : ObjBase
     public void Resurrect()
     {
         if (!IsDead) return;
+        // Source-X Spell_Resurrection: an antimagic region refuses the rez
+        // (REGION_ANTIMAGIC_ALL → SphereNet RegionFlag.NoMagic); a GM ghost
+        // bypasses (the reference fNoFail).
+        if (PrivLevel < PrivLevel.GM)
+        {
+            var region = ResolveWorld?.Invoke()?.FindRegion(Position);
+            if (region != null && region.NoMagic)
+                return;
+        }
         ClearStatFlag(StatFlag.Dead);
         CurePoison();
         ClearStatFlag(StatFlag.Hidden);

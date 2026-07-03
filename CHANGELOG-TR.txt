@@ -3,6 +3,32 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-03] - Death/corpse dalgasi D3: kill kaydi, ceset saci, antimagic rez, summon patlamasi
+----------------------------------------
+
+EKLENDI - Kill kaydi (Source-X LOGM_KILLS + parti yankisi):
+  - Oyuncu olumu "'<kurban>' was killed by 'A', 'B'." (veya "accident.")
+    olarak loglanir ve satir kurbanin parti uyelerine iletilir.
+
+EKLENDI - Cesetler sac ve sakalla render olur:
+  - Sac/sakal cesede isaretli render kopyalari olarak eklenir (Source-X
+    CreateDupeItem); orijinaller ghost'ta kalir, kopyalar corpse rejoin'da
+    loot olarak donmek yerine silinir.
+
+EKLENDI - Antimagic dirilis kapisi:
+  - NoMagic bolge dirilisi reddeder (Source-X REGION_ANTIMAGIC_ALL);
+    GM ghost muaftir.
+
+EKLENDI - Cesetsiz olen summon sessizce kaybolmak yerine spell-fizzle
+  patlamasi (0x3735) yayinlar (Source-X MakeCorpse).
+
+NOT - Gerekceli ertelemeler (wiki/death-corpse.txt): corpse max-weight
+  anti-exploit'i (hook'lanacak konteyner agirlik-kapasite modeli yok),
+  blessed item'larin pack'e inmesi (bilincli tercih), olu-sezon/waypoint
+  client incelikleri ve ghost manifest modeli (gorunurluk karari ister).
+
+================================================================================
+
 [2026-07-03] - Death/corpse dalgalari D1-D2: olum cezalari, carve suclamasi, death-screen config
 ----------------------------------------
 

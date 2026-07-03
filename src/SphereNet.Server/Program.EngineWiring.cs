@@ -1428,6 +1428,24 @@ public static partial class Program
             _deathEngine.PartyManager = _partyManager;
             _deathEngine.TriggerDispatcher = _triggerDispatcher;
             _tradeManager = new TradeManager();
+            // Source-X kill record: log the player death and echo it to the
+            // victim's party (LOGM_KILLS + m_pParty->SysMessageAll).
+            _deathEngine.KillMessageHook = (victim, msg) =>
+            {
+                _log.LogInformation("[kill] {Message}", msg);
+                var party = _partyManager?.FindParty(victim.Uid);
+                if (party == null) return;
+                foreach (var member in party.Members)
+                    if (_clientsByCharUid.TryGetValue(member, out var memberClient))
+                        memberClient.SysMessage(msg);
+            };
+            // Source-X MakeCorpse: a corpseless summon bursts the spell-fizzle
+            // effect (ITEMID_FX_SPELL_FAIL 0x3735) instead of just vanishing.
+            _deathEngine.ConjuredVanishEffectHook = victim =>
+                BroadcastNearby(victim.Position, 18, new PacketEffect(
+                    3, victim.Uid.Value, victim.Uid.Value, 0x3735,
+                    victim.X, victim.Y, victim.Z, victim.X, victim.Y, victim.Z,
+                    1, 30, false, false), 0);
             // Source-X CChar::Death Trade_Delete: an open secure trade is
             // cancelled before the corpse forms so the returned items reach
             // the loot drop. Client route closes both windows; the clientless

@@ -61,6 +61,66 @@ public class NpcAiFieldReportTests
     }
 
     [Fact]
+    public void RiddenMount_IsNotAValidMonsterTarget()
+    {
+        var world = new GameWorld(LoggerFactory.Create(_ => { }));
+        world.InitMap(0, 6144, 4096);
+        SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
+        var ai = new NpcAI(world, new SphereConfig());
+
+        var rider = world.CreateCharacter();
+        rider.IsPlayer = true;
+        rider.IsOnline = true;
+        rider.Hits = rider.MaxHits = 100;
+        world.PlaceCharacter(rider, new Point3D(100, 100, 0, 0));
+        world.AddOnlinePlayer(rider);
+
+        var mount = world.CreateCharacter();
+        mount.Hits = mount.MaxHits = 50;
+        mount.SetStatFlag(StatFlag.Ridden);
+        world.PlaceCharacter(mount, new Point3D(100, 100, 0, 0));
+
+        var skeleton = world.CreateCharacter();
+        skeleton.Hits = skeleton.MaxHits = 50;
+        skeleton.NpcBrain = NpcBrainType.Monster;
+        skeleton.Int = 30;
+        world.PlaceCharacter(skeleton, new Point3D(102, 100, 0, 0));
+        world.OnTick(); // activate the sector
+
+        skeleton.NextNpcActionTime = 0;
+        ai.OnTickAction(skeleton);
+
+        // The monster must acquire the RIDER, never the ridden mount —
+        // targeting the mount produced an invisible one-sided fight.
+        Assert.NotEqual(mount.Uid, skeleton.FightTarget);
+    }
+
+    [Fact]
+    public void OpenedDoor_SwingsShutOnItsOwn()
+    {
+        var world = new GameWorld(LoggerFactory.Create(_ => { }));
+        world.InitMap(0, 6144, 4096);
+        SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
+
+        var door = world.CreateItem();
+        door.BaseId = 0x06A5; // wooden_1 slot 0
+        door.ItemType = Core.Enums.ItemType.Door;
+        world.PlaceItem(door, new Point3D(1000, 1000, 0, 0));
+
+        Assert.True(SphereNet.Game.World.DoorHelper.TryOpenDoorState(door));
+        Assert.True(door.Timeout > 0); // the 20s auto-close armed
+
+        // Force the timer due and tick: the door closes, un-shifts the
+        // hinge and clears the state (Source-X _SetTimeoutS(20)).
+        door.SetTimeout(1);
+        door.OnTick();
+        Assert.Equal(0x06A5, door.BaseId);
+        Assert.Equal(1000, door.X);
+        Assert.Equal(1000, door.Y);
+        Assert.False(door.TryGetTag("DOOR_OPEN", out _));
+    }
+
+    [Fact]
     public void ImpassableMountainLand_BlocksNpcMovement()
     {
         var map = new MapDataManager("");

@@ -2328,6 +2328,10 @@ public sealed class NpcAI
         if (ch.IsStatFlag(StatFlag.Invisible)) return false;
         if (ch.IsStatFlag(StatFlag.Hidden)) return false;
         if (ch.IsStatFlag(StatFlag.Insubstantial)) return false;
+        // A ridden mount has no world presence — hostiles must target the
+        // RIDER. Targeting the mount produced an invisible one-sided fight
+        // (the ridden NPC skips its AI tick, so it could never respond).
+        if (ch.IsStatFlag(StatFlag.Ridden)) return false;
         return true;
     }
 

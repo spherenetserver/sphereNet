@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-03] - Field-report wave 2: ridden-mount targeting, door auto-close
+----------------------------------------
+
+FIXED - Monsters could target a ridden mount:
+  - IsAttackable never skipped STATF_RIDDEN, so a hostile locked onto
+    the mount under a rider and started an invisible one-sided fight
+    (the ridden NPC skips its AI tick, so it could never respond).
+    Attacks now go to the RIDER.
+
+ADDED - Door auto-close (Source-X _SetTimeoutS(20) parity):
+  - An opened door swings shut on its own after 20 seconds: the art
+    flips back, the hinge shift is undone, the close sound plays and
+    the visual is pushed to observers. A manual close cancels the timer.
+
+VERIFIED - The pathfinder shares MapDataManager.IsPassable, so the
+  mountain-walk fix covers A* routing as well as direct steps.
+
+================================================================================
 [2026-07-03] - Field-report wave: door hinge shift, pet self-defense, mountain walk, 56T saves
 ----------------------------------------
 

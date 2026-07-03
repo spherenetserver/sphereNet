@@ -132,6 +132,8 @@ public static class DoorHelper
             door.BaseId = newDisplayId;
         door.SetTag("DOOR_OPEN", "1");
         MoveDoorLeaf(door, doorDir);
+        // Source-X _SetTimeoutS(20): the door swings shut on its own.
+        door.SetTimeout(Environment.TickCount64 + 20_000);
         return true;
     }
 

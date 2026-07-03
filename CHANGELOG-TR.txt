@@ -3,6 +3,24 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-03] - Saha raporu dalgasi 2: binicili binek hedeflemesi, kapi auto-close
+----------------------------------------
+
+DUZELTILDI - Canavarlar binicili binegi hedefleyebiliyordu:
+  - IsAttackable STATF_RIDDEN'i atlamiyordu; dusman binicinin altindaki
+    binege kilitlenip gorunmez tek-tarafli kavga baslatiyordu (binicili
+    NPC, AI tick'ini atladigi icin cevap veremez). Saldirilar artik
+    BINICIYE yonelir.
+
+EKLENDI - Kapi auto-close (Source-X _SetTimeoutS(20) paritesi):
+  - Acilan kapi 20 saniye sonra kendiliginden kapanir: art geri doner,
+    mentese kaymasi geri alinir, kapanis sesi calar ve gorsel degisiklik
+    izleyicilere yayinlanir. Manuel kapama timer'i iptal eder.
+
+DOGRULANDI - Pathfinder ayni MapDataManager.IsPassable'i kullaniyor;
+  dag-yurume fix'i duz adimlarla birlikte A* rotalamayi da kapsar.
+
+================================================================================
 [2026-07-03] - Saha raporu dalgasi: kapi mentese kaymasi, pet savunmasi, dag yurume, 56T save
 ----------------------------------------
 

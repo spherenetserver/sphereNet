@@ -1520,6 +1520,9 @@ public sealed class ClientWorldFeaturesHandler
         // backwards / into the wall.
         DoorHelper.MoveDoorLeaf(door, doorDir);
 
+        // Source-X _SetTimeoutS(20): an opened door swings shut on its own.
+        door.SetTimeout(isOpen ? 0 : Environment.TickCount64 + 20_000);
+
         // Play door sound and broadcast updated item to nearby clients
         ushort soundId = (ushort)(isOpen ? 0x00F1 : 0x00EA); // close/open sounds
         var soundPacket = new PacketSound(soundId, door.X, door.Y, door.Z);

@@ -2335,6 +2335,15 @@ public class Item : ObjBase
                     // 5 seconds after opening.
                     ClosePlank();
                     break;
+                case ItemType.Door:
+                case ItemType.DoorOpen:
+                case ItemType.DoorLocked:
+                case ItemType.Portculis:
+                case ItemType.PortLocked:
+                    // Source-X Use_Door timer: an opened door swings shut 20
+                    // seconds later (locked-while-open still closes).
+                    CloseDoor();
+                    break;
             }
         }
 
@@ -2432,6 +2441,34 @@ public class Item : ObjBase
 
     /// <summary>Source-X Ship_Plank close: restore the stored side type and
     /// graphic, clear the autoclose timer.</summary>
+    /// <summary>Source-X Use_Door closing half (the 20s auto-close timer):
+    /// flip the open art back, un-shift the hinge, clear the state and push
+    /// the visual to observers. Returns false when already closed.</summary>
+    public bool CloseDoor()
+    {
+        int doorDir = World.DoorHelper.GetDoorDir(DispIdFull);
+        bool isOpen = doorDir >= 0
+            ? (doorDir & 1) != 0
+            : TryGetTag("DOOR_OPEN", out string? s) && s == "1";
+        if (!isOpen)
+            return false;
+
+        int offset = _type is ItemType.Portculis or ItemType.PortLocked ? 2 : 1;
+        ushort newId = (ushort)(DispIdFull - offset);
+        if (DispIdOverride != 0)
+            TrySetProperty("DISPID", $"0{newId:X}");
+        else
+            BaseId = newId;
+        RemoveTag("DOOR_OPEN");
+        // Odd (open) slot → GetDoorShift returns the closing shift.
+        World.DoorHelper.MoveDoorLeaf(this, doorDir);
+        SetTimeout(0);
+        EmitScriptSound("0x00F1");
+        MarkDirty((DirtyFlag)0xFFFFFFFF);
+        OnVisualUpdate?.Invoke(this);
+        return true;
+    }
+
     public bool ClosePlank()
     {
         if (_type != ItemType.ShipPlank)

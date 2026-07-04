@@ -1,0 +1,506 @@
+// Steps and routing: MoveToward, A* cache, tile checks, wander, doors.
+// Decomposed from the former single-file NpcAI.cs (see NpcAI.cs core).
+using SphereNet.Core.Configuration;
+using SphereNet.Core.Enums;
+using SphereNet.Core.Types;
+using SphereNet.Game.Combat;
+using SphereNet.Game.Definitions;
+using SphereNet.Game.Movement;
+using SphereNet.Game.Objects.Characters;
+using SphereNet.Game.Objects.Items;
+using SphereNet.Game.Messages;
+using SphereNet.Game.World;
+
+namespace SphereNet.Game.AI;
+
+public sealed partial class NpcAI
+{
+    // Cached paths per NPC UID — avoids recalculating every tick
+    private readonly Dictionary<uint, List<Point3D>> _pathCache = [];
+
+    private readonly Dictionary<uint, int> _pathIndex = [];
+
+    private readonly Dictionary<uint, long> _pathTime = [];
+
+    private const long PathCacheMaxAge = 10_000;
+
+    // Earliest time A* may be recomputed for this NPC. Survives path-cache
+    // drops (unlike _pathTime) so a churning crowd — where the cached step is
+    // invalidated almost every tick — cannot trigger a full A* recompute every
+    // tick. A successful compute allows the next one after PathThrottleMs; a
+    // FAILED compute (unreachable target — the search burns the whole node
+    // budget before giving up) backs off for PathFailBackoffMs instead. The
+    // direct-step fast path above A* still runs every action, so the NPC
+    // resumes immediately once the straight line opens.
+    private readonly Dictionary<uint, long> _nextPathfindMs = [];
+
+    private const long PathThrottleMs = 750;
+
+    private const long PathFailBackoffMs = 5_000;
+
+    // NPC combat-chase A* node budget. Far below the full Pathfinder cap (which
+    // is sized for player half-continent .walk): a creature only needs to route
+    // around local obstacles toward a target in sight. Each explored node costs
+    // ~35µs (per-tile map/static/object walkability checks), so an unreachable
+    // target burns the WHOLE budget in the single-threaded apply phase — at
+    // 2000 nodes that was a 40-75ms main-loop stall (visible as a ~160ms ping
+    // spike). 500 nodes bounds the worst case to ~17ms and still covers any
+    // realistic local detour.
+    private const int NpcPathMaxNodes = 500;
+
+    private long _lastPathPurge;
+
+    public void PurgeStalePaths()
+    {
+        long now = Environment.TickCount64;
+        if (now - _lastPathPurge < 30_000) return;
+        _lastPathPurge = now;
+
+        List<uint>? stale = null;
+        foreach (var uid in _pathCache.Keys)
+        {
+            var obj = _world.FindObject(new Core.Types.Serial(uid));
+            bool expired = _pathTime.TryGetValue(uid, out long t) && now - t > PathCacheMaxAge;
+            if (obj is not Character ch || ch.IsDeleted || ch.IsDead || expired)
+                (stale ??= []).Add(uid);
+        }
+        if (stale != null)
+        {
+            foreach (var uid in stale)
+            {
+                _pathCache.Remove(uid);
+                _pathIndex.Remove(uid);
+                _pathTime.Remove(uid);
+                _losFailCounts.Remove(uid);
+                _nextPathfindMs.Remove(uid);
+                _lastAttackNotify.Remove(uid);
+            }
+        }
+
+        // Throttle timestamps can outlive the path cache (they survive path
+        // drops by design), so sweep them for gone NPCs here as well.
+        if (_nextPathfindMs.Count > 0)
+        {
+            List<uint>? stalePf = null;
+            foreach (var uid in _nextPathfindMs.Keys)
+            {
+                if (_pathCache.ContainsKey(uid)) continue;
+                var obj = _world.FindObject(new Core.Types.Serial(uid));
+                if (obj is not Character ch || ch.IsDeleted || ch.IsDead)
+                    (stalePf ??= []).Add(uid);
+            }
+            if (stalePf != null)
+                foreach (var uid in stalePf)
+                    _nextPathfindMs.Remove(uid);
+        }
+
+        // LOS-fail counters can accumulate for NPCs that never built a path
+        // cache entry (target keeps moving but the straight line stays open),
+        // so the path-cache sweep above never reaches them. Purge them here too.
+        if (_losFailCounts.Count > 0)
+        {
+            List<uint>? staleLos = null;
+            foreach (var uid in _losFailCounts.Keys)
+            {
+                if (_pathCache.ContainsKey(uid)) continue; // already handled above
+                var obj = _world.FindObject(new Core.Types.Serial(uid));
+                if (obj is not Character ch || ch.IsDeleted || ch.IsDead)
+                    (staleLos ??= []).Add(uid);
+            }
+            if (staleLos != null)
+                foreach (var uid in staleLos)
+                    _losFailCounts.Remove(uid);
+        }
+
+        // Attack-notify latches outlive the path cache the same way (an NPC
+        // can fight without ever pathfinding), so sweep them for gone NPCs.
+        if (_lastAttackNotify.Count > 0)
+        {
+            List<uint>? staleNotify = null;
+            foreach (var uid in _lastAttackNotify.Keys)
+            {
+                if (_pathCache.ContainsKey(uid)) continue; // already handled above
+                var obj = _world.FindObject(new Core.Types.Serial(uid));
+                if (obj is not Character ch || ch.IsDeleted || ch.IsDead)
+                    (staleNotify ??= []).Add(uid);
+            }
+            if (staleNotify != null)
+                foreach (var uid in staleNotify)
+                    _lastAttackNotify.Remove(uid);
+        }
+    }
+
+    /// <summary>Idle fidget animation hook — wired by the server to the
+    /// body-aware animation broadcast.</summary>
+    public Action<Character>? OnNpcFidget { get; set; }
+
+    /// <summary>Open an unlocked closed door for an NPC (state flip +
+    /// observer broadcast — wired by the server). Returns true when the
+    /// door ended up open so the blocked step can be re-validated.</summary>
+    public Func<Character, Item, bool>? OnNpcOpenDoor { get; set; }
+
+    /// <summary>NPC_AI_MOVEOBSTACLES: try to shift a movable, blocking item on
+    /// <paramref name="blocked"/> onto the NPC's own tile (Source-X moves it to
+    /// the char's position). Gated on the flag, CAN_C_USEHANDS and the Source-X
+    /// smartness roll (INT &gt; rand(100)). Returns true when an item moved.</summary>
+    internal bool TryClearObstacle(Character npc, Point3D blocked)
+    {
+        if (!GetNpcFlags(npc).HasFlag(NpcAIFlags.MoveObstacles))
+            return false;
+        var can = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.Can ?? CanFlags.None;
+        if (!can.HasFlag(CanFlags.C_UseHands))
+            return false;
+        if (npc.Int <= _rand.Next(100))
+            return false;
+
+        foreach (var item in _world.GetItemsInRange(blocked, 1))
+        {
+            if (item.IsDeleted || item.ContainedIn.IsValid) continue;
+            if (item.X != blocked.X || item.Y != blocked.Y) continue;
+            if (Math.Abs(item.Z - npc.Z) > 3) continue;
+            var def = DefinitionLoader.GetItemDef(item.BaseId);
+            if (def == null || !def.Can.HasFlag(CanFlags.I_Block)) continue; // only actual blockers
+            if ((item.Attributes & (ObjAttributes.Move_Never | ObjAttributes.LockedDown |
+                ObjAttributes.Secure | ObjAttributes.Static)) != 0) continue;
+
+            item.Position = npc.Position;
+            OnNpcMovedItem?.Invoke(npc, item);
+            return true;
+        }
+        return false;
+    }
+
+    // --- Movement helpers ---
+
+    private bool CanNpcEnterTile(Character npc, Point3D pos)
+    {
+        var mapData = _world.MapData;
+        if (mapData == null) return true;
+
+        var terrain = mapData.GetTerrainTile(pos.Map, pos.X, pos.Y);
+        var landData = mapData.GetLandTileData(terrain.TileId);
+
+        bool isWater = landData.IsWet;
+        if (isWater)
+        {
+            var charDef = DefinitionLoader.GetCharDef(npc.CharDefIndex);
+            bool canSwim = charDef != null && (charDef.Can & Core.Enums.CanFlags.C_Swim) != 0;
+            if (!canSwim) return false;
+        }
+
+        if (IsTileDangerous(npc, pos))
+            return false;
+
+        return true;
+    }
+
+    private bool IsTileDangerous(Character npc, Point3D pos)
+    {
+        foreach (var item in _world.GetItemsInRange(pos, 0))
+        {
+            if (!item.TryGetTag("FIELD_DAMAGE", out _))
+                continue;
+            var charDef = DefinitionLoader.GetCharDef(npc.CharDefIndex);
+            bool fireImmune = charDef != null && (charDef.Can & CanFlags.C_FireImmune) != 0;
+            if (!fireImmune)
+                return true;
+        }
+        return false;
+    }
+
+    private bool CanNpcMoveTo(Character npc, Point3D pos)
+    {
+        if (pos.X < 0 || pos.Y < 0)
+            return false;
+
+        if (!CanNpcEnterTile(npc, pos))
+            return false;
+
+        bool canPassWalls = CharDefHelper.CanPassWalls(npc);
+        if (!canPassWalls)
+        {
+            var mapData = _world.MapData;
+            if (mapData != null && !mapData.IsPassable(pos.Map, pos.X, pos.Y, pos.Z))
+                return false;
+
+            foreach (var item in _world.GetItemsInRange(pos, 0))
+            {
+                if (item.IsStaticBlock)
+                    return false;
+            }
+
+            foreach (var other in _world.GetCharsInRange(pos, 0))
+            {
+                if (other == npc || other.IsDeleted || other.IsDead)
+                    continue;
+                if (other.MapIndex != pos.Map || other.X != pos.X || other.Y != pos.Y)
+                    continue;
+                if ((other.IsStatFlag(StatFlag.Hidden) || other.IsStatFlag(StatFlag.Invisible))
+                    && other.PrivLevel >= PrivLevel.Counsel)
+                    continue;
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void Wander(Character npc)
+    {
+        if (OnNpcActWander?.Invoke(npc) == true)
+            return;
+
+        // Idle fidget (reference parity: idle NPCs randomly play a fidget
+        // animation) — occasionally animate in place instead of stepping so
+        // standing NPCs look alive without extra packet pressure.
+        if (_rand.Next(8) == 0)
+        {
+            OnNpcFidget?.Invoke(npc);
+            return;
+        }
+
+        int dx = _rand.Next(-1, 2);
+        int dy = _rand.Next(-1, 2);
+        if (dx == 0 && dy == 0) return;
+
+        short nx = (short)(npc.X + dx);
+        short ny = (short)(npc.Y + dy);
+        var mapData = _world.MapData;
+        sbyte nz = mapData?.GetEffectiveZ(npc.MapIndex, nx, ny, npc.Z) ?? npc.Z;
+        if (Math.Abs(nz - npc.Z) > 12)
+            return;
+        var newPos = new Point3D(nx, ny, nz, npc.MapIndex);
+        if (!CanNpcMoveTo(npc, newPos))
+            return;
+
+        // Face the step direction so the 0x77 move matches the tile delta and the
+        // client walk-animates instead of snapping the NPC.
+        npc.Direction = npc.Position.GetDirectionTo(newPos);
+        _world.MoveCharacter(npc, newPos);
+    }
+
+    /// <summary>Wander with home range check. Source-X: m_Home_Dist_Wander.</summary>
+    private void WanderHome(Character npc)
+    {
+        if (!TryResolveHome(npc, out Point3D home, out int homeDist))
+        {
+            Wander(npc);
+            return;
+        }
+
+        int curDist = Math.Abs(npc.X - home.X) + Math.Abs(npc.Y - home.Y);
+        if (curDist > homeDist)
+        {
+            MoveToward(npc, home);
+            return;
+        }
+        Wander(npc);
+    }
+
+    /// <summary>Home from Character.Home field; legacy TAG.HOME_* fallback.</summary>
+    private static bool TryResolveHome(Character npc, out Point3D home, out int wanderDist)
+    {
+        wanderDist = npc.HomeDist > 0 ? npc.HomeDist : 10;
+        if (npc.Home.X != 0 || npc.Home.Y != 0)
+        {
+            home = new Point3D(npc.Home.X, npc.Home.Y, npc.Home.Z, npc.MapIndex);
+            return true;
+        }
+
+        if (npc.TryGetTag("HOME_X", out string? hx) && npc.TryGetTag("HOME_Y", out string? hy) &&
+            short.TryParse(hx, out short homeX) && short.TryParse(hy, out short homeY))
+        {
+            sbyte homeZ = npc.Z;
+            if (npc.TryGetTag("HOME_Z", out string? hz))
+                sbyte.TryParse(hz, out homeZ);
+            home = new Point3D(homeX, homeY, homeZ, npc.MapIndex);
+            if (npc.TryGetTag("HOME_DIST", out string? hdStr) && int.TryParse(hdStr, out int hd))
+                wanderDist = hd;
+            return true;
+        }
+
+        home = default;
+        return false;
+    }
+
+    private void MoveToward(Character npc, Point3D target, bool run = false)
+    {
+        var dir = npc.Position.GetDirectionTo(target);
+        GetDirectionDelta(dir, out short dx, out short dy);
+        if (run)
+            dir |= Direction.Running;
+
+        short nx = (short)(npc.X + dx);
+        short ny = (short)(npc.Y + dy);
+        var mapData = _world.MapData;
+        sbyte nz = mapData?.GetEffectiveZ(npc.MapIndex, nx, ny, npc.Z) ?? npc.Z;
+        if (Math.Abs(nz - npc.Z) > 12)
+            return;
+        var directPos = new Point3D(nx, ny, nz, npc.MapIndex);
+
+        bool directBlocked = !CanNpcMoveTo(npc, directPos);
+
+        // Reference parity (NPC door handling in the idle look-at path): a
+        // blocked adjacent step may just be a closed door — try to open it
+        // (50% per attempt, like the reference) and re-check the tile.
+        if (directBlocked && OnNpcOpenDoor != null && _rand.Next(2) == 0)
+        {
+            var door = FindClosedDoorAt(directPos);
+            if (door != null && OnNpcOpenDoor(npc, door))
+                directBlocked = !CanNpcMoveTo(npc, directPos);
+        }
+
+        if (!directBlocked)
+        {
+            npc.Direction = dir;
+            _world.MoveCharacter(npc, directPos);
+            _pathCache.Remove(npc.Uid.Value);
+            _pathIndex.Remove(npc.Uid.Value);
+            _pathTime.Remove(npc.Uid.Value);
+            return;
+        }
+
+        var npcFlags = GetNpcFlags(npc);
+        if (!npcFlags.HasFlag(NpcAIFlags.Path))
+        {
+            npc.Direction = dir;
+            return;
+        }
+
+        // Source-X NPC_Pathfinding intelligence gate: a creature only routes
+        // with A* when it is smart enough (effective INT >= 30). NPC_AI_ALWAYSINT
+        // bypasses the check (treated as INT 300). A dumb creature just faces the
+        // target and takes the blocked-direct step on later ticks as the line
+        // opens — it never burns the A* node budget.
+        int effInt = npcFlags.HasFlag(NpcAIFlags.AlwaysInt) ? 300 : npc.Int;
+        if (effInt < 30)
+        {
+            npc.Direction = dir;
+            return;
+        }
+
+        // Direct path blocked — use A* pathfinding
+        uint uid = npc.Uid.Value;
+        if (!npcFlags.HasFlag(NpcAIFlags.PersistentPath))
+        {
+            _pathCache.Remove(uid);
+            _pathIndex.Remove(uid);
+            _pathTime.Remove(uid);
+        }
+        if (!_pathCache.TryGetValue(uid, out var path) || path.Count == 0)
+        {
+            // Throttle full A* recomputes per NPC. In a churning crowd the
+            // cached step is blocked nearly every tick, which would otherwise
+            // force a fresh A* search every tick for every NPC. Between allowed
+            // recomputes just face the target and hold — a closer/unblocked NPC
+            // keeps the pressure on, and the path refreshes shortly after.
+            long nowMs = Environment.TickCount64;
+            if (_nextPathfindMs.TryGetValue(uid, out long nextPf) && nowMs < nextPf)
+            {
+                npc.Direction = dir;
+                return;
+            }
+
+            // Calculate new path
+            var npcDef = DefinitionLoader.GetCharDef(npc.CharDefIndex);
+            var npcCanFlags = npcDef?.Can ?? Core.Enums.CanFlags.None;
+            path = _pathfinder.FindPath(npc.Position, target, npc.MapIndex, npcCanFlags, npc, NpcPathMaxNodes);
+            if (path == null || path.Count == 0)
+            {
+                _nextPathfindMs[uid] = nowMs + PathFailBackoffMs;
+                npc.Direction = dir;
+                return;
+            }
+            _nextPathfindMs[uid] = nowMs + PathThrottleMs;
+            _pathCache[uid] = path;
+            _pathIndex[uid] = 0;
+            _pathTime[uid] = Environment.TickCount64;
+        }
+
+        int idx = _pathIndex.GetValueOrDefault(uid, 0);
+        if (idx >= path.Count)
+        {
+            // Path exhausted — recalculate
+            _pathCache.Remove(uid);
+            _pathIndex.Remove(uid);
+            _pathTime.Remove(uid);
+            return;
+        }
+
+        var nextStep = path[idx];
+
+        // Re-validate the cached step before committing it. The path can be up to
+        // PathCacheMaxAge old, during which a door may have closed, another mob
+        // moved in, or a damage field appeared — walking it blindly would shove
+        // the NPC into a blocked/dangerous tile. If it's no longer valid, drop
+        // the path and recompute next tick.
+        if (!CanNpcMoveTo(npc, nextStep))
+        {
+            // NPC_AI_MOVEOBSTACLES (Source-X NPC_WalkToPoint, CCharNPCAct.cpp:525):
+            // a hands-capable, smart-enough NPC shifts a movable blocking item
+            // onto its own tile before giving the path up.
+            TryClearObstacle(npc, nextStep);
+            _pathCache.Remove(uid);
+            _pathIndex.Remove(uid);
+            _pathTime.Remove(uid);
+            npc.Direction = npc.Position.GetDirectionTo(nextStep);
+            return;
+        }
+
+        var stepDir = npc.Position.GetDirectionTo(nextStep);
+        npc.Direction = run ? stepDir | Direction.Running : stepDir;
+        _world.MoveCharacter(npc, nextStep);
+        _pathIndex[uid] = idx + 1;
+    }
+
+    /// <summary>Find a closed, unlocked door item on the given tile
+    /// (within a reasonable Z window). Internal for tests.</summary>
+    internal Item? FindClosedDoorAt(Point3D pos)
+    {
+        foreach (var item in _world.GetItemsInRange(pos, 0))
+        {
+            if (item.IsDeleted) continue;
+            if (Math.Abs(item.Z - pos.Z) > 15) continue;
+            if (!DoorHelper.IsDoorItem(item, _world.MapData)) continue;
+            if (item.ItemType is ItemType.DoorLocked or ItemType.PortLocked) continue;
+            if (item.TryGetTag("DOOR_OPEN", out string? openStr) && openStr == "1") continue;
+            return item;
+        }
+        return null;
+    }
+
+    private static void GetDirectionDelta(Direction dir, out short dx, out short dy)
+    {
+        dx = 0; dy = 0;
+        switch (dir)
+        {
+            case Direction.North: dy = -1; break;
+            case Direction.NorthEast: dx = 1; dy = -1; break;
+            case Direction.East: dx = 1; break;
+            case Direction.SouthEast: dx = 1; dy = 1; break;
+            case Direction.South: dy = 1; break;
+            case Direction.SouthWest: dx = -1; dy = 1; break;
+            case Direction.West: dx = -1; break;
+            case Direction.NorthWest: dx = -1; dy = -1; break;
+        }
+    }
+
+    private static int DeterministicJitter(uint uid, long nowTick, int maxExclusive)
+    {
+        if (maxExclusive <= 0) return 0;
+        unchecked
+        {
+            uint mixed = uid * 2654435761u ^ (uint)nowTick;
+            return (int)(mixed % (uint)maxExclusive);
+        }
+    }
+
+    private static Direction GetDeterministicDirection(uint uid, long nowTick)
+    {
+        unchecked
+        {
+            uint mixed = uid * 1103515245u + (uint)nowTick * 12345u;
+            return (Direction)(mixed & 0x07);
+        }
+    }
+}

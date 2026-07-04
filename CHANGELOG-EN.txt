@@ -4,6 +4,27 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-04] - NpcAI wave A3: strict Source-X parity for the design-decision items
+----------------------------------------
+
+CHANGED - Target motivation matches NPC_GetAttackMotivation exactly:
+  - The ServUO-style wounded/caster/healer/retaliation bonuses are
+    removed; motivation is hostility + same-target hysteresis - distance
+    + morale (+ the attacker-list THREAT term).
+
+CHANGED - Hireling economy is the Source-X prepaid model:
+  - The day wage comes from the chardef (HIREDAYWAGE; a legacy HIRE_WAGE
+    tag still overrides). Gold handed to the NPC hires it and funds ITS
+    OWN wage balance (NPC_OnHirePay); upkeep drains a period-fraction of
+    that balance and never touches the master's bank. On depletion the
+    hireling speaks the wage-cost/time-up messages and deserts.
+
+CHANGED - Town healers are resurrect-only (NPC_LookAtCharHealer):
+  - The cure-poison and heal-wounded passes are removed; they topped up
+    any non-criminal living creature in range, including grey aggressors
+    mid-fight.
+
+================================================================================
 [2026-07-04] - NpcAI parity waves A1/A2/A4: caster fixes, movement defaults, P3 tail
 ----------------------------------------
 

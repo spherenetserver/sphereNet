@@ -3,6 +3,27 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-04] - NpcAI dalgasi A3: tasarim-karari maddelerinde birebir Source-X paritesi
+----------------------------------------
+
+DEGISTI - Hedef motivasyonu NPC_GetAttackMotivation ile birebir:
+  - ServUO-stili wounded/caster/healer/retaliation bonuslari kaldirildi;
+    motivasyon = hostility + ayni-hedef histerezisi - mesafe + moral
+    (+ attacker-list THREAT terimi).
+
+DEGISTI - Hireling ekonomisi Source-X on odemeli model:
+  - Gunluk ucret chardef'ten (HIREDAYWAGE; legacy HIRE_WAGE tag'i hala
+    override eder). NPC'ye verilen altin onu ise alir ve KENDI ucret
+    bakiyesini fonlar (NPC_OnHirePay); bakim, bakiyeden periyot-kesri
+    duser ve sahibin bankasina asla dokunmaz. Bakiye bitince hireling
+    wage-cost/time-up mesajlarini soyleyip terk eder.
+
+DEGISTI - Sehir healer'lari yalniz resurrect (NPC_LookAtCharHealer):
+  - Cure-poison ve heal-wounded gecisleri kaldirildi; menzildeki her
+    suclu-olmayan canliyi (dovus ortasindaki gri saldirganlar dahil)
+    iyilestiriyorlardi.
+
+================================================================================
 [2026-07-04] - NpcAI parite dalgalari A1/A2/A4: caster fix'leri, hareket default'lari, P3 kuyruk
 ----------------------------------------
 

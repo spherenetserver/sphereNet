@@ -221,19 +221,10 @@ public sealed partial class NpcAI
         // Distance penalty
         motivation -= npc.Position.GetDistanceTo(target.Position);
 
-        // Prioritize wounded targets (easier kills)
-        if (target.MaxHits > 0 && target.Hits < target.MaxHits / 3)
-            motivation += 15;
-
-        // Prioritize dangerous targets: casters/healers are high-value
-        if (!target.IsPlayer && target.NpcSpells.Count > 0)
-            motivation += 10;
-        if (!target.IsPlayer && target.NpcBrain == NpcBrainType.Healer)
-            motivation += 20;
-
-        // Targets actively attacking us get priority (retaliation)
-        if (target.FightTarget == npc.Uid)
-            motivation += 15;
+        // NOTE: no wounded/caster/healer/retaliation bonuses here — Source-X
+        // NPC_GetAttackMotivation has none (motivation is hostility + same-
+        // target hysteresis − distance + morale). Retaliation pressure comes
+        // from the attacker-list THREAT term below.
 
         // Threat: stick to whoever has dealt the most damage to us (Source-X
         // NPC_AI_THREAT / NPC_FightFindBestTarget). Global flag, on by default;

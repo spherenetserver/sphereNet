@@ -69,6 +69,53 @@ public sealed class ClientInventoryHandler
     /// skill points (1 gp = 0.1) up to the offered cap. Returns false when the
     /// pending offer doesn't match this NPC (normal gift handling continues).
     /// Leftover gold above the cap bounces back to the student's pack.</summary>
+    /// <summary>Source-X NPC_OnHirePay/NPC_OnHirePayMore: gold given to an NPC
+    /// whose chardef sets HIREDAYWAGE (or a legacy HIRE_WAGE tag) funds the
+    /// NPC's own prepaid wage balance. First payment hires (ownership +
+    /// follow); later payments extend the balance. Refuses another player's
+    /// hireling and payments below one day's wage.</summary>
+    private bool TryApplyHirePayment(Character npc, Item gold)
+    {
+        if (_character == null) return false;
+        uint dayWage = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.HireDayWage ?? 0;
+        if (dayWage == 0 && npc.TryGetTag("HIRE_WAGE", out string? w) &&
+            uint.TryParse(w, out uint tagWage))
+            dayWage = tagWage;
+        if (dayWage == 0)
+            return false;
+
+        var owner = npc.ResolveOwnerCharacter();
+        if (owner != null && owner != _character)
+        {
+            SysMessage(ServerMessages.Get(Msg.NpcPetNotForHire));
+            return true; // consumed the interaction, bounce handled below
+        }
+
+        if (owner == null && gold.Amount < dayWage)
+        {
+            SysMessage(ServerMessages.Get(Msg.NpcPetNotEnough));
+            return false; // gift path may still bounce it back
+        }
+
+        if (owner == null &&
+            !npc.TryAssignOwnership(_character, _character, summoned: false, enforceFollowerCap: true))
+            return false;
+
+        long balance = npc.TryGetTag("HIRE_BALANCE", out string? bs) &&
+            long.TryParse(bs, out long b) ? b : 0;
+        balance += gold.Amount;
+        npc.SetTag("HIRE_BALANCE", balance.ToString());
+        if (owner == null)
+        {
+            npc.PetAIMode = PetAIMode.Follow;
+            npc.SetTag("FOLLOW_TARGET", _character.Uid.Value.ToString());
+        }
+        long daysPaid = balance / Math.Max(1, dayWage);
+        SysMessage(ServerMessages.GetFormatted(Msg.NpcPetHireTime, daysPaid.ToString()));
+        gold.RemoveFromWorld(); // consumed into the wage balance
+        return true;
+    }
+
     private bool TryApplyTrainPayment(Character trainer, Item gold, string pending)
     {
         if (_character == null) return false;
@@ -962,6 +1009,18 @@ public sealed class ClientInventoryHandler
                     (item.ItemType == ItemType.Gold || item.BaseId == 0x0EED) &&
                     _character.TryGetTag("TRAIN_PENDING", out string? trainPending) &&
                     TryApplyTrainPayment(charTarget, item, trainPending!))
+                {
+                    _netState.Send(new PacketDropAck());
+                    return;
+                }
+
+                // Source-X NPC_OnHirePay: gold handed to a hireable NPC
+                // (chardef HIREDAYWAGE) hires it and/or extends its PREPAID
+                // wage balance — the hireling later drains this balance per
+                // period (NPC_CheckHirelingStatus), never the master's bank.
+                if (!charTarget.IsPlayer &&
+                    (item.ItemType == ItemType.Gold || item.BaseId == 0x0EED) &&
+                    TryApplyHirePayment(charTarget, item))
                 {
                     _netState.Send(new PacketDropAck());
                     return;

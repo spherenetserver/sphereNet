@@ -42,28 +42,6 @@ public sealed partial class NpcAI
     /// <summary>Default hireling pay interval (ms) when HIRE_PERIOD isn't set.</summary>
     private const long DefaultHirePeriodMs = 30 * 60 * 1000; // 30 minutes
 
-    /// <summary>Deduct a hireling's wage from the master's bank box. Returns
-    /// false (triggering desertion) if the bank can't cover the wage.</summary>
-    private static bool TryPayHireling(Character master, int wage)
-    {
-        var bank = master.GetEquippedItem(Layer.BankBox);
-        if (bank == null) return false;
-
-        long gold = 0;
-        foreach (var it in bank.Contents)
-            if (it.ItemType == ItemType.Gold) gold += it.Amount;
-        if (gold < wage) return false;
-
-        int remaining = wage;
-        for (int i = bank.Contents.Count - 1; i >= 0 && remaining > 0; i--)
-        {
-            var it = bank.Contents[i];
-            if (it.ItemType != ItemType.Gold) continue;
-            if (it.Amount <= remaining) { remaining -= it.Amount; bank.RemoveItem(it); it.Delete(); }
-            else { it.Amount = (ushort)(it.Amount - remaining); remaining = 0; }
-        }
-        return true;
-    }
 
     /// <summary>
     /// Pet behavior — follows PetAIMode from owner speech commands.
@@ -92,10 +70,17 @@ public sealed partial class NpcAI
             return;
         }
 
-        // Hireling wage (Source-X NPC_OnHirePay): a hired NPC (HIRE_WAGE tag) is
-        // paid from the master's bank box on a timer; it deserts when unpaid.
+        // Hireling upkeep (Source-X NPC_CheckHirelingStatus): the day wage
+        // comes from the CHARDEF (HIREDAYWAGE; legacy HIRE_WAGE tag overrides)
+        // and drains the NPC's own PREPAID balance — funded when the player
+        // hands it gold (NPC_OnHirePay) — a period-fraction at a time. It
+        // never touches the master's live bank; on depletion it speaks the
+        // wage-cost/time-up messages and deserts.
+        uint dayWage = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.HireDayWage ?? 0;
         if (npc.TryGetTag("HIRE_WAGE", out string? wageStr) &&
-            int.TryParse(wageStr, out int wage) && wage > 0)
+            uint.TryParse(wageStr, out uint tagWage) && tagWage > 0)
+            dayWage = tagWage;
+        if (dayWage > 0)
         {
             long nowMs = Environment.TickCount64;
             long period = npc.TryGetTag("HIRE_PERIOD", out string? ps) &&
@@ -106,12 +91,20 @@ public sealed partial class NpcAI
                 npc.SetTag("HIRE_NEXT_PAY", (nowMs + period).ToString());
             else if (nowMs >= nextPay)
             {
-                if (TryPayHireling(master, wage))
+                long periodWage = Math.Max(1, (long)dayWage * period / 86_400_000L);
+                long balance = npc.TryGetTag("HIRE_BALANCE", out string? bs) &&
+                    long.TryParse(bs, out long bal) ? bal : 0;
+                if (balance >= periodWage)
+                {
+                    npc.SetTag("HIRE_BALANCE", (balance - periodWage).ToString());
                     npc.SetTag("HIRE_NEXT_PAY", (nowMs + period).ToString());
+                }
                 else
                 {
-                    OnNpcSay?.Invoke(npc, "I can no longer be paid. Farewell!");
+                    OnNpcSay?.Invoke(npc, ServerMessages.GetFormatted(Msg.NpcPetWageCost, dayWage.ToString()));
+                    OnNpcSay?.Invoke(npc, ServerMessages.Get(Msg.NpcPetHireTimeup));
                     npc.RemoveTag("HIRE_NEXT_PAY");
+                    npc.RemoveTag("HIRE_BALANCE");
                     npc.ClearOwnership(clearFriends: true);
                     npc.PetAIMode = PetAIMode.Stay;
                     return;

@@ -196,30 +196,10 @@ public sealed partial class NpcAI
             return;
         }
 
-        // Priority 2: cure poisoned allies
-        foreach (var ch in _world.GetCharsInRange(npc.Position, healerRange))
-        {
-            if (ch == npc || ch.IsDead || !ch.IsPoisoned) continue;
-            if (ch.IsCriminal || ch.IsMurderer) continue;
-
-            OnHealerCure?.Invoke(npc, ch);
-            ch.CurePoison();
-            return;
-        }
-
-        // Priority 3: heal wounded friendly NPCs/players (HP < 50%)
-        foreach (var ch in _world.GetCharsInRange(npc.Position, healerRange))
-        {
-            if (ch == npc || ch.IsDead) continue;
-            if (ch.IsCriminal || ch.IsMurderer) continue;
-            if (ch.MaxHits > 0 && ch.Hits < ch.MaxHits / 2)
-            {
-                int heal = Math.Max(1, npc.Int / 5);
-                ch.Hits = (short)Math.Min(ch.Hits + heal, ch.MaxHits);
-                OnHealerAction?.Invoke(npc, ch, false);
-                return;
-            }
-        }
+        // Source-X NPC_LookAtCharHealer is RESURRECT-ONLY: it early-returns
+        // unless the target is dead. The old cure-poison and heal-wounded
+        // passes topped up any non-criminal living creature in range —
+        // including grey aggressors mid-fight — with no ally/noto/LOS gate.
 
         ActHuman(npc);
     }

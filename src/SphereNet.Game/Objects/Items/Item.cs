@@ -2513,15 +2513,28 @@ public class Item : ObjBase
     /// </summary>
     public void InitializeSpawnComponent(World.GameWorld world, ResourceHolder resources, long preservedTimeoutMs = 0)
     {
-        if (_type is ItemType.SpawnChar or ItemType.SpawnChampion)
+        // Gate on the VIRTUALIZED type: Sphere saves omit TYPE when it equals
+        // the base itemdef, so a worldgem's raw _type is Normal and only the
+        // ItemType getter sees SpawnChar (def inheritance). Gating on _type
+        // silently no-opped for every def-typed spawner.
+        var effType = ItemType;
+        if (effType is ItemType.SpawnChar or ItemType.SpawnChampion)
         {
             if (SpawnChar == null)
                 SpawnChar = new SpawnComponent(this, world);
 
             // Source-X IT_SPAWN_CHAMPION rides the char-spawn machinery but
             // ignores the amount cap and never pauses (CCSpawn special case).
-            SpawnChar.IsChampion = _type == ItemType.SpawnChampion;
+            SpawnChar.IsChampion = effType == ItemType.SpawnChampion;
             SpawnChar.SetFromMore1(_more1, resources);
+            // Legacy saves write MORE1 as a raw defname (MORE1=c_spider_giant).
+            // The numeric setter can't always resolve it (chardef hashes are
+            // 24-bit; the ItemDef-gated resolver returns 0) and parks it in
+            // the MORE1_DEFNAME tag — consume that here, or every imported
+            // NPC spawner comes up empty and never spawns.
+            if (_more1 == 0 && TryGetTag("MORE1_DEFNAME", out string? spawnDef) &&
+                !string.IsNullOrWhiteSpace(spawnDef))
+                SpawnChar.SetFromDefName(spawnDef, resources);
             SpawnChar.ApplyMoreP();
 
             if (_amount > 1)
@@ -2535,13 +2548,21 @@ public class Item : ObjBase
 
             SpawnChar.ResetTimer(preservedTimeoutMs);
         }
-        else if (_type == ItemType.SpawnItem)
+        else if (effType == ItemType.SpawnItem)
         {
             if (SpawnItem == null)
                 SpawnItem = new ItemSpawnComponent(this, world);
 
             if (_more1 != 0)
                 SpawnItem.ItemDefId = (ushort)(_more1 & 0xFFFF);
+            else if (TryGetTag("MORE1_DEFNAME", out string? itemDefName) &&
+                     !string.IsNullOrWhiteSpace(itemDefName))
+            {
+                // Same legacy-save defname fallback as the char spawner above.
+                var rid = resources.ResolveDefName(itemDefName.Trim());
+                if (rid.IsValid && rid.Type == Core.Enums.ResType.ItemDef)
+                    SpawnItem.ItemDefId = (ushort)rid.Index;
+            }
 
             if (_amount > 1)
                 SpawnItem.MaxCount = _amount;

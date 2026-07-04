@@ -735,8 +735,12 @@ public static partial class Program
             var rid = _resources.ResolveDefName(defname);
             if (rid.IsValid && rid.Type == ResType.ItemDef)
             {
+                // A def without an explicit ID override has DispIndex 0 —
+                // `def?.DispIndex ?? rid.Index` returned that 0 (the null-
+                // coalescing never fired), importing e.g. every 56T
+                // i_worldgem_bit spawner with BaseId 0.
                 var def = DefinitionLoader.GetItemDef(rid.Index);
-                return def?.DispIndex ?? (ushort)rid.Index;
+                return def != null && def.DispIndex > 0 ? def.DispIndex : (ushort)rid.Index;
             }
             return 0;
         };
@@ -751,7 +755,7 @@ public static partial class Program
             if (rid.IsValid && rid.Type == ResType.ItemDef)
             {
                 var def = DefinitionLoader.GetItemDef(rid.Index);
-                return def?.DispIndex ?? (ushort)rid.Index;
+                return def != null && def.DispIndex > 0 ? def.DispIndex : (ushort)rid.Index;
             }
             return 0;
         };

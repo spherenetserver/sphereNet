@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-04] - 56T spawner import: every def-typed spawner came up dead
+----------------------------------------
+
+FIXED - Imported legacy spawners never spawned (56T field report):
+  - Item defname resolution returned 0 for any itemdef without an ID
+    override (DispIndex 0 short-circuited the fallback), so every
+    i_worldgem_bit imported with BaseId 0.
+  - InitializeSpawnComponent gated on the raw TYPE field; Sphere saves
+    omit TYPE when it matches the base itemdef, so def-typed spawners
+    silently no-opped. It now gates on the virtualized item type.
+  - MORE1=c_xxx (a raw chardef defname in legacy saves) fell through the
+    ItemDef-gated resolver; the parked MORE1_DEFNAME tag is now consumed
+    for both NPC and item spawners.
+  - The world bootstrap no longer clobbers an explicitly saved TYPE with
+    the itemdef type, and it initializes item spawners (t_spawn_item)
+    which were skipped entirely.
+  - Real-data test: 2660 NPC + 53 item spawners from C:\56T\save now
+    import alive (1 dead worldgem is the shard's own MORE1=00 quirk).
+
+CHANGED - NpcAI.cs decomposed into concern-based partial classes
+  (Core/Combat/Magic/Movement/Perception/TownRoles/Pet), no behavior
+  change.
+
+================================================================================
 [2026-07-03] - Field-report wave 2: ridden-mount targeting, door auto-close
 ----------------------------------------
 

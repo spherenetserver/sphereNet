@@ -133,13 +133,16 @@ public static partial class Program
             if (obj is not SphereNet.Game.Objects.Items.Item item)
                 continue;
 
-            if (item.BaseId != 0)
+            if (item.BaseId != 0 && item.ItemType == ItemType.Normal)
             {
+                // Sphere saves only write TYPE when it DIFFERS from the base
+                // itemdef — a saved TYPE must therefore win. Unconditional
+                // inheritance clobbered e.g. the 56T i_worldgem_bit item
+                // spawners (saved TYPE=t_spawn_item, itemdef t_spawn_char).
                 var idef = SphereNet.Game.Definitions.DefinitionLoader.GetItemDef(item.BaseId);
                 if (idef != null && idef.Type != ItemType.Normal)
                 {
-                    if (item.ItemType != idef.Type)
-                        typeInherited++;
+                    typeInherited++;
                     item.ItemType = idef.Type;
                 }
             }
@@ -157,7 +160,10 @@ public static partial class Program
             if (item.ItemType == ItemType.SpawnChar && !item.IsAttr(SphereNet.Core.Enums.ObjAttributes.Invis))
                 item.SetAttr(SphereNet.Core.Enums.ObjAttributes.Invis);
 
-            if (item.ItemType != ItemType.SpawnChar)
+            // Item spawners (TYPE=t_spawn_item) were skipped here entirely, so
+            // imported resource-node spawners (56T mining veins etc.) never
+            // got their component and stayed dead.
+            if (item.ItemType is not (ItemType.SpawnChar or ItemType.SpawnChampion or ItemType.SpawnItem))
                 continue;
 
             long loadedTimeout = item.Timeout;

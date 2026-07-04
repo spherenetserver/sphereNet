@@ -3,6 +3,28 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-04] - 56T spawner import: def-tipli tum spawner'lar olu geliyordu
+----------------------------------------
+
+DUZELTILDI - Import edilen legacy spawner'lar hic spawn etmiyordu:
+  - Item defname cozumu, ID override'i olmayan itemdef'lerde 0 donuyordu
+    (DispIndex 0 fallback'i kisa devre ediyordu) - her i_worldgem_bit
+    BaseId 0 ile import ediliyordu.
+  - InitializeSpawnComponent ham TYPE alanina bakiyordu; Sphere save'leri
+    base itemdef'le ayni olan TYPE'i yazmaz - def-tipli spawner'lar
+    sessizce no-op oluyordu. Artik sanallasmis item tipine bakar.
+  - MORE1=c_xxx (legacy save'lerde ham chardef defname) ItemDef-kapili
+    cozuculere takiliyordu; park edilen MORE1_DEFNAME tag'i artik hem
+    NPC hem item spawner'lar icin tuketilir.
+  - World bootstrap acikca kaydedilmis TYPE'i itemdef tipiyle ezmiyor ve
+    tamamen atlanan item spawner'lari (t_spawn_item) da baslatiyor.
+  - Gercek-veri testi: C:\56T\save'den 2660 NPC + 53 item spawner canli
+    import ediliyor (1 olu worldgem shard'in kendi MORE1=00 verisi).
+
+DEGISTI - NpcAI.cs concern-bazli partial'lara bolundu (Core/Combat/
+  Magic/Movement/Perception/TownRoles/Pet), davranis degisikligi yok.
+
+================================================================================
 [2026-07-03] - Saha raporu dalgasi 2: binicili binek hedeflemesi, kapi auto-close
 ----------------------------------------
 

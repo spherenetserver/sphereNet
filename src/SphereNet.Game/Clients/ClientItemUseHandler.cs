@@ -2224,6 +2224,10 @@ public sealed class ClientItemUseHandler
                 break;
 
             case "go":
+                // Remember the order state so the pet resumes it on arrival
+                // (Source-X NPCACT_GOTO → Act_Idle re-evaluation).
+                if (!pet.TryGetTag("PREV_PET_MODE", out _))
+                    pet.SetTag("PREV_PET_MODE", ((int)pet.PetAIMode).ToString());
                 pet.SetTag("GO_TARGET", $"{x},{y},{z},{_character.MapIndex}");
                 pet.PetAIMode = PetAIMode.Come;
                 SysMessage(ServerMessages.Get(Msg.NpcPetSuccess));

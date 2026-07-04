@@ -506,10 +506,12 @@ public class GameSystemTests
         strong.Str = 120; strong.Int = 0; strong.MaxHits = 100; strong.Hits = 100;
 
         Assert.True(SphereNet.Game.AI.NpcAI.GetMoralePenalty(weak, strong) < 0); // flee
-        Assert.Equal(0, SphereNet.Game.AI.NpcAI.GetMoralePenalty(strong, weak)); // press
+        // Source-X applies morale UNCLAMPED: the strong side gains a positive
+        // motivation bonus against a weak foe (extra target lock).
+        Assert.True(SphereNet.Game.AI.NpcAI.GetMoralePenalty(strong, weak) > 0); // press
         // A healthy NPC below half HP still does not fear a far weaker target.
         strong.Hits = 40;
-        Assert.Equal(0, SphereNet.Game.AI.NpcAI.GetMoralePenalty(strong, weak));
+        Assert.True(SphereNet.Game.AI.NpcAI.GetMoralePenalty(strong, weak) > 0);
     }
 
     // --- Gump ---
@@ -1904,7 +1906,10 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
 
         ai.OnTickAction(npc);
 
-        Assert.Equal(new Point3D(100, 100, 0, 0), npc.Position);
+        // The NPC may SIDESTEP around the blocker (Source-X NPC_WalkToPoint
+        // random turn) but must never end up ON the living mobile's tile.
+        Assert.False(npc.X == 101 && npc.Y == 100,
+            "the NPC stepped onto the living blocker's tile");
         Assert.Equal(new Point3D(101, 100, 0, 0), blocker.Position);
     }
 

@@ -1,4 +1,4 @@
-// Steps and routing: MoveToward, A* cache, tile checks, wander, doors.
+﻿// Steps and routing: MoveToward, A* cache, tile checks, wander, doors.
 // Decomposed from the former single-file NpcAI.cs (see NpcAI.cs core).
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
@@ -157,9 +157,11 @@ public sealed partial class NpcAI
         {
             if (item.IsDeleted || item.ContainedIn.IsValid) continue;
             if (item.X != blocked.X || item.Y != blocked.Y) continue;
-            if (Math.Abs(item.Z - npc.Z) > 3) continue;
             var def = DefinitionLoader.GetItemDef(item.BaseId);
             if (def == null || !def.Can.HasFlag(CanFlags.I_Block)) continue; // only actual blockers
+            // Source-X measures from the item's TOP (GetTopZ = base + height).
+            int topZ = item.Z + (_world.MapData?.GetItemTileData(item.DispIdFull).Height ?? 0);
+            if (Math.Abs(topZ - npc.Z) > 3) continue;
             if ((item.Attributes & (ObjAttributes.Move_Never | ObjAttributes.LockedDown |
                 ObjAttributes.Secure | ObjAttributes.Static)) != 0) continue;
 
@@ -259,9 +261,12 @@ public sealed partial class NpcAI
             return;
         }
 
-        int dx = _rand.Next(-1, 2);
-        int dy = _rand.Next(-1, 2);
-        if (dx == 0 && dy == 0) return;
+        // Source-X NPC_Act_Wander: step in the CURRENT facing turned by only
+        // −1/0/+1 (m_dirFace persistence) — a gently curving "staggering
+        // walk". Independent random deltas made wanderers jitter in place.
+        var wanderDir = (Direction)((((int)npc.Direction & 0x07) + _rand.Next(-1, 2) + 8) % 8);
+        GetDirectionDelta(wanderDir, out short dx, out short dy);
+        npc.Direction = wanderDir;
 
         short nx = (short)(npc.X + dx);
         short ny = (short)(npc.Y + dy);
@@ -279,6 +284,33 @@ public sealed partial class NpcAI
         _world.MoveCharacter(npc, newPos);
     }
 
+    /// <summary>Source-X NPC_WalkToPoint blocked-step fallback: every mover —
+    /// regardless of INT or the PATH flag — gets a ~70% chance to sidestep by
+    /// turning ±1..±4 directions off the blocked heading and taking that tile.
+    /// Without it a dumb/pathless NPC froze facing the wall until the straight
+    /// line cleared on its own.</summary>
+    private bool TrySideStep(Character npc, Direction dir)
+    {
+        int roll = _rand.Next(100);
+        if (roll < 30)
+            return false;
+        int diff = roll < 35 ? 4 : roll < 40 ? 3 : roll < 65 ? 2 : 1;
+        if (_rand.Next(2) == 0)
+            diff = -diff;
+        var sideDir = (Direction)((((int)dir & 0x07) + diff + 8) % 8);
+        GetDirectionDelta(sideDir, out short dx, out short dy);
+        short nx = (short)(npc.X + dx), ny = (short)(npc.Y + dy);
+        sbyte nz = _world.MapData?.GetEffectiveZ(npc.MapIndex, nx, ny, npc.Z) ?? npc.Z;
+        if (Math.Abs(nz - npc.Z) > 12)
+            return false;
+        var pos = new Point3D(nx, ny, nz, npc.MapIndex);
+        if (!CanNpcMoveTo(npc, pos))
+            return false;
+        npc.Direction = sideDir;
+        _world.MoveCharacter(npc, pos);
+        return true;
+    }
+
     /// <summary>Wander with home range check. Source-X: m_Home_Dist_Wander.</summary>
     private void WanderHome(Character npc)
     {
@@ -288,7 +320,9 @@ public sealed partial class NpcAI
             return;
         }
 
-        int curDist = Math.Abs(npc.X - home.X) + Math.Abs(npc.Y - home.Y);
+        // Chebyshev like Source-X GetDist — the old Manhattan sum over-counted
+        // diagonals, halving the effective HOMEDIST leash on the diagonal.
+        int curDist = npc.Position.GetDistanceTo(home);
         if (curDist > homeDist)
         {
             MoveToward(npc, home);
@@ -300,7 +334,10 @@ public sealed partial class NpcAI
     /// <summary>Home from Character.Home field; legacy TAG.HOME_* fallback.</summary>
     private static bool TryResolveHome(Character npc, out Point3D home, out int wanderDist)
     {
-        wanderDist = npc.HomeDist > 0 ? npc.HomeDist : 10;
+        // Source-X default m_Home_Dist_Wander = INT16_MAX ("as far as I
+        // want") — a home point is only a leash when HOMEDIST is scripted.
+        // The old default of 10 confined every homed spawn to a small box.
+        wanderDist = npc.HomeDist > 0 ? npc.HomeDist : short.MaxValue;
         if (npc.Home.X != 0 || npc.Home.Y != 0)
         {
             home = new Point3D(npc.Home.X, npc.Home.Y, npc.Home.Z, npc.MapIndex);
@@ -363,7 +400,13 @@ public sealed partial class NpcAI
         var npcFlags = GetNpcFlags(npc);
         if (!npcFlags.HasFlag(NpcAIFlags.Path))
         {
-            npc.Direction = dir;
+            if (!TrySideStep(npc, dir))
+            {
+                npc.Direction = dir;
+                // Source-X retries a blocked route in 0.5s instead of waiting
+                // out the full walk delay (up to 5s of standing still).
+                npc.NextNpcActionTime = Math.Min(npc.NextNpcActionTime, Environment.TickCount64 + 500);
+            }
             return;
         }
 
@@ -375,7 +418,11 @@ public sealed partial class NpcAI
         int effInt = npcFlags.HasFlag(NpcAIFlags.AlwaysInt) ? 300 : npc.Int;
         if (effInt < 30)
         {
-            npc.Direction = dir;
+            if (!TrySideStep(npc, dir))
+            {
+                npc.Direction = dir;
+                npc.NextNpcActionTime = Math.Min(npc.NextNpcActionTime, Environment.TickCount64 + 500);
+            }
             return;
         }
 
@@ -495,12 +542,4 @@ public sealed partial class NpcAI
         }
     }
 
-    private static Direction GetDeterministicDirection(uint uid, long nowTick)
-    {
-        unchecked
-        {
-            uint mixed = uid * 1103515245u + (uint)nowTick * 12345u;
-            return (Direction)(mixed & 0x07);
-        }
-    }
 }

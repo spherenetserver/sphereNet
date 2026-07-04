@@ -1,4 +1,4 @@
-// Fight execution: monster brain, ActFight, swings, flee, flanking.
+﻿// Fight execution: monster brain, ActFight, swings, flee, flanking.
 // Decomposed from the former single-file NpcAI.cs (see NpcAI.cs core).
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
@@ -42,8 +42,11 @@ public sealed partial class NpcAI
                 int curMotivation = GetAttackMotivation(npc, current);
                 if (curMotivation > 0)
                 {
-                    // Periodically scan for better target (Source-X: NPC_Act_Fight → NPC_LookAround)
-                    if (_rand.Next(4) == 0)
+                    // Mid-fight better-target rescan. Source-X keeps this
+                    // DISABLED ("probably unnecessary… breaks the @NPCActFight
+                    // trigger") — run it only under multi-attacker pressure,
+                    // where the THREAT/tank switch actually needs it.
+                    if (npc.Attackers.Count > 1 && _rand.Next(4) == 0)
                     {
                         var (betterTarget, betterMotivation) = FindBestTarget(npc, sightRange);
                         if (betterTarget != null && !betterTarget.IsDeleted && betterTarget != current && betterMotivation > curMotivation)
@@ -373,7 +376,8 @@ public sealed partial class NpcAI
         // (Stat_GetVal(STAT_DEX) >= Stat_GetAdjusted(STAT_DEX)) so these
         // specials fire on the opening exchange / after a rest, not every tick.
         bool fullStam = npc.MaxStam <= 0 || npc.Stam >= npc.MaxStam;
-        if (!skipHardcoded && canBreath && dist <= 8 && fullStam && hasLOS)
+        // Source-X: iDist >= 1 — no breath onto the overlapping tile.
+        if (!skipHardcoded && canBreath && dist >= 1 && dist <= 8 && fullStam && hasLOS)
         {
             long now = Environment.TickCount64;
             long nextBreath = 0;
@@ -434,7 +438,7 @@ public sealed partial class NpcAI
 
         // Melee / ranged
         var weapon = npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
-        var range = CombatHelper.GetWeaponRange(weapon);
+        var range = GetFightRange(npc, weapon);
 
         // Two-phase swing: land a started swing's hit once its windup elapses,
         // regardless of current range (so a moved-away NPC still resolves it).
@@ -964,7 +968,18 @@ public sealed partial class NpcAI
     private static int GetAttackRange(Character npc, Item? weapon = null)
     {
         weapon ??= npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
-        return CombatHelper.GetWeaponRange(weapon).Max;
+        return GetFightRange(npc, weapon).Max;
+    }
+
+    /// <summary>Source-X Fight_CalcRange: effective reach is max(creature
+    /// innate RANGE from the chardef, weapon range). The chardef RANGE keys
+    /// were parsed but never read anywhere in the Game layer, so reach
+    /// creatures (RANGE=2 serpents etc.) closed to 1 tile and forfeited it.</summary>
+    internal static (int Min, int Max) GetFightRange(Character npc, Item? weapon)
+    {
+        var range = CombatHelper.GetWeaponRange(weapon);
+        int innate = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.RangeMax ?? 0;
+        return innate > range.Max ? (range.Min, innate) : range;
     }
 
     private void MoveAway(Character npc, Point3D threat)

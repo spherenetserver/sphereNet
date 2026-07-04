@@ -15,6 +15,25 @@ namespace SphereNet.Game.AI;
 
 public sealed partial class NpcAI
 {
+    /// <summary>GO-order arrival: Source-X NPCACT_GOTO falls back to Act_Idle,
+    /// which re-evaluates and typically resumes the previous order — restore
+    /// the mode saved when the order was issued instead of parking in Stay.</summary>
+    private static void FinishGoOrder(Character npc)
+    {
+        npc.RemoveTag("GO_TARGET");
+        if (npc.TryGetTag("PREV_PET_MODE", out string? prev) &&
+            int.TryParse(prev, out int prevMode) &&
+            Enum.IsDefined(typeof(PetAIMode), prevMode))
+        {
+            npc.PetAIMode = (PetAIMode)prevMode;
+            npc.RemoveTag("PREV_PET_MODE");
+        }
+        else
+        {
+            npc.PetAIMode = PetAIMode.Stay;
+        }
+    }
+
     /// <summary>Pet follow gives up beyond this distance on the same map
     /// (reference parity: UO_MAP_VIEW_RADAR = 36); it resumes when the owner
     /// comes back in range. 0 disables the leash.</summary>
@@ -135,24 +154,25 @@ public sealed partial class NpcAI
                     if (npc.MapIndex != goPos.Map)
                     {
                         _world.MoveCharacter(npc, goPos);
-                        npc.RemoveTag("GO_TARGET");
-                        npc.PetAIMode = PetAIMode.Stay;
+                        FinishGoOrder(npc);
                         break;
                     }
                     int goDist = npc.Position.GetDistanceTo(goPos);
                     if (goDist > 1)
                         MoveToward(npc, goPos, run: goDist > 3);
                     else
-                    {
-                        npc.RemoveTag("GO_TARGET");
-                        npc.PetAIMode = PetAIMode.Stay;
-                    }
+                        FinishGoOrder(npc);
                     break;
                 }
 
                 Character followTarget = ResolvePetTargetCharacter(npc, "FOLLOW_TARGET") ?? master;
+                // Source-X @NPCActFollow RETURN 1 = GIVE UP following entirely
+                // (NPC_Act_Follow returns false), not a one-tick pause.
                 if (OnNpcActFollow?.Invoke(npc, followTarget) == true)
+                {
+                    npc.PetAIMode = PetAIMode.Stay;
                     break;
+                }
                 if (npc.MapIndex != followTarget.MapIndex)
                 {
                     _world.MoveCharacter(npc, followTarget.Position);

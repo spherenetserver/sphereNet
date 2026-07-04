@@ -28,16 +28,16 @@ public sealed partial class NpcAI
         return 0;
     }
 
-    /// <summary>Source-X NPC_GetAttackContinueMotivation morale: the penalty to
-    /// fight-motivation from being weaker / more hurt than the target. Returns a
-    /// value ≤ 0 (0 when the NPC is not outmatched), so it only ever pushes the
-    /// creature toward fleeing, never toward extra aggression. Exposed for tests.</summary>
+    /// <summary>Source-X NPC_GetAttackContinueMotivation morale: the SIGNED
+    /// fight-motivation modifier from relative strength/health. Source-X does
+    /// not clamp it — a strong, healthy NPC facing a weak target gains extra
+    /// motivation (stronger target lock, more flee resistance); an outmatched
+    /// one goes negative toward fleeing. Exposed for tests.</summary>
     internal static int GetMoralePenalty(Character npc, Character target)
     {
         int myHpPct = npc.MaxHits > 0 ? npc.Hits * 100 / npc.MaxHits : 100;
         int targetHpPct = target.MaxHits > 0 ? target.Hits * 100 / target.MaxHits : 100;
-        int morale = (npc.Str - target.Str) + (myHpPct - targetHpPct) - (npc.Int / 16);
-        return morale < 0 ? morale : 0;
+        return (npc.Str - target.Str) + (myHpPct - targetHpPct) - (npc.Int / 16);
     }
 
     /// <summary>Per-creature target-preference bias from the FIGHTMODE tag
@@ -90,6 +90,10 @@ public sealed partial class NpcAI
     /// most-wounded (or a poisoned one).</summary>
     private Character? FindWoundedAlly(Character npc)
     {
+        // Source-X builds the friend list only from chars ENGAGED WITH THE
+        // SAME ENEMY (shared MEMORY_FIGHT) — a bystander ally not actually
+        // fighting doesn't get combat heals.
+        Serial sharedEnemy = npc.FightTarget;
         Character? best = null;
         int bestPct = 80; // only consider allies below 80% HP
         Character? poisoned = null;
@@ -97,6 +101,7 @@ public sealed partial class NpcAI
         {
             if (ch == npc || ch.IsDead || ch.IsDeleted || ch.IsPlayer) continue;
             if (ch.MaxHits <= 0) continue;
+            if (sharedEnemy.IsValid && ch.FightTarget != sharedEnemy) continue;
             if (GetHostilityLevel(npc, ch) >= 0) continue; // not an ally
             int pct = ch.Hits * 100 / ch.MaxHits;
             if (ch.IsPoisoned) poisoned ??= ch;
@@ -180,22 +185,38 @@ public sealed partial class NpcAI
         // comparatively costly FindRegion spatial lookup is done only for a
         // genuinely hostile target — this is what keeps dense-crowd target scans
         // from becoming a per-candidate region query.
-        int hostility = GetHostilityLevel(npc, target);
-        if (hostility <= 0)
-            return hostility;
+        // Source-X "element of surprise": a hidden melee NPC holds its ambush
+        // until the prey is adjacent — unless it can cast from stealth.
+        if (npc.IsStatFlag(StatFlag.Hidden) &&
+            npc.Position.GetDistanceTo(target.Position) > 1 &&
+            npc.NpcSpells.Count == 0 && FindNpcWand(npc) == null)
+            return 0;
 
+        // Source-X checks REGION_FLAG_SAFE FIRST (before hostility) — the old
+        // order let a beloved ally inside a SAFE region return a negative
+        // (flee) motivation instead of a clean neutral 0.
         var region = _world.FindRegion(target.Position);
         if (region != null && region.IsFlag(RegionFlag.Safe))
             return 0;
 
-        if (npc.NpcBrain == NpcBrainType.Berserk || npc.NpcBrain == NpcBrainType.Guard)
+        int hostility = GetHostilityLevel(npc, target);
+        if (hostility <= 0)
+            return hostility;
+
+        if (npc.NpcBrain == NpcBrainType.Guard)
             return 100;
+        // Source-X berserk: NPC_GetAttackContinueMotivation adds +80 − dist on
+        // top of the 100 hostility, so distance still breaks ties toward the
+        // nearer foe (the flat 100 removed that preference).
+        if (npc.NpcBrain == NpcBrainType.Berserk)
+            return 100 + 80 - npc.Position.GetDistanceTo(target.Position);
 
         int motivation = hostility;
 
-        // Bonus for current target (Source-X: +10)
+        // Bonus for current target (Source-X: +8 — the exact hysteresis
+        // constant matters for the "better target must beat current" compare)
         if (npc.FightTarget == target.Uid)
-            motivation += 10;
+            motivation += 8;
 
         // Distance penalty
         motivation -= npc.Position.GetDistanceTo(target.Position);

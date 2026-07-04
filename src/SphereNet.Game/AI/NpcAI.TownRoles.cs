@@ -1,4 +1,4 @@
-// Town-role brains: guard, healer, vendor, animal, human idle behavior.
+﻿// Town-role brains: guard, healer, vendor, animal, human idle behavior.
 // Decomposed from the former single-file NpcAI.cs (see NpcAI.cs core).
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
@@ -24,7 +24,33 @@ public sealed partial class NpcAI
         bool isGuarded = region?.IsGuarded ?? false;
         if (!isGuarded)
         {
-            Wander(npc);
+            // A guard may finish an engaged chase outside town first.
+            if (npc.FightTarget.IsValid)
+            {
+                var chased = _world.FindChar(npc.FightTarget);
+                if (chased != null && !chased.IsDead && !chased.IsDeleted)
+                {
+                    GuardEngage(npc, chased);
+                    return;
+                }
+                npc.FightTarget = Serial.Invalid;
+            }
+
+            // Source-X NPC_Act_GoHome: a guard outside guarded territory
+            // teleports back to its post; with no valid post it despawns
+            // (it used to wander the countryside forever here).
+            if (npc.Home.X != 0 || npc.Home.Y != 0)
+            {
+                var post = new Point3D(npc.Home.X, npc.Home.Y, npc.Home.Z, npc.MapIndex);
+                if (npc.Position.GetDistanceTo(post) > 1)
+                {
+                    _world.MoveCharacter(npc, post);
+                    OnNpcTeleport?.Invoke(npc);
+                }
+                return;
+            }
+            _world.DeleteObject(npc);
+            npc.Delete();
             return;
         }
 
@@ -79,9 +105,13 @@ public sealed partial class NpcAI
 
     private void GuardEngage(Character guard, Character target)
     {
-        if (!guard.TryGetTag("GUARD_YELLED", out _))
+        // Source-X re-speaks per NEW target — the old boolean tag was cleared
+        // only on the instakill branch, so a melee guard yelled exactly once
+        // in its lifetime. Key the latch on the target's UID instead.
+        string targetUid = target.Uid.Value.ToString();
+        if (!guard.TryGetTag("GUARD_YELLED", out string? yelledFor) || yelledFor != targetUid)
         {
-            guard.SetTag("GUARD_YELLED", "1");
+            guard.SetTag("GUARD_YELLED", targetUid);
             OnNpcSay?.Invoke(guard, "Halt, villain! Guards!");
         }
 
@@ -212,12 +242,24 @@ public sealed partial class NpcAI
     {
         CheckWitnessCrime(npc);
 
-        // Periodic restock check (vendor brain only)
+        // Periodic restock check (vendor brain only). Source-X
+        // NPC_Vendor_Restock: the interval comes from the region's
+        // RestockVendors tag (minutes) and a NoRestock tag — on the region or
+        // the NPC — suppresses restock entirely.
         if (npc.NpcBrain == NpcBrainType.Vendor)
         {
+            var vendorRegion = _world.FindRegion(npc.Position);
+            bool noRestock = npc.TryGetTag("NORESTOCK", out _) ||
+                             (vendorRegion != null && vendorRegion.TryGetTag("NORESTOCK", out _));
+            long intervalMs = VendorRestockIntervalMs;
+            if (vendorRegion != null && vendorRegion.TryGetTag("RESTOCKVENDORS", out string? rv) && rv != null &&
+                long.TryParse(rv, out long minutes) && minutes > 0)
+                intervalMs = minutes * 60_000;
+
             long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            if (!npc.TryGetTag("RESTOCK_TIME", out string? rtStr) || !long.TryParse(rtStr, out long lastRestock)
-                || now - lastRestock >= VendorRestockIntervalMs)
+            if (!noRestock &&
+                (!npc.TryGetTag("RESTOCK_TIME", out string? rtStr) || !long.TryParse(rtStr, out long lastRestock)
+                 || now - lastRestock >= intervalMs))
             {
                 OnVendorRestock?.Invoke(npc);
                 npc.SetTag("RESTOCK_TIME", now.ToString());

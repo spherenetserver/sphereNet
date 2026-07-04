@@ -26,23 +26,69 @@ public sealed partial class NpcAI
         if (npc.Int < 5)
             return false;
 
-        // Source-X NPC_FightMagery wand path: a casting NPC holding a charged wand
-        // (IT_WAND with a spell in More1 + CHARGES) throws the wand's spell ~50% of
-        // the time. A wand is mana-free with minimal difficulty (SpellEngine's
-        // IsCastingWithWand discount applies because it is equipped), so this fires
-        // even when mana is too low for a book spell — and works for a wand-only NPC
-        // with no spellbook. Needs casting range and a non-NoMagic region.
-        Item? wand = FindNpcWand(npc);
-        if (wand != null && dist <= GetNpcSight(npc) && _rand.Next(2) == 0)
+        // Source-X NPC_FightMayCast: scripts throttle a caster by setting
+        // NPCNoCastTill (a tick-time gate) — it blocks ALL casting until due.
+        if (npc.TryGetTag("NPCNoCastTill", out string? noCastTill) &&
+            long.TryParse(noCastTill, out long noCastUntil) &&
+            noCastUntil > Environment.TickCount64)
+            return false;
+
+        int mana = npc.Mana;
+        int intStat = npc.Int;
+
+        // NOTE: no low-mana early abort here — Source-X has none. Low mana
+        // flows into the chance formula below (which FAVORS casting cheap
+        // spells when starved) and each spell's own affordability check.
+
+        // Source-X caps ALL magery (wand included) at ¾ of sight range.
+        if (dist > GetNpcSight(npc) * 3 / 4)
+            return false;
+
+        // Source-X NPC_FightMagery: within striking distance a tactician
+        // (Tactics > 20.0) stands and fights ~50% of the time — magery fails
+        // this tick and NPC_Act_Fight falls through to melee. The old
+        // unconditional step-back inverted this for every caster (always
+        // kited, never melee'd) and gated on mana instead of Tactics.
+        if (dist <= 1 &&
+            npc.GetSkill(SkillType.Tactics) > 200 && _rand.Next(2) == 0)
+            return false;
+
+        // Source-X NPC_FightMayCast region gate: SAFE blocks casting too,
+        // not just antimagic (CCharNPCStatus REGION_ANTIMAGIC|REGION_FLAG_SAFE).
+        // Sits above the wand roll so wands honor it as well.
+        var region = _world.FindRegion(npc.Position);
+        if (region != null && (region.NoMagic || region.IsFlag(RegionFlag.Safe)))
+            return false;
+
+        // Mana-based cast chance — exact Source-X dice: GetVal(chance) yields
+        // 0..chance-1 (not 0..chance), and the kite-backoff carries a ~1/INT
+        // sub-gate that instead abandons the magery attempt entirely.
+        int chance = Math.Max(1, mana >= intStat / 2 ? mana : intStat - mana);
+        if (_rand.Next(chance) < intStat / 4)
         {
-            var noMagic = _world.FindRegion(npc.Position);
-            if (noMagic == null || !noMagic.NoMagic)
+            // Failed chance — kite to maintain distance while mana regens
+            if (mana > intStat / 3 && _rand.Next(intStat) != 0)
             {
-                if (CastViaTrigger(npc, target, (SpellType)wand.More1, wandUse: true))
-                {
-                    ConsumeWandCharge(wand);
-                    return true;
-                }
+                if (dist < 4)
+                    MoveAway(npc, target.Position);
+                else if (dist > 8)
+                    MoveToward(npc, target.Position, run: true);
+                return true;
+            }
+            return false;
+        }
+
+        // Source-X NPC_FightMagery wand path — AFTER the chance gates (the
+        // old top-of-method placement let wand NPCs bypass the backoff and
+        // stand-and-fight logic). A charged IT_WAND (spell in More1 +
+        // ATTR_MAGIC) fires ~50% of the time, mana-free.
+        Item? wand = FindNpcWand(npc);
+        if (wand != null && _rand.Next(2) == 0)
+        {
+            if (CastViaTrigger(npc, target, (SpellType)wand.More1, wandUse: true))
+            {
+                ConsumeWandCharge(wand);
+                return true;
             }
         }
 
@@ -55,52 +101,36 @@ public sealed partial class NpcAI
                 return false;
         }
 
-        int mana = npc.Mana;
-        int intStat = npc.Int;
-
-        // Mana depleted — switch to melee tactics entirely
-        if (mana < intStat / 4)
-            return false;
-
-        if (dist > GetNpcSight(npc))
-            return false;
-
-        // At melee range with sufficient mana, step back to gain casting distance
-        if (dist <= 1 && mana >= intStat / 3)
-        {
-            MoveAway(npc, target.Position);
-            return true;
-        }
-
-        // NoMagic region check
-        var region = _world.FindRegion(npc.Position);
-        if (region != null && region.NoMagic)
-            return false;
-
-        // Mana-based cast chance (Source-X formula)
-        int chance = mana >= intStat / 2 ? mana : intStat - mana;
-        if (_rand.Next(chance + 1) < intStat / 4)
-        {
-            // Failed chance — kite to maintain distance while mana regens
-            if (mana > intStat / 3)
-            {
-                if (dist < 4)
-                    MoveAway(npc, target.Position);
-                else if (dist > 8)
-                    MoveToward(npc, target.Position, run: true);
-                return true;
-            }
-            return false;
-        }
+        // Source-X NPC_FightCast loop: iterate until a spell the NPC can
+        // actually AFFORD (per-spell mana + skill requirement, via the same
+        // check CANCAST uses) — a single uncastable pick used to waste the
+        // whole magery tick with no fallback.
+        static bool CanAfford(Character ch, SpellType s) =>
+            Character.OnCanCastCheck?.Invoke(ch, (int)s) ?? true;
 
         var (spell, castTarget) = ChooseBestSpell(npc, target, dist);
-        if (spell == SpellType.None)
-            return false;
+        if (spell != SpellType.None && CanAfford(npc, spell))
+        {
+            // Fire @NPCActCast and cast unless the script aborts. On abort
+            // (RETURN 1) CastViaTrigger returns false, so the magery attempt
+            // fails and NPC_Act_Fight falls through to archery/melee.
+            return CastViaTrigger(npc, castTarget, spell);
+        }
 
-        // Fire @NPCActCast and cast unless the script aborts. On abort (RETURN 1)
-        // CastViaTrigger returns false, so the magery attempt fails and
-        // NPC_Act_Fight falls through to archery/melee (Source-X parity).
-        return CastViaTrigger(npc, castTarget, spell);
+        foreach (var candidate in npc.NpcSpells)
+        {
+            if (candidate == spell)
+                continue;
+            // Fallback candidates fire at the enemy — leave beneficial spells
+            // to ChooseBestSpell's own recipient logic above.
+            if (candidate is SpellType.Heal or SpellType.GreaterHeal
+                or SpellType.Cure or SpellType.ArchCure or SpellType.Resurrection)
+                continue;
+            if (!CanAfford(npc, candidate))
+                continue;
+            return CastViaTrigger(npc, target, candidate);
+        }
+        return false;
     }
 
     /// <summary>Fire @NPCActCast, then launch the native cast unless the script
@@ -356,7 +386,8 @@ public sealed partial class NpcAI
     /// and the mortechUO imports, which carry no charge tag).</summary>
     internal static Item? FindNpcWand(Character npc)
     {
-        var held = npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
+        // Source-X only inspects LAYER_HAND1 (a HAND2-held wand is ignored).
+        var held = npc.GetEquippedItem(Layer.OneHanded);
         if (held == null || held.ItemType != ItemType.Wand || held.More1 == 0)
             return null;
         if (!held.Attributes.HasFlag(ObjAttributes.Magic))
@@ -543,13 +574,14 @@ public sealed partial class NpcAI
         return false;
     }
 
-    /// <summary>Source-X: BREATH.DAM — defaults to STR*5/100, clamped 1-200.</summary>
+    /// <summary>Source-X Skill_Act_Breath: an explicit BREATH.DAM tag is used
+    /// UNCLAMPED (script authority); the STR*5/100 default clamps 1-65535.</summary>
     private static int GetBreathDamage(Character npc)
     {
         if (npc.TryGetTag("BREATH.DAM", out string? dmgStr) && int.TryParse(dmgStr, out int custom))
-            return Math.Clamp(custom, 1, 500);
+            return Math.Max(1, custom);
         int dmg = npc.Str * 5 / 100;
-        return Math.Clamp(dmg, 1, 200);
+        return Math.Clamp(dmg, 1, ushort.MaxValue);
     }
 
     /// <summary>Minimum gap between a caster's Paralyze re-casts on its target

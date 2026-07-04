@@ -3,6 +3,34 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-04] - NpcAI parite dalgalari A1/A2/A4: caster fix'leri, hareket default'lari, P3 kuyruk
+----------------------------------------
+
+DUZELTILDI - Caster NPC'ler (parca denetiminin iki P1'i):
+  - Secilen buyu castlenemeyince fallback yoktu: magery tick'i artik
+    CANCAST kontroluyle (per-spell mana + skill sarti) aday listesinde
+    ilerliyor (Source-X NPC_FightCast dongusu).
+  - Melee mesafesi davranisi tersti: kosulsuz kiting yerine Source-X
+    Tactics>20.0 dur-ve-dovus (~%50).
+
+DUZELTILDI - Hareket/davranis P2'leri:
+  - HOMEDIST default 10'du (Source-X: sinirsiz) — home'lu spawn'lar
+    kucuk kutuya hapisti; ev mesafesi Manhattan'di, artik Chebyshev.
+  - Bloklu NPC duvara bakip donuyordu: her yuruyuscu artik yan-adim
+    atiyor (~%70, 1-4 yon) + 0.5s bloklu-retry.
+  - Wander yon-egilimli (kavisli yuruyus).
+  - Chardef RANGE dovus menziline giriyor (Fight_CalcRange); moral
+    isaretli; korumasiz alandaki guard postuna doner/despawn; NPCNoCastTill;
+    SAFE region cast blogu; dusuk-mana erken-abort kaldirildi.
+
+DUZELTILDI - P3 kuyrugu: magery kapi sirasi (wand sans/backoff sonrasi,
+  ¾-sight cap, birebir zar), breath dist>=1 + BREATH.DAM clamp'siz, wand
+  yalniz HAND1, ally-heal ayni-dusman kapisi, yapiskanlik +8, berserk
+  mesafe tercihi, gizli-NPC pususu, rescan yalniz coklu-saldirgan, engel
+  TopZ, guard her yeni hedefe bagirir, vendor RESTOCKVENDORS/NORESTOCK,
+  pet GO onceki emre doner, @NPCActFollow RETURN 1 takibi birakir.
+
+================================================================================
 [2026-07-04] - 56T spawner import: def-tipli tum spawner'lar olu geliyordu
 ----------------------------------------
 

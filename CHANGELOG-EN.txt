@@ -4,6 +4,38 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-04] - NpcAI parity waves A1/A2/A4: caster fixes, movement defaults, P3 tail
+----------------------------------------
+
+FIXED - Caster NPCs (the two P1s from the partial audit):
+  - No fallback when the chosen spell was uncastable: the magery tick now
+    iterates candidates with the CANCAST affordability check (per-spell
+    mana + skill requirement) like the Source-X NPC_FightCast loop.
+  - Melee-range behavior was inverted: unconditional kiting replaced with
+    the Source-X Tactics>20.0 stand-and-fight (~50%).
+
+FIXED - Movement/behavior P2s:
+  - HOMEDIST default was 10 (Source-X: unlimited) — homed spawns were
+    confined to a tiny box; home leash measured Manhattan, now Chebyshev.
+  - Blocked NPCs froze facing the wall: every mover now sidesteps
+    (~70%, turn 1-4) like NPC_WalkToPoint, with a 0.5s blocked retry.
+  - Wander is heading-biased (curving walk) instead of uniform jitter.
+  - Creature innate RANGE from the chardef now feeds the fight range
+    (Fight_CalcRange); morale applies signed (strong NPCs gain, not
+    only lose); guard outside guarded land teleports to its post or
+    despawns; NPCNoCastTill honored; SAFE regions block casting; the
+    low-mana cast abort (not in Source-X) removed.
+
+FIXED - P3 tail: magery gate order (wand after the chance/backoff
+  gates, 3/4-sight cap, exact dice), breath dist>=1 + unclamped
+  BREATH.DAM tag, wand HAND1-only, ally-heal only for allies fighting
+  the same enemy, target stickiness +8, berserk distance preference,
+  hidden-NPC ambush, mid-fight target rescan only under multi-attacker
+  pressure, obstacle TopZ window, guard yells per new target, vendor
+  restock honors RESTOCKVENDORS/NORESTOCK region tags, pet GO resumes
+  the previous order, @NPCActFollow RETURN 1 stops following.
+
+================================================================================
 [2026-07-04] - 56T spawner import: every def-typed spawner came up dead
 ----------------------------------------
 

@@ -347,6 +347,10 @@ public static partial class Program
 
     private static readonly ConcurrentQueue<string> _headlessCommandQueue = new();
     private static readonly ConcurrentQueue<Action> _mainLoopActions = new();
+    private static int _mainLoopThreadId;
+    private static SphereNet.Server.Ipc.IpcServer? _ipcServer;
+    private static CancellationTokenSource? _ipcCts;
+    private static Task? _ipcTask;
 
 #if WINFORMS
     private static void RunWithGui(string[] args)

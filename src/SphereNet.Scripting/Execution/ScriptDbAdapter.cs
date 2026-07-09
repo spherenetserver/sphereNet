@@ -3,6 +3,7 @@ using System.Data;
 using System.Data.Common;
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Configuration;
+using SphereNet.Core.Security;
 
 namespace SphereNet.Scripting.Execution;
 
@@ -116,30 +117,16 @@ public sealed class ScriptDbAdapter : IDisposable
 
     private static string ResolveSafeDatabasePath(string fileName, string basePath, out string error)
     {
-        error = "";
-        if (string.IsNullOrWhiteSpace(fileName))
-        {
-            error = "Database file name is empty.";
-            return "";
-        }
-
-        string normalized = fileName.Trim().Trim('"').Replace('\\', '/');
-        if (normalized.Contains("..", StringComparison.Ordinal) || normalized.StartsWith('/') || normalized.Contains(':'))
-        {
-            error = "Database path is outside the allowed script root.";
-            return "";
-        }
-
         try
         {
-            string fullBase = Path.GetFullPath(basePath);
-            string full = Path.GetFullPath(Path.Combine(fullBase, normalized));
-            if (!full.StartsWith(fullBase, StringComparison.OrdinalIgnoreCase))
+            string normalized = fileName.Trim().Trim('"');
+            if (!SafePath.TryResolveUnderRoot(basePath, normalized, out string full, out string? pathError))
             {
-                error = "Database path is outside the allowed script root.";
+                error = pathError ?? "Database path is outside the allowed script root.";
                 return "";
             }
-            Directory.CreateDirectory(Path.GetDirectoryName(full) ?? fullBase);
+            Directory.CreateDirectory(Path.GetDirectoryName(full) ?? Path.GetFullPath(basePath));
+            error = "";
             return full;
         }
         catch (Exception ex)

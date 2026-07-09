@@ -1,3 +1,5 @@
+using SphereNet.Core.Security;
+
 namespace SphereNet.Game.Scripting;
 
 /// <summary>
@@ -248,22 +250,9 @@ public sealed class ScriptFileHandle : IDisposable
     /// </summary>
     private static string? ResolveSafePath(string basePath, string path)
     {
-        if (string.IsNullOrWhiteSpace(path))
-            return null;
-
-        // Block obvious traversal patterns
-        string normalized = path.Replace('\\', '/');
-        if (normalized.Contains("..") || normalized.StartsWith('/') || normalized.StartsWith(':'))
-            return null;
-
-        string fullBase = Path.GetFullPath(basePath);
-        string full = Path.GetFullPath(Path.Combine(fullBase, normalized));
-
-        // Ensure resolved path is under basePath
-        if (!full.StartsWith(fullBase, StringComparison.OrdinalIgnoreCase))
-            return null;
-
-        return full;
+        return SafePath.TryResolveUnderRoot(basePath, path, out string full, out _)
+            ? full
+            : null;
     }
 
     public void Dispose()

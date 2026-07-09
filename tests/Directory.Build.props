@@ -1,6 +1,0 @@
-<Project>
-  <!--
-    Test projeleri unified bin\ çıktısına DAHİL EDİLMEZ.
-    Kendi varsayılan çıktı klasörlerini kullanırlar (bin\Debug\net9.0\).
-  -->
-</Project>

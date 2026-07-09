@@ -27,10 +27,10 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function logout() {
-    const hadToken = !!token.value
+    const currentToken = token.value
     clearSession()
-    if (hadToken) {
-      try { await authApi.logout() } catch { /* ignore */ }
+    if (currentToken) {
+      try { await authApi.logout(currentToken) } catch { /* local session is already cleared */ }
     }
   }
 

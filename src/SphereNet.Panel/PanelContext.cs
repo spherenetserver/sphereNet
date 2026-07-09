@@ -26,20 +26,20 @@ public sealed class PanelContext
     public Func<string, AccountInfo?>? GetAccount { get; set; }
     public Func<string, string, bool>? CreateAccount { get; set; }
     public Func<string, bool>? DeleteAccount { get; set; }
-    public Action<string, bool>? SetAccountBanned { get; set; }
-    public Action<string, string>? SetAccountPassword { get; set; }
-    public Action<string, int>? SetAccountPrivLevel { get; set; }
+    public Func<string, bool, bool>? SetAccountBanned { get; set; }
+    public Func<string, string, bool>? SetAccountPassword { get; set; }
+    public Func<string, int, bool>? SetAccountPrivLevel { get; set; }
 
     // Server commands
-    public Action? OnSave { get; set; }
-    public Action? OnShutdown { get; set; }
-    public Action? OnResync { get; set; }
-    public Action? OnGc { get; set; }
-    public Action? OnRespawn { get; set; }
-    public Action? OnRestock { get; set; }
-    public Action<string>? OnBroadcast { get; set; }
-    public Action? OnRestart { get; set; }
-    public Action? StartServer { get; set; }
+    public Func<bool>? OnSave { get; set; }
+    public Func<bool>? OnShutdown { get; set; }
+    public Func<bool>? OnResync { get; set; }
+    public Func<bool>? OnGc { get; set; }
+    public Func<bool>? OnRespawn { get; set; }
+    public Func<bool>? OnRestock { get; set; }
+    public Func<string, bool>? OnBroadcast { get; set; }
+    public Func<bool>? OnRestart { get; set; }
+    public Func<bool>? StartServer { get; set; }
 
     // Raw command — returns response lines
     public Func<string, string[]>? ExecuteCommand { get; set; }
@@ -50,8 +50,8 @@ public sealed class PanelContext
 
     // Debug toggles
     public Func<DebugState>? GetDebugState { get; set; }
-    public Action<bool>? SetPacketDebug { get; set; }
-    public Action<bool>? SetScriptDebug { get; set; }
+    public Func<bool, bool>? SetPacketDebug { get; set; }
+    public Func<bool, bool>? SetScriptDebug { get; set; }
 
     // Dialog designer bridge — gump art arrives pre-encoded as PNG so the
     // panel stays free of imaging/MUL dependencies. Null = endpoints 404.

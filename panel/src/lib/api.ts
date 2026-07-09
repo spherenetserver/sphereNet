@@ -138,7 +138,9 @@ export const accountsApi = {
 
 export const authApi = {
   login:  (password: string) => api.post<{ token: string; serverName: string }>('/auth/login', { password }),
-  logout: () => api.post('/auth/logout'),
+  logout: (token: string) => api.post('/auth/logout', null, {
+    headers: { Authorization: `Bearer ${token}` },
+  }),
 }
 
 export const setupApi = {

@@ -14,6 +14,7 @@ public sealed class ServerProcess : IDisposable
     private readonly IpcBridge _ipc;
     private readonly PanelLogSink _logSink;
     private Process? _process;
+    private CancellationTokenSource? _connectCts;
     private readonly object _lock = new();
     private volatile bool _intentionalStop;
 
@@ -35,6 +36,10 @@ public sealed class ServerProcess : IDisposable
         {
             if (IsRunning) return;
             _intentionalStop = false;
+
+            _connectCts?.Cancel();
+            _connectCts?.Dispose();
+            _connectCts = new CancellationTokenSource();
 
             var pipeName = "sn-" + Guid.NewGuid().ToString("N")[..12];
 
@@ -58,29 +63,37 @@ public sealed class ServerProcess : IDisposable
             _process.BeginErrorReadLine();
 
             // Connect IPC asynchronously — server opens the pipe, we connect after it's ready
-            _ = ConnectWithRetryAsync(pipeName);
+            _ = ConnectWithRetryAsync(pipeName, _connectCts.Token);
 
             RunningChanged?.Invoke(true);
         }
     }
 
-    private async Task ConnectWithRetryAsync(string pipeName)
+    private async Task ConnectWithRetryAsync(string pipeName, CancellationToken ct)
     {
         // Server needs a moment to open the pipe
         for (int i = 0; i < 15; i++)
         {
+            if (ct.IsCancellationRequested)
+                return;
             try
             {
                 await _ipc.ConnectAsync(pipeName);
                 return;
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return;
+            }
             catch (Exception ex) when (ex is IOException or TimeoutException or UnauthorizedAccessException)
             {
                 // Pipe not up yet (server still booting) — retry.
-                await Task.Delay(500);
+                try { await Task.Delay(500, ct); }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
             }
         }
-        _logSink.AddEntry(new LogEntry(DateTime.UtcNow, "Error", "IPC: could not connect to server pipe.", "Host"));
+        if (!ct.IsCancellationRequested)
+            _logSink.AddEntry(new LogEntry(DateTime.UtcNow, "Error", "IPC: could not connect to server pipe.", "Host"));
     }
 
     public void Stop()
@@ -88,9 +101,18 @@ public sealed class ServerProcess : IDisposable
         lock (_lock)
         {
             _intentionalStop = true;
+            _connectCts?.Cancel();
             if (_process is { HasExited: false })
             {
-                _ipc.SendCommand("shutdown");
+                try
+                {
+                    _ipc.SendCommandAsync("shutdown").Wait(TimeSpan.FromSeconds(1));
+                }
+                catch (Exception ex) when (ex is AggregateException or PanelBackendException)
+                {
+                    _logSink.AddEntry(new LogEntry(DateTime.UtcNow, "Warning",
+                        $"IPC shutdown request failed: {ex.GetBaseException().Message}", "Host"));
+                }
                 if (!_process.WaitForExit(8_000))
                     _process.Kill(entireProcessTree: true);
             }
@@ -160,8 +182,12 @@ public sealed class ServerProcess : IDisposable
         }
     }
 
-    private void OnExited(object? _, EventArgs e)
+    private void OnExited(object? sender, EventArgs e)
     {
+        if (sender is Process exited && !ReferenceEquals(exited, _process))
+            return;
+
+        _connectCts?.Cancel();
         _ipc.Disconnect();
         if (!_intentionalStop)
         {
@@ -206,7 +232,10 @@ public sealed class ServerProcess : IDisposable
     public void Dispose()
     {
         _intentionalStop = true;
+        _connectCts?.Cancel();
         try { _process?.Kill(entireProcessTree: true); } catch { }
         _process?.Dispose();
+        _connectCts?.Dispose();
+        _connectCts = null;
     }
 }

@@ -66,6 +66,7 @@ public static partial class Program
 
     private static void RunMainLoop()
     {
+            _mainLoopThreadId = Environment.CurrentManagedThreadId;
             _log.LogInformation("Type 'help' for commands. Enter commands directly (e.g. save, status, quit).");
 
             // Do not enqueue the whole saved NPC population at startup. Large
@@ -251,6 +252,14 @@ public static partial class Program
             _log.LogWarning("Auto-save on shutdown is disabled. Use 'save' command before quitting to persist world state.");
 
             _stateRecorder?.Dispose();
+            _ipcCts?.Cancel();
+            try { _ipcTask?.Wait(TimeSpan.FromSeconds(2)); }
+            catch (AggregateException ex) { _log.LogDebug(ex.Flatten(), "IPC server stopped with an error"); }
+            _ipcServer?.Dispose();
+            _ipcTask = null;
+            _ipcServer = null;
+            _ipcCts?.Dispose();
+            _ipcCts = null;
             _telnet?.Dispose();
             _webStatus?.Dispose();
             _network.Dispose();
@@ -259,6 +268,7 @@ public static partial class Program
             _scriptLdb.Close();
             _scriptMdb.Close();
             _scriptFile?.Dispose();
+            _mainLoopThreadId = 0;
 
             _log.LogInformation("SphereNet stopped.");
             Log.CloseAndFlush();

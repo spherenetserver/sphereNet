@@ -15,6 +15,7 @@ public sealed class IpcBridge : IDisposable
     private StreamWriter? _writer;
     private StreamReader? _reader;
     private CancellationTokenSource _cts = new();
+    private Task? _readLoopTask;
     private readonly SemaphoreSlim _wl = new(1, 1);
     private readonly ConcurrentDictionary<string, TaskCompletionSource<JsonElement>> _pending = new();
 
@@ -27,60 +28,114 @@ public sealed class IpcBridge : IDisposable
 
     public async Task ConnectAsync(string pipeName)
     {
+        Task? previousReadLoop = _readLoopTask;
+        Disconnect();
+        if (previousReadLoop != null)
+        {
+            try { await previousReadLoop.ConfigureAwait(false); }
+            catch (Exception ex) when (ex is IOException or OperationCanceledException or ObjectDisposedException) { }
+        }
+        _readLoopTask = null;
+        _cts.Dispose();
         _cts = new CancellationTokenSource();
-        _pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-        await _pipe.ConnectAsync(15_000, _cts.Token);
-        _writer = new StreamWriter(_pipe, leaveOpen: true) { AutoFlush = true };
-        _reader = new StreamReader(_pipe, leaveOpen: true);
-        IsConnected = true;
-        _ = ReadLoopAsync(_cts.Token);
+        var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+        try
+        {
+            await pipe.ConnectAsync(15_000, _cts.Token).ConfigureAwait(false);
+            _pipe = pipe;
+            _writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
+            _reader = new StreamReader(pipe, leaveOpen: true);
+            IsConnected = true;
+            _readLoopTask = ReadLoopAsync(_cts.Token);
+        }
+        catch
+        {
+            pipe.Dispose();
+            throw;
+        }
     }
 
     public void Disconnect()
     {
         IsConnected = false;
-        _cts.Cancel();
-        foreach (var p in _pending.Values) p.TrySetCanceled();
+        try { _cts.Cancel(); } catch (ObjectDisposedException) { }
+        FailPending(new PanelBackendUnavailableException("Game server IPC connection is unavailable"));
         _pending.Clear();
-        try { _pipe?.Dispose(); } catch { }
+        try { _writer?.Dispose(); } catch (ObjectDisposedException) { }
+        try { _reader?.Dispose(); } catch (ObjectDisposedException) { }
+        try { _pipe?.Dispose(); } catch (ObjectDisposedException) { }
+        _writer = null;
+        _reader = null;
         _pipe = null;
     }
 
     // ── Fire-and-forget commands ────────────────────────────────────────────
 
-    public void SendCommand(string cmd)
-        => _ = WriteAsync(new { t = "cmd", cmd });
-
-    public void SendBroadcast(string msg)
-        => _ = WriteAsync(new { t = "cmd", cmd = "broadcast", msg });
+    public Task SendCommandAsync(string cmd, CancellationToken ct = default)
+        => WriteAsync(new { t = "cmd", cmd }, ct);
 
     // ── Request/response ────────────────────────────────────────────────────
 
     public Task<T?> QueryAsync<T>(string qry, object? args = null) where T : class
         => RequestAsync<T>("qry", qry, args);
 
-    public Task<bool> MutateAsync(string mut, object? args = null)
-        => RequestAsync<bool>("mut", mut, args).ContinueWith(t => t.Result, TaskScheduler.Default)
-            .ContinueWith(t => t.IsCompletedSuccessfully, TaskScheduler.Default);
+    public async Task<bool> MutateAsync(string mut, object? args = null)
+        => await RequestAsync<bool>("mut", mut, args).ConfigureAwait(false);
 
     private async Task<T?> RequestAsync<T>(string kind, string op, object? args)
     {
-        if (!IsConnected) return default;
-        var id = Guid.NewGuid().ToString("N")[..8];
+        if (!IsConnected)
+            throw new PanelBackendUnavailableException("Game server is not connected");
+
+        var id = Guid.NewGuid().ToString("N");
         var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pending[id] = tcs;
+        if (!_pending.TryAdd(id, tcs))
+            throw new InvalidOperationException("Could not allocate an IPC request id");
 
         var msg = BuildMsg(kind, id, op, args);
-        await WriteAsync(msg);
 
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
-            var el = await tcs.Task.WaitAsync(cts.Token);
-            if (typeof(T) == typeof(bool)) return (T)(object)(el.ValueKind != JsonValueKind.False);
-            return el.Deserialize<T>(_json);
+            try
+            {
+                await WriteAsync(msg, _cts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException ex) when (_cts.IsCancellationRequested)
+            {
+                throw new PanelBackendUnavailableException("Game server IPC connection was closed", ex);
+            }
+
+            JsonElement response;
+            try
+            {
+                response = await tcs.Task.WaitAsync(TimeSpan.FromSeconds(8)).ConfigureAwait(false);
+            }
+            catch (TimeoutException ex)
+            {
+                throw new PanelBackendTimeoutException($"IPC operation '{op}' timed out", ex);
+            }
+
+            bool ok = response.TryGetProperty("ok", out var okElement) && okElement.ValueKind == JsonValueKind.True;
+            if (!ok)
+            {
+                string? code = response.TryGetProperty("code", out var codeElement) && codeElement.ValueKind == JsonValueKind.String
+                    ? codeElement.GetString()
+                    : null;
+                string message = response.TryGetProperty("err", out var errorElement) && errorElement.ValueKind == JsonValueKind.String
+                    ? errorElement.GetString() ?? "Backend operation failed"
+                    : "Backend operation failed";
+
+                if (string.Equals(code, "timeout", StringComparison.OrdinalIgnoreCase))
+                    throw new PanelBackendTimeoutException(message);
+                throw new PanelBackendOperationException(message, code);
+            }
+
+            if (!response.TryGetProperty("data", out var data) ||
+                data.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+                return default;
+
+            return data.Deserialize<T>(_json);
         }
-        catch { return default; }
         finally { _pending.TryRemove(id, out _); }
     }
 
@@ -102,6 +157,7 @@ public sealed class IpcBridge : IDisposable
 
     private async Task ReadLoopAsync(CancellationToken ct)
     {
+        PanelBackendUnavailableException? failure = null;
         try
         {
             while (!ct.IsCancellationRequested && _reader != null)
@@ -111,8 +167,16 @@ public sealed class IpcBridge : IDisposable
                 ProcessMessage(line);
             }
         }
-        catch { }
-        IsConnected = false;
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException)
+        {
+            failure = new PanelBackendUnavailableException("Game server IPC connection was lost", ex);
+        }
+        finally
+        {
+            IsConnected = false;
+            FailPending(failure ?? new PanelBackendUnavailableException("Game server IPC connection was closed"));
+        }
     }
 
     private void ProcessMessage(string json)
@@ -129,26 +193,46 @@ public sealed class IpcBridge : IDisposable
                 case "rsp":
                     var id = root.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
                     if (id != null && _pending.TryRemove(id, out var tcs))
-                    {
-                        var data = root.TryGetProperty("data", out var d) ? d.Clone() : default;
-                        tcs.TrySetResult(data);
-                    }
+                        tcs.TrySetResult(root.Clone());
                     break;
             }
         }
-        catch { }
+        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException) { }
     }
 
     // ── Write ───────────────────────────────────────────────────────────────
 
-    private async Task WriteAsync(object msg)
+    private async Task WriteAsync(object msg, CancellationToken ct)
     {
-        if (_writer == null) return;
-        await _wl.WaitAsync();
-        try { await _writer.WriteLineAsync(JsonSerializer.Serialize(msg, _json)); }
-        catch { }
+        var writer = _writer;
+        if (!IsConnected || writer == null)
+            throw new PanelBackendUnavailableException("Game server is not connected");
+
+        await _wl.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            string json = JsonSerializer.Serialize(msg, _json);
+            await writer.WriteLineAsync(json.AsMemory(), ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException)
+        {
+            IsConnected = false;
+            throw new PanelBackendUnavailableException("Could not write to the game server IPC connection", ex);
+        }
         finally { _wl.Release(); }
     }
 
-    public void Dispose() => Disconnect();
+    private void FailPending(Exception error)
+    {
+        foreach (var pending in _pending.Values)
+            pending.TrySetException(error);
+    }
+
+    public void Dispose()
+    {
+        Disconnect();
+        try { _readLoopTask?.Wait(TimeSpan.FromSeconds(1)); } catch (AggregateException) { }
+        _cts.Dispose();
+        _wl.Dispose();
+    }
 }

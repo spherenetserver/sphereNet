@@ -3,6 +3,46 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-10] - Altyapi sertlestirme: IPC, panel yasam dongusu, yollar ve CI
+----------------------------------------
+
+DUZELTILDI - Managed Host/Server IPC artik gercek sonucu iletiyor:
+  - Mutation false sonuclari ve uzak hatalar basariya cevrilmiyor. Yanitlar
+    yapilandirilmis hata kodu tasiyor; panel unavailable/timeout/rejected
+    islemleri 503/504/502 olarak donuyor.
+  - Istekler sirali isleniyor; canli world/account islemleri pipe thread'inden
+    eszamanli girmek yerine oyun ana dongusune aktariliyor.
+  - Disconnect, restart ve shutdown arka plan islerini iptal edip bekliyor;
+    eski baglanti denemesi yeni sunucu surecine karisamiyor.
+
+GUVENLIK - Dosya erisimi guvenilen koklerin altinda tutuluyor:
+  - Script, database, world-operation ve panel yollari ayni relative-path
+    cozucusunu kullaniyor; absolute path, traversal, kardes-klasor prefix
+    kacisi ve reparse/symlink alt yollari reddediliyor.
+  - Panel script yazimlari atomik, backup adlari cakismasiz, icerik boyutu
+    sinirli; ZIP acma islemi de ayni kok denetimini kullaniyor.
+
+DUZELTILDI - Panel oturumu ve API davranisi:
+  - Logout, yerel oturumu silmeden once asil bearer token'i gonderiyor; sunucu
+    token'i gercekten revoke edebiliyor. Suresi dolan token'lar temizleniyor.
+  - Setup config yalniz ilk kurulumda public; account/debug/lifecycle
+    endpoint'leri backend false sonucunu koruyor ve sessiz basari yerine
+    anlamli HTTP hatalari donuyor.
+
+DEGISTI - Tekrarlanabilir kalite kapilari:
+  - Axios/Vite ve alt bagimliliklar guncellendi; npm audit bilinen acik
+    raporlamiyor. Vue paneline ESLint ve Vitest eklendi.
+  - CI artik npm ci, lint, panel testleri, audit, production build,
+    Debug/Release .NET build, tum testler ve coverage toplama calistiriyor.
+  - Bos tekrar test projeleri kaldirildi. Yeni regresyon testleri path
+    containment, IPC siralama/sonuc, token ve panel HTTP durumlarini kapsiyor.
+    Dalgalanan adjacent-tactician testi kendi onkosulunu artik geri kuruyor.
+
+DOGRULANDI - Debug ve Release sifir uyari/hata; 1217 .NET testi ve 2 panel
+  testi geciyor. Guncel coverage: %45.93 satir / %36.98 branch.
+
+================================================================================
+
 [2026-07-04] - NpcAI dalgasi A3: tasarim-karari maddelerinde birebir Source-X paritesi
 ----------------------------------------
 

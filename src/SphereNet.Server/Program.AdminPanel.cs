@@ -178,11 +178,12 @@ public static partial class Program
                 StartTime   = _serverStartTime,
                 AdminPassword = _config.AdminPassword,
 
-                GetGumpPng = GetGumpPngCached,
-                ListDialogNames = () => ListAllDialogNames(),
-                GetDialogSource = GetDialogSectionSource,
+                GetGumpPng = id => InvokePanelOnMainLoop(() => GetGumpPngCached(id), "gump art"),
+                ListDialogNames = () => InvokePanelOnMainLoop<IReadOnlyList<string>>(
+                    () => ListAllDialogNames(), "dialog list"),
+                GetDialogSource = name => InvokePanelOnMainLoop(() => GetDialogSectionSource(name), "dialog source"),
 
-                GetStats = () =>
+                GetStats = () => InvokePanelOnMainLoop(() =>
                 {
                     var (chars, items, sectors) = _world.GetStats();
                     var uptime = DateTime.UtcNow - _serverStartTime;
@@ -208,9 +209,9 @@ public static partial class Program
                         P99TickMs: runtime.P99Ms,
                         MulticoreEnabled: runtime.MulticoreEnabled,
                         Maps: maps);
-                },
+                }, "stats snapshot"),
 
-                GetOnlinePlayers = () => _clients.Values
+                GetOnlinePlayers = () => InvokePanelOnMainLoop<IReadOnlyList<PlayerInfo>>(() => _clients.Values
                     .Where(c => c.IsPlaying && c.Character != null)
                     .Select(c => new PlayerInfo(
                         c.Character!.Name,
@@ -219,44 +220,63 @@ public static partial class Program
                         c.Character.Position.X,
                         c.Character.Position.Y,
                         c.NetState.RemoteEndPoint?.Address.ToString() ?? ""))
-                    .ToList(),
+                    .ToList(), "player snapshot"),
 
-                GetAllAccounts = () => _accounts.GetAllAccounts()
+                GetAllAccounts = () => InvokePanelOnMainLoop<IReadOnlyList<AccountInfo>>(() => _accounts.GetAllAccounts()
                     .Select(a => new AccountInfo(
                         a.Name, (int)a.PrivLevel, a.IsBanned,
                         a.LastIp, a.LastLogin, a.CreateDate, a.CharCount))
-                    .ToList(),
+                    .ToList(), "account snapshot"),
 
-                GetAccount = name =>
+                GetAccount = name => InvokePanelOnMainLoop(() =>
                 {
                     var a = _accounts.FindAccount(name);
                     return a is null ? null
                         : new AccountInfo(a.Name, (int)a.PrivLevel, a.IsBanned,
                             a.LastIp, a.LastLogin, a.CreateDate, a.CharCount);
-                },
+                }, "account lookup"),
 
-                CreateAccount  = (name, pass) => _accounts.CreateAccount(name, pass) is not null,
-                DeleteAccount  = name => _accounts.DeleteAccount(name),
-                SetAccountBanned   = (name, banned) => _accounts.SetAccountBlocked(name, banned),
-                SetAccountPassword = (name, pass)   => _accounts.SetAccountPassword(name, pass),
+                CreateAccount = (name, pass) => InvokePanelOnMainLoop(
+                    () => _accounts.CreateAccount(name, pass) is not null, "account create"),
+                DeleteAccount = name => InvokePanelOnMainLoop(
+                    () => _accounts.DeleteAccount(name), "account delete"),
+                SetAccountBanned = (name, banned) => InvokePanelOnMainLoop(
+                    () => _accounts.SetAccountBlocked(name, banned), "account ban"),
+                SetAccountPassword = (name, pass) => InvokePanelOnMainLoop(
+                    () => _accounts.SetAccountPassword(name, pass), "account password"),
                 SetAccountPrivLevel = (name, level) =>
-                    _accounts.SetAccountPrivLevel(name, (SphereNet.Core.Enums.PrivLevel)level),
+                    InvokePanelOnMainLoop(
+                        () => _accounts.SetAccountPrivLevel(name, (SphereNet.Core.Enums.PrivLevel)level),
+                        "account privilege"),
 
                 // Reuse AdminCommandProcessor so panel and telnet share the same logic
-                OnSave     = RequestSaveOnMainLoop,
-                OnShutdown = () => _running = false,
-                OnResync   = PerformScriptResync,
-                OnGc       = () => { GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); },
-                OnRespawn  = () => _consoleProcessor?.ProcessCommand("RESPAWN",  _ => { }),
-                OnRestock  = () => _consoleProcessor?.ProcessCommand("RESTOCK",  _ => { }),
-                OnBroadcast = msg => _consoleProcessor?.ProcessCommand($"BROADCAST {msg}", _ => { }),
+                OnSave = () => { RequestSaveOnMainLoop(); return true; },
+                OnShutdown = () => { _mainLoopActions.Enqueue(() => _running = false); return true; },
+                OnResync = () => { _mainLoopActions.Enqueue(PerformScriptResync); return true; },
+                OnGc = () =>
+                {
+                    _mainLoopActions.Enqueue(() =>
+                    {
+                        GC.Collect();
+                        GC.WaitForPendingFinalizers();
+                        GC.Collect();
+                    });
+                    return true;
+                },
+                OnRespawn = () => { RequestRespawnOnMainLoop(); return true; },
+                OnRestock = () => { RequestRestockOnMainLoop(); return true; },
+                OnBroadcast = msg => InvokePanelOnMainLoop(() =>
+                {
+                    _consoleProcessor?.ProcessCommand($"BROADCAST {msg}", _ => { });
+                    return true;
+                }, "broadcast"),
 
-                ExecuteCommand = cmd =>
+                ExecuteCommand = cmd => InvokePanelOnMainLoop<string[]>(() =>
                 {
                     var lines = new List<string>();
                     _consoleProcessor?.ProcessCommand(cmd, lines.Add);
                     return [.. lines];
-                },
+                }, "admin command"),
                 AuditLog = msg => _log.LogWarning("Panel audit: {Message}", msg),
 
                 // Paths
@@ -267,13 +287,18 @@ public static partial class Program
                 IsServerRunning = () => _running,
                 OnRestart = () =>
                 {
-                    _log.LogInformation("Panel: restart requested — shutting down game engine…");
-                    _running = false;
+                    _mainLoopActions.Enqueue(() =>
+                    {
+                        _log.LogInformation("Panel: restart requested — shutting down game engine...");
+                        _running = false;
+                    });
+                    return true;
                 },
 
                 // Debug toggles — same logic as ToggleDebugPackets / ToggleScriptDebug
-                GetDebugState = () => new SphereNet.Panel.DebugState(_config.DebugPackets, _config.ScriptDebug),
-                SetPacketDebug = on =>
+                GetDebugState = () => InvokePanelOnMainLoop(
+                    () => new SphereNet.Panel.DebugState(_config.DebugPackets, _config.ScriptDebug), "debug state"),
+                SetPacketDebug = on => InvokePanelOnMainLoop(() =>
                 {
                     _config.DebugPackets = on;
                     if (_network != null)
@@ -286,8 +311,9 @@ public static partial class Program
                         ? Serilog.Events.LogEventLevel.Debug
                         : Serilog.Events.LogEventLevel.Information;
                     _log.LogInformation("Panel: DebugPackets={Value}", on);
-                },
-                SetScriptDebug = on =>
+                    return true;
+                }, "packet debug"),
+                SetScriptDebug = on => InvokePanelOnMainLoop(() =>
                 {
                     _config.ScriptDebug = on;
                     _triggerDispatcher.ScriptDebug = on;
@@ -296,17 +322,54 @@ public static partial class Program
                     if (on)
                         _logLevelSwitch.MinimumLevel = Serilog.Events.LogEventLevel.Debug;
                     _log.LogInformation("Panel: ScriptDebug={Value}", on);
-                },
+                    return true;
+                }, "script debug"),
             };
 
             // In managed mode: start IPC server so Host can communicate with us.
             // Panel web server lives in SphereNet.Host, not here.
             if (_managed && !string.IsNullOrEmpty(_pipeName))
             {
-                var ipc = new SphereNet.Server.Ipc.IpcServer(_pipeName);
-                ipc.SetContext(panelCtx);
-                _ = ipc.RunAsync(CancellationToken.None);
+                _ipcCts = new CancellationTokenSource();
+                _ipcServer = new SphereNet.Server.Ipc.IpcServer(_pipeName);
+                _ipcServer.SetContext(panelCtx);
+                _ipcTask = _ipcServer.RunAsync(_ipcCts.Token);
+                _ = _ipcTask.ContinueWith(task =>
+                        _log.LogError(task.Exception?.GetBaseException(), "IPC server stopped unexpectedly"),
+                    CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
             }
+    }
+
+    private static T InvokePanelOnMainLoop<T>(Func<T> action, string operation)
+    {
+        int mainThreadId = Volatile.Read(ref _mainLoopThreadId);
+        if (mainThreadId != 0 && Environment.CurrentManagedThreadId == mainThreadId)
+            return action();
+
+        if (!_running)
+            throw new InvalidOperationException("Game server main loop is not running");
+
+        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _mainLoopActions.Enqueue(() =>
+        {
+            if (completion.Task.IsCompleted)
+                return;
+
+            try { completion.TrySetResult(action()); }
+            catch (Exception ex) { completion.TrySetException(ex); }
+        });
+
+        try
+        {
+            return completion.Task.WaitAsync(TimeSpan.FromSeconds(8)).GetAwaiter().GetResult();
+        }
+        catch (TimeoutException)
+        {
+            completion.TrySetException(new TimeoutException($"Main-loop operation '{operation}' timed out"));
+            throw new TimeoutException($"Main-loop operation '{operation}' timed out");
+        }
     }
 
     // --- Console Commands ---

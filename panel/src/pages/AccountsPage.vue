@@ -113,7 +113,11 @@ async function createAccount() {
 }
 
 async function toggleBan(a: AccountInfo) {
-  a.isBanned ? await accountsApi.unban(a.name) : await accountsApi.ban(a.name)
+  if (a.isBanned) {
+    await accountsApi.unban(a.name)
+  } else {
+    await accountsApi.ban(a.name)
+  }
   qc.invalidateQueries({ queryKey: ['accounts'] })
 }
 

@@ -78,19 +78,14 @@ if ($Clean) {
 
 # ── 1. Vue panel ─────────────────────────────────────────────────────────────
 if (-not $SkipPanel) {
-    Write-Step 1 4 "Panel bagimliliklari kontrol ediliyor..."
+    Write-Step 1 4 "Panel bagimliliklari kilit dosyasindan kuruluyor (npm ci)..."
 
-    if (-not (Test-Path "$root\panel\node_modules")) {
-        Write-Host "  node_modules bulunamadi, npm install calisiyor..." -ForegroundColor Yellow
-        Push-Location "$root\panel"
-        try {
-            npm install
-            if ($LASTEXITCODE -ne 0) { throw "npm install basarisiz oldu." }
-        } finally {
-            Pop-Location
-        }
-    } else {
-        Write-Host "  node_modules mevcut, atlaniyor." -ForegroundColor DarkGray
+    Push-Location "$root\panel"
+    try {
+        npm ci
+        if ($LASTEXITCODE -ne 0) { throw "npm ci basarisiz oldu." }
+    } finally {
+        Pop-Location
     }
 
     Write-Step 2 4 "Vue panel derleniyor (npm run build)..."

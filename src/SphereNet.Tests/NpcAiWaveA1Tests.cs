@@ -74,7 +74,7 @@ public class NpcAiWaveA1Tests
     [Fact]
     public void MeleeRange_Tactician_SometimesStandsAndFights()
     {
-        var (_, ai, caster, _) = Setup(victimX: 101); // adjacent
+        var (world, ai, caster, _) = Setup(victimX: 101); // adjacent
         caster.NpcSpellAdd(SpellType.EnergyBolt);
         caster.SetSkill(SkillType.Tactics, 1000); // Source-X gate: > 20.0
 
@@ -84,6 +84,9 @@ public class NpcAiWaveA1Tests
 
         for (int i = 0; i < 60 && !meleeFired; i++)
         {
+            // A casting roll may kite the NPC. Restore the precondition so
+            // every iteration samples the adjacent tactician branch.
+            world.MoveCharacter(caster, new Point3D(100, 100, 0, 0), fireRegionEvents: false);
             caster.NextNpcActionTime = 0;
             caster.NextAttackTime = 0;
             ai.OnTickAction(caster);

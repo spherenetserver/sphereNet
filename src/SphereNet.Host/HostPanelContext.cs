@@ -20,9 +20,9 @@ public static class HostPanelContext
 
             // ── Lifecycle ──────────────────────────────────────────────────
             IsServerRunning = () => proc.IsRunning,
-            StartServer  = () => proc.Start(),
-            OnShutdown   = () => proc.Stop(),
-            OnRestart    = () => proc.Restart(),
+            StartServer = () => { proc.Start(); return proc.IsRunning; },
+            OnShutdown = () => { proc.Stop(); return !proc.IsRunning; },
+            OnRestart = () => { proc.Restart(); return true; },
 
             // ── Stats ──────────────────────────────────────────────────────
             GetStats = () => ipc.LastStats ?? new ServerStats(
@@ -46,50 +46,43 @@ public static class HostPanelContext
                 Run(() => ipc.MutateAsync("account_delete", new { name })),
 
             SetAccountBanned = (name, banned) =>
-                RunVoid(() => ipc.MutateAsync("account_ban", new { name, banned })),
+                Run(() => ipc.MutateAsync("account_ban", new { name, banned })),
 
             SetAccountPassword = (name, pass) =>
-                RunVoid(() => ipc.MutateAsync("account_set_pass", new { name, pass })),
+                Run(() => ipc.MutateAsync("account_set_pass", new { name, pass })),
 
             SetAccountPrivLevel = (name, level) =>
-                RunVoid(() => ipc.MutateAsync("account_set_plevel", new { name, level })),
+                Run(() => ipc.MutateAsync("account_set_plevel", new { name, level })),
 
             // ── Commands ───────────────────────────────────────────────────
-            OnSave    = () => ipc.SendCommand("save"),
-            OnResync  = () => ipc.SendCommand("resync"),
-            OnGc      = () => ipc.SendCommand("gc"),
-            OnRespawn = () => ipc.SendCommand("respawn"),
-            OnRestock = () => ipc.SendCommand("restock"),
-            OnBroadcast = msg => ipc.SendBroadcast(msg),
+            OnSave = () => Run(() => ipc.MutateAsync("server_save")),
+            OnResync = () => Run(() => ipc.MutateAsync("server_resync")),
+            OnGc = () => Run(() => ipc.MutateAsync("server_gc")),
+            OnRespawn = () => Run(() => ipc.MutateAsync("server_respawn")),
+            OnRestock = () => Run(() => ipc.MutateAsync("server_restock")),
+            OnBroadcast = msg => Run(() => ipc.MutateAsync("server_broadcast", new { msg })),
 
             ExecuteCommand = cmd =>
                 Run(() => ipc.QueryAsync<string[]>("exec", new { raw = cmd })) ?? [],
-
-            AuditLog = msg =>
-                RunVoid(() => ipc.MutateAsync("audit", new { msg })),
 
             // ── Debug ──────────────────────────────────────────────────────
             GetDebugState = () =>
                 Run(() => ipc.QueryAsync<DebugState>("debug")) ?? new DebugState(false, false),
 
             SetPacketDebug = on =>
-                RunVoid(() => ipc.MutateAsync("set_packet_debug", new { on })),
+                Run(() => ipc.MutateAsync("set_packet_debug", new { on })),
 
             SetScriptDebug = on =>
-                RunVoid(() => ipc.MutateAsync("set_script_debug", new { on })),
+                Run(() => ipc.MutateAsync("set_script_debug", new { on })),
+
+            // ── Dialog designer ────────────────────────────────────────────
+            GetGumpPng = id => Run(() => ipc.QueryAsync<byte[]>("gump", new { id })),
+            ListDialogNames = () => Run(() => ipc.QueryAsync<List<string>>("dialogs")) ?? [],
+            GetDialogSource = name => Run(() => ipc.QueryAsync<string>("dialog_source", new { name })),
         };
     }
 
-    // Run async on a thread-pool thread to avoid SynchronizationContext deadlock
-    private static T? Run<T>(Func<Task<T?>> fn)
-    {
-        try { return Task.Run(fn).GetAwaiter().GetResult(); }
-        catch  { return default; }
-    }
+    private static T? Run<T>(Func<Task<T?>> fn) => fn().GetAwaiter().GetResult();
 
-    private static void RunVoid(Func<Task> fn)
-    {
-        try { Task.Run(fn).GetAwaiter().GetResult(); }
-        catch { }
-    }
+    private static bool Run(Func<Task<bool>> fn) => fn().GetAwaiter().GetResult();
 }

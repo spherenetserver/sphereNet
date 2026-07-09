@@ -6,6 +6,7 @@ using Serilog.Sinks.SystemConsole.Themes;
 using SphereNet.Core.Configuration;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
+using SphereNet.Core.Security;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
 using SphereNet.Game.AI;
@@ -1053,14 +1054,10 @@ public static partial class Program
 
     private static string? ResolveScriptSafePath(string basePath, string path)
     {
-        if (string.IsNullOrWhiteSpace(path))
-            return null;
-        string normalized = path.Trim().Trim('"').Replace('\\', '/');
-        if (normalized.Contains("..", StringComparison.Ordinal) || normalized.StartsWith('/') || normalized.Contains(':'))
-            return null;
-        string fullBase = Path.GetFullPath(basePath);
-        string full = Path.GetFullPath(Path.Combine(fullBase, normalized));
-        return full.StartsWith(fullBase, StringComparison.OrdinalIgnoreCase) ? full : null;
+        string normalized = path.Trim().Trim('"');
+        return SafePath.TryResolveUnderRoot(basePath, normalized, out string full, out _)
+            ? full
+            : null;
     }
 
     private static bool TryParseSerial(string raw, out Serial serial)
@@ -1529,9 +1526,8 @@ public static partial class Program
 
     private static string? ResolveWorldOpsPath(string raw, bool forWrite)
     {
-        string path = raw.Trim().Trim('"').Replace('\\', '/');
-        if (path.Length == 0 || path.Contains("..", StringComparison.Ordinal) ||
-            path.StartsWith('/') || path.Contains(':'))
+        string path = raw.Trim().Trim('"');
+        if (path.Length == 0)
             return null;
 
         if (!path.EndsWith(".scp", StringComparison.OrdinalIgnoreCase) &&
@@ -1542,16 +1538,10 @@ public static partial class Program
 
         string basePath = ResolvePath(AppDomain.CurrentDomain.BaseDirectory,
             _config?.WorldSaveDir ?? "save/");
-        string fullBase = Path.GetFullPath(basePath);
-        string full = Path.GetFullPath(Path.Combine(fullBase, path));
-        string fullBaseWithSep = fullBase.EndsWith(Path.DirectorySeparatorChar)
-            ? fullBase
-            : fullBase + Path.DirectorySeparatorChar;
-        if (!full.Equals(fullBase, StringComparison.OrdinalIgnoreCase) &&
-            !full.StartsWith(fullBaseWithSep, StringComparison.OrdinalIgnoreCase))
+        if (!SafePath.TryResolveUnderRoot(basePath, path, out string full, out _))
             return null;
         if (forWrite)
-            Directory.CreateDirectory(Path.GetDirectoryName(full) ?? fullBase);
+            Directory.CreateDirectory(Path.GetDirectoryName(full) ?? Path.GetFullPath(basePath));
         return full;
     }
 

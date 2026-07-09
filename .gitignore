@@ -4,6 +4,7 @@ obj/
 
 # Test artifacts
 src/SphereNet.Tests/TestResults/
+/TestResults/
 
 # Local perf scratch
 .perf/

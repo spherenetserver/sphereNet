@@ -4,6 +4,47 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-10] - Infrastructure hardening: IPC, panel lifecycle, paths and CI
+----------------------------------------
+
+FIXED - Managed Host/Server IPC now reports truthful results:
+  - Mutation failures and remote exceptions are no longer converted into
+    success. Responses carry structured error codes and the panel maps
+    unavailable, timeout and rejected operations to 503/504/502.
+  - Requests are serialized and every live-world/account operation is
+    marshalled onto the game main loop instead of entering state concurrently
+    from pipe threads.
+  - Disconnect, restart and shutdown now cancel and join their background
+    work; stale connection retries cannot interfere with a newer server.
+
+SECURITY - File access is contained under trusted roots:
+  - Script, database, world-operation and panel paths share one relative-path
+    resolver that rejects absolute paths, traversal, sibling-prefix escapes
+    and reparse/symlink descendants.
+  - Panel script writes are atomic, backups are collision-safe, uploads have
+    size limits and ZIP extraction uses the same containment checks.
+
+FIXED - Panel sessions and API behavior:
+  - Logout sends the original bearer token before clearing local state, so the
+    server can actually revoke it. Expired tokens are removed and purged.
+  - Setup configuration is public only during first-run setup; account/debug/
+    lifecycle endpoints preserve backend false results and return meaningful
+    HTTP failures instead of silent success.
+
+CHANGED - Reproducible quality gates:
+  - Axios/Vite and transitive dependencies were updated; npm audit reports no
+    known vulnerabilities. ESLint and Vitest were added for the Vue panel.
+  - CI now runs npm ci, lint, panel tests, dependency audit, production build,
+    Debug/Release .NET builds, all tests and coverage collection.
+  - Empty duplicate test projects were removed. Infrastructure regressions
+    cover path containment, IPC serialization/results, tokens and panel HTTP
+    statuses. A flaky adjacent-tactician test now restores its own precondition.
+
+VERIFIED - Debug and Release build with zero warnings/errors; 1217 .NET tests
+  and 2 panel tests pass. Current coverage is 45.93% lines / 36.98% branches.
+
+================================================================================
+
 [2026-07-04] - NpcAI wave A3: strict Source-X parity for the design-decision items
 ----------------------------------------
 

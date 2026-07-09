@@ -323,7 +323,11 @@ async function apply() {
 }
 
 function goToDashboard() {
-  auth.loggedIn ? router.push('/dashboard') : router.push('/login')
+  if (auth.loggedIn) {
+    router.push('/dashboard')
+  } else {
+    router.push('/login')
+  }
 }
 </script>
 

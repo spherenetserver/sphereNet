@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Security;
 using SphereNet.Panel.Auth;
@@ -16,6 +17,7 @@ namespace SphereNet.Panel;
 
 public sealed class PanelHost : IDisposable
 {
+    private const int MaxScriptContentChars = 4 * 1024 * 1024;
     private readonly PanelContext _ctx;
     private readonly int _port;
     private readonly PanelLogSink _logSink;
@@ -23,6 +25,8 @@ public sealed class PanelHost : IDisposable
 
     private WebApplication? _app;
     private CancellationTokenSource? _cts;
+    private Thread? _thread;
+    private Task? _statsTask;
 
     // CPU tracking
     private TimeSpan _lastCpuTime = TimeSpan.Zero;
@@ -39,13 +43,16 @@ public sealed class PanelHost : IDisposable
 
     public void Start()
     {
+        if (_thread is { IsAlive: true })
+            return;
+
         _cts = new CancellationTokenSource();
-        var thread = new Thread(() => RunApp(_cts.Token))
+        _thread = new Thread(() => RunApp(_cts.Token))
         {
             IsBackground = true,
             Name = "PanelHost"
         };
-        thread.Start();
+        _thread.Start();
     }
 
     private void RunApp(CancellationToken ct)
@@ -73,7 +80,8 @@ public sealed class PanelHost : IDisposable
 
             _logSink.SetHubContext(_app.Services.GetRequiredService<IHubContext<ServerHub>>());
 
-            _ = StatsLoop(_app.Services.GetRequiredService<IHubContext<ServerHub>>(), ct);
+            _statsTask = StatsLoop(
+                _app.Services.GetRequiredService<IHubContext<ServerHub>>(), tokens, ct);
 
             _app.UseCors("DevCors");
 
@@ -82,6 +90,27 @@ public sealed class PanelHost : IDisposable
                 try
                 {
                     await next();
+                }
+                catch (PanelBackendUnavailableException ex)
+                {
+                    _logger.LogWarning(ex, "Panel backend unavailable: {Method} {Path}",
+                        httpCtx.Request.Method, httpCtx.Request.Path);
+                    await WriteProblemAsync(httpCtx, StatusCodes.Status503ServiceUnavailable,
+                        "Game server is unavailable");
+                }
+                catch (PanelBackendTimeoutException ex)
+                {
+                    _logger.LogWarning(ex, "Panel backend timeout: {Method} {Path}",
+                        httpCtx.Request.Method, httpCtx.Request.Path);
+                    await WriteProblemAsync(httpCtx, StatusCodes.Status504GatewayTimeout,
+                        "Game server operation timed out");
+                }
+                catch (PanelBackendOperationException ex)
+                {
+                    _logger.LogWarning(ex, "Panel backend rejected operation: {Method} {Path}",
+                        httpCtx.Request.Method, httpCtx.Request.Path);
+                    await WriteProblemAsync(httpCtx, StatusCodes.Status502BadGateway,
+                        "Game server rejected the operation");
                 }
                 catch (Exception ex)
                 {
@@ -121,7 +150,7 @@ public sealed class PanelHost : IDisposable
 
                 if (path == "/api/auth/login" ||
                     path == "/api/setup/needed" ||
-                    path == "/api/setup/config" ||
+                    (isSetupPhase && path == "/api/setup/config") ||
                     (isSetupPhase && path == "/api/setup/apply") ||
                     path == "/health" ||
                     path.StartsWith("/hubs/") ||
@@ -186,15 +215,17 @@ public sealed class PanelHost : IDisposable
             }
 
             _logger.LogInformation("Admin panel on http://localhost:{Port}", _port);
-            _app.Run();
+            _app.StartAsync(ct).GetAwaiter().GetResult();
+            _app.WaitForShutdownAsync(ct).GetAwaiter().GetResult();
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch (Exception ex)
         {
             _logger.LogError(ex, "PanelHost crashed");
         }
     }
 
-    private async Task StatsLoop(IHubContext<ServerHub> hub, CancellationToken ct)
+    private async Task StatsLoop(IHubContext<ServerHub> hub, TokenStore tokens, CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
@@ -209,11 +240,26 @@ public sealed class PanelHost : IDisposable
                     };
                     await hub.Clients.All.SendAsync("StatsUpdate", stats, ct);
                 }
+                tokens.PurgeExpired();
             }
-            catch { /* ignore — clients may disconnect mid-send */ }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Panel stats push failed");
+            }
 
-            await Task.Delay(2000, ct).ConfigureAwait(false);
+            try { await Task.Delay(2000, ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
         }
+    }
+
+    private static async Task WriteProblemAsync(HttpContext context, int statusCode, string message)
+    {
+        if (context.Response.HasStarted)
+            return;
+
+        context.Response.StatusCode = statusCode;
+        await context.Response.WriteAsJsonAsync(new { error = message });
     }
 
     private double GetCpuPercent()
@@ -349,59 +395,56 @@ public sealed class PanelHost : IDisposable
         {
             if (_ctx.StartServer == null)
                 return Results.BadRequest(new { error = "Not available in standalone mode" });
-            _ctx.StartServer();
-            return Results.Ok(new { message = "Start initiated" });
+            return _ctx.StartServer()
+                ? Results.Ok(new { message = "Start initiated" })
+                : Results.Conflict(new { error = "Server could not be started" });
         });
 
         // --- Server Commands ---
         app.MapPost("/api/server/save", () =>
         {
-            _ctx.OnSave?.Invoke();
-            return Results.Ok(new { message = "Save initiated" });
+            return InvokeBackendMutation(_ctx.OnSave, "Save initiated");
         });
 
         app.MapPost("/api/server/shutdown", () =>
         {
-            _ctx.OnShutdown?.Invoke();
-            return Results.Ok(new { message = "Shutdown initiated" });
+            return InvokeBackendMutation(_ctx.OnShutdown, "Shutdown initiated");
         });
 
         app.MapPost("/api/server/restart", () =>
         {
-            _ctx.OnRestart?.Invoke();
-            return Results.Ok(new { message = "Restart initiated" });
+            return InvokeBackendMutation(_ctx.OnRestart, "Restart initiated");
         });
 
         app.MapPost("/api/server/resync", () =>
         {
-            _ctx.OnResync?.Invoke();
-            return Results.Ok(new { message = "Script resync initiated" });
+            return InvokeBackendMutation(_ctx.OnResync, "Script resync initiated");
         });
 
         app.MapPost("/api/server/gc", () =>
         {
-            _ctx.OnGc?.Invoke();
-            return Results.Ok(new { memoryMB = GC.GetTotalMemory(true) / 1024 / 1024 });
+            if (_ctx.OnGc?.Invoke() != true)
+                return Results.Problem("Game server rejected the operation", statusCode: 502);
+            return Results.Ok(new { message = "Garbage collection initiated" });
         });
 
         app.MapPost("/api/server/respawn", () =>
         {
-            _ctx.OnRespawn?.Invoke();
-            return Results.Ok(new { message = "Respawn initiated" });
+            return InvokeBackendMutation(_ctx.OnRespawn, "Respawn initiated");
         });
 
         app.MapPost("/api/server/restock", () =>
         {
-            _ctx.OnRestock?.Invoke();
-            return Results.Ok(new { message = "Restock initiated" });
+            return InvokeBackendMutation(_ctx.OnRestock, "Restock initiated");
         });
 
         app.MapPost("/api/server/broadcast", (BroadcastRequest req) =>
         {
             if (string.IsNullOrWhiteSpace(req.Message))
                 return Results.BadRequest(new { error = "Message required" });
-            _ctx.OnBroadcast?.Invoke(req.Message);
-            return Results.Ok();
+            return _ctx.OnBroadcast?.Invoke(req.Message) == true
+                ? Results.Ok()
+                : Results.Problem("Game server rejected the broadcast", statusCode: 502);
         });
 
         app.MapPost("/api/server/command", (CommandRequest req) =>
@@ -448,30 +491,34 @@ public sealed class PanelHost : IDisposable
 
         app.MapPost("/api/accounts/{name}/ban", (string name) =>
         {
-            _ctx.SetAccountBanned?.Invoke(name, true);
-            return Results.Ok();
+            return _ctx.SetAccountBanned?.Invoke(name, true) == true
+                ? Results.Ok()
+                : Results.NotFound();
         });
 
         app.MapPost("/api/accounts/{name}/unban", (string name) =>
         {
-            _ctx.SetAccountBanned?.Invoke(name, false);
-            return Results.Ok();
+            return _ctx.SetAccountBanned?.Invoke(name, false) == true
+                ? Results.Ok()
+                : Results.NotFound();
         });
 
         app.MapPut("/api/accounts/{name}/password", (string name, ChangePasswordRequest req) =>
         {
             if (string.IsNullOrWhiteSpace(req.Password))
                 return Results.BadRequest(new { error = "Password required" });
-            _ctx.SetAccountPassword?.Invoke(name, req.Password);
-            return Results.Ok();
+            return _ctx.SetAccountPassword?.Invoke(name, req.Password) == true
+                ? Results.Ok()
+                : Results.NotFound();
         });
 
         app.MapPut("/api/accounts/{name}/plevel", (string name, ChangePlevelRequest req) =>
         {
             if (req.Level < 0 || req.Level > 7)
                 return Results.BadRequest(new { error = "PrivLevel must be 0-7" });
-            _ctx.SetAccountPrivLevel?.Invoke(name, req.Level);
-            return Results.Ok();
+            return _ctx.SetAccountPrivLevel?.Invoke(name, req.Level) == true
+                ? Results.Ok()
+                : Results.NotFound();
         });
 
         // --- Settings / Debug ---
@@ -483,8 +530,9 @@ public sealed class PanelHost : IDisposable
 
         app.MapPost("/api/settings/debug", (DebugRequest req) =>
         {
-            _ctx.SetPacketDebug?.Invoke(req.PacketDebug);
-            _ctx.SetScriptDebug?.Invoke(req.ScriptDebug);
+            if (_ctx.SetPacketDebug?.Invoke(req.PacketDebug) != true ||
+                _ctx.SetScriptDebug?.Invoke(req.ScriptDebug) != true)
+                return Results.Problem("Game server rejected debug settings", statusCode: 502);
 
             // Persist to ini if available
             if (_ctx.IniPath is not null && File.Exists(_ctx.IniPath))
@@ -528,12 +576,17 @@ public sealed class PanelHost : IDisposable
             if (!File.Exists(full))
                 return Results.NotFound();
 
+            if (new FileInfo(full).Length > MaxScriptContentChars * 4L)
+                return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+
             var content = File.ReadAllText(full);
             return Results.Ok(new { content });
         });
 
         app.MapPost("/api/scripts/validate", (ScriptContentRequest req) =>
         {
+            if (req.Content.Length > MaxScriptContentChars)
+                return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
             var validation = ValidateScriptContent(req.Content);
             return Results.Ok(validation);
         });
@@ -546,6 +599,9 @@ public sealed class PanelHost : IDisposable
             if (!full.EndsWith(".scp", StringComparison.OrdinalIgnoreCase))
                 return Results.BadRequest(new { error = "Only .scp files can be edited" });
 
+            if (req.Content.Length > MaxScriptContentChars)
+                return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+
             var validation = ValidateScriptContent(req.Content);
             if (!validation.Ok)
                 return Results.BadRequest(validation);
@@ -553,11 +609,11 @@ public sealed class PanelHost : IDisposable
             Directory.CreateDirectory(Path.GetDirectoryName(full)!);
             if (File.Exists(full))
             {
-                string backup = $"{full}.{DateTime.UtcNow:yyyyMMddHHmmss}.bak";
+                string backup = $"{full}.{DateTime.UtcNow:yyyyMMddHHmmssfff}.{Guid.NewGuid():N}.bak";
                 File.Copy(full, backup, overwrite: false);
             }
 
-            File.WriteAllText(full, req.Content);
+            AtomicWriteAllText(full, req.Content);
             string rel = Path.GetRelativePath(_ctx.ScriptsPath!, full).Replace('\\', '/');
             _ctx.AuditLog?.Invoke($"script saved path='{rel}' ip='{http.Connection.RemoteIpAddress}' bytes={req.Content.Length}");
             return Results.Ok(new { saved = true, path = rel, validation });
@@ -595,8 +651,8 @@ public sealed class PanelHost : IDisposable
                     var scriptRelative = relative["scripts/".Length..];
                     if (string.IsNullOrEmpty(scriptRelative)) continue;
 
-                    var targetFull = Path.GetFullPath(Path.Combine(scriptsPath, scriptRelative));
-                    if (!targetFull.StartsWith(Path.GetFullPath(scriptsPath), StringComparison.OrdinalIgnoreCase))
+                    if (!SafePath.TryResolveUnderRoot(scriptsPath, scriptRelative,
+                            out var targetFull, out _))
                         continue;
 
                     if (entry.FullName.EndsWith('/'))
@@ -619,6 +675,16 @@ public sealed class PanelHost : IDisposable
         });
     }
 
+    private static IResult InvokeBackendMutation(Func<bool>? operation, string successMessage)
+    {
+        if (operation == null)
+            return Results.Problem("Operation is not available", statusCode: 501);
+
+        return operation()
+            ? Results.Ok(new { message = successMessage })
+            : Results.Problem("Game server rejected the operation", statusCode: 502);
+    }
+
     private bool TryResolveScriptPath(string path, out string fullPath, out string? error)
     {
         fullPath = "";
@@ -630,15 +696,8 @@ public sealed class PanelHost : IDisposable
             return false;
         }
 
-        string rootFull = Path.GetFullPath(root);
-        fullPath = Path.GetFullPath(Path.Combine(rootFull, path.Replace('/', Path.DirectorySeparatorChar)));
-        if (!fullPath.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase))
-        {
-            error = "Invalid path";
-            return false;
-        }
-
-        return true;
+        return SafePath.TryResolveUnderRoot(root,
+            path.Replace('/', Path.DirectorySeparatorChar), out fullPath, out error);
     }
 
     private static ScriptValidationResult ValidateScriptContent(string content)
@@ -760,14 +819,59 @@ public sealed class PanelHost : IDisposable
                 lines.Insert(insertAt++, $"{key}={updates[key]}");
         }
 
-        File.WriteAllLines(filePath, lines);
+        AtomicWriteAllLines(filePath, lines);
+    }
+
+    private static void AtomicWriteAllText(string filePath, string content)
+    {
+        string tempPath = filePath + ".tmp-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            File.WriteAllText(tempPath, content);
+            File.Move(tempPath, filePath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+                File.Delete(tempPath);
+        }
+    }
+
+    private static void AtomicWriteAllLines(string filePath, IEnumerable<string> lines)
+    {
+        string tempPath = filePath + ".tmp-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            File.WriteAllLines(tempPath, lines);
+            File.Move(tempPath, filePath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+                File.Delete(tempPath);
+        }
     }
 
     public void Dispose()
     {
         _cts?.Cancel();
-        _app?.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(3));
+        try { _app?.StopAsync().Wait(TimeSpan.FromSeconds(3)); }
+        catch (AggregateException ex) { _logger.LogDebug(ex.Flatten(), "Panel stop failed"); }
+
+        if (_thread != null && _thread != Thread.CurrentThread)
+            _thread.Join(TimeSpan.FromSeconds(3));
+
+        try { _statsTask?.Wait(TimeSpan.FromSeconds(1)); }
+        catch (AggregateException ex) { _logger.LogDebug(ex.Flatten(), "Panel stats loop stopped with an error"); }
+
+        try { _app?.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(3)); }
+        catch (AggregateException ex) { _logger.LogDebug(ex.Flatten(), "Panel dispose failed"); }
+
         _cts?.Dispose();
+        _statsTask = null;
+        _thread = null;
+        _app = null;
+        _cts = null;
     }
 }
 

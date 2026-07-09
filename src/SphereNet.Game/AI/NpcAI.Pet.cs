@@ -42,6 +42,12 @@ public sealed partial class NpcAI
     /// <summary>Default hireling pay interval (ms) when HIRE_PERIOD isn't set.</summary>
     private const long DefaultHirePeriodMs = 30 * 60 * 1000; // 30 minutes
 
+    private static bool IsValidPetEnemy(
+        Character npc, Character master, Character? target, Character? protectedTarget = null) =>
+        target != null && target != npc && target != master && target != protectedTarget &&
+        !target.IsDead && !target.IsDeleted && target.MapIndex == npc.MapIndex &&
+        !npc.IsFriendOf(target.Uid) && IsAttackable(target);
+
 
     /// <summary>
     /// Pet behavior — follows PetAIMode from owner speech commands.
@@ -84,14 +90,17 @@ public sealed partial class NpcAI
         {
             long nowMs = Environment.TickCount64;
             long period = npc.TryGetTag("HIRE_PERIOD", out string? ps) &&
-                long.TryParse(ps, out long p) && p > 0 ? p : DefaultHirePeriodMs;
+                long.TryParse(ps, out long p) && p > 0
+                    ? Math.Clamp(p, 1_000, 30L * 24 * 60 * 60 * 1_000)
+                    : DefaultHirePeriodMs;
             long nextPay = npc.TryGetTag("HIRE_NEXT_PAY", out string? np) &&
                 long.TryParse(np, out long n) ? n : 0;
             if (nextPay == 0)
                 npc.SetTag("HIRE_NEXT_PAY", (nowMs + period).ToString());
             else if (nowMs >= nextPay)
             {
-                long periodWage = Math.Max(1, (long)dayWage * period / 86_400_000L);
+                long periodWage = (long)Math.Clamp(
+                    (decimal)dayWage * period / 86_400_000m, 1m, long.MaxValue);
                 long balance = npc.TryGetTag("HIRE_BALANCE", out string? bs) &&
                     long.TryParse(bs, out long bal) ? bal : 0;
                 if (balance >= periodWage)
@@ -121,10 +130,9 @@ public sealed partial class NpcAI
             npc.FightTarget.IsValid)
         {
             var aggressor = _world.FindChar(npc.FightTarget);
-            if (aggressor != null && !aggressor.IsDead && !aggressor.IsDeleted &&
-                IsAttackable(aggressor))
+            if (IsValidPetEnemy(npc, master, aggressor))
             {
-                ActFight(npc, aggressor, 50);
+                ActFight(npc, aggressor!, 50);
                 return;
             }
             npc.FightTarget = Serial.Invalid;
@@ -146,7 +154,9 @@ public sealed partial class NpcAI
                 {
                     if (npc.MapIndex != goPos.Map)
                     {
-                        _world.MoveCharacter(npc, goPos);
+                        // Pet AI must not teleport between facets. Travel
+                        // systems may transfer followers explicitly; a stale
+                        // cross-map GO order is simply completed here.
                         FinishGoOrder(npc);
                         break;
                     }
@@ -168,7 +178,6 @@ public sealed partial class NpcAI
                 }
                 if (npc.MapIndex != followTarget.MapIndex)
                 {
-                    _world.MoveCharacter(npc, followTarget.Position);
                     break;
                 }
                 int dist = npc.Position.GetDistanceTo(followTarget.Position);
@@ -180,31 +189,34 @@ public sealed partial class NpcAI
             case PetAIMode.Guard:
             {
                 Character guardTarget = ResolvePetTargetCharacter(npc, "GUARD_TARGET") ?? master;
+                if (guardTarget.MapIndex != npc.MapIndex)
+                    break;
                 if (npc.FightTarget.IsValid)
                 {
                     var current = _world.FindChar(npc.FightTarget);
-                    if (current != null && !current.IsDead && !current.IsDeleted && IsAttackable(current))
+                    if (IsValidPetEnemy(npc, master, current, guardTarget))
                     {
-                        ActFight(npc, current, 50);
+                        ActFight(npc, current!, 50);
                         return;
                     }
                     npc.FightTarget = Serial.Invalid;
                 }
-                // Master'ın saldırdığı hedefe otomatik katıl
-                if (master.FightTarget.IsValid)
+                // Protect the selected guarded character, not always the owner.
+                if (guardTarget.FightTarget.IsValid)
                 {
-                    var masterTarget = _world.FindChar(master.FightTarget);
-                    if (masterTarget != null && !masterTarget.IsDead && IsAttackable(masterTarget) && masterTarget != npc)
+                    var masterTarget = _world.FindChar(guardTarget.FightTarget);
+                    if (IsValidPetEnemy(npc, master, masterTarget, guardTarget))
                     {
-                        npc.FightTarget = masterTarget.Uid;
+                        npc.FightTarget = masterTarget!.Uid;
                         ActFight(npc, masterTarget, 50);
                         return;
                     }
                 }
                 foreach (var ch in _world.GetCharsInRange(guardTarget.Position, 6))
                 {
-                    if (ch == npc || ch == guardTarget || ch.IsDead || !IsAttackable(ch)) continue;
-                    if (ch.FightTarget == guardTarget.Uid)
+                    if (!IsValidPetEnemy(npc, master, ch, guardTarget)) continue;
+                    if (ch.FightTarget == guardTarget.Uid &&
+                        _world.CanSeeLOS(npc.Position, ch.Position))
                     {
                         npc.FightTarget = ch.Uid;
                         ActFight(npc, ch, 50);
@@ -224,9 +236,9 @@ public sealed partial class NpcAI
                     target = _world.FindChar(master.FightTarget);
                 if (target == null && npc.FightTarget.IsValid)
                     target = _world.FindChar(npc.FightTarget);
-                if (target != null && !target.IsDead && IsAttackable(target))
+                if (IsValidPetEnemy(npc, master, target))
                 {
-                    npc.FightTarget = target.Uid;
+                    npc.FightTarget = target!.Uid;
                     int motivation = GetAttackMotivation(npc, target);
                     ActFight(npc, target, Math.Max(motivation, 50));
                     return;
@@ -259,8 +271,12 @@ public sealed partial class NpcAI
     {
         if (!npc.TryGetTag(tagName, out string? uidText) || string.IsNullOrWhiteSpace(uidText))
             return null;
-        if (!uint.TryParse(uidText, out uint uid))
+        uint uid = SphereNet.Game.Objects.ObjBase.ParseHexOrDecUInt(uidText);
+        if (uid == 0)
+        {
+            npc.RemoveTag(tagName);
             return null;
+        }
         var target = _world.FindChar(new Serial(uid));
         if (target == null || target.IsDeleted || target.IsDead)
         {

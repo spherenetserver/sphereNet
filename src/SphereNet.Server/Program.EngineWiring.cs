@@ -1779,7 +1779,9 @@ public static partial class Program
             _npcAI.OnNpcKill = (killer, victim) =>
             {
                 ProcessDeathWithEffects(victim, killer);
-                killer.FightTarget = Serial.Invalid;
+                victim.FightTarget = Serial.Invalid;
+                if (killer.FightTarget == victim.Uid)
+                    killer.FightTarget = Serial.Invalid;
             };
             _npcAI.OnHealerAction = (healer, target, isResurrect) =>
             {
@@ -1924,13 +1926,15 @@ public static partial class Program
                 if (target.Hits <= 0 && !target.IsDead)
                     _npcAI.OnNpcKill?.Invoke(npc, target);
             };
-            _npcAI.OnNpcCastSpell = (npc, target, spell) =>
+            _npcAI.ResolveNpcSpellFlags = spell => _spellEngine.GetSpellDef(spell)?.Flags;
+            _npcAI.OnNpcTryStartSpellCast = (npc, target, spell) =>
             {
                 int castMs = _spellEngine.CastStart(npc, spell, target.Uid, target.Position);
                 _log.LogDebug("[npc_cast] npc=0x{Npc:X} '{Name}' spell={Spell} target=0x{Tgt:X} castMs={Ms}",
                     npc.Uid.Value, npc.Name, spell, target.Uid.Value, castMs);
                 if (castMs > 0)
                     npc.SetCastTimerEnd(Environment.TickCount64 + castMs);
+                return castMs >= 0;
             };
             _npcAI.OnNpcTickSpellCast = npc => _spellEngine.TickCastTimer(npc);
             var gatheringEngine = new GatheringEngine(_world, _triggerDispatcher);

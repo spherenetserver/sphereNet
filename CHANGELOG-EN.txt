@@ -4,6 +4,46 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-10] - Deep NpcAI code audit: targeting, combat, movement and roles
+----------------------------------------
+
+FIXED - Perception and target selection:
+  - VISUALRANGE is now the actual NPC sight radius. Target starvation caused
+    by the first 40 sector entries and failure to consider a visible enemy
+    when the strongest three candidates are behind walls are removed.
+  - The Source-X ally-family table now covers modern human/elf/gargoyle and
+    creature body families. NPCAI/OVERRIDE.NPCAI and target UID tags accept
+    Sphere-style leading-zero hexadecimal values.
+
+FIXED - Combat and spell state machines:
+  - A pending swing owns the NPC action until its hit phase completes; movement,
+    spells, breath and throws cannot run during windup. Non-instant guards and
+    fleeing casters follow the same one-action rule.
+  - Bows, crossbows and custom AMMOTYPE weapons consume the correct ammunition
+    while preserving ArrowHandled. Reactive-armor kills credit the defender;
+    reversed/malformed THROWDAM and THROWRANGE values cannot crash the tick.
+  - A cast rejected by SpellEngine is no longer reported as started, so wand
+    charges and combo state are preserved. Fallback spells use spell flags to
+    choose ally/enemy/self targets and honor reflection.
+
+FIXED - Movement, home state and NPC roles:
+  - Path caches are tied to their destination and stale routes/backoff are
+    invalidated when the target or facet changes. Cross-map fake movement/pet
+    teleports, HOME map loss, obstacle sector-index corruption and blocked
+    wander behavior are fixed. HOMEDIST now defaults to Source-X unlimited and
+    persists consistently.
+  - Pet attack/guard ownership and friend checks; guard/healer/animal LOS;
+    vendor restock overflow; food-item unlinking; repeated crime reports; and
+    humanoid two-handed weapon/light handling are corrected.
+  - Runtime path/LOS/notify cache cleanup now runs in single-core ticks too.
+
+VERIFIED - NpcAI tests pass 105/105; the complete solution passes 1243/1243 in
+  Debug and Release with zero warnings/errors. New regressions cover target
+  starvation, swing atomicity, ammunition, cast rejection, path destinations,
+  cross-map behavior, ally groups and role flows.
+
+================================================================================
+
 [2026-07-10] - Infrastructure hardening: IPC, panel lifecycle, paths and CI
 ----------------------------------------
 

@@ -207,7 +207,7 @@ public static partial class Program
                                 item.SpawnChar.RegisterExisting(new SphereNet.Core.Types.Serial(npcSerial));
                                 if (ch.Home.X == 0 && ch.Home.Y == 0)
                                     ch.Home = item.Position;
-                                if (ch.HomeDist == 10)
+                                if (ch.HomeDist == Character.UnlimitedHomeDistance)
                                     ch.HomeDist = (short)spawnRange;
                                 if (!ch.TryGetTag("SPAWNITEM", out _))
                                     ch.SetTag("SPAWNITEM", $"0{item.Uid.Value:x8}");

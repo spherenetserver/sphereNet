@@ -512,6 +512,7 @@ public static partial class Program
                 if (!npc.IsDead && !npc.IsDeleted && (npc.NpcMaster.IsValid || _world.IsInActiveArea(npc.MapIndex, npc.X, npc.Y)))
                     _npcTimerWheel.Schedule(npc, npc.NextNpcActionTime);
             }
+            _npcAI.PurgeStalePaths();
         }
 
         _telemetrySnapshotUs = ToMicroseconds(Stopwatch.GetTimestamp() - p0);

@@ -116,20 +116,20 @@ public sealed partial class NpcAI
             // fails and NPC_Act_Fight falls through to archery/melee.
             return CastViaTrigger(npc, castTarget, spell);
         }
+        if (spell != SpellType.None)
+            ResetNpcCombo(npc);
 
         foreach (var candidate in npc.NpcSpells)
         {
             if (candidate == spell)
                 continue;
-            // Fallback candidates fire at the enemy — leave beneficial spells
-            // to ChooseBestSpell's own recipient logic above.
-            if (candidate is SpellType.Heal or SpellType.GreaterHeal
-                or SpellType.Cure or SpellType.ArchCure or SpellType.Resurrection)
-                continue;
             if (!CanAfford(npc, candidate))
                 continue;
-            return CastViaTrigger(npc, target, candidate);
+            if (TryResolveNpcSpellTarget(npc, target, candidate,
+                    target.IsStatFlag(StatFlag.Reflection), out Character fallbackTarget))
+                return CastViaTrigger(npc, fallbackTarget, candidate);
         }
+        ResetNpcCombo(npc);
         return false;
     }
 
@@ -142,14 +142,109 @@ public sealed partial class NpcAI
     {
         if (OnNpcActCast != null)
         {
+            SpellType requestedSpell = spell;
+            Character requestedTarget = target;
             var d = OnNpcActCast(npc, target, spell, wandUse);
             if (d.Abort)
+            {
+                ResetNpcCombo(npc);
                 return false; // RETURN 1 — revert to melee, no cast this attempt
+            }
             if (d.Spell != SpellType.None) spell = d.Spell;
             if (d.Target != null && !d.Target.IsDeleted && !d.Target.IsDead) target = d.Target;
+            if (spell != requestedSpell || target != requestedTarget)
+                ResetNpcCombo(npc);
         }
-        OnNpcCastSpell?.Invoke(npc, target, spell);
-        return true;
+
+        bool started;
+        if (OnNpcTryStartSpellCast != null)
+            started = OnNpcTryStartSpellCast(npc, target, spell);
+        else if (OnNpcCastSpell != null)
+        {
+            OnNpcCastSpell(npc, target, spell);
+            started = true;
+        }
+        else
+        {
+            started = false;
+        }
+
+        if (!started)
+            ResetNpcCombo(npc);
+        return started;
+    }
+
+    private static void ResetNpcCombo(Character npc)
+    {
+        npc.RemoveTag("COMBO_STEP");
+        npc.RemoveTag("COMBO_TARGET");
+    }
+
+    private static bool IsKnownBeneficialSpell(SpellType spell) => spell is
+        SpellType.Heal or SpellType.NightSight or SpellType.ReactiveArmor or
+        SpellType.Agility or SpellType.Cunning or SpellType.Cure or
+        SpellType.Protection or SpellType.Strength or SpellType.Bless or
+        SpellType.ArchCure or SpellType.ArchProtection or SpellType.GreaterHeal or
+        SpellType.Incognito or SpellType.MagicReflect or SpellType.Invisibility or
+        SpellType.HorrificBeast or SpellType.LichForm or SpellType.VampiricEmbrace or
+        SpellType.WraithForm or SpellType.CloseWounds or SpellType.ConsecrateWeapon or
+        SpellType.DivineFury or SpellType.EnemyOfOne or SpellType.RemoveCurse or
+        SpellType.Confidence or SpellType.Evasion or SpellType.CounterAttack or
+        SpellType.ArcaneCircle or SpellType.GiftOfRenewal or SpellType.ImmolatingWeapon or
+        SpellType.Attunement or SpellType.ReaperForm or SpellType.EtherealVoyage or
+        SpellType.GiftOfLife or SpellType.ArcaneEmpowerment or SpellType.HealingStone or
+        SpellType.Enchant or SpellType.StoneForm or SpellType.SpellTrigger or
+        SpellType.CleansingWinds;
+
+    /// <summary>Resolve a safe recipient for a random/fallback spell. Runtime
+    /// spell flags are authoritative; the classic/newer beneficial list is the
+    /// fallback used by isolated tests or incomplete script packs.</summary>
+    private bool TryResolveNpcSpellTarget(
+        Character npc, Character enemy, SpellType spell, bool enemyReflects,
+        out Character castTarget)
+    {
+        castTarget = enemy;
+        SpellFlag? resolved = ResolveNpcSpellFlags?.Invoke(spell);
+        if (resolved is SpellFlag flags && flags != SpellFlag.None)
+        {
+            bool harmful = flags.HasFlag(SpellFlag.Harm) ||
+                           flags.HasFlag(SpellFlag.Damage) ||
+                           flags.HasFlag(SpellFlag.Curse) ||
+                           flags.HasFlag(SpellFlag.Field);
+            if (harmful)
+                return !enemyReflects;
+
+            bool beneficial = flags.HasFlag(SpellFlag.Good) ||
+                              flags.HasFlag(SpellFlag.Bless) ||
+                              flags.HasFlag(SpellFlag.Heal);
+            if (beneficial)
+            {
+                if (flags.HasFlag(SpellFlag.TargDead) || flags.HasFlag(SpellFlag.TargNoSelf))
+                    return false;
+                castTarget = npc;
+                return true;
+            }
+
+            if (flags.HasFlag(SpellFlag.Summon))
+            {
+                castTarget = npc;
+                return true;
+            }
+            return false;
+        }
+
+        if (spell == SpellType.Resurrection)
+            return false;
+        if (IsKnownBeneficialSpell(spell))
+        {
+            castTarget = npc;
+            return true;
+        }
+        return !enemyReflects || spell is not (
+            SpellType.Lightning or SpellType.EnergyBolt or SpellType.Explosion or
+            SpellType.Flamestrike or SpellType.MagicArrow or SpellType.Fireball or
+            SpellType.Harm or SpellType.MeteorSwarm or SpellType.ChainLightning or
+            SpellType.Curse or SpellType.Weaken);
     }
 
     /// <summary>
@@ -170,6 +265,8 @@ public sealed partial class NpcAI
     {
         var spells = npc.NpcSpells;
         bool targetReflects = target.IsStatFlag(StatFlag.Reflection);
+        if (spells.Count == 0)
+            return (SpellType.None, target);
 
         // 1. Self-cure if poisoned (50% chance — don't loop on cure forever)
         if (npc.IsPoisoned && _rand.Next(2) == 0)
@@ -229,8 +326,8 @@ public sealed partial class NpcAI
         int nearbyEnemies = 0;
         foreach (var ch in _world.GetCharsInRange(target.Position, 3))
         {
-            if (ch == npc || ch.IsDead) continue;
-            if (ch.IsPlayer || (ch.NpcBrain != npc.NpcBrain && ch.BodyId != npc.BodyId))
+            if (ch == npc || ch.IsDead || !IsAttackable(ch)) continue;
+            if (GetHostilityLevel(npc, ch) > 0)
                 nearbyEnemies++;
         }
         if (nearbyEnemies >= 3)
@@ -283,9 +380,9 @@ public sealed partial class NpcAI
             if (spells.Contains(SpellType.MagicArrow)) return (SpellType.MagicArrow, target);
         }
 
-        // 8. Curse/Weaken debuffs (safe against reflect)
-        if (spells.Contains(SpellType.Curse) && _rand.Next(4) == 0) return (SpellType.Curse, target);
-        if (spells.Contains(SpellType.Weaken) && _rand.Next(4) == 0) return (SpellType.Weaken, target);
+        // 8. Curse/Weaken debuffs are harmful and must honor reflection too.
+        if (!targetReflects && spells.Contains(SpellType.Curse) && _rand.Next(4) == 0) return (SpellType.Curse, target);
+        if (!targetReflects && spells.Contains(SpellType.Weaken) && _rand.Next(4) == 0) return (SpellType.Weaken, target);
 
         // 9. Fallback: random non-reflected spell (skip heals/cures on enemies)
         int startIdx = _rand.Next(spells.Count);
@@ -293,14 +390,8 @@ public sealed partial class NpcAI
         {
             var spell = spells[(startIdx + i) % spells.Count];
             if (spell == SpellType.None) continue;
-            if (spell is SpellType.Heal or SpellType.GreaterHeal or SpellType.Cure or SpellType.ArchCure)
-                continue;
-            if (targetReflects && spell is SpellType.Lightning or SpellType.EnergyBolt
-                or SpellType.Explosion or SpellType.Flamestrike or SpellType.MagicArrow
-                or SpellType.Fireball or SpellType.Harm or SpellType.MeteorSwarm
-                or SpellType.ChainLightning)
-                continue;
-            return (spell, target);
+            if (TryResolveNpcSpellTarget(npc, target, spell, targetReflects, out Character castTarget))
+                return (spell, castTarget);
         }
 
         return (SpellType.None, target);
@@ -422,7 +513,7 @@ public sealed partial class NpcAI
     /// Returns None when no combo applies.</summary>
     private SpellType NextComboSpell(Character npc, Character target, bool targetReflects)
     {
-        if (targetReflects) { npc.RemoveTag("COMBO_STEP"); return SpellType.None; }
+        if (targetReflects) { ResetNpcCombo(npc); return SpellType.None; }
         var spells = npc.NpcSpells;
 
         int step = 0;
@@ -432,7 +523,7 @@ public sealed partial class NpcAI
         if (step > 0 && npc.TryGetTag("COMBO_TARGET", out string? ct) &&
             (!uint.TryParse(ct, out uint ctUid) || ctUid != target.Uid.Value))
         {
-            npc.RemoveTag("COMBO_STEP");
+            ResetNpcCombo(npc);
             step = 0;
         }
 
@@ -452,7 +543,11 @@ public sealed partial class NpcAI
                 step = 3;
             }
             if (step <= 3 && !target.IsPoisoned && spells.Contains(SpellType.Poison))
+            {
+                npc.RemoveTag("COMBO_TARGET");
                 return SpellType.Poison; // final hit, combo ends
+            }
+            npc.RemoveTag("COMBO_TARGET");
             return SpellType.None;
         }
 
@@ -532,7 +627,8 @@ public sealed partial class NpcAI
             item.Name = "web";
             item.DecayTime = now + 20_000;
         }
-        _world.PlaceItem(item, npc.Position);
+        if (!_world.PlaceItem(item, npc.Position))
+            _world.RemoveItem(item);
     }
 
     /// <summary>Parse a tile id written as hex (0x10D5) or decimal.</summary>
@@ -591,9 +687,17 @@ public sealed partial class NpcAI
     /// between locks instead of looping on Paralyze.</summary>
     private const int ParalyzeRecastCooldownMs = 12000;
 
-    /// <summary>Callback: NPC casts a spell. Parameters: caster, target, spell.
-    /// Program.cs handles SpellEngine.CastStart + broadcast.</summary>
+    /// <summary>Observer/test fallback for an accepted NPC cast. Production
+    /// uses OnNpcTryStartSpellCast so SpellEngine can report rejection.</summary>
     public Action<Character, Character, SpellType>? OnNpcCastSpell { get; set; }
+
+    /// <summary>Start an NPC spell and report whether SpellEngine accepted it.
+    /// The bool prevents rejected casts from spending wand charges or advancing
+    /// combat state. OnNpcCastSpell remains as the observer/test fallback.</summary>
+    public Func<Character, Character, SpellType, bool>? OnNpcTryStartSpellCast { get; set; }
+
+    /// <summary>Resolve loaded spell flags for safe fallback targeting.</summary>
+    public Func<SpellType, SpellFlag?>? ResolveNpcSpellFlags { get; set; }
 
     /// <summary>Advance an NPC's in-progress spell cast timer. Returns true while still casting.</summary>
     public Func<Character, bool>? OnNpcTickSpellCast { get; set; }

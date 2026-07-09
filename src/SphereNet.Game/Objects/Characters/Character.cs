@@ -348,7 +348,8 @@ public partial class Character : ObjBase
     }
 
     // NPC state
-    private short _homeDist = 10;
+    public const short UnlimitedHomeDistance = short.MaxValue;
+    private short _homeDist = UnlimitedHomeDistance;
     private Point3D _home;
     private short _actPri;
     private ushort _speechColor = 0x0035;

@@ -22,6 +22,11 @@ public sealed partial class NpcAI
 
     private readonly Dictionary<uint, long> _pathTime = [];
 
+    // Destination associated with the cached path/backoff. A path toward an
+    // old combat target must never be reused after the target changes or moves
+    // materially.
+    private readonly Dictionary<uint, Point3D> _pathGoal = [];
+
     private const long PathCacheMaxAge = 10_000;
 
     // Earliest time A* may be recomputed for this NPC. Survives path-cache
@@ -71,6 +76,7 @@ public sealed partial class NpcAI
                 _pathCache.Remove(uid);
                 _pathIndex.Remove(uid);
                 _pathTime.Remove(uid);
+                _pathGoal.Remove(uid);
                 _losFailCounts.Remove(uid);
                 _nextPathfindMs.Remove(uid);
                 _lastAttackNotify.Remove(uid);
@@ -91,7 +97,10 @@ public sealed partial class NpcAI
             }
             if (stalePf != null)
                 foreach (var uid in stalePf)
+                {
                     _nextPathfindMs.Remove(uid);
+                    _pathGoal.Remove(uid);
+                }
         }
 
         // LOS-fail counters can accumulate for NPCs that never built a path
@@ -165,7 +174,11 @@ public sealed partial class NpcAI
             if ((item.Attributes & (ObjAttributes.Move_Never | ObjAttributes.LockedDown |
                 ObjAttributes.Secure | ObjAttributes.Static)) != 0) continue;
 
-            item.Position = npc.Position;
+            // PlaceItem updates sector membership. Assigning Position directly
+            // leaves the item in its old sector when this crosses a boundary,
+            // corrupting range queries and walkability checks.
+            if (!_world.PlaceItem(item, npc.Position))
+                continue;
             OnNpcMovedItem?.Invoke(npc, item);
             return true;
         }
@@ -276,7 +289,21 @@ public sealed partial class NpcAI
             return;
         var newPos = new Point3D(nx, ny, nz, npc.MapIndex);
         if (!CanNpcMoveTo(npc, newPos))
-            return;
+        {
+            if (OnNpcOpenDoor != null && _rand.Next(2) == 0)
+            {
+                var door = FindClosedDoorAt(newPos);
+                if (door != null)
+                    OnNpcOpenDoor(npc, door);
+            }
+            if (!CanNpcMoveTo(npc, newPos))
+                TryClearObstacle(npc, newPos);
+            if (!CanNpcMoveTo(npc, newPos))
+            {
+                TrySideStep(npc, wanderDir);
+                return;
+            }
+        }
 
         // Face the step direction so the 0x77 move matches the tile delta and the
         // client walk-animates instead of snapping the NPC.
@@ -322,9 +349,17 @@ public sealed partial class NpcAI
 
         // Chebyshev like Source-X GetDist — the old Manhattan sum over-counted
         // diagonals, halving the effective HOMEDIST leash on the diagonal.
-        int curDist = npc.Position.GetDistanceTo(home);
+        int curDist = npc.MapIndex == home.Map
+            ? npc.Position.GetDistanceTo(home)
+            : int.MaxValue;
         if (curDist > homeDist)
         {
+            if (npc.MapIndex != home.Map)
+            {
+                if (Character.OnNpcLostTeleport?.Invoke(npc) != true)
+                    _world.MoveCharacter(npc, home);
+                return;
+            }
             MoveToward(npc, home);
             return;
         }
@@ -340,7 +375,7 @@ public sealed partial class NpcAI
         wanderDist = npc.HomeDist > 0 ? npc.HomeDist : short.MaxValue;
         if (npc.Home.X != 0 || npc.Home.Y != 0)
         {
-            home = new Point3D(npc.Home.X, npc.Home.Y, npc.Home.Z, npc.MapIndex);
+            home = npc.Home;
             return true;
         }
 
@@ -348,11 +383,17 @@ public sealed partial class NpcAI
             short.TryParse(hx, out short homeX) && short.TryParse(hy, out short homeY))
         {
             sbyte homeZ = npc.Z;
-            if (npc.TryGetTag("HOME_Z", out string? hz))
-                sbyte.TryParse(hz, out homeZ);
-            home = new Point3D(homeX, homeY, homeZ, npc.MapIndex);
-            if (npc.TryGetTag("HOME_DIST", out string? hdStr) && int.TryParse(hdStr, out int hd))
-                wanderDist = hd;
+            if (npc.TryGetTag("HOME_Z", out string? hz) &&
+                sbyte.TryParse(hz, out sbyte parsedZ))
+                homeZ = parsedZ;
+            byte homeMap = npc.MapIndex;
+            if (npc.TryGetTag("HOME_MAP", out string? hm) &&
+                byte.TryParse(hm, out byte parsedMap))
+                homeMap = parsedMap;
+            home = new Point3D(homeX, homeY, homeZ, homeMap);
+            if (npc.TryGetTag("HOME_DIST", out string? hdStr) &&
+                int.TryParse(hdStr, out int hd) && hd > 0)
+                wanderDist = Math.Clamp(hd, 1, short.MaxValue);
             return true;
         }
 
@@ -362,6 +403,9 @@ public sealed partial class NpcAI
 
     private void MoveToward(Character npc, Point3D target, bool run = false)
     {
+        if (target.Map != npc.MapIndex || (target.X == npc.X && target.Y == npc.Y))
+            return;
+
         var dir = npc.Position.GetDirectionTo(target);
         GetDirectionDelta(dir, out short dx, out short dy);
         if (run)
@@ -387,6 +431,9 @@ public sealed partial class NpcAI
                 directBlocked = !CanNpcMoveTo(npc, directPos);
         }
 
+        if (directBlocked && TryClearObstacle(npc, directPos))
+            directBlocked = !CanNpcMoveTo(npc, directPos);
+
         if (!directBlocked)
         {
             npc.Direction = dir;
@@ -394,6 +441,8 @@ public sealed partial class NpcAI
             _pathCache.Remove(npc.Uid.Value);
             _pathIndex.Remove(npc.Uid.Value);
             _pathTime.Remove(npc.Uid.Value);
+            _pathGoal.Remove(npc.Uid.Value);
+            _nextPathfindMs.Remove(npc.Uid.Value);
             return;
         }
 
@@ -428,6 +477,15 @@ public sealed partial class NpcAI
 
         // Direct path blocked — use A* pathfinding
         uint uid = npc.Uid.Value;
+        if (_pathGoal.TryGetValue(uid, out Point3D oldGoal) &&
+            (oldGoal.Map != target.Map || oldGoal.GetDistanceTo(target) > 2))
+        {
+            _pathCache.Remove(uid);
+            _pathIndex.Remove(uid);
+            _pathTime.Remove(uid);
+            _pathGoal.Remove(uid);
+            _nextPathfindMs.Remove(uid);
+        }
         if (!npcFlags.HasFlag(NpcAIFlags.PersistentPath))
         {
             _pathCache.Remove(uid);
@@ -455,6 +513,7 @@ public sealed partial class NpcAI
             if (path == null || path.Count == 0)
             {
                 _nextPathfindMs[uid] = nowMs + PathFailBackoffMs;
+                _pathGoal[uid] = target;
                 npc.Direction = dir;
                 return;
             }
@@ -462,6 +521,7 @@ public sealed partial class NpcAI
             _pathCache[uid] = path;
             _pathIndex[uid] = 0;
             _pathTime[uid] = Environment.TickCount64;
+            _pathGoal[uid] = target;
         }
 
         int idx = _pathIndex.GetValueOrDefault(uid, 0);

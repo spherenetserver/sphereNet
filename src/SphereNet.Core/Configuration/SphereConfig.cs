@@ -496,7 +496,8 @@ public sealed class SphereConfig
         MonsterFight = ini.GetBool(section, "MonsterFight", MonsterFight);
         MonsterFear = ini.GetBool(section, "MonsterFear", MonsterFear);
         AdvancedLos = ini.GetInt(section, "AdvancedLos", AdvancedLos);
-        NpcAi = ini.GetInt(section, "NpcAi", ini.GetInt(section, "NPCAI", NpcAi));
+        NpcAi = GetIntOrHex(ini, section, "NpcAi",
+            GetIntOrHex(ini, section, "NPCAI", NpcAi));
         NpcHealThreshold = ini.GetInt(section, "NpcHealThreshold", ini.GetInt(section, "NPCHealthreshold", NpcHealThreshold));
         NpcWanderLookAroundChance = ini.GetInt(section, "NpcWanderLookAroundChance",
             ini.GetInt(section, "NPCWanderLookAroundChance", NpcWanderLookAroundChance));
@@ -672,11 +673,11 @@ public sealed class SphereConfig
             return defaultValue;
 
         raw = raw.Trim();
-        if (int.TryParse(raw, out int decimalValue))
-            return decimalValue;
-
         if (raw.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             raw = raw[2..];
+        else if (!(raw.Length > 1 && raw[0] == '0') &&
+                 int.TryParse(raw, out int decimalValue))
+            return decimalValue;
 
         return int.TryParse(raw, System.Globalization.NumberStyles.HexNumber,
             System.Globalization.CultureInfo.InvariantCulture, out int hexValue)

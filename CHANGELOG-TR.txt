@@ -3,6 +3,44 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-10] - NpcAI derin kod denetimi: hedefleme, dovus, hareket ve roller
+----------------------------------------
+
+DUZELTILDI - Algilama ve hedef secimi:
+  - VISUALRANGE artik gercek NPC gorus menzilidir; kalabalikta ilk 40 nesneye
+    bagli hedef acligi ve en guclu uc hedef duvar arkasindayken gorunur dusmani
+    kacirma giderildi.
+  - Source-X ally-family tablosu modern human/elf/gargoyle ve yaratik body
+    aileleriyle tamamlandi. NPCAI/OVERRIDE.NPCAI ile hedef UID tag'leri Sphere
+    bicimindeki leading-zero hex degerleri kabul ediyor.
+
+DUZELTILDI - Dovus ve buyu durum makineleri:
+  - Bekleyen swing hit fazi bitmeden NPC ikinci bir hareket, buyu, nefes veya
+    firlatma aksiyonu yapmiyor; non-instant guard ve flee cast akislari da ayni
+    tek-aksiyon kuralini kullaniyor.
+  - Bow/xbow/custom AMMOTYPE dogru muhimmati tuketiyor ve ArrowHandled
+    sozlesmesini koruyor. Reactive armor olum kredisi savunana yaziliyor;
+    ters/bozuk THROWDAM ve THROWRANGE tick'i dusurmuyor.
+  - SpellEngine tarafindan reddedilen cast artik basarili sayilmiyor, wand
+    sarji/kombo ilerlemiyor. Fallback buyuler spell flag'lerine gore dostu,
+    dusmani veya caster'i hedefliyor ve reflection'i dikkate aliyor.
+
+DUZELTILDI - Hareket, ev alani ve NPC rolleri:
+  - Path cache hedef konumuna baglandi; hedef/facet degisince eski rota ve
+    backoff temizleniyor. Cross-map sahte yuruyus/pet isinlanmasi, HOME map
+    kaybi, sektor sinirinda tasinan engel indeksi ve wander engel davranisi
+    duzeltildi. HOMEDIST varsayilani Source-X gibi sinirsiz ve kalici.
+  - Pet attack/guard sahip-dost kontrolleri; guard/healer/animal LOS;
+    vendor restock tasmasi; food item unlink; tekrar eden suc ihbari ve
+    humanoid iki-elli silah/isik kullanimi duzeltildi.
+  - Path/LOS/notify runtime cache temizligi tek cekirdekli tick'e de eklendi.
+
+DOGRULANDI - NpcAI testleri 105/105; tum cozum Debug ve Release 1243/1243,
+  sifir uyari/hata. Yeni regresyonlar hedef acligi, swing atomikligi, muhimmat,
+  cast reddi, path hedefi, cross-map davranis, ally gruplari ve rol akislari.
+
+================================================================================
+
 [2026-07-10] - Altyapi sertlestirme: IPC, panel yasam dongusu, yollar ve CI
 ----------------------------------------
 

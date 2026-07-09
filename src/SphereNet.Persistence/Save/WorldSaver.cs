@@ -706,7 +706,8 @@ public sealed class WorldSaver
         if (ch.Deaths != 0) w.WriteProperty("DEATHS", ch.Deaths.ToString());
         if (ch.Home.X != 0 || ch.Home.Y != 0)
             w.WriteProperty("HOME", $"{ch.Home.X},{ch.Home.Y},{ch.Home.Z},{ch.Home.Map}");
-        if (ch.HomeDist != 10) w.WriteProperty("HOMEDIST", ch.HomeDist.ToString());
+        if (ch.HomeDist != Character.UnlimitedHomeDistance)
+            w.WriteProperty("HOMEDIST", ch.HomeDist.ToString());
         if (ch.ActPri != 0) w.WriteProperty("ACTPRI", ch.ActPri.ToString());
         if (ch.Action != 0) w.WriteProperty("ACTION", ((int)ch.Action).ToString());
         if (ch.Act.IsValid) w.WriteProperty("ACT", $"0{ch.Act.Value:X8}");

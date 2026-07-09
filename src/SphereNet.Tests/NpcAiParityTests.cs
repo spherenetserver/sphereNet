@@ -93,6 +93,22 @@ public class NpcAiParityTests
     }
 
     [Fact]
+    public void Config_NpcAi_AcceptsSphereStyleLeadingZeroHex()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_npcai_hex_{Guid.NewGuid():N}.ini");
+        File.WriteAllText(tmp, "[SPHERE]\nNPCAI=0c41\n");
+        try
+        {
+            var parser = new IniParser();
+            parser.Load(tmp);
+            var config = new SphereConfig();
+            config.LoadFromIni(parser);
+            Assert.Equal(0x0C41, config.NpcAi);
+        }
+        finally { File.Delete(tmp); }
+    }
+
+    [Fact]
     public void GetNpcFlags_GlobalDefaultFromConfig()
     {
         var world = CreateWorld();
@@ -110,6 +126,7 @@ public class NpcAiParityTests
 
     [Theory]
     [InlineData("0x0100", true)]   // hex → NPC_AI_LOOTING only
+    [InlineData("0100", true)]     // Sphere-style leading-zero hex
     [InlineData("256", true)]      // decimal 0x100
     public void GetNpcFlags_OverrideNpcAiTag_Wins(string tagValue, bool expectLootingOnly)
     {

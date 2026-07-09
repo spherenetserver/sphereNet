@@ -123,12 +123,14 @@ public sealed partial class NpcAI
     private bool TryLoot(Character npc)
     {
         if (npc.Backpack == null) return false;
+        if (npc.Backpack.Contents.Count >= Item.MaxContainerItems) return false;
 
         Item? corpse = null;
         int best = int.MaxValue;
         foreach (var it in _world.GetItemsInRange(npc.Position, 4))
         {
             if (it.IsDeleted || it.ItemType != ItemType.Corpse || it.Contents.Count == 0) continue;
+            if (!_world.CanSeeLOS(npc.Position, it.Position)) continue;
             int d = npc.Position.GetDistanceTo(it.Position);
             if (d < best) { best = d; corpse = it; }
         }
@@ -186,6 +188,7 @@ public sealed partial class NpcAI
         foreach (var ch in _world.GetCharsInRange(npc.Position, sightRange))
         {
             if (ch == npc || !IsAttackable(ch)) continue;
+            if (!_world.CanSeeLOS(npc.Position, ch.Position)) continue;
             int dist = npc.Position.GetDistanceTo(ch.Position);
             if (dist < nearestDist)
             {
@@ -234,6 +237,23 @@ public sealed partial class NpcAI
     /// </summary>
     private void ActFight(Character npc, Character target, int motivation)
     {
+        if (npc.MapIndex != target.MapIndex)
+        {
+            npc.FightTarget = Serial.Invalid;
+            return;
+        }
+
+        // A committed swing is the NPC's action until its hit phase resolves.
+        // Otherwise a winding-up NPC can cast, breathe, throw, move or
+        // sidestep before the pending hit lands.
+        if (npc.HasPendingHit)
+        {
+            long pendingNow = Environment.TickCount64;
+            if (pendingNow >= npc.SwingHitTime)
+                ResolveNpcHit(npc, pendingNow);
+            return;
+        }
+
         // Source-X NPC_Act_Fight fSkipHardcoded: a script can keep the engine's
         // flee/magery/melee but bypass the hardcoded breath/throw specials by
         // setting LOCAL.SKIPHARDCODED=1 in @NPCActFight (distinct from RETURN 1,
@@ -250,8 +270,8 @@ public sealed partial class NpcAI
             // this action to the script without the engine's default combat.
             if (decision.ForcedSpell != SpellType.None)
             {
-                CastViaTrigger(npc, target, decision.ForcedSpell);
-                return;
+                if (CastViaTrigger(npc, target, decision.ForcedSpell))
+                    return;
             }
             if (decision.ForcedSkill != SkillType.None)
                 return;
@@ -283,7 +303,9 @@ public sealed partial class NpcAI
         if (!npc.IsStatFlag(StatFlag.Pet) && !npc.NpcMaster.IsValid &&
             TryResolveHome(npc, out Point3D leashHome, out int leashWander))
         {
-            int homeDist = npc.Position.GetDistanceTo(leashHome);
+            int homeDist = npc.MapIndex == leashHome.Map
+                ? npc.Position.GetDistanceTo(leashHome)
+                : int.MaxValue;
             int leash = Math.Max(leashWander * 2, 18);
             if (homeDist > leash)
             {
@@ -412,17 +434,26 @@ public sealed partial class NpcAI
             {
                 var parts = trStr.Split(',', 2, StringSplitOptions.TrimEntries);
                 if (parts.Length == 2 && int.TryParse(parts[0], out int mn) && int.TryParse(parts[1], out int mx))
-                { throwMin = mn; throwMax = mx; }
+                {
+                    throwMin = Math.Max(0, Math.Min(mn, mx));
+                    throwMax = Math.Max(throwMin, Math.Max(mn, mx));
+                }
                 else if (int.TryParse(parts[0], out int single))
-                    throwMax = single;
+                    throwMax = Math.Max(throwMin, single);
             }
             if (npc.TryGetTag("THROWDAM", out string? tdStr) && !string.IsNullOrWhiteSpace(tdStr))
             {
                 var parts = tdStr.Split(',', 2, StringSplitOptions.TrimEntries);
                 if (parts.Length == 2 && int.TryParse(parts[0], out int lo) && int.TryParse(parts[1], out int hi))
-                    throwDmg = lo + _rand.Next(hi - lo + 1);
+                {
+                    int minDamage = Math.Max(0, Math.Min(lo, hi));
+                    int maxDamage = Math.Max(minDamage, Math.Max(lo, hi));
+                    throwDmg = minDamage == maxDamage
+                        ? minDamage
+                        : (int)_rand.NextInt64(minDamage, (long)maxDamage + 1);
+                }
                 else if (int.TryParse(parts[0], out int flat))
-                    throwDmg = flat;
+                    throwDmg = Math.Max(0, flat);
             }
             if (dist >= throwMin && dist <= throwMax)
             {
@@ -439,13 +470,6 @@ public sealed partial class NpcAI
         // Melee / ranged
         var weapon = npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
         var range = GetFightRange(npc, weapon);
-
-        // Two-phase swing: land a started swing's hit once its windup elapses,
-        // regardless of current range (so a moved-away NPC still resolves it).
-        // Atomic swings carry no pending hit, so this is a no-op by default.
-        long nowTick = Environment.TickCount64;
-        if (npc.HasPendingHit && nowTick >= npc.SwingHitTime)
-            ResolveNpcHit(npc, nowTick);
 
         // Ranged kiting (Source-X NPC_FightArchery): when the target has closed
         // inside the weapon's minimum range a ranged attacker cannot fire, so
@@ -609,8 +633,8 @@ public sealed partial class NpcAI
             && _world.CanSeeLOS(npc.Position, target.Position))
         {
             var (spell, castTarget) = ChooseBestSpell(npc, target, dist);
-            if (spell != SpellType.None)
-                CastViaTrigger(npc, castTarget, spell);
+            if (spell != SpellType.None && CastViaTrigger(npc, castTarget, spell))
+                return;
         }
 
         // Self-heal while fleeing (every 4th step)
@@ -618,9 +642,15 @@ public sealed partial class NpcAI
             && npc.FleeStepsCurrent % 4 == 0)
         {
             if (npc.NpcSpells.Contains(SpellType.GreaterHeal))
-                CastViaTrigger(npc, npc, SpellType.GreaterHeal);
+            {
+                if (CastViaTrigger(npc, npc, SpellType.GreaterHeal))
+                    return;
+            }
             else if (npc.NpcSpells.Contains(SpellType.Heal))
-                CastViaTrigger(npc, npc, SpellType.Heal);
+            {
+                if (CastViaTrigger(npc, npc, SpellType.Heal))
+                    return;
+            }
         }
 
         // Scout retreat: a creature that can hide vanishes mid-flee once it has
@@ -641,23 +671,33 @@ public sealed partial class NpcAI
 
     /// <summary>Honor a forced combat target: bard Provocation (PROVOKED_TARGET)
     /// or a scripted ConstantFocus (CONSTANT_FOCUS). Returns true if engaged.</summary>
+    private static bool TryReadUidTag(Character npc, string name, out uint uid)
+    {
+        uid = 0;
+        if (!npc.TryGetTag(name, out string? raw) || string.IsNullOrWhiteSpace(raw))
+            return false;
+        uid = SphereNet.Game.Objects.ObjBase.ParseHexOrDecUInt(raw);
+        return uid != 0;
+    }
+
     private bool TryForcedTarget(Character npc)
     {
         Serial uid = Serial.Invalid;
         bool isProvoke = false;
-        if (npc.TryGetTag("PROVOKED_TARGET", out string? pt) && uint.TryParse(pt, out uint pu))
+        if (TryReadUidTag(npc, "PROVOKED_TARGET", out uint pu))
         {
             uid = new Serial(pu);
             isProvoke = true;
         }
-        else if (npc.TryGetTag("CONSTANT_FOCUS", out string? cf) && uint.TryParse(cf, out uint cu))
+        else if (TryReadUidTag(npc, "CONSTANT_FOCUS", out uint cu))
         {
             uid = new Serial(cu);
         }
         if (!uid.IsValid) return false;
 
         var t = _world.FindChar(uid);
-        if (t == null || t.IsDead || t.IsDeleted || t == npc || !IsAttackable(t))
+        if (t == null || t.IsDead || t.IsDeleted || t == npc ||
+            t.MapIndex != npc.MapIndex || !IsAttackable(t))
         {
             if (isProvoke) npc.RemoveTag("PROVOKED_TARGET"); // expired/dead provoke clears
             return false;
@@ -877,6 +917,34 @@ public sealed partial class NpcAI
     /// reach/LoS per the combat flags (STAYINRANGE -> miss, SWING_NORANGE -> wait),
     /// fires @HitCheck, runs ResolveAttack and the NPC hit feedback. Called inline
     /// for an atomic swing, or from the NPC tick once the windup elapses.</summary>
+    private static Item? FindNpcAmmo(Character npc, Item weapon)
+    {
+        var pack = npc.Backpack;
+        if (pack == null) return null;
+
+        var spec = CombatHelper.ResolveAmmoSpec(
+            DefinitionLoader.GetItemDef(weapon.BaseId),
+            weapon.ItemType,
+            Item.ResolveDefName);
+        foreach (var item in pack.Contents)
+        {
+            bool matches = spec.BaseId != 0
+                ? item.BaseId == spec.BaseId
+                : item.ItemType == spec.FallbackType;
+            if (!item.IsDeleted && matches && item.Amount > 0)
+                return item;
+        }
+        return null;
+    }
+
+    private void ConsumeNpcAmmo(Item ammo)
+    {
+        if (ammo.Amount <= 1)
+            _world.RemoveItem(ammo);
+        else
+            ammo.Amount--;
+    }
+
     private void ResolveNpcHit(Character npc, long now)
     {
         if (!npc.HasPendingHit) return;
@@ -901,32 +969,32 @@ public sealed partial class NpcAI
         npc.ClearPendingHit();
         if (target == null) return;
 
+        Item? ammoStack = weapon != null && CombatHelper.IsRangedWeapon(weapon)
+            ? FindNpcAmmo(npc, weapon)
+            : null;
+
         // @HitCheck (parity with the player path): a script can force a miss
         // before damage resolves. -1 routes the miss feedback (@HitMiss + whoosh).
         if (OnNpcHitCheck != null && OnNpcHitCheck(npc, target, weapon))
         {
+            if (ammoStack != null)
+                ConsumeNpcAmmo(ammoStack);
             OnNpcAttack?.Invoke(npc, target, -1);
             return;
         }
 
         short hpBefore = npc.Hits;
-        int damage = CombatEngine.ResolveAttack(npc, target, weapon, CombatHelper.ActiveCombatFlags);
+        int damage = CombatEngine.ResolveAttack(
+            npc, target, weapon, CombatHelper.ActiveCombatFlags,
+            -1, -1, ammoStack?.Uid.Value ?? 0, out bool ammoHandled);
         OnNpcAttack?.Invoke(npc, target, damage);
 
-        // Source-X: NPC archers spend ammo too. Lenient — an NPC with no ammo
-        // in its pack keeps swinging (legacy loot templates rarely stock
-        // arrows), but a stocked pack depletes shot by shot.
-        if (weapon != null && CombatHelper.IsRangedWeapon(weapon) && npc.Backpack != null)
-        {
-            foreach (var it in npc.Backpack.Contents)
-            {
-                if (it.ItemType is not (ItemType.WeaponArrow or ItemType.WeaponBolt) || it.Amount == 0)
-                    continue;
-                if (it.Amount <= 1) it.RemoveFromWorld();
-                else it.Amount -= 1;
-                break;
-            }
-        }
+        // NPCs remain lenient when templates omit ammo, but a stocked archer
+        // consumes the weapon's actual AMMOTYPE (arrow vs bolt/custom). The
+        // full combat overload also exposes LOCAL.Arrow and honors a script's
+        // LOCAL.ArrowHandled takeover.
+        if (ammoStack != null && !ammoHandled)
+            ConsumeNpcAmmo(ammoStack);
 
         if (damage > 0)
         {
@@ -961,7 +1029,7 @@ public sealed partial class NpcAI
         if (npc.Hits < hpBefore && npc.Hits <= 0 && !npc.IsDead)
         {
             EmitSound(npc, CreatureSoundType.Die);
-            OnNpcKill?.Invoke(npc, npc);
+            OnNpcKill?.Invoke(target, npc);
         }
     }
 

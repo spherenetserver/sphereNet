@@ -187,6 +187,9 @@ public class NpcAiWaveN1Tests
         townsman.NextNpcActionTime = 0;
         ai.OnTickAction(townsman);
         Assert.Equal(torch, townsman.GetEquippedItem(Layer.TwoHanded));
+        Assert.Equal(ItemType.LightLit, torch.ItemType);
+        Assert.True(torch.TryGetTag("LIGHT_CHARGES", out string? charges));
+        Assert.Equal("19", charges);
 
         // Day: it goes back into the pack.
         ai.GetLightLevel = _ => 5;
@@ -194,6 +197,39 @@ public class NpcAiWaveN1Tests
         ai.OnTickAction(townsman);
         Assert.Null(townsman.GetEquippedItem(Layer.TwoHanded));
         Assert.Contains(torch, pack.Contents);
+    }
+
+    [Fact]
+    public void ExtraFlag_TwoHandedBow_DoesNotEquipShieldAlongsideIt()
+    {
+        LoadN1Defs();
+        var world = CreateWorld();
+        var ai = new NpcAI(world, new SphereConfig());
+        ai.Flags |= NpcAIFlags.Extra;
+
+        var archer = world.CreateCharacter();
+        archer.NpcBrain = NpcBrainType.Human;
+        archer.CharDefIndex = 0x0BBA;
+        archer.Hits = archer.MaxHits = 100;
+        archer.SetStatFlag(StatFlag.War);
+        world.PlaceCharacter(archer, new Point3D(100, 100, 0, 0));
+
+        var pack = world.CreateItem();
+        pack.ItemType = ItemType.Container;
+        archer.Equip(pack, Layer.Pack);
+        var bow = world.CreateItem();
+        bow.ItemType = ItemType.WeaponBow;
+        pack.AddItem(bow);
+        var shield = world.CreateItem();
+        shield.ItemType = ItemType.Shield;
+        pack.AddItem(shield);
+
+        archer.NextNpcActionTime = 0;
+        ai.OnTickAction(archer);
+
+        Assert.Null(archer.GetEquippedItem(Layer.OneHanded));
+        Assert.Equal(bow, archer.GetEquippedItem(Layer.TwoHanded));
+        Assert.Contains(shield, pack.Contents);
     }
 
     // ---- NPC_AI_MOVEOBSTACLES ----
@@ -208,13 +244,13 @@ public class NpcAiWaveN1Tests
         var porter = world.CreateCharacter();
         porter.CharDefIndex = 0x0BBA; // CAN includes usehands
         porter.Int = 300;             // always beats the Source-X rand(100) roll
-        world.PlaceCharacter(porter, new Point3D(100, 100, 0, 0));
+        world.PlaceCharacter(porter, new Point3D(63, 100, 0, 0));
 
         var crate = world.CreateItem();
         crate.BaseId = 0x0BAA;        // ITEMDEF CAN=0008 (blocking)
-        world.PlaceItem(crate, new Point3D(101, 100, 0, 0));
+        world.PlaceItem(crate, new Point3D(64, 100, 0, 0));
 
-        var blocked = new Point3D(101, 100, 0, 0);
+        var blocked = new Point3D(64, 100, 0, 0);
 
         // Without the flag nothing moves.
         ai.Flags &= ~NpcAIFlags.MoveObstacles;
@@ -225,6 +261,8 @@ public class NpcAiWaveN1Tests
         Assert.True(ai.TryClearObstacle(porter, blocked));
         Assert.Equal(porter.X, crate.X);
         Assert.Equal(porter.Y, crate.Y);
+        Assert.Contains(crate, world.GetItemsInRange(porter.Position, 0));
+        Assert.DoesNotContain(crate, world.GetItemsInRange(blocked, 0));
     }
 
     // ---- Wand gate + @NPCActCast ARGN2 ----

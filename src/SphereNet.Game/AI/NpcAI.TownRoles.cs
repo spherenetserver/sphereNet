@@ -28,7 +28,7 @@ public sealed partial class NpcAI
             if (npc.FightTarget.IsValid)
             {
                 var chased = _world.FindChar(npc.FightTarget);
-                if (chased != null && !chased.IsDead && !chased.IsDeleted)
+                if (chased != null && chased.MapIndex == npc.MapIndex && IsAttackable(chased))
                 {
                     GuardEngage(npc, chased);
                     return;
@@ -41,8 +41,8 @@ public sealed partial class NpcAI
             // (it used to wander the countryside forever here).
             if (npc.Home.X != 0 || npc.Home.Y != 0)
             {
-                var post = new Point3D(npc.Home.X, npc.Home.Y, npc.Home.Z, npc.MapIndex);
-                if (npc.Position.GetDistanceTo(post) > 1)
+                var post = npc.Home;
+                if (npc.MapIndex != post.Map || npc.Position.GetDistanceTo(post) > 1)
                 {
                     _world.MoveCharacter(npc, post);
                     OnNpcTeleport?.Invoke(npc);
@@ -57,7 +57,7 @@ public sealed partial class NpcAI
         if (npc.FightTarget.IsValid)
         {
             var assigned = _world.FindChar(npc.FightTarget);
-            if (assigned != null && !assigned.IsDead && !assigned.IsDeleted)
+            if (assigned != null && assigned.MapIndex == npc.MapIndex && IsAttackable(assigned))
             {
                 GuardEngage(npc, assigned);
                 return;
@@ -71,10 +71,11 @@ public sealed partial class NpcAI
         bool guardMurderers = _config.GuardsOnMurderers;
         foreach (var target in _world.GetCharsInRange(npc.Position, 12))
         {
-            if (target == npc || target.IsDead) continue;
+            if (target == npc || target.IsDead || !IsAttackable(target)) continue;
             bool isCriminal = target.IsStatFlag(StatFlag.Criminal) || target.IsCriminal;
             bool isMurderer = guardMurderers && target.IsMurderer;
-            if (isCriminal || isMurderer)
+            if ((isCriminal || isMurderer) &&
+                _world.CanSeeLOS(npc.Position, target.Position))
             {
                 npc.FightTarget = target.Uid;
                 GuardEngage(npc, target);
@@ -91,11 +92,16 @@ public sealed partial class NpcAI
     /// </summary>
     public void AlertGuardsInRange(Point3D center, Character hostile, int range = 14)
     {
+        if (hostile.IsDead || hostile.IsDeleted || hostile.MapIndex != center.Map ||
+            !IsAttackable(hostile))
+            return;
+
         foreach (var npc in _world.GetCharsInRange(center, range))
         {
             if (npc.IsPlayer || npc.IsDead || npc.IsDeleted) continue;
             if (npc.NpcBrain != NpcBrainType.Guard) continue;
             if (npc.FightTarget.IsValid) continue;
+            if (!_world.CanSeeLOS(npc.Position, hostile.Position)) continue;
 
             npc.FightTarget = hostile.Uid;
             npc.NextNpcActionTime = 0;
@@ -105,6 +111,14 @@ public sealed partial class NpcAI
 
     private void GuardEngage(Character guard, Character target)
     {
+        if (guard.HasPendingHit)
+        {
+            long now = Environment.TickCount64;
+            if (now >= guard.SwingHitTime)
+                ResolveNpcHit(guard, now);
+            return;
+        }
+
         // Source-X re-speaks per NEW target — the old boolean tag was cleared
         // only on the instakill branch, so a melee guard yelled exactly once
         // in its lifetime. Key the latch on the target's UID instead.
@@ -179,6 +193,7 @@ public sealed partial class NpcAI
         {
             if (ch == npc || !ch.IsDead || !ch.IsPlayer) continue;
             if (ch.IsCriminal || ch.IsMurderer) continue;
+            if (!_world.CanSeeLOS(npc.Position, ch.Position)) continue;
 
             if (!ch.IsInWarMode)
             {
@@ -234,12 +249,12 @@ public sealed partial class NpcAI
             long intervalMs = VendorRestockIntervalMs;
             if (vendorRegion != null && vendorRegion.TryGetTag("RESTOCKVENDORS", out string? rv) && rv != null &&
                 long.TryParse(rv, out long minutes) && minutes > 0)
-                intervalMs = minutes * 60_000;
+                intervalMs = Math.Clamp(minutes, 1, 365L * 24 * 60) * 60_000;
 
             long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             if (!noRestock &&
                 (!npc.TryGetTag("RESTOCK_TIME", out string? rtStr) || !long.TryParse(rtStr, out long lastRestock)
-                 || now - lastRestock >= intervalMs))
+                 || lastRestock <= now - intervalMs))
             {
                 OnVendorRestock?.Invoke(npc);
                 npc.SetTag("RESTOCK_TIME", now.ToString());
@@ -248,6 +263,13 @@ public sealed partial class NpcAI
 
         if (!TryResolveHome(npc, out Point3D home, out _))
             return;
+
+        if (npc.MapIndex != home.Map)
+        {
+            _world.MoveCharacter(npc, home);
+            OnNpcTeleport?.Invoke(npc);
+            return;
+        }
 
         int dist = npc.Position.GetDistanceTo(home);
         if (dist > 3)
@@ -271,8 +293,9 @@ public sealed partial class NpcAI
         int nearest = int.MaxValue;
         foreach (var ch in _world.GetCharsInRange(npc.Position, threatRange))
         {
-            if (ch == npc || ch.IsDead || ch.IsDeleted) continue;
+            if (ch == npc || ch.IsDead || ch.IsDeleted || !IsAttackable(ch)) continue;
             if (!ch.IsStatFlag(StatFlag.War) && ch.FightTarget != npc.Uid) continue;
+            if (!_world.CanSeeLOS(npc.Position, ch.Position)) continue;
             int d = npc.Position.GetDistanceTo(ch.Position);
             if (d < nearest) { nearest = d; threat = ch; }
         }
@@ -315,7 +338,7 @@ public sealed partial class NpcAI
                 if (it.ItemType is ItemType.Food or ItemType.Fruit or ItemType.Grain or ItemType.FoodRaw)
                 {
                     if (it.Amount > 1) it.Amount--;
-                    else { pack.RemoveItem(it); it.Delete(); }
+                    else _world.RemoveItem(it);
                     npc.NpcFood = (ushort)Math.Min(60, npc.NpcFood + 10);
                     EmitSound(npc, CreatureSoundType.Idle);
                     return true;
@@ -326,7 +349,9 @@ public sealed partial class NpcAI
         // Ground food: Source-X scans out to sight*(100-food)/100 tiles — a
         // starving creature roams the whole view, a peckish one only sniffs
         // nearby. Adjacent food is eaten on the spot; otherwise walk toward it.
-        int searchRange = Math.Clamp(14 * (100 - npc.NpcFood) / 100, 2, 14);
+        int sight = GetNpcSight(npc);
+        int searchRange = Math.Clamp(
+            sight * (100 - npc.NpcFood) / 100, 1, Math.Max(1, sight));
         Item? meal = null;
         int best = int.MaxValue;
         foreach (var it in _world.GetItemsInRange(npc.Position, searchRange))
@@ -334,6 +359,7 @@ public sealed partial class NpcAI
             if (it.IsDeleted || !it.IsOnGround) continue;
             if (it.ItemType is not (ItemType.Food or ItemType.Fruit or ItemType.Grain or ItemType.FoodRaw))
                 continue;
+            if (!_world.CanSeeLOS(npc.Position, it.Position)) continue;
             int d = npc.Position.GetDistanceTo(it.Position);
             if (d < best) { best = d; meal = it; }
         }
@@ -384,7 +410,7 @@ public sealed partial class NpcAI
         if (Character.OnNpcSeeNewPlayer == null || _rand.Next(4) != 0) return;
 
         long now = Environment.TickCount64;
-        foreach (var ch in _world.GetCharsInRange(npc.Position, 12))
+        foreach (var ch in _world.GetCharsInRange(npc.Position, GetNpcSight(npc)))
         {
             if (!ch.IsPlayer || ch.IsDead || ch.IsDeleted) continue;
             if (!_world.CanSeeLOS(npc.Position, ch.Position)) continue;
@@ -429,6 +455,7 @@ public sealed partial class NpcAI
             if (!ch.IsPlayer) continue;
             if (!ch.IsStatFlag(StatFlag.Criminal) && !ch.IsCriminal && !ch.IsMurderer) continue;
             if (!_world.CanSeeLOS(npc.Position, ch.Position)) continue;
+            if (npc.Memory_FindObjTypes(ch.Uid, MemoryType.SawCrime) != null) continue;
 
             OnNpcSay?.Invoke(npc, "Guards! A villain!");
             npc.Memory_AddObjTypes(ch.Uid, MemoryType.SawCrime);

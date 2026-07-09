@@ -155,8 +155,13 @@ public sealed partial class NpcAI
         {
             raw = raw.Trim();
             uint val;
-            bool ok = raw.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
-                ? uint.TryParse(raw.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out val)
+            bool hex = raw.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ||
+                       (raw.Length > 1 && raw[0] == '0');
+            ReadOnlySpan<char> digits = raw.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                ? raw.AsSpan(2)
+                : raw.AsSpan();
+            bool ok = hex
+                ? uint.TryParse(digits, System.Globalization.NumberStyles.HexNumber, null, out val)
                 : uint.TryParse(raw, out val);
             if (ok)
                 return (NpcAIFlags)val;
@@ -170,7 +175,7 @@ public sealed partial class NpcAI
     /// </summary>
     public void OnTickAction(Character npc)
     {
-        if (npc.IsPlayer || npc.IsDead || npc.IsStatFlag(StatFlag.Ridden)) return;
+        if (npc.IsPlayer || npc.IsDead || npc.IsDeleted || npc.IsStatFlag(StatFlag.Ridden)) return;
 
         long now = Environment.TickCount64;
 
@@ -248,6 +253,8 @@ public sealed partial class NpcAI
         if (npc.NpcMaster.IsValid)
         {
             ActPet(npc);
+            if (!npc.IsDead && !npc.IsDeleted && GetNpcFlags(npc).HasFlag(NpcAIFlags.Extra))
+                RunExtraAI(npc);
             return;
         }
 
@@ -309,10 +316,8 @@ public sealed partial class NpcAI
 
     /// <summary>Source-X NPC_ExtraAI (CCharNPCAct.cpp:2670) — the NPC_AI_EXTRA
     /// pass for humanoid-brain NPCs: fire @NPCAction (RETURN 1 skips the pass),
-    /// then in war mode equip a weapon/shield from the pack; in peace equip a
-    /// hand light source by night and stow it by day. (Lighting the torch —
-    /// the IT_LIGHT_OUT → IT_LIGHT_LIT flip — is deferred; the visible
-    /// carry-a-light behavior is what this pass reproduces.)</summary>
+    /// then in war mode equip a weapon/shield from the pack; in peace equip and
+    /// light a hand light source by night and stow it by day.</summary>
     private void RunExtraAI(Character npc)
     {
         if (!IsHumanoidBrain(npc.NpcBrain))
@@ -329,17 +334,22 @@ public sealed partial class NpcAI
         if (npc.IsStatFlag(StatFlag.War))
         {
             var hand1 = npc.GetEquippedItem(Layer.OneHanded);
-            if ((hand1 == null || !IsWeaponItemType(hand1.ItemType)) && pack != null)
+            var hand2 = npc.GetEquippedItem(Layer.TwoHanded);
+            bool armed = (hand1 != null && IsWeaponItemType(hand1.ItemType)) ||
+                         (hand2 != null && IsWeaponItemType(hand2.ItemType));
+            if (!armed && pack != null)
             {
                 var weapon = FindInPack(pack, it => IsWeaponItemType(it.ItemType));
                 if (weapon != null)
                 {
                     pack.RemoveItem(weapon);
-                    npc.Equip(weapon, Layer.OneHanded);
+                    bool twoHanded = weapon.IsTwoHanded ||
+                        weapon.ItemType is ItemType.WeaponBow or ItemType.WeaponXBow;
+                    npc.Equip(weapon, twoHanded ? Layer.TwoHanded : Layer.OneHanded);
                 }
             }
 
-            var hand2 = npc.GetEquippedItem(Layer.TwoHanded);
+            hand2 = npc.GetEquippedItem(Layer.TwoHanded);
             if (hand2 == null && pack != null)
             {
                 var shield = FindInPack(pack, it => it.ItemType == ItemType.Shield);
@@ -367,7 +377,12 @@ public sealed partial class NpcAI
                 {
                     pack.RemoveItem(light);
                     npc.Equip(light, Layer.TwoHanded);
+                    TryLightNpcSource(light);
                 }
+            }
+            else if (held?.ItemType == ItemType.LightOut)
+            {
+                TryLightNpcSource(held);
             }
         }
         else if (holdingLight && pack != null)
@@ -395,6 +410,25 @@ public sealed partial class NpcAI
             if (!it.IsDeleted && match(it))
                 return it;
         return null;
+    }
+
+    private static bool TryLightNpcSource(Item light)
+    {
+        if (light.ItemType == ItemType.LightLit)
+            return true;
+        if (light.ItemType != ItemType.LightOut)
+            return false;
+
+        int charges = 20;
+        if (light.TryGetTag("LIGHT_CHARGES", out string? raw) &&
+            int.TryParse(raw, out int parsed))
+            charges = parsed;
+        if (charges <= 0)
+            return false;
+
+        light.SetTag("LIGHT_CHARGES", (charges - 1).ToString());
+        light.ItemType = ItemType.LightLit;
+        return true;
     }
 
     /// <summary>

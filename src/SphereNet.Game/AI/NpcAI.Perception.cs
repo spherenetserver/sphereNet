@@ -119,14 +119,6 @@ public sealed partial class NpcAI
     /// Source-X: NPC_LookAround → NPC_LookAtCharMonster loop.
     /// Only acquires targets within line of sight.
     /// </summary>
-    /// <summary>Cap on candidates fully evaluated (LOS + motivation) per
-    /// acquisition. Without it, a dense crowd makes each NPC evaluate every
-    /// nearby mobile, turning target acquisition into O(n²) across the area and
-    /// stalling the tick. Normal encounters have far fewer than this, so the
-    /// cap is invisible in ordinary play; in a crowd, any of the nearest few is
-    /// an equally valid target.</summary>
-    private const int MaxTargetCandidates = 40;
-
     private (Character? target, int motivation) FindBestTarget(Character npc, int sightRange)
     {
         // Rank candidates by motivation WITHOUT line-of-sight first: LOS
@@ -136,18 +128,12 @@ public sealed partial class NpcAI
         // most a few raycasts regardless of crowd size.
         Character? t1 = null, t2 = null, t3 = null;
         int m1 = 0, m2 = 0, m3 = 0;
-        int evaluated = 0;
-
         foreach (var ch in _world.GetCharsInRange(npc.Position, sightRange))
         {
             if (ch == npc || !IsAttackable(ch)) continue;
-            // Bound the scan over ALL attackable candidates (not just hostile
-            // ones): a monster in a crowd of its own kind would otherwise
-            // evaluate every neighbour before finding the few real enemies,
-            // making acquisition O(local density). Capping here means each NPC
-            // considers its nearest handful — a target farther back in a crowd
-            // is some closer NPC's problem, so combat still engages.
-            if (++evaluated > MaxTargetCandidates) break;
+            // Never cap by sector insertion order: a dense neutral/allied
+            // crowd must not hide a valid enemy. Motivation is cheap; only the
+            // best three candidates pay for LOS raycasts below.
             int motivation = GetAttackMotivation(npc, ch);
             if (motivation <= 0) continue;
 
@@ -171,6 +157,29 @@ public sealed partial class NpcAI
             return (t2, m2);
         if (t3 != null && _world.CanSeeLOS(npc.Position, t3.Position) && OnNpcLookAtChar?.Invoke(npc, t3) != true)
             return (t3, m3);
+
+        // The three strongest candidates may all be behind a wall. Do not let
+        // that hide a weaker but visible hostile: fall back to a record-best
+        // visible scan. LOS is still lazy (only candidates that can improve
+        // the current fallback pay for a raycast).
+        Character? visibleFallback = null;
+        int visibleMotivation = 0;
+        foreach (var ch in _world.GetCharsInRange(npc.Position, sightRange))
+        {
+            if (ch == npc || ch == t1 || ch == t2 || ch == t3 || !IsAttackable(ch))
+                continue;
+            int motivation = GetAttackMotivation(npc, ch);
+            if (motivation <= visibleMotivation)
+                continue;
+            if (!_world.CanSeeLOS(npc.Position, ch.Position))
+                continue;
+            if (OnNpcLookAtChar?.Invoke(npc, ch) == true)
+                continue;
+            visibleFallback = ch;
+            visibleMotivation = motivation;
+        }
+        if (visibleFallback != null)
+            return (visibleFallback, visibleMotivation);
         return (null, 0);
     }
 
@@ -242,8 +251,8 @@ public sealed partial class NpcAI
         // threshold. A creature much weaker or more hurt than its target loses
         // motivation (and flees once total motivation drops below 0); a strong,
         // healthy NPC presses a weak target even while itself below half HP.
-        // Applied as a penalty only, so it never inflates aggression beyond
-        // the hostility/threat model above.
+        // This is a signed Source-X modifier: it may either reinforce or erode
+        // the hostility/threat score.
         if (_config.MonsterFear)
             motivation += GetMoralePenalty(npc, target);
 
@@ -359,29 +368,85 @@ public sealed partial class NpcAI
     }
 
     /// <summary>Playable-character bodies (Source-X IsPlayableCharacter).</summary>
-    private static bool IsPlayableBody(ushort bodyId) => bodyId is 400 or 401 or 402 or 403;
+    internal static bool IsPlayableBody(ushort bodyId) => bodyId is
+        0x190 or 0x191 or 0x192 or 0x193 or       // human + ghosts
+        0x25D or 0x25E or 0x25F or 0x260 or       // elf + ghosts
+        0x29A or 0x29B or 0x2B6 or 0x2B7;         // gargoyle + ghosts
 
     /// <summary>Source-X NPC_GetAllyGroupType — collapse body ids into creature
     /// families so an orc treats an orc captain/mage as kin. Ids from
     /// uofiles_enums_creid.h; unlisted bodies are their own group.</summary>
-    private static ushort GetAllyGroup(ushort bodyId) => bodyId switch
+    internal static ushort GetAllyGroup(ushort bodyId) => bodyId switch
     {
-        400 or 401 or 402 or 403 => 400,                        // humans + ghosts
-        0x01 or 0x53 or 0x87 => 0x01,                           // ogres
-        0x02 or 0x12 => 0x02,                                   // ettins
-        0x35 or 0x36 or 0x37 => 0x36,                           // trolls
-        0x11 or 0x29 or 0x07 or 0x8A or 0x8B or 0x8C => 0x11,   // orcs
-        0x34 or 0x15 or 0x59 or 0x5A or 0x5C or 0x5D => 0x34,   // snakes/serpents
-        0x09 or 0x0A or 0x2B or 0x66 => 0x09,                   // demons
-        0x0C or 0x3B or 0x3C or 0x3D or 0x67 => 0x3C,           // dragons/drakes
-        0x04 or 0x43 => 0x04,                                   // gargoyles
-        0x16 or 0x44 or 0x45 => 0x16,                           // gazers
-        0x18 or 0x4E or 0x4F => 0x18,                           // liches
-        0x21 or 0x23 or 0x24 => 0x21,                           // lizardmen
-        0x2A or 0x2C or 0x2D or 0x8E or 0x8F => 0x2A,           // ratmen
-        0x1E or 0x49 => 0x1E,                                   // harpies
-        0x32 or 0x38 or 0x39 or 0x93 or 0x94 => 0x32,           // skeletons
-        0x33 or 0x5E or 0x60 => 0x33,                           // slimes/oozes
+        0x190 or 0x191 or 0x192 or 0x193 => 0x190, // human
+        0x25D or 0x25E or 0x25F or 0x260 => 0x25D, // elf
+        0x29A or 0x29B or 0x2B6 or 0x2B7 => 0x29A, // playable gargoyle
+        0x01 or 0x53 or 0x87 => 0x01, // ogre
+        0x02 or 0x12 => 0x02, // ettin
+        0x35 or 0x36 or 0x37 => 0x36, // troll
+        0x11 or 0x29 or 0x07 or 0x8A or 0x8B or 0x8C or
+            0xB5 or 0xB6 or 0xBD => 0x11, // orc
+        0x34 or 0x15 or 0x59 or 0x5A or 0x5C or 0x5D => 0x34, // snake
+        0x09 or 0x0A or 0x2B or 0x66 => 0x09, // demon
+        0x3C or 0x3D or 0x0C or 0x3B or 0x67 => 0x3C, // dragon/drake
+        0x6A or 0xB4 or 0x31E => 0x6A, // wyrm
+        0xC5 or 0x58B or 0x58C => 0xC5, // crimson dragon
+        0xC6 or 0x589 or 0x58A => 0xC6, // platinum dragon
+        0x33A or 0x58D or 0x58E => 0x33A, // stygian dragon
+        0x31A or 0x31F => 0x31A, // swamp dragon
+        0x508 or 0x50E => 0x508, // dragon turtle
+        0x04 or 0x43 or 0x82 or 0x2D2 or 0x2F1 => 0x04, // creature gargoyle
+        0x16 or 0x45 or 0x44 or 0x30A => 0x16, // gazer
+        0x18 or 0x4F or 0x4E or 0x33E => 0x18, // lich
+        0x21 or 0x23 or 0x24 => 0x21, // lizardman
+        0x2A or 0x2C or 0x2D or 0x8E or 0x8F => 0x2A, // ratman
+        0x1E or 0x49 => 0x1E, // harpy
+        0x32 or 0x38 or 0x39 or 0x93 or 0x94 => 0x32, // skeleton
+        0x03 or 0x9A or 0x99 => 0x03, // zombie/mummy/ghoul
+        0x136 or 0x1A => 0x136, // banshee/spectre
+        0x33 or 0x60 or 0x5E => 0x33, // slime
+        0x5F or 0x96 or 0x91 or 0x90 => 0x5F, // sea creature
+        0x50 or 0x51 => 0x50, // giant toad
+        0x46 or 0x47 or 0x48 => 0x47, // terathan
+        0x55 or 0x56 or 0x57 or 0x88 or 0x89 => 0x56, // ophidian
+        0x2FC or 0x2FD or 0x2FE => 0x2FC, // juka
+        0x302 or 0x303 or 0x304 or 0x305 => 0x302, // meer
+        0x6B or 0x6C or 0x6D or 0x6E or 0x6F or 0x70 or 0x71 or 0xA6 => 0x6B, // ore elemental
+        0x61 or 0x62 or 0x42D => 0x61, // hellhound
+        0x7D or 0x7E => 0x7D, // evil mage
+        0x30B or 0x30C => 0x30B, // bog creature
+        0x30D or 0x30E or 0x30F or 0x327 => 0x30D, // solen
+        0x325 or 0x326 or 0x324 or 0x328 => 0x325, // black solen
+        0x31C or 0x3E7 or 0x308 => 0x31C, // horde demon
+        0x107 or 0x118 or 0x42F or 0x119 or 0x106 => 0x107, // minotaur
+        0x105 or 0x104 or 0x111 or 0x110 => 0x105, // effusion/essence
+        0xF5 or 0xFD or 0xFF => 0xF5, // yomotsu
+        0x317 or 0xA9 => 0x317, // giant/fire beetle
+        0x2D3 or 0x2D4 => 0x2D3, // green goblin
+        0x4E6 or 0x51D or 0x588 => 0x4E6, // tiger
+        0x2CB or 0x1B0 => 0x2CB, // boura
+        0x2D6 or 0x2D7 => 0x2D6, // kepetch
+        0x2E0 or 0x2E1 => 0x2E0, // spider wolf
+        0x2E8 or 0x2E9 => 0x2E8, // vampire
+        0x4DC or 0x4DD => 0x4DC, // charybdis
+        0x4DE or 0x4DF => 0x4DE, // pumpkin demon
+        0x505 or 0x506 or 0x507 or 0x509 or 0x50A or 0x50C or 0x578 => 0x505, // dinosaurs
+        0x50D or 0x57A or 0x57B or 0x57C => 0x50D, // myrmidex
+        0x57E or 0x57D => 0x57E, // kotl
+        0x05 or 0x06 or 0x11B or 0x11A => 0x06, // birds
+        0xC8 or 0xCC or 0xE2 or 0xE4 or 0x123 or 0x75 or 0x72 or
+            0x76 or 0x77 or 0x78 or 0x79 or 0xB1 or 0xB2 or 0xB3 or 0x580 => 0xC8, // horses
+        0xA7 or 0xD4 or 0xD5 => 0xA7, // bears
+        0xD8 or 0xE7 or 0xE8 or 0xE9 => 0xE8, // cows/bulls
+        0xD2 or 0xDA or 0xDB => 0xDB, // ostards
+        0xCF or 0xDF => 0xCF, // sheep
+        0xEA or 0xED => 0xED, // deer
+        0xCB or 0x122 => 0xCB, // pigs
+        0xDC or 0x124 => 0xDC, // llamas
+        0xEE or 0xD7 => 0xEE, // rats
+        0x63 or 0x64 or 0xE1 => 0x64, // wolves
+        0x85 or 0x86 => 0x85, // alligator/komodo
+        0xBB or 0xBC => 0xBB, // ridgeback
         _ => bodyId,
     };
 
@@ -390,7 +455,7 @@ public sealed partial class NpcAI
     /// </summary>
     private static bool IsAttackable(Character ch)
     {
-        if (ch.IsDead) return false;
+        if (ch.IsDeleted || ch.IsDead) return false;
         if (ch.IsStatFlag(StatFlag.Invul)) return false;
         if (ch.IsStatFlag(StatFlag.Stone)) return false;
         if (ch.IsStatFlag(StatFlag.Invisible)) return false;
@@ -404,14 +469,11 @@ public sealed partial class NpcAI
     }
 
     /// <summary>
-    /// NPC sight range. Source-X uses a per-NPC GetSight() value (typically 14-16).
-    /// We use INT-based range: smarter monsters see further.
+    /// NPC sight range. Source-X uses the per-character GetSight() value.
+    /// VISUALRANGE=0 retains the engine's normal 18-tile fallback.
     /// </summary>
-    private static int GetNpcSight(Character npc)
-    {
-        int baseRange = 10 + Math.Clamp(npc.Int / 20, 0, 8);
-        return Math.Min(baseRange, 18);
-    }
+    internal static int GetNpcSight(Character npc) =>
+        npc.VisualRange > 0 ? npc.VisualRange : 18;
 
     /// <summary>Source-X: SoundChar — emit a creature sound via callback.</summary>
     private void EmitSound(Character npc, CreatureSoundType type)

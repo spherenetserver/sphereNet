@@ -49,6 +49,8 @@ public class ConfigRegressionTests
             ChatFlags=0x10
             GenericSounds=0
             HearAll=1
+            MaxShipsPlayer=3
+            MaxShipsAccount=5
             """);
 
         try
@@ -96,6 +98,8 @@ public class ConfigRegressionTests
             Assert.Equal(0x07A, config.PetsInheritNotoriety);
             Assert.Equal(0x10, config.ChatFlags);
             Assert.False(config.GenericSounds);
+            Assert.Equal(3, config.MaxShipsPlayer);
+            Assert.Equal(5, config.MaxShipsAccount);
             Assert.True((config.LogMask & SphereConfig.LogMaskPlayerSpeak) != 0);
         }
         finally

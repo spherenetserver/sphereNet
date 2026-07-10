@@ -113,7 +113,8 @@ public sealed class Ship
     /// </summary>
     public void AddComponent(Item item)
     {
-        _components.Add(item.Uid);
+        if (!_components.Contains(item.Uid))
+            _components.Add(item.Uid);
 
         switch (item.ItemType)
         {
@@ -124,7 +125,8 @@ public sealed class Ship
             case ItemType.ShipPlank:
             case ItemType.ShipSide:
             case ItemType.ShipSideLocked:
-                _planks.Add(item.Uid);
+                if (!_planks.Contains(item.Uid))
+                    _planks.Add(item.Uid);
                 break;
             case ItemType.ShipTiller:
                 _multiItem.Link = item.Uid;
@@ -133,5 +135,9 @@ public sealed class Ship
     }
 
     /// <summary>Add a component by UID only (used during deserialization).</summary>
-    public void AddComponentUid(Serial uid) => _components.Add(uid);
+    public void AddComponentUid(Serial uid)
+    {
+        if (uid.IsValid && !_components.Contains(uid))
+            _components.Add(uid);
+    }
 }

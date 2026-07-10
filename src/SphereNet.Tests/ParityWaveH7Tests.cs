@@ -31,11 +31,19 @@ public class ParityWaveH7Tests
     public void SetPilotVerb_AssignsAndReleasesTheWheel()
     {
         var world = CreateWorld();
-        var multi = world.CreateItem();
-        multi.BaseId = 0x4000;
-        world.PlaceItem(multi, new Point3D(100, 100, 0, 0));
-        var engine = new ShipEngine(world, new SphereNet.Game.Housing.MultiRegistry(), null);
-        var ship = new Ship(multi);
+        var registry = new SphereNet.Game.Housing.MultiRegistry();
+        var def = new SphereNet.Game.Housing.MultiDef { Id = 0x4000, Name = "test ship" };
+        def.Components.Add(new SphereNet.Game.Housing.MultiComponent
+        {
+            TileId = 0x3E40, DeltaX = 0, DeltaY = 0, DeltaZ = 0, Visible = true,
+        });
+        def.RecalcBounds();
+        registry.Register(def);
+        var engine = new ShipEngine(world, registry, null);
+        var owner = world.CreateCharacter();
+        world.PlaceCharacter(owner, new Point3D(50, 50, 0, 0));
+        var ship = engine.PlaceShip(owner, 0x4000, new Point3D(100, 100, 0, 0), Direction.North)!;
+        ship.Anchored = false;
 
         var pilot = world.CreateCharacter();
         world.PlaceCharacter(pilot, new Point3D(100, 100, 0, 0));

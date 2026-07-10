@@ -1470,14 +1470,23 @@ public class Item : ObjBase
                     case "ANCHOR":
                     case "SHIPANCHOR":
                         ship.Anchored = value != "0";
+                        if (ship.Anchored)
+                            ResolveShipEngine?.Invoke()?.Stop(ship);
                         return true;
                     case "SPEEDMODE":
                         if (byte.TryParse(value, out byte sm))
                             ship.SpeedMode = (Core.Enums.ShipSpeedMode)Math.Clamp(sm, (byte)1, (byte)4);
                         return true;
                     case "PILOT":
-                        ship.Pilot = new Serial(ParseHexOrDecUInt(value));
+                    {
+                        var engine = ResolveShipEngine?.Invoke();
+                        var pilotUid = new Serial(ParseHexOrDecUInt(value));
+                        if (engine != null)
+                            engine.SetPilot(ship, pilotUid.IsValid ? ResolveWorld?.Invoke()?.FindChar(pilotUid) : null);
+                        else if (!pilotUid.IsValid)
+                            ship.Pilot = Serial.Invalid;
                         return true;
+                    }
                 }
 
                 if (upper.StartsWith("SHIPSPEED.", StringComparison.Ordinal))
@@ -1485,11 +1494,11 @@ public class Item : ObjBase
                     var sub = upper[10..];
                     if (sub == "TILES")
                     {
-                        if (byte.TryParse(value, out byte t)) ship.SpeedTiles = t;
+                        if (byte.TryParse(value, out byte t)) ship.SpeedTiles = Math.Clamp(t, (byte)1, (byte)16);
                     }
                     else if (sub == "PERIOD")
                     {
-                        if (ushort.TryParse(value, out ushort p)) ship.SpeedPeriod = p;
+                        if (ushort.TryParse(value, out ushort p)) ship.SpeedPeriod = Math.Max((ushort)1, p);
                     }
                     return true;
                 }
@@ -1500,8 +1509,8 @@ public class Item : ObjBase
                     var parts = value.Split(',', StringSplitOptions.TrimEntries);
                     if (parts.Length >= 2)
                     {
-                        if (ushort.TryParse(parts[0], out ushort p)) ship.SpeedPeriod = p;
-                        if (byte.TryParse(parts[1], out byte t)) ship.SpeedTiles = t;
+                        if (ushort.TryParse(parts[0], out ushort p)) ship.SpeedPeriod = Math.Max((ushort)1, p);
+                        if (byte.TryParse(parts[1], out byte t)) ship.SpeedTiles = Math.Clamp(t, (byte)1, (byte)16);
                     }
                     return true;
                 }

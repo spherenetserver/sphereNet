@@ -33,6 +33,8 @@ public sealed class ShipEngine
 
     public int ShipCount => _ships.Count;
     public IEnumerable<Ship> AllShips => _ships.Values;
+    public int MaxShipsPerPlayer { get; set; } = 1;
+    public int MaxShipsPerAccount { get; set; } = 1;
 
     /// <summary>Source-X CItemShip::Speak hook. Args: (Ship ship, string text).
     /// Program.cs delivers the tillerman line to nearby clients as a unicode
@@ -68,29 +70,48 @@ public sealed class ShipEngine
     /// Place a new ship at the given position.
     /// Returns null if placement is invalid.
     /// </summary>
-    public Ship? PlaceShip(Character owner, ushort multiId, Point3D pos, Direction facing)
+    public Ship? PlaceShip(Character owner, ushort multiId, Point3D pos, Direction facing, bool magic = false)
     {
-        var def = _multiDefs.Get(multiId);
+        if (MaxShipsPerPlayer >= 0 && _ships.Values.Count(s => s.Owner == owner.Uid) >= MaxShipsPerPlayer)
+            return null;
+        if (MaxShipsPerAccount >= 0 && GetShipCountForAccount(owner) >= MaxShipsPerAccount)
+            return null;
+        var normalizedFacing = Normalize4Dir(facing);
+        ushort orientedId = (ushort)((multiId & ~3) | DirTo4Index(normalizedFacing));
+        var def = _multiDefs.Get(orientedId);
+        if (def == null)
+        {
+            orientedId = multiId;
+            def = _multiDefs.Get(multiId);
+        }
         if (def == null) return null;
+        var (mapWidth, mapHeight) = _mapData?.GetMapSize(pos.Map) ?? (7168, 4096);
+        if (pos.X + def.MinX < 0 || pos.Y + def.MinY < 0 ||
+            pos.X + def.MaxX >= mapWidth || pos.Y + def.MaxY >= mapHeight)
+            return null;
 
-        if (!CanPlaceShip(pos, def))
+        if (!magic && !CanPlaceShip(pos, def))
             return null;
 
         // Create multi item
         var multiItem = _world.CreateItem();
-        multiItem.BaseId = multiId;
+        multiItem.BaseId = orientedId;
         multiItem.Name = def.Name;
         multiItem.ItemType = ItemType.Ship;
+        if (magic)
+            multiItem.SetAttr(ObjAttributes.Magic);
         _world.PlaceItem(multiItem, pos);
 
         var ship = new Ship(multiItem)
         {
             Owner = owner.Uid,
-            DirFace = Normalize4Dir(facing),
+            DirFace = normalizedFacing,
+            DirMove = normalizedFacing,
             Anchored = true,
         };
 
         // Generate component items from multi definition
+        bool needsKey = false;
         foreach (var comp in def.Components)
         {
             if (!comp.Visible) continue;
@@ -100,6 +121,9 @@ public sealed class ShipEngine
 
             // Determine item type from tile ID
             compItem.ItemType = ClassifyShipComponent(comp.TileId);
+            compItem.SetAttr(ObjAttributes.Move_Never);
+            compItem.Link = multiItem.Uid;
+            needsKey |= compItem.ItemType is ItemType.ShipTiller or ItemType.ShipSideLocked or ItemType.ShipHoldLock;
 
             var compPos = new Point3D(
                 (short)(pos.X + comp.DeltaX),
@@ -113,25 +137,98 @@ public sealed class ShipEngine
 
         _ships[multiItem.Uid] = ship;
         CreateShipRegion(ship);
+        if (needsKey)
+        {
+            CreateShipKey(owner, multiItem, toBank: false);
+            CreateShipKey(owner, multiItem, toBank: true);
+        }
         return ship;
+    }
+
+    public int GetShipCountForAccount(Character owner)
+    {
+        var account = Character.ResolveAccountForChar?.Invoke(owner.Uid);
+        if (account == null)
+            return _ships.Values.Count(ship => ship.Owner == owner.Uid);
+        var accountCharacters = new HashSet<Serial>();
+        for (int slot = 0; slot < 7; slot++)
+        {
+            var uid = account.GetCharSlot(slot);
+            if (uid.IsValid) accountCharacters.Add(uid);
+        }
+        return _ships.Values.Count(ship => accountCharacters.Contains(ship.Owner));
+    }
+
+    private void CreateShipKey(Character owner, Item multiItem, bool toBank)
+    {
+        var key = _world.CreateItem();
+        key.BaseId = 0x100F;
+        key.ItemType = ItemType.Key;
+        key.Name = "a ship key";
+        key.SetTag("LINK", multiItem.Uid.Value.ToString());
+        key.Link = multiItem.Uid;
+        var destination = toBank ? owner.GetEquippedItem(Layer.BankBox) : owner.Backpack;
+        destination ??= owner.Backpack;
+        if (destination == null || !destination.TryAddItem(key))
+            _world.PlaceItemWithDecay(key, owner.Position);
+    }
+
+    private void RemoveShipKeys(Character? owner, Serial shipUid)
+    {
+        if (owner == null) return;
+        RemoveShipKeys(owner.Backpack, shipUid);
+        var bank = owner.GetEquippedItem(Layer.BankBox);
+        if (bank != owner.Backpack)
+            RemoveShipKeys(bank, shipUid);
+    }
+
+    private void RemoveShipKeys(Item? container, Serial shipUid)
+    {
+        if (container == null) return;
+        foreach (var child in container.Contents.ToList())
+        {
+            RemoveShipKeys(child, shipUid);
+            if (child.ItemType is not (ItemType.Key or ItemType.Keyring) || child.Link != shipUid)
+                continue;
+            container.RemoveItem(child);
+            _world.RemoveItem(child);
+        }
     }
 
     /// <summary>Check if a ship can be placed at position (all footprint must be water).</summary>
     public bool CanPlaceShip(Point3D pos, MultiDef def)
+        => CanPlaceShip(pos, def, null);
+
+    private bool CanPlaceShip(Point3D pos, MultiDef def, Ship? ignoreShip)
     {
+        var (mapWidth, mapHeight) = _mapData?.GetMapSize(pos.Map) ?? (7168, 4096);
         for (short dx = def.MinX; dx <= def.MaxX; dx++)
         {
             for (short dy = def.MinY; dy <= def.MaxY; dy++)
             {
                 short cx = (short)(pos.X + dx), cy = (short)(pos.Y + dy);
-                // Water check needs map data (tests run without it).
-                if (_mapData != null && !IsWaterAt(pos.Map, cx, cy))
+                if (cx < 0 || cy < 0 || cx >= mapWidth || cy >= mapHeight)
                     return false;
-                // Source-X Multi_Create block loop: placement may not overlap
-                // another hull (movement's CanSailInto already checks this;
-                // placement previously bypassed it, stacking ships).
-                if (FindShipAt(new Point3D(cx, cy, pos.Z, pos.Map)) != null)
+                if (!CanSailInto(ignoreShip, pos.Map, cx, cy, pos.Z))
                     return false;
+                var region = _world.FindRegion(new Point3D(cx, cy, pos.Z, pos.Map));
+                if (region != null && region.Uid != ignoreShip?.RegionUid && region.IsFlag(RegionFlag.House))
+                    return false;
+                foreach (var ch in _world.GetCharsInRange(new Point3D(cx, cy, pos.Z, pos.Map), 1))
+                    if (ch.X == cx && ch.Y == cy && ch.PrivLevel < PrivLevel.GM &&
+                        (ignoreShip == null || !IsOnDeck(ignoreShip,
+                            _multiDefs.Get(ignoreShip.MultiItem.BaseId) ?? def, ch)))
+                        return false;
+                foreach (var item in _world.GetItemsInRange(new Point3D(cx, cy, pos.Z, pos.Map), 1))
+                {
+                    if (item.IsDeleted || item.ContainedIn.IsValid || item == ignoreShip?.MultiItem) continue;
+                    if (ignoreShip != null && ignoreShip.Components.Contains(item.Uid)) continue;
+                    if (ignoreShip != null && IsOnDeck(ignoreShip,
+                        _multiDefs.Get(ignoreShip.MultiItem.BaseId) ?? def, item)) continue;
+                    var itemDef = Definitions.DefinitionLoader.GetItemDef(item.BaseId);
+                    if (itemDef != null && itemDef.Can.HasFlag(CanFlags.I_Block))
+                        return false;
+                }
             }
         }
         return true;
@@ -146,7 +243,16 @@ public sealed class ShipEngine
         if (ship.Owner != requestor.Uid && requestor.PrivLevel < PrivLevel.GM)
             return null;
 
-        return RemoveShipCore(ship, multiItemUid);
+        var position = ship.MultiItem.Position;
+        var owner = _world.FindChar(ship.Owner);
+        var deed = RemoveShipCore(ship, multiItemUid);
+        if (deed != null)
+        {
+            var recipient = owner ?? requestor;
+            if (recipient.Backpack == null || !recipient.Backpack.TryAddItem(deed))
+                _world.PlaceItemWithDecay(deed, position);
+        }
+        return deed;
     }
 
     /// <summary>Script/verb-driven dry-dock (server authority — no priv gate):
@@ -161,9 +267,7 @@ public sealed class ShipEngine
         var deed = RemoveShipCore(ship, multiItemUid);
         if (deed != null)
         {
-            if (owner?.Backpack != null)
-                owner.Backpack.AddItem(deed);
-            else
+            if (owner?.Backpack == null || !owner.Backpack.TryAddItem(deed))
                 _world.PlaceItemWithDecay(deed, pos);
         }
         return deed;
@@ -173,7 +277,12 @@ public sealed class ShipEngine
     {
         // Create deed — preserve ship UUID for identity continuity
         var deed = _world.CreateItem();
-        deed.BaseId = 0x14F0; // ITEMID_DEED1
+        deed.BaseId = 0x14F1; // ITEMID_SHIP_PLANS1
+        deed.ItemType = ItemType.Deed;
+        deed.More1 = ship.MultiItem.BaseId;
+        deed.Hue = ship.MultiItem.Hue;
+        if (ship.MultiItem.IsAttr(ObjAttributes.Magic))
+            deed.SetAttr(ObjAttributes.Magic);
         deed.Name = ship.MultiItem.Name + " deed";
         deed.SetTag("SHIP_MULTI_UUID", ship.MultiItem.Uuid.ToString("D"));
         deed.SetTag("SHIP_MULTI_BASEID", ship.MultiItem.BaseId.ToString());
@@ -181,36 +290,47 @@ public sealed class ShipEngine
         // Source-X ship Redeed: TransferAllItemsToMovingCrate — the hold's
         // cargo moves to a crate (owner's bank, else dropped with decay at
         // the ship's spot) instead of being deleted with the components.
-        List<Item>? cargo = null;
+        List<Item> cargo = [];
         foreach (var compUid in ship.Components)
         {
             var comp = _world.FindItem(compUid);
             if (comp == null || comp.Contents.Count == 0) continue;
-            cargo ??= [];
             foreach (var it in new List<Item>(comp.Contents))
             {
                 comp.RemoveItem(it);
                 cargo.Add(it);
             }
         }
-        if (cargo != null)
+        foreach (var loose in ListDeckItems(ship))
+        {
+            if (ship.Components.Contains(loose.Uid) || loose.IsDeleted ||
+                loose.IsAttr(ObjAttributes.Static | ObjAttributes.Move_Never))
+                continue;
+            _world.HideFromSector(loose);
+            cargo.Add(loose);
+        }
+        while (cargo.Count > 0)
         {
             var crate = _world.CreateItem();
             crate.BaseId = 0x0E3D; // ITEMID_CRATE1
             crate.ItemType = ItemType.Container;
             crate.Name = "a moving crate";
-            foreach (var it in cargo)
+            while (cargo.Count > 0 && crate.Contents.Count < Item.MaxContainerItems)
             {
-                crate.AddItem(it);
+                var it = cargo[^1];
+                cargo.RemoveAt(cargo.Count - 1);
+                crate.TryAddItem(it);
                 it.DecayTime = 0; // protected inside the crate
             }
             var ownerCh = ship.Owner.IsValid ? _world.FindChar(ship.Owner) : null;
             var bank = ownerCh?.GetEquippedItem(Layer.BankBox);
-            if (bank != null)
-                bank.AddItem(crate);
-            else
+            if (bank == null || !bank.TryAddItem(crate))
                 _world.PlaceItemWithDecay(crate, ship.MultiItem.Position);
         }
+
+        var owner = ship.Owner.IsValid ? _world.FindChar(ship.Owner) : null;
+        RemoveShipKeys(owner, ship.MultiItem.Uid);
+        ship.Pilot = Serial.Invalid;
 
         // Remove all component items
         foreach (var compUid in ship.Components)
@@ -235,7 +355,14 @@ public sealed class ShipEngine
     /// </summary>
     public bool SetMoveDir(Ship ship, Direction dir, ShipMovementType moveType)
     {
-        if (ship.Anchored)
+        dir = (Direction)((byte)dir & 0x07);
+        if (moveType == ShipMovementType.Stop)
+        {
+            ship.DirMove = dir;
+            Stop(ship);
+            return true;
+        }
+        if (ship.Anchored || moveType is not (ShipMovementType.OneTile or ShipMovementType.Normal))
             return false;
 
         // Ship MOVEMENT keeps all 8 directions (a ship sails diagonally for the
@@ -244,12 +371,6 @@ public sealed class ShipEngine
         // a cardinal one.
         ship.DirMove = dir;
         ship.MovementType = moveType;
-
-        if (moveType == ShipMovementType.Stop)
-        {
-            ship.NextMoveTick = 0;
-            return true;
-        }
 
         ship.NextMoveTick = Environment.TickCount64 + ship.SpeedPeriod;
         return true;
@@ -261,7 +382,7 @@ public sealed class ShipEngine
     /// </summary>
     public bool Move(Ship ship, Direction dir, int distance = 1)
     {
-        if (ship.Anchored) return false;
+        if (ship.Anchored || distance <= 0 || ((byte)dir & 0xF8) != 0) return false;
 
         // Keep the full 8-direction move (GetDirDelta yields diagonal deltas and
         // CanMoveShipTo/MoveDelta handle any dx/dy) so diagonal sailing works.
@@ -298,6 +419,10 @@ public sealed class ShipEngine
 
         ushort baseId = (ushort)(ship.MultiItem.BaseId & ~3);
         ushort newBaseId = (ushort)(baseId | newIdx);
+        var oldDef = _multiDefs.Get(ship.MultiItem.BaseId);
+        var newDef = _multiDefs.Get(newBaseId);
+        if (oldDef == null || newDef == null)
+            return false;
 
         // Preflight the rotated footprint (Source-X CCMultiMovable turn fit-check):
         // if the new facing's bounding rect would not fit (any non-water tile),
@@ -305,10 +430,14 @@ public sealed class ShipEngine
         // half-rotated with no rollback. Magic ships turn anywhere.
         if (!ship.MultiItem.IsAttr(ObjAttributes.Magic))
         {
-            var newDef = _multiDefs.Get(newBaseId);
-            if (newDef != null && !CanPlaceShip(ship.MultiItem.Position, newDef))
+            if (!CanPlaceShip(ship.MultiItem.Position, newDef, ship))
                 return false;
         }
+
+        // Capture riders and loose deck items against the old footprint before
+        // changing the multi id or moving any component.
+        var deckChars = ListDeckCharacters(ship);
+        var deckItems = ListDeckItems(ship);
 
         // Update multi item ID: baseId & ~3 | newIdx
         ship.MultiItem.BaseId = newBaseId;
@@ -317,21 +446,30 @@ public sealed class ShipEngine
         short cx = ship.MultiItem.X;
         short cy = ship.MultiItem.Y;
 
-        foreach (var compUid in ship.Components)
+        var newComponents = newDef.Components.Where(c => c.Visible).ToList();
+        for (int componentIndex = 0; componentIndex < ship.Components.Count; componentIndex++)
         {
-            var item = _world.FindItem(compUid);
+            var item = _world.FindItem(ship.Components[componentIndex]);
             if (item == null) continue;
-
-            short rx = (short)(item.X - cx);
-            short ry = (short)(item.Y - cy);
-            RotatePoint(ref rx, ref ry, rotSteps);
-
-            var p = item.Position;
-            _world.PlaceItem(item, new Point3D((short)(cx + rx), (short)(cy + ry), p.Z, p.Map));
+            if (componentIndex < newComponents.Count)
+            {
+                var component = newComponents[componentIndex];
+                item.BaseId = component.TileId;
+                _world.PlaceItem(item, new Point3D(
+                    (short)(cx + component.DeltaX), (short)(cy + component.DeltaY),
+                    (sbyte)(ship.MultiItem.Z + component.DeltaZ), ship.MultiItem.MapIndex));
+            }
+            else
+            {
+                short rx = (short)(item.X - cx);
+                short ry = (short)(item.Y - cy);
+                RotatePoint(ref rx, ref ry, rotSteps);
+                _world.PlaceItem(item, new Point3D((short)(cx + rx), (short)(cy + ry), item.Z, item.MapIndex));
+            }
         }
 
         // Rotate characters on deck
-        foreach (var ch in ListDeckCharacters(ship))
+        foreach (var ch in deckChars)
         {
             short rx = (short)(ch.X - cx);
             short ry = (short)(ch.Y - cy);
@@ -339,11 +477,12 @@ public sealed class ShipEngine
 
             var p = ch.Position;
             _world.MoveCharacter(ch, new Point3D((short)(cx + rx), (short)(cy + ry), p.Z, p.Map), fireRegionEvents: false);
-            ch.Direction = newFacing;
+            byte running = (byte)((byte)ch.Direction & (byte)Direction.Running);
+            ch.Direction = (Direction)(running | (((byte)ch.Direction + rotSteps * 2) & 0x07));
         }
 
         // Rotate loose items on deck
-        foreach (var item in ListDeckItems(ship))
+        foreach (var item in deckItems)
         {
             if (ship.Components.Contains(item.Uid)) continue;
 
@@ -403,8 +542,9 @@ public sealed class ShipEngine
     /// <summary>Tick all active ships.</summary>
     public void OnTickAll()
     {
-        foreach (var ship in _ships.Values)
-            OnShipTick(ship);
+        foreach (var ship in _ships.Values.ToList())
+            if (_ships.ContainsKey(ship.MultiItem.Uid))
+                OnShipTick(ship);
     }
 
     // =====================================================================
@@ -450,15 +590,12 @@ public sealed class ShipEngine
 
             // --- Turn commands (anchor check, Face call) ---
             case "SHIPTURNLEFT":
-                if (ship.Anchored) return true;
-                return Face(ship, GetDirTurn(dirFace, -2));
+                return TurnShip(ship, dirFace, -2);
             case "SHIPTURNRIGHT":
-                if (ship.Anchored) return true;
-                return Face(ship, GetDirTurn(dirFace, 2));
+                return TurnShip(ship, dirFace, 2);
             case "SHIPTURNAROUND":
             case "SHIPTURN":
-                if (ship.Anchored) return true;
-                return Face(ship, GetDirTurn(dirFace, 4));
+                return TurnShip(ship, dirFace, 4);
 
             // --- Anchor ---
             case "SHIPANCHORDROP":
@@ -524,15 +661,10 @@ public sealed class ShipEngine
             {
                 string pilotArg = args.Trim();
                 if (pilotArg.Length == 0)
-                {
-                    ship.Pilot = Serial.Invalid;
-                    return true;
-                }
-                if (pilotArg.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) pilotArg = pilotArg[2..];
-                else if (pilotArg.StartsWith('0') && pilotArg.Length > 1) pilotArg = pilotArg[1..];
-                if (uint.TryParse(pilotArg, System.Globalization.NumberStyles.HexNumber, null, out uint pilotUid))
-                    ship.Pilot = new Serial(pilotUid);
-                return true;
+                    return SetPilot(ship, null);
+                uint pilotUid = ParseHexSerial(pilotArg);
+                if (pilotUid == 0) return false;
+                return SetPilot(ship, _world.FindChar(new Serial(pilotUid)));
             }
 
             default:
@@ -553,6 +685,38 @@ public sealed class ShipEngine
             return true;
         }
         return SetMoveDir(ship, GetDirTurn(dirFace, offset), ShipMovementType.Normal);
+    }
+
+    private bool TurnShip(Ship ship, Direction dirFace, int offset)
+    {
+        if (ship.Anchored)
+        {
+            TillerSpeak(ship, SphereNet.Game.Messages.Msg.TillerAnchorIsDown);
+            return true;
+        }
+        var oldMove = ship.DirMove;
+        ship.DirMove = GetDirTurn(dirFace, offset);
+        if (Face(ship, ship.DirMove)) return true;
+        ship.DirMove = oldMove;
+        TillerSpeak(ship, SphereNet.Game.Messages.Msg.TillerCantTurn);
+        return true;
+    }
+
+    /// <summary>Assign or release the HS wheel pilot. Source-X only permits an
+    /// unmounted, non-hovering character already aboard an unanchored ship.</summary>
+    public bool SetPilot(Ship ship, Character? pilot)
+    {
+        Stop(ship);
+        if (pilot == null || ship.Pilot == pilot.Uid)
+        {
+            ship.Pilot = Serial.Invalid;
+            return true;
+        }
+        if (ship.Anchored || pilot.IsMounted || pilot.IsStatFlag(StatFlag.Hovering) ||
+            !ship.CanBoard(pilot.Uid) || FindShipAt(pilot.Position) != ship)
+            return false;
+        ship.Pilot = pilot.Uid;
+        return true;
     }
 
     /// <summary>
@@ -669,7 +833,7 @@ public sealed class ShipEngine
     /// bridge piling) AND no other ship's hull occupying it. The old land-only
     /// check let ships sail straight through docks and other vessels.
     /// </summary>
-    public bool CanSailInto(Ship ship, int mapId, short x, short y, sbyte z)
+    public bool CanSailInto(Ship? ship, int mapId, short x, short y, sbyte z)
     {
         if (!IsWaterAt(mapId, x, y))
             return false;
@@ -710,16 +874,30 @@ public sealed class ShipEngine
     /// </summary>
     public bool MoveDelta(Ship ship, short dx, short dy, sbyte dz)
     {
+        var anchor = ship.MultiItem.Position;
+        int x = anchor.X + dx;
+        int y = anchor.Y + dy;
+        int z = anchor.Z + dz;
+        if (x is < short.MinValue or > short.MaxValue ||
+            y is < short.MinValue or > short.MaxValue ||
+            z is < sbyte.MinValue or > sbyte.MaxValue)
+            return false;
+        return MoveTo(ship, new Point3D((short)x, (short)y, (sbyte)z, anchor.Map));
+    }
+
+    private bool MoveTo(Ship ship, Point3D destination)
+    {
+        var anchor = ship.MultiItem.Position;
+        int dx = destination.X - anchor.X;
+        int dy = destination.Y - anchor.Y;
+        int dz = destination.Z - anchor.Z;
         // Region boundary check BEFORE anything moves (Source-X order): the
         // multi's anchor decides the region; @RegionLeave/@RegionEnter fire on
         // the multi item and RETURN 1 cancels the whole step.
         var regionHook = OnShipRegionChange;
         if (regionHook != null)
         {
-            var anchor = ship.MultiItem.Position;
-            var newAnchor = new Point3D(
-                (short)(anchor.X + dx), (short)(anchor.Y + dy),
-                (sbyte)(anchor.Z + dz), anchor.Map);
+            var newAnchor = destination;
             // Resolve the BACKGROUND region the hull sits in (excluding the ship's
             // own region, which now wins FindRegion by smallest area) so a sail
             // across a sea/harbour boundary still fires @RegionLeave/@RegionEnter.
@@ -728,18 +906,24 @@ public sealed class ShipEngine
             var newRegion = shipRegion != null ? _world.FindParentRegion(shipRegion, newAnchor) : _world.FindRegion(newAnchor);
             if (!ReferenceEquals(oldRegion, newRegion) && !regionHook(ship, oldRegion, newRegion))
                 return false;
+            if (ship.MultiItem.IsDeleted)
+                return false;
         }
 
         // Collect deck objects before moving (positions change during move)
         var deckChars = ListDeckCharacters(ship);
         var deckItems = ListDeckItems(ship);
+        bool CanTranslate(Point3D p) =>
+            p.X + dx is >= short.MinValue and <= short.MaxValue &&
+            p.Y + dy is >= short.MinValue and <= short.MaxValue &&
+            p.Z + dz is >= sbyte.MinValue and <= sbyte.MaxValue;
+        if (ship.Components.Select(_world.FindItem).Any(item => item != null && !CanTranslate(item.Position)) ||
+            deckChars.Any(ch => !CanTranslate(ch.Position)) || deckItems.Any(item => !CanTranslate(item.Position)))
+            return false;
 
         // Move multi item
         var mi = ship.MultiItem;
-        var miPos = mi.Position;
-        _world.PlaceItem(mi, new Point3D(
-            (short)(miPos.X + dx), (short)(miPos.Y + dy),
-            (sbyte)(miPos.Z + dz), miPos.Map));
+        _world.PlaceItem(mi, destination);
 
         // Move components
         foreach (var uid in ship.Components)
@@ -749,7 +933,7 @@ public sealed class ShipEngine
             var p = item.Position;
             _world.PlaceItem(item, new Point3D(
                 (short)(p.X + dx), (short)(p.Y + dy),
-                (sbyte)(p.Z + dz), p.Map));
+                (sbyte)(p.Z + dz), destination.Map));
         }
 
         // Move deck characters. The ship's region moves WITH them, so suppress
@@ -760,7 +944,7 @@ public sealed class ShipEngine
             var p = ch.Position;
             _world.MoveCharacter(ch, new Point3D(
                 (short)(p.X + dx), (short)(p.Y + dy),
-                (sbyte)(p.Z + dz), p.Map), fireRegionEvents: false);
+                (sbyte)(p.Z + dz), destination.Map), fireRegionEvents: false);
         }
 
         // Move loose items on deck (not in containers, not components)
@@ -770,7 +954,7 @@ public sealed class ShipEngine
             var p = item.Position;
             _world.PlaceItem(item, new Point3D(
                 (short)(p.X + dx), (short)(p.Y + dy),
-                (sbyte)(p.Z + dz), p.Map));
+                (sbyte)(p.Z + dz), destination.Map));
         }
 
         // Re-position the ship's region to follow the hull to its new footprint.
@@ -895,11 +1079,12 @@ public sealed class ShipEngine
     /// bounding-box test. Used by the boarding gate and eject.</summary>
     public Ship? FindShipAt(Point3D pt)
     {
-        var region = _world.FindRegion(pt);
-        if (region == null || !region.IsFlag(RegionFlag.Ship)) return null;
         foreach (var ship in _ships.Values)
-            if (ship.RegionUid == region.Uid)
+        {
+            var region = ship.RegionUid != 0 ? _world.FindRegionByUid(ship.RegionUid) : null;
+            if (region != null && region.IsFlag(RegionFlag.Ship) && region.Contains(pt))
                 return ship;
+        }
         return null;
     }
 
@@ -909,6 +1094,11 @@ public sealed class ShipEngine
     {
         if (uid == ship.Owner) return false; // never ban the owner
         bool added = ship.AddBan(uid);
+        if (ship.Pilot == uid)
+        {
+            Stop(ship);
+            ship.Pilot = Serial.Invalid;
+        }
         // Eject any matching character already standing on the deck.
         foreach (var ch in ListDeckCharacters(ship))
             if (ch.Uid == uid)
@@ -935,12 +1125,15 @@ public sealed class ShipEngine
         // SHIPGATE x,y,z,map — teleport entire ship
         if (!Point3D.TryParse(args.Trim(), out var dest))
             return false;
-
-        short dx = (short)(dest.X - ship.MultiItem.X);
-        short dy = (short)(dest.Y - ship.MultiItem.Y);
-        sbyte dz = (sbyte)(dest.Z - ship.MultiItem.Z);
-
-        return MoveDelta(ship, dx, dy, dz);
+        var def = _multiDefs.Get(ship.MultiItem.BaseId);
+        if (def == null) return false;
+        if (!ship.MultiItem.IsAttr(ObjAttributes.Magic) && !CanPlaceShip(dest, def, ship))
+            return false;
+        var (width, height) = _mapData?.GetMapSize(dest.Map) ?? (7168, 4096);
+        if (dest.X + def.MinX < 0 || dest.Y + def.MinY < 0 ||
+            dest.X + def.MaxX >= width || dest.Y + def.MaxY >= height)
+            return false;
+        return MoveTo(ship, dest);
     }
 
     // =====================================================================
@@ -957,17 +1150,24 @@ public sealed class ShipEngine
             var ownerObj = _world.FindObject(ship.Owner);
             if (ownerObj != null)
                 item.SetTag("SHIP.OWNER_UUID", ownerObj.Uuid.ToString("D"));
+            else
+                item.RemoveTag("SHIP.OWNER_UUID");
             item.SetTag("SHIP.ANCHORED", ship.Anchored ? "1" : "0");
             item.SetTag("SHIP.DIRFACE", ((byte)ship.DirFace).ToString());
+            item.SetTag("SHIP.DIRMOVE", ((byte)ship.DirMove).ToString());
             item.SetTag("SHIP.SPEEDPERIOD", ship.SpeedPeriod.ToString());
             item.SetTag("SHIP.SPEEDTILES", ship.SpeedTiles.ToString());
             item.SetTag("SHIP.SPEEDMODE", ((byte)ship.SpeedMode).ToString());
 
             if (ship.Pilot.IsValid)
                 item.SetTag("SHIP.PILOT", $"0{ship.Pilot.Value:X}");
+            else
+                item.RemoveTag("SHIP.PILOT");
 
             if (ship.Components.Count > 0)
                 item.SetTag("SHIP.COMPONENTS", string.Join(",", ship.Components.Select(s => $"0{s.Value:X}")));
+            else
+                item.RemoveTag("SHIP.COMPONENTS");
 
             if (ship.Bans.Count > 0)
                 item.SetTag("SHIP.BANS", string.Join(",", ship.Bans.Select(s => $"0{s.Value:X}")));
@@ -981,6 +1181,8 @@ public sealed class ShipEngine
     /// </summary>
     public void DeserializeFromWorld()
     {
+        foreach (var existing in _ships.Values.ToList())
+            RemoveShipRegion(existing);
         _ships.Clear();
         foreach (var obj in _world.GetAllObjects())
         {
@@ -996,12 +1198,15 @@ public sealed class ShipEngine
             if (item.TryGetTag("SHIP.ANCHORED", out string? ancStr))
                 ship.Anchored = ancStr == "1";
             if (item.TryGetTag("SHIP.DIRFACE", out string? dirStr) && byte.TryParse(dirStr, out byte df))
-                ship.DirFace = (Direction)df;
+                ship.DirFace = Normalize4Dir((Direction)(df & 0x07));
+            if (item.TryGetTag("SHIP.DIRMOVE", out string? moveStr) && byte.TryParse(moveStr, out byte dm))
+                ship.DirMove = (Direction)(dm & 0x07);
             if (item.TryGetTag("SHIP.SPEEDPERIOD", out string? spStr) && ushort.TryParse(spStr, out ushort sp))
-                ship.SpeedPeriod = sp;
+                ship.SpeedPeriod = Math.Max((ushort)1, sp);
             if (item.TryGetTag("SHIP.SPEEDTILES", out string? stStr) && byte.TryParse(stStr, out byte st))
-                ship.SpeedTiles = st;
-            if (item.TryGetTag("SHIP.SPEEDMODE", out string? smStr) && byte.TryParse(smStr, out byte sm))
+                ship.SpeedTiles = Math.Clamp(st, (byte)1, (byte)16);
+            if (item.TryGetTag("SHIP.SPEEDMODE", out string? smStr) && byte.TryParse(smStr, out byte sm) &&
+                sm is >= (byte)ShipSpeedMode.OneTile and <= (byte)ShipSpeedMode.Fast)
                 ship.SpeedMode = (ShipSpeedMode)sm;
             if (item.TryGetTag("SHIP.PILOT", out string? pilotStr))
                 ship.Pilot = new Serial(ParseHexSerial(pilotStr));
@@ -1015,9 +1220,11 @@ public sealed class ShipEngine
                     if (val == 0) continue;
                     var compItem = _world.FindItem(new Serial(val));
                     if (compItem != null)
+                    {
+                        compItem.Link = item.Uid;
+                        compItem.SetAttr(ObjAttributes.Move_Never);
                         ship.AddComponent(compItem);
-                    else
-                        ship.AddComponentUid(new Serial(val));
+                    }
                 }
             }
 
@@ -1032,6 +1239,13 @@ public sealed class ShipEngine
 
             _ships[item.Uid] = ship;
             CreateShipRegion(ship);
+            if (ship.Pilot.IsValid)
+            {
+                var pilot = _world.FindChar(ship.Pilot);
+                if (pilot == null || ship.Anchored || pilot.IsMounted || pilot.IsStatFlag(StatFlag.Hovering) ||
+                    !ship.CanBoard(pilot.Uid) || FindShipAt(pilot.Position) != ship)
+                    ship.Pilot = Serial.Invalid;
+            }
         }
     }
 

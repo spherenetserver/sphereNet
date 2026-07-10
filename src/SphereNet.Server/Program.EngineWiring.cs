@@ -2177,7 +2177,11 @@ public static partial class Program
                 multi => _customHousing.GetCommittedTiles(multi);
 
             // Ships
-            _shipEngine = new SphereNet.Game.Ships.ShipEngine(_world, multiRegistry, _mapData);
+            _shipEngine = new SphereNet.Game.Ships.ShipEngine(_world, multiRegistry, _mapData)
+            {
+                MaxShipsPerPlayer = _config.MaxShipsPlayer,
+                MaxShipsPerAccount = _config.MaxShipsAccount,
+            };
             _shipEngine.OnTillerSpeak = (ship, text) =>
             {
                 // Source-X CItemShip::Speak uses CObjBase::Speak with COLOR_TEXT_DEF.

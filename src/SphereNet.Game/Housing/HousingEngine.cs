@@ -65,6 +65,11 @@ public sealed class MultiDef
 
     public void RecalcBounds()
     {
+        if (Components.Count == 0)
+        {
+            MinX = MinY = MaxX = MaxY = 0;
+            return;
+        }
         MinX = MinY = short.MaxValue;
         MaxX = MaxY = short.MinValue;
         foreach (var c in Components)
@@ -129,13 +134,14 @@ public sealed class House
     public int MaxLockdowns => _baseStorage * _lockdownsPercent / 100;
     public int MaxSecure => _baseStorage - MaxLockdowns;
     public IReadOnlyList<Serial> Components => _components;
-    public int BaseStorage { get => _baseStorage; set => _baseStorage = value; }
+    public int BaseStorage { get => _baseStorage; set => _baseStorage = Math.Max(0, value); }
     public long LastRefreshTick { get => _lastRefreshTick; set => _lastRefreshTick = value; }
     public HouseDecayStage DecayStage { get => _decayStage; set => _decayStage = value; }
     public uint RegionUid { get => _regionUid; set => _regionUid = value; }
     public IReadOnlyCollection<Serial> CoOwners => _coOwners;
     public IReadOnlyCollection<Serial> Friends => _friends;
     public IReadOnlyCollection<Serial> Bans => _bans;
+    public IReadOnlyCollection<Serial> AccessList => _accessList;
     public IReadOnlyCollection<Serial> Lockdowns => _lockdowns;
     public IReadOnlyCollection<Serial> SecureContainers => _secureContainers;
 
@@ -148,26 +154,57 @@ public sealed class House
     public HousePriv GetPriv(Serial charUid)
     {
         if (charUid == _owner) return HousePriv.Owner;
+        if (_bans.Contains(charUid)) return HousePriv.Ban;
         if (_coOwners.Contains(charUid)) return HousePriv.CoOwner;
         if (_friends.Contains(charUid)) return HousePriv.Friend;
-        if (_bans.Contains(charUid)) return HousePriv.Ban;
         if (_accessList.Contains(charUid)) return HousePriv.AccessOnly;
+        if (_vendors.Contains(charUid)) return HousePriv.Vendor;
         return HousePriv.None;
     }
 
-    public bool AddCoOwner(Serial uid) => _coOwners.Add(uid);
+    private void RevokeListedPrivileges(Serial uid)
+    {
+        _coOwners.Remove(uid);
+        _friends.Remove(uid);
+        _bans.Remove(uid);
+        _accessList.Remove(uid);
+        _vendors.Remove(uid);
+    }
+
+    public bool AddCoOwner(Serial uid)
+    {
+        if (!uid.IsValid || uid == _owner || _coOwners.Contains(uid)) return false;
+        RevokeListedPrivileges(uid);
+        return _coOwners.Add(uid);
+    }
     public bool RemoveCoOwner(Serial uid) => _coOwners.Remove(uid);
-    public bool AddFriend(Serial uid) => _friends.Add(uid);
+    public bool AddFriend(Serial uid)
+    {
+        if (!uid.IsValid || uid == _owner || _friends.Contains(uid)) return false;
+        RevokeListedPrivileges(uid);
+        return _friends.Add(uid);
+    }
     public bool RemoveFriend(Serial uid) => _friends.Remove(uid);
-    public bool AddBan(Serial uid) => _bans.Add(uid);
+    public bool AddBan(Serial uid)
+    {
+        if (!uid.IsValid || uid == _owner || _bans.Contains(uid)) return false;
+        RevokeListedPrivileges(uid);
+        return _bans.Add(uid);
+    }
     public bool RemoveBan(Serial uid) => _bans.Remove(uid);
-    public bool AddAccess(Serial uid) => _accessList.Add(uid);
+    public bool AddAccess(Serial uid)
+    {
+        if (!uid.IsValid || uid == _owner || _accessList.Contains(uid)) return false;
+        RevokeListedPrivileges(uid);
+        return _accessList.Add(uid);
+    }
     public bool RemoveAccess(Serial uid) => _accessList.Remove(uid);
 
     public bool CanAccess(Serial charUid)
     {
         var priv = GetPriv(charUid);
-        return priv != HousePriv.Ban && priv != HousePriv.None;
+        if (priv == HousePriv.Ban) return false;
+        return _houseType == HouseType.Public || priv != HousePriv.None;
     }
 
     public bool CanLockdown(Serial charUid) =>
@@ -180,17 +217,16 @@ public sealed class House
     public bool Lockdown(Serial itemUid, Serial byChar)
     {
         if (!CanLockdown(byChar)) return false;
+        if (_lockdowns.Contains(itemUid) || _secureContainers.Contains(itemUid)) return false;
         if (_lockdowns.Count >= MaxLockdowns) return false;
         var item = Objects.ObjBase.ResolveWorld?.Invoke()?.FindItem(itemUid);
+        if (item == null || item.IsDeleted || !item.IsOnGround || item.IsEquipped) return false;
         // Source-X: only items INSIDE the house region may be locked down —
         // an owner could previously lock items anywhere in the world.
-        if (item != null && !IsInsideHouse(item.Position)) return false;
+        if (!IsInsideHouse(item.Position)) return false;
         _lockdowns.Add(itemUid);
-        if (item != null)
-        {
-            item.SetAttr(SphereNet.Core.Enums.ObjAttributes.LockedDown);
-            item.Link = _multiItem.Uid; // Source-X m_uidLink → the multi
-        }
+        item.SetAttr(SphereNet.Core.Enums.ObjAttributes.LockedDown);
+        item.Link = _multiItem.Uid;
         return true;
     }
 
@@ -209,7 +245,12 @@ public sealed class House
         if (!CanLockdown(byChar)) return false;
         if (!_lockdowns.Remove(itemUid)) return false;
         var item = Objects.ObjBase.ResolveWorld?.Invoke()?.FindItem(itemUid);
-        item?.ClearAttr(SphereNet.Core.Enums.ObjAttributes.LockedDown);
+        if (item != null)
+        {
+            item.ClearAttr(SphereNet.Core.Enums.ObjAttributes.LockedDown);
+            if (item.Link == _multiItem.Uid)
+                item.Link = Serial.Invalid;
+        }
         return true;
     }
 
@@ -218,17 +259,18 @@ public sealed class House
     public bool SecureContainer(Serial containerUid, Serial byChar)
     {
         if (!CanLockdown(byChar)) return false;
+        if (_lockdowns.Contains(containerUid)) return false;
         if (_secureContainers.Count >= MaxSecure) return false;
         if (_secureContainers.Contains(containerUid)) return false;
         var secureItem = Objects.ObjBase.ResolveWorld?.Invoke()?.FindItem(containerUid);
-        if (secureItem != null && !IsInsideHouse(secureItem.Position)) return false;
+        if (secureItem == null || secureItem.IsDeleted || !secureItem.IsOnGround || secureItem.IsEquipped)
+            return false;
+        if (secureItem.ItemType is not (ItemType.Container or ItemType.ContainerLocked))
+            return false;
+        if (!IsInsideHouse(secureItem.Position)) return false;
         _secureContainers.Add(containerUid);
-        var item = secureItem;
-        if (item != null)
-        {
-            item.SetAttr(SphereNet.Core.Enums.ObjAttributes.Secure);
-            item.Link = _multiItem.Uid;
-        }
+        secureItem.SetAttr(SphereNet.Core.Enums.ObjAttributes.Secure);
+        secureItem.Link = _multiItem.Uid;
         return true;
     }
 
@@ -238,7 +280,12 @@ public sealed class House
         if (!CanLockdown(byChar)) return false;
         if (!_secureContainers.Remove(containerUid)) return false;
         var item = Objects.ObjBase.ResolveWorld?.Invoke()?.FindItem(containerUid);
-        item?.ClearAttr(SphereNet.Core.Enums.ObjAttributes.Secure);
+        if (item != null)
+        {
+            item.ClearAttr(SphereNet.Core.Enums.ObjAttributes.Secure);
+            if (item.Link == _multiItem.Uid)
+                item.Link = Serial.Invalid;
+        }
         return true;
     }
 
@@ -254,18 +301,28 @@ public sealed class House
     public bool IsSecured(Serial itemUid) => _secureContainers.Contains(itemUid);
 
     /// <summary>Add a house component item UID.</summary>
-    public void AddComponent(Serial uid) => _components.Add(uid);
+    public void AddComponent(Serial uid)
+    {
+        if (uid.IsValid && !_components.Contains(uid))
+            _components.Add(uid);
+    }
+    public bool RemoveComponent(Serial uid) => _components.Remove(uid);
 
     /// <summary>Add a vendor NPC to the house.</summary>
-    public void AddVendor(Serial uid) => _vendors.Add(uid);
+    public void AddVendor(Serial uid)
+    {
+        if (!uid.IsValid || uid == _owner || _vendors.Contains(uid)) return;
+        RevokeListedPrivileges(uid);
+        _vendors.Add(uid);
+    }
     public bool RemoveVendor(Serial uid) => _vendors.Remove(uid);
     public IReadOnlyList<Serial> Vendors => _vendors;
 
     /// <summary>Transfer ownership to another character.</summary>
     public void TransferOwnership(Serial newOwnerUid)
     {
-        _coOwners.Remove(newOwnerUid);
-        _friends.Remove(newOwnerUid);
+        if (!newOwnerUid.IsValid) return;
+        RevokeListedPrivileges(newOwnerUid);
         _owner = newOwnerUid;
         Refresh();
     }
@@ -288,6 +345,13 @@ public sealed class House
         _redeeded = true;
         var deed = world.CreateItem();
         deed.BaseId = 0x14F0; // ITEMID_DEED1
+        deed.ItemType = ItemType.Deed;
+        deed.More1 = _multiItem.BaseId;
+        deed.Hue = _multiItem.Hue;
+        if (_multiItem.IsAttr(ObjAttributes.Magic))
+            deed.SetAttr(ObjAttributes.Magic);
+        if (_multiItem.ItemType == ItemType.MultiCustom)
+            deed.SetTag("CUSTOMHOUSE", "1");
         deed.Name = _multiItem.Name + " deed";
         deed.SetTag("HOUSE_MULTI_UUID", _multiItem.Uuid.ToString("D"));
         deed.SetTag("HOUSE_MULTI_BASEID", _multiItem.BaseId.ToString());
@@ -339,15 +403,14 @@ public sealed class House
 
         if (protectedUids.Count > 0)
         {
-            var crate = world.CreateItem();
-            crate.BaseId = 0x0E3D; // ITEMID_CRATE1 (wooden crate)
-            crate.ItemType = Core.Enums.ItemType.Container;
-            crate.Name = "a moving crate";
-
+            var protectedItems = new List<Item>();
             foreach (var protUid in protectedUids)
             {
                 var item = world.FindItem(protUid);
                 if (item == null || item.IsDeleted) continue;
+                item.ClearAttr(Core.Enums.ObjAttributes.LockedDown | Core.Enums.ObjAttributes.Secure);
+                if (item.Link == _multiItem.Uid)
+                    item.Link = Serial.Invalid;
                 // Detach from its current container or ground sector, then place it
                 // in the crate (a fresh slot). Contents of a secured container ride
                 // along inside it.
@@ -355,17 +418,28 @@ public sealed class House
                     world.FindItem(item.ContainedIn)?.RemoveItem(item);
                 else
                     world.HideFromSector(item);
-                item.Position = new Point3D(0, 0, 0, crate.MapIndex);
-                crate.AddItem(item);
                 item.DecayTime = 0; // protected inside the crate
+                protectedItems.Add(item);
             }
 
             var owner = _owner.IsValid ? world.FindChar(_owner) : null;
             var bank = owner?.GetEquippedItem(Core.Enums.Layer.BankBox);
-            if (bank != null)
-                bank.AddItem(crate);
-            else
-                world.PlaceItemWithDecay(crate, _multiItem.Position);
+            while (protectedItems.Count > 0)
+            {
+                var crate = world.CreateItem();
+                crate.BaseId = 0x0E3D; // ITEMID_CRATE1 (wooden crate)
+                crate.ItemType = Core.Enums.ItemType.Container;
+                crate.Name = "a moving crate";
+                while (protectedItems.Count > 0 && crate.Contents.Count < Item.MaxContainerItems)
+                {
+                    var item = protectedItems[^1];
+                    protectedItems.RemoveAt(protectedItems.Count - 1);
+                    item.Position = new Point3D(0, 0, 0, crate.MapIndex);
+                    crate.TryAddItem(item);
+                }
+                if (bank == null || !bank.TryAddItem(crate))
+                    world.PlaceItemWithDecay(crate, _multiItem.Position);
+            }
         }
         _lockdowns.Clear();
         _secureContainers.Clear();
@@ -453,12 +527,8 @@ public sealed class HousingEngine
             return null;
         if (_houses.ContainsKey(multiItem.Uid))
             return _houses[multiItem.Uid];
-        if (!multiItem.TryGetTag("HOUSE.OWNER", out string? ownerStr) || string.IsNullOrEmpty(ownerStr))
-            return null;
-        uint ownerVal = ParseHexSerial(ownerStr);
-        if (ownerVal == 0) return null;
-
-        var house = new House(multiItem) { Owner = new Serial(ownerVal) };
+        var house = CreateHouseFromTags(multiItem);
+        if (house == null) return null;
         _houses[multiItem.Uid] = house;
         CreateHouseRegion(house);
         return house;
@@ -478,7 +548,8 @@ public sealed class HousingEngine
     /// placement (the engine's own NoBuild/footprint/terrain checks ran first).</summary>
     public static Func<Character, Point3D, bool>? OnHouseCheck { get; set; }
 
-    public House? PlaceHouse(Character owner, ushort multiId, Point3D position, bool customFoundation = false)
+    public House? PlaceHouse(Character owner, ushort multiId, Point3D position,
+        bool customFoundation = false, bool magic = false)
     {
         if (MaxHousesPerPlayer >= 0 && GetHousesByOwner(owner.Uid).Count >= MaxHousesPerPlayer)
             return null;
@@ -488,9 +559,13 @@ public sealed class HousingEngine
 
         var def = _multiDefs.Get(multiId);
         if (def == null) return null;
+        var (mapWidth, mapHeight) = _world.MapData?.GetMapSize(position.Map) ?? (7168, 4096);
+        if (position.X + def.MinX < 0 || position.Y + def.MinY < 0 ||
+            position.X + def.MaxX >= mapWidth || position.Y + def.MaxY >= mapHeight)
+            return null;
 
         // Check placement area
-        if (!CanPlaceHouse(position, def))
+        if (!magic && !CanPlaceHouse(position, def))
             return null;
 
         // @HouseCheck (Source-X) — a script may veto placement after the engine's
@@ -503,6 +578,8 @@ public sealed class HousingEngine
         multiItem.BaseId = multiId;
         multiItem.Name = def.Name;
         multiItem.ItemType = customFoundation ? ItemType.MultiCustom : ItemType.Multi;
+        if (magic)
+            multiItem.SetAttr(ObjAttributes.Magic);
         _world.PlaceItem(multiItem, position);
 
         // Create house instance
@@ -532,6 +609,10 @@ public sealed class HousingEngine
                 // Source-X links every component back to the multi (m_uidLink);
                 // the door lock code IS the house link, so the house key opens it.
                 compItem.Link = multiItem.Uid;
+                compItem.SetAttr(ObjAttributes.Move_Never);
+                compItem.SetTag("HOUSE_UID", multiItem.Uid.Value.ToString());
+                if (compItem.ItemType == ItemType.SignGump)
+                    multiItem.Link = compItem.Uid;
                 _world.PlaceItem(compItem, compPos);
                 house.AddComponent(compItem.Uid);
             }
@@ -562,10 +643,61 @@ public sealed class HousingEngine
 
         var dest = toBank ? owner.GetEquippedItem(Layer.BankBox) : owner.Backpack;
         dest ??= owner.Backpack;
-        if (dest != null)
-            dest.AddItem(key);
-        else
+        if (dest == null || !dest.TryAddItem(key))
             _world.PlaceItemWithDecay(key, owner.Position);
+    }
+
+    /// <summary>Transfer through the engine so authority, ownership caps,
+    /// persistent guard memory and structure keys change atomically.</summary>
+    public bool TransferHouse(House house, Character requestor, Character newOwner)
+    {
+        if (!_houses.TryGetValue(house.MultiItem.Uid, out var registered) || registered != house)
+            return false;
+        if (requestor.PrivLevel < PrivLevel.GM && house.Owner != requestor.Uid)
+            return false;
+        if (!newOwner.IsPlayer || newOwner.Uid == house.Owner)
+            return false;
+
+        int playerCount = _houses.Values.Count(h => h != house && h.Owner == newOwner.Uid);
+        if (MaxHousesPerPlayer >= 0 && playerCount >= MaxHousesPerPlayer)
+            return false;
+        int accountCount = GetHouseCountForAccount(newOwner, house);
+        if (MaxHousesPerAccount >= 0 && accountCount >= MaxHousesPerAccount)
+            return false;
+
+        var oldOwner = _world.FindChar(house.Owner);
+        RemoveStructureKeys(oldOwner, house.MultiItem.Uid);
+        var oldMemory = oldOwner?.Memory_FindObjTypes(house.MultiItem.Uid, MemoryType.Guard);
+        if (oldOwner != null && oldMemory != null)
+            oldOwner.Memory_ClearTypes(oldMemory, MemoryType.Guard);
+
+        house.TransferOwnership(newOwner.Uid);
+        newOwner.Memory_AddObjTypes(house.MultiItem.Uid, MemoryType.Guard);
+        CreateHouseKey(newOwner, house.MultiItem, toBank: false);
+        CreateHouseKey(newOwner, house.MultiItem, toBank: true);
+        return true;
+    }
+
+    private void RemoveStructureKeys(Character? owner, Serial structureUid)
+    {
+        if (owner == null) return;
+        RemoveStructureKeys(owner.Backpack, structureUid);
+        var bank = owner.GetEquippedItem(Layer.BankBox);
+        if (bank != owner.Backpack)
+            RemoveStructureKeys(bank, structureUid);
+    }
+
+    private void RemoveStructureKeys(Item? container, Serial structureUid)
+    {
+        if (container == null) return;
+        foreach (var child in container.Contents.ToList())
+        {
+            RemoveStructureKeys(child, structureUid);
+            if (child.ItemType is not (ItemType.Key or ItemType.Keyring) || child.Link != structureUid)
+                continue;
+            container.RemoveItem(child);
+            _world.RemoveItem(child);
+        }
     }
 
     /// <summary>Host hook: is another SHIP hull at this point? Wired to the
@@ -662,9 +794,21 @@ public sealed class HousingEngine
             requestor.PrivLevel < PrivLevel.GM)
             return null;
 
+        var position = house.MultiItem.Position;
+        var owner = _world.FindChar(house.Owner);
+        RemoveStructureKeys(owner, house.MultiItem.Uid);
+        var ownerMemory = owner?.Memory_FindObjTypes(house.MultiItem.Uid, MemoryType.Guard);
+        if (owner != null && ownerMemory != null)
+            owner.Memory_ClearTypes(ownerMemory, MemoryType.Guard);
         RemoveHouseRegion(house);
         var deed = house.Redeed(_world);
         _houses.Remove(multiItemUid);
+        if (deed != null)
+        {
+            var recipient = owner ?? requestor;
+            if (recipient.Backpack == null || !recipient.Backpack.TryAddItem(deed))
+                _world.PlaceItemWithDecay(deed, position);
+        }
         return deed;
     }
 
@@ -675,6 +819,11 @@ public sealed class HousingEngine
     {
         if (!_houses.TryGetValue(multiItemUid, out var house))
             return null;
+        var owner = _world.FindChar(house.Owner);
+        RemoveStructureKeys(owner, house.MultiItem.Uid);
+        var ownerMemory = owner?.Memory_FindObjTypes(house.MultiItem.Uid, MemoryType.Guard);
+        if (owner != null && ownerMemory != null)
+            owner.Memory_ClearTypes(ownerMemory, MemoryType.Guard);
         RemoveHouseRegion(house);
         var deed = house.Redeed(_world);
         _houses.Remove(multiItemUid);
@@ -696,6 +845,38 @@ public sealed class HousingEngine
                 return house;
         }
         return null;
+    }
+
+    /// <summary>Add a mutually-exclusive ban and move an occupant outside the
+    /// footprint immediately; the movement gate prevents re-entry.</summary>
+    public bool BanFromHouse(House house, Serial targetUid)
+    {
+        if (!_houses.TryGetValue(house.MultiItem.Uid, out var registered) || registered != house)
+            return false;
+        if (!house.AddBan(targetUid)) return false;
+        var target = _world.FindChar(targetUid);
+        if (target != null && FindHouseAt(target.Position) == house)
+            EjectFromHouse(house, target);
+        return true;
+    }
+
+    private void EjectFromHouse(House house, Character target)
+    {
+        var mi = house.MultiItem;
+        var def = _multiDefs.Get(mi.BaseId);
+        if (def == null) return;
+        var candidates = new[]
+        {
+            new Point3D(mi.X, (short)(mi.Y + def.MaxY + 1), mi.Z, mi.MapIndex),
+            new Point3D((short)(mi.X + def.MaxX + 1), mi.Y, mi.Z, mi.MapIndex),
+            new Point3D(mi.X, (short)(mi.Y + def.MinY - 1), mi.Z, mi.MapIndex),
+            new Point3D((short)(mi.X + def.MinX - 1), mi.Y, mi.Z, mi.MapIndex),
+        };
+        var destination = candidates.FirstOrDefault(p =>
+            _world.MapData == null || _world.MapData.IsPassable(p.Map, p.X, p.Y, p.Z));
+        if (destination == default)
+            destination = candidates[0];
+        _world.MoveCharacter(target, destination);
     }
 
     /// <summary>Source-X CItemMulti::MultiRealizeRegion — give the house a dynamic
@@ -778,11 +959,13 @@ public sealed class HousingEngine
     }
 
     /// <summary>Count houses owned by any character on the owner's account.</summary>
-    public int GetHouseCountForAccount(Character owner)
+    public int GetHouseCountForAccount(Character owner) => GetHouseCountForAccount(owner, null);
+
+    private int GetHouseCountForAccount(Character owner, House? exclude)
     {
         var account = Character.ResolveAccountForChar?.Invoke(owner.Uid);
         if (account == null)
-            return GetHousesByOwner(owner.Uid).Count;
+            return _houses.Values.Count(h => h != exclude && h.Owner == owner.Uid);
 
         var accountChars = new HashSet<Serial>();
         for (int i = 0; i < 7; i++)
@@ -795,7 +978,7 @@ public sealed class HousingEngine
         int count = 0;
         foreach (var house in _houses.Values)
         {
-            if (accountChars.Contains(house.Owner))
+            if (house != exclude && accountChars.Contains(house.Owner))
                 count++;
         }
         return count;
@@ -820,6 +1003,8 @@ public sealed class HousingEngine
     /// </summary>
     public List<House> OnTickDecay()
     {
+        if (DecayStageIntervalMs <= 0)
+            return [];
         long now = Environment.TickCount64;
         var collapsed = new List<House>();
 
@@ -848,14 +1033,16 @@ public sealed class HousingEngine
         // Remove collapsed houses
         foreach (var house in collapsed)
         {
+            var owner = _world.FindChar(house.Owner);
+            RemoveStructureKeys(owner, house.MultiItem.Uid);
+            var ownerMemory = owner?.Memory_FindObjTypes(house.MultiItem.Uid, MemoryType.Guard);
+            if (owner != null && ownerMemory != null)
+                owner.Memory_ClearTypes(ownerMemory, MemoryType.Guard);
             RemoveHouseRegion(house);
             var deed = house.Redeed(_world);
             if (deed != null && house.Owner.IsValid)
             {
-                var owner = _world.FindChar(house.Owner);
-                if (owner?.Backpack != null)
-                    owner.Backpack.AddItem(deed);
-                else
+                if (owner?.Backpack == null || !owner.Backpack.TryAddItem(deed))
                     _world.PlaceItem(deed, house.MultiItem.Position);
             }
             _houses.Remove(house.MultiItem.Uid);
@@ -895,8 +1082,14 @@ public sealed class HousingEngine
             var ownerObj = _world.FindObject(house.Owner);
             if (ownerObj != null)
                 item.SetTag("HOUSE.OWNER_UUID", ownerObj.Uuid.ToString("D"));
+            else
+                item.RemoveTag("HOUSE.OWNER_UUID");
             item.SetTag("HOUSE.TYPE", ((byte)house.Type).ToString());
             item.SetTag("HOUSE.STORAGE", house.BaseStorage.ToString());
+            if (house.GuildStone.IsValid)
+                item.SetTag("HOUSE.GUILD", $"0{house.GuildStone.Value:X}");
+            else
+                item.RemoveTag("HOUSE.GUILD");
             item.SetTag("HOUSE.DECAY_STAGE", ((byte)house.DecayStage).ToString());
             long elapsed = Environment.TickCount64 - house.LastRefreshTick;
             item.SetTag("HOUSE.DECAY_ELAPSED", Math.Max(0, elapsed).ToString());
@@ -913,6 +1106,14 @@ public sealed class HousingEngine
                 item.SetTag("HOUSE.BANS", string.Join(",", house.Bans.Select(s => $"0{s.Value:X}")));
             else
                 item.RemoveTag("HOUSE.BANS");
+            if (house.AccessList.Count > 0)
+                item.SetTag("HOUSE.ACCESS", string.Join(",", house.AccessList.Select(s => $"0{s.Value:X}")));
+            else
+                item.RemoveTag("HOUSE.ACCESS");
+            if (house.Vendors.Count > 0)
+                item.SetTag("HOUSE.VENDORS", string.Join(",", house.Vendors.Select(s => $"0{s.Value:X}")));
+            else
+                item.RemoveTag("HOUSE.VENDORS");
             if (house.Lockdowns.Count > 0)
                 item.SetTag("HOUSE.LOCKDOWNS", string.Join(",", house.Lockdowns.Select(s => $"0{s.Value:X}")));
             else
@@ -934,6 +1135,8 @@ public sealed class HousingEngine
     /// </summary>
     public void DeserializeFromWorld()
     {
+        foreach (var existing in _houses.Values.ToList())
+            RemoveHouseRegion(existing);
         _houses.Clear();
         foreach (var obj in _world.GetAllObjects())
         {
@@ -943,32 +1146,67 @@ public sealed class HousingEngine
             // MultiCustom, so reading only Multi dropped every custom house from
             // the registry after a restart (it then decayed/escaped management).
             if (item.ItemType is not (ItemType.Multi or ItemType.MultiCustom)) continue;
-            if (!item.TryGetTag("HOUSE.OWNER", out string? ownerStr)) continue;
-
-            uint ownerVal = ParseHexSerial(ownerStr);
-            if (ownerVal == 0) continue;
-
-            var house = new House(item) { Owner = new Serial(ownerVal) };
-
-            if (item.TryGetTag("HOUSE.TYPE", out string? typeStr) && byte.TryParse(typeStr, out byte ht))
-                house.Type = (HouseType)ht;
-            if (item.TryGetTag("HOUSE.STORAGE", out string? storStr) && int.TryParse(storStr, out int stor))
-                house.BaseStorage = stor;
-            if (item.TryGetTag("HOUSE.DECAY_STAGE", out string? dsStr) && byte.TryParse(dsStr, out byte ds))
-                house.DecayStage = (HouseDecayStage)ds;
-            if (item.TryGetTag("HOUSE.DECAY_ELAPSED", out string? elStr) && long.TryParse(elStr, out long el) && el > 0)
-                house.LastRefreshTick = Environment.TickCount64 - el;
-
-            ParseSerialList(item, "HOUSE.COOWNERS", uid => house.AddCoOwner(uid));
-            ParseSerialList(item, "HOUSE.FRIENDS", uid => house.AddFriend(uid));
-            ParseSerialList(item, "HOUSE.BANS", uid => house.AddBan(uid));
-            ParseSerialList(item, "HOUSE.LOCKDOWNS", uid => house.LockdownForLoad(uid));
-            ParseSerialList(item, "HOUSE.SECURE", uid => house.SecureForLoad(uid));
-            ParseSerialList(item, "HOUSE.COMPONENTS", uid => house.AddComponent(uid));
+            var house = CreateHouseFromTags(item);
+            if (house == null) continue;
 
             _houses[item.Uid] = house;
             CreateHouseRegion(house);
         }
+    }
+
+    private House? CreateHouseFromTags(Item item)
+    {
+        if (!item.TryGetTag("HOUSE.OWNER", out string? ownerStr)) return null;
+        uint ownerVal = ParseHexSerial(ownerStr);
+        if (ownerVal == 0) return null;
+
+        var house = new House(item) { Owner = new Serial(ownerVal) };
+        if (item.TryGetTag("HOUSE.TYPE", out string? typeStr) && byte.TryParse(typeStr, out byte ht) &&
+            Enum.IsDefined(typeof(HouseType), ht))
+            house.Type = (HouseType)ht;
+        if (item.TryGetTag("HOUSE.STORAGE", out string? storStr) && int.TryParse(storStr, out int stor) && stor > 0)
+            house.BaseStorage = stor;
+        if (item.TryGetTag("HOUSE.GUILD", out string? guildStr))
+            house.GuildStone = new Serial(ParseHexSerial(guildStr));
+        if (item.TryGetTag("HOUSE.DECAY_STAGE", out string? dsStr) && byte.TryParse(dsStr, out byte ds) &&
+            ds <= (byte)HouseDecayStage.InDangerOfCollapsing)
+            house.DecayStage = (HouseDecayStage)ds;
+        if (item.TryGetTag("HOUSE.DECAY_ELAPSED", out string? elStr) && long.TryParse(elStr, out long el) && el > 0)
+            house.LastRefreshTick = Environment.TickCount64 - el;
+
+        ParseSerialList(item, "HOUSE.COOWNERS", uid => house.AddCoOwner(uid));
+        ParseSerialList(item, "HOUSE.FRIENDS", uid => house.AddFriend(uid));
+        ParseSerialList(item, "HOUSE.ACCESS", uid => house.AddAccess(uid));
+        ParseSerialList(item, "HOUSE.VENDORS", uid => house.AddVendor(uid));
+        ParseSerialList(item, "HOUSE.BANS", uid => house.AddBan(uid));
+        ParseSerialList(item, "HOUSE.LOCKDOWNS", uid =>
+        {
+            var locked = _world.FindItem(uid);
+            if (locked == null || locked.IsDeleted) return;
+            house.LockdownForLoad(uid);
+            locked.SetAttr(ObjAttributes.LockedDown);
+            locked.Link = item.Uid;
+        });
+        ParseSerialList(item, "HOUSE.SECURE", uid =>
+        {
+            var secure = _world.FindItem(uid);
+            if (secure == null || secure.IsDeleted) return;
+            house.SecureForLoad(uid);
+            secure.SetAttr(ObjAttributes.Secure);
+            secure.Link = item.Uid;
+        });
+        ParseSerialList(item, "HOUSE.COMPONENTS", uid =>
+        {
+            var component = _world.FindItem(uid);
+            if (component == null) return;
+            component.Link = item.Uid;
+            component.SetAttr(ObjAttributes.Move_Never);
+            component.SetTag("HOUSE_UID", item.Uid.Value.ToString());
+            if (component.ItemType == ItemType.SignGump && !item.Link.IsValid)
+                item.Link = component.Uid;
+            house.AddComponent(uid);
+        });
+        return house;
     }
 
     private static uint ParseHexSerial(string? str)

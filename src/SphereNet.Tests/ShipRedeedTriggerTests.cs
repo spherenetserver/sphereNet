@@ -30,7 +30,22 @@ public class ShipRedeedTriggerTests
         var multi = world.CreateItem();
         multi.BaseId = 0x4000;
         world.PlaceItem(multi, new Point3D(100, 100, 0, 0));
-        var engine = new ShipEngine(world, new MultiRegistry(), null);
+        var registry = new MultiRegistry();
+        foreach (ushort id in new ushort[] { 0x4000, 0x4001 })
+        {
+            var def = new MultiDef { Id = id, Name = "test ship" };
+            def.Components.Add(new MultiComponent
+            {
+                TileId = 0x3E40,
+                DeltaX = 0,
+                DeltaY = 0,
+                DeltaZ = 0,
+                Visible = true,
+            });
+            def.RecalcBounds();
+            registry.Register(def);
+        }
+        var engine = new ShipEngine(world, registry, null);
         return (engine, new Ship(multi));
     }
 

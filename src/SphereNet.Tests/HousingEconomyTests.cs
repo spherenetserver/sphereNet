@@ -77,6 +77,7 @@ public class HousingEconomyTests
 
             var locked = world.CreateItem();
             var secure = world.CreateItem();
+            secure.ItemType = ItemType.Container;
             Assert.True(house.Lockdown(locked.Uid, owner.Uid));
             Assert.True(house.SecureContainer(secure.Uid, owner.Uid));
 

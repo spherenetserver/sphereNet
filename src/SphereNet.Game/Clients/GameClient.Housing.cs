@@ -19,6 +19,11 @@ public sealed partial class GameClient
     {
         if (_character == null || _customHousing == null)
             return;
+        if (multi.ItemType != ItemType.MultiCustom)
+        {
+            SysMessage("This house is not customizable.");
+            return;
+        }
         if (_character.PrivLevel < PrivLevel.GM && !_customHousing.CanCustomize(_character, multi))
         {
             SysMessage("Only the house owner may customize this house.");
@@ -75,6 +80,8 @@ public sealed partial class GameClient
         }
 
         if (_customHousing == null)
+            return;
+        if (!_customHousing.IsSessionAuthorized(_character))
             return;
         var session = _customHousing.GetSession(_character.Uid);
         if (session == null)

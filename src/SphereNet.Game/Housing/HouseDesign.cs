@@ -31,7 +31,14 @@ public sealed class HouseDesign
         if (multi.TryGetTag(RevisionTag, out string? revStr) && uint.TryParse(revStr, out uint rev))
             design.Revision = rev;
 
-        for (int n = 0; multi.TryGetTag($"{TilePrefix}{n}", out string? entry); n++)
+        var entries = multi.Tags.GetAll()
+            .Where(pair => pair.Key.StartsWith(TilePrefix, StringComparison.OrdinalIgnoreCase) &&
+                           !pair.Key.Equals(RevisionTag, StringComparison.OrdinalIgnoreCase))
+            .Select(pair => (pair.Key, pair.Value,
+                Index: int.TryParse(pair.Key.AsSpan(TilePrefix.Length), out int index) ? index : -1))
+            .Where(pair => pair.Index >= 0)
+            .OrderBy(pair => pair.Index);
+        foreach (var (_, entry, _) in entries)
         {
             if (string.IsNullOrEmpty(entry))
                 continue;
@@ -43,6 +50,11 @@ public sealed class HouseDesign
             if (!int.TryParse(parts[1], out int dx) ||
                 !int.TryParse(parts[2], out int dy) ||
                 !int.TryParse(parts[3], out int dz))
+                continue;
+            if (tileId is <= 0 or > ushort.MaxValue ||
+                dx is < sbyte.MinValue or > sbyte.MaxValue ||
+                dy is < sbyte.MinValue or > sbyte.MaxValue ||
+                dz is < sbyte.MinValue or > sbyte.MaxValue)
                 continue;
             design.Tiles.Add(new HouseDesignTile((ushort)tileId, (sbyte)dx, (sbyte)dy, (sbyte)dz));
         }

@@ -4,6 +4,53 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-10] - Deep house and ship code audit and Source-X parity
+----------------------------------------
+
+FIXED - House privileges, storage and lifecycle:
+  - Owner/co-owner/friend/access/vendor/ban roles now follow mutually exclusive,
+    centralized privilege rules. Public access, GM operations, immediate ban
+    ejection and ownership/limit revalidation during transfer match Source-X.
+  - Lockdown and secure operations validate the house footprint, item state/type,
+    duplicates and privileges. Release, transfer, demolition and redeeding clear
+    stale links, attributes, keys and guard-memory records.
+  - Demolition/redeeding creates a real deed while preserving hue, magic, UUID
+    and base multi data. Protected and loose player items move into capacity-safe
+    moving crates with bank and ground fallbacks.
+
+FIXED - House components and custom housing:
+  - Multi components are deduplicated and regain Move_Never and house links after
+    loading. Sign resolution, door opening, gump authorization and stale owner,
+    guild, access, vendor and component-tag cleanup are complete.
+  - Only the current owner or a GM can customize, with one active architect per
+    house. Multi bounds, tile/coordinate ranges, maximum design size and fixture
+    replacement are validated without losing contained items.
+
+FIXED - Ship placement, movement and drydock:
+  - Placement uses the correct facing variant and checks map bounds, water and
+    statics, houses, characters, blocking items and other ship hulls. Directional
+    components are immovable and linked; pack/bank keys and per-character/account
+    MaxShipsPlayer and MaxShipsAccount limits are implemented.
+  - Turning and movement safely handle old/new footprints, coordinate overflow,
+    rider directions, carried objects, map-changing SHIPGATE travel and trigger-
+    driven deletion. Anchor, stop, speed and direction inputs are validated.
+  - Pilot/wheel control requires the assigned pilot to be aboard, unmounted,
+    non-hovering, unbanned and on an unanchored ship. Plank boarding, pilot ban
+    ejection and recursive ship-key lookup in nested containers are complete.
+  - Drydock/redeeding clears owner keys and the pilot while retaining plan type,
+    facing, hue, magic and UUID data. Hold and movable deck contents are preserved
+    through moving crates with bank and ground fallbacks.
+
+FIXED - Persistence and reload safety:
+  - House/ship regions, owners, components, direction, storage and pilot data are
+    bounded and relinked on load. Repeated deserialization into the same engine no
+    longer leaves duplicate regions or stale tags.
+
+VERIFIED - With 11 new house/ship integrity regressions, the complete solution
+  passes 1305/1305 in Debug and Release. The git diff check is clean.
+
+================================================================================
+
 [2026-07-10] - Source-X gameplay parity: interaction, client capabilities, buffs and death
 ----------------------------------------
 

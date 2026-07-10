@@ -588,7 +588,15 @@ public sealed class ClientItemUseHandler
                 // dclick swings it shut.
                 if (_character.Position.X != item.X || _character.Position.Y != item.Y)
                 {
-                    _character.MoveTo(new Point3D(item.X, item.Y, (sbyte)(item.Z + 3), item.MapIndex));
+                    var shipEngine = Item.ResolveShipEngine?.Invoke();
+                    var ship = shipEngine?.GetShip(item.Link) ?? shipEngine?.FindShipAt(item.Position);
+                    if (ship != null && _character.PrivLevel < PrivLevel.GM && !ship.CanBoard(_character.Uid))
+                    {
+                        SysMessage(ServerMessages.Get(Msg.TillerNotyourship));
+                        break;
+                    }
+                    _world.MoveCharacter(_character,
+                        new Point3D(item.X, item.Y, (sbyte)(item.Z + 3), item.MapIndex));
                     SendSelfRedraw();
                 }
                 else
@@ -1068,18 +1076,39 @@ public sealed class ClientItemUseHandler
                     bool customFoundation = item.TryGetTag("CUSTOMHOUSE", out string? customTag)
                         && customTag != "0";
                     var deedItem = item;
+                    var shipEngine = Item.ResolveShipEngine?.Invoke();
+                    ushort multiId = ResolveDeedMultiId(deedItem, out bool isShip);
+                    if (multiId == 0 || (isShip && shipEngine == null))
+                    {
+                        SysMessage(ServerMessages.Get("house_cant_place"));
+                        break;
+                    }
                     // Source-X deed placement asks for a target tile rather than
                     // dropping the house at the player's feet. The house anchor lands
                     // on the chosen point (the multi def offsets extend the footprint).
-                    SysMessage("Where would you like to place the house?");
+                    SysMessage(isShip
+                        ? "Where would you like to place the ship?"
+                        : "Where would you like to place the house?");
                     SetPendingTarget((serial, tx, ty, tz, gfx) =>
                     {
                         if (deedItem.IsDeleted) return;
                         var pos = new Point3D(tx, ty, tz, _character.MapIndex);
-                        var house = _housingEngine.PlaceHouse(_character, deedItem.BaseId, pos, customFoundation);
-                        if (house != null)
+                        Item? placedMulti;
+                        if (isShip)
+                            placedMulti = shipEngine!.PlaceShip(_character, multiId, pos,
+                                (Direction)((multiId & 0x3) * 2),
+                                magic: deedItem.IsAttr(ObjAttributes.Magic))?.MultiItem;
+                        else
+                            placedMulti = _housingEngine.PlaceHouse(_character, multiId, pos, customFoundation,
+                                magic: deedItem.IsAttr(ObjAttributes.Magic))?.MultiItem;
+                        if (placedMulti != null)
                         {
-                            SysMessage(ServerMessages.Get("house_placed"));
+                            placedMulti.Hue = deedItem.Hue;
+                            if (deedItem.IsAttr(ObjAttributes.Magic))
+                                placedMulti.SetAttr(ObjAttributes.Magic);
+                            RestoreRedeededMultiUuid(deedItem, placedMulti,
+                                isShip ? "SHIP_MULTI_UUID" : "HOUSE_MULTI_UUID");
+                            SysMessage(isShip ? "Ship placed." : ServerMessages.Get("house_placed"));
                             if (_triggerDispatcher?.FireItemTrigger(deedItem, ItemTrigger.Destroy,
                                     new TriggerArgs { CharSrc = _character, ItemSrc = deedItem }) != TriggerResult.True)
                             {
@@ -1088,7 +1117,7 @@ public sealed class ClientItemUseHandler
                         }
                         else
                         {
-                            SysMessage(ServerMessages.Get("house_cant_place"));
+                            SysMessage(isShip ? "Cannot place ship here." : ServerMessages.Get("house_cant_place"));
                         }
                     });
                 }
@@ -1628,14 +1657,28 @@ public sealed class ClientItemUseHandler
         // structure the lock belongs to (house door → the multi) — the house
         // key's code is the multi uid, mirrored on every component's Link.
         uint structId = locked.Link.IsValid ? locked.Link.Value : 0;
-        foreach (var it in _character.Backpack.Contents)
+        foreach (var it in EnumerateContents(_character.Backpack, 0))
         {
             if (it.ItemType is not (ItemType.Key or ItemType.Keyring)) continue;
-            if (it.TryGetTag("LINK", out string? lk) && uint.TryParse(lk, out uint kv) &&
+            uint kv = it.Link.IsValid ? it.Link.Value : 0;
+            if (kv == 0 && it.TryGetTag("LINK", out string? lk))
+                uint.TryParse(lk, out kv);
+            if (kv != 0 &&
                 (kv == linkId || (structId != 0 && kv == structId)))
                 return it;
         }
         return null;
+
+        static IEnumerable<Item> EnumerateContents(Item container, int depth)
+        {
+            if (depth >= 16) yield break;
+            foreach (var child in container.Contents)
+            {
+                yield return child;
+                foreach (var nested in EnumerateContents(child, depth + 1))
+                    yield return nested;
+            }
+        }
     }
 
     /// <summary>Re-enter the active-skill pipeline with a pre-resolved Serial target.</summary>
@@ -2726,6 +2769,51 @@ public sealed class ClientItemUseHandler
         // Reject blocked destinations (wall/water/impassable) so the moongate
         // can't strand the traveller inside geometry.
         return md.IsPassable(dest.Map, dest.X, dest.Y, dest.Z);
+    }
+
+    private ushort ResolveDeedMultiId(Item deed, out bool isShip)
+    {
+        isShip = false;
+        if (deed.TryGetTag("SHIP_MULTI_BASEID", out string? shipBase) &&
+            TryParseDeedMultiId(shipBase, out ushort shipId))
+        {
+            isShip = true;
+            return shipId;
+        }
+        if (deed.TryGetTag("HOUSE_MULTI_BASEID", out string? houseBase) &&
+            TryParseDeedMultiId(houseBase, out ushort houseId))
+            return houseId;
+
+        ushort targetId = deed.More1 is > 0 and <= ushort.MaxValue
+            ? (ushort)deed.More1
+            : (ushort)0;
+        if (targetId == 0 && deed.BaseId is not (0x14EF or 0x14F0 or 0x14F1) &&
+            _housingEngine?.MultiDefs.Get(deed.BaseId) != null)
+            targetId = deed.BaseId;
+        if (targetId == 0) return 0;
+
+        isShip = deed.BaseId == 0x14F1 || DefinitionLoader.GetItemDef(targetId)?.Type == ItemType.Ship;
+        return targetId;
+    }
+
+    private static bool TryParseDeedMultiId(string? text, out ushort id)
+    {
+        id = 0;
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        string value = text.Trim();
+        if (value.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            return ushort.TryParse(value.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out id) && id != 0;
+        return ushort.TryParse(value, out id) && id != 0;
+    }
+
+    private void RestoreRedeededMultiUuid(Item deed, Item placedMulti, string tagName)
+    {
+        if (!deed.TryGetTag(tagName, out string? uuidText) || !Guid.TryParse(uuidText, out Guid uuid))
+            return;
+        Guid oldUuid = placedMulti.Uuid;
+        placedMulti.Uuid = uuid;
+        if (!_world.TryReIndexUuid(placedMulti, oldUuid, out _))
+            placedMulti.Uuid = oldUuid;
     }
 
     // ==================== Crafting Gump ====================

@@ -1221,6 +1221,8 @@ public sealed class ClientWorldFeaturesHandler
 
         // Find the house — could be the multi item itself or linked via tag
         var house = _housingEngine.GetHouse(signOrMulti.Uid);
+        if (house == null && signOrMulti.Link.IsValid)
+            house = _housingEngine.GetHouse(signOrMulti.Link);
         if (house == null && signOrMulti.TryGetTag("HOUSE_UID", out string? houseUidStr) &&
             uint.TryParse(houseUidStr, out uint houseUid))
         {
@@ -1240,8 +1242,12 @@ public sealed class ClientWorldFeaturesHandler
         var ownerCh = _world.FindChar(house.Owner);
         string ownerName = ownerCh?.Name ?? "Unknown";
 
-        var gump = new GumpBuilder(_character.Uid.Value, signOrMulti.Uid.Value, 420, 440);
-        gump.AddResizePic(0, 0, 5054, 420, 440);
+        bool isStaff = _character.PrivLevel >= PrivLevel.GM;
+        bool isOwner = priv == HousePriv.Owner || isStaff;
+        bool canManageStorage = priv is HousePriv.Owner or HousePriv.CoOwner || isStaff;
+
+        var gump = new GumpBuilder(_character.Uid.Value, signOrMulti.Uid.Value, 420, 540);
+        gump.AddResizePic(0, 0, 5054, 420, 540);
         gump.AddText(30, 10, 0, "House Management");
         gump.AddText(30, 35, 0, $"Owner: {ownerName}");
         gump.AddText(30, 55, 0, $"Type: {house.Type}");
@@ -1250,7 +1256,7 @@ public sealed class ClientWorldFeaturesHandler
         gump.AddText(30, 115, 0, $"Co-Owners: {house.CoOwners.Count}  Friends: {house.Friends.Count}");
 
         int btnY = 145;
-        if (priv is HousePriv.Owner or HousePriv.CoOwner)
+        if (isOwner)
         {
             gump.AddButton(30, btnY, 4005, 4007, 1);
             gump.AddText(70, btnY, 0, "Transfer House");
@@ -1261,11 +1267,14 @@ public sealed class ClientWorldFeaturesHandler
             gump.AddButton(30, btnY, 4005, 4007, 10);
             gump.AddText(70, btnY, 0, "Add Co-Owner");
             btnY += 25;
-            gump.AddButton(30, btnY, 4005, 4007, 11);
-            gump.AddText(70, btnY, 0, "Add Friend");
-            btnY += 25;
             gump.AddButton(30, btnY, 4005, 4007, 12);
             gump.AddText(70, btnY, 0, "Remove Co-Owner");
+            btnY += 25;
+        }
+        if (canManageStorage)
+        {
+            gump.AddButton(30, btnY, 4005, 4007, 11);
+            gump.AddText(70, btnY, 0, "Add Friend");
             btnY += 25;
             gump.AddButton(30, btnY, 4005, 4007, 13);
             gump.AddText(70, btnY, 0, "Remove Friend");
@@ -1282,11 +1291,14 @@ public sealed class ClientWorldFeaturesHandler
             gump.AddButton(30, btnY, 4005, 4007, 17);
             gump.AddText(70, btnY, 0, "Release Secure");
             btnY += 25;
+        }
+        if (isOwner && house.MultiItem.ItemType == ItemType.MultiCustom)
+        {
             gump.AddButton(30, btnY, 4005, 4007, 4);
             gump.AddText(70, btnY, 0, "Customize House");
             btnY += 25;
         }
-        if (priv == HousePriv.Owner)
+        if (isOwner)
         {
             gump.AddButton(30, btnY, 4005, 4007, 20);
             gump.AddText(70, btnY, 0, "Ban Player");
@@ -1295,13 +1307,13 @@ public sealed class ClientWorldFeaturesHandler
             gump.AddText(70, btnY, 0, "Unban Player");
             btnY += 25;
         }
-        if (priv != HousePriv.None && priv != HousePriv.Ban)
+        if (isStaff || house.CanAccess(_character.Uid))
         {
             gump.AddButton(30, btnY, 4005, 4007, 3);
             gump.AddText(70, btnY, 0, "Open Door");
             btnY += 25;
         }
-        gump.AddButton(280, 400, 4017, 4019, 0); // Close
+        gump.AddButton(280, 505, 4017, 4019, 0); // Close
 
         var capturedHouse = house;
         SendGump(gump, (buttonId, switches, textEntries) =>
@@ -1314,12 +1326,32 @@ public sealed class ClientWorldFeaturesHandler
     {
         if (_character == null || _housingEngine == null) return;
 
+        bool IsRegistered() => _housingEngine.GetHouse(house.MultiItem.Uid) == house;
+        bool HasOwnerAuthority() => IsRegistered() &&
+            (_character.PrivLevel >= PrivLevel.GM || house.Owner == _character.Uid);
+        bool HasStorageAuthority() => IsRegistered() &&
+            (_character.PrivLevel >= PrivLevel.GM || house.CanLockdown(_character.Uid));
+
+        bool authorized = buttonId switch
+        {
+            1 or 2 or 4 or 10 or 12 or 20 or 21 => HasOwnerAuthority(),
+            11 or 13 or 14 or 15 or 16 or 17 => HasStorageAuthority(),
+            3 => IsRegistered() && (_character.PrivLevel >= PrivLevel.GM || house.CanAccess(_character.Uid)),
+            _ => true,
+        };
+        if (!authorized)
+        {
+            SysMessage("You do not have permission to manage this house.");
+            return;
+        }
+
         switch (buttonId)
         {
             case 1: // Transfer — target the new owner
                 SysMessage(ServerMessages.Get("house_select_owner"));
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
+                    if (!HasOwnerAuthority()) return;
                     var target = _world.FindChar(new Serial(serial));
                     if (target == null || !target.IsPlayer)
                     {
@@ -1328,27 +1360,23 @@ public sealed class ClientWorldFeaturesHandler
                     }
                     // Transfer must respect the recipient's house cap, same as
                     // PlaceHouse — otherwise it's an easy way to exceed the limit.
-                    if ((_housingEngine.MaxHousesPerPlayer >= 0 &&
-                         _housingEngine.GetHousesByOwner(target.Uid).Count >= _housingEngine.MaxHousesPerPlayer) ||
-                        (_housingEngine.MaxHousesPerAccount >= 0 &&
-                         _housingEngine.GetHouseCountForAccount(target) >= _housingEngine.MaxHousesPerAccount))
+                    if (!_housingEngine.TransferHouse(house, _character, target))
                     {
                         SysMessage(ServerMessages.Get("house_add_limit"));
                         return;
                     }
-                    house.TransferOwnership(target.Uid);
                     SysMessage(ServerMessages.GetFormatted("house_transferred", target.Name));
                 });
                 break;
             case 2: // Demolish
-                var deed = _housingEngine.RemoveHouse(signOrMulti.Uid, _character);
+                var deed = _housingEngine.RemoveHouse(house.MultiItem.Uid, _character);
                 if (deed != null)
                     SysMessage(ServerMessages.Get("house_demolished"));
                 else
                     SysMessage(ServerMessages.Get("house_cant_demolish"));
                 break;
             case 3: // Open door
-                SysMessage(ServerMessages.Get("house_door_opened"));
+                OpenDoor();
                 break;
             case 4: // Customize House — enter the client design editor
                 BeginHouseCustomization(house.MultiItem);
@@ -1357,6 +1385,7 @@ public sealed class ClientWorldFeaturesHandler
                 SysMessage(ServerMessages.Get("house_add_coowner"));
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
+                    if (!HasOwnerAuthority()) return;
                     var target = _world.FindChar(new Serial(serial));
                     if (target == null || !target.IsPlayer) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
                     if (house.AddCoOwner(target.Uid))
@@ -1369,6 +1398,7 @@ public sealed class ClientWorldFeaturesHandler
                 SysMessage(ServerMessages.Get("house_add_friend"));
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
+                    if (!HasStorageAuthority()) return;
                     var target = _world.FindChar(new Serial(serial));
                     if (target == null || !target.IsPlayer) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
                     if (house.AddFriend(target.Uid))
@@ -1381,6 +1411,7 @@ public sealed class ClientWorldFeaturesHandler
                 SysMessage(ServerMessages.Get("house_remove_coowner"));
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
+                    if (!HasOwnerAuthority()) return;
                     var target = _world.FindChar(new Serial(serial));
                     if (target == null) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
                     if (house.RemoveCoOwner(target.Uid))
@@ -1393,6 +1424,7 @@ public sealed class ClientWorldFeaturesHandler
                 SysMessage(ServerMessages.Get("house_remove_friend"));
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
+                    if (!HasStorageAuthority()) return;
                     var target = _world.FindChar(new Serial(serial));
                     if (target == null) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
                     if (house.RemoveFriend(target.Uid))
@@ -1405,6 +1437,7 @@ public sealed class ClientWorldFeaturesHandler
                 SysMessage(ServerMessages.Get("house_lockdown"));
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
+                    if (!HasStorageAuthority()) return;
                     var targetUid = new Serial(serial);
                     var lockItem = _world.FindItem(targetUid);
                     if (lockItem == null || _housingEngine?.FindHouseAt(lockItem.Position) != house)
@@ -1422,6 +1455,7 @@ public sealed class ClientWorldFeaturesHandler
                 SysMessage(ServerMessages.Get("house_lockdown_release"));
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
+                    if (!HasStorageAuthority()) return;
                     var targetUid = new Serial(serial);
                     if (house.ReleaseLockdown(targetUid, _character.Uid))
                         SysMessage(ServerMessages.Get("house_lockdown_released"));
@@ -1433,6 +1467,7 @@ public sealed class ClientWorldFeaturesHandler
                 SysMessage(ServerMessages.Get("house_secure"));
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
+                    if (!HasStorageAuthority()) return;
                     var targetUid = new Serial(serial);
                     if (house.SecureContainer(targetUid, _character.Uid))
                         SysMessage(ServerMessages.Get("house_secure_ok"));
@@ -1444,6 +1479,7 @@ public sealed class ClientWorldFeaturesHandler
                 SysMessage(ServerMessages.Get("house_secure_release"));
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
+                    if (!HasStorageAuthority()) return;
                     var targetUid = new Serial(serial);
                     if (house.ReleaseSecure(targetUid, _character.Uid))
                         SysMessage(ServerMessages.Get("house_secure_released"));
@@ -1455,9 +1491,10 @@ public sealed class ClientWorldFeaturesHandler
                 SysMessage(ServerMessages.Get("house_ban"));
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
+                    if (!HasOwnerAuthority()) return;
                     var target = _world.FindChar(new Serial(serial));
                     if (target == null || !target.IsPlayer) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
-                    if (house.AddBan(target.Uid))
+                    if (_housingEngine.BanFromHouse(house, target.Uid))
                         SysMessage(ServerMessages.GetFormatted("house_banned", target.Name));
                     else
                         SysMessage(ServerMessages.GetFormatted("house_already_banned", target.Name));
@@ -1467,6 +1504,7 @@ public sealed class ClientWorldFeaturesHandler
                 SysMessage(ServerMessages.Get("house_unban"));
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
+                    if (!HasOwnerAuthority()) return;
                     var target = _world.FindChar(new Serial(serial));
                     if (target == null) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
                     if (house.RemoveBan(target.Uid))
@@ -1861,7 +1899,7 @@ public sealed class ClientWorldFeaturesHandler
 
         var ship = engine.FindShipAt(_character.Position);
         if (ship == null) return;
-        if (ship.Pilot.IsValid && ship.Pilot != _character.Uid) return;
+        if (ship.Pilot != _character.Uid) return;
 
         byte dir = (byte)(data[4] & 0x07);
         byte speed = data[6];

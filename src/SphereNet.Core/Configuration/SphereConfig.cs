@@ -216,6 +216,8 @@ public sealed class SphereConfig
     // Housing
     public int MaxHousesPlayer { get; set; } = 1;
     public int MaxHousesAccount { get; set; } = 1;
+    public int MaxShipsPlayer { get; set; } = 1;
+    public int MaxShipsAccount { get; set; } = 1;
 
     // NPC
     public int NpcTrainCost { get; set; } = 30;
@@ -540,6 +542,8 @@ public sealed class SphereConfig
 
         MaxHousesPlayer = ini.GetInt(section, "MaxHousesPlayer", MaxHousesPlayer);
         MaxHousesAccount = ini.GetInt(section, "MaxHousesAccount", MaxHousesAccount);
+        MaxShipsPlayer = ini.GetInt(section, "MaxShipsPlayer", MaxShipsPlayer);
+        MaxShipsAccount = ini.GetInt(section, "MaxShipsAccount", MaxShipsAccount);
 
         NpcTrainCost = ini.GetInt(section, "NpcTrainCost", NpcTrainCost);
         NpcTrainMax = ini.GetInt(section, "NpcTrainMax", NpcTrainMax);

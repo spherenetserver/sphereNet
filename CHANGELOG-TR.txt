@@ -3,6 +3,55 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-10] - Ev ve gemi sistemleri derin kod denetimi ve Source-X uyumu
+----------------------------------------
+
+DUZELTILDI - Ev yetkileri, depolama ve yasam dongusu:
+  - Owner/co-owner/friend/access/vendor/ban rolleri birbirini dislayan merkezi
+    yetki kurallarina baglandi. Public ev erisimi, GM islemleri, yasaklanan
+    oyuncunun disari atilmasi ve transfer anindaki sahiplik/limit kontrolleri
+    Source-X davranisina uyarlandi.
+  - Lockdown ve secure islemleri ev siniri, esya konumu/turu, duplicate ve rol
+    kontrollerini uyguluyor. Release, transfer, yikim ve redeed eski linkleri,
+    attribute'lari, anahtarlari ve guard memory kayitlarini temizliyor.
+  - Ev yikimi/redeed gercek deed olusturuyor; hue, magic, UUID ve temel multi
+    bilgileri korunuyor. Korunan ve gevsek oyuncu esyalari kapasite kontrollu
+    moving crate'lere, gerekirse banka veya zemine aktariliyor.
+
+DUZELTILDI - Ev bilesenleri ve custom housing:
+  - Multi bilesenleri tekillestirildi, Move_Never ve ev linkleri yuklemede de
+    geri kuruluyor. Tabela linki, kapi acma, gump yetkileri ve gecersiz/eskimis
+    owner, guild, access, vendor ve component tag temizligi tamamlandi.
+  - Custom house yalniz guncel owner/GM tarafindan ve tek aktif mimar oturumuyla
+    degistirilebiliyor. Multi sinirlari, tile/koordinat araliklari, azami tasarim
+    boyutu ve fixture yenilemesi veri/esya kaybetmeyecek bicimde dogrulaniyor.
+
+DUZELTILDI - Gemi yerlestirme, hareket ve drydock:
+  - Yerlestirme dogru yon varyantini kullaniyor; harita siniri, su/statik, ev,
+    karakter, engelleyici esya ve diger gemi hull cakismalari denetleniyor.
+    Yonlu bilesenler kilitlenip gemiye baglaniyor; pack/bank anahtarlari ve
+    karakter/hesap bazli MaxShipsPlayer/MaxShipsAccount limitleri uygulandi.
+  - Donus ve hareket eski/yeni multi footprint'lerini, koordinat tasmasini,
+    rider yonlerini, tasinan nesneleri, map degisimli SHIPGATE'i ve trigger ile
+    silinme durumunu guvenle yonetiyor. Anchor, stop, speed ve direction girdileri
+    dogrulaniyor.
+  - Pilot/dumen kullanimi unanchored, gemide, bineksiz, hover etmeyen ve banli
+    olmayan atanmis pilotla sinirli. Plank binisi, ban/pilot tahliyesi ve ic ice
+    cantalardaki gemi anahtari aramasi tamamlandi.
+  - Drydock/redeed owner anahtarlarini ve pilotu temizliyor; plan tipi, yon, hue,
+    magic ve UUID bilgilerini koruyor. Ambar ile hareketli guverte esyalari
+    moving crate uzerinden banka/zemin fallback'iyle kayipsiz tasiniyor.
+
+DUZELTILDI - Kalicilik ve yeniden yukleme:
+  - Ev/gemi region, owner, component, direction, storage ve pilot verileri
+    sinirlanip yeniden baglaniyor; ayni engine'e tekrar deserialize edilmesi eski
+    region veya stale tag birakmiyor.
+
+DOGRULANDI - 11 yeni ev/gemi butunluk regresyonu dahil tum cozum Debug ve
+  Release 1305/1305 basarili. git diff denetimi temiz.
+
+================================================================================
+
 [2026-07-10] - Source-X oyun ici davranis uyumu: etkilesim, istemci yetenekleri, buff ve olum
 ----------------------------------------
 

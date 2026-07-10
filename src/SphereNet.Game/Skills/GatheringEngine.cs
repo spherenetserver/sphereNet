@@ -289,7 +289,7 @@ public sealed class GatheringEngine
             if (actual == null)
                 _world.PlaceItemWithDecay(result.Item, ch.Position);
             else if (actual != result.Item)
-                result.Item.Delete();
+                _world.RemoveItem(result.Item);
         }
 
         return true;

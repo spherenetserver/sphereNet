@@ -616,9 +616,12 @@ public sealed class ClientScriptConsoleHandler
             {
                 case "EQUIP":
                     _character.Backpack ??= _world.CreateItem();
+                    _character.Backpack.BaseId = 0x0E75;
+                    _character.Backpack.ItemType = ItemType.Container;
                     _character.Backpack.Name = "Backpack";
                     _character.Equip(_character.Backpack, Layer.Pack);
-                    _character.Backpack.AddItem(Targets.ScriptNewItem);
+                    if (!_character.Backpack.TryAddItem(Targets.ScriptNewItem))
+                        _world.PlaceItemWithDecay(Targets.ScriptNewItem, _character.Position);
                     Targets.ScriptNewItem = null;
                     return true;
                 case "CONT":
@@ -628,10 +631,24 @@ public sealed class ClientScriptConsoleHandler
                     {
                         uint cval = ObjBase.ParseHexOrDecUInt(trimmed);
                         var cont = _world.FindObject(new Serial(cval)) as Item;
-                        if (cont != null) { cont.AddItem(Targets.ScriptNewItem); Targets.ScriptNewItem = null; return true; }
+                        if (cont != null)
+                        {
+                            if (!cont.TryAddItem(Targets.ScriptNewItem))
+                                _world.PlaceItemWithDecay(Targets.ScriptNewItem, _character.Position);
+                            Targets.ScriptNewItem = null;
+                            return true;
+                        }
                     }
-                    _character.Backpack ??= _world.CreateItem();
-                    _character.Backpack.AddItem(Targets.ScriptNewItem);
+                    if (_character.Backpack == null)
+                    {
+                        var scriptPack = _world.CreateItem();
+                        scriptPack.BaseId = 0x0E75;
+                        scriptPack.ItemType = ItemType.Container;
+                        scriptPack.Name = "Backpack";
+                        _character.Equip(scriptPack, Layer.Pack);
+                    }
+                    if (!_character.Backpack!.TryAddItem(Targets.ScriptNewItem))
+                        _world.PlaceItemWithDecay(Targets.ScriptNewItem, _character.Position);
                     Targets.ScriptNewItem = null;
                     return true;
                 }

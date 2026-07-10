@@ -75,6 +75,7 @@ public class VendorPacketRoundtripTests
         var player = world.CreateCharacter();
         player.Name = "buyer";
         player.IsPlayer = true;
+        player.Str = short.MaxValue;
         world.PlaceCharacter(player, new Point3D(101, 100, 0, 0));
         var pack = world.CreateItem();
         pack.ItemType = ItemType.Container;

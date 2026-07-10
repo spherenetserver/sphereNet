@@ -99,6 +99,7 @@ public class VendorStableParityTests
 
         var buyer = world.CreateCharacter();
         buyer.IsPlayer = true;
+        buyer.Str = short.MaxValue;
         world.PlaceCharacter(buyer, new Point3D(100, 100, 0, 0));
         var pack = AddPack(world, buyer);
         var gold = world.CreateItem();
@@ -182,6 +183,7 @@ public class VendorStableParityTests
 
         var buyer = world.CreateCharacter();
         buyer.IsPlayer = true;
+        buyer.Str = short.MaxValue;
         world.PlaceCharacter(buyer, new Point3D(100, 100, 0, 0));
         var pack = AddPack(world, buyer);
         var gold = world.CreateItem();

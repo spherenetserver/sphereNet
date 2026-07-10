@@ -719,11 +719,17 @@ public sealed partial class GameClient
         if (pack == null)
         {
             // NPC without a pack: fall back to equip layer Pack or drop at feet.
-            _world.PlaceItem(item, target.Position);
+            _world.PlaceItemWithDecay(item, target.Position);
+            SendWorldItem(item);
             return;
         }
 
-        pack.AddItem(item);
+        if (!pack.TryAddItem(item))
+        {
+            _world.PlaceItemWithDecay(item, target.Position);
+            SendWorldItem(item);
+            return;
+        }
         item.Position = new Point3D(0, 0, 0, target.MapIndex);
 
         // Owner-side visual: only clients that already have the pack "open"
@@ -1364,7 +1370,11 @@ public sealed partial class GameClient
             var targetContainer = _world.FindItem(new Serial(targetSerial));
             if (targetContainer != null && targetContainer.ItemType is ItemType.Container or ItemType.ContainerLocked)
             {
-                targetContainer.AddItem(item);
+                if (!targetContainer.TryAddItem(item))
+                {
+                    _world.PlaceItemWithDecay(item, groundPos);
+                    return;
+                }
                 _netState.Send(new PacketContainerItem(
                     item.Uid.Value, item.DispIdFull, 0,
                     item.Amount, item.X, item.Y,
@@ -1666,7 +1676,7 @@ public sealed partial class GameClient
                 // minted candidate is discarded here.
                 if (npcDeferLoot && !entry.Newbie)
                 {
-                    item.Delete();
+                    _world.RemoveItem(item);
                     continue;
                 }
 
@@ -1677,7 +1687,8 @@ public sealed partial class GameClient
                     pack.BaseId = 0x0E75;
                     ch.Equip(pack, Layer.Pack);
                 }
-                pack.AddItem(item);
+                if (!pack.TryAddItem(item))
+                    _world.RemoveItem(item);
             }
             else
             {

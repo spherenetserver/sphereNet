@@ -211,6 +211,8 @@ public sealed class SpeechEngine
     {
         foreach (var member in guild.Members)
         {
+            if (!guild.IsMember(member.CharUid))
+                continue;
             var recipient = _world.FindChar(member.CharUid);
             if (recipient == null || recipient.IsDeleted)
                 continue;

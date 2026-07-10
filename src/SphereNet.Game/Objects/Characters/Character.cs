@@ -1917,6 +1917,7 @@ public partial class Character : ObjBase
 
     public bool Equip(Item item, Layer layer)
     {
+        if (item.IsDeleted) return false;
         // A two-handed weapon (TWOHANDS=Y / bow / xbow) must occupy the
         // TwoHanded layer. UO tiledata marks some of them as the OneHanded layer,
         // and the client picks the attack animation from the equipped layer — a
@@ -1928,10 +1929,37 @@ public partial class Character : ObjBase
         int idx = (int)layer;
         if (idx < 0 || idx >= _equipment.Length) return false;
 
-        if (_equipment[idx] != null)
+        // Keep one authoritative parent/layer. Script and engine paths can call
+        // Equip directly without first removing the item from a container or a
+        // previous wearer; retaining both references duplicates save/weight state.
+        var world = ResolveWorld?.Invoke();
+        if (item.ContainedIn.IsValid && world != null)
+        {
+            var oldParent = world.FindObject(item.ContainedIn);
+            if (oldParent is Item oldContainer)
+                oldContainer.RemoveItem(item);
+            else if (oldParent is Character oldWearer && item.IsEquipped &&
+                     oldWearer.GetEquippedItem(item.EquipLayer) == item)
+                oldWearer.Unequip(item.EquipLayer);
+        }
+        else if (world != null)
+        {
+            world.HideFromSector(item);
+        }
+
+        var displaced = _equipment[idx];
+        if (displaced != null && !ReferenceEquals(displaced, item))
+        {
             Unequip(layer);
+            bool bounced = layer != Layer.Pack && Backpack != null &&
+                !ReferenceEquals(Backpack, displaced) && Backpack.TryAddItem(displaced);
+            if (!bounced && world != null)
+                world.PlaceItemWithDecay(displaced, Position);
+        }
 
         _equipment[idx] = item;
+        if (layer == Layer.Pack)
+            _backpack = item;
         item.IsEquipped = true;
         item.EquipLayer = layer;
         item.ContainedIn = Uid;
@@ -1985,6 +2013,8 @@ public partial class Character : ObjBase
         if (item == null) return null;
 
         _equipment[idx] = null;
+        if (layer == Layer.Pack && ReferenceEquals(_backpack, item))
+            _backpack = null;
         item.IsEquipped = false;
         item.ContainedIn = Serial.Invalid;
         MarkDirty(DirtyFlag.Equip);
@@ -1998,15 +2028,29 @@ public partial class Character : ObjBase
     }
 
     public int GetTotalWeight()
+        => GetTotalWeightTenths() / Item.WeightUnits;
+
+    /// <summary>Exact equipped/container-tree weight in tenths of a stone.</summary>
+    public int GetTotalWeightTenths()
     {
-        int total = 0;
+        long total = 0;
+        var seen = new HashSet<Item>(ReferenceEqualityComparer.Instance);
         for (int i = 0; i < _equipment.Length; i++)
         {
             var eq = _equipment[i];
-            if (eq != null)
-                total += GetItemTreeWeight(eq);
+            // Bank/vendor/special layers are service containers or engine
+            // memories, not carried inventory. Counting bank gold here makes a
+            // withdrawal impossible merely because the account has savings.
+            if (i >= (int)Layer.VendorStock)
+                continue;
+            if (eq != null && seen.Add(eq))
+            {
+                total += eq.TotalWeightTenths;
+                if (total >= int.MaxValue)
+                    return int.MaxValue;
+            }
         }
-        return total / Item.WeightUnits;
+        return (int)total;
     }
 
     /// <summary>Maximum carry weight in whole stones (Source-X: Str*7/2 + 40 + mod).</summary>
@@ -2017,18 +2061,9 @@ public partial class Character : ObjBase
     /// freshly gathered/crafted item to the ground instead of overloading the pack.</summary>
     public bool CanCarry(Item item)
     {
-        int incomingTenths = item.Weight * Math.Max(1, (int)item.Amount);
-        return (GetTotalWeight() * Item.WeightUnits) + incomingTenths <= MaxWeight * Item.WeightUnits;
-    }
-
-    private int GetItemTreeWeight(Item item)
-    {
-        int w = item.Weight * Math.Max(1, (int)item.Amount);
-        var world = ResolveWorld?.Invoke();
-        if (world == null) return w;
-        foreach (var child in world.GetContainerContents(item.Uid))
-            w += GetItemTreeWeight(child);
-        return w;
+        long incomingTenths = item.TotalWeightTenths;
+        return (long)GetTotalWeightTenths() + incomingTenths <=
+               (long)Math.Max(0, MaxWeight) * Item.WeightUnits;
     }
 
     // --- Movement ---
@@ -3556,7 +3591,7 @@ public partial class Character : ObjBase
                     {
                         // Remove existing gold
                         foreach (var item in pack.Contents.ToList())
-                            if (item.BaseId == 0x0EED) item.Delete();
+                            if (item.BaseId == 0x0EED) item.RemoveFromWorld();
                         // Setting gold is typically done via NEWGOLD command
                         if (goldVal > 0)
                             SetTag("PENDGOLD", goldVal.ToString());
@@ -4708,7 +4743,7 @@ public partial class Character : ObjBase
 
         var gm = ResolveGuildManager?.Invoke(Uid);
         if (gm == null) return false;
-        var guild = gm.FindGuildFor(Uid);
+        var guild = gm.FindGuildRecordFor(Uid);
         if (guild == null) { value = "0"; return true; }
         var member = guild.FindMember(Uid);
         if (member == null) { value = "0"; return true; }
@@ -4769,7 +4804,7 @@ public partial class Character : ObjBase
 
         var gm = ResolveGuildManager?.Invoke(Uid);
         if (gm == null) return false;
-        var guild = gm.FindGuildFor(Uid);
+        var guild = gm.FindGuildRecordFor(Uid);
         if (guild == null) return false;
         var member = guild.FindMember(Uid);
         if (member == null) return false;
@@ -5200,8 +5235,7 @@ public partial class Character : ObjBase
                 int take = Math.Min(want, child.Amount);
                 if (take >= child.Amount)
                 {
-                    container.RemoveItem(child);
-                    child.Delete();
+                    child.RemoveFromWorld();
                 }
                 else
                 {
@@ -5275,7 +5309,11 @@ public partial class Character : ObjBase
                 pack.BaseId = 0x0E75;
                 Equip(pack, Core.Enums.Layer.Pack);
             }
-            pack.AddItem(item);
+            if (!pack.TryAddItem(item))
+            {
+                world.RemoveItem(item);
+                return;
+            }
         }
         else
         {
@@ -5380,7 +5418,8 @@ public partial class Character : ObjBase
                 if (hue != 0) { item.Hue = new Core.Types.Color(hue); lastHue = hue; }
             }
 
-            corpse.AddItem(item);
+            if (!corpse.TryAddItem(item))
+                world.PlaceItemWithDecay(item, corpse.Position);
         }
     }
 
@@ -5577,7 +5616,11 @@ public partial class Character : ObjBase
             }
             if (entryAmount > 1)
                 item.Amount = (ushort)Math.Min(entryAmount, ushort.MaxValue);
-            pack.AddItem(item);
+            if (!pack.TryAddItem(item))
+            {
+                world.RemoveItem(item);
+                break;
+            }
             spawned++;
         }
 

@@ -309,6 +309,17 @@ public sealed class GameWorld
 
     public void DeleteObject(ObjBase obj)
     {
+        // A stale reference may outlive UID recycling. Never let deleting that
+        // old instance remove/free the newer object now registered at the same
+        // serial.
+        if (!_objects.TryGetValue(obj.Uid.Value, out var registered) ||
+            !ReferenceEquals(registered, obj))
+        {
+            if (obj is Item staleItem) staleItem.Delete();
+            else if (obj is Character staleChar) staleChar.Delete();
+            return;
+        }
+
         ObjectDeleting?.Invoke(obj);
         _dirtyObjects.TryRemove(obj.Uid.Value, out _);
         obj.ConsumeDirty();
@@ -318,6 +329,19 @@ public sealed class GameWorld
         {
             foreach (var child in container.Contents.ToArray())
                 DeleteObject(child);
+        }
+        else if (obj is Character owner)
+        {
+            // Character destruction owns the complete equipment tree. Leaving
+            // those items registered produces dangling CONT links to a recycled
+            // character serial (account deletion, NPC decay, summons, guards).
+            var seenEquipment = new HashSet<Item>(ReferenceEqualityComparer.Instance);
+            for (int i = 0; i < (int)Layer.Qty; i++)
+            {
+                var equipped = owner.GetEquippedItem((Layer)i);
+                if (equipped != null && seenEquipment.Add(equipped))
+                    DeleteObject(equipped);
+            }
         }
 
         if (_objects.Remove(obj.Uid.Value))
@@ -349,6 +373,9 @@ public sealed class GameWorld
             if (obj is Character ch) sector.RemoveCharacter(ch);
             else if (obj is Item item) sector.RemoveItem(item);
         }
+
+        if (obj is Item deletedItem) deletedItem.Delete();
+        else if (obj is Character deletedChar) deletedChar.Delete();
     }
 
     /// <summary>Remove an item from the world and mark it deleted.</summary>
@@ -440,6 +467,19 @@ public sealed class GameWorld
                 item.Uid.Value, pos.X, pos.Y, pos.Z, pos.Map);
             return false;
         }
+
+        // A ground item cannot remain referenced by its previous container or
+        // equipment slot. Centralising the detach here protects script, vendor,
+        // trade and decay fallbacks that place an item without a packet pickup.
+        if (item.ContainedIn.IsValid && _objects.TryGetValue(item.ContainedIn.Value, out var parent))
+        {
+            if (parent is Item parentItem)
+                parentItem.RemoveItem(item);
+            else if (parent is Character parentChar && item.IsEquipped &&
+                     parentChar.GetEquippedItem(item.EquipLayer) == item)
+                parentChar.Unequip(item.EquipLayer);
+        }
+        item.IsEquipped = false;
         RemoveFromSector(item);
         item.Position = pos;
         item.ContainedIn = Serial.Invalid;
@@ -469,10 +509,10 @@ public sealed class GameWorld
     /// (ship) carries a deck character: the ship's region moves WITH the character,
     /// so they never logically cross a region boundary and must not fire @Enter/@Exit
     /// or flip CURRENT_REGION as the hull sails.</summary>
-    public void MoveCharacter(Character ch, Point3D newPos, bool fireRegionEvents = true)
+    public bool MoveCharacter(Character ch, Point3D newPos, bool fireRegionEvents = true)
     {
         var newSector = GetSector(newPos);
-        if (newSector == null) return;
+        if (newSector == null) return false;
         var oldPos = ch.Position;
         var oldSector = GetSector(oldPos);
         if (oldSector != newSector)
@@ -508,6 +548,7 @@ public sealed class GameWorld
                 OnRegionChanged?.Invoke(ch, oldRegion, newRegion);
             }
         }
+        return true;
     }
 
     /// <summary>Place a character in the world.</summary>
@@ -1189,11 +1230,13 @@ public sealed class GameWorld
     public const long DefaultDecayTimeMs = 600_000;
 
     /// <summary>Place an item on the ground with the default decay timer.</summary>
-    public void PlaceItemWithDecay(Item item, Point3D pos, long decayMs = DefaultDecayTimeMs)
+    public bool PlaceItemWithDecay(Item item, Point3D pos, long decayMs = DefaultDecayTimeMs)
     {
-        if (GetSector(pos) == null) return;
-        PlaceItem(item, pos);
-        item.DecayTime = Environment.TickCount64 + decayMs;
+        if (!PlaceItem(item, pos)) return false;
+        long now = Environment.TickCount64;
+        long safeDelay = Math.Max(0, decayMs);
+        item.DecayTime = safeDelay > long.MaxValue - now ? long.MaxValue : now + safeDelay;
+        return true;
     }
 
     /// <summary>Enumerate all objects in the world (items + characters), including contained items.</summary>
@@ -1270,8 +1313,11 @@ public sealed class GameWorld
                         item.IsEquipped = false;
                         if (wearer.Backpack != null && wearer.Backpack != item)
                         {
-                            wearer.Backpack.AddItem(item);
-                            log?.Invoke($"GC: unequipped phantom-equip item 0x{item.Uid.Value:X} into pack (0x2202)");
+                            bool packed = wearer.Backpack.TryAddItem(item);
+                            if (!packed)
+                                PlaceItemWithDecay(item, wearer.Position);
+                            log?.Invoke($"GC: unequipped phantom-equip item 0x{item.Uid.Value:X} " +
+                                (packed ? "into pack" : "at wearer feet") + " (0x2202)");
                             fixedCount++;
                         }
                         else
@@ -1287,8 +1333,11 @@ public sealed class GameWorld
                 {
                     // 0x2106: flagged contained but missing from the container's
                     // content list — relink so it is reachable again.
-                    container.AddItem(item);
-                    log?.Invoke($"GC: relinked orphaned contained item 0x{item.Uid.Value:X} (0x2106)");
+                    bool relinked = container.TryAddItem(item);
+                    if (!relinked)
+                        PlaceItemWithDecay(item, container.GetTopLevelPosition());
+                    log?.Invoke($"GC: " + (relinked ? "relinked" : "grounded") +
+                        $" orphaned contained item 0x{item.Uid.Value:X} (0x2106)");
                     fixedCount++;
                 }
             }

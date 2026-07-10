@@ -186,7 +186,7 @@ public sealed class SpellEngine
                 if (scroll != null && !scroll.IsDeleted)
                 {
                     if (scroll.Amount > 1) scroll.Amount--;
-                    else scroll.Delete();
+                    else _world?.RemoveItem(scroll);
                 }
             }
         }
@@ -1150,7 +1150,8 @@ public sealed class SpellEngine
             fieldItem.SetTag("FIELD_CASTER_UUID", caster.Uuid.ToString("D"));
             fieldItem.SetTag("FIELD_DAMAGE", dmg.ToString());
             fieldItem.DecayTime = Environment.TickCount64 + 30_000; // 30s duration
-            _world.PlaceItem(fieldItem, tilePos);
+            if (!_world.PlaceItem(fieldItem, tilePos))
+                _world.RemoveItem(fieldItem);
         }
     }
 
@@ -1188,7 +1189,12 @@ public sealed class SpellEngine
         creature.SetTag("SUMMON_MASTER_UUID", caster.Uuid.ToString("D"));
         creature.SetTag("SUMMON_EXPIRE_TICK", (Environment.TickCount64 + duration * 100L).ToString());
 
-        _world.PlaceCharacter(creature, pos);
+        if (!_world.PlaceCharacter(creature, pos))
+        {
+            creature.ClearOwnership(clearFriends: true);
+            _world.DeleteObject(creature);
+            creature.Delete();
+        }
     }
 
     /// <summary>
@@ -1399,6 +1405,12 @@ public sealed class SpellEngine
             }
         }
 
+        if (_world.GetSector(dest) == null)
+        {
+            OnSysMessage?.Invoke(caster, "That location is unreachable.");
+            return;
+        }
+
         var md = _world.MapData;
         if (md != null)
         {
@@ -1421,8 +1433,8 @@ public sealed class SpellEngine
         if (def.Id == SpellType.Recall)
         {
             byte oldMap = caster.MapIndex;
-            _world.MoveCharacter(caster, dest);
-            OnSpellTeleport?.Invoke(caster, dest, oldMap);
+            if (_world.MoveCharacter(caster, dest))
+                OnSpellTeleport?.Invoke(caster, dest, oldMap);
             return;
         }
 
@@ -1460,6 +1472,11 @@ public sealed class SpellEngine
                 // impassable tile (wall/water/blocking static) would strand the
                 // caster. Recall/Gate guarded this; Teleport did not.
                 var teleMd = _world.MapData;
+                if (_world.GetSector(dest) == null)
+                {
+                    OnSysMessage?.Invoke(caster, "That location is unreachable.");
+                    break;
+                }
                 if (teleMd != null)
                 {
                     var (mapW, mapH) = teleMd.GetMapSize(dest.Map);
@@ -1482,8 +1499,8 @@ public sealed class SpellEngine
                     }
                 }
                 byte oldMap = caster.MapIndex;
-                _world.MoveCharacter(caster, dest);
-                OnSpellTeleport?.Invoke(caster, dest, oldMap);
+                if (_world.MoveCharacter(caster, dest))
+                    OnSpellTeleport?.Invoke(caster, dest, oldMap);
                 break;
             }
             case SpellType.Recall:
@@ -1664,10 +1681,12 @@ public sealed class SpellEngine
                 food.BaseId = def.EffectId != 0 ? def.EffectId : (ushort)0x09D0; // apple default
                 food.ItemType = ItemType.Food;
                 food.Name = "food";
-                if (target.Backpack != null)
-                    target.Backpack.AddItem(food);
-                else
-                    _world.PlaceItem(food, target.Position);
+                bool canPack = target.Backpack != null &&
+                    (target.PrivLevel >= PrivLevel.GM || target.CanCarry(food));
+                if (canPack && target.Backpack!.TryAddItem(food))
+                    break;
+                if (!_world.PlaceItemWithDecay(food, target.Position))
+                    _world.RemoveItem(food);
                 break;
             }
         }
@@ -2025,6 +2044,8 @@ public sealed class SpellEngine
             return false;
         if (!long.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out long remainingMs))
             return false;
+        if (remainingMs <= 0)
+            return false;
         if (!short.TryParse(parts[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out short strDelta))
             return false;
         if (!short.TryParse(parts[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out short dexDelta))
@@ -2037,6 +2058,11 @@ public sealed class SpellEngine
             return false;
         if (!uint.TryParse(parts[9], NumberStyles.Integer, CultureInfo.InvariantCulture, out uint flagRaw))
             return false;
+        var appliedFlag = (StatFlag)flagRaw;
+        if (appliedFlag is not (StatFlag.None or StatFlag.Freeze or StatFlag.Invisible or
+            StatFlag.NightSight or StatFlag.Reactive or StatFlag.ArcherCanMove or
+            StatFlag.Incognito or StatFlag.Reflection or StatFlag.Polymorph))
+            return false;
         if (!ushort.TryParse(parts[10], NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort oldBody))
             return false;
         if (!ushort.TryParse(parts[11], NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort newBody))
@@ -2046,18 +2072,19 @@ public sealed class SpellEngine
         if (!TryDecodeEffectString(parts[14], out string? newName))
             return false;
 
+        long expireTick = remainingMs > long.MaxValue - now ? long.MaxValue : now + remainingMs;
         eff = new ActiveSpellEffect
         {
             Target = target,
             Spell = (SpellType)spellRaw,
-            ExpireTick = now + Math.Max(0, remainingMs),
+            ExpireTick = expireTick,
             StrDelta = strDelta,
             DexDelta = dexDelta,
             IntDelta = intDelta,
             OldLightLevel = oldLight,
             NewLightLevel = newLight,
             LightChanged = parts[8] == "1",
-            AppliedFlag = (StatFlag)flagRaw,
+            AppliedFlag = appliedFlag,
             OldBodyId = oldBody,
             NewBodyId = newBody,
             BodyChanged = parts[12] == "1",

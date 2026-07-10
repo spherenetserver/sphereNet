@@ -24,21 +24,26 @@ public sealed class MountEngine
     /// Attempt to mount an NPC. Returns true on success.
     /// The NPC is removed from the visible world but kept in the object table.
     /// </summary>
-    public bool TryMount(Character rider, Character npc)
+    public bool TryMount(Character rider, Character npc, ushort mountItemOverride = 0)
     {
         if (rider.IsDead || rider.IsMounted || npc.IsDead)
             return false;
         if (rider.FightTarget.IsValid || rider.IsStatFlag(StatFlag.Freeze))
             return false;
+        if (rider.MapIndex != npc.MapIndex || rider.Position.GetDistanceTo(npc.Position) > 1)
+            return false;
+        // Source-X Horse_Mount requires NPC_IsOwnedBy. Mounting must never tame
+        // or transfer a wild/foreign creature as a side effect.
+        if (rider.PrivLevel < PrivLevel.GM && !npc.CanAcceptPetCommandFrom(rider, allowFriends: true))
+            return false;
 
-        ushort mountItemId = GetMountItemId(npc.BodyId);
+        ushort mountItemId = mountItemOverride != 0 ? mountItemOverride : GetMountItemId(npc.BodyId);
         if (mountItemId == 0)
             return false;
 
         // Store NPC identity so we can find the same NPC on dismount
         rider.Tags.Set("MOUNT_NPC_SERIAL", npc.Uid.Value.ToString());
         rider.Tags.Set("MOUNT_NPC_UUID", npc.Uuid.ToString("D"));
-        npc.TryAssignOwnership(rider, rider, summoned: false, enforceFollowerCap: false);
 
         // Hide NPC: remove from sector so it is invisible and won't tick,
         // but keep it in the world object table so it survives save/load.
@@ -173,9 +178,19 @@ public sealed class MountEngine
     /// <summary>
     /// Dismount the rider. Returns the original NPC (same object, all stats preserved).
     /// </summary>
-    public Character? Dismount(Character rider)
+    public Character? Dismount(Character rider, Func<Character, bool>? beforeDismount = null)
     {
         if (!rider.IsMounted)
+            return null;
+
+        Character? npc = null;
+        if (rider.TryGetTag("MOUNT_NPC_UUID", out string? uuidStr) &&
+            Guid.TryParse(uuidStr, out Guid npcUuid))
+            npc = _world.FindByUuid(npcUuid) as Character;
+        if (npc == null && rider.TryGetTag("MOUNT_NPC_SERIAL", out string? serialStr) &&
+            uint.TryParse(serialStr, out uint npcSerial) && npcSerial != 0)
+            npc = _world.FindChar(new Serial(npcSerial));
+        if (npc != null && beforeDismount?.Invoke(npc) == true)
             return null;
 
         var mountItem = rider.GetEquippedItem(Layer.Horse);
@@ -189,19 +204,6 @@ public sealed class MountEngine
         rider.ClearStatFlag(StatFlag.OnHorse);
 
         // Find the original NPC — UUID first, then Serial fallback
-        Character? npc = null;
-        if (rider.TryGetTag("MOUNT_NPC_UUID", out string? uuidStr) &&
-            Guid.TryParse(uuidStr, out Guid npcUuid))
-        {
-            npc = _world.FindByUuid(npcUuid) as Character;
-        }
-        if (npc == null &&
-            rider.TryGetTag("MOUNT_NPC_SERIAL", out string? serialStr) &&
-            uint.TryParse(serialStr, out uint npcSerial) && npcSerial != 0)
-        {
-            npc = _world.FindChar(new Serial(npcSerial));
-        }
-
         rider.RemoveTag("MOUNT_NPC_SERIAL");
         rider.RemoveTag("MOUNT_NPC_UUID");
         rider.RemoveTag("MOUNT_NPC_BODY");

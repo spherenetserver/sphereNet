@@ -947,7 +947,8 @@ public static partial class Program
         newItem.BaseId = baseId;
         newItem.Name = name;
         newItem.Amount = (ushort)toAdd;
-        pack.AddItem(newItem);
+        if (!pack.TryAddItem(newItem))
+            _world.RemoveItem(newItem);
     }
 
     private static void CleanBotCharacters()

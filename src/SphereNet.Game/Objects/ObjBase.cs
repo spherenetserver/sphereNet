@@ -608,7 +608,12 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             // veto — same engine path as REMOVE in SphereNet.
             case "DESTROY":
                 if (this is Items.Item delItem) delItem.RemoveFromWorld();
-                else if (this is Characters.Character delCh) delCh.Delete();
+                else if (this is Characters.Character delCh)
+                {
+                    var destroyWorld = ResolveWorld?.Invoke();
+                    if (destroyWorld != null) destroyWorld.DeleteObject(delCh);
+                    else delCh.Delete();
+                }
                 return true;
             case "TIMER":
                 if (long.TryParse(args, out long timerVal))

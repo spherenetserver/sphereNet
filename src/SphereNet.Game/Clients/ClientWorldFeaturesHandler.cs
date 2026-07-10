@@ -358,7 +358,7 @@ public sealed class ClientWorldFeaturesHandler
                     actual = result;
                 }
                 if (actual != result)
-                    result.Delete();
+                    _world.RemoveItem(result);
 
                 if (actual.ContainedIn == pack.Uid)
                     _netState.Send(new PacketContainerItem(
@@ -626,10 +626,15 @@ public sealed class ClientWorldFeaturesHandler
     public void InitiateTrade(Character partner, Item? firstItem = null)
     {
         if (_character == null || _tradeManager == null) return;
+        if (partner == _character || partner.IsDeleted || !partner.IsPlayer)
+        { SysMessage("That is not a valid trade partner."); return; }
         if (_character.IsDead || partner.IsDead) { SysMessage("You cannot trade while dead."); return; }
         if (_character.MapIndex != partner.MapIndex ||
             _character.Position.GetDistanceTo(partner.Position) > 3)
         { SysMessage("That person is too far away."); return; }
+        if (partner.TryGetTag("REFUSETRADES", out string? refuse) &&
+            (!int.TryParse(refuse, out int refuseValue) || refuseValue != 0))
+        { SysMessage($"{partner.Name} is refusing trade requests."); return; }
 
         var existing = _tradeManager.FindTradeFor(_character);
         if (existing != null) { SysMessage("You are already trading."); return; }
@@ -648,8 +653,34 @@ public sealed class ClientWorldFeaturesHandler
         cont2.Name = "Trade Container";
 
         var trade = _tradeManager.StartTrade(_character, partner, cont1, cont2);
-        FireTradeTrigger(_character, CharTrigger.TradeCreate, trade, partner);
-        FireTradeTrigger(partner, CharTrigger.TradeCreate, trade, _character);
+        if (FireTradeTrigger(_character, CharTrigger.TradeCreate, trade, partner, firstItem) == TriggerResult.True ||
+            FireTradeTrigger(partner, CharTrigger.TradeCreate, trade, _character, firstItem) == TriggerResult.True)
+        {
+            if (firstItem != null)
+                TradeManager.ReturnItemToCharacter(_world, _character, firstItem);
+            trade.Cancel();
+            _tradeManager.EndTrade(trade);
+            _world.RemoveItem(cont1);
+            _world.RemoveItem(cont2);
+            return;
+        }
+
+        if (firstItem != null && _triggerDispatcher?.FireItemTrigger(firstItem,
+            ItemTrigger.DropOnTrade, new TriggerArgs
+            {
+                CharSrc = _character,
+                ItemSrc = firstItem,
+                O1 = partner,
+                N1 = (int)trade.SessionId.Value
+            }) == TriggerResult.True)
+        {
+            TradeManager.ReturnItemToCharacter(_world, _character, firstItem);
+            trade.Cancel();
+            _tradeManager.EndTrade(trade);
+            _world.RemoveItem(cont1);
+            _world.RemoveItem(cont2);
+            return;
+        }
 
         _netState.Send(BuildWorldItemPacket(cont1.Uid.Value, 0x1E5E, 1, 0, 0, 0, 0));
         _netState.Send(BuildWorldItemPacket(cont2.Uid.Value, 0x1E5E, 1, 0, 0, 0, 0));
@@ -660,7 +691,12 @@ public sealed class ClientWorldFeaturesHandler
 
         if (firstItem != null)
         {
-            cont1.AddItem(firstItem);
+            if (!cont1.TryAddItem(firstItem))
+            {
+                TradeManager.ReturnItemToCharacter(_world, _character, firstItem);
+                CancelTrade(trade);
+                return;
+            }
             _netState.Send(new PacketContainerItem(
                 firstItem.Uid.Value, firstItem.DispIdFull, 0,
                 firstItem.Amount, 30, 30,
@@ -707,8 +743,8 @@ public sealed class ClientWorldFeaturesHandler
         trade.Cancel();
         _tradeManager.EndTrade(trade);
 
-        trade.InitiatorContainer.Delete();
-        trade.PartnerContainer.Delete();
+        _world.RemoveItem(trade.InitiatorContainer);
+        _world.RemoveItem(trade.PartnerContainer);
     }
 
     private void CompleteTrade(SecureTrade trade)
@@ -745,8 +781,8 @@ public sealed class ClientWorldFeaturesHandler
         trade.Complete();
         _tradeManager!.EndTrade(trade);
 
-        cont1.Delete();
-        cont2.Delete();
+        _world.RemoveItem(cont1);
+        _world.RemoveItem(cont2);
 
         RefreshBackpackContents();
         RefreshBackpackForPartner?.Invoke(trade.GetPartner(_character!));
@@ -766,13 +802,18 @@ public sealed class ClientWorldFeaturesHandler
         SendTradeUpdateToPartner?.Invoke(partner, trade);
     }
 
-    private TriggerResult FireTradeTrigger(Character target, CharTrigger trigger, SecureTrade trade, Character other)
+    private TriggerResult FireTradeTrigger(Character target, CharTrigger trigger, SecureTrade trade,
+        Character other, Item? offeredItem = null)
     {
+        bool accepted = trigger == CharTrigger.TradeAccepted;
         return _triggerDispatcher?.FireCharTrigger(target, trigger, new TriggerArgs
         {
             CharSrc = other,
-            O1 = other,
-            N1 = (int)trade.SessionId.Value
+            O1 = (Core.Interfaces.IScriptObj?)offeredItem ?? other,
+            N1 = accepted
+                ? trade.GetPartnerContainer(target).Contents.Count
+                : (int)trade.SessionId.Value,
+            N2 = accepted ? trade.GetOwnContainer(target).Contents.Count : 0
         }) ?? TriggerResult.Default;
     }
 
@@ -860,6 +901,15 @@ public sealed class ClientWorldFeaturesHandler
             {
                 if (buttonId == 1)
                 {
+                    if (_character == null || _character.IsDeleted || stone.IsDeleted ||
+                        _world.FindItem(stone.Uid) != stone || _guildManager.GetGuild(stone.Uid) != null ||
+                        _guildManager.FindGuildRecordFor(_character.Uid) != null ||
+                        _character.MapIndex != stone.MapIndex ||
+                        _character.Position.GetDistanceTo(stone.Position) > 3)
+                    {
+                        SysMessage(ServerMessages.Get("msg_insufficient_priv"));
+                        return;
+                    }
                     var newGuild = _guildManager.CreateGuild(stone.Uid, $"{_character.Name}'s Guild", _character.Uid);
                     SysMessage(ServerMessages.GetFormatted("guild_created", newGuild.Name));
                 }
@@ -949,7 +999,7 @@ public sealed class ClientWorldFeaturesHandler
             gump.AddText(70, btnY, 0, "Leave Guild");
             btnY += 25;
         }
-        if (myMember != null)
+        if (myMember != null && guild.IsMember(_character.Uid))
         {
             // Member-level verbs: abbreviation display toggle + fealty vote
             // (Source-X TOGGLEABBREVIATION / DECLAREFEALTY).
@@ -976,13 +1026,23 @@ public sealed class ClientWorldFeaturesHandler
     private void HandleGuildGumpResponse(Item stone, GuildDef guild, uint buttonId, (ushort Id, string Text)[] textEntries)
     {
         if (_character == null || _guildManager == null) return;
+        if (stone.IsDeleted || _world.FindItem(stone.Uid) != stone ||
+            _guildManager.GetGuild(stone.Uid) != guild)
+            return;
+
+        if ((buttonId is 2 or (>= 10 and <= 19)) &&
+            guild.FindMember(_character.Uid)?.Priv != GuildPriv.Master)
+        {
+            SysMessage(ServerMessages.Get("msg_insufficient_priv"));
+            return;
+        }
 
         switch (buttonId)
         {
             case 1: // Join request
                 // A character may belong to only one guild — reject if already
                 // a member/candidate somewhere (prevents multi-guild membership).
-                if (_guildManager.FindGuildFor(_character.Uid) != null)
+                if (_guildManager.FindGuildRecordFor(_character.Uid) != null)
                 {
                     SysMessage(ServerMessages.Get("msg_insufficient_priv"));
                     break;
@@ -1023,6 +1083,7 @@ public sealed class ClientWorldFeaturesHandler
                 SysMessage(ServerMessages.Get("guild_target_candidate"));
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
+                    if (guild.FindMember(_character.Uid)?.Priv != GuildPriv.Master) return;
                     var target = _world.FindChar(new Serial(serial));
                     if (target == null) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
                     if (guild.AcceptMember(target.Uid))
@@ -1035,6 +1096,7 @@ public sealed class ClientWorldFeaturesHandler
                 SysMessage(ServerMessages.Get("guild_target_title"));
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
+                    if (guild.FindMember(_character.Uid)?.Priv != GuildPriv.Master) return;
                     var target = _world.FindChar(new Serial(serial));
                     if (target == null) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
                     var member = guild.FindMember(target.Uid);
@@ -1043,7 +1105,7 @@ public sealed class ClientWorldFeaturesHandler
                     var titleEntry = textEntries.FirstOrDefault(e => e.Id == 1);
                     if (!string.IsNullOrWhiteSpace(titleEntry.Text))
                     {
-                        member.Title = titleEntry.Text.Trim();
+                        member.Title = titleEntry.Text.Trim()[..Math.Min(40, titleEntry.Text.Trim().Length)];
                         SysMessage(ServerMessages.GetFormatted("guild_title_set", target.Name, member.Title));
                     }
                     else
@@ -1054,11 +1116,12 @@ public sealed class ClientWorldFeaturesHandler
                 SysMessage(ServerMessages.Get("guild_target_enemy"));
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
+                    if (guild.FindMember(_character.Uid)?.Priv != GuildPriv.Master) return;
                     var targetItem = _world.FindItem(new Serial(serial));
                     if (targetItem == null) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
                     var enemyGuild = _guildManager.GetGuild(targetItem.Uid);
                     if (enemyGuild == null) { SysMessage(ServerMessages.Get("guild_not_stone")); return; }
-                    guild.DeclareWar(targetItem.Uid);
+                    _guildManager.DeclareWar(stone.Uid, targetItem.Uid);
                     SysMessage(ServerMessages.GetFormatted("guild_war_declared", enemyGuild.Name));
                 });
                 break;
@@ -1066,9 +1129,10 @@ public sealed class ClientWorldFeaturesHandler
                 SysMessage(ServerMessages.Get("guild_target_peace"));
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
+                    if (guild.FindMember(_character.Uid)?.Priv != GuildPriv.Master) return;
                     var targetItem = _world.FindItem(new Serial(serial));
                     if (targetItem == null) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
-                    guild.DeclarePeace(targetItem.Uid);
+                    _guildManager.DeclarePeace(stone.Uid, targetItem.Uid);
                     SysMessage(ServerMessages.Get("guild_peace_declared"));
                 });
                 break;
@@ -1077,7 +1141,8 @@ public sealed class ClientWorldFeaturesHandler
                 var charterEntry = textEntries.FirstOrDefault(e => e.Id == 1);
                 if (!string.IsNullOrWhiteSpace(charterEntry.Text))
                 {
-                    guild.Charter = charterEntry.Text.Trim();
+                    var charter = charterEntry.Text.Trim();
+                    guild.Charter = charter[..Math.Min(200, charter.Length)];
                     SysMessage(ServerMessages.Get("guild_charter_updated"));
                 }
                 break;
@@ -1092,6 +1157,7 @@ public sealed class ClientWorldFeaturesHandler
                 SysMessage("Target the member to dismiss.");
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
+                    if (guild.FindMember(_character.Uid)?.Priv != GuildPriv.Master) return;
                     var target = _world.FindChar(new Serial(serial));
                     if (target == null) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
                     if (target.Uid == _character.Uid) { SysMessage("Use Disband or Leave instead."); return; }
@@ -1115,12 +1181,13 @@ public sealed class ClientWorldFeaturesHandler
                 SysMessage("Target the guild stone to ally with.");
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
+                    if (guild.FindMember(_character.Uid)?.Priv != GuildPriv.Master) return;
                     var targetItem = _world.FindItem(new Serial(serial));
                     if (targetItem == null) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
                     var allyGuild = _guildManager.GetGuild(targetItem.Uid);
                     if (allyGuild == null || allyGuild == guild) { SysMessage(ServerMessages.Get("guild_not_stone")); return; }
-                    guild.AddAlly(targetItem.Uid);
-                    allyGuild.AddAlly(stone.Uid); // alliances are mutual
+                    _guildManager.DeclareAlliance(stone.Uid, targetItem.Uid);
+                    _guildManager.DeclareAlliance(targetItem.Uid, stone.Uid);
                     SysMessage($"Alliance declared with {allyGuild.Name}.");
                 });
                 break;
@@ -1135,10 +1202,11 @@ public sealed class ClientWorldFeaturesHandler
                 SysMessage("Target the allied guild stone.");
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
+                    if (guild.FindMember(_character.Uid)?.Priv != GuildPriv.Master) return;
                     var targetItem = _world.FindItem(new Serial(serial));
                     if (targetItem == null) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
-                    guild.RemoveAlly(targetItem.Uid);
-                    _guildManager.GetGuild(targetItem.Uid)?.RemoveAlly(stone.Uid);
+                    _guildManager.WithdrawAlliance(stone.Uid, targetItem.Uid);
+                    _guildManager.WithdrawAlliance(targetItem.Uid, stone.Uid);
                     SysMessage("The alliance has been dissolved.");
                 });
                 break;
@@ -1153,7 +1221,8 @@ public sealed class ClientWorldFeaturesHandler
                 var nameEntry = textEntries.FirstOrDefault(e => e.Id == 2);
                 if (!string.IsNullOrWhiteSpace(nameEntry.Text))
                 {
-                    guild.Name = nameEntry.Text.Trim();
+                    var guildName = nameEntry.Text.Trim();
+                    guild.Name = guildName[..Math.Min(40, guildName.Length)];
                     SysMessage($"The guild is now known as {guild.Name}.");
                 }
                 break;
@@ -1168,7 +1237,8 @@ public sealed class ClientWorldFeaturesHandler
                 var abbrevEntry = textEntries.FirstOrDefault(e => e.Id == 3);
                 if (!string.IsNullOrWhiteSpace(abbrevEntry.Text))
                 {
-                    guild.Abbreviation = abbrevEntry.Text.Trim();
+                    var abbreviation = abbrevEntry.Text.Trim();
+                    guild.Abbreviation = abbreviation[..Math.Min(4, abbreviation.Length)];
                     SysMessage($"Guild abbreviation set to [{guild.Abbreviation}].");
                 }
                 break;
@@ -1176,7 +1246,7 @@ public sealed class ClientWorldFeaturesHandler
             case 20: // Toggle abbreviation display (Source-X TOGGLEABBREVIATION)
             {
                 var toggleMember = guild.FindMember(_character.Uid);
-                if (toggleMember == null)
+                if (toggleMember == null || !guild.IsMember(_character.Uid))
                 {
                     SysMessage(ServerMessages.Get("msg_insufficient_priv"));
                     break;
@@ -1190,7 +1260,7 @@ public sealed class ClientWorldFeaturesHandler
             case 21: // Declare fealty (Source-X DECLAREFEALTY) — vote, then recount
             {
                 var voter = guild.FindMember(_character.Uid);
-                if (voter == null)
+                if (voter == null || !guild.IsMember(_character.Uid))
                 {
                     SysMessage(ServerMessages.Get("msg_insufficient_priv"));
                     break;
@@ -1198,14 +1268,16 @@ public sealed class ClientWorldFeaturesHandler
                 SysMessage("Target the member you pledge your loyalty to.");
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
+                    var currentVoter = guild.FindMember(_character.Uid);
+                    if (currentVoter == null || !guild.IsMember(_character.Uid)) return;
                     var target = _world.FindChar(new Serial(serial));
                     if (target == null) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
-                    if (guild.FindMember(target.Uid) == null)
+                    if (!guild.IsMember(target.Uid))
                     {
                         SysMessage(ServerMessages.Get("guild_not_member"));
                         return;
                     }
-                    voter.LoyalTo = target.Uid;
+                    currentVoter.LoyalTo = target.Uid;
                     guild.ElectMaster(); // recount — mastership follows the votes
                     SysMessage($"You are now loyal to {target.Name}.");
                 });
@@ -1712,7 +1784,7 @@ public sealed class ClientWorldFeaturesHandler
         if (_triggerDispatcher?.FireItemTrigger(potion, ItemTrigger.Destroy,
                 new TriggerArgs { CharSrc = _character, ItemSrc = potion }) != TriggerResult.True)
         {
-            potion.Delete();
+            _world.RemoveItem(potion);
         }
     }
 
@@ -2071,13 +2143,19 @@ public sealed class ClientWorldFeaturesHandler
 
                     var existingParty = _partyManager.FindParty(_character.Uid);
                     if (existingParty != null && existingParty.IsFull) { SysMessage(ServerMessages.Get("party_is_full")); return; }
+                    if (existingParty != null && existingParty.Master != _character.Uid)
+                    { SysMessage(ServerMessages.Get("party_notleader")); return; }
+                    if (_partyManager.FindParty(target.Uid) != null)
+                    { SysMessage(ServerMessages.Get("party_join_failed")); return; }
 
                     // Fire @PartyInvite trigger on target
-                    _triggerDispatcher?.FireCharTrigger(target, CharTrigger.PartyInvite,
-                        new TriggerArgs { CharSrc = _character });
+                    if (_triggerDispatcher?.FireCharTrigger(target, CharTrigger.PartyInvite,
+                        new TriggerArgs { CharSrc = _character }) == TriggerResult.True)
+                        return;
 
                     // Store pending invite and send invite packet to target
                     target.SetTag("PARTY_INVITE_FROM", _character.Uid.Value.ToString());
+                    target.SetTag("PARTY_INVITE_TIME", Environment.TickCount64.ToString());
                     SendToChar?.Invoke(target.Uid, new PacketPartyInvitation(_character.Uid.Value));
                     SysMessage(ServerMessages.GetFormatted("party_invite", target.Name));
                 }
@@ -2089,7 +2167,13 @@ public sealed class ClientWorldFeaturesHandler
                     uint removeUid = (uint)((data[1] << 24) | (data[2] << 16) | (data[3] << 8) | data[4]);
                     var party = _partyManager.FindParty(_character.Uid);
                     if (party == null) break;
-                    if (party.Master != _character.Uid && new Serial(removeUid) != _character.Uid)
+                    var removeSerial = new Serial(removeUid);
+                    if (!party.IsMember(removeSerial))
+                    {
+                        SysMessage(ServerMessages.Get("msg_invalid_target"));
+                        break;
+                    }
+                    if (party.Master != _character.Uid && removeSerial != _character.Uid)
                     {
                         SysMessage(ServerMessages.Get("party_notleader"));
                         break;
@@ -2103,7 +2187,7 @@ public sealed class ClientWorldFeaturesHandler
                     // Snapshot members before the leave, which may disband the
                     // party (drops to a single member).
                     var membersBefore = party.Members.ToList();
-                    _partyManager.Leave(new Serial(removeUid));
+                    _partyManager.Leave(removeSerial);
                     SysMessage(ServerMessages.Get("party_leave_1"));
 
                     if (party.MemberCount == 0)
@@ -2138,7 +2222,14 @@ public sealed class ClientWorldFeaturesHandler
                         : "";
                     if (!string.IsNullOrEmpty(pmMsg))
                     {
-                        SendToChar?.Invoke(new Serial(pmTargetUid),
+                        var party = _partyManager.FindParty(_character.Uid);
+                        var targetUid = new Serial(pmTargetUid);
+                        if (party == null || !party.IsMember(targetUid))
+                        {
+                            SysMessage(ServerMessages.Get("party_join_failed"));
+                            break;
+                        }
+                        SendToChar?.Invoke(targetUid,
                             new PacketPartyMessage(_character.Uid.Value, pmMsg, isPrivate: true));
                         SysMessage(ServerMessages.GetFormatted("party_msg", $"{pmTargetUid:X}", pmMsg));
                     }
@@ -2173,12 +2264,22 @@ public sealed class ClientWorldFeaturesHandler
             case 8: // Accept invite
             {
                 if (_character.TryGetTag("PARTY_INVITE_FROM", out string? inviterStr) &&
-                    uint.TryParse(inviterStr, out uint inviterUid))
+                    uint.TryParse(inviterStr, out uint inviterUid) &&
+                    _character.TryGetTag("PARTY_INVITE_TIME", out string? inviteTimeStr) &&
+                    long.TryParse(inviteTimeStr, out long inviteTime))
                 {
                     _character.RemoveTag("PARTY_INVITE_FROM");
+                    _character.RemoveTag("PARTY_INVITE_TIME");
+                    var inviterSerial = new Serial(inviterUid);
+                    var inviter = _world.FindChar(inviterSerial);
+                    var inviterParty = _partyManager.FindParty(inviterSerial);
+                    long now = Environment.TickCount64;
+                    bool validInvite = inviteTime >= 0 && inviteTime <= now && now - inviteTime <= 120_000 &&
+                        inviter != null && inviter.IsPlayer && !inviter.IsDeleted && !inviter.IsDead &&
+                        (inviterParty == null || inviterParty.Master == inviterSerial);
                     // Honour AcceptInvite's result — it fails if already partied
                     // or the inviter's party is gone. Don't claim success blindly.
-                    if (_partyManager.AcceptInvite(new Serial(inviterUid), _character.Uid))
+                    if (validInvite && _partyManager.AcceptInvite(inviterSerial, _character.Uid))
                     {
                         SysMessage(ServerMessages.Get("party_added"));
                         var party = _partyManager.FindParty(_character.Uid);
@@ -2188,6 +2289,12 @@ public sealed class ClientWorldFeaturesHandler
                     {
                         SysMessage(ServerMessages.Get("party_join_failed"));
                     }
+                }
+                else
+                {
+                    _character.RemoveTag("PARTY_INVITE_FROM");
+                    _character.RemoveTag("PARTY_INVITE_TIME");
+                    SysMessage(ServerMessages.Get("party_join_failed"));
                 }
                 break;
             }
@@ -2205,6 +2312,7 @@ public sealed class ClientWorldFeaturesHandler
                         new PacketSpeechUnicodeOut(0xFFFFFFFF, 0xFFFF, 6, 0x0035, 3, "TRK", "System", declineNote));
                 }
                 _character.RemoveTag("PARTY_INVITE_FROM");
+                _character.RemoveTag("PARTY_INVITE_TIME");
                 SysMessage(ServerMessages.Get("party_decline_2"));
                 break;
             }

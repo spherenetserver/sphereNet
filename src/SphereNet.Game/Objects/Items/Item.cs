@@ -32,6 +32,7 @@ public class Item : ObjBase
     public static Func<Ships.ShipEngine?>? ResolveShipEngine;
     public new static Func<World.GameWorld>? ResolveWorld;
     public static Func<Serial, Guild.GuildDef?>? ResolveGuild;
+    public static Func<Guild.GuildManager?>? ResolveGuildManager;
     public static Func<Serial, Character?>? ResolveGuildCharacter;
     public static Func<Item, Serial, string, bool>? ExecuteGuildMemberCommand;
     public static Func<Item, Serial, string, bool>? ExecuteGuildRelationCommand;
@@ -537,12 +538,33 @@ public class Item : ObjBase
     /// container is full. Returns true only when containment was established.</summary>
     public bool TryAddItem(Item item)
     {
-        if (_contents.Count >= MaxContainerItems)
-            return false;
-        if (item == this) return false;
-        if (item.ContainsInSubtree(Uid)) return false;
+        if (item == this || IsDeleted || item.IsDeleted) return false;
         if (_contents.Contains(item))
             return item.ContainedIn == Uid;
+        if (_contents.Count >= MaxContainerItems)
+            return false;
+        if (item.ContainsInSubtree(this)) return false;
+
+        // Keep the containment graph singular. A number of engine paths add an
+        // item directly (trade/vendor/script delivery) rather than performing a
+        // packet pickup first; leaving the old parent list intact makes the same
+        // object appear in two containers and corrupts weight/save traversal.
+        var world = ResolveWorld?.Invoke();
+        if (item.ContainedIn.IsValid && item.ContainedIn != Uid && world != null)
+        {
+            var oldParent = world.FindObject(item.ContainedIn);
+            if (oldParent is Item oldContainer)
+                oldContainer.RemoveItem(item);
+            else if (oldParent is Character oldWearer && item.IsEquipped &&
+                     oldWearer.GetEquippedItem(item.EquipLayer) == item)
+                oldWearer.Unequip(item.EquipLayer);
+        }
+        else if (!item.ContainedIn.IsValid && world != null)
+        {
+            world.HideFromSector(item);
+        }
+        item.IsEquipped = false;
+
         _contents.Add(item);
         item.ContainedIn = Uid;
         if (item.X == 0 && item.Y == 0)
@@ -552,13 +574,18 @@ public class Item : ObjBase
 
     public void AddItem(Item item) => TryAddItem(item);
 
-    private bool ContainsInSubtree(Serial targetUid, int maxDepth = 16)
+    private bool ContainsInSubtree(Item target)
     {
-        if (maxDepth <= 0) return false;
-        foreach (var child in _contents)
+        var seen = new HashSet<Item>(ReferenceEqualityComparer.Instance);
+        var pending = new Stack<Item>(_contents);
+        while (pending.Count > 0)
         {
-            if (child.Uid == targetUid) return true;
-            if (child.ContainsInSubtree(targetUid, maxDepth - 1)) return true;
+            var child = pending.Pop();
+            if (!seen.Add(child))
+                continue;
+            if (ReferenceEquals(child, target)) return true;
+            foreach (var nested in child._contents)
+                pending.Push(nested);
         }
         return false;
     }
@@ -637,6 +664,7 @@ public class Item : ObjBase
     public void CopyStackInstanceStateFrom(Item src)
     {
         BaseId = src.BaseId;
+        Attributes = src.Attributes;
         Hue = src.Hue;
         Name = src.Name;
         _type = src._type; // direct field — avoid the ItemType setter's spawn/def side effects
@@ -709,23 +737,11 @@ public class Item : ObjBase
         var target = world.FindObject(new Core.Types.Serial(contUid));
         if (target == null) return true;
 
-        // Detach from wherever it currently is.
-        if (_containedIn.IsValid)
-        {
-            var oldCont = world.FindItem(_containedIn);
-            oldCont?.RemoveItem(this);
-        }
-        else
-        {
-            world.HideFromSector(this); // was lying on the ground
-        }
-        IsEquipped = false;
-
         if (target is Item contItem)
-            contItem.AddItem(this);
+            return contItem.TryAddItem(this);
         else if (target is Character ch && ch.Backpack != null)
-            ch.Backpack.AddItem(this);
-        return true;
+            return ch.Backpack.TryAddItem(this);
+        return false;
     }
 
     public Item? FindContentItem(Serial uid, int maxDepth = 16)
@@ -744,15 +760,26 @@ public class Item : ObjBase
     public int TotalWeight => TotalWeightTenths / WeightUnits;
 
     /// <summary>Total item tree weight in tenths of a stone for capacity checks.</summary>
-    public int TotalWeightTenths => CalcTotalWeightTenths(16);
+    public int TotalWeightTenths => CalcTotalWeightTenths();
 
-    private int CalcTotalWeightTenths(int maxDepth)
+    private int CalcTotalWeightTenths()
     {
-        int w = Weight * Math.Max(1, (int)Amount);
-        if (maxDepth <= 0) return w;
-        foreach (var child in _contents)
-            w += child.CalcTotalWeightTenths(maxDepth - 1);
-        return w;
+        long weight = 0;
+        var seen = new HashSet<Item>(ReferenceEqualityComparer.Instance);
+        var pending = new Stack<Item>();
+        pending.Push(this);
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            if (!seen.Add(current))
+                continue;
+            weight += (long)current.Weight * Math.Max(1, (int)current.Amount);
+            if (weight >= int.MaxValue)
+                return int.MaxValue;
+            foreach (var child in current._contents)
+                pending.Push(child);
+        }
+        return (int)weight;
     }
 
     // --- IScriptObj overrides ---
@@ -1590,22 +1617,24 @@ public class Item : ObjBase
                 if (dupeWorld == null) return true;
                 int dupeCount = 1;
                 if (!string.IsNullOrWhiteSpace(args) && int.TryParse(args.Trim(), out int dc) && dc > 0)
-                    dupeCount = dc;
-                var contItem = _containedIn.IsValid ? dupeWorld.FindItem(_containedIn) : null;
+                    dupeCount = Math.Min(dc, 1000);
+                var parent = _containedIn.IsValid ? dupeWorld.FindObject(_containedIn) : null;
                 for (int n = 0; n < dupeCount; n++)
                 {
                     var copy = dupeWorld.CreateItem();
-                    copy.BaseId = BaseId;
+                    copy.CopyStackInstanceStateFrom(this);
                     copy.Amount = Amount;
-                    copy.Hue = Hue;
-                    copy.ItemType = ItemType;
-                    copy.Name = Name;
-                    copy.More1 = More1;
-                    copy.More2 = More2;
-                    if (contItem != null)
-                        contItem.AddItem(copy);
-                    else
-                        dupeWorld.PlaceItem(copy, Position);
+                    bool placed = parent switch
+                    {
+                        Item contItem => contItem.TryAddItem(copy),
+                        Character wearer when wearer.Backpack != null &&
+                            (wearer.PrivLevel >= PrivLevel.GM || wearer.CanCarry(copy))
+                            => wearer.Backpack.TryAddItem(copy),
+                        Character wearer => dupeWorld.PlaceItemWithDecay(copy, wearer.Position),
+                        _ => dupeWorld.PlaceItem(copy, Position)
+                    };
+                    if (!placed)
+                        dupeWorld.RemoveItem(copy);
                 }
                 return true;
             }
@@ -1686,7 +1715,8 @@ public class Item : ObjBase
                     var oldParent = ContainedIn.IsValid ? world.FindObject(ContainedIn) as Item : null;
                     oldParent?.RemoveItem(this);
                     IsEquipped = false;
-                    owner.Backpack.AddItem(this);
+                    if (!owner.Backpack.TryAddItem(this))
+                        world.PlaceItemWithDecay(this, owner.Position);
                 }
                 return true;
             }
@@ -1925,9 +1955,10 @@ public class Item : ObjBase
                         if (deed != null)
                         {
                             var owner = house.Owner.IsValid ? world.FindChar(house.Owner) : null;
-                            if (owner?.Backpack != null)
-                                owner.Backpack.AddItem(deed);
-                            else
+                            bool delivered = owner?.Backpack != null &&
+                                (owner.PrivLevel >= PrivLevel.GM || owner.CanCarry(deed)) &&
+                                owner.Backpack.TryAddItem(deed);
+                            if (!delivered)
                                 world.PlaceItemWithDecay(deed, Position);
                         }
                     }
@@ -2041,7 +2072,8 @@ public class Item : ObjBase
                 if (guild != null)
                 {
                     uint uid = ParseHexOrDecUInt(args.Trim());
-                    if (uid != 0) guild.DeclareWar(new Serial(uid));
+                    if (uid != 0 && ResolveGuildManager?.Invoke()?.DeclareWar(Uid, new Serial(uid)) != true)
+                        guild.DeclareWar(new Serial(uid));
                 }
                 return true;
             }
@@ -2051,7 +2083,8 @@ public class Item : ObjBase
                 if (guild != null)
                 {
                     uint uid = ParseHexOrDecUInt(args.Trim());
-                    if (uid != 0) guild.DeclarePeace(new Serial(uid));
+                    if (uid != 0 && ResolveGuildManager?.Invoke()?.DeclarePeace(Uid, new Serial(uid)) != true)
+                        guild.DeclarePeace(new Serial(uid));
                 }
                 return true;
             }
@@ -2084,7 +2117,8 @@ public class Item : ObjBase
                 if (guild != null)
                 {
                     uint uid = ParseHexOrDecUInt(args.Trim());
-                    if (uid != 0) guild.AddAlly(new Serial(uid));
+                    if (uid != 0 && ResolveGuildManager?.Invoke()?.DeclareAlliance(Uid, new Serial(uid)) != true)
+                        guild.AddAlly(new Serial(uid));
                 }
                 return true;
             }
@@ -2095,7 +2129,8 @@ public class Item : ObjBase
                 if (guild != null)
                 {
                     uint uid = ParseHexOrDecUInt(args.Trim());
-                    if (uid != 0) guild.RemoveAlly(new Serial(uid));
+                    if (uid != 0 && ResolveGuildManager?.Invoke()?.WithdrawAlliance(Uid, new Serial(uid)) != true)
+                        guild.RemoveAlly(new Serial(uid));
                 }
                 return true;
             }

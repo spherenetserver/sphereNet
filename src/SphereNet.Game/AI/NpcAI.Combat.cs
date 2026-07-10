@@ -160,7 +160,8 @@ public sealed partial class NpcAI
             if (want > _rand.Next(100))
             {
                 corpse.RemoveItem(loot);
-                npc.Backpack.AddItem(loot);
+                if (!npc.Backpack.TryAddItem(loot))
+                    corpse.TryAddItem(loot);
             }
         }
         return true;

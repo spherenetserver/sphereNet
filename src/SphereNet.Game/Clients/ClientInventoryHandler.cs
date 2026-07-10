@@ -741,7 +741,12 @@ public sealed class ClientInventoryHandler
                 }
 
                 var myCont = dropTrade.GetOwnContainer(_character);
-                myCont.AddItem(item);
+                if (!myCont.TryAddItem(item))
+                {
+                    RestoreToOrigin(item);
+                    _netState.Send(new PacketDropReject());
+                    return;
+                }
                 item.Position = new Point3D(30, 30, 0, _character.MapIndex);
                 dropTrade.ResetAcceptance();
                 SendTradeUpdateToBoth(dropTrade);
@@ -917,7 +922,13 @@ public sealed class ClientInventoryHandler
                     {
                         // Overflow remainder stays beside the target stack.
                         item.Amount = (ushort)remaining;
-                        realParent.AddItem(item);
+                        if (!realParent.TryAddItem(item))
+                        {
+                            _world.PlaceItemWithDecay(item, container.GetTopLevelPosition());
+                            BroadcastWorldItem(item);
+                            _netState.Send(new PacketDropAck());
+                            return;
+                        }
                         item.Position = new Point3D(container.X, container.Y, 0, _character.MapIndex);
                         _netState.Send(new PacketContainerItem(
                             item.Uid.Value, item.DispIdFull, 0,
@@ -936,7 +947,12 @@ public sealed class ClientInventoryHandler
                     return;
                 }
 
-                container.AddItem(item);
+                if (!container.TryAddItem(item))
+                {
+                    RestoreToOrigin(item);
+                    _netState.Send(new PacketDropReject());
+                    return;
+                }
                 item.Position = new Point3D(x, y, 0, _character.MapIndex);
                 // Critical: tell the client the item actually landed in the
                 // container. Without 0x25 the client only remembers the
@@ -1221,7 +1237,12 @@ public sealed class ClientInventoryHandler
         var pack = _character.Backpack;
         if (!toGround && pack != null)
         {
-            pack.AddItem(item);
+            if (!pack.TryAddItem(item))
+            {
+                _world.PlaceItemWithDecay(item, _character.Position);
+                BroadcastWorldItem(item);
+                return true;
+            }
             item.Position = new Point3D(50, 50, 0, _character.MapIndex);
             _netState.Send(new PacketContainerItem(
                 item.Uid.Value, item.DispIdFull, 0, item.Amount,

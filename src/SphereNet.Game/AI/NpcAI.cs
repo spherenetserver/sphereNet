@@ -388,7 +388,8 @@ public sealed partial class NpcAI
         else if (holdingLight && pack != null)
         {
             npc.Unequip(Layer.TwoHanded);
-            pack.AddItem(held!);
+            if (!pack.TryAddItem(held!))
+                npc.Equip(held!, Layer.TwoHanded);
         }
     }
 

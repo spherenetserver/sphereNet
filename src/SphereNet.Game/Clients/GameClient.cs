@@ -391,12 +391,17 @@ public sealed partial class GameClient : ITextConsole
         if (_character == null || _mountEngine == null)
             return false;
 
-        if (!_mountEngine.TryMount(_character, mount))
+        var args = new TriggerArgs
+        {
+            CharSrc = _character,
+            O1 = mount,
+            N1 = Mounts.MountEngine.GetMountItemId(mount.BodyId)
+        };
+        if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Mount, args) == TriggerResult.True)
             return false;
 
-        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Mount,
-            new TriggerArgs { CharSrc = _character, O1 = mount });
-        return true;
+        ushort mountItemId = (ushort)Math.Clamp(args.N1, 0, ushort.MaxValue);
+        return _mountEngine.TryMount(_character, mount, mountItemId);
     }
 
     internal Character? DismountCharacter()
@@ -404,13 +409,9 @@ public sealed partial class GameClient : ITextConsole
         if (_character == null || _mountEngine == null)
             return null;
 
-        var mount = _mountEngine.Dismount(_character);
-        if (mount != null)
-        {
+        return _mountEngine.Dismount(_character, mount =>
             _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Dismount,
-                new TriggerArgs { CharSrc = _character, O1 = mount });
-        }
-        return mount;
+                new TriggerArgs { CharSrc = _character, O1 = mount }) == TriggerResult.True);
     }
 
     public void SetScriptServices(

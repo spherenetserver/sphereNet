@@ -520,8 +520,7 @@ public sealed class CraftingEngine
                 if (item.Amount <= remaining)
                 {
                     remaining -= item.Amount;
-                    container.RemoveItem(item);
-                    item.Delete();
+                    item.RemoveFromWorld();
                 }
                 else
                 {
@@ -549,8 +548,7 @@ public sealed class CraftingEngine
                 if (item.Amount <= remaining)
                 {
                     remaining -= item.Amount;
-                    container.RemoveItem(item);
-                    item.Delete();
+                    item.RemoveFromWorld();
                 }
                 else
                 {

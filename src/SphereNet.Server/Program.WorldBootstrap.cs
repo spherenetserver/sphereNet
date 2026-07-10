@@ -281,7 +281,7 @@ public static partial class Program
             }
         }
         foreach (var item in toRemove)
-            item.Delete();
+            _world.RemoveItem(item);
 
         int placed = 0;
         foreach (var (src, dest, name) in teleporters)

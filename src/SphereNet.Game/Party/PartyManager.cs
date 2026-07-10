@@ -32,7 +32,7 @@ public sealed class PartyDef
     /// <summary>Invite and add a member. Returns false if full or duplicate.</summary>
     public bool AddMember(Serial uid)
     {
-        if (IsFull || _members.Contains(uid))
+        if (!uid.IsValid || IsFull || _members.Contains(uid))
             return false;
         _members.Add(uid);
         return true;
@@ -64,6 +64,8 @@ public sealed class PartyDef
     /// <summary>Toggle loot sharing for a member.</summary>
     public void SetLootFlag(Serial uid, bool canLoot)
     {
+        if (!_members.Contains(uid))
+            return;
         if (canLoot)
             _lootRights.Add(uid);
         else
@@ -132,6 +134,9 @@ public sealed class PartyManager
     /// <summary>Create a new party with the given master.</summary>
     public PartyDef CreateParty(Serial masterUid)
     {
+        var existing = FindParty(masterUid);
+        if (existing != null)
+            return existing;
         var party = new PartyDef(masterUid);
         _parties.Add(party);
         return party;
@@ -140,6 +145,8 @@ public sealed class PartyManager
     /// <summary>Handle an invitation accept.</summary>
     public bool AcceptInvite(Serial masterUid, Serial memberUid)
     {
+        if (!masterUid.IsValid || !memberUid.IsValid || masterUid == memberUid)
+            return false;
         // Already in a party — must leave first
         if (FindParty(memberUid) != null)
             return false;
@@ -147,6 +154,8 @@ public sealed class PartyManager
         var party = FindParty(masterUid);
         if (party == null)
             party = CreateParty(masterUid);
+        else if (party.Master != masterUid)
+            return false;
 
         return party.AddMember(memberUid);
     }
@@ -179,6 +188,14 @@ public sealed class PartyManager
     /// <summary>Force-add a target into a character's party, removing target from any existing party.</summary>
     public PartyDef ForceAddMember(Serial charUid, Serial targetUid)
     {
+        var destination = FindParty(charUid);
+        if (charUid == targetUid)
+            return destination ?? CreateParty(charUid);
+        if (destination != null && destination.IsMember(targetUid))
+            return destination;
+        if (destination != null && destination.IsFull)
+            return destination;
+
         // Remove target from any existing party
         var existingParty = FindParty(targetUid);
         if (existingParty != null)

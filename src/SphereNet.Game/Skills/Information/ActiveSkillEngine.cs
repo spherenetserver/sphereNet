@@ -265,7 +265,7 @@ public static class ActiveSkillEngine
             }
             else if (actual != target)
             {
-                target.Delete();
+                sink.World.RemoveItem(target);
             }
         }
 

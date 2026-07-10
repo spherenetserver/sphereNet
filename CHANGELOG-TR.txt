@@ -3,6 +3,55 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-10] - Genel oyun butunlugu: envanter, ticaret, sosyal sistemler ve dunya yasam dongusu
+----------------------------------------
+
+DUZELTILDI - Esya, konteyner, agirlik ve yasam dongusu:
+  - Konteyner donguleri, cift parent/equipment kayitlari, derin stack agirligi ve
+    dolu canta/konteyner islemleri guvenli hale getirildi. Banka, vendor ve ozel
+    servis katmanlari artik tasima agirligina eklenmiyor.
+  - Silinen esya ve karakterler object table, sektor, equipment ve tum alt
+    konteyner agacindan birlikte kaldiriliyor. Geri donusturulen UID'lerde eski
+    referansin yeni nesneyi silebilmesi ve tuketilen nesnelerin ghost kayit
+    birakmasi engellendi.
+  - Olum, corpse, resurrection, NPC loot, crafting, script DUPE/CONT/BOUNCE,
+    stack bolme ve surukle-birak akislari kapasite doldugunda esyayi kaybetmeden
+    eski yerine veya zemine geri dusuruyor.
+
+DUZELTILDI - Vendor, banka ve secure trade:
+  - Yinelenen vendor satirlariyla stok asimi, bozuk BUY template'inin her esyayi
+    kabul etmesi, transient clone sizintilari ve dolu cantada satin alim kaybi
+    giderildi. Stok, odeme ve payout islemleri world kayitlariyla tutarli.
+  - Banka para cekme ve cek duzenleme once teslimati garanti edip sonra bakiyeyi
+    dusuren atomik akisa alindi; kapasite veya agirlik hatasi bakiyeyi eksiltmiyor.
+  - Secure trade hedef/yetki, REFUSETRADES, TradeCreate/DropOn trigger, gelen
+    agirlik ve slot kontrollerini tamamliyor; iptal veya basarisizlikta tum esyalar
+    guvenle sahiplerine donuyor.
+
+DUZELTILDI - Party, guild, pet ve mount davranislari:
+  - Party davetlerinde lider yetkisi, 120 saniye zaman asimi, hedef/uyelik ve
+    kapasite kontrolleri uygulandi. Sahte private party mesajlari ve zorla ekleme
+    sirasinda mevcut partiden oyuncu kaybi engellendi.
+  - Guild candidate/member/master yetkileri ayrildi; master secimi, gump
+    yetkilendirmesi, fealty, guild/alliance chat, savas/ittifak iliskilerinin iki
+    yonlu kaydi ve eski save relation onarimi Source-X davranisina uyarlandi.
+  - Vahsi veya yabanci mount kullanimi engellendi; Mount/Dismount trigger'lari
+    mutasyondan once iptal edebiliyor. Stable ve figurine restore islemleri
+    follower limiti veya gecersiz konumda peti/esyayi kaybetmiyor.
+
+DUZELTILDI - Buyu, seyahat, script ve istemci etkilesimleri:
+  - Recall, teleport, summon, field ve NEWDUPE islemleri harita/sektor sinirlarini
+    dogruluyor; basarisiz yerlestirmeler orphan nesne veya sahiplik birakmiyor.
+  - Aktif buyu efektleri yuklemede sure ve flag dogrulamasindan geciyor. Scroll,
+    potion, bandage, bulletin ve trade container tuketimleri dunyadan tam siliniyor.
+  - Script ve GM esya yerlestirme, pet figurine sahipligi, canta kapasitesi ve
+    stack state/attribute kopyalama akislari veri kaybetmeyecek bicimde tamamlandi.
+
+DOGRULANDI - 23 yeni genel oyun butunluk regresyonuyla tum cozum Debug ve
+  Release 1328/1328 basarili. git diff denetimi temiz.
+
+================================================================================
+
 [2026-07-10] - Ev ve gemi sistemleri derin kod denetimi ve Source-X uyumu
 ----------------------------------------
 

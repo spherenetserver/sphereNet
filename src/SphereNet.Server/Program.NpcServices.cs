@@ -161,8 +161,12 @@ public static partial class Program
                     NpcSpeak(npc, $"You have only {banked} gold piece(s) in our care.");
                     return true;
                 }
+                if (!DepositGoldToBackpack(speaker, withdrawAmount))
+                {
+                    NpcSpeak(npc, "Thy backpack cannot hold that withdrawal.");
+                    return true;
+                }
                 RemoveBankGold(speaker, withdrawAmount);
-                DepositGoldToBackpack(speaker, withdrawAmount);
                 NpcSpeak(npc, $"Here are thy {withdrawAmount} gold piece(s).");
                 FindGameClient(speaker)?.OpenBankBox();
                 return true;
@@ -348,7 +352,7 @@ public static partial class Program
             if (item.Amount <= remaining)
             {
                 remaining -= item.Amount;
-                item.Delete();
+                _world.RemoveItem(item);
             }
             else
             {
@@ -362,10 +366,15 @@ public static partial class Program
     /// Drop a fresh gold pile into a character's backpack. Splits into 60k
     /// stacks (UO max amount per pile) so very large withdrawals still fit.
     /// </summary>
-    private static void DepositGoldToBackpack(Character ch, int amount)
+    private static bool DepositGoldToBackpack(Character ch, int amount)
     {
         var pack = ch.Backpack;
-        if (pack == null || amount <= 0) return;
+        if (pack == null || amount <= 0) return false;
+        int neededStacks = (int)(((long)amount + 59_999) / 60_000);
+        if (pack.ContentCount > Item.MaxContainerItems - neededStacks)
+            return false;
+
+        var deposited = new List<Item>(neededStacks);
         while (amount > 0)
         {
             ushort slice = (ushort)Math.Min(amount, 60000);
@@ -374,9 +383,18 @@ public static partial class Program
             gold.Name = "Gold";
             gold.ItemType = SphereNet.Core.Enums.ItemType.Gold;
             gold.Amount = slice;
-            pack.AddItem(gold);
+            bool canCarry = ch.PrivLevel >= SphereNet.Core.Enums.PrivLevel.GM || ch.CanCarry(gold);
+            if (!canCarry || !pack.TryAddItem(gold))
+            {
+                _world.RemoveItem(gold);
+                foreach (var added in deposited)
+                    _world.RemoveItem(added);
+                return false;
+            }
+            deposited.Add(gold);
             amount -= slice;
         }
+        return true;
     }
 
     private static bool DepositBankCheckToBackpack(Character ch, int amount)
@@ -400,13 +418,21 @@ public static partial class Program
         if (dispId == 0 && rid.Index <= 0xFFFF)
             dispId = (ushort)rid.Index;
         if (dispId == 0)
+        {
+            _world.RemoveItem(item);
             return false;
+        }
 
         item.BaseId = dispId;
         item.Name = string.IsNullOrWhiteSpace(itemDef?.Name) ? $"Bank check ({amount})" : itemDef!.Name;
         item.Price = amount;
         item.SetTag("BANKCHECK_AMOUNT", amount.ToString());
-        pack.AddItem(item);
+        bool canCarry = ch.PrivLevel >= SphereNet.Core.Enums.PrivLevel.GM || ch.CanCarry(item);
+        if (!canCarry || !pack.TryAddItem(item))
+        {
+            _world.RemoveItem(item);
+            return false;
+        }
         return true;
     }
 
@@ -937,11 +963,15 @@ public static partial class Program
                             response = $"You have only {banked} gold piece(s) in our care.";
                         else
                         {
-                            RemoveBankGold(speaker, withdrawAmount);
-                            DepositGoldToBackpack(speaker, withdrawAmount);
-                            response = $"Here are thy {withdrawAmount} gold piece(s).";
-                            // Ensure the backpack-side delta is visible immediately.
-                            gc?.OpenBankBox();
+                            if (!DepositGoldToBackpack(speaker, withdrawAmount))
+                                response = "Thy backpack cannot hold that withdrawal.";
+                            else
+                            {
+                                RemoveBankGold(speaker, withdrawAmount);
+                                response = $"Here are thy {withdrawAmount} gold piece(s).";
+                                // Ensure the backpack-side delta is visible immediately.
+                                gc?.OpenBankBox();
+                            }
                         }
                     }
                     else if (checkAmount > 0)

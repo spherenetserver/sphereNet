@@ -91,7 +91,13 @@ public static class PetFigurine
                 pet.AddFriend(friend);
         }
 
-        world.PlaceCharacter(pet, pos);
+        if (!world.PlaceCharacter(pet, pos))
+        {
+            pet.ClearOwnership(clearFriends: true);
+            world.DeleteObject(pet);
+            pet.Delete();
+            return null;
+        }
         world.DeleteObject(figurine);
         figurine.Delete();
         return pet;

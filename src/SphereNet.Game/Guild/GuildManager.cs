@@ -120,6 +120,7 @@ public sealed class GuildDef
         var member = FindMember(charUid);
         if (member == null || member.Priv != GuildPriv.Candidate) return false;
         member.Priv = GuildPriv.Member;
+        NormalizeMasters();
         return true;
     }
 
@@ -137,9 +138,7 @@ public sealed class GuildDef
             // Enemy/Ally relationship record (Priv 100/101), which must not
             // become guild master. If no human remains, the guild is left
             // masterless and is reaped by the disband path.
-            var next = _members.FirstOrDefault(m => m.Priv == GuildPriv.Member)
-                       ?? _members.FirstOrDefault(m => m.Priv == GuildPriv.Candidate
-                                                    || m.Priv == GuildPriv.Accepted);
+            var next = _members.FirstOrDefault(m => m.Priv == GuildPriv.Member);
             if (next != null)
                 next.Priv = GuildPriv.Master;
         }
@@ -149,13 +148,15 @@ public sealed class GuildDef
     /// <summary>Set a new guild master. Old master becomes regular member.</summary>
     public void SetMaster(Serial charUid)
     {
+        var newMaster = FindMember(charUid);
+        if (newMaster == null || newMaster.Priv is not (GuildPriv.Member or GuildPriv.Master))
+            return;
+
         var oldMaster = GetMaster();
         if (oldMaster != null)
             oldMaster.Priv = GuildPriv.Member;
 
-        var newMaster = FindMember(charUid);
-        if (newMaster != null)
-            newMaster.Priv = GuildPriv.Master;
+        newMaster.Priv = GuildPriv.Master;
     }
 
     /// <summary>Count members with at least the given priv level. -1 = all.</summary>
@@ -169,7 +170,13 @@ public sealed class GuildDef
     public GuildMember JoinAsMember(Serial charUid)
     {
         var existing = FindMember(charUid);
-        if (existing != null) { existing.Priv = GuildPriv.Member; return existing; }
+        if (existing != null)
+        {
+            if (existing.Priv is GuildPriv.Candidate or GuildPriv.Accepted)
+                existing.Priv = GuildPriv.Member;
+            NormalizeMasters();
+            return existing;
+        }
         var member = new GuildMember
         {
             CharUid = charUid,
@@ -177,6 +184,7 @@ public sealed class GuildDef
             JoinTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
         };
         _members.Add(member);
+        NormalizeMasters();
         return member;
     }
 
@@ -184,23 +192,28 @@ public sealed class GuildDef
     public void ElectMaster()
     {
         // Count votes: each member's LoyalTo counts as a vote for that character
+        var eligible = _members
+            .Where(m => m.Priv is GuildPriv.Member or GuildPriv.Master)
+            .ToList();
+        if (eligible.Count == 0) return;
+        var eligibleUids = eligible.Select(m => m.CharUid).ToHashSet();
         var votes = new Dictionary<Serial, int>();
-        foreach (var m in _members)
+        foreach (var m in eligible)
         {
-            if ((byte)m.Priv >= 100) continue; // skip enemy/ally entries
-            var target = m.LoyalTo.IsValid ? m.LoyalTo : m.CharUid; // self-vote if no loyalty
+            var target = m.LoyalTo.IsValid && eligibleUids.Contains(m.LoyalTo)
+                ? m.LoyalTo
+                : m.CharUid;
+            if (target == m.CharUid && m.LoyalTo != target)
+                m.LoyalTo = Serial.Invalid;
             votes[target] = votes.GetValueOrDefault(target) + 1;
         }
         if (votes.Count == 0) return;
 
         // Only members can become master — filter out non-member votes
-        var winner = votes
-            .Where(kv => FindMember(kv.Key) != null)
-            .OrderByDescending(kv => kv.Value)
-            .Select(kv => kv.Key)
-            .FirstOrDefault();
-        if (winner == default) return;
-        SetMaster(winner);
+        int highest = votes.Values.Max();
+        var winners = votes.Where(kv => kv.Value == highest).Select(kv => kv.Key).ToList();
+        if (winners.Count == 1)
+            SetMaster(winners[0]);
     }
 
     // --- Relations (War / Alliance) ---
@@ -271,6 +284,35 @@ public sealed class GuildDef
             !rel.WeDeclaredAlliance && !rel.TheyDeclaredAlliance)
             _relations.Remove(uid);
     }
+
+    internal void SetTheyDeclaredWar(Serial otherStoneUid, bool declared)
+    {
+        var rel = declared ? GetOrCreateRelation(otherStoneUid) : GetRelation(otherStoneUid);
+        if (rel == null) return;
+        rel.TheyDeclaredWar = declared;
+        CleanupRelation(otherStoneUid, rel);
+    }
+
+    internal void SetTheyDeclaredAlliance(Serial otherStoneUid, bool declared)
+    {
+        var rel = declared ? GetOrCreateRelation(otherStoneUid) : GetRelation(otherStoneUid);
+        if (rel == null) return;
+        rel.TheyDeclaredAlliance = declared;
+        CleanupRelation(otherStoneUid, rel);
+    }
+
+    internal void RemoveRelation(Serial otherStoneUid) => _relations.Remove(otherStoneUid);
+
+    internal void NormalizeMasters()
+    {
+        var fullMembers = _members
+            .Where(m => m.Priv is GuildPriv.Member or GuildPriv.Master)
+            .ToList();
+        if (fullMembers.Count == 0) return;
+        var master = fullMembers.FirstOrDefault(m => m.Priv == GuildPriv.Master) ?? fullMembers[0];
+        foreach (var member in fullMembers)
+            member.Priv = member == master ? GuildPriv.Master : GuildPriv.Member;
+    }
 }
 
 /// <summary>
@@ -285,6 +327,10 @@ public sealed class GuildManager
 
     /// <summary>Find which guild a character belongs to.</summary>
     public GuildDef? FindGuildFor(Serial charUid) =>
+        _guilds.Values.FirstOrDefault(g => g.IsMember(charUid));
+
+    /// <summary>Find a guild record including pending candidates.</summary>
+    public GuildDef? FindGuildRecordFor(Serial charUid) =>
         _guilds.Values.FirstOrDefault(g => g.FindMember(charUid) != null);
 
     /// <summary>The bracketed guild abbreviation a character shows after their
@@ -297,13 +343,15 @@ public sealed class GuildManager
         if (guild == null || string.IsNullOrWhiteSpace(guild.Abbreviation))
             return "";
         var member = guild.FindMember(charUid);
-        if (member == null || !member.ShowAbbrev || (byte)member.Priv >= 100)
+        if (member == null || !guild.IsMember(charUid) || !member.ShowAbbrev)
             return "";
         return $" [{guild.Abbreviation}]";
     }
 
     public GuildDef CreateGuild(Serial stoneUid, string name, Serial masterUid)
     {
+        if (_guilds.TryGetValue(stoneUid, out var existing))
+            return existing;
         var guild = new GuildDef(stoneUid) { Name = name };
         var master = guild.AddRecruit(masterUid);
         master.Priv = GuildPriv.Master;
@@ -311,7 +359,52 @@ public sealed class GuildManager
         return guild;
     }
 
-    public void RemoveGuild(Serial stoneUid) => _guilds.Remove(stoneUid);
+    public void RemoveGuild(Serial stoneUid)
+    {
+        if (!_guilds.Remove(stoneUid)) return;
+        foreach (var guild in _guilds.Values)
+            guild.RemoveRelation(stoneUid);
+    }
+
+    public bool DeclareWar(Serial fromStoneUid, Serial toStoneUid)
+    {
+        if (fromStoneUid == toStoneUid || !_guilds.TryGetValue(fromStoneUid, out var from) ||
+            !_guilds.TryGetValue(toStoneUid, out var to))
+            return false;
+        from.DeclareWar(toStoneUid);
+        to.SetTheyDeclaredWar(fromStoneUid, true);
+        return true;
+    }
+
+    public bool DeclarePeace(Serial fromStoneUid, Serial toStoneUid)
+    {
+        if (!_guilds.TryGetValue(fromStoneUid, out var from) ||
+            !_guilds.TryGetValue(toStoneUid, out var to))
+            return false;
+        from.DeclarePeace(toStoneUid);
+        to.SetTheyDeclaredWar(fromStoneUid, false);
+        return true;
+    }
+
+    public bool DeclareAlliance(Serial fromStoneUid, Serial toStoneUid)
+    {
+        if (fromStoneUid == toStoneUid || !_guilds.TryGetValue(fromStoneUid, out var from) ||
+            !_guilds.TryGetValue(toStoneUid, out var to))
+            return false;
+        from.AddAlly(toStoneUid);
+        to.SetTheyDeclaredAlliance(fromStoneUid, true);
+        return true;
+    }
+
+    public bool WithdrawAlliance(Serial fromStoneUid, Serial toStoneUid)
+    {
+        if (!_guilds.TryGetValue(fromStoneUid, out var from) ||
+            !_guilds.TryGetValue(toStoneUid, out var to))
+            return false;
+        from.RemoveAlly(toStoneUid);
+        to.SetTheyDeclaredAlliance(fromStoneUid, false);
+        return true;
+    }
 
     public IEnumerable<GuildDef> GetAllGuilds() => _guilds.Values;
 
@@ -327,6 +420,10 @@ public sealed class GuildManager
 
             stone.SetTag("GUILD.NAME", guild.Name);
             stone.SetTag("GUILD.ABBREV", guild.Abbreviation);
+            if (!string.IsNullOrEmpty(guild.WebUrl))
+                stone.SetTag("GUILD.WEB", guild.WebUrl);
+            else
+                stone.RemoveTag("GUILD.WEB");
             if (!string.IsNullOrEmpty(guild.Charter))
                 stone.SetTag("GUILD.CHARTER", guild.Charter);
             else
@@ -372,20 +469,34 @@ public sealed class GuildManager
     public void DeserializeFromWorld(World.GameWorld world)
     {
         _guilds.Clear();
-        foreach (var obj in world.GetAllObjects())
+        var claimedCharacters = new HashSet<uint>();
+        foreach (var obj in world.GetAllObjects().OrderBy(o => o.Uid.Value))
         {
             if (obj is not Objects.Items.Item item) continue;
             if (!item.TryGetTag("GUILD.NAME", out string? guildName)) continue;
             if (string.IsNullOrWhiteSpace(guildName)) continue;
 
-            var guild = new GuildDef(item.Uid) { Name = guildName };
+            var safeName = guildName.Trim();
+            var guild = new GuildDef(item.Uid)
+            {
+                Name = safeName[..Math.Min(40, safeName.Length)]
+            };
 
             if (item.TryGetTag("GUILD.ABBREV", out string? abbrev))
-                guild.Abbreviation = abbrev ?? "";
+            {
+                var safeAbbrev = (abbrev ?? "").Trim();
+                guild.Abbreviation = safeAbbrev[..Math.Min(4, safeAbbrev.Length)];
+            }
             if (item.TryGetTag("GUILD.CHARTER", out string? charter))
-                guild.Charter = charter ?? "";
+            {
+                var safeCharter = charter ?? "";
+                guild.Charter = safeCharter[..Math.Min(200, safeCharter.Length)];
+            }
+            if (item.TryGetTag("GUILD.WEB", out string? web))
+                guild.WebUrl = web ?? "";
             if (item.TryGetTag("GUILD.ALIGN", out string? alignStr) &&
-                byte.TryParse(alignStr, out byte alignVal))
+                byte.TryParse(alignStr, out byte alignVal) &&
+                Enum.IsDefined((GuildAlign)alignVal))
                 guild.Align = (GuildAlign)alignVal;
 
             // Parse members
@@ -396,8 +507,13 @@ public sealed class GuildManager
                     var segs = part.Split(':', 6);
                     if (segs.Length < 2) continue;
                     uint uid = ParseHexSerial(segs[0]);
-                    if (uid == 0) continue;
+                    if (uid == 0 || world.FindChar(new Serial(uid)) == null || claimedCharacters.Contains(uid))
+                        continue;
                     byte priv = byte.TryParse(segs[1], out byte p) ? p : (byte)1;
+                    if (priv != (byte)GuildPriv.Candidate && priv != (byte)GuildPriv.Member &&
+                        priv != (byte)GuildPriv.Master && priv != (byte)GuildPriv.Accepted)
+                        continue;
+                    claimedCharacters.Add(uid);
                     string title = segs.Length > 2 ? segs[2].Replace("\\c", ":") : "";
 
                     var member = guild.AddRecruit(new Serial(uid));
@@ -423,7 +539,7 @@ public sealed class GuildManager
                     var rsegs = rpart.Split(':', 5);
                     if (rsegs.Length < 5) continue;
                     uint ruid = ParseHexSerial(rsegs[0]);
-                    if (ruid == 0) continue;
+                    if (ruid == 0 || ruid == item.Uid.Value) continue;
                     var rel = guild.GetOrCreateRelation(new Serial(ruid));
                     rel.WeDeclaredWar = rsegs[1] == "1";
                     rel.TheyDeclaredWar = rsegs[2] == "1";
@@ -438,7 +554,28 @@ public sealed class GuildManager
                 ParseSerialSet(item, "GUILD.ALLIES", uid => guild.AddAlly(uid));
             }
 
+            guild.NormalizeMasters();
             _guilds[item.Uid] = guild;
+        }
+
+        // Repair/migrate the mirrored directional flags. Older SphereNet saves
+        // wrote only each side's "we" bit, so mutual wars/alliances could never
+        // become active after reload.
+        foreach (var guild in _guilds.Values.ToList())
+        {
+            foreach (var relation in guild.Relations.Values.ToList())
+            {
+                if (!_guilds.TryGetValue(relation.OtherStoneUid, out var other) || other == guild)
+                {
+                    guild.RemoveRelation(relation.OtherStoneUid);
+                    continue;
+                }
+                var reverse = other.GetOrCreateRelation(guild.StoneUid);
+                if (relation.WeDeclaredWar) reverse.TheyDeclaredWar = true;
+                if (relation.TheyDeclaredWar) reverse.WeDeclaredWar = true;
+                if (relation.WeDeclaredAlliance) reverse.TheyDeclaredAlliance = true;
+                if (relation.TheyDeclaredAlliance) reverse.WeDeclaredAlliance = true;
+            }
         }
     }
 

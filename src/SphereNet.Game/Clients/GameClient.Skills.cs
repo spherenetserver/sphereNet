@@ -93,10 +93,7 @@ public sealed partial class GameClient
                 item.Amount = (ushort)(item.Amount - amount);
                 return;
             }
-            // Drop from container.
-            var holder = _client.World.FindObject(item.ContainedIn);
-            if (holder is Item parent) parent.RemoveItem(item);
-            item.Delete();
+            _client.World.RemoveItem(item);
         }
 
         public void DeliverItem(Item item)
@@ -114,7 +111,7 @@ public sealed partial class GameClient
                 if (placed)
                 {
                     if (stacked)
-                        item.Delete();
+                        _client.World.RemoveItem(item);
                     _client.NetState.Send(new PacketContainerItem(
                         actual.Uid.Value, actual.DispIdFull, 0,
                         actual.Amount, actual.X, actual.Y,

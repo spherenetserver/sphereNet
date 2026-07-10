@@ -695,23 +695,57 @@ public static partial class Program
         if (original is SphereNet.Game.Objects.Items.Item origItem)
         {
             var clone = _world.CreateItem();
-            clone.BaseId = origItem.BaseId;
-            clone.Name = origItem.Name;
-            clone.Hue = origItem.Hue;
+            clone.CopyStackInstanceStateFrom(origItem);
             clone.Amount = origItem.Amount;
-            // Copy TAGs
-            foreach (var kvp in origItem.Tags.GetAll())
-                clone.Tags.Set(kvp.Key, kvp.Value);
+            var parentItem = origItem.ContainedIn.IsValid ? _world.FindItem(origItem.ContainedIn) : null;
+            if (parentItem != null)
+            {
+                if (!parentItem.TryAddItem(clone))
+                    _world.PlaceItemWithDecay(clone, origItem.Position);
+            }
+            else if (origItem.ContainedIn.IsValid && _world.FindChar(origItem.ContainedIn) is { } wearer)
+            {
+                if (wearer.Backpack?.TryAddItem(clone) != true)
+                    _world.PlaceItemWithDecay(clone, wearer.Position);
+            }
+            else if (!_world.PlaceItem(clone, origItem.Position))
+            {
+                _world.RemoveItem(clone);
+            }
         }
         else if (original is SphereNet.Game.Objects.Characters.Character origChar)
         {
             var clone = _world.CreateCharacter();
             clone.BaseId = origChar.BaseId;
+            clone.BodyId = origChar.BodyId;
             clone.Name = origChar.Name;
             clone.Hue = origChar.Hue;
-            clone.Position = origChar.Position;
+            clone.Direction = origChar.Direction;
+            clone.Str = origChar.Str;
+            clone.Dex = origChar.Dex;
+            clone.Int = origChar.Int;
+            clone.MaxHits = origChar.MaxHits;
+            clone.Hits = origChar.Hits;
+            clone.MaxStam = origChar.MaxStam;
+            clone.Stam = origChar.Stam;
+            clone.MaxMana = origChar.MaxMana;
+            clone.Mana = origChar.Mana;
+            clone.NpcBrain = origChar.NpcBrain;
             foreach (var kvp in origChar.Tags.GetAll())
-                clone.Tags.Set(kvp.Key, kvp.Value);
+            {
+                if (!SphereNet.Game.Objects.EngineTags.IsEphemeral(kvp.Key))
+                    clone.Tags.Set(kvp.Key, kvp.Value);
+            }
+            foreach (SphereNet.Core.Enums.SkillType skill in Enum.GetValues<SphereNet.Core.Enums.SkillType>())
+            {
+                if (skill != SphereNet.Core.Enums.SkillType.None && skill < SphereNet.Core.Enums.SkillType.Qty)
+                    clone.SetSkill(skill, origChar.GetSkill(skill));
+            }
+            if (!_world.PlaceCharacter(clone, origChar.Position))
+            {
+                _world.DeleteObject(clone);
+                clone.Delete();
+            }
         }
         return "";
     }

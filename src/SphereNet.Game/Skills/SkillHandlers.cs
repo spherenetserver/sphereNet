@@ -556,7 +556,7 @@ public sealed class SkillHandlers
         if (actual == null)
             _world.PlaceItemWithDecay(item, ch.Position);
         else if (actual != item)
-            item.Delete();
+            _world.RemoveItem(item);
     }
 
     private bool HandleTaming(Character ch, Point3D? target)
@@ -669,14 +669,20 @@ public sealed class SkillHandlers
     private bool HandleBegging(Character ch, Point3D? target)
     {
         bool success = SkillEngine.UseQuick(ch, SkillType.Begging, 40);
-        if (success && ch.Backpack != null)
+        if (success)
         {
             var gold = _world.CreateItem();
             gold.BaseId = 0x0EED;
             gold.Name = "Gold";
             gold.ItemType = ItemType.Gold;
             gold.Amount = (ushort)Random.Shared.Next(1, 11); // 1-10, matching ActiveSkillEngine
-            ch.Backpack.AddItem(gold);
+            bool canPack = ch.Backpack != null &&
+                (ch.PrivLevel >= PrivLevel.GM || ch.CanCarry(gold));
+            if (!canPack || !ch.Backpack!.TryAddItem(gold))
+            {
+                if (!_world.PlaceItemWithDecay(gold, ch.Position))
+                    _world.RemoveItem(gold);
+            }
         }
         return success;
     }

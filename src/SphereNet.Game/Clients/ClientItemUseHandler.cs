@@ -443,6 +443,13 @@ public sealed class ClientItemUseHandler
         container ??= _character.Backpack;
         if (container == null) return;
 
+        int pileCount = amount > 0 ? (int)(((long)amount + 59_999) / 60_000) : 0;
+        if (amount <= 0 || container.ContentCount + pileCount > Item.MaxContainerItems)
+        {
+            SysMessage("That container cannot hold the redeemed gold.");
+            return;
+        }
+
         int remaining = amount;
         while (remaining > 0)
         {
@@ -875,10 +882,14 @@ public sealed class ClientItemUseHandler
                 var given = _world.CreateItem();
                 given.BaseId = (ushort)item.More1;
                 given.Amount = 1;
-                if (_character.Backpack != null)
-                    _character.Backpack.AddItemWithStack(given);
-                else
+                Item? delivered = null;
+                if (_character.Backpack != null &&
+                    (_character.PrivLevel >= PrivLevel.GM || _character.CanCarry(given)))
+                    delivered = _character.Backpack.TryAddItemWithStack(given);
+                if (delivered == null)
                     _world.PlaceItemWithDecay(given, _character.Position);
+                else if (delivered != given)
+                    _world.RemoveItem(given);
 
                 if (item.More2 != 0)
                 {
@@ -1231,15 +1242,35 @@ public sealed class ClientItemUseHandler
                     break;
                 }
 
+                // Legacy Source-X figurines store the pet in MORE1 and the
+                // figurine owner in LINK. A copied/borrowed figurine must not
+                // transfer somebody else's pet to the user.
+                if (item.Link.IsValid && item.Link != _character.Uid &&
+                    _character.PrivLevel < PrivLevel.GM)
+                {
+                    SysMessage(ServerMessages.Get(Msg.MsgFigurineNotyours));
+                    break;
+                }
+
                 uint linkedSerial = item.More1;
-                if (linkedSerial != 0 && _world != null)
+                if (linkedSerial != 0)
                 {
                     var pet = _world.FindChar(new Serial(linkedSerial));
-                    if (pet != null)
+                    if (pet != null && !pet.IsDeleted && !pet.IsPlayer)
                     {
-                        pet.MoveTo(_character.Position);
-                        _world.PlaceCharacter(pet, _character.Position);
-                        item.Delete();
+                        if (!pet.TryAssignOwnership(_character, _character,
+                                summoned: false, enforceFollowerCap: true))
+                        {
+                            SysMessage("You have too many followers to restore that now.");
+                            break;
+                        }
+                        if (!_world.PlaceCharacter(pet, _character.Position))
+                        {
+                            SysMessage(ServerMessages.Get(Msg.ItemuseCantthink));
+                            break;
+                        }
+                        pet.ClearStatFlag(StatFlag.Ridden);
+                        _world.RemoveItem(item);
                         SysMessage("Your pet materializes beside you.");
                     }
                     else
@@ -1797,27 +1828,29 @@ public sealed class ClientItemUseHandler
         ingot.Amount = (ushort)Math.Min(amount, ushort.MaxValue);
 
         var pack = _character.Backpack;
-        if (pack != null)
+        if (pack != null && (_character.PrivLevel >= PrivLevel.GM || _character.CanCarry(ingot)))
         {
-            var actual = pack.AddItemWithStack(ingot);
-            if (actual != ingot)
+            var actual = pack.TryAddItemWithStack(ingot);
+            if (actual != null && actual != ingot)
                 _world.RemoveItem(ingot);
 
-            _netState.Send(new PacketContainerItem(
-                actual.Uid.Value, actual.DispIdFull, 0,
-                actual.Amount, actual.X, actual.Y,
-                pack.Uid.Value, actual.Hue,
-                _netState.IsClientPost6017));
+            if (actual != null)
+            {
+                _netState.Send(new PacketContainerItem(
+                    actual.Uid.Value, actual.DispIdFull, 0,
+                    actual.Amount, actual.X, actual.Y,
+                    pack.Uid.Value, actual.Hue,
+                    _netState.IsClientPost6017));
 
-            _triggerDispatcher?.FireItemTrigger(actual, ItemTrigger.Create,
-                new TriggerArgs { CharSrc = _character, ItemSrc = actual });
+                _triggerDispatcher?.FireItemTrigger(actual, ItemTrigger.Create,
+                    new TriggerArgs { CharSrc = _character, ItemSrc = actual });
+                return;
+            }
         }
-        else
-        {
-            _world.PlaceItemWithDecay(ingot, _character.Position);
-            _triggerDispatcher?.FireItemTrigger(ingot, ItemTrigger.Create,
-                new TriggerArgs { CharSrc = _character, ItemSrc = ingot });
-        }
+
+        _world.PlaceItemWithDecay(ingot, _character.Position);
+        _triggerDispatcher?.FireItemTrigger(ingot, ItemTrigger.Create,
+            new TriggerArgs { CharSrc = _character, ItemSrc = ingot });
     }
 
     /// <summary>Resolve the ingot id an ore smelts into. Custom ore can name a
@@ -1867,7 +1900,7 @@ public sealed class ClientItemUseHandler
         {
             case ItemType.Hide: obj.ItemType = ItemType.Leather; SysMessage("You cut the hide into leather."); break;
             case ItemType.Cloth: obj.ItemType = ItemType.ClothBolt; SysMessage("You cut the cloth into bolts."); break;
-            case ItemType.BandageBlood: obj.Delete(); SysMessage(ServerMessages.Get(Msg.ItemuseBandageClean)); break;
+            case ItemType.BandageBlood: _world.RemoveItem(obj); SysMessage(ServerMessages.Get(Msg.ItemuseBandageClean)); break;
             default: SysMessage(ServerMessages.Get(Msg.ItemuseCantthink)); break;
         }
     }
@@ -2136,9 +2169,16 @@ public sealed class ClientItemUseHandler
                 }
                 var figurine = _world.CreateItem();
                 figurine.BaseId = 0x2106; // statuette graphic
+                bool canPack = (_character.PrivLevel >= PrivLevel.GM || _character.CanCarry(figurine)) &&
+                    pack.TryAddItem(figurine);
+                if (!canPack)
+                {
+                    _world.RemoveItem(figurine);
+                    NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetFailure));
+                    return true;
+                }
                 if (SphereNet.Game.NPCs.PetFigurine.Shrink(_character, pet, figurine, _world))
                 {
-                    pack.AddItem(figurine);
                     _netState.Send(new PacketContainerItem(
                         figurine.Uid.Value, figurine.DispIdFull, 0, figurine.Amount,
                         figurine.X, figurine.Y, pack.Uid.Value, figurine.Hue,
@@ -2762,6 +2802,7 @@ public sealed class ClientItemUseHandler
     private bool IsValidTeleportDest(Core.Types.Point3D dest)
     {
         if (dest.X < 0 || dest.Y < 0) return false;
+        if (_world.GetSector(dest) == null) return false;
         var md = _world.MapData;
         if (md == null) return true;
         var (mapW, mapH) = md.GetMapSize(dest.Map);

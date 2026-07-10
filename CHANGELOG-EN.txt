@@ -4,6 +4,54 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-10] - General gameplay integrity: inventory, trade, social systems and world lifecycle
+----------------------------------------
+
+FIXED - Items, containers, weight and object lifecycle:
+  - Container cycles, duplicate parent/equipment references, deep stack weight
+    and full pack/container operations are safe. Bank, vendor and special service
+    layers no longer count toward carried weight.
+  - Deleted items and characters are removed from the object table, sectors,
+    equipment and complete child-container trees together. Stale references can
+    no longer delete recycled UIDs, and consumed objects leave no ghost records.
+  - Death, corpses, resurrection, NPC looting, crafting, script DUPE/CONT/BOUNCE,
+    stack splitting and drag/drop paths restore or ground items instead of losing
+    them when a destination reaches capacity.
+
+FIXED - Vendors, banking and secure trade:
+  - Duplicate vendor rows cannot exceed stock; malformed BUY templates no longer
+    accept everything; transient clones are removed; full-pack purchases safely
+    fall back to the ground. Stock, payment and payout state stays world-consistent.
+  - Bank withdrawals and check creation now guarantee delivery before deducting
+    the balance, so capacity or carry failures cannot consume banked gold.
+  - Secure trade enforces target eligibility, REFUSETRADES, TradeCreate/DropOn
+    triggers, incoming weight and slot limits, returning every item safely after
+    cancellation or failed completion.
+
+FIXED - Party, guild, pet and mount behavior:
+  - Party invitations enforce leader authority, a 120-second timeout, membership
+    and capacity checks. Forged private party messages and destructive force-add
+    attempts are rejected.
+  - Guild candidate/member/master privileges are distinct. Master election,
+    server-side gump authorization, fealty, guild/alliance chat, mirrored war and
+    alliance relations and legacy save repair now follow Source-X behavior.
+  - Wild and foreign mounts cannot be ridden, while Mount/Dismount triggers veto
+    before mutation. Stable and figurine restore failures preserve both pets and
+    items when follower limits or destinations are invalid.
+
+FIXED - Magic, travel, scripts and client interactions:
+  - Recall, teleport, summon, field and NEWDUPE operations validate map/sector
+    bounds; failed placement leaves no orphan object or ownership state.
+  - Loaded active spell effects validate duration and flags. Consumed scrolls,
+    potions, bandages, bulletin posts and trade containers fully leave the world.
+  - Script/GM item placement, legacy figurine ownership, container capacity and
+    complete stack state/attribute cloning no longer lose or corrupt data.
+
+VERIFIED - With 23 new general gameplay integrity regressions, the complete
+  solution passes 1328/1328 in Debug and Release. The git diff check is clean.
+
+================================================================================
+
 [2026-07-10] - Deep house and ship code audit and Source-X parity
 ----------------------------------------
 

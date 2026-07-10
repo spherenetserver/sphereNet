@@ -403,8 +403,7 @@ public sealed partial class GameClient
         if (board.Contents.Count >= MaxBoardMessages)
         {
             var oldest = board.Contents[0];
-            board.RemoveItem(oldest);
-            oldest.Delete();
+            _world.RemoveItem(oldest);
         }
 
         var msg = _world.CreateItem();
@@ -440,8 +439,7 @@ public sealed partial class GameClient
             SysMessage("That is not your message.");
             return;
         }
-        board.RemoveItem(msg);
-        msg.Delete();
+        _world.RemoveItem(msg);
         _netState.Send(new PacketDeleteObject(msgSerial));
     }
 

@@ -522,7 +522,7 @@ public sealed class DeathEngine
                 }
 
                 item.SetTag("EQUIPLAYER", ((byte)layer).ToString());
-                corpse.AddItem(item);
+                AddToCorpseOrGround(corpse, item);
             }
         }
 
@@ -536,7 +536,7 @@ public sealed class DeathEngine
                     continue;
 
                 pack.RemoveItem(item);
-                corpse.AddItem(item);
+                AddToCorpseOrGround(corpse, item);
             }
         }
 
@@ -555,7 +555,7 @@ public sealed class DeathEngine
             dupe.Name = hair.GetName();
             dupe.SetTag("EQUIPLAYER", ((byte)hairLayer).ToString());
             dupe.SetTag("CORPSE_HAIR", "1"); // a render copy, never loot/restore
-            corpse.AddItem(dupe);
+            AddToCorpseOrGround(corpse, dupe);
         }
     }
 
@@ -596,7 +596,7 @@ public sealed class DeathEngine
             gold.Name = "Gold";
             gold.ItemType = ItemType.Gold;
             gold.Amount = (ushort)Math.Min(goldAmount, 60000);
-            corpse.AddItem(gold);
+            AddToCorpseOrGround(corpse, gold);
         }
 
         // Random reagent drops (for magic creatures)
@@ -607,7 +607,7 @@ public sealed class DeathEngine
             reagent.BaseId = reagents[Random.Shared.Next(reagents.Length)];
             reagent.Name = "reagent";
             reagent.Amount = (ushort)Random.Shared.Next(1, tier + 1);
-            corpse.AddItem(reagent);
+            AddToCorpseOrGround(corpse, reagent);
         }
 
         // Gem drops for higher tier NPCs
@@ -618,7 +618,7 @@ public sealed class DeathEngine
             gem.BaseId = gems[Random.Shared.Next(gems.Length)];
             gem.Name = "gem";
             gem.Amount = 1;
-            corpse.AddItem(gem);
+            AddToCorpseOrGround(corpse, gem);
         }
     }
 
@@ -684,7 +684,7 @@ public sealed class DeathEngine
             // IT_HAIR/IT_BEARD on rejoin).
             if (item.TryGetTag("CORPSE_HAIR", out _))
             {
-                item.Delete();
+                _world.RemoveItem(item);
                 continue;
             }
 
@@ -714,9 +714,8 @@ public sealed class DeathEngine
 
             if (!placed)
             {
-                if (pack != null)
+                if (pack != null && pack.TryAddItem(item))
                 {
-                    pack.AddItem(item);
                     placed = true;
                 }
                 else
@@ -948,7 +947,7 @@ public sealed class DeathEngine
                 }
                 else
                 {
-                    corpse.AddItem(part);
+                    AddToCorpseOrGround(corpse, part);
                 }
                 results.Add(part);
             }
@@ -993,10 +992,14 @@ public sealed class DeathEngine
     private void AddToPackOrGround(Character ch, Item item)
     {
         var pack = ch.Backpack;
-        if (pack != null)
-            pack.AddItem(item);
-        else
+        if (pack == null || !pack.TryAddItem(item))
             _world.PlaceItem(item, ch.Position);
+    }
+
+    private void AddToCorpseOrGround(Item corpse, Item item)
+    {
+        if (!corpse.TryAddItem(item))
+            _world.PlaceItemWithDecay(item, corpse.Position);
     }
 
     // Corpse decay is now driven by the per-item Item.DecayTime /

@@ -126,9 +126,13 @@ public static class VendorEngine
 
         long totalCost = 0;
         var resolved = new List<(Item Stock, int Amount, int Price)>(items.Count);
+        var seenSerials = new HashSet<uint>();
         foreach (var entry in items)
         {
             if (entry.Amount <= 0 || entry.Amount > 999) return -1;
+            // A crafted packet may repeat the same stock row. Validating each
+            // line independently would let the combined amount exceed stock.
+            if (!seenSerials.Add(entry.ItemUid.Value)) return -1;
 
             var stockItem = World.FindItem(entry.ItemUid);
             if (stockItem == null || stockItem.IsDeleted)
@@ -177,7 +181,12 @@ public static class VendorEngine
         // Credit the vendor's money pool with what the player paid (Source-X
         // pVendor->GetBank()->m_itEqBankBox.m_Check_Amount += iCostTotal).
         if (totalCost > 0)
-            SetVendorGold(vendor, GetVendorGold(vendor) + totalCost);
+        {
+            long currentPurse = GetVendorGold(vendor);
+            SetVendorGold(vendor, currentPurse > long.MaxValue - totalCost
+                ? long.MaxValue
+                : currentPurse + totalCost);
+        }
 
         foreach (var (stock, amount, _) in resolved)
         {
@@ -187,13 +196,27 @@ public static class VendorEngine
             var newItem = World.CreateItem();
             newItem.CopyStackInstanceStateFrom(stock);
             newItem.Amount = (ushort)Math.Max(1, Math.Min(amount, ushort.MaxValue));
-            backpack.AddItemWithStack(newItem);
+            Item? delivered = player.PrivLevel < Core.Enums.PrivLevel.GM && !player.CanCarry(newItem)
+                ? null
+                : backpack.TryAddItemWithStack(newItem);
+            if (delivered == null)
+            {
+                // Source-X ItemBounce drops at the buyer's feet when the pack is
+                // full or the purchase would overload them; never orphan a paid item.
+                World.PlaceItemWithDecay(newItem, player.Position);
+            }
+            else if (delivered != newItem)
+            {
+                // The clone merged into an existing pile. Remove the transient
+                // world object that supplied the amount.
+                World.RemoveItem(newItem);
+            }
 
             // Decrement the virtual stock; a depleted entry is removed.
             // When the whole container empties it is rebuilt from the
             // SELL template the next time the vendor is opened.
             if (stock.Amount <= amount)
-                stock.Delete();
+                World.RemoveItem(stock);
             else
                 stock.Amount -= (ushort)amount;
         }
@@ -288,7 +311,7 @@ public static class VendorEngine
             foreach (var (entry, found, _) in affordable)
             {
                 if (found.Amount <= entry.Amount)
-                    found.Delete();
+                    World.RemoveItem(found);
                 else
                     found.Amount -= (ushort)entry.Amount;
             }
@@ -306,7 +329,13 @@ public static class VendorEngine
                 gold.ItemType = Core.Enums.ItemType.Gold;
                 gold.Amount = (ushort)pile;
                 gold.Name = "Gold";
-                backpack.AddItem(gold);
+                Item? delivered = player.PrivLevel < Core.Enums.PrivLevel.GM && !player.CanCarry(gold)
+                    ? null
+                    : backpack.TryAddItemWithStack(gold);
+                if (delivered == null)
+                    World.PlaceItemWithDecay(gold, player.Position);
+                else if (delivered != gold)
+                    World.RemoveItem(gold);
                 remaining -= pile;
             }
         }
@@ -351,7 +380,9 @@ public static class VendorEngine
                 : (ushort)0;
             if (id != 0) set.Add(id);
         }
-        return set.Count > 0 ? set : null;
+        // A configured but empty/malformed list means "buys nothing". Returning
+        // null here would turn a script typo into an unrestricted buy-anything vendor.
+        return set;
     }
 
     /// <summary>Look up server-side price for an item. Checks vendor stock PRICE tags, item def, fallback to baseId formula.</summary>
@@ -445,7 +476,7 @@ public static class VendorEngine
             if (item.Amount <= remaining)
             {
                 remaining -= item.Amount;
-                item.Delete();
+                World.RemoveItem(item);
             }
             else
             {
@@ -466,15 +497,19 @@ public static class VendorEngine
 
     private static IEnumerable<Item> EnumerateContainerContentsRecursive(Item container)
     {
-        foreach (var item in container.Contents)
+        var seen = new HashSet<Item>(ReferenceEqualityComparer.Instance);
+        var pending = new Stack<Item>(container.Contents.Reverse());
+        while (pending.Count > 0)
         {
+            var item = pending.Pop();
             if (item.IsDeleted)
+                continue;
+            if (!seen.Add(item))
                 continue;
 
             yield return item;
-
-            foreach (var child in EnumerateContainerContentsRecursive(item))
-                yield return child;
+            for (int i = item.Contents.Count - 1; i >= 0; i--)
+                pending.Push(item.Contents[i]);
         }
     }
 
@@ -565,7 +600,8 @@ public static class VendorEngine
                 }
             }
 
-            stock.AddItem(newItem);
+            if (!stock.TryAddItem(newItem))
+                World.RemoveItem(newItem);
         }
 
         vendor.SetTag("RESTOCK_TIME", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString());
@@ -640,14 +676,15 @@ public sealed class TradeManager
     public static void ReturnItemToCharacter(GameWorld world, Character owner, Item item)
     {
         var pack = EnsureBackpack(world, owner);
-        if (pack != null)
+        if (pack != null && pack.TryAddItem(item))
         {
-            pack.AddItem(item);
             item.Position = new Point3D(0, 0, 0, owner.MapIndex);
             return;
         }
 
-        world.PlaceItem(item, owner.Position);
+        // ItemBounce semantics: a full/missing pack never destroys or strands
+        // returned trade goods; they land at the owner's feet.
+        world.PlaceItemWithDecay(item, owner.Position);
     }
 
     private static Item? EnsureBackpack(GameWorld world, Character ch)
@@ -674,13 +711,40 @@ public sealed class TradeManager
         out string? reason)
     {
         reason = null;
-        int maxWeight = (recipient.Str * 7 / 2) + 40 + recipient.ModMaxWeight;
-        int current = recipient.GetTotalWeight();
-        int incomingTenths = 0;
-        foreach (var item in sourceContainer.Contents)
-            incomingTenths += item.TotalWeightTenths;
+        if (recipient.IsDeleted || sourceContainer.IsDeleted)
+        {
+            reason = "Trade is no longer valid.";
+            return false;
+        }
 
-        if ((current * Item.WeightUnits) + incomingTenths > maxWeight * Item.WeightUnits)
+        int incomingSlots = sourceContainer.Contents.Count(i => !i.IsDeleted);
+        if (incomingSlots == 0)
+            return true;
+
+        var pack = EnsureBackpack(world, recipient);
+        if (pack == null && recipient.IsPlayer)
+        {
+            reason = "You have no backpack.";
+            return false;
+        }
+
+        if (pack != null && pack.ContentCount + incomingSlots > Item.MaxContainerItems)
+        {
+            reason = "Your backpack cannot hold any more items.";
+            return false;
+        }
+
+        long maxWeightTenths = (long)Math.Max(0, recipient.MaxWeight) * Item.WeightUnits;
+        long incomingTenths = 0;
+        foreach (var item in sourceContainer.Contents)
+        {
+            if (item.IsDeleted) continue;
+            incomingTenths += item.TotalWeightTenths;
+            if (incomingTenths > int.MaxValue)
+                break;
+        }
+
+        if ((long)recipient.GetTotalWeightTenths() + incomingTenths > maxWeightTenths)
         {
             reason = "You cannot carry that much.";
             return false;

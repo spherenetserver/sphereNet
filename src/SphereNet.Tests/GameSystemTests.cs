@@ -1287,7 +1287,7 @@ public class GameSystemTests
     }
 
     [Fact]
-    public void MountEngine_TryMount_AssignsOwnerAndController()
+    public void MountEngine_TryMount_PreservesOwnerAndController()
     {
         var loggerFactory = LoggerFactory.Create(_ => { });
         var world = CreateWorld();
@@ -1302,6 +1302,7 @@ public class GameSystemTests
         horse.Name = "Horse";
         horse.BodyId = 0x00C8;
         world.PlaceCharacter(horse, new Point3D(101, 100, 0, 0));
+        horse.TryAssignOwnership(rider, rider);
 
         Assert.True(mountEngine.TryMount(rider, horse));
         Assert.True(horse.HasOwner(rider.Uid));
@@ -1325,6 +1326,7 @@ public class GameSystemTests
         var horse = world.CreateCharacter();
         horse.BodyId = 0x00C8;
         world.PlaceCharacter(horse, new Point3D(101, 100, 0, 0));
+        horse.TryAssignOwnership(rider, rider);
 
         var dispatcher = new TriggerDispatcher();
         int calls = 0;

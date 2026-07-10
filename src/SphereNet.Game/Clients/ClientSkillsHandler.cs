@@ -63,6 +63,7 @@ public sealed class ClientSkillsHandler
     private ClientTargetState Targets => _client.Targets;
     private ClientViewCache View => _client.View;
     private Action<Point3D, int, SphereNet.Network.Packets.PacketWriter, uint>? BroadcastNearby => _client.BroadcastNearby;
+    private Action<Serial, SphereNet.Network.Packets.PacketWriter>? SendToChar => _client.SendToChar;
     private void SysMessage(string text) => _client.SysMessage(text);
     private void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1) => _client.SetPendingTarget(callback, cursorType);
     private void SendGump(GumpBuilder gump, Action<uint, uint[], (ushort, string)[]>? callback = null) => _client.SendGump(gump, callback);
@@ -728,10 +729,17 @@ public sealed class ClientSkillsHandler
     {
         if (_character == null || _partyManager == null) return;
         var target = _world.FindChar(new Serial(targetUid));
-        if (target == null || !target.IsPlayer) return;
-        _triggerDispatcher?.FireCharTrigger(target, CharTrigger.PartyInvite,
-            new TriggerArgs { CharSrc = _character });
-        _partyManager.AcceptInvite(_character.Uid, target.Uid);
+        if (target == null || !target.IsPlayer || target == _character || target.IsDeleted) return;
+        var party = _partyManager.FindParty(_character.Uid);
+        if (party != null && (party.Master != _character.Uid || party.IsFull)) return;
+        if (_partyManager.FindParty(target.Uid) != null) return;
+        if (_triggerDispatcher?.FireCharTrigger(target, CharTrigger.PartyInvite,
+            new TriggerArgs { CharSrc = _character }) == TriggerResult.True)
+            return;
+        target.SetTag("PARTY_INVITE_FROM", _character.Uid.Value.ToString());
+        target.SetTag("PARTY_INVITE_TIME", Environment.TickCount64.ToString());
+        SendToChar?.Invoke(target.Uid, new PacketPartyInvitation(_character.Uid.Value));
+        SysMessage(ServerMessages.GetFormatted("party_invite", target.Name));
     }
 
     public void HandlePartyLeave()

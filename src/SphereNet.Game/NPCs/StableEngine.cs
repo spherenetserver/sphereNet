@@ -135,9 +135,6 @@ public sealed class StableEngine
         }
 
         // Ownership succeeded — now it is safe to commit the stable removal.
-        list.RemoveAt(index);
-        PersistOwnerStableList(owner, list);
-
         if (data.ControllerUid != 0 && data.ControllerUid != owner.Uid.Value)
             pet.TrySetProperty("CONTROLLER_UID", data.ControllerUid.ToString());
 
@@ -161,7 +158,17 @@ public sealed class StableEngine
                 pet.AddFriend(friend);
         }
 
-        world.PlaceCharacter(pet, pos);
+        if (!world.PlaceCharacter(pet, pos))
+        {
+            pet.ClearOwnership(clearFriends: true);
+            world.DeleteObject(pet);
+            pet.Delete();
+            return null;
+        }
+
+        // Commit stable removal only after the restored pet has a valid world tile.
+        list.RemoveAt(index);
+        PersistOwnerStableList(owner, list);
         return pet;
     }
 

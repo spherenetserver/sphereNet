@@ -1469,8 +1469,8 @@ public static partial class Program
                 TradeManager.ReturnTradeItems(_world, trade);
                 trade.Cancel();
                 _tradeManager.EndTrade(trade);
-                trade.InitiatorContainer.Delete();
-                trade.PartnerContainer.Delete();
+                _world.RemoveItem(trade.InitiatorContainer);
+                _world.RemoveItem(trade.PartnerContainer);
             };
             _npcAI = new NpcAI(_world, _config);
             _npcTimerWheel = new SphereNet.Game.Scheduling.TimerWheel(Environment.TickCount64);
@@ -2372,7 +2372,7 @@ public static partial class Program
                     }
                     else
                     {
-                        child.Delete();
+                        _world.RemoveItem(child);
                     }
                 }
                 return true; // consumed — delete the corpse/bones
@@ -2605,6 +2605,7 @@ public static partial class Program
                 return null;
             };
             SphereNet.Game.Objects.Items.Item.ResolveGuild = uid => _guildManager.GetGuild(uid);
+            SphereNet.Game.Objects.Items.Item.ResolveGuildManager = () => _guildManager;
             SphereNet.Game.Objects.Items.Item.ResolveGuildCharacter = uid => _world.FindChar(uid);
             SphereNet.Game.Objects.Items.Item.ExecuteGuildMemberCommand = (_, memberUid, command) =>
             {
@@ -2787,8 +2788,8 @@ public static partial class Program
                     return;
                 if (toGround || ch.Backpack == null)
                     _world.PlaceItemWithDecay(dragged, ch.Position);
-                else
-                    ch.Backpack.AddItem(dragged);
+                else if (!ch.Backpack.TryAddItem(dragged))
+                    _world.PlaceItemWithDecay(dragged, ch.Position);
             };
 
             // Stress-test harness (.stress / .stressreport / .stressclean)

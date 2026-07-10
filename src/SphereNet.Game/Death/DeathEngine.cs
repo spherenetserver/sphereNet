@@ -78,6 +78,25 @@ public sealed class DeathEngine
             if (master != null && !master.IsDeleted)
                 effectiveKiller = master;
         }
+        if (effectiveKiller == null)
+        {
+            // Some death sources arrive without a final-blow argument even
+            // though damage attribution is present (delayed poison/effects).
+            // Source-X still credits m_lastAttackers; choose the strongest
+            // valid contributor as the representative killer, while the
+            // normal offender loop below continues to credit every attacker.
+            foreach (var rec in victim.Attackers
+                .Where(r => !r.Ignored && r.TotalDamage > 0)
+                .OrderByDescending(r => r.TotalDamage))
+            {
+                var candidate = _world.FindChar(rec.Uid);
+                if (candidate == null || candidate.IsDeleted) continue;
+                effectiveKiller = candidate.ResolveOwnerCharacter() ?? candidate;
+                if (!effectiveKiller.IsDeleted)
+                    break;
+                effectiveKiller = null;
+            }
+        }
 
         // @Death — Source-X fires it before any death processing; RETURN 1 cancels
         // the death entirely (no corpse, the victim is not killed). Centralised
@@ -90,14 +109,29 @@ public sealed class DeathEngine
                 new TriggerArgs { CharSrc = victim, O1 = effectiveKiller }) == TriggerResult.True)
             return null;
 
-        // @Kill on the killer — RETURN 1 skips the kill credit (notoriety/karma/
-        // fame/murder/experience) for this killer, but the death still proceeds.
-        // Source-X Init(GetAttackersCount(), 0, 0, this): ARGN1 = the victim's
-        // attacker-log count, ARGO = the victim.
-        bool skipKillerCredit = false;
-        if (effectiveKiller != null && TriggerDispatcher != null)
-            skipKillerCredit = TriggerDispatcher.FireCharTrigger(effectiveKiller, CharTrigger.Kill,
-                new TriggerArgs { CharSrc = effectiveKiller, O1 = victim, N1 = victim.Attackers.Count }) == TriggerResult.True;
+        var creditedOffenders = new List<Character>();
+        int attackerCount = 1;
+        if (effectiveKiller != null)
+        {
+            var offenders = new List<Character>();
+            var creditedUids = new HashSet<uint>();
+            foreach (var offender in EnumerateOffenders(victim, effectiveKiller))
+                if (creditedUids.Add(offender.Uid.Value))
+                    offenders.Add(offender);
+            attackerCount = Math.Max(1, offenders.Count);
+
+            foreach (var offender in offenders)
+            {
+                if (TriggerDispatcher?.FireCharTrigger(offender, CharTrigger.Kill,
+                        new TriggerArgs
+                        {
+                            CharSrc = offender,
+                            O1 = victim,
+                            N1 = victim.Attackers.Count
+                        }) != TriggerResult.True)
+                    creditedOffenders.Add(offender);
+            }
+        }
 
         // Sleeping is cleared by Kill() below (Source-X clears it before
         // MakeCorpse too) — capture it first for the corpse forensics stamp.
@@ -125,20 +159,13 @@ public sealed class DeathEngine
             DismountHook?.Invoke(victim);
 
         // Karma/Fame/murder credit — skipped when @Kill returned 1.
-        if (effectiveKiller != null && !skipKillerCredit)
+        if (effectiveKiller != null)
         {
             // Source-X CChar::Death credits EVERY damaging attacker and divides the
             // fame/karma/experience reward by the attacker count (Noto_Kill's
             // iTotalKillers), so a group splits the spoils instead of the final
             // blow taking all of it. Deduped, pets credited to their master.
-            var offenders = new List<Character>();
-            var creditedUids = new HashSet<uint>();
-            foreach (var offender in EnumerateOffenders(victim, effectiveKiller))
-                if (creditedUids.Add(offender.Uid.Value))
-                    offenders.Add(offender);
-            int attackerCount = Math.Max(1, offenders.Count);
-
-            foreach (var offender in offenders)
+            foreach (var offender in creditedOffenders)
             {
                 ApplyKarmaFameChange(offender, victim, attackerCount);
 
@@ -151,7 +178,7 @@ public sealed class DeathEngine
             // PvP murder tracking — Source-X Noto_Kill marks EVERY unprovoked
             // attacker of an innocent, not just the final-blow killer, so ganking
             // an innocent flags the whole group.
-            MarkMurderers(victim, effectiveKiller);
+            MarkMurderers(victim, creditedOffenders);
         }
 
         // Source-X kill record (CCharAct.cpp:4357-4389): "'<victim>' was
@@ -159,13 +186,18 @@ public sealed class DeathEngine
         // victim's party (an unattributed death reads "accident").
         if (KillMessageHook != null && victim.IsPlayer)
         {
-            string names = effectiveKiller == null
+            string names = creditedOffenders.Count == 0
                 ? ""
-                : string.Join(", ", EnumerateOffenders(victim, effectiveKiller)
+                : string.Join(", ", creditedOffenders
                     .Select(o => $"'{o.GetDisplayName()}'").Distinct());
             KillMessageHook(victim,
                 $"'{victim.GetDisplayName()}' was killed by {(names.Length > 0 ? names : "accident")}.");
         }
+
+        // Source-X clears m_lastAttackers immediately after kill credit and
+        // the kill record are built. Player ghosts otherwise retained stale
+        // damage contributors until resurrection (and persisted them on save).
+        victim.ClearAttackers();
 
         int deathFlags = GetDeathFlags(victim);
 
@@ -299,12 +331,12 @@ public sealed class DeathEngine
     /// is resolved pet→master, deduped, and gated through @MurderMark (which can
     /// adjust the count, suppress the criminal flag, or block the mark).
     /// </summary>
-    private void MarkMurderers(Character victim, Character effectiveKiller)
+    private void MarkMurderers(Character victim, IEnumerable<Character> offenders)
     {
         if (!victim.IsPlayer) return;
 
         var marked = new HashSet<uint>();
-        foreach (var offender in EnumerateOffenders(victim, effectiveKiller))
+        foreach (var offender in offenders)
         {
             if (!offender.IsPlayer) continue;
             if (!marked.Add(offender.Uid.Value)) continue;

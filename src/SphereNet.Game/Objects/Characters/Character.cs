@@ -457,7 +457,8 @@ public partial class Character : ObjBase
     public static int PlayerKarmaNeutral { get; set; } = -2000;
     /// <summary>Whether attacking an innocent turns the aggressor criminal. sphere.ini ATTACKINGISACRIME.</summary>
     public static bool AttackingIsACrimeEnabled { get; set; } = true;
-    /// <summary>Whether helping a criminal fight an innocent flags you criminal. sphere.ini HELPINGCRIMINALSISACRIME.</summary>
+    /// <summary>Whether beneficially helping a criminal flags the helper.
+    /// sphere.ini HELPINGCRIMINALSISACRIME.</summary>
     public static bool HelpingCriminalsIsACrimeEnabled { get; set; }
     /// <summary>Whether failed snooping flags the snooper criminal. sphere.ini SNOOPCRIMINAL.</summary>
     public static bool SnoopCriminalEnabled { get; set; } = true;
@@ -476,6 +477,8 @@ public partial class Character : ObjBase
     public static int CombatHitChanceEra { get; set; }
     /// <summary>COMBATSPEEDERA from sphere.ini.</summary>
     public static int CombatSpeedEra { get; set; }
+    /// <summary>SPEEDSCALEFACTOR used by Source-X swing-speed formulas.</summary>
+    public static int CombatSpeedScaleFactor { get; set; } = 15000;
     /// <summary>ARCHERYMINDIST from sphere.ini.</summary>
     public static int ArcheryMinDist { get; set; } = 1;
     /// <summary>ARCHERYMAXDIST from sphere.ini.</summary>
@@ -1209,7 +1212,20 @@ public partial class Character : ObjBase
     public List<ResourceId> Events => _events;
 
     // Combat fields
-    public Serial FightTarget { get; set; } = Serial.Invalid;
+    private Serial _fightTarget = Serial.Invalid;
+    public Serial FightTarget
+    {
+        get => _fightTarget;
+        set
+        {
+            // A windup belongs to exactly one fight target. Target switches,
+            // combat clears and death must not leave an orphaned pending hit
+            // that blocks every future swing.
+            if (value != _fightTarget && HasPendingHit && value != PendingHitTarget)
+                ClearPendingHit();
+            _fightTarget = value;
+        }
+    }
     public long NextAttackTime { get; set; }
     public SwingState CombatSwingState { get; private set; } = SwingState.Ready;
     public long CombatSwingStateUntil { get; private set; }
@@ -1246,6 +1262,15 @@ public partial class Character : ObjBase
     public long SwingHitTime { get; set; }
     /// <summary>The target a started-but-not-yet-resolved swing will hit.</summary>
     public Serial PendingHitTarget { get; set; } = Serial.Invalid;
+    /// <summary>Weapon committed by the swing. Prevents equipment swapping
+    /// during windup from changing its reach, ammo class and damage.</summary>
+    public Serial PendingHitWeapon { get; private set; } = Serial.Invalid;
+    public bool PendingHitWeaponCaptured { get; private set; }
+    /// <summary>Per-swing @HitCheck LOCAL.Recoil_NoRange decision.</summary>
+    public bool PendingHitSwingNoRange { get; private set; }
+    /// <summary>Committed effective range (includes an NPC CHARDEF RANGE).</summary>
+    public int PendingHitRangeMin { get; private set; } = -1;
+    public int PendingHitRangeMax { get; private set; } = -1;
     /// <summary>Latest tick a SWING_NORANGE hit may keep waiting for reach/LoS.</summary>
     public long PendingHitDeadline { get; set; }
     public bool HasPendingHit => PendingHitTarget.IsValid;
@@ -1254,10 +1279,17 @@ public partial class Character : ObjBase
     /// from now, begin the recoil (next swing at <paramref name="recoilMs"/>), and enter
     /// the Swinging state. With hitDelayMs == 0 the caller resolves the hit immediately
     /// (atomic) — identical to the old <see cref="BeginSwingRecoil"/> path.</summary>
-    public void BeginSwingWindup(long nowMs, int hitDelayMs, int recoilMs, Serial targetUid, long deadlineMs)
+    public void BeginSwingWindup(long nowMs, int hitDelayMs, int recoilMs, Serial targetUid,
+        long deadlineMs, Serial? weaponUid = null, bool swingNoRange = false,
+        int rangeMin = -1, int rangeMax = -1)
     {
         SwingHitTime = nowMs + Math.Max(hitDelayMs, 0);
         PendingHitTarget = targetUid;
+        PendingHitWeaponCaptured = weaponUid.HasValue;
+        PendingHitWeapon = weaponUid ?? Serial.Invalid;
+        PendingHitSwingNoRange = swingNoRange;
+        PendingHitRangeMin = rangeMin;
+        PendingHitRangeMax = rangeMax;
         PendingHitDeadline = deadlineMs;
         NextAttackTime = nowMs + Math.Max(recoilMs, 0);
         SetCombatSwingState(SwingState.Swinging, NextAttackTime);
@@ -1266,6 +1298,11 @@ public partial class Character : ObjBase
     public void ClearPendingHit()
     {
         PendingHitTarget = Serial.Invalid;
+        PendingHitWeapon = Serial.Invalid;
+        PendingHitWeaponCaptured = false;
+        PendingHitSwingNoRange = false;
+        PendingHitRangeMin = -1;
+        PendingHitRangeMax = -1;
         SwingHitTime = 0;
         PendingHitDeadline = 0;
     }
@@ -1969,6 +2006,7 @@ public partial class Character : ObjBase
     {
         _hits = 0;
         CurePoison();
+        ClearPendingHit();
         FightTarget = Serial.Invalid;
         // Source-X CChar::Death: Reveal() + StatFlag_Clear(STONE|FREEZE|
         // HIDDEN|SLEEPING|HOVERING) — the ghost must not inherit held states
@@ -2004,6 +2042,7 @@ public partial class Character : ObjBase
         // at 1 HP — a 0-HP resurrect would re-kill the character next tick.
         _hits = (short)Math.Max(1, _maxHits * Math.Clamp(HitpointPercentOnRez, 0, 100) / 100);
         CombatState.ClearAttackers();
+        ClearPendingHit();
         FightTarget = Serial.Invalid;
 
         // Source-X: murderer resurrection penalties (stat/skill loss ~1%)
@@ -2027,6 +2066,7 @@ public partial class Character : ObjBase
         _isDeleted = true;
         CombatState.ClearAttackers();
         MemoryState.Clear();
+        ClearPendingHit();
         FightTarget = Serial.Invalid;
     }
 

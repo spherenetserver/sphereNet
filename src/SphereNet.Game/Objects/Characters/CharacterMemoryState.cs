@@ -226,10 +226,11 @@ public sealed class CharacterMemoryState
         if (target == null || !target.Uid.IsValid)
             return;
 
-        if (_owner.FightTarget.IsValid && _owner.FightTarget == target.Uid)
+        var mem = FindObj(target.Uid);
+        if (_owner.FightTarget == target.Uid &&
+            mem != null && mem.IsMemoryTypes(MemoryType.Fight))
             return;
 
-        var mem = FindObj(target.Uid);
         MemoryType aggFlags;
 
         if (mem == null)
@@ -296,6 +297,7 @@ public sealed class CharacterMemoryState
         var target = world.FindChar(mem.Link);
         if (target == null || target.IsDeleted || target.IsStatFlag(StatFlag.Dead))
         {
+            _owner.Attacker_Delete(mem.Link);
             ClearTypes(mem, MemoryType.Fight | MemoryType.IAggressor | MemoryType.Aggreived);
             return true;
         }
@@ -315,12 +317,14 @@ public sealed class CharacterMemoryState
         long fightElapsedMs = GetElapsedMs(mem);
         if (fightElapsedMs > 60 * 60 * 1000L)
         {
+            _owner.Attacker_Delete(target.Uid);
             ClearTypes(mem, MemoryType.Fight | MemoryType.IAggressor | MemoryType.Aggreived);
             return true;
         }
 
         if (target.Hits >= target.MaxHits && fightElapsedMs > 2 * 60 * 1000L)
         {
+            _owner.Attacker_Delete(target.Uid);
             ClearTypes(mem, MemoryType.Fight | MemoryType.IAggressor | MemoryType.Aggreived);
             return true;
         }

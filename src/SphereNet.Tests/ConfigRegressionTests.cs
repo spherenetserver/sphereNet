@@ -18,6 +18,7 @@ public class ConfigRegressionTests
             ItemDurabilityLossChance=150
             ItemDurabilityLossMin=3
             ItemDurabilityLossMax=1
+            SpeedScaleFactor=-5
             StateRecordMoveScanMs=10
             StateRecordSnapshotMs=10
             MacroMaxSteps=1000
@@ -65,6 +66,7 @@ public class ConfigRegressionTests
             Assert.Equal(100, config.ItemDurabilityLossChance);
             Assert.Equal(3, config.ItemDurabilityLossMin);
             Assert.Equal(3, config.ItemDurabilityLossMax);
+            Assert.Equal(1, config.SpeedScaleFactor);
             Assert.Equal(500, config.StateRecordMoveScanMs);
             Assert.Equal(5000, config.StateRecordSnapshotMs);
             Assert.Equal(200, config.MacroMaxSteps);

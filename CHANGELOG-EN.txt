@@ -4,6 +4,49 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-10] - Deep combat code audit: swings, ranged combat, damage and kill credit
+----------------------------------------
+
+FIXED - Swing state and combat safety:
+  - Pending swings are cleared on target changes, war-mode exit, death, deletion
+    and resurrection. Map, life state, immunity, region, LOS and range are
+    revalidated at hit time; weapon/range/Recoil_NoRange are committed at windup.
+  - NPC and player HitCheck paths now use the same ordering and callback data.
+    CHARDEF innate range, ITEMDEF melee range, NoDirChange, Reveal and owner crime
+    reporting now match Source-X behavior.
+
+FIXED - Ranged weapons and ammunition economy:
+  - Ammunition is found recursively in nested containers with depth/cycle guards;
+    ammo lost during windup cannot produce a free hit. StayInRange misses execute
+    HitMiss, projectile, Arrow and player-ammunition handling completely.
+  - Full-container stuck-ammo merging/orphan cleanup and NPC HitMiss weapon/Arrow
+    UID callback data are corrected. A full parry is no longer treated as a miss
+    and cannot incorrectly trigger ammunition economy.
+
+FIXED - Damage, armor, speed and durability:
+  - Miss, parry and proc-resolved outcomes are distinct; trigger cancellation
+    always stops damage regardless of callback return value. A proc kill prevents
+    the original strike from being applied again.
+  - Armor-layer coverage, resist/slayer/AOS bonuses, the elemental Source-X
+    formula, weapon damage overrides and ITEMDEF SKILL support are corrected;
+    overflow and double-roll durability errors are removed.
+  - Source-X swing-speed eras 0-2 are implemented. Invented mounted/two-handed
+    penalties are removed, SPEEDSCALEFACTOR is bound to config/script and SSI
+    aggregation is overflow-safe.
+
+FIXED - Crime, combat memory and death credit:
+  - CombatStart runs before mutations with the target as SRC and repeated attacks
+    are idempotent. Aggressor/HarmedBy directions, memory expiry/death cleanup and
+    attacker damage overflow/negative-kill handling are corrected.
+  - When no final killer is supplied, the strongest logged attacker is used. One
+    attacker's cancelled Kill callback no longer blocks other credits and the
+    attacker list is cleared after distribution.
+
+VERIFIED - With 21 new combat regressions, the complete solution passes 1264/1264
+  in Debug and Release with zero warnings/errors. The git diff check is clean.
+
+================================================================================
+
 [2026-07-10] - Deep NpcAI code audit: targeting, combat, movement and roles
 ----------------------------------------
 

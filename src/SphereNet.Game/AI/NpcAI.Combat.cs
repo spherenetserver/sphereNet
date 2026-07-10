@@ -760,7 +760,7 @@ public sealed partial class NpcAI
     /// Callback for when an NPC successfully deals damage. Used by Program.cs to broadcast effects.
     /// Parameters: attacker, target, damage dealt
     /// </summary>
-    public Action<Character, Character, int>? OnNpcAttack { get; set; }
+    public Action<Character, Character, Item?, int, uint>? OnNpcAttack { get; set; }
 
     /// <summary>
     /// Callback for when an NPC engages a new fight target (reference
@@ -788,9 +788,11 @@ public sealed partial class NpcAI
     /// player path's @HitTry. Args: npc, target, weapon, swingDelayTenths.</summary>
     public Func<Character, Character, Item?, int, int>? OnNpcHitTry { get; set; }
 
-    /// <summary>@HitCheck hook fired just before damage resolves. Returns true to
-    /// force a miss. Mirrors the player path's @HitCheck.</summary>
-    public Func<Character, Character, Item?, bool>? OnNpcHitCheck { get; set; }
+    /// <summary>@HitCheck hook fired before range/LoS validation. Receives and
+    /// returns the per-swing Recoil_NoRange value plus a forced-miss decision,
+    /// matching the player path's trigger contract.</summary>
+    public Func<Character, Character, Item?, bool,
+        (bool ForceMiss, bool SwingNoRange)>? OnNpcHitCheck { get; set; }
 
     /// <summary>
     /// Try to swing attack a target with swing timer throttle.
@@ -802,13 +804,15 @@ public sealed partial class NpcAI
     ///     <item>Validate state and STAM &gt; 0.</item>
     ///     <item>Turn to face the target before launching the swing
     ///       so the animation plays the right way (UpdateDir).</item>
-    ///     <item>Resolve damage and consume one stamina point.</item>
+    ///     <item>Resolve damage after the committed windup.</item>
     ///     <item>Set <c>NextAttackTime</c> to the full swing recoil.</item>
     ///   </list>
     /// </summary>
     private bool TrySwingAttack(Character npc, Character target)
     {
-        if (npc.IsDead || npc.Hits <= 0 || target.IsDead || target.Hits <= 0)
+        if (npc == target || npc.MapIndex != target.MapIndex ||
+            CombatHelper.IsInvalidSwingParticipant(npc, asTarget: false) ||
+            CombatHelper.IsInvalidSwingParticipant(target, asTarget: true))
             return false;
 
         long now = Environment.TickCount64;
@@ -846,10 +850,25 @@ public sealed partial class NpcAI
         }
 
         Item? weapon = npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
+        var effectiveRange = GetFightRange(npc, weapon);
+        bool swingNoRange = CombatHelper.SwingIgnoresStartRange();
+        int swingDelayMs = SphereNet.Game.Clients.GameClient.GetSwingDelayMs(npc, weapon);
+
+        if (OnNpcHitCheck != null)
+        {
+            var hitCheck = OnNpcHitCheck(npc, target, weapon, swingNoRange);
+            swingNoRange = hitCheck.SwingNoRange;
+            if (hitCheck.ForceMiss)
+            {
+                npc.NextAttackTime = now + swingDelayMs;
+                OnNpcAttack?.Invoke(npc, target, weapon, CombatEngine.AttackMiss, 0);
+                return true;
+            }
+        }
 
         var prep = CombatHelper.ValidateSwingPrep(
             _world, npc, target, weapon, PrivLevel.Player, now, _world.CanSeeLOS,
-            ignoreRangeLos: CombatHelper.SwingIgnoresStartRange());
+            ignoreRangeLos: swingNoRange, effectiveRange: effectiveRange);
         switch (prep.Result)
         {
             case CombatHelper.SwingPrepResult.Abort:
@@ -860,7 +879,8 @@ public sealed partial class NpcAI
                 return false;
         }
 
-        int swingDelayMs = SphereNet.Game.Clients.GameClient.GetSwingDelayMs(npc, weapon);
+        CombatHelper.RevealOnAttack(npc, PrivLevel.Player);
+
         int stagger = (int)(npc.Uid.Value * 2654435761u % 200);
 
         // @HitTry (parity with the player path): fires before recoil is set so a
@@ -874,11 +894,11 @@ public sealed partial class NpcAI
                 npc.NextAttackTime = now + 250; // aborted; recheck shortly, no recoil burned
                 return false;
             }
-            swingDelayMs = Math.Max(1, newTenths) * 100;
+            swingDelayMs = Math.Clamp(newTenths, 1, short.MaxValue) * 100;
         }
 
         var newDir = npc.Position.GetDirectionTo(target.Position);
-        if (newDir != npc.Direction)
+        if (!CombatHelper.IsCombatFlagSet(CombatFlags.NoDirChange) && newDir != npc.Direction)
         {
             npc.Direction = newDir;
             OnNpcFacingChanged?.Invoke(npc);
@@ -888,22 +908,23 @@ public sealed partial class NpcAI
         // A zero windup resolves the hit inline below (the atomic default);
         // STAYINRANGE / SWING_NORANGE defer it to the NPC tick's pending-hit pump.
         int recoilMs = swingDelayMs + stagger;
-        int hitDelayMs = CombatHelper.GetSwingHitDelayMs(recoilMs);
-        npc.BeginSwingWindup(now, hitDelayMs, recoilMs, target.Uid, now + recoilMs * 2L);
+        int hitDelayMs = CombatHelper.GetSwingHitDelayMs(recoilMs, swingNoRange);
+        npc.BeginSwingWindup(now, hitDelayMs, recoilMs, target.Uid,
+            now + recoilMs * 2L, weapon != null ? weapon.Uid : Serial.Invalid, swingNoRange,
+            effectiveRange.Min, effectiveRange.Max);
 
-        if (npc.Stam > 0)
-            npc.Stam = (short)(npc.Stam - 1);
-
-        // Source-style owner attribution: pet/summon attacks in guarded towns
-        // should criminal-flag the owner when targeting an innocent player.
+        // Source-style owner attribution: a commanded pet/summon attack on an
+        // innocent criminal-flags its player owner. Guard response is regional;
+        // the criminal flag itself is not.
         if (npc.OwnerSerial.IsValid && target.IsPlayer && Character.AttackingIsACrimeEnabled)
         {
             var owner = npc.ResolveOwnerCharacter();
             if (owner != null && owner.IsPlayer && !owner.IsDead)
             {
-                var region = _world.FindRegion(owner.Position);
-                bool targetInnocent = !target.IsCriminal && !target.IsMurderer;
-                if (targetInnocent && region != null && region.IsFlag(RegionFlag.Guarded))
+                bool targetInnocent = SphereNet.Game.Clients.GameClient.ComputeNotoriety(
+                    _world, owner, target) == 1;
+                if (targetInnocent &&
+                    !CombatHelper.IsCombatFlagSet(CombatFlags.AttackNoAggreived))
                     owner.MakeCriminal();
             }
         }
@@ -926,15 +947,7 @@ public sealed partial class NpcAI
             DefinitionLoader.GetItemDef(weapon.BaseId),
             weapon.ItemType,
             Item.ResolveDefName);
-        foreach (var item in pack.Contents)
-        {
-            bool matches = spec.BaseId != 0
-                ? item.BaseId == spec.BaseId
-                : item.ItemType == spec.FallbackType;
-            if (!item.IsDeleted && matches && item.Amount > 0)
-                return item;
-        }
-        return null;
+        return CombatHelper.FindAmmoInContainer(pack, spec.BaseId, spec.FallbackType);
     }
 
     private void ConsumeNpcAmmo(Item ammo)
@@ -950,10 +963,25 @@ public sealed partial class NpcAI
         if (!npc.HasPendingHit) return;
 
         var target = _world.FindChar(npc.PendingHitTarget);
-        var weapon = npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
+        Serial committedWeaponUid = npc.PendingHitWeapon;
+        bool weaponCaptured = npc.PendingHitWeaponCaptured;
+        bool swingNoRange = npc.PendingHitSwingNoRange;
+        (int Min, int Max)? committedRange =
+            npc.PendingHitRangeMin >= 0 && npc.PendingHitRangeMax >= 0
+                ? (npc.PendingHitRangeMin, npc.PendingHitRangeMax)
+                : null;
+        Item? weapon = weaponCaptured
+            ? (committedWeaponUid.IsValid ? _world.FindItem(committedWeaponUid) : null)
+            : npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
+        if (weaponCaptured && committedWeaponUid.IsValid && (weapon == null || weapon.IsDeleted))
+        {
+            npc.ClearPendingHit();
+            return;
+        }
 
         switch (CombatHelper.EvaluateHitTime(_world, npc, target, weapon,
-            PrivLevel.Player, now, npc.PendingHitDeadline, _world.CanSeeLOS))
+            PrivLevel.Player, now, npc.PendingHitDeadline, _world.CanSeeLOS,
+            swingNoRange, committedRange))
         {
             case CombatHelper.HitTimeDecision.Wait:
                 return; // keep the pending hit; retry next tick
@@ -962,7 +990,14 @@ public sealed partial class NpcAI
                 return;
             case CombatHelper.HitTimeDecision.Miss:
                 npc.ClearPendingHit();
-                if (target != null) OnNpcAttack?.Invoke(npc, target, -1);
+                if (target != null)
+                {
+                    Item? missedAmmo = weapon != null && CombatHelper.IsRangedWeapon(weapon)
+                        ? FindNpcAmmo(npc, weapon)
+                        : null;
+                    OnNpcAttack?.Invoke(npc, target, weapon, CombatEngine.AttackMiss,
+                        missedAmmo?.Uid.Value ?? 0);
+                }
                 return;
         }
 
@@ -973,27 +1008,18 @@ public sealed partial class NpcAI
             ? FindNpcAmmo(npc, weapon)
             : null;
 
-        // @HitCheck (parity with the player path): a script can force a miss
-        // before damage resolves. -1 routes the miss feedback (@HitMiss + whoosh).
-        if (OnNpcHitCheck != null && OnNpcHitCheck(npc, target, weapon))
-        {
-            if (ammoStack != null)
-                ConsumeNpcAmmo(ammoStack);
-            OnNpcAttack?.Invoke(npc, target, -1);
-            return;
-        }
-
         short hpBefore = npc.Hits;
         int damage = CombatEngine.ResolveAttack(
             npc, target, weapon, CombatHelper.ActiveCombatFlags,
             -1, -1, ammoStack?.Uid.Value ?? 0, out bool ammoHandled);
-        OnNpcAttack?.Invoke(npc, target, damage);
+        OnNpcAttack?.Invoke(npc, target, weapon, damage, ammoStack?.Uid.Value ?? 0);
 
         // NPCs remain lenient when templates omit ammo, but a stocked archer
         // consumes the weapon's actual AMMOTYPE (arrow vs bolt/custom). The
         // full combat overload also exposes LOCAL.Arrow and honors a script's
         // LOCAL.ArrowHandled takeover.
-        if (ammoStack != null && !ammoHandled)
+        if (ammoStack != null &&
+            (damage >= 0 || damage == CombatEngine.AttackResolvedByProc) && !ammoHandled)
             ConsumeNpcAmmo(ammoStack);
 
         if (damage > 0)

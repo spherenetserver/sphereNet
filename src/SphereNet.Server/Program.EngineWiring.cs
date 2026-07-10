@@ -1662,15 +1662,11 @@ public static partial class Program
                     return -1; // RETURN 1 aborts the swing
                 return Math.Max(1, args.N1);
             };
-            _npcAI.OnNpcHitCheck = (attacker, target, weapon) =>
+            _npcAI.OnNpcHitCheck = (attacker, target, weapon, swingNoRange) =>
             {
-                if (_triggerDispatcher == null) return false;
-                // LOCAL.Recoil_NoRange is seeded read-only here so shared
-                // @HitCheck scripts read the same contract as the player path;
-                // the NPC swing's range gate ran earlier in its tick, so a
-                // write-back has nothing left to drive.
+                if (_triggerDispatcher == null) return (false, swingNoRange);
                 var locals = new SphereNet.Scripting.Variables.VarMap();
-                locals.SetInt("Recoil_NoRange", CombatHelper.SwingIgnoresStartRange() ? 1 : 0);
+                locals.SetInt("Recoil_NoRange", swingNoRange ? 1 : 0);
                 var args = new TriggerArgs
                 {
                     CharSrc = target,
@@ -1680,12 +1676,12 @@ public static partial class Program
                     N2 = (int)CombatEngine.GetWeaponDamageType(weapon),
                     Locals = locals,
                 };
-                return _triggerDispatcher.FireCharTrigger(attacker, CharTrigger.HitCheck, args) == TriggerResult.True;
+                bool forceMiss = _triggerDispatcher.FireCharTrigger(attacker, CharTrigger.HitCheck, args) == TriggerResult.True;
+                return (forceMiss, locals.GetInt("Recoil_NoRange") != 0);
             };
-            _npcAI.OnNpcAttack = (attacker, target, damage) =>
+            _npcAI.OnNpcAttack = (attacker, target, weapon, damage, ammoUid) =>
             {
-                var weapon = attacker.GetEquippedItem(Layer.OneHanded) ?? attacker.GetEquippedItem(Layer.TwoHanded);
-                ushort swingAnim = GameClient.GetNpcSwingAction(attacker);
+                ushort swingAnim = GameClient.GetNpcSwingAction(attacker, weapon);
                 // COMBAT_ANIM_HIT_SMOOTH paces the swing animation to the swing time.
                 byte animDelay = CombatHelper.GetSwingAnimDelay(GameClient.GetSwingDelayMs(attacker, weapon));
                 GameClient.BroadcastAnimation(attacker, swingAnim, NewAnimationGesture.Attack, 18,
@@ -1697,17 +1693,37 @@ public static partial class Program
 
                 // Source-X plays one combat sound per swing: the per-weapon miss
                 // whoosh on a miss, the per-weapon hit sound on a hit (below). A
-                // -1 is a true miss/parry; 0 is a connecting hit armor absorbed.
-                if (damage < 0)
+                // -1 is a true miss, -2 a full parry; 0 is a connecting hit
+                // that armor fully absorbed.
+                if (damage == CombatEngine.AttackMiss)
                 {
+                    // Source-X @HitMiss: SRC = the victim, ARGO = the weapon.
+                    var missLocals = new SphereNet.Scripting.Variables.VarMap();
+                    if (ammoUid != 0)
+                        missLocals.SetInt("Arrow", ammoUid);
+                    var missResult = _triggerDispatcher?.FireCharTrigger(attacker, CharTrigger.HitMiss,
+                        new TriggerArgs
+                        {
+                            CharSrc = target,
+                            O1 = weapon,
+                            ItemSrc = weapon,
+                            Locals = missLocals
+                        })
+                        ?? TriggerResult.Default;
+                    if (missResult == TriggerResult.True)
+                    {
+                        attacker.BeginEquipSwingWait(Environment.TickCount64, 0, noWait: true);
+                        return;
+                    }
                     BroadcastNearby(attacker.Position, 18,
                         new PacketSound(GameClient.GetWeaponMissSoundPublic(weapon),
                             attacker.X, attacker.Y, attacker.Z), 0);
-                    // Source-X @HitMiss: SRC = the victim, ARGO = the weapon.
-                    _triggerDispatcher?.FireCharTrigger(attacker, CharTrigger.HitMiss,
-                        new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon });
                     return;
                 }
+                if (damage == CombatEngine.AttackParried)
+                    return; // @HitParry already emitted the block effect.
+                if (damage == CombatEngine.AttackResolvedByProc)
+                    return; // The proc ran its own damage/death feedback.
 
                 ushort getHitAction = target.IsMounted
                     ? MapAnimToMounted((ushort)AnimationType.GetHit)

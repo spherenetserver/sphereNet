@@ -42,7 +42,7 @@ public sealed class CharacterCombatState
 
     // --- Notoriety counters ---
 
-    public short Kills { get => _kills; set => _kills = value; }
+    public short Kills { get => _kills; set => _kills = (short)Math.Max(0, (int)value); }
 
     public bool IsCriminal => _criminalTimer > 0 && Environment.TickCount64 < _criminalTimer;
 
@@ -57,7 +57,7 @@ public sealed class CharacterCombatState
         {
             if (_criminalTimer <= 0) return 0;
             long remain = _criminalTimer - Environment.TickCount64;
-            return remain > 0 ? (int)(remain / 1000) : 0;
+            return remain > 0 ? (int)Math.Min(remain / 1000, int.MaxValue) : 0;
         }
         set => _criminalTimer = value > 0 ? Environment.TickCount64 + value * 1000L : 0;
     }
@@ -71,14 +71,16 @@ public sealed class CharacterCombatState
         {
             if (_nextMurderDecayTick <= 0) return 0;
             long remain = _nextMurderDecayTick - Environment.TickCount64;
-            return remain > 0 ? (int)(remain / 1000) : 0;
+            return remain > 0 ? (int)Math.Min(remain / 1000, int.MaxValue) : 0;
         }
         set => _nextMurderDecayTick = value > 0 ? Environment.TickCount64 + value * 1000L : 0;
     }
 
     /// <summary>Arm/refresh the criminal timer (duration in ms).</summary>
     public void SetCriminal(long durationMs) =>
-        _criminalTimer = Environment.TickCount64 + durationMs;
+        _criminalTimer = durationMs > 0
+            ? Environment.TickCount64 + Math.Min(durationMs, long.MaxValue - Environment.TickCount64)
+            : 0;
 
     /// <summary>FORGIVE verb: clear the murder count and the criminal timer.</summary>
     public void Forgive()
@@ -150,7 +152,8 @@ public sealed class CharacterCombatState
                 bool ignored = _attackers[i].Ignored;
                 if (ignored && Character.OnHitIgnored != null && Character.OnHitIgnored(_owner, attackerUid))
                     ignored = false; // script un-ignored the attacker
-                _attackers[i] = new AttackerRecord(attackerUid, _attackers[i].TotalDamage + damage, now, ignored);
+                int total = (int)Math.Min((long)_attackers[i].TotalDamage + damage, int.MaxValue);
+                _attackers[i] = new AttackerRecord(attackerUid, total, now, ignored);
                 // Move this entry to the end so ATTACKER.LAST reflects it
                 if (i != _attackers.Count - 1)
                 {
@@ -161,7 +164,7 @@ public sealed class CharacterCombatState
                 return;
             }
         }
-        _attackers.Add(new AttackerRecord(attackerUid, damage, now));
+        _attackers.Add(new AttackerRecord(attackerUid, Math.Min(damage, int.MaxValue), now));
         Character.OnCombatAdd?.Invoke(_owner, attackerUid);
     }
 
@@ -188,12 +191,12 @@ public sealed class CharacterCombatState
     /// <see cref="RecordAttack"/>); the last-hit tick restarts at load time.</summary>
     public void RestoreAttacker(Serial attackerUid, int totalDamage, bool ignored)
     {
-        if (attackerUid == _owner.Uid || attackerUid == Serial.Invalid)
+        if (attackerUid == _owner.Uid || attackerUid == Serial.Invalid || totalDamage <= 0)
             return;
         for (int i = 0; i < _attackers.Count; i++)
             if (_attackers[i].Uid == attackerUid)
                 return;
-        _attackers.Add(new AttackerRecord(attackerUid, totalDamage, Environment.TickCount64, ignored));
+        _attackers.Add(new AttackerRecord(attackerUid, Math.Min(totalDamage, int.MaxValue), Environment.TickCount64, ignored));
     }
 
     /// <summary>Index of <paramref name="uid"/> in the attacker log, or -1.</summary>

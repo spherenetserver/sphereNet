@@ -648,6 +648,7 @@ public static partial class Program
         Character.CombatDamageEra          = _config.CombatDamageEra;
         Character.CombatHitChanceEra       = _config.CombatHitChanceEra;
         Character.CombatSpeedEra           = _config.CombatSpeedEra;
+        Character.CombatSpeedScaleFactor   = _config.SpeedScaleFactor;
         Character.ArcheryMinDist           = _config.ArcheryMinDist;
         Character.ArcheryMaxDist           = _config.ArcheryMaxDist;
         Character.CombatArcheryMovementDelay = _config.CombatArcheryMovementDelay;

@@ -230,6 +230,7 @@ public sealed class NpcAiAuditRegressionTests
         var world = CreateWorld();
         var ai = new NpcAI(world, new SphereConfig());
         var archer = world.CreateCharacter();
+        archer.PrivLevel = PrivLevel.GM; // deterministic connecting hit; NPC misses keep their ammo
         archer.Hits = archer.MaxHits = 100;
         archer.Stam = archer.MaxStam = 100;
         world.PlaceCharacter(archer, new Point3D(100, 100, 0, 0));

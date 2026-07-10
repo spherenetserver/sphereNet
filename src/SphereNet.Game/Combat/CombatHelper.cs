@@ -26,7 +26,14 @@ public static class CombatHelper
     public static (int Min, int Max) GetWeaponRange(Item? weapon)
     {
         if (!IsRangedWeapon(weapon))
-            return (1, 1);
+        {
+            var meleeDef = weapon != null ? DefinitionLoader.GetItemDef(weapon.BaseId) : null;
+            int meleeMin = Math.Max(0, meleeDef?.RangeMin ?? 0);
+            int meleeMax = meleeDef is { RangeMax: > 0 } ? meleeDef.RangeMax : 1;
+            if (meleeMin > meleeMax)
+                (meleeMin, meleeMax) = (meleeMax, meleeMin);
+            return (meleeMin, meleeMax);
+        }
 
         var def = weapon != null ? DefinitionLoader.GetItemDef(weapon.BaseId) : null;
         int minDist = def is { RangeMin: > 0 } ? def.RangeMin : Character.ArcheryMinDist;
@@ -35,7 +42,29 @@ public static class CombatHelper
             maxDist = Character.ArcheryMaxDist;
         if (minDist < 0)
             minDist = Character.ArcheryMinDist;
+
+        // Malformed ITEMDEF ranges must not make the weapon permanently
+        // unusable. Source-X's range parser normalises low/high; definitions
+        // can also be supplied at runtime, so keep the combat boundary safe.
+        minDist = Math.Max(0, minDist);
+        maxDist = Math.Max(1, maxDist);
+        if (minDist > maxDist)
+            (minDist, maxDist) = (maxDist, minDist);
         return (minDist, maxDist);
+    }
+
+    /// <summary>State that makes a character invalid for a committed weapon
+    /// swing. Kept here so player start, NPC start and the delayed hit phase
+    /// cannot drift apart.</summary>
+    public static bool IsInvalidSwingParticipant(Character ch, bool asTarget)
+    {
+        if (ch.IsDeleted || ch.IsDead)
+            return true;
+        if (ch.IsStatFlag(StatFlag.Stone))
+            return true;
+        if (asTarget && ch.IsStatFlag(StatFlag.Invul | StatFlag.Insubstantial | StatFlag.Ridden))
+            return true;
+        return false;
     }
 
     public static int GetChebyshevDistance(Character a, Character b)
@@ -148,10 +177,18 @@ public static class CombatHelper
         PrivLevel privLevel,
         long nowMs,
         Func<Point3D, Point3D, bool>? canSeeLos = null,
-        bool ignoreRangeLos = false)
+        bool ignoreRangeLos = false,
+        (int Min, int Max)? effectiveRange = null)
     {
-        if (attacker.IsDead || target.IsDead)
+        if (attacker == target || attacker.MapIndex != target.MapIndex ||
+            IsInvalidSwingParticipant(attacker, asTarget: false) ||
+            IsInvalidSwingParticipant(target, asTarget: true))
             return new SwingPrepFailure(SwingPrepResult.Abort, 0);
+
+        // Fight_CanHit holds the swing while the target is hidden/invisible.
+        // A known/stale serial must never bypass visibility and take damage.
+        if (target.IsStatFlag(StatFlag.Hidden | StatFlag.Invisible))
+            return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
 
         if (IsCombatBlockedByRegion(world, attacker, target))
             return new SwingPrepFailure(SwingPrepResult.Abort, 0);
@@ -169,7 +206,8 @@ public static class CombatHelper
             if (!ignoreRangeLos)
             {
                 int dist = GetChebyshevDistance(attacker, target);
-                var (minRange, maxRange) = GetWeaponRange(weapon);
+                var (minRange, maxRange) = effectiveRange ?? GetWeaponRange(weapon);
+                NormaliseRange(ref minRange, ref maxRange);
                 if (dist < minRange)
                     return new SwingPrepFailure(SwingPrepResult.RetryLater, 250, Msg.CombatArchTooclose);
                 if (dist > maxRange)
@@ -186,7 +224,8 @@ public static class CombatHelper
             // COMBAT_ARCHERYCANMOVE lets an archer fire while/just after moving,
             // bypassing the post-move settle delay.
             if (Character.CombatArcheryMovementDelay > 0 && attacker.LastMoveTick > 0 &&
-                !IsCombatFlagSet(CombatFlags.ArcheryCanMove))
+                !IsCombatFlagSet(CombatFlags.ArcheryCanMove) &&
+                !attacker.IsStatFlag(StatFlag.ArcherCanMove))
             {
                 long sinceMove = nowMs - attacker.LastMoveTick;
                 if (sinceMove < Character.CombatArcheryMovementDelay)
@@ -200,7 +239,10 @@ public static class CombatHelper
         {
             if (!ignoreRangeLos)
             {
-                if (GetChebyshevDistance(attacker, target) > 1)
+                var (minRange, maxRange) = effectiveRange ?? GetWeaponRange(weapon);
+                NormaliseRange(ref minRange, ref maxRange);
+                int distance = GetChebyshevDistance(attacker, target);
+                if (distance < minRange || distance > maxRange)
                     return new SwingPrepFailure(SwingPrepResult.RetryLater, 250);
 
                 if (privLevel < PrivLevel.GM)
@@ -247,18 +289,14 @@ public static class CombatHelper
     /// the target right now (used to re-validate at hit time).</summary>
     public static bool InWeaponReachAndLos(
         GameWorld world, Character attacker, Character target, Item? weapon,
-        PrivLevel privLevel, Func<Point3D, Point3D, bool>? canSeeLos = null)
+        PrivLevel privLevel, Func<Point3D, Point3D, bool>? canSeeLos = null,
+        (int Min, int Max)? effectiveRange = null)
     {
         int dist = GetChebyshevDistance(attacker, target);
-        if (IsRangedWeapon(weapon))
-        {
-            var (min, max) = GetWeaponRange(weapon);
-            if (dist < min || dist > max) return false;
-        }
-        else if (dist > 1)
-        {
+        var (min, max) = effectiveRange ?? GetWeaponRange(weapon);
+        NormaliseRange(ref min, ref max);
+        if (dist < min || dist > max)
             return false;
-        }
         if (privLevel < PrivLevel.GM)
         {
             canSeeLos ??= world.CanSeeLOS;
@@ -271,23 +309,38 @@ public static class CombatHelper
     /// (Source-X StayInRange / SwingNoRange semantics).</summary>
     public static HitTimeDecision EvaluateHitTime(
         GameWorld world, Character attacker, Character? target, Item? weapon,
-        PrivLevel privLevel, long nowMs, long deadlineMs, Func<Point3D, Point3D, bool>? canSeeLos = null)
+        PrivLevel privLevel, long nowMs, long deadlineMs,
+        Func<Point3D, Point3D, bool>? canSeeLos = null,
+        bool? swingNoRange = null,
+        (int Min, int Max)? effectiveRange = null)
     {
-        if (target == null || target.IsDead || target.IsDeleted)
+        if (target == null || attacker == target || attacker.MapIndex != target.MapIndex ||
+            IsInvalidSwingParticipant(attacker, asTarget: false) ||
+            IsInvalidSwingParticipant(target, asTarget: true) ||
+            target.IsStatFlag(StatFlag.Hidden | StatFlag.Invisible) ||
+            IsCombatBlockedByRegion(world, attacker, target))
             return HitTimeDecision.Drop;
 
-        if (InWeaponReachAndLos(world, attacker, target, weapon, privLevel, canSeeLos))
+        if (InWeaponReachAndLos(world, attacker, target, weapon, privLevel, canSeeLos, effectiveRange))
             return HitTimeDecision.Resolve;
 
         // Out of reach / LoS when the hit should land:
         bool preHit = IsCombatFlagSet(CombatFlags.PreHit);
         if (IsCombatFlagSet(CombatFlags.StayInRange) && !preHit)
             return HitTimeDecision.Miss;                 // moved out -> miss
-        if (IsCombatFlagSet(CombatFlags.SwingNoRange) && !preHit)
+        if ((swingNoRange ?? IsCombatFlagSet(CombatFlags.SwingNoRange)) && !preHit)
             return nowMs >= deadlineMs ? HitTimeDecision.Drop : HitTimeDecision.Wait;
         // Default: resolve anyway — a flagless swing only starts in range, so the
         // hit landing in the same tick is exactly the previous atomic behaviour.
         return HitTimeDecision.Resolve;
+    }
+
+    private static void NormaliseRange(ref int min, ref int max)
+    {
+        min = Math.Max(0, min);
+        max = Math.Max(0, max);
+        if (min > max)
+            (min, max) = (max, min);
     }
 
     /// <summary>Windup length before the hit lands. 0 = atomic (hit at swing
@@ -348,6 +401,36 @@ public static class CombatHelper
             if (weaponDef.AmmoAnim != 0) gfx = weaponDef.AmmoAnim;
         }
         return (baseId, fallbackType, gfx);
+    }
+
+    /// <summary>Find ranged ammo anywhere in the backpack tree. Source-X's
+    /// ContentFind searches nested bags; limiting this to direct pack contents
+    /// made ordinary bagged arrows unusable. Depth/cycle guards also tolerate a
+    /// malformed loaded containment graph.</summary>
+    public static Item? FindAmmoInContainer(Item? root, ushort baseId,
+        ItemType fallbackType, int maxDepth = 16)
+    {
+        if (root == null || root.IsDeleted || maxDepth <= 0)
+            return null;
+        return FindAmmoInContainerCore(root, baseId, fallbackType, maxDepth, []);
+    }
+
+    private static Item? FindAmmoInContainerCore(Item container, ushort baseId,
+        ItemType fallbackType, int depth, HashSet<uint> visited)
+    {
+        if (depth <= 0 || !visited.Add(container.Uid.Value))
+            return null;
+        foreach (var item in container.Contents)
+        {
+            if (item.IsDeleted) continue;
+            bool matches = baseId != 0 ? item.BaseId == baseId : item.ItemType == fallbackType;
+            if (matches && item.Amount > 0)
+                return item;
+            var nested = FindAmmoInContainerCore(item, baseId, fallbackType, depth - 1, visited);
+            if (nested != null)
+                return nested;
+        }
+        return null;
     }
 
     public static int ActiveDamageEra => Character.CombatDamageEra;

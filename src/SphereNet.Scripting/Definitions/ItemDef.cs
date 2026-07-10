@@ -22,7 +22,8 @@ public sealed class ItemDef : BaseDef
     public CanFlags CanUse { get; set; }
 
     public int Speed { get; set; }
-    public SkillType Skill { get; set; }
+    public SkillType Skill { get; set; } = SkillType.None;
+    public bool HasSkill { get; set; }
     public int ReqStr { get; set; }
     public bool Dye { get; set; }
     public bool Flip { get; set; }
@@ -119,7 +120,10 @@ public sealed class ItemDef : BaseDef
             case "RANGEH": int.TryParse(value, out int rh); RangeMax = rh; break;
             case "RANGEL": int.TryParse(value, out int rl); RangeMin = rl; break;
             case "SPEED": int.TryParse(value, out int spd); Speed = spd; break;
-            case "SKILL": Enum.TryParse(value, true, out SkillType sk); Skill = sk; break;
+            case "SKILL":
+                HasSkill = Enum.TryParse(value, true, out SkillType sk);
+                Skill = HasSkill ? sk : SkillType.None;
+                break;
             case "REQSTR": int.TryParse(value, out int rs); ReqStr = rs; break;
             case "DYE": Dye = value != "0"; break;
             case "FLIP": Flip = value != "0"; break;

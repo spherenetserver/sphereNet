@@ -146,6 +146,10 @@ public sealed class HitDamageContext
 /// </summary>
 public static class CombatEngine
 {
+    public const int AttackMiss = -1;
+    public const int AttackParried = -2;
+    public const int AttackResolvedByProc = -3;
+
     private static Random _rand => Random.Shared;
     private static readonly (ArmorHitRegion Region, Layer Layer, int Weight)[] _armorRegions =
     [
@@ -165,11 +169,11 @@ public static class CombatEngine
     {
         [ArmorHitRegion.Head] = [Layer.Helm],
         [ArmorHitRegion.Neck] = [Layer.Neck],
-        [ArmorHitRegion.Chest] = [Layer.Chest, Layer.Tunic, Layer.Shirt, Layer.Robe, Layer.Cape],
-        [ArmorHitRegion.Arms] = [Layer.Arms, Layer.Robe],
+        [ArmorHitRegion.Chest] = [Layer.Shirt, Layer.Chest, Layer.Tunic, Layer.Robe],
+        [ArmorHitRegion.Arms] = [Layer.Arms, Layer.Cape, Layer.Robe],
         [ArmorHitRegion.Hands] = [Layer.Gloves],
-        [ArmorHitRegion.Legs] = [Layer.Legs, Layer.Pants, Layer.Skirt, Layer.Robe],
-        [ArmorHitRegion.Feet] = [Layer.Shoes],
+        [ArmorHitRegion.Legs] = [Layer.Pants, Layer.Skirt, Layer.Waist, Layer.Robe, Layer.Legs],
+        [ArmorHitRegion.Feet] = [Layer.Shoes, Layer.Legs],
     };
 
     public static bool DurabilityEnabled { get; set; }
@@ -229,8 +233,12 @@ public static class CombatEngine
     /// Era 0 = Sphere custom, 1 = pre-AOS, 2 = AOS.
     /// </summary>
     public static int CalcHitChance(Character attacker, Character target, int era = 0)
+        => CalcHitChanceCore(attacker, target, era, GetWeaponSkill(attacker));
+
+    private static int CalcHitChanceCore(Character attacker, Character target, int era,
+        SkillType attackerWeaponSkill)
     {
-        int attackSkill = GetHitChanceSkill(attacker, GetWeaponSkill(attacker));
+        int attackSkill = GetHitChanceSkill(attacker, attackerWeaponSkill);
         int targetSkill = GetHitChanceSkill(target, GetWeaponSkill(target));
         int tacticsAtk = GetHitChanceTactics(attacker, attackSkill);
         int tacticsDef = GetHitChanceTactics(target, targetSkill);
@@ -267,7 +275,7 @@ public static class CombatEngine
                 int iSkillDefend = tacticsDef;
                 int iStam = target.Dex;
                 bool targetRanged = IsRangedSkill(GetWeaponSkill(target));
-                bool attackerRanged = IsRangedSkill(GetWeaponSkill(attacker));
+                bool attackerRanged = IsRangedSkill(attackerWeaponSkill);
                 if (targetRanged && !attackerRanged)
                     iSkillDefend = (iSkillDefend + iStam * 9) / 2;  // bows are easier to hit
                 else
@@ -367,7 +375,15 @@ public static class CombatEngine
                 break;
             case 2: // AOS
                 dmgBonus = tactics / 16;
+                if (tactics >= 1000) dmgBonus += 6;
                 dmgBonus += anatomy / 20;
+                if (anatomy >= 1000) dmgBonus += 5;
+                if (weapon != null && weapon.ItemType == ItemType.WeaponAxe)
+                {
+                    int lj = attacker.GetSkill(SkillType.Lumberjacking);
+                    dmgBonus += lj / 50;
+                    if (lj >= 1000) dmgBonus += 10;
+                }
                 if (attacker.Str >= 100) dmgBonus += 5;
                 dmgBonus += attacker.Str * 30 / 100;
                 break;
@@ -376,10 +392,16 @@ public static class CombatEngine
                 break;
         }
 
-        dmgMin += dmgMin * dmgBonus / 100;
-        dmgMax += dmgMax * dmgBonus / 100;
-
-        return (Math.Max(1, dmgMin), Math.Max(1, dmgMax));
+        // Definitions and callback-provided ranges are external input. Keep
+        // arithmetic in 64-bit space and normalise reversed/negative ranges
+        // before Random receives them.
+        int baseLow = Math.Min(dmgMin, dmgMax);
+        int baseHigh = Math.Max(dmgMin, dmgMax);
+        long adjustedLow = baseLow + (long)baseLow * dmgBonus / 100;
+        long adjustedHigh = baseHigh + (long)baseHigh * dmgBonus / 100;
+        int low = (int)Math.Clamp(Math.Min(adjustedLow, adjustedHigh), 1L, short.MaxValue);
+        int high = (int)Math.Clamp(Math.Max(adjustedLow, adjustedHigh), 1L, short.MaxValue);
+        return (low, high);
     }
 
     /// <summary>
@@ -388,20 +410,11 @@ public static class CombatEngine
     /// </summary>
     public static int CalcArmorDefense(Character defender, bool elementalEngine = false)
     {
-        if (elementalEngine)
-            return 0; // elemental uses per-type resists
-
-        int totalAR = 0;
-        foreach (var region in _armorRegions)
-        {
-            var item = defender.GetEquippedItem(region.Layer);
-            if (item == null) continue;
-
-            int ar = item.GetArmorDefense();
-            totalAR += region.Weight * ar;
-        }
-
-        return Math.Max(0, totalAR / 100);
+        // Keep the compatibility overload on the same implementation as the
+        // exact overload. The former copy ignored STACKARMOR, MODAR and
+        // Discordance, so CalcArmorDefense(ch, false) disagreed with
+        // CalcArmorDefense(ch).
+        return elementalEngine ? 0 : CalcArmorDefense(defender);
     }
 
     public static ArmorHitRegion RollArmorHitRegion()
@@ -457,11 +470,11 @@ public static class CombatEngine
     public static int CalcArmorDefense(Character defender)
     {
         bool stack = (Character.CombatFlags & (int)CombatFlags.StackArmor) != 0;
-        int total = 0;
+        long total = 0;
         foreach (var (region, coverage) in _armorCoverage)
         {
             if (coverage == 0) continue;
-            int regionAr = 0;
+            long regionAr = 0;
             if (_stackArmorLayers.TryGetValue(region, out var layers))
             {
                 foreach (var layer in layers)
@@ -473,12 +486,13 @@ public static class CombatEngine
             total += coverage * regionAr;
         }
 
-        int ar = Math.Max(0, total / 100 + defender.ModAr);
+        long rawAr = total / 100 + defender.ModAr;
+        int ar = (int)Math.Clamp(rawAr, 0L, int.MaxValue);
 
         // Discordance temporarily lowers the target's defenses.
         int discord = GetActiveDiscordPct(defender);
         if (discord > 0)
-            ar -= ar * discord / 100;
+            ar = (int)Math.Max(0L, ar - (long)ar * discord / 100);
         return Math.Max(0, ar);
     }
 
@@ -489,14 +503,14 @@ public static class CombatEngine
         if ((Character.CombatFlags & (int)CombatFlags.StackArmor) != 0 &&
             _stackArmorLayers.TryGetValue(hitRegion, out var layers))
         {
-            int total = 0;
+            long total = 0;
             foreach (var layer in layers)
             {
                 var piece = defender.GetEquippedItem(layer);
                 if (piece != null)
                     total += Math.Max(0, piece.GetArmorDefense());
             }
-            ar = total;
+            ar = (int)Math.Min(total, int.MaxValue);
         }
         else
         {
@@ -507,7 +521,7 @@ public static class CombatEngine
         // Discordance temporarily lowers the target's defenses.
         int discord = GetActiveDiscordPct(defender);
         if (discord > 0)
-            ar -= ar * discord / 100;
+            ar = (int)Math.Max(0L, ar - (long)ar * discord / 100);
         return Math.Max(0, ar);
     }
 
@@ -533,7 +547,8 @@ public static class CombatEngine
     }
 
     /// <summary>
-    /// Perform a full attack resolution. Returns damage dealt (0 = miss/blocked).
+    /// Perform a full attack resolution. Returns damage dealt, 0 for a
+    /// connecting but fully absorbed/cancelled hit, or an Attack* sentinel.
     /// Maps to CChar::Fight_Hit flow in Source-X.
     /// </summary>
     /// <summary>Attacker's Damage Increase % (Source-X INCREASEDAM), from the
@@ -568,7 +583,9 @@ public static class CombatEngine
         if (hitEra < 0) hitEra = Character.CombatHitChanceEra;
         if (damageEra < 0) damageEra = Character.CombatDamageEra;
 
-        if (attacker.IsDead || target.IsDead)
+        if (attacker == target || attacker.MapIndex != target.MapIndex ||
+            CombatHelper.IsInvalidSwingParticipant(attacker, asTarget: false) ||
+            CombatHelper.IsInvalidSwingParticipant(target, asTarget: true))
             return 0;
 
         // Hit check. A failed roll is a true miss: return -1 so the caller can
@@ -587,28 +604,28 @@ public static class CombatEngine
             // trivially easy difficulty — instead of the computed iDiff.
             int diffCap = target.IsStatFlag(StatFlag.Freeze)
                 ? 9
-                : CalcHitChance(attacker, target, 0);
+                : CalcHitChanceCore(attacker, target, 0, GetWeaponSkill(attacker, weapon));
             int actDifficulty = _rand.Next(diffCap + 1);
-            int effSkill = GetHitChanceSkill(attacker, GetWeaponSkill(attacker));
+            int effSkill = GetHitChanceSkill(attacker, GetWeaponSkill(attacker, weapon));
             bool hitLanded = attacker.PrivLevel >= PrivLevel.GM ||
                 Skills.SkillEngine.CheckSuccessValue(effSkill, actDifficulty);
             hitChance = actDifficulty; // m_Act_Difficulty for the gain rolls
             if (!hitLanded)
-                return -1; // miss
+                return AttackMiss;
         }
         else
         {
-            hitChance = CalcHitChance(attacker, target, hitEra);
+            hitChance = CalcHitChanceCore(attacker, target, hitEra, GetWeaponSkill(attacker, weapon));
             if (_rand.Next(100) >= hitChance)
-                return -1; // miss
+                return AttackMiss;
         }
 
         // Calculate raw damage
         var (dmgMin, dmgMax) = CalcWeaponDamage(attacker, weapon, damageEra);
         // Guard against malformed weapon/NPC damage defs where Min > Max, which
         // would make Random.Next throw and crash the combat tick.
-        if (dmgMax < dmgMin) dmgMax = dmgMin;
-        int damage = _rand.Next(dmgMin, dmgMax + 1);
+        if (dmgMax < dmgMin) (dmgMin, dmgMax) = (dmgMax, dmgMin);
+        int damage = (int)_rand.NextInt64(dmgMin, (long)dmgMax + 1);
 
         // Damage Increase (Source-X PROPCH_INCREASEDAM): applies to players
         // always, and to NPCs only when COMBAT_NPC_BONUSDAMAGE is set, capped at
@@ -655,7 +672,7 @@ public static class CombatEngine
                     // positive value; that damage then still runs through armor.
                     int through = OnHitParry?.Invoke(target, attacker, damage) ?? 0;
                     if (through <= 0)
-                        return -1; // fully parried — treated as a miss by the caller
+                        return AttackParried;
                     damage = Math.Min(damage, through);
                 }
             }
@@ -673,9 +690,9 @@ public static class CombatEngine
             // weighted AR mitigates every hit; which worn piece takes the
             // durability wear is the @GetHit ItemDamageLayer roll below.
             int armorRating = CalcArmorDefense(target);
-            int arMax = armorRating * _rand.Next(7, 36) / 100;
+            int arMax = (int)Math.Min((long)armorRating * _rand.Next(7, 36) / 100, int.MaxValue);
             int arMin = arMax / 2;
-            int defense = _rand.Next(arMin, arMax + 1);
+            int defense = (int)_rand.NextInt64(arMin, (long)arMax + 1);
             damage -= defense;
         }
 
@@ -698,6 +715,8 @@ public static class CombatEngine
             Weapon = weapon,
             Damage = damage,
             ItemDamageLayer = ArmorDamageLayers[_rand.Next(ArmorDamageLayers.Length)],
+            ItemDamageChance = Math.Clamp(DurabilityLossChance, 0, 100),
+            WeaponDamageChance = Math.Clamp(DurabilityLossChance, 0, 100),
             AmmoUid = ammoUid,
             Elemental = elemental,
             DamPercentPhysical = split.Phys,
@@ -707,19 +726,25 @@ public static class CombatEngine
             DamPercentEnergy = split.Energy,
         };
         if (OnHitDamage != null)
-            damage = Math.Max(0, OnHitDamage(hitCtx));
-        ammoHandled = hitCtx.ArrowHandled;
+            damage = Math.Clamp(OnHitDamage(hitCtx), 0, short.MaxValue);
+        ammoHandled = hitCtx.ArrowHandled || hitCtx.Cancelled;
+
+        // RETURN 1 is a full cancellation, irrespective of a buggy/custom
+        // hook returning a positive number. Source-X exits before durability,
+        // poison, procs, HP and skill gain; it also leaves ranged ammo alone.
+        if (hitCtx.Cancelled)
+            return 0;
 
         // Source-X OnTakeDamage tail of the @GetHit block: the (script-final)
         // ItemDamageLayer item wears ItemDamageChance% of the time — in BOTH
         // armor modes, so elemental combat wears armor too. A RETURN 1 anywhere
         // in the chain (Cancelled) returned before this roll in Source-X.
         if (!hitCtx.Cancelled && DurabilityEnabled &&
-            _rand.Next(100) < hitCtx.ItemDamageChance)
+            _rand.Next(100) < Math.Clamp(hitCtx.ItemDamageChance, 0, 100))
         {
             var itemHit = target.GetEquippedItem(hitCtx.ItemDamageLayer);
             if (itemHit != null)
-                ApplyDurabilityLoss(itemHit);
+                ApplyDurabilityLoss(itemHit, rollConfiguredChance: false);
         }
 
         // COMBAT_SLAYER (Source-X OnTakeDamage, CCharFight.cpp:821): the
@@ -727,12 +752,20 @@ public static class CombatEngine
         // damage after the trigger chain has settled it.
         if (damage > 0 && flags.HasFlag(CombatFlags.Slayer))
             damage = ApplySlayerDamage(attacker, target, damage, weapon);
+        damage = Math.Clamp(damage, 0, short.MaxValue);
 
         // AOS on-hit properties (Source-X Fight_Hit tail, CCharFight.cpp:2270):
         // leeches, mana drain, hit-area splashes and on-hit spell procs run on
         // any hit that dealt damage.
         if (damage > 0)
             ApplyAosOnHitEffects(attacker, target, damage, weapon, flags);
+
+        // An on-hit spell/area callback can synchronously kill either party
+        // through the normal spell/death engine. Do not continue the original
+        // strike into a dead mobile (double damage, duplicate death feedback,
+        // poison and durability side effects).
+        if (attacker.IsDeleted || attacker.IsDead || target.IsDeleted || target.IsDead)
+            return AttackResolvedByProc;
 
         // Weapon poison on-hit: transfer poison from weapon to target.
         // Source-X: HIT_POISON attribute on weapon. SphereNet: POISON_SKILL tag
@@ -750,12 +783,16 @@ public static class CombatEngine
                 int charges = 1;
                 if (weapon.TryGetTag("POISON_CHARGES", out string? chargesStr))
                     int.TryParse(chargesStr, out charges);
+                charges = Math.Max(0, charges);
                 // Source-X @Hit LOCAL.ItemPoisonReductionChance/Amount: the
                 // script controls whether (and by how much) delivering the
                 // poison spends the weapon's charges. Defaults (100% / 1)
                 // reproduce the fixed 1-per-hit spend.
-                if (_rand.Next(100) < hitCtx.PoisonReductionChance)
-                    charges -= Math.Max(0, hitCtx.PoisonReductionAmount);
+                if (_rand.Next(100) < Math.Clamp(hitCtx.PoisonReductionChance, 0, 100))
+                {
+                    long remaining = (long)charges - Math.Max(0, hitCtx.PoisonReductionAmount);
+                    charges = (int)Math.Max(remaining, int.MinValue);
+                }
                 if (charges <= 0)
                 {
                     weapon.RemoveTag("POISON_SKILL");
@@ -804,8 +841,8 @@ public static class CombatEngine
             // Source-X @Hit LOCAL.ItemDamageChance: the weapon wears only
             // WeaponDamageChance% of the time (script-writable, seeded 25).
             if (DurabilityEnabled && weapon != null &&
-                _rand.Next(100) < hitCtx.WeaponDamageChance)
-                ApplyDurabilityLoss(weapon);
+                _rand.Next(100) < Math.Clamp(hitCtx.WeaponDamageChance, 0, 100))
+                ApplyDurabilityLoss(weapon, rollConfiguredChance: false);
         }
 
         // Passive combat skill gain — Source-X Fight_Hit tail: every landed
@@ -823,7 +860,7 @@ public static class CombatEngine
             }
             if (!noPvpBlock)
             {
-                Skills.SkillEngine.GainExperience(attacker, GetWeaponSkill(attacker), hitChance);
+                Skills.SkillEngine.GainExperience(attacker, GetWeaponSkill(attacker, weapon), hitChance);
                 Skills.SkillEngine.GainExperience(attacker, SkillType.Tactics, hitChance);
             }
         }
@@ -831,24 +868,30 @@ public static class CombatEngine
         return damage;
     }
 
-    private static void ApplyDurabilityLoss(Item item)
+    private static void ApplyDurabilityLoss(Item item, bool rollConfiguredChance = true)
     {
-        if (_rand.Next(100) >= DurabilityLossChance)
+        int chance = Math.Clamp(DurabilityLossChance, 0, 100);
+        if (rollConfiguredChance && _rand.Next(100) >= chance)
             return;
 
         int maxHits = item.GetHitsMax();
         if (maxHits <= 0)
         {
-            maxHits = DefaultHits;
+            maxHits = Math.Max(1, DefaultHits);
             item.HitsMax = maxHits;
             item.HitsCur = maxHits;
             return;
         }
 
         int curHits = item.GetHitsCur();
-        int loss = DurabilityLossMin == DurabilityLossMax
-            ? DurabilityLossMin
-            : _rand.Next(DurabilityLossMin, DurabilityLossMax + 1);
+        int minLoss = Math.Max(0, Math.Min(DurabilityLossMin, DurabilityLossMax));
+        int maxLoss = Math.Max(minLoss, Math.Max(DurabilityLossMin, DurabilityLossMax));
+        int loss = minLoss == maxLoss
+            ? minLoss
+            : (int)_rand.NextInt64(minLoss, (long)maxLoss + 1);
+
+        if (loss <= 0)
+            return;
 
         if (OnItemDamaged?.Invoke(item, loss) == true)
             return;
@@ -875,6 +918,13 @@ public static class CombatEngine
     public static SkillType GetWeaponSkill(Character ch)
     {
         var weapon = ch.GetEquippedItem(Layer.OneHanded) ?? ch.GetEquippedItem(Layer.TwoHanded);
+        return GetWeaponSkill(ch, weapon);
+    }
+
+    /// <summary>Weapon-snapshot overload used by delayed swings. The character
+    /// parameter is retained for API symmetry and future char-level overrides.</summary>
+    public static SkillType GetWeaponSkill(Character ch, Item? weapon)
+    {
         if (weapon == null)
             return SkillType.Wrestling;
 
@@ -882,10 +932,17 @@ public static class CombatEngine
         // skill via TAG.OVERRIDE_SKILL (the SkillType number), so e.g. a blade
         // can be wielded with Fencing. Honored only when it names a real weapon
         // skill; otherwise the ItemType-inferred default below applies.
-        if (weapon.TryGetTag("OVERRIDE_SKILL", out string? ovr) &&
+        string? ovr = null;
+        if (!weapon.TryGetTag("OVERRIDE_SKILL", out ovr))
+            weapon.TryGetTag("OVERRIDE.SKILL", out ovr);
+        if (ovr != null &&
             int.TryParse(ovr, out int ovrId) &&
             IsWeaponSkill((SkillType)ovrId))
             return (SkillType)ovrId;
+
+        var weaponDef = Definitions.DefinitionLoader.GetItemDef(weapon.BaseId);
+        if (weaponDef is { HasSkill: true } && IsWeaponSkill(weaponDef.Skill))
+            return weaponDef.Skill;
 
         return weapon.ItemType switch
         {
@@ -909,6 +966,21 @@ public static class CombatEngine
         if (weapon == null)
             return DamageType.HitBlunt;
 
+        string? overrideRaw = null;
+        if (!weapon.TryGetTag("OVERRIDE.DAMAGETYPE", out overrideRaw))
+            weapon.TryGetTag("OVERRIDE_DAMAGETYPE", out overrideRaw);
+        if (overrideRaw == null)
+        {
+            var def = Definitions.DefinitionLoader.GetItemDef(weapon.BaseId);
+            overrideRaw = def?.TagDefs.Get("OVERRIDE.DAMAGETYPE")
+                ?? def?.TagDefs.Get("OVERRIDE_DAMAGETYPE");
+        }
+        if (!string.IsNullOrWhiteSpace(overrideRaw))
+        {
+            uint numeric = Objects.ObjBase.ParseHexOrDecUInt(overrideRaw);
+            return (DamageType)(ushort)Math.Min(numeric, ushort.MaxValue);
+        }
+
         return weapon.ItemType switch
         {
             ItemType.WeaponSword or ItemType.WeaponAxe or ItemType.WeaponThrowing
@@ -925,24 +997,15 @@ public static class CombatEngine
     /// </summary>
     public static int ApplyElementalDamageSplit(Character attacker, Character target, int damage, Item? weapon)
     {
-        // If no elemental split defined, fall back to weapon damage type
-        if (attacker.DamFire == 0 && attacker.DamCold == 0 &&
-            attacker.DamPoison == 0 && attacker.DamEnergy == 0)
-            return ApplyElementalResist(target, damage, GetWeaponDamageType(weapon));
-
         var (physPct, firePct, coldPct, poisonPct, energyPct) = GetElementalSplit(attacker);
-        int sum = physPct + firePct + coldPct + poisonPct + energyPct;
-        if (sum <= 0) sum = 100;
-
-        int total = 0;
-        if (physPct > 0) total += ApplyElementalResist(target, damage * physPct / sum, DamageType.Physical);
-        if (firePct > 0) total += ApplyElementalResist(target, damage * firePct / sum, DamageType.Fire);
-        if (coldPct > 0) total += ApplyElementalResist(target, damage * coldPct / sum, DamageType.Cold);
-        if (poisonPct > 0) total += ApplyElementalResist(target, damage * poisonPct / sum, DamageType.Poison);
-        if (energyPct > 0) total += ApplyElementalResist(target, damage * energyPct / sum, DamageType.Energy);
+        long total = (long)damage * physPct * (100 - Math.Clamp((int)target.ResPhysical, 0, 100));
+        total += (long)damage * firePct * (100 - Math.Clamp((int)target.ResFire, 0, 100));
+        total += (long)damage * coldPct * (100 - Math.Clamp((int)target.ResCold, 0, 100));
+        total += (long)damage * poisonPct * (100 - Math.Clamp((int)target.ResPoison, 0, 100));
+        total += (long)damage * energyPct * (100 - Math.Clamp((int)target.ResEnergy, 0, 100));
         // Source-X lets full resists zero the hit (CCharFight.cpp:730) — no
         // forced 1-damage floor.
-        return total;
+        return (int)Math.Clamp(total / 10_000, 0L, int.MaxValue);
     }
 
     /// <summary>COMBAT_SLAYER damage scaling (Source-X OnTakeDamage,
@@ -970,7 +1033,8 @@ public static class CombatEngine
                 bonusPct = SlayerBonusPercent(SlayerFaction.FromItem(talisman), victimFaction, attacker, target);
         }
 
-        return damage + damage * bonusPct / 100;
+        long scaled = damage + (long)damage * bonusPct / 100;
+        return (int)Math.Clamp(scaled, 0L, int.MaxValue);
     }
 
     private static int SlayerBonusPercent(SlayerFaction slayer, SlayerFaction victimFaction,
@@ -1004,33 +1068,35 @@ public static class CombatEngine
         int leechLife = GetOnHitPropertyValue(attacker, weapon, "HITLEECHLIFE");
         if (leechLife > 0)
         {
-            int heal = _rand.Next(damage * leechLife * 30 / 10000 + 1);
-            attacker.Hits = (short)Math.Min(attacker.MaxHits, attacker.Hits + heal);
+            long maxHeal = (long)damage * leechLife * 30 / 10000;
+            int heal = (int)_rand.NextInt64(0, Math.Min(maxHeal, short.MaxValue) + 1);
+            attacker.Hits = (short)Math.Min((long)attacker.MaxHits, (long)attacker.Hits + heal);
             leeched = true;
         }
 
         int leechMana = GetOnHitPropertyValue(attacker, weapon, "HITLEECHMANA");
         if (leechMana > 0)
         {
-            int gain = _rand.Next(damage * leechMana * 40 / 10000 + 1);
-            attacker.Mana = (short)Math.Min(attacker.MaxMana, attacker.Mana + gain);
+            long maxGain = (long)damage * leechMana * 40 / 10000;
+            int gain = (int)_rand.NextInt64(0, Math.Min(maxGain, short.MaxValue) + 1);
+            attacker.Mana = (short)Math.Min((long)attacker.MaxMana, (long)attacker.Mana + gain);
             leeched = true;
         }
 
-        if (GetOnHitPropertyValue(attacker, weapon, "HITLEECHSTAM") > _rand.Next(100))
+        if (RollOnHitChance(attacker, weapon, "HITLEECHSTAM"))
         {
-            attacker.Stam = (short)Math.Min(attacker.MaxStam, attacker.Stam + damage);
+            attacker.Stam = (short)Math.Min((long)attacker.MaxStam, (long)attacker.Stam + damage);
             leeched = true;
         }
 
         int manaDrain = 0;
-        if (GetOnHitPropertyValue(attacker, weapon, "HITMANADRAIN") > _rand.Next(100))
-            manaDrain = damage * 20 / 100;
+        if (RollOnHitChance(attacker, weapon, "HITMANADRAIN"))
+            manaDrain = (int)((long)damage * 20 / 100);
         manaDrain = Math.Min(manaDrain, (int)target.Mana);
         if (manaDrain > 0)
         {
             target.Mana = (short)(target.Mana - manaDrain);
-            attacker.Mana = (short)Math.Min(attacker.MaxMana, attacker.Mana + manaDrain);
+            attacker.Mana = (short)Math.Min((long)attacker.MaxMana, (long)attacker.Mana + manaDrain);
             leeched = true;
         }
 
@@ -1041,31 +1107,51 @@ public static class CombatEngine
         if (weapon == null)
             return;
 
-        if (GetOnHitPropertyValue(attacker, weapon, "HITAREAPHYSICAL") > _rand.Next(100))
+        if (RollOnHitChance(attacker, weapon, "HITAREAPHYSICAL"))
             OnHitAreaDamage?.Invoke(attacker, target, damage / 2, DamageType.Physical);
         if (flags.HasFlag(CombatFlags.ElementalEngine))
         {
-            if (GetOnHitPropertyValue(attacker, weapon, "HITAREAFIRE") > _rand.Next(100))
+            if (RollOnHitChance(attacker, weapon, "HITAREAFIRE"))
                 OnHitAreaDamage?.Invoke(attacker, target, damage / 2, DamageType.Fire);
-            if (GetOnHitPropertyValue(attacker, weapon, "HITAREACOLD") > _rand.Next(100))
+            if (RollOnHitChance(attacker, weapon, "HITAREACOLD"))
                 OnHitAreaDamage?.Invoke(attacker, target, damage / 2, DamageType.Cold);
-            if (GetOnHitPropertyValue(attacker, weapon, "HITAREAPOISON") > _rand.Next(100))
+            if (RollOnHitChance(attacker, weapon, "HITAREAPOISON"))
                 OnHitAreaDamage?.Invoke(attacker, target, damage / 2, DamageType.Poison);
-            if (GetOnHitPropertyValue(attacker, weapon, "HITAREAENERGY") > _rand.Next(100))
+            if (RollOnHitChance(attacker, weapon, "HITAREAENERGY"))
                 OnHitAreaDamage?.Invoke(attacker, target, damage / 2, DamageType.Energy);
         }
 
-        if (GetOnHitPropertyValue(attacker, weapon, "HITDISPEL") > _rand.Next(100))
+        if (RollOnHitChance(attacker, weapon, "HITDISPEL"))
+        {
             OnHitSpell?.Invoke(attacker, target, (int)SpellType.Dispel);
-        if (GetOnHitPropertyValue(attacker, weapon, "HITFIREBALL") > _rand.Next(100))
+            if (!CanContinueOnHitProcs(attacker, target)) return;
+        }
+        if (RollOnHitChance(attacker, weapon, "HITFIREBALL"))
+        {
             OnHitSpell?.Invoke(attacker, target, (int)SpellType.Fireball);
-        if (GetOnHitPropertyValue(attacker, weapon, "HITHARM") > _rand.Next(100))
+            if (!CanContinueOnHitProcs(attacker, target)) return;
+        }
+        if (RollOnHitChance(attacker, weapon, "HITHARM"))
+        {
             OnHitSpell?.Invoke(attacker, target, (int)SpellType.Harm);
-        if (GetOnHitPropertyValue(attacker, weapon, "HITLIGHTNING") > _rand.Next(100))
+            if (!CanContinueOnHitProcs(attacker, target)) return;
+        }
+        if (RollOnHitChance(attacker, weapon, "HITLIGHTNING"))
+        {
             OnHitSpell?.Invoke(attacker, target, (int)SpellType.Lightning);
-        if (GetOnHitPropertyValue(attacker, weapon, "HITMAGICARROW") > _rand.Next(100))
+            if (!CanContinueOnHitProcs(attacker, target)) return;
+        }
+        if (RollOnHitChance(attacker, weapon, "HITMAGICARROW"))
+        {
             OnHitSpell?.Invoke(attacker, target, (int)SpellType.MagicArrow);
+        }
     }
+
+    private static bool CanContinueOnHitProcs(Character attacker, Character target) =>
+        !attacker.IsDeleted && !attacker.IsDead && !target.IsDeleted && !target.IsDead;
+
+    private static bool RollOnHitChance(Character attacker, Item? weapon, string property) =>
+        _rand.Next(100) < Math.Clamp(GetOnHitPropertyValue(attacker, weapon, property), 0, 100);
 
     /// <summary>An AOS on-hit property's effective value: the attacker's own
     /// tag plus the weapon's and the equipped talisman's (instance tag first,
@@ -1073,7 +1159,7 @@ public static class CombatEngine
     /// SphereNet aggregates at read time from the realistic carriers.</summary>
     public static int GetOnHitPropertyValue(Character attacker, Item? weapon, string prop)
     {
-        int total = 0;
+        long total = 0;
         if (attacker.TryGetTag(prop, out var raw) && int.TryParse(raw, out int own))
             total += own;
         if (weapon != null)
@@ -1081,7 +1167,7 @@ public static class CombatEngine
         var talisman = attacker.GetEquippedItem(Layer.Talisman);
         if (talisman != null && talisman != weapon)
             total += GetItemNumProperty(talisman, prop);
-        return total;
+        return (int)Math.Clamp(total, int.MinValue, int.MaxValue);
     }
 
     private static int GetItemNumProperty(Item item, string prop)
@@ -1138,7 +1224,7 @@ public static class CombatEngine
             resist = 0;
 
         resist = Math.Clamp(resist, 0, 100);
-        return damage - (damage * resist / 100);
+        return (int)(damage - (long)damage * resist / 100);
     }
 
     /// <summary>
@@ -1147,38 +1233,59 @@ public static class CombatEngine
     /// </summary>
     public static int GetSwingDelayMs(Character attacker, Item? weapon)
     {
-        int baseSpeed = weapon?.Speed > 0 ? weapon.Speed : 0;
-        if (baseSpeed <= 0)
-            baseSpeed = weapon == null ? 50 : 35;
-
+        int weaponSpeed = weapon?.Speed ?? 0;
+        int baseSpeed = weaponSpeed > 0 ? weaponSpeed : 50;
         int dex = Math.Max(0, (int)attacker.Dex);
+        long speedScale = Math.Max(1, Character.CombatSpeedScaleFactor);
         long deciseconds;
         switch (Character.CombatSpeedEra)
         {
-            case 2: // AOS: faster dex scaling, approximates UO:R/AOS weapon-speed feel.
-                deciseconds = (long)Math.Round((40_000.0 / ((dex + 100) * Math.Max(1, baseSpeed))) * 10);
+            case 2: // AOS (Source-X era 2)
+            {
+                int swingSpeedIncrease = Math.Clamp(
+                    GetOnHitPropertyValue(attacker, weapon, "INCREASESWINGSPEED"), -99, 100);
+                long swingSpeed = (long)(dex + 100) * baseSpeed;
+                swingSpeed = Math.Max(1, swingSpeed * (100 + swingSpeedIncrease) / 100);
+                deciseconds = ((speedScale * 10) / swingSpeed) / 2;
+                if (deciseconds < 12) deciseconds = 12;
                 break;
-            case 1: // Pre-AOS: fixed weapon speed with lighter dex contribution.
-                deciseconds = Math.Max(8, 50 - (baseSpeed / 2) - (dex / 30));
+            }
+            case 1: // pre-AOS (Source-X era 1)
+            {
+                long swingSpeed = Math.Max(1, (long)(dex + 100) * baseSpeed);
+                deciseconds = (speedScale * 10) / swingSpeed;
+                if (deciseconds < 1) deciseconds = 1;
                 break;
-            default:
-                const int speedScaleFactor = 15000;
-                long iSwingSpeed = (long)(dex + 100) * baseSpeed;
-                if (iSwingSpeed < 1) iSwingSpeed = 1;
-                deciseconds = (speedScaleFactor * 10L) / iSwingSpeed;
+            }
+            default: // Sphere custom (Source-X era 0)
+            {
+                if (weapon != null && weaponSpeed > 0)
+                {
+                    long swingSpeed = Math.Max(1, (long)(dex + 100) * weaponSpeed);
+                    deciseconds = (speedScale * 10) / swingSpeed;
+                    if (deciseconds < 5) deciseconds = 5;
+                    break;
+                }
+
+                deciseconds = (long)(100 - dex) * 40 / 100;
+                if (deciseconds < 5) deciseconds = 5;
+                else deciseconds += 5;
+                if (weapon != null)
+                {
+                    long weightMod = (long)Math.Max(0, weapon.Weight) * 10 /
+                        (4 * Item.WeightUnits);
+                    if (weapon.IsTwoHanded)
+                        weightMod += deciseconds / 2;
+                    deciseconds += weightMod;
+                }
+                else
+                {
+                    deciseconds += 2;
+                }
                 break;
+            }
         }
 
-        if (deciseconds < 5) deciseconds = 5;
-
-        if (weapon != null && weapon.IsTwoHanded)
-            deciseconds += deciseconds / 4;
-
-        int delayMs = (int)(deciseconds * 100);
-
-        if (attacker.IsMounted)
-            delayMs -= 200;
-
-        return Math.Clamp(delayMs, 500, 7000);
+        return (int)Math.Clamp(deciseconds * 100, 100L, 60_000L);
     }
 }

@@ -3,6 +3,49 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-10] - Combat derin kod denetimi: swing, menzilli dovus, hasar ve olum kredisi
+----------------------------------------
+
+DUZELTILDI - Swing durumu ve dovus guvenligi:
+  - Bekleyen swing hedef degisimi, war-mode kapanisi, olum, silinme ve dirilmede
+    temizleniyor. Hit aninda map, canlilik, dokunulmazlik, bolge, LOS ve menzil
+    yeniden dogrulaniyor; silah/menzil/Recoil_NoRange windup basinda sabitleniyor.
+  - NPC ve oyuncu HitCheck akislari ayni sirayi ve callback verisini kullaniyor.
+    CHARDEF dogal menzil, ITEMDEF melee menzili, NoDirChange, Reveal ve sahip
+    suc bildirimi Source-X davranisiyla uyumlu hale getirildi.
+
+DUZELTILDI - Menzilli silah ve muhimmat ekonomisi:
+  - Muhimmat ic ice cantalarda dongu/derinlik korumasiyla bulunuyor; windup
+    sirasinda kaybolan muhimmat ucretsiz vurus olusturmuyor. StayInRange miss,
+    HitMiss, projectile, Arrow ve oyuncu muhimmat tuketimini eksiksiz calistiriyor.
+  - Tam cantada stuck-ammo birlestirme/orphan temizligi ve NPC HitMiss weapon/
+    Arrow UID callback verileri duzeltildi. Tam parry artik miss sayilmiyor ve
+    yanlislikla muhimmat ekonomisini tetiklemiyor.
+
+DUZELTILDI - Hasar, zirh, hiz ve dayaniklilik:
+  - Miss, parry ve proc tarafindan cozulmus vurus sonuclari ayrildi; trigger
+    iptali donus degerinden bagimsiz olarak hasari durduruyor. Proc ile olum
+    gerceklesirse asil vurus tekrar uygulanmiyor.
+  - Zirh layer kapsami, resist/slayer/AOS bonuslari, elemental Source-X formulu,
+    silah hasar tipi ve ITEMDEF SKILL destegi duzeltildi; tasma ve cift-roll
+    dayaniklilik hatalari giderildi.
+  - Source-X swing-speed era 0-2 hesaplari uygulandi. Uydurma mounted/iki-elli
+    cezalar kaldirildi; SPEEDSCALEFACTOR config/script degerine baglandi ve SSI
+    toplami guvenli hale getirildi.
+
+DUZELTILDI - Suc, combat memory ve olum kredisi:
+  - CombatStart mutasyonlardan once ve hedef SRC ile calisiyor; tekrar saldiri
+    idempotent. Aggressor/HarmedBy yonleri, memory expiry/death temizligi ve
+    attacker hasar sayaclarindaki tasma/negatif kill sorunlari duzeltildi.
+  - Final killer yoksa en guclu kayitli saldirgan kullaniliyor; bir saldirganin
+    Kill iptali diger kredileri engellemiyor ve liste kredi dagitimindan sonra
+    temizleniyor.
+
+DOGRULANDI - Yeni 21 combat regresyonuyla tum cozum Debug ve Release 1264/1264,
+  sifir uyari/hata. git diff denetimi de temiz.
+
+================================================================================
+
 [2026-07-10] - NpcAI derin kod denetimi: hedefleme, dovus, hareket ve roller
 ----------------------------------------
 

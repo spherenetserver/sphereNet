@@ -295,6 +295,8 @@ public sealed partial class GameClient
             _character.FightTarget = Serial.Invalid;
             _character.NextAttackTime = 0;
         }
+        if (!warMode)
+            _character.ClearPendingHit();
 
         if (!syncClients) return;
 
@@ -431,14 +433,17 @@ public sealed partial class GameClient
         };
     }
 
-    public static ushort GetNpcSwingAction(Character npc)
+    public static ushort GetNpcSwingAction(Character npc) =>
+        GetNpcSwingAction(npc,
+            npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded));
+
+    public static ushort GetNpcSwingAction(Character npc, Item? weapon)
     {
         // Non-humanoid bodies use their own anim.mul attack groups
         // (monster 4-6, animal 5-6) via the body translation table.
         if (!BodyAnimTranslator.IsHumanoidBody(npc.BodyId))
             return BodyAnimTranslator.Translate(npc.BodyId, (ushort)AnimationType.AttackWrestle);
 
-        var weapon = npc.GetEquippedItem(Layer.OneHanded) ?? npc.GetEquippedItem(Layer.TwoHanded);
         return GetSwingAction(npc, weapon);
     }
 

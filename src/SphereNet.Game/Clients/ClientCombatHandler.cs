@@ -669,19 +669,21 @@ public sealed class ClientCombatHandler
 
     public void HandleAttack(uint targetUid)
     {
-        if (_character == null || _character.IsDead) return;
+        if (_character == null || CombatHelper.IsInvalidSwingParticipant(_character, asTarget: false))
+            return;
 
         // Source-X style target clear: attacking 0 resets current fight target.
         if (targetUid == 0 || targetUid == 0xFFFFFFFF)
         {
             _character.FightTarget = Serial.Invalid;
+            _character.ClearPendingHit();
             _character.NextAttackTime = 0;
             return;
         }
 
         var target = _world.FindChar(new Serial(targetUid));
-        if (target == null) return;
-        if (target == _character)
+        if (target == null || target == _character || target.MapIndex != _character.MapIndex ||
+            CombatHelper.IsInvalidSwingParticipant(target, asTarget: true))
         {
             Send(new PacketAttackResponse(0));
             return;
@@ -702,11 +704,24 @@ public sealed class ClientCombatHandler
             return;
         }
 
-        if (_triggerDispatcher != null)
+        if (_triggerDispatcher != null && _character.FightTarget != target.Uid)
         {
             var attackResult = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.Attack,
-                new TriggerArgs { CharSrc = _character, O1 = target });
+                new TriggerArgs { CharSrc = target, O1 = target });
             if (attackResult == TriggerResult.True)
+            {
+                Send(new PacketAttackResponse(0));
+                return;
+            }
+        }
+
+        // A cancelled combat start is only intent: do not mutate ownership,
+        // notoriety or fight memories before scripts accept the engagement.
+        if (_triggerDispatcher != null && _character.FightTarget != target.Uid)
+        {
+            var result = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.CombatStart,
+                new TriggerArgs { CharSrc = target, O1 = target });
+            if (result == TriggerResult.True)
             {
                 Send(new PacketAttackResponse(0));
                 return;
@@ -724,6 +739,15 @@ public sealed class ClientCombatHandler
                 SysMessage(ServerMessages.GetFormatted("pet_gone_wild", target.Name));
                 target.ClearOwnership(clearFriends: false);
             }
+        }
+
+        // Repeated 0x05 packets for the active target are acknowledgements,
+        // not new attacks. Pet-desert is checked above because the combat flag
+        // may be changed at runtime; crime and start triggers must not repeat.
+        if (_character.IsInWarMode && _character.FightTarget == target.Uid)
+        {
+            Send(new PacketAttackResponse(target.Uid.Value));
+            return;
         }
 
         // Region PvP enforcement
@@ -762,27 +786,6 @@ public sealed class ClientCombatHandler
                 _character.MakeCriminal();
             }
 
-            // Source-X: helping a criminal fight an innocent flags you criminal
-            if (Character.HelpingCriminalsIsACrimeEnabled && !_character.IsCriminal &&
-                (target.IsCriminal || target.IsMurderer) &&
-                target.FightTarget.IsValid)
-            {
-                var victim = _world.FindChar(target.FightTarget);
-                if (victim != null && victim.IsPlayer && !victim.IsCriminal && !victim.IsMurderer)
-                    _character.MakeCriminal();
-            }
-        }
-
-        // Fire @CombatStart — if script blocks, cancel attack
-        if (_triggerDispatcher != null)
-        {
-            var result = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.CombatStart,
-                new TriggerArgs { CharSrc = _character, O1 = target });
-            if (result == TriggerResult.True)
-            {
-                Send(new PacketAttackResponse(0));
-                return;
-            }
         }
 
         if (!_character.IsInWarMode)
@@ -831,12 +834,21 @@ public sealed class ClientCombatHandler
     /// </summary>
     public void TickCombat()
     {
-        if (_character == null || _character.IsDead) return;
-        if (!_character.FightTarget.IsValid) return;
-        if (!_character.IsInWarMode) return;
+        if (_character == null) return;
+        if (CombatHelper.IsInvalidSwingParticipant(_character, asTarget: false))
+        {
+            _character.ClearPendingHit();
+            return;
+        }
 
         long now = Environment.TickCount64;
         _character.RefreshCombatSwingState(now);
+
+        if (!_character.FightTarget.IsValid || !_character.IsInWarMode)
+        {
+            _character.ClearPendingHit();
+            return;
+        }
 
         // Two-phase swing: land a started swing's hit once its windup elapses,
         // before gating the next swing on recoil. Atomic swings carry no pending
@@ -844,10 +856,14 @@ public sealed class ClientCombatHandler
         if (_character.HasPendingHit && now >= _character.SwingHitTime)
             ResolvePlayerHit(now);
 
+        if (!_character.FightTarget.IsValid || !_character.IsInWarMode)
+            return;
+
         if (now < _character.NextAttackTime) return;
 
         var target = _world.FindChar(_character.FightTarget);
-        if (target == null || target.IsDead || target.IsDeleted)
+        if (target == null || target.MapIndex != _character.MapIndex ||
+            CombatHelper.IsInvalidSwingParticipant(target, asTarget: true))
         {
             _character.FightTarget = Serial.Invalid;
             return;
@@ -887,7 +903,7 @@ public sealed class ClientCombatHandler
         // attackers can't swing. Also a STAM<=0 char collapses (CCharAct.cpp
         // OnTick "Stat_GetVal(STAT_DEX) <= 0"), so block the swing entirely
         // and re-check next tick — don't burn the recoil timer.
-        if (_character.IsDead) return;
+        if (CombatHelper.IsInvalidSwingParticipant(_character, asTarget: false)) return;
 
         // Manifest ghost protection: a dead target (peace OR war manifest)
         // is never a valid combat target. Source-X CChar::Fight_IsAttackable
@@ -896,7 +912,8 @@ public sealed class ClientCombatHandler
         // observers can SEE the ghost without being able to hit it.
         // Without this guard a manifested ghost would take damage and
         // produce a "kill the dead" loop with no corpse / no resurrect.
-        if (target == null || target.IsDead)
+        if (target == null || target.MapIndex != _character.MapIndex ||
+            CombatHelper.IsInvalidSwingParticipant(target, asTarget: true))
         {
             _character.FightTarget = Serial.Invalid;
             return;
@@ -929,6 +946,7 @@ public sealed class ClientCombatHandler
 
         var weapon = _character.GetEquippedItem(Layer.OneHanded)
                   ?? _character.GetEquippedItem(Layer.TwoHanded);
+        int swingDelayMs = GetSwingDelayMs(_character, weapon);
 
         // Source-X @HitCheck (Fight_Hit entry, BEFORE Fight_CanHit's range/LoS
         // validation): SRC = the victim, ARGN1 = war swing state, ARGN2 =
@@ -955,6 +973,7 @@ public sealed class ClientCombatHandler
                 EmitMissFeedback(target, weapon);
                 _triggerDispatcher.FireCharTrigger(_character, CharTrigger.HitMiss,
                     new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon });
+                _character.NextAttackTime = now + swingDelayMs;
                 return;
             }
             swingNoRange = hitCheckLocals.GetInt("Recoil_NoRange") != 0;
@@ -981,7 +1000,6 @@ public sealed class ClientCombatHandler
 
         CombatHelper.RevealOnAttack(_character, _character.PrivLevel);
 
-        int swingDelayMs = GetSwingDelayMs(_character, weapon);
         int swingDelayTenths = Math.Max(1, swingDelayMs / 100);
         int animOverride = -1;
         int animDelayOverride = -1;
@@ -1003,8 +1021,11 @@ public sealed class ClientCombatHandler
                 Locals = hitTryLocals,
             };
             if (_triggerDispatcher.FireCharTrigger(_character, CharTrigger.HitTry, hitTryArgs) == TriggerResult.True)
+            {
+                _character.NextAttackTime = now + 250;
                 return;
-            swingDelayTenths = Math.Max(1, hitTryArgs.N1);
+            }
+            swingDelayTenths = Math.Clamp(hitTryArgs.N1, 1, short.MaxValue);
             swingDelayMs = swingDelayTenths * 100;
             animOverride = (int)hitTryLocals.GetInt("Anim", -1);
             long animDelay = hitTryLocals.GetInt("AnimDelay", 7);
@@ -1041,15 +1062,15 @@ public sealed class ClientCombatHandler
         // window so the hit lands later from TickCombat's pending-hit pump.
         // `ammo` (presence) was validated just above.
         int hitDelayMs = CombatHelper.GetSwingHitDelayMs(swingDelayMs, swingNoRange);
-        _character.BeginSwingWindup(now, hitDelayMs, swingDelayMs, target.Uid, now + swingDelayMs * 2L);
-
-        if (_character.Stam > 0)
-            _character.Stam = (short)(_character.Stam - 1);
+        var committedRange = CombatHelper.GetWeaponRange(weapon);
+        _character.BeginSwingWindup(now, hitDelayMs, swingDelayMs, target.Uid,
+            now + swingDelayMs * 2L, weapon != null ? weapon.Uid : Serial.Invalid, swingNoRange,
+            committedRange.Min, committedRange.Max);
 
         // @HitTry LOCAL.Anim / LOCAL.AnimDelay override the swing animation and
         // its frame pacing (Source-X reads them back after the trigger).
         ushort swingAction = animOverride >= 0
-            ? (ushort)animOverride
+            ? (ushort)Math.Clamp(animOverride, 0, ushort.MaxValue)
             : GetSwingAction(_character, weapon);
         // COMBAT_ANIM_HIT_SMOOTH paces the swing animation to the swing time.
         byte swingAnimDelay = animDelayOverride >= 0
@@ -1074,11 +1095,25 @@ public sealed class ClientCombatHandler
         if (_character == null || !_character.HasPendingHit) return;
 
         var target = _world.FindChar(_character.PendingHitTarget);
-        var weapon = _character.GetEquippedItem(Layer.OneHanded)
-                  ?? _character.GetEquippedItem(Layer.TwoHanded);
+        Serial committedWeaponUid = _character.PendingHitWeapon;
+        bool weaponCaptured = _character.PendingHitWeaponCaptured;
+        bool swingNoRange = _character.PendingHitSwingNoRange;
+        (int Min, int Max)? committedRange =
+            _character.PendingHitRangeMin >= 0 && _character.PendingHitRangeMax >= 0
+                ? (_character.PendingHitRangeMin, _character.PendingHitRangeMax)
+                : null;
+        Item? weapon = weaponCaptured
+            ? (committedWeaponUid.IsValid ? _world.FindItem(committedWeaponUid) : null)
+            : _character.GetEquippedItem(Layer.OneHanded) ?? _character.GetEquippedItem(Layer.TwoHanded);
+        if (weaponCaptured && committedWeaponUid.IsValid && (weapon == null || weapon.IsDeleted))
+        {
+            _character.ClearPendingHit();
+            return;
+        }
 
         switch (CombatHelper.EvaluateHitTime(_world, _character, target, weapon,
-            _character.PrivLevel, now, _character.PendingHitDeadline, _world.CanSeeLOS))
+            _character.PrivLevel, now, _character.PendingHitDeadline, _world.CanSeeLOS,
+            swingNoRange, committedRange))
         {
             case CombatHelper.HitTimeDecision.Wait:
                 return; // keep the pending hit; retry on a later tick
@@ -1089,10 +1124,19 @@ public sealed class ClientCombatHandler
                 _character.ClearPendingHit();
                 if (target != null)
                 {
-                    EmitMissFeedback(target, weapon);
-                    // Source-X @HitMiss: SRC = the victim, ARGO = the weapon.
-                    _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.HitMiss,
-                        new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon });
+                    Item? missedAmmo = null;
+                    if (CombatHelper.IsRangedWeapon(weapon))
+                    {
+                        var ammoSpec = ResolveAmmo(weapon!);
+                        missedAmmo = FindAmmoInPack(ammoSpec.BaseId, ammoSpec.FallbackType);
+                        if (missedAmmo != null)
+                            EmitRangedProjectile(target, ammoSpec.Gfx);
+                    }
+                    if (!HandleMissTriggerAndAmmo(target, weapon, missedAmmo))
+                    {
+                        SysMessage(ServerMessages.GetFormatted(Msg.CombatMisss, target.Name));
+                        EmitMissSound(weapon);
+                    }
                 }
                 return;
         }
@@ -1109,6 +1153,11 @@ public sealed class ClientCombatHandler
         {
             var ammoSpec = ResolveAmmo(weapon!);
             ammoStack = FindAmmoInPack(ammoSpec.BaseId, ammoSpec.FallbackType);
+            if (ammoStack == null)
+            {
+                SysMessage(ServerMessages.Get(Msg.CombatArchNoammo));
+                return;
+            }
             EmitRangedProjectile(target, ammoSpec.Gfx);
         }
 
@@ -1125,17 +1174,9 @@ public sealed class ClientCombatHandler
         // @Hit-chain LOCAL.ArrowHandled=1 hands the ammo to the script instead
         // (Source-X nulls pAmmo); the miss branch below handles its own
         // consumption the same way via the @HitMiss locals.
-        if (damage >= 0 && ammoStack != null && !ammoHandled)
+        if ((damage >= 0 || damage == CombatEngine.AttackResolvedByProc) &&
+            ammoStack != null && !ammoHandled)
             ConsumeFromStack(ammoStack);
-
-        if (damage < 0)
-        {
-            // Source-X CCharFight Hit_Miss: emit attacker miss + target miss text.
-            // ResolveAttack returns -1 only on a true miss/parry; 0 is a connecting
-            // hit that armor fully absorbed (handled below).
-            SysMessage(ServerMessages.GetFormatted(Msg.CombatMisss, target.Name));
-            // No simple way yet to message the target client; the overhead packet is enough on the source side.
-        }
 
         if (damage > 0)
         {
@@ -1226,7 +1267,9 @@ public sealed class ClientCombatHandler
                     stuck.BaseId = stuckAmmo.FallbackType == ItemType.WeaponArrow ? (ushort)0x0F3F : (ushort)0x1BFB;
                 }
                 stuck.Amount = 1;
-                target.Backpack.AddItemWithStack(stuck);
+                var actual = target.Backpack.AddItemWithStack(stuck);
+                if (actual != stuck || stuck.ContainedIn != target.Backpack.Uid)
+                    _world.RemoveItem(stuck);
             }
 
             if (target.Hits <= 0 && !target.IsDead && _deathEngine != null)
@@ -1375,38 +1418,52 @@ public sealed class ClientCombatHandler
                 : BodyAnimTranslator.Translate(target.BodyId, (ushort)AnimationType.GetHit);
             BroadcastAnimation(target, absorbGetHit, NewAnimationGesture.Impact);
         }
-        else
+        else if (damage == CombatEngine.AttackMiss)
         {
             // Source-X @HitMiss: SRC = the victim, ARGO = the weapon.
             // LOCAL.Arrow = the UID of the pack ammo stack the shot came from
             // (CCharFight.cpp:2032). LOCAL.ArrowHandled=1 — or RETURN 1 —
             // hands the ammo's fate to the script: nothing is consumed or
             // dropped by the engine then.
-            bool rangedMiss = CombatHelper.IsRangedWeapon(weapon);
-            var missLocals = new SphereNet.Scripting.Variables.VarMap();
-            if (rangedMiss && ammoStack != null)
-                missLocals.SetInt("Arrow", ammoStack.Uid.Value);
-            var missResult = _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.HitMiss,
-                new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon, Locals = missLocals })
-                ?? TriggerResult.Default;
-
-            // Source-X miss economy: the shot always spends one ammo; 40% of
-            // the time it falls at the victim's feet (recoverable, decays),
-            // otherwise it is simply gone.
-            if (rangedMiss && ammoStack != null && missResult != TriggerResult.True &&
-                missLocals.GetInt("ArrowHandled") == 0)
+            if (!HandleMissTriggerAndAmmo(target, weapon, ammoStack))
             {
-                ConsumeFromStack(ammoStack);
-                if (Random.Shared.Next(100) < 40)
-                {
-                    var missAmmo = ResolveAmmo(weapon!);
-                    DropRecoveredAmmo(missAmmo.BaseId, missAmmo.FallbackType, target.Position);
-                }
+                SysMessage(ServerMessages.GetFormatted(Msg.CombatMisss, target.Name));
+                EmitMissSound(weapon);
             }
-
-            BroadcastNearby?.Invoke(_character.Position, UpdateRange,
-                new PacketSound(GetWeaponMissSound(weapon), _character.X, _character.Y, _character.Z), 0);
         }
+    }
+
+    /// <summary>Shared @HitMiss + ranged ammo economy for both a natural miss
+    /// and STAYINRANGE's hit-time miss.</summary>
+    private bool HandleMissTriggerAndAmmo(Character target, Item? weapon, Item? ammoStack)
+    {
+        if (_character == null) return false;
+
+        bool rangedMiss = CombatHelper.IsRangedWeapon(weapon);
+        var missLocals = new SphereNet.Scripting.Variables.VarMap();
+        if (rangedMiss && ammoStack != null)
+            missLocals.SetInt("Arrow", ammoStack.Uid.Value);
+        var missResult = _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.HitMiss,
+            new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon, Locals = missLocals })
+            ?? TriggerResult.Default;
+
+        if (missResult == TriggerResult.True)
+        {
+            _character.BeginEquipSwingWait(Environment.TickCount64, 0, noWait: true);
+            return true;
+        }
+
+        if (!rangedMiss || ammoStack == null ||
+            missLocals.GetInt("ArrowHandled") != 0)
+            return false;
+
+        ConsumeFromStack(ammoStack);
+        if (Random.Shared.Next(100) < 40)
+        {
+            var missAmmo = ResolveAmmo(weapon!);
+            DropRecoveredAmmo(missAmmo.BaseId, missAmmo.FallbackType, target.Position);
+        }
+        return false;
     }
 
     /// <summary>Materialise one recovered ammo item (Source-X MoveToDecay of the
@@ -1433,6 +1490,13 @@ public sealed class ClientCombatHandler
         ushort missAction = GetSwingAction(_character, weapon);
         BroadcastAnimation(_character, missAction, NewAnimationGesture.Attack);
 
+        EmitMissSound(weapon);
+    }
+
+    private void EmitMissSound(Item? weapon)
+    {
+        if (_character == null) return;
+
         // Source-X plays a single per-weapon miss whoosh from the attacker.
         var missSound = new PacketSound(GetWeaponMissSound(weapon), _character.X, _character.Y, _character.Z);
         BroadcastNearby?.Invoke(_character.Position, UpdateRange, missSound, 0);
@@ -1451,32 +1515,14 @@ public sealed class ClientCombatHandler
     // Ammo presence/consumption keyed by a specific baseid when AMMOTYPE
     // resolved one, otherwise by the legacy ammo ItemType.
     private bool HasAmmoInPack(ushort baseId, ItemType fallbackType)
-    {
-        var pack = _character?.Backpack;
-        if (pack == null) return false;
-        foreach (var it in pack.Contents)
-        {
-            bool match = baseId != 0 ? it.BaseId == baseId : it.ItemType == fallbackType;
-            if (match && it.Amount > 0) return true;
-        }
-        return false;
-    }
+        => CombatHelper.FindAmmoInContainer(_character?.Backpack, baseId, fallbackType) != null;
 
     /// <summary>The pack ammo stack a shot draws from (Source-X pAmmo) — found
     /// at the shot, consumed only once the hit/miss outcome resolves so the
     /// @HitMiss LOCAL.Arrow contract can expose (and a script can take over)
     /// the live item.</summary>
     private Item? FindAmmoInPack(ushort baseId, ItemType fallbackType)
-    {
-        var pack = _character?.Backpack;
-        if (pack == null) return null;
-        foreach (var it in pack.Contents)
-        {
-            bool match = baseId != 0 ? it.BaseId == baseId : it.ItemType == fallbackType;
-            if (match && it.Amount > 0) return it;
-        }
-        return null;
-    }
+        => CombatHelper.FindAmmoInContainer(_character?.Backpack, baseId, fallbackType);
 
     private void ConsumeFromStack(Item stack)
     {

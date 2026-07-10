@@ -66,18 +66,19 @@ public sealed partial class GameClient
         {
             var pack = Self.Backpack;
             if (pack == null) return null;
-            foreach (var it in pack.Contents)
+            return FindRecursive(pack, type, 32, []);
+        }
+
+        private static Item? FindRecursive(Item container, Core.Enums.ItemType type,
+            int depth, HashSet<uint> seen)
+        {
+            if (depth < 0 || !seen.Add(container.Uid.Value)) return null;
+            foreach (var item in container.Contents)
             {
-                if (it.ItemType == type) return it;
-            }
-            // One level deep so common pouches resolve.
-            foreach (var it in pack.Contents)
-            {
-                if (it.ItemType is Core.Enums.ItemType.Container or Core.Enums.ItemType.ContainerLocked)
-                {
-                    foreach (var inner in it.Contents)
-                        if (inner.ItemType == type) return inner;
-                }
+                if (item.IsDeleted) continue;
+                if (item.ItemType == type) return item;
+                var nested = FindRecursive(item, type, depth - 1, seen);
+                if (nested != null) return nested;
             }
             return null;
         }
@@ -126,6 +127,8 @@ public sealed partial class GameClient
 
             _client.World.PlaceItemWithDecay(item, Self.Position);
         }
+
+        public void OpenContainer(Item container) => _client.SendOpenContainer(container);
 
         public void ResurrectTarget(Objects.Characters.Character target)
         {

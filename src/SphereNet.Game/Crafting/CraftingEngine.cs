@@ -27,6 +27,9 @@ public readonly struct CraftResource
 /// </summary>
 public sealed class CraftRecipe
 {
+    /// <summary>Resource index of the source ITEMDEF. This can differ from the
+    /// display id for named/aliased definitions.</summary>
+    public int ResultDefId { get; init; }
     public ushort ResultItemId { get; init; }
     public string ResultName { get; set; } = "";
     public SkillType PrimarySkill { get; init; } = SkillType.Blacksmithing;
@@ -103,9 +106,12 @@ public sealed class CraftingEngine
             return false;
 
         // Check resource availability
-        foreach (var res in recipe.Resources)
+        for (int resourceIndex = 0; resourceIndex < recipe.Resources.Count; resourceIndex++)
         {
+            var res = recipe.Resources[resourceIndex];
             if (CountResource(crafter, res) < res.Amount)
+                return false;
+            if (resourceIndex == 0 && !TrySelectResourceHue(crafter, res, res.Amount, out _))
                 return false;
         }
 
@@ -117,6 +123,12 @@ public sealed class CraftingEngine
     /// Maps to Skill_MakeItem / Skill_MakeItem_Success flow in Source-X.
     /// </summary>
     public Item? TryCraft(Character crafter, CraftRecipe recipe)
+    {
+        lock (crafter)
+            return TryCraftCore(crafter, recipe);
+    }
+
+    private Item? TryCraftCore(Character crafter, CraftRecipe recipe)
     {
         if (crafter.IsDead) return null;
         if (!CanCraft(crafter, recipe))
@@ -150,30 +162,55 @@ public sealed class CraftingEngine
             // item can inherit the material colour (e.g. coloured ingots produce
             // a coloured weapon/armour, matching UO material behaviour).
             ushort resourceHue = 0;
-            if (recipe.Resources.Count > 0)
-            {
-                var primaryRes = FindResourceItem(crafter, recipe.Resources[0]);
-                if (primaryRes != null) resourceHue = primaryRes.Hue.Value;
-            }
+            if (recipe.Resources.Count > 0 &&
+                !TrySelectResourceHue(crafter, recipe.Resources[0], recipe.Resources[0].Amount,
+                    out resourceHue))
+                return null;
 
             // Consume resources
-            foreach (var res in recipe.Resources)
+            for (int resourceIndex = 0; resourceIndex < recipe.Resources.Count; resourceIndex++)
             {
-                ConsumeResource(crafter, res, res.Amount);
+                var res = recipe.Resources[resourceIndex];
+                if (!ConsumeResource(crafter, res, res.Amount,
+                        resourceIndex == 0 ? resourceHue : null))
+                    return null;
             }
 
             // Create the item
             var item = _world.CreateItem();
             item.BaseId = recipe.ResultItemId;
-            item.Name = recipe.ResultName;
+            var resultDef = DefinitionLoader.GetItemDef(
+                recipe.ResultDefId != 0 ? recipe.ResultDefId : recipe.ResultItemId);
+            item.Name = !string.IsNullOrWhiteSpace(recipe.ResultName)
+                ? recipe.ResultName
+                : DefinitionLoader.ResolveNames(resultDef?.Name ?? "");
+            if (resultDef != null)
+            {
+                item.ItemType = resultDef.Type;
+                item.TData1 = resultDef.TData1;
+                item.TData2 = resultDef.TData2;
+                item.TData3 = resultDef.TData3;
+                item.TData4 = resultDef.TData4;
+                item.Events.AddRange(resultDef.Events);
+                foreach (var (key, value) in resultDef.TagDefs.GetAll())
+                    item.SetTag(key, value);
+                if (resultDef.HitsMax > 0 || resultDef.HitsMin > 0)
+                {
+                    int minHits = Math.Max(1, resultDef.HitsMin > 0 ? resultDef.HitsMin : resultDef.HitsMax);
+                    int maxHits = Math.Max(minHits, resultDef.HitsMax > 0 ? resultDef.HitsMax : minHits);
+                    int hits = minHits == maxHits ? minHits : Random.Shared.Next(minHits, maxHits + 1);
+                    item.HitsMax = hits;
+                    item.HitsCur = hits;
+                }
+            }
+            item.Crafter = crafter.Uid;
             if (resourceHue != 0)
                 item.Hue = new Core.Types.Color(resourceHue);
 
             // Quality roll based on skill
             int skillVal = crafter.GetSkill(recipe.PrimarySkill);
             int quality = CalcQuality(skillVal, recipe.Difficulty);
-            if (quality > 100)
-                item.SetTag("QUALITY", quality.ToString());
+            item.Quality = (ushort)quality;
 
             // Exceptional check — also apply a concrete durability bonus and an
             // EXCEPTIONAL tag, so the result is mechanically better, not just a
@@ -185,7 +222,7 @@ public sealed class CraftingEngine
                 int baseMax = item.HitsMax;
                 if (baseMax > 0)
                 {
-                    int boosted = baseMax * 120 / 100;
+                    int boosted = (int)Math.Min(int.MaxValue, (long)baseMax * 120 / 100);
                     item.HitsMax = boosted;
                     item.HitsCur = boosted;
                 }
@@ -216,7 +253,7 @@ public sealed class CraftingEngine
     /// </summary>
     private int CalcQuality(int skillLevel, int difficulty)
     {
-        int excess = skillLevel - difficulty;
+        int excess = skillLevel - difficulty * 10;
         int quality = 100 + excess / 10;
         quality += Random.Shared.Next(-10, 11);
         return Math.Max(10, Math.Min(200, quality));
@@ -412,15 +449,52 @@ public sealed class CraftingEngine
         return count;
     }
 
+    private static bool TrySelectResourceHue(Character ch, CraftResource res,
+        int requiredAmount, out ushort hue)
+    {
+        hue = 0;
+        if (ch.Backpack == null) return false;
+        var totals = new SortedDictionary<ushort, long>();
+        CollectResourceHues(ch.Backpack, res, totals, 0, []);
+        foreach (var pair in totals)
+        {
+            if (pair.Value < requiredAmount) continue;
+            hue = pair.Key;
+            return true;
+        }
+        return false;
+    }
+
+    private static void CollectResourceHues(Item container, CraftResource res,
+        SortedDictionary<ushort, long> totals, int depth, HashSet<uint> seen)
+    {
+        if (depth > 16 || !seen.Add(container.Uid.Value)) return;
+        foreach (var item in container.Contents)
+        {
+            if (item.IsDeleted) continue;
+            bool matches = res.Type.HasValue
+                ? item.ItemType == res.Type.Value
+                : item.BaseId == res.ItemId;
+            if (matches)
+            {
+                totals.TryGetValue(item.Hue.Value, out long amount);
+                totals[item.Hue.Value] = Math.Min(int.MaxValue, amount + item.Amount);
+            }
+            if (item.ContentCount > 0)
+                CollectResourceHues(item, res, totals, depth + 1, seen);
+        }
+    }
+
     /// <summary>Consume a recipe resource (by TYPE or id). Returns true if fully consumed.</summary>
-    private static bool ConsumeResource(Character ch, CraftResource res, int amount)
+    private static bool ConsumeResource(Character ch, CraftResource res, int amount,
+        ushort? hue = null)
     {
         var pack = ch.Backpack;
         if (pack == null) return false;
         if (res.Type.HasValue)
-            ConsumeFromContainerByType(pack, res.Type.Value, ref amount);
+            ConsumeFromContainerByType(pack, res.Type.Value, ref amount, hue: hue);
         else
-            ConsumeFromContainer(pack, res.ItemId, ref amount);
+            ConsumeFromContainer(pack, res.ItemId, ref amount, hue: hue);
         return amount == 0;
     }
 
@@ -433,14 +507,15 @@ public sealed class CraftingEngine
         return amount == 0;
     }
 
-    private static void ConsumeFromContainerByType(Item container, ItemType type, ref int remaining, int depth = 0)
+    private static void ConsumeFromContainerByType(Item container, ItemType type,
+        ref int remaining, int depth = 0, ushort? hue = null)
     {
         if (depth > 10) return;
         for (int i = container.Contents.Count - 1; i >= 0 && remaining > 0; i--)
         {
             var item = container.Contents[i];
             if (item.IsDeleted) continue;
-            if (item.ItemType == type)
+            if (item.ItemType == type && (!hue.HasValue || item.Hue.Value == hue.Value))
             {
                 if (item.Amount <= remaining)
                 {
@@ -456,19 +531,20 @@ public sealed class CraftingEngine
             }
             else
             {
-                ConsumeFromContainerByType(item, type, ref remaining, depth + 1);
+                ConsumeFromContainerByType(item, type, ref remaining, depth + 1, hue);
             }
         }
     }
 
-    private static void ConsumeFromContainer(Item container, ushort itemId, ref int remaining, int depth = 0)
+    private static void ConsumeFromContainer(Item container, ushort itemId,
+        ref int remaining, int depth = 0, ushort? hue = null)
     {
         if (depth > 10) return;
         for (int i = container.Contents.Count - 1; i >= 0 && remaining > 0; i--)
         {
             var item = container.Contents[i];
 
-            if (item.BaseId == itemId)
+            if (item.BaseId == itemId && (!hue.HasValue || item.Hue.Value == hue.Value))
             {
                 if (item.Amount <= remaining)
                 {
@@ -484,7 +560,7 @@ public sealed class CraftingEngine
             }
             else
             {
-                ConsumeFromContainer(item, itemId, ref remaining, depth + 1);
+                ConsumeFromContainer(item, itemId, ref remaining, depth + 1, hue);
             }
         }
     }
@@ -502,7 +578,7 @@ public sealed class CraftingEngine
             if (string.IsNullOrWhiteSpace(def.SkillMakeRaw))
                 continue;
 
-            var recipe = ParseRecipe(def, (ushort)baseId, resources);
+            var recipe = ParseRecipe(def, baseId, resources);
             if (recipe != null)
             {
                 RegisterRecipe(recipe);
@@ -512,7 +588,7 @@ public sealed class CraftingEngine
         return count;
     }
 
-    private static CraftRecipe? ParseRecipe(ItemDef def, ushort resultId, ResourceHolder resources)
+    private static CraftRecipe? ParseRecipe(ItemDef def, int resultDefId, ResourceHolder resources)
     {
         var skillParts = def.SkillMakeRaw.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         if (skillParts.Length == 0) return null;
@@ -543,7 +619,11 @@ public sealed class CraftingEngine
                 if (irid.IsValid)
                 {
                     var reqDef = DefinitionLoader.GetItemDef(irid.Index);
-                    pendingItemIds.Add(reqDef?.DispIndex ?? (ushort)irid.Index);
+                    ushort requiredId = reqDef is { DispIndex: > 0 }
+                        ? reqDef.DispIndex
+                        : irid.Index <= ushort.MaxValue ? (ushort)irid.Index : (ushort)0;
+                    if (requiredId != 0)
+                        pendingItemIds.Add(requiredId);
                 }
                 continue;
             }
@@ -578,10 +658,14 @@ public sealed class CraftingEngine
 
         if (primarySkill == SkillType.None) return null;
 
-        ushort dispId = def.DispIndex != 0 ? def.DispIndex : resultId;
+        ushort dispId = def.DispIndex != 0
+            ? def.DispIndex
+            : resultDefId <= ushort.MaxValue ? (ushort)resultDefId : (ushort)0;
+        if (dispId == 0) return null;
 
         var recipe = new CraftRecipe
         {
+            ResultDefId = resultDefId,
             ResultItemId = dispId,
             ResultName = def.Name ?? "",
             PrimarySkill = primarySkill,
@@ -619,8 +703,11 @@ public sealed class CraftingEngine
                 else
                 {
                     var resDef = DefinitionLoader.GetItemDef(rid.Index);
-                    ushort resItemId = resDef?.DispIndex ?? (ushort)rid.Index;
-                    recipe.Resources.Add(new CraftResource { ItemId = resItemId, Amount = amount });
+                    ushort resItemId = resDef is { DispIndex: > 0 }
+                        ? resDef.DispIndex
+                        : rid.Index <= ushort.MaxValue ? (ushort)rid.Index : (ushort)0;
+                    if (resItemId != 0)
+                        recipe.Resources.Add(new CraftResource { ItemId = resItemId, Amount = amount });
                 }
             }
         }

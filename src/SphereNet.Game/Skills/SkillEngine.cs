@@ -32,12 +32,44 @@ public enum SkillTrigger
 /// </summary>
 public static class SkillEngine
 {
+    /// <summary>Number of real client skills. Slots 58..98 are reserved by the
+    /// protocol/Source-X enum and must never be trained or dispatched.</summary>
+    public const int BaseSkillCount = (int)SkillType.Throwing + 1;
+
+    public static bool IsValidBaseSkill(SkillType skill)
+    {
+        int index = (int)skill;
+        return index >= 0 && index < BaseSkillCount;
+    }
+
+    public static SkillFlag GetFlags(SkillType skill) =>
+        IsValidBaseSkill(skill)
+            ? (SkillFlag)(DefinitionLoader.GetSkillDef((int)skill)?.Flags ?? 0)
+            : SkillFlag.Disabled;
+
+    public static bool HasFlag(SkillType skill, SkillFlag flag) =>
+        (GetFlags(skill) & flag) != 0;
+
+    public static int GetUseRange(SkillType skill, int fallback)
+    {
+        int configured = DefinitionLoader.GetSkillDef((int)skill)?.Range ?? 0;
+        return configured > 0 ? configured : fallback;
+    }
+
+    public static int GetEffect(SkillType skill, int skillValue, int fallback)
+    {
+        var effect = DefinitionLoader.GetSkillDef((int)skill)?.Effect;
+        return effect is { IsEmpty: false } ? effect.GetLinear(skillValue) : fallback;
+    }
+
     // Random.Shared is thread-safe; a plain shared Random instance is not and
     // can corrupt/return 0 under concurrent skill use on the multicore tick.
     private static Random _rand => Random.Shared;
 
     /// <summary>Callback fired when a skill gain occurs. Args: (Character, SkillType, newValue).</summary>
     public static Action<Character, SkillType, int>? OnSkillGain { get; set; }
+
+    public static Action<Character, SkillType, int>? OnSkillDecrease { get; set; }
 
     /// <summary>Pre-roll gain hook (Source-X Skill_Experience @SkillGain): fired
     /// BEFORE the gain roll so a script can tune the per-mille gain chance or the
@@ -49,6 +81,8 @@ public static class SkillEngine
     /// <summary>Callback fired when a stat gain occurs. Args: (Character, statIndex: 0=STR 1=DEX 2=INT, newValue).</summary>
     public static Action<Character, int, int>? OnStatGain { get; set; }
 
+    public static Action<Character, int, int>? OnStatDecrease { get; set; }
+
     /// <summary>Skill variance for S-curve calculation. Source-X SKILL_VARIANCE = 100
     /// (10.0 skill points per bell-curve halving period).</summary>
     private const int SkillVariance = 100;
@@ -58,10 +92,11 @@ public static class SkillEngine
     /// <paramref name="skillValue"/> is the user's skill in tenths. 0 = instant.</summary>
     public static int GetSkillDelayMs(SkillType skill, int skillValue = 0)
     {
+        if (!IsValidBaseSkill(skill)) return 0;
         var def = DefinitionLoader.GetSkillDef((int)skill);
         if (def == null || def.Delay.IsEmpty) return 0;
         int tenths = def.Delay.GetLinear(skillValue);
-        return tenths <= 0 ? 0 : tenths * 100;
+        return tenths <= 0 ? 0 : (int)Math.Min(int.MaxValue, (long)tenths * 100L);
     }
 
     /// <summary>Interval between @SkillStroke firings during a delayed skill.</summary>
@@ -78,19 +113,22 @@ public static class SkillEngine
     /// </summary>
     public static bool CheckSuccess(Character ch, SkillType skill, int difficulty, bool useBellCurve = true)
     {
+        if (!IsValidBaseSkill(skill))
+            return false;
         if (ch.PrivLevel >= PrivLevel.GM && skill != SkillType.Parrying)
             return true;
 
         if (difficulty < 0)
             return false;
 
-        int iDiff = difficulty * 10; // scale 0-100 to 0-1000
+        int iDiff = (int)Math.Min(int.MaxValue, (long)difficulty * 10L); // scale 0-100 to 0-1000
         int skillVal = GetAdjustedSkill(ch, skill);
 
         int successChance;
         if (useBellCurve)
         {
-            successChance = CalcSCurve(skillVal - iDiff, SkillVariance);
+            successChance = CalcSCurve((int)Math.Clamp((long)skillVal - iDiff,
+                int.MinValue, int.MaxValue), SkillVariance);
         }
         else
         {
@@ -116,7 +154,9 @@ public static class SkillEngine
     {
         if (difficulty < 0)
             return false;
-        int successChance = CalcSCurve(skillValue - difficulty * 10, SkillVariance);
+        long scaledDifficulty = Math.Min(int.MaxValue, (long)difficulty * 10L);
+        int successChance = CalcSCurve((int)Math.Clamp((long)skillValue - scaledDifficulty,
+            int.MinValue, int.MaxValue), SkillVariance);
         if (successChance <= 0)
             return false;
         return successChance >= _rand.Next(1000);
@@ -128,12 +168,23 @@ public static class SkillEngine
     /// </summary>
     public static bool UseQuick(Character ch, SkillType skill, int difficulty, bool allowGain = true, bool useBellCurve = true)
     {
+        if (!IsValidBaseSkill(skill) || HasFlag(skill, SkillFlag.Disabled) ||
+            HasFlag(skill, SkillFlag.Scripted))
+            return false;
+
         bool success = CheckSuccess(ch, skill, difficulty, useBellCurve);
 
         // @SkillUseQuick (Source-X) — fires AFTER the roll with ARGN3 = result; a
         // script may flip the result, or cancel the use entirely (RETURN 1) so no
         // experience is gained.
-        if (Character.OnSkillUseQuick != null)
+        if (Character.OnSkillUseQuickDetailed != null)
+        {
+            int outcome = Character.OnSkillUseQuickDetailed(ch, (int)skill, ref difficulty,
+                success ? 1 : 0);
+            if (outcome < 0) return false;
+            success = outcome != 0;
+        }
+        else if (Character.OnSkillUseQuick != null)
         {
             int outcome = Character.OnSkillUseQuick(ch, (int)skill, difficulty, success ? 1 : 0);
             if (outcome < 0)
@@ -143,7 +194,8 @@ public static class SkillEngine
 
         if (allowGain)
         {
-            int expDiff = success ? difficulty : -difficulty;
+            int gainDifficulty = (int)Math.Clamp((long)difficulty, 0, int.MaxValue);
+            int expDiff = success ? gainDifficulty : -gainDifficulty;
             GainExperience(ch, skill, expDiff);
         }
 
@@ -160,7 +212,7 @@ public static class SkillEngine
         // GMs auto-succeed every check (see CheckSuccess); they must not also
         // accrue skill/stat gains from that free success.
         if (ch.PrivLevel >= PrivLevel.GM) return;
-        if ((int)skill < 0 || (int)skill >= (int)SkillType.Qty)
+        if (!IsValidBaseSkill(skill))
             return;
 
         // Source-X CChar::Skill_Experience: skills do not advance in safe areas.
@@ -169,7 +221,7 @@ public static class SkillEngine
             return;
 
         // Scale and clamp difficulty
-        int iDiff = Math.Clamp(difficulty * 10, 1, 1000);
+        int iDiff = (int)Math.Clamp(Math.Abs((long)difficulty) * 10L, 1L, 1000L);
 
         int currentSkill = ch.GetSkill(skill);
         int skillMax = GetSkillMax(ch, skill);
@@ -246,7 +298,8 @@ public static class SkillEngine
 
     /// <summary>Per-skill cap for the 0x3A skill-list cap field (class caps
     /// and overrides, without the lock clamping used by gain logic).</summary>
-    public static int GetSkillDisplayCap(Character ch, SkillType skill) => ResolveSkillCap(ch, skill);
+    public static int GetSkillDisplayCap(Character ch, SkillType skill) =>
+        Math.Clamp(ResolveSkillCap(ch, skill), 0, ushort.MaxValue);
 
     /// <summary>Per-skill max override table (from SkillClassDef or config).</summary>
     public static Dictionary<SkillType, int> SkillMaxOverrides { get; } = [];
@@ -259,7 +312,7 @@ public static class SkillEngine
     {
         byte lockState = ch.GetSkillLock(skill);
         int current = ch.GetSkill(skill);
-        int classMax = ResolveSkillCap(ch, skill);
+        int classMax = Math.Clamp(ResolveSkillCap(ch, skill), 0, ushort.MaxValue);
 
         if (lockState == 1) // down
             return Math.Min(current, classMax);
@@ -315,8 +368,10 @@ public static class SkillEngine
         int str = Math.Max(0, (int)ch.Str);
         int intl = Math.Max(0, (int)ch.Int);
         int dex = Math.Max(0, (int)ch.Dex);
-        int pureBonus = def.BonusStr * str + def.BonusInt * intl + def.BonusDex * dex;
-        return baseVal + def.BonusStats * pureBonus / 10000;
+        long pureBonus = (long)def.BonusStr * str + (long)def.BonusInt * intl +
+            (long)def.BonusDex * dex;
+        long adjusted = baseVal + (long)def.BonusStats * pureBonus / 10000L;
+        return (int)Math.Clamp(adjusted, 0L, int.MaxValue);
     }
 
     /// <summary>
@@ -336,17 +391,16 @@ public static class SkillEngine
     {
         if (variance <= 0)
             return 500;
-        if (value < 0)
-            value = -value;
+        long distance = Math.Abs((long)value);
 
         int chance = 500;
-        while (value > variance && chance != 0)
+        while (distance > variance && chance != 0)
         {
-            value -= variance;
+            distance -= variance;
             chance /= 2;
         }
 
-        return chance - (chance / 2) * value / variance;
+        return chance - (int)((long)(chance / 2) * distance / variance);
     }
 
     /// <summary>Decay one DOWN-locked skill by 0.1 (reference
@@ -365,6 +419,7 @@ public static class SkillEngine
             if (val > 0)
             {
                 ch.SetSkill(sk, (ushort)(val - 1));
+                OnSkillDecrease?.Invoke(ch, sk, val - 1);
                 return;
             }
         }
@@ -442,13 +497,15 @@ public static class SkillEngine
     /// a DOWN-locked stat (the one this skill values least) to make room.</summary>
     private static bool TryStatDecrease(Character ch, int gainStatIdx, SkillDef? def)
     {
+        if (!ch.IsPlayer)
+            return false;
         int statSum = ch.Str + ch.Dex + ch.Int + 1;
         int cap = ResolveStatSumCap(ch);
         if (statSum <= cap)
             return true;
 
         int sumMax = cap + cap / 4;
-        int chanceForLoss = CalcSCurve(sumMax - statSum, Math.Max(1, (sumMax - cap) / 4));
+        int chanceForLoss = CalcSCurve(sumMax - cap, Math.Max(1, (sumMax - cap) / 4));
         if (chanceForLoss <= _rand.Next(1000))
             return false;
 
@@ -477,9 +534,9 @@ public static class SkillEngine
 
         switch (minStat)
         {
-            case 0: ch.Str--; ch.MaxHits = (short)Math.Max(1, ch.MaxHits - 1); OnStatGain?.Invoke(ch, 0, ch.Str); break;
-            case 1: ch.Dex--; ch.MaxStam = (short)Math.Max(1, ch.MaxStam - 1); OnStatGain?.Invoke(ch, 1, ch.Dex); break;
-            case 2: ch.Int--; ch.MaxMana = (short)Math.Max(1, ch.MaxMana - 1); OnStatGain?.Invoke(ch, 2, ch.Int); break;
+            case 0: ch.Str--; ch.MaxHits = (short)Math.Max(1, ch.MaxHits - 1); OnStatDecrease?.Invoke(ch, 0, ch.Str); break;
+            case 1: ch.Dex--; ch.MaxStam = (short)Math.Max(1, ch.MaxStam - 1); OnStatDecrease?.Invoke(ch, 1, ch.Dex); break;
+            case 2: ch.Int--; ch.MaxMana = (short)Math.Max(1, ch.MaxMana - 1); OnStatDecrease?.Invoke(ch, 2, ch.Int); break;
         }
         return true;
     }

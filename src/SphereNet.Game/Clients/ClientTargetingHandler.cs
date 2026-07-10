@@ -92,7 +92,15 @@ public sealed class ClientTargetingHandler
     {
         if (_character == null) return;
         Targets.CursorActive = false;
-        if (_character.IsDead) return;
+        if (_character.IsDead)
+        {
+            int cancelledSkill = Targets.SkillCancelId;
+            ClearPendingTargetState();
+            if (cancelledSkill >= 0)
+                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillTargetCancel,
+                    new TriggerArgs { CharSrc = _character, N1 = cancelledSkill });
+            return;
+        }
         bool targetCancelled = IsTargetCancelled(serial, x, y, z, graphic);
         if (targetCancelled)
         {
@@ -754,7 +762,13 @@ public sealed class ClientTargetingHandler
     internal void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1)
     {
         if (Targets.CursorActive)
+        {
+            int replacedSkill = Targets.SkillCancelId;
             _netState.Send(new PacketTarget(0x00, 0x00000000, flags: 3));
+            if (replacedSkill >= 0 && _character != null)
+                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillTargetCancel,
+                    new TriggerArgs { CharSrc = _character, N1 = replacedSkill });
+        }
 
         ClearPendingTargetState();
         Targets.Callback = callback;

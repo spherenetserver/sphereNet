@@ -28,6 +28,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
     private static void Reset()
     {
         SphereNet.Game.Objects.ObjBase.ResolveWorld = null;
+        SphereNet.Game.Definitions.DefinitionLoader.ResetForTests();
         SphereNet.Game.Objects.ObjBase.BroadcastNearby = null;
         SphereNet.Game.Objects.Items.Item.ResolveWorld = null;
         SphereNet.Game.Objects.Characters.Character.BroadcastNearby = null;
@@ -83,13 +84,23 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnMemoryEquip = null;
         SphereNet.Game.Objects.Characters.Character.OnEnvironChange = null;
         SphereNet.Game.Objects.Characters.Character.OnSkillUseQuick = null;
+        SphereNet.Game.Objects.Characters.Character.OnSkillUseQuickDetailed = null;
+        SphereNet.Game.Objects.Characters.Character.OnDamageActionInterrupt = null;
+        SphereNet.Game.Objects.Characters.Character.ActiveSkillAborted = null;
         SphereNet.Game.Objects.Characters.Character.OnNpcSeeNewPlayer = null;
         SphereNet.Game.Housing.House.OnRedeed = null;
         SphereNet.Game.Housing.HousingEngine.OnHouseCheck = null;
         SphereNet.Game.AI.NpcAI.PetFollowMaxDistance = 36;
         SphereNet.Game.Objects.Characters.Character.SpellbookRequiredEnabled = true;
+        SphereNet.Game.Clients.GameClient.ClientLingerSeconds = 60;
         SphereNet.Game.Death.DeathEngine.EnableDeathShroud = true;
         SphereNet.Game.Skills.SkillEngine.OnSkillGainCheck = null;
+        SphereNet.Game.Skills.SkillEngine.OnSkillDecrease = null;
+        SphereNet.Game.Skills.SkillEngine.OnStatDecrease = null;
+        SphereNet.Game.Skills.SkillHandlers.OnCraftSkillUsed = null;
+        SphereNet.Game.Skills.SkillHandlers.OnScriptedSkillUse = null;
+        SphereNet.Game.Skills.SkillEngine.SkillMaxOverrides.Clear();
+        SphereNet.Game.Skills.SkillEngine.SkillSumMaxOverride = 7000;
         SphereNet.Game.Objects.Characters.Character.OnSkillChange = null;
         SphereNet.Game.Skills.SkillEngine.StatAdvCurves =
             [SphereNet.Scripting.Definitions.ValueCurve.Empty,

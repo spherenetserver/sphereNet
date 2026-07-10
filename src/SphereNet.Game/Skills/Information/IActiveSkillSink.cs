@@ -57,6 +57,9 @@ public interface IActiveSkillSink : IInfoSkillSink
     /// </summary>
     void DeliverItem(Item item);
 
+    /// <summary>Open a successfully snooped container for the acting client.</summary>
+    void OpenContainer(Item container) { }
+
     /// <summary>
     /// Resurrect a dead character through the full client pipeline (ghost→alive body,
     /// corpse restore, equipment re-equip, client packet sync). Falls back to

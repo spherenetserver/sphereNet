@@ -56,6 +56,7 @@ public sealed class GameWorld
     public event Action<ObjBase>? ObjectDeleting;
     public event Action<Character, Point3D>? CharacterMoved;
     public event Action<Character>? CharacterPlaced;
+    public event Action<Character>? ClientLingerExpired;
     public Action<ObjBase, ObjBase.TimerFEntry>? TimerFExpired { get; set; }
 
     // --- Global script variables (VAR/VAR0 system) ---
@@ -480,7 +481,7 @@ public sealed class GameWorld
             newSector.AddCharacter(ch);
             if (ch.IsPlayer)
             {
-                if (ch.IsOnline)
+                if (ch.IsOnline || ch.IsClientLingering)
                     newSector.AddOnlinePlayer(ch);
             }
             oldSector?.RemoveCharacter(ch);
@@ -528,7 +529,7 @@ public sealed class GameWorld
         }
         ch.Position = pos;
         sector.AddCharacter(ch);
-        if (ch.IsPlayer && ch.IsOnline)
+        if (ch.IsPlayer && (ch.IsOnline || ch.IsClientLingering))
             sector.AddOnlinePlayer(ch);
         else if (!ch.IsPlayer && _onlinePlayers.Count > 0)
             CharacterPlaced?.Invoke(ch);
@@ -937,7 +938,7 @@ public sealed class GameWorld
 
         foreach (var player in _onlinePlayers)
         {
-            if (player.IsDeleted || !player.IsOnline) continue;
+            if (player.IsDeleted || (!player.IsOnline && !player.IsClientLingering)) continue;
             int sx = player.X / Sector.SectorSize;
             int sy = player.Y / Sector.SectorSize;
             for (int dx = -ActiveSectorRadius; dx <= ActiveSectorRadius; dx++)
@@ -973,6 +974,8 @@ public sealed class GameWorld
             if (player.IsDeleted) continue;
             player.TickNotorietyDecay(currentTime);
         }
+
+        ExpireClientLingers();
     }
 
     /// <summary>Run a lightweight item-only tick on every sleeping sector that
@@ -1061,6 +1064,8 @@ public sealed class GameWorld
             player.TickNotorietyDecay(currentTime);
         }
 
+        ExpireClientLingers();
+
         // Sleeping sector maintenance — item timers, spawn points, decay in sectors
         // with no nearby players. Without this, remote spawns freeze in multicore mode.
         if (currentTime - _lastMaintenanceTick >= SleepingMaintenanceIntervalMs)
@@ -1071,6 +1076,22 @@ public sealed class GameWorld
 
         // Script TIMERF callbacks — must run in sequential phase (callbacks can mutate world).
         TickTimerF(currentTime);
+    }
+
+    private void ExpireClientLingers()
+    {
+        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        foreach (var player in _onlinePlayers.ToArray())
+        {
+            if (player.IsOnline ||
+                !player.TryGetTag("CLIENT_LINGER_UNTIL", out string? untilText) ||
+                !long.TryParse(untilText, out long until) || now < until)
+                continue;
+
+            player.RemoveTag("CLIENT_LINGER_UNTIL");
+            RemoveOnlinePlayer(player);
+            ClientLingerExpired?.Invoke(player);
+        }
     }
 
     /// <summary>

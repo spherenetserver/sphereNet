@@ -55,11 +55,8 @@ public sealed class ClientTargetState
     /// cancelled (-1 = none).</summary>
     public int SkillCancelId = -1;
 
-    /// <summary>Hard-reset the pending target flows — the former
-    /// GameClient.ClearPendingTargetState body, verbatim. Note: Kill,
-    /// Callback and SkillCancelId are deliberately NOT cleared here (the
-    /// original did not clear them either; the cancel path in Targeting
-    /// resets its own set inline).</summary>
+    /// <summary>Hard-reset every pending target flow, including callbacks and
+    /// the skill id associated with the cursor.</summary>
     public void Clear()
     {
         Tele = false;
@@ -86,6 +83,8 @@ public sealed class ClientTargetState
         ItemUid = Serial.Invalid;
         ScriptNewItem = null;
         LastScriptPoint = null;
+        Callback = null;
+        SkillCancelId = -1;
         CursorActive = false;
     }
 }

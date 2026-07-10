@@ -26,7 +26,7 @@ public sealed class GatheringEngine
 {
     private readonly GameWorld _world;
     private readonly TriggerDispatcher? _triggerDispatcher;
-    private readonly Random _rng = new();
+    private static Random Rng => Random.Shared;
 
     private const string TagResourceMarker = "RESOURCE_MARKER";
     private const string TagSkillType = "RES_SKILL";
@@ -112,6 +112,12 @@ public sealed class GatheringEngine
     /// </summary>
     public GatherResult TryGatherForSink(Character ch, SkillType skill, Point3D target)
     {
+        lock (_world)
+            return TryGatherForSinkCore(ch, skill, target);
+    }
+
+    private GatherResult TryGatherForSinkCore(Character ch, SkillType skill, Point3D target)
+    {
         if (!_skillTypeFilters.TryGetValue(skill, out var typeFilter))
             return new GatherResult { Handled = false };
 
@@ -153,7 +159,7 @@ public sealed class GatheringEngine
             resDef = DefinitionLoader.GetRegionResourceDef(ridIdx);
         if (resDef == null)
         {
-            var resRid = matchedType.SelectRandomResource(_rng);
+            var resRid = matchedType.SelectRandomResource(Rng);
             resDef = DefinitionLoader.GetRegionResourceDef(resRid.Index);
         }
         if (resDef == null)
@@ -162,6 +168,17 @@ public sealed class GatheringEngine
         // mr_nothing: weighted "found nothing" result (never persisted on a node)
         if (resDef.Reap == 0)
             return new GatherResult { Handled = true, Success = false };
+
+        // Bind the resource on the first strike, not the first success. A low
+        // skill character cannot reroll a difficult vein until an easy resource
+        // is selected simply by retrying the same tile.
+        if (marker == null)
+        {
+            int amtMin = Math.Clamp(resDef.AmountMin, 1, ushort.MaxValue);
+            int amtMaxInclusive = Math.Clamp(resDef.AmountMax, amtMin, ushort.MaxValue);
+            int amtMax = Math.Min(ushort.MaxValue + 1, amtMaxInclusive + 1);
+            marker = CreateMarker(target, skillTag, Rng.Next(amtMin, amtMax), resDef);
+        }
 
         // Top the vein up by the time elapsed since the last gather (partial regen)
         // before deciding whether it is depleted.
@@ -195,7 +212,9 @@ public sealed class GatheringEngine
 
         if (success)
         {
-            int reapAmount = _rng.Next(resDef.ReapAmountMin, resDef.ReapAmountMax + 1);
+            int reapMin = Math.Clamp(resDef.ReapAmountMin, 1, ushort.MaxValue);
+            int reapMax = Math.Clamp(resDef.ReapAmountMax, reapMin, ushort.MaxValue);
+            int reapAmount = Rng.Next(reapMin, reapMax + 1);
             ushort reapItemId = resDef.Reap;
 
             // @ResourceGather — RETURN 1 cancels the reap; the script may also
@@ -211,32 +230,25 @@ public sealed class GatheringEngine
                 if (_triggerDispatcher.FireResourceTrigger(resDef, "ResourceGather", ch, args) == TriggerResult.True)
                     return new GatherResult { Handled = true, Success = false };
                 if (args.N1 > 0 && args.N1 <= ushort.MaxValue) reapItemId = (ushort)args.N1;
-                if (args.N2 > 0) reapAmount = args.N2;
-            }
-
-            if (marker == null)
-            {
-                int amtMin = Math.Max(1, resDef.AmountMin);
-                int amtMax = Math.Max(amtMin + 1, resDef.AmountMax + 1); // guard Min>Max bad data
-                int poolAmount = _rng.Next(amtMin, amtMax);
-                marker = CreateMarker(target, skillTag, poolAmount, resDef);
+                if (args.N2 > 0) reapAmount = Math.Clamp(args.N2, 1, ushort.MaxValue);
             }
 
             // Never hand out more than the pool actually holds — otherwise a
             // near-empty node still yields a full reap.
-            int pool = GetPool(marker);
+            Item activeMarker = marker!;
+            int pool = GetPool(activeMarker);
             if (reapAmount > pool)
                 reapAmount = pool;
             if (reapAmount <= 0)
                 return new GatherResult { Handled = true, Success = false };
 
             int remaining = pool - reapAmount;
-            SetPool(marker, remaining);
-            SetLast(marker, Environment.TickCount64); // reset the regen clock on each gather
+            SetPool(activeMarker, remaining);
+            SetLast(activeMarker, Environment.TickCount64); // reset the regen clock on each gather
             if (remaining <= 0)
             {
                 long regenMs = resDef.Regen > 0 ? resDef.Regen * 1000L : 36_000_000L;
-                marker.DecayTime = Environment.TickCount64 + regenMs;
+                activeMarker.DecayTime = Environment.TickCount64 + regenMs;
             }
 
             var item = _world.CreateItem();
@@ -273,10 +285,11 @@ public sealed class GatheringEngine
             itemId = result.Item.BaseId;
             amount = result.Item.Amount;
 
-            if (ch.Backpack != null)
-                ch.Backpack.AddItem(result.Item);
-            else
+            var actual = ch.Backpack?.TryAddItemWithStack(result.Item);
+            if (actual == null)
                 _world.PlaceItemWithDecay(result.Item, ch.Position);
+            else if (actual != result.Item)
+                result.Item.Delete();
         }
 
         return true;

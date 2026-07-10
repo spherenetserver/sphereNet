@@ -64,7 +64,7 @@ public sealed class StableEngine
             ushort sv = pet.GetSkill(st);
             // Snapshot the FULL skill value (the engine supports up to 1200 / 120.0);
             // the old 1000 clip silently dropped GM+ pet skills on stabling.
-            if (sv > 0) skillSnap[(int)st] = Math.Min(sv, (ushort)1200);
+            if (sv > 0) skillSnap[(int)st] = sv;
         }
 
         list.Add(new StabledPet

@@ -113,6 +113,21 @@ public sealed class DefinitionLoader
     /// resolution without a GameClient reference).</summary>
     public static ResourceHolder? StaticResources => _resourcesStatic;
 
+    /// <summary>Clear process-wide definition registries between isolated unit
+    /// tests. Production reloads continue to use <see cref="LoadAll"/>.</summary>
+    internal static void ResetForTests()
+    {
+        _charDefs.Clear();
+        _itemDefs.Clear();
+        _skillClassDefs.Clear();
+        _regionResourceDefs.Clear();
+        _regionTypeDefs.Clear();
+        _skillDefs.Clear();
+        _templateDefs.Clear();
+        _resourcesStatic = null;
+        Diagnostic = null;
+    }
+
     /// <summary>Load all definitions from parsed resources.</summary>
     public void LoadAll()
     {

@@ -160,6 +160,14 @@ public sealed partial class GameClient
         if (charUid.IsValid)
             _character = _world.FindChar(charUid);
 
+        // Reconnecting during client linger resumes the same world object. Drop
+        // the temporary active-sector membership before EnterWorld adds it back.
+        if (_character?.IsClientLingering == true)
+        {
+            _character.RemoveTag("CLIENT_LINGER_UNTIL");
+            _world.RemoveOnlinePlayer(_character);
+        }
+
         if (_character == null)
         {
             _character = _world.CreateCharacter();
@@ -206,7 +214,7 @@ public sealed partial class GameClient
                 double skillScale = totalSkill > MaxTotalSkillPoints ? (double)MaxTotalSkillPoints / totalSkill : 1.0;
                 foreach (var (id, val) in info.Skills)
                 {
-                    if (id < (int)SkillType.Qty && val > 0)
+                    if (id >= 0 && id < SkillEngine.BaseSkillCount && val > 0)
                     {
                         int scaled = skillScale < 1.0 ? (int)(val * skillScale) : val;
                         _character.SetSkill((SkillType)id, (ushort)(scaled * 10));
@@ -786,7 +794,7 @@ public sealed partial class GameClient
         if (info == null) return;
         foreach (var (id, val) in info.Skills)
         {
-            if (val <= 0 || id < 0 || id >= (int)SkillType.Qty) continue;
+            if (val <= 0 || id < 0 || id >= SkillEngine.BaseSkillCount) continue;
             EquipNewbieSection(ch, ((SkillType)id).ToString().ToUpperInvariant());
         }
     }

@@ -112,7 +112,7 @@ public static class PetFigurine
         {
             if (st == SkillType.None || st >= SkillType.Qty) continue;
             ushort sv = pet.GetSkill(st);
-            if (sv > 0) skills[(int)st] = Math.Min(sv, (ushort)1200);
+            if (sv > 0) skills[(int)st] = sv;
         }
 
         var friends = new List<uint>();

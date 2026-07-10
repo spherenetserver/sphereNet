@@ -89,6 +89,7 @@ public static partial class Program
             _log.LogInformation("Initializing game engines...");
             GameClient.WalkBufferMax = Math.Max(1, _config.WalkBuffer);
             GameClient.WalkRegenPerSecond = Math.Max(0, _config.WalkRegen);
+            GameClient.ClientLingerSeconds = Math.Max(0, _config.ClientLinger);
             GameClient.MoveToleranceMs = 80;
             // After a movement rejection the client (ClassicUO) clears its step
             // queue, resets its walk sequence to 0 and resends from seq 0. The
@@ -294,11 +295,13 @@ public static partial class Program
             {
                 // N1 = skill, N2 = difficulty, N3 = rolled result (1/0). RETURN 1
                 // cancels the use; otherwise ARGN3 is read back as the final result.
-                SphereNet.Game.Objects.Characters.Character.OnSkillUseQuick = (ch, skillId, difficulty, result) =>
+                SphereNet.Game.Objects.Characters.Character.OnSkillUseQuickDetailed =
+                    (SphereNet.Game.Objects.Characters.Character ch, int skillId, ref int difficulty, int result) =>
                 {
                     var args = new TriggerArgs { CharSrc = ch, N1 = skillId, N2 = difficulty, N3 = result };
-                    if (_triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillUseQuick, args) == TriggerResult.True)
-                        return -1;
+                    var triggerResult = _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillUseQuick, args);
+                    difficulty = args.N2;
+                    if (triggerResult == TriggerResult.True) return -1;
                     return Math.Clamp(args.N3, 0, 1);
                 };
             }
@@ -387,6 +390,13 @@ public static partial class Program
                     gc.SendSkillList();
                 }
             };
+            SkillEngine.OnSkillDecrease = (ch, skill, newVal) =>
+            {
+                _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillChange,
+                    new TriggerArgs { CharSrc = ch, N1 = (int)skill, N2 = newVal, N3 = -1 });
+                if (ch.IsPlayer && _clientsByCharUid.TryGetValue(ch.Uid, out var gc))
+                    gc.SendSkillList();
+            };
             // Wire stat gain message (Source-X: "You feel stronger/more agile/smarter")
             SkillEngine.OnStatGain = (ch, statIdx, newVal) =>
             {
@@ -411,34 +421,21 @@ public static partial class Program
                     gc.SendCharacterStatus(ch);
                 }
             };
+            SkillEngine.OnStatDecrease = (ch, statIdx, newVal) =>
+            {
+                _triggerDispatcher.FireCharTrigger(ch, CharTrigger.StatChange,
+                    new TriggerArgs { CharSrc = ch, N1 = statIdx, N2 = newVal, N3 = -1 });
+                if (ch.IsPlayer && _clientsByCharUid.TryGetValue(ch.Uid, out var gc))
+                    gc.SendCharacterStatus(ch);
+            };
             // Wire scripted (custom) skill trigger chain
             SkillHandlers.OnScriptedSkillUse = (ch, skill) =>
             {
-                var args = new TriggerArgs { CharSrc = ch, N1 = (int)skill };
-
-                // @SkillSelect — return 1 cancels
-                var selResult = _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillSelect, args);
-                if (selResult == TriggerResult.True)
-                    return false;
-
-                // @SkillStart — scripts can set ACTDIFF via tags
-                _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillStart, args);
-
-                // Difficulty from ACTDIFF property (scripts set via ACTDIFF=, not TAG)
+                // The client action driver owns Select/PreStart/Start and the
+                // final Success/Fail dispatch. This callback resolves the roll.
                 int difficulty = ch.ActDiff != 0 ? ch.ActDiff : 50;
 
                 bool success = SkillEngine.CheckSuccess(ch, skill, difficulty);
-
-                if (success)
-                {
-                    _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillSuccess,
-                        new TriggerArgs { CharSrc = ch, N1 = (int)skill });
-                }
-                else
-                {
-                    _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillFail,
-                        new TriggerArgs { CharSrc = ch, N1 = (int)skill });
-                }
 
                 // Gain experience (fires @SkillGain via existing callback)
                 SkillEngine.GainExperience(ch, skill, success ? difficulty : -difficulty);
@@ -2291,6 +2288,13 @@ public static partial class Program
                 (ch, client) => _clientsByCharUid[ch.Uid] = client;
             SphereNet.Game.Clients.GameClient.OnCharacterOffline =
                 ch => { _clientsByCharUid.Remove(ch.Uid); _macroEngine?.OnCharDisconnect(ch.Uid.Value); };
+            SphereNet.Game.Objects.Characters.Character.OnDamageActionInterrupt = ch =>
+            {
+                if (_clientsByCharUid.TryGetValue(ch.Uid, out var client))
+                    client.CancelPendingCraftOnInterrupt();
+            };
+            _world.ClientLingerExpired += ch =>
+                BroadcastNearby(ch.Position, 18, new PacketDeleteObject(ch.Uid.Value), ch.Uid.Value);
             SphereNet.Game.Clients.GameClient.OnWakeNpc = WakeNpc;
             SphereNet.Game.Clients.GameClient.BotSpawnLocationProvider = acctName =>
             {

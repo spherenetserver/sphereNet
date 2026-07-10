@@ -77,7 +77,7 @@ public sealed class ClientViewUpdater
             if (ch == me || ch.IsDeleted) return;
             if (ch.IsStatFlag(Core.Enums.StatFlag.Ridden)) return;
 
-            bool isOfflinePlayer = ch.IsPlayer && !ch.IsOnline;
+            bool isOfflinePlayer = ch.IsPlayer && !ch.IsOnline && !ch.IsClientLingering;
             if (isOfflinePlayer && !me.AllShow)
                 return;
 
@@ -180,7 +180,7 @@ public sealed class ClientViewUpdater
                 !me.AllShow &&
                 me.PrivLevel < Core.Enums.PrivLevel.Counsel &&
                 !me.IsDead;
-            bool isOfflinePlayer = ch.IsPlayer && !ch.IsOnline;
+            bool isOfflinePlayer = ch.IsPlayer && !ch.IsOnline && !ch.IsClientLingering;
             bool isHidden = ch.IsInvisible || ch.IsStatFlag(Core.Enums.StatFlag.Hidden);
             bool canSeeHidden = me.AllShow ||
                 (me.PrivLevel >= Core.Enums.PrivLevel.Counsel &&

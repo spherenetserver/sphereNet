@@ -80,10 +80,16 @@ internal static class InfoSkillExtensions
         IsArmorPiece(it.ItemType) || IsWeapon(it.ItemType);
 
     public static bool IsArmorPiece(ItemType t) => t is
-        ItemType.Armor or ItemType.Shield or ItemType.Clothing or ItemType.Jewelry;
+        ItemType.Armor or ItemType.ArmorLeather or ItemType.ArmorBone or
+        ItemType.ArmorChain or ItemType.ArmorRing or ItemType.Shield or
+        ItemType.Clothing or ItemType.Jewelry;
 
     public static bool IsWeapon(ItemType t) => t is
-        ItemType.WeaponMaceSharp;
+        ItemType.WeaponMaceSharp or ItemType.WeaponMaceSmith or
+        ItemType.WeaponMaceStaff or ItemType.WeaponMaceCrook or
+        ItemType.WeaponMacePick or ItemType.WeaponSword or ItemType.WeaponAxe or
+        ItemType.WeaponFence or ItemType.WeaponBow or ItemType.WeaponXBow or
+        ItemType.WeaponThrowing or ItemType.WeaponWhip;
 
     /// <summary>
     /// Weapon type set that ArmsLore prints damage for. Source-X enumerates

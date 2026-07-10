@@ -103,7 +103,7 @@ public class TriggerCoverageGuardrailTests
         // Wired (now fired): ExpChange/ExpLevelChange (Character.ChangeExperience
         // pipeline — script EXP writes and DeathEngine kill awards);
         // Eat (food/booze use-item gate), SkillMenu (skill
-        // selection menu), SkillWait (per-tick skill-in-progress, IsTrigUsed-gated);
+        // selection menu), SkillWait (new action attempted while another is active);
         // Follow (pet "follow me"/"come" command), PartyDisband (party drops to 0);
         // SpellSelect (cast request, pre-checks), SpellBook (spellbook open);
         // PersonalSpace (movement shove), EffectAdd (spell effect applied, gated);

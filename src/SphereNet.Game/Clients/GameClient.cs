@@ -49,6 +49,7 @@ public sealed partial class GameClient : ITextConsole
     /// hardcoded mapping derived from client version.</summary>
     public static uint ServerFeatureFlags { get; set; }
     public static NotorietyHueSettings NotorietyHues { get; set; } = new();
+    public static int ClientLingerSeconds { get; set; } = 60;
     public static Func<string, Point3D?>? BotSpawnLocationProvider;
 
     private readonly NetState _netState;
@@ -201,18 +202,45 @@ public sealed partial class GameClient : ITextConsole
     {
         if (_character != null)
         {
+            bool wasOnline = _character.IsOnline;
+            long utcNow = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            bool campingSafe = _character.TryGetTag("CAMPING_SAFE_LOGOUT_UNTIL", out string? safeText) &&
+                long.TryParse(safeText, out long safeUntil) && utcNow <= safeUntil;
+            bool instantRegion = _world.FindRegion(_character.Position)?.IsFlag(RegionFlag.InstaLogout) == true;
+            bool safeLogout = campingSafe || instantRegion || _character.PrivLevel >= PrivLevel.GM;
+            bool linger = wasOnline && !safeLogout && !_character.IsDead && ClientLingerSeconds > 0;
+
             _logger.LogInformation("[LOGOUT] '{Name}' pos: {X},{Y},{Z} map={Map}",
                 _character.Name, _character.X, _character.Y, _character.Z, _character.Position.Map);
 
-            // YakÄ±ndaki oyunculara karakterin çÄ±ktÄ±ÄŸÄ±nÄ± bildir
-            BroadcastNearby?.Invoke(_character.Position, UpdateRange,
-                new PacketDeleteObject(_character.Uid.Value), _character.Uid.Value);
+            int abortedSkill = _character.ClearActiveSkillPending();
+            if (abortedSkill >= 0)
+                Character.ActiveSkillAborted?.Invoke(_character, abortedSkill);
+            _character.InterruptMeditation();
+            _character.ClearCastState();
+            _worldFeatures?.CancelPendingCraftOnDisconnect();
+            if (Targets.SkillCancelId >= 0)
+                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillTargetCancel,
+                    new TriggerArgs { CharSrc = _character, N1 = Targets.SkillCancelId });
+            if (_character.TryGetTag("SKILL_MENU_PENDING", out string? menuSkillText) &&
+                int.TryParse(menuSkillText, out int menuSkill))
+                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillAbort,
+                    new TriggerArgs { CharSrc = _character, N1 = menuSkill });
+
+            if (!linger)
+            {
+                BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                    new PacketDeleteObject(_character.Uid.Value), _character.Uid.Value);
+            }
 
             _systemHooks?.DispatchClient("disconnect", _character, _account);
             AbortActiveTradeOnDisconnect();
             ChatOnDisconnect();
             _partyManager?.Leave(_character.Uid);
             EngineTags.StripEphemeral(_character);
+            if (linger)
+                _character.SetTag("CLIENT_LINGER_UNTIL",
+                    (utcNow + (long)ClientLingerSeconds * 1000L).ToString());
 
             Targets.Callback = null;
             Targets.CursorActive = false;
@@ -237,7 +265,8 @@ public sealed partial class GameClient : ITextConsole
             _character.IsOnline = false;
             _character.CTags.RemoveByPrefix("");
             OnCharacterOffline?.Invoke(_character);
-            _world.RemoveOnlinePlayer(_character);
+            if (!linger)
+                _world.RemoveOnlinePlayer(_character);
             View.TooltipHashCache.Clear();
             View.KnownItems.Clear();
             View.KnownChars.Clear();

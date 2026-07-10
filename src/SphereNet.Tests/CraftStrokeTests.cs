@@ -121,4 +121,20 @@ public class CraftStrokeTests
             if (item.BaseId == 0x1BF2) ingots += item.Amount;
         Assert.Equal(20, ingots);
     }
+
+    [Fact]
+    public void Craft_TakingDamage_CancelsPendingStrokeLoop()
+    {
+        var (_, client, ch, _) = CreateCrafter();
+        var recipe = SwordRecipe();
+        ch.MaxHits = 100;
+        ch.Hits = 100;
+        Character.OnDamageActionInterrupt = _ => client.CancelPendingCraftOnInterrupt();
+
+        Assert.True(client.BeginPendingCraft(recipe, SkillType.Blacksmithing, reopenGump: false));
+        ch.Hits = 90;
+
+        // The original action was cancelled, so another recipe can start now.
+        Assert.True(client.BeginPendingCraft(recipe, SkillType.Blacksmithing, reopenGump: false));
+    }
 }

@@ -118,6 +118,11 @@ public class SkillDelayTests
     [Fact]
     public void MovementInterrupt_FiresSkillAbortAndClearsPendingSkill()
     {
+        LoadDefinitions("""
+            [SKILL 21]
+            FLAGS=skf_immobile
+            """);
+
         var oldAbort = Character.ActiveSkillAborted;
         try
         {
@@ -140,6 +145,27 @@ public class SkillDelayTests
         {
             Character.ActiveSkillAborted = oldAbort;
         }
+    }
+
+    [Fact]
+    public void Movement_DoesNotInterruptSkillWithoutImmobileFlag()
+    {
+        LoadDefinitions("""
+            [SKILL 21]
+            FLAGS=0
+            """);
+
+        var world = CreateWorld();
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
+        player.BeginSkillPending((int)SkillType.Hiding, Environment.TickCount64 + 10_000,
+            Environment.TickCount64 + 1_000, Serial.Invalid, null);
+
+        var movement = new SphereNet.Game.Movement.MovementEngine(world);
+
+        Assert.True(movement.TryMove(player, Direction.East, running: false, sequence: 1));
+        Assert.True(player.HasActiveSkillPending());
     }
 
     [Fact]

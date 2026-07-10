@@ -52,7 +52,7 @@ public static class ActiveSkillEngine
         if (success)
         {
             ch.SetStatFlag(StatFlag.Hidden);
-            ch.SetStatFlag(StatFlag.Invisible);
+            ch.ClearStatFlag(StatFlag.Invisible);
             sink.ObjectMessage(ch, ServerMessages.Get(Msg.HidingSuccess));
         }
         else
@@ -82,7 +82,7 @@ public static class ActiveSkillEngine
         {
             ch.StepStealth = (short)Math.Clamp(Math.Max(1, ch.GetSkill(SkillType.Stealth) / 100), 1, 10);
             ch.SetStatFlag(StatFlag.Hidden);
-            ch.SetStatFlag(StatFlag.Invisible);
+            ch.ClearStatFlag(StatFlag.Invisible);
             sink.SysMessage("You begin to move quietly.");
         }
         else
@@ -99,22 +99,26 @@ public static class ActiveSkillEngine
     public static bool DetectHidden(IActiveSkillSink sink)
     {
         var ch = sink.Self;
-        bool succeeded = SkillEngine.UseQuick(ch, SkillType.DetectingHidden, sink.Random.Next(50));
+        bool succeeded = SkillEngine.UseQuick(ch, SkillType.DetectingHidden, 10);
         if (!succeeded) return false;
 
-        sink.SysMessage(ServerMessages.Get(Msg.DetecthiddenSucc));
-
-        int detectSkill = ch.GetSkill(SkillType.DetectingHidden);
-        foreach (var nearby in sink.World.GetCharsInRange(ch.Position, 8))
+        int detectSkill = SkillEngine.GetAdjustedSkill(ch, SkillType.DetectingHidden);
+        int radius = Math.Max(0, SkillEngine.GetEffect(SkillType.DetectingHidden,
+            detectSkill, detectSkill / 100));
+        bool found = false;
+        foreach (var nearby in sink.World.GetCharsInRange(ch.Position, radius))
         {
-            if (nearby == ch || !nearby.IsStatFlag(StatFlag.Hidden)) continue;
-            int diff = detectSkill - nearby.GetSkill(SkillType.Hiding);
-            if (diff > 0 || sink.Random.Next(1000) < 300)
+            if (nearby == ch || !nearby.IsStatFlag(StatFlag.Hidden | StatFlag.Invisible)) continue;
+            int sourceRoll = detectSkill + sink.Random.Next(210) - 100;
+            int targetRoll = SkillEngine.GetAdjustedSkill(nearby, SkillType.Hiding) +
+                sink.Random.Next(210) - 100;
+            if (sourceRoll >= targetRoll && nearby.ClearHiddenState())
             {
-                nearby.ClearHiddenState();
+                sink.SysMessage(ServerMessages.Get(Msg.DetecthiddenSucc));
+                found = true;
             }
         }
-        return true;
+        return found;
     }
 
     // ----------------------------------------------------------- Meditation
@@ -142,13 +146,9 @@ public static class ActiveSkillEngine
         if (success)
         {
             ch.SetStatFlag(StatFlag.Meditation);
-            sink.Sound(0x0F9);
+            if (!SkillEngine.HasFlag(SkillType.Meditation, SkillFlag.NoSfx))
+                sink.Sound(0x0F9);
             sink.SysMessage(ServerMessages.Get(Msg.MeditationSuccess));
-            int gain = Math.Max(1, ch.GetSkill(SkillType.Meditation) / 100);
-            ch.Mana = (short)Math.Min(ch.MaxMana, ch.Mana + gain);
-
-            if (ch.Mana >= ch.MaxMana)
-                sink.SysMessage(ServerMessages.Get(Msg.MeditationPeace2));
         }
         return success;
     }
@@ -164,9 +164,12 @@ public static class ActiveSkillEngine
         bool success = SkillEngine.UseQuick(ch, SkillType.SpiritSpeak, sink.Random.Next(90));
         if (success)
         {
-            sink.Sound(0x24A);
+            if (!SkillEngine.HasFlag(SkillType.SpiritSpeak, SkillFlag.NoSfx))
+                sink.Sound(0x24A);
             sink.SysMessage(ServerMessages.Get(Msg.SpiritspeakSuccess));
             ch.SetStatFlag(StatFlag.SpiritSpeak);
+            ch.SetTag("SPIRITSPEAK_UNTIL",
+                (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 24_000).ToString());
         }
         return success;
     }
@@ -177,7 +180,10 @@ public static class ActiveSkillEngine
     public static bool Begging(IActiveSkillSink sink, Character? target)
     {
         var ch = sink.Self;
-        if (target == null || target.IsPlayer || target.NpcBrain != NpcBrainType.Human)
+        if (target == null || target.IsDeleted || target.IsDead || target.IsPlayer ||
+            target.NpcBrain != NpcBrainType.Human ||
+            !CanReachPoint(ch, target.Position, sink.World,
+                SkillEngine.GetUseRange(SkillType.Begging, 3)))
             return false;
 
         sink.Emote(ServerMessages.Get(Msg.BeggingStart));
@@ -207,10 +213,8 @@ public static class ActiveSkillEngine
             sink.SysMessage(ServerMessages.Get(Msg.StealingNothing));
             return false;
         }
-        var itemPos = target.ContainedIn.IsValid
-            ? ResolveItemOwner(target, sink.World)?.Position ?? target.Position
-            : target.Position;
-        if (itemPos.Map != ch.MapIndex || ch.Position.GetDistanceTo(itemPos) > 2)
+        Character? owner = ResolveItemOwner(target, sink.World);
+        if (!CanReachItem(ch, target, sink.World, SkillType.Stealing, 2))
         {
             sink.SysMessage("That is too far away.");
             return false;
@@ -228,7 +232,6 @@ public static class ActiveSkillEngine
             return false;
         }
 
-        Character? owner = ResolveItemOwner(target, sink.World);
         if (owner == ch)
             return false;
         if (owner != null)
@@ -246,13 +249,24 @@ public static class ActiveSkillEngine
 
         if (success)
         {
-            // Remove from source container first
+            Item? sourceContainer = null;
             if (target.ContainedIn.IsValid)
             {
-                var sourceContainer = sink.World.FindItem(target.ContainedIn);
+                sourceContainer = sink.World.FindItem(target.ContainedIn);
                 sourceContainer?.RemoveItem(target);
             }
-            ch.Backpack!.AddItem(target);
+
+            var actual = ch.Backpack!.TryAddItemWithStack(target);
+            if (actual == null)
+            {
+                if (sourceContainer?.TryAddItem(target) != true)
+                    sink.World.PlaceItemWithDecay(target, owner?.Position ?? ch.Position);
+                success = false;
+            }
+            else if (actual != target)
+            {
+                target.Delete();
+            }
         }
 
         // Source-X CChar::Skill_Stealing: every nearby witness who wins the
@@ -280,8 +294,7 @@ public static class ActiveSkillEngine
         }
 
         var ownerChar = ResolveItemOwner(container, sink.World);
-        var refPos = ownerChar?.Position ?? container.Position;
-        if (refPos.Map != ch.MapIndex || ch.Position.GetDistanceTo(refPos) > 2)
+        if (!CanReachItem(ch, container, sink.World, SkillType.Snooping, 2))
         {
             sink.SysMessage("That is too far away.");
             return false;
@@ -291,6 +304,8 @@ public static class ActiveSkillEngine
         bool success = SkillEngine.UseQuick(ch, SkillType.Snooping, sink.Random.Next(50));
         if (!success)
             sink.SysMessage(ServerMessages.Get(Msg.SnoopingFailed));
+        else
+            sink.OpenContainer(container);
 
         // Source-X CChar::Skill_Snooping: nearby witnesses may notice the snoop
         // (perception contest + the snoop-criminal chance). @SeeSnoop fires, the
@@ -319,8 +334,7 @@ public static class ActiveSkillEngine
             sink.SysMessage(ServerMessages.Get(Msg.LockpickingWitem));
             return false;
         }
-        if (lockedTarget.Position.Map != ch.MapIndex ||
-            ch.Position.GetDistanceTo(lockedTarget.Position) > 2)
+        if (!CanReachItem(ch, lockedTarget, sink.World, SkillType.Lockpicking, 2))
         {
             sink.SysMessage("That is too far away.");
             return false;
@@ -365,8 +379,7 @@ public static class ActiveSkillEngine
             sink.SysMessage(ServerMessages.Get(Msg.RemovetrapsWitem));
             return false;
         }
-        if (trap.Position.Map != ch.MapIndex ||
-            ch.Position.GetDistanceTo(trap.Position) > 2)
+        if (!CanReachItem(ch, trap, sink.World, SkillType.RemoveTrap, 2))
         {
             sink.SysMessage("That is too far away.");
             return false;
@@ -399,10 +412,19 @@ public static class ActiveSkillEngine
     /// branches emit specific DEFMSG_HEALING_* messages and consume the bandage on fail
     /// or success (per upstream).
     /// </summary>
-    public static bool Healing(IActiveSkillSink sink, Character? target)
+    public static bool Healing(IActiveSkillSink sink, Character? target,
+        SkillType healingSkill = SkillType.Healing, Item? selectedCorpse = null)
     {
         var ch = sink.Self;
         target ??= ch;
+
+        bool veterinary = healingSkill == SkillType.Veterinary;
+        if (veterinary && (target.IsPlayer || target.NpcBrain is not
+            (NpcBrainType.Animal or NpcBrainType.Monster or NpcBrainType.Berserk or NpcBrainType.Dragon)))
+        {
+            sink.SysMessage("You can only use veterinary care on animals.");
+            return false;
+        }
 
         var bandage = sink.FindBackpackItem(ItemType.Bandage);
         if (bandage == null)
@@ -411,7 +433,11 @@ public static class ActiveSkillEngine
             return false;
         }
 
-        if (GetDistance(ch.Position, target.Position) > 2)
+        Point3D healAnchor = selectedCorpse?.ItemType == ItemType.Corpse
+            ? selectedCorpse.Position
+            : target.Position;
+        if (!CanReachPoint(ch, healAnchor, sink.World,
+                SkillEngine.GetUseRange(healingSkill, 2)))
         {
             sink.SysMessage(ServerMessages.GetFormatted(Msg.HealingToofar, target.Name));
             return false;
@@ -434,10 +460,12 @@ public static class ActiveSkillEngine
         int diff = target.IsStatFlag(StatFlag.Dead) ? 85 + sink.Random.Next(25)
                  : target.IsStatFlag(StatFlag.Poisoned) ? 50 + sink.Random.Next(50)
                  : sink.Random.Next(80);
-        bool success = SkillEngine.UseQuick(ch, SkillType.Healing, diff);
+        bool success = SkillEngine.UseQuick(ch, healingSkill, diff);
 
-        sink.Animation((ushort)Core.Enums.AnimationType.Bow);
-        sink.Sound(0x0057);
+        if (!SkillEngine.HasFlag(healingSkill, SkillFlag.NoAnim))
+            sink.Animation((ushort)Core.Enums.AnimationType.Bow);
+        if (!SkillEngine.HasFlag(healingSkill, SkillFlag.NoSfx))
+            sink.Sound(0x0057);
         sink.ConsumeAmount(bandage); // Source-X consumes on fail too.
         // Used bandages become bloody bandages (Source-X parity).
         var bloody = sink.World.CreateItem();
@@ -451,7 +479,7 @@ public static class ActiveSkillEngine
 
         if (target.IsStatFlag(StatFlag.Poisoned))
         {
-            int skillLvl = ch.GetSkill(SkillType.Healing);
+            int skillLvl = ch.GetSkill(healingSkill);
             if (sink.Random.Next(1000) < skillLvl)
             {
                 target.CurePoison();
@@ -474,16 +502,18 @@ public static class ActiveSkillEngine
                 return false;
             }
 
-            var corpse = FindCorpseFor(sink.World, target);
+            var corpse = selectedCorpse?.ItemType == ItemType.Corpse
+                ? selectedCorpse
+                : FindCorpseFor(sink.World, target);
             if (corpse != null)
             {
-                var corpsePos = new Point3D(corpse.X, corpse.Y, corpse.Z, target.MapIndex);
-                if (GetDistance(target.Position, corpsePos) > 3)
+                var corpsePos = new Point3D(corpse.X, corpse.Y, corpse.Z, corpse.MapIndex);
+                if (!CanReachPoint(ch, corpsePos, sink.World, 3, requireLos: false))
                 {
                     sink.SysMessage(ServerMessages.Get(Msg.HealingResToofar));
                     return false;
                 }
-                if (!sink.World.CanSeeLOS(target.Position, corpsePos))
+                if (!sink.World.CanSeeLOS(ch.Position, corpsePos))
                 {
                     sink.SysMessage(ServerMessages.Get(Msg.HealingResLos));
                     return false;
@@ -496,7 +526,9 @@ public static class ActiveSkillEngine
         }
 
         // Anatomy contributes to the amount healed (Source-X heal formula).
-        int heal = ch.GetSkill(SkillType.Healing) / 40 + ch.GetSkill(SkillType.Anatomy) / 80 + 3;
+        int heal = veterinary
+            ? ch.GetSkill(SkillType.Veterinary) / 40 + ch.GetSkill(SkillType.AnimalLore) / 80 + 3
+            : ch.GetSkill(SkillType.Healing) / 40 + ch.GetSkill(SkillType.Anatomy) / 80 + 3;
         target.Hits = (short)Math.Min(target.MaxHits, target.Hits + heal);
         return true;
     }
@@ -529,7 +561,8 @@ public static class ActiveSkillEngine
             sink.SysMessage(ServerMessages.GetFormatted(Msg.TamingTame, target.Name));
             return false;
         }
-        if (ch.MapIndex != target.MapIndex || GetDistance(ch.Position, target.Position) > 6)
+        if (!CanReachPoint(ch, target.Position, sink.World,
+                SkillEngine.GetUseRange(SkillType.Taming, 6)))
         {
             sink.SysMessage(ServerMessages.Get(Msg.TamingLos));
             return false;
@@ -543,7 +576,10 @@ public static class ActiveSkillEngine
         // expects a 0-100 difficulty (it scales x10 internally vs the 0-1000
         // skill value), so map HP onto 0-100 — using the raw HP here made high-HP
         // creatures (dragons/bosses) mathematically un-tameable.
-        int diff = Math.Clamp(target.MaxHits / 10, 1, 100);
+        int tameRequirement = target.GetSkill(SkillType.Taming);
+        int diff = tameRequirement > 0
+            ? Math.Clamp(tameRequirement / 10, 1, 100)
+            : Math.Clamp(target.MaxHits / 10, 1, 100);
         bool success = SkillEngine.UseQuick(ch, SkillType.Taming, diff);
         if (success)
         {
@@ -574,6 +610,12 @@ public static class ActiveSkillEngine
             sink.SysMessage($"{animal.Name} {ServerMessages.Get(Msg.HerdingPlayer)}");
             return false;
         }
+        if (!CanReachPoint(ch, animal.Position, sink.World,
+                SkillEngine.GetUseRange(SkillType.Herding, 8)))
+        {
+            sink.SysMessage("That creature is too far away.");
+            return false;
+        }
         var crook = sink.FindBackpackItem(ItemType.WeaponMaceCrook);
         if (crook == null)
         {
@@ -581,9 +623,17 @@ public static class ActiveSkillEngine
             return false;
         }
 
+        if (!destination.HasValue || destination.Value.Map != ch.MapIndex ||
+            !CanReachPoint(ch, destination.Value, sink.World, 12))
+        {
+            sink.SysMessage("You cannot herd the animal there.");
+            return false;
+        }
+
+        DamageGatherTool(sink, crook);
         int diff = animal.Int / 2 + sink.Random.Next(Math.Max(1, animal.Int / 2));
         bool success = SkillEngine.UseQuick(ch, SkillType.Herding, diff);
-        if (success && destination.HasValue)
+        if (success)
         {
             sink.MoveCharacter(animal, destination.Value);
             animal.SetTag("HERD_MASTER", ch.Uid.Value.ToString());
@@ -596,7 +646,7 @@ public static class ActiveSkillEngine
     // ------------------------------------------------------------ Poisoning
 
     /// <summary>Source-X CChar::Skill_Poisoning. Apply potion poison level to target weapon.</summary>
-    public static bool Poisoning(IActiveSkillSink sink, Item? weapon)
+    public static bool Poisoning(IActiveSkillSink sink, Item? weapon, Item? selectedPotion = null)
     {
         var ch = sink.Self;
         if (weapon == null || !IsBladeOrFood(weapon.ItemType))
@@ -604,13 +654,20 @@ public static class ActiveSkillEngine
             sink.SysMessage(ServerMessages.Get(Msg.PoisoningWitem));
             return false;
         }
-
-        var potion = sink.FindBackpackItem(ItemType.Potion);
+        var potion = selectedPotion ?? sink.FindBackpackItem(ItemType.Potion);
         if (potion == null ||
+            !CanReachItem(ch, potion, sink.World, SkillType.Poisoning, 2,
+                requirePossession: true) ||
             !potion.TryGetTag("POTION_SPELL", out string? spell) ||
             !string.Equals(spell, "Poison", StringComparison.OrdinalIgnoreCase))
         {
             sink.SysMessage(ServerMessages.Get(Msg.PoisoningSelect1));
+            return false;
+        }
+        if (!CanReachItem(ch, weapon, sink.World, SkillType.Poisoning, 2,
+                requirePossession: true))
+        {
+            sink.SysMessage("You must have that item in your possession.");
             return false;
         }
 
@@ -631,15 +688,8 @@ public static class ActiveSkillEngine
     public static bool Tracking(IActiveSkillSink sink, TrackingCategory category)
     {
         var ch = sink.Self;
-        int range = 10 + ch.GetSkill(SkillType.Tracking) / 10;
-        int count = 0;
-
-        foreach (var c in sink.World.GetCharsInRange(ch.Position, range))
-        {
-            if (c == ch) continue;
-            if (!MatchesCategory(c, category)) continue;
-            count++;
-        }
+        var targets = FindTrackingTargets(sink, category);
+        int count = targets.Count;
 
         bool success = SkillEngine.UseQuick(ch, SkillType.Tracking, sink.Random.Next(50));
         if (!success || count == 0)
@@ -666,9 +716,74 @@ public static class ActiveSkillEngine
         return true;
     }
 
+    public static List<Character> FindTrackingTargets(IActiveSkillSink sink,
+        TrackingCategory category)
+    {
+        var ch = sink.Self;
+        int range = SkillEngine.GetUseRange(SkillType.Tracking,
+            10 + SkillEngine.GetAdjustedSkill(ch, SkillType.Tracking) / 10);
+        return sink.World.GetCharsInRange(ch.Position, range)
+            .Where(c => c != ch && !c.IsDeleted && !c.IsDead && MatchesCategory(c, category))
+            .OrderBy(c => ch.Position.GetDistanceTo(c.Position))
+            .ThenBy(c => c.Uid.Value)
+            .ToList();
+    }
+
     public enum TrackingCategory { Animals, Monsters, Humans, Players }
 
     // ----------------------------------------------------------- primitives
+
+    private static bool CanReachPoint(Character ch, Point3D point, GameWorld world,
+        int range, bool requireLos = true)
+    {
+        if (point.Map != ch.MapIndex || ch.Position.GetDistanceTo(point) > range)
+            return false;
+        return !requireLos || world.CanSeeLOS(ch.Position, point);
+    }
+
+    private static bool TryResolveItemTop(Item item, GameWorld world,
+        out Point3D position, out Character? owner)
+    {
+        owner = null;
+        var seen = new HashSet<uint>();
+        for (int depth = 0; depth < 32; depth++)
+        {
+            if (!seen.Add(item.Uid.Value))
+                break;
+            if (!item.ContainedIn.IsValid)
+            {
+                position = item.Position;
+                return true;
+            }
+
+            var holder = world.FindObject(item.ContainedIn);
+            if (holder is Character ch)
+            {
+                owner = ch;
+                position = ch.Position;
+                return true;
+            }
+            if (holder is Item parent)
+            {
+                item = parent;
+                continue;
+            }
+            break;
+        }
+
+        position = default;
+        return false;
+    }
+
+    private static bool CanReachItem(Character ch, Item item, GameWorld world,
+        SkillType skill, int fallbackRange, bool requirePossession = false)
+    {
+        if (item.IsDeleted || !TryResolveItemTop(item, world, out Point3D top, out Character? owner))
+            return false;
+        if (requirePossession && owner != ch)
+            return false;
+        return CanReachPoint(ch, top, world, SkillEngine.GetUseRange(skill, fallbackRange));
+    }
 
     private static Item? FindCorpseFor(GameWorld world, Character ghost)
     {
@@ -733,9 +848,10 @@ public static class ActiveSkillEngine
     {
         var ch = sink.Self;
 
-        BroadcastAnimation(ch, (ushort)AnimationType.Attack1HBash, 0x0125);
-
-        if (GetDistance(ch.Position, target) > 2)
+        int miningRange = SkillEngine.GetUseRange(SkillType.Mining, 2);
+        if (!CanReachPoint(ch, target, world, miningRange) ||
+            (ch.Position.GetDistanceTo(target) == 0 &&
+             !SkillEngine.HasFlag(SkillType.Mining, SkillFlag.NoMinDist)))
         {
             sink.SysMessage(ServerMessages.Get(Msg.MiningReach));
             return false;
@@ -762,6 +878,7 @@ public static class ActiveSkillEngine
             sink.SysMessage("You need a pickaxe to mine.");
             return false;
         }
+        BroadcastAnimation(ch, SkillType.Mining, (ushort)AnimationType.Attack1HBash, 0x0125);
         DamageGatherTool(sink, pickaxe);
 
         if (gatheringEngine != null)
@@ -924,9 +1041,10 @@ public static class ActiveSkillEngine
     {
         var ch = sink.Self;
 
-        BroadcastAnimation(ch, (ushort)AnimationType.AttackWeapon, 0x0240);
-
-        if (GetDistance(ch.Position, target) > 6)
+        int fishingRange = SkillEngine.GetUseRange(SkillType.Fishing, 6);
+        if (!CanReachPoint(ch, target, world, fishingRange) ||
+            (ch.Position.GetDistanceTo(target) == 0 &&
+             !SkillEngine.HasFlag(SkillType.Fishing, SkillFlag.NoMinDist)))
         {
             sink.SysMessage(ServerMessages.Get(Msg.FishingReach));
             return false;
@@ -946,6 +1064,7 @@ public static class ActiveSkillEngine
             sink.SysMessage("You need a fishing pole to fish.");
             return false;
         }
+        BroadcastAnimation(ch, SkillType.Fishing, (ushort)AnimationType.AttackWeapon, 0x0240);
         DamageGatherTool(sink, pole);
 
         if (gatheringEngine != null)
@@ -1000,9 +1119,10 @@ public static class ActiveSkillEngine
     {
         var ch = sink.Self;
 
-        BroadcastAnimation(ch, (ushort)AnimationType.Attack2HSlash, 0x013E);
-
-        if (GetDistance(ch.Position, target) > 2)
+        int lumberRange = SkillEngine.GetUseRange(SkillType.Lumberjacking, 2);
+        if (!CanReachPoint(ch, target, world, lumberRange) ||
+            (ch.Position.GetDistanceTo(target) == 0 &&
+             !SkillEngine.HasFlag(SkillType.Lumberjacking, SkillFlag.NoMinDist)))
         {
             sink.SysMessage(ServerMessages.Get(Msg.LumberjackingReach));
             return false;
@@ -1022,6 +1142,7 @@ public static class ActiveSkillEngine
             sink.SysMessage("You need an axe to chop wood.");
             return false;
         }
+        BroadcastAnimation(ch, SkillType.Lumberjacking, (ushort)AnimationType.Attack2HSlash, 0x013E);
         DamageGatherTool(sink, axe);
 
         if (gatheringEngine != null)
@@ -1110,12 +1231,18 @@ public static class ActiveSkillEngine
         }
     }
 
-    private static void BroadcastAnimation(Character ch, ushort animId, ushort soundId)
+    private static void BroadcastAnimation(Character ch, SkillType skill, ushort animId, ushort soundId)
     {
-        var animPkt = new SphereNet.Network.Packets.Outgoing.PacketAnimation(ch.Uid.Value, animId);
-        Character.BroadcastNearby?.Invoke(ch.Position, 18, animPkt, 0);
-        var soundPkt = new SphereNet.Network.Packets.Outgoing.PacketSound(soundId, ch.X, ch.Y, ch.Z);
-        Character.BroadcastNearby?.Invoke(ch.Position, 18, soundPkt, 0);
+        if (!SkillEngine.HasFlag(skill, SkillFlag.NoAnim))
+        {
+            var animPkt = new SphereNet.Network.Packets.Outgoing.PacketAnimation(ch.Uid.Value, animId);
+            Character.BroadcastNearby?.Invoke(ch.Position, 18, animPkt, 0);
+        }
+        if (!SkillEngine.HasFlag(skill, SkillFlag.NoSfx))
+        {
+            var soundPkt = new SphereNet.Network.Packets.Outgoing.PacketSound(soundId, ch.X, ch.Y, ch.Z);
+            Character.BroadcastNearby?.Invoke(ch.Position, 18, soundPkt, 0);
+        }
     }
 
     // ---------------------------------------------------------- Musicianship
@@ -1123,28 +1250,31 @@ public static class ActiveSkillEngine
     /// <summary>Source-X CChar::Skill_Musicianship. Requires a musical instrument.</summary>
     public static bool Musicianship(IActiveSkillSink sink)
     {
-        if (!HasMusicalInstrument(sink))
+        var instrument = FindMusicalInstrument(sink);
+        if (instrument == null)
         {
             sink.SysMessage("You have no musical instrument.");
             return false;
         }
-        sink.Sound(0x045);
+        DamageGatherTool(sink, instrument);
+        if (!SkillEngine.HasFlag(SkillType.Musicianship, SkillFlag.NoSfx))
+            sink.Sound(0x045);
         return SkillEngine.UseQuick(sink.Self, SkillType.Musicianship, 40);
     }
 
     // ----------------------------------------------------------- Peacemaking
 
     /// <summary>Source-X CChar::Skill_Peacemaking. Pacifies a creature.</summary>
-    public static bool Peacemaking(IActiveSkillSink sink, Character? target)
+    public static bool Peacemaking(IActiveSkillSink sink, Character? target = null)
     {
         var ch = sink.Self;
-        if (target == null || target.IsPlayer)
-            return false;
-        if (!HasMusicalInstrument(sink))
+        var instrument = FindMusicalInstrument(sink);
+        if (instrument == null)
         {
             sink.SysMessage("You have no musical instrument.");
             return false;
         }
+        DamageGatherTool(sink, instrument);
         if (!SkillEngine.UseQuick(ch, SkillType.Musicianship, 40))
             return false;
 
@@ -1155,9 +1285,17 @@ public static class ActiveSkillEngine
             return false;
         }
 
-        target.ClearStatFlag(StatFlag.War);
-        target.FightTarget = Serial.Invalid;
-        return true;
+        int radius = SkillEngine.GetUseRange(SkillType.Peacemaking, 8);
+        int pacified = 0;
+        foreach (var creature in sink.World.GetCharsInRange(ch.Position, radius))
+        {
+            if (creature == ch || creature.IsPlayer || creature.IsDead || creature.IsDeleted)
+                continue;
+            creature.ClearStatFlag(StatFlag.War);
+            creature.FightTarget = Serial.Invalid;
+            pacified++;
+        }
+        return pacified > 0;
     }
 
     // ----------------------------------------------------------- Discordance
@@ -1168,18 +1306,21 @@ public static class ActiveSkillEngine
     public static bool Discordance(IActiveSkillSink sink, Character? target)
     {
         var ch = sink.Self;
-        if (target == null || target.IsPlayer)
+        if (target == null || target.IsPlayer || target.IsDead || target.IsDeleted)
             return false;
-        if (ch.MapIndex != target.MapIndex || GetDistance(ch.Position, target.Position) > 8)
+        if (!CanReachPoint(ch, target.Position, sink.World,
+                SkillEngine.GetUseRange(SkillType.Enticement, 8)))
         {
             sink.SysMessage("That creature is too far away.");
             return false;
         }
-        if (!HasMusicalInstrument(sink))
+        var instrument = FindMusicalInstrument(sink);
+        if (instrument == null)
         {
             sink.SysMessage("You have no musical instrument.");
             return false;
         }
+        DamageGatherTool(sink, instrument);
         if (!SkillEngine.UseQuick(ch, SkillType.Musicianship, 40))
             return false;
         if (!SkillEngine.UseQuick(ch, SkillType.Enticement, 50))
@@ -1189,7 +1330,8 @@ public static class ActiveSkillEngine
         }
 
         // Defense penalty scales with skill (up to ~28%), lasting 20s.
-        int pct = Math.Clamp(ch.GetSkill(SkillType.Enticement) / 40, 1, 28);
+        int pct = Math.Clamp(SkillEngine.GetEffect(SkillType.Enticement,
+            ch.GetSkill(SkillType.Enticement), ch.GetSkill(SkillType.Enticement) / 40), 1, 100);
         target.SetTag("DISCORD_PCT", pct.ToString());
         target.SetTag("DISCORD_UNTIL", (Environment.TickCount64 + 20_000).ToString());
         sink.Emote("*plays discordant music*");
@@ -1199,26 +1341,32 @@ public static class ActiveSkillEngine
     // ----------------------------------------------------------- Provocation
 
     /// <summary>Source-X CChar::Skill_Provocation. Incites one creature against another.</summary>
-    public static bool Provocation(IActiveSkillSink sink, Character? target)
+    public static bool Provocation(IActiveSkillSink sink, Character? target,
+        Character? provokeAgainst = null)
     {
         var ch = sink.Self;
-        if (target == null || target.IsPlayer)
+        if (target == null || target.IsPlayer || target.IsDead || target.IsDeleted)
             return false;
-        if (ch.MapIndex != target.MapIndex || GetDistance(ch.Position, target.Position) > 8)
+        if (!CanReachPoint(ch, target.Position, sink.World,
+                SkillEngine.GetUseRange(SkillType.Provocation, 8)))
         {
             sink.SysMessage("That creature is too far away.");
             return false;
         }
-        if (!HasMusicalInstrument(sink))
+        var instrument = FindMusicalInstrument(sink);
+        if (instrument == null)
         {
             sink.SysMessage("You have no musical instrument.");
             return false;
         }
+        DamageGatherTool(sink, instrument);
         if (!SkillEngine.UseQuick(ch, SkillType.Musicianship, 40))
             return false;
 
-        var provokeAgainst = FindProvocationVictim(sink, target);
-        if (provokeAgainst == null)
+        if (provokeAgainst == null || provokeAgainst == target || provokeAgainst == ch ||
+            provokeAgainst.IsDead || provokeAgainst.IsDeleted ||
+            !CanReachPoint(ch, provokeAgainst.Position, sink.World,
+                SkillEngine.GetUseRange(SkillType.Provocation, 8)))
             return false;
 
         sink.Emote(ServerMessages.GetFormatted(Msg.ProvocationPlayer, target.Name));
@@ -1231,33 +1379,12 @@ public static class ActiveSkillEngine
         return true;
     }
 
-    private static Character? FindProvocationVictim(IActiveSkillSink sink, Character target)
+    private static Item? FindMusicalInstrument(IActiveSkillSink sink)
     {
-        Character? best = null;
-        int bestDist = int.MaxValue;
-        foreach (var c in sink.World.GetCharsInRange(target.Position, 12))
-        {
-            if (c == target || c == sink.Self || c.IsDead) continue;
-            int d = target.Position.GetDistanceTo(c.Position);
-            if (d < bestDist)
-            {
-                bestDist = d;
-                best = c;
-            }
-        }
-        return best;
-    }
-
-    private static bool HasMusicalInstrument(IActiveSkillSink sink)
-    {
-        var pack = sink.Self.Backpack;
-        if (pack == null) return false;
-        foreach (var it in pack.Contents)
-        {
-            if (it.ItemType == ItemType.Musical) return true;
-        }
+        var packed = sink.FindBackpackItem(ItemType.Musical);
+        if (packed != null) return packed;
         var hand = sink.Self.GetEquippedItem(Layer.OneHanded);
-        return hand?.ItemType == ItemType.Musical;
+        return hand?.ItemType == ItemType.Musical ? hand : null;
     }
 
     private static bool MatchesCategory(Character c, TrackingCategory cat) => cat switch
@@ -1278,6 +1405,12 @@ public static class ActiveSkillEngine
         if (target == null)
         {
             sink.SysMessage(ServerMessages.Get(Msg.RepairUnk));
+            return false;
+        }
+
+        if (!CanReachItem(ch, target, sink.World, SkillType.Tinkering, 2))
+        {
+            sink.SysMessage("You must have that item in your possession.");
             return false;
         }
 

@@ -60,6 +60,7 @@ public sealed class ClientWorldFeaturesHandler
     private GuildManager? _guildManager => _client.GuildM;
     private PartyManager? _partyManager => _client.PartyM;
     private SkillHandlers? _skillHandlers => _client.SkillH;
+    private ClientTargetState Targets => _client.Targets;
     private Mounts.MountEngine? _mountEngine => _client.MountE;
     private const int UpdateRange = GameClient.UpdateRange;
     private Action<Point3D, int, SphereNet.Network.Packets.PacketWriter, uint>? BroadcastNearby => _client.BroadcastNearby;
@@ -110,11 +111,17 @@ public sealed class ClientWorldFeaturesHandler
     private const int CraftButtonPrevPage = 2;
     private const int CraftButtonRecipeBase = 100;
 
-    public void OpenCraftingGump(SkillType craftSkill) => OpenCraftingGump(craftSkill, 0);
+    public void OpenCraftingGump(SkillType craftSkill) => OpenCraftingGump(craftSkill, 0, fireMenuTrigger: true);
 
-    private void OpenCraftingGump(SkillType craftSkill, int page)
+    private void OpenCraftingGump(SkillType craftSkill, int page, bool fireMenuTrigger = false)
     {
         if (_character == null || _craftingEngine == null) return;
+        if (!SkillHandlers.CanUse(_character, craftSkill)) return;
+
+        if (fireMenuTrigger &&
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillMenu,
+                new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill }) == TriggerResult.True)
+            return;
 
         var recipes = _craftingEngine.GetRecipesBySkill(craftSkill);
         if (recipes.Count == 0)
@@ -177,9 +184,9 @@ public sealed class ClientWorldFeaturesHandler
         SendGump(gump, (pressedButton, switches, textEntries) =>
         {
             if (pressedButton == CraftButtonNextPage)
-                OpenCraftingGump(craftSkill, capturedPage + 1);
+                OpenCraftingGump(craftSkill, capturedPage + 1, fireMenuTrigger: false);
             else if (pressedButton == CraftButtonPrevPage)
-                OpenCraftingGump(craftSkill, capturedPage - 1);
+                OpenCraftingGump(craftSkill, capturedPage - 1, fireMenuTrigger: false);
             else if (pressedButton >= CraftButtonRecipeBase)
             {
                 int index = capturedSkip + ((int)pressedButton - CraftButtonRecipeBase);
@@ -195,6 +202,7 @@ public sealed class ClientWorldFeaturesHandler
     private int _pendingCraftStrokes;
     private long _pendingCraftNextStroke;
     private bool _pendingCraftReopenGump;
+    private Point3D _pendingCraftStartPosition;
 
     /// <summary>Start a craft as a stroke loop (reference Skill_MakeItem →
     /// Skill_Stroke): two work strokes with the skill's DELAY-curve timeout
@@ -205,6 +213,13 @@ public sealed class ClientWorldFeaturesHandler
     {
         if (_character == null || _craftingEngine == null)
             return false;
+        if (!SkillHandlers.CanUse(_character, craftSkill))
+            return false;
+        if (_character.IsCasting || _character.HasActiveSkillPending())
+        {
+            SysMessage("You must wait to perform another action.");
+            return false;
+        }
         if (_pendingCraftRecipe != null)
         {
             SysMessage(ServerMessages.Get("craft_busy"));
@@ -216,6 +231,14 @@ public sealed class ClientWorldFeaturesHandler
             return false;
         }
 
+        if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillSelect,
+                new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill }) == TriggerResult.True ||
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillPreStart,
+                new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill }) == TriggerResult.True ||
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillStart,
+                new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill }) == TriggerResult.True)
+            return false;
+
         _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillMakeItem,
             new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill });
 
@@ -223,6 +246,7 @@ public sealed class ClientWorldFeaturesHandler
         _pendingCraftSkill = craftSkill;
         _pendingCraftStrokes = 2;
         _pendingCraftReopenGump = reopenGump;
+        _pendingCraftStartPosition = _character.Position;
         EmitCraftStroke(craftSkill);
         _pendingCraftNextStroke = Environment.TickCount64 + GetCraftStrokeIntervalMs(craftSkill);
         return true;
@@ -234,6 +258,13 @@ public sealed class ClientWorldFeaturesHandler
     {
         if (_pendingCraftRecipe == null || _character == null || _craftingEngine == null)
             return;
+        if (_character.IsDead || _character.IsDeleted ||
+            (SkillEngine.HasFlag(_pendingCraftSkill, SkillFlag.Immobile) &&
+             _character.Position != _pendingCraftStartPosition))
+        {
+            CancelPendingCraft();
+            return;
+        }
         if (Environment.TickCount64 < _pendingCraftNextStroke)
             return;
 
@@ -256,21 +287,47 @@ public sealed class ClientWorldFeaturesHandler
         if (!_craftingEngine.CanCraft(_character, recipe))
         {
             SysMessage(ServerMessages.Get("craft_fail"));
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillFail,
+                new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill });
+            if (reopen)
+                OpenCraftingGump(craftSkill, 0, fireMenuTrigger: false);
             return;
         }
 
         CompleteCraft(recipe, craftSkill, reopen);
     }
 
+    private void CancelPendingCraft(bool notify = true)
+    {
+        if (_pendingCraftRecipe == null)
+            return;
+        int skillId = (int)_pendingCraftSkill;
+        _pendingCraftRecipe = null;
+        _pendingCraftStrokes = 0;
+        _pendingCraftNextStroke = 0;
+        _triggerDispatcher?.FireCharTrigger(_character!, CharTrigger.SkillAbort,
+            new TriggerArgs { CharSrc = _character, N1 = skillId });
+        if (notify)
+            SysMessage("You stop what you were doing.");
+    }
+
+    internal void CancelPendingCraftOnInterrupt() => CancelPendingCraft();
+    internal void CancelPendingCraftOnDisconnect() => CancelPendingCraft(notify: false);
+
     private void EmitCraftStroke(SkillType craftSkill)
     {
         if (_character == null)
             return;
+        int stroke = 3 - _pendingCraftStrokes;
+        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillStroke,
+            new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill, N2 = stroke });
         var (craftAnim, craftSound) = GetCraftAnimAndSound(craftSkill);
-        BroadcastNearby?.Invoke(_character.Position, UpdateRange,
-            new PacketAnimation(_character.Uid.Value, craftAnim), 0);
-        BroadcastNearby?.Invoke(_character.Position, UpdateRange,
-            new PacketSound(craftSound, _character.X, _character.Y, _character.Z), 0);
+        if (!SkillEngine.HasFlag(craftSkill, SkillFlag.NoAnim))
+            BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                new PacketAnimation(_character.Uid.Value, craftAnim), 0);
+        if (!SkillEngine.HasFlag(craftSkill, SkillFlag.NoSfx))
+            BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                new PacketSound(craftSound, _character.X, _character.Y, _character.Z), 0);
     }
 
     private int GetCraftStrokeIntervalMs(SkillType craftSkill)
@@ -288,35 +345,44 @@ public sealed class ClientWorldFeaturesHandler
 
         if (result != null)
         {
+            _triggerDispatcher?.FireItemTrigger(result, ItemTrigger.Create,
+                new TriggerArgs { CharSrc = _character, ItemSrc = result });
+            string craftedName = result.GetName();
             var pack = _character.Backpack;
             if (pack != null)
             {
-                var actual = pack.AddItemWithStack(result);
+                var actual = pack.TryAddItemWithStack(result);
+                if (actual == null)
+                {
+                    _world.PlaceItemWithDecay(result, _character.Position);
+                    actual = result;
+                }
                 if (actual != result)
                     result.Delete();
 
-                _netState.Send(new PacketContainerItem(
-                    actual.Uid.Value, actual.DispIdFull, 0,
-                    actual.Amount, actual.X, actual.Y,
-                    pack.Uid.Value, actual.Hue,
-                    _netState.IsClientPost6017));
+                if (actual.ContainedIn == pack.Uid)
+                    _netState.Send(new PacketContainerItem(
+                        actual.Uid.Value, actual.DispIdFull, 0,
+                        actual.Amount, actual.X, actual.Y,
+                        pack.Uid.Value, actual.Hue,
+                        _netState.IsClientPost6017));
 
-                _triggerDispatcher?.FireItemTrigger(actual, ItemTrigger.Create,
-                    new TriggerArgs { CharSrc = _character, ItemSrc = actual });
             }
             else
             {
                 _world.PlaceItemWithDecay(result, _character.Position);
-                _triggerDispatcher?.FireItemTrigger(result, ItemTrigger.Create,
-                    new TriggerArgs { CharSrc = _character, ItemSrc = result });
             }
-            SysMessage(ServerMessages.GetFormatted("craft_success", result.GetName()));
+            SysMessage(ServerMessages.GetFormatted("craft_success", craftedName));
         }
         else
             SysMessage(ServerMessages.Get("craft_fail"));
 
+        _triggerDispatcher?.FireCharTrigger(_character,
+            result != null ? CharTrigger.SkillSuccess : CharTrigger.SkillFail,
+            new TriggerArgs { CharSrc = _character, N1 = (int)craftSkill });
+
         if (reopenGump)
-            OpenCraftingGump(craftSkill);
+            OpenCraftingGump(craftSkill, 0, fireMenuTrigger: false);
     }
 
     /// <summary>Handle vendor buy packet (0x3B).</summary>
@@ -1616,9 +1682,110 @@ public sealed class ClientWorldFeaturesHandler
     public void HandleUseSkill(int skillId)
     {
         if (_character == null || _character.IsDead) return;
-        if (skillId < 0 || skillId >= (int)SkillType.Qty) return;
+        if (skillId < 0 || skillId >= SkillEngine.BaseSkillCount) return;
 
         var skill = (SkillType)skillId;
+        if (!SkillHandlers.IsClientUsable(skill))
+        {
+            SysMessage("You cannot use that skill directly.");
+            return;
+        }
+
+        if (_character.IsStatFlag(StatFlag.Sleeping | StatFlag.Freeze | StatFlag.Stone) ||
+            _character.IsCasting)
+        {
+            SysMessage("You must wait to perform another action.");
+            return;
+        }
+        if (!SkillHandlers.CanUse(_character, skill))
+            return;
+
+        int menuSkill = _character.TryGetTag("SKILL_MENU_PENDING", out string? menuSkillText) &&
+            int.TryParse(menuSkillText, out int parsedMenuSkill) ? parsedMenuSkill : -1;
+        int currentSkill = _character.HasActiveSkillPending()
+            ? _character.SkillPendingId
+            : _pendingCraftRecipe != null ? (int)_pendingCraftSkill
+            : Targets.SkillCancelId >= 0 ? Targets.SkillCancelId
+            : menuSkill;
+        TriggerResult waitResult = TriggerResult.Default;
+        if (currentSkill >= 0)
+        {
+            var waitArgs = new TriggerArgs { CharSrc = _character, N1 = skillId, N2 = currentSkill };
+            waitResult = _triggerDispatcher?.FireCharTrigger(
+                _character, CharTrigger.SkillWait, waitArgs) ?? TriggerResult.Default;
+            if (waitResult == TriggerResult.True)
+                return;
+        }
+
+        if (currentSkill >= 0)
+        {
+            bool cancelCurrent = waitResult == TriggerResult.False ||
+                (currentSkill != skillId && (SkillType)currentSkill is
+                    SkillType.Meditation or SkillType.Hiding or SkillType.Stealth);
+            if (!cancelCurrent)
+            {
+                SysMessage("You must wait to perform another action.");
+                return;
+            }
+
+            if (_character.HasActiveSkillPending())
+            {
+                int aborted = _character.ClearActiveSkillPending();
+                if (aborted >= 0)
+                    Character.ActiveSkillAborted?.Invoke(_character, aborted);
+            }
+            CancelPendingCraft(notify: false);
+            if (Targets.SkillCancelId >= 0)
+            {
+                int cancelledTargetSkill = Targets.SkillCancelId;
+                _netState.Send(new PacketTarget(0x00, 0x00000000, flags: 3));
+                Targets.Clear();
+                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillTargetCancel,
+                    new TriggerArgs { CharSrc = _character, N1 = cancelledTargetSkill });
+            }
+            if (menuSkill >= 0)
+            {
+                _character.RemoveTag("SKILL_MENU_PENDING");
+                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillAbort,
+                    new TriggerArgs { CharSrc = _character, N1 = menuSkill });
+            }
+        }
+
+        if (_character.IsStatFlag(StatFlag.Meditation) && skill != SkillType.Meditation)
+            _character.InterruptMeditation();
+
+        if (skill is not (SkillType.Stealth or SkillType.Snooping or SkillType.Stealing))
+            _character.ClearHiddenState();
+
+        // Opening a craft menu is selection/UI. The chosen recipe owns the
+        // single SkillSelect/PreStart/Start/Stroke/Success chain.
+        if (!SkillEngine.HasFlag(skill, SkillFlag.Scripted) && SkillHandlers.IsCraftSkill(skill))
+        {
+            _character.Act = Serial.Invalid;
+            _character.ActPrv = Serial.Invalid;
+            _character.ActP = _character.Position;
+            _skillHandlers?.UseSkill(_character, skill);
+            return;
+        }
+
+        var selectResult = _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillSelect,
+            new TriggerArgs { CharSrc = _character, N1 = skillId }) ?? TriggerResult.Default;
+        if (selectResult == TriggerResult.True)
+            return;
+
+        // A fresh client action must not inherit object/point state from the
+        // previous skill (notably Camping, Poisoning and bard multi-targets).
+        _character.Act = Serial.Invalid;
+        _character.ActPrv = Serial.Invalid;
+        _character.ActP = _character.Position;
+
+        // SKF_SCRIPTED overrides the native implementation even for a built-in
+        // skill id. A prompt makes it targeted; otherwise it resolves at once.
+        if (SkillEngine.HasFlag(skill, SkillFlag.Scripted))
+        {
+            BeginActiveSkill(skill, skillId, SkillHandlers.GetActiveSkillTarget(skill));
+            return;
+        }
 
         // Source-X parity: information skills prompt for a target before emitting
         // any message. Route through the info-skill pipeline in BeginInfoSkill so

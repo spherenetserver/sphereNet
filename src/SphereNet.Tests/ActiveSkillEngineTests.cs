@@ -118,6 +118,23 @@ public class ActiveSkillEngineTests
     }
 
     [Fact]
+    public void Musicianship_WearsOutInstrumentOnUse()
+    {
+        var world = MakeWorld();
+        var ch = MakeChar();
+        ch.PrivLevel = PrivLevel.GM;
+        var sink = new RecordingActiveSink(ch, world);
+        var instrument = new Item { ItemType = ItemType.Musical, UsesRemaining = 1 };
+        sink.Pack[ItemType.Musical] = instrument;
+
+        Assert.True(ActiveSkillEngine.Musicianship(sink));
+
+        Assert.Single(sink.Consumed);
+        Assert.Same(instrument, sink.Consumed[0].Item);
+        Assert.Equal(0, instrument.UsesRemaining);
+    }
+
+    [Fact]
     public void Healing_NoBandage_RejectsWithNoaids()
     {
         var world = MakeWorld();

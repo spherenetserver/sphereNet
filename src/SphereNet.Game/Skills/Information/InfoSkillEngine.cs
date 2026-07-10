@@ -193,7 +193,7 @@ public static class InfoSkillEngine
         }
 
         // High-skill check: list base resources if any.
-        if (iSkillLevel > 400)
+        if (iSkillLevel > 40)
         {
             var def = Definitions.DefinitionLoader.GetItemDef(item.BaseId);
             if (def != null && def.BaseResources.Count > 0)
@@ -242,8 +242,8 @@ public static class InfoSkillEngine
 
         if (iSkillLevel > 400)
         {
-            int magerySkill = target.GetSkill(SkillType.Magery);
-            int necroSkill  = target.GetSkill(SkillType.Necromancy);
+            int magerySkill = SkillEngine.GetAdjustedSkill(target, SkillType.Magery);
+            int necroSkill  = SkillEngine.GetAdjustedSkill(target, SkillType.Necromancy);
             int magicSkill  = Math.Max(magerySkill, necroSkill);
 
             int iMagicEntry = Math.Clamp(magicSkill / 200, 0, s_evalIntMag.Length - 1);
@@ -405,6 +405,7 @@ public static class InfoSkillEngine
     {
         if (target is not Item item)
         {
+            if (fTest) return -SKTRIG_QTY;
             // Null/Character target -> self vs. someone else branch.
             if (target is Character ch && ch == sink.Self)
                 sink.SysMessage(ServerMessages.Get(Msg.TasteidSelf));
@@ -471,21 +472,49 @@ public static class InfoSkillEngine
     private static bool CanTouch(this Character self, Objects.ObjBase target)
     {
         if (self == target) return true;
-        var (tx, ty, tz) = ResolvePosition(target);
+        var (tx, ty, tz, map) = ResolvePosition(target);
+        if (map != self.MapIndex) return false;
         int dx = Math.Abs(self.Position.X - tx);
         int dy = Math.Abs(self.Position.Y - ty);
         int dist = Math.Max(dx, dy);
-        return dist <= 3;
+        if (dist > 3) return false;
+        var world = Objects.ObjBase.ResolveWorld?.Invoke();
+        return world == null || world.CanSeeLOS(self.Position,
+            new Point3D((short)tx, (short)ty, (sbyte)tz, map));
     }
 
-    private static (int X, int Y, int Z) ResolvePosition(Objects.ObjBase obj)
+    private static (int X, int Y, int Z, byte Map) ResolvePosition(Objects.ObjBase obj)
     {
         return obj switch
         {
-            Character c => (c.Position.X, c.Position.Y, c.Position.Z),
-            Item i      => (i.Position.X, i.Position.Y, i.Position.Z),
-            _           => (0, 0, 0),
+            Character c => (c.Position.X, c.Position.Y, c.Position.Z, c.MapIndex),
+            Item i      => ResolveItemPosition(i),
+            _           => (0, 0, 0, byte.MaxValue),
         };
+    }
+
+    private static (int X, int Y, int Z, byte Map) ResolveItemPosition(Item item)
+    {
+        var world = Objects.ObjBase.ResolveWorld?.Invoke();
+        if (world == null || !item.ContainedIn.IsValid)
+            return (item.Position.X, item.Position.Y, item.Position.Z, item.MapIndex);
+
+        var seen = new HashSet<uint>();
+        for (int depth = 0; depth < 32 && seen.Add(item.Uid.Value); depth++)
+        {
+            var holder = world.FindObject(item.ContainedIn);
+            if (holder is Character ch)
+                return (ch.Position.X, ch.Position.Y, ch.Position.Z, ch.MapIndex);
+            if (holder is Item parent)
+            {
+                item = parent;
+                if (!item.ContainedIn.IsValid)
+                    return (item.Position.X, item.Position.Y, item.Position.Z, item.MapIndex);
+                continue;
+            }
+            break;
+        }
+        return (0, 0, 0, byte.MaxValue);
     }
 
     private static string StatBandDesc(short stat, string[] bandKeys)

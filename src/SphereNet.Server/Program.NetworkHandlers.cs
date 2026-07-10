@@ -894,7 +894,8 @@ public static partial class Program
                 var parts = command.Split(' ');
                 if (parts.Length >= 3 && parts[0] == "SKILLLOCK" &&
                     ushort.TryParse(parts[1], out ushort sid) &&
-                    byte.TryParse(parts[2], out byte lockVal))
+                    sid < 58 &&
+                    byte.TryParse(parts[2], out byte lockVal) && lockVal <= 2)
                 {
                     client.Character?.SetSkillLock((SkillType)sid, lockVal);
                 }

@@ -31,7 +31,7 @@ public class SkillMagicPhase4Tests
         // not seedable per-test, so a high skill alone still fails on the curve's
         // tail ~2% of runs. This test only cares about the success-branch budget,
         // so force a deterministic success via GM auto-pass; StepStealth still
-        // derives purely from the (clamped) skill value.
+        // derives purely from the stored skill value (the step budget itself is capped).
         ch.PrivLevel = PrivLevel.GM;
         ch.SetSkill(SkillType.Stealth, 3000);
         ch.SetStatFlag(StatFlag.Hidden);
@@ -40,7 +40,8 @@ public class SkillMagicPhase4Tests
         var sink = new RecordingSkillSink(ch, world);
         Assert.True(ActiveSkillEngine.Stealth(sink));
         Assert.Equal(10, ch.StepStealth);
-        Assert.True(ch.IsStatFlag(StatFlag.Invisible));
+        Assert.True(ch.IsStatFlag(StatFlag.Hidden));
+        Assert.False(ch.IsStatFlag(StatFlag.Invisible));
     }
 
     [Fact]

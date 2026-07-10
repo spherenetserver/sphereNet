@@ -78,7 +78,7 @@ public sealed class ClientSkillsHandler
     /// </summary>
     internal void BeginInfoSkill(SkillType skill, int skillId)
     {
-        if (_character == null) return;
+        if (_character == null || _character.HasActiveSkillPending()) return;
 
         if (_triggerDispatcher != null)
         {
@@ -91,13 +91,18 @@ public sealed class ClientSkillsHandler
             if (start == TriggerResult.True) return;
         }
 
-        SysMessage($"What do you wish to use your {skill} skill on?");
+        SendSkillPrompt(DefinitionLoader.GetSkillDef(skillId),
+            $"What do you wish to use your {skill} skill on?");
         SetPendingTarget((serial, x, y, z, graphic) =>
         {
             if (_character == null) return;
+            Targets.SkillCancelId = -1;
 
             var uid = new Serial(serial);
             Objects.ObjBase? target = uid.IsValid ? _world.FindObject(uid) : null;
+
+            if (TryScheduleActiveSkillDelay(skill, skillId, uid, null, isInfo: true))
+                return;
 
             _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillStroke,
                 new TriggerArgs { CharSrc = _character, N1 = skillId });
@@ -112,6 +117,7 @@ public sealed class ClientSkillsHandler
                     new TriggerArgs { CharSrc = _character, N1 = skillId });
             }
         });
+        Targets.SkillCancelId = skillId;
     }
 
     /// <summary>
@@ -123,7 +129,7 @@ public sealed class ClientSkillsHandler
     /// </summary>
     internal void BeginActiveSkill(SkillType skill, int skillId, SkillHandlers.ActiveSkillTargetKind kind)
     {
-        if (_character == null) return;
+        if (_character == null || _character.HasActiveSkillPending()) return;
         _character.ResetSkillStrokeCount();
 
         if (_triggerDispatcher != null)
@@ -158,12 +164,17 @@ public sealed class ClientSkillsHandler
         }
 
         // Target-required path.
-        SysMessage(kind switch
+        var def = DefinitionLoader.GetSkillDef(skillId);
+        string fallbackPrompt = skill == SkillType.Poisoning
+            ? "Which poison potion do you wish to use?"
+            : kind switch
         {
             SkillHandlers.ActiveSkillTargetKind.Item => $"What item do you wish to use your {skill} skill on?",
+            SkillHandlers.ActiveSkillTargetKind.Object => $"What do you wish to use your {skill} skill on?",
             SkillHandlers.ActiveSkillTargetKind.Ground => $"Where do you wish to use your {skill} skill?",
             _ => $"Whom do you wish to use your {skill} skill on?"
-        });
+        };
+        SendSkillPrompt(def, fallbackPrompt);
 
         SetPendingTarget((serial, x, y, z, graphic) =>
         {
@@ -172,17 +183,105 @@ public sealed class ClientSkillsHandler
 
             var uid = new Serial(serial);
             Objects.ObjBase? target = uid.IsValid ? _world.FindObject(uid) : null;
-            var point = new Point3D(x, y, z);
+            var point = new Point3D(x, y, z, _character.MapIndex);
 
-            if (TryScheduleActiveSkillDelay(skill, skillId, uid, point))
+            if (skill == SkillType.Herding && target is Character herdAnimal)
+            {
+                BeginHerdingDestination(skill, skillId, herdAnimal);
                 return;
+            }
+            if (skill == SkillType.Provocation && target is Character provokeSource)
+            {
+                BeginProvocationTarget(skill, skillId, provokeSource);
+                return;
+            }
+            if (skill == SkillType.Poisoning && target is Item poisonPotion)
+            {
+                BeginPoisoningTarget(skill, skillId, poisonPotion);
+                return;
+            }
 
-            FireActiveSkillStroke(skillId);
-            var sink = new GameClient.InfoSkillSink(_client, _character);
-            bool ok = _skillHandlers?.UseActiveSkill(sink, skill, target, point) ?? false;
-            FireActiveSkillResult(skillId, ok);
+            ResolveActiveSkill(skill, skillId, uid, target, point);
         });
         Targets.SkillCancelId = skillId;
+    }
+
+    private void SendSkillPrompt(SkillDef? def, string fallback)
+    {
+        string prompt = def?.PromptMsg?.Trim() ?? string.Empty;
+        if (prompt.Length > 0)
+        {
+            SysMessage(prompt);
+            return;
+        }
+        if (uint.TryParse(def?.PromptCliloc, out uint cliloc) && cliloc > 0)
+        {
+            _netState.Send(new PacketClilocMessage(
+                0xFFFFFFFF, 0xFFFF, 6, 0x03B2, 3, cliloc, "System", ""));
+            return;
+        }
+        SysMessage(fallback);
+    }
+
+    private void BeginHerdingDestination(SkillType skill, int skillId, Character animal)
+    {
+        if (_character == null) return;
+        SysMessage("Where do you wish the animal to go?");
+        SetPendingTarget((serial, x, y, z, graphic) =>
+        {
+            if (_character == null) return;
+            Targets.SkillCancelId = -1;
+            _character.ActPrv = animal.Uid;
+            var point = new Point3D(x, y, z, _character.MapIndex);
+            ResolveActiveSkill(skill, skillId, animal.Uid, animal, point);
+        });
+        Targets.SkillCancelId = skillId;
+    }
+
+    private void BeginProvocationTarget(SkillType skill, int skillId, Character source)
+    {
+        if (_character == null) return;
+        SysMessage("Whom do you wish it to attack?");
+        SetPendingTarget((serial, x, y, z, graphic) =>
+        {
+            if (_character == null) return;
+            Targets.SkillCancelId = -1;
+            var uid = new Serial(serial);
+            var target = uid.IsValid ? _world.FindChar(uid) : null;
+            _character.ActPrv = source.Uid;
+            ResolveActiveSkill(skill, skillId, uid, target,
+                target?.Position ?? new Point3D(x, y, z, _character.MapIndex));
+        });
+        Targets.SkillCancelId = skillId;
+    }
+
+    private void BeginPoisoningTarget(SkillType skill, int skillId, Item potion)
+    {
+        if (_character == null) return;
+        SysMessage("What item do you wish to poison?");
+        SetPendingTarget((serial, x, y, z, graphic) =>
+        {
+            if (_character == null) return;
+            Targets.SkillCancelId = -1;
+            var uid = new Serial(serial);
+            var target = uid.IsValid ? _world.FindItem(uid) : null;
+            _character.ActPrv = potion.Uid;
+            ResolveActiveSkill(skill, skillId, uid, target,
+                target?.Position ?? new Point3D(x, y, z, _character.MapIndex));
+        });
+        Targets.SkillCancelId = skillId;
+    }
+
+    private void ResolveActiveSkill(SkillType skill, int skillId, Serial targetUid,
+        Objects.ObjBase? target, Point3D? point)
+    {
+        if (_character == null) return;
+        if (TryScheduleActiveSkillDelay(skill, skillId, targetUid, point))
+            return;
+        FireActiveSkillStroke(skillId);
+        var sink = new GameClient.InfoSkillSink(_client, _character);
+        bool ok = _skillHandlers?.UseActiveSkill(sink, skill, target, point) ?? false;
+        FireActiveSkillResult(skillId, ok);
     }
 
     private void FireActiveSkillStroke(int skillId)
@@ -202,6 +301,7 @@ public sealed class ClientSkillsHandler
 
     private static ushort GetSkillStrokeAnimation(SkillType skill) => skill switch
     {
+        _ when SkillEngine.HasFlag(skill, SkillFlag.NoAnim) => 0,
         SkillType.Mining => (ushort)AnimationType.Attack1HBash,
         SkillType.Lumberjacking => (ushort)AnimationType.Attack1HBash,
         SkillType.Fishing => (ushort)AnimationType.Attack2HBash,
@@ -219,9 +319,10 @@ public sealed class ClientSkillsHandler
             new TriggerArgs { CharSrc = _character, N1 = skillId });
     }
 
-    private bool TryScheduleActiveSkillDelay(SkillType skill, int skillId, Serial targetUid, Point3D? point)
+    private bool TryScheduleActiveSkillDelay(SkillType skill, int skillId, Serial targetUid,
+        Point3D? point, bool isInfo = false)
     {
-        if (_character == null) return false;
+        if (_character == null || _character.HasActiveSkillPending()) return false;
         int delayMs = SkillEngine.GetSkillDelayMs(skill, _character.GetSkill(skill));
         if (delayMs <= 0) return false;
 
@@ -231,7 +332,8 @@ public sealed class ClientSkillsHandler
             now + delayMs,
             now + SkillEngine.GetSkillStrokeIntervalMs(skill, _character.GetSkill(skill)),
             targetUid,
-            point);
+            point,
+            isInfo);
 
         FireActiveSkillStroke(skillId);
         return true;
@@ -240,6 +342,7 @@ public sealed class ClientSkillsHandler
     /// <summary>Advance delayed active skills (@SkillStroke loop + completion).</summary>
     public void TickPendingSkill()
     {
+        TickTrackingArrow();
         if (_character == null || !_character.HasActiveSkillPending())
             return;
 
@@ -255,12 +358,8 @@ public sealed class ClientSkillsHandler
 
         if (now < _character.SkillDelayEnd)
         {
-            // @SkillWait (Source-X) — the skill is still in progress this tick.
-            // Gated by IsTrigUsed so an unhooked @SkillWait costs nothing on the
-            // per-tick skill loop (no FireCharTrigger allocation).
-            if (_triggerDispatcher?.IsCharTriggerUsed(CharTrigger.SkillWait) == true)
-                _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillWait,
-                    new TriggerArgs { CharSrc = _character, N1 = skillId });
+            // The action is still in progress. @SkillWait belongs to attempts
+            // to start another action and is dispatched by HandleUseSkill.
             return;
         }
 
@@ -272,25 +371,36 @@ public sealed class ClientSkillsHandler
         if (_character == null) return;
 
         Serial targetUid = _character.SkillPendingTarget;
+        bool isInfo = _character.SkillPendingIsInfo;
         Point3D? point = null;
         if (_character.TryGetSkillPendingPoint(out Point3D pt))
-            point = new Point3D(pt.X, pt.Y, pt.Z, _character.MapIndex);
+            point = pt;
 
         _character.ClearActiveSkillPending();
 
         Objects.ObjBase? target = targetUid.IsValid ? _world.FindObject(targetUid) : null;
         var sink = new GameClient.InfoSkillSink(_client, _character);
-        bool ok = _skillHandlers?.UseActiveSkill(sink, skill, target, point) ?? false;
+        bool ok = isInfo
+            ? _skillHandlers?.UseInfoSkill(sink, skill, target) ?? false
+            : _skillHandlers?.UseActiveSkill(sink, skill, target, point) ?? false;
         FireActiveSkillResult(skillId, ok);
     }
 
     private void ShowTrackingMenu(SkillType skill, int skillId)
     {
         if (_character == null) return;
+        _character.SetTag("SKILL_MENU_PENDING", skillId.ToString());
 
         // @SkillMenu (Source-X) — a skill opened a selection menu. N1 = skill.
-        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillMenu,
-            new TriggerArgs { CharSrc = _character, N1 = skillId });
+        TriggerResult menuResult = _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillMenu,
+            new TriggerArgs { CharSrc = _character, N1 = skillId }) ?? TriggerResult.Default;
+        if (menuResult == TriggerResult.True)
+        {
+            _character.RemoveTag("SKILL_MENU_PENDING");
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillAbort,
+                new TriggerArgs { CharSrc = _character, N1 = skillId });
+            return;
+        }
 
         var gump = new GumpBuilder(_character.Uid.Value, 0, 300, 220);
         gump.AddResizePic(0, 0, 5054, 300, 220);
@@ -301,18 +411,31 @@ public sealed class ClientSkillsHandler
         gump.AddText(70, 85, 0, "Monsters");
         gump.AddButton(30, 115, 4005, 4007, 3);
         gump.AddText(70, 115, 0, "Humans");
+        gump.AddButton(30, 145, 4005, 4007, 4);
+        gump.AddText(70, 145, 0, "Players");
         gump.AddButton(150, 175, 4017, 4019, 0);
         gump.AddText(190, 175, 0, "Cancel");
 
         SendGump(gump, (buttonId, switches, textEntries) =>
         {
-            if (_character == null || buttonId == 0) return;
+            if (_character == null) return;
+            if (!_character.TryGetTag("SKILL_MENU_PENDING", out string? pendingText) ||
+                !int.TryParse(pendingText, out int pendingId) || pendingId != skillId)
+                return;
+            _character.RemoveTag("SKILL_MENU_PENDING");
+            if (buttonId == 0)
+            {
+                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillAbort,
+                    new TriggerArgs { CharSrc = _character, N1 = skillId });
+                return;
+            }
 
             var category = buttonId switch
             {
                 1 => Skills.Information.ActiveSkillEngine.TrackingCategory.Animals,
                 2 => Skills.Information.ActiveSkillEngine.TrackingCategory.Monsters,
                 3 => Skills.Information.ActiveSkillEngine.TrackingCategory.Humans,
+                4 => Skills.Information.ActiveSkillEngine.TrackingCategory.Players,
                 _ => Skills.Information.ActiveSkillEngine.TrackingCategory.Animals,
             };
 
@@ -320,6 +443,7 @@ public sealed class ClientSkillsHandler
                 new TriggerArgs { CharSrc = _character, N1 = skillId });
 
             var sink = new GameClient.InfoSkillSink(_client, _character);
+            var targets = Skills.Information.ActiveSkillEngine.FindTrackingTargets(sink, category);
             bool ok = Skills.Information.ActiveSkillEngine.Tracking(sink, category);
 
             if (_triggerDispatcher != null)
@@ -328,7 +452,60 @@ public sealed class ClientSkillsHandler
                     ok ? CharTrigger.SkillSuccess : CharTrigger.SkillFail,
                     new TriggerArgs { CharSrc = _character, N1 = skillId });
             }
+
+            if (ok)
+                ShowTrackingTargets(targets);
         });
+    }
+
+    private void ShowTrackingTargets(IReadOnlyList<Character> targets)
+    {
+        if (_character == null || targets.Count == 0) return;
+        var visible = targets.Take(15).ToArray();
+        int height = 70 + visible.Length * 24;
+        var gump = new GumpBuilder(_character.Uid.Value, 0, 360, height);
+        gump.AddResizePic(0, 0, 5054, 360, height);
+        gump.AddText(25, 15, 0, "What do you wish to track?");
+        for (int i = 0; i < visible.Length; i++)
+        {
+            gump.AddButton(25, 50 + i * 24, 4005, 4007, i + 1);
+            int distance = _character.Position.GetDistanceTo(visible[i].Position);
+            gump.AddText(65, 50 + i * 24, 0, $"{visible[i].Name} ({distance})");
+        }
+        SendGump(gump, (buttonId, switches, entries) =>
+        {
+            if (_character == null || buttonId == 0 || buttonId > (uint)visible.Length) return;
+            var target = visible[(int)buttonId - 1];
+            if (target.IsDeleted || target.IsDead || target.MapIndex != _character.MapIndex) return;
+            _character.SetTag("TRACKING_TARGET", target.Uid.Value.ToString());
+            _character.SetTag("TRACKING_UNTIL", (Environment.TickCount64 + 30_000).ToString());
+            _character.SetTag("TRACKING_ARROW_NEXT", "0");
+            TickTrackingArrow();
+        });
+    }
+
+    private void TickTrackingArrow()
+    {
+        if (_character == null || !_character.TryGetTag("TRACKING_TARGET", out string? uidText) ||
+            !uint.TryParse(uidText, out uint uid))
+            return;
+        long now = Environment.TickCount64;
+        if (_character.TryGetTag("TRACKING_ARROW_NEXT", out string? nextText) &&
+            long.TryParse(nextText, out long next) && now < next)
+            return;
+        bool expired = !_character.TryGetTag("TRACKING_UNTIL", out string? untilText) ||
+            !long.TryParse(untilText, out long until) || now >= until;
+        var target = expired ? null : _world.FindChar(new Serial(uid));
+        if (target == null || target.IsDeleted || target.IsDead || target.MapIndex != _character.MapIndex)
+        {
+            _netState.Send(new PacketArrowQuest(false, 0, 0));
+            _character.RemoveTag("TRACKING_TARGET");
+            _character.RemoveTag("TRACKING_UNTIL");
+            _character.RemoveTag("TRACKING_ARROW_NEXT");
+            return;
+        }
+        _netState.Send(new PacketArrowQuest(true, (ushort)target.X, (ushort)target.Y));
+        _character.SetTag("TRACKING_ARROW_NEXT", (now + 1000).ToString());
     }
 
     /// <summary>Source-X addObjMessage: overhead speech over any ObjBase.</summary>

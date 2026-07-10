@@ -14,9 +14,8 @@ namespace SphereNet.Tests;
 
 // Verifies the wired P1 triggers @Eat, @SkillMenu and @SkillWait. @Eat fires (and
 // can block) on eating/drinking; @SkillMenu fires when a skill opens a selection
-// menu (Tracking); @SkillWait fires each tick while a delayed skill is still in
-// progress and is IsTrigUsed-gated so the per-tick loop costs nothing when nobody
-// hooks it.
+// menu (Tracking); @SkillWait fires when another skill is requested while an
+// action is already in progress.
 public class P1SkillEventTriggerTests
 {
     private static GameWorld CreateWorld()
@@ -102,21 +101,26 @@ public class P1SkillEventTriggerTests
     }
 
     [Fact]
-    public void SkillWait_PendingSkillTick_FiresWhenHooked()
+    public void SkillWait_NewSkillAttempt_FiresWithRequestedAndCurrentSkill()
     {
         var world = CreateWorld();
         var (client, player, d, _) = Setup(world);
-        int waitSkill = -1;
-        d.RegisterCharEvent("EVENTSPLAYER", "SkillWait", (_, a) => { waitSkill = a.N1; return TriggerResult.Default; });
+        int requestedSkill = -1;
+        int currentSkill = -1;
+        d.RegisterCharEvent("EVENTSPLAYER", "SkillWait", (_, a) =>
+        {
+            requestedSkill = a.N1;
+            currentSkill = a.N2;
+            return TriggerResult.Default;
+        });
 
-        // Pending skill: delay far ahead, next stroke parked far ahead so only the
-        // "still waiting" branch runs this tick.
         int skillId = (int)SkillType.Hiding;
         player.BeginSkillPending(skillId, delayEnd: long.MaxValue / 2, strokeNext: long.MaxValue / 2, Serial.Invalid, null);
 
-        client.TickPendingSkill();
+        client.HandleUseSkill((int)SkillType.Tracking);
 
-        Assert.Equal(skillId, waitSkill); // @SkillWait fired (IsTrigUsed gate open)
-        Assert.True(player.HasActiveSkillPending()); // still waiting, not completed
+        Assert.Equal((int)SkillType.Tracking, requestedSkill);
+        Assert.Equal(skillId, currentSkill);
+        Assert.False(player.HasActiveSkillPending()); // Hiding can be replaced by another skill.
     }
 }

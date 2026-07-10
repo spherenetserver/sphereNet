@@ -533,17 +533,24 @@ public class Item : ObjBase
 
     public const int MaxContainerItems = 500;
 
-    public void AddItem(Item item)
+    /// <summary>Try to add an item without silently losing the operation when the
+    /// container is full. Returns true only when containment was established.</summary>
+    public bool TryAddItem(Item item)
     {
         if (_contents.Count >= MaxContainerItems)
-            return;
-        if (item == this) return;
-        if (item.ContainsInSubtree(Uid)) return;
+            return false;
+        if (item == this) return false;
+        if (item.ContainsInSubtree(Uid)) return false;
+        if (_contents.Contains(item))
+            return item.ContainedIn == Uid;
         _contents.Add(item);
         item.ContainedIn = Uid;
         if (item.X == 0 && item.Y == 0)
             AssignRandomContainerPosition(this, item);
+        return true;
     }
+
+    public void AddItem(Item item) => TryAddItem(item);
 
     private bool ContainsInSubtree(Serial targetUid, int maxDepth = 16)
     {
@@ -586,6 +593,15 @@ public class Item : ObjBase
             return false;
 
         if (_more1 != other._more1 || _more2 != other._more2) return false;
+        if (_moreB != other._moreB || _moreP != other._moreP || _link != other._link ||
+            _price != other._price || _quality != other._quality ||
+            _hitsCur != other._hitsCur || _hitsMax != other._hitsMax ||
+            _crafter != other._crafter || _usesRemaining != other._usesRemaining ||
+            _dispId != other._dispId || _type != other._type ||
+            _tdata1 != other._tdata1 || _tdata2 != other._tdata2 ||
+            _tdata3 != other._tdata3 || _tdata4 != other._tdata4 ||
+            !string.Equals(Name, other.Name, StringComparison.Ordinal))
+            return false;
 
         // Two piles only merge when their tags match. Source-X CItem::Stack
         // compares m_TagDefs (and the ATTR_* flags, which SphereNet stores as
@@ -652,6 +668,12 @@ public class Item : ObjBase
     }
 
     public Item AddItemWithStack(Item item)
+        => TryAddItemWithStack(item) ?? item;
+
+    /// <summary>Add or merge an item and report a full-container failure with
+    /// null. Callers that transfer ownership can then roll back or bounce the
+    /// item instead of sending a packet for an item that was never contained.</summary>
+    public Item? TryAddItemWithStack(Item item)
     {
         foreach (var existing in _contents)
         {
@@ -661,8 +683,7 @@ public class Item : ObjBase
                 return existing;
             }
         }
-        AddItem(item);
-        return item;
+        return TryAddItem(item) ? item : null;
     }
 
     public bool RemoveItem(Item item)

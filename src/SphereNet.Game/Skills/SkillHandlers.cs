@@ -38,73 +38,103 @@ public sealed class SkillHandlers
     /// message output. <see cref="GameClient.HandleUseSkill"/> detects these
     /// skills, opens a target cursor, and routes the resolved object here.
     ///
-    /// Returns true when the underlying skill check succeeded (gain applies);
-    /// regardless, the sink has already received the Source-X text.
+    /// Returns true when the difficulty probe and skill roll succeed. Descriptive
+    /// output and mutations run only in the success stage.
     /// </summary>
     public bool UseInfoSkill(IInfoSkillSink sink, SkillType skill, ObjBase? target)
     {
         var ch = sink.Self;
-        if (ch.IsDead) return false;
+        if (!CanUse(ch, skill)) return false;
 
-        int level = ch.GetSkill(skill);
-        switch (skill)
+        if (target == null || !CanInspectTarget(ch, target, skill))
+            return false;
+
+        int level = SkillEngine.GetAdjustedSkill(ch, skill);
+        int difficulty = skill switch
         {
-            case SkillType.Anatomy:
-                InfoSkillEngine.Anatomy(sink, target as Character ?? ch, level);
-                return SkillEngine.UseQuick(ch, skill, 30);
+            SkillType.Anatomy when target is Character c => InfoSkillEngine.Anatomy(sink, c, level, true),
+            SkillType.AnimalLore when target is Character c => InfoSkillEngine.AnimalLore(sink, c, _world, level, true),
+            SkillType.ArmsLore when target is Item item => InfoSkillEngine.ArmsLore(sink, item, level, true),
+            SkillType.EvalInt when target is Character c => InfoSkillEngine.EvalInt(sink, c, level, true),
+            SkillType.Forensics when target is Item corpse => InfoSkillEngine.Forensics(sink, corpse, null, 0, false, false, level, true),
+            SkillType.ItemId => InfoSkillEngine.ItemID(sink, target, level, true),
+            SkillType.TasteId => InfoSkillEngine.TasteID(sink, target, level, true),
+            _ => -1,
+        };
+        if (difficulty < 0 || !SkillEngine.UseQuick(ch, skill, difficulty))
+            return false;
 
-            case SkillType.AnimalLore:
-                InfoSkillEngine.AnimalLore(sink, target as Character ?? ch, _world, level);
-                return SkillEngine.UseQuick(ch, skill, 30);
+        return skill switch
+        {
+            SkillType.Anatomy when target is Character c => InfoSkillEngine.Anatomy(sink, c, level) >= 0,
+            SkillType.AnimalLore when target is Character c => InfoSkillEngine.AnimalLore(sink, c, _world, level) >= 0,
+            SkillType.ArmsLore when target is Item item => InfoSkillEngine.ArmsLore(sink, item, level) >= 0,
+            SkillType.EvalInt when target is Character c => InfoSkillEngine.EvalInt(sink, c, level) >= 0,
+            SkillType.Forensics when target is Item corpse => RunForensics(sink, corpse, level),
+            SkillType.ItemId => InfoSkillEngine.ItemID(sink, target, level) >= 0,
+            SkillType.TasteId => InfoSkillEngine.TasteID(sink, target, level) >= 0,
+            _ => false,
+        };
+    }
 
-            case SkillType.ArmsLore:
-                InfoSkillEngine.ArmsLore(sink, target as Item, level);
-                return SkillEngine.UseQuick(ch, skill, 30);
+    private bool RunForensics(IInfoSkillSink sink, Item corpse, int level)
+    {
+        Serial killerUid = ResolveKillerUid(corpse);
+        Character? killer = killerUid.IsValid ? _world.FindChar(killerUid) : null;
+        long secs = corpse.TryGetTag("DEATH_TIME", out string? ds) && long.TryParse(ds, out long dt)
+            ? Math.Max(0, (Environment.TickCount64 - dt) / 1000)
+            : 0;
+        bool sleeping = corpse.TryGetTag("CORPSE_SLEEPING", out string? sv) && sv == "1";
+        bool carved = corpse.TryGetTag("CORPSE_CARVED", out string? cv) && cv == "1";
+        return InfoSkillEngine.Forensics(sink, corpse, killer, secs, sleeping, carved, level) >= 0;
+    }
 
-            case SkillType.EvalInt:
-                InfoSkillEngine.EvalInt(sink, target as Character ?? ch, level);
-                return SkillEngine.UseQuick(ch, skill, 30);
-
-            case SkillType.Forensics:
-                if (target is Item corpse && corpse.ItemType == ItemType.Corpse)
-                {
-                    Serial killerUid = ResolveKillerUid(corpse);
-                    Character? killer = killerUid.IsValid ? _world.FindChar(killerUid) : null;
-                    long secs = corpse.TryGetTag("DEATH_TIME", out string? ds) && long.TryParse(ds, out long dt)
-                        ? Math.Max(0, (Environment.TickCount64 - dt) / 1000)
-                        : 0;
-                    bool sleeping = corpse.TryGetTag("CORPSE_SLEEPING", out string? sv) && sv == "1";
-                    bool carved = corpse.TryGetTag("CORPSE_CARVED", out string? cv) && cv == "1";
-                    InfoSkillEngine.Forensics(sink, corpse, killer, secs, sleeping, carved, level);
-                }
-                else
-                {
-                    InfoSkillEngine.Forensics(sink, target as Item, null, 0, false, false, level);
-                }
-                return SkillEngine.UseQuick(ch, skill, 30);
-
-            case SkillType.ItemId:
-                InfoSkillEngine.ItemID(sink, (object?)target ?? ch, level);
-                return SkillEngine.UseQuick(ch, skill, 30);
-
-            case SkillType.TasteId:
-                InfoSkillEngine.TasteID(sink, (object?)target ?? ch, level);
-                return SkillEngine.UseQuick(ch, skill, 30);
-
-            default:
-                return UseSkill(ch, skill, null);
+    private bool CanInspectTarget(Character ch, ObjBase target, SkillType skill)
+    {
+        Point3D position;
+        if (target is Character targetChar)
+        {
+            if (targetChar.IsDeleted) return false;
+            position = targetChar.Position;
         }
+        else if (target is Item item)
+        {
+            if (item.IsDeleted) return false;
+            var seen = new HashSet<uint>();
+            for (int depth = 0; depth < 32 && item.ContainedIn.IsValid; depth++)
+            {
+                if (!seen.Add(item.Uid.Value)) return false;
+                var holder = _world.FindObject(item.ContainedIn);
+                if (holder is Character holderChar) { position = holderChar.Position; goto resolved; }
+                if (holder is Item parent) { item = parent; continue; }
+                return false;
+            }
+            if (item.ContainedIn.IsValid) return false;
+            position = item.Position;
+        }
+        else
+        {
+            return false;
+        }
+
+    resolved:
+        int range = SkillEngine.GetUseRange(skill, 3);
+        return position.Map == ch.MapIndex && ch.Position.GetDistanceTo(position) <= range &&
+            _world.CanSeeLOS(ch.Position, position);
     }
 
     private static Serial ResolveKillerUid(Item corpse)
     {
-        if (corpse.TryGetTag("CORPSE_KILLER", out string? kv) && !string.IsNullOrEmpty(kv))
+        if ((corpse.TryGetTag("KILLER_UID", out string? kv) ||
+             corpse.TryGetTag("CORPSE_KILLER", out kv)) && !string.IsNullOrEmpty(kv))
         {
-            string t = kv.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? kv[2..] : kv;
-            if (uint.TryParse(t, System.Globalization.NumberStyles.HexNumber, null, out uint hx))
+            if (kv.StartsWith("0x", StringComparison.OrdinalIgnoreCase) &&
+                uint.TryParse(kv[2..], System.Globalization.NumberStyles.HexNumber, null, out uint hx))
                 return new Serial(hx);
             if (uint.TryParse(kv, out uint dec))
                 return new Serial(dec);
+            if (uint.TryParse(kv, System.Globalization.NumberStyles.HexNumber, null, out hx))
+                return new Serial(hx);
         }
         return Serial.Zero;
     }
@@ -118,38 +148,81 @@ public sealed class SkillHandlers
         _ => false,
     };
 
+    /// <summary>Validate a real, enabled skill. Reserved protocol slots never
+    /// reach a handler and SKF_DISABLED applies to built-in skills too.</summary>
+    public static bool CanUse(Character ch, SkillType skill)
+    {
+        if (!SkillEngine.IsValidBaseSkill(skill) || ch.IsDead || ch.IsDeleted)
+            return false;
+        if (ch.IsCasting || ch.IsStatFlag(StatFlag.Sleeping | StatFlag.Freeze | StatFlag.Stone))
+            return false;
+        return !SkillEngine.HasFlag(skill, SkillFlag.Disabled);
+    }
+
+    /// <summary>Skills that may be initiated by the client UseSkill command.
+    /// Passive combat/magic/regeneration skills are intentionally excluded.</summary>
+    public static bool IsClientUsable(SkillType skill)
+    {
+        if (!SkillEngine.IsValidBaseSkill(skill) || SkillEngine.HasFlag(skill, SkillFlag.Disabled))
+            return false;
+
+        var def = DefinitionLoader.GetSkillDef((int)skill);
+        if (def != null)
+        {
+            var flags = (SkillFlag)def.Flags;
+            if ((flags & SkillFlag.Scripted) != 0)
+                return (flags & SkillFlag.Selectable) != 0;
+        }
+
+        if (IsInfoSkill(skill) || GetActiveSkillTarget(skill) != ActiveSkillTargetKind.Unsupported)
+            return true;
+
+        return IsCraftSkill(skill) || skill is SkillType.Camping or SkillType.Cartography;
+    }
+
+    public static bool IsCraftSkill(SkillType skill)
+    {
+        if (SkillEngine.HasFlag(skill, SkillFlag.Craft)) return true;
+        return skill is SkillType.Alchemy or SkillType.Blacksmithing or SkillType.Bowcraft or
+            SkillType.Carpentry or SkillType.Cartography or SkillType.Cooking or SkillType.Inscription or
+            SkillType.Imbuing or SkillType.Tailoring or SkillType.Tinkering;
+    }
+
     /// <summary>
     /// Active skills routed through <see cref="ActiveSkillEngine"/> via the
     /// rich <see cref="IActiveSkillSink"/> path. Returns the kind of target
     /// prompt the client should open.
     /// </summary>
-    public static ActiveSkillTargetKind GetActiveSkillTarget(SkillType skill) => skill switch
+    public static ActiveSkillTargetKind GetActiveSkillTarget(SkillType skill)
     {
-        SkillType.Hiding         => ActiveSkillTargetKind.None,
-        SkillType.Stealth        => ActiveSkillTargetKind.None,
-        SkillType.DetectingHidden => ActiveSkillTargetKind.None,
-        SkillType.Meditation     => ActiveSkillTargetKind.None,
-        SkillType.SpiritSpeak    => ActiveSkillTargetKind.None,
-        SkillType.Tracking       => ActiveSkillTargetKind.Menu,
-        SkillType.Begging        => ActiveSkillTargetKind.Character,
-        SkillType.Healing        => ActiveSkillTargetKind.Character,
-        SkillType.Taming         => ActiveSkillTargetKind.Character,
-        SkillType.Stealing       => ActiveSkillTargetKind.Item,
-        SkillType.Snooping       => ActiveSkillTargetKind.Item,
-        SkillType.Lockpicking    => ActiveSkillTargetKind.Item,
-        SkillType.RemoveTrap     => ActiveSkillTargetKind.Item,
-        SkillType.Poisoning      => ActiveSkillTargetKind.Item,
-        SkillType.Herding        => ActiveSkillTargetKind.Character,
-        SkillType.Veterinary     => ActiveSkillTargetKind.Character,
-        SkillType.Mining         => ActiveSkillTargetKind.Ground,
-        SkillType.Fishing        => ActiveSkillTargetKind.Ground,
-        SkillType.Lumberjacking  => ActiveSkillTargetKind.Ground,
-        SkillType.Musicianship   => ActiveSkillTargetKind.None,
-        SkillType.Peacemaking    => ActiveSkillTargetKind.Character,
-        SkillType.Provocation    => ActiveSkillTargetKind.Character,
-        SkillType.Enticement     => ActiveSkillTargetKind.Character,
-        _                        => ActiveSkillTargetKind.Unsupported,
-    };
+        var def = DefinitionLoader.GetSkillDef((int)skill);
+        if (def != null && ((SkillFlag)def.Flags & SkillFlag.Scripted) != 0)
+        {
+            return !string.IsNullOrWhiteSpace(def.PromptMsg) ||
+                   !string.IsNullOrWhiteSpace(def.PromptCliloc)
+                ? ActiveSkillTargetKind.Object
+                : ActiveSkillTargetKind.None;
+        }
+
+        var builtIn = skill switch
+        {
+            SkillType.Hiding or SkillType.Stealth or SkillType.DetectingHidden or
+                SkillType.Meditation or SkillType.SpiritSpeak or SkillType.Musicianship or
+                SkillType.Peacemaking => ActiveSkillTargetKind.None,
+            SkillType.Tracking => ActiveSkillTargetKind.Menu,
+            SkillType.Begging or SkillType.Healing or SkillType.Taming or
+                SkillType.Herding or SkillType.Veterinary or SkillType.Provocation or
+                SkillType.Enticement => ActiveSkillTargetKind.Character,
+            SkillType.Stealing or SkillType.Snooping or SkillType.Lockpicking or
+                SkillType.RemoveTrap or SkillType.Poisoning => ActiveSkillTargetKind.Item,
+            SkillType.Mining or SkillType.Fishing or SkillType.Lumberjacking =>
+                ActiveSkillTargetKind.Ground,
+            _ => ActiveSkillTargetKind.Unsupported,
+        };
+        if (builtIn != ActiveSkillTargetKind.Unsupported)
+            return builtIn;
+        return ActiveSkillTargetKind.Unsupported;
+    }
 
     /// <summary>
     /// Dispatch entry for active skills that takes the rich sink and routes
@@ -176,8 +249,15 @@ public sealed class SkillHandlers
     public bool UseActiveSkill(IActiveSkillSink sink, SkillType skill, ObjBase? target, Point3D? point = null)
     {
         var ch = sink.Self;
-        if (ch.IsDead) return false;
+        if (!CanUse(ch, skill)) return false;
         if (ch.IsStatFlag(StatFlag.Freeze)) return false;
+
+        if (SkillEngine.HasFlag(skill, SkillFlag.Scripted))
+        {
+            ch.Act = target?.Uid ?? Serial.Invalid;
+            if (point.HasValue) ch.ActP = point.Value;
+            return UseSkill(ch, skill, point);
+        }
 
         switch (skill)
         {
@@ -187,50 +267,71 @@ public sealed class SkillHandlers
             case SkillType.Meditation:       return ActiveSkillEngine.Meditation(sink);
             case SkillType.SpiritSpeak:      return ActiveSkillEngine.SpiritSpeak(sink);
             case SkillType.Begging:          return ActiveSkillEngine.Begging(sink, target as Character);
-            case SkillType.Healing:          return ActiveSkillEngine.Healing(sink, ResolveHealTarget(target));
+            case SkillType.Healing:
+                return ActiveSkillEngine.Healing(sink, ResolveHealTarget(target), SkillType.Healing,
+                    target as Item);
             case SkillType.Taming:           return ActiveSkillEngine.Taming(sink, target as Character);
             case SkillType.Stealing:         return ActiveSkillEngine.Stealing(sink, target as Item);
             case SkillType.Snooping:         return ActiveSkillEngine.Snooping(sink, target as Item);
             case SkillType.Lockpicking:      return ActiveSkillEngine.Lockpicking(sink, target as Item);
             case SkillType.RemoveTrap:       return ActiveSkillEngine.RemoveTrap(sink, target as Item);
-            case SkillType.Poisoning:        return ActiveSkillEngine.Poisoning(sink, target as Item);
+            case SkillType.Poisoning:
+                return ActiveSkillEngine.Poisoning(sink, target as Item,
+                    ch.ActPrv.IsValid ? _world.FindItem(ch.ActPrv) : null);
             case SkillType.Herding:          return ActiveSkillEngine.Herding(sink, target as Character, point);
             case SkillType.Veterinary:
                 // Source-X SKILL_VETERINARY routes to Skill_Healing (bandages,
                 // poison cure, pet resurrect) rather than a separate weak path.
-                return ActiveSkillEngine.Healing(sink, ResolveHealTarget(target));
+                return ActiveSkillEngine.Healing(sink, ResolveHealTarget(target), SkillType.Veterinary,
+                    target as Item);
             case SkillType.Tracking:         return ActiveSkillEngine.Tracking(sink, ActiveSkillEngine.TrackingCategory.Animals);
             case SkillType.Mining:           return ActiveSkillEngine.Mining(sink, point ?? ch.Position, _gatheringEngine, _world);
             case SkillType.Fishing:          return ActiveSkillEngine.Fishing(sink, point ?? ch.Position, _gatheringEngine, _world);
             case SkillType.Lumberjacking:    return ActiveSkillEngine.Lumberjacking(sink, point ?? ch.Position, _gatheringEngine, _world);
             case SkillType.Musicianship:     return ActiveSkillEngine.Musicianship(sink);
             case SkillType.Peacemaking:      return ActiveSkillEngine.Peacemaking(sink, target as Character);
-            case SkillType.Provocation:      return ActiveSkillEngine.Provocation(sink, target as Character);
+            case SkillType.Provocation:
+                return ActiveSkillEngine.Provocation(sink,
+                    ch.ActPrv.IsValid ? _world.FindChar(ch.ActPrv) : null,
+                    target as Character);
             case SkillType.Enticement:       return ActiveSkillEngine.Discordance(sink, target as Character);
-            default:                         return UseSkill(ch, skill, point);
+            default:
+                ch.Act = target?.Uid ?? Serial.Invalid;
+                if (point.HasValue) ch.ActP = point.Value;
+                return UseSkill(ch, skill, point);
         }
     }
 
-    public enum ActiveSkillTargetKind { None, Character, Item, Menu, Ground, Unsupported }
+    public enum ActiveSkillTargetKind { None, Character, Item, Object, Menu, Ground, Unsupported }
 
     public bool UseSkill(Character ch, SkillType skill, Point3D? target = null)
     {
-        if (ch.IsDead) return false;
+        if (!CanUse(ch, skill)) return false;
         if (ch.IsStatFlag(StatFlag.Freeze)) return false;
-
-        if (_handlers.TryGetValue(skill, out var handler))
-            return handler(ch, target);
 
         // Check for scripted (custom) skill via SkillDef
         var def = DefinitionLoader.GetSkillDef((int)skill);
         if (def != null && ((SkillFlag)def.Flags & SkillFlag.Scripted) != 0)
         {
-            if (((SkillFlag)def.Flags & SkillFlag.Disabled) != 0)
-                return false;
             return OnScriptedSkillUse?.Invoke(ch, skill) ?? false;
         }
 
-        return SkillEngine.UseQuick(ch, skill, 50);
+        if (def != null && ((SkillFlag)def.Flags & SkillFlag.Craft) != 0 && OnCraftSkillUsed != null)
+        {
+            OnCraftSkillUsed.Invoke(ch, skill);
+            return true;
+        }
+
+        // Targeted/information skills require the rich sink path for messages,
+        // containment checks, LOS, rollback and client synchronization. Do not
+        // fall through to the old targetless compatibility handlers.
+        if (IsInfoSkill(skill) || GetActiveSkillTarget(skill) != ActiveSkillTargetKind.Unsupported)
+            return false;
+
+        if (_handlers.TryGetValue(skill, out var handler))
+            return handler(ch, target);
+
+        return false;
     }
 
     private void RegisterAll()
@@ -274,7 +375,7 @@ public sealed class SkillHandlers
         _handlers[SkillType.Veterinary] = HandleVeterinary;
         _handlers[SkillType.Herding] = HandleHerding;
         _handlers[SkillType.Camping] = HandleCamping;
-        _handlers[SkillType.Focus] = HandleFocus;
+        _handlers[SkillType.Imbuing] = HandleImbuing;
     }
 
     private bool HandleHiding(Character ch, Point3D? target)
@@ -343,10 +444,7 @@ public sealed class SkillHandlers
             ore.BaseId = 0x19B9;
             ore.Name = "iron ore";
             ore.Amount = (ushort)amount;
-            if (ch.Backpack != null)
-                ch.Backpack.AddItem(ore);
-            else
-                _world.PlaceItemWithDecay(ore, ch.Position);
+            DeliverLegacyItem(ch, ore);
         }
         return success;
     }
@@ -373,10 +471,7 @@ public sealed class SkillHandlers
             fish.BaseId = 0x09CC;
             fish.Name = "fish";
             fish.Amount = 1;
-            if (ch.Backpack != null)
-                ch.Backpack.AddItem(fish);
-            else
-                _world.PlaceItemWithDecay(fish, ch.Position);
+            DeliverLegacyItem(ch, fish);
         }
         return success;
     }
@@ -404,10 +499,7 @@ public sealed class SkillHandlers
             logs.BaseId = 0x1BDD;
             logs.Name = "logs";
             logs.Amount = (ushort)amount;
-            if (ch.Backpack != null)
-                ch.Backpack.AddItem(logs);
-            else
-                _world.PlaceItemWithDecay(logs, ch.Position);
+            DeliverLegacyItem(ch, logs);
         }
         return success;
     }
@@ -456,6 +548,15 @@ public sealed class SkillHandlers
         Character.BroadcastNearby?.Invoke(ch.Position, 18, animPkt, 0);
         var soundPkt = new SphereNet.Network.Packets.Outgoing.PacketSound(soundId, ch.X, ch.Y, ch.Z);
         Character.BroadcastNearby?.Invoke(ch.Position, 18, soundPkt, 0);
+    }
+
+    private void DeliverLegacyItem(Character ch, Item item)
+    {
+        var actual = ch.Backpack?.TryAddItemWithStack(item);
+        if (actual == null)
+            _world.PlaceItemWithDecay(item, ch.Position);
+        else if (actual != item)
+            item.Delete();
     }
 
     private bool HandleTaming(Character ch, Point3D? target)
@@ -652,7 +753,9 @@ public sealed class SkillHandlers
 
     private bool HandleCartography(Character ch, Point3D? target)
     {
-        return SkillEngine.UseQuick(ch, SkillType.Cartography, 40);
+        if (OnCraftSkillUsed == null) return false;
+        OnCraftSkillUsed.Invoke(ch, SkillType.Cartography);
+        return true;
     }
 
     private bool HandleBowcraft(Character ch, Point3D? target)
@@ -715,31 +818,77 @@ public sealed class SkillHandlers
 
     private bool HandleCamping(Character ch, Point3D? target)
     {
-        // Create a campfire and allow safe logout
-        bool success = SkillEngine.UseQuick(ch, SkillType.Camping, 30);
-        if (success)
+        var usedItem = ch.Act.IsValid ? _world.FindItem(ch.Act) : null;
+        if (usedItem?.ItemType == ItemType.Bedroll)
         {
-            // Create campfire item at character's location
-            var campfire = _world.CreateItem();
-            campfire.BaseId = 0x0DE3; // campfire
-            campfire.Position = ch.Position;
-            campfire.SetTag("CAMPFIRE_OWNER", ch.Uid.Value.ToString());
-            campfire.SetTag("CAMPFIRE_OWNER_UUID", ch.Uuid.ToString("D"));
-            campfire.SetTimeout(Environment.TickCount64 + 30000); // 30 sec duration
+            bool hasOwnFire = _world.GetItemsInRange(ch.Position, 2).Any(item =>
+                item.ItemType == ItemType.Campfire &&
+                item.TryGetTag("CAMPFIRE_OWNER_UUID", out string? owner) &&
+                owner == ch.Uuid.ToString("D"));
+            if (!hasOwnFire)
+                return false;
+            ch.SetTag("CAMPING_SAFE_LOGOUT_UNTIL",
+                (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 30_000).ToString());
+            return true;
         }
+
+        Item? kindling = usedItem?.ItemType == ItemType.Kindling
+            ? usedItem
+            : FindBackpackItemRecursive(ch.Backpack, ItemType.Kindling, 16, []);
+        if (kindling == null)
+            return false;
+
+        bool success = SkillEngine.UseQuick(ch, SkillType.Camping, Random.Shared.Next(30));
+        ConsumeOne(kindling);
+        if (!success) return false;
+
+        var campfire = _world.CreateItem();
+        campfire.BaseId = 0x0DE3;
+        campfire.ItemType = ItemType.Campfire;
+        campfire.SetTag("CAMPFIRE_OWNER", ch.Uid.Value.ToString());
+        campfire.SetTag("CAMPFIRE_OWNER_UUID", ch.Uuid.ToString("D"));
+        if (!_world.PlaceItem(campfire, ch.Position))
+        {
+            _world.DeleteObject(campfire);
+            return false;
+        }
+        campfire.DecayTime = Environment.TickCount64 + 30_000;
         return success;
     }
 
-    private bool HandleFocus(Character ch, Point3D? target)
+    private bool HandleImbuing(Character ch, Point3D? target)
     {
-        // Passive skill — boosts mana regeneration
-        // When actively used, grants a short focus buff
-        bool success = SkillEngine.UseQuick(ch, SkillType.Focus, 20);
-        if (success)
+        // Imbuing is recipe-driven. The selected recipe owns the actual
+        // skill roll, resources and trigger chain.
+        if (OnCraftSkillUsed == null) return false;
+        OnCraftSkillUsed.Invoke(ch, SkillType.Imbuing);
+        return true;
+    }
+
+    private Item? FindBackpackItemRecursive(Item? container, ItemType type, int depth,
+        HashSet<uint> seen)
+    {
+        if (container == null || depth < 0 || !seen.Add(container.Uid.Value)) return null;
+        foreach (var item in container.Contents)
         {
-            ch.SetTag("FOCUS_BUFF", (Environment.TickCount64 + 10000).ToString());
+            if (item.IsDeleted) continue;
+            if (item.ItemType == type) return item;
+            var found = FindBackpackItemRecursive(item, type, depth - 1, seen);
+            if (found != null) return found;
         }
-        return success;
+        return null;
+    }
+
+    private void ConsumeOne(Item item)
+    {
+        if (item.Amount > 1)
+        {
+            item.Amount--;
+            return;
+        }
+        if (item.ContainedIn.IsValid)
+            _world.FindItem(item.ContainedIn)?.RemoveItem(item);
+        _world.DeleteObject(item);
     }
 
     private Character? FindNearbyNpc(Character ch, Point3D target)

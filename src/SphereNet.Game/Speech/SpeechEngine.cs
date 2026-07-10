@@ -1164,7 +1164,7 @@ public sealed class CommandHandler
             var parts = args.Split(' ', 2);
             if (parts.Length >= 2 && int.TryParse(parts[0], out int skillId) && int.TryParse(parts[1], out int value))
             {
-                gm.SetSkillRuntime((SkillType)skillId, Math.Clamp(value, 0, 1200)); // fires cancelable @SkillChange
+                gm.SetSkillRuntime((SkillType)skillId, Math.Clamp(value, 0, ushort.MaxValue)); // fires cancelable @SkillChange
                 OnSysMessage?.Invoke(gm, ServerMessages.GetFormatted("gm_skill_set", (SkillType)skillId, $"{value / 10.0:F1}"));
             }
         });

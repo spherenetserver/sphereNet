@@ -2,12 +2,15 @@ using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Clients;
+using SphereNet.Game.Definitions;
+using SphereNet.Game.Magic;
 using SphereNet.Game.Movement;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Scripting;
 using SphereNet.Game.Skills;
 using SphereNet.Game.Skills.Information;
 using SphereNet.Game.World;
+using SphereNet.Scripting.Resources;
 using Xunit;
 
 namespace SphereNet.Tests;
@@ -25,6 +28,7 @@ namespace SphereNet.Tests;
 // time (Environment.TickCount64); tests drive it deterministically by setting the
 // pending-skill timing fields directly (BeginSkillPending / SetSkillStrokeNext),
 // the same seam the existing interrupt tests use — no sleeps.
+[Collection("DefinitionLoaderSerial")]
 public class ActiveSkillStrokeMatrixTests
 {
     private const long Far = long.MaxValue / 2;
@@ -36,6 +40,18 @@ public class ActiveSkillStrokeMatrixTests
         world.InitMap(0, 6144, 4096);
         SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
         return world;
+    }
+
+    private static void LoadDefinitions(string contents)
+    {
+        string tempFile = Path.Combine(Path.GetTempPath(), $"spherenet_skill_{Guid.NewGuid():N}.scp");
+        File.WriteAllText(tempFile, contents);
+        var resources = new ResourceHolder(LoggerFactory.Create(_ => { }).CreateLogger<ResourceHolder>())
+        {
+            ScpBaseDir = Path.GetDirectoryName(tempFile) ?? ""
+        };
+        resources.LoadResourceFile(tempFile);
+        new DefinitionLoader(resources, new SpellRegistry()).LoadAll();
     }
 
     private static (GameClient client, Character player, List<string> order) Setup(GameWorld world)
@@ -92,6 +108,11 @@ public class ActiveSkillStrokeMatrixTests
     [Fact]
     public void MovementDuringStrokeLoop_AbortsAfterStrokes_NoSuccessOrFail()
     {
+        LoadDefinitions("""
+            [SKILL 21]
+            FLAGS=skf_immobile
+            """);
+
         var oldAbort = Character.ActiveSkillAborted;
         try
         {

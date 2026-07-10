@@ -64,4 +64,24 @@ public class SkillUseQuickTriggerTests
 
         Assert.True(success);
     }
+
+    [Fact]
+    public void SkillUseQuick_DetailedHookCanRewriteDifficultyAndCancelWithoutGain()
+    {
+        var (_, player) = Setup();
+        int seenDifficulty = -1;
+        Character.OnSkillUseQuickDetailed =
+            (Character _, int _, ref int difficulty, int _) =>
+            {
+                seenDifficulty = difficulty;
+                difficulty = 1;
+                return -1;
+            };
+
+        bool success = SkillEngine.UseQuick(player, SkillType.Hiding, 90);
+
+        Assert.False(success);
+        Assert.Equal(90, seenDifficulty);
+        Assert.Equal(500, player.GetSkill(SkillType.Hiding));
+    }
 }

@@ -24,6 +24,7 @@ public partial class Character
     private int _skillStrokeCount;
     private Serial _skillPendingTarget = Serial.Invalid;
     private bool _hasSkillPendingPoint;
+    private bool _skillPendingIsInfo;
     private Point3D _skillPendingPoint;
     private readonly List<string> _pendingSpellEffectRecords = [];
 
@@ -138,13 +139,15 @@ public partial class Character
         _hasCastTargetPosPending = false;
     }
 
-    public void BeginSkillPending(int skillId, long delayEnd, long strokeNext, Serial targetUid, Point3D? point)
+    public void BeginSkillPending(int skillId, long delayEnd, long strokeNext, Serial targetUid,
+        Point3D? point, bool isInfo = false)
     {
         _skillPendingId = skillId;
         _skillDelayEnd = delayEnd;
         _skillStrokeNext = strokeNext;
         _skillStrokeCount = 0;
         _skillPendingTarget = targetUid;
+        _skillPendingIsInfo = isInfo;
         if (point.HasValue)
         {
             _skillPendingPoint = point.Value;
@@ -171,6 +174,8 @@ public partial class Character
     public void ResetSkillStrokeCount() => _skillStrokeCount = 0;
 
     public Serial SkillPendingTarget => _skillPendingTarget;
+
+    public bool SkillPendingIsInfo => _skillPendingIsInfo;
 
     public bool TryGetSkillPendingPoint(out Point3D point)
     {

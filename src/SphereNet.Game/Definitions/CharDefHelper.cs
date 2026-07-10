@@ -231,7 +231,7 @@ public static class CharDefHelper
             int value = RollStat(range.Min, range.Max);
             if (value <= 0)
                 continue;
-            ch.SetSkill(skill, (ushort)Math.Clamp(value, 0, 1200));
+            ch.SetSkill(skill, (ushort)Math.Clamp(value, 0, ushort.MaxValue));
         }
     }
 

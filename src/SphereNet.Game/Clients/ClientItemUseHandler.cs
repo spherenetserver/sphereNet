@@ -665,18 +665,26 @@ public sealed class ClientItemUseHandler
 
             case ItemType.WeaponMaceCrook:
                 SysMessage(ServerMessages.Get(Msg.ItemuseCrookPromt));
-                SetPendingTarget((serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Herding, new Serial(serial)));
+                SetPendingTarget((serial, x, y, z, gfx) =>
+                {
+                    var animalUid = new Serial(serial);
+                    if (_world.FindChar(animalUid) == null) return;
+                    SysMessage("Where do you wish the animal to go?");
+                    SetPendingTarget((destSerial, dx, dy, dz, destGfx) =>
+                        RouteSkillTarget(SkillType.Herding, animalUid,
+                            new Point3D(dx, dy, dz, _character.MapIndex)));
+                });
                 break;
 
             case ItemType.WeaponMacePick:
                 SysMessage(ServerMessages.GetFormatted(Msg.ItemuseMacepickTarg, item.Name ?? "pick"));
-                SetPendingTarget((serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Mining, new Serial(serial), new Point3D(x, y, z)));
+                SetPendingTarget((serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Mining, new Serial(serial), new Point3D(x, y, z, _character.MapIndex)));
                 break;
 
             // ---- pole/sextant/spyglass ----
             case ItemType.FishPole:
                 SysMessage(ServerMessages.Get("fishing_promt"));
-                SetPendingTarget((serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Fishing, new Serial(serial), new Point3D(x, y, z)));
+                SetPendingTarget((serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Fishing, new Serial(serial), new Point3D(x, y, z, _character.MapIndex)));
                 break;
             case ItemType.Fish:
                 SysMessage(ServerMessages.Get(Msg.ItemuseFishFail));

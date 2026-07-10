@@ -3,6 +3,45 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-10] - Skill sistemi derin kod denetimi: kullanim, crafting ve durum yonetimi
+----------------------------------------
+
+DUZELTILDI - Skill cekirdegi ve istemci akislari:
+  - Skill ID, lock, cap, gain ve difficulty hesaplari tasma ve gecersiz/reserved
+    kimliklere karsi guvenli hale getirildi. Disabled, scripted, passive, magic
+    ve combat skill ayrimlari merkezi kullanim denetimine baglandi.
+  - Hedefli, bilgi ve cok asamali skill akislari tek yasam dongusu kullaniyor;
+    eski hedef/menu durumu, yinelenen trigger, SkillWait ve iptal sizintilari
+    giderildi. Scripted skill'ler yerlesik davranisi guvenle ezebiliyor.
+
+DUZELTILDI - Aktif skill'ler ve dunya etkilesimleri:
+  - Hiding/Stealth, Detect Hidden, Meditation, Spirit Speak, Tracking, Healing,
+    Veterinary, Taming, bard, theft, snooping, lockpicking, poisoning, herding
+    ve gathering icin map, LOS, menzil, sahiplik ve arac kontrolleri tamamlandi.
+  - Focus pasif yenilenmesi, Imbuing crafting rotasi, Throwing combat rotasi ve
+    Camping guvenli cikis akisi uygulandi. Hasar, hareket, olum, silinme ve
+    baglanti kesilmesi bekleyen aksiyonlari tutarli bicimde iptal ediyor.
+
+DUZELTILDI - Crafting, kaynaklar ve esya guvenligi:
+  - Tarif tetik sirasi tekillestirildi; kaynak hue secimi, tuketim, kalite,
+    crafter, dayaniklilik ve ITEMDEF ozellik aktarimi duzeltildi. Eszamanli craft
+    ve gathering tuketimi kilitlendi, gecersiz miktarlar sinirlandi.
+  - Dolu canta, stack birlestirme, yere dusurme ve geri alma akislari veri/esya
+    kaybetmeyecek sekilde guvenli hale getirildi. Farkli kalite ve ozellikteki
+    esyalar artik hatali bicimde stack olmuyor.
+
+DEGISTI - Oturum ve kalicilik davranisi:
+  - ClientLinger config'e baglandi; guvensiz cikis karakteri sure boyunca
+    dunyada gorunur ve saldirilabilir kaliyor. Yeniden baglanma linger'i iptal
+    ediyor; sektor degisimi ve sure sonu temizligi dogru yayinlaniyor.
+  - Eski 120.0 skill saklama siniri kaldirildi ve ushort saklama kapasitesi
+    boyunca guvenli cap/skill degerleri desteklendi.
+
+DOGRULANDI - Yeni skill regresyonlariyla tum cozum Debug ve Release 1279/1279,
+  sifir uyari/hata. git diff denetimi de temiz.
+
+================================================================================
+
 [2026-07-10] - Combat derin kod denetimi: swing, menzilli dovus, hasar ve olum kredisi
 ----------------------------------------
 

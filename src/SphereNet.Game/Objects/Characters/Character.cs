@@ -6,6 +6,7 @@ using SphereNet.Game.Combat;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Messages;
 using SphereNet.Game.Objects.Items;
+using SphereNet.Game.Skills;
 using SphereNet.Game.Skills.Information;
 
 namespace SphereNet.Game.Objects.Characters;
@@ -511,6 +512,9 @@ public partial class Character : ObjBase
     public static Action<Character, string>? SendOwnerMessage { get; set; }
     /// <summary>Fired when a delayed skill is aborted (movement, etc.). Arg: skill index.</summary>
     public static Action<Character, int>? ActiveSkillAborted { get; set; }
+    /// <summary>Fired when HP loss should cancel client-owned action state that
+    /// is not stored on Character (currently the crafting stroke loop).</summary>
+    public static Action<Character>? OnDamageActionInterrupt { get; set; }
 
     /// <summary>Fired once per stealth movement step (Source-X @StepStealth).</summary>
     public static Action<Character>? OnStepStealth { get; set; }
@@ -637,6 +641,13 @@ public partial class Character : ObjBase
     /// (the script may flip it) or a negative value to cancel the use.</summary>
     public static Func<Character, int, int, int, int>? OnSkillUseQuick { get; set; }
 
+    public delegate int SkillUseQuickDetailedHook(Character ch, int skillId,
+        ref int difficulty, int result);
+    /// <summary>Full Source-X hook contract. Return a negative value to cancel
+    /// the use without gain, otherwise return the final 1/0 result; difficulty
+    /// is writable through ARGN2.</summary>
+    public static SkillUseQuickDetailedHook? OnSkillUseQuickDetailed { get; set; }
+
     /// <summary>Fired when an NPC perceives a player it has not seen recently
     /// (Source-X @NPCSeeNewPlayer). Args: the NPC, the newly-seen player. Installed
     /// only when hooked (IsTrigUsed gate), so the perception scan is free otherwise.</summary>
@@ -705,6 +716,12 @@ public partial class Character : ObjBase
 
     /// <summary>True when a GameClient is actively controlling this character.</summary>
     public bool IsOnline { get => _isOnline; set => _isOnline = value; }
+
+    /// <summary>True while a disconnected character remains attackable in the
+    /// world for the configured client-linger period.</summary>
+    public bool IsClientLingering =>
+        TryGetTag("CLIENT_LINGER_UNTIL", out string? value) &&
+        long.TryParse(value, out _);
     public int SkillClass { get => _skillClass; set => _skillClass = Math.Max(0, value); }
     public string Title { get => _title; set => _title = value ?? ""; }
 
@@ -773,7 +790,20 @@ public partial class Character : ObjBase
         {
             short cap = _maxHits > 0 ? _maxHits : (short)Math.Max((int)1, (int)_str);
             var v = Math.Clamp(value, (short)0, cap);
-            if (v != _hits) { _hits = v; MarkDirty(DirtyFlag.Stats); }
+            if (v != _hits)
+            {
+                bool tookDamage = v < _hits;
+                _hits = v;
+                MarkDirty(DirtyFlag.Stats);
+                if (tookDamage)
+                {
+                    int abortedSkill = ClearActiveSkillPending();
+                    if (abortedSkill >= 0)
+                        ActiveSkillAborted?.Invoke(this, abortedSkill);
+                    InterruptMeditation();
+                    OnDamageActionInterrupt?.Invoke(this);
+                }
+            }
         }
     }
     public short Mana
@@ -1077,10 +1107,20 @@ public partial class Character : ObjBase
         _skillStrokeCount = 0;
         _skillPendingTarget = Serial.Invalid;
         _hasSkillPendingPoint = false;
+        _skillPendingIsInfo = false;
         return skillId;
     }
 
     public bool HasActiveSkillPending() => _skillPendingId >= 0;
+
+    public bool InterruptMeditation()
+    {
+        if (!IsStatFlag(StatFlag.Meditation))
+            return false;
+        ClearStatFlag(StatFlag.Meditation);
+        ActiveSkillAborted?.Invoke(this, (int)SkillType.Meditation);
+        return true;
+    }
 
     /// <summary>Drop hidden/invisible/stealth-walk state (cast, combat, step
     /// expiry). Runs the @Reveal trigger first (Source-X CChar::Reveal); a
@@ -1223,6 +1263,8 @@ public partial class Character : ObjBase
             // that blocks every future swing.
             if (value != _fightTarget && HasPendingHit && value != PendingHitTarget)
                 ClearPendingHit();
+            if (value.IsValid && value != _fightTarget)
+                InterruptMeditation();
             _fightTarget = value;
         }
     }
@@ -1785,13 +1827,17 @@ public partial class Character : ObjBase
     }
 
     // --- Skills ---
-    public ushort GetSkill(SkillType skill) =>
-        (int)skill < _skillValues.Length ? _skillValues[(int)skill] : (ushort)0;
+    public ushort GetSkill(SkillType skill)
+    {
+        int index = (int)skill;
+        return index >= 0 && index < _skillValues.Length ? _skillValues[index] : (ushort)0;
+    }
 
     public void SetSkill(SkillType skill, ushort value)
     {
-        if ((int)skill < _skillValues.Length)
-            _skillValues[(int)skill] = Math.Min(value, (ushort)1200);
+        int index = (int)skill;
+        if (index >= 0 && index < _skillValues.Length)
+            _skillValues[index] = value;
     }
 
     /// <summary>Pre-set @SkillChange hook (Source-X CTRIG_SkillChange as a setter
@@ -1808,20 +1854,28 @@ public partial class Character : ObjBase
     /// property assignment); world-load and spawn use the raw <see cref="SetSkill"/>.</summary>
     public bool SetSkillRuntime(SkillType skill, int value)
     {
+        int index = (int)skill;
+        if (index < 0 || index >= _skillValues.Length)
+            return false;
         int oldValue = GetSkill(skill);
         int newValue = value;
         if (OnSkillChange != null && OnSkillChange(this, skill, oldValue, ref newValue))
             return false;
-        SetSkill(skill, (ushort)Math.Clamp(newValue, 0, 1200));
+        SetSkill(skill, (ushort)Math.Clamp(newValue, 0, ushort.MaxValue));
         return true;
     }
 
-    public byte GetSkillLock(SkillType skill) =>
-        (int)skill < _skillLocks.Length ? _skillLocks[(int)skill] : (byte)2;
+    public byte GetSkillLock(SkillType skill)
+    {
+        int index = (int)skill;
+        return index >= 0 && index < _skillLocks.Length ? _skillLocks[index] : (byte)2;
+    }
 
     public void SetSkillLock(SkillType skill, byte lockState)
     {
-        if ((int)skill < _skillLocks.Length) _skillLocks[(int)skill] = lockState;
+        int index = (int)skill;
+        if (index >= 0 && index < _skillLocks.Length)
+            _skillLocks[index] = Math.Min(lockState, (byte)2);
     }
 
     // --- Equipment ---
@@ -2004,6 +2058,11 @@ public partial class Character : ObjBase
 
     public void Kill()
     {
+        int abortedSkill = ClearActiveSkillPending();
+        if (abortedSkill >= 0)
+            ActiveSkillAborted?.Invoke(this, abortedSkill);
+        InterruptMeditation();
+        ClearCastState();
         _hits = 0;
         CurePoison();
         ClearPendingHit();
@@ -2048,13 +2107,22 @@ public partial class Character : ObjBase
         // Source-X: murderer resurrection penalties (stat/skill loss ~1%)
         if (IsMurderer && IsPlayer)
         {
+            short oldStr = _str, oldDex = _dex, oldInt = _int;
             _str = (short)Math.Max(1, _str - Math.Max((short)1, (short)(_str / 100)));
             _dex = (short)Math.Max(1, _dex - Math.Max((short)1, (short)(_dex / 100)));
             _int = (short)Math.Max(1, _int - Math.Max((short)1, (short)(_int / 100)));
+            if (_str < oldStr) SkillEngine.OnStatDecrease?.Invoke(this, 0, _str);
+            if (_dex < oldDex) SkillEngine.OnStatDecrease?.Invoke(this, 1, _dex);
+            if (_int < oldInt) SkillEngine.OnStatDecrease?.Invoke(this, 2, _int);
             for (int i = 0; i < _skillValues.Length; i++)
             {
                 if (_skillValues[i] > 0)
-                    _skillValues[i] = (ushort)Math.Max(0, _skillValues[i] - Math.Max(1, _skillValues[i] / 100));
+                {
+                    _skillValues[i] = (ushort)Math.Max(0,
+                        _skillValues[i] - Math.Max(1, _skillValues[i] / 100));
+                    if (i < SkillEngine.BaseSkillCount)
+                        SkillEngine.OnSkillDecrease?.Invoke(this, (SkillType)i, _skillValues[i]);
+                }
             }
         }
 
@@ -2063,6 +2131,11 @@ public partial class Character : ObjBase
 
     public void Delete()
     {
+        int abortedSkill = ClearActiveSkillPending();
+        if (abortedSkill >= 0)
+            ActiveSkillAborted?.Invoke(this, abortedSkill);
+        InterruptMeditation();
+        ClearCastState();
         _isDeleted = true;
         CombatState.ClearAttackers();
         MemoryState.Clear();
@@ -4920,9 +4993,18 @@ public partial class Character : ObjBase
 
     public override bool OnTick()
     {
-        if (IsDead) return true;
-
         long now = Environment.TickCount64;
+
+        if (IsStatFlag(StatFlag.SpiritSpeak) &&
+            TryGetTag("SPIRITSPEAK_UNTIL", out string? spiritUntilText) &&
+            long.TryParse(spiritUntilText, out long spiritUntil) &&
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() >= spiritUntil)
+        {
+            ClearStatFlag(StatFlag.SpiritSpeak);
+            RemoveTag("SPIRITSPEAK_UNTIL");
+        }
+
+        if (IsDead) return true;
 
         // HP regen: Source/Sphere REGEN0 interval, affected by hunger. Suspended while poisoned
         // so the poison can actually whittle the victim down.
@@ -4945,7 +5027,12 @@ public partial class Character : ObjBase
         if (now >= _nextManaRegen && _mana < _maxMana)
         {
             int regenAmount = 1;
-            if (IsStatFlag(StatFlag.Meditation)) regenAmount += 2;
+            if (IsStatFlag(StatFlag.Meditation))
+                regenAmount += Math.Max(1, SkillEngine.GetEffect(SkillType.Meditation,
+                    SkillEngine.GetAdjustedSkill(this, SkillType.Meditation), 1));
+            int focus = SkillEngine.GetAdjustedSkill(this, SkillType.Focus);
+            if (focus > 0 && SkillEngine.UseQuick(this, SkillType.Focus, focus / 10))
+                regenAmount += focus / 200;
             _mana = (short)Math.Min(_mana + regenAmount, _maxMana);
             if (_mana >= _maxMana && IsStatFlag(StatFlag.Meditation))
                 ClearStatFlag(StatFlag.Meditation);
@@ -4957,6 +5044,9 @@ public partial class Character : ObjBase
         if (now >= _nextStamRegen && _stam < _maxStam)
         {
             int regenAmt = _isPlayer ? Math.Max(1, _dex / 30) : Math.Max(1, _maxStam / 20);
+            int focus = SkillEngine.GetAdjustedSkill(this, SkillType.Focus);
+            if (focus > 0 && SkillEngine.UseQuick(this, SkillType.Focus, focus / 10))
+                regenAmt += focus / 100;
             _stam = (short)Math.Min(_stam + regenAmt, _maxStam);
             MarkDirty(DirtyFlag.Stats);
             _nextStamRegen = now + RegenTenthsToMs(RegenStamTenths, 2000);

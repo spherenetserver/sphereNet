@@ -124,7 +124,7 @@ public sealed class ClientInventoryHandler
             !uint.TryParse(parts[0], out uint npcUid) || npcUid != trainer.Uid.Value ||
             !int.TryParse(parts[1], out int skillId) ||
             !int.TryParse(parts[2], out int maxTrain) ||
-            skillId < 0 || skillId >= (int)SkillType.Qty)
+            skillId < 0 || skillId >= SkillEngine.BaseSkillCount)
             return false;
 
         var skill = (SkillType)skillId;

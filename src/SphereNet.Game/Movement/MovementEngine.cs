@@ -4,6 +4,7 @@ using SphereNet.Game.Definitions;
 using SphereNet.Game.Magic;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Scripting;
+using SphereNet.Game.Skills;
 
 namespace SphereNet.Game.Movement;
 
@@ -141,8 +142,10 @@ public sealed class MovementEngine
 
         // Spell interruption on movement
         SpellEngine?.TryInterruptFromMovement(ch);
+        ch.InterruptMeditation();
 
-        if (ch.HasActiveSkillPending())
+        if (ch.HasActiveSkillPending() &&
+            SkillEngine.HasFlag((SkillType)ch.SkillPendingId, SkillFlag.Immobile))
         {
             int skillId = ch.ClearActiveSkillPending();
             if (skillId >= 0)

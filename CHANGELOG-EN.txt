@@ -4,6 +4,47 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-10] - Deep skill-system code audit: use flows, crafting and state management
+----------------------------------------
+
+FIXED - Skill core and client flows:
+  - Skill IDs, locks, caps, gain and difficulty calculations are safe against
+    overflow and invalid/reserved IDs. Disabled, scripted, passive, magic and
+    combat skill distinctions are enforced by central use validation.
+  - Targeted, informational and multi-stage skills share one lifecycle; stale
+    target/menu state, duplicate triggers, SkillWait and cancellation leaks are
+    removed. Scripted skills can safely override built-in behavior.
+
+FIXED - Active skills and world interactions:
+  - Map, LOS, range, ownership and tool validation is complete for Hiding/
+    Stealth, Detect Hidden, Meditation, Spirit Speak, Tracking, Healing,
+    Veterinary, Taming, bard skills, theft, snooping, lockpicking, poisoning,
+    herding and gathering.
+  - Focus passive regeneration, the Imbuing crafting route, Throwing combat route
+    and Camping safe-logout flow are implemented. Damage, movement, death,
+    deletion and disconnect consistently cancel pending actions.
+
+FIXED - Crafting, resources and item safety:
+  - Recipe trigger ordering is singular; resource hue selection, consumption,
+    quality, crafter, durability and ITEMDEF property transfer are corrected.
+    Concurrent crafting/gathering consumption is locked and malformed amounts
+    are bounded.
+  - Full-container, stack merging, ground fallback and rollback paths no longer
+    lose data or items. Items with different quality or properties cannot be
+    merged incorrectly.
+
+CHANGED - Session and persistence behavior:
+  - ClientLinger is configuration-driven; unsafe logout characters remain visible
+    and attackable in the world for the configured period. Reconnection cancels
+    lingering, while sector movement and expiry are broadcast correctly.
+  - The legacy 120.0 skill storage ceiling is removed and cap/skill values are
+    safe across the ushort storage range.
+
+VERIFIED - With new skill regressions, the complete solution passes 1279/1279 in
+  Debug and Release with zero warnings/errors. The git diff check is clean.
+
+================================================================================
+
 [2026-07-10] - Deep combat code audit: swings, ranged combat, damage and kill credit
 ----------------------------------------
 

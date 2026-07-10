@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
+using SphereNet.Core.Configuration;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
@@ -61,6 +62,8 @@ public sealed partial class GameClient
 
         RegisterLoginSuccess(account);
         _account.LastIp = _netState.RemoteEndPoint?.Address.ToString() ?? "";
+        if (_netState.ClientVersionNumber == 0)
+            _netState.Send(new PacketClientVersionRequest());
         // Keep login-server list deterministic for local development.
         // 0.0.0.0 (or unstable interface picks) can make some clients hang.
         _netState.Send(new PacketServerList("SphereNet", 0x7F000001));
@@ -91,28 +94,141 @@ public sealed partial class GameClient
         }
 
         RegisterLoginSuccess(account);
+        if (_netState.ClientVersionNumber == 0)
+            _netState.Send(new PacketClientVersionRequest());
         // Feature enable (0xB9) — must come before char list.
-        // Start from config-driven ServerFeatureFlags (sphere.ini) or the
-        // maximum feature set, then cap to the client's protocol version so
-        // older clients don't receive flags they can't interpret.
-        uint featureCeiling = ServerFeatureFlags != 0 ? ServerFeatureFlags : 0xFFFF;
-        uint featureFlags;
-        if (_netState.IsClientPost7090)
-            featureFlags = featureCeiling & 0xFFFF; // SA+ understands full 16-bit
-        else if (_netState.IsClientPost6017)
-            featureFlags = featureCeiling & 0x00FF; // ML/SE: 8-bit feature set
-        else if (_netState.ClientVersionNumber >= 50_000_000)
-            featureFlags = featureCeiling & 0x003F; // SE: bits 0-5
-        else if (_netState.ClientVersionNumber >= 40_000_000)
-            featureFlags = featureCeiling & 0x001F; // AOS: bits 0-4
-        else
-            featureFlags = featureCeiling & 0x0003; // pre-AOS: T2A + Renaissance
-        _netState.Send(new PacketFeatureEnable(featureFlags, _netState.IsClientPost60142));
+        // Translate independent Source-X FEATURE* capability masks into the
+        // 0xB9 and 0xA9 flags allowed by this account/client ResDisp.
+        ResDisplayVersion resDisp = ResolveAccountResDisplay();
+        int maxChars = GetEffectiveMaxChars();
+        SendLoginCapabilities(resDisp, maxChars);
+    }
 
-        var charNames = _account.GetCharNames(uid => _world.FindChar(uid)?.GetName());
-        var charListPacket = new PacketCharList(charNames, newCharacterList: _netState.SupportsNewCharacterList);
-        var built = charListPacket.Build();
-        _netState.Send(built);
+    private ResDisplayVersion ResolveAccountResDisplay()
+    {
+        if (_account == null)
+            return ResDisplayVersion.T2A;
+
+        ResDisplayVersion res;
+        if (ServerAutoResDisp)
+        {
+            res = DetectResDisplay(_netState.ClientVersionNumber, _netState.ClientEra);
+            _account.ResDisp = (byte)res;
+        }
+        else if (_account.ResDisp < (byte)ResDisplayVersion.Qty)
+        {
+            res = (ResDisplayVersion)_account.ResDisp;
+        }
+        else
+        {
+            res = ResDisplayVersion.T2A;
+        }
+
+        _netState.ClientExpansion = res switch
+        {
+            ResDisplayVersion.PreT2A => Expansion.None,
+            ResDisplayVersion.T2A => Expansion.T2A,
+            ResDisplayVersion.LBR => Expansion.LBR,
+            ResDisplayVersion.AOS => Expansion.AOS,
+            ResDisplayVersion.SE => Expansion.SE,
+            ResDisplayVersion.ML or ResDisplayVersion.KR => Expansion.ML,
+            ResDisplayVersion.SA => Expansion.SA,
+            ResDisplayVersion.HS => Expansion.HS,
+            _ => Expansion.TOL,
+        };
+        return res;
+    }
+
+    public static ResDisplayVersion DetectResDisplay(uint version, ClientEra fallbackEra)
+    {
+        if (version >= 70_045_065) return ResDisplayVersion.TOL;
+        if (version >= 70_009_000) return ResDisplayVersion.HS;
+        if (version >= 70_000_000) return ResDisplayVersion.SA;
+        if (version >= 50_000_000) return ResDisplayVersion.ML;
+        if (version >= 40_005_000) return ResDisplayVersion.SE;
+        if (version >= 40_000_000) return ResDisplayVersion.AOS;
+        if (version >= 30_007_002) return ResDisplayVersion.LBR;
+        if (version != 0) return ResDisplayVersion.T2A;
+        return fallbackEra == ClientEra.Modern ? ResDisplayVersion.TOL : ResDisplayVersion.T2A;
+    }
+
+    public static uint BuildFeatureFlags(ResDisplayVersion res, int maxChars)
+    {
+        uint flags = 0;
+        if (res >= ResDisplayVersion.T2A)
+        {
+            if ((ServerFeatureT2A & 0x01) != 0) flags |= 0x0004;
+            if ((ServerFeatureT2A & 0x02) != 0) flags |= 0x0001;
+        }
+        if (res >= ResDisplayVersion.LBR)
+        {
+            if ((ServerFeatureLBR & 0x01) != 0) flags |= 0x0008;
+            if ((ServerFeatureLBR & 0x02) != 0) flags |= 0x0002;
+        }
+        if (res >= ResDisplayVersion.AOS && (ServerFeatureAOS & 0x01) != 0)
+            flags |= 0x8010;
+        if (res >= ResDisplayVersion.SE && (ServerFeatureSE & 0x02) != 0)
+            flags |= 0x0040;
+        if (res >= ResDisplayVersion.ML && (ServerFeatureML & 0x01) != 0)
+            flags |= 0x0080;
+        if (res >= ResDisplayVersion.SA && (ServerFeatureSA & 0x01) != 0)
+            flags |= 0x10000;
+        if (res >= ResDisplayVersion.TOL && (ServerFeatureTOL & 0x01) != 0)
+            flags |= 0x400000;
+
+        if ((ServerFeatureExtra & 0x01) != 0) flags |= 0x000200;
+        if ((ServerFeatureExtra & 0x02) != 0) flags |= 0x040000;
+        if ((ServerFeatureExtra & 0x04) != 0) flags |= 0x080000;
+        if ((ServerFeatureExtra & 0x08) != 0) flags |= 0x100000;
+        if ((ServerFeatureExtra & 0x10) != 0) flags |= 0x200000;
+        if ((ServerFeatureExtra & 0x20) != 0) flags |= 0x002000;
+        if (maxChars >= 6) flags |= 0x0020;
+        if (maxChars >= 7) flags |= 0x1000;
+        return flags;
+    }
+
+    public static uint BuildCharacterListFlags(ResDisplayVersion res, int maxChars, bool tooltipsEnabled)
+    {
+        uint flags = 0;
+        if (res >= ResDisplayVersion.AOS)
+        {
+            if ((ServerFeatureAOS & 0x04) != 0) flags |= 0x0008;
+            if (tooltipsEnabled && (ServerFeatureAOS & 0x02) != 0) flags |= 0x0020;
+        }
+        if (res >= ResDisplayVersion.SE && (ServerFeatureSE & 0x02) != 0) flags |= 0x0080;
+        if (res >= ResDisplayVersion.ML && (ServerFeatureML & 0x01) != 0) flags |= 0x0100;
+        if (res >= ResDisplayVersion.KR)
+        {
+            if ((ServerFeatureKR & 0x01) != 0) flags |= 0x0200;
+            if ((ServerFeatureKR & 0x02) != 0) flags |= 0x0400;
+        }
+        if (res >= ResDisplayVersion.SA && (ServerFeatureSA & 0x02) != 0) flags |= 0x4000;
+        if (maxChars == 1) flags |= 0x0014;
+        if (maxChars >= 6) flags |= 0x0040;
+        if (maxChars >= 7) flags |= 0x1000;
+        return flags;
+    }
+
+    internal int GetEffectiveMaxChars() => Math.Clamp(
+        Math.Min(_account?.MaxChars ?? ServerMaxCharsPerAccount, ServerMaxCharsPerAccount), 1, 7);
+
+    internal ResDisplayVersion HandleResolvedClientVersion()
+    {
+        var res = ResolveAccountResDisplay();
+        if (_account != null && _character == null && _netState.ConnectionType == ConnectType.Game)
+            SendLoginCapabilities(res, GetEffectiveMaxChars());
+        return res;
+    }
+
+    private void SendLoginCapabilities(ResDisplayVersion resDisp, int maxChars)
+    {
+        if (_account == null) return;
+        uint featureFlags = BuildFeatureFlags(resDisp, maxChars);
+        uint charListFlags = BuildCharacterListFlags(resDisp, maxChars, ServerToolTipMode != 0);
+        _netState.Send(new PacketFeatureEnable(featureFlags, _netState.IsClientPost60142));
+        _netState.Send(new PacketCharList(
+            _account.GetCharNames(uid => _world.FindChar(uid)?.GetName()),
+            maxChars, _netState.SupportsNewCharacterList, charListFlags));
     }
 
     private bool IsLoginLimited(string account)
@@ -159,6 +275,17 @@ public sealed partial class GameClient
         var charUid = _account.GetCharSlot(slot);
         if (charUid.IsValid)
             _character = _world.FindChar(charUid);
+
+        int effectiveMaxChars = GetEffectiveMaxChars();
+        if (_character == null &&
+            (_account.CharCount >= effectiveMaxChars || (slot >= 0 && slot >= effectiveMaxChars)))
+        {
+            _logger.LogWarning("[LOGIN] Character creation denied for account '{Acct}': {Count}/{Max}",
+                _account.Name, _account.CharCount, effectiveMaxChars);
+            PendingCharCreate = null;
+            ReturnToCharacterList();
+            return;
+        }
 
         // Reconnecting during client linger resumes the same world object. Drop
         // the temporary active-sector membership before EnterWorld adds it back.
@@ -312,6 +439,17 @@ public sealed partial class GameClient
             ApplyBotCombatBuff(_character);
 
         EnterWorld();
+    }
+
+    private void ReturnToCharacterList()
+    {
+        if (_account == null) return;
+        var resDisp = ResolveAccountResDisplay();
+        int maxChars = GetEffectiveMaxChars();
+        _netState.Send(new PacketCharList(
+            _account.GetCharNames(uid => _world.FindChar(uid)?.GetName()),
+            maxChars, _netState.SupportsNewCharacterList,
+            BuildCharacterListFlags(resDisp, maxChars, ServerToolTipMode != 0)));
     }
 
     private static void ApplyBotCombatBuff(Character ch)
@@ -484,9 +622,11 @@ public sealed partial class GameClient
         SendCharacterStatus(_character);
         SendSkillList();
 
-        _netState.Send(new PacketGlobalLight(_world.GlobalLight));
+        _netState.Send(new PacketGlobalLight(_character.IsDead ? (byte)0 : _world.GlobalLight));
         _netState.Send(new PacketPersonalLight(_character.Uid.Value, _character.LightLevel));
-        _netState.Send(new PacketSeason((byte)_world.CurrentSeason));
+        _netState.Send(new PacketSeason(_character.IsDead
+            ? (byte)SeasonType.Desolation
+            : (byte)_world.CurrentSeason));
 
         // Send player's own character with equipment — client needs this to render worn items
         SendDrawObject(_character);
@@ -505,6 +645,7 @@ public sealed partial class GameClient
 
         _netState.Send(new PacketLoginComplete());
         SendSpeedMode();
+        _spellEngine?.ResendBuffs(_character);
 
         // Source-X parity: send paperdoll on login so the client has name/title
         // data immediately (some clients restore the paperdoll window on reconnect).
@@ -551,7 +692,8 @@ public sealed partial class GameClient
             if (_character.BodyId != 0x0192 && _character.BodyId != 0x0193)
                 _character.BodyId = ghostBody;
             _character.Hue = Core.Types.Color.Default;
-            _netState.Send(new PacketDeathStatus(PacketDeathStatus.ActionDead));
+            if (Character.PacketDeathAnimationEnabled)
+                _netState.Send(new PacketDeathStatus(PacketDeathStatus.ActionDead));
         }
 
         // Ensure first world snapshot is fully consistent.
@@ -654,9 +796,11 @@ public sealed partial class GameClient
         SendCharacterStatus(_character);
 
         // 4. Re-send light & season
-        _netState.Send(new PacketGlobalLight(_world.GlobalLight));
+        _netState.Send(new PacketGlobalLight(_character.IsDead ? (byte)0 : _world.GlobalLight));
         _netState.Send(new PacketPersonalLight(_character.Uid.Value, _character.LightLevel));
-        _netState.Send(new PacketSeason((byte)_world.CurrentSeason, playSound: false));
+        _netState.Send(new PacketSeason(_character.IsDead
+            ? (byte)SeasonType.Desolation
+            : (byte)_world.CurrentSeason, playSound: false));
 
         // 5. Reset walk sequence (0 = resync sentinel, client must send seq 0 next)
         _netState.WalkSequence = 0;

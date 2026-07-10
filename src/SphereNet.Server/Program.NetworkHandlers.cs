@@ -583,6 +583,8 @@ public static partial class Program
         foreach (var obj in dirtyObjects)
         {
             var pos = obj.Position;
+            bool tooltipChanged = (obj.LastConsumedDirtyFlags &
+                ~(DirtyFlag.Position | DirtyFlag.Direction)) != DirtyFlag.None;
             int cx = pos.X / SphereNet.Game.World.Sectors.Sector.SectorSize;
             int cy = pos.Y / SphereNet.Game.World.Sectors.Sector.SectorSize;
             for (int sx = cx - secRadius; sx <= cx + secRadius; sx++)
@@ -594,7 +596,11 @@ public static partial class Program
                 {
                     if (pos.GetDistanceTo(ch.Position) > Range) continue;
                     if (_clientsByCharUid.TryGetValue(ch.Uid, out var c) && c.IsPlaying)
+                    {
                         c.ViewNeedsRefresh = true;
+                        if (tooltipChanged)
+                            c.SendAosTooltip(obj, requested: false, invalidate: true);
+                    }
                 }
             }
         }
@@ -953,11 +959,14 @@ public static partial class Program
 
     private static void BroadcastSeasonChange(bool playSound)
     {
-        var seasonPacket = new PacketSeason((byte)_weatherEngine.CurrentSeason, playSound);
         foreach (var client in _clients.Values)
         {
             if (!client.IsPlaying || client.Character == null) continue;
-            client.Send(seasonPacket);
+            bool dead = client.Character.IsDead;
+            client.Send(new PacketSeason(dead
+                ? (byte)SeasonType.Desolation
+                : (byte)_weatherEngine.CurrentSeason, playSound));
+            client.Send(new PacketGlobalLight(dead ? (byte)0 : _world.GlobalLight));
 
             var r = _world.FindRegion(client.Character.Position);
             if (r != null && !string.IsNullOrEmpty(r.Name))

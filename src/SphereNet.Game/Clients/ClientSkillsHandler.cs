@@ -68,6 +68,7 @@ public sealed class ClientSkillsHandler
     private void SendGump(GumpBuilder gump, Action<uint, uint[], (ushort, string)[]>? callback = null) => _client.SendGump(gump, callback);
     private void InitiateTrade(Character partner, Item? firstItem = null) => _client.InitiateTrade(partner, firstItem);
     private bool OpenNamedDialog(string dialogId, int requestedPage = 0) => _client.OpenNamedDialog(dialogId, requestedPage);
+    private Item? GetTopContainer(Item item) => _client.GetTopContainer(item);
     private static uint StableStringHash(string s) => GameClient.StableStringHash(s);
 
 
@@ -555,21 +556,41 @@ public sealed class ClientSkillsHandler
 
     public void HandleAOSTooltip(uint serial)
     {
-        if (_character == null) return;
-        if (_world.ToolTipMode == 0) return;
-        if (!_netState.SupportsAosTooltip) return;
-
         var obj = _world.FindObject(new Serial(serial));
         if (obj == null) return;
+        SendAosTooltip(obj, requested: true);
+    }
+
+    public void SendAosTooltip(ObjBase obj, bool requested, bool invalidate = false)
+    {
+        if (_character == null || obj == null || obj.IsDeleted) return;
+        if (_world.ToolTipMode == 0 || (GameClient.ServerFeatureAOS & 0x02) == 0) return;
+        if (!_netState.SupportsAosTooltip || !CanSendAosTooltip(obj)) return;
+
+        uint serial = obj.Uid.Value;
+        if (invalidate)
+        {
+            View.TooltipDataCache.Remove(serial);
+            View.TooltipHashCache.Remove(serial);
+        }
+
+        long now = Environment.TickCount64;
+        long cacheMs = Math.Max(0, _world.ToolTipCache) * 1000L;
+        if (cacheMs > 0 && View.TooltipDataCache.TryGetValue(serial, out var cached) &&
+            now - cached.BuiltAt < cacheMs)
+        {
+            SendAosTooltipEntry(serial, cached, requested);
+            return;
+        }
 
         if (_triggerDispatcher != null)
         {
             TriggerResult triggerResult = obj switch
             {
                 Character ch => _triggerDispatcher.FireCharTrigger(ch, CharTrigger.ClientTooltip,
-                    new TriggerArgs { CharSrc = _character, ScriptConsole = _client }),
+                    new TriggerArgs { CharSrc = _character, ScriptConsole = _client, N1 = requested ? 1 : 0 }),
                 Item tooltipItem => _triggerDispatcher.FireItemTrigger(tooltipItem, ItemTrigger.ClientTooltip,
-                    new TriggerArgs { CharSrc = _character, ItemSrc = tooltipItem, ScriptConsole = _client }),
+                    new TriggerArgs { CharSrc = _character, ItemSrc = tooltipItem, ScriptConsole = _client, N1 = requested ? 1 : 0 }),
                 _ => TriggerResult.Default
             };
 
@@ -628,7 +649,7 @@ public sealed class ClientSkillsHandler
             }
 
             _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.ClientTooltipAfterDefault,
-                new TriggerArgs { CharSrc = _character, ItemSrc = item, ScriptConsole = _client });
+                new TriggerArgs { CharSrc = _character, ItemSrc = item, ScriptConsole = _client, N1 = requested ? 1 : 0 });
         }
 
         var props = propList.ToArray();
@@ -637,11 +658,58 @@ public sealed class ClientSkillsHandler
         foreach (var (clilocId, args) in props)
             hash = hash * 31 + (uint)clilocId + StableStringHash(args);
 
-        // Client already requested the full 0xD6 property list; Source-X does
-        // not follow that response with another 0xDC revision packet.
-        View.TooltipHashCache[serial] = hash;
+        uint revision = 1;
+        if (View.TooltipDataCache.TryGetValue(serial, out var previous))
+            revision = previous.Hash == hash ? previous.Revision : unchecked(previous.Revision + 1);
+        if (revision == 0) revision = 1;
 
-        _netState.Send(new PacketOPLData(serial, hash, props));
+        var entry = new TooltipCacheEntry(hash, revision, now, props);
+        View.TooltipDataCache[serial] = entry;
+        SendAosTooltipEntry(serial, entry, requested);
+    }
+
+    private void SendAosTooltipEntry(uint serial, TooltipCacheEntry entry, bool requested)
+    {
+        bool knownSame = View.TooltipHashCache.TryGetValue(serial, out uint sentHash) &&
+            sentHash == entry.Hash;
+        bool sendFull = requested || _world.ToolTipMode == 2 || !knownSame;
+
+        if (sendFull)
+            _netState.Send(new PacketOPLData(serial, entry.Revision, entry.Properties));
+        else
+            _netState.Send(new PacketOPLInfo(serial, entry.Revision));
+
+        View.TooltipHashCache[serial] = entry.Hash;
+    }
+
+    private bool CanSendAosTooltip(ObjBase obj)
+    {
+        if (_character == null) return false;
+
+        if (obj is Character target)
+        {
+            if (target == _character) return true;
+            if (target.MapIndex != _character.MapIndex) return false;
+            bool concealed = target.IsInvisible || target.IsStatFlag(StatFlag.Hidden);
+            if (concealed && !_character.AllShow && _character.PrivLevel < PrivLevel.Counsel)
+                return false;
+            return _character.Position.GetDistanceTo(target.Position) <= _netState.ViewRange &&
+                _world.CanSeeLOS(_character.Position, target.Position);
+        }
+
+        if (obj is not Item item) return false;
+        if (item.IsAttr(ObjAttributes.Static) && !_character.AllMove && _character.PrivLevel < PrivLevel.GM)
+            return false;
+        if (item.IsAttr(ObjAttributes.Invis) && !_character.AllShow)
+            return false;
+
+        Item top = GetTopContainer(item) ?? item;
+        Character? owner = top.ContainedIn.IsValid ? _world.FindChar(top.ContainedIn) : null;
+        if (owner == _character) return true;
+        Point3D point = owner?.Position ?? top.Position;
+        if (point.Map != _character.MapIndex) return false;
+        return _character.Position.GetDistanceTo(point) <= _netState.ViewRange &&
+            _world.CanSeeLOS(_character.Position, point);
     }
 
     // ==================== Trade ====================
@@ -683,17 +751,51 @@ public sealed class ClientSkillsHandler
         // Parse version string (e.g. "7.0.20.0") into the numeric format used by NetState
         if (!string.IsNullOrEmpty(version) && _netState.ClientVersionNumber == 0)
         {
-            var parts = version.Split('.');
-            if (parts.Length >= 3 &&
-                uint.TryParse(parts[0], out uint major) &&
-                uint.TryParse(parts[1], out uint minor) &&
-                uint.TryParse(parts[2], out uint rev))
+            if (TryParseClientVersionNumber(version, out uint parsedVersion))
             {
-                uint patch = parts.Length > 3 && uint.TryParse(parts[3], out uint p) ? p : 0;
-                _netState.ClientVersionNumber = major * 10_000_000 + minor * 1_000_000 + rev * 1_000 + patch;
+                _netState.ClientVersionNumber = parsedVersion;
                 _logger.LogInformation("Client version detected from 0xBD: {Ver} -> {Num}", version, _netState.ClientVersionNumber);
+                if (GameClient.ServerAutoResDisp && _client.Account != null)
+                    _ = _client.HandleResolvedClientVersion();
             }
         }
+    }
+
+    private static bool TryParseClientVersionNumber(string version, out uint result)
+    {
+        result = 0;
+        string clean = version.Trim().Split(' ', 2)[0];
+        string[] parts = clean.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 3 || !uint.TryParse(parts[0], out uint major) ||
+            !uint.TryParse(parts[1], out uint minor) ||
+            !TryParseVersionPart(parts[2], out uint revision, out uint revisionSuffix))
+            return false;
+
+        uint patch = revisionSuffix;
+        if (parts.Length > 3)
+        {
+            if (!TryParseVersionPart(parts[3], out patch, out uint patchSuffix))
+                return false;
+            if (patchSuffix != 0)
+                patch = patchSuffix;
+        }
+
+        result = major * 10_000_000 + minor * 1_000_000 + revision * 1_000 + patch;
+        return true;
+    }
+
+    private static bool TryParseVersionPart(string token, out uint number, out uint letterPatch)
+    {
+        number = 0;
+        letterPatch = 0;
+        int digitCount = 0;
+        while (digitCount < token.Length && char.IsAsciiDigit(token[digitCount]))
+            digitCount++;
+        if (digitCount == 0 || !uint.TryParse(token[..digitCount], out number))
+            return false;
+        if (digitCount < token.Length && char.IsAsciiLetter(token[digitCount]))
+            letterPatch = (uint)(char.ToLowerInvariant(token[digitCount]) - 'a' + 1);
+        return true;
     }
 
     // ==================== Client Update Loop ====================

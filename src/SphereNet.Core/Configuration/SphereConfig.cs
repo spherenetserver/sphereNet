@@ -272,6 +272,7 @@ public sealed class SphereConfig
     public int FeatureSA { get; set; }
     public int FeatureTOL { get; set; }
     public int FeatureExtra { get; set; }
+    public bool AutoResDisp { get; set; } = true;
 
     // Tooltip
     public int ToolTipMode { get; set; } = 1; // 0=off, 1=revision/request, 2=force full
@@ -280,8 +281,8 @@ public sealed class SphereConfig
     // Experimental / Option flags
     public int Experimental { get; set; }
     public int OptionFlags { get; set; }
-    public const int OF_FileCommands = 0x0020;
-    public bool HasFileCommands => (OptionFlags & OF_FileCommands) != 0;
+    public const int OF_FileCommands = (int)SphereNet.Core.Enums.OptionFlags.FileCommands;
+    public bool HasFileCommands => ((SphereNet.Core.Enums.OptionFlags)(uint)OptionFlags & SphereNet.Core.Enums.OptionFlags.FileCommands) != 0;
 
     // Network
     public int MaxPacketsPerTick { get; set; } = 100;
@@ -593,6 +594,7 @@ public sealed class SphereConfig
         FeatureSA  = ini.GetInt(section, "FeatureSA",  FeatureSA);
         FeatureTOL = ini.GetInt(section, "FeatureTOL", FeatureTOL);
         FeatureExtra = ini.GetInt(section, "FeatureExtra", FeatureExtra);
+        AutoResDisp = ini.GetBool(section, "AutoResDisp", AutoResDisp);
 
         ToolTipMode = ini.GetInt(section, "ToolTipMode", ToolTipMode);
         ToolTipCache = ini.GetInt(section, "ToolTipCache", ToolTipCache);

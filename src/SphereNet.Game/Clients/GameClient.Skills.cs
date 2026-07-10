@@ -29,6 +29,9 @@ public sealed partial class GameClient
 
     public void HandleAOSTooltip(uint serial) => SkillUse.HandleAOSTooltip(serial);
 
+    public void SendAosTooltip(Objects.ObjBase obj, bool requested, bool invalidate = false) =>
+        SkillUse.SendAosTooltip(obj, requested, invalidate);
+
     public void HandleTradeRequest(uint targetUid) => SkillUse.HandleTradeRequest(targetUid);
 
     public void HandlePartyInvite(uint targetUid) => SkillUse.HandlePartyInvite(targetUid);

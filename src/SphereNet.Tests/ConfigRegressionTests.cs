@@ -23,7 +23,7 @@ public class ConfigRegressionTests
             StateRecordSnapshotMs=10
             MacroMaxSteps=1000
             MacroMaxLoopMinutes=0
-            OptionFlags=0x0020
+            OptionFlags=0x0080
             SpeechSelf=spk_player
             SpeechPet=spk_pet
             EventsPet=e_npc_generic_event

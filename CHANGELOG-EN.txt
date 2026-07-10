@@ -4,6 +4,41 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-10] - Source-X gameplay parity: interaction, client capabilities, buffs and death
+----------------------------------------
+
+FIXED - Double-click, NPC loot and spawner behavior:
+  - Double-click validates facet, visibility, LOS, range and facing before
+    triggers. GMs can inspect non-human NPC packs, while regular players can
+    open pack-horse and pack-llama inventories with their loot contents.
+  - Character/item spawners immediately spawn when empty and clear children
+    when populated. Using a spawned item detaches it without deletion, and both
+    spawner types now run PreSpawn/Spawn/AddObj/DelObj lifecycle hooks.
+
+FIXED - Client version, feature flags and tooltip protocol:
+  - FEATURE* settings are no longer ORed as raw bits. ResDisp and client version
+    now translate them into Source-X 0xB9/0xA9 flags. AutoResDisp, effective
+    character-slot limits and letter-patch versions such as 5.0.2b are handled.
+  - Tooltip modes 0/1/2, 0xDC revisions, 0xD6 full property lists, caching and
+    invalidation are implemented. Nearby clients receive refreshed tooltips for
+    changed objects.
+
+FIXED - Buff icons and death/ghost lifecycle:
+  - Source-X BUFF_ICONS and the 0xDF cliloc layout are implemented. Spell,
+    poison, hidden and meditation icons are added and removed correctly across
+    refresh, dispel/reveal, expiry, death and reconnect.
+  - The invalid self 0xAF packet and persistent custom death particle are gone.
+    PACKETDEATHANIMATION=0 now suppresses 0x2C, while ghost season/light and
+    corpse waypoint add/remove behavior match Source-X.
+  - The free-resurrection path through death-menu responses is closed; the
+    response now resynchronizes ghost play instead of resurrecting the player.
+
+VERIFIED - With Source-X gameplay regression coverage, the complete solution
+  passes 1294/1294 in Debug and Release with zero warnings/errors. The git diff
+  check is clean.
+
+================================================================================
+
 [2026-07-10] - Deep skill-system code audit: use flows, crafting and state management
 ----------------------------------------
 

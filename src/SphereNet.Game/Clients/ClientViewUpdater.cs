@@ -156,6 +156,7 @@ public sealed class ClientViewUpdater
             uint uid = ch.Uid.Value;
             View.KnownChars.Add(uid);
             View.LastKnownPos[uid] = (ch.X, ch.Y, ch.Z, (byte)ch.Direction, ch.BodyId, ch.Hue, ComputeVisKey(ch));
+            _client.SendAosTooltip(ch, requested: false);
         }
 
         foreach (var ch in delta.UpdatedChars)
@@ -219,6 +220,7 @@ public sealed class ClientViewUpdater
             uint nuid = item.Uid.Value;
             View.KnownItems.Add(nuid);
             View.LastKnownItemState[nuid] = (item.X, item.Y, item.Z, item.DispIdFull, item.Hue, item.Amount, item.Direction);
+            _client.SendAosTooltip(item, requested: false);
         }
 
         foreach (var item in delta.UpdatedItems)
@@ -254,6 +256,8 @@ public sealed class ClientViewUpdater
         {
             View.KnownChars.Remove(uid);
             View.LastKnownPos.Remove(uid);
+            View.TooltipHashCache.Remove(uid);
+            View.TooltipDataCache.Remove(uid);
         }
 
         var staleItems = new List<uint>();
@@ -282,6 +286,8 @@ public sealed class ClientViewUpdater
         {
             View.KnownItems.Remove(uid);
             View.LastKnownItemState.Remove(uid);
+            View.TooltipHashCache.Remove(uid);
+            View.TooltipDataCache.Remove(uid);
         }
     }
 

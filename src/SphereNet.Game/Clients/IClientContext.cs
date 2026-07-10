@@ -124,6 +124,7 @@ internal interface IClientContext : ITextConsole
     void SendSelfRedraw();
     void SendPaperdoll(Character ch);
     void SendOpenContainer(Item container);
+    void SendAosTooltip(ObjBase obj, bool requested, bool invalidate = false);
     void SendSkillList();
     void SendPickupFailed(byte reason);
     bool CanSendStatusFor(Character ch);
@@ -152,6 +153,7 @@ internal interface IClientContext : ITextConsole
     void OpenVendorBuy(Character vendor);
     void HandleVendorInteraction(Character vendor);
     void HandleDoubleClick(uint uid);
+    ResDisplayVersion HandleResolvedClientVersion();
     void HandleCastSpell(SpellType spell, uint targetUid);
     void HandleChatOpen();
     void HandleQueryDesignDetails(byte[] data);

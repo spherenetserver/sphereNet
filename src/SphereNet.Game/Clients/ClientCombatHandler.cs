@@ -1555,9 +1555,9 @@ public sealed class ClientCombatHandler
     }
 
     /// <summary>
-    /// Handle player death — body/hue ghost transition, death effect/sound,
-    /// per-observer dispatch (plain players get 0xAF, staff get 0x1D + 0x78
-    /// ghost mobile), self ghost render (0x77 + 0x20 + 0x78 self + 0x2C),
+    /// Handle player death — body/hue ghost transition and death sound,
+    /// per-observer dispatch (plain players get 0xAF, staff get 0x78 + 0x77
+    /// ghost updates), self ghost render (0x20 + 0x77 and optional 0x2C),
     /// and view-cache invalidation. Corpse + corpse equipment are already
     /// broadcast by the kill site (TrySwingAt PvP path or Program.OnNpcKill).
     /// </summary>
@@ -1646,25 +1646,8 @@ public sealed class ClientCombatHandler
             ClearPendingTargetState();
         }
 
-        // Death particle + sound — single BroadcastNearby with
-        // excludeUid=0 reaches everyone in range INCLUDING the dying
-        // player (Source-X UpdateCanSee semantic). A redundant
-        // _netState.Send afterwards would double-send and produce the
-        // duplicate 0x70/0x54 wire-log entries seen in earlier traces.
-        var deathEffect = new PacketEffect(
-            0x03,
-            _character.Uid.Value, 0,
-            0x3735,
-            _character.X, _character.Y, (short)_character.Z,
-            0, 0, 0,
-            10, 30, true, false);
-        // The dying client gets the effect/sound directly — wire captures
-        // showed the broadcast-only delivery never reaching it (the 0x70/0x54
-        // pair was absent from the death sequence while every _netState send
-        // arrived). Observers still get them via the broadcast, with the
-        // victim excluded to avoid the old double-send.
-        _netState.Send(deathEffect);
-        BroadcastNearby?.Invoke(_character.Position, UpdateRange, deathEffect, _character.Uid.Value);
+        // Source-X only plays the character's death sound here. It does not
+        // create a persistent 0x3735 particle at the corpse position.
 
         ushort deathSoundId = (ushort)SphereNet.Game.Death.DeathEngine.GetHumanDeathSound(deathSoundFemale, Random.Shared);
         var deathSound = new PacketSound(deathSoundId, _character.X, _character.Y, _character.Z);
@@ -1681,15 +1664,13 @@ public sealed class ClientCombatHandler
         //                         the corpse + death anim remain visible)
         //                       + server-side cache cleanup (no 0x1D
         //                         needed; the slot is already empty).
-        //     - STAFF observer  → 0x1D (delete the living-body mobile)
-        //                       + 0x78 ghost mobile (fresh spawn under
-        //                         the original serial — safe because we
-        //                         never sent 0xAF to this observer, so
-        //                         no remap collision).
+        //     - STAFF observer  → 0x78 ghost draw + 0x77 moving update
+        //                         under the original serial. No 0xAF is
+        //                         sent, so there is no serial remap collision.
         //                       + cache marked as ghost so the next view-
         //                         delta tick sees no body change.
-        //     - SELF (handled below the loop, not inside) — needs a full
-        //       0x77 + 0x20 + 0x78 + 0x2C sequence.
+        //     - SELF (handled below the loop, not inside) → 0x20 + 0x77,
+        //       followed by 0x2C only when PACKETDEATHANIMATION is enabled.
         //
         //   This is the correct mapping for "staff sees ghosts, plain
         //   players don't" (the user's confirmed visibility rule) without
@@ -1815,9 +1796,6 @@ public sealed class ClientCombatHandler
         //   ghost graphic stuck on the dying client because 0x78 self
         //   was a no-op and 0x77 was racing 0x20.
         // ---------------------------------------------------------------
-        if (corpseSerial != 0)
-            _netState.Send(deathAnim);
-
         var drawPacket = new PacketDrawPlayer(
             victimUid, ghostBody, _character.Hue,
             ghostFlags, cx, cy, cz, ghostDir);
@@ -1828,6 +1806,18 @@ public sealed class ClientCombatHandler
             cx, cy, cz, ghostDir,
             _character.Hue, ghostFlags, ghostNoto);
         _netState.Send(ghostMoving);
+
+        _netState.Send(new PacketSeason((byte)SeasonType.Desolation, playSound: true));
+        _netState.Send(new PacketGlobalLight(0));
+        if (corpseSerial != 0 && _netState.SupportsMapWaypoints)
+        {
+            var corpse = _world?.FindItem(new Serial(corpseSerial));
+            if (corpse != null)
+            {
+                _netState.Send(new PacketWaypointAdd(corpseSerial, corpse.X, corpse.Y, corpse.Z,
+                    corpse.MapIndex, type: 1, corpse.GetName()));
+            }
+        }
 
         SendCharacterStatus(_character);
         SysMessage(ServerMessages.Get("combat_dead"));
@@ -1865,6 +1855,8 @@ public sealed class ClientCombatHandler
     {
         if (_character == null || !_character.IsDead) return;
 
+        Item? ownCorpse = FindOwnCorpseNear(_character);
+
         // @Resurrect — Source-X passes the character's own corpse (ARGO) and the
         // post-rez hit% (ARGN1, default 50 = Resurrect()'s MaxHits/2). RETURN 1
         // blocks the resurrection; otherwise a script may override the hit% via
@@ -1875,7 +1867,7 @@ public sealed class ClientCombatHandler
             var rezArgs = new TriggerArgs
             {
                 CharSrc = _character,
-                O1 = FindOwnCorpseNear(_character),
+                O1 = ownCorpse,
                 N1 = rezHitPct,
             };
             var result = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.Resurrect, rezArgs);
@@ -1957,14 +1949,17 @@ public sealed class ClientCombatHandler
             _character.Hue, resFlags, resNoto,
             resEquipment, _netState.SupportsNewMobileIncoming));
 
-        _netState.Send(new PacketDeathStatus(PacketDeathStatus.ActionResurrect));
+        _netState.Send(new PacketSeason((byte)_world.CurrentSeason, playSound: true));
+        _netState.Send(new PacketGlobalLight(_world.GlobalLight));
+        if (corpseRestored && ownCorpse != null && _netState.SupportsMapWaypoints)
+            _netState.Send(new PacketWaypointRemove(ownCorpse.Uid.Value));
 
         // === Per-observer dispatch ===
         // Plain observer: never saw the ghost (filter dropped it during
         // BuildViewDelta) → 0x78 spawns a brand-new living mobile under
         // the original serial.
         // Staff observer: had the ghost mobile in their world.Mobiles
-        // (we sent 0x1D + 0x78 ghost during death and never sent 0xAF
+        // (we sent 0x78 + 0x77 ghost updates during death and never sent 0xAF
         // so no remap happened) → 0x78 overwrites the body+equipment
         // in-place via UpdateGameObject. Same packet, same outcome,
         // single dispatch path.
@@ -2328,21 +2323,6 @@ public sealed class ClientCombatHandler
                     BroadcastNearby?.Invoke(effectTarget.Position, UpdateRange, effectPacket, _character.Uid.Value);
                 }
 
-                // --- Buff icon (0xDF) for beneficial spells with duration ---
-                if (_netState.SupportsBuffIcon &&
-                    spellDef != null && spellDef.IsFlag(SpellFlag.Good) && spellDef.DurationBase > 0)
-                {
-                    int skillLvl = _character.GetSkill(spellDef.GetPrimarySkill());
-                    int durTenths = spellDef.GetDuration(skillLvl);
-                    ushort durSec = (ushort)Math.Min(durTenths / 10, ushort.MaxValue);
-                    ushort buffIconId = GetBuffIconId((SpellType)spellId);
-                    if (buffIconId != 0)
-                    {
-                        _netState.Send(new PacketBuffIcon(
-                            _character.Uid.Value, buffIconId, true, durSec, spellName, ""));
-                    }
-                }
-
                 // @SpellEffect / @SpellSuccess and the wand-charge / scroll
                 // consumption are now fired by the engine in SpellEngine.CastDone
                 // (OnCastResolved), so NPC and precast casts reach them too — the
@@ -2350,25 +2330,6 @@ public sealed class ClientCombatHandler
             }
         }
     }
-
-    /// <summary>Map spell types to ClassicUO buff icon IDs.</summary>
-    private static ushort GetBuffIconId(SpellType spell) => spell switch
-    {
-        SpellType.ReactiveArmor => 0x03E8,
-        SpellType.Protection => 0x03E9,
-        SpellType.NightSight => 0x03ED,
-        SpellType.MagicReflect => 0x03EC,
-        SpellType.Incognito => 0x03EF,
-        SpellType.Bless => 0x03EA,
-        SpellType.Agility => 0x03EB,
-        SpellType.Cunning => 0x03EE,
-        SpellType.Strength => 0x03F0,
-        SpellType.Invisibility => 0x03F1,
-        SpellType.Paralyze => 0x03F2,
-        SpellType.Poison => 0x03F3,
-        SpellType.Curse => 0x03F6,
-        _ => 0,
-    };
 
     /// <summary>
     /// Consolidated client tick: runs combat, spell casting, and stat updates.

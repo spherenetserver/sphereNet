@@ -68,6 +68,17 @@ public sealed class CharacterPoisonState
     /// remaining time (the absolute tick resets on restart).</summary>
     public long RemainingTickMs => _nextTick > 0 ? Math.Max(0, _nextTick - Environment.TickCount64) : 0;
 
+    public ushort RemainingDurationSeconds
+    {
+        get
+        {
+            if (_level == 0 || _ticksRemaining <= 0)
+                return 0;
+            long remainingMs = RemainingTickMs + (long)Math.Max(0, _ticksRemaining - 1) * GetTickInterval();
+            return (ushort)Math.Clamp((remainingMs + 999) / 1000, 1, ushort.MaxValue);
+        }
+    }
+
     /// <summary>Restore a persisted poison (world load): re-arm the level, remaining
     /// ticks, next-tick time and poisoner exactly, without the fresh-poison reset that
     /// <see cref="Apply"/> does. Ignored when the level or tick count is out of range.</summary>
@@ -98,15 +109,20 @@ public sealed class CharacterPoisonState
         _nextTick = Environment.TickCount64 + GetTickInterval();
         if (source.IsValid) _source = source;
         _owner.SetStatFlag(StatFlag.Poisoned);
+        Character.OnClientBuffChanged?.Invoke(_owner, BuffIcon.Poison, false, 0);
+        Character.OnClientBuffChanged?.Invoke(_owner, BuffIcon.Poison, true, RemainingDurationSeconds);
     }
 
     public void Cure()
     {
+        bool wasPoisoned = _level > 0 || _ticksRemaining > 0;
         _level = 0;
         _ticksRemaining = 0;
         _nextTick = 0;
         _source = Serial.Invalid;
         _owner.ClearStatFlag(StatFlag.Poisoned);
+        if (wasPoisoned)
+            Character.OnClientBuffChanged?.Invoke(_owner, BuffIcon.Poison, false, 0);
     }
 
     private int GetTickInterval() => _level switch

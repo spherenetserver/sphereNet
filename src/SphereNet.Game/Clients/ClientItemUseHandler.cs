@@ -108,8 +108,10 @@ public sealed class ClientItemUseHandler
             var target = uid == _character.Uid.Value
                 ? _character
                 : _world.FindChar(new Serial(uid));
-            if (target != null)
+            if (target != null && CanSeeCharacterForDoubleClick(target))
                 SendPaperdoll(target);
+            else if (uid != 0)
+                Send(new PacketDeleteObject(uid));
             return;
         }
 
@@ -180,6 +182,14 @@ public sealed class ClientItemUseHandler
         var item = _world.FindItem(new Serial(uid));
         if (item != null)
         {
+            if (!CanSeeItemForDoubleClick(item, out Point3D usePoint))
+            {
+                Send(new PacketDeleteObject(uid));
+                return;
+            }
+
+            FaceUsePoint(usePoint);
+
             if (_character.PrivLevel < PrivLevel.GM)
             {
                 // Loose ground item: simple tile-distance reach. A contained item
@@ -187,9 +197,7 @@ public sealed class ClientItemUseHandler
                 // a crafted/stale DClick can't reach into a far or moved
                 // container). CanReachTargetItem covers both the on-ground and
                 // worn-by-a-mobile top-container cases.
-                bool reachable = !item.ContainedIn.IsValid
-                    ? _character.Position.GetDistanceTo(item.Position) <= 3
-                    : CanReachTargetItem(item);
+                bool reachable = CanReachTargetItem(item);
                 if (!reachable)
                 {
                     SysMessage(ServerMessages.Get(Msg.ItemuseToofar));
@@ -215,6 +223,14 @@ public sealed class ClientItemUseHandler
         var ch = _world.FindChar(new Serial(uid));
         if (ch != null)
         {
+            if (!CanSeeCharacterForDoubleClick(ch))
+            {
+                Send(new PacketDeleteObject(uid));
+                return;
+            }
+
+            FaceUsePoint(ch.Position);
+
             // Fire @DClick on character — if script returns true, block default action
             if (_triggerDispatcher != null)
             {
@@ -307,9 +323,102 @@ public sealed class ClientItemUseHandler
                 return;
             }
 
+            // Source-X: pack horses/llamas expose their pack to players, while
+            // staff can inspect the pack of every non-human NPC without snoop
+            // or touch checks.
+            if (!ch.IsPlayer && !IsHumanLikeBody(ch.BodyId) &&
+                (ch.BodyId is 0x0123 or 0x0124 || _character.PrivLevel >= PrivLevel.GM))
+            {
+                SendOpenContainer(EnsureCharacterPack(ch));
+                return;
+            }
+
             if (IsHumanLikeBody(ch.BodyId))
                 SendPaperdoll(ch);
+
+            return;
         }
+
+        if (uid != 0)
+            Send(new PacketDeleteObject(uid));
+    }
+
+    private bool CanSeeCharacterForDoubleClick(Character target)
+    {
+        if (_character == null || target.IsDeleted) return false;
+        if (target == _character) return true;
+        if (target.MapIndex != _character.MapIndex) return false;
+        if (_character.Position.GetDistanceTo(target.Position) > Math.Max(UpdateRange, (int)_netState.ViewRange))
+            return false;
+
+        bool concealed = target.IsStatFlag(StatFlag.Hidden) || target.IsInvisible;
+        if (concealed && !_character.AllShow && _character.PrivLevel < PrivLevel.Counsel)
+            return false;
+
+        return _world.CanSeeLOS(_character.Position, target.Position);
+    }
+
+    private bool CanSeeItemForDoubleClick(Item item, out Point3D usePoint)
+    {
+        usePoint = item.Position;
+        if (_character == null || item.IsDeleted) return false;
+
+        var top = GetTopContainer(item) ?? item;
+        Character? owner = top.ContainedIn.IsValid ? _world.FindChar(top.ContainedIn) : null;
+        usePoint = owner?.Position ?? top.Position;
+
+        if (owner == _character)
+            return true;
+        if (usePoint.Map != _character.MapIndex)
+            return false;
+        if (item.IsAttr(ObjAttributes.Invis) && !_character.AllShow)
+            return false;
+        if (owner != null && !CanSeeCharacterForDoubleClick(owner))
+            return false;
+        if (_character.Position.GetDistanceTo(usePoint) > Math.Max(UpdateRange, (int)_netState.ViewRange))
+            return false;
+
+        return _world.CanSeeLOS(_character.Position, usePoint);
+    }
+
+    private void FaceUsePoint(Point3D point)
+    {
+        if (_character == null ||
+            (GameClient.ServerOptionFlags & OptionFlags.NoDClickTurn) != 0 ||
+            point.Map != _character.MapIndex ||
+            (point.X == _character.X && point.Y == _character.Y))
+            return;
+
+        Direction direction = _character.Position.GetDirectionTo(point);
+        if (direction == _character.Direction) return;
+
+        _character.Direction = direction;
+        SendSelfRedraw();
+
+        byte flags = BuildMobileFlags(_character);
+        byte noto = GetNotoriety(_character);
+        var moving = new PacketMobileMoving(
+            _character.Uid.Value, _character.BodyId,
+            _character.X, _character.Y, _character.Z,
+            (byte)((byte)direction & 0x07), _character.Hue, flags, noto);
+        if (BroadcastMoveNearby != null)
+            BroadcastMoveNearby(_character.Position, UpdateRange, moving, _character.Uid.Value, _character);
+        else
+            BroadcastNearby?.Invoke(_character.Position, UpdateRange, moving, _character.Uid.Value);
+    }
+
+    private Item EnsureCharacterPack(Character target)
+    {
+        var pack = target.Backpack ?? target.GetEquippedItem(Layer.Pack);
+        if (pack != null) return pack;
+
+        pack = _world.CreateItem();
+        pack.BaseId = 0x0E75;
+        pack.ItemType = ItemType.Container;
+        pack.Name = "backpack";
+        target.Equip(pack, Layer.Pack);
+        target.Backpack = pack;
+        return pack;
     }
 
     private static bool IsHumanLikeBody(ushort body) =>
@@ -401,6 +510,11 @@ public sealed class ClientItemUseHandler
                 (int)wearLayer < (int)Layer.Horse)
                 _client.TryDClickEquip(item, wearLayer);
         }
+
+        // Source-X Cmd_Use_Item detaches a spawned ground item before running
+        // its use-type behavior. It can then be replaced even if using it does
+        // not consume or delete the object.
+        DetachFromItemSpawner(item);
 
         switch (item.ItemType)
         {
@@ -863,13 +977,35 @@ public sealed class ClientItemUseHandler
                 break;
             case ItemType.SpawnItem:
             case ItemType.SpawnChar:
-                // Source-X parity: DClick on spawn item kills children and resets timer.
                 if (item.SpawnChar != null)
                 {
-                    var defName = item.SpawnChar.GetSpawnDefName();
-                    item.SpawnChar.KillAll();
-                    item.SpawnChar.ResetTimer();
-                    SysMessage($"Spawn reset: {defName}. {item.SpawnChar.CurrentCount}/{item.SpawnChar.MaxCount}");
+                    if (item.SpawnChar.HasAliveSpawns())
+                    {
+                        item.SpawnChar.KillAll();
+                        item.SpawnChar.ResetTimer();
+                        SysMessage(ServerMessages.Get(Msg.ItemuseSpawnNeg));
+                    }
+                    else
+                    {
+                        item.SpawnChar.ForceSpawn();
+                        item.SpawnChar.OnTick(Environment.TickCount64);
+                        SysMessage(ServerMessages.Get(Msg.ItemuseSpawnReset));
+                    }
+                }
+                else if (item.SpawnItem != null)
+                {
+                    if (item.SpawnItem.CurrentCount > 0)
+                    {
+                        item.SpawnItem.KillAll();
+                        item.SpawnItem.ResetTimer();
+                        SysMessage(ServerMessages.Get(Msg.ItemuseSpawnNeg));
+                    }
+                    else
+                    {
+                        item.SpawnItem.ForceSpawn();
+                        item.SpawnItem.OnTick(Environment.TickCount64);
+                        SysMessage(ServerMessages.Get(Msg.ItemuseSpawnReset));
+                    }
                 }
                 else
                 {
@@ -1520,17 +1656,39 @@ public sealed class ClientItemUseHandler
     private bool CanReachTargetItem(Item? obj)
     {
         if (obj == null || _character == null) return false;
-        if (_character.PrivLevel >= PrivLevel.GM) return true;
         var topCont = GetTopContainer(obj);
-        if (topCont != null && !topCont.ContainedIn.IsValid)
-            return _character.Position.GetDistanceTo(topCont.Position) <= 3;
-        if (topCont != null && topCont.ContainedIn.IsValid)
+        if (topCont == null) return false;
+
+        if (topCont.ContainedIn.IsValid)
         {
             var wearer = _world.FindChar(topCont.ContainedIn);
             if (wearer != null)
-                return _character.Position.GetDistanceTo(wearer.Position) <= 3;
+            {
+                if (wearer == _character) return true;
+                if (wearer.MapIndex != _character.MapIndex) return false;
+                if (_character.PrivLevel >= PrivLevel.GM) return true;
+                return _character.Position.GetDistanceTo(wearer.Position) <= 3 &&
+                    _world.CanSeeLOS(_character.Position, wearer.Position);
+            }
         }
-        return _character.Position.GetDistanceTo(obj.Position) <= 3;
+
+        Point3D point = topCont.Position;
+        if (point.Map != _character.MapIndex) return false;
+        if (_character.PrivLevel >= PrivLevel.GM) return true;
+        return _character.Position.GetDistanceTo(point) <= 3 &&
+            _world.CanSeeLOS(_character.Position, point);
+    }
+
+    private void DetachFromItemSpawner(Item item)
+    {
+        if (!item.TryGetTag("SPAWN_POINT_UUID", out string? raw) ||
+            !Guid.TryParse(raw, out Guid spawnUuid) ||
+            _world.FindByUuid(spawnUuid) is not Item spawnItem ||
+            spawnItem.SpawnItem == null)
+            return;
+
+        spawnItem.SpawnItem.DelObj(item.Uid);
+        item.RemoveTag("SPAWN_POINT_UUID");
     }
 
     /// <summary>Script entry for the item SMELT verb (Source-X CIV_SMELT):

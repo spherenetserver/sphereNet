@@ -1687,6 +1687,13 @@ public sealed class SpellEngine
     /// current ApplyCharEffect dispatch; null = use the spell def curve.</summary>
     private int? _durationOverrideTenths;
 
+    private static void NotifySpellBuff(Character target, SpellType spell, bool add,
+        ushort durationSeconds = 0)
+    {
+        if (ClientBuffCatalog.TryGet(spell, out var definition))
+            Character.OnClientBuffChanged?.Invoke(target, definition.Icon, add, durationSeconds);
+    }
+
     private ActiveSpellEffect ScheduleEffectExpiry(Character caster, Character target, SpellType spell, SpellDef def)
     {
         int casterSkill = caster.GetSkill(def.GetPrimarySkill());
@@ -1703,6 +1710,7 @@ public sealed class SpellEngine
             {
                 RevertDeltas(existing);
                 _activeEffects.RemoveAt(i);
+                NotifySpellBuff(target, spell, false);
                 // Source-X re-equips the spell memory on refresh: the old
                 // effect's removal is observable before the new add.
                 Character.OnSpellEffectRemove?.Invoke(target, (int)spell);
@@ -1719,6 +1727,9 @@ public sealed class SpellEngine
         Character.OnSpellEffectAdd?.Invoke(target, caster, (int)spell);
         // [SPELL n] @EffectAdd resource-section stage (SPTRIG_EFFECTADD).
         FireSpellSectionStage(spell, "EffectAdd", target);
+        NotifySpellBuff(target, spell, false);
+        NotifySpellBuff(target, spell, true,
+            (ushort)Math.Clamp((durationTenths + 9) / 10, 1, ushort.MaxValue));
         return eff;
     }
 
@@ -1743,6 +1754,7 @@ public sealed class SpellEngine
             if (_activeEffects[i].Target != victim || _activeEffects[i].Spell != SpellType.Paralyze)
                 continue;
             _activeEffects.RemoveAt(i);
+            NotifySpellBuff(victim, SpellType.Paralyze, false);
             Character.OnSpellEffectRemove?.Invoke(victim, (int)SpellType.Paralyze);
             FireSpellSectionStage(SpellType.Paralyze, "EffectRemove", victim);
         }
@@ -1761,6 +1773,7 @@ public sealed class SpellEngine
                 continue;
             _activeEffects.RemoveAt(i);
             RevertDeltas(eff);
+            NotifySpellBuff(target, eff.Spell, false);
             Character.OnSpellEffectRemove?.Invoke(target, (int)eff.Spell);
             FireSpellSectionStage(eff.Spell, "EffectRemove", target);
         }
@@ -1782,6 +1795,7 @@ public sealed class SpellEngine
             if (now < eff.ExpireTick) continue;
             _activeEffects.RemoveAt(i);
             RevertDeltas(eff);
+            NotifySpellBuff(eff.Target, eff.Spell, false);
             Character.OnSpellEffectRemove?.Invoke(eff.Target, (int)eff.Spell);
             FireSpellSectionStage(eff.Spell, "EffectRemove", eff.Target);
         }
@@ -1852,6 +1866,7 @@ public sealed class SpellEngine
                 continue;
             RevertDeltas(eff);
             _activeEffects.RemoveAt(i);
+            NotifySpellBuff(ch, eff.Spell, false);
             Character.OnSpellEffectRemove?.Invoke(ch, (int)eff.Spell);
             FireSpellSectionStage(eff.Spell, "EffectRemove", ch);
             return;
@@ -1867,6 +1882,7 @@ public sealed class SpellEngine
             var eff = _activeEffects[i];
             RevertDeltas(eff);
             _activeEffects.RemoveAt(i);
+            NotifySpellBuff(ch, eff.Spell, false);
             Character.OnSpellEffectRemove?.Invoke(ch, (int)eff.Spell);
             FireSpellSectionStage(eff.Spell, "EffectRemove", ch);
         }
@@ -1890,6 +1906,56 @@ public sealed class SpellEngine
             if (eff.Target != ch || eff.Target.IsDeleted)
                 continue;
             yield return SerializeEffect(eff, now);
+        }
+    }
+
+    /// <summary>Retire magical invisibility when Reveal, movement, combat or
+    /// casting exposes the character before the original timer expires.</summary>
+    public void BreakInvisibility(Character victim)
+    {
+        for (int i = _activeEffects.Count - 1; i >= 0; i--)
+        {
+            var eff = _activeEffects[i];
+            if (eff.Target != victim || eff.Spell != SpellType.Invisibility)
+                continue;
+            _activeEffects.RemoveAt(i);
+            RevertDeltas(eff);
+            NotifySpellBuff(victim, eff.Spell, false);
+            Character.OnSpellEffectRemove?.Invoke(victim, (int)eff.Spell);
+            FireSpellSectionStage(eff.Spell, "EffectRemove", victim);
+        }
+    }
+
+    /// <summary>Rebuild the client's buff bar after login/resync. Removing each
+    /// icon first avoids the client retaining a stale countdown across reconnects.</summary>
+    public void ResendBuffs(Character ch)
+    {
+        if (ch.IsStatFlag(StatFlag.Hidden | StatFlag.Insubstantial))
+        {
+            Character.OnClientBuffChanged?.Invoke(ch, BuffIcon.Hidden, false, 0);
+            Character.OnClientBuffChanged?.Invoke(ch, BuffIcon.Hidden, true, 0);
+        }
+        if (ch.IsStatFlag(StatFlag.Meditation))
+        {
+            Character.OnClientBuffChanged?.Invoke(ch, BuffIcon.ActiveMeditation, false, 0);
+            Character.OnClientBuffChanged?.Invoke(ch, BuffIcon.ActiveMeditation, true, 0);
+        }
+        if (ch.IsPoisoned)
+        {
+            Character.OnClientBuffChanged?.Invoke(ch, BuffIcon.Poison, false, 0);
+            Character.OnClientBuffChanged?.Invoke(ch, BuffIcon.Poison, true,
+                ch.Poison.RemainingDurationSeconds);
+        }
+
+        long now = Environment.TickCount64;
+        foreach (var eff in _activeEffects)
+        {
+            if (eff.Target != ch || eff.Target.IsDeleted || eff.ExpireTick <= now)
+                continue;
+            NotifySpellBuff(ch, eff.Spell, false);
+            long remainingMs = eff.ExpireTick - now;
+            NotifySpellBuff(ch, eff.Spell, true,
+                (ushort)Math.Clamp((remainingMs + 999) / 1000, 1, ushort.MaxValue));
         }
     }
 

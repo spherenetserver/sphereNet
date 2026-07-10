@@ -378,6 +378,8 @@ public sealed class SpawnComponent
             var ch = _world.FindChar(uid);
             if (ch == null || ch.IsDeleted) continue;
             ch.ClearStatFlag(StatFlag.Spawned);
+            OnSpawnTrigger?.Invoke(_spawnItem, ItemTrigger.DelObj,
+                new SpawnTriggerArgs { SpawnedChar = ch, SpawnDefIndex = ch.CharDefIndex });
             if (!ch.IsDead)
                 ch.Kill();
             _world.DeleteObject(ch);
@@ -600,6 +602,7 @@ public sealed class SpawnComponent
 public sealed class SpawnTriggerArgs
 {
     public Character? SpawnedChar { get; set; }
+    public Item? SpawnedItem { get; set; }
     public int SpawnDefIndex { get; set; }
 }
 
@@ -625,6 +628,14 @@ public sealed class ItemSpawnComponent
     private const int MaxSpawnLimit = 250;
 
     public ushort ItemDefId { get => _itemDefId; set => _itemDefId = value; }
+    public int CurrentCount
+    {
+        get
+        {
+            CleanupDeleted();
+            return _spawnedUids.Count;
+        }
+    }
     public int MaxCount
     {
         get => _maxCount;
@@ -678,14 +689,32 @@ public sealed class ItemSpawnComponent
 
     private void SpawnOneItem()
     {
-        var item = _world.CreateItem();
-        item.BaseId = _itemDefId;
+        int defIndex = _itemDefId;
+        if (SpawnComponent.OnSpawnTrigger != null)
+        {
+            var preArgs = new SpawnTriggerArgs { SpawnDefIndex = defIndex };
+            if (SpawnComponent.OnSpawnTrigger(_spawnItem, ItemTrigger.PreSpawn, preArgs) == TriggerResult.True)
+            {
+                SetNextSpawnTime();
+                return;
+            }
+            defIndex = preArgs.SpawnDefIndex;
+        }
 
-        var idef = DefinitionLoader.GetItemDef(_itemDefId);
+        if (defIndex <= 0 || defIndex > ushort.MaxValue)
+        {
+            SetNextSpawnTime();
+            return;
+        }
+
+        var item = _world.CreateItem();
+        item.BaseId = (ushort)defIndex;
+
+        var idef = DefinitionLoader.GetItemDef(defIndex);
         if (idef != null && !string.IsNullOrEmpty(idef.Name))
             item.Name = idef.Name;
         else
-            item.Name = $"Spawned_{_itemDefId:X}";
+            item.Name = $"Spawned_{defIndex:X}";
 
         if (_pile > 1)
             item.Amount = (ushort)Math.Max(1, _rand.Next(1, _pile + 1));
@@ -705,6 +734,16 @@ public sealed class ItemSpawnComponent
         SetNextSpawnTime();
 
         item.SetTag("SPAWN_POINT_UUID", _spawnItem.Uuid.ToString("D"));
+        if (SpawnComponent.OnSpawnTrigger != null)
+        {
+            var spawnArgs = new SpawnTriggerArgs { SpawnedItem = item, SpawnDefIndex = defIndex };
+            if (SpawnComponent.OnSpawnTrigger(_spawnItem, ItemTrigger.Spawn, spawnArgs) == TriggerResult.True)
+            {
+                _world.DeleteObject(item);
+                item.Delete();
+                return;
+            }
+        }
         if (!_world.PlaceItem(item, pos))
         {
             // Out-of-bounds placement — delete instead of leaving an orphan item
@@ -714,6 +753,38 @@ public sealed class ItemSpawnComponent
             return;
         }
         _spawnedUids.Add(item.Uid);
+        SpawnComponent.OnSpawnTrigger?.Invoke(_spawnItem, ItemTrigger.AddObj,
+            new SpawnTriggerArgs { SpawnedItem = item, SpawnDefIndex = defIndex });
+    }
+
+    public void ForceSpawn() => _nextSpawnTick = 0;
+
+    /// <summary>Detach a spawned item without deleting it (Source-X DelObj).</summary>
+    public void DelObj(Serial uid)
+    {
+        if (!_spawnedUids.Remove(uid)) return;
+        var item = _world.FindItem(uid);
+        SpawnComponent.OnSpawnTrigger?.Invoke(_spawnItem, ItemTrigger.DelObj,
+            new SpawnTriggerArgs { SpawnedItem = item, SpawnDefIndex = _itemDefId });
+        if (item != null)
+            item.RemoveTag("SPAWN_POINT_UUID");
+        if (_nextSpawnTick <= 0)
+            SetNextSpawnTime();
+    }
+
+    public void KillAll()
+    {
+        foreach (var uid in _spawnedUids.ToArray())
+        {
+            var item = _world.FindItem(uid);
+            SpawnComponent.OnSpawnTrigger?.Invoke(_spawnItem, ItemTrigger.DelObj,
+                new SpawnTriggerArgs { SpawnedItem = item, SpawnDefIndex = _itemDefId });
+            if (item == null || item.IsDeleted) continue;
+            item.RemoveTag("SPAWN_POINT_UUID");
+            _world.DeleteObject(item);
+            item.Delete();
+        }
+        _spawnedUids.Clear();
     }
 
     public void ResetTimer(long preservedTimeoutMs = 0)
@@ -740,7 +811,11 @@ public sealed class ItemSpawnComponent
         _spawnedUids.RemoveAll(uid =>
         {
             var item = _world.FindItem(uid);
-            return item == null || item.IsDeleted;
+            bool deleted = item == null || item.IsDeleted;
+            if (deleted)
+                SpawnComponent.OnSpawnTrigger?.Invoke(_spawnItem, ItemTrigger.DelObj,
+                    new SpawnTriggerArgs { SpawnedItem = item, SpawnDefIndex = _itemDefId });
+            return deleted;
         });
     }
 }

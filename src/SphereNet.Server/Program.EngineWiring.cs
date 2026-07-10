@@ -532,14 +532,19 @@ public static partial class Program
 
                 // @EnvironChange — the perceived light level differs between surface
                 // and dungeon regions (mirrors WeatherEngine.GetLightLevel).
-                byte regionLight = newRegion.IsFlag(SphereNet.Core.Enums.RegionFlag.Underground)
-                    ? (byte)28 : _world.GlobalLight;
+                byte regionLight = mover.IsDead
+                    ? (byte)0
+                    : newRegion.IsFlag(SphereNet.Core.Enums.RegionFlag.Underground)
+                        ? (byte)28
+                        : _world.GlobalLight;
                 mover.UpdateEnvironLight(regionLight);
 
                 if (!TryGetClientFor(mover, out var gc)) { _log.LogDebug("[REGION_CHANGE] no GameClient for {Name}", mover.Name); return; }
 
                 gc.Send(new PacketGlobalLight(regionLight));
-                gc.Send(new PacketSeason((byte)_weatherEngine.CurrentSeason, playSound: false));
+                gc.Send(new PacketSeason(mover.IsDead
+                    ? (byte)SeasonType.Desolation
+                    : (byte)_weatherEngine.CurrentSeason, playSound: false));
                 var (weatherType, weatherIntensity, weatherTemp) = _weatherEngine.GetWeatherForRegion(newRegion.Name);
                 gc.Send(new PacketWeather((byte)weatherType, weatherIntensity, weatherTemp));
 
@@ -654,6 +659,11 @@ public static partial class Program
                 {
                     targs.O1 = args.SpawnedChar;
                     targs.CharSrc = args.SpawnedChar;
+                }
+                else if (args.SpawnedItem != null)
+                {
+                    targs.O1 = args.SpawnedItem;
+                    targs.ItemSrc = args.SpawnedItem;
                 }
                 targs.N1 = args.SpawnDefIndex;
                 return _triggerDispatcher.FireItemTrigger(item, trigger, targs);
@@ -2290,9 +2300,12 @@ public static partial class Program
                 ch => { _clientsByCharUid.Remove(ch.Uid); _macroEngine?.OnCharDisconnect(ch.Uid.Value); };
             SphereNet.Game.Objects.Characters.Character.OnDamageActionInterrupt = ch =>
             {
+                _spellEngine?.BreakParalyze(ch);
                 if (_clientsByCharUid.TryGetValue(ch.Uid, out var client))
                     client.CancelPendingCraftOnInterrupt();
             };
+            SphereNet.Game.Objects.Characters.Character.OnHiddenStateCleared = ch =>
+                _spellEngine?.BreakInvisibility(ch);
             _world.ClientLingerExpired += ch =>
                 BroadcastNearby(ch.Position, 18, new PacketDeleteObject(ch.Uid.Value), ch.Uid.Value);
             SphereNet.Game.Clients.GameClient.OnWakeNpc = WakeNpc;
@@ -2310,14 +2323,21 @@ public static partial class Program
             SphereNet.Game.Objects.Items.Item.OnCorpseDecay = corpse =>
             {
                 bool isPlayerCorpse = false;
+                GameClient? ownerClient = null;
                 if (corpse.TryGetTag("OWNER_UID", out string? ownerStr) &&
                     uint.TryParse(ownerStr, out uint ownerUid))
                 {
                     var owner = _world.FindChar(new Serial(ownerUid));
                     if (owner != null && owner.IsPlayer)
+                    {
                         isPlayerCorpse = true;
+                        _clientsByCharUid.TryGetValue(owner.Uid, out ownerClient);
+                    }
                 }
                 bool staged = corpse.TryGetTag("NOREJOIN", out _);
+
+                if (isPlayerCorpse && ownerClient?.NetState.SupportsMapWaypoints == true)
+                    ownerClient.Send(new PacketWaypointRemove(corpse.Uid.Value));
 
                 // Source-X CItem two-stage player-corpse decay: on the FIRST decay a
                 // player corpse with loot turns into a bones pile its owner can no
@@ -2417,11 +2437,26 @@ public static partial class Program
                 if (TryGetClientFor(target, out var c))
                 {
                     if (packet is SphereNet.Network.Packets.Outgoing.PacketBuffIcon &&
-                        !c.NetState.SupportsBuffIcon)
+                        (!GameClient.ServerOptionFlags.HasFlag(OptionFlags.Buffs) ||
+                         !c.NetState.SupportsBuffIcon))
                         return;
                     c.Send(packet);
                 }
             };
+
+            SphereNet.Game.Objects.Characters.Character.OnClientBuffChanged =
+                (target, icon, add, durationSeconds) =>
+                {
+                    if (!GameClient.ServerOptionFlags.HasFlag(OptionFlags.Buffs) ||
+                        !TryGetClientFor(target, out var c) || !c.NetState.SupportsBuffIcon)
+                        return;
+
+                    if (!ClientBuffCatalog.TryGet(icon, out var definition))
+                        return;
+
+                    c.Send(new PacketBuffIcon(target.Uid.Value, icon, add, durationSeconds,
+                        definition.TitleCliloc, definition.DescriptionCliloc));
+                };
 
             SphereNet.Game.Objects.Characters.Character.SendOwnerMessage = (target, msg) =>
             {
@@ -2604,12 +2639,10 @@ public static partial class Program
 
             SphereNet.Game.Objects.Characters.Character.ResendTooltipForAll = target =>
             {
-                // No dedicated AOS tooltip-revision packet in the codebase
-                // yet. Mark the character's stat flags dirty so the view
-                // tick re-emits the status block on the next pass; that is
-                // close enough for the admin dialog use case (refresh after
-                // toggling Invul/Incognito/etc).
                 target.MarkDirty(SphereNet.Core.Enums.DirtyFlag.StatFlags);
+                ForEachClientInRange(target.Position, 18, 0,
+                    (_, observerClient) => observerClient.SendAosTooltip(
+                        target, requested: false, invalidate: true));
             };
 
             SphereNet.Game.Objects.Characters.Character.OpenInfoDialog = target =>

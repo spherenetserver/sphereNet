@@ -63,6 +63,8 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnRevealing = null;
         SphereNet.Game.Objects.Characters.Character.OnSpellEffectAdd = null;
         SphereNet.Game.Objects.Characters.Character.OnSpellEffectRemove = null;
+        SphereNet.Game.Objects.Characters.Character.OnClientBuffChanged = null;
+        SphereNet.Game.Objects.Characters.Character.OnHiddenStateCleared = null;
         SphereNet.Game.Objects.Characters.Character.OnSpellEffectTick = null;
         SphereNet.Game.Objects.Characters.Character.OnPetDesert = null;
         SphereNet.Game.Objects.Characters.Character.OnJailed = null;
@@ -92,7 +94,24 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Housing.HousingEngine.OnHouseCheck = null;
         SphereNet.Game.AI.NpcAI.PetFollowMaxDistance = 36;
         SphereNet.Game.Objects.Characters.Character.SpellbookRequiredEnabled = true;
+        SphereNet.Game.Objects.Characters.Character.PacketDeathAnimationEnabled = true;
         SphereNet.Game.Clients.GameClient.ClientLingerSeconds = 60;
+        SphereNet.Game.Clients.GameClient.ServerFeatureT2A = 0x03;
+        SphereNet.Game.Clients.GameClient.ServerFeatureLBR = 0x03;
+        SphereNet.Game.Clients.GameClient.ServerFeatureAOS = 0x0F;
+        SphereNet.Game.Clients.GameClient.ServerFeatureSE = 0x03;
+        SphereNet.Game.Clients.GameClient.ServerFeatureML = 0x01;
+        SphereNet.Game.Clients.GameClient.ServerFeatureKR = 0;
+        SphereNet.Game.Clients.GameClient.ServerFeatureSA = 0x03;
+        SphereNet.Game.Clients.GameClient.ServerFeatureTOL = 0x01;
+        SphereNet.Game.Clients.GameClient.ServerFeatureExtra = 0;
+        SphereNet.Game.Clients.GameClient.ServerMaxCharsPerAccount = 7;
+        SphereNet.Game.Clients.GameClient.ServerAutoResDisp = true;
+        SphereNet.Game.Clients.GameClient.ServerToolTipMode = 1;
+        SphereNet.Game.Clients.GameClient.ServerOptionFlags =
+            SphereNet.Core.Enums.OptionFlags.FileCommands | SphereNet.Core.Enums.OptionFlags.Buffs;
+        SphereNet.Network.Packets.Outgoing.PacketCharList.AosTooltipsEnabled = true;
+        SphereNet.Game.Components.SpawnComponent.OnSpawnTrigger = null;
         SphereNet.Game.Death.DeathEngine.EnableDeathShroud = true;
         SphereNet.Game.Skills.SkillEngine.OnSkillGainCheck = null;
         SphereNet.Game.Skills.SkillEngine.OnSkillDecrease = null;

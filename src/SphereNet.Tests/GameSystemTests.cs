@@ -195,7 +195,7 @@ public class GameSystemTests
     }
 
     [Fact]
-    public void OnCharacterDeath_SendsSelfDeathAnimationWithCorpseSerial()
+    public void OnCharacterDeath_DoesNotSendObserverDeathAnimationToSelf()
     {
         var world = CreateWorld();
         var loggerFactory = LoggerFactory.Create(_ => { });
@@ -231,10 +231,10 @@ public class GameSystemTests
         Assert.Equal((ushort)0x0192, player.BodyId);
 
         var packets = GetQueuedPackets(client.NetState).ToList();
-        var deathAnim = packets.SingleOrDefault(p => p.Span.Length == 13 && p.Span[0] == 0xAF);
-        Assert.NotNull(deathAnim);
-        Assert.Equal(player.Uid.Value, ReadU32(deathAnim!, 1));
-        Assert.Equal(corpse.Uid.Value, ReadU32(deathAnim!, 5));
+        Assert.DoesNotContain(packets, p => p.Span.Length == 13 && p.Span[0] == 0xAF);
+        Assert.DoesNotContain(packets, p => p.Span.Length > 0 && p.Span[0] == 0x70);
+        Assert.Contains(packets, p => p.Span.Length == 3 && p.Span[0] == 0xBC &&
+            p.Span[1] == (byte)SeasonType.Desolation);
 
         Assert.Contains(packets, p => p.Span.Length >= 19 && p.Span[0] == 0x20 && ReadU16(p, 5) == 0x0192);
         Assert.Contains(packets, p => p.Span.Length >= 17 && p.Span[0] == 0x77 && ReadU16(p, 5) == 0x0192);

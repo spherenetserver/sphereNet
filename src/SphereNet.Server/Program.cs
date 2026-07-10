@@ -603,20 +603,22 @@ public static partial class Program
         }
         _log.LogInformation("TileData & multi data loaded from: {Path}", mulPath);
 
-        // Combine config FEATURE* values into one OR mask for 0xB9 SupportedFeatures.
-        // GameClient reads this during game-login before sending the char list.
-        GameClient.ServerFeatureFlags = (uint)(
-            _config.FeatureT2A |
-            _config.FeatureLBR |
-            _config.FeatureAOS |
-            _config.FeatureSE  |
-            _config.FeatureML  |
-            _config.FeatureKR  |
-            _config.FeatureSA  |
-            _config.FeatureTOL |
-            _config.FeatureExtra);
-        _log.LogInformation("Server feature flags (from sphere.ini): 0x{Flags:X8}",
-            GameClient.ServerFeatureFlags);
+        GameClient.ServerFeatureT2A = _config.FeatureT2A;
+        GameClient.ServerFeatureLBR = _config.FeatureLBR;
+        GameClient.ServerFeatureAOS = _config.FeatureAOS;
+        GameClient.ServerFeatureSE = _config.FeatureSE;
+        GameClient.ServerFeatureML = _config.FeatureML;
+        GameClient.ServerFeatureKR = _config.FeatureKR;
+        GameClient.ServerFeatureSA = _config.FeatureSA;
+        GameClient.ServerFeatureTOL = _config.FeatureTOL;
+        GameClient.ServerFeatureExtra = _config.FeatureExtra;
+        GameClient.ServerMaxCharsPerAccount = Math.Clamp(_config.MaxCharsPerAccount, 1, 7);
+        GameClient.ServerAutoResDisp = _config.AutoResDisp;
+        GameClient.ServerToolTipMode = _config.ToolTipMode;
+        _log.LogInformation("Source-X feature masks: T2A={T2A:X} LBR={LBR:X} AOS={AOS:X} SE={SE:X} ML={ML:X} SA={SA:X} TOL={TOL:X}",
+            _config.FeatureT2A, _config.FeatureLBR, _config.FeatureAOS,
+            _config.FeatureSE, _config.FeatureML, _config.FeatureSA, _config.FeatureTOL);
+        GameClient.ServerOptionFlags = (SphereNet.Core.Enums.OptionFlags)(uint)_config.OptionFlags;
 
         // Wire notoriety tuning from sphere.ini into Character statics so that
         // MakeCriminal() / TickNotorietyDecay() use the configured values.
@@ -694,6 +696,7 @@ public static partial class Program
         // --- 6. Accounts ---
         _accounts = new AccountManager(_loggerFactory);
         _accounts.AutoCreateAccounts = _config.AccApp != 0;
+        _accounts.DefaultMaxChars = Math.Clamp(_config.MaxCharsPerAccount, 1, 7);
         _accounts.Md5Passwords = _config.Md5Passwords;
         _accounts.DefaultPrivLevel = (PrivLevel)_config.DefaultCommandLevel;
         if (_accounts.DefaultPrivLevel < PrivLevel.Counsel)

@@ -150,6 +150,8 @@ public sealed partial class GameClient : IClientContext
     void IClientContext.SendSelfRedraw() => SendSelfRedraw();
     void IClientContext.SendPaperdoll(Character ch) => SendPaperdoll(ch);
     void IClientContext.SendOpenContainer(Item container) => SendOpenContainer(container);
+    void IClientContext.SendAosTooltip(ObjBase obj, bool requested, bool invalidate) =>
+        SendAosTooltip(obj, requested, invalidate);
     void IClientContext.SendSkillList() => SendSkillList();
     void IClientContext.SendPickupFailed(byte reason) => SendPickupFailed(reason);
     bool IClientContext.CanSendStatusFor(Character ch) => CanSendStatusFor(ch);
@@ -176,6 +178,7 @@ public sealed partial class GameClient : IClientContext
     void IClientContext.OpenVendorBuy(Character vendor) => OpenVendorBuy(vendor);
     void IClientContext.HandleVendorInteraction(Character vendor) => HandleVendorInteraction(vendor);
     void IClientContext.HandleDoubleClick(uint uid) => HandleDoubleClick(uid);
+    ResDisplayVersion IClientContext.HandleResolvedClientVersion() => HandleResolvedClientVersion();
     void IClientContext.HandleCastSpell(SpellType spell, uint targetUid) => HandleCastSpell(spell, targetUid);
     void IClientContext.HandleChatOpen() => HandleChatOpen();
     void IClientContext.HandleQueryDesignDetails(byte[] data) => HandleQueryDesignDetails(data);

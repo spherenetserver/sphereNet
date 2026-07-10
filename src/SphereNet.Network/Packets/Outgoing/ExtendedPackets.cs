@@ -523,6 +523,21 @@ public sealed class PacketFeatureEnable : PacketWriter
     }
 }
 
+/// <summary>0xBD server request for the client's reported version.
+/// Source-X sends the three-byte packet when login/relay detection did not
+/// already identify the client version.</summary>
+public sealed class PacketClientVersionRequest : PacketWriter
+{
+    public PacketClientVersionRequest() : base(0xBD) { }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateFixed(3);
+        buf.WriteUInt16(3);
+        return buf;
+    }
+}
+
 /// <summary>0xBC — Season change.</summary>
 public sealed class PacketSeason : PacketWriter
 {
@@ -1845,18 +1860,28 @@ public sealed class PacketBuffIcon : PacketWriter
     private readonly ushort _iconId;
     private readonly bool _add;
     private readonly ushort _durationSeconds;
-    private readonly string _title;
-    private readonly string _desc;
+    private readonly uint _titleCliloc;
+    private readonly uint _descriptionCliloc;
+    private readonly IReadOnlyList<string> _arguments;
+
+    public PacketBuffIcon(uint serial, SphereNet.Core.Enums.BuffIcon iconId, bool add,
+        ushort durationSeconds = 0, uint titleCliloc = 0, uint descriptionCliloc = 0,
+        params string[] arguments)
+        : this(serial, (ushort)iconId, add, durationSeconds, titleCliloc,
+            descriptionCliloc, arguments)
+    {
+    }
 
     public PacketBuffIcon(uint serial, ushort iconId, bool add, ushort durationSeconds = 0,
-        string title = "", string desc = "") : base(0xDF)
+        uint titleCliloc = 0, uint descriptionCliloc = 0, params string[] arguments) : base(0xDF)
     {
         _serial = serial;
         _iconId = iconId;
         _add = add;
         _durationSeconds = durationSeconds;
-        _title = title;
-        _desc = desc;
+        _titleCliloc = titleCliloc;
+        _descriptionCliloc = descriptionCliloc;
+        _arguments = arguments ?? [];
     }
 
     public override PacketBuffer Build()
@@ -1868,10 +1893,8 @@ public sealed class PacketBuffIcon : PacketWriter
 
         if (_add)
         {
-            // Layout mirrors ServUO AddBuffPacket (Scripts/Misc/BuffIcons.cs).
-            // The fields the client actually reads are iconID x2, the
-            // duration short, the title/description clilocs, and the
-            // argument string; everything else is reserved zero padding.
+            // Source-X PacketBuff layout. The repeated icon/type fields and
+            // reserved values are required by the client protocol.
             buf.WriteBytes(new byte[4]);          // reserved
             buf.WriteUInt16(_iconId);             // icon id (repeated)
             buf.WriteUInt16(0x0001);              // type flag (again)
@@ -1879,17 +1902,18 @@ public sealed class PacketBuffIcon : PacketWriter
             buf.WriteUInt16(_durationSeconds);    // seconds
             buf.WriteBytes(new byte[3]);          // reserved
 
-            // Title / secondary clilocs. We don't have a cliloc table for
-            // custom spells, so use 1114778 ("<a href ...>") for title and
-            // 0 for description — same trick ServUO uses for scripted
-            // buffs that want raw text via the args field.
-            buf.WriteUInt32(1114778);             // titleCliloc
-            buf.WriteUInt32(0);                   // secondaryCliloc
+            // Title and description are client cliloc identifiers.
+            buf.WriteUInt32(_titleCliloc);
+            buf.WriteUInt32(_descriptionCliloc);
 
-            if (string.IsNullOrEmpty(_title))
+            if (_arguments.Count == 0)
             {
-                // No args — 10 bytes of padding per ServUO.
-                buf.WriteBytes(new byte[10]);
+                // Source-X sends one whitespace argument so an empty cliloc
+                // placeholder doesn't appear as raw ~1_NOTHING~ text.
+                buf.WriteBytes(new byte[4]);
+                buf.WriteUInt16(0x0001);
+                buf.WriteUInt16(0);
+                WriteLittleUniNull(buf, "\t ");
             }
             else
             {
@@ -1899,7 +1923,7 @@ public sealed class PacketBuffIcon : PacketWriter
                 // Args — ServUO prefixes "\t" so the cliloc formatter
                 // treats the rest as a single argument. Null-terminated
                 // little-endian unicode.
-                WriteLittleUniNull(buf, "\t" + _title);
+                WriteLittleUniNull(buf, "\t" + string.Join("\t", _arguments) + "\t");
                 buf.WriteUInt16(0x0001);          // "more data" marker
                 buf.WriteBytes(new byte[2]);      // reserved
             }
@@ -1920,9 +1944,62 @@ public sealed class PacketBuffIcon : PacketWriter
     }
 }
 
-/// <summary>0xC1 — Localized (cliloc) message. Used by SYSMESSAGELOC and
-/// any overhead text that needs cliloc placeholder substitution. Args are
-/// '\t'-delimited unicode, terminated by an extra '\t'.</summary>
+/// <summary>0xE5 - add a KR/SA/modern-client radar waypoint.</summary>
+public sealed class PacketWaypointAdd : PacketWriter
+{
+    private readonly uint _serial;
+    private readonly short _x;
+    private readonly short _y;
+    private readonly sbyte _z;
+    private readonly byte _map;
+    private readonly ushort _type;
+    private readonly string _name;
+
+    public PacketWaypointAdd(uint serial, short x, short y, sbyte z, byte map,
+        ushort type, string name) : base(0xE5)
+    {
+        _serial = serial;
+        _x = x;
+        _y = y;
+        _z = z;
+        _map = map;
+        _type = type;
+        _name = name ?? "";
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(25 + _name.Length * 2);
+        buf.WriteUInt32(_serial);
+        buf.WriteInt16(_x);
+        buf.WriteInt16(_y);
+        buf.WriteSByte(_z);
+        buf.WriteByte(_map);
+        buf.WriteUInt16(_type);
+        buf.WriteUInt16(0);
+        buf.WriteUInt32(_type == 1 ? 1028198u : 1062613u);
+        buf.WriteUnicodeLeNullTerminated(_name);
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
+/// <summary>0xE6 - remove a radar waypoint.</summary>
+public sealed class PacketWaypointRemove : PacketWriter
+{
+    private readonly uint _serial;
+
+    public PacketWaypointRemove(uint serial) : base(0xE6) => _serial = serial;
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateFixed(5);
+        buf.WriteUInt32(_serial);
+        return buf;
+    }
+}
+
+/// <summary>0xC1 - localized (cliloc) message used by SYSMESSAGELOC.</summary>
 public sealed class PacketClilocMessage : PacketWriter
 {
     private readonly uint _serial;

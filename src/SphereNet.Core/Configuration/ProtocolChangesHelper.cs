@@ -18,7 +18,7 @@ public static class ProtocolChangesHelper
         >= 60_014_002 => ProtocolChanges.Version60142,
         >= 60_001_007 => ProtocolChanges.Version6017,
         >= 60_000_000 => ProtocolChanges.Version6000,
-        >= 50_000_002 => ProtocolChanges.Version502b,
+        >= 50_002_002 => ProtocolChanges.Version502b,
         >= 50_000_000 => ProtocolChanges.Version500a,
         _ => ProtocolChanges.None
     };

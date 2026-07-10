@@ -3,6 +3,40 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-10] - Source-X oyun ici davranis uyumu: etkilesim, istemci yetenekleri, buff ve olum
+----------------------------------------
+
+DUZELTILDI - Double-click, NPC loot ve spawner davranislari:
+  - Double-click islemleri facet, gorunurluk, LOS, menzil ve yonelme kontrollerini
+    tetiklerden once uyguluyor. GM karakterler non-human NPC cantalarini; normal
+    oyuncular pack horse/llama cantalarini loot icerigiyle acabiliyor.
+  - Char/item spawner cift tiklamasi bosken aninda spawn, doluyken child temizleme
+    yapiyor. Spawned item kullanildiginda spawner'dan silinmeden ayriliyor ve
+    PreSpawn/Spawn/AddObj/DelObj yasam dongusu iki spawner turunde de calisiyor.
+
+DUZELTILDI - Client version, feature flag ve tooltip protokolu:
+  - FEATURE* ayarlari artik ham bitler gibi OR'lanmiyor; ResDisp ve istemci
+    surumune gore Source-X 0xB9/0xA9 bayraklarina cevriliyor. AutoResDisp,
+    karakter slot limitleri ve 5.0.2b gibi harfli surumler destekleniyor.
+  - Tooltip 0/1/2 modlari, 0xDC revision, 0xD6 tam property list, cache ve
+    invalidation akislari uygulandi. Degisen nesnelerin tooltip'i yakin
+    istemcilerde yenileniyor.
+
+DUZELTILDI - Buff icon ve olum/ghost yasam dongusu:
+  - Source-X BUFF_ICONS ve 0xDF cliloc paketi uygulandi. Spell, poison, hidden
+    ve meditation iconlari eklenme, yenilenme, dispel/reveal, sure dolumu,
+    olum ve reconnect sirasinda dogru eklenip kaldiriliyor.
+  - Oyuncunun kendisine hatali 0xAF ve kalici olum partikulu gonderimi kaldirildi.
+    PACKETDEATHANIMATION=0 gercekten 0x2C ekranini kapatiyor; ghost season/light
+    ile corpse waypoint ekleme/kaldirma Source-X davranisina uyarlandi.
+  - Death-menu cevabindan ucretsiz resurrection acigi kapatildi; cevap artik
+    karakteri diriltmek yerine ghost gorunumunu yeniden senkronize ediyor.
+
+DOGRULANDI - Source-X davranis regresyonlari dahil tum cozum Debug ve Release
+  1294/1294, sifir uyari/hata. git diff denetimi de temiz.
+
+================================================================================
+
 [2026-07-10] - Skill sistemi derin kod denetimi: kullanim, crafting ve durum yonetimi
 ----------------------------------------
 

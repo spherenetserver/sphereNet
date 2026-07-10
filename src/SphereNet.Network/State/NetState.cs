@@ -204,7 +204,9 @@ public sealed class NetState : IDisposable
     public bool IsClientPost60142 => HasProtocolChanges(ProtocolChanges.Version60142) || FallbackVersionAtLeast(60_014_002);
     public bool IsClientPost7090  => HasProtocolChanges(ProtocolChanges.Version7090) || FallbackVersionAtLeast(70_009_000);
     public bool SupportsAosTooltip => HasProtocolChanges(ProtocolChanges.Version500a) || ClientEra == ClientEra.Modern || _clientVersionNumber >= 40_000_000;
-    public bool SupportsBuffIcon => HasProtocolChanges(ProtocolChanges.BuffIcon) || ClientEra == ClientEra.Modern || _clientVersionNumber >= 50_000_000;
+    public bool SupportsBuffIcon => HasProtocolChanges(ProtocolChanges.BuffIcon) || ClientEra == ClientEra.Modern || _clientVersionNumber >= 50_002_002;
+    public bool SupportsMapWaypoints => ClientEra == ClientEra.Modern || IsKingdomRebornClient ||
+        IsEnhancedClient || _clientVersionNumber >= 70_084_000;
     public bool SupportsStygianAbyss => HasProtocolChanges(ProtocolChanges.StygianAbyss);
     public bool SupportsHighSeas => HasProtocolChanges(ProtocolChanges.HighSeas);
     public bool IsKingdomRebornClient => ParsedClientType == 2;

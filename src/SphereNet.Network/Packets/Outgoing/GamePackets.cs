@@ -86,17 +86,20 @@ public sealed class PacketCharList : PacketWriter
     private readonly string[] _charNames;
     private readonly int _maxChars;
     private readonly bool _newCharacterList;
+    private readonly uint _flags;
 
     /// <summary>When false, the 0x20 (AOS tooltips) bit is stripped from char
     /// list flags so the client sends 0x09 single-click instead of 0xD6.</summary>
     public static bool AosTooltipsEnabled { get; set; } = true;
 
-    public PacketCharList(string[] charNames, int maxChars = 7, bool newCharacterList = false)
+    public PacketCharList(string[] charNames, int maxChars = 7, bool newCharacterList = false,
+        uint flags = 0x11E8)
         : base(0xA9)
     {
         _charNames = charNames;
         _maxChars = maxChars;
         _newCharacterList = newCharacterList;
+        _flags = flags;
     }
 
     private static readonly (string Name, string Area, int X, int Y, int Z, int Map, uint Cliloc)[] Cities =
@@ -171,7 +174,7 @@ public sealed class PacketCharList : PacketWriter
         // 0x0100 = ML elven race
         // 0x1000 = 7th char slot
         // 0x4000 = new movement packets
-        uint flags = 0x11E8;
+        uint flags = _flags;
         if (!AosTooltipsEnabled)
             flags &= ~0x0020u;
         buf.WriteUInt32(flags);

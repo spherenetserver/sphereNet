@@ -48,6 +48,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     private Action<ObjBase>? _dirtyNotify;
 
     public DirtyFlag DirtyFlags => _dirty;
+    public DirtyFlag LastConsumedDirtyFlags { get; private set; }
     public bool IsDirty => _dirty != DirtyFlag.None;
 
     /// <summary>Mark one or more properties as changed.</summary>
@@ -64,6 +65,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     {
         var d = _dirty;
         _dirty = DirtyFlag.None;
+        LastConsumedDirtyFlags = d;
         return d;
     }
 

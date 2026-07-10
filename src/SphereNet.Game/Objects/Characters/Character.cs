@@ -84,6 +84,14 @@ public partial class Character : ObjBase
     // has no active client.
     public static Action<Character, SphereNet.Network.Packets.PacketWriter>? SendPacketToOwner;
 
+    /// <summary>Notify the owning client that a native buff icon changed.
+    /// Args: character, icon, add/remove, remaining duration in seconds.</summary>
+    public static Action<Character, BuffIcon, bool, ushort>? OnClientBuffChanged;
+
+    /// <summary>Called after magical invisibility is revealed so its timed
+    /// spell memory and client buff icon can be retired together.</summary>
+    public static Action<Character>? OnHiddenStateCleared;
+
     /// <summary>Disconnect the character's owning client (DISCONNECT/KICK
     /// verbs from the admin dialogs). Wired in Program.cs against the
     /// network manager. Optional second arg signals "ban" semantics so
@@ -1132,9 +1140,12 @@ public partial class Character : ObjBase
             return false;
         if (OnRevealing != null && !OnRevealing(this))
             return false;
+        bool wasInvisible = IsStatFlag(StatFlag.Invisible);
         ClearStatFlag(StatFlag.Hidden);
         ClearStatFlag(StatFlag.Invisible);
         StepStealth = 0;
+        if (wasInvisible)
+            OnHiddenStateCleared?.Invoke(this);
         return true;
     }
 
@@ -1380,8 +1391,27 @@ public partial class Character : ObjBase
 
     // --- Stat Flags ---
     public bool IsStatFlag(StatFlag flag) => (_statFlags & flag) != 0;
-    public void SetStatFlag(StatFlag flag) { _statFlags |= flag; MarkDirty(DirtyFlag.StatFlags); }
-    public void ClearStatFlag(StatFlag flag) { _statFlags &= ~flag; MarkDirty(DirtyFlag.StatFlags); }
+    public void SetStatFlag(StatFlag flag)
+    {
+        var oldFlags = _statFlags;
+        _statFlags |= flag;
+        MarkDirty(DirtyFlag.StatFlags);
+        if ((oldFlags & StatFlag.Hidden) == 0 && (_statFlags & StatFlag.Hidden) != 0)
+            OnClientBuffChanged?.Invoke(this, BuffIcon.Hidden, true, 0);
+        if ((oldFlags & StatFlag.Meditation) == 0 && (_statFlags & StatFlag.Meditation) != 0)
+            OnClientBuffChanged?.Invoke(this, BuffIcon.ActiveMeditation, true, 0);
+    }
+
+    public void ClearStatFlag(StatFlag flag)
+    {
+        var oldFlags = _statFlags;
+        _statFlags &= ~flag;
+        MarkDirty(DirtyFlag.StatFlags);
+        if ((oldFlags & StatFlag.Hidden) != 0 && (_statFlags & StatFlag.Hidden) == 0)
+            OnClientBuffChanged?.Invoke(this, BuffIcon.Hidden, false, 0);
+        if ((oldFlags & StatFlag.Meditation) != 0 && (_statFlags & StatFlag.Meditation) == 0)
+            OnClientBuffChanged?.Invoke(this, BuffIcon.ActiveMeditation, false, 0);
+    }
 
     public bool IsDead => IsStatFlag(StatFlag.Dead);
     public bool IsInWarMode => IsStatFlag(StatFlag.War);
@@ -4138,23 +4168,19 @@ public partial class Character : ObjBase
             case "ADDBUFF":
             {
                 // Source-X: ADDBUFF icon, cliloc1, cliloc2, time, arg1, arg2, arg3
-                // We honour icon + duration + a single plain-text arg
-                // string (concatenation of any args past the time slot)
-                // using the existing PacketBuffIcon code path. Cliloc
-                // indirection — clients without a cliloc.mul entry for
-                // arg placeholders just render empty strings, so we
-                // prefer the raw-string fallback.
+                // Preserve both cliloc identifiers, duration and every
+                // formatter argument in their native packet fields.
                 var parts = args.Split(',', StringSplitOptions.TrimEntries);
                 if (parts.Length >= 1 && TryParseScriptUShort(parts[0], out ushort icon))
                 {
+                    uint titleCliloc = parts.Length >= 2 && TryParseScriptUInt(parts[1], out uint c1) ? c1 : 0;
+                    uint descriptionCliloc = parts.Length >= 3 && TryParseScriptUInt(parts[2], out uint c2) ? c2 : 0;
                     ushort duration = 0;
                     if (parts.Length >= 4 && TryParseScriptUShort(parts[3], out ushort d))
                         duration = d;
-                    string argText = parts.Length >= 5
-                        ? string.Join(" ", parts[4..]).Trim()
-                        : "";
+                    string[] buffArgs = parts.Length >= 5 ? parts[4..] : [];
                     SendPacketToOwner?.Invoke(this, new SphereNet.Network.Packets.Outgoing.PacketBuffIcon(
-                        Uid.Value, icon, true, duration, argText, ""));
+                        Uid.Value, icon, true, duration, titleCliloc, descriptionCliloc, buffArgs));
                 }
                 return true;
             }

@@ -44,12 +44,16 @@ public sealed partial class GameClient
         {
             case 0: // Client requesting death menu — ignore, we already sent it
                 break;
-            case 1: // Resurrect
-                _logger.LogDebug("[death_menu] char=0x{Uid:X8} chose resurrect", _character.Uid.Value);
-                OnResurrect();
-                break;
-            case 2: // Stay as ghost
-                _logger.LogDebug("[death_menu] char=0x{Uid:X8} chose ghost", _character.Uid.Value);
+            case 1:
+            case 2:
+                // Source-X treats every non-zero response as "play as ghost".
+                // Resurrection must use the healer/shrine/spell pipeline.
+                if (!_character.IsDead)
+                    break;
+                _logger.LogDebug("[death_menu] char=0x{Uid:X8} continues as ghost", _character.Uid.Value);
+                SysMessage("You are a ghost");
+                _netState.Send(new PacketSound(0x017F, _character.X, _character.Y, _character.Z));
+                Resync();
                 break;
         }
     }
@@ -93,7 +97,11 @@ public sealed partial class GameClient
         // Send success + new char list
         _netState.Send(new PacketCharDeleteResult(0));
         var charNames = _account.GetCharNames(uid => _world.FindChar(uid)?.GetName());
-        _netState.Send(new PacketCharList(charNames, newCharacterList: _netState.SupportsNewCharacterList).Build());
+        int maxChars = GetEffectiveMaxChars();
+        var res = ResolveAccountResDisplay();
+        uint flags = BuildCharacterListFlags(res, maxChars, ServerToolTipMode != 0);
+        _netState.Send(new PacketCharList(charNames, maxChars,
+            _netState.SupportsNewCharacterList, flags).Build());
     }
 
     /// <summary>Handle dye response from color picker (0x95).</summary>

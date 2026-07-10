@@ -16,6 +16,7 @@ public sealed class AccountManager
     public int Count => _accounts.Count;
     public bool AutoCreateAccounts { get => _autoCreateAccounts; set => _autoCreateAccounts = value; }
     public bool Md5Passwords { get; set; }
+    public int DefaultMaxChars { get; set; } = 7;
 
     /// <summary>Default PrivLevel for auto-created accounts. Maps to DEFAULTCOMMANDLEVEL in sphere.ini.</summary>
     public Core.Enums.PrivLevel DefaultPrivLevel { get; set; } = Core.Enums.PrivLevel.Guest;
@@ -114,6 +115,7 @@ public sealed class AccountManager
             Name = name,
             PrivLevel = DefaultPrivLevel,
             UseMd5Passwords = Md5Passwords,
+            MaxChars = DefaultMaxChars,
         };
         account.SetPassword(password);
         _accounts[name] = account;

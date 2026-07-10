@@ -869,7 +869,6 @@ public static partial class Program
         if (newLight != _lastGlobalLight)
         {
             _lastGlobalLight = newLight;
-            var lightPacket = new PacketGlobalLight(newLight);
             foreach (var client in _clients.Values)
             {
                 if (!client.IsPlaying) continue;
@@ -882,7 +881,7 @@ public static partial class Program
                 if (ch != null &&
                     _world.FindRegion(ch.Position)?.IsFlag(SphereNet.Core.Enums.RegionFlag.Underground) == true)
                     continue;
-                client.Send(lightPacket);
+                client.Send(new PacketGlobalLight(ch?.IsDead == true ? (byte)0 : newLight));
             }
         }
 

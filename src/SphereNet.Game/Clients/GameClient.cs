@@ -44,10 +44,21 @@ internal record MenuOptionEntry(ushort ModelId, ushort Hue, string Text, List<Sp
 /// </summary>
 public sealed partial class GameClient : ITextConsole
 {
-    /// <summary>OR of all config FEATURE* flags (FEATURET2A|LBR|AOS|SE|ML|KR|SA|TOL|EXTRA).
-    /// Set by Program.cs startup. If zero, HandleGameLogin falls back to a
-    /// hardcoded mapping derived from client version.</summary>
-    public static uint ServerFeatureFlags { get; set; }
+    // Source-X FEATURE* settings are independent per-expansion capability
+    // masks. They are translated to 0xB9/0xA9 wire flags during login.
+    public static int ServerFeatureT2A { get; set; } = 0x03;
+    public static int ServerFeatureLBR { get; set; } = 0x03;
+    public static int ServerFeatureAOS { get; set; } = 0x0F;
+    public static int ServerFeatureSE { get; set; } = 0x03;
+    public static int ServerFeatureML { get; set; } = 0x01;
+    public static int ServerFeatureKR { get; set; }
+    public static int ServerFeatureSA { get; set; } = 0x03;
+    public static int ServerFeatureTOL { get; set; } = 0x01;
+    public static int ServerFeatureExtra { get; set; }
+    public static int ServerMaxCharsPerAccount { get; set; } = 7;
+    public static bool ServerAutoResDisp { get; set; } = true;
+    public static int ServerToolTipMode { get; set; } = 1;
+    public static OptionFlags ServerOptionFlags { get; set; } = OptionFlags.FileCommands | OptionFlags.Buffs;
     public static NotorietyHueSettings NotorietyHues { get; set; } = new();
     public static int ClientLingerSeconds { get; set; } = 60;
     public static Func<string, Point3D?>? BotSpawnLocationProvider;
@@ -268,6 +279,7 @@ public sealed partial class GameClient : ITextConsole
             if (!linger)
                 _world.RemoveOnlinePlayer(_character);
             View.TooltipHashCache.Clear();
+            View.TooltipDataCache.Clear();
             View.KnownItems.Clear();
             View.KnownChars.Clear();
             View.KnownDoorOverrides.Clear();

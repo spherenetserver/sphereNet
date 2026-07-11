@@ -426,11 +426,14 @@ public sealed class ClientDialogHandler
         int currentPage = Math.Max(0, requestedPage);
 
         // Sphere dialog first line is the screen position "x,y".
-        // Source-X reads this via s.ReadKey() before processing controls.
+        // Source-X reads this via s.ReadKey() before processing controls —
+        // a raw line. The Key/Arg split now treats ',' as a separator, so
+        // read the verbatim line or "5,25" collapses to "5" and every
+        // dialog anchors at 0,0.
         int dialogX = 0, dialogY = 0;
         if (layoutSection.Keys.Count > 0)
         {
-            string firstLine = layoutSection.Keys[0].Key.Trim();
+            string firstLine = layoutSection.Keys[0].RawLine.Trim();
             var posParts = firstLine.Split(',', StringSplitOptions.TrimEntries);
             if (posParts.Length >= 2 && int.TryParse(posParts[0], out int px) && int.TryParse(posParts[1], out int py))
             {

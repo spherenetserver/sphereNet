@@ -573,10 +573,28 @@ public static partial class Program
     {
         int count = 0;
         var files = ScriptResourceManifest.Resolve(dir, warning => _log.LogWarning("{Warning}", warning));
+        // Register the manifest up-front so nested [RESOURCES] references to
+        // files already scheduled are not queued a second time.
+        foreach (var file in files)
+            _resources.RegisterKnownResourceFile(file);
         foreach (var file in files)
         {
             _resources.LoadResourceFile(file);
             count++;
+        }
+        // Nested [RESOURCES] sections queue extra files — Source-X
+        // AddResourceFile appends them to the end of the load list. Loading a
+        // drained file may queue more, so keep draining until dry.
+        var pending = _resources.DrainPendingResourceFiles();
+        while (pending.Count > 0)
+        {
+            foreach (var file in pending)
+            {
+                _log.LogInformation("Loading nested [RESOURCES] file: {File}", file);
+                _resources.LoadResourceFile(file);
+                count++;
+            }
+            pending = _resources.DrainPendingResourceFiles();
         }
         return count;
     }

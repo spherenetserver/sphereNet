@@ -20,22 +20,19 @@ public sealed class ScriptSection
 
     /// <summary>
     /// Parse section header like "ITEMDEF 0100" into name="ITEMDEF" and argument="0100".
+    /// Source-X splits the header via Str_Parse with the full "=, \t" separator
+    /// set, so "[ITEMDEF=i_x]" and "[ITEMDEF,i_x]" are also valid forms.
     /// </summary>
     public static (string Name, string Argument) ParseHeader(ReadOnlySpan<char> header)
     {
         header = header.Trim();
 
-        int spaceIdx = header.IndexOf(' ');
-        if (spaceIdx < 0)
-        {
-            int tabIdx = header.IndexOf('\t');
-            if (tabIdx < 0)
-                return (string.Intern(header.ToString().ToUpperInvariant()), "");
-            spaceIdx = tabIdx;
-        }
+        int sepIdx = header.IndexOfAny(" \t=,");
+        if (sepIdx < 0)
+            return (string.Intern(header.ToString().ToUpperInvariant()), "");
 
-        string name = string.Intern(header[..spaceIdx].Trim().ToString().ToUpperInvariant());
-        string arg = header[(spaceIdx + 1)..].Trim().ToString();
+        string name = string.Intern(header[..sepIdx].Trim().ToString().ToUpperInvariant());
+        string arg = header[(sepIdx + 1)..].Trim().ToString();
         return (name, arg);
     }
 

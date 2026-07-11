@@ -23,7 +23,6 @@ public sealed class ConditionalEvaluator
             return false;
 
         string resolved = _expr.EvaluateStr(condition);
-        long result = _expr.Evaluate(resolved.AsSpan());
-        return result != 0;
+        return _expr.EvaluateConditional(resolved);
     }
 }

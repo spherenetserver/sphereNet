@@ -24,6 +24,21 @@ public sealed class ResourceHolder
     private readonly List<MoongateEntry> _moongates = [];
     private readonly Dictionary<string, (string FilePath, List<string> Lines)> _dialogTextCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<int, List<ScriptKey>> _plevelCommands = [];
+    private readonly List<string> _obsceneWords = [];
+    private readonly List<string> _fameTitles = [];
+    private readonly List<string> _karmaTitles = [];
+    private readonly List<int> _notoKarmaLevels = [];
+    private readonly List<int> _notoFameLevels = [];
+    private readonly List<string> _notoTitles = [];
+    private readonly List<string> _runes = [];
+    private readonly List<KeyValuePair<string, string>> _scriptGlobalVars = [];
+    private readonly List<(string Name, List<string> Elements)> _scriptGlobalLists = [];
+    private readonly List<string> _resourceListNames = [];
+    private readonly List<string> _pendingResourceFiles = [];
+    private readonly HashSet<string> _knownResourceFiles = new(StringComparer.OrdinalIgnoreCase);
+    // Source-X FindResourceFile dedups by file TITLE (basename), not path —
+    // a same-named file in another directory is treated as already loaded.
+    private readonly HashSet<string> _knownResourceTitles = new(StringComparer.OrdinalIgnoreCase);
     private readonly ILogger _logger;
 
     public IReadOnlyList<(Point3D Src, Point3D Dest, string Name)> Teleporters =>
@@ -95,6 +110,18 @@ public sealed class ResourceHolder
         "COMMENT" => ResType.Comment,
         "ADVANCE" or "FAME" or "KARMA" or "NOTOTITLES" or "RUNES" or "DEFMESSAGE" => ResType.Sphere,
         "TYPEDEFS" => ResType.Sphere,
+        // Script-declared globals (Source-X RES_WORLDVARS / RES_WORLDLISTS and
+        // their new-style GLOBALS / LIST synonyms) — handled by name in
+        // TryLoadSpecialSection; mapped here so they never hit Unknown.
+        "GLOBALS" or "WORLDVARS" or "LIST" or "WORLDLISTS" => ResType.Sphere,
+        // Recognized Source-X section types with no SphereNet engine consumer
+        // yet. Counted and skipped instead of warning as Unknown: world-save
+        // blocks (WORLDCHAR/WORLDITEM/SECTOR/GMPAGE/TIMERF and the WC/WI/WS
+        // aliases) are loaded by the Persistence layer from save files, and
+        // ACCOUNT blocks by AccountPersistence.
+        "CHAMPION" or "SPHERECRYPT" or "KRDIALOGLIST" or "ACCOUNT" or "GMPAGE" or "SECTOR"
+            or "WORLDCHAR" or "WORLDITEM" or "WC" or "WI" or "WORLDSCRIPT" or "WS"
+            or "TIMERF" or "STAT" => ResType.Sphere,
         "STARTS" or "STARTSGOLD" or "STARTGOLD" or "MOONGATES" or "TELEPORTERS" => ResType.WorldScript,
         _ => ResType.Unknown
     };
@@ -115,7 +142,10 @@ public sealed class ResourceHolder
         ResType.ItemDef or ResType.CharDef or ResType.SpellDef or ResType.SkillClass or ResType.SkillDef
         or ResType.Names or ResType.Speech or ResType.Template or ResType.RegionResource or ResType.RegionType
         or ResType.NewBie or ResType.Events or ResType.TypeDef or ResType.Function or ResType.Dialog
-        or ResType.MultiDef or ResType.SkillMenu;
+        or ResType.MultiDef or ResType.SkillMenu
+        // Source-X keeps these as CResourceLink sections readable at runtime
+        // (BOOK pages, MENU choices, SCROLL text, TIP entries).
+        or ResType.Book or ResType.Menu or ResType.Scroll or ResType.Tip;
 
     /// <summary>
     /// Load all sections from a script file.
@@ -128,6 +158,12 @@ public sealed class ResourceHolder
 
         var resScript = new ResourceScript(fullPath);
         _scriptFiles.Add(resScript);
+        try
+        {
+            _knownResourceFiles.Add(Path.GetFullPath(fullPath));
+            _knownResourceTitles.Add(Path.GetFileName(fullPath));
+        }
+        catch { /* invalid path chars */ }
 
         ScriptFile file;
         try
@@ -158,16 +194,8 @@ public sealed class ResourceHolder
 
         foreach (var section in sections)
         {
-            if (section.Name.Equals("DEFMESSAGE", StringComparison.OrdinalIgnoreCase))
+            if (TryLoadSpecialSection(section))
             {
-                LoadDefMessages(section);
-                count++;
-                continue;
-            }
-
-            if (section.Name.Equals("ADVANCE", StringComparison.OrdinalIgnoreCase))
-            {
-                LoadStatAdvance(section);
                 count++;
                 continue;
             }
@@ -197,8 +225,7 @@ public sealed class ResourceHolder
             }
 
             if (resType == ResType.Sphere || resType == ResType.ServerConfig ||
-                resType == ResType.ResourceList || resType == ResType.Comment ||
-                resType == ResType.Book)
+                resType == ResType.ResourceList || resType == ResType.Comment)
             {
                 count++;
                 continue;
@@ -218,8 +245,9 @@ public sealed class ResourceHolder
             // token made the (usually empty) ELF/GARG variants overwrite the
             // human base section — fresh characters spawned naked because
             // MALE_DEFAULT resolved to the empty GARG section. Fold the race
-            // suffix into the identity token instead.
-            if (resType == ResType.NewBie && rawArg.Contains(' '))
+            // suffix into the identity token instead. BOOK gets the same fold:
+            // "[BOOK truth 1]" pages are distinct sections keyed name_page.
+            if (resType is ResType.NewBie or ResType.Book && rawArg.Contains(' '))
                 rawArg = rawArg.Trim().Replace('\t', '_').Replace(' ', '_');
 
             if (resType == ResType.Dialog)
@@ -229,12 +257,7 @@ public sealed class ResourceHolder
                 {
                     var textLines = new List<string>();
                     foreach (var key in section.Keys)
-                    {
-                        string line = string.IsNullOrEmpty(key.Arg)
-                            ? key.Key
-                            : $"{key.Key} {key.Arg}";
-                        textLines.Add(line.TrimEnd());
-                    }
+                        textLines.Add(key.RawLine.TrimEnd());
                     _dialogTextCache[argParts[0]] = (filePath, textLines);
                     count++;
                     continue;
@@ -309,19 +332,306 @@ public sealed class ResourceHolder
         return count;
     }
 
+    /// <summary>The section line the way Source-X ReadKey sees it — the whole
+    /// line verbatim, preserving the comma/space separator that the Key/Arg
+    /// split would otherwise lose.</summary>
+    private static string VerbatimLine(ScriptKey key) => key.RawLine;
+
+    /// <summary>
+    /// Name-dispatched sections that fill dedicated tables instead of becoming
+    /// ResourceLinks — the counterpart of the special cases at the top of
+    /// Source-X CServerConfig::LoadResourceSection. Shared by the initial load
+    /// and the ReSync reload path. Returns true when the section was consumed.
+    /// </summary>
+    private bool TryLoadSpecialSection(ScriptSection section)
+    {
+        switch (section.Name.ToUpperInvariant())
+        {
+            case "DEFMESSAGE":
+                LoadDefMessages(section);
+                return true;
+            case "ADVANCE":
+                LoadStatAdvance(section);
+                return true;
+            case "FAME":
+                LoadTitleLines(section, _fameTitles);
+                return true;
+            case "KARMA":
+                LoadTitleLines(section, _karmaTitles);
+                return true;
+            case "NOTOTITLES":
+                LoadNotoTitles(section);
+                return true;
+            case "RUNES":
+                // Full names of the magic runes, indexed by letter A..Z
+                // (Source-X RES_RUNES / GetRune).
+                _runes.Clear();
+                foreach (var key in section.Keys)
+                    _runes.Add(VerbatimLine(key));
+                return true;
+            case "OBSCENE":
+                foreach (var key in section.Keys)
+                {
+                    string word = VerbatimLine(key).Trim();
+                    if (word.Length > 0)
+                        _obsceneWords.Add(word);
+                }
+                return true;
+            case "GLOBALS":
+            case "WORLDVARS":
+                LoadScriptGlobalVars(section);
+                return true;
+            case "LIST":
+            case "WORLDLISTS":
+                LoadScriptGlobalList(section);
+                return true;
+            case "TYPEDEFS":
+                LoadTypeDefsBulk(section);
+                return true;
+            case "RESOURCES":
+                QueueResourceFiles(section);
+                return true;
+            case "RESOURCELIST":
+                // Source-X RES_RESOURCELIST: names usable by DEFLIST etc.
+                foreach (var key in section.Keys)
+                {
+                    string name = VerbatimLine(key).Trim();
+                    if (name.Length > 0)
+                        _resourceListNames.Add(name);
+                }
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>[FAME]/[KARMA] title lists — one title per line; a line starting
+    /// with '&lt;' is an intentionally empty slot (Source-X RES_FAME/RES_KARMA).</summary>
+    private void LoadTitleLines(ScriptSection section, List<string> target)
+    {
+        target.Clear();
+        foreach (var key in section.Keys)
+        {
+            string line = VerbatimLine(key).Trim();
+            target.Add(line.StartsWith('<') ? "" : line);
+        }
+    }
+
+    /// <summary>[NOTOTITLES]: first line = karma thresholds, second line = fame
+    /// thresholds, remaining lines = (karma+1)*(fame+1) titles ("male,female").</summary>
+    private void LoadNotoTitles(ScriptSection section)
+    {
+        _notoKarmaLevels.Clear();
+        _notoFameLevels.Clear();
+        _notoTitles.Clear();
+
+        static void ParseLevels(string line, List<int> target)
+        {
+            // Source-X Str_ParseCmds default separators: "=, \t"
+            foreach (var tok in line.Split([' ', ',', '\t', '='], StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (int.TryParse(tok, out int v))
+                    target.Add(v);
+            }
+        }
+
+        int lineIdx = 0;
+        foreach (var key in section.Keys)
+        {
+            string line = VerbatimLine(key).Trim();
+            if (lineIdx == 0)
+                ParseLevels(line, _notoKarmaLevels);
+            else if (lineIdx == 1)
+                ParseLevels(line, _notoFameLevels);
+            else
+                _notoTitles.Add(line.StartsWith('<') ? "" : line);
+            lineIdx++;
+        }
+
+        int expected = (_notoKarmaLevels.Count + 1) * (_notoFameLevels.Count + 1);
+        if (_notoTitles.Count > 0 && _notoTitles.Count != expected)
+            _logger.LogWarning("Expected {Expected} titles in NOTOTITLES section but found {Found}",
+                expected, _notoTitles.Count);
+    }
+
+    /// <summary>[GLOBALS]/[WORLDVARS]: key=value pairs collected for the host to
+    /// seed the world's global VARs at boot. A legacy "VAR." key prefix is
+    /// stripped (Source-X RES_WORLDVARS backward compatibility).</summary>
+    private void LoadScriptGlobalVars(ScriptSection section)
+    {
+        foreach (var key in section.Keys)
+        {
+            if (string.IsNullOrEmpty(key.Key))
+                continue;
+            // Prefix match is case-sensitive like Source-X's strstr (though we
+            // sanely anchor it to the start instead of replicating the
+            // anywhere-match-then-skip-4-from-start quirk).
+            string name = key.Key.StartsWith("VAR.", StringComparison.Ordinal)
+                ? key.Key[4..]
+                : key.Key;
+            if (name.Length > 0)
+                _scriptGlobalVars.Add(new KeyValuePair<string, string>(name, ScriptKey.StripQuotePair(key.Arg)));
+        }
+    }
+
+    /// <summary>[LIST name]/[WORLDLISTS name]: element per line — Source-X
+    /// CListDefCont::r_LoadVal reads the value part ("ELEM=x"); bare lines
+    /// are accepted as the element itself.</summary>
+    private void LoadScriptGlobalList(ScriptSection section)
+    {
+        string name = section.Argument.Split(' ', 2)[0].Trim();
+        if (string.IsNullOrEmpty(name))
+        {
+            _logger.LogWarning("[LIST] section without a list name skipped");
+            return;
+        }
+
+        // Source-X AddList returns the EXISTING list when the name was already
+        // declared — a second [LIST name] block appends to it.
+        int existing = _scriptGlobalLists.FindIndex(l =>
+            l.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        List<string> elements;
+        if (existing >= 0)
+        {
+            elements = _scriptGlobalLists[existing].Elements;
+        }
+        else
+        {
+            elements = [];
+            _scriptGlobalLists.Add((name, elements));
+        }
+
+        foreach (var key in section.Keys)
+        {
+            string element = ScriptKey.StripQuotePair(key.HasArg ? key.Arg : key.Key);
+            if (!string.IsNullOrEmpty(element))
+                elements.Add(element);
+        }
+    }
+
+    /// <summary>[TYPEDEFS] bulk block: each line "NAME value" declares an item
+    /// type name → numeric index (Source-X RES_TYPEDEFS).</summary>
+    private void LoadTypeDefsBulk(ScriptSection section)
+    {
+        foreach (var key in section.Keys)
+        {
+            if (string.IsNullOrEmpty(key.Key) || !key.HasArg)
+                continue;
+            if (ScriptKey.TryParseNumber(key.Arg.AsSpan(), out long val))
+            {
+                _defNames[key.Key] = new ResourceId(ResType.TypeDef, (int)val);
+                // Also expose the numeric value through the DEF text table so
+                // <DEF.t_xxx> and the numeric DefNameResolver (which only
+                // accepts ResType.DefName ids) can resolve bulk-declared
+                // type names — Source-X registers them in m_VarResDefs.
+                _defTexts[key.Key] = val.ToString();
+            }
+            else
+            {
+                _logger.LogWarning("[TYPEDEFS] entry '{Name}' has non-numeric value '{Value}'", key.Key, key.Arg);
+            }
+        }
+    }
+
+    /// <summary>[RESOURCES] section found inside a script file — queue the
+    /// referenced files for loading after the current pass, mirroring Source-X
+    /// AddResourceFile/AddResourceDir (append to the end of the load list,
+    /// dedup, refuse spheretables, resolve relative to the script root).</summary>
+    private void QueueResourceFiles(ScriptSection section)
+    {
+        foreach (var key in section.Keys)
+        {
+            string entry = VerbatimLine(key).Trim();
+            if (entry.Length == 0)
+                continue;
+
+            bool isDirectory = entry.EndsWith('/') || entry.EndsWith('\\');
+            if (isDirectory)
+            {
+                string dirPath = Path.IsPathRooted(entry) ? entry : Path.Combine(ScpBaseDir, entry);
+                if (!Directory.Exists(dirPath))
+                {
+                    _logger.LogWarning("[RESOURCES] directory not found: {Dir}", entry);
+                    continue;
+                }
+                // Source-X AddResourceDir sorts by case-SENSITIVE filename.
+                foreach (var scp in Directory.EnumerateFiles(dirPath, "*.scp", SearchOption.TopDirectoryOnly)
+                             .OrderBy(Path.GetFileName, StringComparer.Ordinal))
+                    QueueSingleResourceFile(scp);
+                continue;
+            }
+
+            QueueSingleResourceFile(entry);
+        }
+    }
+
+    private void QueueSingleResourceFile(string entry)
+    {
+        // Source-X AddResourceFile explicitly refuses to re-add spheretables*.
+        string title = Path.GetFileNameWithoutExtension(entry);
+        if (title.StartsWith("spheretables", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        if (!Path.HasExtension(entry))
+            entry += ".scp";
+
+        string full;
+        try
+        {
+            full = Path.GetFullPath(Path.IsPathRooted(entry) ? entry : Path.Combine(ScpBaseDir, entry));
+        }
+        catch
+        {
+            _logger.LogWarning("[RESOURCES] invalid path skipped: {Entry}", entry);
+            return;
+        }
+
+        // Only allow files under the script root (same guard as the manifest).
+        if (!string.IsNullOrEmpty(ScpBaseDir))
+        {
+            string root = Path.GetFullPath(ScpBaseDir)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("[RESOURCES] entry outside script root skipped: {Entry}", entry);
+                return;
+            }
+        }
+
+        // Source-X FindResourceFile matches titles, not paths — a file with
+        // the same basename anywhere counts as already scheduled.
+        if (_knownResourceFiles.Contains(full) ||
+            _knownResourceTitles.Contains(Path.GetFileName(full)))
+            return;
+
+        if (!File.Exists(full))
+        {
+            _logger.LogWarning("[RESOURCES] file not found: {Entry}", entry);
+            return;
+        }
+
+        _knownResourceFiles.Add(full);
+        _knownResourceTitles.Add(Path.GetFileName(full));
+        _pendingResourceFiles.Add(full);
+    }
+
     private void LoadDefNames(ScriptSection section)
     {
         foreach (var key in section.Keys)
         {
             if (!string.IsNullOrEmpty(key.Key) && key.HasArg)
             {
-                if (ScriptKey.TryParseNumber(key.Arg.AsSpan(), out long val))
+                // Source-X reads the value via GetArgStr → surrounding quote
+                // pair stripped, so DEFNAME foo "bar" stores bar and a quoted
+                // numeric ("5") still parses as a number.
+                string value = ScriptKey.StripQuotePair(key.Arg);
+                if (ScriptKey.TryParseNumber(value.AsSpan(), out long val))
                 {
                     _defNames[key.Key] = new ResourceId(ResType.DefName, (int)val);
                 }
                 else
                 {
-                    _defTexts[key.Key] = key.Arg;
+                    _defTexts[key.Key] = value;
                 }
             }
         }
@@ -498,11 +808,13 @@ public sealed class ResourceHolder
         if (link?.StoredKeys == null || link.StoredKeys.Count == 0)
             return null;
 
-        // StoredKeys contains the name entries (first line might be count, skip it)
+        // StoredKeys contains the name entries (first line might be count, skip it).
+        // Use the raw line — multi-word names ("John Smith") would otherwise be
+        // truncated at the Key/Arg separator.
         var names = new List<string>();
         foreach (var key in link.StoredKeys)
         {
-            string entry = key.Key.Trim();
+            string entry = key.RawLine.Trim();
             if (string.IsNullOrEmpty(entry)) continue;
             // Skip numeric-only lines (count header)
             if (int.TryParse(entry, out _)) continue;
@@ -553,6 +865,134 @@ public sealed class ResourceHolder
         }
 
         return sb.ToString();
+    }
+
+    // --- Special-section data (Source-X CServerConfig tables) ---
+
+    /// <summary>[OBSCENE] words. Matching mirrors Source-X IsObscene: each word
+    /// is wrapped as *word* and wildcard-matched case-insensitively.</summary>
+    public IReadOnlyList<string> ObsceneWords => _obsceneWords;
+
+    public bool IsObscene(string text)
+    {
+        if (string.IsNullOrEmpty(text) || _obsceneWords.Count == 0)
+            return false;
+        foreach (var word in _obsceneWords)
+        {
+            if (ObsceneWildcardMatch("*" + word + "*", text))
+                return true;
+        }
+        return false;
+    }
+
+    private static bool ObsceneWildcardMatch(string pattern, string input)
+    {
+        int p = 0, i = 0, starP = -1, starI = -1;
+        while (i < input.Length)
+        {
+            if (p < pattern.Length && (pattern[p] == '?' ||
+                char.ToUpperInvariant(pattern[p]) == char.ToUpperInvariant(input[i])))
+            { p++; i++; }
+            else if (p < pattern.Length && pattern[p] == '*')
+            { starP = p++; starI = i; }
+            else if (starP >= 0)
+            { p = starP + 1; i = ++starI; }
+            else return false;
+        }
+        while (p < pattern.Length && pattern[p] == '*') p++;
+        return p == pattern.Length;
+    }
+
+    public IReadOnlyList<string> FameTitles => _fameTitles;
+    public IReadOnlyList<string> KarmaTitles => _karmaTitles;
+    public IReadOnlyList<int> NotoKarmaLevels => _notoKarmaLevels;
+    public IReadOnlyList<int> NotoFameLevels => _notoFameLevels;
+    public IReadOnlyList<string> NotoTitles => _notoTitles;
+
+    /// <summary>Source-X CChar::Noto_GetLevel + CServerConfig::GetNotoTitle —
+    /// map karma/fame to a title slot, honoring the "male,female" split.</summary>
+    public string GetNotoTitle(int karma, int fame, bool female)
+    {
+        int i = 0;
+        while (i < _notoKarmaLevels.Count && karma < _notoKarmaLevels[i]) i++;
+        int j = 0;
+        while (j < _notoFameLevels.Count && fame > _notoFameLevels[j]) j++;
+
+        int level = i * (_notoFameLevels.Count + 1) + j;
+        if (level < 0 || level >= _notoTitles.Count)
+            return "";
+
+        string title = _notoTitles[level];
+        int comma = title.IndexOf(',');
+        if (comma < 0)
+            return title;
+        return female ? title[(comma + 1)..] : title[..comma];
+    }
+
+    /// <summary>[RUNES] magic rune words, indexed by letter (Source-X GetRune).</summary>
+    public IReadOnlyList<string> Runes => _runes;
+
+    public string GetRune(char ch)
+    {
+        int index = char.ToUpperInvariant(ch) - 'A';
+        if (index < 0 || index >= _runes.Count)
+            return "?";
+        return _runes[index];
+    }
+
+    /// <summary>Script-declared global VARs from [GLOBALS]/[WORLDVARS] — the
+    /// host applies these to the world at boot (before the save loads so a
+    /// saved value wins).</summary>
+    public IReadOnlyList<KeyValuePair<string, string>> ScriptGlobalVars => _scriptGlobalVars;
+
+    /// <summary>Script-declared global LISTs from [LIST name]/[WORLDLISTS name].</summary>
+    public IReadOnlyList<(string Name, List<string> Elements)> ScriptGlobalLists => _scriptGlobalLists;
+
+    /// <summary>[RESOURCELIST] entries (Source-X m_ResourceList, used by DEFLIST).</summary>
+    public IReadOnlyList<string> ResourceListNames => _resourceListNames;
+
+    /// <summary>Mark a file as already scheduled for loading so a nested
+    /// [RESOURCES] reference to it is not queued twice. The host registers the
+    /// full manifest before loading starts.</summary>
+    public void RegisterKnownResourceFile(string path)
+    {
+        try
+        {
+            _knownResourceFiles.Add(Path.GetFullPath(path));
+            _knownResourceTitles.Add(Path.GetFileName(path));
+        }
+        catch { /* invalid path */ }
+    }
+
+    /// <summary>Files queued by nested [RESOURCES] sections, in discovery
+    /// order. Draining clears the queue; loading a drained file may queue more.</summary>
+    public IReadOnlyList<string> PendingResourceFiles => _pendingResourceFiles;
+
+    public List<string> DrainPendingResourceFiles()
+    {
+        var drained = new List<string>(_pendingResourceFiles);
+        _pendingResourceFiles.Clear();
+        return drained;
+    }
+
+    /// <summary>Fetch a stored [BOOK name page] section. Pages are stored with
+    /// the page folded into the identity token ("name_page"); the pageless
+    /// header form is the title section.</summary>
+    public ResourceLink? GetBookSection(string bookName, int page)
+    {
+        if (string.IsNullOrEmpty(bookName))
+            return null;
+        var rid = ResolveDefName($"{bookName}_{page}");
+        if (!rid.IsValid || rid.Type != ResType.Book)
+        {
+            if (page > 0)
+                return null;
+            // pageless header form = the title section
+            rid = ResolveDefName(bookName);
+            if (!rid.IsValid || rid.Type != ResType.Book)
+                return null;
+        }
+        return _resources.Get(rid);
     }
 
     public IEnumerable<ResourceLink> GetAllResources() => _resources.GetAll();
@@ -732,11 +1172,8 @@ public sealed class ResourceHolder
 
         foreach (var section in sections)
         {
-            if (section.Name.Equals("DEFMESSAGE", StringComparison.OrdinalIgnoreCase))
-            {
-                LoadDefMessages(section);
+            if (TryLoadSpecialSection(section))
                 continue;
-            }
 
             ResType resType = SectionToResType(section.Name);
 
@@ -762,7 +1199,7 @@ public sealed class ResourceHolder
 
             if (resType == ResType.Unknown || resType == ResType.Sphere ||
                 resType == ResType.ServerConfig || resType == ResType.ResourceList ||
-                resType == ResType.Comment || resType == ResType.Book)
+                resType == ResType.Comment)
                 continue;
 
             string rawArg = section.Argument;
@@ -772,8 +1209,8 @@ public sealed class ResourceHolder
             // token made the (usually empty) ELF/GARG variants overwrite the
             // human base section — fresh characters spawned naked because
             // MALE_DEFAULT resolved to the empty GARG section. Fold the race
-            // suffix into the identity token instead.
-            if (resType == ResType.NewBie && rawArg.Contains(' '))
+            // suffix into the identity token instead. BOOK pages likewise.
+            if (resType is ResType.NewBie or ResType.Book && rawArg.Contains(' '))
                 rawArg = rawArg.Trim().Replace('\t', '_').Replace(' ', '_');
 
             if (resType == ResType.Dialog)
@@ -783,12 +1220,7 @@ public sealed class ResourceHolder
                 {
                     var textLines = new List<string>();
                     foreach (var key in section.Keys)
-                    {
-                        string line = string.IsNullOrEmpty(key.Arg)
-                            ? key.Key
-                            : $"{key.Key} {key.Arg}";
-                        textLines.Add(line.TrimEnd());
-                    }
+                        textLines.Add(key.RawLine.TrimEnd());
                     _dialogTextCache[argParts[0]] = (filePath, textLines);
                     continue;
                 }
@@ -858,28 +1290,18 @@ public sealed class ResourceHolder
         foreach (var key in section.Keys)
         {
             // Format: srcX,srcY,srcZ,srcMap=destX,destY,destZ,destMap=name
-            // ScriptKey parses first '=' so Key = "srcX,srcY,srcZ,srcMap"
-            // Arg = "destX,destY,destZ,destMap=name"
-            var src = ParseTeleportPoint(key.Key);
+            // Parse from the raw line — the Key/Arg split may have broken the
+            // coordinate list at a comma.
+            var segments = key.RawLine.Split('=', 3);
+            if (segments.Length < 2) continue;
+
+            var src = ParseTeleportPoint(segments[0]);
             if (src.X == 0 && src.Y == 0) continue;
 
-            string argPart = key.Arg;
-            string name = "";
-            int eqIdx = argPart.IndexOf('=');
-            string destStr;
-            if (eqIdx >= 0)
-            {
-                destStr = argPart[..eqIdx];
-                name = argPart[(eqIdx + 1)..].Trim();
-            }
-            else
-            {
-                destStr = argPart;
-            }
-
-            var dest = ParseTeleportPoint(destStr);
+            var dest = ParseTeleportPoint(segments[1]);
             if (dest.X == 0 && dest.Y == 0) continue;
 
+            string name = segments.Length >= 3 ? segments[2].Trim() : "";
             _teleporters.Add(new TeleporterEntry(src, dest, name, filePath));
         }
 
@@ -905,17 +1327,13 @@ public sealed class ResourceHolder
     {
         foreach (var key in section.Keys)
         {
-            string name = key.Key.Trim();
-            string value = key.Arg.Trim();
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                name = "";
-                value = key.Key.Trim();
-            }
-            var point = ParseTeleportPoint(value);
+            // "Name=x,y,z,map" or a bare "x,y,z,map" line — split on '=' from
+            // the raw line (comma is a Key/Arg separator now).
+            ScriptKey.TrySplitOnEquals(key.RawLine, out string name, out string value);
+            var point = ParseTeleportPoint(value.Trim());
             if (point.X == 0 && point.Y == 0)
                 continue;
-            _starts.Add(new StartEntry(name, point));
+            _starts.Add(new StartEntry(name.Trim(), point));
         }
         _logger.LogInformation("Loaded {Count} start locations", _starts.Count);
     }
@@ -948,14 +1366,13 @@ public sealed class ResourceHolder
         foreach (var key in section.Keys)
         {
             // [STARTSGOLD] entries are bare amounts ("10000"), parallel to the
-            // [STARTS] city list — the amount is the section KEY with no arg, so
-            // parse the key when the arg is empty. (A "name=amount" form is still
-            // honoured for named pools.) Parsing only the arg silently dropped
-            // every entry, leaving new characters with no starting gold.
-            string name = key.Key.Trim();
-            string amountText = string.IsNullOrWhiteSpace(key.Arg) ? name : key.Arg.Trim();
-            if (int.TryParse(amountText, out int amount))
-                _startGold.Add(new StartGoldEntry(name, amount));
+            // [STARTS] city list. (A "name=amount" form is still honoured for
+            // named pools.) Parse from the raw line so bare entries survive
+            // the Key/Arg split.
+            bool named = ScriptKey.TrySplitOnEquals(key.RawLine, out string name, out string amountText);
+            if (!named) name = amountText;
+            if (int.TryParse(amountText.Trim(), out int amount))
+                _startGold.Add(new StartGoldEntry(name.Trim(), amount));
         }
         _logger.LogInformation("Loaded {Count} start gold entries", _startGold.Count);
     }
@@ -964,17 +1381,13 @@ public sealed class ResourceHolder
     {
         foreach (var key in section.Keys)
         {
-            string name = key.Key.Trim();
-            string value = key.Arg.Trim();
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                name = "";
-                value = key.Key.Trim();
-            }
-            var point = ParseTeleportPoint(value);
+            // "Name=x,y,z,map" or bare "x,y,z,map" — same raw-line rule as
+            // [STARTS].
+            ScriptKey.TrySplitOnEquals(key.RawLine, out string name, out string value);
+            var point = ParseTeleportPoint(value.Trim());
             if (point.X == 0 && point.Y == 0)
                 continue;
-            _moongates.Add(new MoongateEntry(name, point));
+            _moongates.Add(new MoongateEntry(name.Trim(), point));
         }
         _logger.LogInformation("Loaded {Count} moongates", _moongates.Count);
     }

@@ -10,6 +10,18 @@ public sealed class ScriptKey
     public string Arg { get; private set; } = "";
     public bool HasArg => Arg.Length > 0;
 
+    /// <summary>The whole line as read (trimmed, comments already stripped by
+    /// ScriptFile) — the equivalent of Source-X ReadKey's verbatim buffer.
+    /// Consumers of raw-line sections (dialog TEXT, [TELEPORTERS], [NAMES],
+    /// title lists...) must use this instead of reconstructing "Key Arg",
+    /// which loses the separator character (comma vs space) and spacing.</summary>
+    private string _rawLine = "";
+    public string RawLine
+    {
+        get => _rawLine.Length > 0 ? _rawLine : (HasArg ? $"{Key} {Arg}" : Key);
+        private set => _rawLine = value;
+    }
+
     /// <summary>Source file path the line was parsed from (set by
     /// <see cref="ScriptFile"/>). Used for diagnostic messages so
     /// scriptdebug warnings can pinpoint the offending line; never
@@ -37,6 +49,40 @@ public sealed class ScriptKey
         Arg = arg ?? "";
     }
 
+    /// <summary>Source-X CScriptKey::GetArgStr quote handling: when the value
+    /// starts with a double quote, drop it and cut at the LAST double quote
+    /// (any trailing text after the closing quote is discarded). Values not
+    /// starting with a quote pass through unchanged.</summary>
+    public static string StripQuotePair(string value)
+    {
+        if (value.Length == 0 || value[0] != '"')
+            return value;
+        string body = value[1..];
+        int lastQuote = body.LastIndexOf('"');
+        return lastQuote >= 0 ? body[..lastQuote] : body;
+    }
+
+    /// <summary>The Arg the way Source-X GetArgStr returns it — surrounding
+    /// quote pair stripped.</summary>
+    public string ArgUnquoted => StripQuotePair(Arg);
+
+    /// <summary>Try to parse the line as a plain KEY=ARG pair using ONLY '='
+    /// as separator — used by loaders that accept both "name=value" and bare
+    /// value lines from raw sections.</summary>
+    public static bool TrySplitOnEquals(string line, out string key, out string value)
+    {
+        int eq = line.IndexOf('=');
+        if (eq < 0)
+        {
+            key = "";
+            value = line;
+            return false;
+        }
+        key = line[..eq].TrimEnd();
+        value = line[(eq + 1)..].TrimStart();
+        return true;
+    }
+
     /// <summary>
     /// Parse a raw line into key and argument.
     /// Handles KEY=VALUE, KEY VALUE, and plain KEY forms.
@@ -49,8 +95,10 @@ public sealed class ScriptKey
         {
             Key = "";
             Arg = "";
+            RawLine = "";
             return;
         }
+        RawLine = line.ToString();
 
         // Increment / decrement forms: "FOO ++" / "FOO--" / "BAR++"
         // Rewrite into += 1 / -= 1 so the rest of the pipeline handles them
@@ -83,8 +131,10 @@ public sealed class ScriptKey
             }
         }
 
-        // Find the first key/arg separator (=, space, or tab) that lies
-        // OUTSIDE any <...> or (...) group. Sphere scripts routinely build
+        // Find the first key/arg separator that lies OUTSIDE any bracket
+        // group or quoted span. Source-X Str_Parse uses the separator set
+        // "=, \t" (equals, comma, space, tab), toggles an in-quote state on
+        // '"', and tracks {} [] () <> depth. Sphere scripts routinely build
         // dynamic keys like
         //     UID.<CTag.Admin.C<Eval <ArgN>-10>>.Dialog d_SphereAdmin
         // — the first ' ' character lives inside `<Eval ...>`. A naive
@@ -92,13 +142,18 @@ public sealed class ScriptKey
         // dangling "<Eval" in Key, and the later expansion warns
         // "unresolved <Eval>". Walking with bracket depth tracking keeps
         // those expressions intact.
-        int eqPos = -1, spacePos = -1, tabPos = -1;
+        int sepPos = -1;
         {
             int angleDepth = 0;
             int parenDepth = 0;
+            int curlyDepth = 0;
+            int squareDepth = 0;
+            bool inQuotes = false;
             for (int p = 0; p < line.Length; p++)
             {
                 char ch = line[p];
+                if (ch == '"') { inQuotes = !inQuotes; continue; }
+                if (inQuotes) continue;
                 if (ch == '<')
                 {
                     // Treat as nested bracket only when followed by a
@@ -111,28 +166,18 @@ public sealed class ScriptKey
                 if (ch == '>' && angleDepth > 0) { angleDepth--; continue; }
                 if (ch == '(') { parenDepth++; continue; }
                 if (ch == ')' && parenDepth > 0) { parenDepth--; continue; }
-                if (angleDepth > 0 || parenDepth > 0) continue;
+                if (ch == '{') { curlyDepth++; continue; }
+                if (ch == '}' && curlyDepth > 0) { curlyDepth--; continue; }
+                if (ch == '[') { squareDepth++; continue; }
+                if (ch == ']' && squareDepth > 0) { squareDepth--; continue; }
+                if (angleDepth > 0 || parenDepth > 0 || curlyDepth > 0 || squareDepth > 0) continue;
 
-                if (ch == '=' && eqPos < 0) eqPos = p;
-                else if (ch == ' ' && spacePos < 0) spacePos = p;
-                else if (ch == '\t' && tabPos < 0) tabPos = p;
-
-                if (eqPos >= 0 && spacePos >= 0 && tabPos >= 0) break;
+                if (ch is '=' or ',' or ' ' or '\t')
+                {
+                    sepPos = p;
+                    break;
+                }
             }
-        }
-
-        int sepPos = -1;
-        if (eqPos >= 0 && (spacePos < 0 || eqPos <= spacePos) && (tabPos < 0 || eqPos <= tabPos))
-        {
-            sepPos = eqPos;
-        }
-        else if (spacePos >= 0 && (tabPos < 0 || spacePos <= tabPos))
-        {
-            sepPos = spacePos;
-        }
-        else if (tabPos >= 0)
-        {
-            sepPos = tabPos;
         }
 
         if (sepPos < 0)
@@ -143,7 +188,20 @@ public sealed class ScriptKey
         }
 
         Key = line[..sepPos].TrimEnd().ToString();
-        Arg = line[(sepPos + 1)..].TrimStart().ToString();
+        var argSpan = line[(sepPos + 1)..].TrimStart();
+
+        // Source-X Str_Parse: when the separator was WHITESPACE, the following
+        // whitespace is skipped and ONE additional separator char is consumed.
+        // This makes "KEY = VAL" / "KEY , VAL" yield Arg "VAL" — without it the
+        // '=' leaks into the Arg and numeric [DEFNAME] constants written as
+        // "name = value" parse as text "= value".
+        if ((line[sepPos] == ' ' || line[sepPos] == '\t') &&
+            argSpan.Length > 0 && (argSpan[0] == '=' || argSpan[0] == ','))
+        {
+            argSpan = argSpan[1..].TrimStart();
+        }
+
+        Arg = argSpan.ToString();
 
         // Handle compound assignment operators that collapse onto the
         // key side: "foo+=3", "foo.=x", "foo-=2". The "=" is the sep
@@ -151,21 +209,11 @@ public sealed class ScriptKey
         if (Key.Length > 0 && line[sepPos] == '=')
         {
             char lastChar = Key[^1];
-            if (lastChar is '+' or '-' or '*' or '/' or '%' or '.' or '|' or '&' or '^')
+            if (lastChar is '+' or '-' or '*' or '/' or '%' or '.' or '|' or '&' or '^' or '!')
             {
                 string realKey = Key[..^1].TrimEnd();
                 string op = lastChar.ToString();
-
-                if (op == ".")
-                {
-                    // .= is string concatenation: KEY = <KEY> + ARG
-                    Arg = $"<{realKey}>{Arg}";
-                }
-                else
-                {
-                    // += / -= / |= / &= / ^=  →  KEY = <EVAL <KEY> OP ARG>
-                    Arg = $"<EVAL <{realKey}>{op}{Arg}>";
-                }
+                Arg = RewriteCompoundAssignment(realKey, op, Arg);
                 Key = realKey;
             }
         }
@@ -176,18 +224,23 @@ public sealed class ScriptKey
         if (Arg.Length >= 2)
         {
             char a0 = Arg[0];
-            if (a0 is '+' or '-' or '*' or '/' or '%' or '.' or '|' or '&' or '^' && Arg[1] == '=')
+            if (a0 is '+' or '-' or '*' or '/' or '%' or '.' or '|' or '&' or '^' or '!' && Arg[1] == '=')
             {
-                string realKey = Key;
-                string op = a0.ToString();
-                string rest = Arg[2..].TrimStart();
-
-                if (op == ".")
-                    Arg = $"<{realKey}>{rest}";
-                else
-                    Arg = $"<EVAL <{realKey}>{op}{rest}>";
+                Arg = RewriteCompoundAssignment(Key, a0.ToString(), Arg[2..].TrimStart());
             }
         }
+    }
+
+    /// <summary>Source-X ReadKeyParse OP= rewrite: ".=" concatenates, keys
+    /// under the FLOAT. namespace evaluate through FLOATVAL, everything else
+    /// through EVAL. Operator set mirrors Source-X ".*+-/%|&amp;!^".</summary>
+    private static string RewriteCompoundAssignment(string realKey, string op, string rest)
+    {
+        if (op == ".")
+            return $"<{realKey}>{rest}"; // .= is string concatenation
+        if (realKey.StartsWith("FLOAT.", StringComparison.OrdinalIgnoreCase))
+            return $"<FLOATVAL <{realKey}>{op}({rest})>";
+        return $"<EVAL <{realKey}>{op}{rest}>";
     }
 
     /// <summary>
@@ -220,11 +273,56 @@ public sealed class ScriptKey
         // Source-X treats all numbers starting with '0' as hex: 09ae1, 06F7, 00000020, etc.
         if (text.Length > 1 && text[0] == '0')
         {
-            return long.TryParse(text, System.Globalization.NumberStyles.HexNumber, null, out value);
+            return TryParseLeadingZeroHex(text[1..], out value);
         }
 
         // Plain decimal
         return long.TryParse(text, out value);
+    }
+
+    /// <summary>Source-X GetSingle hex semantics for leading-zero numbers:
+    /// count significant nibbles after the zeros — ≤8 nibbles reinterpret as
+    /// a signed 32-bit value (sign-extended, so "0ffffffff" = -1), 9–16 as a
+    /// signed 64-bit value, more than 16 overflows to -1.</summary>
+    internal static bool TryParseLeadingZeroHex(ReadOnlySpan<char> digits, out long value)
+    {
+        value = 0;
+        if (digits.IsEmpty) return false;
+
+        ulong acc = 0;
+        int sig = 0;
+        bool seenNonZero = false;
+        foreach (char c in digits)
+        {
+            int v;
+            if (c >= '0' && c <= '9') v = c - '0';
+            else if (c >= 'a' && c <= 'f') v = c - 'a' + 10;
+            else if (c >= 'A' && c <= 'F') v = c - 'A' + 10;
+            else return false; // not a pure hex token
+
+            if (!seenNonZero)
+            {
+                if (v == 0) continue; // leading zeros don't count
+                seenNonZero = true;
+                sig = 1;
+                acc = (ulong)v;
+            }
+            else
+            {
+                if (sig == 16)
+                {
+                    value = -1; // Source-X: >16 significant nibbles overflows to -1
+                    return true;
+                }
+                acc = (acc << 4) | (uint)v;
+                sig++;
+            }
+        }
+
+        value = sig <= 8
+            ? (int)(uint)acc // reinterpret as int32 → sign-extend
+            : unchecked((long)acc); // int64 two's complement
+        return true;
     }
 
     public override string ToString() => HasArg ? $"{Key}={Arg}" : Key;

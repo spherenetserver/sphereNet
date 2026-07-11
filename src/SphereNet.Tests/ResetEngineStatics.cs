@@ -129,5 +129,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
             [SphereNet.Scripting.Definitions.ValueCurve.Empty,
              SphereNet.Scripting.Definitions.ValueCurve.Empty,
              SphereNet.Scripting.Definitions.ValueCurve.Empty];
+        SphereNet.Scripting.Expressions.ExpressionParser.ObsceneChecker = null;
+        SphereNet.Game.Magic.SpellDef.RuneWordResolver = null;
     }
 }

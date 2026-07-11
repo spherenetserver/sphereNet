@@ -4,6 +4,102 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-11] - Script reading parity, second audit pass (adversarial re-verification)
+----------------------------------------
+
+FIXED - Lexer:
+  - Source-X Str_Parse rule restored: a WHITESPACE key/value separator consumes
+    one following separator char, so "name = value" no longer leaks the '=' into
+    the value. This recovered 81 numeric [DEFNAME] constants in the reference
+    pack (brain_*, LOGL_*, RES_* tables) that silently parsed as text.
+  - Source-X GetArgStr quote semantics ported (ScriptKey.StripQuotePair): the
+    script runtime strips a surrounding quote pair from verb/property values
+    (TAG.X="a b", SYSMESSAGE="msg"), and DEFNAME/GLOBALS/LIST loaders store
+    de-quoted values — quoted numerics parse as numbers again.
+  - Dialog gump position line ("5,25") and classic MENU titles read the raw
+    line; the comma separator had collapsed them (dialogs anchored at 0,0).
+
+FIXED - Expressions:
+  - Leading-zero hex now sign-extends like Source-X GetSingle: <=8 significant
+    nibbles reinterpret as int32 ("0ffffffff" = -1), 9-16 as int64, more
+    overflows to -1; decimal overflow warns and yields -1.
+  - QVAL: '?'/':' split skips <...> spans so nested <QVAL ...> works, and the
+    numeric form accepts 3-4 args with 0 defaults (was requiring all 5).
+  - STR*/MULDIV/BETWEEN/SETBIT-family intrinsics split their argument lists on
+    the RAW text (bracket-aware) before resolution — a resolved value
+    containing commas ("1,2" coordinates) no longer corrupts the split; also
+    fixed STRCMPI's off-by-one prefix slice.
+  - Conditional splitter: an unmatched '<'+letter (no-space less-than,
+    "IF a<b || c") no longer swallows the rest of the condition.
+
+FIXED - Resource loading:
+  - Duplicate script files dedup by file TITLE (basename) like Source-X
+    FindResourceFile; directory expansion sorts case-sensitively by filename
+    like AddResourceDir.
+  - A second [LIST name] block appends to the existing list (AddList reuse).
+  - [TYPEDEFS] values are also exposed through the DEF text table so
+    <DEF.t_xxx> and numeric resolvers see bulk-declared type names.
+  - [NOTOTITLES] threshold lines accept '=' as a separator; the [GLOBALS]
+    legacy "VAR." prefix strip is case-sensitive like Source-X.
+
+Known deliberate deviations from Source-X (documented): 0x-prefix hex is
+accepted (Source-X yields 0), RAND(hi,lo) normalizes the range, the <...>
+separator suppression in key parsing is kept (Source-X computes but ignores
+angle depth), and the anywhere-match "VAR." strstr bug is not replicated.
+
+[2026-07-11] - Script reading parity with Source-X (sections, lexer, expressions)
+----------------------------------------
+
+ADDED - Section types that were previously ignored or unknown now load:
+  - [GLOBALS]/[WORLDVARS] and [LIST name]/[WORLDLISTS] script sections seed the
+    world's global VARs and LISTs at boot (world save still overrides).
+  - [OBSCENE] word list loads and backs a real ISOBSCENE intrinsic
+    (Source-X-style *word* wildcard matching); it previously always returned 0.
+  - [FAME]/[KARMA] title lists and [NOTOTITLES] (karma/fame thresholds plus the
+    (k+1)*(f+1) title matrix with male,female split) load with a
+    GetNotoTitle(karma, fame, female) accessor.
+  - [RUNES] letter table loads; spell RUNES letter abbreviations ("IPY") now
+    decode into real power words through it instead of a hardcoded fallback.
+  - [BOOK name page] sections are retained with per-page access; [MENU],
+    [SCROLL] and [TIP] keys are retained as well.
+  - [TYPEDEFS] bulk declarations register type-name defnames.
+  - [RESOURCES] sections inside ANY script file queue extra files for loading
+    (Source-X AddResourceFile order: appended after the manifest), with
+    spheretables refusal, .scp extension append, root guard and dedup.
+  - spheretables.scp: ALL [RESOURCES] sections are processed (not just the
+    first), and unlisted top-level *.scp files load afterwards like Source-X
+    AddResourceDir.
+  - CHAMPION/SPHERECRYPT/KRDIALOGLIST/ACCOUNT/GMPAGE/SECTOR/WORLDCHAR/WORLDITEM/
+    WC/WI/WORLDSCRIPT/WS/TIMERF/STAT are recognized (no more Unknown warnings).
+
+CHANGED - Expression evaluation now matches Sphere semantics:
+  - Expressions fold right-to-left with NO operator precedence (Source-X
+    GetVal/GetValMath): "2*3+1" is 2*(3+1)=8. Old packs rely on this.
+  - IF/ELIF/WHILE conditions split at top-level || and && with equal precedence
+    and left-to-right short-circuiting (Source-X GetConditionalSubexpressions),
+    including !(...) negation and parenthesized recursion.
+  - Divide/modulo by zero keeps the left operand (was 0) and logs.
+  - SIN/COS/TAN use radians with truncation (was degrees x1000);
+    ARCSIN/ARCCOS/ARCTAN and STRASCII added; STRINDEXOF is case-sensitive;
+    ID() masks to the low 20 index bits; RAND supports 64-bit ranges; RANDBELL
+    is the deterministic Source-X log curve; resolver depth cap raised to 128.
+  - Number literals follow Source-X dot rules: leading "0" not followed by '.'
+    is hex; dots inside decimals are grouping separators ("100.000"=100000).
+  - Weighted {v w ...} ranges reject odd token counts (error, 0) and log
+    non-positive weights.
+  - <...> references in a numeric context dispatch through the full variable
+    resolver (previously <EVAL ...>/<TAG.X> evaluated to 0 there).
+
+CHANGED - Script lexer parity (Source-X Str_Parse):
+  - Key/value separator set is now "=, \t" (comma included) with double-quote
+    awareness and {} [] () <> depth tracking.
+  - ScriptKey.RawLine preserves the verbatim line; raw-line consumers (dialog
+    TEXT, [TELEPORTERS], [STARTS], [MOONGATES], [NAMES], title lists) read it,
+    fixing multi-word/comma entries that the Key/Arg split used to mangle.
+  - FLOAT.-namespace compound assignment rewrites through <FLOATVAL ...>;
+    the operator set now includes '!'; section headers accept '=' and ','
+    separators ("[ITEMDEF=i_x]").
+
 [2026-07-11] - Source-X script pack, load ordering and runtime compatibility transition
 ----------------------------------------
 

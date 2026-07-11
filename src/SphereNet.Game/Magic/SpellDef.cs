@@ -158,18 +158,40 @@ public sealed class SpellDef
         _ => 0,
     };
 
+    /// <summary>Per-letter rune word lookup wired to the [RUNES] script table
+    /// (Source-X g_Cfg.GetRune: 'A'→runes[0] ... 'Z'→runes[25]). Returns null
+    /// when the table has no entry so the hardcoded mantra fallback applies.</summary>
+    public static Func<char, string?>? RuneWordResolver { get; set; }
+
     /// <summary>Get spell power words. Script RUNES come in two forms: the full
     /// spoken words (".In Lor", parsed to "In Lor" — always contains a space)
-    /// and the legacy letter abbreviation ("IL"). Many spells only ship the
-    /// abbreviation, and speaking that aloud gives the player "IL" instead of
-    /// "In Lor". Use the word form when present; otherwise fall back to the
-    /// canonical UO mantra (which the NPC path already hit because its spell
-    /// happened to carry the word form). UO mantras are always 2+ words, so a
-    /// space reliably tells the spoken form from the abbreviation.</summary>
+    /// and the legacy letter abbreviation ("IL"). Source-X composes the
+    /// abbreviation via the [RUNES] letter table (one word per letter); when
+    /// that table isn't loaded fall back to the canonical UO mantra. UO
+    /// mantras are always 2+ words, so a space reliably tells the spoken form
+    /// from the abbreviation.</summary>
     public string GetPowerWords()
     {
         if (Runes.Contains(' '))
             return Runes;
+
+        // Letter form — decode each letter through the [RUNES] table like
+        // Source-X CChar::Spell_CastStart.
+        if (RuneWordResolver != null && Runes.Length > 0)
+        {
+            var words = new List<string>(Runes.Length);
+            bool anyResolved = false;
+            foreach (char ch in Runes)
+            {
+                string? word = RuneWordResolver(ch);
+                if (!string.IsNullOrEmpty(word) && word != "?")
+                    anyResolved = true;
+                words.Add(string.IsNullOrEmpty(word) ? "?" : word);
+            }
+            if (anyResolved)
+                return string.Join(' ', words);
+        }
+
         string fallback = GetDefaultPowerWords(Id);
         return !string.IsNullOrEmpty(fallback) ? fallback : Runes;
     }

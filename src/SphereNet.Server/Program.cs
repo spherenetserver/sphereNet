@@ -542,6 +542,12 @@ public static partial class Program
             _log.LogInformation("Script files loaded: {Count}", fileCount);
             _resources.LogResourceSummary();
 
+            // ISOBSCENE intrinsic → [OBSCENE] word list (Source-X g_Cfg.IsObscene)
+            SphereNet.Scripting.Expressions.ExpressionParser.ObsceneChecker = _resources.IsObscene;
+            // Spell power-word letter decode → [RUNES] table (Source-X g_Cfg.GetRune)
+            SphereNet.Game.Magic.SpellDef.RuneWordResolver =
+                ch => _resources.Runes.Count > 0 ? _resources.GetRune(ch) : null;
+
             // Post-load sanity check: d_charprop1 FLAGS page needs
             // CharFlag.N entries from the [DEFNAME CharFlagNames] block
             // shipped with d_charprop.scp. If this lookup misses, the
@@ -770,6 +776,25 @@ public static partial class Program
             }
             return 0;
         };
+
+        // Script-declared globals ([GLOBALS]/[WORLDVARS]/[LIST name]/[WORLDLISTS])
+        // seed the world before the save loads, so persisted values win —
+        // same net effect as Source-X loading scripts before the world file.
+        int seededVars = 0, seededLists = 0;
+        foreach (var kv in _resources.ScriptGlobalVars)
+        {
+            _world.SetGlobalVar(kv.Key, kv.Value);
+            seededVars++;
+        }
+        foreach (var (listName, elements) in _resources.ScriptGlobalLists)
+        {
+            var list = _world.GetOrCreateList(listName);
+            list.Clear();
+            list.AddRange(elements);
+            seededLists++;
+        }
+        if (seededVars > 0 || seededLists > 0)
+            _log.LogInformation("Script globals seeded: {Vars} VARs, {Lists} LISTs", seededVars, seededLists);
 
         string savePath = ResolvePath(basePath, _config.WorldSaveDir);
         if (Directory.Exists(savePath))

@@ -459,6 +459,10 @@ public sealed class ScriptInterpreter
     private void ExecuteLine(ScriptKey key, IScriptObj target, ITextConsole? source, ITriggerArgs? args, ScriptScope scope)
     {
         string resolvedArg = ResolveArgs(key.Arg, target, source, args, scope);
+        // Source-X reads verb/property values via GetArgStr, which strips a
+        // surrounding quote pair — TAG.X="a b" stores a b, SYSMESSAGE="msg"
+        // speaks without the quotes. Values not starting with '"' pass through.
+        resolvedArg = ScriptKey.StripQuotePair(resolvedArg);
         // Resolve <…> inside the command key itself. Sphere scripts commonly
         // build tag names dynamically: "Src.CTag0.C<dIdx>=value" — without
         // this pass the literal "<dIdx>" ends up in the key and the setter
@@ -888,7 +892,7 @@ public sealed class ScriptInterpreter
         int i = startIdx;
 
         string condition = ResolveArgs(lines[i].Arg, target, source, args, scope);
-        bool condResult = EvaluateWithResolver(condition, target, source, args, scope) != 0;
+        bool condResult = EvaluateConditionWithResolver(condition, target, source, args, scope);
         bool branchTaken = condResult;
         i++;
 
@@ -915,7 +919,7 @@ public sealed class ScriptInterpreter
                 if (!branchTaken)
                 {
                     string elifCond = ResolveArgs(lines[i].Arg, target, source, args, scope);
-                    condResult = EvaluateWithResolver(elifCond, target, source, args, scope) != 0;
+                    condResult = EvaluateConditionWithResolver(elifCond, target, source, args, scope);
                     if (condResult)
                         branchTaken = true;
                 }
@@ -1077,7 +1081,7 @@ public sealed class ScriptInterpreter
         while (iterations < scope.MaxLoopIterations)
         {
             string resolved = ResolveArgs(condition, target, source, args, scope);
-            if (EvaluateWithResolver(resolved, target, source, args, scope) == 0)
+            if (!EvaluateConditionWithResolver(resolved, target, source, args, scope))
                 break;
 
             result = Execute(GetSubList(lines, bodyStart, bodyEnd), target, source, args, scope);
@@ -1250,6 +1254,30 @@ public sealed class ScriptInterpreter
         try
         {
             return _expr.Evaluate(expr.AsSpan());
+        }
+        finally
+        {
+            _expr.VariableResolver = oldResolver;
+            _expr.FunctionResolver = oldFunctionResolver;
+        }
+    }
+
+    /// <summary>Evaluate an IF/ELIF/WHILE condition with the target-bound
+    /// resolvers. Uses the Source-X conditional model: top-level || and &amp;&amp;
+    /// split the expression into subexpressions combined left-to-right with
+    /// short-circuiting (equal precedence), each side folding right like any
+    /// Sphere expression.</summary>
+    private bool EvaluateConditionWithResolver(string expr, IScriptObj target, ITextConsole? source, ITriggerArgs? args, ScriptScope? scope = null)
+    {
+        if (string.IsNullOrWhiteSpace(expr))
+            return false;
+        var oldResolver = _expr.VariableResolver;
+        var oldFunctionResolver = _expr.FunctionResolver;
+        _expr.VariableResolver = varName => ResolveVarForTarget(varName, target, source, args, scope);
+        _expr.FunctionResolver = exprText => TryResolveFunctionExpression(exprText, target, source, args, scope);
+        try
+        {
+            return _expr.EvaluateConditional(expr);
         }
         finally
         {

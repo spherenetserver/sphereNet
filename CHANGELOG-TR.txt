@@ -3,6 +3,103 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-11] - Script okuma paritesi, ikinci denetim turu (adversarial dogrulama)
+----------------------------------------
+
+DUZELTILDI - Lexer:
+  - Source-X Str_Parse kurali geri getirildi: BOSLUK key/deger ayraci, ardindan
+    gelen bir ayrac karakterini yutar; "ad = deger" formunda '=' artik degere
+    sizip bozmuyor. Referans pack'te 81 sayisal [DEFNAME] sabiti (brain_*,
+    LOGL_*, RES_* tablolari) sessizce metin olarak parse ediliyordu — kurtarildi.
+  - Source-X GetArgStr tirnak semantigi portlandi (ScriptKey.StripQuotePair):
+    script runtime'i verb/property degerlerindeki cevreleyen tirnak ciftini
+    soyar (TAG.X="a b", SYSMESSAGE="msg"); DEFNAME/GLOBALS/LIST yukleyicileri
+    tirnaksiz deger saklar — tirnakli sayisallar yine sayi olarak cozulur.
+  - Dialog gump konum satiri ("5,25") ve klasik MENU basliklari ham satirdan
+    okunur; virgul ayraci bunlari bolmustu (dialoglar 0,0'a demirliyordu).
+
+DUZELTILDI - Ifadeler:
+  - Bastaki-sifir hex artik Source-X GetSingle gibi isaret genisletir: <=8
+    anlamli nibble int32 olarak yorumlanir ("0ffffffff" = -1), 9-16 int64,
+    fazlasi -1'e tasar; ondalik tasma uyarir ve -1 doner.
+  - QVAL: '?'/':' bolme <...> araliklarini atlar (ic ice <QVAL ...> calisir);
+    sayisal form 3-4 argumani 0 varsayilaniyla kabul eder (5 sart degil).
+  - STR*/MULDIV/BETWEEN/SETBIT ailesi arguman listesini cozumden ONCE ham metin
+    uzerinde (parantez-farkindalikli) boler — virgul iceren cozulmus deger
+    ("1,2" koordinati) bolmeyi artik bozmaz; STRCMPI'nin kayik prefix dilimi de
+    duzeltildi.
+  - Kosul ayirici: eslesmeyen '<'+harf (bosluksuz kucuktur, "IF a<b || c")
+    kosulun kalanini artik yutmaz.
+
+DUZELTILDI - Kaynak yukleme:
+  - Cift script dosyalari Source-X FindResourceFile gibi dosya ADIYLA
+    (basename) dedup edilir; klasor genisletme AddResourceDir gibi buyuk/kucuk
+    harf duyarli dosya adina gore siralanir.
+  - Ikinci [LIST ad] blogu mevcut listeye ekler (AddList yeniden kullanimi).
+  - [TYPEDEFS] degerleri DEF metin tablosuna da yazilir; <DEF.t_xxx> ve sayisal
+    cozumleyiciler toplu bildirilen tip adlarini gorur.
+  - [NOTOTITLES] esik satirlari '=' ayracini kabul eder; [GLOBALS] eski "VAR."
+    prefix soyma Source-X gibi buyuk/kucuk harf duyarli.
+
+Bilincli sapmalar (belgelendi): 0x-prefix hex kabul edilir (Source-X 0 verir),
+RAND(buyuk,kucuk) araligi normalize eder, key parse'taki <...> ayrac bastirmasi
+korunur (Source-X angle derinligini hesaplar ama kullanmaz), "VAR." strstr
+her-yerde-eslesme bug'i kopyalanmadi.
+
+[2026-07-11] - Source-X ile script OKUMA paritesi (section'lar, lexer, ifadeler)
+----------------------------------------
+
+EKLENDI - Daha once yoksayilan/bilinmeyen section tipleri artik yukleniyor:
+  - [GLOBALS]/[WORLDVARS] ve [LIST ad]/[WORLDLISTS] script section'lari boot'ta
+    dunyanin global VAR/LIST'lerini besliyor (world save yine ustune yazar).
+  - [OBSCENE] kelime listesi yukleniyor ve ISOBSCENE intrinsic'i gercek
+    (Source-X tarzi *kelime* wildcard eslesme); onceden hep 0 donuyordu.
+  - [FAME]/[KARMA] title listeleri ve [NOTOTITLES] (karma/fame esikleri +
+    (k+1)*(f+1) title matrisi, "erkek,kadin" ayrimi) yukleniyor;
+    GetNotoTitle(karma, fame, female) erisimcisi eklendi.
+  - [RUNES] harf tablosu yukleniyor; buyu RUNES harf kisaltmalari ("IPY") artik
+    hardcoded fallback yerine bu tablodan gercek guc sozcuklerine cozuluyor.
+  - [BOOK ad sayfa] section'lari sayfa bazinda erisimle saklaniyor; [MENU],
+    [SCROLL], [TIP] key'leri de artik saklaniyor.
+  - [TYPEDEFS] toplu bildirimleri tip-adi defname'lerini kaydediyor.
+  - HERHANGI bir script dosyasindaki [RESOURCES] section'i ek dosyalari yukleme
+    kuyruguna ekliyor (Source-X AddResourceFile sirasi: manifest sonrasina),
+    spheretables reddi, .scp uzanti ekleme, kok-klasor korumasi ve dedup ile.
+  - spheretables.scp'de TUM [RESOURCES] section'lari islenir (sadece ilki
+    degil); listelenmemis ust-duzey *.scp dosyalari da Source-X AddResourceDir
+    gibi sonda yuklenir.
+  - CHAMPION/SPHERECRYPT/KRDIALOGLIST/ACCOUNT/GMPAGE/SECTOR/WORLDCHAR/WORLDITEM/
+    WC/WI/WORLDSCRIPT/WS/TIMERF/STAT taniniyor (Unknown uyarisi yok).
+
+DEGISTIRILDI - Ifade degerlendirme artik Sphere semantigiyle birebir:
+  - Ifadeler operator onceligi OLMADAN saga katlanir (Source-X GetVal/
+    GetValMath): "2*3+1" = 2*(3+1) = 8. Eski pack'ler buna dayanir.
+  - IF/ELIF/WHILE kosullari ust-duzey || ve && noktalarinda esit oncelikle
+    bolunup soldan saga kisa devreyle birlesir (GetConditionalSubexpressions);
+    !(...) negasyonu ve parantezli ic ice mantik destekli.
+  - Sifira bolme/mod sol degeri korur (onceden 0) ve loglar.
+  - SIN/COS/TAN radyan + truncate (onceden derecex1000); ARCSIN/ARCCOS/ARCTAN
+    ve STRASCII eklendi; STRINDEXOF buyuk/kucuk harf duyarli; ID() dusuk 20
+    index bitine maskeler; RAND 64-bit aralik; RANDBELL deterministik Source-X
+    log egrisi; resolver derinlik siniri 128'e cikti.
+  - Sayi literalleri Source-X nokta kurallarini izler: '.' izlemeyen bastaki
+    "0" hex; ondaliklardaki noktalar gruplama ayracidir ("100.000"=100000).
+  - Agirlikli {deger agirlik ...} araliklari tek sayili token'i reddeder
+    (hata, 0) ve pozitif olmayan agirliklari loglar.
+  - Sayisal baglamdaki <...> referanslari tam degisken cozumleyiciden gecer
+    (onceden <EVAL ...>/<TAG.X> orada 0'a cozuluyordu).
+
+DEGISTIRILDI - Script lexer paritesi (Source-X Str_Parse):
+  - Key/deger ayraci seti artik "=, \t" (virgul dahil), cift-tirnak
+    farkindaligi ve {} [] () <> derinlik takibi ile.
+  - ScriptKey.RawLine satiri birebir korur; ham-satir tuketicileri (dialog
+    TEXT, [TELEPORTERS], [STARTS], [MOONGATES], [NAMES], title listeleri)
+    bunu okur — Key/Arg bolunmesinin bozdugu cok-kelimeli/virgullu girdiler
+    duzeldi.
+  - FLOAT. ad-alaninda bilesik atama <FLOATVAL ...> uzerinden yazilir;
+    operator setine '!' eklendi; section basliklari '=' ve ',' ayracini kabul
+    eder ("[ITEMDEF=i_x]").
+
 [2026-07-11] - Source-X script pack, yukleme sirasi ve runtime uyumluluk gecisi
 ----------------------------------------
 

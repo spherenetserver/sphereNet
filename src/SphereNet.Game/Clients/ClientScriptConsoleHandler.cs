@@ -509,7 +509,7 @@ public sealed class ClientScriptConsoleHandler
                 return true;
             }
 
-            string question = keys[0].Arg.Length > 0 ? $"{keys[0].Key} {keys[0].Arg}" : keys[0].Key;
+            string question = keys[0].RawLine;
             var options = new List<MenuOptionEntry>();
             MenuOptionEntry? current = null;
 
@@ -1192,7 +1192,7 @@ public sealed class ClientScriptConsoleHandler
             bool isOn = k.Key.Equals("ON", StringComparison.OrdinalIgnoreCase);
             if (!isOn && current == null && !skipping && !titleSeen)
             {
-                title = string.IsNullOrEmpty(k.Arg) ? k.Key : $"{k.Key} {k.Arg}";
+                title = k.RawLine;
                 titleSeen = true;
                 continue;
             }

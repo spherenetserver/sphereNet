@@ -10,7 +10,7 @@ namespace SphereNet.Scripting.Expressions;
 public sealed class ExpressionParser
 {
     private int _resolveDepth;
-    private const int MaxResolveDepth = 32;
+    private const int MaxResolveDepth = 128; // Source-X _iGetVal_Reentrant cap
     private const int MaxRegexPatternLength = 512;
     private const int MaxRegexInputLength = 4096;
     private static readonly TimeSpan RegexMatchTimeout = TimeSpan.FromMilliseconds(25);
@@ -50,6 +50,12 @@ public sealed class ExpressionParser
     /// <summary>Callback for diagnostic messages (unknown variables, commands).
     /// Host wires this up to write to the server console / log.</summary>
     public Action<string>? DiagnosticLogger { get; set; }
+
+    /// <summary>Process-wide [OBSCENE] word-list checker for the ISOBSCENE
+    /// intrinsic (Source-X g_Cfg.IsObscene). Static because ExpressionParser
+    /// instances are created ad-hoc all over the engine; the host wires it to
+    /// ResourceHolder.IsObscene at boot. Reset by test isolation.</summary>
+    public static Func<string, bool>? ObsceneChecker { get; set; }
 
     /// <summary>
     /// Optional callback for resolving script function calls used inside
@@ -151,6 +157,173 @@ public sealed class ExpressionParser
         }
     }
 
+    /// <summary>
+    /// Evaluate an IF/ELIF/WHILE condition the way Source-X does
+    /// (EvaluateConditionalWhole): split the expression into subexpressions at
+    /// TOP-LEVEL || and &amp;&amp; operators (parenthesis/quote aware), then combine
+    /// them strictly left-to-right with short-circuiting — || and &amp;&amp; have
+    /// EQUAL precedence here, unlike C. Each subexpression evaluates through
+    /// the normal right-fold parser. A fully parenthesized subexpression
+    /// (optionally negated with '!') recurses so nested logic works.
+    /// </summary>
+    public bool EvaluateConditional(string expr)
+    {
+        if (string.IsNullOrWhiteSpace(expr))
+            return false;
+        return EvaluateConditionalInner(expr.Trim(), 0);
+    }
+
+    private enum CondOp { None, Or, And }
+
+    private bool EvaluateConditionalInner(string expr, int depth)
+    {
+        if (depth > 16)
+            return Evaluate(expr.AsSpan()) != 0;
+
+        var subs = SplitConditionalSubexpressions(expr);
+        if (subs.Count == 0)
+            return false;
+
+        bool value = EvaluateConditionalSub(subs[0].Text, depth);
+        for (int i = 1; i < subs.Count; i++)
+        {
+            CondOp op = subs[i - 1].OpToNext;
+            if (op == CondOp.Or)
+            {
+                if (value) return true; // short-circuit
+                value = EvaluateConditionalSub(subs[i].Text, depth);
+            }
+            else if (op == CondOp.And)
+            {
+                if (!value) return false; // short-circuit
+                value = EvaluateConditionalSub(subs[i].Text, depth);
+            }
+        }
+        return value;
+    }
+
+    private bool EvaluateConditionalSub(string sub, int depth)
+    {
+        sub = sub.Trim();
+        if (sub.Length == 0)
+            return false;
+
+        // Peel top-level negations: "!(...)" / "!!x". A "!=" prefix is the
+        // Source-X skip-quirk handled by the unary parser, not a negation.
+        bool negate = false;
+        while (sub.Length > 0 && sub[0] == '!' && !(sub.Length > 1 && sub[1] == '='))
+        {
+            negate = !negate;
+            sub = sub[1..].TrimStart();
+        }
+
+        bool value;
+        if (sub.Length >= 2 && sub[0] == '(' && FindMatchingParen(sub, 0) == sub.Length - 1)
+        {
+            // The whole subexpression is parenthesized — it may contain
+            // nested || / && logic, so recurse through the splitter.
+            value = EvaluateConditionalInner(sub[1..^1].Trim(), depth + 1);
+        }
+        else
+        {
+            value = Evaluate(sub.AsSpan()) != 0;
+        }
+        return negate ? !value : value;
+    }
+
+    /// <summary>Index of the ')' matching the '(' at <paramref name="openIdx"/>,
+    /// or -1 when unbalanced.</summary>
+    private static int FindMatchingParen(string s, int openIdx)
+    {
+        int depth = 0;
+        for (int i = openIdx; i < s.Length; i++)
+        {
+            if (s[i] == '(') depth++;
+            else if (s[i] == ')')
+            {
+                depth--;
+                if (depth == 0) return i;
+            }
+        }
+        return -1;
+    }
+
+    /// <summary>True when the '&lt;' at <paramref name="openIdx"/> has a
+    /// balancing '&gt;' later in the string (same letter/'_' open rule).</summary>
+    private static bool HasMatchingAngleClose(string s, int openIdx)
+    {
+        int depth = 0;
+        for (int i = openIdx; i < s.Length; i++)
+        {
+            char c = s[i];
+            if (c == '<')
+            {
+                char nxt = i + 1 < s.Length ? s[i + 1] : '\0';
+                if (i == openIdx || nxt == '_' || char.IsLetter(nxt)) depth++;
+            }
+            else if (c == '>')
+            {
+                depth--;
+                if (depth == 0) return true;
+            }
+        }
+        return false;
+    }
+
+    private readonly record struct CondSubexpr(string Text, CondOp OpToNext);
+
+    /// <summary>Source-X GetConditionalSubexpressions — cut the condition at
+    /// top-level || and &amp;&amp;, skipping bracketed/quoted spans.</summary>
+    private static List<CondSubexpr> SplitConditionalSubexpressions(string expr)
+    {
+        var subs = new List<CondSubexpr>();
+        int parenDepth = 0, angleDepth = 0, curlyDepth = 0;
+        bool inQuotes = false;
+        int start = 0;
+
+        for (int i = 0; i < expr.Length; i++)
+        {
+            char ch = expr[i];
+            if (ch == '"') { inQuotes = !inQuotes; continue; }
+            if (inQuotes) continue;
+            if (ch == '(') { parenDepth++; continue; }
+            if (ch == ')' && parenDepth > 0) { parenDepth--; continue; }
+            if (ch == '{') { curlyDepth++; continue; }
+            if (ch == '}' && curlyDepth > 0) { curlyDepth--; continue; }
+            if (ch == '<')
+            {
+                // Open an angle span only when a matching '>' actually exists
+                // ahead — otherwise "IF a<b || c" (no-space less-than) hangs
+                // the depth counter and the '||' split is never seen.
+                char nxt = i + 1 < expr.Length ? expr[i + 1] : '\0';
+                if ((nxt == '_' || char.IsLetter(nxt)) && HasMatchingAngleClose(expr, i))
+                    angleDepth++;
+                continue;
+            }
+            if (ch == '>' && angleDepth > 0) { angleDepth--; continue; }
+            if (parenDepth > 0 || angleDepth > 0 || curlyDepth > 0) continue;
+
+            if (i + 1 < expr.Length)
+            {
+                if (ch == '|' && expr[i + 1] == '|')
+                {
+                    subs.Add(new CondSubexpr(expr[start..i], CondOp.Or));
+                    i++;
+                    start = i + 1;
+                }
+                else if (ch == '&' && expr[i + 1] == '&')
+                {
+                    subs.Add(new CondSubexpr(expr[start..i], CondOp.And));
+                    i++;
+                    start = i + 1;
+                }
+            }
+        }
+
+        subs.Add(new CondSubexpr(expr[start..], CondOp.None));
+        return subs;
+    }
+
     public double EvaluateFloat(ReadOnlySpan<char> expr)
     {
         expr = expr.Trim();
@@ -173,184 +346,129 @@ public sealed class ExpressionParser
 
     private long ParseExpression(string text, ref int pos)
     {
-        return ParseLogicalOr(text, ref pos);
+        // Source-X GetVal: parse ONE operand (GetSingle), then apply at most
+        // one operator whose right side re-parses the ENTIRE remainder
+        // (GetValMath). Sphere expressions therefore have NO operator
+        // precedence and fold right-to-left: "2*3+1" is 2*(3+1)=8, and
+        // "a/100*50" is a/(100*50) — old script packs rely on this.
+        long val = ParseUnary(text, ref pos);
+        return ApplyMathRightFold(val, text, ref pos);
     }
 
-    private long ParseLogicalOr(string text, ref int pos)
+    /// <summary>Source-X CExpression::GetValMath — apply one binary operator
+    /// with the fully-folded remainder as the right operand.</summary>
+    private long ApplyMathRightFold(long left, string text, ref int pos)
     {
-        long left = ParseLogicalAnd(text, ref pos);
         SkipWhitespace(text, ref pos);
-
-        while (pos < text.Length - 1 && text[pos] == '|' && text[pos + 1] == '|')
-        {
-            pos += 2;
-            long right = ParseLogicalAnd(text, ref pos);
-            left = (left != 0 || right != 0) ? 1 : 0;
-            SkipWhitespace(text, ref pos);
-        }
-
-        return left;
-    }
-
-    private long ParseLogicalAnd(string text, ref int pos)
-    {
-        long left = ParseBitwiseOr(text, ref pos);
-        SkipWhitespace(text, ref pos);
-
-        while (pos < text.Length - 1 && text[pos] == '&' && text[pos + 1] == '&')
-        {
-            pos += 2;
-            long right = ParseBitwiseOr(text, ref pos);
-            left = (left != 0 && right != 0) ? 1 : 0;
-            SkipWhitespace(text, ref pos);
-        }
-
-        return left;
-    }
-
-    private long ParseBitwiseOr(string text, ref int pos)
-    {
-        long left = ParseBitwiseXor(text, ref pos);
-        SkipWhitespace(text, ref pos);
-
-        while (pos < text.Length && text[pos] == '|' &&
-               (pos + 1 >= text.Length || text[pos + 1] != '|'))
-        {
-            pos++;
-            long right = ParseBitwiseXor(text, ref pos);
-            left |= right;
-            SkipWhitespace(text, ref pos);
-        }
-
-        return left;
-    }
-
-    private long ParseBitwiseXor(string text, ref int pos)
-    {
-        long left = ParseBitwiseAnd(text, ref pos);
-        SkipWhitespace(text, ref pos);
-
-        while (pos < text.Length && text[pos] == '^')
-        {
-            pos++;
-            long right = ParseBitwiseAnd(text, ref pos);
-            left ^= right;
-            SkipWhitespace(text, ref pos);
-        }
-
-        return left;
-    }
-
-    private long ParseBitwiseAnd(string text, ref int pos)
-    {
-        long left = ParseComparison(text, ref pos);
-        SkipWhitespace(text, ref pos);
-
-        while (pos < text.Length && text[pos] == '&' &&
-               (pos + 1 >= text.Length || text[pos + 1] != '&'))
-        {
-            pos++;
-            long right = ParseComparison(text, ref pos);
-            left &= right;
-            SkipWhitespace(text, ref pos);
-        }
-
-        return left;
-    }
-
-    private long ParseComparison(string text, ref int pos)
-    {
-        long left = ParseShift(text, ref pos);
-        SkipWhitespace(text, ref pos);
-
         if (pos >= text.Length) return left;
 
         char c = text[pos];
-        char c2 = (pos + 1 < text.Length) ? text[pos + 1] : '\0';
-
-        // Sphere scripts commonly use single '=' for equality in IFs.
-        // Treat both '=' and '==' as compare operators.
-        if (c == '=' && c2 != '=') { pos++; long r = ParseShift(text, ref pos); return left == r ? 1 : 0; }
-        if (c == '=' && c2 == '=') { pos += 2; long r = ParseShift(text, ref pos); return left == r ? 1 : 0; }
-        if (c == '!' && c2 == '=') { pos += 2; long r = ParseShift(text, ref pos); return left != r ? 1 : 0; }
-        if (c == '>' && c2 == '=') { pos += 2; long r = ParseShift(text, ref pos); return left >= r ? 1 : 0; }
-        if (c == '<' && c2 == '=') { pos += 2; long r = ParseShift(text, ref pos); return left <= r ? 1 : 0; }
-        if (c == '>' && c2 != '>') { pos++; long r = ParseShift(text, ref pos); return left > r ? 1 : 0; }
-        if (c == '<' && c2 != '<') { pos++; long r = ParseShift(text, ref pos); return left < r ? 1 : 0; }
-
-        return left;
-    }
-
-    private long ParseShift(string text, ref int pos)
-    {
-        long left = ParseAddSub(text, ref pos);
-        SkipWhitespace(text, ref pos);
-
-        while (pos < text.Length - 1)
+        char c2 = pos + 1 < text.Length ? text[pos + 1] : '\0';
+        switch (c)
         {
-            if (text[pos] == '<' && text[pos + 1] == '<')
-            {
-                pos += 2;
-                long right = ParseAddSub(text, ref pos);
-                left <<= (int)right;
-            }
-            else if (text[pos] == '>' && text[pos + 1] == '>')
-            {
-                pos += 2;
-                long right = ParseAddSub(text, ref pos);
-                left >>= (int)right;
-            }
-            else break;
+            case ')':
+            case '}':
+            case ']':
+                // Expression end markers — the enclosing primary consumes them.
+                return left;
 
-            SkipWhitespace(text, ref pos);
-        }
+            case '+':
+                pos++;
+                return left + ParseExpression(text, ref pos);
 
-        return left;
-    }
+            case '-':
+                // Do not consume the sign — subtraction is addition of the
+                // negative right operand (Source-X keeps the '-').
+                return left + ParseExpression(text, ref pos);
 
-    private long ParseAddSub(string text, ref int pos)
-    {
-        long left = ParseMulDiv(text, ref pos);
-        SkipWhitespace(text, ref pos);
+            case '*':
+                pos++;
+                return left * ParseExpression(text, ref pos);
 
-        while (pos < text.Length)
-        {
-            char c = text[pos];
-            if (c == '+') { pos++; left += ParseMulDiv(text, ref pos); }
-            else if (c == '-') { pos++; left -= ParseMulDiv(text, ref pos); }
-            else break;
-            SkipWhitespace(text, ref pos);
-        }
-
-        return left;
-    }
-
-    private long ParseMulDiv(string text, ref int pos)
-    {
-        long left = ParseUnary(text, ref pos);
-        SkipWhitespace(text, ref pos);
-
-        while (pos < text.Length)
-        {
-            char c = text[pos];
-            if (c == '*') { pos++; left *= ParseUnary(text, ref pos); }
-            else if (c == '/')
+            case '/':
             {
                 pos++;
-                long r = ParseUnary(text, ref pos);
-                left = r != 0 ? left / r : 0;
+                long r = ParseExpression(text, ref pos);
+                if (r == 0)
+                {
+                    DiagnosticLogger?.Invoke("[script] Evaluating math: divide by 0");
+                    return left; // Source-X keeps the left value
+                }
+                return left / r;
             }
-            else if (c == '%')
+
+            case '%':
             {
                 pos++;
-                long r = ParseUnary(text, ref pos);
-                left = r != 0 ? left % r : 0;
+                long r = ParseExpression(text, ref pos);
+                if (r == 0)
+                {
+                    DiagnosticLogger?.Invoke("[script] Evaluating math: modulo 0");
+                    return left;
+                }
+                return left % r;
             }
-            else break;
-            SkipWhitespace(text, ref pos);
-        }
 
-        return left;
+            case '|':
+                if (c2 == '|')
+                {
+                    pos += 2;
+                    long r = ParseExpression(text, ref pos);
+                    return (r != 0 || left != 0) ? 1 : 0;
+                }
+                pos++;
+                return left | ParseExpression(text, ref pos);
+
+            case '&':
+                if (c2 == '&')
+                {
+                    pos += 2;
+                    long r = ParseExpression(text, ref pos);
+                    return (r != 0 && left != 0) ? 1 : 0;
+                }
+                pos++;
+                return left & ParseExpression(text, ref pos);
+
+            case '^':
+                pos++;
+                return left ^ ParseExpression(text, ref pos);
+
+            case '@':
+            {
+                pos++;
+                long r = ParseExpression(text, ref pos);
+                if (left == 0 && r <= 0)
+                {
+                    DiagnosticLogger?.Invoke("[script] Power of zero with zero or negative exponent is undefined");
+                    return left;
+                }
+                return (long)Math.Pow(left, r);
+            }
+
+            case '>':
+                if (c2 == '=') { pos += 2; return left >= ParseExpression(text, ref pos) ? 1 : 0; }
+                if (c2 == '>') { pos += 2; return left >> (int)ParseExpression(text, ref pos); }
+                pos++;
+                return left > ParseExpression(text, ref pos) ? 1 : 0;
+
+            case '<':
+                if (c2 == '=') { pos += 2; return left <= ParseExpression(text, ref pos) ? 1 : 0; }
+                if (c2 == '<') { pos += 2; return left << (int)ParseExpression(text, ref pos); }
+                pos++;
+                return left < ParseExpression(text, ref pos) ? 1 : 0;
+
+            case '!':
+                if (c2 == '=') { pos += 2; return left != ParseExpression(text, ref pos) ? 1 : 0; }
+                return left; // bare '!' in operator position — not an operator
+
+            case '=':
+                // Sphere accepts any run of '=' as equality ("=", "==", "===").
+                while (pos < text.Length && text[pos] == '=') pos++;
+                return left == ParseExpression(text, ref pos) ? 1 : 0;
+
+            default:
+                return left;
+        }
     }
 
     private long ParseUnary(string text, ref int pos)
@@ -360,26 +478,22 @@ public sealed class ExpressionParser
 
         char c = text[pos];
         if (c == '-') { pos++; return -ParseUnary(text, ref pos); }
-        if (c == '!') { pos++; return ParseUnary(text, ref pos) == 0 ? 1 : 0; }
+        if (c == '!')
+        {
+            pos++;
+            // Source-X quirk: a "!=x" prefix just skips the '=' and evaluates
+            // the operand as-is.
+            if (pos < text.Length && text[pos] == '=')
+            {
+                pos++;
+                return ParseUnary(text, ref pos);
+            }
+            return ParseUnary(text, ref pos) == 0 ? 1 : 0;
+        }
         if (c == '~') { pos++; return ~ParseUnary(text, ref pos); }
         if (c == '+') { pos++; return ParseUnary(text, ref pos); }
 
-        return ParsePower(text, ref pos);
-    }
-
-    /// <summary>Power operator '@' (Source-X GetValMath '@'): a@b = a^b.</summary>
-    private long ParsePower(string text, ref int pos)
-    {
-        long left = ParsePrimary(text, ref pos);
-        SkipWhitespace(text, ref pos);
-        while (pos < text.Length && text[pos] == '@')
-        {
-            pos++;
-            long right = ParsePrimary(text, ref pos);
-            left = (long)Math.Pow(left, right);
-            SkipWhitespace(text, ref pos);
-        }
-        return left;
+        return ParsePrimary(text, ref pos);
     }
 
     private long ParsePrimary(string text, ref int pos)
@@ -387,13 +501,14 @@ public sealed class ExpressionParser
         SkipWhitespace(text, ref pos);
         if (pos >= text.Length) return 0;
 
-        // Parenthesized expression
-        if (text[pos] == '(')
+        // Parenthesized expression — Source-X GetSingle treats '[' like '('.
+        if (text[pos] == '(' || text[pos] == '[')
         {
+            char closer = text[pos] == '(' ? ')' : ']';
             pos++;
             long val = ParseExpression(text, ref pos);
             SkipWhitespace(text, ref pos);
-            if (pos < text.Length && text[pos] == ')') pos++;
+            if (pos < text.Length && text[pos] == closer) pos++;
             return val;
         }
 
@@ -418,16 +533,22 @@ public sealed class ExpressionParser
             return EvaluateBraceRange(inner);
         }
 
-        // Angle bracket variable <...>
+        // Angle bracket variable <...> — dispatch the whole reference through
+        // ResolveVariable (Source-X resolves <> references fully before the
+        // numeric read). Just expanding nested brackets left the outer
+        // keyword (<EVAL ...>, <RAND(...)>, <TAG.X>) unresolved → 0.
         if (text[pos] == '<')
         {
-            string resolved = ReadAngleBracket(text, ref pos);
-            string expanded = ResolveAngleBrackets(resolved);
+            string inner = ReadAngleBracket(text, ref pos);
+            string expanded = ResolveVariable(inner);
             if (long.TryParse(expanded, out long v)) return v;
 
-            // Try hex
+            // Try hex (0x prefix or Sphere leading-zero form)
             if (expanded.StartsWith("0x", StringComparison.OrdinalIgnoreCase) &&
                 long.TryParse(expanded.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out v))
+                return v;
+            if (expanded.Length > 1 && expanded[0] == '0' &&
+                long.TryParse(expanded, System.Globalization.NumberStyles.HexNumber, null, out v))
                 return v;
 
             _numericOk = false; // <...> resolved to a non-numeric string
@@ -521,10 +642,21 @@ public sealed class ExpressionParser
             return Random.Shared.NextInt64(lo, hi + 1);
         }
 
-        // Weighted (value, weight) pairs.
+        // Weighted (value, weight) pairs — Source-X GetRangeNumber requires an
+        // even token count; an odd count (>2) is a script error and yields 0.
+        if ((vals.Length & 1) != 0)
+        {
+            DiagnosticLogger?.Invoke($"[script] Bad {{...}} range: odd number of values/weights ({vals.Length}) in '{{{inner}}}'");
+            return 0;
+        }
+
         long totalWeight = 0;
         for (int i = 1; i < vals.Length; i += 2)
+        {
+            if (vals[i] <= 0)
+                DiagnosticLogger?.Invoke($"[script] Bad {{...}} range: non-positive weight {vals[i]} in '{{{inner}}}'");
             totalWeight += Math.Max(0, vals[i]);
+        }
         if (totalWeight <= 0) return vals[0];
 
         long roll = Random.Shared.NextInt64(totalWeight);
@@ -570,42 +702,75 @@ public sealed class ExpressionParser
         SkipWhitespace(text, ref pos);
         if (pos >= text.Length) return 0;
 
+        // Source-X GetSingle legacy: a leading '.' before a digit is skipped
+        // (".5" parses as decimal 5).
+        if (text[pos] == '.' && pos + 1 < text.Length && char.IsDigit(text[pos + 1]))
+            pos++;
+
         int start = pos;
-        bool isHex = false;
 
         if (pos + 1 < text.Length && text[pos] == '0' && (text[pos + 1] == 'x' || text[pos + 1] == 'X'))
         {
-            isHex = true;
             pos += 2;
             while (pos < text.Length && IsHexDigit(text[pos])) pos++;
         }
-        else if (text[pos] == '0')
+        else if (text[pos] == '0' && (pos + 1 >= text.Length || text[pos + 1] != '.'))
         {
-            isHex = true;
+            // Source-X: leading '0' NOT followed by '.' → hex; hex scan stops
+            // at '.'; ≤8 significant nibbles sign-extend as int32 ("0ffffffff"
+            // = -1), 9–16 as int64, >16 warns and yields -1.
             pos++;
+            int hexStart = pos;
             while (pos < text.Length && IsHexDigit(text[pos])) pos++;
+            if (pos == hexStart) return 0; // bare "0"
+            if (Parsing.ScriptKey.TryParseLeadingZeroHex(text.AsSpan(hexStart, pos - hexStart), out long hv))
+            {
+                if (hv == -1 && pos - hexStart > 16)
+                    DiagnosticLogger?.Invoke($"[script] Hex value overflows 64 bits: {text}");
+                return hv;
+            }
+            return 0;
         }
         else
         {
-            while (pos < text.Length && char.IsDigit(text[pos])) pos++;
+            // Decimal path — '.' chars inside the token are grouping
+            // separators and are skipped ("100.000" == 100000), matching
+            // Source-X GetSingle's decimal scan. Overflow warns and yields -1.
+            const long Lim10 = long.MaxValue / 10;
+            const int LimDigit = (int)(long.MaxValue % 10);
+            long val = 0;
+            bool any = false, overflow = false;
+            while (pos < text.Length)
+            {
+                char dc = text[pos];
+                if (dc == '.') { if (!any) break; pos++; continue; }
+                if (!char.IsDigit(dc)) break;
+                int d = dc - '0';
+                if (!overflow && (val > Lim10 || (val == Lim10 && d > LimDigit)))
+                    overflow = true;
+                else if (!overflow)
+                    val = val * 10 + d;
+                any = true;
+                pos++;
+            }
+            if (overflow)
+            {
+                DiagnosticLogger?.Invoke($"[script] Decimal value overflows 64 bits: {text}");
+                return -1;
+            }
+            return any ? val : 0;
         }
 
         if (pos == start) return 0;
 
         ReadOnlySpan<char> numText = text.AsSpan(start, pos - start);
-        if (isHex)
-        {
-            ReadOnlySpan<char> hexText = numText.Length > 2 &&
-                numText[0] == '0' &&
-                (numText[1] == 'x' || numText[1] == 'X')
-                ? numText[2..]
-                : numText;
-            long.TryParse(hexText, System.Globalization.NumberStyles.HexNumber, null, out long val);
-            return val;
-        }
-
-        long.TryParse(numText, out long result);
-        return result;
+        ReadOnlySpan<char> hexText = numText.Length > 2 &&
+            numText[0] == '0' &&
+            (numText[1] == 'x' || numText[1] == 'X')
+            ? numText[2..]
+            : numText;
+        long.TryParse(hexText, System.Globalization.NumberStyles.HexNumber, null, out long hexVal);
+        return hexVal;
     }
 
     private string ReadAngleBracket(string text, ref int pos)
@@ -760,9 +925,19 @@ public sealed class ExpressionParser
         }
 
         // STRSUB — substring: <STRSUB start,length,string>
-        if (varExpr.StartsWith("STRSUB ", StringComparison.OrdinalIgnoreCase))
+        if (varExpr.StartsWith("STRSUB ", StringComparison.OrdinalIgnoreCase) ||
+            varExpr.StartsWith("STRSUB(", StringComparison.OrdinalIgnoreCase))
         {
-            return EvaluateStrSub(varExpr[7..]);
+            var parts = SplitFuncArgsResolved(varExpr, 6, 3);
+            if (parts.Count < 3) return "";
+            if (!int.TryParse(parts[0], out int start)) return "";
+            if (!int.TryParse(parts[1], out int length)) return "";
+            string resolved = parts[2];
+            if (start < 0) start = 0;
+            if (start >= resolved.Length) return "";
+            length = Math.Min(length, resolved.Length - start);
+            if (length <= 0) return "";
+            return resolved.Substring(start, length);
         }
 
         // STRLEN — string length: <STRLEN string>
@@ -830,13 +1005,9 @@ public sealed class ExpressionParser
         if (varExpr.StartsWith("STRCMP(", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("STRCMP ", StringComparison.OrdinalIgnoreCase))
         {
-            string inner = varExpr.StartsWith("STRCMP(", StringComparison.OrdinalIgnoreCase)
-                ? ExtractFuncArg(varExpr, 6)
-                : varExpr[7..];
-            var parts = inner.Split(',', 2);
-            if (parts.Length == 2)
-                return string.Compare(ResolveAngleBrackets(parts[0].Trim()),
-                    ResolveAngleBrackets(parts[1].Trim()), StringComparison.Ordinal).ToString();
+            var parts = SplitFuncArgsResolved(varExpr, 6, 2);
+            if (parts.Count == 2)
+                return string.Compare(parts[0], parts[1], StringComparison.Ordinal).ToString();
             return "0";
         }
 
@@ -874,12 +1045,10 @@ public sealed class ExpressionParser
         if (varExpr.StartsWith("ASCPAD ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("ASCPAD(", StringComparison.OrdinalIgnoreCase))
         {
-            string inner = varExpr.StartsWith("ASCPAD(", StringComparison.OrdinalIgnoreCase)
-                ? ExtractFuncArg(varExpr, 6) : ResolveAngleBrackets(varExpr[7..].Trim());
-            var parts = inner.Split(',', 2);
-            if (parts.Length == 2 && int.TryParse(parts[0].Trim(), out int padCount))
+            var parts = SplitFuncArgsResolved(varExpr, 6, 2);
+            if (parts.Count == 2 && int.TryParse(parts[0], out int padCount))
             {
-                string str = parts[1].Trim().Trim('"');
+                string str = parts[1].Trim('"');
                 var sb = new System.Text.StringBuilder();
                 for (int idx = 0; idx < padCount; idx++)
                 {
@@ -891,40 +1060,36 @@ public sealed class ExpressionParser
             return "";
         }
 
-        // BETWEEN — proportional mapping: (iCurrent-iMin)*iAbsMax/(iMax-iMin)
-        if (varExpr.StartsWith("BETWEEN ", StringComparison.OrdinalIgnoreCase) ||
-            varExpr.StartsWith("BETWEEN(", StringComparison.OrdinalIgnoreCase))
-        {
-            string inner = varExpr.StartsWith("BETWEEN(", StringComparison.OrdinalIgnoreCase)
-                ? ExtractFuncArg(varExpr, 7) : ResolveAngleBrackets(varExpr[8..].Trim());
-            var parts = inner.Split(',');
-            if (parts.Length >= 4)
-            {
-                long iMin = Evaluate(parts[0].Trim().AsSpan());
-                long iMax = Evaluate(parts[1].Trim().AsSpan());
-                long iCur = Evaluate(parts[2].Trim().AsSpan());
-                long iAbsMax = Evaluate(parts[3].Trim().AsSpan());
-                long range = iMax - iMin;
-                return range != 0 ? ((iCur - iMin) * iAbsMax / range).ToString() : "0";
-            }
-            return "0";
-        }
-
         // BETWEEN2 — inverse proportional mapping: (iMax-iCurrent)*iAbsMax/(iMax-iMin)
         if (varExpr.StartsWith("BETWEEN2 ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("BETWEEN2(", StringComparison.OrdinalIgnoreCase))
         {
-            string inner = varExpr.StartsWith("BETWEEN2(", StringComparison.OrdinalIgnoreCase)
-                ? ExtractFuncArg(varExpr, 8) : ResolveAngleBrackets(varExpr[9..].Trim());
-            var parts = inner.Split(',');
-            if (parts.Length >= 4)
+            var parts = SplitFuncArgsResolved(varExpr, 8);
+            if (parts.Count >= 4)
             {
-                long iMin = Evaluate(parts[0].Trim().AsSpan());
-                long iMax = Evaluate(parts[1].Trim().AsSpan());
-                long iCur = Evaluate(parts[2].Trim().AsSpan());
-                long iAbsMax = Evaluate(parts[3].Trim().AsSpan());
+                long iMin = Evaluate(parts[0].AsSpan());
+                long iMax = Evaluate(parts[1].AsSpan());
+                long iCur = Evaluate(parts[2].AsSpan());
+                long iAbsMax = Evaluate(parts[3].AsSpan());
                 long range = iMax - iMin;
                 return range != 0 ? ((iMax - iCur) * iAbsMax / range).ToString() : "0";
+            }
+            return "0";
+        }
+
+        // BETWEEN — proportional mapping: (iCurrent-iMin)*iAbsMax/(iMax-iMin)
+        if (varExpr.StartsWith("BETWEEN ", StringComparison.OrdinalIgnoreCase) ||
+            varExpr.StartsWith("BETWEEN(", StringComparison.OrdinalIgnoreCase))
+        {
+            var parts = SplitFuncArgsResolved(varExpr, 7);
+            if (parts.Count >= 4)
+            {
+                long iMin = Evaluate(parts[0].AsSpan());
+                long iMax = Evaluate(parts[1].AsSpan());
+                long iCur = Evaluate(parts[2].AsSpan());
+                long iAbsMax = Evaluate(parts[3].AsSpan());
+                long range = iMax - iMin;
+                return range != 0 ? ((iCur - iMin) * iAbsMax / range).ToString() : "0";
             }
             return "0";
         }
@@ -943,13 +1108,11 @@ public sealed class ExpressionParser
         if (varExpr.StartsWith("CLRBIT ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("CLRBIT(", StringComparison.OrdinalIgnoreCase))
         {
-            string inner = varExpr.StartsWith("CLRBIT(", StringComparison.OrdinalIgnoreCase)
-                ? ExtractFuncArg(varExpr, 6) : ResolveAngleBrackets(varExpr[7..].Trim());
-            var parts = inner.Split(',', 2);
-            if (parts.Length == 2)
+            var parts = SplitFuncArgsResolved(varExpr, 6, 2);
+            if (parts.Count == 2)
             {
-                long val = Evaluate(parts[0].Trim().AsSpan());
-                int bit = (int)Evaluate(parts[1].Trim().AsSpan());
+                long val = Evaluate(parts[0].AsSpan());
+                int bit = (int)Evaluate(parts[1].AsSpan());
                 if (bit is >= 0 and < 64)
                     return (val & ~(1L << bit)).ToString();
             }
@@ -960,13 +1123,11 @@ public sealed class ExpressionParser
         if (varExpr.StartsWith("SETBIT ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("SETBIT(", StringComparison.OrdinalIgnoreCase))
         {
-            string inner = varExpr.StartsWith("SETBIT(", StringComparison.OrdinalIgnoreCase)
-                ? ExtractFuncArg(varExpr, 6) : ResolveAngleBrackets(varExpr[7..].Trim());
-            var parts = inner.Split(',', 2);
-            if (parts.Length == 2)
+            var parts = SplitFuncArgsResolved(varExpr, 6, 2);
+            if (parts.Count == 2)
             {
-                long val = Evaluate(parts[0].Trim().AsSpan());
-                int bit = (int)Evaluate(parts[1].Trim().AsSpan());
+                long val = Evaluate(parts[0].AsSpan());
+                int bit = (int)Evaluate(parts[1].AsSpan());
                 if (bit is >= 0 and < 64)
                     return (val | (1L << bit)).ToString();
             }
@@ -977,13 +1138,11 @@ public sealed class ExpressionParser
         if (varExpr.StartsWith("ISBIT ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("ISBIT(", StringComparison.OrdinalIgnoreCase))
         {
-            string inner = varExpr.StartsWith("ISBIT(", StringComparison.OrdinalIgnoreCase)
-                ? ExtractFuncArg(varExpr, 5) : ResolveAngleBrackets(varExpr[6..].Trim());
-            var parts = inner.Split(',', 2);
-            if (parts.Length == 2)
+            var parts = SplitFuncArgsResolved(varExpr, 5, 2);
+            if (parts.Count == 2)
             {
-                long val = Evaluate(parts[0].Trim().AsSpan());
-                int bit = (int)Evaluate(parts[1].Trim().AsSpan());
+                long val = Evaluate(parts[0].AsSpan());
+                int bit = (int)Evaluate(parts[1].AsSpan());
                 if (bit is >= 0 and < 64)
                     return (val & (1L << bit)) != 0 ? "1" : "0";
             }
@@ -1028,17 +1187,15 @@ public sealed class ExpressionParser
         if (varExpr.StartsWith("EXPLODE ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("EXPLODE(", StringComparison.OrdinalIgnoreCase))
         {
-            string inner = varExpr.StartsWith("EXPLODE(", StringComparison.OrdinalIgnoreCase)
-                ? ExtractFuncArg(varExpr, 7) : ResolveAngleBrackets(varExpr[8..].Trim());
-            var parts = inner.Split(',', 2);
-            if (parts.Length == 2)
+            var parts = SplitFuncArgsResolved(varExpr, 7, 2);
+            if (parts.Count == 2)
             {
-                string separators = parts[0].Trim();
-                string str = parts[1].Trim().Trim('"');
+                string separators = parts[0];
+                string str = parts[1].Trim('"');
                 var tokens = str.Split(separators.ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
                 return string.Join(",", tokens);
             }
-            return inner;
+            return parts.Count == 1 ? parts[0] : "";
         }
 
         // FEVAL — floating-point evaluation.
@@ -1086,14 +1243,12 @@ public sealed class ExpressionParser
         if (varExpr.StartsWith("MULDIV ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("MULDIV(", StringComparison.OrdinalIgnoreCase))
         {
-            string inner = varExpr.StartsWith("MULDIV(", StringComparison.OrdinalIgnoreCase)
-                ? ExtractFuncArg(varExpr, 6) : ResolveAngleBrackets(varExpr[7..].Trim());
-            var parts = inner.Split(',', 3);
-            if (parts.Length == 3)
+            var parts = SplitFuncArgsResolved(varExpr, 6, 3);
+            if (parts.Count == 3)
             {
-                long num = Evaluate(parts[0].Trim().AsSpan());
-                long mul = Evaluate(parts[1].Trim().AsSpan());
-                long div = Evaluate(parts[2].Trim().AsSpan());
+                long num = Evaluate(parts[0].AsSpan());
+                long mul = Evaluate(parts[1].AsSpan());
+                long div = Evaluate(parts[2].AsSpan());
                 return div != 0 ? (num * mul / div).ToString() : "0";
             }
             return "0";
@@ -1114,13 +1269,11 @@ public sealed class ExpressionParser
         if (varExpr.StartsWith("STRPOS ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("STRPOS(", StringComparison.OrdinalIgnoreCase))
         {
-            string inner = varExpr.StartsWith("STRPOS(", StringComparison.OrdinalIgnoreCase)
-                ? ExtractFuncArg(varExpr, 6) : ResolveAngleBrackets(varExpr[7..].Trim());
-            var parts = inner.Split(',', 2);
-            if (parts.Length == 2)
+            var parts = SplitFuncArgsResolved(varExpr, 6, 2);
+            if (parts.Count == 2)
             {
-                string charCode = parts[0].Trim();
-                string str = parts[1].Trim();
+                string charCode = parts[0];
+                string str = parts[1];
                 char searchChar = int.TryParse(charCode, out int code) ? (char)code : (charCode.Length > 0 ? charCode[0] : '\0');
                 return str.IndexOf(searchChar).ToString();
             }
@@ -1131,16 +1284,12 @@ public sealed class ExpressionParser
         if (varExpr.StartsWith("STRREGEXNEW ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("STRREGEXNEW(", StringComparison.OrdinalIgnoreCase))
         {
-            string inner = varExpr.StartsWith("STRREGEXNEW(", StringComparison.OrdinalIgnoreCase)
-                ? ExtractFuncArg(varExpr, 11) : ResolveAngleBrackets(varExpr[12..].Trim());
-            var parts = inner.Split(',', 3);
-            if (parts.Length == 3)
+            var parts = SplitFuncArgsResolved(varExpr, 11, 3);
+            if (parts.Count == 3)
             {
-                string str = ResolveAngleBrackets(parts[1].Trim());
-                string pattern = ResolveAngleBrackets(parts[2].Trim());
                 try
                 {
-                    return TrySafeRegexIsMatch(str, pattern, out bool isMatch)
+                    return TrySafeRegexIsMatch(parts[1], parts[2], out bool isMatch)
                         ? (isMatch ? "1" : "0")
                         : "-1";
                 }
@@ -1213,45 +1362,81 @@ public sealed class ExpressionParser
             return ((long)Math.Sqrt(val)).ToString();
         }
 
-        // SIN — sine (value in fixed-point: result * 1000)
+        // ARCSIN / ARCCOS / ARCTAN — Source-X INTRINSIC_ARCSIN/ARCCOS/ARCTAN:
+        // (llong)asin((double)GetVal(...)) — radians in, truncated integer out.
+        // Checked before SIN/COS/TAN would be irrelevant (prefixes differ) but
+        // kept adjacent for readability.
+        if (varExpr.StartsWith("ARCSIN(", StringComparison.OrdinalIgnoreCase) ||
+            varExpr.StartsWith("ARCSIN ", StringComparison.OrdinalIgnoreCase))
+        {
+            string inner = ExtractFuncArg(varExpr, 6);
+            long val = Evaluate(inner.AsSpan());
+            return ((long)Math.Asin(val)).ToString();
+        }
+        if (varExpr.StartsWith("ARCCOS(", StringComparison.OrdinalIgnoreCase) ||
+            varExpr.StartsWith("ARCCOS ", StringComparison.OrdinalIgnoreCase))
+        {
+            string inner = ExtractFuncArg(varExpr, 6);
+            long val = Evaluate(inner.AsSpan());
+            return ((long)Math.Acos(val)).ToString();
+        }
+        if (varExpr.StartsWith("ARCTAN(", StringComparison.OrdinalIgnoreCase) ||
+            varExpr.StartsWith("ARCTAN ", StringComparison.OrdinalIgnoreCase))
+        {
+            string inner = ExtractFuncArg(varExpr, 6);
+            long val = Evaluate(inner.AsSpan());
+            return ((long)Math.Atan(val)).ToString();
+        }
+
+        // SIN — Source-X INTRINSIC_SIN: (llong)sin((double)GetVal) — radians,
+        // truncated to integer (no fixed-point scaling).
         if (varExpr.StartsWith("SIN(", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("SIN ", StringComparison.OrdinalIgnoreCase))
         {
             string inner = ExtractFuncArg(varExpr, 3);
             long val = Evaluate(inner.AsSpan());
-            return ((long)(Math.Sin(val * Math.PI / 180.0) * 1000)).ToString();
+            return ((long)Math.Sin(val)).ToString();
         }
 
-        // COS — cosine (value in fixed-point: result * 1000)
+        // COS — Source-X INTRINSIC_COS: radians, truncated.
         if (varExpr.StartsWith("COS(", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("COS ", StringComparison.OrdinalIgnoreCase))
         {
             string inner = ExtractFuncArg(varExpr, 3);
             long val = Evaluate(inner.AsSpan());
-            return ((long)(Math.Cos(val * Math.PI / 180.0) * 1000)).ToString();
+            return ((long)Math.Cos(val)).ToString();
         }
 
-        // TAN — tangent (value in fixed-point: result * 1000)
+        // TAN — Source-X INTRINSIC_TAN: radians, truncated.
         if (varExpr.StartsWith("TAN(", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("TAN ", StringComparison.OrdinalIgnoreCase))
         {
             string inner = ExtractFuncArg(varExpr, 3);
             long val = Evaluate(inner.AsSpan());
-            return ((long)(Math.Tan(val * Math.PI / 180.0) * 1000)).ToString();
+            return ((long)Math.Tan(val)).ToString();
+        }
+
+        // STRASCII — Source-X INTRINSIC_STRASCII: ASCII/char code of the first
+        // character of the argument string (decimal), 0 for empty.
+        if (varExpr.StartsWith("STRASCII(", StringComparison.OrdinalIgnoreCase) ||
+            varExpr.StartsWith("STRASCII ", StringComparison.OrdinalIgnoreCase))
+        {
+            string inner = varExpr.StartsWith("STRASCII(", StringComparison.OrdinalIgnoreCase)
+                ? ExtractFuncArg(varExpr, 8) : ResolveAngleBrackets(varExpr[9..].Trim());
+            return inner.Length > 0 ? ((int)inner[0]).ToString() : "0";
         }
 
         // LOGARITHM — log base-10, or log with custom base
         if (varExpr.StartsWith("LOGARITHM(", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("LOGARITHM ", StringComparison.OrdinalIgnoreCase))
         {
-            string inner = ExtractFuncArg(varExpr, 9);
-            var parts = inner.Split(',', 2);
-            string valStr = ResolveAngleBrackets(parts[0].Trim());
-            long val = Evaluate(valStr.AsSpan());
+            var parts = SplitFuncArgsResolved(varExpr, 9, 2);
+            if (parts.Count == 0) return "0";
+            long val = Evaluate(parts[0].AsSpan());
             if (val <= 0) return "0";
-            if (parts.Length == 2)
+            if (parts.Count == 2)
             {
-                string baseStr = parts[1].Trim().ToLowerInvariant();
+                string baseStr = parts[1].ToLowerInvariant();
                 double logBase = baseStr switch
                 {
                     "e" => Math.E,
@@ -1280,15 +1465,18 @@ public sealed class ExpressionParser
             var parts = inner.Split(',', 2);
             if (parts.Length == 2)
             {
-                string minStr = ResolveAngleBrackets(parts[0].Trim());
-                string maxStr = ResolveAngleBrackets(parts[1].Trim());
-                if (int.TryParse(minStr, out int rMin) && int.TryParse(maxStr, out int rMax2) && rMax2 >= rMin)
-                    return Random.Shared.Next(rMin, rMax2 + 1).ToString();
-                return "0";
+                // Source-X g_Rand.GetLLVal2(a,b) — 64-bit inclusive range.
+                long rMin = Evaluate(ResolveAngleBrackets(parts[0].Trim()).AsSpan());
+                long rMax2 = Evaluate(ResolveAngleBrackets(parts[1].Trim()).AsSpan());
+                if (rMax2 < rMin) (rMin, rMax2) = (rMax2, rMin);
+                return (rMax2 == long.MaxValue
+                    ? Random.Shared.NextInt64(rMin, rMax2)
+                    : Random.Shared.NextInt64(rMin, rMax2 + 1)).ToString();
             }
-            string singleStr = ResolveAngleBrackets(parts[0].Trim());
-            if (int.TryParse(singleStr, out int rMax1) && rMax1 > 0)
-                return Random.Shared.Next(rMax1).ToString();
+            // Source-X g_Rand.GetLLVal(x) — [0, x), 64-bit.
+            long rMax1 = Evaluate(ResolveAngleBrackets(parts[0].Trim()).AsSpan());
+            if (rMax1 > 0)
+                return Random.Shared.NextInt64(rMax1).ToString();
             return "0";
         }
 
@@ -1300,16 +1488,9 @@ public sealed class ExpressionParser
             var parts = inner.Split(',', 2);
             if (parts.Length == 2)
             {
-                string cenStr = ResolveAngleBrackets(parts[0].Trim());
-                string varStr = ResolveAngleBrackets(parts[1].Trim());
-                if (int.TryParse(cenStr, out int center) && int.TryParse(varStr, out int variance) && variance > 0)
-                {
-                    // Simple bell curve: sum of 3 uniform randoms (central limit theorem)
-                    int sum = 0;
-                    for (int i = 0; i < 3; i++)
-                        sum += Random.Shared.Next(-variance, variance + 1);
-                    return (center + sum / 3).ToString();
-                }
+                long valDiff = Evaluate(ResolveAngleBrackets(parts[0].Trim()).AsSpan());
+                long variance = Evaluate(ResolveAngleBrackets(parts[1].Trim()).AsSpan());
+                return CalcGetBellCurve((int)valDiff, (int)variance).ToString();
             }
             return "0";
         }
@@ -1318,11 +1499,9 @@ public sealed class ExpressionParser
         if (varExpr.StartsWith("STRCMPI(", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("STRCMPI ", StringComparison.OrdinalIgnoreCase))
         {
-            string inner = ExtractFuncArg(varExpr, 6);
-            var parts = inner.Split(',', 2);
-            if (parts.Length == 2)
-                return string.Compare(ResolveAngleBrackets(parts[0].Trim()),
-                    ResolveAngleBrackets(parts[1].Trim()), StringComparison.OrdinalIgnoreCase).ToString();
+            var parts = SplitFuncArgsResolved(varExpr, 7, 2);
+            if (parts.Count == 2)
+                return string.Compare(parts[0], parts[1], StringComparison.OrdinalIgnoreCase).ToString();
             return "0";
         }
 
@@ -1330,13 +1509,12 @@ public sealed class ExpressionParser
         if (varExpr.StartsWith("STRREPLACE(", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("STRREPLACE ", StringComparison.OrdinalIgnoreCase))
         {
-            string inner = ExtractFuncArg(varExpr, 10);
-            var parts = inner.Split(',', 3);
-            if (parts.Length >= 2)
+            var parts = SplitFuncArgsResolved(varExpr, 10, 3);
+            if (parts.Count >= 2)
             {
-                string text = ResolveAngleBrackets(parts[0].Trim());
-                string search = ResolveAngleBrackets(parts[1].Trim());
-                string replacement = parts.Length >= 3 ? ResolveAngleBrackets(parts[2].Trim()) : "";
+                string text = parts[0];
+                string search = parts[1];
+                string replacement = parts.Count >= 3 ? parts[2] : "";
                 if (search.Length == 0)
                     return text;
                 return text.Replace(search, replacement, StringComparison.Ordinal);
@@ -1364,15 +1542,15 @@ public sealed class ExpressionParser
         if (varExpr.StartsWith("STRINDEXOF(", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("STRINDEXOF ", StringComparison.OrdinalIgnoreCase))
         {
-            string inner = ExtractFuncArg(varExpr, 10);
-            var parts = inner.Split(',', 3);
-            if (parts.Length >= 2)
+            var parts = SplitFuncArgsResolved(varExpr, 10, 3);
+            if (parts.Count >= 2)
             {
-                string text = ResolveAngleBrackets(parts[0].Trim());
-                string search = ResolveAngleBrackets(parts[1].Trim());
-                int start = parts.Length > 2 && int.TryParse(parts[2].Trim(), out int s) ? s : 0;
+                string text = parts[0];
+                string search = parts[1];
+                int start = parts.Count > 2 && int.TryParse(parts[2], out int s) ? s : 0;
                 start = Math.Clamp(start, 0, text.Length);
-                return text.IndexOf(search, start, StringComparison.OrdinalIgnoreCase).ToString();
+                // Source-X Str_IndexOf is case-SENSITIVE.
+                return text.IndexOf(search, start, StringComparison.Ordinal).ToString();
             }
             return "-1";
         }
@@ -1381,26 +1559,29 @@ public sealed class ExpressionParser
         if (varExpr.StartsWith("STRREGEX(", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("STRREGEX ", StringComparison.OrdinalIgnoreCase))
         {
-            string inner = ExtractFuncArg(varExpr, 8);
-            var parts = inner.Split(',', 2);
-            if (parts.Length == 2)
+            var parts = SplitFuncArgsResolved(varExpr, 8, 2);
+            if (parts.Count == 2)
             {
-                string pattern = ResolveAngleBrackets(parts[0].Trim());
-                string text = ResolveAngleBrackets(parts[1].Trim());
                 try
                 {
-                    return TrySafeRegexIsMatch(text, pattern, out bool isMatch) && isMatch ? "1" : "0";
+                    return TrySafeRegexIsMatch(parts[1], parts[0], out bool isMatch) && isMatch ? "1" : "0";
                 }
                 catch { return "0"; }
             }
             return "0";
         }
 
-        // ISOBSCENE — basic profanity check
+        // ISOBSCENE — profanity check against the [OBSCENE] word list
+        // (Source-X INTRINSIC_ISOBSCENE → g_Cfg.IsObscene). The host wires
+        // ObsceneChecker to ResourceHolder.IsObscene at boot; without a
+        // loaded list everything is clean.
         if (varExpr.StartsWith("ISOBSCENE(", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("ISOBSCENE ", StringComparison.OrdinalIgnoreCase))
         {
-            return "0";
+            string inner = varExpr.StartsWith("ISOBSCENE(", StringComparison.OrdinalIgnoreCase)
+                ? ExtractFuncArg(varExpr, 9)
+                : ResolveAngleBrackets(varExpr[10..].Trim());
+            return ObsceneChecker?.Invoke(inner) == true ? "1" : "0";
         }
 
         // DATE — current date/time as formatted string
@@ -1428,23 +1609,26 @@ public sealed class ExpressionParser
             };
         }
 
-        // ID — resolve defname to numeric value
+        // ID — resolve defname/number, then strip the resource-type portion.
+        // Source-X INTRINSIC_ID: ResGetIndex((dword)GetVal(...)) — keeps only
+        // the low 20 index bits (RES_INDEX_MASK 0xFFFFF).
         if (varExpr.StartsWith("ID(", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("ID ", StringComparison.OrdinalIgnoreCase))
         {
+            const long ResIndexMask = 0xFFFFF;
             string inner = ExtractFuncArg(varExpr, 2);
             string resolved = ResolveAngleBrackets(inner);
             // Try as hex first
             if (resolved.StartsWith("0x", StringComparison.OrdinalIgnoreCase) &&
                 long.TryParse(resolved[2..], System.Globalization.NumberStyles.HexNumber, null, out long hexVal))
-                return hexVal.ToString();
+                return (hexVal & ResIndexMask).ToString();
             // Try as defname via variable resolver
             string? defVal = VariableResolver?.Invoke(resolved);
             if (defVal != null && long.TryParse(defVal, out long numVal))
-                return numVal.ToString();
+                return (numVal & ResIndexMask).ToString();
             // Try direct number
             if (long.TryParse(resolved, out long directVal))
-                return directVal.ToString();
+                return (directVal & ResIndexMask).ToString();
             return "0";
         }
 
@@ -1493,17 +1677,25 @@ public sealed class ExpressionParser
 
     private string EvaluateQval(string expr)
     {
-        int questionIdx = expr.IndexOf('?');
+        // Find '?' / ':' the way Source-X EvaluateConditionalQval_ParseArg
+        // does — skipping <...> spans so a nested <QVAL a?b:c> inside the
+        // condition or branches doesn't donate its separators.
+        int questionIdx = IndexOfOutsideAngles(expr, '?');
         if (questionIdx < 0)
         {
             // Source-X numeric 3-way form: QVAL v1,v2,lt,eq,gt
             //   v1 <  v2 -> lt,  v1 == v2 -> eq,  v1 > v2 -> gt
+            // Only v1/v2/lt are required — missing eq/gt default to 0.
             var args = SplitArgsTopLevel(expr);
-            if (args.Count >= 5)
+            if (args.Count >= 3)
             {
                 long v1 = Evaluate(ResolveAngleBrackets(args[0]).AsSpan());
                 long v2 = Evaluate(ResolveAngleBrackets(args[1]).AsSpan());
-                string pick = v1 < v2 ? args[2] : (v1 == v2 ? args[3] : args[4]);
+                string pick = v1 < v2
+                    ? args[2]
+                    : (v1 == v2
+                        ? (args.Count > 3 ? args[3] : "0")
+                        : (args.Count > 4 ? args[4] : "0"));
                 return ResolveAngleBrackets(pick.Trim());
             }
             return "";
@@ -1512,7 +1704,7 @@ public sealed class ExpressionParser
         string condition = expr[..questionIdx].Trim();
         string rest = expr[(questionIdx + 1)..];
 
-        int colonIdx = rest.IndexOf(':');
+        int colonIdx = IndexOfOutsideAngles(rest, ':');
         string trueVal, falseVal;
         if (colonIdx >= 0)
         {
@@ -1531,19 +1723,25 @@ public sealed class ExpressionParser
             : ResolveAngleBrackets(falseVal);
     }
 
-    private string EvaluateStrSub(string expr)
+    /// <summary>First index of <paramref name="target"/> outside any
+    /// &lt;...&gt; span (letter/'_'-opened, same disambiguation as the
+    /// bracket walker). -1 when not found.</summary>
+    private static int IndexOfOutsideAngles(string s, char target)
     {
-        // Format: start,length,string
-        var parts = expr.Split(',', 3);
-        if (parts.Length < 3) return "";
-        string resolved = ResolveAngleBrackets(parts[2].Trim());
-        if (!int.TryParse(ResolveAngleBrackets(parts[0].Trim()), out int start)) return "";
-        if (!int.TryParse(ResolveAngleBrackets(parts[1].Trim()), out int length)) return "";
-        if (start < 0) start = 0;
-        if (start >= resolved.Length) return "";
-        length = Math.Min(length, resolved.Length - start);
-        if (length <= 0) return "";
-        return resolved.Substring(start, length);
+        int depth = 0;
+        for (int i = 0; i < s.Length; i++)
+        {
+            char c = s[i];
+            if (c == '<')
+            {
+                char nxt = i + 1 < s.Length ? s[i + 1] : '\0';
+                if (nxt == '_' || char.IsLetter(nxt)) depth++;
+                continue;
+            }
+            if (c == '>' && depth > 0) { depth--; continue; }
+            if (depth == 0 && c == target) return i;
+        }
+        return -1;
     }
 
     private string EvaluateStrMatch(string expr)
@@ -1554,6 +1752,28 @@ public sealed class ExpressionParser
         string pattern = ResolveAngleBrackets(parts[0].Trim());
         string input = ResolveAngleBrackets(parts[1].Trim());
         return WildcardMatch(pattern, input) ? "1" : "0";
+    }
+
+    /// <summary>Source-X Calc_GetBellCurve — deterministic log curve.
+    /// 0 diff = 500 (50.0%), diff == variance = 250, halves per variance period.</summary>
+    private static int CalcGetBellCurve(int valDiff, int variance)
+    {
+        if (variance <= 0)
+            return 500;
+        if (valDiff < 0)
+            valDiff = -valDiff;
+
+        int chance = 500;
+        while (valDiff > variance && chance != 0)
+        {
+            valDiff -= variance;
+            chance /= 2; // chance is halved for each variance period
+        }
+
+        // Source-X IMulDiv(chance/2, valDiff, variance) with round-half-up
+        // and negative-product correction (product can't be negative here).
+        int mulDiv = ((chance / 2) * valDiff + variance / 2) / variance;
+        return chance - mulDiv;
     }
 
     private static bool WildcardMatch(string pattern, string input)
@@ -1749,6 +1969,38 @@ public sealed class ExpressionParser
             rest = rest.TrimStart();
         }
         return ResolveAngleBrackets(rest);
+    }
+
+    /// <summary>Extract a function's argument list WITHOUT resolving it first,
+    /// split on top-level commas (bracket-aware), THEN resolve each part.
+    /// Source-X splits raw text with a bracket-aware parser before evaluating —
+    /// resolving first lets a value containing commas (a "1,2" coordinate)
+    /// corrupt the split. <paramref name="maxArgs"/> &gt; 0 merges surplus
+    /// parts back into the last argument.</summary>
+    private List<string> SplitFuncArgsResolved(string varExpr, int prefixLen, int maxArgs = 0)
+    {
+        string rest = varExpr[prefixLen..];
+        if (rest.StartsWith('('))
+        {
+            rest = rest[1..];
+            if (rest.EndsWith(')'))
+                rest = rest[..^1];
+        }
+        else
+        {
+            rest = rest.TrimStart();
+        }
+
+        var parts = SplitArgsTopLevel(rest);
+        if (maxArgs > 0 && parts.Count > maxArgs)
+        {
+            string tail = string.Join(",", parts.Skip(maxArgs - 1));
+            parts.RemoveRange(maxArgs - 1, parts.Count - (maxArgs - 1));
+            parts.Add(tail);
+        }
+        for (int i = 0; i < parts.Count; i++)
+            parts[i] = ResolveAngleBrackets(parts[i].Trim());
+        return parts;
     }
 
     /// <summary>Split a function argument list on top-level commas, respecting

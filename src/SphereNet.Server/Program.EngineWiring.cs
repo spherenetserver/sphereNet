@@ -3092,6 +3092,15 @@ public static partial class Program
             );
 
             _network.OnConnectionClosed += OnConnectionClosed;
+            _network.OnConnectionAccepted += state =>
+            {
+                string ip = state.RemoteEndPoint?.Address.ToString() ?? "";
+                long currentMs = Environment.TickCount64;
+                _connectionAttempts.TryGetValue(ip, out var attempt);
+                long previousMs = attempt.CurrentMs == 0 ? currentMs : attempt.PreviousMs;
+                _systemHooks.DispatchServer("connection_acquired", _serverHookContext, ip,
+                    (int)Math.Clamp(currentMs - previousMs, 0, int.MaxValue), unchecked((int)currentMs));
+            };
             _network.OnUnknownPacket += OnUnknownPacket;
             _network.OnPacketQuotaExceeded += OnPacketQuotaExceeded;
 

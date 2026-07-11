@@ -47,9 +47,9 @@ public sealed class PacketCreateCharacterHS : PacketHandler
         string charName = buffer.ReadAsciiFixed(30);
 
         buffer.ReadBytes(2); // unknown
-        buffer.ReadUInt32(); // client flags
+        uint clientFlags = buffer.ReadUInt32();
         buffer.ReadBytes(8); // unknown
-        buffer.ReadByte();   // profession
+        byte profession = buffer.ReadByte();
         buffer.ReadBytes(15); // unknown
 
         byte genderRace = buffer.ReadByte();
@@ -79,6 +79,9 @@ public sealed class PacketCreateCharacterHS : PacketHandler
         {
             Name = charName,
             Female = female,
+            ClientFlags = clientFlags,
+            Profession = profession,
+            Race = (byte)Math.Clamp(genderRace / 2 + 1, 1, 3),
             Str = str, Dex = dex, Int = intl,
             SkinHue = skinHue,
             HairStyle = hairStyle, HairHue = hairHue,
@@ -102,9 +105,9 @@ public sealed class PacketCreateCharacter : PacketHandler
         string charName = buffer.ReadAsciiFixed(30);
 
         buffer.ReadBytes(2); // unknown
-        buffer.ReadUInt32(); // client flags
+        uint clientFlags = buffer.ReadUInt32();
         buffer.ReadBytes(8); // unknown
-        buffer.ReadByte();   // profession
+        byte profession = buffer.ReadByte();
         buffer.ReadBytes(15); // unknown
 
         byte genderRace = buffer.ReadByte();
@@ -134,6 +137,9 @@ public sealed class PacketCreateCharacter : PacketHandler
         {
             Name = charName,
             Female = female,
+            ClientFlags = clientFlags,
+            Profession = profession,
+            Race = (byte)Math.Clamp(genderRace / 2 + 1, 1, 3),
             Str = str, Dex = dex, Int = intl,
             SkinHue = skinHue,
             HairStyle = hairStyle, HairHue = hairHue,

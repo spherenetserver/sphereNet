@@ -11,7 +11,7 @@ public sealed class ScriptFile : IDisposable
 {
     private static readonly ConcurrentDictionary<string, string[]> s_fileContentCache = new(StringComparer.OrdinalIgnoreCase);
 
-    private StreamReader? _reader;
+    private TextReader? _reader;
     private string[]? _cachedLines;
     private int _cacheLineIndex;
     private string? _pushedBackLine; // For non-cached mode pushback
@@ -25,6 +25,13 @@ public sealed class ScriptFile : IDisposable
     /// Clear the static file content cache to free memory after bulk loading.
     /// </summary>
     public static void ClearFileCache() => s_fileContentCache.Clear();
+
+    /// <summary>Configure global .scp decoding from sphere.ini.</summary>
+    public static void ConfigureTextEncoding(string? mode, int legacyCodePage)
+    {
+        ScriptTextEncoding.Configure(mode, legacyCodePage);
+        ClearFileCache();
+    }
 
     private const string ScriptExtension = ".scp";
 
@@ -45,12 +52,12 @@ public sealed class ScriptFile : IDisposable
 
         if (UseCache)
         {
-            _cachedLines = s_fileContentCache.GetOrAdd(FilePath, static path => File.ReadAllLines(path));
+            _cachedLines = s_fileContentCache.GetOrAdd(FilePath, static path => ScriptTextEncoding.ReadAllLines(path));
             _cacheLineIndex = 0;
         }
         else
         {
-            _reader = new StreamReader(FilePath, System.Text.Encoding.UTF8);
+            _reader = new StringReader(ScriptTextEncoding.ReadAllText(FilePath));
         }
 
         return true;

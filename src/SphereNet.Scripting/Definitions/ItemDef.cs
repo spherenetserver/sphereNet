@@ -179,6 +179,7 @@ public sealed class ItemDef : BaseDef
                 }
                 // Previously dropped with zero visibility — count it so a
                 // real pack load can report what it lost.
+                TagDefs.Set(key.ToUpperInvariant(), value);
                 UnknownKeyDiagnostics.Record("ITEMDEF", key);
                 break;
         }

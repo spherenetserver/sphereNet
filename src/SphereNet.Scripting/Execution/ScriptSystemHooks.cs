@@ -9,13 +9,7 @@ namespace SphereNet.Scripting.Execution;
 public sealed class ScriptSystemHooks
 {
     private readonly TriggerRunner _runner;
-    private static readonly Dictionary<string, string[]> ServerHookAliases = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["start"] = ["onserver_start"],
-        ["exit"] = ["onserver_exit", "onserver_exit_later"],
-        ["save"] = ["onserver_save", "onserver_save_before", "onserver_save_ok", "onserver_save_finished"],
-        ["resync"] = ["onserver_resync_start", "onserver_resync_success"]
-    };
+    private static readonly Dictionary<string, string[]> ServerHookAliases = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, string[]> AccountHookAliases = new(StringComparer.OrdinalIgnoreCase)
     {
         ["connect"] = ["login"],
@@ -42,6 +36,22 @@ public sealed class ScriptSystemHooks
         int argn3 = 0,
         ITextConsole? console = null)
     {
+        return TryDispatch(functionName, source, argo, args, argn1, argn2, argn3, console, out bool handled)
+            && handled;
+    }
+
+    private bool TryDispatch(
+        string functionName,
+        IScriptObj? source,
+        IScriptObj? argo,
+        string args,
+        int argn1,
+        int argn2,
+        int argn3,
+        ITextConsole? console,
+        out bool handled)
+    {
+        handled = false;
         IScriptObj? target = source ?? argo;
         if (target == null)
             return false;
@@ -56,13 +66,15 @@ public sealed class ScriptSystemHooks
         if (!_runner.TryRunFunction(functionName, target, console, triggerArgs, out var result))
             return false;
 
-        return result == Core.Enums.TriggerResult.True;
+        handled = result == Core.Enums.TriggerResult.True;
+        return true;
     }
 
     public bool DispatchServer(string hookSuffix, IScriptObj serverContext, string args = "", int argn1 = 0, int argn2 = 0, int argn3 = 0)
     {
-        if (Dispatch($"f_onserver_{hookSuffix}", serverContext, null, args, argn1, argn2, argn3))
-            return true;
+        if (TryDispatch($"f_onserver_{hookSuffix}", serverContext, null, args,
+                argn1, argn2, argn3, null, out bool handled))
+            return handled;
 
         if (!ServerHookAliases.TryGetValue(hookSuffix, out var aliases))
             return false;
@@ -72,17 +84,34 @@ public sealed class ScriptSystemHooks
             string function = alias.StartsWith("f_", StringComparison.OrdinalIgnoreCase)
                 ? alias
                 : $"f_{alias}";
-            if (Dispatch(function, serverContext, null, args, argn1, argn2, argn3))
-                return true;
+            if (TryDispatch(function, serverContext, null, args,
+                    argn1, argn2, argn3, null, out handled))
+                return handled;
         }
 
         return false;
     }
 
+    /// <summary>Dispatch a server hook while preserving Source-X RETURN values
+    /// beyond boolean RETURN 1 (notably connectreq_ex RETURN 2 = reject + ban).</summary>
+    public Core.Enums.TriggerResult DispatchServerResult(string hookSuffix, IScriptObj serverContext,
+        string args = "", int argn1 = 0, int argn2 = 0, int argn3 = 0)
+    {
+        var triggerArgs = new TriggerArgs(serverContext, argn1, argn2, args)
+        {
+            Number3 = argn3,
+            Object2 = serverContext
+        };
+        return _runner.TryRunFunction($"f_onserver_{hookSuffix}", serverContext, null, triggerArgs, out var result)
+            ? result
+            : Core.Enums.TriggerResult.Default;
+    }
+
     public bool DispatchAccount(string hookSuffix, IScriptObj accountObj, IScriptObj? argo = null, string args = "", int argn1 = 0, int argn2 = 0, int argn3 = 0)
     {
-        if (Dispatch($"f_onaccount_{hookSuffix}", accountObj, argo, args, argn1, argn2, argn3))
-            return true;
+        if (TryDispatch($"f_onaccount_{hookSuffix}", accountObj, argo, args,
+                argn1, argn2, argn3, null, out bool handled))
+            return handled;
 
         if (!AccountHookAliases.TryGetValue(hookSuffix, out var aliases))
             return false;
@@ -92,8 +121,9 @@ public sealed class ScriptSystemHooks
             string function = alias.StartsWith("f_", StringComparison.OrdinalIgnoreCase)
                 ? alias
                 : $"f_onaccount_{alias}";
-            if (Dispatch(function, accountObj, argo, args, argn1, argn2, argn3))
-                return true;
+            if (TryDispatch(function, accountObj, argo, args,
+                    argn1, argn2, argn3, null, out handled))
+                return handled;
         }
 
         return false;
@@ -101,8 +131,9 @@ public sealed class ScriptSystemHooks
 
     public bool DispatchClient(string hookSuffix, IScriptObj clientObj, IScriptObj? argo = null, string args = "", int argn1 = 0, int argn2 = 0, int argn3 = 0, ITextConsole? console = null)
     {
-        if (Dispatch($"f_onclient_{hookSuffix}", clientObj, argo, args, argn1, argn2, argn3, console))
-            return true;
+        if (TryDispatch($"f_onclient_{hookSuffix}", clientObj, argo, args,
+                argn1, argn2, argn3, console, out bool handled))
+            return handled;
 
         // Source-X compatibility: support legacy/verbose client hook names.
         if (!ClientHookAliases.TryGetValue(hookSuffix, out var aliases))
@@ -110,8 +141,9 @@ public sealed class ScriptSystemHooks
 
         foreach (string alias in aliases)
         {
-            if (Dispatch($"f_onclient_{alias}", clientObj, argo, args, argn1, argn2, argn3, console))
-                return true;
+            if (TryDispatch($"f_onclient_{alias}", clientObj, argo, args,
+                    argn1, argn2, argn3, console, out handled))
+                return handled;
         }
 
         return false;

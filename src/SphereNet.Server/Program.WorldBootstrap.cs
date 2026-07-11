@@ -59,7 +59,7 @@ public static partial class Program
     private static void PerformScriptResync()
     {
         _log.LogInformation("ReSync: scanning for modified script files...");
-        _systemHooks.DispatchServer("resync", _serverHookContext);
+        _systemHooks.DispatchServer("resync_start", _serverHookContext);
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
         int reloaded = _resources.Resync();
@@ -97,6 +97,8 @@ public static partial class Program
             defLoader.SkillDefsLoaded, sw.ElapsedMilliseconds);
 
         BroadcastSysMessage($"ReSync: {reloaded} script files reloaded in {sw.ElapsedMilliseconds}ms.");
+        _systemHooks.DispatchServer("resync_success", _serverHookContext,
+            reloaded.ToString(), reloaded);
         SphereNet.Scripting.Parsing.ScriptFile.ClearFileCache();
     }
 
@@ -570,7 +572,8 @@ public static partial class Program
     private static int LoadAllScripts(string dir)
     {
         int count = 0;
-        foreach (var file in Directory.EnumerateFiles(dir, "*.scp", SearchOption.AllDirectories))
+        var files = ScriptResourceManifest.Resolve(dir, warning => _log.LogWarning("{Warning}", warning));
+        foreach (var file in files)
         {
             _resources.LoadResourceFile(file);
             count++;

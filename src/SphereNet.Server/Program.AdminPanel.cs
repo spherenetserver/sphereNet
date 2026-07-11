@@ -59,12 +59,17 @@ public static partial class Program
 {
     private static IPBlockList? _ipBlockList;
     private static ConnectionRateLimiter? _connRateLimiter;
+    private readonly record struct ConnectionAttempt(long PreviousMs, long CurrentMs, int Count);
+    private static readonly ConcurrentDictionary<string, ConnectionAttempt> _connectionAttempts =
+        new(StringComparer.OrdinalIgnoreCase);
 
     private static void InitializeAdminSurfaces()
     {
             // --- Security: shared IP block list & connection rate limiter ---
             _ipBlockList = new IPBlockList();
             _connRateLimiter = new ConnectionRateLimiter();
+            _ipBlockList.Blocked += ip =>
+                _systemHooks.DispatchServer("blockip", _serverHookContext, ip, 0);
             _network.ConnectionAcceptFilter = ip =>
             {
                 if ((SphereNet.Game.Diagnostics.BotEngine.BotModeActive || _trustLoopback)
@@ -73,8 +78,20 @@ public static partial class Program
                 string ipStr = ip.ToString();
                 if (_ipBlockList.IsBlocked(ipStr))
                     return true;
+                long currentMs = Environment.TickCount64;
+                var attempt = _connectionAttempts.AddOrUpdate(ipStr,
+                    _ => new ConnectionAttempt(currentMs, currentMs, 1),
+                    (_, old) => new ConnectionAttempt(old.CurrentMs, currentMs, old.Count + 1));
                 _connRateLimiter.RegisterAttempt(ipStr);
-                return _connRateLimiter.ShouldThrottle(ipStr);
+                if (!_connRateLimiter.ShouldThrottle(ipStr))
+                    return false;
+
+                var result = _systemHooks.DispatchServerResult("connectreq_ex", _serverHookContext, ipStr,
+                    (int)Math.Clamp(attempt.CurrentMs - attempt.PreviousMs, 0, int.MaxValue),
+                    unchecked((int)attempt.CurrentMs), attempt.Count);
+                if (result == TriggerResult.False)
+                    _ipBlockList.Add(ipStr);
+                return true;
             };
 
             SphereNet.Game.Diagnostics.BotEngine.OnBotModeChanged += active =>

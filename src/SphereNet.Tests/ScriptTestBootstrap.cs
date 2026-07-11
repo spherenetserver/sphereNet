@@ -16,14 +16,17 @@ internal static class ScriptTestBootstrap
         if (!string.IsNullOrWhiteSpace(configured) && Directory.Exists(configured))
             return Path.GetFullPath(configured);
 
+        string bundled = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+            "..", "..", "..", "..", "oldSphere", "Scripts-X-main"));
+        if (Directory.Exists(bundled))
+            return bundled;
+
         return null;
     }
 
     public static IReadOnlyList<string> GetScriptFiles(string rootPath, ScriptPackProfile profile)
     {
-        var all = Directory.GetFiles(rootPath, "*.scp", SearchOption.AllDirectories)
-            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var all = ScriptResourceManifest.Resolve(rootPath).ToArray();
 
         return profile switch
         {
@@ -85,16 +88,8 @@ internal static class ScriptTestBootstrap
         string normalized = path.Replace('\\', '/').ToLowerInvariant();
         if (IsWorldGenScript(normalized))
             return false;
-        return normalized.Contains("/defnames/") ||
-               normalized.Contains("/functions/") ||
-               normalized.Contains("/events/") ||
-               normalized.Contains("/itemdefs/") ||
-               normalized.Contains("/chardefs/") ||
-               normalized.EndsWith("/sphere_defs.scp", StringComparison.Ordinal) ||
-               normalized.EndsWith("/sphere_msgs.scp", StringComparison.Ordinal) ||
-               normalized.EndsWith("/sphere_skills.scp", StringComparison.Ordinal) ||
-               normalized.EndsWith("/sphere_spells.scp", StringComparison.Ordinal) ||
-               normalized.EndsWith("/sphere_types.scp", StringComparison.Ordinal);
+        return !normalized.Contains("/not_complete/") &&
+               !normalized.Contains("/_incomplete/");
     }
 
     private static bool IsWorldGenScript(string path)

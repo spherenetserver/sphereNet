@@ -108,6 +108,23 @@ public static partial class Program
             "FEATURET2A" => (_config?.FeatureT2A ?? 0).ToString(),
             "CHATFLAGS" => (_config?.ChatFlags ?? 0).ToString(),
             "GENERICSOUNDS" => (_config?.GenericSounds == false ? "0" : "1"),
+            "SERVIP" => _config?.ServIP ?? "0.0.0.0",
+            "SCPFILES" => EnsureTrailingDirectorySeparator(
+                _resources?.ScpBaseDir ?? _config?.ScpFilesDir ?? "scripts/"),
+            "COMBATFLAGS" => (_config?.CombatFlags ?? 0).ToString(),
+            "MAGICFLAGS" => (_config?.MagicFlags ?? 0).ToString(),
+            "OPTIONFLAGS" => (_config?.OptionFlags ?? 0).ToString(),
+            "EXPERIMENTAL" => (_config?.Experimental ?? 0).ToString(),
+            "DECAYTIMER" => (_config?.DecayTimer ?? 30).ToString(),
+            "ARCHERYMINDIST" => (_config?.ArcheryMinDist ?? 1).ToString(),
+            "ARCHERYMAXDIST" => (_config?.ArcheryMaxDist ?? 12).ToString(),
+            "MAXHOUSESPLAYER" => (_config?.MaxHousesPlayer ?? 1).ToString(),
+            "MAXHOUSESACCOUNT" => (_config?.MaxHousesAccount ?? 1).ToString(),
+            "NPCTRAINCOST" => (_config?.NpcTrainCost ?? 30).ToString(),
+            "NPCTRAINMAX" => (_config?.NpcTrainMax ?? 420).ToString(),
+            "GUARDSINSTANTKILL" => (_config?.GuardsInstantKill == true ? "1" : "0"),
+            "GUILDSTONES" => CountWorldStones(ItemType.StoneGuild),
+            "TOWNSTONES" => CountWorldStones(ItemType.StoneTown),
 
             // --- Reference lookups via SERV.xxx ---
             "LASTNEWITEM" => _world?.LastNewItem.Value.ToString() ?? "0",
@@ -120,6 +137,7 @@ public static partial class Program
             // Admin dialogs iterate all 58 skills using <Serv.Skill.<idx>.Key>
             // to discover defnames at runtime.
             _ when upper.StartsWith("SKILL.") => ResolveServSkill(upper[6..]),
+            _ when upper.StartsWith("SPELL.") => ResolveServSpell(property[6..]),
 
             // --- SERV.CHARDEF.<defname>.<prop> / SERV.ITEMDEF.<defname>.<prop>
             // Used by script dialogs like d_spawn to render names/jobs from
@@ -131,6 +149,10 @@ public static partial class Program
             _ when upper.StartsWith("LIST.") => ResolveServList(property[5..]),
             _ when upper.StartsWith("DEFLIST.") => ResolveServDefList(property[8..]),
             _ when upper.StartsWith("GMPAGE.") => ResolveServGmPage(property[7..]),
+            _ when upper.StartsWith("DB.") => ResolveScriptDbProperty(_scriptDb, property[3..]),
+            _ when upper.StartsWith("LDB.") => ResolveScriptDbProperty(_scriptLdb, property[4..]),
+            _ when upper.StartsWith("MDB.") => ResolveScriptDbProperty(_scriptMdb, property[4..]),
+            _ when upper.StartsWith("FILE.FILEEXIST") => ResolveScriptFileExists(property[14..]),
 
             // --- ISEVENT.name — 1 if the named event script is loaded.
             // Used by admin dialogs to grey out delete buttons for missing events.
@@ -188,6 +210,9 @@ public static partial class Program
             _ when upper.StartsWith("_SET_OBJ.") => HandleSetObjProperty(property[9..]),
             _ when upper.StartsWith("_CLEARVARS=") => HandleClearVars(property[11..]),
             _ when upper.StartsWith("_NEWDUPE=") => HandleNewDupe(property[9..]),
+            _ when upper.StartsWith("_NEWITEM=") => HandleServNewItem(property[9..]),
+            _ when upper.StartsWith("_NEWNPC=") => HandleServNewNpc(property[8..]),
+            _ when upper.StartsWith("_DB_VERB=") => HandleScriptDbVerb(property[9..]),
             _ when upper.StartsWith("_SET_DEFMSG=") => HandleSetDefMsg(property[12..]),
             _ when upper.StartsWith("_SET_SEASON=") => HandleSetSeason(property[12..]),
 
@@ -283,6 +308,117 @@ public static partial class Program
         return "";
     }
 
+    private static string CountWorldStones(ItemType type) =>
+        (_world?.GetAllObjects().OfType<Item>().Count(i => i.ItemType == type) ?? 0).ToString();
+
+    private static string EnsureTrailingDirectorySeparator(string path) =>
+        string.IsNullOrEmpty(path) || path.EndsWith(Path.DirectorySeparatorChar) || path.EndsWith(Path.AltDirectorySeparatorChar)
+            ? path
+            : path + Path.DirectorySeparatorChar;
+
+    private static string ResolveScriptFileExists(string raw)
+    {
+        string path = raw.Trim().Trim('"');
+        if (path.Length == 0)
+            return "0";
+        if (!Path.IsPathRooted(path))
+            path = Path.Combine(_resources?.ScpBaseDir ?? AppContext.BaseDirectory, path);
+        return File.Exists(path) ? "1" : "0";
+    }
+
+    private static string ResolveScriptDbProperty(ScriptDbAdapter? db, string property)
+    {
+        if (db == null) return "0";
+        if (property.Equals("CONNECTED", StringComparison.OrdinalIgnoreCase))
+            return db.IsConnected ? "1" : "0";
+        if (property.Equals("ACTIVE", StringComparison.OrdinalIgnoreCase))
+            return db.ActiveSessionName;
+        if (property.StartsWith("ESCAPEDATA.", StringComparison.OrdinalIgnoreCase))
+            return db.EscapeData(property[11..]);
+        string rowKey = property.StartsWith("ROW.", StringComparison.OrdinalIgnoreCase)
+            ? "db." + property
+            : property;
+        return db.TryResolveRowValue(rowKey, out string value) ? value : "0";
+    }
+
+    private static string HandleScriptDbVerb(string raw)
+    {
+        string[] parts = raw.Split('|', 3);
+        if (parts.Length < 2) return "0";
+        ScriptDbAdapter? db = parts[0].ToUpperInvariant() switch
+        {
+            "DB" => _scriptDb,
+            "LDB" => _scriptLdb,
+            "MDB" => _scriptMdb,
+            _ => null
+        };
+        if (db == null) return "0";
+        string verb = parts[1].Trim().ToUpperInvariant();
+        string arg = parts.ElementAtOrDefault(2)?.Trim() ?? "";
+        bool ok;
+        string error;
+        switch (verb)
+        {
+            case "CONNECT":
+                ok = parts[0].Equals("LDB", StringComparison.OrdinalIgnoreCase)
+                    ? db.ConnectFile(arg, _resources?.ScpBaseDir ?? AppContext.BaseDirectory, out error)
+                    : db.Connect(arg, out error);
+                break;
+            case "CLOSE":
+                db.Close();
+                return "1";
+            case "QUERY":
+                ok = db.Query(arg.Trim('"'), out _, out error);
+                break;
+            case "EXECUTE":
+                ok = db.Execute(arg.Trim('"'), out _, out error);
+                break;
+            case "IMPORTDB" when parts[0].Equals("MDB", StringComparison.OrdinalIgnoreCase):
+                ok = db.ConnectFile(arg.Trim('"'), _resources?.ScpBaseDir ?? AppContext.BaseDirectory, out error);
+                break;
+            default:
+                return "0";
+        }
+        if (!ok && !string.IsNullOrWhiteSpace(error))
+            _log?.LogWarning("Script {Db}.{Verb} failed: {Error}", parts[0], verb, error);
+        return ok ? "1" : "0";
+    }
+
+    /// <summary>Resolve Source-X SERV.SPELL.&lt;id|defname&gt;.&lt;property&gt;.</summary>
+    private static string? ResolveServSpell(string sub)
+    {
+        if (_spellRegistry == null || string.IsNullOrWhiteSpace(sub))
+            return "";
+
+        int dot = sub.IndexOf('.');
+        if (dot <= 0)
+            return "";
+
+        string token = sub[..dot].Trim();
+        string field = sub[(dot + 1)..].Trim();
+        int spellId;
+        ResourceLink? link = null;
+        if (_resources?.ResolveDefName(token) is { IsValid: true, Type: ResType.SpellDef } rid)
+        {
+            spellId = rid.Index;
+            link = _resources.GetResource(rid);
+        }
+        else
+        {
+            spellId = ValueCurve.ParseSphereNumber(token);
+            link = _resources?.GetResource(ResType.SpellDef, spellId);
+        }
+
+        var def = _spellRegistry.Get((SpellType)(ushort)spellId);
+        if (def == null)
+            return "";
+        if (field.Equals("DEFNAME", StringComparison.OrdinalIgnoreCase))
+            return link?.DefName ?? token;
+        if (field.Equals("SKILLREQ", StringComparison.OrdinalIgnoreCase))
+            return string.Join(',', def.SkillReq.Select(kv => $"{kv.Key} {kv.Value}"));
+        return def.TryGetProperty(field, out string value) ? value : "";
+    }
+
     private static string HandleSetSeason(string raw)
     {
         if (_weatherEngine == null)
@@ -364,8 +500,25 @@ public static partial class Program
             "NAME" => def.Name ?? "",
             "DEFNAME" => def.DefName ?? "",
             "ID" or "DISPID" => $"0{def.DispIndex:X}",
-            "TYPE" => def.Type.ToString(),
-            _ => ""
+            "TYPE" => string.IsNullOrWhiteSpace(def.TypeRaw) ? def.Type.ToString() : def.TypeRaw,
+            "TDATA1" => def.TData1Name ?? $"0{def.TData1:X}",
+            "TDATA2" => $"0{def.TData2:X}",
+            "TDATA3" => def.TData3Name ?? $"0{def.TData3:X}",
+            "TDATA4" => $"0{def.TData4:X}",
+            "CAN" => $"0{(ulong)def.Can:X}",
+            "CANUSE" => $"0{(ulong)def.CanUse:X}",
+            "HEIGHT" => def.Height.ToString(),
+            "WEIGHT" => def.Weight.ToString(),
+            "LAYER" => ((int)def.Layer).ToString(),
+            "SPEED" => def.Speed.ToString(),
+            "SKILL" => def.Skill.ToString(),
+            "REQSTR" => def.ReqStr.ToString(),
+            "VALUE" => def.ValueMin == def.ValueMax ? def.ValueMin.ToString() : $"{def.ValueMin},{def.ValueMax}",
+            "DAM" => def.AttackMin == def.AttackMax ? def.AttackMin.ToString() : $"{def.AttackMin},{def.AttackMax}",
+            "ARMOR" => def.DefenseMin == def.DefenseMax ? def.DefenseMin.ToString() : $"{def.DefenseMin},{def.DefenseMax}",
+            "RESOURCES" => def.ResourcesRaw,
+            "SKILLMAKE" => def.SkillMakeRaw,
+            _ => def.TagDefs.Get(field) ?? ""
         };
     }
 
@@ -748,6 +901,106 @@ public static partial class Program
             }
         }
         return "";
+    }
+
+    private static string HandleServNewItem(string raw)
+    {
+        if (_world == null || _resources == null)
+            return "0";
+
+        string[] parts = raw.Split(',', 3, StringSplitOptions.TrimEntries);
+        string token = parts.ElementAtOrDefault(0)?.Trim() ?? "";
+        if (token.Length == 0)
+            return "0";
+
+        ResourceId rid = _resources.ResolveDefName(token);
+        if (!rid.IsValid)
+        {
+            int numeric = ValueCurve.ParseSphereNumber(token);
+            rid = new ResourceId(ResType.ItemDef, numeric);
+            if (_resources.GetResource(rid) == null)
+                return "0";
+        }
+        if (rid.Type != ResType.ItemDef)
+            return "0";
+
+        var def = DefinitionLoader.GetItemDef(rid.Index);
+        ushort dispId = def?.DispIndex ?? 0;
+        if (dispId == 0) dispId = def?.DupItemId ?? 0;
+        if (dispId == 0 && rid.Index is > 0 and <= ushort.MaxValue)
+            dispId = (ushort)rid.Index;
+        if (dispId == 0)
+            return "0";
+
+        var item = _world.CreateItem();
+        item.BaseId = dispId;
+        item.Name = string.IsNullOrWhiteSpace(def?.Name) ? (def?.DefName ?? token) : def!.Name;
+        if (def != null)
+        {
+            item.ItemType = def.Type;
+            if (!string.IsNullOrWhiteSpace(def.DefName))
+                item.SetTag("ITEMDEF", def.DefName);
+            foreach (var tag in def.TagDefs.GetAll())
+                item.SetTag(tag.Key, tag.Value);
+        }
+
+        if (parts.Length > 1 && parts[1].Length > 0)
+            item.Amount = (ushort)Math.Clamp(ValueCurve.ParseSphereNumber(parts[1]), 1, ushort.MaxValue);
+
+        if (parts.Length > 2 && TryParseScriptUid(parts[2], out Serial parentUid))
+        {
+            if (_world.FindItem(parentUid) is { } container)
+                container.TryAddItem(item);
+            else if (_world.FindChar(parentUid) is { } owner)
+            {
+                if (owner.Backpack == null)
+                {
+                    var pack = _world.CreateItem();
+                    pack.BaseId = 0x0E75;
+                    pack.ItemType = ItemType.Container;
+                    pack.Name = "Backpack";
+                    owner.Equip(pack, Layer.Pack);
+                    // CreateItem updates NEW; restore Source-X NEW to the requested item.
+                    _world.LastNewItem = item.Uid;
+                }
+                owner.Backpack?.TryAddItem(item);
+            }
+        }
+        return $"0{item.Uid.Value:X}";
+    }
+
+    private static string HandleServNewNpc(string raw)
+    {
+        if (_world == null || _resources == null)
+            return "0";
+        string token = raw.Split(',', 2, StringSplitOptions.TrimEntries)[0];
+        if (string.IsNullOrWhiteSpace(token))
+            return "0";
+
+        var npc = _world.CreateCharacter();
+        npc.IsPlayer = false;
+        bool applied = CharDefHelper.TryApplyDefName(npc, token, _resources, stats: true, refresh: false);
+        if (!applied)
+        {
+            int numeric = ValueCurve.ParseSphereNumber(token);
+            var link = _resources.GetResource(ResType.CharDef, numeric);
+            if (link != null)
+                applied = CharDefHelper.TryApplyDefName(npc, link.DefName ?? link.HeaderArgument, _resources,
+                    stats: true, refresh: false);
+        }
+        if (!applied)
+        {
+            _world.DeleteObject(npc);
+            return "0";
+        }
+        return $"0{npc.Uid.Value:X}";
+    }
+
+    private static bool TryParseScriptUid(string raw, out Serial uid)
+    {
+        uint value = ObjBase.ParseHexOrDecUInt(raw.Trim());
+        uid = new Serial(value);
+        return value != 0;
     }
 
     private static string? HandleSetDefMsg(string assignment)

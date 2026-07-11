@@ -305,6 +305,22 @@ public sealed partial class GameClient
             var info = PendingCharCreate;
             PendingCharCreate = null;
 
+            var createHookArgs = new SphereNet.Scripting.Execution.TriggerArgs(
+                _character, unchecked((int)(info?.ClientFlags ?? 0)), info?.Profession ?? 0, _account.Name)
+            {
+                Number3 = info?.Race ?? 1
+            };
+            if (_triggerDispatcher?.Runner is { } initRunner &&
+                initRunner.TryRunFunction(
+                    "f_onchar_create_init", _character, this, createHookArgs, out var initResult) &&
+                initResult == TriggerResult.True)
+            {
+                _world.DeleteObject(_character);
+                _character = null;
+                ReturnToCharacterList();
+                return;
+            }
+
             if (info != null)
             {
                 _character.BodyId = info.Female ? (ushort)0x0191 : (ushort)0x0190;
@@ -401,10 +417,6 @@ public sealed partial class GameClient
                 gold.Amount = (ushort)Math.Min(ushort.MaxValue, startGoldAmount);
                 pack.AddItem(gold);
             }
-            int assignSlot = slot >= 0 ? slot : _account.FindFreeSlot();
-            if (assignSlot >= 0)
-                _account.SetCharSlot(assignSlot, _character.Uid);
-
             EquipPlayerNewbieItems(_character, info?.Female ?? false);
             EquipNewbieSkillKits(_character, info);
 
@@ -415,11 +427,19 @@ public sealed partial class GameClient
             var createRunner = _triggerDispatcher?.Runner;
             if (createRunner != null)
             {
-                var createArgs = new SphereNet.Scripting.Execution.TriggerArgs(
-                    _character, 0, 0, _account.Name);
-                createRunner.TryRunFunction("f_onchar_create_player", _character, null, createArgs, out _);
-                createRunner.TryRunFunction("f_onchar_setup_player", _character, null, createArgs, out _);
+                if (createRunner.TryRunFunction("f_onchar_create", _character, this, createHookArgs, out var createResult) &&
+                    createResult == TriggerResult.True)
+                {
+                    _world.DeleteObject(_character);
+                    _character = null;
+                    ReturnToCharacterList();
+                    return;
+                }
             }
+
+            int assignSlot = slot >= 0 ? slot : _account.FindFreeSlot();
+            if (assignSlot >= 0)
+                _account.SetCharSlot(assignSlot, _character.Uid);
 
             _logger.LogInformation("Created char '{Name}' for account '{Acct}'", _character.Name, _account.Name);
         }

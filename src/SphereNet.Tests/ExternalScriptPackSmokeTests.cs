@@ -99,7 +99,7 @@ public class ExternalScriptPackSmokeTests
         foreach (string function in new[] { "f_onserver_start", "f_onchar_login", "f_onchar_logout", "f_onitem_create", "f_onitem_dclick" })
             stack.Runner.TryRunFunction(function, ch, null, scriptArgs, out _);
 
-        Assert.True(collector.Count("unhandled") >= 0);
+        Assert.True(stack.Resources.ResourceCount > 0, "Runtime corpus must execute against an indexed pack");
     }
 
     [Fact]

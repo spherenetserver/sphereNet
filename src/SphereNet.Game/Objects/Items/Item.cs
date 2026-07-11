@@ -1226,6 +1226,12 @@ public class Item : ObjBase
                 case "ISARMOR": value = (def.DefenseMin > 0 || def.DefenseMax > 0) ? "1" : "0"; return true;
                 case "ISWEAPON": value = (def.AttackMin > 0 || def.AttackMax > 0) ? "1" : "0"; return true;
             }
+            var extended = def.TagDefs.Get(upper);
+            if (extended != null)
+            {
+                value = extended;
+                return true;
+            }
         }
 
         if (upper.StartsWith("LINK.", StringComparison.Ordinal) && _link.IsValid)

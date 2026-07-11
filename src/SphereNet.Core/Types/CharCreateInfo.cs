@@ -7,6 +7,10 @@ public sealed class CharCreateInfo
 {
     public string Name { get; init; } = "";
     public bool Female { get; init; }
+    public uint ClientFlags { get; init; }
+    public byte Profession { get; init; }
+    /// <summary>Source-X race id: 1 human, 2 elf, 3 gargoyle.</summary>
+    public byte Race { get; init; } = 1;
     public byte Str { get; init; }
     public byte Dex { get; init; }
     public byte Int { get; init; }

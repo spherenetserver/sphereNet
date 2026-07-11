@@ -36,6 +36,8 @@ public sealed class SphereConfig
 
     // Paths
     public string ScpFilesDir { get; set; } = "scripts/";
+    public string ScriptEncoding { get; set; } = "AUTO";
+    public int ScriptLegacyCodePage { get; set; } = 1252;
     public string WorldSaveDir { get; set; } = "save/";
     public string AccountDir { get; set; } = "accounts/";
     public string MulFilesDir { get; set; } = "";
@@ -72,6 +74,8 @@ public sealed class SphereConfig
 
     // Game Mechanics
     public int GameMinuteLength { get; set; } = 60;
+    /// <summary>Minutes between Source-X f_onserver_timer calls. Zero disables it.</summary>
+    public int TimerCallMinutes { get; set; }
     public int SectorSleep { get; set; } = 7;
     public int MapViewSize { get; set; } = 18;
     public int MapViewSizeMax { get; set; } = 18;
@@ -405,6 +409,8 @@ public sealed class SphereConfig
         ClientLinger = ini.GetInt(section, "ClientLinger", ClientLinger);
 
         ScpFilesDir = ini.GetValue(section, "ScpFiles") ?? ScpFilesDir;
+        ScriptEncoding = ini.GetValue(section, "ScriptEncoding") ?? ScriptEncoding;
+        ScriptLegacyCodePage = ini.GetInt(section, "ScriptLegacyCodePage", ScriptLegacyCodePage);
         WorldSaveDir = ini.GetValue(section, "WorldSave") ?? WorldSaveDir;
         AccountDir = ini.GetValue(section, "AcctFiles") ?? AccountDir;
         MulFilesDir = ini.GetValue(section, "MulFiles") ?? MulFilesDir;
@@ -436,6 +442,7 @@ public sealed class SphereConfig
         MinCharDeleteTime = ini.GetInt(section, "MinCharDeleteTime", MinCharDeleteTime);
 
         GameMinuteLength = ini.GetInt(section, "GameMinuteLength", GameMinuteLength);
+        TimerCallMinutes = Math.Max(0, ini.GetInt(section, "TimerCall", TimerCallMinutes));
         SectorSleep = ini.GetInt(section, "SectorSleep", SectorSleep);
         MapViewSize = ini.GetInt(section, "MapViewSize", MapViewSize);
         MapViewSizeMax = ini.GetInt(section, "MapViewSizeMax", MapViewSizeMax);
@@ -794,6 +801,17 @@ public sealed class SphereConfig
         if (Md5Passwords) warnings.Add("Md5Passwords=1 — MD5 is legacy-only and weak for public shards");
         if (FloodDetectionCount <= 0) warnings.Add($"FloodDetectionCount={FloodDetectionCount} — flood detection disabled");
         if (FloodDetectionWindowMs < 1000) warnings.Add($"FloodDetectionWindowMs={FloodDetectionWindowMs} — too small, may cause false positives");
+        if (ScriptEncoding.ToUpperInvariant() is not ("AUTO" or "UTF8" or "UTF-8" or "LEGACY" or "ANSI"))
+            warnings.Add($"ScriptEncoding={ScriptEncoding} — expected AUTO, UTF8 or LEGACY; AUTO will be used");
+        try
+        {
+            System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+            _ = System.Text.Encoding.GetEncoding(ScriptLegacyCodePage);
+        }
+        catch (ArgumentException)
+        {
+            warnings.Add($"ScriptLegacyCodePage={ScriptLegacyCodePage} — unavailable; Windows-1252 will be used");
+        }
         if (MovementCreditEnabled && MovementCreditBaseMs < 50) warnings.Add($"MovementCreditBaseMs={MovementCreditBaseMs} — too small, may reject legitimate movement");
         // WalkRegen is tokens-per-SECOND (a rate). A running player needs ~5 steps/s,
         // so a regen below that starves the walk-token bucket and rejects legitimate

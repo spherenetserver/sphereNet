@@ -150,6 +150,13 @@ public static partial class Program
 
     private static void PerformSave()
     {
+        // Source-X f_onserver_save can veto the save with RETURN 1.
+        if (_systemHooks.DispatchServer("save", _serverHookContext))
+        {
+            _log.LogInformation("World save cancelled by f_onserver_save");
+            return;
+        }
+
         // Source-X DEFMSG_WORLDSAVE_S behaviour: tell every online player a
         // save is happening so they don't blame momentary lag on the server
         // crashing. We use the world-event hue (0x0040, light red) which
@@ -161,7 +168,6 @@ public static partial class Program
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            _systemHooks.DispatchServer("save", _serverHookContext);
             _housingEngine?.SerializeAllToTags();
             _shipEngine?.SerializeAllToTags();
             _guildManager?.SerializeAllToTags(_world);
@@ -178,6 +184,7 @@ public static partial class Program
             }
             SaveAccountsToDisk();
             _saveCount++;
+            _systemHooks.DispatchServer("save_ok", _serverHookContext);
             sw.Stop();
             double secs = sw.Elapsed.TotalSeconds;
             _log.LogInformation("Save complete. ({Secs:F2} sec)", secs);
@@ -188,10 +195,17 @@ public static partial class Program
         catch (Exception ex)
         {
             sw.Stop();
+            _systemHooks.DispatchServer("save_fail", _serverHookContext, ex.Message);
             _log.LogError(ex, "World save failed");
             BroadcastToAllPlayers(
                 ServerMessages.GetFormatted("worldsave_failed", ex.Message),
                 SaveHue);
+        }
+        finally
+        {
+            if (sw.IsRunning) sw.Stop();
+            _systemHooks.DispatchServer("save_finished", _serverHookContext,
+                sw.Elapsed.TotalSeconds.ToString("F4", System.Globalization.CultureInfo.InvariantCulture));
         }
     }
 

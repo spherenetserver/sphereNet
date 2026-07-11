@@ -23,6 +23,7 @@ public sealed class ResourceHolder
     private readonly List<StartGoldEntry> _startGold = [];
     private readonly List<MoongateEntry> _moongates = [];
     private readonly Dictionary<string, (string FilePath, List<string> Lines)> _dialogTextCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<int, List<ScriptKey>> _plevelCommands = [];
     private readonly ILogger _logger;
 
     public IReadOnlyList<(Point3D Src, Point3D Dest, string Name)> Teleporters =>
@@ -102,7 +103,8 @@ public sealed class ResourceHolder
     /// All other types use string names that get auto-hashed.
     /// </summary>
     private static bool IsNumericIdType(ResType t) => t is
-        ResType.ItemDef or ResType.CharDef or ResType.SpellDef or ResType.SkillDef or ResType.MultiDef;
+        ResType.ItemDef or ResType.CharDef or ResType.SpellDef or ResType.SkillDef or ResType.MultiDef
+        or ResType.PlevelCfg;
 
     /// <summary>
     /// Definition types whose keys should be retained on the ResourceLink
@@ -239,6 +241,9 @@ public sealed class ResourceHolder
 
             int index = ParseResourceIndex(rawArg, resType);
             if (index < 0) continue;
+
+            if (resType == ResType.PlevelCfg)
+                LoadPlevelCommands(index, section);
 
             var rid = new ResourceId(resType, index);
 
@@ -561,6 +566,17 @@ public sealed class ResourceHolder
     public IReadOnlyList<ResourceScript> ScriptFiles => _scriptFiles;
 
     /// <summary>
+    /// Source-X merges every [PLEVEL n] block into the command list for that
+    /// level. Keeping the original ScriptKey objects also preserves source
+    /// locations for diagnostics and selective resync.
+    /// </summary>
+    public IEnumerable<(int Level, IReadOnlyList<ScriptKey> Commands)> GetPlevelCommandSections()
+    {
+        foreach (var entry in _plevelCommands.OrderBy(pair => pair.Key))
+            yield return (entry.Key, entry.Value);
+    }
+
+    /// <summary>
     /// Log a summary of loaded resources by type.
     /// </summary>
     public void LogResourceSummary()
@@ -664,6 +680,15 @@ public sealed class ResourceHolder
     private void PurgeResourcesFromFile(string filePath)
     {
         string normalized = Path.GetFullPath(filePath);
+        foreach (int level in _plevelCommands.Keys.ToArray())
+        {
+            _plevelCommands[level].RemoveAll(key =>
+                !string.IsNullOrEmpty(key.SourceFile) &&
+                string.Equals(Path.GetFullPath(key.SourceFile), normalized, StringComparison.OrdinalIgnoreCase));
+            if (_plevelCommands[level].Count == 0)
+                _plevelCommands.Remove(level);
+        }
+
         var toRemove = _resources.GetAll()
             .Where(link => !string.IsNullOrEmpty(link.ScriptFilePath) &&
                            string.Equals(Path.GetFullPath(link.ScriptFilePath!), normalized,
@@ -770,6 +795,9 @@ public sealed class ResourceHolder
             int index = ParseResourceIndex(rawArg, resType);
             if (index < 0) continue;
 
+            if (resType == ResType.PlevelCfg)
+                LoadPlevelCommands(index, section);
+
             var rid = new ResourceId(resType, index);
 
             if (resType == ResType.Spawn)
@@ -854,6 +882,21 @@ public sealed class ResourceHolder
         }
 
         _logger.LogInformation("Loaded {Count} teleporters", _teleporters.Count);
+    }
+
+    private void LoadPlevelCommands(int level, ScriptSection section)
+    {
+        if (!_plevelCommands.TryGetValue(level, out var commands))
+        {
+            commands = [];
+            _plevelCommands[level] = commands;
+        }
+
+        foreach (var key in section.Keys)
+        {
+            if (!commands.Any(existing => existing.Key.Equals(key.Key, StringComparison.OrdinalIgnoreCase)))
+                commands.Add(key);
+        }
     }
 
     private void LoadStarts(ScriptSection section)

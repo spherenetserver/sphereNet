@@ -3,6 +3,47 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-11] - Source-X script pack, yukleme sirasi ve runtime uyumluluk gecisi
+----------------------------------------
+
+DEGISTIRILDI - Source-X kaynak yukleme ve metin kodlamasi:
+  - SCPFILES dogrudan oldSphere/Scripts-X-main kokune alindi. spheretables.scp
+    RESOURCES sirasi uygulanarak 756 etkin dosya yukleniyor; yorumlanmis ve
+    not_complete kaynaklar artik recursive taramayla yanlislikla dahil edilmiyor.
+  - Script okuyucu AUTO, UTF8 ve LEGACY modlarini destekliyor. AUTO once kati
+    UTF-8 dogrulamasi yapiyor, gecersiz dosyalarda ayarlanabilir legacy codepage'e
+    donuyor. SCRIPTENCODING ve SCRIPTLEGACYCODEPAGE sphere.ini'ye eklendi.
+  - UTF-8 BOM, Windows-1252 ve Turkce Windows-1254 senaryolari regresyonlarla
+    dogrulandi; encoding degisikliginde eski dosya cache'i temizleniyor.
+
+DUZELTILDI - Definition, PLEVEL ve Source-X hook yasam dongusu:
+  - ITEMDEF/TEMPLATE statik yukleme ilk ON=@ trigger govdesinde duruyor; runtime
+    NAME, TYPE veya DISPID satirlari ortak base definition'i artik bozmuyor.
+  - Ayni seviyedeki tum PLEVEL bloklari dosyalar arasinda birlestiriliyor ve
+    komut yetkileri Source-X gibi eksiksiz yukleniyor.
+  - Server start/exit/save/save_ok/save_fail/save_finished, resync, TimerCall,
+    IP block, connect request ve connection acquired hook'lari gercek olay
+    noktalarina baglandi. Save veto ve hook donus degerleri korunuyor.
+  - Karakter olusturma f_onchar_create_init/f_onchar_create sirasina alindi;
+    client feature flags, profession ve race degerleri trigger argumanlarina
+    aktariliyor ve iptal halinde yarim karakter kaydi birakilmiyor.
+
+EKLENDI - SERV ve global script yuzeyi:
+  - SERV.SPELL, ITEMDEF genis alanlari, combat/magic/option bayraklari, SCPFILES,
+    decay, housing, NPC train ve guild/town stone sorgulari eklendi.
+  - SERV.NEWITEM ve SERV.NEWNPC istemci oturumuna bagli olmadan global factory
+    olarak calisiyor; NEW referansi ve temel definition verileri korunuyor.
+  - DB, LDB ve MDB komut/satir sorgulari server hook'larinda da calisiyor;
+    MDB.IMPORTDB ve FILE.FILEEXIST Source-X baslangic fonksiyonlarina baglandi.
+  - Bilinmeyen ITEMDEF alanlari tani kaydi tutulurken extended definition
+    property olarak korunuyor ve runtime/SERV sorgularina aciliyor.
+
+DOGRULANDI - Gercek Scripts-X-main manifesti tam 756 dosyayla parse edilip
+  definition registry'leri olusturuldu. Source-X smoke/regresyonlari dahil tum
+  cozum 1336/1336 basarili; derleme sifir uyari ve sifir hata.
+
+================================================================================
+
 [2026-07-10] - Genel oyun butunlugu: envanter, ticaret, sosyal sistemler ve dunya yasam dongusu
 ----------------------------------------
 

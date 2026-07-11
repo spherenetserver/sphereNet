@@ -8,7 +8,7 @@ internal sealed class ScriptPackInventory
     private static readonly Regex SectionRegex = new(@"^\s*\[([^\]]+)\]", RegexOptions.Compiled);
     private static readonly Regex OnRegex = new(@"^\s*ON\s*=\s*(@?[A-Za-z0-9_]+|\d+|\*)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex DialogButtonRegex = new(@"^\s*(BUTTON|ONBUTTON)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex FeatureRegex = new(@"\b(DB\.|SQL|SQLDB|MYSQL|SQLITE|SERV\.|SENDPACKET|PACKET|STRREGEXNEW|ISOBSCENE|WEBPAGE|SKILLMENU|INPDLG|TRYSRV|TRYSRC|TRYP|BUY|SELL|TIMERF)\b",
+    private static readonly Regex FeatureRegex = new(@"\b(DB\.|LDB\.|MDB\.|SQL|SQLDB|MYSQL|SQLITE|SERV\.|SENDPACKET|PACKET|STRREGEXNEW|ISOBSCENE|WEBPAGE|SKILLMENU|INPDLG|TRYSRV|TRYSRC|TRYP|BUY|SELL|TIMERF)\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private readonly List<ScriptRiskHit> _riskHits = [];
@@ -28,9 +28,7 @@ internal sealed class ScriptPackInventory
 
     public static ScriptPackInventory Build(string rootPath)
     {
-        var files = Directory.GetFiles(rootPath, "*.scp", SearchOption.AllDirectories)
-            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var files = ScriptResourceManifest.Resolve(rootPath).ToArray();
         var sectionCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var triggerCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var featureCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -103,7 +101,7 @@ internal sealed class ScriptPackInventory
     private static string NormalizeFeature(string value)
     {
         string upper = value.Trim().TrimEnd('.').ToUpperInvariant();
-        return upper.StartsWith("DB", StringComparison.Ordinal) ? "DB.*" : upper;
+        return upper is "DB" or "LDB" or "MDB" ? "DB.*" : upper;
     }
 
     private static void Increment(Dictionary<string, int> map, string key)

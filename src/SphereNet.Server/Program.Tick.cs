@@ -197,6 +197,13 @@ public static partial class Program
                     PerformSave();
                 }
 
+                if (_config.TimerCallMinutes > 0
+                    && now - _lastServerHookTimerMs >= _config.TimerCallMinutes * 60_000L)
+                {
+                    _lastServerHookTimerMs = now;
+                    _systemHooks.DispatchServer("timer", _serverHookContext);
+                }
+
                 // Replay packet delivery runs every main-loop iteration
                 // (~1-15ms) for smooth character movement instead of being
                 // batched into the 100ms server tick.

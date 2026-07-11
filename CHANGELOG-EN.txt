@@ -4,6 +4,48 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-11] - Source-X script pack, load ordering and runtime compatibility transition
+----------------------------------------
+
+CHANGED - Source-X resource loading and text encoding:
+  - SCPFILES now points directly to oldSphere/Scripts-X-main. The
+    spheretables.scp RESOURCES order loads exactly 756 active files; commented
+    and not_complete sources are no longer pulled in by a recursive scan.
+  - The script reader supports AUTO, UTF8 and LEGACY modes. AUTO validates strict
+    UTF-8 first and falls back to a configurable legacy code page only for an
+    invalid UTF-8 stream. SCRIPTENCODING and SCRIPTLEGACYCODEPAGE are available
+    in sphere.ini.
+  - UTF-8 BOM, Windows-1252 and Turkish Windows-1254 paths are covered by
+    regressions, and changing the encoding configuration clears stale file cache.
+
+FIXED - Definitions, PLEVEL and Source-X hook lifecycle:
+  - Static ITEMDEF/TEMPLATE loading stops at the first ON=@ trigger body, so
+    runtime NAME, TYPE and DISPID statements cannot mutate the shared base def.
+  - Every PLEVEL block for the same level is merged across files, preserving the
+    complete Source-X command privilege table.
+  - Server start/exit/save/save_ok/save_fail/save_finished, resync, TimerCall,
+    IP block, connect-request and connection-acquired hooks are wired to their
+    real lifecycle events. Save vetoes and non-boolean hook results are retained.
+  - Character creation now follows f_onchar_create_init/f_onchar_create and
+    passes client feature flags, profession and race through trigger arguments;
+    cancellation leaves no partial character record.
+
+ADDED - SERV and global script surface:
+  - SERV.SPELL, extended ITEMDEF fields, combat/magic/option flags, SCPFILES,
+    decay, housing, NPC training and guild/town stone lookups are available.
+  - SERV.NEWITEM and SERV.NEWNPC work as client-independent global factories,
+    retaining NEW references and core definition state.
+  - DB, LDB and MDB commands/row lookups work from server hooks; MDB.IMPORTDB and
+    FILE.FILEEXIST support the Source-X startup functions.
+  - Unknown ITEMDEF fields remain diagnostic-visible while also being retained
+    as extended definition properties for runtime and SERV queries.
+
+VERIFIED - The real Scripts-X-main manifest parses all 756 declared files and
+  builds the definition registries. The complete solution, including Source-X
+  smoke/regression coverage, passes 1336/1336 with zero build warnings/errors.
+
+================================================================================
+
 [2026-07-10] - General gameplay integrity: inventory, trade, social systems and world lifecycle
 ----------------------------------------
 

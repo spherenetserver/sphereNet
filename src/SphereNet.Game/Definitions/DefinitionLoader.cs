@@ -237,9 +237,16 @@ public sealed class DefinitionLoader
             return;
         }
 
+        bool insideTrigger = false;
         foreach (var key in keys)
         {
             if (key.Key.Equals("ON", StringComparison.OrdinalIgnoreCase))
+            {
+                if (key.HasArg && key.Arg.StartsWith('@'))
+                    insideTrigger = true;
+                continue;
+            }
+            if (insideTrigger)
                 continue;
             string upper = key.Key.ToUpperInvariant();
             if (upper == "ID" || upper == "ITEMID")
@@ -376,9 +383,19 @@ public sealed class DefinitionLoader
         var keys = link.StoredKeys;
         if (keys == null || keys.Count == 0) { ItemDefsLoaded++; return; }
 
+        // Definition properties end at the first @trigger. Trigger bodies act
+        // on item instances at runtime and must never mutate the shared base
+        // definition (e.g. random NAME/DISPID assignments in @Create/@Timer).
+        bool insideTrigger = false;
         foreach (var key in keys)
         {
             if (key.Key.Equals("ON", StringComparison.OrdinalIgnoreCase))
+            {
+                if (key.HasArg && key.Arg.StartsWith('@'))
+                    insideTrigger = true;
+                continue;
+            }
+            if (insideTrigger)
                 continue;
 
             // ID / DISPID accept both a numeric graphic ("0x0F6C") AND a

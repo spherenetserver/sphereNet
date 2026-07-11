@@ -1988,24 +1988,12 @@ public sealed class CommandHandler
         _scriptCommandPrivLevels.Clear();
         int loaded = 0;
 
-        foreach (var link in resources.GetAllResources())
+        foreach (var section in resources.GetPlevelCommandSections())
         {
-            if (link.Id.Type != ResType.PlevelCfg)
-                continue;
+            int numericLevel = Math.Clamp(section.Level, (int)PrivLevel.Guest, (int)PrivLevel.Owner);
+            var level = (PrivLevel)numericLevel;
 
-            using var sf = link.OpenAtStoredPosition();
-            if (sf == null)
-                continue;
-
-            var sections = sf.ReadAllSections();
-            if (sections.Count == 0)
-                continue;
-
-            var section = sections[0];
-            if (!TryParsePrivLevel(section.Argument, out var level))
-                continue;
-
-            foreach (var key in section.Keys)
+            foreach (var key in section.Commands)
             {
                 string cmd = key.Key.Trim();
                 if (string.IsNullOrEmpty(cmd))

@@ -596,6 +596,22 @@ public sealed class ScriptInterpreter
             return;
         }
 
+        // Source-X global factories are server verbs, not client verbs. Keeping
+        // them here makes SERV.NEWITEM / SERV.NEWNPC work from startup hooks,
+        // timers, item triggers and functions that have no connected client.
+        if (cmd.Equals("SERV.NEWITEM", StringComparison.OrdinalIgnoreCase) ||
+            cmd.Equals("NEWITEM", StringComparison.OrdinalIgnoreCase))
+        {
+            ServerPropertyResolver?.Invoke($"_NEWITEM={resolvedArg}");
+            return;
+        }
+        if (cmd.Equals("SERV.NEWNPC", StringComparison.OrdinalIgnoreCase) ||
+            cmd.Equals("NEWNPC", StringComparison.OrdinalIgnoreCase))
+        {
+            ServerPropertyResolver?.Invoke($"_NEWNPC={resolvedArg}");
+            return;
+        }
+
         // SERV.ALLCLIENTS <function> — invoke <function> once per online
         // client, with the current target staying as src. Used by admin
         // scripts to tally players, push messages, etc. The server-side
@@ -735,6 +751,18 @@ public sealed class ScriptInterpreter
             string srcUid = args?.Source != null && args.Source.TryGetProperty("UID", out string suid)
                 ? suid : "";
             ServerPropertyResolver?.Invoke($"_GMPAGE={srcUid}|{resolvedArg}");
+            return;
+        }
+
+        // DB/LDB/MDB are global Source-X references. Route their verbs through
+        // the host so they also work in server hooks where no GameClient console
+        // exists (f_onserver_start is the canonical MDB.IMPORTDB caller).
+        if (cmd.StartsWith("DB.", StringComparison.OrdinalIgnoreCase) ||
+            cmd.StartsWith("LDB.", StringComparison.OrdinalIgnoreCase) ||
+            cmd.StartsWith("MDB.", StringComparison.OrdinalIgnoreCase))
+        {
+            int dot = cmd.IndexOf('.');
+            ServerPropertyResolver?.Invoke($"_DB_VERB={cmd[..dot]}|{cmd[(dot + 1)..]}|{resolvedArg}");
             return;
         }
 
@@ -1503,6 +1531,14 @@ public sealed class ScriptInterpreter
             string? servVal = ServerPropertyResolver?.Invoke(servProp);
             if (servVal != null) return servVal;
             return "0";
+        }
+
+        if (varName.StartsWith("DB.", StringComparison.OrdinalIgnoreCase) ||
+            varName.StartsWith("LDB.", StringComparison.OrdinalIgnoreCase) ||
+            varName.StartsWith("MDB.", StringComparison.OrdinalIgnoreCase) ||
+            varName.StartsWith("FILE.", StringComparison.OrdinalIgnoreCase))
+        {
+            return ServerPropertyResolver?.Invoke(varName) ?? "0";
         }
 
         // DEF.X / DEF0.X — generic [DEFNAME] lookup. Dialog rendering had

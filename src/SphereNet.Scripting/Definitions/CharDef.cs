@@ -49,6 +49,23 @@ public sealed class CharDef : BaseDef
     public int HitsMax { get; set; }
 
     public ItemType FoodType { get; set; }
+    public string FoodTypeRaw { get; set; } = "";
+    public ushort BaseColor { get; set; }
+    public int EraLimitGear { get; set; }
+    public int EraLimitLoot { get; set; }
+    public int EraLimitProps { get; set; }
+    public short ResPhysical { get; set; }
+    public short ResFire { get; set; }
+    public short ResCold { get; set; }
+    public short ResPoison { get; set; }
+    public short ResEnergy { get; set; }
+    public short ResPhysicalMax { get; set; }
+    public short ResFireMax { get; set; }
+    public short ResColdMax { get; set; }
+    public short ResPoisonMax { get; set; }
+    public short ResEnergyMax { get; set; }
+    public short ReflectPhysicalDam { get; set; }
+    public List<string> Aliases { get; } = [];
 
     public uint Anim { get; set; }
     public short BloodColor { get; set; }
@@ -121,7 +138,17 @@ public sealed class CharDef : BaseDef
             case "CAN": Can = ParseCanFlags(value); break;
             case "HEIGHT": byte.TryParse(value, out byte h); Height = h; break;
             case "DEFNAME": DefName = value; break;
-            case "FOODTYPE": Enum.TryParse(value, true, out ItemType ft); FoodType = ft; break;
+            case "DEFNAME2":
+                foreach (string alias in value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+                    if (!Aliases.Contains(alias, StringComparer.OrdinalIgnoreCase)) Aliases.Add(alias);
+                break;
+            case "FOODTYPE":
+                FoodTypeRaw = value.Trim();
+                FoodType = ParseFoodType(value);
+                break;
+            case "ERALIMITGEAR": int.TryParse(value, out int eraGear); EraLimitGear = eraGear; break;
+            case "ERALIMITLOOT": int.TryParse(value, out int eraLoot); EraLimitLoot = eraLoot; break;
+            case "ERALIMITPROPS": int.TryParse(value, out int eraProps); EraLimitProps = eraProps; break;
             case "NPC":
             case "NPCBRAIN":
                 // Source-X CHARDEF accepts both "NPC=brain_vendor" (DEFNAME
@@ -191,6 +218,17 @@ public sealed class CharDef : BaseDef
             case "DAMCOLD": short.TryParse(value, out short dcv); DamCold = dcv; break;
             case "DAMPOISON": short.TryParse(value, out short dpov); DamPoison = dpov; break;
             case "DAMENERGY": short.TryParse(value, out short dev); DamEnergy = dev; break;
+            case "RESPHYSICAL": short.TryParse(value, out short rpv); ResPhysical = rpv; break;
+            case "RESFIRE": short.TryParse(value, out short rfv); ResFire = rfv; break;
+            case "RESCOLD": short.TryParse(value, out short rcv); ResCold = rcv; break;
+            case "RESPOISON": short.TryParse(value, out short rpov); ResPoison = rpov; break;
+            case "RESENERGY": short.TryParse(value, out short rev); ResEnergy = rev; break;
+            case "RESPHYSICALMAX": short.TryParse(value, out short rpm); ResPhysicalMax = rpm; break;
+            case "RESFIREMAX": short.TryParse(value, out short rfm); ResFireMax = rfm; break;
+            case "RESCOLDMAX": short.TryParse(value, out short rcm); ResColdMax = rcm; break;
+            case "RESPOISONMAX": short.TryParse(value, out short rpom); ResPoisonMax = rpom; break;
+            case "RESENERGYMAX": short.TryParse(value, out short rem); ResEnergyMax = rem; break;
+            case "REFLECTPHYSICALDAM": short.TryParse(value, out short reflect); ReflectPhysicalDam = reflect; break;
             case "SPEECH":
                 SpeechResource = ResourceId.FromString(value);
                 var speechRid = ResourceId.FromString(value, ResType.Speech);
@@ -226,6 +264,8 @@ public sealed class CharDef : BaseDef
                 // COLOR after ITEMNEWBIE sets that item's hue
                 if (NewbieItems.Count > 0)
                     NewbieItems[^1].Color = value.Trim();
+                else
+                    BaseColor = ParseUShort(value);
                 break;
             default:
                 if (key.StartsWith("BREATH.", StringComparison.OrdinalIgnoreCase))
@@ -235,7 +275,7 @@ public sealed class CharDef : BaseDef
                 }
                 if (TryParseSkillName(key, out var skill))
                 {
-                    SkillRanges[skill] = ParseRange(value);
+                    SkillRanges[skill] = ParseSkillRange(value);
                     break;
                 }
                 if (key.StartsWith("TAG.", StringComparison.OrdinalIgnoreCase))
@@ -346,8 +386,39 @@ public sealed class CharDef : BaseDef
 
     private static ushort ParseUShort(string value)
     {
-        ushort.TryParse(value, out ushort result);
-        return result;
+        string token = value.Trim();
+        int op = token.LastIndexOfAny(['+', '-']);
+        int delta = 0;
+        if (op > 0 && int.TryParse(token[(op + 1)..], out int parsedDelta))
+        {
+            delta = token[op] == '-' ? -parsedDelta : parsedDelta;
+            token = token[..op].Trim();
+        }
+
+        uint numeric;
+        if (token.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            uint.TryParse(token.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out numeric);
+        else if (token.Length > 1 && token[0] == '0')
+            uint.TryParse(token, System.Globalization.NumberStyles.HexNumber, null, out numeric);
+        else if (!uint.TryParse(token, out numeric) && DefNameResolver?.Invoke(token) is long resolved)
+            numeric = unchecked((uint)resolved);
+
+        return (ushort)Math.Clamp((long)numeric + delta, 0, ushort.MaxValue);
+    }
+
+    private static ItemType ParseFoodType(string value)
+    {
+        string[] choices = value.Split(',', 2, StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (choices.Length == 0)
+            return ItemType.Normal;
+        string first = choices[0];
+        string[] parts = first.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 0)
+            return ItemType.Normal;
+        string token = parts.Length > 1 && int.TryParse(parts[0], out _) ? parts[1] : parts[0];
+        if (token.StartsWith("t_", StringComparison.OrdinalIgnoreCase)) token = token[2..];
+        token = token.Replace("_", "", StringComparison.Ordinal);
+        return Enum.TryParse(token, true, out ItemType type) ? type : ItemType.Normal;
     }
 
     private static (int Min, int Max) ParseRange(string value)
@@ -376,6 +447,31 @@ public sealed class CharDef : BaseDef
         }
         int.TryParse(value, out int single);
         return (single, single);
+    }
+
+    private static (int Min, int Max) ParseSkillRange(string value)
+    {
+        string normalized = value.Trim().Trim('{', '}').Trim();
+        string[] parts = normalized.Split([' ', '\t', ','],
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 0)
+            return (0, 0);
+
+        if (!decimal.TryParse(parts[0], System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture, out decimal min))
+            return (0, 0);
+        decimal max = min;
+        if (parts.Length > 1 && !decimal.TryParse(parts[1], System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture, out max))
+            max = min;
+        if (max < min)
+            (min, max) = (max, min);
+
+        // Source scripts express skills in displayed points (15.0), while the
+        // runtime stores tenths (150). Plain integer script values retain the
+        // legacy raw-scale behavior used by generated definitions.
+        decimal scale = normalized.Contains('.') ? 10m : 1m;
+        return ((int)Math.Round(min * scale), (int)Math.Round(max * scale));
     }
 
     private static ushort ParseHexOrDec(string value)

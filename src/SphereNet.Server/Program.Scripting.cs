@@ -226,6 +226,8 @@ public static partial class Program
             // _ALLCLIENTS=<srcUid>|<funcName>.
             _ when upper.StartsWith("_ALLCLIENTS=") => HandleAllClients(property[12..]),
             _ when upper.StartsWith("_WRITEFILE=") => HandleServWriteFile(property[11..]),
+            _ when upper.StartsWith("_DELETEFILE=") => HandleServDeleteFile(property[12..]),
+            _ when upper.StartsWith("_CONSOLE=") => HandleServConsole(property[9..]),
             _ when upper.StartsWith("_LOG=") => HandleServLog(property[5..]),
             _ when upper.StartsWith("_GMPAGE=") => HandleServGmPage(property[8..]),
             _ when upper.StartsWith("_VARLIST=") => HandleServVarListToCaller(property[9..]),
@@ -472,6 +474,28 @@ public static partial class Program
             "ID" or "DISPID" => $"0{def.DispIndex:X}",
             "ICON" => def.Icon ?? "",
             "NPC" or "NPCBRAIN" => def.NpcBrain.ToString(),
+            "CAN" => $"0{(ulong)def.Can:X}",
+            "COLOR" => $"0{def.BaseColor:X}",
+            "FOODTYPE" => def.FoodTypeRaw,
+            "ERALIMITGEAR" => def.EraLimitGear.ToString(),
+            "ERALIMITLOOT" => def.EraLimitLoot.ToString(),
+            "ERALIMITPROPS" => def.EraLimitProps.ToString(),
+            "RESPHYSICAL" => def.ResPhysical.ToString(),
+            "RESFIRE" => def.ResFire.ToString(),
+            "RESCOLD" => def.ResCold.ToString(),
+            "RESPOISON" => def.ResPoison.ToString(),
+            "RESENERGY" => def.ResEnergy.ToString(),
+            "RESPHYSICALMAX" => def.ResPhysicalMax.ToString(),
+            "RESFIREMAX" => def.ResFireMax.ToString(),
+            "RESCOLDMAX" => def.ResColdMax.ToString(),
+            "RESPOISONMAX" => def.ResPoisonMax.ToString(),
+            "RESENERGYMAX" => def.ResEnergyMax.ToString(),
+            "REFLECTPHYSICALDAM" => def.ReflectPhysicalDam.ToString(),
+            "SOUND" or "SOUNDIDLE" => $"0{def.SoundIdle:X}",
+            "SOUNDNOTICE" => $"0{def.SoundNotice:X}",
+            "SOUNDHIT" => $"0{def.SoundHit:X}",
+            "SOUNDGETHIT" => $"0{def.SoundGetHit:X}",
+            "SOUNDDIE" => $"0{def.SoundDie:X}",
             _ => ""
         };
     }
@@ -502,9 +526,9 @@ public static partial class Program
             "ID" or "DISPID" => $"0{def.DispIndex:X}",
             "TYPE" => string.IsNullOrWhiteSpace(def.TypeRaw) ? def.Type.ToString() : def.TypeRaw,
             "TDATA1" => def.TData1Name ?? $"0{def.TData1:X}",
-            "TDATA2" => $"0{def.TData2:X}",
+            "TDATA2" => def.TData2Name ?? $"0{def.TData2:X}",
             "TDATA3" => def.TData3Name ?? $"0{def.TData3:X}",
-            "TDATA4" => $"0{def.TData4:X}",
+            "TDATA4" => def.TData4Name ?? $"0{def.TData4:X}",
             "CAN" => $"0{(ulong)def.Can:X}",
             "CANUSE" => $"0{(ulong)def.CanUse:X}",
             "HEIGHT" => def.Height.ToString(),
@@ -1299,6 +1323,29 @@ public static partial class Program
             _log?.LogWarning(ex, "SERV.WRITEFILE failed");
             return "0";
         }
+    }
+
+    private static string? HandleServDeleteFile(string raw)
+    {
+        try
+        {
+            return ScriptFileHandle.DeleteFile(GetScriptFilesBasePath(), raw.Trim()) ? "1" : "0";
+        }
+        catch (Exception ex)
+        {
+            _log?.LogWarning(ex, "SERV.DELETEFILE failed");
+            return "0";
+        }
+    }
+
+    private static string? HandleServConsole(string raw)
+    {
+        string command = raw.Trim();
+        if (command.Length == 0)
+            return "0";
+
+        HandleConsoleCommand(command);
+        return "1";
     }
 
     private static string? HandleServLog(string message)

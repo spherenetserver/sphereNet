@@ -35,6 +35,8 @@ namespace SphereNet.Game.Clients;
 /// </summary>
 public sealed partial class GameClient : IClientContext
 {
+    private List<(uint ClilocId, string Args)>? _scriptTooltipProperties;
+    private List<(ushort EntryTag, uint ClilocId, ushort Flags)>? _scriptContextEntries;
     Account? IClientContext.Account => Account;
     Character? IClientContext.Character => Character;
     GameWorld IClientContext.World => World;
@@ -92,6 +94,16 @@ public sealed partial class GameClient : IClientContext
     {
         get => _pendingMenuOptions;
         set => _pendingMenuOptions = value;
+    }
+    List<(uint ClilocId, string Args)>? IClientContext.ScriptTooltipProperties
+    {
+        get => _scriptTooltipProperties;
+        set => _scriptTooltipProperties = value;
+    }
+    List<(ushort EntryTag, uint ClilocId, ushort Flags)>? IClientContext.ScriptContextEntries
+    {
+        get => _scriptContextEntries;
+        set => _scriptContextEntries = value;
     }
     short IClientContext.LastHits
     {
@@ -174,6 +186,20 @@ public sealed partial class GameClient : IClientContext
     bool IClientContext.CloseScriptDialog(string dialogId) => CloseScriptDialog(dialogId);
     bool IClientContext.TryFindMenuSection(string menuDefname, out SphereNet.Scripting.Parsing.ScriptSection menuSection) => TryFindMenuSection(menuDefname, out menuSection);
     void IClientContext.SendInputPromptGump(IScriptObj target, string propName, int maxLength) => SendInputPromptGump(target, propName, maxLength);
+    void IClientContext.SendScriptPrompt(IScriptObj target, string functionName, string message)
+    {
+        uint promptId = unchecked((uint)HashCode.Combine(functionName.ToUpperInvariant(), target.GetName()));
+        SendPrompt(promptId, string.IsNullOrWhiteSpace(message) ? "Enter text:" : message,
+            (_, _, _, text) =>
+            {
+                if (Triggers?.Runner == null || string.IsNullOrWhiteSpace(functionName)) return;
+                var args = new SphereNet.Scripting.Execution.TriggerArgs(Character, argStr: text)
+                {
+                    Object1 = target
+                };
+                Triggers.Runner.TryRunFunction(functionName, target, this, args, out _);
+            });
+    }
 
     void IClientContext.OpenVendorBuy(Character vendor) => OpenVendorBuy(vendor);
     void IClientContext.HandleVendorInteraction(Character vendor) => HandleVendorInteraction(vendor);

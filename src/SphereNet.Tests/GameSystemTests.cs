@@ -1415,6 +1415,8 @@ public class GameSystemTests
 
         var lines = ParseKeys(
             "SERV.WRITEFILE audit/external.log|boot ok",
+            "SERV.DELETEFILE audit/external.log",
+            "SERV.CONSOLE resync",
             "SERV.LOG bridge ok",
             "SERV.GMPAGE stuck",
             "SERV.VARLIST quest_",
@@ -1431,6 +1433,8 @@ public class GameSystemTests
         interpreter.Execute(lines, target, new TestConsole(), args, scope);
 
         Assert.Contains("_WRITEFILE=audit/external.log|boot ok", captured);
+        Assert.Contains("_DELETEFILE=audit/external.log", captured);
+        Assert.Contains("_CONSOLE=resync", captured);
         Assert.Contains("_LOG=bridge ok", captured);
         Assert.Contains(captured, r => r.StartsWith("_GMPAGE=", StringComparison.Ordinal) && r.EndsWith("|stuck", StringComparison.Ordinal));
         // VARLIST/PRINTLISTS carry the caller's UID so the server can route the dump to

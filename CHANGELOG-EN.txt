@@ -53,9 +53,23 @@ FIXED - DIALOG, SPEECH and EVENTS script compatibility:
     item creation paths. TEVENTS is distinct from dynamic EVENTS and legacy
     saves cannot execute the same handler twice.
 
+FIXED - Deep parser, definition and script-verb compatibility:
+  - NPC skills written as 15.0/100.0 are converted to the runtime tenths scale;
+    the script parser supports *=, /= and %= assignments.
+  - ITEMDEF CAN, CANUSE, LAYER and TDATA1-4 plus CHARDEF SOUND, DEFNAME2,
+    FOODTYPE, COLOR, ERA and AOS resistance fields load symbolic DEFNAME values
+    and forward references without losing their identity. Named ITEMDEF runtime
+    metadata no longer collapses to the 16-bit client graphic id during lookups.
+  - ADDCLILOC, ADDCONTEXTENTRY, PROMPTCONSOLE/U, SPELLEFFECT, NOTOUPDATE/CLEAR,
+    CHANGEFACE, SERV.DELETEFILE and SERV.CONSOLE are wired to operational client
+    and server paths. Enhanced Client face selection uses Source-X gump context
+    0x2B0.
+  - Unterminated SCP section headers emit file-and-line diagnostics and tolerate
+    the missing closing bracket, preserving the affected resource body.
+
 VERIFIED - The real Scripts-X-main manifest parses all 756 declared files and
   builds the definition registries. The complete solution, including Source-X
-  smoke/regression coverage, passes 1348/1348 with zero build warnings/errors.
+  smoke/regression coverage, passes 1355/1355 with zero build warnings/errors.
 
 ================================================================================
 

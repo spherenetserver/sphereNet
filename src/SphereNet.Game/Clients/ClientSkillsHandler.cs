@@ -82,6 +82,8 @@ public sealed class ClientSkillsHandler
     {
         if (_character == null || _character.HasActiveSkillPending()) return;
 
+        var scriptProperties = new List<(uint ClilocId, string Args)>();
+        _client.ScriptTooltipProperties = scriptProperties;
         if (_triggerDispatcher != null)
         {
             var pre = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillPreStart,
@@ -584,6 +586,9 @@ public sealed class ClientSkillsHandler
             return;
         }
 
+        var scriptProperties = new List<(uint ClilocId, string Args)>();
+        _client.ScriptTooltipProperties = scriptProperties;
+
         if (_triggerDispatcher != null)
         {
             TriggerResult triggerResult = obj switch
@@ -596,7 +601,10 @@ public sealed class ClientSkillsHandler
             };
 
             if (triggerResult == TriggerResult.True)
+            {
+                _client.ScriptTooltipProperties = null;
                 return;
+            }
         }
 
         var propList = new List<(uint ClilocId, string Args)>
@@ -652,6 +660,9 @@ public sealed class ClientSkillsHandler
             _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.ClientTooltipAfterDefault,
                 new TriggerArgs { CharSrc = _character, ItemSrc = item, ScriptConsole = _client, N1 = requested ? 1 : 0 });
         }
+
+        propList.AddRange(scriptProperties);
+        _client.ScriptTooltipProperties = null;
 
         var props = propList.ToArray();
         // Deterministic hash - .NET GetHashCode() is randomized per process

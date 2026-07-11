@@ -110,6 +110,12 @@ public class Item : ObjBase
     public uint TData3 { get => _tdata3; set => _tdata3 = value; }
     public uint TData4 { get => _tdata4; set => _tdata4 = value; }
 
+    /// <summary>Resolve the definition that created this instance. Named
+    /// ITEMDEFs keep their 32-bit identity in SCRIPTDEF while BaseId contains
+    /// only the 16-bit client graphic, so BaseId alone is not sufficient.</summary>
+    private SphereNet.Scripting.Definitions.ItemDef? ResolveDefinition() =>
+        DefinitionLoader.GetItemDef(ItemDefHelper.ResolveInstanceDefIndex(this));
+
     // Runtime EVENTS list (from ITEMDEF + dynamically added)
     private readonly List<ResourceId> _events = [];
 
@@ -126,7 +132,7 @@ public class Item : ObjBase
         {
             if (_type != ItemType.Normal)
                 return _type;
-            var def = DefinitionLoader.GetItemDef(BaseId);
+            var def = ResolveDefinition();
             if (def?.Type is ItemType defType && defType != ItemType.Normal)
                 return defType;
             var world = ResolveWorld?.Invoke();
@@ -194,7 +200,7 @@ public class Item : ObjBase
             // ItemType getter probes DispIdFull (door check) and would recurse.
             ItemType resolvedType = _type != ItemType.Normal
                 ? _type
-                : DefinitionLoader.GetItemDef(BaseId)?.Type ?? ItemType.Normal;
+                : ResolveDefinition()?.Type ?? ItemType.Normal;
             if (resolvedType == ItemType.Ore)
             {
                 return _amount switch
@@ -225,7 +231,7 @@ public class Item : ObjBase
 
     /// <summary>True when this item is a stackable pile (CAN_I_PILE or tiledata
     /// Generic), so its <see cref="Amount"/> stacks and is shown on the label.</summary>
-    public bool IsPile => IsPileBase(DefinitionLoader.GetItemDef(BaseId));
+    public bool IsPile => IsPileBase(ResolveDefinition());
 
     /// <summary>Strength required to equip this item (ITEMDEF REQSTR / Source-X
     /// CItemBase::m_ttEquippable.m_StrReq). A per-instance OVERRIDE.REQSTR tag
@@ -236,7 +242,7 @@ public class Item : ObjBase
         {
             if (TryGetTag("OVERRIDE.REQSTR", out string? raw) && int.TryParse(raw, out int v))
                 return v;
-            return DefinitionLoader.GetItemDef(BaseId)?.ReqStr ?? 0;
+            return ResolveDefinition()?.ReqStr ?? 0;
         }
     }
 
@@ -274,7 +280,7 @@ public class Item : ObjBase
             // Source-X CItem::GetName resolves the base name from the type def
             // the same way. Without this the client showed a blank label on
             // single click because GetName() returned "".
-            var def = DefinitionLoader.GetItemDef(BaseId);
+            var def = ResolveDefinition();
             if (def != null && !string.IsNullOrWhiteSpace(def.Name))
                 raw = DefinitionLoader.ResolveNames(def.Name);
         }
@@ -463,7 +469,7 @@ public class Item : ObjBase
     {
         get
         {
-            var def = DefinitionLoader.GetItemDef(BaseId);
+            var def = ResolveDefinition();
             return def?.Speed ?? 0;
         }
     }
@@ -475,7 +481,7 @@ public class Item : ObjBase
     {
         get
         {
-            var def = DefinitionLoader.GetItemDef(BaseId);
+            var def = ResolveDefinition();
             if (def is { HasWeight: true })
                 return def.Weight;
 
@@ -498,7 +504,7 @@ public class Item : ObjBase
         get
         {
             if (EquipLayer == Layer.TwoHanded) return true;
-            var def = DefinitionLoader.GetItemDef(BaseId);
+            var def = ResolveDefinition();
             return def?.TwoHands ?? false;
         }
     }
@@ -605,7 +611,7 @@ public class Item : ObjBase
         // reference seeds it from the tiledata "Generic" (stackable) flag at
         // itemdef load and packs rarely script it explicitly — without the
         // tiledata fallback ore/ingot/log piles never merge in the pack.
-        var def = DefinitionLoader.GetItemDef(BaseId);
+        var def = ResolveDefinition();
         bool pile = def != null && (def.Can & CanFlags.I_Pile) != 0;
         if (!pile)
         {
@@ -1199,7 +1205,7 @@ public class Item : ObjBase
         }
 
         // Def-fallback: read from ITEMDEF if available
-        var def = DefinitionLoader.GetItemDef(BaseId);
+        var def = ResolveDefinition();
         if (def != null)
         {
             switch (upper)
@@ -2304,7 +2310,7 @@ public class Item : ObjBase
 
     public bool TryFlipDisplay()
     {
-        var def = DefinitionLoader.GetItemDef(BaseId);
+        var def = ResolveDefinition();
         if (def == null)
             return false;
 
@@ -2712,7 +2718,7 @@ public class Item : ObjBase
 
     private string FormatBaseId()
     {
-        var idef = Definitions.DefinitionLoader.GetItemDef(BaseId);
+        var idef = ResolveDefinition();
         if (idef != null && !string.IsNullOrEmpty(idef.DefName))
             return idef.DefName;
         return $"0{BaseId:X}";
@@ -3234,7 +3240,7 @@ public class Item : ObjBase
 
     private static (int minX, int minY, int maxX, int maxY) GetContainerBounds(Item container)
     {
-        var idef = DefinitionLoader.GetItemDef(container.BaseId);
+        var idef = container.ResolveDefinition();
 
         if (idef != null && idef.TData3 != 0 && idef.TData4 != 0)
         {

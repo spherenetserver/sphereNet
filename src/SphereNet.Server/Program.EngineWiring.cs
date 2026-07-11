@@ -2685,6 +2685,49 @@ public static partial class Program
                         target, requested: false, invalidate: true));
             };
 
+            SphereNet.Game.Objects.Characters.Character.OnScriptSpellEffect = (target, raw, console) =>
+            {
+                if (_spellEngine == null || _resources == null) return;
+                string[] parts = raw.Split([',', ' ', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (parts.Length == 0) return;
+                int spellId = 0;
+                if (!int.TryParse(parts[0], out spellId))
+                {
+                    var rid = _resources.ResolveDefName(parts[0]);
+                    if (rid.IsValid && rid.Type == ResType.SpellDef)
+                        spellId = rid.Index;
+                    else
+                    {
+                        string named = parts[0].StartsWith("s_", StringComparison.OrdinalIgnoreCase)
+                            ? parts[0][2..]
+                            : parts[0];
+                        if (Enum.TryParse<SpellType>(named, true, out var parsed)) spellId = (int)parsed;
+                    }
+                }
+                int skill = target.GetSkill(SkillType.Magery);
+                if (parts.Length > 1)
+                {
+                    if (int.TryParse(parts[1], out int parsedSkill))
+                        skill = parsedSkill;
+                    else if (decimal.TryParse(parts[1], System.Globalization.NumberStyles.Number,
+                                 System.Globalization.CultureInfo.InvariantCulture, out decimal displayedSkill))
+                        skill = (int)Math.Round(displayedSkill * 10m);
+                }
+
+                Character caster = target;
+                if (parts.Length > 2 && parts[2] != "-1" &&
+                    TryParseSerial(parts[2], out Serial casterUid) &&
+                    _world?.FindChar(casterUid) is Character explicitCaster)
+                {
+                    caster = explicitCaster;
+                }
+                else if (parts.Length <= 2 && console is GameClient gc && gc.Character != null)
+                {
+                    caster = gc.Character;
+                }
+                _spellEngine.ApplyScriptSpellEffect(caster, target, (SpellType)spellId, skill);
+            };
+
             SphereNet.Game.Objects.Characters.Character.OpenInfoDialog = target =>
             {
                 // Show inspect dialog on the GM watching the target. The

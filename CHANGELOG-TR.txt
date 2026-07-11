@@ -51,9 +51,22 @@ DUZELTILDI - DIALOG, SPEECH ve EVENTS script uyumlulugu:
     merkezilestirildi. TEVENTS ile dinamik EVENTS ayrildi ve eski kayitlarda ayni
     handler'in iki kez calismasi engellendi.
 
+DUZELTILDI - Derin parser, definition ve script fiili uyumlulugu:
+  - NPC skill degerlerindeki 15.0/100.0 bicimi runtime'in onda birlik olcegine
+    dogru cevriliyor; *=, /= ve %= atamalari script parser tarafindan destekleniyor.
+  - ITEMDEF CAN, CANUSE, LAYER ve TDATA1-4 ile CHARDEF SOUND, DEFNAME2, FOODTYPE,
+    COLOR, ERA ve AOS resist alanlari sembolik DEFNAME degerlerini ve ileri
+    referanslari koruyarak yukleniyor. Isimli ITEMDEF kimligi runtime metadata
+    sorgularinda 16-bit goruntu kimligine dusurulmuyor.
+  - ADDCLILOC, ADDCONTEXTENTRY, PROMPTCONSOLE/U, SPELLEFFECT, NOTOUPDATE/CLEAR,
+    CHANGEFACE, SERV.DELETEFILE ve SERV.CONSOLE gercek istemci/sunucu akimlarina
+    baglandi. Enhanced Client yuz secimi Source-X 0x2B0 gump context'iyle calisiyor.
+  - Kapanmayan SCP bolum basliklari dosya ve satir numarasiyla uyari verip eksik
+    kapanis parantezini tolere ediyor; ilgili resource govdesi artik kaybolmuyor.
+
 DOGRULANDI - Gercek Scripts-X-main manifesti tam 756 dosyayla parse edilip
   definition registry'leri olusturuldu. Source-X smoke/regresyonlari dahil tum
-  cozum 1348/1348 basarili; derleme sifir uyari ve sifir hata.
+  cozum 1355/1355 basarili; derleme sifir uyari ve sifir hata.
 
 ================================================================================
 

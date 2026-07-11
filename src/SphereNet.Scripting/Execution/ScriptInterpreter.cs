@@ -748,6 +748,19 @@ public sealed class ScriptInterpreter
             return;
         }
 
+        if (cmd.Equals("SERV.DELETEFILE", StringComparison.OrdinalIgnoreCase) ||
+            cmd.Equals("DELETEFILE", StringComparison.OrdinalIgnoreCase))
+        {
+            ServerPropertyResolver?.Invoke($"_DELETEFILE={resolvedArg}");
+            return;
+        }
+
+        if (cmd.Equals("SERV.CONSOLE", StringComparison.OrdinalIgnoreCase))
+        {
+            ServerPropertyResolver?.Invoke($"_CONSOLE={resolvedArg}");
+            return;
+        }
+
         if (cmd.Equals("SERV.LOG", StringComparison.OrdinalIgnoreCase) ||
             cmd.Equals("LOG", StringComparison.OrdinalIgnoreCase))
         {

@@ -19,7 +19,8 @@ public sealed class ItemDef : BaseDef
     public int ValueMin { get; set; }
     public int ValueMax { get; set; }
     public ulong QwFlags { get; set; }
-    public CanFlags CanUse { get; set; }
+    public CanEquipFlags CanUse { get; set; }
+    public static Func<string, long?>? DefNameResolver { get; set; }
 
     public int Speed { get; set; }
     public SkillType Skill { get; set; } = SkillType.None;
@@ -40,7 +41,10 @@ public sealed class ItemDef : BaseDef
     // defname in TDATA3) — resolved to a baseid lazily at use time, after all
     // defnames are loaded.
     public string? TData1Name { get; set; }
+    public string? TData2Name { get; set; }
     public string? TData3Name { get; set; }
+    public string? TData4Name { get; set; }
+    public string? DisplayIdRef { get; set; }
     public ulong TFlags { get; set; }
     public ushort AmmoAnim { get; set; }
     public ushort AmmoAnimHue { get; set; }
@@ -98,13 +102,13 @@ public sealed class ItemDef : BaseDef
             case "NAME": Name = value; break;
             case "TYPE": TypeRaw = value.Trim(); Type = ParseItemType(value); break;
             case "WEIGHT": Weight = ParseWeight(value); HasWeight = true; break;
-            case "LAYER": Enum.TryParse(value, true, out Layer l); Layer = l; break;
+            case "LAYER": Layer = ParseLayer(value); break;
             case "FLIPID": ParseHexOrDec(value, out ushort f); FlipId = f; break;
             case "VALUE": (ValueMin, ValueMax) = ParseRange(value); break;
             case "DAM": (AttackMin, AttackMax) = ParseRange(value); break;
             case "ARMOR": (DefenseMin, DefenseMax) = ParseRange(value); break;
-            case "CAN": ParseHexOrDecUInt(value, out uint can); Can = (CanFlags)can; break;
-            case "CANUSE": ParseHexOrDecUInt(value, out uint canUse); CanUse = (CanFlags)canUse; break;
+            case "CAN": Can = (CanFlags)ParseFlags(value); break;
+            case "CANUSE": CanUse = (CanEquipFlags)ParseFlags(value); break;
             case "HEIGHT": byte.TryParse(value, out byte h); Height = h; break;
             case "DUPEITEM": ParseHexOrDec(value, out ushort dup); DupItemId = dup; break;
             case "ID": ParseHexOrDec(value, out ushort id); DispIndex = id; break;
@@ -141,12 +145,18 @@ public sealed class ItemDef : BaseDef
                 if (!ParseHexOrDecUInt(value, out uint td1) && value.Length > 0 &&
                     (char.IsLetter(value[0]) || value[0] == '_')) TData1Name = value.Trim();
                 TData1 = td1; break;
-            case "TDATA2": ParseHexOrDecUInt(value, out uint td2); TData2 = td2; break;
+            case "TDATA2":
+                if (!ParseHexOrDecUInt(value, out uint td2) && value.Length > 0 &&
+                    (char.IsLetter(value[0]) || value[0] == '_')) TData2Name = value.Trim();
+                TData2 = td2; break;
             case "TDATA3":
                 if (!ParseHexOrDecUInt(value, out uint td3) && value.Length > 0 &&
                     (char.IsLetter(value[0]) || value[0] == '_')) TData3Name = value.Trim();
                 TData3 = td3; break;
-            case "TDATA4": ParseHexOrDecUInt(value, out uint td4); TData4 = td4; break;
+            case "TDATA4":
+                if (!ParseHexOrDecUInt(value, out uint td4) && value.Length > 0 &&
+                    (char.IsLetter(value[0]) || value[0] == '_')) TData4Name = value.Trim();
+                TData4 = td4; break;
             case "TFLAGS": ParseHexOrDecULong(value, out ulong tf); TFlags = tf; break;
             case "AMMOANIM": ParseHexOrDec(value, out ushort aa); AmmoAnim = aa; break;
             case "AMMOANIMHUE": ParseHexOrDec(value, out ushort aah); AmmoAnimHue = aah; break;
@@ -275,11 +285,51 @@ public sealed class ItemDef : BaseDef
     private static bool ParseHexOrDecUInt(string value, out uint result)
     {
         result = 0;
+        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int signed) && signed < 0)
+        {
+            result = unchecked((uint)signed);
+            return true;
+        }
         if (value.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             return uint.TryParse(value.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out result);
         if (value.StartsWith("0", StringComparison.OrdinalIgnoreCase) && value.Length > 1)
             return uint.TryParse(value.AsSpan(), System.Globalization.NumberStyles.HexNumber, null, out result);
         return uint.TryParse(value, out result);
+    }
+
+    private static uint ParseFlags(string value)
+    {
+        uint result = 0;
+        foreach (string raw in value.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (ParseHexOrDecUInt(raw, out uint numeric))
+            {
+                result |= numeric;
+                continue;
+            }
+            if (DefNameResolver?.Invoke(raw.Trim()) is long resolved)
+                result |= unchecked((uint)resolved);
+        }
+        return result;
+    }
+
+    private static Layer ParseLayer(string value)
+    {
+        string token = value.Trim();
+        if (ParseHexOrDecUInt(token, out uint numeric) && numeric <= byte.MaxValue)
+            return (Layer)(byte)numeric;
+        if (DefNameResolver?.Invoke(token) is long resolved && resolved is >= 0 and <= byte.MaxValue)
+            return (Layer)(byte)resolved;
+
+        string enumName = token.StartsWith("layer_", StringComparison.OrdinalIgnoreCase)
+            ? token[6..]
+            : token;
+        enumName = enumName.Replace("hand1", "OneHanded", StringComparison.OrdinalIgnoreCase)
+            .Replace("hand2", "TwoHanded", StringComparison.OrdinalIgnoreCase)
+            .Replace("bankbox", "BankBox", StringComparison.OrdinalIgnoreCase)
+            .Replace("beard", "FacialHair", StringComparison.OrdinalIgnoreCase)
+            .Replace("_", "", StringComparison.Ordinal);
+        return Enum.TryParse(enumName, true, out Layer layer) ? layer : Layer.None;
     }
 
     private static void ParseHexOrDecULong(string value, out ulong result)

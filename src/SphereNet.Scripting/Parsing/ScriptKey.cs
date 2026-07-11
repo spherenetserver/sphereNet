@@ -151,7 +151,7 @@ public sealed class ScriptKey
         if (Key.Length > 0 && line[sepPos] == '=')
         {
             char lastChar = Key[^1];
-            if (lastChar is '+' or '-' or '.' or '|' or '&' or '^')
+            if (lastChar is '+' or '-' or '*' or '/' or '%' or '.' or '|' or '&' or '^')
             {
                 string realKey = Key[..^1].TrimEnd();
                 string op = lastChar.ToString();
@@ -176,7 +176,7 @@ public sealed class ScriptKey
         if (Arg.Length >= 2)
         {
             char a0 = Arg[0];
-            if (a0 is '+' or '-' or '.' or '|' or '&' or '^' && Arg[1] == '=')
+            if (a0 is '+' or '-' or '*' or '/' or '%' or '.' or '|' or '&' or '^' && Arg[1] == '=')
             {
                 string realKey = Key;
                 string op = a0.ToString();

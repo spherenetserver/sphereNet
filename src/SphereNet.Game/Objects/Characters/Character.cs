@@ -368,6 +368,7 @@ public partial class Character : ObjBase
     private byte _curFollower;
 
     // Resist caps
+    private short _resPhysicalMax = 70;
     private short _resFireMax = 70;
     private short _resColdMax = 70;
     private short _resPoisonMax = 70;
@@ -578,6 +579,7 @@ public partial class Character : ObjBase
     /// final noto. Installed ONLY when @NotoSend is actually hooked (IsTrigUsed
     /// gate), so the hot ComputeNotoriety path pays just a null check otherwise.</summary>
     public static Func<Character, Character, byte, byte>? OnNotoSend { get; set; }
+    public static Action<Character, string, ITextConsole>? OnScriptSpellEffect { get; set; }
 
     /// <summary>Fired when a moving character shoves past another character's tile
     /// (Source-X @PersonalSpace). Args: mover, the character being pushed past.</summary>
@@ -1048,6 +1050,7 @@ public partial class Character : ObjBase
 
     // Resist caps
     public short ResFireMax { get => _resFireMax; set => _resFireMax = value; }
+    public short ResPhysicalMax { get => _resPhysicalMax; set => _resPhysicalMax = value; }
     public short ResColdMax { get => _resColdMax; set => _resColdMax = value; }
     public short ResPoisonMax { get => _resPoisonMax; set => _resPoisonMax = value; }
     public short ResEnergyMax { get => _resEnergyMax; set => _resEnergyMax = value; }
@@ -2534,6 +2537,7 @@ public partial class Character : ObjBase
             case "SPEECHCOLOR": value = _speechColor.ToString(); return true;
             case "MAXFOLLOWER": value = _maxFollower.ToString(); return true;
             case "CURFOLLOWER": value = CurFollower.ToString(); return true;
+            case "RESPHYSICALMAX": value = _resPhysicalMax.ToString(); return true;
             case "RESFIREMAX": value = _resFireMax.ToString(); return true;
             case "RESCOLDMAX": value = _resColdMax.ToString(); return true;
             case "RESPOISONMAX": value = _resPoisonMax.ToString(); return true;
@@ -3252,7 +3256,7 @@ public partial class Character : ObjBase
 
     public override bool TrySetProperty(string key, string value)
     {
-        if (!TryNormalizeScriptValue(value, out string normalized))
+        if (!TryNormalizeScriptValue(key, value, out string normalized))
             normalized = value;
 
         // AOS on-hit combat properties are tag-backed (see TryGetProperty).
@@ -3358,7 +3362,7 @@ public partial class Character : ObjBase
             case "TITLE": _title = value; return true;
             case "FLAGS":
             {
-                uint flagsHex = ParseHexOrDecUInt(normalized);
+                uint flagsHex = ParseNamedFlagMask(normalized);
                 _statFlags = (StatFlag)flagsHex;
                 return true;
             }
@@ -3501,6 +3505,7 @@ public partial class Character : ObjBase
                 SetOwnerControllerRaw(OwnerSerial, controllerUid, mirrorLegacySummon: IsSummoned);
                 return true;
             }
+            case "RESPHYSICALMAX": if (short.TryParse(normalized, out short rphmv)) _resPhysicalMax = rphmv; return true;
             case "RESFIREMAX": if (short.TryParse(normalized, out short rfmv)) _resFireMax = rfmv; return true;
             case "RESCOLDMAX": if (short.TryParse(normalized, out short rcmv)) _resColdMax = rcmv; return true;
             case "RESPOISONMAX": if (short.TryParse(normalized, out short rpmv)) _resPoisonMax = rpmv; return true;
@@ -3708,9 +3713,10 @@ public partial class Character : ObjBase
         return base.TrySetProperty(key, value);
     }
 
-    private static bool TryNormalizeScriptValue(string value, out string normalized)
+    private static bool TryNormalizeScriptValue(string key, string value, out string normalized)
     {
         normalized = value.Trim();
+        bool skillValue = _skillNameMap.ContainsKey(key.Trim());
         if (normalized.StartsWith('{') && normalized.EndsWith('}') && normalized.Length > 2)
         {
             string inner = normalized[1..^1].Trim();
@@ -3721,7 +3727,10 @@ public partial class Character : ObjBase
             {
                 if (maxVal < minVal)
                     (minVal, maxVal) = (maxVal, minVal);
-                int pick = Random.Shared.Next((int)Math.Round(minVal), (int)Math.Round(maxVal) + 1);
+                double scale = skillValue ? 10d : 1d;
+                int min = (int)Math.Round(minVal * scale);
+                int max = (int)Math.Round(maxVal * scale);
+                int pick = Random.Shared.Next(min, max + 1);
                 normalized = pick.ToString();
                 return true;
             }
@@ -3730,11 +3739,28 @@ public partial class Character : ObjBase
         if (normalized.Contains('.') &&
             double.TryParse(normalized, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double decimalValue))
         {
-            normalized = ((int)Math.Round(decimalValue * 10d)).ToString();
+            normalized = ((int)Math.Round(decimalValue * (skillValue ? 10d : 1d))).ToString();
             return true;
         }
 
         return true;
+    }
+
+    private static uint ParseNamedFlagMask(string value)
+    {
+        uint result = 0;
+        foreach (string token in value.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            uint numeric = ParseHexOrDecUInt(token);
+            if (numeric != 0 || token.Trim() == "0")
+            {
+                result |= numeric;
+                continue;
+            }
+            if (DefinitionLoader.StaticResources?.TryResolveDefNameValue(token.Trim(), out long resolved) == true)
+                result |= unchecked((uint)resolved);
+        }
+        return result;
     }
 
     private static readonly Dictionary<string, SkillType> _skillNameMap = BuildSkillNameMap();
@@ -3871,6 +3897,17 @@ public partial class Character : ObjBase
     {
         if (key.Equals("SOUND", StringComparison.OrdinalIgnoreCase))
             return EmitScriptSound(args);
+        if (key.Equals("NOTOUPDATE", StringComparison.OrdinalIgnoreCase) ||
+            key.Equals("NOTOCLEAR", StringComparison.OrdinalIgnoreCase))
+        {
+            NotoSaveUpdate?.Invoke(this);
+            return true;
+        }
+        if (key.Equals("SPELLEFFECT", StringComparison.OrdinalIgnoreCase))
+        {
+            OnScriptSpellEffect?.Invoke(this, args, source);
+            return true;
+        }
         if (key.Equals("EFFECT", StringComparison.OrdinalIgnoreCase))
             return EmitScriptEffect(args);
         if (key.Equals("FACE", StringComparison.OrdinalIgnoreCase))

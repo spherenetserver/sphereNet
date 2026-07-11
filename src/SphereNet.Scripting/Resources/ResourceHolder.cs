@@ -46,6 +46,7 @@ public sealed class ResourceHolder
         // CAN=MT_RUN|MT_WALK) against the script's own [DEFNAME] tables instead
         // of a hardcoded map. Falls back to the built-in map when unresolved.
         CharDef.DefNameResolver = name => TryResolveDefNameValue(name, out var v) ? v : null;
+        ItemDef.DefNameResolver = name => TryResolveDefNameValue(name, out var v) ? v : null;
         CharDef.SpellNameResolver = name =>
         {
             var rid = ResolveDefName(name);
@@ -132,6 +133,7 @@ public sealed class ResourceHolder
         try
         {
             file = resScript.Open();
+            file.Diagnostic = message => _logger.LogWarning("{Message}", message);
         }
         catch (FileNotFoundException)
         {

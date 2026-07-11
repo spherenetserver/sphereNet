@@ -69,26 +69,25 @@ public class SourceXVerbInventoryGuardrailTests
     {
         ["CObjBase_functions.tbl"] =
         [
-            "ADDCLILOC", "BASEPROPLIST", "BASETAGLIST", "CLILOCLIST", "DIALOGCLOSE",
-            "EDIT", "EFFECTLOCATION", "GOAWAKE", "GOSLEEP", "PROMPTCONSOLE",
-            "PROMPTCONSOLEU", "PROPLIST", "REMOVECLILOC", "REPLACECLILOC", "SAYUA",
-            "SPELLEFFECT"
+            "BASEPROPLIST", "BASETAGLIST", "CLILOCLIST", "DIALOGCLOSE", "EDIT",
+            "EFFECTLOCATION", "GOAWAKE", "GOSLEEP", "PROPLIST", "REMOVECLILOC",
+            "REPLACECLILOC", "SAYUA"
         ],
         ["CChar_functions.tbl"] =
         [
             "AFK", "GOCHARID", "GOCLI", "GOSOCK", "GOTYPE", "HEAR", "NEWBIESKILL",
-            "NOTOCLEAR", "NOTOUPDATE", "TARGETCLOSE", "UNDERWEAR"
+            "TARGETCLOSE", "UNDERWEAR"
         ],
         ["CClient_functions.tbl"] =
         [
-            "ADDCONTEXTENTRY", "BADSPAWN", "CHANGEFACE", "CHARLIST", "CLOSEPROFILE",
+            "BADSPAWN", "CHARLIST", "CLOSEPROFILE",
             "CLOSESTATUS", "CODEXOFWISDOM", "DYE", "EVERBTARG", "EXTRACT", "GOTARG",
             "LAST", "LINK", "MAPWAYPOINT", "NUDGE", "NUKE", "NUKECHAR", "REPAIR",
             "SCROLL", "SHOWSKILLS", "SKILLUPDATE", "SUMMON", "TILE", "UNEXTRACT"
         ],
         ["CServer.cpp"] =
         [
-            "BLOCKIP", "CALCCRYPT", "CONSOLE", "IMPORT", "SAVESTATICS", "UNBLOCKIP"
+            "BLOCKIP", "CALCCRYPT", "IMPORT", "SAVESTATICS", "UNBLOCKIP"
         ]
     };
 

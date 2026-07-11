@@ -202,6 +202,7 @@ public static class CharDefHelper
         {
             ApplyNpcDefinitionSkills(ch, def);
             ApplyNpcDefinitionTags(ch, def);
+            ApplyNpcDefinitionProperties(ch, def);
         }
 
         AfterApplyDefName?.Invoke(ch);
@@ -242,5 +243,25 @@ public static class CharDefHelper
 
         foreach (var (key, value) in def.TagDefs.GetAll())
             ch.SetTag(key, value);
+    }
+
+    private static void ApplyNpcDefinitionProperties(Character ch, CharDef def)
+    {
+        if (def.BaseColor != 0) ch.TrySetProperty("COLOR", $"0{def.BaseColor:X}");
+        if (def.ResPhysical != 0) ch.TrySetProperty("RESPHYSICAL", def.ResPhysical.ToString());
+        if (def.ResFire != 0) ch.TrySetProperty("RESFIRE", def.ResFire.ToString());
+        if (def.ResCold != 0) ch.TrySetProperty("RESCOLD", def.ResCold.ToString());
+        if (def.ResPoison != 0) ch.TrySetProperty("RESPOISON", def.ResPoison.ToString());
+        if (def.ResEnergy != 0) ch.TrySetProperty("RESENERGY", def.ResEnergy.ToString());
+        if (def.ResPhysicalMax != 0) ch.TrySetProperty("RESPHYSICALMAX", def.ResPhysicalMax.ToString());
+        if (def.ResFireMax != 0) ch.TrySetProperty("RESFIREMAX", def.ResFireMax.ToString());
+        if (def.ResColdMax != 0) ch.TrySetProperty("RESCOLDMAX", def.ResColdMax.ToString());
+        if (def.ResPoisonMax != 0) ch.TrySetProperty("RESPOISONMAX", def.ResPoisonMax.ToString());
+        if (def.ResEnergyMax != 0) ch.TrySetProperty("RESENERGYMAX", def.ResEnergyMax.ToString());
+        if (def.ReflectPhysicalDam != 0) ch.SetTag("REFLECTPHYSICALDAM", def.ReflectPhysicalDam.ToString());
+        if (def.EraLimitGear != 0) ch.SetTag("ERALIMITGEAR", def.EraLimitGear.ToString());
+        if (def.EraLimitLoot != 0) ch.SetTag("ERALIMITLOOT", def.EraLimitLoot.ToString());
+        if (def.EraLimitProps != 0) ch.SetTag("ERALIMITPROPS", def.EraLimitProps.ToString());
+        if (!string.IsNullOrWhiteSpace(def.FoodTypeRaw)) ch.SetTag("FOODTYPE", def.FoodTypeRaw);
     }
 }

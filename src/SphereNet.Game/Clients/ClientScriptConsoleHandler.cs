@@ -95,6 +95,7 @@ public sealed class ClientScriptConsoleHandler
     private void Resync() => _client.Resync();
     private void BroadcastDrawObject(Character ch) => _client.BroadcastDrawObject(ch);
     private void SendInputPromptGump(IScriptObj target, string propName, int maxLength) => _client.SendInputPromptGump(target, propName, maxLength);
+    private void SendScriptPrompt(IScriptObj target, string functionName, string message) => _client.SendScriptPrompt(target, functionName, message);
     private void BeginXVerbTarget(string verb, string args) => _client.BeginXVerbTarget(verb, args);
     private bool TryFindMenuSection(string menuDefname, out SphereNet.Scripting.Parsing.ScriptSection menuSection) => _client.TryFindMenuSection(menuDefname, out menuSection);
     private static bool IsPlainDefToken(string token) => GameClient.IsPlainDefToken(token);
@@ -136,6 +137,63 @@ public sealed class ClientScriptConsoleHandler
 
         string cmd = key.Trim();
         string upper = cmd.ToUpperInvariant();
+
+        if (upper == "ADDCLILOC")
+        {
+            string[] parts = args.Split(',', 2, StringSplitOptions.TrimEntries);
+            if (parts.Length > 0 && uint.TryParse(parts[0], out uint cliloc))
+                _client.ScriptTooltipProperties?.Add((cliloc, parts.Length > 1 ? parts[1] : ""));
+            return true;
+        }
+
+        if (upper == "ADDCONTEXTENTRY")
+        {
+            string[] parts = args.Split(',', StringSplitOptions.TrimEntries);
+            if (parts.Length >= 2 && ushort.TryParse(parts[0], out ushort tag) &&
+                uint.TryParse(parts[1], out uint cliloc))
+            {
+                ushort flags = parts.Length >= 3 && ushort.TryParse(parts[2], out ushort parsedFlags)
+                    ? parsedFlags : (ushort)0;
+                _client.ScriptContextEntries?.Add((tag, cliloc, flags));
+            }
+            return true;
+        }
+
+        if (upper is "PROMPTCONSOLE" or "PROMPTCONSOLEU")
+        {
+            string raw = args.Trim();
+            int split = raw.IndexOfAny([' ', '\t', ',']);
+            string function = split < 0 ? raw : raw[..split].Trim();
+            string message = split < 0 ? "Enter text:" : raw[(split + 1)..].Trim(' ', '\t', ',');
+            SendScriptPrompt(target, function, message);
+            return true;
+        }
+
+        if (upper == "CHANGEFACE")
+        {
+            // Source-X sends an empty gump with context 0x2B0. Enhanced clients
+            // populate that context with their native face picker and return the
+            // selected face item graphic as the button id.
+            var facePicker = new GumpBuilder(_character.Uid.Value, 0x2B0, 0, 0)
+            {
+                ExplicitX = 50,
+                ExplicitY = 50
+            };
+            SendGump(facePicker, (buttonId, _, _) =>
+            {
+                if (buttonId is < 0x3B44 or > 0x3B4D || _character.IsDeleted)
+                    return;
+
+                _character.GetEquippedItem(Layer.Face)?.Delete();
+                var face = _world.CreateItem();
+                face.BaseId = (ushort)buttonId;
+                face.Hue = _character.Hue;
+                face.Name = "face";
+                if (!_character.Equip(face, Layer.Face))
+                    face.Delete();
+            });
+            return true;
+        }
 
         if (upper == "OBJ")
         {

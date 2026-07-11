@@ -2352,6 +2352,8 @@ public sealed class ClientWorldFeaturesHandler
             return;
 
         var entries = new List<(ushort EntryTag, uint ClilocId, ushort Flags)>();
+        var scriptEntries = new List<(ushort EntryTag, uint ClilocId, ushort Flags)>();
+        _client.ScriptContextEntries = scriptEntries;
 
         if (ch != null)
         {
@@ -2388,6 +2390,9 @@ public sealed class ClientWorldFeaturesHandler
         {
             FireContextMenuTrigger(item, ItemTrigger.ContextMenuRequest, 0);
         }
+
+        entries.AddRange(scriptEntries);
+        _client.ScriptContextEntries = null;
 
         if (entries.Count > 0)
             _netState.Send(new PacketContextMenu(targetSerial, entries.ToArray()));

@@ -20,6 +20,7 @@ public sealed class ScriptFile : IDisposable
     public ScriptContext Context { get; } = new();
     public bool IsOpen => _reader != null || _cachedLines != null;
     public bool UseCache { get; set; }
+    public Action<string>? Diagnostic { get; set; }
 
     /// <summary>
     /// Clear the static file content cache to free memory after bulk loading.
@@ -171,6 +172,13 @@ public sealed class ScriptFile : IDisposable
                 int end = line.IndexOf(']');
                 if (end > 1)
                     return line[1..end].Trim();
+
+                Diagnostic?.Invoke($"Malformed section header at {FilePath}:{Context.LineNumber}: {line}");
+                // Recover the common pack typo "[BOOK name" by treating end
+                // of line as the missing closing bracket. Reporting alone
+                // would still discard the entire resource body.
+                if (line.Length > 1)
+                    return line[1..].Trim();
             }
         }
     }

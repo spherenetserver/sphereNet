@@ -168,6 +168,7 @@ public sealed class DefinitionLoader
             }
         }
 
+        ResolveItemDefReferences();
         ResolveRegionResourceReapDefNames();
 
         Skills.SkillEngine.StatAdvCurves = _resources.StatAdvance;
@@ -365,6 +366,8 @@ public sealed class DefinitionLoader
 
         if (!string.IsNullOrEmpty(def.DefName))
             _resources.RegisterDefName(def.DefName, link.Id);
+        foreach (string alias in def.Aliases)
+            _resources.RegisterDefName(alias, link.Id);
 
         if (_charDefs.TryGetValue(link.Id.Index, out var existing))
         {
@@ -417,6 +420,7 @@ public sealed class DefinitionLoader
                     var rid = _resources.ResolveDefName(key.Arg.Trim());
                     if (rid.IsValid && rid.Type == ResType.ItemDef)
                     {
+                        def.DisplayIdRef = key.Arg.Trim();
                         // Two paths: referenced itemdef already loaded →
                         // inherit its DispIndex; or it's a forward/pending
                         // reference → fall back to its index (which for
@@ -522,7 +526,7 @@ public sealed class DefinitionLoader
                     break;
                 }
                 case "LAYER":
-                    if (byte.TryParse(key.Arg, out byte ly)) def.Layer = (Layer)ly;
+                    if (TryResolveByteValue(key.Arg, out byte ly)) def.Layer = (Layer)ly;
                     break;
                 case "GROUP":
                     if (ulong.TryParse(key.Arg, out ulong gr)) def.Group = gr;
@@ -869,5 +873,86 @@ public sealed class DefinitionLoader
                 result |= num;
         }
         return result;
+    }
+
+    private bool TryResolveByteValue(string value, out byte result)
+    {
+        string token = value.Trim();
+        if (byte.TryParse(token, out result))
+            return true;
+        if (_resources.TryResolveDefNameValue(token, out long resolved) && resolved is >= 0 and <= byte.MaxValue)
+        {
+            result = (byte)resolved;
+            return true;
+        }
+        result = 0;
+        return false;
+    }
+
+    private void ResolveItemDefReferences()
+    {
+        // Resolve after every ITEMDEF has loaded so forward aliases such as
+        // ID=i_base_item and crop TDATAx=i_next_stage use the referenced
+        // definition's wire graphic instead of a truncated string hash.
+        for (int pass = 0; pass < 4; pass++)
+        {
+            bool changed = false;
+            foreach (var def in _itemDefs.Values)
+            {
+                ushort disp = def.DispIndex;
+                uint td1 = def.TData1, td2 = def.TData2, td3 = def.TData3, td4 = def.TData4;
+                bool defChanged = ResolveItemReference(def.DisplayIdRef, ref disp);
+                defChanged |= ResolveItemReference(def.TData1Name, ref td1);
+                defChanged |= ResolveItemReference(def.TData2Name, ref td2);
+                defChanged |= ResolveItemReference(def.TData3Name, ref td3);
+                defChanged |= ResolveItemReference(def.TData4Name, ref td4);
+                if (defChanged)
+                {
+                    def.DispIndex = disp;
+                    def.TData1 = td1; def.TData2 = td2; def.TData3 = td3; def.TData4 = td4;
+                    changed = true;
+                }
+            }
+            if (!changed) break;
+        }
+    }
+
+    private bool ResolveItemReference(string? name, ref ushort destination)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        uint value = ResolveItemReferenceValue(name);
+        if (value == 0 || value > ushort.MaxValue || destination == value) return false;
+        destination = (ushort)value;
+        return true;
+    }
+
+    private bool ResolveItemReference(string? name, ref uint destination)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        uint value = ResolveItemReferenceValue(name);
+        if (value == 0 || destination == value) return false;
+        destination = value;
+        return true;
+    }
+
+    private uint ResolveItemReferenceValue(string name)
+        => ResolveItemReferenceValue(name, []);
+
+    private uint ResolveItemReferenceValue(string name, HashSet<int> visited)
+    {
+        var rid = _resources.ResolveDefName(name.Trim());
+        if (!rid.IsValid || rid.Type != ResType.ItemDef) return 0;
+        if (!visited.Add(rid.Index)) return 0;
+        if (_itemDefs.TryGetValue(rid.Index, out var referenced))
+        {
+            if (!string.IsNullOrWhiteSpace(referenced.DisplayIdRef))
+            {
+                uint nested = ResolveItemReferenceValue(referenced.DisplayIdRef, visited);
+                if (nested != 0) return nested;
+            }
+            if (referenced.DispIndex != 0)
+                return referenced.DispIndex;
+        }
+        return rid.Index is > 0 and <= ushort.MaxValue ? (uint)rid.Index : 0;
     }
 }

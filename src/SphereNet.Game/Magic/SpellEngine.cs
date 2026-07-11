@@ -904,6 +904,16 @@ public sealed class SpellEngine
         ApplyCharEffect(attacker, target, def, attacker.GetSkill(SkillType.Magery));
     }
 
+    /// <summary>Source-X character SPELLEFFECT verb: apply a spell immediately
+    /// with the supplied skill level, without cast-time/resource checks.</summary>
+    public bool ApplyScriptSpellEffect(Character caster, Character target, SpellType spell, int skillLevel)
+    {
+        var def = GetSpellDef(spell);
+        if (def == null) return false;
+        ApplyCharEffect(caster, target, def, Math.Clamp(skillLevel, 0, ushort.MaxValue));
+        return true;
+    }
+
     /// <summary>Apply spell effect to a single character target.</summary>
     private void ApplyCharEffect(Character caster, Character target, SpellDef def, int skillLevel)
     {

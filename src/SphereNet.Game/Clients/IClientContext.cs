@@ -81,6 +81,8 @@ internal interface IClientContext : ITextConsole
     ushort PendingMenuId { get; set; }
     string PendingMenuDefname { get; set; }
     List<MenuOptionEntry>? PendingMenuOptions { get; set; }
+    List<(uint ClilocId, string Args)>? ScriptTooltipProperties { get; set; }
+    List<(ushort EntryTag, uint ClilocId, ushort Flags)>? ScriptContextEntries { get; set; }
     short LastHits { get; set; }
     short LastMana { get; set; }
     short LastStam { get; set; }
@@ -148,6 +150,7 @@ internal interface IClientContext : ITextConsole
     bool CloseScriptDialog(string dialogId);
     bool TryFindMenuSection(string menuDefname, out SphereNet.Scripting.Parsing.ScriptSection menuSection);
     void SendInputPromptGump(IScriptObj target, string propName, int maxLength);
+    void SendScriptPrompt(IScriptObj target, string functionName, string message);
 
     // --- gameplay bridges ---
     void OpenVendorBuy(Character vendor);

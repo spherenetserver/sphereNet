@@ -58,6 +58,7 @@ public sealed class ShipEngine
     /// false to block the move (script RETURN 1). Installed only when one of
     /// the two triggers is hooked, so unhooked shards pay a null check.</summary>
     public Func<Ship, World.Regions.Region?, World.Regions.Region?, bool>? OnShipRegionChange { get; set; }
+    public Action<Character, Item, HousePriv>? OnAddMulti { get; set; }
 
     private void TillerSpeak(Ship ship, string key) =>
         OnTillerSpeak?.Invoke(ship, SphereNet.Game.Messages.ServerMessages.Get(key));
@@ -136,6 +137,7 @@ public sealed class ShipEngine
         }
 
         _ships[multiItem.Uid] = ship;
+        OnAddMulti?.Invoke(owner, multiItem, HousePriv.Owner);
         CreateShipRegion(ship);
         if (needsKey)
         {

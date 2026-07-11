@@ -1284,15 +1284,10 @@ public sealed partial class GameClient
                 var namedDef = DefinitionLoader.GetItemDef(rid.Index);
                 if (namedDef != null)
                 {
-                    item.ItemType = namedDef.Type;
+                    ItemDefHelper.ApplyInstanceMetadata(item, rid.Index,
+                        setDisplayId: false, setName: false);
                     if (!string.IsNullOrWhiteSpace(namedDef.Name))
                         item.Name = DefinitionLoader.ResolveNames(namedDef.Name);
-                    foreach (var ev in namedDef.Events)
-                        if (!item.Events.Contains(ev))
-                            item.Events.Add(ev);
-
-                    if (rid.Index != dispId)
-                        item.SetTag("SCRIPTDEF", rid.Index.ToString());
                 }
 
                 PlaceAddedItem(item, targetPos, targetSerial);
@@ -1631,6 +1626,8 @@ public sealed partial class GameClient
             if (dispId == 0 && rid.Index <= 0xFFFF) dispId = (ushort)rid.Index;
             if (dispId == 0) continue;
             item.BaseId = dispId;
+            ItemDefHelper.ApplyInstanceMetadata(item, rid.Index,
+                setDisplayId: false, setName: false);
 
             // Store raw NAME= template; Item.GetName() resolves
             // %plural/singular% markers per Amount on every read.

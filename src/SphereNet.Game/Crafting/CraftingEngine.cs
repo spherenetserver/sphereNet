@@ -186,12 +186,14 @@ public sealed class CraftingEngine
                 : DefinitionLoader.ResolveNames(resultDef?.Name ?? "");
             if (resultDef != null)
             {
+                ItemDefHelper.ApplyInstanceMetadata(item,
+                    recipe.ResultDefId != 0 ? recipe.ResultDefId : recipe.ResultItemId,
+                    setDisplayId: false, setName: false);
                 item.ItemType = resultDef.Type;
                 item.TData1 = resultDef.TData1;
                 item.TData2 = resultDef.TData2;
                 item.TData3 = resultDef.TData3;
                 item.TData4 = resultDef.TData4;
-                item.Events.AddRange(resultDef.Events);
                 foreach (var (key, value) in resultDef.TagDefs.GetAll())
                     item.SetTag(key, value);
                 if (resultDef.HitsMax > 0 || resultDef.HitsMin > 0)

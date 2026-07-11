@@ -324,7 +324,11 @@ public sealed class CharDef : BaseDef
         var parts = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         foreach (var name in parts)
         {
-            var rid = ResourceId.FromString(name);
+            string token = name.Trim();
+            ResType type = token.StartsWith("t_", StringComparison.OrdinalIgnoreCase)
+                ? ResType.TypeDef
+                : ResType.ItemDef;
+            var rid = ResourceId.FromString(token, type);
             if (rid.IsValid)
                 list.Add(rid);
         }

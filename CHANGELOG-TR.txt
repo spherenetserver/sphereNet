@@ -38,9 +38,22 @@ EKLENDI - SERV ve global script yuzeyi:
   - Bilinmeyen ITEMDEF alanlari tani kaydi tutulurken extended definition
     property olarak korunuyor ve runtime/SERV sorgularina aciliyor.
 
+DUZELTILDI - DIALOG, SPEECH ve EVENTS script uyumlulugu:
+  - DIALOG layout satirlari ortak script yorumlayicisindan geciyor; fonksiyon,
+    CALL/RETURN ve kosullu akislardan uretilen gump komutlari calisiyor.
+    BUTTONTILEART, XMFHTMLTOK, ITEMPROPERTY ve PICINPIC kontrolleri eklendi.
+  - SPEECH eslestirmesi satir ici *, ?, karakter araligi ve <ANY> kaliplarini
+    destekliyor. NPC, esya ve MULTIDEF TSPEECH/SPEECH zincirleri konusan istemci
+    baglami korunarak gercek olay noktalarina baglandi.
+  - HouseDesignBegin, AddMulti ve NPCSeeWantItem olaylari native oyun akislariyla
+    tetikleniyor; eski @ItemUnEquipTest adi @ItemUnequip ile uyumlu calisiyor.
+  - Scriptli ITEMDEF kimligi ve metadata uygulamasi tum esya olusturma yollarinda
+    merkezilestirildi. TEVENTS ile dinamik EVENTS ayrildi ve eski kayitlarda ayni
+    handler'in iki kez calismasi engellendi.
+
 DOGRULANDI - Gercek Scripts-X-main manifesti tam 756 dosyayla parse edilip
   definition registry'leri olusturuldu. Source-X smoke/regresyonlari dahil tum
-  cozum 1336/1336 basarili; derleme sifir uyari ve sifir hata.
+  cozum 1348/1348 basarili; derleme sifir uyari ve sifir hata.
 
 ================================================================================
 

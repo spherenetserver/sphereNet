@@ -231,10 +231,20 @@ public sealed class ScriptInterpreter
 
                 case "CALL":
                 {
-                    string funcName = ResolveArgs(key.Arg, target, source, args, scope).Trim();
+                    string call = ResolveArgs(key.Arg, target, source, args, scope).Trim();
+                    int split = call.IndexOfAny([' ', '\t']);
+                    string funcName = split < 0 ? call : call[..split].Trim();
+                    string funcArgString = split < 0 ? "" : call[(split + 1)..].Trim();
                     if (!string.IsNullOrEmpty(funcName))
                     {
-                        var callResult = InvokeFunction(funcName, target, source, args, scope);
+                        var funcArgs = new TriggerArgs(args?.Source,
+                            args?.Number1 ?? 0, args?.Number2 ?? 0, funcArgString)
+                        {
+                            Number3 = args?.Number3 ?? 0,
+                            Object1 = args?.Object1,
+                            Object2 = args?.Object2
+                        };
+                        var callResult = InvokeFunction(funcName, target, source, funcArgs, scope);
                         if (callResult == TriggerResult.True)
                             result = TriggerResult.True;
                     }

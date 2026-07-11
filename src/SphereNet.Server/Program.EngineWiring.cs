@@ -689,9 +689,22 @@ public static partial class Program
             _speech.OnItemHear = (speaker, item, text, mode) =>
             {
                 TriggerResult r = TriggerResult.Default;
-                if (itemHearScripted)
+                var sourceConsole = FindGameClient(speaker);
+
+                if (item.ItemType is SphereNet.Core.Enums.ItemType.Multi or
+                    SphereNet.Core.Enums.ItemType.MultiCustom or SphereNet.Core.Enums.ItemType.Ship)
+                {
+                    r = _triggerDispatcher.FireMultiSpeechTrigger(item, speaker, text,
+                        (int)mode, sourceConsole);
+                }
+
+                if (r != TriggerResult.True && itemHearScripted)
                     r = _triggerDispatcher.FireItemTrigger(item, ItemTrigger.Hear,
-                        new TriggerArgs { CharSrc = speaker, ItemSrc = item, S1 = text, N1 = (int)mode });
+                        new TriggerArgs
+                        {
+                            CharSrc = speaker, ItemSrc = item, S1 = text, N1 = (int)mode,
+                            ScriptConsole = sourceConsole
+                        });
 
                 if (r != TriggerResult.True &&
                     item.ItemType == SphereNet.Core.Enums.ItemType.CommCrystal &&
@@ -1594,7 +1607,9 @@ public static partial class Program
                     }
                     return new NpcAI.NpcCastDecision(false, newSpell, newTarget);
                 };
-            if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCLookAtItem))
+            bool npcLookAtItemUsed = _triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCLookAtItem);
+            bool npcSeeWantItemUsed = _triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCSeeWantItem);
+            if (npcLookAtItemUsed || npcSeeWantItemUsed)
                 _npcAI.OnNpcLookAtItem = (npc, item, dist, want) =>
                 {
                     // Source-X NPC_LookAtItem contract (CCharNPCAct.cpp:954):
@@ -1605,10 +1620,16 @@ public static partial class Program
                     {
                         CharSrc = npc, O1 = item, ItemSrc = item, N1 = dist, N2 = want
                     };
-                    var res = _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCLookAtItem, args);
+                    var res = npcLookAtItemUsed
+                        ? _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCLookAtItem, args)
+                        : TriggerResult.Default;
                     return new NpcAI.NpcLookDecision(
                         res == TriggerResult.True, res == TriggerResult.False, args.N2);
                 };
+            if (npcSeeWantItemUsed)
+                _npcAI.OnNpcSeeWantItem = (npc, item) =>
+                    _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCSeeWantItem,
+                        new TriggerArgs { CharSrc = npc, O1 = item, ItemSrc = item }) == TriggerResult.True;
             if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCAction))
                 _npcAI.OnNpcAction = npc =>
                     _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCAction,
@@ -2166,6 +2187,13 @@ public static partial class Program
                 MaxHousesPerPlayer = _config.MaxHousesPlayer,
                 MaxHousesPerAccount = _config.MaxHousesAccount
             };
+            _housingEngine.OnAddMulti = (owner, multi, privilege) =>
+                _triggerDispatcher.FireCharTrigger(owner, CharTrigger.AddMulti,
+                    new TriggerArgs
+                    {
+                        CharSrc = owner, O1 = multi, N1 = 1, N2 = (int)privilege, N3 = 1,
+                        ScriptConsole = FindGameClient(owner)
+                    });
             _housingEngine.DeserializeFromWorld();
             if (_housingEngine.HouseCount > 0)
                 _log.LogInformation("Restored {Count} houses from world save", _housingEngine.HouseCount);
@@ -2182,6 +2210,13 @@ public static partial class Program
                 MaxShipsPerPlayer = _config.MaxShipsPlayer,
                 MaxShipsPerAccount = _config.MaxShipsAccount,
             };
+            _shipEngine.OnAddMulti = (owner, multi, privilege) =>
+                _triggerDispatcher.FireCharTrigger(owner, CharTrigger.AddMulti,
+                    new TriggerArgs
+                    {
+                        CharSrc = owner, O1 = multi, N1 = 1, N2 = (int)privilege, N3 = 1,
+                        ScriptConsole = FindGameClient(owner)
+                    });
             _shipEngine.OnTillerSpeak = (ship, text) =>
             {
                 // Source-X CItemShip::Speak uses CObjBase::Speak with COLOR_TEXT_DEF.

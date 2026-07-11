@@ -5284,6 +5284,8 @@ public partial class Character : ObjBase
         if (dispId == 0 && rid.Index <= 0xFFFF) dispId = (ushort)rid.Index;
         if (dispId == 0) return;
         item.BaseId = dispId;
+        Definitions.ItemDefHelper.ApplyInstanceMetadata(item, rid.Index,
+            setDisplayId: false, setName: false);
         // Store raw NAME= template; Item.GetName() resolves
         // %plural/singular% markers per current Amount on every read.
         if (idef != null && !string.IsNullOrWhiteSpace(idef.Name))
@@ -5403,6 +5405,8 @@ public partial class Character : ObjBase
 
             var item = world.CreateItem();
             item.BaseId = dispId;
+            Definitions.ItemDefHelper.ApplyInstanceMetadata(item, rid.Index,
+                setDisplayId: false, setName: false);
             if (idef != null && !string.IsNullOrWhiteSpace(idef.Name))
                 item.Name = idef.Name;
 

@@ -40,9 +40,22 @@ ADDED - SERV and global script surface:
   - Unknown ITEMDEF fields remain diagnostic-visible while also being retained
     as extended definition properties for runtime and SERV queries.
 
+FIXED - DIALOG, SPEECH and EVENTS script compatibility:
+  - DIALOG layout lines run through the shared script interpreter, allowing gump
+    commands produced by functions, CALL/RETURN and conditional control flow.
+    BUTTONTILEART, XMFHTMLTOK, ITEMPROPERTY and PICINPIC are supported.
+  - SPEECH matching supports embedded *, ?, character ranges and legacy <ANY>
+    patterns. NPC, item and MULTIDEF TSPEECH/SPEECH chains retain the speaking
+    client's script context and run from their actual event points.
+  - HouseDesignBegin, AddMulti and NPCSeeWantItem fire from native gameplay
+    flows; the legacy @ItemUnEquipTest spelling is compatible with @ItemUnequip.
+  - Scripted ITEMDEF identity and metadata application is centralized across
+    item creation paths. TEVENTS is distinct from dynamic EVENTS and legacy
+    saves cannot execute the same handler twice.
+
 VERIFIED - The real Scripts-X-main manifest parses all 756 declared files and
   builds the definition registries. The complete solution, including Source-X
-  smoke/regression coverage, passes 1336/1336 with zero build warnings/errors.
+  smoke/regression coverage, passes 1348/1348 with zero build warnings/errors.
 
 ================================================================================
 

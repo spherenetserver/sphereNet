@@ -708,9 +708,17 @@ public sealed class ItemSpawnComponent
         }
 
         var item = _world.CreateItem();
-        item.BaseId = (ushort)defIndex;
-
         var idef = DefinitionLoader.GetItemDef(defIndex);
+        if (!ItemDefHelper.ApplyInstanceMetadata(item, defIndex))
+        {
+            if (defIndex is <= 0 or > ushort.MaxValue)
+            {
+                _world.RemoveItem(item);
+                SetNextSpawnTime();
+                return;
+            }
+            item.BaseId = (ushort)defIndex;
+        }
         if (idef != null && !string.IsNullOrEmpty(idef.Name))
             item.Name = idef.Name;
         else

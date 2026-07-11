@@ -934,6 +934,8 @@ public sealed class DeathEngine
                 var part = _world.CreateItem();
                 part.BaseId = dispId;
                 var idef = Definitions.DefinitionLoader.GetItemDef(defIndex);
+                Definitions.ItemDefHelper.ApplyInstanceMetadata(part, defIndex,
+                    setDisplayId: false, setName: false);
                 if (idef != null && !string.IsNullOrWhiteSpace(idef.Name))
                     part.Name = idef.Name;
                 if (amount > 1)

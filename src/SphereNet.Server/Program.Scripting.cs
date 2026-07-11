@@ -935,14 +935,8 @@ public static partial class Program
         var item = _world.CreateItem();
         item.BaseId = dispId;
         item.Name = string.IsNullOrWhiteSpace(def?.Name) ? (def?.DefName ?? token) : def!.Name;
-        if (def != null)
-        {
-            item.ItemType = def.Type;
-            if (!string.IsNullOrWhiteSpace(def.DefName))
-                item.SetTag("ITEMDEF", def.DefName);
-            foreach (var tag in def.TagDefs.GetAll())
-                item.SetTag(tag.Key, tag.Value);
-        }
+        ItemDefHelper.ApplyInstanceMetadata(item, rid.Index, setDisplayId: false,
+            setName: !string.IsNullOrWhiteSpace(def?.Name));
 
         if (parts.Length > 1 && parts[1].Length > 0)
             item.Amount = (ushort)Math.Clamp(ValueCurve.ParseSphereNumber(parts[1]), 1, ushort.MaxValue);

@@ -349,9 +349,9 @@ public sealed class TriggerRunner
     }
 
     /// <summary>
-    /// Execute a SPEECH trigger on a ResourceLink by matching spoken text against ON=*keyword* patterns.
-    /// Wildcard rules: *keyword* = contains, keyword* = startsWith, *keyword = endsWith, keyword = exact.
-    /// All matches are case-insensitive.
+    /// Execute a SPEECH trigger on a ResourceLink by matching spoken text against
+    /// Source-X glob patterns. '*', '?' and character ranges are accepted at any
+    /// position. Legacy Scripts-X packs also use &lt;ANY&gt;; normalize it to '*'.
     /// Source-X parity: a matched block that does RETURN 1 consumes the line and
     /// stops; a block that RETURN 0s (or falls through) does NOT consume it — the
     /// scan continues to the next matching ON= block in the SAME resource.
@@ -396,25 +396,94 @@ public sealed class TriggerRunner
     }
 
     /// <summary>
-    /// Match a SPEECH pattern against spoken text.
-    /// Patterns: *keyword* = contains, keyword* = startsWith, *keyword = endsWith, keyword = exact.
+    /// Match a SPEECH pattern against spoken text using Source-X Str_Match
+    /// semantics. The match is case-insensitive and covers the whole utterance.
     /// </summary>
-    private static bool MatchSpeechPattern(string pattern, string lowerText)
+    internal static bool MatchSpeechPattern(string pattern, string lowerText)
     {
-        bool startsWithStar = pattern[0] == '*';
-        bool endsWithStar = pattern[^1] == '*';
-
-        string keyword = pattern.Trim('*').ToLowerInvariant();
-        if (keyword.Length == 0)
+        if (string.IsNullOrWhiteSpace(pattern))
             return false;
 
-        if (startsWithStar && endsWithStar)
-            return lowerText.Contains(keyword, StringComparison.Ordinal);
-        if (startsWithStar)
-            return lowerText.EndsWith(keyword, StringComparison.Ordinal);
-        if (endsWithStar)
-            return lowerText.StartsWith(keyword, StringComparison.Ordinal);
-        return lowerText.Equals(keyword, StringComparison.Ordinal);
+        string glob = pattern.Replace("<ANY>", "*", StringComparison.OrdinalIgnoreCase)
+            .ToLowerInvariant();
+        string text = lowerText.ToLowerInvariant();
+        var memo = new Dictionary<(int Pattern, int Text), bool>();
+
+        bool Match(int p, int t)
+        {
+            if (memo.TryGetValue((p, t), out bool cached))
+                return cached;
+
+            bool result;
+            if (p >= glob.Length)
+            {
+                result = t >= text.Length;
+            }
+            else if (glob[p] == '*')
+            {
+                while (p + 1 < glob.Length && glob[p + 1] == '*') p++;
+                result = Match(p + 1, t) || (t < text.Length && Match(p, t + 1));
+            }
+            else if (t >= text.Length)
+            {
+                result = false;
+            }
+            else if (glob[p] == '?')
+            {
+                result = Match(p + 1, t + 1);
+            }
+            else if (glob[p] == '[' && TryMatchRange(glob, p, text[t], out int nextPattern, out bool rangeMatch))
+            {
+                result = rangeMatch && Match(nextPattern, t + 1);
+            }
+            else
+            {
+                result = glob[p] == text[t] && Match(p + 1, t + 1);
+            }
+
+            memo[(p, t)] = result;
+            return result;
+        }
+
+        return Match(0, 0);
+    }
+
+    private static bool TryMatchRange(string pattern, int start, char value,
+        out int nextPattern, out bool matched)
+    {
+        nextPattern = start + 1;
+        matched = false;
+        int close = pattern.IndexOf(']', start + 1);
+        if (close < 0)
+            return false;
+
+        int i = start + 1;
+        bool inverted = i < close && pattern[i] is '!' or '^';
+        if (inverted) i++;
+        if (i >= close)
+            return false;
+
+        bool member = false;
+        while (i < close)
+        {
+            char first = pattern[i++];
+            if (first == '\\' && i < close) first = pattern[i++];
+            char last = first;
+            if (i + 1 < close && pattern[i] == '-')
+            {
+                i++;
+                last = pattern[i++];
+                if (last == '\\' && i < close) last = pattern[i++];
+            }
+            char lo = first <= last ? first : last;
+            char hi = first <= last ? last : first;
+            if (value >= lo && value <= hi)
+                member = true;
+        }
+
+        nextPattern = close + 1;
+        matched = inverted ? !member : member;
+        return true;
     }
 
     private static List<ScriptKey> CollectTriggerBody(List<ScriptKey> allKeys, int startIdx)

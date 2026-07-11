@@ -508,6 +508,10 @@ public sealed class HousingEngine
     public int MaxHousesPerPlayer { get; set; } = 1;
     public int MaxHousesPerAccount { get; set; } = 1;
 
+    /// <summary>Source-X @AddMulti notification for the owner's scripted
+    /// CMultiStorage. SphereNet's native registry remains authoritative.</summary>
+    public Action<Character, Item, HousePriv>? OnAddMulti { get; set; }
+
     public HousingEngine(GameWorld world, MultiRegistry multiDefs)
     {
         _world = world;
@@ -619,6 +623,7 @@ public sealed class HousingEngine
         }
 
         _houses[multiItem.Uid] = house;
+        OnAddMulti?.Invoke(owner, multiItem, HousePriv.Owner);
         CreateHouseRegion(house);
         owner.Memory_AddObjTypes(multiItem.Uid, MemoryType.Guard);
 
@@ -672,6 +677,7 @@ public sealed class HousingEngine
             oldOwner.Memory_ClearTypes(oldMemory, MemoryType.Guard);
 
         house.TransferOwnership(newOwner.Uid);
+        OnAddMulti?.Invoke(newOwner, house.MultiItem, HousePriv.Owner);
         newOwner.Memory_AddObjTypes(house.MultiItem.Uid, MemoryType.Guard);
         CreateHouseKey(newOwner, house.MultiItem, toBank: false);
         CreateHouseKey(newOwner, house.MultiItem, toBank: true);

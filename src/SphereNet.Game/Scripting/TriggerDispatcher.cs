@@ -372,6 +372,16 @@ public sealed class TriggerDispatcher
         // 1. @Item* on source character
         if (args.CharSrc != null)
         {
+            // Legacy Scripts-X bola resources used @ItemUnEquipTest for the
+            // pre-unequip veto. Current Source-X calls this @itemUNEQUIP; run
+            // the old alias first without replacing the canonical trigger.
+            if (trigName.Equals("Unequip", StringComparison.OrdinalIgnoreCase))
+            {
+                var legacyResult = RunObjectHandlers(args.CharSrc, "itemUnequipTest", args);
+                if (legacyResult == TriggerResult.True)
+                    return TriggerResult.True;
+            }
+
             string charTrigName = "item" + trigName;
             var result = RunObjectHandlers(args.CharSrc, charTrigName, args);
             if (result == TriggerResult.True)
@@ -399,6 +409,9 @@ public sealed class TriggerDispatcher
             {
                 foreach (var tevRid in itemDef.Events)
                 {
+                    // Older saves may contain copied TEVENTS in the instance EVENTS
+                    // list. RunObjectHandlers already executed those above.
+                    if (item.Events.Contains(tevRid)) continue;
                     var tevLink = Resources.GetResource(tevRid);
                     if (tevLink == null) continue;
                     var result = RunWrapped(tevLink, trigName, item, args);
@@ -422,10 +435,23 @@ public sealed class TriggerDispatcher
             // i_moongate section itself, keyed by its string-hash index.
             // TryAddAtTarget stashes that index in TAG.SCRIPTDEF so the
             // dispatcher can route triggers back to the scripted def.
-            if (item.TryGetTag("SCRIPTDEF", out string? scriptDefStr) &&
-                int.TryParse(scriptDefStr, out int scriptDefIdx) &&
-                scriptDefIdx != item.BaseId)
+            int scriptDefIdx = Definitions.ItemDefHelper.ResolveInstanceDefIndex(item, Resources);
+            if (scriptDefIdx != 0 && scriptDefIdx != item.BaseId)
             {
+                var namedDef = Definitions.DefinitionLoader.GetItemDef(scriptDefIdx);
+                if (namedDef != null)
+                {
+                    foreach (var tevRid in namedDef.Events)
+                    {
+                        if (item.Events.Contains(tevRid)) continue;
+                        var tevLink = Resources.GetResource(tevRid);
+                        if (tevLink == null) continue;
+                        var tevResult = RunWrapped(tevLink, trigName, item, args);
+                        if (tevResult == TriggerResult.True)
+                            return TriggerResult.True;
+                    }
+                }
+
                 var scriptLink = Resources.GetResource(ResType.ItemDef, scriptDefIdx);
                 if (scriptLink != null)
                 {
@@ -497,7 +523,8 @@ public sealed class TriggerDispatcher
     /// Fire SPEECH triggers for an NPC hearing speech.
     /// Iterates the CharDef's SpeechResources list and runs the first matching pattern.
     /// </summary>
-    public TriggerResult FireSpeechTrigger(Character npc, Character speaker, string text, int mode = 0)
+    public TriggerResult FireSpeechTrigger(Character npc, Character speaker, string text,
+        int mode = 0, ITextConsole? sourceConsole = null)
     {
         if (Resources == null || Runner == null)
             return TriggerResult.Default;
@@ -516,23 +543,69 @@ public sealed class TriggerDispatcher
                 var link = Resources.GetResource(speechRid);
                 if (link == null) continue;
 
-                var result = Runner.RunSpeechTrigger(link, text, npc, null, args);
+                var result = Runner.RunSpeechTrigger(link, text, npc, sourceConsole, args);
                 if (result == TriggerResult.True)
                     return TriggerResult.True;
             }
         }
 
-        return RunSpeechResourceHandlers(SpeechPetResources, npc, speaker, text, mode, out _);
+        return RunSpeechResourceHandlers(SpeechPetResources, npc, speaker, text, mode, sourceConsole, out _);
     }
 
-    public TriggerResult FireSpeechSelfTrigger(Character speaker, string text, int mode)
-        => RunSpeechResourceHandlers(SpeechSelfResources, speaker, speaker, text, mode, out _);
+    public TriggerResult FireSpeechSelfTrigger(Character speaker, string text, int mode,
+        ITextConsole? sourceConsole = null)
+        => RunSpeechResourceHandlers(SpeechSelfResources, speaker, speaker, text, mode, sourceConsole, out _);
 
     /// <summary>Fire the speaker's @Speech self-trigger; <paramref name="rewrittenText"/>
     /// returns the utterance the script may have rewritten via ARGS (Source-X @Speech
     /// text rewrite), or the original text when unchanged.</summary>
-    public TriggerResult FireSpeechSelfTrigger(Character speaker, string text, int mode, out string rewrittenText)
-        => RunSpeechResourceHandlers(SpeechSelfResources, speaker, speaker, text, mode, out rewrittenText);
+    public TriggerResult FireSpeechSelfTrigger(Character speaker, string text, int mode,
+        out string rewrittenText, ITextConsole? sourceConsole = null)
+        => RunSpeechResourceHandlers(SpeechSelfResources, speaker, speaker, text, mode, sourceConsole, out rewrittenText);
+
+    /// <summary>
+    /// Run TSPEECH/SPEECH resources attached to a [MULTIDEF]. Source-X routes
+    /// speech heard in a house/ship region through CItemMulti::OnHearRegion.
+    /// </summary>
+    public TriggerResult FireMultiSpeechTrigger(Item multi, Character speaker, string text,
+        int mode = 0, ITextConsole? sourceConsole = null)
+    {
+        if (Resources == null || Runner == null)
+            return TriggerResult.Default;
+
+        var multiLink = Resources.GetResource(ResType.MultiDef, multi.BaseId);
+        if (multiLink?.StoredKeys == null)
+            return TriggerResult.Default;
+
+        var args = new SphereNet.Scripting.Execution.TriggerArgs(speaker, mode, 0, text)
+        {
+            Object1 = multi,
+            Object2 = speaker
+        };
+
+        foreach (var key in multiLink.StoredKeys)
+        {
+            if (!key.Key.Equals("TSPEECH", StringComparison.OrdinalIgnoreCase) &&
+                !key.Key.Equals("SPEECH", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            foreach (string token in key.Arg.Split(',',
+                         StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            {
+                var rid = Resources.ResolveDefName(token);
+                if (!rid.IsValid || rid.Type != ResType.Speech)
+                    rid = ResourceId.FromString(token, ResType.Speech);
+                var speechLink = Resources.GetResource(rid);
+                if (speechLink == null) continue;
+
+                var result = Runner.RunSpeechTrigger(speechLink, text, multi, sourceConsole, args);
+                if (result == TriggerResult.True)
+                    return TriggerResult.True;
+            }
+        }
+
+        return TriggerResult.Default;
+    }
 
     private TriggerResult RunSpeechResourceHandlers(
         IReadOnlyList<ResourceId> speechResources,
@@ -540,6 +613,7 @@ public sealed class TriggerDispatcher
         Character speaker,
         string text,
         int mode,
+        ITextConsole? sourceConsole,
         out string rewrittenText)
     {
         rewrittenText = text;
@@ -557,7 +631,7 @@ public sealed class TriggerDispatcher
             var link = Resources.GetResource(speechRid);
             if (link == null) continue;
 
-            var result = Runner.RunSpeechTrigger(link, text, target, null, args);
+            var result = Runner.RunSpeechTrigger(link, text, target, sourceConsole, args);
             // A script may rewrite the utterance via ARGS; carry it to the next block
             // and back to the caller (the interpreter writes it onto args.ArgString).
             rewrittenText = args.ArgString;
@@ -986,6 +1060,8 @@ public sealed class TriggerDispatcher
         CharTrigger.UserUltimaStoreButton => "UserUltimaStoreButton",
         CharTrigger.UserVirtue => "UserVirtue",
         CharTrigger.UserVirtueInvoke => "UserVirtueInvoke",
+        CharTrigger.AddMulti => "AddMulti",
+        CharTrigger.HouseDesignBegin => "HouseDesignBegin",
         CharTrigger.ToolTip => "ToolTip",
         CharTrigger.Profile => "Profile",
         CharTrigger.itemAfterClick => "itemAfterClick",

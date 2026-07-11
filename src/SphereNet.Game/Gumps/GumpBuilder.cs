@@ -144,6 +144,13 @@ public sealed class GumpBuilder
         return this;
     }
 
+    public GumpBuilder AddButtonTileArt(int x, int y, int normalId, int pressedId,
+        int buttonId, int type, int page, int tileId, int tileHue, int tileX, int tileY)
+    {
+        _layout.Add($"{{ buttontileart {x} {y} {normalId} {pressedId} {type} {page} {buttonId} {tileId} {tileHue} {tileX} {tileY} }}");
+        return this;
+    }
+
     public GumpBuilder AddCheckbox(int x, int y, int uncheckedId, int checkedId, bool initialState, int switchId)
     {
         _layout.Add($"{{ checkbox {x} {y} {uncheckedId} {checkedId} {(initialState ? 1 : 0)} {switchId} }}");
@@ -196,6 +203,21 @@ public sealed class GumpBuilder
     public GumpBuilder AddXmfHtmlGumpColor(int x, int y, int width, int height, uint clilocId, bool hasBackground, bool hasScrollbar, int color)
     {
         _layout.Add($"{{ xmfhtmlgumpcolor {x} {y} {width} {height} {clilocId} {(hasBackground ? 1 : 0)} {(hasScrollbar ? 1 : 0)} {color} }}");
+        return this;
+    }
+
+    public GumpBuilder AddXmfHtmlTok(int x, int y, int width, int height,
+        bool hasBackground, bool hasScrollbar, int color, uint clilocId, string arguments)
+    {
+        string suffix = string.IsNullOrWhiteSpace(arguments) ? "" : $" {arguments.Trim()}";
+        _layout.Add($"{{ xmfhtmltok {x} {y} {width} {height} {(hasBackground ? 1 : 0)} {(hasScrollbar ? 1 : 0)} {color} {clilocId}{suffix} }}");
+        return this;
+    }
+
+    public GumpBuilder AddPicInPic(int x, int y, int gumpId, int width, int height,
+        int sourceX, int sourceY)
+    {
+        _layout.Add($"{{ picinpic {x} {y} {gumpId} {width} {height} {sourceX} {sourceY} }}");
         return this;
     }
 

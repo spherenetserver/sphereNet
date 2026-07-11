@@ -252,5 +252,10 @@ public enum CharTrigger : short
     UserVirtueInvoke,
     UserWarmode,
 
+    // Source-X multi/custom-housing hooks. Appended to preserve the numeric
+    // values of the existing compatibility enum members.
+    AddMulti,
+    HouseDesignBegin,
+
     Qty,
 }

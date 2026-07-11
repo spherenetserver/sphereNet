@@ -23,6 +23,8 @@ using SphereNet.Game.Gumps;
 using SphereNet.Game.Scripting;
 using SphereNet.Scripting.Expressions;
 using SphereNet.Scripting.Definitions;
+using SphereNet.Scripting.Execution;
+using SphereNet.Scripting.Parsing;
 using SphereNet.Network.Packets;
 using SphereNet.Network.Packets.Outgoing;
 using SphereNet.Network.State;
@@ -43,6 +45,58 @@ namespace SphereNet.Game.Clients;
 /// </summary>
 public sealed class ClientDialogHandler
 {
+    private static readonly HashSet<string> DialogRenderCommands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "BUTTON", "BUTTONTILEART", "CHECKBOX", "CHECKERTRANS", "CROPPEDTEXT",
+        "DCROPPEDTEXT", "DHTMLGUMP", "DORIGIN", "DTEXT", "DTEXTENTRY",
+        "DTEXTENTRYLIMITED", "GROUP", "GUMPIC", "GUMPPIC", "GUMPPICTILED",
+        "HTMLGUMP", "ITEMPROPERTY", "NOCLOSE", "NODISPOSE", "NOMOVE", "PAGE",
+        "PICINPIC", "RADIO", "RESIZE", "RESIZEPIC", "TEXT", "TEXTENTRY",
+        "TEXTENTRYLIMITED", "TILEPIC", "TILEPICHUE", "TOOLTIP", "XMFHTMLGUMP",
+        "XMFHTMLGUMPCOLOR", "XMFHTMLTOK"
+    };
+
+    /// <summary>
+    /// Source-X executes a DIALOG layout as a normal script with CDialogDef as
+    /// the target. This adapter captures gump verbs while delegating ordinary
+    /// reads, writes and verbs to the dialog subject. It lets the shared script
+    /// interpreter handle CALL/functions/RETURN/SERV/DB/SRC and control flow.
+    /// </summary>
+    private sealed class DialogRenderTarget : IScriptObj
+    {
+        private readonly IScriptObj _subject;
+        private readonly List<ScriptKey> _output;
+
+        public DialogRenderTarget(IScriptObj subject, List<ScriptKey> output)
+        {
+            _subject = subject;
+            _output = output;
+        }
+
+        public string GetName() => _subject.GetName();
+
+        public bool TryGetProperty(string key, out string value)
+        {
+            string lookup = key.StartsWith("I.", StringComparison.OrdinalIgnoreCase) ? key[2..] : key;
+            return _subject.TryGetProperty(lookup, out value);
+        }
+
+        public bool TryExecuteCommand(string key, string args, ITextConsole source)
+        {
+            if (DialogRenderCommands.Contains(key))
+            {
+                _output.Add(new ScriptKey(key, args));
+                return true;
+            }
+            return _subject.TryExecuteCommand(key, args, source);
+        }
+
+        public bool TrySetProperty(string key, string value) => _subject.TrySetProperty(key, value);
+
+        public TriggerResult OnTrigger(int triggerType, IScriptObj? source, ITriggerArgs? args) =>
+            _subject.OnTrigger(triggerType, source, args);
+    }
+
     private readonly IClientContext _client;
 
     internal ClientDialogHandler(IClientContext client)
@@ -413,7 +467,7 @@ public sealed class ClientDialogHandler
         // copy of a loop body runs with the iterator's value substituted
         // into <local._for> / <local.n> / etc. before render commands see
         // the args — matching Sphere's runtime-expansion behaviour.
-        var expandedKeys = ExpandDialogScriptKeys(layoutSection.Keys, dialogLocals, requestedPage);
+        var expandedKeys = ExecuteDialogLayout(layoutSection.Keys, dialogLocals, requestedPage, dialogId);
 
         // Diagnostic: count of commands per page post-expansion. If page 4
         // (FLAGS) comes out empty while the others are populated, the
@@ -559,6 +613,23 @@ public sealed class ClientDialogHandler
                             ParseIntToken(parts[6]),
                             ParseIntToken(parts[4]),
                             ParseIntToken(parts[5]));
+                    }
+                    break;
+                }
+                case "BUTTONTILEART":
+                {
+                    if (!currentPageVisible) break;
+                    var parts = SplitTokens(args, 11);
+                    if (parts.Length >= 11)
+                    {
+                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
+                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
+                        gump.AddButtonTileArt(
+                            x, y,
+                            ParseIntToken(parts[2]), ParseIntToken(parts[3]),
+                            ParseIntToken(parts[6]), ParseIntToken(parts[4]), ParseIntToken(parts[5]),
+                            ParseIntToken(parts[7]), ParseIntToken(parts[8]),
+                            ParseIntToken(parts[9]), ParseIntToken(parts[10]));
                     }
                     break;
                 }
@@ -874,6 +945,40 @@ public sealed class ClientDialogHandler
                     }
                     break;
                 }
+                case "XMFHTMLTOK":
+                {
+                    if (!currentPageVisible) break;
+                    var parts = SplitTokens(args, 8, keepRemainder: true);
+                    if (parts.Length >= 9)
+                    {
+                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
+                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
+                        gump.AddXmfHtmlTok(x, y,
+                            ParseIntToken(parts[2]), ParseIntToken(parts[3]),
+                            ParseIntToken(parts[4]) != 0, ParseIntToken(parts[5]) != 0,
+                            ParseIntToken(parts[6]), (uint)ParseIntToken(parts[7]), parts[8]);
+                    }
+                    break;
+                }
+                case "ITEMPROPERTY":
+                {
+                    if (currentPageVisible)
+                        gump.AddItemProperty((uint)ParseIntToken(args));
+                    break;
+                }
+                case "PICINPIC":
+                {
+                    if (!currentPageVisible) break;
+                    var parts = SplitTokens(args, 7);
+                    if (parts.Length >= 7)
+                    {
+                        int x = ResolveDialogCoord(parts[0], ref cursorX, ref rowCursorX) + originX;
+                        int y = ResolveDialogCoord(parts[1], ref cursorY, ref rowCursorY) + originY;
+                        gump.AddPicInPic(x, y, ParseIntToken(parts[2]), ParseIntToken(parts[3]),
+                            ParseIntToken(parts[4]), ParseIntToken(parts[5]), ParseIntToken(parts[6]));
+                    }
+                    break;
+                }
             }
         }
 
@@ -1051,6 +1156,46 @@ public sealed class ClientDialogHandler
     {
         var output = new List<SphereNet.Scripting.Parsing.ScriptKey>(input.Count);
         ExpandRange(input, 0, input.Count, output, locals, dialogArgN1);
+        return output;
+    }
+
+    private List<ScriptKey> ExecuteDialogLayout(
+        IReadOnlyList<ScriptKey> input,
+        Dictionary<string, string> fallbackLocals,
+        int dialogArgN1,
+        string dialogId)
+    {
+        var interpreter = _triggerDispatcher?.Runner?.Interpreter;
+        if (interpreter == null || _character == null)
+            return ExpandDialogScriptKeys(input, fallbackLocals, dialogArgN1);
+
+        var output = new List<ScriptKey>(input.Count);
+        IScriptObj subject = _dialogSubjectUid.IsValid
+            ? _world.FindObject(_dialogSubjectUid) ?? _character
+            : _character;
+        var renderTarget = new DialogRenderTarget(subject, output);
+        var triggerArgs = new ExecTriggerArgs(_character, dialogArgN1, 0, dialogArgN1.ToString())
+        {
+            Object1 = subject,
+            Object2 = _character
+        };
+        var scope = new ScriptScope
+        {
+            TriggerName = $"DIALOG:{dialogId}",
+            MaxLoopIterations = 500
+        };
+
+        int start = 0;
+        if (input.Count > 0)
+        {
+            string first = input[0].Key.Trim();
+            var position = first.Split(',', StringSplitOptions.TrimEntries);
+            if (position.Length >= 2 && int.TryParse(position[0], out _) && int.TryParse(position[1], out _))
+                start = 1;
+        }
+
+        IReadOnlyList<ScriptKey> executable = start == 0 ? input : input.Skip(start).ToArray();
+        interpreter.Execute(executable, renderTarget, _client, triggerArgs, scope);
         return output;
     }
 

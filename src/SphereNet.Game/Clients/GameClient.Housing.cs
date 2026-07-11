@@ -30,6 +30,14 @@ public sealed partial class GameClient
             return;
         }
 
+        if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.HouseDesignBegin,
+                new TriggerArgs
+                {
+                    CharSrc = _character, O1 = multi, N1 = 1, N2 = 0, N3 = 2,
+                    ScriptConsole = this
+                }) == TriggerResult.True)
+            return;
+
         var session = _customHousing.Begin(_character, multi);
         Send(new PacketHouseCustomizationMode(multi.Uid.Value, begin: true));
         SendHouseDesign(multi, session.Working);

@@ -424,6 +424,7 @@ public static partial class Program
         }
 
         item.BaseId = dispId;
+        ItemDefHelper.ApplyInstanceMetadata(item, rid.Index, setDisplayId: false, setName: false);
         item.Name = string.IsNullOrWhiteSpace(itemDef?.Name) ? $"Bank check ({amount})" : itemDef!.Name;
         item.Price = amount;
         item.SetTag("BANKCHECK_AMOUNT", amount.ToString());
@@ -451,7 +452,8 @@ public static partial class Program
         if (string.IsNullOrEmpty(text)) return (false, text);
         if (_triggerDispatcher != null)
         {
-            if (_triggerDispatcher.FireSpeechSelfTrigger(speaker, text, (int)mode, out string rewritten) == TriggerResult.True)
+            if (_triggerDispatcher.FireSpeechSelfTrigger(speaker, text, (int)mode,
+                    out string rewritten, FindGameClient(speaker)) == TriggerResult.True)
                 return (true, text); // @Speech RETURN 1 — cancel the whole utterance
             text = rewritten;        // @Speech may have rewritten <ARGS>
         }
@@ -781,6 +783,7 @@ public static partial class Program
 
             var item = _world.CreateItem();
             item.BaseId = dispId;
+            ItemDefHelper.ApplyInstanceMetadata(item, rid.Index, setDisplayId: false, setName: false);
             if (itemDef != null && !string.IsNullOrWhiteSpace(itemDef.Name))
                 item.Name = itemDef.Name;
 
@@ -876,7 +879,8 @@ public static partial class Program
             return;
 
         // Script-driven SPEECH triggers (from CHARDEF SPEECH/TSPEECH)
-        var speechResult = _triggerDispatcher?.FireSpeechTrigger(npc, speaker, text, (int)mode);
+        var speechResult = _triggerDispatcher?.FireSpeechTrigger(npc, speaker, text,
+            (int)mode, FindGameClient(speaker));
         if (speechResult == TriggerResult.True)
         {
             _log.LogDebug("[npc_hear] {Npc} SPEECH trigger consumed text='{Text}'", npc.Name, text);

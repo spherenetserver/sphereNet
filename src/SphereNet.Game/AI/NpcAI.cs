@@ -123,6 +123,10 @@ public sealed partial class NpcAI
     /// Args: (npc, item, dist, wantScore).</summary>
     public Func<Character, Item, int, int, NpcLookDecision>? OnNpcLookAtItem { get; set; }
 
+    /// <summary>@NPCSeeWantItem, fired immediately before native looting acts
+    /// on an item the NPC desires. RETURN 1 cancels the pickup.</summary>
+    public Func<Character, Item, bool>? OnNpcSeeWantItem { get; set; }
+
     /// <summary>Resolved @NPCLookAtItem outcome. <see cref="Handled"/> = RETURN 1
     /// (script owns the item), <see cref="Ignore"/> = RETURN 0 (leave it alone);
     /// otherwise <see cref="Want"/> is the possibly script-adjusted want-score.</summary>

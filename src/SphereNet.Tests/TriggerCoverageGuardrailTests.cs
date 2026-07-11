@@ -83,7 +83,6 @@ public class TriggerCoverageGuardrailTests
         // Wired (now fired): HitIgnore — AttackerRecord gained the Ignored
         // flag (script ATTACKER.n.IGNORE=1); a later hit from that attacker
         // fires @HitIgnore on the victim, RETURN 1 clears the flag.
-        "NPCSeeWantItem",
         // Wired (now fired): MurderMark, KarmaChange, FameChange (DeathEngine +
         // Character.On*); SkillChange, StatChange (SkillEngine gain hooks);
         // CombatAdd, CombatDelete, CombatEnd (Character attacker-list hooks);
@@ -92,10 +91,8 @@ public class TriggerCoverageGuardrailTests
         // via the IsTrigUsed gate); NPCSeeNewPlayer (new per-NPC seen-player memory:
         // Character.SeeNewPlayer fires it on a first sighting; NpcAI scans nearby
         // players, gated + throttled, installed only when hooked).
-        // Still deferred (low marginal value):
-        //   NPCSeeWantItem — redundant with @NPCLookAtItem, which already fires on
-        //                    the NPC's ground-item scan (LookAtNearbyItems); a true
-        //                    "want" needs item-desire/pickup logic that does not exist.
+        // NPCSeeWantItem now fires from the native desire/ground-loot path,
+        // immediately before movement to or pickup of the wanted item.
     };
 
     private static readonly HashSet<string> CharNotFiredP1 = new()

@@ -420,16 +420,76 @@ public sealed partial class NpcAI
 
     private void LookAtNearbyItems(Character npc)
     {
-        if (OnNpcLookAtItem == null || _rand.Next(8) != 0) return;
+        if ((OnNpcLookAtItem == null && OnNpcSeeWantItem == null) || _rand.Next(8) != 0) return;
 
         foreach (var item in _world.GetItemsInRange(npc.Position, 3))
         {
             if (item.IsDeleted || item.ContainedIn.IsValid) continue;
             if (IsLookAtItemExcluded(item)) continue;
             int dist = npc.Position.GetDistanceTo(item.Position);
-            if (OnNpcLookAtItem.Invoke(npc, item, dist, 0).Handled)
+            int want = GetWantScore(npc, item);
+            var decision = OnNpcLookAtItem?.Invoke(npc, item, dist, want)
+                ?? new NpcLookDecision(false, false, want);
+            if (decision.Handled)
+                return;
+            if (decision.Ignore || decision.Want <= _rand.Next(100))
+                continue;
+
+            if (OnNpcSeeWantItem?.Invoke(npc, item) == true)
+                return;
+
+            if (dist > 1)
+            {
+                MoveToward(npc, item.Position);
+                return;
+            }
+
+            if (!npc.CanCarry(item))
+                continue;
+            var pack = npc.Backpack;
+            if (pack == null)
+            {
+                pack = _world.CreateItem();
+                pack.BaseId = 0x0E75;
+                pack.ItemType = ItemType.Container;
+                pack.Name = "Backpack";
+                npc.Equip(pack, Layer.Pack);
+            }
+            if (pack.TryAddItem(item))
                 return;
         }
+    }
+
+    private int GetWantScore(Character npc, Item item)
+    {
+        var def = Definitions.DefinitionLoader.GetCharDef(npc.CharDefIndex);
+        var resources = Definitions.DefinitionLoader.StaticResources;
+        if (def == null || resources == null)
+            return 0;
+
+        int itemDefIndex = Definitions.ItemDefHelper.ResolveInstanceDefIndex(item, resources);
+        var itemDef = Definitions.DefinitionLoader.GetItemDef(itemDefIndex)
+            ?? Definitions.DefinitionLoader.GetItemDef(item.BaseId);
+        foreach (var desire in def.Desires)
+        {
+            if (desire.Type == ResType.ItemDef)
+            {
+                var desiredDef = Definitions.DefinitionLoader.GetItemDef(desire.Index);
+                if (desire.Index == itemDefIndex || desire.Index == item.BaseId ||
+                    desiredDef?.DispIndex == item.BaseId)
+                    return 100;
+            }
+            else if (desire.Type == ResType.TypeDef && !string.IsNullOrWhiteSpace(itemDef?.TypeRaw))
+            {
+                var typeRid = resources.ResolveDefName(itemDef.TypeRaw.Trim());
+                if (typeRid == desire)
+                    return 100;
+            }
+        }
+
+        return item.ItemType == ItemType.Corpse && GetNpcFlags(npc).HasFlag(NpcAIFlags.Looting)
+            ? 60
+            : 0;
     }
 
     /// <summary>Items @NPCLookAtItem never fires for (Source-X gates the

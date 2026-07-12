@@ -1167,6 +1167,11 @@ public static partial class Program
             };
             _spellRegistry = new SpellRegistry();
             _spellEngine = new SpellEngine(_world, _spellRegistry);
+            _world.OnSectorLight = (character, level) =>
+            {
+                if (TryGetClientFor(character, out var lightClient))
+                    lightClient.Send(new PacketGlobalLight(level));
+            };
             _saver.GetSpellEffectRecords = _spellEngine.GetPersistedEffectRecords;
             _spellEngine.TriggerDispatcher = _triggerDispatcher;
             _spellEngine.OnPlaySound = (pos, soundId) =>

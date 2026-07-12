@@ -3,6 +3,19 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, on altinci batch
+----------------------------------------
+
+EKLENDI - Sektor LightFlash akisi (Wave 235):
+  - LightFlash hedef sektordeki canli, online ve NightSight'siz oyunculara once
+    tam parlaklik, sonra hesaplanan normal sektor isigini gonderir.
+  - Lightning ve Chain Lightning effect'leri Source-X gibi hedef sektorun
+    isigini flash eder; IsMoonVisible Wave 234 tablosuyla birlikte tamamlandi.
+
+TESTLER:
+  - 5 Wave 235 regresyon testi eklendi. Tam SphereNet.Tests kosusu:
+    1575 basarili, 0 basarisiz, 0 atlanan.
+
 [2026-07-12] - 90-alti parite backlog, on besinci batch
 ----------------------------------------
 

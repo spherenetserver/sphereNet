@@ -58,6 +58,7 @@ public sealed class GameWorld
     public event Action<Character>? CharacterPlaced;
     public event Action<Character>? ClientLingerExpired;
     public Action<ObjBase, ObjBase.TimerFEntry>? TimerFExpired { get; set; }
+    public Action<Character, byte>? OnSectorLight { get; set; }
 
     // --- Global script variables (VAR/VAR0 system) ---
     private readonly Dictionary<string, string> _globalVars = new(StringComparer.OrdinalIgnoreCase);
@@ -252,6 +253,7 @@ public sealed class GameWorld
                     GetWorldMinutes = () => _worldClock,
                     GetWorldTime = () => (WorldHour, WorldMinute),
                     GetLightSettings = () => (LightDay, LightNight, DungeonLight),
+                    SendLight = (character, level) => OnSectorLight?.Invoke(character, level),
                 };
                 int px = Math.Min(short.MaxValue, x * Sector.SectorSize);
                 int py = Math.Min(short.MaxValue, y * Sector.SectorSize);
@@ -294,6 +296,8 @@ public sealed class GameWorld
         bool dungeon = FindRegion(position)?.IsFlag(RegionFlag.Underground) == true;
         return sector.GetLightCalc(quickSet, dungeonOverride: dungeon);
     }
+
+    public void LightFlash(Point3D position) => GetSector(position)?.LightFlash();
 
     internal void SetWorldClockMinutes(long minutes) => _worldClock = Math.Max(0, minutes);
 

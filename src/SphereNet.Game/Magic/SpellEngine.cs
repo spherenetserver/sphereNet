@@ -960,6 +960,9 @@ public sealed class SpellEngine
     /// <summary>Apply spell effect to a single character target.</summary>
     private void ApplyCharEffect(Character caster, Character target, SpellDef def, int skillLevel)
     {
+        if (def.Id is SpellType.Lightning or SpellType.ChainLightning)
+            _world.LightFlash(target.Position);
+
         // Magic Reflect: the first harmful spell targeted at a mobile with
         // the Reflection flag is bounced back to the caster. Matches
         // Source-X Magic_Reflect and ServUO MagicReflectSpell behaviour:

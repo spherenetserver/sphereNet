@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, sixteenth batch
+----------------------------------------
+
+ADDED - Sector LightFlash flow (Wave 235):
+  - LightFlash sends full brightness followed by calculated sector light to
+    living, online players in the sector who do not have Night Sight.
+  - Lightning and Chain Lightning effects now flash the target sector like
+    Source-X; IsMoonVisible was completed with Wave 234's visibility table.
+
+TESTS:
+  - Added 5 Wave 235 regression tests. Full SphereNet.Tests run:
+    1575 passed, 0 failed, 0 skipped.
+
 [2026-07-12] - Sub-90 parity backlog, fifteenth batch
 ----------------------------------------
 

@@ -204,7 +204,11 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   dungeon ışığı uygulanıyor. Login/resync/rez/season/region/tick ışık paketleri
   artık karakter konumundaki sektör hesabını kullanıyor. Test:
   SourceXSectorMoonLightWave234Tests (+18).
-- [ ] **LightFlash** + IsMoonVisible.
+- [x] **LightFlash + IsMoonVisible** — YAPILDI (Wave 235). Ay görünürlük
+  pencereleri Wave 234'te port edildi. `CSector::LightFlash` hedef sektördeki
+  canlı/online/NightSight'sız oyunculara önce tam parlaklık, ardından hesaplanan
+  sektör ışığını gönderir; Lightning ve Chain Lightning effect hattına bağlandı.
+  Test: SourceXLightFlashWave235Tests (+5).
 - [ ] **@EnvironChange** (`CTRIG_EnvironChange`) weather/light/season değişiminde
   ateşlenmesi wired değil.
 
@@ -213,7 +217,8 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   sweep, `_iSectorSleepDelay` timeout (`CSector::_CanSleep` cpp:1062). Port sadece
   `ClientCount==0`.
 - [ ] `SECF_*` flag enum yok.
-- [ ] GetLocalTime / IsMoonVisible / GetLightCalc / LightFlash sector metotları yok.
+- [x] GetLocalTime / IsMoonVisible / GetLightCalc / LightFlash sector metotları
+  Wave 234-235 ile tamamlandı.
 
 ### 3.3 Movement & walking — 80
 - [ ] **LOS tam bayrak modeli** — `CanSeeLOS_New` (`CCharLOS.cpp:112-470`):

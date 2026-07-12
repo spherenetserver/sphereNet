@@ -65,6 +65,8 @@ public sealed class Sector : IScriptObj
     public Func<(int Day, int Night, int Dungeon)>? GetLightSettings { get; set; }
     /// <summary>Whether this sector's representative point is underground.</summary>
     public Func<bool>? IsDungeon { get; set; }
+    /// <summary>Host bridge for global-light packets sent by LightFlash.</summary>
+    public Action<Character, byte>? SendLight { get; set; }
 
     public Sector(int x, int y, byte mapIndex, int cols)
     {
@@ -177,6 +179,22 @@ public sealed class Sector : IScriptObj
         if (next == _light) return false;
         _light = next;
         return true;
+    }
+
+    /// <summary>Source-X CSector::LightFlash: briefly send full brightness and
+    /// then restore calculated sector light for active living players without
+    /// Night Sight.</summary>
+    public void LightFlash()
+    {
+        byte normal = GetLightCalc();
+        foreach (var character in _characters)
+        {
+            if (!character.IsPlayer || !character.IsOnline || character.IsDead ||
+                character.IsStatFlag(StatFlag.NightSight))
+                continue;
+            SendLight?.Invoke(character, 0);
+            SendLight?.Invoke(character, normal);
+        }
     }
 
     public int GetResourceAmount(int resDefIndex, int amountMax, int regenSeconds)

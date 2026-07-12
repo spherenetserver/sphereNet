@@ -2397,6 +2397,19 @@ public class Item : ObjBase
                 }
                 return true;
             }
+            // Source-X ISV_DELHOUSE / ISV_DELSHIP: unregister a structure by uid
+            // (DelMulti removes it regardless of house/ship kind).
+            case "DELHOUSE":
+            case "DELSHIP":
+            {
+                var guild = ResolveGuild?.Invoke(Uid);
+                if (guild != null)
+                {
+                    uint uid = ParseHexOrDecUInt(args.Trim());
+                    if (uid != 0) guild.DelMulti(new Serial(uid));
+                }
+                return true;
+            }
         }
 
         // Spawn commands (IT_SPAWN_CHAR)
@@ -3193,6 +3206,34 @@ public class Item : ObjBase
                 value = guild?.WebUrl ?? "";
                 return guild != null;
             }
+            case "HOUSES":
+            {
+                var guild = ResolveGuild?.Invoke(Uid);
+                if (guild == null) return false;
+                value = guild.HouseCount.ToString();
+                return true;
+            }
+            case "SHIPS":
+            {
+                var guild = ResolveGuild?.Invoke(Uid);
+                if (guild == null) return false;
+                value = guild.ShipCount.ToString();
+                return true;
+            }
+            case "MAXHOUSES":
+            {
+                var guild = ResolveGuild?.Invoke(Uid);
+                if (guild == null) return false;
+                value = guild.MaxHouses.ToString();
+                return true;
+            }
+            case "MAXSHIPS":
+            {
+                var guild = ResolveGuild?.Invoke(Uid);
+                if (guild == null) return false;
+                value = guild.MaxShips.ToString();
+                return true;
+            }
         }
 
         // CHARTER.n — nth line of guild charter (zero-based)
@@ -3256,6 +3297,37 @@ public class Item : ObjBase
                 var guild = ResolveGuild?.Invoke(Uid);
                 if (guild == null) return false;
                 guild.WebUrl = value;
+                return true;
+            }
+            // Source-X STC_ADDHOUSE / STC_ADDSHIP: register a multi to the guild.
+            case "ADDHOUSE":
+            {
+                var guild = ResolveGuild?.Invoke(Uid);
+                if (guild == null) return false;
+                uint uid = ParseHexOrDecUInt(value);
+                if (uid != 0) guild.AddHouse(new Serial(uid));
+                return true;
+            }
+            case "ADDSHIP":
+            {
+                var guild = ResolveGuild?.Invoke(Uid);
+                if (guild == null) return false;
+                uint uid = ParseHexOrDecUInt(value);
+                if (uid != 0) guild.AddShip(new Serial(uid));
+                return true;
+            }
+            case "MAXHOUSES":
+            {
+                var guild = ResolveGuild?.Invoke(Uid);
+                if (guild == null) return false;
+                if (int.TryParse(value.Trim(), out int mh) && mh >= 0) guild.MaxHouses = mh;
+                return true;
+            }
+            case "MAXSHIPS":
+            {
+                var guild = ResolveGuild?.Invoke(Uid);
+                if (guild == null) return false;
+                if (int.TryParse(value.Trim(), out int ms) && ms >= 0) guild.MaxShips = ms;
                 return true;
             }
         }

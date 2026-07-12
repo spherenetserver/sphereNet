@@ -276,7 +276,21 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   (`PacketWaypointAdd` type:2, `SupportsMapWaypoints` gate); ayrılma/kick/disband'de
   `BroadcastPartyUpdate` + disband yolu `PacketWaypointRemove` ile pin'leri temizler.
   Test: PartyWaypointPacketTests (+2, add type:2 + remove byte-layout).
-- [ ] Guild `r_Verb` / stone-gump verb yüzeyi tam eşlenmemiş.
+- [x] Guild `r_Verb` / stone-gump verb yüzeyi — YAPILDI (Wave 237): denetim "tam
+  eşlenmemiş" sandı ama yüzey ~%90 zaten vardı — `r_Verb` alt kümesi (DECLAREWAR/
+  PEACE/INVITEWAR/APPLYTOJOIN/JOINASMEMBER/ELECTMASTER/CHANGEALIGN/RESIGN/
+  TOGGLEABBREVIATION/ALLMEMBERS/ALLGUILDS), gump-button yüzeyi (accept/title/war/
+  peace/charter/dismiss/ally/rename/abbrev/fealty, HandleGuildGumpResponse buttons
+  1-21) ve STC_* prop'ları (ABBREV/ALIGN/MASTER*/CHARTER/WEBPAGE/MEMBER.COUNT)
+  mevcut. GERÇEK boşluk **guild-owned houses/ships**: Source-X `CItemStone`
+  ADDHOUSE/ADDSHIP (STC_ write→AddMulti), DELHOUSE/DELSHIP (ISV_ verb→DelMulti),
+  HOUSES/SHIPS (GetHouseCountReal/GetShipCountReal), MAXHOUSES/MAXSHIPS eklendi.
+  GuildDef `_houses`/`_ships` HashSet (uid tek tip), AddHouse/AddShip/DelMulti +
+  GUILD.HOUSES/SHIPS/MAXHOUSES/MAXSHIPS tag persistence (ölü multi reload'da düşer).
+  Test: GameSystemTests.GuildStone_HouseShipSurface +
+  GeneralGameplayIntegrityTests.GuildHousesShips_SurviveSaveLoad. NOT: REFUSECANDIDATE
+  explicit gump button yok (master accept-etmeyerek reddediyor), LOYALTO read SRC-bağımlı
+  (kabul edilebilir sınır).
 
 ### 4.3 Account / login — 78
 - [x] **block/unblock scheduling** — YAPILDI (Wave 216): IPBlockList artık zamanlı

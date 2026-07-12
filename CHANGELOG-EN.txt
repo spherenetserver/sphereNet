@@ -4,6 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, eighteenth batch
+----------------------------------------
+
+ADDED - Guild-owned houses and ships (Wave 237):
+  - A guild stone now tracks its owned house and ship multis (Source-X
+    CItemStone multi storage). ADDHOUSE/ADDSHIP register a multi by uid,
+    DELHOUSE/DELSHIP unregister one regardless of kind, and HOUSES/SHIPS
+    report the counts. A uid is only ever a house or a ship, never both.
+  - MAXHOUSES/MAXSHIPS expose the per-guild caps to scripts (advisory, as in
+    Source-X where the limit is enforced at placement).
+  - The lists persist through GUILD.HOUSES/SHIPS/MAXHOUSES/MAXSHIPS tags; a
+    multi that no longer exists is dropped from the guild on reload.
+
+NOTES - Verified non-gaps (no change needed):
+  - The guild r_Verb subset, the guild-stone gump buttons (accept/title/war/
+    peace/charter/dismiss/ally/rename/abbreviation/fealty) and the STC_*
+    property surface (ABBREV/ALIGN/MASTER*/CHARTER/WEBPAGE/MEMBER.COUNT) were
+    already implemented; only guild-owned structures were missing.
+
+
 [2026-07-12] - Sub-90 parity backlog, seventeenth batch
 ----------------------------------------
 

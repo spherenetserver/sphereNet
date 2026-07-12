@@ -1135,6 +1135,51 @@ public class GameSystemTests
     }
 
     [Fact]
+    public void GuildStone_HouseShipSurface_AddsCountsAndRemoves()
+    {
+        var world = CreateWorld();
+        var stone = world.CreateItem();
+        stone.ItemType = ItemType.StoneGuild;
+        world.PlaceItem(stone, new Point3D(100, 100, 0, 0));
+
+        var guild = new GuildDef(stone.Uid);
+        var oldResolveGuild = Item.ResolveGuild;
+        try
+        {
+            Item.ResolveGuild = uid => uid == stone.Uid ? guild : null;
+
+            // ADDHOUSE / ADDSHIP register multis; HOUSES / SHIPS read the counts.
+            Assert.True(stone.TrySetProperty("ADDHOUSE", "0x401"));
+            Assert.True(stone.TrySetProperty("ADDHOUSE", "0x402"));
+            Assert.True(stone.TrySetProperty("ADDSHIP", "0x501"));
+            Assert.True(stone.TryGetProperty("HOUSES", out string houses));
+            Assert.Equal("2", houses);
+            Assert.True(stone.TryGetProperty("SHIPS", out string ships));
+            Assert.Equal("1", ships);
+
+            // A uid can only be one kind — re-adding 0x401 as a ship moves it.
+            Assert.True(stone.TrySetProperty("ADDSHIP", "0x401"));
+            Assert.Equal(1, guild.HouseCount);
+            Assert.Equal(2, guild.ShipCount);
+
+            // DELHOUSE / DELSHIP unregister by uid regardless of kind.
+            Assert.True(stone.TryExecuteCommand("DELSHIP", "0x401", new NullConsole()));
+            Assert.Equal(1, guild.ShipCount);
+            Assert.True(stone.TryExecuteCommand("DELHOUSE", "0x402", new NullConsole()));
+            Assert.Equal(0, guild.HouseCount);
+
+            // MAXHOUSES / MAXSHIPS round-trip through the script surface.
+            Assert.True(stone.TrySetProperty("MAXHOUSES", "5"));
+            Assert.True(stone.TryGetProperty("MAXHOUSES", out string maxHouses));
+            Assert.Equal("5", maxHouses);
+        }
+        finally
+        {
+            Item.ResolveGuild = oldResolveGuild;
+        }
+    }
+
+    [Fact]
     public void GuildStone_AllianceVerbs_RecordMutualDeclarationAndBreak()
     {
         var world = CreateWorld();

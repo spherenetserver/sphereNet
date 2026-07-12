@@ -324,6 +324,42 @@ public sealed class GeneralGameplayIntegrityTests
     }
 
     [Fact]
+    public void GuildHousesShips_SurviveSaveLoad_DroppingDeletedMultis()
+    {
+        var world = CreateWorld();
+        var master = world.CreateCharacter();
+        var stone = world.CreateItem();
+        stone.ItemType = ItemType.StoneGuild;
+        world.PlaceItem(stone, new Point3D(100, 100, 0, 0));
+
+        // Two live houses and a live ship; one house uid points at nothing.
+        var house1 = world.CreateItem();
+        var ship1 = world.CreateItem();
+        var ghostHouse = new Serial(0xDEAD);
+
+        var manager = new GuildManager();
+        var guild = manager.CreateGuild(stone.Uid, "Builders", master.Uid);
+        guild.AddHouse(house1.Uid);
+        guild.AddHouse(ghostHouse);
+        guild.AddShip(ship1.Uid);
+        guild.MaxHouses = 7;
+
+        manager.SerializeAllToTags(world);
+
+        var reloaded = new GuildManager();
+        reloaded.DeserializeFromWorld(world);
+        var restored = reloaded.GetGuild(stone.Uid)!;
+
+        // The ghost house dropped off (its item no longer exists); the live ones stay.
+        Assert.Equal(1, restored.HouseCount);
+        Assert.Contains(house1.Uid, restored.Houses);
+        Assert.DoesNotContain(ghostHouse, restored.Houses);
+        Assert.Equal(1, restored.ShipCount);
+        Assert.Contains(ship1.Uid, restored.Ships);
+        Assert.Equal(7, restored.MaxHouses);
+    }
+
+    [Fact]
     public void GuildGump_ForgedMasterButtonIsRejectedForOutsider()
     {
         var world = CreateWorld();

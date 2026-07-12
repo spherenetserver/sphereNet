@@ -3,6 +3,26 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, on sekizinci batch
+----------------------------------------
+
+EKLENDI - Guild-sahipli evler ve gemiler (Wave 237):
+  - Guild tasi artik sahip oldugu ev ve gemi multi'lerini takip eder (Source-X
+    CItemStone multi storage). ADDHOUSE/ADDSHIP bir multi'yi uid ile kaydeder,
+    DELHOUSE/DELSHIP tipten bagimsiz siler, HOUSES/SHIPS sayilari verir. Bir uid
+    ya ev ya gemidir, ikisi birden asla olmaz.
+  - MAXHOUSES/MAXSHIPS guild basi limitleri script'e acar (Source-X'te oldugu
+    gibi tavsiye niteliginde; limit yerlestirmede uygulanir).
+  - Listeler GUILD.HOUSES/SHIPS/MAXHOUSES/MAXSHIPS tag'leriyle kalici olur;
+    artik var olmayan bir multi reload'da guild'den dusurulur.
+
+NOTLAR - Dogrulanan yanlis-alarmlar (degisiklik gerekmedi):
+  - Guild r_Verb alt kumesi, guild-tasi gump butonlari (accept/title/war/peace/
+    charter/dismiss/ally/rename/abbreviation/fealty) ve STC_* prop yuzeyi
+    (ABBREV/ALIGN/MASTER*/CHARTER/WEBPAGE/MEMBER.COUNT) zaten vardi; yalnizca
+    guild-sahipli yapilar eksikti.
+
+
 [2026-07-12] - 90-alti parite backlog, on yedinci batch
 ----------------------------------------
 

@@ -72,6 +72,8 @@ public sealed class GuildDef
     private GuildAlign _align = GuildAlign.Standard;
     private readonly List<GuildMember> _members = [];
     private readonly Dictionary<Serial, GuildRelation> _relations = [];
+    private readonly HashSet<Serial> _houses = [];
+    private readonly HashSet<Serial> _ships = [];
 
     public Serial StoneUid => _stoneUid;
     public string Name { get => _name; set => _name = value; }
@@ -82,9 +84,45 @@ public sealed class GuildDef
     public IReadOnlyList<GuildMember> Members => _members;
     public int MemberCount => _members.Count;
 
+    // Guild-owned structures (Source-X CItemStone multi storage). MaxHouses/
+    // MaxShips are advisory caps exposed to scripts (0 = use the server default);
+    // Source-X enforces them at placement, not on ADDHOUSE/ADDSHIP.
+    public int MaxHouses { get; set; }
+    public int MaxShips { get; set; }
+    public IReadOnlyCollection<Serial> Houses => _houses;
+    public IReadOnlyCollection<Serial> Ships => _ships;
+    public int HouseCount => _houses.Count;
+    public int ShipCount => _ships.Count;
+
     public GuildDef(Serial stoneUid)
     {
         _stoneUid = stoneUid;
+    }
+
+    /// <summary>Register a house multi to this guild (Source-X STC_ADDHOUSE /
+    /// AddMulti). A uid can be a house or a ship, never both.</summary>
+    public bool AddHouse(Serial uid)
+    {
+        if (!uid.IsValid) return false;
+        _ships.Remove(uid);
+        return _houses.Add(uid);
+    }
+
+    /// <summary>Register a ship multi to this guild (Source-X STC_ADDSHIP).</summary>
+    public bool AddShip(Serial uid)
+    {
+        if (!uid.IsValid) return false;
+        _houses.Remove(uid);
+        return _ships.Add(uid);
+    }
+
+    /// <summary>Remove a structure by uid regardless of kind (Source-X
+    /// ISV_DELHOUSE / ISV_DELSHIP both call DelMulti).</summary>
+    public bool DelMulti(Serial uid)
+    {
+        bool removedHouse = _houses.Remove(uid);
+        bool removedShip = _ships.Remove(uid);
+        return removedHouse || removedShip;
     }
 
     /// <summary>Get the guild master member.</summary>
@@ -433,6 +471,24 @@ public sealed class GuildManager
             else
                 stone.RemoveTag("GUILD.ALIGN");
 
+            // Guild-owned structures.
+            if (guild.HouseCount > 0)
+                stone.SetTag("GUILD.HOUSES", string.Join(",", guild.Houses.Select(u => $"0{u.Value:X}")));
+            else
+                stone.RemoveTag("GUILD.HOUSES");
+            if (guild.ShipCount > 0)
+                stone.SetTag("GUILD.SHIPS", string.Join(",", guild.Ships.Select(u => $"0{u.Value:X}")));
+            else
+                stone.RemoveTag("GUILD.SHIPS");
+            if (guild.MaxHouses > 0)
+                stone.SetTag("GUILD.MAXHOUSES", guild.MaxHouses.ToString());
+            else
+                stone.RemoveTag("GUILD.MAXHOUSES");
+            if (guild.MaxShips > 0)
+                stone.SetTag("GUILD.MAXSHIPS", guild.MaxShips.ToString());
+            else
+                stone.RemoveTag("GUILD.MAXSHIPS");
+
             // Members: uid:priv:title:accountgold:loyalto:showabbrev
             // Escape colons in title to prevent deserialization corruption
             var memberStrs = guild.Members.Select(m =>
@@ -498,6 +554,23 @@ public sealed class GuildManager
                 byte.TryParse(alignStr, out byte alignVal) &&
                 Enum.IsDefined((GuildAlign)alignVal))
                 guild.Align = (GuildAlign)alignVal;
+
+            // Guild-owned structures. Only re-link multis that still exist so a
+            // decayed/deleted house or ship drops off the guild on reload.
+            ParseSerialSet(item, "GUILD.HOUSES", uid =>
+            {
+                if (world.FindItem(uid) != null) guild.AddHouse(uid);
+            });
+            ParseSerialSet(item, "GUILD.SHIPS", uid =>
+            {
+                if (world.FindItem(uid) != null) guild.AddShip(uid);
+            });
+            if (item.TryGetTag("GUILD.MAXHOUSES", out string? maxHousesStr) &&
+                int.TryParse(maxHousesStr, out int maxHouses) && maxHouses > 0)
+                guild.MaxHouses = maxHouses;
+            if (item.TryGetTag("GUILD.MAXSHIPS", out string? maxShipsStr) &&
+                int.TryParse(maxShipsStr, out int maxShips) && maxShips > 0)
+                guild.MaxShips = maxShips;
 
             // Parse members
             if (item.TryGetTag("GUILD.MEMBERS", out string? membersStr) && !string.IsNullOrEmpty(membersStr))

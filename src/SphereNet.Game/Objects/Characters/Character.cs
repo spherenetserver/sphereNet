@@ -898,7 +898,8 @@ public partial class Character : ObjBase
         get => _hits;
         set
         {
-            short cap = _maxHits > 0 ? _maxHits : (short)Math.Max((int)1, (int)_str);
+            int effMax = CombatEngine.EffectiveMaxHits(this);
+            short cap = effMax > 0 ? (short)Math.Min(short.MaxValue, effMax) : (short)Math.Max((int)1, (int)_str);
             var v = Math.Clamp(value, (short)0, cap);
             if (v != _hits)
             {
@@ -921,7 +922,8 @@ public partial class Character : ObjBase
         get => _mana;
         set
         {
-            short cap = _maxMana > 0 ? _maxMana : (short)Math.Max((int)1, (int)_int);
+            int effMax = CombatEngine.EffectiveMaxMana(this);
+            short cap = effMax > 0 ? (short)Math.Min(short.MaxValue, effMax) : (short)Math.Max((int)1, (int)_int);
             var v = Math.Clamp(value, (short)0, cap);
             if (v != _mana) { _mana = v; MarkDirty(DirtyFlag.Stats); }
         }
@@ -931,14 +933,24 @@ public partial class Character : ObjBase
         get => _stam;
         set
         {
-            short cap = _maxStam > 0 ? _maxStam : (short)Math.Max((int)1, (int)_dex);
+            int effMax = CombatEngine.EffectiveMaxStam(this);
+            short cap = effMax > 0 ? (short)Math.Min(short.MaxValue, effMax) : (short)Math.Max((int)1, (int)_dex);
             var v = Math.Clamp(value, (short)0, cap);
             if (v != _stam) { _stam = v; MarkDirty(DirtyFlag.Stats); }
         }
     }
-    public short MaxHits { get => _maxHits; set { var v = Math.Max((short)1, value); if (v != _maxHits) { _maxHits = v; if (_hits > _maxHits) _hits = _maxHits; MarkDirty(DirtyFlag.Stats); } } }
-    public short MaxMana { get => _maxMana; set { var v = Math.Max((short)0, value); if (v != _maxMana) { _maxMana = v; if (_mana > _maxMana) _mana = _maxMana; MarkDirty(DirtyFlag.Stats); } } }
-    public short MaxStam { get => _maxStam; set { var v = Math.Max((short)0, value); if (v != _maxStam) { _maxStam = v; if (_stam > _maxStam) _stam = _maxStam; MarkDirty(DirtyFlag.Stats); } } }
+    // Max-pool getters report the EFFECTIVE pool (base field + equipped
+    // BONUSHITSMAX/BONUSMANAMAX/BONUSSTAMMAX, derived on read via CombatEngine).
+    // Setters write the BASE field only; the base is what persists (see BaseMax*).
+    public short MaxHits { get => (short)Math.Min(short.MaxValue, CombatEngine.EffectiveMaxHits(this)); set { var v = Math.Max((short)1, value); if (v != _maxHits) { _maxHits = v; if (_hits > _maxHits) _hits = _maxHits; MarkDirty(DirtyFlag.Stats); } } }
+    public short MaxMana { get => (short)Math.Min(short.MaxValue, CombatEngine.EffectiveMaxMana(this)); set { var v = Math.Max((short)0, value); if (v != _maxMana) { _maxMana = v; if (_mana > _maxMana) _mana = _maxMana; MarkDirty(DirtyFlag.Stats); } } }
+    public short MaxStam { get => (short)Math.Min(short.MaxValue, CombatEngine.EffectiveMaxStam(this)); set { var v = Math.Max((short)0, value); if (v != _maxStam) { _maxStam = v; if (_stam > _maxStam) _stam = _maxStam; MarkDirty(DirtyFlag.Stats); } } }
+
+    // Raw base max pools (no suit bonus). Used by the world-save path so the suit
+    // contribution is never persisted as base, and by the effective-read helpers.
+    public short BaseMaxHits => _maxHits;
+    public short BaseMaxMana => _maxMana;
+    public short BaseMaxStam => _maxStam;
 
     public ushort BodyId { get => _bodyId; set { _bodyId = value; MarkDirty(DirtyFlag.Body); } }
 
@@ -2182,6 +2194,17 @@ public partial class Character : ObjBase
         item.IsEquipped = false;
         item.ContainedIn = Serial.Invalid;
         MarkDirty(DirtyFlag.Equip);
+
+        // Source-X Stat_AddMaxMod on unequip clamps the current pool down to the
+        // lowered adjusted max. The item is already out of _equipment, so the Max*
+        // getters now report the reduced effective pool; truncate any current that
+        // now sits above it (a +HITSMAX/MANAMAX/STAMMAX piece coming off).
+        bool poolClamped = false;
+        if (_hits > MaxHits) { _hits = MaxHits; poolClamped = true; }
+        if (_mana > MaxMana) { _mana = MaxMana; poolClamped = true; }
+        if (_stam > MaxStam) { _stam = MaxStam; poolClamped = true; }
+        if (poolClamped) MarkDirty(DirtyFlag.Stats);
+
         return item;
     }
 

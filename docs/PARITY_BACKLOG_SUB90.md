@@ -249,6 +249,31 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   no-equip=base, çok-parça sum, negatif clamp, base-field/script salt-base,
   max-pool değişmez, carry weight artışı, melee damage artışı, REQSTR gate,
   skill stat term). KALAN: BONUSHITS/MANA/STAM max-pool bonus'ları.
+- [x] **AOS suit max-pool agregasyonu (BONUSHITSMAX/MANAMAX/STAMMAX)** — YAPILDI
+  (Wave 264). Source-X tag adları BONUSHITSMAX/BONUSMANAMAX/BONUSSTAMMAX (BONUSHITS
+  Source-X'te AYRI bir regen alanı, max değil — düzeltildi). Recon (Explore) kritik
+  bulgular: (1) current hits/mana/stam SAKLANAN+mutable, stat slice'tan farklı;
+  (2) Str/Dex/Int setter'ı _maxHits field'ını sync'ler (mevcut spell-buff mekanizması);
+  (3) WorldSaver current'ı MAXHITS'ten ÖNCE, current save-order clamp'e tabi; (4)
+  load-order: stat parse ÖNCE, equipment restore SONRA → over-base current load'da
+  zaten base'e clamp'lenir (phantom persist YOK); (5) unequip clamp'i YOK (Source-X
+  var: Stat_AddMaxMod). Karar: getter-override (base field vs effective read split,
+  Source-X m_val+m_maxMod analojisi) — stat slice'ın helper-routing'inden farklı
+  çünkü max-pool tüketicileri (display + heal ceiling + ratio) tutarlı olmalı, aksi
+  halde `Hits>MaxHits` (120/100) edge'leri (negatif lostHits, >100% AI ratio).
+  Uygulama: `CombatEngine.EffectiveMaxHits/Mana/Stam(ch)` = BaseMax + SumEquipped;
+  MaxHits/Mana/Stam getter'ları effective döner (setter base yazar); yeni public
+  `BaseMaxHits/Mana/Stam` (field); Hits/Mana/Stam setter cap'i effective (heal bonus
+  havuza dolar); Unequip current'ı yeni effective max'e clamp'ler (Source-X parity);
+  WorldSaver MAXHITS artık BaseMaxHits yazar (inflation guard — TEK persistence-yazan
+  yer, recon doğruladı). Eski-save uyumu: getter 0'da taban (Login `<=0` backfill
+  korunur, 1 DEĞİL). Over-base current save/load'da base'e clamp'lenir (dökümante
+  minor loss, Str-reset de truncate eder — SphereNet Str↔MaxHits field coupling).
+  Test: SourceXWave264Tests (+8: no-equip=base, çok-parça sum, heal bonus havuza
+  dolar, base-field/script salt-base, unequip clamp, mana/stam paralel, stat/carry
+  DOKUNULMAZ, negatif floor) + SaveFormatTests.Roundtrip_MaxPoolSuitBonus (base 100
+  persist, effective 120 DEĞİL). Full suite 1701. KALAN: per-element resist MAX cap
+  (RESFIREMAX), HITCHANCE/LUCK agregasyonu.
 
 ### 2.5 Melee combat — 88
 - [x] **SE (era3) / ML (era4) hız formülleri** — YAPILDI (Wave 226).

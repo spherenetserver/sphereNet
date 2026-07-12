@@ -660,6 +660,53 @@ public class SaveFormatTests
     }
 
     [Fact]
+    public void Roundtrip_MaxPoolSuitBonus_PersistsBaseNotEffective()
+    {
+        // Wave 264: an equipped BONUSHITSMAX piece raises the effective MaxHits on
+        // read, but the world save must serialize the BASE pool (100), never the
+        // inflated effective total (120) — else the suit bonus would be baked into
+        // the base and compound every save cycle.
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_maxpool_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            var src = MakeWorld();
+
+            var ch = src.CreateCharacter();
+            ch.Name = "Suited";
+            ch.BodyId = 0x0190;
+            ch.MaxHits = 100; ch.Hits = 100;
+            src.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
+
+            var helm = src.CreateItem();
+            helm.BaseId = 0x1408; // plate helm
+            helm.SetTag("BONUSHITSMAX", "20");
+            ch.Equip(helm, Layer.Helm);
+            ch.Hits = 120; // healed into the effective (suit) pool
+
+            Assert.Equal(120, ch.MaxHits);      // effective read
+            Assert.Equal(100, ch.BaseMaxHits);  // base is what saves
+
+            Assert.True(saver.Save(src, tmp));
+
+            var dst = MakeWorld();
+            loader.Load(dst, tmp);
+
+            var reloaded = dst.FindChar(ch.Uid);
+            Assert.NotNull(reloaded);
+            // The persisted base is 100, not the inflated 120 — no compounding.
+            Assert.Equal(100, reloaded!.BaseMaxHits);
+            // Invariant holds after reload regardless of equip-restore timing.
+            Assert.True(reloaded.Hits <= reloaded.MaxHits);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public void Roundtrip_PreservesPerCharRegenOverrides()
     {
         // Wave 247: per-char regen rate overrides (Source-X CChar REGENHITS/…/FOOD).

@@ -670,9 +670,12 @@ public sealed class WorldSaver
         w.WriteProperty("HITS", ch.Hits.ToString());
         w.WriteProperty("MANA", ch.Mana.ToString());
         w.WriteProperty("STAM", ch.Stam.ToString());
-        w.WriteProperty("MAXHITS", ch.MaxHits.ToString());
-        w.WriteProperty("MAXMANA", ch.MaxMana.ToString());
-        w.WriteProperty("MAXSTAM", ch.MaxStam.ToString());
+        // Persist the BASE max pools, not the effective getters — the equipped-suit
+        // BONUSHITSMAX/MANAMAX/STAMMAX contribution is derived on read and must never
+        // be written back as base (it would inflate permanently across save cycles).
+        w.WriteProperty("MAXHITS", ch.BaseMaxHits.ToString());
+        w.WriteProperty("MAXMANA", ch.BaseMaxMana.ToString());
+        w.WriteProperty("MAXSTAM", ch.BaseMaxStam.ToString());
         w.WriteProperty("OFAME", ch.Fame.ToString());
         w.WriteProperty("OKARMA", ch.Karma.ToString());
         if (ch.Food != 0) w.WriteProperty("OFOOD", ch.Food.ToString());

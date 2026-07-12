@@ -4,6 +4,25 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, thirty-sixth batch (suit max-pool aggregation)
+----------------------------------------
+
+ADDED - Effective max hit/mana/stamina from equipped items (Wave 264):
+  - A character's effective maximum hit/mana/stamina pool is now the stored base
+    pool plus the sum of the matching item bonus across every equipped item,
+    using the Source-X property names BONUSHITSMAX/BONUSMANAMAX/BONUSSTAMMAX
+    (BONUSHITS in Source-X is a separate regeneration field, not a max bonus).
+  - The max-pool getters report the effective total, so the status/paperdoll and
+    health bars, the ceilings that healing and regeneration fill toward, and the
+    ratio checks all stay consistent. The current pool can be healed up into the
+    suit bonus while the piece is worn.
+  - Unequipping a max-pool piece clamps the current pool down to the reduced
+    maximum, matching the reference stat-mod behavior.
+  - The stored base pool is what the world save serializes; the suit contribution
+    is derived on read and never written back as base, so it cannot compound
+    across save cycles. Old saves with a zeroed max still trigger the login
+    backfill unchanged.
+
 [2026-07-12] - Sub-90 parity backlog, thirty-fifth batch (suit stat aggregation)
 ----------------------------------------
 

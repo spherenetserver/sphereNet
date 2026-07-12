@@ -3,6 +3,23 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, otuz altinci batch (suit max-havuz agregasyonu)
+----------------------------------------
+
+EKLENDI - Giyilen item'lardan efektif max hit/mana/stamina (Wave 264):
+  - Bir karakterin efektif maksimum hit/mana/stamina havuzu artik sakli base havuz
+    arti giyilen her item'daki ilgili item bonusunun toplamidir; Source-X property
+    isimleri BONUSHITSMAX/BONUSMANAMAX/BONUSSTAMMAX kullanilir (Source-X'te BONUSHITS
+    ayri bir regenerasyon alanidir, max bonusu degildir).
+  - Max-havuz getter'lari efektif toplami dondurur; boylece status/paperdoll ve
+    health bar'lar, heal ve regenerasyonun doldurdugu tavanlar ve oran kontrolleri
+    tutarli kalir. Parca takiliyken current havuz suit bonusuna kadar iyilestirilebilir.
+  - Bir max-havuz parcasi cikarilinca current havuz dusen maksimuma clamp'lenir;
+    referans stat-mod davranisiyla eslesir.
+  - Dunya kaydinda serilestrilen sakli base havuzdur; suit katkisi okuma aninda
+    hesaplanir ve asla base olarak geri yazilmaz, boylece kayit dongulerinde
+    birikemez. Max'i sifir olan eski kayitlar login backfill'ini degismeden tetikler.
+
 [2026-07-12] - 90-alti parite backlog, otuz besinci batch (suit stat agregasyonu)
 ----------------------------------------
 

@@ -1591,6 +1591,18 @@ public static class CombatEngine
     public static int EffectiveInt(Character ch) =>
         Math.Max(0, ch.Int + SumEquippedItemProperty(ch, "BONUSINT"));
 
+    /// <summary>Effective max hit/mana/stamina pool: the stored base pool plus the
+    /// suit contribution (Source-X BONUSHITSMAX/BONUSMANAMAX/BONUSSTAMMAX), derived
+    /// on read so the base field persists clean. Floored at 0 to preserve the
+    /// old-save "MaxHits &lt;= 0 -> backfill from stat" login path. Reads the raw base
+    /// field (BaseMaxHits), never the effective property, so there is no recursion.</summary>
+    public static int EffectiveMaxHits(Character ch) =>
+        Math.Max(0, ch.BaseMaxHits + SumEquippedItemProperty(ch, "BONUSHITSMAX"));
+    public static int EffectiveMaxMana(Character ch) =>
+        Math.Max(0, ch.BaseMaxMana + SumEquippedItemProperty(ch, "BONUSMANAMAX"));
+    public static int EffectiveMaxStam(Character ch) =>
+        Math.Max(0, ch.BaseMaxStam + SumEquippedItemProperty(ch, "BONUSSTAMMAX"));
+
     /// <summary>Attacker's elemental damage split percentages. Source-X
     /// OnTakeDamage (CCharFight.cpp:721): an unset physical share is assumed
     /// to be the remainder the elemental percents leave of 100.</summary>

@@ -3,6 +3,42 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, ucuncu batch
+----------------------------------------
+
+EKLENDI - Hesap IP-blok zamanlamasi:
+  - Bloklanan IP'ler artik sureli olabilir: BLOCKIP <ip>,<saniye> pencere
+    dolunca blogu kendisi kaldirir; ciplak BLOCKIP kalici kalir (Source-X
+    BLOCKIP decay). Sure dolumu lookup aninda tembel uygulanir.
+  - IPBlockList her girdi icin mutlak expiry tutar ve enjekte edilebilir bir
+    saat sunar; boylece decay determinist test edilebilir.
+
+EKLENDI - Party uye harita waypoint'leri:
+  - Canli party stat'lari artik her tick, waypoint-destekli client'larda her
+    uyenin radar pin'ini de tazeler (Source-X CPartyDef::UpdateWaypointAll);
+    boylece uyeler gorus mesafesi disinda birbirini haritada takip eder.
+  - Ayrilma, atilma veya dagilma; ayrilan uyenin pin'ini kalan uyelerin
+    haritasindan siler ve party pin'lerini ayrilan uyenin haritasindan temizler.
+
+DUZELTILDI - Champion seviye basi mum gereksinimi:
+  - Seviye-basi kirmizi-mum vektoru sona ekleyerek kuruluyordu, bu da kuyrugu
+    Source-X'e gore ters ceviriyordu (Source-X her degeri basa insert eder).
+    Varsayilan disi LEVELMAX'ta seviye basi mum gereksinimi hatali oluyordu
+    (orn. LEVELMAX 7'de [3,3,3,3,2,2] yerine [3,2,2,3,3,3]).
+
+EKLENDI - Champion script yuzeyi:
+  - ADDREDCANDLE / ADDWHITECANDLE bir mumu uid ile re-link eder (ya da olusturur);
+    NPCGROUP<n>[.<i>] bir grup uyesinin chardef'ini okur, NPCGROUP<n>=liste bir
+    seviyenin spawn grubunu override eder; MULTICREATE no-op olarak kabul edilir
+    (Source-X stub) — kalan ICHMPL/ICHMPV accessor'lari.
+
+NOTLAR - Dogrulanan yanlis-alarmlar (degisiklik gerekmedi):
+  - Party SendAddList/SendRemoveList/AddStatsUpdate sunucu tarafinda zaten var;
+    yalnizca waypoint tazeleme eksikti.
+  - Champion InitializeLists Source-X'te de hesaplamali (def'ten MONSTERS/CANDLES
+    listesi okunmaz) — yalnizca mum kurma sirasi yanlisti.
+
+
 [2026-07-12] - 90-alti parite backlog, ikinci batch
 ----------------------------------------
 

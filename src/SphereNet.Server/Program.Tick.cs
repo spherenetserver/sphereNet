@@ -970,10 +970,18 @@ public static partial class Program
             {
                 var pkt = new SphereNet.Network.Packets.Outgoing.PacketUpdateHealth(
                     subject.Uid.Value, subject.MaxHits, subject.Hits);
+                // Refresh the subject's party-member map pin (Source-X
+                // CPartyDef::UpdateWaypointAll) alongside the HP bar, so the map
+                // tracks members out of visual range on waypoint-capable clients.
+                var waypoint = new SphereNet.Network.Packets.Outgoing.PacketWaypointAdd(
+                    subject.Uid.Value, subject.X, subject.Y, subject.Z, subject.MapIndex,
+                    type: 2, subject.GetName()); // 2 = party member
                 foreach (var (other, client) in online)
                 {
                     if (other == subject) continue;
                     client.Send(pkt);
+                    if (client.NetState.SupportsMapWaypoints)
+                        client.Send(waypoint);
                 }
             }
         }

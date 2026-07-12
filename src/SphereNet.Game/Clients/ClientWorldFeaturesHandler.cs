@@ -2199,6 +2199,11 @@ public sealed class ClientWorldFeaturesHandler
                         {
                             SendToChar?.Invoke(formerUid,
                                 new PacketPartyRemoveMember(formerUid.Value, emptyList));
+                            // Clear every other former member's radar waypoint pin
+                            // from this member's map now that the party is gone.
+                            foreach (var otherUid in membersBefore)
+                                if (otherUid != formerUid)
+                                    SendToChar?.Invoke(formerUid, new PacketWaypointRemove(otherUid.Value));
                             // @PartyDisband (Source-X) — fires on each former member.
                             var formerChar = _world.FindChar(formerUid);
                             if (formerChar != null)
@@ -2329,6 +2334,16 @@ public sealed class ClientWorldFeaturesHandler
             foreach (var memberUid in party.Members)
                 SendToChar?.Invoke(memberUid, removePacket);
             SendToChar?.Invoke(removedMember.Value, removePacket);
+
+            // Clear the departed member's radar waypoint pin from every remaining
+            // member's map, and clear all remaining members' pins from the departed
+            // member's own map. PushPartyStats re-broadcasts live pins each tick.
+            var dropDeparted = new PacketWaypointRemove(removedMember.Value.Value);
+            foreach (var memberUid in party.Members)
+            {
+                SendToChar?.Invoke(memberUid, dropDeparted);
+                SendToChar?.Invoke(removedMember.Value, new PacketWaypointRemove(memberUid.Value));
+            }
         }
         else
         {

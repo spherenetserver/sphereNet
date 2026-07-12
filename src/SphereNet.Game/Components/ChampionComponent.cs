@@ -167,13 +167,16 @@ public sealed class ChampionComponent
         monsters.Insert(0, 100 - total);
         _monstersList = [.. monsters];
 
-        // _CandleList: red candles needed per level (16 total).
+        // _CandleList: red candles needed per level (16 total). Source-X
+        // (CCChampion::InitializeLists) inserts each computed value at the FRONT
+        // so the vector reads leftover, v(i=2), v(i=3)... — appending instead
+        // reverses the tail and mis-assigns the per-level requirement.
         var candles = new List<int>();
         int candleTotal = 0;
         for (int i = levels - 1; i >= 2; i--)
         {
             int c = (16 - candleTotal) / i;
-            candles.Add(c);
+            candles.Insert(0, c);
             candleTotal += c;
         }
         candles.Insert(0, 16 - candleTotal);
@@ -618,6 +621,33 @@ public sealed class ChampionComponent
 
     public bool TryGetProperty(string key, out string value)
     {
+        // NPCGROUP<n>[.<i>] reads the i-th chardef of level n's spawn group
+        // (Source-X ICHMPL_NPCGROUP r_WriteVal); -1 when out of range.
+        if (key.StartsWith("NPCGROUP", StringComparison.OrdinalIgnoreCase))
+        {
+            string rest = key[8..].Trim('[', ']', ' ');
+            var parts = rest.Split('.', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0 || !int.TryParse(parts[0], out int grp) ||
+                !_spawnGroups.TryGetValue(grp, out var group))
+            {
+                value = "-1";
+                return true;
+            }
+            int npc = 0;
+            if (parts.Length > 1) int.TryParse(parts[1], out npc);
+            if (npc < 0 || npc >= group.Count)
+            {
+                value = "-1";
+                return true;
+            }
+            // Reverse-resolve the stored chardef index to its defname via the
+            // resource registry (Source-X g_Cfg.ResourceGetName).
+            value = _resources?.GetResource(ResType.CharDef, group[npc])?.DefName
+                ?? Definitions.DefinitionLoader.GetCharDef(group[npc])?.DefName
+                ?? group[npc].ToString();
+            return true;
+        }
+
         switch (key.ToUpperInvariant())
         {
             case "ACTIVE": value = Active ? "1" : "0"; return true;
@@ -648,8 +678,36 @@ public sealed class ChampionComponent
 
     public bool TrySetProperty(string key, string value)
     {
+        // NPCGROUP<n>=def1,def2,... overrides the spawn group for level n
+        // (Source-X ICHMPL_NPCGROUP r_LoadVal). Invalid chardefs are dropped;
+        // an empty list clears the override.
+        if (key.StartsWith("NPCGROUP", StringComparison.OrdinalIgnoreCase))
+        {
+            string idxTok = key[8..].Trim('[', ']', '.', ' ');
+            if (!int.TryParse(idxTok, out int groupLevel))
+                return true;
+            var members = new List<int>();
+            foreach (var name in value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            {
+                var mRid = _resources?.ResolveDefName(name) ?? ResourceId.Invalid;
+                if (mRid.IsValid && mRid.Type == ResType.CharDef)
+                    members.Add(mRid.Index);
+            }
+            if (members.Count > 0) _spawnGroups[groupLevel] = members;
+            else _spawnGroups.Remove(groupLevel);
+            return true;
+        }
+
         switch (key.ToUpperInvariant())
         {
+            // Re-link (or create) a candle by uid — Source-X ADDREDCANDLE /
+            // ADDWHITECANDLE load-keys used to restore candle placement.
+            case "ADDREDCANDLE":
+                AddRedCandle(ParseSerial(value));
+                return true;
+            case "ADDWHITECANDLE":
+                AddWhiteCandle(ParseSerial(value));
+                return true;
             case "LEVEL":
                 if (int.TryParse(value, out int lv)) SetLevel(lv);
                 return true;
@@ -693,6 +751,9 @@ public sealed class ChampionComponent
                     InitFromDef(_resources, ChampionDefName);
                 return true;
             case "ADDSPAWN": SpawnNpc(); return true;
+            // Source-X MULTICREATE is a stub (ECS multi-link FIXME) — accept the
+            // verb so scripts don't error, but there is nothing to build yet.
+            case "MULTICREATE": return true;
             case "DELREDCANDLE": DelRedCandle(CandleDelCommand); return true;
             case "DELWHITECANDLE": DelWhiteCandle(CandleDelCommand); return true;
             case "ADDOBJ":

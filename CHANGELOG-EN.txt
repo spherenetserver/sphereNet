@@ -4,6 +4,43 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, third batch
+----------------------------------------
+
+ADDED - Account IP-block scheduling:
+  - Blocked IPs may now carry an expiry: BLOCKIP <ip>,<seconds> lifts itself
+    once the clock passes the requested window; a bare BLOCKIP stays permanent
+    (Source-X BLOCKIP decay). Expiry is enforced lazily on lookup.
+  - IPBlockList tracks absolute expiry per entry and exposes an injectable
+    clock so the decay is deterministically testable.
+
+ADDED - Party member map waypoints:
+  - Live party stats now also refresh each member's radar waypoint pin every
+    tick on waypoint-capable clients (Source-X CPartyDef::UpdateWaypointAll),
+    so members track each other on the world map out of visual range.
+  - Leaving, being kicked, or disbanding removes the departed member's pin
+    from the remaining members' maps and clears the party pins from the
+    departed member's own map.
+
+FIXED - Champion candle requirement per level:
+  - The red-candle-per-level vector was built by appending, reversing the tail
+    relative to Source-X (which inserts each value at the front). For a
+    non-default LEVELMAX this mis-assigned the candle requirement per level
+    (e.g. LEVELMAX 7 gave [3,2,2,3,3,3] instead of [3,3,3,3,2,2]).
+
+ADDED - Champion script surface:
+  - ADDREDCANDLE / ADDWHITECANDLE re-link (or create) a candle by uid;
+    NPCGROUP<n>[.<i>] reads a group member's chardef and NPCGROUP<n>=list
+    overrides a level's spawn group; MULTICREATE is accepted as a no-op
+    (Source-X stub) — the remaining ICHMPL/ICHMPV accessors.
+
+NOTES - Verified non-gaps (no change needed):
+  - Party SendAddList/SendRemoveList/AddStatsUpdate already exist server-side;
+    only the waypoint refresh was missing.
+  - Champion InitializeLists is computed in Source-X too (no MONSTERS/CANDLES
+    list is read from the def) — only the candle build order was wrong.
+
+
 [2026-07-12] - Sub-90 parity backlog, second batch
 ----------------------------------------
 

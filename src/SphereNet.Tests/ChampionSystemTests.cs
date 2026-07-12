@@ -225,6 +225,65 @@ public class ChampionSystemTests
         Assert.False(champ.Active);
     }
 
+    [Fact]
+    public void CandleList_PerLevel_MatchesSourceXInsertOrder()
+    {
+        var resources = LoadResources();
+        var (_, _, champ) = CreateAltar(resources);
+
+        // Source-X InitializeLists builds the candle vector by inserting each
+        // computed value at the FRONT. For LEVELMAX=7 that yields [3,3,3,3,2,2]
+        // (appending would reverse the tail to [3,2,2,3,3,3] and mis-assign the
+        // red-candle requirement per level). CandlesNextLevel accumulates the
+        // per-level count, so its per-SetLevel delta exposes the ordering.
+        champ.TrySetProperty("LEVELMAX", "7");
+        var perLevel = new List<int>();
+        int prev = champ.CandlesNextLevel;
+        for (int lv = 1; lv <= 6; lv++)
+        {
+            champ.SetLevel(lv);
+            perLevel.Add(champ.CandlesNextLevel - prev);
+            prev = champ.CandlesNextLevel;
+        }
+
+        Assert.Equal(new[] { 3, 3, 3, 3, 2, 2 }, perLevel);
+    }
+
+    [Fact]
+    public void NpcGroup_ReadResolvesMembers_WriteOverridesGroup()
+    {
+        var resources = LoadResources();
+        var (_, _, champ) = CreateAltar(resources);
+
+        // Group 1 from the def is [mongbat, imp].
+        Assert.True(champ.TryGetProperty("NPCGROUP1", out string first));
+        Assert.Contains("mongbat", first, StringComparison.OrdinalIgnoreCase);
+        Assert.True(champ.TryGetProperty("NPCGROUP1.1", out string second));
+        Assert.Contains("imp", second, StringComparison.OrdinalIgnoreCase);
+        // Out-of-range npc index → -1.
+        Assert.True(champ.TryGetProperty("NPCGROUP1.9", out string oob));
+        Assert.Equal("-1", oob);
+
+        // Override group 2 to the boss def, then read it back.
+        Assert.True(champ.TrySetProperty("NPCGROUP2", "c_test_boss"));
+        Assert.True(champ.TryGetProperty("NPCGROUP2", out string grp2));
+        Assert.Contains("boss", grp2, StringComparison.OrdinalIgnoreCase);
+
+        // Empty list clears the override → reads back as -1.
+        Assert.True(champ.TrySetProperty("NPCGROUP2", ""));
+        Assert.True(champ.TryGetProperty("NPCGROUP2", out string cleared));
+        Assert.Equal("-1", cleared);
+    }
+
+    [Fact]
+    public void MultiCreate_VerbIsAcceptedAsNoOp()
+    {
+        var resources = LoadResources();
+        var (_, _, champ) = CreateAltar(resources);
+        // Source-X MULTICREATE is a stub but must still be a recognised verb.
+        Assert.True(champ.TryExecuteVerb("MULTICREATE", "", null));
+    }
+
     private sealed class TestConsole : Core.Interfaces.ITextConsole
     {
         public string GetName() => "test";

@@ -144,9 +144,15 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   occlusion. Port Bresenham terrain+static ray (`TerrainEngine.cs:66`).
 
 ### 3.4 Spawn — 85
-- [ ] Champion monster-list / candle-list tabloları full `CHAMPIONDEF_*` resource
-  block'tan okunmalı (şu an InitializeLists heuristik).
-- [ ] `ICHMPL_*`/`ICHMPV_*` script accessor genişliği.
+- [x] Champion list/accessor parity — YAPILDI (Wave 216): denetim "def block'tan
+  okunmalı" sandı ama Source-X `CCChampion::InitializeLists` de tamamen HESAPLAMALI
+  (def'te MONSTERS/CANDLES listesi YOK) — o kısım zaten doğruydu. GERÇEK bug: candle
+  listesi Source-X'te her değeri BAŞA insert eder, bizim port SONA ekliyordu →
+  LEVELMAX=7'de `[3,2,2,3,3,3]` (yanlış) vs `[3,3,3,3,2,2]` (doğru), seviye başına
+  kırmızı-mum eşiği hatalı. Düzeltildi (Insert(0,c)). Ayrıca eksik ICHMPL/ICHMPV
+  accessor'lar eklendi: `ADDREDCANDLE`/`ADDWHITECANDLE` set-key (uid ile re-link),
+  `NPCGROUP<n>[.<i>]` read (g_Cfg.ResourceGetName reverse-lookup) + write override,
+  `MULTICREATE` no-op verb (Source-X stub). Test: ChampionSystemTests (+3).
 
 ### 3.5 Pet / taming / stable — 86
 - [ ] Stable native container serialization (`LAYER_STABLE`), port custom TAG.
@@ -174,13 +180,24 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   `GetPlane`/`GetPlaneZ`).
 
 ### 4.2 Party / guild — 72
-- [ ] Party live networking: `SendAddList`/`SendRemoveList`/`AddStatsUpdate`/
-  `UpdateWaypointAll` (`PartyManager.cs` yok).
+- [x] Party live networking — YAPILDI (Wave 216): denetim `PartyManager.cs`'e
+  bakıp eksik sandı ama server tarafı zaten vardı — `SendAddList`
+  (`PacketPartyMemberList`), `SendRemoveList` (`PacketPartyRemoveMember`,
+  `BroadcastPartyUpdate`), `AddStatsUpdate` (`PushPartyStats`, Program.Tick.cs)
+  mevcut. GERÇEK boşluk `UpdateWaypointAll` idi (waypoint paketleri yalnızca corpse
+  için kullanılıyordu). Eklendi: PushPartyStats her tick üye pin'ini yayar
+  (`PacketWaypointAdd` type:2, `SupportsMapWaypoints` gate); ayrılma/kick/disband'de
+  `BroadcastPartyUpdate` + disband yolu `PacketWaypointRemove` ile pin'leri temizler.
+  Test: PartyWaypointPacketTests (+2, add type:2 + remove byte-layout).
 - [ ] Guild `r_Verb` / stone-gump verb yüzeyi tam eşlenmemiş.
 
 ### 4.3 Account / login — 78
-- [ ] Per-IP guest limit, account aging, block/unblock scheduling, max-conn-per-IP
-  (`AccountManager.cs` 187 satır, ince).
+- [x] **block/unblock scheduling** — YAPILDI (Wave 216): IPBlockList artık zamanlı
+  blok destekliyor (expiry Unix-ms, 0=kalıcı, lazy-expire), NowMsProvider injectable
+  (test edilebilir). HandleServBlockIp `,seconds` decay'ini artık onore ediyor (eskiden
+  yok sayılıyordu). Test: IpBlockListTests (+4).
+- [ ] Per-IP guest limit, account aging, max-conn-per-IP — bağlantı-kabul path'ini
+  değiştiren daha büyük özellikler. ERTELENDİ.
 
 ### 4.4 Item type davranışları — 80
 - [ ] **Plant-growth sistemi** (`CItemPlant.cpp` 197 satır) — karşılığı yok.

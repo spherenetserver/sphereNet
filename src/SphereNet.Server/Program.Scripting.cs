@@ -1608,9 +1608,12 @@ public static partial class Program
         string result;
         if (block)
         {
-            _ipBlockList.Add(ip);
-            msg = parts.Length > 1
-                ? $"IP blocked: {ip} (decay {parts[1]}s requested; block persists until UNBLOCKIP)"
+            int decaySeconds = 0;
+            if (parts.Length > 1 && int.TryParse(parts[1], out int parsed) && parsed > 0)
+                decaySeconds = parsed;
+            _ipBlockList.Add(ip, decaySeconds);
+            msg = decaySeconds > 0
+                ? $"IP blocked: {ip} (expires in {decaySeconds}s)"
                 : $"IP blocked: {ip}";
             result = "1";
         }

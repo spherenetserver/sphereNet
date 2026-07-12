@@ -150,6 +150,9 @@ public class Item : ObjBase
     /// <summary>Attached spawn component (for IT_SPAWN_CHAR / IT_SPAWN_ITEM).</summary>
     public SpawnComponent? SpawnChar { get; set; }
     public ItemSpawnComponent? SpawnItem { get; set; }
+    /// <summary>Champion spawn state machine (Source-X CCChampion) — attached
+    /// alongside SpawnChar when the item type is t_spawn_champion.</summary>
+    public ChampionComponent? Champion { get; set; }
 
     public ItemType ItemType
     {
@@ -817,6 +820,10 @@ public class Item : ObjBase
 
     public override bool TryGetProperty(string key, out string value)
     {
+        // Champion altar read keys (Source-X ICHMPL_*).
+        if (Champion != null && Champion.TryGetProperty(key, out value!))
+            return true;
+
         value = "";
         var upper = key.ToUpperInvariant();
 
@@ -1290,6 +1297,10 @@ public class Item : ObjBase
 
     public override bool TrySetProperty(string key, string value)
     {
+        // Champion altar writable keys (Source-X ICHMPL_* loaders).
+        if (Champion != null && Champion.TrySetProperty(key, value))
+            return true;
+
         var upper = key.ToUpperInvariant();
 
         // AOS on-hit combat properties are tag-backed (see TryGetProperty).
@@ -1645,6 +1656,13 @@ public class Item : ObjBase
     public override bool TryExecuteCommand(string key, string args, ITextConsole source)
     {
         var upper = key.ToUpperInvariant();
+
+        // Champion altar verbs (Source-X ICHMPV_*: START/STOP/INIT/ADDSPAWN/
+        // DELREDCANDLE/DELWHITECANDLE/ADDOBJ/DELOBJ) win when the component
+        // is attached.
+        if (Champion != null && Champion.TryExecuteVerb(upper, args, source as Characters.Character))
+            return true;
+
         switch (upper)
         {
             // Clone this item (optionally <n> times) into the same location.
@@ -2449,6 +2467,16 @@ public class Item : ObjBase
             }
         }
 
+        // Champion altar: the timer is the red-candle DECAY tick, not a spawn
+        // schedule — the champion replaces members from kills (Source-X
+        // CCChampion::OnTickComponent).
+        if (Champion != null)
+        {
+            if (timerFired)
+                Champion.OnTick(Environment.TickCount64);
+            return true;
+        }
+
         // Source-X parity: the item's timer IS the spawn timer.
         // When it fires (including manual TIMER=1 via .info),
         // sync SpawnComponent so it spawns on this tick.
@@ -2628,15 +2656,36 @@ public class Item : ObjBase
             // Source-X IT_SPAWN_CHAMPION rides the char-spawn machinery but
             // ignores the amount cap and never pauses (CCSpawn special case).
             SpawnChar.IsChampion = effType == ItemType.SpawnChampion;
-            SpawnChar.SetFromMore1(_more1, resources);
-            // Legacy saves write MORE1 as a raw defname (MORE1=c_spider_giant).
-            // The numeric setter can't always resolve it (chardef hashes are
-            // 24-bit; the ItemDef-gated resolver returns 0) and parks it in
-            // the MORE1_DEFNAME tag — consume that here, or every imported
-            // NPC spawner comes up empty and never spawns.
-            if (_more1 == 0 && TryGetTag("MORE1_DEFNAME", out string? spawnDef) &&
-                !string.IsNullOrWhiteSpace(spawnDef))
-                SpawnChar.SetFromDefName(spawnDef, resources);
+            if (effType == ItemType.SpawnChampion)
+            {
+                // Champion altar: MORE1 links a [CHAMPION x] def, not a
+                // chardef/spawn group — the champion component owns the wave
+                // composition and drives all spawning through SpawnChar.
+                Champion ??= new ChampionComponent(this, world);
+                string champDef = TryGetTag("MORE1_DEFNAME", out string? champTag) &&
+                    !string.IsNullOrWhiteSpace(champTag)
+                    ? champTag.Trim()
+                    : "";
+                if (champDef.Length == 0 && _more1 != 0)
+                {
+                    var champLink = resources.GetResource(Core.Enums.ResType.Champion, (int)_more1);
+                    champDef = champLink?.DefName ?? "";
+                }
+                if (champDef.Length > 0)
+                    Champion.InitFromDef(resources, champDef);
+            }
+            else
+            {
+                SpawnChar.SetFromMore1(_more1, resources);
+                // Legacy saves write MORE1 as a raw defname (MORE1=c_spider_giant).
+                // The numeric setter can't always resolve it (chardef hashes are
+                // 24-bit; the ItemDef-gated resolver returns 0) and parks it in
+                // the MORE1_DEFNAME tag — consume that here, or every imported
+                // NPC spawner comes up empty and never spawns.
+                if (_more1 == 0 && TryGetTag("MORE1_DEFNAME", out string? spawnDef) &&
+                    !string.IsNullOrWhiteSpace(spawnDef))
+                    SpawnChar.SetFromDefName(spawnDef, resources);
+            }
             SpawnChar.ApplyMoreP();
 
             if (_amount > 1)

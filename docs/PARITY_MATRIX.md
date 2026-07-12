@@ -70,9 +70,9 @@ lookups `MAP*`, `SKILL.n`, `CHARDEF.`, `ITEMDEF.`, `AREA.`, `MULTIDEF.`, `LIST.`
 
 The trigger surface is measured and regression-guarded by
 `src/SphereNet.Tests/TriggerCoverageGuardrailTests.cs`, which recomputes the
-"defined but not fired" set from source on every run. Outstanding (infrastructure-
-gated) entries: char `NPCSeeWantItem`, `UserMailBag`; item `Level`, `Complete`, and
-the four champion-altar candle triggers.
+"defined but not fired" set from source on every run. The ITEM-trigger backlog is
+now EMPTY (the champion port wired Level/Complete and the four candle triggers);
+outstanding char entries: `NPCSeeWantItem`, `UserMailBag`.
 
 Per-trigger **arg contract** (`SRC`, `ARGO`, `ACT`, `ARGN1/2/3`, `ARGS`, `LOCAL`,
 `RETURN 0/1`, arg mutation) — the Faz 2 core:
@@ -172,6 +172,26 @@ MapData feature); SKILLUPDATE reports cap 1000.
 | `OBJ`, `NEW` | global object / last-created | Implemented | via server resolver. |
 
 ---
+
+## Champion spawns (Source-X CCChampion / CCChampionDef)
+
+`[CHAMPION x]` sections load as retained `ResType.Champion` defs (NAME,
+LEVELMAX, SPAWNSMAX, CHAMPIONID, NPCGROUP[n]). An item of `t_spawn_champion`
+(ItemType.SpawnChampion = 300, matching IT_SPAWN_CHAMPION) attaches
+`ChampionComponent` alongside its SpawnComponent; MORE1/MORE1_DEFNAME links
+the def. The full state machine is ported: START/STOP/INIT/ADDSPAWN/
+DELRED-WHITECANDLE/ADDOBJ/DELOBJ verbs, the ICHMPL_* read/write keys, kill →
+white candle (quota = red/5) → 4 whites = 1 red (whites consumed) → reds per
+level from the 16-candle list → boss (CHAMPIONID) at LEVELMAX → @Complete.
+The 10-minute decay tick removes a red candle and refunds kill progress;
+no reds left stops the spawn. Triggers fired: @Start (post-arm, aborts the
+initial burst), @Stop, @Level (ARGN1..3), @Complete, @AddRed/WhiteCandle
+(ARGO = candle, RETURN 1 deletes) and @DelRed/WhiteCandle (ARGN1 = reason,
+RETURN 1 keeps). Kill credit rides the SPAWNITEM back-link in
+DeathEngine.ProcessDeath (Source-X credits at object destroy). State persists
+through CHAMPION_* item tags (level/counters/candle uid lists) — no new save
+records. Verbatim quirks kept: the Start burst loop races the quota
+(ceil(quota/2) initial spawns). Guarded by `ChampionSystemTests`.
 
 ## FILE object (Source-X CSFileObj on g_Serv._hFile)
 

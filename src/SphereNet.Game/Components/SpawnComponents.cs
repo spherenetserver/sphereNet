@@ -158,13 +158,24 @@ public sealed class SpawnComponent
                 return;
         }
 
+        SpawnResolved(defIndex, bodyId);
+    }
+
+    /// <summary>Spawn one NPC of an explicit chardef index — used by the
+    /// champion component to spawn its per-level wave members and the boss
+    /// (Source-X CCSpawn::GenerateChar with a forced CREID).</summary>
+    public Objects.Characters.Character? SpawnSpecific(int charDefIndex) =>
+        SpawnResolved(charDefIndex, (ushort)Math.Clamp(charDefIndex, 0, ushort.MaxValue));
+
+    private Objects.Characters.Character? SpawnResolved(int defIndex, ushort bodyId)
+    {
         // @PreSpawn — script can override spawn ID or abort (return TRUE)
         if (OnSpawnTrigger != null)
         {
             var preArgs = new SpawnTriggerArgs { SpawnDefIndex = defIndex };
             var result = OnSpawnTrigger(_spawnItem, ItemTrigger.PreSpawn, preArgs);
             if (result == TriggerResult.True)
-                return; // script aborted spawn
+                return null; // script aborted spawn
             if (preArgs.SpawnDefIndex != defIndex)
             {
                 defIndex = preArgs.SpawnDefIndex;
@@ -269,7 +280,7 @@ public sealed class SpawnComponent
             {
                 _world.DeleteObject(ch);
                 ch.Delete();
-                return;
+                return null;
             }
         }
 
@@ -286,7 +297,7 @@ public sealed class SpawnComponent
             // orphan NPC with no sector (Source-X deletes on MoveNear/MoveTo fail).
             _world.DeleteObject(ch);
             ch.Delete();
-            return;
+            return null;
         }
         _spawnedUids.Add(ch.Uid);
 
@@ -294,6 +305,7 @@ public sealed class SpawnComponent
         OnSpawnTrigger?.Invoke(_spawnItem, ItemTrigger.AddObj, new SpawnTriggerArgs { SpawnedChar = ch });
 
         _world.OnNpcSpawned?.Invoke(ch);
+        return ch;
     }
 
     private Point3D FindSpawnPosition(CharDef? charDef)
@@ -604,6 +616,10 @@ public sealed class SpawnTriggerArgs
     public Character? SpawnedChar { get; set; }
     public Item? SpawnedItem { get; set; }
     public int SpawnDefIndex { get; set; }
+    // Champion trigger payload (@Level ARGN1..3, candle @Del* ARGN1=reason).
+    public int N1 { get; set; }
+    public int N2 { get; set; }
+    public int N3 { get; set; }
 }
 
 /// <summary>

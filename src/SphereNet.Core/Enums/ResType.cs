@@ -46,5 +46,8 @@ public enum ResType : byte
     WorldItem,
     Spawn,
     WorldScript,
+    /// <summary>[CHAMPION x] defs (Source-X RES_CHAMPION) — appended so
+    /// existing enum values stay stable.</summary>
+    Champion,
     Qty
 }

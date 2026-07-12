@@ -137,6 +137,24 @@ public sealed class DeathEngine
         // MakeCorpse too) — capture it first for the corpse forensics stamp.
         bool wasSleeping = victim.IsStatFlag(StatFlag.Sleeping);
 
+        // Champion wave credit — Source-X routes this through the spawn
+        // back-link at object destroy (CObjBase dtor → CCChampion::DelObj);
+        // we credit at death time via the SPAWNITEM tag so candles/levels
+        // advance while the corpse still exists.
+        if (!victim.IsPlayer &&
+            victim.TryGetTag("SPAWNITEM", out string? spawnItemUid) &&
+            !string.IsNullOrEmpty(spawnItemUid))
+        {
+            string hexPart = spawnItemUid.Trim();
+            if (hexPart.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) hexPart = hexPart[2..];
+            else if (hexPart.StartsWith('0') && hexPart.Length > 1) hexPart = hexPart[1..];
+            if (uint.TryParse(hexPart, System.Globalization.NumberStyles.HexNumber, null, out uint spawnerUid) &&
+                _world.FindItem(new Serial(spawnerUid)) is { Champion: not null } altar)
+            {
+                altar.Champion.OnMemberDeath(victim);
+            }
+        }
+
         // Kill the character
         victim.Kill();
 

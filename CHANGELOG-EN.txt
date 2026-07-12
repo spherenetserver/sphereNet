@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Champion spawn engine (Source-X CCChampion port)
+----------------------------------------
+
+ADDED - Champion spawns:
+  - [CHAMPION x] resource sections now load as retained defs (NAME, LEVELMAX,
+    SPAWNSMAX, CHAMPIONID, NPCGROUP[n] per level) instead of being skipped.
+  - t_spawn_champion altars attach a ChampionComponent that drives the full
+    Source-X state machine on top of the existing spawn component: kills earn
+    white candles, four whites convert to a red, reds advance the level, the
+    boss (CHAMPIONID) comes out at LEVELMAX and its death fires @Complete.
+  - Candle items (skull candle 0x1853, reds hued 33) are placed on the
+    Source-X ring geometry around the altar and re-link on load.
+  - The 10-minute decay tick removes a red candle and refunds kill progress;
+    with no reds left the spawn stops (players lose the run).
+  - Script surface: START/STOP/INIT/ADDSPAWN/DELREDCANDLE/DELWHITECANDLE/
+    ADDOBJ/DELOBJ verbs plus the LEVEL/ACTIVE/REDCANDLES/KILLSNEXT*/
+    CHAMPIONID/CHAMPIONSPAWN... read/write keys on the altar item.
+  - Triggers: @Start/@Stop/@Level (ARGN1=level, ARGN2=monsters,
+    ARGN3=candles), @Complete, @AddRed/WhiteCandle (RETURN 1 deletes the
+    candle) and @DelRed/WhiteCandle (ARGN1=reason, RETURN 1 keeps it) — the
+    item-trigger backlog in the coverage guardrail is now empty.
+  - Kill credit flows through the SPAWNITEM back-link at death time; state
+    persists via CHAMPION_* item tags so the save format is unchanged.
+
 [2026-07-12] - Script FILE object parity with Source-X (CSFileObj)
 ----------------------------------------
 

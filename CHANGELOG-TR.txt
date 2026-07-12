@@ -3,6 +3,31 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - Champion spawn motoru (Source-X CCChampion portu)
+----------------------------------------
+
+EKLENDI - Champion spawn'lari:
+  - [CHAMPION x] kaynak section'lari artik atlanmak yerine tutulan def olarak
+    yuklenir (NAME, LEVELMAX, SPAWNSMAX, CHAMPIONID, seviye basina NPCGROUP[n]).
+  - t_spawn_champion sunaklari mevcut spawn bileseninin ustunde tam Source-X
+    durum makinesini suren ChampionComponent baglar: olduruler beyaz mum
+    kazandirir, dort beyaz bir kirmiziya donusur, kirmizilar seviyeyi
+    ilerletir, LEVELMAX'ta boss (CHAMPIONID) cikar ve olumu @Complete atesler.
+  - Mum itemlari (kuru kafa mumu 0x1853, kirmizilar hue 33) sunagin
+    etrafinda Source-X halka geometrisine yerlesir ve yuklemede yeniden
+    baglanir.
+  - 10 dakikalik decay tick'i bir kirmizi mumu kaldirir ve oldurme
+    ilerlemesini geri alir; kirmizi kalmayinca spawn durur.
+  - Script yuzeyi: START/STOP/INIT/ADDSPAWN/DELREDCANDLE/DELWHITECANDLE/
+    ADDOBJ/DELOBJ verb'leri + sunak iteminde LEVEL/ACTIVE/REDCANDLES/
+    KILLSNEXT*/CHAMPIONID/CHAMPIONSPAWN... okuma/yazma anahtarlari.
+  - Trigger'lar: @Start/@Stop/@Level (ARGN1=seviye, ARGN2=canavar,
+    ARGN3=mum), @Complete, @AddRed/WhiteCandle (RETURN 1 mumu siler) ve
+    @DelRed/WhiteCandle (ARGN1=neden, RETURN 1 korur) — kapsama
+    guardrail'indeki item-trigger backlog'u artik bos.
+  - Oldurme kredisi olum aninda SPAWNITEM geri-baglantisiyla akar; durum
+    CHAMPION_* item tag'leriyle persist olur, save formati degismedi.
+
 [2026-07-12] - Script FILE nesnesi Source-X paritesi (CSFileObj)
 ----------------------------------------
 

@@ -119,7 +119,8 @@ public sealed class ResourceHolder
         // blocks (WORLDCHAR/WORLDITEM/SECTOR/GMPAGE/TIMERF and the WC/WI/WS
         // aliases) are loaded by the Persistence layer from save files, and
         // ACCOUNT blocks by AccountPersistence.
-        "CHAMPION" or "SPHERECRYPT" or "KRDIALOGLIST" or "ACCOUNT" or "GMPAGE" or "SECTOR"
+        "CHAMPION" => ResType.Champion,
+        "SPHERECRYPT" or "KRDIALOGLIST" or "ACCOUNT" or "GMPAGE" or "SECTOR"
             or "WORLDCHAR" or "WORLDITEM" or "WC" or "WI" or "WORLDSCRIPT" or "WS"
             or "TIMERF" or "STAT" => ResType.Sphere,
         "STARTS" or "STARTSGOLD" or "STARTGOLD" or "MOONGATES" or "TELEPORTERS" => ResType.WorldScript,
@@ -144,8 +145,9 @@ public sealed class ResourceHolder
         or ResType.NewBie or ResType.Events or ResType.TypeDef or ResType.Function or ResType.Dialog
         or ResType.MultiDef or ResType.SkillMenu
         // Source-X keeps these as CResourceLink sections readable at runtime
-        // (BOOK pages, MENU choices, SCROLL text, TIP entries).
-        or ResType.Book or ResType.Menu or ResType.Scroll or ResType.Tip;
+        // (BOOK pages, MENU choices, SCROLL text, TIP entries, CHAMPION defs).
+        or ResType.Book or ResType.Menu or ResType.Scroll or ResType.Tip
+        or ResType.Champion;
 
     /// <summary>
     /// Load all sections from a script file.

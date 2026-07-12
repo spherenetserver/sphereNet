@@ -665,7 +665,18 @@ public static partial class Program
                     targs.O1 = args.SpawnedItem;
                     targs.ItemSrc = args.SpawnedItem;
                 }
-                targs.N1 = args.SpawnDefIndex;
+                // Champion triggers carry explicit N1..N3 payloads (@Level,
+                // candle reasons); plain spawn triggers keep N1 = def index.
+                if (args.N1 != 0 || args.N2 != 0 || args.N3 != 0)
+                {
+                    targs.N1 = args.N1;
+                    targs.N2 = args.N2;
+                    targs.N3 = args.N3;
+                }
+                else
+                {
+                    targs.N1 = args.SpawnDefIndex;
+                }
                 return _triggerDispatcher.FireItemTrigger(item, trigger, targs);
             };
 

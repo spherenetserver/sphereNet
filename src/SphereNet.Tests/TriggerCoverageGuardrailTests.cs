@@ -148,8 +148,9 @@ public class TriggerCoverageGuardrailTests
     // and cosmetic tooltips — none are core gameplay gates today).
     private static readonly HashSet<string> ItemNotFiredP2 = new()
     {
-        "Level", "Complete",
-        "AddRedCandle", "AddWhiteCandle", "DelRedCandle", "DelWhiteCandle",
+        // Wired (now fired): the champion-altar family — Level, Complete,
+        // AddRed/WhiteCandle and DelRed/WhiteCandle all fire from
+        // ChampionComponent (the Source-X CCChampion port).
         // Wired (now fired): Tooltip (single click, IsTrigUsed-gated,
         // ahead of @Click in HandleSingleClick); Start/Stop (the spawner
         // START/STOP verbs, via Item.OnSpawnStartStop).
@@ -164,10 +165,8 @@ public class TriggerCoverageGuardrailTests
         // to movable multis: ShipEngine.MoveDelta fires them on the ship
         // multi at a region boundary (ARGO = region, SRC = pilot, RETURN 1
         // blocks the step), via the gated OnShipRegionChange hook.
-        // Still deferred (need infrastructure): champion-spawn candles
-        // (AddRed/WhiteCandle, DelRed/WhiteCandle — no altar system), item
-        // leveling (Level/Complete), Start/Stop (no item timer start/stop
-        // event), Tooltip (covered by ClientTooltip 0xD6).
+        // The item-trigger backlog is EMPTY — every ItemTrigger member has a
+        // fire site. New enum members land here until they are wired.
     };
 
     private static readonly HashSet<string> ItemNotFired = new(ItemNotFiredP2);

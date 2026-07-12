@@ -30,6 +30,12 @@ public sealed class Sector : IScriptObj
     private short _rainChance = 15;
     private short _coldChance = 5;
     private bool _isSleeping;
+    private SectorFlag _flags;
+
+    /// <summary>Milliseconds a sector must sit clientless before it may sleep
+    /// (Source-X g_Cfg._iSectorSleepDelay, default 10 minutes). 0 disables
+    /// sleeping entirely.</summary>
+    public static long SleepDelayMs { get; set; } = 10L * 60 * 1000;
 
     private static readonly byte[] TrammelPhaseBrightness = [0, 0, 1, 1, 2, 1, 1, 0];
     private static readonly byte[] FeluccaPhaseBrightness = [0, 1, 3, 4, 6, 4, 3, 1];
@@ -56,6 +62,37 @@ public sealed class Sector : IScriptObj
     public short RainChance { get => _rainChance; set => _rainChance = value; }
     public short ColdChance { get => _coldChance; set => _coldChance = value; }
     public bool IsSleeping { get => _isSleeping; set => _isSleeping = value; }
+
+    /// <summary>Sector behaviour flags (Source-X SECF_*). Setting the NoSleep
+    /// bit notifies the host so an always-awake sector stays in the tick set.</summary>
+    public SectorFlag Flags
+    {
+        get => _flags;
+        set
+        {
+            bool wasNoSleep = _flags.HasFlag(SectorFlag.NoSleep);
+            _flags = value;
+            bool isNoSleep = _flags.HasFlag(SectorFlag.NoSleep);
+            if (wasNoSleep != isNoSleep)
+                OnNoSleepChanged?.Invoke(this, isNoSleep);
+        }
+    }
+
+    /// <summary>Last time (ms) a client was present in this sector — the sleep
+    /// timeout is measured from here (Source-X GetLastClientTime).</summary>
+    public long LastClientTimeMs { get; set; }
+
+    /// <summary>Stamp the last-client time (method form so callers can use it
+    /// through a null-conditional sector reference).</summary>
+    public void SetLastClientTime(long nowMs) => LastClientTimeMs = nowMs;
+
+    /// <summary>Host bridge: resolve an adjacent sector by absolute sector
+    /// coordinates (Source-X CSector::_GetAdjacentSector), or null off-map.</summary>
+    public Func<int, int, Sector?>? GetAdjacentSector { get; set; }
+
+    /// <summary>Host bridge fired when the NoSleep flag toggles so the world can
+    /// keep an always-awake sector in its tick set.</summary>
+    public Action<Sector, bool>? OnNoSleepChanged { get; set; }
 
     /// <summary>Callback for world time queries (WorldHour, WorldMinute).</summary>
     public Func<(int Hour, int Minute)>? GetWorldTime { get; set; }
@@ -230,6 +267,42 @@ public sealed class Sector : IScriptObj
         _resourcePools[resDefIndex] = (newRemaining, regenTick);
     }
 
+    // 8-neighbour offsets (Source-X DIR_QTY sweep order is irrelevant here).
+    private static readonly (int Dx, int Dy)[] AdjacentOffsets =
+        [(0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1)];
+
+    /// <summary>
+    /// Source-X CSector::_CanSleep. A sector may sleep only when sleeping is
+    /// enabled and not vetoed by SECF_NoSleep, no client is inside, and either
+    /// SECF_InstaSleep is set or (optionally) every adjacent sector could also
+    /// sleep and the clientless timeout has elapsed. The adjacency sweep keeps
+    /// the ring around an active sector awake so a player never walks into a
+    /// cold sector.
+    /// </summary>
+    public bool CanSleep(long nowMs, bool checkAdjacents = true)
+    {
+        if (SleepDelayMs == 0 || _flags.HasFlag(SectorFlag.NoSleep))
+            return false;
+        if (ClientCount > 0)
+            return false;
+        if (_flags.HasFlag(SectorFlag.InstaSleep))
+            return true;
+
+        if (checkAdjacents && GetAdjacentSector != null)
+        {
+            foreach (var (dx, dy) in AdjacentOffsets)
+            {
+                var adjacent = GetAdjacentSector(_x + dx, _y + dy);
+                // Non-recursive check on neighbours (fCheckAdjacents = false)
+                // so the sweep can't loop back through this sector.
+                if (adjacent != null && !adjacent.CanSleep(nowMs, checkAdjacents: false))
+                    return false;
+            }
+        }
+
+        return nowMs - LastClientTimeMs > SleepDelayMs;
+    }
+
     /// <summary>Get all objects within a range from a point inside this sector.
     /// Safe for concurrent reads when no writes are in progress (multicore compute phase).</summary>
     public IEnumerable<ObjBase> GetObjectsInRange(Point3D center, int range)
@@ -352,7 +425,16 @@ public sealed class Sector : IScriptObj
                 value = _isSleeping ? "1" : "0";
                 return true;
             case "CANSLEEP":
-                value = (ClientCount == 0) ? "1" : "0";
+                value = CanSleep(Environment.TickCount64) ? "1" : "0";
+                return true;
+            case "FLAGS":
+                value = ((uint)_flags).ToString();
+                return true;
+            case "NOSLEEP":
+                value = _flags.HasFlag(SectorFlag.NoSleep) ? "1" : "0";
+                return true;
+            case "INSTASLEEP":
+                value = _flags.HasFlag(SectorFlag.InstaSleep) ? "1" : "0";
                 return true;
             case "ISDARK":
             {
@@ -414,9 +496,29 @@ public sealed class Sector : IScriptObj
             case "COLDCHANCE":
                 if (short.TryParse(val, out short cc)) { _coldChance = cc; return true; }
                 return false;
+            case "FLAGS":
+                if (TryParseUInt(val, out uint fv)) { Flags = (SectorFlag)fv; return true; }
+                return false;
+            case "NOSLEEP":
+                Flags = ParseBool(val) ? _flags | SectorFlag.NoSleep : _flags & ~SectorFlag.NoSleep;
+                return true;
+            case "INSTASLEEP":
+                Flags = ParseBool(val) ? _flags | SectorFlag.InstaSleep : _flags & ~SectorFlag.InstaSleep;
+                return true;
             default:
                 return false;
         }
+    }
+
+    private static bool ParseBool(string v) =>
+        v is "1" or "true" or "TRUE" || (int.TryParse(v, out int n) && n != 0);
+
+    private static bool TryParseUInt(string v, out uint result)
+    {
+        v = v.Trim();
+        if (v.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            return uint.TryParse(v[2..], System.Globalization.NumberStyles.HexNumber, null, out result);
+        return uint.TryParse(v, out result);
     }
 
     public bool TryExecuteCommand(string key, string args, ITextConsole source)

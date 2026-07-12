@@ -77,6 +77,9 @@ public sealed class GameWorld
     private readonly HashSet<Sector> _activeSectors = new(256);
     private readonly HashSet<Sector> _prevActiveSectors = new(256);
     private readonly List<Sector> _newlyActiveSectors = new(64);
+    // Sectors flagged SECF_NoSleep — always kept in the tick set regardless of
+    // player proximity (Source-X CSector::_CanSleep NoSleep veto).
+    private readonly HashSet<Sector> _alwaysAwakeSectors = [];
 
     /// <summary>World clock: in-game minutes since epoch. 1 real second = configurable game minutes.</summary>
     private long _worldClock;
@@ -248,16 +251,23 @@ public sealed class GameWorld
         for (int x = 0; x < sectorCols; x++)
             for (int y = 0; y < sectorRows; y++)
             {
-                var sector = new Sector(x, y, (byte)mapId, sectorCols)
+                byte mapIndex = (byte)mapId;
+                var sector = new Sector(x, y, mapIndex, sectorCols)
                 {
                     GetWorldMinutes = () => _worldClock,
                     GetWorldTime = () => (WorldHour, WorldMinute),
                     GetLightSettings = () => (LightDay, LightNight, DungeonLight),
                     SendLight = (character, level) => OnSectorLight?.Invoke(character, level),
+                    GetAdjacentSector = (sx, sy) => GetSector(mapIndex, sx, sy),
+                    OnNoSleepChanged = (s, isNoSleep) =>
+                    {
+                        if (isNoSleep) _alwaysAwakeSectors.Add(s);
+                        else _alwaysAwakeSectors.Remove(s);
+                    },
                 };
                 int px = Math.Min(short.MaxValue, x * Sector.SectorSize);
                 int py = Math.Min(short.MaxValue, y * Sector.SectorSize);
-                sector.IsDungeon = () => FindRegion(new Point3D((short)px, (short)py, 0, (byte)mapId))?
+                sector.IsDungeon = () => FindRegion(new Point3D((short)px, (short)py, 0, mapIndex))?
                     .IsFlag(RegionFlag.Underground) == true;
                 grid[x, y] = sector;
             }
@@ -1001,11 +1011,15 @@ public sealed class GameWorld
         _tickSectors.Clear();
         _newlyActiveSectors.Clear();
 
+        long nowMs = Environment.TickCount64;
         foreach (var player in _onlinePlayers)
         {
             if (player.IsDeleted || (!player.IsOnline && !player.IsClientLingering)) continue;
             int sx = player.X / Sector.SectorSize;
             int sy = player.Y / Sector.SectorSize;
+            // Refresh the last-client timestamp on the player's own sector so the
+            // Source-X sleep timeout (CanSleep) is measured from here.
+            GetSector(player.MapIndex, sx, sy)?.SetLastClientTime(nowMs);
             for (int dx = -ActiveSectorRadius; dx <= ActiveSectorRadius; dx++)
             {
                 for (int dy = -ActiveSectorRadius; dy <= ActiveSectorRadius; dy++)
@@ -1018,6 +1032,17 @@ public sealed class GameWorld
                             _newlyActiveSectors.Add(s);
                     }
                 }
+            }
+        }
+
+        // SECF_NoSleep sectors always tick even with no player nearby.
+        foreach (var s in _alwaysAwakeSectors)
+        {
+            if (_activeSectors.Add(s))
+            {
+                _tickSectors.Add(s);
+                if (!_prevActiveSectors.Contains(s))
+                    _newlyActiveSectors.Add(s);
             }
         }
     }

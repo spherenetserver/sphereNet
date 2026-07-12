@@ -217,10 +217,21 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   SourceXEnvironChangeWave236Tests (+5).
 
 ### 3.2 Sector — 75
-- [ ] Sleep modeli: `SECF_NoSleep`/`SECF_InstaSleep` flag'leri, 8-komşu adjacency
-  sweep, `_iSectorSleepDelay` timeout (`CSector::_CanSleep` cpp:1062). Port sadece
-  `ClientCount==0`.
-- [ ] `SECF_*` flag enum yok.
+- [x] Sleep modeli — YAPILDI (Wave 239). Source-X `CSector::_CanSleep` portu:
+  `Sector.CanSleep(nowMs, checkAdjacents)` — sleep-delay 0 veya SECF_NoSleep→asla,
+  ClientCount>0→hayır, SECF_InstaSleep→hemen, 8-komşu adjacency sweep (komşu
+  uyuyamıyorsa bu da uyuyamaz, non-recursive), yoksa `now-LastClientTimeMs>SleepDelayMs`
+  timeout. `SleepDelayMs` static (default 10dk, Source-X g_Cfg._iSectorSleepDelay).
+  `<CANSLEEP>` script prop artık tam modeli kullanıyor (eskiden sadece ClientCount==0).
+  GameWorld: GetAdjacentSector callback (InitMap), RefreshActiveSectors player-sector'a
+  LastClientTimeMs damgalıyor, SECF_NoSleep sektörler `_alwaysAwakeSectors` ile her
+  zaman tick set'inde (OnNoSleepChanged callback). Test: SourceXSectorSleepWave239Tests
+  (+5). NOT: fiili tick-uyku modeli spatial active-set olarak kalıyor (temporal timeout
+  yerine oyuncu-etrafı pencere — geçerli alternatif); CanSleep predicate + SECF_NoSleep
+  davranışsal olarak faithful, InstaSleep model/script-düzeyinde.
+- [x] `SECF_*` flag enum — YAPILDI (Wave 239): `Core.Enums.SectorFlag` (NoSleep=0x1,
+  InstaSleep=0x2, Source-X SECF_* birebir). Script yüzeyi: FLAGS/NOSLEEP/INSTASLEEP
+  read+write (Sector.TryGet/SetProperty).
 - [x] GetLocalTime / IsMoonVisible / GetLightCalc / LightFlash sector metotları
   Wave 234-235 ile tamamlandı.
 

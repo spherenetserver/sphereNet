@@ -4,6 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, twentieth batch
+----------------------------------------
+
+ADDED - Sector sleep model (Wave 239):
+  - Sectors now decide whether they may sleep with the full Source-X
+    CSector::_CanSleep model instead of a bare client-count check: sleeping is
+    vetoed by SECF_NoSleep or a zero sleep-delay, blocked while a client is
+    inside, granted immediately under SECF_InstaSleep, and otherwise granted
+    once the sector has been clientless past the sleep-delay (default 10
+    minutes). An 8-neighbour adjacency sweep keeps the ring around an active
+    sector awake so a player never walks into a cold sector.
+  - New SectorFlag enum (SECF_NoSleep / SECF_InstaSleep) with FLAGS / NOSLEEP /
+    INSTASLEEP script access; <CANSLEEP> now reports the full model.
+  - A SECF_NoSleep sector stays in the world tick set regardless of player
+    proximity, and the player's sector stamps its last-client time each tick.
+
+NOTES:
+  - The engine's actual awake/asleep decision remains the spatial active-set
+    (a window of sectors around each online player) rather than the temporal
+    timeout; the CanSleep predicate and SECF_NoSleep behaviour are faithful,
+    while InstaSleep is modelled at the predicate/script level.
+
+
 [2026-07-12] - Sub-90 parity backlog, nineteenth batch
 ----------------------------------------
 

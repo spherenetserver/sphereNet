@@ -3,6 +3,29 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, yirminci batch
+----------------------------------------
+
+EKLENDI - Sektor uyku modeli (Wave 239):
+  - Sektorler artik uyuyup uyuyamayacaklarini duz bir client-sayisi kontrolu
+    yerine tam Source-X CSector::_CanSleep modeliyle karar veriyor: uyku
+    SECF_NoSleep veya sifir sleep-delay ile veto edilir, iceride client varken
+    engellenir, SECF_InstaSleep altinda aninda verilir, aksi halde sektor
+    sleep-delay'i (varsayilan 10 dakika) asacak kadar client'sizsa verilir.
+    8-komsu adjacency sweep aktif bir sektorun cevresindeki halkayi uyanik
+    tutar, boylece oyuncu asla soguk bir sektore yurumez.
+  - Yeni SectorFlag enum (SECF_NoSleep / SECF_InstaSleep) FLAGS / NOSLEEP /
+    INSTASLEEP script erisimiyle; <CANSLEEP> artik tam modeli raporluyor.
+  - SECF_NoSleep sektoru oyuncu yakinligindan bagimsiz tick set'inde kalir,
+    oyuncunun sektoru her tick son-client zamanini damgalar.
+
+NOTLAR:
+  - Motorun fiili uyanik/uyuyor karari temporal timeout yerine spatial
+    active-set (her online oyuncunun etrafindaki sektor penceresi) olarak
+    kaliyor; CanSleep predicate'i ve SECF_NoSleep davranisi faithful, InstaSleep
+    predicate/script duzeyinde modellendi.
+
+
 [2026-07-12] - 90-alti parite backlog, on dokuzuncu batch
 ----------------------------------------
 

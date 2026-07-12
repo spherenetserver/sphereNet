@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, seventh batch
+----------------------------------------
+
+ADDED - SE/ML combat speed parity (Wave 226):
+  - Ported COMBATSPEEDERA 3 Samurai Empire using SPEEDSCALEFACTOR, DEX,
+    effective weapon speed and the 0.25-second OSI tick conversion.
+  - Ported COMBATSPEEDERA 4 Mondain's Legacy with its own weapon-speed format
+    and Source-X integer SSI evaluation order; both eras retain the 5-tick floor.
+  - INCREASESWINGSPEED aggregates the character and every equipped item/ITEMDEF
+    and is recognized by Character/Item/CHARDEF/ITEMDEF script surfaces.
+  - Item.Speed prefers instance or ITEMDEF OVERRIDE.SPEED over regular SPEED.
+
+TESTS:
+  - Added 4 Wave 226 regression tests. Full SphereNet.Tests run:
+    1498 passed, 0 failed, 0 skipped.
+
+
 [2026-07-12] - Sub-90 parity backlog, sixth batch
 ----------------------------------------
 

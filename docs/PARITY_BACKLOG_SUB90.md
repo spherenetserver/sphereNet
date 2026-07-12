@@ -136,7 +136,13 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   Polymorph-Wraith buff-item modeli yok; önce necro efektleri gerekir.
 
 ### 2.5 Melee combat — 88
-- [ ] SE (era3) / ML (era4) hız formülleri (`CResourceCalc.cpp:110-131`).
+- [x] **SE (era3) / ML (era4) hız formülleri** — YAPILDI (Wave 226).
+  `Calc_CombatAttackSpeed` birebir port edildi: SE, `SPEEDSCALEFACTOR` ve 0.25 sn
+  tick dönüşümünü; ML, kendi weapon-speed formatı ve integer SSI çarpanını kullanır;
+  ikisinde minimum 5 tick korunur. `INCREASESWINGSPEED` artık char + tüm equipped
+  item/ITEMDEF aggregate'idir (era2 de aynı doğru aggregate'i kullanır) ve script
+  yüzeylerinde tanınır. `Item.Speed`, instance/ITEMDEF `OVERRIDE.SPEED` fallback'ini
+  uygular. Test: SourceXCombatSpeedWave226Tests (+4).
 - [ ] Samurai-Empire / Bushido parry branch (cpp:250-296).
 - [ ] PARRYERA_ARSCALING shield-AR + LAYER_SPELL_Protection AR (cpp:529-555).
 - [ ] Horrific-Beast / gargoyle-berserk hasar amplifier (cpp:1223-1252).

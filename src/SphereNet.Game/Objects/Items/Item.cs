@@ -498,7 +498,12 @@ public class Item : ObjBase
     {
         get
         {
+            if (TryGetTag("OVERRIDE.SPEED", out string? instanceOverride) &&
+                int.TryParse(instanceOverride, out int instanceSpeed))
+                return Math.Clamp(instanceSpeed, 0, byte.MaxValue);
             var def = ResolveDefinition();
+            if (def != null && int.TryParse(def.TagDefs.Get("OVERRIDE.SPEED"), out int defSpeed))
+                return Math.Clamp(defSpeed, 0, byte.MaxValue);
             return def?.Speed ?? 0;
         }
     }
@@ -839,6 +844,11 @@ public class Item : ObjBase
         if (SpellCastingProperties.Contains(upper))
         {
             value = TryGetTag(upper, out var castingValue) ? castingValue ?? "0" : "0";
+            return true;
+        }
+        if (upper == CombatSpeedProperties.IncreaseSwingSpeed)
+        {
+            value = TryGetTag(upper, out var speedValue) ? speedValue ?? "0" : "0";
             return true;
         }
 
@@ -1316,6 +1326,11 @@ public class Item : ObjBase
             return true;
         }
         if (SpellCastingProperties.Contains(upper))
+        {
+            SetTag(upper, value.Trim());
+            return true;
+        }
+        if (upper == CombatSpeedProperties.IncreaseSwingSpeed)
         {
             SetTag(upper, value.Trim());
             return true;

@@ -216,6 +216,9 @@ public sealed class CharDef : BaseDef
             case var _ when SpellCastingProperties.Contains(key):
                 TagDefs.Set(key.ToUpperInvariant(), value.Trim());
                 break;
+            case CombatSpeedProperties.IncreaseSwingSpeed:
+                TagDefs.Set(CombatSpeedProperties.IncreaseSwingSpeed, value.Trim());
+                break;
             case "DAMPHYSICAL": short.TryParse(value, out short dpv); DamPhysical = dpv; break;
             case "DAMFIRE": short.TryParse(value, out short dfv); DamFire = dfv; break;
             case "DAMCOLD": short.TryParse(value, out short dcv); DamCold = dcv; break;

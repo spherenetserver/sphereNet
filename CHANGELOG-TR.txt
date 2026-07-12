@@ -3,6 +3,24 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, yedinci batch
+----------------------------------------
+
+EKLENDI - SE/ML combat hiz paritesi (Wave 226):
+  - COMBATSPEEDERA 3 Samurai Empire formulu SPEEDSCALEFACTOR, DEX, effective
+    weapon speed ve 0.25 sn OSI tick donusumuyla port edildi.
+  - COMBATSPEEDERA 4 Mondain's Legacy formulu kendi weapon-speed formati ve
+    Source-X integer SSI islem sirasi ile port edildi; iki erada minimum 5 tick.
+  - INCREASESWINGSPEED karakter ve tum equipped item/ITEMDEF degerlerinden
+    aggregate edilir; Character/Item/CHARDEF/ITEMDEF script yuzeyinde taninir.
+  - Item.Speed instance veya ITEMDEF OVERRIDE.SPEED degerini normal SPEED'den
+    once kullanir.
+
+TESTLER:
+  - 4 Wave 226 regresyon testi eklendi. Tam SphereNet.Tests kosusu:
+    1498 basarili, 0 basarisiz, 0 atlanan.
+
+
 [2026-07-12] - 90-alti parite backlog, altinci batch
 ----------------------------------------
 

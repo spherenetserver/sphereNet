@@ -1351,6 +1351,21 @@ public static class CombatEngine
         return (int)Math.Clamp(total, int.MinValue, int.MaxValue);
     }
 
+    /// <summary>Source-X CCPropsChar equipment aggregate. LayerAdd/LayerRemove
+    /// maintains this eagerly upstream; SphereNet derives it on demand from
+    /// the character plus every equipped item to avoid stale totals.</summary>
+    public static int GetEquipmentPropertyValue(Character character, string property)
+    {
+        long total = character.Tags.GetInt(property);
+        for (int layerIndex = (int)Layer.OneHanded; layerIndex <= (int)Layer.Horse; layerIndex++)
+        {
+            var equipped = character.GetEquippedItem((Layer)layerIndex);
+            if (equipped != null)
+                total += GetItemNumProperty(equipped, property);
+        }
+        return (int)Math.Clamp(total, int.MinValue, int.MaxValue);
+    }
+
     private static int GetItemNumProperty(Item item, string prop)
     {
         if (item.TryGetTag(prop, out var raw) && int.TryParse(raw, out int v))
@@ -1418,17 +1433,34 @@ public static class CombatEngine
         int baseSpeed = weaponSpeed > 0 ? weaponSpeed : 50;
         int dex = Math.Max(0, (int)attacker.Dex);
         long speedScale = Math.Max(1, Character.CombatSpeedScaleFactor);
+        int swingSpeedIncrease = Math.Clamp(GetEquipmentPropertyValue(
+            attacker, CombatSpeedProperties.IncreaseSwingSpeed), -99, 10_000);
         long deciseconds;
         switch (Character.CombatSpeedEra)
         {
             case 2: // AOS (Source-X era 2)
             {
-                int swingSpeedIncrease = Math.Clamp(
-                    GetOnHitPropertyValue(attacker, weapon, "INCREASESWINGSPEED"), -99, 100);
                 long swingSpeed = (long)(dex + 100) * baseSpeed;
                 swingSpeed = Math.Max(1, swingSpeed * (100 + swingSpeedIncrease) / 100);
                 deciseconds = ((speedScale * 10) / swingSpeed) / 2;
                 if (deciseconds < 12) deciseconds = 12;
+                break;
+            }
+            case 3: // Samurai Empire (Source-X era 3)
+            {
+                long swingSpeed = Math.Max(1,
+                    (long)baseSpeed * (100 + swingSpeedIncrease) / 100);
+                long ticks = speedScale / Math.Max(1, (dex + 100L) * swingSpeed) - 2;
+                if (ticks < 5) ticks = 5;
+                deciseconds = ticks * 10 / 4;
+                break;
+            }
+            case 4: // Mondain's Legacy (Source-X era 4)
+            {
+                long speedFactor = 100 / Math.Max(1, 100 + swingSpeedIncrease);
+                long ticks = ((long)baseSpeed * 4 - (dex / 30)) * speedFactor;
+                if (ticks < 5) ticks = 5;
+                deciseconds = ticks * 10 / 4;
                 break;
             }
             case 1: // pre-AOS (Source-X era 1)

@@ -2262,6 +2262,11 @@ public partial class Character : ObjBase
             value = SphereNet.Game.Magic.SpellEngine.GetCastingPropertyValue(this, upper).ToString();
             return true;
         }
+        if (upper == CombatSpeedProperties.IncreaseSwingSpeed)
+        {
+            value = CombatEngine.GetEquipmentPropertyValue(this, upper).ToString();
+            return true;
+        }
 
         // <MemoryFindType.<def>[.isValid|.Link[.<prop>]]> — Source-X
         // memory inspection. We only have a partial memory engine so we
@@ -3338,6 +3343,11 @@ public partial class Character : ObjBase
         if (SpellCastingProperties.Contains(key))
         {
             SetTag(key.ToUpperInvariant(), normalized);
+            return true;
+        }
+        if (key.Equals(CombatSpeedProperties.IncreaseSwingSpeed, StringComparison.OrdinalIgnoreCase))
+        {
+            SetTag(CombatSpeedProperties.IncreaseSwingSpeed, normalized);
             return true;
         }
 

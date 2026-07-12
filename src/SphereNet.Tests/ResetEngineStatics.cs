@@ -33,6 +33,8 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Items.Item.ResolveWorld = null;
         SphereNet.Game.Objects.Characters.Character.BroadcastNearby = null;
         SphereNet.Game.Objects.Characters.Character.MagicFlags = 0;
+        SphereNet.Game.Objects.Characters.Character.CombatSpeedEra = 0;
+        SphereNet.Game.Objects.Characters.Character.CombatSpeedScaleFactor = 15_000;
         SphereNet.Game.Objects.Characters.Character.OnFacingChanged = null;
         SphereNet.Game.Objects.Characters.Character.ResolveAccountForChar = null;
         SphereNet.Game.Trade.VendorEngine.World = null;

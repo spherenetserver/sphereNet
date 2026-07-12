@@ -184,6 +184,9 @@ public sealed class ItemDef : BaseDef
             case var _ when SpellCastingProperties.Contains(key):
                 TagDefs.Set(key.ToUpperInvariant(), value.Trim());
                 break;
+            case CombatSpeedProperties.IncreaseSwingSpeed:
+                TagDefs.Set(CombatSpeedProperties.IncreaseSwingSpeed, value.Trim());
+                break;
             default:
                 if (key.StartsWith("TAG.", StringComparison.OrdinalIgnoreCase))
                 {

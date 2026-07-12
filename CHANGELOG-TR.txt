@@ -3,6 +3,27 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, yirmi altinci batch
+----------------------------------------
+
+DUZELTILDI - GM page kuyrugu restart'i atlatiyor (Wave 245):
+  - Bekleyen GM/yardim sayfalari yalnizca bellekte tutuluyordu ve her restart'ta
+    kayboluyordu; import edilen classic bir save'deki GMPAGE section'lari da sessizce
+    dusuyordu. Kuyruk artik world'e ait (Source-X g_World.m_GMPages gibi) ve
+    server-data save'ine yazilip okunuyor.
+
+DUZELTILDI - Virgul iceren guild uye title'lari artik uye dusurmuyor (Wave 245):
+  - Guild uyeleri tek bir virgulle ayrilmis tag'e, iki nokta ile ayrilmis alanlarla
+    paketleniyor. Title'daki iki nokta escape ediliyordu ama virgul edilmiyordu, bu
+    yuzden virgul iceren bir title load'da kaydi bolup sonraki uyeleri dusuruyordu.
+    Artik title'daki virguller de escape ediliyor.
+
+EKLENDI - Iletisim kristali oyuncu linkleme (Wave 245):
+  - Bir iletisim kristaline cift tiklamak artik hedef imleci aciyor; baska bir
+    iletisim kristalini hedeflemek onlari baglar, boylece birinin yanindaki konusma
+    digerine aktarilir (onceden yalnizca bir GM script verb'i baglayabiliyordu).
+    Relay artik bagli partnerin de kristal oldugunu dogruluyor.
+
 [2026-07-12] - 90-alti parite backlog, yirmi besinci batch
 ----------------------------------------
 

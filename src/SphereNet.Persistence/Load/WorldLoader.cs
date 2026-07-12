@@ -1095,6 +1095,23 @@ public sealed class WorldLoader
                 }
                 lists++;
             }
+            else if (upper.StartsWith("GMPAGE", StringComparison.OrdinalIgnoreCase))
+            {
+                string account = "", reason = "", handler = "", status = "open";
+                long created = 0;
+                while (reader.NextProperty(out string key, out string val))
+                {
+                    switch (key.ToUpperInvariant())
+                    {
+                        case "ACCOUNT": account = val; break;
+                        case "REASON": reason = val; break;
+                        case "HANDLER": handler = val; break;
+                        case "STATUS": status = val; break;
+                        case "TIME": case "CREATED": long.TryParse(val, out created); break;
+                    }
+                }
+                world.AddGmPage(new GameWorld.GmPageRecord(account, reason, handler, status, created));
+            }
             else if (upper == "DOORS")
             {
                 while (reader.NextProperty(out string key, out string val))

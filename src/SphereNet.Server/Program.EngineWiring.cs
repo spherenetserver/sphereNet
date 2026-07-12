@@ -723,7 +723,11 @@ public static partial class Program
                     item.Link.IsValid)
                 {
                     var dest = _world.FindItem(item.Link);
-                    if (dest != null && !dest.IsDeleted && dest != item)
+                    // Source-X CItemCommCrystal::OnHear only relays to a linked
+                    // partner that is itself a comm crystal (the generic LINK verb
+                    // can point elsewhere).
+                    if (dest != null && !dest.IsDeleted && dest != item &&
+                        dest.ItemType == SphereNet.Core.Enums.ItemType.CommCrystal)
                     {
                         string crystalName = string.IsNullOrEmpty(dest.Name) ? "a communication crystal" : dest.Name;
                         BroadcastNearby(dest.Position, 12,

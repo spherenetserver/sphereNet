@@ -1424,7 +1424,27 @@ public sealed class ClientItemUseHandler
 
             // ---- comm crystal ----
             case ItemType.CommCrystal:
-                SysMessage("The crystal hums softly.");
+                // Source-X CItemCommCrystal: double-clicking opens a target cursor;
+                // the target must be another comm crystal, which becomes this
+                // crystal's relay partner (m_uidLink). Speech near this crystal is
+                // then relayed to the linked one (SpeechEngine.OnItemHear).
+                SysMessage("Target the communication crystal to link to.");
+                _client.SetPendingTarget((serial, _, _, _, _) =>
+                {
+                    var partner = _world.FindItem(new Serial(serial));
+                    if (partner == null || partner.ItemType != ItemType.CommCrystal)
+                    {
+                        SysMessage("That is not a communication crystal.");
+                        return;
+                    }
+                    if (partner == item)
+                    {
+                        SysMessage("That is the same crystal.");
+                        return;
+                    }
+                    item.Link = partner.Uid;
+                    SysMessage("Linked.");
+                }, 0);
                 break;
 
             // ---- portcullis ----

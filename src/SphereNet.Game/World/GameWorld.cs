@@ -1566,6 +1566,25 @@ public sealed class GameWorld
     /// <summary>Get all global variables as key-value pairs (for save).</summary>
     public IEnumerable<KeyValuePair<string, string>> GetAllGlobalVars() => _globalVars;
 
+    // ==================== GM Page Queue ====================
+    // Player help/GM pages. Source-X keeps these in g_World.m_GMPages and writes
+    // them as GMPAGE sections (CGMPage::r_Write, "SAVED in World"), so the world
+    // owns the queue and it survives a restart.
+
+    public readonly record struct GmPageRecord(
+        string Account, string Reason, string Handler, string Status, long Created);
+
+    private readonly List<GmPageRecord> _gmPages = new();
+
+    public IReadOnlyList<GmPageRecord> GmPages => _gmPages;
+    public void AddGmPage(in GmPageRecord page) => _gmPages.Add(page);
+    public void RemoveGmPageAt(int index)
+    {
+        if (index >= 0 && index < _gmPages.Count)
+            _gmPages.RemoveAt(index);
+    }
+    public void ClearGmPages() => _gmPages.Clear();
+
     // ==================== Global Lists ====================
 
     public List<string> GetOrCreateList(string name)

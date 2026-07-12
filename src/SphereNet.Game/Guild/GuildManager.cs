@@ -490,9 +490,11 @@ public sealed class GuildManager
                 stone.RemoveTag("GUILD.MAXSHIPS");
 
             // Members: uid:priv:title:accountgold:loyalto:showabbrev
-            // Escape colons in title to prevent deserialization corruption
+            // Escape the field separator (:) AND the record separator (,) in the
+            // free-text title, otherwise a comma in a player-set title splits the
+            // record on load and drops the trailing members.
             var memberStrs = guild.Members.Select(m =>
-                $"0{m.CharUid.Value:X}:{(byte)m.Priv}:{m.Title?.Replace(":", "\\c") ?? ""}:{m.AccountGold}:{(m.LoyalTo == Serial.Invalid ? "0" : $"0{m.LoyalTo.Value:X}")}:{(m.ShowAbbrev ? "1" : "0")}");
+                $"0{m.CharUid.Value:X}:{(byte)m.Priv}:{m.Title?.Replace(":", "\\c").Replace(",", "\\m") ?? ""}:{m.AccountGold}:{(m.LoyalTo == Serial.Invalid ? "0" : $"0{m.LoyalTo.Value:X}")}:{(m.ShowAbbrev ? "1" : "0")}");
             stone.SetTag("GUILD.MEMBERS", string.Join(",", memberStrs));
 
             // Relations: uid:wewar:theywar:weally:theyally
@@ -587,7 +589,7 @@ public sealed class GuildManager
                         priv != (byte)GuildPriv.Master && priv != (byte)GuildPriv.Accepted)
                         continue;
                     claimedCharacters.Add(uid);
-                    string title = segs.Length > 2 ? segs[2].Replace("\\c", ":") : "";
+                    string title = segs.Length > 2 ? segs[2].Replace("\\c", ":").Replace("\\m", ",") : "";
 
                     var member = guild.AddRecruit(new Serial(uid));
                     member.Priv = (GuildPriv)priv;

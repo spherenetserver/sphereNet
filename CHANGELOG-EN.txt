@@ -4,6 +4,27 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, twenty-sixth batch
+----------------------------------------
+
+FIXED - GM page queue survives a restart (Wave 245):
+  - Pending GM/help pages were held only in memory and were lost on every
+    restart, and GMPAGE sections in an imported classic save were silently
+    dropped. The queue now lives on the world (like Source-X g_World.m_GMPages)
+    and is written to and read from the server-data save.
+
+FIXED - Guild member titles containing a comma no longer drop members (Wave 245):
+  - Guild members are packed into one comma-separated tag with colon-separated
+    fields. Colons in a title were escaped but commas were not, so a player-set
+    title containing a comma split the record on load and dropped the trailing
+    members. Commas in titles are now escaped as well.
+
+ADDED - Communication crystal player linking (Wave 245):
+  - Double-clicking a communication crystal now opens a target cursor; targeting
+    another communication crystal links them so speech near one is relayed to the
+    other (previously only a GM script verb could link them). The relay also now
+    verifies the linked partner is itself a crystal.
+
 [2026-07-12] - Sub-90 parity backlog, twenty-fifth batch
 ----------------------------------------
 

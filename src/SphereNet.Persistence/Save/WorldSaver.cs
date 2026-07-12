@@ -893,6 +893,23 @@ public sealed class WorldSaver
                 sw.WriteLine();
             }
 
+            // GM page queue (help requests). Source-X CGMPage::r_Write persists
+            // these in the world save; one section per page keeps the free-text
+            // reason on its own value line.
+            var gmPages = world.GmPages;
+            for (int gp = 0; gp < gmPages.Count; gp++)
+            {
+                var page = gmPages[gp];
+                sw.WriteLine($"[GMPAGE {gp}]");
+                sw.WriteLine($"ACCOUNT={page.Account}");
+                sw.WriteLine($"REASON={page.Reason}");
+                if (!string.IsNullOrEmpty(page.Handler))
+                    sw.WriteLine($"HANDLER={page.Handler}");
+                sw.WriteLine($"STATUS={page.Status}");
+                sw.WriteLine($"TIME={page.Created}");
+                sw.WriteLine();
+            }
+
             // Open static doors
             var openDoors = world.OpenMapStaticDoors;
             if (openDoors.Count > 0)

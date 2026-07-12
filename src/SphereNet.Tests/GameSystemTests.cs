@@ -3581,6 +3581,48 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
     }
 
     [Fact]
+    public void GameClient_CommCrystalDoubleClick_LinksToTargetedCrystal()
+    {
+        // Source-X CItemCommCrystal: double-click opens a target cursor; the
+        // targeted item must itself be a comm crystal to become the relay partner.
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var netState = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = 1601 };
+        SetNetStateInUse(netState, true);
+        var client = new SphereNet.Game.Clients.GameClient(netState, world, accountManager,
+            loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
+
+        var ch = world.CreateCharacter();
+        ch.IsPlayer = true;
+        world.PlaceCharacter(ch, new Point3D(100, 100, 0, 0));
+        AttachCharacter(client, ch);
+
+        var crystalA = world.CreateItem();
+        crystalA.ItemType = ItemType.CommCrystal;
+        world.PlaceItem(crystalA, new Point3D(100, 100, 0, 0));
+        var crystalB = world.CreateItem();
+        crystalB.ItemType = ItemType.CommCrystal;
+        world.PlaceItem(crystalB, new Point3D(101, 100, 0, 0));
+
+        client.HandleDoubleClick(crystalA.Uid.Value);
+        client.HandleTargetResponse(0, 0, crystalB.Uid.Value, 101, 100, 0, 0);
+        Assert.Equal(crystalB.Uid, crystalA.Link);
+
+        // Targeting a non-crystal leaves the crystal unlinked.
+        var box = world.CreateItem();
+        box.ItemType = ItemType.Container;
+        world.PlaceItem(box, new Point3D(100, 100, 0, 0));
+        var crystalC = world.CreateItem();
+        crystalC.ItemType = ItemType.CommCrystal;
+        world.PlaceItem(crystalC, new Point3D(100, 100, 0, 0));
+
+        client.HandleDoubleClick(crystalC.Uid.Value);
+        client.HandleTargetResponse(0, 0, box.Uid.Value, 100, 100, 0, 0);
+        Assert.False(crystalC.Link.IsValid);
+    }
+
+    [Fact]
     public void GameClient_GargoyleFly_TogglesHoveringAndBuff()
     {
         // Source-X 0xBF 0x32 GargoyleFly: a living gargoyle with RACIALF_GARG_FLY

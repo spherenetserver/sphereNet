@@ -122,6 +122,39 @@ public class SaveFormatTests
     }
 
     [Fact]
+    public void Roundtrip_PreservesGmPages()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_gmpage_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            var src = MakeWorld();
+            src.AddGmPage(new GameWorld.GmPageRecord("Alice", "stuck in a wall", "", "open", 1234567890));
+            // A reason containing a comma must survive (section-per-page format).
+            src.AddGmPage(new GameWorld.GmPageRecord("Bob", "lost item, need help", "GM_Joe", "assigned", 1234567999));
+            Assert.True(saver.Save(src, tmp));
+
+            var dst = MakeWorld();
+            loader.Load(dst, tmp);
+
+            Assert.Equal(2, dst.GmPages.Count);
+            Assert.Equal("Alice", dst.GmPages[0].Account);
+            Assert.Equal("stuck in a wall", dst.GmPages[0].Reason);
+            Assert.Equal("open", dst.GmPages[0].Status);
+            Assert.Equal(1234567890, dst.GmPages[0].Created);
+            Assert.Equal("Bob", dst.GmPages[1].Account);
+            Assert.Equal("lost item, need help", dst.GmPages[1].Reason);
+            Assert.Equal("GM_Joe", dst.GmPages[1].Handler);
+            Assert.Equal("assigned", dst.GmPages[1].Status);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public void Roundtrip_PreservesPendingTimerF()
     {
         string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_timerf_{Guid.NewGuid():N}");

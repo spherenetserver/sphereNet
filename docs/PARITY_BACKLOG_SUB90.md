@@ -355,10 +355,27 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
 
 ### 4.4 Item type davranışları — 80
 - [ ] **Plant-growth sistemi** (`CItemPlant.cpp` 197 satır) — karşılığı yok.
-- [ ] CommCrystal messaging shallow.
+- [x] CommCrystal messaging — YAPILDI (Wave 245). Triage: speech relay ZATEN çalışıyor
+  (Program.EngineWiring.cs:701 OnItemHear → linked crystal'e BroadcastNearby). GERÇEK
+  boşluk oyuncu **linkleme akışı**: crystal'e çift-tık artık target cursor açıyor
+  (Source-X CItemCommCrystal CClientUse.cpp:417 + CClientTarg.cpp:1734), hedef
+  CommCrystal olmalı → `item.Link = partner.Uid` + "Linked" (eskiden sadece "The
+  crystal hums softly."). Relay dest-type doğrulaması eklendi (generic .LINK bir
+  kristali kristal-olmayana bağlasa relay etmez). Test:
+  GameSystemTests.GameClient_CommCrystalDoubleClick_LinksToTargetedCrystal.
+  KALAN (düşük değer): tooltip 1060742/3/5 (aktif/pasif/broadcast), per-crystal
+  SPEECH bloğu — atlandı.
 
 ### 4.5 Character core — 82
-- [ ] `CCharStat` regen tabloları + `CCharStatus` (2073 satır) derinliği kısmi.
+- [!] `CCharStat` regen tabloları — TRIAGE EDİLDİ (Wave 245), KULLANICI KARARI BEKLİYOR.
+  Gerçek gap ama **oyuncu-hissedilir balans değişimi**: SphereNet REGEN0/1/2'yi
+  onda-bir-saniye (×100ms) okuyor, Source-X saniye (×1000ms) okuyor (CServerConfig.cpp:1075).
+  Sonuç: SphereNet default HP regen ~10x hızlı (4sn vs 40sn), mana ~6.7x, stam ~5x;
+  food decay 6x hızlı (10dk vs 60dk). Ayrıca eksik: Human racial +2 HP regen, per-char
+  m_regenRate/m_regenVal override. Restock (Wave 242) gibi birim düzeltmesi AMA regen
+  her oyuncu tarafından sürekli hissedilir → sessizce uygulanmadı. AOS *item* regen
+  aggregation Source-X'te de yok (gap değil). Fix contained (Character.cs:5516-5627 +
+  Program.Scripting.cs:92-94), hot-path DEĞİL. KULLANICI: seconds'a geçelim mi?
 - [ ] Jail flag yerine tam region-jail makinesi.
 - [x] STATF_INVUL townsfolk — YAPILDI (Wave 242): invul flag ölümde
   (`DeathEngine:71`) kontrol ediliyordu ama **hasar uygulamada değil** → invul
@@ -485,11 +502,33 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
 - [ ] Server-list multi-server + KR/EC seed edge handling.
 
 ### 5.7 Persistence — 86
-- [ ] `WORLDMULTI` yazıcı yok (evler WORLDITEM olarak persist — kabul edilebilir ama
-  doğrula).
-- [ ] GMPAGE / guild persistence ince.
+- [x] `WORLDMULTI` — GEÇERSİZ/DOĞRULANDI (Wave 245 triage): premis YANLIŞ. Source-X'te
+  `WORLDMULTI` section YOK — multi'ler (ev/gemi/custom) `CItemMulti::r_Write` ile
+  `WORLDITEM` + ekstra key'ler olarak yazılır (CItem.cpp:2449). SphereNet de aynı:
+  WORLDITEM + HOUSE.*/SHIP.*/DESIGN_* tag'leri, tam house/ship state round-trip'li
+  (owner/access/lockdown/secure/component/custom-design/decay). Veri kaybı YOK.
+  WORLDMULTI yazıcı eklemek Source-X'ten SAPMA olurdu → kapatıldı.
+- [x] GMPAGE persistence — YAPILDI (Wave 245). GERÇEK boşluktu: GM page kuyruğu
+  Program._scriptGmPages'te in-memory'di, restart'ta ölüyordu + import edilen classic
+  GMPAGE section'ları ResourceHolder'da skip ediliyordu (data-loss). Fix: kuyruk
+  `GameWorld.GmPages` (GmPageRecord)'e taşındı (Source-X g_World.m_GMPages gibi world'e
+  ait); WorldSaver spheredata.scp'ye `[GMPAGE n]` section-per-page yazıyor, WorldLoader
+  okuyor; Program SERV.GMPAGES/_GMPAGE artık world'e delege. Test:
+  SaveFormatTests.Roundtrip_PreservesGmPages.
+- [x] Guild persistence — DOĞRULANDI + comma-fix (Wave 245): tam round-trip (üye/rütbe/
+  title/houses/ships/war/ally) ZATEN vardı ("ince" yanlış nitelendirme). GERÇEK
+  integrity edge: GUILD.MEMBERS tek tag'de virgülle paketleniyor, title'daki `:`
+  escape'liydi ama `,` (kayıt ayracı) DEĞİLDİ → title'da virgül olan üye load'da
+  split'i bozup sonraki üyeleri düşürüyordu. Fix: title'da `,`→`\m` escape (symmetric,
+  `:`→`\c` gibi). Test: GeneralGameplayIntegrityTests.GuildMemberTitleWithComma_Survives.
 
 ### 5.8 Encryption — 88
 - [ ] `CCryptoKeyCalc` client-version key-table auto-detect (şu an client key'leri
   dışarıdan).
-- [ ] Account bcrypt (`CBCrypt`) — MD5/plain var, bcrypt yok.
+- [!] Account bcrypt (`CBCrypt`) — TRIAGE EDİLDİ (Wave 245), HARİCİ BAĞIMLILIK GEREKİR.
+  Account-storage ZATEN Source-X core ile eşdeğer: Source-X core CheckPassword sadece
+  plain+MD5 (CAccount.cpp:936), bcrypt DEĞİL — SphereNet PasswordHelper plain+MD5+SHA256
+  (bonus). Gerçek gap sadece scripting fn'leri BCRYPTHASH/BCRYPTVALIDATE (CScriptObj.cpp:
+  1096). AMA .NET'te yerleşik bcrypt YOK → harici NuGet (BCrypt.Net-Next) gerekir; proje
+  hiç bcrypt paketi referanslamıyor. Legacy mortechUO account'ları plain/32-hex-MD5
+  (60-char $2*$ ile çakışmaz, güvenli). KULLANICI: bcrypt NuGet ekleyelim mi?

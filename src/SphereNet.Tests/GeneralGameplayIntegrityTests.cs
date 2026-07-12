@@ -324,6 +324,38 @@ public sealed class GeneralGameplayIntegrityTests
     }
 
     [Fact]
+    public void GuildMemberTitleWithComma_SurvivesSaveLoad_WithoutDroppingMembers()
+    {
+        var world = CreateWorld();
+        var master = world.CreateCharacter();
+        var member = world.CreateCharacter();
+        var member2 = world.CreateCharacter();
+        var stone = world.CreateItem();
+        stone.ItemType = ItemType.StoneGuild;
+        world.PlaceItem(stone, new Point3D(100, 100, 0, 0));
+
+        var manager = new GuildManager();
+        var guild = manager.CreateGuild(stone.Uid, "Test", master.Uid);
+        var rec = guild.AddRecruit(member.Uid);
+        guild.AcceptMember(member.Uid);
+        rec.Title = "Knight, Defender of the Realm"; // comma is the record separator
+        var rec2 = guild.AddRecruit(member2.Uid);
+        guild.AcceptMember(member2.Uid);
+        rec2.Title = "Squire"; // packed AFTER the comma member — must not be dropped
+
+        manager.SerializeAllToTags(world);
+
+        var reloaded = new GuildManager();
+        reloaded.DeserializeFromWorld(world);
+        var restored = reloaded.GetGuild(stone.Uid)!;
+
+        Assert.NotNull(restored.FindMember(member.Uid));
+        Assert.Equal("Knight, Defender of the Realm", restored.FindMember(member.Uid)!.Title);
+        Assert.NotNull(restored.FindMember(member2.Uid)); // trailing member survived
+        Assert.Equal("Squire", restored.FindMember(member2.Uid)!.Title);
+    }
+
+    [Fact]
     public void GuildHousesShips_SurviveSaveLoad_DroppingDeletedMultis()
     {
         var world = CreateWorld();

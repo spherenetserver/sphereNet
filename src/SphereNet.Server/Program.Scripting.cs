@@ -58,9 +58,8 @@ namespace SphereNet.Server;
 
 public static partial class Program
 {
-    private sealed record GmPageEntry(string Account, string Reason, string Handler, string Status, long Created);
-
-    private static readonly List<GmPageEntry> _scriptGmPages = [];
+    // GM page queue lives on the world (GameWorld.GmPages) so it is persisted in
+    // spheredata.scp and survives a restart, matching Source-X g_World.m_GMPages.
 
     private static string? ResolveServerProperty(string property)
     {
@@ -96,7 +95,7 @@ public static partial class Program
 
             // --- Misc ---
             "HEARALL" => IsHearAllEnabled() ? "1" : "0",
-            "GMPAGES" => _scriptGmPages.Count.ToString(),
+            "GMPAGES" => (_world?.GmPages.Count ?? 0).ToString(),
             "GUILDS" => "0",
             "AGE" => ((int)(DateTime.UtcNow - _serverStartTime).TotalDays).ToString(),
             "BUILD" => ThisAssemblyVersion(),
@@ -712,12 +711,13 @@ public static partial class Program
 
     private static string? ResolveServGmPage(string sub)
     {
+        var pages = _world?.GmPages;
         int dot = sub.IndexOf('.');
         string idxStr = dot >= 0 ? sub[..dot] : sub;
         string field = dot >= 0 ? sub[(dot + 1)..].ToUpperInvariant() : "";
-        if (!int.TryParse(idxStr, out int index) || index < 0 || index >= _scriptGmPages.Count)
+        if (pages == null || !int.TryParse(idxStr, out int index) || index < 0 || index >= pages.Count)
             return "0";
-        var page = _scriptGmPages[index];
+        var page = pages[index];
         return field switch
         {
             "" => page.Reason,
@@ -733,8 +733,7 @@ public static partial class Program
 
     private static string RemoveGmPage(int index)
     {
-        if (index >= 0 && index < _scriptGmPages.Count)
-            _scriptGmPages.RemoveAt(index);
+        _world?.RemoveGmPageAt(index);
         return "";
     }
 
@@ -1459,11 +1458,14 @@ public static partial class Program
             reason = data[(pipe + 1)..].Trim();
         }
 
+        if (_world == null)
+            return "0";
         string account = src;
-        if (_world != null && TryParseSerial(src, out var uid) && _world.FindObject(uid) is Character ch)
+        if (TryParseSerial(src, out var uid) && _world.FindObject(uid) is Character ch)
             account = Character.ResolveAccountForChar?.Invoke(ch.Uid)?.Name ?? ch.Name ?? src;
-        _scriptGmPages.Add(new GmPageEntry(account, reason, "", "open", DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
-        return _scriptGmPages.Count.ToString();
+        _world.AddGmPage(new GameWorld.GmPageRecord(
+            account, reason, "", "open", DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
+        return _world.GmPages.Count.ToString();
     }
 
     private static string GetScriptFilesBasePath()

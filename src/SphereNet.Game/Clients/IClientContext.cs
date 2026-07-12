@@ -163,6 +163,7 @@ internal interface IClientContext : ITextConsole
     void BeginHouseCustomization(Item multi);
     void BeginInfoSkill(SkillType skill, int skillId);
     void BeginActiveSkill(SkillType skill, int skillId, SkillHandlers.ActiveSkillTargetKind kind);
+    void BeginTargetedSkill(SkillType skill, int skillId, Core.Types.Serial targetUid);
     void BeginXVerbTarget(string verb, string args);
     void BeginAreaTarget(string verb, int range, string verbArgs = "");
     void ResendCharacterList();

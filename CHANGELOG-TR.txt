@@ -3,6 +3,35 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, yirmi dokuzuncu batch
+----------------------------------------
+
+EKLENDI - EquipLastWeapon client makrosu (Wave 248):
+  - 0xD7 0x1E "son silahi tekrar kusan" makrosu artik isleniyor. Karakter
+    kusandigi son silahi takip ediyor (Source-X m_uidWeaponLast); makro o silahi
+    oyuncunun kendi cantasindan cikarip kusaniyor, normal kusanma yolunu yeniden
+    kullanarak (dusurulmus/takas edilmis bir silah geri cagrilamaz).
+
+EKLENDI - Hedefli-skill hizli yolu (Wave 248):
+  - 0xBF 0x2E paketi bir skill'i onceden secilmis bir hedefe, hedef-imleci
+    turu olmadan kullanir. Normal skill kullanimiyla ayni mesgul/kullanabilir
+    kontrollerini ve PreStart/Start trigger zincirini calistirir, sonra
+    dogrudan verilen hedefe cozer.
+
+EKLENDI - Karakter bazli rejenerasyon miktari override'lari (Wave 248):
+  - Karakterler artik kendilerine ait REGENVALHITS/REGENVALMANA/REGENVALSTAM/
+    REGENVALFOOD degerlerini uyguluyor (Source-X Stats_GetRegenVal): her
+    rejenerasyon olayinda iyilesen puan sayisi, etkin deger max(1, stored).
+    Insan +2 can racial'i hala ustune eklenir. Kaydedilir ve restart sonrasi
+    geri yuklenir. Bu, onceki batch'te baslayan rejenerasyon yuzeyini tamamlar.
+
+DUZELTILDI - Modern-client 0xBF 0x1C paketinden buyu yapma (Wave 248):
+  - Client'in buyu-secim paketi (0xBF 0x1C, 6.0.1.42+ client'larda kullanilir)
+    yanlislikla bir viewport-boyut handler'ina baglanmisti, bu yuzden modern
+    client UI'sindan yapilan buyuler sessizce dusuyordu. Ekran boyutu zaten 0xBF
+    0x05 / 0xC8'de gidiyor, yani cift handler oluydu; 0x1C artik secilen buyuyu
+    yapiyor.
+
 [2026-07-12] - 90-alti parite backlog, yirmi sekizinci batch
 ----------------------------------------
 

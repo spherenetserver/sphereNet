@@ -543,6 +543,14 @@ public class Item : ObjBase
         }
     }
 
+    /// <summary>True if this item is a wieldable weapon (excludes shields).
+    /// Used by the EquipLastWeapon client macro to track the last held weapon.</summary>
+    public bool IsWeaponType => ItemType is
+        ItemType.WeaponMaceSmith or ItemType.WeaponMaceSharp or ItemType.WeaponSword or
+        ItemType.WeaponFence or ItemType.WeaponBow or ItemType.WeaponMaceStaff or
+        ItemType.WeaponMaceCrook or ItemType.WeaponMacePick or ItemType.WeaponAxe or
+        ItemType.WeaponXBow or ItemType.WeaponThrowing or ItemType.WeaponWhip;
+
     public void Delete()
     {
         SpawnChar?.KillAll();

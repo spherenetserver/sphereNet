@@ -18,11 +18,12 @@ public static class ExtendedCommandRegistry
         0x0013, // context menu request
         0x0015, // context menu response
         0x001A, // stat lock change
-        0x001C, // client view size
+        0x001C, // cast spell (client spell-select)
         0x001E, // query custom house design details
 
         0x0024, // known ignored
         0x002C, // virtue invoke
+        0x002E, // targeted skill (use skill on a pre-selected target)
         0x0032, // gargoyle flight toggle
         0x0033, // wheel-boat move (High Seas steering)
     ];

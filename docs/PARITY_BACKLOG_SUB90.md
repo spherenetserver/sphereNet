@@ -383,7 +383,11 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   `ResolveRegenRateMs(perChar, global, fallback)` çözer (<0 → gate skip). Save tenths (D)
   olarak yazılır (loss-less roundtrip). RegenFoodSeconds static eklendi (config REGEN3).
   Test: SourceXWave247Tests +3, SaveFormat Roundtrip_PreservesPerCharRegenOverrides.
-  KALAN (ertelendi): m_regenVal (REGENVAL* — regen MİKTARI, delay değil) override.
+  m_regenVal (REGENVAL* — regen MİKTARI) override — YAPILDI (Wave 248): CChar
+  REGENVALHITS/MANA/STAM/FOOD, per-event iyileşme miktarı (Stats_GetRegenVal →
+  max(1, stored), CCharStat.cpp:609). OnTick her stat'ın taban miktarını override
+  eder (>0 → val, else default; human +2 racial override ÜSTÜNE eklenir). Persist +
+  get/set. Test: SourceXWave248Tests (+2).
 - [ ] Jail flag yerine tam region-jail makinesi.
 - [x] STATF_INVUL townsfolk — YAPILDI (Wave 242): invul flag ölümde
   (`DeathEngine:71`) kontrol ediliyordu ama **hasar uygulamada değil** → invul
@@ -485,10 +489,22 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   BI_GARGOYLEFLY buff toggle; uçuş durumu MobileFlags 0x04 biti ile self+observer'a
   yansır (BuildMobileFlags'e Hovering→0x04 wire edildi, eskiden ölü biteti). Test:
   GameSystemTests.GameClient_GargoyleFly_TogglesHoveringAndBuff + NonGargoyle_NoOp.
-  KALAN (ayrı wave): `0xBF 0x1C` NewSpellSelect (şu an viewport-size — repoint
-  riskli), `0xBF 0x2C` BandageMacro (şu an virtue-invoke; virtue gerçekte top-level
-  0xF4 EXTCMD_INVOKE_VIRTUE'a taşınmalı + targeted-use plumbing), `0xD7 0x1E`
-  EquipLastWeapon (last-weapon state gerektirir), `0xBF 0x2E` TargetedSkill.
+  KALAN — BÜYÜK KISIM YAPILDI (Wave 248): `0xBF 0x1C` NewSpellSelect, `0xD7 0x1E`
+  EquipLastWeapon, `0xBF 0x2E` TargetedSkill eklendi (aşağı). Yalnız `0xBF 0x2C`
+  BandageMacro kaldı (virtue gerçekte top-level 0xF4 EXTCMD_INVOKE_VIRTUE'a
+  taşınmalı + targeted-use plumbing).
+- [x] **EquipLastWeapon (0xD7 0x1E) + TargetedSkill (0xBF 0x2E) + spell-select repoint
+  (0xBF 0x1C)** — YAPILDI (Wave 248). (1) EquipLastWeapon: Character.LastWeaponUid
+  (runtime, Source-X m_uidWeaponLast, Equip'te set — CCharAct.cpp:314); GameClient.
+  HandleEncodedCommand 0x1E design-gate öncesi ItemPickup-then-Equip (pack'ten çıkar,
+  HandleItemEquip guard'ları). (2) TargetedSkill: ClientSkillsHandler.BeginTargetedSkill
+  (cursor'suz, @SkillPreStart/Start zinciri + ResolveActiveSkillTarget extract);
+  HandleTargetedSkill CanUse gate'leri, skillId 0=last-skill desteklenmez. (3) 0xBF 0x1C
+  ESKİDEN viewport-size'a map'liydi ama gerçek client (ClassicUO >= 6.0.1.42) burayı
+  SPELL-CAST için kullanır (Send_CastSpell, [0x1C][0x02][spell]; viewport 0x05/0xC8'de)
+  → HandleSpellSelect'e repoint (protokol-doğru bug fix, eski handler dead-code'du).
+  Item.IsWeaponType eklendi. Test: SourceXWave248Tests (+4). DeferredParity viewport
+  testinin 0x1C bölümü kaldırıldı (artık spell-cast).
 - [x] WrestleDisarm/Stun — YAPILDI (Wave 243): `0xBF 0x09`/`0x0A` (Source-X
   EXTDATA_Wrestle_DisArm/Stun, boş slot'lardı) eklendi → `Event_CombatAbilitySelect`
   gibi `@UserSpecialMove` trigger'ını N1=0x05 (disarm)/0x0B (paralyzing blow) ile
@@ -496,9 +512,8 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   0x0009/0x000A eklendi (drift guard). Test:
   GameSystemTests.GameClient_WrestleMacros_FireSpecialMoveTrigger.
 - [x] GargoyleFly (0xBF 0x32) — YAPILDI (Wave 244, yukarı bak).
-- [ ] BandageMacro (0xBF 0x2C), EquipLastWeapon (0xD7 0x1E) — dedicated wave'de
-  (BandageMacro virtue→0xF4 taşıma + targeted-use plumbing, EquipLastWeapon
-  last-weapon state gerektirir).
+- [ ] BandageMacro (0xBF 0x2C) — dedicated wave'de (virtue→0xF4 taşıma + targeted-use
+  plumbing). EquipLastWeapon (0xD7 0x1E) YAPILDI (Wave 248, yukarı bak).
 
 ### 5.4 Outgoing packet — 82
 - [x] **PacketHealthBarStatus (0x17) + PacketHealthBarStatusNew (0x16)** — YAPILDI

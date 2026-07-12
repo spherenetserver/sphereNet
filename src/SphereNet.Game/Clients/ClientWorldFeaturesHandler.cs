@@ -93,6 +93,7 @@ public sealed class ClientWorldFeaturesHandler
     private byte GetNotoriety(Character ch) => _client.GetNotoriety(ch);
     private void BeginInfoSkill(SkillType skill, int skillId) => _client.BeginInfoSkill(skill, skillId);
     private void BeginActiveSkill(SkillType skill, int skillId, SkillHandlers.ActiveSkillTargetKind kind) => _client.BeginActiveSkill(skill, skillId, kind);
+    private void BeginTargetedSkill(SkillType skill, int skillId, Serial targetUid) => _client.BeginTargetedSkill(skill, skillId, targetUid);
     private void BeginHouseCustomization(Item multi) => _client.BeginHouseCustomization(multi);
     private void HandleQueryDesignDetails(byte[] data) => _client.HandleQueryDesignDetails(data);
     private void HandleChatOpen() => _client.HandleChatOpen();
@@ -2074,7 +2075,7 @@ public sealed class ClientWorldFeaturesHandler
             [0x0013] = static (client, data) => client.HandleExtendedContextMenuRequest(data),
             [0x0015] = static (client, data) => client.HandleExtendedContextMenuResponse(data),
             [0x001A] = static (client, data) => client.HandleExtendedStatLock(data),
-            [0x001C] = static (client, data) => client.HandleExtendedViewportSize(data),
+            [0x001C] = static (client, data) => client.HandleSpellSelect(data),
             [0x001E] = static (client, data) => client.HandleQueryDesignDetails(data),
             [0x0024] = static (client, _) => client.FireExtendedButtonTrigger(CharTrigger.UserKRToolbar, 0x0024),
             [0x002C] = static (client, data) =>
@@ -2082,6 +2083,7 @@ public sealed class ClientWorldFeaturesHandler
                 client.FireExtendedButtonTrigger(CharTrigger.UserVirtue, 0x002C);
                 client.HandleExtendedVirtueInvoke(data);
             },
+            [0x002E] = static (client, data) => client.HandleTargetedSkill(data),
             [0x0032] = static (client, data) => client.HandleGargoyleFly(data),
             [0x0033] = static (client, data) => client.HandleExtendedWheelBoatMove(data),
         };
@@ -2149,14 +2151,20 @@ public sealed class ClientWorldFeaturesHandler
         _character.SetScreenSize(width, height);
     }
 
-    private void HandleExtendedViewportSize(byte[] data)
+    // 0xBF 0x1C — cast a spell selected from the client UI/macro
+    // (Source-X PacketSpellSelect, receive.cpp:3087). Payload is a 2-byte skip
+    // then the 1-based spell id. The modern client (>= 6.0.1.42) uses this;
+    // older clients cast via the 0x12/0x56 text command, handled elsewhere.
+    // (This slot previously mis-handled viewport size, which the client actually
+    // reports via 0xBF 0x05 / 0xC8 — the duplicate handler was dead.)
+    private void HandleSpellSelect(byte[] data)
     {
         if (data.Length < 4 || _character == null)
             return;
 
-        ushort width = (ushort)((data[0] << 8) | data[1]);
-        ushort height = (ushort)((data[2] << 8) | data[3]);
-        _character.SetScreenSize(width, height);
+        int spellId = (data[2] << 8) | data[3];
+        if (spellId > 0)
+            _client.HandleCastSpell((SpellType)spellId, 0);
     }
 
     /// <summary>0xF4 crash report → @UserBugReport.</summary>
@@ -2241,6 +2249,31 @@ public sealed class ClientWorldFeaturesHandler
 
         _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserVirtueInvoke,
             new TriggerArgs { CharSrc = _character, N1 = 0x002C, N2 = data[0] });
+    }
+
+    // 0xBF 0x2E — TargetedSkill (Source-X PacketTargetedSkill, receive.cpp:3280):
+    // [word skillId][dword targetUID]. Use the skill against the pre-selected
+    // target with no cursor round-trip. skillId 0 ("last skill") is not tracked
+    // and is ignored. Runs the same busy/can-use gates as HandleUseSkill.
+    private void HandleTargetedSkill(byte[] data)
+    {
+        if (_character == null || _character.IsDead || data.Length < 6)
+            return;
+
+        int skillId = (data[0] << 8) | data[1];
+        uint targetSerial = (uint)((data[2] << 24) | (data[3] << 16) | (data[4] << 8) | data[5]);
+        if (skillId <= 0 || skillId >= SkillEngine.BaseSkillCount)
+            return;
+
+        var skill = (SkillType)skillId;
+        if (!SkillHandlers.IsClientUsable(skill))
+            return;
+        if (_character.IsStatFlag(StatFlag.Sleeping | StatFlag.Freeze | StatFlag.Stone) || _character.IsCasting)
+            return;
+        if (!SkillHandlers.CanUse(_character, skill))
+            return;
+
+        BeginTargetedSkill(skill, skillId, new Serial(targetSerial));
     }
 
     /// <summary>

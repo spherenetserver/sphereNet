@@ -647,8 +647,10 @@ public class SaveFormatTests
 
             ch.TrySetProperty("REGENSTAM", "7");    // 7000 ms per-char override
             ch.TrySetProperty("REGENMANA", "-1");   // never regen mana
+            ch.TrySetProperty("REGENVALHITS", "4"); // recover 4 hits per event (Wave 248)
             Assert.Equal(7000, ch.RegenStamRateMs);
             Assert.Equal(-1000, ch.RegenManaRateMs);
+            Assert.Equal((ushort)4, ch.RegenValHits);
 
             Assert.True(saver.Save(src, tmp));
 
@@ -659,6 +661,7 @@ public class SaveFormatTests
             Assert.NotNull(reloaded);
             Assert.Equal(7000, reloaded!.RegenStamRateMs);
             Assert.Equal(-1000, reloaded.RegenManaRateMs);
+            Assert.Equal((ushort)4, reloaded.RegenValHits);
             // Untouched stats stay on the global default (field 0).
             Assert.Equal(0, reloaded.RegenHitsRateMs);
         }

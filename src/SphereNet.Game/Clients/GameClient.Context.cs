@@ -211,6 +211,7 @@ public sealed partial class GameClient : IClientContext
     void IClientContext.BeginHouseCustomization(Item multi) => BeginHouseCustomization(multi);
     void IClientContext.BeginInfoSkill(SkillType skill, int skillId) => BeginInfoSkill(skill, skillId);
     void IClientContext.BeginActiveSkill(SkillType skill, int skillId, SkillHandlers.ActiveSkillTargetKind kind) => BeginActiveSkill(skill, skillId, kind);
+    void IClientContext.BeginTargetedSkill(SkillType skill, int skillId, Core.Types.Serial targetUid) => BeginTargetedSkill(skill, skillId, targetUid);
     void IClientContext.BeginXVerbTarget(string verb, string args) => BeginXVerbTarget(verb, args);
     void IClientContext.BeginAreaTarget(string verb, int range, string verbArgs) => BeginAreaTarget(verb, range, verbArgs);
     void IClientContext.ResendCharacterList() => ResendCharacterList();

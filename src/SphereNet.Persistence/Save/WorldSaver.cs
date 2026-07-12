@@ -731,6 +731,10 @@ public sealed class WorldSaver
         if (ch.RegenManaRateMs != 0) w.WriteProperty("REGENMANAD", (ch.RegenManaRateMs / 100).ToString());
         if (ch.RegenStamRateMs != 0) w.WriteProperty("REGENSTAMD", (ch.RegenStamRateMs / 100).ToString());
         if (ch.RegenFoodRateMs != 0) w.WriteProperty("REGENFOODD", (ch.RegenFoodRateMs / 100).ToString());
+        if (ch.RegenValHits != 0) w.WriteProperty("REGENVALHITS", ch.RegenValHits.ToString());
+        if (ch.RegenValMana != 0) w.WriteProperty("REGENVALMANA", ch.RegenValMana.ToString());
+        if (ch.RegenValStam != 0) w.WriteProperty("REGENVALSTAM", ch.RegenValStam.ToString());
+        if (ch.RegenValFood != 0) w.WriteProperty("REGENVALFOOD", ch.RegenValFood.ToString());
         if (ch.ResFireMax != 70) w.WriteProperty("RESFIREMAX", ch.ResFireMax.ToString());
         if (ch.ResColdMax != 70) w.WriteProperty("RESCOLDMAX", ch.ResColdMax.ToString());
         if (ch.ResPoisonMax != 70) w.WriteProperty("RESPOISONMAX", ch.ResPoisonMax.ToString());

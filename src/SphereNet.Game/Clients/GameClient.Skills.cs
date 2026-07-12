@@ -19,6 +19,9 @@ public sealed partial class GameClient
     internal void BeginActiveSkill(SkillType skill, int skillId, SkillHandlers.ActiveSkillTargetKind kind) =>
         SkillUse.BeginActiveSkill(skill, skillId, kind);
 
+    internal void BeginTargetedSkill(SkillType skill, int skillId, Core.Types.Serial targetUid) =>
+        SkillUse.BeginTargetedSkill(skill, skillId, targetUid);
+
     /// <summary>Advance delayed active skills (@SkillStroke loop + completion).</summary>
     public void TickPendingSkill() => SkillUse.TickPendingSkill();
 

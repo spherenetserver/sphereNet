@@ -226,16 +226,13 @@ public class DeferredParityTests
         var player = world.CreateCharacter();
         TestHarness.AttachCharacter(client, player);
 
+        // 0xBF 0x05 is the real screen-size report. (0xBF 0x1C used to be wired
+        // here too, but that slot is the client's spell-select packet — see
+        // SourceXWave248Tests — so screen size only travels on 0x05 / 0xC8.)
         client.HandleExtendedCommand(0x0005, [0, 0, 0, 0, 0x04, 0x00, 0x03, 0x20]);
         Assert.True(player.TryGetProperty("SCREENSIZE.X", out var width));
         Assert.True(player.TryGetProperty("SCREENSIZE.Y", out var height));
         Assert.Equal("1024", width);
         Assert.Equal("800", height);
-
-        client.HandleExtendedCommand(0x001C, [0x05, 0x00, 0x02, 0xD4]);
-        Assert.True(player.TryGetProperty("SCREENSIZE.X", out width));
-        Assert.True(player.TryGetProperty("SCREENSIZE.Y", out height));
-        Assert.Equal("1280", width);
-        Assert.Equal("724", height);
     }
 }

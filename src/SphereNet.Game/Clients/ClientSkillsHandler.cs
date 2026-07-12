@@ -181,33 +181,75 @@ public sealed class ClientSkillsHandler
         SendSkillPrompt(def, fallbackPrompt);
 
         SetPendingTarget((serial, x, y, z, graphic) =>
-        {
-            if (_character == null) return;
-            Targets.SkillCancelId = -1;
-
-            var uid = new Serial(serial);
-            Objects.ObjBase? target = uid.IsValid ? _world.FindObject(uid) : null;
-            var point = new Point3D(x, y, z, _character.MapIndex);
-
-            if (skill == SkillType.Herding && target is Character herdAnimal)
-            {
-                BeginHerdingDestination(skill, skillId, herdAnimal);
-                return;
-            }
-            if (skill == SkillType.Provocation && target is Character provokeSource)
-            {
-                BeginProvocationTarget(skill, skillId, provokeSource);
-                return;
-            }
-            if (skill == SkillType.Poisoning && target is Item poisonPotion)
-            {
-                BeginPoisoningTarget(skill, skillId, poisonPotion);
-                return;
-            }
-
-            ResolveActiveSkill(skill, skillId, uid, target, point);
-        });
+            ResolveActiveSkillTarget(skill, skillId, serial, x, y, z));
         Targets.SkillCancelId = skillId;
+    }
+
+    /// <summary>Resolve a target-required active skill against a picked target
+    /// (Serial + position). Shared by the target-cursor callback and the
+    /// targeted-skill fast path (0xBF 0x2E). Bard/Herding/Poisoning multi-step
+    /// skills branch to their own follow-up target.</summary>
+    private void ResolveActiveSkillTarget(SkillType skill, int skillId, uint serial, short x, short y, sbyte z)
+    {
+        if (_character == null) return;
+        Targets.SkillCancelId = -1;
+
+        var uid = new Serial(serial);
+        Objects.ObjBase? target = uid.IsValid ? _world.FindObject(uid) : null;
+        var point = new Point3D(x, y, z, _character.MapIndex);
+
+        if (skill == SkillType.Herding && target is Character herdAnimal)
+        {
+            BeginHerdingDestination(skill, skillId, herdAnimal);
+            return;
+        }
+        if (skill == SkillType.Provocation && target is Character provokeSource)
+        {
+            BeginProvocationTarget(skill, skillId, provokeSource);
+            return;
+        }
+        if (skill == SkillType.Poisoning && target is Item poisonPotion)
+        {
+            BeginPoisoningTarget(skill, skillId, poisonPotion);
+            return;
+        }
+
+        ResolveActiveSkill(skill, skillId, uid, target, point);
+    }
+
+    /// <summary>Targeted-skill fast path (0xBF 0x2E PacketTargetedSkill): a skill
+    /// used on an already-picked target, no cursor round-trip. Fires the same
+    /// PreStart/Start trigger chain, then resolves directly against the target.
+    /// Non-targeting skills fall back to the normal cursor-less path.</summary>
+    internal void BeginTargetedSkill(SkillType skill, int skillId, Serial targetUid)
+    {
+        if (_character == null || _character.HasActiveSkillPending()) return;
+
+        var kind = SkillHandlers.GetActiveSkillTarget(skill);
+        if (kind is not (SkillHandlers.ActiveSkillTargetKind.Character
+                      or SkillHandlers.ActiveSkillTargetKind.Object
+                      or SkillHandlers.ActiveSkillTargetKind.Item
+                      or SkillHandlers.ActiveSkillTargetKind.Ground))
+        {
+            BeginActiveSkill(skill, skillId, kind);
+            return;
+        }
+
+        _character.ResetSkillStrokeCount();
+        if (_triggerDispatcher != null)
+        {
+            var pre = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillPreStart,
+                new TriggerArgs { CharSrc = _character, N1 = skillId });
+            if (pre == TriggerResult.True) return;
+
+            var start = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillStart,
+                new TriggerArgs { CharSrc = _character, N1 = skillId });
+            if (start == TriggerResult.True) return;
+        }
+
+        var targetObj = targetUid.IsValid ? _world.FindObject(targetUid) : null;
+        var pos = targetObj?.Position ?? _character.Position;
+        ResolveActiveSkillTarget(skill, skillId, targetUid.Value, (short)pos.X, (short)pos.Y, (sbyte)pos.Z);
     }
 
     private void SendSkillPrompt(SkillDef? def, string fallback)

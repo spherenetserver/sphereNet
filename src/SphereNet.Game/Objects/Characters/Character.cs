@@ -769,6 +769,12 @@ public partial class Character : ObjBase
     /// <summary>TickCount64 of the last successful move — archery movement delay gate.</summary>
     public long LastMoveTick { get; set; }
 
+    // Last weapon wielded, for the EquipLastWeapon client macro (0xD7 0x1E).
+    // Runtime-only (Source-X keeps m_uidWeaponLast in RAM), not persisted.
+    private Serial _lastWeaponUid;
+    /// <summary>Uid of the last weapon this character equipped (0xD7 EquipLastWeapon).</summary>
+    public Serial LastWeaponUid => _lastWeaponUid;
+
     // Regen timers (ms)
     private long _nextHitRegen;
     private long _nextManaRegen;
@@ -791,6 +797,21 @@ public partial class Character : ObjBase
     public long RegenStamRateMs => _regenStamRateMs;
     /// <summary>Per-char food decay rate in ms (0 = use the global rate). Persisted.</summary>
     public long RegenFoodRateMs => _regenFoodRateMs;
+
+    // Per-char regen AMOUNT override (Source-X CChar m_regenVal, points recovered
+    // per regen event; effective value is max(1, stored)). 0 = the default of 1.
+    private ushort _regenValHits;
+    private ushort _regenValMana;
+    private ushort _regenValStam;
+    private ushort _regenValFood;
+    /// <summary>Per-char points recovered per hit-regen event (0 = default 1). Persisted.</summary>
+    public ushort RegenValHits => _regenValHits;
+    /// <summary>Per-char points recovered per mana-regen event (0 = default 1). Persisted.</summary>
+    public ushort RegenValMana => _regenValMana;
+    /// <summary>Per-char points recovered per stam-regen event (0 = default). Persisted.</summary>
+    public ushort RegenValStam => _regenValStam;
+    /// <summary>Per-char food points lost per decay event (0 = default 1). Persisted.</summary>
+    public ushort RegenValFood => _regenValFood;
     private ushort _food = 40; // 0-60, hunger level (Sphere style)
     private string _title = ""; // Paperdoll title (Sphere: src.title)
     private bool _allShow; // Runtime-only GM flag, not saved
@@ -2054,6 +2075,10 @@ public partial class Character : ObjBase
         item.IsEquipped = true;
         item.EquipLayer = layer;
         item.ContainedIn = Uid;
+        // Track the last weapon wielded for the EquipLastWeapon client macro
+        // (Source-X CChar::m_uidWeaponLast, set on equip, CCharAct.cpp:314).
+        if ((layer == Layer.OneHanded || layer == Layer.TwoHanded) && item.IsWeaponType)
+            _lastWeaponUid = item.Uid;
         MarkDirty(DirtyFlag.Equip);
         return true;
     }
@@ -2644,6 +2669,11 @@ public partial class Character : ObjBase
             case "REGENSTAMD": value = (EffectiveRegenRateMsForRead(_regenStamRateMs, RegenStamSeconds, 10000) / 100).ToString(); return true;
             case "REGENFOOD": value = (EffectiveRegenRateMsForRead(_regenFoodRateMs, RegenFoodSeconds, 3_600_000) / 1000).ToString(); return true;
             case "REGENFOODD": value = (EffectiveRegenRateMsForRead(_regenFoodRateMs, RegenFoodSeconds, 3_600_000) / 100).ToString(); return true;
+            // Per-char regen amounts (Source-X Stats_GetRegenVal → max(1, stored)).
+            case "REGENVALHITS": value = Math.Max(1, (int)_regenValHits).ToString(); return true;
+            case "REGENVALMANA": value = Math.Max(1, (int)_regenValMana).ToString(); return true;
+            case "REGENVALSTAM": value = Math.Max(1, (int)_regenValStam).ToString(); return true;
+            case "REGENVALFOOD": value = Math.Max(1, (int)_regenValFood).ToString(); return true;
             case "RESPHYSICALMAX": value = _resPhysicalMax.ToString(); return true;
             case "RESFIREMAX": value = _resFireMax.ToString(); return true;
             case "RESCOLDMAX": value = _resColdMax.ToString(); return true;
@@ -3626,6 +3656,10 @@ public partial class Character : ObjBase
             case "REGENSTAMD": if (long.TryParse(normalized, out long rst)) _regenStamRateMs = rst * 100; return true;
             case "REGENFOOD": if (long.TryParse(normalized, out long rfs)) _regenFoodRateMs = rfs * 1000; return true;
             case "REGENFOODD": if (long.TryParse(normalized, out long rft)) _regenFoodRateMs = rft * 100; return true;
+            case "REGENVALHITS": if (ushort.TryParse(normalized, out ushort rvh)) _regenValHits = rvh; return true;
+            case "REGENVALMANA": if (ushort.TryParse(normalized, out ushort rvm)) _regenValMana = rvm; return true;
+            case "REGENVALSTAM": if (ushort.TryParse(normalized, out ushort rvs)) _regenValStam = rvs; return true;
+            case "REGENVALFOOD": if (ushort.TryParse(normalized, out ushort rvf)) _regenValFood = rvf; return true;
             case "OWNER":
             case "OWNER_UID":
             case "NPCMASTER":
@@ -5573,7 +5607,7 @@ public partial class Character : ObjBase
         long hitRateMs = ResolveRegenRateMs(_regenHitsRateMs, RegenHitsSeconds, 40000);
         if (hitRateMs >= 0 && now >= _nextHitRegen && _hits < _maxHits && Poison.Level == 0)
         {
-            int regenAmount = _food > 0 ? 1 : 0;
+            int regenAmount = _food > 0 ? (_regenValHits > 0 ? _regenValHits : 1) : 0;
             // Source-X CCharStat::Stats_Regen: the human race regens +2 extra hp.
             if (regenAmount > 0 && IsHuman)
                 regenAmount += 2;
@@ -5593,7 +5627,7 @@ public partial class Character : ObjBase
         long manaRateMs = ResolveRegenRateMs(_regenManaRateMs, RegenManaSeconds, 20000);
         if (manaRateMs >= 0 && now >= _nextManaRegen && _mana < _maxMana)
         {
-            int regenAmount = 1;
+            int regenAmount = _regenValMana > 0 ? _regenValMana : 1;
             if (IsStatFlag(StatFlag.Meditation))
                 regenAmount += Math.Max(1, SkillEngine.GetEffect(SkillType.Meditation,
                     SkillEngine.GetAdjustedSkill(this, SkillType.Meditation), 1));
@@ -5611,7 +5645,8 @@ public partial class Character : ObjBase
         long stamRateMs = ResolveRegenRateMs(_regenStamRateMs, RegenStamSeconds, 10000);
         if (stamRateMs >= 0 && now >= _nextStamRegen && _stam < _maxStam)
         {
-            int regenAmt = _isPlayer ? Math.Max(1, _dex / 30) : Math.Max(1, _maxStam / 20);
+            int regenAmt = _regenValStam > 0 ? _regenValStam
+                : _isPlayer ? Math.Max(1, _dex / 30) : Math.Max(1, _maxStam / 20);
             int focus = SkillEngine.GetAdjustedSkill(this, SkillType.Focus);
             if (focus > 0 && SkillEngine.UseQuick(this, SkillType.Focus, focus / 10))
                 regenAmt += focus / 100;
@@ -5624,7 +5659,8 @@ public partial class Character : ObjBase
         long foodRateMs = ResolveRegenRateMs(_regenFoodRateMs, RegenFoodSeconds, 3_600_000);
         if (_isPlayer && foodRateMs >= 0 && now >= _nextFoodDecay)
         {
-            if (_food > 0) _food--;
+            if (_food > 0)
+                _food = (ushort)Math.Max(0, _food - (_regenValFood > 0 ? _regenValFood : 1));
             _nextFoodDecay = now + foodRateMs;
 
             // Let scripts react to hunger (@Hunger trigger).

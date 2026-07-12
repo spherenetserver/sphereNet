@@ -4,6 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, twenty-ninth batch
+----------------------------------------
+
+ADDED - EquipLastWeapon client macro (Wave 248):
+  - The 0xD7 0x1E "re-wield last weapon" macro is now handled. The character
+    tracks the last weapon it equipped (Source-X m_uidWeaponLast); the macro
+    pulls that weapon out of the player's own pack and equips it, reusing the
+    normal equip path (a dropped or traded weapon can't be summoned back).
+
+ADDED - Targeted-skill fast path (Wave 248):
+  - The 0xBF 0x2E packet uses a skill against an already-picked target without a
+    target-cursor round-trip. It runs the same busy/can-use checks and
+    PreStart/Start trigger chain as a normal skill use, then resolves directly
+    against the supplied target.
+
+ADDED - Per-character regen amount overrides (Wave 248):
+  - Characters now honour per-char REGENVALHITS/REGENVALMANA/REGENVALSTAM/
+    REGENVALFOOD (Source-X Stats_GetRegenVal): the number of points recovered
+    per regeneration event, effective value max(1, stored). The human +2 hit
+    racial still applies on top. Saved and restored across a restart. This
+    completes the per-char regen surface begun in the previous batch.
+
+FIXED - Modern-client spell casting from the 0xBF 0x1C packet (Wave 248):
+  - The client's spell-select packet (0xBF 0x1C, used by clients 6.0.1.42+) was
+    mis-wired to a viewport-size handler, so spells cast from the modern client
+    UI were silently dropped. Screen size already travels on 0xBF 0x05 / 0xC8, so
+    the duplicate handler was dead; 0x1C now casts the selected spell.
+
 [2026-07-12] - Sub-90 parity backlog, twenty-eighth batch
 ----------------------------------------
 

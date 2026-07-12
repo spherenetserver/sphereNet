@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, twenty-fifth batch
+----------------------------------------
+
+FIXED - Guild and quest buttons use the correct 0xD7 transport (Wave 244):
+  - The guild and quest button presses are sent by the client on the 0xD7
+    (EXTAOS) subcommand space, not 0xBF (Source-X PacketGuildButton /
+    PacketQuestButton). They were handled on 0xBF, so a real client never fired
+    the @UserGuildButton / @UserQuestButton triggers. They are now handled on
+    0xD7 0x28 / 0x32, and the stale 0xBF 0x28 mapping is removed.
+
+ADDED - Gargoyle flight toggle (Wave 244):
+  - 0xBF 0x32 (previously mis-mapped to the quest button) now toggles gargoyle
+    flight for a living gargoyle carrying the flight racial: it flips the
+    hovering state and the gargoyle-flight buff, and the flight state now rides
+    the mobile-flags 0x04 bit to the player and every nearby observer (the
+    hovering bit was previously never sent).
+
 [2026-07-12] - Sub-90 parity backlog, twenty-fourth batch
 ----------------------------------------
 

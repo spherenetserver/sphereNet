@@ -3528,8 +3528,10 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         client.HandleStatusRequest(5, player.Uid.Value);
         client.HandleStatusRequest(4, player.Uid.Value);
         client.HandleExtendedCommand(0x000B, []);
-        client.HandleExtendedCommand(0x0028, []);
-        client.HandleExtendedCommand(0x0032, []);
+        // Guild and quest buttons ride the 0xD7 (EXTAOS) transport in the real
+        // protocol, not 0xBF — see Source-X PacketGuildButton/PacketQuestButton.
+        client.HandleEncodedCommand(0x28, player.Uid.Value, new PacketBuffer(System.Array.Empty<byte>()));
+        client.HandleEncodedCommand(0x32, player.Uid.Value, new PacketBuffer(System.Array.Empty<byte>()));
         client.HandleExtendedCommand(0x002C, [7]);
 
         Assert.Equal(1, skillsCount);
@@ -3576,6 +3578,62 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
 
         Assert.Equal(1, disarm);
         Assert.Equal(1, stun);
+    }
+
+    [Fact]
+    public void GameClient_GargoyleFly_TogglesHoveringAndBuff()
+    {
+        // Source-X 0xBF 0x32 GargoyleFly: a living gargoyle with RACIALF_GARG_FLY
+        // toggles STATF_HOVERING and the BI_GARGOYLEFLY buff.
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var netState = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = 1503 };
+        SetNetStateInUse(netState, true);
+        var client = new SphereNet.Game.Clients.GameClient(netState, world, accountManager,
+            loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
+
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        player.BodyId = 0x029A; // gargoyle
+        world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
+
+        Character.RacialFlags = (int)RacialFlags.GargoyleFly;
+        var buffs = new List<(BuffIcon Icon, bool Add)>();
+        Character.OnClientBuffChanged = (_, icon, add, _) => buffs.Add((icon, add));
+
+        AttachCharacter(client, player);
+
+        client.HandleExtendedCommand(0x0032, []); // toggle on
+        Assert.True(player.IsStatFlag(StatFlag.Hovering));
+        Assert.Contains(buffs, b => b.Icon == BuffIcon.GargoyleFly && b.Add);
+
+        client.HandleExtendedCommand(0x0032, []); // toggle off
+        Assert.False(player.IsStatFlag(StatFlag.Hovering));
+        Assert.Contains(buffs, b => b.Icon == BuffIcon.GargoyleFly && !b.Add);
+    }
+
+    [Fact]
+    public void GameClient_GargoyleFly_NonGargoyle_NoOp()
+    {
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var netState = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = 1504 };
+        SetNetStateInUse(netState, true);
+        var client = new SphereNet.Game.Clients.GameClient(netState, world, accountManager,
+            loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
+
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        player.BodyId = 0x0190; // human — not a gargoyle
+        world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
+
+        Character.RacialFlags = (int)RacialFlags.GargoyleFly;
+        AttachCharacter(client, player);
+
+        client.HandleExtendedCommand(0x0032, []);
+        Assert.False(player.IsStatFlag(StatFlag.Hovering)); // a human never hovers
     }
 
     // ───── Faz 5: Regression tests for bug fixes ─────

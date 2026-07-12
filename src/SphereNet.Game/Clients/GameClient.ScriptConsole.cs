@@ -151,6 +151,7 @@ public sealed partial class GameClient
         if (ch.IsInvisible) flags |= 0x80;
         if (ch.IsInWarMode) flags |= 0x40;
         if (ch.BodyId == 0x0191 || ch.BodyId == 0x0193) flags |= 0x02;
+        if (ch.IsStatFlag(StatFlag.Hovering)) flags |= 0x04; // gargoyle flight
         if (ch.IsStatFlag(StatFlag.Freeze)) flags |= 0x01;
         return flags;
     }

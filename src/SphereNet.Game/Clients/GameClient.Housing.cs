@@ -87,6 +87,23 @@ public sealed partial class GameClient
             return;
         }
 
+        // 0xD7 0x28 / 0x32 — guild and quest button presses. Source-X routes
+        // these through the EXTAOS (0xD7) space (PacketGuildButton /
+        // PacketQuestButton, receive.cpp:4161/4194); a real client never sends
+        // them on 0xBF. Each just fires its @User*Button trigger.
+        if (subCmd == 0x28)
+        {
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserGuildButton,
+                new TriggerArgs { CharSrc = _character, N1 = 0x28, ScriptConsole = this });
+            return;
+        }
+        if (subCmd == 0x32)
+        {
+            _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserQuestButton,
+                new TriggerArgs { CharSrc = _character, N1 = 0x32, ScriptConsole = this });
+            return;
+        }
+
         if (_customHousing == null)
             return;
         if (!_customHousing.IsSessionAuthorized(_character))

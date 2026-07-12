@@ -22,9 +22,8 @@ public static class ExtendedCommandRegistry
         0x001E, // query custom house design details
 
         0x0024, // known ignored
-        0x0028, // guild button
         0x002C, // virtue invoke
-        0x0032, // quest button
+        0x0032, // gargoyle flight toggle
         0x0033, // wheel-boat move (High Seas steering)
     ];
 

@@ -3,6 +3,23 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, yirmi besinci batch
+----------------------------------------
+
+DUZELTILDI - Guild ve quest butonlari dogru 0xD7 transport'unu kullaniyor (Wave 244):
+  - Guild ve quest buton basimlari client tarafindan 0xBF degil 0xD7 (EXTAOS)
+    subcommand uzayinda gonderilir (Source-X PacketGuildButton / PacketQuestButton).
+    0xBF'te ele aliniyordu, bu yuzden gercek client @UserGuildButton /
+    @UserQuestButton trigger'larini HIC ateslemiyordu. Artik 0xD7 0x28 / 0x32'de
+    ele aliniyor, yanlis 0xBF 0x28 eslemesi kaldirildi.
+
+EKLENDI - Gargoyle ucus toggle'i (Wave 244):
+  - 0xBF 0x32 (onceden yanlislikla quest butonuna eslenmisti) artik ucus racial'ini
+    tasiyan canli bir gargoyle icin ucusu toggle ediyor: hovering durumunu ve
+    gargoyle-ucus buff'ini degistiriyor; ucus durumu artik mobile-flags 0x04 biti
+    ile oyuncuya ve civardaki her gozlemciye yansiyor (hovering biti onceden hic
+    gonderilmiyordu).
+
 [2026-07-12] - 90-alti parite backlog, yirmi dorduncu batch
 ----------------------------------------
 

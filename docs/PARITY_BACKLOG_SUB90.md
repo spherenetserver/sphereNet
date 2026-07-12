@@ -438,27 +438,33 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
 - [ ] `CMenu` paging helper'ları + standart menü builder'ları (ince).
 
 ### 5.3 Incoming packet — 78
-- [~] 0xBF/0xD7 extended subcommand allow-list — KISMEN (Wave 243). WrestleDisarm/
-  Stun eklendi (aşağı). GERİ KALAN = **0xBF/0xD7 SUBCOMMAND ÇAKIŞMA DÜZELTMESİ**
-  (iki bağımsız triage doğruladı + Source-X sphereproto.h ile teyit): SphereNet 3
-  subcommand'ı YANLIŞ anlama atamış (RunUO-vari harita, Source-X değil):
-  `0xBF 0x1C` = NewSpellSelect ama viewport-size'a; `0xBF 0x2C` = BandageMacro ama
-  virtue-invoke'a; `0xBF 0x32` = GargoyleFly ama quest-button'a. Ayrıca Guild/Quest
-  button GERÇEKTE `0xD7 0x28`/`0xD7 0x32` (EXTAOS uzayı, receive.cpp:4186/4161) —
-  0xBF'te yanlış transport'ta, gerçek client'tan hiç ateşlenmiyor. Virtue invoke
-  ayrı top-level paket `0xF4` (EXTCMD_INVOKE_VIRTUE, sphereproto.h:376). Bu bir
-  ROUTING correctness bug'ı ama repointing GameSystemTests:3505-3540'ı (0xBF 0x28/
-  0x32/0x2C firing'i kilitliyor) kırar + 0xD7 handler'ları + virtue→0xF4 gerektirir
-  → kendi dedicated wave'ine ERTELENDİ (çok parçalı, dikkatli regresyon gerekli).
+- [~] 0xBF/0xD7 extended subcommand allow-list — BÜYÜK KISIM YAPILDI (Wave 243-244).
+  **Guild/Quest button transport düzeltmesi (Wave 244)**: Source-X'te bu ikisi
+  `0xD7 0x28`/`0xD7 0x32` (EXTAOS uzayı, PacketGuildButton/QuestButton
+  receive.cpp:4161/4194, CPacketManager registerEncoded) — SphereNet 0xBF'te
+  yanlış transport'taydı, gerçek client'tan HİÇ ateşlenmiyordu. Fix: GameClient.
+  HandleEncodedCommand'a 0x28→@UserGuildButton, 0x32→@UserQuestButton (0x19
+  special-move gibi design-gate öncesi) eklendi; yanlış 0xBF 0x28 kaldırıldı, 0xBF
+  0x32 GargoyleFly'a repoint edildi (aşağı). GameSystemTests guild/quest artık 0xD7
+  enjekte ediyor. **GargoyleFly (Wave 244)**: 0xBF 0x32 (Source-X EXTDATA_GargoyleFly,
+  receive.cpp:3329) — canlı gargoyle + RACIALF_GARG_FLY racial → STATF_HOVERING +
+  BI_GARGOYLEFLY buff toggle; uçuş durumu MobileFlags 0x04 biti ile self+observer'a
+  yansır (BuildMobileFlags'e Hovering→0x04 wire edildi, eskiden ölü biteti). Test:
+  GameSystemTests.GameClient_GargoyleFly_TogglesHoveringAndBuff + NonGargoyle_NoOp.
+  KALAN (ayrı wave): `0xBF 0x1C` NewSpellSelect (şu an viewport-size — repoint
+  riskli), `0xBF 0x2C` BandageMacro (şu an virtue-invoke; virtue gerçekte top-level
+  0xF4 EXTCMD_INVOKE_VIRTUE'a taşınmalı + targeted-use plumbing), `0xD7 0x1E`
+  EquipLastWeapon (last-weapon state gerektirir), `0xBF 0x2E` TargetedSkill.
 - [x] WrestleDisarm/Stun — YAPILDI (Wave 243): `0xBF 0x09`/`0x0A` (Source-X
   EXTDATA_Wrestle_DisArm/Stun, boş slot'lardı) eklendi → `Event_CombatAbilitySelect`
   gibi `@UserSpecialMove` trigger'ını N1=0x05 (disarm)/0x0B (paralyzing blow) ile
   ateşler (0xD7 0x19 special-move ile aynı sink). ExtendedCommandRegistry'ye
   0x0009/0x000A eklendi (drift guard). Test:
   GameSystemTests.GameClient_WrestleMacros_FireSpecialMoveTrigger.
-- [ ] BandageMacro (0xBF 0x2C), GargoyleFly (0xBF 0x32), EquipLastWeapon (0xD7 0x1E)
-  — yukarıdaki çakışma düzeltmesiyle birlikte dedicated wave'de (BandageMacro
-  targeted-use plumbing, EquipLastWeapon last-weapon state gerektirir).
+- [x] GargoyleFly (0xBF 0x32) — YAPILDI (Wave 244, yukarı bak).
+- [ ] BandageMacro (0xBF 0x2C), EquipLastWeapon (0xD7 0x1E) — dedicated wave'de
+  (BandageMacro virtue→0xF4 taşıma + targeted-use plumbing, EquipLastWeapon
+  last-weapon state gerektirir).
 
 ### 5.4 Outgoing packet — 82
 - [x] **PacketHealthBarStatus (0x17) + PacketHealthBarStatusNew (0x16)** — YAPILDI

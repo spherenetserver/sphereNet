@@ -2077,13 +2077,12 @@ public sealed class ClientWorldFeaturesHandler
             [0x001C] = static (client, data) => client.HandleExtendedViewportSize(data),
             [0x001E] = static (client, data) => client.HandleQueryDesignDetails(data),
             [0x0024] = static (client, _) => client.FireExtendedButtonTrigger(CharTrigger.UserKRToolbar, 0x0024),
-            [0x0028] = static (client, _) => client.FireExtendedButtonTrigger(CharTrigger.UserGuildButton, 0x0028),
             [0x002C] = static (client, data) =>
             {
                 client.FireExtendedButtonTrigger(CharTrigger.UserVirtue, 0x002C);
                 client.HandleExtendedVirtueInvoke(data);
             },
-            [0x0032] = static (client, _) => client.FireExtendedButtonTrigger(CharTrigger.UserQuestButton, 0x0032),
+            [0x0032] = static (client, data) => client.HandleGargoyleFly(data),
             [0x0033] = static (client, data) => client.HandleExtendedWheelBoatMove(data),
         };
 
@@ -2187,6 +2186,39 @@ public sealed class ClientWorldFeaturesHandler
 
         _triggerDispatcher?.FireCharTrigger(_character, trigger,
             new TriggerArgs { CharSrc = _character, N1 = subCmd });
+    }
+
+    /// <summary>0xBF 0x32 — Source-X GargoyleFly (receive.cpp:3329): a living
+    /// gargoyle carrying the RACIALF_GARG_FLY racial toggles hovering flight.
+    /// Flip STATF_HOVERING and the BI_GARGOYLEFLY buff, then resend the mobile so
+    /// the flight state rides the MobileFlags 0x04 bit to the player and every
+    /// nearby observer.</summary>
+    private void HandleGargoyleFly(byte[] data)
+    {
+        if (_character == null || _character.IsDead || !_character.IsGargoyle)
+            return;
+        if ((Character.RacialFlags & (int)RacialFlags.GargoyleFly) == 0)
+            return;
+
+        bool flying = !_character.IsStatFlag(StatFlag.Hovering);
+        if (flying)
+            _character.SetStatFlag(StatFlag.Hovering);
+        else
+            _character.ClearStatFlag(StatFlag.Hovering);
+
+        Character.OnClientBuffChanged?.Invoke(_character, BuffIcon.GargoyleFly, flying, 0);
+
+        _client.SendSelfRedraw();
+        byte flags = BuildMobileFlags(_character);
+        byte noto = GetNotoriety(_character);
+        var moving = new PacketMobileMoving(
+            _character.Uid.Value, _character.BodyId,
+            _character.X, _character.Y, _character.Z,
+            (byte)((byte)_character.Direction & 0x07), _character.Hue, flags, noto);
+        if (BroadcastMoveNearby != null)
+            BroadcastMoveNearby(_character.Position, UpdateRange, moving, _character.Uid.Value, _character);
+        else
+            BroadcastNearby?.Invoke(_character.Position, UpdateRange, moving, _character.Uid.Value);
     }
 
     /// <summary>0xBF 0x09/0x0A — pre-AOS wrestling special moves (disarm/stun).

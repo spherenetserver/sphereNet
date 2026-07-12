@@ -910,6 +910,17 @@ public sealed class ScriptInterpreter
             return;
         }
 
+        // FILE.* verbs from a context without a client console (server hooks,
+        // NPC triggers) — Source-X serves these from the server-global
+        // g_Serv._hFile; route to the host's FILE dispatcher. Client consoles
+        // already handled the verb above, so this is the no-console fallback.
+        if (cmd.StartsWith("FILE.", StringComparison.OrdinalIgnoreCase))
+        {
+            ServerPropertyResolver?.Invoke(
+                resolvedArg.Length > 0 ? $"{cmd} {resolvedArg}" : cmd);
+            return;
+        }
+
         _logger.LogWarning("Unhandled script line: {Key}={Arg}", cmd, resolvedArg);
     }
 

@@ -4,6 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Script FILE object parity with Source-X (CSFileObj)
+----------------------------------------
+
+CHANGED - The script FILE object now matches Source-X CSFileObj semantics:
+  - Default MODE is append+read+write (was read-only), so a bare FILE.OPEN
+    followed by FILE.WRITELINE appends instead of silently no-opping.
+  - OPEN is refused while a file is already open; MODE changes are refused
+    while open (both logged through the diagnostic sink); CREATE and APPEND
+    clear each other like upstream.
+  - READCHAR returns the numeric byte value; READBYTE <n> reads n bytes as
+    text; both guard reads past EOF. READLINE restores the pre-read POSITION
+    (non-destructive) and trims trailing non-graphic characters.
+  - LENGTH returns -1 when closed; FILEPATH returns the full resolved path.
+  - FILEEXIST/FILELINES/DELETEFILE resolve against the sandbox root instead
+    of the open file's directory (previously failed with no file open);
+    DELETEFILE refuses the currently-open file.
+
+ADDED - Server-global FILE surface:
+  - Scripts running WITHOUT a client console (server hooks, NPC triggers)
+    now reach the full FILE surface through the shared server handle
+    (Source-X g_Serv._hFile model) — previously only FILE.FILEEXIST worked
+    there. The interpreter routes FILE.* verbs to the host as a no-console
+    fallback; client consoles keep their existing path.
+  - Sandbox unchanged: everything stays under <scpdir>/files with traversal
+    and reparse-point rejection (deliberate hardening over Source-X).
+  - CSFileObjContainer (multi-file pool) is intentionally not ported: it is
+    not wired to the FILE. reference in Source-X either.
+
 [2026-07-11] - Source-X verb long tail completed (48 deferred verbs, backlog now empty)
 ----------------------------------------
 

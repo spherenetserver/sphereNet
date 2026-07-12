@@ -152,7 +152,10 @@ public static partial class Program
             _ when upper.StartsWith("DB.") => ResolveScriptDbProperty(_scriptDb, property[3..]),
             _ when upper.StartsWith("LDB.") => ResolveScriptDbProperty(_scriptLdb, property[4..]),
             _ when upper.StartsWith("MDB.") => ResolveScriptDbProperty(_scriptMdb, property[4..]),
-            _ when upper.StartsWith("FILE.FILEEXIST") => ResolveScriptFileExists(property[14..]),
+            // Full server-global FILE object surface (Source-X g_Serv._hFile):
+            // scripts running without a client console (server hooks, NPC
+            // triggers) reach the same shared ScriptFileHandle the clients use.
+            _ when upper.StartsWith("FILE.") => ResolveServerFileObject(property[5..]),
 
             // --- ISEVENT.name — 1 if the named event script is loaded.
             // Used by admin dialogs to grey out delete buttons for missing events.
@@ -324,14 +327,87 @@ public static partial class Program
             ? path
             : path + Path.DirectorySeparatorChar;
 
-    private static string ResolveScriptFileExists(string raw)
+    /// <summary>Server-global FILE object dispatcher (Source-X CSFileObj on
+    /// g_Serv._hFile): properties AND verbs over the shared ScriptFileHandle.
+    /// Gated by OF_FileCommands (the handle only exists when enabled).</summary>
+    private static string ResolveServerFileObject(string sub)
     {
-        string path = raw.Trim().Trim('"');
-        if (path.Length == 0)
-            return "0";
-        if (!Path.IsPathRooted(path))
-            path = Path.Combine(_resources?.ScpBaseDir ?? AppContext.BaseDirectory, path);
-        return File.Exists(path) ? "1" : "0";
+        var file = _scriptFile;
+        if (file == null)
+            return "0"; // OF_FileCommands not set
+
+        string upper = sub.Trim();
+        int sp = upper.IndexOfAny([' ', '\t']);
+        string member = (sp < 0 ? upper : upper[..sp]).ToUpperInvariant();
+        string arg = sp < 0 ? "" : upper[(sp + 1)..].Trim();
+
+        switch (member)
+        {
+            case "OPEN":
+                return arg.Length > 0
+                    ? (file.Open(arg) ? "1" : "0")
+                    : (file.IsOpen ? "1" : "0");
+            case "CLOSE":
+                file.Close();
+                return "1";
+            case "FLUSH":
+                file.Flush();
+                return "1";
+            case "INUSE":
+                return file.IsOpen ? "1" : "0";
+            case "ISEOF":
+                return file.IsEof ? "1" : "0";
+            case "FILEPATH":
+                return file.FilePath;
+            case "POSITION":
+                return file.Position.ToString();
+            case "LENGTH":
+                return file.Length.ToString();
+            case "READCHAR":
+                return file.ReadChar();
+            case "READBYTE":
+            {
+                int count = arg.Length > 0 && int.TryParse(arg, out int n) ? n : 1;
+                return file.ReadBytes(count);
+            }
+            case "READLINE":
+            {
+                int line = arg.Length > 0 && int.TryParse(arg, out int n) ? n : 0;
+                return file.ReadLine(line);
+            }
+            case "SEEK":
+                file.Seek(arg);
+                return file.Position.ToString();
+            case "FILEEXIST":
+                return file.FileExistsRelative(arg) ? "1" : "0";
+            case "FILELINES":
+                return file.GetFileLinesRelative(arg).ToString();
+            case "DELETEFILE":
+                return file.DeleteRelative(arg) ? "1" : "0";
+            case "WRITE":
+                return file.Write(arg) ? "1" : "0";
+            case "WRITELINE":
+                return file.WriteLine(arg) ? "1" : "0";
+            case "WRITECHR":
+                return arg.Length > 0 && int.TryParse(arg, out int chr) && file.WriteChr(chr) ? "1" : "0";
+            case "MODE.APPEND":
+                if (arg.Length > 0) { file.ModeAppend = arg != "0"; return "1"; }
+                return file.ModeAppend ? "1" : "0";
+            case "MODE.CREATE":
+                if (arg.Length > 0) { file.ModeCreate = arg != "0"; return "1"; }
+                return file.ModeCreate ? "1" : "0";
+            case "MODE.READFLAG":
+                if (arg.Length > 0) { file.ModeRead = arg != "0"; return "1"; }
+                return file.ModeRead ? "1" : "0";
+            case "MODE.WRITEFLAG":
+                if (arg.Length > 0) { file.ModeWrite = arg != "0"; return "1"; }
+                return file.ModeWrite ? "1" : "0";
+            case "MODE.SETDEFAULT":
+                file.SetModeDefault();
+                return "1";
+            default:
+                return "0";
+        }
     }
 
     private static string ResolveScriptDbProperty(ScriptDbAdapter? db, string property)

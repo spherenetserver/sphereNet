@@ -3,6 +3,34 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - Script FILE nesnesi Source-X paritesi (CSFileObj)
+----------------------------------------
+
+DEGISTIRILDI - Script FILE nesnesi artik Source-X CSFileObj semantiginde:
+  - Varsayilan MOD append+read+write (onceden salt-okunurdu); ciplak
+    FILE.OPEN + FILE.WRITELINE artik ekleme yapar, sessizce no-op olmaz.
+  - Dosya acikken OPEN reddedilir; acikken MOD degisiklikleri reddedilir
+    (ikisi de diagnostic sink'e loglanir); CREATE ile APPEND upstream gibi
+    birbirini temizler.
+  - READCHAR sayisal bayt degeri dondurur; READBYTE <n> n bayti metin olarak
+    okur; ikisi de EOF otesini korur. READLINE okuma oncesi POZISYONU geri
+    yukler (bozucu degil) ve satir sonundaki gorunmez karakterleri kirpar.
+  - LENGTH kapaliyken -1 doner; FILEPATH tam cozulmus yolu doner.
+  - FILEEXIST/FILELINES/DELETEFILE acik dosyanin klasoru yerine sandbox
+    kokune gore cozulur (onceden dosya acik degilken bulunamiyordu);
+    DELETEFILE acik dosyayi reddeder.
+
+EKLENDI - Sunucu-global FILE yuzeyi:
+  - Client konsolu OLMADAN calisan scriptler (sunucu hook'lari, NPC
+    trigger'lari) artik paylasilan sunucu handle'i uzerinden tam FILE
+    yuzeyine erisir (Source-X g_Serv._hFile modeli) — onceden orada sadece
+    FILE.FILEEXIST calisiyordu. Interpreter FILE.* verb'lerini konsolsuz
+    fallback olarak host'a yonlendirir; client konsollari mevcut yolunu korur.
+  - Sandbox degismedi: her sey <scpdir>/files altinda, traversal ve
+    reparse-point reddiyle (Source-X'e gore bilincli sertlestirme).
+  - CSFileObjContainer (coklu-dosya havuzu) bilincli olarak portlanmadi:
+    Source-X'te de FILE. referansina bagli degil.
+
 [2026-07-11] - Source-X verb uzun kuyrugu tamamlandi (48 ertelenmis verb, backlog artik bos)
 ----------------------------------------
 

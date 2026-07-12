@@ -955,7 +955,9 @@ public sealed class ClientScriptConsoleHandler
                     _scriptFile.Flush();
                     return true;
                 case "DELETEFILE":
-                    ScriptFileHandle.DeleteFile(_scriptFile.FilePath != "" ? Path.GetDirectoryName(_scriptFile.FilePath) ?? "" : "", args);
+                    // Resolves under the sandbox root (one consistent base);
+                    // refuses to delete the currently-open file (Source-X).
+                    _scriptFile.DeleteRelative(args);
                     return true;
                 case "MODE.APPEND":
                     _scriptFile.ModeAppend = args != "0";
@@ -2187,10 +2189,12 @@ public sealed class ClientScriptConsoleHandler
                     value = _scriptFile.Length.ToString();
                     return true;
                 case "READCHAR":
+                    // Numeric byte value at the current position (Source-X).
                     value = _scriptFile.ReadChar();
                     return true;
                 case "READBYTE":
-                    value = _scriptFile.ReadByte();
+                    // Bare READBYTE = one byte's worth of text.
+                    value = _scriptFile.ReadBytes(1);
                     return true;
                 case "MODE.APPEND":
                     value = _scriptFile.ModeAppend ? "1" : "0";
@@ -2205,6 +2209,18 @@ public sealed class ClientScriptConsoleHandler
                     value = _scriptFile.ModeWrite ? "1" : "0";
                     return true;
                 default:
+                    // FILE.READBYTE n — Source-X reads n bytes as text.
+                    if (fileProp.StartsWith("READBYTE", StringComparison.Ordinal))
+                    {
+                        string rbArg = fileProp.Length > 8 ? fileProp[8..].Trim() : "";
+                        if (string.IsNullOrEmpty(rbArg) && varName.Length > 13)
+                            rbArg = varName[13..].Trim();
+                        int byteCount = 1;
+                        if (!string.IsNullOrEmpty(rbArg))
+                            int.TryParse(rbArg, out byteCount);
+                        value = _scriptFile.ReadBytes(byteCount);
+                        return true;
+                    }
                     // FILE.READLINE n, FILE.SEEK pos, FILE.FILELINES path, FILE.FILEEXIST path
                     if (fileProp.StartsWith("READLINE", StringComparison.Ordinal))
                     {
@@ -2231,8 +2247,7 @@ public sealed class ClientScriptConsoleHandler
                         string flArg = fileProp.Length > 9 ? fileProp[9..].Trim() : "";
                         if (string.IsNullOrEmpty(flArg) && varName.Length > 14)
                             flArg = varName[14..].Trim();
-                        value = ScriptFileHandle.GetFileLines(
-                            Path.GetDirectoryName(_scriptFile.FilePath) ?? "", flArg).ToString();
+                        value = _scriptFile.GetFileLinesRelative(flArg).ToString();
                         return true;
                     }
                     if (fileProp.StartsWith("FILEEXIST", StringComparison.Ordinal))
@@ -2240,8 +2255,7 @@ public sealed class ClientScriptConsoleHandler
                         string feArg = fileProp.Length > 9 ? fileProp[9..].Trim() : "";
                         if (string.IsNullOrEmpty(feArg) && varName.Length > 14)
                             feArg = varName[14..].Trim();
-                        value = ScriptFileHandle.FileExists(
-                            Path.GetDirectoryName(_scriptFile.FilePath) ?? "", feArg) ? "1" : "0";
+                        value = _scriptFile.FileExistsRelative(feArg) ? "1" : "0";
                         return true;
                     }
                     break;

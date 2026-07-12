@@ -173,9 +173,26 @@ MapData feature); SKILLUPDATE reports cap 1000.
 
 ---
 
+## FILE object (Source-X CSFileObj on g_Serv._hFile)
+
+Backing store: `ScriptFileHandle` — ONE shared server-global slot (clients and
+the server resolver use the same instance, mirroring `g_Serv._hFile`), gated by
+`OF_FileCommands` and sandboxed under `<scpdir>/files` (a deliberate hardening
+over Source-X's unrestricted paths). Full surface: OPEN/CLOSE/FLUSH/DELETEFILE,
+WRITE/WRITELINE/WRITECHR, MODE.APPEND/CREATE/READFLAG/WRITEFLAG/SETDEFAULT,
+INUSE/ISEOF/FILEPATH/POSITION/LENGTH(-1 closed)/READCHAR(numeric)/READBYTE n/
+READLINE n (position-restoring)/SEEK/FILEEXIST/FILELINES. Reachable from client
+consoles AND from no-console script contexts through `ResolveServerFileObject`
+(the interpreter routes `FILE.*` verbs there as a fallback). Source-X defaults
+ported: append+read+write mode, OPEN refused while open, MODE changes refused
+while open. `CSFileObjContainer` (multi-file pool) is intentionally absent —
+it is not wired to the `FILE.` ref in Source-X either. Guarded by
+`ScriptFileObjectParityTests`.
+
 ## Next
 
-- **Faz 1**: minimum-safe `FILE.*` set. `EXPORT`/`IMPORT`/`RESTORE`/`SAVESTATICS`/`LOAD`
+- **Faz 1**: DONE — the minimum-safe `FILE.*` set shipped (see the FILE object
+  section above). `EXPORT`/`IMPORT`/`RESTORE`/`SAVESTATICS`/`LOAD`
   now have the first Faz 4 world-ops slices (Wave 213-217); native static-map output
   remains open. Done: `VARLIST`/
   `PRINTLISTS` caller-console routing (Wave 207); `TIMERF`/`TIMERFMS` delayed verb+function (Wave

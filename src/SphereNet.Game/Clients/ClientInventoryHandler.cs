@@ -1195,7 +1195,7 @@ public sealed class ClientInventoryHandler
                 if (existing.X != x || existing.Y != y || existing.MapIndex != _character.MapIndex)
                     continue;
 
-                if (existing.CanStackWith(item) && (existing.Amount + item.Amount) <= ushort.MaxValue)
+                if (existing.CanStackWith(item) && (existing.Amount + item.Amount) <= existing.MaxAmount)
                 {
                     existing.Amount += item.Amount;
                     if (existing.IsPile)

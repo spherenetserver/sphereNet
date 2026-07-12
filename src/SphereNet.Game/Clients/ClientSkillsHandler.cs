@@ -697,6 +697,17 @@ public sealed class ClientSkillsHandler
                     propList.Add((1050044, $"\t{item.ContentCount}\t125")); // items/max items
                     propList.Add((1072789, $"\t{item.TotalWeight}")); // weight
                     break;
+
+                case ItemType.CommCrystal:
+                {
+                    // Source-X CClientMsg_AOSTooltip: active when linked to another
+                    // crystal, else inactive; always shows the broadcast line.
+                    var link = item.Link.IsValid ? _world.FindObject(item.Link) as Item : null;
+                    bool active = link != null && link.ItemType == ItemType.CommCrystal;
+                    propList.Add((active ? 1060742u : 1060743u, "")); // activated / deactivated
+                    propList.Add((1060745u, "")); // broadcast
+                    break;
+                }
             }
 
             _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.ClientTooltipAfterDefault,

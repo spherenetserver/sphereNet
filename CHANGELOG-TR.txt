@@ -3,6 +3,38 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, otuz birinci batch
+----------------------------------------
+
+EKLENDI - Hesap yaslandirma admin komutu (Wave 250):
+  - ACCOUNT UNUSED <days> [DELETE], son giris veya olusturma tarihine gore en az N
+    gundur atil olan hesaplari listeler (DELETE ile siler) (Source-X Cmd_ListUnused).
+    Staff hesaplari asla yaslandirilmaz, online hesabin son-girisi yeni oldugu icin
+    hic eslesmez. Komut-tetikli, otomatik degil.
+
+EKLENDI - Per-item ve global yigin-boyutu limiti (Wave 250):
+  - MAXAMOUNT artik item'larda okunabilir/ayarlanabilir ve yigin birlestirmede
+    uygulaniyor: stackable item'lar global ItemsMaxAmount'ta (varsayilan 60000,
+    Source-X m_iItemsMaxAmount) veya per-item override'da cap'lenir; non-stackable
+    item'lar 0 dondurur. Override kaydedilir. Onceden yiginlar sadece 65535 ile
+    sinirliydi.
+
+EKLENDI - Iletisim kristali tooltip'leri (Wave 250):
+  - Bir iletisim kristali artik durumunu AOS tooltip'inde gosteriyor: aktif (baska
+    bir kristale bagli) veya deaktif, arti broadcast satiri.
+
+[2026-07-12] - 90-alti parite backlog, otuzuncu batch
+----------------------------------------
+
+EKLENDI - Karakter ve item script property'leri (Wave 249):
+  - STAMINA (STAM alias'i), STATPERCENT.<stat> (bir havuzun adjusted-max'a orani
+    yuzde; STR hits'e, DEX stamina'ya, INT mana'ya eslenir), BLOODCOLOR (kan
+    sicramasi hue'su) ve FOLLOWERSLOTS (bir yaratigin kac follower slotu isgal
+    ettigi, script override'i ile) artik karakterlerde cozulebiliyor.
+  - BASEWEIGHT bir item'in birim-basina agirligini gosterir ve override eder;
+    ayarlamak item'in toplam agirligini ve tasima kontrollerini surer. BLOODCOLOR,
+    FOLLOWERSLOTS ve BASEWEIGHT override'lari kaydedilir.
+
 [2026-07-12] - 90-alti parite backlog, yirmi dokuzuncu batch
 ----------------------------------------
 

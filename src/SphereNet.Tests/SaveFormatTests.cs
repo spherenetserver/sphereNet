@@ -195,6 +195,39 @@ public class SaveFormatTests
     }
 
     [Fact]
+    public void Roundtrip_PreservesItemBaseWeightOverride()
+    {
+        // Wave 249: a per-item BASEWEIGHT override (Source-X m_weight) survives a save.
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_baseweight_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            var src = MakeWorld();
+
+            var item = src.CreateItem();
+            item.BaseId = 0x0F5E;
+            src.PlaceItem(item, new Point3D(2000, 2000, 0, 0));
+            item.TrySetProperty("BASEWEIGHT", "50");
+            Assert.Equal(50, item.Weight);
+
+            Assert.True(saver.Save(src, tmp));
+
+            var dst = MakeWorld();
+            loader.Load(dst, tmp);
+
+            var reloaded = dst.FindItem(item.Uid);
+            Assert.NotNull(reloaded);
+            Assert.Equal(50, reloaded!.WeightOverride);
+            Assert.Equal(50, reloaded.Weight);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public void Roundtrip_PreservesSpawnerTimerAcrossComponentInit()
     {
         string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_spawn_timer_{Guid.NewGuid():N}");
@@ -648,6 +681,8 @@ public class SaveFormatTests
             ch.TrySetProperty("REGENSTAM", "7");    // 7000 ms per-char override
             ch.TrySetProperty("REGENMANA", "-1");   // never regen mana
             ch.TrySetProperty("REGENVALHITS", "4"); // recover 4 hits per event (Wave 248)
+            ch.TrySetProperty("BLOODCOLOR", "0x26");  // Wave 249
+            ch.TrySetProperty("FOLLOWERSLOTS", "3");   // Wave 249
             Assert.Equal(7000, ch.RegenStamRateMs);
             Assert.Equal(-1000, ch.RegenManaRateMs);
             Assert.Equal((ushort)4, ch.RegenValHits);
@@ -662,6 +697,8 @@ public class SaveFormatTests
             Assert.Equal(7000, reloaded!.RegenStamRateMs);
             Assert.Equal(-1000, reloaded.RegenManaRateMs);
             Assert.Equal((ushort)4, reloaded.RegenValHits);
+            Assert.Equal((ushort)0x26, reloaded.BloodHue);
+            Assert.Equal(3, reloaded.FollowerSlotsOverride);
             // Untouched stats stay on the global default (field 0).
             Assert.Equal(0, reloaded.RegenHitsRateMs);
         }

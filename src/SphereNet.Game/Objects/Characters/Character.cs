@@ -1125,9 +1125,18 @@ public partial class Character : ObjBase
     public byte MaxFollower { get => _maxFollower; set => _maxFollower = value; }
 
     /// <summary>How many follower/control slots this creature occupies when
-    /// owned (from CHARDEF FOLLOWERSLOTS; large creatures cost several). Minimum 1.</summary>
+    /// owned (from CHARDEF FOLLOWERSLOTS; large creatures cost several). Minimum 1.
+    /// A script-set FOLLOWERSLOTS override (Source-X SetDefNum) wins when present.</summary>
     public int ControlSlots =>
-        Math.Max(1, DefinitionLoader.GetCharDef(CharDefIndex)?.FollowerSlots ?? 1);
+        _followerSlotsOverride ?? Math.Max(1, DefinitionLoader.GetCharDef(CharDefIndex)?.FollowerSlots ?? 1);
+    private int? _followerSlotsOverride;
+
+    // Blood splatter hue (Source-X CChar::_wBloodHue). 0 = default. Persisted when set.
+    private ushort _bloodHue;
+    /// <summary>Blood splatter hue override (0 = default).</summary>
+    public ushort BloodHue => _bloodHue;
+    /// <summary>Per-char follower-slot override, or null to use the chardef value.</summary>
+    public int? FollowerSlotsOverride => _followerSlotsOverride;
 
     public byte CurFollower
     {
@@ -2498,6 +2507,22 @@ public partial class Character : ObjBase
             return acc.TryGetProperty(subKey, out value);
         }
 
+        if (upper.StartsWith("STATPERCENT", StringComparison.Ordinal))
+        {
+            // STATPERCENT.<stat> — current pool as a percentage of its adjusted max
+            // (Source-X GetStatPercent). Sphere maps STR→hits, DEX→stam, INT→mana.
+            string statKey = upper.Length > 11 ? upper[11..].TrimStart('.') : "STR";
+            (int cur, int max) = statKey switch
+            {
+                "STR" or "HITS" => (_hits, (int)_maxHits),
+                "DEX" or "STAM" => (_stam, (int)_maxStam),
+                "INT" or "MANA" => (_mana, (int)_maxMana),
+                _ => (0, 0),
+            };
+            value = (max <= 0 ? 0 : (cur * 100 + max / 2) / max).ToString();
+            return true;
+        }
+
         switch (upper)
         {
             case "STR": value = _str.ToString(); return true;
@@ -2506,10 +2531,13 @@ public partial class Character : ObjBase
             case "HITS":
             case "HITPOINTS": value = _hits.ToString(); return true; // Source-X CHC_HITPOINTS == CHC_HITS
             case "MANA": value = _mana.ToString(); return true;
-            case "STAM": value = _stam.ToString(); return true;
+            case "STAM":
+            case "STAMINA": value = _stam.ToString(); return true; // Source-X CHC_STAMINA == CHC_STAM
             case "MAXHITS": value = _maxHits.ToString(); return true;
             case "MAXMANA": value = _maxMana.ToString(); return true;
             case "MAXSTAM": value = _maxStam.ToString(); return true;
+            case "BLOODCOLOR": value = $"0{_bloodHue:X}"; return true; // Source-X FormatHex(_wBloodHue)
+            case "FOLLOWERSLOTS": value = ControlSlots.ToString(); return true;
             case "BODY": value = FormatBodyProperty(); return true;
             case "DIR": value = ((byte)_direction).ToString(); return true;
             case "FLAGS": value = ((uint)_statFlags).ToString(); return true;
@@ -3483,10 +3511,17 @@ public partial class Character : ObjBase
             case "HITS":
             case "HITPOINTS": if (short.TryParse(normalized, out short hv)) Hits = hv; return true;
             case "MANA": if (short.TryParse(normalized, out short mv)) Mana = mv; return true;
-            case "STAM": if (short.TryParse(normalized, out short stv)) Stam = stv; return true;
+            case "STAM":
+            case "STAMINA": if (short.TryParse(normalized, out short stv)) Stam = stv; return true;
             case "MAXHITS": if (short.TryParse(normalized, out short mhv)) MaxHits = mhv; return true;
             case "MAXMANA": if (short.TryParse(normalized, out short mmv)) MaxMana = mmv; return true;
             case "MAXSTAM": if (short.TryParse(normalized, out short msv)) MaxStam = msv; return true;
+            case "BLOODCOLOR":
+                if (TryParseHexOrDecUshort(normalized, out ushort bcv)) _bloodHue = bcv;
+                return true;
+            case "FOLLOWERSLOTS":
+                if (int.TryParse(normalized, out int fsv)) _followerSlotsOverride = Math.Max(0, fsv);
+                return true;
             case "BODY":
                 if (TryParseHexOrDecUshort(normalized, out ushort bv))
                 {

@@ -546,6 +546,8 @@ public sealed class WorldSaver
         w.WriteProperty("P", item.Position.ToString());
         if (item.Hue.Value != 0) w.WriteProperty("COLOR", $"0{item.Hue.Value:x}");
         if (item.Amount > 1) w.WriteProperty("AMOUNT", item.Amount.ToString());
+        if (item.WeightOverride is int baseWeight) w.WriteProperty("BASEWEIGHT", baseWeight.ToString());
+        if (item.MaxAmountOverride is int maxAmt) w.WriteProperty("MAXAMOUNT", maxAmt.ToString());
         if (item.Direction != 0) w.WriteProperty("DIR", item.Direction.ToString());
         if ((uint)item.Attributes != 0) w.WriteProperty("ATTR", $"0{(uint)item.Attributes:x}");
         if (item.DispIdOverride != 0) w.WriteProperty("DISPID", $"0{item.DispIdOverride:x}");
@@ -735,6 +737,8 @@ public sealed class WorldSaver
         if (ch.RegenValMana != 0) w.WriteProperty("REGENVALMANA", ch.RegenValMana.ToString());
         if (ch.RegenValStam != 0) w.WriteProperty("REGENVALSTAM", ch.RegenValStam.ToString());
         if (ch.RegenValFood != 0) w.WriteProperty("REGENVALFOOD", ch.RegenValFood.ToString());
+        if (ch.BloodHue != 0) w.WriteProperty("BLOODCOLOR", $"0{ch.BloodHue:X}");
+        if (ch.FollowerSlotsOverride is int fsOverride) w.WriteProperty("FOLLOWERSLOTS", fsOverride.ToString());
         if (ch.ResFireMax != 70) w.WriteProperty("RESFIREMAX", ch.ResFireMax.ToString());
         if (ch.ResColdMax != 70) w.WriteProperty("RESCOLDMAX", ch.ResColdMax.ToString());
         if (ch.ResPoisonMax != 70) w.WriteProperty("RESPOISONMAX", ch.ResPoisonMax.ToString());

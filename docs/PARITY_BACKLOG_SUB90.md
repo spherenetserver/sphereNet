@@ -48,6 +48,13 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
 - [x] Eksik prop'lar — YAPILDI/DOĞRULANDI (Wave 215): **CANMOVE <dir>** (dest tile
   IsPassable) + **NOTOGETFLAG <uid>** (ResolveNotoFlag hook → ComputeNotoriety) EKLENDİ.
   **STEPSTEALTH** zaten vardı; **RACE** gerçek CChar_props değil (ajan yanılmış).
+- [x] Temiz CChar prop kuyruğu — YAPILDI (Wave 249): **STAMINA** (STAM alias'ı,
+  CChar.cpp:3170), **STATPERCENT.<stat>** (havuz/adjusted-max %, GetStatPercent
+  CCharStatus.cpp:482; Sphere STR→hits/DEX→stam/INT→mana), **BLOODCOLOR** (yeni
+  _bloodHue field, FormatHex GET, CChar.cpp:2600), **FOLLOWERSLOTS** (ControlSlots'a
+  per-char override; GET computed, SET override — SetDefNum semantiği, CChar.cpp:2353).
+  BLOODCOLOR/FOLLOWERSLOTS persist. **TARGETCLOSE** ZATEN vardı (ClientScriptConsole
+  Handler:1683, ajan doğruladı → REJECT). Test: SourceXWave249Tests (+5) + SaveFormat.
 
 ### 1.3 Resource section tipleri — 78
 - [x] **SPHERECRYPT / KRDIALOGLIST** — DOĞRULANDI (Wave 216): ajan yanılmış, `_ =>
@@ -350,8 +357,15 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   blok destekliyor (expiry Unix-ms, 0=kalıcı, lazy-expire), NowMsProvider injectable
   (test edilebilir). HandleServBlockIp `,seconds` decay'ini artık onore ediyor (eskiden
   yok sayılıyordu). Test: IpBlockListTests (+4).
-- [ ] Per-IP guest limit, account aging, max-conn-per-IP — bağlantı-kabul path'ini
-  değiştiren daha büyük özellikler. ERTELENDİ.
+- [~] Per-IP guest limit, account aging, max-conn-per-IP. **account aging YAPILDI**
+  (Wave 250): `ACCOUNT UNUSED <days> [DELETE]` admin komutu (Source-X Cmd_ListUnused,
+  CAccount.cpp:321) — AdminCommandProcessor'da, LastLogin/CreateDate ZATEN vardı;
+  idle hesabı listeler/siler, staff (PLEVEL>Player) hiç yaşlandırılmaz, online hesap
+  recent LastLogin ile eşleşmez. Manual/komut-tetikli (Source-X asla otomatik silmez).
+  Test: SourceXWave250Tests (+2). ClientMaxIP ZATEN vardı (Wave triage doğruladı).
+  KALAN (ertelendi, bağlantı-kabul path'i / DDoS-hardening): GuestsMax guest-pool
+  (GUEST0..n login yolu yok), ConnectingMaxIP + MaxConnectRequestsPerIP (IP-history
+  decay yapısı gerektirir).
 
 ### 4.4 Item type davranışları — 80
 - [ ] **Plant-growth sistemi** (`CItemPlant.cpp` 197 satır) — karşılığı yok.
@@ -363,8 +377,10 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   crystal hums softly."). Relay dest-type doğrulaması eklendi (generic .LINK bir
   kristali kristal-olmayana bağlasa relay etmez). Test:
   GameSystemTests.GameClient_CommCrystalDoubleClick_LinksToTargetedCrystal.
-  KALAN (düşük değer): tooltip 1060742/3/5 (aktif/pasif/broadcast), per-crystal
-  SPEECH bloğu — atlandı.
+  tooltip 1060742/3/5 (aktif/pasif/broadcast) — YAPILDI (Wave 250): SendAosTooltip
+  item switch'ine `case ItemType.CommCrystal` (Source-X CClientMsg_AOSTooltip.cpp:696):
+  link'li+link-de-crystal → 1060742 (active) yoksa 1060743 (inactive), her zaman + 1060745
+  (broadcast). KALAN (düşük değer): per-crystal SPEECH bloğu — atlandı.
 
 ### 4.5 Character core — 82
 - [x] `CCharStat` regen tabloları — YAPILDI (Wave 246, KULLANICI ONAYLADI "Source-X'e geç").
@@ -424,6 +440,20 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   recompute gerekir — combat/crafting/skill-gain'e yayılan HOT-PATH mimari ekleme,
   temiz key-add DEĞİL. ERTELENDİ (riskli, ayrı dalga). AOS suit-property agregasyonu
   genel eksiğiyle birlikte ele alınmalı.
+- [x] **BASEWEIGHT** (per-item weight override) — YAPILDI (Wave 249): Source-X
+  CItem::m_weight (birim-başına onda-bir-stone, CItem.cpp:2777). Item.Weight getter'a
+  nullable `_weightOverride` eklendi (set → tüm ağırlık hesabını sürer: TotalWeight/
+  CanCarry); GET raw tenths döner (WEIGHT case tam-stone'a böler). Persist. Test:
+  SaveFormat Roundtrip_PreservesItemBaseWeightOverride + SourceXWave249Tests.
+- [x] **MAXAMOUNT** — YAPILDI (Wave 250). Item.IsStackable helper'ı CanStackWith'ten
+  extract edildi (CItemBase::IsStackableType: CAN_I_PILE veya tiledata Generic);
+  Item.MaxAmount getter'ı `IsStackable ? (override ?? ItemsMaxAmount) : 0` (Source-X
+  GetMaxAmount, CItemBase.cpp:127). Static Item.ItemsMaxAmount config'den wire'landı
+  (SphereConfig.ItemsMaxAmount ZATEN vardı=60000 ama unused; Program.cs bağladı,
+  ResetEngineStatics reset). Per-item _maxAmountOverride (GET/SET MAXAMOUNT, persist).
+  İki stacking site'ı (Item.TryAddItemWithStack, ClientInventoryHandler:1198) artık
+  ushort.MaxValue yerine existing.MaxAmount ile cap'liyor (60000 default). Test:
+  SourceXWave250Tests (+3: default/non-stackable, override, merge enforcement).
 
 ### 4.8 Ships — 85 (T0.1 dışındaki kalanlar)
 - [x] Multi-tick hız ölçekleme — YAPILDI (Wave 243). Source-X `CCMultiMovable::

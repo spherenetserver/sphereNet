@@ -4,6 +4,37 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, thirty-first batch
+----------------------------------------
+
+ADDED - Account aging admin command (Wave 250):
+  - ACCOUNT UNUSED <days> [DELETE] lists (or, with DELETE, removes) accounts idle
+    for at least N days, based on last login or creation date (Source-X
+    Cmd_ListUnused). Staff accounts are never aged out, and an online account has
+    a recent last-login so it never matches. Command-driven, not automatic.
+
+ADDED - Per-item and global stack-size cap (Wave 250):
+  - MAXAMOUNT is now readable/settable on items and enforced when merging piles:
+    stackable items cap at the global ItemsMaxAmount (default 60000, Source-X
+    m_iItemsMaxAmount) or a per-item override; non-stackable items report 0. The
+    override is saved. Previously stacks were only bounded by 65535.
+
+ADDED - Communication crystal tooltips (Wave 250):
+  - A comm crystal now shows its state on the AOS tooltip: activated (linked to
+    another crystal) or deactivated, plus the broadcast line.
+
+[2026-07-12] - Sub-90 parity backlog, thirtieth batch
+----------------------------------------
+
+ADDED - Character and item script properties (Wave 249):
+  - STAMINA (alias of STAM), STATPERCENT.<stat> (a pool as a percentage of its
+    adjusted max; STR maps to hits, DEX to stamina, INT to mana), BLOODCOLOR
+    (blood-splatter hue), and FOLLOWERSLOTS (how many follower slots a creature
+    occupies, with a script override) are now resolvable on characters.
+  - BASEWEIGHT exposes and overrides an item's per-unit weight; setting it drives
+    the item's total weight and carry checks. BLOODCOLOR, FOLLOWERSLOTS and
+    BASEWEIGHT overrides are saved.
+
 [2026-07-12] - Sub-90 parity backlog, twenty-ninth batch
 ----------------------------------------
 

@@ -687,6 +687,7 @@ public static partial class Program
         // --- 5. World ---
         _world = new GameWorld(_loggerFactory);
         _world.MaxContainerItems = _config.ContainerMaxItems;
+        SphereNet.Game.Objects.Items.Item.ItemsMaxAmount = _config.ItemsMaxAmount;
         _world.MaxBankItems      = _config.BankMaxItems;
         _world.MaxBankWeight        = _config.BankMaxWeight;
         _world.MaxContainerWeight   = _config.ContainerMaxWeight;

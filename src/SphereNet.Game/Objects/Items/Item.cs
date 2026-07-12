@@ -510,11 +510,21 @@ public class Item : ObjBase
 
     public const int WeightUnits = 10;
 
-    /// <summary>Item weight in tenths of a stone. Reads from ITEMDEF.</summary>
+    // Per-item weight override in tenths of a stone (Source-X CItem::m_weight,
+    // settable via BASEWEIGHT). Null = use the ITEMDEF/tiledata weight. Persisted.
+    private int? _weightOverride;
+    /// <summary>Per-item base-weight override (tenths of a stone), or null for the def value.</summary>
+    public int? WeightOverride => _weightOverride;
+
+    /// <summary>Item weight in tenths of a stone. A per-item BASEWEIGHT override
+    /// wins; otherwise reads from ITEMDEF, then tiledata.</summary>
     public int Weight
     {
         get
         {
+            if (_weightOverride.HasValue)
+                return _weightOverride.Value;
+
             var def = ResolveDefinition();
             if (def is { HasWeight: true })
                 return def.Weight;
@@ -638,33 +648,55 @@ public class Item : ObjBase
         return false;
     }
 
+    /// <summary>Global default max stack size for stackable items
+    /// (Source-X CServerConfig m_iItemsMaxAmount, ini ITEMSMAXAMOUNT, default 60000).</summary>
+    public static int ItemsMaxAmount { get; set; } = 60000;
+
+    // Per-item MAXAMOUNT override (Source-X CItem MaxAmount defnum). Null = global.
+    private int? _maxAmountOverride;
+    /// <summary>Per-item stack-size override, or null to use the global default.</summary>
+    public int? MaxAmountOverride => _maxAmountOverride;
+
+    /// <summary>True if this item type can form a stack (Source-X
+    /// CItemBase::IsStackableType: CAN_I_PILE or the tiledata Generic flag). The
+    /// itemdef flag is seeded from tiledata at load, but packs rarely script it,
+    /// so the tiledata fallback keeps ore/ingot/log piles merging.</summary>
+    public bool IsStackable
+    {
+        get
+        {
+            if (_type is ItemType.Container or ItemType.ContainerLocked or
+                ItemType.Corpse or ItemType.EqMemoryObj or ItemType.SpawnChar or
+                ItemType.SpawnItem or ItemType.Multi or ItemType.MultiCustom)
+                return false;
+
+            var def = ResolveDefinition();
+            if (def != null && (def.Can & CanFlags.I_Pile) != 0)
+                return true;
+
+            var mapData = ResolveWorld?.Invoke()?.MapData;
+            if (mapData != null)
+            {
+                var tile = mapData.GetItemTileData(DispIdFull);
+                if ((tile.Flags & SphereNet.MapData.Tiles.TileFlag.Generic) != 0)
+                    return true;
+            }
+            return false;
+        }
+    }
+
+    /// <summary>Effective max stack size (Source-X GetMaxAmount): a per-item
+    /// override, else the global default, clamped to the ushort amount field.
+    /// Non-stackable items return 0.</summary>
+    public int MaxAmount => IsStackable ? Math.Min(_maxAmountOverride ?? ItemsMaxAmount, ushort.MaxValue) : 0;
+
     public bool CanStackWith(Item other)
     {
         if (other == this || other.IsDeleted) return false;
         if (BaseId != other.BaseId) return false;
         if (Hue != other.Hue) return false;
 
-        if (_type is ItemType.Container or ItemType.ContainerLocked or
-            ItemType.Corpse or ItemType.EqMemoryObj or ItemType.SpawnChar or
-            ItemType.SpawnItem or ItemType.Multi or ItemType.MultiCustom)
-            return false;
-
-        // CAN_I_PILE comes from the scripted itemdef when present; the
-        // reference seeds it from the tiledata "Generic" (stackable) flag at
-        // itemdef load and packs rarely script it explicitly — without the
-        // tiledata fallback ore/ingot/log piles never merge in the pack.
-        var def = ResolveDefinition();
-        bool pile = def != null && (def.Can & CanFlags.I_Pile) != 0;
-        if (!pile)
-        {
-            var mapData = ResolveWorld?.Invoke()?.MapData;
-            if (mapData != null)
-            {
-                var tile = mapData.GetItemTileData(DispIdFull);
-                pile = (tile.Flags & SphereNet.MapData.Tiles.TileFlag.Generic) != 0;
-            }
-        }
-        if (!pile)
+        if (!IsStackable)
             return false;
 
         if (_more1 != other._more1 || _more2 != other._more2) return false;
@@ -753,7 +785,7 @@ public class Item : ObjBase
     {
         foreach (var existing in _contents)
         {
-            if (existing.CanStackWith(item) && (existing.Amount + item.Amount) <= ushort.MaxValue)
+            if (existing.CanStackWith(item) && (existing.Amount + item.Amount) <= existing.MaxAmount)
             {
                 existing.Amount += item.Amount;
                 return existing;
@@ -864,6 +896,8 @@ public class Item : ObjBase
         {
             case "TYPE": value = FormatItemType(_type); return true;
             case "AMOUNT": value = _amount.ToString(); return true;
+            case "MAXAMOUNT": value = MaxAmount.ToString(); return true; // 0 for non-stackable
+            case "BASEWEIGHT": value = Weight.ToString(); return true; // Source-X m_weight: per-unit tenths of a stone
             case "CONT": value = _containedIn.IsValid ? $"0{_containedIn.Value:X}" : ""; return true;
             case "HITS":
             case "HITPOINTS": value = HitsCur.ToString(); return true; // Source-X IC_HITPOINTS == IC_HITS
@@ -1359,6 +1393,21 @@ public class Item : ObjBase
             }
             case "AMOUNT":
                 if (ushort.TryParse(value, out ushort av)) Amount = av;
+                return true;
+            case "MAXAMOUNT":
+                // Per-item stack cap (Source-X SetMaxAmount). The getter gates on
+                // stackability, so a value on a non-stackable item is inert. A
+                // negative/blank value clears the override back to the global default.
+                if (int.TryParse(value, out int maxAmt) && maxAmt >= 0)
+                    _maxAmountOverride = Math.Min(maxAmt, ushort.MaxValue);
+                else
+                    _maxAmountOverride = null;
+                return true;
+            case "BASEWEIGHT":
+                // Source-X sets m_weight on the instance (per-unit tenths). A
+                // negative/blank value clears the override back to the def weight.
+                if (int.TryParse(value, out int bwv) && bwv >= 0) _weightOverride = bwv;
+                else _weightOverride = null;
                 return true;
             case "HITS":
             case "HITPOINTS":

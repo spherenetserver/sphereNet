@@ -310,6 +310,44 @@ public sealed class AdminCommandProcessor
             return;
         }
 
+        // ACCOUNT UNUSED <days> [DELETE] — list (or delete) accounts idle for N+
+        // days (Source-X Cmd_ListUnused). Staff accounts are never aged out. An
+        // online account has a recent LastLogin so it never matches the cutoff.
+        if (parts[0].Equals("UNUSED", StringComparison.OrdinalIgnoreCase))
+        {
+            if (parts.Length < 2 || !int.TryParse(parts[1], out int unusedDays) || unusedDays < 0)
+            {
+                output("Usage: ACCOUNT UNUSED <days> [DELETE]");
+                return;
+            }
+            bool doDelete = parts.Length >= 3 && parts[2].Equals("DELETE", StringComparison.OrdinalIgnoreCase);
+            var cutoff = DateTime.UtcNow - TimeSpan.FromDays(unusedDays);
+            int matched = 0, deleted = 0;
+            foreach (var acc in _accounts.GetAllAccounts().ToList())
+            {
+                if (acc.PrivLevel > PrivLevel.Player)
+                    continue; // never age staff accounts (Source-X refuses privileged)
+                var lastSeen = acc.LastLogin == default ? acc.CreateDate : acc.LastLogin;
+                if (lastSeen > cutoff)
+                    continue;
+                matched++;
+                int ageDays = (DateTime.UtcNow - lastSeen).Days;
+                if (doDelete && _accounts.DeleteAccount(acc.Name))
+                {
+                    deleted++;
+                    output($"  deleted {acc.Name} (idle {ageDays}d)");
+                }
+                else if (!doDelete)
+                {
+                    output($"  {acc.Name} (idle {ageDays}d, {acc.CharCount} chars)");
+                }
+            }
+            output(doDelete
+                ? $"ACCOUNT UNUSED: {deleted}/{matched} account(s) deleted (idle >= {unusedDays}d)."
+                : $"ACCOUNT UNUSED: {matched} account(s) idle >= {unusedDays}d (add DELETE to remove).");
+            return;
+        }
+
         // ACCOUNT <name> [subcommand]
         string accountName = parts[0];
         var account = _accounts.FindAccount(accountName);

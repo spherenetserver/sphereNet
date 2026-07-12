@@ -156,5 +156,8 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.FindCharBySocketId = null;
         SphereNet.Game.Housing.HouseDesignValidItems.ClearValidItems();
         SphereNet.Game.World.Sectors.Sector.SleepDelayMs = 10L * 60 * 1000;
+        SphereNet.Game.Objects.Characters.Character.RegenHitsSeconds = 40;
+        SphereNet.Game.Objects.Characters.Character.RegenManaSeconds = 20;
+        SphereNet.Game.Objects.Characters.Character.RegenStamSeconds = 10;
     }
 }

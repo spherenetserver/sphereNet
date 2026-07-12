@@ -87,11 +87,12 @@ public static partial class Program
             // --- Memory ---
             "MEM" => (GC.GetTotalMemory(false) / 1024).ToString(),
 
-            // --- Regeneration rates (tenths of a second in Sphere) ---
+            // --- Regeneration rates (seconds to recover one point; Source-X stat
+            // order REGEN0=STR/hits, REGEN1=INT/mana, REGEN2=DEX/stam, REGEN3=food) ---
             "REGEN0" => (_config?.RegenHits ?? 40).ToString(),
-            "REGEN1" => (_config?.RegenStam ?? 20).ToString(),
-            "REGEN2" => (_config?.RegenMana ?? 30).ToString(),
-            "REGEN3" => (_config?.RegenFood ?? 86400).ToString(),
+            "REGEN1" => (_config?.RegenMana ?? 20).ToString(),
+            "REGEN2" => (_config?.RegenStam ?? 10).ToString(),
+            "REGEN3" => (_config?.RegenFood ?? 3600).ToString(),
 
             // --- Misc ---
             "HEARALL" => IsHearAllEnabled() ? "1" : "0",

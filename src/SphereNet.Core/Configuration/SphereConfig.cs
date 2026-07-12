@@ -84,11 +84,12 @@ public sealed class SphereConfig
     /// <summary>Seconds before combat memory clears from inactivity. 0 = disabled. sphere.ini ATTACKERTIMEOUT.</summary>
     public int AttackerTimeout { get; set; }
 
-    // Regen (tenths of a second, Source/Sphere REGEN0-3)
+    // Regen: SECONDS to recover one point (Source-X CServerConfig m_iRegenRate).
+    // REGEN0=STAT_STR(hits), REGEN1=STAT_INT(mana), REGEN2=STAT_DEX(stam).
     public int RegenHits { get; set; } = 40;
-    public int RegenStam { get; set; } = 20;
-    public int RegenMana { get; set; } = 30;
-    public int RegenFood { get; set; } = 60 * 60 * 24;
+    public int RegenMana { get; set; } = 20;
+    public int RegenStam { get; set; } = 10;
+    public int RegenFood { get; set; } = 60 * 60;
 
     // Combat
     public int CombatFlags { get; set; }
@@ -453,9 +454,11 @@ public sealed class SphereConfig
         MapViewRadar = ini.GetInt(section, "MapViewRadar", MapViewRadar);
         AttackerTimeout = ini.GetInt(section, "AttackerTimeout", AttackerTimeout);
 
+        // Source-X stat order: REGEN0=STR(hits), REGEN1=INT(mana), REGEN2=DEX(stam).
         RegenHits = ini.GetInt(section, "Regen0", RegenHits);
-        RegenStam = ini.GetInt(section, "Regen1", RegenStam);
-        RegenMana = ini.GetInt(section, "Regen2", RegenMana);
+        RegenMana = ini.GetInt(section, "Regen1", RegenMana);
+        RegenStam = ini.GetInt(section, "Regen2", RegenStam);
+        RegenFood = ini.GetInt(section, "Regen3", RegenFood);
 
         CombatFlags = ini.GetInt(section, "CombatFlags", CombatFlags);
         CombatDamageEra = ini.GetInt(section, "CombatDamageEra", CombatDamageEra);

@@ -367,15 +367,17 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   SPEECH bloğu — atlandı.
 
 ### 4.5 Character core — 82
-- [!] `CCharStat` regen tabloları — TRIAGE EDİLDİ (Wave 245), KULLANICI KARARI BEKLİYOR.
-  Gerçek gap ama **oyuncu-hissedilir balans değişimi**: SphereNet REGEN0/1/2'yi
-  onda-bir-saniye (×100ms) okuyor, Source-X saniye (×1000ms) okuyor (CServerConfig.cpp:1075).
-  Sonuç: SphereNet default HP regen ~10x hızlı (4sn vs 40sn), mana ~6.7x, stam ~5x;
-  food decay 6x hızlı (10dk vs 60dk). Ayrıca eksik: Human racial +2 HP regen, per-char
-  m_regenRate/m_regenVal override. Restock (Wave 242) gibi birim düzeltmesi AMA regen
-  her oyuncu tarafından sürekli hissedilir → sessizce uygulanmadı. AOS *item* regen
-  aggregation Source-X'te de yok (gap değil). Fix contained (Character.cs:5516-5627 +
-  Program.Scripting.cs:92-94), hot-path DEĞİL. KULLANICI: seconds'a geçelim mi?
+- [x] `CCharStat` regen tabloları — YAPILDI (Wave 246, KULLANICI ONAYLADI "Source-X'e geç").
+  Source-X CServerConfig m_iRegenRate: REGENx = **saniye**/puan (CServerConfig.cpp:1075
+  ×MSECS_PER_SEC), STAT sırası REGEN0=STR/hits(40s), REGEN1=INT/mana(20s), REGEN2=DEX/
+  stam(10s), REGEN3=food(60dk). ÜÇ bug düzeltildi: (1) BİRİM — SphereNet onda-bir-saniye
+  (×100) okuyordu → ×1000 (RegenTenthsToMs→RegenSecondsToMs); default HP regen 4sn→40sn.
+  (2) MAPPING — REGEN1/REGEN2 SWAP'liydi (Regen1→stam, Regen2→mana) → düzeltildi
+  (Regen1→mana, Regen2→stam), mortechUO Source-X ini uyumu için kritik. (3) DEFAULT
+  değerler Source-X per-pool'a (hits40/mana20/stam10). Ek: food decay 10dk→60dk; Human
+  racial +2 HP regen (CCharStat.cpp:520, IsHuman). RegenSecondsToMs internal. ResetEngineStatics'e
+  3 alan eklendi. Test: SourceXRegenWave246Tests (+3). KALAN (ertelendi, additive): per-char
+  m_regenRate/m_regenVal override (REGENHITS/MANA/STAM/VAL char property surface).
 - [ ] Jail flag yerine tam region-jail makinesi.
 - [x] STATF_INVUL townsfolk — YAPILDI (Wave 242): invul flag ölümde
   (`DeathEngine:71`) kontrol ediliyordu ama **hasar uygulamada değil** → invul

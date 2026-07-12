@@ -543,9 +543,11 @@ public partial class Character : ObjBase
     public static int MapViewRadarTiles { get; set; } = 18;
     /// <summary>Attacker inactivity timeout in seconds. 0 = disabled. sphere.ini ATTACKERTIMEOUT.</summary>
     public static int AttackerTimeoutSeconds { get; set; }
-    public static int RegenHitsTenths { get; set; } = 40;
-    public static int RegenStamTenths { get; set; } = 20;
-    public static int RegenManaTenths { get; set; } = 30;
+    // Regeneration delays in SECONDS to recover one point (Source-X
+    // CServerConfig m_iRegenRate, REGEN0=STR/hits, REGEN1=INT/mana, REGEN2=DEX/stam).
+    public static int RegenHitsSeconds { get; set; } = 40;
+    public static int RegenManaSeconds { get; set; } = 20;
+    public static int RegenStamSeconds { get; set; } = 10;
 
     /// <summary>Refresh notoriety for nearby clients after memory changes (NotoSave_Update).</summary>
     public static Action<Character>? NotoSaveUpdate { get; set; }
@@ -5533,15 +5535,18 @@ public partial class Character : ObjBase
         if (now >= _nextHitRegen && _hits < _maxHits && Poison.Level == 0)
         {
             int regenAmount = _food > 0 ? 1 : 0;
+            // Source-X CCharStat::Stats_Regen: the human race regens +2 extra hp.
+            if (regenAmount > 0 && IsHuman)
+                regenAmount += 2;
             if (regenAmount > 0)
             {
                 _hits = (short)Math.Min(_hits + regenAmount, _maxHits);
                 MarkDirty(DirtyFlag.Stats);
             }
-            _nextHitRegen = now + RegenTenthsToMs(RegenHitsTenths, 4000);
+            _nextHitRegen = now + RegenSecondsToMs(RegenHitsSeconds, 40000);
         }
 
-        // Mana regen: Source/Sphere REGEN2 interval. Source-X Stats_GetRegenVal
+        // Mana regen: Source/Sphere REGEN1 (STAT_INT) interval. Source-X Stats_GetRegenVal
         // returns a flat base (maximum(1, REGENVAL)) per tick — it is NOT scaled
         // by INT. The old INT/50 let a high-INT caster (lich, elemental: INT 400+)
         // regen 8-9 mana every 3s, matching or exceeding its spend, so its pool
@@ -5559,7 +5564,7 @@ public partial class Character : ObjBase
             if (_mana >= _maxMana && IsStatFlag(StatFlag.Meditation))
                 ClearStatFlag(StatFlag.Meditation);
             MarkDirty(DirtyFlag.Stats);
-            _nextManaRegen = now + RegenTenthsToMs(RegenManaTenths, 3000);
+            _nextManaRegen = now + RegenSecondsToMs(RegenManaSeconds, 20000);
         }
 
         // Stam regen: Source-X scales with DEX — higher DEX = faster regen.
@@ -5571,14 +5576,14 @@ public partial class Character : ObjBase
                 regenAmt += focus / 100;
             _stam = (short)Math.Min(_stam + regenAmt, _maxStam);
             MarkDirty(DirtyFlag.Stats);
-            _nextStamRegen = now + RegenTenthsToMs(RegenStamTenths, 2000);
+            _nextStamRegen = now + RegenSecondsToMs(RegenStamSeconds, 10000);
         }
 
-        // Hunger decay: every 10 minutes
+        // Hunger decay: Source-X m_iRegenRate[STAT_FOOD] = 60 minutes per point.
         if (_isPlayer && now >= _nextFoodDecay)
         {
             if (_food > 0) _food--;
-            _nextFoodDecay = now + 600_000;
+            _nextFoodDecay = now + 3_600_000;
 
             // Let scripts react to hunger (@Hunger trigger).
             OnHungerDecay?.Invoke(this);
@@ -5621,9 +5626,11 @@ public partial class Character : ObjBase
         return true;
     }
 
-    private static int RegenTenthsToMs(int tenths, int fallbackMs)
+    // Source-X REGENx rates are seconds-to-recover-one-point (CServerConfig.cpp:1075
+    // multiplies the ini value by MSECS_PER_SEC). A zero/unset rate uses the fallback.
+    internal static int RegenSecondsToMs(int seconds, int fallbackMs)
     {
-        return tenths > 0 ? tenths * 100 : fallbackMs;
+        return seconds > 0 ? seconds * 1000 : fallbackMs;
     }
 
     // Transient state used by the @Create verb sequence. Both fields

@@ -4,8 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-07-12] - Sub-90 parity backlog, twenty-sixth batch
+[2026-07-12] - Sub-90 parity backlog, twenty-seventh batch
 ----------------------------------------
+
+CHANGED - Stat regeneration now matches Source-X rates (Wave 246):
+  - The REGEN0/1/2 rates are now read as SECONDS to recover one point (Source-X
+    m_iRegenRate * MSECS_PER_SEC), not tenths of a second, so regeneration is
+    roughly 5-10x slower than before (default hit regen 40s, mana 20s, stam 10s).
+  - Fixed the stat order: REGEN1 is INT/mana and REGEN2 is DEX/stam (they were
+    swapped). A Source-X / mortechUO sphere.ini setting Regen1/Regen2 is now
+    applied to the correct pool.
+  - Hunger decay slowed from 10 minutes to 60 minutes per point (Source-X food
+    rate), and the human race now regenerates +2 extra hit points per event.
+  - OPERATOR NOTE: this is a deliberate, player-visible balance change toward
+    Source-X parity. A shard that relied on the old fast regeneration should set
+    Regen0/1/2 explicitly (in seconds) to tune it.
 
 FIXED - GM page queue survives a restart (Wave 245):
   - Pending GM/help pages were held only in memory and were lost on every

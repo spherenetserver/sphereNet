@@ -3,8 +3,21 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
-[2026-07-12] - 90-alti parite backlog, yirmi altinci batch
+[2026-07-12] - 90-alti parite backlog, yirmi yedinci batch
 ----------------------------------------
+
+DEGISTI - Stat regen'i artik Source-X hizlarina uyuyor (Wave 246):
+  - REGEN0/1/2 hizlari artik bir puani geri kazanmak icin SANIYE olarak okunuyor
+    (Source-X m_iRegenRate * MSECS_PER_SEC), onda-bir-saniye degil; bu yuzden regen
+    oncekinden kabaca 5-10x daha yavas (default hit regen 40sn, mana 20sn, stam 10sn).
+  - Stat sirasi duzeltildi: REGEN1 = INT/mana ve REGEN2 = DEX/stam (yer degistirmislerdi).
+    Source-X / mortechUO sphere.ini'de Regen1/Regen2 set edilmisse artik dogru havuza
+    uygulaniyor.
+  - Aclik decay'i puan basina 10 dakikadan 60 dakikaya yavasladi (Source-X food hizi);
+    insan irki artik olay basina +2 ekstra can yeniliyor.
+  - OPERATOR NOTU: bu, Source-X paritesine yonelik bilincli, oyuncu-gorunur bir balans
+    degisimi. Eski hizli regen'e bagli bir shard, Regen0/1/2'yi (saniye cinsinden) acikca
+    ayarlamali.
 
 DUZELTILDI - GM page kuyrugu restart'i atlatiyor (Wave 245):
   - Bekleyen GM/yardim sayfalari yalnizca bellekte tutuluyordu ve her restart'ta

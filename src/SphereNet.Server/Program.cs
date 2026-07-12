@@ -679,9 +679,9 @@ public static partial class Program
             ? _config.MapViewRadar
             : _config.MapViewSize;
         Character.AttackerTimeoutSeconds = _config.AttackerTimeout;
-        Character.RegenHitsTenths = _config.RegenHits;
-        Character.RegenStamTenths = _config.RegenStam;
-        Character.RegenManaTenths = _config.RegenMana;
+        Character.RegenHitsSeconds = _config.RegenHits;
+        Character.RegenStamSeconds = _config.RegenStam;
+        Character.RegenManaSeconds = _config.RegenMana;
 
         // --- 5. World ---
         _world = new GameWorld(_loggerFactory);

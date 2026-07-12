@@ -4,6 +4,25 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, twenty-first batch
+----------------------------------------
+
+FIXED - Line-of-sight dynamic item occlusion (Wave 240):
+  - The LOS ray only checked terrain and MUL statics, so an item placed in the
+    world at runtime never blocked sight — a wall or crate dropped between two
+    characters could be seen and shot straight through. The ray now consults
+    live items along its path (Source-X CanSeeLOS_New LOS_NB_DYNAMIC): a
+    wall/impassable/no-shoot item whose Z span covers the ray blocks it, exactly
+    like a static.
+  - Windows no longer block line of sight (Source-X LOS_NB_WINDOWS default for
+    archery/magery), on both the static and dynamic paths.
+
+NOTES:
+  - Partial LOS parity: the niche flag variants (LOS_FISHING, multi-region
+    occlusion / LOS_NC_MULTI, LOS_NO_OTHER_REGION, BLOCKLOS_HEIGHT, the
+    region-local LOS_NB_LOCAL_* forms) remain deferred.
+
+
 [2026-07-12] - Sub-90 parity backlog, twentieth batch
 ----------------------------------------
 

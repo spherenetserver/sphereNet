@@ -236,10 +236,18 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   Wave 234-235 ile tamamlandı.
 
 ### 3.3 Movement & walking — 80
-- [ ] **LOS tam bayrak modeli** — `CanSeeLOS_New` (`CCharLOS.cpp:112-470`):
-  `LOS_NB_TERRAIN/STATIC/DYNAMIC/WINDOWS`, `LOS_FISHING`, `LOS_NC_MULTI`,
-  `LOS_NO_OTHER_REGION`; dinamik in-world item, window/BLOCKLOS_HEIGHT, multi-region
-  occlusion. Port Bresenham terrain+static ray (`TerrainEngine.cs:66`).
+- [~] **LOS bayrak modeli** — KISMİ (Wave 240): en yüksek-değerli iki fonksiyonel
+  boşluk kapatıldı. **Dinamik in-world item occlusion** (LOS_NB_DYNAMIC) — eskiden
+  runtime-yerleştirilen bloklayıcı item'lar LOS'u HİÇ kesmiyordu (placed wall'dan
+  ateş edebiliyordun); `TerrainEngine.DynamicOccluderAt` callback + `GameWorld.
+  HasDynamicLosOccluder` (ray hücresindeki item tiledata Wall/Impassable/NoShoot +
+  Z-span overlap; MUL statik yolu ile tutarlı). **Window exception** (LOS_NB_WINDOWS)
+  — `TileFlag.Window` tile'ları artık LOS'u kesmiyor (statik+dinamik iki yolda,
+  archery/magery default'u; Source-X UFLAG2_WINDOW). Terrain+static ray zaten vardı.
+  Test: SourceXLosDynamicWave240Tests (+2, wall bloke/window geçer + Z-span). ERTELENEN
+  niş kısımlar: LOS_FISHING (su-2tile), LOS_NC_MULTI/multi-region occlusion,
+  LOS_NO_OTHER_REGION, BLOCKLOS_HEIGHT canflag, region-local flag varyantları
+  (LOS_NB_LOCAL_*), flag-parametreli CanSeeLOS_New tam imzası.
 
 ### 3.4 Spawn — 85
 - [x] Champion list/accessor parity — YAPILDI (Wave 216): denetim "def block'tan

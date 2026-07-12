@@ -115,7 +115,38 @@ public sealed class GameWorld
 
     private TerrainEngine? _terrain;
     /// <summary>Lazy terrain helper (LOS, ground height). Uses current MapData.</summary>
-    public TerrainEngine Terrain => _terrain ??= new TerrainEngine(MapData);
+    public TerrainEngine Terrain => _terrain ??= new TerrainEngine(MapData)
+    {
+        DynamicOccluderAt = HasDynamicLosOccluder,
+    };
+
+    /// <summary>Does a dynamic (in-world) item at this cell occlude a LOS ray at
+    /// the given height? (Source-X CanSeeLOS_New LOS_NB_DYNAMIC pass.) A blocking
+    /// item is a wall/impassable/no-shoot graphic — windows stay see-through —
+    /// whose Z span covers the ray. Statics from the MUL files are handled by the
+    /// terrain engine; this covers items placed at runtime.</summary>
+    private bool HasDynamicLosOccluder(byte mapId, short x, short y, int rayZ)
+    {
+        if (MapData == null) return false;
+        var cell = new Core.Types.Point3D(x, y,
+            (sbyte)Math.Clamp(rayZ, sbyte.MinValue, sbyte.MaxValue), mapId);
+        foreach (var item in GetItemsInRange(cell, 0))
+        {
+            if (item.X != x || item.Y != y || item.MapIndex != mapId)
+                continue;
+            var data = MapData.GetItemTileData(item.BaseId);
+            if ((data.Flags & SphereNet.MapData.Tiles.TileFlag.Window) != 0)
+                continue; // windows don't block
+            bool blocks = data.IsWall || data.IsImpassable ||
+                          (data.Flags & SphereNet.MapData.Tiles.TileFlag.NoShoot) != 0;
+            if (!blocks)
+                continue;
+            int height = Math.Max(1, Math.Max(data.Height, data.CalcHeight));
+            if (rayZ >= item.Z && rayZ <= item.Z + height)
+                return true;
+        }
+        return false;
+    }
 
     /// <summary>Max items allowed in a regular container (backpack, chest). sphere.ini CONTAINERMAXITEMS.</summary>
     public int MaxContainerItems { get; set; } = 125;

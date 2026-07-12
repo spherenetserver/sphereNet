@@ -3,6 +3,25 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, yirmi birinci batch
+----------------------------------------
+
+DUZELTILDI - Line-of-sight dinamik item occlusion (Wave 240):
+  - LOS ray'i yalnizca terrain ve MUL statiklerini kontrol ediyordu, boylece
+    runtime'da dunyaya yerlestirilen bir item goruse HIC engel olmuyordu — iki
+    karakter arasina birakilan bir duvar veya sandik icinden goruluyor ve ates
+    edilebiliyordu. Ray artik yolu boyunca canli item'lari da kontrol ediyor
+    (Source-X CanSeeLOS_New LOS_NB_DYNAMIC): Z araligi ray'i kapatan bir
+    wall/impassable/no-shoot item'i, tipki bir statik gibi engelliyor.
+  - Pencereler artik LOS'u kesmiyor (Source-X LOS_NB_WINDOWS, archery/magery
+    default'u), hem statik hem dinamik yolda.
+
+NOTLAR:
+  - Kismi LOS paritesi: nis flag varyantlari (LOS_FISHING, multi-region
+    occlusion / LOS_NC_MULTI, LOS_NO_OTHER_REGION, BLOCKLOS_HEIGHT, region-local
+    LOS_NB_LOCAL_* formlari) ertelendi.
+
+
 [2026-07-12] - 90-alti parite backlog, yirminci batch
 ----------------------------------------
 

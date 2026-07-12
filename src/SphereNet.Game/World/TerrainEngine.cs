@@ -18,6 +18,11 @@ public sealed class TerrainEngine
     /// <summary>Default character height for LOS checks.</summary>
     private const int PersonHeight = 16;
 
+    /// <summary>Host bridge: does a dynamic (in-world) item occlude the ray at
+    /// this cell/height? (Source-X CanSeeLOS_New LOS_NB_DYNAMIC block — the MUL
+    /// static path can't see live items, so the world supplies them.)</summary>
+    public Func<byte, short, short, int, bool>? DynamicOccluderAt { get; set; }
+
     public TerrainEngine(MapData.MapDataManager? mapData)
     {
         _mapData = mapData;
@@ -126,12 +131,20 @@ public sealed class TerrainEngine
                 return true;
         }
 
+        // Dynamic in-world items (Source-X LOS_NB_DYNAMIC pass).
+        if (DynamicOccluderAt?.Invoke(mapId, x, y, rayZ) == true)
+            return true;
+
         return false;
     }
 
+    /// <summary>Whether a wall/impassable static occludes the ray. Windows are
+    /// see-through (Source-X UFLAG2_WINDOW under the LOS_NB_WINDOWS default used
+    /// for archery/magery line-of-sight).</summary>
     private static bool BlocksLineOfSight(ItemTileData data) =>
-        data.IsWall ||
-        data.IsImpassable ||
-        data.IsRoof ||
-        (data.Flags & TileFlag.NoShoot) != 0;
+        (data.Flags & TileFlag.Window) == 0 &&
+        (data.IsWall ||
+         data.IsImpassable ||
+         data.IsRoof ||
+         (data.Flags & TileFlag.NoShoot) != 0);
 }

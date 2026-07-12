@@ -3,6 +3,22 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, on birinci batch
+----------------------------------------
+
+EKLENDI - OSI craft material/renk secim akisi (Wave 230):
+  - Primary resource varyantlari hue, mevcut miktar, isim ve display id ile
+    crafting engine tarafindan listelenir; yetersiz stack'ler secime sunulmaz.
+  - Birden cok uygun material icin tile preview ve hue gosteren sayfali secim
+    gump'i acilir; tek uygun material dogrudan kilitlenir.
+  - Secilen hue craft completion'da yeniden dogrulanir, yalniz o material
+    tuketilir ve sonuc item'ina aktarilir; fail-loss da diger renkleri yemez.
+
+TESTLER:
+  - 5 Wave 230 regresyon testi eklendi. Tam SphereNet.Tests kosusu:
+    1526 basarili, 0 basarisiz, 0 atlanan.
+
+
 [2026-07-12] - 90-alti parite backlog, onuncu batch
 ----------------------------------------
 

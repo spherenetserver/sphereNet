@@ -165,7 +165,12 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   Test: SourceXHorrificBerserkWave229Tests (+10).
 
 ### 2.6 Crafting & gathering — 86
-- [ ] Material/renk seçim menüsü (OSI craft gump).
+- [x] **Material/renk seçim menüsü (OSI craft gump)** — YAPILDI (Wave 230).
+  Primary resource varyantları hue bazında ve yeterli stack miktarıyla listelenir;
+  birden çok uygun material varsa isim, miktar, tile preview ve hue içeren sayfalı
+  seçim gump'ı açılır. Seçilen hue completion re-check, success tüketimi, fail-loss
+  ve crafted item rengine kadar korunur; stale/eksik seçim yeniden doğrulanır.
+  Test: SourceXCraftMaterialWave230Tests (+5).
 - [ ] Zorluk eğrisi resource-özel (şu an düz `(min+max)/2`).
 - [ ] Çok-katmanlı BONUS resource verimi.
 - [ ] Cartography harita-yapımı craft'a bağlı değil.

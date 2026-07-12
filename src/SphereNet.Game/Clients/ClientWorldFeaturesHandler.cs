@@ -110,6 +110,12 @@ public sealed class ClientWorldFeaturesHandler
     private const int CraftButtonNextPage = 1;
     private const int CraftButtonPrevPage = 2;
     private const int CraftButtonRecipeBase = 100;
+    private const uint CraftMaterialGumpId = 0x43524D54; // "CRMT"
+    private const int CraftMaterialsPerPage = 12;
+    private const int CraftMaterialButtonNextPage = 1;
+    private const int CraftMaterialButtonPrevPage = 2;
+    private const int CraftMaterialButtonBack = 3;
+    private const int CraftMaterialButtonBase = 100;
 
     public void OpenCraftingGump(SkillType craftSkill) => OpenCraftingGump(craftSkill, 0, fireMenuTrigger: true);
 
@@ -191,7 +197,67 @@ public sealed class ClientWorldFeaturesHandler
             {
                 int index = capturedSkip + ((int)pressedButton - CraftButtonRecipeBase);
                 if (index < recipes.Count)
-                    BeginPendingCraft(recipes[index], craftSkill, reopenGump: true);
+                {
+                    var recipe = recipes[index];
+                    var materials = _craftingEngine.GetPrimaryResourceOptions(_character, recipe);
+                    if (materials.Count > 1)
+                        OpenCraftMaterialGump(recipe, craftSkill, materials, 0);
+                    else
+                        BeginPendingCraft(recipe, craftSkill, reopenGump: true,
+                            materials.Count == 1 ? materials[0].Hue : null);
+                }
+            }
+        });
+    }
+
+    private void OpenCraftMaterialGump(CraftRecipe recipe, SkillType craftSkill,
+        IReadOnlyList<CraftMaterialOption> materials, int page)
+    {
+        if (_character == null || _craftingEngine == null || materials.Count == 0)
+            return;
+
+        int pageCount = (materials.Count + CraftMaterialsPerPage - 1) / CraftMaterialsPerPage;
+        page = Math.Clamp(page, 0, pageCount - 1);
+        int skip = page * CraftMaterialsPerPage;
+        var gump = new GumpBuilder(_character.Uid.Value, CraftMaterialGumpId, 430, 390);
+        gump.AddResizePic(0, 0, 5054, 430, 390);
+        gump.AddText(20, 15, 0, $"Select material (page {page + 1}/{pageCount})");
+
+        int y = 48;
+        for (int i = skip; i < materials.Count && i < skip + CraftMaterialsPerPage; i++)
+        {
+            var material = materials[i];
+            gump.AddButton(15, y, 4005, 4007, CraftMaterialButtonBase + (i - skip));
+            if (material.DisplayId != 0)
+                gump.AddTilePicHue(48, y - 3, material.DisplayId, material.Hue);
+            gump.AddCroppedText(90, y, 220, 20, 0,
+                $"{material.Name} ({material.Available})");
+            gump.AddText(315, y, 0, $"0x{material.Hue:X4}");
+            y += 25;
+        }
+
+        if (page > 0)
+            gump.AddButton(175, 350, 4014, 4016, CraftMaterialButtonPrevPage);
+        if (page < pageCount - 1)
+            gump.AddButton(285, 350, 4005, 4007, CraftMaterialButtonNextPage);
+        gump.AddButton(15, 350, 4014, 4016, CraftMaterialButtonBack);
+        gump.AddText(55, 350, 0, "Back");
+
+        int capturedPage = page;
+        int capturedSkip = skip;
+        SendGump(gump, (pressedButton, _, _) =>
+        {
+            if (pressedButton == CraftMaterialButtonNextPage)
+                OpenCraftMaterialGump(recipe, craftSkill, materials, capturedPage + 1);
+            else if (pressedButton == CraftMaterialButtonPrevPage)
+                OpenCraftMaterialGump(recipe, craftSkill, materials, capturedPage - 1);
+            else if (pressedButton == CraftMaterialButtonBack)
+                OpenCraftingGump(craftSkill, 0, fireMenuTrigger: false);
+            else if (pressedButton >= CraftMaterialButtonBase)
+            {
+                int index = capturedSkip + ((int)pressedButton - CraftMaterialButtonBase);
+                if (index < materials.Count)
+                    BeginPendingCraft(recipe, craftSkill, reopenGump: true, materials[index].Hue);
             }
         });
     }
@@ -202,6 +268,7 @@ public sealed class ClientWorldFeaturesHandler
     private int _pendingCraftStrokes;
     private long _pendingCraftNextStroke;
     private bool _pendingCraftReopenGump;
+    private ushort? _pendingCraftResourceHue;
     private Point3D _pendingCraftStartPosition;
 
     /// <summary>Start a craft as a stroke loop (reference Skill_MakeItem →
@@ -209,7 +276,8 @@ public sealed class ClientWorldFeaturesHandler
     /// (one-second floor), anim + sound per stroke; the roll and resource
     /// consumption happen at completion, after a CanCraft re-check (covers
     /// walking away from the forge mid-craft).</summary>
-    internal bool BeginPendingCraft(CraftRecipe recipe, SkillType craftSkill, bool reopenGump)
+    internal bool BeginPendingCraft(CraftRecipe recipe, SkillType craftSkill, bool reopenGump,
+        ushort? primaryResourceHue = null)
     {
         if (_character == null || _craftingEngine == null)
             return false;
@@ -225,7 +293,7 @@ public sealed class ClientWorldFeaturesHandler
             SysMessage(ServerMessages.Get("craft_busy"));
             return false;
         }
-        if (!_craftingEngine.CanCraft(_character, recipe))
+        if (!_craftingEngine.CanCraft(_character, recipe, primaryResourceHue))
         {
             SysMessage(ServerMessages.Get("craft_fail"));
             return false;
@@ -246,6 +314,7 @@ public sealed class ClientWorldFeaturesHandler
         _pendingCraftSkill = craftSkill;
         _pendingCraftStrokes = 2;
         _pendingCraftReopenGump = reopenGump;
+        _pendingCraftResourceHue = primaryResourceHue;
         _pendingCraftStartPosition = _character.Position;
         EmitCraftStroke(craftSkill);
         _pendingCraftNextStroke = Environment.TickCount64 + GetCraftStrokeIntervalMs(craftSkill);
@@ -279,12 +348,14 @@ public sealed class ClientWorldFeaturesHandler
         var recipe = _pendingCraftRecipe;
         var craftSkill = _pendingCraftSkill;
         bool reopen = _pendingCraftReopenGump;
+        ushort? primaryResourceHue = _pendingCraftResourceHue;
         _pendingCraftRecipe = null;
+        _pendingCraftResourceHue = null;
 
         // Re-check at completion (reference SKTRIG_SUCCESS re-validates the
         // work site): walking away from the forge or losing materials
         // mid-craft fails without the roll.
-        if (!_craftingEngine.CanCraft(_character, recipe))
+        if (!_craftingEngine.CanCraft(_character, recipe, primaryResourceHue))
         {
             SysMessage(ServerMessages.Get("craft_fail"));
             _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillFail,
@@ -294,7 +365,7 @@ public sealed class ClientWorldFeaturesHandler
             return;
         }
 
-        CompleteCraft(recipe, craftSkill, reopen);
+        CompleteCraft(recipe, craftSkill, reopen, primaryResourceHue);
     }
 
     private void CancelPendingCraft(bool notify = true)
@@ -305,6 +376,7 @@ public sealed class ClientWorldFeaturesHandler
         _pendingCraftRecipe = null;
         _pendingCraftStrokes = 0;
         _pendingCraftNextStroke = 0;
+        _pendingCraftResourceHue = null;
         _triggerDispatcher?.FireCharTrigger(_character!, CharTrigger.SkillAbort,
             new TriggerArgs { CharSrc = _character, N1 = skillId });
         if (notify)
@@ -336,12 +408,13 @@ public sealed class ClientWorldFeaturesHandler
         return Math.Max(1000, delayMs); // reference floor: 10 tenths per stroke
     }
 
-    private void CompleteCraft(CraftRecipe recipe, SkillType craftSkill, bool reopenGump)
+    private void CompleteCraft(CraftRecipe recipe, SkillType craftSkill, bool reopenGump,
+        ushort? primaryResourceHue)
     {
         if (_character == null || _craftingEngine == null)
             return;
 
-        var result = _craftingEngine.TryCraft(_character, recipe);
+        var result = _craftingEngine.TryCraft(_character, recipe, primaryResourceHue);
 
         if (result != null)
         {

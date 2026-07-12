@@ -22,6 +22,10 @@ public readonly struct CraftResource
     public ItemType? Type { get; init; }
 }
 
+/// <summary>A primary-resource variant available to the crafting UI.</summary>
+public readonly record struct CraftMaterialOption(
+    ushort Hue, int Available, ushort DisplayId, string Name);
+
 /// <summary>
 /// A craftable item recipe. Loaded from [ITEMDEF] RESOURCES/SKILLMAKE sections.
 /// </summary>
@@ -78,7 +82,7 @@ public sealed class CraftingEngine
     public CraftRecipe? TryGetRecipe(ushort resultDispId) =>
         _recipes.GetValueOrDefault(resultDispId);
 
-    public bool CanCraft(Character crafter, CraftRecipe recipe)
+    public bool CanCraft(Character crafter, CraftRecipe recipe, ushort? primaryResourceHue = null)
     {
         // Check skill requirements
         foreach (var (skill, minVal) in recipe.SkillRequirements)
@@ -111,7 +115,8 @@ public sealed class CraftingEngine
             var res = recipe.Resources[resourceIndex];
             if (CountResource(crafter, res) < res.Amount)
                 return false;
-            if (resourceIndex == 0 && !TrySelectResourceHue(crafter, res, res.Amount, out _))
+            if (resourceIndex == 0 &&
+                !TrySelectResourceHue(crafter, res, res.Amount, primaryResourceHue, out _))
                 return false;
         }
 
@@ -122,16 +127,16 @@ public sealed class CraftingEngine
     /// Attempt to craft an item. Returns the crafted item on success, null on failure.
     /// Maps to Skill_MakeItem / Skill_MakeItem_Success flow in Source-X.
     /// </summary>
-    public Item? TryCraft(Character crafter, CraftRecipe recipe)
+    public Item? TryCraft(Character crafter, CraftRecipe recipe, ushort? primaryResourceHue = null)
     {
         lock (crafter)
-            return TryCraftCore(crafter, recipe);
+            return TryCraftCore(crafter, recipe, primaryResourceHue);
     }
 
-    private Item? TryCraftCore(Character crafter, CraftRecipe recipe)
+    private Item? TryCraftCore(Character crafter, CraftRecipe recipe, ushort? primaryResourceHue)
     {
         if (crafter.IsDead) return null;
-        if (!CanCraft(crafter, recipe))
+        if (!CanCraft(crafter, recipe, primaryResourceHue))
             return null;
 
         // Skill check
@@ -164,7 +169,7 @@ public sealed class CraftingEngine
             ushort resourceHue = 0;
             if (recipe.Resources.Count > 0 &&
                 !TrySelectResourceHue(crafter, recipe.Resources[0], recipe.Resources[0].Amount,
-                    out resourceHue))
+                    primaryResourceHue, out resourceHue))
                 return null;
 
             // Consume resources
@@ -239,11 +244,13 @@ public sealed class CraftingEngine
             // SKTRIG_FAIL → ResourceConsumePart): one 0-50%% roll applied
             // uniformly to every required resource.
             int lossPercent = Random.Shared.Next(50);
-            foreach (var res in recipe.Resources)
+            for (int resourceIndex = 0; resourceIndex < recipe.Resources.Count; resourceIndex++)
             {
+                var res = recipe.Resources[resourceIndex];
                 int lostAmount = res.Amount * lossPercent / 100;
                 if (lostAmount > 0)
-                    ConsumeResource(crafter, res, lostAmount);
+                    ConsumeResource(crafter, res, lostAmount,
+                        resourceIndex == 0 ? primaryResourceHue : null);
             }
 
             return null;
@@ -451,13 +458,45 @@ public sealed class CraftingEngine
         return count;
     }
 
+    public IReadOnlyList<CraftMaterialOption> GetPrimaryResourceOptions(
+        Character crafter, CraftRecipe recipe)
+    {
+        if (crafter.Backpack == null || recipe.Resources.Count == 0)
+            return [];
+
+        var resource = recipe.Resources[0];
+        var totals = new SortedDictionary<ushort, long>();
+        CollectResourceHues(crafter.Backpack, resource, totals, 0, []);
+        var options = new List<CraftMaterialOption>();
+        foreach (var pair in totals)
+        {
+            if (pair.Value < resource.Amount) continue;
+            var sample = FindResourceItemByHue(crafter.Backpack, resource, pair.Key, 0, []);
+            string name = sample?.GetName() ?? "";
+            if (string.IsNullOrWhiteSpace(name))
+                name = pair.Key == 0 ? "Default material" : $"Material 0x{pair.Key:X4}";
+            options.Add(new CraftMaterialOption(
+                pair.Key, (int)Math.Min(int.MaxValue, pair.Value),
+                sample?.BaseId ?? resource.ItemId, name));
+        }
+        return options;
+    }
+
     private static bool TrySelectResourceHue(Character ch, CraftResource res,
-        int requiredAmount, out ushort hue)
+        int requiredAmount, ushort? requestedHue, out ushort hue)
     {
         hue = 0;
         if (ch.Backpack == null) return false;
         var totals = new SortedDictionary<ushort, long>();
         CollectResourceHues(ch.Backpack, res, totals, 0, []);
+        if (requestedHue.HasValue)
+        {
+            if (!totals.TryGetValue(requestedHue.Value, out long requestedTotal) ||
+                requestedTotal < requiredAmount)
+                return false;
+            hue = requestedHue.Value;
+            return true;
+        }
         foreach (var pair in totals)
         {
             if (pair.Value < requiredAmount) continue;
@@ -465,6 +504,27 @@ public sealed class CraftingEngine
             return true;
         }
         return false;
+    }
+
+    private static Item? FindResourceItemByHue(Item container, CraftResource res,
+        ushort hue, int depth, HashSet<uint> seen)
+    {
+        if (depth > 16 || !seen.Add(container.Uid.Value)) return null;
+        foreach (var item in container.Contents)
+        {
+            if (item.IsDeleted) continue;
+            bool matches = res.Type.HasValue
+                ? item.ItemType == res.Type.Value
+                : item.BaseId == res.ItemId;
+            if (matches && item.Hue.Value == hue)
+                return item;
+            if (item.ContentCount > 0)
+            {
+                var found = FindResourceItemByHue(item, res, hue, depth + 1, seen);
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     private static void CollectResourceHues(Item container, CraftResource res,

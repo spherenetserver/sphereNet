@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, eleventh batch
+----------------------------------------
+
+ADDED - OSI craft material/color selection flow (Wave 230):
+  - The crafting engine exposes primary-resource variants with hue, available
+    amount, name and display id; insufficient stacks are excluded.
+  - Multiple eligible materials open a paged selection gump with tile previews
+    and hues; a single eligible material is locked directly.
+  - The chosen hue is revalidated at completion, exclusively consumed and
+    inherited by the result; failure loss no longer consumes other colors.
+
+TESTS:
+  - Added 5 Wave 230 regression tests. Full SphereNet.Tests run:
+    1526 passed, 0 failed, 0 skipped.
+
+
 [2026-07-12] - Sub-90 parity backlog, tenth batch
 ----------------------------------------
 

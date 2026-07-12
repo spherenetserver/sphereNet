@@ -4,6 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, twenty-second batch
+----------------------------------------
+
+FIXED - Line-of-sight multi and custom-house wall occlusion (Wave 241):
+  - Placed house and ship walls no longer let sight (and ranged attacks) pass
+    through them. The static LOS path reads MUL map statics, not the virtual
+    walls of runtime-placed multis, so those were invisible to the ray. LOS now
+    synthesizes multi geometry the same way the walk check does (Source-X
+    LOS_NB_MULTI): both multi.mul components and committed custom-house design
+    tiles occlude the ray.
+
+ADDED - Remaining line-of-sight passes (Wave 241):
+  - BLOCKLOS_HEIGHT: items whose definition carries CAN_I_BLOCKLOS_HEIGHT block
+    sight even without a wall flag, on the static, dynamic and multi paths
+    (shared TerrainEngine.GraphicBlocksLos helper).
+  - LOS_FISHING: CanSeeLOS now takes a LosFlags argument; with LosFlags.Fishing
+    the ray must stay over water once it is two or more tiles from the caster.
+    Engine-level for now (the fishing skill wiring is a separate opt-in).
+
+NOTES:
+  - The deep region-crossing flags (LOS_NO_OTHER_REGION, LOS_NC_MULTI, the
+    region-local LOS_NB_LOCAL_* forms) remain deferred; they need a per-cell
+    region model and have minimal gameplay impact.
+
+
 [2026-07-12] - Sub-90 parity backlog, twenty-first batch
 ----------------------------------------
 

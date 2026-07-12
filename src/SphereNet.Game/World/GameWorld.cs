@@ -120,32 +120,82 @@ public sealed class GameWorld
         DynamicOccluderAt = HasDynamicLosOccluder,
     };
 
-    /// <summary>Does a dynamic (in-world) item at this cell occlude a LOS ray at
-    /// the given height? (Source-X CanSeeLOS_New LOS_NB_DYNAMIC pass.) A blocking
-    /// item is a wall/impassable/no-shoot graphic — windows stay see-through —
-    /// whose Z span covers the ray. Statics from the MUL files are handled by the
-    /// terrain engine; this covers items placed at runtime.</summary>
+    /// <summary>Does a dynamic (in-world) item or multi/custom-house wall at this
+    /// cell occlude a LOS ray at the given height? (Source-X CanSeeLOS_New
+    /// LOS_NB_DYNAMIC + LOS_NB_MULTI passes.) Statics from the MUL files are
+    /// handled by the terrain engine; this covers items placed at runtime and the
+    /// virtual walls of placed houses/ships, which are neither real items nor MUL
+    /// statics.</summary>
     private bool HasDynamicLosOccluder(byte mapId, short x, short y, int rayZ)
     {
         if (MapData == null) return false;
         var cell = new Core.Types.Point3D(x, y,
             (sbyte)Math.Clamp(rayZ, sbyte.MinValue, sbyte.MaxValue), mapId);
+
+        // Real placed items sitting on this cell.
         foreach (var item in GetItemsInRange(cell, 0))
         {
             if (item.X != x || item.Y != y || item.MapIndex != mapId)
                 continue;
             var data = MapData.GetItemTileData(item.BaseId);
-            if ((data.Flags & SphereNet.MapData.Tiles.TileFlag.Window) != 0)
-                continue; // windows don't block
-            bool blocks = data.IsWall || data.IsImpassable ||
-                          (data.Flags & SphereNet.MapData.Tiles.TileFlag.NoShoot) != 0;
-            if (!blocks)
+            if (!TerrainEngine.GraphicBlocksLos(item.BaseId, data))
                 continue;
             int height = Math.Max(1, Math.Max(data.Height, data.CalcHeight));
             if (rayZ >= item.Z && rayZ <= item.Z + height)
                 return true;
         }
+
+        return HasMultiLosOccluder(mapId, x, y, rayZ);
+    }
+
+    /// <summary>Virtual multi geometry (placed house/ship components and committed
+    /// custom-house design tiles) occluding the ray — mirrors the walk-geometry
+    /// scan in WalkCheck. These walls are rendered client-side, not stored as
+    /// items/statics, so LOS must synthesize them the same way.</summary>
+    private bool HasMultiLosOccluder(byte mapId, short x, short y, int rayZ)
+    {
+        var pivot = new Core.Types.Point3D(x, y, (sbyte)0, mapId);
+        foreach (var multi in GetItemsInRange(pivot, 32))
+        {
+            if (multi.IsDeleted || multi.IsEquipped || !multi.IsOnGround)
+                continue;
+            if (multi.ItemType is not (Core.Enums.ItemType.Multi or Core.Enums.ItemType.MultiCustom
+                or Core.Enums.ItemType.MultiAddon or Core.Enums.ItemType.Ship))
+                continue;
+
+            var def = MapData!.GetMulti(multi.BaseId);
+            if (def != null)
+            {
+                foreach (var comp in def.Components)
+                {
+                    if (!comp.IsVisible) continue;
+                    if (multi.X + comp.XOffset != x || multi.Y + comp.YOffset != y) continue;
+                    if (MultiTileBlocksLos(comp.TileId, multi.Z + comp.ZOffset, rayZ))
+                        return true;
+                }
+            }
+
+            if (multi.ItemType == Core.Enums.ItemType.MultiCustom &&
+                Movement.WalkCheck.ResolveCustomDesign != null)
+            {
+                foreach (var tile in Movement.WalkCheck.ResolveCustomDesign(multi))
+                {
+                    if (multi.X + tile.X != x || multi.Y + tile.Y != y) continue;
+                    if (MultiTileBlocksLos(tile.TileId, multi.Z + tile.Z, rayZ))
+                        return true;
+                }
+            }
+        }
         return false;
+    }
+
+    private bool MultiTileBlocksLos(ushort tileId, int baseZ, int rayZ)
+    {
+        var data = MapData!.GetItemTileData(tileId);
+        if (!TerrainEngine.GraphicBlocksLos(tileId, data))
+            return false;
+        int height = Math.Max(1, Math.Max(data.Height, data.CalcHeight));
+        return rayZ >= baseZ && rayZ <= baseZ + height;
     }
 
     /// <summary>Max items allowed in a regular container (backpack, chest). sphere.ini CONTAINERMAXITEMS.</summary>
@@ -187,6 +237,10 @@ public sealed class GameWorld
     /// Source-X equivalent: CWorldMap::CanSeeLOS.</summary>
     public bool CanSeeLOS(Core.Types.Point3D from, Core.Types.Point3D to)
         => Terrain.CanSeeLOS(from, to);
+
+    /// <summary>Line-of-sight with Source-X LOS flags (e.g. LosFlags.Fishing).</summary>
+    public bool CanSeeLOS(Core.Types.Point3D from, Core.Types.Point3D to, Core.Enums.LosFlags flags)
+        => Terrain.CanSeeLOS(from, to, flags);
 
     public long TickCount => _tickCount;
     public int TotalObjects => _objects.Count;

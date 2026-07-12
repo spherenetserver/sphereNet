@@ -65,10 +65,12 @@ public sealed class TerrainEngine
     }
 
     /// <summary>
-    /// Check line of sight between two points.
-    /// Simplified Bresenham-based LOS with terrain + static obstruction.
+    /// Check line of sight between two points (Source-X CanSeeLOS_New): a
+    /// Bresenham ray blocked by terrain, statics, dynamic in-world items and
+    /// multi/custom-house geometry. <paramref name="flags"/> selects LOS_FISHING
+    /// (the ray must run over water past two tiles).
     /// </summary>
-    public bool CanSeeLOS(Point3D from, Point3D to)
+    public bool CanSeeLOS(Point3D from, Point3D to, Core.Enums.LosFlags flags = Core.Enums.LosFlags.None)
     {
         if (_mapData == null) return true;
         if (from.Map != to.Map) return false;
@@ -100,9 +102,22 @@ public sealed class TerrainEngine
 
             if (HasLosOccluder(from.Map, checkX, checkY, checkZ))
                 return false;
+
+            // LOS_FISHING: two or more tiles out, the ray must stay over water.
+            if ((flags & Core.Enums.LosFlags.Fishing) != 0 &&
+                from.GetDistanceTo(new Point3D(checkX, checkY, (sbyte)0, from.Map)) >= 2 &&
+                !IsWaterCell(from.Map, checkX, checkY))
+                return false;
         }
 
         return true;
+    }
+
+    private bool IsWaterCell(byte mapId, short x, short y)
+    {
+        if (_mapData == null) return true;
+        var land = _mapData.GetLandTileData(_mapData.GetTerrainTile(mapId, x, y).TileId);
+        return land.IsWet;
     }
 
     private bool HasLosOccluder(byte mapId, short x, short y, int rayZ)
@@ -121,7 +136,7 @@ public sealed class TerrainEngine
                 continue;
 
             var data = _mapData.GetItemTileData(s.TileId);
-            if (!BlocksLineOfSight(data))
+            if (!GraphicBlocksLos(s.TileId, data))
                 continue;
 
             int height = Math.Max(1, Math.Max(data.Height, data.CalcHeight));
@@ -131,20 +146,25 @@ public sealed class TerrainEngine
                 return true;
         }
 
-        // Dynamic in-world items (Source-X LOS_NB_DYNAMIC pass).
+        // Dynamic in-world items + multi/custom-house geometry
+        // (Source-X LOS_NB_DYNAMIC / LOS_NB_MULTI passes).
         if (DynamicOccluderAt?.Invoke(mapId, x, y, rayZ) == true)
             return true;
 
         return false;
     }
 
-    /// <summary>Whether a wall/impassable static occludes the ray. Windows are
-    /// see-through (Source-X UFLAG2_WINDOW under the LOS_NB_WINDOWS default used
-    /// for archery/magery line-of-sight).</summary>
-    private static bool BlocksLineOfSight(ItemTileData data) =>
-        (data.Flags & TileFlag.Window) == 0 &&
-        (data.IsWall ||
-         data.IsImpassable ||
-         data.IsRoof ||
-         (data.Flags & TileFlag.NoShoot) != 0);
+    /// <summary>Whether a tile graphic occludes the ray. Wall/impassable/roof/
+    /// no-shoot statics block, as do items flagged CAN_I_BLOCKLOS_HEIGHT; windows
+    /// stay see-through (Source-X UFLAG2_WINDOW under the LOS_NB_WINDOWS default
+    /// used for archery/magery). Shared by the static, dynamic and multi paths.</summary>
+    public static bool GraphicBlocksLos(ushort tileId, in ItemTileData data)
+    {
+        if ((data.Flags & TileFlag.Window) != 0)
+            return false;
+        if (data.IsWall || data.IsImpassable || data.IsRoof || (data.Flags & TileFlag.NoShoot) != 0)
+            return true;
+        var def = Definitions.DefinitionLoader.GetItemDef(tileId);
+        return def != null && (def.Can & Core.Enums.CanFlags.I_BlockLOSHeight) != 0;
+    }
 }

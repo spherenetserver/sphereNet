@@ -3,6 +3,31 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, yirmi ikinci batch
+----------------------------------------
+
+DUZELTILDI - Line-of-sight multi ve custom-house duvar occlusion (Wave 241):
+  - Yerlestirilen ev ve gemi duvarlari artik gorusu (ve menzilli saldirilari)
+    icinden gecirmiyor. Statik LOS yolu MUL map statiklerini okur, runtime'da
+    yerlestirilen multi'lerin sanal duvarlarini degil — bu yuzden ray onlari
+    gormuyordu. LOS artik multi geometrisini walk-check ile ayni sekilde
+    sentezliyor (Source-X LOS_NB_MULTI): hem multi.mul component'leri hem de
+    committed custom-house design tile'lari ray'i engelliyor.
+
+EKLENDI - Kalan line-of-sight pass'leri (Wave 241):
+  - BLOCKLOS_HEIGHT: tanimi CAN_I_BLOCKLOS_HEIGHT tasiyan item'lar wall bayragi
+    olmadan da gorusu engelliyor; statik, dinamik ve multi yolda (ortak
+    TerrainEngine.GraphicBlocksLos helper'i).
+  - LOS_FISHING: CanSeeLOS artik bir LosFlags argumani aliyor; LosFlags.Fishing
+    ile ray, kastan iki veya daha fazla tile uzaklastiktan sonra su uzerinde
+    kalmali. Simdilik engine seviyesinde (fishing skill wiring'i ayri opt-in).
+
+NOTLAR:
+  - Derin region-gecis bayraklari (LOS_NO_OTHER_REGION, LOS_NC_MULTI, region-local
+    LOS_NB_LOCAL_* formlari) ertelendi; per-cell region modeli gerektiriyorlar ve
+    minimal gameplay etkileri var.
+
+
 [2026-07-12] - 90-alti parite backlog, yirmi birinci batch
 ----------------------------------------
 

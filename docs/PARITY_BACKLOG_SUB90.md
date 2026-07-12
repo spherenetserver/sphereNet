@@ -235,19 +235,25 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
 - [x] GetLocalTime / IsMoonVisible / GetLightCalc / LightFlash sector metotları
   Wave 234-235 ile tamamlandı.
 
-### 3.3 Movement & walking — 80
-- [~] **LOS bayrak modeli** — KISMİ (Wave 240): en yüksek-değerli iki fonksiyonel
-  boşluk kapatıldı. **Dinamik in-world item occlusion** (LOS_NB_DYNAMIC) — eskiden
-  runtime-yerleştirilen bloklayıcı item'lar LOS'u HİÇ kesmiyordu (placed wall'dan
-  ateş edebiliyordun); `TerrainEngine.DynamicOccluderAt` callback + `GameWorld.
-  HasDynamicLosOccluder` (ray hücresindeki item tiledata Wall/Impassable/NoShoot +
-  Z-span overlap; MUL statik yolu ile tutarlı). **Window exception** (LOS_NB_WINDOWS)
-  — `TileFlag.Window` tile'ları artık LOS'u kesmiyor (statik+dinamik iki yolda,
-  archery/magery default'u; Source-X UFLAG2_WINDOW). Terrain+static ray zaten vardı.
-  Test: SourceXLosDynamicWave240Tests (+2, wall bloke/window geçer + Z-span). ERTELENEN
-  niş kısımlar: LOS_FISHING (su-2tile), LOS_NC_MULTI/multi-region occlusion,
-  LOS_NO_OTHER_REGION, BLOCKLOS_HEIGHT canflag, region-local flag varyantları
-  (LOS_NB_LOCAL_*), flag-parametreli CanSeeLOS_New tam imzası.
+- [x] **LOS bayrak modeli** — YAPILDI (Wave 240+241). Source-X CanSeeLOS_New'in
+  fonksiyonel olarak anlamlı tüm pass'leri portlandı:
+  - Wave 240: **LOS_NB_DYNAMIC** dinamik in-world item occlusion (eskiden placed
+    wall'dan ateş edilebiliyordu) — TerrainEngine.DynamicOccluderAt callback +
+    GameWorld.HasDynamicLosOccluder. **LOS_NB_WINDOWS** window exception
+    (TileFlag.Window artık kesmiyor, statik+dinamik).
+  - Wave 241: **LOS_NB_MULTI** multi/custom-house wall occlusion — placed
+    house/ship component'leri (MUL multi.mul def) VE committed custom-house design
+    tile'ları artık LOS'u kesiyor (GameWorld.HasMultiLosOccluder, WalkCheck'in
+    virtual-geometry taramasını aynalar, WalkCheck.ResolveCustomDesign hook'unu
+    paylaşır) — eskiden ev/gemi duvarından ateş edilebiliyordu. **BLOCKLOS_HEIGHT**
+    (CAN_I_BLOCKLOS_HEIGHT) — TerrainEngine.GraphicBlocksLos ortak helper'ında
+    (statik+dinamik+multi üç yol). **LOS_FISHING** — LosFlags enum + flag-parametreli
+    CanSeeLOS(from,to,flags); dist>=2'de terrain su (IsWet) değilse blok (engine-level;
+    fishing skill'e wiring ayrı opt-in, davranış regresyonu önlemek için ertelendi).
+  Test: SourceXLosDynamicWave240Tests(+2) + SourceXLosRemainingWave241Tests(+2:
+  custom-house wall bloke + fishing su-yolu). ERTELENEN (deep, per-cell region modeli
+  gerektirir, minimal gameplay etkisi): LOS_NO_OTHER_REGION, LOS_NC_MULTI (multi-region
+  crossing), LOS_NB_LOCAL_* region-local varyantları, GM-combat-pass (caller-bağımlı).
 
 ### 3.4 Spawn — 85
 - [x] Champion list/accessor parity — YAPILDI (Wave 216): denetim "def block'tan

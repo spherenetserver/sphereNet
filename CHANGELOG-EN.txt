@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, twelfth batch
+----------------------------------------
+
+CHANGED - Resource-specific gathering difficulty curves (Wave 231):
+  - REGIONRESOURCE SKILL now preserves every CValueCurveDef point in script
+    order instead of collapsing the definition to two endpoints.
+  - Every gather attempt computes difficulty from a 0..999 curve sample like
+    Source-X m_vcSkill.GetRandom()/10; the fixed (min+max)/2 was removed.
+  - Removed the non-upstream hard SkillMin rejection; low-skill attempts now
+    pass through the normal skill S-curve with the resource difficulty.
+
+TESTS:
+  - Added 10 Wave 231 regression tests. Full SphereNet.Tests run:
+    1536 passed, 0 failed, 0 skipped.
+
+
 [2026-07-12] - Sub-90 parity backlog, eleventh batch
 ----------------------------------------
 

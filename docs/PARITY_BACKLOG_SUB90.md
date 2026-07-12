@@ -171,7 +171,12 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   seçim gump'ı açılır. Seçilen hue completion re-check, success tüketimi, fail-loss
   ve crafted item rengine kadar korunur; stale/eksik seçim yeniden doğrulanır.
   Test: SourceXCraftMaterialWave230Tests (+5).
-- [ ] Zorluk eğrisi resource-özel (şu an düz `(min+max)/2`).
+- [x] **Zorluk eğrisi resource-özel** — YAPILDI (Wave 231). REGIONRESOURCE
+  `SKILL` artık tüm `CValueCurveDef` noktalarını script sırasıyla korur ve Source-X
+  `m_vcSkill.GetRandom()/10` gibi her gather denemesinde 0..999 örnekle segment
+  interpolasyonu yapar. Sabit midpoint ve upstream'de olmayan sert SkillMin kapısı
+  kaldırıldı; normal skill S-curve sonucu belirler. Test:
+  SourceXGatherDifficultyWave231Tests (+10).
 - [ ] Çok-katmanlı BONUS resource verimi.
 - [ ] Cartography harita-yapımı craft'a bağlı değil.
 

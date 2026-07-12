@@ -188,12 +188,10 @@ public sealed class GatheringEngine
         if (marker != null && GetPool(marker) <= 0)
             return new GatherResult { Handled = true, Depleted = true };
 
-        int playerSkill = ch.GetSkill(skill);
-        if (resDef.SkillMin > 0 && playerSkill < resDef.SkillMin)
-            return new GatherResult { Handled = true, Success = false };
-
-        int difficulty = (resDef.SkillMin + resDef.SkillMax) / 2;
-        int diffPct = difficulty / 10;
+        // Source-X Skill_NaturalResource_Setup uses m_vcSkill.GetRandom()/10:
+        // each attempt samples this resource's full SKILL curve. There is no
+        // separate hard SkillMin gate; the regular S-curve decides success.
+        int difficulty = resDef.GetRandomSkillDifficulty(Rng);
 
         // @ResourceTest — Source-X lets the script block gathering (RETURN 1).
         if (_triggerDispatcher != null)
@@ -208,7 +206,7 @@ public sealed class GatheringEngine
                 return new GatherResult { Handled = true, Success = false };
         }
 
-        bool success = SkillEngine.UseQuick(ch, skill, diffPct);
+        bool success = SkillEngine.UseQuick(ch, skill, difficulty);
 
         if (success)
         {

@@ -29,6 +29,9 @@ public sealed class RegionResourceDef : ResourceLink
     /// <summary>Skill difficulty range (in tenths: 0-1000).</summary>
     public int SkillMin { get; set; }
     public int SkillMax { get; set; }
+    private readonly List<int> _skillCurve = [];
+    /// <summary>Source-X CValueCurveDef points, preserved in script order.</summary>
+    public IReadOnlyList<int> SkillCurve => _skillCurve;
 
     public RegionResourceDef(ResourceId id) : base(id) { }
 
@@ -56,14 +59,57 @@ public sealed class RegionResourceDef : ResourceLink
                 Regen = EvalSimpleExpression(arg);
                 break;
             case "SKILL":
-                ParseFloatRange(arg, out int smin, out int smax);
-                SkillMin = smin;
-                SkillMax = smax;
+                ParseFloatCurve(arg, _skillCurve);
+                SkillMin = _skillCurve.Count > 0 ? _skillCurve[0] : 0;
+                SkillMax = _skillCurve.Count > 0 ? _skillCurve[^1] : SkillMin;
                 break;
             case "DEFNAME":
                 base.DefName = arg.Trim();
                 break;
         }
+    }
+
+    /// <summary>Source-X m_vcSkill.GetRandom()/10. A random 0..999 sample is
+    /// evaluated across the resource's full value curve.</summary>
+    public int GetRandomSkillDifficulty(Random random) =>
+        GetSkillDifficultyAt(random.Next(1000));
+
+    internal int GetSkillDifficultyAt(int samplePermille)
+    {
+        int sample = Math.Clamp(samplePermille, 0, 999);
+        IReadOnlyList<int> points = _skillCurve.Count > 0
+            ? _skillCurve
+            : SkillMin == SkillMax ? [SkillMin] : [SkillMin, SkillMax];
+        if (points.Count == 0) return 0;
+        if (points.Count == 1) return Math.Max(0, points[0] / 10);
+
+        int lowIndex;
+        int segmentSize;
+        int segmentSample = sample;
+        if (points.Count == 2)
+        {
+            lowIndex = 0;
+            segmentSize = 1000;
+        }
+        else if (points.Count == 3)
+        {
+            lowIndex = sample >= 500 ? 1 : 0;
+            if (lowIndex == 1) segmentSample -= 500;
+            segmentSize = 500;
+        }
+        else
+        {
+            lowIndex = sample * points.Count / 1000;
+            int lastSegment = points.Count - 2;
+            if (lowIndex > lastSegment) lowIndex = lastSegment;
+            segmentSize = 1000 / (points.Count - 1);
+            segmentSample -= lowIndex * segmentSize;
+        }
+
+        long low = points[lowIndex];
+        long high = points[lowIndex + 1];
+        long value = low + (high - low) * segmentSample / segmentSize;
+        return (int)Math.Max(0L, value / 10L);
     }
 
     private static void ParseRange(string val, out int min, out int max)
@@ -75,26 +121,16 @@ public sealed class RegionResourceDef : ResourceLink
         else max = min;
     }
 
-    /// <summary>Parse float range and convert to tenths (e.g. "1.0,100.0" → 10,1000).</summary>
-    private static void ParseFloatRange(string val, out int min, out int max)
+    private static void ParseFloatCurve(string val, List<int> destination)
     {
-        min = 0; max = 0;
-        var parts = val.Split(',');
-        if (parts.Length >= 1)
+        destination.Clear();
+        foreach (string raw in val.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
         {
-            if (double.TryParse(parts[0].Trim(), System.Globalization.CultureInfo.InvariantCulture, out double d))
-                min = (int)Math.Round(d * 10);
-            else if (int.TryParse(parts[0].Trim(), out int i))
-                min = i;
+            if (double.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture, out double parsed))
+                destination.Add((int)Math.Round(parsed * 10));
+            else if (int.TryParse(raw, out int integer))
+                destination.Add(integer);
         }
-        if (parts.Length >= 2)
-        {
-            if (double.TryParse(parts[1].Trim(), System.Globalization.CultureInfo.InvariantCulture, out double d))
-                max = (int)Math.Round(d * 10);
-            else if (int.TryParse(parts[1].Trim(), out int i))
-                max = i;
-        }
-        else max = min;
     }
 
     /// <summary>Evaluate simple arithmetic expressions like "60*60*10" → 36000.</summary>

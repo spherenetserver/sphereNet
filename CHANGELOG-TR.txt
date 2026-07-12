@@ -3,6 +3,22 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, on ikinci batch
+----------------------------------------
+
+DEGISTI - Resource-ozel gathering zorluk egrisi (Wave 231):
+  - REGIONRESOURCE SKILL artik iki endpoint'e indirgenmez; tum CValueCurveDef
+    noktalari script sirasiyla korunur.
+  - Her gather denemesi Source-X m_vcSkill.GetRandom()/10 gibi 0..999 curve
+    ornegiyle difficulty hesaplar; sabit (min+max)/2 kullanimi kaldirildi.
+  - Upstream'de olmayan sert SkillMin reddi kaldirildi; dusuk skill denemeleri
+    resource difficulty'siyle normal skill S-curve kontrolune girer.
+
+TESTLER:
+  - 10 Wave 231 regresyon testi eklendi. Tam SphereNet.Tests kosusu:
+    1536 basarili, 0 basarisiz, 0 atlanan.
+
+
 [2026-07-12] - 90-alti parite backlog, on birinci batch
 ----------------------------------------
 

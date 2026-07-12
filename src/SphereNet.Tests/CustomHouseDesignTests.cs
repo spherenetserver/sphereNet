@@ -184,6 +184,37 @@ public class CustomHouseDesignTests
     }
 
     [Fact]
+    public void Build_RejectsInvalidGraphics_AndHonorsWhitelist()
+    {
+        var (engine, ch, _) = CreateSession(); // ch is a normal (non-GM) designer
+
+        // Source-X IsValidItem range check: zero and multi-range graphics are
+        // never valid design pieces — a crafted 0xD7 packet cannot smuggle them.
+        Assert.False(engine.Build(ch, 0x0000, 2, 3));
+        Assert.False(engine.Build(ch, HouseDesignValidItems.ItemIdMulti, 2, 3));
+        Assert.False(engine.Build(ch, 0x8000, 2, 3));
+
+        // In-range static graphic accepted while no whitelist is configured.
+        Assert.True(engine.Build(ch, 0x0064, 2, 3));
+
+        // Registering a whitelist restricts non-GM placement to known pieces.
+        HouseDesignValidItems.RegisterValidItems([0x0066]);
+        Assert.False(engine.Build(ch, 0x0067, 2, 4)); // not listed
+        Assert.True(engine.Build(ch, 0x0066, 2, 5));  // listed
+    }
+
+    [Fact]
+    public void Build_GmBypassesWhitelistButNotRange()
+    {
+        var (engine, ch, _) = CreateSession();
+        ch.PrivLevel = SphereNet.Core.Enums.PrivLevel.GM;
+        HouseDesignValidItems.RegisterValidItems([0x0066]); // lock others out for non-GMs
+
+        Assert.True(engine.Build(ch, 0x0099, 2, 3));  // GM places an unlisted in-range piece
+        Assert.False(engine.Build(ch, 0x9000, 2, 4)); // still rejected: not a static graphic
+    }
+
+    [Fact]
     public void Session_Erase_RemovesMatchingTileOnly()
     {
         var (engine, ch, _) = CreateSession();

@@ -154,5 +154,6 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnHearRouted = null;
         SphereNet.Game.Objects.Characters.Character.FindCharByClientIndex = null;
         SphereNet.Game.Objects.Characters.Character.FindCharBySocketId = null;
+        SphereNet.Game.Housing.HouseDesignValidItems.ClearValidItems();
     }
 }

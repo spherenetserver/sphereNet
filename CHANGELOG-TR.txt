@@ -3,6 +3,28 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, on dokuzuncu batch
+----------------------------------------
+
+DUZELTILDI - Custom-house tasarim gecerli-item zorlamasi (Wave 238):
+  - Tasarim editoru sifir-disi her tile grafigini kabul ediyordu, boylece
+    crafted bir 0xD7 stream eve keyfi grafik (multi body, blocking static,
+    render edilemeyen id) yerlestirebiliyordu. Build/Stairs/Roof artik Source-X
+    CItemMultiCustom::IsValidItem'a gore kapiliyor: grafik gercek bir static
+    item olmali (0 < id < 0x4000), bu kontrol GM dahil herkese uygulanir; GM
+    sonra parca whitelist'ini bypass eder, sıradan designer eslesmek zorunda.
+  - HouseDesignValidItems opsiyonel bir whitelist tutar (Source-X
+    ValidItemsContainer). Bos = range-only zorlama, boylece custom housing
+    client house-design veri dosyalari olmadan calisir; parcalar kaydedilince
+    GM-disi yerlestirme onlarla sinirlanir.
+
+NOTLAR - Dogrulanan yanlis-alarmlar (degisiklik gerekmedi):
+  - Design packet streaming zaten var: PacketHouseDesignDetailed (0xD8 multi-plane
+    stream, ClassicUO-parse dogrulandi) = SendStructureTo; PacketHouseDesignVersion
+    (0xBF 0x1D) = SendVersionTo. Stream plane'leri Z yerine tile sayisina gore
+    mode-0'da boler, client dogru parse eder.
+
+
 [2026-07-12] - 90-alti parite backlog, on sekizinci batch
 ----------------------------------------
 

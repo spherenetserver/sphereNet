@@ -4,6 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, nineteenth batch
+----------------------------------------
+
+FIXED - Custom-house design valid-item enforcement (Wave 238):
+  - The design editor accepted any non-zero tile graphic, so a crafted 0xD7
+    stream could place arbitrary graphics (multi bodies, blocking statics,
+    unrenderable ids) into a house. Build/Stairs/Roof now gate placement on
+    Source-X CItemMultiCustom::IsValidItem: the graphic must be a real static
+    item (0 < id < 0x4000), a check applied to everyone including GMs; GMs then
+    bypass the piece whitelist while ordinary designers must match it.
+  - HouseDesignValidItems holds an optional whitelist (Source-X
+    ValidItemsContainer). Empty means range-only enforcement so custom housing
+    works without the client's house-design data files; once pieces are
+    registered, non-GM placement is restricted to them.
+
+NOTES - Verified non-gaps (no change needed):
+  - Design packet streaming already exists: PacketHouseDesignDetailed (0xD8
+    multi-plane stream, ClassicUO-parse verified) is SendStructureTo and
+    PacketHouseDesignVersion (0xBF 0x1D) is SendVersionTo. The stream splits
+    planes by tile count in mode 0 rather than by Z, which the client parses
+    correctly.
+
+
 [2026-07-12] - Sub-90 parity backlog, eighteenth batch
 ----------------------------------------
 

@@ -107,7 +107,8 @@ public sealed class CustomHousingEngine
 
     public bool Build(Character ch, ushort tileId, int x, int y)
     {
-        if (!TryGetAuthorizedSession(ch, out var session, out _) || tileId == 0 ||
+        if (!TryGetAuthorizedSession(ch, out var session, out _) ||
+            !IsPlaceableTile(ch, tileId) ||
             !FitsDesignArea(session, x, y, allowSouthEdge: false))
             return false;
         return AddTile(session, tileId, x, y, LevelToZ(session.Level));
@@ -116,7 +117,8 @@ public sealed class CustomHousingEngine
     /// <summary>Stairs are placed at ground level (Z=0) outside the plane grid.</summary>
     public bool Stairs(Character ch, ushort tileId, int x, int y)
     {
-        if (!TryGetAuthorizedSession(ch, out var session, out _) || tileId == 0 ||
+        if (!TryGetAuthorizedSession(ch, out var session, out _) ||
+            !IsPlaceableTile(ch, tileId) ||
             !FitsDesignArea(session, x, y, allowSouthEdge: true))
             return false;
         return AddTile(session, tileId, x, y, 0);
@@ -124,11 +126,19 @@ public sealed class CustomHousingEngine
 
     public bool Roof(Character ch, ushort tileId, int x, int y, int z)
     {
-        if (!TryGetAuthorizedSession(ch, out var session, out _) || tileId == 0 ||
+        if (!TryGetAuthorizedSession(ch, out var session, out _) ||
+            !IsPlaceableTile(ch, tileId) ||
             !FitsDesignArea(session, x, y, allowSouthEdge: false))
             return false;
         return AddTile(session, tileId, x, y, (sbyte)Math.Clamp(z, sbyte.MinValue, sbyte.MaxValue));
     }
+
+    /// <summary>Source-X CItemMultiCustom::IsValidItem gate — the designer may
+    /// only place real static design pieces; GMs bypass the whitelist but not
+    /// the graphic-range check.</summary>
+    private static bool IsPlaceableTile(Character ch, ushort tileId) =>
+        HouseDesignValidItems.IsValidBuildTile(
+            tileId, ch.PrivLevel >= SphereNet.Core.Enums.PrivLevel.GM);
 
     public bool Erase(Character ch, ushort tileId, int x, int y, int z)
     {

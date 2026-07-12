@@ -261,10 +261,23 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
 ## TIER 4 — Item / Housing / Character
 
 ### 4.1 Housing — 72
-- [ ] Custom-design **valid-item enforcement** (`LoadValidItems`/`IsValidItem`/
-  `ValidItemsContainer`).
-- [ ] Design packet streaming (`SendStructureTo` multi-plane / `SendVersionTo` /
-  `GetPlane`/`GetPlaneZ`).
+- [x] Custom-design **valid-item enforcement** — YAPILDI (Wave 238). Source-X
+  `CItemMultiCustom::IsValidItem` gate: designer artık 0xD7 stream'inde keyfi
+  grafik yerleştiremiyor. `HouseDesignValidItems.IsValidBuildTile(id, isGm)` —
+  range check (id 0<id<0x4000, ITEMID_MULTI altı; multi/0 reddedilir, GM dahil
+  herkese uygulanır), sonra GM whitelist'i bypass eder, sıradan designer opsiyonel
+  whitelist'e (`RegisterValidItems`, Source-X ValidItemsContainer; boşsa range-only
+  — client CSV'leri olmadan çalışır) uyar. Build/Stairs/Roof'a bağlandı. Whitelist
+  static → ResetEngineStatics.ClearValidItems. Test: CustomHouseDesignTests (+2,
+  range reddi + whitelist + GM bypass). NOT: Source-X'in nihai whitelist'i client
+  house-design CSV'lerinden (doors/walls/floors/roof/stairs.txt) gelir; garanti
+  olmadığı için range-enforcement default, whitelist opsiyonel hook.
+- [x] Design packet streaming — DOĞRULANDI (Wave 238): zaten var —
+  `PacketHouseDesignDetailed` (0xD8 multi-plane, MaxTilesPerPlane=750 mode-0 split,
+  ClassicUO-parse round-trip test'li) = SendStructureTo; `PacketHouseDesignVersion`
+  (0xBF sub 0x1D, GameClient.Housing:170 wired) = SendVersionTo. Plane-by-Z bölme
+  (GetPlane) yerine tile-count mode-0 split kullanılıyor (planeZ=0 client'ta yok
+  sayılır) — kabul edilebilir sadeleştirme, client doğru parse ediyor.
 
 ### 4.2 Party / guild — 72
 - [x] Party live networking — YAPILDI (Wave 216): denetim `PartyManager.cs`'e

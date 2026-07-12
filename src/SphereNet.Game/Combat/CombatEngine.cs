@@ -699,6 +699,92 @@ public static class CombatEngine
     private static int GetDamageIncrease(Character ch) =>
         ch.TryGetTag("INCREASEDAM", out string? s) && int.TryParse(s, out int v) ? v : 0;
 
+    /// <summary>Source-X Calc_CombatChanceToParry, including the Samurai
+    /// Empire Bushido formulas and COMBATPARRYINGERA equipment gates.</summary>
+    public static int CalculateParryChance(Character defender, out Item? parryItem)
+    {
+        parryItem = null;
+        var era = (ParryEraFlags)Character.CombatParryingEra;
+        bool canShield = era.HasFlag(ParryEraFlags.ShieldBlock);
+        bool canOneHand = era.HasFlag(ParryEraFlags.OneHandBlock);
+        bool canTwoHand = era.HasFlag(ParryEraFlags.TwoHandBlock);
+        bool seFormula = (Character.FeatureSE & 0x02) != 0 &&
+            era.HasFlag(ParryEraFlags.SeFormula);
+
+        int parrying = defender.GetSkill(SkillType.Parrying);
+        int chance = -1;
+        var twoHand = defender.GetEquippedItem(Layer.TwoHanded);
+        bool hasShield = CombatHelper.HasShieldEquipped(defender);
+        var oneHand = defender.GetEquippedItem(Layer.OneHanded);
+        Item? weapon = oneHand ?? (hasShield ? null : twoHand);
+
+        if (seFormula)
+        {
+            int bushido = defender.GetSkill(SkillType.Bushido);
+            if (canShield && hasShield)
+            {
+                parryItem = twoHand;
+                chance = (parrying - bushido) / 40;
+                if (parrying >= 1000 || bushido >= 1000)
+                    chance += 5;
+                chance = Math.Max(0, chance);
+            }
+            else if (weapon != null)
+            {
+                int seChance;
+                int legacyChance = parrying / 80;
+                if (parrying >= 1000)
+                    legacyChance += 5;
+
+                if (weapon == oneHand && canOneHand)
+                {
+                    parryItem = weapon;
+                    seChance = parrying * bushido / 48_000;
+                }
+                else if (weapon == twoHand && canTwoHand)
+                {
+                    parryItem = weapon;
+                    seChance = parrying * bushido / 41_140;
+                }
+                else
+                {
+                    seChance = -1;
+                }
+
+                if (seChance >= 0)
+                {
+                    if (parrying >= 1000 || bushido >= 1000)
+                        seChance += 5;
+                    chance = Math.Max(seChance, legacyChance);
+                }
+            }
+        }
+        else
+        {
+            if (canShield && hasShield)
+            {
+                parryItem = twoHand;
+                chance = parrying / 40;
+            }
+            else if (weapon != null &&
+                     ((weapon == oneHand && canOneHand) || (weapon == twoHand && canTwoHand)))
+            {
+                parryItem = weapon;
+                chance = parrying / 80;
+            }
+
+            if (chance > 0 && parrying >= 1000)
+                chance += 5;
+        }
+
+        if (chance < 0)
+            return 0;
+        int dex = defender.Dex;
+        if (dex < 80)
+            chance = (int)(chance * (1.0f - ((80 - dex) / 100.0f)));
+        return Math.Max(0, chance);
+    }
+
     public static int ResolveAttack(
         Character attacker,
         Character target,
@@ -780,44 +866,31 @@ public static class CombatEngine
                 damage += damage * di / 100;
         }
 
-        // Parry check — Source-X Calc_CombatChanceToParry (legacy formula):
-        // shield = parry/40, wielded weapon = parry/80, +5 at GM parry, and
-        // DEX below 80 erodes the chance proportionally.
-        int parrySkill = target.GetSkill(SkillType.Parrying);
-        if (parrySkill > 0)
+        // Parry check — Source-X Calc_CombatChanceToParry, selected by the
+        // COMBATPARRYINGERA mask (legacy or Samurai Empire/Bushido formula).
+        int parryChance = CalculateParryChance(target, out Item? parryItem);
+        if (parryChance > 0)
         {
-            var twoHanded = target.GetEquippedItem(Layer.TwoHanded);
-            var oneHanded = target.GetEquippedItem(Layer.OneHanded);
-            int parryChance;
-            if (twoHanded != null && twoHanded.ItemType == ItemType.Shield)
-                parryChance = parrySkill / 40;          // shield
-            else if (twoHanded != null || oneHanded != null)
-                parryChance = parrySkill / 80;          // weapon parry
-            else
-                parryChance = 0;                        // bare-handed: no parry
-            if (parryChance > 0 && parrySkill >= 1000)
-                parryChance += 5;
-            int targetDex = target.Dex;
-            if (parryChance > 0 && targetDex < 80)
-                parryChance = parryChance * (100 - (80 - targetDex)) / 100;
+            // Source-X rolls through Skill_UseQuick, which trains Parrying on
+            // the attempt using the computed parry chance as difficulty.
+            if (target.IsPlayer)
+                Skills.SkillEngine.GainExperience(target, SkillType.Parrying, parryChance);
 
-            if (parryChance > 0)
+            if (_rand.Next(100) < parryChance)
             {
-                // Source-X rolls the parry through Skill_UseQuick, which also
-                // trains Parrying on the attempt.
-                if (target.IsPlayer)
-                    Skills.SkillEngine.GainExperience(target, SkillType.Parrying, hitChance);
+                bool seWeaponParry = (Character.FeatureSE & 0x02) != 0 &&
+                    ((ParryEraFlags)Character.CombatParryingEra).HasFlag(ParryEraFlags.SeFormula) &&
+                    parryItem?.ItemType != ItemType.Shield;
+                if (target.IsPlayer && seWeaponParry)
+                    Skills.SkillEngine.GainExperience(target, SkillType.Bushido, parryChance);
 
-                if (_rand.Next(100) < parryChance)
-                {
-                    // A parry fully blocks by default. A wired @HitParry can let
-                    // some damage leak through (partial block) by returning a
-                    // positive value; that damage then still runs through armor.
-                    int through = OnHitParry?.Invoke(target, attacker, damage) ?? 0;
-                    if (through <= 0)
-                        return AttackParried;
-                    damage = Math.Min(damage, through);
-                }
+                // A parry fully blocks by default. A wired @HitParry can let
+                // some damage leak through (partial block) by returning a
+                // positive value; that damage then still runs through armor.
+                int through = OnHitParry?.Invoke(target, attacker, damage) ?? 0;
+                if (through <= 0)
+                    return AttackParried;
+                damage = Math.Min(damage, through);
             }
         }
 

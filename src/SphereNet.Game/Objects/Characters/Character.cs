@@ -510,6 +510,11 @@ public partial class Character : ObjBase
     public static int CombatHitChanceEra { get; set; }
     /// <summary>COMBATSPEEDERA from sphere.ini.</summary>
     public static int CombatSpeedEra { get; set; }
+    /// <summary>COMBATPARRYINGERA bitmask from sphere.ini.</summary>
+    public static int CombatParryingEra { get; set; } =
+        (int)(ParryEraFlags.PreSeFormula | ParryEraFlags.ShieldBlock);
+    /// <summary>FEATURESE mask; bit 0x02 enables Ninja/Samurai systems.</summary>
+    public static int FeatureSE { get; set; }
     /// <summary>SPEEDSCALEFACTOR used by Source-X swing-speed formulas.</summary>
     public static int CombatSpeedScaleFactor { get; set; } = 15000;
     /// <summary>ARCHERYMINDIST from sphere.ini.</summary>

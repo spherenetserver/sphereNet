@@ -3,6 +3,22 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, sekizinci batch
+----------------------------------------
+
+EKLENDI - Samurai Empire/Bushido parry paritesi (Wave 227):
+  - COMBATPARRYINGERA bitmask'i config ve Character runtime hattina eklendi:
+    legacy/SE formula ile shield, one-hand, two-hand ve AR-scaling izinleri.
+  - SE formulu shield icin Parry-Bushido, silahlar icin layer'a ozel Bushido
+    carpanlari, legacy chance maksimumu, GM bonusu ve dusuk-DEX erozyonunu uygular.
+  - Basarili SE weapon parry Bushido gain dener; Parrying attempt'i hesaplanan
+    parry chance'i difficulty olarak kullanir.
+
+TESTLER:
+  - 5 Wave 227 regresyon testi eklendi. Tam SphereNet.Tests kosusu:
+    1503 basarili, 0 basarisiz, 0 atlanan.
+
+
 [2026-07-12] - 90-alti parite backlog, yedinci batch
 ----------------------------------------
 

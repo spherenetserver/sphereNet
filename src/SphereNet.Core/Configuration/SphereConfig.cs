@@ -95,6 +95,9 @@ public sealed class SphereConfig
     public int CombatDamageEra { get; set; }
     public int CombatHitChanceEra { get; set; }
     public int CombatSpeedEra { get; set; }
+    public int CombatParryingEra { get; set; } =
+        (int)(SphereNet.Core.Enums.ParryEraFlags.PreSeFormula |
+              SphereNet.Core.Enums.ParryEraFlags.ShieldBlock);
     public int SpeedScaleFactor { get; set; } = 15000;
     public int CombatArcheryMovementDelay { get; set; }
     public int CombatMeleeMovementDelay { get; set; }
@@ -457,6 +460,7 @@ public sealed class SphereConfig
         CombatDamageEra = ini.GetInt(section, "CombatDamageEra", CombatDamageEra);
         CombatHitChanceEra = ini.GetInt(section, "CombatHitChanceEra", CombatHitChanceEra);
         CombatSpeedEra = ini.GetInt(section, "CombatSpeedEra", CombatSpeedEra);
+        CombatParryingEra = ini.GetInt(section, "CombatParryingEra", CombatParryingEra);
         SpeedScaleFactor = Math.Max(1, ini.GetInt(section, "SpeedScaleFactor", SpeedScaleFactor));
         CombatArcheryMovementDelay = ini.GetInt(section, "CombatArcheryMovementDelay", CombatArcheryMovementDelay);
         CombatMeleeMovementDelay = ini.GetInt(section, "CombatMeleeMovementDelay", CombatMeleeMovementDelay);

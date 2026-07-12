@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, eighth batch
+----------------------------------------
+
+ADDED - Samurai Empire/Bushido parry parity (Wave 227):
+  - Added the COMBATPARRYINGERA mask to config and Character runtime: legacy/SE
+    formulas plus shield, one-hand, two-hand and AR-scaling capability bits.
+  - The SE formula applies Parry-Bushido for shields, layer-specific Bushido
+    multipliers for weapons, the legacy chance maximum, GM bonus and low-DEX erosion.
+  - Successful SE weapon parries attempt Bushido gain; Parrying attempts now use
+    the calculated parry chance as their difficulty.
+
+TESTS:
+  - Added 5 Wave 227 regression tests. Full SphereNet.Tests run:
+    1503 passed, 0 failed, 0 skipped.
+
+
 [2026-07-12] - Sub-90 parity backlog, seventh batch
 ----------------------------------------
 

@@ -143,7 +143,14 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   item/ITEMDEF aggregate'idir (era2 de aynı doğru aggregate'i kullanır) ve script
   yüzeylerinde tanınır. `Item.Speed`, instance/ITEMDEF `OVERRIDE.SPEED` fallback'ini
   uygular. Test: SourceXCombatSpeedWave226Tests (+4).
-- [ ] Samurai-Empire / Bushido parry branch (cpp:250-296).
+- [x] **Samurai-Empire / Bushido parry branch** — YAPILDI (Wave 227).
+  Source-X `COMBATPARRYINGERA` bitmask'i (pre-SE/SE formula, shield/one-hand/
+  two-hand izinleri, AR-scaling biti) config → Character runtime hattına eklendi.
+  `Calc_CombatChanceToParry`; SE feature 0x02 kapısı, shield'da `(Parry-Bushido)/40`,
+  one-hand `Parry*Bushido/48000`, two-hand `/41140`, legacy max karşılaştırması,
+  GM +5 ve DEX<80 erozyonuyla port edildi. Başarılı SE weapon parry Bushido gain
+  dener; Parrying attempt difficulty artık hesaplanan chance'dır. Test:
+  SourceXBushidoParryWave227Tests (+5).
 - [ ] PARRYERA_ARSCALING shield-AR + LAYER_SPELL_Protection AR (cpp:529-555).
 - [ ] Horrific-Beast / gargoyle-berserk hasar amplifier (cpp:1223-1252).
 

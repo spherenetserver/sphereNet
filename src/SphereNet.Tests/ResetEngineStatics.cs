@@ -35,6 +35,10 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.MagicFlags = 0;
         SphereNet.Game.Objects.Characters.Character.CombatSpeedEra = 0;
         SphereNet.Game.Objects.Characters.Character.CombatSpeedScaleFactor = 15_000;
+        SphereNet.Game.Objects.Characters.Character.CombatParryingEra =
+            (int)(SphereNet.Core.Enums.ParryEraFlags.PreSeFormula |
+                  SphereNet.Core.Enums.ParryEraFlags.ShieldBlock);
+        SphereNet.Game.Objects.Characters.Character.FeatureSE = 0;
         SphereNet.Game.Objects.Characters.Character.OnFacingChanged = null;
         SphereNet.Game.Objects.Characters.Character.ResolveAccountForChar = null;
         SphereNet.Game.Trade.VendorEngine.World = null;

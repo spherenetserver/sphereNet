@@ -216,6 +216,24 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   (CCharFight.cpp:2299-2304). State'i Curse Weapon (104) / Wraith Form (116)
   spell case'leri kurar (aşağı bak). Test: SourceXWave253Tests (wraith drain
   deterministik + SpiritSpeak-scaled + cap, curse weapon-gated via OnLeechEffect).
+- [x] **AOS suit-property agregasyonu — elemental resist slice** — YAPILDI (Wave
+  262, "büyük mimari" grubunun kalan parçası; Wave 252 skill, bu resist). Recon
+  kararı: **live-scan-on-read**, Source-X'in equip-time accumulation'ı DEĞİL —
+  SphereNet'te Equip/Unequip recompute hook'u YOK + her mutation path'in delta
+  back-out'u (equip/unequip/delete/decay/trade/death/loot/GM-remove/save) gerekirdi;
+  kaçırılan path save'e phantom bonus yazar (persistence hazard). Live-scan =
+  base field temiz, mutation yok, back-out yüzeyi yok (GetAdjustedSkill deseni).
+  `CombatEngine.EffectiveResist(ch,type)` = base + `SumEquippedItemProperty`
+  (OneHanded..Horse layer scan, item-tag→ITEMDEF fallback), clamp 0-100; EffRes
+  Physical/Fire/Cold/Poison/Energy getter'ları. Tüketiciler: ApplyElementalResist
+  (1570-82), iki split-resist site (720-24/1336-40), CharacterPoisonState tick,
+  0x11 StatusFull paketi (paperdoll suit'i yansıtsın). Base setter/getter + script
+  RESxxx prop + spell-form resist mutator'ları + CHARDEF seed DOKUNULMADI (base'de
+  kalır, script get/set simetrik). Stat (STR/DEX/INT) + MaxHits/Mana/Stam bonusları
+  ERTELENDİ (feedback-loop riski: stat→MaxHits türetimi). Test: SourceXWave262Tests
+  (+5: no-equip=base, sum, clamp, damage reduction, base-field/script salt-base).
+  KALAN: stat-bonus slice, per-element resist MAX cap (RESFIREMAX), HITCHANCE/LUCK
+  agregasyonu (GetOnHitPropertyValue zaten weapon+talisman canlı okur).
 
 ### 2.5 Melee combat — 88
 - [x] **SE (era3) / ML (era4) hız formülleri** — YAPILDI (Wave 226).

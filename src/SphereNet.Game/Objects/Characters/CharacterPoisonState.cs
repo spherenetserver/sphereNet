@@ -163,8 +163,8 @@ public sealed class CharacterPoisonState
         _nextTick = now + GetTickInterval();
 
         int damage = GetDamage();
-        // Apply poison resist
-        int resistPct = Math.Clamp(_owner.ResPoison, (short)0, (short)80);
+        // Apply poison resist — the effective suit total (base + equipped items).
+        int resistPct = Math.Clamp(SphereNet.Game.Combat.CombatEngine.EffResPoison(_owner), 0, 80);
         damage = damage * (100 - resistPct) / 100;
         damage = Math.Max(1, damage);
 

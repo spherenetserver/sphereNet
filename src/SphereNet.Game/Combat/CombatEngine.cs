@@ -717,11 +717,11 @@ public static class CombatEngine
         }
 
         long resisted = 0;
-        resisted += (long)phys * (100 - Math.Clamp((int)target.ResPhysical, 0, 100));
-        resisted += (long)fire * (100 - Math.Clamp((int)target.ResFire, 0, 100));
-        resisted += (long)cold * (100 - Math.Clamp((int)target.ResCold, 0, 100));
-        resisted += (long)poison * (100 - Math.Clamp((int)target.ResPoison, 0, 100));
-        resisted += (long)energy * (100 - Math.Clamp((int)target.ResEnergy, 0, 100));
+        resisted += (long)phys * (100 - EffResPhysical(target));
+        resisted += (long)fire * (100 - EffResFire(target));
+        resisted += (long)cold * (100 - EffResCold(target));
+        resisted += (long)poison * (100 - EffResPoison(target));
+        resisted += (long)energy * (100 - EffResEnergy(target));
         return (int)Math.Clamp((long)damage * resisted / (total * 100L), 0, damage);
     }
 
@@ -1333,11 +1333,11 @@ public static class CombatEngine
     public static int ApplyElementalDamageSplit(Character attacker, Character target, int damage, Item? weapon)
     {
         var (physPct, firePct, coldPct, poisonPct, energyPct) = GetElementalSplit(attacker);
-        long total = (long)damage * physPct * (100 - Math.Clamp((int)target.ResPhysical, 0, 100));
-        total += (long)damage * firePct * (100 - Math.Clamp((int)target.ResFire, 0, 100));
-        total += (long)damage * coldPct * (100 - Math.Clamp((int)target.ResCold, 0, 100));
-        total += (long)damage * poisonPct * (100 - Math.Clamp((int)target.ResPoison, 0, 100));
-        total += (long)damage * energyPct * (100 - Math.Clamp((int)target.ResEnergy, 0, 100));
+        long total = (long)damage * physPct * (100 - EffResPhysical(target));
+        total += (long)damage * firePct * (100 - EffResFire(target));
+        total += (long)damage * coldPct * (100 - EffResCold(target));
+        total += (long)damage * poisonPct * (100 - EffResPoison(target));
+        total += (long)damage * energyPct * (100 - EffResEnergy(target));
         // Source-X lets full resists zero the hit (CCharFight.cpp:730) — no
         // forced 1-damage floor.
         return (int)Math.Clamp(total / 10_000, 0L, int.MaxValue);
@@ -1542,6 +1542,43 @@ public static class CombatEngine
         return 0;
     }
 
+    /// <summary>Sum a resist property across every equipped item — the AOS suit
+    /// contribution (reference CCPropsChar equip aggregate). Excludes the
+    /// character's own base field so it can be added to it without double count.</summary>
+    private static int SumEquippedItemProperty(Character ch, string prop)
+    {
+        long total = 0;
+        for (int layerIndex = (int)Layer.OneHanded; layerIndex <= (int)Layer.Horse; layerIndex++)
+        {
+            var equipped = ch.GetEquippedItem((Layer)layerIndex);
+            if (equipped != null)
+                total += GetItemNumProperty(equipped, prop);
+        }
+        return (int)Math.Clamp(total, int.MinValue, int.MaxValue);
+    }
+
+    /// <summary>Effective elemental resist: base resist plus the suit contribution
+    /// from equipped items, derived on read (no equip-time mutation, no persistence
+    /// risk). Clamped to a valid 0-100 percent.</summary>
+    public static int EffectiveResist(Character ch, DamageType type)
+    {
+        (string prop, int baseVal) = type switch
+        {
+            DamageType.Fire => ("RESFIRE", (int)ch.ResFire),
+            DamageType.Cold => ("RESCOLD", (int)ch.ResCold),
+            DamageType.Poison => ("RESPOISON", (int)ch.ResPoison),
+            DamageType.Energy => ("RESENERGY", (int)ch.ResEnergy),
+            _ => ("RESPHYSICAL", (int)ch.ResPhysical),
+        };
+        return Math.Clamp(baseVal + SumEquippedItemProperty(ch, prop), 0, 100);
+    }
+
+    public static int EffResPhysical(Character ch) => EffectiveResist(ch, DamageType.Physical);
+    public static int EffResFire(Character ch) => EffectiveResist(ch, DamageType.Fire);
+    public static int EffResCold(Character ch) => EffectiveResist(ch, DamageType.Cold);
+    public static int EffResPoison(Character ch) => EffectiveResist(ch, DamageType.Poison);
+    public static int EffResEnergy(Character ch) => EffectiveResist(ch, DamageType.Energy);
+
     /// <summary>Attacker's elemental damage split percentages. Source-X
     /// OnTakeDamage (CCharFight.cpp:721): an unset physical share is assumed
     /// to be the remainder the elemental percents leave of 100.</summary>
@@ -1564,22 +1601,23 @@ public static class CombatEngine
 
         int resist = 0;
 
-        // Physical damage types (blunt/slash/pierce)
+        // Physical damage types (blunt/slash/pierce). Resists are the effective
+        // suit totals (base + equipped-item bonuses), derived on read.
         if (dmgType.HasFlag(DamageType.Physical) || dmgType.HasFlag(DamageType.HitBlunt) ||
             dmgType.HasFlag(DamageType.HitSlash) || dmgType.HasFlag(DamageType.HitPierce))
-            resist = Math.Max(resist, target.ResPhysical);
+            resist = Math.Max(resist, EffResPhysical(target));
 
         if (dmgType.HasFlag(DamageType.Fire))
-            resist = Math.Max(resist, target.ResFire);
+            resist = Math.Max(resist, EffResFire(target));
 
         if (dmgType.HasFlag(DamageType.Cold))
-            resist = Math.Max(resist, target.ResCold);
+            resist = Math.Max(resist, EffResCold(target));
 
         if (dmgType.HasFlag(DamageType.Poison))
-            resist = Math.Max(resist, target.ResPoison);
+            resist = Math.Max(resist, EffResPoison(target));
 
         if (dmgType.HasFlag(DamageType.Energy) || dmgType.HasFlag(DamageType.Magic))
-            resist = Math.Max(resist, target.ResEnergy);
+            resist = Math.Max(resist, EffResEnergy(target));
 
         // God damage ignores resist
         if (dmgType.HasFlag(DamageType.God))

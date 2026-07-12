@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, thirty-fourth batch (suit resist aggregation)
+----------------------------------------
+
+ADDED - Effective elemental resist from equipped items (Wave 262):
+  - A character's effective fire/cold/poison/energy/physical resist is now the
+    base resist plus the sum of the same resist across every equipped item,
+    derived on read (no equip-time mutation, so the base stays pristine and
+    nothing is written to the save). Combat damage resolution, poison ticks and
+    the status/paperdoll display all use the effective suit total; the stored
+    base field and the RESxxx script property keep reporting the base.
+  - Stat (STR/DEX/INT) and max-hits/mana/stam item bonuses are intentionally not
+    aggregated yet (they feed derived values and need a separate pass).
+
 [2026-07-12] - Sub-90 parity backlog, thirty-third batch (Necromancy school)
 ----------------------------------------
 

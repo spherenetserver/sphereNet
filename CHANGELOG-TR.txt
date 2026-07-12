@@ -3,6 +3,19 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, otuz dorduncu batch (suit resist agregasyonu)
+----------------------------------------
+
+EKLENDI - Giyilen item'lardan efektif elemental resist (Wave 262):
+  - Bir karakterin efektif fire/cold/poison/energy/physical resist'i artik base
+    resist arti giyilen her item'daki ayni resist'in toplamidir; okuma aninda
+    hesaplanir (equip-time mutasyon yok, base temiz kalir, save'e hicbir sey
+    yazilmaz). Savas hasar cozumu, poison tick'leri ve status/paperdoll gosterimi
+    efektif suit toplamini kullanir; sakli base field ve RESxxx script property'si
+    base degeri bildirmeye devam eder.
+  - Stat (STR/DEX/INT) ve max-hits/mana/stam item bonuslari kasitli olarak henuz
+    agrege edilmedi (turetilmis degerleri besliyorlar, ayri bir gecis gerekir).
+
 [2026-07-12] - 90-alti parite backlog, otuz ucuncu batch (Necromancy okulu)
 ----------------------------------------
 

@@ -40,6 +40,11 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     /// named triggers on an object through the normal handler chain.</summary>
     public static Action<ObjBase, string, ITextConsole>? OnScriptTrigger;
 
+    /// <summary>Source-X CLICK verb bridge. The host resolves the invoking
+    /// console to its live client and replays the normal single-click path,
+    /// including @Click/@AfterClick and the overhead label packet.</summary>
+    public static Func<ObjBase, ITextConsole, bool>? OnScriptSingleClick;
+
     /// <summary>Broadcast a packet to nearby clients. Wired by the server host.</summary>
     public static Action<Point3D, int, PacketWriter, uint>? BroadcastNearby;
 
@@ -597,6 +602,37 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
 
         switch (key.ToUpperInvariant())
         {
+            case "DAMAGE":
+            {
+                string[] parts = SplitScriptArgs(args);
+                if (parts.Length == 0 ||
+                    !SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(parts[0].AsSpan(), out long rawDamage) ||
+                    rawDamage <= 0)
+                    return false;
+
+                var damageType = Combat.DamageType.HitBlunt;
+                if (parts.Length > 1 &&
+                    SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(parts[1].AsSpan(), out long rawType))
+                    damageType = (Combat.DamageType)unchecked((ushort)rawType);
+
+                Characters.Character? damageSource = null;
+                if (parts.Length > 2 &&
+                    SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(parts[2].AsSpan(), out long rawSource) &&
+                    rawSource > 0 && rawSource <= uint.MaxValue)
+                    damageSource = ResolveWorld?.Invoke()?.FindChar(new Serial((uint)rawSource));
+
+                static int Percent(string[] values, int index) =>
+                    index < values.Length &&
+                    SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(values[index].AsSpan(), out long value)
+                        ? (int)Math.Clamp(value, int.MinValue, int.MaxValue)
+                        : 0;
+
+                Combat.CombatEngine.ApplyScriptDamage(
+                    this, (int)Math.Clamp(rawDamage, 0, short.MaxValue), damageType, damageSource,
+                    Percent(parts, 3), Percent(parts, 4), Percent(parts, 5),
+                    Percent(parts, 6), Percent(parts, 7));
+                return true;
+            }
             // Source-X TIMERF schedules a delayed function/verb on this object: the
             // delay is in SECONDS, while TIMERFMS takes MILLISECONDS (same payload).
             case "TIMERF":
@@ -718,6 +754,63 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             case "GOSLEEP":
                 GoSleep();
                 return true;
+            case "MOVETO":
+            case "P":
+            {
+                if (!TryParseScriptPoint(args, Position, out Point3D destination))
+                    return false;
+                return TryMoveScriptObject(destination);
+            }
+            case "MOVENEAR":
+            {
+                string[] parts = SplitScriptArgs(args);
+                if (parts.Length == 0 ||
+                    !SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(parts[0].AsSpan(), out long uidValue) ||
+                    uidValue <= 0 || uidValue > uint.MaxValue)
+                    return false;
+
+                var near = ResolveWorld?.Invoke()?.FindObject(new Serial((uint)uidValue));
+                if (near == null || near.IsDeleted)
+                    return false;
+
+                int distance = 1;
+                if (parts.Length > 1 &&
+                    SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(parts[1].AsSpan(), out long parsedDistance))
+                    distance = (int)Math.Clamp(parsedDistance, 1L, short.MaxValue);
+
+                Point3D centre = near.GetTopLevelPosition();
+                int x = Math.Clamp(centre.X + distance, short.MinValue, short.MaxValue);
+                return TryMoveScriptObject(new Point3D((short)x, centre.Y, centre.Z, centre.Map));
+            }
+            case "CLICK":
+            {
+                ObjBase clickTarget = this;
+                if (!string.IsNullOrWhiteSpace(args))
+                {
+                    if (!IsChar ||
+                        !SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(args.AsSpan(), out long clickUid) ||
+                        clickUid <= 0 || clickUid > uint.MaxValue)
+                        return false;
+                    clickTarget = ResolveWorld?.Invoke()?.FindObject(new Serial((uint)clickUid)) ?? this;
+                }
+                return OnScriptSingleClick?.Invoke(clickTarget, source) == true;
+            }
+            case "USEITEM":
+            {
+                ObjBase useTarget = this;
+                if (!string.IsNullOrWhiteSpace(args))
+                {
+                    if (!IsChar ||
+                        !SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(args.AsSpan(), out long useUid) ||
+                        useUid <= 0 || useUid > uint.MaxValue)
+                        return false;
+                    useTarget = ResolveWorld?.Invoke()?.FindObject(new Serial((uint)useUid)) ?? this;
+                }
+
+                if (useTarget.TryExecuteCommand("USE", "", source))
+                    return true;
+                return useTarget.TryExecuteCommand("DCLICK", "", source);
+            }
             case "SAYUA":
             {
                 // Source-X OV_SAYUA: "Color, Mode, Font, Lang, Text" — exactly
@@ -770,6 +863,44 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             }
         }
         return false;
+    }
+
+    private bool TryMoveScriptObject(Point3D destination)
+    {
+        var world = ResolveWorld?.Invoke();
+        return this switch
+        {
+            Characters.Character ch => world?.MoveCharacter(ch, destination) ?? MoveWithoutWorld(destination),
+            Items.Item item => world?.PlaceItem(item, destination) ?? MoveWithoutWorld(destination),
+            _ => false
+        };
+    }
+
+    private bool MoveWithoutWorld(Point3D destination)
+    {
+        Position = destination;
+        return true;
+    }
+
+    private static bool TryParseScriptPoint(string text, Point3D current, out Point3D point)
+    {
+        point = current;
+        string[] parts = (text ?? "").Split(',', StringSplitOptions.TrimEntries);
+        if (parts.Length < 2 ||
+            !short.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out short x) ||
+            !short.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out short y))
+            return false;
+
+        sbyte z = current.Z;
+        byte map = current.Map;
+        if (parts.Length > 2 && parts[2].Length > 0 &&
+            !sbyte.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out z))
+            return false;
+        if (parts.Length > 3 && parts[3].Length > 0 &&
+            !byte.TryParse(parts[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out map))
+            return false;
+        point = new Point3D(x, y, z, map);
+        return true;
     }
 
     /// <summary>Server-log sink used by the *LIST diagnostic verbs when the

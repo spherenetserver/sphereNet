@@ -26,6 +26,19 @@ public sealed class PacketSingleClick : PacketHandler
     }
 }
 
+/// <summary>0xBB — Drop a mail message on another player.</summary>
+public sealed class PacketMailMessage : PacketHandler
+{
+    public PacketMailMessage() : base(0xBB, 9) { }
+
+    public override void OnReceive(PacketBuffer buffer, State.NetState state)
+    {
+        uint targetSerial = buffer.ReadUInt32();
+        uint attachmentSerial = buffer.ReadUInt32();
+        state.OnMailMessage(targetSerial, attachmentSerial);
+    }
+}
+
 /// <summary>0x07 — Pick up item.</summary>
 public sealed class PacketItemPickup : PacketHandler
 {

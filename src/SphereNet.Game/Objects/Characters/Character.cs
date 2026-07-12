@@ -652,6 +652,10 @@ public partial class Character : ObjBase
     /// client spawn pipeline in Program.</summary>
     public static Func<Character, string, Character?>? SpawnNpcFromScript { get; set; }
 
+    /// <summary>Source-X SKILL verb bridge to the host-owned SkillHandlers
+    /// instance. Kept as a hook to avoid making Character own world services.</summary>
+    public static Func<Character, SkillType, bool>? OnScriptSkillUse { get; set; }
+
     /// <summary>Fired when a character is sent to jail (Source-X @Jail). Args:
     /// jailed character, sentence minutes (0 = indefinite).</summary>
     public static Action<Character, int>? OnJailed { get; set; }
@@ -4020,6 +4024,61 @@ public partial class Character : ObjBase
                 NewItemId = args.Trim();
                 return true;
             }
+            case "DUPE":
+            {
+                var world = ResolveWorld?.Invoke();
+                if (world == null) return false;
+
+                var clone = world.CreateCharacter();
+                clone.BaseId = BaseId;
+                clone.BodyId = BodyId;
+                clone.Name = Name;
+                clone.Hue = Hue;
+                clone.Direction = Direction;
+                clone.Str = Str;
+                clone.Dex = Dex;
+                clone.Int = Int;
+                clone.MaxHits = MaxHits;
+                clone.Hits = Hits;
+                clone.MaxStam = MaxStam;
+                clone.Stam = Stam;
+                clone.MaxMana = MaxMana;
+                clone.Mana = Mana;
+                clone.NpcBrain = NpcBrain;
+                foreach (var (tagKey, tagValue) in Tags.GetAll())
+                {
+                    if (!EngineTags.IsEphemeral(tagKey))
+                        clone.Tags.Set(tagKey, tagValue);
+                }
+                foreach (SkillType skill in Enum.GetValues<SkillType>())
+                {
+                    if (skill != SkillType.None && skill < SkillType.Qty)
+                        clone.SetSkill(skill, GetSkill(skill));
+                }
+
+                if (!world.PlaceCharacter(clone, Position))
+                {
+                    world.DeleteObject(clone);
+                    clone.Delete();
+                    return false;
+                }
+                return true;
+            }
+            case "SKILL":
+            {
+                string skillToken = (args ?? "").Trim();
+                SkillType skill;
+                if (!_skillNameMap.TryGetValue(skillToken, out skill))
+                {
+                    if (!int.TryParse(skillToken, out int skillId) ||
+                        skillId < 0 || skillId >= (int)SkillType.Qty)
+                        return false;
+                    skill = (SkillType)skillId;
+                }
+
+                Action = skill;
+                return OnScriptSkillUse?.Invoke(this, skill) ?? true;
+            }
             case "EQUIP":
             {
                 PendingEquip = true;
@@ -4439,6 +4498,27 @@ public partial class Character : ObjBase
                     string argText = parts.Length >= 3 ? parts[2] : "";
                     SendPacketToOwner?.Invoke(this, new SphereNet.Network.Packets.Outgoing.PacketClilocMessage(
                         Serial.Invalid.Value, 0xFFFF, 6 /* system */, hue, 3, cliloc, "System", argText));
+                }
+                return true;
+            }
+            case "SYSMESSAGELOCEX":
+            {
+                // Source-X: hue,cliloc,affixFlags,affix,args...
+                var parts = args.Split(',', StringSplitOptions.TrimEntries);
+                if (parts.Length >= 4
+                    && TryParseScriptUShort(parts[0], out ushort hue)
+                    && TryParseScriptUInt(parts[1], out uint cliloc))
+                {
+                    int flags = parts.Length > 2 && int.TryParse(parts[2], out int parsedFlags)
+                        ? parsedFlags : 0;
+                    string affix = parts[3];
+                    string argText = parts.Length > 4 ? string.Join('\t', parts[4..]) : "";
+                    SendPacketToOwner?.Invoke(this,
+                        new SphereNet.Network.Packets.Outgoing.PacketClilocMessageAffix(
+                            Serial.Invalid.Value, 0xFFFF, 6, hue, 3, cliloc,
+                            "System", affix, argText,
+                            prepend: (flags & 0x01) != 0,
+                            system: (flags & 0x02) != 0));
                 }
                 return true;
             }

@@ -16,7 +16,8 @@ public interface ISaveWriter : IDisposable
     /// loader re-interprets them via the existing per-field parsers.</summary>
     void WriteProperty(string key, string value);
 
-    /// <summary>Close the current record (text: <c>[EOF]</c>, binary: frame end).</summary>
+    /// <summary>Close the current record (text: logical section end, binary: frame end).
+    /// Text writers emit the file-level <c>[EOF]</c> marker once on disposal.</summary>
     void EndRecord();
 
     /// <summary>Optional file-level comment. No-op in binary.</summary>

@@ -14,10 +14,13 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
 - [x] **T0.1 Ship anchor-drop kontrol akışı** — YANLIŞ ALARM. `ShipEngine.cs:603-621`
   zaten düzgün brace'li; ANCHORDROP `ship.Anchored=true; Stop; TillerSpeak` doğru
   çalışıyor. Ajan yanlış okumuş (satır 593 sadece yorum).
-- [ ] **T0.2 Verb guardrail testi kanıt sağlamıyor** —
-  `SourceXVerbInventoryGuardrailTests.cs:83-113` sadece referans `.tbl` envanterini
-  pinliyor, C# implementasyonuna assert etmiyor. Testi implementasyona karşı assert
-  edecek şekilde güçlendir (aşağıdaki eksik verb'leri yakalasın).
+- [x] **T0.2 Verb guardrail testi kanıt sağlamıyor** — YAPILDI (Wave 217): upstream
+  `.tbl` pinine ek olarak gerçek SphereNet dispatch kaynaklarını yüzey bazında tarayan
+  `SourceXVerbSurfaces_AreRoutedBySphereNetImplementation` eklendi; ObjBase/Char/Item
+  kalıtım zinciri, client-console köprüsü, interpreter meta-verb'leri ve SERV resolver
+  birlikte doğrulanıyor. Bilinen açıklar explicit `KnownPartialOrDeferred` listesinde;
+  yeni route kaybı da, implement edilip listeden düşülmeyen stale borç da testi kırıyor.
+  Test: SourceXVerbInventoryGuardrailTests (3/3).
 
 ---
 
@@ -30,9 +33,12 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   `GameWorld.ResolveGlobalListRead` (count/index/findelement). Interpreter
   `LIST.<name>[.op]=v` → `_SET_LIST.` bridge; ResolveServList delege.
   Test: ParityMatrixServTests (+4). NOT: Source-X'te "pop" YOK (ajan yanılmış).
-- [ ] **VarMap.cs** (84 satır) — typed num/str storage + sorted keys + r_WriteSave
-  serialization eksik (şu an düz string dict). `CVarDefMap` paritesi. (düşük öncelik —
-  fonksiyonel, sadece tipli-depolama eksik)
+- [x] **VarMap.cs** — YAPILDI (Wave 223). `CVarDefMap` karşılaştırmasıyla düz
+  insertion-order string dictionary, case-insensitive `SortedDictionary` içindeki typed
+  string/integer entry modeline geçirildi. `SetInt` tipi koruyor; `GetAllEntries` native
+  tipi açıyor; `GetAll`/save/TAGAT enumerasyonu deterministik Source-X key sırasına sahip.
+  Numeric-looking `Set(string)` değerleri geriye uyumluluk için string kalıyor.
+  Test: SourceXVarMapWave223Tests (+3).
 
 ### 1.2 Obje verb & property — 78
 - [x] Eksik `CChar_functions` verb'leri — YAPILDI (Wave 215): **UNEQUIP** (ItemBounce
@@ -61,11 +67,20 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   `db.row.numcols`. Test: GameSystemTests.ScriptDbAdapter genişletildi.
 
 ### 1.5 Trigger — 86
-- [ ] Kalan char trigger backlog: **@UserMailBag** fire-site (doğrula, gerekiyorsa kur).
+- [x] Kalan char trigger backlog: **@UserMailBag** — YAPILDI (Wave 221). Source-X
+  `CClient::Event_MailMsg` ve `PacketMailMessage` doğrulandı; eksik legacy `0xBB`
+  (9 byte, iki serial) carrier hattı PacketHandler → NetState → Program → GameClient
+  olarak kuruldu. Hedefte `@UserMailBag` gönderen `SRC` ile ateşleniyor; `RETURN 1`
+  bildirimi iptal ediyor, self-drop sessiz, geçersiz hedef göndereni uyarıyor.
+  Test: SourceXUserMailBagWave221Tests (+4).
 
 ### 1.6 Script okuma/lexing — 86
-- [ ] Write-side `WriteSection`/`WriteKeyStr` (`CScript.cpp:856-976`) ayrı katmanda —
-  script-objesi yazma yolunun tam olduğunu doğrula.
+- [x] Write-side `WriteSection`/`WriteKeyStr` — YAPILDI/DOĞRULANDI (Wave 222).
+  Ayrı katman zaten `ISaveWriter` + `TextSaveWriter` olarak vardı ve WorldSaver,
+  account persistence ile export yollarınca kullanılıyordu. Source-X karşılaştırmasında
+  iki gerçek fark düzeltildi: `[EOF]` artık her record'dan sonra değil dosyada yalnızca
+  bir kez yazılıyor; `WriteKeyStr` gibi value CR/LF'de kesiliyor ve section/key tek-satır
+  token olarak doğrulanıyor. Test: SourceXScriptWriteWave222Tests (+3).
 
 ---
 
@@ -229,8 +244,24 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
 ## TIER 5 — Network / Persistence / UI
 
 ### 5.1 Speech / command — 70
-- [ ] GM/ON verb genişliği: script `r_Verb` keytable (data-güdümlü, sınırsız) vs 75
-  hardcoded C# verb. En azından eksik yüksek-değerli verb'leri ekle.
+- [x] GM/ON verb genişliği: script `r_Verb` keytable (data-güdümlü, sınırsız) vs 75
+  hardcoded C# verb. Wave 218: ObjBase **CLICK/MESSAGEUA/MOVENEAR/MOVETO/MSG/USEITEM**
+  (world/sector-safe hareket, gerçek single-click ve item-use köprüleri); Char
+  **DUPE/SKILL/SYSMESSAGELOCEX** (state+skill clone, SkillHandlers hook, 0xCC affix);
+  Item **DROP/UNEQUIP/USEDOOR** (container/equip detach, source pack bounce, locked-door
+  bypass) YAPILDI. Test: SourceXObjBaseVerbWave218Tests (+10) + verb guardrail (3/3).
+  Wave 219: kalan Client **ADD/ADDCHAR/ADDITEM/CLOSEPAPERDOLL/CTAGLIST/GMPAGE/
+  INFORMATION/RESEND/SAVE/SELF/SKILLSELECT/VERSION** route'ları YAPILDI. `ADD*`
+  mevcut target/Create/CreateLoot hattını kullanıyor ve stack amount target cevabına
+  kadar korunuyor; SAVE/GMPAGE CommandHandler'a, SELF aktif target callback'ine,
+  SKILLSELECT normal client skill pipeline'ına delege. Test:
+  SourceXClientVerbWave219Tests (+10) + verb guardrail (3/3). Wave 220: son ObjBase
+  **DAMAGE** route'u YAPILDI — target-only `@GetHit` rewrite/cancel, explicit
+  physical/fire/cold/poison/energy split+resist, attacker kaydı, action/spell interrupt,
+  damage/health paketleri+death engine ve item `@Damage`/durability-break zinciri.
+  Test: SourceXDamageVerbWave220Tests (+4). Wave 217'deki 26 doğrulanmış route borcu
+  **0**; guardrail backlog'u boş. SERV **B/SECURE** zaten interpreter'dan
+  `_BROADCAST`/`_SECUREMODE` handler'larına route ediliyor (yanlış alarm).
 
 ### 5.2 Menu & prompt — 74
 - [ ] `CMenu` paging helper'ları + standart menü builder'ları (ince).

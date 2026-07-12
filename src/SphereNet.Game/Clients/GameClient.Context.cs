@@ -238,7 +238,8 @@ public sealed partial class GameClient : IClientContext
 
     void IClientContext.SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType) => SetPendingTarget(callback, cursorType);
     void IClientContext.ClearPendingTargetState() => ClearPendingTargetState();
-    bool IClientContext.TryAddAtTarget(string token, Point3D targetPos, uint targetSerial) => TryAddAtTarget(token, targetPos, targetSerial);
+    bool IClientContext.TryAddAtTarget(string token, Point3D targetPos, uint targetSerial, ushort amount) =>
+        TryAddAtTarget(token, targetPos, targetSerial, amount);
     bool IClientContext.RemoveTargetedObject(uint uid) => RemoveTargetedObject(uid);
     Item? IClientContext.DuplicateItem(Item src) => DuplicateItem(src);
     void IClientContext.SpawnCageAround(Point3D centre) => SpawnCageAround(centre);

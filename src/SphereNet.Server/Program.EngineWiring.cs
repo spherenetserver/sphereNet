@@ -836,6 +836,13 @@ public static partial class Program
                 if (console is SphereNet.Game.Clients.GameClient gc)
                     gc.HandleDoubleClick(item.Uid.Value);
             };
+            ObjBase.OnScriptSingleClick = (obj, console) =>
+            {
+                if (console is not SphereNet.Game.Clients.GameClient gc)
+                    return false;
+                gc.HandleSingleClick(obj.Uid.Value);
+                return true;
+            };
             _commands.OnScriptParityWarning += (ch, verb, reason) =>
             {
                 _log.LogWarning("Script parity warning: char=0x{Char:X8} cmd={Cmd} reason={Reason}",
@@ -1998,6 +2005,7 @@ public static partial class Program
             _npcAI.OnNpcTickSpellCast = npc => _spellEngine.TickCastTimer(npc);
             var gatheringEngine = new GatheringEngine(_world, _triggerDispatcher);
             _skillHandlers = new SkillHandlers(_world, gatheringEngine);
+            Character.OnScriptSkillUse = (ch, skill) => _skillHandlers.UseSkill(ch, skill);
             _craftingEngine = new CraftingEngine(_world);
             // NOTE: LoadRecipesFromDefs is called AFTER defLoader.LoadAll() populates
             // DefinitionLoader.AllItemDefs — see post-definition-load block below.
@@ -2127,6 +2135,57 @@ public static partial class Program
             // LOCAL.ItemDamageLayer piece).
             CombatEngine.OnHitDamage = ctx =>
                 _triggerDispatcher?.RunHitDamageTriggers(ctx) ?? ctx.Damage;
+
+            // CObjBase DAMAGE is not a weapon swing: fire only the victim's
+            // @GetHit stage, then let CombatEngine apply split/resist and HP.
+            CombatEngine.OnDirectDamage = ctx =>
+            {
+                var locals = new SphereNet.Scripting.Variables.VarMap();
+                locals.SetInt("DamagePercentPhysical", ctx.PhysicalPercent);
+                locals.SetInt("DamagePercentFire", ctx.FirePercent);
+                locals.SetInt("DamagePercentCold", ctx.ColdPercent);
+                locals.SetInt("DamagePercentPoison", ctx.PoisonPercent);
+                locals.SetInt("DamagePercentEnergy", ctx.EnergyPercent);
+                var triggerArgs = new TriggerArgs
+                {
+                    CharSrc = ctx.Source,
+                    N1 = ctx.Damage,
+                    N2 = (int)ctx.DamageType,
+                    Locals = locals
+                };
+                if (_triggerDispatcher?.FireCharTrigger(
+                        ctx.Target, CharTrigger.GetHit, triggerArgs) == TriggerResult.True)
+                {
+                    ctx.Cancelled = true;
+                    return 0;
+                }
+                ctx.PhysicalPercent = (int)locals.GetInt("DamagePercentPhysical");
+                ctx.FirePercent = (int)locals.GetInt("DamagePercentFire");
+                ctx.ColdPercent = (int)locals.GetInt("DamagePercentCold");
+                ctx.PoisonPercent = (int)locals.GetInt("DamagePercentPoison");
+                ctx.EnergyPercent = (int)locals.GetInt("DamagePercentEnergy");
+                return triggerArgs.N1;
+            };
+
+            CombatEngine.OnDirectCharacterDamageApplied = (target, source, damage) =>
+            {
+                _spellEngine?.TryInterruptFromDamage(target, damage);
+                BroadcastNearby(target.Position, 18,
+                    new PacketDamage(target.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue)), 0);
+                BroadcastNearby(target.Position, 18,
+                    new PacketUpdateHealth(target.Uid.Value, target.MaxHits, target.Hits), 0);
+                GameClient.EmitBloodSplat(_world, target);
+
+                if (source != null && source != target && !target.IsPlayer &&
+                    !target.IsDead && !target.FightTarget.IsValid)
+                {
+                    target.FightTarget = source.Uid;
+                    target.NextNpcActionTime = 0;
+                    WakeNpc(target);
+                }
+                if (target.Hits <= 0 && !target.IsDead)
+                    _deathEngine?.ProcessDeath(target, source);
+            };
 
             // AOS on-hit hooks (Source-X Fight_Hit tail, CCharFight.cpp:2270).
             // Leech feedback: Source-X plays 0x44D at the attacker.
@@ -3181,6 +3240,7 @@ public static partial class Program
                 warMode: OnWarMode,
                 doubleClick: OnDoubleClick,
                 singleClick: OnSingleClick,
+                mailMessage: OnMailMessage,
                 itemPickup: OnItemPickup,
                 itemDrop: OnItemDrop,
                 itemEquip: OnItemEquip,

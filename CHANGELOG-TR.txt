@@ -3,6 +3,68 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, besinci batch
+----------------------------------------
+
+EKLENDI - Kalan Source-X verb paritesi (Wave 219-220):
+  - CClient ADD/ADDCHAR/ADDITEM, CLOSEPAPERDOLL, CTAGLIST, GMPAGE, INFORMATION,
+    RESEND, SAVE, SELF, SKILLSELECT ve VERSION verb'leri mevcut target, komut,
+    skill ve network yollarina baglandi. ADD stack miktari target cevabina kadar
+    korunur.
+  - ObjBase DAMAGE; target @GetHit rewrite/cancel, elemental split/resist,
+    attacker/action interrupt, packet/death ve item @Damage/durability zincirini
+    ortak combat hattinda uygular.
+  - Wave 217'de 26 olan dogrulanmis verb-route borcu sifira indi.
+
+EKLENDI - @UserMailBag fire-site (Wave 221):
+  - Legacy 0xBB mail paketi PacketHandler -> NetState -> GameClient hattina
+    eklendi. Trigger alicida, gonderen SRC olacak sekilde ateslenir; RETURN 1
+    bildirimi iptal eder. Protokol ve trigger dokumani guncellendi.
+
+DUZELTILDI - Script/save write-side paritesi (Wave 222):
+  - TextSaveWriter artik Source-X gibi dosya basina tek [EOF] yazar; coklu
+    section export'lari klasik Sphere save bicimiyle uyumludur.
+  - WriteKeyStr davranisina uygun olarak value CR/LF'de kesilir; section ve key
+    tek satir token olarak dogrulanir.
+
+EKLENDI - Typed ve sirali VarMap (Wave 223):
+  - CVarDefMap paritesi icin string/integer native tipleri ayrildi ve
+    case-insensitive sirali storage'a gecildi. TAGAT/save enumerasyonu artik
+    deterministiktir; CopyFrom sayisal tipi korur.
+
+TESTLER:
+  - Wave 219-223 icin 24 regresyon testi eklendi. Tam SphereNet.Tests kosusu:
+    1486 basarili, 0 basarisiz, 0 atlanan.
+
+
+[2026-07-12] - 90-alti parite backlog, dorduncu batch
+----------------------------------------
+
+EKLENDI - Source-X verb implementasyon guardrail'i:
+  - Pinli CObjBase/CChar/CItem/CClient/CServer envanterleri artik SphereNet'in
+    gercek dispatch kaynaklarina karsi denetleniyor; kalitim, client kopruleri,
+    interpreter meta-verb'leri ve SERV resolver birlikte hesaba katiliyor.
+  - Dogrulanmis aciklar explicit borc listesinde; yeni route kaybi veya
+    implement edilip listede unutulan stale verb artik testi kiriyor.
+
+EKLENDI - Obje script verb paritesi (Wave 218):
+  - ObjBase'e CLICK, MESSAGEUA, MOVENEAR, MOVETO, MSG ve USEITEM eklendi. Hareket
+    world/sector placement kullanir; click ve use normal client yollarini oynatir.
+  - Character'a DUPE, SKILL ve SYSMESSAGELOCEX eklendi: temel state/skill clone,
+    canli SkillHandlers koprusu ve 0xCC localized-affix paketi dahil.
+  - Item'a DROP, UNEQUIP ve USEDOOR eklendi: container/equipment detach, cagiran
+    karakterin cantasina bounce ve yetkili kilitli-kapi toggle yolu dahil.
+
+TESTLER:
+  - 10 Wave 218 davranis testi eklendi ve uc envanter guardrail'i guclendirildi.
+    Tam SphereNet.Tests kosusu: 1462 basarili, 0 basarisiz.
+
+NOTLAR:
+  - Dogrulanmis verb-route borcu 26'dan 13'e indi. DAMAGE; combat/death/resist ve
+    item-durability zincirini ortak kullanana kadar ertelendi. On iki client-only
+    yonetim/target verb'i kuyrukta kaldi.
+
+
 [2026-07-12] - 90-alti parite backlog, ucuncu batch
 ----------------------------------------
 

@@ -36,6 +36,12 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.ResolveAccountForChar = null;
         SphereNet.Game.Trade.VendorEngine.World = null;
         SphereNet.Game.Combat.CombatEngine.OnHitDamage = null;
+        SphereNet.Game.Combat.CombatEngine.OnDirectDamage = null;
+        SphereNet.Game.Combat.CombatEngine.OnDirectCharacterDamageApplied = null;
+        SphereNet.Game.Combat.CombatEngine.OnItemDamaged = null;
+        SphereNet.Game.Combat.CombatEngine.OnItemBroken = null;
+        SphereNet.Game.Combat.CombatEngine.BreakOnZeroHits = true;
+        SphereNet.Game.Combat.CombatEngine.DefaultHits = 50;
         SphereNet.Game.Combat.CombatEngine.OnHitParry = null;
         SphereNet.Game.Objects.Items.Item.RedeedHouse = null;
         SphereNet.Game.Objects.Items.Item.RedeedShip = null;
@@ -86,6 +92,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Items.Item.OnScriptDClick = null;
         SphereNet.Game.Scripting.ScriptFileHandle.Diagnostic = null;
         SphereNet.Game.Objects.ObjBase.OnScriptTrigger = null;
+        SphereNet.Game.Objects.ObjBase.OnScriptSingleClick = null;
         SphereNet.Game.World.Regions.Region.OnAllClients = null;
         SphereNet.Game.World.Regions.Room.OnAllClients = null;
         SphereNet.Game.Movement.WalkCheck.ResolveCustomDesign = null;
@@ -93,6 +100,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnEnvironChange = null;
         SphereNet.Game.Objects.Characters.Character.OnSkillUseQuick = null;
         SphereNet.Game.Objects.Characters.Character.OnSkillUseQuickDetailed = null;
+        SphereNet.Game.Objects.Characters.Character.OnScriptSkillUse = null;
         SphereNet.Game.Objects.Characters.Character.OnDamageActionInterrupt = null;
         SphereNet.Game.Objects.Characters.Character.ActiveSkillAborted = null;
         SphereNet.Game.Objects.Characters.Character.OnNpcSeeNewPlayer = null;

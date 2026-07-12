@@ -74,7 +74,8 @@ public sealed class ClientTargetingHandler
     private void SysMessage(string text) => _client.SysMessage(text);
     private void Resync() => _client.Resync();
     private void BroadcastDrawObject(Character ch) => _client.BroadcastDrawObject(ch);
-    private bool TryAddAtTarget(string token, Point3D targetPos, uint targetSerial = 0) => _client.TryAddAtTarget(token, targetPos, targetSerial);
+    private bool TryAddAtTarget(string token, Point3D targetPos, uint targetSerial = 0, ushort amount = 1) =>
+        _client.TryAddAtTarget(token, targetPos, targetSerial, amount);
     private bool RemoveTargetedObject(uint uid) => _client.RemoveTargetedObject(uid);
     private void OpenInspectPropDialog(ObjBase obj, int requestedPage) => _client.OpenInspectPropDialog(obj, requestedPage);
     private Item? DuplicateItem(Item src) => _client.DuplicateItem(src);
@@ -227,7 +228,9 @@ public sealed class ClientTargetingHandler
         if (!string.IsNullOrWhiteSpace(Targets.AddToken))
         {
             string addToken = Targets.AddToken;
+            ushort addAmount = Targets.AddAmount;
             Targets.AddToken = null;
+            Targets.AddAmount = 1;
 
             Point3D targetPos = new Point3D(x, y, z, _character.MapIndex);
             uint targetSerial = serial;
@@ -238,7 +241,7 @@ public sealed class ClientTargetingHandler
                     targetPos = obj.Position;
             }
 
-            if (!TryAddAtTarget(addToken, targetPos, targetSerial))
+            if (!TryAddAtTarget(addToken, targetPos, targetSerial, addAmount))
                 SysMessage(ServerMessages.GetFormatted("gm_unknown_add", addToken));
             return;
         }

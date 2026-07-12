@@ -190,7 +190,7 @@ internal interface IClientContext : ITextConsole
     // --- targeting ---
     void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1);
     void ClearPendingTargetState();
-    bool TryAddAtTarget(string token, Point3D targetPos, uint targetSerial = 0);
+    bool TryAddAtTarget(string token, Point3D targetPos, uint targetSerial = 0, ushort amount = 1);
     bool RemoveTargetedObject(uint uid);
     Item? DuplicateItem(Item src);
     void SpawnCageAround(Point3D centre);

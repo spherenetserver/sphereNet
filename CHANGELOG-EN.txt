@@ -4,6 +4,67 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, fifth batch
+----------------------------------------
+
+ADDED - Remaining Source-X verb parity (Waves 219-220):
+  - CClient ADD/ADDCHAR/ADDITEM, CLOSEPAPERDOLL, CTAGLIST, GMPAGE, INFORMATION,
+    RESEND, SAVE, SELF, SKILLSELECT and VERSION now reuse the existing target,
+    command, skill and network paths. ADD stack amounts survive target response.
+  - ObjBase DAMAGE shares the combat pipeline for target @GetHit rewrite/veto,
+    elemental split/resist, attacker/action interruption, packets/death, and
+    item @Damage/durability handling.
+  - The verified verb-route debt that started at 26 in Wave 217 is now zero.
+
+ADDED - @UserMailBag fire site (Wave 221):
+  - Added the legacy 0xBB mail packet through PacketHandler -> NetState ->
+    GameClient. The trigger fires on the recipient with the sender as SRC;
+    RETURN 1 suppresses the notification. Protocol and trigger docs were synced.
+
+FIXED - Script/save write-side parity (Wave 222):
+  - TextSaveWriter now emits one file-level [EOF] like Source-X, making
+    multi-section exports compatible with the classic Sphere save format.
+  - Values are truncated at CR/LF like WriteKeyStr; section and property keys
+    are validated as single-line tokens.
+
+ADDED - Typed, sorted VarMap (Wave 223):
+  - CVarDefMap parity now keeps native string/integer types in a
+    case-insensitive sorted store. TAGAT/save enumeration is deterministic and
+    CopyFrom preserves numeric types.
+
+TESTS:
+  - Added 24 Wave 219-223 regression tests. Full SphereNet.Tests run:
+    1486 passed, 0 failed, 0 skipped.
+
+
+[2026-07-12] - Sub-90 parity backlog, fourth batch
+----------------------------------------
+
+ADDED - Source-X verb implementation guardrail:
+  - The pinned CObjBase/CChar/CItem/CClient/CServer inventories are now checked
+    against SphereNet's real dispatch sources, including inheritance, client
+    bridges, interpreter meta-verbs and the SERV resolver.
+  - Verified gaps live in an explicit debt list; a newly missing route or an
+    implemented verb left stale in that list now fails the test.
+
+ADDED - Object script verb parity (Wave 218):
+  - ObjBase gains CLICK, MESSAGEUA, MOVENEAR, MOVETO, MSG and USEITEM. Movement
+    uses world/sector placement; click and use replay the normal client paths.
+  - Character gains DUPE, SKILL and SYSMESSAGELOCEX, including core state/skill
+    cloning, the live SkillHandlers bridge and the 0xCC localized-affix packet.
+  - Item gains DROP, UNEQUIP and USEDOOR, including container/equipment detach,
+    bounce to the invoking character's pack and privileged locked-door toggling.
+
+TESTS:
+  - Added 10 Wave 218 behavior tests and strengthened the three inventory
+    guardrails. Full SphereNet.Tests run: 1462 passed, 0 failed.
+
+NOTES:
+  - The verified verb-route debt fell from 26 to 13. DAMAGE remains deferred
+    until it can share the combat/death/resist and item-durability pipeline;
+    twelve client-only management/target verbs remain queued.
+
+
 [2026-07-12] - Sub-90 parity backlog, third batch
 ----------------------------------------
 

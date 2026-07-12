@@ -99,7 +99,7 @@ public sealed partial class GameClient
         _netState.Send(new PacketTarget(1, (uint)Random.Shared.Next(1, int.MaxValue)));
     }
 
-    public void BeginAddTarget(string addToken)
+    public void BeginAddTarget(string addToken, ushort amount = 1)
     {
         if (_character == null)
             return;
@@ -108,6 +108,7 @@ public sealed partial class GameClient
 
         ClearPendingTargetState();
         Targets.AddToken = addToken.Trim();
+        Targets.AddAmount = Math.Max((ushort)1, amount);
         Targets.CursorActive = true;
         _netState.Send(new PacketTarget(1, (uint)Random.Shared.Next(1, int.MaxValue)));
     }
@@ -1286,7 +1287,7 @@ public sealed partial class GameClient
         return false;
     }
 
-    internal bool TryAddAtTarget(string token, Point3D targetPos, uint targetSerial = 0)
+    internal bool TryAddAtTarget(string token, Point3D targetPos, uint targetSerial = 0, ushort amount = 1)
     {
         if (_character == null || _commands?.Resources == null)
             return false;
@@ -1313,6 +1314,7 @@ public sealed partial class GameClient
                 var item = _world.CreateItem();
                 item.BaseId = dispId;
                 item.Name = cleaned;
+                item.Amount = Math.Max((ushort)1, amount);
 
                 var namedDef = DefinitionLoader.GetItemDef(rid.Index);
                 if (namedDef != null)
@@ -1367,6 +1369,7 @@ public sealed partial class GameClient
             var item = _world.CreateItem();
             item.BaseId = idHex;
             item.Name = $"Item_{idHex:X}";
+            item.Amount = Math.Max((ushort)1, amount);
             PlaceAddedItem(item, targetPos, targetSerial);
             SysMessage(ServerMessages.GetFormatted("gm_item_created_hex", $"{idHex:X}", targetPos));
             return true;

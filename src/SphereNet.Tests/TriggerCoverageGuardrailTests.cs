@@ -123,8 +123,8 @@ public class TriggerCoverageGuardrailTests
         // seeded and read back through TriggerArgs.Locals, RETURN 1 cures).
     };
 
-    private static readonly HashSet<string> CharNotFiredP2 = new()
-    {
+    private static readonly HashSet<string> CharNotFiredP2 =
+    [
         // Wired (now fired): HouseDesignCommit / HouseDesignExit
         // (GameClient.HandleEncodedCommand — 0xD7 Commit and Close paths);
         // UserKRToolbar (0xBF 0x24), UserVirtue (0xBF 0x2C virtue invoke);
@@ -136,10 +136,9 @@ public class TriggerCoverageGuardrailTests
         // Wired (now fired): UserSpecialMove (0xD7 sub 0x19 combat ability,
         // N1 = ability index); NPCLostTeleport (severely lost NPC teleports
         // home from the serial ApplyDecision phase, RETURN 1 cancels).
-        // Still deferred:
-        //   UserMailBag — no carrier packet in the supported protocol set.
-        "UserMailBag",
-    };
+        // Wired (now fired): UserMailBag (legacy 0xBB carrier; recipient trigger,
+        // sender as SRC, RETURN 1 suppresses delivery notification).
+    ];
 
     private static readonly HashSet<string> CharNotFired =
         new(CharNotFiredP0.Concat(CharNotFiredP1).Concat(CharNotFiredP2));

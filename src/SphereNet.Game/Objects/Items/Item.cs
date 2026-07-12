@@ -3,6 +3,7 @@ using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
 using SphereNet.Game.Components;
+using SphereNet.Game.Clients;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Housing;
 using SphereNet.Game.Objects.Characters;
@@ -1774,6 +1775,58 @@ public class Item : ObjBase
                         world.PlaceItemWithDecay(this, owner.Position);
                 }
                 return true;
+            }
+
+            // Source-X CIV_DROP: detach the item from its current container or
+            // equipment slot and place it at the top-level owner's position.
+            case "DROP":
+            {
+                var world = ResolveWorld?.Invoke();
+                if (world == null) return false;
+                Point3D dropPoint = GetTopLevelPosition();
+                return world.PlaceItem(this, dropPoint);
+            }
+
+            // Source-X CIV_UNEQUIP: bounce this item into the invoking
+            // character's backpack, regardless of who currently wears it.
+            case "UNEQUIP":
+            {
+                var sourceChar = (source as IClientContext)?.Character;
+                var world = ResolveWorld?.Invoke();
+                if (sourceChar == null || world == null)
+                    return false;
+
+                if (ContainedIn.IsValid && world.FindObject(ContainedIn) is Character wearer &&
+                    IsEquipped && wearer.GetEquippedItem(EquipLayer) == this)
+                    wearer.Unequip(EquipLayer);
+                else if (ContainedIn.IsValid && world.FindObject(ContainedIn) is Item parent)
+                    parent.RemoveItem(this);
+
+                IsEquipped = false;
+                if (sourceChar.Backpack != null && sourceChar.Backpack.TryAddItem(this))
+                    return true;
+                return world.PlaceItemWithDecay(this, sourceChar.Position);
+            }
+
+            // Source-X CIV_USEDOOR bypasses key/lock checks and directly
+            // toggles the door state. It is intentionally distinct from USE.
+            case "USEDOOR":
+            {
+                var world = ResolveWorld?.Invoke();
+                if (!DoorHelper.IsDoorItem(this, world?.MapData))
+                    return false;
+
+                int doorDir = DoorHelper.GetDoorDir(DispIdFull);
+                bool isOpen = doorDir >= 0
+                    ? (doorDir & 1) != 0
+                    : TryGetTag("DOOR_OPEN", out string? open) && open == "1";
+                bool changed = isOpen ? CloseDoor() : DoorHelper.TryOpenDoorState(this, ignoreLock: true);
+                if (changed)
+                {
+                    MarkDirty((DirtyFlag)0xFFFFFFFF);
+                    OnVisualUpdate?.Invoke(this);
+                }
+                return changed;
             }
 
             // Source-X CIV_DECAY: arm (or re-arm) the decay timer — args are

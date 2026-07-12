@@ -151,7 +151,12 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   GM +5 ve DEX<80 erozyonuyla port edildi. Başarılı SE weapon parry Bushido gain
   dener; Parrying attempt difficulty artık hesaplanan chance'dır. Test:
   SourceXBushidoParryWave227Tests (+5).
-- [ ] PARRYERA_ARSCALING shield-AR + LAYER_SPELL_Protection AR (cpp:529-555).
+- [x] **PARRYERA_ARSCALING shield-AR + LAYER_SPELL_Protection AR** — YAPILDI
+  (Wave 228). Shield AR legacy modda hands bölgesinin %7 coverage'ına katılır;
+  AR-scaling bitinde `min(baseAR/2, (baseParry*baseAR)/2000+1)` ve %100 coverage
+  uygulanır. Protection/Arch Protection spell-memory effect'i artık geçici AR ekler,
+  ortak layer'da birbirini yeniler ve expiry/save-reapply yaşam döngüsünde geri alınır.
+  Test: SourceXParryArmorScalingWave228Tests (+8).
 - [ ] Horrific-Beast / gargoyle-berserk hasar amplifier (cpp:1223-1252).
 
 ### 2.6 Crafting & gathering — 86

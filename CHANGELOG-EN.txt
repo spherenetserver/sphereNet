@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, ninth batch
+----------------------------------------
+
+ADDED - Shield AR scaling and Protection AR parity (Wave 228):
+  - With PARRYERA_ARSCALING enabled, shield AR scales with base Parrying, is
+    capped at half the shield's base AR and applies at 100 percent coverage.
+  - With scaling disabled, shield AR retains Source-X's legacy 7 percent hands
+    coverage; non-shield two-handed items are excluded.
+  - Protection and Arch Protection effect strength now applies as temporary AR;
+    they refresh their shared spell layer and revert on expiry/save-reapply.
+
+TESTS:
+  - Added 8 Wave 228 regression tests. Full SphereNet.Tests run:
+    1511 passed, 0 failed, 0 skipped.
+
+
 [2026-07-12] - Sub-90 parity backlog, eighth batch
 ----------------------------------------
 

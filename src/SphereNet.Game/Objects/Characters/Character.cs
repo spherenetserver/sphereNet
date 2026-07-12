@@ -967,6 +967,10 @@ public partial class Character : ObjBase
     public short ModDex { get => _modDex; set => _modDex = value; }
     public short ModInt { get => _modInt; set => _modInt = value; }
     public short ModAr { get => _modAr; set => _modAr = value; }
+    /// <summary>Transient AR supplied by the active Protection spell-memory.
+    /// Kept separate from MODAR so save-time effect reversion cannot persist
+    /// the temporary bonus as a permanent character modifier.</summary>
+    internal int ProtectionArmor { get; set; }
     public short ModMaxWeight { get => _modMaxWeight; set => _modMaxWeight = value; }
 
     // Appearance originals

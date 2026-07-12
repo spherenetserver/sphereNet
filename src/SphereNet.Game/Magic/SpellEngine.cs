@@ -103,6 +103,7 @@ public sealed class SpellEngine
         public short StrDelta { get; set; }
         public short DexDelta { get; set; }
         public short IntDelta { get; set; }
+        public int ArmorDelta { get; set; }
         public byte OldLightLevel { get; set; }
         public byte NewLightLevel { get; set; }
         public bool LightChanged { get; set; }
@@ -1330,17 +1331,28 @@ public sealed class SpellEngine
                 eff.IntDelta = bonus; target.Int += bonus;
                 break;
             }
-            // Arch Protection is the group-wide blessing; it is flagged Bless and
-            // routes here, so it applies the same all-stat ward per target.
             case SpellType.Bless:
-            case SpellType.ArchProtection:
             {
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
                 eff.StrDelta = bonus; eff.DexDelta = bonus; eff.IntDelta = bonus;
                 target.Str += bonus; target.Dex += bonus; target.Int += bonus;
                 break;
             }
+            case SpellType.Protection:
+            case SpellType.ArchProtection:
+                ApplyProtectionWard(caster, target, def, effect);
+                break;
         }
+    }
+
+    private void ApplyProtectionWard(Character caster, Character target, SpellDef def, int effect)
+    {
+        var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+        eff.ArmorDelta = Math.Max(0, effect);
+        target.ProtectionArmor = (int)Math.Min(
+            int.MaxValue, (long)target.ProtectionArmor + eff.ArmorDelta);
+        eff.AppliedFlag = StatFlag.ArcherCanMove;
+        target.SetStatFlag(StatFlag.ArcherCanMove);
     }
 
     private void ApplyCurse(Character caster, Character target, SpellDef def, int effect)
@@ -1689,14 +1701,11 @@ public sealed class SpellEngine
                 break;
             }
             case SpellType.Protection:
+            case SpellType.ArchProtection:
             {
-                // ArcherCanMove bit is reused as a Protection marker — no
-                // dedicated StatFlag.Protection exists yet. CombatEngine
-                // checks IsStatFlag(ArcherCanMove) to reduce cast-interrupt
-                // chance; documented here so the flag reuse is explicit.
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                eff.AppliedFlag = StatFlag.ArcherCanMove;
-                target.SetStatFlag(StatFlag.ArcherCanMove);
+                // Non-Bless custom spell definitions still use the same
+                // LAYER_SPELL_Protection-equivalent ward path.
+                ApplyProtectionWard(caster, target, def, effect);
                 break;
             }
             case SpellType.Incognito:
@@ -1798,7 +1807,9 @@ public sealed class SpellEngine
         for (int i = 0; i < _activeEffects.Count; i++)
         {
             var existing = _activeEffects[i];
-            if (existing.Target == target && existing.Spell == spell)
+            if (existing.Target == target &&
+                (existing.Spell == spell ||
+                 (IsProtectionSpell(existing.Spell) && IsProtectionSpell(spell))))
             {
                 RevertDeltas(existing);
                 _activeEffects.RemoveAt(i);
@@ -1904,6 +1915,8 @@ public sealed class SpellEngine
         if (eff.StrDelta != 0) t.Str -= eff.StrDelta;
         if (eff.DexDelta != 0) t.Dex -= eff.DexDelta;
         if (eff.IntDelta != 0) t.Int -= eff.IntDelta;
+        if (eff.ArmorDelta != 0)
+            t.ProtectionArmor = Math.Max(0, t.ProtectionArmor - eff.ArmorDelta);
         if (eff.AppliedFlag != StatFlag.None) t.ClearStatFlag(eff.AppliedFlag);
         if (eff.NameChanged && eff.OldName != null)
         {
@@ -1930,6 +1943,9 @@ public sealed class SpellEngine
         if (eff.StrDelta != 0) t.Str += eff.StrDelta;
         if (eff.DexDelta != 0) t.Dex += eff.DexDelta;
         if (eff.IntDelta != 0) t.Int += eff.IntDelta;
+        if (eff.ArmorDelta != 0)
+            t.ProtectionArmor = (int)Math.Min(
+                int.MaxValue, (long)t.ProtectionArmor + eff.ArmorDelta);
         if (eff.AppliedFlag != StatFlag.None) t.SetStatFlag(eff.AppliedFlag);
         if (eff.NameChanged && eff.NewName != null)
         {
@@ -2100,14 +2116,15 @@ public sealed class SpellEngine
             eff.BodyChanged ? "1" : "0",
             EncodeEffectString(eff.OldName),
             EncodeEffectString(eff.NewName),
-            eff.NameChanged ? "1" : "0");
+            eff.NameChanged ? "1" : "0",
+            eff.ArmorDelta.ToString(CultureInfo.InvariantCulture));
     }
 
     private static bool TryDeserializeEffect(Character target, string record, long now, out ActiveSpellEffect eff)
     {
         eff = null!;
         var parts = record.Split('|');
-        if (parts.Length != 16)
+        if (parts.Length is not (16 or 17))
             return false;
 
         if (!int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int version) ||
@@ -2144,6 +2161,10 @@ public sealed class SpellEngine
             return false;
         if (!TryDecodeEffectString(parts[14], out string? newName))
             return false;
+        int armorDelta = 0;
+        if (parts.Length == 17 &&
+            !int.TryParse(parts[16], NumberStyles.Integer, CultureInfo.InvariantCulture, out armorDelta))
+            return false;
 
         long expireTick = remainingMs > long.MaxValue - now ? long.MaxValue : now + remainingMs;
         eff = new ActiveSpellEffect
@@ -2154,6 +2175,7 @@ public sealed class SpellEngine
             StrDelta = strDelta,
             DexDelta = dexDelta,
             IntDelta = intDelta,
+            ArmorDelta = Math.Max(0, armorDelta),
             OldLightLevel = oldLight,
             NewLightLevel = newLight,
             LightChanged = parts[8] == "1",
@@ -2167,6 +2189,9 @@ public sealed class SpellEngine
         };
         return true;
     }
+
+    private static bool IsProtectionSpell(SpellType spell) =>
+        spell is SpellType.Protection or SpellType.ArchProtection;
 
     private static string EncodeEffectString(string? value)
     {

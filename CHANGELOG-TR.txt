@@ -3,6 +3,22 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, dokuzuncu batch
+----------------------------------------
+
+EKLENDI - Shield AR scaling ve Protection AR paritesi (Wave 228):
+  - PARRYERA_ARSCALING aktifken shield AR, base Parrying ile ölçeklenir, shield
+    base AR'inin yarısında cap'lenir ve yüzde 100 coverage ile uygulanır.
+  - Scaling kapalıyken shield AR Source-X'teki legacy hands bölgesinin yüzde 7
+    coverage davranışını korur; non-shield two-handed item'lar hesaba katılmaz.
+  - Protection ve Arch Protection effect gücü artık geçici AR olarak uygulanır;
+    ortak spell layer'ında birbirini yeniler ve expiry/save-reapply ile geri alınır.
+
+TESTLER:
+  - 8 Wave 228 regresyon testi eklendi. Tam SphereNet.Tests kosusu:
+    1511 basarili, 0 basarisiz, 0 atlanan.
+
+
 [2026-07-12] - 90-alti parite backlog, sekizinci batch
 ----------------------------------------
 

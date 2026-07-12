@@ -502,6 +502,11 @@ public static class CombatEngine
     public static int CalcArmorDefense(Character defender)
     {
         bool stack = (Character.CombatFlags & (int)CombatFlags.StackArmor) != 0;
+        bool scaleShield = (Character.CombatParryingEra & (int)ParryEraFlags.ArmorScaling) != 0;
+        Item? shield = defender.GetEquippedItem(Layer.TwoHanded);
+        int shieldDefense = shield?.ItemType == ItemType.Shield
+            ? Math.Max(0, shield.GetArmorDefense())
+            : 0;
         long total = 0;
         foreach (var (region, coverage) in _armorCoverage)
         {
@@ -515,10 +520,24 @@ public static class CombatEngine
                     regionAr = stack ? regionAr + def : Math.Max(regionAr, def);
                 }
             }
+            // Without PARRYERA_ARSCALING Source-X places shield AR in the
+            // hands zone, so it contributes the legacy flat 7% coverage and
+            // competes/stacks with gloves exactly like another hands piece.
+            if (region == ArmorHitRegion.Hands && shieldDefense > 0 && !scaleShield)
+                regionAr = stack ? regionAr + shieldDefense : Math.Max(regionAr, shieldDefense);
             total += coverage * regionAr;
         }
 
-        long rawAr = total / 100 + defender.ModAr;
+        if (shieldDefense > 0 && scaleShield)
+        {
+            // Source-X PARRYERA_ARSCALING: ((base Parry * shield AR) / 2000) + 1,
+            // capped at half of the shield's base AR, with 100% body coverage.
+            int parrying = defender.GetSkill(SkillType.Parrying);
+            long skillScaled = ((long)parrying * shieldDefense / 2000) + 1;
+            total += 100L * Math.Min(shieldDefense / 2L, skillScaled);
+        }
+
+        long rawAr = total / 100 + defender.ModAr + defender.ProtectionArmor;
         int ar = (int)Math.Clamp(rawAr, 0L, int.MaxValue);
 
         // Discordance temporarily lowers the target's defenses.

@@ -433,6 +433,15 @@ public static class ActiveSkillEngine
             return false;
         }
 
+        // Source-X CItemCorpse::IsCorpseResurrectable: a corpse tucked inside a
+        // container cannot be resurrected over — it must be a top-level ground
+        // object. Reject up front, before a bandage is spent or the skill rolled.
+        if (selectedCorpse?.ItemType == ItemType.Corpse && selectedCorpse.ContainedIn.IsValid)
+        {
+            sink.SysMessage(ServerMessages.Get(Msg.HealingCorpseg));
+            return false;
+        }
+
         Point3D healAnchor = selectedCorpse?.ItemType == ItemType.Corpse
             ? selectedCorpse.Position
             : target.Position;
@@ -507,14 +516,6 @@ public static class ActiveSkillEngine
                 : FindCorpseFor(sink.World, target);
             if (corpse != null)
             {
-                // Source-X CItemCorpse::IsCorpseResurrectable: a corpse tucked
-                // inside a container cannot be resurrected over — it must be a
-                // top-level object on the ground.
-                if (corpse.ContainedIn.IsValid)
-                {
-                    sink.SysMessage(ServerMessages.Get(Msg.HealingCorpseg));
-                    return false;
-                }
                 var corpsePos = new Point3D(corpse.X, corpse.Y, corpse.Z, corpse.MapIndex);
                 if (!CanReachPoint(ch, corpsePos, sink.World, 3, requireLos: false))
                 {

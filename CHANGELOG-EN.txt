@@ -4,6 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, twenty-fourth batch
+----------------------------------------
+
+FIXED - Ship fast-mode speed scaling (Wave 243):
+  - Continuous ("normal") sailing now advances twice as fast as one-tile
+    steering, matching Source-X CCMultiMovable::SetNextMove which halves the
+    tick interval in the fast speed mode. The ship speed mode was previously
+    dead state (never set from steering input, never read in the timing path),
+    so normal sailing ran at the slow rate. Tiles-per-tick was already correct.
+
+FIXED - Pet with a loaded pack can no longer be stabled (Wave 243):
+  - A pet carrying items in its backpack is refused at the stablemaster
+    (matching Source-X), preventing the carried items from being lost with the
+    stored snapshot. The owner must empty the pet's pack first.
+
+ADDED - Pre-AOS wrestling special moves (Wave 243):
+  - 0xBF 0x09 (disarm) and 0x0A (paralyzing blow) now fire the @UserSpecialMove
+    trigger with the ability id, the same sink as the AOS special-move packet
+    (0xD7 0x19).
+
 [2026-07-12] - Sub-90 parity backlog, twenty-third batch
 ----------------------------------------
 

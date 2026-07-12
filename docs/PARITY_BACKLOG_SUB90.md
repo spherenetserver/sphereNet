@@ -267,7 +267,16 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   `MULTICREATE` no-op verb (Source-X stub). Test: ChampionSystemTests (+3).
 
 ### 3.5 Pet / taming / stable — 86
-- [ ] Stable native container serialization (`LAYER_STABLE`), port custom TAG.
+- [~] Stable native container serialization (`LAYER_STABLE`) — TAG modeli ZATEN
+  FONKSİYONEL EŞDEĞER (triage Wave 243): pet'ler save/load'ı geçiyor, owner doğru,
+  limitler uygulanıyor (VendorStableParityTests + GameSystemTests kanıtlı). Native
+  container port'u sadece yapısal sadakat, davranışsal fayda yok → düşük değer,
+  YAPILMADI. GERÇEK küçük boşluk KAPANDI (Wave 243): Source-X `CClientTarg.cpp`
+  paketi boş olmayan peti stable'a almayı reddeder (item'lar snapshot'la kaybolurdu);
+  `StableEngine.StablePet` artık `pet.Backpack.ContentCount > 0` ise reddediyor.
+  Test: VendorStableParityTests.StablePet_RejectsPetWithNonEmptyPack. Kalan minor
+  (ertelendi, düşük değer): limit formülü (base 5 + sum/600 vs Source-X eşik tablosu),
+  claim-all vs claim-one, tam WorldSaver round-trip testi.
 - [ ] Pet ekonomi sub-komutları (pet-sells-loot buy/sell/sample) mesaj-only.
 
 ### 3.6 Vendor / trade — 87
@@ -388,7 +397,18 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   genel eksiğiyle birlikte ele alınmalı.
 
 ### 4.8 Ships — 85 (T0.1 dışındaki kalanlar)
-- [ ] Multi-tick hız ölçekleme belirsiz — doğrula.
+- [x] Multi-tick hız ölçekleme — YAPILDI (Wave 243). Source-X `CCMultiMovable::
+  SetNextMove` (CCMultiMovable.cpp:119/124): slow (one-tile) mod tam period'da,
+  continuous ("normal") sailing fast modda **interval'i yarıya indirir** →
+  sürekli yelken tık-tık'tan 2× hızlı. SphereNet `SpeedMode` ölü state'ti (hiç
+  set/read edilmiyordu) ve tüm modlar düz `SpeedPeriod` kullanıyordu → normal
+  sailing slow ile aynı hızdaydı. Fix: `ShipEngine.SetMoveDir` moveType==Normal→
+  Fast / OneTile→Slow set eder; ortak `GetMoveDelay` (Slow→period, else→period/2)
+  hem SetMoveDir hem OnShipTick'te. Tiles-per-tick zaten doğruydu (dokunulmadı).
+  ShipMovementType enum'u zaten Source-X SMT_* ile hizalı (Stop/OneTile=SLOW/
+  Normal). Test: SourceXShipSpeedWave243Tests (+2). NOT: SHIPSPEED script birim
+  dönüşümü (Source-X tenths vs SphereNet ham ms) ayrı — ship .scp değerleri
+  doğrulanmadan dokunulmadı.
 
 ---
 
@@ -418,9 +438,27 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
 - [ ] `CMenu` paging helper'ları + standart menü builder'ları (ince).
 
 ### 5.3 Incoming packet — 78
-- [ ] 0xBF/0xD7 extended subcommand: 14-girişlik allow-list
-  (`ExtendedCommandRegistry.cs:12-27`) genişlet.
-- [ ] BandageMacro, Equip/UnEquipItemMacro, GargoyleFly, WrestleDisarm/Stun.
+- [~] 0xBF/0xD7 extended subcommand allow-list — KISMEN (Wave 243). WrestleDisarm/
+  Stun eklendi (aşağı). GERİ KALAN = **0xBF/0xD7 SUBCOMMAND ÇAKIŞMA DÜZELTMESİ**
+  (iki bağımsız triage doğruladı + Source-X sphereproto.h ile teyit): SphereNet 3
+  subcommand'ı YANLIŞ anlama atamış (RunUO-vari harita, Source-X değil):
+  `0xBF 0x1C` = NewSpellSelect ama viewport-size'a; `0xBF 0x2C` = BandageMacro ama
+  virtue-invoke'a; `0xBF 0x32` = GargoyleFly ama quest-button'a. Ayrıca Guild/Quest
+  button GERÇEKTE `0xD7 0x28`/`0xD7 0x32` (EXTAOS uzayı, receive.cpp:4186/4161) —
+  0xBF'te yanlış transport'ta, gerçek client'tan hiç ateşlenmiyor. Virtue invoke
+  ayrı top-level paket `0xF4` (EXTCMD_INVOKE_VIRTUE, sphereproto.h:376). Bu bir
+  ROUTING correctness bug'ı ama repointing GameSystemTests:3505-3540'ı (0xBF 0x28/
+  0x32/0x2C firing'i kilitliyor) kırar + 0xD7 handler'ları + virtue→0xF4 gerektirir
+  → kendi dedicated wave'ine ERTELENDİ (çok parçalı, dikkatli regresyon gerekli).
+- [x] WrestleDisarm/Stun — YAPILDI (Wave 243): `0xBF 0x09`/`0x0A` (Source-X
+  EXTDATA_Wrestle_DisArm/Stun, boş slot'lardı) eklendi → `Event_CombatAbilitySelect`
+  gibi `@UserSpecialMove` trigger'ını N1=0x05 (disarm)/0x0B (paralyzing blow) ile
+  ateşler (0xD7 0x19 special-move ile aynı sink). ExtendedCommandRegistry'ye
+  0x0009/0x000A eklendi (drift guard). Test:
+  GameSystemTests.GameClient_WrestleMacros_FireSpecialMoveTrigger.
+- [ ] BandageMacro (0xBF 0x2C), GargoyleFly (0xBF 0x32), EquipLastWeapon (0xD7 0x1E)
+  — yukarıdaki çakışma düzeltmesiyle birlikte dedicated wave'de (BandageMacro
+  targeted-use plumbing, EquipLastWeapon last-weapon state gerektirir).
 
 ### 5.4 Outgoing packet — 82
 - [x] **PacketHealthBarStatus (0x17) + PacketHealthBarStatusNew (0x16)** — YAPILDI

@@ -3,6 +3,26 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, yirmi dorduncu batch
+----------------------------------------
+
+DUZELTILDI - Gemi fast-mode hiz olcekleme (Wave 243):
+  - Sürekli ("normal") yelken artik tek-tile manevradan iki kat hizli ilerliyor;
+    Source-X CCMultiMovable::SetNextMove fast modda tick interval'ini yariya
+    indirir. Gemi speed mode'u onceden olu state'ti (manevra girdisinden hic
+    set edilmiyor, timing yolunda hic okunmuyordu), bu yuzden normal yelken yavas
+    hizda kaliyordu. Tiles-per-tick zaten dogruydu.
+
+DUZELTILDI - Paketi dolu pet artik stable'a alinamiyor (Wave 243):
+  - Sirt cantasinda esya tasiyan pet stablemaster tarafindan reddediliyor
+    (Source-X ile uyumlu); tasinana esyalarin snapshot'la kaybolmasi onleniyor.
+    Sahip once pet'in paketini bosaltmali.
+
+EKLENDI - AOS-oncesi wrestling ozel hamleleri (Wave 243):
+  - 0xBF 0x09 (disarm) ve 0x0A (paralyzing blow) artik @UserSpecialMove
+    trigger'ini ability id ile ateşliyor; AOS ozel-hamle paketi (0xD7 0x19) ile
+    ayni sink.
+
 [2026-07-12] - 90-alti parite backlog, yirmi ucuncu batch
 ----------------------------------------
 

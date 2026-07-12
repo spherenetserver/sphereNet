@@ -83,13 +83,14 @@ public sealed class SourceXInvulRezWave242Tests
         ghost.SetStatFlag(StatFlag.Dead);
         ghost.SetStatFlag(StatFlag.War);
 
-        var corpse = new Item
-        {
-            ItemType = ItemType.Corpse,
-            Position = new Point3D(100, 100, 0, 0),
-        };
+        var corpse = world.CreateItem();
+        corpse.ItemType = ItemType.Corpse;
+        corpse.Position = new Point3D(100, 100, 0, 0);
         // Tuck the corpse inside a container — it is no longer a ground object.
-        var box = new Item { ItemType = ItemType.Container, Position = new Point3D(100, 100, 0, 0) };
+        // Both items must be world-registered so the container carries a valid Uid.
+        var box = world.CreateItem();
+        box.ItemType = ItemType.Container;
+        box.Position = new Point3D(100, 100, 0, 0);
         corpse.ContainedIn = box.Uid;
 
         var sink = new StubSink(healer, world);

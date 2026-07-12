@@ -51,6 +51,11 @@ public sealed class StableEngine
         if (owner.MapIndex != pet.MapIndex ||
             owner.Position.GetDistanceTo(pet.Position) > StableTargetRange)
             return false;
+        // Source-X CClientTarg.cpp: a pet carrying anything in its pack can't be
+        // stabled — the owner must empty it first, otherwise the carried items
+        // would be lost with the snapshot.
+        if (pet.Backpack is { ContentCount: > 0 })
+            return false;
 
         var list = GetOwnerStableList(owner);
 

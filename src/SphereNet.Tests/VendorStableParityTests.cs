@@ -71,6 +71,40 @@ public class VendorStableParityTests
         Assert.Equal(0, stable.GetStabledCount(owner));
     }
 
+    // ---- Source-X CClientTarg: a pet carrying items in its pack can't be stabled ----
+
+    [Fact]
+    public void StablePet_RejectsPetWithNonEmptyPack()
+    {
+        var world = CreateWorld();
+        var stable = new StableEngine();
+
+        var owner = world.CreateCharacter();
+        owner.IsPlayer = true;
+        owner.MaxFollower = 5;
+        world.PlaceCharacter(owner, new Point3D(100, 100, 0, 0));
+
+        var pet = world.CreateCharacter();
+        pet.Name = "Packmule";
+        pet.NpcBrain = NpcBrainType.Animal;
+        pet.TryAssignOwnership(owner, owner);
+        world.PlaceCharacter(pet, new Point3D(101, 100, 0, 0));
+
+        var pack = AddPack(world, pet);
+        var loot = world.CreateItem();
+        loot.BaseId = 0x1F03;
+        pack.AddItem(loot);
+
+        // A loaded pack blocks stabling — the items would be lost with the snapshot.
+        Assert.False(stable.StablePet(owner, pet, world));
+        Assert.Equal(0, stable.GetStabledCount(owner));
+
+        // Empty the pack and the same pet stables normally.
+        pack.RemoveItem(loot);
+        Assert.True(stable.StablePet(owner, pet, world));
+        Assert.Equal(1, stable.GetStabledCount(owner));
+    }
+
     // ---- #4: buy price uses the selected stock entry, not the first same-id one ----
 
     [Fact]

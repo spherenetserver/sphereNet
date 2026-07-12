@@ -3540,6 +3540,44 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         Assert.Equal(1, virtueCount);
     }
 
+    [Fact]
+    public void GameClient_WrestleMacros_FireSpecialMoveTrigger()
+    {
+        // Source-X 0xBF 0x09 (disarm) / 0x0A (stun) route through
+        // Event_CombatAbilitySelect → @UserSpecialMove with the ability id
+        // (0x05 disarm / 0x0B paralyzing blow), the same sink as 0xD7 0x19.
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var world = CreateWorld();
+        var accountManager = new AccountManager(loggerFactory);
+        var netState = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = 1502 };
+        SetNetStateInUse(netState, true);
+        var client = new SphereNet.Game.Clients.GameClient(netState, world, accountManager,
+            loggerFactory.CreateLogger<SphereNet.Game.Clients.GameClient>());
+
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
+
+        var dispatcher = new TriggerDispatcher();
+        int disarm = 0, stun = 0;
+        dispatcher.RegisterCharEvent("EVENTSPLAYER", "UserSpecialMove", (_, args) =>
+        {
+            if (args.N1 == 0x05) disarm++;
+            else if (args.N1 == 0x0B) stun++;
+            Assert.Same(player, args.CharSrc);
+            return TriggerResult.Default;
+        });
+
+        client.SetEngines(triggerDispatcher: dispatcher);
+        AttachCharacter(client, player);
+
+        client.HandleExtendedCommand(0x0009, []);
+        client.HandleExtendedCommand(0x000A, []);
+
+        Assert.Equal(1, disarm);
+        Assert.Equal(1, stun);
+    }
+
     // ───── Faz 5: Regression tests for bug fixes ─────
 
     [Fact]

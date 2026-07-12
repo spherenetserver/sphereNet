@@ -2063,6 +2063,8 @@ public sealed class ClientWorldFeaturesHandler
             [0x0005] = static (client, data) => client.HandleExtendedScreenSize(data),
             [0x0006] = static (client, data) => client.HandleExtendedParty(data),
             [0x0007] = static (client, _) => client.FireExtendedButtonTrigger(CharTrigger.UserQuestArrowClick, 0x0007),
+            [0x0009] = static (client, _) => client.HandleWrestleSpecialMove(0x05), // Wrestle Disarm
+            [0x000A] = static (client, _) => client.HandleWrestleSpecialMove(0x0B), // Wrestle Stun (Paralyzing Blow)
             [0x000B] = static (client, data) =>
             {
                 if (data.Length >= 3)
@@ -2185,6 +2187,19 @@ public sealed class ClientWorldFeaturesHandler
 
         _triggerDispatcher?.FireCharTrigger(_character, trigger,
             new TriggerArgs { CharSrc = _character, N1 = subCmd });
+    }
+
+    /// <summary>0xBF 0x09/0x0A — pre-AOS wrestling special moves (disarm/stun).
+    /// Source-X routes both through Event_CombatAbilitySelect, which fires
+    /// @UserSpecialMove with the ability id (0x5 disarm / 0xB paralyzing blow),
+    /// the same sink as the AOS special-move packet (0xD7 0x19).</summary>
+    private void HandleWrestleSpecialMove(int ability)
+    {
+        if (_character == null)
+            return;
+
+        _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserSpecialMove,
+            new TriggerArgs { CharSrc = _character, N1 = ability });
     }
 
     private void HandleExtendedVirtueInvoke(byte[] data)

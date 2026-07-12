@@ -374,9 +374,21 @@ public sealed class ShipEngine
         ship.DirMove = dir;
         ship.MovementType = moveType;
 
-        ship.NextMoveTick = Environment.TickCount64 + ship.SpeedPeriod;
+        // Source-X CCMultiMovable::SetMoveDir (CCMultiMovable.cpp:101): one-tile
+        // steering (SMT_SLOW) keeps the slow speed mode, continuous ("normal")
+        // sailing runs in the fast mode, which halves the tick interval below.
+        ship.SpeedMode = moveType == ShipMovementType.Normal
+            ? ShipSpeedMode.Fast : ShipSpeedMode.Slow;
+
+        ship.NextMoveTick = Environment.TickCount64 + GetMoveDelay(ship);
         return true;
     }
+
+    /// <summary>Source-X CCMultiMovable::SetNextMove (CCMultiMovable.cpp:119/124):
+    /// the slow (one-tile) speed mode runs at the full period; every faster mode
+    /// halves the tick interval so continuous sailing advances twice as fast.</summary>
+    private static long GetMoveDelay(Ship ship)
+        => ship.SpeedMode == ShipSpeedMode.Slow ? ship.SpeedPeriod : ship.SpeedPeriod / 2;
 
     /// <summary>
     /// Move ship in direction by given distance.
@@ -538,7 +550,7 @@ public sealed class ShipEngine
             return;
         }
 
-        ship.NextMoveTick = now + ship.SpeedPeriod;
+        ship.NextMoveTick = now + GetMoveDelay(ship);
     }
 
     /// <summary>Tick all active ships.</summary>

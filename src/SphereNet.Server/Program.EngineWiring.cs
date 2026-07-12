@@ -536,11 +536,7 @@ public static partial class Program
 
                 // @EnvironChange — the perceived light level differs between surface
                 // and dungeon regions (mirrors WeatherEngine.GetLightLevel).
-                byte regionLight = mover.IsDead
-                    ? (byte)0
-                    : newRegion.IsFlag(SphereNet.Core.Enums.RegionFlag.Underground)
-                        ? (byte)28
-                        : _world.GlobalLight;
+                byte regionLight = mover.IsDead ? (byte)0 : _world.GetLightLevel(mover.Position);
                 mover.UpdateEnvironLight(regionLight);
 
                 if (!TryGetClientFor(mover, out var gc)) { _log.LogDebug("[REGION_CHANGE] no GameClient for {Name}", mover.Name); return; }

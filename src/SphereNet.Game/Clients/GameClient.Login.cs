@@ -642,7 +642,7 @@ public sealed partial class GameClient
         SendCharacterStatus(_character);
         SendSkillList();
 
-        _netState.Send(new PacketGlobalLight(_character.IsDead ? (byte)0 : _world.GlobalLight));
+        _netState.Send(new PacketGlobalLight(_character.IsDead ? (byte)0 : _world.GetLightLevel(_character.Position)));
         _netState.Send(new PacketPersonalLight(_character.Uid.Value, _character.LightLevel));
         _netState.Send(new PacketSeason(_character.IsDead
             ? (byte)SeasonType.Desolation
@@ -816,7 +816,7 @@ public sealed partial class GameClient
         SendCharacterStatus(_character);
 
         // 4. Re-send light & season
-        _netState.Send(new PacketGlobalLight(_character.IsDead ? (byte)0 : _world.GlobalLight));
+        _netState.Send(new PacketGlobalLight(_character.IsDead ? (byte)0 : _world.GetLightLevel(_character.Position)));
         _netState.Send(new PacketPersonalLight(_character.Uid.Value, _character.LightLevel));
         _netState.Send(new PacketSeason(_character.IsDead
             ? (byte)SeasonType.Desolation

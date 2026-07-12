@@ -197,9 +197,13 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
 ## TIER 3 — NPC / Dünya / Hareket
 
 ### 3.1 Weather / light / season — 68
-- [ ] **Per-sector moon-phase ışık modeli** — `CSector::GetLightCalc`
-  (`CSector.cpp:679-765`) Trammel+Felucca moon brightness tablosu; port düz
-  time-of-day ramp (`GameWorld.cs:178`).
+- [x] **Per-sector moon-phase ışık modeli** — YAPILDI (Wave 234).
+  `CSector::GetLocalTime/GetLightCalc` modeli port edildi: harita kolonuna göre
+  24 saatlik yerel saat ofseti, 105/840 dakikalık Trammel/Felucca fazları,
+  moonrise/moonset görünürlük pencereleri, iki ayın brightness tabloları, hava ve
+  dungeon ışığı uygulanıyor. Login/resync/rez/season/region/tick ışık paketleri
+  artık karakter konumundaki sektör hesabını kullanıyor. Test:
+  SourceXSectorMoonLightWave234Tests (+18).
 - [ ] **LightFlash** + IsMoonVisible.
 - [ ] **@EnvironChange** (`CTRIG_EnvironChange`) weather/light/season değişiminde
   ateşlenmesi wired değil.

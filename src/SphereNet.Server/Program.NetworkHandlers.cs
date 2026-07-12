@@ -972,7 +972,7 @@ public static partial class Program
             client.Send(new PacketSeason(dead
                 ? (byte)SeasonType.Desolation
                 : (byte)_weatherEngine.CurrentSeason, playSound));
-            client.Send(new PacketGlobalLight(dead ? (byte)0 : _world.GlobalLight));
+            client.Send(new PacketGlobalLight(dead ? (byte)0 : _world.GetLightLevel(client.Character.Position)));
 
             var r = _world.FindRegion(client.Character.Position);
             if (r != null && !string.IsNullOrEmpty(r.Name))

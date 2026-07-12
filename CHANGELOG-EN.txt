@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, fifteenth batch
+----------------------------------------
+
+ADDED - Per-sector moon-phase light model (Wave 234):
+  - Added sector-column local time, the 105/840-minute Trammel/Felucca phases,
+    and Source-X's moonrise/moonset visibility table.
+  - Night light applies both moon brightness tables and cloud cover; dungeons
+    use the configured fixed light level.
+  - Login, resync, resurrection, season, region and tick light packets now send
+    the character's sector light instead of the flat global ramp.
+
+TESTS:
+  - Added 18 Wave 234 regression tests. Full SphereNet.Tests run:
+    1570 passed, 0 failed, 0 skipped.
+
 [2026-07-12] - Sub-90 parity backlog, fourteenth batch
 ----------------------------------------
 

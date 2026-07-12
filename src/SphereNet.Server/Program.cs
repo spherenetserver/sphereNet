@@ -129,7 +129,7 @@ public static partial class Program
 #if WINFORMS
     private static ConsoleForm? _consoleForm;
 #endif
-    private static byte _lastGlobalLight;
+    private static long _lastLightWorldMinute = long.MinValue;
     private static AdminCommandProcessor? _consoleProcessor;
 
     // Region @RegPeriodic/@CliPeriodic firing cadence (~6s at the 50ms tick)
@@ -691,6 +691,9 @@ public static partial class Program
         _world.MaxContainerWeight   = _config.ContainerMaxWeight;
         _world.ToolTipMode       = _config.ToolTipMode;
         _world.ToolTipCache      = _config.ToolTipCache;
+        _world.LightDay          = _config.LightDay;
+        _world.LightNight        = _config.LightNight;
+        _world.DungeonLight      = _config.DungeonLight;
         PacketCharList.AosTooltipsEnabled = _config.ToolTipMode != 0;
         foreach (var mapDef in _config.Maps)
         {

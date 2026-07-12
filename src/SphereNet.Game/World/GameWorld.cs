@@ -170,22 +170,18 @@ public sealed class GameWorld
 
     /// <summary>Current world minute (0-59).</summary>
     public int WorldMinute => (int)(_worldClock % 60);
+    public long WorldClockMinutes => _worldClock;
+
+    public int LightDay { get; set; } = 0;
+    public int LightNight { get; set; } = 25;
+    public int DungeonLight { get; set; } = 27;
 
     /// <summary>Current season. Updated by WeatherEngine.</summary>
     public byte CurrentSeason { get; set; } = 0; // default spring
 
-    /// <summary>Global light level based on time of day (0=bright, 30=dark).</summary>
-    public byte GlobalLight
-    {
-        get
-        {
-            int hour = WorldHour;
-            if (hour >= 6 && hour < 18) return 0;             // daytime
-            if (hour >= 18 && hour < 20) return (byte)((hour - 18) * 10); // dusk
-            if (hour >= 4 && hour < 6) return (byte)((6 - hour) * 10);    // dawn
-            return 25;                                          // night (20-23, 0-3)
-        }
-    }
+    /// <summary>Compatibility light at the map origin. Position-aware callers
+    /// should use <see cref="GetLightLevel"/>.</summary>
+    public byte GlobalLight => GetLightLevel(new Point3D(0, 0, 0, 0));
 
     public GameWorld(ILoggerFactory loggerFactory)
     {
@@ -250,7 +246,19 @@ public sealed class GameWorld
         var grid = new Sector[sectorCols, sectorRows];
         for (int x = 0; x < sectorCols; x++)
             for (int y = 0; y < sectorRows; y++)
-                grid[x, y] = new Sector(x, y, (byte)mapId, sectorCols);
+            {
+                var sector = new Sector(x, y, (byte)mapId, sectorCols)
+                {
+                    GetWorldMinutes = () => _worldClock,
+                    GetWorldTime = () => (WorldHour, WorldMinute),
+                    GetLightSettings = () => (LightDay, LightNight, DungeonLight),
+                };
+                int px = Math.Min(short.MaxValue, x * Sector.SectorSize);
+                int py = Math.Min(short.MaxValue, y * Sector.SectorSize);
+                sector.IsDungeon = () => FindRegion(new Point3D((short)px, (short)py, 0, (byte)mapId))?
+                    .IsFlag(RegionFlag.Underground) == true;
+                grid[x, y] = sector;
+            }
 
         _sectors[mapId] = grid;
         _logger.LogInformation("Map {Id} initialized: {W}x{H} ({Cols}x{Rows} sectors)",
@@ -276,6 +284,18 @@ public sealed class GameWorld
         if (sectorY < 0 || sectorY >= grid.GetLength(1)) return null;
         return grid[sectorX, sectorY];
     }
+
+    /// <summary>Position-aware Source-X sector light.</summary>
+    public byte GetLightLevel(Point3D position, bool quickSet = true)
+    {
+        var sector = GetSector(position);
+        if (sector == null)
+            return (byte)Math.Clamp(LightNight, 0, 30);
+        bool dungeon = FindRegion(position)?.IsFlag(RegionFlag.Underground) == true;
+        return sector.GetLightCalc(quickSet, dungeonOverride: dungeon);
+    }
+
+    internal void SetWorldClockMinutes(long minutes) => _worldClock = Math.Max(0, minutes);
 
     // --- Object creation ---
 

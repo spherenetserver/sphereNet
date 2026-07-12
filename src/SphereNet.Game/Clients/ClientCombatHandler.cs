@@ -1950,7 +1950,7 @@ public sealed class ClientCombatHandler
             resEquipment, _netState.SupportsNewMobileIncoming));
 
         _netState.Send(new PacketSeason((byte)_world.CurrentSeason, playSound: true));
-        _netState.Send(new PacketGlobalLight(_world.GlobalLight));
+        _netState.Send(new PacketGlobalLight(_world.GetLightLevel(_character.Position)));
         if (corpseRestored && ownCorpse != null && _netState.SupportsMapWaypoints)
             _netState.Send(new PacketWaypointRemove(ownCorpse.Uid.Value));
 

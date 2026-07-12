@@ -187,11 +187,7 @@ public sealed class WeatherEngine
     /// </summary>
     public byte GetLightLevel(Point3D pos)
     {
-        var region = _world.FindRegion(pos);
-        if (region != null && region.IsFlag(RegionFlag.Underground))
-            return 28; // dungeon darkness
-
-        return _world.GlobalLight;
+        return _world.GetLightLevel(pos);
     }
 
     /// <summary>

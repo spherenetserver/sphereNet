@@ -3,6 +3,21 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, on besinci batch
+----------------------------------------
+
+EKLENDI - Sektor-bazli ay fazi ve isik modeli (Wave 234):
+  - Sektor X kolonuna gore yerel saat, Trammel/Felucca 105/840 dakikalik ay
+    fazlari ve Source-X moonrise/moonset gorunurluk tablosu eklendi.
+  - Gece isigi iki ayin brightness tablolarini ve bulutlari; dungeon isigi ise
+    yapilandirilmis sabit degeri kullanir.
+  - Login, resync, resurrection, season, region ve tick isik paketleri artik
+    global duz ramp yerine karakterin bulundugu sektor seviyesini gonderir.
+
+TESTLER:
+  - 18 Wave 234 regresyon testi eklendi. Tam SphereNet.Tests kosusu:
+    1570 basarili, 0 basarisiz, 0 atlanan.
+
 [2026-07-12] - 90-alti parite backlog, on dorduncu batch
 ----------------------------------------
 

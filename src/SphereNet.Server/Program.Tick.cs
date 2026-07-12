@@ -872,23 +872,19 @@ public static partial class Program
         CleanupSummonedGuards(now);
         RunDecayCatchup(now);
 
-        byte newLight = _world.GlobalLight;
-        if (newLight != _lastGlobalLight)
+        long lightMinute = _world.WorldClockMinutes;
+        if (lightMinute != _lastLightWorldMinute)
         {
-            _lastGlobalLight = newLight;
+            _lastLightWorldMinute = lightMinute;
             foreach (var client in _clients.Values)
             {
                 if (!client.IsPlaying) continue;
-                // A client standing in an Underground (dungeon) region keeps the
-                // fixed region light it was sent on entry — the surface global
-                // light must not be pushed over it (the player would suddenly see
-                // daylight in a dungeon). They get the surface light again on exit
-                // via the @EnvironChange region-crossing handler.
+                // Recalculate per position: sector longitude, both moon phases,
+                // weather and underground regions can all change perceived light.
                 var ch = client.Character;
-                if (ch != null &&
-                    _world.FindRegion(ch.Position)?.IsFlag(SphereNet.Core.Enums.RegionFlag.Underground) == true)
-                    continue;
-                client.Send(new PacketGlobalLight(ch?.IsDead == true ? (byte)0 : newLight));
+                if (ch == null) continue;
+                byte light = ch.IsDead ? (byte)0 : _world.GetLightLevel(ch.Position);
+                client.Send(new PacketGlobalLight(light));
             }
         }
 

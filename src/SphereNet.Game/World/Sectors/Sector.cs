@@ -31,6 +31,9 @@ public sealed class Sector : IScriptObj
     private short _coldChance = 5;
     private bool _isSleeping;
 
+    private static readonly byte[] TrammelPhaseBrightness = [0, 0, 1, 1, 2, 1, 1, 0];
+    private static readonly byte[] FeluccaPhaseBrightness = [0, 1, 3, 4, 6, 4, 3, 1];
+
     private Dictionary<int, (int Remaining, long RegenTick)>? _resourcePools;
 
     public int SectorX => _x;
@@ -56,6 +59,12 @@ public sealed class Sector : IScriptObj
 
     /// <summary>Callback for world time queries (WorldHour, WorldMinute).</summary>
     public Func<(int Hour, int Minute)>? GetWorldTime { get; set; }
+    /// <summary>Full game-world minute counter used for local time and moon phases.</summary>
+    public Func<long>? GetWorldMinutes { get; set; }
+    /// <summary>Configured surface/dungeon light targets: day, night, dungeon.</summary>
+    public Func<(int Day, int Night, int Dungeon)>? GetLightSettings { get; set; }
+    /// <summary>Whether this sector's representative point is underground.</summary>
+    public Func<bool>? IsDungeon { get; set; }
 
     public Sector(int x, int y, byte mapIndex, int cols)
     {
@@ -88,6 +97,87 @@ public sealed class Sector : IScriptObj
     }
 
     public void RemoveItem(Item item) => _items.Remove(item);
+
+    /// <summary>Source-X CSector::GetLocalTime. A complete 24-hour offset is
+    /// distributed across the map's sector columns.</summary>
+    public int GetLocalTime()
+    {
+        var fallback = GetWorldTime?.Invoke() ?? (12, 0);
+        long worldMinutes = GetWorldMinutes?.Invoke() ?? fallback.Item1 * 60L + fallback.Item2;
+        long local = worldMinutes + (long)_x * 24 * 60 / _cols;
+        int result = (int)(local % (24 * 60));
+        return result < 0 ? result + 24 * 60 : result;
+    }
+
+    /// <summary>Source-X CWorldGameTime::GetMoonPhase.</summary>
+    public static int GetMoonPhase(long worldMinutes, bool felucca)
+    {
+        int period = felucca ? 840 : 105;
+        long cycle = worldMinutes % period;
+        if (cycle < 0) cycle += period;
+        return (int)(cycle * 8 / period);
+    }
+
+    /// <summary>Source-X CSector::IsMoonVisible moonrise/moonset table.</summary>
+    public static bool IsMoonVisible(int phase, int localTime)
+    {
+        localTime %= 24 * 60;
+        if (localTime < 0) localTime += 24 * 60;
+        return phase switch
+        {
+            0 => localTime > 360 && localTime < 1080,
+            1 => localTime > 540 && localTime < 1270,
+            2 => localTime > 720,
+            3 => localTime < 180 || localTime > 900,
+            4 => localTime < 360 || localTime > 1080,
+            5 => localTime < 540 || localTime > 1270,
+            6 => localTime < 720,
+            7 => localTime > 180 && localTime < 900,
+            _ => false,
+        };
+    }
+
+    /// <summary>Source-X CSector::GetLightCalc including local time, clouds and
+    /// the Trammel/Felucca moon brightness tables.</summary>
+    public byte GetLightCalc(bool quickSet = true, bool? dungeonOverride = null)
+    {
+        var settings = GetLightSettings?.Invoke() ?? (0, 25, 27);
+        if ((dungeonOverride ?? IsDungeon?.Invoke()) == true)
+            return (byte)Math.Clamp(settings.Item3, 0, 30);
+
+        int localTime = GetLocalTime();
+        int hour = localTime / 60;
+        bool night = hour < 6 || hour > 20;
+        int target = Math.Clamp(night ? settings.Item2 : settings.Item1, 0, 30);
+
+        if (_weather != 0)
+            target = Math.Min(30, target + (night ? Random.Shared.Next(1, 3) : Random.Shared.Next(1, 5)));
+
+        if (night)
+        {
+            long worldMinutes = GetWorldMinutes?.Invoke() ?? localTime;
+            int trammel = GetMoonPhase(worldMinutes, felucca: false);
+            if (IsMoonVisible(trammel, localTime))
+                target = Math.Max(0, target - TrammelPhaseBrightness[trammel]);
+
+            int felucca = GetMoonPhase(worldMinutes, felucca: true);
+            if (IsMoonVisible(felucca, localTime))
+                target = Math.Max(0, target - FeluccaPhaseBrightness[felucca]);
+        }
+
+        if (quickSet || _light == target)
+            return (byte)target;
+        return _light > target ? (byte)Math.Max(0, _light - 1) : (byte)Math.Min(30, _light + 1);
+    }
+
+    /// <summary>Advance the stored sector light one Source-X transition step.</summary>
+    public bool RefreshLight()
+    {
+        byte next = GetLightCalc(quickSet: false);
+        if (next == _light) return false;
+        _light = next;
+        return true;
+    }
 
     public int GetResourceAmount(int resDefIndex, int amountMax, int regenSeconds)
     {
@@ -248,19 +338,20 @@ public sealed class Sector : IScriptObj
                 return true;
             case "ISDARK":
             {
-                byte effectiveLight = _light > 0 ? _light : GetGlobalLight();
-                value = effectiveLight >= 12 ? "1" : "0";
+                value = (GetLightCalc() > 6) ? "1" : "0";
                 return true;
             }
             case "ISNIGHTTIME":
             {
-                var (hour, _) = GetWorldTime?.Invoke() ?? (12, 0);
-                value = (hour >= 21 || hour < 7) ? "1" : "0";
+                int localTime = GetLocalTime();
+                value = (localTime < 7 * 60 || localTime > 21 * 60) ? "1" : "0";
                 return true;
             }
             case "LOCALTIME":
             {
-                var (hour, minute) = GetWorldTime?.Invoke() ?? (12, 0);
+                int localTime = GetLocalTime();
+                int hour = localTime / 60;
+                int minute = localTime % 60;
                 string period = hour switch
                 {
                     >= 5 and < 7 => "dawn",
@@ -276,8 +367,7 @@ public sealed class Sector : IScriptObj
             }
             case "LOCALTOD":
             {
-                var (hour, minute) = GetWorldTime?.Invoke() ?? (12, 0);
-                value = (hour * 60 + minute).ToString();
+                value = GetLocalTime().ToString();
                 return true;
             }
             default:
@@ -360,12 +450,4 @@ public sealed class Sector : IScriptObj
     public TriggerResult OnTrigger(int triggerType, IScriptObj? source, ITriggerArgs? args)
         => TriggerResult.Default;
 
-    private byte GetGlobalLight()
-    {
-        var (hour, _) = GetWorldTime?.Invoke() ?? (12, 0);
-        if (hour >= 6 && hour < 18) return 0;
-        if (hour >= 18 && hour < 20) return (byte)((hour - 18) * 10);
-        if (hour >= 4 && hour < 6) return (byte)((6 - hour) * 10);
-        return 25;
-    }
 }

@@ -4,6 +4,52 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-11] - Source-X verb long tail completed (48 deferred verbs, backlog now empty)
+----------------------------------------
+
+ADDED - Object verbs (CObjBase surface):
+  - GOAWAKE/GOSLEEP flip the object's tick-sleep state; EFFECTLOCATION sends
+    the location-targeted effect family (bolt -1 normalization included);
+    SAYUA speaks Unicode with color/mode/font/lang from any object.
+  - PROPLIST/BASEPROPLIST/BASETAGLIST diagnostic dumps with the "log"
+    argument routing to the server log; per-type property surfaces on
+    Item/Character; base-def dumps read the creating ITEMDEF/CHARDEF and its
+    TAGs.
+  - REMOVECLILOC/REPLACECLILOC mutate the custom tooltip line list and
+    CLILOCLIST prints the object's tooltip lines (cached or live).
+
+ADDED - Character verbs (CChar surface):
+  - AFK toggle (arg forces on), HEAR (players get a private sysmessage, NPCs
+    process the line as heard speech via a host hook), UNDERWEAR (0x8000 nude
+    hue bit), NEWBIESKILL (runs a [NEWBIE name] section on the char),
+    TARGETCLOSE (drops the client target cursor).
+  - GOCHARID/GOTYPE world scans (body id / chardef, IT type or t_* typedef)
+    and GOCLI/GOSOCK via host client-list resolvers.
+
+ADDED - Client verbs (CClient surface, all 22 remaining):
+  - UI packets: CHARLIST (char-select list resend), CLOSEPROFILE/CLOSESTATUS
+    (0xBF sub 0x16), CODEXOFWISDOM (0xBF sub 0x17), SCROLL (0xA6 from a
+    [SCROLL] section), SHOWSKILLS (full 0x3A), SKILLUPDATE (single-skill
+    0x3A), MAPWAYPOINT (0xE5/0xE6), DYE (0x95 hue picker; the response path
+    already existed).
+  - GM tools: NUKE/NUKECHAR (optional verb line applied instead of deleting),
+    NUDGE (dx dy dz args), TILE (two-corner flood with cycling item ids),
+    EXTRACT/UNEXTRACT (multi text files, version 6 format, sandboxed under
+    the script database root), LINK (two-click item cross-link with the key
+    lock-uid special case), REPAIR, EVERBTARG (prompt then verb on the last
+    target), GOTARG/LAST (last-picked-target memory), BADSPAWN (teleport to a
+    spawner whose resource no longer resolves), EDIT (property editor).
+
+ADDED - Server verbs:
+  - SERV.BLOCKIP/UNBLOCKIP reachable from scripts behind a PLEVEL_Admin gate
+    (srcUid protocol); SERV.CALCCRYPT ports the CCryptoKeyCalc login-key
+    derivation and returns/prints the SphereCrypt.ini-style line.
+
+CHANGED:
+  - The Source-X verb inventory guardrail's deferred backlog is now EMPTY —
+    every pinned CObjBase/CChar/CItem/CClient/CServer verb has an
+    implementation site.
+
 [2026-07-11] - Script reading parity, second audit pass (adversarial re-verification)
 ----------------------------------------
 

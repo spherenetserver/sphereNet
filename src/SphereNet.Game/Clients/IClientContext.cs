@@ -164,6 +164,10 @@ internal interface IClientContext : ITextConsole
     void BeginInfoSkill(SkillType skill, int skillId);
     void BeginActiveSkill(SkillType skill, int skillId, SkillHandlers.ActiveSkillTargetKind kind);
     void BeginXVerbTarget(string verb, string args);
+    void BeginAreaTarget(string verb, int range, string verbArgs = "");
+    void ResendCharacterList();
+    void ApplyNewbieSection(Objects.Characters.Character ch, string sectionName);
+    void SendPrompt(uint promptId, string message, Action<uint, uint, uint, string>? callback = null);
     void OnResurrect();
     Character? DismountCharacter();
     bool TryMountCharacter(Character mount);
@@ -190,6 +194,6 @@ internal interface IClientContext : ITextConsole
     bool RemoveTargetedObject(uint uid);
     Item? DuplicateItem(Item src);
     void SpawnCageAround(Point3D centre);
-    int ExecuteAreaVerb(string verb, Point3D centre, int range);
+    int ExecuteAreaVerb(string verb, Point3D centre, int range, string verbArgs = "");
     Character? ResolvePickedChar(uint uid);
 }

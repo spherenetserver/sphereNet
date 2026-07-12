@@ -149,6 +149,72 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         return true;
     }
 
+    /// <summary>Source-X OV_EFFECTLOCATION: same payload family as EFFECT but
+    /// aimed at a map location — "x, y, z, motion, id [, speed, loop, explode,
+    /// hue, render, effectid, explodeid, explodesound, effectuid, type]".
+    /// A motion of -1 with a source char means "bolt from the char to here";
+    /// we normalize that to the moving-bolt effect type (0).</summary>
+    protected bool EmitScriptEffectLocation(string args, int range = 18)
+    {
+        var parts = SplitScriptArgs(args);
+        if (parts.Length < 5)
+            return true;
+
+        static long Num(string s) =>
+            SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(s.AsSpan(), out long v) ? v : 0;
+
+        short dx = (short)Num(parts[0]);
+        short dy = (short)Num(parts[1]);
+        sbyte dz = (sbyte)Num(parts[2]);
+        long motionRaw = Num(parts[3]);
+        byte effectType = motionRaw < 0 ? (byte)0 : (byte)motionRaw; // -1 → EFFECT_BOLT
+        ushort effectId = (ushort)Num(parts[4]);
+        if (effectId == 0)
+            return true;
+
+        byte speed = parts.Length > 5 ? (byte)Num(parts[5]) : (byte)5;
+        byte duration = parts.Length > 6 ? (byte)Num(parts[6]) : (byte)1;
+        bool explode = parts.Length > 7 && !IsFalseToken(parts[7]);
+        uint hue = parts.Length > 8 ? (uint)Num(parts[8]) : 0;
+        uint render = parts.Length > 9 ? (uint)Num(parts[9]) : 0;
+        ushort particleEffectId = parts.Length > 10 ? (ushort)Num(parts[10]) : (ushort)0;
+        uint explodeId = parts.Length > 11 ? (uint)Num(parts[11]) : 0;
+        ushort explodeSound = parts.Length > 12 ? (ushort)Num(parts[12]) : (ushort)0;
+        uint effectUid = parts.Length > 13 ? (uint)Num(parts[13]) : 0;
+        byte particleType = parts.Length > 14 ? (byte)Num(parts[14]) : (byte)0;
+
+        bool fixedDir = effectType != 0;
+
+        PacketWriter packet;
+        if (particleEffectId != 0 || explodeId != 0)
+        {
+            packet = new PacketEffectParticle(
+                effectType, Uid.Value, 0, effectId,
+                X, Y, Z, dx, dy, dz,
+                speed, duration, fixedDir, explode,
+                hue, render, particleEffectId, explodeId, explodeSound, effectUid, particleType);
+        }
+        else if (hue != 0 || render != 0)
+        {
+            packet = new PacketEffectHued(
+                effectType, Uid.Value, 0, effectId,
+                X, Y, Z, dx, dy, dz,
+                speed, duration, fixedDir, explode,
+                hue, render);
+        }
+        else
+        {
+            packet = new PacketEffect(
+                effectType, Uid.Value, 0, effectId,
+                X, Y, Z, dx, dy, dz,
+                speed, duration, fixedDir, explode);
+        }
+
+        var target = new Point3D(dx, dy, dz, Position.Map);
+        BroadcastNearby?.Invoke(target, range, packet, 0);
+        return true;
+    }
+
     protected static string[] SplitScriptArgs(string? args)
         => (args ?? "").Split(
             new[] { ',', ' ', '\t' },
@@ -642,9 +708,90 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             case "EFFECT":
                 // Visual effect — handled by the callback if set
                 return true;
+            case "EFFECTLOCATION":
+                return EmitScriptEffectLocation(args);
+            // Source-X OV_GOAWAKE/OV_GOSLEEP — flip the object's tick-sleep
+            // state (a sleeping object is skipped by the sector tick loops).
+            case "GOAWAKE":
+                GoAwake();
+                return true;
+            case "GOSLEEP":
+                GoSleep();
+                return true;
+            case "SAYUA":
+            {
+                // Source-X OV_SAYUA: "Color, Mode, Font, Lang, Text" — exactly
+                // five comma fields; the text field keeps any further commas.
+                var f = args.Split(',', 5);
+                if (f.Length < 5)
+                    return true;
+                ushort hue = f[0].Trim().Length > 0 && TryParseScriptUShort(f[0].Trim(), out ushort h) ? h : (ushort)0x03B2;
+                byte mode = f[1].Trim().Length > 0 && TryParseScriptByte(f[1].Trim(), out byte m) ? m : (byte)0;
+                byte font = f[2].Trim().Length > 0 && TryParseScriptByte(f[2].Trim(), out byte fo) ? fo : (byte)3;
+                string lang = f[3].Trim().Length > 0 ? f[3].Trim() : "ENU";
+                string text = f[4].Trim();
+                if (text.Length == 0)
+                    return true;
+                ushort body = this is Characters.Character sayChar ? sayChar.BodyId : (ushort)0;
+                BroadcastNearby?.Invoke(Position, 18,
+                    new SphereNet.Network.Packets.Outgoing.PacketSpeechUnicodeOut(
+                        Uid.Value, body, mode, hue, font, lang, GetName(), text), 0);
+                return true;
+            }
+            // Source-X OV_PROPLIST/OV_BASEPROPLIST/OV_BASETAGLIST diagnostic
+            // dumps — output lands on the invoking console, or the server log
+            // when the argument is the literal "log".
+            case "PROPLIST":
+            {
+                var sink = ResolveDumpSink(args, source);
+                int propCount = 0;
+                foreach (string propKey in EnumeratePropListKeys())
+                {
+                    if (TryGetProperty(propKey, out string propVal) && propVal.Length > 0)
+                    {
+                        sink($"{propKey}={propVal}");
+                        propCount++;
+                    }
+                }
+                sink($"[PROPLIST] {propCount} properties");
+                return true;
+            }
+            case "BASEPROPLIST":
+            {
+                var sink = ResolveDumpSink(args, source);
+                DumpBaseProperties(line => sink("[Base]" + line));
+                return true;
+            }
+            case "BASETAGLIST":
+            {
+                var sink = ResolveDumpSink(args, source);
+                DumpBaseTags(line => sink("[Base]TAG." + line));
+                return true;
+            }
         }
         return false;
     }
+
+    /// <summary>Server-log sink used by the *LIST diagnostic verbs when the
+    /// script passes the literal <c>log</c> argument (Source-X redirects the
+    /// dump to the server console). Wired by the host at boot.</summary>
+    public static Action<string>? DiagnosticLog;
+
+    private static Action<string> ResolveDumpSink(string args, ITextConsole source) =>
+        args.Trim().Equals("log", StringComparison.OrdinalIgnoreCase) && DiagnosticLog != null
+            ? DiagnosticLog
+            : line => source.SysMessage(line);
+
+    /// <summary>Property keys enumerated by the PROPLIST diagnostic verb.
+    /// Overridden by Item/Character with their type-specific surfaces.</summary>
+    protected virtual IEnumerable<string> EnumeratePropListKeys() =>
+        ["NAME", "COLOR", "P", "TIMER", "LINK"];
+
+    /// <summary>BASEPROPLIST body — dump the creating definition's properties.</summary>
+    protected virtual void DumpBaseProperties(Action<string> sink) { }
+
+    /// <summary>BASETAGLIST body — dump the creating definition's TAGs.</summary>
+    protected virtual void DumpBaseTags(Action<string> sink) { }
 
     public virtual bool TrySetProperty(string key, string value)
     {

@@ -116,6 +116,31 @@ public class Item : ObjBase
     private SphereNet.Scripting.Definitions.ItemDef? ResolveDefinition() =>
         DefinitionLoader.GetItemDef(ItemDefHelper.ResolveInstanceDefIndex(this));
 
+    /// <summary>PROPLIST diagnostic surface (Source-X OV_PROPLIST).</summary>
+    protected override IEnumerable<string> EnumeratePropListKeys() =>
+        ["NAME", "COLOR", "P", "TIMER", "LINK", "TYPE", "AMOUNT", "ATTR",
+         "MORE1", "MORE2", "MOREP", "CONT", "DISPID", "WEIGHT"];
+
+    protected override void DumpBaseProperties(Action<string> sink)
+    {
+        var def = ResolveDefinition();
+        if (def == null) return;
+        if (!string.IsNullOrEmpty(def.DefName)) sink($"DEFNAME={def.DefName}");
+        if (!string.IsNullOrEmpty(def.Name)) sink($"NAME={def.Name}");
+        sink($"ID=0{def.Id.Index:X}");
+        if (def.DispIndex != 0) sink($"DISPID=0{def.DispIndex:X}");
+        sink($"TYPE={def.Type}");
+        if (def.Weight != 0) sink($"WEIGHT={def.Weight}");
+    }
+
+    protected override void DumpBaseTags(Action<string> sink)
+    {
+        var def = ResolveDefinition();
+        if (def == null) return;
+        foreach (var (k, v) in def.TagDefs.GetAll())
+            sink($"{k}={v}");
+    }
+
     // Runtime EVENTS list (from ITEMDEF + dynamically added)
     private readonly List<ResourceId> _events = [];
 

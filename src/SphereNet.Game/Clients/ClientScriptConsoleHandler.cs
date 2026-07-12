@@ -1158,7 +1158,526 @@ public sealed class ClientScriptConsoleHandler
             return true;
         }
 
+        if (TryExecuteSourceXClientVerb(upper, args, target))
+            return true;
+
         return false;
+    }
+
+    /// <summary>Source-X CClient verb long tail (CClient_functions.tbl entries
+    /// that had no SphereNet surface): GM tools, UI packets and targeting
+    /// flows. Split out of the main dispatch chain for readability.</summary>
+    private bool TryExecuteSourceXClientVerb(string upper, string args, IScriptObj target)
+    {
+        if (_character == null) return false;
+        switch (upper)
+        {
+            case "CHARLIST":
+                // Source-X CV_CHARLIST — resend the character selection list.
+                _client.ResendCharacterList();
+                return true;
+
+            case "CLOSEPROFILE":
+            case "CLOSESTATUS":
+            {
+                // 0xBF sub 0x16 close-UI packet: Profile=8, Status=2. Optional
+                // arg = char uid; default = own char.
+                uint windowType = upper == "CLOSEPROFILE" ? 8u : 2u;
+                uint uid = _character.Uid.Value;
+                string uidArg = args.Trim();
+                if (uidArg.Length > 0 &&
+                    SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(uidArg.AsSpan(), out long uv) && uv > 0)
+                    uid = (uint)uv;
+                Send(new SphereNet.Network.Packets.Outgoing.PacketCloseUIWindow(windowType, uid));
+                return true;
+            }
+
+            case "CODEXOFWISDOM":
+            {
+                var parts = args.Split(',', StringSplitOptions.TrimEntries);
+                if (parts.Length < 1 || parts[0].Length == 0 ||
+                    !SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(parts[0].AsSpan(), out long topic))
+                {
+                    SysMessage("Usage: CODEXOFWISDOM TopicID [ForceOpen]");
+                    return true;
+                }
+                bool force = parts.Length > 1 &&
+                    SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(parts[1].AsSpan(), out long fv) && fv != 0;
+                Send(new SphereNet.Network.Packets.Outgoing.PacketCodexOfWisdom((uint)topic, force));
+                return true;
+            }
+
+            case "DYE":
+            {
+                // Source-X CV_DYE <uid> — open the hue picker on the object;
+                // the 0x95 response lands in GameClient.HandleDyeResponse.
+                string uidArg = args.Trim();
+                ObjBase? dyeObj = null;
+                if (uidArg.Length > 0 &&
+                    SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(uidArg.AsSpan(), out long duid))
+                    dyeObj = _world.FindObject(new Serial((uint)duid));
+                dyeObj ??= target as ObjBase;
+                if (dyeObj == null) return true;
+                ushort dispId = dyeObj is Item dyeItem ? dyeItem.DispIdFull
+                    : dyeObj is Character dyeChar ? dyeChar.BodyId : (ushort)0;
+                Send(new SphereNet.Network.Packets.Outgoing.PacketDyeWindow(
+                    dyeObj.Uid.Value, dyeObj.Hue.Value, dispId));
+                return true;
+            }
+
+            case "EVERBTARG":
+            {
+                // Source-X CV_EVERBTARG — prompt for text, then run
+                // "<verb-prefix> <typed text>" against the last-picked target.
+                string verbPrefix = args.Trim();
+                uint pendingSerial = Targets.LastPickedSerial;
+                _client.SendPrompt(0x0EE7B7A6, verbPrefix.Length > 0 ? "Enter the text" : "Enter the verb",
+                    (_, _, _, text) =>
+                    {
+                        if (string.IsNullOrWhiteSpace(text)) return;
+                        var obj = pendingSerial != 0 ? _world.FindObject(new Serial(pendingSerial)) : null;
+                        if (obj == null) return;
+                        string line = verbPrefix.Length > 0 ? $"{verbPrefix} {text}" : text;
+                        int sp = line.IndexOfAny([' ', '\t', '=']);
+                        string verb = sp < 0 ? line : line[..sp];
+                        string verbArg = sp < 0 ? "" : line[(sp + 1)..].Trim();
+                        if (verb.Length == 0) return;
+                        if (!obj.TrySetProperty(verb, verbArg) &&
+                            !obj.TryExecuteCommand(verb, verbArg, (ITextConsole)_client))
+                            _ = TryExecuteScriptCommand(obj, verb, verbArg, null);
+                    });
+                return true;
+            }
+
+            case "GOTARG":
+            {
+                // Source-X CV_GOTARG — teleport 3 tiles west of the last target.
+                var obj = Targets.LastPickedSerial != 0
+                    ? _world.FindObject(new Serial(Targets.LastPickedSerial)) : null;
+                if (obj == null) return true;
+                var po = obj.GetTopLevelPosition();
+                _character.MoveTo(new Point3D((short)(po.X - 3), po.Y, po.Z, po.Map));
+                return true;
+            }
+
+            case "LAST":
+            {
+                // Source-X CV_LAST — feed the previous target into the cursor
+                // that is currently up.
+                if (!Targets.CursorActive || Targets.LastPickedSerial == 0)
+                    return false;
+                var obj = _world.FindObject(new Serial(Targets.LastPickedSerial));
+                if (obj == null) return true;
+                var p = obj.GetTopLevelPosition();
+                (_client as GameClient)?.Targeting.HandleTargetResponse(0, 0, obj.Uid.Value, p.X, p.Y, p.Z, 0);
+                return true;
+            }
+
+            case "LINK":
+            {
+                // Source-X CV_LINK — pick two items and cross-link them
+                // (keys copy the lock uid instead).
+                SysMessage("Select the item to link.");
+                _client.SetPendingTarget((serial1, _, _, _, _) =>
+                {
+                    var first = _world.FindItem(new Serial(serial1));
+                    if (first == null) { SysMessage("Must link to an item."); return; }
+                    SysMessage("Select the item to link it to.");
+                    _client.SetPendingTarget((serial2, _, _, _, _) =>
+                    {
+                        var second = _world.FindItem(new Serial(serial2));
+                        if (second == null) { SysMessage("Must link to an item."); return; }
+                        if (first == second) { SysMessage("That is the same item."); return; }
+                        if (first.ItemType == ItemType.Key || second.ItemType == ItemType.Key)
+                        {
+                            var keyItem = first.ItemType == ItemType.Key ? first : second;
+                            var other = keyItem == first ? second : first;
+                            // Copy the lockable's lock id onto the key (MORE1).
+                            keyItem.More1 = other.More1 != 0 ? other.More1 : other.Uid.Value;
+                            if (other.More1 == 0 && other.ItemType != ItemType.Key)
+                                other.More1 = keyItem.More1;
+                        }
+                        else
+                        {
+                            first.Link = second.Uid;
+                            if (!second.Link.IsValid)
+                                second.Link = first.Uid;
+                        }
+                        SysMessage("The items are linked.");
+                    }, 0);
+                }, 0);
+                return true;
+            }
+
+            case "MAPWAYPOINT":
+            {
+                // Source-X CV_MAPWAYPOINT <uid>, <type> — type 0 removes.
+                var parts = args.Split(',', StringSplitOptions.TrimEntries);
+                if (parts.Length < 1 ||
+                    !SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(parts[0].AsSpan(), out long wuid))
+                    return true;
+                var wpObj = _world.FindObject(new Serial((uint)wuid));
+                if (wpObj == null) return true;
+                long wpType = parts.Length > 1 &&
+                    SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(parts[1].AsSpan(), out long wt) ? wt : 0;
+                var wp = wpObj.GetTopLevelPosition();
+                if (wpType != 0)
+                    Send(new SphereNet.Network.Packets.Outgoing.PacketWaypointAdd(
+                        wpObj.Uid.Value, wp.X, wp.Y, wp.Z, wp.Map, (ushort)wpType, wpObj.GetName()));
+                else
+                    Send(new SphereNet.Network.Packets.Outgoing.PacketWaypointRemove(wpObj.Uid.Value));
+                return true;
+            }
+
+            case "NUDGE":
+                // Source-X CV_NUDGE dx dy dz over a marked area.
+                _client.BeginAreaTarget("NUDGE", 8, args);
+                return true;
+            case "NUKE":
+                // Optional arg = verb line applied instead of deleting.
+                _client.BeginAreaTarget("NUKE", 8, args);
+                return true;
+            case "NUKECHAR":
+                _client.BeginAreaTarget("NUKECHAR", 8, args);
+                return true;
+
+            case "REPAIR":
+            {
+                // Source-X CV_REPAIR — target an item, run the repair path.
+                SysMessage("What item do you want to repair?");
+                _client.SetPendingTarget((serial, _, _, _, _) =>
+                {
+                    var item = _world.FindItem(new Serial(serial));
+                    if (item == null) { SysMessage("You can't repair that."); return; }
+                    item.TryExecuteCommand("REPAIR", "", (ITextConsole)_client);
+                }, 0);
+                return true;
+            }
+
+            case "SCROLL":
+            {
+                // Source-X CV_SCROLL — open a [SCROLL name] section as the
+                // updates scroll window (0xA6).
+                var resources = _commands?.Resources ?? DefinitionLoader.StaticResources;
+                if (resources == null) return true;
+                var rid = resources.ResolveDefName(args.Trim());
+                if (!rid.IsValid || rid.Type != Core.Enums.ResType.Scroll) return true;
+                var keys = resources.GetResource(rid)?.StoredKeys;
+                if (keys == null || keys.Count == 0) return true;
+                var sb = new System.Text.StringBuilder();
+                foreach (var k in keys)
+                    sb.Append(k.RawLine).Append('\r');
+                Send(new SphereNet.Network.Packets.Outgoing.PacketOpenScroll(2, 0, sb.ToString()));
+                return true;
+            }
+
+            case "SHOWSKILLS":
+                // Source-X CV_SHOWSKILLS — resend the full skill list.
+                _client.SendSkillList();
+                return true;
+
+            case "SKILLUPDATE":
+            {
+                // Source-X CV_SKILLUPDATE <skillname> — single-skill 0x3A.
+                if (!Enum.TryParse<SkillType>(args.Trim(), true, out var skill))
+                    return true;
+                int sid = (int)skill;
+                ushort raw = (ushort)Math.Clamp((int)_character.GetSkill(skill), 0, ushort.MaxValue);
+                byte skLock = _character.GetSkillLock(skill);
+                Send(new SphereNet.Network.Packets.Outgoing.PacketSkillSingle(
+                    (ushort)sid, raw, raw, skLock, 1000));
+                return true;
+            }
+
+            case "TILE":
+            {
+                // Source-X CV_TILE z item1 [item2 ...] — flood a marked area
+                // with the given item ids at the given z, cycling the id list.
+                if (args.Trim().Length == 0)
+                {
+                    SysMessage("Usage: TILE z-height item1 item2 ... itemX");
+                    return true;
+                }
+                BeginTwoCornerTarget("Pick 1st corner:", "Pick 2nd corner:", (p1, p2) =>
+                {
+                    var toks = args.Split([' ', '\t', ','], StringSplitOptions.RemoveEmptyEntries);
+                    if (toks.Length < 2) return;
+                    if (!SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(toks[0].AsSpan(), out long tz))
+                        return;
+                    var resources = _commands?.Resources ?? DefinitionLoader.StaticResources;
+                    int created = 0, tokIdx = 1;
+                    for (short mx = Math.Min(p1.X, p2.X); mx <= Math.Max(p1.X, p2.X); mx++)
+                    for (short my = Math.Min(p1.Y, p2.Y); my <= Math.Max(p1.Y, p2.Y); my++)
+                    {
+                        string tok = toks[tokIdx];
+                        if (++tokIdx >= toks.Length) tokIdx = 1;
+                        var made = CreateTileItem(resources, tok,
+                            new Point3D(mx, my, (sbyte)tz, _character.MapIndex));
+                        if (made != null) created++;
+                    }
+                    SysMessage($"{created} tiled items.");
+                });
+                return true;
+            }
+
+            case "EXTRACT":
+            {
+                // Source-X CV_EXTRACT <file> <id> — write the dynamic items in
+                // a marked area to a multi text file (version 6 format).
+                var parts = args.Split([' ', '\t'], 2, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 2)
+                {
+                    SysMessage("Usage: EXTRACT <filename> <templateId>");
+                    return true;
+                }
+                string fileName = parts[0];
+                if (!SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(parts[1].AsSpan(), out long templateId))
+                    return true;
+                BeginTwoCornerTarget("Select top-left corner of the extract area.",
+                    "Select bottom-right corner.", (p1, p2) =>
+                {
+                    string? path = ResolveScriptFilePath(fileName);
+                    if (path == null) { SysMessage("Invalid extract path."); return; }
+                    short left = Math.Min(p1.X, p2.X), right = Math.Max(p1.X, p2.X);
+                    short top = Math.Min(p1.Y, p2.Y), bottom = Math.Max(p1.Y, p2.Y);
+                    var centre = new Point3D((short)((left + right) / 2), (short)((top + bottom) / 2), 0, _character.MapIndex);
+                    int radius = Math.Max(1 + Math.Abs(right - left) / 2, 1 + Math.Abs(bottom - top) / 2);
+                    var found = new List<Item>();
+                    sbyte zLowest = sbyte.MaxValue;
+                    foreach (var it in _world.GetItemsInRange(centre, radius))
+                    {
+                        if (it.ContainedIn.IsValid || it.IsEquipped) continue;
+                        if (it.X < left || it.X > right || it.Y < top || it.Y > bottom) continue;
+                        found.Add(it);
+                        if (it.Z < zLowest) zLowest = it.Z;
+                    }
+                    if (found.Count == 0) { SysMessage("0 items extracted."); return; }
+                    using var w = new StreamWriter(path, append: false);
+                    w.WriteLine("6 version");
+                    w.WriteLine($"{templateId} template id");
+                    w.WriteLine("-1 item version");
+                    w.WriteLine($"{found.Count} num components");
+                    foreach (var it in found)
+                        w.WriteLine($"{it.DispIdFull} {it.X - centre.X} {it.Y - centre.Y} {it.Z - zLowest} 0");
+                    SysMessage($"{found.Count} items extracted to '{fileName}', id={templateId}.");
+                });
+                return true;
+            }
+
+            case "UNEXTRACT":
+            {
+                // Source-X CV_UNEXTRACT <file> <id> — rebuild an extracted
+                // multi at the targeted point.
+                var parts = args.Split([' ', '\t'], 2, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 1)
+                {
+                    SysMessage("Usage: UNEXTRACT <filename> <templateId>");
+                    return true;
+                }
+                string fileName = parts[0];
+                SysMessage("Select the position for the multi.");
+                _client.SetPendingTarget((serial, x, y, z, _) =>
+                {
+                    string? path = ResolveScriptFilePath(fileName);
+                    if (path == null || !File.Exists(path)) { SysMessage("Extract file not found."); return; }
+                    var basePoint = serial != 0 && _world.FindObject(new Serial(serial)) is { } o
+                        ? o.GetTopLevelPosition()
+                        : new Point3D(x, y, z, _character.MapIndex);
+                    int created = 0;
+                    var resources = _commands?.Resources ?? DefinitionLoader.StaticResources;
+                    foreach (var line in File.ReadLines(path))
+                    {
+                        var toks = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                        if (toks.Length < 4) continue;
+                        if (!ushort.TryParse(toks[0], out ushort dispId) || dispId == 0) continue;
+                        if (!int.TryParse(toks[1], out int ox) || !int.TryParse(toks[2], out int oy) ||
+                            !int.TryParse(toks[3], out int oz)) continue;
+                        var made = CreateTileItem(resources, "0x" + dispId.ToString("X"),
+                            new Point3D((short)(basePoint.X + ox), (short)(basePoint.Y + oy),
+                                (sbyte)(basePoint.Z + oz), basePoint.Map));
+                        if (made != null) created++;
+                    }
+                    SysMessage($"{created} multi components created.");
+                }, 1);
+                return true;
+            }
+
+            case "EDIT":
+            {
+                // Source-X OV_EDIT — open the property editor for the target
+                // (the GM .edit flow already implements Cmd_EditItem).
+                if (_commands != null && target is ObjBase editObj)
+                    _commands.ExecuteEditForTarget(_character, args.Trim(), editObj.Uid.Value);
+                return true;
+            }
+
+            case "NEWBIESKILL":
+            {
+                // Source-X CHV_NEWBIESKILL — run a [NEWBIE name] section on
+                // the target char (falls back to the invoking char).
+                var newbieChar = target as Character ?? _character;
+                if (args.Trim().Length > 0)
+                    _client.ApplyNewbieSection(newbieChar, args.Trim());
+                return true;
+            }
+
+            case "TARGETCLOSE":
+            {
+                // Source-X CHV_TARGETCLOSE — drop the client's target cursor
+                // (0x6C with the cancel flag) and clear server-side state.
+                ClearPendingTargetState();
+                Send(new SphereNet.Network.Packets.Outgoing.PacketTarget(0, 0, 3));
+                return true;
+            }
+
+            case "REMOVECLILOC":
+            {
+                // Source-X OV_REMOVECLILOC — drop every custom tooltip line
+                // with the given cliloc id (valid inside @ClientTooltip).
+                if (SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(
+                        args.Split(',')[0].Trim().AsSpan(), out long rmId))
+                    _client.ScriptTooltipProperties?.RemoveAll(t => t.ClilocId == (uint)rmId);
+                return true;
+            }
+
+            case "REPLACECLILOC":
+            {
+                // Source-X OV_REPLACECLILOC — replace the FIRST matching line
+                // in place; no match = no-op.
+                var parts = args.Split(',', 2, StringSplitOptions.TrimEntries);
+                if (parts.Length > 0 && _client.ScriptTooltipProperties is { } list &&
+                    SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(parts[0].AsSpan(), out long repId))
+                {
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        if (list[i].ClilocId == (uint)repId)
+                        {
+                            list[i] = ((uint)repId, parts.Length > 1 ? parts[1] : "");
+                            break;
+                        }
+                    }
+                }
+                return true;
+            }
+
+            case "CLILOCLIST":
+            {
+                // Source-X OV_CLILOCLIST — print the object's tooltip lines
+                // ("id=args"); "log" routes to the server log.
+                bool toLog = args.Trim().Equals("log", StringComparison.OrdinalIgnoreCase);
+                Action<string> sink = toLog
+                    ? line => _logger.LogInformation("{Line}", line)
+                    : SysMessage;
+                uint clilocSerial = target is ObjBase tob ? tob.Uid.Value : _character.Uid.Value;
+                if (_client.View.TooltipDataCache.TryGetValue(clilocSerial, out var cachedTip))
+                {
+                    foreach (var (id, tipArgs) in cachedTip.Properties)
+                        sink($"{id}={tipArgs}");
+                }
+                else if (_client.ScriptTooltipProperties is { Count: > 0 } live)
+                {
+                    foreach (var (id, tipArgs) in live)
+                        sink($"{id}={tipArgs}");
+                }
+                return true;
+            }
+
+            case "BADSPAWN":
+            {
+                // Source-X CV_BADSPAWN — teleport to a spawner whose resource
+                // no longer resolves; sets it as ACT.
+                int wanted = int.TryParse(args.Trim(), out int bi) && bi > 0 ? bi : 0;
+                int seen = 0;
+                foreach (var obj in _world.GetAllObjects())
+                {
+                    if (obj is not Item it || it.IsDeleted) continue;
+                    // A spawner item whose component never initialized = the
+                    // spawn resource does not resolve (Source-X bad spawn).
+                    if (it.ItemType is not (ItemType.SpawnChar or ItemType.SpawnItem)) continue;
+                    if (it.SpawnChar != null || it.SpawnItem != null) continue;
+                    if (seen++ < wanted) continue;
+                    _character.MoveTo(it.GetTopLevelPosition());
+                    SysMessage($"Bad spawn (0{it.Uid.Value:X}). Set as ACT.");
+                    if (Targets != null) Targets.LastPickedSerial = it.Uid.Value;
+                    return true;
+                }
+                SysMessage("There are no bad spawns.");
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Two-corner rectangle selection built on the generic pending
+    /// target callback (Source-X CLIMODE_TARG_TILE flow).</summary>
+    private void BeginTwoCornerTarget(string firstPrompt, string secondPrompt, Action<Point3D, Point3D> onDone)
+    {
+        if (_character == null) return;
+        SysMessage(firstPrompt);
+        _client.SetPendingTarget((serial1, x1, y1, z1, _) =>
+        {
+            var p1 = ResolveTargetPoint(serial1, x1, y1, z1);
+            SysMessage(secondPrompt);
+            _client.SetPendingTarget((serial2, x2, y2, z2, _) =>
+            {
+                var p2 = ResolveTargetPoint(serial2, x2, y2, z2);
+                onDone(p1, p2);
+            }, 1);
+        }, 1);
+    }
+
+    private Point3D ResolveTargetPoint(uint serial, short x, short y, sbyte z)
+    {
+        if (serial != 0 && serial != 0xFFFFFFFF &&
+            _world.FindObject(new Serial(serial)) is { } obj)
+            return obj.GetTopLevelPosition();
+        return new Point3D(x, y, z, _character?.MapIndex ?? 0);
+    }
+
+    /// <summary>Create a TILE/UNEXTRACT item from an itemdef token and drop it
+    /// move-never at the given point.</summary>
+    private Item? CreateTileItem(SphereNet.Scripting.Resources.ResourceHolder? resources, string token, Point3D at)
+    {
+        ushort dispId = 0;
+        if (SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(token.AsSpan(), out long numeric) && numeric > 0)
+        {
+            dispId = (ushort)numeric;
+        }
+        else if (resources != null)
+        {
+            var rid = resources.ResolveDefName(token);
+            if (rid.IsValid && rid.Type == Core.Enums.ResType.ItemDef)
+            {
+                var def = DefinitionLoader.GetItemDef(rid.Index);
+                dispId = def != null && def.DispIndex > 0 ? def.DispIndex : (ushort)rid.Index;
+            }
+        }
+        if (dispId == 0) return null;
+
+        var item = _world.CreateItem();
+        item.BaseId = dispId;
+        item.Attributes |= Core.Enums.ObjAttributes.Move_Never;
+        _world.PlaceItem(item, at);
+        return item;
+    }
+
+    /// <summary>Sandbox EXTRACT/UNEXTRACT file paths under the script database
+    /// root (the FILE.* sandbox) — a bare filename lands there; escapes are
+    /// rejected.</summary>
+    private string? ResolveScriptFilePath(string fileName)
+    {
+        try
+        {
+            string root = Path.GetFullPath(string.IsNullOrEmpty(_scriptDatabaseRoot) ? "." : _scriptDatabaseRoot);
+            string full = Path.GetFullPath(Path.Combine(root, fileName));
+            string guard = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            return full.StartsWith(guard, StringComparison.OrdinalIgnoreCase) ? full : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>Open a [SKILLMENU name] section as a 0x7C selection menu.

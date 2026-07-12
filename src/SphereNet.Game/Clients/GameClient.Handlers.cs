@@ -104,6 +104,20 @@ public sealed partial class GameClient
             _netState.SupportsNewCharacterList, flags).Build());
     }
 
+    /// <summary>Re-send the character selection list (Source-X CV_CHARLIST /
+    /// PacketChangeCharacter 0x81 equivalent). The classic client swaps back
+    /// to the char-select screen.</summary>
+    internal void ResendCharacterList()
+    {
+        if (_account == null) return;
+        var charNames = _account.GetCharNames(uid => _world.FindChar(uid)?.GetName());
+        int maxChars = GetEffectiveMaxChars();
+        var res = ResolveAccountResDisplay();
+        uint flags = BuildCharacterListFlags(res, maxChars, ServerToolTipMode != 0);
+        _netState.Send(new PacketCharList(charNames, maxChars,
+            _netState.SupportsNewCharacterList, flags).Build());
+    }
+
     /// <summary>Handle dye response from color picker (0x95).</summary>
     public void HandleDyeResponse(uint itemSerial, ushort hue)
     {

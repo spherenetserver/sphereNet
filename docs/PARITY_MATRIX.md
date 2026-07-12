@@ -47,7 +47,8 @@ Dispatch: script reads route through `Program.ResolveServerProperty`
 | `HEARALL` | Implemented | `HandleServHearAll` (`_HEARALL=`) | W-I1 — exposes/toggles the `LOGM_PLAYER_SPEAK` bit (`0x002000`); `<SERV.HEARALL>` reads current state. |
 | `CHATFLAGS` | Implemented | `SphereConfig.ChatFlags` / `ResolveServerProperty` | W-I1 — loaded from `sphere.ini` and exposed through `SERV.CHATFLAGS`. |
 | `GENERICSOUNDS` | Implemented | `SphereConfig.GenericSounds` / `ResolveServerProperty` | W-I1 — loaded from `sphere.ini` and exposed through `SERV.GENERICSOUNDS`; deeper generic sound table parity remains a sound-system task. |
-| `BLOCKIP` / `UNBLOCKIP` | Partial | `AdminCommandProcessor` | Admin console only — not exposed to scripts (intentional: security surface). |
+| `BLOCKIP` / `UNBLOCKIP` | Implemented | `HandleServBlockIp` (`_BLOCKIP=`/`_UNBLOCKIP=`) + `AdminCommandProcessor` | Verb long-tail wave — script surface gated at PLEVEL_Admin via the srcUid protocol (Source-X SV_BLOCKIP); decay seconds accepted but logged (no timed-block model). |
+| `CALCCRYPT` | Implemented | `CalcCryptLine` / `HandleServCalcCryptToCaller` | Verb long-tail wave — CCryptoKeyCalc::CalculateLoginKeys bit-mix ported; `<SERV.CALCCRYPT ver>` returns the SphereCrypt.ini-style line, the command form prints to the caller. |
 | `EXPORT` / `IMPORT` / `RESTORE` | Partial | `HandleServExport` / `HandleServImport` / `HandleServLoad` / `HandleServRestore` | Wave 213-217 — text `.scp` object/world export and non-destructive runtime import are wired under `WorldSaveDir`; `RESTORE` pre-replaces colliding world serials with rollback snapshot hardening; `EXPORT`/`IMPORT file, flags, distance` support Source-X-style object-centered scope filtering. |
 | `SAVESTATICS` | Partial | `HandleServSaveStatics` → `WorldSaver.ExportStatics` | Wave 213/215 — exports `ATTR_STATIC` world items to text `.scp`; no-arg calls write `spherestatics.scp`, and saver-level scoped statics are available. Native static-map file generation remains a later slice. |
 | `LOAD` | Implemented | `HandleServLoad` → `WorldLoader.LoadFile` | Wave 213 — loads one `.scp`/save-format file at runtime with two-pass item/char parsing and container/equipment relinking. |
@@ -124,9 +125,20 @@ Save-load round-trip of trigger-relevant runtime state. Guarded by `SaveFormatTe
 ## Object verbs / properties
 
 Char/item verb + property parity is exercised across `ScriptObjectParityTests`,
-`GameSystemTests`, and the per-area parity suites. A full `r_Verb` / `r_WriteVal`
-enumeration against Source-X is the remaining Faz 0 work and will be appended here
-as it is produced.
+`GameSystemTests`, and the per-area parity suites. The pinned Source-X verb
+inventory (`SourceXVerbInventoryGuardrailTests`) now has an **empty deferred
+backlog**: the verb long-tail wave implemented the remaining CObjBase entries
+(BASEPROPLIST/BASETAGLIST/CLILOCLIST/DIALOGCLOSE/EDIT/EFFECTLOCATION/GOAWAKE/
+GOSLEEP/PROPLIST/REMOVECLILOC/REPLACECLILOC/SAYUA), the CChar entries
+(AFK/GOCHARID/GOCLI/GOSOCK/GOTYPE/HEAR/NEWBIESKILL/TARGETCLOSE/UNDERWEAR) and
+the CClient entries (BADSPAWN/CHARLIST/CLOSEPROFILE/CLOSESTATUS/CODEXOFWISDOM/
+DYE/EVERBTARG/EXTRACT/GOTARG/LAST/LINK/MAPWAYPOINT/NUDGE/NUKE/NUKECHAR/REPAIR/
+SCROLL/SHOWSKILLS/SKILLUPDATE/SUMMON/TILE/UNEXTRACT). New packets: 0xBF sub
+0x16 close-UI, 0xBF sub 0x17 Codex of Wisdom, 0xA6 scroll, 0x95 dye window,
+0x3A single-skill. Known simplifications: NUKE/NUKECHAR/NUDGE keep SphereNet's
+single-pick + range area model (Source-X two-corner) while TILE/EXTRACT use a
+real two-corner flow; EXTRACT covers dynamic items (statics export is a
+MapData feature); SKILLUPDATE reports cap 1000.
 
 | Verb | Status | Where | Notes |
 |---|---|---|---|

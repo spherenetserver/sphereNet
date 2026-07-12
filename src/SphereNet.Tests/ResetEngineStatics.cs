@@ -131,5 +131,9 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
              SphereNet.Scripting.Definitions.ValueCurve.Empty];
         SphereNet.Scripting.Expressions.ExpressionParser.ObsceneChecker = null;
         SphereNet.Game.Magic.SpellDef.RuneWordResolver = null;
+        SphereNet.Game.Objects.ObjBase.DiagnosticLog = null;
+        SphereNet.Game.Objects.Characters.Character.OnHearRouted = null;
+        SphereNet.Game.Objects.Characters.Character.FindCharByClientIndex = null;
+        SphereNet.Game.Objects.Characters.Character.FindCharBySocketId = null;
     }
 }

@@ -2818,6 +2818,43 @@ public static partial class Program
                 if (TryGetClientFor(ch, out var c))
                     c.SendPaperdoll(ch);
             };
+            // HEAR verb routing (Source-X CHV_HEAR): players get a private
+            // sysmessage, NPCs process the line as heard speech.
+            SphereNet.Game.Objects.Characters.Character.OnHearRouted = (ch, text, srcChar) =>
+            {
+                if (string.IsNullOrWhiteSpace(text)) return;
+                if (TryGetClientFor(ch, out var hearClient))
+                {
+                    hearClient.SysMessage(text);
+                    return;
+                }
+                if (!ch.IsPlayer)
+                    _speech?.DeliverNpcHear(srcChar ?? ch, ch, text);
+            };
+            // GOCLI / GOSOCK resolvers — client enumeration lives here.
+            SphereNet.Game.Objects.Characters.Character.FindCharByClientIndex = index =>
+            {
+                int i = 0;
+                foreach (var kv in _clientsByCharUid.OrderBy(kv => kv.Key.Value))
+                {
+                    var c = kv.Value.Character;
+                    if (c == null || c.IsDeleted) continue;
+                    if (i++ == index) return c;
+                }
+                return null;
+            };
+            SphereNet.Game.Objects.Characters.Character.FindCharBySocketId = socketId =>
+            {
+                foreach (var kv in _clientsByCharUid)
+                {
+                    var gc = kv.Value;
+                    if (gc.Character != null && gc.NetState.Id == socketId)
+                        return gc.Character;
+                }
+                return null;
+            };
+            // PROPLIST/TAGLIST "log" argument sink (Source-X server console).
+            SphereNet.Game.Objects.ObjBase.DiagnosticLog = line => _log.LogInformation("{Line}", line);
             SphereNet.Game.Objects.Characters.Character.OpenBackpackForOwner = ch =>
             {
                 if (TryGetClientFor(ch, out var c))

@@ -963,6 +963,11 @@ public sealed partial class GameClient
         }
     }
 
+    /// <summary>NEWBIESKILL verb entry (Source-X CHV_NEWBIESKILL): apply a
+    /// [NEWBIE name] resource section to a character at runtime.</summary>
+    internal void ApplyNewbieSection(Character ch, string sectionName) =>
+        EquipNewbieSection(ch, sectionName);
+
     private void EquipNewbieSection(Character ch, string sectionName)
     {
         if (_commands?.Resources == null) return;

@@ -40,6 +40,14 @@ public sealed class ClientTargetState
     /// the half-extent around the picked tile.</summary>
     public string? AreaVerb;
     public int AreaRange;
+    /// <summary>Optional payload for the area verb (Source-X: NUKE takes a
+    /// verb line to run instead of deleting, NUDGE takes "dx dy dz").</summary>
+    public string AreaVerbArgs = "";
+
+    /// <summary>Serial of the last object the client picked with any target
+    /// cursor (Source-X m_Targ_UID). Deliberately NOT reset by
+    /// <see cref="Clear"/> — LAST / GOTARG re-use it after the cursor closes.</summary>
+    public uint LastPickedSerial;
     public bool Control;
     public bool Dupe;
     public bool Heal;
@@ -67,6 +75,7 @@ public sealed class ClientTargetState
         XVerbArgs = "";
         AreaVerb = null;
         AreaRange = 0;
+        AreaVerbArgs = "";
         Control = false;
         Dupe = false;
         Heal = false;

@@ -257,7 +257,7 @@ public sealed class ScriptKey
         return TryGetArgInt(out long val) ? val : defaultValue;
     }
 
-    internal static bool TryParseNumber(ReadOnlySpan<char> text, out long value)
+    public static bool TryParseNumber(ReadOnlySpan<char> text, out long value)
     {
         text = text.Trim();
         value = 0;

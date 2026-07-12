@@ -80,7 +80,7 @@ public sealed class ClientTargetingHandler
     private Item? DuplicateItem(Item src) => _client.DuplicateItem(src);
     private void OpenForeignBank(Character victim) => _client.OpenForeignBank(victim);
     private void SpawnCageAround(Point3D centre) => _client.SpawnCageAround(centre);
-    private int ExecuteAreaVerb(string verb, Point3D centre, int range) => _client.ExecuteAreaVerb(verb, centre, range);
+    private int ExecuteAreaVerb(string verb, Point3D centre, int range, string verbArgs = "") => _client.ExecuteAreaVerb(verb, centre, range, verbArgs);
     private void HandleCastSpell(SpellType spell, uint targetUid) => _client.HandleCastSpell(spell, targetUid);
     private bool TryMountCharacter(Character mount) => _client.TryMountCharacter(mount);
     private bool TryResolveScriptVariable(string varName, IScriptObj target, ITriggerArgs? triggerArgs, out string value) => _client.TryResolveScriptVariable(varName, target, triggerArgs, out value);
@@ -166,6 +166,11 @@ public sealed class ClientTargetingHandler
             SysMessage(ServerMessages.Get("target_cancel_1"));
             return;
         }
+
+        // Remember the picked object for LAST / GOTARG (Source-X m_Targ_UID);
+        // survives ClearPendingTargetState by design.
+        if (serial != 0 && serial != 0xFFFFFFFF)
+            Targets.LastPickedSerial = serial;
 
         // Callback-based target (housing, etc.)
         if (Targets.Callback != null)
@@ -345,8 +350,10 @@ public sealed class ClientTargetingHandler
         {
             string areaVerb = Targets.AreaVerb!;
             int areaRange = Targets.AreaRange;
+            string areaVerbArgs = Targets.AreaVerbArgs;
             Targets.AreaVerb = null;
             Targets.AreaRange = 0;
+            Targets.AreaVerbArgs = "";
 
             // Resolve the centre. If the GM clicked on an object use its
             // position so NUDGE/NUKE applied to a chest also covers the
@@ -362,7 +369,7 @@ public sealed class ClientTargetingHandler
                 centre = new Point3D(x, y, z, _character.MapIndex);
             }
 
-            int affected = ExecuteAreaVerb(areaVerb, centre, areaRange);
+            int affected = ExecuteAreaVerb(areaVerb, centre, areaRange, areaVerbArgs);
             switch (areaVerb)
             {
                 case "NUKE":

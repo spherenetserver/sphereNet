@@ -2436,3 +2436,144 @@ public sealed class PacketNewAnimation : PacketWriter
     }
 }
 
+
+/// <summary>Close a client-side UI window (0xBF sub 0x16, Source-X
+/// PacketCloseUIWindow). Window types: 1 = paperdoll, 2 = status,
+/// 8 = character profile.</summary>
+public sealed class PacketCloseUIWindow : PacketWriter
+{
+    private readonly uint _windowType;
+    private readonly uint _serial;
+
+    public PacketCloseUIWindow(uint windowType, uint serial) : base(0xBF)
+    {
+        _windowType = windowType;
+        _serial = serial;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(13);
+        buf.WriteUInt16(0x0016);
+        buf.WriteUInt32(_windowType);
+        buf.WriteUInt32(_serial);
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
+/// <summary>Open the Codex of Wisdom entry on Enhanced/KR clients
+/// (0xBF sub 0x17, Source-X PacketCodexOfWisdom).</summary>
+public sealed class PacketCodexOfWisdom : PacketWriter
+{
+    private readonly uint _topicId;
+    private readonly bool _forceOpen;
+
+    public PacketCodexOfWisdom(uint topicId, bool forceOpen) : base(0xBF)
+    {
+        _topicId = topicId;
+        _forceOpen = forceOpen;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(11);
+        buf.WriteUInt16(0x0017);
+        buf.WriteByte(1);
+        buf.WriteUInt32(_topicId);
+        buf.WriteByte(_forceOpen ? (byte)1 : (byte)0);
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
+/// <summary>Open a scroll gump with text (0xA6, Source-X PacketOpenScroll).
+/// Types: 0 = tips window, 2 = updates window.</summary>
+public sealed class PacketOpenScroll : PacketWriter
+{
+    private readonly byte _type;
+    private readonly uint _context;
+    private readonly string _text;
+
+    public PacketOpenScroll(byte type, uint context, string text) : base(0xA6)
+    {
+        _type = type;
+        _context = context;
+        _text = text ?? "";
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(10 + _text.Length + 1);
+        buf.WriteByte(_type);
+        buf.WriteUInt32(_context);
+        buf.WriteUInt16((ushort)(_text.Length + 1));
+        buf.WriteAsciiFixed(_text, _text.Length + 1);
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
+/// <summary>Show the dye vat hue-picker window (0x95, Source-X
+/// PacketShowDyeWindow). The client answers with the same opcode, handled by
+/// GameClient.HandleDyeResponse.</summary>
+public sealed class PacketDyeWindow : PacketWriter
+{
+    private readonly uint _serial;
+    private readonly ushort _hue;
+    private readonly ushort _dispId;
+
+    public PacketDyeWindow(uint serial, ushort hue, ushort dispId) : base(0x95)
+    {
+        _serial = serial;
+        _hue = hue;
+        _dispId = dispId;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateFixed(9);
+        buf.WriteUInt32(_serial);
+        buf.WriteUInt16(_hue);
+        buf.WriteUInt16(_dispId);
+        return buf;
+    }
+}
+
+/// <summary>Single-skill update (0x3A modes 0xFF / 0xDF-with-cap, Source-X
+/// PacketSkills single-skill branch) — the full-list variant lives in
+/// PacketSkillList.</summary>
+public sealed class PacketSkillSingle : PacketWriter
+{
+    private readonly ushort _id;
+    private readonly ushort _value;
+    private readonly ushort _rawValue;
+    private readonly byte _lock;
+    private readonly ushort _cap;
+    private readonly bool _withCap;
+
+    public PacketSkillSingle(ushort id, ushort value, ushort rawValue, byte skillLock, ushort cap, bool withCap = true)
+        : base(0x3A)
+    {
+        _id = id;
+        _value = value;
+        _rawValue = rawValue;
+        _lock = skillLock;
+        _cap = cap;
+        _withCap = withCap;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(16);
+        buf.WriteByte(_withCap ? (byte)0xDF : (byte)0xFF);
+        buf.WriteUInt16(_id);
+        buf.WriteUInt16(_value);
+        buf.WriteUInt16(_rawValue);
+        buf.WriteByte(_lock);
+        if (_withCap)
+            buf.WriteUInt16(_cap);
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}

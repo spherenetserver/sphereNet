@@ -659,6 +659,34 @@ public sealed class ScriptInterpreter
             return;
         }
 
+        // SERV.BLOCKIP <ip>[,seconds] / SERV.UNBLOCKIP <ip> — Source-X gates
+        // these at PLEVEL_Admin; srcUid is carried so the host can verify the
+        // caller's privilege (0 = server/hook context).
+        if (cmd.Equals("SERV.BLOCKIP", StringComparison.OrdinalIgnoreCase))
+        {
+            string srcUid = args?.Source != null && args.Source.TryGetProperty("UID", out string suid)
+                ? suid : "0";
+            ServerPropertyResolver?.Invoke($"_BLOCKIP={srcUid}|{resolvedArg}");
+            return;
+        }
+        if (cmd.Equals("SERV.UNBLOCKIP", StringComparison.OrdinalIgnoreCase))
+        {
+            string srcUid = args?.Source != null && args.Source.TryGetProperty("UID", out string suid)
+                ? suid : "0";
+            ServerPropertyResolver?.Invoke($"_UNBLOCKIP={srcUid}|{resolvedArg}");
+            return;
+        }
+
+        // SERV.CALCCRYPT <ver>[,cliType][,encType] — prints the computed
+        // SphereCrypt.ini-style key line to the caller's console.
+        if (cmd.Equals("SERV.CALCCRYPT", StringComparison.OrdinalIgnoreCase))
+        {
+            string srcUid = args?.Source != null && args.Source.TryGetProperty("UID", out string suid)
+                ? suid : "0";
+            ServerPropertyResolver?.Invoke($"_CALCCRYPT={srcUid}|{resolvedArg}");
+            return;
+        }
+
         // SERV.B <text> — broadcast to every connected client (Source-X SV_B /
         // CWorldComm::Broadcast). Was console-only; a script's serv.b was a no-op.
         if (cmd.Equals("SERV.B", StringComparison.OrdinalIgnoreCase) ||

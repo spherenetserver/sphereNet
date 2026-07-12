@@ -3,6 +3,50 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-11] - Source-X verb uzun kuyrugu tamamlandi (48 ertelenmis verb, backlog artik bos)
+----------------------------------------
+
+EKLENDI - Nesne verb'leri (CObjBase yuzeyi):
+  - GOAWAKE/GOSLEEP nesnenin tick-uyku durumunu degistirir; EFFECTLOCATION
+    konum-hedefli efekt ailesini gonderir (-1 bolt normalizasyonu dahil);
+    SAYUA herhangi bir nesneden renk/mod/font/dil ile Unicode konusur.
+  - PROPLIST/BASEPROPLIST/BASETAGLIST tani dokumlari; "log" argumani sunucu
+    log'una yonlendirir; Item/Character tip-ozel property yuzeyleri; taban
+    dokumlari ITEMDEF/CHARDEF ve TAG'lerini okur.
+  - REMOVECLILOC/REPLACECLILOC ozel tooltip satir listesini degistirir;
+    CLILOCLIST nesnenin tooltip satirlarini yazdirir (cache veya canli).
+
+EKLENDI - Karakter verb'leri (CChar yuzeyi):
+  - AFK toggle (arguman zorlar), HEAR (oyuncuya ozel sysmessage, NPC satiri
+    duyulmus konusma olarak isler — host hook), UNDERWEAR (0x8000 hue biti),
+    NEWBIESKILL ([NEWBIE ad] section'ini karaktere uygular), TARGETCLOSE
+    (client hedef imlecini dusurur).
+  - GOCHARID/GOTYPE dunya taramalari (govde/chardef, IT tipi veya t_*
+    typedef) ve GOCLI/GOSOCK host client-listesi cozumleyicileriyle.
+
+EKLENDI - Client verb'leri (CClient yuzeyi, kalan 22'nin tamami):
+  - UI paketleri: CHARLIST (karakter secim listesi), CLOSEPROFILE/CLOSESTATUS
+    (0xBF alt 0x16), CODEXOFWISDOM (0xBF alt 0x17), SCROLL ([SCROLL]
+    section'indan 0xA6), SHOWSKILLS (tam 0x3A), SKILLUPDATE (tek-skill 0x3A),
+    MAPWAYPOINT (0xE5/0xE6), DYE (0x95 renk secici; yanit yolu zaten vardi).
+  - GM araclari: NUKE/NUKECHAR (silme yerine istege bagli verb satiri),
+    NUDGE (dx dy dz), TILE (iki-kose alan doldurma, donen item id listesi),
+    EXTRACT/UNEXTRACT (multi metin dosyalari, surum 6 formati, script
+    database koku altinda sandbox'li), LINK (iki-tik item capraz baglama +
+    anahtar kilit-uid ozel durumu), REPAIR, EVERBTARG (prompt sonrasi son
+    hedefe verb), GOTARG/LAST (son-secilen-hedef hafizasi), BADSPAWN
+    (cozulmeyen spawner'a isinlanma), EDIT (property duzenleyici).
+
+EKLENDI - Sunucu verb'leri:
+  - SERV.BLOCKIP/UNBLOCKIP script'lerden PLEVEL_Admin kapisiyla erisilebilir
+    (srcUid protokolu); SERV.CALCCRYPT CCryptoKeyCalc login-anahtar turetmesini
+    portlar ve SphereCrypt.ini-tarzi satiri dondurur/yazdirir.
+
+DEGISTIRILDI:
+  - Source-X verb envanteri guardrail'inin ertelenmis backlog'u artik BOS —
+    pinlenmis her CObjBase/CChar/CItem/CClient/CServer verb'unun bir
+    implementasyon noktasi var.
+
 [2026-07-11] - Script okuma paritesi, ikinci denetim turu (adversarial dogrulama)
 ----------------------------------------
 

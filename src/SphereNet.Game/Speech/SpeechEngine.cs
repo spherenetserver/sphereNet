@@ -52,6 +52,11 @@ public sealed class SpeechEngine
     /// <summary>Fired when an NPC hears speech (for keyword response).</summary>
     public event Action<Character, Character, string, TalkMode>? OnNpcHear;
 
+    /// <summary>Route a line of text into a single NPC's hearing (Source-X
+    /// CChar CHV_HEAR → NPC_OnHear) without broadcasting it.</summary>
+    public void DeliverNpcHear(Character speaker, Character listener, string text) =>
+        OnNpcHear?.Invoke(speaker, listener, text, TalkMode.Say);
+
     /// <summary>Fired when a nearby ITEM hears speech (Source-X item/multi OnHear).
     /// Installed only when some item def actually hooks @Hear, so the per-utterance
     /// item scan is skipped entirely on shards that don't use it. Args: speaker,

@@ -243,6 +243,9 @@ public static partial class Program
             _ when upper.StartsWith("_IMPORT=") => HandleServImport(property[8..]),
             _ when upper.StartsWith("_RESTORE=") => HandleServRestore(property[9..]),
             _ when upper.StartsWith("_SAVESTATICS=") => HandleServSaveStatics(property[13..]),
+            _ when upper.StartsWith("_BLOCKIP=") => HandleServBlockIp(property[9..], block: true),
+            _ when upper.StartsWith("_UNBLOCKIP=") => HandleServBlockIp(property[11..], block: false),
+            _ when upper.StartsWith("_CALCCRYPT=") => HandleServCalcCryptToCaller(property[11..]),
 
             // serv.resync / serv.save / serv.shutdown — admin write
             // verbs reachable from dialog buttons (d_admin_function).
@@ -270,6 +273,9 @@ public static partial class Program
             _ when upper.StartsWith("RESTORE ") => HandleServRestore(property[8..]),
             "SAVESTATICS" => HandleServSaveStatics(""),
             _ when upper.StartsWith("SAVESTATICS ") => HandleServSaveStatics(property[12..]),
+            // <SERV.CALCCRYPT ver[,cliType][,encType]> read form returns the
+            // SphereCrypt.ini-style key line (Source-X SV_CALCCRYPT output).
+            _ when upper.StartsWith("CALCCRYPT ") => CalcCryptLine(property[10..]),
 
             // Region property access
             _ when upper.StartsWith("_REGION_GET=") => HandleRegionGet(property[12..]),
@@ -1471,6 +1477,184 @@ public static partial class Program
         if (_world != null && TryParseSerial(src, out var uid) && _world.FindObject(uid) is Character ch)
             return FindGameClient(ch);
         return null;
+    }
+
+    /// <summary>Source-X <c>serv.blockip &lt;ip&gt;[,seconds]</c> / <c>serv.unblockip &lt;ip&gt;</c>
+    /// (SV_BLOCKIP/SV_UNBLOCKIP). Gated at PLEVEL_Admin like Source-X; the srcUid
+    /// prefix carries the invoking character so the gate can be enforced from
+    /// scripts (srcUid 0 = server/hook context, allowed). The optional decay
+    /// seconds are accepted but the block is permanent until UNBLOCKIP — the
+    /// block list has no timed-decay model; the request is logged.</summary>
+    private static string HandleServBlockIp(string data, bool block)
+    {
+        int pipe = data.IndexOf('|');
+        string src = pipe >= 0 ? data[..pipe].Trim() : "0";
+        string argStr = (pipe >= 0 ? data[(pipe + 1)..] : data).Trim();
+
+        var console = ResolveCallerConsole(src);
+        if (src is not ("0" or ""))
+        {
+            if (_world == null || !TryParseSerial(src, out var uid) ||
+                _world.FindObject(uid) is not Character caller ||
+                caller.PrivLevel < SphereNet.Core.Enums.PrivLevel.Admin)
+            {
+                console?.SysMessage("You lack the privilege to manage IP blocks.");
+                _log?.LogWarning("[script] SERV.{Verb} refused — caller below Admin",
+                    block ? "BLOCKIP" : "UNBLOCKIP");
+                return "0";
+            }
+        }
+
+        var parts = argStr.Split(',', 2, StringSplitOptions.TrimEntries);
+        string ip = parts.Length > 0 ? parts[0] : "";
+        if (ip.Length == 0)
+        {
+            console?.SysMessage(block ? "Usage: BLOCKIP <address>[,seconds]" : "Usage: UNBLOCKIP <address>");
+            return "0";
+        }
+
+        if (_ipBlockList == null)
+            return "0";
+
+        string msg;
+        string result;
+        if (block)
+        {
+            _ipBlockList.Add(ip);
+            msg = parts.Length > 1
+                ? $"IP blocked: {ip} (decay {parts[1]}s requested; block persists until UNBLOCKIP)"
+                : $"IP blocked: {ip}";
+            result = "1";
+        }
+        else if (_ipBlockList.Remove(ip))
+        {
+            msg = $"IP unblocked: {ip}";
+            result = "1";
+        }
+        else
+        {
+            msg = $"IP not in block list: {ip}";
+            result = "0";
+        }
+
+        console?.SysMessage(msg);
+        _log?.LogInformation("[script] SERV.{Verb} {Msg}", block ? "BLOCKIP" : "UNBLOCKIP", msg);
+        return result;
+    }
+
+    /// <summary>Source-X <c>serv.calccrypt &lt;version&gt;[,clientType][,encType]</c>
+    /// (SV_CALCCRYPT → CCryptoKeyCalc::CalculateLoginKeys): derive the login
+    /// crypt key pair for a client version and print the SphereCrypt.ini-style
+    /// line to the invoking console (log fallback).</summary>
+    private static string HandleServCalcCryptToCaller(string data)
+    {
+        int pipe = data.IndexOf('|');
+        string src = pipe >= 0 ? data[..pipe].Trim() : "0";
+        string argStr = (pipe >= 0 ? data[(pipe + 1)..] : data).Trim();
+
+        string? line = CalcCryptLine(argStr);
+        if (string.IsNullOrEmpty(line) || line == "0")
+            return "0";
+
+        var console = ResolveCallerConsole(src);
+        if (console != null) console.SysMessage(line);
+        else _log?.LogInformation("{Line}", line);
+        return "1";
+    }
+
+    /// <summary>Port of CCryptoKeyCalc::CalculateLoginKeys + FormattedLoginKey.
+    /// Args: "major.minor.revision[,clientType][,encType]" — clientType 3 (EC)
+    /// offsets the major version by 63; encType 0 auto-detects from version.</summary>
+    private static string? CalcCryptLine(string argStr)
+    {
+        var parts = argStr.Split(',', StringSplitOptions.TrimEntries);
+        if (parts.Length == 0 || parts[0].Length == 0)
+            return "0";
+
+        var v = parts[0].Split('.');
+        if (v.Length < 3 ||
+            !uint.TryParse(v[0], out uint major) ||
+            !uint.TryParse(v[1], out uint minor))
+            return "0";
+
+        // The revision token may carry a trailing build letter ("2.0.0x").
+        string revTok = v[2];
+        char buildSub = '\0';
+        if (revTok.Length > 0 && char.IsLetter(revTok[^1]))
+        {
+            buildSub = char.ToLowerInvariant(revTok[^1]);
+            revTok = revTok[..^1];
+        }
+        if (!uint.TryParse(revTok, out uint revision))
+            return "0";
+        uint build = v.Length >= 4 && uint.TryParse(v[3], out uint b) ? b : 0;
+
+        int cliType = parts.Length >= 2 && int.TryParse(parts[1], out int ct) ? ct : 0;
+        if (cliType is < 0 or > 3) cliType = 0; // CLIENTTYPE_2D..CLIENTTYPE_EC
+        int encForce = parts.Length >= 3 && int.TryParse(parts[2], out int ef) ? ef : 0;
+
+        uint keyMajor = major;
+        if (cliType == 3) // CLIENTTYPE_EC: kuiECMajorVerOffset
+            keyMajor += 63;
+
+        // CCryptoKeyCalc::CalculateLoginKeysReportedVer bit mix
+        uint key1, key2;
+        unchecked
+        {
+            key1 = (keyMajor << 23) | (minor << 14) | (revision << 4);
+            key1 ^= (revision * revision) << 9;
+            key1 ^= minor * minor;
+            key1 ^= (minor * 11) << 24;
+            key1 ^= (revision * 7) << 19;
+            key1 ^= 0x2C13A5FD;
+
+            key2 = (keyMajor << 22) | (revision << 13) | (minor << 3);
+            key2 ^= (revision * revision * 3) << 10;
+            key2 ^= minor * minor;
+            key2 ^= (minor * 13) << 23;
+            key2 ^= (revision * 7) << 18;
+            key2 ^= 0xA31D527F;
+        }
+
+        // GetEncryptionTypeForClient port (auto-detect when encForce is NONE)
+        string encName;
+        if (encForce is >= 1 and <= 4)
+        {
+            encName = encForce switch
+            {
+                1 => "ENC_BFISH",
+                2 => "ENC_BTFISH",
+                3 => "ENC_TFISH",
+                _ => "ENC_LOGIN"
+            };
+        }
+        else
+        {
+            encName = major switch
+            {
+                1 when minor is >= 23 and <= 25 => "ENC_LOGIN",
+                1 when minor == 26 => "ENC_BFISH",
+                2 when minor == 0 && revision == 0 && build == 0 =>
+                    buildSub == 'x' ? "ENC_BTFISH" : "ENC_BFISH",
+                2 when minor == 0 && revision <= 3 => "ENC_BTFISH",
+                _ => "ENC_BFISH"
+            };
+        }
+
+        // FormattedLoginKey: std::left + setfill('0') pads the fields on the
+        // RIGHT with zeros — 7.0.20 renders "7002000".
+        static string PadField(uint value, int width) =>
+            value.ToString().PadRight(width, '0');
+
+        string verKey = cliType == 3
+            ? PadField(keyMajor, 2) + PadField(minor, 2) + PadField(revision, 2) + PadField(0, 2)
+            : PadField(major, 1) + PadField(minor, 2) + PadField(revision, 2) + PadField(0, 2);
+
+        string verString = build > 0
+            ? $"{major}.{minor}.{revision}.{build}"
+            : $"{major}.{minor}.{revision}";
+
+        return $"{verKey} 0{key1:X8} 0{key2:X8} {encName} // {verString}";
     }
 
     /// <summary>Source-X <c>serv.b &lt;text&gt;</c> (SV_B → CWorldComm::Broadcast):

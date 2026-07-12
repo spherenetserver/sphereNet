@@ -161,7 +161,7 @@ public sealed partial class GameClient
     /// We deviate from Source-X (which prompts for two corner tiles —
     /// see CClient_functions.tbl 'NUKE'); a single pick + fixed range
     /// keeps the wire round-trip lean and is enough for GM cleanup.</summary>
-    public void BeginAreaTarget(string verb, int range)
+    public void BeginAreaTarget(string verb, int range, string verbArgs = "")
     {
         if (_character == null) return;
         if (Targets.CursorActive) return;
@@ -170,6 +170,7 @@ public sealed partial class GameClient
         ClearPendingTargetState();
         Targets.AreaVerb = verb.Trim().ToUpperInvariant();
         Targets.AreaRange = Math.Clamp(range, 1, 32);
+        Targets.AreaVerbArgs = verbArgs?.Trim() ?? "";
         Targets.CursorActive = true;
         // type=1 (ground allowed), so the GM can pick an empty tile.
         _netState.Send(new PacketTarget(1, (uint)Random.Shared.Next(1, int.MaxValue)));
@@ -1080,7 +1081,7 @@ public sealed partial class GameClient
     /// implementation. Iterates the world sectors around
     /// <paramref name="centre"/> at <paramref name="range"/> tiles and
     /// applies the verb. Returns the number of objects affected.</summary>
-    internal int ExecuteAreaVerb(string verb, Point3D centre, int range)
+    internal int ExecuteAreaVerb(string verb, Point3D centre, int range, string verbArgs = "")
     {
         if (_character == null) return 0;
         int affected = 0;
@@ -1089,11 +1090,19 @@ public sealed partial class GameClient
             case "NUKE":
             {
                 // Snapshot first — DeleteObject mutates the sector lists.
+                // Source-X: an argument is a verb line to run on each item
+                // instead of deleting it.
                 var items = _world.GetItemsInRange(centre, range).ToList();
                 foreach (var item in items)
                 {
                     if (item.IsEquipped) continue;          // GM gear safe
                     if (item.ContainedIn.IsValid) continue; // bag contents safe
+                    if (verbArgs.Length > 0)
+                    {
+                        RunVerbLineOn(item, verbArgs);
+                        affected++;
+                        continue;
+                    }
                     BroadcastDeleteObject(item.Uid.Value);
                     _world.DeleteObject(item);
                     item.Delete();
@@ -1108,6 +1117,12 @@ public sealed partial class GameClient
                 {
                     if (ch == _character) continue;
                     if (ch.IsPlayer) continue;              // never auto-purge real players
+                    if (verbArgs.Length > 0)
+                    {
+                        RunVerbLineOn(ch, verbArgs);
+                        affected++;
+                        continue;
+                    }
                     BroadcastDeleteObject(ch.Uid.Value);
                     _world.DeleteObject(ch);
                     ch.Delete();
@@ -1117,12 +1132,18 @@ public sealed partial class GameClient
             }
             case "NUDGE":
             {
-                // Source-X reads TARG.X/Y/Z TAGs as the displacement.
-                // We default to (0, 0, +1) when the GM has not set them
-                // — useful for "lift items 1 tile up to clear floors".
+                // Source-X NUDGE takes "dx dy dz" arguments; the TAG-based
+                // displacement remains the fallback for the GM command form.
                 int dx = TryGetIntTag("NUDGE.DX", 0);
                 int dy = TryGetIntTag("NUDGE.DY", 0);
                 int dz = TryGetIntTag("NUDGE.DZ", 1);
+                if (verbArgs.Length > 0)
+                {
+                    var np2 = verbArgs.Split([' ', '\t', ','], StringSplitOptions.RemoveEmptyEntries);
+                    if (np2.Length > 0 && int.TryParse(np2[0], out int ndx)) dx = ndx;
+                    if (np2.Length > 1 && int.TryParse(np2[1], out int ndy)) dy = ndy;
+                    dz = np2.Length > 2 && int.TryParse(np2[2], out int ndz) ? ndz : 0;
+                }
                 if (dx == 0 && dy == 0 && dz == 0) dz = 1;
                 foreach (var item in _world.GetItemsInRange(centre, range).ToList())
                 {
@@ -1144,6 +1165,18 @@ public sealed partial class GameClient
             }
         }
         return affected;
+    }
+
+    /// <summary>Run a "VERB [args]" line against an object (NUKE/NUKECHAR verb
+    /// payload — Source-X builds a CScript and calls r_Verb).</summary>
+    private void RunVerbLineOn(ObjBase obj, string line)
+    {
+        int sp = line.IndexOfAny([' ', '\t', '=']);
+        string verb = sp < 0 ? line : line[..sp];
+        string verbArg = sp < 0 ? "" : line[(sp + 1)..].Trim();
+        if (verb.Length == 0) return;
+        if (!obj.TrySetProperty(verb, verbArg))
+            obj.TryExecuteCommand(verb, verbArg, this);
     }
 
     private int TryGetIntTag(string key, int defaultValue)

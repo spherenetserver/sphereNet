@@ -212,6 +212,10 @@ public sealed partial class GameClient : IClientContext
     void IClientContext.BeginInfoSkill(SkillType skill, int skillId) => BeginInfoSkill(skill, skillId);
     void IClientContext.BeginActiveSkill(SkillType skill, int skillId, SkillHandlers.ActiveSkillTargetKind kind) => BeginActiveSkill(skill, skillId, kind);
     void IClientContext.BeginXVerbTarget(string verb, string args) => BeginXVerbTarget(verb, args);
+    void IClientContext.BeginAreaTarget(string verb, int range, string verbArgs) => BeginAreaTarget(verb, range, verbArgs);
+    void IClientContext.ResendCharacterList() => ResendCharacterList();
+    void IClientContext.ApplyNewbieSection(Character ch, string sectionName) => ApplyNewbieSection(ch, sectionName);
+    void IClientContext.SendPrompt(uint promptId, string message, Action<uint, uint, uint, string>? callback) => SendPrompt(promptId, message, callback);
     void IClientContext.OnResurrect() => OnResurrect();
     Character? IClientContext.DismountCharacter() => DismountCharacter();
     bool IClientContext.TryMountCharacter(Character mount) => TryMountCharacter(mount);
@@ -238,6 +242,6 @@ public sealed partial class GameClient : IClientContext
     bool IClientContext.RemoveTargetedObject(uint uid) => RemoveTargetedObject(uid);
     Item? IClientContext.DuplicateItem(Item src) => DuplicateItem(src);
     void IClientContext.SpawnCageAround(Point3D centre) => SpawnCageAround(centre);
-    int IClientContext.ExecuteAreaVerb(string verb, Point3D centre, int range) => ExecuteAreaVerb(verb, centre, range);
+    int IClientContext.ExecuteAreaVerb(string verb, Point3D centre, int range, string verbArgs) => ExecuteAreaVerb(verb, centre, range, verbArgs);
     Character? IClientContext.ResolvePickedChar(uint uid) => ResolvePickedChar(uid);
 }

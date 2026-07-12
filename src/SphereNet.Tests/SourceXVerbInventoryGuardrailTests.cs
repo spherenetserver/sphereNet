@@ -65,31 +65,11 @@ public class SourceXVerbInventoryGuardrailTests
         ]
     };
 
-    private static readonly Dictionary<string, string[]> KnownPartialOrDeferred = new()
-    {
-        ["CObjBase_functions.tbl"] =
-        [
-            "BASEPROPLIST", "BASETAGLIST", "CLILOCLIST", "DIALOGCLOSE", "EDIT",
-            "EFFECTLOCATION", "GOAWAKE", "GOSLEEP", "PROPLIST", "REMOVECLILOC",
-            "REPLACECLILOC", "SAYUA"
-        ],
-        ["CChar_functions.tbl"] =
-        [
-            "AFK", "GOCHARID", "GOCLI", "GOSOCK", "GOTYPE", "HEAR", "NEWBIESKILL",
-            "TARGETCLOSE", "UNDERWEAR"
-        ],
-        ["CClient_functions.tbl"] =
-        [
-            "BADSPAWN", "CHARLIST", "CLOSEPROFILE",
-            "CLOSESTATUS", "CODEXOFWISDOM", "DYE", "EVERBTARG", "EXTRACT", "GOTARG",
-            "LAST", "LINK", "MAPWAYPOINT", "NUDGE", "NUKE", "NUKECHAR", "REPAIR",
-            "SCROLL", "SHOWSKILLS", "SKILLUPDATE", "SUMMON", "TILE", "UNEXTRACT"
-        ],
-        ["CServer.cpp"] =
-        [
-            "BLOCKIP", "CALCCRYPT", "IMPORT", "SAVESTATICS", "UNBLOCKIP"
-        ]
-    };
+    /// <summary>Verb backlog — EMPTY since the verb long-tail waves: every
+    /// pinned Source-X verb on these surfaces now has a SphereNet
+    /// implementation. Add entries here (they must name pinned upstream
+    /// verbs) if a future surface addition ships partial.</summary>
+    private static readonly Dictionary<string, string[]> KnownPartialOrDeferred = new();
 
     [Fact]
     public void SourceXVerbSurfaces_MatchPinnedInventory()

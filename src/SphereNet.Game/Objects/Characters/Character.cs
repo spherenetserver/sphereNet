@@ -148,6 +148,23 @@ public partial class Character : ObjBase
     /// character itself (Source-X CChar::OnDoubleClickFromSelf).</summary>
     public static Action<Character>? OpenPaperdollForOwner;
 
+    /// <summary>HEAR verb routing (Source-X CChar CHV_HEAR): players get the
+    /// text as a private sysmessage on their client, NPCs process it as heard
+    /// speech. Wired by the host, which owns both surfaces.</summary>
+    public static Action<Character, string, Character?>? OnHearRouted;
+
+    /// <summary>GOCLI resolver: the n-th online client's character (0-based).
+    /// Wired by the host (client list lives at the network layer).</summary>
+    public static Func<int, Character?>? FindCharByClientIndex;
+
+    /// <summary>GOSOCK resolver: the character on the client with the given
+    /// socket id. Wired by the host.</summary>
+    public static Func<int, Character?>? FindCharBySocketId;
+
+    /// <summary>AFK verb state (Source-X models it as the napping action).</summary>
+    private bool _isAfk;
+    public bool IsAfk => _isAfk;
+
     /// <summary>Open this character's backpack on the owning client.
     /// Used by the script <c>PACK</c> verb (Source-X
     /// CChar::Use_BackpackOpen).</summary>
@@ -4114,6 +4131,107 @@ public partial class Character : ObjBase
                 }
                 return true;
             }
+            case "GOCHARID":
+            {
+                // Source-X CHV_GOCHARID — teleport to the first char whose
+                // creature/body id (or chardef) matches the argument.
+                var world = Objects.ObjBase.ResolveWorld?.Invoke();
+                string wanted = args.Trim();
+                if (world == null || wanted.Length == 0) return true;
+                long wantedId = 0;
+                if (!SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(wanted.AsSpan(), out wantedId))
+                {
+                    var rid = Definitions.DefinitionLoader.StaticResources?.ResolveDefName(wanted)
+                        ?? Core.Types.ResourceId.Invalid;
+                    if (rid.IsValid && rid.Type == Core.Enums.ResType.CharDef)
+                        wantedId = rid.Index;
+                }
+                if (wantedId == 0) return true;
+                foreach (var obj in world.GetAllObjects())
+                {
+                    if (obj is Character gc && !gc.IsDeleted && gc != this &&
+                        (gc.BodyId == wantedId || gc.CharDefIndex == wantedId))
+                    {
+                        MoveTo(gc.Position);
+                        break;
+                    }
+                }
+                return true;
+            }
+            case "GOTYPE":
+            {
+                // Source-X CHV_GOTYPE — teleport to the first item of the
+                // given IT_TYPE (numeric or t_* typedef name).
+                var world = Objects.ObjBase.ResolveWorld?.Invoke();
+                string wanted = args.Trim();
+                if (world == null || wanted.Length == 0) return true;
+                long typeVal = 0;
+                if (!SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(wanted.AsSpan(), out typeVal))
+                {
+                    var res = Definitions.DefinitionLoader.StaticResources;
+                    if (res != null)
+                    {
+                        var rid = res.ResolveDefName(wanted);
+                        if (rid.IsValid && rid.Type == Core.Enums.ResType.TypeDef)
+                            typeVal = rid.Index;
+                        else if (res.TryResolveDefNameValue(wanted, out long defVal))
+                            typeVal = defVal;
+                    }
+                }
+                if (typeVal == 0) return true;
+                foreach (var obj in world.GetAllObjects())
+                {
+                    if (obj is Items.Item it && !it.IsDeleted && (long)it.ItemType == typeVal)
+                    {
+                        MoveTo(it.GetTopLevelPosition());
+                        break;
+                    }
+                }
+                return true;
+            }
+            case "GOCLI":
+            case "GOSOCK":
+            {
+                // Source-X TeleportToCli — nth online client / by socket id.
+                // Client enumeration lives at the host; resolved via hook.
+                if (!int.TryParse(args.Trim(), out int cliArg)) cliArg = 0;
+                var found = key.Equals("GOCLI", StringComparison.OrdinalIgnoreCase)
+                    ? FindCharByClientIndex?.Invoke(cliArg)
+                    : FindCharBySocketId?.Invoke(cliArg);
+                if (found != null && found != this)
+                    MoveTo(found.Position);
+                return true;
+            }
+            case "AFK":
+            {
+                // Source-X CHV_AFK — the AFK "flag" is the napping action;
+                // arg forces ON (nonzero), no/zero arg toggles.
+                bool force = args.Trim().Length > 0 &&
+                    SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(args.Trim().AsSpan(), out long av) && av != 0;
+                bool newMode = args.Trim().Length > 0 ? force : !_isAfk;
+                if (newMode != _isAfk)
+                {
+                    _isAfk = newMode;
+                    source.SysMessage(newMode ? "You are now AFK." : "You are no longer AFK.");
+                }
+                return true;
+            }
+            case "HEAR":
+            {
+                // Source-X CHV_HEAR — route text to this char only: players
+                // see a sysmessage, NPCs process it as heard speech.
+                OnHearRouted?.Invoke(this, args, null);
+                return true;
+            }
+            case "UNDERWEAR":
+            {
+                // Source-X CHV_UNDERWEAR — flip the human "nude" hue bit.
+                if (!IsPlayer && BodyId is not (0x190 or 0x191 or 0x25D or 0x25E))
+                    return true;
+                Hue = new Color((ushort)(Hue.Value ^ 0x8000));
+                MarkDirty(DirtyFlag.Hue);
+                return true;
+            }
             case "FACE":
             {
                 if (byte.TryParse(args, out byte dir))
@@ -5366,6 +5484,32 @@ public partial class Character : ObjBase
     /// clients. Parses an optional Sphere <c>@color,font,mode</c> prefix for the
     /// hue. SAY uses ASCII (0x1C); SAYU/SAYUC use Unicode (0xAE); EMOTE passes a
     /// non-zero message type.</summary>
+    /// <summary>PROPLIST diagnostic surface (Source-X OV_PROPLIST).</summary>
+    protected override IEnumerable<string> EnumeratePropListKeys() =>
+        ["NAME", "COLOR", "P", "TIMER", "BODY", "STR", "DEX", "INT",
+         "HITS", "MAXHITS", "MANA", "MAXMANA", "STAM", "MAXSTAM",
+         "FAME", "KARMA", "TITLE", "FLAGS", "NPC"];
+
+    protected override void DumpBaseProperties(Action<string> sink)
+    {
+        var def = Definitions.DefinitionLoader.GetCharDef(
+            _charDefIndex != 0 ? _charDefIndex : CharDefIndex);
+        if (def == null) return;
+        if (!string.IsNullOrEmpty(def.DefName)) sink($"DEFNAME={def.DefName}");
+        if (!string.IsNullOrEmpty(def.Name)) sink($"NAME={def.Name}");
+        sink($"ID=0{def.Id.Index:X}");
+        if (def.DispIndex != 0) sink($"DISPID=0{def.DispIndex:X}");
+    }
+
+    protected override void DumpBaseTags(Action<string> sink)
+    {
+        var def = Definitions.DefinitionLoader.GetCharDef(
+            _charDefIndex != 0 ? _charDefIndex : CharDefIndex);
+        if (def == null) return;
+        foreach (var (k, v) in def.TagDefs.GetAll())
+            sink($"{k}={v}");
+    }
+
     private void BroadcastSpeech(byte msgType, bool unicode, string rawArgs)
     {
         ushort hue = 0x03B2;

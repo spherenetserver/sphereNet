@@ -299,11 +299,14 @@ public sealed class MovementEngine
                     // Source-X CCharAct CheckLocation: stepping springs the trap —
                     // Use_Trap() arms it and yields the MORE2 base damage.
                     int trapDamage = item.UseTrap();
-                    ch.Hits -= (short)Math.Min(trapDamage, ch.Hits);
-                    if (ch.Hits <= 0 && !ch.IsDead)
+                    if (!Combat.CombatEngine.IsDamageImmune(ch))
                     {
-                        if (Character.OnLifecycleKill != null) Character.OnLifecycleKill(ch, null);
-                        else ch.Kill();
+                        ch.Hits -= (short)Math.Min(trapDamage, ch.Hits);
+                        if (ch.Hits <= 0 && !ch.IsDead)
+                        {
+                            if (Character.OnLifecycleKill != null) Character.OnLifecycleKill(ch, null);
+                            else ch.Kill();
+                        }
                     }
                     break;
                 case ItemType.Telepad:
@@ -325,7 +328,8 @@ public sealed class MovementEngine
             }
 
             // Field damage (fire field, poison field, etc.)
-            if (item.TryGetTag("FIELD_DAMAGE", out string? fdStr) && int.TryParse(fdStr, out int fieldDmg))
+            if (item.TryGetTag("FIELD_DAMAGE", out string? fdStr) && int.TryParse(fdStr, out int fieldDmg) &&
+                !Combat.CombatEngine.IsDamageImmune(ch))
             {
                 ch.Hits -= (short)Math.Min(fieldDmg, ch.Hits);
                 if (ch.Hits <= 0 && !ch.IsDead)

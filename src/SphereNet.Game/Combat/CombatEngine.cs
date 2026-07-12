@@ -605,6 +605,13 @@ public static class CombatEngine
             ApplyDurabilityLoss(item);
     }
 
+    /// <summary>Source-X CChar::OnTakeDamage (CCharFight.cpp) bounces every blow —
+    /// returning 0 damage — while the target carries STATF_INVUL, unless the strike
+    /// is flagged DAMAGE_GOD. SphereNet has no single damage choke-point, so each
+    /// damage site (melee, spells, script DAMAGE, traps, fields) consults this guard.</summary>
+    public static bool IsDamageImmune(Character target, DamageType type = DamageType.Physical)
+        => target.IsStatFlag(StatFlag.Invul) && !type.HasFlag(DamageType.God);
+
     /// <summary>Apply the Source-X CObjBase DAMAGE verb to a character or item.
     /// Character damage honors @GetHit and elemental resists; item damage uses
     /// the existing @Damage cancellation and durability-break callbacks.</summary>
@@ -625,6 +632,8 @@ public static class CombatEngine
         if (target is Item item)
             return ApplyDirectItemDamage(item, damage);
         if (target is not Character character || character.IsDeleted || character.IsDead)
+            return 0;
+        if (IsDamageImmune(character, damageType))
             return 0;
 
         var context = new DirectDamageContext
@@ -1090,7 +1099,8 @@ public static class CombatEngine
         // via DeathEngine.ProcessDeath which creates the corpse, drops loot,
         // and sends the delete packet. Calling Kill() early makes
         // ProcessDeath bail out ("already dead") leaving a ghost NPC.
-        if (damage > 0)
+        // STATF_INVUL bounces the blow (no Hits loss, no reflect).
+        if (damage > 0 && !IsDamageImmune(target))
         {
             target.Hits -= (short)Math.Min(damage, short.MaxValue);
             target.RecordAttack(attacker.Uid, damage);

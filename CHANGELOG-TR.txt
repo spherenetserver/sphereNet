@@ -3,6 +3,28 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, yirmi ucuncu batch
+----------------------------------------
+
+DUZELTILDI - Yenilmez (invul) karakterler artik hasar almiyor (Wave 242):
+  - STATF_INVUL olumde kontrol ediliyordu ama hasar uygulamasinda degil — bu
+    yuzden invul karakter yine her kaynaktan can kaybediyordu. Source-X
+    CChar::OnTakeDamage invul iken darbeyi geri sektirir (sifir hasar), DAMAGE_GOD
+    bayrakli vurus haric. Ortak CombatEngine.IsDamageImmune koruyucusu artik tum
+    hasar noktalarini kapsiyor: script DAMAGE, melee (yansiyan hasar dahil),
+    buyuler, sandik ve adim tuzaklari, alan hasari.
+
+DUZELTILDI - Ceset diriltme top-level ceset gerektiriyor (Wave 242):
+  - Healing/Veterinary ceset-hedefli diriltme artik bir kabin icindeki cesedi
+    reddediyor; Source-X CItemCorpse::IsCorpseResurrectable ile uyumlu (ceset yer
+    ustunde bir nesne olmali). Kendi kendini diriltme yolu bunu zaten uyguluyordu.
+
+DUZELTILDI - Region vendor restock interval birimi (Wave 242):
+  - Region RestockVendors tag'i dakika olarak parse ediliyordu; Source-X
+    NPC_Vendor_Restock bunu legacy script uyumu icin onda-bir-saniye olarak olcer.
+    Legacy RestockVendors=6000 artik 6000 dakika degil, dogru sekilde 600 saniye
+    (10 dakika) anlamina geliyor.
+
 [2026-07-12] - 90-alti parite backlog, yirmi ikinci batch
 ----------------------------------------
 

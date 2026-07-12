@@ -278,8 +278,14 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   tag); gold-drop-on-NPC → VendorTrainingEngine.TryPay (ClientInventoryHandler, hire
   payment'ın yanında). NOT: SphereNet lock byte 0=up/**1=down**/2=locked (Source-X
   enum DEĞİL — client convention). Test: VendorTrainingEngineTests (+8).
-- [ ] Region `RestockVendors`/`NoRestock` tag + game-time restock timer (şu an
-  wall-clock `RESTOCK_TIME`). (düşük öncelik)
+- [x] Region `RestockVendors`/`NoRestock` tag + restock timer — DOĞRULANDI +
+  BİRİM DÜZELTİLDİ (Wave 242): `NpcAI.ActVendor` zaten region `RESTOCKVENDORS`/
+  `NORESTOCK` (region ∨ NPC) tag'lerini + wall-clock `RESTOCK_TIME` interval'i
+  okuyordu. GERÇEK boşluk **birim uyuşmazlığı**: değer dakika olarak parse
+  ediliyordu, oysa Source-X `NPC_Vendor_Restock` (CCharNPCAct_Vendor.cpp:55)
+  `MSECS_PER_TENTH` = onda-bir-saniye kullanır (legacy script uyumu). Fix:
+  `intervalMs = Clamp(tenths,1,…) * 100`. Böylece legacy `RESTOCKVENDORS=6000`
+  = 600sn = 10dk (eskiden yanlışça 6000dk).
 
 ---
 
@@ -345,11 +351,32 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
 ### 4.5 Character core — 82
 - [ ] `CCharStat` regen tabloları + `CCharStatus` (2073 satır) derinliği kısmi.
 - [ ] Jail flag yerine tam region-jail makinesi.
-- [ ] STATF_INVUL townsfolk modellenmiyor.
+- [x] STATF_INVUL townsfolk — YAPILDI (Wave 242): invul flag ölümde
+  (`DeathEngine:71`) kontrol ediliyordu ama **hasar uygulamada değil** → invul
+  karakter yine Hits kaybediyordu. Source-X `CChar::OnTakeDamage` (CCharFight.cpp)
+  her darbeyi geri sektirir (return 0) — DAMAGE_GOD hariç. SphereNet'te tek choke
+  yok, o yüzden ortak `CombatEngine.IsDamageImmune(target, type)` helper'ı
+  (`IsStatFlag(Invul) && !type.HasFlag(God)`) tüm hasar noktalarına bağlandı:
+  ApplyScriptDamage, melee (reflect dahil), SpellEngine, container/step trap'leri
+  (ClientItemUseHandler×2, MovementEngine×2), field hasarı. Test:
+  SourceXInvulRezWave242Tests (+3).
 
 ### 4.6 Death / corpse — 82
-- [ ] `IsCorpseResurrectable`/`IsCorpseSleeping` healer-rez menü yolu.
-- [ ] Resurrection-via-gump menü + corpse instalist packet detayı.
+- [x] `IsCorpseResurrectable` healer-rez yolu — DOĞRULANDI + TOP-LEVEL GATE
+  EKLENDİ (Wave 242): player Healing/Vet corpse-rez (`ActiveSkillEngine.Healing`)
+  ve NPC healer ghost-rez (`NpcAI.ActHealer`) zaten mevcut, `Character.Resurrect`
+  antimagic/HP/murderer-penalty içeriyor, `RestoreFromCorpse`=`RaiseCorpse`. GERÇEK
+  boşluk: Source-X `CItemCorpse::IsCorpseResurrectable` (CItemCorpse.cpp:63-67)
+  corpse'un **top-level** (bir kabın içinde değil) olmasını şart koşar. Eklendi:
+  heal-rez yolu artık `corpse.ContainedIn.IsValid` ise `HealingCorpseg` ile
+  reddediyor (self-rez `RestoreFromCorpse:675` zaten uyguluyordu). Test:
+  SourceXInvulRezWave242Tests.Healing_CorpseInsideContainer_RejectsAsNotTopLevel.
+- [x] Resurrection-via-gump menü + corpse instalist packet — N/A (Wave 242):
+  Source-X'te resurrection her zaman doğrudan aksiyon (`Spell_Resurrection`), gump
+  DEĞİL; `RaiseCorpse` corpse'u siler, "instalist" içerik-listesi paketi yok.
+  Upstream'de karşılığı olmayan madde — uygulanabilir bir boşluk değil.
+- [ ] `IsCorpseSleeping` — SphereNet'te sleeping mekaniği yok; rez akışının parçası
+  DEĞİL (Source-X'te Forensics/steal callers). Kapsam dışı.
 
 ### 4.7 Item core — 85
 - [~] `CItemBase` BONUSSKILL1-5(+AMT) / BONUSCRAFTING* — KAPSAM NETLEŞTİRİLDİ

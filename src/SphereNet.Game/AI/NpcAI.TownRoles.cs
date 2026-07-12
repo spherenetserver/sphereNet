@@ -238,9 +238,10 @@ public sealed partial class NpcAI
         CheckWitnessCrime(npc);
 
         // Periodic restock check (vendor brain only). Source-X
-        // NPC_Vendor_Restock: the interval comes from the region's
-        // RestockVendors tag (minutes) and a NoRestock tag — on the region or
-        // the NPC — suppresses restock entirely.
+        // NPC_Vendor_Restock (CCharNPCAct_Vendor.cpp:55): the interval comes from
+        // the region's RestockVendors tag, measured in tenths of a second
+        // (MSECS_PER_TENTH) for legacy script compatibility; a NoRestock tag — on
+        // the region or the NPC — suppresses restock entirely.
         if (npc.NpcBrain == NpcBrainType.Vendor)
         {
             var vendorRegion = _world.FindRegion(npc.Position);
@@ -248,8 +249,8 @@ public sealed partial class NpcAI
                              (vendorRegion != null && vendorRegion.TryGetTag("NORESTOCK", out _));
             long intervalMs = VendorRestockIntervalMs;
             if (vendorRegion != null && vendorRegion.TryGetTag("RESTOCKVENDORS", out string? rv) && rv != null &&
-                long.TryParse(rv, out long minutes) && minutes > 0)
-                intervalMs = Math.Clamp(minutes, 1, 365L * 24 * 60) * 60_000;
+                long.TryParse(rv, out long tenths) && tenths > 0)
+                intervalMs = Math.Clamp(tenths, 1, 365L * 24 * 60 * 60 * 10) * 100;
 
             long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             if (!noRestock &&

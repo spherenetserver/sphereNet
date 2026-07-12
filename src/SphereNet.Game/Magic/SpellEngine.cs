@@ -1119,7 +1119,7 @@ public sealed class SpellEngine
                 damage = CombatEngine.ApplySlayerDamage(caster, target, damage, slayerSource);
             }
 
-            if (damage > 0)
+            if (damage > 0 && !CombatEngine.IsDamageImmune(target))
             {
                 target.Hits -= (short)Math.Min(damage, short.MaxValue);
                 target.RecordAttack(caster.Uid, damage);

@@ -546,8 +546,11 @@ public sealed class ClientItemUseHandler
                 if (item.TryGetTag("TRAP_DAMAGE", out string? trapDmgStr) &&
                     int.TryParse(trapDmgStr, out int trapDmg) && trapDmg > 0)
                 {
-                    _character.Hits -= (short)Math.Min(trapDmg, _character.Hits);
-                    SysMessage("You set off a trap!");
+                    if (!CombatEngine.IsDamageImmune(_character))
+                    {
+                        _character.Hits -= (short)Math.Min(trapDmg, _character.Hits);
+                        SysMessage("You set off a trap!");
+                    }
                     item.RemoveTag("TRAP_DAMAGE");
                 }
                 SendOpenContainer(item);
@@ -631,7 +634,8 @@ public sealed class ClientItemUseHandler
                 int trapDmg = item.UseTrap();
                 // Source-X gates the damage on CanTouch — the shard-wide reach
                 // distance (3 tiles, same as the use-reach gate above).
-                if (_character.Position.GetDistanceTo(item.Position) <= 3)
+                if (_character.Position.GetDistanceTo(item.Position) <= 3 &&
+                    !CombatEngine.IsDamageImmune(_character))
                 {
                     _character.Hits -= (short)Math.Min(trapDmg, _character.Hits);
                     SysMessage("You set off a trap!");

@@ -4,6 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, twenty-third batch
+----------------------------------------
+
+FIXED - Invulnerable characters no longer take damage (Wave 242):
+  - STATF_INVUL was checked at death but not at damage application, so an
+    invulnerable character still lost hit points from every source. Source-X
+    CChar::OnTakeDamage bounces the blow (deals zero) while invulnerable, unless
+    the strike is flagged DAMAGE_GOD. A shared CombatEngine.IsDamageImmune guard
+    now protects every damage site: script DAMAGE, melee (including reflected
+    damage), spells, container and step traps, and field damage.
+
+FIXED - Corpse resurrection requires a top-level corpse (Wave 242):
+  - The Healing/Veterinary corpse-target resurrection now refuses a corpse that
+    sits inside a container, matching Source-X CItemCorpse::IsCorpseResurrectable
+    (a corpse must be a ground object). The self-resurrection path already
+    enforced this.
+
+FIXED - Region vendor restock interval unit (Wave 242):
+  - The region RestockVendors tag was parsed as minutes; Source-X
+    NPC_Vendor_Restock measures it in tenths of a second for legacy script
+    compatibility. A legacy RestockVendors=6000 now correctly means 600 seconds
+    (10 minutes) instead of 6000 minutes.
+
 [2026-07-12] - Sub-90 parity backlog, twenty-second batch
 ----------------------------------------
 

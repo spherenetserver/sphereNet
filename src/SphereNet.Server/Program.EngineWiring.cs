@@ -1170,7 +1170,10 @@ public static partial class Program
                     }
                 }
             };
-            _spellRegistry = new SpellRegistry();
+            // Reuse the registry if LoadDefinitions already created + populated it
+            // (definitions now load before the world save so legacy NPC bodies
+            // resolve). A plain `new` here would drop the loaded spell defs.
+            _spellRegistry ??= new SpellRegistry();
             _spellEngine = new SpellEngine(_world, _spellRegistry);
             _world.OnSectorLight = (character, level) =>
             {
@@ -3199,9 +3202,20 @@ public static partial class Program
         }
     }
 
-    private static void LoadDefinitionsAndRegions()
+    /// <summary>Build spell/item/char/skill definitions from the loaded scripts.
+    /// MUST run before the world save loads: legacy Sphere saves carry an NPC's
+    /// body only in the <c>[WORLDCHAR &lt;defname&gt;]</c> header (no per-char
+    /// BODY=), and the loader resolves it through <see cref="DefinitionLoader"/>,
+    /// whose char/item tables are empty until <c>LoadAll</c> runs. Loading defs
+    /// afterwards left every legacy NPC at body 0 (invisible) — item BaseId has a
+    /// rid.Index fallback so items survived, char bodies had none, hence the
+    /// "doors show but NPCs don't" symptom.</summary>
+    private static void LoadDefinitions()
     {
-            // Load spell/item/char definitions from scripts
+            // Spell defs register into the shared registry; create it here if the
+            // engines haven't yet (InitializeGameEngines reuses this instance).
+            _spellRegistry ??= new SpellRegistry();
+
             var defSw = Stopwatch.StartNew();
             // Wire diagnostic BEFORE the loader runs — script-load tracing
             // (template body inspection, etc.) only fires during LoadAll.
@@ -3213,7 +3227,12 @@ public static partial class Program
                 "Definitions loaded in {Ms}ms: {Spells} spells, {Items} itemdefs, {Chars} chardefs, {Skills} skilldefs",
                 defSw.ElapsedMilliseconds, defLoader.SpellsLoaded, defLoader.ItemDefsLoaded,
                 defLoader.CharDefsLoaded, defLoader.SkillDefsLoaded);
+    }
 
+    /// <summary>Region/room definitions and craft recipes. Runs after the engines
+    /// (needs <c>_craftingEngine</c>) and after <see cref="LoadDefinitions"/>.</summary>
+    private static void LoadRegionsAndRecipes()
+    {
             // Load AREADEF definitions as regions from scripts
             LoadRegionDefs();
 

@@ -4,6 +4,25 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-13] - Legacy save load order and staff item visibility
+----------------------------------------
+
+FIXED - Legacy NPCs loaded invisible from classic Sphere saves:
+  - Char/item/spell definitions are now built (DefinitionLoader.LoadAll) before the
+    world save is loaded, instead of after. Legacy Sphere saves store an NPC's body
+    only in the [WORLDCHAR <defname>] section header, resolved through the definition
+    tables; loading definitions afterwards left every such NPC at body 0 (invisible,
+    though its name still resolved from the save) and left spawn items without their
+    ITEMDEF type inheritance. Item graphics survived only because item id resolution
+    has a defname-index fallback that character body resolution lacks.
+
+CHANGED - Staff visibility of invisible items:
+  - GM and higher now see ATTR_INVIS items (spawn worldgems, triggers, and similar)
+    rendered dimmed even with AllShow off, so staff can audit spawners on sight.
+    Normal players remain gated by AllShow.
+
+ADDED - CLAUDE.md contributor/agent guide at the repository root.
+
 [2026-07-12] - Sub-90 parity backlog, thirty-sixth batch (suit max-pool aggregation)
 ----------------------------------------
 

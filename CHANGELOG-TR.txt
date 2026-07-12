@@ -3,6 +3,25 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-13] - Legacy kayit yukleme sirasi ve staff item gorunurlugu
+----------------------------------------
+
+DUZELTILDI - Klasik Sphere kayitlarindan NPC'ler gorunmez yukleniyordu:
+  - Char/item/spell tanimlari (DefinitionLoader.LoadAll) artik dunya kaydindan SONRA
+    degil, ONCE kuruluyor. Legacy Sphere kayitlari bir NPC'nin body'sini yalnizca
+    [WORLDCHAR <defname>] bolum basliginda saklar ve bu tanim tablolari uzerinden
+    cozulur; tanimlari sonra yuklemek her boyle NPC'yi body 0'da birakiyordu
+    (gorunmez, ama ismi kayittan yine cozuluyordu) ve spawn item'larini ITEMDEF tip
+    kalitimindan yoksun birakiyordu. Item grafikleri yalnizca item id cozumunun
+    defname-index yedegi oldugu icin kurtuluyordu; karakter body cozumunde bu yedek yok.
+
+DEGISTIRILDI - Gorunmez item'larin staff gorunurlugu:
+  - GM ve ustu artik ATTR_INVIS item'lari (spawn worldgem'leri, trigger'lar vb.)
+    AllShow kapali olsa bile soluk olarak goruyor; boylece staff spawner'lari
+    bakisla denetleyebilir. Normal oyuncular yine AllShow'a bagli kalir.
+
+EKLENDI - Repo kokune CLAUDE.md katkici/ajan rehberi.
+
 [2026-07-12] - 90-alti parite backlog, otuz altinci batch (suit max-havuz agregasyonu)
 ----------------------------------------
 

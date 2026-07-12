@@ -805,6 +805,13 @@ public static partial class Program
         if (seededVars > 0 || seededLists > 0)
             _log.LogInformation("Script globals seeded: {Vars} VARs, {Lists} LISTs", seededVars, seededLists);
 
+        // Definitions MUST be built before the world save loads: legacy Sphere
+        // saves store an NPC's body only via the [WORLDCHAR <defname>] header, and
+        // the loader resolves it through DefinitionLoader (empty until LoadAll).
+        // Loading defs afterwards left every legacy NPC at body 0 / invisible, and
+        // left spawn items without ITEMDEF type inheritance.
+        LoadDefinitions();
+
         string savePath = ResolvePath(basePath, _config.WorldSaveDir);
         if (Directory.Exists(savePath))
         {
@@ -820,7 +827,7 @@ public static partial class Program
 
         InitializeGameEngines(basePath);
 
-        LoadDefinitionsAndRegions();
+        LoadRegionsAndRecipes();
 
         int restoredSpellEffects = _spellEngine.RestorePersistedEffectsFromWorld();
         if (restoredSpellEffects > 0)

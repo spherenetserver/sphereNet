@@ -2353,38 +2353,49 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
     }
 
     [Fact]
-    public void BuildViewDelta_HidesAttrInvisItemsUntilAllShow()
+    public void BuildViewDelta_GmSeesAttrInvisItems_PlayerGatedByAllShow()
     {
         var loggerFactory = LoggerFactory.Create(_ => { });
         var world = CreateWorld();
         var accountManager = new AccountManager(loggerFactory);
-        var client = TestHarness.CreateClient(loggerFactory, world, accountManager, 90);
 
-        var viewer = world.CreateCharacter();
-        viewer.Name = "Staff";
-        viewer.IsPlayer = true;
-        viewer.PrivLevel = PrivLevel.GM;
-        world.PlaceCharacter(viewer, new Point3D(1000, 1000, 0, 0));
-        TestHarness.AttachCharacter(client, viewer);
+        // A normal player never sees an ATTR_INVIS item without AllShow.
+        var playerClient = TestHarness.CreateClient(loggerFactory, world, accountManager, 90);
+        var player = world.CreateCharacter();
+        player.Name = "Player";
+        player.IsPlayer = true;
+        player.PrivLevel = PrivLevel.Player;
+        world.PlaceCharacter(player, new Point3D(1000, 1000, 0, 0));
+        TestHarness.AttachCharacter(playerClient, player);
 
         var mapPoint = world.CreateItem();
         mapPoint.BaseId = 0x1BC3;
         Assert.True(mapPoint.TrySetProperty("ATTR", "ATTR_INVIS|ATTR_STATIC|ATTR_MOVE_NEVER"));
         world.PlaceItem(mapPoint, new Point3D(1001, 1000, 0, 0));
 
-        var hiddenDelta = client.BuildViewDelta();
-        Assert.NotNull(hiddenDelta);
-        Assert.DoesNotContain(mapPoint.Uid.Value, hiddenDelta!.CurrentItems);
+        var playerDelta = playerClient.BuildViewDelta();
+        Assert.NotNull(playerDelta);
+        Assert.DoesNotContain(mapPoint.Uid.Value, playerDelta!.CurrentItems);
         Assert.True(mapPoint.IsAttr(ObjAttributes.Invis));
         Assert.True(mapPoint.IsAttr(ObjAttributes.Static));
         Assert.True(mapPoint.IsAttr(ObjAttributes.Move_Never));
 
-        viewer.AllShow = true;
-        var allShowDelta = client.BuildViewDelta();
-        Assert.NotNull(allShowDelta);
-        Assert.Contains(mapPoint.Uid.Value, allShowDelta!.CurrentItems);
-        Assert.Single(allShowDelta.NewItems);
-        Assert.True(allShowDelta.NewItems[0].HiddenAsAllShow);
+        // A GM sees the same invisible item (spawn worldgem, trigger, …) dimmed
+        // even with AllShow OFF, so staff can audit spawners on sight.
+        var gmClient = TestHarness.CreateClient(loggerFactory, world, accountManager, 91);
+        var gm = world.CreateCharacter();
+        gm.Name = "Staff";
+        gm.IsPlayer = true;
+        gm.PrivLevel = PrivLevel.GM;
+        Assert.False(gm.AllShow);
+        world.PlaceCharacter(gm, new Point3D(1000, 1000, 0, 0));
+        TestHarness.AttachCharacter(gmClient, gm);
+
+        var gmDelta = gmClient.BuildViewDelta();
+        Assert.NotNull(gmDelta);
+        Assert.Contains(mapPoint.Uid.Value, gmDelta!.CurrentItems);
+        Assert.Single(gmDelta.NewItems);
+        Assert.True(gmDelta.NewItems[0].HiddenAsAllShow); // sent dimmed
     }
 
     [Fact]

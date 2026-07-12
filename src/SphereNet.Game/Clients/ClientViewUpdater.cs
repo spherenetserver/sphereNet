@@ -116,7 +116,11 @@ public sealed class ClientViewUpdater
         {
             if (item.IsDeleted || item.IsEquipped || !item.IsOnGround) return;
             bool isInvis = item.IsAttr(Core.Enums.ObjAttributes.Invis);
-            if (isInvis && !me.AllShow)
+            // Invisible items (spawn worldgems, triggers, etc.) render for AllShow;
+            // GM+ staff also see them dimmed without toggling AllShow, so a GM can
+            // audit spawners on sight.
+            bool canSeeInvisItems = me.AllShow || me.PrivLevel >= Core.Enums.PrivLevel.GM;
+            if (isInvis && !canSeeInvisItems)
                 return;
 
             itemTileCounts ??= [];
@@ -129,7 +133,7 @@ public sealed class ClientViewUpdater
             uint uid = item.Uid.Value;
             delta.CurrentItems.Add(uid);
             if (!View.KnownItems.Contains(uid))
-                delta.NewItems.Add((item, isInvis && me.AllShow));
+                delta.NewItems.Add((item, isInvis && canSeeInvisItems));
             else
                 delta.UpdatedItems.Add(item);
         });

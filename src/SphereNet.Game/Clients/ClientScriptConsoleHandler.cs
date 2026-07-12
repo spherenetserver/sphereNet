@@ -55,6 +55,10 @@ public sealed class ClientScriptConsoleHandler
     // --- context shims (the GameClient surface this handler depends on) ---
     private Character? _character => _client.Character;
     private GameWorld _world => _client.World;
+    // Source-X old-style menu (0x7C) hard cap: MAX_MENU_ITEMS is 64 and the
+    // builders truncate at MAX_MENU_ITEMS-1, so at most 63 selectable entries.
+    private const int MenuMaxItems = 63;
+
     private NetState _netState => _client.NetState;
     private Account? _account => _client.Account;
     private CommandHandler? _commands => _client.Cmds;
@@ -622,6 +626,8 @@ public sealed class ClientScriptConsoleHandler
                 _logger.LogWarning("[menu] MENU {Defname} has no ON entries", menuDefname);
                 return true;
             }
+            if (options.Count > MenuMaxItems)
+                options.RemoveRange(MenuMaxItems, options.Count - MenuMaxItems);
 
             // Store pending state
             _pendingMenuId = (ushort)(Math.Abs(menuDefname.GetHashCode()) & 0xFFFF);
@@ -1910,7 +1916,18 @@ public sealed class ClientScriptConsoleHandler
                 continue;
             }
             if (k.Key.Equals("TESTIF", StringComparison.OrdinalIgnoreCase))
-                continue; // expression tests not evaluated; entry stays visible
+            {
+                // Source-X TESTIF: hide the entry when the expression is false.
+                // (_character is non-null here — guarded at method entry.)
+                var interp = _triggerDispatcher?.Runner?.Interpreter;
+                if (interp != null &&
+                    !interp.EvaluateConditionForTarget(k.Arg, _character, _client))
+                {
+                    current = null;
+                    skipping = true;
+                }
+                continue;
+            }
 
             current.Script.Add(k);
         }
@@ -1922,6 +1939,8 @@ public sealed class ClientScriptConsoleHandler
             SysMessage("You are not able to use any of those options.");
             return true;
         }
+        if (options.Count > MenuMaxItems)
+            options.RemoveRange(MenuMaxItems, options.Count - MenuMaxItems);
 
         _pendingMenuId = (ushort)(Math.Abs(menuName.GetHashCode()) & 0xFFFF);
         _pendingMenuDefname = menuName;

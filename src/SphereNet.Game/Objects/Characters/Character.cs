@@ -548,6 +548,8 @@ public partial class Character : ObjBase
     public static int RegenHitsSeconds { get; set; } = 40;
     public static int RegenManaSeconds { get; set; } = 20;
     public static int RegenStamSeconds { get; set; } = 10;
+    /// <summary>Global food decay: seconds per hunger point (Source-X REGEN3, default 60 min).</summary>
+    public static int RegenFoodSeconds { get; set; } = 3600;
 
     /// <summary>Refresh notoriety for nearby clients after memory changes (NotoSave_Update).</summary>
     public static Action<Character>? NotoSaveUpdate { get; set; }
@@ -772,6 +774,23 @@ public partial class Character : ObjBase
     private long _nextManaRegen;
     private long _nextStamRegen;
     private long _nextFoodDecay;
+
+    // Per-char regen RATE overrides in ms (Source-X CChar REGENHITS/MANA/STAM/FOOD).
+    // 0 = fall back to the global rate; > 0 = per-char ms; < 0 = never regen this stat.
+    // Mirrors CChar::Stats_GetRegenRate (CCharStat.cpp:586).
+    private long _regenHitsRateMs;
+    private long _regenManaRateMs;
+    private long _regenStamRateMs;
+    private long _regenFoodRateMs;
+
+    /// <summary>Per-char hit regen rate in ms (0 = use the global rate). Persisted.</summary>
+    public long RegenHitsRateMs => _regenHitsRateMs;
+    /// <summary>Per-char mana regen rate in ms (0 = use the global rate). Persisted.</summary>
+    public long RegenManaRateMs => _regenManaRateMs;
+    /// <summary>Per-char stam regen rate in ms (0 = use the global rate). Persisted.</summary>
+    public long RegenStamRateMs => _regenStamRateMs;
+    /// <summary>Per-char food decay rate in ms (0 = use the global rate). Persisted.</summary>
+    public long RegenFoodRateMs => _regenFoodRateMs;
     private ushort _food = 40; // 0-60, hunger level (Sphere style)
     private string _title = ""; // Paperdoll title (Sphere: src.title)
     private bool _allShow; // Runtime-only GM flag, not saved
@@ -2616,6 +2635,15 @@ public partial class Character : ObjBase
             case "SPEECHCOLOR": value = _speechColor.ToString(); return true;
             case "MAXFOLLOWER": value = _maxFollower.ToString(); return true;
             case "CURFOLLOWER": value = CurFollower.ToString(); return true;
+            // Per-char regen rate overrides (Source-X CChar). Non-D = seconds, D = tenths.
+            case "REGENHITS": value = (EffectiveRegenRateMsForRead(_regenHitsRateMs, RegenHitsSeconds, 40000) / 1000).ToString(); return true;
+            case "REGENHITSD": value = (EffectiveRegenRateMsForRead(_regenHitsRateMs, RegenHitsSeconds, 40000) / 100).ToString(); return true;
+            case "REGENMANA": value = (EffectiveRegenRateMsForRead(_regenManaRateMs, RegenManaSeconds, 20000) / 1000).ToString(); return true;
+            case "REGENMANAD": value = (EffectiveRegenRateMsForRead(_regenManaRateMs, RegenManaSeconds, 20000) / 100).ToString(); return true;
+            case "REGENSTAM": value = (EffectiveRegenRateMsForRead(_regenStamRateMs, RegenStamSeconds, 10000) / 1000).ToString(); return true;
+            case "REGENSTAMD": value = (EffectiveRegenRateMsForRead(_regenStamRateMs, RegenStamSeconds, 10000) / 100).ToString(); return true;
+            case "REGENFOOD": value = (EffectiveRegenRateMsForRead(_regenFoodRateMs, RegenFoodSeconds, 3_600_000) / 1000).ToString(); return true;
+            case "REGENFOODD": value = (EffectiveRegenRateMsForRead(_regenFoodRateMs, RegenFoodSeconds, 3_600_000) / 100).ToString(); return true;
             case "RESPHYSICALMAX": value = _resPhysicalMax.ToString(); return true;
             case "RESFIREMAX": value = _resFireMax.ToString(); return true;
             case "RESCOLDMAX": value = _resColdMax.ToString(); return true;
@@ -3588,6 +3616,16 @@ public partial class Character : ObjBase
             case "SPEECHCOLOR": if (ushort.TryParse(normalized, out ushort scv)) _speechColor = scv; return true;
             case "MAXFOLLOWER": if (byte.TryParse(normalized, out byte mfv)) _maxFollower = mfv; return true;
             case "CURFOLLOWER": if (byte.TryParse(normalized, out byte cfv)) _curFollower = cfv; return true;
+            // Per-char regen rate overrides (Source-X CChar). Non-D stores seconds*1000,
+            // D stores tenths*100; both write the same ms field. <0 = never regen.
+            case "REGENHITS": if (long.TryParse(normalized, out long rhs)) _regenHitsRateMs = rhs * 1000; return true;
+            case "REGENHITSD": if (long.TryParse(normalized, out long rht)) _regenHitsRateMs = rht * 100; return true;
+            case "REGENMANA": if (long.TryParse(normalized, out long rms)) _regenManaRateMs = rms * 1000; return true;
+            case "REGENMANAD": if (long.TryParse(normalized, out long rmt)) _regenManaRateMs = rmt * 100; return true;
+            case "REGENSTAM": if (long.TryParse(normalized, out long rss)) _regenStamRateMs = rss * 1000; return true;
+            case "REGENSTAMD": if (long.TryParse(normalized, out long rst)) _regenStamRateMs = rst * 100; return true;
+            case "REGENFOOD": if (long.TryParse(normalized, out long rfs)) _regenFoodRateMs = rfs * 1000; return true;
+            case "REGENFOODD": if (long.TryParse(normalized, out long rft)) _regenFoodRateMs = rft * 100; return true;
             case "OWNER":
             case "OWNER_UID":
             case "NPCMASTER":
@@ -5532,7 +5570,8 @@ public partial class Character : ObjBase
 
         // HP regen: Source/Sphere REGEN0 interval, affected by hunger. Suspended while poisoned
         // so the poison can actually whittle the victim down.
-        if (now >= _nextHitRegen && _hits < _maxHits && Poison.Level == 0)
+        long hitRateMs = ResolveRegenRateMs(_regenHitsRateMs, RegenHitsSeconds, 40000);
+        if (hitRateMs >= 0 && now >= _nextHitRegen && _hits < _maxHits && Poison.Level == 0)
         {
             int regenAmount = _food > 0 ? 1 : 0;
             // Source-X CCharStat::Stats_Regen: the human race regens +2 extra hp.
@@ -5543,7 +5582,7 @@ public partial class Character : ObjBase
                 _hits = (short)Math.Min(_hits + regenAmount, _maxHits);
                 MarkDirty(DirtyFlag.Stats);
             }
-            _nextHitRegen = now + RegenSecondsToMs(RegenHitsSeconds, 40000);
+            _nextHitRegen = now + hitRateMs;
         }
 
         // Mana regen: Source/Sphere REGEN1 (STAT_INT) interval. Source-X Stats_GetRegenVal
@@ -5551,7 +5590,8 @@ public partial class Character : ObjBase
         // by INT. The old INT/50 let a high-INT caster (lich, elemental: INT 400+)
         // regen 8-9 mana every 3s, matching or exceeding its spend, so its pool
         // never ran dry and it cast forever. Meditation is the way to regen faster.
-        if (now >= _nextManaRegen && _mana < _maxMana)
+        long manaRateMs = ResolveRegenRateMs(_regenManaRateMs, RegenManaSeconds, 20000);
+        if (manaRateMs >= 0 && now >= _nextManaRegen && _mana < _maxMana)
         {
             int regenAmount = 1;
             if (IsStatFlag(StatFlag.Meditation))
@@ -5564,11 +5604,12 @@ public partial class Character : ObjBase
             if (_mana >= _maxMana && IsStatFlag(StatFlag.Meditation))
                 ClearStatFlag(StatFlag.Meditation);
             MarkDirty(DirtyFlag.Stats);
-            _nextManaRegen = now + RegenSecondsToMs(RegenManaSeconds, 20000);
+            _nextManaRegen = now + manaRateMs;
         }
 
         // Stam regen: Source-X scales with DEX — higher DEX = faster regen.
-        if (now >= _nextStamRegen && _stam < _maxStam)
+        long stamRateMs = ResolveRegenRateMs(_regenStamRateMs, RegenStamSeconds, 10000);
+        if (stamRateMs >= 0 && now >= _nextStamRegen && _stam < _maxStam)
         {
             int regenAmt = _isPlayer ? Math.Max(1, _dex / 30) : Math.Max(1, _maxStam / 20);
             int focus = SkillEngine.GetAdjustedSkill(this, SkillType.Focus);
@@ -5576,14 +5617,15 @@ public partial class Character : ObjBase
                 regenAmt += focus / 100;
             _stam = (short)Math.Min(_stam + regenAmt, _maxStam);
             MarkDirty(DirtyFlag.Stats);
-            _nextStamRegen = now + RegenSecondsToMs(RegenStamSeconds, 10000);
+            _nextStamRegen = now + stamRateMs;
         }
 
         // Hunger decay: Source-X m_iRegenRate[STAT_FOOD] = 60 minutes per point.
-        if (_isPlayer && now >= _nextFoodDecay)
+        long foodRateMs = ResolveRegenRateMs(_regenFoodRateMs, RegenFoodSeconds, 3_600_000);
+        if (_isPlayer && foodRateMs >= 0 && now >= _nextFoodDecay)
         {
             if (_food > 0) _food--;
-            _nextFoodDecay = now + 3_600_000;
+            _nextFoodDecay = now + foodRateMs;
 
             // Let scripts react to hunger (@Hunger trigger).
             OnHungerDecay?.Invoke(this);
@@ -5632,6 +5674,21 @@ public partial class Character : ObjBase
     {
         return seconds > 0 ? seconds * 1000 : fallbackMs;
     }
+
+    // Resolves a stat's effective regen delay (ms), mirroring CChar::Stats_GetRegenRate:
+    // per-char < 0 = never regen (returns -1), == 0 = fall back to the global rate,
+    // > 0 = per-char override.
+    private static long ResolveRegenRateMs(long perCharMs, int globalSeconds, int fallbackMs)
+    {
+        if (perCharMs < 0) return -1;
+        if (perCharMs > 0) return perCharMs;
+        return RegenSecondsToMs(globalSeconds, fallbackMs);
+    }
+
+    // Effective rate for a property READ: honours a per-char override (incl. a
+    // negative "never" value), otherwise reports the global rate. In ms.
+    private static long EffectiveRegenRateMsForRead(long perCharMs, int globalSeconds, int fallbackMs)
+        => perCharMs != 0 ? perCharMs : RegenSecondsToMs(globalSeconds, fallbackMs);
 
     // Transient state used by the @Create verb sequence. Both fields
     // live only inside the trigger run — they are cleared by

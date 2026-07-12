@@ -4,6 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, twenty-eighth batch
+----------------------------------------
+
+ADDED - Per-character stat regeneration rate overrides (Wave 247):
+  - Characters now honour per-char REGENHITS/REGENMANA/REGENSTAM/REGENFOOD (and
+    the tenths-of-a-second REGEN*D variants) rate properties, resolved the way
+    Source-X CChar::Stats_GetRegenRate does: 0 falls back to the global rate, a
+    positive value is the per-char delay in seconds, and a negative value disables
+    regeneration of that stat. The override is saved and restored across a restart.
+  - Global food decay is now driven by a configurable rate (REGEN3) instead of a
+    hardcoded 60 minutes.
+
+FIXED - Old-style menu (0x7C) TESTIF entry gating (Wave 247):
+  - A skill-menu entry's TESTIF= expression was never evaluated, so entries that
+    should have been hidden were always shown. The expression is now evaluated
+    against the character and a false result hides the entry.
+
+FIXED - Old-style menu could desync the client on oversized lists (Wave 247):
+  - The item-count byte was clamped to 255 but the full item list was still
+    written, corrupting the client's read cursor when a menu exceeded 255 entries.
+    Menus are now truncated to the Source-X MAX_MENU_ITEMS limit and never write
+    more items than the count byte advertises.
+
 [2026-07-12] - Sub-90 parity backlog, twenty-seventh batch
 ----------------------------------------
 

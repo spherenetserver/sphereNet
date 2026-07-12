@@ -2140,9 +2140,13 @@ public sealed class PacketMenuDisplay : PacketWriter
         buf.WriteByte(qLen);
         buf.WriteAsciiFixed(_question, qLen);
 
-        buf.WriteByte((byte)Math.Min(_items.Count, 255));
-        foreach (var item in _items)
+        // Only write as many items as the 1-byte count advertises; iterating the
+        // full list when it exceeds 255 would desync the client's read cursor.
+        int count = Math.Min(_items.Count, 255);
+        buf.WriteByte((byte)count);
+        for (int i = 0; i < count; i++)
         {
+            var item = _items[i];
             buf.WriteUInt16(item.ModelId);
             buf.WriteUInt16(item.Hue);
             byte nameLen = (byte)Math.Min(item.Text.Length, 255);

@@ -376,8 +376,14 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   (Regen1→mana, Regen2→stam), mortechUO Source-X ini uyumu için kritik. (3) DEFAULT
   değerler Source-X per-pool'a (hits40/mana20/stam10). Ek: food decay 10dk→60dk; Human
   racial +2 HP regen (CCharStat.cpp:520, IsHuman). RegenSecondsToMs internal. ResetEngineStatics'e
-  3 alan eklendi. Test: SourceXRegenWave246Tests (+3). KALAN (ertelendi, additive): per-char
-  m_regenRate/m_regenVal override (REGENHITS/MANA/STAM/VAL char property surface).
+  3 alan eklendi. Test: SourceXRegenWave246Tests (+3). Per-char m_regenRate override —
+  YAPILDI (Wave 247): CChar REGENHITS/MANA/STAM/FOOD (+ D tenths varyantları) char
+  property surface + persistence. CChar::Stats_GetRegenRate semantiği (CCharStat.cpp:586):
+  per-char ms alanı 0=global rate, >0=per-char, <0=never regen. OnTick her stat için
+  `ResolveRegenRateMs(perChar, global, fallback)` çözer (<0 → gate skip). Save tenths (D)
+  olarak yazılır (loss-less roundtrip). RegenFoodSeconds static eklendi (config REGEN3).
+  Test: SourceXWave247Tests +3, SaveFormat Roundtrip_PreservesPerCharRegenOverrides.
+  KALAN (ertelendi): m_regenVal (REGENVAL* — regen MİKTARI, delay değil) override.
 - [ ] Jail flag yerine tam region-jail makinesi.
 - [x] STATF_INVUL townsfolk — YAPILDI (Wave 242): invul flag ölümde
   (`DeathEngine:71`) kontrol ediliyordu ama **hasar uygulamada değil** → invul
@@ -454,7 +460,16 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   `_BROADCAST`/`_SECUREMODE` handler'larına route ediliyor (yanlış alarm).
 
 ### 5.2 Menu & prompt — 74
-- [ ] `CMenu` paging helper'ları + standart menü builder'ları (ince).
+- [~] `CMenu` paging helper'ları + standart menü builder'ları — KISMEN (Wave 247).
+  "Paging" premisi YANLIŞ: Source-X eski-stil menü (0x7C) MAX_MENU_ITEMS=64 ile flat/
+  sayfasız, paging yok (ikisi de truncate). 0x7C/0x7D pair + genel MENU/SKILLMENU/GM
+  builder'ları ZATEN var. İki gerçek delta düzeltildi: (1) TESTIF= gating no-op stub'dı
+  (entry hep görünür) → ScriptInterpreter.EvaluateConditionForTarget (private
+  EvaluateConditionWithResolver public wrapper) ile değerlendiriliyor, false → gizle
+  (Source-X CClientUse TESTIF). (2) >255 entry PacketMenuDisplay.Build'de count byte'ı
+  clamp ediyordu ama TÜM listeyi yazıyordu → client read cursor desync; artık sadece
+  count kadar yazılır + builder'lar MAX_MENU_ITEMS-1=63'te truncate. Test: SourceXWave247
+  Tests (+2). KALAN (niş, ertelendi): nested SKILLMENU recursion, MAKEITEM menü-build filter.
 
 ### 5.3 Incoming packet — 78
 - [~] 0xBF/0xD7 extended subcommand allow-list — BÜYÜK KISIM YAPILDI (Wave 243-244).

@@ -1336,6 +1336,12 @@ public sealed class ScriptInterpreter
         }
     }
 
+    /// <summary>Public entry to evaluate a condition string against a target object,
+    /// with SRC/target-bound variable and function resolution. Used by the skill-menu
+    /// builder for TESTIF= entry gating (Source-X CClientUse TESTIF).</summary>
+    public bool EvaluateConditionForTarget(string expr, IScriptObj target, ITextConsole? source)
+        => EvaluateConditionWithResolver(expr, target, source, null, null);
+
     /// <summary>Evaluate with the target-bound resolvers, reporting whether the string
     /// was a genuine numeric expression (vs a string literal — e.g. a RETURN of a name
     /// or defname). Lets RETURN preserve string values instead of collapsing to 0.</summary>

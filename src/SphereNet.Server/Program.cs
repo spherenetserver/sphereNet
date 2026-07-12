@@ -682,6 +682,7 @@ public static partial class Program
         Character.RegenHitsSeconds = _config.RegenHits;
         Character.RegenStamSeconds = _config.RegenStam;
         Character.RegenManaSeconds = _config.RegenMana;
+        Character.RegenFoodSeconds = _config.RegenFood;
 
         // --- 5. World ---
         _world = new GameWorld(_loggerFactory);

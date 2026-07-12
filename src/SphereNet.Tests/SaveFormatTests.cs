@@ -627,6 +627,48 @@ public class SaveFormatTests
     }
 
     [Fact]
+    public void Roundtrip_PreservesPerCharRegenOverrides()
+    {
+        // Wave 247: per-char regen rate overrides (Source-X CChar REGENHITS/…/FOOD).
+        // Saved as tenths (D) so both a positive override and a "never" (-1) value
+        // round-trip through the loader's REGEN*D set path exactly.
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_regen_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            var src = MakeWorld();
+
+            var ch = src.CreateCharacter();
+            ch.Name = "Regenerator";
+            ch.BodyId = 0x0190;
+            ch.IsPlayer = true;
+            src.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
+
+            ch.TrySetProperty("REGENSTAM", "7");    // 7000 ms per-char override
+            ch.TrySetProperty("REGENMANA", "-1");   // never regen mana
+            Assert.Equal(7000, ch.RegenStamRateMs);
+            Assert.Equal(-1000, ch.RegenManaRateMs);
+
+            Assert.True(saver.Save(src, tmp));
+
+            var dst = MakeWorld();
+            loader.Load(dst, tmp);
+
+            var reloaded = dst.FindChar(ch.Uid);
+            Assert.NotNull(reloaded);
+            Assert.Equal(7000, reloaded!.RegenStamRateMs);
+            Assert.Equal(-1000, reloaded.RegenManaRateMs);
+            // Untouched stats stay on the global default (field 0).
+            Assert.Equal(0, reloaded.RegenHitsRateMs);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public void Roundtrip_PreservesCombatMemoriesAndAttackerLog()
     {
         // W-D (wiki/hedef.txt 12.2): Source-X saves EVERY memory item (they are

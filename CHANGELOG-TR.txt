@@ -3,6 +3,29 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, yirmi sekizinci batch
+----------------------------------------
+
+EKLENDI - Karakter bazli stat rejenerasyon hizi override'lari (Wave 247):
+  - Karakterler artik kendilerine ait REGENHITS/REGENMANA/REGENSTAM/REGENFOOD
+    (ve onda-bir-saniye REGEN*D varyantlari) hiz property'lerini Source-X
+    CChar::Stats_GetRegenRate semantigiyle uyguluyor: 0 global hiza duser, pozitif
+    deger saniye cinsinden karakter bazli gecikmedir, negatif deger o stat'in
+    rejenerasyonunu kapatir. Override kaydedilir ve restart sonrasi geri yuklenir.
+  - Global aclik azalmasi artik sabit 60 dakika yerine yapilandirilabilir bir
+    hizla (REGEN3) suruluyor.
+
+DUZELTILDI - Eski-stil menu (0x7C) TESTIF entry gating'i (Wave 247):
+  - Bir skill-menu girisinin TESTIF= ifadesi hic degerlendirilmiyordu, bu yuzden
+    gizlenmesi gereken girisler hep gorunuyordu. Ifade artik karakter uzerinde
+    degerlendiriliyor ve false sonuc girisi gizliyor.
+
+DUZELTILDI - Eski-stil menu buyuk listelerde client'i desync edebiliyordu (Wave 247):
+  - Item sayisi byte'i 255'e clamp'leniyordu ama tum item listesi yine de
+    yaziliyordu; menu 255 girisi asinca client'in okuma imleci bozuluyordu.
+    Menuler artik Source-X MAX_MENU_ITEMS limitine truncate ediliyor ve sayi
+    byte'inin bildirdiginden fazla item yazmiyor.
+
 [2026-07-12] - 90-alti parite backlog, yirmi yedinci batch
 ----------------------------------------
 

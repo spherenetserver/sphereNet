@@ -159,5 +159,6 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.RegenHitsSeconds = 40;
         SphereNet.Game.Objects.Characters.Character.RegenManaSeconds = 20;
         SphereNet.Game.Objects.Characters.Character.RegenStamSeconds = 10;
+        SphereNet.Game.Objects.Characters.Character.RegenFoodSeconds = 3600;
     }
 }

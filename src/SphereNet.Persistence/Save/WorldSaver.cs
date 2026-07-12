@@ -725,6 +725,12 @@ public sealed class WorldSaver
         if (ch.FleeStepsMax != 0) w.WriteProperty("FLEESTEPSMAX", ch.FleeStepsMax.ToString());
         if (ch.SpeechColor != 0x0035) w.WriteProperty("SPEECHCOLOR", ch.SpeechColor.ToString());
         if (ch.MaxFollower != 5) w.WriteProperty("MAXFOLLOWER", ch.MaxFollower.ToString());
+        // Per-char regen rate overrides (ms). Saved as tenths (D) so the loader
+        // round-trips them exactly through the REGEN*D set path; 0 = global default.
+        if (ch.RegenHitsRateMs != 0) w.WriteProperty("REGENHITSD", (ch.RegenHitsRateMs / 100).ToString());
+        if (ch.RegenManaRateMs != 0) w.WriteProperty("REGENMANAD", (ch.RegenManaRateMs / 100).ToString());
+        if (ch.RegenStamRateMs != 0) w.WriteProperty("REGENSTAMD", (ch.RegenStamRateMs / 100).ToString());
+        if (ch.RegenFoodRateMs != 0) w.WriteProperty("REGENFOODD", (ch.RegenFoodRateMs / 100).ToString());
         if (ch.ResFireMax != 70) w.WriteProperty("RESFIREMAX", ch.ResFireMax.ToString());
         if (ch.ResColdMax != 70) w.WriteProperty("RESCOLDMAX", ch.ResColdMax.ToString());
         if (ch.ResPoisonMax != 70) w.WriteProperty("RESPOISONMAX", ch.ResPoisonMax.ToString());

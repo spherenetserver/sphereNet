@@ -369,9 +369,9 @@ public static class SkillEngine
         var def = DefinitionLoader.GetSkillDef((int)skill);
         if (def != null && def.BonusStats > 0)
         {
-            int str = Math.Max(0, (int)ch.Str);
-            int intl = Math.Max(0, (int)ch.Int);
-            int dex = Math.Max(0, (int)ch.Dex);
+            int str = Combat.CombatEngine.EffectiveStr(ch);
+            int intl = Combat.CombatEngine.EffectiveInt(ch);
+            int dex = Combat.CombatEngine.EffectiveDex(ch);
             long pureBonus = (long)def.BonusStr * str + (long)def.BonusInt * intl +
                 (long)def.BonusDex * dex;
             adjusted += (long)def.BonusStats * pureBonus / 10000L;

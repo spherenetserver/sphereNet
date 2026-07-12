@@ -368,7 +368,7 @@ public static class CombatEngine
             else
             {
                 dmgMin = 1;
-                dmgMax = Math.Max(2, attacker.Str / 4);
+                dmgMax = Math.Max(2, EffectiveStr(attacker) / 4);
             }
 
             // Source-X FEATURE_AOS_UPDATE_B Horrific Beast form replaces the
@@ -411,7 +411,7 @@ public static class CombatEngine
                     dmgBonus += lj / 50;
                     if (lj >= 1000) dmgBonus += 10;
                 }
-                dmgBonus += attacker.Str * 20 / 100;
+                dmgBonus += EffectiveStr(attacker) * 20 / 100;
                 break;
             case 2: // AOS
                 dmgBonus = tactics / 16;
@@ -424,11 +424,11 @@ public static class CombatEngine
                     dmgBonus += lj / 50;
                     if (lj >= 1000) dmgBonus += 10;
                 }
-                if (attacker.Str >= 100) dmgBonus += 5;
-                dmgBonus += attacker.Str * 30 / 100;
+                if (EffectiveStr(attacker) >= 100) dmgBonus += 5;
+                dmgBonus += EffectiveStr(attacker) * 30 / 100;
                 break;
             default: // era 0 — Sphere custom: STR% only, no tactics/anatomy
-                dmgBonus = attacker.Str * 10 / 100;
+                dmgBonus = EffectiveStr(attacker) * 10 / 100;
                 break;
         }
 
@@ -1578,6 +1578,18 @@ public static class CombatEngine
     public static int EffResCold(Character ch) => EffectiveResist(ch, DamageType.Cold);
     public static int EffResPoison(Character ch) => EffectiveResist(ch, DamageType.Poison);
     public static int EffResEnergy(Character ch) => EffectiveResist(ch, DamageType.Energy);
+
+    /// <summary>Effective STR/DEX/INT: the base stat plus the suit contribution
+    /// from equipped items (BONUSSTR/BONUSDEX/BONUSINT), derived on read. Used by
+    /// the correctness-facing reads (display, melee damage, carry weight, REQSTR
+    /// gate, skill contribution); the stored max pools stay derived from the base
+    /// stat so no feedback loop forms.</summary>
+    public static int EffectiveStr(Character ch) =>
+        Math.Max(0, ch.Str + SumEquippedItemProperty(ch, "BONUSSTR"));
+    public static int EffectiveDex(Character ch) =>
+        Math.Max(0, ch.Dex + SumEquippedItemProperty(ch, "BONUSDEX"));
+    public static int EffectiveInt(Character ch) =>
+        Math.Max(0, ch.Int + SumEquippedItemProperty(ch, "BONUSINT"));
 
     /// <summary>Attacker's elemental damage split percentages. Source-X
     /// OnTakeDamage (CCharFight.cpp:721): an unset physical share is assumed

@@ -2159,7 +2159,7 @@ public partial class Character : ObjBase
         }
 
         int reqStr = item.ReqStr;
-        if (reqStr > 0 && Str < reqStr)
+        if (reqStr > 0 && CombatEngine.EffectiveStr(this) < reqStr)
         {
             denial = EquipDenial.TooWeak;
             return false;
@@ -2217,8 +2217,9 @@ public partial class Character : ObjBase
         return (int)total;
     }
 
-    /// <summary>Maximum carry weight in whole stones (Source-X: Str*7/2 + 40 + mod).</summary>
-    public int MaxWeight => (_str * 7 / 2) + 40 + _modMaxWeight;
+    /// <summary>Maximum carry weight in whole stones (Source-X: Str*7/2 + 40 + mod).
+    /// Uses effective STR so an equipped +STR suit raises the carry ceiling.</summary>
+    public int MaxWeight => (CombatEngine.EffectiveStr(this) * 7 / 2) + 40 + _modMaxWeight;
 
     /// <summary>True when this character can carry <paramref name="item"/>'s weight on
     /// top of what it already holds (Source-X CChar::CanCarry). Used to bounce a

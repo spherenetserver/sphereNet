@@ -80,7 +80,7 @@ public sealed class MovementEngine
             return false;
 
         // Overweight running prevention — can't run when carrying more than max weight
-        if (running && ch.IsPlayer && ch.GetTotalWeight() > (ch.Str * 7 / 2) + 40 + ch.ModMaxWeight)
+        if (running && ch.IsPlayer && ch.GetTotalWeight() > ch.MaxWeight)
             running = false;
 
         var current = new Point3D(ch.X, ch.Y, ch.Z, ch.MapIndex);

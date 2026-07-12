@@ -972,12 +972,14 @@ public sealed partial class GameClient
         short statCap = 225;
         var weapon = ch.GetEquippedItem(Core.Enums.Layer.OneHanded) ?? ch.GetEquippedItem(Core.Enums.Layer.TwoHanded);
         var (dmgMin, dmgMax) = CombatEngine.CalcWeaponDamage(ch, weapon);
-        ushort maxWeight = (ushort)Math.Clamp((ch.Str * 7 / 2) + 40 + ch.ModMaxWeight, 0, ushort.MaxValue);
+        ushort maxWeight = (ushort)Math.Clamp(ch.MaxWeight, 0, ushort.MaxValue);
 
         _netState.Send(new PacketStatusFull(
             ch.Uid.Value, statusName,
             hits, maxHits,
-            ch.Str, ch.Dex, ch.Int,
+            (short)SphereNet.Game.Combat.CombatEngine.EffectiveStr(ch),
+            (short)SphereNet.Game.Combat.CombatEngine.EffectiveDex(ch),
+            (short)SphereNet.Game.Combat.CombatEngine.EffectiveInt(ch),
             stam, maxStam, mana, maxMana,
             gold, armor, weight,
             ch.Fame, ch.Karma, 0, expansion,

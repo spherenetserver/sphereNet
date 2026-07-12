@@ -232,8 +232,23 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   kalır, script get/set simetrik). Stat (STR/DEX/INT) + MaxHits/Mana/Stam bonusları
   ERTELENDİ (feedback-loop riski: stat→MaxHits türetimi). Test: SourceXWave262Tests
   (+5: no-equip=base, sum, clamp, damage reduction, base-field/script salt-base).
-  KALAN: stat-bonus slice, per-element resist MAX cap (RESFIREMAX), HITCHANCE/LUCK
-  agregasyonu (GetOnHitPropertyValue zaten weapon+talisman canlı okur).
+  KALAN: per-element resist MAX cap (RESFIREMAX), HITCHANCE/LUCK agregasyonu
+  (GetOnHitPropertyValue zaten weapon+talisman canlı okur).
+- [x] **AOS suit STR/DEX/INT agregasyonu (stat slice)** — YAPILDI (Wave 263,
+  resist slice'ın (Wave 262) stat karşılığı; aynı live-scan-on-read deseni).
+  `CombatEngine.EffectiveStr/Dex/Int(ch)` = base stat + `SumEquippedItemProperty`
+  (BONUSSTR/BONUSDEX/BONUSINT), `Math.Max(0,...)` floor. Tüketiciler (bonus'u
+  GÖRMELİ): 0x11 StatusFull paperdoll stat'ları, melee STR-damage (CalcWeaponDamage
+  unarmed dmgMax + era0/1/2 STR% bonus'ları), carry weight (`Character.MaxWeight`
+  effective STR'ye taşındı, MovementEngine overload + PacketHelpers maxWeight tek
+  kaynağa dedup), CanEquip REQSTR gate, GetAdjustedSkill stat term. Base'de KALIR
+  (feedback/persistence hazard): MaxHits/Mana/Stam türetimi (Str/Dex/Int setter
+  max-pool sync), Login/SpawnComponents seed, stat-gain/stat-drain path'leri,
+  script STR/DEX/INT get/set (simetrik base). MaxHits/Mana/Stam bonus'ları (BONUSHITS
+  vb.) ERTELENDİ (max-pool türetim feedback'i). Test: SourceXWave263Tests (+9:
+  no-equip=base, çok-parça sum, negatif clamp, base-field/script salt-base,
+  max-pool değişmez, carry weight artışı, melee damage artışı, REQSTR gate,
+  skill stat term). KALAN: BONUSHITS/MANA/STAM max-pool bonus'ları.
 
 ### 2.5 Melee combat — 88
 - [x] **SE (era3) / ML (era4) hız formülleri** — YAPILDI (Wave 226).

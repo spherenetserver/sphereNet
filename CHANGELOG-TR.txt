@@ -3,6 +3,24 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, otuz besinci batch (suit stat agregasyonu)
+----------------------------------------
+
+EKLENDI - Giyilen item'lardan efektif STR/DEX/INT (Wave 263):
+  - Bir karakterin efektif strength/dexterity/intelligence'i artik base stat arti
+    giyilen her item'daki ilgili item bonusunun (BONUSSTR/BONUSDEX/BONUSINT)
+    toplamidir; okuma aninda hesaplanir (equip-time mutasyon yok, 0'da taban
+    yapilir), resist slice'i ile ayni live-scan yaklasimi.
+  - Suit'i yansitan tuketiciler artik efektif stat okur: status/paperdoll
+    STR/DEX/INT, melee strength hasari (silahsiz base ve era-basi strength hasar
+    bonusu), carry weight (max weight artik strength suit'i ile olceklenir; hareket
+    overload kontrolu ve status max-weight tek kaynaga birlestirildi), equip
+    strength-requirement gate ve adjusted skill'e stat katkisi.
+  - Sakli max hit/mana/stamina havuzlari base stat'tan turetilmeye devam eder,
+    boylece bir stat suit onlari sismez; base stat field ve STR/DEX/INT script
+    property'si base degeri bildirmeye devam eder. Max-havuz item bonuslari
+    (BONUSHITS vb.) kasitli olarak ayri bir gecise birakildi.
+
 [2026-07-12] - 90-alti parite backlog, otuz dorduncu batch (suit resist agregasyonu)
 ----------------------------------------
 

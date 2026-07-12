@@ -209,8 +209,12 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   canlı/online/NightSight'sız oyunculara önce tam parlaklık, ardından hesaplanan
   sektör ışığını gönderir; Lightning ve Chain Lightning effect hattına bağlandı.
   Test: SourceXLightFlashWave235Tests (+5).
-- [ ] **@EnvironChange** (`CTRIG_EnvironChange`) weather/light/season değişiminde
-  ateşlenmesi wired değil.
+- [x] **@EnvironChange** (`CTRIG_EnvironChange`) — YAPILDI (Wave 236).
+  Character artık light+weather+season environment snapshot'ı tutar; login ilk
+  baseline'ı kurar, sector/region ışık değişimi, weather callback'i ve season
+  broadcast'ı üç alandan herhangi biri değiştiğinde trigger'ı bir kez ateşler.
+  LightFlash snapshot'ı değiştirmediği için trigger üretmez. Test:
+  SourceXEnvironChangeWave236Tests (+5).
 
 ### 3.2 Sector — 75
 - [ ] Sleep modeli: `SECF_NoSleep`/`SECF_InstaSleep` flag'leri, 8-komşu adjacency

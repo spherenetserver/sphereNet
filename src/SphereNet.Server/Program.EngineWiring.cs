@@ -537,7 +537,9 @@ public static partial class Program
                 // @EnvironChange — the perceived light level differs between surface
                 // and dungeon regions (mirrors WeatherEngine.GetLightLevel).
                 byte regionLight = mover.IsDead ? (byte)0 : _world.GetLightLevel(mover.Position);
-                mover.UpdateEnvironLight(regionLight);
+                var (weatherType, weatherIntensity, weatherTemp) = _weatherEngine.GetWeatherForRegion(newRegion.Name);
+                mover.UpdateEnvironment(regionLight, (byte)weatherType,
+                    mover.IsDead ? (byte)SeasonType.Desolation : (byte)_weatherEngine.CurrentSeason);
 
                 if (!TryGetClientFor(mover, out var gc)) { _log.LogDebug("[REGION_CHANGE] no GameClient for {Name}", mover.Name); return; }
 
@@ -545,7 +547,6 @@ public static partial class Program
                 gc.Send(new PacketSeason(mover.IsDead
                     ? (byte)SeasonType.Desolation
                     : (byte)_weatherEngine.CurrentSeason, playSound: false));
-                var (weatherType, weatherIntensity, weatherTemp) = _weatherEngine.GetWeatherForRegion(newRegion.Name);
                 gc.Send(new PacketWeather((byte)weatherType, weatherIntensity, weatherTemp));
 
                 // Source-X CCharAct: the region-name callout fires ONLY when the
@@ -2023,7 +2024,12 @@ public static partial class Program
                     if (!c.IsPlaying || c.Character == null) continue;
                     var r = _world.FindRegion(c.Character.Position);
                     if (r != null && r.Name == regionName)
+                    {
+                        byte light = c.Character.IsDead ? (byte)0 : _world.GetLightLevel(c.Character.Position);
+                        c.Character.UpdateEnvironment(light, (byte)type,
+                            c.Character.IsDead ? (byte)SeasonType.Desolation : (byte)_weatherEngine.CurrentSeason);
                         c.Send(pkt);
+                    }
                 }
             };
             VendorEngine.World = _world;
@@ -2408,8 +2414,17 @@ public static partial class Program
 
             // Char UID -> GameClient index, used by BroadcastNearby /
             // SendPacketToChar to skip the full _clients.Values scan.
-            SphereNet.Game.Clients.GameClient.OnCharacterOnline =
-                (ch, client) => _clientsByCharUid[ch.Uid] = client;
+            SphereNet.Game.Clients.GameClient.OnCharacterOnline = (ch, client) =>
+            {
+                _clientsByCharUid[ch.Uid] = client;
+                var region = _world.FindRegion(ch.Position);
+                var weather = region != null
+                    ? _weatherEngine.GetWeatherForRegion(region.Name).Type
+                    : WeatherType.None;
+                ch.UpdateEnvironment(ch.IsDead ? 0 : _world.GetLightLevel(ch.Position),
+                    (byte)weather,
+                    ch.IsDead ? (byte)SeasonType.Desolation : (byte)_weatherEngine.CurrentSeason);
+            };
             SphereNet.Game.Clients.GameClient.OnCharacterOffline =
                 ch => { _clientsByCharUid.Remove(ch.Uid); _macroEngine?.OnCharDisconnect(ch.Uid.Value); };
             SphereNet.Game.Objects.Characters.Character.OnDamageActionInterrupt = ch =>

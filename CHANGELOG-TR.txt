@@ -3,6 +3,20 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, on yedinci batch
+----------------------------------------
+
+TAMAMLANDI - @EnvironChange environment snapshot'i (Wave 236):
+  - Character algilanan light, weather ve season degerlerini birlikte izler;
+    login ilk baseline'i trigger atmadan kurar.
+  - Sektor/region isik degisimi, weather callback'i ve season broadcast'i bu
+    alanlardan biri degistiginde @EnvironChange'i bir kez atesler.
+  - LightFlash gecici paketleri environment state'i degistirmez ve trigger atmaz.
+
+TESTLER:
+  - 5 Wave 236 regresyon testi eklendi. Tam SphereNet.Tests kosusu:
+    1580 basarili, 0 basarisiz, 0 atlanan.
+
 [2026-07-12] - 90-alti parite backlog, on altinci batch
 ----------------------------------------
 

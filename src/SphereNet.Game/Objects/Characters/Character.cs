@@ -682,6 +682,8 @@ public partial class Character : ObjBase
 
     // Last perceived light level for @EnvironChange detection (-1 = no baseline yet).
     private int _lastEnvironLight = -1;
+    private int _lastEnvironWeather = -1;
+    private int _lastEnvironSeason = -1;
 
     /// <summary>Fired before a "quick" (instant, no-delay) skill check resolves
     /// (Source-X @SkillUseQuick). Args: character, skill id, difficulty. Return true
@@ -740,9 +742,24 @@ public partial class Character : ObjBase
     /// world does not spuriously trigger an environment change.</summary>
     public void UpdateEnvironLight(int light)
     {
-        if (_lastEnvironLight >= 0 && light != _lastEnvironLight)
-            OnEnvironChange?.Invoke(this, light);
+        UpdateEnvironment(light,
+            _lastEnvironWeather >= 0 ? _lastEnvironWeather : 0,
+            _lastEnvironSeason >= 0 ? _lastEnvironSeason : 0);
+    }
+
+    /// <summary>Source-X CSector environment snapshot. A change in sector light,
+    /// weather or season fires @EnvironChange once; the first observation only
+    /// establishes the login baseline.</summary>
+    public void UpdateEnvironment(int light, int weather, int season)
+    {
+        bool hasBaseline = _lastEnvironLight >= 0 && _lastEnvironWeather >= 0 && _lastEnvironSeason >= 0;
+        bool changed = hasBaseline && (light != _lastEnvironLight ||
+            weather != _lastEnvironWeather || season != _lastEnvironSeason);
         _lastEnvironLight = light;
+        _lastEnvironWeather = weather;
+        _lastEnvironSeason = season;
+        if (changed)
+            OnEnvironChange?.Invoke(this, light);
     }
 
     /// <summary>TickCount64 of the last successful move — archery movement delay gate.</summary>

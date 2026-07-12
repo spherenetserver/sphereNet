@@ -969,16 +969,21 @@ public static partial class Program
         {
             if (!client.IsPlaying || client.Character == null) continue;
             bool dead = client.Character.IsDead;
+            byte light = dead ? (byte)0 : _world.GetLightLevel(client.Character.Position);
+            var r = _world.FindRegion(client.Character.Position);
+            var weather = r != null
+                ? _weatherEngine.GetWeatherForRegion(r.Name)
+                : (WeatherType.None, (byte)0, (byte)20);
+            client.Character.UpdateEnvironment(light, (byte)weather.Item1,
+                dead ? (byte)SeasonType.Desolation : (byte)_weatherEngine.CurrentSeason);
             client.Send(new PacketSeason(dead
                 ? (byte)SeasonType.Desolation
                 : (byte)_weatherEngine.CurrentSeason, playSound));
-            client.Send(new PacketGlobalLight(dead ? (byte)0 : _world.GetLightLevel(client.Character.Position)));
+            client.Send(new PacketGlobalLight(light));
 
-            var r = _world.FindRegion(client.Character.Position);
             if (r != null && !string.IsNullOrEmpty(r.Name))
             {
-                var (wType, wIntensity, wTemp) = _weatherEngine.GetWeatherForRegion(r.Name);
-                client.Send(new PacketWeather((byte)wType, wIntensity, wTemp));
+                client.Send(new PacketWeather((byte)weather.Item1, weather.Item2, weather.Item3));
             }
         }
     }

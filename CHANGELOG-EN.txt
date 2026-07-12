@@ -4,6 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, fourth batch
+----------------------------------------
+
+ADDED - Source-X verb implementation guardrail:
+  - The pinned CObjBase/CChar/CItem/CClient/CServer inventories are now checked
+    against SphereNet's real dispatch sources, including inheritance, client
+    bridges, interpreter meta-verbs and the SERV resolver.
+  - Verified gaps live in an explicit debt list; a newly missing route or an
+    implemented verb left stale in that list now fails the test.
+
+ADDED - Object script verb parity (Wave 218):
+  - ObjBase gains CLICK, MESSAGEUA, MOVENEAR, MOVETO, MSG and USEITEM. Movement
+    uses world/sector placement; click and use replay the normal client paths.
+  - Character gains DUPE, SKILL and SYSMESSAGELOCEX, including core state/skill
+    cloning, the live SkillHandlers bridge and the 0xCC localized-affix packet.
+  - Item gains DROP, UNEQUIP and USEDOOR, including container/equipment detach,
+    bounce to the invoking character's pack and privileged locked-door toggling.
+
+TESTS:
+  - Added 10 Wave 218 behavior tests and strengthened the three inventory
+    guardrails. Full SphereNet.Tests run: 1462 passed, 0 failed.
+
+NOTES:
+  - The verified verb-route debt fell from 26 to 13. DAMAGE remains deferred
+    until it can share the combat/death/resist and item-durability pipeline;
+    twelve client-only management/target verbs remain queued.
+
+
 [2026-07-12] - Sub-90 parity backlog, third batch
 ----------------------------------------
 

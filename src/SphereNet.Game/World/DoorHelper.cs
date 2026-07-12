@@ -109,11 +109,12 @@ public static class DoorHelper
     /// without any network side effects — the caller broadcasts). Classic-set
     /// doors also shift by the Source-X hinge offset. Returns true when the
     /// door is open after the call (already-open is success), false for
-    /// locked doors.
+    /// locked doors unless <paramref name="ignoreLock"/> is requested by the
+    /// privileged Source-X USEDOOR verb.
     /// </summary>
-    public static bool TryOpenDoorState(Item door)
+    public static bool TryOpenDoorState(Item door, bool ignoreLock = false)
     {
-        if (door.ItemType is ItemType.DoorLocked or ItemType.PortLocked)
+        if (!ignoreLock && door.ItemType is (ItemType.DoorLocked or ItemType.PortLocked))
             return false;
 
         int doorDir = GetDoorDir(door.DispIdFull);

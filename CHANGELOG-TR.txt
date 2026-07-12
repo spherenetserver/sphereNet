@@ -3,6 +3,34 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, dorduncu batch
+----------------------------------------
+
+EKLENDI - Source-X verb implementasyon guardrail'i:
+  - Pinli CObjBase/CChar/CItem/CClient/CServer envanterleri artik SphereNet'in
+    gercek dispatch kaynaklarina karsi denetleniyor; kalitim, client kopruleri,
+    interpreter meta-verb'leri ve SERV resolver birlikte hesaba katiliyor.
+  - Dogrulanmis aciklar explicit borc listesinde; yeni route kaybi veya
+    implement edilip listede unutulan stale verb artik testi kiriyor.
+
+EKLENDI - Obje script verb paritesi (Wave 218):
+  - ObjBase'e CLICK, MESSAGEUA, MOVENEAR, MOVETO, MSG ve USEITEM eklendi. Hareket
+    world/sector placement kullanir; click ve use normal client yollarini oynatir.
+  - Character'a DUPE, SKILL ve SYSMESSAGELOCEX eklendi: temel state/skill clone,
+    canli SkillHandlers koprusu ve 0xCC localized-affix paketi dahil.
+  - Item'a DROP, UNEQUIP ve USEDOOR eklendi: container/equipment detach, cagiran
+    karakterin cantasina bounce ve yetkili kilitli-kapi toggle yolu dahil.
+
+TESTLER:
+  - 10 Wave 218 davranis testi eklendi ve uc envanter guardrail'i guclendirildi.
+    Tam SphereNet.Tests kosusu: 1462 basarili, 0 basarisiz.
+
+NOTLAR:
+  - Dogrulanmis verb-route borcu 26'dan 13'e indi. DAMAGE; combat/death/resist ve
+    item-durability zincirini ortak kullanana kadar ertelendi. On iki client-only
+    yonetim/target verb'i kuyrukta kaldi.
+
+
 [2026-07-12] - 90-alti parite backlog, ucuncu batch
 ----------------------------------------
 

@@ -10,6 +10,53 @@ public class SourceXVerbInventoryGuardrailTests
 
     private static readonly Regex TableVerb = new(@"ADD\([^,]+,\s*""([^""]+)""\)", RegexOptions.Compiled);
 
+    private static readonly Regex BlockComment = new(@"/\*.*?\*/", RegexOptions.Compiled | RegexOptions.Singleline);
+    private static readonly Regex LineComment = new(@"//.*$", RegexOptions.Compiled | RegexOptions.Multiline);
+    private static readonly Regex DispatchLine = new(
+        @"^.*(?:\bcase\b|=>|==|\bis\b|\.Equals\s*\(|\.StartsWith\s*\().*$",
+        RegexOptions.Compiled | RegexOptions.Multiline);
+    private static readonly Regex UppercaseLiteral = new(@"""(_?[A-Z][A-Z0-9_.]*)", RegexOptions.Compiled);
+
+    private static readonly Dictionary<string, string[]> SphereNetImplementationSources = new()
+    {
+        // ObjBase verbs can be completed by the client console bridge (dialogs,
+        // menus, prompts and targeting). Character and Item inherit both paths.
+        ["CObjBase_functions.tbl"] =
+        [
+            "src/SphereNet.Game/Objects/ObjBase.cs",
+            "src/SphereNet.Game/Objects/Characters/Character.cs",
+            "src/SphereNet.Game/Objects/Items/Item.cs",
+            "src/SphereNet.Scripting/Execution/ScriptInterpreter.cs",
+            "src/SphereNet.Game/Clients/ClientScriptConsoleHandler.cs"
+        ],
+        ["CChar_functions.tbl"] =
+        [
+            "src/SphereNet.Game/Objects/ObjBase.cs",
+            "src/SphereNet.Game/Objects/Characters/Character.cs",
+            "src/SphereNet.Scripting/Execution/ScriptInterpreter.cs",
+            "src/SphereNet.Game/Clients/ClientScriptConsoleHandler.cs"
+        ],
+        ["CItem_functions.tbl"] =
+        [
+            "src/SphereNet.Game/Objects/ObjBase.cs",
+            "src/SphereNet.Game/Objects/Items/Item.cs",
+            "src/SphereNet.Scripting/Execution/ScriptInterpreter.cs",
+            "src/SphereNet.Game/Clients/ClientScriptConsoleHandler.cs"
+        ],
+        ["CClient_functions.tbl"] =
+        [
+            "src/SphereNet.Game/Objects/ObjBase.cs",
+            "src/SphereNet.Game/Objects/Characters/Character.cs",
+            "src/SphereNet.Scripting/Execution/ScriptInterpreter.cs",
+            "src/SphereNet.Game/Clients/ClientScriptConsoleHandler.cs"
+        ],
+        ["CServer.cpp"] =
+        [
+            "src/SphereNet.Scripting/Execution/ScriptInterpreter.cs",
+            "src/SphereNet.Server/Program.Scripting.cs"
+        ]
+    };
+
     private static readonly Dictionary<string, string[]> ExpectedSourceXVerbs = new()
     {
         ["CObjBase_functions.tbl"] =
@@ -65,11 +112,22 @@ public class SourceXVerbInventoryGuardrailTests
         ]
     };
 
-    /// <summary>Verb backlog — EMPTY since the verb long-tail waves: every
-    /// pinned Source-X verb on these surfaces now has a SphereNet
-    /// implementation. Add entries here (they must name pinned upstream
-    /// verbs) if a future surface addition ships partial.</summary>
-    private static readonly Dictionary<string, string[]> KnownPartialOrDeferred = new();
+    /// <summary>Verified implementation backlog. The implementation guardrail
+    /// below fails when an unlisted verb loses its dispatch route, and also
+    /// fails when one of these entries gains a route without being removed
+    /// from this explicit debt list.</summary>
+    private static readonly Dictionary<string, string[]> KnownPartialOrDeferred = new()
+    {
+        ["CObjBase_functions.tbl"] =
+        [
+            "DAMAGE"
+        ],
+        ["CClient_functions.tbl"] =
+        [
+            "ADD", "ADDCHAR", "ADDITEM", "CLOSEPAPERDOLL", "CTAGLIST", "GMPAGE",
+            "INFORMATION", "RESEND", "SAVE", "SELF", "SKILLSELECT", "VERSION"
+        ]
+    };
 
     [Fact]
     public void SourceXVerbSurfaces_MatchPinnedInventory()
@@ -102,6 +160,39 @@ public class SourceXVerbInventoryGuardrailTests
         }
     }
 
+    [Fact]
+    public void SourceXVerbSurfaces_AreRoutedBySphereNetImplementation()
+    {
+        var failures = new List<string>();
+        foreach (var (surface, expected) in ExpectedSourceXVerbs)
+        {
+            var implemented = ReadImplementationVerbs(
+                SphereNetImplementationSources[surface],
+                normalizeServerPrefix: surface == "CServer.cpp");
+            var deferred = KnownPartialOrDeferred.GetValueOrDefault(surface, []);
+            string[] missing = expected
+                .Except(implemented, StringComparer.OrdinalIgnoreCase)
+                .Except(deferred, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x, StringComparer.Ordinal)
+                .ToArray();
+
+            if (missing.Length > 0)
+                failures.Add($"{surface}: {string.Join(", ", missing)}");
+
+            string[] staleDebt = deferred
+                .Intersect(implemented, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x, StringComparer.Ordinal)
+                .ToArray();
+            if (staleDebt.Length > 0)
+                failures.Add($"{surface} has implemented verbs still marked deferred: " +
+                    string.Join(", ", staleDebt));
+        }
+
+        Assert.True(failures.Count == 0,
+            "Pinned Source-X verbs with no SphereNet dispatch route:" + Environment.NewLine +
+            string.Join(Environment.NewLine, failures));
+    }
+
     private static List<string> ReadFunctionTable(string fileName)
     {
         string path = Path.Combine(RepoRoot(), "oldSphere", "Source-X-full", "src", "tables", fileName);
@@ -132,6 +223,30 @@ public class SourceXVerbInventoryGuardrailTests
             var match = Regex.Match(line, @"""([A-Z0-9_]+)""");
             if (match.Success && !match.Groups[1].Value.Equals("CRASH", StringComparison.Ordinal))
                 verbs.Add(match.Groups[1].Value);
+        }
+        return verbs;
+    }
+
+    private static HashSet<string> ReadImplementationVerbs(
+        IEnumerable<string> relativePaths,
+        bool normalizeServerPrefix)
+    {
+        var verbs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string relativePath in relativePaths)
+        {
+            string path = Path.Combine(RepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
+            string source = File.ReadAllText(path);
+            source = BlockComment.Replace(source, "");
+            source = LineComment.Replace(source, "");
+
+            foreach (Match line in DispatchLine.Matches(source))
+            foreach (Match literal in UppercaseLiteral.Matches(line.Value))
+            {
+                string token = literal.Groups[1].Value.TrimStart('_').TrimEnd('.');
+                verbs.Add(token);
+                if (normalizeServerPrefix && token.StartsWith("SERV.", StringComparison.Ordinal))
+                    verbs.Add(token[5..]);
+            }
         }
         return verbs;
     }

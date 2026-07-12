@@ -836,6 +836,13 @@ public static partial class Program
                 if (console is SphereNet.Game.Clients.GameClient gc)
                     gc.HandleDoubleClick(item.Uid.Value);
             };
+            ObjBase.OnScriptSingleClick = (obj, console) =>
+            {
+                if (console is not SphereNet.Game.Clients.GameClient gc)
+                    return false;
+                gc.HandleSingleClick(obj.Uid.Value);
+                return true;
+            };
             _commands.OnScriptParityWarning += (ch, verb, reason) =>
             {
                 _log.LogWarning("Script parity warning: char=0x{Char:X8} cmd={Cmd} reason={Reason}",
@@ -1998,6 +2005,7 @@ public static partial class Program
             _npcAI.OnNpcTickSpellCast = npc => _spellEngine.TickCastTimer(npc);
             var gatheringEngine = new GatheringEngine(_world, _triggerDispatcher);
             _skillHandlers = new SkillHandlers(_world, gatheringEngine);
+            Character.OnScriptSkillUse = (ch, skill) => _skillHandlers.UseSkill(ch, skill);
             _craftingEngine = new CraftingEngine(_world);
             // NOTE: LoadRecipesFromDefs is called AFTER defLoader.LoadAll() populates
             // DefinitionLoader.AllItemDefs — see post-definition-load block below.

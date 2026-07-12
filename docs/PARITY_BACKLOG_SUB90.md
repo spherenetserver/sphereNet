@@ -14,10 +14,13 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
 - [x] **T0.1 Ship anchor-drop kontrol akışı** — YANLIŞ ALARM. `ShipEngine.cs:603-621`
   zaten düzgün brace'li; ANCHORDROP `ship.Anchored=true; Stop; TillerSpeak` doğru
   çalışıyor. Ajan yanlış okumuş (satır 593 sadece yorum).
-- [ ] **T0.2 Verb guardrail testi kanıt sağlamıyor** —
-  `SourceXVerbInventoryGuardrailTests.cs:83-113` sadece referans `.tbl` envanterini
-  pinliyor, C# implementasyonuna assert etmiyor. Testi implementasyona karşı assert
-  edecek şekilde güçlendir (aşağıdaki eksik verb'leri yakalasın).
+- [x] **T0.2 Verb guardrail testi kanıt sağlamıyor** — YAPILDI (Wave 217): upstream
+  `.tbl` pinine ek olarak gerçek SphereNet dispatch kaynaklarını yüzey bazında tarayan
+  `SourceXVerbSurfaces_AreRoutedBySphereNetImplementation` eklendi; ObjBase/Char/Item
+  kalıtım zinciri, client-console köprüsü, interpreter meta-verb'leri ve SERV resolver
+  birlikte doğrulanıyor. Bilinen açıklar explicit `KnownPartialOrDeferred` listesinde;
+  yeni route kaybı da, implement edilip listeden düşülmeyen stale borç da testi kırıyor.
+  Test: SourceXVerbInventoryGuardrailTests (3/3).
 
 ---
 
@@ -230,7 +233,15 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
 
 ### 5.1 Speech / command — 70
 - [ ] GM/ON verb genişliği: script `r_Verb` keytable (data-güdümlü, sınırsız) vs 75
-  hardcoded C# verb. En azından eksik yüksek-değerli verb'leri ekle.
+  hardcoded C# verb. Wave 218: ObjBase **CLICK/MESSAGEUA/MOVENEAR/MOVETO/MSG/USEITEM**
+  (world/sector-safe hareket, gerçek single-click ve item-use köprüleri); Char
+  **DUPE/SKILL/SYSMESSAGELOCEX** (state+skill clone, SkillHandlers hook, 0xCC affix);
+  Item **DROP/UNEQUIP/USEDOOR** (container/equip detach, source pack bounce, locked-door
+  bypass) YAPILDI. Test: SourceXObjBaseVerbWave218Tests (+10) + verb guardrail (3/3).
+  Wave 217'deki 26 route borcu 13'e indi. Kalan: ObjBase **DAMAGE**; Client
+  **ADD/ADDCHAR/ADDITEM/CLOSEPAPERDOLL/CTAGLIST/GMPAGE/INFORMATION/RESEND/SAVE/SELF/
+  SKILLSELECT/VERSION**. SERV **B/SECURE** zaten interpreter'dan `_BROADCAST`/
+  `_SECUREMODE` handler'larına route ediliyor (yanlış alarm).
 
 ### 5.2 Menu & prompt — 74
 - [ ] `CMenu` paging helper'ları + standart menü builder'ları (ince).

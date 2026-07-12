@@ -223,7 +223,7 @@ public sealed class ClientScriptConsoleHandler
         // Syntax: message @<hue>[,<type>,<font>] <text>
         //   e.g.  message @0481,1,1 [Nimloth]
         //   e.g.  message @080a [Invis]
-        if (upper == "MESSAGE")
+        if (upper is "MESSAGE" or "MSG")
         {
             string raw = args.Trim();
             ushort hue = 0x03B2;
@@ -289,6 +289,47 @@ public sealed class ClientScriptConsoleHandler
                 _netState.Send(packet);
                 BroadcastNearby?.Invoke(origin, 18, packet, _character.Uid.Value);
             }
+            return true;
+        }
+
+        // Source-X MESSAGEUA hue,mode,font,lang,text: Unicode overhead bark
+        // sent only to the invoking client (unlike SAYUA, which is audible to
+        // nearby observers). MSG above is the legacy alias of MESSAGE.
+        if (upper == "MESSAGEUA")
+        {
+            string[] parts = args.Split(',', 5, StringSplitOptions.TrimEntries);
+            if (parts.Length < 5)
+                return true;
+
+            ushort hue = TryParseScriptNumber(parts[0], out long h)
+                ? (ushort)Math.Clamp(h, ushort.MinValue, ushort.MaxValue)
+                : (ushort)0x03B2;
+            byte speechType = TryParseScriptNumber(parts[1], out long t)
+                ? (byte)Math.Clamp(t, byte.MinValue, byte.MaxValue)
+                : (byte)0;
+            ushort font = TryParseScriptNumber(parts[2], out long f)
+                ? (ushort)Math.Clamp(f, ushort.MinValue, ushort.MaxValue)
+                : (ushort)3;
+            string lang = parts[3].Length > 0 ? parts[3] : "ENU";
+            string text = parts[4];
+            if (text.Length == 0)
+                return true;
+
+            uint serial = _character.Uid.Value;
+            ushort bodyId = _character.BodyId;
+            if (target is Character messageChar)
+            {
+                serial = messageChar.Uid.Value;
+                bodyId = messageChar.BodyId;
+            }
+            else if (target is Item messageItem)
+            {
+                serial = messageItem.Uid.Value;
+                bodyId = 0;
+            }
+
+            _netState.Send(new PacketSpeechUnicodeOut(
+                serial, bodyId, speechType, hue, font, lang, target.GetName(), text));
             return true;
         }
 
@@ -2682,4 +2723,7 @@ public sealed class ClientScriptConsoleHandler
         point = new Point3D(x, y, z, map);
         return true;
     }
+
+    private static bool TryParseScriptNumber(string text, out long value) =>
+        SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(text.AsSpan(), out value);
 }

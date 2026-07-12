@@ -115,10 +115,64 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   WraithFormActive, IsPolymorphLayerSpell'e eklendi); CurseWeapon = level'i eff'te
   saklar (ActiveSpellEffect.CurseWeaponLevel, serialize/deserialize'a append,
   ApplyDeltas/RevertDeltas state'i kurar/temizler). Save/load round-trip test'li.
-  KALAN necro spell'ler (damage tranche PainSpike/PoisonStrike/Strangle/Wither ~free
-  flag-driven; debuff CorpseSkin/MindRot/EvilOmen ApplyCurse deseni; ağır olanlar
-  AnimateDead/SummonFamiliar/VengefulSpirit summon-AI, LichForm/VampiricEmbrace full
-  form) — ayrı dalgalarda. Chivalry/Bushido/Ninjitsu/Spellweaving/Mysticism dokunulmadı.
+  Wave 254 debuff tranche: **CorpseSkin (103)** + **MindRot (108)** — ikisi de
+  spell-type-identified timed state (WraithForm deseni, yeni persist alanı YOK).
+  CorpseSkin: ApplyCorpseSkinResists (ResFire/Poison −15, ResCold/Physical +10,
+  Source-X PolyStr/PolyDex; sign=±1 apply/revert), ApplySpecificSpell case +
+  ApplyDeltas/RevertDeltas simetrik (save-revert-reapply test'li). MindRot:
+  Character.MindRotActive → EffectiveManaCost(caster,def) helper `+cost/10`
+  (Source-X LOWERMANACOST −10 = +%10), CastStart mana-check + CastDoneCore
+  deduction iki site de kullanır. Test: SourceXWave254Tests (+5: resist shift/
+  revert, save simetri, mindrot state, +%10 mana, yetersiz-mana cast blok).
+  Wave 255 DOT engine + tranche: **generic periodic-DOT** ActiveSpellEffect'e
+  eklendi (DotCharges/IntervalMs/NextTickMs/DamagePerTick/Power/DamageType/Direct/
+  Source), ProcessExpirations başında ProcessDotTicks pass'i (her iki tick path'i
+  zaten çağırır → bedava wire). ComputeDotDamage/NextDotIntervalMs/ApplyDotDamage
+  (resist gate + RecordAttack + broadcast + death); snapshot-based (tick victim'i
+  öldürüp ClearAllEffectsOnDeath ile listeyi mutasyona uğratabilir). **PainSpike(109)**
+  = 10 tick × total/10 direct (DAMAGE_GOD, resist bypass), total=max(10,(SS-MR)/100+18).
+  **Strangle(111)** = power=max(4,SS/100) charges, rand(power-2..power+1)×(3-2*curStam/
+  maxStam) poison, delay 5s→4→3→2→1. In-flight DOT persist EDİLMİYOR (kısa ömürlü,
+  restart'ta biter — GetPersistedEffectRecords skip). Test: SourceXWave255Tests (+4:
+  painspike fixed/resist-bypass/pre-tick, strangle damage+terminate, fatigue-scaling).
+  Wave 256 damage-reaction tranche: **BloodOath(102)** + **EvilOmen(105)** —
+  Source-X OnTakeDamage (CCharFight.cpp:687-703) victim-side. BloodOath: state
+  caster'da (BloodOathEnemy uid + level, MagicResist/20+10 clamp 10-90), melee
+  ResolveAttack'te bonded victim linked-enemy vurulunca +%10 kendine + reflect
+  (100-level)% attacker'a (fixed, no-loop); Reactive/REFLECTPHYSICALDAM bloğunun
+  yanına eklendi. Effect fields (BloodOathEnemy/Level) ApplyDeltas/RevertDeltas
+  live save-cycle için; disk persist skip (kısa ömür + live enemy uid). EvilOmen:
+  Character.EvilOmenActive + lazy-expiry ConsumeEvilOmen() (ActiveSpellEffect DEĞİL,
+  one-shot); melee'de +%25 damage-amplify + consume, Poison spell'de +1 level
+  (min 5) + consume. Test: SourceXWave256Tests (+6: reflect linked/unlinked, cast
+  bond+expiry, evil omen melee amplify+consume, expired consume, poison +1).
+  Wave 257 area-damage tranche: **PoisonStrike(110)** + **Wither(115)** — explicit
+  ApplySpecificSpell case'leri (reference-script flag edit'i İSTEMEDEN). Yeni
+  `DealSpellDamage(caster,victim,dmg,type)` helper (elemental resist + RecordAttack +
+  broadcast + interrupt + death; Damage branch/ApplyDotDamage deseni). PoisonStrike:
+  primary'e full poison + 2-tile splash'a yarım. Wither: caster çevresi 4-tile herkese
+  cold. Effect base==scale → EvalInt scaling YOK (Damage flag'siz), deterministik.
+  Test: SourceXWave257Tests (+3: primary/splash/distant, wither radius, resist).
+  Wave 258 form tranche: **LichForm(107)** + **VampiricEmbrace(113)** — WraithForm
+  deseni (StatFlag.Polymorph + form-bool + fixed resist deltas, IsPolymorphLayerSpell'e
+  eklendi → form-swap). LichForm: ResFire-10/Poison+10/Cold+10. VampiricEmbrace:
+  ResFire-10 + CombatEngine.ApplyAosOnHitEffects'te VampiricEmbraceActive → leechLife
+  +20 (weapon'suz da). Test: SourceXWave258Tests (+4: lich resist/expiry, vamp resist,
+  vamp leech unarmed, form-swap).
+  Wave 259 summon: SummonCreature hardened (bodyId param + StatFlag.Conjured + return
+  creature); **VengefulSpirit(114)** = Revenant (0x2EE) summon, owned+FightTarget=enemy,
+  kısa süre. Test: SourceXWave259Tests (+1).
+  Wave 260: **AnimateDead(101)** = CastDone corpse-item interception (Mark/DispelField
+  deseni), humanoid corpse→zombie(0x3) else corpse.Amount creature body, owned summon,
+  corpse consume. Test: SourceXWave260Tests (+3: humanoid/creature/non-corpse).
+  Wave 261: **SummonFamiliar(112)** = Summon-flag dispatch'te default familiar body
+  (0x13D); creature-selection menu ertelendi. Test: SourceXWave261Tests (+1).
+  **NECROMANCY TAMAMLANDI: 17'den 16 spell** (106 HorrificBeast önceden vardı).
+  KALAN sadece **Exorcism(117)** — Source-X'in KENDİSİ de implement ETMEMİŞ
+  (CCharSpell.cpp:4147 commented `case SPELL_Exorcism:*/`, script FLAGS/EFFECT boş);
+  eşleşecek referans yok → Source-X-parity gereği ertelendi. EvilOmen'in next-spell
+  -%50 MR yarısı ertelendi (resist hook). Chivalry/Bushido/Ninjitsu/Spellweaving/
+  Mysticism dokunulmadı (ayrı schools).
 - [x] **MAGICF_IGNOREAR + spell reflection zinciri** — YAPILDI (Wave 225).
   MAGICFLAGS düşük bitleri Source-X `MAGICFLAGS_TYPE` ile birebir hizalandı;
   SphereNet extension flag'leri çakışmayan yüksek bitlere taşındı. `IGNOREAR` magic

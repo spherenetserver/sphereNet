@@ -1102,8 +1102,31 @@ public static class CombatEngine
         // STATF_INVUL bounces the blow (no Hits loss, no reflect).
         if (damage > 0 && !IsDamageImmune(target))
         {
+            // Necromancy Evil Omen (reference OnTakeDamage): the victim's next
+            // harmful hit lands 25% harder, then the omen is spent.
+            if (target.ConsumeEvilOmen())
+                damage = (int)Math.Min((long)damage + damage / 4, short.MaxValue);
+
             target.Hits -= (short)Math.Min(damage, short.MaxValue);
             target.RecordAttack(attacker.Uid, damage);
+
+            // Necromancy Blood Oath (reference OnTakeDamage): a bonded victim
+            // struck by its linked enemy suffers an extra 10% and reflects
+            // (100 - level)% back as fixed damage — no recursion (the reflect is
+            // applied directly, not routed back through this block).
+            if (target.BloodOathEnemy == attacker.Uid && target.BloodOathLevel > 0 &&
+                attacker != target && !attacker.IsDead)
+            {
+                int extra = damage / 10;
+                if (extra > 0)
+                    target.Hits -= (short)Math.Min(extra, short.MaxValue);
+                int reflect = damage * (100 - target.BloodOathLevel) / 100;
+                if (reflect > 0)
+                {
+                    attacker.Hits -= (short)Math.Min(reflect, short.MaxValue);
+                    attacker.RecordAttack(target.Uid, reflect);
+                }
+            }
 
             if (target.IsStatFlag(StatFlag.Reactive) && attacker != target && !attacker.IsDead)
             {
@@ -1382,6 +1405,10 @@ public static class CombatEngine
         // to the life-leech percent, but only with a weapon equipped.
         if (weapon != null && attacker.CurseWeaponLevel > 0)
             leechLife += attacker.CurseWeaponLevel;
+        // Necromancy Vampiric Embrace (reference SPELL_Vampiric_Embrace): the form
+        // leeches life on any damaging hit, armed or not.
+        if (attacker.VampiricEmbraceActive)
+            leechLife += 20;
         if (leechLife > 0)
         {
             long maxHeal = (long)damage * leechLife * 30 / 10000;

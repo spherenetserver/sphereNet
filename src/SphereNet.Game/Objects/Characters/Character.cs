@@ -1047,6 +1047,37 @@ public partial class Character : ObjBase
     /// m_itSpell.m_spelllevel). Added to the attacker's HITLEECHLIFE percent
     /// while a weapon is equipped (reference CCharFight.cpp:2272-2275).</summary>
     internal int CurseWeaponLevel { get; set; }
+    /// <summary>Transient Necromancy Mind Rot marker: while set, the victim's
+    /// spell mana cost is raised (reference LOWERMANACOST -10 =&gt; +10%).</summary>
+    internal bool MindRotActive { get; set; }
+    /// <summary>Transient Necromancy Lich Form marker (reference SPELL_Lich_Form):
+    /// a LAYER_SPELL_Polymorph form that shifts elemental resists.</summary>
+    internal bool LichFormActive { get; set; }
+    /// <summary>Transient Necromancy Vampiric Embrace marker (reference
+    /// SPELL_Vampiric_Embrace): a form that leeches life on hit.</summary>
+    internal bool VampiricEmbraceActive { get; set; }
+    /// <summary>Necromancy Blood Oath: the bonded enemy whose blows against this
+    /// character are reflected (reference LAYER_SPELL_Blood_Oath m_uidLink), and
+    /// the reflect percent base (reference m_spelllevel).</summary>
+    internal Serial BloodOathEnemy { get; set; }
+    internal int BloodOathLevel { get; set; }
+    /// <summary>Necromancy Evil Omen: a one-shot marker that makes the next
+    /// harmful effect on this character land harder, then is consumed (reference
+    /// LAYER_SPELL_Evil_Omen). Expiry is lazy — read via <see cref="ConsumeEvilOmen"/>.</summary>
+    internal bool EvilOmenActive { get; set; }
+    internal long EvilOmenExpireTick { get; set; }
+
+    /// <summary>Consume the Evil Omen marker: returns true (and clears it) only
+    /// when it is set and unexpired; an expired marker is cleared and returns
+    /// false. Reference: the omen memory is deleted on the first harmful hit.</summary>
+    internal bool ConsumeEvilOmen()
+    {
+        if (!EvilOmenActive)
+            return false;
+        bool live = Environment.TickCount64 < EvilOmenExpireTick;
+        EvilOmenActive = false;
+        return live;
+    }
     public short ModMaxWeight { get => _modMaxWeight; set => _modMaxWeight = value; }
 
     // Appearance originals

@@ -3,6 +3,29 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, otuz ucuncu batch (Necromancy okulu)
+----------------------------------------
+
+EKLENDI - Necromancy buyu okulu (Wave 254-261):
+  - Necromancy okulu artik fonksiyonel olarak tamamlandi (17 spell'den 16'si; sadece
+    Exorcism kaldi, onu Source-X referansi da implement etmemis).
+  - Debuff'lar: Corpse Skin elemental resist'leri kaydirir; Mind Rot kurbanin buyu
+    mana maliyetini %10 artirir.
+  - Generic periyodik damage-over-time motoru Pain Spike (10 tick sabit direct hasar)
+    ve Strangle (kurbanin yorgunluguyla olceklenen ve hizlanan poison) spell'lerini
+    surur. Devam eden tick'ler restart'ta persist edilmez.
+  - Kurban-tarafi hasar tepkileri: Blood Oath bagli dusmanin vurusunu ona geri yansitir
+    (kurbana da biraz fazla verir); Evil Omen bir sonraki zararli vurusu daha sert
+    yapar (+%25 melee veya +1 poison level), sonra tukenir.
+  - Alan hasari: Poison Strike primary'e tam, 2-tile icindekilere yarim splash yapar;
+    Wither caster cevresi 4-tile herkese cold hasari verir.
+  - Form'lar: Lich Form ve Vampiric Embrace resist kaydirir; Vampiric Embrace ayrica
+    her vuruste can emer. Ayni anda tek polymorph-layer form aktif olur.
+  - Summon'lar: Vengeful Spirit hedefi avlayan bir revenant cikarir; Animate Dead
+    hedeflenen bir cesetten undead diriltir (insansi ceset zombi, yaratik cesedi
+    kendi turunu verir); Summon Familiar varsayilan bir familiar cagirir. Summon'lar
+    caster-sahipli, conjured ve sureli olur.
+
 [2026-07-12] - 90-alti parite backlog, otuz ikinci batch (ertelenen gruplar)
 ----------------------------------------
 

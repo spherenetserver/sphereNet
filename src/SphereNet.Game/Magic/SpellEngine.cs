@@ -115,6 +115,23 @@ public sealed class SpellEngine
         public string? NewName { get; set; }
         public bool NameChanged { get; set; }
         public int CurseWeaponLevel { get; set; }
+
+        // Periodic damage-over-time (reference SPELLFLAG_TICK spell memories:
+        // Pain Spike, Strangle). Non-zero DotCharges marks an active DOT; the
+        // tick pass in ProcessExpirations applies damage and decrements charges.
+        public int DotCharges { get; set; }
+        public int DotTotalCharges { get; set; }
+        public long DotNextTickMs { get; set; }
+        public int DotIntervalMs { get; set; }
+        public int DotDamagePerTick { get; set; }
+        public int DotPower { get; set; }
+        public DamageType DotDamageType { get; set; }
+        public bool DotDirect { get; set; }
+        public Serial DotSource { get; set; }
+
+        // Necromancy Blood Oath bond (state lives on the caster).
+        public Serial BloodOathEnemy { get; set; }
+        public int BloodOathLevel { get; set; }
     }
 
     // Disguise names used by Incognito.
@@ -474,7 +491,7 @@ public sealed class SpellEngine
         }
 
         // Mana check
-        if (caster.Mana < def.ManaCost)
+        if (caster.Mana < EffectiveManaCost(caster, def))
             return -1;
 
         if (!CanCastOutdoorSpell(caster, def, targetPos))
@@ -661,7 +678,7 @@ public sealed class SpellEngine
             ConsumeReagents(caster, def);
         }
 
-        int manaCost = Math.Max(0, def.ManaCost * Character.ManaLossPercent / 100);
+        int manaCost = Math.Max(0, EffectiveManaCost(caster, def) * Character.ManaLossPercent / 100);
         if (castWithWand) manaCost = 0;             // reference: wands cost no mana
         else if (castFromScroll) manaCost /= 2;     // reference: scrolls cost half mana
         caster.Mana -= (short)Math.Min(manaCost, caster.Mana);
@@ -723,6 +740,36 @@ public sealed class SpellEngine
             return true;
         }
 
+        // Animate Dead targets a CORPSE item and raises an undead controlled by
+        // the caster (reference SPELL_Animate_Dead, CCharSpell.cpp:2608-2632).
+        if (spell == SpellType.AnimateDeadAOS)
+        {
+            var corpse = _world?.FindItem(targetUid);
+            if (corpse != null && !corpse.IsDeleted && corpse.ItemType == ItemType.Corpse)
+            {
+                // A humanoid corpse raises a zombie; a creature corpse raises its
+                // own kind (the corpse stores the original body in Amount).
+                ushort corpseBody = corpse.Amount;
+                bool humanoid = corpseBody is 0x0190 or 0x0191 or 0x025D or 0x025E;
+                ushort body = humanoid ? (ushort)0x0003 : (corpseBody == 0 ? (ushort)0x0003 : corpseBody);
+                var undead = SummonCreature(caster, corpse.Position, def, skillLevel, bodyId: body);
+                if (undead != null)
+                {
+                    undead.MaxHits = 60; undead.Hits = 60;
+                    undead.Str = 60; undead.Dex = 40; undead.Int = 20;
+                    undead.SetSkill(SkillType.Tactics, 600);
+                    undead.SetSkill(SkillType.Wrestling, 600);
+                    OnItemRemoved?.Invoke(corpse); // the corpse is consumed
+                }
+            }
+            else
+            {
+                OnSysMessage?.Invoke(caster, "You cannot animate that.");
+            }
+            if (def.Sound > 0) OnPlaySound?.Invoke(caster.Position, (ushort)def.Sound);
+            return true;
+        }
+
         // Apply spell effect
         if (spell is SpellType.Recall or SpellType.GateTravel)
         {
@@ -776,7 +823,11 @@ public sealed class SpellEngine
         }
         else if (def.IsFlag(SpellFlag.Summon))
         {
-            SummonCreature(caster, targetPos, def, skillLevel);
+            // Necromancy Summon Familiar picks a specific creature (Source-X opens
+            // a selection menu; a default familiar is used here — the menu is not
+            // yet wired). Other summon spells keep the generic bodyless creature.
+            ushort summonBody = spell == SpellType.SummonFamiliar ? (ushort)0x013D : (ushort)0;
+            SummonCreature(caster, targetPos, def, skillLevel, summonBody);
         }
         else
         {
@@ -1229,7 +1280,8 @@ public sealed class SpellEngine
     }
 
     /// <summary>Summon a creature at target location.</summary>
-    private void SummonCreature(Character caster, Point3D pos, SpellDef def, int skillLevel)
+    private Character? SummonCreature(Character caster, Point3D pos, SpellDef def, int skillLevel,
+        ushort bodyId = 0)
     {
         if (IsMagicFlag(MagicConfigFlags.LimitSummons))
         {
@@ -1242,20 +1294,28 @@ public sealed class SpellEngine
             if (activeSummons >= 2)
             {
                 OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGenFizzles));
-                return;
+                return null;
             }
         }
 
         var creature = _world.CreateCharacter();
         creature.Name = def.Name;
         creature.NpcBrain = NpcBrainType.Monster;
+        // A specific creature graphic (necro summons pass one); a conjured summon
+        // is dispellable (reference STATF_Conjured).
+        if (bodyId != 0)
+        {
+            creature.BodyId = bodyId;
+            creature.BaseId = bodyId;
+            creature.SetStatFlag(StatFlag.Conjured);
+        }
 
         int duration = def.GetDuration(skillLevel);
         if (!creature.TryAssignOwnership(caster, caster, summoned: true, enforceFollowerCap: true))
         {
             _world.DeleteObject(creature);
             creature.Delete();
-            return;
+            return null;
         }
         creature.SetTag("SUMMON_DURATION", duration.ToString());
         creature.SetTag("SUMMON_MASTER", caster.Uid.Value.ToString());
@@ -1267,7 +1327,9 @@ public sealed class SpellEngine
             creature.ClearOwnership(clearFriends: true);
             _world.DeleteObject(creature);
             creature.Delete();
+            return null;
         }
+        return creature;
     }
 
     /// <summary>
@@ -1668,6 +1730,10 @@ public sealed class SpellEngine
                 int poisonDist = caster.Position.GetDistanceTo(target.Position);
                 if (poisonDist >= 4)
                     poisonLvl = (byte)Math.Max(1, poisonLvl - poisonDist / 2);
+                // Necromancy Evil Omen: a poison spell lands one level higher on a
+                // marked target, then the omen is spent (reference CCharAct.cpp:4239).
+                if (target.ConsumeEvilOmen())
+                    poisonLvl = (byte)Math.Min(5, poisonLvl + 1);
                 target.ApplyPoison(poisonLvl, caster.Uid);
                 string poisonKey = poisonLvl switch
                 {
@@ -1753,6 +1819,29 @@ public sealed class SpellEngine
                 target.SetStatFlag(StatFlag.Polymorph);
                 break;
             }
+            case SpellType.LichForm:
+            {
+                // Necromancy Lich Form (reference SPELL_Lich_Form): a
+                // LAYER_SPELL_Polymorph form that shifts elemental resists.
+                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                eff.AppliedFlag = StatFlag.Polymorph;
+                target.LichFormActive = true;
+                target.SetStatFlag(StatFlag.Polymorph);
+                ApplyLichFormResists(target, +1);
+                break;
+            }
+            case SpellType.VampiricEmbrace:
+            {
+                // Necromancy Vampiric Embrace (reference SPELL_Vampiric_Embrace):
+                // a form that leeches life on every hit (see ApplyAosOnHitEffects)
+                // and lowers fire resist.
+                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                eff.AppliedFlag = StatFlag.Polymorph;
+                target.VampiricEmbraceActive = true;
+                target.SetStatFlag(StatFlag.Polymorph);
+                ApplyVampiricResists(target, +1);
+                break;
+            }
             case SpellType.CurseWeapon:
             {
                 // Necromancy Curse Weapon (reference SPELL_Curse_Weapon): stores
@@ -1762,6 +1851,119 @@ public sealed class SpellEngine
                 int level = Math.Clamp(effect, 1, 100);
                 eff.CurseWeaponLevel = level;
                 target.CurseWeaponLevel = level;
+                break;
+            }
+            case SpellType.CorpseSkin:
+            {
+                // Necromancy Corpse Skin (reference SPELL_Corpse_Skin): fire/poison
+                // resist down, cold/physical resist up, for a Spirit-Speak duration.
+                ScheduleEffectExpiry(caster, target, def.Id, def);
+                ApplyCorpseSkinResists(target, +1);
+                break;
+            }
+            case SpellType.MindRot:
+            {
+                // Necromancy Mind Rot (reference SPELL_Mind_Rot): raises the
+                // target's spell mana cost while active.
+                ScheduleEffectExpiry(caster, target, def.Id, def);
+                target.MindRotActive = true;
+                break;
+            }
+            case SpellType.PainSpike:
+            {
+                // Necromancy Pain Spike (reference SPELL_Pain_Spike): a total of
+                // ((SpiritSpeak - MagicResist)/100)+18 direct damage over 10 one-
+                // second ticks (damage per tick = total/10, DAMAGE_GOD = ignores
+                // resist).
+                int ss = caster.GetSkill(SkillType.SpiritSpeak);
+                int mr = target.GetSkill(SkillType.MagicResistance);
+                int total = Math.Max(10, (ss - mr) / 100 + 18);
+                var eff = SetupDot(caster, target, def, charges: 10, intervalMs: 1000);
+                eff.DotDamagePerTick = Math.Max(1, total / 10);
+                eff.DotDamageType = DamageType.Physical;
+                eff.DotDirect = true;
+                break;
+            }
+            case SpellType.Strangle:
+            {
+                // Necromancy Strangle (reference SPELL_Strangle): power = max(4,
+                // SpiritSpeak/100) ticks of poison damage that scale up as the
+                // victim's stamina drops; the first tick lands after 5 seconds.
+                int power = Math.Max(4, caster.GetSkill(SkillType.SpiritSpeak) / 100);
+                var eff = SetupDot(caster, target, def, charges: power, intervalMs: 5000);
+                eff.DotPower = power;
+                eff.DotDamageType = DamageType.Poison;
+                break;
+            }
+            case SpellType.BloodOath:
+            {
+                // Necromancy Blood Oath (reference SPELL_Blood_Oath): the state
+                // lives on the CASTER, linked to the enemy; a blow the enemy lands
+                // on the caster reflects (100 - level)% back. level scales down
+                // with the enemy's Magic Resistance (reference m_spelllevel).
+                int level = Math.Clamp(target.GetSkill(SkillType.MagicResistance) / 20 + 10, 10, 90);
+                var eff = ScheduleEffectExpiry(caster, caster, def.Id, def);
+                eff.BloodOathEnemy = target.Uid;
+                eff.BloodOathLevel = level;
+                caster.BloodOathEnemy = target.Uid;
+                caster.BloodOathLevel = level;
+                break;
+            }
+            case SpellType.EvilOmen:
+            {
+                // Necromancy Evil Omen (reference SPELL_Evil_Omen): the target's
+                // next harmful effect lands harder, then the marker is spent. A
+                // one-shot flag with lazy expiry (not an ActiveSpellEffect).
+                int casterSkill = caster.GetSkill(def.GetPrimarySkill());
+                int durTenths = def.GetDuration(casterSkill);
+                if (durTenths <= 0) durTenths = 300;
+                target.EvilOmenActive = true;
+                target.EvilOmenExpireTick = Environment.TickCount64 + (long)durTenths * 100L;
+                break;
+            }
+            case SpellType.PoisonStrike:
+            {
+                // Necromancy Poison Strike (reference SPELL_Poison_Strike): direct
+                // poison damage to the primary target, half to everything within
+                // 2 tiles of it (reference area radius 2).
+                DealSpellDamage(caster, target, effect, DamageType.Poison);
+                foreach (var other in _world.GetCharsInRange(target.Position, 2))
+                {
+                    if (other == target || other == caster || other.IsDead) continue;
+                    DealSpellDamage(caster, other, effect / 2, DamageType.Poison);
+                }
+                break;
+            }
+            case SpellType.Wither:
+            {
+                // Necromancy Wither (reference SPELL_Wither): cold damage to every
+                // enemy within 4 tiles of the caster (reference area radius 4,
+                // centred on the caster).
+                foreach (var other in _world.GetCharsInRange(caster.Position, 4))
+                {
+                    if (other == caster || other.IsDead) continue;
+                    DealSpellDamage(caster, other, effect, DamageType.Cold);
+                }
+                break;
+            }
+            case SpellType.VengefulSpirit:
+            {
+                // Necromancy Vengeful Spirit (reference SPELL_Vengeful_Spirit):
+                // summon a revenant (CREID_REVENANT 0x2EE) that hunts the target,
+                // controlled by the caster for a short duration.
+                int summonSkill = caster.GetSkill(def.GetPrimarySkill());
+                var spawnPos = new Point3D((short)(caster.X + 1), caster.Y, caster.Z, caster.Position.Map);
+                var revenant = SummonCreature(caster, spawnPos, def, summonSkill, bodyId: 0x02EE);
+                if (revenant != null)
+                {
+                    // Enough presence to fight; sic it onto the target.
+                    revenant.MaxHits = 80; revenant.Hits = 80;
+                    revenant.Str = 80; revenant.Dex = 60; revenant.Int = 40;
+                    revenant.SetSkill(SkillType.Tactics, 800);
+                    revenant.SetSkill(SkillType.Swordsmanship, 800);
+                    if (target != caster)
+                        revenant.FightTarget = target.Uid;
+                }
                 break;
             }
             case SpellType.Polymorph:
@@ -1809,6 +2011,43 @@ public sealed class SpellEngine
     }
 
     private static void ClearCastState(Character ch) => ch.ClearCastState();
+
+    /// <summary>Spell mana cost after per-caster modifiers. Necromancy Mind Rot
+    /// raises the victim's spell mana cost by 10% (reference LOWERMANACOST -10).</summary>
+    private static int EffectiveManaCost(Character caster, SpellDef def)
+    {
+        int cost = def.ManaCost;
+        if (caster.MindRotActive)
+            cost += cost / 10;
+        return cost;
+    }
+
+    /// <summary>Necromancy Corpse Skin resist shift (reference PolyStr/PolyDex):
+    /// fire/poison down 15, cold/physical up 10. <paramref name="sign"/> is +1 to
+    /// apply the debuff, -1 to revert it.</summary>
+    private static void ApplyCorpseSkinResists(Character t, int sign)
+    {
+        t.ResFire = (short)(t.ResFire + sign * -15);
+        t.ResPoison = (short)(t.ResPoison + sign * -15);
+        t.ResCold = (short)(t.ResCold + sign * 10);
+        t.ResPhysical = (short)(t.ResPhysical + sign * 10);
+    }
+
+    /// <summary>Necromancy Lich Form resist shift (reference CCharSpell.cpp:1038):
+    /// fire down, poison and cold up. <paramref name="sign"/> +1 apply, -1 revert.</summary>
+    private static void ApplyLichFormResists(Character t, int sign)
+    {
+        t.ResFire = (short)(t.ResFire + sign * -10);
+        t.ResPoison = (short)(t.ResPoison + sign * 10);
+        t.ResCold = (short)(t.ResCold + sign * 10);
+    }
+
+    /// <summary>Necromancy Vampiric Embrace resist shift (reference
+    /// CCharSpell.cpp:1062): fire resist down. <paramref name="sign"/> +1/-1.</summary>
+    private static void ApplyVampiricResists(Character t, int sign)
+    {
+        t.ResFire = (short)(t.ResFire + sign * -10);
+    }
 
     /// <summary>Register a spell's expiration with its undo data.
     /// Duration comes from <see cref="SpellDef.GetDuration"/>(caster's
@@ -1917,11 +2156,161 @@ public sealed class SpellEngine
         }
     }
 
+    /// <summary>Create a periodic damage-over-time effect (reference
+    /// SPELLFLAG_TICK spell memories). Reuses ScheduleEffectExpiry for re-cast
+    /// dedup/refresh, then arms the tick fields; the expiry is pushed past the
+    /// DOT's own lifetime so the tick pass — not the expiry pass — retires it.</summary>
+    private ActiveSpellEffect SetupDot(Character caster, Character target, SpellDef def,
+        int charges, int intervalMs)
+    {
+        var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+        eff.DotCharges = Math.Max(1, charges);
+        eff.DotTotalCharges = eff.DotCharges;
+        eff.DotIntervalMs = Math.Max(1, intervalMs);
+        eff.DotNextTickMs = Environment.TickCount64 + eff.DotIntervalMs;
+        eff.DotSource = caster.Uid;
+        eff.DotDamageType = DamageType.Physical;
+        // Guard the effect from the expiry pass until every charge is spent.
+        eff.ExpireTick = Environment.TickCount64 +
+            (long)eff.DotCharges * eff.DotIntervalMs + 60_000L;
+        return eff;
+    }
+
+    /// <summary>Per-tick damage for a DOT. Pain Spike is a fixed direct amount;
+    /// Strangle scales rand(power-2..power+1) by the victim's fatigue
+    /// (3 - 2*curStam/maxStam), reference CCharSpell.cpp:1951-1952.</summary>
+    private int ComputeDotDamage(ActiveSpellEffect eff, Character victim)
+    {
+        if (eff.Spell == SpellType.Strangle)
+        {
+            int power = Math.Max(1, eff.DotPower);
+            int spellPower = _rand.Next(power - 2, power + 2); // [power-2, power+1]
+            int maxStam = Math.Max(1, (int)victim.MaxStam);
+            int mult = Math.Max(1, 3 - 2 * Math.Max(0, (int)victim.Stam) / maxStam);
+            return Math.Max(1, Math.Max(1, spellPower) * mult);
+        }
+        return Math.Max(1, eff.DotDamagePerTick);
+    }
+
+    /// <summary>Delay to the next tick. Strangle accelerates 4,3,2,1,1s after its
+    /// initial 5s tick (reference CCharSpell.cpp:1934-1949); others are fixed.</summary>
+    private static int NextDotIntervalMs(ActiveSpellEffect eff)
+    {
+        if (eff.Spell == SpellType.Strangle)
+        {
+            int done = eff.DotTotalCharges - eff.DotCharges; // charges already spent
+            int secs = done switch { 0 => 4, 1 => 3, 2 => 2, _ => 1 };
+            return secs * 1000;
+        }
+        return eff.DotIntervalMs;
+    }
+
+    /// <summary>Apply one DOT tick's damage: elemental resist unless the tick is
+    /// direct, damage credited to the source, health broadcast, death handled.</summary>
+    private void ApplyDotDamage(Character victim, ActiveSpellEffect eff, int damage)
+    {
+        if (!eff.DotDirect)
+            damage = CombatEngine.ApplyElementalResist(victim, damage, eff.DotDamageType);
+        damage = Math.Max(1, damage);
+
+        if (CombatEngine.IsDamageImmune(victim))
+            return;
+
+        victim.Hits = (short)Math.Max(0, victim.Hits - damage);
+        if (eff.DotSource.IsValid)
+            victim.RecordAttack(eff.DotSource, damage);
+        TryInterruptFromDamage(victim, damage);
+
+        Character.BroadcastNearby?.Invoke(victim.Position, 18,
+            new SphereNet.Network.Packets.Outgoing.PacketDamage(
+                victim.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue)), 0);
+        Character.BroadcastNearby?.Invoke(victim.Position, 18,
+            new SphereNet.Network.Packets.Outgoing.PacketUpdateHealth(
+                victim.Uid.Value, victim.MaxHits, victim.Hits), 0);
+
+        if (victim.Hits <= 0 && !victim.IsDead)
+        {
+            var killer = eff.DotSource.IsValid ? Character.ResolveCharByUid?.Invoke(eff.DotSource) : null;
+            if (OnTargetKilled != null) OnTargetKilled.Invoke(victim, killer!);
+            else if (Character.OnLifecycleKill != null) Character.OnLifecycleKill(victim, killer);
+            else victim.Kill();
+        }
+    }
+
+    /// <summary>Deal one-shot elemental spell damage to a character: elemental
+    /// resist (unless MAGICF ignore-armor), damage credited to the caster, health
+    /// broadcast, interrupt and death handled. Used by the direct/area necro
+    /// damage spells (Poison Strike, Wither).</summary>
+    private void DealSpellDamage(Character caster, Character victim, int damage, DamageType type)
+    {
+        if (damage <= 0 || victim.IsDeleted || victim.IsDead) return;
+        if (!IsMagicFlag(MagicConfigFlags.IgnoreArmor))
+            damage = CombatEngine.ApplyElementalResist(victim, damage, type);
+        damage = Math.Max(0, damage);
+        if (damage <= 0 || CombatEngine.IsDamageImmune(victim, type)) return;
+
+        victim.Hits -= (short)Math.Min(damage, short.MaxValue);
+        victim.RecordAttack(caster.Uid, damage);
+        TryInterruptFromDamage(victim, damage);
+
+        Character.BroadcastNearby?.Invoke(victim.Position, 18,
+            new SphereNet.Network.Packets.Outgoing.PacketDamage(
+                victim.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue)), 0);
+        Character.BroadcastNearby?.Invoke(victim.Position, 18,
+            new SphereNet.Network.Packets.Outgoing.PacketUpdateHealth(
+                victim.Uid.Value, victim.MaxHits, victim.Hits), 0);
+
+        if (victim.Hits <= 0 && !victim.IsDead)
+        {
+            if (OnTargetKilled != null) OnTargetKilled.Invoke(victim, caster);
+            else if (Character.OnLifecycleKill != null) Character.OnLifecycleKill(victim, caster);
+            else victim.Kill();
+        }
+    }
+
+    /// <summary>Advance periodic damage-over-time effects: apply each due tick,
+    /// reschedule, and retire the effect when its charges are spent.</summary>
+    private void ProcessDotTicks(long now)
+    {
+        // Snapshot the due DOTs first: applying a tick can kill the victim and
+        // clear its effects mid-pass (ClearAllEffectsOnDeath), so iterating the
+        // live list by index is unsafe.
+        List<ActiveSpellEffect>? due = null;
+        foreach (var eff in _activeEffects)
+            if (eff.DotCharges > 0 && now >= eff.DotNextTickMs)
+                (due ??= []).Add(eff);
+        if (due == null) return;
+
+        foreach (var eff in due)
+        {
+            if (!_activeEffects.Contains(eff)) continue; // already retired elsewhere
+            if (eff.Target.IsDeleted || eff.Target.IsDead)
+            {
+                _activeEffects.Remove(eff);
+                NotifySpellBuff(eff.Target, eff.Spell, false);
+                continue;
+            }
+
+            int damage = ComputeDotDamage(eff, eff.Target);
+            eff.DotCharges--;
+            eff.DotNextTickMs = now + NextDotIntervalMs(eff);
+            ApplyDotDamage(eff.Target, eff, damage);
+
+            if (eff.DotCharges <= 0 && _activeEffects.Remove(eff))
+            {
+                NotifySpellBuff(eff.Target, eff.Spell, false);
+                Character.OnSpellEffectRemove?.Invoke(eff.Target, (int)eff.Spell);
+                FireSpellSectionStage(eff.Spell, "EffectRemove", eff.Target);
+            }
+        }
+    }
+
     /// <summary>Walk the active-effect list once per world tick and undo
     /// any whose expire tick has passed. Called from Program.cs main
     /// loop. Cheap when the list is empty; no-op otherwise.</summary>
     public void ProcessExpirations(long now)
     {
+        ProcessDotTicks(now);
         for (int i = _activeEffects.Count - 1; i >= 0; i--)
         {
             var eff = _activeEffects[i];
@@ -1958,6 +2347,25 @@ public sealed class SpellEngine
             t.WraithFormActive = false;
         if (eff.Spell == SpellType.CurseWeapon)
             t.CurseWeaponLevel = 0;
+        if (eff.Spell == SpellType.MindRot)
+            t.MindRotActive = false;
+        if (eff.Spell == SpellType.CorpseSkin)
+            ApplyCorpseSkinResists(t, -1);
+        if (eff.Spell == SpellType.LichForm)
+        {
+            t.LichFormActive = false;
+            ApplyLichFormResists(t, -1);
+        }
+        if (eff.Spell == SpellType.VampiricEmbrace)
+        {
+            t.VampiricEmbraceActive = false;
+            ApplyVampiricResists(t, -1);
+        }
+        if (eff.Spell == SpellType.BloodOath)
+        {
+            t.BloodOathEnemy = Serial.Invalid;
+            t.BloodOathLevel = 0;
+        }
         if (eff.AppliedFlag != StatFlag.None) t.ClearStatFlag(eff.AppliedFlag);
         if (eff.NameChanged && eff.OldName != null)
         {
@@ -1993,6 +2401,25 @@ public sealed class SpellEngine
             t.WraithFormActive = true;
         if (eff.Spell == SpellType.CurseWeapon)
             t.CurseWeaponLevel = eff.CurseWeaponLevel;
+        if (eff.Spell == SpellType.MindRot)
+            t.MindRotActive = true;
+        if (eff.Spell == SpellType.CorpseSkin)
+            ApplyCorpseSkinResists(t, +1);
+        if (eff.Spell == SpellType.LichForm)
+        {
+            t.LichFormActive = true;
+            ApplyLichFormResists(t, +1);
+        }
+        if (eff.Spell == SpellType.VampiricEmbrace)
+        {
+            t.VampiricEmbraceActive = true;
+            ApplyVampiricResists(t, +1);
+        }
+        if (eff.Spell == SpellType.BloodOath)
+        {
+            t.BloodOathEnemy = eff.BloodOathEnemy;
+            t.BloodOathLevel = eff.BloodOathLevel;
+        }
         if (eff.AppliedFlag != StatFlag.None) t.SetStatFlag(eff.AppliedFlag);
         if (eff.NameChanged && eff.NewName != null)
         {
@@ -2059,6 +2486,12 @@ public sealed class SpellEngine
         foreach (var eff in _activeEffects)
         {
             if (eff.Target != ch || eff.Target.IsDeleted)
+                continue;
+            // In-flight damage-over-time ticks (Pain Spike/Strangle) are short-
+            // lived; their per-tick state is not persisted, so a restart simply
+            // ends them rather than resuming with a stale schedule. Blood Oath is
+            // likewise short-lived and bound to a live enemy uid, so it ends too.
+            if (eff.DotCharges > 0 || eff.Spell == SpellType.BloodOath)
                 continue;
             yield return SerializeEffect(eff, now);
         }
@@ -2247,7 +2680,8 @@ public sealed class SpellEngine
         spell is SpellType.Protection or SpellType.ArchProtection;
 
     private static bool IsPolymorphLayerSpell(SpellType spell) =>
-        spell is SpellType.Polymorph or SpellType.HorrificBeast or SpellType.WraithForm;
+        spell is SpellType.Polymorph or SpellType.HorrificBeast or SpellType.WraithForm
+            or SpellType.LichForm or SpellType.VampiricEmbrace;
 
     private static string EncodeEffectString(string? value)
     {

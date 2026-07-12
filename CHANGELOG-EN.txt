@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, thirty-third batch (Necromancy school)
+----------------------------------------
+
+ADDED - Necromancy spell school (Waves 254-261):
+  - The Necromancy school is now functionally complete (16 of 17 spells; only
+    Exorcism is left, which the Source-X reference itself leaves unimplemented).
+  - Debuffs: Corpse Skin shifts elemental resists; Mind Rot raises the victim's
+    spell mana cost by 10%.
+  - A generic periodic damage-over-time engine drives Pain Spike (fixed direct
+    damage over ten ticks) and Strangle (poison that accelerates and scales with
+    the victim's fatigue). In-flight ticks are not persisted across a restart.
+  - Damage reactions on the victim side: Blood Oath reflects a bonded enemy's
+    blow back at it (and hurts the victim slightly more); Evil Omen makes the
+    next harmful hit land harder (+25% melee, or one poison level), then is spent.
+  - Area damage: Poison Strike hits the primary in full and splashes half within
+    two tiles; Wither deals cold damage to everything within four tiles of the
+    caster.
+  - Forms: Lich Form and Vampiric Embrace shift resists; Vampiric Embrace also
+    leeches life on any hit. One polymorph-layer form is active at a time.
+  - Summons: Vengeful Spirit raises a revenant that hunts the target; Animate
+    Dead raises an undead from a targeted corpse (a humanoid corpse yields a
+    zombie, a creature corpse its own kind); Summon Familiar summons a default
+    familiar. Summons are caster-owned, conjured and time-limited.
+
 [2026-07-12] - Sub-90 parity backlog, thirty-second batch (deferred groups)
 ----------------------------------------
 

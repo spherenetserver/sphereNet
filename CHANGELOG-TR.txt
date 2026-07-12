@@ -3,6 +3,23 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, ikinci batch
+----------------------------------------
+
+EKLENDI - DB script objesi:
+  - DB.AQUERY / DB.AEXECUTE bir sorguyu ya da non-query'yi bloklamadan calistirir:
+    baglantinin worker thread'i varsa oraya kuyruklanir, yoksa inline calisir
+    (Source-X DBO AQUERY/AEXECUTE).
+  - DB.NUMCOLS ve db.row.numcols son sonuc kumesinin kolon sayisini verir.
+
+NOTLAR - Dogrulanan yanlis-alarmlar (degisiklik gerekmedi):
+  - Cartography ve Camping skill handler'lari zaten var ve fonksiyonel.
+  - [SPHERECRYPT]/[KRDIALOGLIST] section'lari zaten map'li ve bilerek skip'li;
+    client crypto key'leri tablodan degil hesaplanarak (CalcCrypt) uretilir.
+  - Item BONUSSKILL/BONUSCRAFTING key'leri sadece key-add degil, base-skill hot
+    path'i uzerine efektif-skill katmani gerektirir — ayri degisiklik olarak ertelendi.
+
+
 [2026-07-12] - 90-alti parite backlog, ilk batch
 ----------------------------------------
 

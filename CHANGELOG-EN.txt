@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, second batch
+----------------------------------------
+
+ADDED - DB script object:
+  - DB.AQUERY / DB.AEXECUTE run a query or non-query without blocking: the
+    statement is queued onto the connection's worker thread when one is
+    running, or executed inline otherwise (Source-X DBO AQUERY/AEXECUTE).
+  - DB.NUMCOLS and db.row.numcols expose the last result set's column count.
+
+NOTES - Verified non-gaps (no change needed):
+  - Cartography and Camping skill handlers already exist and are functional.
+  - [SPHERECRYPT]/[KRDIALOGLIST] sections are already mapped and intentionally
+    skipped; client crypto keys are computed (CalcCrypt), not table-loaded.
+  - Item BONUSSKILL/BONUSCRAFTING keys need an effective-skill layer over the
+    base-skill hot path, not just a key add — deferred as a separate change.
+
+
 [2026-07-12] - Sub-90 parity backlog, first batch
 ----------------------------------------
 

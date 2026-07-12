@@ -1987,6 +1987,19 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         Assert.Equal("2", numRows);
         Assert.True(db.TryResolveRowValue("db.row.0.name", out var firstName));
         Assert.Equal("alice", firstName);
+
+        // NUMCOLS reflects the last result's column count (Source-X DBO NUMCOLS).
+        Assert.Equal(2, db.NumCols);
+        Assert.True(db.TryResolveRowValue("db.row.numcols", out var numCols));
+        Assert.Equal("2", numCols);
+
+        // AEXECUTE / AQUERY (no worker thread configured) run inline and still
+        // populate the rowset for later db.row.* reads.
+        Assert.True(db.ExecuteAsync("INSERT INTO test(name) VALUES ('carol');"));
+        Assert.True(db.QueryAsync("SELECT id FROM test ORDER BY id;"));
+        Assert.True(db.TryResolveRowValue("db.row.numrows", out var afterAsync));
+        Assert.Equal("3", afterAsync);
+        Assert.Equal(1, db.NumCols); // single selected column
         db.Close();
     }
 

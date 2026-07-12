@@ -215,6 +215,19 @@ public sealed class ScriptDbAdapter : IDisposable
         return Query(_activeSessionName, sql, out rowCount, out error);
     }
 
+    /// <summary>Fire-and-forget query on the active session (Source-X DBO AQUERY):
+    /// enqueues onto the DB worker thread when one is running, else runs it inline.
+    /// The rowset lands whenever the worker finishes.</summary>
+    public bool QueryAsync(string sql) => GetActiveSession()?.EnqueueQuery(sql) ?? false;
+
+    /// <summary>Fire-and-forget non-query on the active session (Source-X DBO
+    /// AEXECUTE).</summary>
+    public bool ExecuteAsync(string sql) => GetActiveSession()?.EnqueueExecute(sql) ?? false;
+
+    /// <summary>Column count of the active session's last result set (Source-X
+    /// DBO NUMCOLS).</summary>
+    public int NumCols => GetActiveSession()?.NumCols ?? 0;
+
     /// <summary>Execute a query on a named session.</summary>
     public bool Query(string name, string sql, out int rowCount, out string error)
     {
@@ -322,6 +335,36 @@ public sealed class ScriptDbAdapter : IDisposable
                     return _connection != null && _connection.State == ConnectionState.Open;
                 }
             }
+        }
+
+        /// <summary>Column count of the last query's result set (0 when none).</summary>
+        public int NumCols
+        {
+            get { lock (_sync) { return _rowTable?.Columns.Count ?? 0; } }
+        }
+
+        /// <summary>Queue a query on the worker thread without blocking; runs inline
+        /// when no worker is available.</summary>
+        public bool EnqueueQuery(string sql)
+        {
+            if (_workQueue != null && _workerThread != null)
+            {
+                _workQueue.Add(() => QueryInternal(sql, out _, out _));
+                return true;
+            }
+            return QueryInternal(sql, out _, out _);
+        }
+
+        /// <summary>Queue a non-query on the worker thread without blocking; runs
+        /// inline when no worker is available.</summary>
+        public bool EnqueueExecute(string sql)
+        {
+            if (_workQueue != null && _workerThread != null)
+            {
+                _workQueue.Add(() => ExecuteInternal(sql, out _, out _));
+                return true;
+            }
+            return ExecuteInternal(sql, out _, out _);
         }
 
         public DbSession(DbConnectionConfig config, ILogger logger)
@@ -460,6 +503,12 @@ public sealed class ScriptDbAdapter : IDisposable
                 if (key.Equals("db.row.numrows", StringComparison.OrdinalIgnoreCase))
                 {
                     value = _rowTable.Rows.Count.ToString();
+                    return true;
+                }
+
+                if (key.Equals("db.row.numcols", StringComparison.OrdinalIgnoreCase))
+                {
+                    value = _rowTable.Columns.Count.ToString();
                     return true;
                 }
 

@@ -418,6 +418,8 @@ public static partial class Program
             return db.IsConnected ? "1" : "0";
         if (property.Equals("ACTIVE", StringComparison.OrdinalIgnoreCase))
             return db.ActiveSessionName;
+        if (property.Equals("NUMCOLS", StringComparison.OrdinalIgnoreCase))
+            return db.NumCols.ToString();
         if (property.StartsWith("ESCAPEDATA.", StringComparison.OrdinalIgnoreCase))
             return db.EscapeData(property[11..]);
         string rowKey = property.StartsWith("ROW.", StringComparison.OrdinalIgnoreCase)
@@ -457,6 +459,15 @@ public static partial class Program
                 break;
             case "EXECUTE":
                 ok = db.Execute(arg.Trim('"'), out _, out error);
+                break;
+            case "AQUERY":
+                // Source-X DBO AQUERY: fire-and-forget query (no blocking wait).
+                ok = db.QueryAsync(arg.Trim('"'));
+                error = "";
+                break;
+            case "AEXECUTE":
+                ok = db.ExecuteAsync(arg.Trim('"'));
+                error = "";
                 break;
             case "IMPORTDB" when parts[0].Equals("MDB", StringComparison.OrdinalIgnoreCase):
                 ok = db.ConnectFile(arg.Trim('"'), _resources?.ScpBaseDir ?? AppContext.BaseDirectory, out error);

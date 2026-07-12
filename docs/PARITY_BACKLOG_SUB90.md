@@ -44,15 +44,21 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   **STEPSTEALTH** zaten vardı; **RACE** gerçek CChar_props değil (ajan yanılmış).
 
 ### 1.3 Resource section tipleri — 78
-- [ ] **SPHERECRYPT** ve **KRDIALOGLIST** section'ları eşlenmemiş (`_ => Unknown`).
-  Anlamlı loader veya bilinçli-skip + log ekle.
-- [ ] STAT / TIMERF / SERVERS / BLOCKIP section'ları `ResType.Sphere`/`ServerConfig`
-  no-op'a katlanıyor — hangileri gerçek davranış gerektiriyor doğrula.
+- [x] **SPHERECRYPT / KRDIALOGLIST** — DOĞRULANDI (Wave 216): ajan yanılmış, `_ =>
+  Unknown` DEĞİL — ResourceHolder:123-125'te zaten `ResType.Sphere`'e map'li
+  (counted+skipped, warning yok). SPHERECRYPT = Source-X client crypt key TABLOSU
+  ama SphereNet key'leri CCryptoKeyCalc ile HESAPLIYOR (CalcCryptLine,
+  Program.Scripting:1656) → tablo gereksiz; login-crypto path'ine dokunmak
+  yüksek-risk/düşük-değer. KRDIALOGLIST = EC/KR niche. Skip haklı. DÜŞÜK ÖNCELİK:
+  mortechUO custom SphereCrypt.ini key-override senaryosu istenirse eklenir.
+- [ ] STAT / TIMERF / SERVERS — no-op'a katlanıyor; tek-sunucu shard için kabul
+  edilebilir (SERVERS=login server list, STAT≈ADVANCE, TIMERF section nadir). DÜŞÜK.
 
 ### 1.4 FILE/DB objeleri — 80
-- [ ] DB async formları: **AQUERY / AEXECUTE** (`DBO_TYPE`) — write verb switch'te yok
-  (`Program.Scripting.cs:444-465`).
-- [ ] DB **NUMCOLS** property doğrulanmadı — ekle/doğrula.
+- [x] DB async formları **AQUERY / AEXECUTE** — YAPILDI (Wave 216): ScriptDbAdapter
+  QueryAsync/ExecuteAsync (worker thread varsa enqueue, yoksa inline) + Program.Scripting
+  verb switch case'leri. **NUMCOLS** — DbSession.NumCols + `<DB.NUMCOLS>` +
+  `db.row.numcols`. Test: GameSystemTests.ScriptDbAdapter genişletildi.
 
 ### 1.5 Trigger — 86
 - [ ] Kalan char trigger backlog: **@UserMailBag** fire-site (doğrula, gerekiyorsa kur).
@@ -82,9 +88,12 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
 - [ ] Cast-recovery **FCR/FC** property modeli (şu an düz `1500-skill`).
 
 ### 2.3 Skills — 84
-- [ ] **Cartography** ve **Camping** handler'ları yok (`Skill_Cartography` cpp:1756).
+- [x] **Cartography** ve **Camping** — YANLIŞ ALARM (Wave 215 doğrulama):
+  SkillHandlers.cs:760 (Cartography→OnCraftSkillUsed, doğru Source-X modeli =
+  harita crafting), :825 (Camping→bedroll+campfire+safe-logout, zengin). İkisi de
+  VAR ve fonksiyonel.
 - [ ] Bushido/Ninjitsu/Chivalry/Necromancy/Focus/Imbuing/Mysticism/Spellweaving —
-  enum var, native handler yok.
+  enum var, native handler yok. (necro spell backlog ile birlikte, büyük)
 
 ### 2.4 Combat flag & AOS on-hit — 85
 - [x] **REFLECTPHYSICALDAM** — YAPILDI (Wave 215): defender'ın suit'i hasarın %'sini
@@ -187,8 +196,13 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
 - [ ] Resurrection-via-gump menü + corpse instalist packet detayı.
 
 ### 4.7 Item core — 85
-- [ ] `CItemBase` bonus-skill 1-5 + crafting-bonus key'leri (`IC_BONUSSKILL1..5AMT`,
-  `IC_BONUSCRAFTING*`) first-class item key değil.
+- [~] `CItemBase` BONUSSKILL1-5(+AMT) / BONUSCRAFTING* — KAPSAM NETLEŞTİRİLDİ
+  (Wave 216): key'ler tag olarak saklanabilir; ASIL boşluk = **efektif-skill
+  katmanı**. SphereNet `GetSkill` ham base döner (equipment bonus agregasyonu yok);
+  giyilen item'in skill'i yükseltmesi için base-vs-efektif ayrımı + equip/unequip
+  recompute gerekir — combat/crafting/skill-gain'e yayılan HOT-PATH mimari ekleme,
+  temiz key-add DEĞİL. ERTELENDİ (riskli, ayrı dalga). AOS suit-property agregasyonu
+  genel eksiğiyle birlikte ele alınmalı.
 
 ### 4.8 Ships — 85 (T0.1 dışındaki kalanlar)
 - [ ] Multi-tick hız ölçekleme belirsiz — doğrula.

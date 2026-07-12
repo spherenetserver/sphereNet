@@ -1786,7 +1786,7 @@ public sealed class ClientWorldFeaturesHandler
         BroadcastNearby?.Invoke(door.Position, UpdateRange, doorBroadcast, _character.Uid.Value);
     }
 
-    private static (ushort Anim, ushort Sound) GetCraftAnimAndSound(SkillType skill) => skill switch
+    internal static (ushort Anim, ushort Sound) GetCraftAnimAndSound(SkillType skill) => skill switch
     {
         SkillType.Blacksmithing => ((ushort)AnimationType.Attack1HBash, (ushort)0x002A),
         SkillType.Carpentry => ((ushort)AnimationType.Attack2HSlash, (ushort)0x023D),
@@ -1796,6 +1796,7 @@ public sealed class ClientWorldFeaturesHandler
         SkillType.Alchemy => ((ushort)AnimationType.Bow, (ushort)0x0242),
         SkillType.Bowcraft => ((ushort)AnimationType.Bow, (ushort)0x023D),
         SkillType.Inscription => ((ushort)AnimationType.Bow, (ushort)0x0249),
+        SkillType.Cartography => ((ushort)AnimationType.Bow, (ushort)0x0249),
         _ => ((ushort)AnimationType.Bow, (ushort)0x002A),
     };
 

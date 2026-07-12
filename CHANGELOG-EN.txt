@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, fourteenth batch
+----------------------------------------
+
+VERIFIED - Cartography craft linkage (Wave 233):
+  - The stale backlog entry was a false alarm: cartography tools open the
+    Cartography recipe gump, and SKILLMAKE recipes enter the normal craft
+    stroke/consume/create flow with t_cartography and blank-map requirements.
+  - Cartography craft strokes now use Source-X's 0x249 drawing sound from
+    Skill_Cartography/Skill_GetSound.
+
+TESTS:
+  - Added 4 Wave 233 regression tests. Full SphereNet.Tests run:
+    1552 passed, 0 failed, 0 skipped.
+
 [2026-07-12] - Sub-90 parity backlog, thirteenth batch
 ----------------------------------------
 

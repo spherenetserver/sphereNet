@@ -184,7 +184,13 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   `RACIALF_HUMAN_WORKHORSE` ayrıca Felucca mining node'una +1 ore, Trammel tree
   node'una +2 log ekler. Tüm AMOUNT/REAPAMOUNT curve noktaları korunur. Test:
   SourceXGatherYieldWave232Tests (+12).
-- [ ] Cartography harita-yapımı craft'a bağlı değil.
+- [x] **Cartography harita-yapımı craft bağlantısı** — YANLIŞ ALARM/
+  DOĞRULANDI (Wave 233). Source-X `IT_CARTOGRAPHY -> sm_cartography ->
+  Skill_MakeItem` zincirinin SphereNet karşılığı zaten
+  `CartographyTool -> OpenCraftingGump(Cartography) -> CraftingEngine` olarak
+  mevcut; `SKILLMAKE=Cartography` harita tarifleri tool ve blank-map gereksinimiyle
+  yükleniyor, normal stroke/tüketim/üretim hattına giriyor. Eksik kalan Source-X
+  `0x249` çizim sesi tamamlandı. Test: SourceXCartographyCraftWave233Tests (+4).
 
 ---
 

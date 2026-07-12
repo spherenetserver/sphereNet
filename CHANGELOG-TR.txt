@@ -3,6 +3,20 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, on dorduncu batch
+----------------------------------------
+
+DOGRULANDI - Cartography craft baglantisi (Wave 233):
+  - Eski backlog kaydi yanlis alarmdi: cartography tool, Cartography recipe
+    gump'ini acar; SKILLMAKE tarifleri t_cartography tool ve blank-map
+    gereksinimleriyle normal craft stroke/tuketim/uretim hattina girer.
+  - Cartography craft stroke sesi Source-X Skill_Cartography/Skill_GetSound ile
+    ayni 0x249 cizim sesine getirildi.
+
+TESTLER:
+  - 4 Wave 233 regresyon testi eklendi. Tam SphereNet.Tests kosusu:
+    1552 basarili, 0 basarisiz, 0 atlanan.
+
 [2026-07-12] - 90-alti parite backlog, on ucuncu batch
 ----------------------------------------
 

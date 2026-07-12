@@ -1730,6 +1730,14 @@ public sealed class SpellEngine
                 target.SetStatFlag(StatFlag.Reflection);
                 break;
             }
+            case SpellType.HorrificBeast:
+            {
+                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                eff.AppliedFlag = StatFlag.Polymorph;
+                target.HorrificBeastActive = true;
+                target.SetStatFlag(StatFlag.Polymorph);
+                break;
+            }
             case SpellType.Polymorph:
             {
                 ReadOnlySpan<ushort> forms = [0x0033, 0x0034, 0x0035, 0x0036, 0x0037, 0x0038];
@@ -1809,7 +1817,8 @@ public sealed class SpellEngine
             var existing = _activeEffects[i];
             if (existing.Target == target &&
                 (existing.Spell == spell ||
-                 (IsProtectionSpell(existing.Spell) && IsProtectionSpell(spell))))
+                 (IsProtectionSpell(existing.Spell) && IsProtectionSpell(spell)) ||
+                 (IsPolymorphLayerSpell(existing.Spell) && IsPolymorphLayerSpell(spell))))
             {
                 RevertDeltas(existing);
                 _activeEffects.RemoveAt(i);
@@ -1917,6 +1926,8 @@ public sealed class SpellEngine
         if (eff.IntDelta != 0) t.Int -= eff.IntDelta;
         if (eff.ArmorDelta != 0)
             t.ProtectionArmor = Math.Max(0, t.ProtectionArmor - eff.ArmorDelta);
+        if (eff.Spell == SpellType.HorrificBeast)
+            t.HorrificBeastActive = false;
         if (eff.AppliedFlag != StatFlag.None) t.ClearStatFlag(eff.AppliedFlag);
         if (eff.NameChanged && eff.OldName != null)
         {
@@ -1946,6 +1957,8 @@ public sealed class SpellEngine
         if (eff.ArmorDelta != 0)
             t.ProtectionArmor = (int)Math.Min(
                 int.MaxValue, (long)t.ProtectionArmor + eff.ArmorDelta);
+        if (eff.Spell == SpellType.HorrificBeast)
+            t.HorrificBeastActive = true;
         if (eff.AppliedFlag != StatFlag.None) t.SetStatFlag(eff.AppliedFlag);
         if (eff.NameChanged && eff.NewName != null)
         {
@@ -2192,6 +2205,9 @@ public sealed class SpellEngine
 
     private static bool IsProtectionSpell(SpellType spell) =>
         spell is SpellType.Protection or SpellType.ArchProtection;
+
+    private static bool IsPolymorphLayerSpell(SpellType spell) =>
+        spell is SpellType.Polymorph or SpellType.HorrificBeast;
 
     private static string EncodeEffectString(string? value)
     {

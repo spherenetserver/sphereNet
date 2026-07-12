@@ -515,6 +515,10 @@ public partial class Character : ObjBase
         (int)(ParryEraFlags.PreSeFormula | ParryEraFlags.ShieldBlock);
     /// <summary>FEATURESE mask; bit 0x02 enables Ninja/Samurai systems.</summary>
     public static int FeatureSE { get; set; }
+    /// <summary>FEATUREAOS mask; bit 0x02 enables AOS update-B combat systems.</summary>
+    public static int FeatureAOS { get; set; }
+    /// <summary>RACIALFLAGS mask from sphere.ini.</summary>
+    public static int RacialFlags { get; set; }
     /// <summary>SPEEDSCALEFACTOR used by Source-X swing-speed formulas.</summary>
     public static int CombatSpeedScaleFactor { get; set; } = 15000;
     /// <summary>ARCHERYMINDIST from sphere.ini.</summary>
@@ -882,6 +886,7 @@ public partial class Character : ObjBase
     /// <summary>True for the standard UO female bodies (human/elf/gargoyle),
     /// used to pick the gendered get-hit/death vocalizations.</summary>
     public bool IsFemale => _bodyId == 0x0191 || _bodyId == 0x025E || _bodyId == 0x029B;
+    public bool IsGargoyle => _bodyId is 0x029A or 0x029B or 0x02B6 or 0x02B7;
 
     /// <summary>Player-facing name (overhead label, corpse, tooltips).
     /// Falls back to CHARDEF NAME when the runtime name is blank or
@@ -971,6 +976,9 @@ public partial class Character : ObjBase
     /// Kept separate from MODAR so save-time effect reversion cannot persist
     /// the temporary bonus as a permanent character modifier.</summary>
     internal int ProtectionArmor { get; set; }
+    /// <summary>Transient LAYER_SPELL_Polymorph marker used by the Horrific
+    /// Beast combat modifiers.</summary>
+    internal bool HorrificBeastActive { get; set; }
     public short ModMaxWeight { get => _modMaxWeight; set => _modMaxWeight = value; }
 
     // Appearance originals

@@ -3,6 +3,21 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, onuncu batch
+----------------------------------------
+
+EKLENDI - Horrific Beast ve Gargoyle Berserk hasar paritesi (Wave 229):
+  - FEATURE_AOS update-B aktifken Horrific Beast süreli polymorph memory'si
+    silahsız base damage'i 5-15 yapar ve Damage Increase'a +25 ekler.
+  - Source-X RACIALFLAGS bitmask'i config ve Character runtime hattına eklendi.
+  - Gargoyle Berserk, kaybedilen her 20 HP için yüzde 15 Damage Increase ekler;
+    bonus yüzde 60'ta cap'lenir ve temel INCREASEDAM cap'inden sonra uygulanır.
+
+TESTLER:
+  - 10 Wave 229 regresyon testi eklendi. Tam SphereNet.Tests kosusu:
+    1521 basarili, 0 basarisiz, 0 atlanan.
+
+
 [2026-07-12] - 90-alti parite backlog, dokuzuncu batch
 ----------------------------------------
 

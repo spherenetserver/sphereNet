@@ -281,6 +281,7 @@ public sealed class SphereConfig
     public int FeatureSA { get; set; }
     public int FeatureTOL { get; set; }
     public int FeatureExtra { get; set; }
+    public int RacialFlags { get; set; }
     public bool AutoResDisp { get; set; } = true;
 
     // Tooltip
@@ -609,6 +610,7 @@ public sealed class SphereConfig
         FeatureSA  = ini.GetInt(section, "FeatureSA",  FeatureSA);
         FeatureTOL = ini.GetInt(section, "FeatureTOL", FeatureTOL);
         FeatureExtra = ini.GetInt(section, "FeatureExtra", FeatureExtra);
+        RacialFlags = ini.GetInt(section, "RacialFlags", RacialFlags);
         AutoResDisp = ini.GetBool(section, "AutoResDisp", AutoResDisp);
 
         ToolTipMode = ini.GetInt(section, "ToolTipMode", ToolTipMode);

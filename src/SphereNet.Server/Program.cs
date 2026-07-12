@@ -662,6 +662,8 @@ public static partial class Program
         Character.CombatParryingEra        = _config.CombatParryingEra;
         Character.CombatSpeedScaleFactor   = _config.SpeedScaleFactor;
         Character.FeatureSE                = _config.FeatureSE;
+        Character.FeatureAOS               = _config.FeatureAOS;
+        Character.RacialFlags              = _config.RacialFlags;
         Character.ArcheryMinDist           = _config.ArcheryMinDist;
         Character.ArcheryMaxDist           = _config.ArcheryMaxDist;
         Character.CombatArcheryMovementDelay = _config.CombatArcheryMovementDelay;

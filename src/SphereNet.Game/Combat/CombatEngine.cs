@@ -370,6 +370,14 @@ public static class CombatEngine
                 dmgMin = 1;
                 dmgMax = Math.Max(2, attacker.Str / 4);
             }
+
+            // Source-X FEATURE_AOS_UPDATE_B Horrific Beast form replaces the
+            // character's natural (unarmed) base damage with 5-15.
+            if (HasHorrificBeastCombatForm(attacker))
+            {
+                dmgMin = 5;
+                dmgMax = 15;
+            }
         }
         else
         {
@@ -718,6 +726,27 @@ public static class CombatEngine
     private static int GetDamageIncrease(Character ch) =>
         ch.TryGetTag("INCREASEDAM", out string? s) && int.TryParse(s, out int v) ? v : 0;
 
+    /// <summary>Source-X Fight_CalcDamage additive Damage Increase modifiers.
+    /// The configured INCREASEDAM value is capped first; racial/form bonuses
+    /// are then added and may take the effective total above 100%.</summary>
+    public static int CalculateDamageIncrease(Character attacker)
+    {
+        int increase = Math.Clamp(GetDamageIncrease(attacker), -100, 100);
+        if ((((RacialFlags)Character.RacialFlags) & RacialFlags.GargoyleBerserk) != 0 &&
+            attacker.IsGargoyle)
+        {
+            int lostHits = Math.Max(0, attacker.MaxHits - attacker.Hits);
+            increase += Math.Min(15 * (lostHits / 20), 60);
+        }
+
+        if (HasHorrificBeastCombatForm(attacker))
+            increase += 25;
+        return increase;
+    }
+
+    private static bool HasHorrificBeastCombatForm(Character attacker) =>
+        (Character.FeatureAOS & 0x02) != 0 && attacker.HorrificBeastActive;
+
     /// <summary>Source-X Calc_CombatChanceToParry, including the Samurai
     /// Empire Bushido formulas and COMBATPARRYINGERA equipment gates.</summary>
     public static int CalculateParryChance(Character defender, out Item? parryItem)
@@ -880,7 +909,7 @@ public static class CombatEngine
         // ±100%. Read from the attacker's INCREASEDAM tag (absent/0 = none).
         if (attacker.IsPlayer || flags.HasFlag(CombatFlags.NpcBonusDamage))
         {
-            int di = Math.Clamp(GetDamageIncrease(attacker), -100, 100);
+            int di = CalculateDamageIncrease(attacker);
             if (di != 0)
                 damage += damage * di / 100;
         }

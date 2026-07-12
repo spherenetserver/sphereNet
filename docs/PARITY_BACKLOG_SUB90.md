@@ -157,7 +157,12 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   uygulanır. Protection/Arch Protection spell-memory effect'i artık geçici AR ekler,
   ortak layer'da birbirini yeniler ve expiry/save-reapply yaşam döngüsünde geri alınır.
   Test: SourceXParryArmorScalingWave228Tests (+8).
-- [ ] Horrific-Beast / gargoyle-berserk hasar amplifier (cpp:1223-1252).
+- [x] **Horrific-Beast / gargoyle-berserk hasar amplifier** — YAPILDI (Wave 229).
+  `FEATURE_AOS_UPDATE_B` altında Horrific Beast polymorph-memory, silahsız taban
+  hasarı 5-15'e çeker ve cap'lenmiş INCREASEDAM sonrasına +25 ekler; expiry/save
+  yaşam döngüsünde geri alınır. Source-X `RACIALFLAGS` config/runtime hattı eklendi;
+  Gargoyle Berserk kayıp her 20 HP için +15, en çok +60 Damage Increase uygular.
+  Test: SourceXHorrificBerserkWave229Tests (+10).
 
 ### 2.6 Crafting & gathering — 86
 - [ ] Material/renk seçim menüsü (OSI craft gump).

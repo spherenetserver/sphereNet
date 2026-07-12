@@ -39,6 +39,8 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
             (int)(SphereNet.Core.Enums.ParryEraFlags.PreSeFormula |
                   SphereNet.Core.Enums.ParryEraFlags.ShieldBlock);
         SphereNet.Game.Objects.Characters.Character.FeatureSE = 0;
+        SphereNet.Game.Objects.Characters.Character.FeatureAOS = 0;
+        SphereNet.Game.Objects.Characters.Character.RacialFlags = 0;
         SphereNet.Game.Objects.Characters.Character.OnFacingChanged = null;
         SphereNet.Game.Objects.Characters.Character.ResolveAccountForChar = null;
         SphereNet.Game.Trade.VendorEngine.World = null;

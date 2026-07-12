@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, tenth batch
+----------------------------------------
+
+ADDED - Horrific Beast and Gargoyle Berserk damage parity (Wave 229):
+  - With AOS update-B enabled, the timed Horrific Beast polymorph memory sets
+    unarmed base damage to 5-15 and adds 25 percent Damage Increase.
+  - Added the Source-X RACIALFLAGS mask to config and Character runtime.
+  - Gargoyle Berserk adds 15 percent Damage Increase per 20 lost hit points,
+    capped at 60 percent and applied after the base INCREASEDAM cap.
+
+TESTS:
+  - Added 10 Wave 229 regression tests. Full SphereNet.Tests run:
+    1521 passed, 0 failed, 0 skipped.
+
+
 [2026-07-12] - Sub-90 parity backlog, ninth batch
 ----------------------------------------
 

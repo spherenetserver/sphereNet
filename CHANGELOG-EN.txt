@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, sixth batch
+----------------------------------------
+
+ADDED - FC/FCR cast timing parity (Wave 224):
+  - FASTERCASTING now aggregates the character and every equipped item/ITEMDEF,
+    subtracting two tenths from CAST_TIME per point like Source-X with a
+    one-tenth floor. @SpellCast ARGN3 is seeded from the same adjusted time.
+  - Removed the skill-based 400-1500 ms post-cast cooldown absent in Source-X.
+  - Added FASTERCASTRECOVERY to Character/Item/CHARDEF/ITEMDEF script surfaces;
+    no cooldown behavior was added because it is unimplemented upstream.
+
+FIXED - MAGICFLAGS and spell reflection (Wave 225):
+  - Aligned MAGICFLAGS bits 0x1-0x8000 with Source-X and moved SphereNet-only
+    flags into a non-conflicting high range.
+  - MAGICF_IGNOREAR bypasses the elemental resistance/AR stage for magic damage;
+    the Magic Resistance skill remains a separate calculation.
+  - Magic Reflect now handles single reflection, double-reflect bounce-back and
+    NOREFLECTOWN / DELREFLECTOWN consume/absorb chains with correct SRC attribution.
+
+TESTS:
+  - Added 8 Wave 224-225 regression tests. Full SphereNet.Tests run:
+    1494 passed, 0 failed, 0 skipped.
+
+
 [2026-07-12] - Sub-90 parity backlog, fifth batch
 ----------------------------------------
 

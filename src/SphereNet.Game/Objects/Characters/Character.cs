@@ -2257,6 +2257,11 @@ public partial class Character : ObjBase
             value = TryGetTag(upper, out var aosv) ? aosv ?? "0" : "0";
             return true;
         }
+        if (SpellCastingProperties.Contains(upper))
+        {
+            value = SphereNet.Game.Magic.SpellEngine.GetCastingPropertyValue(this, upper).ToString();
+            return true;
+        }
 
         // <MemoryFindType.<def>[.isValid|.Link[.<prop>]]> — Source-X
         // memory inspection. We only have a partial memory engine so we
@@ -3326,6 +3331,11 @@ public partial class Character : ObjBase
 
         // AOS on-hit combat properties are tag-backed (see TryGetProperty).
         if (AosOnHitProperties.Contains(key))
+        {
+            SetTag(key.ToUpperInvariant(), normalized);
+            return true;
+        }
+        if (SpellCastingProperties.Contains(key))
         {
             SetTag(key.ToUpperInvariant(), normalized);
             return true;

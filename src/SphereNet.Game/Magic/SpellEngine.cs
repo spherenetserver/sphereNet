@@ -133,6 +133,48 @@ public sealed class SpellEngine
     /// <summary>Get a spell definition by type (for flag checks, etc.).</summary>
     public SpellDef? GetSpellDef(SpellType spell) => _spells.Get(spell);
 
+    /// <summary>Source-X Spell_CastStart timing: CAST_TIME minus two tenths
+    /// per effective FASTERCASTING point, floored at one tenth.</summary>
+    public static int CalculateCastTimeTenths(Character caster, SpellDef def, int? skillValue = null)
+    {
+        if (caster.PrivLevel >= PrivLevel.GM)
+            return 1;
+
+        int skill = skillValue ?? caster.GetSkill(def.GetPrimarySkill());
+        long wait = def.GetCastTime(skill) - (2L * GetCastingPropertyValue(
+            caster, SpellCastingProperties.FasterCasting));
+        return (int)Math.Max(1, wait);
+    }
+
+    /// <summary>Character property plus equipped item instance/ITEMDEF values.</summary>
+    public static int GetCastingPropertyValue(Character caster, string property)
+    {
+        if (!SpellCastingProperties.Contains(property))
+            return 0;
+
+        long total = caster.Tags.GetInt(property);
+        for (int layerIndex = (int)Layer.OneHanded; layerIndex <= (int)Layer.Horse; layerIndex++)
+        {
+            var item = caster.GetEquippedItem((Layer)layerIndex);
+            if (item == null)
+                continue;
+
+            if (item.TryGetTag(property, out string? raw) && TryParseInteger(raw, out int instanceValue))
+            {
+                total += instanceValue;
+                continue;
+            }
+
+            var itemDef = Definitions.DefinitionLoader.GetItemDef(item.BaseId);
+            if (itemDef != null && TryParseInteger(itemDef.TagDefs.Get(property), out int defValue))
+                total += defValue;
+        }
+        return (int)Math.Clamp(total, int.MinValue, int.MaxValue);
+    }
+
+    private static bool TryParseInteger(string? raw, out int value) =>
+        int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+
     /// <summary>
     /// Advance an in-progress cast timer. Returns true while still casting.
     /// Used by player TickSpellCast and NPC AI ticks.
@@ -235,7 +277,7 @@ public sealed class SpellEngine
         caster.ClearHiddenState();
     }
 
-    /// <summary>Precast mode from sphere.ini MAGICFLAGS bit 0x0001.</summary>
+    /// <summary>Precast mode from sphere.ini MAGICFLAGS bit 0x0002.</summary>
     public static bool IsPrecastEnabled(SpellDef def) =>
         IsMagicFlag(MagicConfigFlags.Precast) && !def.IsFlag(SpellFlag.NoPrecast);
 
@@ -414,10 +456,6 @@ public sealed class SpellEngine
             return -1;
         if (caster.IsStatFlag(StatFlag.Freeze))
             return -1;
-        // Cast recovery — block back-to-back spam (non-GM).
-        if (caster.PrivLevel < PrivLevel.GM && caster.IsCastOnRecovery(Environment.TickCount64))
-            return -1;
-
         // Region NoMagic / NoMagicDamage check (Source-X anti-magic sub-flags).
         if (_world != null)
         {
@@ -488,9 +526,7 @@ public sealed class SpellEngine
         }
 
         // Cast time
-        int castTimeTenths = def.GetCastTime(skillVal);
-        if (caster.PrivLevel >= PrivLevel.GM)
-            castTimeTenths = 1;
+        int castTimeTenths = CalculateCastTimeTenths(caster, def, skillVal);
 
         RevealOnCast(caster);
 
@@ -587,14 +623,6 @@ public sealed class SpellEngine
         bool castFromScroll = caster.TryGetTag("SCROLL_UID", out _);
         if (castWithWand) difficulty = 10;          // reference: wand = minimal difficulty
         else if (castFromScroll) difficulty /= 2;   // reference: scroll = half difficulty
-
-        // Cast recovery — a completed cast (success OR fizzle) starts a cooldown
-        // before the next one. Higher skill recovers faster (FCR-style).
-        if (caster.PrivLevel < PrivLevel.GM)
-        {
-            int recoveryMs = Math.Max(400, 1500 - skillVal);
-            caster.SetCastRecovery(Environment.TickCount64 + recoveryMs);
-        }
 
         // Source-X: skill check at cast completion — fizzle on failure.
         // GetDifficulty() is on the 0-1000 skill scale, but CheckSuccess expects
@@ -914,6 +942,20 @@ public sealed class SpellEngine
         return true;
     }
 
+    private void ConsumeMagicReflection(Character character)
+    {
+        character.ClearStatFlag(StatFlag.Reflection);
+        for (int i = _activeEffects.Count - 1; i >= 0; i--)
+        {
+            if (_activeEffects[i].Target == character &&
+                _activeEffects[i].Spell == SpellType.MagicReflect)
+            {
+                _activeEffects.RemoveAt(i);
+                break;
+            }
+        }
+    }
+
     /// <summary>Apply spell effect to a single character target.</summary>
     private void ApplyCharEffect(Character caster, Character target, SpellDef def, int skillLevel)
     {
@@ -943,15 +985,30 @@ public sealed class SpellEngine
 
         if (harmful && caster != target && target.IsStatFlag(StatFlag.Reflection))
         {
-            target.ClearStatFlag(StatFlag.Reflection);
-            // Remove the now-consumed flag's expiration entry so UndoEffect
-            // doesn't try to clear it again later.
-            for (int i = _activeEffects.Count - 1; i >= 0; i--)
+            ConsumeMagicReflection(target);
+
+            if (caster.IsStatFlag(StatFlag.Reflection) &&
+                !IsMagicFlag(MagicConfigFlags.NoReflectOwn))
             {
-                if (_activeEffects[i].Target == target && _activeEffects[i].Spell == SpellType.MagicReflect)
-                { _activeEffects.RemoveAt(i); break; }
+                // Both sides reflect: consume both charges and let the spell
+                // land on its original target (Source-X bounce-back chain).
+                ConsumeMagicReflection(caster);
             }
-            (caster, target) = (target, caster);
+            else if (caster.IsStatFlag(StatFlag.Reflection) &&
+                     IsMagicFlag(MagicConfigFlags.DeleteReflectOwn))
+            {
+                // NOREFLECTOWN + DELREFLECTOWN: the caster's charge absorbs the
+                // bounced spell instead of damaging the caster.
+                ConsumeMagicReflection(caster);
+                return;
+            }
+            else
+            {
+                // Normal reflection recursively affects the original caster
+                // with itself as SRC. Keeping caster unchanged preserves
+                // Source-X damage attribution and prevents a second reflect.
+                target = caster;
+            }
         }
 
         int effect = def.GetEffect(skillLevel);
@@ -1041,7 +1098,8 @@ public sealed class SpellEngine
             var dmgType = GetSpellDamageType(def.Id);
             int damage = Math.Max(0, effect);
             // Apply elemental resist
-            damage = CombatEngine.ApplyElementalResist(target, damage, dmgType);
+            if (!IsMagicFlag(MagicConfigFlags.IgnoreArmor))
+                damage = CombatEngine.ApplyElementalResist(target, damage, dmgType);
 
             // COMBAT_SLAYER on the magic path (Source-X OnTakeDamage with
             // DAMAGE_MAGIC, CCharFight.cpp:824): the slayer source is the

@@ -2091,7 +2091,7 @@ public sealed class ClientCombatHandler
         if (_triggerDispatcher != null)
         {
             int seededWaitTenths = spellDef != null
-                ? spellDef.GetCastTime(_character.GetSkill(spellDef.GetPrimarySkill()))
+                ? SpellEngine.CalculateCastTimeTenths(_character, spellDef)
                 : 0;
             string seededWop = spellDef?.GetPowerWords() ?? "";
             var castLocals = new SphereNet.Scripting.Variables.VarMap();

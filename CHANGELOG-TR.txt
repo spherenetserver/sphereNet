@@ -3,6 +3,30 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, altinci batch
+----------------------------------------
+
+EKLENDI - FC/FCR cast timing paritesi (Wave 224):
+  - FASTERCASTING artik karakter ile tum equipped item/ITEMDEF degerlerini
+    toplar ve Source-X gibi her puan icin CAST_TIME'dan 2 tenth dusurur;
+    minimum cast suresi 1 tenth'tir. @SpellCast ARGN3 ayni sureyle seed edilir.
+  - Source-X'te olmayan skill-tabanli 400-1500 ms post-cast cooldown kaldirildi.
+  - FASTERCASTRECOVERY Character/Item/CHARDEF/ITEMDEF script yuzeyine eklendi;
+    upstream'de davranisi unimplemented oldugu icin ek cooldown uygulanmadi.
+
+DUZELTILDI - MAGICFLAGS ve spell reflection (Wave 225):
+  - MAGICFLAGS 0x1-0x8000 bitleri Source-X tablosuyla hizalandi; SphereNet'e
+    ozel flag'ler cakismayan yuksek bitlere tasindi.
+  - MAGICF_IGNOREAR magic damage'in elemental resist/AR asamasini bypass eder;
+    skill Magic Resistance ayri uygulanmaya devam eder.
+  - Magic Reflect tek-reflect, cift-reflect bounce-back ve NOREFLECTOWN /
+    DELREFLECTOWN consume/absorb zincirlerini dogru SRC attribution ile uygular.
+
+TESTLER:
+  - Wave 224-225 icin 8 regresyon testi eklendi. Tam SphereNet.Tests kosusu:
+    1494 basarili, 0 basarisiz, 0 atlanan.
+
+
 [2026-07-12] - 90-alti parite backlog, besinci batch
 ----------------------------------------
 

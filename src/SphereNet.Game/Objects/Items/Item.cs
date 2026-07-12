@@ -836,6 +836,11 @@ public class Item : ObjBase
             value = TryGetTag(upper, out var aosv) ? aosv ?? "0" : "0";
             return true;
         }
+        if (SpellCastingProperties.Contains(upper))
+        {
+            value = TryGetTag(upper, out var castingValue) ? castingValue ?? "0" : "0";
+            return true;
+        }
 
         switch (upper)
         {
@@ -1306,6 +1311,11 @@ public class Item : ObjBase
 
         // AOS on-hit combat properties are tag-backed (see TryGetProperty).
         if (AosOnHitProperties.Contains(upper))
+        {
+            SetTag(upper, value.Trim());
+            return true;
+        }
+        if (SpellCastingProperties.Contains(upper))
         {
             SetTag(upper, value.Trim());
             return true;

@@ -99,8 +99,22 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
 ### 2.2 Magic / spells — 82
 - [ ] Necromancy (101+) / Chivalry (201+) / Bushido / Ninjitsu / Spellweaving /
   Mysticism spell **efektleri** (şu an enum-only, `SpellTypes.cs:32-40`).
-- [ ] MAGICF_IGNOREAR + spell reflection amplifier zinciri.
-- [ ] Cast-recovery **FCR/FC** property modeli (şu an düz `1500-skill`).
+- [x] **MAGICF_IGNOREAR + spell reflection zinciri** — YAPILDI (Wave 225).
+  MAGICFLAGS düşük bitleri Source-X `MAGICFLAGS_TYPE` ile birebir hizalandı;
+  SphereNet extension flag'leri çakışmayan yüksek bitlere taşındı. `IGNOREAR` magic
+  damage için elemental resist/AR aşamasını bypass ediyor (skill Magic Resistance
+  ayrı kalır). Magic Reflect artık tek-reflect, çift-reflect bounce-back ve
+  `NOREFLECTOWN` + `DELREFLECTOWN` consume/absorb dallarını Source-X gibi çözüyor;
+  SRC/damage attribution self-reflect'te korunuyor. Test:
+  SourceXMagicFlagsWave225Tests (+4).
+- [x] Cast timing **FCR/FC** property modeli — YAPILDI/DOĞRULANDI (Wave 224).
+  Source-X `Spell_CastStart` yalnızca **FASTERCASTING** uygular: toplam char+equipped
+  property değeri başına CAST_TIME'dan 2 tenth düşer, taban 1 tenth. SphereNet'in
+  Source-X'te olmayan `max(400,1500-skill)` post-cast cooldown'u kaldırıldı.
+  **FASTERCASTRECOVERY** upstream'de property/status yüzeyinde var fakat
+  `CCPropsItemEquippable.cpp` açıkça *unimplemented*; davranış eklenmedi. Her iki key
+  CHARDEF/ITEMDEF/Character/Item script yüzeyine eklendi. Test:
+  SourceXCastTimingWave224Tests (+4).
 
 ### 2.3 Skills — 84
 - [x] **Cartography** ve **Camping** — YANLIŞ ALARM (Wave 215 doğrulama):

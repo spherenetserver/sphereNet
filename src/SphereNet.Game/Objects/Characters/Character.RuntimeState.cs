@@ -78,12 +78,6 @@ public partial class Character
         _hasCastTargetPosPending = false;
     }
 
-    // Cast recovery (FCR-style): the earliest tick at which the next spell may
-    // begin. Prevents gap-less spell spam.
-    private long _nextCastReadyMs;
-    public bool IsCastOnRecovery(long nowMs) => _nextCastReadyMs > nowMs;
-    public void SetCastRecovery(long readyAtMs) => _nextCastReadyMs = readyAtMs;
-
     public void SetCastTimerEnd(long tickMs) => _castTimerEnd = tickMs;
 
     public long CastTimerEnd => _castTimerEnd;

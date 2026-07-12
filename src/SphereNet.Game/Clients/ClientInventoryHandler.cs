@@ -1042,6 +1042,24 @@ public sealed class ClientInventoryHandler
                     return;
                 }
 
+                // Source-X NPC_OnTrainPay: gold handed to a teacher NPC with a
+                // pending training offer buys skill points. Any change stays with
+                // the player's gold stack (TryPay trims the amount in place).
+                if (!charTarget.IsPlayer && _character != null &&
+                    (item.ItemType == ItemType.Gold || item.BaseId == 0x0EED))
+                {
+                    var trained = Trade.VendorTrainingEngine.TryPay(charTarget, _character, item);
+                    if (trained != null)
+                    {
+                        SysMessage($"Thou hast learned something of {trained}.");
+                        SendSkillList();
+                        if (!item.IsDeleted)
+                            PlaceItemInPack(_character!, item); // return the change
+                        _netState.Send(new PacketDropAck());
+                        return;
+                    }
+                }
+
                 // Giving an item to an NPC — fire @ReceiveItem so quest/reward/
                 // "bring me X" scripts can handle it (<src> = giver, <argo> = item).
                 // RETURN 1 means the script fully consumed/handled the item.
@@ -1062,7 +1080,7 @@ public sealed class ClientInventoryHandler
                         new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item });
                     if (refuse == TriggerResult.True)
                     {
-                        PlaceItemInPack(_character, item);
+                        PlaceItemInPack(_character!, item);
                         _netState.Send(new PacketDropAck());
                         return;
                     }

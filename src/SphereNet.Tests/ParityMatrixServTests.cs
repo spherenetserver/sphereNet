@@ -68,6 +68,83 @@ public class ParityMatrixServTests
         Assert.Null(world.GetGlobalVar("score"));
     }
 
+    // ==================== LIST.* runtime mutation (Source-X CListDefMap) ====================
+
+    [Fact]
+    public void MutateGlobalList_AddSetAppendAndClear()
+    {
+        var world = CreateWorld();
+
+        // add appends one element
+        world.MutateGlobalList("quest_log.add", "alpha");
+        world.MutateGlobalList("quest_log.add", "beta");
+        Assert.Equal(new[] { "alpha", "beta" }, world.GetOrCreateList("quest_log"));
+
+        // append splits on commas and keeps existing elements
+        world.MutateGlobalList("quest_log.append", "gamma,delta");
+        Assert.Equal(new[] { "alpha", "beta", "gamma", "delta" }, world.GetOrCreateList("quest_log"));
+
+        // set clears first, then adds each comma-separated element
+        world.MutateGlobalList("quest_log.set", "one,two,three");
+        Assert.Equal(new[] { "one", "two", "three" }, world.GetOrCreateList("quest_log"));
+
+        // clear drops the whole list
+        world.MutateGlobalList("quest_log.clear", "");
+        Assert.Null(world.GetList("quest_log"));
+    }
+
+    [Fact]
+    public void MutateGlobalList_IndexInsertRemoveAndSet()
+    {
+        var world = CreateWorld();
+        world.MutateGlobalList("items.set", "a,b,c");
+
+        // insert at index shifts the tail
+        world.MutateGlobalList("items.1.insert", "x");
+        Assert.Equal(new[] { "a", "x", "b", "c" }, world.GetOrCreateList("items"));
+
+        // set element at index in place
+        world.MutateGlobalList("items.0", "A");
+        Assert.Equal("A", world.GetOrCreateList("items")[0]);
+
+        // remove nth element
+        world.MutateGlobalList("items.2.remove", "");
+        Assert.Equal(new[] { "A", "x", "c" }, world.GetOrCreateList("items"));
+
+        // insert past the end appends
+        world.MutateGlobalList("items.99.insert", "tail");
+        Assert.Equal("tail", world.GetOrCreateList("items")[^1]);
+    }
+
+    [Fact]
+    public void MutateGlobalList_SortNumericAndDescending()
+    {
+        var world = CreateWorld();
+        world.MutateGlobalList("nums.set", "3,10,2,1");
+
+        world.MutateGlobalList("nums.sort", "asc"); // numeric-aware: 2 < 10
+        Assert.Equal(new[] { "1", "2", "3", "10" }, world.GetOrCreateList("nums"));
+
+        world.MutateGlobalList("nums.sort", "desc");
+        Assert.Equal(new[] { "10", "3", "2", "1" }, world.GetOrCreateList("nums"));
+    }
+
+    [Fact]
+    public void ResolveGlobalListRead_CountIndexAndFindElement()
+    {
+        var world = CreateWorld();
+        world.MutateGlobalList("roster.set", "griswold,hesh,mara");
+
+        Assert.Equal("3", world.ResolveGlobalListRead("roster.count"));
+        Assert.Equal("3", world.ResolveGlobalListRead("roster"));      // bare name → count
+        Assert.Equal("hesh", world.ResolveGlobalListRead("roster.1")); // element by index
+        Assert.Equal("1", world.ResolveGlobalListRead("roster.findelement hesh"));
+        Assert.Equal("-1", world.ResolveGlobalListRead("roster.findelement nobody"));
+        // start index skips earlier matches
+        world.MutateGlobalList("roster.add", "hesh");
+        Assert.Equal("3", world.ResolveGlobalListRead("roster.2.findelement hesh"));
+    }
+
     [Fact]
     public void AccountManager_GetByIndex_GivesStableNameOrderedAccess()
     {

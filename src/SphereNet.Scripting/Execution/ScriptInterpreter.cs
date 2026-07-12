@@ -569,6 +569,17 @@ public sealed class ScriptInterpreter
             return;
         }
 
+        // LIST.<name>[.<op>]=value — global list mutation (Source-X
+        // CListDefMap::r_LoadVal). Grammar: clear / add / set / append / sort /
+        // <index>.remove / <index>.insert / <index>=value. The server side owns
+        // the list store, so route the whole expression across the bridge.
+        if (cmd.StartsWith("LIST.", StringComparison.OrdinalIgnoreCase))
+        {
+            string listExpr = cmd[5..];
+            ServerPropertyResolver?.Invoke($"_SET_LIST.{listExpr}={resolvedArg}");
+            return;
+        }
+
         // OBJ=uid — set global object reference
         if (cmd.Equals("OBJ", StringComparison.OrdinalIgnoreCase) && key.HasArg)
         {

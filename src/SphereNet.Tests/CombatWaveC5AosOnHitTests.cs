@@ -214,4 +214,88 @@ public class CombatWaveC5AosOnHitTests
         charDef.LoadFromKey("HITMANADRAIN", "40");
         Assert.Equal("40", charDef.TagDefs.Get("HITMANADRAIN"));
     }
+
+    [Fact]
+    public void ReflectPhysicalDam_BouncesPercentBackToAttacker()
+    {
+        var savedLookup = CombatEngine.WeaponDefLookup;
+        var savedHook = CombatEngine.OnHitDamage;
+        try
+        {
+            CombatEngine.OnHitDamage = null;
+            CombatEngine.WeaponDefLookup = _ => (10, 10); // deterministic 10 damage
+
+            var world = TestHarness.CreateWorld();
+            var (attacker, target) = MakePair(world);
+            attacker.IsPlayer = true;
+            attacker.PrivLevel = PrivLevel.GM; // era-0 roll: always hits
+            attacker.MaxHits = 100; attacker.Hits = 100;
+            target.SetSkill(SkillType.Parrying, 0);
+            target.SetTag("REFLECTPHYSICALDAM", "100"); // reflect the full 10 back
+
+            var sword = world.CreateItem();
+            sword.ItemType = ItemType.WeaponSword;
+            sword.BaseId = 0x0F5E;
+            attacker.Equip(sword, Layer.OneHanded);
+
+            int damage = CombatEngine.ResolveAttack(attacker, target, sword);
+
+            Assert.Equal(10, damage);
+            Assert.Equal(90, attacker.Hits); // 100% of 10 reflected onto the attacker
+        }
+        finally
+        {
+            CombatEngine.WeaponDefLookup = savedLookup;
+            CombatEngine.OnHitDamage = savedHook;
+        }
+    }
+
+    [Theory]
+    [InlineData(500, 1, 1)]   // Lesser  (OSI 0) at melee range → level 1
+    [InlineData(700, 1, 2)]   // Standard (OSI 1) → level 2
+    [InlineData(900, 1, 3)]   // Greater  (OSI 2) → level 3
+    [InlineData(1000, 1, 4)]  // Lethal   (OSI 3, floor) → level 4
+    public void OsiPoisonLevel_SkillBands_MapToSourceXLevels(int skill, int dist, int minLevel)
+    {
+        // The 1/10 Deadly bump can push a 1000-skill hit one higher, so assert a
+        // floor rather than equality for the top band.
+        byte level = CombatEngine.CalcOsiPoisonLevel(skill, dist, evilOmen: false);
+        Assert.True(level >= minLevel, $"skill {skill} → {level}, expected >= {minLevel}");
+        Assert.InRange((int)level, 1, 5);
+    }
+
+    [Fact]
+    public void OsiPoisonLevel_DistanceFalloff_AndEvilOmenBump()
+    {
+        // Greater (level 3 base) cast from 8 tiles: -8/2 = -4 → floors at OSI 0 → 1.
+        Assert.Equal(1, CombatEngine.CalcOsiPoisonLevel(900, 8, evilOmen: false));
+
+        // Evil-Omen adds one level on top (OSI +1).
+        Assert.Equal(4, CombatEngine.CalcOsiPoisonLevel(900, 1, evilOmen: true));
+
+        // Melee range (dist < 4) never applies falloff.
+        Assert.Equal(3, CombatEngine.CalcOsiPoisonLevel(900, 3, evilOmen: false));
+    }
+
+    [Fact]
+    public void HitChanceEra2_DefenseChanceIncreaseLowersAttackerChance()
+    {
+        var world = TestHarness.CreateWorld();
+        var (attacker, target) = MakePair(world);
+        attacker.SetSkill(SkillType.Wrestling, 1000);
+        target.SetSkill(SkillType.Wrestling, 1000);
+
+        int baseChance = CombatEngine.CalcHitChance(attacker, target, era: 2);
+
+        // A defender with Defense Chance Increase is harder to hit; an attacker
+        // with Hit Chance Increase is easier to land — both terms were missing.
+        target.SetTag("INCREASEDEFCHANCE", "45");
+        int withDci = CombatEngine.CalcHitChance(attacker, target, era: 2);
+        Assert.True(withDci < baseChance, $"DCI should lower hit chance: {withDci} !< {baseChance}");
+
+        target.SetTag("INCREASEDEFCHANCE", "0");
+        attacker.SetTag("INCREASEHITCHANCE", "45");
+        int withHci = CombatEngine.CalcHitChance(attacker, target, era: 2);
+        Assert.True(withHci > baseChance, $"HCI should raise hit chance: {withHci} !> {baseChance}");
+    }
 }

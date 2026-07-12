@@ -2,6 +2,7 @@ using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
+using SphereNet.Game.Clients;
 using SphereNet.Game.Combat;
 using SphereNet.Game.Definitions;
 using SphereNet.Game.Messages;
@@ -87,6 +88,11 @@ public partial class Character : ObjBase
     /// <summary>Notify the owning client that a native buff icon changed.
     /// Args: character, icon, add/remove, remaining duration in seconds.</summary>
     public static Action<Character, BuffIcon, bool, ushort>? OnClientBuffChanged;
+
+    /// <summary>Broadcast a health-bar colour update (Source-X PacketHealthBarUpdate,
+    /// 0x17) to observers when the character's poisoned/frozen state changes — the
+    /// green/yellow health-bar tint on SA+/KR clients.</summary>
+    public static Action<Character>? OnHealthBarStatusChanged;
 
     /// <summary>Called after magical invisibility is revealed so its timed
     /// spell memory and client buff icon can be retired together.</summary>
@@ -596,6 +602,11 @@ public partial class Character : ObjBase
     /// final noto. Installed ONLY when @NotoSend is actually hooked (IsTrigUsed
     /// gate), so the hot ComputeNotoriety path pays just a null check otherwise.</summary>
     public static Func<Character, Character, byte, byte>? OnNotoSend { get; set; }
+
+    /// <summary>Resolve my full notoriety flag as seen by a viewer — Source-X
+    /// Noto_GetFlag, used by the &lt;NOTOGETFLAG uid&gt; script property. Args:
+    /// subject (me), viewer. Wired to GameClient.ComputeNotoriety.</summary>
+    public static Func<Character, Character, byte>? ResolveNotoFlag { get; set; }
     public static Action<Character, string, ITextConsole>? OnScriptSpellEffect { get; set; }
 
     /// <summary>Fired when a moving character shoves past another character's tile
@@ -2770,6 +2781,39 @@ public partial class Character : ObjBase
             return true;
         }
 
+        // NOTOGETFLAG <uid> [allowIncog] [allowInvul] — my notoriety flag as
+        // seen by the target char (Source-X CHC_NOTOGETFLAG → Noto_GetFlag).
+        if (upper.StartsWith("NOTOGETFLAG", StringComparison.Ordinal))
+        {
+            value = "0";
+            string rest = key.Length > 11 ? key[11..].Trim() : "";
+            var world = ResolveWorld?.Invoke();
+            if (rest.Length > 0 && world != null)
+            {
+                string uidTok = rest.Split([' ', ',', '\t'],
+                    StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+                var viewer = world.FindObject(ParseSerial(uidTok)) as Character;
+                if (viewer != null && ResolveNotoFlag != null)
+                    value = ((int)ResolveNotoFlag(this, viewer)).ToString();
+            }
+            return true;
+        }
+
+        // CANMOVE <dir> — can I step one tile in <dir>? Reports the destination
+        // tile's passability (Source-X CHC_CANMOVE → CheckValidMove).
+        if (upper.StartsWith("CANMOVE", StringComparison.Ordinal))
+        {
+            value = "0";
+            string dirTok = key.Length > 7 ? key[7..].Trim() : "";
+            var world = ResolveWorld?.Invoke();
+            if (world?.MapData != null && TryParseDirectionToken(dirTok, out Direction d))
+            {
+                GetDirectionStep(d, out int dx, out int dy);
+                value = world.MapData.IsPassable(MapIndex, X + dx, Y + dy, Z) ? "1" : "0";
+            }
+            return true;
+        }
+
         // ATTACKER.LAST / ATTACKER.MAX / ATTACKER.n.{DAM|ELAPSED|UID}
         if (upper.StartsWith("ATTACKER.", StringComparison.Ordinal))
         {
@@ -4847,6 +4891,52 @@ public partial class Character : ObjBase
                 SummonCageAround?.Invoke(this);
                 return true;
             }
+            case "UNEQUIP":
+            {
+                // Source-X CHV_UNEQUIP <uid>: bounce the given item into my
+                // backpack (or drop at my feet when it will not fit).
+                var world = Objects.ObjBase.ResolveWorld?.Invoke();
+                if (world == null || !TryParseVerbUid(args, out uint unUid)) return false;
+                var item = world.FindItem(new Serial(unUid));
+                if (item == null || item.IsDeleted) return false;
+                return BounceItemToPack(item, world);
+            }
+            case "SUMMONTO":
+            {
+                // Source-X CHV_SUMMONTO: teleport me to the summoner (SRC). When
+                // the caller is a client we move to it; an explicit uid argument
+                // overrides and moves me to that object instead.
+                var world = Objects.ObjBase.ResolveWorld?.Invoke();
+                if (world != null && TryParseVerbUid(args, out uint toUid))
+                {
+                    var dest = world.FindObject(new Serial(toUid));
+                    if (dest != null) { MoveTo(dest.GetTopLevelPosition()); return true; }
+                    return false;
+                }
+                var srcChar = (source as IClientContext)?.Character;
+                if (srcChar != null) { MoveTo(srcChar.Position); return true; }
+                return false;
+            }
+            case "WHERE":
+            {
+                // Source-X CHV_WHERE: report my location to the caller.
+                var world = Objects.ObjBase.ResolveWorld?.Invoke();
+                string regionName = world?.FindRegion(Position)?.Name ?? "";
+                source.SysMessage(regionName.Length > 0
+                    ? $"{Name} is in {regionName} at {X},{Y},{Z} (map {Position.Map})."
+                    : $"{Name} is at {X},{Y},{Z} (map {Position.Map}).");
+                return true;
+            }
+            case "CONTROL":
+            {
+                // Source-X CHV_CONTROL: the calling client takes control
+                // (ownership) of me. Mirrors the GM .CONTROL target result.
+                var gm = (source as IClientContext)?.Character;
+                if (gm == null) return false;
+                TryAssignOwnership(gm, gm, summoned: false, enforceFollowerCap: false);
+                source.SysMessage($"You now control {Name}.");
+                return true;
+            }
             case "CLEARCTAGS":
             {
                 // Standalone form: drop every CTag under the given
@@ -4867,6 +4957,87 @@ public partial class Character : ObjBase
         }
 
         return base.TryExecuteCommand(key, args, source);
+    }
+
+    /// <summary>Parse a direction token — numeric 0-7 or a compass code
+    /// (N/NE/E/SE/S/SW/W/NW), matching Source-X GetDirStr.</summary>
+    private static bool TryParseDirectionToken(string token, out Direction dir)
+    {
+        dir = Direction.North;
+        token = token.Trim();
+        if (token.Length == 0) return false;
+        if (int.TryParse(token, out int n) && n >= 0 && n <= 7)
+        {
+            dir = (Direction)n;
+            return true;
+        }
+        switch (token.ToUpperInvariant())
+        {
+            case "N": dir = Direction.North; return true;
+            case "NE": dir = Direction.NorthEast; return true;
+            case "E": dir = Direction.East; return true;
+            case "SE": dir = Direction.SouthEast; return true;
+            case "S": dir = Direction.South; return true;
+            case "SW": dir = Direction.SouthWest; return true;
+            case "W": dir = Direction.West; return true;
+            case "NW": dir = Direction.NorthWest; return true;
+            default: return false;
+        }
+    }
+
+    /// <summary>One-tile step delta for a direction (Source-X CPointMap::Move).</summary>
+    private static void GetDirectionStep(Direction dir, out int dx, out int dy)
+    {
+        dx = 0; dy = 0;
+        switch (dir)
+        {
+            case Direction.North: dy = -1; break;
+            case Direction.NorthEast: dx = 1; dy = -1; break;
+            case Direction.East: dx = 1; break;
+            case Direction.SouthEast: dx = 1; dy = 1; break;
+            case Direction.South: dy = 1; break;
+            case Direction.SouthWest: dx = -1; dy = 1; break;
+            case Direction.West: dx = -1; break;
+            case Direction.NorthWest: dx = -1; dy = -1; break;
+        }
+    }
+
+    /// <summary>Parse a verb argument as a hex/decimal object serial
+    /// (Source-X GetArgVal on a UID). Accepts 0x-, leading-0- and bare forms.</summary>
+    private static bool TryParseVerbUid(string args, out uint uid)
+    {
+        uid = 0;
+        string raw = args.Trim();
+        if (raw.Length == 0) return false;
+        if (raw.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) raw = raw[2..];
+        else if (raw.StartsWith('0') && raw.Length > 1) raw = raw[1..];
+        return uint.TryParse(raw, System.Globalization.NumberStyles.HexNumber, null, out uid);
+    }
+
+    /// <summary>Detach an item from wherever it is and drop it into my backpack,
+    /// falling back to the ground at my feet — Source-X CChar::ItemBounce.</summary>
+    private bool BounceItemToPack(Item item, World.GameWorld world)
+    {
+        if (item.IsEquipped && item.ContainedIn == Uid)
+        {
+            Unequip(item.EquipLayer);
+        }
+        else
+        {
+            var parent = world.FindObject(item.ContainedIn);
+            if (parent is Item container)
+                container.RemoveItem(item);
+            else if (parent is Character wearer && wearer.GetEquippedItem(item.EquipLayer) == item)
+                wearer.Unequip(item.EquipLayer);
+            else
+                world.HideFromSector(item);
+        }
+
+        var pack = Backpack;
+        if (pack != null && !ReferenceEquals(pack, item) && pack.TryAddItem(item))
+            return true;
+        world.PlaceItemWithDecay(item, Position);
+        return true;
     }
 
     /// <summary>Pending NEWITEM creation id (set by script NEWITEM command).</summary>

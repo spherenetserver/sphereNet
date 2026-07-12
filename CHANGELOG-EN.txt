@@ -4,6 +4,49 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, first batch
+----------------------------------------
+
+ADDED - Global list runtime mutation:
+  - LIST.<name>[.op]=value now mutates global lists at runtime (Source-X
+    CListDefMap::r_LoadVal): clear/add/set/append/sort(asc|i|desc|idesc),
+    index set, .N.remove and .N.insert. Read side gains .findelement.
+  - GameWorld.MutateGlobalList / ResolveGlobalListRead own the grammar;
+    the interpreter routes LIST.* writes over the _SET_LIST. bridge.
+
+ADDED - Character script surface:
+  - CChar verbs UNEQUIP (bounce an item to the pack), WHERE (report location),
+    SUMMONTO (teleport to a uid or the caller) and CONTROL (caller takes
+    ownership) — Source-X CChar_functions entries that were missing.
+  - CChar properties CANMOVE <dir> (destination-tile passability) and
+    NOTOGETFLAG <uid> (full notoriety flag as seen by a viewer).
+
+CHANGED - Combat AOS on-hit:
+  - REFLECTPHYSICALDAM now bounces a percentage of melee damage back at the
+    attacker (capped 250%), separate from the Reactive Armor spell.
+  - AOS hit-chance (era 2) applies the Hit/Defense Chance Increase multipliers
+    (100 + min(HCI|DCI, 45)); the defender term was previously dropped.
+
+CHANGED - Poison level derivation:
+  - Weapon-envenom and creature-bite poison use the Source-X SetPoison skill
+    bands (650/850/1000) with distance falloff (-dist/2 at range >= 4) and an
+    Evil-Omen hook, instead of a flat skill/200 curve. The Poison spell gains
+    the same distance falloff. Tick counts are unchanged.
+
+ADDED - Health-bar colour packets:
+  - PacketHealthBarStatus (0x17) and PacketHealthBarStatusNew (0x16) tint a
+    character's health bar green while poisoned and yellow while frozen; sent
+    to SA+/KR observers when poison state flips.
+
+ADDED - NPC skill training for pay:
+  - VendorTrainingEngine ports NPC_GetTrainMax / NPC_OnTrainCheck /
+    NPC_TrainSkill: a teacher raises a student up to a fraction of its own
+    skill, bounded by the absolute cap and the student's per-skill and total
+    caps, draining DOWN-locked skills for headroom.
+  - Saying "train <skill>" to a vendor quotes the price and records the offer;
+    handing over gold trains the skill in proportion to the amount paid.
+
+
 [2026-07-12] - Champion spawn engine (Source-X CCChampion port)
 ----------------------------------------
 

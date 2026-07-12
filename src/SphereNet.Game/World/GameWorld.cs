@@ -1446,6 +1446,193 @@ public sealed class GameWorld
 
     public IEnumerable<KeyValuePair<string, List<string>>> GetAllGlobalLists() => _globalLists;
 
+    /// <summary>Look up an existing global list without creating it.</summary>
+    public List<string>? GetList(string name) =>
+        _globalLists.TryGetValue(name, out var list) ? list : null;
+
+    /// <summary>Drop a whole global list (Source-X CListDefMap::DeleteKey / LIST.name.clear).</summary>
+    public bool RemoveGlobalList(string name) => _globalLists.Remove(name);
+
+    /// <summary>
+    /// Global list mutation — ports Source-X CListDefMap::r_LoadVal
+    /// (ListDefContMap.cpp:768-963). <paramref name="keyPath"/> is name[.op] or
+    /// name[.index[.op]]. Ops: clear / add / set / append / sort; index ops:
+    /// remove / insert; bare name replaces the list with a single element
+    /// (empty value = delete). Returns true when the list changed.
+    /// </summary>
+    public bool MutateGlobalList(string keyPath, string value)
+    {
+        keyPath = keyPath.Trim();
+        value = value.Trim();
+        if (keyPath.Length == 0) return false;
+
+        string[] parts = keyPath.Split('.');
+        string name = parts[0].Trim();
+        if (name.Length == 0) return false;
+
+        // LIST.<name> = value → replace list with single element (or delete).
+        if (parts.Length == 1)
+        {
+            if (value.Length == 0)
+                return RemoveGlobalList(name);
+            var list = GetOrCreateList(name);
+            list.Clear();
+            list.Add(StripListValue(value));
+            return true;
+        }
+
+        string sub1 = parts[1].Trim();
+
+        // LIST.<name>.<operation>
+        if (!IsListIndex(sub1, out int index))
+        {
+            if (sub1.StartsWith("clear", StringComparison.OrdinalIgnoreCase))
+                return RemoveGlobalList(name);
+            if (sub1.StartsWith("add", StringComparison.OrdinalIgnoreCase))
+            {
+                if (value.Length == 0) return false;
+                GetOrCreateList(name).Add(StripListValue(value));
+                return true;
+            }
+            if (sub1.StartsWith("set", StringComparison.OrdinalIgnoreCase) ||
+                sub1.StartsWith("append", StringComparison.OrdinalIgnoreCase))
+            {
+                if (value.Length == 0) return false;
+                if (sub1.StartsWith("set", StringComparison.OrdinalIgnoreCase))
+                    RemoveGlobalList(name);
+                var list = GetOrCreateList(name);
+                foreach (var element in value.Split(','))
+                    list.Add(StripListValue(element.Trim()));
+                return true;
+            }
+            if (sub1.StartsWith("sort", StringComparison.OrdinalIgnoreCase))
+            {
+                var list = GetList(name);
+                if (list == null) return false;
+                SortGlobalList(list, value);
+                return true;
+            }
+            return false;
+        }
+
+        // LIST.<name>.<index>[.<operation>]
+        var target = GetList(name);
+        if (parts.Length >= 3)
+        {
+            string op = parts[2].Trim();
+            if (op.StartsWith("remove", StringComparison.OrdinalIgnoreCase))
+            {
+                if (target != null && index >= 0 && index < target.Count)
+                {
+                    target.RemoveAt(index);
+                    return true;
+                }
+                return false;
+            }
+            if (op.StartsWith("insert", StringComparison.OrdinalIgnoreCase) && value.Length != 0)
+            {
+                string v = StripListValue(value);
+                target ??= GetOrCreateList(name);
+                if (index >= target.Count)
+                    target.Add(v);
+                else if (index >= 0)
+                    target.Insert(index, v);
+                else
+                    return false;
+                return true;
+            }
+            return false;
+        }
+
+        // LIST.<name>.<index> = value → set element at index.
+        if (target != null && index >= 0 && index < target.Count && value.Length != 0)
+        {
+            target[index] = StripListValue(value);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Read a global list expression — ports Source-X CListDefMap::r_WriteVal
+    /// (ListDefContMap.cpp:975-1037). <paramref name="sub"/> is the text after
+    /// "LIST.": name / name.count / name.&lt;index&gt; / name[.start].findelement value.
+    /// Returns null only when the list is missing on an index read.
+    /// </summary>
+    public string ResolveGlobalListRead(string sub)
+    {
+        int dot = sub.IndexOf('.');
+        string name = (dot >= 0 ? sub[..dot] : sub).Trim();
+        string rest = dot >= 0 ? sub[(dot + 1)..] : "";
+        var list = GetList(name);
+        if (list == null)
+            return rest.Equals("COUNT", StringComparison.OrdinalIgnoreCase) ? "0" : "";
+        if (rest.Length == 0 || rest.Equals("COUNT", StringComparison.OrdinalIgnoreCase))
+            return list.Count.ToString();
+        if (int.TryParse(rest, out int index))
+            return index >= 0 && index < list.Count ? list[index] : "";
+
+        // findelement [start]: name.findelement v  |  name.<start>.findelement v
+        int startIdx = 0;
+        string feExpr = rest;
+        int secondDot = rest.IndexOf('.');
+        if (secondDot >= 0 && int.TryParse(rest[..secondDot], out int si))
+        {
+            startIdx = Math.Max(0, si);
+            feExpr = rest[(secondDot + 1)..];
+        }
+        if (feExpr.StartsWith("findelem", StringComparison.OrdinalIgnoreCase))
+        {
+            int sp = feExpr.IndexOf(' ');
+            string needle = sp >= 0 ? feExpr[(sp + 1)..].Trim() : "";
+            needle = StripListValue(needle);
+            for (int i = startIdx; i < list.Count; i++)
+                if (list[i].Equals(needle, StringComparison.OrdinalIgnoreCase))
+                    return i.ToString();
+            return "-1";
+        }
+        return "";
+    }
+
+    /// <summary>Source-X IsStrNumeric-style index token test (decimal or 0x hex).</summary>
+    private static bool IsListIndex(string token, out int index)
+    {
+        index = 0;
+        if (token.Length == 0) return false;
+        if (token.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            return int.TryParse(token[2..], System.Globalization.NumberStyles.HexNumber, null, out index);
+        return int.TryParse(token, out index);
+    }
+
+    /// <summary>Strip one enclosing quote pair, matching Source-X GetArgStr.</summary>
+    private static string StripListValue(string value)
+    {
+        if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
+            return value[1..^1];
+        return value;
+    }
+
+    /// <summary>Sort a global list in place (Source-X CListDefCont::Sort). Mode:
+    /// asc (default) / i|iasc (case-insensitive asc) / desc / idesc. Numeric-aware
+    /// when both operands parse as integers, else lexical.</summary>
+    private static void SortGlobalList(List<string> list, string mode)
+    {
+        mode = mode.Trim();
+        bool desc = mode.StartsWith("desc", StringComparison.OrdinalIgnoreCase) ||
+                    mode.StartsWith("idesc", StringComparison.OrdinalIgnoreCase);
+        bool ci = mode.StartsWith("i", StringComparison.OrdinalIgnoreCase); // i / iasc / idesc
+        list.Sort((a, b) =>
+        {
+            if (long.TryParse(a, out long na) && long.TryParse(b, out long nb))
+                return na.CompareTo(nb);
+            return string.Compare(a, b, ci
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal);
+        });
+        if (desc)
+            list.Reverse();
+    }
+
     /// <summary>Number of global lists currently defined (Source-X PRINTLISTS header).</summary>
     public int GlobalListCount => _globalLists.Count;
 

@@ -208,6 +208,7 @@ public static partial class Program
             _ when upper.StartsWith("DEF.") => ResolveDefValue(property[4..], decimalNumeric: false),
 
             // --- Commands (write operations, prefixed with _SET_/_CLEARVARS/_NEWDUPE) ---
+            _ when upper.StartsWith("_SET_LIST.") => HandleSetGlobalList(property[10..]),
             _ when upper.StartsWith("_SET_VAR.") => HandleSetGlobalVar(property[9..]),
             _ when upper.StartsWith("_SET_OBJ=") => HandleSetObj(property[9..]),
             _ when upper.StartsWith("_SET_OBJ.") => HandleSetObjProperty(property[9..]),
@@ -665,19 +666,7 @@ public static partial class Program
     {
         if (_world == null || string.IsNullOrWhiteSpace(sub))
             return "0";
-
-        int dot = sub.IndexOf('.');
-        string name = dot >= 0 ? sub[..dot] : sub;
-        string rest = dot >= 0 ? sub[(dot + 1)..] : "";
-        var list = _world.GetAllGlobalLists()
-            .FirstOrDefault(kv => kv.Key.Equals(name, StringComparison.OrdinalIgnoreCase)).Value;
-        if (list == null)
-            return rest.Equals("COUNT", StringComparison.OrdinalIgnoreCase) ? "0" : "";
-        if (string.IsNullOrEmpty(rest) || rest.Equals("COUNT", StringComparison.OrdinalIgnoreCase))
-            return list.Count.ToString();
-        if (int.TryParse(rest, out int index) && index >= 0 && index < list.Count)
-            return list[index];
-        return "";
+        return _world.ResolveGlobalListRead(sub);
     }
 
     private static string? ResolveServDefList(string sub)
@@ -903,6 +892,18 @@ public static partial class Program
         string name = assignment[..eq].Trim();
         string value = assignment[(eq + 1)..].Trim();
         _world?.SetGlobalVar(name, value);
+        return "";
+    }
+
+    /// <summary>Bridge for LIST.&lt;name&gt;[.op]=value — delegates to the testable
+    /// GameWorld.MutateGlobalList grammar (Source-X CListDefMap::r_LoadVal).</summary>
+    private static string? HandleSetGlobalList(string assignment)
+    {
+        if (_world == null) return "";
+        int eq = assignment.IndexOf('=');
+        string keyPath = eq >= 0 ? assignment[..eq] : assignment;
+        string value = eq >= 0 ? assignment[(eq + 1)..] : "";
+        _world.MutateGlobalList(keyPath, value);
         return "";
     }
 

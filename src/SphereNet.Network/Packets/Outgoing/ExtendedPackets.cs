@@ -2540,6 +2540,63 @@ public sealed class PacketDyeWindow : PacketWriter
     }
 }
 
+/// <summary>Health-bar colour update (0x17, Source-X PacketHealthBarUpdate) —
+/// tells SA/KR clients to tint a character's health bar green while poisoned and
+/// yellow while frozen/invulnerable. Two status entries (GreenBar=1, YellowBar=2),
+/// each with an on/off flag.</summary>
+public sealed class PacketHealthBarStatus : PacketWriter
+{
+    private readonly uint _serial;
+    private readonly bool _poisoned;
+    private readonly bool _yellow;
+
+    public PacketHealthBarStatus(uint serial, bool poisoned, bool yellow) : base(0x17)
+    {
+        _serial = serial;
+        _poisoned = poisoned;
+        _yellow = yellow;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(15);
+        buf.WriteUInt32(_serial);
+        buf.WriteUInt16(2);          // status entry count
+        buf.WriteUInt16(1);          // GreenBar — poison
+        buf.WriteBool(_poisoned);
+        buf.WriteUInt16(2);          // YellowBar — frozen / invulnerable
+        buf.WriteBool(_yellow);
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
+/// <summary>Health-bar colour update, Enhanced-Client variant (0x16, Source-X
+/// PacketHealthBarUpdateNew) — a single colour entry (green poison / yellow
+/// frozen) with an on/off flag.</summary>
+public sealed class PacketHealthBarStatusNew : PacketWriter
+{
+    private readonly uint _serial;
+    private readonly ushort _color;
+
+    public PacketHealthBarStatusNew(uint serial, bool poisoned, bool yellow) : base(0x16)
+    {
+        _serial = serial;
+        _color = poisoned ? (ushort)1 : yellow ? (ushort)2 : (ushort)0;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(12);
+        buf.WriteUInt32(_serial);
+        buf.WriteUInt16(1);          // status entry count
+        buf.WriteUInt16(_color);
+        buf.WriteBool(_color != 0);
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
 /// <summary>Single-skill update (0x3A modes 0xFF / 0xDF-with-cap, Source-X
 /// PacketSkills single-skill branch) — the full-list variant lives in
 /// PacketSkillList.</summary>

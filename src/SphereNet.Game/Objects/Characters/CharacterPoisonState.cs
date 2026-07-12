@@ -111,6 +111,7 @@ public sealed class CharacterPoisonState
         _owner.SetStatFlag(StatFlag.Poisoned);
         Character.OnClientBuffChanged?.Invoke(_owner, BuffIcon.Poison, false, 0);
         Character.OnClientBuffChanged?.Invoke(_owner, BuffIcon.Poison, true, RemainingDurationSeconds);
+        Character.OnHealthBarStatusChanged?.Invoke(_owner); // green health-bar tint
     }
 
     public void Cure()
@@ -122,7 +123,10 @@ public sealed class CharacterPoisonState
         _source = Serial.Invalid;
         _owner.ClearStatFlag(StatFlag.Poisoned);
         if (wasPoisoned)
+        {
             Character.OnClientBuffChanged?.Invoke(_owner, BuffIcon.Poison, false, 0);
+            Character.OnHealthBarStatusChanged?.Invoke(_owner); // clear the green tint
+        }
     }
 
     private int GetTickInterval() => _level switch

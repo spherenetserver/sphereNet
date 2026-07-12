@@ -1589,6 +1589,11 @@ public sealed class SpellEngine
                     >= 400 => 2, // normal
                     _ => 1       // lesser
                 };
+                // OSI SetPoison distance falloff (CCharAct.cpp:4218): a poison
+                // landed from more than 3 tiles away weakens by -dist/2.
+                int poisonDist = caster.Position.GetDistanceTo(target.Position);
+                if (poisonDist >= 4)
+                    poisonLvl = (byte)Math.Max(1, poisonLvl - poisonDist / 2);
                 target.ApplyPoison(poisonLvl, caster.Uid);
                 string poisonKey = poisonLvl switch
                 {

@@ -252,8 +252,14 @@ public static class CombatEngine
             }
             case 2: // AOS
             {
-                int atkCalc = (attackSkill / 10 + 20) * 100;
-                int defCalc = (targetSkill / 10 + 20) * 100;
+                // Source-X Calc_CombatChanceToHit era-2 (CResourceCalc.cpp:208):
+                // each side scales by its Hit/Defense Chance Increase, capped at
+                // +45%. Previously both terms were a flat 100 (the def-chance term
+                // was dropped entirely), so DCI suits gave no dodge benefit.
+                int hci = Math.Clamp(GetOnHitPropertyValue(attacker, null, "INCREASEHITCHANCE"), 0, 45);
+                int dci = Math.Clamp(GetOnHitPropertyValue(target, null, "INCREASEDEFCHANCE"), 0, 45);
+                int atkCalc = (attackSkill / 10 + 20) * (100 + hci);
+                int defCalc = (targetSkill / 10 + 20) * (100 + dci);
                 int chance = atkCalc * 100 / Math.Max(1, defCalc * 2);
                 return Math.Clamp(chance, 5, 95);
             }
@@ -776,7 +782,9 @@ public static class CombatEngine
             if (weapon.TryGetTag("POISON_SKILL", out string? poisonStr) &&
                 int.TryParse(poisonStr, out int poisonLevel) && poisonLevel > 0)
             {
-                byte targetLevel = (byte)Math.Clamp(poisonLevel / 200, 1, 5);
+                // OSI SetPoison banding from the weapon's stored envenom skill
+                // (melee range → no distance falloff).
+                byte targetLevel = CalcOsiPoisonLevel(poisonLevel, 1, evilOmen: false);
                 target.ApplyPoison(targetLevel, attacker.Uid);
                 poisonApplied = true;
 
@@ -807,15 +815,15 @@ public static class CombatEngine
         // && SKILL_POISONING > 0). A venomous creature — spider, snake, scorpion —
         // envenoms on a bite from its Poisoning skill alone, with no weapon and no
         // POISON_SKILL tag. Skipped when the weapon already poisoned this hit or
-        // when poison hits are globally disabled. Poison level scales by skill on
-        // the same 0-1000 → 1-5 curve the weapon path uses.
+        // when poison hits are globally disabled. Poison level uses the OSI
+        // SetPoison banding of the creature's Poisoning skill (melee → no falloff).
         if (damage > 0 && !poisonApplied && !attacker.IsPlayer &&
             !flags.HasFlag(CombatFlags.NoPoisonHit))
         {
             int poisonSkill = attacker.GetSkill(SkillType.Poisoning);
             if (poisonSkill > 0 && _rand.Next(100) < 50)
             {
-                byte level = (byte)Math.Clamp(poisonSkill / 200, 1, 5);
+                byte level = CalcOsiPoisonLevel(poisonSkill, 1, evilOmen: false);
                 target.ApplyPoison(level, attacker.Uid);
             }
         }
@@ -836,6 +844,21 @@ public static class CombatEngine
                 // Credit reflected damage so a reactive-armor kill attributes to
                 // the target (murder count / karma-fame / loot rights).
                 attacker.RecordAttack(target.Uid, reflect);
+            }
+
+            // AOS REFLECTPHYSICALDAM (Source-X OnTakeDamage, CCharFight.cpp:1013):
+            // the defender's suit bounces a percentage of the damage back at the
+            // attacker, capped at 250%. Separate from the Reactive Armor spell
+            // above and applied as fixed damage so it cannot recurse.
+            if (attacker != target && !attacker.IsDead)
+            {
+                int reflectPct = Math.Min(GetOnHitPropertyValue(target, null, "REFLECTPHYSICALDAM"), 250);
+                int reflectDam = damage * reflectPct / 100;
+                if (reflectDam > 0)
+                {
+                    attacker.Hits -= (short)Math.Min(reflectDam, short.MaxValue);
+                    attacker.RecordAttack(target.Uid, reflectDam);
+                }
             }
 
             // Source-X @Hit LOCAL.ItemDamageChance: the weapon wears only
@@ -989,6 +1012,27 @@ public static class CombatEngine
                 => DamageType.HitBlunt | DamageType.HitPierce,
             _ => DamageType.HitBlunt,
         };
+    }
+
+    /// <summary>
+    /// OSI poison level from an envenoming skill — Source-X CChar::SetPoison
+    /// (CCharAct.cpp:4204). Skill bands: &gt;=1000 Lethal (with a 1/10 bump to
+    /// Deadly), &gt;850 Greater, &gt;650 Standard, else Lesser. Beyond 3 tiles a
+    /// distance falloff of -dist/2 weakens it, and an Evil-Omen on the victim adds
+    /// one level. Returned on SphereNet's 1-5 scale (OSI 0-4 + 1, clamped).
+    /// </summary>
+    public static byte CalcOsiPoisonLevel(int skill, int distance, bool evilOmen)
+    {
+        int level;
+        if (skill >= 1000) level = 3 + (_rand.Next(10) == 0 ? 1 : 0);
+        else if (skill > 850) level = 2;
+        else if (skill > 650) level = 1;
+        else level = 0;
+        if (distance >= 4)
+            level = Math.Max(0, level - distance / 2);
+        if (evilOmen)
+            level += 1;
+        return (byte)Math.Clamp(level + 1, 1, 5);
     }
 
     /// <summary>

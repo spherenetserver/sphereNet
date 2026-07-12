@@ -305,6 +305,44 @@ public static partial class Program
     /// amount is non-positive. Tolerant of extra whitespace and trailing
     /// punctuation ("withdraw 100 gold").
     /// </summary>
+    /// <summary>
+    /// NPC training request (Source-X NPC_OnTrainHear). Recognise a skill name in
+    /// the message, quote its price, and record a pending-training memory keyed by
+    /// the student so a later gold hand-off (<see cref="TryPayForTraining"/>)
+    /// completes it. With no skill named, advertise that the NPC teaches.
+    /// </summary>
+    private static string HandleTrainRequest(Character speaker, Character npc, string lowerText)
+    {
+        if (!TryMatchSkill(lowerText, out var skill))
+            return "I can train thee — name the skill thou wishest to learn.";
+
+        int amount = SphereNet.Game.Trade.VendorTrainingEngine
+            .CalcTrainableAmount(npc, speaker, skill);
+        if (amount <= 0)
+            return $"I cannot teach thee more {skill}.";
+
+        int cost = SphereNet.Game.Trade.VendorTrainingEngine.TrainCost(amount);
+        SphereNet.Game.Trade.VendorTrainingEngine.RememberOffer(npc, speaker, skill);
+        return $"To train {(amount / 10.0):0.0} points of {skill} will cost thee {cost} gold. " +
+               "Hand me the coin and I shall teach thee.";
+    }
+
+    /// <summary>Match the first base-skill whose enum name appears in the message.</summary>
+    private static bool TryMatchSkill(string lowerText, out SkillType skill)
+    {
+        for (int i = 0; i < SphereNet.Game.Skills.SkillEngine.BaseSkillCount; i++)
+        {
+            var candidate = (SkillType)i;
+            if (lowerText.Contains(candidate.ToString().ToLowerInvariant()))
+            {
+                skill = candidate;
+                return true;
+            }
+        }
+        skill = default;
+        return false;
+    }
+
     private static int TryParseAmountAfter(string text, string keyword)
     {
         if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(keyword)) return 0;
@@ -937,6 +975,10 @@ public static partial class Program
                     response = SafeMsg(SphereNet.Game.Messages.Msg.NpcVendorSellfast);
                     if (string.IsNullOrEmpty(response))
                         response = "Show me what you have to sell.";
+                }
+                else if (lower.Contains("train") || lower.Contains("teach"))
+                {
+                    response = HandleTrainRequest(speaker, npc, lower);
                 }
                 break;
 

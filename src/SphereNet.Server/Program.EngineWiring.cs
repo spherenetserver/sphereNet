@@ -200,6 +200,10 @@ public static partial class Program
                     return (byte)Math.Clamp(args.N1, 0, 255);
                 };
             }
+            // <NOTOGETFLAG uid> script property → full Noto_GetFlag of the subject
+            // as seen by the given viewer.
+            SphereNet.Game.Objects.Characters.Character.ResolveNotoFlag =
+                (subject, viewer) => GameClient.ComputeNotoriety(_world, viewer, subject);
             // @EffectAdd — fired per applied buff; gate to a null check when unhooked.
             if (_triggerDispatcher.IsCharTriggerUsed(CharTrigger.EffectAdd))
             {
@@ -2512,6 +2516,23 @@ public static partial class Program
             {
                 if (_clientsByCharUid.TryGetValue(target.Uid, out var gc))
                     gc.SysMessage(msg);
+            };
+
+            // Health-bar colour (0x17): re-tint the character's bar for every SA+/KR
+            // observer when poison/freeze state flips. Older clients don't parse
+            // 0x17, so gate on the SA-era client version (Source-X CanSendTo).
+            SphereNet.Game.Objects.Characters.Character.OnHealthBarStatusChanged = ch =>
+            {
+                if (ch == null || _world == null) return;
+                bool poisoned = ch.IsStatFlag(StatFlag.Poisoned);
+                bool yellow = ch.IsStatFlag(StatFlag.Freeze);
+                ForEachClientInRange(ch.Position, 18, 0, (_, observerClient) =>
+                {
+                    var ns = observerClient.NetState;
+                    if (ns.ClientVersionNumber >= 60_000_000 ||
+                        ns.IsKingdomRebornClient || ns.IsEnhancedClient)
+                        observerClient.Send(new PacketHealthBarStatus(ch.Uid.Value, poisoned, yellow));
+                });
             };
 
             SphereNet.Game.Objects.Characters.Character.NotoSaveUpdate = ch =>

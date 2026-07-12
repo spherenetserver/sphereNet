@@ -3,6 +3,49 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, ilk batch
+----------------------------------------
+
+EKLENDI - Global liste calisma-zamani mutasyonu:
+  - LIST.<ad>[.op]=deger artik global listeleri calisma zamaninda degistirir
+    (Source-X CListDefMap::r_LoadVal): clear/add/set/append/sort(asc|i|desc|
+    idesc), indeks atama, .N.remove ve .N.insert. Okuma tarafina .findelement.
+  - Grammar GameWorld.MutateGlobalList / ResolveGlobalListRead'de; interpreter
+    LIST.* yazmalarini _SET_LIST. koprusuyle yonlendirir.
+
+EKLENDI - Karakter script yuzeyi:
+  - CChar verb'leri UNEQUIP (esyayi cantaya dusur), WHERE (konum bildir),
+    SUMMONTO (uid'e ya da cagirana isinla) ve CONTROL (cagiran sahiplik alir)
+    — eksik olan Source-X CChar_functions girdileri.
+  - CChar prop'lari CANMOVE <yon> (hedef-tile gecilebilirligi) ve
+    NOTOGETFLAG <uid> (bir gozlemciye gore tam notoriety bayragi).
+
+DEGISTI - Savas AOS vurus-ani:
+  - REFLECTPHYSICALDAM artik melee hasarin bir yuzdesini saldirgana geri
+    yansitir (cap %250), Reactive Armor buyusunden ayri.
+  - AOS isabet sansi (cag 2) Hit/Defense Chance Increase carpanlarini uygular
+    (100 + min(HCI|DCI, 45)); savunma terimi eskiden dusuyordu.
+
+DEGISTI - Zehir seviye turetimi:
+  - Silah-zehir ve yaratik-isirik zehiri artik Source-X SetPoison skill
+    band'lerini (650/850/1000) mesafe-falloff (menzil >= 4'te -mesafe/2) ve
+    Evil-Omen kancasiyla kullanir; duz skill/200 egrisi yerine. Poison buyusu
+    ayni mesafe-falloff'u alir. Tick sayilari degismedi.
+
+EKLENDI - Health-bar renk paketleri:
+  - PacketHealthBarStatus (0x17) ve PacketHealthBarStatusNew (0x16) karakterin
+    can barini zehirliyken yesil, donmusken sari boyar; zehir durumu degisince
+    SA+/KR gozlemcilere gonderilir.
+
+EKLENDI - Ucretli NPC skill egitimi:
+  - VendorTrainingEngine NPC_GetTrainMax / NPC_OnTrainCheck / NPC_TrainSkill'i
+    portlar: ogretmen ogrenciyi kendi skill'inin bir kesrine kadar yukseltir;
+    mutlak cap ile ogrencinin skill-basi ve toplam cap'leri sinirlar, alan
+    acmak icin DOWN-kilitli skill'leri bosaltir.
+  - Bir vendor'a "train <skill>" demek fiyati sunar ve teklifi kaydeder;
+    altin vermek skill'i odenen miktarla orantili egitir.
+
+
 [2026-07-12] - Champion spawn motoru (Source-X CCChampion portu)
 ----------------------------------------
 

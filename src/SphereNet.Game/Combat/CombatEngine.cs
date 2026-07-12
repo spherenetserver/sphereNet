@@ -1378,6 +1378,10 @@ public static class CombatEngine
         bool leeched = false;
 
         int leechLife = GetOnHitPropertyValue(attacker, weapon, "HITLEECHLIFE");
+        // Source-X CCharFight.cpp:2272-2275: a Curse Weapon effect adds its level
+        // to the life-leech percent, but only with a weapon equipped.
+        if (weapon != null && attacker.CurseWeaponLevel > 0)
+            leechLife += attacker.CurseWeaponLevel;
         if (leechLife > 0)
         {
             long maxHeal = (long)damage * leechLife * 30 / 10000;
@@ -1404,6 +1408,10 @@ public static class CombatEngine
         int manaDrain = 0;
         if (RollOnHitChance(attacker, weapon, "HITMANADRAIN"))
             manaDrain = (int)((long)damage * 20 / 100);
+        // Source-X CCharFight.cpp:2299-2304: Wraith Form drains the target's mana
+        // to the attacker, scaled by SpiritSpeak, on any damaging hit.
+        if (attacker.WraithFormActive)
+            manaDrain += 5 + 15 * attacker.GetSkill(SkillType.SpiritSpeak) / 1000;
         manaDrain = Math.Min(manaDrain, (int)target.Mana);
         if (manaDrain > 0)
         {

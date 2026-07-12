@@ -356,23 +356,35 @@ public static class SkillEngine
 
     /// <summary>
     /// Stat-adjusted skill value (reference Skill_GetAdjusted): the raw skill
-    /// plus BONUS_STATS percent of the BONUS_STR/INT/DEX-weighted stats.
+    /// plus BONUS_STATS percent of the BONUS_STR/INT/DEX-weighted stats, plus the
+    /// per-character <c>SkillMod&lt;n&gt;</c> equipment bonus. The SkillMod term is
+    /// the effective-skill layer: @Equip/@UnEquip scripts (and any future first-class
+    /// equipment property) maintain it, exactly as reference Skill_GetAdjusted reads
+    /// its <c>SkillMod%d</c> key. It is off the hot path — combat/crafting/skill-gain
+    /// use the raw base (GetSkill), matching reference Skill_GetBase.
     /// </summary>
     public static int GetAdjustedSkill(Character ch, SkillType skill)
     {
-        int baseVal = ch.GetSkill(skill);
+        long adjusted = ch.GetSkill(skill);
         var def = DefinitionLoader.GetSkillDef((int)skill);
-        if (def == null || def.BonusStats <= 0)
-            return baseVal;
-
-        int str = Math.Max(0, (int)ch.Str);
-        int intl = Math.Max(0, (int)ch.Int);
-        int dex = Math.Max(0, (int)ch.Dex);
-        long pureBonus = (long)def.BonusStr * str + (long)def.BonusInt * intl +
-            (long)def.BonusDex * dex;
-        long adjusted = baseVal + (long)def.BonusStats * pureBonus / 10000L;
+        if (def != null && def.BonusStats > 0)
+        {
+            int str = Math.Max(0, (int)ch.Str);
+            int intl = Math.Max(0, (int)ch.Int);
+            int dex = Math.Max(0, (int)ch.Dex);
+            long pureBonus = (long)def.BonusStr * str + (long)def.BonusInt * intl +
+                (long)def.BonusDex * dex;
+            adjusted += (long)def.BonusStats * pureBonus / 10000L;
+        }
+        adjusted += GetSkillModBonus(ch, skill);
         return (int)Math.Clamp(adjusted, 0L, int.MaxValue);
     }
+
+    /// <summary>Reference Skill_GetAdjusted uiBonSkill term: the character's
+    /// <c>SkillMod&lt;n&gt;</c> key (n = skill index), a signed effective-skill
+    /// bonus maintained by equip/unequip scripts. Absent/unparseable → 0.</summary>
+    public static int GetSkillModBonus(Character ch, SkillType skill) =>
+        ch.TryGetTag($"SkillMod{(int)skill}", out string? s) && int.TryParse(s, out int v) ? v : 0;
 
     /// <summary>
     /// S-curve for bell-curve success checks. Exact port of the reference

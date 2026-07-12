@@ -880,6 +880,68 @@ public class SaveFormatTests
     }
 
     [Fact]
+    public void Roundtrip_PreservesCurseWeaponLevel()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_curseweapon_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            saver.Format = SaveFormat.Text;
+            saver.ShardCount = 0;
+
+            var registry = new SpellRegistry();
+            registry.Register(new SpellDef
+            {
+                Id = SpellType.CurseWeapon,
+                Flags = SpellFlag.TargChar | SpellFlag.Good,
+                EffectBase = 15,
+                EffectScale = 15,
+                DurationBase = 600,
+                DurationScale = 600,
+            });
+
+            var src = MakeWorld();
+            var ch = src.CreateCharacter();
+            ch.Name = "Cursed";
+            ch.BodyId = 0x0190;
+            ch.PrivLevel = PrivLevel.GM;
+            ch.MaxMana = 100; ch.Mana = 100;
+            src.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
+
+            var engine = new SpellEngine(src, registry);
+            saver.GetSpellEffectRecords = engine.GetPersistedEffectRecords;
+
+            Assert.True(engine.CastStart(ch, SpellType.CurseWeapon, ch.Uid, ch.Position) >= 0);
+            Assert.True(engine.CastDone(ch));
+            int level = ch.CurseWeaponLevel;
+            Assert.True(level > 0);
+
+            engine.RevertAllForSave();
+            Assert.Equal(0, ch.CurseWeaponLevel); // reverted for clean save
+            try { Assert.True(saver.Save(src, tmp)); }
+            finally { engine.ReapplyAllAfterSave(); }
+            Assert.Equal(level, ch.CurseWeaponLevel); // re-applied after save
+
+            var dst = MakeWorld();
+            loader.Load(dst, tmp);
+            var reloaded = dst.FindChar(ch.Uid);
+            Assert.NotNull(reloaded);
+
+            var restoredEngine = new SpellEngine(dst, registry);
+            Assert.Equal(1, restoredEngine.RestorePersistedEffectsFromWorld());
+            Assert.Equal(level, reloaded!.CurseWeaponLevel); // level survived the round-trip
+
+            restoredEngine.ProcessExpirations(Environment.TickCount64 + 120_000);
+            Assert.Equal(0, reloaded.CurseWeaponLevel);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public void FormatDetection_RoundtripsViaExtension()
     {
         Assert.Equal(SaveFormat.Text, SaveIO.FormatFromPath("foo.scp"));

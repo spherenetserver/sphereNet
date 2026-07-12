@@ -3,6 +3,34 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, otuz ikinci batch (ertelenen gruplar)
+----------------------------------------
+
+EKLENDI - Sahipli vendor nakit dagitimi ve restock faucet duzeltmesi (Wave 251):
+  - "cash" pet komutu artik sahipli bir vendor'in kasasini sahibin cantasina
+    bosaltiyor (Source-X NPC_VendorGetChkVerb PC_CASH). Bedava-altin faucet'i
+    onlemek icin periyodik restock artik sahipli vendor'in kasasini doldurmuyor -
+    yalnizca sade dukkancilar sonsuz alim-fonu tutar; sahipli vendor sadece gercek
+    kazanc biriktirir. bought/samples/stock verb'leri artik sahte target cursor'i
+    acmiyor.
+
+EKLENDI - Efektif-skill katmani (Wave 252):
+  - GetAdjustedSkill artik ham skill ve stat katkisinin uzerine per-character
+    SkillMod<n> equipment bonusunu ekliyor (Source-X Skill_GetAdjusted). Skill
+    penceresi (0x3A) adjusted degeri, ikinci alan olarak ham base ile bildiriyor.
+    SkillMod<n> script property'si bonusu okur/yazar (bare key veya TAG. prefix),
+    tag olarak persist edilir. Combat, crafting ve skill-gain'in kullandigi ham
+    base degismedi; bonus ayarlanana kadar mevcut icerikte davranis degisimi yok.
+
+EKLENDI - Necromancy temeli: Curse Weapon ve Wraith Form (Wave 253):
+  - Hasar veren melee vurusunda, Curse Weapon durumu silahin life-leech yuzdesine
+    kendi seviyesini ekler (weapon-gate'li) ve Wraith Form durumu hedefin
+    mana'sini Spirit Speak ile olceklenerek saldirgana aktarir (Source-X CCharFight
+    on-hit hook'lari).
+  - Curse Weapon ve Wraith Form buyuleri bu zamanli durumlari normal efekt
+    expiry/persist/revert ile kurar; Curse Weapon seviyesi save/load round-trip'inde
+    korunur.
+
 [2026-07-12] - 90-alti parite backlog, otuz birinci batch
 ----------------------------------------
 

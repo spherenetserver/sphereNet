@@ -320,24 +320,7 @@ public static class VendorEngine
             SetVendorGold(vendor, purse - payout);
 
             // Add gold to player (split into 60000-max piles)
-            int remaining = (int)payout;
-            while (remaining > 0 && backpack != null)
-            {
-                int pile = Math.Min(remaining, 60000);
-                var gold = World.CreateItem();
-                gold.BaseId = 0x0EED;
-                gold.ItemType = Core.Enums.ItemType.Gold;
-                gold.Amount = (ushort)pile;
-                gold.Name = "Gold";
-                Item? delivered = player.PrivLevel < Core.Enums.PrivLevel.GM && !player.CanCarry(gold)
-                    ? null
-                    : backpack.TryAddItemWithStack(gold);
-                if (delivered == null)
-                    World.PlaceItemWithDecay(gold, player.Position);
-                else if (delivered != gold)
-                    World.RemoveItem(gold);
-                remaining -= pile;
-            }
+            GiveGoldToPack(player, (int)payout);
         }
 
         return (int)payout;
@@ -361,6 +344,45 @@ public static class VendorEngine
 
     private static void SetVendorGold(Character vendor, long amount) =>
         vendor.SetTag("VENDOR_GOLD", Math.Max(0, amount).ToString());
+
+    /// <summary>Source-X NPC_VendorGetChkVerb PC_CASH: hand the whole vendor purse
+    /// to <paramref name="owner"/> and zero it. Only real earnings accumulate on
+    /// an owned vendor (restock never tops up an owned purse), so this cannot
+    /// mint gold. Returns the amount dispensed (0 if the purse was empty).</summary>
+    public static int DispenseVendorGold(Character vendor, Character owner)
+    {
+        int amount = (int)GetVendorGold(vendor);
+        if (amount <= 0) return 0;
+        SetVendorGold(vendor, 0);
+        GiveGoldToPack(owner, amount);
+        return amount;
+    }
+
+    /// <summary>Deliver <paramref name="amount"/> gold to a character's pack,
+    /// split into piles (Source-X CItem::MakeGold), dropping overflow at the feet.</summary>
+    public static void GiveGoldToPack(Character ch, int amount)
+    {
+        if (World == null || amount <= 0) return;
+        var backpack = ch.Backpack;
+        int remaining = amount;
+        while (remaining > 0 && backpack != null)
+        {
+            int pile = Math.Min(remaining, 60000);
+            var gold = World.CreateItem();
+            gold.BaseId = 0x0EED;
+            gold.ItemType = Core.Enums.ItemType.Gold;
+            gold.Amount = (ushort)pile;
+            gold.Name = "Gold";
+            Item? delivered = ch.PrivLevel < Core.Enums.PrivLevel.GM && !ch.CanCarry(gold)
+                ? null
+                : backpack.TryAddItemWithStack(gold);
+            if (delivered == null)
+                World.PlaceItemWithDecay(gold, ch.Position);
+            else if (delivered != gold)
+                World.RemoveItem(gold);
+            remaining -= pile;
+        }
+    }
 
     /// <summary>The set of item BaseIds a vendor will buy (Source-X NPC_FindVendableItem),
     /// resolved from its VENDOR_BUY_LIST template, or null when the vendor has no buy
@@ -528,8 +550,11 @@ public static class VendorEngine
 
         // Restock refills the vendor's purse first (Source-X: the vendor bank
         // is the buy fund) — even for vendors with no VENDORINV stock list, so
-        // a buy-only vendor can still purchase from players.
-        if (GetVendorGold(vendor) < RestockGold)
+        // a buy-only vendor can still purchase from players. This top-up is the
+        // shopkeeper's infinite buy fund; an OWNED vendor (player/pet vendor)
+        // must NOT be topped up, or dispensing its purse to the owner (CASH)
+        // would be a free-gold faucet. Owned vendors keep only real earnings.
+        if (!vendor.OwnerSerial.IsValid && GetVendorGold(vendor) < RestockGold)
             SetVendorGold(vendor, RestockGold);
 
         if (!vendor.TryGetTag("VENDORINV", out string? invDef) || string.IsNullOrEmpty(invDef))

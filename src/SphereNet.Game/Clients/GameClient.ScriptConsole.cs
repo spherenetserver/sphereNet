@@ -93,10 +93,15 @@ public sealed partial class GameClient
         var skills = new List<(ushort Id, ushort Value, ushort RawValue, byte Lock, ushort Cap)>();
         for (int i = 0; i < (int)SkillType.Qty && i < 58; i++)
         {
-            ushort val = _character.GetSkill((SkillType)i);
+            // 0x3A field order: modified value (with stat + equipment bonuses)
+            // then raw base. Reference send.cpp sends Skill_GetAdjusted as the
+            // value; the base is the second word.
+            ushort raw = _character.GetSkill((SkillType)i);
+            ushort val = (ushort)Math.Clamp(
+                Skills.SkillEngine.GetAdjustedSkill(_character, (SkillType)i), 0, ushort.MaxValue);
             byte lockState = _character.GetSkillLock((SkillType)i);
             ushort cap = (ushort)Skills.SkillEngine.GetSkillDisplayCap(_character, (SkillType)i);
-            skills.Add(((ushort)i, val, val, lockState, cap));
+            skills.Add(((ushort)i, val, raw, lockState, cap));
         }
         _netState.Send(new PacketSkillList(skills.ToArray()));
     }

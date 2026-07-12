@@ -1039,6 +1039,14 @@ public partial class Character : ObjBase
     /// <summary>Transient LAYER_SPELL_Polymorph marker used by the Horrific
     /// Beast combat modifiers.</summary>
     internal bool HorrificBeastActive { get; set; }
+    /// <summary>Transient LAYER_SPELL_Polymorph marker for Necromancy Wraith
+    /// Form: while set, damaging melee hits drain the target's mana to the
+    /// attacker (reference CCharFight.cpp:2299-2304).</summary>
+    internal bool WraithFormActive { get; set; }
+    /// <summary>Transient LAYER_SPELL_Curse_Weapon level (reference
+    /// m_itSpell.m_spelllevel). Added to the attacker's HITLEECHLIFE percent
+    /// while a weapon is equipped (reference CCharFight.cpp:2272-2275).</summary>
+    internal int CurseWeaponLevel { get; set; }
     public short ModMaxWeight { get => _modMaxWeight; set => _modMaxWeight = value; }
 
     // Appearance originals
@@ -2523,6 +2531,16 @@ public partial class Character : ObjBase
             return true;
         }
 
+        if (upper.StartsWith("SKILLMOD", StringComparison.Ordinal) &&
+            int.TryParse(upper.AsSpan(8), out int skillModIdx) && skillModIdx >= 0)
+        {
+            // SkillMod<n> — reference Skill_GetAdjusted uiBonSkill: the per-skill
+            // effective bonus applied on top of the base. Stored as a tag so it
+            // persists; read live by SkillEngine.GetSkillModBonus.
+            value = TryGetTag($"SkillMod{skillModIdx}", out string? sm) && sm != null ? sm : "0";
+            return true;
+        }
+
         switch (upper)
         {
             case "STR": value = _str.ToString(); return true;
@@ -3471,6 +3489,20 @@ public partial class Character : ObjBase
         if (key.Equals(CombatSpeedProperties.IncreaseSwingSpeed, StringComparison.OrdinalIgnoreCase))
         {
             SetTag(CombatSpeedProperties.IncreaseSwingSpeed, normalized);
+            return true;
+        }
+
+        // SkillMod<n> — reference Skill_GetAdjusted uiBonSkill: the per-skill
+        // effective bonus. Persisted as a tag; setting 0 clears it. Written by
+        // @Equip/@UnEquip scripts (bare key, no TAG. prefix, matching Sphere).
+        if (key.StartsWith("SKILLMOD", StringComparison.OrdinalIgnoreCase) &&
+            int.TryParse(key.AsSpan(8), out int skillModIdx) && skillModIdx >= 0)
+        {
+            string tagKey = $"SkillMod{skillModIdx}";
+            if (int.TryParse(normalized, out int sm) && sm != 0)
+                SetTag(tagKey, sm.ToString());
+            else
+                RemoveTag(tagKey);
             return true;
         }
 

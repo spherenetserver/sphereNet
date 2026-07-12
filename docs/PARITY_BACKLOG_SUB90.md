@@ -104,8 +104,21 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   false.
 
 ### 2.2 Magic / spells — 82
-- [ ] Necromancy (101+) / Chivalry (201+) / Bushido / Ninjitsu / Spellweaving /
-  Mysticism spell **efektleri** (şu an enum-only, `SpellTypes.cs:32-40`).
+- [~] Necromancy (101+) / Chivalry (201+) / Bushido / Ninjitsu / Spellweaving /
+  Mysticism spell **efektleri** (şu an enum-only, `SpellTypes.cs:32-40`). BAŞLADI
+  (Wave 253 — necromancy foundation): recon gösterdi ki necro data plumbing'i ZATEN
+  var (SpellRegistry, RESOURCES/MANAUSE/SKILLREQ generic, NECROMANCY/SpiritSpeak
+  skill'leri, [SPELL 101-117] script def'leri); eksik olan effect handler'ları +
+  state modeli. İlk iki spell: **CurseWeapon (104)** ve **WraithForm (116)** —
+  `ApplySpecificSpell` case'leri, `ScheduleEffectExpiry` ile timed state (expiry/
+  persist/revert bedava). WraithForm = HorrificBeast deseni (StatFlag.Polymorph +
+  WraithFormActive, IsPolymorphLayerSpell'e eklendi); CurseWeapon = level'i eff'te
+  saklar (ActiveSpellEffect.CurseWeaponLevel, serialize/deserialize'a append,
+  ApplyDeltas/RevertDeltas state'i kurar/temizler). Save/load round-trip test'li.
+  KALAN necro spell'ler (damage tranche PainSpike/PoisonStrike/Strangle/Wither ~free
+  flag-driven; debuff CorpseSkin/MindRot/EvilOmen ApplyCurse deseni; ağır olanlar
+  AnimateDead/SummonFamiliar/VengefulSpirit summon-AI, LichForm/VampiricEmbrace full
+  form) — ayrı dalgalarda. Chivalry/Bushido/Ninjitsu/Spellweaving/Mysticism dokunulmadı.
 - [x] **MAGICF_IGNOREAR + spell reflection zinciri** — YAPILDI (Wave 225).
   MAGICFLAGS düşük bitleri Source-X `MAGICFLAGS_TYPE` ile birebir hizalandı;
   SphereNet extension flag'leri çakışmayan yüksek bitlere taşındı. `IGNOREAR` magic
@@ -138,9 +151,17 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
 - [x] Era-2 def-side **INCREASEDEFCHANCE / INCREASEHITCHANCE** — YAPILDI (Wave 215):
   `(100 + min(HCI,45))` / `(100 + min(DCI,45))` çarpanları (eskiden düz 100).
   CombatEngine.CalcHitChanceCore era 2. Test: CombatWaveC5AosOnHitTests.
-- [ ] Curse-Weapon leech add (cpp:2273-2275), Wraith-Form mana drain (cpp:2302-2305).
-  ERTELENDİ → necro spell'lerine bağlı (2.2). SphereNet'te LAYER_SPELL_Curse_Weapon/
-  Polymorph-Wraith buff-item modeli yok; önce necro efektleri gerekir.
+- [x] **Curse-Weapon leech add + Wraith-Form mana drain** — YAPILDI (Wave 253,
+  necromancy grubu). LAYER_SPELL buff-item modeli GEREKMEDİ: Source-X combat
+  hook'ları zaten hit-anında bir state flag OKUR (LayerFind), cast'e bağlı değil.
+  SphereNet karşılığı: iki transient Character state — `WraithFormActive` (bool,
+  HorrificBeastActive deseni) ve `CurseWeaponLevel` (int). `CombatEngine.
+  ApplyAosOnHitEffects`: (1) `weapon != null && CurseWeaponLevel>0` → leechLife'a
+  curse level eklenir (CCharFight.cpp:2272-2275, weapon-gated), (2) `WraithFormActive`
+  → manaDrain'e `5 + 15*SpiritSpeak/1000` eklenir, target mana'sıyla cap'li
+  (CCharFight.cpp:2299-2304). State'i Curse Weapon (104) / Wraith Form (116)
+  spell case'leri kurar (aşağı bak). Test: SourceXWave253Tests (wraith drain
+  deterministik + SpiritSpeak-scaled + cap, curse weapon-gated via OnLeechEffect).
 
 ### 2.5 Melee combat — 88
 - [x] **SE (era3) / ML (era4) hız formülleri** — YAPILDI (Wave 226).
@@ -302,6 +323,22 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   `MSECS_PER_TENTH` = onda-bir-saniye kullanır (legacy script uyumu). Fix:
   `intervalMs = Clamp(tenths,1,…) * 100`. Böylece legacy `RESTOCKVENDORS=6000`
   = 600sn = 10dk (eskiden yanlışça 6000dk).
+- [x] **Owned-vendor CASH (PC_CASH) + restock faucet fix** — YAPILDI (Wave 251,
+  ekonomi-riskli grubun GÜVENLİ alt kümesi). Source-X `NPC_VendorGetChkVerb`
+  PC_CASH sahibin vendor kasasını (`m_Check_Amount`) sahibine boşaltır. ÖNCE
+  faucet bug'ı: `VendorEngine.RestockVendor` HER vendor'ın kasasını her restock'ta
+  `RestockGold`(2000)'e dolduruyordu → sahipli (player/pet) vendor'da CASH =
+  sonsuz-altın exploit'i. Fix: top-up artık `!vendor.OwnerSerial.IsValid` ile
+  gate'li (sadece sahipsiz dükkâncı sonsuz alım-fonu alır; sahipli vendor SADECE
+  gerçek kazanç biriktirir). Yeni `VendorEngine.DispenseVendorGold(vendor,owner)`
+  kasayı sahibin sırt çantasına (`GiveGoldToPack`, ProcessSell'in altın-yığma
+  mantığından dedup) döker + kasayı 0'lar. `ApplyPetVerb` (ClientItemUseHandler)
+  `cash` case'i owner-gate (`CanAcceptPetCommandFrom`) + Vendor-brain kontrolü
+  sonrası dispense. `bought/samples/stock/cash` `IsPetTargetVerb`'ten ÇIKARILDI
+  (bogus target cursor'ı yoktu artık); `bought/samples/stock` dürüst mesaj (SphereNet
+  vendor stock'u template-driven/virtual, owner-managed envanter DEĞİL → drag-out
+  dup riski, kasıtlı ertelendi). Test: SourceXWave251Tests (+4: owned no-topup,
+  unowned topup, dispense→owner+zero, empty-purse no-op).
 
 ---
 
@@ -433,13 +470,27 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   DEĞİL (Source-X'te Forensics/steal callers). Kapsam dışı.
 
 ### 4.7 Item core — 85
-- [~] `CItemBase` BONUSSKILL1-5(+AMT) / BONUSCRAFTING* — KAPSAM NETLEŞTİRİLDİ
-  (Wave 216): key'ler tag olarak saklanabilir; ASIL boşluk = **efektif-skill
-  katmanı**. SphereNet `GetSkill` ham base döner (equipment bonus agregasyonu yok);
-  giyilen item'in skill'i yükseltmesi için base-vs-efektif ayrımı + equip/unequip
-  recompute gerekir — combat/crafting/skill-gain'e yayılan HOT-PATH mimari ekleme,
-  temiz key-add DEĞİL. ERTELENDİ (riskli, ayrı dalga). AOS suit-property agregasyonu
-  genel eksiğiyle birlikte ele alınmalı.
+- [x] **Efektif-skill katmanı (Skill_GetAdjusted SkillMod terimi)** — YAPILDI
+  (Wave 252, "büyük mimari" grubu — recon ile RİSK ÇÖKERTİLDİ). Source-X recon'u
+  gösterdi ki korkulan HOT-PATH yeniden yazımı GEREKMİYOR: Source-X'te combat/
+  crafting/skill-gain zaten `Skill_GetBase` (ham base) çağırır; equipment bonusu
+  SADECE `Skill_GetAdjusted`'ın okuduğu `SkillMod<n>` char key'inden gelir
+  (CCharSkill.cpp:171-174, script-maintained @Equip/@UnEquip). SphereNet'te
+  `GetSkill`=Skill_GetBase (ham) DOKUNULMADI; `SkillEngine.GetAdjustedSkill` ZATEN
+  vardı (base + BONUS_STATS stat-katkısı) ama SkillMod terimi eksikti. Fix:
+  `GetSkillModBonus(ch,skill)` = `TryGetTag("SkillMod<n>")` (signed) eklendi,
+  GetAdjustedSkill'e `+= SkillMod<n>` (final clamp≥0). Consumer: `SendSkillList`
+  (0x3A) artık value=adjusted, rawValue=base gönderiyor (Source-X send.cpp:1146
+  Skill_GetAdjusted-as-value); skill penceresinde equipment bonusu görünür. Legacy
+  uyum: Character get/set'e `SKILLMOD<n>` property case'i (bare key, `SRC.SkillMod5=100`
+  → tag; 0 → temizle) — hem bare hem `TAG.` yolu çalışır, tag olarak otomatik persist.
+  Combat/crafting/skill-gain/cap DEĞİŞMEDİ (GetSkill/ResolveSkillCap ham base'de
+  kalır, Source-X `Skill_GetMax` base'e clamp eder). SkillMod default 0 → mevcut
+  içerikte SIFIR davranış değişimi (opt-in). Test: SourceXWave252Tests (+5).
+  KALAN (ertelendi): first-class BONUSSKILL1-5/AMT item property parse'ı + @Equip
+  otomatik SkillMod maintenance (Source-X'te bile script-driven, ayrı iş); AOS
+  suit stat/resist/hitchance agregasyonu (Stat_AddMod/ModPropNum equip-time cache,
+  ayrı dalga — hakiki hot-path, CCharAct.cpp:3382/514).
 - [x] **BASEWEIGHT** (per-item weight override) — YAPILDI (Wave 249): Source-X
   CItem::m_weight (birim-başına onda-bir-stone, CItem.cpp:2777). Item.Weight getter'a
   nullable `_weightOverride` eklendi (set → tüm ağırlık hesabını sürer: TotalWeight/

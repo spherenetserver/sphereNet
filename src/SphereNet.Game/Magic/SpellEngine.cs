@@ -114,6 +114,7 @@ public sealed class SpellEngine
         public string? OldName { get; set; }
         public string? NewName { get; set; }
         public bool NameChanged { get; set; }
+        public int CurseWeaponLevel { get; set; }
     }
 
     // Disguise names used by Incognito.
@@ -1741,6 +1742,28 @@ public sealed class SpellEngine
                 target.SetStatFlag(StatFlag.Polymorph);
                 break;
             }
+            case SpellType.WraithForm:
+            {
+                // Necromancy Wraith Form (reference SPELL_Wraith_Form): a
+                // LAYER_SPELL_Polymorph form. While active, damaging hits drain
+                // the target's mana (see CombatEngine.ApplyAosOnHitEffects).
+                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                eff.AppliedFlag = StatFlag.Polymorph;
+                target.WraithFormActive = true;
+                target.SetStatFlag(StatFlag.Polymorph);
+                break;
+            }
+            case SpellType.CurseWeapon:
+            {
+                // Necromancy Curse Weapon (reference SPELL_Curse_Weapon): stores
+                // m_spelllevel (EFFECT curve, 10-15) that is added to the wielded
+                // weapon's HITLEECHLIFE percent on hit.
+                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                int level = Math.Clamp(effect, 1, 100);
+                eff.CurseWeaponLevel = level;
+                target.CurseWeaponLevel = level;
+                break;
+            }
             case SpellType.Polymorph:
             {
                 ReadOnlySpan<ushort> forms = [0x0033, 0x0034, 0x0035, 0x0036, 0x0037, 0x0038];
@@ -1931,6 +1954,10 @@ public sealed class SpellEngine
             t.ProtectionArmor = Math.Max(0, t.ProtectionArmor - eff.ArmorDelta);
         if (eff.Spell == SpellType.HorrificBeast)
             t.HorrificBeastActive = false;
+        if (eff.Spell == SpellType.WraithForm)
+            t.WraithFormActive = false;
+        if (eff.Spell == SpellType.CurseWeapon)
+            t.CurseWeaponLevel = 0;
         if (eff.AppliedFlag != StatFlag.None) t.ClearStatFlag(eff.AppliedFlag);
         if (eff.NameChanged && eff.OldName != null)
         {
@@ -1962,6 +1989,10 @@ public sealed class SpellEngine
                 int.MaxValue, (long)t.ProtectionArmor + eff.ArmorDelta);
         if (eff.Spell == SpellType.HorrificBeast)
             t.HorrificBeastActive = true;
+        if (eff.Spell == SpellType.WraithForm)
+            t.WraithFormActive = true;
+        if (eff.Spell == SpellType.CurseWeapon)
+            t.CurseWeaponLevel = eff.CurseWeaponLevel;
         if (eff.AppliedFlag != StatFlag.None) t.SetStatFlag(eff.AppliedFlag);
         if (eff.NameChanged && eff.NewName != null)
         {
@@ -2133,14 +2164,15 @@ public sealed class SpellEngine
             EncodeEffectString(eff.OldName),
             EncodeEffectString(eff.NewName),
             eff.NameChanged ? "1" : "0",
-            eff.ArmorDelta.ToString(CultureInfo.InvariantCulture));
+            eff.ArmorDelta.ToString(CultureInfo.InvariantCulture),
+            eff.CurseWeaponLevel.ToString(CultureInfo.InvariantCulture));
     }
 
     private static bool TryDeserializeEffect(Character target, string record, long now, out ActiveSpellEffect eff)
     {
         eff = null!;
         var parts = record.Split('|');
-        if (parts.Length is not (16 or 17))
+        if (parts.Length is not (16 or 17 or 18))
             return false;
 
         if (!int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int version) ||
@@ -2178,8 +2210,12 @@ public sealed class SpellEngine
         if (!TryDecodeEffectString(parts[14], out string? newName))
             return false;
         int armorDelta = 0;
-        if (parts.Length == 17 &&
+        if (parts.Length >= 17 &&
             !int.TryParse(parts[16], NumberStyles.Integer, CultureInfo.InvariantCulture, out armorDelta))
+            return false;
+        int curseWeaponLevel = 0;
+        if (parts.Length >= 18 &&
+            !int.TryParse(parts[17], NumberStyles.Integer, CultureInfo.InvariantCulture, out curseWeaponLevel))
             return false;
 
         long expireTick = remainingMs > long.MaxValue - now ? long.MaxValue : now + remainingMs;
@@ -2202,6 +2238,7 @@ public sealed class SpellEngine
             OldName = oldName,
             NewName = newName,
             NameChanged = parts[15] == "1",
+            CurseWeaponLevel = curseWeaponLevel,
         };
         return true;
     }
@@ -2210,7 +2247,7 @@ public sealed class SpellEngine
         spell is SpellType.Protection or SpellType.ArchProtection;
 
     private static bool IsPolymorphLayerSpell(SpellType spell) =>
-        spell is SpellType.Polymorph or SpellType.HorrificBeast;
+        spell is SpellType.Polymorph or SpellType.HorrificBeast or SpellType.WraithForm;
 
     private static string EncodeEffectString(string? value)
     {

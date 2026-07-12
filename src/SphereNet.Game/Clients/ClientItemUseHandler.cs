@@ -2121,9 +2121,12 @@ public sealed class ClientItemUseHandler
 
     private static bool IsPetTargetVerb(string verb) => verb switch
     {
+        // Source-X PC_* verbs that open a target cursor. bought/samples/stock/cash
+        // are vendor management verbs that act immediately (open a container or
+        // dispense the purse), NOT target verbs — they must not raise a cursor.
         "attack" or "kill" or "guard" or "follow" or "go" or
         "friend" or "unfriend" or "transfer" or "release" or
-        "price" or "bought" or "samples" or "stock" or "cash" => true,
+        "price" => true,
         _ => false
     };
 
@@ -2288,6 +2291,35 @@ public sealed class ClientItemUseHandler
                     NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetEmployed));
                 return true;
 
+            case "cash":
+            {
+                // Source-X NPC_VendorGetChkVerb PC_CASH: only an owned vendor's
+                // real earnings are dispensed to the owner (restock never tops
+                // up an owned purse, so this cannot mint gold).
+                if (pet.NpcBrain != Core.Enums.NpcBrainType.Vendor)
+                {
+                    NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetConfused));
+                    return true;
+                }
+                int dispensed = SphereNet.Game.Trade.VendorEngine.DispenseVendorGold(pet, _character);
+                NpcSpeech(pet, dispensed > 0
+                    ? $"Here is thy gold: {dispensed}"
+                    : "I have no gold for thee.");
+                return true;
+            }
+
+            case "bought":
+            case "samples":
+            case "stock":
+                // Source-X opens the vendor's owner-managed BOUGHT/SAMPLES/STOCK
+                // container. SphereNet's vendor stock is template-driven (virtual,
+                // rebuilt on restock), not an owner-managed inventory, so there is
+                // nothing safe to hand out — report honestly instead of a bogus cursor.
+                NpcSpeech(pet, pet.NpcBrain == Core.Enums.NpcBrainType.Vendor
+                    ? "I manage my own stock."
+                    : ServerMessages.Get(Msg.NpcPetConfused));
+                return true;
+
             case "attack":
             case "kill":
             case "guard":
@@ -2298,10 +2330,6 @@ public sealed class ClientItemUseHandler
             case "transfer":
             case "release":
             case "price":
-            case "bought":
-            case "samples":
-            case "stock":
-            case "cash":
                 EmitPetTargetPrompt(pet, verb);
                 return true;
 

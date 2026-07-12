@@ -4,6 +4,33 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, thirty-second batch (deferred groups)
+----------------------------------------
+
+ADDED - Owned-vendor cash dispense and restock faucet fix (Wave 251):
+  - The "cash" pet command now empties an owned vendor's purse into the owner's
+    pack (Source-X NPC_VendorGetChkVerb PC_CASH). To prevent a free-gold faucet,
+    the periodic restock no longer tops up an owned vendor's purse - only plain
+    shopkeepers keep the infinite buy fund; owned vendors accumulate real earnings
+    only. The bought/samples/stock verbs no longer raise a bogus target cursor.
+
+ADDED - Effective-skill layer (Wave 252):
+  - GetAdjustedSkill now includes the per-character SkillMod<n> equipment bonus on
+    top of the base skill and stat contribution (Source-X Skill_GetAdjusted). The
+    skill window (0x3A) reports the adjusted value with the raw base as the second
+    field. A SkillMod<n> script property reads/writes the bonus (bare key or TAG.
+    prefix), persisted as a tag. The raw base used by combat, crafting and skill
+    gain is unchanged, so existing content sees no behavior change until the bonus
+    is set.
+
+ADDED - Necromancy foundation: Curse Weapon and Wraith Form (Wave 253):
+  - On a damaging melee hit, a Curse Weapon state adds its level to the weapon's
+    life-leech percent (weapon-gated), and a Wraith Form state drains the target's
+    mana to the attacker scaled by Spirit Speak (Source-X CCharFight on-hit hooks).
+  - The Curse Weapon and Wraith Form spells set these timed states with the normal
+    effect expiry, persistence and revert; the Curse Weapon level survives a
+    save/load round-trip.
+
 [2026-07-12] - Sub-90 parity backlog, thirty-first batch
 ----------------------------------------
 

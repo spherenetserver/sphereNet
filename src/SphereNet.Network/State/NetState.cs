@@ -748,6 +748,7 @@ public sealed class NetState : IDisposable
     public Action<NetState, bool>? WarModeHandler { get; set; }
     public Action<NetState, uint>? DoubleClickHandler { get; set; }
     public Action<NetState, uint>? SingleClickHandler { get; set; }
+    public Action<NetState, uint, uint>? MailMessageHandler { get; set; }
     public Action<NetState, uint, ushort>? ItemPickupHandler { get; set; }
     public Action<NetState, uint, short, short, sbyte, uint>? ItemDropHandler { get; set; }
     public Action<NetState, uint, byte, uint>? ItemEquipHandler { get; set; }
@@ -861,6 +862,9 @@ public sealed class NetState : IDisposable
 
     internal void OnSingleClick(uint serial)
         => SingleClickHandler?.Invoke(this, serial);
+
+    internal void OnMailMessage(uint targetSerial, uint attachmentSerial)
+        => MailMessageHandler?.Invoke(this, targetSerial, attachmentSerial);
 
     internal void OnItemPickup(uint serial, ushort amount)
         => ItemPickupHandler?.Invoke(this, serial, amount);

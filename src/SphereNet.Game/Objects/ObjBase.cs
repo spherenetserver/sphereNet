@@ -602,6 +602,37 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
 
         switch (key.ToUpperInvariant())
         {
+            case "DAMAGE":
+            {
+                string[] parts = SplitScriptArgs(args);
+                if (parts.Length == 0 ||
+                    !SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(parts[0].AsSpan(), out long rawDamage) ||
+                    rawDamage <= 0)
+                    return false;
+
+                var damageType = Combat.DamageType.HitBlunt;
+                if (parts.Length > 1 &&
+                    SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(parts[1].AsSpan(), out long rawType))
+                    damageType = (Combat.DamageType)unchecked((ushort)rawType);
+
+                Characters.Character? damageSource = null;
+                if (parts.Length > 2 &&
+                    SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(parts[2].AsSpan(), out long rawSource) &&
+                    rawSource > 0 && rawSource <= uint.MaxValue)
+                    damageSource = ResolveWorld?.Invoke()?.FindChar(new Serial((uint)rawSource));
+
+                static int Percent(string[] values, int index) =>
+                    index < values.Length &&
+                    SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(values[index].AsSpan(), out long value)
+                        ? (int)Math.Clamp(value, int.MinValue, int.MaxValue)
+                        : 0;
+
+                Combat.CombatEngine.ApplyScriptDamage(
+                    this, (int)Math.Clamp(rawDamage, 0, short.MaxValue), damageType, damageSource,
+                    Percent(parts, 3), Percent(parts, 4), Percent(parts, 5),
+                    Percent(parts, 6), Percent(parts, 7));
+                return true;
+            }
             // Source-X TIMERF schedules a delayed function/verb on this object: the
             // delay is in SECONDS, while TIMERFMS takes MILLISECONDS (same payload).
             case "TIMERF":

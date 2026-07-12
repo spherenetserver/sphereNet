@@ -30,6 +30,9 @@ public sealed class ClientTargetState
     public bool Resurrect;
     public bool Inspect;
     public string? AddToken;
+    /// <summary>Optional ADD/ADDITEM stack amount carried until the target
+    /// response. Source-X stores this beside m_tmAdd.m_id.</summary>
+    public ushort AddAmount = 1;
     public string? ShowArgs;
     public string? EditArgs;
     /// <summary>X-prefix verb fallback (CClient.cpp:921): the inner verb +
@@ -69,6 +72,7 @@ public sealed class ClientTargetState
     {
         Tele = false;
         AddToken = null;
+        AddAmount = 1;
         ShowArgs = null;
         EditArgs = null;
         XVerb = null;

@@ -102,6 +102,7 @@ public sealed class NetworkManager : IDisposable
         _packetManager.Register(new PacketServerSelect());
         _packetManager.Register(new PacketDoubleClick());
         _packetManager.Register(new PacketSingleClick());
+        _packetManager.Register(new PacketMailMessage());
         _packetManager.Register(new PacketItemPickup());
         _packetManager.Register(new PacketItemDrop());
         _packetManager.Register(new PacketItemEquip());
@@ -757,6 +758,7 @@ public sealed class NetworkManager : IDisposable
         Action<NetState, bool>? warMode = null,
         Action<NetState, uint>? doubleClick = null,
         Action<NetState, uint>? singleClick = null,
+        Action<NetState, uint, uint>? mailMessage = null,
         Action<NetState, uint, ushort>? itemPickup = null,
         Action<NetState, uint, short, short, sbyte, uint>? itemDrop = null,
         Action<NetState, uint, byte, uint>? itemEquip = null,
@@ -814,6 +816,7 @@ public sealed class NetworkManager : IDisposable
             state.WarModeHandler = warMode;
             state.DoubleClickHandler = doubleClick;
             state.SingleClickHandler = singleClick;
+            state.MailMessageHandler = mailMessage;
             state.ItemPickupHandler = itemPickup;
             state.ItemDropHandler = itemDrop;
             state.ItemEquipHandler = itemEquip;

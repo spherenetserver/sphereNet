@@ -72,7 +72,7 @@ The trigger surface is measured and regression-guarded by
 `src/SphereNet.Tests/TriggerCoverageGuardrailTests.cs`, which recomputes the
 "defined but not fired" set from source on every run. The ITEM-trigger backlog is
 now EMPTY (the champion port wired Level/Complete and the four candle triggers);
-outstanding char entries: `NPCSeeWantItem`, `UserMailBag`.
+outstanding char entry: `NPCSeeWantItem`.
 
 Per-trigger **arg contract** (`SRC`, `ARGO`, `ACT`, `ARGN1/2/3`, `ARGS`, `LOCAL`,
 `RETURN 0/1`, arg mutation) — the Faz 2 core:

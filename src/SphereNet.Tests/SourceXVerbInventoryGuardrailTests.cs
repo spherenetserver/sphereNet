@@ -116,18 +116,7 @@ public class SourceXVerbInventoryGuardrailTests
     /// below fails when an unlisted verb loses its dispatch route, and also
     /// fails when one of these entries gains a route without being removed
     /// from this explicit debt list.</summary>
-    private static readonly Dictionary<string, string[]> KnownPartialOrDeferred = new()
-    {
-        ["CObjBase_functions.tbl"] =
-        [
-            "DAMAGE"
-        ],
-        ["CClient_functions.tbl"] =
-        [
-            "ADD", "ADDCHAR", "ADDITEM", "CLOSEPAPERDOLL", "CTAGLIST", "GMPAGE",
-            "INFORMATION", "RESEND", "SAVE", "SELF", "SKILLSELECT", "VERSION"
-        ]
-    };
+    private static readonly Dictionary<string, string[]> KnownPartialOrDeferred = new();
 
     [Fact]
     public void SourceXVerbSurfaces_MatchPinnedInventory()

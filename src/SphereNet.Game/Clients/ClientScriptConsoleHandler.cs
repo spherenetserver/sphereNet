@@ -1215,23 +1215,133 @@ public sealed class ClientScriptConsoleHandler
         if (_character == null) return false;
         switch (upper)
         {
+            case "ADD":
+            case "ADDCHAR":
+            case "ADDITEM":
+            {
+                string raw = args.Trim();
+                if (raw.Length == 0)
+                {
+                    // Source-X bare ADD opens D_ADD (or MENU_ADDITEM fallback).
+                    // Use the named dialog when the script pack provides it;
+                    // otherwise keep the command acknowledged with a usage hint.
+                    if (upper == "ADD" && OpenNamedDialog("d_add", subject: _character))
+                        return true;
+                    SysMessage($"Usage: {upper} <defname|id>");
+                    return true;
+                }
+
+                // Source-X accepts an optional amount after comma and keeps it
+                // in m_tmAdd until the target response.
+                string[] addParts = raw.Split([',', ' ', '\t'], 2,
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                string token = addParts[0];
+                ushort amount = 1;
+                if (addParts.Length > 1 && ushort.TryParse(addParts[1], out ushort parsedAmount))
+                    amount = Math.Max((ushort)1, parsedAmount);
+                (_client as GameClient)?.BeginAddTarget(token, amount);
+                return true;
+            }
+
             case "CHARLIST":
                 // Source-X CV_CHARLIST — resend the character selection list.
                 _client.ResendCharacterList();
                 return true;
 
+            case "CLOSEPAPERDOLL":
             case "CLOSEPROFILE":
             case "CLOSESTATUS":
             {
-                // 0xBF sub 0x16 close-UI packet: Profile=8, Status=2. Optional
-                // arg = char uid; default = own char.
-                uint windowType = upper == "CLOSEPROFILE" ? 8u : 2u;
+                // 0xBF sub 0x16 close-UI packet: Paperdoll=1, Status=2,
+                // Profile=8. Optional arg = char uid; default = own char.
+                uint windowType = upper switch
+                {
+                    "CLOSEPAPERDOLL" => 1u,
+                    "CLOSEPROFILE" => 8u,
+                    _ => 2u
+                };
                 uint uid = _character.Uid.Value;
                 string uidArg = args.Trim();
                 if (uidArg.Length > 0 &&
                     SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(uidArg.AsSpan(), out long uv) && uv > 0)
                     uid = (uint)uv;
                 Send(new SphereNet.Network.Packets.Outgoing.PacketCloseUIWindow(windowType, uid));
+                return true;
+            }
+
+            case "CTAGLIST":
+            {
+                bool toLog = args.TrimStart().StartsWith("log", StringComparison.OrdinalIgnoreCase);
+                foreach (var (tagKey, tagValue) in _character.CTags.GetAll())
+                {
+                    string line = $"CTAG.{tagKey}={tagValue}";
+                    if (toLog)
+                        _logger.LogInformation("{Line}", line);
+                    else
+                        SysMessage(line);
+                }
+                return true;
+            }
+
+            case "GMPAGE":
+            {
+                string reason = args.Trim();
+                if (reason.StartsWith("add ", StringComparison.OrdinalIgnoreCase))
+                    reason = reason[4..].Trim();
+                if (reason.Length > 0)
+                {
+                    _commands?.Execute(_character, $"PAGE {reason}");
+                    return true;
+                }
+
+                _client.SendPrompt(0x474D5047, "Enter your help request:",
+                    (_, _, _, text) =>
+                    {
+                        if (!string.IsNullOrWhiteSpace(text))
+                            _commands?.Execute(_character, $"PAGE {text.Trim()}");
+                    });
+                return true;
+            }
+
+            case "INFORMATION":
+                SysMessage($"SphereNet: {_world.TotalChars} chars, {_world.TotalItems} items.");
+                SysMessage($"Client: {_netState.ClientVersionNumber}, map {_character.MapIndex}.");
+                return true;
+
+            case "RESEND":
+                Resync();
+                return true;
+
+            case "SAVE":
+                _commands?.Execute(_character, "SAVE");
+                return true;
+
+            case "SELF":
+            {
+                if (!Targets.CursorActive || _client is not GameClient selfClient)
+                    return false;
+                Point3D p = _character.Position;
+                selfClient.Targeting.HandleTargetResponse(
+                    0, 0, _character.Uid.Value, p.X, p.Y, p.Z, 0);
+                return true;
+            }
+
+            case "SKILLSELECT":
+            {
+                string token = args.Trim();
+                int skillId;
+                if (Enum.TryParse(token, true, out SkillType skill))
+                    skillId = (int)skill;
+                else if (!int.TryParse(token, out skillId))
+                    return true;
+                (_client as GameClient)?.HandleUseSkill(skillId);
+                return true;
+            }
+
+            case "VERSION":
+            {
+                string version = typeof(GameClient).Assembly.GetName().Version?.ToString() ?? "1.0.0";
+                SysMessage($"SphereNet {version}");
                 return true;
             }
 

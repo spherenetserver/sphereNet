@@ -812,6 +812,12 @@ public static partial class Program
             client.HandleSingleClick(serial);
     }
 
+    private static void OnMailMessage(NetState state, uint targetSerial, uint attachmentSerial)
+    {
+        if (_clients.TryGetValue(state.Id, out var client))
+            client.HandleMailMessage(targetSerial, attachmentSerial);
+    }
+
     private static void OnItemPickup(NetState state, uint serial, ushort amount)
     {
         if (_clients.TryGetValue(state.Id, out var client))

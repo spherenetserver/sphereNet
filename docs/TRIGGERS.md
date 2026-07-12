@@ -20,7 +20,7 @@ When a trigger runs, the script body executes **on the object the trigger belong
 
 > Source of truth: `TriggerDispatcher.cs` (`WrapArgs`, name maps), `TriggerTypes.cs` (enums), and every `FireCharTrigger` / `FireItemTrigger` call site. Only triggers with a real fire site are listed; enum-only triggers are in the last section.
 
-Current guardrail snapshot (2026-06-30): the only character triggers defined but not fired are `NPCSeeWantItem` and `UserMailBag`. The only item triggers defined but not fired are `Level`, `Complete`, `AddRedCandle`, `AddWhiteCandle`, `DelRedCandle`, and `DelWhiteCandle`. This is locked by `TriggerCoverageGuardrailTests`.
+Current guardrail snapshot (2026-07-12): the only character trigger defined but not fired is `NPCSeeWantItem`; the item-trigger backlog is empty. This is locked by `TriggerCoverageGuardrailTests`.
 
 ---
 
@@ -147,6 +147,7 @@ Current guardrail snapshot (2026-06-30): the only character triggers defined but
 | `@UserBugReport` | Crash/bug report packet | player | player | – | N1=0x00F4 | – | ignored |
 | `@UserUltimaStoreButton` | Ultima Store button packet | player | player | – | N1=0x00FA | – | ignored |
 | `@UserGlobalChatButton` | Chat window open packet | player | player | – | N1=0x00B5 | – | ignored |
+| `@UserMailBag` | Legacy mail-drop packet (0xBB) | recipient | sender | – | – | – | cancels recipient notification |
 | `@UserExWalkLimit` | Fast-walk token bucket is exhausted | player | player | – | – | – | ignored |
 | `@UserSpecialMove` | Encoded combat special move command | player | player | – | N1=ability index | – | ignored |
 
@@ -238,16 +239,12 @@ These exist in `TriggerTypes.cs` (and have name mappings) but have **no** litera
 
 Each trigger carries a wiring priority by shard impact (P0 highest). The buckets are encoded in `TriggerCoverageGuardrailTests` and partition the backlog exactly.
 
-**Character (2)**
+**Character (1)**
 
 - **P0/P1:** none currently documented as unfired.
-- **P2:** `NPCSeeWantItem`, `UserMailBag`.
+- **P2:** `NPCSeeWantItem`.
   - `NPCSeeWantItem` is intentionally deferred because the current NPC ground-item scan already fires `@NPCLookAtItem`; a true "want item" trigger needs item-desire/pickup logic that does not exist yet.
-  - `UserMailBag` is intentionally deferred because the supported client protocol set has no carrier packet for it.
 
-**Item (6)** — all **P2**:
-
-- `Level`, `Complete`
-- `AddRedCandle`, `AddWhiteCandle`, `DelRedCandle`, `DelWhiteCandle`
+**Item (0):** all item triggers have a real fire site.
 
 Deferred reasons: item leveling is not implemented, and champion altar/candle infrastructure is not implemented. `ResourceGather` / `ResourceTest` are fired via the resource path, not the normal item path, so they are excluded from this backlog.

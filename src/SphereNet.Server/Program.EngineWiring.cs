@@ -2136,6 +2136,57 @@ public static partial class Program
             CombatEngine.OnHitDamage = ctx =>
                 _triggerDispatcher?.RunHitDamageTriggers(ctx) ?? ctx.Damage;
 
+            // CObjBase DAMAGE is not a weapon swing: fire only the victim's
+            // @GetHit stage, then let CombatEngine apply split/resist and HP.
+            CombatEngine.OnDirectDamage = ctx =>
+            {
+                var locals = new SphereNet.Scripting.Variables.VarMap();
+                locals.SetInt("DamagePercentPhysical", ctx.PhysicalPercent);
+                locals.SetInt("DamagePercentFire", ctx.FirePercent);
+                locals.SetInt("DamagePercentCold", ctx.ColdPercent);
+                locals.SetInt("DamagePercentPoison", ctx.PoisonPercent);
+                locals.SetInt("DamagePercentEnergy", ctx.EnergyPercent);
+                var triggerArgs = new TriggerArgs
+                {
+                    CharSrc = ctx.Source,
+                    N1 = ctx.Damage,
+                    N2 = (int)ctx.DamageType,
+                    Locals = locals
+                };
+                if (_triggerDispatcher?.FireCharTrigger(
+                        ctx.Target, CharTrigger.GetHit, triggerArgs) == TriggerResult.True)
+                {
+                    ctx.Cancelled = true;
+                    return 0;
+                }
+                ctx.PhysicalPercent = (int)locals.GetInt("DamagePercentPhysical");
+                ctx.FirePercent = (int)locals.GetInt("DamagePercentFire");
+                ctx.ColdPercent = (int)locals.GetInt("DamagePercentCold");
+                ctx.PoisonPercent = (int)locals.GetInt("DamagePercentPoison");
+                ctx.EnergyPercent = (int)locals.GetInt("DamagePercentEnergy");
+                return triggerArgs.N1;
+            };
+
+            CombatEngine.OnDirectCharacterDamageApplied = (target, source, damage) =>
+            {
+                _spellEngine?.TryInterruptFromDamage(target, damage);
+                BroadcastNearby(target.Position, 18,
+                    new PacketDamage(target.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue)), 0);
+                BroadcastNearby(target.Position, 18,
+                    new PacketUpdateHealth(target.Uid.Value, target.MaxHits, target.Hits), 0);
+                GameClient.EmitBloodSplat(_world, target);
+
+                if (source != null && source != target && !target.IsPlayer &&
+                    !target.IsDead && !target.FightTarget.IsValid)
+                {
+                    target.FightTarget = source.Uid;
+                    target.NextNpcActionTime = 0;
+                    WakeNpc(target);
+                }
+                if (target.Hits <= 0 && !target.IsDead)
+                    _deathEngine?.ProcessDeath(target, source);
+            };
+
             // AOS on-hit hooks (Source-X Fight_Hit tail, CCharFight.cpp:2270).
             // Leech feedback: Source-X plays 0x44D at the attacker.
             CombatEngine.OnLeechEffect = ch =>
@@ -3189,6 +3240,7 @@ public static partial class Program
                 warMode: OnWarMode,
                 doubleClick: OnDoubleClick,
                 singleClick: OnSingleClick,
+                mailMessage: OnMailMessage,
                 itemPickup: OnItemPickup,
                 itemDrop: OnItemDrop,
                 itemEquip: OnItemEquip,

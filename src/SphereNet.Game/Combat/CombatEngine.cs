@@ -1,4 +1,5 @@
 using SphereNet.Core.Enums;
+using SphereNet.Game.Objects;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
 using SphereNet.Game.Skills.Information;
@@ -140,6 +141,23 @@ public sealed class HitDamageContext
     public int DamPercentEnergy { get; init; }
 }
 
+/// <summary>Source-X CObjBase DAMAGE verb context. Unlike a weapon hit this
+/// fires only the target-side @GetHit chain; there is no attacker @Hit or
+/// weapon/item-on-hit stage.</summary>
+public sealed class DirectDamageContext
+{
+    public required Character Target { get; init; }
+    public Character? Source { get; init; }
+    public int Damage { get; set; }
+    public DamageType DamageType { get; init; }
+    public int PhysicalPercent { get; set; }
+    public int FirePercent { get; set; }
+    public int ColdPercent { get; set; }
+    public int PoisonPercent { get; set; }
+    public int EnergyPercent { get; set; }
+    public bool Cancelled { get; set; }
+}
+
 /// <summary>
 /// Core combat engine. Maps to CChar::Fight_* functions in Source-X CCharFight.cpp.
 /// Handles hit/miss, damage calculation, armor, and weapon skill routing.
@@ -202,6 +220,14 @@ public static class CombatEngine
     /// the player and NPC swing paths share one trigger pipeline.
     /// </summary>
     public static Func<HitDamageContext, int>? OnHitDamage;
+
+    /// <summary>Target-side @GetHit bridge for the DAMAGE verb. Returns the
+    /// script-adjusted raw damage; setting Cancelled suppresses application.</summary>
+    public static Func<DirectDamageContext, int>? OnDirectDamage;
+
+    /// <summary>Host feedback after direct character damage is applied:
+    /// interrupt casting, broadcast damage/health and run the death engine.</summary>
+    public static Action<Character, Character?, int>? OnDirectCharacterDamageApplied;
 
     /// <summary>Leech feedback on an AOS on-hit drain (Source-X sound 0x44D
     /// at the attacker). Wired to a nearby-sound broadcast.</summary>
@@ -550,6 +576,117 @@ public static class CombatEngine
     {
         if (DurabilityEnabled)
             ApplyDurabilityLoss(item);
+    }
+
+    /// <summary>Apply the Source-X CObjBase DAMAGE verb to a character or item.
+    /// Character damage honors @GetHit and elemental resists; item damage uses
+    /// the existing @Damage cancellation and durability-break callbacks.</summary>
+    public static int ApplyScriptDamage(
+        ObjBase target,
+        int rawDamage,
+        DamageType damageType,
+        Character? source = null,
+        int physicalPercent = 0,
+        int firePercent = 0,
+        int coldPercent = 0,
+        int poisonPercent = 0,
+        int energyPercent = 0)
+    {
+        int damage = Math.Clamp(rawDamage, 0, short.MaxValue);
+        if (damage <= 0) return 0;
+
+        if (target is Item item)
+            return ApplyDirectItemDamage(item, damage);
+        if (target is not Character character || character.IsDeleted || character.IsDead)
+            return 0;
+
+        var context = new DirectDamageContext
+        {
+            Target = character,
+            Source = source,
+            Damage = damage,
+            DamageType = damageType,
+            PhysicalPercent = physicalPercent,
+            FirePercent = firePercent,
+            ColdPercent = coldPercent,
+            PoisonPercent = poisonPercent,
+            EnergyPercent = energyPercent
+        };
+        if (OnDirectDamage != null)
+            damage = Math.Clamp(OnDirectDamage(context), 0, short.MaxValue);
+        if (context.Cancelled || damage <= 0)
+            return 0;
+
+        if (!damageType.HasFlag(DamageType.Fixed) && !damageType.HasFlag(DamageType.God))
+        {
+            int splitTotal = context.PhysicalPercent + context.FirePercent + context.ColdPercent +
+                context.PoisonPercent + context.EnergyPercent;
+            damage = splitTotal > 0
+                ? ApplyDamageSplitResist(character, damage,
+                    context.PhysicalPercent, context.FirePercent, context.ColdPercent,
+                    context.PoisonPercent, context.EnergyPercent)
+                : ApplyElementalResist(character, damage, damageType);
+        }
+        damage = Math.Clamp(damage, 0, short.MaxValue);
+        if (damage <= 0) return 0;
+
+        character.Hits -= (short)damage;
+        if (source != null && source != character)
+            character.RecordAttack(source.Uid, damage);
+        OnDirectCharacterDamageApplied?.Invoke(character, source, damage);
+        return damage;
+    }
+
+    private static int ApplyDirectItemDamage(Item item, int damage)
+    {
+        if (item.IsDeleted || OnItemDamaged?.Invoke(item, damage) == true)
+            return 0;
+
+        int maxHits = item.GetHitsMax();
+        if (maxHits <= 0)
+        {
+            maxHits = Math.Max(1, DefaultHits);
+            item.HitsMax = maxHits;
+            item.HitsCur = maxHits;
+        }
+        int before = item.GetHitsCur();
+        if (before <= 0)
+            return 0;
+        int dealt = Math.Min(before, damage);
+        item.HitsCur = Math.Max(0, before - damage);
+        if (item.HitsCur <= 0 && BreakOnZeroHits)
+            OnItemBroken?.Invoke(item);
+        return dealt;
+    }
+
+    /// <summary>Apply an explicit physical/fire/cold/poison/energy percentage
+    /// split. Missing percentage is physical; totals above 100 are normalized
+    /// so malformed scripts cannot amplify the raw damage.</summary>
+    public static int ApplyDamageSplitResist(Character target, int damage,
+        int physicalPercent, int firePercent, int coldPercent,
+        int poisonPercent, int energyPercent)
+    {
+        if (damage <= 0) return 0;
+        int phys = Math.Clamp(physicalPercent, 0, 100);
+        int fire = Math.Clamp(firePercent, 0, 100);
+        int cold = Math.Clamp(coldPercent, 0, 100);
+        int poison = Math.Clamp(poisonPercent, 0, 100);
+        int energy = Math.Clamp(energyPercent, 0, 100);
+        int total = phys + fire + cold + poison + energy;
+        if (total <= 0) return damage;
+        if (total < 100)
+        {
+            phys += 100 - total;
+            total = 100;
+        }
+
+        long resisted = 0;
+        resisted += (long)phys * (100 - Math.Clamp((int)target.ResPhysical, 0, 100));
+        resisted += (long)fire * (100 - Math.Clamp((int)target.ResFire, 0, 100));
+        resisted += (long)cold * (100 - Math.Clamp((int)target.ResCold, 0, 100));
+        resisted += (long)poison * (100 - Math.Clamp((int)target.ResPoison, 0, 100));
+        resisted += (long)energy * (100 - Math.Clamp((int)target.ResEnergy, 0, 100));
+        return (int)Math.Clamp((long)damage * resisted / (total * 100L), 0, damage);
     }
 
     /// <summary>

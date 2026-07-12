@@ -36,6 +36,12 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.ResolveAccountForChar = null;
         SphereNet.Game.Trade.VendorEngine.World = null;
         SphereNet.Game.Combat.CombatEngine.OnHitDamage = null;
+        SphereNet.Game.Combat.CombatEngine.OnDirectDamage = null;
+        SphereNet.Game.Combat.CombatEngine.OnDirectCharacterDamageApplied = null;
+        SphereNet.Game.Combat.CombatEngine.OnItemDamaged = null;
+        SphereNet.Game.Combat.CombatEngine.OnItemBroken = null;
+        SphereNet.Game.Combat.CombatEngine.BreakOnZeroHits = true;
+        SphereNet.Game.Combat.CombatEngine.DefaultHits = 50;
         SphereNet.Game.Combat.CombatEngine.OnHitParry = null;
         SphereNet.Game.Objects.Items.Item.RedeedHouse = null;
         SphereNet.Game.Objects.Items.Item.RedeedShip = null;

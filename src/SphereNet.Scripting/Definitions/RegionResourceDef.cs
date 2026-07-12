@@ -12,6 +12,8 @@ public sealed class RegionResourceDef : ResourceLink
     /// <summary>Spawn amount range (how many resource units exist in a region).</summary>
     public int AmountMin { get; set; }
     public int AmountMax { get; set; }
+    private readonly List<int> _amountCurve = [];
+    public IReadOnlyList<int> AmountCurve => _amountCurve;
 
     /// <summary>The BASEID of the item produced when gathered.</summary>
     public ushort Reap { get; set; }
@@ -22,6 +24,8 @@ public sealed class RegionResourceDef : ResourceLink
     /// <summary>Amount of items yielded per successful gather.</summary>
     public int ReapAmountMin { get; set; } = 1;
     public int ReapAmountMax { get; set; } = 1;
+    private readonly List<int> _reapAmountCurve = [];
+    public IReadOnlyList<int> ReapAmountCurve => _reapAmountCurve;
 
     /// <summary>Regeneration time in seconds.</summary>
     public int Regen { get; set; }
@@ -41,9 +45,9 @@ public sealed class RegionResourceDef : ResourceLink
         switch (upper)
         {
             case "AMOUNT":
-                ParseRange(arg, out int amin, out int amax);
-                AmountMin = amin;
-                AmountMax = amax;
+                ParseIntegerCurve(arg, _amountCurve);
+                AmountMin = _amountCurve.Count > 0 ? _amountCurve[0] : 0;
+                AmountMax = _amountCurve.Count > 0 ? _amountCurve[^1] : AmountMin;
                 break;
             case "REAP":
                 Reap = ParseHexOrDec(arg);
@@ -51,9 +55,9 @@ public sealed class RegionResourceDef : ResourceLink
                     ReapRaw = arg.Trim();
                 break;
             case "REAPAMOUNT":
-                ParseRange(arg, out int rmin, out int rmax);
-                ReapAmountMin = rmin;
-                ReapAmountMax = rmax;
+                ParseIntegerCurve(arg, _reapAmountCurve);
+                ReapAmountMin = _reapAmountCurve.Count > 0 ? _reapAmountCurve[0] : 1;
+                ReapAmountMax = _reapAmountCurve.Count > 0 ? _reapAmountCurve[^1] : ReapAmountMin;
                 break;
             case "REGEN":
                 Regen = EvalSimpleExpression(arg);
@@ -80,12 +84,47 @@ public sealed class RegionResourceDef : ResourceLink
         IReadOnlyList<int> points = _skillCurve.Count > 0
             ? _skillCurve
             : SkillMin == SkillMax ? [SkillMin] : [SkillMin, SkillMax];
+        return EvaluateCurve(points, sample) / 10;
+    }
+
+    /// <summary>Source-X m_vcAmount.GetRandom for a newly-created resource node.</summary>
+    public int GetRandomAmount(Random random)
+    {
+        IReadOnlyList<int> points = _amountCurve.Count > 0
+            ? _amountCurve
+            : AmountMin == AmountMax ? [AmountMin] : [AmountMin, AmountMax];
+        return EvaluateCurve(points, random.Next(1000));
+    }
+
+    /// <summary>Source-X natural-resource yield: REAPAMOUNT.GetRandomLinear(skill),
+    /// falling back to AMOUNT.GetRandomLinear(skill)/2 when it yields zero.</summary>
+    public int GetRandomReapAmount(int skillValue, Random random)
+    {
+        int amount = 0;
+        if (_reapAmountCurve.Count > 0)
+            amount = GetRandomLinear(_reapAmountCurve, skillValue, random);
+        if (amount <= 0)
+        {
+            IReadOnlyList<int> points = _amountCurve.Count > 0
+                ? _amountCurve
+                : AmountMin == AmountMax ? [AmountMin] : [AmountMin, AmountMax];
+            amount = GetRandomLinear(points, skillValue, random) / 2;
+        }
+        return Math.Max(1, amount);
+    }
+
+    private static int GetRandomLinear(IReadOnlyList<int> points, int skillValue, Random random) =>
+        (EvaluateCurve(points, Math.Max(0, skillValue)) +
+         EvaluateCurve(points, random.Next(1000))) / 2;
+
+    private static int EvaluateCurve(IReadOnlyList<int> points, int samplePermille)
+    {
         if (points.Count == 0) return 0;
-        if (points.Count == 1) return Math.Max(0, points[0] / 10);
+        if (points.Count == 1) return Math.Max(0, points[0]);
 
         int lowIndex;
         int segmentSize;
-        int segmentSample = sample;
+        int segmentSample = Math.Max(0, samplePermille);
         if (points.Count == 2)
         {
             lowIndex = 0;
@@ -93,13 +132,13 @@ public sealed class RegionResourceDef : ResourceLink
         }
         else if (points.Count == 3)
         {
-            lowIndex = sample >= 500 ? 1 : 0;
+            lowIndex = segmentSample >= 500 ? 1 : 0;
             if (lowIndex == 1) segmentSample -= 500;
             segmentSize = 500;
         }
         else
         {
-            lowIndex = sample * points.Count / 1000;
+            lowIndex = segmentSample * points.Count / 1000;
             int lastSegment = points.Count - 2;
             if (lowIndex > lastSegment) lowIndex = lastSegment;
             segmentSize = 1000 / (points.Count - 1);
@@ -109,16 +148,17 @@ public sealed class RegionResourceDef : ResourceLink
         long low = points[lowIndex];
         long high = points[lowIndex + 1];
         long value = low + (high - low) * segmentSample / segmentSize;
-        return (int)Math.Max(0L, value / 10L);
+        return (int)Math.Clamp(value, 0L, int.MaxValue);
     }
 
-    private static void ParseRange(string val, out int min, out int max)
+    private static void ParseIntegerCurve(string val, List<int> destination)
     {
-        min = 0; max = 0;
-        var parts = val.Split(',');
-        if (parts.Length >= 1) int.TryParse(parts[0].Trim(), out min);
-        if (parts.Length >= 2) int.TryParse(parts[1].Trim(), out max);
-        else max = min;
+        destination.Clear();
+        foreach (string raw in val.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (int.TryParse(raw, out int parsed))
+                destination.Add(parsed);
+        }
     }
 
     private static void ParseFloatCurve(string val, List<int> destination)

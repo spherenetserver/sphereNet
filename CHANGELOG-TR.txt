@@ -3,6 +3,22 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-12] - 90-alti parite backlog, on ucuncu batch
+----------------------------------------
+
+DEGISTI - Katmanli gathering resource verimi (Wave 232):
+  - REGIONRESOURCE AMOUNT ve REAPAMOUNT artik tum CValueCurveDef noktalarini
+    korur; node havuzu AMOUNT.GetRandom() ile olusur.
+  - Gather verimi skill-linear ve random REAPAMOUNT sonuclarinin ortalamasidir;
+    sonuc sifirsa AMOUNT random-linear / 2 fallback'i ve minimum 1 uygulanir.
+  - Human Workhorse racial flag'i Felucca mining node'una +1 ore, Trammel tree
+    node'una +2 log havuzu ekler. Literal REGIONRESOURCE BONUS key'i yoktur.
+
+TESTLER:
+  - 12 Wave 232 regresyon testi eklendi. Tam SphereNet.Tests kosusu:
+    1548 basarili, 0 basarisiz, 0 atlanan.
+
+
 [2026-07-12] - 90-alti parite backlog, on ikinci batch
 ----------------------------------------
 

@@ -886,6 +886,7 @@ public partial class Character : ObjBase
     /// <summary>True for the standard UO female bodies (human/elf/gargoyle),
     /// used to pick the gendered get-hit/death vocalizations.</summary>
     public bool IsFemale => _bodyId == 0x0191 || _bodyId == 0x025E || _bodyId == 0x029B;
+    public bool IsHuman => _bodyId is 0x0190 or 0x0191 or 0x0192 or 0x0193;
     public bool IsGargoyle => _bodyId is 0x029A or 0x029B or 0x02B6 or 0x02B7;
 
     /// <summary>Player-facing name (overhead label, corpse, tooltips).

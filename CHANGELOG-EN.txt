@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-12] - Sub-90 parity backlog, thirteenth batch
+----------------------------------------
+
+CHANGED - Layered gathering resource yield (Wave 232):
+  - REGIONRESOURCE AMOUNT and REAPAMOUNT now preserve every CValueCurveDef
+    point; new node pools use AMOUNT.GetRandom().
+  - Gather yield averages the skill-linear and random REAPAMOUNT values; zero
+    falls back to AMOUNT random-linear / 2 with a minimum yield of one.
+  - Human Workhorse adds one ore to Felucca mining nodes and two logs to
+    Trammel tree nodes. Source-X has no literal REGIONRESOURCE BONUS key.
+
+TESTS:
+  - Added 12 Wave 232 regression tests. Full SphereNet.Tests run:
+    1548 passed, 0 failed, 0 skipped.
+
+
 [2026-07-12] - Sub-90 parity backlog, twelfth batch
 ----------------------------------------
 

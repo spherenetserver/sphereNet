@@ -174,10 +174,9 @@ public sealed class GatheringEngine
         // is selected simply by retrying the same tile.
         if (marker == null)
         {
-            int amtMin = Math.Clamp(resDef.AmountMin, 1, ushort.MaxValue);
-            int amtMaxInclusive = Math.Clamp(resDef.AmountMax, amtMin, ushort.MaxValue);
-            int amtMax = Math.Min(ushort.MaxValue + 1, amtMaxInclusive + 1);
-            marker = CreateMarker(target, skillTag, Rng.Next(amtMin, amtMax), resDef);
+            int poolAmount = Math.Clamp(resDef.GetRandomAmount(Rng), 1, ushort.MaxValue);
+            poolAmount = ApplyWorkhorsePoolBonus(ch, skill, target.Map, poolAmount);
+            marker = CreateMarker(target, skillTag, poolAmount, resDef);
         }
 
         // Top the vein up by the time elapsed since the last gather (partial regen)
@@ -210,9 +209,8 @@ public sealed class GatheringEngine
 
         if (success)
         {
-            int reapMin = Math.Clamp(resDef.ReapAmountMin, 1, ushort.MaxValue);
-            int reapMax = Math.Clamp(resDef.ReapAmountMax, reapMin, ushort.MaxValue);
-            int reapAmount = Rng.Next(reapMin, reapMax + 1);
+            int reapAmount = Math.Clamp(
+                resDef.GetRandomReapAmount(ch.GetSkill(skill), Rng), 1, ushort.MaxValue);
             ushort reapItemId = resDef.Reap;
 
             // @ResourceGather — RETURN 1 cancels the reap; the script may also
@@ -262,6 +260,20 @@ public sealed class GatheringEngine
         }
 
         return new GatherResult { Handled = true, Success = false };
+    }
+
+    /// <summary>Source-X RACIALF_HUMAN_WORKHORSE node-size bonus: +1 ore in
+    /// Felucca and +2 logs in Trammel.</summary>
+    internal static int ApplyWorkhorsePoolBonus(Character character, SkillType skill,
+        byte map, int amount)
+    {
+        if ((((RacialFlags)Character.RacialFlags) & RacialFlags.HumanWorkhorse) == 0 ||
+            !character.IsHuman)
+            return amount;
+        int bonus = skill == SkillType.Mining && map == 0 ? 1
+            : skill == SkillType.Lumberjacking && map == 1 ? 2
+            : 0;
+        return (int)Math.Min(ushort.MaxValue, (long)amount + bonus);
     }
 
     /// <summary>

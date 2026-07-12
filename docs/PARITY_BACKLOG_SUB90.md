@@ -177,7 +177,13 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   interpolasyonu yapar. Sabit midpoint ve upstream'de olmayan sert SkillMin kapısı
   kaldırıldı; normal skill S-curve sonucu belirler. Test:
   SourceXGatherDifficultyWave231Tests (+10).
-- [ ] Çok-katmanlı BONUS resource verimi.
+- [x] **Çok-katmanlı BONUS resource verimi** — YAPILDI/DOĞRULANDI (Wave 232).
+  Literal REGIONRESOURCE `BONUS=` yok; gerçek Source-X katmanları port edildi:
+  node `AMOUNT.GetRandom()`, verim `REAPAMOUNT.GetRandomLinear(baseSkill)`, sıfır/
+  tanımsız durumda `AMOUNT.GetRandomLinear(baseSkill)/2` fallback'i ve minimum 1.
+  `RACIALF_HUMAN_WORKHORSE` ayrıca Felucca mining node'una +1 ore, Trammel tree
+  node'una +2 log ekler. Tüm AMOUNT/REAPAMOUNT curve noktaları korunur. Test:
+  SourceXGatherYieldWave232Tests (+12).
 - [ ] Cartography harita-yapımı craft'a bağlı değil.
 
 ---

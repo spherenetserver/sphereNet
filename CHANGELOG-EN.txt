@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-14] - Standing-Z desync fix and map-static door auto-close
+----------------------------------------
+
+FIXED - Character elevation desynced from the client, causing a spurious fall sound
+        and a Z snap on double-click:
+  - The per-step walk path seats a character on the averaged land-tile center (the
+    same value the client and Source-X derive), but the seat/correction path
+    (login, dismount, mount, teleport) used a second algorithm that returned the raw
+    NW-corner tile Z instead. On sloped land these disagree, so the stored Z drifted
+    off the surface the client renders. The drift stayed hidden until a self-update
+    (0x20) re-imposed it — which a double-click sends when the character turns to
+    face the used object — snapping the character up (near building floors) or down
+    (on open slopes). The same drift made the next walk step re-derive the true
+    center, tripping the client's fall "Ouch" with no real height change. The seat
+    path now derives land Z from the averaged tile center, matching the walk path.
+
+ADDED - Map-static doors now auto-close after 20 seconds, matching item doors:
+  - Doors baked into the map statics (as opposed to real item-doors) were tracked
+    only as an open-overlay set and never received the item timer that swings a door
+    shut, so they stayed open indefinitely. They now carry the same 20s auto-close
+    deadline (Source-X Use_Door timer); a post-tick pass swings the expired ones
+    shut and broadcasts the close to nearby clients.
+
+
 [2026-07-13] - Consumable single-use, pile-merge cap, and scissors data-loss fixes
 ----------------------------------------
 

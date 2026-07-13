@@ -282,7 +282,15 @@ public sealed class MapDataManager : IDisposable
     /// </summary>
     public sbyte GetEffectiveZ(int mapId, int x, int y)
     {
-        return GetTerrainTile(mapId, x, y).Z;
+        // Standing land Z is the averaged tile CENTER (ClassicUO CalculateNewZ /
+        // Source-X GetHeightPoint2), NOT the raw NW-corner tile Z. Returning the
+        // corner desynced this seat path from the walk path (WalkCheck, which
+        // lands on GetAverageZ's center) on sloped land: the discrepancy sat
+        // latent until the next self-0x20 (a dclick facing) re-imposed the seat
+        // Z and snapped the client, or the next walk step re-derived the true
+        // center and tripped the client's fall "Ouch". Use the center here too.
+        GetAverageZ(mapId, x, y, out _, out int avg, out _);
+        return (sbyte)avg;
     }
 
     /// <summary>
@@ -300,8 +308,10 @@ public sealed class MapDataManager : IDisposable
         // 0x21 MoveReject ("square-jumping" / stutter).
         const int MaxClimbHeight = 12;
 
-        var terrain = GetTerrainTile(mapId, x, y);
-        sbyte bestZ = terrain.Z;
+        // Land base = averaged tile CENTER (matches WalkCheck / the client), not
+        // the raw NW-corner tile Z. See the parameterless overload.
+        GetAverageZ(mapId, x, y, out _, out int landAvg, out _);
+        sbyte bestZ = (sbyte)landAvg;
         int bestDist = Math.Abs(currentZ - bestZ);
 
         if (_staticReaders.TryGetValue(mapId, out var staticReader))
@@ -336,7 +346,9 @@ public sealed class MapDataManager : IDisposable
     {
         const int MaxClimbHeight = 12;
         var terrain = GetTerrainTile(mapId, x, y);
-        sbyte bestZ = terrain.Z;
+        // Land base = averaged tile CENTER (matches WalkCheck / the client).
+        GetAverageZ(mapId, x, y, out _, out int landAvg, out _);
+        sbyte bestZ = (sbyte)landAvg;
         int bestDist = Math.Abs(currentZ - bestZ);
         bool blocks = false;
 

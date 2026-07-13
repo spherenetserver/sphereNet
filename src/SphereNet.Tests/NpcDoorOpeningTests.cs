@@ -138,4 +138,46 @@ public class NpcDoorOpeningTests
         world.PlaceItem(closed, pos);
         Assert.Same(closed, ai.FindClosedDoorAt(pos));
     }
+
+    [Fact]
+    public void MapStaticDoor_Open_SchedulesAutoCloseAndExpires()
+    {
+        var world = CreateWorld();
+
+        // Opening a map-static door registers it open with a 20s deadline.
+        world.SetMapStaticDoorOpen(0, 1000, 1000, 0, true);
+        Assert.True(world.IsMapStaticDoorOpen(0, 1000, 1000, 0));
+
+        // Before the deadline it is not yet collectible.
+        var buffer = new System.Collections.Generic.List<(byte, short, short, sbyte)>();
+        world.CollectExpiredStaticDoors(System.Environment.TickCount64, buffer);
+        Assert.Empty(buffer);
+
+        // Past the auto-close deadline it surfaces for closing, and the caller
+        // closing it clears the open state (map-static doors used to stay open
+        // forever — they never receive Item.OnTick).
+        world.CollectExpiredStaticDoors(
+            System.Environment.TickCount64 + GameWorld.StaticDoorAutoCloseMs + 1, buffer);
+        Assert.Contains((byte)0, System.Linq.Enumerable.Select(buffer, b => b.Item1));
+        world.SetMapStaticDoorOpen(0, 1000, 1000, 0, false);
+        Assert.False(world.IsMapStaticDoorOpen(0, 1000, 1000, 0));
+    }
+
+    [Fact]
+    public void MapStaticDoor_ExplicitExpiry_ControlsAutoClose()
+    {
+        var world = CreateWorld();
+        long now = System.Environment.TickCount64;
+
+        // A door pinned open with expiry 0 never auto-closes (e.g. a scripted
+        // held-open door); one with a past deadline does.
+        world.SetMapStaticDoorOpen(0, 10, 10, 0, true, 0);
+        world.SetMapStaticDoorOpen(0, 20, 20, 0, true, now - 1);
+
+        var buffer = new System.Collections.Generic.List<(byte, short, short, sbyte)>();
+        world.CollectExpiredStaticDoors(now, buffer);
+
+        Assert.Contains(((byte)0, (short)20, (short)20, (sbyte)0), buffer);
+        Assert.DoesNotContain(((byte)0, (short)10, (short)10, (sbyte)0), buffer);
+    }
 }

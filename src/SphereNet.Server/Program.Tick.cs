@@ -866,11 +866,64 @@ public static partial class Program
         }
     }
 
+    /// <summary>Swing shut any map-static door whose 20s auto-close timer has
+    /// elapsed. Item-doors self-close via Item.OnTick; map-static doors are just
+    /// an open-overlay set, so their auto-close is driven here. Mirrors the
+    /// manual toggle-close broadcast (restore the closed static art + play the
+    /// shut sound) so the client sees exactly the same close it would from a
+    /// player-triggered one.</summary>
+    private static void CloseExpiredStaticDoors(long now)
+    {
+        if (now < _nextStaticDoorTick)
+            return;
+        _nextStaticDoorTick = now + 1000;
+
+        var md = _world.MapData;
+        if (md == null)
+            return;
+
+        _expiredStaticDoorBuffer.Clear();
+        _world.CollectExpiredStaticDoors(now, _expiredStaticDoorBuffer);
+        if (_expiredStaticDoorBuffer.Count == 0)
+            return;
+
+        foreach (var (map, x, y, z) in _expiredStaticDoorBuffer)
+        {
+            _world.SetMapStaticDoorOpen(map, x, y, z, false);
+
+            // Re-derive the closed art / hue from the underlying .mul static
+            // (the static's own tile IS the closed leaf; open = +1), matching
+            // SyncOpenMapStaticDoors and the manual toggle-close.
+            ushort closedArt = 0, hue = 0;
+            foreach (var s in md.GetStatics(map, x, y))
+            {
+                if (s.Z == z && SphereNet.Game.World.DoorHelper.IsDoorGraphic(md, s.TileId))
+                {
+                    closedArt = s.TileId;
+                    hue = s.Hue;
+                    break;
+                }
+            }
+            if (closedArt == 0)
+                continue;
+
+            uint serial = (uint)(SphereNet.Core.Types.Serial.ItemFlag |
+                (uint)((x & 0x7FFF) << 16) |
+                (uint)((y & 0x3FFF) << 3) |
+                (uint)(z & 0x07));
+
+            var pos = new Point3D(x, y, z, map);
+            BroadcastNearby(pos, 18, new PacketSound(0x00F1, x, y, z), 0);
+            BroadcastNearby(pos, 18, new PacketWorldItem(serial, closedArt, 1, x, y, z, hue), 0);
+        }
+    }
+
     private static void RunPostTickMaintenance()
     {
         long now = Environment.TickCount64;
         CleanupSummonedGuards(now);
         RunDecayCatchup(now);
+        CloseExpiredStaticDoors(now);
 
         long lightMinute = _world.WorldClockMinutes;
         if (lightMinute != _lastLightWorldMinute)

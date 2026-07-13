@@ -3,6 +3,32 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-14] - Durus-Z desync duzeltmesi ve harita-statik kapi otomatik kapanmasi
+----------------------------------------
+
+DUZELTILDI - Karakter yuksekligi client ile desync olup sahte dusme sesi ve
+             cift-tiklamada Z siciramasi olusturuyordu:
+  - Adim-basi yurume yolu karakteri arazi karesinin ORTALAMA merkezine oturtuyor
+    (client ve Source-X ile ayni deger), ama oturtma/duzeltme yolu (login, inme,
+    binme, isinlanma) ham NW-kose Z'sini donduren ikinci bir algoritma kullaniyordu.
+    Egimli arazide bu ikisi uyusmuyor, saklanan Z client'in render ettigi yuzeyden
+    kayiyordu. Kayma bir self-update (0x20) onu tekrar dayatana kadar gizli kaliyordu
+    — cift tiklamada karakter kullanilan objeye donunce boyle bir paket gidiyor —
+    ve karakteri yukari (bina zeminleri yaninda) veya asagi (acik egimlerde)
+    sicratiyordu. Ayni kayma bir sonraki yurume adiminin gercek merkezi yeniden
+    turetmesine yol acip gorunur yukseklik degisimi olmadan client'in dusme "Ouch"
+    sesini tetikliyordu. Oturtma yolu artik arazi Z'sini ortalama kare merkezinden
+    turetiyor, yurume yoluyla eslesiyor.
+
+EKLENDI - Harita-statik kapilar artik 20 saniye sonra otomatik kapaniyor (item
+          kapilar gibi):
+  - Harita statiklerine gomulu kapilar (gercek item-kapilarin aksine) yalnizca bir
+    acik-overlay kumesinde tutuluyor ve bir kapiyi kapatan item timer'ini hic
+    almiyordu, bu yuzden sonsuza dek acik kaliyorlardi. Artik ayni 20s otomatik
+    kapanma suresini tasiyorlar (Source-X Use_Door timer); tick-sonrasi bir gecis
+    suresi dolanlari kapatip yakindaki client'lara kapanmayi yayinliyor.
+
+
 [2026-07-13] - Tuketilebilir tek-kullanim, yigin-birlestirme siniri ve makas veri-kaybi duzeltmeleri
 ----------------------------------------
 

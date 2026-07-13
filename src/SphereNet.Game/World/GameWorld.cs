@@ -96,22 +96,48 @@ public sealed class GameWorld
     /// <summary>Optional map data access for terrain queries.</summary>
     public MapData.MapDataManager? MapData { get; set; }
 
-    private readonly HashSet<(byte Map, short X, short Y, sbyte Z)> _openMapStaticDoors = [];
+    /// <summary>Auto-close delay for an opened map-static door, matching the
+    /// item-door Use_Door timer (Source-X: an opened door swings shut 20s later).
+    /// Map-static doors (doors baked into the .mul statics rather than real Item
+    /// objects) are tracked here as an open-overlay set; without this timer they
+    /// stayed open forever because they never receive Item.OnTick.</summary>
+    public const long StaticDoorAutoCloseMs = 20_000;
+
+    // Value = TickCount64 at which the door auto-closes (0 = no auto-close).
+    private readonly Dictionary<(byte Map, short X, short Y, sbyte Z), long> _openMapStaticDoors = [];
 
     public bool IsMapStaticDoorOpen(byte map, short x, short y, sbyte z) =>
-        _openMapStaticDoors.Contains((map, x, y, z));
+        _openMapStaticDoors.ContainsKey((map, x, y, z));
 
-    public void SetMapStaticDoorOpen(byte map, short x, short y, sbyte z, bool open)
+    public void SetMapStaticDoorOpen(byte map, short x, short y, sbyte z, bool open) =>
+        SetMapStaticDoorOpen(map, x, y, z, open,
+            open ? Environment.TickCount64 + StaticDoorAutoCloseMs : 0);
+
+    /// <summary>Open/close a map-static door with an explicit auto-close deadline
+    /// (<paramref name="expiryTick"/> is a TickCount64 value; 0 keeps it open).</summary>
+    public void SetMapStaticDoorOpen(byte map, short x, short y, sbyte z, bool open, long expiryTick)
     {
         var key = (map, x, y, z);
         if (open)
-            _openMapStaticDoors.Add(key);
+            _openMapStaticDoors[key] = expiryTick;
         else
             _openMapStaticDoors.Remove(key);
     }
 
     public IReadOnlyCollection<(byte Map, short X, short Y, sbyte Z)> OpenMapStaticDoors =>
-        _openMapStaticDoors;
+        _openMapStaticDoors.Keys;
+
+    /// <summary>Collect the map-static doors whose auto-close deadline has passed,
+    /// into <paramref name="buffer"/>. The caller closes them (broadcasts the
+    /// shut) and must not mutate the door set concurrently — invoked from the
+    /// single-threaded post-tick maintenance pass.</summary>
+    public void CollectExpiredStaticDoors(long now,
+        List<(byte Map, short X, short Y, sbyte Z)> buffer)
+    {
+        foreach (var (key, expiry) in _openMapStaticDoors)
+            if (expiry != 0 && now >= expiry)
+                buffer.Add(key);
+    }
 
     private TerrainEngine? _terrain;
     /// <summary>Lazy terrain helper (LOS, ground height). Uses current MapData.</summary>

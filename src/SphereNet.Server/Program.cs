@@ -155,6 +155,8 @@ public static partial class Program
     private static readonly Dictionary<Serial, long> _summonedGuardExpiry = [];
     private static readonly List<SphereNet.Game.Objects.Items.Item> _decayCatchupBuffer = [];
     private static long _nextDecayCatchupTick;
+    private static readonly List<(byte Map, short X, short Y, sbyte Z)> _expiredStaticDoorBuffer = [];
+    private static long _nextStaticDoorTick;
     private static long _telemetrySnapshotUs;
     private static long _telemetryComputeUs;
     private static long _telemetryApplyUs;

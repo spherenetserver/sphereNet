@@ -11,6 +11,12 @@ public sealed class BotAnomalyScanner
     private int _moveRejectWindowStart;
     private int _moveRequestWindowStart;
 
+    // Snapshot of ground items within touch range at the previous scan, plus where
+    // the bot was standing — so a vanish can be told apart from an out-of-range drop.
+    private readonly HashSet<uint> _prevNearbyItems = new();
+    private short _prevScanX, _prevScanY;
+    private bool _haveNearbyBaseline;
+
     public BotAnomalyScanner(int botId, BotWorldModel world)
     {
         _botId = botId;
@@ -28,6 +34,58 @@ public sealed class BotAnomalyScanner
         CheckPickupRejects(nowMs, anomalies);
         CheckGumpStuck(nowMs, anomalies);
         CheckActionTimeout(nowMs, anomalies);
+        CheckVanishedNearbyItems(nowMs, anomalies);
+    }
+
+    /// <summary>Flags an item the bot was standing next to disappearing from its view
+    /// while the bot did not move — the client-side symptom of the server "correcting"
+    /// a legitimately-seen object out of view (the invisible-spawner double-click
+    /// desync). A normal out-of-range drop is excluded by the stationary gate.</summary>
+    private void CheckVanishedNearbyItems(long nowMs, ConcurrentQueue<BotAnomaly> anomalies)
+    {
+        const int TouchRange = 2;
+        var current = new HashSet<uint>();
+        short x, y;
+        lock (_world.SyncRoot)
+        {
+            x = _world.X;
+            y = _world.Y;
+            foreach (var kv in _world.KnownItems)
+            {
+                var it = kv.Value;
+                if (it.ContainerSerial != 0) continue; // contained items follow container opens
+                if (Math.Max(Math.Abs(it.X - x), Math.Abs(it.Y - y)) <= TouchRange)
+                    current.Add(kv.Key);
+            }
+        }
+
+        if (_haveNearbyBaseline &&
+            Math.Max(Math.Abs(x - _prevScanX), Math.Abs(y - _prevScanY)) <= 1)
+        {
+            foreach (uint serial in _prevNearbyItems)
+            {
+                if (current.Contains(serial)) continue;
+                bool stillKnown;
+                lock (_world.SyncRoot) stillKnown = _world.KnownItems.ContainsKey(serial);
+                if (!stillKnown)
+                {
+                    anomalies.Enqueue(new BotAnomaly
+                    {
+                        Type = BotAnomalyType.ItemVanishedNearby,
+                        BotId = _botId,
+                        TimestampMs = nowMs,
+                        Detail = $"item 0x{serial:X8} vanished from view while bot stationary at {x},{y}",
+                        Severity = BotAnomalySeverity.Warning,
+                    });
+                }
+            }
+        }
+
+        _prevNearbyItems.Clear();
+        foreach (uint s in current) _prevNearbyItems.Add(s);
+        _prevScanX = x;
+        _prevScanY = y;
+        _haveNearbyBaseline = true;
     }
 
     private void CheckMoveRejectRate(long nowMs, ConcurrentQueue<BotAnomaly> anomalies)
@@ -160,6 +218,7 @@ public enum BotAnomalyType
     GumpStuck,
     ItemPickupReject,
     UnexpectedDisconnect,
+    ItemVanishedNearby,
 }
 
 public enum BotAnomalySeverity

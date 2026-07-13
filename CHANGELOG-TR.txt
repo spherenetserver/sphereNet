@@ -3,6 +3,25 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-13] - Dunya tutarlilik denetleyicisi ve boot-time canary
+----------------------------------------
+
+EKLENDI - Load sonrasi dunya invariant denetleyicisi + boot-time tutarlilik canary'si:
+  - Yuklenen dunya uzerinde tek salt-okunur gecis, "property editorde saglam gorunur
+    ama client'ta bozuk" sinifi tutarsizliklari (gercek pack+save ile ortaya cikanlar)
+    isaretler: client-tarafi index'i otoriter icerigiyle uyusmayan konteyner (bos
+    gorunen canta), tanimindan tipi materialize edilmemis item, parent'i olmayan
+    contained item, cap'inin cok ustunde canli cocuk sayan char spawner. Sunucu artik
+    bunu load'dan hemen sonra calistirip loga ozet yaziyor (temiz, ya da anomali
+    sayilari + ilk ornekler); boylece bunlar oyunda degil logda goruunur. Ayni
+    kontroller, canli pack+save varsa onu denetleyen (yoksa CI'da atlayan) bir teste
+    de dayanak olur.
+  - Yani sira eklenen diagnostics-only taramalar: her item tipine double-click gecisi
+    (hicbir sey patlamiyor/yanlis silinmiyor assert'i) ve headless-bot kontrolu (bot
+    yerinde dururken bir item goruntudden kaybolursa flag — bir nesnenin goruntuden
+    desync olmasinin client-tarafi semptomu).
+
+
 [2026-07-13] - Materialize'da item @Create, spawner cocuk re-link, gorunmez item double-click
 ----------------------------------------
 

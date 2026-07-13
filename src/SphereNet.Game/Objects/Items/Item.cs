@@ -199,6 +199,14 @@ public class Item : ObjBase
         set => _type = value;
     }
 
+    /// <summary>The raw instance type field, before the lazy def-resolution the
+    /// <see cref="ItemType"/> getter applies. Diagnostics only: raw-<c>_type</c>
+    /// readers (IsStaticBlock, spellbook/book/map/ship/multi/container checks) see
+    /// THIS, so a value of <see cref="ItemType.Normal"/> on an item whose def has a
+    /// real type means the instance was never materialised and those readers
+    /// misbehave. <see cref="Diagnostics.WorldInvariantAuditor"/> checks it.</summary>
+    internal ItemType RawType => _type;
+
     /// <summary>Copy the resolved ITEMDEF's TYPE and TDATA onto the instance when
     /// they are still at their defaults. Script-created items get these via
     /// ItemDefHelper.ApplyInstanceMetadata, but a legacy save stores neither TYPE

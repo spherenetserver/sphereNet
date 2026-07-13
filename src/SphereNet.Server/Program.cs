@@ -850,6 +850,13 @@ public static partial class Program
 
             // Initialize spawn components for IT_SPAWN_CHAR items
             InitializeSpawnItems();
+
+            // Boot-time consistency canary: a single O(n) pass that flags the
+            // "fine in .edit, broken on the client" inconsistencies (empty-looking
+            // bags, unmaterialised item types, runaway spawners) right after load,
+            // so they surface in the log instead of only in-game. Same checks the
+            // WorldInvariantAuditor tests assert against the live data.
+            AuditLoadedWorld();
         }
 
         // --- 7a. Teleporters from [TELEPORTERS] script sections ---

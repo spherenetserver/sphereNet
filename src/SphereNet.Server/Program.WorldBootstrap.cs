@@ -240,6 +240,28 @@ public static partial class Program
         return uint.TryParse(val, out result);
     }
 
+    /// <summary>Run the world invariant auditor over the freshly loaded world and
+    /// surface any inconsistencies in the log. Cheap (one pass, hash-set compares)
+    /// and read-only, so it runs on every boot as a canary — a non-zero count means
+    /// something loaded inconsistently (empty-looking bag, unmaterialised type,
+    /// runaway spawner) that a player would otherwise have to discover in-game.</summary>
+    private static void AuditLoadedWorld()
+    {
+        var anomalies = SphereNet.Game.Diagnostics.WorldInvariantAuditor.Audit(_world);
+        if (anomalies.Count == 0)
+        {
+            _log.LogInformation("World audit: clean (no consistency anomalies)");
+            return;
+        }
+
+        var byKind = anomalies.GroupBy(a => a.Kind)
+            .Select(g => $"{g.Key}={g.Count()}");
+        _log.LogWarning("World audit: {Count} anomalies [{Kinds}]",
+            anomalies.Count, string.Join(", ", byKind));
+        foreach (var a in anomalies.Take(20))
+            _log.LogWarning("  {Anomaly}", a);
+    }
+
     private static void PlaceTeleporters()
     {
         var teleporters = _resources.Teleporters;

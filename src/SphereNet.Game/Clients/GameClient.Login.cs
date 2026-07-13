@@ -585,26 +585,29 @@ public sealed partial class GameClient
         _lastMana = _character.Mana;
         _lastStam = _character.Stam;
 
-        // Snap Z to the nearest walkable surface unless the character is
-        // clearly on an upper-level structure (roof / bridge / second floor).
-        // Rule:
-        //   diff < 0                        → snap up  (character is below ground)
-        //   0 < diff <= RoofSnapTolerance   → snap down (saved Z is stale / hovers)
-        //   diff > RoofSnapTolerance        → keep (assume legitimate upper floor)
-        // Without the downward snap, saves written with an out-of-band Z (e.g.
-        // old dismount code that zeroed Z) keep that Z after login and every
-        // subsequent CanWalkTo projects collision onto wall foundations.
-        const int RoofSnapTolerance = 12;
+        // Seat the character on its true standing surface, matching Source-X:
+        // a character is always on a real floor/terrain, never hovering. The
+        // client re-derives the player's surface Z on every 0x20 self-update
+        // (sent whenever the character turns to face a used object), so if the
+        // server Z is off-surface the first double-click snaps the player up or
+        // down — the reported "Z jumps on dclick" bug.
+        //
+        // GetEffectiveZ already implements the Source-X climb model: it returns
+        // the walkable floor/roof/bridge closest to the character's current Z
+        // (so a legitimate upper storey is preserved) and only falls back to
+        // terrain when nothing supports the character there — i.e. it was
+        // hovering. An earlier ±12 tolerance kept that hover instead of
+        // dropping it, which is exactly what produced the desync; trust
+        // GetEffectiveZ unconditionally instead.
         var mapData = _world.MapData;
         if (mapData != null)
         {
-            sbyte terrainZ = mapData.GetEffectiveZ(_character.MapIndex, _character.X, _character.Y, _character.Z);
-            int diff = terrainZ - _character.Z;
-            if (diff != 0 && Math.Abs(diff) <= RoofSnapTolerance)
+            sbyte surfaceZ = mapData.GetEffectiveZ(_character.MapIndex, _character.X, _character.Y, _character.Z);
+            if (surfaceZ != _character.Z)
             {
                 _logger.LogInformation("Login Z correction: {OldZ} -> {NewZ} for '{Name}' at {X},{Y}",
-                    _character.Z, terrainZ, _character.Name, _character.X, _character.Y);
-                _character.Position = new Point3D(_character.X, _character.Y, terrainZ, _character.MapIndex);
+                    _character.Z, surfaceZ, _character.Name, _character.X, _character.Y);
+                _character.Position = new Point3D(_character.X, _character.Y, surfaceZ, _character.MapIndex);
             }
         }
 

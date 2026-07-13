@@ -707,6 +707,55 @@ public class SaveFormatTests
     }
 
     [Fact]
+    public void Load_ContItemWithoutLayer_EquipsViaTiledataLayer()
+    {
+        // Classic Sphere saves store worn clothing under CONT=<char> with NO LAYER
+        // (and the itemdef often has no layer either — TYPE=t_clothing). The layer
+        // then comes from tiledata (the graphic's Quality byte). Without deriving it,
+        // the item equipped on Layer.None and the NPC rendered naked.
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_naked_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            const ushort shirtGraphic = 0x1517;
+            using (var w = SaveIO.OpenWriter(Path.Combine(tmp, "sphereworld.scp"), SaveFormat.Text))
+            {
+                w.BeginRecord("WORLDCHAR");
+                w.WriteProperty("SERIAL", "01000101");
+                w.WriteProperty("BODY", "0190");
+                w.WriteProperty("P", "1000,1000,0");
+                w.EndRecord();
+
+                w.BeginRecord("WORLDITEM");
+                w.WriteProperty("SERIAL", "040000101");
+                w.WriteProperty("ID", "01517"); // leading 0 -> hex 0x1517
+                w.WriteProperty("CONT", "01000101"); // equipped on the char, no LAYER
+                w.EndRecord();
+            }
+
+            var (_, loader) = MakeIO();
+            // Stand in for tiledata: the shirt graphic equips on the Shirt layer.
+            loader.ResolveEquipLayerFromTile = baseId =>
+                baseId == shirtGraphic ? (byte)Layer.Shirt : (byte)0;
+
+            var world = MakeWorld();
+            loader.Load(world, tmp);
+
+            var ch = world.FindChar(new Serial(0x1000101));
+            Assert.NotNull(ch);
+            var shirt = ch!.GetEquippedItem(Layer.Shirt);
+            Assert.NotNull(shirt);                    // dressed, not naked
+            Assert.Equal(shirtGraphic, shirt!.BaseId);
+            // The bogus layer-0 equip must not happen.
+            Assert.Null(ch.GetEquippedItem(Layer.None));
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public void Roundtrip_PreservesPerCharRegenOverrides()
     {
         // Wave 247: per-char regen rate overrides (Source-X CChar REGENHITS/…/FOOD).

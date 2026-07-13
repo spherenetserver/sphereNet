@@ -72,8 +72,11 @@ public class SourceXGameplayParityTests
         var packets = TestHarness.GetQueuedPackets(state).ToList();
         Assert.Contains(packets, p => p.Span.Length >= 7 && p.Span[0] == 0x24 &&
             ReadU32(p.Span, 1) == pack.Uid.Value);
-        Assert.Contains(packets, p => p.Span.Length >= 5 && p.Span[0] == 0x25 &&
-            ReadU32(p.Span, 1) == loot.Uid.Value);
+        // Contents now ship as a single 0x3C batch (Source-X PacketItemContents),
+        // not one 0x25 per child: opcode(1)+len(2)+count(2), then the first item
+        // serial at offset 5.
+        Assert.Contains(packets, p => p.Span.Length >= 9 && p.Span[0] == 0x3C &&
+            ReadU32(p.Span, 5) == loot.Uid.Value);
     }
 
     [Fact]

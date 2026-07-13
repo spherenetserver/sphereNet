@@ -4,6 +4,49 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-13] - Container display, worn-item load, spawn body, deed placement
+----------------------------------------
+
+FIXED - Contained items missing from the client container view (present in .edit):
+  - Opening a container (SendOpenContainer) and refreshing the backpack now send the
+    whole content list as a single 0x3C batch (Source-X CClient::addContainerContents
+    / PacketItemContents), instead of one 0x25 per child. ClassicUO's 0x25 handler
+    silently drops any item whose container entity it does not yet know; a per-item
+    stream could lose children while they still existed server-side. The batch is
+    processed atomically (client clears and rewrites the list), matching the reference.
+    The server-side _contents list and the container reverse index were already fully
+    consistent on load (verified against a 92k-item save); the defect was in the wire
+    format, not the data.
+
+FIXED - Worn clothing/weapons dropping under NPCs or leaving NPCs naked:
+  - Classic Sphere saves store worn gear as CONT=<char> with no LAYER when the itemdef
+    also lacks one (TYPE=t_clothing); the layer now derives from tiledata (the graphic
+    Quality byte, matching Source-X CItemBase m_layer), then from the item type
+    (hair/beard/container) as a final fallback.
+  - EquipLoadedItem no longer evicts an already-worn item: a tiledata-derived layer
+    that collides with an occupied slot sends the newcomer to the backpack instead of
+    bouncing the incumbent to the ground (the "weapon in hand and a weapon dropped
+    underneath" case).
+  - ITEMDEF DUPEITEM now inherits Type/Layer/TDATA from the master itemdef, so items
+    defined only as a dupe (e.g. a fishing pole variant) resolve their real type and
+    equip layer instead of Type=0.
+
+FIXED - Spawned NPCs named Spawn_FFFF with body 0xFFFF:
+  - Non-numeric CHARDEF headers (e.g. [CHARDEF c_alchemist]) receive a synthetic 24-bit
+    definition index above 0xFFFF. The spawn component clamped it to 0xFFFF, producing a
+    nameless body-0xFFFF creature; it now carries the full index and resolves the body
+    through CharDefHelper.ResolveBodyId (DispIndex alias chain).
+
+FIXED - Character Z jumped on the first double-click without moving:
+  - Login/entry Z snapping to the surface no longer applies a fixed tolerance cap; the
+    server places the character on the effective surface Z on entry, matching the height
+    the client would otherwise correct to (Source-X addPlayerView behavior).
+
+FIXED - Ship deed placement rejected valid multis ("cannot place house here"):
+  - Deed-to-multi resolution now accepts multi id 0 (a valid multi.mul index) and
+    resolves the multi from the deed's MORE/MORE1 defname tag via the multi registry,
+    with the ship class detected from the deed graphic.
+
 [2026-07-13] - Legacy save load order and staff item visibility
 ----------------------------------------
 

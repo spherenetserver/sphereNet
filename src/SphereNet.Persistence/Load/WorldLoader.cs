@@ -280,7 +280,7 @@ public sealed class WorldLoader
             var parent = world.FindObject(contSerial);
             if (parent is Character parentChar)
             {
-                parentChar.Equip(item, (Layer)layer);
+                EquipLoadedItem(world, parentChar, item, layer);
                 containedCount++;
             }
             else if (parent is Item parentItem)
@@ -329,6 +329,66 @@ public sealed class WorldLoader
                 _migratedUuids);
 
         return (itemCount, charCount);
+    }
+
+    /// <summary>Resolves an equipped item's layer from tiledata (the UO item
+    /// graphic's Quality byte IS its equip layer). Wired by the host from the loaded
+    /// tiledata; classic Sphere saves omit LAYER for worn clothing whose itemdef also
+    /// has no explicit layer (TYPE=t_clothing), so the layer must come from tiledata.</summary>
+    public Func<ushort, byte>? ResolveEquipLayerFromTile { get; set; }
+
+    /// <summary>Equip an item that a save stored under <c>CONT=&lt;char&gt;</c>.
+    /// When the save gave no explicit <c>LAYER=</c> (layer 0), the layer is derived
+    /// from the itemdef and then tiledata — classic Sphere saves omit the layer for
+    /// worn clothing, so without this the item equipped on <see cref="Layer.None"/>
+    /// and the wearer rendered naked. A non-wearable child (or an already-occupied
+    /// layer) falls back to the backpack, then the ground, instead of a bogus
+    /// layer-0 equip.</summary>
+    private void EquipLoadedItem(GameWorld world, Character parentChar, Item item, byte layer)
+    {
+        Layer targetLayer = layer != 0 ? (Layer)layer : ResolveContItemLayer(item);
+        // Never evict an already-worn item. A tiledata-derived layer can collide
+        // with a piece already seated on that slot (two graphics resolving to the
+        // same hand/torso layer); Character.Equip would bounce the incumbent onto
+        // the ground ("weapon in hand AND a weapon dropped underneath the NPC").
+        // The newcomer goes to the pack instead, leaving the worn item in place.
+        if (targetLayer != Layer.None && parentChar.GetEquippedItem(targetLayer) == null &&
+            parentChar.Equip(item, targetLayer))
+            return;
+        // Could not resolve a wearable slot — log enough to see which graphics the
+        // running tiledata leaves unlayered (the "worn item drops to the ground /
+        // NPC stays naked" symptom) before falling back to pack / ground.
+        byte tileQ = ResolveEquipLayerFromTile?.Invoke(item.BaseId) ?? 0;
+        if (parentChar.Backpack is { } pack)
+        {
+            _logger.LogDebug("Unlayered worn item 0x{Base:X} (saveLayer={SL} tiledataQ={Q}) on '{Name}' -> backpack",
+                item.BaseId, layer, tileQ, parentChar.Name);
+            pack.AddItem(item);
+        }
+        else
+        {
+            _logger.LogWarning("Unlayered worn item 0x{Base:X} (saveLayer={SL} tiledataQ={Q}) on '{Name}' -> ground (no backpack)",
+                item.BaseId, layer, tileQ, parentChar.Name);
+            world.PlaceItem(item, item.Position);
+        }
+    }
+
+    /// <summary>Layer for a char-contained item with no explicit LAYER: the item's
+    /// own EquipLayer/itemdef layer, else the tiledata Quality (UO's equip layer).</summary>
+    private Layer ResolveContItemLayer(Item item)
+    {
+        Layer byDef = item.ResolveEquipLayer();
+        if (byDef != Layer.None)
+            return byDef;
+        // Primary UO source (matches Source-X CItemBase: m_layer = tiledata.m_layer).
+        byte q = ResolveEquipLayerFromTile?.Invoke(item.BaseId) ?? 0;
+        if (q > 0 && q <= (byte)Layer.Horse)
+            return (Layer)q;
+        // Last resort: a fixed-slot equip type whose tiledata layer byte is 0
+        // (hair/beard) or the char's sole unlabelled container (its backpack).
+        // Without this a naked NPC's backpack fails to seat, which cascades every
+        // subsequent worn item that fails to equip onto the ground.
+        return item.ResolveEquipLayerByType();
     }
 
     private void LinkLoadedAccounts(List<(Character Char, string AccountName)> charAccountLinks,
@@ -385,7 +445,7 @@ public sealed class WorldLoader
             var parent = world.FindObject(contSerial);
             if (parent is Character parentChar)
             {
-                parentChar.Equip(item, (Layer)layer);
+                EquipLoadedItem(world, parentChar, item, layer);
             }
             else if (parent is Item parentItem)
             {

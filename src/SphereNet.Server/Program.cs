@@ -756,6 +756,12 @@ public static partial class Program
             CharDefHelper.TryApplyDefName(ch, defname, _resources);
         _loader.ResolveBodyFromCharDefIndex = idx =>
             CharDefHelper.ResolveBodyId(idx, _resources);
+        // Classic Sphere saves store worn clothing under CONT with no LAYER and no
+        // itemdef layer (TYPE=t_clothing); the equip layer comes from tiledata (the
+        // graphic's Quality byte). tiledata is loaded before the world save, so the
+        // loader can resolve it and dress NPCs instead of leaving them naked.
+        _loader.ResolveEquipLayerFromTile = baseId =>
+            _mapData?.GetItemTileData(baseId).Quality ?? 0;
         _loader.ResolveItemDef = defname =>
         {
             var rid = _resources.ResolveDefName(defname);
@@ -784,6 +790,15 @@ public static partial class Program
                 return def != null && def.DispIndex > 0 ? def.DispIndex : (ushort)rid.Index;
             }
             return 0;
+        };
+
+        // MULTIDEF defname -> multi id. Ship/house deeds carry their multi
+        // reference as MORE=<multidef defname> (e.g. m_small_ship_n); the id can
+        // legitimately be 0, so callers must distinguish "not a multi" (-1).
+        SphereNet.Game.Objects.Items.Item.ResolveMultiDefId = defname =>
+        {
+            var rid = _resources.ResolveDefName(defname);
+            return rid.IsValid && rid.Type == ResType.MultiDef ? rid.Index : -1;
         };
 
         // Script-declared globals ([GLOBALS]/[WORLDVARS]/[LIST name]/[WORLDLISTS])

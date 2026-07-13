@@ -3,6 +3,47 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-13] - Container gorunumu, giyili item yukleme, spawn body, deed yerlestirme
+----------------------------------------
+
+DUZELTILDI - Container'daki itemler client gorunumunde eksik (.edit'te var):
+  - Container acma (SendOpenContainer) ve backpack yenileme artik tum icerik listesini
+    item basina 0x25 yerine tek bir 0x3C batch ile gonderiyor (Source-X
+    CClient::addContainerContents / PacketItemContents). ClassicUO'nun 0x25 handler'i
+    container entity'sini henuz bilmedigi item'i sessizce dusuruyordu; item-basina akis
+    sunucuda hala var olan cocuklari kaybedebiliyordu. Batch atomik islenir (client
+    listeyi temizleyip yeniden yazar), referansla birebir. Sunucudaki _contents listesi
+    ile container ters-index'i yuklemede zaten tam tutarliydi (92k item'lik kayitla
+    dogrulandi); sorun veride degil, paket formatindaydi.
+
+DUZELTILDI - Giyili kiyafet/silah NPC'nin altina dusuyor veya NPC ciplak kaliyordu:
+  - Klasik Sphere kayitlari giyili esyayi CONT=<char> ile ve itemdef'te de layer yoksa
+    LAYER olmadan saklar (TYPE=t_clothing); layer artik tiledata'dan (grafigin Quality
+    byte'i, Source-X CItemBase m_layer ile ayni), sonra item tipinden (sac/sakal/
+    container) son care olarak cikariliyor.
+  - EquipLoadedItem artik giyili bir item'i tahliye etmiyor: dolu bir slotla cakisan
+    tiledata-kaynakli layer, mevcut item'i yere dusurmek yerine yeni geleni backpack'e
+    koyuyor ("elinde silah ve altinda ayni silah" durumu).
+  - ITEMDEF DUPEITEM artik Type/Layer/TDATA'yi ana itemdef'ten miras aliyor; boylece
+    yalnizca dupe olarak tanimlanan itemler (or. bir olta varyanti) Type=0 yerine gercek
+    tip ve equip layer'ini cozuyor.
+
+DUZELTILDI - Spawn edilen NPC'ler Spawn_FFFF isimli, body 0xFFFF:
+  - Sayisal olmayan CHARDEF basliklari (or. [CHARDEF c_alchemist]) 0xFFFF ustunde 24-bit
+    sentetik tanim index'i alir. Spawn bileseni bunu 0xFFFF'e kirpip isimsiz body-0xFFFF
+    yaratik uretiyordu; artik tam index'i tasiyor ve body'yi CharDefHelper.ResolveBodyId
+    (DispIndex alias zinciri) ile cozuyor.
+
+DUZELTILDI - Karakter Z'si hareket etmeden ilk cift tiklamada ziplyor:
+  - Login/giris Z'sinin yuzeye oturmasi artik sabit bir tolerans siniri uygulamiyor;
+    sunucu karakteri giriste efektif yuzey Z'sine yerlestiriyor, client'in zaten
+    duzeltecegi yukseklikle ayni (Source-X addPlayerView davranisi).
+
+DUZELTILDI - Ship deed yerlestirme gecerli multi'leri reddediyordu ("cannot place house here"):
+  - Deed-to-multi cozumu artik multi id 0'i (gecerli bir multi.mul index'i) kabul ediyor
+    ve multi'yi deed'in MORE/MORE1 defname tag'inden multi registry uzerinden cozuyor;
+    gemi sinifi deed grafiginden tespit ediliyor.
+
 [2026-07-13] - Legacy kayit yukleme sirasi ve staff item gorunurlugu
 ----------------------------------------
 

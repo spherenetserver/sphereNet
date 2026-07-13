@@ -169,6 +169,7 @@ public sealed class DefinitionLoader
         }
 
         ResolveItemDefReferences();
+        ResolveDupeItemInheritance();
         ResolveRegionResourceReapDefNames();
 
         Skills.SkillEngine.StatAdvCurves = _resources.StatAdvance;
@@ -887,6 +888,49 @@ public sealed class DefinitionLoader
         }
         result = 0;
         return false;
+    }
+
+    // Source-X DUPEITEM makes an itemdef a duplicate of another: it shares the
+    // referenced item's CItemBase for every property it does not override, only
+    // the graphic differs. A bare "[ITEMDEF 0dc0] DUPEITEM=0dbf" (the flip half
+    // of a fishing pole, chair, etc.) therefore has no TYPE/LAYER/TDATA of its
+    // own — those must come from the master, or the dupe reads as a plain
+    // t_normal item and type-driven behavior (double-click use, equip) breaks.
+    private void ResolveDupeItemInheritance()
+    {
+        // Bounded fixpoint so DUPEITEM chains (a->b->c) settle regardless of
+        // load order without risking an infinite loop on a malformed cycle.
+        for (int pass = 0; pass < 4; pass++)
+        {
+            bool changed = false;
+            foreach (var def in _itemDefs.Values)
+            {
+                if (def.DupItemId == 0) continue;
+                if (!_itemDefs.TryGetValue(def.DupItemId, out var parent) || parent == def)
+                    continue;
+
+                if (def.Type == ItemType.Normal && parent.Type != ItemType.Normal)
+                {
+                    def.Type = parent.Type;
+                    changed = true;
+                }
+                if (def.Layer == Layer.None && parent.Layer != Layer.None)
+                {
+                    def.Layer = parent.Layer;
+                    changed = true;
+                }
+                if (def.TData1 == 0 && def.TData2 == 0 && def.TData3 == 0 && def.TData4 == 0 &&
+                    (parent.TData1 != 0 || parent.TData2 != 0 || parent.TData3 != 0 || parent.TData4 != 0))
+                {
+                    def.TData1 = parent.TData1;
+                    def.TData2 = parent.TData2;
+                    def.TData3 = parent.TData3;
+                    def.TData4 = parent.TData4;
+                    changed = true;
+                }
+            }
+            if (!changed) break;
+        }
     }
 
     private void ResolveItemDefReferences()

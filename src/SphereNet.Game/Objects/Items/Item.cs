@@ -38,6 +38,11 @@ public class Item : ObjBase
     public static Func<Item, Serial, string, bool>? ExecuteGuildMemberCommand;
     public static Func<Item, Serial, string, bool>? ExecuteGuildRelationCommand;
     public static Func<string, ushort>? ResolveDefName;
+
+    // Resolves a MULTIDEF defname (e.g. "m_small_ship_n") to its multi id.
+    // Returns the multi id (which may legitimately be 0 — ship multis sit at the
+    // start of multi.mul), or -1 when the name is not a multi definition.
+    public static Func<string, int>? ResolveMultiDefId;
     public static Action<Item>? OnVisualUpdate;
     /// <summary>Invoked by MULTICREATE when a script registers a multi
     /// as a house at runtime. Program.cs wires this to
@@ -211,6 +216,28 @@ public class Item : ObjBase
     public bool IsEquipped { get; set; }
     public Layer EquipLayer { get; set; }
     public byte Direction { get; set; }
+
+    /// <summary>The wearable layer this item equips on: its explicit
+    /// <see cref="EquipLayer"/> when set, otherwise the itemdef's default layer.
+    /// Classic Sphere saves store an equipped item under <c>CONT=&lt;char&gt;</c>
+    /// with no <c>LAYER=</c>; the layer comes from the itemdef (a shirt → torso,
+    /// a backpack → pack). <see cref="Layer.None"/> when the item is not wearable.</summary>
+    public Layer ResolveEquipLayer() =>
+        EquipLayer != Layer.None ? EquipLayer : (ResolveDefinition()?.Layer ?? Layer.None);
+
+    /// <summary>Last-resort equip layer derived from the itemdef TYPE, for wearables
+    /// whose fixed slot the client stores in tiledata but some tiledata builds leave
+    /// as 0 (hair/beard) — and for the lone unlabelled container a char carries, its
+    /// backpack. Only the deterministic-slot types map; <see cref="Layer.None"/>
+    /// otherwise (a t_clothing shirt vs robe can't be told apart by type alone).</summary>
+    public Layer ResolveEquipLayerByType() =>
+        (ResolveDefinition()?.Type ?? ItemType.Normal) switch
+        {
+            ItemType.Hair => Layer.Hair,
+            ItemType.Beard => Layer.FacialHair,
+            ItemType.Container => Layer.Pack,
+            _ => Layer.None
+        };
 
     /// <summary>Full display id. Returns DISPID override when set, otherwise BaseId.</summary>
     public ushort DispIdFull
@@ -2931,7 +2958,10 @@ public class Item : ObjBase
         {
             if (SpawnChar?.SpawnGroup != null && !string.IsNullOrEmpty(SpawnChar.SpawnGroup.DefName))
                 return SpawnChar.SpawnGroup.DefName;
-            var cdef = Definitions.DefinitionLoader.GetCharDef((int)(_more1 & 0xFFFF));
+            // Full index — non-numeric-header chardefs (c_alchemist) hash above
+            // 0xFFFF; masking would miss the def and save a bare number instead
+            // of the defname, breaking the classic MORE1=<defname> round-trip.
+            var cdef = Definitions.DefinitionLoader.GetCharDef((int)_more1);
             if (cdef != null && !string.IsNullOrEmpty(cdef.DefName))
                 return cdef.DefName;
         }

@@ -1092,8 +1092,8 @@ public sealed class ClientItemUseHandler
                         && customTag != "0";
                     var deedItem = item;
                     var shipEngine = Item.ResolveShipEngine?.Invoke();
-                    ushort multiId = ResolveDeedMultiId(deedItem, out bool isShip);
-                    if (multiId == 0 || (isShip && shipEngine == null))
+                    if (!TryResolveDeedMulti(deedItem, out ushort multiId, out bool isShip)
+                        || (isShip && shipEngine == null))
                     {
                         SysMessage(ServerMessages.Get("house_cant_place"));
                         break;
@@ -2864,18 +2864,42 @@ public sealed class ClientItemUseHandler
         return md.IsPassable(dest.Map, dest.X, dest.Y, dest.Z);
     }
 
-    private ushort ResolveDeedMultiId(Item deed, out bool isShip)
+    private bool TryResolveDeedMulti(Item deed, out ushort multiId, out bool isShip)
     {
         isShip = false;
+        multiId = 0;
         if (deed.TryGetTag("SHIP_MULTI_BASEID", out string? shipBase) &&
             TryParseDeedMultiId(shipBase, out ushort shipId))
         {
             isShip = true;
-            return shipId;
+            multiId = shipId;
+            return true;
         }
         if (deed.TryGetTag("HOUSE_MULTI_BASEID", out string? houseBase) &&
             TryParseDeedMultiId(houseBase, out ushort houseId))
-            return houseId;
+        {
+            multiId = houseId;
+            return true;
+        }
+
+        // Ship/house deeds reference their multi by defname (itemdef MORE=m_small_ship_n).
+        // ItemDefHelper copies that as a raw "MORE" tag rather than the More1 property,
+        // and a small-ship multi legitimately resolves to id 0 — so a numeric More1>0
+        // test misses it entirely. Resolve the defname directly; id 0 is valid.
+        foreach (string moreKey in MultiDeedTagKeys)
+        {
+            if (deed.TryGetTag(moreKey, out string? moreDef) && !string.IsNullOrWhiteSpace(moreDef))
+            {
+                int resolved = Item.ResolveMultiDefId?.Invoke(moreDef.Trim()) ?? -1;
+                if (resolved >= 0)
+                {
+                    multiId = (ushort)resolved;
+                    isShip = deed.BaseId == 0x14F1 ||
+                        DefinitionLoader.GetItemDef((ushort)resolved)?.Type == ItemType.Ship;
+                    return true;
+                }
+            }
+        }
 
         ushort targetId = deed.More1 is > 0 and <= ushort.MaxValue
             ? (ushort)deed.More1
@@ -2883,11 +2907,14 @@ public sealed class ClientItemUseHandler
         if (targetId == 0 && deed.BaseId is not (0x14EF or 0x14F0 or 0x14F1) &&
             _housingEngine?.MultiDefs.Get(deed.BaseId) != null)
             targetId = deed.BaseId;
-        if (targetId == 0) return 0;
+        if (targetId == 0) return false;
 
         isShip = deed.BaseId == 0x14F1 || DefinitionLoader.GetItemDef(targetId)?.Type == ItemType.Ship;
-        return targetId;
+        multiId = targetId;
+        return true;
     }
+
+    private static readonly string[] MultiDeedTagKeys = { "MORE1_DEFNAME", "MORE" };
 
     private static bool TryParseDeedMultiId(string? text, out ushort id)
     {

@@ -20,7 +20,11 @@ public sealed class SpawnComponent
     private readonly GameWorld _world;
     private readonly List<Serial> _spawnedUids = [];
 
-    private ushort _charDefId;
+    // Full chardef resource index (may exceed 0xFFFF — non-numeric-header defs
+    // like c_alchemist/c_banker hash to a 24-bit index). Clamping this to a ushort
+    // collapsed every such def to 0xFFFF, so the spawn looked up a missing chardef
+    // and produced a bodyless "Spawn_FFFF" NPC. Keep the full index.
+    private int _charDefId;
     private SpawnGroupDef? _spawnGroup;
     private int _maxCount = 1;
     private int _spawnRange = 15;
@@ -53,7 +57,17 @@ public sealed class SpawnComponent
             _spawnItem.Amount = (ushort)_maxCount;
         }
     }
-    public ushort CharDefId { get => _charDefId; set => _charDefId = value; }
+    public int CharDefId { get => _charDefId; set => _charDefId = value; }
+
+    /// <summary>Body graphic for a chardef index. Non-numeric-header defs carry
+    /// their body via the chardef (DispIndex / ID= alias chain), not the index
+    /// itself; numeric-header defs (<c>[CHARDEF 08c]</c>) use the index as the body.</summary>
+    private ushort ResolveBodyForIndex(int defIndex)
+    {
+        if (defIndex <= 0) return 0;
+        ushort body = _resources != null ? CharDefHelper.ResolveBodyId(defIndex, _resources) : (ushort)0;
+        return body != 0 ? body : (ushort)Math.Clamp(defIndex, 0, ushort.MaxValue);
+    }
     public int SpawnRange { get => _spawnRange; set => _spawnRange = value; }
     public SpawnGroupDef? SpawnGroup { get => _spawnGroup; set => _spawnGroup = value; }
     public IReadOnlyList<Serial> SpawnedUids => _spawnedUids;
@@ -108,8 +122,7 @@ public sealed class SpawnComponent
 
     private void SpawnOne()
     {
-        ushort bodyId = _charDefId;
-        int defIndex = bodyId;
+        int defIndex = _charDefId;
 
         if (_spawnGroup != null)
         {
@@ -121,10 +134,7 @@ public sealed class SpawnComponent
             {
                 var rid = _resources.ResolveDefName(memberName);
                 if (rid.IsValid && rid.Type == ResType.CharDef)
-                {
                     defIndex = rid.Index;
-                    bodyId = (ushort)Math.Clamp(defIndex, 0, ushort.MaxValue);
-                }
                 else
                     return;
             }
@@ -144,10 +154,7 @@ public sealed class SpawnComponent
                     string pick = entries[_rand.Next(entries.Length)];
                     var rid = _resources.ResolveDefName(pick);
                     if (rid.IsValid && rid.Type == ResType.CharDef)
-                    {
                         defIndex = rid.Index;
-                        bodyId = (ushort)Math.Clamp(defIndex, 0, ushort.MaxValue);
-                    }
                     else
                         return;
                 }
@@ -158,14 +165,14 @@ public sealed class SpawnComponent
                 return;
         }
 
-        SpawnResolved(defIndex, bodyId);
+        SpawnResolved(defIndex, ResolveBodyForIndex(defIndex));
     }
 
     /// <summary>Spawn one NPC of an explicit chardef index — used by the
     /// champion component to spawn its per-level wave members and the boss
     /// (Source-X CCSpawn::GenerateChar with a forced CREID).</summary>
     public Objects.Characters.Character? SpawnSpecific(int charDefIndex) =>
-        SpawnResolved(charDefIndex, (ushort)Math.Clamp(charDefIndex, 0, ushort.MaxValue));
+        SpawnResolved(charDefIndex, ResolveBodyForIndex(charDefIndex));
 
     private Objects.Characters.Character? SpawnResolved(int defIndex, ushort bodyId)
     {
@@ -179,7 +186,7 @@ public sealed class SpawnComponent
             if (preArgs.SpawnDefIndex != defIndex)
             {
                 defIndex = preArgs.SpawnDefIndex;
-                bodyId = (ushort)Math.Clamp(defIndex, 0, ushort.MaxValue);
+                bodyId = ResolveBodyForIndex(defIndex);
             }
         }
 
@@ -481,7 +488,7 @@ public sealed class SpawnComponent
             }
         }
 
-        _charDefId = (ushort)(more1 & 0xFFFF);
+        _charDefId = (int)more1;
     }
 
     /// <summary>
@@ -523,16 +530,16 @@ public sealed class SpawnComponent
             }
             if (rid.Type == ResType.CharDef)
             {
-                _charDefId = (ushort)Math.Clamp(rid.Index, 0, ushort.MaxValue);
-                _spawnItem.More1 = _charDefId;
+                _charDefId = rid.Index;
+                _spawnItem.More1 = (uint)rid.Index;
                 return;
             }
         }
 
         if (uint.TryParse(spawnId, System.Globalization.NumberStyles.HexNumber, null, out uint raw))
         {
-            _charDefId = (ushort)(raw & 0xFFFF);
-            _spawnItem.More1 = _charDefId;
+            _charDefId = (int)(raw & 0xFFFF);
+            _spawnItem.More1 = (uint)_charDefId;
         }
     }
 

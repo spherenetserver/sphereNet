@@ -792,16 +792,28 @@ public sealed partial class GameClient
         if (_character != null)
             _netState.Send(new PacketSound(0x0048, _character.X, _character.Y, _character.Z));
 
-        foreach (var child in _world.GetContainerContents(container.Uid))
+        // Send the whole content list as a single 0x3C batch (Source-X
+        // CClient::addContainerContents -> PacketItemContents), NOT one 0x25
+        // per child. A per-item stream is fragile: ClassicUO's 0x25 handler
+        // silently drops any item whose container entity it doesn't yet know
+        // (PacketHandlers.AddItemToContainer: "container == null -> return"),
+        // so a single 0x25 that overtakes the 0x24/worn-item setup under packet
+        // priority reordering loses that item from the client view while it
+        // still lives server-side (the ".edit shows it but the bag doesn't"
+        // report). The batch packet is processed as one unit after the open.
+        var children = _world.GetContainerContents(container.Uid).ToList();
+        var entries = new List<PacketContainerContents.Entry>(children.Count);
+        for (int i = 0; i < children.Count; i++)
         {
-            _netState.Send(new PacketContainerItem(
-                child.Uid.Value, child.DispIdFull, 0,
-                child.Amount, child.X, child.Y,
-                container.Uid.Value, child.Hue,
-                _netState.IsClientPost6017
-            ));
-            SendAosTooltip(child, requested: false);
+            var child = children[i];
+            entries.Add(new PacketContainerContents.Entry(
+                child.Uid.Value, child.DispIdFull, 0, child.Amount,
+                (short)child.X, (short)child.Y, container.Uid.Value, child.Hue,
+                (byte)(i & 0xFF)));
         }
+        _netState.Send(new PacketContainerContents(entries, _netState.IsClientPost6017));
+        foreach (var child in children)
+            SendAosTooltip(child, requested: false);
     }
 
     /// <summary>
@@ -930,14 +942,20 @@ public sealed partial class GameClient
         var pack = _character.Backpack;
         if (pack == null) return;
 
-        foreach (var child in _world.GetContainerContents(pack.Uid))
+        // Single 0x3C batch, matching SendOpenContainer / Source-X (see the
+        // note there); avoids the per-item 0x25 drop when a child overtakes the
+        // container setup under packet-priority reordering.
+        var children = _world.GetContainerContents(pack.Uid).ToList();
+        var entries = new List<PacketContainerContents.Entry>(children.Count);
+        for (int i = 0; i < children.Count; i++)
         {
-            _netState.Send(new PacketContainerItem(
-                child.Uid.Value, child.DispIdFull, 0,
-                child.Amount, child.X, child.Y,
-                pack.Uid.Value, child.Hue,
-                _netState.IsClientPost6017));
+            var child = children[i];
+            entries.Add(new PacketContainerContents.Entry(
+                child.Uid.Value, child.DispIdFull, 0, child.Amount,
+                (short)child.X, (short)child.Y, pack.Uid.Value, child.Hue,
+                (byte)(i & 0xFF)));
         }
+        _netState.Send(new PacketContainerContents(entries, _netState.IsClientPost6017));
     }
 
     public void SendCharacterStatus(Character ch, bool includeExtendedStats = true)

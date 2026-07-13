@@ -93,6 +93,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnNpcLostTeleport = null;
         SphereNet.Game.Objects.Items.Item.OnTimerExpired = null;
         SphereNet.Game.Objects.Items.Item.ResolveHouse = null;
+        SphereNet.Game.Objects.Items.Item.ResolveMultiDefId = null;
         SphereNet.Game.Objects.Items.Item.ResolveGuild = null;
         SphereNet.Game.Objects.Items.Item.ResolveGuildManager = null;
         SphereNet.Game.Objects.Items.Item.ResolveGuildCharacter = null;

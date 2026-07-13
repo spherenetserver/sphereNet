@@ -78,6 +78,72 @@ public sealed class HousingShipIntegrityTests
         return registry;
     }
 
+    // A small ship whose multi id is 0 — the very first multi.mul entry, exactly
+    // where the classic small-ship-north sits. Ship deeds reference it by defname.
+    private static MultiRegistry CreateShipAtIdZeroRegistry()
+    {
+        var registry = new MultiRegistry();
+        var def = new MultiDef { Id = 0, Name = "small ship" };
+        def.Components.Add(new MultiComponent
+            { TileId = 0x3E40, DeltaX = 0, DeltaY = 0, DeltaZ = 0, Visible = true });
+        def.Components.Add(new MultiComponent
+            { TileId = 0x3E41, DeltaX = 0, DeltaY = -1, DeltaZ = 0, Visible = true });
+        def.RecalcBounds();
+        registry.Register(def);
+        return registry;
+    }
+
+    [Fact]
+    public void ShipDeed_PlacesShip_WhenMultiReferencedByDefnameResolvesToIdZero()
+    {
+        var world = CreateWorld();
+        var registry = CreateShipAtIdZeroRegistry();
+        var shipEngine = new ShipEngine(world, registry, null)
+        {
+            MaxShipsPerPlayer = -1,
+            MaxShipsPerAccount = -1,
+        };
+        var housing = new HousingEngine(world, CreateHouseRegistry());
+        var owner = CreatePlayer(world);
+
+        // The deed as ApplyInstanceMetadata would build it from i_deed_small_ship_n:
+        // graphic i_deed_ship (0x14F1), TYPE t_deed, and the itemdef MORE line copied
+        // through as a raw "MORE" tag (never applied to the More1 property).
+        var deed = world.CreateItem();
+        deed.BaseId = 0x14F1;
+        deed.ItemType = ItemType.Deed;
+        deed.SetTag("MORE", "m_small_ship_n");
+        owner.Backpack!.AddItem(deed);
+        Assert.Equal((uint)0, deed.More1);
+
+        var oldShip = Item.ResolveShipEngine;
+        var oldMulti = Item.ResolveMultiDefId;
+        try
+        {
+            Item.ResolveShipEngine = () => shipEngine;
+            Item.ResolveMultiDefId = name => name == "m_small_ship_n" ? 0 : -1;
+
+            var loggerFactory = LoggerFactory.Create(_ => { });
+            var client = TestHarness.CreateClient(loggerFactory, world,
+                new SphereNet.Game.Accounts.AccountManager(loggerFactory), 2603);
+            client.SetEngines(housingEngine: housing);
+            TestHarness.AttachCharacter(client, owner);
+
+            client.HandleDoubleClick(deed.Uid.Value);
+            client.HandleTargetResponse(0, 0, 0, 300, 300, 0, 0);
+
+            Assert.Single(shipEngine.AllShips);
+            var ship = shipEngine.AllShips.First();
+            Assert.Equal(owner.Uid, ship.Owner);
+            Assert.True(deed.IsDeleted);
+        }
+        finally
+        {
+            Item.ResolveShipEngine = oldShip;
+            Item.ResolveMultiDefId = oldMulti;
+        }
+    }
+
     [Fact]
     public void HouseRoles_AreExclusive_AndBanOverridesPublicAccess()
     {

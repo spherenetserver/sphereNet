@@ -2880,14 +2880,14 @@ public class Item : ObjBase
                 SpawnItem = new ItemSpawnComponent(this, world);
 
             if (_more1 != 0)
-                SpawnItem.ItemDefId = (ushort)(_more1 & 0xFFFF);
+                SpawnItem.ItemDefId = (int)_more1; // full index — named itemdefs hash above 0xFFFF
             else if (TryGetTag("MORE1_DEFNAME", out string? itemDefName) &&
                      !string.IsNullOrWhiteSpace(itemDefName))
             {
                 // Same legacy-save defname fallback as the char spawner above.
                 var rid = resources.ResolveDefName(itemDefName.Trim());
                 if (rid.IsValid && rid.Type == Core.Enums.ResType.ItemDef)
-                    SpawnItem.ItemDefId = (ushort)rid.Index;
+                    SpawnItem.ItemDefId = rid.Index; // full 24-bit index, not (ushort)
             }
 
             if (_amount > 1)
@@ -2954,7 +2954,14 @@ public class Item : ObjBase
     private string FormatMore1()
     {
         if (_more1 == 0) return "0";
-        if (_type is ItemType.SpawnChar or ItemType.SpawnChampion)
+        // Use the resolved type, not the raw _type field: a legacy-loaded item
+        // leaves _type at Normal and gets its type from the ITEMDEF (which now
+        // resolves even for synthetic-index defs), so a spawn item's MORE1 shows
+        // its <defname> instead of a bare number.
+        var effectiveType = _type != ItemType.Normal
+            ? _type
+            : ResolveDefinition()?.Type ?? ItemType.Normal;
+        if (effectiveType is ItemType.SpawnChar or ItemType.SpawnChampion)
         {
             if (SpawnChar?.SpawnGroup != null && !string.IsNullOrEmpty(SpawnChar.SpawnGroup.DefName))
                 return SpawnChar.SpawnGroup.DefName;

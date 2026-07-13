@@ -482,17 +482,22 @@ public sealed class DefinitionLoader
                     def.Runes = key.Arg.StartsWith('.') ? key.Arg[1..] : key.Arg;
                     break;
                 case "PROMPT_MSG": def.TargetPrompt = key.Arg; break;
+                // RUNE_ITEM/SCROLL_ITEM/EFFECT_ID name a display graphic. A defname
+                // must resolve through the ItemDef's DispIndex (DisplayIdRef chain),
+                // NOT (ushort)rid.Index: a name-keyed [ITEMDEF i_rune_xxx] hashes to
+                // a synthetic 24-bit index whose low 16 bits are garbage, so the raw
+                // cast gave every necro/AOS spell a corrupt rune/scroll/fx graphic.
                 case "EFFECT_ID":
                     if (TryParseHex(key.Arg, out ushort eid)) def.EffectId = eid;
-                    else { var r = _resourcesStatic?.ResolveDefName(key.Arg.Trim()) ?? ResourceId.Invalid; if (r.IsValid) def.EffectId = (ushort)r.Index; }
+                    else { uint g = ResolveItemReferenceValue(key.Arg.Trim()); if (g != 0) def.EffectId = (ushort)g; }
                     break;
                 case "RUNE_ITEM":
                     if (TryParseHex(key.Arg, out ushort ri)) def.RuneItemId = ri;
-                    else { var r = _resourcesStatic?.ResolveDefName(key.Arg.Trim()) ?? ResourceId.Invalid; if (r.IsValid) def.RuneItemId = (ushort)r.Index; }
+                    else { uint g = ResolveItemReferenceValue(key.Arg.Trim()); if (g != 0) def.RuneItemId = (ushort)g; }
                     break;
                 case "SCROLL_ITEM":
                     if (TryParseHex(key.Arg, out ushort si)) def.ScrollItemId = si;
-                    else { var r = _resourcesStatic?.ResolveDefName(key.Arg.Trim()) ?? ResourceId.Invalid; if (r.IsValid) def.ScrollItemId = (ushort)r.Index; }
+                    else { uint g = ResolveItemReferenceValue(key.Arg.Trim()); if (g != 0) def.ScrollItemId = (ushort)g; }
                     break;
                 case "CAST_TIME":
                 {

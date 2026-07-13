@@ -1797,6 +1797,11 @@ public partial class Character : ObjBase
 
     public Item Memory_CreateObj(Serial uid, MemoryType flags) => MemoryState.CreateObj(uid, flags);
 
+    /// <summary>Create the IT_SPELL memory item for an active spell effect
+    /// (Source-X Spell_Effect_Create). See <see cref="CharacterMemoryState.CreateSpellEffect"/>.</summary>
+    public Item Memory_CreateSpellEffect(int spellId, ushort graphic, int level, Serial source, string name)
+        => MemoryState.CreateSpellEffect(spellId, graphic, level, source, name);
+
     public Item Memory_AddObjTypes(Serial uid, MemoryType flags) => MemoryState.AddObjTypes(uid, flags);
 
     public void Memory_AddTypes(Item mem, MemoryType flags) => MemoryState.AddTypes(mem, flags);

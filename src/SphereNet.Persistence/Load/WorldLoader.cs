@@ -28,6 +28,13 @@ public sealed class WorldLoader
     /// Returns 0 when the defname is unknown.</summary>
     public Func<string, ushort>? ResolveItemDef { get; set; }
 
+    /// <summary>Resolves an ITEMDEF defname to its full 32-bit resource index.
+    /// Non-numeric headers (<c>[ITEMDEF i_xxx]</c>) are keyed by a synthetic index
+    /// above 0xFFFF that differs from the 16-bit graphic; the loader pins the
+    /// defname so an instance can recover its Type/TData/MORE, which a lookup by
+    /// the truncated graphic would miss. Returns 0 when unknown.</summary>
+    public Func<string, int>? ResolveItemDefFullIndex { get; set; }
+
     /// <inheritdoc cref="ResolveItemDef"/>
     public Func<string, ushort>? ResolveCharDef { get; set; }
 
@@ -540,6 +547,17 @@ public sealed class WorldLoader
                     item.BaseId = baseId;
                 else
                     _logger.LogDebug("Unknown item defname '{DefName}' — BaseId stays default", defname);
+
+                // Pin the source defname when the ITEMDEF is keyed by a synthetic
+                // index (non-numeric [ITEMDEF i_xxx] header) that the 16-bit BaseId
+                // graphic can't reach. Without this, ResolveInstanceDefIndex falls
+                // back to GetItemDef(BaseId) — a different def or none — and the
+                // instance reads Type/TData/MORE as 0 (same 0xFFFF-truncation class
+                // as the Spawn_FFFF body bug). Numeric headers (BaseId == index)
+                // resolve directly and need no tag.
+                int fullIndex = ResolveItemDefFullIndex?.Invoke(defname) ?? 0;
+                if (fullIndex != 0 && fullIndex != baseId)
+                    item.SetTag("ITEMDEF", defname);
             }
 
             bool hasUuid = false;

@@ -3,6 +3,37 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-14] - Buyu efekti memory item'lari; sentetik-index cozum taramasi
+----------------------------------------
+
+EKLENDI - Aktif buyu efektleri giyili IT_SPELL memory item olarak yansitiliyor:
+  - Sureli bir efekt uygulaninca, buyuyu tasiyan bir item (grafik buyunun RUNE_ITEM'indan,
+    buyu id MOREX'te, guc MOREY'de, kaster LINK'te) gizli memory layer'a giydiriliyor;
+    Source-X CChar::Spell_Effect_Create ile ayni. GM .edit'te gorunur, her efekt
+    kaldirmada silinir; stat delta ve suresi icin aktif-efekt listesi otorite kalir.
+    Client'a gizli (gorunur geri bildirim buff icon). Persistence degismedi: item cift
+    kaydedilmez, load'da efekt kaydindan yeniden kurulur; save-anindaki stat geri-alma
+    artik onu silmez.
+
+DUZELTILDI - Isimli tanimlar Type/grafik 0 cozuyordu (sentetik-index truncation):
+  - Sayisal olmayan tanim basligi ([ITEMDEF i_xxx], [CHARDEF c_xxx]) 0xFFFF ustunde
+    sentetik 24-bit index'le key'lenir. Bazi yollar bunu 16-bit'e kirpip tanimi kirpilmis
+    degerle ariyor, bulamayip Type/TData/MORE'u 0 okuyordu. Su noktalarda duzeltildi:
+    - Legacy item yukleme: sayisal olmayan ITEMDEF basligina sahip [WORLDITEM i_xxx] artik
+      defname'i ITEMDEF tag'ine pinliyor; item Type/TData'yi 16-bit grafik yerine gercek
+      tanimdan kurtariyor. MORE1 gosterimi cozulmus type kullanir (spawn item defname'ini
+      gosterir).
+    - Item spawner'lari: ItemSpawnComponent hedef item-def index'ini ushort'ta tutuyordu;
+      tam 32-bit index'e genisletildi, isimli itemdef hedefleyen spawner dogru tanimi cozer
+      ve sentetik index'i artik reddetmez.
+    - SERV.NEWITEM: ham 16-bit cast yerine tam item-def metadata'sini (grafik/tip/tag)
+      uygular.
+    - Buyu RUNE_ITEM/SCROLL_ITEM/EFFECT_ID: defname artik kirpilmis resource index yerine
+      item tanimin display grafigi (DisplayIdRef zinciri) uzerinden cozuluyor; necromancy/
+      AOS buyulerinin bozuk rune/scroll/effect grafikleri duzeldi.
+  - Denetlendi: region/area/room tipleri, EVENTS/TEVENTS, dialog, function, typedef, menu
+    ve speech; hepsi tam-genislik key ile cozuyor, zaten dogruydu.
+
 [2026-07-13] - Container gorunumu, giyili item yukleme, spawn body, deed yerlestirme
 ----------------------------------------
 

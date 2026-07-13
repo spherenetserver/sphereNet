@@ -4,6 +4,39 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-14] - Spell-effect memory items; synthetic-index resolution sweep
+----------------------------------------
+
+ADDED - Active spell effects are mirrored as worn IT_SPELL memory items:
+  - When a durational effect is applied, an item carrying the spell (graphic from the
+    spell's RUNE_ITEM, spell id in MOREX, strength in MOREY, caster in LINK) is equipped
+    on the hidden memory layer, matching Source-X CChar::Spell_Effect_Create. It is
+    visible to GM .edit and deleted on every effect removal; the active-effect list
+    stays authoritative for stat deltas and expiry. Hidden from the client (buff icon is
+    the visible feedback). Persistence is unchanged: the item is not double-saved, and it
+    is recreated from the effect record on load; the save-time stat unwind no longer
+    deletes it.
+
+FIXED - Named definitions resolving to Type/graphic 0 (synthetic-index truncation):
+  - A non-numeric definition header ([ITEMDEF i_xxx], [CHARDEF c_xxx]) is keyed by a
+    synthetic 24-bit index above 0xFFFF. Several paths truncated it to 16 bits and then
+    looked the definition up by the truncated value, missing it and reading Type/TData/
+    MORE as 0. Fixed across:
+    - Legacy item load: a [WORLDITEM i_xxx] with a non-numeric ITEMDEF header now pins
+      the defname as an ITEMDEF tag, so the instance recovers its Type/TData from the
+      real definition instead of the 16-bit graphic. MORE1 display uses the resolved
+      type so a spawn item shows its defname.
+    - Item spawners: ItemSpawnComponent kept the target item-def index in a ushort;
+      widened to the full 32-bit index so a spawner targeting a named itemdef resolves
+      the correct def and no longer rejects synthetic indices.
+    - SERV.NEWITEM: now applies the full item-def metadata (graphic, type, tags) instead
+      of a raw 16-bit cast.
+    - Spell RUNE_ITEM/SCROLL_ITEM/EFFECT_ID: a defname now resolves through the item
+      def's display graphic (DisplayIdRef chain) instead of the truncated resource
+      index, fixing corrupt rune/scroll/effect graphics for the necromancy/AOS spells.
+  - Audited region/area/room types, EVENTS/TEVENTS, dialogs, functions, typedefs, menus
+    and speech: all resolve by full-width key and were already correct.
+
 [2026-07-13] - Container display, worn-item load, spawn body, deed placement
 ----------------------------------------
 

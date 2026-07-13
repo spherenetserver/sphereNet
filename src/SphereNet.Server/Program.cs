@@ -776,6 +776,11 @@ public static partial class Program
             }
             return 0;
         };
+        _loader.ResolveItemDefFullIndex = defname =>
+        {
+            var rid = _resources.ResolveDefName(defname);
+            return rid.IsValid && rid.Type == ResType.ItemDef ? rid.Index : 0;
+        };
         _loader.ResolveCharDef = defname =>
         {
             int idx = CharDefHelper.ResolveDefIndex(defname, _resources);

@@ -640,7 +640,11 @@ public sealed class ItemSpawnComponent
     private readonly List<Serial> _spawnedUids = [];
     private readonly Random _rand = new();
 
-    private ushort _itemDefId;
+    // Full 32-bit ITEMDEF resource index, NOT a 16-bit graphic: a non-numeric
+    // [ITEMDEF i_xxx] header hashes to a synthetic index above 0xFFFF (same as the
+    // char spawner's _charDefId). Truncating it to ushort made an item spawner that
+    // targets a named itemdef resolve the wrong def (or none) and spawn nothing.
+    private int _itemDefId;
     private int _maxCount = 1;
     private int _spawnRange = 2;
     private int _pile = 1;
@@ -650,7 +654,7 @@ public sealed class ItemSpawnComponent
 
     private const int MaxSpawnLimit = 250;
 
-    public ushort ItemDefId { get => _itemDefId; set => _itemDefId = value; }
+    public int ItemDefId { get => _itemDefId; set => _itemDefId = value; }
     public int CurrentCount
     {
         get
@@ -724,7 +728,10 @@ public sealed class ItemSpawnComponent
             defIndex = preArgs.SpawnDefIndex;
         }
 
-        if (defIndex <= 0 || defIndex > ushort.MaxValue)
+        // A named itemdef hashes to a synthetic index above 0xFFFF; only reject a
+        // non-positive index here. ApplyInstanceMetadata resolves the full index
+        // (graphic/type/tags) below, so synthetic-index item spawners now fire.
+        if (defIndex <= 0)
         {
             SetNextSpawnTime();
             return;
@@ -734,6 +741,9 @@ public sealed class ItemSpawnComponent
         var idef = DefinitionLoader.GetItemDef(defIndex);
         if (!ItemDefHelper.ApplyInstanceMetadata(item, defIndex))
         {
+            // Metadata could not be resolved (def not in the pack). A synthetic
+            // index has no 16-bit graphic to fall back to, so drop the spawn;
+            // only a genuine 16-bit id can become a bare BaseId.
             if (defIndex is <= 0 or > ushort.MaxValue)
             {
                 _world.RemoveItem(item);

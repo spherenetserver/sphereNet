@@ -707,7 +707,14 @@ public sealed class ClientScriptConsoleHandler
             if (!rid.IsValid) return true;
 
             var item = _world.CreateItem();
-            item.BaseId = (ushort)rid.Index;
+            // Apply the full ITEMDEF metadata (graphic from DispIndex, Type, TData,
+            // ITEMDEF/SCRIPTDEF tags) instead of a raw (ushort)rid.Index: a
+            // name-keyed itemdef hashes above 0xFFFF, so the cast produced a garbage
+            // graphic with Type/MORE 0. Fall back to a guarded 16-bit id only when
+            // the def can't be resolved.
+            if (rid.Type != Core.Enums.ResType.ItemDef ||
+                !Definitions.ItemDefHelper.ApplyInstanceMetadata(item, rid.Index, setName: false))
+                item.BaseId = rid.Index is > 0 and <= ushort.MaxValue ? (ushort)rid.Index : (ushort)0;
             item.Name = defName;
             Targets.ScriptNewItem = item;
             return true;

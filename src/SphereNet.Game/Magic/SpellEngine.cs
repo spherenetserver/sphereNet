@@ -132,6 +132,12 @@ public sealed class SpellEngine
         // Necromancy Blood Oath bond (state lives on the caster).
         public Serial BloodOathEnemy { get; set; }
         public int BloodOathLevel { get; set; }
+
+        // Source-X equips a real IT_SPELL memory item per active effect
+        // (Spell_Effect_Create). We mirror that: this is the worn spell-memory
+        // item on the target, created on apply and deleted on every removal.
+        // Null for effects that predate the memory (defensive) or fail to create.
+        public Item? Memory { get; set; }
     }
 
     // Disguise names used by Incognito.
@@ -1003,6 +1009,7 @@ public sealed class SpellEngine
             if (_activeEffects[i].Target == character &&
                 _activeEffects[i].Spell == SpellType.MagicReflect)
             {
+                DetachSpellMemory(_activeEffects[i]);
                 _activeEffects.RemoveAt(i);
                 break;
             }
@@ -2068,6 +2075,33 @@ public sealed class SpellEngine
             Character.OnClientBuffChanged?.Invoke(target, definition.Icon, add, durationSeconds);
     }
 
+    /// <summary>Equip the IT_SPELL memory item that represents this effect
+    /// (Source-X Spell_Effect_Create). The graphic is the spell's RUNE_ITEM;
+    /// the item is hidden from the client and shows up under GM .edit. The
+    /// engine's active-effect list stays the authority for expiry, so the memory
+    /// is a faithful mirror that is deleted whenever the effect is removed.</summary>
+    private static void AttachSpellMemory(Character? caster, ActiveSpellEffect eff, SpellDef? def)
+    {
+        ushort graphic = def?.RuneItemId ?? 0;
+        Serial source = caster != null ? caster.Uid : Serial.Invalid;
+        eff.Memory = eff.Target.Memory_CreateSpellEffect(
+            (int)eff.Spell, graphic, 0, source, eff.Spell.ToString());
+    }
+
+    /// <summary>Delete the effect's spell-memory item (Source-X deletes the
+    /// IT_SPELL item, which unequips and runs Spell_Effect_Remove). Idempotent:
+    /// a no-op when the effect never had a memory, so it is safe to call at every
+    /// active-effect removal site.</summary>
+    private static void DetachSpellMemory(ActiveSpellEffect eff)
+    {
+        var mem = eff.Memory;
+        if (mem == null) return;
+        eff.Memory = null;
+        eff.Target.Memory_Delete(mem);
+        mem.ContainedIn = Serial.Invalid; // drop the owner-keyed container-index entry
+        mem.Delete();
+    }
+
     private ActiveSpellEffect ScheduleEffectExpiry(Character caster, Character target, SpellType spell, SpellDef def)
     {
         int casterSkill = caster.GetSkill(def.GetPrimarySkill());
@@ -2085,7 +2119,7 @@ public sealed class SpellEngine
                  (IsProtectionSpell(existing.Spell) && IsProtectionSpell(spell)) ||
                  (IsPolymorphLayerSpell(existing.Spell) && IsPolymorphLayerSpell(spell))))
             {
-                RevertDeltas(existing);
+                RevertDeltas(existing); // also detaches the old spell-memory item
                 _activeEffects.RemoveAt(i);
                 NotifySpellBuff(target, spell, false);
                 // Source-X re-equips the spell memory on refresh: the old
@@ -2098,6 +2132,9 @@ public sealed class SpellEngine
 
         var eff = new ActiveSpellEffect { Target = target, Spell = spell, ExpireTick = expireTick };
         _activeEffects.Add(eff);
+        // Source-X Spell_Effect_Create: equip the IT_SPELL memory item for this
+        // effect (visible to .edit, hidden from the client). Deleted on removal.
+        AttachSpellMemory(caster, eff, def);
         // @EffectAdd (Source-X) — a temporary effect was applied to the target.
         Character.OnEffectAdd?.Invoke(target, (int)spell);
         // @SpellEffectAdd (Source-X CCharSpell) — SRC = caster, ARGN1 = spell.
@@ -2130,6 +2167,7 @@ public sealed class SpellEngine
         {
             if (_activeEffects[i].Target != victim || _activeEffects[i].Spell != SpellType.Paralyze)
                 continue;
+            DetachSpellMemory(_activeEffects[i]);
             _activeEffects.RemoveAt(i);
             NotifySpellBuff(victim, SpellType.Paralyze, false);
             Character.OnSpellEffectRemove?.Invoke(victim, (int)SpellType.Paralyze);
@@ -2286,6 +2324,7 @@ public sealed class SpellEngine
             if (!_activeEffects.Contains(eff)) continue; // already retired elsewhere
             if (eff.Target.IsDeleted || eff.Target.IsDead)
             {
+                DetachSpellMemory(eff);
                 _activeEffects.Remove(eff);
                 NotifySpellBuff(eff.Target, eff.Spell, false);
                 continue;
@@ -2298,6 +2337,7 @@ public sealed class SpellEngine
 
             if (eff.DotCharges <= 0 && _activeEffects.Remove(eff))
             {
+                DetachSpellMemory(eff);
                 NotifySpellBuff(eff.Target, eff.Spell, false);
                 Character.OnSpellEffectRemove?.Invoke(eff.Target, (int)eff.Spell);
                 FireSpellSectionStage(eff.Spell, "EffectRemove", eff.Target);
@@ -2316,6 +2356,7 @@ public sealed class SpellEngine
             var eff = _activeEffects[i];
             if (eff.Target.IsDeleted)
             {
+                DetachSpellMemory(eff);
                 _activeEffects.RemoveAt(i);
                 continue;
             }
@@ -2333,8 +2374,18 @@ public sealed class SpellEngine
     /// light level restored + 0x4E refresh dispatched. Safe to call
     /// even when the effect didn't touch a given field (the delta will
     /// be 0 / flag None / LightChanged false).</summary>
-    private void RevertDeltas(ActiveSpellEffect eff)
+    private void RevertDeltas(ActiveSpellEffect eff) => RevertDeltas(eff, detachMemory: true);
+
+    /// <param name="detachMemory">True for a real effect removal (deletes the
+    /// IT_SPELL memory item, Source-X behaviour). False for the save-time
+    /// stat-unwind (<see cref="RevertAllForSave"/>), which only strips derived
+    /// stats before persistence and is immediately paired with
+    /// <see cref="ReapplyAllAfterSave"/> — the effect (and its memory) live on.</param>
+    private void RevertDeltas(ActiveSpellEffect eff, bool detachMemory)
     {
+        // Source-X: removing the effect deletes its IT_SPELL memory item.
+        if (detachMemory)
+            DetachSpellMemory(eff);
         var t = eff.Target;
         if (eff.StrDelta != 0) t.Str -= eff.StrDelta;
         if (eff.DexDelta != 0) t.Dex -= eff.DexDelta;
@@ -2571,6 +2622,11 @@ public sealed class SpellEngine
                 continue;
             _activeEffects.Add(eff);
             ApplyDeltas(eff);
+            // Re-equip the IT_SPELL memory item for the restored effect. The
+            // caster uid is not persisted in the effect record, so the memory's
+            // LINK is left unattributed (Serial.Invalid), like a Source-X memory
+            // whose source logged out.
+            AttachSpellMemory(null, eff, GetSpellDef(eff.Spell));
             count++;
         }
         ch.ClearPendingSpellEffectRecords();
@@ -2711,7 +2767,7 @@ public sealed class SpellEngine
     public void RevertAllForSave()
     {
         foreach (var eff in _activeEffects)
-            RevertDeltas(eff);
+            RevertDeltas(eff, detachMemory: false);
     }
 
     /// <summary>Re-apply all active buff deltas after a save completes.

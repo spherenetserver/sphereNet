@@ -328,6 +328,26 @@ public sealed class WorldLoader
                 equipCount++;
         }
 
+        // A legacy save stores neither TYPE nor TDATA — an item's type comes from
+        // its ITEMDEF (resolved via defname/BaseId). The lazy ItemType getter hid
+        // this, but the raw _type field stayed Normal, so code reading it directly
+        // (and the <TYPE> script read) saw t_normal. Materialize TYPE/TDATA from the
+        // resolved def now that all defs are loaded, so a legacy instance matches a
+        // script-created one. Definitions must already be built (they are — the
+        // caller loads them before the save). Does not change the save format.
+        foreach (var obj in world.GetAllObjects())
+            if (obj is Item it && !it.IsDeleted)
+                it.MaterializeDefinitionType();
+
+        // The container reverse index is maintained incrementally by the
+        // Item.ContainedIn setter, but only when Item.ResolveWorld is wired — and
+        // the initial save load runs BEFORE that wiring. Without this rebuild every
+        // saved container's contents live in Item.Contents (.edit sees them) yet
+        // are absent from the index the client's open-container 0x3C batch reads,
+        // so bags render empty on the client after a restart. Rebuild once from the
+        // authoritative ContainedIn now that every item and parent link exists.
+        world.RebuildContainerIndex();
+
         _logger.LogInformation("World loaded: {Items} items, {Chars} chars, {Contained} contained/equipped in {Elapsed}s",
             itemCount, charCount, containedCount + equipCount, sw.Elapsed.TotalSeconds.ToString("F1"));
 

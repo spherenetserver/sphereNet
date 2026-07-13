@@ -459,17 +459,22 @@ public sealed class MovementEngine
     /// </summary>
     public static int GetMoveDelay(bool mounted, bool running, bool warMode = false)
     {
-        int delay = (mounted, running) switch
+        // War mode does NOT slow movement. Neither the 2D/CUO client
+        // (MovementSpeed.TimeToCompleteMovement takes no war flag — foot steps
+        // stay 400/200ms in or out of combat) nor Source-X (Event_CheckWalkBuffer
+        // and the fastwalk delay in CClientEvent use pure foot/mount × walk/run
+        // timings with no combat-stance factor) apply a penalty. Pacing the server
+        // 20% slower than the client sends desyncs the client's unconfirmed-step
+        // budget and produces an on-foot in-combat walk stutter. The warMode
+        // parameter is retained for call-site compatibility.
+        _ = warMode;
+        return (mounted, running) switch
         {
             (true, true) => RunDelayMount,
             (true, false) => WalkDelayMount,
             (false, true) => RunDelayFoot,
             (false, false) => WalkDelayFoot,
         };
-        // War mode speed penalty — 20% slower when in combat stance (Source-X parity)
-        if (warMode && !mounted)
-            delay = delay * 120 / 100;
-        return delay;
     }
 
     public static int GetMoveDelay(bool mounted, bool running, bool warMode, byte speedMode)

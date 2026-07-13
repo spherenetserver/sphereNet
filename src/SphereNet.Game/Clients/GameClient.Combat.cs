@@ -10,6 +10,11 @@ public sealed partial class GameClient
     public static int WalkRegenPerSecond { get; set; } = 25;
     public static int MoveToleranceMs { get; set; } = 80;
     public static int MoveRejectResyncMs { get; set; } = 0;
+    // Source-X pacing offset: Event_CheckWalkBuffer sets the next-allowed-walk
+    // time to (base delay - 30ms) so player ping / processor jitter never
+    // false-throttles a legitimately-timed step (CClientEvent.cpp: iDelay -= 30).
+    // Applied to NextMoveTime; the walk-token bucket remains the real rate cap.
+    public static int MovePermissiveOffsetMs { get; set; } = 30;
 
     public static int MoveViolationKickThreshold { get; set; }
     public static Func<long> MoveClock { get; set; } = () => Environment.TickCount64;

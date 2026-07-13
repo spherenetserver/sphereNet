@@ -185,6 +185,72 @@ public class ItemUseParityTests
         Assert.DoesNotContain(pack.Contents, i => i.ItemType == ItemType.Ingot);
     }
 
+    [Fact]
+    public void FishPoleDoubleClick_OpensFishingTarget()
+    {
+        var loggerFactory = TestHarness.CreateLoggerFactory();
+        var world = TestHarness.CreateWorld();
+        var accounts = new AccountManager(loggerFactory);
+        var client = CreatePlayingClient(loggerFactory, world, accounts, out _, out var player);
+
+        var pack = EquipBackpack(world, player);
+        var pole = world.CreateItem();
+        pole.ItemType = ItemType.FishPole; // t_fish_pole
+        pole.Name = "fishing pole";
+        pack.AddItem(pole);
+
+        client.SetEngines(skillHandlers: new SkillHandlers(world));
+        client.HandleDoubleClick(pole.Uid.Value);
+
+        // Double-clicking a fishing pole must arm the fishing target cursor —
+        // the "elime gelmiyor / target açılmıyor" report is this not firing.
+        Assert.True(client.HasPendingTarget);
+    }
+
+    [Fact]
+    public void WaterWashDoubleClick_RestoresFood_WithoutDeletingFixture()
+    {
+        var loggerFactory = TestHarness.CreateLoggerFactory();
+        var world = TestHarness.CreateWorld();
+        var accounts = new AccountManager(loggerFactory);
+        var client = CreatePlayingClient(loggerFactory, world, accounts, out _, out var player);
+        player.Food = 10;
+
+        // A placed water trough (Source-X Use_Drink) — must give the benefit but
+        // survive, not vanish like an eaten ration.
+        var trough = world.CreateItem();
+        trough.ItemType = ItemType.WaterWash;
+        world.PlaceItem(trough, new Point3D(101, 100, 0, 0));
+
+        client.HandleDoubleClick(trough.Uid.Value);
+
+        Assert.True(player.Food > 10);       // drank from it
+        Assert.False(trough.IsDeleted);      // the fixture stays
+    }
+
+    [Fact]
+    public void GrainStackDoubleClick_DecrementsButNeverDeletesLastUnit()
+    {
+        var loggerFactory = TestHarness.CreateLoggerFactory();
+        var world = TestHarness.CreateWorld();
+        var accounts = new AccountManager(loggerFactory);
+        var client = CreatePlayingClient(loggerFactory, world, accounts, out _, out var player);
+        player.Food = 0;
+
+        var pack = EquipBackpack(world, player);
+        var hay = world.CreateItem();
+        hay.ItemType = ItemType.Grain;
+        hay.Amount = 2;
+        pack.AddItem(hay);
+
+        client.HandleDoubleClick(hay.Uid.Value);
+        Assert.Equal(1, hay.Amount);         // a movable stack loses a unit
+        Assert.False(hay.IsDeleted);
+
+        client.HandleDoubleClick(hay.Uid.Value);
+        Assert.False(hay.IsDeleted);         // last unit is not deleted (silmeden)
+    }
+
     private static GameClient CreatePlayingClient(
         Microsoft.Extensions.Logging.ILoggerFactory loggerFactory,
         GameWorld world,

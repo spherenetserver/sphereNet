@@ -797,6 +797,16 @@ public static partial class Program
             return 0;
         };
 
+        // Wire the world resolver BEFORE the save loads. The Item.ContainedIn
+        // setter only updates the container reverse index (what the client's
+        // open-container 0x3C batch reads) when this resolver is set; the engine
+        // wiring that also sets it runs AFTER the load, so without this every
+        // saved container's contents were absent from the index (bags rendered
+        // empty on the client while .edit still listed them). WorldLoader.Load
+        // also rebuilds the index at the end as a backstop.
+        SphereNet.Game.Objects.Items.Item.ResolveWorld = () => _world;
+        SphereNet.Game.Objects.ObjBase.ResolveWorld = () => _world;
+
         // MULTIDEF defname -> multi id. Ship/house deeds carry their multi
         // reference as MORE=<multidef defname> (e.g. m_small_ship_n); the id can
         // legitimately be 0, so callers must distinguish "not a multi" (-1).

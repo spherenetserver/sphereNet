@@ -683,6 +683,34 @@ public sealed class ClientItemUseHandler
                 }
                 break;
 
+            // Source-X routes t_grain/t_grass through Use_Eat and t_water_wash
+            // through Use_Drink (CCharUse.cpp). These are almost always fixed
+            // sources — water troughs/basins, decorative grass and hay — so the
+            // hunger benefit is given but the item is NEVER deleted; only a
+            // movable stack sitting in a container is decremented a unit. This
+            // keeps a placed trough/tile intact (it was previously a dead
+            // "you can't think of a way to use that" default).
+            case ItemType.Grain:
+            case ItemType.Grass:
+            case ItemType.WaterWash:
+                if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Eat,
+                        new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item, N1 = 5 }) == TriggerResult.True)
+                    break;
+                _character.Food = (ushort)Math.Min(_character.Food + 5, 60);
+                SysMessage(ServerMessages.Get("itemuse_eat_food"));
+                BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                    new PacketAnimation(_character.Uid.Value, (ushort)AnimationType.Eat), 0);
+                BroadcastNearby?.Invoke(_character.Position, UpdateRange,
+                    new PacketSound(0x003A, _character.X, _character.Y, _character.Z), 0);
+                if (item.ContainedIn.IsValid && item.Amount > 1)
+                {
+                    item.Amount--;
+                    _netState.Send(new PacketContainerItem(
+                        item.Uid.Value, item.DispIdFull, 0, item.Amount, item.X, item.Y,
+                        item.ContainedIn.Value, item.Hue, _netState.IsClientPost6017));
+                }
+                break;
+
             case ItemType.Book:
             case ItemType.Message:
                 OpenBook(item, item.ItemType == ItemType.Book);

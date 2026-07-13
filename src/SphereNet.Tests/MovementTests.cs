@@ -209,6 +209,20 @@ public class MovementTests
     }
 
     [Fact]
+    public void GetMoveDelay_WarMode_DoesNotSlowMovement()
+    {
+        // Source-X parity: neither the client (MovementSpeed) nor Source-X
+        // (Event_CheckWalkBuffer) applies a combat-stance walk penalty. War mode
+        // must yield the exact same cadence as non-war for every foot/mount case,
+        // otherwise the server paces slower than the client and stutters.
+        foreach (var mounted in new[] { false, true })
+        foreach (var running in new[] { false, true })
+            Assert.Equal(
+                MovementEngine.GetMoveDelay(mounted, running, warMode: false),
+                MovementEngine.GetMoveDelay(mounted, running, warMode: true));
+    }
+
+    [Fact]
     public void HandleMove_SeqMismatch_RejectsAndResetsSequence()
     {
         var (world, _) = CreateWorld();

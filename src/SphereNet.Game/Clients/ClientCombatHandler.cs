@@ -76,6 +76,7 @@ public sealed class ClientCombatHandler
     private static int WalkBufferMax => GameClient.WalkBufferMax;
     private static int WalkRegenPerSecond => GameClient.WalkRegenPerSecond;
     private static int MoveToleranceMs => GameClient.MoveToleranceMs;
+    private static int MovePermissiveOffsetMs => GameClient.MovePermissiveOffsetMs;
     private static int MoveRejectResyncMs => GameClient.MoveRejectResyncMs;
     private static int MoveViolationKickThreshold => GameClient.MoveViolationKickThreshold;
     private static Func<long> MoveClock => GameClient.MoveClock;
@@ -349,7 +350,13 @@ public sealed class ClientCombatHandler
             int moveDelay = GetMoveDelay(running);
             if (!MovementCreditEnabled && _character.PrivLevel < PrivLevel.GM && Throttle.WalkTokens > 0)
                 Throttle.WalkTokens--;
-            Throttle.NextMoveTime = now + moveDelay;
+            // Source-X parity: pace the next allowed walk to (delay - 30ms) so
+            // client ping / server-tick jitter doesn't false-throttle a step
+            // arriving a few ms early (CClientEvent.cpp Event_CheckWalkBuffer
+            // sets m_timeNextEventWalk = now + iDelay with iDelay -= 30). The
+            // walk-token bucket still caps the sustained rate.
+            int pacedDelay = Math.Max(1, moveDelay - MovePermissiveOffsetMs);
+            Throttle.NextMoveTime = now + pacedDelay;
             Throttle.ViolationCount = 0;
 
             bool speedMounted = _character.IsMounted || ((_character.SpeedMode & 0x01) != 0);

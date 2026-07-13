@@ -3,6 +3,42 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-13] - Hareket pacing, load'da container index, item tip materialize, double-click bosluklari
+----------------------------------------
+
+DUZELTILDI - Kayitli container icerigi restart sonrasi client'ta gorunmuyordu:
+  - Container ters index'i (client'in container-acma batch'inin okudugu) Item.ContainedIn
+    setter'inda tutulur; setter index'i yalnizca dunya cozumleyici wire edildikten sonra
+    gunceller -- ama ilk save yuklemesi bu wiring'DEN ONCE calisiyordu. Bu yuzden her
+    contained item parent'in Contents'ine giriyor (property editorde gorunur) ama index'e
+    hic girmiyordu; canta client'ta bos gorunuyor, item'lar server'da duruyordu. Dunya
+    cozumleyici artik yuklemeden once wire ediliyor ve WorldLoader yukleme sonunda index'i
+    authoritative ContainedIn'den bir kez yeniden kuruyor.
+
+DUZELTILDI - Legacy item'in TYPE ve TDATA'si instance'a uygulanmiyordu:
+  - Save ne TYPE ne TDATA saklar -- item'in tipi ITEMDEF'ten gelir. Lazy tip getter
+    cozuyordu ama ham tip alani default'ta kaliyordu; <TYPE> script okumasi, property
+    editor ve ham tipi dogrudan okuyan tum kod yollari (spellbook/book/map/ship/multi/
+    container kontrolleri, statik engelleme, tipe-gore icerik aramasi) t_normal goruyordu.
+    TYPE/TDATA artik yukleme sonrasi cozulmus tanimdan materialize ediliyor (script-created
+    item ile ayni) ve TYPE property tanim uzerinden cozuluyor. Save formati degismedi.
+
+DEGISTI - Hareket pacing Source-X ile hizalandi (yayada savasta takilma cozuluyor):
+  - %20 war-mode yaya-hareket cezasi kaldirildi. Ne 2D client ne Source-X combat-stance
+    yurume cezasi uygular; sunucuyu client'in gonderdiginden yavas pace etmek client'in
+    onaylanmamis-adim butcesini dolduruyor ve yayada war-mode kosarken tekrarlayan takilma
+    uretiyordu.
+  - Sonraki izinli yurume artik 30ms erken pace ediliyor (Source-X Event_CheckWalkBuffer
+    iDelay offset'i) boylece oyuncu ping/jitter'i mesru zamanli bir adimi yanlis-throttle
+    etmiyor. Yurume-jeton kovasi surekli hizi hala sinirlar.
+
+EKLENDI - Bugday/saman ve su teknesi icin double-click davranisi:
+  - t_grain ve t_grass yeniyor, t_water_wash (su teknesi/legen) icinden iciliyor; aclik
+    yenileniyor, Source-X Use_Eat/Use_Drink ile ayni. Onceden bunlar genel "bunu nasil
+    kullanacagini dusunemiyorsun" default'una dusuyordu. Yerlestirilmis bir fixture asla
+    tuketilmiyor; sadece hareketli bir stack bir birim kaybeder.
+
+
 [2026-07-13] - Ev/gemi region eventleri load'da; server tick Source-X ile hizalandi
 ----------------------------------------
 

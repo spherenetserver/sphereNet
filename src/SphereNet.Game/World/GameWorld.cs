@@ -1306,6 +1306,26 @@ public sealed class GameWorld
 
     // --- Container reverse index ---
 
+    /// <summary>Rebuild the whole container reverse index from the authoritative
+    /// <see cref="Item.ContainedIn"/> of every live item. The index is normally
+    /// maintained incrementally by the ContainedIn setter, but that setter only
+    /// fires <see cref="ContainerIndexAdd"/> when <c>Item.ResolveWorld</c> is
+    /// already wired. During the initial world load the save is read BEFORE the
+    /// engine wiring runs, so every contained item lands in its parent's
+    /// <c>Contents</c> (what .edit reads) yet never enters this index (what the
+    /// client's open-container 0x3C batch reads) — the container renders empty on
+    /// the client while .edit shows the items. A single rebuild after load closes
+    /// that gap independently of wiring order.</summary>
+    public void RebuildContainerIndex()
+    {
+        _containerIndex.Clear();
+        foreach (var obj in GetAllObjects())
+        {
+            if (obj is Item item && !item.IsDeleted && item.ContainedIn.IsValid)
+                ContainerIndexAdd(item.ContainedIn.Value, item);
+        }
+    }
+
     /// <summary>Add an item to the container index.</summary>
     public void ContainerIndexAdd(uint containerUid, Item item)
     {

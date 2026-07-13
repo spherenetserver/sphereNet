@@ -178,6 +178,34 @@ public class Item : ObjBase
         set => _type = value;
     }
 
+    /// <summary>Copy the resolved ITEMDEF's TYPE and TDATA onto the instance when
+    /// they are still at their defaults. Script-created items get these via
+    /// ItemDefHelper.ApplyInstanceMetadata, but a legacy save stores neither TYPE
+    /// nor TDATA (WorldSaver never writes them — the type is defined by the
+    /// itemdef), so a loaded item's raw _type stayed Normal. The lazy ItemType
+    /// getter hid that for callers that use the property, but the ~20 code paths
+    /// that read the raw _type field (spellbook/book/map/ship/multi/container
+    /// checks, IsStaticBlock, FindContentByType) and the &lt;TYPE&gt; script read
+    /// saw Normal. Materializing once after load makes a legacy instance behave
+    /// exactly like a script-created one. Set via the field (not the property), so
+    /// a spawn type does not fire OnSpawnTypeChanged here — InitializeSpawnItems
+    /// still builds the component from the resolved type afterwards. The save
+    /// format is unchanged because neither TYPE nor TDATA is persisted.</summary>
+    public void MaterializeDefinitionType()
+    {
+        if (_type != ItemType.Normal &&
+            _tdata1 != 0 && _tdata2 != 0 && _tdata3 != 0 && _tdata4 != 0)
+            return;
+        var def = ResolveDefinition();
+        if (def == null) return;
+        if (_type == ItemType.Normal && def.Type != ItemType.Normal)
+            _type = def.Type;
+        if (_tdata1 == 0) _tdata1 = def.TData1;
+        if (_tdata2 == 0) _tdata2 = def.TData2;
+        if (_tdata3 == 0) _tdata3 = def.TData3;
+        if (_tdata4 == 0) _tdata4 = def.TData4;
+    }
+
     public ushort Amount
     {
         get => _amount;
@@ -921,7 +949,16 @@ public class Item : ObjBase
 
         switch (upper)
         {
-            case "TYPE": value = FormatItemType(_type); return true;
+            // Resolve the effective type, not the raw _type field: a legacy-loaded
+            // item leaves _type at Normal and derives its type from the ITEMDEF
+            // (which resolves even for synthetic-index defs). Reading the raw field
+            // showed t_normal/0 for those in <TYPE> and the property editor while
+            // MORE1 already resolved — the "typedef okunmuyor" report.
+            case "TYPE":
+                value = FormatItemType(_type != ItemType.Normal
+                    ? _type
+                    : ResolveDefinition()?.Type ?? ItemType.Normal);
+                return true;
             case "AMOUNT": value = _amount.ToString(); return true;
             case "MAXAMOUNT": value = MaxAmount.ToString(); return true; // 0 for non-stackable
             case "BASEWEIGHT": value = Weight.ToString(); return true; // Source-X m_weight: per-unit tenths of a stone

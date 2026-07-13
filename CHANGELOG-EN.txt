@@ -4,6 +4,44 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-13] - Movement pacing, container index on load, item type materialization, double-click gaps
+----------------------------------------
+
+FIXED - Saved container contents were invisible to the client after a restart:
+  - The container reverse index (read by the client's open-container batch) is
+    maintained by the Item.ContainedIn setter, which only updates the index once the
+    world resolver is wired — but the initial save load ran BEFORE that wiring. Every
+    contained item therefore landed in its parent's Contents (visible to the property
+    editor) yet never entered the index, so bags rendered empty on the client while
+    still holding their items server-side. The world resolver is now wired before the
+    load, and WorldLoader rebuilds the index once from the authoritative ContainedIn
+    at the end of the load.
+
+FIXED - A legacy item's TYPE and TDATA were not applied to the instance:
+  - A save stores neither TYPE nor TDATA — an item's type is defined by its ITEMDEF.
+    The lazy type getter resolved it, but the raw type field stayed at its default, so
+    the <TYPE> script read, the property editor, and every code path that reads the raw
+    type directly (spellbook/book/map/ship/multi/container checks, static blocking,
+    content-by-type search) saw t_normal. TYPE/TDATA are now materialized from the
+    resolved definition after load, matching a script-created item, and the TYPE
+    property resolves through the definition. The save format is unchanged.
+
+CHANGED - Movement pacing aligned to Source-X (fixes an on-foot in-combat stutter):
+  - Removed the 20% war-mode foot-movement penalty. Neither the 2D client nor Source-X
+    applies a combat-stance walk penalty; pacing the server slower than the client
+    sends saturated the client's unconfirmed-step budget and produced a repeating
+    stutter while running on foot in war mode.
+  - The next allowed walk is now paced 30ms early (Source-X Event_CheckWalkBuffer iDelay
+    offset) so player ping/jitter does not false-throttle a legitimately timed step. The
+    walk-token bucket still caps the sustained rate.
+
+ADDED - Double-click behavior for grain, grass and water troughs:
+  - t_grain and t_grass are eaten and t_water_wash (water troughs/basins) are drunk
+    from, restoring hunger, matching Source-X Use_Eat/Use_Drink. Previously these fell
+    through to the generic "can't think of a way to use that" default. A placed fixture
+    is never consumed; only a movable stack loses a unit.
+
+
 [2026-07-13] - House/ship region events on load; server tick aligned to Source-X
 ----------------------------------------
 

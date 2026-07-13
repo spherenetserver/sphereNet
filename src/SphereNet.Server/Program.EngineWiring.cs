@@ -91,6 +91,9 @@ public static partial class Program
             GameClient.WalkRegenPerSecond = Math.Max(0, _config.WalkRegen);
             GameClient.ClientLingerSeconds = Math.Max(0, _config.ClientLinger);
             GameClient.MoveToleranceMs = 80;
+            // Source-X paces the next allowed walk 30ms early (iDelay -= 30) so
+            // player ping/jitter doesn't false-throttle a step. Match it.
+            GameClient.MovePermissiveOffsetMs = 30;
             // After a movement rejection the client (ClassicUO) clears its step
             // queue, resets its walk sequence to 0 and resends from seq 0. The
             // in-flight steps it had already predicted (seq > 1) arrive next and

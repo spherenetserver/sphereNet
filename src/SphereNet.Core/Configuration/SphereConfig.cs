@@ -314,11 +314,12 @@ public sealed class SphereConfig
     public int MulticorePhaseTimeoutMs { get; set; } = 5000;
 
     // World-loop tick interval in milliseconds (ini key: ServerTickMs).
-    // 50 = 20 ticks/s (default). Raising it (e.g. 100 = 10 ticks/s) doubles the
-    // per-tick budget for heavy active-AI loads at the cost of coarser world-sim
-    // timing; UO's movement/combat cadence tolerates 100ms easily. Network I/O is
-    // not gated by this (it runs every main-loop iteration). Clamped to [20,250].
-    public int ServerTickMs { get; set; } = 50;
+    // 100 = 10 ticks/s (default), matching Source-X exactly: TICKS_PER_SEC=10 =>
+    // MSECS_PER_TICK = 1000/10 = 100ms (CServerTime.h), the unit its regen/timer
+    // cadence advances by. Lowering it (e.g. 50 = 20 ticks/s) gives finer world-sim
+    // timing at the cost of per-tick budget under heavy active-AI loads. Network I/O
+    // is not gated by this (it runs every main-loop iteration). Clamped to [20,250].
+    public int ServerTickMs { get; set; } = 100;
 
     // Main loop yield strategy between ticks.
     // 0 = spin   : Thread.SpinWait — lowest latency (<1ms), highest CPU usage.

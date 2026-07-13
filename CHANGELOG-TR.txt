@@ -3,7 +3,28 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
-[2026-07-14] - Buyu efekti memory item'lari; sentetik-index cozum taramasi
+[2026-07-13] - Ev/gemi region eventleri load'da; server tick Source-X ile hizalandi
+----------------------------------------
+
+DUZELTILDI - Ev ve gemi region scriptleri (@Enter/@Step/...) load sonrasi uygulanmiyordu:
+  - Dinamik olarak olusturulan ev/gemi region'i EVENTS'ini sadece multi item uzerinde
+    REGION.EVENTS tag'i olarak tasiyordu; tag save'den round-trip ediyor ama hicbir
+    zaman region event'ine cevrilmiyordu, bu yuzden region'in @Enter/@Step trigger'lari
+    hic atesenmiyordu. Ev ve gemi region kurulumu artik REGION.EVENTS'i (virgul-ayrik,
+    bastaki '+' temizli, tekillestirilmis) TriggerDispatcher'in cozdugu ayni key
+    formuyla region'in event listesine ekliyor; scriptler girise/adima gore yeniden
+    atesleniyor.
+
+DEGISTI - Dunya-dongusu tick araligi artik Source-X ile birebir:
+  - Tick (ServerTickMs) default'u 100ms (saniyede 10 tick), eski saniyede 20 tick
+    yerine Source-X MSECS_PER_TICK (TICKS_PER_SEC=10) ile eslesiyor. Regen ve timer
+    cadence'i artik referans birimde ilerliyor. Network I/O ve hareket kuyrugu hala her
+    main-loop iterasyonunda drain oluyor, yani tepkisellik degismedi; sadece dunya-
+    simulasyon zamanlamasi hizalandi. ServerTickMs ini anahtariyla ayarlanabilir
+    (clamp [20,250]).
+
+
+[2026-07-13] - Buyu efekti memory item'lari; sentetik-index cozum taramasi
 ----------------------------------------
 
 EKLENDI - Aktif buyu efektleri giyili IT_SPELL memory item olarak yansitiliyor:

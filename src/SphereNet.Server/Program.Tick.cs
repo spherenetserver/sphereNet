@@ -85,7 +85,7 @@ public static partial class Program
             // --- 9. Main Game Loop ---
             _running = true;
             var sw = Stopwatch.StartNew();
-            int TickIntervalMs = _config.ServerTickMs; // default 50 (20 ticks/s); ini: ServerTickMs
+            int TickIntervalMs = _config.ServerTickMs; // default 100 (10 ticks/s, Source-X MSECS_PER_TICK); ini: ServerTickMs
             const int MaxCatchUpTicksPerLoop = 4;
             long nextTickMs = TickIntervalMs;
 

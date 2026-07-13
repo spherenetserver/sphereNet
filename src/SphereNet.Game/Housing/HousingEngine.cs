@@ -917,6 +917,10 @@ public sealed class HousingEngine
         region.AddRect(x1, y1, x2, y2);
         if (parent != null)
             region.InheritFromParent(parent);
+        // Apply the multi's REGION.EVENTS tag so the house region's @Enter/@Step
+        // scripts fire (the tag round-trips on the item but was never realized).
+        if (mi.TryGetTag("REGION.EVENTS", out string? regionEvents))
+            region.AddEventsFromTag(regionEvents);
 
         _world.AddRegion(region);
         house.RegionUid = region.Uid;

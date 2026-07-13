@@ -4,7 +4,27 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-07-14] - Spell-effect memory items; synthetic-index resolution sweep
+[2026-07-13] - House/ship region events on load; server tick aligned to Source-X
+----------------------------------------
+
+FIXED - House and ship region scripts (@Enter/@Step/...) were not applied after load:
+  - A dynamically realized house or ship region carried its EVENTS only as a
+    REGION.EVENTS tag on the multi item; the tag round-tripped through save but was
+    never turned into region events, so the region's @Enter/@Step triggers never
+    fired. House and ship region creation now parses REGION.EVENTS into the region's
+    event list (comma-separated, leading '+' trimmed, de-duplicated) using the same
+    key form TriggerDispatcher resolves, so the scripts fire on entry/step again.
+
+CHANGED - World-loop tick interval now matches Source-X exactly:
+  - The tick (ServerTickMs) default is 100ms (10 ticks/s), matching Source-X
+    MSECS_PER_TICK (TICKS_PER_SEC=10) instead of the previous 20 ticks/s. Regen and
+    timer cadence now advance on the reference unit. Network I/O and the movement
+    queue still drain every main-loop iteration, so responsiveness is unchanged; only
+    world-simulation timing is aligned. Configurable via the ServerTickMs ini key
+    (clamped to [20,250]).
+
+
+[2026-07-13] - Spell-effect memory items; synthetic-index resolution sweep
 ----------------------------------------
 
 ADDED - Active spell effects are mirrored as worn IT_SPELL memory items:

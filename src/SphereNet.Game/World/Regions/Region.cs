@@ -74,6 +74,25 @@ public class Region : IScriptObj
     public void AddEvent(ResourceId rid) => _events.Add(rid);
     public void RemoveEvent(ResourceId rid) => _events.Remove(rid);
 
+    /// <summary>Apply a REGION.EVENTS tag value — a comma-separated list of event
+    /// defnames, each optionally '+'-prefixed — to this region's event list,
+    /// mirroring how an AREADEF EVENTS= list is parsed. A dynamically realized
+    /// house/ship region carries its @Enter/@Step scripts only through this tag on
+    /// the multi item, so without applying it the region's events never fire.
+    /// Deduplicates so re-realization can't stack the same event.</summary>
+    public void AddEventsFromTag(string? csv)
+    {
+        if (string.IsNullOrWhiteSpace(csv)) return;
+        foreach (var raw in csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            string name = raw.TrimStart('+');
+            if (name.Length == 0) continue;
+            var rid = ResourceId.FromString(name, ResType.Events);
+            if (!_events.Contains(rid))
+                _events.Add(rid);
+        }
+    }
+
     public void AddRegionType(ResourceId rid) => _regionTypes.Add(rid);
     public void RemoveRegionType(ResourceId rid) => _regionTypes.Remove(rid);
 

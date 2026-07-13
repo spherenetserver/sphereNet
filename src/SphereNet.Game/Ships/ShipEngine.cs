@@ -1046,6 +1046,10 @@ public sealed class ShipEngine
         region.AddRect(
             (short)(mi.X + def.MinX), (short)(mi.Y + def.MinY),
             (short)(mi.X + def.MaxX), (short)(mi.Y + def.MaxY));
+        // Apply the multi's REGION.EVENTS tag so the ship region's @Enter/@Step
+        // scripts fire (the tag round-trips on the item but was never realized).
+        if (mi.TryGetTag("REGION.EVENTS", out string? regionEvents))
+            region.AddEventsFromTag(regionEvents);
         _world.AddRegion(region);
         ship.RegionUid = region.Uid;
         UpdateShipRegion(ship); // set P + inherit from current surroundings

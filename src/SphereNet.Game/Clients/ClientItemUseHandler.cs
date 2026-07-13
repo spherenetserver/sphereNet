@@ -92,6 +92,29 @@ public sealed class ClientItemUseHandler
     private void ToggleDoor(Item door) => _client.ToggleDoor(door);
     private bool TryToggleNearestMapStaticDoor(uint clientSerial) => _client.TryToggleNearestMapStaticDoor(clientSerial);
     private void UsePotion(Item potion) => _client.UsePotion(potion);
+
+    /// <summary>Consume exactly one unit of a used consumable: decrement a stack and
+    /// resend it, or delete the last unit (honouring an @Destroy RETURN 1). Never
+    /// bulk-deletes a stack — Source-X burns one unit per use (Use_Eat/Use_Drink
+    /// wConsume=1), so a single drink must not wipe the whole pile.</summary>
+    private void ConsumeOneOnUse(Item item)
+    {
+        if (item.Amount > 1)
+        {
+            item.Amount--;
+            if (item.ContainedIn.IsValid)
+                _netState.Send(new PacketContainerItem(
+                    item.Uid.Value, item.DispIdFull, 0, item.Amount, item.X, item.Y,
+                    item.ContainedIn.Value, item.Hue, _netState.IsClientPost6017));
+            else
+                SendWorldItem(item);
+        }
+        else if (_triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Destroy,
+                     new TriggerArgs { CharSrc = _character, ItemSrc = item }) != TriggerResult.True)
+        {
+            _world.RemoveItem(item);
+        }
+    }
     private static int GetVendorItemPrice(Character vendor, Item item) => GameClient.GetVendorItemPrice(vendor, item);
     private static int GetVendorItemSellPrice(Character vendor, Item item) => GameClient.GetVendorItemSellPrice(vendor, item);
 
@@ -663,6 +686,16 @@ public sealed class ClientItemUseHandler
             case ItemType.Food:
             case ItemType.Fruit:
             case ItemType.Drink:
+                // Source-X Use_Eat/Use_Drink refuse an item the user cannot move
+                // (CCharUse.cpp:927/992 CanMoveItem gate) BEFORE consuming it — so a
+                // placed Move_Never/locked food fixture is never destroyed by a
+                // non-GM double-click. GM and movable pack items pass.
+                if (!ItemMoveRules.CanMove(_character, item, out _))
+                {
+                    SysMessage(ServerMessages.Get(
+                        item.ItemType == ItemType.Drink ? Msg.DrinkCantmove : Msg.FoodCantmove));
+                    break;
+                }
                 // @Eat (Source-X) — RETURN 1 blocks the meal. N1 = hunger restored.
                 if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Eat,
                         new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item, N1 = 5 }) == TriggerResult.True)
@@ -1036,6 +1069,7 @@ public sealed class ClientItemUseHandler
                 break;
             case ItemType.SpawnItem:
             case ItemType.SpawnChar:
+            case ItemType.SpawnChampion:
                 if (item.SpawnChar != null)
                 {
                     if (item.SpawnChar.HasAliveSpawns())
@@ -1243,17 +1277,22 @@ public sealed class ClientItemUseHandler
 
             // ---- beverages ----
             case ItemType.Booze:
+                // Source-X IT_BOOZE routes through Use_Drink: refuse an unmovable
+                // fixture (a placed keg/barrel) instead of destroying it.
+                if (!ItemMoveRules.CanMove(_character, item, out _))
+                {
+                    SysMessage(ServerMessages.Get(Msg.DrinkCantmove));
+                    break;
+                }
                 // @Eat (Source-X) — drinking also feeds the @Eat hook. N1 = hunger.
                 if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.Eat,
                         new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item, N1 = 2 }) == TriggerResult.True)
                     break;
                 _character.Food = (ushort)Math.Min(_character.Food + 2, 60);
                 SysMessage("*hic!*");
-                if (_triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Destroy,
-                        new TriggerArgs { CharSrc = _character, ItemSrc = item }) != TriggerResult.True)
-                {
-                    _world.RemoveItem(item);
-                }
+                // Consume exactly one bottle (Use_Drink wConsume=1), never the whole
+                // stack — a single drink used to delete every ale in the pile.
+                ConsumeOneOnUse(item);
                 break;
 
             // ---- musical instruments ----
@@ -1512,6 +1551,13 @@ public sealed class ClientItemUseHandler
             case ItemType.ArmorBone:
             case ItemType.Shield:
             case ItemType.Jewelry:
+            // The bow/crossbow/throwing/whip family equips to a hand layer via the
+            // preamble too (Source-X routes them to ItemEquip only, no message), so
+            // they belong in the silent break rather than the "can't think" default.
+            case ItemType.WeaponBow:
+            case ItemType.WeaponXBow:
+            case ItemType.WeaponThrowing:
+            case ItemType.WeaponWhip:
                 break;
 
             default:
@@ -1954,13 +2000,19 @@ public sealed class ClientItemUseHandler
     /// <summary>Source-X uses scissors to convert hides/cloth to leather/bolts.</summary>
     private void HandleScissorsTarget(Item scissors, Serial target)
     {
+        if (_character == null) return;
         var obj = target.IsValid ? _world.FindObject(target) as Item : null;
         if (obj == null || !CanReachTargetItem(obj)) { SysMessage(ServerMessages.Get(Msg.ItemuseCantthink)); return; }
+        // A locked-down / Move_Never fixture (a placed cloth/hide decoration) must
+        // not be cut or type-converted by scissors.
+        if (!ItemMoveRules.CanMove(_character, obj, out _)) { SysMessage(ServerMessages.Get(Msg.ItemuseCantthink)); return; }
         switch (obj.ItemType)
         {
             case ItemType.Hide: obj.ItemType = ItemType.Leather; SysMessage("You cut the hide into leather."); break;
             case ItemType.Cloth: obj.ItemType = ItemType.ClothBolt; SysMessage("You cut the cloth into bolts."); break;
-            case ItemType.BandageBlood: _world.RemoveItem(obj); SysMessage(ServerMessages.Get(Msg.ItemuseBandageClean)); break;
+            // Clean the bloody bandages (whole stack retained) rather than deleting
+            // them — the message says "clean", not "destroy".
+            case ItemType.BandageBlood: obj.ItemType = ItemType.Bandage; SysMessage(ServerMessages.Get(Msg.ItemuseBandageClean)); break;
             default: SysMessage(ServerMessages.Get(Msg.ItemuseCantthink)); break;
         }
     }

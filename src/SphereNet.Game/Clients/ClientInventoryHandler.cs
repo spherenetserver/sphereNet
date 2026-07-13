@@ -804,8 +804,18 @@ public sealed class ClientInventoryHandler
                     }
                 }
 
+                // When the "container" is actually a matching stackable pile, this
+                // drop is a MERGE, not an insert into a container. Source-X does not
+                // gate a pile merge by the destination's item-count / weight / nesting
+                // budget (the pile just grows up to GetMaxAmount) — those container
+                // caps only apply when dropping a distinct item into a container slot.
+                // Applying MaxContainerWeight to a ground pile wrongly rejected large
+                // stacks (e.g. dropping 5000 gold — 500 stones — onto a ground pile
+                // when the container weight cap is 400).
+                bool isPileMerge = container.CanStackWith(item);
+
                 // Nesting depth limit — prevent container-in-container bypass of slot limits.
-                if (_character.PrivLevel < PrivLevel.GM)
+                if (!isPileMerge && _character.PrivLevel < PrivLevel.GM)
                 {
                     int depth = 0;
                     var parent = container;
@@ -822,7 +832,7 @@ public sealed class ClientInventoryHandler
                     }
                 }
 
-                if (_character.PrivLevel < PrivLevel.GM)
+                if (!isPileMerge && _character.PrivLevel < PrivLevel.GM)
                 {
                     // A drop anywhere in the bank tree (the box itself or a nested
                     // bag) counts against the bank cap, computed over the WHOLE
@@ -888,7 +898,7 @@ public sealed class ClientInventoryHandler
                 // nesting the dragged item inside the stack — nesting made the
                 // dropped pile a hidden child of the target and it silently
                 // vanished (the "stack gold onto gold and 10k disappears" bug).
-                if (container.CanStackWith(item))
+                if (isPileMerge)
                 {
                     // A target stack on the ground is a world object, not a
                     // container child: its amount update must go out as a world
@@ -898,7 +908,14 @@ public sealed class ClientInventoryHandler
                     bool targetOnGround = !container.ContainedIn.IsValid;
                     uint stackParent = container.ContainedIn.IsValid
                         ? container.ContainedIn.Value : container.Uid.Value;
-                    int room = ushort.MaxValue - container.Amount;
+                    // Cap the merge at the target's effective stack limit
+                    // (per-item MAXAMOUNT override or ITEMSMAXAMOUNT, Source-X
+                    // GetMaxAmount), not the raw ushort ceiling — otherwise a pile
+                    // grows past the configured/per-item cap. The other two merge
+                    // sites (Item.TryAddItemWithStack, ground-drop merge) already
+                    // use MaxAmount.
+                    int room = container.MaxAmount - container.Amount;
+                    if (room < 0) room = 0;
                     int originalAmount = item.Amount;
                     int moved = Math.Min(room, originalAmount);
                     int remaining = originalAmount - moved;
@@ -941,6 +958,17 @@ public sealed class ClientInventoryHandler
                         // target pile so it is never lost.
                         item.Amount = (ushort)remaining;
                         _world.PlaceItemWithDecay(item, container.Position);
+                        BroadcastWorldItem(item);
+                    }
+                    else
+                    {
+                        // Contained target whose parent lookup failed (a child that
+                        // outlived its parent — torn world state). Without this the
+                        // source kept its full Amount while the target already grew
+                        // by `moved`, duplicating `moved` units. Reduce the source to
+                        // the remainder and bounce it to the target's top-level tile.
+                        item.Amount = (ushort)remaining;
+                        _world.PlaceItemWithDecay(item, container.GetTopLevelPosition());
                         BroadcastWorldItem(item);
                     }
                     _netState.Send(new PacketDropAck());

@@ -3,6 +3,35 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-13] - Tuketilebilir tek-kullanim, yigin-birlestirme siniri ve makas veri-kaybi duzeltmeleri
+----------------------------------------
+
+DUZELTILDI - Yiginlanmis bir item tuketilirken tum yigin siliniyor ve fixture yok olabiliyordu:
+  - Icki ve iksirler tek kullanimda tum yigini siliyordu; ye/ic handler'larinin hicbiri
+    once hareket-ettirilebilirligi kontrol etmiyordu. Bu yuzden tek yudum bir yigini
+    silip suportuyor, yerlestirilmis bir fici/surahi/yiyecek dekorunu (Move_Never fixture)
+    cift tiklamak onu yok ediyordu. Artik tam olarak bir birim tuketiyorlar (Source-X
+    Use_Eat/Use_Drink, wConsume=1) ve kullanicinin hareket ettiremeyecegi bir item'i
+    yok etmek yerine reddediyorlar.
+
+DUZELTILDI - Bir yigini digerine birlestirmek boyut sinirini ve arta kalani yanlis isliyordu:
+  - Birlestirme, hedefin efektif yigin sinirini (item-basi MAXAMOUNT override veya
+    ITEMSMAXAMOUNT, Source-X GetMaxAmount) degil ham 65535 miktar tavanini kullaniyordu;
+    boylece bir yigin ayarli sinirini asabiliyordu. Artik hedefin MaxAmount degerinde
+    sinirlaniyor ve tasan arta kalan yiginin yaninda korunuyor.
+  - Bir yigini eslesen bir yigina birakmak, konteynere ekleme degil birlestirmedir;
+    bu yuzden artik hedefin konteyner item-sayisi / agirlik / ic-ice sinirlariyla
+    kisitlanmiyor. Onceden konteyner agirlik siniri buyuk yiginlari yanlis reddediyordu
+    (orn. konteyner agirlik siniri dusukken yere 5000 altin birakmak). Hedefin parent
+    aramasi basarisiz olan bir arta kalan artik cogaltilmak yerine hedefin ust-seviye
+    karesine dusuyor.
+
+DUZELTILDI - Makas kanli-bandaj yiginini silebiliyor ve bir fixture'i kesebiliyordu:
+  - Kanli bandaj yiginini kesmek onu siliyordu; artik yigini duz bandaja geri temizliyor
+    (tip donusumu, tum yigin korunur). Makas ayrica Move_Never bez fixture'i tip
+    donusturmek yerine reddediyor.
+
+
 [2026-07-13] - Dunya tutarlilik denetleyicisi ve boot-time canary
 ----------------------------------------
 

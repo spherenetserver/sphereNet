@@ -1805,6 +1805,15 @@ public sealed class ClientWorldFeaturesHandler
     {
         if (_character == null) return;
 
+        // Source-X routes IT_POTION/IT_PITCHER through Use_Drink, which refuses an
+        // item the user cannot move (a placed potion/pitcher fixture) before drinking
+        // it — otherwise a non-GM double-click would destroy the fixture.
+        if (!ItemMoveRules.CanMove(_character, potion, out _))
+        {
+            SysMessage(ServerMessages.Get("drink_cantmove"));
+            return;
+        }
+
         long now = Environment.TickCount64;
         if (now < _nextPotionTimeMs)
         {
@@ -1855,8 +1864,18 @@ public sealed class ClientWorldFeaturesHandler
         // Update stats
         SendCharacterStatus(_character);
 
-        // Consume potion. Source-X parity: @Destroy RETURN 1 keeps the bottle.
-        if (_triggerDispatcher?.FireItemTrigger(potion, ItemTrigger.Destroy,
+        // Consume exactly one potion. Source-X parity: @Destroy RETURN 1 keeps the
+        // bottle; a stack burns one unit, never the whole pile (one drink used to
+        // delete every potion in the stack).
+        if (potion.Amount > 1)
+        {
+            potion.Amount--;
+            if (potion.ContainedIn.IsValid)
+                _netState.Send(new PacketContainerItem(
+                    potion.Uid.Value, potion.DispIdFull, 0, potion.Amount, potion.X, potion.Y,
+                    potion.ContainedIn.Value, potion.Hue, _netState.IsClientPost6017));
+        }
+        else if (_triggerDispatcher?.FireItemTrigger(potion, ItemTrigger.Destroy,
                 new TriggerArgs { CharSrc = _character, ItemSrc = potion }) != TriggerResult.True)
         {
             _world.RemoveItem(potion);

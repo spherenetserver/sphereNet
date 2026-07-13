@@ -4,6 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-13] - Consumable single-use, pile-merge cap, and scissors data-loss fixes
+----------------------------------------
+
+FIXED - Consuming a stacked item destroyed the whole pile and could delete a fixture:
+  - Booze and potions deleted the entire stack on a single use, and none of the
+    eat/drink handlers checked movability first, so one sip wiped a pile and
+    double-clicking a placed keg/pitcher/food decoration (a Move_Never fixture)
+    destroyed it. They now consume exactly one unit (Source-X Use_Eat/Use_Drink,
+    wConsume=1) and refuse an item the user cannot move instead of destroying it.
+
+FIXED - Merging one stack onto another mis-handled the size cap and remainder:
+  - The merge grew a pile up to the raw 65535 amount ceiling instead of the target's
+    effective stack limit (per-item MAXAMOUNT override or ITEMSMAXAMOUNT, Source-X
+    GetMaxAmount), so a pile could exceed its configured cap. It now caps at the
+    target's MaxAmount and the overflow remainder is preserved beside the pile.
+  - Dropping a stack onto a matching pile is a merge, not an insert into a container,
+    so it is no longer gated by the destination's container item-count / weight /
+    nesting caps. Previously the container weight cap wrongly rejected large stacks
+    (e.g. dropping 5000 gold onto a ground pile when the container weight limit is
+    lower). A remainder whose target's parent lookup fails now bounces to the target's
+    top-level tile instead of being duplicated.
+
+FIXED - Scissors could delete a bloody-bandage stack and cut a fixture:
+  - Cutting a stack of bloody bandages deleted it; it now cleans the stack back to
+    plain bandages (type convert, whole stack kept). Scissors also refuse a
+    Move_Never cloth fixture instead of type-converting it.
+
+
 [2026-07-13] - World consistency auditor and boot-time canary
 ----------------------------------------
 

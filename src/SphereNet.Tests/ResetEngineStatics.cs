@@ -31,6 +31,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Definitions.DefinitionLoader.ResetForTests();
         SphereNet.Game.Objects.ObjBase.BroadcastNearby = null;
         SphereNet.Game.Objects.Items.Item.ResolveWorld = null;
+        SphereNet.Game.Objects.Items.Item.CreateTriggerHook = null;
         SphereNet.Game.Objects.Items.Item.ItemsMaxAmount = 60000;
         SphereNet.Game.Objects.Characters.Character.BroadcastNearby = null;
         SphereNet.Game.Objects.Characters.Character.MagicFlags = 0;

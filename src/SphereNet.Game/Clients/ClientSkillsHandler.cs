@@ -765,7 +765,11 @@ public sealed class ClientSkillsHandler
         if (obj is not Item item) return false;
         if (item.IsAttr(ObjAttributes.Static) && !_character.AllMove && _character.PrivLevel < PrivLevel.GM)
             return false;
-        if (item.IsAttr(ObjAttributes.Invis) && !_character.AllShow)
+        // Match the view-send audience (AllShow OR GM+): a GM sees invisible
+        // items without AllShow, so the skill-target can-see gate must let them
+        // through too, or targeting one desyncs it out of the client's view.
+        if (item.IsAttr(ObjAttributes.Invis) && !_character.AllShow &&
+            _character.PrivLevel < PrivLevel.GM)
             return false;
 
         Item top = GetTopContainer(item) ?? item;

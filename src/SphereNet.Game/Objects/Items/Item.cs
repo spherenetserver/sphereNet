@@ -39,6 +39,27 @@ public class Item : ObjBase
     public static Func<Item, Serial, string, bool>? ExecuteGuildRelationCommand;
     public static Func<string, ushort>? ResolveDefName;
 
+    /// <summary>Fires the itemdef <c>@Create</c> trigger once per newly
+    /// materialised instance — Source-X <c>CItem::GenerateScript</c> →
+    /// <c>OnTrigger(ITRIG_Create)</c>. This is the sole hook that turns a magic
+    /// weapon's script body (<c>MOREY</c>/<c>ATTR</c>/<c>HITPOINTS</c>/<c>COLOR</c>,
+    /// sub-item spawns) into an actual magic item, so loot/spawn/NEWITEM/vendor/
+    /// carve/.add/craft all rely on it. Wired at startup; left null in unit tests
+    /// that don't exercise triggers. The world load never routes through the
+    /// creation helper, so reloaded items never re-fire @Create.</summary>
+    public static Action<Item>? CreateTriggerHook;
+    private bool _createTriggerFired;
+
+    /// <summary>Run the itemdef <c>@Create</c> trigger exactly once for this
+    /// instance. Guarded so re-stamping metadata never double-applies a magic
+    /// @Create body (which would, e.g., stack the damage bonus every call).</summary>
+    public void FireCreateTrigger()
+    {
+        if (_createTriggerFired) return;
+        _createTriggerFired = true;
+        CreateTriggerHook?.Invoke(this);
+    }
+
     // Resolves a MULTIDEF defname (e.g. "m_small_ship_n") to its multi id.
     // Returns the multi id (which may legitimately be 0 — ship multis sit at the
     // start of multi.mul), or -1 when the name is not a multi definition.
@@ -2910,6 +2931,7 @@ public class Item : ObjBase
             }
 
             SpawnChar.ResetTimer(preservedTimeoutMs);
+            RelinkSpawnedChildrenFromTag(world);
         }
         else if (effType == ItemType.SpawnItem)
         {
@@ -2932,6 +2954,61 @@ public class Item : ObjBase
 
             SpawnItem.ResetTimer(preservedTimeoutMs);
         }
+    }
+
+    /// <summary>Restore a char spawner's live-children list from its saved ADDOBJ
+    /// entries. Source-X CItem/CCSpawn rebuilds GetCurrentSpawned() from ADDOBJ on
+    /// load (CCSpawn::AddObj), independent of the SPAWNID tag. Without it a native
+    /// MORE1/AMOUNT spawner forgets its NPCs on reload, sees CurrentCount 0 &lt;
+    /// AMOUNT, and respawns its whole quota every restart — the population grows
+    /// without bound (one worldgem yielding many NPCs). Idempotent (RegisterExisting
+    /// de-dupes) and never alters MaxCount: the cap stays AMOUNT and any excess
+    /// carried in from an over-accumulated save drains off by attrition, matching
+    /// Source-X leaving MORE2/current-spawned unmodified on load.</summary>
+    private void RelinkSpawnedChildrenFromTag(World.GameWorld world)
+    {
+        if (SpawnChar == null) return;
+        string? addObj = Tags.Get("ADDOBJ");
+        if (string.IsNullOrEmpty(addObj)) return;
+
+        int spawnRange = SpawnChar.SpawnRange;
+        foreach (string tok in addObj.Split(',',
+            StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!TryParseSpawnUid(tok, out uint uid)) continue;
+            var ch = world.FindChar(new Serial(uid));
+            if (ch == null || ch.IsDead || ch.IsDeleted) continue;
+
+            SpawnChar.RegisterExisting(new Serial(uid));
+            if (ch.Home.X == 0 && ch.Home.Y == 0)
+                ch.Home = Position;
+            if (ch.HomeDist == Character.UnlimitedHomeDistance)
+                ch.HomeDist = (short)spawnRange;
+            if (!ch.TryGetTag("SPAWNITEM", out _))
+                ch.SetTag("SPAWNITEM", $"0{Uid.Value:x8}");
+            if (!ch.IsStatFlag(StatFlag.Spawned))
+                ch.SetStatFlag(StatFlag.Spawned);
+            if (ch.NpcBrain == NpcBrainType.None)
+            {
+                var cdef = DefinitionLoader.GetCharDef(ch.CharDefIndex);
+                ch.NpcBrain = (cdef != null && cdef.NpcBrain != NpcBrainType.None)
+                    ? cdef.NpcBrain
+                    : NpcBrainType.Monster;
+            }
+        }
+    }
+
+    /// <summary>Parse an ADDOBJ serial token: "0x1234", leading-0 hex ("0400211c9",
+    /// how the saver writes UIDs), or plain decimal.</summary>
+    private static bool TryParseSpawnUid(string val, out uint result)
+    {
+        result = 0;
+        if (string.IsNullOrEmpty(val)) return false;
+        if (val.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            return uint.TryParse(val.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out result);
+        if (val.Length > 1 && val[0] == '0' && !val.Contains('.'))
+            return uint.TryParse(val.AsSpan(1), System.Globalization.NumberStyles.HexNumber, null, out result);
+        return uint.TryParse(val, out result);
     }
 
     // --- Helper methods ---

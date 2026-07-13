@@ -371,7 +371,15 @@ public sealed class ClientItemUseHandler
             return true;
         if (usePoint.Map != _character.MapIndex)
             return false;
-        if (item.IsAttr(ObjAttributes.Invis) && !_character.AllShow)
+        // Invisible items (spawn worldgems, triggers) render for AllShow AND for
+        // GM+ staff without toggling AllShow (ClientViewUpdater canSeeInvisItems).
+        // The can-see gate here must use the SAME audience, or a GM who legitimately
+        // sees an invisible spawner double-clicks it, the server decides it is
+        // unseeable, and "corrects" the client with PacketDeleteObject — the item
+        // vanishes from view (still alive server-side) instead of the double-click
+        // triggering the spawner.
+        if (item.IsAttr(ObjAttributes.Invis) && !_character.AllShow &&
+            _character.PrivLevel < PrivLevel.GM)
             return false;
         if (owner != null && !CanSeeCharacterForDoubleClick(owner))
             return false;

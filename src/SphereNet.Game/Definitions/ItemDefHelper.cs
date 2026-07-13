@@ -62,6 +62,15 @@ public static class ItemDefHelper
         if (defIndex != item.BaseId)
             item.SetTag("SCRIPTDEF", defIndex.ToString());
 
+        // Source-X CItem::GenerateScript fires ITRIG_Create on every item it
+        // materialises from a def. This is the only hook that runs a magic
+        // weapon's @Create body (MOREY/ATTR/HITPOINTS/COLOR), so loot, spawns,
+        // NEWITEM, vendor restock, carve parts and .add all get their scripted
+        // creation here. The ITEMDEF/SCRIPTDEF routing tags are set above so the
+        // dispatcher resolves the right def; the call is a once-per-instance,
+        // guarded no-op when no @Create trigger is wired (unit tests) or defined.
+        item.FireCreateTrigger();
+
         return true;
     }
 }

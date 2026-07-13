@@ -153,6 +153,14 @@ public static partial class Program
             CharDefHelper.AfterApplyDefName = ch =>
                 _triggerDispatcher.FireCharTrigger(ch, CharTrigger.Create,
                     new SphereNet.Game.Scripting.TriggerArgs { CharSrc = ch });
+            // Item counterpart of the chardef @Create above — Source-X
+            // CItem::GenerateScript fires ITRIG_Create on every materialised item,
+            // which is where a magic weapon's @Create body (MOREY/ATTR/HITPOINTS/
+            // COLOR) actually applies. ItemDefHelper.ApplyInstanceMetadata invokes
+            // this once per fresh instance; the world load never routes through it.
+            SphereNet.Game.Objects.Items.Item.CreateTriggerHook = item =>
+                _triggerDispatcher.FireItemTrigger(item, ItemTrigger.Create,
+                    new SphereNet.Game.Scripting.TriggerArgs { ItemSrc = item });
             _systemHooks = new ScriptSystemHooks(_triggerRunner);
             RegisterDbProviders();
             _scriptDb = new ScriptDbAdapter(_loggerFactory.CreateLogger<ScriptDbAdapter>());

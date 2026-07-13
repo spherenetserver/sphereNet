@@ -189,43 +189,17 @@ public static partial class Program
                 if (maxDist != null && int.TryParse(maxDist, out int dist))
                     item.SpawnChar.SpawnRange = dist;
 
-                // ADDOBJ: re-register already-spawned NPC serials.
-                // In Sphere, ADDOBJ count determines MaxCount (each line = one spawn slot).
-                string? addObj = item.Tags.Get("ADDOBJ");
-                int spawnRange = item.SpawnChar.SpawnRange;
-                if (!string.IsNullOrEmpty(addObj))
+                // Classic Sphere SPAWNID convention: each ADDOBJ line is a spawn
+                // slot, so the ADDOBJ count raises MaxCount. Source-X MORE1/AMOUNT
+                // spawners take their cap from AMOUNT instead and must NOT do this
+                // (the general re-link below never touches MaxCount), or a save that
+                // over-accumulated would lock the inflated count in permanently.
+                string? spawnSlots = item.Tags.Get("ADDOBJ");
+                if (!string.IsNullOrEmpty(spawnSlots))
                 {
-                    var tokens = addObj.Split(',', System.StringSplitOptions.TrimEntries | System.StringSplitOptions.RemoveEmptyEntries);
-                    if (tokens.Length > item.SpawnChar.MaxCount)
-                        item.SpawnChar.MaxCount = tokens.Length;
-
-                    foreach (string tok in tokens)
-                    {
-                        if (TryParseHexOrDecUInt(tok, out uint npcSerial))
-                        {
-                            var ch = _world.FindChar(new SphereNet.Core.Types.Serial(npcSerial));
-                            if (ch != null && !ch.IsDead && !ch.IsDeleted)
-                            {
-                                item.SpawnChar.RegisterExisting(new SphereNet.Core.Types.Serial(npcSerial));
-                                if (ch.Home.X == 0 && ch.Home.Y == 0)
-                                    ch.Home = item.Position;
-                                if (ch.HomeDist == Character.UnlimitedHomeDistance)
-                                    ch.HomeDist = (short)spawnRange;
-                                if (!ch.TryGetTag("SPAWNITEM", out _))
-                                    ch.SetTag("SPAWNITEM", $"0{item.Uid.Value:x8}");
-                                if (!ch.IsStatFlag(SphereNet.Core.Enums.StatFlag.Spawned))
-                                    ch.SetStatFlag(SphereNet.Core.Enums.StatFlag.Spawned);
-                                if (ch.NpcBrain == SphereNet.Core.Enums.NpcBrainType.None)
-                                {
-                                    var cdef = SphereNet.Game.Definitions.DefinitionLoader.GetCharDef(ch.CharDefIndex);
-                                    if (cdef != null && cdef.NpcBrain != SphereNet.Core.Enums.NpcBrainType.None)
-                                        ch.NpcBrain = cdef.NpcBrain;
-                                    else
-                                        ch.NpcBrain = SphereNet.Core.Enums.NpcBrainType.Monster;
-                                }
-                            }
-                        }
-                    }
+                    int slots = spawnSlots.Split(',', System.StringSplitOptions.TrimEntries | System.StringSplitOptions.RemoveEmptyEntries).Length;
+                    if (slots > item.SpawnChar.MaxCount)
+                        item.SpawnChar.MaxCount = slots;
                 }
 
                 // Tags override MOREP — reset timer with final values

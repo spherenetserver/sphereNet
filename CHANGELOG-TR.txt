@@ -3,6 +3,39 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-13] - Materialize'da item @Create, spawner cocuk re-link, gorunmez item double-click
+----------------------------------------
+
+DUZELTILDI - Loot/spawn item'lari itemdef @Create trigger'ini hic calistirmiyordu, magic itemler olu cikiyordu:
+  - Bir magic silahin buyusu (hasar bonusu, magic ozellik, can, magic hue) tamamen
+    itemdef'in @Create blogunda durur. Source-X bir def'ten olusturdugu HER item'da
+    (loot, spawn, NEWITEM, vendor restock, carve, .add) @Create'i ateşler; SphereNet
+    hic ateslemiyordu, bu yuzden roll edilen bir magic def isimli ama olu bir item
+    uretiyordu. ApplyInstanceMetadata artik her yeni instance icin @Create'i bir kez
+    wire'li bir hook uzerinden ateşliyor; guard'li (metadata tekrar yazilinca efekt
+    katlanmaz) ve dunya yuklemesi buradan gecmez (yuklenen itemler persist state'ini
+    korur, yeniden ateslenmez).
+
+DUZELTILDI - Char spawner'lari reload'da canli cocuklarini unutup tum quota'yi yeniden spawn ediyordu:
+  - Spawner'in o anki canli cocuk sayisini kayitli ADDOBJ girdilerinden geri kuran
+    re-link yalnizca klasik SPAWNID-tag'li spawner'lar icin calisiyordu. Native
+    MORE1/AMOUNT spawner'inin SPAWNID'si yok; reload'da cocuk sayisi sifirlaniyor,
+    spawner cap'inin altinda goruyor ve her restart'ta bir quota daha spawn ediyordu
+    — bir spawn noktasinin cevresindeki populasyon sinirsiz buyuyordu. Re-link artik
+    spawn-component init icinde HER char spawner icin calisiyor (referansin current-
+    spawned'i tamamen ADDOBJ'den kurmasiyla ayni). Cap'e DOKUNMUYOR (cap AMOUNT
+    alanidir); birikmis bir save'den gelen fazlalik dogal olumle erir.
+
+DUZELTILDI - GM gorunmez bir spawner'a cift tiklayinca item tetiklenmek yerine goruntuden kayboluyordu:
+  - Gorunmez itemler (spawn worldgem'leri, trigger'lar) client'a AllShow VEYA GM
+    yetkisi olana yollanir, ama double-click ve skill-target can-see gate'leri sadece
+    AllShow'a bakiyordu. GM mesru sekilde gordugu gorunmez bir spawner'a cift tikliyor,
+    sunucu "goremezsin" deyip client'i item'i goruntuden dusurerek "duzeltiyordu" —
+    item silinmis gibi gorunuyordu (server'da dokunulmamis) ve spawner tetiklenmiyordu.
+    Iki gate de artik view-gonderme ile ayni kitleyi (AllShow VEYA GM) kullaniyor, boylece
+    double-click spawner'a ulasip bir spawn uretiyor.
+
+
 [2026-07-13] - Hareket pacing, load'da container index, item tip materialize, double-click bosluklari
 ----------------------------------------
 

@@ -4,6 +4,40 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-13] - Item @Create on materialization, spawner child re-link, invisible-item double-click
+----------------------------------------
+
+FIXED - Loot/spawn items never ran their itemdef @Create trigger, so magic items came out inert:
+  - A magic weapon's magic (damage bonus, magic attribute, hit points, magic hue)
+    lives entirely in its itemdef @Create block. Source-X fires @Create on every
+    item it materialises from a def (loot, spawn, NEWITEM, vendor restock, carve,
+    .add); SphereNet never did, so a rolled magic def produced a named-but-inert
+    item. ApplyInstanceMetadata now fires the @Create trigger once per fresh
+    instance through a wired hook, guarded so re-stamping metadata cannot compound
+    the effect, and the world load never routes through it (reloaded items keep
+    their persisted state and do not re-fire).
+
+FIXED - Char spawners forgot their live children on reload and respawned their whole quota:
+  - The re-link that restores a spawner's current spawned-children count from its
+    saved ADDOBJ entries only ran for classic SPAWNID-tagged spawners. A native
+    MORE1/AMOUNT spawner has no SPAWNID, so on reload its child count reset to zero,
+    it saw current-count below its cap, and it respawned a fresh quota every restart
+    — the population near one spawn point grew without bound. The re-link now runs
+    inside spawn-component init for every char spawner (matching the reference
+    rebuilding current-spawned purely from ADDOBJ). It never alters the cap, which
+    stays the AMOUNT field; any excess carried from an over-accumulated save drains
+    off by attrition.
+
+FIXED - A GM double-clicking an invisible spawner made it vanish from view instead of triggering:
+  - Invisible items (spawn worldgems, triggers) are sent to a client with AllShow
+    OR GM privilege, but the double-click and skill-target can-see gates only
+    honoured AllShow. A GM who legitimately saw an invisible spawner double-clicked
+    it, the server judged it unseeable, and "corrected" the client by removing it
+    from view — the item looked deleted (it was untouched server-side) and the
+    spawner never fired. Both gates now use the same audience as the view send
+    (AllShow OR GM), so the double-click reaches the spawner and produces a spawn.
+
+
 [2026-07-13] - Movement pacing, container index on load, item type materialization, double-click gaps
 ----------------------------------------
 

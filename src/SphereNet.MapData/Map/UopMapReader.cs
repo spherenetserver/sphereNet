@@ -74,6 +74,11 @@ public sealed class UopMapReader : IDisposable
 
     public MapCell GetCell(int x, int y)
     {
+        // Negative coords must be rejected here: -3 / 8 truncates to block 0
+        // (passing ReadBlock's bounds check) while -3 % 8 = -3 indexes the
+        // cell array with a negative offset.
+        if (x < 0 || y < 0 || x >= _width || y >= _height)
+            return default;
         int bx = x / MapBlock.BlockSize;
         int by = y / MapBlock.BlockSize;
         var block = ReadBlock(bx, by);

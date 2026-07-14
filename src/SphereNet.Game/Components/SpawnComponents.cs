@@ -319,6 +319,7 @@ public sealed class SpawnComponent
     {
         var mapData = _world.MapData;
         bool canSwim = charDef != null && (charDef.Can & CanFlags.C_Swim) != 0;
+        var (mapW, mapH) = mapData?.GetMapSize(_spawnItem.MapIndex) ?? (0, 0);
 
         for (int attempt = 0; attempt < 25; attempt++)
         {
@@ -330,6 +331,10 @@ public sealed class SpawnComponent
 
             if (mapData != null)
             {
+                // Off-map candidate — reject like Source-X's IsValidPoint gate;
+                // a spawner near the map edge can roll negative coordinates.
+                if (px < 0 || py < 0 || px >= mapW || py >= mapH)
+                    continue;
                 pz = mapData.GetEffectiveZ(_spawnItem.MapIndex, px, py, _spawnItem.Z);
                 if (!mapData.IsPassable(_spawnItem.MapIndex, px, py, pz))
                     continue;

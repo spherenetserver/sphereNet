@@ -389,8 +389,12 @@ public static class CombatEngine
             }
             else
             {
-                dmgMin = Math.Max(1, weapon.BaseId / 10);
-                dmgMax = dmgMin + 5;
+                // Source-X Weapon_GetAttack: a weapon whose def declares no DAM
+                // has attackBase 0 (anything non-weapon acting as one hits 1).
+                // The old fallback derived damage from the ART TILE ID (/10),
+                // so high-graphic items hit absurdly hard.
+                dmgMin = 0;
+                dmgMax = 1;
             }
         }
 
@@ -678,13 +682,12 @@ public static class CombatEngine
         if (item.IsDeleted || OnItemDamaged?.Invoke(item, damage) == true)
             return 0;
 
+        // Source-X: an item whose def gives it no HITPOINTS has no durability
+        // to damage — inventing (and persisting!) a synthetic pool here turned
+        // an unbreakable item into a breakable one on the first scripted hit.
         int maxHits = item.GetHitsMax();
         if (maxHits <= 0)
-        {
-            maxHits = Math.Max(1, DefaultHits);
-            item.HitsMax = maxHits;
-            item.HitsCur = maxHits;
-        }
+            return 0;
         int before = item.GetHitsCur();
         if (before <= 0)
             return 0;

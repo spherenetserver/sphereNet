@@ -1441,12 +1441,14 @@ public static class ActiveSkillEngine
             return false;
         }
 
+        // Source-X Use_Repair: only items that actually have hitpoints can be
+        // repaired. Inventing (and persisting) a 50-point pool here permanently
+        // turned a never-wearing item into breakable gear.
         int maxHits = target.GetHitsMax();
         if (maxHits <= 0)
         {
-            maxHits = 50;
-            target.HitsMax = maxHits;
-            target.HitsCur = maxHits;
+            sink.SysMessage(ServerMessages.Get(Msg.RepairFull));
+            return false;
         }
 
         int curHits = target.GetHitsCur();

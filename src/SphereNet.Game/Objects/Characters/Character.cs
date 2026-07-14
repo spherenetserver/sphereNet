@@ -1197,6 +1197,14 @@ public partial class Character : ObjBase
             if (world == null)
                 return _curFollower;
 
+            // The recompute below walks every world object; on large worlds
+            // that is a full 100K+ scan per read, and status packets (0x34)
+            // read this on every open bar refresh. Serve a short-lived cache;
+            // ownership changes invalidate it via InvalidateFollowerCount().
+            long nowMs = Environment.TickCount64;
+            if (_curFollowerScanMs != 0 && nowMs - _curFollowerScanMs < CurFollowerCacheMs)
+                return _curFollower;
+
             int count = 0;
             foreach (var obj in world.GetAllObjects())
             {
@@ -1212,9 +1220,26 @@ public partial class Character : ObjBase
             }
 
             _curFollower = (byte)Math.Clamp(count, 0, byte.MaxValue);
+            _curFollowerScanMs = nowMs;
             return _curFollower;
         }
         set => _curFollower = value;
+    }
+
+    private const int CurFollowerCacheMs = 2000;
+    private long _curFollowerScanMs; // 0 = cache dirty, next read rescans
+
+    /// <summary>Force the next CurFollower read to rescan the world
+    /// (called when a pet's ownership changes).</summary>
+    public void InvalidateFollowerCount() => _curFollowerScanMs = 0;
+
+    /// <summary>Invalidate the follower-count cache of this pet's owner —
+    /// mounting/dismounting (Ridden) changes what the owner's scan counts.</summary>
+    private void InvalidateOwnerFollowerCount()
+    {
+        if (!_npcMaster.IsValid) return;
+        var world = ResolveWorld?.Invoke();
+        world?.FindChar(_npcMaster)?.InvalidateFollowerCount();
     }
 
     // Resist caps
@@ -1572,6 +1597,8 @@ public partial class Character : ObjBase
             OnClientBuffChanged?.Invoke(this, BuffIcon.Hidden, true, 0);
         if ((oldFlags & StatFlag.Meditation) == 0 && (_statFlags & StatFlag.Meditation) != 0)
             OnClientBuffChanged?.Invoke(this, BuffIcon.ActiveMeditation, true, 0);
+        if ((oldFlags & StatFlag.Ridden) == 0 && (_statFlags & StatFlag.Ridden) != 0)
+            InvalidateOwnerFollowerCount();
     }
 
     public void ClearStatFlag(StatFlag flag)
@@ -1583,6 +1610,8 @@ public partial class Character : ObjBase
             OnClientBuffChanged?.Invoke(this, BuffIcon.Hidden, false, 0);
         if ((oldFlags & StatFlag.Meditation) != 0 && (_statFlags & StatFlag.Meditation) == 0)
             OnClientBuffChanged?.Invoke(this, BuffIcon.ActiveMeditation, false, 0);
+        if ((oldFlags & StatFlag.Ridden) != 0 && (_statFlags & StatFlag.Ridden) == 0)
+            InvalidateOwnerFollowerCount();
     }
 
     public bool IsDead => IsStatFlag(StatFlag.Dead);
@@ -1994,6 +2023,19 @@ public partial class Character : ObjBase
 
     private void SetOwnerControllerRaw(Serial ownerUid, Serial controllerUid, bool mirrorLegacySummon)
     {
+        // Ownership is changing on this pet — the follower-count cache of the
+        // old and new owner (and controller) no longer reflects reality.
+        var followerWorld = ResolveWorld?.Invoke();
+        if (followerWorld != null)
+        {
+            if (_npcMaster.IsValid && _npcMaster != ownerUid)
+                followerWorld.FindChar(_npcMaster)?.InvalidateFollowerCount();
+            if (ownerUid.IsValid)
+                followerWorld.FindChar(ownerUid)?.InvalidateFollowerCount();
+            if (controllerUid.IsValid && controllerUid != ownerUid)
+                followerWorld.FindChar(controllerUid)?.InvalidateFollowerCount();
+        }
+
         _npcMaster = ownerUid;
 
         if (ownerUid.IsValid)

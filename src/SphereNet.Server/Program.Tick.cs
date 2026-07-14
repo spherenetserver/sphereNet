@@ -58,10 +58,8 @@ public static partial class Program
 {
     // Main-loop iteration stall detector. Catches latency the tick telemetry
     // cannot see: GC suspensions, OS scheduling stalls, blocking I/O in
-    // periodic jobs — anything that delays the 0x73 ping echo. 50ms is well
-    // above a healthy iteration (a few ms) and below the smallest spike a
-    // player notices.
-    private const long LoopStallThresholdMs = 50;
+    // periodic jobs — anything that delays the 0x73 ping echo. Threshold comes
+    // from sphere.ini LoopStallWarnMs (0 disables the warning).
     private static long _lastLoopStallLogMs;
 
     private static void RunMainLoop()
@@ -230,14 +228,15 @@ public static partial class Program
 
                 long iterTs6 = Stopwatch.GetTimestamp();
                 long iterTotalUs = ToMicroseconds(iterTs6 - iterTs0);
-                if (iterTotalUs > LoopStallThresholdMs * 1000)
+                long stallThresholdUs = _config.LoopStallWarnMs * 1000L;
+                if (stallThresholdUs > 0 && iterTotalUs > stallThresholdUs)
                 {
                     long stallNowMs = Environment.TickCount64;
                     if (stallNowMs - _lastLoopStallLogMs > 2000)
                     {
                         _lastLoopStallLogMs = stallNowMs;
                         _log.LogWarning(
-                            "[loop_stall] total={TotalMs}ms cmd={CmdMs}ms net_in={NetInMs}ms jobs={JobsMs}ms net_out={NetOutMs}ms ticks={TicksMs}ms yield={YieldMs}ms gc0=+{G0} gc1=+{G1} gc2=+{G2}",
+                            "[loop_stall] total={TotalMs}ms cmd={CmdMs}ms net_in={NetInMs}ms jobs={JobsMs}ms net_out={NetOutMs}ms ticks={TicksMs}ms yield={YieldMs}ms gc0=+{G0} gc1=+{G1} gc2=+{G2} pkts={Pkts} slowest_pkt=0x{SlowOp:X2}@{SlowMs}ms",
                             (iterTotalUs / 1000.0).ToString("F1"),
                             (ToMicroseconds(iterTs1 - iterTs0) / 1000.0).ToString("F1"),
                             (ToMicroseconds(iterTs2 - iterTs1) / 1000.0).ToString("F1"),
@@ -247,7 +246,10 @@ public static partial class Program
                             (ToMicroseconds(iterTs6 - iterTs5) / 1000.0).ToString("F1"),
                             GC.CollectionCount(0) - iterG0,
                             GC.CollectionCount(1) - iterG1,
-                            GC.CollectionCount(2) - iterG2);
+                            GC.CollectionCount(2) - iterG2,
+                            _network.LastInputPassPacketCount,
+                            _network.LastInputPassSlowestOpcode,
+                            _network.LastInputPassSlowestMs.ToString("F1"));
                     }
                 }
             }
@@ -352,7 +354,9 @@ public static partial class Program
             TickHistogram.Record((int)(totalUs / 1000));
 
             long nowMs = Environment.TickCount64;
-            if (totalUs > 25_000 && nowMs - _lastSlowTickWarningMs > 10_000)
+            long slowTickThresholdUs = _config.SlowTickWarnMs * 1000L;
+            if (slowTickThresholdUs > 0 && totalUs > slowTickThresholdUs
+                && nowMs - _lastSlowTickWarningMs > 10_000)
             {
                 _lastSlowTickWarningMs = nowMs;
                 _slowTickCount++;

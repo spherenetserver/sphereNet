@@ -4,6 +4,44 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-14] - net_in stall attribution and follower-count scan cache
+----------------------------------------
+
+ADDED - [slow_packet] diagnostic: a single inbound packet handler running longer
+        than SlowPacketWarnMs (new sphere.ini key, default 20, 0=off) logs the
+        opcode, handler name and duration. [loop_stall] lines now also carry
+        pkts= (packets handled that pass) and slowest_pkt=0x??@ms, so a stall in
+        the net_in phase names its dominant packet instead of an opaque total.
+
+CHANGED - CurFollower no longer walks the whole world on every read:
+  - The follower count recomputed by scanning ALL world objects (100K+ on large
+    saves, plus a full array copy per call), and the status packet (0x11, sent
+    on every 0x34 status request) reads it. The scan result is now cached for
+    2 seconds; pet ownership changes (SetOwnerControllerRaw) and mount/dismount
+    (Ridden flag transitions) invalidate the owner's cache so follower-cap
+    checks never act on a stale count. Source-X maintains a stored counter
+    (CCharUse.cpp GetCurFollowers) and never scans, so caching is strictly
+    closer to reference behavior.
+
+[2026-07-14] - Map-edge spawn crash fix (multicore fallback trigger)
+----------------------------------------
+
+CHANGED - [slow_tick] / [loop_stall] diagnostic warnings are now configurable and
+          less chatty:
+  - The fixed 25ms / 50ms thresholds warned on routine GC and network-flush blips
+    (a 30ms tick is under a third of the 100ms tick budget). New sphere.ini keys
+    SlowTickWarnMs (default 50) and LoopStallWarnMs (default 100) set the
+    thresholds; 0 disables that warning entirely.
+
+FIXED - IndexOutOfRangeException in SpawnComponent.FindSpawnPosition crashed the
+        multicore tick and forced a 30s single-thread fallback:
+  - A spawner within spawn-range of the map edge can roll a candidate position
+    with a negative X/Y. In MapReader/UopMapReader.GetCell, -3 / 8 truncates to
+    block 0 (passing the block bounds check) while -3 % 8 = -3 indexed the cell
+    array with a negative offset, throwing. Both readers now reject off-map
+    coordinates and return a default cell, and FindSpawnPosition rejects off-map
+    candidates up front (Source-X IsValidPoint gate) and retries instead.
+
 [2026-07-14] - Standing-Z desync fix and map-static door auto-close
 ----------------------------------------
 

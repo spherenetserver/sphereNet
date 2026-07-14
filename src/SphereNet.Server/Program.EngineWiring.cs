@@ -3273,6 +3273,7 @@ public static partial class Program
             _network.DebugPackets = _config.DebugPackets;
             _network.DebugPacketOpcodeFilter = ParseDebugPacketOpcodes(_config.DebugPacketOpcodes);
             _network.MaxPacketsPerTick = _config.MaxPacketsPerTick;
+            _network.SlowPacketWarnMs = _config.SlowPacketWarnMs;
             _network.FloodDetectionCount = _config.FloodDetectionCount;
             _network.FloodDetectionWindowMs = _config.FloodDetectionWindowMs;
             _network.ClientMaxIP = _config.ClientMaxIP;

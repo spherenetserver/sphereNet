@@ -3,6 +3,43 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-14] - net_in stall atifi ve follower-sayimi tarama cache'i
+----------------------------------------
+
+EKLENDI - [slow_packet] tanisi: tek bir gelen paket handler'i SlowPacketWarnMs'den
+          (yeni sphere.ini anahtari, varsayilan 20, 0=kapali) uzun surerse opcode,
+          handler adi ve sure loglanir. [loop_stall] satirlarina pkts= (o geciste
+          islenen paket sayisi) ve slowest_pkt=0x??@ms eklendi; net_in fazindaki
+          bir stall artik opak bir toplam yerine baskin paketini isimlendirir.
+
+DEGISTI - CurFollower artik her okumada tum dunyayi taramiyor:
+  - Follower sayisi TUM dunya objeleri taranarak hesaplaniyordu (buyuk save'de
+    100K+ obje + her cagrida tam dizi kopyasi) ve status paketi (0x11, her 0x34
+    status isteginde) bunu okuyor. Tarama sonucu artik 2 saniye cache'leniyor;
+    pet sahiplik degisimi (SetOwnerControllerRaw) ve binme/inme (Ridden flag
+    gecisleri) sahibin cache'ini gecersiz kilar, boylece follower-cap kontrolu
+    asla bayat sayimla calismaz. Source-X sakli sayac tutar (CCharUse.cpp
+    GetCurFollowers) ve hic taramaz; cache referans davranisa daha yakindir.
+
+[2026-07-14] - Harita kenari spawn crash duzeltmesi (multicore fallback tetikleyicisi)
+----------------------------------------
+
+DEGISTI - [slow_tick] / [loop_stall] tani uyarilari artik ayarlanabilir ve daha az
+          gurultulu:
+  - Sabit 25ms / 50ms esikleri rutin GC ve network-flush dalgalanmalarinda uyari
+    basiyordu (30ms'lik tick 100ms tick butcesinin ucte birinden az). Yeni
+    sphere.ini anahtarlari SlowTickWarnMs (varsayilan 50) ve LoopStallWarnMs
+    (varsayilan 100) esikleri belirler; 0 o uyariyi tamamen kapatir.
+
+DUZELTILDI - SpawnComponent.FindSpawnPosition icinde IndexOutOfRangeException
+             multicore tick'i dusurup 30s tek-thread fallback'e zorluyordu:
+  - Harita kenarina spawn-menzili kadar yakin bir spawner negatif X/Y'li aday
+    pozisyon uretebiliyor. MapReader/UopMapReader.GetCell icinde -3 / 8 blok 0'a
+    yuvarlaniyor (blok sinir kontrolunu geciyor) ama -3 % 8 = -3 hucre dizisini
+    negatif indeksle okuyup patliyordu. Iki okuyucu da artik harita disi
+    koordinati reddedip varsayilan hucre donduruyor; FindSpawnPosition da harita
+    disi adayi bastan reddedip (Source-X IsValidPoint kapisi) yeniden deniyor.
+
 [2026-07-14] - Durus-Z desync duzeltmesi ve harita-statik kapi otomatik kapanmasi
 ----------------------------------------
 

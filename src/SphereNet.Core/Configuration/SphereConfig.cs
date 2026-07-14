@@ -321,6 +321,18 @@ public sealed class SphereConfig
     // is not gated by this (it runs every main-loop iteration). Clamped to [20,250].
     public int ServerTickMs { get; set; } = 100;
 
+    // Diagnostic warning thresholds in milliseconds (ini keys: SlowTickWarnMs,
+    // LoopStallWarnMs). A server tick slower than SlowTickWarnMs logs
+    // [slow_tick]; a main-loop iteration slower than LoopStallWarnMs logs
+    // [loop_stall]. 0 disables that warning. Defaults sit at half / one full
+    // 100ms tick budget so routine GC and flush blips stay out of the log.
+    public int SlowTickWarnMs { get; set; } = 50;
+    public int LoopStallWarnMs { get; set; } = 100;
+    // A single inbound packet handler slower than this logs [slow_packet] with
+    // the opcode (ini key: SlowPacketWarnMs, 0 disables). Names the culprit
+    // when [loop_stall] attributes a stall to the net_in phase.
+    public int SlowPacketWarnMs { get; set; } = 20;
+
     // Main loop yield strategy between ticks.
     // 0 = spin   : Thread.SpinWait — lowest latency (<1ms), highest CPU usage.
     //              Best for dedicated servers with spare CPU cores.
@@ -636,6 +648,9 @@ public sealed class SphereConfig
         MulticorePhaseTimeoutMs = ini.GetInt(section, "MulticorePhaseTimeoutMs", MulticorePhaseTimeoutMs);
         TickSleepMode = ini.GetInt(section, "TickSleepMode", TickSleepMode);
         ServerTickMs = Math.Clamp(ini.GetInt(section, "ServerTickMs", ServerTickMs), 20, 250);
+        SlowTickWarnMs = Math.Max(0, ini.GetInt(section, "SlowTickWarnMs", SlowTickWarnMs));
+        LoopStallWarnMs = Math.Max(0, ini.GetInt(section, "LoopStallWarnMs", LoopStallWarnMs));
+        SlowPacketWarnMs = Math.Max(0, ini.GetInt(section, "SlowPacketWarnMs", SlowPacketWarnMs));
 
         LogMask = ini.GetInt(section, "LogMask", LogMask);
         DebugPackets = ini.GetBool(section, "DebugPackets", DebugPackets);

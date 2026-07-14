@@ -47,6 +47,18 @@ public sealed class NetworkManager : IDisposable
     }
     public bool DebugPackets { get; set; }
     public HashSet<byte>? DebugPacketOpcodeFilter { get; set; }
+    /// <summary>Warn ([slow_packet]) when a single inbound packet handler runs longer
+    /// than this many milliseconds. 0 disables. Attributes net_in loop stalls to a
+    /// concrete opcode instead of an opaque phase total.</summary>
+    public int SlowPacketWarnMs { get; set; } = 20;
+    // Per-ProcessAllInput-pass attribution, surfaced in the main loop's
+    // [loop_stall] line so a slow net_in segment names its dominant packet.
+    private int _passPacketCount;
+    private byte _passSlowestOpcode;
+    private long _passSlowestUs;
+    public int LastInputPassPacketCount => _passPacketCount;
+    public byte LastInputPassSlowestOpcode => _passSlowestOpcode;
+    public double LastInputPassSlowestMs => _passSlowestUs / 1000.0;
     public int MaxPacketsPerTick { get; set; } = 100;
     public int FloodDetectionCount { get; set; } = 5;
     public int FloodDetectionWindowMs { get; set; } = 10_000;
@@ -254,6 +266,9 @@ public sealed class NetworkManager : IDisposable
     /// </summary>
     public void ProcessAllInput()
     {
+        _passPacketCount = 0;
+        _passSlowestOpcode = 0;
+        _passSlowestUs = 0;
         foreach (var state in _states)
         {
             if (!state.CanReceive) continue;
@@ -436,7 +451,22 @@ public sealed class NetworkManager : IDisposable
                 }
 
                 var buffer = new PacketBuffer(data.Slice(consumed + payloadOffset, payloadLength).ToArray());
+                long handlerStart = System.Diagnostics.Stopwatch.GetTimestamp();
                 handler.OnReceive(buffer, state);
+                long handlerUs = (System.Diagnostics.Stopwatch.GetTimestamp() - handlerStart)
+                    * 1_000_000 / System.Diagnostics.Stopwatch.Frequency;
+                _passPacketCount++;
+                if (handlerUs > _passSlowestUs)
+                {
+                    _passSlowestUs = handlerUs;
+                    _passSlowestOpcode = opcode;
+                }
+                if (SlowPacketWarnMs > 0 && handlerUs > SlowPacketWarnMs * 1000L)
+                {
+                    _logger.LogWarning("[slow_packet] #{Id} op=0x{Op:X2} ({Name}) len={Len} took={Ms}ms",
+                        state.Id, opcode, handler.GetType().Name, packetLen,
+                        (handlerUs / 1000.0).ToString("F1"));
+                }
                 if (buffer.IsUnderrun)
                 {
                     _logger.LogWarning("Malformed packet underrun #{Id} 0x{Op:X2}: payload={PayloadLen}",

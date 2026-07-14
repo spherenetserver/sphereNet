@@ -866,6 +866,11 @@ public static partial class Program
 
         InitializeGameEngines(basePath);
 
+        // Heal NPCs whose base stats an older build zeroed and persisted.
+        // Needs the trigger dispatcher (@Create re-roll), so it runs after
+        // engine wiring rather than inside InitializeSpawnItems.
+        RepairZeroStatNpcs();
+
         LoadRegionsAndRecipes();
 
         int restoredSpellEffects = _spellEngine.RestorePersistedEffectsFromWorld();

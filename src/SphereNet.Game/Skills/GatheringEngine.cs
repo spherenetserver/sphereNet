@@ -80,8 +80,11 @@ public sealed class GatheringEngine
         int newPool = (int)Math.Min(max, pool + ticks);
         SetPool(marker, newPool);
         SetLast(marker, last + ticks * perUnitMs);
-        if (newPool > 0)
-            marker.DecayTime = 0; // recovering — don't decay-delete the vein
+        // Push the decay one regen period out instead of clearing it: a marker
+        // untouched for a full regen window is fully refilled and identical to
+        // no marker at all, so letting it expire then is lossless (Source-X
+        // MoveToDecay lifecycle) — clearing it made every vein immortal.
+        marker.DecayTime = now + fullRegenMs;
     }
 
     /// <summary>Sphere worldgem-bit graphic. Resource markers use it so staff
@@ -241,11 +244,11 @@ public sealed class GatheringEngine
             int remaining = pool - reapAmount;
             SetPool(activeMarker, remaining);
             SetLast(activeMarker, Environment.TickCount64); // reset the regen clock on each gather
-            if (remaining <= 0)
-            {
-                long regenMs = resDef.Regen > 0 ? resDef.Regen * 1000L : 36_000_000L;
-                activeMarker.DecayTime = Environment.TickCount64 + regenMs;
-            }
+            // Every touch re-arms the decay one regen period out — by then the
+            // vein has fully refilled and the marker is redundant (Source-X
+            // MoveToDecay). No marker may outlive its usefulness with TIMER=-1.
+            long regenMs = resDef.Regen > 0 ? resDef.Regen * 1000L : 36_000_000L;
+            activeMarker.DecayTime = Environment.TickCount64 + regenMs;
 
             var item = _world.CreateItem();
             item.BaseId = reapItemId;
@@ -330,10 +333,13 @@ public sealed class GatheringEngine
         marker.SetTag(TagSkillType, skillTag);
         marker.SetTag(TagResourceId, resDef.Id.Index.ToString());
 
-        // No decay timer at creation: the node persists until it is fully
-        // depleted, and only THEN starts its regen timer (set where the pool hits
-        // zero). Starting decay at creation reset a partly-mined vein early.
-        marker.DecayTime = 0;
+        // Source-X CheckNaturalResource: the bit MoveToDecay()s one regen
+        // period after creation. Each gather/regen touch re-arms this, so an
+        // actively worked vein survives — but no marker is ever immortal
+        // (TIMER=-1), which used to leave one invisible worldgem per fished
+        // tile in the world forever.
+        long createRegenMs = resDef.Regen > 0 ? resDef.Regen * 1000L : 36_000_000L;
+        marker.DecayTime = Environment.TickCount64 + createRegenMs;
 
         _world.PlaceItem(marker, tile);
         return marker;

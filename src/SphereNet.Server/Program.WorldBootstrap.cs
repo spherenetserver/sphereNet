@@ -229,6 +229,65 @@ public static partial class Program
             _log.LogInformation("Inherited NpcBrain from CHARDEF for {Count} NPCs", brainFixed);
     }
 
+    /// <summary>One-pass boot repair for NPCs whose BASE stats are 0. Older
+    /// builds loaded classic OSTR-only saves into the O-fields alone and then
+    /// PERSISTED the zeroed STR in native format, so the damage survives the
+    /// loader fix. Restore from the O-mirror when present, otherwise re-run
+    /// the chardef @Create (classic packs assign stats there), then top the
+    /// vitals off. Requires the trigger dispatcher — call after engine wiring.</summary>
+    private static void RepairZeroStatNpcs()
+    {
+        int repaired = 0;
+        foreach (var obj in _world.GetAllObjects())
+        {
+            if (obj is not SphereNet.Game.Objects.Characters.Character ch) continue;
+            if (ch.IsPlayer || ch.IsDeleted || ch.Str > 0) continue;
+
+            if (ch.OStr > 0)
+            {
+                ch.Str = ch.OStr;
+                if (ch.ODex > 0) ch.Dex = ch.ODex;
+                if (ch.OInt > 0) ch.Int = ch.OInt;
+            }
+            else
+            {
+                _triggerDispatcher?.FireCharTrigger(ch,
+                    SphereNet.Core.Enums.CharTrigger.Create,
+                    new SphereNet.Game.Scripting.TriggerArgs { CharSrc = ch });
+            }
+
+            // Whatever the source, a live NPC never stands on zero stats.
+            if (ch.Str <= 0) ch.Str = 50;
+            if (ch.Dex <= 0) ch.Dex = 50;
+            if (ch.Int <= 0) ch.Int = 20;
+            if (ch.Hits <= 1 || ch.Hits > ch.MaxHits) ch.Hits = ch.MaxHits;
+            if (ch.Stam <= 0) ch.Stam = ch.MaxStam;
+            if (ch.Mana <= 0) ch.Mana = ch.MaxMana;
+            repaired++;
+        }
+        if (repaired > 0)
+            _log.LogInformation(
+                "[boot_repair] restored base stats for {Count} NPCs saved with STR=0 by an older build",
+                repaired);
+
+        // Resource-marker worldgems saved by older builds carry no decay
+        // (TIMER=-1 forever). Arm each with one regen period — fully refilled
+        // by then, so expiring is lossless (Source-X MoveToDecay lifecycle).
+        int armed = 0;
+        long decayAt = Environment.TickCount64 + 3_600_000L;
+        foreach (var obj in _world.GetAllObjects())
+        {
+            if (obj is not SphereNet.Game.Objects.Items.Item it || it.IsDeleted) continue;
+            if (it.DecayTime > 0) continue;
+            if (!it.TryGetTag("RESOURCE_MARKER", out string? mk) || mk != "1") continue;
+            it.DecayTime = decayAt;
+            armed++;
+        }
+        if (armed > 0)
+            _log.LogInformation(
+                "[boot_repair] armed decay on {Count} immortal resource-marker worldgems", armed);
+    }
+
     private static bool TryParseHexOrDecUInt(string val, out uint result)
     {
         result = 0;

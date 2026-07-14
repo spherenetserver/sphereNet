@@ -4,6 +4,51 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-14] - RESPAWN FULL admin command
+----------------------------------------
+
+ADDED - RESPAWN FULL (console/telnet/.serv.respawn full): kills every spawner's
+        children first, then refills fresh. Plain RESPAWN only tops missing
+        children up, so NPCs materialized in a broken state by an older build
+        stayed in the world; FULL replaces them all in one pass.
+
+[2026-07-14] - Legacy stat load (OSTR->STR) and spawn vitals top-off
+----------------------------------------
+
+FIXED - Every NPC loaded from a classic Sphere save had base stats of 0:
+  - Classic saves persist only OSTR/ODEX/OINT; Source-X r_LoadVal maps those to
+    Stat_SetBase — the same slot as STR/DEX/INT. WorldLoader mirrored them into
+    the O-fields only, so Str/Dex/Int stayed 0 after load. This zeroed combat
+    math worldwide: the relative-strength morale term made stat-0 monsters
+    afraid of everything (they ignored valid targets such as a dismounted
+    mount and only fought via retaliation memories). OSTR/ODEX/OINT now seed
+    the base stats exactly like STR/DEX/INT.
+
+FIXED - Spawner-created NPCs materialized at 1 hp:
+  - Classic packs assign STR/DEX/INT inside the chardef's @Create block, which
+    raises the max vitals AFTER SpawnComponent seeded them from the stat-less
+    section header — a fresh orc arrived at 1/102 hp. The spawn pipeline now
+    tops off Hits/Stam/Mana after @Create, same as the .add pipeline.
+
+ADDED - Regression tests: classic O-stat load, live-pack orc spawn (name from
+        #NAMES_, @Create stat ranges, full vitals), dismounted mount remains a
+        valid monster target.
+
+[2026-07-14] - Script trigger leaked across sections (fishing pole dclick dead)
+----------------------------------------
+
+FIXED - A trigger fired by name could execute an ON= block belonging to a LATER,
+        unrelated definition in the same .scp file:
+  - TriggerRunner's on-demand file scan opened the resource at its stored section
+    header but then searched EVERY section to end-of-file for the trigger. Any
+    definition without its own handler silently inherited the next same-named
+    ON= block below it. Live symptom: double-clicking i_fishing_pole did nothing —
+    [ITEMDEF 0dbf] has no @DClick, so the scan drifted into the arrow-shaft def's
+    "@DClick ... RETURN 1" further down sphere_item_profession.scp, blocking both
+    the dclick-equip and the fishing target. Trigger search is now confined to
+    the resource's own section (Source-X CResourceLock stops at the next
+    [header]). Live-pack regression probes added (FishingPoleLivePackProbe).
+
 [2026-07-14] - net_in stall attribution and follower-count scan cache
 ----------------------------------------
 

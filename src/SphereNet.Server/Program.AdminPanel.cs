@@ -135,6 +135,7 @@ public static partial class Program
             _consoleProcessor.OnStressRequested += (items, npcs, hostile) => _stressEngine?.QueueGenerate(items, npcs, hostile);
             // Global RESPAWN/RESTOCK — run on the main loop (they mutate world state).
             _consoleProcessor.OnRespawnRequested += RequestRespawnOnMainLoop;
+            _consoleProcessor.OnRespawnResetRequested += RequestRespawnResetOnMainLoop;
             _consoleProcessor.OnRestockRequested += RequestRestockOnMainLoop;
 
             // In-game ".serv.xxx" bridge (Admin/Owner): route through the SAME

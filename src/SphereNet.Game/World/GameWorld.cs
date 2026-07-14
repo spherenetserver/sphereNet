@@ -1548,6 +1548,31 @@ public sealed class GameWorld
         return count;
     }
 
+    /// <summary>Hard respawn (console RESPAWN FULL): delete every spawner
+    /// child first, then refill from scratch. Clears out children that were
+    /// materialized in a broken state by an older build.</summary>
+    public int ResetAllSpawners()
+    {
+        int count = 0;
+        foreach (var obj in GetAllObjects())
+        {
+            if (obj is not Item item || item.IsDeleted) continue;
+            if (item.SpawnChar != null)
+            {
+                item.SpawnChar.KillAll();
+                item.SpawnChar.RespawnNow();
+                count++;
+            }
+            if (item.SpawnItem != null)
+            {
+                item.SpawnItem.KillAll();
+                item.SpawnItem.RespawnNow();
+                count++;
+            }
+        }
+        return count;
+    }
+
     /// <summary>
     /// Collect ground items whose decay timer has expired into <paramref name="buffer"/>,
     /// up to <paramref name="max"/> entries. Allocation-free alternative to filtering a

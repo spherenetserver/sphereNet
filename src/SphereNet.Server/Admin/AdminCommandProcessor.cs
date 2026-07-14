@@ -29,6 +29,7 @@ public sealed class AdminCommandProcessor
     public event Action<string>? OnBroadcast;
     public event Action<string, PrivLevel>? OnAccountPrivLevelChanged;
     public event Action? OnRespawnRequested;
+    public event Action? OnRespawnResetRequested;
     public event Action? OnRestockRequested;
     public event Action<Action<string>>? OnDebugToggleRequested;
     public event Action<Action<string>>? OnScriptDebugToggleRequested;
@@ -86,7 +87,8 @@ public sealed class AdminCommandProcessor
                 output("  WHO                        - Online connections");
                 output("  INFORMATION                - Server information");
                 output("  LOG <msg>                  - Write to server log");
-                output("  RESPAWN                    - Respawn all NPCs");
+                output("  RESPAWN                    - Top up all spawn points");
+                output("  RESPAWN FULL               - Delete ALL spawner children, then respawn fresh");
                 output("  RESTOCK                    - Restock all vendors");
                 output("  GARBAGE                    - Force garbage collection");
                 output("  BLOCKIP <ip>               - Block an IP address");
@@ -169,8 +171,16 @@ public sealed class AdminCommandProcessor
                 break;
 
             case "RESPAWN":
-                output("Respawn requested...");
-                OnRespawnRequested?.Invoke();
+                if (args.Trim().Equals("FULL", StringComparison.OrdinalIgnoreCase))
+                {
+                    output("Full respawn requested (killing all spawner children first)...");
+                    OnRespawnResetRequested?.Invoke();
+                }
+                else
+                {
+                    output("Respawn requested...");
+                    OnRespawnRequested?.Invoke();
+                }
                 break;
 
             case "RESTOCK":

@@ -93,6 +93,17 @@ public static partial class Program
         });
     }
 
+    /// <summary>Console/telnet RESPAWN FULL: kill every spawner child, then refill
+    /// fresh — clears NPCs materialized broken by an older build.</summary>
+    private static void RequestRespawnResetOnMainLoop()
+    {
+        _mainLoopActions.Enqueue(() =>
+        {
+            int n = _world.ResetAllSpawners();
+            _log.LogInformation("[respawn_full] reset {Count} spawners (children killed and respawned)", n);
+        });
+    }
+
     /// <summary>Console/IPC/panel RESTOCK: fire @NPCRestock on every vendor so each
     /// rebuilds its stock (Source-X global RESTOCK). Main-loop only.</summary>
     private static void RequestRestockOnMainLoop()

@@ -72,6 +72,37 @@ public sealed class SpawnRelinkTests
     }
 
     [Fact]
+    public void ResetAllSpawners_ReplacesExistingChildren()
+    {
+        var world = MakeWorld();
+        var spawner = world.CreateItem();
+        spawner.ItemType = ItemType.SpawnChar;
+        world.PlaceItem(spawner, new Point3D(1000, 1000, 0, 0));
+        spawner.SpawnChar = new SphereNet.Game.Components.SpawnComponent(spawner, world)
+        {
+            CharDefId = 0x0190,
+            SpawnRange = 0,
+            MaxCount = 1,
+        };
+        spawner.SpawnChar.RespawnNow();
+        var oldUid = Assert.Single(spawner.SpawnChar.SpawnedUids);
+        var oldChild = world.FindChar(oldUid);
+        Assert.NotNull(oldChild);
+        Guid oldUuid = oldChild!.Uuid; // serials get recycled — identity is the UUID
+
+        // RESPAWN FULL: the existing (possibly broken) child must be gone,
+        // replaced by a freshly materialized one.
+        int touched = world.ResetAllSpawners();
+
+        Assert.Equal(1, touched);
+        var newUid = Assert.Single(spawner.SpawnChar.SpawnedUids);
+        var newChild = world.FindChar(newUid);
+        Assert.NotNull(newChild);
+        Assert.NotEqual(oldUuid, newChild!.Uuid);
+        Assert.True(oldChild.IsDeleted);
+    }
+
+    [Fact]
     public void InitializeSpawnComponent_AtCapacity_DoesNotOverspawnOnTick()
     {
         var world = MakeWorld();

@@ -3,6 +3,51 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-14] - RESPAWN FULL admin komutu
+----------------------------------------
+
+EKLENDI - RESPAWN FULL (konsol/telnet/.serv.respawn full): once tum spawner
+          cocuklarini oldurur, sonra sifirdan doldurur. Duz RESPAWN yalnizca
+          eksikleri tamamladigi icin eski build'de bozuk dogmus NPC'ler dunyada
+          kaliyordu; FULL hepsini tek geciste yeniler.
+
+[2026-07-14] - Legacy stat yukleme (OSTR->STR) ve spawn can doldurma
+----------------------------------------
+
+DUZELTILDI - Klasik Sphere save'inden yuklenen HER NPC'nin taban statlari 0'di:
+  - Klasik save yalnizca OSTR/ODEX/OINT saklar; Source-X r_LoadVal bunlari
+    Stat_SetBase'e esler — STR/DEX/INT ile ayni slot. WorldLoader ise yalnizca
+    O-alanlarina yansitiyordu, Str/Dex/Int yuklemeden sonra 0 kaliyordu. Bu tum
+    dunyada savas matematigini sifirliyordu: goreli-guc moral terimi 0-statli
+    canavarlari her seyden korkar yapti (inilen binek gibi gecerli hedefleri
+    yok sayip yalnizca misilleme hafizasiyla savasiyorlardi). OSTR/ODEX/OINT
+    artik STR/DEX/INT gibi taban statlari da besliyor.
+
+DUZELTILDI - Spawner'dan cikan NPC'ler 1 canla dogurordu:
+  - Klasik paketler STR/DEX/INT'i chardef'in @Create blogunda atar; bu, spawn
+    bileseninin stat'siz bolum basligindan verdigi max canlardan SONRA yukselir
+    — taze orc 1/102 canla geliyordu. Spawn hatti artik @Create sonrasi
+    Hits/Stam/Mana'yi dolduruyor (.add hattiyla ayni).
+
+EKLENDI - Regresyon testleri: klasik O-stat yukleme, canli-pack orc spawn
+          (#NAMES_ isim, @Create stat araliklari, tam can), inilen binek
+          canavar icin gecerli hedef kalir.
+
+[2026-07-14] - Script trigger bolum sinirini asiyordu (olta dclick calismiyordu)
+----------------------------------------
+
+DUZELTILDI - Isimle tetiklenen bir trigger, ayni .scp dosyasinda SONRAKI alakasiz
+             bir tanimin ON= blogunu calistirabiliyordu:
+  - TriggerRunner'in dosya taramasi kaynagi kendi bolum basligindan aciyor ama
+    trigger'i dosya sonuna kadar TUM bolumlerde ariyordu. Kendi handler'i olmayan
+    her tanim, altindaki ayni isimli ilk ON= blogunu sessizce devraliyordu. Canli
+    belirti: i_fishing_pole cift tiklamasi hicbir sey yapmiyordu — [ITEMDEF 0dbf]
+    icinde @DClick yok, tarama sphere_item_profession.scp'de asagidaki ok-safti
+    tanimindaki "@DClick ... RETURN 1"e kayip hem dclick-equip'i hem fishing
+    target'i blokluyordu. Trigger aramasi artik kaynagin kendi bolumuyle sinirli
+    (Source-X CResourceLock bir sonraki [baslik]ta durur). Canli-pack regresyon
+    problari eklendi (FishingPoleLivePackProbe).
+
 [2026-07-14] - net_in stall atifi ve follower-sayimi tarama cache'i
 ----------------------------------------
 

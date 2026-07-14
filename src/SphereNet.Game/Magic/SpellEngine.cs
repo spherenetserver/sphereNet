@@ -758,15 +758,11 @@ public sealed class SpellEngine
                 ushort corpseBody = corpse.Amount;
                 bool humanoid = corpseBody is 0x0190 or 0x0191 or 0x025D or 0x025E;
                 ushort body = humanoid ? (ushort)0x0003 : (corpseBody == 0 ? (ushort)0x0003 : corpseBody);
+                // Stats/skills come from the raised creature's chardef @Create
+                // (SummonCreature applies it) — not flat invented numbers.
                 var undead = SummonCreature(caster, corpse.Position, def, skillLevel, bodyId: body);
                 if (undead != null)
-                {
-                    undead.MaxHits = 60; undead.Hits = 60;
-                    undead.Str = 60; undead.Dex = 40; undead.Int = 20;
-                    undead.SetSkill(SkillType.Tactics, 600);
-                    undead.SetSkill(SkillType.Wrestling, 600);
                     OnItemRemoved?.Invoke(corpse); // the corpse is consumed
-                }
             }
             else
             {
@@ -1315,6 +1311,22 @@ public sealed class SpellEngine
             creature.BodyId = bodyId;
             creature.BaseId = bodyId;
             creature.SetStatFlag(StatFlag.Conjured);
+
+            // Source-X summons take the creature's own chardef (NPC_LoadScript
+            // runs its @Create for stats/skills) — never flat invented numbers.
+            var cdef = Definitions.DefinitionLoader.GetCharDef(bodyId);
+            if (cdef != null)
+            {
+                creature.CharDefIndex = bodyId;
+                if (!string.IsNullOrWhiteSpace(cdef.Name))
+                    creature.Name = Definitions.DefinitionLoader.ResolveNames(cdef.Name);
+                if (cdef.NpcBrain != NpcBrainType.None)
+                    creature.NpcBrain = cdef.NpcBrain;
+                Definitions.CharDefHelper.AfterApplyDefName?.Invoke(creature); // chardef @Create
+                creature.Hits = creature.MaxHits;
+                creature.Stam = creature.MaxStam;
+                creature.Mana = creature.MaxMana;
+            }
         }
 
         int duration = def.GetDuration(skillLevel);
@@ -1960,17 +1972,11 @@ public sealed class SpellEngine
                 // controlled by the caster for a short duration.
                 int summonSkill = caster.GetSkill(def.GetPrimarySkill());
                 var spawnPos = new Point3D((short)(caster.X + 1), caster.Y, caster.Z, caster.Position.Map);
+                // Stats/skills come from the revenant chardef @Create
+                // (SummonCreature applies it) — not flat invented numbers.
                 var revenant = SummonCreature(caster, spawnPos, def, summonSkill, bodyId: 0x02EE);
-                if (revenant != null)
-                {
-                    // Enough presence to fight; sic it onto the target.
-                    revenant.MaxHits = 80; revenant.Hits = 80;
-                    revenant.Str = 80; revenant.Dex = 60; revenant.Int = 40;
-                    revenant.SetSkill(SkillType.Tactics, 800);
-                    revenant.SetSkill(SkillType.Swordsmanship, 800);
-                    if (target != caster)
-                        revenant.FightTarget = target.Uid;
-                }
+                if (revenant != null && target != caster)
+                    revenant.FightTarget = target.Uid;
                 break;
             }
             case SpellType.Polymorph:

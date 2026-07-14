@@ -600,44 +600,10 @@ public sealed class DeathEngine
         // NPCs carry no transient loot in the world save.
         victim.MaterializeDeathLoot(corpse);
 
-        // Generate loot based on NPC brain type / stats tier
-        int tier = Math.Max(1, (victim.Str + victim.Dex + victim.Int) / 60);
-
-        // Gold drop — use a floor-free tier so weak creatures (rabbits, birds:
-        // combined stats < 60) drop no gold at all, instead of a guaranteed 5+.
-        int goldTier = (victim.Str + victim.Dex + victim.Int) / 60;
-        int goldAmount = goldTier > 0 ? Random.Shared.Next(goldTier * 5, goldTier * 25 + 1) : 0;
-        if (goldAmount > 0)
-        {
-            var gold = _world.CreateItem();
-            gold.BaseId = 0x0EED;
-            gold.Name = "Gold";
-            gold.ItemType = ItemType.Gold;
-            gold.Amount = (ushort)Math.Min(goldAmount, 60000);
-            AddToCorpseOrGround(corpse, gold);
-        }
-
-        // Random reagent drops (for magic creatures)
-        if (victim.Int > 30 && Random.Shared.Next(100) < 40)
-        {
-            ushort[] reagents = [0x0F7A, 0x0F7B, 0x0F84, 0x0F85, 0x0F86, 0x0F88, 0x0F8C, 0x0F8D];
-            var reagent = _world.CreateItem();
-            reagent.BaseId = reagents[Random.Shared.Next(reagents.Length)];
-            reagent.Name = "reagent";
-            reagent.Amount = (ushort)Random.Shared.Next(1, tier + 1);
-            AddToCorpseOrGround(corpse, reagent);
-        }
-
-        // Gem drops for higher tier NPCs
-        if (tier >= 3 && Random.Shared.Next(100) < 25)
-        {
-            ushort[] gems = [0x0F13, 0x0F15, 0x0F16, 0x0F18, 0x0F25, 0x0F26];
-            var gem = _world.CreateItem();
-            gem.BaseId = gems[Random.Shared.Next(gems.Length)];
-            gem.Name = "gem";
-            gem.Amount = 1;
-            AddToCorpseOrGround(corpse, gem);
-        }
+        // Source-X drops ONLY what the chardef/loot scripts define (ITEM= /
+        // @CreateLoot). A stat-tier gold/reagent/gem generator used to run on
+        // top of the script loot here — every kill minted extra gold and
+        // materials the pack never granted, inflating the economy.
     }
 
     /// <summary>

@@ -703,29 +703,8 @@ public static partial class Program
         }
     }
 
-    private static ushort MapAnimToMounted(ushort action)
-    {
-        return action switch
-        {
-            (ushort)AnimationType.CastDirected or
-            (ushort)AnimationType.CastArea => (ushort)AnimationType.HorseSlap,
-            (ushort)AnimationType.AttackWeapon or
-            (ushort)AnimationType.Attack1HPierce or
-            (ushort)AnimationType.Attack1HBash or
-            (ushort)AnimationType.Attack2HBash or
-            (ushort)AnimationType.Attack2HSlash or
-            (ushort)AnimationType.Attack2HPierce or
-            (ushort)AnimationType.AttackWrestle => (ushort)AnimationType.HorseAttack,
-            (ushort)AnimationType.AttackBow => (ushort)AnimationType.HorseAttackBow,
-            (ushort)AnimationType.AttackXBow => (ushort)AnimationType.HorseAttackXBow,
-            (ushort)AnimationType.GetHit => (ushort)AnimationType.HorseSlap,
-            (ushort)AnimationType.Block => (ushort)AnimationType.HorseSlap,
-            (ushort)AnimationType.Bow or
-            (ushort)AnimationType.Salute or
-            (ushort)AnimationType.Eat => (ushort)AnimationType.HorseSlap,
-            _ => action
-        };
-    }
+    private static ushort MapAnimToMounted(ushort action) =>
+        SphereNet.Game.Combat.BodyAnimTranslator.ToMounted(action);
 
     private static void TickReplayPackets()
     {

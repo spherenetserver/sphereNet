@@ -18,6 +18,31 @@ namespace SphereNet.Game.Combat;
 /// </summary>
 public static class BodyAnimTranslator
 {
+    /// <summary>Map an on-foot humanoid action to its mounted-rider variant.
+    /// A foot animation sent for a mounted body makes the client visually
+    /// dismount and remount the rider for the animation's duration (the
+    /// fishing-swing report). Same table as Sphere's mounted remap.</summary>
+    public static ushort ToMounted(ushort action) => action switch
+    {
+        (ushort)AnimationType.CastDirected or
+        (ushort)AnimationType.CastArea => (ushort)AnimationType.HorseSlap,
+        (ushort)AnimationType.AttackWeapon or
+        (ushort)AnimationType.Attack1HPierce or
+        (ushort)AnimationType.Attack1HBash or
+        (ushort)AnimationType.Attack2HBash or
+        (ushort)AnimationType.Attack2HSlash or
+        (ushort)AnimationType.Attack2HPierce or
+        (ushort)AnimationType.AttackWrestle => (ushort)AnimationType.HorseAttack,
+        (ushort)AnimationType.AttackBow => (ushort)AnimationType.HorseAttackBow,
+        (ushort)AnimationType.AttackXBow => (ushort)AnimationType.HorseAttackXBow,
+        (ushort)AnimationType.GetHit => (ushort)AnimationType.HorseSlap,
+        (ushort)AnimationType.Block => (ushort)AnimationType.HorseSlap,
+        (ushort)AnimationType.Bow or
+        (ushort)AnimationType.Salute or
+        (ushort)AnimationType.Eat => (ushort)AnimationType.HorseSlap,
+        _ => action,
+    };
+
     private const ushort MonsterBodyMax = 200;  // CREID_HORSE1
     private const ushort AnimalBodyMax = 400;   // CREID_MAN
 

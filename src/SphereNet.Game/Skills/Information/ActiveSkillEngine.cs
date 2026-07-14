@@ -1244,7 +1244,12 @@ public static class ActiveSkillEngine
     {
         if (!SkillEngine.HasFlag(skill, SkillFlag.NoAnim))
         {
-            var animPkt = new SphereNet.Network.Packets.Outgoing.PacketAnimation(ch.Uid.Value, animId);
+            // Mounted riders need the horse-variant action — the foot animation
+            // makes the client dismount/remount the rider for its duration.
+            ushort anim = ch.IsMounted
+                ? Combat.BodyAnimTranslator.ToMounted(animId)
+                : Combat.BodyAnimTranslator.Translate(ch.BodyId, animId);
+            var animPkt = new SphereNet.Network.Packets.Outgoing.PacketAnimation(ch.Uid.Value, anim);
             Character.BroadcastNearby?.Invoke(ch.Position, 18, animPkt, 0);
         }
         if (!SkillEngine.HasFlag(skill, SkillFlag.NoSfx))

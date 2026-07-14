@@ -4,6 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-15] - Invented-values audit, wave 2: loot/summons/prices/hunger/spawn windows
+----------------------------------------
+
+FIXED - Synthetic NPC loot removed: every kill also minted stat-tier gold,
+        reagents and gems ON TOP of the script-defined loot, inflating the
+        economy. Source-X drops only what the chardef/@CreateLoot scripts
+        define — that path (MaterializeDeathLoot) remains.
+
+FIXED - Necromancy summons (Animate Dead, Vengeful Spirit) had flat invented
+        stats (60/60/40/20, 80/80/60/40 + 60.0/80.0 skills). Summons now take
+        the creature's own chardef — name, brain and the @Create stat block —
+        like Source-X NPC_LoadScript, then spawn at full vitals.
+
+FIXED - Vendor price fallback derived from the ART TILE ID (BaseId/10+5) when
+        an item had no PRICE tag. Both the display and the server-side check
+        now price from the itemdef VALUE (Source-X GetMakeValue).
+
+FIXED - Item quality defaulted to 50; Source-X starts at 0 (only crafting sets
+        it). Saver now persists only non-zero QUALITY.
+
+FIXED - Invented "starvation bite" removed: a starved character lost stam/hp
+        every hunger tick. Source-X starvation only halts regeneration.
+
+FIXED - Spawner default respawn windows aligned to Source-X CCSpawn (random
+        1..30 minutes when MOREP declares nothing): char spawners used a fixed
+        15-30 min window, item spawners refilled in 1-5 minutes (up to 6x too
+        fast for resource nodes).
+
 [2026-07-14] - Invented-values audit, wave 1: combat/poison/decay/caps/training
 ----------------------------------------
 

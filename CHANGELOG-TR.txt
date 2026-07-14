@@ -3,6 +3,34 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-15] - Uyduruk-deger denetimi, dalga 2: loot/summon/fiyat/aclik/spawn pencereleri
+----------------------------------------
+
+DUZELTILDI - Sentetik NPC loot'u kaldirildi: her olum, script loot'unun USTUNE
+        stat-katmanli altin/reagent/gem basiyordu ve ekonomiyi sisiriyordu.
+        Source-X yalnizca chardef/@CreateLoot scriptlerinin tanimladigini
+        dusurur — o yol (MaterializeDeathLoot) duruyor.
+
+DUZELTILDI - Nekromansi summonlari (Animate Dead, Vengeful Spirit) duz uydurma
+        statlarla geliyordu (60/60/40/20, 80/80/60/40 + 60.0/80.0 skill).
+        Summonlar artik yaratigin kendi chardef'ini alir — isim, brain ve
+        @Create stat blogu (Source-X NPC_LoadScript) — ve tam canla dogar.
+
+DUZELTILDI - PRICE tag'i olmayan itemin vendor fiyati GRAFIK ID'sinden
+        turetiliyordu (BaseId/10+5). Gorunum ve sunucu kontrolu artik itemdef
+        VALUE'sundan fiyatlar (Source-X GetMakeValue).
+
+DUZELTILDI - Item quality varsayilani 50'ydi; Source-X 0'dan baslar (yalnizca
+        craft belirler). Saver artik yalnizca sifir-disi QUALITY yazar.
+
+DUZELTILDI - Uydurma "aclik isirigi" kaldirildi: ac karakter her aclik
+        tikinda stam/hp kaybediyordu. Source-X'te aclik yalnizca rejeni durdurur.
+
+DUZELTILDI - Spawner varsayilan pencereleri Source-X CCSpawn'a hizalandi
+        (MOREP bos ise rastgele 1..30 dk): char spawner sabit 15-30 dk,
+        item spawner 1-5 dk kullaniyordu (kaynak nodlari 6 kata kadar hizli
+        doluyordu).
+
 [2026-07-14] - Uyduruk-deger denetimi, dalga 1: savas/zehir/decay/kapasite/egitim
 ----------------------------------------
 

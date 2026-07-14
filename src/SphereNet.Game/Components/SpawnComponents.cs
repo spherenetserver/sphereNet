@@ -28,8 +28,10 @@ public sealed class SpawnComponent
     private SpawnGroupDef? _spawnGroup;
     private int _maxCount = 1;
     private int _spawnRange = 15;
-    private int _minDelaySec = 900;   // Source-X default: 15 min
-    private int _maxDelaySec = 1800;  // Source-X default: 30 min
+    // Source-X CCSpawn.cpp:554: with no MOREP timing the respawn delay is a
+    // fresh random 1..30 minutes each cycle (not a fixed 15/30 window).
+    private int _minDelaySec = 60;
+    private int _maxDelaySec = 1800;
     private long _nextSpawnTick;
     private bool _stopped;
     private bool _killingChildren;
@@ -665,8 +667,11 @@ public sealed class ItemSpawnComponent
     private int _spawnRange = 2;
     private int _pile = 1;
     private long _nextSpawnTick;
+    // Source-X CCSpawn.cpp:554: item spawners share the same "random 1..30
+    // minutes when MOREP declares nothing" rule as char spawners — the old
+    // 60-300s window refilled resource/item spawns up to 6x too fast.
     private int _minDelaySec = 60;
-    private int _maxDelaySec = 300;
+    private int _maxDelaySec = 1800;
 
     private const int MaxSpawnLimit = 250;
 

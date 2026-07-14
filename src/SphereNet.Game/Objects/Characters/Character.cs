@@ -5835,17 +5835,10 @@ public partial class Character : ObjBase
             // Let scripts react to hunger (@Hunger trigger).
             OnHungerDecay?.Invoke(this);
 
-            // Starvation bite: a fully-starved character loses stamina (and a
-            // little health once stamina is gone) so hunger has real stakes
-            // beyond merely halting HP regen.
-            if (_food == 0)
-            {
-                if (_stam > 0)
-                    _stam = (short)Math.Max(0, _stam - Math.Max(1, _maxStam / 10));
-                else if (_hits > 1)
-                    _hits = (short)Math.Max(1, _hits - Math.Max(1, _maxHits / 20));
-                MarkDirty(DirtyFlag.Stats);
-            }
+            // Source-X starvation only halts regeneration (Stats_Regen checks
+            // IsHungry); it never drains stamina or health. An invented
+            // "starvation bite" used to chip stam/hp here — a hungry AFK
+            // character slowly damaged itself, which the reference never does.
         }
 
         // Poison tick

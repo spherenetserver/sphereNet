@@ -635,11 +635,11 @@ public class SaveFormatTests
             src.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
 
             var poisoner = new Serial(0x40001234);
-            ch.ApplyPoison(3, poisoner); // greater poison → 12 ticks
-            // Advance one tick so the remaining count (11) is non-fresh — proving load
+            ch.ApplyPoison(3, poisoner); // greater poison → 6 ticks (Source-X OSI charges)
+            // Advance one tick so the remaining count (5) is non-fresh — proving load
             // restores the exact remaining state rather than re-applying a fresh poison.
             ch.ProcessPoisonTick(Environment.TickCount64 + 10_000);
-            Assert.Equal(11, ch.Poison.TicksRemaining);
+            Assert.Equal(5, ch.Poison.TicksRemaining);
 
             Assert.True(saver.Save(src, tmp));
 
@@ -650,7 +650,7 @@ public class SaveFormatTests
             Assert.NotNull(reloaded);
             Assert.True(reloaded!.IsPoisoned);
             Assert.Equal((byte)3, reloaded.PoisonLevel);
-            Assert.Equal(11, reloaded.Poison.TicksRemaining); // remaining, not re-freshed to 12
+            Assert.Equal(5, reloaded.Poison.TicksRemaining); // remaining, not re-freshed to 6
             Assert.Equal(poisoner, reloaded.Poison.Source);    // poisoner kept for kill attribution
         }
         finally

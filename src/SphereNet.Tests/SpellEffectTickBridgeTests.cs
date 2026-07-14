@@ -50,7 +50,7 @@ public class SpellEffectTickBridgeTests
         Assert.Equal((int)SpellType.Poison, seen!.SpellId);
         Assert.Equal(2, seen.Level);
         Assert.Equal(300, seen.Strength);          // level 2 → normal band midpoint
-        Assert.Equal(8, seen.Charges);              // seeded before the auto-decrement
+        Assert.Equal(3, seen.Charges);              // Source-X OSI standard poison: 3 charges, seeded before the auto-decrement
     }
 
     [Fact]

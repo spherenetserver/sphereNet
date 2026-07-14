@@ -102,9 +102,12 @@ public sealed class CharacterPoisonState
         if (level <= _level && _ticksRemaining > 0)
             return;
         _level = _ticksRemaining > 0 ? Math.Max(_level, level) : level;
+        // Source-X OSI poison charges (CCharAct.cpp:4229, levels 0-4 = our 1-5):
+        // lesser/standard 3, greater/deadly 6, lethal 8. The old 5..20 table
+        // was invented and made every poison run far longer than reference.
         _ticksRemaining = _level switch
         {
-            1 => 5, 2 => 8, 3 => 12, 4 => 16, _ => 20
+            1 => 3, 2 => 3, 3 => 6, 4 => 6, _ => 8
         };
         _nextTick = Environment.TickCount64 + GetTickInterval();
         if (source.IsValid) _source = source;
@@ -129,19 +132,32 @@ public sealed class CharacterPoisonState
         }
     }
 
+    // Source-X OSI poison tick delay (CCharSpell.cpp:1815-1838, levels 0-4 =
+    // our 1-5): 2/3/4/5/5 seconds. The old 4s..1.5s table was invented (and
+    // inverted — stronger poison ticked FASTER than reference).
     private int GetTickInterval() => _level switch
     {
-        1 => 4000, 2 => 3000, 3 => 2500, 4 => 2000, _ => 1500
+        1 => 2000, 2 => 3000, 3 => 4000, 4 => 5000, _ => 5000
     };
 
-    private int GetDamage() => _level switch
+    // Source-X OSI poison damage: a percentage of MAX STR per level —
+    // 4-7% / 5-10% / 7-15% / 15-30% / 16-33% — with per-level minimums
+    // {2,4,6,8,10} (sm_iPoisonMax). The old flat ranges ignored the victim's
+    // strength entirely.
+    private int GetDamage()
     {
-        1 => Random.Shared.Next(2, 5),
-        2 => Random.Shared.Next(3, 8),
-        3 => Random.Shared.Next(5, 12),
-        4 => Random.Shared.Next(8, 20),
-        _ => Random.Shared.Next(12, 30)
-    };
+        int maxStr = Math.Max(1, (int)SphereNet.Game.Combat.CombatEngine.EffectiveStr(_owner));
+        var (pctLo, pctHi, floor) = _level switch
+        {
+            1 => (4, 7, 2),
+            2 => (5, 10, 4),
+            3 => (7, 15, 6),
+            4 => (15, 30, 8),
+            _ => (16, 33, 10),
+        };
+        int damage = maxStr * Random.Shared.Next(pctLo, pctHi + 1) / 100;
+        return Math.Max(floor, damage);
+    }
 
     // Engine level → Sphere memory-strength scale (ARGO.MOREY / ARGN2).
     // Midpoints of the reference poison bands: <200 lesser, <400 normal,

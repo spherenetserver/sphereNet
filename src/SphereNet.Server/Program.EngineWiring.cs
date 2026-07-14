@@ -639,6 +639,14 @@ public static partial class Program
                         npc, SphereNet.Core.Enums.CharTrigger.CreateLoot,
                         new SphereNet.Game.Scripting.TriggerArgs { CharSrc = npc });
 
+                    // Classic packs assign STR/DEX/INT inside @Create, which
+                    // raises the max vitals AFTER SpawnResolved seeded them from
+                    // the (stat-less) chardef section — leaving a fresh spawn at
+                    // 1/102 hp. Top off like the .add pipeline does post-@Create.
+                    npc.Hits = npc.MaxHits;
+                    npc.Stam = npc.MaxStam;
+                    npc.Mana = npc.MaxMana;
+
                     var spawnCharDef = DefinitionLoader.GetCharDef(npc.CharDefIndex);
                     if (spawnCharDef != null)
                     {

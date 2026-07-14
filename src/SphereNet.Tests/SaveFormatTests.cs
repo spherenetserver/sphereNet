@@ -756,6 +756,48 @@ public class SaveFormatTests
     }
 
     [Fact]
+    public void Load_ClassicOStatsOnly_SeedBaseStats()
+    {
+        // Classic Sphere saves persist ONLY OSTR/ODEX/OINT for NPCs; Source-X
+        // r_LoadVal maps them to Stat_SetBase, same as STR/DEX/INT. Mirroring
+        // them into the O-fields alone loaded every legacy NPC with 0 stats
+        // (the "spawned NPCs have STR 0" field report).
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_ostat_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            using (var w = SaveIO.OpenWriter(Path.Combine(tmp, "sphereworld.scp"), SaveFormat.Text))
+            {
+                w.BeginRecord("WORLDCHAR");
+                w.WriteProperty("SERIAL", "01000201");
+                w.WriteProperty("BODY", "011");
+                w.WriteProperty("P", "1000,1000,0");
+                w.WriteProperty("OSTR", "104");
+                w.WriteProperty("ODEX", "89");
+                w.WriteProperty("OINT", "42");
+                w.WriteProperty("HITS", "104");
+                w.EndRecord();
+            }
+
+            var (_, loader) = MakeIO();
+            var world = MakeWorld();
+            loader.Load(world, tmp);
+
+            var ch = world.FindChar(new Serial(0x1000201));
+            Assert.NotNull(ch);
+            Assert.Equal(104, ch!.Str);
+            Assert.Equal(89, ch.Dex);
+            Assert.Equal(42, ch.Int);
+            Assert.Equal(104, ch.OStr);
+            Assert.Equal(104, ch.Hits);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public void Roundtrip_PreservesPerCharRegenOverrides()
     {
         // Wave 247: per-char regen rate overrides (Source-X CChar REGENHITS/…/FOOD).

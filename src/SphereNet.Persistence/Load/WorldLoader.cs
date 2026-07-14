@@ -1065,17 +1065,30 @@ public sealed class WorldLoader
             case "ISPLAYER":
                 ch.IsPlayer = val == "1";
                 break;
+            // Source-X r_LoadVal treats OSTR/ODEX/OINT and STR/DEX/INT as the
+            // same key — both call Stat_SetBase. Classic Sphere saves persist
+            // ONLY the O-variants, so mirroring them into the O-fields alone
+            // loaded every legacy NPC with base stats of 0.
             case "OSTR":
                 if (short.TryParse(val, out short ostr))
+                {
                     ch.OStr = ostr;
+                    ch.Str = ostr;
+                }
                 break;
             case "ODEX":
                 if (short.TryParse(val, out short odex))
+                {
                     ch.ODex = odex;
+                    ch.Dex = odex;
+                }
                 break;
             case "OINT":
                 if (short.TryParse(val, out short oint))
+                {
                     ch.OInt = oint;
+                    ch.Int = oint;
+                }
                 break;
             case "SPELLEFFECT":
                 ch.AddPendingSpellEffectRecord(val);

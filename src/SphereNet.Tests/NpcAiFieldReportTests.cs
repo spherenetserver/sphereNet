@@ -96,6 +96,47 @@ public class NpcAiFieldReportTests
     }
 
     [Fact]
+    public void DismountedMount_IsAValidMonsterTarget()
+    {
+        // Field report: after dismounting, hostiles ignored the now-standing
+        // mount. A dismounted mount is an owned pet — hostility is evaluated
+        // toward its owner (Source-X NPC_GetHostilityLevelToward), so an evil
+        // monster must be able to acquire it like any other pet.
+        var world = new GameWorld(LoggerFactory.Create(_ => { }));
+        world.InitMap(0, 6144, 4096);
+        SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
+        var ai = new NpcAI(world, new SphereConfig());
+
+        var rider = world.CreateCharacter();
+        rider.IsPlayer = true;
+        rider.IsOnline = true;
+        rider.Hits = rider.MaxHits = 100;
+        world.PlaceCharacter(rider, new Point3D(100, 100, 0, 0));
+        world.AddOnlinePlayer(rider);
+
+        var mount = world.CreateCharacter();
+        mount.NpcMaster = rider.Uid;
+        mount.NpcBrain = NpcBrainType.Animal;
+        mount.Hits = mount.MaxHits = 50;
+        mount.Stam = mount.MaxStam = 50;
+        world.PlaceCharacter(mount, new Point3D(103, 100, 0, 0)); // adjacent to the monster
+
+        var skeleton = world.CreateCharacter();
+        skeleton.Hits = skeleton.MaxHits = 50;
+        skeleton.NpcBrain = NpcBrainType.Monster;
+        skeleton.Int = 30;
+        world.PlaceCharacter(skeleton, new Point3D(104, 100, 0, 0));
+        world.OnTick(); // activate the sector
+
+        skeleton.NextNpcActionTime = 0;
+        ai.OnTickAction(skeleton);
+
+        // Nearest valid hostile is the dismounted mount (same owner-derived
+        // hostility as the rider, smaller distance penalty).
+        Assert.Equal(mount.Uid, skeleton.FightTarget);
+    }
+
+    [Fact]
     public void OpenedDoor_SwingsShutOnItsOwn()
     {
         var world = new GameWorld(LoggerFactory.Create(_ => { }));

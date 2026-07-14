@@ -186,6 +186,77 @@ public sealed class FishingPoleLivePackProbe
     }
 
     [Fact]
+    public void LivePack_WorldgemBit_GmDClick_TogglesSpawn()
+    {
+        string scripts = Path.Combine(Root, "scripts");
+        if (!Directory.Exists(scripts))
+        {
+            _out.WriteLine("live pack not available");
+            return;
+        }
+
+        var lf = LoggerFactory.Create(_ => { });
+        var resources = new ResourceHolder(lf.CreateLogger<ResourceHolder>()) { ScpBaseDir = scripts };
+        foreach (string f in ScriptResourceManifest.Resolve(scripts))
+            resources.LoadResourceFile(f);
+        new DefinitionLoader(resources, new SpellRegistry()).LoadAll();
+
+        var world = TestHarness.CreateWorld();
+        var accounts = new AccountManager(lf);
+        var state = TestHarness.CreateActiveNetState(lf, Random.Shared.Next(50_000, 60_000));
+        var client = new GameClient(state, world, accounts, lf.CreateLogger<GameClient>());
+        var gm = world.CreateCharacter();
+        gm.IsPlayer = true;
+        gm.Name = "Prober";
+        gm.PrivLevel = PrivLevel.GM;
+        world.PlaceCharacter(gm, new Point3D(100, 100, 0, 0));
+        TestHarness.AttachCharacter(client, gm);
+
+        var interpreter = new SphereNet.Scripting.Execution.ScriptInterpreter(
+            new SphereNet.Scripting.Expressions.ExpressionParser(),
+            lf.CreateLogger<SphereNet.Scripting.Execution.ScriptInterpreter>());
+        var runner = new SphereNet.Scripting.Execution.TriggerRunner(
+            interpreter, resources, lf.CreateLogger<SphereNet.Scripting.Execution.TriggerRunner>());
+        var dispatcher = new SphereNet.Game.Scripting.TriggerDispatcher { Resources = resources, Runner = runner };
+        client.SetEngines(triggerDispatcher: dispatcher);
+
+        // Mirror the live wiring: TYPE=t_spawn_char at materialization/runtime
+        // must attach the spawn component (Program.EngineWiring).
+        Item.OnSpawnTypeChanged = it => it.InitializeSpawnComponent(world, resources);
+        try
+        {
+            var gem = world.CreateItem();
+            bool applied = ItemDefHelper.ApplyInstanceMetadata(gem, 0x1EA7); // i_worldgem_bit
+            var orcRid = resources.ResolveDefName("c_orc");
+            gem.More1 = (uint)orcRid.Index;
+            gem.Amount = 1;
+            world.PlaceItem(gem, new Point3D(101, 100, 0, 0));
+            if (gem.SpawnChar == null)
+                gem.InitializeSpawnComponent(world, resources);
+
+            _out.WriteLine($"gem: applied={applied} base=0x{gem.BaseId:X} type={gem.ItemType} " +
+                           $"spawnComp={(gem.SpawnChar != null ? "yes" : "NULL")} more1=0x{gem.More1:X}");
+
+            client.HandleDoubleClick(gem.Uid.Value);
+            int count1 = gem.SpawnChar?.CurrentCount ?? -1;
+            _out.WriteLine($"after dclick #1: children={count1}");
+
+            client.HandleDoubleClick(gem.Uid.Value);
+            int count2 = gem.SpawnChar?.CurrentCount ?? -1;
+            _out.WriteLine($"after dclick #2: children={count2}");
+
+            Assert.Equal(ItemType.SpawnChar, gem.ItemType);
+            Assert.NotNull(gem.SpawnChar);
+            Assert.Equal(1, count1); // first dclick spawns
+            Assert.Equal(0, count2); // second dclick clears
+        }
+        finally
+        {
+            Item.OnSpawnTypeChanged = null;
+        }
+    }
+
+    [Fact]
     public void LiveSave_FishingPoleInstances_HaveFishPoleType()
     {
         string scripts = Path.Combine(Root, "scripts");

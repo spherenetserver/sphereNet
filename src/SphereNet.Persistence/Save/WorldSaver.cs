@@ -560,7 +560,7 @@ public sealed class WorldSaver
         if (item.UsesRemaining != 0) w.WriteProperty("USESREMAINING", item.UsesRemaining.ToString());
         if (item.Link.IsValid) w.WriteProperty("LINK", $"0{item.Link.Value:X}");
         if (item.Price != 0) w.WriteProperty("PRICE", item.Price.ToString());
-        if (item.Quality != 50) w.WriteProperty("QUALITY", item.Quality.ToString());
+        if (item.Quality != 0) w.WriteProperty("QUALITY", item.Quality.ToString()); // Source-X persists only non-zero quality
 
         item.MigrateHitsFromTags();
         if (item.HitsCur > 0) w.WriteProperty("HITS", item.HitsCur.ToString());

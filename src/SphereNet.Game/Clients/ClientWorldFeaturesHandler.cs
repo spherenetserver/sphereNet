@@ -583,7 +583,8 @@ public sealed class ClientWorldFeaturesHandler
     {
         if (item.TryGetTag("PRICE", out string? priceStr) && int.TryParse(priceStr, out int price))
             return price;
-        return Math.Max(1, item.BaseId / 10 + 5); // default price
+        // Itemdef VALUE, like Source-X — never the art tile id.
+        return Math.Max(1, SphereNet.Game.Trade.VendorEngine.GetDefValue(item.BaseId));
     }
 
     /// <summary>Get the sell price (what vendor pays the player) — same

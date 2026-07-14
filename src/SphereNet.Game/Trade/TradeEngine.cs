@@ -430,9 +430,21 @@ public static class VendorEngine
                     return Math.Max(1, p);
             }
         }
-        // No PRICE tag — mirror the display fallback (GetVendorItemPrice)
-        // so a server check never rejects an item the client priced.
-        return Math.Max(1, itemId / 10 + 5);
+        // No PRICE tag — price from the itemdef VALUE like Source-X
+        // (CItemVendable::GetMakeValue). The old fallback derived the price
+        // from the ART TILE ID (/10 + 5), so high-graphic items cost a fortune.
+        return Math.Max(1, GetDefValue(itemId));
+    }
+
+    /// <summary>Itemdef VALUE midpoint — the Source-X vendor pricing base.
+    /// Returns 0 when the def declares no VALUE.</summary>
+    internal static int GetDefValue(ushort itemId)
+    {
+        var idef = SphereNet.Game.Definitions.DefinitionLoader.GetItemDef(itemId);
+        if (idef == null) return 0;
+        return idef.ValueMin > 0 && idef.ValueMax > 0
+            ? (idef.ValueMin + idef.ValueMax) / 2
+            : Math.Max(idef.ValueMin, idef.ValueMax);
     }
 
     /// <summary>Default VENDORMARKUP percent (Source-X g_Cfg.m_iVendorMarkup).</summary>

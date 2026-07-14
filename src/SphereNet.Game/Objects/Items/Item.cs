@@ -118,7 +118,10 @@ public class Item : ObjBase
     private Point3D _moreP;
     private Serial _link = Serial.Invalid;
     private int _price;
-    private ushort _quality = 50;
+    // Source-X CItemVendable: quality starts at 0 and is only set by crafting;
+    // the old invented default of 50 inflated ranged-VALUE vendor prices and
+    // stamped QUALITY=50 on every plain item.
+    private ushort _quality;
     private int _hitsCur;
     private int _hitsMax;
     private Serial _crafter = Serial.Invalid;

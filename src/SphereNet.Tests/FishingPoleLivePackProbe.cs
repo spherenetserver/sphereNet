@@ -241,6 +241,17 @@ public sealed class FishingPoleLivePackProbe
             int count1 = gem.SpawnChar?.CurrentCount ?? -1;
             _out.WriteLine($"after dclick #1: children={count1}");
 
+            // MOREZ=0 gem: the child must appear adjacent to the gem (Source-X
+            // CCSpawn MoveNear dist 1), not scattered across a 15-tile radius.
+            if (gem.SpawnChar != null && gem.SpawnChar.CurrentCount == 1)
+            {
+                var child = world.FindChar(gem.SpawnChar.SpawnedUids[0]);
+                Assert.NotNull(child);
+                int dist = gem.Position.GetDistanceTo(child!.Position);
+                _out.WriteLine($"child at {child.Position}, distance={dist}");
+                Assert.True(dist <= 1, $"MOREZ=0 spawn must be adjacent, was {dist} tiles away");
+            }
+
             client.HandleDoubleClick(gem.Uid.Value);
             int count2 = gem.SpawnChar?.CurrentCount ?? -1;
             _out.WriteLine($"after dclick #2: children={count2}");

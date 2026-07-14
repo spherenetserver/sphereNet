@@ -320,11 +320,13 @@ public sealed class SpawnComponent
         var mapData = _world.MapData;
         bool canSwim = charDef != null && (charDef.Can & CanFlags.C_Swim) != 0;
         var (mapW, mapH) = mapData?.GetMapSize(_spawnItem.MapIndex) ?? (0, 0);
+        // MOREZ=0 → spawn right next to the gem (Source-X MoveNear(pt, 1)).
+        int range = _spawnRange > 0 ? _spawnRange : 1;
 
         for (int attempt = 0; attempt < 25; attempt++)
         {
-            short dx = (short)_rand.Next(-_spawnRange, _spawnRange + 1);
-            short dy = (short)_rand.Next(-_spawnRange, _spawnRange + 1);
+            short dx = (short)_rand.Next(-range, range + 1);
+            short dy = (short)_rand.Next(-range, range + 1);
             short px = (short)(_spawnItem.X + dx);
             short py = (short)(_spawnItem.Y + dy);
             sbyte pz = _spawnItem.Z;
@@ -342,6 +344,12 @@ public sealed class SpawnComponent
                 var landData = mapData.GetLandTileData(terrain.TileId);
                 if (landData.IsWet && !canSwim)
                     continue;
+                // Source-X CCSpawn: a child must have LOS back to its spawn
+                // point — otherwise it can materialize behind a wall.
+                var candidate = new Point3D(px, py, pz, _spawnItem.MapIndex);
+                if (!_world.CanSeeLOS(_spawnItem.Position, candidate))
+                    continue;
+                return candidate;
             }
 
             return new Point3D(px, py, pz, _spawnItem.MapIndex);
@@ -589,8 +597,11 @@ public sealed class SpawnComponent
             int maxMin = Math.Max(minMin, mp.Y > 0 ? (int)mp.Y : minMin);
             SetDelay(minMin, maxMin);
         }
-        if (mp.Z > 0)
-            _spawnRange = mp.Z;
+        // Source-X loads MOREZ verbatim into _iMaxDist — including 0, which
+        // makes children spawn adjacent to the gem (CCSpawn MoveNear dist 1).
+        // Keeping the 15-tile default whenever MOREZ was 0 scattered fresh
+        // GM-placed worldgems' children across the neighborhood.
+        _spawnRange = Math.Max(0, (int)mp.Z);
     }
 
     /// <summary>Reset the spawn timer using current delay values.</summary>

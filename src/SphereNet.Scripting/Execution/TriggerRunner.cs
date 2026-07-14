@@ -80,9 +80,15 @@ public sealed class TriggerRunner
             if (scriptFile == null)
                 return TriggerResult.Default;
 
+            // Triggers are section-scoped (Source-X CResourceLock stops at the
+            // next [header]). The stored position is this link's own section
+            // header, so only sections[0] may be searched — scanning further
+            // would execute a same-named ON= block belonging to the NEXT
+            // definition in the file.
             var sections = scriptFile.ReadAllSections();
-            foreach (var section in sections)
+            if (sections.Count > 0)
             {
+                var section = sections[0];
                 foreach (var key in section.Keys)
                 {
                     if (key.Key.Equals("ON", StringComparison.OrdinalIgnoreCase) &&
@@ -145,11 +151,14 @@ public sealed class TriggerRunner
                 return TriggerResult.Default;
             }
 
+            // Section-scoped like Source-X CResourceLock: only the link's own
+            // section (sections[0] at the stored header position) may carry the
+            // trigger. Scanning later sections executed same-named ON= blocks
+            // of unrelated definitions further down the same file.
             var sections = scriptFile.ReadAllSections();
-            int sectionsScanned = 0;
-            foreach (var section in sections)
+            if (sections.Count > 0)
             {
-                sectionsScanned++;
+                var section = sections[0];
                 foreach (var key in section.Keys)
                 {
                     if (key.Key.Equals("ON", StringComparison.OrdinalIgnoreCase) &&
@@ -161,8 +170,8 @@ public sealed class TriggerRunner
                         if (verbose)
                         {
                             _logger.LogDebug(
-                                "[trig_runner] {Trig} matched section #{Idx} body lines={N}",
-                                triggerName, sectionsScanned, triggerLines.Count);
+                                "[trig_runner] {Trig} matched own section body lines={N}",
+                                triggerName, triggerLines.Count);
                             foreach (var ln in triggerLines)
                                 _logger.LogDebug(
                                     "[trig_runner]   line key='{Key}' hasArg={HasArg} arg='{Arg}'",
@@ -177,8 +186,8 @@ public sealed class TriggerRunner
 
             if (verbose)
                 _logger.LogDebug(
-                    "[trig_runner] {Trig} not found in any of {N} sections (target={Target})",
-                    triggerName, sectionsScanned, target);
+                    "[trig_runner] {Trig} not found in own section (target={Target})",
+                    triggerName, target);
             return TriggerResult.Default;
         }
         finally

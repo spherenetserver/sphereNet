@@ -3,6 +3,45 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-14] - Saha raporu paketi: spawn mesafesi/LOS, boot stat onarimi, kaynak
+               gem yasam dongusu, binekli skill animasyonlari, item dayanikliligi
+----------------------------------------
+
+DUZELTILDI - Spawner cocuklari tastan 15 kareye kadar dagiliyordu:
+  - Source-X MOREZ'i oldugu gibi yukler (0 = bitisik dogum, MoveNear mesafe 1);
+    bilesen MOREZ 0 iken 15 kare varsayilanini koruyordu. Cocuklar artik spawn
+    noktasina LOS da gerektirir (Source-X CCSpawn) — duvar arkasinda dogamazlar.
+
+DUZELTILDI - Eski build'lerin kaydettigi STR=0 NPC'ler:
+  - OSTR duzeltmesinden onceki save'ler STR=0'i native formata isledi; loader
+    duzeltmesi ve RESPAWN FULL (spawner disi NPC'ler) buna yetismiyordu. Boot
+    onarimi taban statlari O-aynasindan geri yukluyor veya chardef @Create'i
+    yeniden calistiriyor, sonra canlari dolduruyor ([boot_repair] log satiri).
+
+DUZELTILDI - Kaynak-marker worldgem'leri sonsuza dek yasiyordu (TIMER=-1):
+  - Balik/maden/odun markerlari yalnizca tam tukendiginde decay kuruyordu ve
+    yenilenirken sifirliyordu — islenen her kare basina bir olumsuz gorunmez
+    item. Artik her dokunus decay'i bir regen periyodu oteler (Source-X
+    MoveToDecay dongusu: sure dolunca damar zaten tam dolu, silinmesi kayipsiz).
+    Boot onarimi decay'siz kayitli markerlara da sure kurar.
+
+DUZELTILDI - Skill animasyonlari binicide gorsel inme/binme yapiyordu:
+  - Balik/maden/odun sallamalari binekli karaktere yaya animasyonu yolluyordu.
+    Skill animasyonlari artik binekli varyanti kullanir (buyu yolundakiyle ayni
+    ortak BodyAnimTranslator.ToMounted tablosu).
+
+DUZELTILDI - HITPOINTS'siz silah/zirh kirilip yok oluyordu:
+  - Savas asinma yolu, def'i dayaniklilik tanimlamayan itemlara sentetik
+    dayaniklilik uydurup asindiriyordu — klasik paketlerde neredeyse hicbir
+    item HITPOINTS tanimlamaz, tum ekipman yavasca kendini yok ediyordu.
+    Source-X yalnizca gercekten hitpoints'i olan itemlari asindirir; sentetik
+    atama kaldirildi.
+
+EKLENDI - Item yok olma emote'u:
+  - Giyili ekipman kirildiginda cevredeki herkes karakterin uzerinde
+    "*<item> is destroyed*" emote'unu gorur (Source-X ITEM_DMG_DESTROYED),
+    sahibin ozel mesajina ek olarak.
+
 [2026-07-14] - RESPAWN FULL admin komutu
 ----------------------------------------
 

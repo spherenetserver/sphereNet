@@ -2138,6 +2138,19 @@ public static partial class Program
                 if (owner != null && _clientsByCharUid.TryGetValue(owner.Uid, out var ownerClient))
                     ownerClient.SysMessage($"Your {item.GetName()} has been destroyed!");
 
+                // Source-X CItem::OnTakeDamage destroy branch emotes
+                // ITEM_DMG_DESTROYED over the object — for worn gear that is
+                // the wearer, visible to everyone nearby.
+                if (owner != null)
+                {
+                    string emote = $"*{item.GetName()} " +
+                        $"{SphereNet.Game.Messages.ServerMessages.Get(SphereNet.Game.Messages.Msg.ItemDmgDestroyed)}*";
+                    var emotePkt = new PacketSpeechUnicodeOut(
+                        owner.Uid.Value, owner.BodyId, 2, 0x0022, 3, "TRK",
+                        owner.Name ?? "", emote);
+                    BroadcastNearby(owner.Position, 18, emotePkt, 0);
+                }
+
                 if (item.EquipLayer != SphereNet.Core.Enums.Layer.None)
                     owner?.Unequip(item.EquipLayer);
                 var parent = item.ContainedIn.IsValid ? _world.FindObject(item.ContainedIn) as SphereNet.Game.Objects.Items.Item : null;

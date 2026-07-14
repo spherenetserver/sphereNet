@@ -4,6 +4,45 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-14] - Field-report batch: spawn distance/LOS, boot stat repair, resource
+               gem lifecycle, mounted skill animations, item durability
+----------------------------------------
+
+FIXED - Spawner children scattered up to 15 tiles from the gem:
+  - Source-X loads MOREZ verbatim (0 = spawn adjacent, MoveNear dist 1); the
+    component kept its 15-tile default whenever MOREZ was 0. Children now also
+    require line of sight back to the spawn point (Source-X CCSpawn), so they
+    cannot materialize behind walls.
+
+FIXED - NPCs with STR=0 persisted by older builds:
+  - Saves written before the OSTR fix baked STR=0 into native format, beyond
+    the loader fix and RESPAWN FULL (non-spawner NPCs). Boot repair now restores
+    base stats from the O-mirror or re-runs the chardef @Create, then tops off
+    vitals ([boot_repair] log line).
+
+FIXED - Resource-marker worldgems lived forever (TIMER=-1):
+  - Fishing/mining/lumberjack markers only armed a decay once fully depleted and
+    cleared it while regenerating — one immortal invisible item per worked tile.
+    Now every touch re-arms decay one regen period out (Source-X MoveToDecay
+    lifecycle: by expiry the vein is fully refilled, so deletion is lossless).
+    Boot repair arms decay on markers already saved without one.
+
+FIXED - Skill animations dismounted/remounted the rider visually:
+  - Fishing/mining/lumberjack swings sent the on-foot animation for mounted
+    characters. Skill animations now use the mounted variant (shared
+    BodyAnimTranslator.ToMounted, same table the spell-cast path used).
+
+FIXED - Weapons/armor without HITPOINTS broke and vanished:
+  - The combat wear path synthesized a default durability for items whose def
+    defines none — classic packs define HITPOINTS on almost nothing, so all
+    gear slowly self-destructed. Source-X only wears items that actually have
+    hitpoints; the synthetic assignment is removed.
+
+ADDED - Item destruction emote:
+  - When worn gear breaks, everyone nearby sees "*<item> is destroyed*" over
+    the wearer (Source-X ITEM_DMG_DESTROYED emote) in addition to the owner's
+    private message.
+
 [2026-07-14] - RESPAWN FULL admin command
 ----------------------------------------
 

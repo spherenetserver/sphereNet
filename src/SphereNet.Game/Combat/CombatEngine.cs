@@ -1188,14 +1188,13 @@ public static class CombatEngine
         if (rollConfiguredChance && _rand.Next(100) >= chance)
             return;
 
+        // Source-X: only items whose def (or crafting) gave them HITPOINTS
+        // wear out. Classic packs define none on most gear — inventing a
+        // synthetic durability here made every weapon and armor piece break
+        // and vanish after a few hundred swings.
         int maxHits = item.GetHitsMax();
         if (maxHits <= 0)
-        {
-            maxHits = Math.Max(1, DefaultHits);
-            item.HitsMax = maxHits;
-            item.HitsCur = maxHits;
             return;
-        }
 
         int curHits = item.GetHitsCur();
         int minLoss = Math.Max(0, Math.Min(DurabilityLossMin, DurabilityLossMax));

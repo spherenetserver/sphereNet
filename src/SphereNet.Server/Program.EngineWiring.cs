@@ -2108,6 +2108,16 @@ public static partial class Program
                 return (charDef.AttackMin, Math.Max(charDef.AttackMin, charDef.AttackMax));
             };
 
+            // NPC paid training from sphere.ini (Source-X TRAINSKILL* keys).
+            SphereNet.Game.Trade.VendorTrainingEngine.TrainSkillPercent = _config.TrainSkillPercent;
+            SphereNet.Game.Trade.VendorTrainingEngine.TrainSkillMax = _config.TrainSkillMax;
+            SphereNet.Game.Trade.VendorTrainingEngine.TrainSkillCost = _config.TrainSkillCost;
+
+            // Ground decay window from sphere.ini DecayTimer (minutes) —
+            // Source-X m_iDecay_Item; previously the ini value was read but
+            // never wired, so a hardcoded 10 minutes applied everywhere.
+            GameWorld.DefaultDecayTimeMs = Math.Max(1, _config.DecayTimer) * 60_000L;
+
             // Item durability from config
             CombatEngine.DurabilityEnabled = _config.ItemDurabilityEnabled;
             CombatEngine.DurabilityLossChance = _config.ItemDurabilityLossChance;

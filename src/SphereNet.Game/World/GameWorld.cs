@@ -224,12 +224,15 @@ public sealed class GameWorld
         return rayZ >= baseZ && rayZ <= baseZ + height;
     }
 
-    /// <summary>Max items allowed in a regular container (backpack, chest). sphere.ini CONTAINERMAXITEMS.</summary>
-    public int MaxContainerItems { get; set; } = 125;
-    /// <summary>Max items allowed in a bank box. sphere.ini BANKMAXITEMS.</summary>
-    public int MaxBankItems { get; set; } = 125;
-    /// <summary>Max total weight (stones) allowed in a bank box. sphere.ini BANKMAXWEIGHT.</summary>
-    public int MaxBankWeight { get; set; } = 1600;
+    /// <summary>Max items allowed in a regular container (backpack, chest).
+    /// sphere.ini CONTAINERMAXITEMS; Source-X default MAX_ITEMS_CONT = 255.</summary>
+    public int MaxContainerItems { get; set; } = 255;
+    /// <summary>Max items allowed in a bank box. sphere.ini BANKMAXITEMS;
+    /// Source-X default 1000.</summary>
+    public int MaxBankItems { get; set; } = 1000;
+    /// <summary>Max total weight (stones) allowed in a bank box. sphere.ini
+    /// BANKMAXWEIGHT; Source-X default 1000 stones.</summary>
+    public int MaxBankWeight { get; set; } = 1000;
     /// <summary>Max total weight (stones) allowed in a regular container. sphere.ini CONTAINERMAXWEIGHT. 0=unlimited.</summary>
     public int MaxContainerWeight { get; set; } = 400;
     /// <summary>AOS tooltip mode. 0=off, 1=revision/request, 2=force full. sphere.ini TOOLTIPMODE.</summary>
@@ -1406,15 +1409,19 @@ public sealed class GameWorld
         return count;
     }
 
-    /// <summary>Default ground item decay time in ms (10 minutes).</summary>
-    public const long DefaultDecayTimeMs = 600_000;
+    /// <summary>Default ground item decay time in ms. Source-X m_iDecay_Item
+    /// default is 30 minutes (ini DecayTimer, minutes) — the old hardcoded
+    /// 10 minutes rotted dropped items 3x faster than reference. Program wires
+    /// this from sphere.ini at startup.</summary>
+    public static long DefaultDecayTimeMs { get; set; } = 1_800_000;
 
-    /// <summary>Place an item on the ground with the default decay timer.</summary>
-    public bool PlaceItemWithDecay(Item item, Point3D pos, long decayMs = DefaultDecayTimeMs)
+    /// <summary>Place an item on the ground with the default decay timer
+    /// (pass a positive <paramref name="decayMs"/> to override).</summary>
+    public bool PlaceItemWithDecay(Item item, Point3D pos, long decayMs = 0)
     {
         if (!PlaceItem(item, pos)) return false;
         long now = Environment.TickCount64;
-        long safeDelay = Math.Max(0, decayMs);
+        long safeDelay = Math.Max(0, decayMs > 0 ? decayMs : DefaultDecayTimeMs);
         item.DecayTime = safeDelay > long.MaxValue - now ? long.MaxValue : now + safeDelay;
         return true;
     }

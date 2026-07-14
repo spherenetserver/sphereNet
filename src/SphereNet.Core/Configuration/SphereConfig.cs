@@ -214,10 +214,17 @@ public sealed class SphereConfig
     public int MaxKarma { get; set; } = 10000;
     public int MinKarma { get; set; } = -10000;
 
-    // Container
-    public int ContainerMaxItems { get; set; } = 125;
-    public int BankMaxItems { get; set; } = 125;
-    public int BankMaxWeight { get; set; } = 1600;
+    // NPC paid training — Source-X CServerConfig defaults: percent 30,
+    // absolute cap 420 (42.0), cost 1 gold per 0.1 point.
+    public int TrainSkillPercent { get; set; } = 30;
+    public int TrainSkillMax { get; set; } = 420;
+    public int TrainSkillCost { get; set; } = 1;
+
+    // Container — Source-X CServerConfig defaults: CONTAINERMAXITEMS =
+    // MAX_ITEMS_CONT (255), BANKMAXITEMS = 1000, BANKMAXWEIGHT = 1000 stones.
+    public int ContainerMaxItems { get; set; } = 255;
+    public int BankMaxItems { get; set; } = 1000;
+    public int BankMaxWeight { get; set; } = 1000;
     public int ContainerMaxWeight { get; set; } = 400;
     public int ItemsMaxAmount { get; set; } = 60000;
 
@@ -563,6 +570,9 @@ public sealed class SphereConfig
         MinKarma = ini.GetInt(section, "MinKarma", MinKarma);
 
         ContainerMaxItems = ini.GetInt(section, "ContainerMaxItems", ContainerMaxItems);
+        TrainSkillPercent = Math.Clamp(ini.GetInt(section, "TrainSkillPercent", TrainSkillPercent), 0, 100);
+        TrainSkillMax = Math.Max(0, ini.GetInt(section, "TrainSkillMax", TrainSkillMax));
+        TrainSkillCost = Math.Max(0, ini.GetInt(section, "TrainSkillCost", TrainSkillCost));
         BankMaxItems = ini.GetInt(section, "BankMaxItems", BankMaxItems);
         BankMaxWeight = ini.GetInt(section, "BankMaxWeight", BankMaxWeight);
         ContainerMaxWeight = ini.GetInt(section, "ContainerMaxWeight", ContainerMaxWeight);

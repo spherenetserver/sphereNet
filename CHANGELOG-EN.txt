@@ -4,6 +4,35 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-14] - Invented-values audit, wave 1: combat/poison/decay/caps/training
+----------------------------------------
+
+FIXED - Weapon with no DAM in its def derived damage from the ART TILE ID
+        (BaseId/10 — high-graphic items hit absurdly hard). Source-X
+        Weapon_GetAttack: attackBase 0. Now 0-1.
+
+FIXED - Two leftover synthetic-durability-50 paths: tinker REPAIR and the script
+        DAMAGE verb both invented (and persisted!) a 50-point pool onto items
+        whose def has no HITPOINTS — permanently converting unbreakable items
+        into breakable ones. Both now follow Source-X: no hitpoints, no wear.
+
+FIXED - Poison tables rebuilt to Source-X OSI values (CCharSpell.cpp:1815,
+        CCharAct.cpp:4229): charges 3/3/6/6/8 (was invented 5..20), tick delay
+        2/3/4/5/5s (was inverted 4s..1.5s), damage = % of max STR per level
+        (4-7/5-10/7-15/15-30/16-33%, floors 2/4/6/8/10) instead of flat ranges.
+
+FIXED - Ground item decay was hardcoded to 10 minutes; sphere.ini DecayTimer was
+        read but never wired. Now wired (Source-X m_iDecay_Item default 30 min).
+
+FIXED - Container caps aligned to Source-X: CONTAINERMAXITEMS default 255
+        (MAX_ITEMS_CONT; was 125 config / 500 hard ceiling), BANKMAXITEMS 1000
+        (was 125), BANKMAXWEIGHT 1000 stones (was 1600).
+
+FIXED - NPC paid training used invented 100%/30.0-cap and disagreed with the
+        "train" keyword path (30%/42.0). Single source now: Source-X defaults
+        30% / 420, wired from new sphere.ini keys TrainSkillPercent /
+        TrainSkillMax / TrainSkillCost.
+
 [2026-07-14] - Field-report batch: spawn distance/LOS, boot stat repair, resource
                gem lifecycle, mounted skill animations, item durability
 ----------------------------------------

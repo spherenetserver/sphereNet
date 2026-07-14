@@ -674,7 +674,10 @@ public class Item : ObjBase
     public IReadOnlyList<Item> Contents => _contents;
     public int ContentCount => _contents.Count;
 
-    public const int MaxContainerItems = 500;
+    // Source-X MAX_ITEMS_CONT (sphereproto.h): the classic client cannot
+    // render more than 255 items in one container; the old 500 ceiling let
+    // containers grow past what the protocol can show.
+    public const int MaxContainerItems = 255;
 
     /// <summary>Try to add an item without silently losing the operation when the
     /// container is full. Returns true only when containment was established.</summary>

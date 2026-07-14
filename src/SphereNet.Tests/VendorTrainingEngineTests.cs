@@ -29,14 +29,15 @@ public class VendorTrainingEngineTests
     {
         var trainer = MakeChar();
         var student = MakeChar();
-        trainer.SetSkill(SkillType.Swordsmanship, 500); // trainer at 50.0
+        trainer.SetSkill(SkillType.Swordsmanship, 1500); // trainer at 150.0
 
-        // 100% of the trainer's 500, but the absolute TrainSkillMax (300) wins.
-        Assert.Equal(300, VendorTrainingEngine.GetTrainMax(trainer, student, SkillType.Swordsmanship));
+        // 30% of the trainer's 1500 is 450 — the absolute TrainSkillMax (420) wins
+        // (Source-X TRAINSKILLPERCENT=30 / TRAINSKILLMAX=420 defaults).
+        Assert.Equal(420, VendorTrainingEngine.GetTrainMax(trainer, student, SkillType.Swordsmanship));
 
-        // Lower the trainer under the cap → percent-of-trainer binds.
+        // Lower the trainer under the cap → percent-of-trainer binds (30% of 220).
         trainer.SetSkill(SkillType.Swordsmanship, 220);
-        Assert.Equal(220, VendorTrainingEngine.GetTrainMax(trainer, student, SkillType.Swordsmanship));
+        Assert.Equal(66, VendorTrainingEngine.GetTrainMax(trainer, student, SkillType.Swordsmanship));
     }
 
     [Fact]

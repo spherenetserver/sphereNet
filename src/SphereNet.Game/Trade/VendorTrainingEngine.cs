@@ -16,12 +16,12 @@ namespace SphereNet.Game.Trade;
 public static class VendorTrainingEngine
 {
     /// <summary>Trainer teaches up to this percent of its own skill (sphere.ini
-    /// TRAINSKILLPERCENT).</summary>
-    public static int TrainSkillPercent { get; set; } = 100;
+    /// TRAINSKILLPERCENT; Source-X CServerConfig default 30).</summary>
+    public static int TrainSkillPercent { get; set; } = 30;
 
     /// <summary>Absolute ceiling a trainer can raise any student to
-    /// (TRAINSKILLMAX), in tenths — 300 = 30.0.</summary>
-    public static int TrainSkillMax { get; set; } = 300;
+    /// (TRAINSKILLMAX), in tenths — Source-X default 420 = 42.0.</summary>
+    public static int TrainSkillMax { get; set; } = 420;
 
     /// <summary>Gold charged per 0.1 skill point trained (TRAINSKILLCOST).</summary>
     public static int TrainSkillCost { get; set; } = 1;

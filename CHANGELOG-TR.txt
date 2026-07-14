@@ -3,6 +3,36 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-14] - Uyduruk-deger denetimi, dalga 1: savas/zehir/decay/kapasite/egitim
+----------------------------------------
+
+DUZELTILDI - Def'inde DAM olmayan silah hasari GRAFIK ID'sinden turetiyordu
+        (BaseId/10 — yuksek grafikli itemlar absurt vuruyordu). Source-X
+        Weapon_GetAttack: attackBase 0. Artik 0-1.
+
+DUZELTILDI - Iki sentetik-50 dayaniklilik kalintisi: tinker TAMIR ve script
+        DAMAGE verb'u, HITPOINTS'siz iteme 50'lik havuz uydurup UZERINE
+        YAZIYORDU — kirilmaz itemi kalici kirilir yapiyordu. Ikisi de artik
+        Source-X gibi: hitpoints yoksa asinma yok.
+
+DUZELTILDI - Zehir tablolari Source-X OSI degerlerine cekildi (CCharSpell.cpp
+        :1815, CCharAct.cpp:4229): tik sayisi 3/3/6/6/8 (uydurma 5..20 idi),
+        tik gecikmesi 2/3/4/5/5sn (ters cevrilmis 4sn..1.5sn idi), hasar duz
+        aralik yerine max STR yuzdesi (%4-7/%5-10/%7-15/%15-30/%16-33,
+        tabanlar 2/4/6/8/10).
+
+DUZELTILDI - Yer item decay'i sabit 10 dakikaydi; sphere.ini DecayTimer okunup
+        hic baglanmiyordu. Artik bagli (Source-X m_iDecay_Item varsayilani 30dk).
+
+DUZELTILDI - Container kapasiteleri Source-X'e hizalandi: CONTAINERMAXITEMS
+        varsayilan 255 (MAX_ITEMS_CONT; 125 config / 500 sabit tavandi),
+        BANKMAXITEMS 1000 (125'ti), BANKMAXWEIGHT 1000 stone (1600'du).
+
+DUZELTILDI - NPC ucretli egitim uydurma %100/30.0-cap kullaniyordu ve "train"
+        anahtar-kelime yoluyla (%30/42.0) celisiyordu. Artik tek kaynak:
+        Source-X varsayilanlari %30 / 420; yeni sphere.ini anahtarlari
+        TrainSkillPercent / TrainSkillMax / TrainSkillCost.
+
 [2026-07-14] - Saha raporu paketi: spawn mesafesi/LOS, boot stat onarimi, kaynak
                gem yasam dongusu, binekli skill animasyonlari, item dayanikliligi
 ----------------------------------------

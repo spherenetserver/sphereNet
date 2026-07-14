@@ -204,10 +204,11 @@ public static partial class Program
     /// Service NPC keyword response. We don't yet have a dedicated NPC
     /// overhead-speech broadcast, so the line is delivered as a system
     /// </summary>
-    // Source-X sphere.ini TRAINSKILLPERCENT / TRAINSKILLMAX defaults: an NPC
-    // teaches up to 30% of its own skill, hard-capped at 42.0.
-    private const int TrainSkillPercent = 30;
-    private const int TrainSkillMax = 420;
+    // Source-X sphere.ini TRAINSKILLPERCENT / TRAINSKILLMAX (defaults 30 / 420).
+    // Single source of truth: VendorTrainingEngine, wired from config — this
+    // keyword path and the paid-training flow must agree.
+    private static int TrainSkillPercent => SphereNet.Game.Trade.VendorTrainingEngine.TrainSkillPercent;
+    private static int TrainSkillMax => SphereNet.Game.Trade.VendorTrainingEngine.TrainSkillMax;
 
     /// <summary>Handle the "train [skill]" keyword (Source-X NPC_OnTrainHear).
     /// Returns false when the utterance is not really a train request (lets

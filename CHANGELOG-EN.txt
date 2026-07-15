@@ -4,6 +4,14 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-15] - Character roster snapshot for follower scans
+----------------------------------------
+
+CHANGED - GameWorld keeps a char-only mirror of the object table; the
+        follower-count recompute now scans ~9K characters instead of copying
+        and walking the 100K+ full object array. The [slow_packet] 0x34 lines
+        (20-27ms per status request on cache expiry) drop to sub-millisecond.
+
 [2026-07-15] - Static-door auto-close: open-leaf art fix + field diagnostics
 ----------------------------------------
 

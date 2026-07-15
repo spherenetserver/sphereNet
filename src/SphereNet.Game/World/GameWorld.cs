@@ -38,6 +38,9 @@ public sealed class GameWorld
 {
     private readonly UidTable _uidTable = new();
     private readonly Dictionary<uint, ObjBase> _objects = [];
+    // Char-only mirror of _objects — cheap roster snapshots without copying
+    // the full 100K+ object table (see GetAllCharactersSnapshot).
+    private readonly HashSet<Character> _allCharacters = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Guid, ObjBase> _uuidIndex = [];
     private readonly Dictionary<uint, List<Item>> _containerIndex = [];
     private readonly Dictionary<int, Sector[,]> _sectors = [];
@@ -448,6 +451,7 @@ public sealed class GameWorld
         ch.SetUid(uid);
         ch.SetDirtyNotify(NotifyDirty);
         _objects[uid.Value] = ch;
+        _allCharacters.Add(ch);
         _uuidIndex[ch.Uuid] = ch;
         _totalChars++;
         LastNewChar = uid;
@@ -497,6 +501,8 @@ public sealed class GameWorld
             if (obj.IsChar) _totalChars--;
             else if (obj.IsItem) _totalItems--;
         }
+        if (obj is Character removedChar)
+            _allCharacters.Remove(removedChar);
         _uuidIndex.Remove(obj.Uuid);
         _uidTable.Free(obj.Uid);
 
@@ -1428,6 +1434,11 @@ public sealed class GameWorld
 
     /// <summary>Enumerate all objects in the world (items + characters), including contained items.</summary>
     public IEnumerable<ObjBase> GetAllObjects() => _objects.Values.ToArray();
+
+    /// <summary>Snapshot of every character (players + NPCs). A ~9K-entry copy
+    /// instead of the 100K+ full-object array GetAllObjects() allocates —
+    /// use this for char-only sweeps (follower counts, roster scans).</summary>
+    public Character[] GetAllCharactersSnapshot() => [.. _allCharacters];
 
     /// <summary>
     /// Source-X CWorld::GarbageCollection → FixWeirdness: sweep every item and

@@ -1206,9 +1206,9 @@ public partial class Character : ObjBase
                 return _curFollower;
 
             int count = 0;
-            foreach (var obj in world.GetAllObjects())
+            foreach (var creature in world.GetAllCharactersSnapshot())
             {
-                if (obj is not Character creature || creature == this || creature.IsDeleted)
+                if (creature == this || creature.IsDeleted)
                     continue;
                 if (!creature.HasOwner(this.Uid))
                     continue;

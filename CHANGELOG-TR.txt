@@ -3,6 +3,14 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-15] - Follower taramalari icin karakter listesi anlik goruntusu
+----------------------------------------
+
+DEGISTI - GameWorld obje tablosunun yalniz-karakter aynasini tutar; follower
+        sayimi artik 100K+ tam obje dizisini kopyalayip yurumek yerine ~9K
+        karakteri tarar. [slow_packet] 0x34 satirlari (cache dolumunda istek
+        basina 20-27ms) milisaniye altina iner.
+
 [2026-07-15] - Statik kapi otomatik kapanma: acik-yaprak art duzeltmesi + saha tanisi
 ----------------------------------------
 

@@ -3,6 +3,30 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-15] - Uyduruk-deger denetimi, dalga 4: tamir, tuzaklar, stamina rejeni
+----------------------------------------
+
+DUZELTILDI - Tinker tamiri Source-X Use_Repair'e gore yeniden kuruldu
+        (CCharUse.cpp:792-852): zorluk = itemin SKILLMAKE craft-skill seviyesi
+        hasar yuzdesiyle olcekli (taban: seviye/4), O craft skill'e karsi
+        atilir; basari TAM dayaniklilik geri verir; basarisizlik 1/6 max
+        dayaniklilik kaybi, degilse 1/3 bir puan kirar. Eski uydurma formuller
+        (sabit 20-90 zorluk + genel Tinkering, skill/25 geri kazanim, %10
+        hasar) kaldirildi.
+
+DUZELTILDI - RemoveTrap: zorluk rand(95) (CCharSkill.cpp:2913); beceriksiz
+        etkisizlestirme tuzagin KENDI hasarini vurur, varsayilan 2
+        (CItem.cpp:5507) — uydurma 5-19 degil.
+
+DUZELTILDI - Stamina rejeni hits/mana gibi duz max(1, REGENVAL) (Source-X
+        Stats_GetRegenVal) — uydurma dex/30 (oyuncu) ve maxStam/20 (NPC)
+        olcekleri buyuk yaratiklari cok hizli toparliyordu.
+
+NOTLAR - Gercek Source-X oldugu dogrulananlar (atif eklendi, degisiklik yok):
+        healing zorluklari 85+25/50+50/0-80 (CCharSkill.cpp:2836), Focus rejen
+        bonuslari /100 stam /200 mana (Skill_Focus), NPC kitap fallback'i =
+        kitabin buyu bitleriyle sinirli klasik 64-buyu magery penceresi.
+
 [2026-07-15] - Uyduruk-deger denetimi, dalga 3: skill kazanimi, yumruk hasari, NPC skill, aletler
 ----------------------------------------
 

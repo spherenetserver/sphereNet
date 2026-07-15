@@ -385,15 +385,23 @@ public static class ActiveSkillEngine
             return false;
         }
 
-        bool success = SkillEngine.UseQuick(ch, SkillType.RemoveTrap, sink.Random.Next(60));
+        // Source-X Skill_RemoveTrap: difficulty = rand(95) (CCharSkill.cpp:2913).
+        bool success = SkillEngine.UseQuick(ch, SkillType.RemoveTrap, sink.Random.Next(95));
         if (success)
         {
             trap.ItemType = ItemType.Trap; // disarm: clear active variant.
         }
         else if (trap.ItemType == ItemType.TrapActive)
         {
-            // Source-X: a botched disarm springs the trap on the would-be disarmer.
-            int trapDmg = 5 + sink.Random.Next(15);
+            // Source-X: a botched disarm springs the trap (Use_Item → Use_Trap).
+            // Damage is the trap's OWN damage field, default 2 (CItem.cpp:5507)
+            // — never an invented 5-19 roll.
+            int trapDmg = 2;
+            if (trap.TryGetTag("TRAP_DAMAGE", out string? tdStr) &&
+                int.TryParse(tdStr, out int td) && td > 0)
+                trapDmg = td;
+            else if (trap.MoreP.Z > 0)
+                trapDmg = trap.MoreP.Z;
             ch.Hits = (short)Math.Max(0, ch.Hits - trapDmg);
             sink.SysMessage(ServerMessages.Get("removetraps_fail"));
             if (ch.Hits <= 0 && !ch.IsDead)
@@ -465,7 +473,8 @@ public static class ActiveSkillEngine
             ? ServerMessages.Get(Msg.HealingSelf)
             : ServerMessages.GetFormatted(Msg.HealingTo, target.Name));
 
-        // Difficulty: dead = 85+25, poisoned = 50+50, normal = 0..80.
+        // Difficulty: dead = 85+25, poisoned = 50+50, normal = 0..80 —
+        // verbatim Source-X Skill_Healing (CCharSkill.cpp:2836-2840).
         int diff = target.IsStatFlag(StatFlag.Dead) ? 85 + sink.Random.Next(25)
                  : target.IsStatFlag(StatFlag.Poisoned) ? 50 + sink.Random.Next(50)
                  : sink.Random.Next(80);
@@ -1460,14 +1469,27 @@ public static class ActiveSkillEngine
             return false;
         }
 
-        int difficulty = Math.Clamp(maxHits - curHits, 20, 90);
-        if (!SkillEngine.UseQuick(ch, SkillType.Tinkering, difficulty))
+        // Source-X Use_Repair (CCharUse.cpp:792-852): difficulty is the item's
+        // SKILLMAKE main-skill level scaled by the damage percent (floor: a
+        // quarter of that level), rolled against THAT craft skill. Success is
+        // a FULL repair; failure has a 1/6 chance to lower max durability and
+        // otherwise a 1/3 chance to chip a point.
+        int damagePercent = (maxHits - curHits) * 100 / Math.Max(1, maxHits);
+        var (repairSkill, skillLevel) = ResolveRepairSkill(def);
+        int difficulty = Math.Max(skillLevel * damagePercent / 100, skillLevel / 4);
+
+        if (!SkillEngine.UseQuick(ch, repairSkill, difficulty))
         {
-            if (sink.Random.Next(100) < 10)
+            if (sink.Random.Next(6) == 0)
             {
-                int damage = Math.Max(1, maxHits / 20);
-                target.HitsCur = Math.Max(0, curHits - damage);
+                target.HitsMax = Math.Max(1, maxHits - 1);
+                target.HitsCur = Math.Max(0, curHits - 1);
                 sink.SysMessage(ServerMessages.Get(Msg.Repair2));
+            }
+            else if (sink.Random.Next(3) == 0)
+            {
+                target.HitsCur = Math.Max(0, curHits - 1);
+                sink.SysMessage(ServerMessages.Get(Msg.Repair3));
             }
             else
             {
@@ -1476,10 +1498,28 @@ public static class ActiveSkillEngine
             return false;
         }
 
-        int restore = Math.Max(1, ch.GetSkill(SkillType.Tinkering) / 25);
-        int newHits = Math.Min(maxHits, curHits + restore);
-        target.HitsCur = newHits;
+        target.HitsCur = maxHits; // Source-X: success restores to full
         sink.SysMessage(ServerMessages.GetFormatted(Msg.RepairMsg, "You repair", target.Name ?? "the item"));
         return true;
+    }
+
+    /// <summary>The item's SKILLMAKE main craft skill and its level on the
+    /// 0-100 scale (Source-X Use_Repair reads m_SkillMake). No SKILLMAKE →
+    /// Tinkering at 50, the pre-parity blanket.</summary>
+    private static (SkillType Skill, int Level) ResolveRepairSkill(SphereNet.Scripting.Definitions.ItemDef? def)
+    {
+        if (def != null && !string.IsNullOrWhiteSpace(def.SkillMakeRaw))
+        {
+            foreach (var part in def.SkillMakeRaw.Split(','))
+            {
+                var bits = part.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (bits.Length >= 2 &&
+                    Enum.TryParse<SkillType>(bits[0], ignoreCase: true, out var sk) &&
+                    double.TryParse(bits[1], System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out double lvl))
+                    return (sk, (int)lvl);
+            }
+        }
+        return (SkillType.Tinkering, 50);
     }
 }

@@ -4,6 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-15] - Invented-values audit, wave 4: repair, traps, stamina regen
+----------------------------------------
+
+FIXED - Tinker repair rebuilt to Source-X Use_Repair (CCharUse.cpp:792-852):
+        difficulty = the item's SKILLMAKE craft-skill level scaled by damage
+        percent (floor: level/4) rolled against THAT craft skill; success
+        restores FULL durability; failure rolls 1/6 max-durability loss, else
+        1/3 one-point chip. The old invented formulas (fixed 20-90 difficulty
+        vs blanket Tinkering, skill/25 restore, 10% fail damage) are gone.
+
+FIXED - RemoveTrap: difficulty is rand(95) (CCharSkill.cpp:2913) and a botched
+        disarm deals the trap's OWN damage value, default 2 (CItem.cpp:5507) —
+        not an invented 5-19 roll.
+
+FIXED - Stamina regen is a flat max(1, REGENVAL) per tick like hits/mana
+        (Source-X Stats_GetRegenVal) — the invented dex/30 (players) and
+        maxStam/20 (NPCs) scaling made big creatures recover far too fast.
+
+NOTES - Verified as genuine Source-X (citations added, no change): healing
+        difficulties 85+25/50+50/0-80 (CCharSkill.cpp:2836), Focus regen
+        bonuses /100 stam /200 mana (Skill_Focus), NPC book fallback = the
+        classic 64-spell magery window still gated by the book's spell bits.
+
 [2026-07-15] - Invented-values audit, wave 3: skill gain, unarmed damage, NPC skill, tools
 ----------------------------------------
 

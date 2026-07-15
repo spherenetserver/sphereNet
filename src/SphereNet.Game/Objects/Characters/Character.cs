@@ -5810,12 +5810,14 @@ public partial class Character : ObjBase
             _nextManaRegen = now + manaRateMs;
         }
 
-        // Stam regen: Source-X scales with DEX — higher DEX = faster regen.
+        // Stam regen: Source-X Stats_GetRegenVal is a flat max(1, REGENVAL) per
+        // tick — same as hits/mana; it is NOT scaled by DEX or MaxStam. The old
+        // dex/30 and maxStam/20 fallbacks were invented and made big creatures
+        // recover stamina many times faster than reference.
         long stamRateMs = ResolveRegenRateMs(_regenStamRateMs, RegenStamSeconds, 10000);
         if (stamRateMs >= 0 && now >= _nextStamRegen && _stam < _maxStam)
         {
-            int regenAmt = _regenValStam > 0 ? _regenValStam
-                : _isPlayer ? Math.Max(1, _dex / 30) : Math.Max(1, _maxStam / 20);
+            int regenAmt = _regenValStam > 0 ? _regenValStam : 1;
             int focus = SkillEngine.GetAdjustedSkill(this, SkillType.Focus);
             if (focus > 0 && SkillEngine.UseQuick(this, SkillType.Focus, focus / 10))
                 regenAmt += focus / 100;

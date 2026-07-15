@@ -1568,27 +1568,67 @@ public sealed class GameWorld
 
     /// <summary>Hard respawn (console RESPAWN FULL): delete every spawner
     /// child first, then refill from scratch. Clears out children that were
-    /// materialized in a broken state by an older build.</summary>
-    public int ResetAllSpawners()
+    /// materialized in a broken state by an older build. Also sweeps ORPHANED
+    /// spawn children — NPCs still carrying the Spawned flag / SPAWNITEM tag
+    /// whose spawner no longer lists them (a broken ADDOBJ link left the old
+    /// 1-hp children alive while fresh ones spawned on top).</summary>
+    public (int Spawners, int Orphans) ResetAllSpawners()
     {
         int count = 0;
+        var legitChildren = new HashSet<uint>();
         foreach (var obj in GetAllObjects())
         {
             if (obj is not Item item || item.IsDeleted) continue;
-            if (item.SpawnChar != null)
-            {
-                item.SpawnChar.KillAll();
-                item.SpawnChar.RespawnNow();
+            if (ResetSpawner(item, legitChildren))
                 count++;
-            }
-            if (item.SpawnItem != null)
-            {
-                item.SpawnItem.KillAll();
-                item.SpawnItem.RespawnNow();
-                count++;
-            }
         }
-        return count;
+        return (count, SweepOrphanedSpawnChildren(legitChildren));
+    }
+
+    /// <summary>Kill and refill one spawner's children, accumulating the fresh
+    /// child uids into <paramref name="legitChildren"/> for the orphan sweep.
+    /// Returns true when the item carried a spawn component. The RESPAWN FULL
+    /// console flow drives this incrementally across ticks — resetting 4K+
+    /// spawners in one pass froze the main loop for ~47 seconds.</summary>
+    public bool ResetSpawner(Item item, HashSet<uint> legitChildren)
+    {
+        bool touched = false;
+        if (item.SpawnChar != null)
+        {
+            item.SpawnChar.KillAll();
+            item.SpawnChar.RespawnNow();
+            foreach (var uid in item.SpawnChar.SpawnedUids)
+                legitChildren.Add(uid.Value);
+            touched = true;
+        }
+        if (item.SpawnItem != null)
+        {
+            item.SpawnItem.KillAll();
+            item.SpawnItem.RespawnNow();
+            touched = true;
+        }
+        return touched;
+    }
+
+    /// <summary>Delete every non-owned NPC that carries the Spawned flag or
+    /// SPAWNITEM tag but is NOT in <paramref name="legitChildren"/> — the
+    /// broken-ADDOBJ leftovers that duplicated under their spawner.</summary>
+    public int SweepOrphanedSpawnChildren(HashSet<uint> legitChildren)
+    {
+        int orphans = 0;
+        foreach (var ch in GetAllCharactersSnapshot())
+        {
+            if (ch.IsPlayer || ch.IsDeleted) continue;
+            if (ch.NpcMaster.IsValid) continue; // tamed/owned — never sweep
+            bool marked = ch.IsStatFlag(Core.Enums.StatFlag.Spawned) ||
+                          ch.TryGetTag("SPAWNITEM", out _);
+            if (!marked || legitChildren.Contains(ch.Uid.Value)) continue;
+
+            DeleteObject(ch);
+            ch.Delete();
+            orphans++;
+        }
+        return orphans;
     }
 
     /// <summary>

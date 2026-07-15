@@ -92,7 +92,7 @@ public sealed class SpawnRelinkTests
 
         // RESPAWN FULL: the existing (possibly broken) child must be gone,
         // replaced by a freshly materialized one.
-        int touched = world.ResetAllSpawners();
+        var (touched, _) = world.ResetAllSpawners();
 
         Assert.Equal(1, touched);
         var newUid = Assert.Single(spawner.SpawnChar.SpawnedUids);
@@ -100,6 +100,47 @@ public sealed class SpawnRelinkTests
         Assert.NotNull(newChild);
         Assert.NotEqual(oldUuid, newChild!.Uuid);
         Assert.True(oldChild.IsDeleted);
+    }
+
+    [Fact]
+    public void ResetAllSpawners_SweepsOrphanedChildren_ButKeepsOwnedOnes()
+    {
+        var world = MakeWorld();
+        var spawner = world.CreateItem();
+        spawner.ItemType = ItemType.SpawnChar;
+        world.PlaceItem(spawner, new Point3D(1000, 1000, 0, 0));
+        spawner.SpawnChar = new SphereNet.Game.Components.SpawnComponent(spawner, world)
+        {
+            CharDefId = 0x0190,
+            SpawnRange = 0,
+            MaxCount = 1,
+        };
+
+        // An orphan: marked as a spawn child but its spawner no longer lists
+        // it (the broken ADDOBJ-link case that duplicated 1-hp NPCs).
+        var orphan = world.CreateCharacter();
+        orphan.SetStatFlag(StatFlag.Spawned);
+        orphan.SetTag("SPAWNITEM", $"0{spawner.Uid.Value:x8}");
+        world.PlaceCharacter(orphan, new Point3D(1001, 1000, 0, 0));
+
+        // A tamed ex-spawn: same markers but owned — must never be swept.
+        var owner = world.CreateCharacter();
+        owner.IsPlayer = true;
+        world.PlaceCharacter(owner, new Point3D(1002, 1000, 0, 0));
+        var tamed = world.CreateCharacter();
+        tamed.SetStatFlag(StatFlag.Spawned);
+        tamed.SetTag("SPAWNITEM", $"0{spawner.Uid.Value:x8}");
+        tamed.NpcMaster = owner.Uid;
+        world.PlaceCharacter(tamed, new Point3D(1003, 1000, 0, 0));
+
+        var (_, orphansSwept) = world.ResetAllSpawners();
+
+        Assert.Equal(1, orphansSwept);
+        Assert.True(orphan.IsDeleted);
+        Assert.False(tamed.IsDeleted);
+        // The spawner's own fresh child survives the sweep.
+        var freshUid = Assert.Single(spawner.SpawnChar.SpawnedUids);
+        Assert.NotNull(world.FindChar(freshUid));
     }
 
     [Fact]

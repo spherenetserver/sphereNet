@@ -99,9 +99,60 @@ public static partial class Program
     {
         _mainLoopActions.Enqueue(() =>
         {
-            int n = _world.ResetAllSpawners();
-            _log.LogInformation("[respawn_full] reset {Count} spawners (children killed and respawned)", n);
+            // Guard against double-queuing (the 47s synchronous freeze made
+            // operators re-issue the command mid-run).
+            if (_respawnResetQueue != null)
+            {
+                _log.LogInformation("[respawn_full] already in progress ({Done}/{Total} spawners)",
+                    _respawnResetIndex, _respawnResetQueue.Count);
+                return;
+            }
+
+            var queue = new List<SphereNet.Game.Objects.Items.Item>();
+            foreach (var obj in _world.GetAllObjects())
+            {
+                if (obj is SphereNet.Game.Objects.Items.Item item && !item.IsDeleted &&
+                    (item.SpawnChar != null || item.SpawnItem != null))
+                    queue.Add(item);
+            }
+            _respawnResetQueue = queue;
+            _respawnResetIndex = 0;
+            _respawnLegitChildren = [];
+            _log.LogInformation("[respawn_full] queued {Count} spawners; resetting ~25ms per tick", queue.Count);
         });
+    }
+
+    private static List<SphereNet.Game.Objects.Items.Item>? _respawnResetQueue;
+    private static int _respawnResetIndex;
+    private static HashSet<uint> _respawnLegitChildren = [];
+
+    /// <summary>Advance the incremental RESPAWN FULL: reset spawners inside a
+    /// ~25ms budget per tick; when the queue drains, run the orphan sweep and
+    /// log the summary. Called from post-tick maintenance.</summary>
+    private static void ProcessRespawnResetChunk()
+    {
+        var queue = _respawnResetQueue;
+        if (queue == null) return;
+
+        long start = Stopwatch.GetTimestamp();
+        while (_respawnResetIndex < queue.Count)
+        {
+            var item = queue[_respawnResetIndex++];
+            if (!item.IsDeleted)
+                _world.ResetSpawner(item, _respawnLegitChildren);
+            if (ToMicroseconds(Stopwatch.GetTimestamp() - start) > 25_000)
+                break;
+        }
+
+        if (_respawnResetIndex >= queue.Count)
+        {
+            int orphans = _world.SweepOrphanedSpawnChildren(_respawnLegitChildren);
+            _log.LogInformation(
+                "[respawn_full] reset {Count} spawners, swept {Orphans} orphaned spawn children",
+                queue.Count, orphans);
+            _respawnResetQueue = null;
+            _respawnLegitChildren = [];
+        }
     }
 
     /// <summary>Console/IPC/panel RESTOCK: fire @NPCRestock on every vendor so each

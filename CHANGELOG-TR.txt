@@ -3,6 +3,37 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-16] - GM gecis hareketi zemini takip eder
+----------------------------------------
+
+DUZELTILDI - GM/AllMove (ve duvar-gecen) hareketi Z'yi DONMUS tutarak salt
+        delta ile adim atiyordu: zindana Z=10'la giren GM tum kati 10'da
+        geziyordu; client kendi zemin-takipli Z'sini cizdiginden kayma
+        gorunmuyordu — ta ki bir self-redraw (dclick yon donme) karakteri
+        yukari sicratana kadar. 5146,993'teki [z_drift] raporu (sakli 10,
+        zemin 1) ve gercek-mul probuyla dogrulandi (WalkCheck her komsudan
+        1'e oturtuyor). Gecis modu engellenemezligini korur ama artik her
+        adimda Z'yi en yakin yuzeye oturtur.
+
+[2026-07-15] - RESPAWN FULL: kademeli, yetim supurmesi; zindan Z-kaymasi tanisi
+----------------------------------------
+
+DUZELTILDI - RESPAWN FULL ana donguyu ~47sn donduruyordu (4445 spawner senkron
+        reset; donma komutun cift verilmesine de yol acti). Reset artik
+        kademeli calisir (tick basina ~25ms butce), devam-ediyor korumasi ve
+        ilerleme/ozet loglari var.
+
+DUZELTILDI - RESPAWN FULL eski bozuk 1-canli NPC'leri birakip ustlerine yenisini
+        doguruyordu: spawner baglantilari (ADDOBJ) koptugu icin KillAll onlari
+        goremiyordu. Reset artik yetim supurmesiyle biter: Spawned bayragi/
+        SPAWNITEM tag'i tasiyan ama hicbir spawner'in cocuk listesinde olmayan
+        sahipsiz NPC'ler silinir (evcillestirilmis eski spawnlara dokunulmaz).
+
+EKLENDI - [z_drift] tanisi: dclick-yon donme yeniden cizimi sakli sunucu
+        Z'sini dayatir; o deger haritadan turetilen durus Z'sinden farkliysa
+        ("zindanda kasaya dclick beni yukari atti" raporu) cift loglanir ki
+        kaymanin kaynagi bulunabilsin.
+
 [2026-07-15] - Tum hedef-imleci yollari oturum kimligini kaydeder
 ----------------------------------------
 

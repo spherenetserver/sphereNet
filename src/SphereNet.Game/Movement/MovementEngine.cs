@@ -90,11 +90,17 @@ public sealed class MovementEngine
         GetDirectionDelta(dir, out short dx, out short dy);
 
         // GM with AllMove, or an uninitialized world (no MapData — unit tests
-        // and in-memory fixtures) bypass the full terrain algorithm. Step on
-        // pure delta, keeping Z unchanged.
+        // and in-memory fixtures) bypass the full terrain algorithm: nothing
+        // can block the step. The Z still follows the ground — freezing it let
+        // a GM cross a dungeon at a stale height (the client computes its own
+        // walk Z, so the drift stayed invisible until a self-redraw snapped
+        // the char upward: the 5146,993 report, stored Z=10 over a floor at 1).
         if ((ch.PrivLevel >= PrivLevel.GM && ch.AllMove) || CharDefHelper.CanPassWalls(ch) || _world.MapData == null)
         {
-            target = new Point3D((short)(ch.X + dx), (short)(ch.Y + dy), ch.Z, ch.MapIndex);
+            sbyte bypassZ = _world.MapData != null
+                ? _world.MapData.GetEffectiveZ(ch.MapIndex, (short)(ch.X + dx), (short)(ch.Y + dy), ch.Z)
+                : ch.Z;
+            target = new Point3D((short)(ch.X + dx), (short)(ch.Y + dy), bypassZ, ch.MapIndex);
             // Even the bypass branch may not step off the map — an off-map
             // char crashes the map readers on the next query.
             if (_world.GetSector(target) == null)

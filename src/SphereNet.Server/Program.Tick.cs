@@ -913,6 +913,7 @@ public static partial class Program
         CleanupSummonedGuards(now);
         RunDecayCatchup(now);
         CloseExpiredStaticDoors(now);
+        ProcessRespawnResetChunk();
 
         long lightMinute = _world.WorldClockMinutes;
         if (lightMinute != _lastLightWorldMinute)

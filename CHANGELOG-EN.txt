@@ -4,6 +4,37 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-16] - GM pass-through movement follows the ground
+----------------------------------------
+
+FIXED - GM/AllMove (and pass-walls) movement stepped on pure delta KEEPING Z
+        frozen: a GM entering a dungeon at Z=10 crossed the whole floor at 10
+        while the client rendered its own terrain-following Z — invisible
+        drift until any self-redraw (dclick facing) snapped the character up.
+        Confirmed by the [z_drift] report at 5146,993 (stored 10, floor 1) and
+        a real-mul probe (WalkCheck lands at 1 from every neighbor). The
+        bypass keeps its cannot-be-blocked property but now seats Z on the
+        nearest surface each step.
+
+[2026-07-15] - RESPAWN FULL: incremental, orphan sweep; dungeon Z-drift diagnostic
+----------------------------------------
+
+FIXED - RESPAWN FULL froze the main loop for ~47s (4445 spawners reset
+        synchronously; the freeze also invited double-issuing the command).
+        The reset now runs incrementally (~25ms budget per tick) with an
+        in-progress guard and progress/summary logs.
+
+FIXED - RESPAWN FULL left the old broken 1-hp NPCs alive while spawning fresh
+        ones: their spawner link (ADDOBJ) was broken, so KillAll never saw
+        them. The reset now finishes with an orphan sweep deleting non-owned
+        NPCs that carry the Spawned flag/SPAWNITEM tag but belong to no
+        spawner's child list (tamed ex-spawns are never swept).
+
+ADDED - [z_drift] diagnostic: the dclick-facing redraw re-imposes the stored
+        server Z; when that differs from the map-derived standing Z (the
+        "dungeon chest dclick bumps me up" report), the pair is logged to
+        locate the drift source.
+
 [2026-07-15] - All target-cursor paths record their session id
 ----------------------------------------
 

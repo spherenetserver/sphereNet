@@ -423,6 +423,20 @@ public sealed class ClientItemUseHandler
         Direction direction = _character.Position.GetDirectionTo(point);
         if (direction == _character.Direction) return;
 
+        // Field diagnostic for the "dclick in a dungeon bumps me up" report:
+        // this redraw re-imposes the stored server Z, so a bump here means the
+        // stored Z had ALREADY drifted from the map-derived standing Z at this
+        // tile — log the pair to locate the drift source.
+        var mapData = _world.MapData;
+        if (mapData != null)
+        {
+            sbyte standZ = mapData.GetEffectiveZ(_character.MapIndex, _character.X, _character.Y, _character.Z);
+            if (standZ != _character.Z)
+                _logger.LogInformation(
+                    "[z_drift] dclick-facing at {X},{Y} map {Map}: stored Z={Stored}, standing Z={Stand}",
+                    _character.X, _character.Y, _character.MapIndex, _character.Z, standZ);
+        }
+
         _character.Direction = direction;
         SendSelfRedraw();
 

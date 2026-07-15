@@ -429,6 +429,7 @@ public sealed partial class NpcAI
         bool defaultThrower = !throwObjTag && IsRockThrowerBody(npc.BodyId) && HasThrowableRock(npc);
         if (!skipHardcoded && dist >= 2 && fullStam && hasLOS && (throwObjTag || defaultThrower))
         {
+            // Source-X Skill_Act_Throwing default damage (CCharSkill.cpp:3447).
             int throwDmg = Math.Max(1, npc.Dex / 4 + _rand.Next(npc.Dex / 4 + 1));
             int throwMin = 2, throwMax = 9;
             if (npc.TryGetTag("THROWRANGE", out string? trStr) && !string.IsNullOrWhiteSpace(trStr))
@@ -458,7 +459,8 @@ public sealed partial class NpcAI
             }
             if (dist >= throwMin && dist <= throwMax)
             {
-                npc.Stam = (short)Math.Max(0, npc.Stam - _rand.Next(4, 11));
+                // Source-X: throwing spends 4 + rand(6) stamina (CCharSkill.cpp:3372).
+                npc.Stam = (short)Math.Max(0, npc.Stam - (4 + _rand.Next(6)));
                 OnNpcThrow?.Invoke(npc, target, throwDmg);
                 return;
             }

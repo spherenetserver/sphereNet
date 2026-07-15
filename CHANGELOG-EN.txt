@@ -4,6 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-15] - Invented-values audit, wave 5: craft quality, Blood Oath, throwing
+----------------------------------------
+
+FIXED - Crafted item quality ported to the Source-X Skill_MakeItem band table
+        (CCharSkill.cpp:724-794): skill picks a band (shoddy..superior), a
+        logarithmic ±0-2 band variance shifts it, the value rolls inside the
+        band. The invented linear 100+excess/10 curve, the "exceptional"
+        rename at 150+ and its +20% durability boost are gone; the reference
+        grandmaster maker's-mark (skill > 99.9 and quality > 175) remains.
+
+FIXED - Blood Oath reflect level now the exact Source-X formula on the layer
+        owner (caster): MagicResistance*10/20 + 10, unclamped
+        (CCharSpell.cpp:1313) — was an invented /20+10 clamped 10-90 computed
+        from the enemy's skill.
+
+FIXED - NPC rock-throwing stamina cost 4+rand(6) (CCharSkill.cpp:3372); the
+        Dex/4 damage roll was verified as reference (CCharSkill.cpp:3447).
+
+NOTES - Verified as genuine Source-X (citations added, no change): the entire
+        NPC hostility coefficient set (51/100/-50/kin softenings/+50 grudge,
+        NPC_GetHostilityLevelToward), SpiritSpeak 24s (4*60 tenths). Deferred:
+        NPC brain-tick cadence (field-tuned; Source-X (150-DEX)/2-tenths model
+        needs in-game validation), Discordance 20s (scripted skill in the
+        reference — engine fallback kept).
+
 [2026-07-15] - Invented-values audit, wave 4: repair, traps, stamina regen
 ----------------------------------------
 

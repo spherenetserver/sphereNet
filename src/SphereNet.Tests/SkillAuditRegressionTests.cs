@@ -347,7 +347,9 @@ public class SkillAuditRegressionTests
         Assert.NotNull(crafted);
         Assert.Equal(red.Hue, crafted!.Hue);
         Assert.Equal(crafter.Uid, crafted.Crafter);
-        Assert.InRange((int)crafted.Quality, 190, 200);
+        // Source-X band table: a GM smith lands in the superior band (176-200),
+        // shiftable down two bands by the log variance → 126 floor.
+        Assert.InRange((int)crafted.Quality, 126, 200);
         Assert.Equal(5, blue.Amount);
     }
 

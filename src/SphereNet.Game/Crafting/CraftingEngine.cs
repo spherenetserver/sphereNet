@@ -214,26 +214,17 @@ public sealed class CraftingEngine
             if (resourceHue != 0)
                 item.Hue = new Core.Types.Color(resourceHue);
 
-            // Quality roll based on skill
+            // Quality roll based on skill (Source-X Skill_MakeItem band table).
             int skillVal = crafter.GetSkill(recipe.PrimarySkill);
-            int quality = CalcQuality(skillVal, recipe.Difficulty);
+            int quality = CalcQuality(skillVal);
             item.Quality = (ushort)quality;
 
-            // Exceptional check — also apply a concrete durability bonus and an
-            // EXCEPTIONAL tag, so the result is mechanically better, not just a
-            // renamed normal item.
-            if (quality >= 150)
-            {
-                item.Name = "exceptional " + item.Name;
-                item.SetTag("EXCEPTIONAL", "1");
-                int baseMax = item.HitsMax;
-                if (baseMax > 0)
-                {
-                    int boosted = (int)Math.Min(int.MaxValue, (long)baseMax * 120 / 100);
-                    item.HitsMax = boosted;
-                    item.HitsCur = boosted;
-                }
-            }
+            // Source-X CCharSkill.cpp:799: only a grandmaster (skill > 99.9)
+            // producing quality > 175 gets the maker's mark on the name. The
+            // old invented "exceptional" rename + 20% durability boost had no
+            // reference basis (durability comes solely from the def).
+            if (skillVal > 999 && quality > 175)
+                item.Name = $"{item.Name} crafted by {crafter.Name}";
 
             // Caller (GameClient.OpenCraftingGump) handles placement + notification
             return item;
@@ -257,15 +248,37 @@ public sealed class CraftingEngine
         }
     }
 
-    /// <summary>
-    /// Calculate item quality (100 = normal, 150+ = exceptional).
-    /// </summary>
-    private int CalcQuality(int skillLevel, int difficulty)
+    /// <summary>Crafted item quality on the 1-200 scale (100 = average) —
+    /// Source-X Skill_MakeItem (CCharSkill.cpp:724-794): the skill picks a
+    /// quality band (skill*2/10), a logarithmic ±0..2 band variance shifts it,
+    /// then the final value rolls inside the band.</summary>
+    private int CalcQuality(int skillLevel)
     {
-        int excess = skillLevel - difficulty * 10;
-        int quality = 100 + excess / 10;
-        quality += Random.Shared.Next(-10, 11);
-        return Math.Max(10, Math.Min(200, quality));
+        int variance = 2 - (int)Math.Log10(1.0 + Random.Shared.Next(250));
+        if (Random.Shared.Next(2) == 0)
+            variance = -variance;
+
+        int bandSelector = skillLevel * 2 / 10;
+        int band =
+            bandSelector < 25 ? 0 :   // shoddy
+            bandSelector < 50 ? 1 :   // poor
+            bandSelector < 75 ? 2 :   // below average
+            bandSelector < 125 ? 3 :  // average
+            bandSelector < 150 ? 4 :  // above average
+            bandSelector < 175 ? 5 :  // excellent
+            6;                        // superior
+        band = Math.Clamp(band + variance, 0, 6);
+
+        return band switch
+        {
+            0 => Random.Shared.Next(25) + 1,
+            1 => Random.Shared.Next(25) + 26,
+            2 => Random.Shared.Next(25) + 51,
+            3 => Random.Shared.Next(50) + 76,
+            4 => Random.Shared.Next(25) + 126,
+            5 => Random.Shared.Next(25) + 151,
+            _ => Random.Shared.Next(25) + 176,
+        };
     }
 
     /// <summary>Count a recipe resource in the character's backpack — by item TYPE

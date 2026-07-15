@@ -3,6 +3,31 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-15] - Uyduruk-deger denetimi, dalga 5: craft kalitesi, Blood Oath, firlatma
+----------------------------------------
+
+DUZELTILDI - Craft kalitesi Source-X Skill_MakeItem band tablosuna port edildi
+        (CCharSkill.cpp:724-794): skill bir band secer (shoddy..superior),
+        logaritmik ±0-2 band sapmasi kaydirir, deger band icinde atilir.
+        Uydurma dogrusal 100+fazlalik/10 egrisi, 150+ "exceptional" yeniden
+        adlandirmasi ve +%20 dayaniklilik bonusu kaldirildi; referanstaki
+        grandmaster imzasi (skill > 99.9 ve kalite > 175) duruyor.
+
+DUZELTILDI - Blood Oath yansima seviyesi artik layer sahibinde (caster) birebir
+        Source-X formulu: MagicResistance*10/20 + 10, clamp'siz
+        (CCharSpell.cpp:1313) — dusmanin skill'inden hesaplanan uydurma
+        /20+10 (10-90 clamp) idi.
+
+DUZELTILDI - NPC tas firlatma stamina maliyeti 4+rand(6) (CCharSkill.cpp:3372);
+        Dex/4 hasar atisi referans olarak dogrulandi (CCharSkill.cpp:3447).
+
+NOTLAR - Gercek Source-X oldugu dogrulananlar (atif, degisiklik yok): NPC
+        dusmanlik katsayilarinin tamami (51/100/-50/akraba yumusatmalari/+50
+        kin, NPC_GetHostilityLevelToward), SpiritSpeak 24sn (4*60 tenth).
+        Ertelendi: NPC beyin-tik temposu (sahada ayarli; Source-X (150-DEX)/2
+        tenth modeli oyun-ici dogrulama ister), Discordance 20sn (referansta
+        script'e birakilmis — motor fallback'i durdu).
+
 [2026-07-15] - Uyduruk-deger denetimi, dalga 4: tamir, tuzaklar, stamina rejeni
 ----------------------------------------
 

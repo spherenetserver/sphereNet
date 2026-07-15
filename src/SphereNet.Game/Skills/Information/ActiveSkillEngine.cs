@@ -168,7 +168,7 @@ public static class ActiveSkillEngine
                 sink.Sound(0x24A);
             sink.SysMessage(ServerMessages.Get(Msg.SpiritspeakSuccess));
             ch.SetStatFlag(StatFlag.SpiritSpeak);
-            ch.SetTag("SPIRITSPEAK_UNTIL",
+            ch.SetTag("SPIRITSPEAK_UNTIL", // 4*60 tenths = 24s (Source-X CCharSkill.cpp:2644)
                 (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 24_000).ToString());
         }
         return success;

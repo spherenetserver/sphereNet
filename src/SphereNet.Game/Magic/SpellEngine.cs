@@ -1918,9 +1918,11 @@ public sealed class SpellEngine
             {
                 // Necromancy Blood Oath (reference SPELL_Blood_Oath): the state
                 // lives on the CASTER, linked to the enemy; a blow the enemy lands
-                // on the caster reflects (100 - level)% back. level scales down
-                // with the enemy's Magic Resistance (reference m_spelllevel).
-                int level = Math.Clamp(target.GetSkill(SkillType.MagicResistance) / 20 + 10, 10, 90);
+                // on the caster reflects (100 - level)% back. Source-X
+                // CCharSpell.cpp:1313 computes level on the layer's OWNER (the
+                // caster): (MagicResistance * 10 / 20) + 10, no clamp — high MR
+                // zeroes the reflect via the (100 - level) term itself.
+                int level = caster.GetSkill(SkillType.MagicResistance) * 10 / 20 + 10;
                 var eff = ScheduleEffectExpiry(caster, caster, def.Id, def);
                 eff.BloodOathEnemy = target.Uid;
                 eff.BloodOathLevel = level;

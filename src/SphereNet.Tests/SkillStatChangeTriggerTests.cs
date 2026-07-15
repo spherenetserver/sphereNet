@@ -29,6 +29,7 @@ public class SkillStatChangeTriggerTests
     [Fact]
     public void SkillGain_FiresSkillChangeTrigger_OnRuntimeGain()
     {
+        TestHarness.SeedSkillAdvRates(); // gain follows ADV_RATE strictly (no curve = no gain)
         var oldHook = SkillEngine.OnSkillGain;
         try
         {

@@ -3,6 +3,30 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-15] - Uyduruk-deger denetimi, dalga 3: skill kazanimi, yumruk hasari, NPC skill, aletler
+----------------------------------------
+
+DUZELTILDI - Skill def'inde ADV_RATE yoksa kazanim uydurma (1000-skill)/5
+        egrisini izliyordu. Source-X GetChancePercent: egri yok = kazanim yok.
+        Yedek egri kaldirildi; kazanim tamamen ADV_RATE'i izler.
+
+DUZELTILDI - Yumruk hasari uydurma Str/4 formulunden geliyordu. Source-X
+        Fight_CalcDamage CHARDEF DAM satirini kullanir (oyuncular: c_man
+        DAM=1,4 klasik yumruk); DAM'siz chardef'te attackBase 0'dir. STR artik
+        yalnizca donem hasar-bonusu yuzdesine katki verir.
+
+DUZELTILDI - Skill'siz NPC'ler artik uydurma stat*10 taban savas skill'i
+        (min 25.0) almiyor: Source-X ham chardef skill'iyle savasir; eksik
+        scriptli NPC sessizce gucIendirilmek yerine 0 skill'le vurur.
+
+DUZELTILDI - UsesRemaining izlemeyen toplama aletleri uydurma 1/50 sansla
+        kiriliyordu. Source-X aletin HITPOINTS'ine 1 hasar verir
+        (CCharSkill.cpp:2447) — def'inde hitpoints olmayan alet hic asinmaz.
+
+NOTLAR - Gercek Source-X degeri oldugu dogrulananlar (atif eklendi, degisiklik
+        yok): orumcek agi gucu 60+rand(250) (CCharUse.cpp:638), NPC kacis 20
+        adim (CCharNPCAct.cpp:412), temel gures vurus hizi 50 (CResourceCalc.cpp:49).
+
 [2026-07-15] - Uyduruk-deger denetimi, dalga 2: loot/summon/fiyat/aclik/spawn pencereleri
 ----------------------------------------
 

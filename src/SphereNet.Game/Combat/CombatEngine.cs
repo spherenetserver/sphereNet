@@ -322,26 +322,16 @@ public static class CombatEngine
 
     private static int GetHitChanceSkill(Character ch, SkillType skill)
     {
-        int value = ch.GetSkill(skill);
-        if (value > 0 || ch.IsPlayer || !IsWeaponSkill(skill))
-            return value;
-
-        return InferNpcCombatSkill(ch);
+        // Source-X uses the raw chardef/@Create skill — an NPC whose def grants
+        // no weapon skill fights at 0 and almost never lands a hit. The old
+        // stat*10 inference (floor 25.0) had no reference basis and silently
+        // buffed every under-scripted NPC.
+        return ch.GetSkill(skill);
     }
 
     private static int GetHitChanceTactics(Character ch, int weaponSkill)
     {
-        int value = ch.GetSkill(SkillType.Tactics);
-        if (value > 0 || ch.IsPlayer)
-            return value;
-
-        return Math.Max(weaponSkill, InferNpcCombatSkill(ch));
-    }
-
-    private static int InferNpcCombatSkill(Character ch)
-    {
-        int stat = Math.Max(ch.Str, ch.Dex);
-        return Math.Clamp(stat * 10, 250, 1000);
+        return ch.GetSkill(SkillType.Tactics);
     }
 
     /// <summary>
@@ -359,16 +349,25 @@ public static class CombatEngine
 
         if (weapon == null)
         {
-            var npcDam = !attacker.IsPlayer ? NpcDamageDefLookup?.Invoke(attacker.CharDefIndex) : null;
-            if (npcDam.HasValue && npcDam.Value.Max > 0)
+            // Source-X Fight_CalcDamage unarmed: iDmgMin = m_attackBase, i.e.
+            // the CHARDEF's DAM line — for players too (c_man DAM=1,4 is the
+            // classic fists damage). The old path invented Str/4 for anyone
+            // whose chardef didn't resolve.
+            var defDam = NpcDamageDefLookup?.Invoke(attacker.CharDefIndex);
+            if (defDam.HasValue && defDam.Value.Max > 0)
             {
-                dmgMin = npcDam.Value.Min;
-                dmgMax = npcDam.Value.Max;
+                dmgMin = defDam.Value.Min;
+                dmgMax = defDam.Value.Max;
+            }
+            else if (attacker.IsPlayer)
+            {
+                dmgMin = 1; // c_man DAM=1,4 — classic bare-fist range
+                dmgMax = 4;
             }
             else
             {
-                dmgMin = 1;
-                dmgMax = Math.Max(2, EffectiveStr(attacker) / 4);
+                dmgMin = 0; // chardef declares no DAM → attackBase 0
+                dmgMax = 1;
             }
 
             // Source-X FEATURE_AOS_UPDATE_B Horrific Beast form replaces the
@@ -677,7 +676,7 @@ public static class CombatEngine
         return damage;
     }
 
-    private static int ApplyDirectItemDamage(Item item, int damage)
+    internal static int ApplyDirectItemDamage(Item item, int damage)
     {
         if (item.IsDeleted || OnItemDamaged?.Invoke(item, damage) == true)
             return 0;

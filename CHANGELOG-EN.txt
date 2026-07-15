@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-15] - Invented-values audit, wave 3: skill gain, unarmed damage, NPC skill, tools
+----------------------------------------
+
+FIXED - Skill gain followed an invented (1000-skill)/5 curve whenever a skill
+        def lacked ADV_RATE. Source-X GetChancePercent: no curve = no gain.
+        The substitute curve is removed; gain strictly follows ADV_RATE.
+
+FIXED - Unarmed damage came from an invented Str/4 formula. Source-X
+        Fight_CalcDamage uses the CHARDEF's DAM line (players: c_man DAM=1,4
+        classic fists); a chardef with no DAM has attackBase 0. STR now only
+        contributes the era damage-bonus percent.
+
+FIXED - Skill-less NPCs no longer get an invented stat*10 combat-skill floor
+        (min 25.0): Source-X fights at the raw chardef skill, so an
+        under-scripted NPC hits at 0 skill instead of being silently buffed.
+
+FIXED - Gathering tools without UsesRemaining broke at an invented 1-in-50
+        per-use chance. Source-X damages the tool's HITPOINTS by 1
+        (CCharSkill.cpp:2447) — a tool whose def has no hitpoints never wears.
+
+NOTES - Verified as genuine Source-X values (citations added, no change):
+        spider-web strength 60+rand(250) (CCharUse.cpp:638), NPC flee steps 20
+        (CCharNPCAct.cpp:412), base wrestling swing speed 50 (CResourceCalc.cpp:49).
+
 [2026-07-15] - Invented-values audit, wave 2: loot/summons/prices/hunger/spawn windows
 ----------------------------------------
 

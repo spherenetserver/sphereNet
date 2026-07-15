@@ -246,9 +246,11 @@ public static class SkillEngine
 
         // Advance rate — ADV_RATE curve expresses "uses per 0.1 gain"; the
         // per-mille gain chance is its inverse (reference GetChancePercent).
+        // No curve → no gain (CValueDefs.cpp:175 returns 0), never an
+        // invented substitute curve.
         int chance = def != null && !def.AdvRate.IsEmpty
             ? def.AdvRate.GetChancePercent(currentSkill)
-            : CalcAdvanceRate(currentSkill);
+            : 0;
 
         // @SkillGain (Source-X Skill_Experience) — fired BEFORE the gain roll so a
         // script can raise/lower the per-mille chance or the effective cap, or
@@ -343,16 +345,6 @@ public static class SkillEngine
         return cls?.SkillSumMax > 0 ? cls.SkillSumMax : SkillSumMaxOverride;
     }
 
-    /// <summary>
-    /// Calculate advance rate. Higher skill = lower chance.
-    /// Maps to ADV_RATE curve in Source-X SkillDef.
-    /// </summary>
-    private static int CalcAdvanceRate(int skillLevel)
-    {
-        // Simple inverse: easier to gain at low skill, harder at high
-        if (skillLevel >= 1000) return 0;
-        return Math.Max(1, (1000 - skillLevel) / 5);
-    }
 
     /// <summary>
     /// Stat-adjusted skill value (reference Skill_GetAdjusted): the raw skill

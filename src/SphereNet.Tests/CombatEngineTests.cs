@@ -75,19 +75,28 @@ public class CombatEngineTests
     }
 
     [Fact]
-    public void CalcHitChance_Era0_NpcWithZeroCombatSkills_UsesStatFallback()
+    public void CalcHitChance_Era0_NpcWithZeroCombatSkills_FightsAtRawSkill()
     {
+        // Source-X uses the raw chardef skill — a skill-less NPC gets NO
+        // stat-derived fallback (the old stat*10 inference silently buffed
+        // under-scripted NPCs). Identical stats/skills → identical chance,
+        // player or NPC.
         var npc = MakeChar(str: 60, dex: 60);
         npc.IsPlayer = false;
         npc.SetSkill(SkillType.Wrestling, 0);
         npc.SetSkill(SkillType.Tactics, 0);
 
+        var player = MakeChar(str: 60, dex: 60);
+        player.IsPlayer = true;
+        player.SetSkill(SkillType.Wrestling, 0);
+        player.SetSkill(SkillType.Tactics, 0);
+
         var target = MakeChar(str: 60, dex: 50);
         target.IsPlayer = true;
 
-        int chance = CombatEngine.CalcHitChance(npc, target, 0);
-
-        Assert.InRange(chance, 35, 95);
+        Assert.Equal(
+            CombatEngine.CalcHitChance(player, target, 0),
+            CombatEngine.CalcHitChance(npc, target, 0));
     }
 
     [Fact]
@@ -118,8 +127,12 @@ public class CombatEngineTests
     [Fact]
     public void CalcWeaponDamage_HigherStr_HigherDamage()
     {
+        // Unarmed base is the chardef DAM (players: c_man 1,4 fists); STR only
+        // contributes the era damage-bonus percent on top of that base.
         var weak = MakeChar(str: 10);
-        var strong = MakeChar(str: 100);
+        weak.IsPlayer = true;
+        var strong = MakeChar(str: 300);
+        strong.IsPlayer = true;
         var (_, maxWeak) = CombatEngine.CalcWeaponDamage(weak, null, 0);
         var (_, maxStrong) = CombatEngine.CalcWeaponDamage(strong, null, 0);
         Assert.True(maxStrong > maxWeak);

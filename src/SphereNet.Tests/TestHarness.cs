@@ -23,6 +23,20 @@ internal static class TestHarness
         return world;
     }
 
+    /// <summary>Seed every skill with the classic sphere_skills.scp ADV_RATE
+    /// curve (2.5,50.0,200.0). Skill gain strictly follows the curve — no
+    /// curve means no gain (Source-X GetChancePercent) — so any test that
+    /// expects gains must seed defs first.</summary>
+    public static void SeedSkillAdvRates()
+    {
+        for (int i = 0; i < (int)SphereNet.Core.Enums.SkillType.Qty; i++)
+        {
+            var def = new SphereNet.Scripting.Definitions.SkillDef(ResourceId.Invalid);
+            def.LoadFromKey("ADV_RATE", "2.5,50.0,200.0");
+            SphereNet.Game.Definitions.DefinitionLoader.SetSkillDef(i, def);
+        }
+    }
+
     public static NetState CreateActiveNetState(ILoggerFactory loggerFactory, int id)
     {
         var state = new NetState(loggerFactory.CreateLogger<NetState>()) { Id = id };

@@ -108,13 +108,27 @@ public sealed class SourceXWave263Tests
     [Fact]
     public void MeleeDamage_RaisedByStrSuit()
     {
+        // Weapon damage scales with effective STR only through the era damage
+        // bonus percent (Source-X Fight_CalcDamage) — the base comes from the
+        // weapon DAM, never from a Str-derived unarmed base.
         var (world, ch) = Make(str: 40);
-        var (_, baseMax) = CombatEngine.CalcWeaponDamage(ch, null, era: 0);
-        ch.Equip(StatPiece(world, "BONUSSTR", 40), Layer.Helm);
-        var (_, suitMax) = CombatEngine.CalcWeaponDamage(ch, null, era: 0);
+        var saved = CombatEngine.WeaponDefLookup;
+        try
+        {
+            CombatEngine.WeaponDefLookup = _ => (10, 20);
+            var weapon = world.CreateItem();
+            weapon.ItemType = ItemType.WeaponSword;
 
-        // Unarmed max damage scales with effective STR (Str/4 base + STR% bonus).
-        Assert.True(suitMax > baseMax, $"expected suit max {suitMax} > base max {baseMax}");
+            var (_, baseMax) = CombatEngine.CalcWeaponDamage(ch, weapon, era: 0);
+            ch.Equip(StatPiece(world, "BONUSSTR", 60), Layer.Helm);
+            var (_, suitMax) = CombatEngine.CalcWeaponDamage(ch, weapon, era: 0);
+
+            Assert.True(suitMax > baseMax, $"expected suit max {suitMax} > base max {baseMax}");
+        }
+        finally
+        {
+            CombatEngine.WeaponDefLookup = saved;
+        }
     }
 
     [Fact]

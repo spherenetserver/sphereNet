@@ -290,7 +290,7 @@ public sealed class MovementEngine
                         !ch.IsStatFlag(StatFlag.Insubstantial))
                     {
                         if (item.HitsCur <= 0)
-                            item.HitsCur = 60 + Random.Shared.Next(250);
+                            item.HitsCur = 60 + Random.Shared.Next(250); // Source-X CCharUse.cpp:638 web strength
                         ch.SetStatFlag(StatFlag.Freeze);
                     }
                     break;

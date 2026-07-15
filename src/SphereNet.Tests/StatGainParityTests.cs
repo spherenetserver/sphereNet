@@ -39,6 +39,7 @@ public class StatGainParityTests
         DEX=1.0,1.0
 
         [SKILL 40]
+        ADV_RATE=1.0
         STAT_STR=100
         BONUS_STATS=100
         BONUS_STR=100
@@ -59,7 +60,7 @@ public class StatGainParityTests
     [Fact]
     public void StatGain_TrainsTowardSkillStatTarget()
     {
-        LoadDefinitions(TrainingDefs);
+        LoadDefinitions(TrainingDefs); // [SKILL 40] carries ADV_RATE — gain follows the curve strictly
         var ch = CreatePlayer();
         ch.SetSkill(SkillType.Swordsmanship, 200);
 

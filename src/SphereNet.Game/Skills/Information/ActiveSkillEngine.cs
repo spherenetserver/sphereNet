@@ -983,9 +983,11 @@ public static class ActiveSkillEngine
         return sink.FindBackpackItem(toolType);
     }
 
-    /// <summary>Wear a gathering tool on use (Source-X). Decrements UsesRemaining
-    /// when the item tracks it, otherwise a small per-use break chance (~2%, ≈ 50
-    /// uses). A worn-out tool is consumed/broken.</summary>
+    /// <summary>Wear a gathering tool on use. Decrements UsesRemaining when the
+    /// item tracks it; otherwise Source-X damages the tool's HITPOINTS
+    /// (CCharSkill.cpp:2447 OnTakeDamage(1)) — a tool whose def declares no
+    /// hitpoints never wears. The old invented 1/50 random break made every
+    /// untracked tool vanish after ~50 uses.</summary>
     private static void DamageGatherTool(IActiveSkillSink sink, Item tool)
     {
         if (tool.UsesRemaining > 0)
@@ -994,9 +996,9 @@ public static class ActiveSkillEngine
             if (tool.UsesRemaining == 0)
                 sink.ConsumeAmount(tool);
         }
-        else if (sink.Random.Next(50) == 0)
+        else
         {
-            sink.ConsumeAmount(tool);
+            SphereNet.Game.Combat.CombatEngine.ApplyDirectItemDamage(tool, 1);
         }
     }
 

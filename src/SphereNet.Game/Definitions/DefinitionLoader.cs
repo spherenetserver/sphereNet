@@ -79,6 +79,11 @@ public sealed class DefinitionLoader
         return null;
     }
     public static SkillDef? GetSkillDef(int skillIndex) => _skillDefs.GetValueOrDefault(skillIndex);
+
+    /// <summary>Register a skill def directly. Test harnesses use this to seed
+    /// ADV_RATE curves — skill gain follows the curve strictly (no curve = no
+    /// gain, Source-X GetChancePercent), so gain tests must provide one.</summary>
+    public static void SetSkillDef(int skillIndex, SkillDef def) => _skillDefs[skillIndex] = def;
     public static SkillDef? GetSkillDef(string? name)
     {
         if (string.IsNullOrWhiteSpace(name))

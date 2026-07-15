@@ -21,7 +21,8 @@ public sealed class SourceXHorrificBerserkWave229Tests
         Assert.Equal(25, CombatEngine.CalculateDamageIncrease(character));
 
         engine.ProcessExpirations(long.MaxValue);
-        Assert.Equal((1, 2), CombatEngine.CalcWeaponDamage(character, null));
+        // player fists = c_man DAM 1,4 (no Str-derived unarmed base)
+        Assert.Equal((1, 4), CombatEngine.CalcWeaponDamage(character, null));
         Assert.Equal(0, CombatEngine.CalculateDamageIncrease(character));
     }
 
@@ -32,7 +33,8 @@ public sealed class SourceXHorrificBerserkWave229Tests
         Assert.True(engine.ApplyScriptSpellEffect(
             character, character, SpellType.HorrificBeast, 1000));
 
-        Assert.Equal((1, 2), CombatEngine.CalcWeaponDamage(character, null));
+        // player fists = c_man DAM 1,4 (no Str-derived unarmed base)
+        Assert.Equal((1, 4), CombatEngine.CalcWeaponDamage(character, null));
         Assert.Equal(0, CombatEngine.CalculateDamageIncrease(character));
     }
 

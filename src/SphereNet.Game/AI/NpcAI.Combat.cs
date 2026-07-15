@@ -283,7 +283,7 @@ public sealed partial class NpcAI
         // Source-X: flee when motivation < 0 (non-pets only)
         if (!npc.IsStatFlag(StatFlag.Pet) && motivation < 0)
         {
-            npc.FleeStepsMax = 20;
+            npc.FleeStepsMax = 20; // Source-X CCharNPCAct.cpp:412 (m_atFlee.m_iStepsMax)
             npc.FleeStepsCurrent = 0;
             ActFlee(npc, target);
             return;

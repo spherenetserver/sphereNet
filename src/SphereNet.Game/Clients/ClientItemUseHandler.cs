@@ -908,7 +908,7 @@ public sealed class ClientItemUseHandler
             case ItemType.Web:
             {
                 if (item.HitsCur <= 0)
-                    item.HitsCur = 60 + Random.Shared.Next(250);
+                    item.HitsCur = 60 + Random.Shared.Next(250); // Source-X CCharUse.cpp:638 web strength
                 item.HitsCur -= Math.Max(1, (int)_character.Str);
                 if (item.HitsCur <= 0)
                 {

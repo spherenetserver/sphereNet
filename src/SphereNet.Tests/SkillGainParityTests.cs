@@ -30,6 +30,7 @@ public class SkillGainParityTests
     [Fact]
     public void AtTotalCap_DownLockedSkillDecays_AndTrainedSkillGains()
     {
+        TestHarness.SeedSkillAdvRates(); // gain follows ADV_RATE strictly (no curve = no gain)
         int savedCap = SkillEngine.SkillSumMaxOverride;
         try
         {
@@ -79,6 +80,7 @@ public class SkillGainParityTests
     [Fact]
     public void HighSkill_LowDifficulty_CanStillGain_WithoutGainRadiusDefault()
     {
+        TestHarness.SeedSkillAdvRates(); // gain follows ADV_RATE strictly (no curve = no gain)
         var ch = CreatePlayer();
         ch.SetSkill(SkillType.Swordsmanship, 900);
 

@@ -30,6 +30,7 @@ public class ParityWaveBTests
     [Fact]
     public void ResolveAttack_PlayerAttacker_TrainsWeaponSkillAndTactics()
     {
+        TestHarness.SeedSkillAdvRates(); // gain follows ADV_RATE strictly (no curve = no gain)
         var world = CreateWorld();
         var attacker = world.CreateCharacter();
         attacker.IsPlayer = true;

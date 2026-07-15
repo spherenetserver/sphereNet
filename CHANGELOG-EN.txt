@@ -4,6 +4,33 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-15] - All target-cursor paths record their session id
+----------------------------------------
+
+FIXED - The cursor session guard only knew the ids sent by SetPendingTarget;
+        every other cursor path (.info/.kill/teleport/script TARGET — 19 call
+        sites) sent an unrecorded random id, so the guard dropped the player's
+        legitimate clicks ("target broken", ".kill shows no cursor"). All
+        sends now route through a shared SendTargetRequest that records the id.
+
+[2026-07-15] - Cursor echo window, sqlite DQS compatibility, log noise
+----------------------------------------
+
+FIXED - First-cast "Targeting cancelled": the replaced cursor's cancel-echo can
+        arrive with cursorID 0 (ClassicUO zeroes its stored id after a server
+        cancel), slipping past the session-id match and cancelling the fresh
+        spell target. One id-less cancel inside a 2s replacement window is now
+        swallowed; a real ESC always echoes the matching id and still works.
+
+FIXED - Script DB: classic packs write SQL string literals in double quotes;
+        Microsoft.Data.Sqlite's bundled sqlite disables that legacy quirk
+        (DQS), so F_RESTYPES_SETUP's INSERTs failed with "no such column:
+        C_TROLL". DQS is now enabled on every script DB connection (Source-X's
+        sqlite behavior).
+
+CHANGED - [NAME_CHANGE] dropped from Warning to Debug: script @Create renames
+        are routine pack behavior and flooded the log during RESPAWN FULL.
+
 [2026-07-15] - Target cursor session guard (first cast mis-target fix)
 ----------------------------------------
 

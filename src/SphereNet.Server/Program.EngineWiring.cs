@@ -2583,8 +2583,11 @@ public static partial class Program
             SphereNet.Game.Objects.Items.Item.ResolveShipEngine = () => _shipEngine;
             SphereNet.Game.Objects.Items.Item.ResolveWorld = () => _world;
             SphereNet.Game.Objects.ObjBase.ResolveWorld = () => _world;
+            // Debug, not Warning: script @Create renames (e.g. "Smoldering
+            // Fire Gargoyle") are routine pack behavior — at Warning level a
+            // RESPAWN FULL floods the log with thousands of these.
             SphereNet.Game.Objects.ObjBase.OnNameChangeWarning = msg =>
-                _log.LogWarning("[NAME_CHANGE] {Details}", msg);
+                _log.LogDebug("[NAME_CHANGE] {Details}", msg);
 
             // Route Character-emitted diagnostic lines (vendor restock,
             // trigger verb dispatch, etc.) into the main logger so they

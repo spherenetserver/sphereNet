@@ -3,6 +3,36 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-15] - Tum hedef-imleci yollari oturum kimligini kaydeder
+----------------------------------------
+
+DUZELTILDI - Imlec oturum korumasi yalnizca SetPendingTarget'in gonderdigi
+        kimlikleri biliyordu; diger tum imlec yollari (.info/.kill/teleport/
+        script TARGET — 19 nokta) kaydedilmemis rastgele kimlik gonderiyordu,
+        koruma oyuncunun mesru tiklamalarini dusuruyordu ("target bozuldu",
+        ".kill imlec gostermiyor"). Tum gonderimler artik kimligi kaydeden
+        ortak SendTargetRequest'ten gecer.
+
+[2026-07-15] - Imlec yanki penceresi, sqlite DQS uyumu, log gurultusu
+----------------------------------------
+
+DUZELTILDI - Ilk cast'te "Targeting cancelled": degistirilen imlecin iptal
+        yankisi cursorID 0 ile gelebilir (ClassicUO sunucu iptali sonrasi
+        sakladigi kimligi sifirlar) ve oturum-kimlik eslesmesini asip taze
+        buyu hedefini iptal ediyordu. 2 sn'lik degistirme penceresi icinde BIR
+        kimliksiz iptal artik yutulur; gercek ESC her zaman eslesen kimlikle
+        gelir ve calismaya devam eder.
+
+DUZELTILDI - Script DB: klasik paketler SQL string literallerini cift tirnakla
+        yazar; Microsoft.Data.Sqlite'in sqlite'i bu eski davranisi (DQS)
+        kapali getirir, F_RESTYPES_SETUP INSERT'leri "no such column: C_TROLL"
+        ile patliyordu. DQS artik her script DB baglantisinda acik (Source-X
+        sqlite davranisi).
+
+DEGISTI - [NAME_CHANGE] Warning'den Debug'a indi: script @Create yeniden
+        adlandirmalari olagan paket davranisi ve RESPAWN FULL sirasinda logu
+        boguyordu.
+
 [2026-07-15] - Hedef imleci oturum korumasi (ilk cast yanlis-hedef duzeltmesi)
 ----------------------------------------
 

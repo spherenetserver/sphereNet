@@ -487,7 +487,9 @@ public sealed class ClientScriptConsoleHandler
             Targets.ItemUid = target is Item ti ? ti.Uid : Serial.Invalid;
             Targets.CursorActive = true;
             byte tType = (byte)(upper == "TARGETFG" ? 1 : 0);
-            _netState.Send(new PacketTarget(tType, (uint)Random.Shared.Next(1, int.MaxValue)));
+            uint cursorId = (uint)Random.Shared.Next(1, int.MaxValue);
+            Targets.CursorId = cursorId; // session guard: record the request id
+            _netState.Send(new PacketTarget(tType, cursorId));
             return true;
         }
 
@@ -499,7 +501,9 @@ public sealed class ClientScriptConsoleHandler
             Targets.AllowGround = upper == "TARGETG";
             Targets.CursorActive = true;
             byte tType = (byte)(upper == "TARGETG" ? 1 : 0);
-            _netState.Send(new PacketTarget(tType, (uint)Random.Shared.Next(1, int.MaxValue)));
+            uint cursorId = (uint)Random.Shared.Next(1, int.MaxValue);
+            Targets.CursorId = cursorId; // session guard: record the request id
+            _netState.Send(new PacketTarget(tType, cursorId));
             return true;
         }
 

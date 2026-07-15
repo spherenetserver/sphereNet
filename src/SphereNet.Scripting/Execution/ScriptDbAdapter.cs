@@ -14,6 +14,12 @@ namespace SphereNet.Scripting.Execution;
 /// </summary>
 public sealed class ScriptDbAdapter : IDisposable
 {
+    /// <summary>Invoked after every session connection opens. The host wires
+    /// provider-specific legacy compatibility here (the server enables sqlite
+    /// DQS so classic packs' double-quoted SQL string literals keep parsing,
+    /// as Source-X's bundled sqlite does).</summary>
+    public static Action<System.Data.Common.DbConnection>? OnConnectionOpened;
+
     private readonly ILogger<ScriptDbAdapter> _logger;
     private readonly ConcurrentDictionary<string, DbSession> _sessions = new(StringComparer.OrdinalIgnoreCase);
     private string _activeSessionName = "default";
@@ -415,6 +421,10 @@ public sealed class ScriptDbAdapter : IDisposable
 
                     connection.ConnectionString = connectionString;
                     connection.Open();
+                    // Host hook — the server enables provider-specific legacy
+                    // compatibility here (sqlite DQS for classic double-quoted
+                    // string literals in pack scripts).
+                    ScriptDbAdapter.OnConnectionOpened?.Invoke(connection);
                     _connection = connection;
                     _logger.LogInformation("DB session '{Name}' connected with provider {Provider}",
                         Config?.Name ?? "?", providerInvariantName);

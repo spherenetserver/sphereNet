@@ -49,6 +49,18 @@ public sealed partial class GameClient
         ));
     }
 
+    /// <summary>Send a 0x6C target request and record its cursor session id.
+    /// EVERY cursor-arming path must route through this (or set
+    /// Targets.CursorId itself, as SetPendingTarget does) — the session guard
+    /// in HandleTargetResponse drops responses whose echoed id doesn't match,
+    /// so an unrecorded id makes the player's clicks appear dead.</summary>
+    internal void SendTargetRequest(byte targetType)
+    {
+        uint cursorId = (uint)Random.Shared.Next(1, int.MaxValue);
+        Targets.CursorId = cursorId;
+        _netState.Send(new PacketTarget(targetType, cursorId));
+    }
+
     public void BeginTeleportTarget()
     {
         if (_character == null)
@@ -59,7 +71,7 @@ public sealed partial class GameClient
         ClearPendingTargetState();
         Targets.Tele = true;
         Targets.CursorActive = true;
-        _netState.Send(new PacketTarget(1, (uint)Random.Shared.Next(1, int.MaxValue)));
+        SendTargetRequest(1);
     }
 
     public void BeginRemoveTarget()
@@ -72,7 +84,7 @@ public sealed partial class GameClient
         ClearPendingTargetState();
         Targets.Remove = true;
         Targets.CursorActive = true;
-        _netState.Send(new PacketTarget(1, (uint)Random.Shared.Next(1, int.MaxValue)));
+        SendTargetRequest(1);
     }
 
     /// <summary>.XRESURRECT — opens a target cursor; the picked mobile (or
@@ -84,7 +96,7 @@ public sealed partial class GameClient
         ClearPendingTargetState();
         Targets.Resurrect = true;
         Targets.CursorActive = true;
-        _netState.Send(new PacketTarget(0, (uint)Random.Shared.Next(1, int.MaxValue)));
+        SendTargetRequest(0);
     }
 
     /// <summary>.info without a UID — opens a target cursor; whatever
@@ -96,7 +108,7 @@ public sealed partial class GameClient
         ClearPendingTargetState();
         Targets.Inspect = true;
         Targets.CursorActive = true;
-        _netState.Send(new PacketTarget(1, (uint)Random.Shared.Next(1, int.MaxValue)));
+        SendTargetRequest(1);
     }
 
     public void BeginAddTarget(string addToken, ushort amount = 1)
@@ -110,7 +122,7 @@ public sealed partial class GameClient
         Targets.AddToken = addToken.Trim();
         Targets.AddAmount = Math.Max((ushort)1, amount);
         Targets.CursorActive = true;
-        _netState.Send(new PacketTarget(1, (uint)Random.Shared.Next(1, int.MaxValue)));
+        SendTargetRequest(1);
     }
 
     public void BeginShowTarget(string showArgs)
@@ -123,7 +135,7 @@ public sealed partial class GameClient
         ClearPendingTargetState();
         Targets.ShowArgs = string.IsNullOrWhiteSpace(showArgs) ? "EVENTS" : showArgs.Trim();
         Targets.CursorActive = true;
-        _netState.Send(new PacketTarget(1, (uint)Random.Shared.Next(1, int.MaxValue)));
+        SendTargetRequest(1);
     }
 
     public void BeginEditTarget(string editArgs)
@@ -136,7 +148,7 @@ public sealed partial class GameClient
         ClearPendingTargetState();
         Targets.EditArgs = editArgs?.Trim() ?? "";
         Targets.CursorActive = true;
-        _netState.Send(new PacketTarget(1, (uint)Random.Shared.Next(1, int.MaxValue)));
+        SendTargetRequest(1);
     }
 
     /// <summary>Source-X parity (CClient.cpp:921 <c>addTargetVerb</c>):
@@ -153,7 +165,7 @@ public sealed partial class GameClient
         Targets.XVerb = verb.Trim();
         Targets.XVerbArgs = args?.Trim() ?? "";
         Targets.CursorActive = true;
-        _netState.Send(new PacketTarget(1, (uint)Random.Shared.Next(1, int.MaxValue)));
+        SendTargetRequest(1);
     }
 
     /// <summary>Source-X CV_NUKE / CV_NUKECHAR / CV_NUDGE: open a
@@ -174,7 +186,7 @@ public sealed partial class GameClient
         Targets.AreaVerbArgs = verbArgs?.Trim() ?? "";
         Targets.CursorActive = true;
         // type=1 (ground allowed), so the GM can pick an empty tile.
-        _netState.Send(new PacketTarget(1, (uint)Random.Shared.Next(1, int.MaxValue)));
+        SendTargetRequest(1);
     }
 
     public void BeginControlTarget()
@@ -183,7 +195,7 @@ public sealed partial class GameClient
         ClearPendingTargetState();
         Targets.Control = true;
         Targets.CursorActive = true;
-        _netState.Send(new PacketTarget(0, (uint)Random.Shared.Next(1, int.MaxValue)));
+        SendTargetRequest(0);
     }
 
     public void BeginDupeTarget()
@@ -192,7 +204,7 @@ public sealed partial class GameClient
         ClearPendingTargetState();
         Targets.Dupe = true;
         Targets.CursorActive = true;
-        _netState.Send(new PacketTarget(0, (uint)Random.Shared.Next(1, int.MaxValue)));
+        SendTargetRequest(0);
     }
 
     public void BeginHealTarget()
@@ -201,7 +213,7 @@ public sealed partial class GameClient
         ClearPendingTargetState();
         Targets.Heal = true;
         Targets.CursorActive = true;
-        _netState.Send(new PacketTarget(0, (uint)Random.Shared.Next(1, int.MaxValue)));
+        SendTargetRequest(0);
     }
 
     public void BeginKillTarget()
@@ -210,7 +222,7 @@ public sealed partial class GameClient
         ClearPendingTargetState();
         Targets.Kill = true;
         Targets.CursorActive = true;
-        _netState.Send(new PacketTarget(0, (uint)Random.Shared.Next(1, int.MaxValue)));
+        SendTargetRequest(0);
     }
 
     public void BeginBankTarget()
@@ -219,7 +231,7 @@ public sealed partial class GameClient
         ClearPendingTargetState();
         Targets.Bank = true;
         Targets.CursorActive = true;
-        _netState.Send(new PacketTarget(0, (uint)Random.Shared.Next(1, int.MaxValue)));
+        SendTargetRequest(0);
     }
 
     public void BeginSummonToTarget()
@@ -228,7 +240,7 @@ public sealed partial class GameClient
         ClearPendingTargetState();
         Targets.SummonTo = true;
         Targets.CursorActive = true;
-        _netState.Send(new PacketTarget(0, (uint)Random.Shared.Next(1, int.MaxValue)));
+        SendTargetRequest(0);
     }
 
     public void BeginMountTarget()
@@ -237,7 +249,7 @@ public sealed partial class GameClient
         ClearPendingTargetState();
         Targets.Mount = true;
         Targets.CursorActive = true;
-        _netState.Send(new PacketTarget(0, (uint)Random.Shared.Next(1, int.MaxValue)));
+        SendTargetRequest(0);
     }
 
     public void BeginSummonCageTarget()
@@ -246,7 +258,7 @@ public sealed partial class GameClient
         ClearPendingTargetState();
         Targets.SummonCage = true;
         Targets.CursorActive = true;
-        _netState.Send(new PacketTarget(0, (uint)Random.Shared.Next(1, int.MaxValue)));
+        SendTargetRequest(0);
     }
 
     /// <summary>Source-X CV_ANIM. Plays the given action on this client's

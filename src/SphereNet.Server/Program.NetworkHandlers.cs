@@ -142,6 +142,22 @@ public static partial class Program
             DbProviderFactories.RegisterFactory("Microsoft.Data.Sqlite", SqliteFactory.Instance);
             _log.LogDebug("Registered SQLite database provider");
         }
+
+        // Classic Sphere packs write SQL string literals in DOUBLE quotes
+        // (INSERT ... VALUES ("<LOCAL.ID>", ...)). Microsoft.Data.Sqlite's
+        // bundled sqlite disables that legacy quirk (DQS), so every such
+        // literal fails with "no such column". Source-X links an sqlite with
+        // DQS on — restore it on every script DB connection.
+        SphereNet.Scripting.Execution.ScriptDbAdapter.OnConnectionOpened = connection =>
+        {
+            if (connection is not Microsoft.Data.Sqlite.SqliteConnection sqliteConn ||
+                sqliteConn.Handle == null)
+                return;
+            const int SQLITE_DBCONFIG_DQS_DML = 1013;
+            const int SQLITE_DBCONFIG_DQS_DDL = 1014;
+            SQLitePCL.raw.sqlite3_db_config(sqliteConn.Handle, SQLITE_DBCONFIG_DQS_DML, 1, out _);
+            SQLitePCL.raw.sqlite3_db_config(sqliteConn.Handle, SQLITE_DBCONFIG_DQS_DDL, 1, out _);
+        };
     }
 
     private static void InitDbConnections(SphereConfig config, ScriptDbAdapter db)

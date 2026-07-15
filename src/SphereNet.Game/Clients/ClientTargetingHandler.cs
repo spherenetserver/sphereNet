@@ -99,9 +99,21 @@ public sealed class ClientTargetingHandler
         // stale echo cancelled the fresh target — the "first cast never shows
         // a cursor / fires at the wrong thing" report. Ignore any response
         // carrying a different (non-zero) id than the active request.
-        if (Targets.CursorActive && Targets.CursorId != 0 &&
-            targetId != 0 && targetId != Targets.CursorId)
+        bool idKnown = Targets.CursorActive && Targets.CursorId != 0;
+        if (idKnown && targetId != 0 && targetId != Targets.CursorId)
             return;
+
+        // The replaced cursor's echo may also carry cursorID 0 (ClassicUO
+        // zeroes its stored id right after a server-side cancel), which the
+        // id match cannot attribute. Swallow ONE id-less cancel inside the
+        // replacement window; a real ESC always echoes the matching id.
+        if (idKnown && targetId == 0 &&
+            Environment.TickCount64 < Targets.StaleCancelEchoUntil &&
+            IsTargetCancelled(serial, x, y, z, graphic))
+        {
+            Targets.StaleCancelEchoUntil = 0;
+            return;
+        }
 
         Targets.CursorActive = false;
         if (_character.IsDead)
@@ -782,7 +794,8 @@ public sealed class ClientTargetingHandler
     /// <summary>Set a callback-based target cursor. Used by housing, pets, etc.</summary>
     internal void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1)
     {
-        if (Targets.CursorActive)
+        bool replacedOpenCursor = Targets.CursorActive;
+        if (replacedOpenCursor)
         {
             int replacedSkill = Targets.SkillCancelId;
             _netState.Send(new PacketTarget(0x00, 0x00000000, flags: 3));
@@ -796,6 +809,8 @@ public sealed class ClientTargetingHandler
         Targets.CursorActive = true;
         uint cursorId = (uint)Random.Shared.Next(1, int.MaxValue);
         Targets.CursorId = cursorId;
+        if (replacedOpenCursor)
+            Targets.StaleCancelEchoUntil = Environment.TickCount64 + 2000;
         _netState.Send(new PacketTarget(cursorType, cursorId));
     }
 

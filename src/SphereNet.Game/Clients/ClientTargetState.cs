@@ -23,6 +23,13 @@ public sealed class ClientTargetState
     /// (requests armed without an id, e.g. legacy paths).</summary>
     public uint CursorId;
 
+    /// <summary>TickCount64 deadline of the replaced-cursor echo window: when a
+    /// new request replaces an open cursor, the client's cancel-echo for the
+    /// old one may carry cursorID 0 (ClassicUO zeroes its stored id after a
+    /// server cancel), which the id match alone cannot attribute. One id-less
+    /// cancel arriving before this deadline is swallowed.</summary>
+    public long StaleCancelEchoUntil;
+
     // Script-driven targeting (TARGET/TARGETF function + args, ground rules).
     public string? Function;
     public string FunctionArgs = "";
@@ -78,6 +85,7 @@ public sealed class ClientTargetState
     public void Clear()
     {
         CursorId = 0;
+        StaleCancelEchoUntil = 0;
         Tele = false;
         AddToken = null;
         AddAmount = 1;

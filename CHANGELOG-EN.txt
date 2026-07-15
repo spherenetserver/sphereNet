@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-15] - Target cursor session guard (first cast mis-target fix)
+----------------------------------------
+
+FIXED - Casting while another target cursor was still open fired instantly at
+        self/the previous target instead of showing the spell cursor: replacing
+        an open cursor sends the client a cancel, and the client's cancel-echo
+        for the OLD cursor raced the newly armed spell target, consuming or
+        cancelling it. Target responses now echo-match the 0x6C request id —
+        a response carrying a replaced cursor's id is ignored. The second cast
+        always worked because no stale cursor existed by then.
+
+[2026-07-15] - Script engine: assignments inside IF/DORAND/DOSWITCH were dropped
+----------------------------------------
+
+FIXED - LOCAL.x= / ARGN / ARGS / REFn= / REFn.prop= / FLOAT.x= assignment lines
+        were only handled by the top-level interpreter loop; the IF, DORAND and
+        DOSWITCH block executors dispatched their body lines straight to the
+        generic verb path, so every such assignment INSIDE an IF block silently
+        vanished. Field symptom: F_RESTYPES_SETUP set LOCAL.TABLENAME inside
+        IF (<LDB.CONNECTED>) — the CREATE TABLE targeted an empty name, every
+        later restypes query failed, and "<EVAL <SERV.RTICKS>-<LOCAL.HOUR>>"
+        printed the whole epoch. The handlers are now shared with all block
+        executors (regression probe: ScriptLocalScopeProbe).
+
 [2026-07-15] - Character roster snapshot for follower scans
 ----------------------------------------
 

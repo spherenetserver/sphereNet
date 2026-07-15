@@ -92,6 +92,17 @@ public sealed class ClientTargetingHandler
     public void HandleTargetResponse(byte type, uint targetId, uint serial, short x, short y, sbyte z, ushort graphic)
     {
         if (_character == null) return;
+
+        // Cursor session guard: when a new target request replaces an open
+        // cursor, the client's cancel-echo for the OLD cursor arrives AFTER
+        // the new one is armed. Without matching the echoed request id, that
+        // stale echo cancelled the fresh target — the "first cast never shows
+        // a cursor / fires at the wrong thing" report. Ignore any response
+        // carrying a different (non-zero) id than the active request.
+        if (Targets.CursorActive && Targets.CursorId != 0 &&
+            targetId != 0 && targetId != Targets.CursorId)
+            return;
+
         Targets.CursorActive = false;
         if (_character.IsDead)
         {
@@ -783,7 +794,9 @@ public sealed class ClientTargetingHandler
         ClearPendingTargetState();
         Targets.Callback = callback;
         Targets.CursorActive = true;
-        _netState.Send(new PacketTarget(cursorType, (uint)Random.Shared.Next(1, int.MaxValue)));
+        uint cursorId = (uint)Random.Shared.Next(1, int.MaxValue);
+        Targets.CursorId = cursorId;
+        _netState.Send(new PacketTarget(cursorType, cursorId));
     }
 
     // ==================== Information Skills ====================

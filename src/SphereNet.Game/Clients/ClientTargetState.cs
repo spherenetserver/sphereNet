@@ -16,6 +16,13 @@ public sealed class ClientTargetState
     /// <summary>True while a target cursor is open on the client.</summary>
     public bool CursorActive;
 
+    /// <summary>Cursor session id sent in the 0x6C request. A response whose
+    /// echoed id doesn't match belongs to a REPLACED cursor (the client's
+    /// cancel-echo for the old one races the newly armed target) and must be
+    /// ignored instead of cancelling/consuming the new target. 0 = no check
+    /// (requests armed without an id, e.g. legacy paths).</summary>
+    public uint CursorId;
+
     // Script-driven targeting (TARGET/TARGETF function + args, ground rules).
     public string? Function;
     public string FunctionArgs = "";
@@ -70,6 +77,7 @@ public sealed class ClientTargetState
     /// the skill id associated with the cursor.</summary>
     public void Clear()
     {
+        CursorId = 0;
         Tele = false;
         AddToken = null;
         AddAmount = 1;

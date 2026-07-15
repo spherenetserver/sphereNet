@@ -3,6 +3,31 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-15] - Hedef imleci oturum korumasi (ilk cast yanlis-hedef duzeltmesi)
+----------------------------------------
+
+DUZELTILDI - Baska bir hedef imleci hala acikken buyu yapmak, buyu imlecini
+        gostermek yerine aninda kendine/onceki hedefe atiyordu: acik imleci
+        degistirmek client'a iptal yollar ve client'in ESKI imlec icin
+        gonderdigi iptal-yankisi, yeni kurulan buyu hedefiyle yarisip onu
+        tuketiyor/iptal ediyordu. Hedef yanitlari artik 0x6C istek kimligiyle
+        eslestirilir — degistirilen imlecin kimligini tasiyan yanit yok
+        sayilir. Ikinci cast'in hep calismasinin nedeni o anda bayat imlec
+        kalmamasiydi.
+
+[2026-07-15] - Script motoru: IF/DORAND/DOSWITCH icindeki atamalar dusuyordu
+----------------------------------------
+
+DUZELTILDI - LOCAL.x= / ARGN / ARGS / REFn= / REFn.prop= / FLOAT.x= atama
+        satirlarini yalniz ust-duzey yorumlayici dongusu isliyordu; IF, DORAND
+        ve DOSWITCH blok yurutuculeri govde satirlarini dogrudan genel verb
+        yoluna verdiginden IF blogu ICINDEKI her boyle atama sessizce yok
+        oluyordu. Saha belirtisi: F_RESTYPES_SETUP, LOCAL.TABLENAME'i
+        IF (<LDB.CONNECTED>) icinde set ediyordu — CREATE TABLE bos ada gitti,
+        sonraki tum restypes sorgulari patladi ve "<EVAL <SERV.RTICKS>-
+        <LOCAL.HOUR>>" tum epoch'u yazdirdi. Isleyiciler artik tum blok
+        yurutuculerle ortak (regresyon probu: ScriptLocalScopeProbe).
+
 [2026-07-15] - Follower taramalari icin karakter listesi anlik goruntusu
 ----------------------------------------
 

@@ -164,6 +164,42 @@ public class NpcDoorOpeningTests
     }
 
     [Fact]
+    public void MapStaticDoor_Sweeper_EmitsCloseOpWithDoorDirArt()
+    {
+        // End-to-end sweep contract: an expired open door produces exactly the
+        // close op the manual toggle would broadcast — same synthetic serial,
+        // closed art derived via the GetDoorDir slot (a static baked as the
+        // OPEN leaf must close to tile-1, not re-broadcast its own open art).
+        var world = CreateWorld();
+        var map = new SphereNet.MapData.MapDataManager("");
+        map.AddSyntheticMap(0, 128, 128);
+        // 0x06A6 = wooden door slot 0 OPEN leaf (0x06A5 closed); mark as Door.
+        map.AddSyntheticStatic(0, 50, 60, 0x06A6, 5);
+        map.SetSyntheticItemTile(0x06A6, new SphereNet.MapData.Tiles.ItemTileData
+        {
+            Flags = SphereNet.MapData.Tiles.TileFlag.Door
+        });
+        world.MapData = map;
+
+        long now = System.Environment.TickCount64;
+        world.SetMapStaticDoorOpen(0, 50, 60, 5, true, now - 1);
+
+        var ops = new System.Collections.Generic.List<SphereNet.Game.World.StaticDoorClose>();
+        var scratch = new System.Collections.Generic.List<(byte, short, short, sbyte)>();
+        int closed = SphereNet.Game.World.StaticDoorSweeper.CollectExpired(
+            world, map, now, ops, scratch, out int dropped);
+
+        Assert.Equal(1, closed);
+        Assert.Equal(0, dropped);
+        var op = Assert.Single(ops);
+        Assert.Equal(0x06A5, op.ClosedArt); // open leaf closes to tile-1
+        Assert.False(world.IsMapStaticDoorOpen(0, 50, 60, 5));
+        uint expectedSerial = (uint)(Serial.ItemFlag |
+            (uint)((50 & 0x7FFF) << 16) | (uint)((60 & 0x3FFF) << 3) | (uint)(5 & 0x07));
+        Assert.Equal(expectedSerial, op.Serial);
+    }
+
+    [Fact]
     public void MapStaticDoor_ExplicitExpiry_ControlsAutoClose()
     {
         var world = CreateWorld();

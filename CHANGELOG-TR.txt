@@ -3,6 +3,20 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-15] - Statik kapi otomatik kapanma: acik-yaprak art duzeltmesi + saha tanisi
+----------------------------------------
+
+DUZELTILDI - .mul statigi ACIK yaprak olarak basilmis bir harita kapisi,
+        otomatik kapanista kendi (acik) art'ini yeniden yayinliyordu — gorsel
+        olarak hic kapanmiyordu. Sweep artik kapali art'i manuel toggle'in
+        kullandigi GetDoorDir slot hesabiyla turetir (acik yaprak → tile-1).
+        Sweep mantigi StaticDoorSweeper'a cikarildi (uctan uca birim testli).
+
+EKLENDI - [static_door] log satirlari: acilis/manuel kapanis ve her otomatik
+        kapanma gecisi (statigi bulunamayanlarin sayaciyla). ~21sn icinde
+        otomatik kapanis gelmeyen bir "opened" olu sweep'i; kapi hala acik
+        gorunurken loglanan bir auto-close bayat client hayaletini isaret eder.
+
 [2026-07-15] - Uyduruk-deger denetimi, dalga 5: craft kalitesi, Blood Oath, firlatma
 ----------------------------------------
 

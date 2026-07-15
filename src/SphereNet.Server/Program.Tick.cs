@@ -886,40 +886,25 @@ public static partial class Program
         if (md == null)
             return;
 
-        _expiredStaticDoorBuffer.Clear();
-        _world.CollectExpiredStaticDoors(now, _expiredStaticDoorBuffer);
-        if (_expiredStaticDoorBuffer.Count == 0)
+        int closed = SphereNet.Game.World.StaticDoorSweeper.CollectExpired(
+            _world, md, now, _staticDoorCloseBuffer, _expiredStaticDoorBuffer,
+            out int dropped);
+        if (closed == 0 && dropped == 0)
             return;
 
-        foreach (var (map, x, y, z) in _expiredStaticDoorBuffer)
+        foreach (var op in _staticDoorCloseBuffer)
         {
-            _world.SetMapStaticDoorOpen(map, x, y, z, false);
-
-            // Re-derive the closed art / hue from the underlying .mul static
-            // (the static's own tile IS the closed leaf; open = +1), matching
-            // SyncOpenMapStaticDoors and the manual toggle-close.
-            ushort closedArt = 0, hue = 0;
-            foreach (var s in md.GetStatics(map, x, y))
-            {
-                if (s.Z == z && SphereNet.Game.World.DoorHelper.IsDoorGraphic(md, s.TileId))
-                {
-                    closedArt = s.TileId;
-                    hue = s.Hue;
-                    break;
-                }
-            }
-            if (closedArt == 0)
-                continue;
-
-            uint serial = (uint)(SphereNet.Core.Types.Serial.ItemFlag |
-                (uint)((x & 0x7FFF) << 16) |
-                (uint)((y & 0x3FFF) << 3) |
-                (uint)(z & 0x07));
-
-            var pos = new Point3D(x, y, z, map);
-            BroadcastNearby(pos, 18, new PacketSound(0x00F1, x, y, z), 0);
-            BroadcastNearby(pos, 18, new PacketWorldItem(serial, closedArt, 1, x, y, z, hue), 0);
+            var pos = new Point3D(op.X, op.Y, op.Z, op.Map);
+            BroadcastNearby(pos, 18, new PacketSound(0x00F1, op.X, op.Y, op.Z), 0);
+            BroadcastNearby(pos, 18,
+                new PacketWorldItem(op.Serial, op.ClosedArt, 1, op.X, op.Y, op.Z, op.Hue), 0);
         }
+
+        // Field diagnostic: a door that visually stays open while this line
+        // reports the close means the CLIENT-side ghost is the problem, not
+        // the server sweep.
+        _log.LogInformation("[static_door] auto-closed {Closed} door(s){Dropped}",
+            closed, dropped > 0 ? $", dropped {dropped} with no matching static" : "");
     }
 
     private static void RunPostTickMaintenance()

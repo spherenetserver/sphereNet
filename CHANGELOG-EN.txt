@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-15] - Static-door auto-close: open-leaf art fix + field diagnostics
+----------------------------------------
+
+FIXED - A map-static door whose .mul static is baked as the OPEN leaf
+        auto-closed by re-broadcasting its own (open) art — visually never
+        closing. The sweep now derives the closed art through the same
+        GetDoorDir slot math the manual toggle uses (open leaf → tile-1).
+        Sweep logic extracted to StaticDoorSweeper (unit-tested end to end).
+
+ADDED - [static_door] log lines on open/manual close and on every auto-close
+        sweep pass (with a dropped-no-static counter): an "opened" with no
+        auto-close within ~21s pinpoints a dead sweep; an auto-close logged
+        while the door still looks open pinpoints a stale client ghost.
+
 [2026-07-15] - Invented-values audit, wave 5: craft quality, Blood Oath, throwing
 ----------------------------------------
 

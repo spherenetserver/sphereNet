@@ -1712,6 +1712,13 @@ public sealed class ClientWorldFeaturesHandler
         }
         _world.SetMapStaticDoorOpen(_character.MapIndex, x, y, z, opening);
 
+        // Field diagnostic pair of the sweep's "[static_door] auto-closed" line:
+        // an "opened" with no matching close within ~21s means the sweep is not
+        // running; a close with the door still visually open means the client
+        // ghost is the problem.
+        _client.Log.LogInformation("[static_door] {Action} at {X},{Y},{Z} map {Map} (tile 0x{Tile:X4})",
+            opening ? "opened" : "manually closed", x, y, z, _character.MapIndex, tileId);
+
         uint serial = clientSerial != 0
             ? clientSerial
             : (uint)(Serial.ItemFlag | (uint)((x & 0x7FFF) << 16) | (uint)((y & 0x3FFF) << 3) | (uint)(z & 0x07));

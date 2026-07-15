@@ -156,6 +156,7 @@ public static partial class Program
     private static readonly List<SphereNet.Game.Objects.Items.Item> _decayCatchupBuffer = [];
     private static long _nextDecayCatchupTick;
     private static readonly List<(byte Map, short X, short Y, sbyte Z)> _expiredStaticDoorBuffer = [];
+    private static readonly List<SphereNet.Game.World.StaticDoorClose> _staticDoorCloseBuffer = [];
     private static long _nextStaticDoorTick;
     private static long _telemetrySnapshotUs;
     private static long _telemetryComputeUs;

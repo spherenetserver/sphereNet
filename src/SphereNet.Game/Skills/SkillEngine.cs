@@ -99,13 +99,25 @@ public static class SkillEngine
         return tenths <= 0 ? 0 : (int)Math.Min(int.MaxValue, (long)tenths * 100L);
     }
 
-    /// <summary>Interval between @SkillStroke firings during a delayed skill.</summary>
+    /// <summary>Interval between @SkillStroke firings during a delayed skill.
+    /// Source-X Skill_Stroke re-arms with the FULL skill DELAY between strokes
+    /// (SetTimeout(delay), CCharSkill.cpp:3649) — the old /5 subdivision
+    /// animated gathering five times per swing.</summary>
     public static int GetSkillStrokeIntervalMs(SkillType skill, int skillValue = 0)
     {
-        int delay = GetSkillDelayMs(skill, skillValue);
-        if (delay <= 0) return 0;
-        return Math.Clamp(delay / 5, 500, 2000);
+        return GetSkillDelayMs(skill, skillValue);
     }
+
+    /// <summary>Stroke count a delayed skill runs before completing — Source-X
+    /// rolls it at SKTRIG_START: fishing 1-2 (CCharSkill.cpp:1568), mining and
+    /// lumberjacking 2-6 (:1463/:1667). Other delayed skills complete after a
+    /// single DELAY period.</summary>
+    public static int RollStrokeCount(SkillType skill) => skill switch
+    {
+        SkillType.Fishing => Random.Shared.Next(2) + 1,
+        SkillType.Mining or SkillType.Lumberjacking => Random.Shared.Next(5) + 2,
+        _ => 1,
+    };
 
     /// <summary>
     /// Check if a skill use succeeds. Maps to Skill_CheckSuccess.
@@ -209,9 +221,9 @@ public static class SkillEngine
     public static void GainExperience(Character ch, SkillType skill, int difficulty)
     {
         if (ch.IsDead) return;
-        // GMs auto-succeed every check (see CheckSuccess); they must not also
-        // accrue skill/stat gains from that free success.
-        if (ch.PrivLevel >= PrivLevel.GM) return;
+        // No priv gate here: Source-X Skill_Experience (CCharSkill.cpp:363)
+        // awards gains to GMs too — PRIV_GM only forces the success roll in
+        // Skill_CheckSuccess (:526), it does not suppress experience.
         if (!IsValidBaseSkill(skill))
             return;
 
@@ -220,8 +232,10 @@ public static class SkillEngine
         if (gainRegion != null && gainRegion.IsFlag(RegionFlag.Safe))
             return;
 
-        // Scale and clamp difficulty
-        int iDiff = (int)Math.Clamp(Math.Abs((long)difficulty) * 10L, 1L, 1000L);
+        // Scale and clamp difficulty. Source-X keeps the sign: a failed use
+        // arrives negative and clamps to 1 (CCharSkill.cpp:381-385), so fails
+        // still earn the minimum credit instead of Abs()'d full credit.
+        int iDiff = (int)Math.Clamp((long)difficulty * 10L, 1L, 1000L);
 
         int currentSkill = ch.GetSkill(skill);
         int skillMax = GetSkillMax(ch, skill);

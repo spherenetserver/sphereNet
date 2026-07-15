@@ -48,6 +48,35 @@ public class SkillDelayTests
     }
 
     [Fact]
+    public void StrokeInterval_IsFullSkillDelayPerSourceX()
+    {
+        // Source-X Skill_Stroke re-arms with the full DELAY curve value
+        // (CCharSkill.cpp:3649 SetTimeout(delay)), not a subdivision of it.
+        LoadDefinitions("""
+            [SKILL 18]
+            DELAY=80
+            """);
+
+        Assert.Equal(8_000, SkillEngine.GetSkillStrokeIntervalMs(SkillType.Fishing));
+        Assert.Equal(SkillEngine.GetSkillDelayMs(SkillType.Fishing),
+            SkillEngine.GetSkillStrokeIntervalMs(SkillType.Fishing));
+    }
+
+    [Fact]
+    public void RollStrokeCount_MatchesSourceXRanges()
+    {
+        // CCharSkill.cpp — fishing rand(2)+1 (:1568), mining/lumberjack
+        // rand(5)+2 (:1463/:1667); non-gather skills get a single period.
+        for (int i = 0; i < 200; i++)
+        {
+            Assert.InRange(SkillEngine.RollStrokeCount(SkillType.Fishing), 1, 2);
+            Assert.InRange(SkillEngine.RollStrokeCount(SkillType.Mining), 2, 6);
+            Assert.InRange(SkillEngine.RollStrokeCount(SkillType.Lumberjacking), 2, 6);
+            Assert.Equal(1, SkillEngine.RollStrokeCount(SkillType.Hiding));
+        }
+    }
+
+    [Fact]
     public void DelayedActiveSkill_FiresStrokeBeforeSuccessInSourceXOrder()
     {
         LoadDefinitions("""

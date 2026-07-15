@@ -342,6 +342,19 @@ public sealed class ClientSkillsHandler
             if (animId != 0)
                 BroadcastNearby?.Invoke(_character.Position, 18,
                     new PacketAnimation(_character.Uid.Value, animId), 0);
+
+            if ((SkillType)skillId == SkillType.Fishing &&
+                _character.TryGetSkillPendingPoint(out Point3D splashAt))
+            {
+                // Source-X Skill_Stroke: each fishing stroke drops an
+                // ITEMID_FX_SPLASH water-wash item that decays after 1s at
+                // the cast point (CCharSkill.cpp:3620-3628).
+                var splash = _world.CreateItem();
+                splash.BaseId = 0x352d;
+                splash.ItemType = ItemType.WaterWash;
+                splash.SetAttr(ObjAttributes.Move_Never | ObjAttributes.Decay);
+                _world.PlaceItemWithDecay(splash, splashAt, 1000);
+            }
         }
     }
 
@@ -372,11 +385,18 @@ public sealed class ClientSkillsHandler
         int delayMs = SkillEngine.GetSkillDelayMs(skill, _character.GetSkill(skill));
         if (delayMs <= 0) return false;
 
+        // Source-X: gather skills run strokeCount × DELAY — one animation+sound
+        // per stroke, DELAY apart (fishing 1-2 strokes, mining/lumberjack 2-6;
+        // CCharSkill.cpp:1463/1568/1667, Skill_Stroke re-arms with the full
+        // delay). Other delayed skills time out once with no repeated strokes
+        // (Skill_Stage routes SKTRIG_STROKE only for SKF_CRAFT/SKF_GATHER).
+        bool isGather = SkillEngine.HasFlag(skill, SkillFlag.Gather);
+        int strokes = isGather ? SkillEngine.RollStrokeCount(skill) : 1;
         long now = Environment.TickCount64;
         _character.BeginSkillPending(
             skillId,
-            now + delayMs,
-            now + SkillEngine.GetSkillStrokeIntervalMs(skill, _character.GetSkill(skill)),
+            now + (long)delayMs * strokes,
+            isGather ? now + delayMs : long.MaxValue,
             targetUid,
             point,
             isInfo);

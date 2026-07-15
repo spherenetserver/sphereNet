@@ -3,6 +3,50 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-16] - Toplama becerisi vurus zamanlamasi, GM skill gain, buyu-hafiza detayi, NPC loot
+----------------------------------------
+
+EKLENDI - slow_tick raporlari npc_apply'i artik commit/purge/dirty alt
+        fazlarina boler (karar ve kirli-nesne sayilariyla); sahadaki
+        46-157ms npc_apply sivri uclari tahmin yerine olcumle
+        adreslenebilir.
+
+DUZELTILDI - Spawner NPC'leri bos cantayla dogup hic loot dusurmuyordu:
+        pack canavar esyasini ve canta lootunu ON=@NPCRestock bloklarinda
+        bildirir (~192 chardef), ama trigger yalniz vendor-brain NPC'lerde
+        atesleniyordu. Source-X NPC_LoadScript @NPCRestock'u HER yeni NPC
+        icin ateslar (CCharNPC.cpp:289-290); artik hem spawner hook'u hem
+        .add hatti ayni seyi yapar. ITEM/ITEMNEWBIE trigger verb'leri (ve
+        ust-duzey chardef key yolu) ITEMNEWBIE item'lara artik ATTR_NEWBIE
+        basar: giyili esya olumde sahibinde kalir, duz ITEM lootu cesede
+        duser.
+
+DUZELTILDI - Fishing/mining/lumberjacking 2-6 kat hizli bitiyor ve bir dizi
+        kozmetik animasyon oynatiyordu: skill DELAY egrisi TOPLAM sure
+        sanilmis, vuruslar DELAY/5 arayla (0.5-2s kirpilmis) oynatiliyordu.
+        Source-X vurusSayisi x DELAY calistirir — vurus sayisi skill
+        baslarken atilir (fishing 1-2, mining/lumberjacking 2-6), her vurus
+        tam DELAY arayla tek animasyon+ses (Skill_Stroke SetTimeout(delay)
+        ile yeniden kurulur). Toplama-disi gecikmeli skiller artik hic vurus
+        tekrarlamaz (Source-X SKTRIG_STROKE'u yalniz CRAFT/GATHER'a
+        yonlendirir). Her fishing vurusu artik hedef noktaya 1 sn'lik su
+        siçramasi FX item'i birakir; tamamlanma son vurusla ayni anda gelir,
+        boylece denemenin bittigi nettir.
+
+DUZELTILDI - GM seviyeli karakterlerde skill gain hic gelmiyordu ("anatomy
+        kasilmiyor" raporu): GainExperience'ta uydurma bir PrivLevel>=GM
+        erken cikisi vardi. Source-X Skill_Experience'ta priv kapisi yok —
+        PRIV_GM yalnizca Skill_CheckSuccess'te basariyi zorlar. Ayrica
+        basarisiz kullanim kredisi esitlendi: fail negatif difficulty ile
+        gelir ve minimum 1'e kirpilir (biz Abs() ile tam kredi verip
+        GAINRADIUS kapisini yanlis geciyorduk).
+
+DUZELTILDI - Buyu-efekt hafiza item'ina (.edit'te gorunen Night Sight rune
+        gibi) cift tiklamak "Object not found" diyordu: ayna item yalniz
+        ch.Memories'te yasar, dunya UID'si yoktur; edit menusu onu
+        FindObject(0) aramasina dusuruyordu. Secim artik hafiza okuma
+        dalina gider ve buyu id, guc ve caster bilgisini yazar.
+
 [2026-07-16] - GM gecis hareketi zemini takip eder
 ----------------------------------------
 

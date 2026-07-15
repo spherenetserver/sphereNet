@@ -462,6 +462,15 @@ public sealed partial class GameClient
                     $"Memory: {targetName} [{item.GetMemoryTypes()}]"));
                 mems.Add(item);
             }
+            else if (!item.Uid.IsValid)
+            {
+                // Spell-effect mirrors (CreateSpellEffect) live only in
+                // ch.Memories with no world UID — route them through the
+                // memory readout branch or the pick falls into
+                // FindObject(0) and reports "Object not found".
+                entries.Add(new MenuItemEntry(item.BaseId, hue, item.Name));
+                mems.Add(item);
+            }
             else
             {
                 ushort rawHue = item.Hue;
@@ -498,6 +507,14 @@ public sealed partial class GameClient
             if (mem != null)
             {
                 var targetName = mem.Link.IsValid ? (_world.FindObject(mem.Link)?.Name ?? "?") : "?";
+                if (mem.ItemType == Core.Enums.ItemType.Spell)
+                {
+                    // Spell-effect mirror: MOREX = spell id, MOREY = effect
+                    // strength, LINK = caster (CharacterMemoryState.CreateSpellEffect).
+                    SysMessage($"[Spell effect] {mem.Name}");
+                    SysMessage($"  Spell={mem.MoreP.X} Strength={mem.MoreP.Y} Caster=0x{mem.Link.Value:X8} ({targetName})");
+                    return;
+                }
                 SysMessage($"[Memory] Link=0x{mem.Link.Value:X8} ({targetName})");
                 SysMessage($"  Types={mem.GetMemoryTypes()} Pos={mem.MoreP}");
                 return;
@@ -1611,11 +1628,12 @@ public sealed partial class GameClient
         if (npc.NpcBrain == NpcBrainType.None)
             npc.NpcBrain = NpcBrainType.Animal;
 
-        if (npc.NpcBrain == NpcBrainType.Vendor)
-        {
-            _triggerDispatcher?.FireCharTrigger(npc, CharTrigger.NPCRestock,
-                new TriggerArgs { CharSrc = npc });
-        }
+        // Source-X NPC_LoadScript fires @NPCRestock for EVERY freshly created
+        // NPC (CCharNPC.cpp:289-290), not just vendors — monster packs declare
+        // their gear (ITEMNEWBIE) and backpack loot (ITEM) in ON=@NPCRestock
+        // blocks, so a vendor-only gate left all monster backpacks empty.
+        _triggerDispatcher?.FireCharTrigger(npc, CharTrigger.NPCRestock,
+            new TriggerArgs { CharSrc = npc });
     }
 
     private ushort ResolveCharBodyId(CharDef charDef, ushort fallbackBaseId)
@@ -1701,6 +1719,12 @@ public sealed partial class GameClient
             // %plural/singular% markers per Amount on every read.
             if (itemDef != null && !string.IsNullOrWhiteSpace(itemDef.Name))
                 item.Name = itemDef.Name;
+
+            // ITEMNEWBIE = Source-X ATTR_NEWBIE: stays with the owner on
+            // death (DeathEngine.StaysWithOwnerOnDeath) instead of dropping
+            // to the corpse like plain ITEM= loot.
+            if (entry.Newbie)
+                item.SetAttr(ObjAttributes.Newbie);
 
             // Amount: explicit wins; else dice roll; else leave default (1).
             int amount = entry.Amount;

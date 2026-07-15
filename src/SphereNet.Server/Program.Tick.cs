@@ -362,7 +362,7 @@ public static partial class Program
                 _slowTickCount++;
                 _lastSlowTickDominantPhase = GetDominantTickPhase();
                 _log.LogWarning(
-                    "[slow_tick] mode={Mode} tick={Tick} total={TotalMs}ms dominant={DominantPhase} snapshot={SnapshotMs}ms compute={ComputeMs}ms (npc_build={NpcBuildMs}ms client_state={ClientStateMs}ms npc_apply={NpcApplyMs}ms view_build={ViewBuildMs}ms) apply={ApplyMs}ms flush={FlushMs}ms",
+                    "[slow_tick] mode={Mode} tick={Tick} total={TotalMs}ms dominant={DominantPhase} snapshot={SnapshotMs}ms compute={ComputeMs}ms (npc_build={NpcBuildMs}ms client_state={ClientStateMs}ms npc_apply={NpcApplyMs}ms [commit={NpcApplyCommitMs}ms/{DecisionCount} purge={NpcApplyPurgeMs}ms dirty={NpcApplyDirtyMs}ms/{DirtyCount}] view_build={ViewBuildMs}ms) apply={ApplyMs}ms flush={FlushMs}ms",
                     _multicoreRuntimeEnabled ? "multicore" : "single",
                     _tickCounter,
                     (totalUs / 1000.0).ToString("F1"),
@@ -372,6 +372,11 @@ public static partial class Program
                     (_telemetryNpcBuildUs / 1000.0).ToString("F1"),
                     (_telemetryClientStateUs / 1000.0).ToString("F1"),
                     (_telemetryNpcApplyUs / 1000.0).ToString("F1"),
+                    (_telemetryNpcApplyDecisionsUs / 1000.0).ToString("F1"),
+                    _telemetryNpcApplyDecisionCount,
+                    (_telemetryNpcApplyPurgeUs / 1000.0).ToString("F1"),
+                    (_telemetryNpcApplyDirtyUs / 1000.0).ToString("F1"),
+                    _telemetryNpcApplyDirtyCount,
                     (_telemetryViewBuildUs / 1000.0).ToString("F1"),
                     (_telemetryApplyUs / 1000.0).ToString("F1"),
                     (_telemetryFlushUs / 1000.0).ToString("F1"));
@@ -531,6 +536,11 @@ public static partial class Program
         _telemetryNpcBuildUs = 0;
         _telemetryClientStateUs = 0;
         _telemetryNpcApplyUs = 0;
+        _telemetryNpcApplyDecisionsUs = 0;
+        _telemetryNpcApplyPurgeUs = 0;
+        _telemetryNpcApplyDirtyUs = 0;
+        _telemetryNpcApplyDecisionCount = 0;
+        _telemetryNpcApplyDirtyCount = 0;
         _telemetryViewBuildUs = 0;
 
         long p1 = Stopwatch.GetTimestamp();
@@ -674,11 +684,19 @@ public static partial class Program
         // which immediately notifies nearby clients via OnCharacterMoved.
         foreach (var decision in decisionList)
             _npcAI.ApplyDecision(decision);
+        long p1cApply = Stopwatch.GetTimestamp();
+        _telemetryNpcApplyDecisionsUs = ToMicroseconds(p1cApply - p1c);
+        _telemetryNpcApplyDecisionCount = decisionList.Count;
+
         _npcAI.PurgeStalePaths();
+        long p1cPurge = Stopwatch.GetTimestamp();
+        _telemetryNpcApplyPurgeUs = ToMicroseconds(p1cPurge - p1cApply);
 
         // Mark clients near dirty objects for refresh
         var dirtyObjects = _world.HasDirty ? _world.DrainDirtyObjectsSnapshot() : [];
         MarkClientsNearDirtyObjects(dirtyObjects);
+        _telemetryNpcApplyDirtyUs = ToMicroseconds(Stopwatch.GetTimestamp() - p1cPurge);
+        _telemetryNpcApplyDirtyCount = dirtyObjects.Count;
         _telemetryNpcApplyUs = ToMicroseconds(Stopwatch.GetTimestamp() - p1c);
 
         // View delta: only for clients flagged ViewNeedsRefresh (moved or

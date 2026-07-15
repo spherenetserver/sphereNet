@@ -4,6 +4,50 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-16] - Gather-skill stroke timing, skill gain for GMs, spell-memory info, NPC loot
+----------------------------------------
+
+ADDED - slow_tick reports now break npc_apply into commit/purge/dirty
+        sub-phases with decision and dirty-object counts, so the field
+        46-157ms npc_apply spikes can be attributed (decision commit vs
+        path purge vs dirty-view marking) instead of guessed at.
+
+FIXED - Spawner NPCs came up with empty backpacks and dropped no loot: the
+        pack declares monster gear and backpack loot in ON=@NPCRestock
+        blocks (~192 chardefs), but the trigger only fired for vendor-brain
+        NPCs. Source-X NPC_LoadScript fires @NPCRestock for EVERY freshly
+        created NPC (CCharNPC.cpp:289-290); both the spawner hook and the
+        .add pipeline now do the same. The ITEM/ITEMNEWBIE trigger verbs
+        (and the top-level chardef key path) now also stamp ATTR_NEWBIE on
+        ITEMNEWBIE items so worn gear stays with the owner on death while
+        plain ITEM loot drops to the corpse.
+
+FIXED - Fishing/mining/lumberjacking finished 2-6x too fast with a burst of
+        cosmetic animations: the skill DELAY curve was treated as the TOTAL
+        duration and strokes were animated every DELAY/5 (clamped 0.5-2s).
+        Source-X runs strokeCount x DELAY — the stroke count is rolled at
+        skill start (fishing 1-2, mining/lumberjacking 2-6) and each stroke
+        is one animation+sound a full DELAY apart (Skill_Stroke re-arms with
+        SetTimeout(delay)). Non-gather delayed skills no longer repeat
+        strokes at all (Source-X routes SKTRIG_STROKE only for CRAFT/GATHER
+        skills). Each fishing stroke now also drops the 1s water-splash FX
+        item at the cast point, and completion lands together with the final
+        stroke so the end of the attempt is unambiguous.
+
+FIXED - Skill gain never happened for GM-level characters (reported as
+        "anatomy won't gain"): GainExperience had an invented PrivLevel>=GM
+        early-out. Source-X Skill_Experience has no priv gate — PRIV_GM only
+        forces the success roll in Skill_CheckSuccess. Also matched the
+        failed-use credit: a fail arrives as negative difficulty and clamps
+        to the minimum 1 (we used to Abs() it to full credit, wrongly
+        passing the GAINRADIUS gate on failures).
+
+FIXED - Double-clicking a spell-effect memory (e.g. the Night Sight rune
+        shown by .edit) answered "Object not found": the mirror item lives
+        only in ch.Memories with no world UID, and the edit menu routed it
+        into a FindObject(0) lookup. The pick now lands in the memory
+        readout branch and prints the spell id, strength and caster.
+
 [2026-07-16] - GM pass-through movement follows the ground
 ----------------------------------------
 

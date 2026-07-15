@@ -628,12 +628,13 @@ public static partial class Program
                     if (npc.NpcBrain == SphereNet.Core.Enums.NpcBrainType.None)
                         npc.NpcBrain = SphereNet.Core.Enums.NpcBrainType.Animal;
 
-                    if (npc.NpcBrain == SphereNet.Core.Enums.NpcBrainType.Vendor)
-                    {
-                        _triggerDispatcher?.FireCharTrigger(
-                            npc, SphereNet.Core.Enums.CharTrigger.NPCRestock,
-                            new SphereNet.Game.Scripting.TriggerArgs { CharSrc = npc });
-                    }
+                    // Source-X NPC_LoadScript fires @NPCRestock for EVERY new
+                    // NPC (CCharNPC.cpp:289-290) — monster chardefs put gear
+                    // (ITEMNEWBIE) and backpack loot (ITEM) in ON=@NPCRestock,
+                    // so the old vendor-only gate spawned empty monsters.
+                    _triggerDispatcher?.FireCharTrigger(
+                        npc, SphereNet.Core.Enums.CharTrigger.NPCRestock,
+                        new SphereNet.Game.Scripting.TriggerArgs { CharSrc = npc });
 
                     _triggerDispatcher?.FireCharTrigger(
                         npc, SphereNet.Core.Enums.CharTrigger.CreateLoot,

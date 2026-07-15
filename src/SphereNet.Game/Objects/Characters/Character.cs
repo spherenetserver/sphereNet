@@ -4738,7 +4738,8 @@ public partial class Character : ObjBase
                 if (parts.Length >= 2 && int.TryParse(parts[1], out int a) && a > 0)
                     amount = a;
                 string? dice = parts.Length >= 3 ? parts[2] : null;
-                SpawnAndEquipItem(name, amount, dice);
+                SpawnAndEquipItem(name, amount, dice,
+                    newbie: key.Equals("ITEMNEWBIE", StringComparison.OrdinalIgnoreCase));
                 return true;
             }
             case "COLOR":
@@ -5979,7 +5980,7 @@ public partial class Character : ObjBase
     /// its natural layer (falls back to the backpack). Resolves
     /// random_* defname pools via TemplateEngine.PickRandomItemDefName
     /// so @Create ITEM=random_shirts_human lands as a concrete shirt.</summary>
-    private void SpawnAndEquipItem(string defname, int amount, string? dice)
+    private void SpawnAndEquipItem(string defname, int amount, string? dice, bool newbie = false)
     {
         if (string.IsNullOrWhiteSpace(defname)) return;
         var world = ResolveWorld?.Invoke();
@@ -6015,6 +6016,12 @@ public partial class Character : ObjBase
         // %plural/singular% markers per current Amount on every read.
         if (idef != null && !string.IsNullOrWhiteSpace(idef.Name))
             item.Name = idef.Name;
+
+        // ITEMNEWBIE (Source-X ATTR_NEWBIE): the item stays with its owner on
+        // death instead of dropping to the corpse — worn gear from @NPCRestock
+        // must not become loot while the plain ITEM= backpack loot drops.
+        if (newbie)
+            item.SetAttr(Core.Enums.ObjAttributes.Newbie);
 
         // Dice roll wins over explicit amount for stackables.
         int finalAmount = amount;

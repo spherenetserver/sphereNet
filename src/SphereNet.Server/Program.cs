@@ -167,6 +167,13 @@ public static partial class Program
     private static long _telemetryNpcBuildUs;
     private static long _telemetryClientStateUs;
     private static long _telemetryNpcApplyUs;
+    // npc_apply sub-phases — field spikes (46-157ms @ ~15k chars) need to be
+    // attributable to decision commit vs path purge vs dirty-view marking.
+    private static long _telemetryNpcApplyDecisionsUs;
+    private static long _telemetryNpcApplyPurgeUs;
+    private static long _telemetryNpcApplyDirtyUs;
+    private static int _telemetryNpcApplyDecisionCount;
+    private static int _telemetryNpcApplyDirtyCount;
     private static long _telemetryViewBuildUs;
     private static long _lastSlowTickWarningMs;
     private static long _slowTickCount;

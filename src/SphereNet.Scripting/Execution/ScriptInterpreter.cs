@@ -74,88 +74,12 @@ public sealed class ScriptInterpreter
 
             string cmd = key.Key.ToUpperInvariant();
 
-            // Handle LOCAL.varname=value (Key="LOCAL.foo", Arg="bar")
-            if (cmd.StartsWith("LOCAL.", StringComparison.Ordinal))
+            // LOCAL./ARGN/ARGS/REFn/FLOAT assignments — shared with the block
+            // executors (IF/DORAND/DOSWITCH bodies dispatch single lines and
+            // must hit the same handlers; LOCAL sets inside IF blocks used to
+            // fall through to a no-op and silently vanish).
+            if (TryExecuteAssignmentLine(key, cmd, target, source, args, scope))
             {
-                string localExpr = cmd[6..] + (key.HasArg ? "=" + ResolveArgs(key.Arg, target, source, args, scope) : "");
-                int eqIdx = localExpr.IndexOf('=');
-                if (eqIdx > 0)
-                {
-                    string varName = localExpr[..eqIdx].Trim();
-                    string varVal = localExpr[(eqIdx + 1)..].Trim();
-                    scope.LocalVars.Set(varName, varVal);
-                }
-                i++;
-                continue;
-            }
-
-            // Handle ARGN1 / ARGN2 / ARGN3 (bare ARGN == ARGN1) assignment — a script
-            // mutates the trigger's numeric args (Source-X @Hit damage, @DropOn drop-Z,
-            // @NPCActFight dist/motivation). TriggerDispatcher.RunWrapped copies these
-            // back into the caller's TriggerArgs after the block. Without this the
-            // assignment fell through to a no-op TrySetProperty, so ARGN was read-only.
-            if (key.HasArg && args is TriggerArgs argnTarget &&
-                cmd is "ARGN" or "ARGN1" or "ARGN2" or "ARGN3")
-            {
-                string rawVal = ResolveArgs(key.Arg, target, source, args, scope).Trim();
-                if (TryParseArgN(rawVal, out int argnVal))
-                {
-                    if (cmd == "ARGN2") argnTarget.Number2 = argnVal;
-                    else if (cmd == "ARGN3") argnTarget.Number3 = argnVal;
-                    else argnTarget.Number1 = argnVal;
-                }
-                i++;
-                continue;
-            }
-
-            // Handle ARGS assignment — a script rewrites the trigger's string argument
-            // (Source-X @Speech text rewrite, @DropOn item filter). Like ARGN, the
-            // assignment used to fall through to a no-op; RunWrapped copies it back.
-            if (key.HasArg && args is TriggerArgs argsTarget && cmd == "ARGS")
-            {
-                argsTarget.ArgString = ResolveArgs(key.Arg, target, source, args, scope);
-                i++;
-                continue;
-            }
-
-            // Handle REFn=value (Key="REF1", Arg="<UID>")
-            if (cmd.StartsWith("REF", StringComparison.Ordinal) && cmd.Length > 3 &&
-                char.IsDigit(cmd[3]) && !cmd.Contains('.'))
-            {
-                if (int.TryParse(cmd.AsSpan(3), out int refIdx) && key.HasArg)
-                {
-                    string refVal = ResolveArgs(key.Arg, target, source, args, scope);
-                    scope.SetRef(refIdx, refVal);
-                }
-                i++;
-                continue;
-            }
-
-            // Handle REFn.property=value — set property on referenced object
-            if (cmd.StartsWith("REF", StringComparison.Ordinal) && cmd.Length > 3 && char.IsDigit(cmd[3]))
-            {
-                int dotIdx = cmd.IndexOf('.');
-                if (dotIdx > 3 && int.TryParse(cmd.AsSpan(3, dotIdx - 3), out int refIdx2))
-                {
-                    string refUid = scope.GetRef(refIdx2);
-                    string subCmd = cmd[(dotIdx + 1)..];
-                    string resolvedVal = ResolveArgs(key.Arg, target, source, args, scope);
-                    // Resolve ref to object and set property or execute command
-                    ServerPropertyResolver?.Invoke($"_REF_EXEC={refUid}|{subCmd}|{resolvedVal}");
-                }
-                i++;
-                continue;
-            }
-
-            // Handle FLOAT.name=value
-            if (cmd.StartsWith("FLOAT.", StringComparison.OrdinalIgnoreCase))
-            {
-                string floatName = cmd[6..];
-                if (key.HasArg)
-                {
-                    string floatVal = ResolveArgs(key.Arg, target, source, args, scope);
-                    scope.SetFloat(floatName, floatVal);
-                }
                 i++;
                 continue;
             }
@@ -935,6 +859,94 @@ public sealed class ScriptInterpreter
         _logger.LogWarning("Unhandled script line: {Key}={Arg}", cmd, resolvedArg);
     }
 
+    /// <summary>Scope/trigger-arg assignment lines (LOCAL.x=, ARGN/ARGS, REFn=,
+    /// REFn.prop=, FLOAT.x=). Returns true when the line was consumed. Called
+    /// from the main loop AND from every block executor that dispatches single
+    /// lines (IF/DORAND/DOSWITCH) — routing those through ExecuteLine alone
+    /// silently dropped LOCAL writes inside IF blocks.</summary>
+    private bool TryExecuteAssignmentLine(ScriptKey key, string cmd, IScriptObj target,
+        ITextConsole? source, ITriggerArgs? args, ScriptScope scope)
+    {
+        // LOCAL.varname=value (Key="LOCAL.foo", Arg="bar")
+        if (cmd.StartsWith("LOCAL.", StringComparison.Ordinal))
+        {
+            string localExpr = cmd[6..] + (key.HasArg ? "=" + ResolveArgs(key.Arg, target, source, args, scope) : "");
+            int eqIdx = localExpr.IndexOf('=');
+            if (eqIdx > 0)
+            {
+                string varName = localExpr[..eqIdx].Trim();
+                string varVal = localExpr[(eqIdx + 1)..].Trim();
+                scope.LocalVars.Set(varName, varVal);
+            }
+            return true;
+        }
+
+        // ARGN1 / ARGN2 / ARGN3 (bare ARGN == ARGN1) assignment — a script
+        // mutates the trigger's numeric args (Source-X @Hit damage, @DropOn drop-Z,
+        // @NPCActFight dist/motivation). TriggerDispatcher.RunWrapped copies these
+        // back into the caller's TriggerArgs after the block.
+        if (key.HasArg && args is TriggerArgs argnTarget &&
+            cmd is "ARGN" or "ARGN1" or "ARGN2" or "ARGN3")
+        {
+            string rawVal = ResolveArgs(key.Arg, target, source, args, scope).Trim();
+            if (TryParseArgN(rawVal, out int argnVal))
+            {
+                if (cmd == "ARGN2") argnTarget.Number2 = argnVal;
+                else if (cmd == "ARGN3") argnTarget.Number3 = argnVal;
+                else argnTarget.Number1 = argnVal;
+            }
+            return true;
+        }
+
+        // ARGS assignment — a script rewrites the trigger's string argument
+        // (Source-X @Speech text rewrite, @DropOn item filter).
+        if (key.HasArg && args is TriggerArgs argsTarget && cmd == "ARGS")
+        {
+            argsTarget.ArgString = ResolveArgs(key.Arg, target, source, args, scope);
+            return true;
+        }
+
+        // REFn=value (Key="REF1", Arg="<UID>")
+        if (cmd.StartsWith("REF", StringComparison.Ordinal) && cmd.Length > 3 &&
+            char.IsDigit(cmd[3]) && !cmd.Contains('.'))
+        {
+            if (int.TryParse(cmd.AsSpan(3), out int refIdx) && key.HasArg)
+            {
+                string refVal = ResolveArgs(key.Arg, target, source, args, scope);
+                scope.SetRef(refIdx, refVal);
+            }
+            return true;
+        }
+
+        // REFn.property=value — set property on / execute against the referenced object
+        if (cmd.StartsWith("REF", StringComparison.Ordinal) && cmd.Length > 3 && char.IsDigit(cmd[3]))
+        {
+            int dotIdx = cmd.IndexOf('.');
+            if (dotIdx > 3 && int.TryParse(cmd.AsSpan(3, dotIdx - 3), out int refIdx2))
+            {
+                string refUid = scope.GetRef(refIdx2);
+                string subCmd = cmd[(dotIdx + 1)..];
+                string resolvedVal = ResolveArgs(key.Arg, target, source, args, scope);
+                ServerPropertyResolver?.Invoke($"_REF_EXEC={refUid}|{subCmd}|{resolvedVal}");
+            }
+            return true;
+        }
+
+        // FLOAT.name=value
+        if (cmd.StartsWith("FLOAT.", StringComparison.OrdinalIgnoreCase))
+        {
+            string floatName = cmd[6..];
+            if (key.HasArg)
+            {
+                string floatVal = ResolveArgs(key.Arg, target, source, args, scope);
+                scope.SetFloat(floatName, floatVal);
+            }
+            return true;
+        }
+
+        return false;
+    }
+
     private int ExecuteIf(IReadOnlyList<ScriptKey> lines, int startIdx, IScriptObj target,
         ITextConsole? source, ITriggerArgs? args, ScriptScope scope, out TriggerResult result)
     {
@@ -1003,7 +1015,8 @@ public sealed class ScriptInterpreter
                         return lines.Count;
                     }
                     default:
-                        ExecuteLine(lines[i], target, source, args, scope);
+                        if (!TryExecuteAssignmentLine(lines[i], cmd, target, source, args, scope))
+                            ExecuteLine(lines[i], target, source, args, scope);
                         i++;
                         break;
                 }
@@ -1162,7 +1175,9 @@ public sealed class ScriptInterpreter
         if (options.Count > 0)
         {
             int pick = Random.Shared.Next(options.Count);
-            ExecuteLine(lines[options[pick]], target, source, args, scope);
+            var picked = lines[options[pick]];
+            if (!TryExecuteAssignmentLine(picked, picked.Key.ToUpperInvariant(), target, source, args, scope))
+                ExecuteLine(picked, target, source, args, scope);
         }
 
         return i < lines.Count ? i + 1 : i;
@@ -1181,7 +1196,8 @@ public sealed class ScriptInterpreter
         {
             if (lineIdx == switchIdx)
             {
-                ExecuteLine(lines[i], target, source, args, scope);
+                if (!TryExecuteAssignmentLine(lines[i], lines[i].Key.ToUpperInvariant(), target, source, args, scope))
+                    ExecuteLine(lines[i], target, source, args, scope);
                 break;
             }
             lineIdx++;

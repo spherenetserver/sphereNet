@@ -384,7 +384,9 @@ public partial class Character : ObjBase
     private short _homeDist = UnlimitedHomeDistance;
     private Point3D _home;
     private short _actPri;
-    private ushort _speechColor = 0x0035;
+    // Source-X SPEECHCOLOROVERRIDE semantics: 0 = no override, speech goes out
+    // with HUE_TEXT_DEF (0x03B2). A non-zero value colors this char's speech.
+    private ushort _speechColor;
 
     // Followers
     private byte _maxFollower = 5;
@@ -2805,7 +2807,8 @@ public partial class Character : ObjBase
                 value = $"{_home.X},{_home.Y},{_home.Z},{_home.Map}";
                 return true;
             case "ACTPRI": value = _actPri.ToString(); return true;
-            case "SPEECHCOLOR": value = _speechColor.ToString(); return true;
+            case "SPEECHCOLOR":
+            case "SPEECHCOLOROVERRIDE": value = _speechColor.ToString(); return true;
             case "MAXFOLLOWER": value = _maxFollower.ToString(); return true;
             case "CURFOLLOWER": value = CurFollower.ToString(); return true;
             // Per-char regen rate overrides (Source-X CChar). Non-D = seconds, D = tenths.
@@ -3812,7 +3815,8 @@ public partial class Character : ObjBase
                 return true;
             }
             case "ACTPRI": if (short.TryParse(normalized, out short apv)) _actPri = apv; return true;
-            case "SPEECHCOLOR": if (ushort.TryParse(normalized, out ushort scv)) _speechColor = scv; return true;
+            case "SPEECHCOLOR":
+            case "SPEECHCOLOROVERRIDE": if (ushort.TryParse(normalized, out ushort scv)) _speechColor = scv; return true;
             case "MAXFOLLOWER": if (byte.TryParse(normalized, out byte mfv)) _maxFollower = mfv; return true;
             case "CURFOLLOWER": if (byte.TryParse(normalized, out byte cfv)) _curFollower = cfv; return true;
             // Per-char regen rate overrides (Source-X CChar). Non-D stores seconds*1000,

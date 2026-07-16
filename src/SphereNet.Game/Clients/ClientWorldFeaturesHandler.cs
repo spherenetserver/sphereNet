@@ -2369,7 +2369,8 @@ public sealed class ClientWorldFeaturesHandler
                     // party (drops to a single member).
                     var membersBefore = party.Members.ToList();
                     _partyManager.Leave(removeSerial);
-                    SysMessage(ServerMessages.Get("party_leave_1"));
+                    SysMessage(ServerMessages.GetFormatted("party_leave_1",
+                        removedChar?.Name ?? "A member"));
 
                     if (party.MemberCount == 0)
                     {
@@ -2499,7 +2500,9 @@ public sealed class ClientWorldFeaturesHandler
                 }
                 _character.RemoveTag("PARTY_INVITE_FROM");
                 _character.RemoveTag("PARTY_INVITE_TIME");
-                SysMessage(ServerMessages.Get("party_decline_2"));
+                SysMessage(ServerMessages.GetFormatted("party_decline_2",
+                    (declineInviterStr != null && uint.TryParse(declineInviterStr, out uint dn)
+                        ? _world.FindChar(new Serial(dn))?.Name : null) ?? "them"));
                 break;
             }
         }

@@ -77,4 +77,52 @@ public class NpcRestockLootTests
         Assert.False(coin!.IsAttr(ObjAttributes.Newbie));
         Assert.Equal(15, coin.Amount);
     }
+
+    [Fact]
+    public void NpcRestockTriggerBody_FillsBackpackThroughDispatcher()
+    {
+        // The live pack declares monster loot inside ON=@NPCRestock chardef
+        // bodies; the full chain (FireCharTrigger → chardef-own trigger →
+        // interpreter ITEM verbs) must land the items on the NPC.
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_restock_{Guid.NewGuid():N}.scp");
+        File.WriteAllText(tmp, """
+            [ITEMDEF 0eed]
+            DEFNAME=i_rst_coin
+            NAME=rst coin
+
+            [ITEMDEF 0f7e]
+            DEFNAME=i_rst_bone
+            NAME=rst bone
+
+            [CHARDEF 011]
+            DEFNAME=c_rst_mob
+            NAME=rst mob
+
+            ON=@NPCRestock
+            ITEMNEWBIE=i_rst_bone
+            ITEM=i_rst_coin,15
+            """);
+        try
+        {
+            var stack = ScriptTestBootstrap.CreateRuntimeStack();
+            stack.Resources.LoadResourceFile(tmp);
+            ScriptTestBootstrap.LoadDefinitions(stack.Resources);
+
+            var world = CreateWorld();
+            var npc = world.CreateCharacter();
+            npc.CharDefIndex = 0x11;
+
+            stack.Dispatcher.FireCharTrigger(npc,
+                SphereNet.Core.Enums.CharTrigger.NPCRestock,
+                new SphereNet.Game.Scripting.TriggerArgs { CharSrc = npc });
+
+            var pack = npc.Backpack;
+            Assert.NotNull(pack);
+            Assert.Contains(pack!.Contents, i => i.BaseId == 0x0f7e);
+            var coin = pack.Contents.FirstOrDefault(i => i.BaseId == 0x0eed);
+            Assert.NotNull(coin);
+            Assert.Equal(15, coin!.Amount);
+        }
+        finally { try { File.Delete(tmp); } catch { } }
+    }
 }

@@ -396,14 +396,12 @@ public static partial class Program
                 _triggerDispatcher.FireCharTrigger(ch, CharTrigger.SkillChange,
                     new TriggerArgs { CharSrc = ch, N1 = (int)skill, N2 = newVal, N3 = 1 });
 
+                // Source-X sends NO gain text — Skill_SetBase only refreshes the
+                // skill window (addSkillWindow, CCharSkill.cpp:222). The old
+                // "Your skill in X has increased" line was invented; scripts can
+                // add one via @SkillChange if a shard wants it.
                 if (ch.IsPlayer && _clientsByCharUid.TryGetValue(ch.Uid, out var gc))
-                {
-                    var def = SphereNet.Game.Definitions.DefinitionLoader.GetSkillDef((int)skill);
-                    string skillName = !string.IsNullOrEmpty(def?.Name) ? def.Name : skill.ToString();
-                    string valStr = $"{newVal / 10}.{newVal % 10}";
-                    gc.SysMessage($"Your skill in {skillName} has increased to {valStr}.", 0x0480);
                     gc.SendSkillList();
-                }
             };
             SkillEngine.OnSkillDecrease = (ch, skill, newVal) =>
             {

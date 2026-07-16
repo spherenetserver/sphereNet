@@ -103,19 +103,22 @@ public sealed class ClientTargetingHandler
         if (idKnown && targetId != 0 && targetId != Targets.CursorId)
             return;
 
-        // The replaced cursor's echo may also carry cursorID 0 (ClassicUO
-        // zeroes its stored id right after a server-side cancel), which the
-        // id match cannot attribute. Swallow ONE id-less cancel inside the
-        // replacement window; a real ESC always echoes the matching id.
+        // The replaced cursor's echo carries cursorID 0 (ClassicUO zeroes its
+        // stored id right after a server-side cancel), which the id match
+        // cannot attribute. Swallow ONE id-less response inside the
+        // replacement window — whether it is the cancel echo itself or a
+        // queued auto/last-target pick fired against the zeroed id (the
+        // "cast after a pause hits the previous target with no cursor shown"
+        // report). A legit answer to the live cursor echoes its non-zero id.
         if (idKnown && targetId == 0 &&
-            Environment.TickCount64 < Targets.StaleCancelEchoUntil &&
-            IsTargetCancelled(serial, x, y, z, graphic))
+            Environment.TickCount64 < Targets.StaleCancelEchoUntil)
         {
             Targets.StaleCancelEchoUntil = 0;
             return;
         }
 
         Targets.CursorActive = false;
+        Targets.CursorId = 0; // session consumed — the next cursor arms a fresh id
         if (_character.IsDead)
         {
             int cancelledSkill = Targets.SkillCancelId;
@@ -710,6 +713,26 @@ public sealed class ClientTargetingHandler
     // ==================== Gump Response ====================
 
     public void HandleGumpResponse(uint serial, uint gumpId, uint buttonId,
+        uint[] switches, (ushort Id, string Text)[] textEntries)
+    {
+        // Field report: a single 0xB1 held net_in for 211ms. The work here is
+        // synchronous script execution (dialog close functions / callbacks);
+        // attribute slow ones so the offending dialog script is identifiable.
+        long gumpT0 = Environment.TickCount64;
+        try
+        {
+            HandleGumpResponseCore(serial, gumpId, buttonId, switches, textEntries);
+        }
+        finally
+        {
+            long gumpMs = Environment.TickCount64 - gumpT0;
+            if (gumpMs >= 100)
+                _logger.LogWarning("[slow_gump] gumpId=0x{G:X} button={B} took={Ms}ms",
+                    gumpId, buttonId, gumpMs);
+        }
+    }
+
+    private void HandleGumpResponseCore(uint serial, uint gumpId, uint buttonId,
         uint[] switches, (ushort Id, string Text)[] textEntries)
     {
         if (_character == null) return;

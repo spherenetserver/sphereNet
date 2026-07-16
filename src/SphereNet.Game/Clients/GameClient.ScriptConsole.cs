@@ -738,11 +738,16 @@ public sealed partial class GameClient
         ));
     }
 
-    /// <summary>Send speech from an NPC to this client (overhead text above the NPC).</summary>
+    /// <summary>Send speech from an NPC to this client (overhead text above the NPC).
+    /// Hue: Source-X Speak defaults to HUE_TEXT_DEF 0x03B2 (light gray,
+    /// uofiles_enums.h:58) unless the char carries SPEECHCOLOROVERRIDE
+    /// (CChar.cpp:4147) — honor the per-char override so scripts can color
+    /// NPC speech.</summary>
     internal void NpcSpeech(Character npc, string text)
     {
+        ushort hue = npc.SpeechColor != 0 ? npc.SpeechColor : (ushort)0x03B2;
         var packet = new PacketSpeechUnicodeOut(
-            npc.Uid.Value, npc.BodyId, 0, 0x03B2, 3, "TRK", npc.GetName(), text);
+            npc.Uid.Value, npc.BodyId, 0, hue, 3, "TRK", npc.GetName(), text);
         BroadcastNearby?.Invoke(npc.Position, 18, packet, 0);
     }
 

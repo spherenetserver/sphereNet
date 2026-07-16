@@ -217,6 +217,13 @@ public sealed class MountEngine
         npc.Direction = rider.Direction;
         npc.NextNpcActionTime = Environment.TickCount64 + 1500;
 
+        // Source-X Use_Figurine (CCharUse.cpp:1202-1206): every dismount
+        // unconditionally re-owns the mount to the rider (NPC_PetSetOwner →
+        // MEMORY_IPET memory + follow). Without this the NPC has no master,
+        // falls into the Animal brain and wanders off instead of following.
+        npc.TryAssignOwnership(rider, rider);
+        npc.PetAIMode = PetAIMode.Follow;
+
         var pos = rider.Position;
         var mapData = _world.MapData;
         if (mapData != null)

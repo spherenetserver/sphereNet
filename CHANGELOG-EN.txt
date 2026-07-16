@@ -4,6 +4,66 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-16] - Field batch 2: message formatting, speech color, dismount follow
+----------------------------------------
+
+FIXED - "You pull out a %s!" printed literally: nine call sites passed
+        %s-bearing messages through Get() with no arguments (fishing success,
+        detect-hidden, begging, resurrect, pet guard, party decline/leave).
+        All now format with the proper name per the Source-X SysMessagef
+        call. The hiding-fail path printed DEFMSG_HIDING_STUMBLE (a
+        walk-into-hidden-char message) with a raw %s — Source-X Skill_Hiding
+        FAIL sends no text at all (CCharSkill.cpp:2481), so it was removed.
+
+FIXED - Skill-gain text removed: Source-X Skill_SetBase sends no "skill
+        increased" message — only the 0x3A skill-window refresh
+        (CCharSkill.cpp:222). The invented blue line is gone; shards can add
+        one via @SkillChange.
+
+FIXED - Dismounting left the mount masterless: it fell into the Animal brain
+        and wandered off, and GM inspection showed no IPet memory. Source-X
+        Use_Figurine re-owns the mount to the rider on every dismount
+        (NPC_PetSetOwner → MEMORY_IPET + follow, CCharUse.cpp:1202-1206);
+        MountEngine.Dismount now assigns ownership (which also mirrors the
+        IPet memory item) and sets follow mode.
+
+ADDED - NPC speech honors SPEECHCOLOR/SPEECHCOLOROVERRIDE (Source-X
+        CChar.cpp:4147): default stays the reference light gray 0x03B2, but
+        scripts can now color an NPC's overhead speech per character.
+
+FIXED - First cast after a pause hit the PREVIOUS target with no cursor:
+        when a new cursor replaces an open one, ClassicUO zeroes its stored
+        cursor id after our cancel, so its queued last-target reply arrived
+        as id-0 + old serial and slipped past the session-id guard. Any
+        id-less response inside the 2s replacement window is now swallowed
+        (cancel echo or stale pick alike); cursor teardown also retires the
+        session id and echo window so nothing lingers across exchanges.
+
+FIXED - Fixed-point spawner NPCs (MOREZ=0, e.g. the bank's vendor) strolled
+        away from their spawn: HomeDist=0 was mapped to "unlimited wander"
+        (the non-spawn default). Source-X CCSpawn writes the spawner's max
+        dist verbatim as the wander leash (CCSpawn.cpp:640); spawn children
+        now get a leash of at least 1 tile around the gem.
+
+ADDED - [slow_gump] log: a 0xB1 gump response that holds the receive path
+        >=100ms (field: 211ms) now logs its gumpId/button so the offending
+        dialog script can be identified.
+
+FIXED - Invisible-door self-heal: the client purges ground items on its own
+        (distance culling / resync races) while the server's known-set still
+        counts them as delivered — the player then collides with a door they
+        cannot see (Britain bank report; the item was server-side, walking
+        far and back redrew it). A rejected step now re-sends the dynamic
+        items on the forward tile; redrawing an item the client already has
+        is a no-op. The client's own 0x22 resync (Ctrl+R) also rebuilds the
+        full view.
+
+ADDED - End-to-end gather regression tests: fishing schedules through the
+        real client path and delivers the fish at completion; mining's
+        pending window must span strokes × DELAY (3.2-9.6s), never the old
+        1.6s total. NPCRestock chardef-body loot verified through the full
+        dispatcher chain.
+
 [2026-07-16] - Gather-skill stroke timing, skill gain for GMs, spell-memory info, NPC loot
 ----------------------------------------
 

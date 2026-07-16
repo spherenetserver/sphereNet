@@ -525,7 +525,7 @@ public sealed class ClientItemUseHandler
             if (item.ItemType == ItemType.Shrine)
             {
                 OnResurrect();
-                SysMessage(ServerMessages.Get(Msg.HealingRes));
+                SysMessage(ServerMessages.GetFormatted(Msg.HealingRes, _character.Name));
                 return;
             }
             SysMessage(ServerMessages.Get("death_cant_while_dead"));
@@ -1036,7 +1036,7 @@ public sealed class ClientItemUseHandler
                 if (_character.IsDead)
                 {
                     OnResurrect();
-                    SysMessage(ServerMessages.Get(Msg.HealingRes));
+                    SysMessage(ServerMessages.GetFormatted(Msg.HealingRes, _character.Name));
                 }
                 else
                     SysMessage(ServerMessages.Get("itemuse_shrine"));
@@ -2544,7 +2544,7 @@ public sealed class ClientItemUseHandler
                 {
                     pet.SetTag("GUARD_TARGET", guarded.Uid.Value.ToString());
                     pet.PetAIMode = PetAIMode.Guard;
-                    SysMessage(ServerMessages.Get(Msg.NpcPetTargGuardSuccess));
+                    SysMessage(ServerMessages.GetFormatted(Msg.NpcPetTargGuardSuccess, pet.Name));
                 }
                 else
                     SysMessage(ServerMessages.Get(Msg.NpcPetFailure));

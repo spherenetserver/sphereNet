@@ -3,6 +3,67 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-16] - Saha paketi 2: mesaj bicimleme, konusma rengi, dismount takibi
+----------------------------------------
+
+DUZELTILDI - "You pull out a %s!" oldugu gibi basiliyordu: dokuz cagri
+        noktasi %s iceren mesajlari argumansiz Get() ile yolluyordu (balik
+        basarisi, detect-hidden, begging, diriltme, pet guard, parti
+        red/ayrilma). Hepsi artik Source-X SysMessagef cagrisina uygun
+        adla bicimlenir. Hiding-fail yolu DEFMSG_HIDING_STUMBLE'i (gizli
+        karaktere carpma mesaji) ham %s ile basiyordu — Source-X
+        Skill_Hiding FAIL hic metin gondermez (CCharSkill.cpp:2481),
+        kaldirildi.
+
+DUZELTILDI - Skill-gain metni kaldirildi: Source-X Skill_SetBase "skill
+        artti" mesaji gondermez — yalniz 0x3A skill-penceresi yenilenir
+        (CCharSkill.cpp:222). Uydurma mavi satir gitti; isteyen shard
+        @SkillChange ile ekleyebilir.
+
+DUZELTILDI - Binekten inince binek sahipsiz kaliyordu: Animal brain'e
+        dusup geziniyordu, GM bakisinda IPet memory'si yoktu. Source-X
+        Use_Figurine her dismount'ta binegi biniciye yeniden sahiplendirir
+        (NPC_PetSetOwner -> MEMORY_IPET + takip, CCharUse.cpp:1202-1206);
+        MountEngine.Dismount artik sahiplik atar (IPet memory de
+        aynalanir) ve takip moduna alir.
+
+EKLENDI - NPC konusmasi SPEECHCOLOR/SPEECHCOLOROVERRIDE'i onore eder
+        (Source-X CChar.cpp:4147): varsayilan referans acik grisi 0x03B2
+        kalir; scriptler artik NPC konusmasini karakter bazinda
+        renklendirebilir.
+
+DUZELTILDI - Aradan sonra ilk cast ONCEKI hedefe cursorsuz gidiyordu:
+        yeni cursor acik olani degistirdiginde ClassicUO cancel'imizdan
+        sonra sakladigi cursor id'yi sifirlar; kuyruktaki last-target
+        cevabi id-0 + eski serial olarak gelip oturum-id korumasini
+        deliyordu. 2 sn'lik degisim penceresi icindeki id'siz TUM cevaplar
+        artik yutulur (cancel yankisi da bayat secim de); cursor sokumu de
+        oturum id'sini ve yanki penceresini sifirlar.
+
+DUZELTILDI - Sabit-nokta spawner NPC'leri (MOREZ=0, or. banka vendoru)
+        spawnindan uzaklasip geziniyordu: HomeDist=0 "sinirsiz gezinme"
+        sayiliyordu (spawn-disi varsayilan). Source-X CCSpawn spawner'in
+        max mesafesini oldugu gibi tasma olarak yazar (CCSpawn.cpp:640);
+        spawn cocuklari artik gem etrafinda en az 1 karo tasmali.
+
+EKLENDI - [slow_gump] logu: alma yolunu >=100ms tutan 0xB1 gump cevabi
+        (saha: 211ms) artik gumpId/button ile loglanir; sorunlu dialog
+        scripti tespit edilebilir.
+
+DUZELTILDI - Gorunmez kapi kendini onarir: client yer itemlarini kendi
+        basina temizleyebiliyor (mesafe ayiklamasi / resync yarislari),
+        server'in known-set'i ise teslim edildi sanmaya devam ediyor —
+        oyuncu goremedigi kapiya carpiyor (Britain banka raporu; item
+        server'da vardi, uzaga gidip donunce yeniden cizildi). Reddedilen
+        adimda artik ileri karodaki dinamik itemlar yeniden gonderilir;
+        client'ta zaten olan itemin yeniden cizimi zararsizdir. Client'in
+        kendi 0x22 resync'i (Ctrl+R) de tum gorunumu yeniden kurar.
+
+EKLENDI - Uctan uca toplama regresyon testleri: fishing gercek client
+        yolundan zamanlanip tamamlanmada baligi teslim eder; mining bekleme
+        penceresi vurus x DELAY (3.2-9.6s) olmali, eski 1.6s toplam degil.
+        NPCRestock chardef-govde lootu tam dispatcher zinciriyle dogrulandi.
+
 [2026-07-16] - Toplama becerisi vurus zamanlamasi, GM skill gain, buyu-hafiza detayi, NPC loot
 ----------------------------------------
 

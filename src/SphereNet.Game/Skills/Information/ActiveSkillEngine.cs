@@ -59,7 +59,9 @@ public static class ActiveSkillEngine
         {
             ch.ClearStatFlag(StatFlag.Hidden);
             ch.ClearStatFlag(StatFlag.Invisible);
-            sink.SysMessage(ServerMessages.Get(Msg.HidingStumble));
+            // Source-X Skill_Hiding FAIL just Reveal()s (CCharSkill.cpp:2481) —
+            // DEFMSG_HIDING_STUMBLE belongs to walking into a hidden char and
+            // takes that char's name; it was printed here with a raw %s.
         }
         return success;
     }
@@ -114,7 +116,8 @@ public static class ActiveSkillEngine
                 sink.Random.Next(210) - 100;
             if (sourceRoll >= targetRoll && nearby.ClearHiddenState())
             {
-                sink.SysMessage(ServerMessages.Get(Msg.DetecthiddenSucc));
+                // Source-X SysMessagef(DEFMSG_DETECTHIDDEN_SUCC, name) — CCharSkill.cpp:1746
+                sink.SysMessage(ServerMessages.GetFormatted(Msg.DetecthiddenSucc, nearby.Name));
                 found = true;
             }
         }
@@ -186,7 +189,8 @@ public static class ActiveSkillEngine
                 SkillEngine.GetUseRange(SkillType.Begging, 3)))
             return false;
 
-        sink.Emote(ServerMessages.Get(Msg.BeggingStart));
+        // Source-X SysMessagef(DEFMSG_BEGGING_START, pChar->GetName()) — CCharSkill.cpp:2944
+        sink.SysMessage(ServerMessages.GetFormatted(Msg.BeggingStart, target.Name));
         bool success = SkillEngine.UseQuick(ch, SkillType.Begging, 40);
         if (success)
         {
@@ -539,7 +543,7 @@ public static class ActiveSkillEngine
             }
 
             sink.ResurrectTarget(target);
-            sink.SysMessage(ServerMessages.Get(Msg.HealingRes));
+            sink.SysMessage(ServerMessages.GetFormatted(Msg.HealingRes, target.Name));
             return true;
         }
 
@@ -1099,7 +1103,8 @@ public static class ActiveSkillEngine
                 }
                 if (result.Success && result.Item != null)
                 {
-                    sink.SysMessage(ServerMessages.Get(Msg.FishingSuccess));
+                    // Source-X SysMessagef(DEFMSG_FISHING_SUCCESS, name) — CCharSkill.cpp:1581
+                    sink.SysMessage(ServerMessages.GetFormatted(Msg.FishingSuccess, result.Item.GetName()));
                     sink.DeliverItem(result.Item);
                     return true;
                 }
@@ -1123,7 +1128,7 @@ public static class ActiveSkillEngine
             fish.BaseId = 0x09CC;
             fish.Name = "fish";
             fish.Amount = 1;
-            sink.SysMessage(ServerMessages.Get(Msg.FishingSuccess));
+            sink.SysMessage(ServerMessages.GetFormatted(Msg.FishingSuccess, fish.GetName()));
             sink.DeliverItem(fish);
         }
         else

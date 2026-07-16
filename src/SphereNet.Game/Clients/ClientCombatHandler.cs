@@ -418,7 +418,31 @@ public sealed class ClientCombatHandler
         else
         {
             RejectMove(seq, now);
+            ResendBlockingItems(direction);
             return false;
+        }
+    }
+
+    /// <summary>Self-heal for the "invisible door" class of view desync: the
+    /// client purges ground items on its own (distance culling, resync races),
+    /// while the server's known-set still believes they were delivered — the
+    /// player then bumps into something they cannot see. On a rejected step,
+    /// re-send the dynamic items on the forward tile; a redraw of an item the
+    /// client already has is a visual no-op.</summary>
+    private void ResendBlockingItems(Direction direction)
+    {
+        if (_character == null) return;
+        GetDirectionDelta(direction, out short bdx, out short bdy);
+        var tile = new Point3D(
+            (short)(_character.X + bdx), (short)(_character.Y + bdy),
+            _character.Z, _character.MapIndex);
+        foreach (var item in _world.GetItemsInRange(tile, 0))
+        {
+            if (item.IsDeleted || item.IsEquipped || item.ContainedIn.IsValid) continue;
+            if (item.IsAttr(Core.Enums.ObjAttributes.Invis)) continue;
+            _netState.Send(new PacketWorldItem(
+                item.Uid.Value, item.DispIdFull, item.Amount,
+                item.X, item.Y, item.Z, item.Hue));
         }
     }
 

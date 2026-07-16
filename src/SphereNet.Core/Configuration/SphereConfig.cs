@@ -439,6 +439,7 @@ public sealed class SphereConfig
         WorldSaveDir = ini.GetValue(section, "WorldSave") ?? WorldSaveDir;
         AccountDir = ini.GetValue(section, "AcctFiles") ?? AccountDir;
         MulFilesDir = ini.GetValue(section, "MulFiles") ?? MulFilesDir;
+        LogDir = ini.GetValue(section, "Log") ?? LogDir;
 
         LoadMapDefinitions(ini, section);
 

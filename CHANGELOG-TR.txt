@@ -6,6 +6,28 @@
 [2026-07-16] - NPC anahtar kelime tam-sozcuk esleme, GM yell fix, vendor tasmasi
 ----------------------------------------
 
+DUZELTILDI - Paneli Host sureci sunarken Scripts sayfasi hicbir sey
+        listelemiyordu. SphereNet.Host script dizinini gercek sphere.ini
+        anahtari SCPFILES yerine "ScpFilesDir" (C# ozellik adi) ile okuyordu;
+        arama her zaman bosa dusuyor ve sphere.ini yanindaki "scripts"
+        klasorune geri donuyordu. SCPFILES baska bir yeri gosterdiginde
+        PanelContext.ScriptsPath null kaliyor ve GET /api/scripts bos liste
+        donuyordu. Surec-ici SphereNet.Server host'u etkilenmiyordu, cunku
+        yolu SphereConfig uzerinden cozuyor.
+
+DUZELTILDI - sphere.ini LOG= ayari hicbir yere baglanmiyordu. SphereConfig
+        LogDir'i tanimliyordu ama LoadFromIni anahtari hic okumuyordu ve
+        ozelligi tuketen kod yoktu; bunun yerine "logs" hem Serilog dosya
+        sink'inde hem Host crash handler'inda sabit yaziliydi. LOG= artik
+        SphereConfig.LogDir'e baglaniyor ve her iki cagri yeri de buna uyuyor.
+        Goreli degerler diger yol ayarlariyla ayni CWD-oncelikli kurali izler.
+
+EKLENDI - sphere.ini artik WORLDSAVE= ve ACCTFILES= satirlarini iceriyor. Her
+        iki anahtar da SphereConfig tarafindan zaten okunuyordu, ancak dosyada
+        yer almiyordu; dizinleri degistirmek icin belgelenmemis anahtar
+        adlarini bilmek gerekiyordu. Degerler onceki varsayilanlarla ayni
+        (save/, accounts/) - mevcut kurulumlarda davranis degismez.
+
 EKLENDI - Panelden kendini guncelleme (Updates sayfasi, yeni sidebar girisi).
         Yeni workflow (.github/workflows/release.yml) her main commit'inde
         win-x64 paketi uretir ve rolling "nightly" prerelease'in asset'lerini

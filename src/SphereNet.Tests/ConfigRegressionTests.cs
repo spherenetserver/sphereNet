@@ -145,4 +145,66 @@ public class ConfigRegressionTests
             try { File.Delete(tmp); } catch { }
         }
     }
+
+    [Fact]
+    public void SphereConfig_LoadFromIni_BindsDirectoryPaths()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_paths_{Guid.NewGuid():N}.ini");
+        // Keys are written upper-case the way a real sphere.ini ships them;
+        // the parser must match them case-insensitively against the lookup
+        // names used in LoadFromIni.
+        File.WriteAllText(tmp, """
+            [SPHERE]
+            SCPFILES=oldSphere/Scripts-X-main/
+            WORLDSAVE=data/save/
+            ACCTFILES=data/accounts/
+            MULFILES=data/mul/
+            LOG=data/logs/
+            """);
+        try
+        {
+            var parser = new IniParser();
+            parser.Load(tmp);
+            var config = new SphereConfig();
+            config.LoadFromIni(parser);
+
+            Assert.Equal("oldSphere/Scripts-X-main/", config.ScpFilesDir);
+            Assert.Equal("data/save/", config.WorldSaveDir);
+            Assert.Equal("data/accounts/", config.AccountDir);
+            Assert.Equal("data/mul/", config.MulFilesDir);
+            // LOG= was declared in sphere.ini but never read into LogDir, so
+            // the log directory silently stayed at its default.
+            Assert.Equal("data/logs/", config.LogDir);
+        }
+        finally
+        {
+            try { File.Delete(tmp); } catch { }
+        }
+    }
+
+    [Fact]
+    public void SphereConfig_LoadFromIni_KeepsPathDefaultsWhenKeysAbsent()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_paths_def_{Guid.NewGuid():N}.ini");
+        File.WriteAllText(tmp, """
+            [SPHERE]
+            AdminPassword=change-me
+            """);
+        try
+        {
+            var parser = new IniParser();
+            parser.Load(tmp);
+            var config = new SphereConfig();
+            config.LoadFromIni(parser);
+
+            Assert.Equal("scripts/", config.ScpFilesDir);
+            Assert.Equal("save/", config.WorldSaveDir);
+            Assert.Equal("accounts/", config.AccountDir);
+            Assert.Equal("logs/", config.LogDir);
+        }
+        finally
+        {
+            try { File.Delete(tmp); } catch { }
+        }
+    }
 }

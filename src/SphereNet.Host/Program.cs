@@ -9,6 +9,11 @@ using SphereNet.Panel.Updates;
 
 var baseDir   = AppDomain.CurrentDomain.BaseDirectory;
 
+// Crash logs land next to the exe until sphere.ini is parsed below, which may
+// re-point this at [SPHERE] LOG=. The handlers close over the variable, so a
+// crash before the ini is read still gets a record.
+var crashLogDir = Path.Combine(baseDir, "logs");
+
 // ── Global crash logging ─────────────────────────────────────────────────────
 // Last-resort safety net. Background threads (e.g. the AsyncStreamReader that
 // mirrors the child server's output) run outside any try/catch, so an
@@ -19,11 +24,11 @@ var baseDir   = AppDomain.CurrentDomain.BaseDirectory;
 AppDomain.CurrentDomain.UnhandledException += (_, e) =>
 {
     if (e.ExceptionObject is Exception ex)
-        WriteCrashLog(baseDir, ex, terminating: e.IsTerminating);
+        WriteCrashLog(crashLogDir, ex, terminating: e.IsTerminating);
 };
 TaskScheduler.UnobservedTaskException += (_, e) =>
 {
-    WriteCrashLog(baseDir, e.Exception, terminating: false);
+    WriteCrashLog(crashLogDir, e.Exception, terminating: false);
     e.SetObserved();
 };
 
@@ -77,8 +82,13 @@ if (iniPath != null)
             Token:        Trimmed(parser.GetValue("SPHERE", "AppUpdateToken")));
     }
 
+    var logSetting = Trimmed(parser.GetValue("SPHERE", "Log"));
+    if (logSetting != null)
+        crashLogDir = Path.IsPathRooted(logSetting) ? logSetting
+            : Path.Combine(Path.GetDirectoryName(iniPath)!, logSetting);
+
     // Determine scripts path from config
-    var scpDir = parser.GetValue("SPHERE", "ScpFilesDir");
+    var scpDir = parser.GetValue("SPHERE", "ScpFiles");
     if (scpDir != null)
     {
         var full = Path.IsPathRooted(scpDir) ? scpDir
@@ -206,12 +216,11 @@ static void OpenBrowser(string url)
     catch { /* ignore if no default browser */ }
 }
 
-static void WriteCrashLog(string dir, Exception ex, bool terminating)
+static void WriteCrashLog(string logDir, Exception ex, bool terminating)
 {
     // Durable record first — the console may be unavailable at this point.
     try
     {
-        var logDir = Path.Combine(dir, "logs");
         Directory.CreateDirectory(logDir);
         var line = $"==== {DateTime.Now:yyyy-MM-dd HH:mm:ss} (terminating={terminating}) ===={Environment.NewLine}{ex}{Environment.NewLine}{Environment.NewLine}";
         File.AppendAllText(Path.Combine(logDir, "host-crash.log"), line);
@@ -220,7 +229,7 @@ static void WriteCrashLog(string dir, Exception ex, bool terminating)
 
     try
     {
-        Console.Error.WriteLine($"[Host] FATAL unhandled exception → logs/host-crash.log: {ex.Message}");
+        Console.Error.WriteLine($"[Host] FATAL unhandled exception → {Path.Combine(logDir, "host-crash.log")}: {ex.Message}");
     }
     catch { /* console gone — the file write above is the record that matters */ }
 }

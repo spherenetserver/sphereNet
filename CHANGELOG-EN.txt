@@ -7,6 +7,28 @@
 [2026-07-16] - NPC keyword word-matching, GM yell broadcast fix, vendor leash
 ----------------------------------------
 
+FIXED - Panel Scripts page listed nothing when the Host process served the
+        panel. SphereNet.Host read the script directory with the key name
+        "ScpFilesDir" (the C# property name) instead of the actual sphere.ini
+        key SCPFILES, so the lookup always missed and fell through to a
+        "scripts" folder next to sphere.ini. With SCPFILES pointing anywhere
+        else, PanelContext.ScriptsPath stayed null and GET /api/scripts
+        returned an empty list. The in-process SphereNet.Server host was
+        unaffected — it resolves the path through SphereConfig.
+
+FIXED - sphere.ini LOG= was parsed into nothing. SphereConfig declared LogDir
+        but LoadFromIni never read the key, and no code consumed the property;
+        "logs" was hardcoded at the Serilog file sink and in the Host crash
+        handler instead. LOG= now binds to SphereConfig.LogDir and both call
+        sites honour it. Relative values follow the same CWD-first rule as the
+        other path settings.
+
+ADDED - sphere.ini now ships WORLDSAVE= and ACCTFILES= entries. Both keys were
+        already read by SphereConfig, but were absent from the shipped file, so
+        their directories could only be changed by knowing the undocumented key
+        names. Values match the previous defaults (save/, accounts/) — no
+        behavior change for existing installs.
+
 ADDED - Panel self-update (Updates page, new sidebar entry). A new workflow
         (.github/workflows/release.yml) builds a win-x64 package on every main
         commit and refreshes the assets of a rolling "nightly" prerelease; the

@@ -476,7 +476,8 @@ public static partial class Program
         // there during normal play.
         ParseLogFileLevel(_config.LogFileLevel, out var fileLogMinLevel,
             out var fileLogWhitelist);
-        string filePath = Path.Combine(basePath, "logs", "spherenet-.log");
+        string filePath = Path.Combine(
+            ResolvePath(basePath, _config.LogDir), "spherenet-.log");
         const string fileTemplate = "[{Timestamp:yyyy-MM-dd HH:mm:ss} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}";
         serilogConfig = serilogConfig.WriteTo.Logger(lc =>
         {

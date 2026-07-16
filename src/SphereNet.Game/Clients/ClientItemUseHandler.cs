@@ -262,7 +262,7 @@ public sealed class ClientItemUseHandler
                 if (result == TriggerResult.True)
                     return;
             }
-            if (!ch.IsPlayer && ch.NpcBrain == NpcBrainType.Vendor)
+            if (VendorEngine.IsVendorLike(ch))
             {
                 if (_character.PrivLevel < PrivLevel.GM)
                 {
@@ -2398,7 +2398,7 @@ public sealed class ClientItemUseHandler
                 // Source-X NPC_VendorGetChkVerb PC_CASH: only an owned vendor's
                 // real earnings are dispensed to the owner (restock never tops
                 // up an owned purse, so this cannot mint gold).
-                if (pet.NpcBrain != Core.Enums.NpcBrainType.Vendor)
+                if (!SphereNet.Game.Trade.VendorEngine.IsVendorLike(pet))
                 {
                     NpcSpeech(pet, ServerMessages.Get(Msg.NpcPetConfused));
                     return true;
@@ -2417,7 +2417,7 @@ public sealed class ClientItemUseHandler
                 // container. SphereNet's vendor stock is template-driven (virtual,
                 // rebuilt on restock), not an owner-managed inventory, so there is
                 // nothing safe to hand out — report honestly instead of a bogus cursor.
-                NpcSpeech(pet, pet.NpcBrain == Core.Enums.NpcBrainType.Vendor
+                NpcSpeech(pet, SphereNet.Game.Trade.VendorEngine.IsVendorLike(pet)
                     ? "I manage my own stock."
                     : ServerMessages.Get(Msg.NpcPetConfused));
                 return true;

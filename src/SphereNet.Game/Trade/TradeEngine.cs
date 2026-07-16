@@ -104,12 +104,39 @@ public static class VendorEngine
     public static GameWorld? World { get; set; }
 
     /// <summary>
+    /// True when an NPC name carries a merchant role keyword. Legacy packs
+    /// ship some trade NPCs as NPC=BRAIN_HUMAN (e.g. c_h_vendor keeps
+    /// brain_vendor commented out) and lean on speech scripts, so the
+    /// engine widens vendor detection by name.
+    /// </summary>
+    public static bool HasVendorNameKeyword(string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+        string lower = name.ToLowerInvariant();
+        return lower.Contains("vendor") || lower.Contains("shopkeep") ||
+               lower.Contains("merchant");
+    }
+
+    /// <summary>
+    /// Single vendor-detection predicate shared by the dclick, context-menu,
+    /// speech and trade-validation paths — they must agree, or a vendor that
+    /// answers "buy" refuses the double-click (and vice versa).
+    /// </summary>
+    public static bool IsVendorLike(Character npc)
+    {
+        if (npc.IsPlayer) return false;
+        if (npc.NpcBrain == Core.Enums.NpcBrainType.Vendor) return true;
+        return npc.NpcBrain is Core.Enums.NpcBrainType.Human or Core.Enums.NpcBrainType.None
+               && HasVendorNameKeyword(npc.Name);
+    }
+
+    /// <summary>
     /// Process a buy request from player to vendor.
     /// Returns total gold cost. Negative = insufficient gold.
     /// </summary>
     public static int ProcessBuy(Character player, Character vendor, IReadOnlyList<TradeEntry> items)
     {
-        if (vendor.NpcBrain != Core.Enums.NpcBrainType.Vendor)
+        if (!IsVendorLike(vendor))
             return -1;
         if (World == null)
             return -1;
@@ -240,7 +267,7 @@ public static class VendorEngine
     public static int ProcessSell(Character player, Character vendor, IReadOnlyList<TradeEntry> items, out bool shortfall)
     {
         shortfall = false;
-        if (vendor.NpcBrain != Core.Enums.NpcBrainType.Vendor)
+        if (!IsVendorLike(vendor))
             return 0;
 
         // Source-X NPC_FindVendableItem: a vendor with a BUY list only buys items on
@@ -558,7 +585,7 @@ public static class VendorEngine
     public static void RestockVendor(Character vendor)
     {
         if (World == null) return;
-        if (vendor.NpcBrain != Core.Enums.NpcBrainType.Vendor) return;
+        if (!IsVendorLike(vendor)) return;
 
         // Restock refills the vendor's purse first (Source-X: the vendor bank
         // is the buy fund) — even for vendors with no VENDORINV stock list, so

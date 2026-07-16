@@ -147,14 +147,14 @@ public sealed class SpeechEngine
             _ => DistanceSay,
         };
 
-        // Broadcast (GM yell)
-        if (mode == TalkMode.Yell && speaker.PrivLevel >= PrivLevel.GM)
-            hearRange = 0; // 0 = global broadcast handled below
+        // Source-X CChar::Speak: a Counsel+ yell becomes TALKMODE_BROADCAST — a
+        // CLIENT-only broadcast, done by the speech caller's packet send. NPC and
+        // item hearing always stays at normal earshot: the old global path fed
+        // every NPC in the world an OnHear and swept every world item for @Hear
+        // per GM yell, stalling the main loop long enough to drop connections.
 
         // Send speech to all characters in range
-        var listeners = hearRange == 0
-            ? _world.GetCharsInRange(speaker.Position, 9999)
-            : _world.GetCharsInRange(speaker.Position, hearRange);
+        var listeners = _world.GetCharsInRange(speaker.Position, hearRange);
 
         foreach (var listener in listeners)
         {
@@ -176,8 +176,7 @@ public sealed class SpeechEngine
         // skip the item scan entirely. Same range as characters.
         if (OnItemHear != null)
         {
-            int itemRange = hearRange == 0 ? 9999 : hearRange;
-            foreach (var item in _world.GetItemsInRange(speaker.Position, itemRange))
+            foreach (var item in _world.GetItemsInRange(speaker.Position, hearRange))
                 OnItemHear(speaker, item, text, mode);
         }
 

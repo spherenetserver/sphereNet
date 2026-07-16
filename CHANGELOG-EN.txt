@@ -4,6 +4,66 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-16] - NPC keyword word-matching, GM yell broadcast fix, vendor leash
+----------------------------------------
+
+FIXED - Service NPCs answered unrelated player-to-player chatter: the
+        built-in keyword dispatch used substring Contains(), so any word
+        embedding a keyword triggered a response — Turkish "buyur"/
+        "buyuk"/"buyu" contain "buy" (vendors opened the buy gump and
+        barked on nearly every sentence), "banka" contains "bank". All
+        service keywords (buy/sell/purchase/train/teach/heal/resurrect/
+        cure/stable/claim/balance/help/guards) now match whole words;
+        "bank" matches as a word prefix so "banka"/"bankaya" keep
+        working. The withdraw/check amount parser is word-bounded too —
+        "check" inside another word can no longer trigger a withdrawal.
+
+FIXED - A staff yell disconnected the client: GM yell ran the NPC-hear
+        loop over every character in the world AND swept every world item
+        for @Hear (9999-tile scans), stalling the main loop until the
+        client timed out. Source-X promotes a Counsel+ yell to
+        TALKMODE_BROADCAST (CCharAct.cpp:3575) — a CLIENT-only broadcast.
+        Now the speech packet goes to every playing client via a direct
+        client-list path (BroadcastNearby global branch; the sector walk
+        is never entered for huge ranges), while NPC/item hearing stays
+        at normal yell earshot (48 tiles). Ghost yell per-recipient
+        garbling is also clamped to earshot.
+
+CHANGED - Service NPCs (vendor/banker/stable brains) keep to their post:
+        they wandered up to ~3 tiles plus drift and strolled out of their
+        buildings. They now pull back beyond 1 tile from home and only
+        wander while standing on it (max ~2 tiles drift, ignores MOREZ
+        by design — same shard rule as spawn-on-gem).
+
+[2026-07-16] - Vendor detection unified across dclick, speech, and trade paths
+----------------------------------------
+
+CHANGED - NPC spawners now place the child ON the worldgem bit (deliberate
+        deviation from Source-X, shard owner request). Source-X GenerateChar
+        scatters the child MoveNear(pt, rand(MOREZ)+1) up to MOREZ tiles
+        from the gem (CCSpawn.cpp:433); SphereNet mirrored that. MOREZ
+        (third MOREP field) keeps its wander-leash role (HOMEDIST,
+        CCSpawn.cpp:640). The random scatter survives only as a fallback
+        when the gem's own tile is impassable (gem buried in a wall).
+        @Spawn scripts that set an explicit position still win. Item
+        spawners are unchanged (still scatter within MAXDIST).
+
+FIXED - Double-clicking some vendors opened the paperdoll while "buy"
+        speech listed their goods: the speech path widened BRAIN_HUMAN
+        NPCs into vendors by role name (legacy packs ship e.g. c_h_vendor
+        with brain_vendor commented out and NPC=brain_human active), but
+        the double-click, context-menu, and 0x3B/0x9F trade-validation
+        gates checked NpcBrain == Vendor strictly. All paths now share one
+        VendorEngine.IsVendorLike predicate (brain Vendor, or Human/None
+        brain with a vendor/shopkeep/merchant name keyword), so any NPC
+        that answers "buy" also opens the buy/sell dialog on double-click
+        and can actually complete purchases and sales. Restock, the script
+        BUY verb vendor resolution, and the owned-vendor CASH command use
+        the same predicate.
+
+FIXED - Context-menu "Sell" on a vendor only printed a sysmessage stub;
+        it now opens the sell list like the speech path.
+
 [2026-07-16] - Field batch 2: message formatting, speech color, dismount follow
 ----------------------------------------
 

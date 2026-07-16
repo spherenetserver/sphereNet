@@ -329,18 +329,42 @@ public static partial class Program
 
     [ThreadStatic] private static List<GameClient>? _broadcastRecipients;
 
+    /// <summary>Range at or above which BroadcastNearby delivers to every playing
+    /// client on the server (all maps) instead of walking sectors — the sector
+    /// loop iterates (range/SectorSize)^2 cells, so a huge range must never
+    /// reach it. Used by GM yell (Source-X TALKMODE_BROADCAST).</summary>
+    internal const int GlobalBroadcastRange = 10_000;
+
     private static void BroadcastNearby(Point3D center, int range, PacketWriter packet, uint excludeUid)
     {
-        int secRadius = (range / SphereNet.Game.World.Sectors.Sector.SectorSize) + 1;
-        int cx = center.X / SphereNet.Game.World.Sectors.Sector.SectorSize;
-        int cy = center.Y / SphereNet.Game.World.Sectors.Sector.SectorSize;
-
         if (_recordingEngine.HasActiveRecordings)
         {
             var built = packet.Build();
             _recordingEngine.CaptureFromBroadcast(center, range, built.Span.ToArray());
             built.ReturnToPool();
         }
+
+        if (range >= GlobalBroadcastRange)
+        {
+            var all = _broadcastRecipients ??= new List<GameClient>(256);
+            all.Clear();
+            foreach (var c in _clients.Values)
+            {
+                if (c.IsPlaying && c.Character != null && c.Character.Uid.Value != excludeUid)
+                    all.Add(c);
+            }
+            if (all.Count == 0) return;
+            var sharedGlobal = packet.Build();
+            sharedGlobal.MarkShared(all.Count);
+            foreach (var c in all)
+                c.NetState.EnqueueShared(sharedGlobal);
+            all.Clear();
+            return;
+        }
+
+        int secRadius = (range / SphereNet.Game.World.Sectors.Sector.SectorSize) + 1;
+        int cx = center.X / SphereNet.Game.World.Sectors.Sector.SectorSize;
+        int cy = center.Y / SphereNet.Game.World.Sectors.Sector.SectorSize;
 
         // Collect the in-range recipients first, then build the packet ONCE and
         // share it across them: the bytes are identical for every recipient of a

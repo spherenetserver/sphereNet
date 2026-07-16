@@ -83,6 +83,38 @@ public static partial class Program
     /// thy N gold piece(s)." / ...) so the NPC speaks the same line a
     /// real Source-X server would.
     /// </summary>
+    /// <summary>Whole-word keyword match. The old substring Contains() made
+    /// service NPCs react to unrelated chatter — Turkish "buyur"/"buyuk"/"buyu"
+    /// all contain "buy", "banka" contains "bank" — so vendors opened the buy
+    /// gump and barked on nearly every player-to-player sentence.</summary>
+    private static bool HasWord(string lowerText, string word)
+    {
+        int idx = 0;
+        while ((idx = lowerText.IndexOf(word, idx, StringComparison.Ordinal)) >= 0)
+        {
+            bool startOk = idx == 0 || !char.IsLetterOrDigit(lowerText[idx - 1]);
+            int end = idx + word.Length;
+            if (startOk && (end >= lowerText.Length || !char.IsLetterOrDigit(lowerText[end])))
+                return true;
+            idx = end;
+        }
+        return false;
+    }
+
+    /// <summary>Word starting with the keyword ("bank" also accepts
+    /// "banka"/"bankaya"/"banker" — common no-diacritics Turkish usage).</summary>
+    private static bool HasWordPrefix(string lowerText, string prefix)
+    {
+        int idx = 0;
+        while ((idx = lowerText.IndexOf(prefix, idx, StringComparison.Ordinal)) >= 0)
+        {
+            if (idx == 0 || !char.IsLetterOrDigit(lowerText[idx - 1]))
+                return true;
+            idx += prefix.Length;
+        }
+        return false;
+    }
+
     private static bool TryDispatchServiceKeyword(Character speaker, Character npc, string text)
     {
         string lower = text.ToLowerInvariant();
@@ -107,13 +139,13 @@ public static partial class Program
         if (brain is NpcBrainType.Human or NpcBrainType.None)
         {
             if (lowerName.Contains("banker")) brain = NpcBrainType.Banker;
-            else if (lowerName.Contains("vendor") || lowerName.Contains("shopkeep") ||
-                     lowerName.Contains("merchant")) brain = NpcBrainType.Vendor;
+            else if (SphereNet.Game.Trade.VendorEngine.HasVendorNameKeyword(lowerName))
+                brain = NpcBrainType.Vendor;
         }
 
         if (brain == NpcBrainType.Vendor)
         {
-            if (lower.Contains("buy") || lower.Contains("purchase"))
+            if (HasWord(lower, "buy") || HasWord(lower, "purchase"))
             {
                 var gc = FindGameClient(speaker);
                 _log.LogDebug(
@@ -124,7 +156,7 @@ public static partial class Program
                     ?? "Take a look at my goods.");
                 return true;
             }
-            if (lower.Contains("sell"))
+            if (HasWord(lower, "sell"))
             {
                 var gc = FindGameClient(speaker);
                 _log.LogDebug(
@@ -144,10 +176,10 @@ public static partial class Program
 
             int withdrawAmount = TryParseAmountAfter(lower, "withdraw");
             int checkAmount = TryParseAmountAfter(lower, "check");
-            bool wantBank = lower.Contains("bank") || lower == "deposit"
+            bool wantBank = HasWordPrefix(lower, "bank") || lower == "deposit"
                             || lower.StartsWith("deposit ");
 
-            if (lower.Contains("balance"))
+            if (HasWord(lower, "balance"))
             {
                 long banked = CountBankGold(speaker);
                 NpcSpeak(npc, $"Thou hast {banked} gold piece(s) in our care.");
@@ -349,6 +381,10 @@ public static partial class Program
         if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(keyword)) return 0;
         int idx = text.IndexOf(keyword, StringComparison.OrdinalIgnoreCase);
         if (idx < 0) return 0;
+        // Whole-word only — "check" buried inside another word must not
+        // trigger a bank withdrawal (same substring hazard as HasWord).
+        if (idx > 0 && char.IsLetterOrDigit(text[idx - 1])) return 0;
+        if (idx + keyword.Length < text.Length && char.IsLetter(text[idx + keyword.Length])) return 0;
         int cur = idx + keyword.Length;
         while (cur < text.Length && !char.IsDigit(text[cur])) cur++;
         int start = cur;
@@ -944,14 +980,14 @@ public static partial class Program
             else if (lowerName.Contains("stable") || lowerName.Contains("stablemaster"))
                 inferredBrain = NpcBrainType.Stable;
             else if (lowerName.Contains("guard")) inferredBrain = NpcBrainType.Guard;
-            else if (lowerName.Contains("vendor") || lowerName.Contains("shopkeep") ||
-                     lowerName.Contains("merchant")) inferredBrain = NpcBrainType.Vendor;
+            else if (SphereNet.Game.Trade.VendorEngine.HasVendorNameKeyword(lowerName))
+                inferredBrain = NpcBrainType.Vendor;
         }
 
         switch (inferredBrain)
         {
             case NpcBrainType.Vendor:
-                if (lower.Contains("buy") || lower.Contains("vendor buy") || lower.Contains("purchase"))
+                if (HasWord(lower, "buy") || HasWord(lower, "purchase"))
                 {
                     // Source-X CClient::Event_TalkBroadcast → Cmd_VendorBuy:
                     // open the vendor buy window on the speaker's client.
@@ -965,7 +1001,7 @@ public static partial class Program
                     if (string.IsNullOrEmpty(response))
                         response = "Take a look at my goods.";
                 }
-                else if (lower.Contains("sell") || lower.Contains("vendor sell"))
+                else if (HasWord(lower, "sell"))
                 {
                     var gc = FindGameClient(speaker);
                     _log.LogDebug(
@@ -977,7 +1013,7 @@ public static partial class Program
                     if (string.IsNullOrEmpty(response))
                         response = "Show me what you have to sell.";
                 }
-                else if (lower.Contains("train") || lower.Contains("teach"))
+                else if (HasWord(lower, "train") || HasWord(lower, "teach"))
                 {
                     response = HandleTrainRequest(speaker, npc, lower);
                 }
@@ -996,9 +1032,9 @@ public static partial class Program
                     var gc = FindGameClient(speaker);
                     int withdrawAmount = TryParseAmountAfter(lower, "withdraw");
                     int checkAmount = TryParseAmountAfter(lower, "check");
-                    bool wantBank = lower.Contains("bank") || lower == "deposit" || lower.StartsWith("deposit ");
+                    bool wantBank = HasWordPrefix(lower, "bank") || lower == "deposit" || lower.StartsWith("deposit ");
 
-                    if (lower.Contains("balance"))
+                    if (HasWord(lower, "balance"))
                     {
                         long banked = CountBankGold(speaker);
                         response = $"Thou hast {banked} gold piece(s) in our care.";
@@ -1044,7 +1080,7 @@ public static partial class Program
                 break;
 
             case NpcBrainType.Healer:
-                if (lower.Contains("heal") || lower.Contains("resurrect") || lower.Contains("cure"))
+                if (HasWord(lower, "heal") || HasWord(lower, "resurrect") || HasWord(lower, "cure"))
                 {
                     // Check if speaker is dead → resurrect
                     if (speaker.IsDead)
@@ -1072,12 +1108,12 @@ public static partial class Program
                 break;
 
             case NpcBrainType.Guard:
-                if (lower.Contains("help") || lower.Contains("guards"))
+                if (HasWord(lower, "help") || HasWord(lower, "guards"))
                     response = "I shall protect this area.";
                 break;
 
             case NpcBrainType.Stable:
-                if (lower.Contains("stable"))
+                if (HasWord(lower, "stable"))
                 {
                     // Source-X stablemaster: ask the player to TARGET the pet to stable
                     // (instead of auto-picking the nearest). The callback validates
@@ -1117,7 +1153,7 @@ public static partial class Program
                             : "I don't see any of your pets nearby.";
                     }
                 }
-                else if (lower.Contains("claim"))
+                else if (HasWord(lower, "claim"))
                 {
                     var claimed = _stableEngine.ClaimPet(speaker, 0, _world, speaker.Position);
                     if (claimed != null)

@@ -3,6 +3,63 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-16] - NPC anahtar kelime tam-sozcuk esleme, GM yell fix, vendor tasmasi
+----------------------------------------
+
+DUZELTILDI - Servis NPC'leri oyuncular arasi sohbete cevap veriyordu:
+        anahtar kelime kontrolu substring Contains() idi; kelime icinde
+        gecen her esleme tetikleniyordu — Turkce "buyur"/"buyuk"/"buyu"
+        icinde "buy" var (vendorlar neredeyse her cumlede buy gump acip
+        konusuyordu), "banka" icinde "bank" var. Tum servis kelimeleri
+        (buy/sell/purchase/train/teach/heal/resurrect/cure/stable/claim/
+        balance/help/guards) artik tam sozcuk esler; "bank" sozcuk oneki
+        olarak esler ("banka"/"bankaya" calismaya devam eder).
+        withdraw/check miktar ayristirici da sozcuk-sinirli.
+
+DUZELTILDI - Yetkili yell atinca client dusuyordu: GM yell NPC-hear
+        dongusunu dunyadaki TUM karakterlere ve @Hear taramasini TUM
+        item'lara (9999 kare) kosturuyor, main loop kilitlenince client
+        timeout yiyordu. Source-X Counsel+ yell'i TALKMODE_BROADCAST'e
+        cevirir (CCharAct.cpp:3575) — SADECE client'lara giden yayin.
+        Artik konusma paketi dogrudan client listesinden herkese gider
+        (BroadcastNearby global dali; buyuk menzil sektor dongusune hic
+        girmez), NPC/item duymasi normal yell menzilinde (48) kalir.
+        Ghost yell alici-bazli bozma da menzile kelepcelendi.
+
+DEGISTI - Servis NPC'leri (vendor/banker/stable) yerinden ayrilmaz:
+        ~3 kare + surtunmeyle binalarin disina cikiyorlardi. Artik evden
+        1 kareden fazla uzaklasinca geri cekilir, sadece evin ustundeyken
+        gezinir (en fazla ~2 kare, MOREZ'i bilerek yok sayar — gem-ustu
+        dogum ile ayni shard kurali).
+
+[2026-07-16] - Vendor algilama dclick, speech ve trade yollarinda birlestirildi
+----------------------------------------
+
+DEGISTI - NPC spawner cocugu artik worldgem bit'in UZERINDE dogurur
+        (Source-X'ten bilincli sapma, shard sahibi istegi). Source-X
+        GenerateChar cocugu MoveNear(pt, rand(MOREZ)+1) ile gem'den MOREZ
+        kareye kadar sacar (CCSpawn.cpp:433); SphereNet de oyle yapiyordu.
+        MOREZ (MOREP ucuncu alan) dolasma tasmasi rolunu korur (HOMEDIST,
+        CCSpawn.cpp:640). Rastgele sacilim yalnizca gem'in kendi karesi
+        gecilemezse (duvara gomulu gem) fallback olarak devrede. Acik
+        pozisyon atayan @Spawn scriptleri yine kazanir. Item spawner'lar
+        degismedi (MAXDIST icinde sacilmaya devam).
+
+DUZELTILDI - Bazi vendorlara cift tiklamak paperdoll acarken "buy" speech
+        urunleri listeliyordu: speech yolu BRAIN_HUMAN NPC'leri rol adina
+        gore vendor sayiyordu (eski paketlerde orn. c_h_vendor'da
+        brain_vendor yorumda, NPC=brain_human aktif), ama cift-tik,
+        context-menu ve 0x3B/0x9F trade dogrulama kapilari NpcBrain ==
+        Vendor'u kati kontrol ediyordu. Tum yollar artik tek
+        VendorEngine.IsVendorLike kosulunu paylasiyor (brain Vendor, ya da
+        Human/None brain + vendor/shopkeep/merchant ad anahtari); "buy"
+        speech'e cevap veren her NPC cift-tikta buy/sell dialogunu acar,
+        alim ve satim da gercekten tamamlanir. Restock, script BUY verb
+        vendor cozumu ve sahipli vendor CASH komutu ayni kosulu kullanir.
+
+DUZELTILDI - Vendor context-menu "Sell" sadece sysmessage basiyordu;
+        artik speech yolundaki gibi satis listesini acar.
+
 [2026-07-16] - Saha paketi 2: mesaj bicimleme, konusma rengi, dismount takibi
 ----------------------------------------
 

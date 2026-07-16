@@ -116,14 +116,14 @@ public sealed class ClientScriptConsoleHandler
             return null;
         if (Dialogs.DialogSubjectUid.IsValid &&
             _world.FindChar(Dialogs.DialogSubjectUid) is { } subject &&
-            !subject.IsPlayer && subject.NpcBrain == NpcBrainType.Vendor)
+            Trade.VendorEngine.IsVendorLike(subject))
             return subject;
 
         Character? nearest = null;
         int bestDist = int.MaxValue;
         foreach (var ch in _world.GetCharsInRange(_character.Position, 8))
         {
-            if (ch.IsPlayer || ch.IsDeleted || ch.NpcBrain != NpcBrainType.Vendor)
+            if (ch.IsDeleted || !Trade.VendorEngine.IsVendorLike(ch))
                 continue;
             int dist = _character.Position.GetDistanceTo(ch.Position);
             if (dist < bestDist)

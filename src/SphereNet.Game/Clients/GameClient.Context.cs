@@ -202,6 +202,7 @@ public sealed partial class GameClient : IClientContext
     }
 
     void IClientContext.OpenVendorBuy(Character vendor) => OpenVendorBuy(vendor);
+    void IClientContext.OpenVendorSell(Character vendor) => OpenVendorSell(vendor);
     void IClientContext.HandleVendorInteraction(Character vendor) => HandleVendorInteraction(vendor);
     void IClientContext.HandleDoubleClick(uint uid) => HandleDoubleClick(uid);
     ResDisplayVersion IClientContext.HandleResolvedClientVersion() => HandleResolvedClientVersion();

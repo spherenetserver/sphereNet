@@ -465,7 +465,7 @@ public sealed class ClientWorldFeaturesHandler
     {
         if (_character == null) return;
         var vendor = _world.FindChar(new Serial(vendorSerial));
-        if (vendor == null || vendor.NpcBrain != NpcBrainType.Vendor) return;
+        if (vendor == null || !VendorEngine.IsVendorLike(vendor)) return;
         if (_character.MapIndex != vendor.MapIndex ||
             _character.Position.GetDistanceTo(vendor.Position) > 3)
             return;
@@ -525,7 +525,7 @@ public sealed class ClientWorldFeaturesHandler
     {
         if (_character == null) return;
         var vendor = _world.FindChar(new Serial(vendorSerial));
-        if (vendor == null || vendor.NpcBrain != NpcBrainType.Vendor) return;
+        if (vendor == null || !VendorEngine.IsVendorLike(vendor)) return;
         if (_character.MapIndex != vendor.MapIndex ||
             _character.Position.GetDistanceTo(vendor.Position) > 3)
             return;
@@ -2562,7 +2562,7 @@ public sealed class ClientWorldFeaturesHandler
             {
                 entries.Add((2, 3006145, 0)); // Open Backpack
             }
-            if (!ch.IsPlayer && ch.NpcBrain == NpcBrainType.Vendor)
+            if (VendorEngine.IsVendorLike(ch))
             {
                 entries.Add((3, 3006103, 0)); // Buy
                 entries.Add((4, 3006106, 0)); // Sell
@@ -2630,7 +2630,11 @@ public sealed class ClientWorldFeaturesHandler
                 if (vendor != null) HandleVendorInteraction(vendor);
                 break;
             case 4: // Sell
-                SysMessage(ServerMessages.Get("vendor_what_sell"));
+                if (_world.FindChar(new Serial(targetSerial)) is { } sellVendor &&
+                    VendorEngine.IsVendorLike(sellVendor))
+                {
+                    _client.OpenVendorSell(sellVendor);
+                }
                 break;
             case 5: // Open Bankbox
             {

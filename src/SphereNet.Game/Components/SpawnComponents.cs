@@ -325,9 +325,20 @@ public sealed class SpawnComponent
     private Point3D FindSpawnPosition(CharDef? charDef)
     {
         var mapData = _world.MapData;
+
+        // Deliberate deviation from Source-X (shard owner request): children are
+        // born ON the worldgem bit instead of the MoveNear(pt, rand(MOREZ)+1)
+        // scatter (CCSpawn.cpp:433). MOREZ keeps its wander-leash role via
+        // HomeDist. The scatter loop below survives only as a fallback for a
+        // gem whose own tile can't hold a char (buried in a wall/furniture).
+        if (mapData == null)
+            return new Point3D(_spawnItem.X, _spawnItem.Y, _spawnItem.Z, _spawnItem.MapIndex);
+        sbyte gemZ = mapData.GetEffectiveZ(_spawnItem.MapIndex, _spawnItem.X, _spawnItem.Y, _spawnItem.Z);
+        if (mapData.IsPassable(_spawnItem.MapIndex, _spawnItem.X, _spawnItem.Y, gemZ))
+            return new Point3D(_spawnItem.X, _spawnItem.Y, gemZ, _spawnItem.MapIndex);
+
         bool canSwim = charDef != null && (charDef.Can & CanFlags.C_Swim) != 0;
-        var (mapW, mapH) = mapData?.GetMapSize(_spawnItem.MapIndex) ?? (0, 0);
-        // MOREZ=0 → spawn right next to the gem (Source-X MoveNear(pt, 1)).
+        var (mapW, mapH) = mapData.GetMapSize(_spawnItem.MapIndex);
         int range = _spawnRange > 0 ? _spawnRange : 1;
 
         for (int attempt = 0; attempt < 25; attempt++)
@@ -336,30 +347,24 @@ public sealed class SpawnComponent
             short dy = (short)_rand.Next(-range, range + 1);
             short px = (short)(_spawnItem.X + dx);
             short py = (short)(_spawnItem.Y + dy);
-            sbyte pz = _spawnItem.Z;
 
-            if (mapData != null)
-            {
-                // Off-map candidate — reject like Source-X's IsValidPoint gate;
-                // a spawner near the map edge can roll negative coordinates.
-                if (px < 0 || py < 0 || px >= mapW || py >= mapH)
-                    continue;
-                pz = mapData.GetEffectiveZ(_spawnItem.MapIndex, px, py, _spawnItem.Z);
-                if (!mapData.IsPassable(_spawnItem.MapIndex, px, py, pz))
-                    continue;
-                var terrain = mapData.GetTerrainTile(_spawnItem.MapIndex, px, py);
-                var landData = mapData.GetLandTileData(terrain.TileId);
-                if (landData.IsWet && !canSwim)
-                    continue;
-                // Source-X CCSpawn: a child must have LOS back to its spawn
-                // point — otherwise it can materialize behind a wall.
-                var candidate = new Point3D(px, py, pz, _spawnItem.MapIndex);
-                if (!_world.CanSeeLOS(_spawnItem.Position, candidate))
-                    continue;
-                return candidate;
-            }
-
-            return new Point3D(px, py, pz, _spawnItem.MapIndex);
+            // Off-map candidate — reject like Source-X's IsValidPoint gate;
+            // a spawner near the map edge can roll negative coordinates.
+            if (px < 0 || py < 0 || px >= mapW || py >= mapH)
+                continue;
+            sbyte pz = mapData.GetEffectiveZ(_spawnItem.MapIndex, px, py, _spawnItem.Z);
+            if (!mapData.IsPassable(_spawnItem.MapIndex, px, py, pz))
+                continue;
+            var terrain = mapData.GetTerrainTile(_spawnItem.MapIndex, px, py);
+            var landData = mapData.GetLandTileData(terrain.TileId);
+            if (landData.IsWet && !canSwim)
+                continue;
+            // Source-X CCSpawn: a child must have LOS back to its spawn
+            // point — otherwise it can materialize behind a wall.
+            var candidate = new Point3D(px, py, pz, _spawnItem.MapIndex);
+            if (!_world.CanSeeLOS(_spawnItem.Position, candidate))
+                continue;
+            return candidate;
         }
 
         return new Point3D(_spawnItem.X, _spawnItem.Y, _spawnItem.Z, _spawnItem.MapIndex);

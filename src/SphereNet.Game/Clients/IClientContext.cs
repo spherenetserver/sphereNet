@@ -154,6 +154,7 @@ internal interface IClientContext : ITextConsole
 
     // --- gameplay bridges ---
     void OpenVendorBuy(Character vendor);
+    void OpenVendorSell(Character vendor);
     void HandleVendorInteraction(Character vendor);
     void HandleDoubleClick(uint uid);
     ResDisplayVersion HandleResolvedClientVersion();

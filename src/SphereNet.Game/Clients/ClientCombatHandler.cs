@@ -667,14 +667,22 @@ public sealed class ClientCombatHandler
             9 => 48, // yell
             _ => 18  // say
         };
+        // Source-X CChar::Speak (CCharAct.cpp:3575): a Counsel+ yell is promoted
+        // to TALKMODE_BROADCAST — every client on the server reads it. Only the
+        // client packet goes global; NPC/item hearing stays at yell earshot
+        // (SpeechEngine caps it), so a GM yell can't stall the world.
+        if (type == 9 && _character.PrivLevel >= PrivLevel.Counsel)
+            range = int.MaxValue;
 
         if (isGhost && ForEachClientInRange != null)
         {
             // Per-recipient ghost speech: the speaker (a ghost) and any other ghost /
             // staff observer reads the clear words; every other living listener gets
             // an independently-scrambled garble (Source-X MutateSpeech per listener).
+            // ForEachClientInRange walks sectors by range, so the GM-broadcast
+            // sentinel range must not reach it — a ghost yell stays at earshot.
             Send(MakeSpeechPacket(type, hue, font, clearText));
-            ForEachClientInRange.Invoke(_character.Position, range, _character.Uid.Value,
+            ForEachClientInRange.Invoke(_character.Position, Math.Min(range, 48), _character.Uid.Value,
                 (recipient, recipientClient) =>
                 {
                     string heard = GhostSpeech.HearsGhostClearly(recipient)

@@ -272,14 +272,18 @@ public sealed partial class NpcAI
             return;
         }
 
+        // Shard rule (deliberate, ignores MOREZ/HOMEDIST): service NPCs stay
+        // glued to their post — they kept strolling out of their buildings.
+        // Pull back beyond 1 tile, wander only while standing at home, so the
+        // drift never exceeds ~2 tiles.
         int dist = npc.Position.GetDistanceTo(home);
-        if (dist > 3)
+        if (dist > 1)
         {
             MoveToward(npc, home);
             return;
         }
 
-        if (_rand.Next(100) < 3)
+        if (dist == 0 && _rand.Next(100) < 3)
             Wander(npc);
     }
 

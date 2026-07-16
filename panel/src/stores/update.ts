@@ -42,6 +42,11 @@ export const useUpdateStore = defineStore('update', () => {
     if (!supported.value || restarting.value) return
     try {
       const { data } = await updateApi.status()
+      if (!isStatus(data)) {
+        supported.value = false
+        stopPolling()
+        return
+      }
       status.value = data
       error.value = null
 
@@ -72,6 +77,10 @@ export const useUpdateStore = defineStore('update', () => {
     checking.value = true
     try {
       const { data } = await updateApi.check()
+      if (!isStatus(data)) {
+        supported.value = false
+        return
+      }
       status.value = data
       error.value = null
     } catch (err: unknown) {
@@ -139,6 +148,17 @@ export const useUpdateStore = defineStore('update', () => {
 
   function isNotFound(err: unknown): boolean {
     return (err as { response?: { status?: number } })?.response?.status === 404
+  }
+
+  /**
+   * A backend without the update routes lets the SPA fallback answer, so a
+   * 200 carrying index.html is a real possibility. Markup assigned to `status`
+   * renders as a half-broken page ("Sunucu guncel" with empty fields) instead
+   * of the honest "not configured" notice, so verify the shape, not the code.
+   */
+  function isStatus(data: unknown): data is UpdateStatus {
+    return typeof data === 'object' && data !== null
+      && typeof (data as UpdateStatus).state === 'string'
   }
 
   function describe(err: unknown): string {

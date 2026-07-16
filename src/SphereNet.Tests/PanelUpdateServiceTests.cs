@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using Microsoft.Extensions.Logging.Abstractions;
 using SphereNet.Panel;
 using SphereNet.Panel.Updates;
@@ -181,6 +182,62 @@ public sealed class PanelUpdateServiceTests : IDisposable
 
         Assert.False(svc.TryBeginApply(out var error));
         Assert.Contains("update.cmd", error);
+    }
+
+    // ── Paket acma ───────────────────────────────────────────────────────────
+
+    private static string MakeZip(string dir, params string[] entryNames)
+    {
+        var path = Path.Combine(dir, "pkg-" + Guid.NewGuid().ToString("N")[..8] + ".zip");
+        using var fs = new FileStream(path, FileMode.CreateNew);
+        using var zip = new ZipArchive(fs, ZipArchiveMode.Create);
+        foreach (var name in entryNames)
+        {
+            using var writer = new StreamWriter(zip.CreateEntry(name).Open());
+            writer.Write("payload");
+        }
+        return path;
+    }
+
+    /// <summary>
+    /// Giris ayiraci onemsiz olmali: zip spec forward slash ister ve CI'daki
+    /// pwsh (.NET Core) oyle yazar, ama .NET Framework'un ZipFile'i ters bolu
+    /// yazar. Paket her iki sekilde de ayni agaca acilmali.
+    /// </summary>
+    [Theory]
+    [InlineData("panel/index.html")]
+    [InlineData("panel\\index.html")]
+    public void ExtractPackage_HandlesEitherPathSeparator(string entryName)
+    {
+        var staged = Path.Combine(_installDir, "staged-" + Guid.NewGuid().ToString("N")[..8]);
+        var zip = MakeZip(_installDir, "SphereNet.Host.exe", entryName);
+
+        UpdateService.ExtractPackage(zip, staged);
+
+        Assert.True(File.Exists(Path.Combine(staged, "SphereNet.Host.exe")));
+        Assert.True(File.Exists(Path.Combine(staged, "panel", "index.html")),
+            $"'{entryName}' girisi panel/index.html olarak acilmadi.");
+    }
+
+    /// <summary>
+    /// Zip-slip: staging klasorunun disina cikan bir giris, hicbir dosyaya
+    /// dokunulmadan reddedilmeli. Paket uzaktan indiriliyor ve kurulum kokune
+    /// aciliyor; kacan bir giris rastgele dosyanin uzerine yazabilirdi.
+    /// </summary>
+    [Theory]
+    [InlineData("../escaped.txt")]
+    [InlineData("..\\escaped.txt")]
+    [InlineData("panel/../../escaped.txt")]
+    public void ExtractPackage_RejectsEntriesEscapingStagingDir(string entryName)
+    {
+        var staged = Path.Combine(_installDir, "staged-" + Guid.NewGuid().ToString("N")[..8]);
+        var zip = MakeZip(_installDir, entryName);
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => UpdateService.ExtractPackage(zip, staged));
+        Assert.Contains("disina", ex.Message);
+
+        Assert.False(File.Exists(Path.Combine(_installDir, "escaped.txt")));
     }
 
     // ── Updater scripti ──────────────────────────────────────────────────────

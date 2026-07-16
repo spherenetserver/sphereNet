@@ -217,6 +217,52 @@ public sealed class InfrastructureHardeningTests
         }
     }
 
+    /// <summary>
+    /// With no AppUpdateRepo configured, the update routes must answer 404
+    /// themselves rather than being left unmapped. An unmapped /api path is not
+    /// a 404: the SPA fallback claims it, so GET returns index.html with 200
+    /// (the panel then reads markup as a status object and renders a
+    /// half-broken page) and POST returns 405 against that GET-only fallback.
+    /// </summary>
+    [Fact]
+    public async Task PanelHost_UnconfiguredUpdater_Returns404NotFallbackHtmlOr405()
+    {
+        int port = GetFreeTcpPort();
+        // UpdateSettings left null = sphere.ini without AppUpdateRepo.
+        var context = new PanelContext { AdminPassword = PasswordHelper.Hash("panel-test") };
+
+        using var loggerFactory = LoggerFactory.Create(b => b.SetMinimumLevel(LogLevel.Warning));
+        using var sink = new PanelLogSink();
+        using var host = new PanelHost(context, port, sink, loggerFactory.CreateLogger<PanelHost>());
+        host.Start();
+
+        using var client = new HttpClient { BaseAddress = new Uri($"http://localhost:{port}") };
+        await WaitForHealthAsync(client);
+
+        // The update routes sit behind the bearer gate like the rest of /api.
+        var anonymous = await client.GetAsync("/api/update/status");
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+
+        var loginResponse = await client.PostAsJsonAsync("/api/auth/login", new { password = "panel-test" });
+        loginResponse.EnsureSuccessStatusCode();
+        var login = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>();
+        Assert.NotNull(login);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.Token);
+
+        var status = await client.GetAsync("/api/update/status");
+        Assert.Equal(HttpStatusCode.NotFound, status.StatusCode);
+        // Not the SPA fallback: markup here is what made the panel render a
+        // half-broken "Sunucu guncel" instead of the "not configured" notice.
+        Assert.DoesNotContain("<!doctype", await status.Content.ReadAsStringAsync(),
+            StringComparison.OrdinalIgnoreCase);
+
+        var check = await client.PostAsync("/api/update/check", null);
+        Assert.Equal(HttpStatusCode.NotFound, check.StatusCode);
+
+        var apply = await client.PostAsync("/api/update/apply", null);
+        Assert.Equal(HttpStatusCode.NotFound, apply.StatusCode);
+    }
+
     private static async Task<string?> GetHintAsync(HttpClient client)
     {
         var response = await client.GetAsync("/api/auth/local-hint");

@@ -20,6 +20,10 @@ namespace SphereNet.Panel;
 public sealed class PanelHost : IDisposable
 {
     private const int MaxScriptContentChars = 4 * 1024 * 1024;
+
+    private const string UpdaterNotConfigured =
+        "Update system is not configured (set AppUpdateRepo in sphere.ini).";
+
     private readonly PanelContext _ctx;
     private readonly int _port;
     private readonly PanelLogSink _logSink;
@@ -716,28 +720,38 @@ public sealed class PanelHost : IDisposable
         });
 
         // --- App update ---------------------------------------------------
-        // Null when sphere.ini has no AppUpdateRepo — the routes then 404 and
-        // the panel hides the Updates page.
-        if (_updates is not null)
+        // _updates is null when sphere.ini has no AppUpdateRepo. These routes
+        // are still mapped in that case and answer 404 themselves — leaving
+        // them unmapped does NOT produce a 404: the SPA fallback claims every
+        // unmatched path, so a GET would return index.html with 200 (the panel
+        // then parses markup as a status object) and a POST would hit that
+        // GET-only fallback route and return 405. An explicit 404 is what tells
+        // the panel to hide the Updates page.
+        app.MapGet("/api/update/status", () =>
+            _updates is null
+                ? Results.NotFound(new { error = UpdaterNotConfigured })
+                : Results.Ok(_updates.GetStatus()));
+
+        app.MapPost("/api/update/check", async (CancellationToken ct) =>
+            _updates is null
+                ? Results.NotFound(new { error = UpdaterNotConfigured })
+                : Results.Ok(await _updates.CheckAsync(ct)));
+
+        app.MapPost("/api/update/apply", (HttpContext http) =>
         {
-            app.MapGet("/api/update/status", () => Results.Ok(_updates.GetStatus()));
+            if (_updates is null)
+                return Results.NotFound(new { error = UpdaterNotConfigured });
 
-            app.MapPost("/api/update/check", async (CancellationToken ct) =>
-                Results.Ok(await _updates.CheckAsync(ct)));
+            if (!_updates.TryBeginApply(out var error))
+                return Results.Conflict(new { error });
 
-            app.MapPost("/api/update/apply", (HttpContext http) =>
-            {
-                if (!_updates.TryBeginApply(out var error))
-                    return Results.Conflict(new { error });
+            _ctx.AuditLog?.Invoke(
+                $"update apply requested ip='{http.Connection.RemoteIpAddress}'");
+            _logger.LogWarning("Update: apply requested from {Ip} — server will restart.",
+                http.Connection.RemoteIpAddress);
 
-                _ctx.AuditLog?.Invoke(
-                    $"update apply requested ip='{http.Connection.RemoteIpAddress}'");
-                _logger.LogWarning("Update: apply requested from {Ip} — server will restart.",
-                    http.Connection.RemoteIpAddress);
-
-                return Results.Accepted(value: _updates.GetStatus());
-            });
-        }
+            return Results.Accepted(value: _updates.GetStatus());
+        });
 
         app.MapPost("/api/scripts/download", async () =>
         {

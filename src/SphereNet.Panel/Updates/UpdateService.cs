@@ -457,8 +457,12 @@ public sealed class UpdateService : IDisposable
     /// <summary>
     /// Zip'i acar. Zip-slip'e karsi her giris kurulum kokune degil, staging
     /// klasorune gore SafePath ile cozulur.
+    ///
+    /// Giris adlarindaki ayirac onemsizdir: zip spec forward slash ister ve
+    /// .NET Core'un ZipFile'i (CI'daki pwsh) oyle yazar, ama .NET Framework
+    /// ters bolu yazar. Path.Combine ikisini de Windows'ta dogru cozer.
     /// </summary>
-    private static void ExtractPackage(string zipPath, string stagedDir)
+    internal static void ExtractPackage(string zipPath, string stagedDir)
     {
         Directory.CreateDirectory(stagedDir);
         using var archive = ZipFile.OpenRead(zipPath);

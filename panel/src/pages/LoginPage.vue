@@ -17,6 +17,9 @@
             autocomplete="current-password"
             :disabled="loading"
           />
+          <p v-if="prefilled" class="hint-msg">
+            Filled in from sphere.ini (AdminPanelAutoFill).
+          </p>
         </div>
 
         <button type="submit" class="btn-primary" :disabled="loading">
@@ -31,13 +34,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
+import { authApi } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 
 const auth     = useAuthStore()
 const password = ref('')
 const loading  = ref(false)
 const error    = ref('')
+const prefilled = ref(false)
+
+onMounted(async () => {
+  try {
+    const { data } = await authApi.localHint()
+    if (data.password) {
+      password.value  = data.password
+      prefilled.value = true
+    }
+  } catch { /* no hint available — operator types the password */ }
+})
 
 async function submit() {
   if (!password.value) return
@@ -134,6 +149,12 @@ async function submit() {
 
 .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.hint-msg {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
 
 .error-msg {
   font-size: 13px;

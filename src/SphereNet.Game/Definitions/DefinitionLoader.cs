@@ -269,13 +269,29 @@ public sealed class DefinitionLoader
             }
             else if (upper == "ITEM" || upper == "ITEMNEWBIE")
             {
-                // ITEM=foo[,amount]
+                // ITEM=foo[,amount[,Rchance]] — Source-X CItem::CreateHeader.
+                // The raw args are kept verbatim: loot templates carry "{600 750}"
+                // dice amounts and "R5" 1-in-5 chance tokens that a plain int
+                // parse silently dropped.
                 var parts = key.Arg.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 0) continue;
                 int amount = 0;
                 if (parts.Length >= 2 && int.TryParse(parts[1], out int a) && a > 0)
                     amount = a;
-                def.ItemEntries.Add(new TemplateEntry { DefName = parts[0], Amount = amount });
+                def.ItemEntries.Add(new TemplateEntry
+                {
+                    DefName = parts[0],
+                    Amount = amount,
+                    RawArgs = parts.Length >= 2 ? parts[1..] : []
+                });
+            }
+            else if (upper == "CONTAINER")
+            {
+                // CONTAINER=i_bag — following ITEM rows spawn inside this
+                // container (Source-X ReadTemplate ITC_CONTAINER).
+                var parts = key.Arg.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 0) continue;
+                def.ItemEntries.Add(new TemplateEntry { DefName = parts[0], IsContainer = true });
             }
             else if (upper == "SELL" || upper == "BUY")
             {

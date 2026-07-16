@@ -30,6 +30,19 @@ public static class TemplateEngine
         string current = defname.Trim();
         for (int hops = 0; hops < MaxNestedResolves; hops++)
         {
+            // 0) Inline weighted pool in defname position — Source-X resolves
+            //    "{ a w b w }" through the expression engine before the
+            //    resource lookup (loot rows like
+            //    ITEM={ random_weapon_sword_normal 99 i_sword_demon 1 }).
+            //    A "0" member is a deliberate empty slot ("nothing" chance).
+            if (current.StartsWith('{'))
+            {
+                current = PickFromDefValue(current);
+                if (string.IsNullOrEmpty(current) || current == "0")
+                    return "";
+                continue;
+            }
+
             // 1) Explicit [TEMPLATE] block wins.
             var tpl = DefinitionLoader.GetTemplateDef(current);
             if (tpl != null)
@@ -116,6 +129,56 @@ public static class TemplateEngine
         return firstSpace < 0 ? trimmed : trimmed[..firstSpace];
     }
 
+    /// <summary>Roll one template row's chance and amount (Source-X
+    /// CItem::CreateHeader, CItem.cpp:461-488): every arg after the defname is
+    /// either <c>R#</c> — a 1-in-# chance to create the row at all — or an
+    /// amount expression (<c>3</c> / <c>{600 750}</c> dice). Returns false when
+    /// the chance roll fails or the amount resolves to 0; otherwise the rolled
+    /// amount (minimum 1).</summary>
+    public static bool TryRollTemplateRow(TemplateEntry entry, out int amount)
+    {
+        amount = 1;
+        foreach (string rawArg in entry.RawArgs)
+        {
+            string arg = rawArg.Trim();
+            if (arg.Length == 0) continue;
+            if ((arg[0] == 'R' || arg[0] == 'r') && arg.Length > 1 &&
+                int.TryParse(arg.AsSpan(1), out int chance))
+            {
+                if (chance > 1 && _rand.Next(chance) != 0)
+                    return false; // g_Rand.GetVal(x) != 0 → don't create
+                continue;
+            }
+            amount = RollAmountExpr(arg);
+            if (amount <= 0)
+                return false; // Source-X: amount == 0 → no item
+        }
+        return true;
+    }
+
+    /// <summary>Evaluate a template amount expression: plain integer or a
+    /// <c>{lo hi}</c> dice range (inclusive, Source-X Exp_GetWVal on a braced
+    /// range). Unparseable input yields 0.</summary>
+    public static int RollAmountExpr(string? expr)
+    {
+        if (string.IsNullOrWhiteSpace(expr)) return 0;
+        string trimmed = expr.Trim();
+        if (trimmed[0] == '{')
+        {
+            int close = trimmed.LastIndexOf('}');
+            string inner = trimmed.Substring(1, (close < 0 ? trimmed.Length : close) - 1).Trim();
+            var parts = inner.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2 &&
+                int.TryParse(parts[0], out int lo) && int.TryParse(parts[^1], out int hi))
+            {
+                if (hi < lo) (lo, hi) = (hi, lo);
+                return _rand.Next(lo, hi + 1);
+            }
+            return parts.Length == 1 && int.TryParse(parts[0], out int single) ? single : 0;
+        }
+        return int.TryParse(trimmed, out int plain) ? plain : 0;
+    }
+
     /// <summary>Enumerate every item the sequential-spawn template
     /// should produce. For VENDOR_S_* / VENDOR_B_* restock lists this
     /// returns (defname, amount) pairs. Random-pool templates fall
@@ -137,7 +200,10 @@ public static class TemplateEngine
         if (tpl.ItemEntries.Count > 0)
         {
             foreach (var entry in tpl.ItemEntries)
+            {
+                if (entry.IsContainer) continue; // loot-template CONTAINER rows — not vendor stock
                 yield return (entry.DefName, entry.Amount);
+            }
             yield break;
         }
         // Random pool only → emit one pick.

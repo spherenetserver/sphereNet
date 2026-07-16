@@ -214,15 +214,25 @@ public sealed class MountEngine
         if (npc == null)
             return null;
 
+        // Source-X Use_Figurine pulls the pet out of ridden/idle space itself
+        // (StatFlag_Clear(STATF_RIDDEN), CCharUse.cpp:1197-1198) — callers were
+        // each clearing it after the fact, and any path that forgot left the
+        // mount invisible to its own AI tick (OnTickAction skips Ridden chars).
+        npc.ClearStatFlag(StatFlag.Ridden);
         npc.Direction = rider.Direction;
         npc.NextNpcActionTime = Environment.TickCount64 + 1500;
 
         // Source-X Use_Figurine (CCharUse.cpp:1202-1206): every dismount
         // unconditionally re-owns the mount to the rider (NPC_PetSetOwner →
-        // MEMORY_IPET memory + follow). Without this the NPC has no master,
-        // falls into the Animal brain and wanders off instead of following.
+        // MEMORY_IPET memory), then leaves the pet IDLE (Skill_Start(SKILL_NONE)).
+        // An idle owned pet that sees its owner defaults to GUARD_TARG
+        // (NPC_LookAtChar, CCharNPCAct.cpp:1036), and NPC_Act_Guard joins any
+        // fight the owner starts (CCharNPCAct.cpp:1300-1303). Guard mode is
+        // that net effect: the mount stays with its owner AND auto-attacks
+        // the owner's fight target.
         npc.TryAssignOwnership(rider, rider);
-        npc.PetAIMode = PetAIMode.Follow;
+        npc.PetAIMode = PetAIMode.Guard;
+        npc.SetTag("GUARD_TARGET", rider.Uid.Value.ToString());
 
         var pos = rider.Position;
         var mapData = _world.MapData;

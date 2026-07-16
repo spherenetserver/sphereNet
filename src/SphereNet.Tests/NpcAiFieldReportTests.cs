@@ -137,6 +137,54 @@ public class NpcAiFieldReportTests
     }
 
     [Fact]
+    public void DismountedMount_GuardsOwner_AndJoinsOwnersFight()
+    {
+        // Source-X: Use_Figurine leaves the dismounted pet idle
+        // (CCharUse.cpp:1205); an idle owned pet seeing its owner defaults to
+        // GUARD_TARG (NPC_LookAtChar, CCharNPCAct.cpp:1036) and NPC_Act_Guard
+        // attacks whatever the owner fights (CCharNPCAct.cpp:1300-1303).
+        var world = new GameWorld(LoggerFactory.Create(_ => { }));
+        world.InitMap(0, 6144, 4096);
+        SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
+        var ai = new NpcAI(world, new SphereConfig());
+
+        var rider = world.CreateCharacter();
+        rider.IsPlayer = true;
+        rider.IsOnline = true;
+        rider.Hits = rider.MaxHits = 100;
+        world.PlaceCharacter(rider, new Point3D(100, 100, 0, 0));
+        world.AddOnlinePlayer(rider);
+
+        var horse = world.CreateCharacter();
+        horse.BodyId = 0x00C8;
+        horse.NpcBrain = NpcBrainType.Animal;
+        horse.Hits = horse.MaxHits = 50;
+        horse.Stam = horse.MaxStam = 50;
+        horse.TryAssignOwnership(rider, rider);
+        world.PlaceCharacter(horse, new Point3D(101, 100, 0, 0));
+
+        var engine = new SphereNet.Game.Mounts.MountEngine(world);
+        Assert.True(engine.TryMount(rider, horse));
+        Assert.NotNull(engine.Dismount(rider));
+
+        Assert.Equal(PetAIMode.Guard, horse.PetAIMode);
+
+        var victim = world.CreateCharacter();
+        victim.IsPlayer = true;
+        victim.Hits = victim.MaxHits = 100;
+        world.PlaceCharacter(victim, new Point3D(102, 100, 0, 0));
+        world.OnTick();
+
+        // Owner initiates the attack — the guarding mount must acquire the
+        // owner's fight target on its next AI tick.
+        rider.FightTarget = victim.Uid;
+        horse.NextNpcActionTime = 0;
+        ai.OnTickAction(horse);
+
+        Assert.Equal(victim.Uid, horse.FightTarget);
+    }
+
+    [Fact]
     public void OpenedDoor_SwingsShutOnItsOwn()
     {
         var world = new GameWorld(LoggerFactory.Create(_ => { }));

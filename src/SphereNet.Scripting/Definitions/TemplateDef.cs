@@ -10,13 +10,23 @@ namespace SphereNet.Scripting.Definitions;
 /// </summary>
 public sealed class TemplateEntry
 {
-    /// <summary>Defname of the item or nested template to spawn.</summary>
+    /// <summary>Defname of the item or nested template to spawn. May be an
+    /// inline weighted pool <c>{ a w b w }</c> — Source-X resolves the braces
+    /// in defname position (CItem::CreateHeader → ResourceGetID).</summary>
     public string DefName { get; init; } = "";
     /// <summary>Selection weight when picking randomly (default 1).</summary>
     public int Weight { get; init; } = 1;
     /// <summary>Stack amount for stackable items (e.g. gold). 0 = let the
     /// ItemDef default decide.</summary>
     public int Amount { get; init; }
+    /// <summary>Raw args after the defname, verbatim (Source-X
+    /// CItem::CreateHeader "ITEM=#id,#amount,R#chance"): each token is either
+    /// an amount expression (<c>3</c>, <c>{600 750}</c>) or a 1-in-X chance
+    /// (<c>R5</c>). Empty when the row had no args.</summary>
+    public string[] RawArgs { get; init; } = [];
+    /// <summary>True for a CONTAINER= row — following ITEM rows spawn inside
+    /// this container (Source-X ReadTemplate ITC_CONTAINER).</summary>
+    public bool IsContainer { get; init; }
 }
 
 /// <summary>

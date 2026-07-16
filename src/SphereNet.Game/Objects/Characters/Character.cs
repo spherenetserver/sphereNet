@@ -5996,6 +5996,23 @@ public partial class Character : ObjBase
         var resources = Definitions.DefinitionLoader.StaticResources;
         if (resources == null) return;
         var rid = resources.ResolveDefName(picked);
+        if (rid.IsValid && rid.Type == Core.Enums.ResType.Template)
+        {
+            // Sequential template in defname position (ITEM=loot_demon_balron):
+            // Source-X CItem::CreateHeader accepts RES_TEMPLATE and pours the
+            // whole row list into the char's pack (CItem.cpp:494/515 →
+            // ReadTemplate). PickRandomItemDefName already consumed pure
+            // random-pool templates, so what reaches here is a loot list.
+            var lootPack = Backpack;
+            if (lootPack == null)
+            {
+                lootPack = world.CreateItem();
+                lootPack.BaseId = 0x0E75;
+                Equip(lootPack, Core.Enums.Layer.Pack);
+            }
+            SpawnLootTemplateInto(world, lootPack, picked, depth: 0);
+            return;
+        }
         if (!rid.IsValid || rid.Type != Core.Enums.ResType.ItemDef)
             return;
 
@@ -6059,6 +6076,97 @@ public partial class Character : ObjBase
         }
 
         _lastCreatedItem = item;
+    }
+
+    /// <summary>
+    /// Expand a sequential loot template into <paramref name="dest"/> —
+    /// Source-X CItem::ReadTemplate (CItem.cpp:586): ITEM rows spawn in order
+    /// (each row rolls its own R-chance and dice amount, CreateHeader),
+    /// CONTAINER rows redirect the following ITEM rows into a sub-container,
+    /// and a nested template pours into the current container.
+    /// </summary>
+    private void SpawnLootTemplateInto(World.GameWorld world, Item dest, string templateName, int depth)
+    {
+        if (depth > 4) return; // cycle guard, mirrors TemplateEngine.MaxNestedResolves intent
+        var tpl = Definitions.DefinitionLoader.GetTemplateDef(templateName);
+        if (tpl == null) return;
+
+        var current = dest;
+        foreach (var entry in tpl.ItemEntries)
+        {
+            if (entry.IsContainer)
+            {
+                var bag = CreateLootTemplateItem(world, entry.DefName, 1);
+                if (bag != null && dest.TryAddItem(bag))
+                    current = bag;
+                continue; // bag failed → keep pouring into the previous container
+            }
+
+            if (!Definitions.TemplateEngine.TryRollTemplateRow(entry, out int amount))
+                continue;
+
+            string picked = Definitions.TemplateEngine.PickRandomItemDefName(entry.DefName);
+            if (string.IsNullOrWhiteSpace(picked)) continue;
+
+            var resources = Definitions.DefinitionLoader.StaticResources;
+            var rid = resources?.ResolveDefName(picked) ?? default;
+            if (rid.IsValid && rid.Type == Core.Enums.ResType.Template)
+            {
+                SpawnLootTemplateInto(world, current, picked, depth + 1);
+                continue;
+            }
+
+            var item = CreateLootTemplateItem(world, picked, amount);
+            if (item == null) continue;
+            if (!current.TryAddItem(item))
+            {
+                world.RemoveItem(item);
+                // The container filled up — Source-X keeps reading, later rows
+                // may be smaller/stack; do the same instead of aborting.
+            }
+        }
+    }
+
+    /// <summary>Create one loot item from a resolved itemdef defname —
+    /// graphic/metadata resolution identical to SpawnAndEquipItem's single-item
+    /// path, but never equips (template loot always lands in a container).</summary>
+    private Item? CreateLootTemplateItem(World.GameWorld world, string defname, int amount)
+    {
+        string picked = Definitions.TemplateEngine.PickRandomItemDefName(defname);
+        if (string.IsNullOrWhiteSpace(picked)) return null;
+        var resources = Definitions.DefinitionLoader.StaticResources;
+        if (resources == null) return null;
+        var rid = resources.ResolveDefName(picked);
+        int defIndex = rid.IsValid && rid.Type == Core.Enums.ResType.ItemDef ? rid.Index : 0;
+        if (defIndex == 0)
+        {
+            // Numeric row (ITEM=0EED,...): Sphere's leading-zero-hex / 0x
+            // convention — the graphic id IS the itemdef index.
+            if (!SphereNet.Scripting.Parsing.ScriptKey.TryParseNumber(picked.AsSpan(), out long numeric) ||
+                numeric <= 0 || numeric > ushort.MaxValue)
+                return null;
+            defIndex = (int)numeric;
+        }
+
+        var idef = Definitions.DefinitionLoader.GetItemDef(defIndex);
+        ushort dispId = 0;
+        if (idef != null)
+        {
+            if (idef.DispIndex != 0) dispId = idef.DispIndex;
+            else if (idef.DupItemId != 0) dispId = idef.DupItemId;
+        }
+        if (dispId == 0 && defIndex <= 0xFFFF) dispId = (ushort)defIndex;
+        if (dispId == 0) return null;
+
+        var item = world.CreateItem();
+        item.BaseId = dispId;
+        Definitions.ItemDefHelper.ApplyInstanceMetadata(item, defIndex,
+            setDisplayId: false, setName: false);
+        if (idef != null && !string.IsNullOrWhiteSpace(idef.Name))
+            item.Name = idef.Name;
+        if (amount > 1)
+            item.Amount = (ushort)Math.Min(amount, ushort.MaxValue);
+        return item;
     }
 
     /// <summary>Broadcast an overhead spoken line from this character to nearby

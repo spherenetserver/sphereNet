@@ -7,6 +7,40 @@
 [2026-07-16] - NPC keyword word-matching, GM yell broadcast fix, vendor leash
 ----------------------------------------
 
+FIXED - Monster corpses were empty (Balron field report): ITEM=loot_x in
+        @NPCRestock bodies resolved the defname, saw RES_TEMPLATE instead
+        of RES_ITEMDEF and silently spawned nothing. Source-X
+        CItem::CreateHeader accepts a template in defname position and
+        ReadTemplate pours the whole loot list into the pack
+        (CItem.cpp:461-539/586). The ITEM verb now expands sequential
+        templates: per-row R# 1-in-N chance and {lo hi} dice amounts
+        (CreateHeader parity), inline weighted pools in defname position
+        ({ a w b w }, "0" = empty slot), nested templates, CONTAINER=
+        sub-bags, and numeric itemdef rows (ITEM=0EED). The template
+        loader keeps raw row args and CONTAINER rows; vendor stock
+        enumeration skips container rows. NOTE: the live pack shipped
+        with 33 ON=@NPCRestock and 423 ITEM= loot lines commented out in
+        the monster chardefs (likely because the loot rows did nothing) —
+        those are re-enabled pack-side.
+
+FIXED - A dismounted mount ignored its owner's fights: dismount put the
+        pet in Follow mode, which only self-defends. Source-X leaves the
+        dismounted pet idle (CCharUse.cpp:1205); an idle owned pet
+        defaults to guarding its owner (NPC_LookAtChar,
+        CCharNPCAct.cpp:1036) and NPC_Act_Guard attacks whatever the
+        owner fights (CCharNPCAct.cpp:1300-1303). Dismount now sets
+        Guard mode on the rider, so the mount joins the owner's attack.
+        MountEngine.Dismount also clears STATF_RIDDEN itself (parity
+        with Use_Figurine) instead of relying on each caller — a path
+        that forgot left the mount skipped by its own AI tick.
+
+FIXED - Fast consecutive chat messages silently vanished: an invented
+        speech rate limit (10 messages per 5s sliding window, commands
+        consuming the same quota) dropped everything past the cap.
+        Source-X Event_Talk has no such limit — the throttle is removed;
+        extreme packet floods remain handled at the network layer
+        (MaxPacketsPerTick / FloodDetectionCount).
+
 FIXED - Service NPCs answered unrelated player-to-player chatter: the
         built-in keyword dispatch used substring Contains(), so any word
         embedding a keyword triggered a response — Turkish "buyur"/

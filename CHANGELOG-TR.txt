@@ -6,6 +6,40 @@
 [2026-07-16] - NPC anahtar kelime tam-sozcuk esleme, GM yell fix, vendor tasmasi
 ----------------------------------------
 
+DUZELTILDI - Yaratik cesetleri bos cikiyordu (Balron saha raporu):
+        @NPCRestock icindeki ITEM=loot_x defname'i cozup RES_TEMPLATE
+        gorunce sessizce hicbir sey dogurmuyordu. Source-X
+        CItem::CreateHeader defname yerinde template kabul eder ve
+        ReadTemplate tum loot listesini cantaya doker
+        (CItem.cpp:461-539/586). ITEM verb'u artik sequential
+        template'leri acar: satir basina R# 1/N sans ve {lo hi} zar
+        miktari (CreateHeader paritesi), defname yerinde agirlikli
+        havuz ({ a w b w }, "0" = bos slot), ic ice template,
+        CONTAINER= alt-cantalar ve sayisal itemdef satirlari
+        (ITEM=0EED). Template loader ham satir arglarini ve CONTAINER
+        satirlarini saklar; vendor stok sayimi container satirlarini
+        atlar. NOT: canli pakette monster chardef'lerinde 33
+        ON=@NPCRestock ve 423 ITEM= loot satiri yorumdaydi (buyuk
+        ihtimalle satirlar ise yaramadigi icin) — paket tarafinda
+        yeniden acildi.
+
+DUZELTILDI - Binekten inilince binek sahibinin kavgasina katilmiyordu:
+        dismount pet'i Follow moduna aliyordu, Follow ise sadece kendini
+        savunur. Source-X inen pet'i idle birakir (CCharUse.cpp:1205);
+        idle sahipli pet sahibini korumaya gecer (NPC_LookAtChar,
+        CCharNPCAct.cpp:1036) ve NPC_Act_Guard sahibin dovustugu hedefe
+        saldirir (CCharNPCAct.cpp:1300-1303). Dismount artik Guard modu
+        kurar; binek sahibin saldirisina katilir. MountEngine.Dismount
+        STATF_RIDDEN'i da kendisi temizler (Use_Figurine paritesi) —
+        cagiran unutursa binek kendi AI tick'inden atlaniyordu.
+
+DUZELTILDI - Ust uste hizli yazilan mesajlarin bir kismi sessizce
+        kayboluyordu: uydurma bir konusma hiz limiti (5 saniyede 10
+        mesaj, kayan pencere; komutlar da ayni kotayi tuketiyordu)
+        limiti asan her seyi dusuruyordu. Source-X Event_Talk'ta boyle
+        bir limit yok — kaldirildi; asiri paket floodu ag katmaninda
+        zaten yakalaniyor (MaxPacketsPerTick / FloodDetectionCount).
+
 DUZELTILDI - Servis NPC'leri oyuncular arasi sohbete cevap veriyordu:
         anahtar kelime kontrolu substring Contains() idi; kelime icinde
         gecen her esleme tetikleniyordu — Turkce "buyur"/"buyuk"/"buyu"

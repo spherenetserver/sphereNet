@@ -126,8 +126,6 @@ public sealed class ClientCombatHandler
     private ClientMovementThrottle Throttle => _throttle ??= new ClientMovementThrottle(WalkBufferMax);
     private ClientMovementThrottle? _throttle;
 
-    private long _lastSpeechMs;
-    private int _speechBurst;
     private long _moveRejectResyncUntil;
     private long? _movementBatchNow;
 
@@ -606,11 +604,11 @@ public sealed class ClientCombatHandler
     {
         if (_character == null) return;
 
-        long now = Environment.TickCount64;
-        if (now - _lastSpeechMs > 5000) _speechBurst = 0;
-        if (++_speechBurst > 10)
-            return;
-        _lastSpeechMs = now;
+        // No speech rate limit — Source-X Event_Talk has none, and the invented
+        // 10-per-5s burst cap here silently swallowed messages during fast
+        // conversations (commands consumed the same quota). Extreme packet
+        // floods are already handled at the network layer (MaxPacketsPerTick /
+        // FloodDetectionCount).
 
         if (text.Length > 256)
             text = text[..256];

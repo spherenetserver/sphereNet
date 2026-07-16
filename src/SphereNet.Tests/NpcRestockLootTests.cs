@@ -79,6 +79,62 @@ public class NpcRestockLootTests
     }
 
     [Fact]
+    public void ItemVerb_ExpandsSequentialLootTemplateIntoBackpack()
+    {
+        // Source-X CItem::CreateHeader/ReadTemplate: ITEM=<template> pours the
+        // whole loot list into the char's pack — dice amounts ({600 750}),
+        // R-chance rows, inline weighted pools, nested templates and
+        // CONTAINER= sub-bags included. The old path resolved the defname,
+        // saw RES_TEMPLATE instead of RES_ITEMDEF and silently spawned
+        // nothing — the "balron corpse is empty" field report.
+        LoadDefinitions("""
+            [ITEMDEF 0EED]
+            NAME=gold coin
+
+            [ITEMDEF i_bag_loot_test]
+            ID=0x0E76
+            TYPE=t_container
+            NAME=bag
+
+            [ITEMDEF i_sword_loot_test]
+            ID=0x13FF
+            NAME=sword
+
+            [TEMPLATE loot_test_goodie]
+            ITEM=i_sword_loot_test
+
+            [TEMPLATE loot_test_balron]
+            ITEM=0EED,{600 750}
+            ITEM=i_sword_loot_test,1,R1
+            ITEM={ i_sword_loot_test 1 }
+            ITEM=loot_test_goodie
+            CONTAINER=i_bag_loot_test
+            ITEM=0EED,{10 20}
+            """);
+        var world = CreateWorld();
+
+        var ch = world.CreateCharacter();
+        Assert.True(ch.TryExecuteCommand("ITEM", "loot_test_balron", new NullConsole()));
+
+        var pack = ch.Backpack;
+        Assert.NotNull(pack);
+        var contents = pack!.Contents.ToList();
+
+        // top-level: gold pile (600-750), R1 sword (always), inline-pool sword,
+        // nested-template sword, and the bag
+        var gold = contents.FirstOrDefault(i => i.BaseId == 0x0EED);
+        Assert.NotNull(gold);
+        Assert.InRange(gold!.Amount, 600, 750);
+        Assert.Equal(3, contents.Count(i => i.BaseId == 0x13FF));
+
+        var bag = contents.FirstOrDefault(i => i.BaseId == 0x0E76);
+        Assert.NotNull(bag);
+        var bagGold = bag!.Contents.FirstOrDefault(i => i.BaseId == 0x0EED);
+        Assert.NotNull(bagGold);
+        Assert.InRange(bagGold!.Amount, 10, 20);
+    }
+
+    [Fact]
     public void NpcRestockTriggerBody_FillsBackpackThroughDispatcher()
     {
         // The live pack declares monster loot inside ON=@NPCRestock chardef

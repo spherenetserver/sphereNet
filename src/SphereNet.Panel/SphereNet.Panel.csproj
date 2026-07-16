@@ -20,4 +20,10 @@
     <PackageReference Include="Serilog" Version="4.0.2" />
   </ItemGroup>
 
+  <!-- UpdateService.IsNewer is the rule that decides whether the panel offers an
+       update at all; exposed so the test suite can pin its semantics. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="SphereNet.Tests" />
+  </ItemGroup>
+
 </Project>

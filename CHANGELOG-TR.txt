@@ -6,6 +6,55 @@
 [2026-07-16] - NPC anahtar kelime tam-sozcuk esleme, GM yell fix, vendor tasmasi
 ----------------------------------------
 
+EKLENDI - Panelden kendini guncelleme (Updates sayfasi, yeni sidebar girisi).
+        Yeni workflow (.github/workflows/release.yml) her main commit'inde
+        win-x64 paketi uretir ve rolling "nightly" prerelease'in asset'lerini
+        tazeler; panel bunu kontrol eder, indirir ve yerinde uygular. Yeni
+        endpoint'ler: GET /api/update/status, POST /api/update/check,
+        POST /api/update/apply. Yeni sphere.ini anahtarlari: APPUPDATEREPO
+        (bos = ozellik kapali, sayfa gizlenir), APPUPDATECHANNEL,
+        APPUPDATERUNTIME, APPUPDATECHECKMINUTES (0 = arka plan kontrolu yok),
+        APPUPDATETOKEN. Mevcut APPUPDATEREPODIR / update.cmd akisindan
+        ayridir: o kaynaktan derler ve makinede git + SDK + Node ister, bu
+        yalnizca ag ister.
+        Actions artifact'i degil release asset'i kullanilir: artifact indirmek
+        repo public olsa bile actions:read yetkili token ister ve 90 gunde
+        silinir; releases/download/<tag>/<ad> ise anonim, tokensiz ve API
+        limitine takilmaz. Artifact yine de CI icin yuklenir.
+        Workflow version.json'i EN SON, zip tamamen yuklendikten sonra yukler;
+        boylece "son surum" isaretcisi yarim yuklenmis bir paketi asla
+        gosteremez. Surum kimligi exe'nin yanindaki version.json'dur;
+        siralama github.run_number ile yapilir, cunku SHA'lar karsilastirilamaz.
+        version.json yoksa kurulum kaynaktan derlenmis sayilir (IsDevBuild) ve
+        guncelleme reddedilir; gelistiricinin kendi binary'si sessizce
+        ezilmez. build.ps1'in mevcut keep-list'i zaten yerel Release
+        ciktisindan version.json'i siliyor, yani bu kendiliginden calisir.
+        Uygulama her zaman operatorun acik eylemidir; arka plan kontrolu
+        sadece sidebar rozetini yakar. Akis once dunyayi kaydeder ve kayit
+        reddedilirse iptal eder, paketin SHA256'sini yayinlanan checksum ile
+        dogrular, staging klasorunun disina cikan zip girislerini reddeder ve
+        acilan agacta Host, Server, panel asset'leri ile eslesen bir
+        version.json bulundugunu hicbir dosyaya dokunmadan once dogrular.
+        Calisan Host SphereNet.Host.exe'yi kilitledigi icin takasi disaridaki
+        kisa omurlu bir PowerShell sureci yapar (UpdaterScript.cs icinde
+        string olarak tutulur; boylece uyguladigi guncellemenin kendisi
+        tarafindan degistirilemez): Host'un cikmasini bekler, yedekler, takas
+        eder ve yeniden baslatir; hata halinde yedegi geri yukleyip yine de
+        baslatir. config/, save/ ve scripts/ pakette yoktur, hic dokunulmaz;
+        panel/ tamamen degistirilir ki eski hash'li bundle'lar kalmasin.
+        Ayrinti: logs/update.log.
+
+EKLENDI - AdminPanelAutoFill (sphere.ini, varsayilan 0): panel giris alanini
+        ADMINPASSWORD ile otomatik doldurur, yerel operator sifreyi tekrar
+        yazmaz. Panelin tek sirri tarayiciya verildigi icin uc kosul birden
+        gerekir: bayrak acik, istek loopback'ten ve ADMINPASSWORD hala duz
+        metin. Setup sihirbazi sifreyi MD5 hash olarak yazar; hash'ten duz
+        metin cikarilamadigi icin setup calistiktan sonra otomatik doldurma
+        durur. Yeni endpoint GET /api/auth/local-hint kosullardan biri
+        saglanmazsa {password: null} doner. Ters proxy arkasindaki kurulumda
+        kapali birakin: proxy de loopback'ten baglanir, uzaktaki kullanicilar
+        sifreyi alir.
+
 DUZELTILDI - Yaratik cesetleri bos cikiyordu (Balron saha raporu):
         @NPCRestock icindeki ITEM=loot_x defname'i cozup RES_TEMPLATE
         gorunce sessizce hicbir sey dogurmuyordu. Source-X

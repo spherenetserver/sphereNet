@@ -1,0 +1,215 @@
+name: Release
+
+# Her main commit'inde Windows (win-x64) paketi uretir ve "nightly" adli rolling
+# prerelease'in asset'lerini gunceller. Panel (SphereNet.Panel/Updates) bu
+# release'in asset'lerini ANONIM olarak indirir:
+#
+#   https://github.com/<repo>/releases/download/nightly/version.json
+#   https://github.com/<repo>/releases/download/nightly/spherenet-win-x64.zip
+#   https://github.com/<repo>/releases/download/nightly/spherenet-win-x64.zip.sha256
+#
+# Neden artifact degil de release asset: actions/upload-artifact ciktilari repo
+# public olsa bile anonim indirilemez (actions:read yetkili token ister) ve 90
+# gunde silinir. Artifact yine de yukleniyor, ama yalnizca CI/debug amacli.
+#
+# Asset yukleme sirasi kritik: once zip + sha256, EN SON version.json. Panel
+# "guncel surum" bilgisini version.json'dan okudugu icin, o dosya ancak zip
+# tamamen yuklendikten sonra yeni surumu isaret eder — yarim yuklenmis bir
+# pakete asla yonlendirmez.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Ust uste gelen commit'lerde release asset'lerinin birbirini ezmemesi icin
+# sirayla calis. cancel-in-progress KAPALI: yarida kesilen bir upload release'i
+# tutarsiz birakabilir.
+concurrency:
+  group: release-nightly
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: nightly
+  RUNTIME: win-x64
+  PACKAGE_NAME: spherenet-win-x64.zip
+
+jobs:
+  release-windows:
+    name: Build and publish win-x64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+          cache-dependency-path: panel/package-lock.json
+
+      # build.ps1 zaten npm ci + npm run build + Server/Host single-file publish
+      # yapar ve update.ps1/update.cmd'yi ciktiya kopyalar. Ayni scripti
+      # kullanmak CI ciktisinin yerel Release build'i ile birebir ayni kalmasini
+      # garanti eder.
+      - name: Build (panel + Server + Host, Release, win-x64)
+        shell: pwsh
+        run: ./build.ps1 -Configuration Release -Runtime ${{ env.RUNTIME }}
+
+      - name: Stamp version.json
+        id: version
+        shell: pwsh
+        env:
+          GIT_SHA: ${{ github.sha }}
+          RUN_NUMBER: ${{ github.run_number }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $outDir = "bin/Release"
+
+          $subject = (git log -1 --pretty=%s) | Out-String
+          $subject = $subject.Trim()
+
+          # BuildNumber = github.run_number: monoton artar, panelin "uzaktaki
+          # surum benimkinden yeni mi" karsilastirmasi buna dayanir (sha
+          # siralanamaz).
+          $version = [ordered]@{
+            sha           = $env:GIT_SHA
+            shortSha      = $env:GIT_SHA.Substring(0, 7)
+            branch        = $env:BRANCH
+            buildNumber   = [long]$env:RUN_NUMBER
+            builtAt       = (Get-Date).ToUniversalTime().ToString("o")
+            runtime       = "${{ env.RUNTIME }}"
+            commitSubject = $subject
+          }
+
+          $json = $version | ConvertTo-Json -Depth 4
+          # UTF8 BOM'suz yaz: System.Text.Json BOM'lu icerigi de okur ama
+          # asset'i disaridan tuketen her sey icin temiz kalsin.
+          [IO.File]::WriteAllText("$outDir/version.json", $json, (New-Object Text.UTF8Encoding $false))
+
+          Write-Host "version.json:"
+          Get-Content "$outDir/version.json"
+
+          "short_sha=$($version.shortSha)" | Out-File $env:GITHUB_OUTPUT -Append
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          # Zip'in koku = bin/Release icerigi (SphereNet.Host.exe,
+          # SphereNet.Server.exe, panel/, version.json, update.ps1/cmd).
+          # Panelin updater'i bu duz yapiyi bekler; ust klasor sarmalamaz —
+          # son parametre ($false) tam da bunu saglar.
+          #
+          # Compress-Archive DEGIL: zip girislerini ters bolu ile yazabiliyor
+          # (zip spec forward slash ister) ve ~150 MB'lik ciktida cok yavas.
+          $src = (Resolve-Path "bin/Release").Path
+          $dst = Join-Path $PWD "${{ env.PACKAGE_NAME }}"
+          if (Test-Path $dst) { Remove-Item $dst -Force }
+          [System.IO.Compression.ZipFile]::CreateFromDirectory(
+            $src, $dst, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+
+          $hash = (Get-FileHash "${{ env.PACKAGE_NAME }}" -Algorithm SHA256).Hash.ToLowerInvariant()
+          # "<sha256>  <dosya>" — standart sha256sum formati; panel ilk alani okur.
+          "$hash  ${{ env.PACKAGE_NAME }}" | Out-File "${{ env.PACKAGE_NAME }}.sha256" -Encoding ascii -NoNewline
+
+          $size = "{0:N1} MB" -f ((Get-Item "${{ env.PACKAGE_NAME }}").Length / 1MB)
+          Write-Host "Paket: ${{ env.PACKAGE_NAME }} ($size)"
+          Write-Host "SHA256: $hash"
+
+      # Istenildigi gibi artifact de birakiliyor (CI gecmisi / manuel indirme).
+      # Panel bunu kullanmaz — anonim indirilemez.
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spherenet-${{ env.RUNTIME }}-${{ steps.version.outputs.short_sha }}
+          path: |
+            ${{ env.PACKAGE_NAME }}
+            ${{ env.PACKAGE_NAME }}.sha256
+            bin/Release/version.json
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Publish nightly release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tag = "${{ env.RELEASE_TAG }}"
+
+          # Tag'i bu commit'e tasi ki release sayfasi dogru commit'i gostersin.
+          git tag -f $tag "${{ github.sha }}"
+          git push -f origin "refs/tags/$tag"
+
+          # Commit konusunu Actions ifadesiyle enterpole ETME: cok satirli bir
+          # mesaj markdown tablosunu bozar, icinde "@ gecen bir mesaj ise
+          # here-string'i kapatip script injection'a donusur. git'ten oku ve
+          # tek satira indir. (Ayni sebeple bu yorumda da ifade sozdizimi yok:
+          # Actions onlari run: icindeki yorumlarda bile degerlendirir.)
+          $subject = ((git log -1 --pretty=%s) | Out-String).Trim()
+          $subject = $subject -replace '\|', '\|'
+
+          $notes = @"
+          SphereNet rolling nightly build — her ``main`` commit'inde otomatik guncellenir.
+
+          | | |
+          |---|---|
+          | Commit | ``${{ github.sha }}`` |
+          | Build | #${{ github.run_number }} |
+          | Konu | $subject |
+
+          Bu release'i elle indirmene gerek yok: sunucu panelindeki **Updates**
+          sayfasi (varsayilan http://localhost:9999/updates) ayni asset'leri
+          kullanir. Asagidaki ``spherenet-win-x64.zip`` bin/Release ciktisinin
+          aynisidir; ``config/``, ``save/`` ve ``scripts/`` icermez — yani
+          guncelleme dunya kaydina ve scriptlere dokunmaz.
+          "@
+
+          # Release yoksa olustur. Varsa asset'leri clobber ile tazele —
+          # silip yeniden yaratmak, panelin version.json'i 404 gordugu bir
+          # bosluk yaratirdi.
+          #
+          # stderr'i BILEREK yonlendirmiyoruz: yonlendirilen native stderr
+          # PowerShell hata akisina girer ve $ErrorActionPreference='Stop' ile
+          # birlikte, exit kodu 0 olsa bile scripti dusurebilir. Yonlendirmeden
+          # birakilinca dogrudan konsola gider; ilk calistirmada "release not
+          # found" satiri gorunur, beklenen davranis budur.
+          gh release view $tag --repo "${{ github.repository }}" | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "'$tag' release'i yok, olusturuluyor..."
+            gh release create $tag `
+              --repo "${{ github.repository }}" `
+              --title "SphereNet nightly (win-x64)" `
+              --notes $notes `
+              --prerelease
+            if ($LASTEXITCODE -ne 0) { throw "gh release create basarisiz." }
+          }
+
+          # 1) Once paket + checksum.
+          gh release upload $tag "${{ env.PACKAGE_NAME }}" "${{ env.PACKAGE_NAME }}.sha256" `
+            --repo "${{ github.repository }}" --clobber
+          if ($LASTEXITCODE -ne 0) { throw "paket upload basarisiz." }
+
+          # 2) EN SON version.json — "yeni surum yayinda" isaretini bu ceviriyor.
+          gh release upload $tag "bin/Release/version.json" `
+            --repo "${{ github.repository }}" --clobber
+          if ($LASTEXITCODE -ne 0) { throw "version.json upload basarisiz." }
+
+          gh release edit $tag --repo "${{ github.repository }}" --notes $notes
+          if ($LASTEXITCODE -ne 0) { throw "gh release edit basarisiz." }
+
+          Write-Host "Yayinlandi: https://github.com/${{ github.repository }}/releases/tag/$tag"

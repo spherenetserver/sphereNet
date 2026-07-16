@@ -61,6 +61,11 @@ const router = createRouter({
           component: () => import('@/pages/GumpDesignerPage.vue'),
         },
         {
+          path: 'updates',
+          name: 'updates',
+          component: () => import('@/pages/UpdatesPage.vue'),
+        },
+        {
           path: 'settings',
           name: 'settings',
           component: () => import('@/pages/SettingsPage.vue'),

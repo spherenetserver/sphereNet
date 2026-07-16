@@ -58,6 +58,19 @@ public sealed class PanelContext
     public Func<int, byte[]?>? GetGumpPng { get; set; }
     public Func<IReadOnlyList<string>>? ListDialogNames { get; set; }
     public Func<string, string?>? GetDialogSource { get; set; }
+
+    // App update — read from sphere.ini by the Host. Null = /api/update/* 404s
+    // (e.g. a build with no updater configured).
+    public Updates.UpdateSettings? UpdateSettings { get; set; }
+
+    /// <summary>
+    /// Stops the game server and exits the Host process. Only the Host can
+    /// supply this: applying an update replaces SphereNet.Host.exe, which the
+    /// running Host holds a file lock on, so the process must exit before the
+    /// swap and be relaunched by the external updater afterwards.
+    /// Null in standalone mode — /api/update/apply then reports CanApply=false.
+    /// </summary>
+    public Func<bool>? OnHostExit { get; set; }
 }
 
 // ---------------------------------------------------------------------------

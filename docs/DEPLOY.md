@@ -85,6 +85,53 @@ Before accepting real players:
 - Check `http://localhost:<status-port>/status` includes `runtime.tick` data
   such as `p95Ms`, `p99Ms`, `multicoreEnabled`, and phase timings.
 
+## Updating
+
+Two independent update paths ship with SphereNet. They solve different problems;
+pick one per box.
+
+### Panel update (binary, no toolchain)
+
+The **Updates** page in the panel downloads a prebuilt package and applies it in
+place. The box needs network access only — no git, .NET SDK, or Node. This only
+works under `SphereNet.Host`: applying an update replaces `SphereNet.Host.exe`,
+and only the Host can exit to release its own file lock.
+
+`.github/workflows/release.yml` builds a `win-x64` package on every `main` commit
+and refreshes the assets of a rolling `nightly` prerelease. The panel reads fixed
+asset URLs (`releases/download/<tag>/...`) — anonymous, unauthenticated, and not
+API-rate-limited. Actions artifacts are deliberately *not* used: they require an
+`actions:read` token even on a public repo and expire after 90 days.
+
+```ini
+[SPHERE]
+APPUPDATEREPO=spherenetserver/sphereNet   ; empty = feature off, page hidden
+APPUPDATECHANNEL=nightly                  ; release tag holding the assets
+APPUPDATERUNTIME=win-x64                  ; selects spherenet-<rid>.zip
+APPUPDATECHECKMINUTES=15                  ; 0 = no background check
+APPUPDATETOKEN=                           ; only needed if the repo goes private
+```
+
+The background check only lights a badge — **applying is always an explicit
+click**. Applying saves the world (and aborts if the save is rejected), verifies
+the package SHA256 against the published checksum, then hands the file swap to a
+short-lived external process that waits for the Host to exit, backs up, swaps,
+and relaunches. On failure it restores the backup and still relaunches. The
+package contains no `config/`, `save/`, or `scripts/`, so shard data is never
+touched. Details land in `logs/update.log`; the previous build stays in
+`.update/backup/`.
+
+A build without a `version.json` next to the exe reports as a dev build and
+refuses to apply, so a locally compiled shard is never silently overwritten
+(`build.ps1` strips `version.json` from local Release output).
+
+### Source update (`update.cmd`)
+
+`update.cmd` / `update.ps1` run `git pull` + `build.ps1` and copy the result into
+the deploy folder. This needs git, the .NET SDK, and Node on the box, and the
+**server must be stopped first**. Point `APPUPDATEREPODIR` at the git clone when
+the deploy folder holds only binaries.
+
 ## Windows Service / Scheduled Host
 
 For a first production shard on Windows, run `SphereNet.Server.exe` from a

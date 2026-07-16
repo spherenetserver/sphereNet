@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Net;
 using System.Net.Http;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -12,6 +13,7 @@ using SphereNet.Core.Security;
 using SphereNet.Panel.Auth;
 using SphereNet.Panel.Hubs;
 using SphereNet.Panel.Logging;
+using SphereNet.Panel.Updates;
 
 namespace SphereNet.Panel;
 
@@ -22,11 +24,13 @@ public sealed class PanelHost : IDisposable
     private readonly int _port;
     private readonly PanelLogSink _logSink;
     private readonly ILogger _logger;
+    private readonly UpdateService? _updates;
 
     private WebApplication? _app;
     private CancellationTokenSource? _cts;
     private Thread? _thread;
     private Task? _statsTask;
+    private Task? _updateCheckTask;
 
     // CPU tracking
     private TimeSpan _lastCpuTime = TimeSpan.Zero;
@@ -39,6 +43,9 @@ public sealed class PanelHost : IDisposable
         _port = port;
         _logSink = logSink;
         _logger = logger;
+
+        if (ctx.UpdateSettings is { } updateSettings)
+            _updates = new UpdateService(ctx, updateSettings, logger);
     }
 
     public void Start()
@@ -82,6 +89,9 @@ public sealed class PanelHost : IDisposable
 
             _statsTask = StatsLoop(
                 _app.Services.GetRequiredService<IHubContext<ServerHub>>(), tokens, ct);
+
+            if (_updates is not null)
+                _updateCheckTask = UpdateCheckLoop(ct);
 
             _app.UseCors("DevCors");
 
@@ -149,6 +159,7 @@ public sealed class PanelHost : IDisposable
                 bool isSetupPhase = string.IsNullOrEmpty(_ctx.AdminPassword);
 
                 if (path == "/api/auth/login" ||
+                    path == "/api/auth/local-hint" ||
                     path == "/api/setup/needed" ||
                     (isSetupPhase && path == "/api/setup/config") ||
                     (isSetupPhase && path == "/api/setup/apply") ||
@@ -253,6 +264,43 @@ public sealed class PanelHost : IDisposable
         }
     }
 
+    /// <summary>
+    /// Periodically refreshes the "update available" badge so it appears without
+    /// anyone having the Updates page open. Never applies anything — that stays
+    /// an explicit operator action.
+    /// </summary>
+    private async Task UpdateCheckLoop(CancellationToken ct)
+    {
+        var interval = _ctx.UpdateSettings!.CheckMinutes;
+        if (interval <= 0)
+        {
+            _logger.LogInformation("Update: background check disabled (AppUpdateCheckMinutes=0).");
+            return;
+        }
+
+        // Let the server finish booting before reaching out to the network.
+        try { await Task.Delay(TimeSpan.FromSeconds(20), ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
+
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await _updates!.CheckAsync(ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+            catch (Exception ex)
+            {
+                // A failed check must never take the panel down; the status
+                // endpoint already surfaces the reason to the operator.
+                _logger.LogDebug(ex, "Update: background check failed");
+            }
+
+            try { await Task.Delay(TimeSpan.FromMinutes(interval), ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+        }
+    }
+
     private static async Task WriteProblemAsync(HttpContext context, int statusCode, string message)
     {
         if (context.Response.HasStarted)
@@ -260,6 +308,32 @@ public sealed class PanelHost : IDisposable
 
         context.Response.StatusCode = statusCode;
         await context.Response.WriteAsJsonAsync(new { error = message });
+    }
+
+    private static bool IsLoopback(IPAddress? address)
+    {
+        if (address is null) return false;
+        // Kestrel reports an IPv4 client as ::ffff:127.0.0.1 once the socket is
+        // dual-stack, which IsLoopback does not recognise in mapped form.
+        if (address.IsIPv4MappedToIPv6) address = address.MapToIPv4();
+        return IPAddress.IsLoopback(address);
+    }
+
+    private bool ReadIniBool(string key, bool fallback)
+    {
+        if (_ctx.IniPath is null || !File.Exists(_ctx.IniPath))
+            return fallback;
+        try
+        {
+            var parser = new Core.Configuration.IniParser();
+            parser.Load(_ctx.IniPath);
+            return parser.GetBool("SPHERE", key, fallback);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Panel could not read {Key} from sphere.ini", key);
+            return fallback;
+        }
     }
 
     private double GetCpuPercent()
@@ -301,6 +375,28 @@ public sealed class PanelHost : IDisposable
             _authLimiter.RegisterSuccess(remoteIp);
             var token = tokens.Create();
             return Results.Ok(new { token, serverName = _ctx.ServerName });
+        });
+
+        // Hands the plaintext admin password to the login page so a local
+        // operator does not have to retype it. This gives away the panel's only
+        // secret, so it needs all three gates below; failing any of them is not
+        // an error, it just means "no hint" and the operator types it.
+        app.MapGet("/api/auth/local-hint", (HttpContext http) =>
+        {
+            if (!IsLoopback(http.Connection.RemoteIpAddress))
+                return Results.Json(new { password = (string?)null });
+
+            if (!ReadIniBool("AdminPanelAutoFill", false))
+                return Results.Json(new { password = (string?)null });
+
+            // A hashed AdminPassword has no plaintext to hand back. Setup writes
+            // the hash form, so this is the normal state after a run of the wizard.
+            var stored = _ctx.AdminPassword;
+            if (string.IsNullOrEmpty(stored) ||
+                Core.Configuration.PasswordHelper.IsHashed(stored))
+                return Results.Json(new { password = (string?)null });
+
+            return Results.Json(new { password = stored });
         });
 
         app.MapPost("/api/auth/logout", (HttpContext ctx) =>
@@ -619,6 +715,30 @@ public sealed class PanelHost : IDisposable
             return Results.Ok(new { saved = true, path = rel, validation });
         });
 
+        // --- App update ---------------------------------------------------
+        // Null when sphere.ini has no AppUpdateRepo — the routes then 404 and
+        // the panel hides the Updates page.
+        if (_updates is not null)
+        {
+            app.MapGet("/api/update/status", () => Results.Ok(_updates.GetStatus()));
+
+            app.MapPost("/api/update/check", async (CancellationToken ct) =>
+                Results.Ok(await _updates.CheckAsync(ct)));
+
+            app.MapPost("/api/update/apply", (HttpContext http) =>
+            {
+                if (!_updates.TryBeginApply(out var error))
+                    return Results.Conflict(new { error });
+
+                _ctx.AuditLog?.Invoke(
+                    $"update apply requested ip='{http.Connection.RemoteIpAddress}'");
+                _logger.LogWarning("Update: apply requested from {Ip} — server will restart.",
+                    http.Connection.RemoteIpAddress);
+
+                return Results.Accepted(value: _updates.GetStatus());
+            });
+        }
+
         app.MapPost("/api/scripts/download", async () =>
         {
             var scriptsPath = _ctx.ScriptsPath;
@@ -864,11 +984,16 @@ public sealed class PanelHost : IDisposable
         try { _statsTask?.Wait(TimeSpan.FromSeconds(1)); }
         catch (AggregateException ex) { _logger.LogDebug(ex.Flatten(), "Panel stats loop stopped with an error"); }
 
+        try { _updateCheckTask?.Wait(TimeSpan.FromSeconds(1)); }
+        catch (AggregateException ex) { _logger.LogDebug(ex.Flatten(), "Panel update check loop stopped with an error"); }
+
         try { _app?.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(3)); }
         catch (AggregateException ex) { _logger.LogDebug(ex.Flatten(), "Panel dispose failed"); }
 
+        _updates?.Dispose();
         _cts?.Dispose();
         _statsTask = null;
+        _updateCheckTask = null;
         _thread = null;
         _app = null;
         _cts = null;

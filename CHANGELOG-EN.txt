@@ -7,6 +7,53 @@
 [2026-07-16] - NPC keyword word-matching, GM yell broadcast fix, vendor leash
 ----------------------------------------
 
+ADDED - Panel self-update (Updates page, new sidebar entry). A new workflow
+        (.github/workflows/release.yml) builds a win-x64 package on every main
+        commit and refreshes the assets of a rolling "nightly" prerelease; the
+        panel checks it, downloads it, and applies it in place. New endpoints:
+        GET /api/update/status, POST /api/update/check, POST /api/update/apply.
+        New sphere.ini keys: APPUPDATEREPO (empty = feature off and the page is
+        hidden), APPUPDATECHANNEL, APPUPDATERUNTIME, APPUPDATECHECKMINUTES
+        (0 = no background check), APPUPDATETOKEN. Distinct from the existing
+        APPUPDATEREPODIR / update.cmd flow, which builds from source and needs
+        git + SDK + Node on the box; this one only needs network.
+        Release assets, not Actions artifacts: artifact downloads require an
+        actions:read token even on a public repo and expire after 90 days,
+        whereas releases/download/<tag>/<name> is anonymous, unauthenticated
+        and not API-rate-limited. The artifact is still uploaded for CI use.
+        The workflow uploads version.json LAST, after the zip is fully up, so
+        the "latest" pointer can never reference a half-uploaded package.
+        Version identity is version.json next to the exe; ordering uses
+        github.run_number since SHAs cannot be compared. No version.json means
+        a source build, which reports IsDevBuild and refuses to apply so a
+        developer's own binaries are never silently overwritten — build.ps1's
+        existing keep-list already strips version.json from local Release
+        output, so this is automatic.
+        Applying is always an explicit operator action; the background check
+        only lights the sidebar badge. The flow saves the world first and
+        aborts if the save is rejected, verifies the package SHA256 against the
+        published checksum, rejects zip entries that escape the staging dir,
+        and validates that the extracted tree actually holds Host, Server, the
+        panel assets and a matching version.json before touching anything.
+        Because the running Host holds a lock on SphereNet.Host.exe, the swap
+        is done by a short-lived external PowerShell process (kept as a string
+        in UpdaterScript.cs so it cannot be replaced by the very update it is
+        applying): it waits for the Host to exit, backs up, swaps, and
+        relaunches — restoring the backup and still relaunching on failure.
+        config/, save/ and scripts/ are absent from the package and never
+        touched; panel/ is replaced wholesale so stale hashed bundles cannot
+        linger. Details land in logs/update.log.
+
+ADDED - AdminPanelAutoFill (sphere.ini, default 0): pre-fills the admin panel
+        login field with ADMINPASSWORD so a local operator does not retype it.
+        Handing the panel's only secret to the browser needs all three gates:
+        the flag on, the request from loopback, and ADMINPASSWORD still stored
+        as plaintext — the setup wizard writes an MD5 hash, which has no
+        plaintext to recover, so autofill stops after setup runs. New endpoint
+        GET /api/auth/local-hint returns {password: null} when any gate fails.
+        Leave off for anything reachable through a reverse proxy: the proxy
+        also connects from loopback, so remote users would receive the password.
+
 FIXED - Monster corpses were empty (Balron field report): ITEM=loot_x in
         @NPCRestock bodies resolved the defname, saw RES_TEMPLATE instead
         of RES_ITEMDEF and silently spawned nothing. Source-X

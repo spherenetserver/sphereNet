@@ -104,6 +104,36 @@ export interface SetupStatus {
   hasScripts: boolean
 }
 
+export interface BuildVersion {
+  sha: string
+  shortSha: string
+  branch: string
+  buildNumber: number
+  builtAt: string
+  runtime: string
+  commitSubject: string
+}
+
+export type UpdateStateName =
+  | 'Idle' | 'Checking' | 'Downloading' | 'Verifying'
+  | 'Extracting' | 'Staged' | 'Applying' | 'Failed'
+
+export interface UpdateStatus {
+  current: BuildVersion | null
+  latest: BuildVersion | null
+  updateAvailable: boolean
+  isDevBuild: boolean
+  state: UpdateStateName
+  progressPercent: number
+  message: string | null
+  lastCheckedUtc: string | null
+  canApply: boolean
+  busy: boolean
+  repo: string
+  channel: string
+  runtime: string
+}
+
 // --- API helpers ---
 
 export const serverApi = {
@@ -138,6 +168,9 @@ export const accountsApi = {
 
 export const authApi = {
   login:  (password: string) => api.post<{ token: string; serverName: string }>('/auth/login', { password }),
+  // password is null unless AdminPanelAutoFill=1, the request is loopback, and
+  // sphere.ini still holds the password in plaintext.
+  localHint: () => api.get<{ password: string | null }>('/auth/local-hint'),
   logout: (token: string) => api.post('/auth/logout', null, {
     headers: { Authorization: `Bearer ${token}` },
   }),
@@ -153,6 +186,15 @@ export const setupApi = {
 export const settingsApi = {
   getDebug: () => api.get<DebugState>('/settings/debug'),
   setDebug: (state: DebugState) => api.post('/settings/debug', state),
+}
+
+export const updateApi = {
+  status: () => api.get<UpdateStatus>('/update/status'),
+  // The backend reaches out to GitHub here, so allow more than the 10s default.
+  check:  () => api.post<UpdateStatus>('/update/check', null, { timeout: 60_000 }),
+  // Returns 202 immediately; the download runs in the background and is
+  // tracked by polling /update/status.
+  apply:  () => api.post<UpdateStatus>('/update/apply'),
 }
 
 export const scriptsApi = {

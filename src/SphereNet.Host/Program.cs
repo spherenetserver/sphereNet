@@ -3,6 +3,7 @@ using SphereNet.Core.Configuration;
 using SphereNet.Host;
 using SphereNet.Panel;
 using SphereNet.Panel.Logging;
+using SphereNet.Panel.Updates;
 
 // ── Locate SphereNet.Server.exe ─────────────────────────────────────────────
 
@@ -53,6 +54,7 @@ string? scriptsPath = null;
 int     panelPort   = 2599;
 string  adminPass   = "";
 string  serverName  = "SphereNet";
+UpdateSettings? updateSettings = null;
 
 if (iniPath != null)
 {
@@ -61,6 +63,19 @@ if (iniPath != null)
     panelPort   = parser.GetInt ("SPHERE", "AdminPanelPort", 0);
     adminPass   = parser.GetValue("SPHERE", "AdminPassword") ?? "";
     serverName  = parser.GetValue("SPHERE", "ServName") ?? "SphereNet";
+
+    // Panel'in "check for update" akisi. AppUpdateRepo bos ise updater hic
+    // kurulmaz ve /api/update/* 404 doner — panel de sayfayi gizler.
+    var updateRepo = Trimmed(parser.GetValue("SPHERE", "AppUpdateRepo"));
+    if (updateRepo != null)
+    {
+        updateSettings = new UpdateSettings(
+            Repo:         updateRepo,
+            Channel:      Trimmed(parser.GetValue("SPHERE", "AppUpdateChannel")) ?? "nightly",
+            Runtime:      Trimmed(parser.GetValue("SPHERE", "AppUpdateRuntime")) ?? "win-x64",
+            CheckMinutes: parser.GetInt("SPHERE", "AppUpdateCheckMinutes", 15),
+            Token:        Trimmed(parser.GetValue("SPHERE", "AppUpdateToken")));
+    }
 
     // Determine scripts path from config
     var scpDir = parser.GetValue("SPHERE", "ScpFilesDir");
@@ -96,8 +111,9 @@ var ipc     = new IpcBridge();
 var proc    = new ServerProcess(serverExe, ipc, logSink);
 
 var panelCtx = HostPanelContext.Build(proc, ipc, iniPath, scriptsPath);
-panelCtx.AdminPassword = adminPass;
-panelCtx.ServerName    = serverName;
+panelCtx.AdminPassword  = adminPass;
+panelCtx.ServerName     = serverName;
+panelCtx.UpdateSettings = updateSettings;
 
 // Keep PanelContext AdminPassword in sync when setup wizard saves changes
 proc.RunningChanged += running =>
@@ -106,6 +122,27 @@ proc.RunningChanged += running =>
         Console.WriteLine("[Host] Server stopped.");
     else
         Console.WriteLine("[Host] Server started.");
+};
+
+// Signals the main thread to tear the Host down. Declared before the panel
+// starts because OnHostExit below closes over it and must be wired up before
+// the panel can serve a request that uses it.
+var done = new ManualResetEventSlim(false);
+
+// Applying an update overwrites SphereNet.Host.exe, which this process holds a
+// file lock on — so the swap can only happen after we exit. UpdateService has
+// already launched the external updater, which is waiting on our PID; it does
+// the swap and relaunches us. Run the teardown off the request thread so the
+// panel can still return its HTTP response before we go down.
+panelCtx.OnHostExit = () =>
+{
+    _ = Task.Run(() =>
+    {
+        Console.WriteLine("[Host] Update: exiting so the updater can replace the binaries…");
+        if (proc.IsRunning) proc.Stop();
+        done.Set();
+    });
+    return true;
 };
 
 // ── Start panel web server ───────────────────────────────────────────────────
@@ -122,8 +159,6 @@ Console.WriteLine("[Host] Press Ctrl+C to stop. Type commands to forward to the 
 _ = Task.Delay(1200).ContinueWith(_ => OpenBrowser(panelUrl));
 
 // ── Ctrl+C / SIGTERM ─────────────────────────────────────────────────────────
-
-var done = new ManualResetEventSlim(false);
 
 Console.CancelKeyPress += (_, e) =>
 {
@@ -188,6 +223,14 @@ static void WriteCrashLog(string dir, Exception ex, bool terminating)
         Console.Error.WriteLine($"[Host] FATAL unhandled exception → logs/host-crash.log: {ex.Message}");
     }
     catch { /* console gone — the file write above is the record that matters */ }
+}
+
+// Empty ini values ("AppUpdateToken=") must read as "unset", not as an empty
+// string — an empty token would otherwise be sent as an Authorization header.
+static string? Trimmed(string? value)
+{
+    var t = value?.Trim();
+    return string.IsNullOrEmpty(t) ? null : t;
 }
 
 static string? FindIni(string dir)

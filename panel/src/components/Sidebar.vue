@@ -15,6 +15,7 @@
       >
         <component :is="item.icon" :size="18" />
         <span>{{ item.label }}</span>
+        <span v-if="item.to === '/updates' && updates.available" class="nav-badge" title="Yeni surum hazir" />
       </RouterLink>
     </nav>
 
@@ -28,13 +29,25 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted, onUnmounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
-  LayoutDashboard, Terminal, Users, UserCog, Server, LogOut, ScrollText, Settings, PanelTop,
+  LayoutDashboard, Terminal, Users, UserCog, Server, LogOut, ScrollText, Settings,
+  PanelTop, ArrowUpCircle,
 } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
+import { useUpdateStore } from '@/stores/update'
 
-const auth = useAuthStore()
+const auth    = useAuthStore()
+const updates = useUpdateStore()
+
+// The sidebar is mounted for the whole authenticated session, which makes it
+// the natural owner of the background update poll — the badge then appears
+// without anyone opening the Updates page. It unmounts on logout, so stop the
+// timer here too: the poll needs a bearer token and would otherwise keep firing
+// 401s at a logged-out panel.
+onMounted(() => void updates.start())
+onUnmounted(() => updates.stopPolling())
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -44,6 +57,7 @@ const navItems = [
   { to: '/server',    label: 'Server',    icon: Server          },
   { to: '/scripts',   label: 'Scripts',   icon: ScrollText      },
   { to: '/gumps',     label: 'Gumps',     icon: PanelTop        },
+  { to: '/updates',   label: 'Updates',   icon: ArrowUpCircle   },
   { to: '/settings',  label: 'Settings',  icon: Settings        },
 ]
 </script>
@@ -100,6 +114,22 @@ const navItems = [
 
 .nav-item:hover { background: var(--bg-tertiary); color: var(--text-primary); }
 .nav-item.active { background: var(--bg-tertiary); color: var(--accent); }
+
+/* Unread-style dot: an update is waiting to be applied. */
+.nav-badge {
+  margin-left: auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  animation: badge-pulse 2s ease-in-out infinite;
+}
+
+@keyframes badge-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
 
 .sidebar-footer {
   padding: 12px;

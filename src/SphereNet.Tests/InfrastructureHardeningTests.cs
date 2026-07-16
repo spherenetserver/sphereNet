@@ -179,6 +179,51 @@ public sealed class InfrastructureHardeningTests
         Assert.Equal(HttpStatusCode.ServiceUnavailable, accounts.StatusCode);
     }
 
+    [Fact]
+    public async Task PanelHost_LocalHint_OnlyLeaksPlaintextPasswordWhenOptedIn()
+    {
+        int port = GetFreeTcpPort();
+        string dir = Path.Combine(Path.GetTempPath(), "spherenet-hint-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        string iniPath = Path.Combine(dir, "sphere.ini");
+
+        try
+        {
+            // Opted out: the flag is absent, so the plaintext password stays server-side.
+            File.WriteAllText(iniPath, "[SPHERE]\nAdminPassword=1234\n");
+            var context = new PanelContext { AdminPassword = "1234", IniPath = iniPath };
+
+            using var loggerFactory = LoggerFactory.Create(b => b.SetMinimumLevel(LogLevel.Warning));
+            using var sink = new PanelLogSink();
+            using var host = new PanelHost(context, port, sink, loggerFactory.CreateLogger<PanelHost>());
+            host.Start();
+
+            using var client = new HttpClient { BaseAddress = new Uri($"http://localhost:{port}") };
+            await WaitForHealthAsync(client);
+
+            Assert.Null(await GetHintAsync(client));
+
+            // Opted in with a plaintext password: the login page gets the hint.
+            File.WriteAllText(iniPath, "[SPHERE]\nAdminPassword=1234\nAdminPanelAutoFill=1\n");
+            Assert.Equal("1234", await GetHintAsync(client));
+
+            // Opted in but hashed: nothing to recover, so no hint despite the flag.
+            context.AdminPassword = PasswordHelper.Hash("1234");
+            Assert.Null(await GetHintAsync(client));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    private static async Task<string?> GetHintAsync(HttpClient client)
+    {
+        var response = await client.GetAsync("/api/auth/local-hint");
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<HintResponse>())?.Password;
+    }
+
     private static async Task WaitForHealthAsync(HttpClient client)
     {
         Exception? lastError = null;
@@ -215,4 +260,6 @@ public sealed class InfrastructureHardeningTests
     }
 
     private sealed record LoginResponse(string Token, string ServerName);
+
+    private sealed record HintResponse(string? Password);
 }

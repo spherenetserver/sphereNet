@@ -2,6 +2,9 @@
 bin/
 obj/
 
+# Panel updater scratch (download + staged package + backup) in a deploy folder
+.update/
+
 # Test artifacts
 src/SphereNet.Tests/TestResults/
 /TestResults/

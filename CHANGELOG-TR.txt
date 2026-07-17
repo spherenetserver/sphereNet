@@ -3,8 +3,27 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
-[2026-07-18] - Bitki buyumesi, multi-server login listesi, sikistirilmamis gump fallback
+[2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
+
+DUZELTILDI - Hareketle buyu bozma gercek baslangicta oluydu. MovementEngine'e
+        SpellEngine referansi, SpellEngine olusturulmadan once atanip null baglaniyordu;
+        atama artik SpellEngine kurulduktan sonra yapiliyor.
+
+DUZELTILDI - NPC'ler her zaman gunduz variyordu. NpcAI gece-isigi hook'u
+        "if WeatherEngine != null" guard'inin arkasindaydi ve guard WeatherEngine
+        olusturulmadan once calistigi icin komple atlaniyordu; artik WeatherEngine
+        kurulduktan sonra baglaniyor.
+
+DUZELTILDI - .SHUTDOWN ve .BROADCAST admin/GM komutlari kabul edilip hicbir sey
+        yapmiyordu (subscriber yok). .SHUTDOWN artik ana dongu'yu duzgun bitiriyor;
+        .BROADCAST mesaji tum in-world client'lara gonderiyor.
+
+EKLENDI - Dunya artik duzgun kapanista kaydediliyor (SaveOnShutdown, default acik;
+        0 ile kapatilir), boylece planli durusta son periyodik save'den sonraki
+        degisiklikler kaybolmuyor.
+
+
 
 EKLENDI - Bitki buyumesi (Source-X CItemPlant crop regrow). Ekilen crop ve foliage
         artik zamanlayiciyla buyume zincirinde ilerler: her tick'te crop bir sonraki

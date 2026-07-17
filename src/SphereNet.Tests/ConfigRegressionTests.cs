@@ -207,4 +207,27 @@ public class ConfigRegressionTests
             try { File.Delete(tmp); } catch { }
         }
     }
+
+    [Fact]
+    public void SphereConfig_SaveOnShutdown_DefaultsOnAndParses()
+    {
+        // A-group A4: a clean shutdown now persists the world by default; the knob
+        // can turn it off (SaveOnShutdown=0).
+        Assert.True(new SphereConfig().SaveOnShutdown); // safe default on
+
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_cfg_shutdown_{Guid.NewGuid():N}.ini");
+        File.WriteAllText(tmp, "[SPHERE]\nSaveOnShutdown=0\n");
+        try
+        {
+            var parser = new IniParser();
+            parser.Load(tmp);
+            var config = new SphereConfig();
+            config.LoadFromIni(parser);
+            Assert.False(config.SaveOnShutdown);
+        }
+        finally
+        {
+            try { File.Delete(tmp); } catch { }
+        }
+    }
 }

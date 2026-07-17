@@ -258,7 +258,24 @@ public static partial class Program
             _log.LogInformation("Shutting down...");
             _systemHooks.DispatchServer("exit", _serverHookContext);
 
-            _log.LogWarning("Auto-save on shutdown is disabled. Use 'save' command before quitting to persist world state.");
+            // Persist the world on a clean shutdown so changes since the last periodic
+            // save are not lost (safe default on; SaveOnShutdown=0 to disable).
+            if (_config.SaveOnShutdown)
+            {
+                try
+                {
+                    _log.LogInformation("Saving world on shutdown...");
+                    PerformSave();
+                }
+                catch (Exception ex)
+                {
+                    _log.LogError(ex, "Shutdown save failed — world state since the last periodic save may be lost.");
+                }
+            }
+            else
+            {
+                _log.LogWarning("Auto-save on shutdown is disabled (SaveOnShutdown=0). Use 'save' before quitting to persist world state.");
+            }
 
             _stateRecorder?.Dispose();
             _ipcCts?.Cancel();

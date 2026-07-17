@@ -469,7 +469,9 @@ public static partial class Program
             };
             _terrain = new TerrainEngine(_mapData);
             _movement = new MovementEngine(_world, _triggerDispatcher);
-            _movement.SpellEngine = _spellEngine;
+            // NOTE: _movement.SpellEngine is wired AFTER SpellEngine is constructed
+            // (see below). Assigning it here bound null — SpellEngine doesn't exist
+            // yet — which silently disabled movement-based cast interruption.
             _movement.OnSysMessage = (mover, text) =>
             {
                 // Source-X CClient::SysMessage routes region-enter/PvP/guard text
@@ -1193,6 +1195,9 @@ public static partial class Program
             // resolve). A plain `new` here would drop the loaded spell defs.
             _spellRegistry ??= new SpellRegistry();
             _spellEngine = new SpellEngine(_world, _spellRegistry);
+            // Movement-based cast interruption (deferred from MovementEngine creation:
+            // SpellEngine did not exist there). MovementEngine.cs reads SpellEngine.
+            _movement.SpellEngine = _spellEngine;
             _world.OnSectorLight = (character, level) =>
             {
                 if (TryGetClientFor(character, out var lightClient))
@@ -1712,9 +1717,10 @@ public static partial class Program
                         door.X, door.Y, door.Z, door.Hue), 0);
                 return true;
             };
-            // NPC_AI_EXTRA night detection + NPC_AI_MOVEOBSTACLES broadcast.
-            if (_weatherEngine != null)
-                _npcAI.GetLightLevel = _weatherEngine.GetLightLevel;
+            // NPC_AI_EXTRA night detection is wired AFTER WeatherEngine is constructed
+            // (see below). The old `if (_weatherEngine != null)` guard was always false
+            // here (the engine doesn't exist yet), so it was skipped entirely and NPCs
+            // saw permanent daylight. NPC_AI_MOVEOBSTACLES broadcast:
             _npcAI.OnNpcMovedItem = (npc, item) =>
                 BroadcastNearby(item.Position, 18,
                     new PacketWorldItem(item.Uid.Value, item.DispIdFull, item.Amount,
@@ -2038,6 +2044,10 @@ public static partial class Program
             // NOTE: LoadRecipesFromDefs is called AFTER defLoader.LoadAll() populates
             // DefinitionLoader.AllItemDefs — see post-definition-load block below.
             _weatherEngine = new WeatherEngine(_world);
+            // NPC_AI_EXTRA night detection (deferred from NpcAI wiring: WeatherEngine
+            // did not exist there). NpcAI.cs reads GetLightLevel to decide day/night;
+            // without this NPCs always assumed daylight.
+            _npcAI.GetLightLevel = _weatherEngine.GetLightLevel;
             _weatherEngine.Configure(
                 _config.SeasonMode,
                 (SeasonType)Math.Clamp(_config.SeasonDefault, (byte)SeasonType.Spring, (byte)SeasonType.Desolation),
@@ -3104,6 +3114,19 @@ public static partial class Program
             _commands.OnStateRecordRequested += HandleStateRecordCommand;
             _commands.OnMacroRequested += HandleMacroCommand;
             _commands.OnSaveCommand += RequestSaveOnMainLoop;
+            // .SHUTDOWN / .BROADCAST were registered (Admin/GM) but had no subscriber,
+            // so they were accepted and silently did nothing. Wire them: shutdown ends
+            // the main loop (which now saves on exit, see Program.Tick); broadcast sends
+            // the message to every in-world client.
+            _commands.OnShutdownCommand += () => _mainLoopActions.Enqueue(() => _running = false);
+            _commands.OnBroadcastCommand += message =>
+            {
+                if (string.IsNullOrWhiteSpace(message))
+                    return;
+                foreach (var c in _clients.Values)
+                    if (c.Character != null)
+                        c.SysMessage(message);
+            };
             _commands.OnSaveFormatChangeRequested += RequestSaveFormatChangeOnMainLoop;
             _commands.OnScriptDebugToggleRequested += on =>
             {

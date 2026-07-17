@@ -4,8 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-07-18] - Plant growth, multi-server login list, uncompressed gump fallback
+[2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
+
+FIXED - Movement-based spell interruption was dead at real startup. MovementEngine
+        was given the SpellEngine reference before SpellEngine existed, binding
+        null; the wiring now runs after SpellEngine is constructed.
+
+FIXED - NPCs always assumed daylight. The NpcAI night-light hook was wired behind
+        an "if WeatherEngine != null" guard that ran before WeatherEngine existed,
+        so it was skipped entirely; it is now wired after WeatherEngine is built.
+
+FIXED - .SHUTDOWN and .BROADCAST admin/GM commands were accepted but did nothing
+        (no subscriber). .SHUTDOWN now ends the main loop cleanly; .BROADCAST sends
+        the message to every in-world client.
+
+ADDED - The world is now saved on a clean shutdown (SaveOnShutdown, default on;
+        set 0 to disable), so changes since the last periodic save are not lost on
+        a planned stop.
+
+
 
 ADDED - Plant growth (Source-X CItemPlant crop regrow). Planted crops and foliage
         now advance through their growth chain on a timer: each tick a crop grows

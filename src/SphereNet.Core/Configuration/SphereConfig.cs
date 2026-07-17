@@ -59,6 +59,10 @@ public sealed class SphereConfig
 
     // World Save
     public int SavePeriodMinutes { get; set; } = 15;
+
+    /// <summary>Persist the world during a clean shutdown so changes since the last
+    /// periodic save survive a planned stop. Safe default on; set 0 to disable.</summary>
+    public bool SaveOnShutdown { get; set; } = true;
     public int BackupLevels { get; set; } = 10;
     public int SaveBackgroundMinutes { get; set; }
     public int SaveSectorsPerTick { get; set; } = 1;
@@ -472,6 +476,7 @@ public sealed class SphereConfig
         LoadMapDefinitions(ini, section);
 
         SavePeriodMinutes = ini.GetInt(section, "SavePeriod", SavePeriodMinutes);
+        SaveOnShutdown = ini.GetBool(section, "SaveOnShutdown", SaveOnShutdown);
         BackupLevels = ini.GetInt(section, "BackupLevels", BackupLevels);
         SaveBackgroundMinutes = ini.GetInt(section, "SaveBackground", SaveBackgroundMinutes);
         SaveSectorsPerTick = ini.GetInt(section, "SaveSectorsPerTick", SaveSectorsPerTick);

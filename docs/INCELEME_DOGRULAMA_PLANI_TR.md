@@ -1,0 +1,254 @@
+# SphereNet İnceleme Doğrulama ve Uygulama Planı
+
+Bu dosya, üç inceleme raporunun (`PROJE_GENEL_INCELEME_PLANI_TR.md`,
+`HOUSE_SHIP_DEED_SISTEM_INCELEMESI_TR.md`, `PERFORMANS_LOG_INCELEMESI_TR.md`) her
+somut iddiasının **güncel kodla doğrulanmış** halidir. Her madde 3 paralel salt-kod
+doğrulama ajanıyla GERÇEK / BAYAT / YANLIŞ / KISMİ olarak sınıflandırıldı; sadece
+**GERÇEK** çıkanlar aşağıda aksiyon maddesi olarak listeleniyor.
+
+Sözleşme: bir madde bitince `[x]` işaretle + `(YAPILDI: <kısa kanıt / test>)` ekle.
+Line numaraları doğrulama anındaki (2026-07-18) güncel koda göredir; koda dokunulunca
+kayabilir — sembol adına güven, satıra değil.
+
+Sonuç: HOUSE_SHIP ve PERFORMANS raporlarındaki **her** kod iddiası GERÇEK çıktı.
+PROJE_GENEL'de 1 madde BAYAT (tarım, Wave 270'te düzeltilmiş), 1 madde KISMİ.
+
+---
+
+## ELENEN MADDELER (aksiyon YOK)
+
+- **BAYAT — Tarım büyüme döngüsü.** Rapor "PlantSeed son Crops'u doğrudan kuruyor,
+  HarvestPlant 60s REAP_TIME, büyüme evresi yok" diyordu; **Wave 270'te tam büyüme
+  zinciri eklendi** (`Item.PlantOnTick/PlantCropReset/PlantStartGrowth/PlantDropFruit`,
+  `ClientItemUseHandler.PlantSeed`→`PlantStartGrowth`, `HarvestPlant`→`PlantCropReset`,
+  `REAP_TIME` kaldırıldı). Aksiyon yok. (Sulama/toprak hâlâ yok ama Source-X'te de yok.)
+- **KISMİ — MapViewSize.** Network view range config-driven değil (client 0xC8, clamp
+  4-24), AMA `MapViewSize` combat/witness radar için tüketiliyor (`Character.MapViewRadarTiles`,
+  `Program.cs:689`). Tamamen kullanılmıyor değil → sadece "view range config'e bağlı değil"
+  kısmı P2 olarak C-grubuna eklendi.
+
+---
+
+## A. Başlangıç bağlantı hataları (P0/P1 — sessiz runtime bug, testlerin yakalamadığı)
+
+Ortak sebep: `Program.EngineWiring` çok uzun ve sıraya duyarlı; motorlar oluşturulmadan
+önce bağlanıyor. Öneri: tüm nesneler kurulduktan sonra tek "finalize/wiring" aşaması +
+zorunlu bağlantılar için fail-fast doğrulama.
+
+- [x] **A1 (P1) — MovementEngine.SpellEngine null bağlanıyor.** (YAPILDI: atama SpellEngine
+  oluşturulduktan sonraya taşındı, EngineWiring.) `Program.EngineWiring.cs:472`
+  `_movement.SpellEngine = _spellEngine;` ama `_spellEngine` ancak `:1195`'te oluşturuluyor
+  (`Program.cs:92` `null!`). `MovementEngine.cs:150` `SpellEngine?.TryInterruptFromMovement`
+  null-conditional → **hareket ederek cast-interrupt gerçek sunucuda hiç çalışmıyor.** Fix:
+  atamayı SpellEngine oluşturulduktan sonraya taşı.
+- [x] **A2 (P1) — NpcAI gece ışığı bağlantısı komple atlanıyor.** (YAPILDI: `GetLightLevel`
+  ataması WeatherEngine oluşturulduktan sonraya taşındı, koşulsuz.) `Program.EngineWiring.cs:1716`
+  `if (_weatherEngine != null) _npcAI.GetLightLevel = ...` ama `_weatherEngine` `:2040`'ta
+  kuruluyor → guard false → atama **hiç yapılmıyor**. `NpcAI.cs:370` `GetLightLevel?.Invoke()
+  ?? 0` → hep 0 → **NPC'ler her zaman gündüz varsayıyor** (gece ışık yak/söndür çalışmıyor).
+  Fix: WeatherEngine oluşturulduktan sonra bağla.
+- [x] **A3 (P1) — `.SHUTDOWN` / `.BROADCAST` no-op.** (YAPILDI: `_commands.OnShutdownCommand`
+  → main-loop `_running=false`, `_commands.OnBroadcastCommand` → tüm in-world client'lara
+  SysMessage. NOT: event'ler `CommandHandler`'da, SpeechEngine'de değil.) `SpeechEngine.cs:1127/1137` event
+  invoke ediyor ama `OnShutdownCommand`/`OnBroadcastCommand`'a **hiçbir yerde `+=` yok**
+  (sadece `OnSaveCommand`/`OnResyncCommand` wire'lı). Komut Admin/GM'de kabul edilip sessizce
+  hiçbir şey yapmıyor — operasyonda yanıltıcı. Fix: server-side handler bağla.
+- [x] **A4 (P1) — Normal shutdown'da save yok.** (YAPILDI: shutdown bloğu `SaveOnShutdown`
+  config'ine göre `PerformSave()` yapıyor, default açık, try/catch. Test:
+  ConfigRegressionTests.SphereConfig_SaveOnShutdown_DefaultsOnAndParses.) `Program.Tick.cs:261` "Auto-save on shutdown
+  is disabled" logluyor; shutdown bloğu (`:257-283`) save yapmıyor. Planlı kapatmada son
+  periyodik save'den sonraki değişiklikler kaybolabilir. Fix: güvenli-varsayılan-açık
+  configlenebilir shutdown-save.
+- [ ] **A5 (P0-fixture) — Composition-root entegrasyon testi yok.** Testler `EngineWiring`'i
+  elle taklit ettiği için A1/A2 gibi sıra hataları yakalanmıyor. Fix: port açmadan gerçek
+  motor grafiğini kuran fixture + zorunlu-bağlantı fail-fast doğrulaması.
+
+---
+
+## B. House / Ship / Deed sistemi (P0 bloklayıcı + P1)
+
+- [ ] **B1 (P0 — BLOKLAYICI) — MultiReader sadece 12-byte okuyor, format tespiti yok.**
+  `MultiReader.cs:14` `ComponentSize = 12`, `:60` `dataLength / 12`, `:64` 12-byte read;
+  hiçbir 16-byte/High Seas tespiti yok. Source-X iki formatı da modelliyor + auto-detect
+  ediyor (`CUOMultiItemRec.h:28/39`, `CUOInstall.cpp:115`, `CServerMap.cpp:618`). 16-byte HS
+  veride component offset'leri kayıyor → `MaxY` şişiyor → `PlaceHouse` (`HousingEngine.cs:567`)
+  / `PlaceShip` (`ShipEngine.cs:90`) harita-sınırı kontrolünde **terrain'e bakmadan red** →
+  "Cannot place here". Fix: `MultiFormat` (Auto/Original12/HighSeas16) + çok-kayıtlı sağlam
+  auto-detect (tiledata boyutu + `%12`/`%16` + bounds plausibility) + `shipAccess` dword.
+- [ ] **B2 (P1) — `ID=i_deed` type inheritance yok.** `DefinitionLoader.cs:433-457` ID/DISPID
+  ref zinciri sadece `DisplayIdRef`/`DispIndex` set ediyor, `Type`'ı kopyalamıyor
+  (`ItemDefHelper.cs:51`, `ItemDef.cs:13` default Normal). DUPEITEM'de type inheritance VAR
+  (`:925-953`) ama ID= zincirinde yok → scriptten üretilen deed `ItemType.Normal` kalıp deed
+  handler'a hiç girmeyebilir. Fix: ID= zincirinde Type/TDATA/Layer devral.
+- [ ] **B3 (P1) — `[MULTIDEF]` metadata placement registry'ye merge edilmiyor.**
+  `MultiRegistry.LoadFromMapData` (`HousingEngine.cs:470`) sadece geometri okuyor;
+  `EngineWiring.cs:2308` MULTIDEF'i birleştirmiyor → type/name/component/storage/vendor/
+  ship-speed placement'ta kayboluyor. (KISMİ: MULTIDEF script resource olarak TSPEECH/
+  COMPONENTCOUNT için okunuyor.) Fix: raw multi ID altında binary geometri + script metadata
+  merge.
+- [ ] **B4 (P1) — Yapısal placement result yok.** House/Ship motorları hep `null` dönüyor
+  (`HousingEngine.cs:559-578`, `ShipEngine.cs:77-95`) → tek genel "Cannot place"
+  (`ClientItemUseHandler.cs:1219`). Fix: neden-enum'u (limit/format/su/zemin/overlap/LOS/...)
+  + ayrı oyuncu mesajı + structured log.
+- [ ] **B5 (P1) — WorldSaver item TYPE yazmıyor; house/ship raw BaseId'den kurulamaz.**
+  `WorldSaver.cs:535-593` ID/TDATA/MORE yazıyor ama instance `ItemType` (Multi/MultiCustom/
+  Ship) yok; load'da raw index (`0x64`) normal ITEMDEF sanılabilir. Gerçek `WorldSaver→dosya→
+  WorldLoader` roundtrip testi yok (mevcut testler aynı canlı world'de re-read). Fix: STRUCTURE.
+  KIND/MULTIID/MULTIDEF persist + gerçek process-boundary roundtrip testi.
+- [ ] **B6 (P1) — Raw multi ID `0` redeed'de reddediliyor.** `TryParseDeedMultiId`
+  (`ClientItemUseHandler.cs:3028` `id != 0`) + fallback (`:3013` `targetId==0` fail) →
+  dry-dock'tan üretilen classic small ship deed'i (`SHIP_MULTI_BASEID=0`/`More1=0`) tekrar
+  açılamıyor. (İlk scripted `MORE=m_small_ship_n` yolu çalışıyor.) Fix: `0`'ı geçerli değer
+  say, "yok" için nullable/explicit result.
+- [ ] **B7 (P1) — RawMultiId vs ClientMultiArtId ayrımı yok.** `HousingEngine.cs:582`
+  `BaseId=multiId`, `ShipEngine.cs:99` `BaseId=orientedId` — raw multi.idx index ile client
+  art ID aynı alanda. Fix: RawMultiId/ClientMultiArtId/StructureKind/ScriptMultiDef ayrımı +
+  tek encode/decode katmanı.
+- [ ] **B8 (P1) — 0x99 preview paketi + Source-X anchor-Y düzeltmesi yok.**
+  `PacketDefinitions.cs:116` sadece uzunluk tablosunda; outgoing sınıfı yok, deed normal
+  `PacketTarget` kullanıyor. Source-X tıklanan Y'yi footprint'e göre düzeltiyor
+  (`CItemMulti.cpp:3288`), SphereNet ham X/Y/Z kullanıyor (`ClientItemUseHandler.cs:1194`).
+- [ ] **B9 (P1) — Target callback güvenlik yeniden-doğrulaması yok.** Cursor cevabında sadece
+  `deedItem.IsDeleted` kontrol ediliyor (`ClientItemUseHandler.cs:1193`); deed takas/mesafe/
+  LOS/map/ölü-jailed/limit yeniden doğrulanmıyor. Fix: placement'ı atomik transaction yap.
+- [ ] **B10 (P2) — House storage sabit 400.** `HousingEngine.cs:119` `_baseStorage=400`;
+  MULTIDEF `BaseStorage` placement'ta uygulanmıyor. Küçük ev/keep/castle farkı yok.
+- [ ] **B11 (P2) — 0xF6 ship-move paketi component/yolcu listesi taşımıyor.**
+  `GamePackets.cs:755` `PacketBoatSmoothMove` sadece serial/speed/dir/x/y/z.
+- [ ] **B12 (P2) — Ship su kontrolü land-only.** `ShipEngine.cs:836` `IsWaterAt` sadece land
+  `IsWet`; wet static/surface, dock/rock, su-Z, diğer hull, HS access bakılmıyor.
+- [ ] **B13 (P2) — Custom foundation deed tag'inden algılanıyor.**
+  `ClientItemUseHandler.cs:1175` sadece `CUSTOMHOUSE` deed tag'i; ilk foundation deed'inde tag
+  yoksa custom yerine klasik multi açılıyor. Fix: resolved MULTIDEF `t_multi_custom` type'ından
+  belirle.
+
+---
+
+## C. Config sözleşmesi (P1/P2 — okunuyor ama uygulanmıyor)
+
+Öneri: her ayarı sınıflandır (uygulanıyor / alias / metadata / deprecated / bağlantısı-eksik);
+desteklenmeyen ayar başlangıç uyarısı üretsin.
+
+- [ ] **C1 (P2) — TICKPERIOD/ServerTickMs/README uyuşmazlığı.** `sphere.ini:516 TICKPERIOD=250`
+  (yorum "250ms" diyor, yanlış), runtime `ServerTickMs` (default **100**, `Program.Tick.cs:86`),
+  `README-TR.md:145` "**50ms**". `TICKPERIOD` ini→ServerTickMs'e hiç parse edilmiyor; script var
+  hardcoded "100" (`Program.Scripting.cs:82`). Fix: tek kanonik isim + alias + doc düzelt.
+- [ ] **C2 (P1) — GameMinuteLength inert.** `SphereConfig.cs:498` okuyor, runtime
+  `GameWorld.GameMinuteLengthMs` sabit `20_000` (`:1093`), config akmıyor. sphere.ini'deki değer
+  (8sn) uygulanmıyor.
+- [ ] **C3 (P2) — DistanceWhisper/Talk/Yell hardcoded.** `SpeechEngine.cs:45` const
+  Say=18/Whisper=3/Yell=**48**; config (`:408`, Yell **60**) yok sayılıyor (48≠60 kanıt).
+- [ ] **C4 (P2) — MaxFame/MaxKarma/MinKarma hardcoded clamp.** `DeathEngine.cs:459` literal
+  `0,10000`; config (`:222`) referans edilmiyor (varsayılanlar eşit olduğu için şimdilik zararsız).
+- [ ] **C5 (P2) — MinCharDeleteTime yok sayılıyor.** `GameClient.Handlers.cs:62` sadece
+  şifre+online kontrol edip hemen `ch.Delete()` (`:91`); yaş/oluşturma-zamanı kontrolü yok.
+- [ ] **C6 (P2) — UseHttp yok sayılıyor.** `SphereConfig.cs:716` okunuyor ama tüketen yok;
+  `Program.AdminPanel.cs:175` web status'u koşulsuz `Start()` ediyor.
+- [ ] **C7 (P2) — MapReadId yerine MapSendId ile MUL okunuyor.** `Program.cs:713/716`
+  `InitMap(mapDef.MapSendId,...)`; MapReadId sadece validation'da. İkisi farklıysa yanlış MUL
+  okunur.
+- [ ] **C8 (P2) — MapViewSize network view range'e uygulanmıyor.** (KISMİ maddenin aksiyon
+  kısmı) `NetState.ViewRange` default 18, sadece client 0xC8 ile değişiyor (clamp 4-24);
+  `MapViewSize`/`MapViewSizeMax` view range'e bağlı değil. (Radar için kullanılıyor, dokunma.)
+
+---
+
+## D. Yarım mekanikler (P2)
+
+- [ ] **D1 (P2) — Işık kaynakları yaşam döngüsü yok.** `ClientItemUseHandler.cs:1234` yakınca
+  tek `LIGHT_CHARGES` düşüyor + `LightOut→LightLit` toggle; **yanma süresi/otomatik sönme/
+  zaman-tabanlı charge tüketimi/persistent burn-time yok** (`Item.OnTick` switch'inde LightLit
+  case'i yok, `:2705`). Fix: SetTimeout ile burn timer + charge tick + auto-extinguish + save.
+- [ ] **D2 (P2 — BÜYÜK, ayrı proje) — Spell school'ları.** `ApplySpecificSpell` (`:1628`) sadece
+  Magery + Necromancy case'leri; Chivalry (Source-X'te C++ yok → yapılmadı, ayrı karar) /
+  Bushido/Ninjitsu/Spellweaving/Mysticism generic damage/heal'e düşüyor. Risk: eksik spell
+  "desteklenmiyor" demek yerine mana/reagent tüketip etkisiz. (PARITY_BACKLOG_SUB90.md ile
+  ortak — necromancy gibi per-school çok-wave'lik iş.) Fix: eksik spell'i açıkça pasif işaretle.
+
+---
+
+## E. Performans (P0/P1/P2 — hepsi kod düzeyinde GERÇEK)
+
+Not: canlı log analizi ayrıca host/scheduler baskısına da işaret ediyor (yield/net_in
+gecikmeleri); aşağıdakiler onu **büyüten** kesin kod borçları.
+
+- [ ] **E1 (P0 — YÜKSEK etki / DÜŞÜK efor, EN UCUZ KAZANIM) — StateRecorder her tick full
+  `ToArray`.** `Program.Tick.cs:566/788` `_stateRecorder?.Tick(..., _world.GetAllObjects()
+  .OfType<Character>())`; `GetAllObjects()` (`GameWorld.cs:1468`) `_objects.Values.ToArray()`
+  — argüman interval kontrolünden ÖNCE değerlendiği için ~52K obje dizisi **her tick** (10×/sn,
+  ~4MB/s) kopyalanıyor, recorder içinde 2s/15s'de bir tarasa bile. Fix: interval kontrolünü öne
+  al **veya** mevcut `GetAllCharactersSnapshot()` (`:1473`) / players-only kullan.
+- [ ] **E2 (P0 — YÜKSEK etki / YÜKSEK efor) — Save tamamen senkron main-loop'ta.**
+  `Program.Tick.cs:191` inline `PerformSave()`; snapshot+serialize tek thread (`WorldSaver.cs:208`),
+  sadece shard disk-yazımı `Task.WaitAll` ile paralel (`:358`) → oyuncu thread'i serbest kalmıyor
+  (~483ms stall). `SAVEBACKGROUND`/`SAVESECTORSPERTICK` **okunuyor ama kullanılmıyor** (dead config,
+  yanıltıcı). Fix: main thread'de immutable snapshot yakala → serialize/write'ı background worker'a
+  ver, ikinci save'i kuyruğa al, atomik temp+commit koru.
+- [ ] **E3 (P1 — MED-YÜKSEK / MED) — TIMERF her tick full-world scan.** `GameWorld.cs:1133`
+  `foreach (var obj in _objects.Values)` (handler wire'lıysa; `:1129` `TimerFExpired==null`
+  early-out). Dünya büyüdükçe doğrusal sabit maliyet. Fix: due-time index/min-heap/timer-wheel.
+- [ ] **E4 (P2 — MED / MED) — Decay catch-up 5sn'de full-world scan.** `Program.Tick.cs:864`
+  → `CollectExpiredGroundItems` (`GameWorld.cs:1673`) `_objects.Values` baştan sona (256 bulana
+  kadar; 0 expired'da tüm dünya). Fix: decay due-queue.
+- [ ] **E5 (P1 — MED / MED) — Sleeping-sector maintenance 3dk'da tek tick'te toplu.**
+  `GameWorld.cs:1226` her item-içeren sektörü tek tick'te `OnMaintenanceTick`; per-tick bütçe/
+  cursor yok → periyodik `snapshot` spike. Fix: tick-başına süre/obje bütçesi + resume cursor.
+- [ ] **E6 (P1 — MED / MED-YÜKSEK) — Network tamamen main-loop'ta.** `USEASYNCNETWORK`
+  **hiç okunmuyor** (SphereConfig'te field yok), `NETWORKTHREADS` okunup kullanılmıyor. Accept
+  döngüsü unbounded (`NetworkManager.cs:207`), her accept'te full `_states` IP taraması (`:228`),
+  1100-slot iterasyon; login/unknown send bloklayan `Socket.Send` (`NetState.cs:695`). Fix:
+  accept bütçesi + sayaç-tabanlı IP tally + non-blocking login output.
+- [ ] **E7 (P2 — DÜŞÜK-MED / DÜŞÜK) — Auto worker = ProcessorCount.** `Program.Tick.cs:609`
+  `MulticoreWorkerCount>0 ? ... : Environment.ProcessorCount`; sektör parallel eşiği 50
+  (`GameWorld.cs:1286`). Paylaşımlı/overcommit VM'de ana thread starvation. Fix: "en az bir core
+  ana thread'e" varsayılanı + VPS profilleri.
+- [ ] **E8 (P1 — telemetri) — `snapshot` yanlış-etiket + apply↔flush arası ölçülmeyen işler.**
+  `_telemetrySnapshotUs` (`Program.Tick.cs:613-631`) tüm world-tick grubunu (OnTickParallel +
+  spell + wake + wheel + client-snapshot) ölçüyor; replay/StateRecorder/macro/reschedule
+  (`:785-807`) apply↔flush arası phase alanı olmadan çalışıyor → yanlış dominant. Fix: alt-fazlara
+  böl (active_sector_tick/timerf_scan/sleeping_maintenance/... + scheduler_gap = wall-cpu).
+
+---
+
+## F. Atıl altyapı temizliği (P2/P3)
+
+- [ ] **F1 (P3) — BotPerformanceGate CI'a bağlı değil.** `BotPerformanceGate.cs:5` sadece tanım,
+  hiç kullanım yok. Fix: bot senaryo raporu + tick histogramı + CI exit-code'a bağla, ya da kaldır.
+- [ ] **F2 (P3) — Fast-walk stack paketleri hiç gönderilmiyor.** `ExtendedPackets.cs:1344/1367`
+  sadece tanım + build testi; runtime'da construct/send yok. Fix: era-uyumlu tam key rotasyonu
+  uygula ya da ölü paket sınıflarını kaldır (mevcut zaman-tabanlı hareket kısıtı korunsun).
+- [ ] **F3 (P3) — ExpansionInfo tablosu kullanılmıyor.** `ExpansionInfo.cs:5/39` dışında referans
+  yok; feature mask'leri başka yolla kuruluyor. Fix: tek doğruluk kaynağı yap ya da kaldır.
+- [ ] **F4 (P3) — ExpressionGlobals / ConditionalEvaluator ölü.** İkisi de sadece kendi
+  tanımlarında; hiç instantiate/call yok. Fix: mevcut scripting hattıyla birleşme ihtiyacı yoksa
+  temizle (ikinci global-state sistemi olarak bağlama).
+- [ ] **F5 (P3) — OnSpeedHackDetected tüketicisi yok.** `GameClient.Combat.cs:35/40` invoke ama
+  `+=` yok; kick yolu ayrı (güvenlik açığı değil, atıl audit hook). Fix: audit/metrics'e bağla ya
+  da API'den çıkar.
+
+---
+
+## G. Test & doküman boşlukları (P2)
+
+- [ ] **G1 (P2) — Üç map diagnostic testi `return` ile "fake pass".**
+  `StairThrowDiagnosticTests.cs:29/111/309` `C:\mortechUO\mul` yoksa `WriteLine("SKIP")` + `return`
+  → xUnit'te erken return = **passed** (skipped değil). "0 skipped" üç çalışmayan testi gizliyor.
+  Fix: gerçek `Skip` (Assert.Skip / SkippableFact) + "Skips cleanly" yorumunu düzelt.
+- [ ] **G2 (P2) — Trigger dokümanları bayat (NPCSeeWantItem).** Trigger artık wire'lı+ateşleniyor
+  (`Program.EngineWiring.cs:1660/1681`) ama docs hâlâ eksik gösteriyor: `STUB_INVENTORY_TR.md:37/40/
+  202/252`, `TRIGGERS.md:23/245`, `PARITY_MATRIX.md:75`. Fix: docs güncelle.
+
+---
+
+## Önerilen sıra
+
+1. **A1–A4** (başlangıç bağlantı bug'ları + shutdown-save) — sessiz, testsiz, düşük efor, yüksek
+   güven kazanımı. **A5** (composition-root fixture) bunları kalıcı kılar.
+2. **E1** (StateRecorder ToArray) — tek satırlık mantık, yüksek etki. **B1** (MultiReader 12/16) —
+   house/ship'i modern veride açan bloklayıcı.
+3. **E2** (save main-loop dışına) + **E3/E5/E6** (full-world scan / maintenance / network bütçe).
+4. **C-grubu** config sözleşmesi (uygulanmayan ayarları bağla/işaretle).
+5. **B2–B9** house/ship parity (deed inheritance, MULTIDEF, structured result, save TYPE, raw-0).
+6. **D1** ışık yaşam döngüsü; **B10–B13** house/ship P2.
+7. **F/G** atıl altyapı temizliği + test/doküman düzeltmeleri.
+8. **D2** spell school'ları — ayrı büyük proje (PARITY_BACKLOG ile ortak).

@@ -7,6 +7,14 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+ADDED - Placed houses/ships now use their script [MULTIDEF] metadata. The multi
+        registry held only the binary geometry from multi.mul; the script name, type,
+        storage and vendor limits were parsed but never merged in, so houses got a
+        blank name and a flat storage default. The metadata is now overlaid by the
+        shared multi id, and a placed house takes its script BaseStorage (e.g. 489 for
+        a small stone house) instead of the hardcoded default. (Dynamic components —
+        doors, signs, tillermen — and script regions remain a separate step.)
+
 FIXED - Scripted house/ship deeds could load as plain items. A deed written as
         "[ITEMDEF i_deed_house] ID=i_deed" with no TYPE of its own stayed
         ItemType.Normal, so double-clicking it never reached the deed handler and

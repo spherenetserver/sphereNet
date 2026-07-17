@@ -90,7 +90,15 @@ zorunlu bağlantılar için fail-fast doğrulama.
   (`ItemDefHelper.cs:51`, `ItemDef.cs:13` default Normal). DUPEITEM'de type inheritance VAR
   (`:925-953`) ama ID= zincirinde yok → scriptten üretilen deed `ItemType.Normal` kalıp deed
   handler'a hiç girmeyebilir. Fix: ID= zincirinde Type/TDATA/Layer devral.
-- [ ] **B3 (P1) — `[MULTIDEF]` metadata placement registry'ye merge edilmiyor.**
+- [~] **B3 (P1) — `[MULTIDEF]` metadata placement registry'ye merge edilmiyor.** (KISMEN
+  YAPILDI: `MultiRegistry.MergeScriptMetadata` eklendi — MULTIDEF resource'larının StoredKeys'ini
+  paylaşılan multi id ile geometriye overlay ediyor (NAME/TYPE/BaseStorage/BaseVendors);
+  `MultiDef`'e bu alanlar eklendi; EngineWiring LoadFromMapData sonrası çağırıyor; PlaceHouse
+  artık `def.BaseStorage`'ı house'a uyguluyor (B10'un storage kısmı da kapandı — 400 default
+  yerine script değeri). Test: MultiRegistryMetadataTests (+2: merge, no-geometry skip). KALAN
+  (büyük, Aşama 4 ile ortak): COMPONENT (dinamik fixture: kapı/sign/tillerman/plank world-item
+  üretimi), MULTIREGION/REGIONFLAGS (script region), TSPEECH — bunlar ayrı geometry/fixture
+  ayrımı işi.)
   `MultiRegistry.LoadFromMapData` (`HousingEngine.cs:470`) sadece geometri okuyor;
   `EngineWiring.cs:2308` MULTIDEF'i birleştirmiyor → type/name/component/storage/vendor/
   ship-speed placement'ta kayboluyor. (KISMİ: MULTIDEF script resource olarak TSPEECH/

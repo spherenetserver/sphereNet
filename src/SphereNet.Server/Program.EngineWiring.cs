@@ -2322,6 +2322,10 @@ public static partial class Program
                 int multiCount = multiRegistry.LoadFromMapData(_mapData);
                 _log.LogInformation("Loaded {Count} multi definitions from multi.mul", multiCount);
             }
+            // Overlay script [MULTIDEF] metadata (name / type / storage / vendors) onto
+            // the binary geometry, so placed houses/ships use script-defined values.
+            int multiMeta = multiRegistry.MergeScriptMetadata(_resources);
+            _log.LogInformation("Merged {Count} multi script definitions ([MULTIDEF])", multiMeta);
             _housingEngine = new HousingEngine(_world, multiRegistry)
             {
                 MaxHousesPerPlayer = _config.MaxHousesPlayer,

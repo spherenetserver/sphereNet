@@ -5,6 +5,7 @@ using SphereNet.Game.Objects.Items;
 using SphereNet.Game.World;
 using SphereNet.Game.World.Regions;
 using SphereNet.MapData;
+using SphereNet.Scripting.Resources;
 
 namespace SphereNet.Game.Housing;
 
@@ -55,6 +56,17 @@ public sealed class MultiDef
 {
     public ushort Id { get; init; }
     public string Name { get; set; } = "";
+
+    /// <summary>Script [MULTIDEF] TYPE (t_multi / t_multi_custom / t_ship). Empty until
+    /// the script metadata is merged in — see MultiRegistry.MergeScriptMetadata.</summary>
+    public string MultiTypeName { get; set; } = "";
+
+    /// <summary>Script [MULTIDEF] BaseStorage (secure/lockdown budget); 0 = unset.</summary>
+    public int BaseStorage { get; set; }
+
+    /// <summary>Script [MULTIDEF] BaseVendors (max house vendors); 0 = unset.</summary>
+    public int BaseVendors { get; set; }
+
     public List<MultiComponent> Components { get; } = [];
 
     // Bounding rect
@@ -493,6 +505,46 @@ public sealed class MultiRegistry
         }
         return loaded;
     }
+
+    /// <summary>Merge script [MULTIDEF] metadata (NAME / TYPE / BaseStorage / BaseVendors)
+    /// onto the geometry loaded from multi.mul, keyed by the shared multi id. Source-X
+    /// keeps both under one CItemBaseMulti; SphereNet had only the binary geometry, so
+    /// placed structures used a blank name and a hardcoded storage default. Metadata for
+    /// an id with no geometry is skipped (it cannot be placed). Returns the merge count.</summary>
+    public int MergeScriptMetadata(ResourceHolder resources)
+    {
+        int merged = 0;
+        foreach (var link in resources.GetAllResources())
+        {
+            if (link.Id.Type != Core.Enums.ResType.MultiDef || link.StoredKeys == null)
+                continue;
+            var def = Get((ushort)link.Id.Index);
+            if (def == null)
+                continue;
+
+            foreach (var key in link.StoredKeys)
+            {
+                string arg = key.Arg.Trim();
+                switch (key.Key.ToUpperInvariant())
+                {
+                    case "NAME":
+                        if (arg.Length > 0) def.Name = arg;
+                        break;
+                    case "TYPE":
+                        def.MultiTypeName = arg;
+                        break;
+                    case "BASESTORAGE":
+                        if (int.TryParse(arg, out int st)) def.BaseStorage = st;
+                        break;
+                    case "BASEVENDORS":
+                        if (int.TryParse(arg, out int bv)) def.BaseVendors = bv;
+                        break;
+                }
+            }
+            merged++;
+        }
+        return merged;
+    }
 }
 
 /// <summary>
@@ -588,6 +640,11 @@ public sealed class HousingEngine
 
         // Create house instance
         var house = new House(multiItem) { Owner = owner.Uid };
+
+        // Apply script [MULTIDEF] BaseStorage when defined, instead of the flat default
+        // (small house 489, keep/castle larger, etc.).
+        if (def.BaseStorage > 0)
+            house.BaseStorage = def.BaseStorage;
 
         if (customFoundation)
         {

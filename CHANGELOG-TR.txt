@@ -6,6 +6,15 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+EKLENDI - Yerlestirilen ev/gemiler artik script [MULTIDEF] metadata'sini kullaniyor.
+        Multi registry yalnizca multi.mul'daki ikili geometriyi tutuyordu; script
+        isim, tip, storage ve vendor limitleri parse edilip merge edilmiyordu, bu
+        yuzden evler bos isim ve sabit storage default aliyordu. Metadata artik
+        paylasilan multi id ile overlay ediliyor ve yerlestirilen ev script
+        BaseStorage'ini (kucuk tas ev icin 489 gibi) sabit default yerine aliyor.
+        (Dinamik component'ler - kapi, tabela, tillerman - ve script region'lar ayri
+        adim olarak kaliyor.)
+
 DUZELTILDI - Scriptli ev/gemi deed'leri duz item olarak yuklenebiliyordu. Kendi
         TYPE'i olmayan "[ITEMDEF i_deed_house] ID=i_deed" seklindeki bir deed
         ItemType.Normal kaliyordu; cift tiklayinca deed handler'a ulasamiyor ve

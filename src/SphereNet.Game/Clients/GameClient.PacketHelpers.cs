@@ -1042,7 +1042,7 @@ public sealed partial class GameClient
             resCold: (short)SphereNet.Game.Combat.CombatEngine.EffResCold(ch),
             resPoison: (short)SphereNet.Game.Combat.CombatEngine.EffResPoison(ch),
             resEnergy: (short)SphereNet.Game.Combat.CombatEngine.EffResEnergy(ch),
-            luck: ch.Luck,
+            luck: (short)SphereNet.Game.Combat.CombatEngine.EffectiveLuck(ch),
             damageMin: (short)dmgMin,
             damageMax: (short)dmgMax,
             maxWeight: maxWeight

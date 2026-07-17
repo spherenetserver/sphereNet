@@ -251,8 +251,7 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   kalır, script get/set simetrik). Stat (STR/DEX/INT) + MaxHits/Mana/Stam bonusları
   ERTELENDİ (feedback-loop riski: stat→MaxHits türetimi). Test: SourceXWave262Tests
   (+5: no-equip=base, sum, clamp, damage reduction, base-field/script salt-base).
-  KALAN: per-element resist MAX cap (RESFIREMAX), HITCHANCE/LUCK agregasyonu
-  (GetOnHitPropertyValue zaten weapon+talisman canlı okur).
+  KALAN: (yok — RESFIREMAX Wave 265'te, HITCHANCE/LUCK Wave 267'de çözüldü, aşağı bak).
 - [x] **AOS suit STR/DEX/INT agregasyonu (stat slice)** — YAPILDI (Wave 263,
   resist slice'ın (Wave 262) stat karşılığı; aynı live-scan-on-read deseni).
   `CombatEngine.EffectiveStr/Dex/Int(ch)` = base stat + `SumEquippedItemProperty`
@@ -291,7 +290,23 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   Test: SourceXWave264Tests (+8: no-equip=base, çok-parça sum, heal bonus havuza
   dolar, base-field/script salt-base, unequip clamp, mana/stam paralel, stat/carry
   DOKUNULMAZ, negatif floor) + SaveFormatTests.Roundtrip_MaxPoolSuitBonus (base 100
-  persist, effective 120 DEĞİL). Full suite 1701. KALAN: HITCHANCE/LUCK agregasyonu.
+  persist, effective 120 DEĞİL). Full suite 1701.
+- [x] **HITCHANCE (HCI) + LUCK suit agregasyonu** — YAPILDI (Wave 267, recon ile
+  DOĞRULANDI). Source-X ikisini de equip-time cache'e toplar (`ModPropNum` @Equip/
+  @UnEquip, CCharAct.cpp:3398/3403); SphereNet live-scan ile eşdeğer. **HCI:** era-2
+  to-hit okuması (`CombatEngine.cs:285`) `GetOnHitPropertyValue(attacker, null, ...)`
+  kullanıyordu → yalnız char-tag + talisman, **armor/jewelry suit'i kaçırıyordu**
+  (weapon=null olduğu için weapon'ı bile saymıyordu). Full-suit `GetEquipmentPropertyValue`
+  (char tag + tüm layer'lar OneHanded..Horse, talisman dahil=9) ile değiştirildi; DCI de
+  hedefte aynı. Cap 45 (Source-X `minimum(HCI,45)`, CResourceCalc.cpp:220) korundu, DCI
+  ile simetrik. **LUCK:** yeni `CombatEngine.EffectiveLuck` = base + suit sum; status
+  paketi (`GameClient.PacketHelpers.cs`) artık effective luck gönderiyor (eskiden ham
+  `ch.Luck`). KRİTİK parity notu: Source-X Luck'ı **hiçbir yerde tüketmiyor** (loot/
+  damage/spawn okumuyor; UNLUCKY bile Unimplemented) → SADECE display için toplandı,
+  loot'a BAĞLANMADI (bağlamak sapma olurdu). Unclamped (UNLUCKY negatife iter, Source-X
+  gibi). Base field/script getter/persistence DOKUNULMADI (Wave 262/263 invariant).
+  Test: SourceXWave267Tests (+6: luck no-equip/sum/unlucky-negatif/base-salt, HCI+DCI
+  equipped-armor era-2 regresyon).
 - [x] **Per-element resist MAX cap (RESFIREMAX/…)** — DOĞRULANDI + PERSISTENCE FIX
   (Wave 265, recon). Premis ("resist cap eksik") YANLIŞ çerçevelenmiş: Source-X cap'i
   damage'da **ENFORCE ETMİYOR** — RES*MAX yalnızca saklama+display property'si (CCPropsChar

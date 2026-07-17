@@ -3,8 +3,20 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
-[2026-07-17] - Bandaj makrosu, virtue transport, region hapishane, resist-max kayit
+[2026-07-17] - Bandaj makrosu, virtue transport, region hapishane, HCI/luck agregasyon
 ----------------------------------------
+
+DUZELTILDI - Hit Chance Increase (HCI) artik tum kusanilan suit'i topluyor. AOS
+        to-hit formulu HCI'i yalnizca saldirganin kendi tag'i + silah/tilsim'dan
+        okuyordu; zirh veya taki uzerindeki HCI sessizce yok sayiliyordu. Artik tum
+        suit'i (tum kusanilan layer'lar) okuyor, Source-X'in equip-time toplamasiyla
+        ayni. Hedefteki Defense Chance Increase (DCI) de ayni sekilde okunuyor. Ikisi
+        de +%45 cap'i korur.
+
+EKLENDI - Luck artik durum gostergesi icin kusanilan suit'i topluyor. Her item'in
+        LUCK'i durum cubugunda gosterilen sayiya eklenir (eskiden yalnizca karakterin
+        taban luck'i gosteriliyordu). Source-X ile uyumlu olarak luck yalnizca
+        gosterim amaclidir ve loot'a ya da baska bir mekanige baglanmaz.
 
 EKLENDI - Bandaj makrosu (client bandaj kisayolu, 0xBF 0x2C). Client'in
         bandaj-hedef kisayolu artik bandaji onceden secilen hedefe hedef

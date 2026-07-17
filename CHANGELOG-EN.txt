@@ -4,8 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
-[2026-07-17] - Bandage macro, virtue transport, region jail cells, resist-max save
+[2026-07-17] - Bandage macro, virtue transport, region jail, HCI/luck suit aggregation
 ----------------------------------------
+
+FIXED - Hit Chance Increase (HCI) now aggregates the whole equipped suit. The
+        AOS to-hit formula read HCI from the attacker's own tag plus the weapon/
+        talisman only, so HCI on armor or jewelry was silently ignored. It now
+        reads the full suit (all equipped layers), matching Source-X's equip-time
+        accumulation. Defense Chance Increase (DCI) on the target is read the same
+        way. Both keep the +45% cap.
+
+ADDED - Luck now aggregates the equipped suit for the status display. Each item's
+        LUCK adds to the number shown on the status bar (previously only the base
+        character luck was shown). Matching Source-X, luck remains display-only and
+        is not wired into loot or any other mechanic.
 
 ADDED - Bandage macro (client bandage hotkey, 0xBF 0x2C). The client's
         bandage-target hotkey now applies a bandage to a pre-selected target with

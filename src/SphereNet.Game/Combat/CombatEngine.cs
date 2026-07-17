@@ -280,10 +280,13 @@ public static class CombatEngine
             {
                 // Source-X Calc_CombatChanceToHit era-2 (CResourceCalc.cpp:208):
                 // each side scales by its Hit/Defense Chance Increase, capped at
-                // +45%. Previously both terms were a flat 100 (the def-chance term
-                // was dropped entirely), so DCI suits gave no dodge benefit.
-                int hci = Math.Clamp(GetOnHitPropertyValue(attacker, null, "INCREASEHITCHANCE"), 0, 45);
-                int dci = Math.Clamp(GetOnHitPropertyValue(target, null, "INCREASEDEFCHANCE"), 0, 45);
+                // +45%. HCI/DCI are AOS suit-wide properties (Source-X accumulates
+                // every equipped item's value into PROPCH_INCREASEHITCHANCE/
+                // INCREASEDEFCHANCE at equip time), so read the full suit via
+                // GetEquipmentPropertyValue (char tag + all layers) — the previous
+                // GetOnHitPropertyValue(...,weapon:null,...) missed armor/jewelry HCI.
+                int hci = Math.Clamp(GetEquipmentPropertyValue(attacker, "INCREASEHITCHANCE"), 0, 45);
+                int dci = Math.Clamp(GetEquipmentPropertyValue(target, "INCREASEDEFCHANCE"), 0, 45);
                 int atkCalc = (attackSkill / 10 + 20) * (100 + hci);
                 int defCalc = (targetSkill / 10 + 20) * (100 + dci);
                 int chance = atkCalc * 100 / Math.Max(1, defCalc * 2);
@@ -1603,6 +1606,15 @@ public static class CombatEngine
         Math.Max(0, ch.BaseMaxMana + SumEquippedItemProperty(ch, "BONUSMANAMAX"));
     public static int EffectiveMaxStam(Character ch) =>
         Math.Max(0, ch.BaseMaxStam + SumEquippedItemProperty(ch, "BONUSSTAMMAX"));
+
+    /// <summary>Effective luck: the base Luck plus the suit contribution (Source-X
+    /// PROPCH_LUCK equip-time accumulation). Derived on read like the stat slice.
+    /// Source-X aggregates and DISPLAYS luck but consumes it nowhere — no loot,
+    /// damage, or spawn hook reads it — so this feeds the status display only;
+    /// wiring it into drop quality would diverge from the reference. Unclamped:
+    /// UNLUCKY items push it below zero, matching Source-X.</summary>
+    public static int EffectiveLuck(Character ch) =>
+        ch.Luck + SumEquippedItemProperty(ch, "LUCK");
 
     /// <summary>Attacker's elemental damage split percentages. Source-X
     /// OnTakeDamage (CCharFight.cpp:721): an unset physical share is assumed

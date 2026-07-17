@@ -7,6 +7,14 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+IMPROVED - House/ship placement now explains why it failed. Instead of a single
+        "Cannot place here", a rejected deed placement reports a specific reason
+        (house/ship limit reached, structure not defined, off the map edge, location
+        blocked, or a script veto). Classic small ships can be re-placed from a
+        dry-dock deed again (a raw multi id of 0 was wrongly treated as "no id"), and
+        the first custom-house foundation deed now opens as a customizable foundation
+        even without a CUSTOMHOUSE tag — the type is read from its [MULTIDEF].
+
 FIXED - Test/doc hygiene: three local-only MUL diagnostic tests reported as passed
         when their data was absent instead of skipping; they now report as Skipped.
         Trigger docs synced — NPCSeeWantItem is wired and fires (the outstanding

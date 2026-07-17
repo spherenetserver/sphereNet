@@ -6,6 +6,14 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+IYILESTIRILDI - Ev/gemi yerlestirme artik neden basarisiz oldugunu aciklyor. Tek
+        "Cannot place here" yerine, reddedilen deed yerlestirme belirli bir neden
+        raporluyor (ev/gemi limiti doldu, yapi tanimli degil, harita kenari disi,
+        konum bloke, ya da script veto). Klasik kucuk gemiler dry-dock deed'inden
+        tekrar yerlestirilebiliyor (raw multi id 0 yanlislikla "id yok" saniliyordu)
+        ve ilk custom-house foundation deed'i CUSTOMHOUSE tag'i olmadan da
+        ozellestirlebilir foundation olarak aciliyor - tip [MULTIDEF]'inden okunuyor.
+
 DUZELTILDI - Test/doc hijyeni: yalnizca-local uc MUL diagnostic testi, verileri yokken
         atlanmak yerine gecmis gibi raporluyordu; artik Skipped raporlaniyor. Trigger
         dokumanlari senkronlandi - NPCSeeWantItem wire'li ve atesleniyor (guncel tek

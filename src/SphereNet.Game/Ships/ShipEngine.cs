@@ -72,11 +72,18 @@ public sealed class ShipEngine
     /// Returns null if placement is invalid.
     /// </summary>
     public Ship? PlaceShip(Character owner, ushort multiId, Point3D pos, Direction facing, bool magic = false)
+        => PlaceShip(owner, multiId, pos, facing, out _, magic);
+
+    /// <summary>Place a ship, reporting the specific failure reason (B4).</summary>
+    public Ship? PlaceShip(Character owner, ushort multiId, Point3D pos, Direction facing,
+        out SphereNet.Game.Housing.PlacementFailure failure, bool magic = false)
     {
+        failure = SphereNet.Game.Housing.PlacementFailure.None;
+
         if (MaxShipsPerPlayer >= 0 && _ships.Values.Count(s => s.Owner == owner.Uid) >= MaxShipsPerPlayer)
-            return null;
+        { failure = SphereNet.Game.Housing.PlacementFailure.PlayerLimitReached; return null; }
         if (MaxShipsPerAccount >= 0 && GetShipCountForAccount(owner) >= MaxShipsPerAccount)
-            return null;
+        { failure = SphereNet.Game.Housing.PlacementFailure.AccountLimitReached; return null; }
         var normalizedFacing = Normalize4Dir(facing);
         ushort orientedId = (ushort)((multiId & ~3) | DirTo4Index(normalizedFacing));
         var def = _multiDefs.Get(orientedId);
@@ -85,14 +92,14 @@ public sealed class ShipEngine
             orientedId = multiId;
             def = _multiDefs.Get(multiId);
         }
-        if (def == null) return null;
+        if (def == null) { failure = SphereNet.Game.Housing.PlacementFailure.MultiDefinitionMissing; return null; }
         var (mapWidth, mapHeight) = _mapData?.GetMapSize(pos.Map) ?? (7168, 4096);
         if (pos.X + def.MinX < 0 || pos.Y + def.MinY < 0 ||
             pos.X + def.MaxX >= mapWidth || pos.Y + def.MaxY >= mapHeight)
-            return null;
+        { failure = SphereNet.Game.Housing.PlacementFailure.OutOfMap; return null; }
 
         if (!magic && !CanPlaceShip(pos, def))
-            return null;
+        { failure = SphereNet.Game.Housing.PlacementFailure.LocationBlocked; return null; }
 
         // Create multi item
         var multiItem = _world.CreateItem();

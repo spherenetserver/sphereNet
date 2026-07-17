@@ -94,6 +94,19 @@ public sealed class MultiDef
     }
 }
 
+/// <summary>Why a house/ship placement was rejected (B4 structured result). Lets the
+/// deed handler show a specific message instead of one generic "Cannot place here".</summary>
+public enum PlacementFailure
+{
+    None = 0,
+    PlayerLimitReached,
+    AccountLimitReached,
+    MultiDefinitionMissing,
+    OutOfMap,
+    LocationBlocked,   // terrain / overlap / (ship) water — the CanPlace* checks
+    ScriptVeto,        // @HouseCheck vetoed
+}
+
 /// <summary>
 /// House decay stage. Maps to HOUSE_DECAY_STAGE in Source-X.
 /// </summary>
@@ -606,28 +619,41 @@ public sealed class HousingEngine
 
     public House? PlaceHouse(Character owner, ushort multiId, Point3D position,
         bool customFoundation = false, bool magic = false)
+        => PlaceHouse(owner, multiId, position, out _, customFoundation, magic);
+
+    /// <summary>Whether a multi id is a customizable foundation (script MULTIDEF
+    /// TYPE=t_multi_custom). Lets deed handling detect custom houses from the resolved
+    /// definition rather than only a CUSTOMHOUSE deed tag (B13).</summary>
+    public bool IsCustomFoundation(ushort multiId) =>
+        _multiDefs.Get(multiId)?.MultiTypeName.Equals("t_multi_custom", StringComparison.OrdinalIgnoreCase) == true;
+
+    /// <summary>Place a house, reporting the specific failure reason (B4).</summary>
+    public House? PlaceHouse(Character owner, ushort multiId, Point3D position,
+        out PlacementFailure failure, bool customFoundation = false, bool magic = false)
     {
+        failure = PlacementFailure.None;
+
         if (MaxHousesPerPlayer >= 0 && GetHousesByOwner(owner.Uid).Count >= MaxHousesPerPlayer)
-            return null;
+        { failure = PlacementFailure.PlayerLimitReached; return null; }
 
         if (MaxHousesPerAccount >= 0 && GetHouseCountForAccount(owner) >= MaxHousesPerAccount)
-            return null;
+        { failure = PlacementFailure.AccountLimitReached; return null; }
 
         var def = _multiDefs.Get(multiId);
-        if (def == null) return null;
+        if (def == null) { failure = PlacementFailure.MultiDefinitionMissing; return null; }
         var (mapWidth, mapHeight) = _world.MapData?.GetMapSize(position.Map) ?? (7168, 4096);
         if (position.X + def.MinX < 0 || position.Y + def.MinY < 0 ||
             position.X + def.MaxX >= mapWidth || position.Y + def.MaxY >= mapHeight)
-            return null;
+        { failure = PlacementFailure.OutOfMap; return null; }
 
         // Check placement area
         if (!magic && !CanPlaceHouse(position, def))
-            return null;
+        { failure = PlacementFailure.LocationBlocked; return null; }
 
         // @HouseCheck (Source-X) — a script may veto placement after the engine's
         // built-in checks pass (e.g. custom land claims / faction rules).
         if (OnHouseCheck != null && OnHouseCheck(owner, position))
-            return null;
+        { failure = PlacementFailure.ScriptVeto; return null; }
 
         // Create multi item
         var multiItem = _world.CreateItem();

@@ -104,7 +104,12 @@ zorunlu bağlantılar için fail-fast doğrulama.
   ship-speed placement'ta kayboluyor. (KISMİ: MULTIDEF script resource olarak TSPEECH/
   COMPONENTCOUNT için okunuyor.) Fix: raw multi ID altında binary geometri + script metadata
   merge.
-- [ ] **B4 (P1) — Yapısal placement result yok.** House/Ship motorları hep `null` dönüyor
+- [x] **B4 (P1) — Yapısal placement result yok.** (YAPILDI: `PlacementFailure` enum
+  (PlayerLimit/AccountLimit/MultiMissing/OutOfMap/LocationBlocked/ScriptVeto); PlaceHouse/
+  PlaceShip `out failure` overload'u eklendi (eski 3-arg imza korundu → testler kırılmadı),
+  her `return null` bir neden set ediyor; deed handler `PlacementFailureMessage` ile neden-özel
+  mesaj gösteriyor. Test: SourceXPlacementResultTests. KALAN (ince): su/eğim/overlap ayrımı
+  LocationBlocked altında toplu — CanPlace* içinde ayrıştırmak ayrı iş.) House/Ship motorları hep `null` dönüyor
   (`HousingEngine.cs:559-578`, `ShipEngine.cs:77-95`) → tek genel "Cannot place"
   (`ClientItemUseHandler.cs:1219`). Fix: neden-enum'u (limit/format/su/zemin/overlap/LOS/...)
   + ayrı oyuncu mesajı + structured log.
@@ -120,7 +125,10 @@ zorunlu bağlantılar için fail-fast doğrulama.
   Ship) yok; load'da raw index (`0x64`) normal ITEMDEF sanılabilir. Gerçek `WorldSaver→dosya→
   WorldLoader` roundtrip testi yok (mevcut testler aynı canlı world'de re-read). Fix: STRUCTURE.
   KIND/MULTIID/MULTIDEF persist + gerçek process-boundary roundtrip testi.
-- [ ] **B6 (P1) — Raw multi ID `0` redeed'de reddediliyor.** `TryParseDeedMultiId`
+- [x] **B6 (P1) — Raw multi ID `0` redeed'de reddediliyor.** (YAPILDI: `TryParseDeedMultiId`'ye
+  `allowZero` parametresi eklendi; `SHIP_MULTI_BASEID` branch'i `allowZero: true` geçiyor —
+  explicit ship tag'i 0'ı (small ship north raw index) meşru kabul ediyor, dry-dock deed'i tekrar
+  açılabiliyor. Ambiguous More1/BaseId fallback hâlâ 0'ı reddediyor.) `TryParseDeedMultiId`
   (`ClientItemUseHandler.cs:3028` `id != 0`) + fallback (`:3013` `targetId==0` fail) →
   dry-dock'tan üretilen classic small ship deed'i (`SHIP_MULTI_BASEID=0`/`More1=0`) tekrar
   açılamıyor. (İlk scripted `MORE=m_small_ship_n` yolu çalışıyor.) Fix: `0`'ı geçerli değer
@@ -142,7 +150,10 @@ zorunlu bağlantılar için fail-fast doğrulama.
   `GamePackets.cs:755` `PacketBoatSmoothMove` sadece serial/speed/dir/x/y/z.
 - [ ] **B12 (P2) — Ship su kontrolü land-only.** `ShipEngine.cs:836` `IsWaterAt` sadece land
   `IsWet`; wet static/surface, dock/rock, su-Z, diğer hull, HS access bakılmıyor.
-- [ ] **B13 (P2) — Custom foundation deed tag'inden algılanıyor.**
+- [x] **B13 (P2) — Custom foundation deed tag'inden algılanıyor.** (YAPILDI: `HousingEngine.
+  IsCustomFoundation(multiId)` = MULTIDEF `MultiTypeName=="t_multi_custom"` (B3'ten); deed handler
+  `customFoundation = CUSTOMHOUSE tag ∨ IsCustomFoundation(multiId)` → ilk foundation deed'i (tag'siz)
+  artık MultiCustom açılıyor. Test: SourceXPlacementResultTests.IsCustomFoundation.)
   `ClientItemUseHandler.cs:1175` sadece `CUSTOMHOUSE` deed tag'i; ilk foundation deed'inde tag
   yoksa custom yerine klasik multi açılıyor. Fix: resolved MULTIDEF `t_multi_custom` type'ından
   belirle.

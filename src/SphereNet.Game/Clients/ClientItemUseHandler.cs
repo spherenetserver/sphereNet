@@ -1170,10 +1170,6 @@ public sealed class ClientItemUseHandler
             case ItemType.Deed:
                 if (_housingEngine != null)
                 {
-                    // TAG.CUSTOMHOUSE on the deed places a customizable
-                    // foundation (MultiCustom) instead of a fixed multi.
-                    bool customFoundation = item.TryGetTag("CUSTOMHOUSE", out string? customTag)
-                        && customTag != "0";
                     var deedItem = item;
                     var shipEngine = Item.ResolveShipEngine?.Invoke();
                     if (!TryResolveDeedMulti(deedItem, out ushort multiId, out bool isShip)
@@ -1182,6 +1178,12 @@ public sealed class ClientItemUseHandler
                         SysMessage(ServerMessages.Get("house_cant_place"));
                         break;
                     }
+                    // A customizable foundation is either flagged on the deed
+                    // (TAG.CUSTOMHOUSE) or determined from the resolved MULTIDEF type
+                    // (t_multi_custom) — the standard first foundation deed has no tag (B13).
+                    bool customFoundation = !isShip &&
+                        ((deedItem.TryGetTag("CUSTOMHOUSE", out string? customTag) && customTag != "0")
+                         || _housingEngine.IsCustomFoundation(multiId));
                     // Source-X deed placement asks for a target tile rather than
                     // dropping the house at the player's feet. The house anchor lands
                     // on the chosen point (the multi def offsets extend the footprint).
@@ -1193,12 +1195,13 @@ public sealed class ClientItemUseHandler
                         if (deedItem.IsDeleted) return;
                         var pos = new Point3D(tx, ty, tz, _character.MapIndex);
                         Item? placedMulti;
+                        SphereNet.Game.Housing.PlacementFailure failure;
                         if (isShip)
                             placedMulti = shipEngine!.PlaceShip(_character, multiId, pos,
-                                (Direction)((multiId & 0x3) * 2),
+                                (Direction)((multiId & 0x3) * 2), out failure,
                                 magic: deedItem.IsAttr(ObjAttributes.Magic))?.MultiItem;
                         else
-                            placedMulti = _housingEngine.PlaceHouse(_character, multiId, pos, customFoundation,
+                            placedMulti = _housingEngine.PlaceHouse(_character, multiId, pos, out failure, customFoundation,
                                 magic: deedItem.IsAttr(ObjAttributes.Magic))?.MultiItem;
                         if (placedMulti != null)
                         {
@@ -1216,7 +1219,7 @@ public sealed class ClientItemUseHandler
                         }
                         else
                         {
-                            SysMessage(isShip ? "Cannot place ship here." : ServerMessages.Get("house_cant_place"));
+                            SysMessage(PlacementFailureMessage(failure, isShip));
                         }
                     });
                 }
@@ -2967,12 +2970,36 @@ public sealed class ClientItemUseHandler
         return md.IsPassable(dest.Map, dest.X, dest.Y, dest.Z);
     }
 
+    // B4: map a structured placement failure to a specific player message instead of
+    // the single generic "Cannot place here".
+    private string PlacementFailureMessage(SphereNet.Game.Housing.PlacementFailure failure, bool isShip)
+    {
+        string kind = isShip ? "ship" : "house";
+        return failure switch
+        {
+            SphereNet.Game.Housing.PlacementFailure.PlayerLimitReached =>
+                $"You already own the maximum number of {kind}s.",
+            SphereNet.Game.Housing.PlacementFailure.AccountLimitReached =>
+                $"This account already owns the maximum number of {kind}s.",
+            SphereNet.Game.Housing.PlacementFailure.MultiDefinitionMissing =>
+                "That deed's structure is not defined on this shard.",
+            SphereNet.Game.Housing.PlacementFailure.OutOfMap =>
+                "That location is off the edge of the map.",
+            SphereNet.Game.Housing.PlacementFailure.LocationBlocked => isShip
+                ? "A ship must be placed on open water, clear of obstructions."
+                : "The location is blocked — the ground must be clear and flat.",
+            SphereNet.Game.Housing.PlacementFailure.ScriptVeto =>
+                $"You cannot place a {kind} here.",
+            _ => isShip ? "Cannot place ship here." : ServerMessages.Get("house_cant_place"),
+        };
+    }
+
     private bool TryResolveDeedMulti(Item deed, out ushort multiId, out bool isShip)
     {
         isShip = false;
         multiId = 0;
         if (deed.TryGetTag("SHIP_MULTI_BASEID", out string? shipBase) &&
-            TryParseDeedMultiId(shipBase, out ushort shipId))
+            TryParseDeedMultiId(shipBase, out ushort shipId, allowZero: true))
         {
             isShip = true;
             multiId = shipId;
@@ -3019,14 +3046,18 @@ public sealed class ClientItemUseHandler
 
     private static readonly string[] MultiDeedTagKeys = { "MORE1_DEFNAME", "MORE" };
 
-    private static bool TryParseDeedMultiId(string? text, out ushort id)
+    // allowZero: an explicit SHIP_MULTI_BASEID tag legitimately carries id 0 (small
+    // ship north's raw multi index), so a dry-dock-generated redeed must accept it.
+    // The ambiguous More1/BaseId fallback keeps rejecting 0 ("unset").
+    private static bool TryParseDeedMultiId(string? text, out ushort id, bool allowZero = false)
     {
         id = 0;
         if (string.IsNullOrWhiteSpace(text)) return false;
         string value = text.Trim();
-        if (value.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-            return ushort.TryParse(value.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out id) && id != 0;
-        return ushort.TryParse(value, out id) && id != 0;
+        bool parsed = value.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+            ? ushort.TryParse(value.AsSpan(2), System.Globalization.NumberStyles.HexNumber, null, out id)
+            : ushort.TryParse(value, out id);
+        return parsed && (allowZero || id != 0);
     }
 
     private void RestoreRedeededMultiUuid(Item deed, Item placedMulti, string tagName)

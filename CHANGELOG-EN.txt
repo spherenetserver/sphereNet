@@ -7,6 +7,14 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+PERFORMANCE - Two per-tick/periodic sweeps no longer scan the entire object list.
+        The TIMERF timer sweep now walks only the handful of objects that actually
+        hold a pending timer, and the item-decay catch-up now walks only loose
+        ground items. Both cost now scales with the small working set rather than the
+        total world size, so large worlds no longer pay a fixed per-tick tax for
+        timers and decay. Behaviour is unchanged: the same timers fire and the same
+        items decay, just found more cheaply.
+
 IMPROVED - House/ship placement now explains why it failed. Instead of a single
         "Cannot place here", a rejected deed placement reports a specific reason
         (house/ship limit reached, structure not defined, off the map edge, location

@@ -51,6 +51,17 @@ public sealed class GameWorld
     private readonly ConcurrentDictionary<long, Region> _regionCache = new();
     private readonly ILogger<GameWorld> _logger;
     private readonly List<ObjBase> _timerFSnapshot = [];
+    // Active-set of objects that currently hold at least one TIMERF entry, so the
+    // per-tick sweep (TickTimerF) iterates only timer-bearing objects instead of the
+    // whole world. Populated from ObjBase.AddTimerF via ResolveWorld; self-prunes on
+    // tick (empty/deleted) and on DeleteObject.
+    private readonly HashSet<ObjBase> _objectsWithTimerF = [];
+    // Index of on-ground (top-level) items, kept as a superset from the sole
+    // sector.AddItem choke point in PlaceItem. The decay catch-up sweep iterates this
+    // instead of the full object dictionary; stale entries (an item picked up via an
+    // external sector.RemoveItem) are pruned lazily by the IsOnGround re-check.
+    private readonly HashSet<Item> _groundItems = [];
+    private readonly List<Item> _groundPrune = [];
 
     private long _tickCount;
     private int _totalChars;
@@ -503,6 +514,9 @@ public sealed class GameWorld
         }
         if (obj is Character removedChar)
             _allCharacters.Remove(removedChar);
+        else if (obj is Item removedItem)
+            _groundItems.Remove(removedItem);
+        _objectsWithTimerF.Remove(obj);
         _uuidIndex.Remove(obj.Uuid);
         _uidTable.Free(obj.Uid);
 
@@ -638,6 +652,9 @@ public sealed class GameWorld
         item.Position = pos;
         item.ContainedIn = Serial.Invalid;
         sector.AddItem(item);
+        // Sole sector.AddItem choke point — index every on-ground item so the decay
+        // catch-up can sweep this set instead of the full object dictionary.
+        _groundItems.Add(item);
         return true;
     }
 
@@ -1124,27 +1141,35 @@ public sealed class GameWorld
         TickTimerF(currentTime);
     }
 
+    /// <summary>Register an object as holding a pending TIMERF entry so
+    /// <see cref="TickTimerF"/> can iterate only timer-bearing objects. Called from
+    /// <c>ObjBase.AddTimerF</c> via <c>ResolveWorld</c>. Idempotent (backed by a set).</summary>
+    internal void TrackTimerFObject(ObjBase obj) => _objectsWithTimerF.Add(obj);
+
     private void TickTimerF(long nowMs)
     {
-        if (TimerFExpired == null)
+        if (TimerFExpired == null || _objectsWithTimerF.Count == 0)
             return;
 
+        // Snapshot the active-set (small — only objects with live TIMERF entries) so
+        // the set can be pruned during the pass without mutating-while-iterating.
         _timerFSnapshot.Clear();
-        foreach (var obj in _objects.Values)
-        {
-            if (!obj.IsDeleted && obj.TimerFEntries.Count > 0)
-                _timerFSnapshot.Add(obj);
-        }
+        _timerFSnapshot.AddRange(_objectsWithTimerF);
 
         foreach (var obj in _timerFSnapshot)
         {
-            if (obj.IsDeleted)
+            if (obj.IsDeleted || obj.TimerFEntries.Count == 0)
+            {
+                _objectsWithTimerF.Remove(obj);
                 continue;
+            }
             foreach (var entry in obj.DequeueDueTimerF(nowMs))
             {
                 if (!obj.IsDeleted)
                     TimerFExpired?.Invoke(obj, entry);
             }
+            if (obj.IsDeleted || obj.TimerFEntries.Count == 0)
+                _objectsWithTimerF.Remove(obj);
         }
     }
 
@@ -1665,22 +1690,32 @@ public sealed class GameWorld
 
     /// <summary>
     /// Collect ground items whose decay timer has expired into <paramref name="buffer"/>,
-    /// up to <paramref name="max"/> entries. Allocation-free alternative to filtering a
-    /// <see cref="GetAllObjects"/> snapshot. Serial-phase only: enumerates <c>_objects</c>
-    /// directly, so the caller must not add/remove world objects until the collection
-    /// pass returns.
+    /// up to <paramref name="max"/> entries. Sweeps the <c>_groundItems</c> index (top-level
+    /// items only) instead of the full object dictionary, so cost scales with the number of
+    /// loose ground items rather than the total object count. Entries that are no longer on
+    /// the ground (picked up via an external <c>sector.RemoveItem</c>) or deleted are pruned
+    /// lazily here. Serial-phase only: the caller must not add/remove world objects until the
+    /// collection pass returns.
     /// </summary>
     public void CollectExpiredGroundItems(long now, int max, List<Item> buffer)
     {
-        foreach (var obj in _objects.Values)
+        _groundPrune.Clear();
+        foreach (var it in _groundItems)
         {
-            if (obj is Item it && !it.IsDeleted && it.IsOnGround && it.DecayTime > 0 && it.DecayTime <= now)
+            if (it.IsDeleted || !it.IsOnGround)
+            {
+                _groundPrune.Add(it); // no longer a ground item — drop from the index
+                continue;
+            }
+            if (it.DecayTime > 0 && it.DecayTime <= now)
             {
                 buffer.Add(it);
                 if (buffer.Count >= max)
-                    return;
+                    break;
             }
         }
+        for (int i = 0; i < _groundPrune.Count; i++)
+            _groundItems.Remove(_groundPrune[i]);
     }
 
     // --- Stats ---

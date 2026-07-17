@@ -322,6 +322,11 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             return;
         long due = Environment.TickCount64 + Math.Max(0, delayMs);
         _timerFEntries.Add(new TimerFEntry(due, functionName.Trim(), args.Trim()));
+        // Register in the world's timer active-set so the per-tick sweep iterates
+        // only timer-bearing objects instead of every object. Uses the same world
+        // resolver as the rest of ObjBase; a null resolver (no world) simply falls
+        // back to the entry still being present should a scan ever run.
+        ResolveWorld?.Invoke()?.TrackTimerFObject(this);
     }
 
     /// <summary>Parse a <c>TIMERF</c> / <c>TIMERFMS</c> argument string —

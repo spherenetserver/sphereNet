@@ -240,12 +240,19 @@ gecikmeleri); aşağıdakiler onu **büyüten** kesin kod borçları.
   (~483ms stall). `SAVEBACKGROUND`/`SAVESECTORSPERTICK` **okunuyor ama kullanılmıyor** (dead config,
   yanıltıcı). Fix: main thread'de immutable snapshot yakala → serialize/write'ı background worker'a
   ver, ikinci save'i kuyruğa al, atomik temp+commit koru.
-- [ ] **E3 (P1 — MED-YÜKSEK / MED) — TIMERF her tick full-world scan.** `GameWorld.cs:1133`
-  `foreach (var obj in _objects.Values)` (handler wire'lıysa; `:1129` `TimerFExpired==null`
-  early-out). Dünya büyüdükçe doğrusal sabit maliyet. Fix: due-time index/min-heap/timer-wheel.
-- [ ] **E4 (P2 — MED / MED) — Decay catch-up 5sn'de full-world scan.** `Program.Tick.cs:864`
-  → `CollectExpiredGroundItems` (`GameWorld.cs:1673`) `_objects.Values` baştan sona (256 bulana
-  kadar; 0 expired'da tüm dünya). Fix: decay due-queue.
+- [x] **E3 (P1 — MED-YÜKSEK / MED) — TIMERF her tick full-world scan.** (YAPILDI: `_objectsWithTimerF`
+  active-set — `ObjBase.AddTimerF` mevcut `ResolveWorld` üzerinden `GameWorld.TrackTimerFObject`'e
+  kaydediyor (YENİ static YOK; tüm ObjBase world erişimiyle aynı resolver → cross-world riski yok).
+  `TickTimerF` artık sadece timer taşıyan objeleri (küçük set) geziyor, tick sırasında boş/silinmiş
+  olanları prune ediyor; `DeleteObject` set'ten çıkarıyor. Due-time heap yerine active-set seçildi —
+  TIMERF nadir, set küçük, invalidation tek funnel (AddTimerF). Test: PerfIndexTests (ground + contained
+  item fire-once + prune; contained case sector-only index'in kaçıracağını kanıtlıyor).)
+- [x] **E4 (P2 — MED / MED) — Decay catch-up 5sn'de full-world scan.** (YAPILDI: `_groundItems`
+  superset index'i — tek `sector.AddItem` choke point'inden (`PlaceItem`) besleniyor, bu yüzden her
+  ground item garantili içeride (load dahil). `CollectExpiredGroundItems` artık `_objects.Values`
+  yerine bu set'i geziyor; alınıp cebe konan item'lar (`IsOnGround==false`) tarama sırasında lazy
+  prune ediliyor — DecayTime'ın 22 call-site'ına hook GEREKMEDİ. Maliyet obje sayısıyla değil loose
+  ground item sayısıyla ölçekleniyor. Test: PerfIndexTests (expired-only collect + picked-up prune).)
 - [ ] **E5 (P1 — MED / MED) — Sleeping-sector maintenance 3dk'da tek tick'te toplu.**
   `GameWorld.cs:1226` her item-içeren sektörü tek tick'te `OnMaintenanceTick`; per-tick bütçe/
   cursor yok → periyodik `snapshot` spike. Fix: tick-başına süre/obje bütçesi + resume cursor.

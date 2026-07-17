@@ -6,6 +6,14 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+PERFORMANS - Iki periyodik tarama artik tum obje listesini gezmiyor. TIMERF timer
+        taramasi yalnizca gercekten bekleyen timer'i olan az sayidaki objeyi, item
+        decay catch-up ise yalnizca yerdeki (loose) ground item'lari geziyor. Her
+        ikisinin maliyeti toplam dunya buyuklugu yerine kucuk calisma kumesiyle
+        olceklyor; buyuk dunyalar timer ve decay icin sabit per-tick vergi odemiyor.
+        Davranis ayni: ayni timer'lar tetikleniyor, ayni item'lar decay ediyor,
+        sadece daha ucuza bulunuyor.
+
 IYILESTIRILDI - Ev/gemi yerlestirme artik neden basarisiz oldugunu aciklyor. Tek
         "Cannot place here" yerine, reddedilen deed yerlestirme belirli bir neden
         raporluyor (ev/gemi limiti doldu, yapi tanimli degil, harita kenari disi,

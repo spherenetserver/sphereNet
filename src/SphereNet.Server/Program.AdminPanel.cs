@@ -171,22 +171,26 @@ public static partial class Program
             _consoleProcessor.OnCommandExecuted += (source, cmd) =>
                 _log.LogWarning("[AUDIT] [{Source}] {Command}", source, cmd);
 
-            int webPort = _config.ServPort + 2;
-            _webStatus = new WebStatusServer(_world, _accounts,
-                () => _network.ActiveConnections,
-                _loggerFactory.CreateLogger("WebStatus"),
-                GetRuntimeMetrics);
-            // Dialog designer data sources (also reused by the admin panel
-            // below): real gump art from the muls and the loaded [DIALOG]
-            // sections for the live preview.
-            _webStatus.GetGumpArt = (int id, out int w, out int h, out byte[] rgba) =>
+            // sphere.ini UseHttp gates the web status / dialog-designer HTTP endpoint.
+            if (_config.UseHttp)
             {
-                w = 0; h = 0; rgba = [];
-                return _mapData != null && _mapData.TryGetGumpArt(id, out w, out h, out rgba);
-            };
-            _webStatus.ListDialogNames = ListAllDialogNames;
-            _webStatus.GetDialogSource = GetDialogSectionSource;
-            _webStatus.Start(webPort);
+                int webPort = _config.ServPort + 2;
+                _webStatus = new WebStatusServer(_world, _accounts,
+                    () => _network.ActiveConnections,
+                    _loggerFactory.CreateLogger("WebStatus"),
+                    GetRuntimeMetrics);
+                // Dialog designer data sources (also reused by the admin panel
+                // below): real gump art from the muls and the loaded [DIALOG]
+                // sections for the live preview.
+                _webStatus.GetGumpArt = (int id, out int w, out int h, out byte[] rgba) =>
+                {
+                    w = 0; h = 0; rgba = [];
+                    return _mapData != null && _mapData.TryGetGumpArt(id, out w, out h, out rgba);
+                };
+                _webStatus.ListDialogNames = ListAllDialogNames;
+                _webStatus.GetDialogSource = GetDialogSectionSource;
+                _webStatus.Start(webPort);
+            }
 
             // --- 10. Admin Panel (SphereNet.Panel) ---
             int panelPort = _config.AdminPanelPort > 0 ? _config.AdminPanelPort : _config.ServPort + 3;

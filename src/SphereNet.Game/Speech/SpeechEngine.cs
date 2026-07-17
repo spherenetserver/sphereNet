@@ -41,10 +41,11 @@ public sealed class SpeechEngine
 {
     private readonly GameWorld _world;
 
-    /// <summary>Base hearing distances (in tiles) per mode.</summary>
-    private const int DistanceSay = 18;
-    private const int DistanceWhisper = 3;
-    private const int DistanceYell = 48;
+    /// <summary>Base hearing distances (in tiles) per mode. Config-driven (sphere.ini
+    /// DistanceTalk / DistanceWhisper / DistanceYell); defaults match the old hardcodes.</summary>
+    public int DistanceSay { get; set; } = 18;
+    public int DistanceWhisper { get; set; } = 3;
+    public int DistanceYell { get; set; } = 48;
 
     /// <summary>GM command prefix (configurable).</summary>
     public char CommandPrefix { get; set; } = '.';

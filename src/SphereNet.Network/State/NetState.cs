@@ -801,7 +801,11 @@ public sealed class NetState : IDisposable
     public Action<NetState, uint>? AllNamesRequestHandler { get; set; }
 
     public string ClientVersion { get; set; } = "";
-    public byte ViewRange { get; set; } = 18;
+
+    /// <summary>Default map view range (tiles) for a new connection, from config
+    /// (sphere.ini MapViewSize). A client may still request its own via 0xC8.</summary>
+    public static byte DefaultViewRange { get; set; } = 18;
+    public byte ViewRange { get; set; } = DefaultViewRange;
     public uint AssistVersion { get; set; }
 
     internal void OnLoginRequest(string account, string password)

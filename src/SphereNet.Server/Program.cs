@@ -695,8 +695,19 @@ public static partial class Program
         Character.RegenManaSeconds = _config.RegenMana;
         Character.RegenFoodSeconds = _config.RegenFood;
 
+        // Config-driven fame/karma limits (were hardcoded in DeathEngine).
+        SphereNet.Game.Death.DeathEngine.MaxFame = _config.MaxFame;
+        SphereNet.Game.Death.DeathEngine.MaxKarma = _config.MaxKarma;
+        SphereNet.Game.Death.DeathEngine.MinKarma = _config.MinKarma;
+        // Config-driven default network view range (sphere.ini MapViewSize); a client
+        // may still request its own via 0xC8.
+        SphereNet.Network.State.NetState.DefaultViewRange =
+            (byte)Math.Clamp(_config.MapViewSize, 1, 255);
+
         // --- 5. World ---
         _world = new GameWorld(_loggerFactory);
+        // Config-driven world clock (was a hardcoded 20s per game minute).
+        _world.GameMinuteLengthMs = Math.Max(1, _config.GameMinuteLength) * 1000;
         _world.MaxContainerItems = _config.ContainerMaxItems;
         SphereNet.Game.Objects.Items.Item.ItemsMaxAmount = _config.ItemsMaxAmount;
         _world.MaxBankItems      = _config.BankMaxItems;
@@ -713,7 +724,9 @@ public static partial class Program
             _world.InitMap(mapDef.MapSendId, mapDef.MaxX, mapDef.MaxY);
             try
             {
-                _mapData.InitMap(mapDef.MapSendId, mapDef.MaxX, mapDef.MaxY);
+                // Read the MUL data by MapReadId (which map*.mul group to load); the
+                // world/client id is MapSendId. They differ only when a shard remaps.
+                _mapData.InitMap(mapDef.MapReadId, mapDef.MaxX, mapDef.MaxY);
             }
             catch (FileNotFoundException ex)
             {

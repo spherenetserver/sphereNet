@@ -6,6 +6,16 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+DUZELTILDI - Bazi sphere.ini ayarlari parse edilip hic uygulanmiyordu. Artik
+        onurlandiriliyor: GameMinuteLength (dunya saati; sabit 20s/oyun-dakikasiydi),
+        konusma duyma mesafeleri (DistanceTalk/Whisper/Yell), MaxFame/MaxKarma/MinKarma
+        limitleri, UseHttp (web status endpoint artik kapatilabilir), MapReadId (hangi
+        map*.mul grubu yuklenecek, client'a giden MapSendId'den ayri) ve MapViewSize
+        (varsayilan network view range). TICKPERIOD artik kanonik ServerTickMs'in legacy
+        alias'i ve <TICKPERIOD> script degeri gercek tick araligini donduruyor.
+        Default'lar onceki davranisa hizalandi; ayarlanmamis config'ler degismez, yalnizca
+        acik sphere.ini degerleri etkili olur.
+
 DUZELTILDI - Ev ve gemiler restart'ta kaybolabiliyordu. Dunya item'i tipi (Multi /
         MultiCustom / Ship) yalnizca calisma zamaninda tutuyordu, ama saver bunu hic
         yazmiyordu ve item'in BaseId'si ITEMDEF'siz bir raw multi index oldugu icin

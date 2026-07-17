@@ -707,6 +707,10 @@ public static partial class Program
             if (_guildManager.GuildCount > 0)
                 _log.LogInformation("Restored {Count} guilds from world save", _guildManager.GuildCount);
             _speech = new SpeechEngine(_world);
+            // Config-driven hearing distances (were hardcoded consts).
+            _speech.DistanceSay = _config.DistanceTalk;
+            _speech.DistanceWhisper = _config.DistanceWhisper;
+            _speech.DistanceYell = _config.DistanceYell;
             _speech.PartyManager = _partyManager;
             _speech.GuildManager = _guildManager;
             _speech.OnNpcHear += OnNpcHearSpeech;

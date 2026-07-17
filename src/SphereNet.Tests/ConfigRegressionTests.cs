@@ -209,6 +209,37 @@ public class ConfigRegressionTests
     }
 
     [Fact]
+    public void SphereConfig_ContractBatch_DefaultsAndTickPeriodAlias()
+    {
+        // Config-contract batch (C1-C8): defaults align with the previous hardcoded
+        // behavior, and TICKPERIOD is a legacy alias for the canonical ServerTickMs.
+        var d = new SphereConfig();
+        Assert.True(d.UseHttp);                 // web status on by default (was unconditional)
+        Assert.Equal(20, d.GameMinuteLength);   // 20 real s/game min (old world clock)
+        Assert.Equal(48, d.DistanceYell);       // matches the old hardcoded yell distance
+
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_cfg_tick_{Guid.NewGuid():N}.ini");
+        try
+        {
+            // TICKPERIOD alias applies when ServerTickMs is absent.
+            File.WriteAllText(tmp, "[SPHERE]\nTICKPERIOD=200\n");
+            var p1 = new IniParser(); p1.Load(tmp);
+            var c1 = new SphereConfig(); c1.LoadFromIni(p1);
+            Assert.Equal(200, c1.ServerTickMs);
+
+            // ServerTickMs wins when both are present.
+            File.WriteAllText(tmp, "[SPHERE]\nTICKPERIOD=200\nServerTickMs=120\n");
+            var p2 = new IniParser(); p2.Load(tmp);
+            var c2 = new SphereConfig(); c2.LoadFromIni(p2);
+            Assert.Equal(120, c2.ServerTickMs);
+        }
+        finally
+        {
+            try { File.Delete(tmp); } catch { }
+        }
+    }
+
+    [Fact]
     public void SphereConfig_SaveOnShutdown_DefaultsOnAndParses()
     {
         // A-group A4: a clean shutdown now persists the world by default; the knob

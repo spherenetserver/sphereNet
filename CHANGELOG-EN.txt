@@ -7,6 +7,16 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIXED - Several sphere.ini settings were parsed but never applied. Now honored:
+        GameMinuteLength (world clock; was a hardcoded 20s/game-minute), the speech
+        hearing distances (DistanceTalk/Whisper/Yell), MaxFame/MaxKarma/MinKarma
+        limits, UseHttp (the web status endpoint can now be turned off), MapReadId
+        (which map*.mul group to load, distinct from the client-facing MapSendId), and
+        MapViewSize (default network view range). TICKPERIOD is now a legacy alias for
+        the canonical ServerTickMs, and the <TICKPERIOD> script value returns the real
+        tick interval. Defaults were aligned to the previous behavior, so unset configs
+        are unchanged; only explicit sphere.ini values now take effect.
+
 FIXED - Houses and ships could be lost on restart. Their world item stores the type
         (Multi / MultiCustom / Ship) only at runtime, but the saver never wrote it, and
         the item's BaseId is a raw multi index with no ITEMDEF to re-derive it from — so

@@ -444,9 +444,15 @@ public sealed class DeathEngine
         ApplyKarma(killer, karmaChange);
     }
 
+    // Config-driven fame/karma limits (sphere.ini MaxFame / MaxKarma / MinKarma).
+    // Defaults match the previous hardcoded values, so unset configs behave identically.
+    public static int MaxFame = 10000;
+    public static int MaxKarma = 10000;
+    public static int MinKarma = -10000;
+
     /// <summary>Apply a Fame delta after firing @FameChange (Source-X Noto_Fame).
     /// A script returning null cancels the change; otherwise the (possibly
-    /// adjusted) delta is clamped into [0, 10000].</summary>
+    /// adjusted) delta is clamped into [0, MaxFame].</summary>
     private static void ApplyFame(Character killer, int delta)
     {
         if (delta == 0) return;
@@ -456,7 +462,7 @@ public sealed class DeathEngine
             if (adjusted == null) return;
             delta = adjusted.Value;
         }
-        killer.Fame = (short)Math.Clamp(killer.Fame + delta, 0, 10000);
+        killer.Fame = (short)Math.Clamp(killer.Fame + delta, 0, MaxFame);
     }
 
     /// <summary>Apply a Karma delta after firing @KarmaChange (Source-X Noto_Karma).
@@ -471,7 +477,7 @@ public sealed class DeathEngine
             if (adjusted == null) return;
             delta = adjusted.Value;
         }
-        killer.Karma = (short)Math.Clamp(killer.Karma + delta, -10000, 10000);
+        killer.Karma = (short)Math.Clamp(killer.Karma + delta, MinKarma, MaxKarma);
     }
 
     /// <summary>Source-X Calc_KarmaScale: good chars lose karma 2x faster, gain 0.5x.</summary>

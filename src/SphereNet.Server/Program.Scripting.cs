@@ -79,7 +79,7 @@ public static partial class Program
             "TIMEUP" => ((int)(DateTime.UtcNow - _serverStartTime).TotalSeconds).ToString(),
             "RTIME" => DateTime.Now.ToString("ddd MMM dd HH:mm:ss yyyy"),
             "RTICKS" => DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(),
-            "TICKPERIOD" => "100",
+            "TICKPERIOD" => _config.ServerTickMs.ToString(),
 
             // --- Save ---
             "SAVECOUNT" => _saveCount.ToString(),

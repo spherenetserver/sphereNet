@@ -154,25 +154,41 @@ zorunlu bağlantılar için fail-fast doğrulama.
 Öneri: her ayarı sınıflandır (uygulanıyor / alias / metadata / deprecated / bağlantısı-eksik);
 desteklenmeyen ayar başlangıç uyarısı üretsin.
 
-- [ ] **C1 (P2) — TICKPERIOD/ServerTickMs/README uyuşmazlığı.** `sphere.ini:516 TICKPERIOD=250`
+- [x] **C1 (P2) — TICKPERIOD/ServerTickMs/README uyuşmazlığı.** (YAPILDI: `<TICKPERIOD>` script
+  okuması gerçek `ServerTickMs`'i döndürüyor; `TICKPERIOD` ini legacy alias (ServerTickMs yoksa);
+  sphere.ini `TICKPERIOD=250`→`ServerTickMs=100` (efektif değere eşit, sürpriz yok). README
+  perf-benchmark paragrafı o ölçümün config'i olabilir → dokunulmadı. Test: ConfigRegressionTests
+  alias.) `sphere.ini:516 TICKPERIOD=250`
   (yorum "250ms" diyor, yanlış), runtime `ServerTickMs` (default **100**, `Program.Tick.cs:86`),
   `README-TR.md:145` "**50ms**". `TICKPERIOD` ini→ServerTickMs'e hiç parse edilmiyor; script var
   hardcoded "100" (`Program.Scripting.cs:82`). Fix: tek kanonik isim + alias + doc düzelt.
-- [ ] **C2 (P1) — GameMinuteLength inert.** `SphereConfig.cs:498` okuyor, runtime
+- [x] **C2 (P1) — GameMinuteLength inert.** (YAPILDI: Program.cs `_world.GameMinuteLengthMs =
+  GameMinuteLength*1000`; config default 60→20 (mevcut 20s'e hizalı, default sürpriz yok);
+  sphere.ini GAMEMINUTELENGTH=8 artık uygulanıyor.) `SphereConfig.cs:498` okuyor, runtime
   `GameWorld.GameMinuteLengthMs` sabit `20_000` (`:1093`), config akmıyor. sphere.ini'deki değer
   (8sn) uygulanmıyor.
-- [ ] **C3 (P2) — DistanceWhisper/Talk/Yell hardcoded.** `SpeechEngine.cs:45` const
+- [x] **C3 (P2) — DistanceWhisper/Talk/Yell hardcoded.** (YAPILDI: SpeechEngine const'ları instance
+  property'ye çevrildi, EngineWiring config'ten set ediyor (Say←DistanceTalk); config Yell default
+  60→48 (mevcut efektife hizalı).) `SpeechEngine.cs:45` const
   Say=18/Whisper=3/Yell=**48**; config (`:408`, Yell **60**) yok sayılıyor (48≠60 kanıt).
-- [ ] **C4 (P2) — MaxFame/MaxKarma/MinKarma hardcoded clamp.** `DeathEngine.cs:459` literal
+- [x] **C4 (P2) — MaxFame/MaxKarma/MinKarma hardcoded clamp.** (YAPILDI: DeathEngine static config
+  alanları (default'lar eşit → sürpriz yok), Program.cs config'ten set; clamp literalleri
+  değiştirildi.) `DeathEngine.cs:459` literal
   `0,10000`; config (`:222`) referans edilmiyor (varsayılanlar eşit olduğu için şimdilik zararsız).
-- [ ] **C5 (P2) — MinCharDeleteTime yok sayılıyor.** `GameClient.Handlers.cs:62` sadece
+- [ ] **C5 (P2) — MinCharDeleteTime yok sayılıyor.** (ERTELENDİ: per-char CreateDate alanı YOK →
+  altyapı gerekir (yeni persist edilen alan). Ayrı küçük iş.) `GameClient.Handlers.cs:62` sadece
   şifre+online kontrol edip hemen `ch.Delete()` (`:91`); yaş/oluşturma-zamanı kontrolü yok.
-- [ ] **C6 (P2) — UseHttp yok sayılıyor.** `SphereConfig.cs:716` okunuyor ama tüketen yok;
+- [x] **C6 (P2) — UseHttp yok sayılıyor.** (YAPILDI: Program.AdminPanel web status `if (_config.UseHttp)`
+  ile gate'lendi; config default false→true (mevcut koşulsuz davranış korunur, UseHttp=0 kapatır).) `SphereConfig.cs:716` okunuyor ama tüketen yok;
   `Program.AdminPanel.cs:175` web status'u koşulsuz `Start()` ediyor.
-- [ ] **C7 (P2) — MapReadId yerine MapSendId ile MUL okunuyor.** `Program.cs:713/716`
+- [x] **C7 (P2) — MapReadId yerine MapSendId ile MUL okunuyor.** (YAPILDI: `_mapData.InitMap`
+  artık `MapReadId` kullanıyor (hangi map*.mul); `_world.InitMap` MapSendId (client id). Default
+  ikisi de 0 → değişim yok.) `Program.cs:713/716`
   `InitMap(mapDef.MapSendId,...)`; MapReadId sadece validation'da. İkisi farklıysa yanlış MUL
   okunur.
-- [ ] **C8 (P2) — MapViewSize network view range'e uygulanmıyor.** (KISMİ maddenin aksiyon
+- [x] **C8 (P2) — MapViewSize network view range'e uygulanmıyor.** (YAPILDI: `NetState.DefaultViewRange`
+  static'i eklendi, `ViewRange` init'i ondan; Program.cs `MapViewSize`'tan set ediyor. Client 0xC8
+  max clamp'ine (24) dokunulmadı — 24→18 sürprizi olmasın. Test: NetStateViewRangeTests.) (KISMİ maddenin aksiyon
   kısmı) `NetState.ViewRange` default 18, sadece client 0xC8 ile değişiyor (clamp 4-24);
   `MapViewSize`/`MapViewSizeMax` view range'e bağlı değil. (Radar için kullanılıyor, dokunma.)
 

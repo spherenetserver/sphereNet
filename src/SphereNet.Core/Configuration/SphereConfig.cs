@@ -86,7 +86,9 @@ public sealed class SphereConfig
     public int MinCharDeleteTime { get; set; } = 7;
 
     // Game Mechanics
-    public int GameMinuteLength { get; set; } = 60;
+    /// <summary>Real seconds per in-game minute. Default 20 matches the previous
+    /// hardcoded world clock; sphere.ini GameMinuteLength overrides it.</summary>
+    public int GameMinuteLength { get; set; } = 20;
     /// <summary>Minutes between Source-X f_onserver_timer calls. Zero disables it.</summary>
     public int TimerCallMinutes { get; set; }
     public int SectorSleep { get; set; } = 7;
@@ -408,13 +410,16 @@ public sealed class SphereConfig
     // Multi-connection database settings
     public List<DbConnectionConfig> DbConnections { get; set; } = [];
 
-    // Distances
+    // Distances (tiles). Defaults match the previous hardcoded speech ranges; sphere.ini
+    // Distance* overrides them.
     public int DistanceWhisper { get; set; } = 3;
     public int DistanceTalk { get; set; } = 18;
-    public int DistanceYell { get; set; } = 60;
+    public int DistanceYell { get; set; } = 48;
 
     // Web
-    public bool UseHttp { get; set; }
+    /// <summary>Serve the web status / admin HTTP endpoint. Default on preserves the
+    /// previous unconditional behavior; UseHttp=0 disables it.</summary>
+    public bool UseHttp { get; set; } = true;
 
     // Admin Panel
     public string AdminPassword { get; set; } = "";
@@ -691,7 +696,11 @@ public sealed class SphereConfig
         MulticoreWorkerCount = ini.GetInt(section, "MulticoreWorkerCount", MulticoreWorkerCount);
         MulticorePhaseTimeoutMs = ini.GetInt(section, "MulticorePhaseTimeoutMs", MulticorePhaseTimeoutMs);
         TickSleepMode = ini.GetInt(section, "TickSleepMode", TickSleepMode);
-        ServerTickMs = Math.Clamp(ini.GetInt(section, "ServerTickMs", ServerTickMs), 20, 250);
+        // ServerTickMs is canonical; TICKPERIOD is accepted as a legacy alias (the
+        // classic Sphere key) when ServerTickMs is absent.
+        ServerTickMs = Math.Clamp(
+            ini.GetInt(section, "ServerTickMs", ini.GetInt(section, "TICKPERIOD", ServerTickMs)),
+            20, 250);
         SlowTickWarnMs = Math.Max(0, ini.GetInt(section, "SlowTickWarnMs", SlowTickWarnMs));
         LoopStallWarnMs = Math.Max(0, ini.GetInt(section, "LoopStallWarnMs", LoopStallWarnMs));
         SlowPacketWarnMs = Math.Max(0, ini.GetInt(section, "SlowPacketWarnMs", SlowPacketWarnMs));

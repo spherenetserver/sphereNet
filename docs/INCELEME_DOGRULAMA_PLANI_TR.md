@@ -80,7 +80,12 @@ zorunlu bağlantılar için fail-fast doğrulama.
   / `PlaceShip` (`ShipEngine.cs:90`) harita-sınırı kontrolünde **terrain'e bakmadan red** →
   "Cannot place here". Fix: `MultiFormat` (Auto/Original12/HighSeas16) + çok-kayıtlı sağlam
   auto-detect (tiledata boyutu + `%12`/`%16` + bounds plausibility) + `shipAccess` dword.
-- [ ] **B2 (P1) — `ID=i_deed` type inheritance yok.** `DefinitionLoader.cs:433-457` ID/DISPID
+- [x] **B2 (P1) — `ID=i_deed` type inheritance yok.** (YAPILDI: `ResolveDupeItemInheritance`
+  artık DisplayIdRef (`ID=<defname>`) için de child Type==Normal ise base TYPE'ı devralıyor —
+  Source-X IBC_ID'nin typed base'i dupe etmesinin (IsDupedItem/DUPELIST) aynası. TYPE-only
+  (grafik-only ID= referansı Layer/TData sürüklemesin). Source-X `CItemBase.cpp:1659` +
+  aktif pack `i_deed_stone_and_plaster_house` (ID=i_deed, TYPE'sız) doğrulandı. Test:
+  SourceXDeedInheritanceTests (inherit + no-over-inherit). Tam suite 1836.) `DefinitionLoader.cs:433-457` ID/DISPID
   ref zinciri sadece `DisplayIdRef`/`DispIndex` set ediyor, `Type`'ı kopyalamıyor
   (`ItemDefHelper.cs:51`, `ItemDef.cs:13` default Normal). DUPEITEM'de type inheritance VAR
   (`:925-953`) ama ID= zincirinde yok → scriptten üretilen deed `ItemType.Normal` kalıp deed

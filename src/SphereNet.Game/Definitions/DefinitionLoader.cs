@@ -922,37 +922,59 @@ public sealed class DefinitionLoader
     // of a fishing pole, chair, etc.) therefore has no TYPE/LAYER/TDATA of its
     // own — those must come from the master, or the dupe reads as a plain
     // t_normal item and type-driven behavior (double-click use, equip) breaks.
+    //
+    // ID=<defname> gets the same TYPE inheritance: Source-X's IBC_ID resolves the
+    // referenced graphic to an existing typed base and dupes it (IsDupedItem /
+    // DUPELIST), so a child written as "[ITEMDEF i_deed_house] ID=i_deed" with no
+    // TYPE of its own must still inherit TYPE=t_deed — otherwise it stays t_normal
+    // and never reaches the deed handler (house/ship placement never starts).
     private void ResolveDupeItemInheritance()
     {
-        // Bounded fixpoint so DUPEITEM chains (a->b->c) settle regardless of
+        // Bounded fixpoint so DUPEITEM / ID= chains (a->b->c) settle regardless of
         // load order without risking an infinite loop on a malformed cycle.
         for (int pass = 0; pass < 4; pass++)
         {
             bool changed = false;
             foreach (var def in _itemDefs.Values)
             {
-                if (def.DupItemId == 0) continue;
-                if (!_itemDefs.TryGetValue(def.DupItemId, out var parent) || parent == def)
-                    continue;
+                // DUPEITEM: full base sharing for unset TYPE / LAYER / TDATA.
+                if (def.DupItemId != 0 &&
+                    _itemDefs.TryGetValue(def.DupItemId, out var parent) && parent != def)
+                {
+                    if (def.Type == ItemType.Normal && parent.Type != ItemType.Normal)
+                    {
+                        def.Type = parent.Type;
+                        changed = true;
+                    }
+                    if (def.Layer == Layer.None && parent.Layer != Layer.None)
+                    {
+                        def.Layer = parent.Layer;
+                        changed = true;
+                    }
+                    if (def.TData1 == 0 && def.TData2 == 0 && def.TData3 == 0 && def.TData4 == 0 &&
+                        (parent.TData1 != 0 || parent.TData2 != 0 || parent.TData3 != 0 || parent.TData4 != 0))
+                    {
+                        def.TData1 = parent.TData1;
+                        def.TData2 = parent.TData2;
+                        def.TData3 = parent.TData3;
+                        def.TData4 = parent.TData4;
+                        changed = true;
+                    }
+                }
 
-                if (def.Type == ItemType.Normal && parent.Type != ItemType.Normal)
+                // ID=<defname>: inherit only the base TYPE (the graphic is already
+                // resolved by ResolveItemDefReferences). TYPE-only keeps this narrow
+                // so a graphic-only ID= reference can't drag in unwanted LAYER/TDATA.
+                if (def.Type == ItemType.Normal && !string.IsNullOrEmpty(def.DisplayIdRef))
                 {
-                    def.Type = parent.Type;
-                    changed = true;
-                }
-                if (def.Layer == Layer.None && parent.Layer != Layer.None)
-                {
-                    def.Layer = parent.Layer;
-                    changed = true;
-                }
-                if (def.TData1 == 0 && def.TData2 == 0 && def.TData3 == 0 && def.TData4 == 0 &&
-                    (parent.TData1 != 0 || parent.TData2 != 0 || parent.TData3 != 0 || parent.TData4 != 0))
-                {
-                    def.TData1 = parent.TData1;
-                    def.TData2 = parent.TData2;
-                    def.TData3 = parent.TData3;
-                    def.TData4 = parent.TData4;
-                    changed = true;
+                    var rid = _resources.ResolveDefName(def.DisplayIdRef!.Trim());
+                    if (rid.IsValid && rid.Type == ResType.ItemDef &&
+                        _itemDefs.TryGetValue(rid.Index, out var idBase) && idBase != def &&
+                        idBase.Type != ItemType.Normal)
+                    {
+                        def.Type = idBase.Type;
+                        changed = true;
+                    }
                 }
             }
             if (!changed) break;

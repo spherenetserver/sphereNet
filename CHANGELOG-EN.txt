@@ -7,6 +7,14 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIXED - Scripted house/ship deeds could load as plain items. A deed written as
+        "[ITEMDEF i_deed_house] ID=i_deed" with no TYPE of its own stayed
+        ItemType.Normal, so double-clicking it never reached the deed handler and
+        placement never started. ID=<defname> now inherits the referenced base's
+        TYPE (matching Source-X, which dupes the referenced typed base), so such a
+        deed becomes a real deed. Type only — a graphic-only ID= reference does not
+        pull in unrelated layer/tiledata.
+
 FIXED - House/ship placement failed ("Cannot place here") on modern multi.mul data.
         The multi reader assumed the original 12-byte component record, but High Seas+
         data uses a 16-byte record (a trailing ship-access dword). Read the wrong way,

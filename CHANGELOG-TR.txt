@@ -6,6 +6,14 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+DUZELTILDI - Scriptli ev/gemi deed'leri duz item olarak yuklenebiliyordu. Kendi
+        TYPE'i olmayan "[ITEMDEF i_deed_house] ID=i_deed" seklindeki bir deed
+        ItemType.Normal kaliyordu; cift tiklayinca deed handler'a ulasamiyor ve
+        yerlestirme baslamiyordu. ID=<defname> artik referans verilen base'in
+        TYPE'ini devraliyor (Source-X'in typed base'i dupe etmesiyle ayni), boylece
+        boyle bir deed gercek deed oluyor. Sadece TYPE devraliniyor - grafik-only
+        ID= referansi alakasiz layer/tiledata surukleMEZ.
+
 DUZELTILDI - Modern multi.mul verisinde ev/gemi yerlestirme basarisiz oluyordu
         ("Cannot place here"). Multi okuyucu orijinal 12-byte component kaydini
         variyordu, oysa High Seas+ verisi 16-byte kayit kullanir (sonda ship-access

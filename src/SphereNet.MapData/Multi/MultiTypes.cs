@@ -11,6 +11,10 @@ public readonly struct MultiComponent
     public short ZOffset { get; init; }
     public uint Flags { get; init; }
 
+    /// <summary>High Seas+ trailing dword (rope item used to enter/exit galleons).
+    /// 0 for original 12-byte multi records.</summary>
+    public uint ShipAccess { get; init; }
+
     public bool IsVisible => (Flags & 0x01) == 0;
 }
 

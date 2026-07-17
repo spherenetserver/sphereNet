@@ -6,6 +6,15 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+DUZELTILDI - Modern multi.mul verisinde ev/gemi yerlestirme basarisiz oluyordu
+        ("Cannot place here"). Multi okuyucu orijinal 12-byte component kaydini
+        variyordu, oysa High Seas+ verisi 16-byte kayit kullanir (sonda ship-access
+        dword). Yanlis okununca her component offset'i kayiyor ve footprint binlerce
+        tile'a siziyordu; harita-sinir kontrolu her konumu reddediyordu. Okuyucu artik
+        12/16-byte layout'u otomatik tespit ediyor (index blok uzunluklarindan,
+        offset-plausibility tiebreak ile) ve High Seas kayitlarinda ship-access alanini
+        okuyor.
+
 PERF  - State recorder artik her server tick'inde tum dunya obje tablosunu
         kopyalamiyor. Karakter roster'ini yalnizca move-scan (2s) veya snapshot (15s)
         araligi geldiginde geziyor ve tam ~52K obje tablosu yerine karakter-only

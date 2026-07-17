@@ -7,6 +7,14 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIXED - House/ship placement failed ("Cannot place here") on modern multi.mul data.
+        The multi reader assumed the original 12-byte component record, but High Seas+
+        data uses a 16-byte record (a trailing ship-access dword). Read the wrong way,
+        every component offset shifted and the footprint inflated to thousands of tiles,
+        so the map-bounds check rejected every location. The reader now auto-detects the
+        12- vs 16-byte layout (from the index block lengths, with an offset-plausibility
+        tiebreak) and reads the ship-access field on High Seas records.
+
 PERF  - The state recorder no longer copies the whole world object table on every
         server tick. It walks the character roster only when its move-scan (2s) or
         snapshot (15s) interval is actually due, and uses the character-only roster

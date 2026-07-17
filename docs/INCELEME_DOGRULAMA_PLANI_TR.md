@@ -67,7 +67,12 @@ zorunlu bağlantılar için fail-fast doğrulama.
 
 ## B. House / Ship / Deed sistemi (P0 bloklayıcı + P1)
 
-- [ ] **B1 (P0 — BLOKLAYICI) — MultiReader sadece 12-byte okuyor, format tespiti yok.**
+- [x] **B1 (P0 — BLOKLAYICI) — MultiReader sadece 12-byte okuyor, format tespiti yok.**
+  (YAPILDI: `MultiReader` artık 12/16-byte'ı auto-detect ediyor — index blok uzunluklarının
+  strict-divisibility oyu (608%16=0/608%12=8 → HS), tie'da offset-plausibility tiebreak; HS'de
+  trailing `ShipAccess` dword okunuyor (`MultiComponent.ShipAccess` eklendi). `ComponentSize`
+  property expose edildi. Test: MultiReaderTests (+3: HS16 detect+bounds+shipAccess, orig12
+  detect, ambiguous→plausibility→HS).)
   `MultiReader.cs:14` `ComponentSize = 12`, `:60` `dataLength / 12`, `:64` 12-byte read;
   hiçbir 16-byte/High Seas tespiti yok. Source-X iki formatı da modelliyor + auto-detect
   ediyor (`CUOMultiItemRec.h:28/39`, `CUOInstall.cpp:115`, `CServerMap.cpp:618`). 16-byte HS

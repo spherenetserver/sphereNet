@@ -9,6 +9,36 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
 
 ---
 
+## KAPANIŞ DURUMU (Wave 270 sonrası, 2026-07-18)
+
+Sub-90 push'un yüksek/orta-değer maddeleri **Wave 270'e kadar kapatıldı**. Her madde
+uygulanmadan önce gerçek Source-X kod karşılaştırmasıyla doğrulandı; birkaç "büyük sanılan"
+madde aslında **Source-X'te de olmayan / yanlış-çerçevelenmiş** çıktı (kanıtla `[x]`
+işaretlendi, kasıtlı yapılmadı):
+- **Chivalry (201-210):** Source-X C++'ta 0 case → generic/script-driven, native handler yok → yapılmadı (2.3).
+- **Per-element resist MAX cap:** Source-X damage'da enforce etmiyor (display-only) → sadece persistence fix (2.4).
+- **Sysgump kütüphanesi:** Source-X de script-driven, tüm dedicated gump'lar zaten var → sadece 0xB0 fallback (5.5).
+
+Wave 265-270 eklenenleri: BandageMacro+virtue transport (5.3), region-jail (4.5), HCI/LUCK
+suit agregasyonu (2.4), server-list multi-server (5.6), 0xB0 gump fallback (5.5), plant-growth
+(4.4).
+
+**KALAN (kasıtlı ertelenmiş — kapanış kararları):**
+- 🔴 **BÜYÜK: Spell school'ları** — Bushido/Ninjitsu/Focus/Imbuing/Mysticism/Spellweaving
+  (2.2/2.3). Necromancy gibi per-school C# effect handler'ları gerektirir (Source-X'te
+  case'leri VAR, gerçek iş); her biri ayrı çok-wave'lik effort → ayrı proje olarak ertelendi.
+  (Chivalry bu listeden çıktı — Source-X'te yok.)
+- 🟢 **Düşük öncelik / non-gap (gerekçeli, inline dökümante):** STAT/TIMERF/SERVERS no-op (1.3),
+  stable native container (fonksiyonel eşdeğer var, 3.5), pet ekonomi sub-komutları (3.5),
+  per-IP guest/max-conn (DDoS-hardening, 4.3), IsCorpseSleeping (sleeping mekaniği yok, 4.6),
+  CMenu paging (niş, 5.2), niche EC/display paketleri (inert-stub, 5.4), CCryptoKeyCalc
+  key-table auto-detect (5.8), account bcrypt (harici NuGet — KULLANICI: gerek yok, 5.8),
+  KR/EC 0xFFFFFFFF seed handshake (canlı KR client gerekir, 5.6).
+
+Aşağıdaki tier'lar tam denetim geçmişini kanıt satırlarıyla korur.
+
+---
+
 ## TIER 0 — Onaylı Buglar (önce bunlar)
 
 - [x] **T0.1 Ship anchor-drop kontrol akışı** — YANLIŞ ALARM. `ShipEngine.cs:603-621`
@@ -564,7 +594,25 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   decay yapısı gerektirir).
 
 ### 4.4 Item type davranışları — 80
-- [ ] **Plant-growth sistemi** (`CItemPlant.cpp` 197 satır) — karşılığı yok.
+- [x] **Plant-growth sistemi** (`CItemPlant.cpp`) — YAPILDI (Wave 270, recon).
+  KRİTİK kapsam: Source-X'te OSI plant-bowl minigame'i (seed→bowl→9 stage→health/water→
+  pollination) YOK — `CItemPlant.cpp` bir **crop-id-chain regrow** sistemi (grep: `IT_PLANT`/
+  `PlantGrowth`/`pollinat` = 0 eşleşme). Model: stage'ler ITEMDEF TDATA zinciriyle bağlı —
+  TDATA1=reset-id, TDATA2=grow-into-id, TDATA3=fruit-id (m_ttCrops, CItemBase.h:184). Port:
+  `Item.PlantOnTick` (CItemPlant.cpp:104) — timer tick'te crop bir stage ilerler; container'a
+  girerse ölür; olgun stage (TDATA2 yok) TDATA3 fruit'i yere düşürüp TDATA1 stage-1'e reset +
+  invis (regrow); invis stage sonraki tick'te tekrar görünür. `PlantCropReset` (CItemPlant.cpp:176),
+  `PlantArmTimer` (MORE1 respawn-sec override, else 10dk default; Source-X lunar-cycle
+  SADELEŞTİRİLDİ), `PlantStartGrowth`. Item.OnTick timerFired switch'ine Crops/Foliage case'i
+  eklendi. Invis-regrow fazı MEVCUT attr modeliyle sadık: `ObjAttributes.Invis|Move_Never`
+  (defs.scp `[DEFNAME attr_flags]` attr_invis=0x80/attr_move_never=0x10 ile birebir), HUE_RED_DARK
+  staff marker; ClientViewUpdater zaten Invis'i respect ediyor. Mevcut harvest/seed (2.x) KORUNDU
+  + entegre: `PlantSeed`→`PlantStartGrowth` (crop büyümeye başlar), `HarvestPlant` REAP_TIME 60s
+  cooldown yerine `PlantCropReset` (Source-X Plant_Use faithful, invis-regrow). Test:
+  SourceXWave270Tests (+4: chain advance, mature→fruit+reset+invis, invis→reappear, container→die).
+  SADELEŞTİRME/ertelendi (düşük değer): fruit t_food olarak düşer (Source-X t_fruit), lunar-cycle
+  interval fixed, pre-placed worldgen crop'lar timer olmadan armlenene kadar statik, fruit→seed
+  bıçak dönüşümü (CClientTarg.cpp:1939).
 - [x] CommCrystal messaging — YAPILDI (Wave 245). Triage: speech relay ZATEN çalışıyor
   (Program.EngineWiring.cs:701 OnItemHear → linked crystal'e BroadcastNearby). GERÇEK
   boşluk oyuncu **linkleme akışı**: crystal'e çift-tık artık target cursor açıyor
@@ -798,11 +846,38 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   gerektiğinde ekle.
 
 ### 5.5 Dialog / gump — 84
-- [ ] Built-in standart sysgump kütüphanesi ince (script'e dayanıyor) — layout motoru
-  tam, eksik olan hazır gump'lar.
+- [x] **Built-in sysgump kütüphanesi** — PREMİS YANLIŞ / DOĞRULANDI + 0xB0 fallback
+  (Wave 269, recon). "Source-X hardcoded C++ sysgump kütüphanesi shipler, SphereNet script'e
+  dayanıyor" premisi YANLIŞ: Source-X'in `d_*`/prop/travel/help/admin dialog'ları da SCRIPT
+  pack'ten (`RES_DIALOG`, CClientDialog.cpp:15) gelir — SphereNet gibi (`bin/data/scripts/
+  core/dialogs/`, 52 dosya/187 [DIALOG]). SphereNet'te CDialogDef-eşdeğeri tam layout builder
+  (`GumpBuilder.cs`, tüm GUMPCTL_*), compressed send (0xDD) + response routing (0xB1/0xAC),
+  script-[DIALOG] render (subject-binding dahil), VE Source-X'in C++'ta kurduğu HER
+  dedicated-packet system gump'ı (skill/status/paperdoll/spellbook/bank/vendor/book/bboard/
+  map/menu/trade/value-input/party/healthbar/house-design) ZATEN var. Tek gerçek delta:
+  Source-X'in çok-eski (pre-3.0) client'lara gönderdiği **uncompressed 0xB0** gump
+  (send.cpp:3713); SphereNet hep 0xDD gönderiyordu. Eklendi: `PacketGumpDialogStandard`
+  (0xB0, plain-ASCII layout + Unicode text), `SendGump` version'a göre dallanır — SADECE
+  `ver != 0 && ver < 3.0.0` client'lar 0xB0 alır (modern + tespit-edilmemiş 0xDD'de kalır,
+  mevcut yol dokunulmaz). Test: SourceXWave269Tests (+1, 0xB0 byte-yapısı). Düşük değer
+  (her modern/Sphere-era client 0xDD destekler) ama parity-complete.
 
 ### 5.6 Login flow — 85
-- [ ] Server-list multi-server + KR/EC seed edge handling.
+- [x] **Server-list multi-server** — YAPILDI (Wave 268). SphereNet 0xA8'i hardcoded tek
+  `"SphereNet"/127.0.0.1` gönderiyordu ve config'i (ServName/ServIP) YOK SAYIYORDU. Source-X
+  send.cpp:3289 = self ilk, sonra config `[SERVERS]` shard'ları, cap 32. Uygulama:
+  `PacketServerList` artık `IReadOnlyList<ServerListEntry>` alıp N entry (sıralı index) yazar,
+  32'de cap'ler; `SphereConfig.ServerList` (SERVERLIST ini key: `name,ip,port;...` parse) +
+  `GameClient.ServerListProvider` hook'u (host wire eder) config-driven self + extra shard'ları
+  kurar; `ResolveAdvertisedIp` self/relay için ortak (0.0.0.0→local-endpoint→127.0.0.1,
+  Source-X local-addr subst); `OnServerSelect` artık list index'ini onurlandırıp doğru shard'ın
+  ip/port'una relay eder. Test: SourceXWave268Tests (+4: N-entry+index, 32-cap, SERVERLIST
+  parse, boş-liste). NOT (ertelendi, gerekçeli): **KR/EC 0xFFFFFFFF seed edge** — Source-X
+  `seed==0xFFFFFFFF && kalan-yok ⇒ KR encryption gönder+bekle` (CNetworkInput.cpp:645) SphereNet'te
+  yok (KR client stall olur). Outgoing KR-crypto handshake paketi gerektiriyor ve **canlı KR/EC
+  client olmadan doğrulanamaz** (crypto blast-radius yüksek) → güvenli-scope dışı, KR client
+  temin edilince eklenir. Tek-process shard'da multi-entry list zaten düşük değer (recon),
+  gerçek kazanım config-driven self entry + honor-index.
 
 ### 5.7 Persistence — 86
 - [x] `WORLDMULTI` — GEÇERSİZ/DOĞRULANDI (Wave 245 triage): premis YANLIŞ. Source-X'te

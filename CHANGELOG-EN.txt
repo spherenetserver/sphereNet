@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-18] - Plant growth, multi-server login list, uncompressed gump fallback
+----------------------------------------
+
+ADDED - Plant growth (Source-X CItemPlant crop regrow). Planted crops and foliage
+        now advance through their growth chain on a timer: each tick a crop grows
+        into its next stage (ITEMDEF TDATA2); a fully grown crop drops its fruit
+        (TDATA3) and resets to the first stage (TDATA1), hidden as an invisible
+        regrowing plot (staff still see it) until it grows back. A crop moved into
+        a container dies. Planting a seed starts the growth chain, and reaping a
+        mature crop resets and regrows it instead of a flat cooldown. (This is the
+        Source-X crop model, not the OSI plant-bowl minigame, which Source-X has no
+        implementation of.)
+
+ADDED - Config-driven multi-server login list (0xA8). The server list now uses the
+        configured ServName/ServIP instead of a hardcoded "SphereNet"/127.0.0.1
+        entry, and can advertise additional shards via a new SERVERLIST ini key
+        ("name,ip,port" entries separated by ';', capped at 32). Server selection
+        relays to the chosen shard's ip/port. (KR/EC 0xFFFFFFFF-seed handshake is
+        still deferred — it needs a live KR/EC client to verify the crypto.)
+
+ADDED - Uncompressed 0xB0 gump fallback for very old (pre-3.0) clients. Modern and
+        not-yet-detected clients keep the compressed 0xDD gump, so the established
+        path is unchanged.
+
 [2026-07-17] - Bandage macro, virtue transport, region jail, HCI/luck suit aggregation
 ----------------------------------------
 

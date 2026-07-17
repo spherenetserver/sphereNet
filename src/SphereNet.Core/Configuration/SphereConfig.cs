@@ -24,6 +24,15 @@ public sealed class SphereConfig
     public int ServPort { get; set; } = 2593;
     public string AdminEmail { get; set; } = "";
 
+    /// <summary>An extra login-list shard (Source-X [SERVERS] block entry) advertised
+    /// in the 0xA8 packet in addition to this shard: display name, host/ip, game port.</summary>
+    public sealed record ServerDef(string Name, string Ip, int Port);
+
+    /// <summary>Extra shards advertised in the 0xA8 server list beyond this one
+    /// (Source-X send.cpp:3299 config-driven entries). Parsed from the SERVERLIST ini
+    /// key — "name,ip,port" entries separated by ';'. Empty → single-server list.</summary>
+    public List<ServerDef> ServerList { get; } = new();
+
     // Client
     public string ClientVersion { get; set; } = "4.0.2";
     public ClientEra ClientEra { get; set; } = ClientEra.Sphere56x;
@@ -407,6 +416,24 @@ public sealed class SphereConfig
     public string AdminPassword { get; set; } = "";
     public int AdminPanelPort { get; set; } = 0; // 0 = ServPort + 3
 
+    /// <summary>Parse the SERVERLIST ini value: ';'-separated "name,ip,port" entries.
+    /// Malformed entries are skipped. Clears any previously-parsed list first so a
+    /// reload replaces rather than appends.</summary>
+    private void ParseServerList(string? raw)
+    {
+        ServerList.Clear();
+        if (string.IsNullOrWhiteSpace(raw))
+            return;
+        foreach (var entry in raw.Split(';', System.StringSplitOptions.RemoveEmptyEntries | System.StringSplitOptions.TrimEntries))
+        {
+            var parts = entry.Split(',', System.StringSplitOptions.TrimEntries);
+            if (parts.Length < 2 || parts[0].Length == 0)
+                continue;
+            int port = parts.Length >= 3 && int.TryParse(parts[2], out int p) ? p : ServPort;
+            ServerList.Add(new ServerDef(parts[0], parts[1], port));
+        }
+    }
+
     public void LoadFromIni(IniParser ini)
     {
         string section = "SPHERE";
@@ -414,6 +441,7 @@ public sealed class SphereConfig
         ServName = ini.GetValue(section, "ServName") ?? ServName;
         ServIP = ini.GetValue(section, "ServIP") ?? ServIP;
         ServPort = ini.GetInt(section, "ServPort", ServPort);
+        ParseServerList(ini.GetValue(section, "SERVERLIST"));
         AdminEmail = ini.GetValue(section, "AdminEmail") ?? AdminEmail;
 
         ClientVersion = ini.GetValue(section, "ClientVersion") ?? ClientVersion;

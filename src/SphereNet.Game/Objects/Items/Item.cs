@@ -2711,6 +2711,12 @@ public class Item : ObjBase
                     // seconds later (locked-while-open still closes).
                     CloseDoor();
                     break;
+                case ItemType.Crops:
+                case ItemType.Foliage:
+                    // Source-X CItem::_OnTick → Plant_OnTick: a crop/foliage grows
+                    // one stage each timer tick.
+                    PlantOnTick();
+                    break;
             }
         }
 
@@ -2866,6 +2872,117 @@ public class Item : ObjBase
         MarkDirty((DirtyFlag)0xFFFFFFFF);
         OnVisualUpdate?.Invoke(this);
         return true;
+    }
+
+    // ---- Plant growth (Source-X CItemPlant.cpp) ----
+
+    /// <summary>Default plant growth interval. Source-X ties this to the lunar cycle
+    /// (GetNextNewMoon); SphereNet uses a fixed interval, overridable per-item via the
+    /// MORE1 respawn-seconds field (Source-X m_Respawn_Sec).</summary>
+    public static long PlantGrowthDefaultMs = 10 * 60 * 1000; // 10 minutes
+
+    // HUE_RED_DARK — Source-X marks a regrowing (invisible) plot with this hue so
+    // staff can still see the plot while ordinary players cannot.
+    private const ushort PlantRegrowHue = 0x0021;
+
+    /// <summary>Re-arm the growth timer (Source-X Plant_SetTimer → GetDecayTime),
+    /// honoring a per-item MORE1 respawn-seconds override.</summary>
+    private void PlantArmTimer()
+    {
+        long ms = More1 > 0 ? More1 * 1000L : PlantGrowthDefaultMs;
+        if (ms <= 0) ms = PlantGrowthDefaultMs;
+        SetTimeout(Environment.TickCount64 + ms);
+    }
+
+    /// <summary>Arm a freshly placed crop/foliage so it begins growing (Source-X
+    /// Use_Seed → Plant_CropReset arms the first timer). Marks it immovable.</summary>
+    internal void PlantStartGrowth()
+    {
+        SetAttr(ObjAttributes.Move_Never);
+        PlantArmTimer();
+    }
+
+    private static ushort PlantResolveChainId(uint tdata, string? tdataName)
+    {
+        if (tdata != 0) return (ushort)tdata;
+        if (!string.IsNullOrEmpty(tdataName) && ResolveDefName != null)
+            return ResolveDefName(tdataName);
+        return 0;
+    }
+
+    private void PlantSetId(ushort id)
+    {
+        if (id != 0 && id != BaseId) BaseId = id;
+        MarkDirty((DirtyFlag)0xFFFFFFFF);
+        OnVisualUpdate?.Invoke(this);
+    }
+
+    /// <summary>Source-X CItem::Plant_OnTick (CItemPlant.cpp:104): a crop/foliage grows
+    /// one stage each timer tick. A crop moved into a container dies. An invisible
+    /// regrowing stage reappears. A mature stage (no TDATA2 grow target) drops a fruit
+    /// and resets the chain; otherwise it morphs into its TDATA2 grow-id.</summary>
+    internal bool PlantOnTick()
+    {
+        if (ContainedIn.IsValid)
+        {
+            _isDeleted = true; // not top-level → the plant dies
+            return false;
+        }
+        SetAttr(ObjAttributes.Move_Never);
+        PlantArmTimer();
+
+        if (IsAttr(ObjAttributes.Invis))
+        {
+            // Regrowing hidden stage → reappear (Source-X clears ATTR_INVIS + hue).
+            ClearAttr(ObjAttributes.Invis);
+            Hue = new Core.Types.Color(0);
+            PlantSetId(BaseId);
+            return true;
+        }
+
+        var def = DefinitionLoader.GetItemDef(BaseId);
+        ushort growId = PlantResolveChainId((uint)(def?.TData2 ?? 0), def?.TData2Name);
+        if (growId == 0)
+        {
+            // Fully mature → drop a fruit, then reset to the first stage (hidden regrow).
+            PlantDropFruit();
+            PlantCropReset();
+        }
+        else
+        {
+            PlantSetId(growId);
+        }
+        return true;
+    }
+
+    /// <summary>Source-X Plant_CropReset (CItemPlant.cpp:176): reset to the TDATA1
+    /// first-stage id, re-arm the timer, and hide as an invisible dark-red regrow
+    /// marker (staff-visible) until the next tick reveals it.</summary>
+    internal void PlantCropReset()
+    {
+        var def = DefinitionLoader.GetItemDef(BaseId);
+        ushort resetId = PlantResolveChainId((uint)(def?.TData1 ?? 0), def?.TData1Name);
+        if (resetId != 0 && resetId != BaseId) BaseId = resetId;
+        Hue = new Core.Types.Color(PlantRegrowHue);
+        SetAttr(ObjAttributes.Invis);
+        PlantArmTimer();
+        MarkDirty((DirtyFlag)0xFFFFFFFF);
+        OnVisualUpdate?.Invoke(this);
+    }
+
+    private void PlantDropFruit()
+    {
+        var def = DefinitionLoader.GetItemDef(BaseId);
+        // MORE2 fruit override (Source-X m_ridFruitOverride) else TDATA3.
+        ushort fruitId = More2 != 0 ? (ushort)More2
+            : PlantResolveChainId((uint)(def?.TData3 ?? 0), def?.TData3Name);
+        if (fruitId == 0) return;
+        var world = ResolveWorld?.Invoke();
+        if (world == null) return;
+        var fruit = world.CreateItem();
+        fruit.BaseId = fruitId;
+        fruit.ItemType = ItemType.Food;
+        world.PlaceItemWithDecay(fruit, Position);
     }
 
     /// <summary>

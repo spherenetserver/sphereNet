@@ -1,37 +1,47 @@
+using System.Collections.Generic;
 using SphereNet.Network.Packets;
 
 namespace SphereNet.Network.Packets.Outgoing;
 
-/// <summary>0xA8 — Server list (login server → client).</summary>
+/// <summary>A single 0xA8 server-list entry. Port is NOT part of the 0xA8 wire
+/// format (the game port is delivered later in the 0x8C relay); it rides here only
+/// so the select handler can pick the right relay target by list index.</summary>
+public readonly record struct ServerListEntry(string Name, uint Ip, ushort Port,
+    byte PercentFull = 0, byte Timezone = 0);
+
+/// <summary>0xA8 — Server list (login server → client). Source-X send.cpp:3289 lists
+/// self first, then config-defined extra shards, capped at MAX_SERVERS_LIST = 32.</summary>
 public sealed class PacketServerList : PacketWriter
 {
-    private readonly string _serverName;
-    private readonly byte _percentFull;
-    private readonly byte _timezone;
-    private readonly uint _ip;
+    private readonly IReadOnlyList<ServerListEntry> _servers;
 
-    public PacketServerList(string serverName, uint ip, byte percentFull = 0, byte timezone = 0)
-        : base(0xA8)
+    public PacketServerList(IReadOnlyList<ServerListEntry> servers) : base(0xA8)
     {
-        _serverName = serverName;
-        _percentFull = percentFull;
-        _timezone = timezone;
-        _ip = ip;
+        _servers = servers;
+    }
+
+    // Backward-compatible single-entry convenience (used by tests / fallback).
+    public PacketServerList(string serverName, uint ip, byte percentFull = 0, byte timezone = 0)
+        : this(new[] { new ServerListEntry(serverName, ip, 0, percentFull, timezone) })
+    {
     }
 
     public override PacketBuffer Build()
     {
         var buf = CreateVariable(128);
         buf.WriteByte(0x5D); // system info flag
-        ushort count = 1;
-        buf.WriteUInt16(count);
+        int count = _servers.Count < 32 ? _servers.Count : 32;
+        buf.WriteUInt16((ushort)count);
 
-        // Server entry
-        buf.WriteUInt16(0); // server index
-        buf.WriteAsciiFixed(_serverName, 32);
-        buf.WriteByte(_percentFull);
-        buf.WriteByte(_timezone);
-        buf.WriteUInt32(_ip);
+        for (int i = 0; i < count; i++)
+        {
+            var s = _servers[i];
+            buf.WriteUInt16((ushort)i); // server index
+            buf.WriteAsciiFixed(s.Name, 32);
+            buf.WriteByte(s.PercentFull);
+            buf.WriteByte(s.Timezone);
+            buf.WriteUInt32(s.Ip);
+        }
 
         buf.WriteLengthAt(1);
         return buf;

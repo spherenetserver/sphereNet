@@ -3,6 +3,29 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-18] - Bitki buyumesi, multi-server login listesi, sikistirilmamis gump fallback
+----------------------------------------
+
+EKLENDI - Bitki buyumesi (Source-X CItemPlant crop regrow). Ekilen crop ve foliage
+        artik zamanlayiciyla buyume zincirinde ilerler: her tick'te crop bir sonraki
+        asamasina buyur (ITEMDEF TDATA2); tam buyuyen crop meyvesini (TDATA3) dusurup
+        ilk asamaya (TDATA1) doner ve gorunmez regrow parseli olarak gizlenir (staff
+        gorebilir), sonra tekrar buyur. Bir kaba tasinan crop olur. Tohum ekmek buyume
+        zincirini baslatir, olgun crop'u toplamak sabit cooldown yerine sifirlayip
+        yeniden buyutur. (Bu Source-X crop modelidir, OSI plant-bowl minigame degil;
+        Source-X onu hic implement etmemis.)
+
+EKLENDI - Config-tabanli multi-server login listesi (0xA8). Sunucu listesi artik
+        sabit "SphereNet"/127.0.0.1 yerine yapilandirilmis ServName/ServIP kullanir
+        ve yeni SERVERLIST ini anahtariyla ek shard'lar ilan edebilir (';' ile ayrilmis
+        "isim,ip,port" girdileri, en fazla 32). Sunucu secimi secilen shard'in ip/port'una
+        yonlendirir. (KR/EC 0xFFFFFFFF-seed handshake hala ertelendi - crypto'yu dogrulamak
+        icin canli KR/EC client gerekir.)
+
+EKLENDI - Cok eski (pre-3.0) client'lar icin sikistirilmamis 0xB0 gump fallback'i.
+        Modern ve henuz-tespit-edilmemis client'lar sikistirilmis 0xDD gump'ta kalir,
+        boylece mevcut yol degismez.
+
 [2026-07-17] - Bandaj makrosu, virtue transport, region hapishane, HCI/luck agregasyon
 ----------------------------------------
 

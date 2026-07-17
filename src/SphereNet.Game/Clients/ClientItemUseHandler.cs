@@ -1597,9 +1597,8 @@ public sealed class ClientItemUseHandler
     {
         if (_character == null) return;
 
-        long now = Environment.TickCount64;
-        if (item.TryGetTag("REAP_TIME", out string? rt) &&
-            long.TryParse(rt, out long ready) && now < ready)
+        // A regrowing (invisible) plot has nothing to reap yet.
+        if (item.IsAttr(ObjAttributes.Invis))
         {
             SysMessage("There is nothing to harvest yet.");
             return;
@@ -1629,8 +1628,9 @@ public sealed class ClientItemUseHandler
         BroadcastNearby?.Invoke(_character.Position, UpdateRange,
             new PacketSound(0x013E, _character.X, _character.Y, _character.Z), 0);
 
-        // Regrow cooldown so the plant can't be farmed every click.
-        item.SetTag("REAP_TIME", (now + 60_000).ToString());
+        // Source-X Plant_Use: reaping resets the crop to its first stage and regrows
+        // it (hidden until the growth timer brings it back), instead of a flat cooldown.
+        item.PlantCropReset();
         SysMessage("You harvest the plant.");
     }
 
@@ -1696,6 +1696,7 @@ public sealed class ClientItemUseHandler
         crop.BaseId = cropId;
         crop.ItemType = ItemType.Crops;
         _world.PlaceItem(crop, new Point3D(x, y, z, _character.MapIndex));
+        crop.PlantStartGrowth(); // Source-X Use_Seed → the crop begins its growth chain
         BroadcastNearby?.Invoke(crop.Position, UpdateRange,
             new PacketWorldItem(crop.Uid.Value, crop.DispIdFull, crop.Amount,
                 crop.X, crop.Y, crop.Z, crop.Hue), 0);

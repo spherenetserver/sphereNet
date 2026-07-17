@@ -659,43 +659,58 @@ public static partial class Program
         client.HandleLoginRequest(account, password);
     }
 
-    private static void OnServerSelect(NetState state, ushort serverIndex)
+    /// <summary>Resolve an advertised/relay IP as a big-endian uint. A blank or
+    /// 0.0.0.0 config IP falls back to the socket's own bound address (Source-X
+    /// local-address substitution), then 127.0.0.1. Keeps the 0xA8 list and the
+    /// 0x8C relay agreeing on the same address.</summary>
+    private static uint ResolveAdvertisedIp(NetState state, string ipStr)
     {
-        uint ip;
-        if (_config.ServIP == "0.0.0.0" || string.IsNullOrEmpty(_config.ServIP))
+        if (string.IsNullOrEmpty(ipStr) || ipStr == "0.0.0.0")
         {
             var localEp = state.LocalEndPoint;
             if (localEp != null)
             {
-                var bytes = localEp.Address.GetAddressBytes();
-                ip = (uint)((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]);
+                var b = localEp.Address.GetAddressBytes();
+                return (uint)((b[0] << 24) | (b[1] << 16) | (b[2] << 8) | b[3]);
             }
-            else
-            {
-                ip = 0x7F000001; // 127.0.0.1
-            }
+            return 0x7F000001; // 127.0.0.1
         }
-        else
+        if (System.Net.IPAddress.TryParse(ipStr, out var addr))
         {
-            if (System.Net.IPAddress.TryParse(_config.ServIP, out var addr))
-            {
-                var bytes = addr.GetAddressBytes();
-                ip = (uint)((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]);
-            }
-            else
-            {
-                ip = 0x7F000001;
-            }
+            var b = addr.GetAddressBytes();
+            return (uint)((b[0] << 24) | (b[1] << 16) | (b[2] << 8) | b[3]);
         }
+        return 0x7F000001;
+    }
 
-        ushort port = (ushort)_config.ServPort;
+    /// <summary>Build the 0xA8 server list: this shard first (config ServName/ServIP/
+    /// ServPort), then any configured extra shards (Source-X send.cpp:3289 self + defs).</summary>
+    private static IReadOnlyList<ServerListEntry> BuildServerList(NetState state)
+    {
+        var list = new List<ServerListEntry>
+        {
+            new(_config.ServName, ResolveAdvertisedIp(state, _config.ServIP), (ushort)_config.ServPort),
+        };
+        foreach (var def in _config.ServerList)
+            list.Add(new ServerListEntry(def.Name, ResolveAdvertisedIp(state, def.Ip), (ushort)def.Port));
+        return list;
+    }
+
+    private static void OnServerSelect(NetState state, ushort serverIndex)
+    {
+        // Honor the selected list index (Source-X Server_GetDef); out-of-range falls
+        // back to this shard. Extra shards relay to their own configured ip/port.
+        var servers = BuildServerList(state);
+        var chosen = serverIndex < servers.Count ? servers[serverIndex] : servers[0];
+        uint ip = chosen.Ip;
+        ushort port = chosen.Port != 0 ? chosen.Port : (ushort)_config.ServPort;
         uint authId = (uint)Random.Shared.Next(1, int.MaxValue);
         state.AuthId = authId;
 
         // Store login crypto keys for the game connection (Source-X RelayGameCryptStart)
         SphereNet.Network.Encryption.CryptoState.StoreRelayKeys(authId, state.Crypto.Key1, state.Crypto.Key2, state.ClientVersionNumber);
-        _log.LogDebug("Relay #{Id}: ip=0x{IP:X8}, port={Port}, authId=0x{AuthId:X8}",
-            state.Id, ip, port, authId);
+        _log.LogDebug("Relay #{Id}: server[{Idx}] ip=0x{IP:X8}, port={Port}, authId=0x{AuthId:X8}",
+            state.Id, serverIndex, ip, port, authId);
 
         state.Send(new PacketRelay(ip, port, authId));
 

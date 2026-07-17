@@ -63,6 +63,11 @@ public sealed partial class GameClient : ITextConsole
     public static int ClientLingerSeconds { get; set; } = 60;
     public static Func<string, Point3D?>? BotSpawnLocationProvider;
 
+    /// <summary>Builds the 0xA8 login server list for a connecting client (config-driven
+    /// self entry + any configured extra shards). Wired by the host; null → single
+    /// hardcoded fallback entry.</summary>
+    public static Func<NetState, IReadOnlyList<SphereNet.Network.Packets.Outgoing.ServerListEntry>>? ServerListProvider;
+
     private readonly NetState _netState;
     private readonly GameWorld _world;
     private readonly AccountManager _accountManager;

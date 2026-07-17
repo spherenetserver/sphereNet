@@ -810,8 +810,18 @@ public sealed class ClientTargetingHandler
         string layout = gump.BuildLayoutString();
         int gx = gump.ExplicitX ?? (gump.Width > 0 ? (800 - gump.Width) / 2 : 50);
         int gy = gump.ExplicitY ?? (gump.Height > 0 ? (600 - gump.Height) / 2 : 50);
-        _netState.Send(new PacketGumpDialog(
-            gump.Serial, gump.GumpId, gx, gy, layout, gump.Texts));
+
+        // Source-X send.cpp:3617 picks compressed (0xDD) vs standard (0xB0) by client
+        // version. Only explicitly-old clients (< 3.0.0) get the uncompressed 0xB0
+        // fallback; modern and not-yet-detected (version 0) clients keep 0xDD, so the
+        // established path is untouched.
+        uint ver = _netState.ClientVersionNumber;
+        if (ver != 0 && ver < 30_000_000)
+            _netState.Send(new PacketGumpDialogStandard(
+                gump.Serial, gump.GumpId, gx, gy, layout, gump.Texts));
+        else
+            _netState.Send(new PacketGumpDialog(
+                gump.Serial, gump.GumpId, gx, gy, layout, gump.Texts));
     }
 
     /// <summary>Set a callback-based target cursor. Used by housing, pets, etc.</summary>

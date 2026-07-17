@@ -1738,6 +1738,53 @@ public sealed class PacketGumpDialog : PacketWriter
     }
 }
 
+/// <summary>0xB0 — Display gump (uncompressed). The pre-compression fallback Source-X
+/// sends to clients below MINCLIVER_COMPRESSDIALOG (send.cpp:3713, writeStandardControls),
+/// i.e. very old (pre-3.0) clients that do not understand the 0xDD compressed form. Same
+/// content — plain-ASCII layout + a Unicode text block — just uncompressed.</summary>
+public sealed class PacketGumpDialogStandard : PacketWriter
+{
+    private readonly uint _serial, _gumpId;
+    private readonly int _x, _y;
+    private readonly string _layout;
+    private readonly IReadOnlyList<string> _texts;
+
+    public PacketGumpDialogStandard(uint serial, uint gumpId, int x, int y,
+        string layout, IReadOnlyList<string> texts) : base(0xB0)
+    {
+        _serial = serial;
+        _gumpId = gumpId;
+        _x = x;
+        _y = y;
+        _layout = layout;
+        _texts = texts;
+    }
+
+    public override PacketBuffer Build()
+    {
+        byte[] layoutBytes = Encoding.ASCII.GetBytes(_layout);
+        var buf = CreateVariable(64 + layoutBytes.Length + _texts.Count * 8);
+        buf.WriteUInt32(_serial);
+        buf.WriteUInt32(_gumpId);
+        buf.WriteInt32(_x);
+        buf.WriteInt32(_y);
+        buf.WriteUInt16((ushort)layoutBytes.Length);
+        buf.WriteBytes(layoutBytes);
+        buf.WriteUInt16((ushort)_texts.Count);
+        foreach (var text in _texts)
+        {
+            buf.WriteUInt16((ushort)text.Length);
+            foreach (char c in text)
+            {
+                buf.WriteByte((byte)(c >> 8)); // UTF-16 big-endian
+                buf.WriteByte((byte)(c & 0xFF));
+            }
+        }
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
 // ==================== Party Packets ====================
 
 /// <summary>

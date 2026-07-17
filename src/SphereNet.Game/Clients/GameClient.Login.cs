@@ -64,9 +64,13 @@ public sealed partial class GameClient
         _account.LastIp = _netState.RemoteEndPoint?.Address.ToString() ?? "";
         if (_netState.ClientVersionNumber == 0)
             _netState.Send(new PacketClientVersionRequest());
-        // Keep login-server list deterministic for local development.
+        // Config-driven server list (self entry + any configured extra shards).
+        // Falls back to a deterministic local entry when no provider is wired —
         // 0.0.0.0 (or unstable interface picks) can make some clients hang.
-        _netState.Send(new PacketServerList("SphereNet", 0x7F000001));
+        var serverEntries = ServerListProvider?.Invoke(_netState);
+        _netState.Send(serverEntries is { Count: > 0 }
+            ? new PacketServerList(serverEntries)
+            : new PacketServerList("SphereNet", 0x7F000001));
     }
 
     public void HandleGameLogin(string account, string password, uint authId)

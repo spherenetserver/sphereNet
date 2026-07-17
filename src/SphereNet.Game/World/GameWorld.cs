@@ -913,6 +913,38 @@ public sealed class GameWorld
         return null;
     }
 
+    /// <summary>Find a region by its NAME or DEFNAME (case-insensitive), mirroring
+    /// Source-X CServerConfig::GetRegion which matches GetNameStr()/GetResourceName().
+    /// Used to resolve data-driven jail cells ("jail" / "jailN").</summary>
+    public Region? FindRegionByName(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return null;
+        foreach (var region in _regions)
+        {
+            if (string.Equals(region.DefName, name, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(region.Name, name, StringComparison.OrdinalIgnoreCase))
+                return region;
+        }
+        return null;
+    }
+
+    // Legacy Britain jail coords, used only when no jail AREADEF is loaded so
+    // shards without a jail region keep working (matches the historical hardcode).
+    private static readonly Point3D LegacyJailPoint = new(1476, 1604, 20, 0);
+
+    /// <summary>Resolve a jail cell anchor point — Source-X GetRegionPoint("jail" /
+    /// "jailN"): look up the AREADEF region named "jail" (cell 0) or "jail{cell}"
+    /// and return its anchor point. Falls back to the legacy hardcoded coords when
+    /// no such region is defined.</summary>
+    public Point3D GetJailPoint(int cell)
+    {
+        var region = cell > 0
+            ? (FindRegionByName($"jail{cell}") ?? FindRegionByName("jail"))
+            : FindRegionByName("jail");
+        return region?.RepresentativePoint ?? LegacyJailPoint;
+    }
+
     // --- Rooms ---
 
     public void AddRoom(Room room) => _rooms.Add(room);

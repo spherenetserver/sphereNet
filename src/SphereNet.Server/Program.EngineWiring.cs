@@ -1398,6 +1398,7 @@ public static partial class Program
             {
                 inmate.ClearStatFlag(StatFlag.Freeze);
                 inmate.RemoveTag("JAIL_RELEASE");
+                inmate.RemoveTag("JAIL_CELL");
                 var spawnPos = new Point3D(1495, 1629, 10, 0);
                 _world.MoveCharacter(inmate, spawnPos);
                 if (_clientsByCharUid.TryGetValue(inmate.Uid, out var inmateClient))

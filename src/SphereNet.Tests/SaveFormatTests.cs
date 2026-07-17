@@ -847,6 +847,53 @@ public class SaveFormatTests
     }
 
     [Fact]
+    public void Roundtrip_PreservesPerElementResistMaxCaps()
+    {
+        // Wave 265: RESPHYSICALMAX persistence gap — the physical resist cap was the
+        // one per-element max the WorldSaver never wrote (fire/cold/poison/energy were
+        // saved). All five must now round-trip through the RES*MAX set path.
+        // NOTE: the cap is display/storage-only, matching Source-X (send.cpp SA block);
+        // it is deliberately NOT enforced on damage.
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_resmax_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            var src = MakeWorld();
+
+            var ch = src.CreateCharacter();
+            ch.Name = "Capped";
+            ch.BodyId = 0x0190;
+            ch.IsPlayer = true;
+            src.PlaceCharacter(ch, new Point3D(1000, 1000, 0, 0));
+
+            ch.TrySetProperty("RESPHYSICALMAX", "75");
+            ch.TrySetProperty("RESFIREMAX", "80");
+            ch.TrySetProperty("RESCOLDMAX", "65");
+            ch.TrySetProperty("RESPOISONMAX", "90");
+            ch.TrySetProperty("RESENERGYMAX", "60");
+            Assert.Equal((short)75, ch.ResPhysicalMax);
+
+            Assert.True(saver.Save(src, tmp));
+
+            var dst = MakeWorld();
+            loader.Load(dst, tmp);
+
+            var reloaded = dst.FindChar(ch.Uid);
+            Assert.NotNull(reloaded);
+            Assert.Equal((short)75, reloaded!.ResPhysicalMax);
+            Assert.Equal((short)80, reloaded.ResFireMax);
+            Assert.Equal((short)65, reloaded.ResColdMax);
+            Assert.Equal((short)90, reloaded.ResPoisonMax);
+            Assert.Equal((short)60, reloaded.ResEnergyMax);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public void Roundtrip_PreservesCombatMemoriesAndAttackerLog()
     {
         // W-D (wiki/hedef.txt 12.2): Source-X saves EVERY memory item (they are

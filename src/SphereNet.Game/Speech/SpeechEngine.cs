@@ -1205,17 +1205,28 @@ public sealed class CommandHandler
             }
         });
 
-        // JAIL <serial> [minutes] — jail a character, optionally with a duration in minutes
+        // JAIL <serial> [minutes] [cell] — jail a character, optionally with a
+        // duration in minutes and a numbered cell. The cell resolves to the AREADEF
+        // region "jail{cell}" (or "jail" for cell 0) via world.GetJailPoint, matching
+        // Source-X's data-driven GetRegionPoint("jail"/"jailN").
         Register("JAIL", PrivLevel.GM, (gm, args) =>
         {
-            var parts = args.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            var parts = args.Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length == 0) return;
             if (uint.TryParse(parts[0].Replace("0x", ""), System.Globalization.NumberStyles.HexNumber, null, out uint uid))
             {
                 var target = world.FindChar(new Core.Types.Serial(uid));
                 if (target != null)
                 {
-                    var jailPos = new Point3D(1476, 1604, 20, 0);
+                    int cell = 0;
+                    if (parts.Length > 2 && int.TryParse(parts[2], out int c) && c > 0)
+                        cell = c;
+                    if (cell > 0)
+                        target.SetTag("JAIL_CELL", cell.ToString());
+                    else
+                        target.RemoveTag("JAIL_CELL");
+
+                    var jailPos = world.GetJailPoint(cell);
                     world.MoveCharacter(target, jailPos);
                     target.SetStatFlag(StatFlag.Freeze);
 
@@ -1244,22 +1255,30 @@ public sealed class CommandHandler
             }
         });
 
-        Register("UNJAIL", PrivLevel.GM, (gm, args) =>
+        // Shared release path for UNJAIL / FORGIVE / PARDON — clears the jail state
+        // and teleports the inmate back out. Source-X CHV_FORGIVE clears PRIV_JAILED
+        // and the JailCell tag; SphereNet additionally lifts the Freeze confinement
+        // and the timed-release tag.
+        void ReleaseJailedChar(Character gm, string args)
         {
-            if (uint.TryParse(args.Replace("0x", ""), System.Globalization.NumberStyles.HexNumber, null, out uint uid))
-            {
-                var target = world.FindChar(new Core.Types.Serial(uid));
-                if (target != null)
-                {
-                    target.ClearStatFlag(StatFlag.Freeze);
-                    target.RemoveTag("JAIL_RELEASE");
-                    var spawnPos = new Point3D(1495, 1629, 10, 0);
-                    world.MoveCharacter(target, spawnPos);
-                    OnCharacterResyncRequested?.Invoke(target);
-                    OnSysMessage?.Invoke(gm, ServerMessages.GetFormatted("gm_released", target.Name));
-                }
-            }
-        });
+            if (!uint.TryParse(args.Replace("0x", ""), System.Globalization.NumberStyles.HexNumber, null, out uint uid))
+                return;
+            var target = world.FindChar(new Core.Types.Serial(uid));
+            if (target == null)
+                return;
+            target.ClearStatFlag(StatFlag.Freeze);
+            target.RemoveTag("JAIL_RELEASE");
+            target.RemoveTag("JAIL_CELL");
+            var spawnPos = new Point3D(1495, 1629, 10, 0);
+            world.MoveCharacter(target, spawnPos);
+            OnCharacterResyncRequested?.Invoke(target);
+            OnSysMessage?.Invoke(gm, ServerMessages.GetFormatted("gm_released", target.Name));
+        }
+
+        Register("UNJAIL", PrivLevel.GM, ReleaseJailedChar);
+        // Source-X spells the pardon verb FORGIVE (CHV_FORGIVE); PARDON is a common alias.
+        Register("FORGIVE", PrivLevel.GM, ReleaseJailedChar);
+        Register("PARDON", PrivLevel.GM, ReleaseJailedChar);
 
         Register("UNSTICK", PrivLevel.Counsel, (gm, _) =>
         {

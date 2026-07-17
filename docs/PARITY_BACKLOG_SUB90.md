@@ -104,8 +104,10 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   false.
 
 ### 2.2 Magic / spells — 82
-- [~] Necromancy (101+) / Chivalry (201+) / Bushido / Ninjitsu / Spellweaving /
-  Mysticism spell **efektleri** (şu an enum-only, `SpellTypes.cs:32-40`). BAŞLADI
+- [~] Necromancy (101+) / Bushido / Ninjitsu / Spellweaving /
+  Mysticism spell **efektleri** (şu an enum-only, `SpellTypes.cs:32-40`). NOT: Chivalry
+  (201+) bu listeden ÇIKARILDI — 2.3'e bak: Source-X'te C++ handler'ı yok, generic/script-
+  driven → gerçek açık değil, kasıtlı yapılmadı. BAŞLADI
   (Wave 253 — necromancy foundation): recon gösterdi ki necro data plumbing'i ZATEN
   var (SpellRegistry, RESOURCES/MANAUSE/SKILLREQ generic, NECROMANCY/SpiritSpeak
   skill'leri, [SPELL 101-117] script def'leri); eksik olan effect handler'ları +
@@ -195,8 +197,25 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   SkillHandlers.cs:760 (Cartography→OnCraftSkillUsed, doğru Source-X modeli =
   harita crafting), :825 (Camping→bedroll+campfire+safe-logout, zengin). İkisi de
   VAR ve fonksiyonel.
-- [ ] Bushido/Ninjitsu/Chivalry/Necromancy/Focus/Imbuing/Mysticism/Spellweaving —
+- [ ] Bushido/Ninjitsu/Focus/Imbuing/Mysticism/Spellweaving —
   enum var, native handler yok. (necro spell backlog ile birlikte, büyük)
+- [x] **Chivalry (201-210)** — GEÇERSİZ MADDE / DOĞRULANDI (2026-07, 3 paralel recon):
+  "native handler yok = açık" premisi YANLIŞ. Source-X `CCharSpell.cpp`'te chivalry'nin
+  **HİÇ** case'i yok (grep: `case SPELL_(Cleanse_by_Fire|Close_Wounds|Consecrate_Weapon|
+  Dispel_Evil|Divine_Fury|Enemy_of_One|Holy_Light|Noble_Sacrifice|Remove_Curse|
+  Sacred_Journey):` = 0 eşleşme) — kontrast: necromancy'nin onlarca case'i VAR (Horrific_Beast
+  :626, Curse_Weapon:950, Strangle:1920, Pain_Spike:1957 ... o yüzden C#'a taşındı). İki
+  chivalry layer'ı (`LAYER_SPELL_Consecrate_Weapon`/`Divine_Fury`, uofiles_enums.h:633-634)
+  tüm `.cpp` ağacında hiç okunmuyor — ölü enum slotu. Source-X chivalry'yi TAMAMEN generic
+  flag (SPELLFLAG_HEAL/DAMAGE/AREA, LAYER buff-memory) + script pack ile sürüyor; aktif pack
+  (`Scripts-X-main/spells/spells_chivalry.scp`) blokları `@Trigger`'sız düz FLAGS/EFFECT/
+  LAYER/MANAUSE/TITHINGUSE. Consecrate/Divine Fury/Enemy of One combat efektlerini C# olarak
+  yazmak = Source-X'te olmayan OSI semantiği uydurmak (parity ihlali) → KASITLI YAPILMADI,
+  Exorcism gibi. SphereNet'in mevcut generic motoru bu flag'lerin ürettiğini zaten üretiyor.
+  TEK gerçek Source-X-destekli açık: **tithing tüketimi** (`Calc_SpellTithingCost`,
+  CCharSpell.cpp:2501; SphereNet `SpellDef.TithingCost` yükler ama kontrol/düşmez) —
+  düşük değer, ayrı istenirse eklenir. Skf: SkillType.Chivalry=51, SpellTypes 201-210 zaten
+  tanımlı; NPC AI beneficial-cast whitelist'inde (NpcAI.Magic.cs:190).
 
 ### 2.4 Combat flag & AOS on-hit — 85
 - [x] **REFLECTPHYSICALDAM** — YAPILDI (Wave 215): defender'ın suit'i hasarın %'sini
@@ -272,8 +291,21 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   Test: SourceXWave264Tests (+8: no-equip=base, çok-parça sum, heal bonus havuza
   dolar, base-field/script salt-base, unequip clamp, mana/stam paralel, stat/carry
   DOKUNULMAZ, negatif floor) + SaveFormatTests.Roundtrip_MaxPoolSuitBonus (base 100
-  persist, effective 120 DEĞİL). Full suite 1701. KALAN: per-element resist MAX cap
-  (RESFIREMAX), HITCHANCE/LUCK agregasyonu.
+  persist, effective 120 DEĞİL). Full suite 1701. KALAN: HITCHANCE/LUCK agregasyonu.
+- [x] **Per-element resist MAX cap (RESFIREMAX/…)** — DOĞRULANDI + PERSISTENCE FIX
+  (Wave 265, recon). Premis ("resist cap eksik") YANLIŞ çerçevelenmiş: Source-X cap'i
+  damage'da **ENFORCE ETMİYOR** — RES*MAX yalnızca saklama+display property'si (CCPropsChar
+  ADDPROP + send.cpp SA-blok display; damage yolu CCharFight.cpp:724-728 base resist'i
+  doğrudan okur, cap clamp'i YOK; 70 default'u da Source-X'te yok — SphereNet icadı). Yani
+  cap'i enforce etmek = Source-X'ten SAPMA → KASITLI YAPILMADI (gameplay zaten parity:
+  SphereNet de enforce etmiyor, 0-100 clamp). Status-paket display'i de eklenMEDİ:
+  SphereNet 0x11 (`PacketStatusFull`) ClassicUO-uyumlu gerçek OSI layout'unu izler ve o
+  layout'ta RES*MAX alanı yok; Source-X'in kendi SA-blok serileştirmesini (send.cpp:330-334)
+  eklemek çalışan/tested paketi kaydırıp bozar, sıfır oyun değeri. GERÇEK boşluk (kapandı):
+  `RESPHYSICALMAX` WorldSaver'da yazılmıyordu (diğer 4 yazılıyordu) → eklendi
+  (WorldSaver.cs). Test: SaveFormatTests.Roundtrip_PreservesPerElementResistMaxCaps (+1,
+  5 element round-trip). Eğer ileride SphereNet'e özgü FONKSİYONEL cap istenirse ayrı
+  opt-in (Source-X-parity değil).
 
 ### 2.5 Melee combat — 88
 - [x] **SE (era3) / ML (era4) hız formülleri** — YAPILDI (Wave 226).
@@ -553,7 +585,24 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   max(1, stored), CCharStat.cpp:609). OnTick her stat'ın taban miktarını override
   eder (>0 → val, else default; human +2 racial override ÜSTÜNE eklenir). Persist +
   get/set. Test: SourceXWave248Tests (+2).
-- [ ] Jail flag yerine tam region-jail makinesi.
+- [x] **Region-jail makinesi** — YAPILDI (Wave 266). Recon: SphereNet'in zamanlı
+  auto-release + reboot-safe + `@Jailed` trigger'ı ZATEN var (Source-X'te timer bile YOK —
+  o eksen fazlasıyla mevcut). GERÇEK boşluk = hücre konumu **hardcoded** koordinattı
+  (`(1476,1604,20)`), Source-X ise data-driven `[AREADEF]` `jail`/`jailN` bölgelerinden
+  okur (`GetRegionPoint`, CServerConfig.cpp:2719). Eklenenler: `GameWorld.FindRegionByName`
+  (NAME∨DEFNAME, Source-X `GetRegion` aynası) + `GameWorld.GetJailPoint(cell)` (`jail{cell}`
+  ∨ `jail` region anchor'ı; region yoksa legacy koordinata fallback → jail AREADEF'siz
+  shard çalışmaya devam eder). JAIL speech komutu artık `JAIL <uid> [dk] [cell]` — cell'i
+  `JAIL_CELL` tag'ine yazar, `GetJailPoint` ile ışınlar. Login re-teleport da `JAIL_CELL`'den
+  doğru numaralı hücreye (Source-X login'de `Jail()`'i JailCell tag'iyle yeniden çalıştırır).
+  `.forgive`/`.pardon` release: eskiden object-verb `.forgive` yalnız ölü `JAIL`/`JAIL_EXPIRE`
+  tag'lerini temizliyordu (gerçek release ETMİYORDU) — artık jailliyse `OnJailReleaseRequested`
+  hook'unu çağırıyor (unfreeze+teleport+resync); ayrıca `FORGIVE`/`PARDON` speech komutları
+  (UNJAIL ile ortak release path) eklendi. Release hook + speech release `JAIL_CELL`'i de
+  temizler. Confinement = mevcut `StatFlag.Freeze` KORUNDU (recon: geçerli sadeleştirme;
+  region-containment hareket kısıtı ertelendi — Freeze zaten hapsediyor, düşük değer/yüksek
+  regresyon riski). Test: SourceXWave266Tests (+4: jail region anchor, numaralı hücre +
+  base fallback, no-region legacy fallback, FindRegionByName NAME/DEFNAME).
 - [x] STATF_INVUL townsfolk — YAPILDI (Wave 242): invul flag ölümde
   (`DeathEngine:71`) kontrol ediliyordu ama **hasar uygulamada değil** → invul
   karakter yine Hits kaybediyordu. Source-X `CChar::OnTakeDamage` (CCharFight.cpp)
@@ -682,10 +731,9 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   BI_GARGOYLEFLY buff toggle; uçuş durumu MobileFlags 0x04 biti ile self+observer'a
   yansır (BuildMobileFlags'e Hovering→0x04 wire edildi, eskiden ölü biteti). Test:
   GameSystemTests.GameClient_GargoyleFly_TogglesHoveringAndBuff + NonGargoyle_NoOp.
-  KALAN — BÜYÜK KISIM YAPILDI (Wave 248): `0xBF 0x1C` NewSpellSelect, `0xD7 0x1E`
-  EquipLastWeapon, `0xBF 0x2E` TargetedSkill eklendi (aşağı). Yalnız `0xBF 0x2C`
-  BandageMacro kaldı (virtue gerçekte top-level 0xF4 EXTCMD_INVOKE_VIRTUE'a
-  taşınmalı + targeted-use plumbing).
+  KALAN — TAMAMLANDI (Wave 248 + 265): `0xBF 0x1C` NewSpellSelect, `0xD7 0x1E`
+  EquipLastWeapon, `0xBF 0x2E` TargetedSkill (Wave 248, aşağı); `0xBF 0x2C`
+  BandageMacro + virtue repoint (Wave 265, aşağı).
 - [x] **EquipLastWeapon (0xD7 0x1E) + TargetedSkill (0xBF 0x2E) + spell-select repoint
   (0xBF 0x1C)** — YAPILDI (Wave 248). (1) EquipLastWeapon: Character.LastWeaponUid
   (runtime, Source-X m_uidWeaponLast, Equip'te set — CCharAct.cpp:314); GameClient.
@@ -705,8 +753,23 @@ Puan referansı: kategori adının yanındaki sayı = mevcut kod-fidelity tahmin
   0x0009/0x000A eklendi (drift guard). Test:
   GameSystemTests.GameClient_WrestleMacros_FireSpecialMoveTrigger.
 - [x] GargoyleFly (0xBF 0x32) — YAPILDI (Wave 244, yukarı bak).
-- [ ] BandageMacro (0xBF 0x2C) — dedicated wave'de (virtue→0xF4 taşıma + targeted-use
-  plumbing). EquipLastWeapon (0xD7 0x1E) YAPILDI (Wave 248, yukarı bak).
+- [x] **BandageMacro (0xBF 0x2C) + virtue repoint (0x12/0xF4)** — YAPILDI (Wave 265,
+  recon ile transport DOĞRULANDI). SphereNet 0xBF 0x2C'yi YANLIŞ olarak virtue'a
+  map'lemişti; Source-X'te 0x2C = **EXTDATA_BandageMacro** (`sphereproto.h:266`,
+  `receive.cpp:3196`): `[dword bandageUID][dword targetUID]` → bandage'ı dclick edip
+  cursor'suz hedefe uygular. Yeni `HandleBandageMacro` (ClientWorldFeaturesHandler):
+  UID'leri parse eder, item `ItemType.Bandage` mi + not-busy + `CanUse(Healing)` gate'ler
+  (Source-X `IsType(IT_BANDAGE)` aynası), sonra `BeginTargetedSkill(Healing, target)`
+  (0xBF 0x2E TargetedSkill deseni; Healing pipeline hedefi doğrular + pack'ten bandage
+  tüketir). Virtue gerçekte **EXTCMD_INVOKE_VIRTUE=0xF4**, 0x12 text-command paketinde
+  (`CClientEvent.cpp:3127`); `OnTextCommand` case 0xF4'e taşındı — mevcut SphereNet-içi
+  "SKILLLOCK" funnel'ı (`LoginPackets` 0x3A→0xF4 re-emit) ile prefix-branch ile uzlaştı:
+  `SKILLLOCK ...` → skill lock, tek virtue digit'i → `HandleVirtueInvoke` (@UserVirtueInvoke,
+  N1=virtueId, Source-X m_iN1=iVirtueID). ExtendedCommandRegistry 0x2C etiketi düzeltildi
+  (drift guard korunur). Test: SourceXWave265Tests (+3: bandage→Healing cursor'suz,
+  non-bandage no-op, virtue N1) + GameSystemTests virtue 0x2C→HandleVirtueInvoke repoint.
+  NOT: virtue-gump select (@UserVirtue / Event_VirtueSelect, 0xB1 dialog) AYRI path,
+  kapsam dışı.
 
 ### 5.4 Outgoing packet — 82
 - [x] **PacketHealthBarStatus (0x17) + PacketHealthBarStatusNew (0x16)** — YAPILDI

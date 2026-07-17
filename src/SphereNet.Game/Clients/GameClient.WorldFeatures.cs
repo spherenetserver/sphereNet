@@ -75,6 +75,8 @@ public sealed partial class GameClient
     public void HandleExtendedCommand(ushort subCmd, byte[] data) =>
         WorldFeatures.HandleExtendedCommand(subCmd, data);
 
+    public void HandleVirtueInvoke(int virtueId) => WorldFeatures.HandleVirtueInvoke(virtueId);
+
     public void HandleCrashReport() => WorldFeatures.HandleCrashReport();
 
     /// <summary>Advance the pending multi-stroke craft (tick pump).</summary>

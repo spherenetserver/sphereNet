@@ -125,9 +125,15 @@ public class TriggerCoverageGuardrailTests
 
     private static readonly HashSet<string> CharNotFiredP2 =
     [
+        // UserVirtue — the virtue-GUMP select path (Source-X Event_VirtueSelect,
+        // 0xB1 dialog reply / CTRIG_UserVirtue), distinct from UserVirtueInvoke (the
+        // 0x12/0xF4 hotkey invoke, which IS fired). SphereNet has no virtue gump yet,
+        // so this has no fire site. (Wave 265 removed the incorrect 0xBF 0x2C firing —
+        // that subcommand is the bandage macro, not virtue.)
+        "UserVirtue",
         // Wired (now fired): HouseDesignCommit / HouseDesignExit
         // (GameClient.HandleEncodedCommand — 0xD7 Commit and Close paths);
-        // UserKRToolbar (0xBF 0x24), UserVirtue (0xBF 0x2C virtue invoke);
+        // UserKRToolbar (0xBF 0x24);
         // UserQuestArrowClick (0xBF 0x07), UserBugReport (0xF4 crash report),
         // UserUltimaStoreButton (0xFA), UserGlobalChatButton (0xB5),
         // UserExWalkLimit (walk token bucket dry, IsTrigUsed-gated),

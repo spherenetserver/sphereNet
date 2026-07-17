@@ -2105,11 +2105,7 @@ public sealed class ClientWorldFeaturesHandler
             [0x001C] = static (client, data) => client.HandleSpellSelect(data),
             [0x001E] = static (client, data) => client.HandleQueryDesignDetails(data),
             [0x0024] = static (client, _) => client.FireExtendedButtonTrigger(CharTrigger.UserKRToolbar, 0x0024),
-            [0x002C] = static (client, data) =>
-            {
-                client.FireExtendedButtonTrigger(CharTrigger.UserVirtue, 0x002C);
-                client.HandleExtendedVirtueInvoke(data);
-            },
+            [0x002C] = static (client, data) => client.HandleBandageMacro(data),
             [0x002E] = static (client, data) => client.HandleTargetedSkill(data),
             [0x0032] = static (client, data) => client.HandleGargoyleFly(data),
             [0x0033] = static (client, data) => client.HandleExtendedWheelBoatMove(data),
@@ -2269,13 +2265,19 @@ public sealed class ClientWorldFeaturesHandler
             new TriggerArgs { CharSrc = _character, N1 = ability });
     }
 
-    private void HandleExtendedVirtueInvoke(byte[] data)
+    /// <summary>Virtue invocation — Source-X EXTCMD_INVOKE_VIRTUE, which rides the
+    /// 0x12 text-command packet as ext-type 0xF4 (CClientEvent.cpp:3127), NOT 0xBF
+    /// 0x2C (that is the bandage macro). Fires @UserVirtueInvoke with the virtue id
+    /// (1=Honor, 2=Sacrifice, 3=Valor) in N1, matching the reference m_iN1 =
+    /// iVirtueID. Distinct from the virtue-gump select (@UserVirtue /
+    /// Event_VirtueSelect), which is the 0xB1 dialog path.</summary>
+    internal void HandleVirtueInvoke(int virtueId)
     {
-        if (_character == null || data.Length < 1)
+        if (_character == null || virtueId <= 0)
             return;
 
         _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.UserVirtueInvoke,
-            new TriggerArgs { CharSrc = _character, N1 = 0x002C, N2 = data[0] });
+            new TriggerArgs { CharSrc = _character, N1 = virtueId });
     }
 
     // 0xBF 0x2E — TargetedSkill (Source-X PacketTargetedSkill, receive.cpp:3280):
@@ -2301,6 +2303,31 @@ public sealed class ClientWorldFeaturesHandler
             return;
 
         BeginTargetedSkill(skill, skillId, new Serial(targetSerial));
+    }
+
+    // 0xBF 0x2C — BandageMacro (Source-X PacketBandageMacro, receive.cpp:3196):
+    // [dword bandageUID][dword targetUID]. The client's bandage hotkey double-
+    // clicks the bandage and applies it to the pre-selected target with no cursor
+    // round-trip. Mirror the reference gates: the item must be a bandage and the
+    // caster must be able to use Healing; the Healing pipeline then validates the
+    // target and consumes a bandage from the pack.
+    private void HandleBandageMacro(byte[] data)
+    {
+        if (_character == null || _character.IsDead || data.Length < 8)
+            return;
+
+        uint bandageUid = (uint)((data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3]);
+        uint targetUid = (uint)((data[4] << 24) | (data[5] << 16) | (data[6] << 8) | data[7]);
+
+        var bandage = _world.FindItem(new Serial(bandageUid));
+        if (bandage == null || bandage.ItemType != ItemType.Bandage)
+            return;
+        if (_character.IsStatFlag(StatFlag.Sleeping | StatFlag.Freeze | StatFlag.Stone) || _character.IsCasting)
+            return;
+        if (!SkillHandlers.CanUse(_character, SkillType.Healing))
+            return;
+
+        BeginTargetedSkill(SkillType.Healing, (int)SkillType.Healing, new Serial(targetUid));
     }
 
     /// <summary>

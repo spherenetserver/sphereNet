@@ -5190,6 +5190,11 @@ public partial class Character : ObjBase
             {
                 RemoveTag("JAIL");
                 RemoveTag("JAIL_EXPIRE");
+                // Source-X CHV_FORGIVE releases from jail. Only trigger the real
+                // (speech-path) release when actually jailed, so .forgive on a free
+                // char never teleports them; the release hook unfreezes + teleports.
+                if (TryGetTag("JAIL_RELEASE", out _))
+                    OnJailReleaseRequested?.Invoke(this);
                 CombatState.Forgive();
                 return true;
             }

@@ -942,7 +942,9 @@ public static partial class Program
             case 0x58: // OpenDoor
                 client.OpenDoor();
                 break;
-            case 0xF4: // SKILLLOCK
+            case 0xF4: // 0x12 ext-type 0xF4: either the SphereNet-internal SKILLLOCK
+                       // funnel (re-emitted from the binary 0x3A packet) or the real
+                       // client's EXTCMD_INVOKE_VIRTUE (Source-X CClientEvent.cpp:3127).
                 var parts = command.Split(' ');
                 if (parts.Length >= 3 && parts[0] == "SKILLLOCK" &&
                     ushort.TryParse(parts[1], out ushort sid) &&
@@ -950,6 +952,11 @@ public static partial class Program
                     byte.TryParse(parts[2], out byte lockVal) && lockVal <= 2)
                 {
                     client.Character?.SetSkillLock((SkillType)sid, lockVal);
+                }
+                else if (parts.Length >= 1 && parts[0].Length == 1 && char.IsDigit(parts[0][0]))
+                {
+                    // Virtue hotkey: a lone digit char (1=Honor, 2=Sacrifice, 3=Valor).
+                    client.HandleVirtueInvoke(parts[0][0] - '0');
                 }
                 break;
         }

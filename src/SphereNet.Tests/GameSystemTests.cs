@@ -3528,8 +3528,9 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         dispatcher.RegisterCharEvent("EVENTSPLAYER", "UserVirtueInvoke", (_, args) =>
         {
             virtueCount++;
-            Assert.Equal(0x002C, args.N1);
-            Assert.Equal(7, args.N2);
+            // Virtue invoke now rides 0x12/0xF4 (Source-X EXTCMD_INVOKE_VIRTUE) with
+            // the virtue id in N1 (m_iN1 = iVirtueID); 0xBF 0x2C is the bandage macro.
+            Assert.Equal(3, args.N1);
             return TriggerResult.Default;
         });
 
@@ -3543,7 +3544,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         // protocol, not 0xBF — see Source-X PacketGuildButton/PacketQuestButton.
         client.HandleEncodedCommand(0x28, player.Uid.Value, new PacketBuffer(System.Array.Empty<byte>()));
         client.HandleEncodedCommand(0x32, player.Uid.Value, new PacketBuffer(System.Array.Empty<byte>()));
-        client.HandleExtendedCommand(0x002C, [7]);
+        client.HandleVirtueInvoke(3); // Valor
 
         Assert.Equal(1, skillsCount);
         Assert.Equal(1, statsCount);

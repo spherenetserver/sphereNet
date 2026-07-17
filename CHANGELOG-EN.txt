@@ -4,6 +4,35 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-17] - Bandage macro, virtue transport, region jail cells, resist-max save
+----------------------------------------
+
+ADDED - Bandage macro (client bandage hotkey, 0xBF 0x2C). The client's
+        bandage-target hotkey now applies a bandage to a pre-selected target with
+        no target cursor. This subcommand was previously mislabeled as virtue
+        invocation; it is the Source-X PacketBandageMacro carrying [bandage uid]
+        [target uid]. The handler verifies the item is a bandage and routes it
+        through the Healing skill against the given target.
+
+FIXED - Virtue invocation moved to its correct transport. Virtue hotkeys
+        (Honor/Sacrifice/Valor) are delivered by the real client on the 0x12
+        text-command packet as ext-type 0xF4 (EXTCMD_INVOKE_VIRTUE), not on
+        0xBF 0x2C. @UserVirtueInvoke now fires from that path with the virtue id
+        in N1 and no longer collides with the internal skill-lock funnel.
+
+ADDED - Region-driven jail cells. The JAIL staff command and the login
+        re-confine now locate the cell from an AREADEF region named "jail" (or
+        "jailN" for a numbered cell) instead of hardcoded coordinates, matching
+        Source-X GetRegionPoint. Syntax: JAIL <serial> [minutes] [cell]. Shards
+        with no jail region keep the previous Britain coordinates. New FORGIVE /
+        PARDON staff commands release an inmate (alias of UNJAIL), and the
+        .forgive character verb now actually frees a jailed character.
+
+FIXED - RESPHYSICALMAX was never written to the world save. The other four
+        per-element resist caps (fire/cold/poison/energy) were persisted but the
+        physical cap was dropped on every save. These caps remain display/storage
+        only, matching Source-X, which does not clamp damage to them.
+
 [2026-07-16] - NPC keyword word-matching, GM yell broadcast fix, vendor leash
 ----------------------------------------
 

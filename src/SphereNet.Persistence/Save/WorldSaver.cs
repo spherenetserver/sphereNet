@@ -742,6 +742,7 @@ public sealed class WorldSaver
         if (ch.RegenValFood != 0) w.WriteProperty("REGENVALFOOD", ch.RegenValFood.ToString());
         if (ch.BloodHue != 0) w.WriteProperty("BLOODCOLOR", $"0{ch.BloodHue:X}");
         if (ch.FollowerSlotsOverride is int fsOverride) w.WriteProperty("FOLLOWERSLOTS", fsOverride.ToString());
+        if (ch.ResPhysicalMax != 70) w.WriteProperty("RESPHYSICALMAX", ch.ResPhysicalMax.ToString());
         if (ch.ResFireMax != 70) w.WriteProperty("RESFIREMAX", ch.ResFireMax.ToString());
         if (ch.ResColdMax != 70) w.WriteProperty("RESCOLDMAX", ch.ResColdMax.ToString());
         if (ch.ResPoisonMax != 70) w.WriteProperty("RESPOISONMAX", ch.ResPoisonMax.ToString());

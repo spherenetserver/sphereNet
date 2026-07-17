@@ -554,7 +554,12 @@ public sealed partial class GameClient
             }
             else
             {
-                var jailPos = new Point3D(1476, 1604, 20, 0);
+                // Still serving — re-confine to the correct numbered cell (Source-X
+                // re-runs Jail() on login via the JailCell account tag).
+                int cell = 0;
+                if (_character.TryGetTag("JAIL_CELL", out string? cellTag) && int.TryParse(cellTag, out int c))
+                    cell = c;
+                var jailPos = _world.GetJailPoint(cell);
                 if (_character.Position.X != jailPos.X || _character.Position.Y != jailPos.Y)
                 {
                     _world.MoveCharacter(_character, jailPos);

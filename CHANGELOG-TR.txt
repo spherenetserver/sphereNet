@@ -3,6 +3,37 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-17] - Bandaj makrosu, virtue transport, region hapishane, resist-max kayit
+----------------------------------------
+
+EKLENDI - Bandaj makrosu (client bandaj kisayolu, 0xBF 0x2C). Client'in
+        bandaj-hedef kisayolu artik bandaji onceden secilen hedefe hedef
+        imleci olmadan uygular. Bu alt-komut eskiden yanlislikla virtue
+        cagirma olarak etiketlenmisti; aslinda Source-X PacketBandageMacro'dur
+        ([bandaj uid][hedef uid]). Handler item'in bandaj oldugunu dogrular ve
+        verilen hedefe Healing yetenegi uzerinden yonlendirir.
+
+DUZELTILDI - Virtue cagirma dogru transport'a tasindi. Virtue kisayollari
+        (Honor/Sacrifice/Valor) gercek client tarafindan 0x12 text-command
+        paketinde ext-tip 0xF4 (EXTCMD_INVOKE_VIRTUE) ile gelir, 0xBF 0x2C'de
+        degil. @UserVirtueInvoke artik o yoldan virtue id'si N1'de olacak
+        sekilde atesler ve ic skill-lock funnel'i ile cakismaz.
+
+EKLENDI - Region-tabanli hapishane hucreleri. JAIL staff komutu ve login
+        yeniden-hapsi artik hucreyi sabit koordinat yerine "jail" (numarali
+        hucre icin "jailN") adli AREADEF bolgesinden bulur, Source-X
+        GetRegionPoint gibi. Sozdizimi: JAIL <serial> [dakika] [hucre]. Jail
+        bolgesi olmayan shard'lar onceki Britain koordinatlarini korur. Yeni
+        FORGIVE / PARDON staff komutlari bir mahkumu serbest birakir (UNJAIL
+        alias'i); .forgive karakter verb'i artik hapisteki karakteri gercekten
+        serbest birakir.
+
+DUZELTILDI - RESPHYSICALMAX dunya kaydina hic yazilmiyordu. Diger dort
+        element-basi resist cap'i (fire/cold/poison/energy) kaydediliyordu ama
+        fiziksel cap her kayitta dusuyordu. Bu cap'ler Source-X ile uyumlu
+        olarak yalnizca gosterim/saklama amaclidir; Source-X de hasari bunlara
+        clamp etmez.
+
 [2026-07-16] - NPC anahtar kelime tam-sozcuk esleme, GM yell fix, vendor tasmasi
 ----------------------------------------
 

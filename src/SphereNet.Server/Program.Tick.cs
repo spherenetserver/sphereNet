@@ -580,7 +580,10 @@ public static partial class Program
         if (_recordingEngine.HasActiveReplays)
             TickReplayOverlays();
 
-        _stateRecorder?.Tick(Environment.TickCount64, _world.GetAllObjects().OfType<Character>());
+        // Pass a provider, not a materialized collection: StateRecorder only walks the
+        // roster every 2s/15s, and GetAllCharactersSnapshot is char-only (not the full
+        // ~52K object table). Avoids a per-tick full-world array copy.
+        _stateRecorder?.Tick(Environment.TickCount64, _world.GetAllCharactersSnapshot);
 
         _macroEngine?.Tick(Environment.TickCount64,
             uid => _clientsByCharUid.GetValueOrDefault(new Serial(uid)),
@@ -802,7 +805,10 @@ public static partial class Program
         if (_recordingEngine.HasActiveReplays)
             TickReplayOverlays();
 
-        _stateRecorder?.Tick(Environment.TickCount64, _world.GetAllObjects().OfType<Character>());
+        // Pass a provider, not a materialized collection: StateRecorder only walks the
+        // roster every 2s/15s, and GetAllCharactersSnapshot is char-only (not the full
+        // ~52K object table). Avoids a per-tick full-world array copy.
+        _stateRecorder?.Tick(Environment.TickCount64, _world.GetAllCharactersSnapshot);
 
         _macroEngine?.Tick(Environment.TickCount64,
             uid => _clientsByCharUid.GetValueOrDefault(new Serial(uid)),

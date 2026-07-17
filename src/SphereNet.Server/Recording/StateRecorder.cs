@@ -175,21 +175,31 @@ public sealed class StateRecorder : IDisposable
     //  Main tick — called every server tick, lightweight scan only
     // ----------------------------------------------------------------
 
-    public void Tick(long nowMs, IEnumerable<Character> allCharacters)
+    public void Tick(long nowMs, Func<IEnumerable<Character>> charactersProvider)
     {
         if (_db == null) return;
 
-        if (nowMs - _lastMoveScanTick >= _moveScanIntervalMs)
-        {
-            ScanMovements(allCharacters);
-            _lastMoveScanTick = nowMs;
-        }
+        bool moveDue = nowMs - _lastMoveScanTick >= _moveScanIntervalMs;
+        bool snapshotDue = nowMs - _lastSnapshotTick >= _snapshotIntervalMs;
 
-        if (nowMs - _lastSnapshotTick >= _snapshotIntervalMs)
+        // Materialize the character roster ONLY when a scan/snapshot is actually due
+        // (every 2s / 15s), not on every server tick. The caller passes a provider so
+        // an idle tick allocates nothing (previously a full ~52K-object array copy ran
+        // 10x/sec regardless of these intervals).
+        if (moveDue || snapshotDue)
         {
-            TakeSnapshots(allCharacters);
-            _flushSignal.Set();
-            _lastSnapshotTick = nowMs;
+            var allCharacters = charactersProvider();
+            if (moveDue)
+            {
+                ScanMovements(allCharacters);
+                _lastMoveScanTick = nowMs;
+            }
+            if (snapshotDue)
+            {
+                TakeSnapshots(allCharacters);
+                _flushSignal.Set();
+                _lastSnapshotTick = nowMs;
+            }
         }
 
         if (nowMs - _lastCleanupTick >= CleanupIntervalMs)

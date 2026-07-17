@@ -6,6 +6,12 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+PERF  - State recorder artik her server tick'inde tum dunya obje tablosunu
+        kopyalamiyor. Karakter roster'ini yalnizca move-scan (2s) veya snapshot (15s)
+        araligi geldiginde geziyor ve tam ~52K obje tablosu yerine karakter-only
+        roster kullaniyor; boylece her tick (~10x/sn) yapilan buyuk tahsis (GC
+        baskisi) ortadan kalkti.
+
 DUZELTILDI - Hareketle buyu bozma gercek baslangicta oluydu. MovementEngine'e
         SpellEngine referansi, SpellEngine olusturulmadan once atanip null baglaniyordu;
         atama artik SpellEngine kurulduktan sonra yapiliyor.

@@ -7,6 +7,12 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+PERF  - The state recorder no longer copies the whole world object table on every
+        server tick. It walks the character roster only when its move-scan (2s) or
+        snapshot (15s) interval is actually due, and uses the character-only roster
+        instead of the full ~52K-object table — eliminating a large per-tick
+        allocation (~10x/sec) that added GC pressure.
+
 FIXED - Movement-based spell interruption was dead at real startup. MovementEngine
         was given the SpellEngine reference before SpellEngine existed, binding
         null; the wiring now runs after SpellEngine is constructed.

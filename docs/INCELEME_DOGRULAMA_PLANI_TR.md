@@ -172,8 +172,12 @@ desteklenmeyen ayar başlangıç uyarısı üretsin.
 Not: canlı log analizi ayrıca host/scheduler baskısına da işaret ediyor (yield/net_in
 gecikmeleri); aşağıdakiler onu **büyüten** kesin kod borçları.
 
-- [ ] **E1 (P0 — YÜKSEK etki / DÜŞÜK efor, EN UCUZ KAZANIM) — StateRecorder her tick full
-  `ToArray`.** `Program.Tick.cs:566/788` `_stateRecorder?.Tick(..., _world.GetAllObjects()
+- [x] **E1 (P0 — YÜKSEK etki / DÜŞÜK efor, EN UCUZ KAZANIM) — StateRecorder her tick full
+  `ToArray`.** (YAPILDI: `Tick` imzası `Func<IEnumerable<Character>>` lazy provider'a çevrildi;
+  roster SADECE move-scan/snapshot due olduğunda (2s/15s) materialize ediliyor. Caller
+  `GetAllObjects().OfType<Character>()` yerine char-only `GetAllCharactersSnapshot` metod
+  grubunu geçiyor. Idle tick'te sıfır tahsis. Test: StateRecorderTests.
+  Tick_InvokesRosterProviderOnlyWhenScanIsDue.) `Program.Tick.cs:566/788` `_stateRecorder?.Tick(..., _world.GetAllObjects()
   .OfType<Character>())`; `GetAllObjects()` (`GameWorld.cs:1468`) `_objects.Values.ToArray()`
   — argüman interval kontrolünden ÖNCE değerlendiği için ~52K obje dizisi **her tick** (10×/sn,
   ~4MB/s) kopyalanıyor, recorder içinde 2s/15s'de bir tarasa bile. Fix: interval kontrolünü öne

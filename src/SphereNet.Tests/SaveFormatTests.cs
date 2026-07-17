@@ -195,6 +195,50 @@ public class SaveFormatTests
     }
 
     [Fact]
+    public void Roundtrip_PreservesMultiStructureType()
+    {
+        // B5: a Multi / MultiCustom / Ship item's BaseId is a raw multi index with no
+        // ITEMDEF, so its TYPE cannot be re-derived from a def on load. Without persisting
+        // TYPE the reloaded structure becomes t_normal and Housing/Ship DeserializeFromWorld
+        // never re-registers it — the house/ship is lost on restart.
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_multitype_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            var (saver, loader) = MakeIO();
+            var src = MakeWorld();
+
+            var house = src.CreateItem();
+            house.BaseId = 0x64;
+            house.ItemType = ItemType.Multi;
+            house.Name = "a stone house";
+            src.PlaceItem(house, new Point3D(2000, 2000, 0, 0));
+
+            var ship = src.CreateItem();
+            ship.BaseId = 0x08;
+            ship.ItemType = ItemType.Ship;
+            src.PlaceItem(ship, new Point3D(2005, 2005, 0, 0));
+
+            Assert.True(saver.Save(src, tmp));
+
+            var dst = MakeWorld();
+            loader.Load(dst, tmp);
+
+            var reHouse = dst.FindItem(house.Uid);
+            Assert.NotNull(reHouse);
+            Assert.Equal(ItemType.Multi, reHouse!.ItemType); // structure type survives
+
+            var reShip = dst.FindItem(ship.Uid);
+            Assert.NotNull(reShip);
+            Assert.Equal(ItemType.Ship, reShip!.ItemType);
+        }
+        finally
+        {
+            try { Directory.Delete(tmp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public void Roundtrip_PreservesItemBaseWeightOverride()
     {
         // Wave 249: a per-item BASEWEIGHT override (Source-X m_weight) survives a save.

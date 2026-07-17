@@ -108,7 +108,14 @@ zorunlu bağlantılar için fail-fast doğrulama.
   (`HousingEngine.cs:559-578`, `ShipEngine.cs:77-95`) → tek genel "Cannot place"
   (`ClientItemUseHandler.cs:1219`). Fix: neden-enum'u (limit/format/su/zemin/overlap/LOS/...)
   + ayrı oyuncu mesajı + structured log.
-- [ ] **B5 (P1) — WorldSaver item TYPE yazmıyor; house/ship raw BaseId'den kurulamaz.**
+- [x] **B5 (P1) — WorldSaver item TYPE yazmıyor; house/ship raw BaseId'den kurulamaz.**
+  (YAPILDI: WorldSaver artık structure item'lar (Multi/MultiCustom/Ship) için numeric `TYPE`
+  yazıyor — BaseId raw multi index'i ITEMDEF'siz olduğu için loader def'ten türetemiyordu →
+  restart'ta t_normal olup Housing/Ship DeserializeFromWorld bulamıyordu. Loader zaten `TYPE`
+  restore ediyor (`case "TYPE"`) + `MaterializeDefinitionType` restore edileni ezmez (`_type==
+  Normal` gate). Gerçek `WorldSaver→dosya→WorldLoader` roundtrip test'i eklendi. Test:
+  SaveFormatTests.Roundtrip_PreservesMultiStructureType (Multi+Ship). Geriye-uyum: eski save
+  TYPE'sız → MaterializeDefinitionType/legacy yolu korunur.)
   `WorldSaver.cs:535-593` ID/TDATA/MORE yazıyor ama instance `ItemType` (Multi/MultiCustom/
   Ship) yok; load'da raw index (`0x64`) normal ITEMDEF sanılabilir. Gerçek `WorldSaver→dosya→
   WorldLoader` roundtrip testi yok (mevcut testler aynı canlı world'de re-read). Fix: STRUCTURE.

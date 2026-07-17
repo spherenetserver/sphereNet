@@ -552,6 +552,17 @@ public sealed class WorldSaver
         if ((uint)item.Attributes != 0) w.WriteProperty("ATTR", $"0{(uint)item.Attributes:x}");
         if (item.DispIdOverride != 0) w.WriteProperty("DISPID", $"0{item.DispIdOverride:x}");
 
+        // Persist the instance TYPE for structure items (Multi / MultiCustom / Ship).
+        // Their BaseId is a raw multi index with no ITEMDEF, so the loader's
+        // def-materialization cannot recover the type — without this a reloaded
+        // house/ship becomes t_normal and HousingEngine/ShipEngine.DeserializeFromWorld
+        // never re-registers it (the structure is lost on restart). ParseItemType reads
+        // the numeric ItemType back on load.
+        if (item.ItemType is SphereNet.Core.Enums.ItemType.Multi
+            or SphereNet.Core.Enums.ItemType.MultiCustom
+            or SphereNet.Core.Enums.ItemType.Ship)
+            w.WriteProperty("TYPE", ((ushort)item.ItemType).ToString());
+
         if (item.More1 != 0) w.WriteProperty("MORE1", $"0{item.More1:X}");
         if (item.More2 != 0) w.WriteProperty("MORE2", $"0{item.More2:X}");
         if (item.MoreB != 0) w.WriteProperty("MOREB", $"0{item.MoreB:X}");

@@ -7,6 +7,13 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIXED - Houses and ships could be lost on restart. Their world item stores the type
+        (Multi / MultiCustom / Ship) only at runtime, but the saver never wrote it, and
+        the item's BaseId is a raw multi index with no ITEMDEF to re-derive it from — so
+        after a reload the structure read as a plain item and the housing/ship engines
+        never re-registered it. The saver now persists the structure TYPE and it is
+        restored on load. Old saves without it keep the previous legacy behavior.
+
 ADDED - Placed houses/ships now use their script [MULTIDEF] metadata. The multi
         registry held only the binary geometry from multi.mul; the script name, type,
         storage and vendor limits were parsed but never merged in, so houses got a

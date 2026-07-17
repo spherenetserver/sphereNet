@@ -6,6 +6,14 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+DUZELTILDI - Ev ve gemiler restart'ta kaybolabiliyordu. Dunya item'i tipi (Multi /
+        MultiCustom / Ship) yalnizca calisma zamaninda tutuyordu, ama saver bunu hic
+        yazmiyordu ve item'in BaseId'si ITEMDEF'siz bir raw multi index oldugu icin
+        tekrar turetilemiyordu - bu yuzden reload sonrasi yapi duz item olarak
+        okunuyor ve housing/ship motorlari onu yeniden kaydetmiyordu. Saver artik
+        yapi TYPE'ini persist ediyor ve load'da geri yukleniyor. TYPE'siz eski
+        save'ler onceki legacy davranisi korur.
+
 EKLENDI - Yerlestirilen ev/gemiler artik script [MULTIDEF] metadata'sini kullaniyor.
         Multi registry yalnizca multi.mul'daki ikili geometriyi tutuyordu; script
         isim, tip, storage ve vendor limitleri parse edilip merge edilmiyordu, bu

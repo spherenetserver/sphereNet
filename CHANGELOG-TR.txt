@@ -6,6 +6,11 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+DUZELTILDI - Test/doc hijyeni: yalnizca-local uc MUL diagnostic testi, verileri yokken
+        atlanmak yerine gecmis gibi raporluyordu; artik Skipped raporlaniyor. Trigger
+        dokumanlari senkronlandi - NPCSeeWantItem wire'li ve atesleniyor (guncel tek
+        not-fired char trigger UserVirtue, virtue-gump yolu).
+
 DUZELTILDI - Bazi sphere.ini ayarlari parse edilip hic uygulanmiyordu. Artik
         onurlandiriliyor: GameMinuteLength (dunya saati; sabit 20s/oyun-dakikasiydi),
         konusma duyma mesafeleri (DistanceTalk/Whisper/Yell), MaxFame/MaxKarma/MinKarma

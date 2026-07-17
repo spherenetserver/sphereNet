@@ -20,7 +20,7 @@ When a trigger runs, the script body executes **on the object the trigger belong
 
 > Source of truth: `TriggerDispatcher.cs` (`WrapArgs`, name maps), `TriggerTypes.cs` (enums), and every `FireCharTrigger` / `FireItemTrigger` call site. Only triggers with a real fire site are listed; enum-only triggers are in the last section.
 
-Current guardrail snapshot (2026-07-12): the only character trigger defined but not fired is `NPCSeeWantItem`; the item-trigger backlog is empty. This is locked by `TriggerCoverageGuardrailTests`.
+Current guardrail snapshot (2026-07-18): the only character trigger defined but not fired is `UserVirtue` (the virtue-gump select path / Event_VirtueSelect; SphereNet has no virtue gump yet). `NPCSeeWantItem` is now wired and fires from the NPC ground-item scan. The item-trigger backlog is empty. This is locked by `TriggerCoverageGuardrailTests`.
 
 ---
 
@@ -242,8 +242,8 @@ Each trigger carries a wiring priority by shard impact (P0 highest). The buckets
 **Character (1)**
 
 - **P0/P1:** none currently documented as unfired.
-- **P2:** `NPCSeeWantItem`.
-  - `NPCSeeWantItem` is intentionally deferred because the current NPC ground-item scan already fires `@NPCLookAtItem`; a true "want item" trigger needs item-desire/pickup logic that does not exist yet.
+- **P2:** `UserVirtue` (the virtue-gump select path, Source-X Event_VirtueSelect / 0xB1 dialog) is not fired — SphereNet has no virtue gump yet. Distinct from `UserVirtueInvoke` (the 0x12/0xF4 hotkey), which IS fired.
+  - `NPCSeeWantItem` is now wired and fires from the NPC ground-item scan (previously deferred).
 
 **Item (0):** all item triggers have a real fire site.
 

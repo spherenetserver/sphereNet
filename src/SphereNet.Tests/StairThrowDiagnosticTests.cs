@@ -16,8 +16,9 @@ namespace SphereNet.Tests;
 /// and walks the exact staircase path from the in-game "thrown left" report,
 /// printing the server WalkCheck's per-step Z decision and the full candidate
 /// analysis at the blocking tile. Used to locate the client/server divergence
-/// that snaps a climbing player onto the upper platform. Skips cleanly when the
-/// MUL data is not present (CI).
+/// that snaps a climbing player onto the upper platform. Statically skipped (they
+/// need local mortechUO MUL data and are diagnostic, not parity assertions) so they
+/// report as Skipped, not a fake pass; remove the Skip to run one locally.
 /// </summary>
 public class StairThrowDiagnosticTests
 {
@@ -26,7 +27,7 @@ public class StairThrowDiagnosticTests
 
     public StairThrowDiagnosticTests(ITestOutputHelper output) => _out = output;
 
-    [Fact]
+    [Fact(Skip = "Diagnostic harness — needs local mortechUO MUL data. Remove Skip to run locally.")]
     public void TraceClimbAt_1460_1651_North()
     {
         if (!Directory.Exists(MulDir) || !File.Exists(Path.Combine(MulDir, "tiledata.mul")))
@@ -108,7 +109,7 @@ public class StairThrowDiagnosticTests
         _out.WriteLine($"(written to {outPath})");
     }
 
-    [Fact]
+    [Fact(Skip = "Diagnostic harness — needs local mortechUO MUL/UOP data. Remove Skip to run locally.")]
     public void CompareMap0_vs_Map0x_Terrain_AroundBuilding()
     {
         string nonX = Path.Combine(MulDir, "map0LegacyMUL.uop");
@@ -306,7 +307,7 @@ public class StairThrowDiagnosticTests
         return resultZ != -128;
     }
 
-    [Fact]
+    [Fact(Skip = "Diagnostic harness — needs local mortechUO MUL data. Remove Skip to run locally.")]
     public void Compare_ServerWalkCheck_vs_ClassicUOPort_AtBuilding()
     {
         if (!Directory.Exists(MulDir) || !File.Exists(Path.Combine(MulDir, "tiledata.mul")))

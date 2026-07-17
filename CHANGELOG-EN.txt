@@ -7,6 +7,11 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIXED - Test/doc hygiene: three local-only MUL diagnostic tests reported as passed
+        when their data was absent instead of skipping; they now report as Skipped.
+        Trigger docs synced — NPCSeeWantItem is wired and fires (the outstanding
+        not-fired char trigger is now UserVirtue, the virtue-gump path).
+
 FIXED - Several sphere.ini settings were parsed but never applied. Now honored:
         GameMinuteLength (world clock; was a hardcoded 20s/game-minute), the speech
         hearing distances (DistanceTalk/Whisper/Yell), MaxFame/MaxKarma/MinKarma

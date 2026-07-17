@@ -34,10 +34,10 @@ Güncel kısa durum: `SERV.*`, arbitrary verb fallback ve `RETURN/ARGS/ARGN/ARGO
 | ~~P1~~ ✅ | Item script `OPEN` / `DCLICK` / `USE` | **Çözüldü (2026-06-09):** `Item.OnScriptOpen` / `OnScriptDClick` hook'larıyla GameClient paket yoluna köprülendi |
 | ~~P1~~ ✅ | `Character.DISMOUNT` script fiili | **Çözüldü (2026-06-09):** `Character.OnScriptDismount` → `MountEngine.Dismount` (client yolu + headless fallback) |
 | ~~P1~~ ✅ | Help menüsü stuck/page | **Çözüldü (2026-06-09):** stuck → güvenli noktaya taşıma (jail/combat'ta reddedilir), page → `.PAGE` komut yolu + kayıt listesi, page list gump'ı |
-| P2 | Trigger backlog | Guardrail'e göre kalan gerçek backlog yalnızca char `NPCSeeWantItem`; item backlog'u boş. |
+| P2 | Trigger backlog | Guardrail'e göre kalan char backlog `UserVirtue` (virtue-gump select; SphereNet'te virtue gump yok). `NPCSeeWantItem` artık ateşleniyor (NPC ground-item scan). item backlog'u boş. |
 | ~~P2~~ ✅ | Region geçişinde client ışık paketi | **Zaten bağlıymış:** `Program.EngineWiring.cs` OnRegionChanged → 0x4F + sezon + bölgesel weather (envanter eskimişti) |
 
-**Kalan açık alanlar (özet, hepsi bilinçli erteleme):** 0xB2 legacy text-in + 0xF9 (çok eski/KR varyantları; conference chat 0xB3/0xB5 ile çalışıyor), `NPCSeeWantItem` (`@NPCLookAtItem` ile örtüşük), sector ambient ses (Source-X referansında yok — spekülatif maddeydi), `SERV.*` admin/maintenance uzun kuyruğu.
+**Kalan açık alanlar (özet, hepsi bilinçli erteleme):** 0xB2 legacy text-in + 0xF9 (çok eski/KR varyantları; conference chat 0xB3/0xB5 ile çalışıyor), `UserVirtue` (virtue-gump select; SphereNet'te virtue gump yok — `NPCSeeWantItem` artık ateşleniyor), sector ambient ses (Source-X referansında yok — spekülatif maddeydi), `SERV.*` admin/maintenance uzun kuyruğu.
 
 **2026-06-10 dalgası — kapatılanlar:**
 - **Dialog sistemi:** `LOCAL.` atamaları artık string değerleri koruyor (virgüllü
@@ -199,7 +199,7 @@ Kaynak: `TriggerCoverageGuardrailTests.cs`
 
 ### Oyun karakteri trigger'ları — ateşlenmiyor
 
-**Bilinçli erteleme (guardrail yorumunda gerekçeli):** `NPCSeeWantItem` (`@NPCLookAtItem` ile örtüşüyor)
+**Bilinçli erteleme (guardrail yorumunda gerekçeli):** `UserVirtue` (virtue-gump select, virtue gump yok). NOT: `NPCSeeWantItem` artık ateşleniyor (NPC ground-item scan).
 
 **Ateşleniyor (2026-06-10, dalga 5):** `UserSpecialMove` (0xD7 sub 0x19 combat ability, N1 = ability index — ClassicUO `Send_UseCombatAbility` doğrulandı), `NPCLostTeleport` (leash'in 3 katından uzağa düşen NPC eve ışınlanır — seri ApplyDecision fazından ateşlenir, RETURN 1 ışınlanmayı iptal eder)
 
@@ -249,7 +249,7 @@ Kaynak: `TriggerCoverageGuardrailTests.cs`
 6. ~~`SERV.*` bilinmeyen fiil → log/SysMessage~~ ✅ (2026-06-09)
 7. ~~Trigger P1 (ExpChange/ExpLevelChange) + kolay P2'ler (UserVirtue, UserKRToolbar)~~ ✅ (2026-06-09)
 8. ~~Custom housing devamı: foundation yerleştirme deed'i, commit edilen tasarımın sunucu yürüme geometrisi~~ ✅ (2026-06-09)
-9. Kalan P2 trigger: `NPCSeeWantItem`.
+9. Kalan P2 trigger: `UserVirtue` (virtue-gump select). `NPCSeeWantItem` artık ateşleniyor.
 10. Global/legacy chat (0xB2 text-in / 0xF9) — bilinçli erteleme; talep olursa ayrı dalga
 11. `SERV.*` admin/maintenance uzun kuyruğu: native `SAVESTATICS` map çıktısı, script-safe `BLOCKIP`/`UNBLOCKIP`, `CALCCRYPT`, `CONSOLE` ve güvenlik yüzeyi yüksek admin komutları.
 

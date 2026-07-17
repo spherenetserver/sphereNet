@@ -275,11 +275,16 @@ gecikmeleri); aşağıdakiler onu **büyüten** kesin kod borçları.
 
 ## G. Test & doküman boşlukları (P2)
 
-- [ ] **G1 (P2) — Üç map diagnostic testi `return` ile "fake pass".**
+- [x] **G1 (P2) — Üç map diagnostic testi `return` ile "fake pass".** (YAPILDI: xUnit v2'de
+  dynamic `Assert.Skip` yok → 3 diagnostic `[Fact]`'e static `[Fact(Skip=...)]` eklendi; artık
+  gerçek **Skipped** raporlanıyor (suite 1838 geçti + 3 atlandı, eskiden 3 fake-pass). Local
+  çalıştırmak için Skip kaldırılır.)
   `StairThrowDiagnosticTests.cs:29/111/309` `C:\mortechUO\mul` yoksa `WriteLine("SKIP")` + `return`
   → xUnit'te erken return = **passed** (skipped değil). "0 skipped" üç çalışmayan testi gizliyor.
   Fix: gerçek `Skip` (Assert.Skip / SkippableFact) + "Skips cleanly" yorumunu düzelt.
-- [ ] **G2 (P2) — Trigger dokümanları bayat (NPCSeeWantItem).** Trigger artık wire'lı+ateşleniyor
+- [x] **G2 (P2) — Trigger dokümanları bayat (NPCSeeWantItem).** (YAPILDI: TRIGGERS.md,
+  STUB_INVENTORY_TR.md, PARITY_MATRIX.md güncellendi — `NPCSeeWantItem` artık ateşleniyor
+  (EngineWiring); güncel tek not-fired char trigger `UserVirtue` (virtue-gump, gump yok).) Trigger artık wire'lı+ateşleniyor
   (`Program.EngineWiring.cs:1660/1681`) ama docs hâlâ eksik gösteriyor: `STUB_INVENTORY_TR.md:37/40/
   202/252`, `TRIGGERS.md:23/245`, `PARITY_MATRIX.md:75`. Fix: docs güncelle.
 

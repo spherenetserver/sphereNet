@@ -7,6 +7,15 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+INTERNAL - Removed redundant unused code paths flagged by a code review: a second
+        expansion feature-flag lookup table and two never-instantiated scripting shells
+        (a global-variable holder and a conditional-evaluator wrapper) whose real
+        behaviour already lives in the running engine, so wiring them would only risk a
+        divergent second source of truth. Verified-intentional scaffolding that was
+        wrongly flagged as dead (the bot-performance CI gate, the fast-walk protocol
+        packets, and the speed-hack audit hook) was kept and documented instead. No
+        behaviour change.
+
 PERFORMANCE - Two per-tick/periodic sweeps no longer scan the entire object list.
         The TIMERF timer sweep now walks only the handful of objects that actually
         hold a pending timer, and the item-decay catch-up now walks only loose

@@ -275,19 +275,36 @@ gecikmeleri); aşağıdakiler onu **büyüten** kesin kod borçları.
 
 ## F. Atıl altyapı temizliği (P2/P3)
 
-- [ ] **F1 (P3) — BotPerformanceGate CI'a bağlı değil.** `BotPerformanceGate.cs:5` sadece tanım,
-  hiç kullanım yok. Fix: bot senaryo raporu + tick histogramı + CI exit-code'a bağla, ya da kaldır.
-- [ ] **F2 (P3) — Fast-walk stack paketleri hiç gönderilmiyor.** `ExtendedPackets.cs:1344/1367`
-  sadece tanım + build testi; runtime'da construct/send yok. Fix: era-uyumlu tam key rotasyonu
-  uygula ya da ölü paket sınıflarını kaldır (mevcut zaman-tabanlı hareket kısıtı korunsun).
-- [ ] **F3 (P3) — ExpansionInfo tablosu kullanılmıyor.** `ExpansionInfo.cs:5/39` dışında referans
-  yok; feature mask'leri başka yolla kuruluyor. Fix: tek doğruluk kaynağı yap ya da kaldır.
-- [ ] **F4 (P3) — ExpressionGlobals / ConditionalEvaluator ölü.** İkisi de sadece kendi
-  tanımlarında; hiç instantiate/call yok. Fix: mevcut scripting hattıyla birleşme ihtiyacı yoksa
-  temizle (ikinci global-state sistemi olarak bağlama).
-- [ ] **F5 (P3) — OnSpeedHackDetected tüketicisi yok.** `GameClient.Combat.cs:35/40` invoke ama
-  `+=` yok; kick yolu ayrı (güvenlik açığı değil, atıl audit hook). Fix: audit/metrics'e bağla ya
-  da API'den çıkar.
+> **Batch 5 kararı (doğrulama sonrası):** F grubu körlemesine "sil" değil — her biri referans
+> sayımı + niyet analiziyle incelendi. Gerçekten **redundant/divergence riski** olanlar silindi
+> (F3, F4); **kasıtlı ama henüz bağlanmamış** (doğru + testli) scaffolding ise silinmeyip doğru
+> sınıflandırıldı (F1, F2, F5) — parity-testli/tutarlı kodu atmak bu projenin "doğrula, uydurma"
+> ilkesine aykırı olurdu. Git geçmişi silinenleri korur.
+
+- [~] **F1 (P3) — BotPerformanceGate CI'a bağlı değil → KASITLI (tutuldu).** Doğrulama: bot
+  diagnostics alt sistemi CANLI (`BotEngine`, `TickHistogram`, `Program.cs`/`Program.Tick.cs`
+  kullanıyor); yalnızca `BotPerformanceGate` (CI-gate eşik değerlendirici) henüz bot-report çıktısına
+  ve CI exit-code'una bağlı değil. Doğru + tutarlı bir parça, eksik olan tek şey CI hookup'ı (kapsam
+  dışı). Kaldırılmadı; STUB_INVENTORY'de "kasıtlı-bağlanmamış" olarak işaretlendi.
+- [~] **F2 (P3) — Fast-walk stack paketleri → KASITLI (tutuldu).** `PacketFastWalkStackInit/Push`
+  hiç construct/send edilmiyor AMA `DeferredParityTests.PacketFastWalkStackInit_BuildsExpectedPayload`
+  ile wire-format PARITY TESTİ var — kasıtlı, doğrulanmış protokol scaffolding'i. SphereNet zaman
+  tabanlı hareket kısıtı kullanıyor; bu paketler ileride era-uyumlu key rotasyonu için hazır. Testli
+  kod silinmedi; STUB_INVENTORY'de belgelendi.
+- [x] **F3 (P3) — ExpansionInfo tablosu → SİLİNDİ.** `ExpansionInfo.GetInfo` hiç çağrılmıyordu;
+  feature mask'leri `GameClient.Login`/`NetState` bağımsız kuruyor. İkinci (divergence riskli) doğruluk
+  kaynağıydı → `ExpansionInfo.cs` kaldırıldı. `Expansion`/`FeatureFlags` enum'ları (başka yerde
+  kullanılıyor) korundu.
+- [x] **F4 (P3) — ExpressionGlobals / ConditionalEvaluator → SİLİNDİ.** İkisi de hiç instantiate/call
+  edilmeyen Source-X-şekilli redundant kabuk: gerçek fonksiyon zaten canlı motorda (global VAR/list
+  state VarMap/ListMap'te, koşul değerlendirme `ExpressionParser.EvaluateConditional`'da). Bağlanırsa
+  ikinci global-state/expression sistemi olurlardı (review'ın uyardığı divergence) → her iki dosya da
+  kaldırıldı.
+- [~] **F5 (P3) — OnSpeedHackDetected tüketicisi yok → KASITLI (tutuldu).** Doğrulama: speedhack
+  ALGILAMA aktif (`ClientCombatHandler:362-379` — verdict, LogWarning, Kick→MarkClosing hepsi çalışıyor).
+  `OnSpeedHackDetected` event'i operatörler için deliberate bir extensibility/audit hook'u (yorumu bunu
+  açıkça belirtiyor); güvenlik açığı değil, kick yolu bağımsız. Gözlemlenebilirlik zaten log'da mevcut.
+  API'den çıkarmak yerine STUB_INVENTORY'de "kasıtlı extensibility hook" olarak belgelendi.
 
 ---
 

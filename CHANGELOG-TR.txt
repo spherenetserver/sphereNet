@@ -6,6 +6,14 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+DAHILI - Kod incelemesinde isaretlenen redundant kullanilmayan kod yollari kaldirildi:
+        ikinci bir expansion feature-flag tablosu ve hic ornegi olusturulmayan iki
+        scripting kabugu (global-degisken tutucu ve kosul-degerlendirici sarmalayici) --
+        gercek davranis zaten calisan motorda, baglanmalari yalnizca divergent ikinci
+        dogruluk kaynagi riski dogururdu. Yanlislikla olu isaretlenen kasitli scaffolding
+        (bot-performans CI gate, fast-walk protokol paketleri, speed-hack audit hook)
+        silinmeyip belgelendi. Davranis degisikligi yok.
+
 PERFORMANS - Iki periyodik tarama artik tum obje listesini gezmiyor. TIMERF timer
         taramasi yalnizca gercekten bekleyen timer'i olan az sayidaki objeyi, item
         decay catch-up ise yalnizca yerdeki (loose) ground item'lari geziyor. Her

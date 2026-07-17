@@ -265,3 +265,24 @@ Kaynak: `TriggerCoverageGuardrailTests.cs`
 - Region geçişinde `PacketGlobalLight`, sessiz `PacketSeason` ve bölgesel `PacketWeather` gönderiliyor.
 
 Bu envanter dosyası o parity belgesinin **tamamlayıcısıdır**; ses/görüntü detayı için oraya bakın.
+
+---
+
+## 11. Kasıtlı ama bağlanmamış altyapı (Batch 5 doğrulaması)
+
+Aşağıdaki üç öğe kod incelemesinde "ölü" olarak işaretlenmişti; referans sayımı + niyet analizi
+sonrası **kasıtlı, doğru, henüz bağlanmamış scaffolding** oldukları görüldü ve silinmedi. (Gerçek
+redundant/divergent olanlar — `ExpansionInfo`, `ExpressionGlobals`, `ConditionalEvaluator` — Batch 5'te
+kaldırıldı; bkz. `INCELEME_DOGRULAMA_PLANI_TR.md` F3/F4.)
+
+- **`BotPerformanceGate`** (`SphereNet.Game/Diagnostics/`) — Bot yük-testi diagnostics alt sistemi
+  CANLI (`BotEngine`, `TickHistogram`, `Program.cs`/`Program.Tick.cs` kullanıyor). Yalnızca CI-gate
+  eşik değerlendiricisi henüz bot-report + CI exit-code'una bağlı değil. Bağlamak için: senaryo raporu
+  + tick histogramını `Evaluate`'e verip exit-code'a bağla.
+- **`PacketFastWalkStackInit` / `PacketFastWalkStackPush`** (`ExtendedPackets.cs`) — 0xBF sub
+  0x01/0x02 fast-walk anahtar yığını. Construct/send edilmiyor ama wire-format
+  `DeferredParityTests.PacketFastWalkStackInit_BuildsExpectedPayload` ile kilitli. SphereNet zaman
+  tabanlı hareket kısıtı kullanıyor; bu paketler ileride era-uyumlu key rotasyonu için hazır.
+- **`GameClient.OnSpeedHackDetected`** (`GameClient.Combat.cs`) — Operatör extensibility/audit hook'u
+  (ban/alert/metrik için `+=` bağlanabilir). Speedhack algılama + LogWarning + Kick zaten aktif ve
+  bağımsız; bu event yalnızca opsiyonel gözlemci noktası. Güvenlik açığı değil.

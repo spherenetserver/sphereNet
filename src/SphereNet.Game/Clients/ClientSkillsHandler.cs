@@ -653,12 +653,19 @@ public sealed class ClientSkillsHandler
 
         if (_triggerDispatcher != null)
         {
+            // IsTrigUsed-gated: view-apply builds a tooltip for every object entering
+            // view, so firing @ClientTooltip unconditionally re-parses the CHARDEF/ITEMDEF
+            // section and allocates per object even when no script hooks it. When the
+            // trigger is unused the fire is a no-op (it cannot add script properties), so
+            // skipping it is behaviour-preserving — mirrors the gated single-click path.
             TriggerResult triggerResult = obj switch
             {
-                Character ch => _triggerDispatcher.FireCharTrigger(ch, CharTrigger.ClientTooltip,
-                    new TriggerArgs { CharSrc = _character, ScriptConsole = _client, N1 = requested ? 1 : 0 }),
-                Item tooltipItem => _triggerDispatcher.FireItemTrigger(tooltipItem, ItemTrigger.ClientTooltip,
-                    new TriggerArgs { CharSrc = _character, ItemSrc = tooltipItem, ScriptConsole = _client, N1 = requested ? 1 : 0 }),
+                Character ch when _triggerDispatcher.IsCharTriggerUsed(CharTrigger.ClientTooltip) =>
+                    _triggerDispatcher.FireCharTrigger(ch, CharTrigger.ClientTooltip,
+                        new TriggerArgs { CharSrc = _character, ScriptConsole = _client, N1 = requested ? 1 : 0 }),
+                Item tooltipItem when _triggerDispatcher.IsItemTriggerUsed(ItemTrigger.ClientTooltip) =>
+                    _triggerDispatcher.FireItemTrigger(tooltipItem, ItemTrigger.ClientTooltip,
+                        new TriggerArgs { CharSrc = _character, ItemSrc = tooltipItem, ScriptConsole = _client, N1 = requested ? 1 : 0 }),
                 _ => TriggerResult.Default
             };
 
@@ -730,8 +737,10 @@ public sealed class ClientSkillsHandler
                 }
             }
 
-            _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.ClientTooltipAfterDefault,
-                new TriggerArgs { CharSrc = _character, ItemSrc = item, ScriptConsole = _client, N1 = requested ? 1 : 0 });
+            if (_triggerDispatcher != null &&
+                _triggerDispatcher.IsItemTriggerUsed(ItemTrigger.ClientTooltipAfterDefault))
+                _triggerDispatcher.FireItemTrigger(item, ItemTrigger.ClientTooltipAfterDefault,
+                    new TriggerArgs { CharSrc = _character, ItemSrc = item, ScriptConsole = _client, N1 = requested ? 1 : 0 });
         }
 
         propList.AddRange(scriptProperties);

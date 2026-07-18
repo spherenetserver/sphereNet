@@ -1,0 +1,115 @@
+# Performans Planı — Konuşma / NPC / View-Apply (doğrulanmış)
+
+Kaynak: `wiki/1.txt` (log-tabanlı gözlem). Üç iddia da bağımsız recon ajanlarıyla koda karşı
+**doğrulandı**. Aşağıda her iddia için: doğruluk durumu, gerçek maliyet sürücüsü, iddianın
+yanlışları, ve risk-sıralı fix yüzeyi. En güvenli + yüksek-değerli işler önce kapatılacak.
+
+Doğrulama tarihi: 2026-07-18. Bu session'ın disiplini: doğrula → en küçük güvenli kök-neden fixi.
+
+---
+
+## 1. Konuşma fan-out (0xAD PacketSpeechUnicode) — DOĞRU (yapısal)
+
+Tek konuşma paketi senkron main-thread fan-out çalıştırıyor (kuyruk/deferral yok):
+speaker @Speech → pet komut → **yakındaki TÜM NPC hear loop** → tüm ground item @Hear →
+comm crystal → paket üretimi. `hearRange`=18 (say) sektör-pencereli.
+
+**Gerçek maliyet sürücüleri (kanıtlı):**
+- `OnNpcHearSpeech`'te **per-NPC speech-handler gate'i YOK** (`Program.NpcServices.cs:890`) →
+  hiç speech handler'ı olmayan NPC bile ödüyor: 3× `ToLowerInvariant`, debug log arg-format,
+  `f_onchar_speech` için `TriggerArgs` alloc, memory lookup, service-keyword scan, CharDef lookup.
+- **En büyük gizli sürücü: `BroadcastFacingUpdate` per-NPC** (`Program.NpcServices.cs:906`) — her
+  NPC için iç içe `ForEachClientInRange` client-scan + notoriety compute + paket → **O(NPC × yakın-client)**.
+  Kalabalık bölgede süperlineer yapan bu, SPEECH parse değil.
+- Item scan **koşulsuz** çalışıyor (`Program.EngineWiring.cs:718-725`, comm crystal için), SpeechEngine
+  doc-yorumunun aksine (yorum "scan atlanır" diyor ama atlanmıyor).
+
+**İddianın yanlışı:** item scan @Hear yoksa atlanmıyor (koşulsuz wired); asıl sürücü
+`BroadcastFacingUpdate`, iddiada yok; `f_onchar_speech` yoksa ucuz (dict lookup).
+
+**Fix yüzeyi (risk-sıralı):**
+- [ ] **S1 (P1, ORTA risk) — `BroadcastFacingUpdate` per-NPC'yi bastır/batch'le.** En büyük sürücü ama
+  DAVRANIŞ etkiliyor (NPC konuşana dönüyor). Seçenek: sadece speech/service ilgisi olan NPC dönsün,
+  ya da facing broadcast'i batch/dedupe et. Dikkat: görünür davranış.
+- [ ] **S2 (P2, DÜŞÜK risk) — Speech-trigger dispatch'ini gate'le.** NPC'nin SPEECH resource'u ve service
+  rolü yoksa ağır trigger/keyword dalını atla (facing + memory-greeting korunabilir). Handler yoksa
+  etkisiz → düşük risk. Kazanç orta.
+- [ ] **S3 (P2) — Koşulsuz item scan'i gözden geçir.** Comm crystal yoksa/az ise scan'i gate'le.
+
+---
+
+## 2. NPC AI seri commit — DOĞRU (iddiadan da kötü)
+
+`RunMulticoreTick` (`Program.Tick.cs:627`): paralel faz `npc_build` (6.4ms) + seri faz `npc_apply`/
+`commit` (106ms/140 karar). **Paralel faz gerçekte hiç AI işi yapmıyor.**
+
+**Kanıt:**
+- `BuildDecision` (`NpcAI.cs:443-467`) uyanık her NPC için **koşulsuz `Legacy` placeholder** döndürüyor
+  (`:466`); `Move` kararı hiç üretilmiyor (branch var ama ölü). Tüm ağır beyin serial
+  `ApplyDecision → OnTickAction` (`NpcAI.cs:489`)'da.
+- Seri maliyet: range-scan'ler (`NpcAI.Combat.cs:189` vb.) + **A\* `FindPath`** (`NpcAI.Movement.cs:512`,
+  500-node bütçe, ulaşılamaz hedefte ~17ms/NPC) + `MoveCharacter` + trigger'lar.
+- Login spike: 5×5 pencere (`ActiveSectorRadius=2`) ~140 NPC uyandırıp `WakeNpc`'de hepsini
+  **`now+100`'e (aynı wheel slot)** schedule ediyor (`Program.Tick.cs:844`) → tek tick grubu, stagger yok.
+  `MaxNpcsPerTick=500` bütçesi 140'ta devreye girmiyor.
+
+**İddianın yanlışı:** "çoğu NPC" değil **tüm** uyanık NPC; dirty-flush maliyet DEĞİL (sub-ms tail);
+500-bütçe 140'ı ne yaratıyor ne yumuşatıyor.
+
+**Fix yüzeyi (risk-sıralı):**
+- [ ] **N1 (P2, DÜŞÜK risk) — NPC wake stagger.** `WakeNpc` `now+100` yerine `now+100+hash(uid)%N`
+      dağıt → login transient'i doğrudan kırar. Küçük, güvenli, izole.
+- [ ] **N2 (P0 etki, YÜKSEK efor) — Read-only ağır işi paralel `BuildDecision`'a taşı.** Range-scan +
+      `FindPath` map/static'e karşı read-only; paralelde çöz, somut `Move` kararı üret (Move branch
+      `ApplyDecision:480-485` zaten var, sadece `MoveCharacter` mutasyonu serial kalır). En yüksek
+      kaldıraç ama thread-safety kontratı dikkat ister.
+- [ ] **N3 (P2) — Per-NPC pathfind tavanını düşür/batch'le** (`NpcPathMaxNodes=500`). N2 ile birlikte
+      tick-latency'de önemsizleşir.
+
+---
+
+## 3. View-apply / tooltip (~50ms) — DOĞRU (çekirdek tez)
+
+`ClientViewUpdater.ApplyViewDelta` (`:148`): `view_build` paralel/ucuz (0.1ms), `apply` seri (50ms).
+Maliyet arama değil, **objeleri client'a uygulama** — özellikle per-yeni-obje AOS tooltip.
+
+**Sıralı gerçek maliyet:**
+1. **Gate'siz tooltip script-trigger'ı** (`ClientSkillsHandler.cs:654-670` + `:733`): her yeni obje için
+   `CharTrigger.ClientTooltip`/`ItemTrigger.ClientTooltip` + `ClientTooltipAfterDefault` **`IsTrigUsed`
+   gate'i OLMADAN** fire ediliyor. Handler yoksa bile: 2× observer/target event snapshot (`.ToArray()`) +
+   **CHARDEF/ITEMDEF section re-parse** (`TriggerRunner.cs:144-158`) + `TriggerArgs`/scope alloc'ları.
+   **En büyük israf.** (Karşılaştır: single-click yolu `ClientInventoryHandler.cs:203/214`'te gate'li.)
+2. **Tooltip sıfırdan rebuild + tam OPL serileştirme** (`ClientSkillsHandler.cs:629-768`): 30s cache var
+   (`ToolTipCache`) AMA obje view'dan çıkınca evict ediliyor (`ClientViewUpdater.cs:263-264/293-294`) →
+   yeni-giriş yolunda cache her zaman soğuk → tam rebuild + full `PacketOPLData` her seferinde.
+3. **Per-obje LOS raycast** (`CanSendAosTooltip` → `CanSeeLOS`, `:782/:801`) — build fazı zaten görünürlük
+   filtreledi, apply'da redundant.
+
+**İddianın yanlışı:** statik-kapı senkronu per-obje DEĞİL (per-client-per-tick, global açık-kapı seti
+üzerinde); tooltip cache "yok" değil — 30s var ama exit-evict onu burst yolunda etkisiz kılıyor.
+
+**Fix yüzeyi (risk-sıralı):**
+- [x] **V1 (P1, ÇOK DÜŞÜK risk, EN YÜKSEK değer) — ClientTooltip trigger fire'ları gate'lendi.** (YAPILDI:
+      `SendAosTooltip` (`ClientSkillsHandler.cs:654-670` + `:733`) artık `@ClientTooltip` /
+      `@ClientTooltipAfterDefault` fire'larını `IsCharTriggerUsed`/`IsItemTriggerUsed` ile gate'liyor —
+      single-click yolunun (`ClientInventoryHandler.cs:203/214`) zaten yaptığı gibi. Switch'te `when` guard;
+      trigger unused'sa CHARDEF/ITEMDEF section re-parse + alloc'lar tamamen atlanıyor. Handler yoksa fire
+      script property ekleyemeyeceği için davranış birebir korunuyor. Test: TooltipTriggerGateTests (3 —
+      char/item ClientTooltip + AfterDefault + script [ON=@ClientTooltip] BuildUsedTriggerCache). Suite yeşil.)
+- [ ] **V2 (P2, ORTA risk) — OPL cache'i view-exit'te evict etme.** 30s TTL ile obje-keyed tut →
+      re-entry/login burst built listeyi yeniden kullanır. Cache invalidation dikkat.
+- [ ] **V3 (P3) — Redundant apply-fazı LOS'u atla** (build zaten filtreledi).
+- [ ] **V4 (P3) — Burst'te tooltip defer/stagger** (draw/world hemen; `SendAosTooltip` sonraki tick'lere
+      kuyrukla, ya da client hover'da `requested:true` ile zaten istiyor).
+
+---
+
+## Önerilen kapatma sırası (güvenlik × değer)
+
+1. **V1** — ClientTooltip gate (çok düşük risk, en yüksek değer, mevcut gate desenini aynala). ★ önce
+2. **N1** — NPC wake stagger (küçük, güvenli, login transient'i kırar).
+3. **S2** — Speech-trigger gate (düşük risk, handler yoksa etkisiz).
+4. **V2** — OPL cache persist (orta).
+5. **S1 / N2** — facing-broadcast bastır / NPC parallel brain (yüksek değer ama davranış/mimari, dikkatli).
+
+Her biri: recon → en küçük fix → build + test + changelog → commit/push.

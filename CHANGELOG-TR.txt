@@ -14,6 +14,15 @@ DAHILI - Kod incelemesinde isaretlenen redundant kullanilmayan kod yollari kaldi
         (bot-performans CI gate, fast-walk protokol paketleri, speed-hack audit hook)
         silinmeyip belgelendi. Davranis degisikligi yok.
 
+PERFORMANS - Kalabalik bolgelerde / login'de view guncellemeleri hizlandi. Client'in
+        goruntusune giren her obje bir tooltip insa ediyor ve bu yol @ClientTooltip
+        script trigger'ini, hicbir script onu hook'lamasa bile her obje icin fire
+        ediyordu -- objenin script tanimini yeniden parse edip obje basina allocation
+        yapiyordu. Artik kullanilmiyorsa atlaniyor (single-click yolunun zaten
+        kullandigi ayni IsTrigUsed gate'i), boylece yogun bir bolgeye girmek veya cok
+        objenin yaninda login olmak cok daha ucuz. Tooltip trigger'ini hook'layan
+        scriptler oncekiyle birebir ayni davraniyor.
+
 DUZELTILDI - Ozellestirilebilir ev foundation'lari artik modern (SA/High Seas)
         istemcilerde render oluyor. Multi body client'a multi yerine duz item olarak
         gonderiliyordu (0xF3 paketinin data-type byte'i "item" olarak sabitti, 0x1A

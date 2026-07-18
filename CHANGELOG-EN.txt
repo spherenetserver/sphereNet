@@ -7,6 +7,15 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+PERFORMANCE - Opening any gump, clicking any dialog button or requesting any menu
+        no longer re-reads and re-parses the entire script pack from disk. The
+        dialog/menu section lookups used to scan every .scp file per interaction
+        (a ~400ms main-loop stall per click on a real pack — worst for ids that
+        do not exist in the pack at all, like the native help page fallback,
+        which paid the full scan on every Help click). The sections are now
+        retained at script-load time and looked up in constant time; resync
+        rebuilds the caches.
+
 PERFORMANCE - World saves can now write in the background (sphere.ini
         SAVEBACKGROUND > 0): the main loop only captures an immutable snapshot of
         the world — the expensive shard/encode/write phase runs on a worker

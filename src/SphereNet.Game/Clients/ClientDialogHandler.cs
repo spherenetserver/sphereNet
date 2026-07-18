@@ -1746,112 +1746,30 @@ public sealed class ClientDialogHandler
         return parser.EvaluateStr(input);
     }
 
+    // These three used to re-open and re-parse EVERY script file on EVERY gump
+    // open / button click / menu request — a ~400ms main-loop stall per click
+    // on a real pack, worst when the id does not exist (native-fallback ids
+    // like d_helppage paid the full scan every time). ResourceHolder now
+    // retains the sections at load; these are O(1) lookups.
     private bool TryFindDialogButtonSection(string dialogId, out SphereNet.Scripting.Parsing.ScriptSection buttonSection)
     {
         buttonSection = null!;
-        if (_commands?.Resources == null) return false;
-
-        foreach (var script in _commands.Resources.ScriptFiles)
-        {
-            var file = script.Open();
-            try
-            {
-                var sections = file.ReadAllSections();
-                foreach (var section in sections)
-                {
-                    if (!section.Name.Equals("DIALOG", StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    // Header forms: "d_xxx BUTTON" / "d_xxx TEXT" / etc.
-                    // Split on whitespace and match (first=id, second=BUTTON).
-                    var parts = section.Argument.Split(
-                        new[] { ' ', '\t' },
-                        2,
-                        StringSplitOptions.RemoveEmptyEntries);
-                    if (parts.Length < 2) continue;
-                    if (!parts[0].Equals(dialogId, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (!parts[1].Equals("BUTTON", StringComparison.OrdinalIgnoreCase)) continue;
-
-                    buttonSection = section;
-                    return true;
-                }
-            }
-            finally
-            {
-                script.Close();
-            }
-        }
-        return false;
+        return _commands?.Resources != null &&
+            _commands.Resources.TryGetDialogButton(dialogId, out buttonSection);
     }
 
     private bool TryFindDialogSections(string dialogId, out SphereNet.Scripting.Parsing.ScriptSection layoutSection)
     {
         layoutSection = null!;
-        if (_commands?.Resources == null)
-            return false;
-
-        foreach (var script in _commands.Resources.ScriptFiles)
-        {
-            var file = script.Open();
-            try
-            {
-                var sections = file.ReadAllSections();
-                foreach (var section in sections)
-                {
-                    if (!section.Name.Equals("DIALOG", StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    string arg = section.Argument.Trim();
-                    if (arg.Equals(dialogId, StringComparison.OrdinalIgnoreCase))
-                    {
-                        layoutSection = section;
-                        return true;
-                    }
-                }
-            }
-            finally
-            {
-                script.Close();
-            }
-        }
-
-        return false;
+        return _commands?.Resources != null &&
+            _commands.Resources.TryGetDialogLayout(dialogId, out layoutSection);
     }
-
-
 
     internal bool TryFindMenuSection(string menuDefname, out SphereNet.Scripting.Parsing.ScriptSection menuSection)
     {
         menuSection = null!;
-        if (_commands?.Resources == null)
-            return false;
-
-        foreach (var script in _commands.Resources.ScriptFiles)
-        {
-            var file = script.Open();
-            try
-            {
-                var sections = file.ReadAllSections();
-                foreach (var section in sections)
-                {
-                    if (!section.Name.Equals("MENU", StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    string arg = section.Argument.Trim();
-                    if (arg.Equals(menuDefname, StringComparison.OrdinalIgnoreCase))
-                    {
-                        menuSection = section;
-                        return true;
-                    }
-                }
-            }
-            finally
-            {
-                script.Close();
-            }
-        }
-
-        return false;
+        return _commands?.Resources != null &&
+            _commands.Resources.TryGetMenuSection(menuDefname, out menuSection);
     }
 
     private string ResolveDialogHtml(string html, IScriptObj target)

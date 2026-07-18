@@ -23,6 +23,16 @@ public sealed class ResourceHolder
     private readonly List<StartGoldEntry> _startGold = [];
     private readonly List<MoongateEntry> _moongates = [];
     private readonly Dictionary<string, (string FilePath, List<string> Lines)> _dialogTextCache = new(StringComparer.OrdinalIgnoreCase);
+
+    // Load-time section caches for the interactive gump/menu surfaces. The
+    // dialog/menu open paths used to re-open and re-parse EVERY script file on
+    // EVERY gump open, button click and menu request (a ~400ms main-loop stall
+    // per click on a real pack — worst when the id does not exist at all, e.g.
+    // the native-fallback d_helppage). Kept in sync by the same load/resync
+    // pipeline as _dialogTextCache.
+    private readonly Dictionary<string, (string FilePath, ScriptSection Section)> _dialogLayoutCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (string FilePath, ScriptSection Section)> _dialogButtonCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (string FilePath, ScriptSection Section)> _menuSectionCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<int, List<ScriptKey>> _plevelCommands = [];
     private readonly List<string> _obsceneWords = [];
     private readonly List<string> _fameTitles = [];
@@ -264,6 +274,11 @@ public sealed class ResourceHolder
                     count++;
                     continue;
                 }
+                CacheDialogSection(argParts, filePath, section);
+            }
+            else if (resType == ResType.Menu)
+            {
+                CacheMenuSection(rawArg, filePath, section);
             }
 
             int index = ParseResourceIndex(rawArg, resType);
@@ -1007,6 +1022,62 @@ public sealed class ResourceHolder
     public List<string> GetDialogTextLines(string dialogId) =>
         _dialogTextCache.TryGetValue(dialogId, out var entry) ? entry.Lines : [];
 
+    private void CacheDialogSection(string[] argParts, string filePath, ScriptSection section)
+    {
+        if (argParts.Length == 0) return;
+        string id = argParts[0].Trim();
+        if (id.Length == 0) return;
+        if (argParts.Length >= 2 && argParts[1].Equals("BUTTON", StringComparison.OrdinalIgnoreCase))
+            _dialogButtonCache[id] = (filePath, section);
+        else if (argParts.Length == 1)
+            _dialogLayoutCache[id] = (filePath, section);
+    }
+
+    private void CacheMenuSection(string rawArg, string filePath, ScriptSection section)
+    {
+        string name = rawArg.Split(new[] { ' ', '\t' }, 2, StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault()?.Trim() ?? "";
+        if (name.Length > 0)
+            _menuSectionCache[name] = (filePath, section);
+    }
+
+    /// <summary>O(1) lookup of the retained [DIALOG id] layout section — the
+    /// per-open full-pack file scan this replaces was a ~400ms stall.</summary>
+    public bool TryGetDialogLayout(string dialogId, out ScriptSection section)
+    {
+        if (_dialogLayoutCache.TryGetValue(dialogId, out var entry))
+        {
+            section = entry.Section;
+            return true;
+        }
+        section = null!;
+        return false;
+    }
+
+    /// <summary>O(1) lookup of the retained [DIALOG id BUTTON] section.</summary>
+    public bool TryGetDialogButton(string dialogId, out ScriptSection section)
+    {
+        if (_dialogButtonCache.TryGetValue(dialogId, out var entry))
+        {
+            section = entry.Section;
+            return true;
+        }
+        section = null!;
+        return false;
+    }
+
+    /// <summary>O(1) lookup of the retained [MENU name] section.</summary>
+    public bool TryGetMenuSection(string menuDefname, out ScriptSection section)
+    {
+        if (_menuSectionCache.TryGetValue(menuDefname, out var entry))
+        {
+            section = entry.Section;
+            return true;
+        }
+        section = null!;
+        return false;
+    }
+
     public IReadOnlyList<ResourceScript> ScriptFiles => _scriptFiles;
 
     /// <summary>
@@ -1091,6 +1162,9 @@ public sealed class ResourceHolder
     {
         int reloaded = 0;
         _dialogTextCache.Clear();
+        _dialogLayoutCache.Clear();
+        _dialogButtonCache.Clear();
+        _menuSectionCache.Clear();
         // Force fresh disk reads for all script files.
         ScriptFile.ClearFileCache();
 
@@ -1166,6 +1240,22 @@ public sealed class ResourceHolder
             .ToList();
         foreach (var key in staleDialogs)
             _dialogTextCache.Remove(key);
+
+        PurgeSectionCache(_dialogLayoutCache, normalized);
+        PurgeSectionCache(_dialogButtonCache, normalized);
+        PurgeSectionCache(_menuSectionCache, normalized);
+    }
+
+    private static void PurgeSectionCache(
+        Dictionary<string, (string FilePath, ScriptSection Section)> cache, string normalizedPath)
+    {
+        var stale = cache
+            .Where(kvp => string.Equals(Path.GetFullPath(kvp.Value.FilePath), normalizedPath,
+                StringComparison.OrdinalIgnoreCase))
+            .Select(kvp => kvp.Key)
+            .ToList();
+        foreach (var key in stale)
+            cache.Remove(key);
     }
 
     private void ReloadResourcesFromFile(ScriptFile file, string filePath)
@@ -1226,6 +1316,11 @@ public sealed class ResourceHolder
                     _dialogTextCache[argParts[0]] = (filePath, textLines);
                     continue;
                 }
+                CacheDialogSection(argParts, filePath, section);
+            }
+            else if (resType == ResType.Menu)
+            {
+                CacheMenuSection(rawArg, filePath, section);
             }
 
             int index = ParseResourceIndex(rawArg, resType);

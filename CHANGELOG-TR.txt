@@ -6,6 +6,15 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+PERFORMANS - Herhangi bir gump acmak, dialog butonuna tiklamak veya menu istemek
+        artik tum script pack'ini diskten yeniden okuyup parse etmiyor. Dialog/menu
+        bolum aramalari etkilesim basina her .scp dosyasini tariyordu (gercek
+        pack'te tiklama basina ~400ms ana dongu duraklamasi -- en kotusu pack'te
+        hic olmayan id'lerde, ornegin native help sayfasi fallback'i her Help
+        tiklamasinda tam taramayi oduyordu). Bolumler artik script yuklenirken
+        bellekte tutuluyor ve sabit surede bulunuyor; resync cache'leri yeniden
+        kuruyor.
+
 PERFORMANS - World save artik arka planda yazabiliyor (sphere.ini
         SAVEBACKGROUND > 0): ana dongu yalnizca dunyanin degismez bir anlik
         goruntusunu yakaliyor -- pahali shard/encode/yazma fazi worker thread'de

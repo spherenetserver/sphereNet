@@ -14,6 +14,13 @@ DAHILI - Kod incelemesinde isaretlenen redundant kullanilmayan kod yollari kaldi
         (bot-performans CI gate, fast-walk protokol paketleri, speed-hack audit hook)
         silinmeyip belgelendi. Davranis degisikligi yok.
 
+PERFORMANS - Kalabalik yaninda konusurken NPC basina gereksiz bir network taramasi
+        kaldirildi. Konusana donen her NPC, bu donusu yakindaki client'lara kendi
+        aninda yayiniyla gonderiyordu -- her soylenen satirda NPC basina ayri bir
+        tarama. Donus zaten normal view guncellemesiyle (ayni hareket paketi, ayni
+        client'lar) tasiniyor, bu yuzden fazladan yayin kaldirildi. NPC'ler hala
+        kendisine seslenene donuyor; donus sadece bir sonraki view refresh'te gidiyor.
+
 PERFORMANS - NPC-yogun bolgelerde konusma islemesi daha ucuz. Bir oyuncu
         konustugunda yakindaki her NPC bir hear handler'i calistiriyor; bu, global
         f_onchar_speech hook'unu ve ilk-temas greeting trigger'ini, hicbir script

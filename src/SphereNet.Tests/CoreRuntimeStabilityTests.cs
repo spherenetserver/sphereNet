@@ -109,6 +109,26 @@ public class CoreRuntimeStabilityTests
         Assert.Equal(count, firstSlots + rest);
     }
 
+    // S1 (perf): the NPC "turn to face the speaker" facing is delivered via the
+    // dirty->view pipeline (SendUpdateMobile) instead of a synchronous per-NPC broadcast.
+    // That relies on the Direction setter marking DirtyFlag.Direction on a change — guard
+    // it so a future setter refactor can't silently stop NPCs facing whoever addresses them.
+    [Fact]
+    public void Direction_Setter_MarksDirtyOnChange()
+    {
+        var ch = new Character();
+        ch.SetUid(new Serial(0x00000001));
+        ch.ConsumeDirty(); // clear construction dirt (direction defaults to North=0)
+
+        ch.Direction = Direction.East; // East != North → setter must mark the change dirty
+        Assert.True((ch.DirtyFlags & DirtyFlag.Direction) != 0);
+
+        // Setting the same direction again is a no-op (no spurious dirty / packet).
+        ch.ConsumeDirty();
+        ch.Direction = Direction.East;
+        Assert.True((ch.DirtyFlags & DirtyFlag.Direction) == 0);
+    }
+
     [Fact]
     public void ScriptFunction_MaxCallDepth_StopsRecursiveCall()
     {

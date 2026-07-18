@@ -28,9 +28,18 @@ comm crystal → paket üretimi. `hearRange`=18 (say) sektör-pencereli.
 `BroadcastFacingUpdate`, iddiada yok; `f_onchar_speech` yoksa ucuz (dict lookup).
 
 **Fix yüzeyi (risk-sıralı):**
-- [ ] **S1 (P1, ORTA risk) — `BroadcastFacingUpdate` per-NPC'yi bastır/batch'le.** En büyük sürücü ama
-  DAVRANIŞ etkiliyor (NPC konuşana dönüyor). Seçenek: sadece speech/service ilgisi olan NPC dönsün,
-  ya da facing broadcast'i batch/dedupe et. Dikkat: görünür davranış.
+- [x] **S1 (davranış-koruyan çıktı) — Redundant `BroadcastFacingUpdate` kaldırıldı.** Recon: `Character.Direction`
+  setter değişimde `DirtyFlag.Direction` mark ediyor; dirty→view pipeline `SendUpdateMobile` ile
+  **`BroadcastFacingUpdate` ile birebir aynı `PacketMobileMoving` (0x77) + per-observer notoriety**'yi
+  aynı yakın-client kümesine bir sonraki view-refresh'te (sub-100ms) gönderiyor (`ClientViewUpdater:175`
+  `posChanged` Dir değişimini de yakalıyor). Yani `OnNpcHearSpeech`'teki immediate broadcast **redundant**
+  bir per-NPC client-scan'di (fan-out'un en büyük maliyeti). Kaldırıldı; `npc.Direction = faceDir` korundu
+  → NPC yine konuşana dönüyor, sadece teslim batched-dirty'e geçti. Davranış korunuyor (aynı paket, aynı
+  client'lar). `BroadcastFacingUpdate` diğer 3 çağrı yerinde duruyor. Test: Direction_Setter_MarksDirtyOnChange
+  (S1'in dayandığı invariant guard'ı). Suite yeşil.
+  KALAN (S1'in orijinal "en büyük sürücü" hedefi): NPC-yoğun bölgede facing yine de dirty-pipeline'dan
+  gidiyor (per-NPC SendUpdateMobile), ama artık ayrı bir senkron scan değil — normal view-refresh'e
+  katıldı. Ek batch/dedupe gerekirse ayrı iş.
 - [x] **S2 (P2, DÜŞÜK risk) — Speech hear-handler gate'leri YAPILDI (davranış-koruyan).** İki temiz gate:
   (1) `f_onchar_speech` global hook'u yeni `TriggerRunner.HasFunction` ile gate'lendi — fonksiyon tanımlı
   değilse (yaygın durum) her NPC her konuşma satırında TriggerArgs alloc'unu atlıyor; tanımlıysa davranış

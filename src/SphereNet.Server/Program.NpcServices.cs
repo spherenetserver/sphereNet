@@ -897,15 +897,14 @@ public static partial class Program
         // Source-X NPC_OnHear: the NPC turns to face whoever addresses it
         // (unless mid-fight). The little head-turn is what makes townsfolk
         // feel alive when spoken to.
+        //
+        // Assigning Direction marks DirtyFlag.Direction, and the dirty->view pipeline
+        // then delivers PacketMobileMoving (the exact packet, to the same nearby clients)
+        // on the next view refresh. A synchronous BroadcastFacingUpdate here as well was
+        // a redundant per-NPC client scan on every spoken line — the dominant cost of the
+        // speech fan-out in NPC-dense areas — so the facing is left to the pipeline.
         if (!npc.FightTarget.IsValid && npc.Position != speaker.Position)
-        {
-            var faceDir = npc.Position.GetDirectionTo(speaker.Position);
-            if (npc.Direction != faceDir)
-            {
-                npc.Direction = faceDir;
-                BroadcastFacingUpdate(npc);
-            }
-        }
+            npc.Direction = npc.Position.GetDirectionTo(speaker.Position);
 
         // Source-X global speech function hook — silent when missing. Many imported
         // script packs don't define it, so it is gated by HasFunction: when absent (the

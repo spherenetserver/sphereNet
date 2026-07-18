@@ -16,6 +16,13 @@ INTERNAL - Removed redundant unused code paths flagged by a code review: a secon
         packets, and the speed-hack audit hook) was kept and documented instead. No
         behaviour change.
 
+PERFORMANCE - Removed a redundant per-NPC network scan when speaking near a crowd.
+        Each NPC that turned to face a speaker did its own immediate broadcast of the
+        turn to nearby clients — a separate scan per NPC on every spoken line. The turn
+        is already carried by the normal view update (the same movement packet, to the
+        same clients), so the extra broadcast was dropped. NPCs still face whoever
+        addresses them; the turn is just delivered on the next view refresh.
+
 PERFORMANCE - Cheaper speech handling in NPC-dense areas. When a player speaks, every
         nearby NPC runs a hear handler; it fired the global f_onchar_speech hook and the
         first-contact greeting trigger for every NPC on every line, even when no script

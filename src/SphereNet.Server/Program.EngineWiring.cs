@@ -718,10 +718,13 @@ public static partial class Program
             // @Hear on nearby items (Source-X item/multi OnHear) + the native
             // comm-crystal relay (CItemCommCrystal::OnHear): a linked crystal
             // re-speaks anything said near its partner. The handler is installed
-            // unconditionally now — the crystal relay needs the per-utterance
-            // item scan even when no script hooks @Hear; the trigger fire itself
-            // stays gated. S1 = spoken text, N1 = talk mode.
+            // unconditionally, but SpeechEngine only runs the per-utterance item
+            // scan when a sector listen-item (crystal/multi) is in earshot —
+            // Source-X CSector::m_ListenItems — or when ScanAllItemsOnHear is set
+            // below because some item def scripts @Hear (then any ground item may
+            // listen). S1 = spoken text, N1 = talk mode.
             bool itemHearScripted = _triggerDispatcher.IsItemTriggerUsed(ItemTrigger.Hear);
+            _speech.ScanAllItemsOnHear = itemHearScripted;
             _speech.OnItemHear = (speaker, item, text, mode) =>
             {
                 TriggerResult r = TriggerResult.Default;

@@ -129,13 +129,49 @@ public sealed class Sector : IScriptObj
 
     public void RemoveOnlinePlayer(Character ch) => _onlinePlayers.Remove(ch);
 
+    // Source-X CSector::m_ListenItems: count of ground items in this sector that
+    // can hear speech, maintained on add/remove/type-change so the per-utterance
+    // speech path can skip the item scan entirely when nothing here listens
+    // (CClientEvent.cpp:1883 `if (pSector->HasListenItems())`). Source-X counts
+    // only comm crystals (multis hear via the speaker's region); SphereNet routes
+    // multi/ship speech through the same ground scan, so multis count too.
+    private int _listenItems;
+
+    public bool HasListenItems => _listenItems > 0;
+
+    internal static bool IsListenItemType(SphereNet.Core.Enums.ItemType type) => type is
+        SphereNet.Core.Enums.ItemType.CommCrystal or
+        SphereNet.Core.Enums.ItemType.Multi or
+        SphereNet.Core.Enums.ItemType.MultiCustom or
+        SphereNet.Core.Enums.ItemType.Ship;
+
     public void AddItem(Item item)
     {
-        if (!_items.Contains(item))
-            _items.Add(item);
+        if (_items.Contains(item))
+            return;
+        _items.Add(item);
+        if (IsListenItemType(item.ItemType))
+            _listenItems++;
     }
 
-    public void RemoveItem(Item item) => _items.Remove(item);
+    public void RemoveItem(Item item)
+    {
+        if (_items.Remove(item) && _listenItems > 0 && IsListenItemType(item.ItemType))
+            _listenItems--;
+    }
+
+    /// <summary>A ground item in this sector changed its effective TYPE (script
+    /// SetType). Rebalances the listen count; ignores items not actually in this
+    /// sector (a type set before placement must not touch any counter).</summary>
+    internal void OnItemTypeChanged(Item item, SphereNet.Core.Enums.ItemType oldType,
+        SphereNet.Core.Enums.ItemType newType)
+    {
+        bool was = IsListenItemType(oldType), now = IsListenItemType(newType);
+        if (was == now || !_items.Contains(item))
+            return;
+        if (now) _listenItems++;
+        else if (_listenItems > 0) _listenItems--;
+    }
 
     /// <summary>Source-X CSector::GetLocalTime. A complete 24-hour offset is
     /// distributed across the map's sector columns.</summary>

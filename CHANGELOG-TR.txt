@@ -6,6 +6,15 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+PERFORMANS - Konusma artik her soylenen satirda yakindaki tum yer item'larini
+        taramiyor. Referans motor, gercekten duyabilen item'larin (comm crystal;
+        bizde ayrica ayni yoldan konusma alan multi/gemiler) sektor basina sayacini
+        tutuyor ve sayac sifirsa item taramasini tamamen atliyor -- yaygin durum.
+        Ayni sayac modeli artik item yerlestirme/kaldirma/tip degisiminde korunuyor;
+        kulak menzilinde crystal veya ev olmayan shard'lar soz basina hicbir bedel
+        odemiyor. Script'li item @Hear tam taramayi yine zorluyor (o durumda her
+        item dinleyici olabilir).
+
 PERFORMANS - Tooltip'ler artik obje basina line-of-sight raycast calistirmiyor.
         Referans motor tooltip'i yalnizca mesafe ve gorunurlukle gate'liyor (client
         objeleri duvarlarin arkasindan da cizer, dolayisiyla tooltip'leri de gelmeli);

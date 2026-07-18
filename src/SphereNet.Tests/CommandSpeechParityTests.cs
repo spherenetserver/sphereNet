@@ -152,9 +152,13 @@ public class CommandSpeechParityTests
         var speech = new SpeechEngine(world);
         var speaker = MakeChar(world, PrivLevel.Player); // at (100,100)
 
+        // Listen-capable items (comm crystals): a mundane ground item no longer
+        // opens the scan at all (Source-X per-sector listen-item gate, S3).
         var near = world.CreateItem();
+        near.ItemType = ItemType.CommCrystal;
         world.PlaceItem(near, new Point3D(102, 100, 0, 0)); // 2 tiles — within say range (18)
         var far = world.CreateItem();
+        far.ItemType = ItemType.CommCrystal;
         world.PlaceItem(far, new Point3D(100, 140, 0, 0));  // 40 tiles — out of say range
 
         var heard = new List<Item>();

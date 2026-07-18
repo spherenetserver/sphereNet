@@ -1025,6 +1025,29 @@ public sealed class GameWorld
         }
     }
 
+    /// <summary>Any sector overlapping the range window holds a listening ground
+    /// item (comm crystal / multi)? Source-X CSector::HasListenItems — the speech
+    /// path uses this to skip the per-utterance item scan entirely when nothing
+    /// nearby can hear (the common case).</summary>
+    public bool HasListenItemsInRange(Point3D center, int range)
+    {
+        var (minSx, maxSx, minSy, maxSy) = GetSectorRange(center, range);
+        for (int sx = minSx; sx <= maxSx; sx++)
+        for (int sy = minSy; sy <= maxSy; sy++)
+        {
+            var sector = GetSector(center.Map, sx, sy);
+            if (sector != null && sector.HasListenItems)
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>Rebalance the owning sector's listen-item count after a script
+    /// retyped a ground item (Item.ItemType setter hook).</summary>
+    public void NotifyGroundItemTypeChanged(Item item,
+        Core.Enums.ItemType oldType, Core.Enums.ItemType newType)
+        => GetSector(item.Position)?.OnItemTypeChanged(item, oldType, newType);
+
     public void VisitInRange(Point3D center, int range, Action<Character>? visitChar, Action<Item>? visitItem)
     {
         var (minSx, maxSx, minSy, maxSy) = GetSectorRange(center, range);

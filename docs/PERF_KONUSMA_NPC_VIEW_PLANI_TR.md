@@ -40,6 +40,11 @@ comm crystal → paket üretimi. `hearRange`=18 (say) sektör-pencereli.
   KALAN (S1'in orijinal "en büyük sürücü" hedefi): NPC-yoğun bölgede facing yine de dirty-pipeline'dan
   gidiyor (per-NPC SendUpdateMobile), ama artık ayrı bir senkron scan değil — normal view-refresh'e
   katıldı. Ek batch/dedupe gerekirse ayrı iş.
+  NÜANS (doğrulama 2, 2026-07-18): teslim aslında dirty-flag'e bağlı DEĞİL — view pipeline her
+  refresh'te `LastKnownPos` ile diff alıyor (`ClientViewUpdater:175` Dir karşılaştırması), yani
+  Direction değişimi dirty flag hiç mark edilmese de `posChanged` olarak yakalanırdı. Teslim
+  garantisi çift katmanlı (dirty flag + per-refresh diff); Direction_Setter_MarksDirtyOnChange
+  testi yararlı bir guard ama tek taşıyıcı invariant değil. S1'i zayıflatmaz, daha da güvenli kılar.
 - [x] **S2 (P2, DÜŞÜK risk) — Speech hear-handler gate'leri YAPILDI (davranış-koruyan).** İki temiz gate:
   (1) `f_onchar_speech` global hook'u yeni `TriggerRunner.HasFunction` ile gate'lendi — fonksiyon tanımlı
   değilse (yaygın durum) her NPC her konuşma satırında TriggerArgs alloc'unu atlıyor; tanımlıysa davranış
@@ -49,6 +54,11 @@ comm crystal → paket üretimi. `hearRange`=18 (say) sektör-pencereli.
   Suite yeşil. NOT: kalan residual (per-NPC ToLowerInvariant tekrarı + service/keyword dispatch) S1 ve
   ileride ele alınabilir; en büyük sürücü (facing broadcast) S1'de.
 - [ ] **S3 (P2) — Koşulsuz item scan'i gözden geçir.** Comm crystal yoksa/az ise scan'i gate'le.
+  NÜANS (doğrulama 2, 2026-07-18): S3 kısmen kapanmış durumda. `OnItemHear` handler'ı bilinçli
+  olarak koşulsuz kurulu (`Program.EngineWiring.cs:718-725` — comm-crystal relay'i script'siz de
+  çalışmak zorunda) ama `@Hear` trigger fire'ı zaten `itemHearScripted` (`IsItemTriggerUsed(Hear)`)
+  ile gate'li. Koşulsuz kalan tek maliyet per-utterance item SCAN'in kendisi (+ multi/crystal tip
+  kontrolü). Kalan iş: dünyada hiç comm crystal / multi yoksa scan'i tümden atlamak.
 
 ---
 

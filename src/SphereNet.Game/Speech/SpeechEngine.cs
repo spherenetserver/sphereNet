@@ -58,10 +58,15 @@ public sealed class SpeechEngine
     public void DeliverNpcHear(Character speaker, Character listener, string text) =>
         OnNpcHear?.Invoke(speaker, listener, text, TalkMode.Say);
 
+    /// <summary>Force the per-utterance ground-item scan even when no sector
+    /// listen-item (comm crystal / multi) is nearby — set by the wiring when any
+    /// item def scripts @Hear, because then any ground item may listen.</summary>
+    public bool ScanAllItemsOnHear { get; set; }
+
     /// <summary>Fired when a nearby ITEM hears speech (Source-X item/multi OnHear).
-    /// Installed only when some item def actually hooks @Hear, so the per-utterance
-    /// item scan is skipped entirely on shards that don't use it. Args: speaker,
-    /// item listener, text, mode.</summary>
+    /// The scan behind it only runs when a sector listen-item (comm crystal /
+    /// multi) is in earshot or <see cref="ScanAllItemsOnHear"/> is set. Args:
+    /// speaker, item listener, text, mode.</summary>
     public Action<Character, Item, string, TalkMode>? OnItemHear { get; set; }
 
     /// <summary>
@@ -173,9 +178,13 @@ public sealed class SpeechEngine
         }
 
         // Items within hearing range receive @Hear (Source-X item/multi OnHear).
-        // Gated on OnItemHear being installed, so shards without any @Hear item def
-        // skip the item scan entirely. Same range as characters.
-        if (OnItemHear != null)
+        // Source-X gates this scan on the per-sector listen-item count
+        // (CClientEvent.cpp:1883 HasListenItems) — when no comm crystal / multi
+        // is anywhere near the speaker, the per-utterance ground-item sweep is
+        // skipped entirely. ScanAllItemsOnHear (any item def hooks @Hear) forces
+        // the full scan, since then any ground item may be a listener.
+        if (OnItemHear != null &&
+            (ScanAllItemsOnHear || _world.HasListenItemsInRange(speaker.Position, hearRange)))
         {
             foreach (var item in _world.GetItemsInRange(speaker.Position, hearRange))
                 OnItemHear(speaker, item, text, mode);

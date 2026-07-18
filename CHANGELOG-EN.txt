@@ -7,6 +7,14 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+PERFORMANCE - Speech no longer sweeps every nearby ground item per spoken line. The
+        reference engine keeps a per-sector count of items that can actually hear
+        (comm crystals; here also multis/ships, which route speech the same way) and
+        skips the item sweep entirely when that count is zero — the common case. The
+        same counter model is now maintained on item place/remove/retype, so shards
+        without a crystal or house in earshot pay nothing per utterance. Scripted
+        item @Hear still forces the full sweep, since then any item may listen.
+
 PERFORMANCE - Tooltips no longer run a line-of-sight raycast per object. The reference
         engine gates tooltips on distance and visibility only (the client draws objects
         through walls, so their tooltips must arrive too); the extra per-object raycast

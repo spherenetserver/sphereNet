@@ -199,7 +199,16 @@ public class Item : ObjBase
                 return ItemType.Door;
             return ItemType.Normal;
         }
-        set => _type = value;
+        set
+        {
+            var oldEffective = ItemType;
+            _type = value;
+            var newEffective = ItemType;
+            // Keep the owning sector's listen-item count (speech gate) balanced
+            // when a script retypes an item already on the ground.
+            if (oldEffective != newEffective && IsOnGround)
+                ResolveWorld?.Invoke()?.NotifyGroundItemTypeChanged(this, oldEffective, newEffective);
+        }
     }
 
     /// <summary>The raw instance type field, before the lazy def-resolution the

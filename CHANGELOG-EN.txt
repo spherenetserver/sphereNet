@@ -7,6 +7,19 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIX - Double-clicking an NPC while standing near a map static door no longer
+        toggles that door and makes the NPC vanish. The static-door fallback ran
+        before the character lookup and, without validating the clicked serial,
+        toggled the nearest door (with its open/close sound) and rebroadcast the
+        door art under the NPC's serial — the client then showed the mobile as a
+        door graphic until the next view refresh. The fallback now runs only when
+        the clicked serial is neither an item nor a character, and the door art
+        broadcast only ever reuses the synthetic static-door serials. Also removed
+        the LOS raycast from the character double-click gate (the reference checks
+        distance and visibility only), which could likewise delete a drawn mobile
+        from the client when clicked through a wall. Temporary [static_door] field
+        diagnostics removed.
+
 PERFORMANCE - NPC chase pathfinding is now bounded like the reference engine and
         runs off the main thread. Three changes: (1) route-finding only engages for
         targets 2-13 tiles away and searches inside the same 28x28 local box the

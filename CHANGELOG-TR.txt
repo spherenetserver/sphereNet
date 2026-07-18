@@ -6,6 +6,19 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+FIX - Map static kapinin yaninda dururken bir NPC'ye cift tiklamak artik o kapiyi
+        acip kapatmiyor ve NPC'yi kaybettirmiyor. Static-kapi fallback'i karakter
+        aramasindan ONCE calisiyordu ve tiklanan serial'i dogrulamadan en yakin
+        kapiyi (acilis/kapanis sesiyle) toggle edip kapi gorselini NPC'nin
+        serial'iyla yayinliyordu -- client mobili bir sonraki view yenilemesine
+        kadar kapi grafigi olarak goruyordu. Fallback artik yalnizca tiklanan
+        serial ne item ne karakter olarak cozuldugunde calisiyor ve kapi yayini
+        yalnizca sentetik static-kapi serial'larini kullaniyor. Ayrica karakter
+        cift-tik gate'indeki LOS raycast kaldirildi (referans yalnizca mesafe +
+        gorunurluk kontrol eder); duvar arkasindan tiklanan cizili bir mobili de
+        ayni sekilde client'tan silebiliyordu. Gecici [static_door] saha loglari
+        kaldirildi.
+
 PERFORMANS - NPC kovalama pathfinding'i artik referans motor gibi sinirlandi ve
         ana thread disinda calisiyor. Uc degisiklik: (1) rota arama yalnizca 2-13
         tile uzakliktaki hedefler icin devreye giriyor ve referansin kullandigi ayni

@@ -240,9 +240,6 @@ public sealed class ClientItemUseHandler
             return;
         }
 
-        if (TryToggleNearestMapStaticDoor(uid))
-            return;
-
         var ch = _world.FindChar(new Serial(uid));
         if (ch != null)
         {
@@ -362,6 +359,16 @@ public sealed class ClientItemUseHandler
             return;
         }
 
+        // Static map doors have no world object — their dclick arrives with the
+        // synthetic serial we drew them with. This MUST run only after the item
+        // and character lookups both missed: it toggles the nearest door to the
+        // PLAYER without validating the clicked uid, so reaching it with a live
+        // character's uid toggled a random nearby door and rebroadcast the door
+        // art under that character's serial (the "dclicked cow vanishes with a
+        // door sound" bug).
+        if (TryToggleNearestMapStaticDoor(uid))
+            return;
+
         if (uid != 0)
             Send(new PacketDeleteObject(uid));
     }
@@ -378,7 +385,11 @@ public sealed class ClientItemUseHandler
         if (concealed && !_character.AllShow && _character.PrivLevel < PrivLevel.Counsel)
             return false;
 
-        return _world.CanSeeLOS(_character.Position, target.Position);
+        // Distance + visibility only (Source-X CanSee) — no LOS raycast. The view
+        // pipeline draws mobiles through walls, so failing here on a raycast made
+        // the dclick path "correct" the client with PacketDeleteObject and the
+        // visible mobile vanished until the next view refresh.
+        return true;
     }
 
     private bool CanSeeItemForDoubleClick(Item item, out Point3D usePoint)

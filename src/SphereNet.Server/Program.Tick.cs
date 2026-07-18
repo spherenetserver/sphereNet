@@ -952,12 +952,6 @@ public static partial class Program
             BroadcastNearby(pos, 18,
                 new PacketWorldItem(op.Serial, op.ClosedArt, 1, op.X, op.Y, op.Z, op.Hue), 0);
         }
-
-        // Field diagnostic: a door that visually stays open while this line
-        // reports the close means the CLIENT-side ghost is the problem, not
-        // the server sweep.
-        _log.LogInformation("[static_door] auto-closed {Closed} door(s){Dropped}",
-            closed, dropped > 0 ? $", dropped {dropped} with no matching static" : "");
     }
 
     private static void RunPostTickMaintenance()

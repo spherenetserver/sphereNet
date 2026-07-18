@@ -438,11 +438,14 @@ public sealed partial class NpcAI
         if (light.TryGetTag("LIGHT_CHARGES", out string? raw) &&
             int.TryParse(raw, out int parsed))
             charges = parsed;
-        if (charges <= 0)
+        if (charges <= 0 || light.TryGetTag("LIGHT_BURNED", out _))
             return false;
 
-        light.SetTag("LIGHT_CHARGES", (charges - 1).ToString());
+        // Charges burn one-per-minute via the lit timer (Item.OnLightBurnTick),
+        // not per lighting — Source-X Use_Light semantics.
+        light.SetTag("LIGHT_CHARGES", charges.ToString());
         light.ItemType = ItemType.LightLit;
+        light.SetTimeout(Environment.TickCount64 + Item.LightBurnTickMs);
         return true;
     }
 

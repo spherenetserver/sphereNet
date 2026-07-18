@@ -6,6 +6,26 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+FEATURE - Ev/gemi deed yerlestirme artik multi-onizleme cursor'u (0x99)
+        kaldiriyor: client duz artı isareti yerine binanin tam taban izini
+        cursor'da hayalet olarak gosteriyor ve server referans motorun anchor-Y
+        duzeltmesini uyguladigi icin ev tam onizlemede gorunen yere oturuyor.
+        Yerlestirme cevabi ayrica bastan dogrulaniyor (deed hala ayni cantada,
+        erisilebilir, oyuncu canli ve donmamis) — cursor acikken takas edilen
+        veya birakilan deed artik yerlestiremiyor.
+
+FEATURE - Yakilan isik kaynaklari artik gercek bir yasam dongusune sahip:
+        dakikada bir sarj yaniyor (varsayilan 20), sarj bitince alev kendi
+        kendine sonuyor, tukenen kaynak bir daha yakilamiyor ve statik/dekor
+        isiklar sonsuza dek yaniyor. Kalan yanma suresi restart'lari atlatiyor.
+
+FIX - Gemi hareketi ve yerlestirme artik statik su tile'larini (kiyi dolgulari,
+        statik olarak dosenmis liman suyu) yuzulebilir sayiyor ve su hattindaki
+        bloklayici world item'lar govdeyi dok ve kayalar gibi durduruyor. Smooth
+        boat-move paketi (0xF6) ayrica tam guverte-obje listesini tasiyor;
+        smooth-sailing client'lar yolcu ve kargoyu tekil resend beklemeden
+        govdeyle birlikte hareket ettiriyor.
+
 FIX - MinCharDeleteTime gun sayisindan (varsayilan 7) genc karakterler artik
         karakter secim ekranindan silinemiyor; client dogru "yeterince eski degil"
         nedenini gosteriyor ve staff hesaplari gate'i atliyor. Olusturma zamani

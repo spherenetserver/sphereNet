@@ -239,6 +239,9 @@ public sealed partial class GameClient : IClientContext
         BeginPendingCraft(recipe, craftSkill, reopenGump);
 
     void IClientContext.SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType) => SetPendingTarget(callback, cursorType);
+    void IClientContext.SetPendingMultiTarget(Action<uint, short, short, sbyte, ushort> callback,
+        ushort multiId, short xOff, short yOff, short zOff, ushort hue) =>
+        SetPendingMultiTarget(callback, multiId, xOff, yOff, zOff, hue);
     void IClientContext.ClearPendingTargetState() => ClearPendingTargetState();
     bool IClientContext.TryAddAtTarget(string token, Point3D targetPos, uint targetSerial, ushort amount) =>
         TryAddAtTarget(token, targetPos, targetSerial, amount);

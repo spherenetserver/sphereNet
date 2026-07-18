@@ -191,6 +191,8 @@ internal interface IClientContext : ITextConsole
 
     // --- targeting ---
     void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1);
+    void SetPendingMultiTarget(Action<uint, short, short, sbyte, ushort> callback,
+        ushort multiId, short xOff, short yOff, short zOff, ushort hue);
     void ClearPendingTargetState();
     bool TryAddAtTarget(string token, Point3D targetPos, uint targetSerial = 0, ushort amount = 1);
     bool RemoveTargetedObject(uint uid);

@@ -89,6 +89,9 @@ public sealed class ClientItemUseHandler
     private bool TryMountCharacter(Character mount) => _client.TryMountCharacter(mount);
     private void ResetWalkValidator() => _client.ResetWalkValidator();
     private void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1) => _client.SetPendingTarget(callback, cursorType);
+    private void SetPendingMultiTarget(Action<uint, short, short, sbyte, ushort> callback,
+        ushort multiId, short xOff, short yOff, short zOff, ushort hue) =>
+        _client.SetPendingMultiTarget(callback, multiId, xOff, yOff, zOff, hue);
     private void ToggleDoor(Item door) => _client.ToggleDoor(door);
     private bool TryToggleNearestMapStaticDoor(uint clientSerial) => _client.TryToggleNearestMapStaticDoor(clientSerial);
     private void UsePotion(Item potion) => _client.UsePotion(potion);
@@ -1201,10 +1204,42 @@ public sealed class ClientItemUseHandler
                     SysMessage(isShip
                         ? "Where would you like to place the ship?"
                         : "Where would you like to place the house?");
-                    SetPendingTarget((serial, tx, ty, tz, gfx) =>
+
+                    // B9 (Source-X OnTarg_Use_Item anti-cheat): remember where the
+                    // deed lived when the cursor was raised — a deed traded/moved
+                    // mid-cursor must not still place ("targ moved").
+                    var deedParentAtPrompt = deedItem.ContainedIn;
+                    // B8: the multi footprint drives both the 0x99 preview offsets
+                    // and the Source-X anchor-Y correction on the reply
+                    // (CItemMulti.cpp:3288 pt.m_y -= rect.bottom - 1).
+                    var multiDef = _housingEngine.MultiDefs.Get(multiId);
+                    short anchorBottom = multiDef?.MaxY ?? 0;
+
+                    Action<uint, short, short, sbyte, ushort> placeCallback = (serial, tx, ty, tz, gfx) =>
                     {
-                        if (deedItem.IsDeleted) return;
-                        var pos = new Point3D(tx, ty, tz, _character.MapIndex);
+                        // B9: re-validate everything when the cursor reply arrives —
+                        // the world moved on while the cursor was up (Source-X
+                        // OnTarg_Use_Item + CanUse chain).
+                        if (deedItem.IsDeleted || _character == null) return;
+                        if (deedItem.ContainedIn != deedParentAtPrompt)
+                        {
+                            SysMessage(ServerMessages.Get(Msg.ItemuseToofar));
+                            return;
+                        }
+                        if (_character.IsDead || _character.IsStatFlag(StatFlag.Freeze))
+                            return;
+                        if (_character.PrivLevel < PrivLevel.GM && !CanReachTargetItem(deedItem))
+                        {
+                            SysMessage(ServerMessages.Get(Msg.ItemuseToofar));
+                            return;
+                        }
+
+                        // B8: undo the client-side preview offset baked into the
+                        // reply Y for real multis (Source-X Multi_Create).
+                        short anchorY = ty;
+                        if (anchorBottom > 0)
+                            anchorY = (short)(ty - (anchorBottom - 1));
+                        var pos = new Point3D(tx, anchorY, tz, _character.MapIndex);
                         Item? placedMulti;
                         SphereNet.Game.Housing.PlacementFailure failure;
                         if (isShip)
@@ -1232,7 +1267,16 @@ public sealed class ClientItemUseHandler
                         {
                             SysMessage(PlacementFailureMessage(failure, isShip));
                         }
-                    });
+                    };
+
+                    // B8: raise the 0x99 multi-preview cursor when the footprint is
+                    // known (the client ghosts the house at the cursor, Source-X
+                    // addTargetItems); fall back to the plain ground cursor otherwise.
+                    if (multiDef != null)
+                        SetPendingMultiTarget(placeCallback, multiId,
+                            xOff: 0, yOff: anchorBottom, zOff: 0, hue: deedItem.Hue.Value);
+                    else
+                        SetPendingTarget(placeCallback);
                 }
                 break;
 
@@ -1254,17 +1298,20 @@ public sealed class ClientItemUseHandler
                     SysMessage("You cannot light that while it is in a container.");
                     break;
                 }
-                // Each lighting burns one charge; a burned-out source can't relight.
+                // Source-X Use_Light: a burned-out source can never relight;
+                // charges default to 20 when unset and burn down ONE PER MINUTE
+                // via the lit-timer tick (Item.OnLightBurnTick), not per lighting.
                 int charges = 20;
                 if (item.TryGetTag("LIGHT_CHARGES", out string? cs) && int.TryParse(cs, out int c))
                     charges = c;
-                if (charges <= 0)
+                if (charges <= 0 || item.TryGetTag("LIGHT_BURNED", out _))
                 {
                     SysMessage("It has burned out and cannot be lit.");
                     break;
                 }
-                item.SetTag("LIGHT_CHARGES", (charges - 1).ToString());
+                item.SetTag("LIGHT_CHARGES", charges.ToString());
                 item.ItemType = ItemType.LightLit;
+                item.SetTimeout(Environment.TickCount64 + Item.LightBurnTickMs);
                 _netState.Send(new PacketSound(0x0047, _character.X, _character.Y, _character.Z));
                 BroadcastNearby?.Invoke(item.Position, UpdateRange,
                     new PacketWorldItem(item.Uid.Value, item.DispIdFull, item.Amount,

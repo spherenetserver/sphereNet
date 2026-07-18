@@ -150,21 +150,31 @@ zorunlu bağlantılar için fail-fast doğrulama.
   dokunulmadı (component-materialize ile çalışıyor; multi göndermek çift-render yapardı). Save değişmedi.
   Test: MultiWirePacketTests. NOT: uçtan uca custom-house render'ı canlı istemcide teyit edilmeli;
   fixed-multi body'sinin origin'de bıraktığı stray-tile ayrı/ön-mevcut kozmetik konu (kapsam dışı).
-- [ ] **B8 (P1) — 0x99 preview paketi + Source-X anchor-Y düzeltmesi yok.**
-  `PacketDefinitions.cs:116` sadece uzunluk tablosunda; outgoing sınıfı yok, deed normal
-  `PacketTarget` kullanıyor. Source-X tıklanan Y'yi footprint'e göre düzeltiyor
-  (`CItemMulti.cpp:3288`), SphereNet ham X/Y/Z kullanıyor (`ClientItemUseHandler.cs:1194`).
-- [ ] **B9 (P1) — Target callback güvenlik yeniden-doğrulaması yok.** Cursor cevabında sadece
-  `deedItem.IsDeleted` kontrol ediliyor (`ClientItemUseHandler.cs:1193`); deed takas/mesafe/
-  LOS/map/ölü-jailed/limit yeniden doğrulanmıyor. Fix: placement'ı atomik transaction yap.
+- [x] **B8 (P1) — 0x99 preview paketi + Source-X anchor-Y düzeltmesi.** (YAPILDI:
+  `PacketTargetMulti` (0x99, Source-X send.cpp:1772 wire formatı; HS 7.0.13+ hue dword'lü 30B,
+  classic 26B) + `SetPendingMultiTarget` cursor varyantı; deed handler footprint biliniyorsa
+  0x99 kaldırıyor (yOff = rect.bottom = MultiDef.MaxY), cevapta Source-X anchor düzeltmesi
+  `y -= (bottom-1)` (CItemMulti.cpp:3288) uygulanıyor. Test: HouseShipLightParityTests.
+  PacketTargetMulti_WireFormat. Canlı client'ta ghost-preview görsel teyidi önerilir.)
+- [x] **B9 (P1) — Target callback güvenlik yeniden-doğrulaması.** (YAPILDI: cursor cevabında
+  Source-X OnTarg_Use_Item + CanUse zinciri — deed silinmemiş + cursor kalkarkenki parent'ında
+  ("targ moved" anti-cheat) + non-GM için `CanReachTargetItem` + ölü/donmuş reddi; limit'ler
+  zaten PlaceHouse/PlaceShip içinde yeniden kontrol ediliyor.)
 - [x] **B10 (P2) — House storage sabit 400.** (YAPILDI — B3 kapsamında: `PlaceHouse` artık
   `def.BaseStorage > 0` ise script değerini uyguluyor (`HousingEngine.cs` "Apply script [MULTIDEF]
   BaseStorage"), `HOUSE.STORAGE` tag'iyle persist ediliyor. Test: MultiRegistryMetadataTests.
   Ev-tipi farkı script pack'in MULTIDEF BaseStorage değerlerinden gelir.)
-- [ ] **B11 (P2) — 0xF6 ship-move paketi component/yolcu listesi taşımıyor.**
-  `GamePackets.cs:755` `PacketBoatSmoothMove` sadece serial/speed/dir/x/y/z.
-- [ ] **B12 (P2) — Ship su kontrolü land-only.** `ShipEngine.cs:836` `IsWaterAt` sadece land
-  `IsWet`; wet static/surface, dock/rock, su-Z, diğer hull, HS access bakılmıyor.
+- [x] **B11 (P2) — 0xF6 ship-move paketi component/yolcu listesi taşıyor.** (YAPILDI:
+  `PacketBoatSmoothMove` artık Source-X PacketMoveShip (send.cpp:5402) gibi u16 count +
+  {serial,x,y,z} listesi yazıyor (boş listede de count alanı var — eskiden hiç yoktu);
+  `OnShipMoved` `ListShipObjects` ile güverte objelerini (component/yolcu/kargo, gemi hariç)
+  dolduruyor. Test: HouseShipLightParityTests.PacketBoatSmoothMove_CarriesDeckObjectList.)
+- [x] **B12 (P2) — Ship su kontrolü.** (YAPILDI — bir kısmı önceki dalgalarda `CanSailInto`
+  ile kapanmıştı (bloklayıcı statik + diğer hull); bu dalga: wet STATIC artık su sayılıyor
+  (Source-X GetHeightPoint2 CAN_I_WATER katkısı — statik döşenmiş kıyı/liman suyu yüzülebilir)
+  + su hattındaki bloklayıcı dinamik world item'lar hull'u durduruyor. Her iki yol (placement
+  `:221` + movement `:1017/:1024`) `CanSailInto`'dan geçiyor. Test:
+  HouseShipLightParityTests.ShipWater_WetStaticCountsAsSailable.)
 - [x] **B13 (P2) — Custom foundation deed tag'inden algılanıyor.** (YAPILDI: `HousingEngine.
   IsCustomFoundation(multiId)` = MULTIDEF `MultiTypeName=="t_multi_custom"` (B3'ten); deed handler
   `customFoundation = CUSTOMHOUSE tag ∨ IsCustomFoundation(multiId)` → ilk foundation deed'i (tag'siz)
@@ -224,10 +234,13 @@ desteklenmeyen ayar başlangıç uyarısı üretsin.
 
 ## D. Yarım mekanikler (P2)
 
-- [ ] **D1 (P2) — Işık kaynakları yaşam döngüsü yok.** `ClientItemUseHandler.cs:1234` yakınca
-  tek `LIGHT_CHARGES` düşüyor + `LightOut→LightLit` toggle; **yanma süresi/otomatik sönme/
-  zaman-tabanlı charge tüketimi/persistent burn-time yok** (`Item.OnTick` switch'inde LightLit
-  case'i yok, `:2705`). Fix: SetTimeout ile burn timer + charge tick + auto-extinguish + save.
+- [x] **D1 (P2) — Işık kaynakları yaşam döngüsü.** (YAPILDI — Source-X CItem.cpp:6271 birebir:
+  yakışta şarj DÜŞMÜYOR (eski davranış düzeltildi), `Item.OnLightBurnTick` 60sn'de bir şarj
+  yakıyor (default 20), sıfırda `LIGHT_BURNED` + `ExtinguishLight` (0x4B8/0x3BE douse sesleri)
+  ile `LightOut`'a dönüyor, burned kaynak bir daha yakılamıyor, `ATTR_MOVE_NEVER/STATIC`
+  sonsuz yanıyor; kalan süre mevcut TIMER persist'iyle restart'ı atlatıyor. Yakma noktaları
+  (player use + NPC gece ışığı) timer kuruyor. Test: HouseShipLightParityTests (2). NOT:
+  Source-X'in lit/out grafik çifti swap'ı yapılmadı — SphereNet type-flip konvansiyonu korundu.)
 - [x] **D2 (P2) — Spell school'ları: minimal sözleşme kapatıldı.** (YAPILDI:
   `SpellEngine.IsInertSchoolSpell` — 201..999 aralığında olup HİÇBİR davranış taşımayan
   (flag yok, effect/duration eğrisi yok, `HasScriptedStages` yok) spell CastStart'ta

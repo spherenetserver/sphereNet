@@ -25,4 +25,8 @@ public sealed partial class GameClient
     /// stablemaster, etc.</summary>
     public void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1) =>
         Targeting.SetPendingTarget(callback, cursorType);
+
+    public void SetPendingMultiTarget(Action<uint, short, short, sbyte, ushort> callback,
+        ushort multiId, short xOff, short yOff, short zOff, ushort hue) =>
+        Targeting.SetPendingMultiTarget(callback, multiId, xOff, yOff, zOff, hue);
 }

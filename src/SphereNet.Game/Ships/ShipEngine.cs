@@ -845,7 +845,19 @@ public sealed class ShipEngine
         if (_mapData == null) return true;
         var terrain = _mapData.GetTerrainTile(mapId, x, y);
         var landData = _mapData.GetLandTileData(terrain.TileId);
-        return landData.IsWet;
+        if (landData.IsWet)
+            return true;
+
+        // Source-X GetHeightPoint2: a WET static contributes CAN_I_WATER, so
+        // static water tiles (coast fills, river/harbour water laid as statics)
+        // are sailable even where the underlying land tile is not wet.
+        foreach (var st in _mapData.GetStatics(mapId, x, y))
+        {
+            var td = _mapData.GetItemTileData(st.TileId);
+            if ((td.Flags & SphereNet.MapData.Tiles.TileFlag.Wet) != 0)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -870,6 +882,17 @@ public sealed class ShipEngine
                 if (blocks && !wetStatic && Math.Abs(st.Z - z) <= 10)
                     return false;
             }
+        }
+
+        // Blocking dynamic items near the water plane (Source-X GetHeightPoint2
+        // evaluates dynamics too): a lockdown/deco blocker or dock fixture laid
+        // as a world item stops the hull the same way a static does.
+        foreach (var wi in _world.GetItemsInRange(new Point3D(x, y, z, (byte)mapId), 0))
+        {
+            if (wi.IsDeleted || !wi.IsOnGround) continue;
+            if (wi.X != x || wi.Y != y) continue;
+            if (Math.Abs(wi.Z - z) > 10) continue;
+            if (wi.IsStaticBlock) return false;
         }
 
         // Another ship's hull in the cell blocks (Source-X: multis participate

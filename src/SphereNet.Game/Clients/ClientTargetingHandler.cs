@@ -847,5 +847,33 @@ public sealed class ClientTargetingHandler
         _netState.Send(new PacketTarget(cursorType, cursorId));
     }
 
+    /// <summary>Ground cursor with the multi footprint ghost-rendered at the
+    /// cursor (0x99, Source-X addTargetItems for deeds). Same pending-target
+    /// bookkeeping as <see cref="SetPendingTarget"/>; only the raised packet
+    /// differs. HS-era clients (7.0.13+) take the trailing hue dword.</summary>
+    internal void SetPendingMultiTarget(Action<uint, short, short, sbyte, ushort> callback,
+        ushort multiId, short xOff, short yOff, short zOff, ushort hue)
+    {
+        bool replacedOpenCursor = Targets.CursorActive;
+        if (replacedOpenCursor)
+        {
+            int replacedSkill = Targets.SkillCancelId;
+            _netState.Send(new PacketTarget(0x00, 0x00000000, flags: 3));
+            if (replacedSkill >= 0 && _character != null)
+                _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillTargetCancel,
+                    new TriggerArgs { CharSrc = _character, N1 = replacedSkill });
+        }
+
+        ClearPendingTargetState();
+        Targets.Callback = callback;
+        Targets.CursorActive = true;
+        uint cursorId = (uint)Random.Shared.Next(1, int.MaxValue);
+        Targets.CursorId = cursorId;
+        if (replacedOpenCursor)
+            Targets.StaleCancelEchoUntil = Environment.TickCount64 + 2000;
+        _netState.Send(new PacketTargetMulti(cursorId, multiId, xOff, yOff, zOff, hue,
+            includeHue: _netState.ClientVersionNumber >= 70_013_000));
+    }
+
     // ==================== Information Skills ====================
 }

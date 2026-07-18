@@ -762,9 +762,12 @@ public sealed class PacketBoatSmoothMove : PacketWriter
     private readonly short _y;
     private readonly ushort _z;
 
+    private readonly (uint Serial, short X, short Y, sbyte Z)[] _objects;
+
     public PacketBoatSmoothMove(
         uint serial, byte boatSpeed, byte moveDir, byte faceDir,
-        short x, short y, ushort z)
+        short x, short y, ushort z,
+        (uint Serial, short X, short Y, sbyte Z)[]? objects = null)
         : base(0xF6)
     {
         _serial = serial;
@@ -774,11 +777,17 @@ public sealed class PacketBoatSmoothMove : PacketWriter
         _x = x;
         _y = y;
         _z = z;
+        _objects = objects ?? [];
     }
 
     public override PacketBuffer Build()
     {
-        var buf = CreateVariable(16);
+        // Source-X PacketMoveShip (send.cpp:5402): after the ship header comes
+        // a u16 count and one {serial, x, y, z} entry per deck object
+        // (passengers, components, cargo — the ship itself excluded). Smooth
+        // clients ride each entry as a relative offset from the hull instead of
+        // waiting for individual object resends.
+        var buf = CreateVariable(18 + _objects.Length * 10);
         buf.WriteUInt32(_serial);
         buf.WriteByte(_boatSpeed);
         buf.WriteByte(_moveDir);
@@ -786,6 +795,14 @@ public sealed class PacketBoatSmoothMove : PacketWriter
         buf.WriteUInt16((ushort)_x);
         buf.WriteUInt16((ushort)_y);
         buf.WriteUInt16(_z);
+        buf.WriteUInt16((ushort)_objects.Length);
+        foreach (var (objSerial, ox, oy, oz) in _objects)
+        {
+            buf.WriteUInt32(objSerial);
+            buf.WriteUInt16((ushort)ox);
+            buf.WriteUInt16((ushort)oy);
+            buf.WriteUInt16((ushort)(sbyte)oz);
+        }
         buf.WriteLengthAt(1);
         return buf;
     }

@@ -188,8 +188,12 @@ public class NpcAiWaveN1Tests
         ai.OnTickAction(townsman);
         Assert.Equal(torch, townsman.GetEquippedItem(Layer.TwoHanded));
         Assert.Equal(ItemType.LightLit, torch.ItemType);
+        // D1 (Source-X Use_Light): lighting no longer spends a charge — charges
+        // burn one-per-minute via the lit timer instead, so the fresh default
+        // stays at 20 and the burn timer is armed.
         Assert.True(torch.TryGetTag("LIGHT_CHARGES", out string? charges));
-        Assert.Equal("19", charges);
+        Assert.Equal("20", charges);
+        Assert.True(torch.Timeout > Environment.TickCount64);
 
         // Day: it goes back into the pack.
         ai.GetLightLevel = _ => 5;

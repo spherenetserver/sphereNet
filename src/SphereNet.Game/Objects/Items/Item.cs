@@ -2650,6 +2650,50 @@ public class Item : ObjBase
         return region != null && region.IsFlag(Core.Enums.RegionFlag.NoDecay);
     }
 
+    /// <summary>Real milliseconds per light-source burn tick (Source-X
+    /// IT_LIGHT_LIT _SetTimeoutS(60): one charge every 60 seconds).</summary>
+    public const long LightBurnTickMs = 60_000;
+
+    /// <summary>Source-X IT_LIGHT_LIT tick (CItem.cpp:6271): a lit light source
+    /// consumes one charge per minute; at zero it marks itself burned out
+    /// (LIGHT_BURNED, can never relight) and reverts to the doused type.
+    /// ATTR_MOVE_NEVER/STATIC lights burn forever — no charge, no re-arm.
+    /// The running countdown survives restarts via the persisted TIMER.</summary>
+    private void OnLightBurnTick()
+    {
+        if (IsAttr(ObjAttributes.Move_Never) || IsAttr(ObjAttributes.Static))
+            return;
+
+        int charges = 20;
+        if (TryGetTag("LIGHT_CHARGES", out string? raw) && int.TryParse(raw, out int parsed))
+            charges = parsed;
+        charges--;
+        SetTag("LIGHT_CHARGES", Math.Max(0, charges).ToString());
+
+        if (charges > 0)
+        {
+            SetTimeout(Environment.TickCount64 + LightBurnTickMs);
+            return;
+        }
+
+        SetTag("LIGHT_BURNED", "1");
+        ExtinguishLight(burnedOut: true);
+    }
+
+    /// <summary>Douse a lit light source (auto-burnout or scripted). Keeps
+    /// SphereNet's type-flip convention (no graphic pair swap) and plays the
+    /// Source-X douse sound (0x4B8 burned out / 0x3BE snuffed).</summary>
+    internal void ExtinguishLight(bool burnedOut)
+    {
+        if (_type != ItemType.LightLit)
+            return;
+        _type = ItemType.LightOut;
+        SetTimeout(0);
+        EmitScriptSound(burnedOut ? "0x04B8" : "0x03BE");
+        MarkDirty((DirtyFlag)0xFFFFFFFF);
+        OnVisualUpdate?.Invoke(this);
+    }
+
     public override bool OnTick()
     {
         if (_isDeleted) return false;
@@ -2739,6 +2783,9 @@ public class Item : ObjBase
                     // Source-X CItem::_OnTick → Plant_OnTick: a crop/foliage grows
                     // one stage each timer tick.
                     PlantOnTick();
+                    break;
+                case ItemType.LightLit:
+                    OnLightBurnTick();
                     break;
             }
         }

@@ -7,6 +7,26 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FEATURE - House/ship deed placement now raises the multi-preview cursor (0x99):
+        the client ghosts the full building footprint at the cursor instead of a
+        plain crosshair, and the server applies the reference engine's anchor-Y
+        correction so the house lands exactly where the preview showed it. The
+        placement reply is also fully re-validated (deed still in the same pack,
+        reachable, caster alive and unfrozen) so a deed traded or dropped while
+        the cursor was up can no longer place.
+
+FEATURE - Lit light sources now live a real lifecycle: one charge burns per
+        minute (20 by default), the flame goes out by itself when the charges run
+        dry, a burned-out source can never be relit, and static/decoration lights
+        burn forever. The remaining burn time survives restarts.
+
+FIX - Ship movement and placement now treat static water tiles (coast fills,
+        harbour water laid as statics) as sailable, and blocking world items on
+        the water line stop the hull the same way docks and rocks do. The smooth
+        boat-move packet (0xF6) also carries the full deck-object list, so
+        smooth-sailing clients move passengers and cargo with the hull instead
+        of waiting for individual resends.
+
 FIX - Characters younger than the MinCharDeleteTime day count (default 7) can no
         longer be deleted from the character-select screen; the client shows the
         proper "not old enough" reason and staff accounts bypass the gate. The

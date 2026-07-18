@@ -2388,12 +2388,23 @@ public static partial class Program
             _shipEngine.OnShipMoved = ship =>
             {
                 var mi = ship.MultiItem;
+                // B11 (Source-X PacketMoveShip): carry every deck object
+                // (components, passengers, cargo) so smooth-sailing clients move
+                // them with the hull instead of waiting for per-object resends.
+                var shipObjs = _shipEngine.ListShipObjects(ship);
+                var entries = new (uint, short, short, sbyte)[Math.Max(0, shipObjs.Count - 1)];
+                for (int i = 1; i < shipObjs.Count; i++)
+                {
+                    var o = shipObjs[i];
+                    entries[i - 1] = (o.Uid.Value, o.X, o.Y, o.Z);
+                }
                 var pkt = new PacketBoatSmoothMove(
                     mi.Uid.Value,
                     (byte)ship.SpeedMode,
                     (byte)((byte)ship.DirMove & 0x07),
                     (byte)((byte)ship.DirFace & 0x07),
-                    mi.X, mi.Y, (ushort)(mi.Z < 0 ? 0 : mi.Z));
+                    mi.X, mi.Y, (ushort)(mi.Z < 0 ? 0 : mi.Z),
+                    entries);
                 BroadcastNearby(mi.Position, 18, pkt, 0);
                 // @ShipMove (Source-X) — fired on the ship multi as it advances.
                 _triggerDispatcher?.FireItemTrigger(mi, ItemTrigger.ShipMove,

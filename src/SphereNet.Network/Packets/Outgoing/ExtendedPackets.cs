@@ -257,6 +257,44 @@ public sealed class PacketTarget : PacketWriter
     }
 }
 
+/// <summary>0x99 — multi-placement target: raises a ground cursor with the
+/// house/ship footprint rendered as a ghost at the cursor (Source-X
+/// PacketAddTarget XCMD_TargetMulti, send.cpp:1772). The offsets shift the
+/// preview so its anchor matches where the server will place the multi;
+/// HS+ clients take a trailing 32-bit hue.</summary>
+public sealed class PacketTargetMulti : PacketWriter
+{
+    private readonly uint _cursorId;
+    private readonly ushort _multiId;
+    private readonly short _xOff, _yOff, _zOff;
+    private readonly uint _hue;
+    private readonly bool _includeHue;
+
+    public PacketTargetMulti(uint cursorId, ushort multiId, short xOff, short yOff, short zOff,
+        uint hue, bool includeHue) : base(0x99)
+    {
+        _cursorId = cursorId; _multiId = multiId;
+        _xOff = xOff; _yOff = yOff; _zOff = zOff;
+        _hue = hue; _includeHue = includeHue;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateFixed(_includeHue ? 30 : 26);
+        buf.WriteByte(1);              // allow ground target
+        buf.WriteUInt32(_cursorId);
+        buf.WriteByte(0);              // flags: neutral
+        buf.WriteBytes(new byte[11]);  // unused (Source-X writes 4+4+2+1 zeros)
+        buf.WriteUInt16(_multiId);     // raw multi.mul index
+        buf.WriteUInt16((ushort)_xOff);
+        buf.WriteUInt16((ushort)_yOff);
+        buf.WriteUInt16((ushort)_zOff);
+        if (_includeHue)
+            buf.WriteUInt32(_hue);
+        return buf;
+    }
+}
+
 /// <summary>0x23 - Drag animation.</summary>
 public sealed class PacketDragAnimation : PacketWriter
 {

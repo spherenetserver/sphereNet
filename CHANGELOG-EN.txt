@@ -16,6 +16,12 @@ INTERNAL - Removed redundant unused code paths flagged by a code review: a secon
         packets, and the speed-hack audit hook) was kept and documented instead. No
         behaviour change.
 
+CHANGED - State recording is now OFF by default. This optional diagnostic/replay
+        feature took a periodic full-world snapshot on every server whether or not
+        anyone used it. It is now disabled unless you set StateRecordingEnabled=1 in
+        sphere.ini, so servers no longer pay that cost by default. Existing setups
+        that rely on recording must add that line to keep it on.
+
 PERFORMANCE - Removed the periodic latency spike from sleeping-sector upkeep. Item
         timers, spawns and decay in sectors with no nearby player used to all run in a
         single tick every few minutes, causing a recurring stall. That upkeep is now

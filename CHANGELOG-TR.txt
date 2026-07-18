@@ -14,6 +14,12 @@ DAHILI - Kod incelemesinde isaretlenen redundant kullanilmayan kod yollari kaldi
         (bot-performans CI gate, fast-walk protokol paketleri, speed-hack audit hook)
         silinmeyip belgelendi. Davranis degisikligi yok.
 
+DEGISTI - State recording artik varsayilan olarak KAPALI. Bu opsiyonel diagnostic/
+        replay ozelligi, kullanilsin kullanilmasin her sunucuda periyodik tum-dunya
+        snapshot'i aliyordu. Artik sphere.ini'de StateRecordingEnabled=1 yazmadikca
+        kapali; sunucular varsayilan olarak bu maliyeti odemiyor. Kayda guvenen mevcut
+        kurulumlar acik tutmak icin o satiri eklemeli.
+
 PERFORMANS - Uyuyan sektor bakimindaki periyodik gecikme spike'i kaldirildi. Yakininda
         oyuncu olmayan sektorlerdeki item timer'lari, spawn ve decay eskiden birkac
         dakikada bir tek tick'te toptan calisiyor ve tekrarlayan bir takilma yaratiyordu.

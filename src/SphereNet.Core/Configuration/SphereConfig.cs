@@ -284,7 +284,10 @@ public sealed class SphereConfig
     public int DecayTimer { get; set; } = 30;
 
     // State Recording
-    public bool StateRecordingEnabled { get; set; } = true;
+    // Off by default: it is an optional diagnostic/replay feature whose periodic
+    // full-world snapshots cost every deployment unless explicitly wanted. Set
+    // StateRecordingEnabled=1 in sphere.ini to turn it back on.
+    public bool StateRecordingEnabled { get; set; } = false;
     public bool StateRecordPlayersOnly { get; set; } = true;
     public int StateRecordMoveScanMs { get; set; } = 2000;
     public int StateRecordSnapshotMs { get; set; } = 15000;

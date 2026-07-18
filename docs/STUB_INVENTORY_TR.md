@@ -5,7 +5,7 @@ Bu doküman, kodda **tanımlı görünüp fiilen çalışmayan** veya **yalnızc
 **Not — terminoloji:** Metinde *oyun karakteri* için `Character` sınıfı (`Character.cs`) kullanılır. Türkçe *karakter* kelimesi yazı kodlaması (UTF-8) anlamında değildir; bu dosya UTF-8 ile kaydedilmiştir.
 
 İlgili test guardrail: `src/SphereNet.Tests/TriggerCoverageGuardrailTests.cs`, `src/SphereNet.Tests/SourceXVerbInventoryGuardrailTests.cs`
-Ses/görüntü/hareket parity: `docs/SOUND_VISUAL_MOVEMENT_PARITY_TR.md`
+Ses/görüntü/hareket parity: `docs/PARITY.md` → "Sound/visual gaps" bölümü
 
 Son güncelleme: 2026-07-03
 
@@ -257,7 +257,8 @@ Kaynak: `TriggerCoverageGuardrailTests.cs`
 
 ## 10. Parity dokümanı ilişkisi
 
-`SOUND_VISUAL_MOVEMENT_PARITY_TR.md` güncel ses/görüntü/hareket durumunu tutar:
+Güncel ses/görüntü/hareket durumu `PARITY.md`'nin "Sound/visual gaps" bölümünde
+tutulur (eski `SOUND_VISUAL_MOVEMENT_PARITY_TR.md` oraya birleştirildi):
 
 - `0xC0` / `0xC7` / `0x23` artık `ExtendedPackets.cs` + `ObjBase` / `Inventory` ile mevcut.
 - `ObjBase.SOUND` üst handler ile çalışıyor; switch içi stub ölü kod.

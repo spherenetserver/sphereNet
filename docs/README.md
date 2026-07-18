@@ -15,17 +15,11 @@ For the project overview, features, and quick start, see the top-level **[README
 - **[PROTOCOL_MATRIX.md](PROTOCOL_MATRIX.md)** — Incoming client opcodes routed through `PacketManager` (kept in sync with `PacketManagerTests`).
 - **[PACKET_FLOW_GUIDE.md](PACKET_FLOW_GUIDE.md)** — How packets move from network parsing to `GameClient` and its handler classes, plus behavior-level packet sequences for Source-X developers (TR + EN).
 - **[DEVELOPER_MAP_TR.md](DEVELOPER_MAP_TR.md)** — Geliştirici haritası: Source-X → SphereNet eşleşmeleri, paket yolculuğu, kod haritası, özellik ekleme rehberi.
-- **[GAMECLIENT_DECOMPOSITION_TR.md](GAMECLIENT_DECOMPOSITION_TR.md)** — `GameClient` ayrıştırmasının tamamlanan fazları ve dosya haritası (tarihsel kayıt).
 
-### Parity tracking
-- **[PARITY.md](PARITY.md)** — The single Source-X / Sphere 56x parity matrix: domain summary + itemised behaviour-surface detail (SERV verbs, triggers, persistence, object verbs), with the tests guarding each area.
-- **[PARITY_BACKLOG_SUB90.md](PARITY_BACKLOG_SUB90.md)** — Actionable below-90 backlog, tiered by risk; the live "what's left" list.
+### Parity & open work
+- **[PARITY.md](PARITY.md)** — The single Source-X / Sphere 56x parity document: domain summary, itemised behaviour-surface detail (SERV verbs, triggers, persistence, object verbs), and the deferred tail / sound-visual gaps at the end.
 - **[STUB_INVENTORY_TR.md](STUB_INVENTORY_TR.md)** — Kodda kalan stub, no-op ve bilinçli ertelenmiş uyumluluk açıkları.
-- **[SOUND_VISUAL_MOVEMENT_PARITY_TR.md](SOUND_VISUAL_MOVEMENT_PARITY_TR.md)** — Ses, efekt, ışık, hareket ve drag/drop packet parite rehberi.
-
-### Plans & investigations
-- **[INCELEME_DOGRULAMA_PLANI_TR.md](INCELEME_DOGRULAMA_PLANI_TR.md)** — Doğrulanmış inceleme bulgularının tek yaşayan takipçisi (açık A/B/C/D/E maddeleri burada).
-- **[PERF_KONUSMA_NPC_VIEW_PLANI_TR.md](PERF_KONUSMA_NPC_VIEW_PLANI_TR.md)** — Konuşma / NPC-AI / view-apply performans planı (kapandı; kayıt olarak durur).
+- **[INCELEME_DOGRULAMA_PLANI_TR.md](INCELEME_DOGRULAMA_PLANI_TR.md)** — Doğrulanmış inceleme bulgularının tek yaşayan iş takipçisi (açık A/B/C/D/E maddeleri burada).
 
 ### Operations
 - **[DEPLOY.md](DEPLOY.md)** — Files, host modes, security model (operator surfaces + checklist), and validation needed to run a shard.
@@ -36,12 +30,15 @@ For the project overview, features, and quick start, see the top-level **[README
 - **[CHANGELOG-EN.txt](../CHANGELOG-EN.txt)** / **[CHANGELOG-TR.txt](../CHANGELOG-TR.txt)** — Per-language changelog.
 - **[CHANGELOG_OLD.txt](../CHANGELOG_OLD.txt)** — Bilingual history archive (entries before 2026-05-29).
 
-> Housekeeping note (2026-07-18): `PARITY_MATRIX.md` merged into `PARITY.md`;
-> `TRANSITION_GUIDE_TR.md` merged into `DEVELOPER_MAP_TR.md`; the three
-> absorbed investigation reports (`PROJE_GENEL_INCELEME_PLANI_TR`,
-> `HOUSE_SHIP_DEED_SISTEM_INCELEMESI_TR`, `PERFORMANS_LOG_INCELEMESI_TR`), the
-> stale `PARITY_ROADMAP_TR.md` and the inaccurate `PACKET_GUIDE_SIMPLE_TR.md`
-> were deleted (full text in git history).
+> Housekeeping (2026-07-18): docs/ trimmed from 24 to 13 files. Merged:
+> `PARITY_MATRIX` + the open tails of `PARITY_BACKLOG_SUB90` and
+> `SOUND_VISUAL_MOVEMENT_PARITY_TR` → `PARITY.md`; `TRANSITION_GUIDE_TR` →
+> `DEVELOPER_MAP_TR.md`. Deleted (closed reports / stale / absorbed — full text
+> in git history): `PARITY_ROADMAP_TR`, `PACKET_GUIDE_SIMPLE_TR`,
+> `PROJE_GENEL_INCELEME_PLANI_TR`, `HOUSE_SHIP_DEED_SISTEM_INCELEMESI_TR`,
+> `PERFORMANS_LOG_INCELEMESI_TR`, `PERF_KONUSMA_NPC_VIEW_PLANI_TR`,
+> `GAMECLIENT_DECOMPOSITION_TR`, `PARITY_BACKLOG_SUB90`,
+> `SOUND_VISUAL_MOVEMENT_PARITY_TR`.
 
 ---
 

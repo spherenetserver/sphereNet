@@ -115,9 +115,9 @@ Bir paketi takip ederken şu sırayla git:
 
 ## GameClient Dosya Haritası
 
-`GameClient` iki katmandır (decomposition sonrası — ayrıntı:
-`GAMECLIENT_DECOMPOSITION_TR.md`): ince partial'lar dışa açık API'yi ve
-delegasyonu tutar, gerçek davranış `Client*Handler` sınıflarına taşınmıştır.
+`GameClient` iki katmandır (Wave 88-94 decomposition'ı sonrası): ince
+partial'lar dışa açık API'yi ve delegasyonu tutar, gerçek davranış
+`Client*Handler` sınıflarına taşınmıştır.
 
 | Partial (delegasyon) | Davranışın gerçek sahibi | Ne zaman bakılır? |
 |---|---|---|
@@ -886,9 +886,9 @@ Raw buffers still exist in a few compatibility spots, for example pickup-failed
 
 ## Where GameClient Is Split
 
-`GameClient` is two layers (post-decomposition — see
-`GAMECLIENT_DECOMPOSITION_TR.md`): thin partials hold the public API and
-delegate, the behavior itself lives in the extracted `Client*Handler` classes:
+`GameClient` is two layers (after the Wave 88-94 decomposition): thin partials
+hold the public API and delegate, the behavior itself lives in the extracted
+`Client*Handler` classes:
 
 | Partial (delegation) | Behavior owner | Purpose |
 |---|---|---|

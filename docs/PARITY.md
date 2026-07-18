@@ -4,7 +4,8 @@ Single parity document: **Part 1** is the domain-level summary matrix, **Part 2*
 is the itemised behaviour-surface detail (formerly `PARITY_MATRIX.md`, merged
 2026-07-18). Every non-covered item names either a regression test to add/extend
 or an explicit deferred reason so the backlog does not turn into folklore.
-The actionable below-90 backlog lives in `PARITY_BACKLOG_SUB90.md`.
+The deferred tail lives in the "Open threads" section at the end; open
+verification/action items live in `INCELEME_DOGRULAMA_PLANI_TR.md`.
 
 Current verification snapshot (2026-07-18): `dotnet test .\src\SphereNet.Tests\SphereNet.Tests.csproj --nologo` passes 1867 tests (3 skipped). The current overall Source-X parity estimate is about 8.8/10; the remaining 9.x work is concentrated in ship/statics packet fidelity, native statics output, client/admin verb long tail, and a few infrastructure-gated triggers.
 
@@ -274,5 +275,41 @@ it is not wired to the `FILE.` ref in Source-X either. Guarded by
 - Persistent save/load of `DEFMSG` runtime overrides.
 - Relay/game crypto matrix vectors (`ENC_BFISH`/`ENC_TFISH`/`ENC_BTFISH`).
 - Packet opcode matrix fixture corpus (era classification).
-- The actionable below-90 tail lives in `PARITY_BACKLOG_SUB90.md`; open
-  verification items live in `INCELEME_DOGRULAMA_PLANI_TR.md`.
+- Open verification/action items live in `INCELEME_DOGRULAMA_PLANI_TR.md`
+  (the single work tracker).
+
+### Deferred tail (absorbed from the closed PARITY_BACKLOG_SUB90, 2026-07-18)
+
+The below-90 backlog closed through Wave 270 (70/76 items); the 6 surviving
+items were all explicitly deferred with reasons and are parked here:
+
+- **Spell schools** — Bushido/Ninjitsu/Focus/Imbuing/Mysticism/Spellweaving:
+  enums exist, no native handlers (large, separate project; note Chivalry is
+  NOT open — Source-X core has no chivalry cases either, verified 2026-07).
+- **SERV no-op tail** — `STAT` / `TIMERF` section form / `SERVERS`: acceptable
+  no-ops for a single-server shard. LOW.
+- **Pet economy sub-commands** — pet-sells-loot buy/sell/sample are
+  message-only. LOW.
+- **`IsCorpseSleeping`** — SphereNet has no sleeping mechanic; Source-X callers
+  are Forensics/steal, out of scope.
+- **Niche display packets** — `PacketBondedStatus` (0xBF.0x19),
+  `PacketStatueAnimation`, `PacketToggleHotbar`, `PacketSignGump`,
+  `PacketGameTime`, `PacketGlobalChat` (out), `PacketQueryClient`,
+  `PacketDisplayPopup`, `PacketCharacterListUpdate` (0x86): add only when a
+  real consumer appears — an unwired stub adds no value.
+- **`CCryptoKeyCalc` auto-detect** — client-version key-table auto-detection
+  (keys currently supplied externally). Related: bcrypt accounts need an
+  external dependency and Source-X core itself is plain+MD5 only — already
+  equivalent-or-better.
+
+### Sound/visual gaps (absorbed from the closed SOUND_VISUAL_MOVEMENT_PARITY_TR, 2026-07-18)
+
+- `GenericSounds` — config key + `SERV.GENERICSOUNDS` exist (W-I1) but the
+  addSound emission gate is not wired; sounds still play when disabled.
+- Drop sound is still the flat `0x0042` (gold amount differentiates); Source-X
+  `GetDropSound(pObjOn)` is item/tiledata-based.
+- Sector ambient sounds (wind etc., Source-X `CSector` tick) are absent.
+- `0x23` drag animation: pickup/ground-drop covered; the container-drop path is
+  not modeled to full Source-X depth.
+- `PacketBoatSmoothMove` does not yet carry the full Source-X `PacketMoveShip`
+  component list.

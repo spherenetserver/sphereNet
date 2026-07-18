@@ -227,8 +227,8 @@ desteklenmeyen ayar başlangıç uyarısı üretsin.
 - [ ] **D2 (P2 — BÜYÜK, ayrı proje) — Spell school'ları.** `ApplySpecificSpell` (`:1628`) sadece
   Magery + Necromancy case'leri; Chivalry (Source-X'te C++ yok → yapılmadı, ayrı karar) /
   Bushido/Ninjitsu/Spellweaving/Mysticism generic damage/heal'e düşüyor. Risk: eksik spell
-  "desteklenmiyor" demek yerine mana/reagent tüketip etkisiz. (PARITY_BACKLOG_SUB90.md ile
-  ortak — necromancy gibi per-school çok-wave'lik iş.) Fix: eksik spell'i açıkça pasif işaretle.
+  "desteklenmiyor" demek yerine mana/reagent tüketip etkisiz. (PARITY.md "Deferred tail"
+  ile ortak — necromancy gibi per-school çok-wave'lik iş.) Fix: eksik spell'i açıkça pasif işaretle.
 
 ---
 
@@ -338,10 +338,10 @@ gecikmeleri); aşağıdakiler onu **büyüten** kesin kod borçları.
   → xUnit'te erken return = **passed** (skipped değil). "0 skipped" üç çalışmayan testi gizliyor.
   Fix: gerçek `Skip` (Assert.Skip / SkippableFact) + "Skips cleanly" yorumunu düzelt.
 - [x] **G2 (P2) — Trigger dokümanları bayat (NPCSeeWantItem).** (YAPILDI: TRIGGERS.md,
-  STUB_INVENTORY_TR.md, PARITY_MATRIX.md güncellendi — `NPCSeeWantItem` artık ateşleniyor
-  (EngineWiring); güncel tek not-fired char trigger `UserVirtue` (virtue-gump, gump yok).) Trigger artık wire'lı+ateşleniyor
-  (`Program.EngineWiring.cs:1660/1681`) ama docs hâlâ eksik gösteriyor: `STUB_INVENTORY_TR.md:37/40/
-  202/252`, `TRIGGERS.md:23/245`, `PARITY_MATRIX.md:75`. Fix: docs güncelle.
+  STUB_INVENTORY_TR.md ve o günkü PARITY_MATRIX.md — sonradan PARITY.md'ye birleştirildi —
+  güncellendi; `NPCSeeWantItem` artık ateşleniyor (EngineWiring); güncel tek not-fired char
+  trigger `UserVirtue` (virtue-gump, gump yok).) Trigger artık wire'lı+ateşleniyor
+  (`Program.EngineWiring.cs:1660/1681`); bayat gösteren doc satırları düzeltildi.
 
 ---
 

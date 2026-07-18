@@ -122,12 +122,21 @@ Maliyet arama değil, **objeleri client'a uygulama** — özellikle per-yeni-obj
 
 ---
 
-## Önerilen kapatma sırası (güvenlik × değer)
+## Kapatma durumu (güvenlik × değer)
 
-1. **V1** — ClientTooltip gate (çok düşük risk, en yüksek değer, mevcut gate desenini aynala). ★ önce
-2. **N1** — NPC wake stagger (küçük, güvenli, login transient'i kırar).
-3. **S2** — Speech-trigger gate (düşük risk, handler yoksa etkisiz).
-4. **V2** — OPL cache persist (orta).
-5. **S1 / N2** — facing-broadcast bastır / NPC parallel brain (yüksek değer ama davranış/mimari, dikkatli).
+1. [x] **V1** — ClientTooltip gate. Commit 144a8e0.
+2. [x] **N1** — NPC wake stagger. Commit d3f5a39.
+3. [x] **S2** — Speech hear-hook gate (f_onchar_speech HasFunction + greeting IsTrigUsed). Commit 7649610.
+4. [x] **S1** — Redundant facing broadcast kaldırıldı (dirty→view pipeline'a bırakıldı). Commit 0a8505b.
+5. [ ] **V2** — OPL cache'i view-exit'te evict etme. ERTELENDİ (otonom yapılmadı): re-entry'de tooltip'i
+   30s'ye kadar bayat gösterme riski = **görünür davranış değişimi**; V1 zaten baskın maliyeti (gate'siz
+   trigger) çözdü, V2 ikincil. Canlı client'ta bayatlık kabul edilebilirliği doğrulanmalı.
+6. [ ] **N2** — Read-only ağır işi (range-scan + A* FindPath) paralel BuildDecision'a taşı. ERTELENDİ
+   (otonom yapılmadı): NPC-AI thread-safety mimarisini değiştiren **yüksek riskli** iş; build-apply arası
+   world değişimi için re-validation gerektirir, canlı yük testi + gözetim ister. En yüksek değer ama
+   en riskli — ayrı, gözetimli oturumda yapılmalı.
 
-Her biri: recon → en küçük fix → build + test + changelog → commit/push.
+Bu dalgada V1/N1/S2/S1 (hepsi davranış-koruyan, testli, yeşil) kapatıldı. V2/N2 bilinçli olarak
+gözetimli bir oturuma bırakıldı (davranış/mimari trade-off).
+
+Her biri yapıldı: recon → en küçük fix → build + test + changelog → commit/push.

@@ -1192,7 +1192,7 @@ public sealed class ClientItemUseHandler
                         // no MORE) references no structure — say so instead of the
                         // misleading "Cannot place house here", and log what the
                         // deed actually carried for field diagnosis.
-                        _logger.LogDebug(
+                        _logger.LogWarning(
                             "[deed] unresolvable multi on 0x{Uid:X8} '{Name}' base=0x{Base:X} more1=0x{More1:X} tagMORE={More} tagM1D={M1D}",
                             deedItem.Uid.Value, deedItem.Name, deedItem.BaseId, deedItem.More1,
                             deedItem.TryGetTag("MORE", out string? tm) ? tm : "-",

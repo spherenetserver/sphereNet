@@ -28,13 +28,19 @@ public sealed class DeedPlacementResolutionTests
         return path;
     }
 
-    [Fact]
-    public void NamedHouseDeed_AtCreateMore_RaisesPlacementCursorOnDClick()
+    [Theory]
+    [InlineData("i_deed_test_house")]
+    [InlineData("i_deed_test_ship")] // multi id 0 — the small-ship-north edge
+    public void NamedDeed_AtCreateMore_RaisesPlacementCursorOnDClick(string deedDefname)
     {
         var stack = ScriptTestBootstrap.CreateRuntimeStack();
         string path = WriteScript("""
             [ITEMDEF 014ef]
             DEFNAME=i_deed
+            TYPE=t_deed
+
+            [ITEMDEF 014f1]
+            DEFNAME=i_deed_ship
             TYPE=t_deed
 
             [ITEMDEF i_deed_test_house]
@@ -43,9 +49,19 @@ public sealed class DeedPlacementResolutionTests
             ON=@Create
                 MORE=m_test_house
 
+            [ITEMDEF i_deed_test_ship]
+            ID=i_deed_ship
+            NAME=Deed to a Test Ship
+            ON=@Create
+                MORE=m_test_ship
+
             [MULTIDEF 064]
             DEFNAME=m_test_house
             TYPE=t_multi
+
+            [MULTIDEF 0]
+            DEFNAME=m_test_ship
+            TYPE=t_ship
             """);
         stack.Resources.LoadResourceFile(path);
         ScriptTestBootstrap.LoadDefinitions(stack.Resources);
@@ -53,6 +69,7 @@ public sealed class DeedPlacementResolutionTests
         var oldResolveDefName = Item.ResolveDefName;
         var oldResolveMulti = Item.ResolveMultiDefId;
         var oldCreateHook = Item.CreateTriggerHook;
+        var oldShipEngine = Item.ResolveShipEngine;
         try
         {
             // EXACT production wiring (Program.cs / EngineWiring):
@@ -77,7 +94,10 @@ public sealed class DeedPlacementResolutionTests
 
             var world = TestHarness.CreateWorld();
             using var loggerFactory = TestHarness.CreateLoggerFactory();
-            var housing = new HousingEngine(world, new MultiRegistry());
+            var registry = new MultiRegistry();
+            var housing = new HousingEngine(world, registry);
+            var ships = new SphereNet.Game.Ships.ShipEngine(world, registry, null);
+            Item.ResolveShipEngine = () => ships;
 
             var state = TestHarness.CreateActiveNetState(loggerFactory, Random.Shared.Next(20_000, 30_000));
             state.ClientVersionNumber = 70_020_000;
@@ -91,7 +111,7 @@ public sealed class DeedPlacementResolutionTests
             TestHarness.AttachCharacter(client, player);
 
             // Create the deed the way .add / NEWITEM does.
-            int defIdx = stack.Resources.ResolveDefName("i_deed_test_house").Index;
+            int defIdx = stack.Resources.ResolveDefName(deedDefname).Index;
             var deed = world.CreateItem();
             ItemDefHelper.ApplyInstanceMetadata(deed, defIdx);
             deed.FireCreateTrigger();
@@ -111,6 +131,7 @@ public sealed class DeedPlacementResolutionTests
             Item.ResolveDefName = oldResolveDefName;
             Item.ResolveMultiDefId = oldResolveMulti;
             Item.CreateTriggerHook = oldCreateHook;
+            Item.ResolveShipEngine = oldShipEngine;
         }
     }
 }

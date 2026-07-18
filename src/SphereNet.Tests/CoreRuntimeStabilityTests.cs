@@ -134,6 +134,31 @@ public class CoreRuntimeStabilityTests
         Assert.Equal(TriggerResult.True, result);
     }
 
+    // S2 (perf): the per-NPC f_onchar_speech hear hook is gated by HasFunction so an
+    // undefined global function (the common case) skips building trigger args on every
+    // spoken line. HasFunction must report a defined function as present (exact name and
+    // f_-prefix fallback) and an undefined one as absent.
+    [Fact]
+    public void HasFunction_TracksRegisteredFunctions()
+    {
+        using var temp = new TempScriptFile(
+            "[FUNCTION f_onchar_speech]\n" +
+            "RETURN 0\n\n" +
+            "[FUNCTION greet]\n" +
+            "RETURN 0\n");
+
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var resources = new ResourceHolder(loggerFactory.CreateLogger<ResourceHolder>());
+        resources.LoadResourceFile(temp.Path);
+        var interpreter = new ScriptInterpreter(new ExpressionParser(), loggerFactory.CreateLogger<ScriptInterpreter>());
+        var runner = new TriggerRunner(interpreter, resources, loggerFactory.CreateLogger<TriggerRunner>());
+
+        Assert.True(runner.HasFunction("f_onchar_speech")); // exact match
+        Assert.True(runner.HasFunction("greet"));           // exact match
+        Assert.True(runner.HasFunction("onchar_speech"));   // f_-prefix fallback → f_onchar_speech
+        Assert.False(runner.HasFunction("f_nonexistent_hook"));
+    }
+
     [Fact]
     public void ScriptFunction_LocalScope_DoesNotLeakToCaller()
     {

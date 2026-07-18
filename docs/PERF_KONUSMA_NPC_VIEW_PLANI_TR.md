@@ -31,9 +31,14 @@ comm crystal → paket üretimi. `hearRange`=18 (say) sektör-pencereli.
 - [ ] **S1 (P1, ORTA risk) — `BroadcastFacingUpdate` per-NPC'yi bastır/batch'le.** En büyük sürücü ama
   DAVRANIŞ etkiliyor (NPC konuşana dönüyor). Seçenek: sadece speech/service ilgisi olan NPC dönsün,
   ya da facing broadcast'i batch/dedupe et. Dikkat: görünür davranış.
-- [ ] **S2 (P2, DÜŞÜK risk) — Speech-trigger dispatch'ini gate'le.** NPC'nin SPEECH resource'u ve service
-  rolü yoksa ağır trigger/keyword dalını atla (facing + memory-greeting korunabilir). Handler yoksa
-  etkisiz → düşük risk. Kazanç orta.
+- [x] **S2 (P2, DÜŞÜK risk) — Speech hear-handler gate'leri YAPILDI (davranış-koruyan).** İki temiz gate:
+  (1) `f_onchar_speech` global hook'u yeni `TriggerRunner.HasFunction` ile gate'lendi — fonksiyon tanımlı
+  değilse (yaygın durum) her NPC her konuşma satırında TriggerArgs alloc'unu atlıyor; tanımlıysa davranış
+  aynı. (2) `@NPCHearGreeting` fire'ı `IsCharTriggerUsed(NPCHearGreeting)` ile gate'lendi — hook yoksa
+  dispatch+alloc atlanıyor; `MEMORY_SPEAK` kaydı KORUNUYOR (script okuyabilir). Facing + service/keyword
+  dalları dokunulmadı (Human/None brain'ler train için hâlâ akıyor). Test: HasFunction_TracksRegisteredFunctions.
+  Suite yeşil. NOT: kalan residual (per-NPC ToLowerInvariant tekrarı + service/keyword dispatch) S1 ve
+  ileride ele alınabilir; en büyük sürücü (facing broadcast) S1'de.
 - [ ] **S3 (P2) — Koşulsuz item scan'i gözden geçir.** Comm crystal yoksa/az ise scan'i gate'le.
 
 ---

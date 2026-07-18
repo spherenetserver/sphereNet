@@ -907,19 +907,21 @@ public static partial class Program
             }
         }
 
-        // Source-X global speech function hook — silent when missing.
-        // Many imported script packs don't define this; warning on every
-        // spoken line would drown the log.
-        _triggerDispatcher?.Runner?.TryRunFunction(
-            "f_onchar_speech",
-            npc,
-            null,
-            new SphereNet.Scripting.Execution.TriggerArgs(speaker, (int)mode, 0, text)
-            {
-                Object1 = npc,
-                Object2 = speaker
-            },
-            out _);
+        // Source-X global speech function hook — silent when missing. Many imported
+        // script packs don't define it, so it is gated by HasFunction: when absent (the
+        // common case) every nearby NPC on every spoken line skips building a TriggerArgs
+        // just to no-op inside TryRunFunction. Behaviour is unchanged when it IS defined.
+        if (_triggerDispatcher?.Runner?.HasFunction("f_onchar_speech") == true)
+            _triggerDispatcher.Runner.TryRunFunction(
+                "f_onchar_speech",
+                npc,
+                null,
+                new SphereNet.Scripting.Execution.TriggerArgs(speaker, (int)mode, 0, text)
+                {
+                    Object1 = npc,
+                    Object2 = speaker
+                },
+                out _);
 
         // @NPCHearGreeting fires only on FIRST contact with this speaker (Source-X
         // NPC_OnHear: greeting when there is no MEMORY_SPEAK, then record it).
@@ -931,12 +933,19 @@ public static partial class Program
         if (firstContact)
         {
             npc.Memory_AddObjTypes(speaker.Uid, SphereNet.Core.Enums.MemoryType.Speak);
-            var trigResult = _triggerDispatcher?.FireCharTrigger(npc, CharTrigger.NPCHearGreeting,
-                new TriggerArgs { CharSrc = speaker, S1 = text });
-            if (trigResult == TriggerResult.True)
+            // Gate the greeting dispatch (and its arg alloc) on IsTrigUsed: skip it when
+            // no script hooks @NPCHearGreeting anywhere. The MEMORY_SPEAK record above is
+            // kept regardless so scripts that read it still see first-contact state.
+            if (_triggerDispatcher != null &&
+                _triggerDispatcher.IsCharTriggerUsed(CharTrigger.NPCHearGreeting))
             {
-                _log.LogDebug("[npc_hear] {Npc} @NPCHearGreeting consumed text='{Text}'", npc.Name, text);
-                return;
+                var trigResult = _triggerDispatcher.FireCharTrigger(npc, CharTrigger.NPCHearGreeting,
+                    new TriggerArgs { CharSrc = speaker, S1 = text });
+                if (trigResult == TriggerResult.True)
+                {
+                    _log.LogDebug("[npc_hear] {Npc} @NPCHearGreeting consumed text='{Text}'", npc.Name, text);
+                    return;
+                }
             }
         }
 

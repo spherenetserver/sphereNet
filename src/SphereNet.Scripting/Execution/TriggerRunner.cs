@@ -236,6 +236,25 @@ public sealed class TriggerRunner
         return TryExecuteFunction(funcName, target, source, args, callerScope, out result, out _);
     }
 
+    /// <summary>True when a script function with this defname (or its <c>f_</c>-prefixed
+    /// form) is registered. Lets hot callers skip building trigger args for a global hook
+    /// that most script packs never define (e.g. per-NPC f_onchar_speech on every spoken
+    /// line). Resolution mirrors TryExecuteFunction's lookup — a name matched to a
+    /// non-Function resource does not count.</summary>
+    public bool HasFunction(string funcName)
+    {
+        var rid = _resources.ResolveDefName(funcName);
+        if (rid.IsValid && rid.Type != ResType.Function)
+            rid = ResourceId.Invalid;
+        if (!rid.IsValid)
+        {
+            rid = _resources.ResolveDefName("f_" + funcName);
+            if (rid.IsValid && rid.Type != ResType.Function)
+                rid = ResourceId.Invalid;
+        }
+        return rid.IsValid && _resources.GetResource(rid) != null;
+    }
+
     /// <summary>
     /// Execute a named function and surface its RETURN value as a string for
     /// angle-bracket function expressions.

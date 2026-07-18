@@ -16,6 +16,13 @@ INTERNAL - Removed redundant unused code paths flagged by a code review: a secon
         packets, and the speed-hack audit hook) was kept and documented instead. No
         behaviour change.
 
+PERFORMANCE - Cheaper speech handling in NPC-dense areas. When a player speaks, every
+        nearby NPC runs a hear handler; it fired the global f_onchar_speech hook and the
+        first-contact greeting trigger for every NPC on every line, even when no script
+        defined them. Both are now skipped when unused, so a spoken line near a large
+        crowd of NPCs costs noticeably less. NPCs still turn to face the speaker and
+        scripts that do define those hooks behave exactly as before.
+
 PERFORMANCE - Smoother NPC wake-up after login near a crowd. Logging in lights up the
         sector window around the player and could wake ~140 NPCs into the exact same
         100ms timer slot, so their AI all ran in one tick and caused a brief stall. The

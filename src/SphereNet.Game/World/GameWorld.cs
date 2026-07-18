@@ -116,8 +116,12 @@ public sealed class GameWorld
     // this many (cheap) grid cells examined, so a single tick's cost stays bounded no
     // matter how the item-bearing sleeping sectors are distributed. Instance-scoped so
     // tests can shrink them without leaking across the suite.
-    internal int MaintenanceCallsPerTick { get; set; } = 256;
-    internal int MaintenanceExaminePerTick { get; set; } = 4096;
+    // Field-tuned down from 256/4096: the first slice of a 3-minute sweep still
+    // landed a 219ms world_tick on a small box (each maintenance call walks the
+    // sector's item list). 64 calls bounds the slice to tens of ms and the
+    // sweep just takes a few more ticks to cover the grid.
+    internal int MaintenanceCallsPerTick { get; set; } = 64;
+    internal int MaintenanceExaminePerTick { get; set; } = 2048;
     // Diagnostics/test observability for the current sweep.
     internal bool MaintenanceSweepActive => _maintenanceSweepActive;
     internal int MaintenanceCallsThisSweep { get; private set; }

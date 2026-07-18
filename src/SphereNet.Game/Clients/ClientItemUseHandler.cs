@@ -1186,8 +1186,21 @@ public sealed class ClientItemUseHandler
                 {
                     var deedItem = item;
                     var shipEngine = Item.ResolveShipEngine?.Invoke();
-                    if (!TryResolveDeedMulti(deedItem, out ushort multiId, out bool isShip)
-                        || (isShip && shipEngine == null))
+                    if (!TryResolveDeedMulti(deedItem, out ushort multiId, out bool isShip))
+                    {
+                        // A blank deed (the pack's base i_deed / i_deed_ship with
+                        // no MORE) references no structure — say so instead of the
+                        // misleading "Cannot place house here", and log what the
+                        // deed actually carried for field diagnosis.
+                        _logger.LogDebug(
+                            "[deed] unresolvable multi on 0x{Uid:X8} '{Name}' base=0x{Base:X} more1=0x{More1:X} tagMORE={More} tagM1D={M1D}",
+                            deedItem.Uid.Value, deedItem.Name, deedItem.BaseId, deedItem.More1,
+                            deedItem.TryGetTag("MORE", out string? tm) ? tm : "-",
+                            deedItem.TryGetTag("MORE1_DEFNAME", out string? tmd) ? tmd : "-");
+                        SysMessage("That deed is blank - it does not reference any structure.");
+                        break;
+                    }
+                    if (isShip && shipEngine == null)
                     {
                         SysMessage(ServerMessages.Get("house_cant_place"));
                         break;

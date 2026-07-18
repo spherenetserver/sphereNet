@@ -637,8 +637,6 @@ public sealed class ClientSkillsHandler
         // rebuild below compares against its hash so the revision bumps and 0xDC
         // observers know to re-request. Nulling it would reset the revision to 1
         // while clients still cache the old revision-1 props.
-        if (invalidate)
-            View.TooltipHashCache.Remove(serial);
 
         // Object-keyed cache (Source-X SetPropertyList): one build serves every
         // observer and survives view-exit; only the ToolTipCache TTL expires it.
@@ -647,7 +645,7 @@ public sealed class ClientSkillsHandler
         if (!invalidate && cacheMs > 0 && obj.TooltipCache is { } cached &&
             now - cached.BuiltAt < cacheMs)
         {
-            SendAosTooltipEntry(serial, cached, requested);
+            SendAosTooltipEntry(serial, cached, requested, hashChanged: false);
             return;
         }
 
@@ -756,8 +754,12 @@ public sealed class ClientSkillsHandler
             hash = hash * 31 + (uint)clilocId + StableStringHash(args);
 
         uint revision = 1;
+        bool hashChanged = true;
         if (obj.TooltipCache is { } previous)
-            revision = previous.Hash == hash ? previous.Revision : unchecked(previous.Revision + 1);
+        {
+            hashChanged = previous.Hash != hash;
+            revision = hashChanged ? unchecked(previous.Revision + 1) : previous.Revision;
+        }
         if (revision == 0) revision = 1;
 
         // Stored even with the TTL off (cacheMs == 0): the read above stays
@@ -765,21 +767,25 @@ public sealed class ClientSkillsHandler
         // changed tooltip would reuse revision 1 and stick in the client cache.
         var entry = new TooltipCacheEntry(hash, revision, now, props);
         obj.TooltipCache = entry;
-        SendAosTooltipEntry(serial, entry, requested);
+        SendAosTooltipEntry(serial, entry, requested, hashChanged);
     }
 
-    private void SendAosTooltipEntry(uint serial, TooltipCacheEntry entry, bool requested)
+    private void SendAosTooltipEntry(uint serial, TooltipCacheEntry entry, bool requested,
+        bool hashChanged)
     {
-        bool knownSame = View.TooltipHashCache.TryGetValue(serial, out uint sentHash) &&
-            sentHash == entry.Hash;
-        bool sendFull = requested || _world.ToolTipMode == 2 || !knownSame;
+        // Source-X TOOLTIPMODE_SENDVERSION (CClientMsg_AOSTooltip.cpp:176-207): an
+        // unrequested push carries only the OPL revision (0xDC) and the client
+        // pulls the full 0xD6 when its own cache misses that revision. Full data
+        // goes out when the client asked for it, when this build just changed the
+        // object's hash (the stale-UID cache-collision guard, :148-157), or in
+        // send-full mode (our ToolTipMode 2). This is what keeps a login burst at
+        // one tiny version packet per object instead of a full OPL each.
+        bool sendFull = requested || _world.ToolTipMode == 2 || hashChanged;
 
         if (sendFull)
             _netState.Send(new PacketOPLData(serial, entry.Revision, entry.Properties));
         else
             _netState.Send(new PacketOPLInfo(serial, entry.Revision));
-
-        View.TooltipHashCache[serial] = entry.Hash;
     }
 
     private bool CanSendAosTooltip(ObjBase obj)

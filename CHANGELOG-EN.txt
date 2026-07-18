@@ -7,6 +7,14 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+PERFORMANCE - Tooltip pushes during view updates are now version-only, like the
+        reference engine's default tooltip mode: when objects enter view the server
+        sends the tiny revision packet and the client requests the full property list
+        only for tooltips missing from its own cache. Full data is still pushed
+        immediately when the client asks, when the tooltip actually changed, or in
+        the send-full mode. A login or teleport into a crowded area now costs one
+        small packet per object instead of a full serialized tooltip each.
+
 PERFORMANCE - The built AOS tooltip is now cached on the object itself (the reference
         engine's model): one build serves every observer, expiry is purely time-based
         (sphere.ini ToolTipCache seconds), and the entry is no longer thrown away when

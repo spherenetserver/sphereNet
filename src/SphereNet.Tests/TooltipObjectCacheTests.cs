@@ -39,7 +39,7 @@ public sealed class TooltipObjectCacheTests
         world.ToolTipCache = 30;
 
         var clientA = MakeClient(loggerFactory, world, out _, new Point3D(100, 100, 0, 0));
-        var clientB = MakeClient(loggerFactory, world, out _, new Point3D(101, 100, 0, 0));
+        var clientB = MakeClient(loggerFactory, world, out var stateB, new Point3D(101, 100, 0, 0));
 
         var item = world.CreateItem();
         item.Name = "shared build";
@@ -50,10 +50,15 @@ public sealed class TooltipObjectCacheTests
         Assert.NotNull(built);
 
         // A name change would alter the props — but within the TTL the second
-        // observer must be served the object-cached entry, not a rebuild.
+        // observer must be served the object-cached entry, not a rebuild, and
+        // an unrequested push of a cached entry is version-only (0xDC; Source-X
+        // TOOLTIPMODE_SENDVERSION) — the client pulls 0xD6 itself if it needs it.
         item.Name = "renamed while cached";
         clientB.SendAosTooltip(item, requested: false);
         Assert.Same(built, item.TooltipCache);
+        var opcodesB = TestHarness.GetQueuedPackets(stateB).Select(p => p.Span[0]).ToList();
+        Assert.Single(opcodesB, op => op == 0xDC);
+        Assert.DoesNotContain(opcodesB, op => op == 0xD6);
     }
 
     [Fact]

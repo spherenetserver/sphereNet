@@ -6,6 +6,14 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+PERFORMANS - View guncellemelerindeki tooltip push'lari artik yalnizca revizyon
+        paketi tasiyor, referans motorun varsayilan tooltip modu gibi: objeler goruse
+        girdiginde server kucuk revizyon paketini gonderiyor ve client tam property
+        listesini yalnizca kendi cache'inde olmayan tooltip'ler icin istiyor. Client
+        istediginde, tooltip gercekten degistiginde veya send-full modunda tam veri
+        yine aninda gonderiliyor. Kalabalik bir bolgeye login/teleport artik obje
+        basina tam serialize tooltip yerine tek kucuk paket maliyetinde.
+
 PERFORMANS - Insa edilen AOS tooltip artik objenin uzerinde cache'leniyor (referans
         motorun modeli): tek build tum gozlemcilere hizmet ediyor, gecerlilik yalnizca
         zamana bagli (sphere.ini ToolTipCache saniyesi) ve obje client'in gorusunden

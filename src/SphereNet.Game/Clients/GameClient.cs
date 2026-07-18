@@ -283,7 +283,6 @@ public sealed partial class GameClient : ITextConsole
             OnCharacterOffline?.Invoke(_character);
             if (!linger)
                 _world.RemoveOnlinePlayer(_character);
-            View.TooltipHashCache.Clear();
             View.KnownItems.Clear();
             View.KnownChars.Clear();
             View.KnownDoorOverrides.Clear();

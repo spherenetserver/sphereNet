@@ -7,6 +7,14 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIX - Deleting a player's backpack (GM .remove) no longer breaks item drops:
+        the character kept a cached reference to the deleted pack, so the
+        automatic pack recreation never fired and items dropped onto the player
+        landed inside a deleted container and vanished. The cached reference is
+        now invalidated on delete, a fresh pack is created on the next drop
+        (reference-engine GetPackSafe behavior), and the wearer is redrawn so
+        the client sees the new pack before its contents.
+
 PERFORMANCE - NPC route-finding is budgeted per tick: at most four full A*
         searches run in one NPC decision phase; additional chasers wait ~150ms
         for their turn (they keep facing the target meanwhile). A chase burst

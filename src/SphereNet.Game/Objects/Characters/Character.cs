@@ -2264,8 +2264,28 @@ public partial class Character : ObjBase
 
     public Item? Backpack
     {
-        get => _backpack ?? GetEquippedItem(Layer.Pack);
+        get
+        {
+            // Never hand back a deleted pack: a GM .remove on the backpack
+            // clears the equip slot but this cached field kept the dead
+            // reference, so pack==null checks never fired, GetPackSafe-style
+            // recreation never ran, and items dropped "into the pack" landed
+            // inside a deleted container and vanished.
+            if (_backpack != null && !_backpack.IsDeleted)
+                return _backpack;
+            _backpack = null;
+            var equipped = GetEquippedItem(Layer.Pack);
+            return equipped == null || equipped.IsDeleted ? null : equipped;
+        }
         set => _backpack = value;
+    }
+
+    /// <summary>Drop the cached backpack reference if it points at
+    /// <paramref name="item"/> (called when that item is deleted).</summary>
+    public void ClearBackpackReference(Item item)
+    {
+        if (ReferenceEquals(_backpack, item))
+            _backpack = null;
     }
 
     public int GetTotalWeight()

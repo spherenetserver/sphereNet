@@ -6,6 +6,15 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+FIX - Oyuncunun cantasini silmek (GM .remove) artik item birakmayi bozmuyor:
+        karakter silinen cantaya cache'lenmis bir referans tutuyordu, otomatik
+        canta yeniden olusturma hic tetiklenmiyordu ve oyuncunun uzerine
+        birakilan item'lar silinmis konteynerin icine dusup kayboluyordu.
+        Cache'lenen referans artik silmede gecersizlestiriliyor, bir sonraki
+        birakmada taze canta olusturuluyor (referans motorun GetPackSafe
+        davranisi) ve client yeni cantayi iceriginden once gorsun diye
+        karakter yeniden ciziliyor.
+
 PERFORMANS - NPC rota arama tick basina butcelendi: bir NPC karar fazinda en
         fazla dort tam A* aramasi kosuyor; fazladan kovalayanlar sirasini ~150ms
         bekliyor (bu arada hedefe donuk kaliyorlar). Kovalama patlamasi eskiden

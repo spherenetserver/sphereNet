@@ -757,8 +757,15 @@ public sealed partial class GameClient
         var pack = target.Backpack;
         if (pack == null && target.IsPlayer)
         {
+            // Source-X GetPackSafe: a player without a pack (e.g. a GM .remove'd
+            // it) gets a fresh one on demand. Redraw the wearer so the client
+            // learns the new worn container BEFORE the 0x25 content update
+            // references it — otherwise the drop lands in a container the
+            // client has never seen.
             EnsurePlayerBackpack(target);
             pack = target.Backpack;
+            if (pack != null)
+                BroadcastDrawObject(target);
         }
         if (pack == null)
         {

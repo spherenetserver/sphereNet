@@ -551,9 +551,14 @@ public sealed class GameWorld
                     parentItem.RemoveItem(delItem);
                 // Equipped items live in the wearer's layer array, not in a
                 // container's contents — clear the slot so the layer does not
-                // retain a dead reference to the deleted item.
+                // retain a dead reference to the deleted item. The cached
+                // Backpack field needs the same cleanup or it keeps handing
+                // back the deleted pack.
                 else if (parentObj is Character parentChar && delItem.IsEquipped)
+                {
                     parentChar.Unequip(delItem.EquipLayer);
+                    parentChar.ClearBackpackReference(delItem);
+                }
             }
         }
 

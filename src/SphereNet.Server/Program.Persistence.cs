@@ -199,6 +199,8 @@ public static partial class Program
             Telemetry = new
             {
                 SnapshotMs = _telemetrySnapshotUs / 1000.0,
+                WorldTickMs = _telemetryWorldTickUs / 1000.0,
+                PostApplyMs = _telemetryPostApplyUs / 1000.0,
                 ComputeMs = _telemetryComputeUs / 1000.0,
                 ApplyMs = _telemetryApplyUs / 1000.0,
                 FlushMs = _telemetryFlushUs / 1000.0,

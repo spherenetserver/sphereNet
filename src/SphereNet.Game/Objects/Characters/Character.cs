@@ -826,6 +826,11 @@ public partial class Character : ObjBase
     public override bool IsDeleted => _isDeleted;
     public bool IsPlayer { get => _isPlayer; set => _isPlayer = value; }
 
+    /// <summary>Wall-clock creation time (unix seconds). Persisted as the
+    /// Source-X CREATE key (age in tenths of a second); 0 = unknown (legacy
+    /// save), treated as old enough for the MinCharDeleteTime gate.</summary>
+    public long CreatedUtcSeconds { get; set; }
+
     /// <summary>True when a GameClient is actively controlling this character.</summary>
     public bool IsOnline { get => _isOnline; set => _isOnline = value; }
 

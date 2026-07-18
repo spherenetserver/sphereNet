@@ -305,6 +305,7 @@ public sealed partial class GameClient
             string safeName = SanitizeCharacterName(string.IsNullOrWhiteSpace(name) ? _account.Name : name);
             _character.Name = safeName;
             _character.IsPlayer = true;
+            _character.CreatedUtcSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
             var info = PendingCharCreate;
             PendingCharCreate = null;

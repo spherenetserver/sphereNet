@@ -475,6 +475,19 @@ public sealed class SpellEngine
         if (IsSpellDisabledByConfig(spell))
             return -1;
 
+        // Native handlers exist only for Magery/Necromancy (+ the 1000+ custom
+        // Sphere spells). A school spell (Chivalry/Bushido/Ninjitsu/Spellweaving/
+        // Mysticism range) whose def carries NO behaviour — no flags, no
+        // effect/duration curve, no scripted ON= stage — used to swallow mana and
+        // reagents and then silently no-op. Refuse it up front instead; the
+        // schools themselves are a deferred project (PARITY.md "Deferred tail").
+        // A pack that scripts these spells (flags/curves/trigger stages) passes.
+        if (IsInertSchoolSpell(def))
+        {
+            OnSysMessage?.Invoke(caster, "That spell is not supported yet.");
+            return -1;
+        }
+
         if (caster.IsDead)
             return -1;
         if (caster.IsCasting)
@@ -1623,6 +1636,21 @@ public sealed class SpellEngine
         }
 
         OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.SpellGateOpen));
+    }
+
+    /// <summary>True when the spell sits in the unimplemented-school id space
+    /// (201..999: Chivalry/Bushido/Ninjitsu/Spellweaving/Mysticism/masteries)
+    /// AND its def provides no behaviour at all, so casting it could only
+    /// consume resources and no-op.</summary>
+    internal static bool IsInertSchoolSpell(SpellDef def)
+    {
+        int id = (int)def.Id;
+        if (id is < 201 or >= 1000)
+            return false; // Magery, Necromancy, custom Sphere spells
+        return def.Flags == SpellFlag.None &&
+            def.EffectBase == 0 && def.EffectScale == 0 &&
+            def.DurationBase == 0 && def.DurationScale == 0 &&
+            !def.HasScriptedStages;
     }
 
     private void ApplySpecificSpell(Character caster, Character target, SpellDef def, int effect)

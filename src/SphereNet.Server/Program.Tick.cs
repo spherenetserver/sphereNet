@@ -379,12 +379,13 @@ public static partial class Program
                 _slowTickCount++;
                 _lastSlowTickDominantPhase = GetDominantTickPhase();
                 _log.LogWarning(
-                    "[slow_tick] mode={Mode} tick={Tick} total={TotalMs}ms dominant={DominantPhase} snapshot={SnapshotMs}ms compute={ComputeMs}ms (npc_build={NpcBuildMs}ms client_state={ClientStateMs}ms npc_apply={NpcApplyMs}ms [commit={NpcApplyCommitMs}ms/{DecisionCount} purge={NpcApplyPurgeMs}ms dirty={NpcApplyDirtyMs}ms/{DirtyCount}] view_build={ViewBuildMs}ms) apply={ApplyMs}ms flush={FlushMs}ms",
+                    "[slow_tick] mode={Mode} tick={Tick} total={TotalMs}ms dominant={DominantPhase} snapshot={SnapshotMs}ms (world_tick={WorldTickMs}ms) compute={ComputeMs}ms (npc_build={NpcBuildMs}ms client_state={ClientStateMs}ms npc_apply={NpcApplyMs}ms [commit={NpcApplyCommitMs}ms/{DecisionCount} purge={NpcApplyPurgeMs}ms dirty={NpcApplyDirtyMs}ms/{DirtyCount}] view_build={ViewBuildMs}ms) apply={ApplyMs}ms post_apply={PostApplyMs}ms flush={FlushMs}ms",
                     _multicoreRuntimeEnabled ? "multicore" : "single",
                     _tickCounter,
                     (totalUs / 1000.0).ToString("F1"),
                     _lastSlowTickDominantPhase,
                     (_telemetrySnapshotUs / 1000.0).ToString("F1"),
+                    (_telemetryWorldTickUs / 1000.0).ToString("F1"),
                     (_telemetryComputeUs / 1000.0).ToString("F1"),
                     (_telemetryNpcBuildUs / 1000.0).ToString("F1"),
                     (_telemetryClientStateUs / 1000.0).ToString("F1"),
@@ -396,6 +397,7 @@ public static partial class Program
                     _telemetryNpcApplyDirtyCount,
                     (_telemetryViewBuildUs / 1000.0).ToString("F1"),
                     (_telemetryApplyUs / 1000.0).ToString("F1"),
+                    (_telemetryPostApplyUs / 1000.0).ToString("F1"),
                     (_telemetryFlushUs / 1000.0).ToString("F1"));
             }
 
@@ -465,7 +467,11 @@ public static partial class Program
     {
         var phases = new[]
         {
-            ("snapshot", _telemetrySnapshotUs),
+            ("world_tick", _telemetryWorldTickUs),
+            // Residual of the pre-compute group after the parallel sector tick:
+            // spell expiry + sector wake + wheel advance + client snapshot.
+            ("snapshot", Math.Max(0, _telemetrySnapshotUs - _telemetryWorldTickUs)),
+            ("post_apply", _telemetryPostApplyUs),
             ("compute", _telemetryComputeUs),
             ("npc_build", _telemetryNpcBuildUs),
             ("client_state", _telemetryClientStateUs),
@@ -549,6 +555,8 @@ public static partial class Program
         }
 
         _telemetrySnapshotUs = ToMicroseconds(Stopwatch.GetTimestamp() - p0);
+        _telemetryWorldTickUs = 0;
+        _telemetryPostApplyUs = 0;
         _telemetryComputeUs = 0;
         _telemetryNpcBuildUs = 0;
         _telemetryClientStateUs = 0;
@@ -626,12 +634,19 @@ public static partial class Program
 
     private static void RunMulticoreTick()
     {
-        int workerCount = _config.MulticoreWorkerCount > 0 ? _config.MulticoreWorkerCount : Environment.ProcessorCount;
+        // Auto worker count leaves one core for the main thread: saturating every
+        // core with phase workers starves the serial apply/flush phases on
+        // shared/overcommitted VMs (visible as yield/net_in loop stalls). An
+        // explicit MulticoreWorkerCount still wins.
+        int workerCount = _config.MulticoreWorkerCount > 0
+            ? _config.MulticoreWorkerCount
+            : Math.Max(1, Environment.ProcessorCount - 1);
         int timeoutMs = Math.Max(100, _config.MulticorePhaseTimeoutMs);
         using var cts = new CancellationTokenSource(timeoutMs);
 
         long p0 = Stopwatch.GetTimestamp();
         _world.OnTickParallel(workerCount, cts.Token);
+        _telemetryWorldTickUs = ToMicroseconds(Stopwatch.GetTimestamp() - p0);
         _spellEngine.ProcessExpirations(Environment.TickCount64);
 
         // Wake NPCs in sectors that just became active (player entered area)
@@ -802,6 +817,7 @@ public static partial class Program
         }
         _telemetryApplyUs = ToMicroseconds(Stopwatch.GetTimestamp() - p2);
 
+        long p2b = Stopwatch.GetTimestamp();
         if (_recordingEngine.HasActiveReplays)
             TickReplayOverlays();
 
@@ -828,6 +844,7 @@ public static partial class Program
                     _npcTimerWheel.Schedule(npc, npc.NextNpcActionTime);
             }
         }
+        _telemetryPostApplyUs = ToMicroseconds(Stopwatch.GetTimestamp() - p2b);
 
         long p3 = Stopwatch.GetTimestamp();
         RunPostTickMaintenance();

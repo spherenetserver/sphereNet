@@ -1412,7 +1412,11 @@ public sealed class GameWorld
         {
             var po = new ParallelOptions
             {
-                MaxDegreeOfParallelism = workerCount > 0 ? workerCount : Environment.ProcessorCount,
+                // Mirror the tick loop's auto default: leave one core to the
+                // main thread instead of saturating the box (E7).
+                MaxDegreeOfParallelism = workerCount > 0
+                    ? workerCount
+                    : Math.Max(1, Environment.ProcessorCount - 1),
                 CancellationToken = cancellationToken
             };
             Parallel.ForEach(sectors, po, sector => sector.OnTick(currentTime));

@@ -86,6 +86,21 @@ public sealed partial class GameClient
                 return;
             }
 
+            // Source-X Setup_Delete (CClientMsg.cpp:2961): a character younger
+            // than MINCHARDELETETIME cannot be deleted; Counsel+ accounts
+            // bypass. 0x85 reason 3 = "character is not old enough".
+            // CreatedUtcSeconds == 0 (legacy save, pre-stamp) counts as old.
+            if (ServerMinCharDeleteDays > 0 && ch.CreatedUtcSeconds > 0 &&
+                _account.PrivLevel < PrivLevel.Counsel)
+            {
+                long ageSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ch.CreatedUtcSeconds;
+                if (ageSeconds < ServerMinCharDeleteDays * 86400L)
+                {
+                    _netState.Send(new PacketCharDeleteResult(3)); // 3=not old enough
+                    return;
+                }
+            }
+
             _logger.LogInformation("Deleting character '{Name}' (0x{Uid:X8}) from account '{Acct}'",
                 ch.Name, charUid.Value, _account.Name);
             ch.Delete();

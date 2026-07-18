@@ -68,6 +68,10 @@ public class ResourceLink : ResourceDef
         HasBeenScanned = true;
     }
 
+    /// <summary>The retained section carried at least one ON=@... trigger block
+    /// (only meaningful when scanned with retainKeys).</summary>
+    public bool HasAnyTriggerBody => _triggerBodies.Count > 0;
+
     public bool TryGetTriggerBody(string triggerName, out IReadOnlyList<ScriptKey> body)
     {
         string key = triggerName.TrimStart('@');

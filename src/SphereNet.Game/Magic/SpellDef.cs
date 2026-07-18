@@ -21,6 +21,11 @@ public sealed class SpellDef
     public ushort ScrollItemId { get; set; }
     public Layer Layer { get; set; }
 
+    /// <summary>The [SPELL] script section carries at least one ON=@... stage
+    /// (set at load time). Used to tell a trigger-scripted spell apart from a
+    /// def that has no behaviour at all (see SpellEngine.IsInertSchoolSpell).</summary>
+    public bool HasScriptedStages { get; set; }
+
     // Curves (linear interpolation between two endpoints based on skill 0-1000).
     // Sphere / Source-X convention for "A,B": A is the value at 0 skill, B is
     // the value at maximum skill (1000 = 100.0). The "Base" / "Scale" field

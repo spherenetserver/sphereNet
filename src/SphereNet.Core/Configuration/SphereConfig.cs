@@ -83,6 +83,8 @@ public sealed class SphereConfig
     public int AccApp { get; set; } = 2;
     public bool Md5Passwords { get; set; }
     public int MaxCharsPerAccount { get; set; } = 5;
+    /// <summary>Days a character must exist before it can be deleted from the
+    /// char-select screen (classic 7-day rule). 0 disables the gate.</summary>
     public int MinCharDeleteTime { get; set; } = 7;
 
     // Game Mechanics

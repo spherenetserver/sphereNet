@@ -687,6 +687,12 @@ public sealed class WorldSaver
         w.WriteProperty("MAXHITS", ch.BaseMaxHits.ToString());
         w.WriteProperty("MAXMANA", ch.BaseMaxMana.ToString());
         w.WriteProperty("MAXSTAM", ch.BaseMaxStam.ToString());
+        // Source-X CREATE key: character age at save time, in tenths of a
+        // second (CChar::r_Write). Players only — feeds the MinCharDeleteTime
+        // delete gate; NPCs don't need it and it would bloat 50K+ records.
+        if (ch.IsPlayer && ch.CreatedUtcSeconds > 0)
+            w.WriteProperty("CREATE",
+                (Math.Max(0, DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ch.CreatedUtcSeconds) * 10).ToString());
         w.WriteProperty("OFAME", ch.Fame.ToString());
         w.WriteProperty("OKARMA", ch.Karma.ToString());
         if (ch.Food != 0) w.WriteProperty("OFOOD", ch.Food.ToString());

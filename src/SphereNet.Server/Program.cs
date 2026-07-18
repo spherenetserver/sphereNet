@@ -159,6 +159,14 @@ public static partial class Program
     private static readonly List<SphereNet.Game.World.StaticDoorClose> _staticDoorCloseBuffer = [];
     private static long _nextStaticDoorTick;
     private static long _telemetrySnapshotUs;
+    // E8 sub-phases: _telemetrySnapshotUs used to lump the whole pre-compute
+    // group (OnTickParallel + spell expiry + sector wake + wheel + client
+    // snapshot) under one label, and the replay/state-recorder/macro/reschedule
+    // work between apply and flush ran unmeasured. world_tick isolates the
+    // parallel sector tick; post_apply covers the apply→flush gap; the
+    // dominant-phase picker reports "snapshot" as the residual of the group.
+    private static long _telemetryWorldTickUs;
+    private static long _telemetryPostApplyUs;
     private static long _telemetryComputeUs;
     private static long _telemetryApplyUs;
     private static long _telemetryFlushUs;
@@ -633,6 +641,7 @@ public static partial class Program
         GameClient.ServerFeatureTOL = _config.FeatureTOL;
         GameClient.ServerFeatureExtra = _config.FeatureExtra;
         GameClient.ServerMaxCharsPerAccount = Math.Clamp(_config.MaxCharsPerAccount, 1, 7);
+        GameClient.ServerMinCharDeleteDays = Math.Max(0, _config.MinCharDeleteTime);
         GameClient.ServerAutoResDisp = _config.AutoResDisp;
         GameClient.ServerToolTipMode = _config.ToolTipMode;
         _log.LogInformation("Source-X feature masks: T2A={T2A:X} LBR={LBR:X} AOS={AOS:X} SE={SE:X} ML={ML:X} SA={SA:X} TOL={TOL:X}",

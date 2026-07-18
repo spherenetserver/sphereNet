@@ -6,6 +6,26 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+FIX - MinCharDeleteTime gun sayisindan (varsayilan 7) genc karakterler artik
+        karakter secim ekranindan silinemiyor; client dogru "yeterince eski degil"
+        nedenini gosteriyor ve staff hesaplari gate'i atliyor. Olusturma zamani
+        artik referans motorun CREATE anahtariyla (yas-tabanli) save'lerde kalici;
+        damgasiz eski karakterler silinebilir kaliyor.
+
+FIX - Uygulanmamis spell school'larindan (Bushido, Ninjitsu, Spellweaving,
+        Mysticism ve o id araliginin geri kalani) buyu atmak artik mana ve reagent
+        tuketip sessizce hicbir sey yapmamak yerine bastan "henuz desteklenmiyor"
+        bildiriyor. Bu buyuleri kendisi implemente eden script pack'leri (flag,
+        effect egrisi veya ON= trigger stage'leri) etkilenmiyor.
+
+PERFORMANS - Otomatik worker-thread sayisi artik her cekirdegi doyurmak yerine
+        bir cekirdegi ana thread'e birakiyor; paylasimli/overcommit VM'lerde seri
+        tick fazlarini ac birakiyordu. Acik MulticoreWorkerCount yine kazanir.
+        Tick telemetrisi de durust alt-fazlar kazandi: paralel dunya tick'i
+        on-hazirliktan ayri olculuyor ve apply ile flush arasindaki daha once
+        olculmeyen replay/recorder/macro/reschedule isi kendi post_apply fazi
+        olarak raporlaniyor.
+
 FIX - Map static kapinin yaninda dururken bir NPC'ye cift tiklamak artik o kapiyi
         acip kapatmiyor ve NPC'yi kaybettirmiyor. Static-kapi fallback'i karakter
         aramasindan ONCE calisiyordu ve tiklanan serial'i dogrulamadan en yakin

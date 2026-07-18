@@ -471,7 +471,13 @@ public sealed class DefinitionLoader
 
     private void LoadSpellDef(ResourceLink link)
     {
-        var def = new Magic.SpellDef { Id = (SpellType)(ushort)link.Id.Index };
+        var def = new Magic.SpellDef
+        {
+            Id = (SpellType)(ushort)link.Id.Index,
+            // Trigger-scripted spells (ON=@Effect/@Success/...) count as having
+            // behaviour even without flags/curves (SpellEngine.IsInertSchoolSpell).
+            HasScriptedStages = link.HasAnyTriggerBody
+        };
 
         var keys = link.StoredKeys;
         if (keys == null || keys.Count == 0) return;

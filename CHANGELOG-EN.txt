@@ -7,6 +7,27 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIX - Characters younger than the MinCharDeleteTime day count (default 7) can no
+        longer be deleted from the character-select screen; the client shows the
+        proper "not old enough" reason and staff accounts bypass the gate. The
+        creation timestamp now persists in saves using the reference engine's
+        CREATE key (age-based), and pre-existing characters without a stamp stay
+        deletable.
+
+FIX - Casting a spell from the unimplemented spell schools (Bushido, Ninjitsu,
+        Spellweaving, Mysticism and the rest of that id range) now clearly reports
+        "not supported yet" up front instead of consuming mana and reagents and
+        then silently doing nothing. Script packs that implement those spells
+        themselves (flags, effect curves, or ON= trigger stages) are unaffected.
+
+PERFORMANCE - The automatic worker-thread count now leaves one core to the main
+        thread instead of saturating every core, which starved the serial tick
+        phases on shared/overcommitted VMs. An explicit MulticoreWorkerCount
+        still wins. Tick telemetry also gained honest sub-phases: the parallel
+        world tick is measured separately from the pre-compute setup, and the
+        previously unmeasured replay/recorder/macro/reschedule work between
+        apply and flush now reports as its own post_apply phase.
+
 FIX - Double-clicking an NPC while standing near a map static door no longer
         toggles that door and makes the NPC vanish. The static-door fallback ran
         before the character lookup and, without validating the clicked serial,

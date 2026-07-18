@@ -1065,6 +1065,14 @@ public sealed class WorldLoader
             case "ISPLAYER":
                 ch.IsPlayer = val == "1";
                 break;
+            case "CREATE":
+                // Source-X CChar::r_LoadVal CHC_CREATE: the stored value is the
+                // character's AGE at save time in tenths of a second — creation
+                // time = now - age (feeds the MinCharDeleteTime delete gate).
+                if (long.TryParse(val, out long ageTenths) && ageTenths >= 0)
+                    ch.CreatedUtcSeconds =
+                        DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ageTenths / 10;
+                break;
             // Source-X r_LoadVal treats OSTR/ODEX/OINT and STR/DEX/INT as the
             // same key — both call Stat_SetBase. Classic Sphere saves persist
             // ONLY the O-variants, so mirroring them into the O-fields alone

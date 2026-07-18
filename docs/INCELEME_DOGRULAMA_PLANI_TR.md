@@ -157,8 +157,10 @@ zorunlu bağlantılar için fail-fast doğrulama.
 - [ ] **B9 (P1) — Target callback güvenlik yeniden-doğrulaması yok.** Cursor cevabında sadece
   `deedItem.IsDeleted` kontrol ediliyor (`ClientItemUseHandler.cs:1193`); deed takas/mesafe/
   LOS/map/ölü-jailed/limit yeniden doğrulanmıyor. Fix: placement'ı atomik transaction yap.
-- [ ] **B10 (P2) — House storage sabit 400.** `HousingEngine.cs:119` `_baseStorage=400`;
-  MULTIDEF `BaseStorage` placement'ta uygulanmıyor. Küçük ev/keep/castle farkı yok.
+- [x] **B10 (P2) — House storage sabit 400.** (YAPILDI — B3 kapsamında: `PlaceHouse` artık
+  `def.BaseStorage > 0` ise script değerini uyguluyor (`HousingEngine.cs` "Apply script [MULTIDEF]
+  BaseStorage"), `HOUSE.STORAGE` tag'iyle persist ediliyor. Test: MultiRegistryMetadataTests.
+  Ev-tipi farkı script pack'in MULTIDEF BaseStorage değerlerinden gelir.)
 - [ ] **B11 (P2) — 0xF6 ship-move paketi component/yolcu listesi taşımıyor.**
   `GamePackets.cs:755` `PacketBoatSmoothMove` sadece serial/speed/dir/x/y/z.
 - [ ] **B12 (P2) — Ship su kontrolü land-only.** `ShipEngine.cs:836` `IsWaterAt` sadece land
@@ -199,9 +201,11 @@ desteklenmeyen ayar başlangıç uyarısı üretsin.
   alanları (default'lar eşit → sürpriz yok), Program.cs config'ten set; clamp literalleri
   değiştirildi.) `DeathEngine.cs:459` literal
   `0,10000`; config (`:222`) referans edilmiyor (varsayılanlar eşit olduğu için şimdilik zararsız).
-- [ ] **C5 (P2) — MinCharDeleteTime yok sayılıyor.** (ERTELENDİ: per-char CreateDate alanı YOK →
-  altyapı gerekir (yeni persist edilen alan). Ayrı küçük iş.) `GameClient.Handlers.cs:62` sadece
-  şifre+online kontrol edip hemen `ch.Delete()` (`:91`); yaş/oluşturma-zamanı kontrolü yok.
+- [x] **C5 (P2) — MinCharDeleteTime yok sayılıyor.** (YAPILDI: `Character.CreatedUtcSeconds`
+  eklendi (char-create'te damgalanıyor), Source-X `CREATE` anahtarıyla (yaş, tenths —
+  CChar::r_Write/r_LoadVal birebir) player'lar için persist; `HandleCharDelete` Source-X
+  Setup_Delete gate'i uyguluyor (gün cinsinden config, 0x85 reason 3, Counsel+ bypass,
+  damgasız legacy char eski sayılır). Test: CharDeleteAndSpellGateTests (2).)
 - [x] **C6 (P2) — UseHttp yok sayılıyor.** (YAPILDI: Program.AdminPanel web status `if (_config.UseHttp)`
   ile gate'lendi; config default false→true (mevcut koşulsuz davranış korunur, UseHttp=0 kapatır).) `SphereConfig.cs:716` okunuyor ama tüketen yok;
   `Program.AdminPanel.cs:175` web status'u koşulsuz `Start()` ediyor.
@@ -224,11 +228,13 @@ desteklenmeyen ayar başlangıç uyarısı üretsin.
   tek `LIGHT_CHARGES` düşüyor + `LightOut→LightLit` toggle; **yanma süresi/otomatik sönme/
   zaman-tabanlı charge tüketimi/persistent burn-time yok** (`Item.OnTick` switch'inde LightLit
   case'i yok, `:2705`). Fix: SetTimeout ile burn timer + charge tick + auto-extinguish + save.
-- [ ] **D2 (P2 — BÜYÜK, ayrı proje) — Spell school'ları.** `ApplySpecificSpell` (`:1628`) sadece
-  Magery + Necromancy case'leri; Chivalry (Source-X'te C++ yok → yapılmadı, ayrı karar) /
-  Bushido/Ninjitsu/Spellweaving/Mysticism generic damage/heal'e düşüyor. Risk: eksik spell
-  "desteklenmiyor" demek yerine mana/reagent tüketip etkisiz. (PARITY.md "Deferred tail"
-  ile ortak — necromancy gibi per-school çok-wave'lik iş.) Fix: eksik spell'i açıkça pasif işaretle.
+- [x] **D2 (P2) — Spell school'ları: minimal sözleşme kapatıldı.** (YAPILDI:
+  `SpellEngine.IsInertSchoolSpell` — 201..999 aralığında olup HİÇBİR davranış taşımayan
+  (flag yok, effect/duration eğrisi yok, `HasScriptedStages` yok) spell CastStart'ta
+  "not supported yet" ile reddediliyor; mana/reagent yanmıyor. Script'li spell'ler
+  (flag/eğri/ON= stage → `ResourceLink.HasAnyTriggerBody` üzerinden `SpellDef.HasScriptedStages`)
+  etkilenmez. School'ların GERÇEK implementasyonu ayrı büyük proje olarak PARITY.md
+  "Deferred tail"de durmaya devam ediyor. Test: CharDeleteAndSpellGateTests.InertSchoolSpell_Classification.)
 
 ---
 
@@ -281,15 +287,14 @@ gecikmeleri); aşağıdakiler onu **büyüten** kesin kod borçları.
   döngüsü unbounded (`NetworkManager.cs:207`), her accept'te full `_states` IP taraması (`:228`),
   1100-slot iterasyon; login/unknown send bloklayan `Socket.Send` (`NetState.cs:695`). Fix:
   accept bütçesi + sayaç-tabanlı IP tally + non-blocking login output.
-- [ ] **E7 (P2 — DÜŞÜK-MED / DÜŞÜK) — Auto worker = ProcessorCount.** `Program.Tick.cs:609`
-  `MulticoreWorkerCount>0 ? ... : Environment.ProcessorCount`; sektör parallel eşiği 50
-  (`GameWorld.cs:1286`). Paylaşımlı/overcommit VM'de ana thread starvation. Fix: "en az bir core
-  ana thread'e" varsayılanı + VPS profilleri.
-- [ ] **E8 (P1 — telemetri) — `snapshot` yanlış-etiket + apply↔flush arası ölçülmeyen işler.**
-  `_telemetrySnapshotUs` (`Program.Tick.cs:613-631`) tüm world-tick grubunu (OnTickParallel +
-  spell + wake + wheel + client-snapshot) ölçüyor; replay/StateRecorder/macro/reschedule
-  (`:785-807`) apply↔flush arası phase alanı olmadan çalışıyor → yanlış dominant. Fix: alt-fazlara
-  böl (active_sector_tick/timerf_scan/sleeping_maintenance/... + scheduler_gap = wall-cpu).
+- [x] **E7 (P2) — Auto worker = ProcessorCount.** (YAPILDI: auto default artık
+  `max(1, ProcessorCount-1)` — hem `RunMulticoreTick` hem `GameWorld.OnTickParallel`;
+  açık `MulticoreWorkerCount` yine kazanır.)
+- [x] **E8 (P1 — telemetri) — `snapshot` yanlış-etiket + apply↔flush arası ölçülmeyen işler.**
+  (YAPILDI: `world_tick` alt-fazı (OnTickParallel ayrı ölçülüyor; dominant hesabında `snapshot`
+  artık grubun kalanı) + `post_apply` fazı (replay/StateRecorder/macro/wheel-reschedule bloğu).
+  slow_tick satırı ve /status Telemetry'ye `world_tick`/`post_apply` eklendi. NOT: GameWorld-içi
+  daha ince kırılım (timerf_scan/sleeping_maintenance) istenirse ayrı iş.)
 
 ---
 

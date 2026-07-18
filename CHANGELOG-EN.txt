@@ -7,6 +7,30 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+PERFORMANCE - World saves can now write in the background (sphere.ini
+        SAVEBACKGROUND > 0): the main loop only captures an immutable snapshot of
+        the world — the expensive shard/encode/write phase runs on a worker
+        thread, so the multi-hundred-millisecond save stall shrinks to the
+        capture time. Saves never overlap (a new cycle is skipped while one is
+        writing), the shutdown save waits for any in-flight write, and the
+        atomic temp-file commit is unchanged. SAVEBACKGROUND=0 keeps the old
+        fully synchronous behavior.
+
+PERFORMANCE - Network hardening: accepts are budgeted per pass (a reconnect flood
+        no longer holds the main loop in the accept while-loop), the per-IP
+        connection limit uses a maintained counter instead of scanning all 1100
+        slots on every accept, and login connections now use the same
+        non-blocking batched sends as game connections — a stalled client mid
+        login can no longer block the flush pass. NetworkThreads/UseAsyncNetwork
+        ini keys are documented as deliberate no-ops (main-loop network design).
+
+FIX - The server now validates its engine wiring at startup and refuses to boot
+        half-wired: eleven mandatory hooks (movement cast-interrupt, NPC night
+        lights, speech routing, shutdown/broadcast commands, world resolvers and
+        more) are checked after wiring completes, turning the silent
+        "assigned before the engine existed" bug class into an immediate,
+        named startup error.
+
 FEATURE - House/ship deed placement now raises the multi-preview cursor (0x99):
         the client ghosts the full building footprint at the cursor instead of a
         plain crosshair, and the server applies the reference engine's anchor-Y

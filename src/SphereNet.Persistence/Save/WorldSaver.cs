@@ -72,29 +72,57 @@ public sealed class WorldSaver
     }
 
     public bool Save(GameWorld world, string savePath)
+        => WritePrepared(Prepare(world), savePath);
+
+    /// <summary>Fully captured save state: immutable per-object records plus the
+    /// pre-rendered server-data file. Holds NO references into the live world,
+    /// so <see cref="WritePrepared"/> may run on a background thread while the
+    /// main loop keeps mutating the world (E2 / SAVEBACKGROUND).</summary>
+    public sealed class PreparedWorldSave
+    {
+        internal PreparedWorldSave(WorldSaveSnapshot snapshot, string serverData, int saveIndex)
+        {
+            Snapshot = snapshot;
+            ServerData = serverData;
+            SaveIndex = saveIndex;
+        }
+
+        internal WorldSaveSnapshot Snapshot { get; }
+        internal string ServerData { get; }
+        public int SaveIndex { get; }
+    }
+
+    /// <summary>MAIN-THREAD phase: walk the live world once and capture every
+    /// record. This is the only part of a save that reads world state.</summary>
+    public PreparedWorldSave Prepare(GameWorld world)
     {
         _saveIndex++;
-        _logger.LogInformation("World save #{Index} starting (format={Format}, shards={Shards})...",
-            _saveIndex, Format, ShardCount);
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var snapshot = CaptureSnapshot(world);
+        string serverData = BuildServerData(world);
+        return new PreparedWorldSave(snapshot, serverData, _saveIndex);
+    }
 
+    /// <summary>WRITE phase: shard, encode and commit the captured records.
+    /// Touches only the prepared data — safe on any thread.</summary>
+    public bool WritePrepared(PreparedWorldSave prepared, string savePath)
+    {
+        _logger.LogInformation("World save #{Index} starting (format={Format}, shards={Shards})...",
+            prepared.SaveIndex, Format, ShardCount);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             Directory.CreateDirectory(savePath);
-
-            var snapshot = CaptureSnapshot(world);
-
-            int itemCount = SaveSharded(snapshot.Items, savePath, "sphereworld", isItems: true);
-            int charCount = SaveSharded(snapshot.Characters, savePath, "spherechars", isItems: false);
-            SaveServerData(savePath, world);
+            int itemCount = SaveSharded(prepared.Snapshot.Items, savePath, "sphereworld", isItems: true);
+            int charCount = SaveSharded(prepared.Snapshot.Characters, savePath, "spherechars", isItems: false);
+            WriteServerData(savePath, prepared.ServerData);
 
             _logger.LogInformation("World save #{Index} complete: {Items} items, {Chars} chars in {Elapsed}s",
-                _saveIndex, itemCount, charCount, sw.Elapsed.TotalSeconds.ToString("F1"));
+                prepared.SaveIndex, itemCount, charCount, sw.Elapsed.TotalSeconds.ToString("F1"));
             return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "World save #{Index} FAILED", _saveIndex);
+            _logger.LogError(ex, "World save #{Index} FAILED", prepared.SaveIndex);
             CleanupTmpFiles(savePath);
             return false;
         }
@@ -894,10 +922,23 @@ public sealed class WorldSaver
     }
 
     private void SaveServerData(string savePath, GameWorld world)
+        => WriteServerData(savePath, BuildServerData(world));
+
+    /// <summary>Write the pre-rendered spheredata content with the usual
+    /// tmp + rotate + commit dance. Prepared-data only — any thread.</summary>
+    private void WriteServerData(string savePath, string content)
     {
         string finalPath = Path.Combine(savePath, "spheredata.scp");
         string tmpPath = finalPath + ".tmp";
-        using (var sw = new StreamWriter(tmpPath))
+        File.WriteAllText(tmpPath, content);
+        CommitFile(finalPath);
+    }
+
+    /// <summary>Render the spheredata.scp payload from live world state
+    /// (globals, lists, GM pages, doors, sector env). MAIN-THREAD only.</summary>
+    private string BuildServerData(GameWorld world)
+    {
+        using var sw = new StringWriter();
         {
             sw.WriteLine("// SphereNet Server Data Save");
             sw.WriteLine($"// Save #{_saveIndex} at {DateTime.UtcNow:u}");
@@ -978,7 +1019,7 @@ public sealed class WorldSaver
 
             sw.WriteLine("[EOF]");
         }
-        CommitFile(finalPath);
+        return sw.ToString();
     }
 
     /// <summary>Atomic commit: rotate existing final to .bak1..N, then .tmp → final.</summary>
@@ -1105,9 +1146,9 @@ public sealed class WorldSaver
         return tail == ".scp" || tail == ".scp.gz" || tail == ".sbin" || tail == ".sbin.gz";
     }
 
-    private sealed record WorldSaveSnapshot(IReadOnlyList<SaveRecord> Items, IReadOnlyList<SaveRecord> Characters);
+    internal sealed record WorldSaveSnapshot(IReadOnlyList<SaveRecord> Items, IReadOnlyList<SaveRecord> Characters);
 
-    private sealed record SaveRecord(uint Uid, string Section, IReadOnlyList<(string Key, string Value)> Properties);
+    internal sealed record SaveRecord(uint Uid, string Section, IReadOnlyList<(string Key, string Value)> Properties);
 
     private sealed class SnapshotSaveWriter : ISaveWriter
     {

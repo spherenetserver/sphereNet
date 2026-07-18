@@ -228,6 +228,15 @@ public static partial class Program
         const ushort SaveHue = 0x0040;
         BroadcastToAllPlayers(ServerMessages.Get("worldsave_started"), SaveHue);
 
+        // E2: only one save may be in flight. A periodic save landing while the
+        // previous background write is still running is skipped (it re-fires on
+        // the next SavePeriod); Source-X likewise never overlaps saves.
+        if (_backgroundSaveTask is { IsCompleted: false })
+        {
+            _log.LogWarning("World save skipped: previous background save still writing");
+            return;
+        }
+
         _log.LogInformation("Saving world...");
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
@@ -238,6 +247,31 @@ public static partial class Program
             _spellEngine.RevertAllForSave();
             string basePath = AppDomain.CurrentDomain.BaseDirectory;
             string sp = ResolvePath(basePath, _config.WorldSaveDir);
+
+            if (_config.SaveBackgroundMinutes > 0)
+            {
+                // Background mode (sphere.ini SAVEBACKGROUND > 0): the world walk
+                // (Prepare) stays on the main thread — the only phase that reads
+                // live objects — and the expensive shard/encode/write phase moves
+                // to a worker. Completion side effects run back on the main loop
+                // via CompleteBackgroundSave (polled next to the auto-save timer).
+                SphereNet.Persistence.Save.WorldSaver.PreparedWorldSave prepared;
+                try
+                {
+                    prepared = _saver.Prepare(_world);
+                }
+                finally
+                {
+                    _spellEngine.ReapplyAllAfterSave();
+                }
+                SaveAccountsToDisk();
+                _backgroundSaveTask = Task.Run(() => _saver.WritePrepared(prepared, sp));
+                _backgroundSaveStopwatch = sw;
+                _log.LogInformation("World snapshot captured in {Secs:F2}s; writing in background...",
+                    sw.Elapsed.TotalSeconds);
+                return; // completion handled by CompleteBackgroundSave
+            }
+
             try
             {
                 _saver.Save(_world, sp);
@@ -247,30 +281,70 @@ public static partial class Program
                 _spellEngine.ReapplyAllAfterSave();
             }
             SaveAccountsToDisk();
-            _saveCount++;
-            _systemHooks.DispatchServer("save_ok", _serverHookContext);
-            sw.Stop();
-            double secs = sw.Elapsed.TotalSeconds;
-            _log.LogInformation("Save complete. ({Secs:F2} sec)", secs);
-            BroadcastToAllPlayers(
-                ServerMessages.GetFormatted("worldsave_complete", _saveCount, $"{secs:F2}"),
-                SaveHue);
+            FinishSaveSuccess(sw);
         }
         catch (Exception ex)
         {
-            sw.Stop();
-            _systemHooks.DispatchServer("save_fail", _serverHookContext, ex.Message);
-            _log.LogError(ex, "World save failed");
-            BroadcastToAllPlayers(
-                ServerMessages.GetFormatted("worldsave_failed", ex.Message),
-                SaveHue);
+            FinishSaveFailure(sw, ex.Message);
         }
-        finally
+    }
+
+    private static Task<bool>? _backgroundSaveTask;
+    private static System.Diagnostics.Stopwatch? _backgroundSaveStopwatch;
+
+    /// <summary>Main-loop poll: when the background write finishes, run the
+    /// completion side effects (hooks, counters, broadcast) on the main thread.</summary>
+    private static void CompleteBackgroundSave()
+    {
+        if (_backgroundSaveTask is not { IsCompleted: true } task)
+            return;
+        var sw = _backgroundSaveStopwatch ?? System.Diagnostics.Stopwatch.StartNew();
+        _backgroundSaveTask = null;
+        _backgroundSaveStopwatch = null;
+
+        if (task is { IsCompletedSuccessfully: true, Result: true })
+            FinishSaveSuccess(sw);
+        else
+            FinishSaveFailure(sw, task.Exception?.GetBaseException().Message ?? "background write failed");
+    }
+
+    /// <summary>Block until an in-flight background save lands (shutdown path —
+    /// the final shutdown save must not race the periodic one).</summary>
+    private static void WaitForBackgroundSave()
+    {
+        if (_backgroundSaveTask is { } task)
         {
-            if (sw.IsRunning) sw.Stop();
-            _systemHooks.DispatchServer("save_finished", _serverHookContext,
-                sw.Elapsed.TotalSeconds.ToString("F4", System.Globalization.CultureInfo.InvariantCulture));
+            try { task.Wait(TimeSpan.FromMinutes(5)); } catch { /* surfaced below */ }
+            CompleteBackgroundSave();
         }
+    }
+
+    private static void FinishSaveSuccess(System.Diagnostics.Stopwatch sw)
+    {
+        const ushort SaveHue = 0x0040;
+        _saveCount++;
+        _systemHooks.DispatchServer("save_ok", _serverHookContext);
+        sw.Stop();
+        double secs = sw.Elapsed.TotalSeconds;
+        _log.LogInformation("Save complete. ({Secs:F2} sec)", secs);
+        BroadcastToAllPlayers(
+            ServerMessages.GetFormatted("worldsave_complete", _saveCount, $"{secs:F2}"),
+            SaveHue);
+        _systemHooks.DispatchServer("save_finished", _serverHookContext,
+            sw.Elapsed.TotalSeconds.ToString("F4", System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    private static void FinishSaveFailure(System.Diagnostics.Stopwatch sw, string message)
+    {
+        const ushort SaveHue = 0x0040;
+        sw.Stop();
+        _systemHooks.DispatchServer("save_fail", _serverHookContext, message);
+        _log.LogError("World save failed: {Message}", message);
+        BroadcastToAllPlayers(
+            ServerMessages.GetFormatted("worldsave_failed", message),
+            SaveHue);
+        _systemHooks.DispatchServer("save_finished", _serverHookContext,
+            sw.Elapsed.TotalSeconds.ToString("F4", System.Globalization.CultureInfo.InvariantCulture));
     }
 
     /// <summary>Send a sysmessage to every logged-in player. Used for global

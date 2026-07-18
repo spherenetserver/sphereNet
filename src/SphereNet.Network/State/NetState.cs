@@ -236,6 +236,14 @@ public sealed class NetState : IDisposable
         _socket.NoDelay = true;
         _socket.SendTimeout = 5000;
         _socket.LingerState = new LingerOption(false, 0);
+        // E6: non-blocking from the first byte — login/unknown connections used
+        // to keep the socket blocking until game login, so a zero-window client
+        // could stall the flush pass with the server-list/relay packets.
+        if (NonBlockingGameSend)
+        {
+            try { _socket.Blocking = false; }
+            catch (Exception ex) { _logger.LogDebug(ex, "Could not set non-blocking on #{Id}", Id); }
+        }
         _outStart = 0;
         _outEnd = 0;
         RemoteEndPoint = socket.RemoteEndPoint as IPEndPoint;
@@ -690,6 +698,60 @@ public sealed class NetState : IDisposable
                             _socket.Send(buf, _outStart, _outEnd - _outStart, SocketFlags.None);
                         _outStart = 0;
                         _outEnd = 0;
+                    }
+                }
+                else if (NonBlockingGameSend)
+                {
+                    // E6: login/unknown connections (no compression/crypt) used a
+                    // BLOCKING per-packet Send — one zero-window client could
+                    // stall the whole flush pass mid-login-burst. Reuse the batch
+                    // buffer: append raw bytes, drain what the socket accepts,
+                    // carry the remainder to the next flush.
+                    var buf = _sendBatchBuffer;
+                    if (_outStart > 0)
+                    {
+                        if (_outEnd > _outStart)
+                            Buffer.BlockCopy(buf, _outStart, buf, 0, _outEnd - _outStart);
+                        _outEnd -= _outStart;
+                        _outStart = 0;
+                    }
+
+                    PacketBuffer? packet;
+                    while ((packet = DequeueNextLocked()) != null)
+                    {
+                        int needed = _outEnd + packet.Length;
+                        if (needed > buf.Length)
+                        {
+                            var bigger = new byte[Math.Max(buf.Length * 2, needed)];
+                            Buffer.BlockCopy(buf, 0, bigger, 0, _outEnd);
+                            _sendBatchBuffer = bigger;
+                            buf = bigger;
+                        }
+                        Buffer.BlockCopy(packet.Data, 0, buf, _outEnd, packet.Length);
+                        _outEnd += packet.Length;
+                        packet.ReturnToPool();
+                    }
+
+                    while (_outStart < _outEnd)
+                    {
+                        int sent = _socket.Send(buf, _outStart, _outEnd - _outStart,
+                            SocketFlags.None, out SocketError serr);
+                        if (sent > 0) _outStart += sent;
+                        if (serr == SocketError.WouldBlock) break;
+                        if (serr != SocketError.Success) throw new SocketException((int)serr);
+                        if (sent == 0) break;
+                    }
+
+                    if (_outStart >= _outEnd)
+                    {
+                        _outStart = 0;
+                        _outEnd = 0;
+                    }
+                    else if (_outEnd - _outStart > MaxPendingSendBytes)
+                    {
+                        _logger.LogWarning("Send backpressure cap ({Pending} bytes, login) for #{Id} ({EP}), disconnecting",
+                            _outEnd - _outStart, Id, RemoteEndPoint);
+                        MarkClosing();
                     }
                 }
                 else

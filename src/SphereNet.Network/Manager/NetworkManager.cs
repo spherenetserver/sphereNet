@@ -197,7 +197,35 @@ public sealed class NetworkManager : IDisposable
         foreach (var state in _states)
         {
             if (state.IsInUse)
+            {
+                OnStateCleared(state.RemoteEndPoint?.Address);
                 state.Clear();
+            }
+        }
+    }
+
+    /// <summary>E6: cap accepts per main-loop pass. An accept flood (SYN spam,
+    /// mass reconnect after a blip) used to hold the loop in the unbounded
+    /// accept-while; the surplus stays in the kernel backlog for next pass.</summary>
+    public int MaxAcceptsPerPass { get; set; } = 32;
+
+    // E6: counter-based per-IP connection tally maintained on Init/Clear —
+    // replaces the full 1100-slot scan that ran on EVERY accept.
+    private readonly Dictionary<System.Net.IPAddress, int> _ipTally = [];
+
+    internal void OnStateInit(System.Net.IPAddress? address)
+    {
+        if (address == null) return;
+        _ipTally[address] = _ipTally.GetValueOrDefault(address) + 1;
+    }
+
+    internal void OnStateCleared(System.Net.IPAddress? address)
+    {
+        if (address == null) return;
+        if (_ipTally.TryGetValue(address, out int n))
+        {
+            if (n <= 1) _ipTally.Remove(address);
+            else _ipTally[address] = n - 1;
         }
     }
 
@@ -210,8 +238,12 @@ public sealed class NetworkManager : IDisposable
 
         try
         {
+            int accepted = 0;
             while (_listenSocket.Poll(0, SelectMode.SelectRead))
             {
+                if (MaxAcceptsPerPass > 0 && accepted >= MaxAcceptsPerPass)
+                    break; // rest of the backlog waits for the next pass
+                accepted++;
                 Socket clientSocket = _listenSocket.Accept();
 
                 if (ConnectionAcceptFilter != null &&
@@ -223,21 +255,12 @@ public sealed class NetworkManager : IDisposable
                     continue;
                 }
 
-                if (ClientMaxIP > 0 && clientSocket.RemoteEndPoint is System.Net.IPEndPoint ep)
+                if (ClientMaxIP > 0 && clientSocket.RemoteEndPoint is System.Net.IPEndPoint ep &&
+                    _ipTally.GetValueOrDefault(ep.Address) >= ClientMaxIP)
                 {
-                    int ipCount = 0;
-                    foreach (var s in _states)
-                    {
-                        if (s.IsInUse && s.RemoteEndPoint is System.Net.IPEndPoint sEp &&
-                            sEp.Address.Equals(ep.Address))
-                            ipCount++;
-                    }
-                    if (ipCount >= ClientMaxIP)
-                    {
-                        _logger.LogWarning("IP limit ({Limit}) reached for {IP}, rejecting", ClientMaxIP, ep.Address);
-                        clientSocket.Close();
-                        continue;
-                    }
+                    _logger.LogWarning("IP limit ({Limit}) reached for {IP}, rejecting", ClientMaxIP, ep.Address);
+                    clientSocket.Close();
+                    continue;
                 }
 
                 var slot = FindFreeSlot();
@@ -249,6 +272,7 @@ public sealed class NetworkManager : IDisposable
                 }
 
                 slot.Init(clientSocket);
+                OnStateInit(slot.RemoteEndPoint?.Address);
                 slot.DebugPackets = DebugPackets;
                 _logger.LogInformation("Connection #{Id} from {EP}", slot.Id, slot.RemoteEndPoint);
                 OnConnectionAccepted?.Invoke(slot);
@@ -751,6 +775,7 @@ public sealed class NetworkManager : IDisposable
                 _logger.LogInformation("Closing connection #{Id}", state.Id);
                 OnConnectionClosedState?.Invoke(state);
                 OnConnectionClosed?.Invoke(state.Id);
+                OnStateCleared(state.RemoteEndPoint?.Address);
                 state.Clear();
             }
         }

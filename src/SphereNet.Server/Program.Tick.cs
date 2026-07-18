@@ -184,10 +184,15 @@ public static partial class Program
                     RestockBotCharacters();
                 }
 
+                // E2: land a finished background save's completion side effects
+                // (hooks/counter/broadcast) on the main thread.
+                CompleteBackgroundSave();
+
                 // Periodic world auto-save (sphere.ini SavePeriod, minutes). 0 = off.
                 // Runs on the main loop so it shares the same single-threaded save
                 // path as the manual 'save' command. First save fires one full
-                // period after startup, not at boot.
+                // period after startup, not at boot. With SAVEBACKGROUND > 0 only
+                // the world walk happens here; the write runs on a worker.
                 if (_config.SavePeriodMinutes > 0
                     && now - _lastAutoSaveMs > _config.SavePeriodMinutes * 60_000L)
                 {
@@ -264,8 +269,12 @@ public static partial class Program
             {
                 try
                 {
+                    // An in-flight background save must land before the final
+                    // shutdown save touches the same files (E2).
+                    WaitForBackgroundSave();
                     _log.LogInformation("Saving world on shutdown...");
                     PerformSave();
+                    WaitForBackgroundSave();
                 }
                 catch (Exception ex)
                 {

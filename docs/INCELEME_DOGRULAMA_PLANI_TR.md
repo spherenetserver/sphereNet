@@ -61,9 +61,15 @@ zorunlu bağlantılar için fail-fast doğrulama.
   is disabled" logluyor; shutdown bloğu (`:257-283`) save yapmıyor. Planlı kapatmada son
   periyodik save'den sonraki değişiklikler kaybolabilir. Fix: güvenli-varsayılan-açık
   configlenebilir shutdown-save.
-- [ ] **A5 (P0-fixture) — Composition-root entegrasyon testi yok.** Testler `EngineWiring`'i
-  elle taklit ettiği için A1/A2 gibi sıra hataları yakalanmıyor. Fix: port açmadan gerçek
-  motor grafiğini kuran fixture + zorunlu-bağlantı fail-fast doğrulaması.
+- [x] **A5 (P0-fixture) — Composition-root doğrulaması.** (YAPILDI — kapsam kararı: test-fixture
+  yerine BOOT-TIME fail-fast seçildi, çünkü test fixture'ı grafiği yine taklit ederdi; boot
+  doğrulaması her açılışta GERÇEK production grafiğini kontrol eder. `ValidateEngineWiring()`
+  `InitializeGameEngines` sonunda 11 zorunlu hook'u doğruluyor (MovementEngine.SpellEngine,
+  NpcAI.GetLightLevel/OnWakeNpc, SpeechEngine OnNpcHear/OnItemHear/OnPlayerSpeech,
+  shutdown/broadcast komutları — event'ler için Wired probe'ları eklendi —, TriggerDispatcher,
+  ObjBase.ResolveWorld, Item.ResolveShipEngine); eksikte isimli InvalidOperationException ile
+  boot reddediliyor. Canlı doğrulama: gerçek boot'ta "Engine wiring validated: 11 mandatory
+  hooks connected" logu alındı (2026-07-18).)
 
 ---
 
@@ -266,12 +272,16 @@ gecikmeleri); aşağıdakiler onu **büyüten** kesin kod borçları.
   — argüman interval kontrolünden ÖNCE değerlendiği için ~52K obje dizisi **her tick** (10×/sn,
   ~4MB/s) kopyalanıyor, recorder içinde 2s/15s'de bir tarasa bile. Fix: interval kontrolünü öne
   al **veya** mevcut `GetAllCharactersSnapshot()` (`:1473`) / players-only kullan.
-- [ ] **E2 (P0 — YÜKSEK etki / YÜKSEK efor) — Save tamamen senkron main-loop'ta.**
-  `Program.Tick.cs:191` inline `PerformSave()`; snapshot+serialize tek thread (`WorldSaver.cs:208`),
-  sadece shard disk-yazımı `Task.WaitAll` ile paralel (`:358`) → oyuncu thread'i serbest kalmıyor
-  (~483ms stall). `SAVEBACKGROUND`/`SAVESECTORSPERTICK` **okunuyor ama kullanılmıyor** (dead config,
-  yanıltıcı). Fix: main thread'de immutable snapshot yakala → serialize/write'ı background worker'a
-  ver, ikinci save'i kuyruğa al, atomik temp+commit koru.
+- [x] **E2 (P0) — Save background'a taşındı.** (YAPILDI: `WorldSaver` zaten immutable
+  `SaveRecord` snapshot mimarisine sahipti — `Prepare(world)` (main-thread, tek dünya-okuyan faz;
+  spheredata içeriği de string'e render ediliyor) / `WritePrepared` (herhangi bir thread:
+  shard+encode+yazma+atomik commit) olarak ikiye bölündü. `SAVEBACKGROUND>0` → PerformSave
+  capture'dan sonra `Task.Run(WritePrepared)`; tamamlanma yan etkileri (saveCount/hook/broadcast)
+  ana döngüde `CompleteBackgroundSave` poll'üyle; üst üste save atlanır; shutdown
+  `WaitForBackgroundSave` ile ucuştakini bekler. `SAVEBACKGROUND=0` eski senkron yol.
+  `SAVESECTORSPERTICK/SAVESTEPMAXCOMPLEXITY` bilinçli no-op olarak belgelendi (Source-X'in
+  tick-başına-aşama modeli yerine snapshot+worker seçildi; Source-X'te de ayrı thread YOK,
+  recon doğruladı). Suite yeşil.)
 - [x] **E3 (P1 — MED-YÜKSEK / MED) — TIMERF her tick full-world scan.** (YAPILDI: `_objectsWithTimerF`
   active-set — `ObjBase.AddTimerF` mevcut `ResolveWorld` üzerinden `GameWorld.TrackTimerFObject`'e
   kaydediyor (YENİ static YOK; tüm ObjBase world erişimiyle aynı resolver → cross-world riski yok).
@@ -295,11 +305,13 @@ gecikmeleri); aşağıdakiler onu **büyüten** kesin kod borçları.
   kaydırmıyor. İki call-site (`OnTick` + `OnTickParallel`) de tek metoda indirgendi. Test:
   SleepingMaintenanceBudgetTests — bütçe=1'de iş K tick'e yayılıyor + her uygun sektör tam bir kez
   ziyaret ediliyor; bütçe bol olunca tek tick'te bitiyor.)
-- [ ] **E6 (P1 — MED / MED-YÜKSEK) — Network tamamen main-loop'ta.** `USEASYNCNETWORK`
-  **hiç okunmuyor** (SphereConfig'te field yok), `NETWORKTHREADS` okunup kullanılmıyor. Accept
-  döngüsü unbounded (`NetworkManager.cs:207`), her accept'te full `_states` IP taraması (`:228`),
-  1100-slot iterasyon; login/unknown send bloklayan `Socket.Send` (`NetState.cs:695`). Fix:
-  accept bütçesi + sayaç-tabanlı IP tally + non-blocking login output.
+- [x] **E6 (P1) — Network bütçeleri.** (YAPILDI: (1) `MaxAcceptsPerPass=32` accept bütçesi —
+  fazlası kernel backlog'da bir sonraki pass'i bekler; (2) IP limiti 1100-slot tarama yerine
+  Init/Clear'da bakımlı `_ipTally` sayacı; (3) login/unknown bağlantılar da artık non-blocking
+  batched send kullanıyor (soket Init'te non-blocking; WouldBlock'ta kalan bytes batch buffer'da
+  taşınır, backpressure cap aynı) — zero-window login client flush pass'ini bloklayamaz.
+  `NETWORKTHREADS`/`USEASYNCNETWORK` bilinçli no-op olarak SphereConfig'te belgelendi
+  (main-loop network tasarımı). Suite yeşil.)
 - [x] **E7 (P2) — Auto worker = ProcessorCount.** (YAPILDI: auto default artık
   `max(1, ProcessorCount-1)` — hem `RunMulticoreTick` hem `GameWorld.OnTickParallel`;
   açık `MulticoreWorkerCount` yine kazanır.)
@@ -362,6 +374,16 @@ gecikmeleri); aşağıdakiler onu **büyüten** kesin kod borçları.
   (`Program.EngineWiring.cs:1660/1681`); bayat gösteren doc satırları düzeltildi.
 
 ---
+
+## KAPANIŞ (2026-07-18, dalga 3)
+
+Plan TAMAMEN kapandı: A(5/5) + B(13/13) + C(8/8) + D(2/2) + E(8/8) + F(5/5) + G(2/2).
+Son dalga (13 madde, 3 fazda): E7/E8/B10/C5/D2 → B8/B9/B11/B12/D1 → E2/E6/A5.
+Her madde: Source-X recon → en küçük kök-neden fixi → build + tam suite (1875 yeşil / 3 skip)
+→ çift changelog → commit. A5'in boot doğrulaması gerçek sunucu açılışında teyit edildi
+("Engine wiring validated: 11 mandatory hooks connected"). Canlıda izlenecekler:
+SAVEBACKGROUND>0 ile save stall'ının capture-süresine inmesi, 0x99 ghost-preview'un
+client'ta görünmesi, ışık kaynaklarının 20 dakikada sönmesi.
 
 ## Önerilen sıra
 

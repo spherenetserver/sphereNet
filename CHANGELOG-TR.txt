@@ -6,6 +6,29 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+PERFORMANS - World save artik arka planda yazabiliyor (sphere.ini
+        SAVEBACKGROUND > 0): ana dongu yalnizca dunyanin degismez bir anlik
+        goruntusunu yakaliyor -- pahali shard/encode/yazma fazi worker thread'de
+        kosuyor, boylece yuzlerce milisaniyelik save duraklamasi capture suresine
+        iniyor. Save'ler asla ust uste binmiyor (biri yazarken yeni dongu
+        atlaniyor), shutdown save'i ucustaki yazmayi bekliyor ve atomik temp-dosya
+        commit'i degismedi. SAVEBACKGROUND=0 eski tam-senkron davranisi korur.
+
+PERFORMANS - Network sertlestirme: accept'ler pass basina butcelendi (reconnect
+        seli ana donguyu accept dongusunde tutamiyor), IP basina baglanti limiti
+        her accept'te 1100 slotu taramak yerine bakimli bir sayac kullaniyor ve
+        login baglantilari artik game baglantilariyla ayni non-blocking toplu
+        gonderimi kullaniyor -- login ortasinda takilan bir client flush pass'ini
+        bloklayamiyor. NetworkThreads/UseAsyncNetwork ini anahtarlari bilincli
+        no-op olarak belgelendi (main-loop network tasarimi).
+
+FIX - Server artik acilista motor baglantilarini doğruluyor ve yarim-bagli boot
+        etmeyi reddediyor: on bir zorunlu hook (hareket cast-kesme, NPC gece
+        isiklari, konusma yonlendirme, shutdown/broadcast komutlari, world
+        resolver'lari ve digerleri) wiring bittikten sonra kontrol ediliyor;
+        sessiz "motor olusmadan atandi" bug sinifi aninda, isimli bir acilis
+        hatasina donusuyor.
+
 FEATURE - Ev/gemi deed yerlestirme artik multi-onizleme cursor'u (0x99)
         kaldiriyor: client duz artı isareti yerine binanin tam taban izini
         cursor'da hayalet olarak gosteriyor ve server referans motorun anchor-Y

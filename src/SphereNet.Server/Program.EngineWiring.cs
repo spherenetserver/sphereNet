@@ -3155,6 +3155,41 @@ public static partial class Program
                 exprParser.DebugUnresolved = on;
                 _log.LogInformation("Script debug logging: {State}", on ? "ON" : "OFF");
             };
+
+            ValidateEngineWiring();
+    }
+
+    /// <summary>A5 fail-fast composition-root validation. EngineWiring is long
+    /// and order-sensitive; a hook assigned before its engine exists stays null
+    /// and the feature dies silently (the A1/A2 bug class: cast-interrupt-on-move
+    /// and NPC night lights shipped dead for that exact reason). This validates
+    /// the REAL production graph once, after all wiring, and refuses to boot
+    /// half-wired instead of failing quietly at runtime.</summary>
+    private static void ValidateEngineWiring()
+    {
+        var missing = new List<string>();
+        void Require(bool wired, string name)
+        {
+            if (!wired) missing.Add(name);
+        }
+
+        Require(_movement.SpellEngine != null, "MovementEngine.SpellEngine (cast interrupt on move)");
+        Require(_npcAI.GetLightLevel != null, "NpcAI.GetLightLevel (NPC night lights)");
+        Require(_npcAI.OnWakeNpc != null, "NpcAI.OnWakeNpc (retaliation wake)");
+        Require(_speech.NpcHearWired, "SpeechEngine.OnNpcHear (NPC speech)");
+        Require(_speech.OnItemHear != null, "SpeechEngine.OnItemHear (comm crystal / multi speech)");
+        Require(_speech.OnPlayerSpeech != null, "SpeechEngine.OnPlayerSpeech (@Speech self-trigger)");
+        Require(_commands.ShutdownCommandWired, "CommandHandler.OnShutdownCommand (.shutdown)");
+        Require(_commands.BroadcastCommandWired, "CommandHandler.OnBroadcastCommand (.broadcast)");
+        Require(_triggerDispatcher != null, "TriggerDispatcher");
+        Require(SphereNet.Game.Objects.ObjBase.ResolveWorld != null, "ObjBase.ResolveWorld");
+        Require(Item.ResolveShipEngine != null, "Item.ResolveShipEngine (deed dry-dock)");
+
+        if (missing.Count > 0)
+            throw new InvalidOperationException(
+                "Engine wiring incomplete — refusing to boot half-wired: " + string.Join("; ", missing));
+
+        _log.LogInformation("Engine wiring validated: {Count} mandatory hooks connected.", 11);
     }
 
     /// <summary>

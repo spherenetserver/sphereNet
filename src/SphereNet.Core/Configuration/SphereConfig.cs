@@ -64,7 +64,14 @@ public sealed class SphereConfig
     /// periodic save survive a planned stop. Safe default on; set 0 to disable.</summary>
     public bool SaveOnShutdown { get; set; } = true;
     public int BackupLevels { get; set; } = 10;
+    /// <summary>sphere.ini SAVEBACKGROUND. Any value > 0 moves the save's
+    /// shard/encode/write phase onto a background worker (the world walk stays
+    /// on the main loop, so the player-visible stall is just the capture).
+    /// 0 = fully synchronous save, like Source-X with SAVEBACKGROUND=0.</summary>
     public int SaveBackgroundMinutes { get; set; }
+    /// <summary>Source-X incremental-stage knobs, accepted for ini compat.
+    /// SphereNet's background save writes from an immutable snapshot instead of
+    /// staging sectors across ticks, so these two are currently no-ops.</summary>
     public int SaveSectorsPerTick { get; set; } = 1;
     public int SaveStepMaxComplexity { get; set; } = 500;
     public SaveFormat SaveFormat { get; set; } = SaveFormat.BinaryGz;
@@ -328,6 +335,10 @@ public sealed class SphereConfig
     public int FloodDetectionWindowMs { get; set; } = 10_000;
     public int DeadSocketTime { get; set; } = 300;
     public int FreezeRestartTime { get; set; } = 60;
+    /// <summary>Accepted for sphere.ini compat, deliberately a NO-OP: SphereNet
+    /// runs the network on the main loop with non-blocking sockets + per-pass
+    /// budgets (see NetworkManager.MaxAcceptsPerPass) instead of Source-X's
+    /// thread pool. USEASYNCNETWORK is likewise not modeled.</summary>
     public int NetworkThreads { get; set; }
     public int NetTTL { get; set; } = 300;
     

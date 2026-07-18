@@ -53,6 +53,10 @@ public sealed class SpeechEngine
     /// <summary>Fired when an NPC hears speech (for keyword response).</summary>
     public event Action<Character, Character, string, TalkMode>? OnNpcHear;
 
+    /// <summary>A5 fail-fast wiring probe (events can only be null-checked from
+    /// inside the declaring class).</summary>
+    public bool NpcHearWired => OnNpcHear != null;
+
     /// <summary>Route a line of text into a single NPC's hearing (Source-X
     /// CChar CHV_HEAR → NPC_OnHear) without broadcasting it.</summary>
     public void DeliverNpcHear(Character speaker, Character listener, string text) =>
@@ -278,6 +282,14 @@ public sealed class CommandHandler
     public event Action? OnSaveCommand;
     public event Action? OnShutdownCommand;
     public event Action<string>? OnBroadcastCommand;
+
+    /// <summary>A5 fail-fast wiring probes: an event's subscriber list can only
+    /// be null-checked from inside the declaring class, so the composition-root
+    /// validation (Program.ValidateEngineWiring) reads these instead. A command
+    /// accepted with no subscriber is a silent no-op — exactly the bug class
+    /// that shipped .SHUTDOWN/.BROADCAST dead.</summary>
+    public bool ShutdownCommandWired => OnShutdownCommand != null;
+    public bool BroadcastCommandWired => OnBroadcastCommand != null;
     public event Action? OnResyncCommand;
     public event Action<Character>? OnCharacterResyncRequested;
     public event Action<Character>? OnTeleportTargetRequested;

@@ -14,6 +14,16 @@ DAHILI - Kod incelemesinde isaretlenen redundant kullanilmayan kod yollari kaldi
         (bot-performans CI gate, fast-walk protokol paketleri, speed-hack audit hook)
         silinmeyip belgelendi. Davranis degisikligi yok.
 
+DUZELTILDI - Ozellestirilebilir ev foundation'lari artik modern (SA/High Seas)
+        istemcilerde render oluyor. Multi body client'a multi yerine duz item olarak
+        gonderiliyordu (0xF3 paketinin data-type byte'i "item" olarak sabitti, 0x1A
+        paketi ise client'in multi araliginin altindaki raw multi index'i gonderiyordu),
+        bu yuzden client bir foundation'i ev olarak gormeyip stream edilen custom-house
+        tasarimini sessizce atiyordu. Multi body'ler artik telde multi olarak
+        isaretleniyor (0xF3'te data-type 2; 0x1A'da 0x4000 multi biti); saklanan id
+        degismedi. Sabit (custom olmayan) ev ve gemiler etkilenmedi - onlar zaten
+        yerlestirilen component tile'larindan render oluyor.
+
 DEGISTI - State recording artik varsayilan olarak KAPALI. Bu opsiyonel diagnostic/
         replay ozelligi, kullanilsin kullanilmasin her sunucuda periyodik tum-dunya
         snapshot'i aliyordu. Artik sphere.ini'de StateRecordingEnabled=1 yazmadikca

@@ -16,6 +16,16 @@ INTERNAL - Removed redundant unused code paths flagged by a code review: a secon
         packets, and the speed-hack audit hook) was kept and documented instead. No
         behaviour change.
 
+FIXED - Customizable house foundations now render on modern (SA/High Seas) clients.
+        The multi body was sent to the client as a plain item instead of a multi (the
+        0xF3 packet's data-type byte was hard-coded to "item", and the 0x1A packet sent
+        the raw multi index which is below the client's multi range), so the client
+        never treated a foundation as a house and silently discarded the streamed
+        custom-house design. Multi bodies are now flagged as multis on the wire
+        (data-type 2 on 0xF3; the 0x4000 multi bit on 0x1A) while the stored id is
+        unchanged. Fixed (non-custom) houses and ships are unaffected — they already
+        render from their placed component tiles.
+
 CHANGED - State recording is now OFF by default. This optional diagnostic/replay
         feature took a periodic full-world snapshot on every server whether or not
         anyone used it. It is now disabled unless you set StateRecordingEnabled=1 in

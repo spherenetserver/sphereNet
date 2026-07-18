@@ -644,7 +644,7 @@ public sealed partial class GameClient
     }
 
     internal PacketWriter BuildWorldItemPacket(uint serial, ushort itemId, ushort amount,
-        short x, short y, sbyte z, ushort hue, byte direction = 0)
+        short x, short y, sbyte z, ushort hue, byte direction = 0, bool isMulti = false)
     {
         // Staff clients get the force-movable flag (0x20) on ground items.
         // The client refuses to even START a drag on tiledata-locked graphics
@@ -657,15 +657,19 @@ public sealed partial class GameClient
 
         if (_netState.SupportsStygianAbyss)
             return new PacketWorldItemSA(serial, itemId, amount, x, y, z, hue,
-                highSeas: _netState.SupportsHighSeas, flags: flags, direction: direction);
-        return new PacketWorldItem(serial, itemId, amount, x, y, z, hue, direction, flags);
+                highSeas: _netState.SupportsHighSeas, flags: flags, direction: direction,
+                isMulti: isMulti);
+        return new PacketWorldItem(serial, itemId, amount, x, y, z, hue, direction, flags, isMulti);
     }
 
     internal void SendWorldItem(Item item)
     {
         _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
-            item.X, item.Y, item.Z, item.Hue, item.Direction
+            item.X, item.Y, item.Z, item.Hue, item.Direction,
+            // Customizable-house foundations must reach the client as a multi so the
+            // 0xD8 design stream renders (ClassicUO drops it when IsMulti is false).
+            isMulti: item.ItemType == SphereNet.Core.Enums.ItemType.MultiCustom
         ));
     }
 
@@ -673,7 +677,8 @@ public sealed partial class GameClient
     {
         _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
-            item.X, item.Y, item.Z, hue, item.Direction
+            item.X, item.Y, item.Z, hue, item.Direction,
+            isMulti: item.ItemType == SphereNet.Core.Enums.ItemType.MultiCustom
         ));
     }
 
@@ -681,7 +686,10 @@ public sealed partial class GameClient
     {
         _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
-            item.X, item.Y, item.Z, item.Hue, item.Direction
+            item.X, item.Y, item.Z, item.Hue, item.Direction,
+            // Customizable-house foundations must reach the client as a multi so the
+            // 0xD8 design stream renders (ClassicUO drops it when IsMulti is false).
+            isMulti: item.ItemType == SphereNet.Core.Enums.ItemType.MultiCustom
         ));
     }
 

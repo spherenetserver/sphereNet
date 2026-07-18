@@ -133,10 +133,21 @@ zorunlu bağlantılar için fail-fast doğrulama.
   dry-dock'tan üretilen classic small ship deed'i (`SHIP_MULTI_BASEID=0`/`More1=0`) tekrar
   açılamıyor. (İlk scripted `MORE=m_small_ship_n` yolu çalışıyor.) Fix: `0`'ı geçerli değer
   say, "yok" için nullable/explicit result.
-- [ ] **B7 (P1) — RawMultiId vs ClientMultiArtId ayrımı yok.** `HousingEngine.cs:582`
-  `BaseId=multiId`, `ShipEngine.cs:99` `BaseId=orientedId` — raw multi.idx index ile client
-  art ID aynı alanda. Fix: RawMultiId/ClientMultiArtId/StructureKind/ScriptMultiDef ayrımı +
-  tek encode/decode katmanı.
+- [x] **B7 — Yeniden çerçevelendi (recon) + gerçek bug bulundu.** Üç ajan (Source-X, SphereNet
+  akışı, ClassicUO) doğruladı: **Source-X multi'yi TEK id ile modelliyor** (base 0x10000; raw
+  multi.mul index = `id−0x10000` türetilir; wire art id = 0x4000-based yalnızca send'de). İki ayrı
+  alan (RawMultiId/ClientMultiArtId) Source-X'te YOK → planın önerisi yanlıştı, iki-alan ayrımı
+  yapılmadı. SphereNet'in raw index'i zaten Source-X'in multi.mul index'ine denk ve görseli
+  component-materialize ediyor; save raw index saklıyor. Kullanıcı kararı: raw depolamayı + materialize'ı
+  KORU, save'e dokunma. **Gerçek bug client-send sınırındaydı:** multi-tipi item'lar telde multi olarak
+  işaretlenmiyordu — `PacketWorldItemSA` (0xF3) data-type byte'ı hardcoded 0, `PacketWorldItem` (0x1A)
+  raw id (<0x4000) gönderiyordu; ClassicUO ikisini de statik tile render ediyor. Sonuç: custom-house
+  foundation'ları SA istemcilerinde multi olmadığı için 0xD8 design stream sessizce düşüyor → **custom
+  evler render olmuyordu.** FIX (boundary encode): MultiCustom item'ları telde multi işaretle —
+  0x1A `graphic|0x4000`, 0xF3 `type=2` (id raw kalır, client `&0x3FFF` ile geri alır). Fixed Multi/Ship'e
+  dokunulmadı (component-materialize ile çalışıyor; multi göndermek çift-render yapardı). Save değişmedi.
+  Test: MultiWirePacketTests. NOT: uçtan uca custom-house render'ı canlı istemcide teyit edilmeli;
+  fixed-multi body'sinin origin'de bıraktığı stray-tile ayrı/ön-mevcut kozmetik konu (kapsam dışı).
 - [ ] **B8 (P1) — 0x99 preview paketi + Source-X anchor-Y düzeltmesi yok.**
   `PacketDefinitions.cs:116` sadece uzunluk tablosunda; outgoing sınıfı yok, deed normal
   `PacketTarget` kullanıyor. Source-X tıklanan Y'yi footprint'e göre düzeltiyor

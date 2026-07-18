@@ -937,14 +937,15 @@ public sealed class PacketWorldItem : PacketWriter
     private readonly ushort _hue;
     private readonly byte _direction;
     private readonly byte _flags;
+    private readonly bool _isMulti;
 
     public PacketWorldItem(uint serial, ushort itemId, ushort amount, short x, short y, sbyte z,
-        ushort hue, byte direction = 0, byte flags = 0)
+        ushort hue, byte direction = 0, byte flags = 0, bool isMulti = false)
         : base(0x1A)
     {
         _serial = serial; _itemId = itemId; _amount = amount;
         _x = x; _y = y; _z = z; _hue = hue;
-        _direction = direction; _flags = flags;
+        _direction = direction; _flags = flags; _isMulti = isMulti;
     }
 
     public override PacketBuffer Build()
@@ -954,7 +955,10 @@ public sealed class PacketWorldItem : PacketWriter
         if (_amount > 1) ser |= 0x80000000;
 
         buf.WriteUInt32(ser);
-        buf.WriteUInt16(_itemId);
+        // 0x1A has no data-type field: the client treats a graphic in the 0x4000+
+        // range as a multi (index = graphic & 0x3FFF). Our multi ids are raw multi.mul
+        // block indices (< 0x4000), so set the multi bit for multi bodies.
+        buf.WriteUInt16(_isMulti ? (ushort)(_itemId | 0x4000) : _itemId);
 
         if (_amount > 1)
             buf.WriteUInt16(_amount);
@@ -2365,10 +2369,12 @@ public sealed class PacketWorldItemSA : PacketWriter
     private readonly byte _light;
     private readonly byte _flags;
     private readonly bool _highSeas;
+    private readonly bool _isMulti;
 
     public PacketWorldItemSA(uint serial, ushort itemId, ushort amount,
         short x, short y, sbyte z, ushort hue,
-        bool highSeas = false, byte light = 0, byte flags = 0, byte direction = 0)
+        bool highSeas = false, byte light = 0, byte flags = 0, byte direction = 0,
+        bool isMulti = false)
         : base(0xF3)
     {
         _serial = serial;
@@ -2380,6 +2386,7 @@ public sealed class PacketWorldItemSA : PacketWriter
         _highSeas = highSeas;
         _light = light;
         _flags = flags;
+        _isMulti = isMulti;
     }
 
     public override PacketBuffer Build()
@@ -2387,7 +2394,10 @@ public sealed class PacketWorldItemSA : PacketWriter
         int size = _highSeas ? 26 : 24;
         var buf = CreateFixed(size);
         buf.WriteUInt16(0x0001);
-        buf.WriteByte(0x00); // type: 0 = item
+        // Data type: 0 = item, 2 = multi. The client renders a multi (and accepts the
+        // 0xD8 custom-house design) only when this is 2; the graphic stays the raw
+        // multi index (client masks it with & 0x3FFF).
+        buf.WriteByte(_isMulti ? (byte)0x02 : (byte)0x00);
         buf.WriteUInt32(_serial);
         buf.WriteUInt16((ushort)(_itemId & (_highSeas ? 0xFFFF : 0x7FFF)));
         buf.WriteByte(_direction);

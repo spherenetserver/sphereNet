@@ -53,12 +53,14 @@ comm crystal → paket üretimi. `hearRange`=18 (say) sektör-pencereli.
   dalları dokunulmadı (Human/None brain'ler train için hâlâ akıyor). Test: HasFunction_TracksRegisteredFunctions.
   Suite yeşil. NOT: kalan residual (per-NPC ToLowerInvariant tekrarı + service/keyword dispatch) S1 ve
   ileride ele alınabilir; en büyük sürücü (facing broadcast) S1'de.
-- [ ] **S3 (P2) — Koşulsuz item scan'i gözden geçir.** Comm crystal yoksa/az ise scan'i gate'le.
-  NÜANS (doğrulama 2, 2026-07-18): S3 kısmen kapanmış durumda. `OnItemHear` handler'ı bilinçli
-  olarak koşulsuz kurulu (`Program.EngineWiring.cs:718-725` — comm-crystal relay'i script'siz de
-  çalışmak zorunda) ama `@Hear` trigger fire'ı zaten `itemHearScripted` (`IsItemTriggerUsed(Hear)`)
-  ile gate'li. Koşulsuz kalan tek maliyet per-utterance item SCAN'in kendisi (+ multi/crystal tip
-  kontrolü). Kalan iş: dünyada hiç comm crystal / multi yoksa scan'i tümden atlamak.
+- [x] **S3 (P2) — Item scan sektör listen-item sayacıyla gate'lendi. YAPILDI (dalga 2).**
+  Source-X modeli birebir: `CSector::m_ListenItems` (CClientEvent.cpp:1883 `HasListenItems()`
+  gate'i) → SphereNet'te `Sector._listenItems` sayacı (CommCrystal + Multi/MultiCustom/Ship;
+  Source-X sadece crystal sayar ama bizde multi/gemi konuşması da aynı scan'den geçiyor).
+  Sayaç bakımı: `Sector.AddItem/RemoveItem` + ground item retype hook'u (`Item.ItemType` setter →
+  `GameWorld.NotifyGroundItemTypeChanged`). Konuşma yolu: `SpeechEngine` scan'i
+  `HasListenItemsInRange` VEYA `ScanAllItemsOnHear` (herhangi bir item def @Hear script'liyorsa)
+  açıksa çalıştırıyor. Test: ListenItemSpeechGateTests (4). Commit b4420d7.
 
 ---
 
@@ -87,12 +89,27 @@ comm crystal → paket üretimi. `hearRange`=18 (say) sektör-pencereli.
       aggro/interaction wake'leri (`WakeNpc(target)`) anında kalıyor (iki overload, 1-arg olan
       `Action<Character>` delegesine bağlanıyor). Offset uid-türevli (RNG yok → tick determinizmi korunur).
       Test: TimerWheel_StaggeredSchedule_SpreadsAcrossSlots. Suite yeşil.
-- [ ] **N2 (P0 etki, YÜKSEK efor) — Read-only ağır işi paralel `BuildDecision`'a taşı.** Range-scan +
-      `FindPath` map/static'e karşı read-only; paralelde çöz, somut `Move` kararı üret (Move branch
-      `ApplyDecision:480-485` zaten var, sadece `MoveCharacter` mutasyonu serial kalır). En yüksek
-      kaldıraç ama thread-safety kontratı dikkat ister.
-- [ ] **N3 (P2) — Per-NPC pathfind tavanını düşür/batch'le** (`NpcPathMaxNodes=500`). N2 ile birlikte
-      tick-latency'de önemsizleşir.
+- [x] **N2 (P0 etki) — Pathfind prestage paralel `BuildDecision`'da. YAPILDI (dalga 2, daraltılmış
+      kapsam).** Bloklu combat/pet chase A*'ı artık paralel build fazında koşuyor (`Pathfinder`
+      scratch state'i zaten `[ThreadStatic]` — altyapı hazırmış) ve sonuç `NpcDecision` üzerinde
+      taşınıyor (`PrestagedPath/PrestageGoal/PrestageRan`). Serial apply, KENDİ durumu hâlâ
+      recompute gerektiriyorsa seed'liyor (taze cache/throttle varsa prestage çöpe gider — serial
+      otorite kalır) ve her adım `CanNpcMoveTo` ile yeniden doğrulanıyor. KAPSAM NOTU: plan
+      "somut Move kararı üret" diyordu; brain semantiği (trigger'lar, cadence, RNG) serialde
+      kalmalı diye cache-seed modeli seçildi — aynı kaldıraç, sıfır davranış riski. Acquire
+      range-scan'leri serialde (trigger fire edebiliyorlar). Test: NpcPathPrestageTests (3).
+      Commit 82960c0.
+- [x] **N3 (P2) — Pathfind maliyeti sınırlandı. YAPILDI (dalga 2, kapsam güncellendi).** Doğrulama:
+      negatif cache zaten vardı (`PathFailBackoffMs=5000` + `PathThrottleMs=750`) — plan bayattı.
+      Gerçek eksikler Source-X parity gate'leriydi: (1) `NPC_Pathfinding` mesafe uygunluğu
+      (CCharNPCAct.cpp:2432/:2434) — A* yalnızca 2..13 tile hedefe; (2) 28×28 arama kutusu
+      (`MAX_NPC_PATH_STORAGE_SIZE`) → `Pathfinder.FindPath(maxRadius:14)` — kapalı alanda
+      unreachable hedef kutuyu tüketir, 500-node bütçeyi değil; (3) BONUS KÖK NEDEN: hedef
+      karakterin kendi tile'ı A*'da hard-block sayılıyordu → BİR KARAKTERE DOĞRU HER chase
+      pathfind'i "unreachable" olup tüm bütçeyi yakıyordu (planın ölçtüğü 17ms burn'ün ana
+      kaynağı). Source-X mobil push-through'una uygun olarak yalnız GOAL tile'ında char blokajı
+      yok sayılıyor; rotalar artık gerçekten bulunuyor. `NpcPathMaxNodes=500` korundu.
+      Test: PathfinderTests.FindPath_MaxRadius_ConfinesSearchBox. Commit 82960c0.
 
 ---
 
@@ -124,11 +141,27 @@ Maliyet arama değil, **objeleri client'a uygulama** — özellikle per-yeni-obj
       trigger unused'sa CHARDEF/ITEMDEF section re-parse + alloc'lar tamamen atlanıyor. Handler yoksa fire
       script property ekleyemeyeceği için davranış birebir korunuyor. Test: TooltipTriggerGateTests (3 —
       char/item ClientTooltip + AfterDefault + script [ON=@ClientTooltip] BuildUsedTriggerCache). Suite yeşil.)
-- [ ] **V2 (P2, ORTA risk) — OPL cache'i view-exit'te evict etme.** 30s TTL ile obje-keyed tut →
-      re-entry/login burst built listeyi yeniden kullanır. Cache invalidation dikkat.
-- [ ] **V3 (P3) — Redundant apply-fazı LOS'u atla** (build zaten filtreledi).
-- [ ] **V4 (P3) — Burst'te tooltip defer/stagger** (draw/world hemen; `SendAosTooltip` sonraki tick'lere
-      kuyrukla, ya da client hover'da `requested:true` ile zaten istiyor).
+- [x] **V2 (P2) — OPL cache obje-keyed yapıldı, view-exit evict kaldırıldı. YAPILDI (dalga 2).**
+      Source-X modeli birebir (`CObjBase::SetPropertyList`, CClientMsg_AOSTooltip.cpp:170-173;
+      eviction SADECE zaman-tabanlı, `hasExpired(TOOLTIPCACHE)`): built OPL artık
+      `ObjBase.TooltipCache`'te — tek build tüm gözlemcilere, view-exit'te düşmez, objeyle ölür.
+      Per-client `TooltipDataCache` tamamen kalktı (sweep/prune gerekmez). Invalidate önceki
+      entry'yi koruyarak rebuild zorlar → hash değiştiyse revizyon artar (null'lamak revizyonu
+      1'e sıfırlayıp client'ta bayat tooltip bırakıyordu — testle yakalandı). Test:
+      TooltipObjectCacheTests (2). Commit 7c2febd.
+- [x] **V3 (P3) — Tooltip LOS raycast'i kaldırıldı. YAPILDI (dalga 2).** Recon düzeltmesi: LOS
+      "build zaten filtreledi diye redundant" DEĞİLDİ — build LOS filtrelemiyor; asıl gerçek,
+      Source-X'in tooltip yollarında LOS raycast'in HİÇ olmaması (addAOSTooltip mesafe-only,
+      CClientMsg_AOSTooltip.cpp:55; 0xD6 handler'ı CanSee, receive.cpp:3628). Yani hem perf hem
+      davranış fix'i: client duvar arkasındaki objeyi çiziyordu ama tooltip'i sessizce gelmiyordu.
+      Test: TooltipLosGateTests. Commit f0d6bce.
+- [x] **V4 (P3) — Burst tooltip'leri version-only push'a çevrildi. YAPILDI (dalga 2, plandan sapma).**
+      Kuyruk/stagger İCAT EDİLMEDİ — Source-X'in kendisi bunu `TOOLTIPMODE_SENDVERSION` (default;
+      CClientMsg_AOSTooltip.cpp:176-207) ile çözüyor: view'a giren obje için sadece 0xDC revizyon
+      paketi gider, full 0xD6'yı client kendi cache miss'inde ister (doğal client-pull stagger).
+      Full push yalnız: requested, build'de hash değişti (stale-UID guard, :148-157), veya mode 2.
+      Per-client sent-hash defteri (`TooltipHashCache`) tamamen kalktı — yerini build-anı
+      `hashChanged` bayrağı aldı. Commit 533710f.
 
 ---
 
@@ -138,15 +171,21 @@ Maliyet arama değil, **objeleri client'a uygulama** — özellikle per-yeni-obj
 2. [x] **N1** — NPC wake stagger. Commit d3f5a39.
 3. [x] **S2** — Speech hear-hook gate (f_onchar_speech HasFunction + greeting IsTrigUsed). Commit 7649610.
 4. [x] **S1** — Redundant facing broadcast kaldırıldı (dirty→view pipeline'a bırakıldı). Commit 0a8505b.
-5. [ ] **V2** — OPL cache'i view-exit'te evict etme. ERTELENDİ (otonom yapılmadı): re-entry'de tooltip'i
-   30s'ye kadar bayat gösterme riski = **görünür davranış değişimi**; V1 zaten baskın maliyeti (gate'siz
-   trigger) çözdü, V2 ikincil. Canlı client'ta bayatlık kabul edilebilirliği doğrulanmalı.
-6. [ ] **N2** — Read-only ağır işi (range-scan + A* FindPath) paralel BuildDecision'a taşı. ERTELENDİ
-   (otonom yapılmadı): NPC-AI thread-safety mimarisini değiştiren **yüksek riskli** iş; build-apply arası
-   world değişimi için re-validation gerektirir, canlı yük testi + gözetim ister. En yüksek değer ama
-   en riskli — ayrı, gözetimli oturumda yapılmalı.
+5. [x] **V3** — Tooltip LOS raycast kaldırıldı (Source-X mesafe+CanSee). Commit f0d6bce.
+6. [x] **S3** — Item-hear scan sektör listen-item sayacıyla gate'lendi. Commit b4420d7.
+7. [x] **V2** — OPL cache obje-keyed + sadece TTL eviction. Commit 7c2febd. (Önceki erteleme
+   gerekçesi olan "30s bayatlık" Source-X'in TASARIMI çıktı — TOOLTIPCACHE saf zaman-tabanlı,
+   view-exit eviction referansta yok; parity gereği kabul edildi, invalidate yolu revizyon
+   artırarak değişiklikleri anında duyuruyor.)
+8. [x] **V4** — Version-only tooltip push (Source-X SENDVERSION); kuyruk yerine client-pull. Commit 533710f.
+9. [x] **N3** — A* mesafe gate'leri (2..13) + 28×28 arama kutusu + goal-tile char blokajı fix'i
+   (chase A*'ını "her zaman unreachable" yapan kök neden). Commit 82960c0.
+10. [x] **N2** — Bloklu chase A*'ı paralel BuildDecision'da prestage; serial otorite + adım
+    re-validation korunarak. Commit 82960c0.
 
-Bu dalgada V1/N1/S2/S1 (hepsi davranış-koruyan, testli, yeşil) kapatıldı. V2/N2 bilinçli olarak
-gözetimli bir oturuma bırakıldı (davranış/mimari trade-off).
-
-Her biri yapıldı: recon → en küçük fix → build + test + changelog → commit/push.
+Dalga 1 (V1/N1/S2/S1) + dalga 2 (V3/S3/V2/V4/N3/N2) ile plan TAMAMEN kapandı. Her madde:
+recon (Source-X'e karşı, 3 paralel ajan) → en küçük kök-neden fixi → build + test (tam suite
+yeşil: 1865/1868, 3 skip) → çift changelog → commit. Dalga 2'nin iki plan-düzeltmesi:
+N3'ün "negatif cache ekle" tarifi bayattı (zaten vardı; gerçek eksik mesafe gate'leri ve
+goal-tile bug'ıydı) ve V4'ün "kuyruk/stagger" tarifi gereksizdi (Source-X SENDVERSION zaten
+doğal stagger).

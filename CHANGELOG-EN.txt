@@ -7,6 +7,15 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+PERFORMANCE - The built AOS tooltip is now cached on the object itself (the reference
+        engine's model): one build serves every observer, expiry is purely time-based
+        (sphere.ini ToolTipCache seconds), and the entry is no longer thrown away when
+        the object scrolls out of a client's view. Previously every client kept its
+        own copy and dropped it on view-exit, so login/teleport bursts rebuilt every
+        visible object's tooltip from scratch; now re-entry is served from the shared
+        cache. Explicit invalidation still forces a rebuild and bumps the revision so
+        clients re-request changed tooltips.
+
 PERFORMANCE - Speech no longer sweeps every nearby ground item per spoken line. The
         reference engine keeps a per-sector count of items that can actually hear
         (comm crystals; here also multis/ships, which route speech the same way) and

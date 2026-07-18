@@ -21,7 +21,9 @@ public sealed class ClientViewCache
     public HashSet<uint> KnownDoorOverrides { get; } = [];
     public Dictionary<uint, (short X, short Y, sbyte Z, byte Dir, ushort Body, ushort Hue, byte Vis)> LastKnownPos { get; } = [];
     public Dictionary<uint, (short X, short Y, sbyte Z, ushort DispId, ushort Hue, ushort Amount, byte Direction)> LastKnownItemState { get; } = [];
-    /// <summary>serial → last sent tooltip hash.</summary>
+    /// <summary>serial → last sent tooltip hash. Kept across view-exit: the
+    /// client's own tooltip cache is persistent, so what it last received stays
+    /// true after the object scrolls out of view. The built tooltip itself lives
+    /// on the object (ObjBase.TooltipCache, Source-X SetPropertyList model).</summary>
     public Dictionary<uint, uint> TooltipHashCache { get; } = [];
-    public Dictionary<uint, TooltipCacheEntry> TooltipDataCache { get; } = [];
 }

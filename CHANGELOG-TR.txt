@@ -6,6 +6,15 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+PERFORMANS - Insa edilen AOS tooltip artik objenin uzerinde cache'leniyor (referans
+        motorun modeli): tek build tum gozlemcilere hizmet ediyor, gecerlilik yalnizca
+        zamana bagli (sphere.ini ToolTipCache saniyesi) ve obje client'in gorusunden
+        cikinca entry artik atilmiyor. Onceden her client kendi kopyasini tutup
+        view-exit'te dusuruyordu; login/teleport burst'lerinde gorunen her objenin
+        tooltip'i sifirdan yeniden insa ediliyordu. Simdi yeniden goruse giris
+        paylasilan cache'ten servis ediliyor. Acik invalidation yine rebuild zorluyor
+        ve revizyonu artiriyor, boylece client'lar degisen tooltip'i tekrar istiyor.
+
 PERFORMANS - Konusma artik her soylenen satirda yakindaki tum yer item'larini
         taramiyor. Referans motor, gercekten duyabilen item'larin (comm crystal;
         bizde ayrica ayni yoldan konusma alan multi/gemiler) sektor basina sayacini

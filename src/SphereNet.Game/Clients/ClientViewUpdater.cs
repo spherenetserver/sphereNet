@@ -260,8 +260,9 @@ public sealed class ClientViewUpdater
         {
             View.KnownChars.Remove(uid);
             View.LastKnownPos.Remove(uid);
-            View.TooltipHashCache.Remove(uid);
-            View.TooltipDataCache.Remove(uid);
+            // Tooltip caches survive view-exit deliberately (V2): the built OPL
+            // lives on the object with a pure TTL (Source-X model), and the hash
+            // cache mirrors the client's own persistent tooltip cache.
         }
 
         var staleItems = new List<uint>();
@@ -290,8 +291,7 @@ public sealed class ClientViewUpdater
         {
             View.KnownItems.Remove(uid);
             View.LastKnownItemState.Remove(uid);
-            View.TooltipHashCache.Remove(uid);
-            View.TooltipDataCache.Remove(uid);
+            // Tooltip caches kept across view-exit — see the stale-chars loop.
         }
     }
 

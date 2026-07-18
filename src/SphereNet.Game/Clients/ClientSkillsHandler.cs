@@ -633,15 +633,18 @@ public sealed class ClientSkillsHandler
         if (!_netState.SupportsAosTooltip || !CanSendAosTooltip(obj)) return;
 
         uint serial = obj.Uid.Value;
+        // Invalidate forces a rebuild but keeps the previous entry in place: the
+        // rebuild below compares against its hash so the revision bumps and 0xDC
+        // observers know to re-request. Nulling it would reset the revision to 1
+        // while clients still cache the old revision-1 props.
         if (invalidate)
-        {
-            View.TooltipDataCache.Remove(serial);
             View.TooltipHashCache.Remove(serial);
-        }
 
+        // Object-keyed cache (Source-X SetPropertyList): one build serves every
+        // observer and survives view-exit; only the ToolTipCache TTL expires it.
         long now = Environment.TickCount64;
         long cacheMs = Math.Max(0, _world.ToolTipCache) * 1000L;
-        if (cacheMs > 0 && View.TooltipDataCache.TryGetValue(serial, out var cached) &&
+        if (!invalidate && cacheMs > 0 && obj.TooltipCache is { } cached &&
             now - cached.BuiltAt < cacheMs)
         {
             SendAosTooltipEntry(serial, cached, requested);
@@ -753,12 +756,15 @@ public sealed class ClientSkillsHandler
             hash = hash * 31 + (uint)clilocId + StableStringHash(args);
 
         uint revision = 1;
-        if (View.TooltipDataCache.TryGetValue(serial, out var previous))
+        if (obj.TooltipCache is { } previous)
             revision = previous.Hash == hash ? previous.Revision : unchecked(previous.Revision + 1);
         if (revision == 0) revision = 1;
 
+        // Stored even with the TTL off (cacheMs == 0): the read above stays
+        // gated, but revision continuity needs the last build to survive, or a
+        // changed tooltip would reuse revision 1 and stick in the client cache.
         var entry = new TooltipCacheEntry(hash, revision, now, props);
-        View.TooltipDataCache[serial] = entry;
+        obj.TooltipCache = entry;
         SendAosTooltipEntry(serial, entry, requested);
     }
 

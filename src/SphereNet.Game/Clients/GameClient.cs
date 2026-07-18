@@ -284,7 +284,6 @@ public sealed partial class GameClient : ITextConsole
             if (!linger)
                 _world.RemoveOnlinePlayer(_character);
             View.TooltipHashCache.Clear();
-            View.TooltipDataCache.Clear();
             View.KnownItems.Clear();
             View.KnownChars.Clear();
             View.KnownDoorOverrides.Clear();

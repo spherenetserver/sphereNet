@@ -1738,8 +1738,8 @@ public sealed class ClientScriptConsoleHandler
                 Action<string> sink = toLog
                     ? line => _logger.LogInformation("{Line}", line)
                     : SysMessage;
-                uint clilocSerial = target is ObjBase tob ? tob.Uid.Value : _character.Uid.Value;
-                if (_client.View.TooltipDataCache.TryGetValue(clilocSerial, out var cachedTip))
+                var clilocObj = target as ObjBase ?? _character;
+                if (clilocObj.TooltipCache is { } cachedTip)
                 {
                     foreach (var (id, tipArgs) in cachedTip.Properties)
                         sink($"{id}={tipArgs}");

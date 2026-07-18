@@ -35,6 +35,13 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     /// <summary>Resolve the GameWorld instance (set at startup).</summary>
     public static Func<World.GameWorld>? ResolveWorld;
 
+    /// <summary>Built AOS tooltip (OPL) cached on the object, shared by every
+    /// observing client — Source-X CObjBase::SetPropertyList. Expiry is purely
+    /// time-based (sphere.ini ToolTipCache seconds, checked on read); the entry
+    /// is NOT dropped when the object leaves a client's view, so re-entry and
+    /// login bursts reuse the built list. Dies with the object.</summary>
+    public Clients.TooltipCacheEntry? TooltipCache { get; set; }
+
     /// <summary>Script TRIGGER verb (Source-X CV_TRIGGER): the host wires this
     /// to TriggerDispatcher.Fire*TriggerByName so scripts can fire arbitrary
     /// named triggers on an object through the normal handler chain.</summary>

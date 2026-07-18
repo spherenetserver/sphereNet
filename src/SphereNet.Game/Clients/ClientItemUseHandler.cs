@@ -1188,17 +1188,28 @@ public sealed class ClientItemUseHandler
                     var shipEngine = Item.ResolveShipEngine?.Invoke();
                     if (!TryResolveDeedMulti(deedItem, out ushort multiId, out bool isShip))
                     {
-                        // A blank deed (the pack's base i_deed / i_deed_ship with
-                        // no MORE) references no structure — say so instead of the
-                        // misleading "Cannot place house here", and log what the
-                        // deed actually carried for field diagnosis.
-                        _logger.LogWarning(
-                            "[deed] unresolvable multi on 0x{Uid:X8} '{Name}' base=0x{Base:X} more1=0x{More1:X} tagMORE={More} tagM1D={M1D}",
-                            deedItem.Uid.Value, deedItem.Name, deedItem.BaseId, deedItem.More1,
-                            deedItem.TryGetTag("MORE", out string? tm) ? tm : "-",
-                            deedItem.TryGetTag("MORE1_DEFNAME", out string? tmd) ? tmd : "-");
-                        SysMessage("That deed is blank - it does not reference any structure.");
-                        break;
+                        // Legacy repair: deeds created on older builds carry no
+                        // multi reference at all (their @Create MORE=<multidef>
+                        // left neither More1 nor a tag — field-confirmed via the
+                        // [deed] log). A deed's @Create body only assigns MORE,
+                        // and FireCreateTrigger is instance-guarded and resets on
+                        // world load, so re-running it once on a loaded legacy
+                        // deed restores the reference in place. Fresh deeds have
+                        // already fired it this session, so this is a no-op there.
+                        deedItem.FireCreateTrigger();
+                        if (!TryResolveDeedMulti(deedItem, out multiId, out isShip))
+                        {
+                            // Genuinely blank (base i_deed / i_deed_ship with no
+                            // MORE) — say so instead of the misleading "Cannot
+                            // place house here", and log what the deed carried.
+                            _logger.LogWarning(
+                                "[deed] unresolvable multi on 0x{Uid:X8} '{Name}' base=0x{Base:X} more1=0x{More1:X} tagMORE={More} tagM1D={M1D}",
+                                deedItem.Uid.Value, deedItem.Name, deedItem.BaseId, deedItem.More1,
+                                deedItem.TryGetTag("MORE", out string? tm) ? tm : "-",
+                                deedItem.TryGetTag("MORE1_DEFNAME", out string? tmd) ? tmd : "-");
+                            SysMessage("That deed is blank - it does not reference any structure.");
+                            break;
+                        }
                     }
                     if (isShip && shipEngine == null)
                     {

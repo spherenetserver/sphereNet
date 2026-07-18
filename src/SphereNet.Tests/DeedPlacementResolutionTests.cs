@@ -29,9 +29,11 @@ public sealed class DeedPlacementResolutionTests
     }
 
     [Theory]
-    [InlineData("i_deed_test_house")]
-    [InlineData("i_deed_test_ship")] // multi id 0 — the small-ship-north edge
-    public void NamedDeed_AtCreateMore_RaisesPlacementCursorOnDClick(string deedDefname)
+    [InlineData("i_deed_test_house", false)]
+    [InlineData("i_deed_test_ship", false)] // multi id 0 — the small-ship-north edge
+    [InlineData("i_deed_test_house", true)] // legacy save item: @Create never ran
+    [InlineData("i_deed_test_ship", true)]
+    public void NamedDeed_AtCreateMore_RaisesPlacementCursorOnDClick(string deedDefname, bool legacyLoadPath)
     {
         var stack = ScriptTestBootstrap.CreateRuntimeStack();
         string path = WriteScript("""
@@ -113,8 +115,23 @@ public sealed class DeedPlacementResolutionTests
             // Create the deed the way .add / NEWITEM does.
             int defIdx = stack.Resources.ResolveDefName(deedDefname).Index;
             var deed = world.CreateItem();
-            ItemDefHelper.ApplyInstanceMetadata(deed, defIdx);
-            deed.FireCreateTrigger();
+            if (legacyLoadPath)
+            {
+                // Simulate a deed materialised by the WORLD LOADER on an old
+                // save: fields stamped, routing tags present, but @Create never
+                // fired and no MORE reference survived. The dclick handler's
+                // legacy repair must re-run @Create and still resolve.
+                deed.BaseId = deedDefname.Contains("ship") ? (ushort)0x14F1 : (ushort)0x14EF;
+                deed.ItemType = ItemType.Deed;
+                deed.Name = "legacy deed";
+                deed.SetTag("ITEMDEF", deedDefname);
+                deed.SetTag("SCRIPTDEF", defIdx.ToString());
+            }
+            else
+            {
+                ItemDefHelper.ApplyInstanceMetadata(deed, defIdx);
+                deed.FireCreateTrigger();
+            }
             world.PlaceItem(deed, player.Position);
 
             // The @Create MORE=<multidef defname> must be resolvable at dclick.

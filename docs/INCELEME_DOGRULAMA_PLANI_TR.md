@@ -253,9 +253,16 @@ gecikmeleri); aşağıdakiler onu **büyüten** kesin kod borçları.
   yerine bu set'i geziyor; alınıp cebe konan item'lar (`IsOnGround==false`) tarama sırasında lazy
   prune ediliyor — DecayTime'ın 22 call-site'ına hook GEREKMEDİ. Maliyet obje sayısıyla değil loose
   ground item sayısıyla ölçekleniyor. Test: PerfIndexTests (expired-only collect + picked-up prune).)
-- [ ] **E5 (P1 — MED / MED) — Sleeping-sector maintenance 3dk'da tek tick'te toplu.**
-  `GameWorld.cs:1226` her item-içeren sektörü tek tick'te `OnMaintenanceTick`; per-tick bütçe/
-  cursor yok → periyodik `snapshot` spike. Fix: tick-başına süre/obje bütçesi + resume cursor.
+- [x] **E5 (P1 — MED / MED) — Sleeping-sector maintenance 3dk'da tek tick'te toplu.** (YAPILDI:
+  `TickSleepingSectorItems` (tüm dünyayı tek tick'te gezip her uygun sektöre `OnMaintenanceTick`)
+  → `TickSleepingMaintenance(currentTime)` ile değiştirildi: interval bir sweep'i **arm** ediyor,
+  sonra her tick **resume cursor**'dan (mapIdx + x + y) sınırlı bir dilim drain ediliyor; tüm grid
+  bir kez gezilince sweep idle'a geçip bir sonraki interval'i bekliyor. Per-tick maliyet iki bütçeyle
+  sınırlı: `MaintenanceCallsPerTick` (pahalı maintenance tick'i, default 256) + `MaintenanceExaminePerTick`
+  (ucuz hücre ziyareti, default 4096). Cadence arm-time'dan ölçülüyor → drain süresi zamanlamayı
+  kaydırmıyor. İki call-site (`OnTick` + `OnTickParallel`) de tek metoda indirgendi. Test:
+  SleepingMaintenanceBudgetTests — bütçe=1'de iş K tick'e yayılıyor + her uygun sektör tam bir kez
+  ziyaret ediliyor; bütçe bol olunca tek tick'te bitiyor.)
 - [ ] **E6 (P1 — MED / MED-YÜKSEK) — Network tamamen main-loop'ta.** `USEASYNCNETWORK`
   **hiç okunmuyor** (SphereConfig'te field yok), `NETWORKTHREADS` okunup kullanılmıyor. Accept
   döngüsü unbounded (`NetworkManager.cs:207`), her accept'te full `_states` IP taraması (`:228`),

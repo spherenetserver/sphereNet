@@ -16,6 +16,13 @@ INTERNAL - Removed redundant unused code paths flagged by a code review: a secon
         packets, and the speed-hack audit hook) was kept and documented instead. No
         behaviour change.
 
+PERFORMANCE - Removed the periodic latency spike from sleeping-sector upkeep. Item
+        timers, spawns and decay in sectors with no nearby player used to all run in a
+        single tick every few minutes, causing a recurring stall. That upkeep is now
+        spread across ticks with a small per-tick budget and a resume cursor, so it
+        completes over a short window instead of one big burst. Nothing is skipped:
+        every eligible sector is still serviced once per cycle.
+
 PERFORMANCE - Two per-tick/periodic sweeps no longer scan the entire object list.
         The TIMERF timer sweep now walks only the handful of objects that actually
         hold a pending timer, and the item-decay catch-up now walks only loose

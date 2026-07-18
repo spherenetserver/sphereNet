@@ -14,6 +14,13 @@ DAHILI - Kod incelemesinde isaretlenen redundant kullanilmayan kod yollari kaldi
         (bot-performans CI gate, fast-walk protokol paketleri, speed-hack audit hook)
         silinmeyip belgelendi. Davranis degisikligi yok.
 
+PERFORMANS - Uyuyan sektor bakimindaki periyodik gecikme spike'i kaldirildi. Yakininda
+        oyuncu olmayan sektorlerdeki item timer'lari, spawn ve decay eskiden birkac
+        dakikada bir tek tick'te toptan calisiyor ve tekrarlayan bir takilma yaratiyordu.
+        Bu bakim artik kucuk bir per-tick butce ve resume cursor ile tick'lere yayiliyor;
+        tek buyuk patlama yerine kisa bir pencerede tamamlaniyor. Hicbir sey atlanmiyor:
+        her uygun sektor dongude bir kez isleniyor.
+
 PERFORMANS - Iki periyodik tarama artik tum obje listesini gezmiyor. TIMERF timer
         taramasi yalnizca gercekten bekleyen timer'i olan az sayidaki objeyi, item
         decay catch-up ise yalnizca yerdeki (loose) ground item'lari geziyor. Her

@@ -103,6 +103,24 @@ public sealed class GameWorld
     /// Keeps item timers (decay, spawn, TIMER) alive in empty areas.</summary>
     private const long SleepingMaintenanceIntervalMs = 180_000; // 3 minutes
     private long _lastMaintenanceTick;
+    // Sleeping-sector maintenance is spread across ticks instead of running the whole
+    // world in one tick every interval (which produced a periodic latency spike). A
+    // sweep is "armed" when the interval elapses, then drained a bounded number of
+    // sectors per tick via a resume cursor until every grid cell has been visited once.
+    private bool _maintenanceSweepActive;
+    private int[]? _maintenanceMapKeys;
+    private int _maintenanceMapIdx;
+    private int _maintenanceCursorX;
+    private int _maintenanceCursorY;
+    // Per-tick budgets: at most this many expensive OnMaintenanceTick calls, and at most
+    // this many (cheap) grid cells examined, so a single tick's cost stays bounded no
+    // matter how the item-bearing sleeping sectors are distributed. Instance-scoped so
+    // tests can shrink them without leaking across the suite.
+    internal int MaintenanceCallsPerTick { get; set; } = 256;
+    internal int MaintenanceExaminePerTick { get; set; } = 4096;
+    // Diagnostics/test observability for the current sweep.
+    internal bool MaintenanceSweepActive => _maintenanceSweepActive;
+    internal int MaintenanceCallsThisSweep { get; private set; }
 
     /// <summary>Maps to map definitions: mapId → (width, height) in tiles.</summary>
     private readonly Dictionary<int, (int Width, int Height)> _mapDefs = [];
@@ -1132,11 +1150,7 @@ public sealed class GameWorld
 
         // Periodically run item timers in sleeping sectors so spawn points,
         // decay and TIMER triggers stay alive even when no player is nearby.
-        if (currentTime - _lastMaintenanceTick >= SleepingMaintenanceIntervalMs)
-        {
-            _lastMaintenanceTick = currentTime;
-            TickSleepingSectorItems();
-        }
+        TickSleepingMaintenance(currentTime);
 
         TickTimerF(currentTime);
     }
@@ -1248,23 +1262,77 @@ public sealed class GameWorld
     /// <summary>Run a lightweight item-only tick on every sleeping sector that
     /// contains items. Keeps spawn points, decay timers and TIMER triggers
     /// progressing even when no player is nearby. Called every 3 minutes.</summary>
-    private void TickSleepingSectorItems()
+    /// <summary>Drive sleeping-sector maintenance without the periodic all-at-once spike.
+    /// The interval arms a sweep; each call then processes a bounded slice of the sector
+    /// grid from a resume cursor until the whole world has been visited once, after which
+    /// the sweep idles until the next interval. Cost per invocation is capped by
+    /// <see cref="MaintenanceCallsPerTick"/> (expensive maintenance ticks) and
+    /// <see cref="MaintenanceExaminePerTick"/> (cheap cell visits).</summary>
+    internal void TickSleepingMaintenance(long currentTime)
     {
-        foreach (var (_, grid) in _sectors)
+        // Arm a fresh sweep once the interval elapses and none is mid-flight. The cadence
+        // is measured from arm time, so draining across ticks does not shift the schedule.
+        if (!_maintenanceSweepActive && currentTime - _lastMaintenanceTick >= SleepingMaintenanceIntervalMs)
         {
+            _lastMaintenanceTick = currentTime;
+            _maintenanceSweepActive = true;
+            _maintenanceMapKeys = new int[_sectors.Count];
+            _sectors.Keys.CopyTo(_maintenanceMapKeys, 0);
+            _maintenanceMapIdx = 0;
+            _maintenanceCursorX = 0;
+            _maintenanceCursorY = 0;
+            MaintenanceCallsThisSweep = 0;
+        }
+
+        if (!_maintenanceSweepActive || _maintenanceMapKeys == null)
+            return;
+
+        int calls = 0;
+        int examined = 0;
+        while (_maintenanceMapIdx < _maintenanceMapKeys.Length &&
+               calls < MaintenanceCallsPerTick && examined < MaintenanceExaminePerTick)
+        {
+            if (!_sectors.TryGetValue(_maintenanceMapKeys[_maintenanceMapIdx], out var grid))
+            {
+                _maintenanceMapIdx++;
+                _maintenanceCursorX = 0;
+                _maintenanceCursorY = 0;
+                continue;
+            }
             int cols = grid.GetLength(0);
             int rows = grid.GetLength(1);
-            for (int x = 0; x < cols; x++)
+            while (_maintenanceCursorX < cols &&
+                   calls < MaintenanceCallsPerTick && examined < MaintenanceExaminePerTick)
             {
-                for (int y = 0; y < rows; y++)
+                while (_maintenanceCursorY < rows &&
+                       calls < MaintenanceCallsPerTick && examined < MaintenanceExaminePerTick)
                 {
-                    var sector = grid[x, y];
+                    var sector = grid[_maintenanceCursorX, _maintenanceCursorY];
+                    _maintenanceCursorY++;
+                    examined++;
+                    if (sector == null) continue;
                     if (_activeSectors.Contains(sector)) continue;
                     if (sector.ItemCount == 0) continue;
                     sector.OnMaintenanceTick();
+                    calls++;
+                }
+                if (_maintenanceCursorY >= rows)
+                {
+                    _maintenanceCursorY = 0;
+                    _maintenanceCursorX++;
                 }
             }
+            if (_maintenanceCursorX >= cols)
+            {
+                _maintenanceCursorX = 0;
+                _maintenanceMapIdx++;
+            }
         }
+
+        MaintenanceCallsThisSweep += calls;
+
+        if (_maintenanceMapIdx >= _maintenanceMapKeys.Length)
+            _maintenanceSweepActive = false; // full pass done — idle until the next interval
     }
 
     /// <summary>O(1) gate used by NPC AI to skip expensive brain work when
@@ -1335,11 +1403,7 @@ public sealed class GameWorld
 
         // Sleeping sector maintenance — item timers, spawn points, decay in sectors
         // with no nearby players. Without this, remote spawns freeze in multicore mode.
-        if (currentTime - _lastMaintenanceTick >= SleepingMaintenanceIntervalMs)
-        {
-            _lastMaintenanceTick = currentTime;
-            TickSleepingSectorItems();
-        }
+        TickSleepingMaintenance(currentTime);
 
         // Script TIMERF callbacks — must run in sequential phase (callbacks can mutate world).
         TickTimerF(currentTime);

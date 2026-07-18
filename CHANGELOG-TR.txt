@@ -14,6 +14,13 @@ DAHILI - Kod incelemesinde isaretlenen redundant kullanilmayan kod yollari kaldi
         (bot-performans CI gate, fast-walk protokol paketleri, speed-hack audit hook)
         silinmeyip belgelendi. Davranis degisikligi yok.
 
+PERFORMANS - Kalabalik yaninda login sonrasi NPC uyanmasi daha puruzsuz. Login,
+        oyuncunun etrafindaki sektor penceresini acip ~140 NPC'yi ayni 100ms timer
+        slotuna uyandirabiliyordu; boylece hepsinin AI'si tek tick'te calisip kisa bir
+        takilma yaratiyordu. Uyanma artik NPC basina sabit bir offset ile ~8 slota
+        yayiliyor, yuk tek spike yerine kisa bir pencereye dagiliyor. Tekil uyandirmalar
+        (saldiriya ugrayan bir NPC'nin tepkisi) etkilenmedi, hala aninda.
+
 PERFORMANS - Kalabalik bolgelerde / login'de view guncellemeleri hizlandi. Client'in
         goruntusune giren her obje bir tooltip insa ediyor ve bu yol @ClientTooltip
         script trigger'ini, hicbir script onu hook'lamasa bile her obje icin fire

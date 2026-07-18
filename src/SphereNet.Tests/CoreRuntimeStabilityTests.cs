@@ -83,6 +83,32 @@ public class CoreRuntimeStabilityTests
         Assert.Empty(wheel.Advance(200));
     }
 
+    // N1 (perf): a wake burst is spread across tick slots by a uid-derived offset
+    // (WakeNewlyActiveSectorNpcs) so the timer wheel doesn't fire ~140 NPCs in one slot.
+    // This proves staggered fire times land in different slots (distributed Advance)
+    // and that none are lost.
+    [Fact]
+    public void TimerWheel_StaggeredSchedule_SpreadsAcrossSlots()
+    {
+        const long spread = 800; // mirrors Program.NpcWakeSpreadMs (8 x 100ms slots)
+        const int count = 8;
+        var wheel = new TimerWheel(0);
+        for (uint i = 1; i <= count; i++)
+        {
+            var npc = new Character();
+            npc.SetUid(new Serial(i * 100)); // offsets 100..700,0 → distinct slots
+            wheel.Schedule(npc, 100 + (npc.Uid.Value % spread));
+        }
+
+        // The first slot must not drain the whole burst — that is the point of staggering.
+        int firstSlots = wheel.Advance(200).Count;
+        Assert.True(firstSlots < count, "staggered wakes must not all fire in one slot");
+
+        // Advancing past the spread window fires the rest; nothing is dropped.
+        int rest = wheel.Advance(100 + spread + 100).Count;
+        Assert.Equal(count, firstSlots + rest);
+    }
+
     [Fact]
     public void ScriptFunction_MaxCallDepth_StopsRecursiveCall()
     {

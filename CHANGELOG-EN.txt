@@ -16,6 +16,13 @@ INTERNAL - Removed redundant unused code paths flagged by a code review: a secon
         packets, and the speed-hack audit hook) was kept and documented instead. No
         behaviour change.
 
+PERFORMANCE - Smoother NPC wake-up after login near a crowd. Logging in lights up the
+        sector window around the player and could wake ~140 NPCs into the exact same
+        100ms timer slot, so their AI all ran in one tick and caused a brief stall. The
+        wake is now spread across ~8 slots by a stable per-NPC offset, so the load is
+        distributed over a short window instead of one spike. Single-target wakes
+        (an NPC reacting to being attacked) are unaffected and still immediate.
+
 PERFORMANCE - Faster view updates in crowded areas / on login. Every object entering a
         client's view builds a tooltip, and that path fired the @ClientTooltip script
         trigger for every object even when no script hooked it — re-parsing the object's

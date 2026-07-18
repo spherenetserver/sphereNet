@@ -57,8 +57,12 @@ comm crystal → paket üretimi. `hearRange`=18 (say) sektör-pencereli.
 500-bütçe 140'ı ne yaratıyor ne yumuşatıyor.
 
 **Fix yüzeyi (risk-sıralı):**
-- [ ] **N1 (P2, DÜŞÜK risk) — NPC wake stagger.** `WakeNpc` `now+100` yerine `now+100+hash(uid)%N`
-      dağıt → login transient'i doğrudan kırar. Küçük, güvenli, izole.
+- [x] **N1 (P2, DÜŞÜK risk) — NPC wake stagger YAPILDI.** `WakeNewlyActiveSectorNpcs` artık her NPC'yi
+      `now+100 + (uid % NpcWakeSpreadMs)` (spread=800ms = 8 slot) ile schedule ediyor → ~140 NPC tek
+      wheel slotu yerine ~8 slota dağılıyor. Stagger sadece TOPLU sector-activation yolunda; tekil
+      aggro/interaction wake'leri (`WakeNpc(target)`) anında kalıyor (iki overload, 1-arg olan
+      `Action<Character>` delegesine bağlanıyor). Offset uid-türevli (RNG yok → tick determinizmi korunur).
+      Test: TimerWheel_StaggeredSchedule_SpreadsAcrossSlots. Suite yeşil.
 - [ ] **N2 (P0 etki, YÜKSEK efor) — Read-only ağır işi paralel `BuildDecision`'a taşı.** Range-scan +
       `FindPath` map/static'e karşı read-only; paralelde çöz, somut `Move` kararı üret (Move branch
       `ApplyDecision:480-485` zaten var, sadece `MoveCharacter` mutasyonu serial kalır). En yüksek

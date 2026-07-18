@@ -836,12 +836,23 @@ public static partial class Program
         MaybeRunDeterminismGuardrail();
     }
 
-    private static void WakeNpc(Character npc)
+    // A wake burst (a fresh login lighting up the 5x5 sector window can wake ~140 NPCs at
+    // once) is spread across this many milliseconds by a deterministic per-NPC offset, so
+    // the timer wheel doesn't drop them all into one 100ms slot and spike the serial NPC
+    // apply phase. Only the bulk sector-activation path staggers; single-target wakes
+    // (aggro/interaction) stay immediate.
+    private const long NpcWakeSpreadMs = 800;
+
+    // Single-arg overload kept as a distinct method so it still binds to Action<Character>
+    // where WakeNpc is used as a delegate (single-target aggro/interaction wakes).
+    private static void WakeNpc(Character npc) => WakeNpc(npc, 0);
+
+    private static void WakeNpc(Character npc, long extraDelayMs)
     {
         if (npc.IsPlayer || npc.IsDeleted || npc.IsDead) return;
         npc.NextNpcActionTime = 0;
         _npcTimerWheel?.Remove(npc);
-        _npcTimerWheel?.Schedule(npc, Environment.TickCount64 + 100);
+        _npcTimerWheel?.Schedule(npc, Environment.TickCount64 + 100 + extraDelayMs);
     }
 
     private static void WakeNewlyActiveSectorNpcs()
@@ -854,7 +865,8 @@ public static partial class Program
             foreach (var ch in sector.Characters)
             {
                 if (!ch.IsPlayer && !ch.IsDeleted && !ch.IsDead)
-                    WakeNpc(ch);
+                    // uid-derived offset (stable, no RNG — RNG would break tick determinism).
+                    WakeNpc(ch, NpcWakeSpreadMs > 0 ? ch.Uid.Value % NpcWakeSpreadMs : 0);
             }
         }
     }

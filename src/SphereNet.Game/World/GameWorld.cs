@@ -1111,7 +1111,8 @@ public sealed class GameWorld
     /// and those iterator chains were by far the dominant pathfinding
     /// allocation under load. Reads sector lists by index, matching the
     /// parallel-compute-phase safety contract of <c>Sector.GetObjectsInRange</c>.</summary>
-    public bool IsPathTileBlockedByObject(Point3D pos, CanFlags canFlags, Character? self)
+    public bool IsPathTileBlockedByObject(Point3D pos, CanFlags canFlags, Character? self,
+        bool ignoreChars = false)
     {
         var (minSx, maxSx, minSy, maxSy) = GetSectorRange(pos, 0);
         for (int sx = minSx; sx <= maxSx; sx++)
@@ -1120,15 +1121,18 @@ public sealed class GameWorld
             var sector = GetSector(pos.Map, sx, sy);
             if (sector == null) continue;
 
-            var chars = sector.Characters;
-            for (int i = chars.Count - 1; i >= 0; i--)
+            if (!ignoreChars)
             {
-                if (i >= chars.Count) continue;
-                var ch = chars[i];
-                if (ch.IsDeleted || pos.GetDistanceTo(ch.Position) > 0) continue;
-                if (ch == self || ch.IsDead || ch.IsStatFlag(StatFlag.Invisible) || ch.IsStatFlag(StatFlag.Hidden))
-                    continue;
-                return true;
+                var chars = sector.Characters;
+                for (int i = chars.Count - 1; i >= 0; i--)
+                {
+                    if (i >= chars.Count) continue;
+                    var ch = chars[i];
+                    if (ch.IsDeleted || pos.GetDistanceTo(ch.Position) > 0) continue;
+                    if (ch == self || ch.IsDead || ch.IsStatFlag(StatFlag.Invisible) || ch.IsStatFlag(StatFlag.Hidden))
+                        continue;
+                    return true;
+                }
             }
 
             var items = sector.Items;

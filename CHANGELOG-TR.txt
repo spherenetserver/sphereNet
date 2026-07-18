@@ -6,6 +6,19 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+PERFORMANS - NPC kovalama pathfinding'i artik referans motor gibi sinirlandi ve
+        ana thread disinda calisiyor. Uc degisiklik: (1) rota arama yalnizca 2-13
+        tile uzakliktaki hedefler icin devreye giriyor ve referansin kullandigi ayni
+        28x28 yerel kutuda ariyor; duvarla kapatilmis bir hedef tum dugum butcesi
+        yerine kucuk bir alani tuketiyor. (2) Kovalama rotasi, hedefin uzerinde
+        durdugu tile'i artik asilmaz duvar saymiyor -- bu, bir karaktere dogru her
+        rotayi "ulasilamaz" yapip her seferinde tum arama butcesini yakiyordu ve
+        NPC kor yan adimlara dusuyordu; rotalar artik engellerin etrafindan gercekten
+        doluyor. (3) Arama, paralel NPC karar fazinda onceden hesaplaniyor; tek
+        thread'li apply fazi NPC basina ~17ms harcamak yerine hazir rotayi buluyor.
+        Davranis serial-otoriter kaliyor: serial faz onceden hesaplanan her adimi
+        yeniden dogruluyor, dunya degistiyse yeniden hesapliyor.
+
 PERFORMANS - View guncellemelerindeki tooltip push'lari artik yalnizca revizyon
         paketi tasiyor, referans motorun varsayilan tooltip modu gibi: objeler goruse
         girdiginde server kucuk revizyon paketini gonderiyor ve client tam property

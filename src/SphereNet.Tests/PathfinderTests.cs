@@ -64,6 +64,27 @@ public class PathfinderTests
         Assert.Equal(goal.Y, path[^1].Y);
     }
 
+    // N3 (perf/parity): Source-X CPathFinder searches a fixed 28x28 box around
+    // the NPC (MAX_NPC_PATH_STORAGE_SIZE). With maxRadius set, a goal whose only
+    // route leaves the box is unreachable and the search stops at the box edge
+    // instead of burning the whole node budget.
+    [Fact]
+    public void FindPath_MaxRadius_ConfinesSearchBox()
+    {
+        var (_, pf) = CreateWorld();
+        var start = new Point3D(100, 100, 0, 0);
+        var goal = new Point3D(120, 100, 0, 0); // 20 tiles out
+
+        // Unconstrained: open synthetic terrain, path found.
+        Assert.NotNull(pf.FindPath(start, goal, 0));
+
+        // Confined to a 14-tile box: the goal lies outside → no path.
+        Assert.Null(pf.FindPath(start, goal, 0, maxRadius: 14));
+
+        // A goal inside the box still routes normally.
+        Assert.NotNull(pf.FindPath(start, new Point3D(110, 100, 0, 0), 0, maxRadius: 14));
+    }
+
     [Fact]
     public void FindPath_PathLengthCapped()
     {

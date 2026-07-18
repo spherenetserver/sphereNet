@@ -53,6 +53,17 @@ public sealed partial class NpcAI
     // realistic local detour.
     private const int NpcPathMaxNodes = 500;
 
+    // Source-X NPC pathfinding eligibility (CCharNPCAct.cpp NPC_Pathfinding):
+    // the pathfinder is a fixed 28x28 local box (MAX_NPC_PATH_STORAGE_SIZE =
+    // UO_MAP_VIEW_SIGHT*2), so a target at dist >= 14 is "too far... too slow"
+    // (:2432) and an adjacent one (dist < 2, :2434) needs no route — both take
+    // direct/side steps instead. The same radius bounds the A* search box, so
+    // an unreachable target in an enclosed space exhausts the box, not the
+    // whole node budget.
+    private const int NpcPathMinDist = 2;
+
+    private const int NpcPathMaxDist = 14;
+
     private long _lastPathPurge;
 
     public void PurgeStalePaths()
@@ -475,6 +486,21 @@ public sealed partial class NpcAI
             return;
         }
 
+        // Source-X distance eligibility (NPC_Pathfinding :2432/:2434): A* only
+        // routes to targets 2..13 tiles out. Farther ones take direct/side steps
+        // until in range — this alone removes the "chase across the map into a
+        // full node-budget burn" case; adjacent ones never need a route.
+        int targetDist = npc.Position.GetDistanceTo(target);
+        if (targetDist < NpcPathMinDist || targetDist >= NpcPathMaxDist)
+        {
+            if (!TrySideStep(npc, dir))
+            {
+                npc.Direction = dir;
+                npc.NextNpcActionTime = Math.Min(npc.NextNpcActionTime, Environment.TickCount64 + 500);
+            }
+            return;
+        }
+
         // Direct path blocked — use A* pathfinding
         uint uid = npc.Uid.Value;
         if (_pathGoal.TryGetValue(uid, out Point3D oldGoal) &&
@@ -509,7 +535,8 @@ public sealed partial class NpcAI
             // Calculate new path
             var npcDef = DefinitionLoader.GetCharDef(npc.CharDefIndex);
             var npcCanFlags = npcDef?.Can ?? Core.Enums.CanFlags.None;
-            path = _pathfinder.FindPath(npc.Position, target, npc.MapIndex, npcCanFlags, npc, NpcPathMaxNodes);
+            path = _pathfinder.FindPath(npc.Position, target, npc.MapIndex, npcCanFlags, npc,
+                NpcPathMaxNodes, NpcPathMaxDist);
             if (path == null || path.Count == 0)
             {
                 _nextPathfindMs[uid] = nowMs + PathFailBackoffMs;
@@ -558,6 +585,100 @@ public sealed partial class NpcAI
         npc.Direction = run ? stepDir | Direction.Running : stepDir;
         _world.MoveCharacter(npc, nextStep);
         _pathIndex[uid] = idx + 1;
+    }
+
+    // --- N2: parallel-phase pathfind prestage ---
+
+    /// <summary>Read-only mirror of the conditions under which the serial
+    /// <see cref="MoveToward"/> would run a full A* this tick for a combat/pet
+    /// chase. When they hold, runs the search HERE (parallel build phase —
+    /// Pathfinder scratch state is thread-static, world reads follow the
+    /// parallel-compute-phase safety contract) and returns the result to be
+    /// carried on the <see cref="NpcDecision"/>. Mutates nothing.</summary>
+    private (List<Point3D>? Path, Point3D Goal, bool Ran) TryPrestagePathfind(Character npc)
+    {
+        // The chase goal the serial brain will walk toward this tick: the fight
+        // target, else the master for a following pet. Other MoveToward callers
+        // (wander-home leash, corpse looting, investigate) stay serial-computed.
+        Character? target = null;
+        if (npc.FightTarget.IsValid)
+            target = _world.FindChar(npc.FightTarget);
+        else if (npc.NpcMaster.IsValid &&
+                 npc.PetAIMode is PetAIMode.Follow or PetAIMode.Come or PetAIMode.Guard)
+            target = _world.FindChar(npc.NpcMaster);
+        if (target == null || target.IsDeleted || target.IsDead || target.MapIndex != npc.MapIndex)
+            return (null, default, false);
+
+        Point3D goal = target.Position;
+        int dist = npc.Position.GetDistanceTo(goal);
+        if (dist < NpcPathMinDist || dist >= NpcPathMaxDist)
+            return (null, default, false);
+
+        var npcFlags = GetNpcFlags(npc);
+        if (!npcFlags.HasFlag(NpcAIFlags.Path))
+            return (null, default, false);
+        int effInt = npcFlags.HasFlag(NpcAIFlags.AlwaysInt) ? 300 : npc.Int;
+        if (effInt < 30)
+            return (null, default, false);
+
+        // Direct step open → the serial side takes it without A*. (The serial
+        // path may additionally open a door / shift an obstacle first; if that
+        // frees the step, the seeded state is simply cleared by the direct-step
+        // branch, same as any other stale cache entry.)
+        var dir = npc.Position.GetDirectionTo(goal);
+        GetDirectionDelta(dir, out short dx, out short dy);
+        short nx = (short)(npc.X + dx), ny = (short)(npc.Y + dy);
+        sbyte nz = _world.MapData?.GetEffectiveZ(npc.MapIndex, nx, ny, npc.Z) ?? npc.Z;
+        if (Math.Abs(nz - npc.Z) <= 12 &&
+            CanNpcMoveTo(npc, new Point3D(nx, ny, nz, npc.MapIndex)))
+            return (null, default, false);
+
+        uint uid = npc.Uid.Value;
+        // A fresh cached path toward (about) this goal → serial reuses it as-is.
+        if (_pathCache.TryGetValue(uid, out var cachedPath) && cachedPath.Count > 0 &&
+            _pathGoal.TryGetValue(uid, out var cachedGoal) &&
+            cachedGoal.Map == goal.Map && cachedGoal.GetDistanceTo(goal) <= 2)
+            return (null, default, false);
+        // Throttle/backoff window still closed → serial won't recompute either.
+        if (_nextPathfindMs.TryGetValue(uid, out long nextPf) &&
+            Environment.TickCount64 < nextPf)
+            return (null, default, false);
+
+        var npcCanFlags = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.Can ?? CanFlags.None;
+        var path = _pathfinder.FindPath(npc.Position, goal, npc.MapIndex, npcCanFlags, npc,
+            NpcPathMaxNodes, NpcPathMaxDist);
+        return (path, goal, true);
+    }
+
+    /// <summary>Serial-phase merge of a parallel prestage result into the path
+    /// cache, applied only when the serial state still calls for a recompute
+    /// (no fresh path, throttle open) — the serial side stays the source of
+    /// truth. A failed search records the same fail-backoff the serial compute
+    /// would have, so the ~17ms unreachable burn never hits the apply phase.
+    /// The cached step is still re-validated by MoveToward before use.</summary>
+    private void SeedPrestagedPath(Character npc, in NpcDecision decision)
+    {
+        uint uid = npc.Uid.Value;
+        long nowMs = Environment.TickCount64;
+
+        if (_pathCache.TryGetValue(uid, out var existing) && existing.Count > 0)
+            return;
+        if (_nextPathfindMs.TryGetValue(uid, out long nextPf) && nowMs < nextPf)
+            return;
+
+        if (decision.PrestagedPath is { Count: > 0 } path)
+        {
+            _pathCache[uid] = path;
+            _pathIndex[uid] = 0;
+            _pathTime[uid] = nowMs;
+            _pathGoal[uid] = decision.PrestageGoal;
+            _nextPathfindMs[uid] = nowMs + PathThrottleMs;
+        }
+        else
+        {
+            _nextPathfindMs[uid] = nowMs + PathFailBackoffMs;
+            _pathGoal[uid] = decision.PrestageGoal;
+        }
     }
 
     /// <summary>Find a closed, unlocked door item on the given tile

@@ -7,6 +7,19 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+PERFORMANCE - NPC chase pathfinding is now bounded like the reference engine and
+        runs off the main thread. Three changes: (1) route-finding only engages for
+        targets 2-13 tiles away and searches inside the same 28x28 local box the
+        reference uses, so a walled-off target exhausts a small area instead of the
+        whole node budget; (2) a chase route no longer treats the tile the target
+        itself stands on as a hard wall — that made every route toward a character
+        "unreachable", burning the full search budget each time while the NPC fell
+        back to blind side-steps; routes now actually find detours around obstacles;
+        (3) the search itself is precomputed in the parallel NPC decision phase, so
+        the single-threaded apply phase finds a ready-made route instead of spending
+        up to ~17ms per NPC on it. Behavior stays serial-authoritative: the serial
+        phase re-validates every precomputed step and recomputes if the world moved.
+
 PERFORMANCE - Tooltip pushes during view updates are now version-only, like the
         reference engine's default tooltip mode: when objects enter view the server
         sends the tiny revision packet and the client requests the full property list

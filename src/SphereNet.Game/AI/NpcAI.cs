@@ -62,12 +62,22 @@ public sealed partial class NpcAI
         Legacy = 2
     }
 
+    /// <summary>Per-NPC decision computed in the parallel build phase. The
+    /// prestage fields carry read-only A* work done off the serial path (N2):
+    /// <see cref="PrestagedPath"/> is a route toward <see cref="PrestageGoal"/>
+    /// (null with <see cref="PrestageRan"/> set = the search ran and FAILED, so
+    /// the serial side can take the fail-backoff without re-searching). The
+    /// serial apply seeds these into the path cache only when its own state
+    /// still calls for a recompute — serial remains the source of truth.</summary>
     public readonly record struct NpcDecision(
         uint NpcUid,
         NpcDecisionType Type,
         Point3D TargetPos,
         Direction Direction,
-        long NextActionTick);
+        long NextActionTick,
+        List<Point3D>? PrestagedPath = null,
+        Point3D PrestageGoal = default,
+        bool PrestageRan = false);
 
     private readonly GameWorld _world;
 
@@ -463,7 +473,15 @@ public sealed partial class NpcAI
         // parity. Without this, service brains (Banker, Stable, Human, Animal)
         // only do deterministic wander and lose their ActVendor/ActHuman/ActAnimal logic.
         // Casting NPCs also need Legacy to run OnNpcTickSpellCast.
-        return new NpcDecision(npc.Uid.Value, NpcDecisionType.Legacy, npc.Position, npc.Direction, nextAction);
+        //
+        // N2: the heavy read-only piece of that serial work — the A* route for a
+        // blocked combat/pet chase — is precomputed HERE, in the parallel build
+        // phase (Pathfinder scratch state is [ThreadStatic] for exactly this).
+        // The serial OnTickAction then finds a warm path cache instead of
+        // burning up to ~17ms per NPC inside the single-threaded apply phase.
+        var (path, goal, ran) = TryPrestagePathfind(npc);
+        return new NpcDecision(npc.Uid.Value, NpcDecisionType.Legacy, npc.Position, npc.Direction,
+            nextAction, path, goal, ran);
     }
 
     /// <summary>
@@ -486,6 +504,8 @@ public sealed partial class NpcAI
             case NpcDecisionType.Legacy:
                 // Let OnTickAction own the cadence update; setting NextNpcActionTime
                 // before the legacy call would make the combat brain return early.
+                if (decision.PrestageRan)
+                    SeedPrestagedPath(npc, decision);
                 OnTickAction(npc);
                 break;
             default:

@@ -35,9 +35,12 @@ public sealed class Pathfinder
 
     /// <summary>
     /// Find a path from start to goal. Returns the next step direction,
-    /// or null if no path found.
+    /// or null if no path found. <paramref name="maxRadius"/> &gt; 0 confines the
+    /// search to a (2r)x(2r) box around the start — Source-X CPathFinder's fixed
+    /// 28x28 grid (MAX_NPC_PATH_STORAGE_SIZE) — so an unreachable goal in an
+    /// enclosed space exhausts the box instead of the full node budget.
     /// </summary>
-    public List<Point3D>? FindPath(Point3D start, Point3D goal, byte mapIndex, CanFlags canFlags = CanFlags.None, Objects.Characters.Character? self = null, int maxNodes = MaxNodes)
+    public List<Point3D>? FindPath(Point3D start, Point3D goal, byte mapIndex, CanFlags canFlags = CanFlags.None, Objects.Characters.Character? self = null, int maxNodes = MaxNodes, int maxRadius = 0)
     {
         if (maxNodes <= 0) maxNodes = MaxNodes;
         if (IsGoalReached(start, goal))
@@ -93,6 +96,11 @@ public sealed class Pathfinder
                           ny >= _world.MapData.GetMapSize(mapIndex).Height)))
                         continue;
 
+                    // Search-box confinement (see maxRadius doc above).
+                    if (maxRadius > 0 &&
+                        (Math.Abs(nx - start.X) > maxRadius || Math.Abs(ny - start.Y) > maxRadius))
+                        continue;
+
                     // Each tile has its own surface Z (terrain vs. static floors,
                     // bridges, steps). Using current.Z for every neighbor makes
                     // pathfinding fail as soon as terrain height changes by one
@@ -108,7 +116,14 @@ public sealed class Pathfinder
                         continue;
 
                     var neighborPos = new Point3D(nx, ny, nz, mapIndex);
-                    if (!IsWalkable(neighborPos, canFlags, self))
+                    // The goal tile tolerates a standing character: a chase route
+                    // targets the tile the target itself occupies, and Source-X
+                    // movement can push through mobiles — hard-blocking it made
+                    // every A* toward a character "unreachable" and burned the
+                    // full node budget. The walker stops adjacent anyway (the
+                    // final step is re-validated against live occupancy).
+                    bool isGoalTile = nx == goal.X && ny == goal.Y;
+                    if (!IsWalkable(neighborPos, canFlags, self, ignoreChars: isGoalTile))
                         continue;
 
                     int moveCost = (dx != 0 && dy != 0) ? 14 : 10; // diagonal vs cardinal
@@ -134,12 +149,12 @@ public sealed class Pathfinder
         return null;
     }
 
-    private bool IsWalkable(Point3D pos, CanFlags canFlags = CanFlags.None, Objects.Characters.Character? self = null)
+    private bool IsWalkable(Point3D pos, CanFlags canFlags = CanFlags.None, Objects.Characters.Character? self = null, bool ignoreChars = false)
     {
         // Single-tile char/item blocker check, done allocation-free in GameWorld
         // (A* calls this per explored neighbour; the old range-query iterators
         // were the dominant pathfinding allocation).
-        if (_world.IsPathTileBlockedByObject(pos, canFlags, self))
+        if (_world.IsPathTileBlockedByObject(pos, canFlags, self, ignoreChars))
             return false;
 
         var mapData = _world.MapData;

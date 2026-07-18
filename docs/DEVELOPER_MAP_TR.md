@@ -1,34 +1,52 @@
 # SphereNet Geliştirici Haritası: Paketlerin Yolculuğu
 
-Bu döküman, Source-X'ten gelen bir geliştiricinin SphereNet mimarisini "bir bakışta" anlaması ve kodun içinde kaybolmaması için hazırlanmış en kapsamlı rehberdir.
+Bu döküman, Source-X'ten gelen bir geliştiricinin SphereNet mimarisini "bir bakışta"
+anlaması ve kodun içinde kaybolmaması için hazırlanmış rehberdir. (Eski
+`TRANSITION_GUIDE_TR.md` bu dosyaya birleştirildi, 2026-07-18.)
 
 ---
 
 ## 1. Temel Felsefe: Source-X vs SphereNet
 
-Source-X'te her şey `CClient` içindeki devasa dosyalarda (`CClientEvent.cpp` vb.) dönerken, SphereNet işleri parçalara böler:
+Source-X'te her şey `CClient` içindeki devasa dosyalarda (`CClientEvent.cpp` vb.)
+dönerken, SphereNet işleri parçalara böler:
 
 - **Ağ Katmanı (Network):** Sadece veriyi okur/yazar. Oyun kuralı bilmez.
 - **Köprü (Bridge):** Ağdan gelen veriyi oyun motoruna bağlar.
 - **Oyun Mantığı (Game Logic):** Karakterin ne yapacağına karar verir.
 
----
+## 2. Mimari Eşleşmeler (Source-X → SphereNet)
 
-## 2. Bir Paketin Yolculuğu (Gelen Paket - Incoming)
+| Source-X Sınıfı / Dosyası | SphereNet Karşılığı | Konum (src/) |
+|---|---|---|
+| `CObjBase` | `ObjBase` | `SphereNet.Game/Objects/ObjBase.cs` |
+| `CChar` | `Character` | `SphereNet.Game/Objects/Characters/` |
+| `CItem` | `Item` | `SphereNet.Game/Objects/Items/` |
+| `CClient` | `GameClient` + `Client*Handler` sınıfları | `SphereNet.Game/Clients/` |
+| `CServer` | `Engine` (Wiring) | `SphereNet.Server/Program.EngineWiring.cs` |
+| `CWorld` | `GameWorld` | `SphereNet.Game/World/` |
+| `CScript` | `ScriptFile` / `ScriptSection` | `SphereNet.Scripting/Parsing/` |
+| `Packet` | `PacketBase` / `PacketBuffer` | `SphereNet.Network/Packets/` |
+| `receive.cpp` | `NetworkManager` / `Packets/Incoming/` | `SphereNet.Network/Manager/` |
+| `send.cpp` | `Packets/Outgoing/` | `SphereNet.Network/Packets/Outgoing/` |
+
+## 3. Bir Paketin Yolculuğu (Gelen Paket - Incoming)
 
 Oyuncu bir şeye tıkladığında ne olur?
 
 1.  **Soket:** `NetworkManager.cs` veriyi yakalar.
-2.  **Ayrıştırıcı (Parser):** `Incoming/GamePackets.cs` içindeki ilgili sınıf (Örn: `PacketDoubleClick`) veriyi byte byte okur.
+2.  **Ayrıştırıcı (Parser):** `Incoming/GamePackets.cs` içindeki ilgili sınıf
+    (örn. `PacketDoubleClick`) veriyi byte byte okur.
 3.  **Haberci (Delegate):** Okunan veri `NetState` içindeki bir "olay"ı (event) tetikler.
-4.  **Bağlantı (Wiring):** `Program.NetworkHandlers.cs` bu olayı yakalar ve "Hey `GameClient`, oyuncu şu UID'ye çift tıkladı!" der.
-5.  **Davranış (Behavior):** `GameClient.ItemUse.cs` içindeki `HandleDoubleClick` metodu çalışır ve eşyayı açar/kullanır.
+4.  **Bağlantı (Wiring):** `Program.NetworkHandlers.cs` bu olayı yakalar ve
+    "Hey `GameClient`, oyuncu şu UID'ye çift tıkladı!" der.
+5.  **Davranış (Behavior):** `GameClient.HandleDoubleClick` →
+    `ClientItemUseHandler.HandleDoubleClick` çalışır ve eşyayı açar/kullanır.
 
----
+Kısa yol: `PacketHandler (Network)` → `NetState (Bridge)` → `GameClient (Session)`
+→ `World/Object (Game Logic)`.
 
-## 3. Kod Haritası: "Neyi Nerede Bulurum?"
-
-SphereNet'te kodlar görevlerine göre klasörlenmiştir:
+## 4. Kod Haritası: "Neyi Nerede Bulurum?"
 
 | Aradığın Şey | Klasör / Dosya Yolu | Source-X Karşılığı |
 |---|---|---|
@@ -36,54 +54,61 @@ SphereNet'te kodlar görevlerine göre klasörlenmiştir:
 | **Gelen Paketler** | `src/SphereNet.Network/Packets/Incoming/` | `receive.cpp` içindeki case'ler |
 | **Giden Paketler** | `src/SphereNet.Network/Packets/Outgoing/` | `send.cpp` metodları |
 | **Ağ-Oyun Köprüsü** | `src/SphereNet.Server/Program.NetworkHandlers.cs` | `CClient::OnEvent` |
-| **Karakter Davranışı** | `src/SphereNet.Game/Clients/GameClient.*.cs` | `CClient.cpp`, `CClientEvent.cpp` |
+| **Karakter Davranışı** | `src/SphereNet.Game/Clients/` (aşağıya bak) | `CClient.cpp`, `CClientEvent.cpp` |
 | **Eşya Davranışı** | `src/SphereNet.Game/Objects/Items/Item.cs` | `CItem.cpp` |
 | **Trigger Sistemi** | `src/SphereNet.Game/Scripting/TriggerDispatcher.cs` + `src/SphereNet.Scripting/Execution/TriggerRunner.cs` | `OnTrigger` metodları |
+| **Skill Sistemi** | `src/SphereNet.Game/Skills/` (`ActiveSkillEngine`) | `CCharSkill.cpp` |
+| **Combat** | `src/SphereNet.Game/Combat/` (SwingEngine vb.) | `CCharFight.cpp` |
 
----
+## 5. GameClient'ın Yapısı (Decomposition Sonrası)
 
-## 4. GameClient'ın Parçaları (Partial Classes)
+`GameClient` iki katmandan oluşur (ayrıntı: `GAMECLIENT_DECOMPOSITION_TR.md`):
 
-`GameClient` sınıfı çok büyük olduğu için dosyalara bölünmüştür:
+- **İnce partial'lar** (`GameClient.*.cs` — Login, Inventory, Combat, ItemUse,
+  ViewUpdate, Targeting, Dialogs, Skills, Housing, Mail, Chat, Context, ...):
+  çoğunlukla delegasyon; dışa açık API burada durur.
+- **Handler sınıfları** (`Client*Handler.cs`): gerçek davranış buraya taşındı —
+  `ClientItemUseHandler` (dclick/kullanım), `ClientInventoryHandler` (pickup/drop/equip),
+  `ClientCombatHandler` (savaş/tick), `ClientTargetingHandler`, `ClientViewUpdater`
+  (view delta build/apply), `ClientSkillsHandler` (skill + AOS tooltip),
+  `ClientWorldFeaturesHandler` (kapılar, context menü, housing gump'ları),
+  `ClientDialogHandler`, `ClientScriptConsoleHandler`. Ortak durum:
+  `ClientViewCache`, `ClientTargetState`; erişim dikişi: `IClientContext`.
 
-- `GameClient.Login.cs`: Oyuna giriş, karakter seçimi.
-- `GameClient.Inventory.cs`: Eşya kaldırma (pickup), bırakma (drop), giyme (equip).
-- `GameClient.Combat.cs`: Yürüme, savaşma, hedef alma.
-- `GameClient.ItemUse.cs`: Çift tıklama, kapı açma, alet kullanma.
-- `GameClient.ViewUpdate.cs`: Etraftaki eşyaların ekranda çizilmesi (Draw/Remove).
-- `GameClient.PacketHelpers.cs`: Paket göndermeyi kolaylaştıran yardımcı metodlar.
+Bir davranışı ararken önce partial'daki delegasyona, oradan handler sınıfına in.
 
----
-
-## 5. Örnek Senaryo: Eşyayı Yere Bırakma (Item Drop)
-
-Bir eşyayı yere bıraktığınızda kod şu sırayla akar:
+## 6. Örnek Senaryo: Eşyayı Yere Bırakma (Item Drop)
 
 1.  **Okuma:** `PacketItemDrop.OnReceive` (0x08) koordinatları okur.
-2.  **Köprü:** `Program.NetworkHandlers` -> `OnItemDrop` tetiklenir.
-3.  **Mantık:** `GameClient.Inventory.cs` -> `HandleItemDrop` çalışır.
+2.  **Köprü:** `Program.NetworkHandlers` → `OnItemDrop` tetiklenir.
+3.  **Mantık:** `ClientInventoryHandler.HandleItemDrop` çalışır.
     - Eşya çantadan çıkarılır.
     - `World` üzerine (haritaya) yerleştirilir.
 4.  **Geri Bildirim:** `PacketDropAck` (0x29) ile işlem onaylanır.
-5.  **Görsel:** `GameClient.ViewUpdate.cs` devreye girer ve etraftaki herkese "Burada yeni bir eşya var" der (`0x1A` veya `0xF3` paketi).
+5.  **Görsel:** `ClientViewUpdater` devreye girer ve etraftaki herkese
+    "Burada yeni bir eşya var" der (`0x1A` veya `0xF3` paketi).
 
----
+## 7. Eksikleri Takip Etme ve Test Etme
 
-## 6. Geliştirici İçin "Eksik Bulma" Rehberi
+1.  **Protocol Matrix:** `docs/PROTOCOL_MATRIX.md` içindeki "Deferred" veya
+    listelenmemiş opcode'lar üzerinde çalışabilirsiniz.
+2.  **Parity Matrix:** `docs/PARITY.md` içindeki "Partial" veya "Open" alanlar
+    önceliklidir; aksiyon bekleyen alt-90 kuyruğu `docs/PARITY_BACKLOG_SUB90.md`'de.
+3.  **Sessiz stub'lar:** `docs/STUB_INVENTORY_TR.md` — tanımlı görünüp no-op olan yüzeyler.
+4.  **TODO Yorumları:** Kod içinde `// TODO:` araması.
+5.  **Testler:** SphereNet test güdümlüdür; yeni özellik = `src/SphereNet.Tests/`
+    altında test. Örnek desenler: `GameSystemTests`, `TriggerCoverageGuardrailTests`,
+    `ScriptObjectParityTests`.
 
-Source-X'te olan bir şey SphereNet'te eksikse (Örneğin: "Yere eşya atınca ses çıkmıyor"):
+Eksik bulma örneği ("yere eşya atınca ses çıkmıyor"): giden paket eksiği →
+`Outgoing/`'da `PacketSound` var mı? → davranışın sahibine git
+(`ClientInventoryHandler.HandleItemDrop`) → sonuna `BroadcastNearby(new PacketSound(...))` ekle.
 
-1.  **Sorun Nerede?** Ses çıkmıyorsa bu bir "Giden Paket" (Outgoing) eksikliğidir.
-2.  **Paket Var mı?** `Outgoing/ExtendedPackets.cs` içinde `PacketSound` sınıfı var mı? (Evet var).
-3.  **Nereden Çağrılmalı?** Eşya yere düştüğünde olması gerektiği için `GameClient.Inventory.cs` içindeki `HandleItemDrop` metoduna git.
-4.  **Ekleme Yap:** Metodun sonuna `BroadcastNearby(new PacketSound(0xXX))` ekle.
+## 8. Yeni Bir Özellik Eklerken İzlenecek Yol
 
----
-
-## 7. Yeni Bir Özellik Eklerken İzlenecek Yol
-
-1.  **Paketi Tanımla:** `Incoming` içinde parser'ı yaz.
+1.  **Paketi Tanımla:** `Incoming` içinde parser'ı yaz (`PacketHandler`'dan türet,
+    `OnReceive` override et, `state.OnSomething(...)` ile oyuna aktar).
 2.  **Kaydet:** `NetworkManager.RegisterStandardPackets` içine ekle.
 3.  **Köprü Kur:** `NetState` ve `Program.NetworkHandlers` içinde bağlantıyı yap.
-4.  **Mantığı Yaz:** `GameClient.*.cs` içinde ne yapacağını kodla.
-5.  **Test Et:** `SphereNet.Tests` altında küçük bir test yazarak çalıştığından emin ol.
+4.  **Mantığı Yaz:** İlgili `Client*Handler` içinde ne yapacağını kodla.
+5.  **Test Et:** `SphereNet.Tests` altında test yazarak çalıştığından emin ol.

@@ -13,15 +13,19 @@ For the project overview, features, and quick start, see the top-level **[README
 - **[STAFF_COMMANDS.md](STAFF_COMMANDS.md)** — Every in-game staff/GM command and server-console command, by privilege level.
 - **[TRIGGERS.md](TRIGGERS.md)** — Every script trigger that fires, with the `<src>`/`<argo>`/`<argn>`/`<args>` values available inside it.
 - **[PROTOCOL_MATRIX.md](PROTOCOL_MATRIX.md)** — Incoming client opcodes routed through `PacketManager` (kept in sync with `PacketManagerTests`).
-- **[PACKET_FLOW_GUIDE.md](PACKET_FLOW_GUIDE.md)** — How packets move from network parsing to `GameClient`, plus behavior-level packet sequences for Source-X developers.
-- **[PARITY.md](PARITY.md)** — Source-X / Sphere 56x compatibility matrix and the tests guarding each area.
-- **[PARITY_ROADMAP_TR.md](PARITY_ROADMAP_TR.md)** — 9.0 / 9.5 parity hedefi için kategori bazlı skor ve uygulama yol haritası.
+- **[PACKET_FLOW_GUIDE.md](PACKET_FLOW_GUIDE.md)** — How packets move from network parsing to `GameClient` and its handler classes, plus behavior-level packet sequences for Source-X developers (TR + EN).
+- **[DEVELOPER_MAP_TR.md](DEVELOPER_MAP_TR.md)** — Geliştirici haritası: Source-X → SphereNet eşleşmeleri, paket yolculuğu, kod haritası, özellik ekleme rehberi.
+- **[GAMECLIENT_DECOMPOSITION_TR.md](GAMECLIENT_DECOMPOSITION_TR.md)** — `GameClient` ayrıştırmasının tamamlanan fazları ve dosya haritası (tarihsel kayıt).
+
+### Parity tracking
+- **[PARITY.md](PARITY.md)** — The single Source-X / Sphere 56x parity matrix: domain summary + itemised behaviour-surface detail (SERV verbs, triggers, persistence, object verbs), with the tests guarding each area.
+- **[PARITY_BACKLOG_SUB90.md](PARITY_BACKLOG_SUB90.md)** — Actionable below-90 backlog, tiered by risk; the live "what's left" list.
 - **[STUB_INVENTORY_TR.md](STUB_INVENTORY_TR.md)** — Kodda kalan stub, no-op ve bilinçli ertelenmiş uyumluluk açıkları.
 - **[SOUND_VISUAL_MOVEMENT_PARITY_TR.md](SOUND_VISUAL_MOVEMENT_PARITY_TR.md)** — Ses, efekt, ışık, hareket ve drag/drop packet parite rehberi.
-- **[TRANSITION_GUIDE_TR.md](TRANSITION_GUIDE_TR.md)** — Source-X'ten SphereNet'e geçiş rehberi.
-- **[PACKET_GUIDE_SIMPLE_TR.md](PACKET_GUIDE_SIMPLE_TR.md)** — Paket sistemi için basit anlatım rehberi.
-- **[DEVELOPER_MAP_TR.md](DEVELOPER_MAP_TR.md)** — Kapsamlı geliştirici haritası ve paket akış rehberi.
-- **[GAMECLIENT_DECOMPOSITION_TR.md](GAMECLIENT_DECOMPOSITION_TR.md)** — `GameClient` ayrıştırmasının tamamlanan fazları ve dosya haritası.
+
+### Plans & investigations
+- **[INCELEME_DOGRULAMA_PLANI_TR.md](INCELEME_DOGRULAMA_PLANI_TR.md)** — Doğrulanmış inceleme bulgularının tek yaşayan takipçisi (açık A/B/C/D/E maddeleri burada).
+- **[PERF_KONUSMA_NPC_VIEW_PLANI_TR.md](PERF_KONUSMA_NPC_VIEW_PLANI_TR.md)** — Konuşma / NPC-AI / view-apply performans planı (kapandı; kayıt olarak durur).
 
 ### Operations
 - **[DEPLOY.md](DEPLOY.md)** — Files, host modes, security model (operator surfaces + checklist), and validation needed to run a shard.
@@ -31,6 +35,13 @@ For the project overview, features, and quick start, see the top-level **[README
 ### Changelog
 - **[CHANGELOG-EN.txt](../CHANGELOG-EN.txt)** / **[CHANGELOG-TR.txt](../CHANGELOG-TR.txt)** — Per-language changelog.
 - **[CHANGELOG_OLD.txt](../CHANGELOG_OLD.txt)** — Bilingual history archive (entries before 2026-05-29).
+
+> Housekeeping note (2026-07-18): `PARITY_MATRIX.md` merged into `PARITY.md`;
+> `TRANSITION_GUIDE_TR.md` merged into `DEVELOPER_MAP_TR.md`; the three
+> absorbed investigation reports (`PROJE_GENEL_INCELEME_PLANI_TR`,
+> `HOUSE_SHIP_DEED_SISTEM_INCELEMESI_TR`, `PERFORMANS_LOG_INCELEMESI_TR`), the
+> stale `PARITY_ROADMAP_TR.md` and the inaccurate `PACKET_GUIDE_SIMPLE_TR.md`
+> were deleted (full text in git history).
 
 ---
 

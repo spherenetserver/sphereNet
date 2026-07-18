@@ -191,7 +191,7 @@ Statü değişimi (hide, polymorph, warmode):
 | # | Konu | Source-X | SphereNet |
 |---|------|----------|-----------|
 | 3 | Drop sesi item/tiledata bazlı | `GetDropSound(pObjOn)` | Altın miktarı ayrışıyor; diğerleri hâlâ genel 0x42 |
-| 4 | `GenericSounds` config | `sphere.ini` → `addSound` gate | Karşılık yok; sesler her zaman açık |
+| 4 | `GenericSounds` config | `sphere.ini` → `addSound` gate | Config anahtarı + `SERV.GENERICSOUNDS` yüzeyi var (W-I1); ses gönderimini kapatan gate henüz bağlı değil — kapalıyken sesler yine çalıyor |
 | 5 | Sector ambient ses (rüzgar vb.) | `CSector` tick → periyodik `addSound` | Yok |
 | 6 | Kendi hareketinde `addPlayerView` | Self client view refresh | `BroadcastMoveNearby` ile kısmen; tam `addPlayerView` eşdeğeri belirsiz |
 
@@ -297,7 +297,8 @@ Bu pass'te aşağıdaki parite açıkları kapatıldı:
 Kalan işler:
 
 - Drop sesi hâlâ item/tile bazlı değil; `GameClient.Inventory` sabit `0x0042` kullanıyor.
-- `GenericSounds` config gate henüz yok; ses paketleri global ayarla kapatılamıyor.
+- `GenericSounds` config anahtarı yüklendi ve `SERV.GENERICSOUNDS` ile okunuyor (W-I1),
+  ama ses gönderim gate'i henüz bağlı değil; paketler global ayarla kapatılamıyor.
 - Sector ambient sesleri (rüzgar vb.) henüz yok.
 - `0x23` container-drop path'i tam Source-X seviyesinde modellenmedi; bu pass pickup ve ground-drop akışını kapsıyor.
 - `PacketBoatSmoothMove` hâlâ Source-X `PacketMoveShip` bileşen listesi kadar kapsamlı değil.

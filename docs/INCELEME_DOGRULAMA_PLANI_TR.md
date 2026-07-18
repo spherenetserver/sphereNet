@@ -1,8 +1,10 @@
 # SphereNet İnceleme Doğrulama ve Uygulama Planı
 
 Bu dosya, üç inceleme raporunun (`PROJE_GENEL_INCELEME_PLANI_TR.md`,
-`HOUSE_SHIP_DEED_SISTEM_INCELEMESI_TR.md`, `PERFORMANS_LOG_INCELEMESI_TR.md`) her
-somut iddiasının **güncel kodla doğrulanmış** halidir. Her madde 3 paralel salt-kod
+`HOUSE_SHIP_DEED_SISTEM_INCELEMESI_TR.md`, `PERFORMANS_LOG_INCELEMESI_TR.md` —
+üçü de bu dosyaya emildiği için 2026-07-18 doküman temizliğinde silindi; ham
+metinleri git geçmişinde) her somut iddiasının **güncel kodla doğrulanmış**
+halidir. Açık maddelerin tek yaşayan takipçisi budur. Her madde 3 paralel salt-kod
 doğrulama ajanıyla GERÇEK / BAYAT / YANLIŞ / KISMİ olarak sınıflandırıldı; sadece
 **GERÇEK** çıkanlar aşağıda aksiyon maddesi olarak listeleniyor.
 

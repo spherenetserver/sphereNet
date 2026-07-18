@@ -115,19 +115,28 @@ Bir paketi takip ederken şu sırayla git:
 
 ## GameClient Dosya Haritası
 
-`GameClient` tek dosya değil, partial class olarak bölünmüş.
+`GameClient` iki katmandır (decomposition sonrası — ayrıntı:
+`GAMECLIENT_DECOMPOSITION_TR.md`): ince partial'lar dışa açık API'yi ve
+delegasyonu tutar, gerçek davranış `Client*Handler` sınıflarına taşınmıştır.
 
-| Dosya | Ne zaman bakılır? |
-|---|---|
-| `GameClient.cs` | Ana field'lar, constructor, callback/delegate tanımları. |
-| `GameClient.Login.cs` | Login, karakter seçimi, dünyaya giriş. |
-| `GameClient.Combat.cs` | Movement, war mode, attack, movement ack/reject. |
-| `GameClient.Inventory.cs` | Item pickup, drop, equip, container, status/profile. |
-| `GameClient.ItemUse.cs` | Double click, item kullanma, tool/forge/door benzeri davranışlar. |
-| `GameClient.PacketHelpers.cs` | Draw object, world item, container, target, tooltip helper'ları. |
-| `GameClient.ViewUpdate.cs` | Görünürlük delta sistemi, world item/mob draw/remove. |
-| `GameClient.WorldFeatures.cs` | Door toggle, context menu, bazı `0xBF` feature akışları. |
-| `GameClient.ScriptConsole.cs` | Komutlar, sysmessage, notoriety hesapları. |
+| Partial (delegasyon) | Davranışın gerçek sahibi | Ne zaman bakılır? |
+|---|---|---|
+| `GameClient.cs` | — | Ana field'lar, constructor, callback/delegate tanımları. |
+| `GameClient.Login.cs` | (kendisi) | Login, karakter seçimi, dünyaya giriş. |
+| `GameClient.Combat.cs` | `ClientCombatHandler` | Movement queue, war mode, attack, tick state. |
+| `GameClient.Inventory.cs` | `ClientInventoryHandler` | Item pickup, drop, equip, container, status/profile. |
+| `GameClient.ItemUse.cs` | `ClientItemUseHandler` | Double click, item kullanma, tool/forge/door davranışları. |
+| `GameClient.Targeting.cs` | `ClientTargetingHandler` | Hedef seçimi, pending target akışları. |
+| `GameClient.Skills.cs` | `ClientSkillsHandler` | Skill kullanımı, AOS tooltip (OPL) gönderimi. |
+| `GameClient.ViewUpdate.cs` | `ClientViewUpdater` | Görünürlük delta build/apply, draw/remove. |
+| `GameClient.WorldFeatures.cs` | `ClientWorldFeaturesHandler` | Door toggle, context menu, housing gump'ları, `0xBF` akışları. |
+| `GameClient.Dialogs.cs` | `ClientDialogHandler` | Gump/dialog roundtrip'leri. |
+| `GameClient.ScriptConsole.cs` | `ClientScriptConsoleHandler` | Script verb'leri, sysmessage, notoriety hesapları. |
+| `GameClient.PacketHelpers.cs` | (kendisi) | Draw object, world item, container, tooltip helper'ları. |
+| `GameClient.Context.cs` | `IClientContext` | Handler sınıflarının GameClient'a erişim dikişi. |
+
+Ortak durum sınıfları: `ClientViewCache` (view bookkeeping), `ClientTargetState`,
+`ClientGumpRegistry`, `ClientMovementThrottle`.
 
 ---
 
@@ -877,22 +886,32 @@ Raw buffers still exist in a few compatibility spots, for example pickup-failed
 
 ## Where GameClient Is Split
 
-`GameClient` is partial, so behavior is separated by domain:
+`GameClient` is two layers (post-decomposition — see
+`GAMECLIENT_DECOMPOSITION_TR.md`): thin partials hold the public API and
+delegate, the behavior itself lives in the extracted `Client*Handler` classes:
 
-| File | Purpose |
-|---|---|
-| `GameClient.cs` | core fields, delegates, constructor |
-| `GameClient.Login.cs` | login, character select, enter world |
-| `GameClient.Combat.cs` | movement queue, walk ack/reject, war, attack |
-| `GameClient.Inventory.cs` | pickup, drop, equip, containers, status/profile |
-| `GameClient.ItemUse.cs` | double click / use actions |
-| `GameClient.PacketHelpers.cs` | draw, status, container, target, tooltip helpers |
-| `GameClient.ViewUpdate.cs` | visible object delta and world draw/remove packets |
-| `GameClient.WorldFeatures.cs` | doors, context menu, 0xBF features |
-| `GameClient.ScriptConsole.cs` | commands, sysmessage, notoriety helpers |
+| Partial (delegation) | Behavior owner | Purpose |
+|---|---|---|
+| `GameClient.cs` | — | core fields, delegates, constructor |
+| `GameClient.Login.cs` | (itself) | login, character select, enter world |
+| `GameClient.Combat.cs` | `ClientCombatHandler` | movement queue, walk ack/reject, war, attack |
+| `GameClient.Inventory.cs` | `ClientInventoryHandler` | pickup, drop, equip, containers, status/profile |
+| `GameClient.ItemUse.cs` | `ClientItemUseHandler` | double click / use actions |
+| `GameClient.Targeting.cs` | `ClientTargetingHandler` | target selection, pending target flows |
+| `GameClient.Skills.cs` | `ClientSkillsHandler` | skill use, AOS tooltip (OPL) sends |
+| `GameClient.ViewUpdate.cs` | `ClientViewUpdater` | visible-object delta build/apply, draw/remove |
+| `GameClient.WorldFeatures.cs` | `ClientWorldFeaturesHandler` | doors, context menu, housing gumps, 0xBF features |
+| `GameClient.Dialogs.cs` | `ClientDialogHandler` | gump/dialog roundtrips |
+| `GameClient.ScriptConsole.cs` | `ClientScriptConsoleHandler` | script verbs, sysmessage, notoriety helpers |
+| `GameClient.PacketHelpers.cs` | (itself) | draw, status, container, tooltip helpers |
+| `GameClient.Context.cs` | `IClientContext` | the access seam handler classes use |
 
-When comparing to Source-X `CClient`, start in the incoming packet parser, then
-jump to the matching `GameClient` partial file.
+Shared state classes: `ClientViewCache` (view bookkeeping), `ClientTargetState`,
+`ClientGumpRegistry`, `ClientMovementThrottle`.
+
+When comparing to Source-X `CClient`, start in the incoming packet parser, jump
+to the matching `GameClient` partial, then follow the delegation into its
+handler class.
 
 ---
 

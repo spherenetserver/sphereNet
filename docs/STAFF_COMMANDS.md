@@ -72,7 +72,7 @@ Complete reference of in-game staff commands and server-console commands.
 | `.freeze` | `<uid(hex)>` | Freeze the target (StatFlag.Freeze). |
 | `.heal` | `[self]` | Fully heal/resurrect self; otherwise opens a target cursor. |
 | `.invul` | — | Toggle invulnerability. |
-| `.jail` | `<serial(hex)> [minutes]` | Teleport + freeze in jail; timed if minutes given (persists via tag, auto-release). |
+| `.jail` | `<serial(hex)> [minutes] [cell]` | Teleport + freeze in jail; timed if minutes given (persists via tag, auto-release). Optional cell index picks the jail cell (`JAIL_CELL` tag). |
 | `.kill` | `[uid(hex)]` | Kill the target; no arg = self. |
 | `.mount` | — | Target; mount the picked rideable NPC. |
 | `.poison` | `[uid] [level]` | Poison the target (level 1–5; no arg = self). |

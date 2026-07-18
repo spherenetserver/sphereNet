@@ -201,13 +201,27 @@ public class Item : ObjBase
         }
         set
         {
-            var oldEffective = ItemType;
-            _type = value;
-            var newEffective = ItemType;
             // Keep the owning sector's listen-item count (speech gate) balanced
-            // when a script retypes an item already on the ground.
-            if (oldEffective != newEffective && IsOnGround)
-                ResolveWorld?.Invoke()?.NotifyGroundItemTypeChanged(this, oldEffective, newEffective);
+            // when a script retypes an item already on the ground. This setter
+            // runs in every item construction, so stay allocation/lookup-free
+            // unless the LISTEN classification could actually flip: the
+            // def-derived type is identical on both sides of the assignment, so
+            // it only needs resolving when a side is raw-Normal (masked by def).
+            var oldRaw = _type;
+            _type = value;
+            if (oldRaw == value || !IsOnGround)
+                return;
+
+            var defType = ItemType.Normal;
+            if (oldRaw == ItemType.Normal || value == ItemType.Normal)
+                defType = ResolveDefinition()?.Type ?? ItemType.Normal;
+            var oldEffective = oldRaw == ItemType.Normal ? defType : oldRaw;
+            var newEffective = value == ItemType.Normal ? defType : value;
+            if (World.Sectors.Sector.IsListenItemType(oldEffective) ==
+                World.Sectors.Sector.IsListenItemType(newEffective))
+                return;
+
+            ResolveWorld?.Invoke()?.NotifyGroundItemTypeChanged(this, oldEffective, newEffective);
         }
     }
 

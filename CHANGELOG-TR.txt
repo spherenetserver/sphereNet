@@ -6,6 +6,14 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+PERFORMANS - Tooltip'ler artik obje basina line-of-sight raycast calistirmiyor.
+        Referans motor tooltip'i yalnizca mesafe ve gorunurlukle gate'liyor (client
+        objeleri duvarlarin arkasindan da cizer, dolayisiyla tooltip'leri de gelmeli);
+        view guncellemesindeki obje basina ekstra raycast hem davranis uyumsuzlugu
+        (ekranda gorunen objenin tooltip'i sessizce gelmeyebiliyordu) hem de cok obje
+        ayni anda goruse girdiginde olculebilir bir maliyetti. Artik Source-X ile
+        ayni: mesafe + gorunurluk, raycast yok.
+
 DAHILI - Kod incelemesinde isaretlenen redundant kullanilmayan kod yollari kaldirildi:
         ikinci bir expansion feature-flag tablosu ve hic ornegi olusturulmayan iki
         scripting kabugu (global-degisken tutucu ve kosul-degerlendirici sarmalayici) --

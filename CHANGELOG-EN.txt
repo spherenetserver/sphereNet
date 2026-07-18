@@ -7,6 +7,13 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+PERFORMANCE - Tooltips no longer run a line-of-sight raycast per object. The reference
+        engine gates tooltips on distance and visibility only (the client draws objects
+        through walls, so their tooltips must arrive too); the extra per-object raycast
+        during view updates was both a behavior mismatch (objects visible on screen
+        could silently lack a tooltip) and a measurable cost when many objects enter
+        view at once. Now matches Source-X: distance + visibility, no raycast.
+
 INTERNAL - Removed redundant unused code paths flagged by a code review: a second
         expansion feature-flag lookup table and two never-instantiated scripting shells
         (a global-variable holder and a conditional-evaluator wrapper) whose real

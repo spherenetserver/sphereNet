@@ -787,8 +787,12 @@ public sealed class ClientSkillsHandler
             bool concealed = target.IsInvisible || target.IsStatFlag(StatFlag.Hidden);
             if (concealed && !_character.AllShow && _character.PrivLevel < PrivLevel.Counsel)
                 return false;
-            return _character.Position.GetDistanceTo(target.Position) <= _netState.ViewRange &&
-                _world.CanSeeLOS(_character.Position, target.Position);
+            // Source-X gates tooltips on distance + CanSee visibility only — no LOS
+            // raycast (CClientMsg_AOSTooltip.cpp:55 uses GetDistSight vs visual range;
+            // the 0xD6 request handler checks CanSee, receive.cpp:3628). The client
+            // draws the object regardless of walls, so a raycast here only desyncs
+            // the tooltip from the draw and burns a per-object raycast in view-apply.
+            return _character.Position.GetDistanceTo(target.Position) <= _netState.ViewRange;
         }
 
         if (obj is not Item item) return false;
@@ -806,8 +810,9 @@ public sealed class ClientSkillsHandler
         if (owner == _character) return true;
         Point3D point = owner?.Position ?? top.Position;
         if (point.Map != _character.MapIndex) return false;
-        return _character.Position.GetDistanceTo(point) <= _netState.ViewRange &&
-            _world.CanSeeLOS(_character.Position, point);
+        // Distance-only, like the character branch above (Source-X does no LOS
+        // raycast anywhere in the tooltip paths).
+        return _character.Position.GetDistanceTo(point) <= _netState.ViewRange;
     }
 
     // ==================== Trade ====================

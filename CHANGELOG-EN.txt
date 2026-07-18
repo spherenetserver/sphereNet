@@ -7,6 +7,15 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+PERFORMANCE - NPC route-finding is budgeted per tick: at most four full A*
+        searches run in one NPC decision phase; additional chasers wait ~150ms
+        for their turn (they keep facing the target meanwhile). A chase burst
+        used to stack several 500-node searches into a single phase, visible as
+        a 130ms tick on small servers. The background world save is also
+        gentler now: it writes on one below-normal-priority thread with
+        sequential shard writes, so the game loop wins the CPU during the
+        write window instead of competing with parallel compression tasks.
+
 PERFORMANCE - Opening any gump, clicking any dialog button or requesting any menu
         no longer re-reads and re-parses the entire script pack from disk. The
         dialog/menu section lookups used to scan every .scp file per interaction

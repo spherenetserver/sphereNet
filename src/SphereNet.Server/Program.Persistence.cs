@@ -265,7 +265,26 @@ public static partial class Program
                     _spellEngine.ReapplyAllAfterSave();
                 }
                 SaveAccountsToDisk();
-                _backgroundSaveTask = Task.Run(() => _saver.WritePrepared(prepared, sp));
+                // Dedicated BELOW-NORMAL thread, and shard writes stay sequential
+                // on it (SequentialShardWrites): a pool Task at normal priority
+                // fanning out parallel gzip starved small VDS boxes — the main
+                // loop showed 100-400ms yield/net_in stalls for the whole write
+                // window. Low priority lets the game loop win the CPU.
+                _saver.SequentialShardWrites = true;
+                var completion = new TaskCompletionSource<bool>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                var writer = new Thread(() =>
+                {
+                    try { completion.SetResult(_saver.WritePrepared(prepared, sp)); }
+                    catch (Exception ex) { completion.SetException(ex); }
+                })
+                {
+                    IsBackground = true,
+                    Priority = System.Threading.ThreadPriority.BelowNormal,
+                    Name = "world-save-writer"
+                };
+                writer.Start();
+                _backgroundSaveTask = completion.Task;
                 _backgroundSaveStopwatch = sw;
                 _log.LogInformation("World snapshot captured in {Secs:F2}s; writing in background...",
                     sw.Elapsed.TotalSeconds);

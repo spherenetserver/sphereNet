@@ -77,7 +77,8 @@ public sealed partial class NpcAI
         long NextActionTick,
         List<Point3D>? PrestagedPath = null,
         Point3D PrestageGoal = default,
-        bool PrestageRan = false);
+        bool PrestageRan = false,
+        bool PrestageDeferred = false);
 
     private readonly GameWorld _world;
 
@@ -482,9 +483,9 @@ public sealed partial class NpcAI
         // phase (Pathfinder scratch state is [ThreadStatic] for exactly this).
         // The serial OnTickAction then finds a warm path cache instead of
         // burning up to ~17ms per NPC inside the single-threaded apply phase.
-        var (path, goal, ran) = TryPrestagePathfind(npc);
+        var (path, goal, ran, deferred) = TryPrestagePathfind(npc);
         return new NpcDecision(npc.Uid.Value, NpcDecisionType.Legacy, npc.Position, npc.Direction,
-            nextAction, path, goal, ran);
+            nextAction, path, goal, ran, deferred);
     }
 
     /// <summary>
@@ -507,7 +508,7 @@ public sealed partial class NpcAI
             case NpcDecisionType.Legacy:
                 // Let OnTickAction own the cadence update; setting NextNpcActionTime
                 // before the legacy call would make the combat brain return early.
-                if (decision.PrestageRan)
+                if (decision.PrestageRan || decision.PrestageDeferred)
                     SeedPrestagedPath(npc, decision);
                 OnTickAction(npc);
                 break;

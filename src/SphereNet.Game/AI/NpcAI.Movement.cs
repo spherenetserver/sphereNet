@@ -589,13 +589,26 @@ public sealed partial class NpcAI
 
     // --- N2: parallel-phase pathfind prestage ---
 
+    // Per-tick A* budget consumed by the prestage. On a low-core box the
+    // parallel build phase cannot absorb many 500-node searches (a chase burst
+    // showed up live as npc_build=130ms); over-budget NPCs take a short defer
+    // instead — the serial side sees the closed throttle window and just faces
+    // the target until their turn comes.
+    private int _tickPathfindBudget = int.MaxValue;
+
+    private const long PathDeferMs = 150;
+
+    /// <summary>Arm the per-tick prestage A* budget (called once per multicore
+    /// tick before the parallel BuildDecision fan-out).</summary>
+    public void BeginTickPathfindBudget(int budget) => _tickPathfindBudget = budget;
+
     /// <summary>Read-only mirror of the conditions under which the serial
     /// <see cref="MoveToward"/> would run a full A* this tick for a combat/pet
     /// chase. When they hold, runs the search HERE (parallel build phase —
     /// Pathfinder scratch state is thread-static, world reads follow the
     /// parallel-compute-phase safety contract) and returns the result to be
     /// carried on the <see cref="NpcDecision"/>. Mutates nothing.</summary>
-    private (List<Point3D>? Path, Point3D Goal, bool Ran) TryPrestagePathfind(Character npc)
+    private (List<Point3D>? Path, Point3D Goal, bool Ran, bool Deferred) TryPrestagePathfind(Character npc)
     {
         // The chase goal the serial brain will walk toward this tick: the fight
         // target, else the master for a following pet. Other MoveToward callers
@@ -607,19 +620,19 @@ public sealed partial class NpcAI
                  npc.PetAIMode is PetAIMode.Follow or PetAIMode.Come or PetAIMode.Guard)
             target = _world.FindChar(npc.NpcMaster);
         if (target == null || target.IsDeleted || target.IsDead || target.MapIndex != npc.MapIndex)
-            return (null, default, false);
+            return (null, default, false, false);
 
         Point3D goal = target.Position;
         int dist = npc.Position.GetDistanceTo(goal);
         if (dist < NpcPathMinDist || dist >= NpcPathMaxDist)
-            return (null, default, false);
+            return (null, default, false, false);
 
         var npcFlags = GetNpcFlags(npc);
         if (!npcFlags.HasFlag(NpcAIFlags.Path))
-            return (null, default, false);
+            return (null, default, false, false);
         int effInt = npcFlags.HasFlag(NpcAIFlags.AlwaysInt) ? 300 : npc.Int;
         if (effInt < 30)
-            return (null, default, false);
+            return (null, default, false, false);
 
         // Direct step open → the serial side takes it without A*. (The serial
         // path may additionally open a door / shift an obstacle first; if that
@@ -631,23 +644,28 @@ public sealed partial class NpcAI
         sbyte nz = _world.MapData?.GetEffectiveZ(npc.MapIndex, nx, ny, npc.Z) ?? npc.Z;
         if (Math.Abs(nz - npc.Z) <= 12 &&
             CanNpcMoveTo(npc, new Point3D(nx, ny, nz, npc.MapIndex)))
-            return (null, default, false);
+            return (null, default, false, false);
 
         uint uid = npc.Uid.Value;
         // A fresh cached path toward (about) this goal → serial reuses it as-is.
         if (_pathCache.TryGetValue(uid, out var cachedPath) && cachedPath.Count > 0 &&
             _pathGoal.TryGetValue(uid, out var cachedGoal) &&
             cachedGoal.Map == goal.Map && cachedGoal.GetDistanceTo(goal) <= 2)
-            return (null, default, false);
+            return (null, default, false, false);
         // Throttle/backoff window still closed → serial won't recompute either.
         if (_nextPathfindMs.TryGetValue(uid, out long nextPf) &&
             Environment.TickCount64 < nextPf)
-            return (null, default, false);
+            return (null, default, false, false);
+
+        // Per-tick A* budget: over-budget chasers take a short defer instead of
+        // stacking 500-node searches into one build phase.
+        if (System.Threading.Interlocked.Decrement(ref _tickPathfindBudget) < 0)
+            return (null, goal, false, true);
 
         var npcCanFlags = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.Can ?? CanFlags.None;
         var path = _pathfinder.FindPath(npc.Position, goal, npc.MapIndex, npcCanFlags, npc,
             NpcPathMaxNodes, NpcPathMaxDist);
-        return (path, goal, true);
+        return (path, goal, true, false);
     }
 
     /// <summary>Serial-phase merge of a parallel prestage result into the path
@@ -665,6 +683,15 @@ public sealed partial class NpcAI
             return;
         if (_nextPathfindMs.TryGetValue(uid, out long nextPf) && nowMs < nextPf)
             return;
+
+        // Over-budget defer: close the serial window briefly so this tick's
+        // apply phase doesn't run the search the budget just refused.
+        if (decision.PrestageDeferred)
+        {
+            _nextPathfindMs[uid] = nowMs + PathDeferMs;
+            _pathGoal[uid] = decision.PrestageGoal;
+            return;
+        }
 
         if (decision.PrestagedPath is { Count: > 0 } path)
         {

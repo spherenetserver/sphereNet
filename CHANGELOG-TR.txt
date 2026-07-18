@@ -6,6 +6,15 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+PERFORMANS - NPC rota arama tick basina butcelendi: bir NPC karar fazinda en
+        fazla dort tam A* aramasi kosuyor; fazladan kovalayanlar sirasini ~150ms
+        bekliyor (bu arada hedefe donuk kaliyorlar). Kovalama patlamasi eskiden
+        tek faza birkac 500-dugumlu arama yigip kucuk sunucularda 130ms tick
+        olarak gorunuyordu. Arka plan world save de artik daha nazik: tek
+        dusuk-oncelikli thread'de sirali shard yazimiyla calisiyor, boylece yazma
+        penceresinde oyun dongusu CPU'yu paralel sikistirma gorevleriyle
+        yarismak yerine kazaniyor.
+
 PERFORMANS - Herhangi bir gump acmak, dialog butonuna tiklamak veya menu istemek
         artik tum script pack'ini diskten yeniden okuyup parse etmiyor. Dialog/menu
         bolum aramalari etkilesim basina her .scp dosyasini tariyordu (gercek

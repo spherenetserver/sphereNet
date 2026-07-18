@@ -31,6 +31,11 @@ public sealed class WorldSaver
     /// 2-16=fixed parallel hash shards. Clamped to [0,16] on config load.</summary>
     public int ShardCount { get; set; } = 1;
 
+    /// <summary>Write hash shards sequentially on the calling thread instead of
+    /// fanning out pool tasks. Set for background saves so the whole write
+    /// stays on one low-priority thread (parallel gzip starved small boxes).</summary>
+    public bool SequentialShardWrites { get; set; }
+
     /// <summary>Rolling threshold (bytes). Only consulted when <see cref="ShardCount"/>==1.</summary>
     public long ShardSizeBytes { get; set; }
 
@@ -375,15 +380,31 @@ public sealed class WorldSaver
                 outputFiles.Add($"{baseName}.{i}{ext}");
 
             var shardBuckets = PartitionRecordsByShard(records, shards);
-            var tasks = new Task[shards];
-            for (int i = 0; i < shards; i++)
+            if (SequentialShardWrites)
             {
-                int shardIdx = i;
-                string tmp = Path.Combine(savePath, outputFiles[shardIdx] + ".tmp");
-                tasks[i] = Task.Run(() =>
-                    counts[shardIdx] = WriteOneShard(shardBuckets[shardIdx], tmp, isItems, shardIdx, shards));
+                // Background-save mode: stay on the single low-priority writer
+                // thread instead of fanning out normal-priority pool tasks —
+                // parallel gzip across shards saturated small VDS boxes and
+                // starved the main loop (yield/net_in stalls) for the whole
+                // write window.
+                for (int i = 0; i < shards; i++)
+                {
+                    string tmp = Path.Combine(savePath, outputFiles[i] + ".tmp");
+                    counts[i] = WriteOneShard(shardBuckets[i], tmp, isItems, i, shards);
+                }
             }
-            Task.WaitAll(tasks);
+            else
+            {
+                var tasks = new Task[shards];
+                for (int i = 0; i < shards; i++)
+                {
+                    int shardIdx = i;
+                    string tmp = Path.Combine(savePath, outputFiles[shardIdx] + ".tmp");
+                    tasks[i] = Task.Run(() =>
+                        counts[shardIdx] = WriteOneShard(shardBuckets[shardIdx], tmp, isItems, shardIdx, shards));
+                }
+                Task.WaitAll(tasks);
+            }
 
             totalCount = 0;
             foreach (int c in counts) totalCount += c;

@@ -682,6 +682,10 @@ public static partial class Program
         // visible as slow_tick spikes on light loads.
         var decisionList = _reusableDecisionList;
         decisionList.Clear();
+        // Bound the prestage A* cost per tick: a chase burst on a low-core box
+        // showed up as npc_build=130ms when several 500-node searches landed in
+        // one build phase. Over-budget chasers defer ~150ms.
+        _npcAI.BeginTickPathfindBudget(4);
         if (npcSnapshot.Count >= ParallelComputeMinBatch)
         {
             var po = new ParallelOptions

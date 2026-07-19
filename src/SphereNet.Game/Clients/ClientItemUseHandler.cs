@@ -1051,8 +1051,35 @@ public sealed class ClientItemUseHandler
 
             // ---- ship / sign / shrine / runes ----
             case ItemType.ShipTiller:
-                NpcSpeech(_character, ServerMessages.Get(Msg.ItemuseTillerman));
+            {
+                // Classic dry-dock: the OWNER (or staff) double-clicking the
+                // tillerman while NOT aboard converts the ship back to a deed.
+                // Source-X pre-HS tiller dclick only talks and leaves redeed
+                // to shard scripts (CClientUse IT_SHIP_TILLER); this pack
+                // scripts none, so the engine provides the classic flow.
+                // Aboard (or non-owner), the tillerman just talks.
+                var tillerEngine = Item.ResolveShipEngine?.Invoke();
+                var tillerShip = tillerEngine?.GetShip(item.Link)
+                                 ?? tillerEngine?.FindShipAt(item.Position);
+                if (tillerShip != null &&
+                    tillerEngine!.FindShipAt(_character.Position) != tillerShip)
+                {
+                    bool tillerOwner = tillerShip.Owner == _character.Uid ||
+                                       _character.PrivLevel >= PrivLevel.GM;
+                    if (!tillerOwner)
+                    {
+                        ObjectMessage(item, ServerMessages.Get(Msg.TillerNotyourship));
+                        break;
+                    }
+                    if (tillerEngine.RemoveShip(tillerShip.MultiItem.Uid, _character) != null)
+                    {
+                        SysMessage("You dry dock the ship.");
+                        break;
+                    }
+                }
+                ObjectMessage(item, ServerMessages.Get(Msg.ItemuseTillerman));
                 break;
+            }
             case ItemType.Shrine:
                 if (_character.IsDead)
                 {

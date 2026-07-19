@@ -7,6 +7,14 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+NEW - Ships can be dry-docked in game: the OWNER (or staff) double-clicks
+        the tillerman while standing OFF the ship and the ship converts back
+        to a deed in the backpack (hold cargo moves to a crate). Aboard or as
+        a non-owner the tillerman just talks — and his lines now come from
+        the tillerman item instead of appearing above the player (Source-X
+        pItem->Speak). Source-X leaves dry-dock to shard scripts; this pack
+        scripts none, so the engine provides the classic OSI flow.
+
 FIX - Ship speech commands ("forward", "back", ...) now move the ship. Sphere
         speech sections stack alias patterns over one shared body (on=forward
         / on=foreward / on=unfurl sail -> SHIPFORE); matching any alias but

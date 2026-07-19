@@ -6,6 +6,14 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+NEW - Gemiler oyun icinden dry-dock edilebiliyor: SAHIP (veya yetkili),
+        gemide DEGILKEN dumenciye cift tiklarsa gemi cantaya deed olarak
+        doner (ambar kargosu tasima sandigina gecer). Gemideyken veya sahip
+        degilken dumenci yalnizca konusur - ve replikleri artik oyuncunun
+        degil dumenci item'inin uzerinde cikiyor (Source-X pItem->Speak).
+        Source-X dry-dock'u shard scriptlerine birakir; bu pack'te script
+        olmadigi icin klasik OSI akisini motor sagliyor.
+
 FIX - Gemi konusma komutlari ("forward", "back", ...) artik gemiyi hareket
         ettiriyor. Sphere speech bolumleri alias desenlerini tek ortak govde
         uzerine yigar (on=forward / on=foreward / on=unfurl sail ->

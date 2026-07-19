@@ -388,6 +388,48 @@ public sealed class HousingShipIntegrityTests
         Assert.Null(engine.PlaceShip(owner, 0x4000, new Point3D(300, 300, 0, 0), Direction.North));
     }
 
+    /// <summary>Classic dry-dock: the owner double-clicks the TILLERMAN while
+    /// standing OFF the ship → the ship converts to a deed in the backpack.
+    /// Aboard, the tillerman only talks and the ship stays.</summary>
+    [Fact]
+    public void TillermanDoubleClick_OffShipOwner_DryDocksToDeed()
+    {
+        var oldResolver = Item.ResolveShipEngine;
+        try
+        {
+            var world = CreateWorld();
+            var registry = CreateDirectionalShipRegistry();
+            var engine = new ShipEngine(world, registry, null);
+            Item.ResolveShipEngine = () => engine;
+            var owner = CreatePlayer(world);
+            var ship = engine.PlaceShip(owner, 0x4000, new Point3D(200, 200, 0, 0), Direction.North)!;
+            var tiller = world.FindItem(ship.Components[0])!;
+            tiller.ItemType = ItemType.ShipTiller;
+
+            var loggerFactory = LoggerFactory.Create(_ => { });
+            var client = TestHarness.CreateClient(loggerFactory, world,
+                new SphereNet.Game.Accounts.AccountManager(loggerFactory), 2608);
+            TestHarness.AttachCharacter(client, owner);
+
+            // Aboard (on the multi footprint): tillerman talks, no teardown.
+            world.MoveCharacter(owner, new Point3D(200, 200, 0, 0));
+            client.HandleDoubleClick(tiller.Uid.Value);
+            Assert.NotNull(engine.GetShip(ship.MultiItem.Uid));
+
+            // Off the ship, within reach: dry dock.
+            world.MoveCharacter(owner, new Point3D(202, 200, 0, 0));
+            client.HandleDoubleClick(tiller.Uid.Value);
+            Assert.Null(engine.GetShip(ship.MultiItem.Uid));
+            Assert.True(ship.MultiItem.IsDeleted);
+            var deed = owner.Backpack!.Contents.FirstOrDefault(i => i.ItemType == ItemType.Deed);
+            Assert.NotNull(deed);
+        }
+        finally
+        {
+            Item.ResolveShipEngine = oldResolver;
+        }
+    }
+
     /// <summary>Field bug (2026-07-19): .nuke on a ship multi deleted the item but
     /// the ShipEngine registry kept a ghost entry, so the owner hit "max ships"
     /// forever. Source-X ~CItemMulti erases itself from g_World.m_Multis and

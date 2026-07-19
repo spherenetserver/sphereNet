@@ -28,6 +28,10 @@ public sealed class ClientTargetState
     public string FunctionArgs = "";
     public bool AllowGround;
     public Serial ItemUid = Serial.Invalid;
+    /// <summary>Parent (container serial, Invalid = ground) the pinned source
+    /// item had when the cursor was armed — Source-X m_Targ_Prv_UID. The
+    /// response refuses the use when the item moved/was handed away.</summary>
+    public Serial ItemParentUid = Serial.Invalid;
     public Item? ScriptNewItem;
     public Point3D? LastScriptPoint;
 
@@ -106,6 +110,7 @@ public sealed class ClientTargetState
         FunctionArgs = "";
         AllowGround = false;
         ItemUid = Serial.Invalid;
+        ItemParentUid = Serial.Invalid;
         ScriptNewItem = null;
         LastScriptPoint = null;
         Callback = null;

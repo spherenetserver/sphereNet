@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -89,6 +89,20 @@ public sealed class ClientItemUseHandler
     private bool TryMountCharacter(Character mount) => _client.TryMountCharacter(mount);
     private void ResetWalkValidator() => _client.ResetWalkValidator();
     private void SetPendingTarget(Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1) => _client.SetPendingTarget(callback, cursorType);
+
+    /// <summary>Source-X OnTarg_Use_Item: arm a target cursor for a USED item.
+    /// The source item and its current parent are pinned on the target state;
+    /// HandleTargetResponse re-validates both before running the callback
+    /// (deleted/moved/handed-away source refuses the use) and fires the
+    /// item's @TargOn_Char/@TargOn_Item/@TargOn_Ground triggers (RETURN 1
+    /// cancels). Every native "use item → pick target" flow must arm through
+    /// this, not the bare SetPendingTarget.</summary>
+    private void SetPendingItemTarget(Item source, Action<uint, short, short, sbyte, ushort> callback, byte cursorType = 1)
+    {
+        _client.SetPendingTarget(callback, cursorType);
+        _client.Targets.ItemUid = source.Uid;
+        _client.Targets.ItemParentUid = source.ContainedIn;
+    }
     private void SetPendingMultiTarget(Action<uint, short, short, sbyte, ushort> callback,
         ushort multiId, short xOff, short yOff, short zOff, ushort hue) =>
         _client.SetPendingMultiTarget(callback, multiId, xOff, yOff, zOff, hue);
@@ -827,22 +841,22 @@ public sealed class ClientItemUseHandler
             // ---- tools that target a follow-up object ----
             case ItemType.Bandage:
                 SysMessage(ServerMessages.Get(Msg.ItemuseBandagePromt));
-                SetPendingTarget((serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Healing, new Serial(serial)));
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Healing, new Serial(serial)));
                 break;
 
             case ItemType.Lockpick:
                 SysMessage(ServerMessages.Get("target_promt"));
-                SetPendingTarget((serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Lockpicking, new Serial(serial)));
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Lockpicking, new Serial(serial)));
                 break;
 
             case ItemType.Scissors:
                 SysMessage(ServerMessages.Get("target_promt"));
-                SetPendingTarget((serial, x, y, z, gfx) => HandleScissorsTarget(item, new Serial(serial)));
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) => HandleScissorsTarget(item, new Serial(serial)));
                 break;
 
             case ItemType.Tracker:
                 SysMessage(ServerMessages.Get(Msg.ItemuseTrackerAttune));
-                SetPendingTarget((serial, x, y, z, gfx) => item.SetTag("LINK", serial.ToString()));
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) => item.SetTag("LINK", serial.ToString()));
                 break;
 
             case ItemType.Key:
@@ -853,7 +867,7 @@ public sealed class ClientItemUseHandler
                     break;
                 }
                 SysMessage(ServerMessages.Get(Msg.ItemuseKeyPromt));
-                SetPendingTarget((serial, x, y, z, gfx) => HandleKeyUse(item, new Serial(serial)));
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) => HandleKeyUse(item, new Serial(serial)));
                 break;
 
             case ItemType.HairDye:
@@ -867,12 +881,12 @@ public sealed class ClientItemUseHandler
 
             case ItemType.Dye:
                 SysMessage(ServerMessages.Get(Msg.ItemuseDyeVat));
-                SetPendingTarget((serial, x, y, z, gfx) => HandleDyePickup(item, new Serial(serial)));
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) => HandleDyePickup(item, new Serial(serial)));
                 break;
 
             case ItemType.DyeVat:
                 SysMessage(ServerMessages.Get(Msg.ItemuseDyeTarg));
-                SetPendingTarget((serial, x, y, z, gfx) => HandleDyeApply(item, new Serial(serial)));
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) => HandleDyeApply(item, new Serial(serial)));
                 break;
 
             // ---- weapons (target prompt for stab/pluck) ----
@@ -883,10 +897,41 @@ public sealed class ClientItemUseHandler
             case ItemType.WeaponMaceStaff:
             case ItemType.WeaponMaceSmith:
                 SysMessage(ServerMessages.Get(Msg.ItemuseWeaponPromt));
-                SetPendingTarget((serial, x, y, z, gfx) =>
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) =>
                 {
                     var targetSerial = new Serial(serial);
                     var targetObj = targetSerial.IsValid ? _world.FindObject(targetSerial) : null;
+
+                    // Source-X OnTarg_Use_Item sharp-weapon block: the classic
+                    // blade uses beyond poisoning/repair.
+                    if (targetObj is Item corpse && corpse.ItemType == ItemType.Corpse)
+                    {
+                        CarveCorpseWithBlade(corpse);
+                        return;
+                    }
+                    if (targetObj is Character sheep && sheep.BodyId == 0x00CF)
+                    {
+                        ShearSheep(sheep);
+                        return;
+                    }
+                    if (targetObj is Item fishItem && fishItem.ItemType == ItemType.Fish)
+                    {
+                        FilletFish(fishItem);
+                        return;
+                    }
+                    if (targetObj is Item cropItem &&
+                        cropItem.ItemType is ItemType.Crops or ItemType.Foliage)
+                    {
+                        HarvestPlant(cropItem);
+                        return;
+                    }
+                    // Axe at a tree/ground: start Lumberjacking at the spot.
+                    if (item.ItemType == ItemType.WeaponAxe && targetObj == null)
+                    {
+                        RouteSkillTarget(SkillType.Lumberjacking, targetSerial,
+                            new Point3D(x, y, z, _character.MapIndex));
+                        return;
+                    }
                     if (targetObj is Item targetItem && IsWeaponItemType(targetItem.ItemType))
                     {
                         RouteSkillTarget(SkillType.Poisoning, targetSerial);
@@ -915,13 +960,13 @@ public sealed class ClientItemUseHandler
 
             case ItemType.WeaponMacePick:
                 SysMessage(ServerMessages.GetFormatted(Msg.ItemuseMacepickTarg, item.Name ?? "pick"));
-                SetPendingTarget((serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Mining, new Serial(serial), new Point3D(x, y, z, _character.MapIndex)));
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Mining, new Serial(serial), new Point3D(x, y, z, _character.MapIndex)));
                 break;
 
             // ---- pole/sextant/spyglass ----
             case ItemType.FishPole:
                 SysMessage(ServerMessages.Get("fishing_promt"));
-                SetPendingTarget((serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Fishing, new Serial(serial), new Point3D(x, y, z, _character.MapIndex)));
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) => RouteSkillTarget(SkillType.Fishing, new Serial(serial), new Point3D(x, y, z, _character.MapIndex)));
                 break;
             case ItemType.Fish:
                 SysMessage(ServerMessages.Get(Msg.ItemuseFishFail));
@@ -1018,7 +1063,7 @@ public sealed class ClientItemUseHandler
             // ---- ore / forge / ingot (overridable via @DClick trigger) ----
             case ItemType.Ore:
                 SysMessage(ServerMessages.Get(Msg.ItemuseForge));
-                SetPendingTarget((serial, x, y, z, gfx) => HandleSmeltTarget(item, new Serial(serial)));
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) => HandleSmeltTarget(item, new Serial(serial)));
                 break;
             case ItemType.Forge:
             case ItemType.Ingot:
@@ -1589,14 +1634,14 @@ public sealed class ClientItemUseHandler
                 break;
             case ItemType.Seed:
                 SysMessage("Select where to plant the seed.");
-                SetPendingTarget((serial, x, y, z, gfx) => PlantSeed(item, x, y, z));
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) => PlantSeed(item, x, y, z));
                 break;
             case ItemType.Pitcher:
                 UsePotion(item);
                 break;
             case ItemType.PitcherEmpty:
                 SysMessage("Select a water source to fill the pitcher.");
-                SetPendingTarget((serial, x, y, z, gfx) => FillPitcher(item, x, y));
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) => FillPitcher(item, x, y));
                 break;
 
             // ---- raw materials ----
@@ -2149,6 +2194,64 @@ public sealed class ClientItemUseHandler
             case ItemType.BandageBlood: obj.ItemType = ItemType.Bandage; SysMessage(ServerMessages.Get(Msg.ItemuseBandageClean)); break;
             default: SysMessage(ServerMessages.Get(Msg.ItemuseCantthink)); break;
         }
+    }
+
+    /// <summary>Source-X blade-on-corpse: carving through DeathEngine.CarveCorpse —
+    /// the engine existed but no player input path reached it (audit #2).</summary>
+    private void CarveCorpseWithBlade(Item corpse)
+    {
+        if (_character == null) return;
+        if (_character.PrivLevel < PrivLevel.GM && !CanReachTargetItem(corpse))
+        {
+            SysMessage(ServerMessages.Get(Msg.ItemuseToofar));
+            return;
+        }
+        var death = _client.DeathEng;
+        if (death == null) return;
+        var parts = death.CarveCorpse(_character, corpse);
+        SysMessage(parts.Count > 0
+            ? "You carve the corpse."
+            : "There is nothing left to carve.");
+    }
+
+    /// <summary>Source-X blade-on-sheep (CREID_SHEEP 0x00CF → sheared 0x00DF):
+    /// yields wool and swaps the body; regrowth stays with the NPC's own
+    /// script/respawn cycle.</summary>
+    private void ShearSheep(Character sheep)
+    {
+        if (_character == null) return;
+        if (sheep.IsDead || sheep.BodyId != 0x00CF) return;
+        if (_character.PrivLevel < PrivLevel.GM &&
+            _character.Position.GetDistanceTo(sheep.Position) > 3)
+        {
+            SysMessage(ServerMessages.Get(Msg.ItemuseToofar));
+            return;
+        }
+        var wool = _world.CreateItem();
+        wool.BaseId = 0x0DF8; // i_wool
+        wool.Amount = 2;
+        PlaceItemInPack(_character, wool);
+        sheep.BodyId = 0x00DF; // sheared sheep
+        SysMessage("You shear the sheep and collect the wool.");
+    }
+
+    /// <summary>Source-X blade-on-dead-fish: fillet into raw fish steaks.</summary>
+    private void FilletFish(Item fish)
+    {
+        if (_character == null) return;
+        if (_character.PrivLevel < PrivLevel.GM && !CanReachTargetItem(fish))
+        {
+            SysMessage(ServerMessages.Get(Msg.ItemuseToofar));
+            return;
+        }
+        int count = Math.Max(1, (int)fish.Amount);
+        var steaks = _world.CreateItem();
+        steaks.BaseId = 0x097A; // raw fish steak
+        steaks.ItemType = ItemType.Food;
+        steaks.Amount = (ushort)Math.Min(ushort.MaxValue, count * 4);
+        PlaceItemInPack(_character, steaks);
+        _world.RemoveItem(fish);
+        SysMessage("You cut the fish into raw fish steaks.");
     }
 
     /// <summary>Source-X key use: link key, lock/unlock door or container.</summary>

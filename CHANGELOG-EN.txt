@@ -7,6 +7,22 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIX - "Use item, pick target" flows now pin the used item (Source-X
+        OnTarg_Use_Item): the response re-validates that the source item
+        still exists in the same parent it had when the cursor opened —
+        a key/tool moved or handed to another player mid-target refuses the
+        use — and the item's @TargOn_Char/@TargOn_Item/@TargOn_Ground
+        triggers fire before the native behavior (RETURN 1 cancels).
+        Applies to bandage/lockpick/scissors/key/dye/smelt/pick/fish pole/
+        seed/pitcher and the weapon prompts.
+
+NEW - Classic blade targets are reachable again: a sharp weapon targeted at
+        a corpse carves it (DeathEngine.CarveCorpse finally has a player
+        input path), at a sheep shears wool, at a dead fish fillets raw
+        fish steaks, at a crop/foliage harvests it, and an axe at the
+        ground starts Lumberjacking at the spot — matching the Source-X
+        sharp-weapon target block beyond the old poisoning/repair pair.
+
 FIX - Potions are now spell-driven (Source-X Use_Drink): a potion conveys
         the spell in MORE1 at strength MORE2 through the spell engine, so
         strength/agility potions apply TIMED effects — the old code did a

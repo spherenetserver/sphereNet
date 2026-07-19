@@ -6,6 +6,23 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+FIX - "Esya kullan, hedef sec" akislari artik kullanilan esyayi sabitliyor
+        (Source-X OnTarg_Use_Item): yanit geldiginde kaynak esyanin imlec
+        acildigindaki ebeveyninde durdugu yeniden dogrulanir - hedef acikken
+        tasinan/baskasina verilen anahtar/alet kullanimi reddedilir - ve
+        esyanin @TargOn_Char/@TargOn_Item/@TargOn_Ground trigger'lari native
+        davranistan once calisir (RETURN 1 iptal eder). Bandaj/maymuncuk/
+        makas/anahtar/boya/eritme/kazma/olta/tohum/surahi ve silah
+        promptlarini kapsar.
+
+NEW - Klasik bicak hedefleri tekrar erisilebilir: kesici silahla cesede
+        hedef almak parcalar (DeathEngine.CarveCorpse nihayet oyuncu giris
+        yoluna baglandi), koyuna hedef almak yun kirkar, olu baliga hedef
+        almak cig balik dilimler, ekine/bitkiye hedef almak hasat eder,
+        balta ile zemine hedef almak o noktada Lumberjacking baslatir -
+        Source-X kesici-silah hedef blogunun eski poisoning/repair
+        ikilisinin otesindeki kapsami.
+
 FIX - Potionlar artik buyu-tabanli (Source-X Use_Drink): potion, MORE1'deki
         buyuyu MORE2 siddetiyle buyu motorundan uygular; strength/agility
         potionlari artik SURELI etki veriyor - eski kod kalici Str/Dex += 10

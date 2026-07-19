@@ -151,6 +151,7 @@ public sealed class ClientTargetingHandler
             Targets.FunctionArgs = "";
             Targets.AllowGround = false;
             Targets.ItemUid = Serial.Invalid;
+            Targets.ItemParentUid = Serial.Invalid;
             Targets.ScriptNewItem = null;
             Targets.LastScriptPoint = null;
             Targets.Callback = null;
@@ -193,11 +194,38 @@ public sealed class ClientTargetingHandler
         if (serial != 0 && serial != 0xFFFFFFFF)
             Targets.LastPickedSerial = serial;
 
-        // Callback-based target (housing, etc.)
+        // Callback-based target (housing, tools, weapons, ...). When the
+        // cursor was armed for a USED ITEM (SetPendingItemTarget pins it in
+        // ItemUid/ItemParentUid), replay Source-X OnTarg_Use_Item: the source
+        // must still exist in the SAME parent it had when the cursor opened
+        // (not deleted, moved, or handed to another player), and its
+        // @TargOn_Char/@TargOn_Item/@TargOn_Ground triggers run first —
+        // RETURN 1 cancels the native use.
         if (Targets.Callback != null)
         {
             var cb = Targets.Callback;
             Targets.Callback = null;
+            var sourceUid = Targets.ItemUid;
+            var sourceParent = Targets.ItemParentUid;
+            Targets.ItemUid = Serial.Invalid;
+            Targets.ItemParentUid = Serial.Invalid;
+            if (sourceUid.IsValid)
+            {
+                var sourceItem = _world.FindItem(sourceUid);
+                if (sourceItem == null || sourceItem.IsDeleted ||
+                    sourceItem.ContainedIn != sourceParent)
+                {
+                    SysMessage("You can no longer use that item.");
+                    return;
+                }
+                IScriptObj? picked = serial != 0 && serial != 0xFFFFFFFF
+                    ? _world.FindObject(new Serial(serial))
+                    : null;
+                if (FirePendingItemTargetTrigger(sourceUid,
+                        ResolveItemTargetTrigger(serial, picked),
+                        new Serial(serial), x, y, z, graphic) == TriggerResult.True)
+                    return;
+            }
             cb(serial, x, y, z, graphic);
             return;
         }

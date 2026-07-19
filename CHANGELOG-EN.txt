@@ -7,6 +7,15 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIX - Potions are now spell-driven (Source-X Use_Drink): a potion conveys
+        the spell in MORE1 at strength MORE2 through the spell engine, so
+        strength/agility potions apply TIMED effects — the old code did a
+        permanent Str/Dex += 10 (a stat exploit), defaulted every tagless
+        liquid to a heal potion (a full water pitcher healed 10 hits), and
+        deleted the container. Fixed-point script decimals (MORE2=50.0 ->
+        500) now parse, and drinking returns the empty container from the
+        itemdef TDATA1 (empty bottle / empty pitcher).
+
 FIX - BOT/STRESS/RESPAWN/RESTOCK typed over the telnet admin console now
         work. The telnet console has its own command processor and those
         harness/maintenance events were only wired on the local console

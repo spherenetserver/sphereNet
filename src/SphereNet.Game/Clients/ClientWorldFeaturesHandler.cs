@@ -1826,39 +1826,46 @@ public sealed class ClientWorldFeaturesHandler
             return;
         }
         _nextPotionTimeMs = now + 2000;
-        string potionType = "heal"; // default
-        if (potion.TryGetTag("POTION_TYPE", out string? pType) && pType != null)
-            potionType = pType.ToLowerInvariant();
 
-        switch (potionType)
+        // Source-X Use_Drink IT_POTION: the potion CONVEYS THE SPELL stored in
+        // MORE1 at strength MORE2 (m_itPotion.m_Type / m_dwSkillQuality),
+        // delivered through OnSpellEffect — no hardcoded potion families.
+        // Strength/agility therefore become TIMED spell effects (the old code
+        // did a permanent Str/Dex += 10), and a bottle with no resolvable
+        // effect is just a drink — the old "default to heal" made any tagless
+        // liquid (including a full water pitcher) a free heal potion.
+        var drinkSpell = ResolveDrinkSpell(potion);
+        if (drinkSpell != 0 && _client.Spells != null)
         {
-            case "heal":
-            case "greatheal":
-                int healAmount = potionType == "greatheal" ? 20 : 10;
-                _character.Hits = (short)Math.Min(_character.Hits + healAmount, _character.MaxHits);
-                SysMessage(ServerMessages.GetFormatted("potion_heal", healAmount));
-                break;
-            case "cure":
-                _character.CurePoison();
-                SysMessage(ServerMessages.Get("potion_cured"));
-                break;
-            case "refresh":
-            case "totalrefresh":
-                int stamAmount = potionType == "totalrefresh" ? 60 : 25;
-                _character.Stam = (short)Math.Min(_character.Stam + stamAmount, _character.MaxStam);
-                SysMessage(ServerMessages.GetFormatted("potion_stamina", stamAmount));
-                break;
-            case "strength":
-                _character.Str += 10;
-                SysMessage(ServerMessages.Get("potion_str"));
-                break;
-            case "agility":
-                _character.Dex += 10;
-                SysMessage(ServerMessages.Get("potion_dex"));
-                break;
-            default:
-                SysMessage(ServerMessages.Get("potion_drink"));
-                break;
+            int strength = (int)Math.Min(potion.More2, 2000);
+            if (strength <= 0)
+                strength = 500; // legacy bottle with no stored alchemy quality
+            _client.Spells.ApplyDirectEffect(_character, _character, drinkSpell, strength);
+        }
+        else if (potion.ItemType == ItemType.Potion &&
+                 potion.TryGetTag("POTION_TYPE", out string? oldType) && oldType != null)
+        {
+            // Old-system bottles (pre spell-driven potions): keep the bounded
+            // restores; stat potions route through the timed spell above via
+            // ResolveDrinkSpell, so no permanent gain path remains.
+            switch (oldType.ToLowerInvariant())
+            {
+                case "refresh":
+                    _character.Stam = (short)Math.Min(_character.Stam + 25, _character.MaxStam);
+                    SysMessage(ServerMessages.GetFormatted("potion_stamina", 25));
+                    break;
+                case "totalrefresh":
+                    _character.Stam = _character.MaxStam;
+                    SysMessage(ServerMessages.GetFormatted("potion_stamina", 60));
+                    break;
+                default:
+                    SysMessage(ServerMessages.Get("potion_drink"));
+                    break;
+            }
+        }
+        else
+        {
+            SysMessage(ServerMessages.Get("potion_drink"));
         }
 
         BroadcastNearby?.Invoke(_character.Position, UpdateRange,
@@ -1872,6 +1879,10 @@ public sealed class ClientWorldFeaturesHandler
         // Consume exactly one potion. Source-X parity: @Destroy RETURN 1 keeps the
         // bottle; a stack burns one unit, never the whole pile (one drink used to
         // delete every potion in the stack).
+        var drinkContainer = potion.ContainedIn.IsValid ? _world.FindItem(potion.ContainedIn) : null;
+        var drinkPos = potion.Position;
+        var drinkDef = DefinitionLoader.GetItemDef(potion.BaseId);
+
         if (potion.Amount > 1)
         {
             potion.Amount--;
@@ -1885,6 +1896,56 @@ public sealed class ClientWorldFeaturesHandler
         {
             _world.RemoveItem(potion);
         }
+
+        // Source-X Use_Drink returns the empty container (m_ttDrink.m_ridEmpty,
+        // script TDATA1: i_bottle_empty for potions, the empty pitcher for a
+        // water pitcher) — previously the container simply vanished.
+        ushort emptyId = Item.ResolveTDataId(drinkDef?.TData1 ?? 0, drinkDef?.TData1Name);
+        if (emptyId != 0)
+        {
+            var empty = _world.CreateItem();
+            empty.BaseId = emptyId;
+            if (drinkContainer != null && drinkContainer.TryAddItem(empty))
+            {
+                _netState.Send(new PacketContainerItem(
+                    empty.Uid.Value, empty.DispIdFull, 0, empty.Amount, empty.X, empty.Y,
+                    drinkContainer.Uid.Value, empty.Hue, _netState.IsClientPost6017));
+            }
+            else
+            {
+                _world.PlaceItemWithDecay(empty, drinkPos);
+            }
+        }
+    }
+
+    /// <summary>Resolve the spell a drink conveys (Source-X m_itPotion.m_Type):
+    /// numeric MORE1, the MORE1_DEFNAME routing tag (s_heal, ...), or — for
+    /// old-system bottles — the legacy POTION_TYPE tag mapped to its spell.</summary>
+    private SpellType ResolveDrinkSpell(Item potion)
+    {
+        if (potion.More1 is > 0 and < 1000)
+            return (SpellType)potion.More1;
+
+        string? name = null;
+        if (potion.TryGetTag("MORE1_DEFNAME", out string? m1d) && !string.IsNullOrWhiteSpace(m1d))
+            name = m1d;
+        else if (potion.TryGetTag("POTION_TYPE", out string? pt))
+            name = pt?.ToLowerInvariant() switch
+            {
+                "heal" => "s_heal",
+                "greatheal" => "s_greater_heal",
+                "cure" => "s_cure",
+                "strength" => "s_strength",
+                "agility" => "s_agility",
+                _ => null,
+            };
+        if (string.IsNullOrEmpty(name))
+            return 0;
+
+        var rid = _triggerDispatcher?.Resources?.ResolveDefName(name);
+        if (rid is { IsValid: true, Type: ResType.SpellDef })
+            return (SpellType)rid.Value.Index;
+        return 0;
     }
 
     /// <summary>Handle UseSkill request (from packet 0x12 or extended command).</summary>

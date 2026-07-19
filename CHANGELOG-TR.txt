@@ -6,6 +6,14 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+FIX - Potionlar artik buyu-tabanli (Source-X Use_Drink): potion, MORE1'deki
+        buyuyu MORE2 siddetiyle buyu motorundan uygular; strength/agility
+        potionlari artik SURELI etki veriyor - eski kod kalici Str/Dex += 10
+        yapiyordu (stat exploiti), tag'siz her siviyi heal potion sayiyordu
+        (dolu su surahisi 10 can dolduruyordu) ve kabi yok ediyordu. Script
+        ondalik sayilari (MORE2=50.0 -> 500) artik parse ediliyor ve icmek
+        itemdef TDATA1'deki bos kabi geri veriyor (bos sise / bos surahi).
+
 FIX - Telnet yonetim konsolundan yazilan BOT/STRESS/RESPAWN/RESTOCK artik
         calisiyor. Telnet konsolunun kendi komut islemcisi var ve bu
         harness/bakim event'leri yalnizca yerel konsol islemcisine

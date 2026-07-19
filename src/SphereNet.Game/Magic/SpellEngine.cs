@@ -1026,6 +1026,17 @@ public sealed class SpellEngine
     }
 
     /// <summary>Apply spell effect to a single character target.</summary>
+    /// <summary>Source-X CChar::OnSpellEffect entry for non-cast deliveries —
+    /// potions (Use_Drink conveys the MORE1 spell at MORE2 strength), traps,
+    /// scripted effects. Applies the spell's effect directly at the given
+    /// strength with no cast time, mana, reagents or fizzle.</summary>
+    public void ApplyDirectEffect(Character source, Character target, SpellType spell, int strength)
+    {
+        var def = _spells.Get(spell);
+        if (def == null) return;
+        ApplyCharEffect(source, target, def, Math.Max(0, strength));
+    }
+
     private void ApplyCharEffect(Character caster, Character target, SpellDef def, int skillLevel)
     {
         if (def.Id is SpellType.Lightning or SpellType.ChainLightning)

@@ -1583,7 +1583,9 @@ public class Item : ObjBase
                 return true;
             }
             case "MORE2":
-                _more2 = ParseHexOrDecUInt(value);
+                // Sphere fixed-point decimals: "50.0" stores 500 (tenths) —
+                // potion strengths (MORE2=50.0) and similar script values.
+                _more2 = ParseSphereFixedOrUInt(value);
                 return true;
             case "MOREB":
                 _moreB = ParseHexOrDecUInt(value);
@@ -2980,11 +2982,32 @@ public class Item : ObjBase
     }
 
     private static ushort PlantResolveChainId(uint tdata, string? tdataName)
+        => ResolveTDataId(tdata, tdataName);
+
+    /// <summary>Resolve a TDATA id/defname pair to a graphic id — shared by
+    /// the plant stage chains and the drink empty-container return
+    /// (Source-X m_ttDrink.m_ridEmpty, script TDATA1).</summary>
+    internal static ushort ResolveTDataId(uint tdata, string? tdataName)
     {
         if (tdata != 0) return (ushort)tdata;
         if (!string.IsNullOrEmpty(tdataName) && ResolveDefName != null)
             return ResolveDefName(tdataName);
         return 0;
+    }
+
+    /// <summary>Sphere numeric parse that also accepts the script fixed-point
+    /// decimal form: "50.0" → 500 (value in tenths). Plain integers parse raw.</summary>
+    internal static uint ParseSphereFixedOrUInt(string value)
+    {
+        value = value.Trim();
+        int dot = value.IndexOf('.');
+        if (dot > 0 &&
+            uint.TryParse(value[..dot], out uint whole) &&
+            dot + 1 < value.Length && char.IsDigit(value[dot + 1]))
+        {
+            return whole * 10 + (uint)(value[dot + 1] - '0');
+        }
+        return ParseHexOrDecUInt(value);
     }
 
     private void PlantSetId(ushort id)

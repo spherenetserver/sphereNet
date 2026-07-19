@@ -6498,6 +6498,16 @@ public partial class Character : ObjBase
             var item = world.CreateItem();
             var idef = Definitions.DefinitionLoader.GetItemDef(defIndex);
             item.BaseId = dispId;
+            // Source-X NPC_Vendor_Restock materialises stock through
+            // CreateTemplate → GenerateScript, so @Create runs on every stock
+            // item. This path built bare items (BaseId+name+price only): no
+            // ITEMDEF routing tags, no type stamp, no @Create — a bought ship
+            // deed carried no MORE reference ("that deed is blank"), and any
+            // @Create-driven item (magic gear, scripted deeds) sold by a
+            // vendor lost its scripted creation entirely. Display id and name
+            // stay under this method's control.
+            Definitions.ItemDefHelper.ApplyInstanceMetadata(item, defIndex,
+                setDisplayId: false, setName: false);
             // NAME= templates carry %plural/singular% markers — store
             // the RAW template; Item.GetName() pluralizes per Amount on
             // every read (CItem::GetName parity, CItem.cpp:1769).

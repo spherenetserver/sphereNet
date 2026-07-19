@@ -7,6 +7,17 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIX - BOT/STRESS/RESPAWN/RESTOCK typed over the telnet admin console now
+        work. The telnet console has its own command processor and those
+        harness/maintenance events were only wired on the local console
+        processor, so the documented telnet commands were silently dropped.
+
+DOC - README performance section remeasured on the current build (2026-07-20,
+        5-vCPU VM): fresh scenario table with verdicts, login/boot/save
+        results, corrected tick-rate wording (100 ms / 10 Hz, Source-X
+        MSECS_PER_TICK) and GC mode; roadmap pruned of shipped items
+        (plant growth, light burnout); both README.md and README-TR.md.
+
 NEW - Ships can be dry-docked in game: the OWNER (or staff) double-clicks
         the tillerman while standing OFF the ship and the ship converts back
         to a deed in the backpack (hold cargo moves to a crate). Aboard or as

@@ -34,7 +34,7 @@ Elinizde Sphere/Source-X scriptleri ve save verileri varsa, SphereNet bunları m
 | **Büyü** | 60+ büyü, fizzle/kesinti, reagent & mana maliyeti, alan büyüleri, summon, seyahat (Recall/Gate/Mark), buff/debuff süre yönetimi |
 | **Yetenekler** | 30+ skill handler ve gain eğrileri, crafting (recipe, exceptional kalite, malzeme hue'su), toplama (madencilik/balıkçılık/oduncu), taming & pet sadakati |
 | **NPC AI** | Monster / Pet / Healer / Guard / Vendor / Animal brain'leri, A\* pathfinding, ev-leash, aggro yönetimi |
-| **Dünya** | Housing (multi.mul, decay, co-owner/friend, lockdown/secure), partiler, loncalar (savaş/ittifak), hava & gece/gündüz, bölgeler |
+| **Dünya** | Housing (client-çizimli multiler, tabela gump'ı, decay, co-owner/friend, lockdown/secure), gemiler (konuşma komutları, akıcı hareket, kalas/ambar, dümenciden dry-dock), partiler, loncalar (savaş/ittifak), hava & gece/gündüz, bitki büyümesi, bölgeler |
 | **Adalet** | Criminal flag, murder count, karma/fame, süreli jail, notoriety |
 | **Ağ** | Tam UO login akışı, T2A → TOL eklenti paketleri, Blowfish/Twofish/Huffman şifreleme |
 | **Kalıcılık** | 4 kayıt formatı, shard tabanlı paralel kayıt, MySQL çoklu veritabanı |
@@ -142,71 +142,61 @@ Source-X'te geçmiş olayları yeniden izleme yoktur. SphereNet, karakter hareke
 
 ## Performans
 
-Tick döngüsü **50 ms aralıkta (saniyede 20 tick)** çalışır; aşağıdaki *bütçe* sütunu bir tick'in bu 50 ms'nin ne kadarını harcadığıdır. Tüm değerler kod içi araçla ölçüldü — `STRESS` popülasyonu üretir, `BOT` ise giriş yapıp oynayan canlı TCP istemcileri başlatır — gerçek script + MUL kurulumuna karşı, .NET 10 Release ve Server GC ile. Her ölçüm 30 saniyelik bir penceredir (~600 tick).
+Aşağıdaki tüm değerler **2026-07-20'de güncel build üzerinde** — erken bir prototip değil, tam özellik setiyle — kod içi araçla ölçüldü: `STRESS` popülasyonu üretir, `BOT` tam UO login akışını tamamlayıp oynayan gerçek TCP istemcileri başlatır. Dünya, tam üretim script paketi (32.842 itemdef, 821 chardef, tüm spawn/bölgeler) ve gerçek MUL haritalarıyla çalışır.
 
-### Büyük boşta / gezinen dünya — sık karşılaşılan durum
+**Test ortamı (bilinçli olarak mütevazı):** 5 vCPU'lu bir sanal makine (AMD Ryzen 9 9950X host), 12 GB RAM, Windows Server 2019, .NET 10 Release, adaptif (DATAS) GC. Botlar **aynı process'te** çalışır, yani istemci tarafı CPU'su da sunucuya yazılır — aşağıdaki her sayı kötümserdir. Tick aralığı **100 ms'dir (saniyede 10 tick, Source-X `MSECS_PER_TICK` paritesi)**; *bütçe*, ortalama bir tick'in bu 100 ms'nin ne kadarını harcadığıdır. Her örnek, spawn/login oturduktan sonraki 30 saniyelik kararlı bir penceredir (300 tick).
 
-**30.000 NPC + 300 oyuncu yürürken** (canlı TCP botları tüm şehirlerde geziniyor):
+### Ölçülen senaryolar
 
-| Ölçüm | Ort. | p50 | p95 | p99 | Maks. | Bütçe (ort.) |
-|---|---|---|---|---|---|---|
-| Başlangıç (üretim + 300 giriş) | 7.3 ms | 2.2 ms | 41.8 ms | 81 ms | 146 ms | %15 |
-| Kararlı | ~3.0 ms | 2.2 ms | ~7 ms | ~9 ms | ~42 ms | %6 |
-
-Kararlı durum tam 20 Hz'i korur; tek istisna ara sıra görülen ~40 ms'lik GC duraklamalarıdır (yine bütçe içinde). Sektör uykusu sayesinde oyunculardan uzaktaki NPC'ler sıfır maliyetlidir, böylece büyük bir dünya neredeyse bedavadır.
-
-### Aktif savaş — pahalı durum
-
-**2.000 düşman canavar + 300 oyuncu çarpışırken** (`STRESS 0 2000 mob` + `BOT 300 combat`), tahsis çalışması sonrası yedi adet 30 sn'lik pencerede ölçüldü:
-
-| Ölçüm | Ort. | p50 | p95 | p99 | Gen0/pencere | Gen2/pencere | Tick hızı |
+| Senaryo | Ort. | p50 | p95 | p99 | Bütçe | RSS | Değerlendirme |
 |---|---|---|---|---|---|---|---|
-| Erken | 3.6 ms | 0.5 ms | 37 ms | 41 ms | ~50 | ≤2 | 20 Hz |
-| Plato (aktif set büyümüş) | ~13 ms | 0.5 ms | 73 ms | 110 ms | ~50 | ~0 | 20 Hz |
+| 30.000 NPC, hiç oyuncu yok | 0.1 ms | 0.1 ms | <2 ms | <5 ms | <%1 | ~440 MB | ✅ bedava (sektör uykusu) |
+| 30.000 NPC + her şehirde yürüyen 300 oyuncu | ~8 ms | ~6 ms | ~13 ms | ~29 ms | %8 | ~580 MB | ✅ rahat |
+| 2.000 düşman canavar + savaşan 300 oyuncu | ~3.5 ms | ~2.4 ms | ~7 ms | ~16 ms | %4 | ~470 MB | ✅ rahat |
+| Gezinen 1.000 canlı istemci | ~2.5 ms | ~1.9 ms | ~5 ms | ~14 ms | %3 | ~580 MB | ✅ rahat |
+| 1.000 istemci + saldıran 2.000 düşman | ~15 ms | ~10 ms | ~30 ms | ~39 ms | %15 | ~690 MB | ✅ pay var |
+| 100.000 item + 50.000 NPC + 300 oyuncu — hepsi AKTİF sektörlere yığılmış | ~31 ms | ~24 ms | ~58 ms | ~90 ms | %31 | ~700 MB | ⚠ ağır ama stabil |
 
-Medyan tick ~0.5 ms'de kalır; maliyet, çok sayıda düşmanın aynı anda hedef seçip karşılık verdiği NPC-AI apply fazında yoğunlaşır ve daha fazla canavar saldırıya geçip aktif kaldıkça artar. Bir savaşta baskın maliyet oyuncu sayısı değil, **aynı anda aktif olan savaşçı sayısıdır**. 20 Hz baştan sona korunur.
+Tabloyu okurken:
 
-Tahsis çalışmasından önce (havuzlanan A* scratch + tahsissiz yürünebilirlik + havuzlanan paket buffer'ları) aynı senaryo ~21–29 ms ort., p95 85–119 ms, pencere başına ~230–255 Gen0 ve 1–3 bloklayan Gen2 toplamasıyla çalışıyordu — yani havuzlama tick süresini kabaca yarı-ila-çeyreğe indirdi ve tick jitter'ını süren bloklayan Gen2 duraklamalarını neredeyse tümüyle giderdi.
+- **Sektör uykusu tasarlandığı gibi çalışıyor.** Kimse yokken 30.000 NPC tick başına 0.1 ms — büyük ama boş bir dünya fiilen bedava; yalnızca oyuncuların gerçekten gezdiği sektörler için ödeme yapılır.
+- **Baskın maliyet aynı anda aktif olan AI'dır**, istemci sayısı değil: gezinen 1.000 istemci ~2.5 ms iken, 2.000 saldırgan canavar eklemek bunu altıya katlar. Oyuncuların göremediği popülasyon hiçbir şeye mal olmaz.
+- **Son satır bilinçli bir en-kötü durumdur** — stres üreteci 100 bin item ve 50 bin NPC'nin tamamını oyuncuların bulunduğu şehir sektörlerine bırakır, hiçbir şey uyuyamaz. Buna rağmen döngü 10 Hz tick'ini ortalamada ~3 kat payla korur.
+- **GC hiçbir senaryoda hikâyenin konusu olmadı**: bloklayan Gen2 toplamaları her senaryoda 30 sn'lik pencere başına 0–1'de kaldı (duraklama %1–5) — havuzlanan A* scratch'i, tahsissiz yürünebilirlik ve `ArrayPool`'dan kiralanan paket buffer'ları sayesinde.
 
-**Tavan:** 30.000 *düşman* canavar + 300 oyuncu döngüyü doyuma ulaştırır (~600–800 ms tick, ~1–2 Hz) — ancak çökme veya çok çekirdekten tek çekirdeğe düşme olmadan zarif şekilde yavaşlar. On binlerce eşzamanlı savaşan AI tek bir 50 ms karesini aşar; bu büyüklükteki boşta popülasyonlar aşmaz.
+### Login, açılış, kayıt
 
-### 1.000 eş zamanlı client
+| İşlem | Sonuç |
+|---|---|
+| 300 istemci girişi (tam UO login akışı) | 7.4 sn, 0 hata |
+| 1.000 istemci girişi | 18.1 sn, 0 hata, hepsi bağlı kaldı |
+| Soğuk açılıştan bağlantı kabulüne (tanımlar + boş dünya) | < 2 sn (tanımlar ~0.2 sn'de yüklenir) |
+| Dünya kaydı, 102.400 item + 50.440 karakter (BinaryGz, 3 shard, senkron) | **1.08 sn** — 300 istemci ve 50 bin NPC oynamaya devam ederken ölçüldü |
+| Dünya kaydı, ~32.000 nesne | 0.75 sn |
 
-1.000 canlı TCP botu (hepsi loopback'ten) 25–30 sn'de sıfır hatayla bağlanır ve tüm run boyunca bağlı kalır — kopma yok, bozuk paket yok.
-
-| Senaryo | Ort. | p50 | p95 | p99 | Tick hızı | pps out |
-|---|---|---|---|---|---|---|
-| 1.000 yayılmış + düşük aktivite | ~0.8 ms | 0.7 ms | ~1.5 ms | 5–29 ms | 20 Hz | ~1.750/s |
-| 1.000 aktif savaşta (+2.000 düşman) | ~32–34 ms | ~1 ms | ~130 ms | ~210–320 ms | ~19 Hz | ~1.950/s |
-
-Bin yayılmış oyuncu neredeyse bedava (Gen0 ~1/pencere, bloklayan Gen2 yok). Bin oyuncu *aynı anda savaşırsa* döngü ~34 ms ort.'ya çıkar — çalışır, 20 Hz büyük ölçüde korunur, ama p95/p99 50 ms karesini aşar; yani bu yoğunlukta pratik sınır budur. Baskın maliyet client sayısı değil aktif-savaşçı sayısıdır: 1.000 yayılmış ≈ bedava, 1.000 hepsi-savaşta ≈ bütçe kenarı.
-
-(Sayılar kötümser: 1.000 bot sunucuyla aynı process'te CPU paylaşır.)
+Kayıt anlık görüntüsünün yakalanması çekirdeklere paralelleştirilmiştir; `SAVEBACKGROUND=1` ile shard yazımı düşük öncelikli bir arka plan thread'ine taşınır ve ana döngü yalnızca yakalama maliyetini öder.
 
 ### Yoğun tek-ekran kalabalığı — broadcast duvarı
 
-**Tek ekrana** sıkışmış ve hepsi broadcast yapan bir kalabalık en kötü durumdur: konuşma görüş alanındaki her bota yayılır, giden paketler ~N² ölçeklenir. 1.000 bot tek şehir merkezinde (cluster spawn), hepsi konuşurken:
+**Tek ekrana** sıkışmış ve hepsi broadcast yapan bir kalabalık en kötü durumdur: konuşma görüş alanındaki her bota yayılır, giden paketler ~N² ölçeklenir. 1.000 bot tek şehir merkezinde (cluster spawn), hepsi konuşurken (ayrı bir broadcast-sel run'ından):
 
 | Metrik | Per-recipient build (eski) | Shared broadcast (mevcut) |
 |---|---|---|
 | Send-queue overflow | ~919 | **0** |
-| Sel altında filo | 1.000 → ~31 | **1.000'in tamamı 20 Hz'de tutuldu** |
+| Sel altında filo | 1.000 → ~31 | **1.000'in tamamı tam tick hızında tutuldu** |
 | Ort. tick (oturmuş) | çöküş | **~3 ms** |
 | Bloklayan Gen2 | var | **~0** |
 | Çökme / wire bozulması | yok | yok |
 
-Başlangıçta bu per-client send queue'larını dolduruyordu — broadcast paketi alıcı başına yeniden build + yeniden Huffman-compress ediliyordu, özdeş byte'lar N kez yeniden hesaplanıyordu — ve sunucu overflow disconnect'leriyle yük atıyordu (1.000 → ~31). **Tek paylaşılan** paket yayınlamak (bir kez build + compress, tüm alıcılarda tekrar kullan; bkz. Wave 42) bu darboğazı kaldırdı: aynı senaryo artık **sıfır** send-queue overflow logluyor ve 1.000 broadcast eden client'ı 20 Hz'de tutuyor. Hareket bu duvara aynı şekilde çarpmaz: yoğun kalabalık hareket edemez (mobile'lar birbirini bloklar, adımlar reddedilir, hareket-broadcast fırtınası kendini sınırlar).
+Başlangıçta bu per-client send queue'larını dolduruyordu — broadcast paketi alıcı başına yeniden build + yeniden Huffman-compress ediliyordu, özdeş byte'lar N kez yeniden hesaplanıyordu — ve sunucu overflow disconnect'leriyle yük atıyordu (1.000 → ~31). **Tek paylaşılan** paket yayınlamak (bir kez build + compress, tüm alıcılarda tekrar kullan) bu darboğazı kaldırdı: aynı senaryo artık **sıfır** send-queue overflow logluyor ve 1.000 broadcast eden client'ı tam tick hızında tutuyor. Hareket bu duvara aynı şekilde çarpmaz: yoğun kalabalık hareket edemez (mobile'lar birbirini bloklar, adımlar reddedilir, hareket-broadcast fırtınası kendini sınırlar).
 
 Zarif-yavaşlama katmanı olarak **interest management**, geride kalan herhangi bir bağlantıya — ister paket kuyruğu ister gönderilmemiş-byte backlog'u soft cap'i aşsın — giden düşük-öncelikli kozmetik broadcast'leri (overhead speech, ses) düşürür; durum taşıyan paketler (hareket, status, savaş) asla düşürülmez. Normal oyunda atıldır (300-oyuncu combat run'ı hiçbir şey düşürmez) ve yalnızca gerçek bir per-connection backlog'da devreye girer.
 
 **Non-blocking send'ler** yavaş bir client'ın sunucuyu asla durdurmamasını sağlar. Oyun stream'i, non-blocking send'lerle drenaj edilen per-connection kalıcı bir send buffer kullanır — OS send buffer'ı dolunca byte'lar flush thread'ini bloklamak yerine bir sonraki flush'ı bekler. Yani yavaş veya uzak bir client yalnızca kendi buffer'ına mal olur, paylaşılan bir sunucu thread'ine asla.
 
-İkisi birlikte: en kötü durum artık çökmüyor. Chatter geride-kalan bağlantılardan shed edilince, 1.000-bot tek-ekran seli **1.000 client'in tamamını 20 Hz'de (~3 ms ort.)** sıfır overflow ve sıfır zorla-disconnect ile tutuyor — server her client'a yalnızca boşaltabileceği kadarını (hareket ve durum) besliyor, kozmetik seli client'ı kesmek yerine per-connection kısıyor.
+İkisi birlikte: en kötü durum artık çökmüyor. Chatter geride-kalan bağlantılardan shed edilince, 1.000-bot tek-ekran seli **1.000 client'in tamamını tam tick hızında (~3 ms ort.)** sıfır overflow ve sıfır zorla-disconnect ile tutuyor — server her client'a yalnızca boşaltabileceği kadarını (hareket ve durum) besliyor, kozmetik seli client'ı kesmek yerine per-connection kısıyor.
 
 Daha da aşırı bir sel altında kalan sınır sunucunun *downstream*'indedir: saniyede ~1.000 konuşma paketi alan bir client bunları boşaltamaz (TCP backpressure) — bu "1.000 kişi tek ekranda konuşuyor"un doğasıdır, sunucu darboğazı değil. (Not: bu son sınır, botların sunucuyla CPU paylaştığı in-process harness ile tam ölçülemez.)
-
-**Kayıt:** 102.780 item + 50.363 karakter → **0.6 sn** (BinaryGz, 3 shard).
-**Bellek:** Yukarıdaki tüm senaryolarda ~550–650 MB çalışma kümesi.
 
 ### Tahsis & GC
 
@@ -327,7 +317,7 @@ src/
 dotnet test
 ```
 
-Paket; ifade/script motoru, savaş formülleri, kalıcılık/kayıt formatları, paket/era uyumluluğu, hareket, housing ekonomisi ve runtime güvenliğini kapsar.
+Paket (~1.900 test); ifade/script motoru, savaş formülleri, kalıcılık/kayıt formatları, paket/era uyumluluğu, hareket, housing/gemiler, hedefleme ve runtime güvenliğini kapsar — her commit'te yeşil tutulur.
 
 ---
 
@@ -335,12 +325,10 @@ Paket; ifade/script motoru, savaş formülleri, kalıcılık/kayıt formatları,
 
 Üzerinde aktif olarak düşünülen alanlar (katkılar memnuniyetle):
 
-- Daha geniş büyü-okulu desteği (Necromancy / Chivalry / Bushido / Ninjitsu / Mysticism)
-- Bitki büyüme döngüsü (tohum → filiz → ekin → meyve) tam crop durumu ile
-- Işık kaynağı tükenme timer'ı (charge takip ediliyor; otomatik sönme bekliyor)
+- Daha geniş büyü-okulu desteği (Chivalry / Bushido / Ninjitsu / Spellweaving / Mysticism)
 - Daha zengin NPC AI (sürü taktikleri, kaçış, formasyon hareketi)
 - Genişletilmiş web panel (canlı harita görünümü, nesne inceleyici, script konsolu)
-- Ek kalıcılık backend'leri ve artımlı/asenkron kayıt
+- Ek kalıcılık backend'leri ve artımlı kayıt
 
 ---
 

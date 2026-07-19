@@ -6,6 +6,18 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+FIX - Telnet yonetim konsolundan yazilan BOT/STRESS/RESPAWN/RESTOCK artik
+        calisiyor. Telnet konsolunun kendi komut islemcisi var ve bu
+        harness/bakim event'leri yalnizca yerel konsol islemcisine
+        baglanmisti; dokumante telnet komutlari sessizce dusuyordu.
+
+DOC - README performans bolumu guncel build uzerinde yeniden olculdu
+        (2026-07-20, 5 vCPU VM): degerlendirmeli yeni senaryo tablosu,
+        login/acilis/kayit sonuclari, duzeltilen tick orani (100 ms / 10 Hz,
+        Source-X MSECS_PER_TICK) ve GC modu; yol haritasindan tamamlanan
+        maddeler cikarildi (bitki buyumesi, isik tukenmesi); README.md ve
+        README-TR.md birlikte.
+
 NEW - Gemiler oyun icinden dry-dock edilebiliyor: SAHIP (veya yetkili),
         gemide DEGILKEN dumenciye cift tiklarsa gemi cantaya deed olarak
         doner (ambar kargosu tasima sandigina gecer). Gemideyken veya sahip

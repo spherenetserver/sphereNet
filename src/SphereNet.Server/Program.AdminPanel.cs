@@ -121,6 +121,15 @@ public static partial class Program
             _telnet.OnAccountPrivLevelChanged += SyncOnlineAccountPrivLevel;
             _telnet.OnDebugToggleRequested += ToggleDebugPackets;
             _telnet.OnScriptDebugToggleRequested += ToggleScriptDebug;
+            // The telnet console has its OWN AdminCommandProcessor: the
+            // harness/maintenance events below were only wired on the local
+            // console processor, so BOT/STRESS/RESPAWN/RESTOCK typed over
+            // telnet were silently dropped.
+            _telnet.Processor.OnBotRequested += (count, behavior) => HandleBotCommand(count, behavior, false);
+            _telnet.Processor.OnStressRequested += (items, npcs, hostile) => _stressEngine?.QueueGenerate(items, npcs, hostile);
+            _telnet.Processor.OnRespawnRequested += RequestRespawnOnMainLoop;
+            _telnet.Processor.OnRespawnResetRequested += RequestRespawnResetOnMainLoop;
+            _telnet.Processor.OnRestockRequested += RequestRestockOnMainLoop;
 
             // Console command processor (shares logic with telnet)
             _consoleProcessor = new AdminCommandProcessor(_world, _accounts, _config,

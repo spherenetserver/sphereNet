@@ -34,7 +34,7 @@ If you already have Sphere/Source-X scripts and save data, SphereNet aims to run
 | **Magic** | 60+ spells, fizzle/interrupt, reagent & mana costs, fields, summons, travel (Recall/Gate/Mark), buff/debuff expiry |
 | **Skills** | 30+ skill handlers with gain curves, crafting (recipes, exceptional quality, material hue), gathering (mining/fishing/lumberjacking), taming & pet loyalty |
 | **NPC AI** | Monster / Pet / Healer / Guard / Vendor / Animal brains, A\* pathfinding, home-leash, aggro management |
-| **World** | Housing (multi.mul, decay, co-owner/friend, lockdown/secure), parties, guilds (war/alliance), weather & day/night, regions |
+| **World** | Housing (client-rendered multis, sign gump, decay, co-owner/friend, lockdown/secure), ships (speech commands, smooth movement, planks/hold, tillerman dry-dock), parties, guilds (war/alliance), weather & day/night, plant growth, regions |
 | **Justice** | Criminal flag, murder count, karma/fame, timed jail, notoriety |
 | **Networking** | Full UO login flow, T2A → TOL expansion packets, Blowfish/Twofish/Huffman encryption |
 | **Persistence** | 4 save formats, shard-based parallel save, MySQL multi-database |
@@ -142,69 +142,59 @@ Source-X has no way to replay past events. SphereNet includes a SQLite-backed re
 
 ## Performance
 
-The tick loop runs at a **50 ms interval (20 ticks/second)**; the *budget* column below is the share of that 50 ms a tick consumes. All figures are measured with the in-tree harness — `STRESS` generates the population, `BOT` spawns live TCP clients that log in and play — against a real script + MUL install on .NET 10 Release with Server GC. Each sample is a 30-second window (~600 ticks).
+All figures below were measured on **2026-07-20 against the current build** — the full feature set, not an early prototype — using the in-tree harness: `STRESS` generates the population, `BOT` spawns real TCP clients that complete the entire UO login flow and play. The world runs the full production script pack (32,842 itemdefs, 821 chardefs, all spawns/regions) and real MUL maps.
 
-### Large idle / roaming world — the common case
+**Test environment (deliberately modest):** a 5-vCPU virtual machine (AMD Ryzen 9 9950X host), 12 GB RAM, Windows Server 2019, .NET 10 Release, adaptive (DATAS) GC. Bots run **in-process**, so their client-side CPU is charged against the server — every number below is pessimistic. The tick interval is **100 ms (10 ticks/s, matching Source-X `MSECS_PER_TICK`)**; *budget* is the share of that 100 ms an average tick consumes. Each sample is a steady-state 30-second window (300 ticks) after spawn/login settled.
 
-**30,000 NPCs + 300 players walking** (live TCP bots roaming every town):
+### Measured scenarios
 
-| Sample | Avg | p50 | p95 | p99 | Max | Budget (avg) |
-|---|---|---|---|---|---|---|
-| Start (gen + 300 logins) | 7.3 ms | 2.2 ms | 41.8 ms | 81 ms | 146 ms | 15 % |
-| Steady | ~3.0 ms | 2.2 ms | ~7 ms | ~9 ms | ~42 ms | 6 % |
-
-Steady state holds a full 20 Hz; the only outliers are occasional ~40 ms GC pauses, still inside budget. Sector sleeping means NPCs away from players cost nothing, so a large world is nearly free.
-
-### Active combat — the expensive case
-
-**2,000 hostile monsters + 300 players engaging** (`STRESS 0 2000 mob` + `BOT 300 combat`), measured over seven 30 s windows after the allocation work:
-
-| Sample | Avg | p50 | p95 | p99 | Gen0/win | Gen2/win | Tick rate |
+| Scenario | Avg | p50 | p95 | p99 | Budget | RSS | Verdict |
 |---|---|---|---|---|---|---|---|
-| Early | 3.6 ms | 0.5 ms | 37 ms | 41 ms | ~50 | ≤2 | 20 Hz |
-| Plateau (active set grown) | ~13 ms | 0.5 ms | 73 ms | 110 ms | ~50 | ~0 | 20 Hz |
+| 30,000 NPCs, no players online | 0.1 ms | 0.1 ms | <2 ms | <5 ms | <1 % | ~440 MB | ✅ free (sector sleeping) |
+| 30,000 NPCs + 300 players walking every town | ~8 ms | ~6 ms | ~13 ms | ~29 ms | 8 % | ~580 MB | ✅ comfortable |
+| 2,000 hostile monsters + 300 players fighting | ~3.5 ms | ~2.4 ms | ~7 ms | ~16 ms | 4 % | ~470 MB | ✅ comfortable |
+| 1,000 live clients roaming | ~2.5 ms | ~1.9 ms | ~5 ms | ~14 ms | 3 % | ~580 MB | ✅ comfortable |
+| 1,000 clients + 2,000 hostiles engaging | ~15 ms | ~10 ms | ~30 ms | ~39 ms | 15 % | ~690 MB | ✅ headroom left |
+| 100,000 items + 50,000 NPCs + 300 players — everything piled into ACTIVE sectors | ~31 ms | ~24 ms | ~58 ms | ~90 ms | 31 % | ~700 MB | ⚠ heavy but stable |
 
-The median tick stays ~0.5 ms; cost concentrates in the NPC-AI apply phase whenever many hostiles are simultaneously acquiring targets and retaliating, and it climbs as more monsters aggro and stay active. The dominant cost in a battle is the count of **simultaneously-active combatants**, not the player count. 20 Hz is held throughout.
+Reading the table:
 
-Before the allocation work (pooled A* scratch + allocation-free walkability + pooled packet buffers) the same scenario ran at ~21–29 ms avg, p95 85–119 ms, ~230–255 Gen0 and 1–3 blocking Gen2 collections per window — i.e. the pooling roughly halved-to-quartered tick time and all but eliminated the blocking Gen2 pauses that drove tick jitter.
+- **Sector sleeping works as designed.** 30,000 NPCs with nobody online cost 0.1 ms/tick — a large idle world is effectively free, and only the sectors players actually visit are ever paid for.
+- **The dominant cost is simultaneously-active AI**, not the client count: 1,000 roaming clients cost ~2.5 ms, while adding 2,000 aggroed monsters multiplies that by six. Population that players cannot see costs nothing.
+- **The last row is a deliberate worst case** — the stress generator drops all 100k items and 50k NPCs into the same town sectors the players occupy, so nothing can sleep. Even then the loop holds its 10 Hz tick with ~3× headroom on average.
+- **GC never became the story**: blocking Gen2 collections stayed at 0–1 per 30 s window in every scenario (pause time 1–5 %), thanks to pooled A* scratch, allocation-free walkability and `ArrayPool`-rented packet buffers.
 
-**Ceiling:** 30,000 *hostile* monsters + 300 players saturates the loop (~600–800 ms ticks, ~1–2 Hz) — yet it degrades gracefully, with no crash and no multicore fallback. Tens of thousands of concurrently-fighting AI exceed a single 50 ms frame; idle populations of that size do not.
+### Logins, boot, save
 
-### 1,000 concurrent clients
+| Operation | Result |
+|---|---|
+| 300 client logins (full UO login flow) | 7.4 s, 0 failures |
+| 1,000 client logins | 18.1 s, 0 failures, all stayed connected |
+| Cold boot to accepting connections (defs + empty world) | < 2 s (definitions load in ~0.2 s) |
+| World save, 102,400 items + 50,440 chars (BinaryGz, 3 shards, synchronous) | **1.08 s** — measured while 300 clients and 50k NPCs kept playing |
+| World save, ~32,000 objects | 0.75 s |
 
-1,000 live TCP bots (all connecting from loopback) connect in 25–30 s with zero failures and stay connected for the whole run — no disconnects, no malformed packets.
-
-| Scenario | Avg | p50 | p95 | p99 | Tick rate | pps out |
-|---|---|---|---|---|---|---|
-| 1,000 spread + low activity | ~0.8 ms | 0.7 ms | ~1.5 ms | 5–29 ms | 20 Hz | ~1,750/s |
-| 1,000 in active combat (+2,000 hostile) | ~32–34 ms | ~1 ms | ~130 ms | ~210–320 ms | ~19 Hz | ~1,950/s |
-
-A thousand spread-out players are nearly free (Gen0 ~1/window, no blocking Gen2). A thousand players *all fighting at once* push the loop to ~34 ms avg — workable, 20 Hz mostly held, but p95/p99 breach the 50 ms frame, so this is the practical edge for that intensity. The dominant cost is the active-combatant count, not the client count: 1,000 spread ≈ free, 1,000 all-fighting ≈ the budget edge.
-
-(Figures are pessimistic: the 1,000 bots share the CPU with the server in-process.)
+The save snapshot capture is parallelized across cores; with `SAVEBACKGROUND=1` the shard writing moves to a low-priority background thread and the main loop only pays for the capture.
 
 ### Dense single-screen crowd — the broadcast wall
 
-A crowd packed into **one screen** all broadcasting is the worst case: speech fans out to every bot in view, so outgoing packets scale ~N². 1,000 bots clustered around one town centre (cluster spawn), all speaking:
+A crowd packed into **one screen** all broadcasting is the worst case: speech fans out to every bot in view, so outgoing packets scale ~N². From a dedicated broadcast-flood run — 1,000 bots clustered around one town centre, all speaking:
 
 | Metric | Per-recipient build (old) | Shared broadcast (current) |
 |---|---|---|
 | Send-queue overflows | ~919 | **0** |
-| Fleet under the flood | 1,000 → ~31 | **all 1,000 held @ 20 Hz** |
+| Fleet under the flood | 1,000 → ~31 | **all 1,000 held at full tick rate** |
 | Avg tick (settled) | collapse | **~3 ms** |
 | Blocking Gen2 | present | **~0** |
 | Crash / wire corruption | none | none |
 
-Originally this saturated the per-client send queues — a broadcast packet was rebuilt and re-Huffman-compressed once per recipient, identical bytes recomputed N times — and the server shed load via overflow disconnects (1,000 → ~31). Broadcasting one **shared** packet (build + compress once, reuse across all recipients; see Wave 42) removed that bottleneck: the same scenario now logs **zero** send-queue overflows and holds all 1,000 broadcasting clients at 20 Hz. Movement never hits this wall the same way: a dense crowd can't keep moving (mobiles block each other, so steps are rejected and the move-broadcast storm self-throttles).
+Originally this saturated the per-client send queues — a broadcast packet was rebuilt and re-Huffman-compressed once per recipient, identical bytes recomputed N times — and the server shed load via overflow disconnects (1,000 → ~31). Broadcasting one **shared** packet (build + compress once, reuse across all recipients) removed that bottleneck: the same scenario now logs **zero** send-queue overflows and holds all 1,000 broadcasting clients at the full tick rate. Movement never hits this wall the same way: a dense crowd can't keep moving (mobiles block each other, so steps are rejected and the move-broadcast storm self-throttles).
 
 As a graceful-degradation layer, **interest management** sheds low-priority cosmetic broadcasts (overhead speech, sound) to any connection that is backing up — either its packet queue or its unsent-byte backlog passes a soft cap — while state-bearing packets (movement, status, combat) are never dropped. It is inert in normal play (a 300-player combat run sheds nothing) and activates only under a genuine per-connection backlog.
 
 **Non-blocking sends** keep a slow client from ever stalling the server. The game stream uses a per-connection persistent send buffer drained with non-blocking sends — when the OS send buffer is full the bytes wait for the next flush instead of blocking the flush thread. So a slow or distant client costs only its own buffer, never a shared server thread.
 
-Together these mean the worst case no longer collapses: with chatter shed off backed-up connections, the 1,000-bot one-screen flood **holds all 1,000 clients at 20 Hz (~3 ms avg)** with zero overflow and zero forced disconnects — the server feeds each client only what it can drain (movement and state), throttling the cosmetic flood per-connection instead of cutting clients off.
-
-**Save:** 102,780 items + 50,363 characters → **0.6 s** (BinaryGz, 3 shards).
-**Memory:** ~550–650 MB working set across every scenario above.
+Together these mean the worst case no longer collapses: with chatter shed off backed-up connections, the 1,000-bot one-screen flood **holds all 1,000 clients at the full tick rate (~3 ms avg)** with zero overflow and zero forced disconnects — the server feeds each client only what it can drain (movement and state), throttling the cosmetic flood per-connection instead of cutting clients off.
 
 ### Allocation & GC
 
@@ -325,7 +315,7 @@ src/
 dotnet test
 ```
 
-The suite covers the expression/script engine, combat formulas, persistence/save formats, packet/era compatibility, movement, housing economy, and runtime safety.
+The suite (~1,900 tests) covers the expression/script engine, combat formulas, persistence/save formats, packet/era compatibility, movement, housing/ships, targeting, and runtime safety — and is kept green on every commit.
 
 ---
 
@@ -333,12 +323,10 @@ The suite covers the expression/script engine, combat formulas, persistence/save
 
 Areas under active consideration (contributions welcome):
 
-- Broader spell-school support (Necromancy / Chivalry / Bushido / Ninjitsu / Mysticism)
-- Plant-growth lifecycle (seed → sprout → crop → fruit) with full crop state
-- Light-source burnout timers (charges are tracked; auto-extinguish is pending)
+- Broader spell-school support (Chivalry / Bushido / Ninjitsu / Spellweaving / Mysticism)
 - Richer NPC AI (pack tactics, fleeing, formation movement)
 - Expanded web panel (live map view, object inspector, script console)
-- Additional persistence backends and incremental/async saves
+- Additional persistence backends and incremental saves
 
 ---
 

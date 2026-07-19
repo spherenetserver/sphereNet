@@ -342,7 +342,7 @@ public sealed class CommandHandler
     public event Action<Character>? OnControlTargetRequested;
     /// <summary>Source-X parity: <c>.DUPE</c> opens a target cursor and
     /// duplicates the picked item.</summary>
-    public event Action<Character>? OnDupeTargetRequested;
+    public event Action<Character, int>? OnDupeTargetRequested;
     /// <summary>Source-X parity: <c>.HEAL</c> with no UID opens a cursor
     /// to fully heal the picked character (or the GM with arg "self").</summary>
     public event Action<Character>? OnHealTargetRequested;
@@ -1575,11 +1575,15 @@ public sealed class CommandHandler
             OnControlTargetRequested?.Invoke(gm);
         });
 
-        // .DUPE — duplicate an item (target cursor).
-        Register("DUPE", PrivLevel.GM, (gm, _) =>
+        // .DUPE [count] — duplicate an item (target cursor). Source-X CIV_DUPE
+        // takes the copy count as the verb argument.
+        Register("DUPE", PrivLevel.GM, (gm, args) =>
         {
+            int count = 1;
+            if (int.TryParse(args.Trim(), out int n) && n > 0)
+                count = n;
             OnSysMessage?.Invoke(gm, ServerMessages.Get("gm_dupe_target"));
-            OnDupeTargetRequested?.Invoke(gm);
+            OnDupeTargetRequested?.Invoke(gm, count);
         });
 
         // .HEAL [self] — fully heal self or picked char.

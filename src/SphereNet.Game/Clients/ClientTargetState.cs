@@ -60,6 +60,9 @@ public sealed class ClientTargetState
     public uint LastPickedSerial;
     public bool Control;
     public bool Dupe;
+    /// <summary>.DUPE [count] copy count carried until the target response
+    /// (Source-X CIV_DUPE argument).</summary>
+    public int DupeAmount = 1;
     public bool Heal;
     public bool Kill;
     public bool Bank;
@@ -90,6 +93,7 @@ public sealed class ClientTargetState
         AreaVerbArgs = "";
         Control = false;
         Dupe = false;
+        DupeAmount = 1;
         Heal = false;
         Bank = false;
         SummonTo = false;

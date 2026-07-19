@@ -421,14 +421,29 @@ public sealed class ClientTargetingHandler
         if (Targets.Dupe)
         {
             Targets.Dupe = false;
+            int dupeCount = Targets.DupeAmount;
+            Targets.DupeAmount = 1;
             var pickedItem = serial != 0 && serial != 0xFFFFFFFF
                 ? _world.FindItem(new Serial(serial))
                 : null;
             if (pickedItem == null) { SysMessage(ServerMessages.Get("target_must_object")); return; }
-            var dup = DuplicateItem(pickedItem);
+            // Source-X CIV_DUPE: a top-level dupe run is clamped to the item
+            // complexity cap (default 25) so a typo can't flood a tile.
+            if (!pickedItem.ContainedIn.IsValid && dupeCount > 25)
+                dupeCount = 25;
+            Item? dup = null;
+            int made = 0;
+            for (int i = 0; i < dupeCount; i++)
+            {
+                dup = DuplicateItem(pickedItem);
+                if (dup == null) break;
+                made++;
+            }
             if (dup != null)
-                SysMessage(ServerMessages.GetFormatted("gm_dupe_done",
-                    pickedItem.Name ?? "item", dup.Uid.Value.ToString("X8")));
+                SysMessage(made > 1
+                    ? $"Duplicated {pickedItem.Name ?? "item"} x{made}."
+                    : ServerMessages.GetFormatted("gm_dupe_done",
+                        pickedItem.Name ?? "item", dup.Uid.Value.ToString("X8")));
             else
                 SysMessage(ServerMessages.Get("target_cant_remove"));
             return;

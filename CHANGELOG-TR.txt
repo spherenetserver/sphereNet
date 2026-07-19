@@ -6,6 +6,14 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+FIX - .dupe artik TAM klon yapiyor ve kopya sayisini uyguluyor. Kopyalanan
+        item onceden yalnizca grafik/renk/miktar/isim tasiyordu - kopyalanan
+        ev/gemi deed'i More1/multi referans tag'lerini kaybedip bos cikiyordu,
+        script'li item'lar tip/link/tag/event kaybediyordu. Kopyalama artik
+        tam klon yolunu kullaniyor (Source-X CreateDupeItem). ".dupe 10" da
+        artik 10 kopya yapiyor (Source-X CIV_DUPE argumani; zemin ustunde
+        referanstaki complexity siniri gibi 25 ile sinirli), hep 1 degil.
+
 FIX - Gemi ve evler artik eksiksiz gorunuyor. Tek kok nedenin iki yarisi:
         yerlestirilen multi'ler (gemi, klasik ev) client'a duz item olarak
         gonderiliyordu ve multi grafikli duz item hic cizilmiyor - client bir

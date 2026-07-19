@@ -979,10 +979,10 @@ public static partial class Program
                 foreach (var c in _clients.Values)
                     if (c.Character == gm) { c.BeginControlTarget(); break; }
             };
-            _commands.OnDupeTargetRequested += gm =>
+            _commands.OnDupeTargetRequested += (gm, count) =>
             {
                 foreach (var c in _clients.Values)
-                    if (c.Character == gm) { c.BeginDupeTarget(); break; }
+                    if (c.Character == gm) { c.BeginDupeTarget(count); break; }
             };
             _commands.OnHealTargetRequested += gm =>
             {

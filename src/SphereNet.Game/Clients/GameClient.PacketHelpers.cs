@@ -198,11 +198,12 @@ public sealed partial class GameClient
         SendTargetRequest(0);
     }
 
-    public void BeginDupeTarget()
+    public void BeginDupeTarget(int count = 1)
     {
         if (_character == null || Targets.CursorActive) return;
         ClearPendingTargetState();
         Targets.Dupe = true;
+        Targets.DupeAmount = Math.Max(1, count);
         Targets.CursorActive = true;
         SendTargetRequest(0);
     }
@@ -1271,10 +1272,11 @@ public sealed partial class GameClient
     {
         if (_character == null) return null;
         var dup = _world.CreateItem();
-        dup.BaseId = src.BaseId;
-        dup.Hue = src.Hue;
+        // Full clone (Source-X CreateDupeItem): type, more1/more2, link, tags
+        // and events must travel — a duped house/ship deed previously lost its
+        // multi reference (More1 + MORE1_DEFNAME tag) and came out blank.
+        dup.CopyStackInstanceStateFrom(src);
         dup.Amount = src.Amount > 0 ? src.Amount : (ushort)1;
-        if (!string.IsNullOrEmpty(src.Name)) dup.Name = src.Name;
         if (src.ContainedIn.IsValid)
             PlaceItemInPack(_character, dup);
         else

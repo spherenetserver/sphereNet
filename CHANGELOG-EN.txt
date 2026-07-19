@@ -7,6 +7,14 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIX - .dupe now makes FULL clones and honours its copy count. A duped item
+        previously kept only graphic/hue/amount/name — a duped house or ship
+        deed lost its More1/multi-reference tags and came out blank, and any
+        scripted item lost its type, link, tags and events. Duplication now
+        uses the full-clone path (Source-X CreateDupeItem). ".dupe 10" also
+        copies 10 times (Source-X CIV_DUPE argument; top-level runs clamped
+        to 25 like the reference complexity cap) instead of always once.
+
 FIX - Ships and houses now render completely. Two halves of one root cause:
         placed multis (ships, classic houses) were sent to the client as plain
         items, and a plain item with a multi graphic renders as nothing — the

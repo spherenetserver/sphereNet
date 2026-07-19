@@ -7,6 +7,12 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+PERF - World-save snapshot capture now runs in parallel. Building the save
+        records (property formatting per object) dominated the save stall
+        (~0.45s of a 0.75s save on a 32K-object world); the capture is a pure
+        read of the frozen world, so it now fans out across cores. This shrinks
+        the freeze in both sync (SAVEBACKGROUND=0) and background save modes.
+
 FIX - Placed ships and houses now materialise their full structure. The multi
         component visibility flag was read inverted, so a placed ship consisted
         of only the five invisible placeholder pieces (mast anchor, tiller,

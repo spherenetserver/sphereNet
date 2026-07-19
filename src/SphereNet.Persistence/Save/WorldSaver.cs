@@ -261,28 +261,40 @@ public sealed class WorldSaver
                 vendorStock.Add(it.Uid.Value);
         }
 
-        foreach (var obj in allObjects)
+        // Capture in parallel: this is a pure read of live objects (the main
+        // thread is inside the save, nothing mutates), and per-object record
+        // building (property formatting + string alloc) dominated the sync-save
+        // stall (~0.45s of a 0.75s save on a 32K world). Slot arrays keep the
+        // original object order so the output stays deterministic.
+        var itemSlots = new SaveRecord?[allObjects.Length];
+        var charSlots = new SaveRecord?[allObjects.Length];
+        System.Threading.Tasks.Parallel.For(0, allObjects.Length, i =>
         {
+            var obj = allObjects[i];
             if (obj is Item item)
             {
                 if (item.IsDeleted || item.IsAttr(Core.Enums.ObjAttributes.Static))
-                    continue;
+                    return;
                 if (vendorStock.Contains(item.Uid.Value) ||
                     (item.ContainedIn.IsValid && vendorStock.Contains(item.ContainedIn.Value)))
-                    continue; // virtual vendor stock — never persisted
+                    return; // virtual vendor stock — never persisted
                 if (!ShouldExportItem(item, scope, byUid))
-                    continue;
-                items.Add(CaptureItem(item, now));
+                    return;
+                itemSlots[i] = CaptureItem(item, now);
             }
             else if (obj is Character ch)
             {
                 if (ch.IsDeleted)
-                    continue;
+                    return;
                 if (!ShouldExportChar(ch, scope))
-                    continue;
-                chars.Add(CaptureChar(ch, now));
+                    return;
+                charSlots[i] = CaptureChar(ch, now);
             }
-        }
+        });
+        foreach (var rec in itemSlots)
+            if (rec != null) items.Add(rec);
+        foreach (var rec in charSlots)
+            if (rec != null) chars.Add(rec);
 
         return new WorldSaveSnapshot(items, chars);
     }

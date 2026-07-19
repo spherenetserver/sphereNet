@@ -6,6 +6,13 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+PERF - World-save snapshot yakalama artik paralel calisiyor. Save kayitlarinin
+        kurulmasi (nesne basina ozellik formatlama) save duraklamasinin buyuk
+        kismini olusturuyordu (32K nesneli dunyada 0.75s'lik save'in ~0.45s'i);
+        yakalama donmus dunyanin salt-okunur taramasi oldugu icin artik
+        cekirdeklere dagitiliyor. Donma hem sync (SAVEBACKGROUND=0) hem de
+        arka plan save modunda kisaliyor.
+
 FIX - Yerlestirilen gemi ve evler artik tam yapilarini olusturuyor. Multi
         bilesen gorunurluk bayragi ters okunuyordu; yerlestirilen gemi govdesiz,
         yalnizca bes gorunmez placeholder parcadan (direk noktasi, dumen, ambar,

@@ -6547,7 +6547,7 @@ public partial class Character : ObjBase
     // written with a zero pad (e.g. "0007") but meant as decimal.
     /// <summary>Resolve a POLY argument to a body id: a numeric body, a
     /// chardef defname, or a weighted "{ c_a 1 c_b 1 }" list.</summary>
-    private static ushort ResolvePolyBody(string args)
+    internal static ushort ResolvePolyBody(string args)
     {
         string arg = args.Trim();
         if (arg.Length == 0)

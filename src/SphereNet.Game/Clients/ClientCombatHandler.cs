@@ -2174,8 +2174,15 @@ public sealed class ClientCombatHandler
                 if (_triggerDispatcher?.FireCharTrigger(_character, CharTrigger.SkillMenu,
                         new TriggerArgs { CharSrc = _character, S1 = skillMenuName }) == TriggerResult.True)
                     return;
+                // Mark the menu as CAST-driven: the POLY/SUMMON verb the menu
+                // entry runs must stash the pick and start the REAL cast
+                // (mana/reagents/cast time/fizzle), not apply directly —
+                // Source-X Cmd_Skill_Magery stores the selection and calls
+                // Spell_CastStart.
+                _character.SetTag("CAST_MENU_SPELL", ((int)spell).ToString());
                 if (_client.TryExecuteScriptCommand(_character, "SKILLMENU", skillMenuName, null))
                     return;
+                _character.RemoveTag("CAST_MENU_SPELL"); // no menu — normal flow
             }
         }
 

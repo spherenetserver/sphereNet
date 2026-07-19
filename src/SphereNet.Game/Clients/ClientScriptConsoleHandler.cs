@@ -515,10 +515,41 @@ public sealed class ClientScriptConsoleHandler
 
         if (upper == "SUMMON")
         {
+            // From the sm_summon CAST menu: stash the pick and run the real
+            // Summon Creature cast — the completed cast conveys the selection
+            // (Source-X stores m_atMagery.m_uiSummonID then Spell_CastStart).
+            // Outside a pending cast menu, keep the direct CV_SUMMON verb.
+            if (_character != null &&
+                _character.TryGetTag("CAST_MENU_SPELL", out string? pendingSummon) &&
+                pendingSummon == ((int)SpellType.SummonCreature).ToString())
+            {
+                _character.RemoveTag("CAST_MENU_SPELL");
+                _character.SetTag("SUMMON_SELECT", args.Trim());
+                (_client as GameClient)?.HandleCastSpell(SpellType.SummonCreature, _character.Uid.Value);
+                return true;
+            }
             // Reference CV_SUMMON: summon the given chardef as a temporary
             // summoned pet of the caster (used by sm_summon entries).
             SummonFromMenu(args.Trim());
             return true;
+        }
+
+        if (upper == "POLY")
+        {
+            // From the sm_polymorph CAST menu: stash the picked form and run
+            // the real Polymorph cast (timed body revert included). The GM /
+            // script POLY verb outside a pending cast menu falls through to
+            // the direct character verb.
+            var polyChar = _character;
+            if (polyChar != null &&
+                polyChar.TryGetTag("CAST_MENU_SPELL", out string? pendingPoly) &&
+                pendingPoly == ((int)SpellType.Polymorph).ToString())
+            {
+                polyChar.RemoveTag("CAST_MENU_SPELL");
+                polyChar.SetTag("POLY_SELECT", args.Trim());
+                (_client as GameClient)?.HandleCastSpell(SpellType.Polymorph, polyChar.Uid.Value);
+                return true;
+            }
         }
 
         if (upper == "MAKEITEM")

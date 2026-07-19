@@ -509,8 +509,19 @@ public sealed class SpellEngine
             }
         }
 
-        // Mana check
-        if (caster.Mana < EffectiveManaCost(caster, def))
+        var weapon = caster.GetEquippedItem(Layer.OneHanded);
+        var offhand = caster.GetEquippedItem(Layer.TwoHanded);
+        bool isWand = weapon?.ItemType == ItemType.Wand;
+        bool fromScroll = caster.TryGetTag("SCROLL_UID", out _);
+
+        // Mana check — the SAME discounted cost the completion will consume
+        // (wand = free, scroll = half). Requiring the full effective cost up
+        // front while the discount only applied at consumption meant a wand
+        // wielder needed mana for a free cast (audit finding 7).
+        int requiredMana = EffectiveManaCost(caster, def);
+        if (isWand) requiredMana = 0;
+        else if (fromScroll) requiredMana /= 2;
+        if (caster.Mana < requiredMana)
             return -1;
 
         if (!CanCastOutdoorSpell(caster, def, targetPos))
@@ -521,11 +532,6 @@ public sealed class SpellEngine
 
         var primarySkill = def.GetPrimarySkill();
         int skillVal = caster.GetSkill(primarySkill);
-
-        var weapon = caster.GetEquippedItem(Layer.OneHanded);
-        var offhand = caster.GetEquippedItem(Layer.TwoHanded);
-        bool isWand = weapon?.ItemType == ItemType.Wand;
-        bool fromScroll = caster.TryGetTag("SCROLL_UID", out _);
         // A wielded spellbook never blocks casting (reference: casting from
         // the book in hand is the normal flow); wands likewise.
         bool hasBlockingWeapon =
@@ -683,8 +689,14 @@ public sealed class SpellEngine
             return false;
         }
 
-        // Consume mana
-        if (caster.Mana < def.ManaCost)
+        // Mana requirement and consumption share ONE discounted cost (wand
+        // free, scroll half, Mind Rot via EffectiveManaCost). The old code
+        // required only the BASE def.ManaCost here while consuming the
+        // effective cost — the start/done checks disagreed (audit finding 7).
+        int manaCost = Math.Max(0, EffectiveManaCost(caster, def) * Character.ManaLossPercent / 100);
+        if (castWithWand) manaCost = 0;             // reference: wands cost no mana
+        else if (castFromScroll) manaCost /= 2;     // reference: scrolls cost half mana
+        if (caster.Mana < manaCost)
         {
             ClearCastState(caster);
             OnSysMessage?.Invoke(caster, "You lack the mana to cast that spell.");
@@ -697,10 +709,7 @@ public sealed class SpellEngine
             ConsumeReagents(caster, def);
         }
 
-        int manaCost = Math.Max(0, EffectiveManaCost(caster, def) * Character.ManaLossPercent / 100);
-        if (castWithWand) manaCost = 0;             // reference: wands cost no mana
-        else if (castFromScroll) manaCost /= 2;     // reference: scrolls cost half mana
-        caster.Mana -= (short)Math.Min(manaCost, caster.Mana);
+        caster.Mana -= (short)manaCost;
 
         // Consume the wand charge / scroll ONLY now that the cast has committed to
         // success (passed fizzle + mana). Moving this off the double-click / client
@@ -838,11 +847,29 @@ public sealed class SpellEngine
         }
         else if (def.IsFlag(SpellFlag.Summon))
         {
-            // Necromancy Summon Familiar picks a specific creature (Source-X opens
-            // a selection menu; a default familiar is used here — the menu is not
-            // yet wired). Other summon spells keep the generic bodyless creature.
+            // sm_summon menu pick stashed on the caster (Source-X
+            // m_atMagery.m_uiSummonID): the COMPLETED cast conveys the chosen
+            // creature — the menu no longer bypasses mana/reagents/cast time.
+            string? summonSel = null;
+            if (caster.TryGetTag("SUMMON_SELECT", out string? sel) &&
+                !string.IsNullOrWhiteSpace(sel))
+                summonSel = sel.Trim();
+            caster.RemoveTag("SUMMON_SELECT");
+
             ushort summonBody = spell == SpellType.SummonFamiliar ? (ushort)0x013D : (ushort)0;
-            SummonCreature(caster, targetPos, def, skillLevel, summonBody);
+            var summoned = SummonCreature(caster, targetPos, def, skillLevel, summonBody);
+            if (summoned != null && summonSel != null)
+            {
+                var res = Definitions.DefinitionLoader.StaticResources;
+                if (res != null &&
+                    Definitions.CharDefHelper.TryApplyDefName(summoned, summonSel, res, refresh: false))
+                {
+                    summoned.SetStatFlag(StatFlag.Conjured);
+                    summoned.Hits = summoned.MaxHits;
+                    summoned.Stam = summoned.MaxStam;
+                    summoned.Mana = summoned.MaxMana;
+                }
+            }
         }
         else
         {
@@ -2022,8 +2049,19 @@ public sealed class SpellEngine
             }
             case SpellType.Polymorph:
             {
+                // sm_polymorph menu pick stashed on the caster (Source-X keeps
+                // the selection and casts the real spell); no selection falls
+                // back to a random classic form.
+                ushort newBody = 0;
+                if (target.TryGetTag("POLY_SELECT", out string? polySel) &&
+                    !string.IsNullOrWhiteSpace(polySel))
+                {
+                    newBody = Character.ResolvePolyBody(polySel);
+                    target.RemoveTag("POLY_SELECT");
+                }
                 ReadOnlySpan<ushort> forms = [0x0033, 0x0034, 0x0035, 0x0036, 0x0037, 0x0038];
-                ushort newBody = forms[_rand.Next(forms.Length)];
+                if (newBody == 0)
+                    newBody = forms[_rand.Next(forms.Length)];
                 if (target.OBody == 0)
                     target.OBody = target.BodyId;
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);

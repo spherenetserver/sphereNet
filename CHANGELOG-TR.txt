@@ -6,6 +6,22 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+FIX - Polymorph ve Summon Creature secim menuleri artik GERCEK cast'i
+        calistiriyor: secim caster uzerinde saklanir ve tamamlanan cast onu
+        uygular (Source-X secimi saklayip Spell_CastStart cagirir); mana,
+        reagent, cast suresi, fizzle, kesinti ve SURELI polymorph geri
+        donusu artik gecerli - menuler onceden govdeyi aninda ve kalici
+        degistiriyor / yaratigi aninda uretiyordu. Cast menusu disindaki
+        dogrudan GM/script POLY ve SUMMON verb'leri degismedi.
+
+FIX - Mana gereksinimi ve tuketimi artik cast baslangici ve bitisinde ayni
+        indirimli maliyeti kullaniyor (wand = bedava, scroll = yarim, lanet
+        etkileri efektif maliyet uzerinden). Onceden baslangic wand icin
+        bile TAM efektif maliyeti istiyor, bitis ise yalnizca taban maliyeti
+        kontrol ediyordu - wand hic tuketmeyecegi manayi istiyor, scroll
+        baslangicta fazla istiyor ve cast tukettiginden az manayla
+        tamamlanabiliyordu.
+
 FIX - "Esya kullan, hedef sec" akislari artik kullanilan esyayi sabitliyor
         (Source-X OnTarg_Use_Item): yanit geldiginde kaynak esyanin imlec
         acildigindaki ebeveyninde durdugu yeniden dogrulanir - hedef acikken

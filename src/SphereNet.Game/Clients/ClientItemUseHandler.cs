@@ -423,7 +423,14 @@ public sealed class ClientItemUseHandler
         if (_character.Position.GetDistanceTo(usePoint) > Math.Max(UpdateRange, (int)_netState.ViewRange))
             return false;
 
-        return _world.CanSeeLOS(_character.Position, usePoint);
+        // Distance + visibility only (Source-X Event_DoubleClick → CanSee) —
+        // no LOS raycast, same rule as the mobile path above. The view
+        // pipeline draws items through walls, so failing here on a raycast
+        // "corrected" the client with PacketDeleteObject and the item
+        // vanished: with the house walls now real LOS occluders, the house
+        // sign disappeared when double-clicked from INSIDE the house. Reach
+        // is enforced separately per use (the non-GM touch checks below).
+        return true;
     }
 
     private void FaceUsePoint(Point3D point)

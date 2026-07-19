@@ -7,6 +7,16 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIX - Double-clicking the house sign from INSIDE the house no longer makes
+        the sign vanish (and demolish/redeed is reachable again). The item
+        double-click gate ran a line-of-sight raycast; with house walls now
+        being real LOS occluders, the sign on the wall failed the ray from
+        indoors and the server "corrected" the client by deleting the item
+        from view — so the gump never opened and the house could not be
+        redeeded from inside. Source-X Event_DoubleClick checks
+        containment/distance only (no raycast), same as our mobile dclick
+        path; the item path now matches. Combat/NPC/spell LOS is unchanged.
+
 FIX - .dupe now makes FULL clones and honours its copy count. A duped item
         previously kept only graphic/hue/amount/name — a duped house or ship
         deed lost its More1/multi-reference tags and came out blank, and any

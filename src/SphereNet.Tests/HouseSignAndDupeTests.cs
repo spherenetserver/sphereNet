@@ -84,6 +84,48 @@ public sealed class HouseSignAndDupeTests
         Assert.NotNull(housing.GetHouse(house.MultiItem.Uid));
     }
 
+    /// <summary>The demolish path end-to-end: dclick the sign (from any spot —
+    /// the dclick can-see gate is distance-only, no LOS raycast, so standing
+    /// INSIDE the house behind its own walls must not hide the sign), press
+    /// the Demolish button, and the house converts back to a deed.</summary>
+    [Fact]
+    public void HouseSignGump_DemolishButton_ReturnsDeedAndTearsDownHouse()
+    {
+        var world = CreateWorld();
+        var housing = new HousingEngine(world, CreateHouseRegistryWithSign());
+        var owner = CreatePlayer(world);
+        var house = housing.PlaceHouse(owner, 0x0064, new Point3D(200, 200, 0, 0))!;
+        // Stand INSIDE the footprint, adjacent to the sign (2,4 offset).
+        world.MoveCharacter(owner, new Point3D(202, 203, 0, 0));
+
+        var sign = house.Components
+            .Select(uid => world.FindItem(uid))
+            .First(i => i != null && i.BaseId == 0x0BD2)!;
+        sign.ItemType = ItemType.SignGump;
+        var componentUids = house.Components.ToArray();
+
+        var loggerFactory = LoggerFactory.Create(_ => { });
+        var client = TestHarness.CreateClient(loggerFactory, world,
+            new SphereNet.Game.Accounts.AccountManager(loggerFactory), 2607);
+        client.SetEngines(housingEngine: housing);
+        TestHarness.AttachCharacter(client, owner);
+
+        client.HandleDoubleClick(sign.Uid.Value);
+        Assert.False(sign.IsDeleted); // the dclick itself never removes the sign
+
+        // Press "Demolish House" (button 2) on the sign gump.
+        client.HandleGumpResponse(owner.Uid.Value, sign.Uid.Value, 2,
+            [], Array.Empty<(ushort, string)>());
+
+        Assert.Null(housing.GetHouse(house.MultiItem.Uid));
+        Assert.True(house.MultiItem.IsDeleted);
+        foreach (var uid in componentUids)
+            Assert.Null(world.FindItem(uid));
+        var deed = owner.Backpack!.Contents.FirstOrDefault(i => i.ItemType == ItemType.Deed);
+        Assert.NotNull(deed);
+        Assert.Equal(0x0064u, deed!.More1);
+    }
+
     [Fact]
     public void DupeTarget_MakesFullClones_AndHonoursCount()
     {

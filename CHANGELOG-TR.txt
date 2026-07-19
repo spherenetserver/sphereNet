@@ -6,6 +6,16 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+FIX - Ev tabelasina evin ICINDEN cift tiklamak artik tabelayi yok etmiyor
+        (demolish/redeed de tekrar erisilebilir). Item cift-tik kapisi bir
+        gorus hatti (LOS) isini kosuyordu; ev duvarlari artik gercek LOS
+        engelleyici oldugu icin duvardaki tabela iceriden isini gecemiyor ve
+        server client'i "duzelterek" item'i gorunumden siliyordu - gump hic
+        acilmiyor, ev iceriden redeed edilemiyordu. Source-X Event_DoubleClick
+        yalnizca kapsama/mesafe kontrolu yapar (isin yok); mobil cift-tik
+        yolumuzla ayni kural item yoluna da uygulandi. Combat/NPC/buyu LOS'u
+        degismedi.
+
 FIX - .dupe artik TAM klon yapiyor ve kopya sayisini uyguluyor. Kopyalanan
         item onceden yalnizca grafik/renk/miktar/isim tasiyordu - kopyalanan
         ev/gemi deed'i More1/multi referans tag'lerini kaybedip bos cikiyordu,

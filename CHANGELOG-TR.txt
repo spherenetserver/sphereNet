@@ -6,6 +6,15 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+FIX - Gemi konusma komutlari ("forward", "back", ...) artik gemiyi hareket
+        ettiriyor. Sphere speech bolumleri alias desenlerini tek ortak govde
+        uzerine yigar (on=forward / on=foreward / on=unfurl sail ->
+        SHIPFORE); SON alias disindaki her eslesme bos govde topluyordu,
+        cogu komut yazimi sessizce hicbir sey yapmiyordu. Artik gruptaki
+        herhangi bir alias, ardisik ON= satirlarinin sonundaki govdeyi
+        calistiriyor. Bu, yalnizca gemiler degil pack'teki tum alias'li NPC
+        speech tablolarini da duzeltir.
+
 FIX - Gemi binis kalasi (plank) artik gorsel olarak aciliyor. Acik kalas
         grafigi yan itemdef'inin TDATA1'inden gelir (Source-X modeli:
         03eb1 -> 03ed5); acma kodu yalnizca MORE1'e bakiyordu ve yeni

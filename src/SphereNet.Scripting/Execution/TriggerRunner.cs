@@ -410,8 +410,24 @@ public sealed class TriggerRunner
             if (!MatchSpeechPattern(pattern, lower))
                 continue;
 
-            // Found a match — collect and execute the body.
-            var body = CollectTriggerBody(keys, i + 1);
+            // Found a match. Sphere speech sections stack alias patterns over
+            // ONE shared body:
+            //   on=forward
+            //   on=foreward
+            //   on=unfurl sail
+            //   SHIPFORE
+            // Any alias must execute the body after the LAST consecutive ON=
+            // line — collecting from i+1 gave every alias but the final one
+            // an EMPTY body (saying "forward" did nothing while the last
+            // spelling worked).
+            int bodyStart = i + 1;
+            while (bodyStart < keys.Count &&
+                   keys[bodyStart].Key.Equals("ON", StringComparison.OrdinalIgnoreCase) &&
+                   keys[bodyStart].HasArg &&
+                   keys[bodyStart].Arg.TrimStart() is { Length: > 0 } nextPattern &&
+                   nextPattern[0] != '@')
+                bodyStart++;
+            var body = CollectTriggerBody(keys, bodyStart);
             var scope = new ScriptScope { TriggerName = "SPEECH:" + pattern };
             var result = _interpreter.Execute(body, target, source, args, scope);
             if (result == TriggerResult.True)

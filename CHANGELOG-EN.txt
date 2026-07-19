@@ -7,6 +7,14 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIX - Ship speech commands ("forward", "back", ...) now move the ship. Sphere
+        speech sections stack alias patterns over one shared body (on=forward
+        / on=foreward / on=unfurl sail -> SHIPFORE); matching any alias but
+        the LAST collected an empty body, so most command spellings silently
+        did nothing. Any alias in a group now executes the body that follows
+        the last consecutive ON= line. This also fixes every aliased NPC
+        speech table in the pack, not just ships.
+
 FIX - The ship boarding plank now visually opens. The open-plank art comes
         from the side itemdef's TDATA1 (Source-X model: 03eb1 -> 03ed5); the
         open code only looked at a MORE1 staging value that freshly-placed

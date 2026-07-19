@@ -74,6 +74,45 @@ public class SourceXScriptStructureRegressionTests
         Assert.Equal("1", value);
     }
 
+    /// <summary>Field bug (2026-07-20): ship speech commands did nothing. The
+    /// pack stacks alias patterns over one shared body (on=forward /
+    /// on=foreward / on=unfurl sail → SHIPFORE); matching any alias but the
+    /// LAST collected an empty body, so "forward"/"back" never moved the ship.</summary>
+    [Theory]
+    [InlineData("forward")]
+    [InlineData("foreward")]
+    [InlineData("unfurl sail")]
+    public void SpeechAliasGroup_SharesTheBodyAfterTheLastAlias(string spoken)
+    {
+        var stack = ScriptTestBootstrap.CreateRuntimeStack();
+        string path = WriteScript("""
+            [SPEECH spk_alias_probe]
+            ON=forward
+            ON=foreward
+            ON=unfurl sail
+            TAG.ALIAS_BODY=1
+            RETURN 1
+
+            ON=stop
+            TAG.STOPPED=1
+            RETURN 1
+            """);
+        stack.Resources.LoadResourceFile(path);
+
+        var world = TestHarness.CreateWorld();
+        var npc = world.CreateCharacter();
+        var link = stack.Resources.GetResource(stack.Resources.ResolveDefName("spk_alias_probe"));
+        Assert.NotNull(link);
+
+        Assert.Equal(TriggerResult.True,
+            stack.Runner.RunSpeechTrigger(link!, spoken, npc, null,
+                new SphereNet.Scripting.Execution.TriggerArgs(npc, argStr: spoken)));
+        Assert.True(npc.TryGetTag("ALIAS_BODY", out string? v) && v == "1",
+            $"alias '{spoken}' did not run the shared body");
+        Assert.False(npc.TryGetTag("STOPPED", out _),
+            "alias match leaked into the NEXT alias group's body");
+    }
+
     [Fact]
     public void NamedItemDef_MetadataPreservesTEventsAndOwnTriggers()
     {

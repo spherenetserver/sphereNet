@@ -7,6 +7,22 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIX - Throwing weapons are now truly ranged: they use the archery range /
+        LOS / movement rules (itemdef RANGE honored), fly a projectile —
+        TDATA4/AMMOANIM art, else the weapon's own graphic, with the
+        Source-X returning-weapon animation back to the thrower — and
+        consume NO pack ammo (the old resolver demanded crossbow bolts for
+        any non-bow ranged weapon, so throwing fell back to melee range).
+        NPCs with throwing weapons follow the same rules.
+
+NEW - Cannons work: the muzzle runs the Source-X load/fire state machine —
+        target sulfurous ash to load powder, a cannon ball to load shot
+        (one unit consumed per load, state in MORE1), then target to FIRE:
+        boom + muzzle smoke, cannonball bolt within sight range, 80-230
+        blunt/fire damage to a character (items take hitpoint damage).
+        Double-clicking a cannon ball targets the muzzle to feed it.
+        Previously both types only printed a message.
+
 FIX - The Polymorph and Summon Creature selection menus now run the REAL
         cast: the pick is stashed on the caster and the completed cast
         conveys it (Source-X stores the selection then Spell_CastStart), so

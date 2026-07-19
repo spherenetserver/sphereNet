@@ -6,6 +6,22 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+FIX - Firlatma silahlari artik gercekten menzilli: okculuk menzil / LOS /
+        hareket kurallarini kullaniyor (itemdef RANGE gecerli), mermi
+        ucuruyor - TDATA4/AMMOANIM grafigi, yoksa silahin kendi grafigi,
+        Source-X'teki geri donen silah animasyonuyla - ve cantadan muhimmat
+        TUKETMIYOR (eski cozucu yay olmayan her menzilli silahtan tatar yayi
+        oku istiyordu, firlatma da yakin dovuse dusuyordu). Firlatma silahli
+        NPC'ler de ayni kurallara uyar.
+
+NEW - Toplar calisiyor: namlu Source-X yukle/atesle durum makinesini
+        isletiyor - barut icin sulfurlu kul, gulle icin cannon ball hedefle
+        (yukleme basina bir birim tuketilir, durum MORE1'de), sonra hedef
+        secip ATES: patlama + namlu dumani, gorus menzilinde gulle ucusu,
+        karaktere 80-230 kunt/ates hasari (item'lar dayaniklilik hasari
+        alir). Gulleye cift tiklamak beslenecek namluyu hedefletir. Onceden
+        ikisi de yalnizca mesaj yaziyordu.
+
 FIX - Polymorph ve Summon Creature secim menuleri artik GERCEK cast'i
         calistiriyor: secim caster uzerinde saklanir ve tamamlanan cast onu
         uygular (Source-X secimi saklayip Spell_CastStart cagirir); mana,

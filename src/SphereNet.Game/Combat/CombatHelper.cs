@@ -18,7 +18,13 @@ public static class CombatHelper
 {
     public static bool IsRangedWeapon(Item? weapon) =>
         weapon != null &&
-        (weapon.ItemType == ItemType.WeaponBow || weapon.ItemType == ItemType.WeaponXBow);
+        weapon.ItemType is ItemType.WeaponBow or ItemType.WeaponXBow or ItemType.WeaponThrowing;
+
+    /// <summary>Throwing weapons are ranged but consume NO pack ammo — the
+    /// wielded weapon itself is the projectile (Source-X SKILL_THROWING; pack
+    /// t_weapon_throwing: TDATA3 empty, TDATA4 = flight animation art).</summary>
+    public static bool IsThrowingWeapon(Item? weapon) =>
+        weapon?.ItemType == ItemType.WeaponThrowing;
 
     public static bool IsMeleeWeapon(Item? weapon) => weapon == null || !IsRangedWeapon(weapon);
 
@@ -387,8 +393,11 @@ public static class CombatHelper
         SphereNet.Scripting.Definitions.ItemDef? weaponDef, ItemType weaponType, Func<string, ushort>? resolveDefName)
     {
         bool bow = weaponType == ItemType.WeaponBow;
+        bool throwing = weaponType == ItemType.WeaponThrowing;
         ItemType fallbackType = bow ? ItemType.WeaponArrow : ItemType.WeaponBolt;
-        ushort gfx = bow ? (ushort)0x0F3F : (ushort)0x1BFB;
+        // Throwing: no legacy bolt default — gfx 0 tells the caller to fly the
+        // weapon's own graphic (TDATA4/AMMOANIM still overrides when set).
+        ushort gfx = bow ? (ushort)0x0F3F : throwing ? (ushort)0 : (ushort)0x1BFB;
         ushort baseId = 0;
 
         if (weaponDef != null)

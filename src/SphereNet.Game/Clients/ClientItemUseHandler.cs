@@ -1244,11 +1244,44 @@ public sealed class ClientItemUseHandler
             case ItemType.CrystalBall:
                 break; // Source-X: gaze, no message.
             case ItemType.CannonBall:
+                // Source-X IT_CANNON_BALL (CClientUse): target the muzzle to
+                // feed this ball into it.
                 SysMessage(ServerMessages.GetFormatted(Msg.ItemuseCballPromt, item.Name ?? "cannon ball"));
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) =>
+                {
+                    var muzzle = _world.FindItem(new Serial(serial));
+                    if (muzzle == null || muzzle.ItemType != ItemType.CannonMuzzle)
+                    {
+                        SysMessage(ServerMessages.Get(Msg.ItemuseCannonEmpty));
+                        return;
+                    }
+                    FeedCannon(muzzle, item);
+                });
                 break;
             case ItemType.CannonMuzzle:
+            {
+                // Source-X IT_CANNON_MUZZLE load/fire state machine
+                // (m_itCannon.m_Load, kept in MORE1): bit 1 = powder loaded,
+                // bit 2 = shot loaded; fully loaded -> target and fire.
+                if ((item.More1 & 1) == 0)
+                {
+                    SysMessage(ServerMessages.Get(Msg.ItemuseCannonPowder));
+                    SetPendingItemTarget(item, (serial, x, y, z, gfx) =>
+                        FeedCannon(item, _world.FindItem(new Serial(serial))));
+                    break;
+                }
+                if ((item.More1 & 2) == 0)
+                {
+                    SysMessage(ServerMessages.Get(Msg.ItemuseCannonShot));
+                    SetPendingItemTarget(item, (serial, x, y, z, gfx) =>
+                        FeedCannon(item, _world.FindItem(new Serial(serial))));
+                    break;
+                }
                 SysMessage(ServerMessages.Get(Msg.ItemuseCannonTarg));
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) =>
+                    FireCannon(item, new Serial(serial), x, y, z));
                 break;
+            }
 
             // ---- containers / signs / multi (existing engines) ----
             case ItemType.StoneGuild:
@@ -2252,6 +2285,107 @@ public sealed class ClientItemUseHandler
         PlaceItemInPack(_character, steaks);
         _world.RemoveItem(fish);
         SysMessage("You cut the fish into raw fish steaks.");
+    }
+
+    /// <summary>Source-X Use_Cannon_Feed: sulfurous ash loads powder (MORE1
+    /// bit 1), a cannon ball loads shot (bit 2); one unit consumed per load.</summary>
+    private void FeedCannon(Item cannon, Item? feed)
+    {
+        if (_character == null) return;
+        if (feed == null || feed.IsDeleted)
+        {
+            SysMessage(ServerMessages.Get(Msg.ItemuseCannonEmpty));
+            return;
+        }
+
+        if (feed.BaseId == 0x0F8C) // i_reag_sulfur_ash (ITEMID_REAG_SA)
+        {
+            if ((cannon.More1 & 1) != 0)
+            {
+                SysMessage(ServerMessages.Get(Msg.ItemuseCannonHpowder));
+                return;
+            }
+            cannon.More1 |= 1;
+            ConsumeOneFrom(feed);
+            SysMessage(ServerMessages.Get(Msg.ItemuseCannonLpowder));
+            return;
+        }
+
+        if (feed.ItemType == ItemType.CannonBall)
+        {
+            if ((cannon.More1 & 2) != 0)
+            {
+                SysMessage(ServerMessages.Get(Msg.ItemuseCannonHshot));
+                return;
+            }
+            cannon.More1 |= 2;
+            ConsumeOneFrom(feed);
+            SysMessage(ServerMessages.Get(Msg.ItemuseCannonLshot));
+            return;
+        }
+
+        SysMessage(ServerMessages.Get(Msg.ItemuseCannonEmpty));
+    }
+
+    /// <summary>Source-X IT_CANNON_MUZZLE fire (CClientTarg): reset the load,
+    /// boom + muzzle smoke, cannonball bolt to a target inside sight range,
+    /// 80 + rand(150) blunt/fire damage to a char (an item target takes hull
+    /// damage through its hitpoints).</summary>
+    private void FireCannon(Item cannon, Serial targetSerial, short x, short y, sbyte z)
+    {
+        if (_character == null) return;
+        cannon.More1 &= ~3u;
+
+        BroadcastNearby?.Invoke(cannon.Position, UpdateRange,
+            new PacketSound(0x0207, cannon.X, cannon.Y, cannon.Z), 0);
+        var smoke = new PacketEffect(3, cannon.Uid.Value, cannon.Uid.Value, 0x3735,
+            cannon.X, cannon.Y, cannon.Z, cannon.X, cannon.Y, cannon.Z, 9, 6, true, false);
+        BroadcastNearby?.Invoke(cannon.Position, UpdateRange, smoke, 0);
+
+        var targetObj = targetSerial.IsValid ? _world.FindObject(targetSerial) : null;
+        if (targetObj == null)
+            return; // ground shot — just the boom, like the reference
+
+        if (cannon.Position.GetDistanceTo(targetObj.Position) > 14)
+        {
+            SysMessage(ServerMessages.Get(Msg.ItemuseToofar));
+            return;
+        }
+
+        var ball = new PacketEffect(0, cannon.Uid.Value, targetObj.Uid.Value, 0x0E73,
+            cannon.X, cannon.Y, cannon.Z,
+            targetObj.Position.X, targetObj.Position.Y, (short)targetObj.Position.Z,
+            8, 0, false, true);
+        BroadcastNearby?.Invoke(cannon.Position, UpdateRange, ball, 0);
+        BroadcastNearby?.Invoke(targetObj.Position, UpdateRange,
+            new PacketSound(0x0207, targetObj.Position.X, targetObj.Position.Y,
+                (sbyte)targetObj.Position.Z), 0);
+
+        int dmg = 80 + Random.Shared.Next(150);
+        if (targetObj is Character victim)
+        {
+            if (victim.IsDead || CombatEngine.IsDamageImmune(victim))
+                return;
+            victim.Hits -= (short)Math.Min(dmg, victim.Hits);
+            if (victim.Hits <= 0 && !victim.IsDead)
+            {
+                if (Character.OnLifecycleKill != null) Character.OnLifecycleKill(victim, _character);
+                else victim.Kill();
+            }
+        }
+        else if (targetObj is Item itemTarget &&
+                 !itemTarget.IsAttr(ObjAttributes.Static | ObjAttributes.Move_Never))
+        {
+            itemTarget.HitsCur -= dmg;
+            if (itemTarget.HitsCur <= 0)
+                _world.RemoveItem(itemTarget);
+        }
+    }
+
+    private void ConsumeOneFrom(Item stack)
+    {
+        if (stack.Amount > 1) stack.Amount--;
+        else _world.RemoveItem(stack);
     }
 
     /// <summary>Source-X key use: link key, lock/unlock door or container.</summary>

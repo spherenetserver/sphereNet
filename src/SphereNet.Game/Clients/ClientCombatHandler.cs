@@ -1075,7 +1075,7 @@ public sealed class ClientCombatHandler
             FaceTarget(target);
 
         (ushort BaseId, ItemType FallbackType, ushort Gfx)? ammo = null;
-        if (CombatHelper.IsRangedWeapon(weapon))
+        if (CombatHelper.IsRangedWeapon(weapon) && !CombatHelper.IsThrowingWeapon(weapon))
         {
             ammo = ResolveAmmo(weapon!);
             if (!HasAmmoInPack(ammo.Value.BaseId, ammo.Value.FallbackType))
@@ -1189,13 +1189,26 @@ public sealed class ClientCombatHandler
         if (CombatHelper.IsRangedWeapon(weapon))
         {
             var ammoSpec = ResolveAmmo(weapon!);
-            ammoStack = FindAmmoInPack(ammoSpec.BaseId, ammoSpec.FallbackType);
-            if (ammoStack == null)
+            if (CombatHelper.IsThrowingWeapon(weapon))
             {
-                SysMessage(ServerMessages.Get(Msg.CombatArchNoammo));
-                return;
+                // The thrown weapon IS the projectile — no pack ammo (pack
+                // TDATA3 empty). TDATA4/AMMOANIM overrides the flight art,
+                // else the weapon's own graphic flies; the reverse leg
+                // mirrors Source-X's returning-weapon animation.
+                ushort throwGfx = ammoSpec.Gfx != 0 ? ammoSpec.Gfx : weapon!.DispIdFull;
+                EmitRangedProjectile(target, throwGfx);
+                EmitReturningProjectile(target, throwGfx);
             }
-            EmitRangedProjectile(target, ammoSpec.Gfx);
+            else
+            {
+                ammoStack = FindAmmoInPack(ammoSpec.BaseId, ammoSpec.FallbackType);
+                if (ammoStack == null)
+                {
+                    SysMessage(ServerMessages.Get(Msg.CombatArchNoammo));
+                    return;
+                }
+                EmitRangedProjectile(target, ammoSpec.Gfx);
+            }
         }
 
         int damage = CombatEngine.ResolveAttack(
@@ -1291,7 +1304,8 @@ public sealed class ClientCombatHandler
             // Source-X hit economy: 40% of arrows that strike an NPC stick in
             // the body — they ride in its pack and surface on the corpse loot.
             // Skipped when a @Hit script took the ammo over (ArrowHandled).
-            if (CombatHelper.IsRangedWeapon(weapon) && !target.IsPlayer && !ammoHandled &&
+            if (CombatHelper.IsRangedWeapon(weapon) && !CombatHelper.IsThrowingWeapon(weapon) &&
+                !target.IsPlayer && !ammoHandled &&
                 target.Backpack != null && Random.Shared.Next(100) < 40)
             {
                 var stuckAmmo = ResolveAmmo(weapon!);
@@ -1565,6 +1579,30 @@ public sealed class ClientCombatHandler
     {
         if (stack.Amount <= 1) _world.RemoveItem(stack);
         else stack.Amount = (ushort)(stack.Amount - 1);
+    }
+
+    /// <summary>The throwing return leg (Source-X client returning-weapon
+    /// anim): the same art flies back from the target to the thrower.</summary>
+    private void EmitReturningProjectile(Character target, ushort effectId)
+    {
+        if (_character == null) return;
+
+        var projectile = new PacketEffect(
+            type: 0,
+            srcSerial: target.Uid.Value,
+            dstSerial: _character.Uid.Value,
+            effectId: effectId,
+            srcX: target.X,
+            srcY: target.Y,
+            srcZ: target.Z,
+            dstX: _character.X,
+            dstY: _character.Y,
+            dstZ: _character.Z,
+            speed: 18,
+            duration: 1,
+            fixedDir: false,
+            explode: false);
+        BroadcastNearby?.Invoke(_character.Position, UpdateRange, projectile, 0);
     }
 
     private void EmitRangedProjectile(Character target, ushort effectId)

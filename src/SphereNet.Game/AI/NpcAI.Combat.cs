@@ -943,6 +943,8 @@ public sealed partial class NpcAI
     /// for an atomic swing, or from the NPC tick once the windup elapses.</summary>
     private static Item? FindNpcAmmo(Character npc, Item weapon)
     {
+        // Throwing weapons fire themselves — no pack ammo to find/consume.
+        if (CombatHelper.IsThrowingWeapon(weapon)) return null;
         var pack = npc.Backpack;
         if (pack == null) return null;
 

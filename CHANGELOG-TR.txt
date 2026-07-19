@@ -6,6 +6,14 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+FIX - Gemi/ev multi'sini .nuke/.remove/script REMOVE ile silmek artik kayit
+        defterinde hayalet yapi birakmiyor. Sahiplik sayaclari silinen gemiyi
+        saymaya devam ediyordu (max gemi asilamaz), region ve bilesen
+        item'lari sizintiya ugruyordu. Silme artik Source-X (~CItemMulti)
+        gibi tum yapiyi sokuyor: anahtarlar silinir, bilesen item'lari
+        silinir, region serbest kalir, kayit dusulur. Yikimda deed iadesi
+        yok - deed'i geri almak icin dry-dock/redeed kullanin.
+
 PERF - World-save snapshot yakalama artik paralel calisiyor. Save kayitlarinin
         kurulmasi (nesne basina ozellik formatlama) save duraklamasinin buyuk
         kismini olusturuyordu (32K nesneli dunyada 0.75s'lik save'in ~0.45s'i);

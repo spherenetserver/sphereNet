@@ -7,6 +7,14 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIX - Deleting a ship or house multi with .nuke/.remove/script REMOVE no longer
+        leaves a ghost structure in the registry. The ownership counters kept
+        counting the deleted ship ("you cannot have more ships"), and its
+        region and component items leaked. Deletion now tears the structure
+        down like Source-X (~CItemMulti): keys removed, component items
+        deleted, region freed, registry entry erased. No deed is refunded on
+        destroy — use dry-dock/redeed to get the deed back.
+
 PERF - World-save snapshot capture now runs in parallel. Building the save
         records (property formatting per object) dominated the save stall
         (~0.45s of a 0.75s save on a 32K-object world); the capture is a pure

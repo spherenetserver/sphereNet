@@ -581,6 +581,34 @@ public sealed class HousingEngine
     {
         _world = world;
         _multiDefs = multiDefs;
+        world.ObjectDeleting += OnWorldObjectDeleting;
+    }
+
+    /// <summary>Multi item deleted OUTSIDE the redeed path (.nuke, .remove,
+    /// script REMOVE). Source-X ~CItemMulti tears the whole structure down:
+    /// keys removed, components deleted, region unrealized, erased from
+    /// g_World.m_Multis — otherwise the registry keeps a ghost house that
+    /// still counts against MaxHousesPerPlayer/Account. No deed is created
+    /// (a destroyed house is not refunded). Engine-driven paths unregister
+    /// before deleting the multi, so this only fires for external deletions.</summary>
+    private void OnWorldObjectDeleting(SphereNet.Game.Objects.ObjBase obj)
+    {
+        if (obj is not Item it) return;
+        if (!_houses.TryGetValue(it.Uid, out var house) || !ReferenceEquals(house.MultiItem, it))
+            return;
+        _houses.Remove(it.Uid);
+        var owner = house.Owner.IsValid ? _world.FindChar(house.Owner) : null;
+        RemoveStructureKeys(owner, it.Uid);
+        var ownerMemory = owner?.Memory_FindObjTypes(it.Uid, MemoryType.Guard);
+        if (owner != null && ownerMemory != null)
+            owner.Memory_ClearTypes(ownerMemory, MemoryType.Guard);
+        foreach (var compUid in house.Components)
+        {
+            var comp = _world.FindItem(compUid);
+            if (comp != null && !comp.IsDeleted)
+                _world.RemoveItem(comp);
+        }
+        RemoveHouseRegion(house);
     }
 
     public House? GetHouse(Serial multiItemUid) =>
@@ -890,8 +918,8 @@ public sealed class HousingEngine
         if (owner != null && ownerMemory != null)
             owner.Memory_ClearTypes(ownerMemory, MemoryType.Guard);
         RemoveHouseRegion(house);
+        _houses.Remove(multiItemUid); // before Redeed: it deletes the multi item, and the ObjectDeleting handler must see no entry
         var deed = house.Redeed(_world);
-        _houses.Remove(multiItemUid);
         if (deed != null)
         {
             var recipient = owner ?? requestor;
@@ -914,8 +942,8 @@ public sealed class HousingEngine
         if (owner != null && ownerMemory != null)
             owner.Memory_ClearTypes(ownerMemory, MemoryType.Guard);
         RemoveHouseRegion(house);
+        _houses.Remove(multiItemUid); // before Redeed: it deletes the multi item, and the ObjectDeleting handler must see no entry
         var deed = house.Redeed(_world);
-        _houses.Remove(multiItemUid);
         return deed;
     }
 
@@ -1132,13 +1160,13 @@ public sealed class HousingEngine
             if (owner != null && ownerMemory != null)
                 owner.Memory_ClearTypes(ownerMemory, MemoryType.Guard);
             RemoveHouseRegion(house);
+            _houses.Remove(house.MultiItem.Uid); // before Redeed: it deletes the multi item, and the ObjectDeleting handler must see no entry
             var deed = house.Redeed(_world);
             if (deed != null && house.Owner.IsValid)
             {
                 if (owner?.Backpack == null || !owner.Backpack.TryAddItem(deed))
                     _world.PlaceItem(deed, house.MultiItem.Position);
             }
-            _houses.Remove(house.MultiItem.Uid);
         }
 
         return collapsed;

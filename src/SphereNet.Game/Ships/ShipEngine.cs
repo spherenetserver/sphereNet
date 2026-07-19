@@ -26,6 +26,31 @@ public sealed class ShipEngine
         _world = world;
         _multiDefs = multiDefs;
         _mapData = mapData;
+        world.ObjectDeleting += OnWorldObjectDeleting;
+    }
+
+    /// <summary>Multi item deleted OUTSIDE the redeed path (.nuke, .remove,
+    /// script REMOVE). Source-X ~CItemMulti tears the whole structure down:
+    /// keys removed, components deleted, region unrealized, erased from
+    /// g_World.m_Multis — otherwise the registry keeps a ghost ship that
+    /// still counts against MaxShipsPerPlayer/Account. Engine-driven paths
+    /// unregister before deleting the multi, so this only fires for external
+    /// deletions.</summary>
+    private void OnWorldObjectDeleting(SphereNet.Game.Objects.ObjBase obj)
+    {
+        if (obj is not Item it) return;
+        if (!_ships.TryGetValue(it.Uid, out var ship) || !ReferenceEquals(ship.MultiItem, it))
+            return;
+        _ships.Remove(it.Uid);
+        var owner = ship.Owner.IsValid ? _world.FindChar(ship.Owner) : null;
+        RemoveShipKeys(owner, it.Uid);
+        foreach (var compUid in ship.Components)
+        {
+            var comp = _world.FindItem(compUid);
+            if (comp != null && !comp.IsDeleted)
+                _world.RemoveItem(comp);
+        }
+        RemoveShipRegion(ship);
     }
 
     public Ship? GetShip(Serial multiItemUid) =>
@@ -349,8 +374,8 @@ public sealed class ShipEngine
         }
 
         RemoveShipRegion(ship);
+        _ships.Remove(multiItemUid); // before RemoveItem: the ObjectDeleting handler must see no entry
         _world.RemoveItem(ship.MultiItem);
-        _ships.Remove(multiItemUid);
         return deed;
     }
 

@@ -388,6 +388,54 @@ public sealed class HousingShipIntegrityTests
         Assert.Null(engine.PlaceShip(owner, 0x4000, new Point3D(300, 300, 0, 0), Direction.North));
     }
 
+    /// <summary>Field bug (2026-07-19): .nuke on a ship multi deleted the item but
+    /// the ShipEngine registry kept a ghost entry, so the owner hit "max ships"
+    /// forever. Source-X ~CItemMulti erases itself from g_World.m_Multis and
+    /// deletes its components; the ObjectDeleting hook must mirror that.</summary>
+    [Fact]
+    public void ShipDeletedExternally_UnregistersAndFreesOwnershipSlot()
+    {
+        var world = CreateWorld();
+        var owner = CreatePlayer(world);
+        var engine = new ShipEngine(world, CreateDirectionalShipRegistry(), null)
+        {
+            MaxShipsPerPlayer = 1,
+            MaxShipsPerAccount = 1,
+        };
+        var ship = engine.PlaceShip(owner, 0x4000, new Point3D(200, 200, 0, 0), Direction.North)!;
+        var compUids = ship.Components.ToArray();
+        Assert.NotEmpty(compUids);
+
+        // .nuke / script REMOVE — the multi item dies outside the redeed path.
+        world.RemoveItem(ship.MultiItem);
+
+        Assert.Equal(0, engine.ShipCount);
+        foreach (var uid in compUids)
+            Assert.Null(world.FindItem(uid));
+        Assert.NotNull(engine.PlaceShip(owner, 0x4000, new Point3D(300, 300, 0, 0), Direction.North));
+    }
+
+    [Fact]
+    public void HouseDeletedExternally_UnregistersAndFreesOwnershipSlot()
+    {
+        var world = CreateWorld();
+        var owner = CreatePlayer(world);
+        var housing = new HousingEngine(world, CreateHouseRegistry())
+        {
+            MaxHousesPerPlayer = 1,
+            MaxHousesPerAccount = 1,
+        };
+        var house = housing.PlaceHouse(owner, 0x0064, new Point3D(200, 200, 0, 0))!;
+        var compUids = house.Components.ToArray();
+
+        world.RemoveItem(house.MultiItem);
+
+        Assert.Null(housing.GetHouse(house.MultiItem.Uid));
+        foreach (var uid in compUids)
+            Assert.Null(world.FindItem(uid));
+        Assert.NotNull(housing.PlaceHouse(owner, 0x0064, new Point3D(300, 300, 0, 0)));
+    }
+
     [Fact]
     public void ShipDryDock_PreservesLooseDeckItems_AndPlanRebuildsUuid()
     {

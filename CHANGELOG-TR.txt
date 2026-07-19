@@ -6,6 +6,21 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+FIX - Yerlestirilen gemi ve evler artik tam yapilarini olusturuyor. Multi
+        bilesen gorunurluk bayragi ters okunuyordu; yerlestirilen gemi govdesiz,
+        yalnizca bes gorunmez placeholder parcadan (direk noktasi, dumen, ambar,
+        kalaslar) olusuyordu ve evler duvarsiz gorunecekti. Bayrak artik
+        client'in kendi kuraliyla ayni (ClassicUO: flags != 0 = cizilen statik
+        parca; flags == 0 = kapi ve dumenci gibi calisan server item'larinin
+        yerini aldigi placeholder).
+
+FIX - NPC vendor'lardan satin alinan item'lar artik script'li @Create govdesini
+        calistiriyor. Vendor stogu ciplak item olarak kuruluyordu (grafik +
+        isim + fiyat); satin alinan gemi/ev deed'i yapi referansi tasimiyordu
+        (that deed is blank) ve @Create ile ozellik kazanan her vendor mali
+        bunlari kaybediyordu. Stok artik loot/spawn/.add ile ayni yoldan
+        olusturuluyor.
+
 FIX - Oyuncunun cantasini silmek (GM .remove) artik item birakmayi bozmuyor:
         karakter silinen cantaya cache'lenmis bir referans tutuyordu, otomatik
         canta yeniden olusturma hic tetiklenmiyordu ve oyuncunun uzerine

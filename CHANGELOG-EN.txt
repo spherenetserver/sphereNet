@@ -7,6 +7,20 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIX - Placed ships and houses now materialise their full structure. The multi
+        component visibility flag was read inverted, so a placed ship consisted
+        of only the five invisible placeholder pieces (mast anchor, tiller,
+        hatch, planks) with no hull, and houses would have shown no walls. The
+        flag now matches the client's own rule (ClassicUO: flags != 0 = drawn
+        static part; flags == 0 = placeholder replaced by working server items
+        like doors and the tillerman).
+
+FIX - Items bought from NPC vendors now run their scripted @Create body. Vendor
+        stock was built as bare items (graphic + name + price only), so a
+        purchased ship or house deed carried no structure reference ("that deed
+        is blank") and any vendor-sold item with @Create-driven properties lost
+        them. Stock now materialises through the same path as loot/spawns/.add.
+
 FIX - Deleting a player's backpack (GM .remove) no longer breaks item drops:
         the character kept a cached reference to the deleted pack, so the
         automatic pack recreation never fired and items dropped onto the player

@@ -15,7 +15,13 @@ public readonly struct MultiComponent
     /// 0 for original 12-byte multi records.</summary>
     public uint ShipAccess { get; init; }
 
-    public bool IsVisible => (Flags & 0x01) == 0;
+    /// <summary>Client-parity visibility (ClassicUO MultiLoader .mul path:
+    /// <c>IsVisible = Flags != 0</c>): flags != 0 marks the STATIC parts the
+    /// client draws (hull, walls, roof); flags == 0 marks the invisible
+    /// placeholders that dynamic server items replace (doors, tiller, planks,
+    /// hatch). This was inverted — a placed ship materialised ONLY the five
+    /// placeholder pieces and no hull.</summary>
+    public bool IsVisible => Flags != 0;
 }
 
 /// <summary>

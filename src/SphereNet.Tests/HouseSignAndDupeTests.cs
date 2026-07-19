@@ -126,6 +126,29 @@ public sealed class HouseSignAndDupeTests
         Assert.Equal(0x0064u, deed!.More1);
     }
 
+    /// <summary>Ship boarding plank: the open art lives in the side itemdef's
+    /// TDATA1 (Source-X [ITEMDEF 03eb1] TDATA1=03ed5); a freshly-placed ship
+    /// carries no MORE1 staging, so OpenPlank must fall back to TDATA1 or the
+    /// plank "opens" without ever changing graphic.</summary>
+    [Fact]
+    public void ShipPlank_OpensViaTdata1Graphic_AndClosesBack()
+    {
+        var world = CreateWorld();
+        var plank = world.CreateItem();
+        plank.BaseId = 0x3EB1;
+        plank.ItemType = ItemType.ShipSideLocked;
+        plank.TData1 = 0x3ED5;
+        world.PlaceItem(plank, new Point3D(120, 120, 0, 0));
+
+        Assert.True(plank.OpenPlank());
+        Assert.Equal((ushort)0x3ED5, plank.BaseId);
+        Assert.Equal(ItemType.ShipPlank, plank.ItemType);
+
+        Assert.True(plank.ClosePlank());
+        Assert.Equal((ushort)0x3EB1, plank.BaseId);
+        Assert.Equal(ItemType.ShipSideLocked, plank.ItemType);
+    }
+
     [Fact]
     public void DupeTarget_MakesFullClones_AndHonoursCount()
     {

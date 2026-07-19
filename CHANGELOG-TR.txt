@@ -6,6 +6,13 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+FIX - Gemi binis kalasi (plank) artik gorsel olarak aciliyor. Acik kalas
+        grafigi yan itemdef'inin TDATA1'inden gelir (Source-X modeli:
+        03eb1 -> 03ed5); acma kodu yalnizca MORE1'e bakiyordu ve yeni
+        yerlestirilen gemilerde MORE1 bos oldugundan tip degisiyor ama
+        grafik kapali kaliyordu. TDATA1 artik fallback; kapatinca yan
+        grafigi geri gelir.
+
 FIX - Ev tabelasina evin ICINDEN cift tiklamak artik tabelayi yok etmiyor
         (demolish/redeed de tekrar erisilebilir). Item cift-tik kapisi bir
         gorus hatti (LOS) isini kosuyordu; ev duvarlari artik gercek LOS

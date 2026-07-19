@@ -2879,11 +2879,18 @@ public class Item : ObjBase
             return false;
 
         More2 = (uint)_type; // remember the side type for the close
-        if (More1 != 0)
+        // The open-plank art comes from MORE1 when a script staged it, else
+        // from the side itemdef's TDATA1 (Source-X: [ITEMDEF 03eb1]
+        // TYPE=t_ship_side_locked TDATA1=03ed5). Freshly-placed ships only
+        // carry the def data, so without the fallback the type flipped but
+        // the graphic never changed — the "ship door won't open" report.
+        uint alt = More1;
+        if (alt == 0)
+            alt = _tdata1 != 0 ? _tdata1 : (ResolveDefinition()?.TData1 ?? 0);
+        if (alt is > 0 and <= ushort.MaxValue && (ushort)alt != BaseId)
         {
-            ushort alt = (ushort)More1;
             More1 = BaseId;
-            BaseId = alt;
+            BaseId = (ushort)alt;
         }
         _type = ItemType.ShipPlank;
         SetTimeout(Environment.TickCount64 + 5000); // autoclose in 5s

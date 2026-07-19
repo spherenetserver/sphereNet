@@ -1684,13 +1684,24 @@ public sealed class ClientItemUseHandler
             // ---- raw materials ----
             case ItemType.Cotton:
             case ItemType.Wool:
+                // Source-X IT_WOOL/IT_COTTON: target a spinning wheel — wool
+                // spins into 3 balls of yarn, cotton into 6 spools of thread.
+                SysMessage("Select the spinning wheel to spin this on.");
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) =>
+                    SpinMaterial(item, new Serial(serial)));
+                break;
             case ItemType.Feather:
             case ItemType.Fur:
                 SysMessage("Use a spinning wheel to process this material.");
                 break;
             case ItemType.Thread:
             case ItemType.Yarn:
-                SysMessage("Use a loom to weave this material.");
+                // Source-X IT_THREAD/IT_YARN: target a loom — the loom
+                // accumulates material (MORE1 type / MORE2 units) until a
+                // bolt of cloth is finished.
+                SysMessage("Select the loom to weave this on.");
+                SetPendingItemTarget(item, (serial, x, y, z, gfx) =>
+                    WeaveOnLoom(item, new Serial(serial)));
                 break;
             case ItemType.Log:
             case ItemType.Board:
@@ -2390,6 +2401,91 @@ public sealed class ClientItemUseHandler
     {
         if (stack.Amount > 1) stack.Amount--;
         else _world.RemoveItem(stack);
+    }
+
+    /// <summary>Source-X IT_WOOL/IT_COTTON on a spinning wheel: consume one
+    /// pile; wool yields 3 balls of yarn, cotton yields 6 spools of thread.</summary>
+    private void SpinMaterial(Item material, Serial targetSerial)
+    {
+        if (_character == null) return;
+        var wheel = targetSerial.IsValid ? _world.FindItem(targetSerial) : null;
+        if (wheel == null || wheel.ItemType != ItemType.SpinWheel)
+        {
+            SysMessage("You must use that on a spinning wheel.");
+            return;
+        }
+        if (_character.PrivLevel < PrivLevel.GM && !CanReachTargetItem(wheel))
+        {
+            SysMessage(ServerMessages.Get(Msg.ItemuseToofar));
+            return;
+        }
+
+        bool wool = material.ItemType == ItemType.Wool;
+        ConsumeOneFrom(material);
+
+        ushort madeId = Item.ResolveDefName?.Invoke(wool ? "i_yarn" : "i_thread") ?? 0;
+        var made = _world.CreateItem();
+        made.BaseId = madeId != 0 ? madeId : (wool ? (ushort)0x0E1D : (ushort)0x0FA0);
+        made.ItemType = wool ? ItemType.Yarn : ItemType.Thread;
+        made.Amount = wool ? (ushort)3 : (ushort)6;
+        PlaceItemInPack(_character, made);
+        SysMessage(ServerMessages.Get(wool ? "itemuse_wool_create" : "itemuse_cotton_create"));
+    }
+
+    /// <summary>Source-X IT_THREAD/IT_YARN on a loom: the loom stores the
+    /// material type in MORE1 and the accumulated units in MORE2
+    /// (m_itLoom.m_ridCloth / m_iClothQty); a different material ejects the
+    /// stored partial weave, and at 4 units a bolt of cloth is produced.</summary>
+    private void WeaveOnLoom(Item material, Serial targetSerial)
+    {
+        if (_character == null) return;
+        var loom = targetSerial.IsValid ? _world.FindItem(targetSerial) : null;
+        if (loom == null || loom.ItemType != ItemType.Loom)
+        {
+            SysMessage("You must use that on a loom.");
+            return;
+        }
+        if (_character.PrivLevel < PrivLevel.GM && !CanReachTargetItem(loom))
+        {
+            SysMessage(ServerMessages.Get(Msg.ItemuseToofar));
+            return;
+        }
+
+        // A different material than the stored partial weave ejects it.
+        if (loom.More1 != 0 && loom.More1 != material.DispIdFull)
+        {
+            var stored = _world.CreateItem();
+            stored.BaseId = (ushort)loom.More1;
+            stored.Amount = (ushort)Math.Max(1, (int)loom.More2);
+            PlaceItemInPack(_character, stored);
+            loom.More1 = 0;
+            loom.More2 = 0;
+            SysMessage(ServerMessages.Get("itemuse_loom_remove"));
+            return;
+        }
+        loom.More1 = material.DispIdFull;
+
+        const int need = 4; // units per bolt (Source-X sm_Txt_LoomUse - 1)
+        int have = (int)loom.More2;
+        int used = Math.Min(need - have, material.Amount);
+        if (material.Amount > used) material.Amount -= (ushort)used;
+        else _world.RemoveItem(material);
+
+        if (have + used < need)
+        {
+            loom.More2 = (uint)(have + used);
+            SysMessage(ServerMessages.Get($"itemuse_bolt_{have + used}"));
+            return;
+        }
+
+        SysMessage(ServerMessages.Get("itemuse_bolt_5"));
+        loom.More1 = 0;
+        loom.More2 = 0;
+        ushort boltId = Item.ResolveDefName?.Invoke("i_cloth_bolt") ?? 0;
+        var bolt = _world.CreateItem();
+        bolt.BaseId = boltId != 0 ? boltId : (ushort)0x0F95;
+        bolt.Amount = 1;
+        PlaceItemInPack(_character, bolt);
     }
 
     /// <summary>Source-X key use: link key, lock/unlock door or container.</summary>

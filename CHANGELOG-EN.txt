@@ -7,6 +7,21 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+NEW - Classic tailoring material flows work: wool/cotton targeted at a
+        spinning wheel spins into 3 balls of yarn / 6 spools of thread
+        (Source-X IT_WOOL/IT_COTTON), and thread/yarn targeted at a loom
+        accumulates on the loom (MORE1 type / MORE2 units, mixed material
+        ejects the partial weave) until a bolt of cloth is finished —
+        both previously printed only a hint message.
+
+FIX - Craft strokes honour the Source-X @SkillStroke contract: the trigger
+        fires per stroke with LOCAL.Strokes seeded and WRITABLE, so a
+        script can lengthen or shorten a craft per recipe (the default
+        stays the reference's fixed two strokes), and RETURN 1 aborts the
+        craft mid-work. (Imbuing stays deferred: the Source-X reference
+        itself has no native property/intensity/unravel model — it is
+        script territory there too, tracked in PARITY.md.)
+
 NEW - Town stones work: a town stone runs the same stone engine as guild
         stones (Source-X IT_STONE_TOWN == CItemStone). Staff (Counsel+)
         establish the town at a GM-named stone and become its Mayor;

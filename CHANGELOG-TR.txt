@@ -6,6 +6,21 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+NEW - Klasik terzilik malzeme akislari calisiyor: cikriga hedeflenen yun/
+        pamuk 3 yumak iplik / 6 makara iplige donusuyor (Source-X
+        IT_WOOL/IT_COTTON); dokuma tezgahina hedeflenen iplik/yumak tezgahta
+        birikiyor (MORE1 tip / MORE2 birim, farkli malzeme yarim dokumayi
+        cikarir) ve top kumas tamamlaniyor - ikisi de onceden yalnizca ipucu
+        mesaji yaziyordu.
+
+FIX - Craft stroke'lari Source-X @SkillStroke sozlesmesine uyuyor: trigger
+        her stroke'ta LOCAL.Strokes YAZILABILIR olarak ateslenir; script
+        tarife gore craft'i uzatip kisaltabilir (varsayilan referanstaki
+        sabit iki stroke) ve RETURN 1 is ortasinda iptal eder. (Imbuing
+        ertelemede: Source-X referansinin kendisinde de native property/
+        intensity/unravel modeli yok - orada da script isi; PARITY.md'de
+        kayitli.)
+
 NEW - Town stone calisiyor: town stone, guild stone ile ayni stone motorunu
         kullaniyor (Source-X IT_STONE_TOWN == CItemStone). Yetkili (Counsel+)
         GM-isimli tasta town kurar ve Belediye Baskani (Mayor) olur;

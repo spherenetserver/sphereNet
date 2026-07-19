@@ -338,6 +338,31 @@ public sealed class ClientWorldFeaturesHandler
         if (Environment.TickCount64 < _pendingCraftNextStroke)
             return;
 
+        // Source-X Skill_Stroke: @SkillStroke fires per stroke with
+        // LOCAL.Strokes seeded to the remaining count and WRITABLE — a
+        // script can lengthen or shorten the craft per recipe (the default
+        // stays the reference's fixed 2); RETURN 1 aborts the craft.
+        if (_triggerDispatcher != null)
+        {
+            var strokeLocals = new SphereNet.Scripting.Variables.VarMap();
+            strokeLocals.SetInt("Strokes", _pendingCraftStrokes);
+            var strokeArgs = new TriggerArgs
+            {
+                CharSrc = _character,
+                N1 = (int)_pendingCraftSkill,
+                Locals = strokeLocals,
+            };
+            if (_triggerDispatcher.FireCharTrigger(_character, CharTrigger.SkillStroke,
+                    strokeArgs) == TriggerResult.True)
+            {
+                CancelPendingCraft();
+                return;
+            }
+            long rewrittenStrokes = strokeLocals.GetInt("Strokes", _pendingCraftStrokes);
+            if (rewrittenStrokes != _pendingCraftStrokes && rewrittenStrokes >= 0)
+                _pendingCraftStrokes = (int)Math.Min(rewrittenStrokes, 100);
+        }
+
         _pendingCraftStrokes--;
         if (_pendingCraftStrokes > 0)
         {

@@ -3116,12 +3116,22 @@ public sealed class ClientItemUseHandler
         ushort targetId = deed.More1 is > 0 and <= ushort.MaxValue
             ? (ushort)deed.More1
             : (ushort)0;
-        if (targetId == 0 && deed.BaseId is not (0x14EF or 0x14F0 or 0x14F1) &&
+        // Source-X ITEMID_MULTI: a multi defname evaluates to 0x4000 + raw
+        // index, so a deed whose @Create ran MORE=m_small_ship_n carries
+        // More1=0x4000 for the raw-index-0 small ship. Strip the base back to
+        // the multi.mul index the placement engines use.
+        bool wasMultiBased = targetId is >= 0x4000 and < 0x8000;
+        if (wasMultiBased)
+            targetId = (ushort)(targetId - 0x4000);
+        if (targetId == 0 && !wasMultiBased && deed.BaseId is not (0x14EF or 0x14F0 or 0x14F1) &&
             _housingEngine?.MultiDefs.Get(deed.BaseId) != null)
             targetId = deed.BaseId;
-        if (targetId == 0) return false;
+        if (targetId == 0 && !wasMultiBased) return false;
 
-        isShip = deed.BaseId == 0x14F1 || DefinitionLoader.GetItemDef(targetId)?.Type == ItemType.Ship;
+        isShip = deed.BaseId == 0x14F1 ||
+            _housingEngine?.MultiDefs.Get(targetId)?.MultiTypeName
+                .Equals("t_ship", StringComparison.OrdinalIgnoreCase) == true ||
+            DefinitionLoader.GetItemDef(targetId)?.Type == ItemType.Ship;
         multiId = targetId;
         return true;
     }

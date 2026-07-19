@@ -842,7 +842,10 @@ public static partial class Program
 
         var rid = _resources.ResolveDefName(key);
         if (rid.IsValid)
-            return decimalNumeric ? rid.Index.ToString() : $"0{rid.Index:X}";
+        {
+            int idx = NumericDefIndex(rid);
+            return decimalNumeric ? idx.ToString() : $"0{idx:X}";
+        }
 
         string? builtIn = ResolveDefConstant(key.ToUpperInvariant());
         if (builtIn == null)
@@ -856,6 +859,15 @@ public static partial class Program
 
         return builtIn;
     }
+
+    /// <summary>Numeric script value of a resolved defname. Source-X registers
+    /// multis as itemdefs at ITEMID_MULTI (0x4000) + index, so a MULTIDEF
+    /// defname evaluated in an expression (e.g. the deed @Create body's
+    /// MORE=m_small_ship_n) must yield the 0x4000-based id — returning the raw
+    /// index collapsed small-ship-north (index 0) to "0", which reads as
+    /// "unset" everywhere downstream.</summary>
+    private static int NumericDefIndex(SphereNet.Core.Types.ResourceId rid) =>
+        rid.Type == ResType.MultiDef ? 0x4000 + rid.Index : rid.Index;
 
     private static string StripSurroundingQuotes(string s)
     {
@@ -877,7 +889,7 @@ public static partial class Program
             if (!ok) return null;
         }
         var rid = _resources.ResolveDefName(upperToken);
-        if (rid.IsValid) return rid.Index.ToString();
+        if (rid.IsValid) return NumericDefIndex(rid).ToString();
 
         // Built-in STATF_* fallback when scripts reference status-flag
         // constants directly and the defname pack doesn't provide them.

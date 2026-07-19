@@ -151,4 +151,51 @@ public sealed class DeedPlacementResolutionTests
             Item.ResolveShipEngine = oldShipEngine;
         }
     }
+
+    /// <summary>Source-X ITEMID_MULTI: the live interpreter evaluates a multi
+    /// defname to 0x4000 + raw index, so MORE=m_small_ship_n stores
+    /// More1=0x4000 (raw index 0 — the value that used to read as blank).
+    /// The deed resolver must strip the base and accept id 0.</summary>
+    [Theory]
+    [InlineData(0x4000u, 0x14F1)] // small ship north: raw multi id 0
+    [InlineData(0x4064u, 0x14EF)] // stone&plaster house: raw multi id 0x64
+    public void MultiBasedMore1_ResolvesAndRaisesCursor(uint more1, int deedBaseId)
+    {
+        using var loggerFactory = TestHarness.CreateLoggerFactory();
+        var world = TestHarness.CreateWorld();
+        var registry = new MultiRegistry();
+        var housing = new HousingEngine(world, registry);
+        var ships = new SphereNet.Game.Ships.ShipEngine(world, registry, null);
+        var oldShipEngine = Item.ResolveShipEngine;
+        try
+        {
+            Item.ResolveShipEngine = () => ships;
+            var state = TestHarness.CreateActiveNetState(loggerFactory, Random.Shared.Next(20_000, 30_000));
+            state.ClientVersionNumber = 70_020_000;
+            var client = new GameClient(state, world, new AccountManager(loggerFactory),
+                loggerFactory.CreateLogger<GameClient>());
+            client.SetEngines(housingEngine: housing);
+            var player = world.CreateCharacter();
+            player.IsPlayer = true;
+            world.PlaceCharacter(player, new Point3D(100, 100, 0, 0));
+            TestHarness.AttachCharacter(client, player);
+
+            var deed = world.CreateItem();
+            deed.BaseId = (ushort)deedBaseId;
+            deed.ItemType = ItemType.Deed;
+            deed.Name = "test deed";
+            deed.More1 = more1;
+            world.PlaceItem(deed, player.Position);
+
+            client.HandleDoubleClick(deed.Uid.Value);
+
+            var packets = TestHarness.GetQueuedPackets(state).Select(p => p.Span[0]).ToList();
+            Assert.True(packets.Contains(0x99) || packets.Contains(0x6C),
+                $"expected a target cursor, got opcodes: {string.Join(",", packets.Select(b => b.ToString("X2")))}");
+        }
+        finally
+        {
+            Item.ResolveShipEngine = oldShipEngine;
+        }
+    }
 }

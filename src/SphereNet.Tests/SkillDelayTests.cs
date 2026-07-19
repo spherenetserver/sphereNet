@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
@@ -138,7 +138,7 @@ public class SkillDelayTests
         client.SetEngines(skillHandlers: new SkillHandlers(world), triggerDispatcher: dispatcher);
 
         client.HandleUseSkill((int)SkillType.Healing);
-        client.HandleTargetResponse(0, 0, 0xFFFFFFFF, 0, 0, 0, 0);
+        client.HandleTargetResponse(0, client.ActiveTargetCursorId, 0xFFFFFFFF, 0, 0, 0, 0);
 
         Assert.Equal((int)SkillType.Healing, cancelSkill);
         Assert.False(player.HasActiveSkillPending());

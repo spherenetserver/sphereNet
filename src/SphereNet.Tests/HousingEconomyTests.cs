@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using System.Reflection;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
@@ -180,7 +180,7 @@ public class HousingEconomyTests
         uint gumpId = Assert.Single(client.Gumps.ActiveGumps);
 
         client.HandleGumpResponse(multi.Uid.Value, gumpId, 1, [], []);
-        client.HandleTargetResponse(0, 0, newOwner.Uid.Value, newOwner.X, newOwner.Y, newOwner.Z, 0);
+        client.HandleTargetResponse(0, client.ActiveTargetCursorId, newOwner.Uid.Value, newOwner.X, newOwner.Y, newOwner.Z, 0);
 
         Assert.Equal(newOwner.Uid, house!.Owner);
     }
@@ -261,7 +261,7 @@ public class HousingEconomyTests
         uint realGumpId = GetSingleActiveGump(client);
 
         client.HandleGumpResponse(multi.Uid.Value, realGumpId + 1, 1, [], []);
-        client.HandleTargetResponse(0, 0, newOwner.Uid.Value, newOwner.X, newOwner.Y, newOwner.Z, 0);
+        client.HandleTargetResponse(0, client.ActiveTargetCursorId, newOwner.Uid.Value, newOwner.X, newOwner.Y, newOwner.Z, 0);
 
         Assert.Equal(owner.Uid, house!.Owner);
         Assert.Equal(realGumpId, GetSingleActiveGump(client));

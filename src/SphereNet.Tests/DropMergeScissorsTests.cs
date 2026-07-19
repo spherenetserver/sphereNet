@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using SphereNet.Core.Enums;
@@ -85,7 +85,7 @@ public sealed class DropMergeScissorsTests
 
         client.HandleDoubleClick(scissors.Uid.Value);
         Assert.True(client.HasPendingTarget);
-        client.HandleTargetResponse(0, 0, bloody.Uid.Value, 0, 0, 0, 0);
+        client.HandleTargetResponse(0, client.ActiveTargetCursorId, bloody.Uid.Value, 0, 0, 0, 0);
 
         Assert.False(bloody.IsDeleted);
         Assert.Equal(ItemType.Bandage, bloody.ItemType); // cleaned, whole stack kept
@@ -107,7 +107,7 @@ public sealed class DropMergeScissorsTests
         world.PlaceItem(cloth, player.Position);
 
         client.HandleDoubleClick(scissors.Uid.Value);
-        client.HandleTargetResponse(0, 0, cloth.Uid.Value, 0, 0, 0, 0);
+        client.HandleTargetResponse(0, client.ActiveTargetCursorId, cloth.Uid.Value, 0, 0, 0, 0);
 
         Assert.Equal(ItemType.Cloth, cloth.ItemType); // fixture untouched
     }

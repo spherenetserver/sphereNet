@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
@@ -3161,7 +3161,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         client.Targets.Function = "f_never_run";
         client.Targets.ItemUid = sourceItem.Uid;
 
-        client.HandleTargetResponse(0, 0, targetItem.Uid.Value, 10, 11, 12, 0);
+        client.HandleTargetResponse(0, client.ActiveTargetCursorId, targetItem.Uid.Value, 10, 11, 12, 0);
 
         Assert.Equal(1, targetItemCount);
         Assert.False(player.TryGetProperty("TAG.NEVER_RUN", out var neverRun) && neverRun == "1");
@@ -3201,7 +3201,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         client.Targets.Function = "f_cancelled";
         client.Targets.ItemUid = sourceItem.Uid;
 
-        client.HandleTargetResponse(0, 0, 0xFFFFFFFF, 0, 0, 0, 0);
+        client.HandleTargetResponse(0, client.ActiveTargetCursorId, 0xFFFFFFFF, 0, 0, 0, 0);
 
         Assert.Equal(1, cancelCount);
     }
@@ -3261,12 +3261,12 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         AttachCharacter(client, player);
         client.Targets.Function = "f_char";
         client.Targets.ItemUid = sourceItem.Uid;
-        client.HandleTargetResponse(0, 0, targetChar.Uid.Value, 10, 11, 12, 0);
+        client.HandleTargetResponse(0, client.ActiveTargetCursorId, targetChar.Uid.Value, 10, 11, 12, 0);
 
         client.Targets.Function = "f_ground";
         client.Targets.AllowGround = true;
         client.Targets.ItemUid = sourceItem.Uid;
-        client.HandleTargetResponse(1, 0, 0, 20, 21, 22, 0);
+        client.HandleTargetResponse(1, client.ActiveTargetCursorId, 0, 20, 21, 22, 0);
 
         Assert.Equal(1, charCount);
         Assert.Equal(1, groundCount);
@@ -3301,7 +3301,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         AttachCharacter(client, player);
         player.SetTag("CAST_SPELL", SpellType.MagicArrow.ToString());
 
-        client.HandleTargetResponse(0, 0, 0xFFFFFFFF, 0, 0, 0, 0);
+        client.HandleTargetResponse(0, client.ActiveTargetCursorId, 0xFFFFFFFF, 0, 0, 0, 0);
 
         Assert.Equal(1, cancelCount);
         Assert.False(player.TryGetTag("CAST_SPELL", out _));
@@ -3618,7 +3618,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         world.PlaceItem(crystalB, new Point3D(101, 100, 0, 0));
 
         client.HandleDoubleClick(crystalA.Uid.Value);
-        client.HandleTargetResponse(0, 0, crystalB.Uid.Value, 101, 100, 0, 0);
+        client.HandleTargetResponse(0, client.ActiveTargetCursorId, crystalB.Uid.Value, 101, 100, 0, 0);
         Assert.Equal(crystalB.Uid, crystalA.Link);
 
         // Targeting a non-crystal leaves the crystal unlinked.
@@ -3630,7 +3630,7 @@ TAG.DIALOG_SUBJECT_TOUCHED=1
         world.PlaceItem(crystalC, new Point3D(100, 100, 0, 0));
 
         client.HandleDoubleClick(crystalC.Uid.Value);
-        client.HandleTargetResponse(0, 0, box.Uid.Value, 100, 100, 0, 0);
+        client.HandleTargetResponse(0, client.ActiveTargetCursorId, box.Uid.Value, 100, 100, 0, 0);
         Assert.False(crystalC.Link.IsValid);
     }
 

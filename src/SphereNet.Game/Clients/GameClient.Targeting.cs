@@ -29,4 +29,9 @@ public sealed partial class GameClient
     public void SetPendingMultiTarget(Action<uint, short, short, sbyte, ushort> callback,
         ushort multiId, short xOff, short yOff, short zOff, ushort hue) =>
         Targeting.SetPendingMultiTarget(callback, multiId, xOff, yOff, zOff, hue);
+
+    /// <summary>Cursor session id of the currently armed 0x6C request (0 = no
+    /// armed cursor). A response must echo this id to be accepted; exposed so
+    /// tests can answer a cursor the way a real client does.</summary>
+    public uint ActiveTargetCursorId => Targets.CursorId;
 }

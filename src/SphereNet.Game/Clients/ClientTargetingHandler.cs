@@ -100,22 +100,16 @@ public sealed class ClientTargetingHandler
         // a cursor / fires at the wrong thing" report. Ignore any response
         // carrying a different (non-zero) id than the active request.
         bool idKnown = Targets.CursorActive && Targets.CursorId != 0;
-        if (idKnown && targetId != 0 && targetId != Targets.CursorId)
+        if (idKnown && targetId != Targets.CursorId)
             return;
-
-        // The replaced cursor's echo carries cursorID 0 (ClassicUO zeroes its
-        // stored id right after a server-side cancel), which the id match
-        // cannot attribute. Swallow ONE id-less response inside the
-        // replacement window — whether it is the cancel echo itself or a
-        // queued auto/last-target pick fired against the zeroed id (the
-        // "cast after a pause hits the previous target with no cursor shown"
-        // report). A legit answer to the live cursor echoes its non-zero id.
-        if (idKnown && targetId == 0 &&
-            Environment.TickCount64 < Targets.StaleCancelEchoUntil)
-        {
-            Targets.StaleCancelEchoUntil = 0;
-            return;
-        }
+        // targetId == 0 is included above: an id-less response can never be a
+        // legit answer to an id-armed cursor. Every client echoes the request
+        // id it stored, and ClassicUO zeroes that stored id after a
+        // server-side cancel (issue #1373) — so id 0 here is always a click
+        // or cancel fired against a dead session. The old 2s replacement
+        // window only swallowed one such echo right after a cursor swap;
+        // outside it the stale pick was consumed as a live target (the
+        // ".cast fires at myself without ever showing a cursor" report).
 
         Targets.CursorActive = false;
         Targets.CursorId = 0; // session consumed — the next cursor arms a fresh id
@@ -842,8 +836,6 @@ public sealed class ClientTargetingHandler
         Targets.CursorActive = true;
         uint cursorId = (uint)Random.Shared.Next(1, int.MaxValue);
         Targets.CursorId = cursorId;
-        if (replacedOpenCursor)
-            Targets.StaleCancelEchoUntil = Environment.TickCount64 + 2000;
         _netState.Send(new PacketTarget(cursorType, cursorId));
     }
 
@@ -869,8 +861,6 @@ public sealed class ClientTargetingHandler
         Targets.CursorActive = true;
         uint cursorId = (uint)Random.Shared.Next(1, int.MaxValue);
         Targets.CursorId = cursorId;
-        if (replacedOpenCursor)
-            Targets.StaleCancelEchoUntil = Environment.TickCount64 + 2000;
         _netState.Send(new PacketTargetMulti(cursorId, multiId, xOff, yOff, zOff, hue,
             includeHue: _netState.ClientVersionNumber >= 70_013_000));
     }

@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Definitions;
@@ -90,7 +90,7 @@ public class GatherStrokeCompletionTests
         Character.OnSkillUseQuickDetailed = (Character _, int _, ref int _, int _) => 1;
 
         client.HandleUseSkill((int)SkillType.Fishing);
-        client.HandleTargetResponse(1, 0, 0, 102, 100, 0, 0); // water 2 tiles away
+        client.HandleTargetResponse(1, client.ActiveTargetCursorId, 0, 102, 100, 0, 0); // water 2 tiles away
 
         Assert.True(player.HasActiveSkillPending());
 
@@ -131,7 +131,7 @@ public class GatherStrokeCompletionTests
             triggerDispatcher: new TriggerDispatcher());
 
         client.HandleUseSkill((int)SkillType.Mining);
-        client.HandleTargetResponse(1, 0, 0, 101, 100, 0, 0);
+        client.HandleTargetResponse(1, client.ActiveTargetCursorId, 0, 101, 100, 0, 0);
 
         Assert.True(player.HasActiveSkillPending());
 

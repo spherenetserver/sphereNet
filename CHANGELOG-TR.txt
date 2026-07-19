@@ -6,6 +6,18 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+FIX - Target imleci artik "kendiliginden ateslenmiyor": buyu cast'i (veya
+        herhangi bir target komutu) imlec hic gorunmeden aninda kendi
+        karakterinize cozulebiliyor, ancak bir sonraki deneme imlec
+        gosteriyordu. Kok neden: iptal edilmis bir imlec oturumundan kalan
+        target yaniti (client, server iptalinden sonra imlec id'sini
+        sifirliyor) dar bir 2 sn pencere disinda canli secim olarak kabul
+        ediliyordu. Yanitlar artik kurulu imlec id'sini birebir yankilamak
+        zorunda - gerisi dusuruluyor. Ayrica Source-X Spell_TargCheck geregi
+        obje hedefli bir buyude (orn. Night Sight) zemin secimi artik sessizce
+        kendinize cast olmak yerine "target must be an object" ile iptal
+        oluyor.
+
 FIX - Gemi/ev multi'sini .nuke/.remove/script REMOVE ile silmek artik kayit
         defterinde hayalet yapi birakmiyor. Sahiplik sayaclari silinen gemiyi
         saymaya devam ediyordu (max gemi asilamaz), region ve bilesen

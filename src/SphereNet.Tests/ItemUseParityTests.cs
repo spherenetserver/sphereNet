@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Accounts;
@@ -39,7 +39,7 @@ public class ItemUseParityTests
         client.HandleDoubleClick(blade.Uid.Value);
 
         Assert.True(client.HasPendingTarget);
-        client.HandleTargetResponse(0, 0, blade.Uid.Value, 0, 0, 0, 0);
+        client.HandleTargetResponse(0, client.ActiveTargetCursorId, blade.Uid.Value, 0, 0, 0, 0);
 
         Assert.True(blade.TryGetTag("POISON_SKILL", out var poisonSkill));
         Assert.Equal("80", poisonSkill);
@@ -73,7 +73,7 @@ public class ItemUseParityTests
         client.HandleDoubleClick(tool.Uid.Value);
 
         Assert.True(client.HasPendingTarget);
-        client.HandleTargetResponse(0, 0, damaged.Uid.Value, 0, 0, 0, 0);
+        client.HandleTargetResponse(0, client.ActiveTargetCursorId, damaged.Uid.Value, 0, 0, 0, 0);
 
         Assert.True(damaged.HitsCur > 10);
         Assert.False(client.HasPendingTarget);
@@ -134,7 +134,7 @@ public class ItemUseParityTests
         client.HandleDoubleClick(ore.Uid.Value);
         Assert.True(client.HasPendingTarget);
 
-        client.HandleTargetResponse(0, 0, forge.Uid.Value, forge.X, forge.Y, forge.Z, 0);
+        client.HandleTargetResponse(0, client.ActiveTargetCursorId, forge.Uid.Value, forge.X, forge.Y, forge.Z, 0);
 
         Assert.True(ore.IsDeleted);
         var ingots = Assert.Single(pack.Contents, i => i.ItemType == ItemType.Ingot);
@@ -177,7 +177,7 @@ public class ItemUseParityTests
         client.SetEngines(triggerDispatcher: dispatcher);
 
         client.HandleDoubleClick(ore.Uid.Value);
-        client.HandleTargetResponse(0, 0, forge.Uid.Value, forge.X, forge.Y, forge.Z, 0);
+        client.HandleTargetResponse(0, client.ActiveTargetCursorId, forge.Uid.Value, forge.X, forge.Y, forge.Z, 0);
 
         Assert.Equal(1, smeltCount);
         Assert.False(ore.IsDeleted);

@@ -7,6 +7,17 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIX - Target cursor no longer "auto-fires": a spell cast (or any target
+        command) could resolve instantly against yourself with no cursor
+        shown, and only the next attempt displayed one. Root cause: a target
+        response left over from a cancelled cursor session (the client zeroes
+        its cursor id after a server-side cancel) was accepted as a live pick
+        outside a narrow 2s window. Responses must now echo the armed cursor
+        id exactly — anything else is dropped. Additionally, per Source-X
+        Spell_TargCheck, a ground pick for an object-target spell (e.g. Night
+        Sight) now aborts with "target must be an object" instead of silently
+        casting on yourself.
+
 FIX - Deleting a ship or house multi with .nuke/.remove/script REMOVE no longer
         leaves a ghost structure in the registry. The ownership counters kept
         counting the deleted ship ("you cannot have more ships"), and its

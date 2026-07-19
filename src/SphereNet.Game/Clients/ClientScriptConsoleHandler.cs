@@ -1339,7 +1339,7 @@ public sealed class ClientScriptConsoleHandler
                     return false;
                 Point3D p = _character.Position;
                 selfClient.Targeting.HandleTargetResponse(
-                    0, 0, _character.Uid.Value, p.X, p.Y, p.Z, 0);
+                    0, Targets.CursorId, _character.Uid.Value, p.X, p.Y, p.Z, 0);
                 return true;
             }
 
@@ -1439,7 +1439,7 @@ public sealed class ClientScriptConsoleHandler
                 var obj = _world.FindObject(new Serial(Targets.LastPickedSerial));
                 if (obj == null) return true;
                 var p = obj.GetTopLevelPosition();
-                (_client as GameClient)?.Targeting.HandleTargetResponse(0, 0, obj.Uid.Value, p.X, p.Y, p.Z, 0);
+                (_client as GameClient)?.Targeting.HandleTargetResponse(0, Targets.CursorId, obj.Uid.Value, p.X, p.Y, p.Z, 0);
                 return true;
             }
 

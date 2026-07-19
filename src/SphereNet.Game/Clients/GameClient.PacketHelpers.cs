@@ -422,11 +422,10 @@ public sealed partial class GameClient
         Targets.ScriptNewItem = null;
         Targets.LastScriptPoint = null;
         Targets.CursorActive = false;
-        // Retire the cursor session too: a lingering non-zero CursorId (or an
-        // open stale-cancel window) from a torn-down cursor must not influence
-        // the guards on the next 0x6C exchange.
+        // Retire the cursor session too: a lingering non-zero CursorId from a
+        // torn-down cursor must not influence the guards on the next 0x6C
+        // exchange.
         Targets.CursorId = 0;
-        Targets.StaleCancelEchoUntil = 0;
     }
 
     /// <summary>Source-X Cmd_EditItem parity (CClientUse.cpp:577).

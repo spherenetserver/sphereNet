@@ -2198,6 +2198,16 @@ public sealed class ClientCombatHandler
                 SetPendingTarget((serial, x, y, z, graphic) =>
                 {
                     if (_character == null) return;
+                    // Source-X Spell_TargCheck (DEFMSG_SPELL_TARG_OBJ): an
+                    // object-target spell aborts on a ground pick unless
+                    // TARG_XYZ allows it — it must never silently become a
+                    // self-cast.
+                    if (serial == 0 && spellDef != null &&
+                        spellDef.IsFlag(SpellFlag.TargObj) && !spellDef.IsFlag(SpellFlag.TargXYZ))
+                    {
+                        SysMessage(ServerMessages.Get("target_must_object"));
+                        return;
+                    }
                     _character.SetCastTargetPosPending(new Point3D(x, y, z, _character.MapIndex));
                     HandleCastSpell(spell, serial != 0 ? serial : _character.Uid.Value);
                 });
@@ -2277,6 +2287,15 @@ public sealed class ClientCombatHandler
         SetPendingTarget((serial, x, y, z, graphic) =>
         {
             if (_character == null) return;
+            // Source-X Spell_TargCheck: the precast finished but the pick is
+            // not a valid object target — the spell aborts (never self-casts).
+            if (serial == 0 && spellDef != null &&
+                spellDef.IsFlag(SpellFlag.TargObj) && !spellDef.IsFlag(SpellFlag.TargXYZ))
+            {
+                SysMessage(ServerMessages.Get("target_must_object"));
+                _character.ClearCastState();
+                return;
+            }
             var targetPos = new Point3D(x, y, z, _character.MapIndex);
             uint uid = serial != 0 ? serial : _character.Uid.Value;
             var targetChar = _world.FindChar(new Serial(uid));

@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
@@ -130,7 +130,7 @@ public sealed class HousingShipIntegrityTests
             TestHarness.AttachCharacter(client, owner);
 
             client.HandleDoubleClick(deed.Uid.Value);
-            client.HandleTargetResponse(0, 0, 0, 300, 300, 0, 0);
+            client.HandleTargetResponse(0, client.ActiveTargetCursorId, 0, 300, 300, 0, 0);
 
             Assert.Single(shipEngine.AllShips);
             var ship = shipEngine.AllShips.First();
@@ -262,7 +262,7 @@ public sealed class HousingShipIntegrityTests
             .Invoke(client, [house.MultiItem]);
         uint gump = Assert.Single(client.Gumps.ActiveGumps);
         client.HandleGumpResponse(house.MultiItem.Uid.Value, gump, 1, [], []);
-        client.HandleTargetResponse(0, 0, owner.Uid.Value, owner.X, owner.Y, owner.Z, 0);
+        client.HandleTargetResponse(0, client.ActiveTargetCursorId, owner.Uid.Value, owner.X, owner.Y, owner.Z, 0);
         Assert.Equal(newOwner.Uid, house.Owner);
     }
 
@@ -285,7 +285,7 @@ public sealed class HousingShipIntegrityTests
         client.SetEngines(housingEngine: engine);
         TestHarness.AttachCharacter(client, owner);
         client.HandleDoubleClick(deed.Uid.Value);
-        client.HandleTargetResponse(0, 0, 0, 300, 300, 0, 0);
+        client.HandleTargetResponse(0, client.ActiveTargetCursorId, 0, 300, 300, 0, 0);
 
         var rebuilt = engine.FindHouseAt(new Point3D(300, 300, 0, 0));
         Assert.NotNull(rebuilt);
@@ -466,7 +466,7 @@ public sealed class HousingShipIntegrityTests
             client.SetEngines(housingEngine: housing);
             TestHarness.AttachCharacter(client, owner);
             client.HandleDoubleClick(plan.Uid.Value);
-            client.HandleTargetResponse(0, 0, 0, 300, 300, 0, 0);
+            client.HandleTargetResponse(0, client.ActiveTargetCursorId, 0, 300, 300, 0, 0);
 
             var rebuilt = engine.FindShipAt(new Point3D(300, 300, 0, 0));
             Assert.NotNull(rebuilt);

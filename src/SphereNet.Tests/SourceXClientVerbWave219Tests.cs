@@ -1,4 +1,4 @@
-using System.Buffers.Binary;
+﻿using System.Buffers.Binary;
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
@@ -73,7 +73,7 @@ public class SourceXClientVerbWave219Tests
         var (client, ch, _) = CreateClient();
         Assert.True(client.TryExecuteScriptCommand(ch, "ADDITEM", "0x0EED,5", null));
 
-        client.Targeting.HandleTargetResponse(0, 0, 0, 650, 651, 2, 0);
+        client.Targeting.HandleTargetResponse(0, client.ActiveTargetCursorId, 0, 650, 651, 2, 0);
 
         var created = client.World.FindItem(client.World.LastNewItem);
         Assert.NotNull(created);

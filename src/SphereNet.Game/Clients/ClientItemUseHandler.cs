@@ -1285,6 +1285,10 @@ public sealed class ClientItemUseHandler
 
             // ---- containers / signs / multi (existing engines) ----
             case ItemType.StoneGuild:
+            case ItemType.StoneTown:
+                // Source-X: IT_STONE_TOWN runs the SAME CItemStone engine as
+                // guild stones (citizenship = membership, mayor = master);
+                // the gump adapts its wording and memory type by stone type.
                 OpenGuildStoneGump(item);
                 break;
             case ItemType.Multi:

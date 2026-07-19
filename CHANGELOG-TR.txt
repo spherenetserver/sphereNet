@@ -6,6 +6,16 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+NEW - Town stone calisiyor: town stone, guild stone ile ayni stone motorunu
+        kullaniyor (Source-X IT_STONE_TOWN == CItemStone). Yetkili (Counsel+)
+        GM-isimli tasta town kurar ve Belediye Baskani (Mayor) olur;
+        oyuncular candidate akisiyla vatandaslik basvurusu yapar, baskan
+        kabul/ihrac eder, vatandas ayrilabilir; town-town / town-guild savas
+        ve ittifaklari ortak iliski sistemini kullanir. Uyelik artik
+        karaktere MEMORY_TOWN / MEMORY_GUILD baglantisini yaziyor
+        (scriptlerce okunabilir) ve ayrilma/ihrac/dagitmada siliyor - gump
+        yollari onceden bu hafizayi hic yazmiyordu.
+
 FIX - Firlatma silahlari artik gercekten menzilli: okculuk menzil / LOS /
         hareket kurallarini kullaniyor (itemdef RANGE gecerli), mermi
         ucuruyor - TDATA4/AMMOANIM grafigi, yoksa silahin kendi grafigi,

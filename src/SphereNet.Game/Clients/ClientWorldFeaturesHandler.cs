@@ -959,17 +959,29 @@ public sealed class ClientWorldFeaturesHandler
     {
         if (_character == null || _guildManager == null) return;
 
+        // Source-X: a town stone runs the same stone engine — only the
+        // wording, the memory type and who may FOUND it differ. Towns are
+        // shard infrastructure, so establishing one takes Counsel+.
+        bool isTown = stone.ItemType == ItemType.StoneTown;
+        string stoneWord = isTown ? "Town" : "Guild";
+
         var guild = _guildManager.GetGuild(stone.Uid);
         if (guild == null)
         {
-            // No guild on this stone yet — offer to create one
+            if (isTown && _character.PrivLevel < PrivLevel.Counsel)
+            {
+                SysMessage("No town is established at this stone.");
+                return;
+            }
+
+            // No record on this stone yet — offer to create one
             var createGump = new GumpBuilder(_character.Uid.Value, stone.Uid.Value, 400, 300);
             createGump.AddResizePic(0, 0, 5054, 400, 300);
-            createGump.AddText(30, 20, 0, "Guild Stone");
-            createGump.AddText(30, 50, 0, "No guild is registered to this stone.");
-            createGump.AddText(30, 80, 0, "Create a new guild?");
+            createGump.AddText(30, 20, 0, $"{stoneWord} Stone");
+            createGump.AddText(30, 50, 0, $"No {stoneWord.ToLowerInvariant()} is registered to this stone.");
+            createGump.AddText(30, 80, 0, isTown ? "Establish a town here?" : "Create a new guild?");
             createGump.AddButton(30, 130, 4005, 4007, 1); // Create
-            createGump.AddText(70, 130, 0, "Create Guild");
+            createGump.AddText(70, 130, 0, isTown ? "Establish Town" : "Create Guild");
             createGump.AddButton(150, 250, 4017, 4019, 0); // Cancel
 
             SendGump(createGump, (buttonId, switches, textEntries) =>
@@ -979,27 +991,34 @@ public sealed class ClientWorldFeaturesHandler
                     if (_character == null || _character.IsDeleted || stone.IsDeleted ||
                         _world.FindItem(stone.Uid) != stone || _guildManager.GetGuild(stone.Uid) != null ||
                         _guildManager.FindGuildRecordFor(_character.Uid) != null ||
+                        (isTown && _character.PrivLevel < PrivLevel.Counsel) ||
                         _character.MapIndex != stone.MapIndex ||
                         _character.Position.GetDistanceTo(stone.Position) > 3)
                     {
                         SysMessage(ServerMessages.Get("msg_insufficient_priv"));
                         return;
                     }
-                    var newGuild = _guildManager.CreateGuild(stone.Uid, $"{_character.Name}'s Guild", _character.Uid);
+                    // A town takes its name from the GM-named stone item.
+                    string newName = isTown && !string.IsNullOrWhiteSpace(stone.Name)
+                        ? stone.Name!
+                        : $"{_character.Name}'s {stoneWord}";
+                    var newGuild = _guildManager.CreateGuild(stone.Uid, newName, _character.Uid);
+                    StampStoneMemory(_character, stone, add: true);
                     SysMessage(ServerMessages.GetFormatted("guild_created", newGuild.Name));
                 }
             });
             return;
         }
 
-        // Show guild info gump
+        // Show stone info gump
         var gump = new GumpBuilder(_character.Uid.Value, stone.Uid.Value, 500, 520);
         gump.AddResizePic(0, 0, 5054, 500, 520);
-        gump.AddText(30, 10, 0, $"Guild: {guild.Name}");
+        gump.AddText(30, 10, 0, $"{stoneWord}: {guild.Name}");
         gump.AddText(30, 30, 0, $"Abbreviation: [{guild.Abbreviation}]");
         if (!string.IsNullOrEmpty(guild.Charter))
             gump.AddText(30, 50, 0, $"Charter: {guild.Charter}");
-        gump.AddText(30, 70, 0, $"Members: {guild.MemberCount} | Wars: {guild.Wars.Count()} | Allies: {guild.Allies.Count()}");
+        gump.AddText(30, 70, 0,
+            $"{(isTown ? "Citizens" : "Members")}: {guild.MemberCount} | Wars: {guild.Wars.Count()} | Allies: {guild.Allies.Count()}");
 
         // Member list with titles and candidate status
         int y = 100;
@@ -1010,7 +1029,7 @@ public sealed class ClientWorldFeaturesHandler
             string memberName = ch?.Name ?? $"UID 0x{member.CharUid.Value:X}";
             string privText = member.Priv switch
             {
-                GuildPriv.Master => " [Master]",
+                GuildPriv.Master => isTown ? " [Mayor]" : " [Master]",
                 GuildPriv.Candidate => " [Candidate]",
                 _ => ""
             };
@@ -1028,7 +1047,7 @@ public sealed class ClientWorldFeaturesHandler
         if (myMember == null)
         {
             gump.AddButton(30, btnY, 4005, 4007, 1); // Join
-            gump.AddText(70, btnY, 0, "Request to Join");
+            gump.AddText(70, btnY, 0, isTown ? "Request Citizenship" : "Request to Join");
             btnY += 25;
         }
         else if (myMember.Priv == GuildPriv.Master)
@@ -1036,7 +1055,7 @@ public sealed class ClientWorldFeaturesHandler
             // Two columns — the master verb surface mirrors the Source-X
             // guild-stone MASTERMENU (CItemStone_functions.tbl).
             gump.AddButton(30, btnY, 4005, 4007, 2); // Disband
-            gump.AddText(70, btnY, 0, "Disband Guild");
+            gump.AddText(70, btnY, 0, isTown ? "Dissolve Town" : "Disband Guild");
             gump.AddButton(260, btnY, 4005, 4007, 15); // Dismiss member
             gump.AddText(300, btnY, 0, "Dismiss Member");
             btnY += 25;
@@ -1071,7 +1090,7 @@ public sealed class ClientWorldFeaturesHandler
         else
         {
             gump.AddButton(30, btnY, 4005, 4007, 3); // Leave
-            gump.AddText(70, btnY, 0, "Leave Guild");
+            gump.AddText(70, btnY, 0, isTown ? "Renounce Citizenship" : "Leave Guild");
             btnY += 25;
         }
         if (myMember != null && guild.IsMember(_character.Uid))
@@ -1096,6 +1115,24 @@ public sealed class ClientWorldFeaturesHandler
         {
             HandleGuildGumpResponse(stone, capturedGuild, buttonId, textEntries);
         });
+    }
+
+    /// <summary>Source-X CStoneMember link: membership carries a MEMORY_GUILD /
+    /// MEMORY_TOWN memory of the stone, readable by scripts. Stamped on
+    /// acceptance/founding, cleared on leave/dismiss/disband.</summary>
+    private void StampStoneMemory(Character ch, Item stone, bool add)
+    {
+        var memType = stone.ItemType == ItemType.StoneTown ? MemoryType.Town : MemoryType.Guild;
+        if (add)
+        {
+            ch.Memory_AddObjTypes(stone.Uid, memType);
+        }
+        else
+        {
+            var mem = ch.Memory_FindObjTypes(stone.Uid, memType);
+            if (mem != null)
+                ch.Memory_ClearTypes(mem, memType);
+        }
     }
 
     private void HandleGuildGumpResponse(Item stone, GuildDef guild, uint buttonId, (ushort Id, string Text)[] textEntries)
@@ -1133,6 +1170,12 @@ public sealed class ClientWorldFeaturesHandler
                     SysMessage(ServerMessages.Get("msg_insufficient_priv"));
                     break;
                 }
+                foreach (var m in guild.Members.ToArray())
+                {
+                    var mch = _world.FindChar(m.CharUid);
+                    if (mch != null)
+                        StampStoneMemory(mch, stone, add: false);
+                }
                 _guildManager.RemoveGuild(stone.Uid);
                 SysMessage(ServerMessages.Get("guild_disbanded"));
                 break;
@@ -1151,6 +1194,7 @@ public sealed class ClientWorldFeaturesHandler
                     break;
                 }
                 guild.RemoveMember(_character.Uid);
+                StampStoneMemory(_character, stone, add: false);
                 SysMessage(ServerMessages.Get("guild_left"));
                 break;
             }
@@ -1162,7 +1206,10 @@ public sealed class ClientWorldFeaturesHandler
                     var target = _world.FindChar(new Serial(serial));
                     if (target == null) { SysMessage(ServerMessages.Get("msg_invalid_target")); return; }
                     if (guild.AcceptMember(target.Uid))
+                    {
+                        StampStoneMemory(target, stone, add: true);
                         SysMessage(ServerMessages.GetFormatted("guild_member_added", target.Name));
+                    }
                     else
                         SysMessage(ServerMessages.GetFormatted("guild_not_candidate", target.Name));
                 });
@@ -1242,7 +1289,8 @@ public sealed class ClientWorldFeaturesHandler
                         return;
                     }
                     guild.RemoveMember(target.Uid);
-                    SysMessage($"{target.Name} has been dismissed from the guild.");
+                    StampStoneMemory(target, stone, add: false);
+                    SysMessage($"{target.Name} has been dismissed from the {(stone.ItemType == ItemType.StoneTown ? "town" : "guild")}.");
                 });
                 break;
             }

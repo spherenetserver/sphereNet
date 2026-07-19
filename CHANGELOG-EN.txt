@@ -7,6 +7,16 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+NEW - Town stones work: a town stone runs the same stone engine as guild
+        stones (Source-X IT_STONE_TOWN == CItemStone). Staff (Counsel+)
+        establish the town at a GM-named stone and become its Mayor;
+        players request citizenship through the candidate flow, the mayor
+        accepts/dismisses, citizens renounce, and town-town / town-guild
+        wars and alliances use the shared relation system. Membership now
+        stamps the MEMORY_TOWN / MEMORY_GUILD link on the character
+        (readable by scripts) and clears it on leave/dismiss/disband —
+        the gump paths previously never wrote the memory.
+
 FIX - Throwing weapons are now truly ranged: they use the archery range /
         LOS / movement rules (itemdef RANGE honored), fly a projectile —
         TDATA4/AMMOANIM art, else the weapon's own graphic, with the

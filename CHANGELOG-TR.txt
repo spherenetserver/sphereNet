@@ -6,6 +6,19 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+FIX - Gemi ve evler artik eksiksiz gorunuyor. Tek kok nedenin iki yarisi:
+        yerlestirilen multi'ler (gemi, klasik ev) client'a duz item olarak
+        gonderiliyordu ve multi grafikli duz item hic cizilmiyor - client bir
+        yapiyi ancak world paketi multi veri tipini tasidiginda cizer (0xF3
+        tip 2 / 0x1A grafik|0x4000); bu daha once yalnizca custom ev
+        temellerine veriliyordu. Artik her yerlestirilen yapi multi olarak
+        gonderiliyor, client govde/duvarlari multi.mul'dan kendisi ciziyor.
+        Buna uygun olarak server yalnizca gorunmez placeholder bilesenlerini
+        (dumen, kalaslar, ambar, kapilar, ev tabelasi) calisan item olarak
+        olusturuyor - Source-X ile ayni; gorunur statikler server item'i
+        olarak yaratilmiyor (cift cizim yok). Onceki build ile yerlestirilen
+        gemiler redeed edilip yeniden yerlestirilmeli.
+
 FIX - Target imleci artik "kendiliginden ateslenmiyor": buyu cast'i (veya
         herhangi bir target komutu) imlec hic gorunmeden aninda kendi
         karakterinize cozulebiliyor, ancak bir sonraki deneme imlec

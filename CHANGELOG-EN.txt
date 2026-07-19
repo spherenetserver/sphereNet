@@ -7,6 +7,19 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIX - Ships and houses now render completely. Two halves of one root cause:
+        placed multis (ships, classic houses) were sent to the client as plain
+        items, and a plain item with a multi graphic renders as nothing — the
+        client only draws a structure when the world packet carries the multi
+        data type (0xF3 type 2 / 0x1A graphic|0x4000), which previously only
+        custom-house foundations got. Now every placed structure is sent as a
+        multi, so the client draws the full hull/walls itself from multi.mul.
+        Accordingly the server materialises ONLY the invisible placeholder
+        components (tiller, planks, hatch, doors, house sign) as working
+        items, exactly like Source-X — visible statics are never created as
+        server items (no double-draw). Ships placed under the previous build
+        should be redeeded and placed again.
+
 FIX - Target cursor no longer "auto-fires": a spell cast (or any target
         command) could resolve instantly against yourself with no cursor
         shown, and only the next attempt displayed one. Root cause: a target

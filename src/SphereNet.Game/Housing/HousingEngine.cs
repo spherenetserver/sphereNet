@@ -708,10 +708,15 @@ public sealed class HousingEngine
         }
         else
         {
-            // Generate components
+            // Materialize ONLY the invisible placeholder components
+            // (flags == 0): doors, the house sign — the working server items.
+            // The client draws every visible (flags != 0) wall/roof part
+            // itself from its multi.mul, because the multi item is sent with
+            // the multi data type (Source-X CItemMulti: components are
+            // dynamic items, the walls are never materialized server-side).
             foreach (var comp in def.Components)
             {
-                if (!comp.Visible) continue;
+                if (comp.Visible) continue;
 
                 var compItem = _world.CreateItem();
                 compItem.BaseId = comp.TileId;

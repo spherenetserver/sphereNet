@@ -143,11 +143,16 @@ public sealed class ShipEngine
             Anchored = true,
         };
 
-        // Generate component items from multi definition
+        // Materialize ONLY the invisible placeholder components (flags == 0):
+        // tiller, planks, hatch, mast anchor — the working server items.
+        // The client draws every visible (flags != 0) hull/deck part itself
+        // from its multi.mul, because the multi item is sent with the multi
+        // data type (Source-X CItemShip: components are dynamic items, the
+        // hull is never materialized server-side).
         bool needsKey = false;
         foreach (var comp in def.Components)
         {
-            if (!comp.Visible) continue;
+            if (comp.Visible) continue;
 
             var compItem = _world.CreateItem();
             compItem.BaseId = comp.TileId;
@@ -492,7 +497,9 @@ public sealed class ShipEngine
         short cx = ship.MultiItem.X;
         short cy = ship.MultiItem.Y;
 
-        var newComponents = newDef.Components.Where(c => c.Visible).ToList();
+        // Same subset PlaceShip materializes: the invisible placeholders
+        // (tiller, planks, hatch) — index-aligned with ship.Components.
+        var newComponents = newDef.Components.Where(c => !c.Visible).ToList();
         for (int componentIndex = 0; componentIndex < ship.Components.Count; componentIndex++)
         {
             var item = _world.FindItem(ship.Components[componentIndex]);

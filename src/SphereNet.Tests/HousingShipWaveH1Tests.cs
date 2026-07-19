@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Housing;
 using SphereNet.Game.Ships;
@@ -13,7 +13,7 @@ public class HousingShipWaveH1Tests
     private static MultiRegistry MakeShipRegistry(ushort id = 0x4000)
     {
         var def = new MultiDef { Id = id, Name = "small boat" };
-        def.Components.Add(new MultiComponent { TileId = 0x3E40, DeltaX = 0, DeltaY = 0, DeltaZ = 0, Visible = true });
+        def.Components.Add(new MultiComponent { TileId = 0x3E40, DeltaX = 0, DeltaY = 0, DeltaZ = 0, Visible = false });
         def.RecalcBounds();
         var reg = new MultiRegistry();
         reg.Register(def);

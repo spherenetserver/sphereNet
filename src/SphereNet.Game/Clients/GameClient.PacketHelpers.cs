@@ -661,14 +661,23 @@ public sealed partial class GameClient
         return new PacketWorldItem(serial, itemId, amount, x, y, z, hue, direction, flags, isMulti);
     }
 
+    /// <summary>Placed structures must reach the client with the multi data
+    /// type (0xF3 type 2 / 0x1A graphic|0x4000): the client then renders every
+    /// visible multi.mul component (hull, walls) itself and, for custom
+    /// houses, accepts the 0xD8 design stream. Sent as a plain item, a multi
+    /// graphic renders as nothing at all.</summary>
+    private static bool IsMultiBody(Item item) =>
+        item.ItemType is SphereNet.Core.Enums.ItemType.Multi
+            or SphereNet.Core.Enums.ItemType.MultiCustom
+            or SphereNet.Core.Enums.ItemType.MultiAddon
+            or SphereNet.Core.Enums.ItemType.Ship;
+
     internal void SendWorldItem(Item item)
     {
         _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
             item.X, item.Y, item.Z, item.Hue, item.Direction,
-            // Customizable-house foundations must reach the client as a multi so the
-            // 0xD8 design stream renders (ClassicUO drops it when IsMulti is false).
-            isMulti: item.ItemType == SphereNet.Core.Enums.ItemType.MultiCustom
+            isMulti: IsMultiBody(item)
         ));
     }
 
@@ -677,7 +686,7 @@ public sealed partial class GameClient
         _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
             item.X, item.Y, item.Z, hue, item.Direction,
-            isMulti: item.ItemType == SphereNet.Core.Enums.ItemType.MultiCustom
+            isMulti: IsMultiBody(item)
         ));
     }
 
@@ -686,9 +695,7 @@ public sealed partial class GameClient
         _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
             item.X, item.Y, item.Z, item.Hue, item.Direction,
-            // Customizable-house foundations must reach the client as a multi so the
-            // 0xD8 design stream renders (ClassicUO drops it when IsMulti is false).
-            isMulti: item.ItemType == SphereNet.Core.Enums.ItemType.MultiCustom
+            isMulti: IsMultiBody(item)
         ));
     }
 

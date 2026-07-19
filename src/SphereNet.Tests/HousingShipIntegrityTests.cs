@@ -62,17 +62,17 @@ public sealed class HousingShipIntegrityTests
         var registry = new MultiRegistry();
         var north = new MultiDef { Id = 0x4000, Name = "test ship" };
         north.Components.Add(new MultiComponent
-            { TileId = 0x3E40, DeltaX = 0, DeltaY = 0, DeltaZ = 0, Visible = true });
+            { TileId = 0x3E40, DeltaX = 0, DeltaY = 0, DeltaZ = 0, Visible = false });
         north.Components.Add(new MultiComponent
-            { TileId = 0x3E41, DeltaX = 0, DeltaY = -1, DeltaZ = 0, Visible = true });
+            { TileId = 0x3E41, DeltaX = 0, DeltaY = -1, DeltaZ = 0, Visible = false });
         north.RecalcBounds();
         registry.Register(north);
 
         var east = new MultiDef { Id = 0x4001, Name = "test ship" };
         east.Components.Add(new MultiComponent
-            { TileId = 0x3E50, DeltaX = 0, DeltaY = 0, DeltaZ = 0, Visible = true });
+            { TileId = 0x3E50, DeltaX = 0, DeltaY = 0, DeltaZ = 0, Visible = false });
         east.Components.Add(new MultiComponent
-            { TileId = 0x3E51, DeltaX = 1, DeltaY = 0, DeltaZ = 0, Visible = true });
+            { TileId = 0x3E51, DeltaX = 1, DeltaY = 0, DeltaZ = 0, Visible = false });
         east.RecalcBounds();
         registry.Register(east);
         return registry;
@@ -85,9 +85,9 @@ public sealed class HousingShipIntegrityTests
         var registry = new MultiRegistry();
         var def = new MultiDef { Id = 0, Name = "small ship" };
         def.Components.Add(new MultiComponent
-            { TileId = 0x3E40, DeltaX = 0, DeltaY = 0, DeltaZ = 0, Visible = true });
+            { TileId = 0x3E40, DeltaX = 0, DeltaY = 0, DeltaZ = 0, Visible = false });
         def.Components.Add(new MultiComponent
-            { TileId = 0x3E41, DeltaX = 0, DeltaY = -1, DeltaZ = 0, Visible = true });
+            { TileId = 0x3E41, DeltaX = 0, DeltaY = -1, DeltaZ = 0, Visible = false });
         def.RecalcBounds();
         registry.Register(def);
         return registry;

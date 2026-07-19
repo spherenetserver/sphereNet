@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SphereNet.Core.Types;
 using SphereNet.Game.Housing;
 using SphereNet.Game.Objects.Characters;
@@ -287,7 +287,7 @@ public class CustomHouseDesignTests
         var world = CreateWorld();
         var registry = new MultiRegistry();
         var def = new MultiDef { Id = 0x1404, Name = "foundation 7x7" };
-        def.Components.Add(new MultiComponent { TileId = 0x0064, DeltaX = -3, DeltaY = -3, DeltaZ = 0, Visible = true });
+        def.Components.Add(new MultiComponent { TileId = 0x0064, DeltaX = -3, DeltaY = -3, DeltaZ = 0, Visible = false });
         def.RecalcBounds();
         registry.Register(def);
         var housing = new HousingEngine(world, registry);

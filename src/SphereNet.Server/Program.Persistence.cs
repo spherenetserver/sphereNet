@@ -245,6 +245,7 @@ public static partial class Program
             _shipEngine?.SerializeAllToTags();
             _guildManager?.SerializeAllToTags(_world);
             _spellEngine.RevertAllForSave();
+            double prepSecs = sw.Elapsed.TotalSeconds;
             string basePath = AppDomain.CurrentDomain.BaseDirectory;
             string sp = ResolvePath(basePath, _config.WorldSaveDir);
 
@@ -291,15 +292,31 @@ public static partial class Program
                 return; // completion handled by CompleteBackgroundSave
             }
 
+            // Synchronous mode is a first-class choice — keep it as fast as it
+            // can be: parallel shard writes stay ON here (they shorten the one
+            // stall the operator opted into), and a prior background save must
+            // not leave its sequential-writes flag sticky on this path.
+            _saver.SequentialShardWrites = false;
+            double worldSecs;
             try
             {
+                long t0 = sw.ElapsedMilliseconds;
                 _saver.Save(_world, sp);
+                worldSecs = (sw.ElapsedMilliseconds - t0) / 1000.0;
             }
             finally
             {
                 _spellEngine.ReapplyAllAfterSave();
             }
+            double preAccounts = sw.Elapsed.TotalSeconds;
             SaveAccountsToDisk();
+            // Phase breakdown so a slow sync save names its own cost
+            // (prep = housing/ship/guild tag serialize + spell revert;
+            // tail = spell reapply + account file + GC pressure).
+            _log.LogInformation(
+                "Save phases: prep={Prep:F2}s world={World:F2}s tail={Tail:F2}s accounts={Acct:F2}s",
+                prepSecs, worldSecs, preAccounts - prepSecs - worldSecs,
+                sw.Elapsed.TotalSeconds - preAccounts);
             FinishSaveSuccess(sw);
         }
         catch (Exception ex)

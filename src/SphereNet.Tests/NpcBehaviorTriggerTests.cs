@@ -138,6 +138,24 @@ public class NpcBehaviorTriggerTests
     }
 
     [Fact]
+    public void GoldGivenToNonBanker_IsRefusedOutright()
+    {
+        var world = CreateWorld();
+        var (client, giver, npc, item) = Setup(world);
+        npc.NpcBrain = NpcBrainType.Vendor; // wants gold for pickup — but a
+        item.ItemType = ItemType.Gold;      // HANDED coin is refused (Source-X)
+        item.BaseId = 0x0EED;
+        item.Amount = 100;
+        Character.NpcWantThisItem = (_, _) => 100; // even a max want changes nothing
+
+        client.SetEngines(triggerDispatcher: new TriggerDispatcher());
+        client.HandleItemDrop(item.Uid.Value, 0, 0, 0, npc.Uid.Value);
+
+        Assert.Contains(giver.Backpack!.Contents, i => i.Uid == item.Uid); // bounced
+        Assert.DoesNotContain(npc.Backpack!.Contents, i => i.Uid == item.Uid);
+    }
+
+    [Fact]
     public void GoldGivenToBanker_LandsInTheGiversBankBox()
     {
         var world = CreateWorld();

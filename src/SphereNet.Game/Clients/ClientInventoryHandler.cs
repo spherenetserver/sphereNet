@@ -328,9 +328,35 @@ public sealed class ClientInventoryHandler
         // Own pet / hireling.
         if (npc.HasOwner(_character!.Uid))
         {
-            if (item.ItemType is ItemType.Food or ItemType.Fruit or ItemType.Grain or ItemType.FoodRaw)
+            // Owned VENDOR: goods go into the vendor stock box (Source-X
+            // GetBank(LAYER_VENDOR_STOCK)); gold reached the hire-pay path
+            // earlier in the drop flow.
+            if (npc.NpcBrain == NpcBrainType.Vendor && !isGold)
             {
-                // The pet eats the meal on the spot (Source-X Use_Eat).
+                var stock = npc.GetEquippedItem(Layer.VendorStock);
+                if (stock == null)
+                {
+                    stock = _world.CreateItem();
+                    stock.BaseId = 0x0E75;
+                    stock.ItemType = ItemType.Container;
+                    stock.Name = "Vendor Stock";
+                    npc.Equip(stock, Layer.VendorStock);
+                }
+                if (stock.TryAddItem(item))
+                {
+                    SysMessage("Your vendor adds the item to its stock.");
+                    _netState.Send(new PacketDropAck());
+                    return;
+                }
+            }
+
+            // The pet eats an offered meal on the spot — Food_CanEat honors
+            // the chardef FOODTYPE diet (a carnivore refuses an apple).
+            bool edible = Character.NpcCanEatFood?.Invoke(npc, item)
+                ?? item.ItemType is ItemType.Food or ItemType.Fruit
+                    or ItemType.Grain or ItemType.FoodRaw;
+            if (edible)
+            {
                 npc.NpcFood = (ushort)Math.Min(60, npc.NpcFood + 10 * Math.Max(1, (int)item.Amount));
                 _world.RemoveItem(item);
                 item.Delete();
@@ -365,6 +391,17 @@ public sealed class ClientInventoryHandler
             SysMessage($"{item.Amount} gold has been deposited into your bank box.");
             if (!bank.TryAddItem(item))
                 PlaceItemInPack(_character, item);
+            _netState.Send(new PacketDropAck());
+            return;
+        }
+
+        // Source-X: gold handed to any NON-banker NPC (after the train/hire
+        // and pet paths above) is refused outright — a vendor never pockets
+        // it, even though it "wants" gold for the ground-pickup score.
+        if (isGold)
+        {
+            SysMessage("It does not seem to want your gold.");
+            PlaceItemInPack(_character, item);
             _netState.Send(new PacketDropAck());
             return;
         }

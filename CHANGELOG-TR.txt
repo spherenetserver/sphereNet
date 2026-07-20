@@ -3,6 +3,43 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-20] - NPC AI dalga 2: aclik sayaclari, FOODTYPE diyeti, altin reddi, tarama korumalari
+----------------------------------------
+
+FIX - NPC acligi tek gercege bagli: yeni spawn AI aclik sayacini (NpcFood)
+        tok baslatiyor - eskiden sifirdan basliyordu, MAXFOOD ise ayri Food
+        statini dolduruyordu; her yeni NPC kendini aclıktan olur saniyordu
+        (tum yiyeceklere want 100, surekli yerde yemek avi).
+
+NEW - FOODTYPE gercek bir diyet (Source-X Food_CanEat): cantadan yeme, yerde
+        yiyecek arama, aclik want puani ve pet besleme chardef FOODTYPE
+        listesine bakiyor - etcil artik meyve yemiyor. Diyet tanimsizsa
+        genel yenilebilir siniflar gecerli.
+
+FIX - Banker olmayan NPC'ye verilen altin dogrudan reddediliyor (Source-X
+        NPC_OnItemGive) - vendor yerdeki parayi ister ama eline tutusturulani
+        cebine atmaz. SAHIPLI vendor pet artik verilen esyayi vendor stok
+        kutusuna koyuyor (LAYER_VENDOR_STOCK karsiligi).
+
+FIX - Esya/ceset tarama korumalari: istek taramasi artik gorus hatti (LOS)
+        ve HER brain icin CAN_C_USEHANDS istiyor (humanoid muafiyeti
+        kaldirildi), gorus menzili bazli tarama araligi kullaniyor; ceset
+        alma/yagma hem korumali hem SAFE bolgelerde engelli (TryLoot ayni
+        korumalari aldi).
+
+FIX - DESIRES ham istek miktarini koruyor (DESIRES=999 t_corpse,
+        @NPCLookAtItem ARGN2 icin 999 kalir - 0-100 kirpmasi kaldirildi);
+        r_* bolge alias'lari sahte itemdef olarak hash'lenmek yerine bolge
+        tercihi olarak tipleniyor (~167 Scripts-X satiri).
+
+FIX - Healer hizasi uc yonlu: iyi healer (pozitif karma) yalnizca masumlara,
+        kotu healer yalnizca suclu/katillere, NOTR healer herkese hizmet
+        ediyor - sifir karmali healer artik iyi gibi davranmiyor.
+
+FIX - Oz-savunma testleri OnNpcAttack hook'u ile COZULMUS swing dogruluyor;
+        NPC hicbir sey yapmasa da gecen bitisik-mesafe kontrolu kaldirildi
+        (8. tur denetim test elestirisi).
+
 [2026-07-20] - NPC AI parity dalgasi: brain alias, esya verme, DESIRES, oz-savunma
 ----------------------------------------
 

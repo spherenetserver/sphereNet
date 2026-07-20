@@ -244,6 +244,12 @@ public sealed class SpawnComponent
                 ch.Food = charDef.MaxFood;
                 ch.SetTag("MAXFOOD", charDef.MaxFood.ToString());
             }
+            // The AI hunger counter is NpcFood (0-60), a SEPARATE meter from
+            // the Food stat above — seed it fed like pet adoption does. A
+            // fresh spawn used to start at 0 and read as starving: want 100
+            // on every edible and a constant ground-food hunt.
+            if (ch.NpcFood == 0)
+                ch.NpcFood = 50;
 
             if (charDef.DamPhysical != 0) ch.DamPhysical = charDef.DamPhysical;
             else if (charDef.DamFire != 0 || charDef.DamCold != 0 || charDef.DamPoison != 0 || charDef.DamEnergy != 0)

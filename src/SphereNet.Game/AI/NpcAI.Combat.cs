@@ -157,6 +157,12 @@ public sealed partial class NpcAI
     {
         if (npc.Backpack == null) return false;
         if (npc.Backpack.Contents.Count >= Item.MaxContainerItems) return false;
+        // Source-X looting guards: hands required, and never inside guarded
+        // or safe territory. (Summons leave no corpse in this engine, so the
+        // reference's summon-corpse exclusion has nothing to act on.)
+        var lootCan = DefinitionLoader.GetCharDef(npc.CharDefIndex)?.Can ?? CanFlags.None;
+        if ((lootCan & CanFlags.C_UseHands) == 0) return false;
+        if (IsProtectedGround(npc.Position)) return false;
 
         Item? corpse = null;
         int best = int.MaxValue;

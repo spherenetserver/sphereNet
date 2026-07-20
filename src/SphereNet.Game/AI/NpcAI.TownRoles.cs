@@ -195,11 +195,15 @@ public sealed partial class NpcAI
         foreach (var ch in _world.GetCharsInRange(npc.Position, healerRange))
         {
             if (ch == npc || !ch.IsDead || !ch.IsPlayer) continue;
-            // Source-X healer alignment: a good healer serves the innocent;
-            // an EVIL healer (negative karma) serves criminals and murderers
-            // instead of turning them away.
+            // Source-X healer alignment (NPC_LookAtCharHealer / Noto flags),
+            // three-way: a GOOD healer (positive karma) serves only the
+            // innocent, an EVIL healer (negative karma) serves only
+            // criminals/murderers, and a NEUTRAL healer (zero karma) serves
+            // everyone. The old binary Karma<0 test made neutral healers
+            // behave as good ones.
             bool wicked = ch.IsCriminal || ch.IsMurderer;
-            if (npc.Karma < 0 ? !wicked : wicked) continue;
+            if (npc.Karma > 0 && wicked) continue;
+            if (npc.Karma < 0 && !wicked) continue;
             if (!_world.CanSeeLOS(npc.Position, ch.Position)) continue;
 
             if (!ch.IsInWarMode)
@@ -351,6 +355,54 @@ public sealed partial class NpcAI
             WanderHome(npc);
     }
 
+    /// <summary>Source-X Food_CanEat: when the chardef declares a FOODTYPE
+    /// diet, only matching items are edible for this creature; without a
+    /// declared diet the generic edible classes qualify. Tokens are itemdefs
+    /// or t_* typedefs (optionally "qty name"); when NO token resolves (defs
+    /// not loaded — test environments) the generic classes are the fallback,
+    /// but a resolvable diet that matches nothing means "not my food".</summary>
+    public bool NpcCanEat(Character npc, Item item)
+    {
+        bool edibleClass = item.ItemType is ItemType.Food or ItemType.Fruit
+            or ItemType.Grain or ItemType.FoodRaw;
+
+        var def = Definitions.DefinitionLoader.GetCharDef(npc.CharDefIndex);
+        string? diet = def != null && !string.IsNullOrWhiteSpace(def.FoodTypeRaw)
+            ? def.FoodTypeRaw
+            : (npc.TryGetTag("FOODTYPE", out string? tagDiet) ? tagDiet : null);
+        if (string.IsNullOrWhiteSpace(diet))
+            return edibleClass;
+
+        var resources = Definitions.DefinitionLoader.StaticResources;
+        int itemDefIndex = resources != null
+            ? Definitions.ItemDefHelper.ResolveInstanceDefIndex(item, resources)
+            : 0;
+        var itemDef = Definitions.DefinitionLoader.GetItemDef(itemDefIndex)
+            ?? Definitions.DefinitionLoader.GetItemDef(item.BaseId);
+
+        bool anyResolved = false;
+        foreach (var part in diet.Split(',',
+            StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            var tokens = part.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (tokens.Length == 0) continue;
+            string name = tokens.Length >= 2 && int.TryParse(tokens[0], out _)
+                ? tokens[1] : tokens[0];
+            var rid = resources?.ResolveDefName(name) ?? ResourceId.Invalid;
+            if (!rid.IsValid)
+                continue;
+            anyResolved = true;
+            if (rid.Type == ResType.ItemDef &&
+                (rid.Index == itemDefIndex || rid.Index == item.BaseId ||
+                 Definitions.DefinitionLoader.GetItemDef(rid.Index)?.DispIndex == item.BaseId))
+                return true;
+            if (rid.Type == ResType.TypeDef && !string.IsNullOrWhiteSpace(itemDef?.TypeRaw) &&
+                resources!.ResolveDefName(itemDef.TypeRaw.Trim()) == rid)
+                return true;
+        }
+        return !anyResolved && edibleClass;
+    }
+
     /// <summary>Hungry NPC feeds: consume a food item from its pack, hunt down
     /// edibles lying on the ground (Source-X NPC_Act_Food world search — the
     /// hungrier, the farther it will walk for a meal), otherwise (animals)
@@ -364,7 +416,7 @@ public sealed partial class NpcAI
         {
             foreach (var it in pack.Contents)
             {
-                if (it.ItemType is ItemType.Food or ItemType.Fruit or ItemType.Grain or ItemType.FoodRaw)
+                if (NpcCanEat(npc, it))
                 {
                     if (it.Amount > 1) it.Amount--;
                     else _world.RemoveItem(it);
@@ -386,8 +438,7 @@ public sealed partial class NpcAI
         foreach (var it in _world.GetItemsInRange(npc.Position, searchRange))
         {
             if (it.IsDeleted || !it.IsOnGround) continue;
-            if (it.ItemType is not (ItemType.Food or ItemType.Fruit or ItemType.Grain or ItemType.FoodRaw))
-                continue;
+            if (!NpcCanEat(npc, it)) continue;
             if (!_world.CanSeeLOS(npc.Position, it.Position)) continue;
             int d = npc.Position.GetDistanceTo(it.Position);
             if (d < best) { best = d; meal = it; }
@@ -459,10 +510,15 @@ public sealed partial class NpcAI
         // @NPCLookAtItem/@NPCSeeWantItem.
         if (_rand.Next(8) != 0) return;
 
-        foreach (var item in _world.GetItemsInRange(npc.Position, 3))
+        // Sight-driven look range (Source-X NPC_LookAround), clamped for the
+        // per-tick item sweep cost.
+        int lookRange = Math.Clamp(GetNpcSight(npc), 3, 8);
+        foreach (var item in _world.GetItemsInRange(npc.Position, lookRange))
         {
             if (item.IsDeleted || item.ContainedIn.IsValid) continue;
             if (IsLookAtItemExcluded(item)) continue;
+            // No coveting through walls (Source-X CanSeeLOS in NPC_LookAtItem).
+            if (!_world.CanSeeLOS(npc.Position, item.Position)) continue;
             int dist = npc.Position.GetDistanceTo(item.Position);
             int want = GetWantScore(npc, item);
             var decision = OnNpcLookAtItem?.Invoke(npc, item, dist, want)
@@ -475,15 +531,14 @@ public sealed partial class NpcAI
             if (OnNpcSeeWantItem?.Invoke(npc, item) == true)
                 return;
 
-            // Source-X pickup guards: scavenging needs usable hands, and
-            // corpse looting never happens in guarded territory.
+            // Source-X pickup guards: scavenging requires CAN_C_USEHANDS on
+            // EVERY brain (no humanoid exemption), and corpse looting never
+            // happens in guarded or safe territory.
             var can = Definitions.DefinitionLoader.GetCharDef(npc.CharDefIndex)?.Can
                 ?? SphereNet.Core.Enums.CanFlags.None;
-            if ((can & SphereNet.Core.Enums.CanFlags.C_UseHands) == 0 &&
-                !IsHumanoidBrain(npc.NpcBrain))
+            if ((can & SphereNet.Core.Enums.CanFlags.C_UseHands) == 0)
                 continue;
-            if (item.ItemType == ItemType.Corpse &&
-                (_world.FindRegion(npc.Position)?.IsGuarded ?? false))
+            if (item.ItemType == ItemType.Corpse && IsProtectedGround(npc.Position))
                 continue;
 
             if (dist > 1)
@@ -506,6 +561,15 @@ public sealed partial class NpcAI
             if (pack.TryAddItem(item))
                 return;
         }
+    }
+
+    /// <summary>Guarded or SAFE region — no scavenging/looting here
+    /// (Source-X region checks in the NPC item passes).</summary>
+    private bool IsProtectedGround(Point3D pos)
+    {
+        var region = _world.FindRegion(pos);
+        return region != null &&
+               (region.IsGuarded || region.IsFlag(RegionFlag.Safe));
     }
 
     /// <summary>Source-X NPC_WantThisItem (CCharNPCStatus.cpp:628): a
@@ -542,9 +606,10 @@ public sealed partial class NpcAI
             }
         }
 
-        // Hunger: an edible reads 100-foodPercent (Source-X Food_CanEat +
+        // Hunger: an edible-FOR-THIS-CREATURE item reads 100-foodPercent
+        // (Source-X Food_CanEat honors the chardef FOODTYPE diet +
         // Food_GetLevelPercent; NpcFood caps at 60 = fully fed).
-        if (item.ItemType is ItemType.Food or ItemType.Fruit or ItemType.Grain or ItemType.FoodRaw)
+        if (NpcCanEat(npc, item))
         {
             int foodPercent = Math.Min(100, npc.NpcFood * 100 / 60);
             if (foodPercent < 100)

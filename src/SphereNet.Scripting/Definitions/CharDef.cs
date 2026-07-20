@@ -393,13 +393,20 @@ public sealed class CharDef : BaseDef
             {
                 qty = tailQty;
             }
+            // r_* entries are REGION preferences (Source-X keeps region
+            // resources in m_Desires for homing) — type them as such so the
+            // item want-matching never hashes them as fake itemdefs.
             ResType type = name.StartsWith("t_", StringComparison.OrdinalIgnoreCase)
                 ? ResType.TypeDef
-                : ResType.ItemDef;
+                : name.StartsWith("r_", StringComparison.OrdinalIgnoreCase)
+                    ? ResType.RegionType
+                    : ResType.ItemDef;
             var rid = ResourceId.FromString(name, type);
             if (!rid.IsValid) continue;
             Desires.Add(rid);
-            DesireQtys.Add(Math.Clamp(qty, 0, 100));
+            // Source-X preserves the raw qty (DESIRES=999 t_corpse stays 999
+            // for @NPCLookAtItem ARGN2); anything >= 100 is a certain want.
+            DesireQtys.Add(Math.Max(0, qty));
         }
     }
 

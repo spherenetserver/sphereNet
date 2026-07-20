@@ -47,13 +47,29 @@ public class NpcAiRound7Tests
 
         // "qty defname", "defname qty" and bare forms all parse; the qty is
         // the want score (bare = 1). Numeric ids avoid the def-name table.
-        def.LoadFromKey("DESIRES", "5 0EED, 0F3F 20, 0DF8");
+        def.LoadFromKey("DESIRES", "5 0EED, 0F3F 20, 0DF8, 999 0E76");
 
-        Assert.Equal(3, def.Desires.Count);
-        Assert.Equal(3, def.DesireQtys.Count);
+        Assert.Equal(4, def.Desires.Count);
+        Assert.Equal(4, def.DesireQtys.Count);
         Assert.Equal(5, def.DesireQtys[0]);
         Assert.Equal(20, def.DesireQtys[1]);
-        Assert.Equal(1, def.DesireQtys[2]); // bare entry defaults to 1
+        Assert.Equal(1, def.DesireQtys[2]);   // bare entry defaults to 1
+        Assert.Equal(999, def.DesireQtys[3]); // Source-X keeps the raw qty
+                                              // (Scripts-X DESIRES=999 t_corpse)
+    }
+
+    [Fact]
+    public void DesireList_TypesRegionAliases_AsRegions()
+    {
+        var def = new CharDef(new ResourceId(ResType.CharDef, 0x22));
+
+        // Scripts-X uses region preferences inside DESIRES (r_caves,
+        // r_ruins, ~167 lines) — they must never hash as fake itemdefs.
+        def.LoadFromKey("DESIRES", "r_caves, 0EED");
+
+        Assert.Equal(2, def.Desires.Count);
+        Assert.Equal(ResType.RegionType, def.Desires[0].Type);
+        Assert.Equal(ResType.ItemDef, def.Desires[1].Type);
     }
 
     [Fact]
@@ -65,6 +81,8 @@ public class NpcAiRound7Tests
         vendor.BodyId = 0x0190;
         vendor.Str = 50; vendor.Dex = 50; vendor.Int = 50;
         vendor.MaxHits = 50; vendor.Hits = 50;
+        vendor.MaxStam = 50; vendor.Stam = 50; // spawn seeds Stam=Dex; a swing needs stamina
+        vendor.Direction = Direction.East;     // facing the attacker (swing prep gate)
         world.PlaceCharacter(vendor, new Point3D(1000, 1000, 0, 0));
 
         var attacker = world.CreateCharacter();
@@ -77,17 +95,18 @@ public class NpcAiRound7Tests
         vendor.RecordAttack(attacker.Uid, 5);
 
         var ai = new NpcAI(world, new SphereConfig());
+        var swungAt = new List<Character>();
+        ai.OnNpcAttack = (_, target, _, _, _) => swungAt.Add(target);
         var actVendor = typeof(NpcAI).GetMethod("ActVendor",
             BindingFlags.Instance | BindingFlags.NonPublic)!;
         actVendor.Invoke(ai, [vendor]);
 
-        // The vendor engaged (kept its target and committed to a swing or a
-        // step toward the attacker) instead of ignoring the fight entirely.
-        Assert.True(vendor.FightTarget == attacker.Uid,
-            "the vendor dropped its assigned fight");
-        Assert.True(vendor.HasPendingHit ||
-                    vendor.Position.GetDistanceTo(attacker.Position) <= 1,
-            "the vendor neither swung nor closed in");
+        // DISCRIMINATING observable (audit round 8): the attacker starts
+        // adjacent, so only a RESOLVED SWING (hit or miss) proves the vendor
+        // actually fought back — a distance check passed even when the old
+        // code did nothing.
+        Assert.Equal(attacker.Uid, vendor.FightTarget);
+        Assert.Contains(attacker, swungAt);
     }
 
     [Fact]
@@ -99,6 +118,8 @@ public class NpcAiRound7Tests
         animal.BodyId = 0x00E1;
         animal.Str = 60; animal.Dex = 60; animal.Int = 10;
         animal.MaxHits = 60; animal.Hits = 60;
+        animal.MaxStam = 60; animal.Stam = 60; // a swing needs stamina
+        animal.Direction = Direction.East;     // facing the attacker (swing prep gate)
         world.PlaceCharacter(animal, new Point3D(1000, 1000, 0, 0));
 
         var attacker = world.CreateCharacter();
@@ -111,15 +132,79 @@ public class NpcAiRound7Tests
         animal.RecordAttack(attacker.Uid, 5);
 
         var ai = new NpcAI(world, new SphereConfig());
+        var swungAt = new List<Character>();
+        ai.OnNpcAttack = (_, target, _, _, _) => swungAt.Add(target);
         var actAnimal = typeof(NpcAI).GetMethod("ActAnimal",
             BindingFlags.Instance | BindingFlags.NonPublic)!;
         actAnimal.Invoke(ai, [animal]);
 
         // Old behavior: the war-mode attacker read as a "threat" and the
-        // animal backed away, never fighting its FightTarget.
+        // animal backed away, never fighting its FightTarget. Only a
+        // RESOLVED swing proves the fight-back (audit round 8: the
+        // adjacent-start distance check passed even with no action).
         Assert.Equal(attacker.Uid, animal.FightTarget);
-        Assert.True(animal.HasPendingHit ||
-                    animal.Position.GetDistanceTo(attacker.Position) <= 1,
-            "the animal fled instead of fighting its attacker");
+        Assert.Contains(attacker, swungAt);
+    }
+
+    [Fact]
+    public void FreshSpawn_NpcFood_SeededFed_SoWantIsCalm()
+    {
+        var world = CreateWorld();
+        var ai = new NpcAI(world, new SphereConfig());
+
+        var npc = world.CreateCharacter();
+        world.PlaceCharacter(npc, new Point3D(1000, 1000, 0, 0));
+
+        var bread = world.CreateItem();
+        bread.ItemType = ItemType.Food;
+        world.PlaceItem(bread, new Point3D(1001, 1000, 0, 0));
+
+        // Starving (the old fresh-spawn state): certain want.
+        npc.NpcFood = 0;
+        Assert.Equal(100, ai.GetWantScore(npc, bread));
+
+        // Fed (the new spawn seed, 50/60): hunger want drops to ~17.
+        npc.NpcFood = 50;
+        int fedWant = ai.GetWantScore(npc, bread);
+        Assert.InRange(fedWant, 1, 25);
+    }
+
+    [Fact]
+    public void Healer_Alignment_IsThreeWay()
+    {
+        var world = CreateWorld();
+        var ai = new NpcAI(world, new SphereConfig());
+        var actHealer = typeof(NpcAI).GetMethod("ActHealer",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        var healer = world.CreateCharacter();
+        healer.NpcBrain = NpcBrainType.Healer;
+        world.PlaceCharacter(healer, new Point3D(1000, 1000, 0, 0));
+
+        var ghost = world.CreateCharacter();
+        ghost.IsPlayer = true;
+        ghost.MakeCriminal();
+        ghost.Kill();
+        ghost.SetStatFlag(StatFlag.War); // manifesting ghost
+        world.PlaceCharacter(ghost, new Point3D(1001, 1000, 0, 0));
+
+        var served = new List<Character>();
+        ai.OnHealerAction = (_, target, _) => served.Add(target);
+
+        // GOOD healer refuses the criminal ghost.
+        healer.Karma = 5000;
+        actHealer.Invoke(ai, [healer]);
+        Assert.Empty(served);
+
+        // EVIL healer serves it.
+        healer.Karma = -5000;
+        actHealer.Invoke(ai, [healer]);
+        Assert.Contains(ghost, served);
+
+        // NEUTRAL healer (zero karma) serves everyone too.
+        served.Clear();
+        healer.Karma = 0;
+        actHealer.Invoke(ai, [healer]);
+        Assert.Contains(ghost, served);
     }
 }

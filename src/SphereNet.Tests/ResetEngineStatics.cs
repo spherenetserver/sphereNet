@@ -49,6 +49,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.ResolvePartyManager = null;
         SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRemover = null;
         SphereNet.Game.Objects.Characters.Character.NpcWantThisItem = null;
+        SphereNet.Game.Objects.Characters.Character.NpcCanEatFood = null;
         SphereNet.Game.Trade.VendorEngine.World = null;
         SphereNet.Game.Combat.CombatEngine.OnHitDamage = null;
         SphereNet.Game.Combat.CombatEngine.OnDirectDamage = null;

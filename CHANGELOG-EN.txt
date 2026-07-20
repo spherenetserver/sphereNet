@@ -4,6 +4,43 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-20] - NPC AI wave 2: food counters, FOODTYPE diet, gold refusal, scan guards
+----------------------------------------
+
+FIX - NPC hunger uses one truth: a fresh spawn seeds the AI hunger counter
+        (NpcFood) fed - it used to start at zero while MAXFOOD only filled
+        the separate Food stat, so every newborn NPC read as starving
+        (want 100 on all edibles, constant ground-food hunts).
+
+NEW - FOODTYPE is a real diet (Source-X Food_CanEat): pack feeding, ground
+        foraging, the hunger want score and pet feeding all check the
+        chardef FOODTYPE list - a carnivore no longer eats fruit. Undeclared
+        diets keep the generic edible classes.
+
+FIX - Gold handed to any NON-banker NPC is refused outright (Source-X
+        NPC_OnItemGive) - a vendor wants coins on the ground but never
+        pockets a handed pile. An OWNED vendor pet now routes goods into
+        its vendor-stock box (LAYER_VENDOR_STOCK equivalent).
+
+FIX - Item/corpse scan guards: the desire scan now needs line of sight and
+        CAN_C_USEHANDS on EVERY brain (the humanoid exemption is gone), uses
+        a sight-driven look range, and corpse pickup/looting is blocked in
+        both guarded AND safe regions (TryLoot got the same guards).
+
+FIX - DESIRES keeps the raw want qty (DESIRES=999 t_corpse stays 999 for
+        @NPCLookAtItem ARGN2 - the 0-100 clamp is gone) and r_* region
+        aliases are typed as region preferences instead of being hashed as
+        fake itemdefs (~167 Scripts-X lines affected).
+
+FIX - Healer alignment is three-way: good healers (positive karma) serve
+        only the innocent, evil healers only criminals/murderers, and a
+        NEUTRAL healer serves everyone - zero-karma healers no longer
+        behave as good ones.
+
+FIX - The self-defense tests now assert a RESOLVED swing via the OnNpcAttack
+        hook instead of an adjacent-start distance check that passed even
+        when the NPC did nothing (audit round 8 test critique).
+
 [2026-07-20] - NPC AI parity wave: brain alias, give-item semantics, DESIRES, self-defense
 ----------------------------------------
 

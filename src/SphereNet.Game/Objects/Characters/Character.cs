@@ -78,6 +78,11 @@ public partial class Character : ObjBase
     /// (0-100). Wired to NpcAI.GetWantScore; the give-item flow refuses
     /// unwanted gifts by default when this returns 0.</summary>
     public static Func<Character, Item, int>? NpcWantThisItem;
+
+    /// <summary>Source-X Food_CanEat: can this creature eat the item under
+    /// its chardef FOODTYPE diet? Wired to NpcAI.NpcCanEat; unwired (tests)
+    /// falls back to the generic edible item classes.</summary>
+    public static Func<Character, Item, bool>? NpcCanEatFood;
     // Static delegate for account resolution from character UID (set in Program.cs)
     public static Func<Serial, Account?>? ResolveAccountForChar;
     // Static delegate for character lookup by UID — used for ACCOUNT.CHAR.N.NAME

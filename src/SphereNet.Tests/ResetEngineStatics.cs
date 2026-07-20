@@ -143,6 +143,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
             SphereNet.Core.Enums.OptionFlags.FileCommands | SphereNet.Core.Enums.OptionFlags.Buffs;
         SphereNet.Network.Packets.Outgoing.PacketCharList.AosTooltipsEnabled = true;
         SphereNet.Game.Components.SpawnComponent.OnSpawnTrigger = null;
+        SphereNet.Game.Components.SpawnComponent.OnNpcScriptInit = null;
         SphereNet.Game.Death.DeathEngine.EnableDeathShroud = true;
         SphereNet.Game.Skills.SkillEngine.OnSkillGainCheck = null;
         SphereNet.Game.Skills.SkillEngine.OnSkillDecrease = null;

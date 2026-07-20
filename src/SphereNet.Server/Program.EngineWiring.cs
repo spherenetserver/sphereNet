@@ -1327,6 +1327,23 @@ public static partial class Program
                 (npc, wantedItem) => _npcAI.GetWantScore(npc, wantedItem);
             SphereNet.Game.Objects.Characters.Character.NpcCanEatFood =
                 (npc, foodItem) => _npcAI.NpcCanEat(npc, foodItem);
+            // Gem-spawned NPCs run the same chardef script init as GM .add
+            // (Source-X NPC_LoadScript): @Create, @CreateLoot, then
+            // @NPCRestock — the pack's monster gear and backpack loot live in
+            // those bodies, so without this every spawned monster dropped
+            // nothing.
+            SphereNet.Game.Components.SpawnComponent.OnNpcScriptInit = npc =>
+            {
+                _triggerDispatcher.FireCharTrigger(npc,
+                    SphereNet.Core.Enums.CharTrigger.Create,
+                    new SphereNet.Game.Scripting.TriggerArgs { CharSrc = npc });
+                _triggerDispatcher.FireCharTrigger(npc,
+                    SphereNet.Core.Enums.CharTrigger.CreateLoot,
+                    new SphereNet.Game.Scripting.TriggerArgs { CharSrc = npc });
+                _triggerDispatcher.FireCharTrigger(npc,
+                    SphereNet.Core.Enums.CharTrigger.NPCRestock,
+                    new SphereNet.Game.Scripting.TriggerArgs { CharSrc = npc });
+            };
             _spellEngine.OnCasterFacingChanged = caster =>
             {
                 // Source-X UpdateMove(GetTopPoint()) — broadcast new facing only.

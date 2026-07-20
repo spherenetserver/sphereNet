@@ -135,6 +135,64 @@ public class NpcRestockLootTests
     }
 
     [Fact]
+    public void GemSpawnedNpc_RunsRestockLoot_ThroughTheScriptInitHook()
+    {
+        // The missing link of the field report ("npclerden drop cikmiyor"):
+        // the ITEM-verb machinery and the dispatcher chain worked, and the
+        // GM .add path fired @NPCRestock — but SpawnComponent (the spawn
+        // gems that populate the world) never ran the chardef script init,
+        // so every gem-spawned monster had an empty pack.
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_spawnloot_{Guid.NewGuid():N}.scp");
+        File.WriteAllText(tmp, """
+            [ITEMDEF 0eed]
+            DEFNAME=i_spl_coin
+            NAME=spl coin
+
+            [CHARDEF 012]
+            DEFNAME=c_spl_mob
+            NAME=spl mob
+
+            ON=@NPCRestock
+            ITEM=i_spl_coin,25
+            """);
+        try
+        {
+            var stack = ScriptTestBootstrap.CreateRuntimeStack();
+            stack.Resources.LoadResourceFile(tmp);
+            ScriptTestBootstrap.LoadDefinitions(stack.Resources);
+
+            var world = CreateWorld();
+            SphereNet.Game.Objects.Items.Item.ResolveWorld = () => world;
+            // The host wiring: spawn init = @Create + @NPCRestock through
+            // the dispatcher (Source-X NPC_LoadScript sequence).
+            SphereNet.Game.Components.SpawnComponent.OnNpcScriptInit = npc =>
+            {
+                stack.Dispatcher.FireCharTrigger(npc, CharTrigger.Create,
+                    new SphereNet.Game.Scripting.TriggerArgs { CharSrc = npc });
+                stack.Dispatcher.FireCharTrigger(npc, CharTrigger.NPCRestock,
+                    new SphereNet.Game.Scripting.TriggerArgs { CharSrc = npc });
+            };
+
+            var gem = world.CreateItem();
+            world.PlaceItem(gem, new SphereNet.Core.Types.Point3D(100, 100, 0, 0));
+            var spawn = new SphereNet.Game.Components.SpawnComponent(gem, world) { MaxCount = 1 };
+            var npc = spawn.SpawnSpecific(0x12);
+
+            Assert.NotNull(npc);
+            var pack = npc!.Backpack;
+            Assert.NotNull(pack);
+            var loot = pack!.Contents.FirstOrDefault(i => i.BaseId == 0x0eed);
+            Assert.NotNull(loot);
+            Assert.Equal(25, loot!.Amount);
+        }
+        finally
+        {
+            SphereNet.Game.Components.SpawnComponent.OnNpcScriptInit = null;
+            try { File.Delete(tmp); } catch { }
+        }
+    }
+
+    [Fact]
     public void NpcRestockTriggerBody_FillsBackpackThroughDispatcher()
     {
         // The live pack declares monster loot inside ON=@NPCRestock chardef

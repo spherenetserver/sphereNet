@@ -3,6 +3,19 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-20] - Gem spawn NPC'leri chardef loot scriptlerini calistiriyor (drop fixi)
+----------------------------------------
+
+FIX - Spawn gemleri artik yarattiklari her NPC icin chardef SCRIPT init'ini
+        calistiriyor (@Create, @CreateLoot, ardindan @NPCRestock - Source-X
+        NPC_LoadScript sirasi), GM .add yoluyla ayni. Canli pack monster
+        ekipmanini (ITEMNEWBIE) ve canta lootunu (ITEM=) ON=@NPCRestock
+        govdelerinde tanimliyor; spawn yolu yalnizca parse edilmis K/V
+        statlari uyguladigindan gem'den dogan her yaratigin cantasi bos
+        kaliyor ve hicbir sey dusurmuyordu - yalniz .add ile yaratilan
+        NPC'lerde loot vardi. Olum hattinin kendisi zaten dogruydu
+        (newbie olmayan canta icerigi cesede aktariliyor).
+
 [2026-07-20] - Z-cozucu kuyrugu: .FIX, .GO, drift teshisi, uctan uca 0x20 testi
 ----------------------------------------
 

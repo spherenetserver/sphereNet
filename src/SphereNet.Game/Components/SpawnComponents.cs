@@ -42,6 +42,12 @@ public sealed class SpawnComponent
     /// Fires @PreSpawn, @Spawn, @AddObj, @DelObj on the spawn item.</summary>
     public static Func<Item, ItemTrigger, SpawnTriggerArgs, TriggerResult>? OnSpawnTrigger;
 
+    /// <summary>Chardef script init for a freshly spawned NPC — the host wires
+    /// this to fire @Create, @CreateLoot and @NPCRestock through the trigger
+    /// dispatcher (Source-X CreateNPC → NPC_LoadScript(fRestock=true)), the
+    /// same sequence the GM .add path runs. Unwired (tests) skips cleanly.</summary>
+    public static Action<Objects.Characters.Character>? OnNpcScriptInit;
+
     private const int MaxSpawnLimit = 250;
 
     public int CurrentCount => _spawnedUids.Count;
@@ -264,6 +270,15 @@ public sealed class SpawnComponent
 
             CharDefHelper.ApplyNpcDefinitionSkills(ch, charDef);
             CharDefHelper.ApplyNpcDefinitionTags(ch, charDef);
+
+            // Chardef SCRIPT init (Source-X CreateNPC → NPC_LoadScript(true):
+            // @Create, then @NPCRestock). The static field application above
+            // only covers parsed K/V lines — the pack's monster GEAR
+            // (ITEMNEWBIE) and backpack LOOT (ITEM=) live in ON=@NPCRestock
+            // script bodies, and only the GM .add path used to run them:
+            // every gem-spawned monster had an empty pack and dropped
+            // nothing. Wired by the host to the trigger dispatcher.
+            OnNpcScriptInit?.Invoke(ch);
         }
         else
         {

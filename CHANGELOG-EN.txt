@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-20] - Gem-spawned NPCs run their chardef loot scripts (drops fixed)
+----------------------------------------
+
+FIX - Spawn gems now run the chardef SCRIPT init for every NPC they create
+        (@Create, @CreateLoot, then @NPCRestock - the Source-X
+        NPC_LoadScript sequence), the same as the GM .add path. The live
+        pack declares monster gear (ITEMNEWBIE) and backpack loot (ITEM=)
+        inside ON=@NPCRestock bodies; the spawn path only applied the
+        parsed K/V stats, so every gem-spawned monster had an empty pack
+        and dropped nothing - only .add-created NPCs had loot. The death
+        pipeline itself was correct (non-newbie pack contents already
+        transfer to the corpse).
+
 [2026-07-20] - Z-resolver tail: .FIX, .GO, drift diagnostic, end-to-end 0x20 test
 ----------------------------------------
 

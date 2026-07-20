@@ -49,8 +49,14 @@ public sealed class TriggerArgs : ITriggerArgs
 
     public int GetArgc() => GetArgv().Count;
 
+    // Source-X CScriptTriggerArgs parses ARGV on COMMAS only (leading whitespace
+    // per field is skipped, but spaces inside a field are preserved) — so a
+    // multi-word field such as "0,0,960,400,Admin Panel" keeps ARGV[4] intact.
+    // Splitting on spaces too would fragment every multi-word argument. Empty
+    // fields are preserved (not dropped): "  ,,230,90,Pin" must keep ARGV[0..1]
+    // as empty so the remaining indices stay aligned (Source-X keeps empty args).
     private static string[] SplitArgString(string argString) =>
         string.IsNullOrWhiteSpace(argString)
             ? []
-            : argString.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            : argString.Split(',', StringSplitOptions.TrimEntries);
 }

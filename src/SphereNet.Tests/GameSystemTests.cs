@@ -867,7 +867,8 @@ public class GameSystemTests
         var loggerFactory = LoggerFactory.Create(_ => { });
         var interpreter = new ScriptInterpreter(new ExpressionParser(), loggerFactory.CreateLogger<ScriptInterpreter>());
         var target = new Character();
-        var args = new ExecTriggerArgs(null, 0, 0, "alpha beta");
+        // Source-X ARGV splits on commas only; "alpha,beta" indexes to two fields.
+        var args = new ExecTriggerArgs(null, 0, 0, "alpha,beta");
         var scope = new ScriptScope();
 
         var lines = ParseKeys(

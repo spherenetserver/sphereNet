@@ -20,10 +20,12 @@ public class RuntimePerformancePressureTests
     [Fact]
     public void TriggerArgs_ArgvCache_InvalidatesWhenArgStringChanges()
     {
+        // Source-X ARGV is comma-delimited: "200 alpha" is a single field.
         var args = new ExecTriggerArgs(null, argStr: "100,200 alpha");
 
-        Assert.Equal(3, args.GetArgc());
+        Assert.Equal(2, args.GetArgc());
         Assert.Equal("100", args.GetArgv()[0]);
+        Assert.Equal("200 alpha", args.GetArgv()[1]);
 
         args.ArgString = "new,value";
 
@@ -39,6 +41,7 @@ public class RuntimePerformancePressureTests
         var interpreter = new ScriptInterpreter(new ExpressionParser(), loggerFactory.CreateLogger<ScriptInterpreter>());
         var target = new Character();
         var scope = new ScriptScope();
+        // Comma-delimited ARGV (Source-X): "20 gate" is one field, so DARGV=2.
         var args = new ExecTriggerArgs(null, argStr: "10,20 gate");
         var lines = ParseKeys(
             "TAG.COUNT=<DARGV>",
@@ -53,7 +56,7 @@ public class RuntimePerformancePressureTests
         Assert.True(target.TryGetProperty("TAG.X", out string x));
         Assert.True(target.TryGetProperty("TAG.NEWCOUNT", out string newCount));
         Assert.True(target.TryGetProperty("TAG.NEWX", out string newX));
-        Assert.Equal("3", count);
+        Assert.Equal("2", count);
         Assert.Equal("10", x);
         Assert.Equal("2", newCount);
         Assert.Equal("new", newX);

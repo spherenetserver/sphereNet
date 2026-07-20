@@ -4,6 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-21] - Dialog FUNCTION calls in layouts; comma-only ARGV parsing
+----------------------------------------
+
+FIX - A DIALOG layout line whose command is not a built-in gump keyword is now
+        dispatched to the matching script [FUNCTION] and the gump controls it
+        emits (RESIZEPIC, DHTMLGUMP, BUTTON, ...) are injected into the dialog,
+        matching Source-X (CDialogDef::r_Verb runs the layout as a script with
+        the dialog as target). A helper such as a bordered-panel-with-title
+        function called from a dialog body now renders. RESIZE had been
+        hardcoded as a fake built-in keyword that shadowed the pack function and
+        misparsed its arguments, so the function never ran.
+
+FIX - ARGV/ARGC now split the argument string on COMMAS only (Source-X
+        CScriptTriggerArgs), instead of on spaces and commas. Spaces inside a
+        field are preserved, so a multi-word argument (e.g. a dialog panel
+        title passed as the last field) survives as one ARGV element instead of
+        being truncated at the first space. Empty comma fields are kept so the
+        remaining indices stay aligned (e.g. ",,230,90,Title" keeps width/height
+        /title on ARGV[2..4]).
+
 [2026-07-21] - systems/ pack audit: per-char SPEECH list, stone keywords, point terrain type
 ----------------------------------------
 

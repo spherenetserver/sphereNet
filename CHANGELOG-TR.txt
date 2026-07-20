@@ -3,6 +3,27 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-21] - Layout icinde FUNCTION cagrilari; virgul-bazli ARGV ayrimi
+----------------------------------------
+
+FIX - Komutu bir yerlesik gump keyword'u OLMAYAN bir DIALOG layout satiri artik
+        eslesen script [FUNCTION]'a yonlendiriliyor ve onun urettigi gump
+        kontrolleri (RESIZEPIC, DHTMLGUMP, BUTTON, ...) diyaloga ekleniyor;
+        Source-X ile ayni (CDialogDef::r_Verb layout'u diyalog hedefiyle bir
+        script gibi calistirir). Diyalog govdesinden cagrilan, kenarlikli-baslikli
+        -panel gibi bir yardimci fonksiyon artik ciziliyor. RESIZE, pack
+        fonksiyonunu golgeleyen ve argumanlarini yanlis parse eden sahte bir
+        yerlesik keyword olarak sabit kodlanmisti, bu yuzden fonksiyon hic
+        calismiyordu.
+
+FIX - ARGV/ARGC arguman dizesini artik yalniz VIRGULLE ayiriyor (Source-X
+        CScriptTriggerArgs), bosluk ve virgulle degil. Bir alan icindeki
+        bosluklar korunuyor, boylece cok kelimeli bir arguman (orn. son alan
+        olarak gecirilen bir diyalog panel basligi) ilk boslukta kesilmek yerine
+        tek bir ARGV elemani olarak kaliyor. Bos virgul alanlari korunuyor ki
+        kalan indeksler hizali kalsin (orn. ",,230,90,Baslik" genislik/yukseklik
+        /basligi ARGV[2..4]'te tutar).
+
 [2026-07-21] - systems/ pack denetimi: char-basi SPEECH listesi, tas keyword'leri, nokta zemin tipi
 ----------------------------------------
 

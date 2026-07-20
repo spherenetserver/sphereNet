@@ -76,6 +76,13 @@ public sealed class GuildDef
     private readonly HashSet<Serial> _ships = [];
 
     public Serial StoneUid => _stoneUid;
+
+    /// <summary>True when this record belongs to a TOWN stone. Source-X keeps
+    /// MEMORY_GUILD and MEMORY_TOWN independent: a character may be a guild
+    /// member AND a town citizen at once, so membership checks must never mix
+    /// the two pools.</summary>
+    public bool IsTownStone { get; set; }
+
     public string Name { get => _name; set => _name = value; }
     public string Abbreviation { get => _abbreviation; set => _abbreviation = value; }
     public string Charter { get => _charter; set => _charter = value; }
@@ -371,13 +378,23 @@ public sealed class GuildManager
     public GuildDef? FindGuildRecordFor(Serial charUid) =>
         _guilds.Values.FirstOrDefault(g => g.FindMember(charUid) != null);
 
+    /// <summary>Membership lookup within ONE pool: town stones or guild
+    /// stones. A guild member may still become a town citizen and vice versa
+    /// (Source-X MEMORY_GUILD / MEMORY_TOWN are independent).</summary>
+    public GuildDef? FindGuildRecordFor(Serial charUid, bool townStones) =>
+        _guilds.Values.FirstOrDefault(g =>
+            g.IsTownStone == townStones && g.FindMember(charUid) != null);
+
     /// <summary>The bracketed guild abbreviation a character shows after their
     /// overhead name (" [ABC]"), or empty when they are in no guild, the guild has
     /// no abbreviation, or the member has hidden it (TOGGLEABBREVIATION). Relationship
     /// (enemy/ally) member records are excluded — only real members display it.</summary>
     public string GetAbbrevSuffix(Serial charUid)
     {
-        var guild = FindGuildFor(charUid);
+        // Overhead abbreviation is a GUILD surface — town citizenship must
+        // not leak a town tag onto the name.
+        var guild = _guilds.Values.FirstOrDefault(g =>
+            !g.IsTownStone && g.IsMember(charUid));
         if (guild == null || string.IsNullOrWhiteSpace(guild.Abbreviation))
             return "";
         var member = guild.FindMember(charUid);
@@ -386,11 +403,12 @@ public sealed class GuildManager
         return $" [{guild.Abbreviation}]";
     }
 
-    public GuildDef CreateGuild(Serial stoneUid, string name, Serial masterUid)
+    public GuildDef CreateGuild(Serial stoneUid, string name, Serial masterUid,
+        bool isTownStone = false)
     {
         if (_guilds.TryGetValue(stoneUid, out var existing))
             return existing;
-        var guild = new GuildDef(stoneUid) { Name = name };
+        var guild = new GuildDef(stoneUid) { Name = name, IsTownStone = isTownStone };
         var master = guild.AddRecruit(masterUid);
         master.Priv = GuildPriv.Master;
         _guilds[stoneUid] = guild;
@@ -458,6 +476,10 @@ public sealed class GuildManager
 
             stone.SetTag("GUILD.NAME", guild.Name);
             stone.SetTag("GUILD.ABBREV", guild.Abbreviation);
+            if (guild.IsTownStone)
+                stone.SetTag("GUILD.ISTOWN", "1");
+            else
+                stone.RemoveTag("GUILD.ISTOWN");
             if (!string.IsNullOrEmpty(guild.WebUrl))
                 stone.SetTag("GUILD.WEB", guild.WebUrl);
             else
@@ -537,7 +559,11 @@ public sealed class GuildManager
             var safeName = guildName.Trim();
             var guild = new GuildDef(item.Uid)
             {
-                Name = safeName[..Math.Min(40, safeName.Length)]
+                Name = safeName[..Math.Min(40, safeName.Length)],
+                // Town records stay in their own membership pool (tag first,
+                // stone item type as the legacy fallback).
+                IsTownStone = item.TryGetTag("GUILD.ISTOWN", out _) ||
+                              item.ItemType == Core.Enums.ItemType.StoneTown,
             };
 
             if (item.TryGetTag("GUILD.ABBREV", out string? abbrev))

@@ -55,8 +55,10 @@ public enum SpellType : ushort
     AnimatedWeapon, StoneForm, SpellTrigger, MassSleep, CleansingWinds,
     Bombard, SpellPlague, HailStorm, NetherCyclone, RisingColossus,
 
-    // --- Custom Sphere spells ---
-    SummonUndead = 1000, Hallucination,
+    // --- Custom Sphere spells (Source-X uofiles_enums.h 1000+) ---
+    // Hallucination previously sat at 1001, which is Animate Dead in the
+    // reference — pack spells 1001-1004 resolved to the wrong enum member.
+    SummonUndead = 1000, AnimateDead, BoneArmor, Light, FireBolt, Hallucination,
 }
 
 /// <summary>

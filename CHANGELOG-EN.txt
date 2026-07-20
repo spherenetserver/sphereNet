@@ -7,6 +7,39 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIX - Field spells behave like fields (Source-X Spell_Field): segments use
+        the CLASSIC field art per spell with E/W-N/S orientation (stone wall
+        0x0080, fire 0x398C/0x3996, poison, paralyze, energy) instead of the
+        pack's EFFECT_ID — Wall of Stone/Fire/Energy fields were INVISIBLE
+        (EFFECT_ID=0). Typed step/stand behavior: fire deals resisted fire
+        damage, poison field POISONS (level from the caster's skill at cast),
+        paralyze field freezes through the timed Paralyze effect, stone/
+        energy walls are pure barriers (blocking via their tiledata) and
+        never materialise on top of a character. Duration follows the
+        spell's DURATION curve (2-4 min) instead of a fixed 30 s.
+
+FIX - Fixed summon spells carry their classic creatures (Source-X
+        m_uiSummonID defaults): Blade Spirit, Energy Vortex, Air/Earth/
+        Fire/Water Elemental and Summon Daemon now summon the right body —
+        previously everything but the familiar spawned a bodyless creature.
+
+FIX - Town and guild memberships are independent pools (Source-X
+        MEMORY_GUILD vs MEMORY_TOWN): a guild member can become a town
+        citizen and vice versa; the overhead abbreviation is a guild-only
+        surface (town tags never leak onto names); the record type persists
+        via the stone (GUILD.ISTOWN tag + item-type fallback).
+
+FIX - The inert-school-spell gate now also refuses school defs whose flags
+        are only markers (good/harm/fx/targ with no damage/heal/bless/curse/
+        field/summon/area/tick and no scripted stages) — they cast, consumed
+        mana/reagents and silently no-opped; Source-X damages only on
+        SPELLFLAG_DAMAGE, so such defs are inert there too.
+
+FIX - Custom Sphere spell ids realigned with the reference: 1001 Animate
+        Dead, 1002 Bone Armor, 1003 Light, 1004 Fire Bolt, 1005
+        Hallucination — Hallucination previously sat at 1001 (Animate
+        Dead's slot), so pack spells 1001-1004 resolved to the wrong enum.
+
 NEW - Chivalry works natively: Cleanse by Fire cures, Close Wounds heals
         (generic heal flag), Dispel Evil strips/banishes conjured creatures
         around the paladin (shared with Dispel's DISPELKILLSUMMONS

@@ -6,6 +6,41 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+FIX - Field buyuleri gercek field gibi davraniyor (Source-X Spell_Field):
+        parcalar buyu basina KLASIK field grafigini D/B-K/G yonelimiyle
+        kullaniyor (tas duvar 0x0080, ates 0x398C/0x3996, zehir, felc,
+        enerji) - pack'in EFFECT_ID'si degil; Wall of Stone/Fire/Energy
+        field'lari GORUNMEZDI (EFFECT_ID=0). Tipli adim/durma davranisi:
+        ates dirençli ates hasari verir, zehir field'i ZEHIRLER (seviye
+        cast anindaki skill'den), felc field'i sureli Paralyze etkisiyle
+        dondurur, tas/enerji duvarlari saf bariyerdir (tiledata ile engel)
+        ve asla karakter uzerinde olusmaz. Sure sabit 30 sn yerine buyunun
+        DURATION egrisini (2-4 dk) izler.
+
+FIX - Sabit summon buyuleri klasik yaratiklarini getiriyor (Source-X
+        m_uiSummonID varsayilanlari): Blade Spirit, Energy Vortex,
+        Air/Earth/Fire/Water Elemental ve Summon Daemon artik dogru govdeyi
+        cagiriyor - onceden familiar disindaki her sey govdesiz yaratik
+        uretiyordu.
+
+FIX - Town ve guild uyelikleri bagimsiz havuzlar (Source-X MEMORY_GUILD /
+        MEMORY_TOWN): guild uyesi vatandas olabilir, vatandas guild'e
+        girebilir; isim ustu kisaltma yalnizca guild yuzeyidir (town etiketi
+        isme sizmaz); kayit tipi tasta kalici (GUILD.ISTOWN tag + item tipi
+        fallback).
+
+FIX - Inert okul-buyusu kapisi artik yalnizca isaret flag'i tasiyan
+        (good/harm/fx/targ olup damage/heal/bless/curse/field/summon/area/
+        tick ve script asamasi olmayan) tanimlar da reddediyor - bunlar
+        cast edilip mana/reagent tuketip sessizce no-op oluyordu; Source-X
+        de hasari yalnizca SPELLFLAG_DAMAGE'da uygular, ayni tanim orada da
+        etkisizdir.
+
+FIX - Custom Sphere buyu id'leri referansla hizalandi: 1001 Animate Dead,
+        1002 Bone Armor, 1003 Light, 1004 Fire Bolt, 1005 Hallucination -
+        Hallucination onceden 1001'de (Animate Dead'in yerinde) duruyordu,
+        pack'in 1001-1004 buyuleri yanlis enum'a cozuluyordu.
+
 NEW - Chivalry native calisiyor: Cleanse by Fire zehir kurutur, Close
         Wounds iyilestirir (jenerik heal flag), Dispel Evil paladinin
         cevresindeki cagrilmis yaratiklari sober/kovar (Dispel'in

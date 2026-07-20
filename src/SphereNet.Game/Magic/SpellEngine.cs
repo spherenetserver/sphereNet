@@ -856,7 +856,21 @@ public sealed class SpellEngine
                 summonSel = sel.Trim();
             caster.RemoveTag("SUMMON_SELECT");
 
-            ushort summonBody = spell == SpellType.SummonFamiliar ? (ushort)0x013D : (ushort)0;
+            // Fixed summon spells carry their creature natively (Source-X
+            // Spell_CastStart m_atMagery.m_uiSummonID defaults) — previously
+            // everything but the familiar spawned a bodyless creature.
+            ushort summonBody = spell switch
+            {
+                SpellType.SummonFamiliar => 0x013D,
+                SpellType.BladeSpirit => 0x023E,   // CREID_BLADE_SPIRIT
+                SpellType.EnergyVortex => 0x00A4,  // CREID_ENERGY_VORTEX
+                SpellType.AirElemental => 0x000D,  // CREID_AIR_ELEM
+                SpellType.EarthElemental => 0x000E,
+                SpellType.FireElemental => 0x000F,
+                SpellType.WaterElemental => 0x0010,
+                SpellType.SummonDaemon => 0x0009,  // CREID_DEMON
+                _ => 0,
+            };
             var summoned = SummonCreature(caster, targetPos, def, skillLevel, summonBody);
             if (summoned != null && summonSel != null)
             {
@@ -1301,14 +1315,48 @@ public sealed class SpellEngine
 
     /// <summary>Create a multi-tile field wall centred on the target location,
     /// oriented perpendicular to the cast direction (UO-style 5-tile wall).</summary>
+    /// <summary>The classic field tile pair per spell (Source-X Spell_CastDone
+    /// CreateObject1/CreateObject2 defaults): E/W art when the wall runs
+    /// east-west, N/S art when it runs north-south.</summary>
+    private static (ushort EW, ushort NS) FieldTiles(SpellType spell) => spell switch
+    {
+        SpellType.WallOfStone => (0x0080, 0x0080),   // ITEMID_STONE_WALL
+        SpellType.FireField => (0x398C, 0x3996),     // ITEMID_FX_FIRE_F_EW/NS
+        SpellType.PoisonField => (0x3915, 0x3920),   // ITEMID_FX_POISON_F_EW/NS
+        SpellType.ParalyzeField => (0x3967, 0x3979), // ITEMID_FX_PARA_F_EW/NS
+        SpellType.EnergyField => (0x3946, 0x3956),   // ITEMID_FX_ENERGY_F_EW/NS
+        _ => (0, 0),
+    };
+
+    /// <summary>Source-X CChar::Spell_Field: a 5-tile wall perpendicular to
+    /// the caster→target axis using the CLASSIC field art per spell (the
+    /// pack's EFFECT_ID is the cast FX, not the field tile — Wall of
+    /// Stone/Fire/Energy carry EFFECT_ID=0, which used to make the field
+    /// items invisible). Duration comes from the spell's DURATION curve;
+    /// barrier fields (stone wall, energy) refuse to materialise on top of a
+    /// character; each segment records its spell for the typed step effect.</summary>
     private void CreateField(Character caster, Point3D pos, SpellDef def)
     {
-        int dmg = def.GetEffect(caster.GetSkill(def.GetPrimarySkill()));
+        int skill = caster.GetSkill(def.GetPrimarySkill());
+        int dmg = def.GetEffect(skill);
 
         // Orient the wall perpendicular to the caster→target axis.
         int dx = pos.X - caster.X;
         int dy = pos.Y - caster.Y;
         bool wallRunsNorthSouth = Math.Abs(dx) >= Math.Abs(dy); // facing E/W → N-S wall
+
+        var (tileEW, tileNS) = FieldTiles(def.Id);
+        ushort tileId = wallRunsNorthSouth ? tileNS : tileEW;
+        if (tileId == 0)
+            tileId = def.EffectId; // custom scripted field spells keep EFFECT_ID
+
+        int durTenths = def.GetDuration(skill);
+        long durMs = durTenths > 0 ? durTenths * 100L : 30_000L;
+
+        bool isBarrier = def.Id is SpellType.WallOfStone or SpellType.EnergyField;
+        // Poison strength is fixed at cast time from the caster's skill
+        // (Source-X field poisoning level), consumed by the step effect.
+        byte poisonLevel = skill switch { >= 800 => 4, >= 600 => 3, >= 400 => 2, _ => 1 };
 
         for (int offset = -2; offset <= 2; offset++)
         {
@@ -1321,15 +1369,84 @@ public sealed class SpellEngine
             if (md != null && !md.IsPassable(tilePos.Map, tilePos.X, tilePos.Y, tilePos.Z))
                 continue;
 
+            // Source-X: stone/energy walls never materialise over a character.
+            if (isBarrier && _world.GetCharsInRange(tilePos, 0)
+                    .Any(c => c.X == tx && c.Y == ty && !c.IsDead))
+                continue;
+
             var fieldItem = _world.CreateItem();
-            fieldItem.BaseId = def.EffectId;
+            fieldItem.BaseId = tileId;
             fieldItem.Name = def.Name + " field";
             fieldItem.SetTag("FIELD_CASTER", caster.Uid.Value.ToString());
             fieldItem.SetTag("FIELD_CASTER_UUID", caster.Uuid.ToString("D"));
-            fieldItem.SetTag("FIELD_DAMAGE", dmg.ToString());
-            fieldItem.DecayTime = Environment.TickCount64 + 30_000; // 30s duration
+            fieldItem.SetTag("FIELD_SPELL", ((int)def.Id).ToString());
+            if (def.Id == SpellType.PoisonField)
+                fieldItem.SetTag("FIELD_POISON", poisonLevel.ToString());
+            // Flat step damage only for damage-flagged fields (fire); the
+            // typed effects (poison/paralyze) and barriers carry none.
+            if (def.IsFlag(SpellFlag.Damage) && dmg > 0)
+                fieldItem.SetTag("FIELD_DAMAGE", dmg.ToString());
+            fieldItem.DecayTime = Environment.TickCount64 + durMs;
             if (!_world.PlaceItem(fieldItem, tilePos))
                 _world.RemoveItem(fieldItem);
+        }
+    }
+
+    /// <summary>Typed field step/stand effect (Source-X: walking into or
+    /// standing in a field triggers the field's spell). Returns true when the
+    /// touch was handled here; false lets the caller's legacy flat-damage
+    /// path run (script-made fields with only FIELD_DAMAGE).</summary>
+    public bool ApplyFieldTouch(Character ch, Item field)
+    {
+        if (ch.IsDead) return true;
+        if (!field.TryGetTag("FIELD_SPELL", out string? fsStr) ||
+            !int.TryParse(fsStr, out int fsId))
+            return false;
+
+        Character? caster = null;
+        if (field.TryGetTag("FIELD_CASTER", out string? cStr) && uint.TryParse(cStr, out uint cuid))
+            caster = _world.FindChar(new Serial(cuid));
+
+        switch ((SpellType)fsId)
+        {
+            case SpellType.FireField:
+            {
+                if (CombatEngine.IsDamageImmune(ch)) return true;
+                int dmg = field.TryGetTag("FIELD_DAMAGE", out string? dStr) &&
+                          int.TryParse(dStr, out int d) ? d : 2;
+                dmg = CombatEngine.ApplyElementalResist(ch, Math.Max(1, dmg), DamageType.Fire);
+                ch.Hits = (short)Math.Max(0, ch.Hits - dmg);
+                if (caster != null && caster != ch)
+                    ch.RecordAttack(caster.Uid, dmg);
+                TryInterruptFromDamage(ch, dmg);
+                if (ch.Hits <= 0 && !ch.IsDead)
+                {
+                    if (OnTargetKilled != null) OnTargetKilled.Invoke(ch, caster!);
+                    else if (Character.OnLifecycleKill != null) Character.OnLifecycleKill(ch, caster);
+                    else ch.Kill();
+                }
+                return true;
+            }
+            case SpellType.PoisonField:
+            {
+                byte level = field.TryGetTag("FIELD_POISON", out string? pStr) &&
+                             byte.TryParse(pStr, out byte p) ? p : (byte)1;
+                ch.ApplyPoison(level);
+                return true;
+            }
+            case SpellType.ParalyzeField:
+            {
+                // The engine's Paralyze handler gives the timed freeze with
+                // proper expiry; skip when already frozen.
+                if (!ch.IsStatFlag(StatFlag.Freeze))
+                    ApplyDirectEffect(caster ?? ch, ch, SpellType.Paralyze, 300);
+                return true;
+            }
+            case SpellType.WallOfStone:
+            case SpellType.EnergyField:
+                return true; // pure barriers — passage blocked by the tiledata
+            default:
+                return false;
         }
     }
 
@@ -1680,15 +1797,34 @@ public sealed class SpellEngine
     /// (201..999: Chivalry/Bushido/Ninjitsu/Spellweaving/Mysticism/masteries)
     /// AND its def provides no behaviour at all, so casting it could only
     /// consume resources and no-op.</summary>
+    /// <summary>Flags the effect dispatcher can actually act on. A school
+    /// spell whose def carries only marker flags (playeronly, fx, harm, targ)
+    /// would cast, consume mana/reagents and silently no-op — Source-X too
+    /// damages only on SPELLFLAG_DAMAGE (CCharSpell.cpp:3817), so such a def
+    /// is inert there as well.</summary>
+    private static bool HasActionableFlags(SpellDef def) =>
+        (def.Flags & (SpellFlag.Damage | SpellFlag.Heal | SpellFlag.Bless |
+                      SpellFlag.Curse | SpellFlag.Field | SpellFlag.Summon |
+                      SpellFlag.Area | SpellFlag.Poly | SpellFlag.Tick |
+                      SpellFlag.Scripted)) != 0;
+
+    /// <summary>School spells with a native SphereNet handler (dispatched in
+    /// ApplySpecificSpell / the travel route) — always castable.</summary>
+    private static bool HasNativeSchoolHandler(SpellType id) => id is
+        SpellType.CleanseByFire or SpellType.CloseWounds or SpellType.DispelEvil or
+        SpellType.DivineFury or SpellType.HolyLight or SpellType.NobleSacrifice or
+        SpellType.RemoveCurse or SpellType.SacredJourney or SpellType.GiftOfRenewal;
+
     internal static bool IsInertSchoolSpell(SpellDef def)
     {
         int id = (int)def.Id;
         if (id is < 201 or >= 1000)
             return false; // Magery, Necromancy, custom Sphere spells
-        return def.Flags == SpellFlag.None &&
-            def.EffectBase == 0 && def.EffectScale == 0 &&
-            def.DurationBase == 0 && def.DurationScale == 0 &&
-            !def.HasScriptedStages;
+        if (HasNativeSchoolHandler(def.Id))
+            return false;
+        if (def.HasScriptedStages)
+            return false; // the pack owns the behavior
+        return !HasActionableFlags(def);
     }
 
     private void ApplySpecificSpell(Character caster, Character target, SpellDef def, int effect)

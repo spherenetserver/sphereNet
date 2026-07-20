@@ -333,8 +333,14 @@ public sealed class MovementEngine
                 }
             }
 
-            // Field damage (fire field, poison field, etc.)
-            if (item.TryGetTag("FIELD_DAMAGE", out string? fdStr) && int.TryParse(fdStr, out int fieldDmg) &&
+            // Typed field step effect (fire damages, poison poisons, paralyze
+            // freezes, barriers inert — Source-X field spell on step). Falls
+            // back to the legacy flat FIELD_DAMAGE for script-made fields.
+            if (Character.FieldTouchHook != null && Character.FieldTouchHook(ch, item))
+            {
+                // handled by the spell engine
+            }
+            else if (item.TryGetTag("FIELD_DAMAGE", out string? fdStr) && int.TryParse(fdStr, out int fieldDmg) &&
                 !Combat.CombatEngine.IsDamageImmune(ch))
             {
                 ch.Hits -= (short)Math.Min(fieldDmg, ch.Hits);

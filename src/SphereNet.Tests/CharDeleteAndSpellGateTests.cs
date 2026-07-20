@@ -85,13 +85,28 @@ public sealed class CharDeleteAndSpellGateTests
         // A Bushido spell with no flags, no curves, no scripted stages = inert.
         Assert.True(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.Confidence }));
 
-        // The same id with a script-provided behaviour passes each way.
-        Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef
+        // Audit finding (wiki/1.txt #3): marker flags alone (good/harm/fx) or
+        // a bare effect curve still no-op through the dispatcher — Source-X
+        // damages only on SPELLFLAG_DAMAGE — so they are inert too; casting
+        // them would just burn mana/reagents.
+        Assert.True(SpellEngine.IsInertSchoolSpell(new SpellDef
         { Id = SpellType.Confidence, Flags = SpellFlag.Good }));
-        Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef
+        Assert.True(SpellEngine.IsInertSchoolSpell(new SpellDef
+        { Id = SpellType.Confidence, Flags = SpellFlag.Harm | SpellFlag.TargChar }));
+        Assert.True(SpellEngine.IsInertSchoolSpell(new SpellDef
         { Id = SpellType.Confidence, EffectBase = 5, EffectScale = 20 }));
+
+        // ACTIONABLE flags or scripted stages make the spell castable.
+        Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef
+        { Id = SpellType.Confidence, Flags = SpellFlag.Damage | SpellFlag.TargChar }));
+        Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef
+        { Id = SpellType.Confidence, Flags = SpellFlag.Heal | SpellFlag.TargChar }));
         Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef
         { Id = SpellType.Confidence, HasScriptedStages = true }));
+
+        // Natively-handled school spells are always castable.
+        Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.DivineFury }));
+        Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.GiftOfRenewal }));
 
         // Magery / Necromancy / custom ids never hit the gate.
         Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.Heal }));

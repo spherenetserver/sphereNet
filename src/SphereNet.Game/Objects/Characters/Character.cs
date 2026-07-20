@@ -1380,6 +1380,11 @@ public partial class Character : ObjBase
 
     public void ApplyPoison(byte level, Serial source) => Poison.Apply(level, source);
 
+    /// <summary>Typed field touch (SpellEngine.ApplyFieldTouch, wired by the
+    /// host): fire damages, poison poisons, paralyze freezes, barriers are
+    /// inert. Returns true when the spell engine handled the touch.</summary>
+    public static Func<Character, Item, bool>? FieldTouchHook;
+
     /// <summary>Apply damage from any fire/poison field on the character's
     /// current tile. Sector-indexed lookup, so this is cheap per tick.</summary>
     private void ApplyStandingFieldDamage()
@@ -1392,6 +1397,12 @@ public partial class Character : ObjBase
         {
             if (item.IsDeleted) continue;
             if (item.Position.X != X || item.Position.Y != Y) continue;
+            if (FieldTouchHook != null && item.TryGetTag("FIELD_SPELL", out _))
+            {
+                if (FieldTouchHook(this, item))
+                    return; // one field tick per cycle is enough
+                continue;
+            }
             if (!item.TryGetTag("FIELD_DAMAGE", out string? fdStr) ||
                 !int.TryParse(fdStr, out int dmg) || dmg <= 0)
                 continue;

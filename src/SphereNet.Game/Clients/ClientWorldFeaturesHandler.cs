@@ -1015,7 +1015,7 @@ public sealed class ClientWorldFeaturesHandler
                 {
                     if (_character == null || _character.IsDeleted || stone.IsDeleted ||
                         _world.FindItem(stone.Uid) != stone || _guildManager.GetGuild(stone.Uid) != null ||
-                        _guildManager.FindGuildRecordFor(_character.Uid) != null ||
+                        _guildManager.FindGuildRecordFor(_character.Uid, isTown) != null ||
                         (isTown && _character.PrivLevel < PrivLevel.Counsel) ||
                         _character.MapIndex != stone.MapIndex ||
                         _character.Position.GetDistanceTo(stone.Position) > 3)
@@ -1027,7 +1027,7 @@ public sealed class ClientWorldFeaturesHandler
                     string newName = isTown && !string.IsNullOrWhiteSpace(stone.Name)
                         ? stone.Name!
                         : $"{_character.Name}'s {stoneWord}";
-                    var newGuild = _guildManager.CreateGuild(stone.Uid, newName, _character.Uid);
+                    var newGuild = _guildManager.CreateGuild(stone.Uid, newName, _character.Uid, isTown);
                     StampStoneMemory(_character, stone, add: true);
                     SysMessage(ServerMessages.GetFormatted("guild_created", newGuild.Name));
                 }
@@ -1177,9 +1177,11 @@ public sealed class ClientWorldFeaturesHandler
         switch (buttonId)
         {
             case 1: // Join request
-                // A character may belong to only one guild — reject if already
-                // a member/candidate somewhere (prevents multi-guild membership).
-                if (_guildManager.FindGuildRecordFor(_character.Uid) != null)
+                // One guild AND one town per character — the pools are
+                // independent (Source-X MEMORY_GUILD vs MEMORY_TOWN), so a
+                // guild member may still become a town citizen and vice versa.
+                if (_guildManager.FindGuildRecordFor(_character.Uid,
+                        stone.ItemType == ItemType.StoneTown) != null)
                 {
                     SysMessage(ServerMessages.Get("msg_insufficient_priv"));
                     break;

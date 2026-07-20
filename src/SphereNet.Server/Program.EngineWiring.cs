@@ -1205,6 +1205,10 @@ public static partial class Program
             // Movement-based cast interruption (deferred from MovementEngine creation:
             // SpellEngine did not exist there). MovementEngine.cs reads SpellEngine.
             _movement.SpellEngine = _spellEngine;
+            // Typed field step/stand effects (fire burns, poison poisons,
+            // paralyze freezes, barriers inert) — Source-X field spell touch.
+            SphereNet.Game.Objects.Characters.Character.FieldTouchHook =
+                (ch, fieldItem) => _spellEngine?.ApplyFieldTouch(ch, fieldItem) ?? false;
             _world.OnSectorLight = (character, level) =>
             {
                 if (TryGetClientFor(character, out var lightClient))

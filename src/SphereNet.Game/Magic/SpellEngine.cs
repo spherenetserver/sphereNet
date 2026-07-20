@@ -104,6 +104,7 @@ public sealed class SpellEngine
         public short DexDelta { get; set; }
         public short IntDelta { get; set; }
         public int ArmorDelta { get; set; }
+        public int MeditationDelta { get; set; }
         public byte OldLightLevel { get; set; }
         public byte NewLightLevel { get; set; }
         public bool LightChanged { get; set; }
@@ -494,6 +495,24 @@ public sealed class SpellEngine
             return -1;
         if (caster.IsStatFlag(StatFlag.Freeze))
             return -1;
+
+        // [SPELL n] ON=@Select (Source-X SPTRIG_SELECT, fired from
+        // Spell_CanCast so EVERY entry point gets it — client cast, scroll,
+        // wand, NPC, console). RETURN 1 cancels the selection before any
+        // resource is committed. Packs use this for form toggles (Reaper
+        // Form / Stone Form re-cast while polymorphed).
+        if (TriggerDispatcher != null)
+        {
+            var selectArgs = new TriggerArgs
+            {
+                CharSrc = caster,
+                N1 = (int)spell,
+                N2 = EffectiveManaCost(caster, def),
+            };
+            if (TriggerDispatcher.FireSpellTrigger(spell, "Select", caster, selectArgs)
+                == TriggerResult.True)
+                return -1;
+        }
         // Region NoMagic / NoMagicDamage check (Source-X anti-magic sub-flags).
         if (_world != null)
         {
@@ -503,8 +522,7 @@ public sealed class SpellEngine
                 if (region.NoMagic)
                     return -1;
                 // REGION_ANTIMAGIC_DAMAGE: harmful magic is suppressed in this region.
-                if (region.IsFlag(RegionFlag.NoMagicDamage) &&
-                    (def.IsFlag(SpellFlag.Damage) || def.IsFlag(SpellFlag.Curse)))
+                if (region.IsFlag(RegionFlag.NoMagicDamage) && IsHarmfulSpell(def))
                     return -1;
             }
         }
@@ -794,6 +812,46 @@ public sealed class SpellEngine
             return true;
         }
 
+        // Bone Armor targets a SKELETON corpse and converts it into up to five
+        // bone armor pieces at diminishing odds (reference SPELL_Bone_Armor,
+        // CCharSpell.cpp:3234-3270). Any carried loot is dumped first.
+        if (spell == SpellType.BoneArmor)
+        {
+            var corpse = _world?.FindItem(targetUid);
+            if (corpse == null || corpse.IsDeleted || corpse.ItemType != ItemType.Corpse)
+            {
+                OnSysMessage?.Invoke(caster, "That is not a corpse!");
+            }
+            else if (corpse.Amount != 0x0032) // CREID_SKELETON only
+            {
+                OnSysMessage?.Invoke(caster, "The body stirs for a moment.");
+            }
+            else
+            {
+                foreach (var child in corpse.Contents.ToArray())
+                {
+                    corpse.RemoveItem(child);
+                    _world!.PlaceItemWithDecay(child, corpse.Position);
+                }
+                // ITEMID_BONE_ARMS/ARMOR/GLOVES/HELM/LEGS, 1/(2+n) stop chance
+                // per piece like the reference loop.
+                ReadOnlySpan<ushort> bonePieces = [0x144E, 0x144F, 0x1450, 0x1451, 0x1452];
+                int got = 0;
+                foreach (ushort pieceId in bonePieces)
+                {
+                    if (_rand.Next(2 + got) == 0)
+                        break;
+                    var piece = _world!.CreateItem();
+                    piece.BaseId = pieceId;
+                    _world.PlaceItemWithDecay(piece, corpse.Position);
+                    got++;
+                }
+                OnItemRemoved?.Invoke(corpse); // the corpse is consumed
+            }
+            if (def.Sound > 0) OnPlaySound?.Invoke(caster.Position, (ushort)def.Sound);
+            return true;
+        }
+
         // Apply spell effect
         if (spell is SpellType.Recall or SpellType.GateTravel or SpellType.SacredJourney)
         {
@@ -870,6 +928,7 @@ public sealed class SpellEngine
                 SpellType.WaterElemental => 0x0010,
                 SpellType.SummonDaemon => 0x0009,    // CREID_DEMON
                 SpellType.RisingColossus => 0x033D,  // CREID_RISING_COLOSSUS
+                SpellType.AnimatedWeapon => 0x02B4,  // CREID_ANIMATED_WEAPON
                 // Sphere custom Summon Undead: 1/15 lich, 4/15 skeleton,
                 // else zombie (Source-X CCharSpell.cpp:2591).
                 SpellType.SummonUndead => _rand.Next(15) switch
@@ -1098,7 +1157,7 @@ public sealed class SpellEngine
         // the flag is single-use — consumed as soon as a harmful spell
         // hits, so the reflected spell itself will NOT be re-reflected
         // by the original caster (even if they also have Reflection up).
-        bool harmful = def.IsFlag(SpellFlag.Damage) || def.IsFlag(SpellFlag.Curse);
+        bool harmful = IsHarmfulSpell(def);
 
         // A harmful spell on a player who is innocent FROM THE CASTER'S VIEW is a
         // crime (Source-X notoriety) — the caster goes grey, like a melee attack.
@@ -1225,6 +1284,17 @@ public sealed class SpellEngine
         if (resistPct > 0)
             effect -= effect * resistPct / 100;
 
+        // Sphere custom spells (1000+) with a native char handler dispatch by
+        // id FIRST: their pack defs carry marker flags only — Hallucination
+        // even carries spellflag_curse — so the generic flag branches would
+        // mis-route them. Fire Bolt is NOT in this set: it is a plain damage
+        // spell and takes the generic damage path below.
+        if (HasNativeCustomCharHandler(def.Id))
+        {
+            ApplySpecificSpell(caster, target, def, effect);
+            return;
+        }
+
         // Damage spells
         if (def.IsFlag(SpellFlag.Damage))
         {
@@ -1314,7 +1384,7 @@ public sealed class SpellEngine
     private void ApplyAreaEffect(Character caster, Point3D center, SpellDef def, int skillLevel)
     {
         int range = Math.Min(8, 3 + skillLevel / 300);
-        bool harmful = def.IsFlag(SpellFlag.Damage) || def.IsFlag(SpellFlag.Curse);
+        bool harmful = IsHarmfulSpell(def);
         foreach (var target in _world.GetCharsInRange(center, range))
         {
             if (target == caster && (harmful || def.IsFlag(SpellFlag.TargNoSelf))) continue;
@@ -1842,6 +1912,15 @@ public sealed class SpellEngine
     /// would cast, consume mana/reagents and silently no-op — Source-X too
     /// damages only on SPELLFLAG_DAMAGE (CCharSpell.cpp:3817), so such a def
     /// is inert there as well.</summary>
+    /// <summary>A spell that harms its target. Source-X keys the criminal
+    /// marking, Magic Reflect bounce and REGION_ANTIMAGIC_DAMAGE suppression
+    /// all off SPELLFLAG_HARM alone (CCharSpell.cpp OnSpellEffect,
+    /// CRegion.cpp CheckAntiMagic) — pack spells like Poison, Paralyze and
+    /// Mana Vampire carry HARM without DAMAGE/CURSE. Damage/Curse stay in
+    /// the union for defs registered without the marker flag.</summary>
+    private static bool IsHarmfulSpell(SpellDef def) =>
+        (def.Flags & (SpellFlag.Harm | SpellFlag.Damage | SpellFlag.Curse)) != 0;
+
     private static bool HasActionableFlags(SpellDef def) =>
         // Only flags the engine has a GENERIC handler for. Scripted counts
         // via HasScriptedStages (a bare SCRIPTED flag with no ON= body is
@@ -1858,12 +1937,35 @@ public sealed class SpellEngine
         SpellType.DivineFury or SpellType.HolyLight or SpellType.NobleSacrifice or
         SpellType.RemoveCurse or SpellType.SacredJourney or SpellType.GiftOfRenewal;
 
+    /// <summary>Sphere custom spells (1000+) whose char effect dispatches by
+    /// id in ApplySpecificSpell — their pack defs carry marker flags only
+    /// (Hallucination even carries spellflag_curse), so the generic flag
+    /// branches would mis-route them.</summary>
+    private static bool HasNativeCustomCharHandler(SpellType id) => id is
+        SpellType.Light or SpellType.Hallucination or SpellType.Stone or
+        SpellType.Shrink or SpellType.Refresh or SpellType.Restore or
+        SpellType.Mana or SpellType.Sustenance or SpellType.GenderSwap or
+        SpellType.Trance or SpellType.ParticleForm or SpellType.Shield or
+        SpellType.Steelskin or SpellType.Stoneskin or SpellType.Regenerate or
+        SpellType.Ale or SpellType.Wine or SpellType.Liquor;
+
+    /// <summary>Every Sphere custom spell (1000+) with native engine behavior
+    /// — the char handlers above plus the summon/corpse/item routes (Summon
+    /// Undead, Animate Dead, Bone Armor) and plain-damage Fire Bolt. The
+    /// remaining customs (Chameleon, Beast/Monster Form, Enchant, Forget) are
+    /// inert in the Source-X reference too and stay refused by the no-op gate
+    /// unless the pack scripts them.</summary>
+    private static bool HasNativeCustomHandler(SpellType id) =>
+        HasNativeCustomCharHandler(id) || id is
+        SpellType.SummonUndead or SpellType.AnimateDead or
+        SpellType.BoneArmor or SpellType.FireBolt;
+
     internal static bool IsInertSchoolSpell(SpellDef def)
     {
         int id = (int)def.Id;
-        if (id is < 201 or >= 1000)
-            return false; // Magery, Necromancy, custom Sphere spells
-        if (HasNativeSchoolHandler(def.Id))
+        if (id < 201)
+            return false; // Magery / Necromancy native id space
+        if (HasNativeSchoolHandler(def.Id) || HasNativeCustomHandler(def.Id))
             return false;
         if (def.HasScriptedStages)
             return false; // the pack owns the behavior
@@ -2310,12 +2412,18 @@ public sealed class SpellEngine
             case SpellType.NobleSacrifice:
             {
                 // Heal + cure nearby allies at the paladin's own expense.
+                // "Ally" is the caster's party plus the caster's own pets —
+                // never every bystander (an enemy player standing in range
+                // must not receive the heal+cure).
+                var casterParty = Character.ResolvePartyManager?.Invoke()?.FindParty(caster.Uid);
                 bool sacrificed = false;
                 foreach (var ch in _world.GetCharsInRange(caster.Position, 3).ToList())
                 {
                     if (ch == caster || ch.IsDead)
                         continue;
-                    if (!ch.IsPlayer && ch.OwnerSerial != caster.Uid)
+                    bool isAlly = ch.OwnerSerial == caster.Uid ||
+                                  (casterParty?.IsMember(ch.Uid) ?? false);
+                    if (!isAlly)
                         continue;
                     ch.CurePoison();
                     ch.Hits = (short)Math.Min(ch.Hits + Math.Max(10, effect), ch.MaxHits);
@@ -2339,6 +2447,141 @@ public sealed class SpellEngine
                 var hot = SetupDot(caster, target, def, charges, 2000);
                 hot.DotDamagePerTick = -Math.Max(5, effect / 3);
                 hot.DotDirect = true;
+                break;
+            }
+
+            // ---- Sphere custom spells (reference CCharSpell.cpp OnSpellEffect
+            // SPELL_Light..SPELL_Liquor cases; ids remapped to 1000+).
+            case SpellType.Light:
+            {
+                // Pack layer is layer_spell_night_sight: a timed personal
+                // light boost exactly like Night Sight.
+                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                eff.AppliedFlag = StatFlag.NightSight;
+                eff.OldLightLevel = target.LightLevel;
+                eff.NewLightLevel = 30;
+                eff.LightChanged = true;
+                target.SetStatFlag(StatFlag.NightSight);
+                target.LightLevel = eff.NewLightLevel;
+                OnPersonalLightChanged?.Invoke(target);
+                break;
+            }
+            case SpellType.Hallucination:
+            {
+                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                eff.AppliedFlag = StatFlag.Hallucinating;
+                target.SetStatFlag(StatFlag.Hallucinating);
+                break;
+            }
+            case SpellType.Stone:
+            case SpellType.ParticleForm:
+            {
+                // Source-X: STATF_STONE for the duration — immobile and
+                // untargetable.
+                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                eff.AppliedFlag = StatFlag.Stone;
+                target.SetStatFlag(StatFlag.Stone);
+                break;
+            }
+            case SpellType.Shrink:
+            {
+                // Source-X SPELL_Shrink: players are immune; an NPC is packed
+                // into a figurine dropped where it stood (NPC_Shrink).
+                if (target.IsPlayer || _world == null)
+                    break;
+                var shrinkPos = target.Position;
+                var figurine = _world.CreateItem();
+                figurine.BaseId = 0x2106; // statuette graphic (pet-shrink path)
+                if (NPCs.PetFigurine.ShrinkBySpell(caster, target, figurine, _world))
+                    _world.PlaceItemWithDecay(figurine, shrinkPos);
+                else
+                    _world.RemoveItem(figurine);
+                break;
+            }
+            case SpellType.Refresh:
+                target.Stam = (short)Math.Min(target.Stam + Math.Max(1, effect), target.MaxStam);
+                break;
+            case SpellType.Restore:
+                // Reference: increases both hit points and stamina.
+                target.Stam = (short)Math.Min(target.Stam + Math.Max(1, effect), target.MaxStam);
+                target.Hits = (short)Math.Min(target.Hits + Math.Max(1, effect), target.MaxHits);
+                break;
+            case SpellType.Mana:
+                target.Mana = (short)Math.Min(target.Mana + Math.Max(1, effect), target.MaxMana);
+                break;
+            case SpellType.Sustenance:
+                // Reference: fills the food meter to its maximum.
+                target.Food = 60;
+                break;
+            case SpellType.GenderSwap:
+            {
+                ushort swapped = target.BodyId switch
+                {
+                    0x0190 => (ushort)0x0191, 0x0191 => (ushort)0x0190, // human
+                    0x025D => (ushort)0x025E, 0x025E => (ushort)0x025D, // elf
+                    0x029A => (ushort)0x029B, 0x029B => (ushort)0x029A, // gargoyle
+                    _ => (ushort)0,
+                };
+                if (swapped != 0)
+                {
+                    target.BodyId = swapped;
+                    Character.OnAppearanceChanged?.Invoke(target);
+                }
+                break;
+            }
+            case SpellType.Trance:
+            {
+                // Source-X SPELL_Trance: a timed Meditation skill bonus.
+                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                eff.MeditationDelta = Math.Max(10, effect);
+                target.SetSkill(SkillType.Meditation, (ushort)Math.Min(ushort.MaxValue,
+                    target.GetSkill(SkillType.Meditation) + eff.MeditationDelta));
+                break;
+            }
+            case SpellType.Shield:
+            case SpellType.Steelskin:
+            case SpellType.Stoneskin:
+            {
+                // Source-X routes these to the Protection ward layer: a timed
+                // AR bonus for the spell's duration.
+                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                eff.ArmorDelta = Math.Max(1, effect);
+                target.ProtectionArmor = (int)Math.Min(
+                    int.MaxValue, (long)target.ProtectionArmor + eff.ArmorDelta);
+                break;
+            }
+            case SpellType.Regenerate:
+            {
+                // Source-X Spell_Equip_OnTick SPELL_Regenerate: one heal tick
+                // every 2 s for the spell's duration (negative DOT = heal).
+                int durTenths = def.GetDuration(caster.GetSkill(def.GetPrimarySkill()));
+                int charges = Math.Max(1, durTenths / 20);
+                var hot = SetupDot(caster, target, def, charges, 2000);
+                hot.DotDamagePerTick = -Math.Max(1, effect);
+                hot.DotDirect = true;
+                break;
+            }
+            case SpellType.Ale:
+            case SpellType.Wine:
+            case SpellType.Liquor:
+            {
+                // Source-X drains 1 INT/DEX per 5 s drunk tick; SphereNet
+                // applies the drain as one timed stat penalty of matching
+                // severity (wine mild, liquor extreme), reverted on sobriety.
+                short drunkDrain = def.Id switch
+                {
+                    SpellType.Liquor => 6,
+                    SpellType.Ale => 4,
+                    _ => 2,
+                };
+                short dexDrop = (short)Math.Min(drunkDrain, target.Dex - 1);
+                short intDrop = (short)Math.Min(drunkDrain, target.Int - 1);
+                if (dexDrop <= 0 && intDrop <= 0)
+                    break;
+                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (dexDrop > 0) { eff.DexDelta = (short)-dexDrop; target.Dex -= dexDrop; }
+                if (intDrop > 0) { eff.IntDelta = (short)-intDrop; target.Int -= intDrop; }
+                OnSysMessage?.Invoke(target, "*hic*");
                 break;
             }
 
@@ -2795,6 +3038,9 @@ public sealed class SpellEngine
         if (eff.IntDelta != 0) t.Int -= eff.IntDelta;
         if (eff.ArmorDelta != 0)
             t.ProtectionArmor = Math.Max(0, t.ProtectionArmor - eff.ArmorDelta);
+        if (eff.MeditationDelta != 0)
+            t.SetSkill(SkillType.Meditation, (ushort)Math.Max(0,
+                t.GetSkill(SkillType.Meditation) - eff.MeditationDelta));
         if (eff.Spell == SpellType.HorrificBeast)
             t.HorrificBeastActive = false;
         if (eff.Spell == SpellType.WraithForm)
@@ -2849,6 +3095,9 @@ public sealed class SpellEngine
         if (eff.ArmorDelta != 0)
             t.ProtectionArmor = (int)Math.Min(
                 int.MaxValue, (long)t.ProtectionArmor + eff.ArmorDelta);
+        if (eff.MeditationDelta != 0)
+            t.SetSkill(SkillType.Meditation, (ushort)Math.Min(ushort.MaxValue,
+                t.GetSkill(SkillType.Meditation) + eff.MeditationDelta));
         if (eff.Spell == SpellType.HorrificBeast)
             t.HorrificBeastActive = true;
         if (eff.Spell == SpellType.WraithForm)
@@ -3057,14 +3306,15 @@ public sealed class SpellEngine
             EncodeEffectString(eff.NewName),
             eff.NameChanged ? "1" : "0",
             eff.ArmorDelta.ToString(CultureInfo.InvariantCulture),
-            eff.CurseWeaponLevel.ToString(CultureInfo.InvariantCulture));
+            eff.CurseWeaponLevel.ToString(CultureInfo.InvariantCulture),
+            eff.MeditationDelta.ToString(CultureInfo.InvariantCulture));
     }
 
     private static bool TryDeserializeEffect(Character target, string record, long now, out ActiveSpellEffect eff)
     {
         eff = null!;
         var parts = record.Split('|');
-        if (parts.Length is not (16 or 17 or 18))
+        if (parts.Length is not (16 or 17 or 18 or 19))
             return false;
 
         if (!int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int version) ||
@@ -3091,7 +3341,8 @@ public sealed class SpellEngine
         var appliedFlag = (StatFlag)flagRaw;
         if (appliedFlag is not (StatFlag.None or StatFlag.Freeze or StatFlag.Invisible or
             StatFlag.NightSight or StatFlag.Reactive or StatFlag.ArcherCanMove or
-            StatFlag.Incognito or StatFlag.Reflection or StatFlag.Polymorph))
+            StatFlag.Incognito or StatFlag.Reflection or StatFlag.Polymorph or
+            StatFlag.Stone or StatFlag.Hallucinating))
             return false;
         if (!ushort.TryParse(parts[10], NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort oldBody))
             return false;
@@ -3109,6 +3360,10 @@ public sealed class SpellEngine
         if (parts.Length >= 18 &&
             !int.TryParse(parts[17], NumberStyles.Integer, CultureInfo.InvariantCulture, out curseWeaponLevel))
             return false;
+        int meditationDelta = 0;
+        if (parts.Length >= 19 &&
+            !int.TryParse(parts[18], NumberStyles.Integer, CultureInfo.InvariantCulture, out meditationDelta))
+            return false;
 
         long expireTick = remainingMs > long.MaxValue - now ? long.MaxValue : now + remainingMs;
         eff = new ActiveSpellEffect
@@ -3120,6 +3375,7 @@ public sealed class SpellEngine
             DexDelta = dexDelta,
             IntDelta = intDelta,
             ArmorDelta = Math.Max(0, armorDelta),
+            MeditationDelta = Math.Max(0, meditationDelta),
             OldLightLevel = oldLight,
             NewLightLevel = newLight,
             LightChanged = parts[8] == "1",

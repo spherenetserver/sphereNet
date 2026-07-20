@@ -291,7 +291,16 @@ items were all explicitly deferred with reasons and are parked here:
   combat/stealth/form-coupled and stay deferred — the Source-X reference
   implements none of them natively either (its native surface is buff-icon
   layer bookkeeping; verified 2026-07); pack script defs run through the
-  generic flag engine.
+  generic flag engine. The `[SPELL n] ON=@Select` stage now fires from
+  CastStart (2026-07-20), so @Select-only pack forms (Reaper/Stone Form)
+  execute their script bodies.
+- **Custom Sphere spells 1000+** — 2026-07-20 update: native behaviors for
+  Light, Hallucination, Stone, Particle Form, Shrink, Refresh, Restore, Mana,
+  Sustenance, Gender Swap, Trance, Shield, Steelskin, Stoneskin, Regenerate,
+  Ale/Wine/Liquor, Bone Armor (plus the earlier Summon Undead / Animate Dead /
+  Fire Bolt). Still deferred — inert in the Source-X reference too (cases
+  commented out or absent): **Chameleon, Beast Form, Monster Form, Enchant,
+  Forget**; the inert gate refuses them unless the pack scripts them.
 - **SERV no-op tail** — `STAT` / `TIMERF` section form / `SERVERS`: acceptable
   no-ops for a single-server shard. LOW.
 - **Pet economy sub-commands** — pet-sells-loot buy/sell/sample are

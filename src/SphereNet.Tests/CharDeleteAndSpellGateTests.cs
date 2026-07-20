@@ -108,9 +108,19 @@ public sealed class CharDeleteAndSpellGateTests
         Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.DivineFury }));
         Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.GiftOfRenewal }));
 
-        // Magery / Necromancy / custom ids never hit the gate.
+        // Magery / Necromancy ids never hit the gate.
         Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.Heal }));
         Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.Wither }));
+
+        // Custom Sphere spells (1000+): the natively-handled set is castable;
+        // the reference-inert remainder (Chameleon, Enchant, Forget...) is
+        // refused — it used to bypass the gate entirely and burn mana as a
+        // no-op — unless the pack scripts it.
         Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.SummonUndead }));
+        Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.Refresh }));
+        Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.Regenerate }));
+        Assert.True(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.Chameleon }));
+        Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef
+        { Id = SpellType.Chameleon, HasScriptedStages = true }));
     }
 }

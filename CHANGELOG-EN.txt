@@ -4,6 +4,48 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-20] - HARM-flag crime/reflect, @Select stage, custom Sphere spells 1000+
+----------------------------------------
+
+FIX - Harmful-spell classification now follows SPELLFLAG_HARM (Source-X
+        OnSpellEffect/CheckAntiMagic): pack spells that carry HARM without
+        DAMAGE/CURSE - Poison, Paralyze, Mana Vampire - now flag the caster
+        criminal on innocent players, are bounced by Magic Reflect, and are
+        suppressed in REGION_ANTIMAGIC_DAMAGE regions. Previously only
+        Damage/Curse-flagged spells counted as harmful.
+
+FIX - The [SPELL n] ON=@Select stage (Source-X SPTRIG_SELECT) now fires from
+        SpellEngine.CastStart, the choke point every cast entry funnels
+        through (client, scroll, wand, NPC, console); RETURN 1 cancels the
+        selection before any resource is spent. Pack form toggles that live
+        entirely in ON=@Select (Reaper Form, Stone Form) now run instead of
+        silently burning mana. The client-path double-fire was removed from
+        the char-trigger fall-through.
+
+FIX - Noble Sacrifice heals/cures the paladin's PARTY members and own pets
+        only; any nearby player - including enemies - used to receive the
+        area heal+cure.
+
+FIX - Animated Weapon (Mysticism) summons its classic body 0x2B4
+        (CREID_ANIMATED_WEAPON); the summon table returned body 0 and the
+        creature was invisible.
+
+NEW - Native behaviors for the Sphere custom spells (1000+), mirroring the
+        Source-X SPELL_* cases: Light (timed personal light), Hallucination
+        (STATF_HALLUCINATING), Stone / Particle Form (petrify for the
+        duration), Shrink (NPC packed into a figurine), Refresh / Restore /
+        Mana (stat refills), Sustenance (food refill), Gender Swap (body
+        toggle for human/elf/gargoyle), Trance (timed Meditation bonus),
+        Shield / Steelskin / Stoneskin (timed AR bonus), Regenerate
+        (heal-over-time, one tick per 2 s), Ale / Wine / Liquor (timed
+        DEX/INT drunkenness penalty), and Bone Armor (converts a skeleton
+        corpse into up to five bone armor pieces at reference odds).
+
+FIX - The inert-spell guard now covers the custom id space (1000+): customs
+        without a native handler or scripted stage (Chameleon, Beast/Monster
+        Form, Enchant, Forget - inert in the reference too) are refused up
+        front instead of consuming mana/reagents as silent no-ops.
+
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 

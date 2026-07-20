@@ -3,6 +3,48 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-20] - HARM bayragi suc/reflect, @Select asamasi, custom Sphere buyuleri 1000+
+----------------------------------------
+
+FIX - Zararli buyu siniflandirmasi artik SPELLFLAG_HARM bayragini izliyor
+        (Source-X OnSpellEffect/CheckAntiMagic): pack icinde HARM tasiyip
+        DAMAGE/CURSE tasimayan buyuler - Poison, Paralyze, Mana Vampire -
+        artik masum oyunculara atildiginda caster'i criminal yapiyor, Magic
+        Reflect tarafindan yansitiliyor ve REGION_ANTIMAGIC_DAMAGE
+        bolgelerinde engelleniyor. Onceden yalnizca Damage/Curse bayrakli
+        buyuler zararli sayiliyordu.
+
+FIX - [SPELL n] ON=@Select asamasi (Source-X SPTRIG_SELECT) artik
+        SpellEngine.CastStart icinden ateslenyor - her cast giris noktasi
+        (client, scroll, wand, NPC, konsol) bu noktadan gecer; RETURN 1
+        secimi kaynak harcanmadan iptal eder. Tamamen ON=@Select icinde
+        yasayan pack form toggle'lari (Reaper Form, Stone Form) artik
+        calisiyor; client yolundaki cift atesleme kaldirildi.
+
+FIX - Noble Sacrifice artik yalnizca paladinin PARTI uyelerini ve kendi
+        petlerini iyilestirip zehirden ariyor; onceden menzildeki her oyuncu
+        - dusmanlar dahil - alan heal+cure aliyordu.
+
+FIX - Animated Weapon (Mysticism) artik klasik govdesi 0x2B4 ile cagiriliyor
+        (CREID_ANIMATED_WEAPON); summon tablosu 0 dondurup gorunmez yaratik
+        cikariyordu.
+
+NEW - Sphere custom buyuleri (1000+) icin Source-X SPELL_* case'lerini
+        yansitan native davranislar: Light (sureli kisisel isik),
+        Hallucination (STATF_HALLUCINATING), Stone / Particle Form (sure
+        boyunca taslasma), Shrink (NPC figurine donusur), Refresh / Restore /
+        Mana (stat doldurma), Sustenance (aclik doldurma), Gender Swap
+        (insan/elf/gargoyle govde degisimi), Trance (sureli Meditation
+        bonusu), Shield / Steelskin / Stoneskin (sureli AR bonusu),
+        Regenerate (2 saniyede bir heal tick), Ale / Wine / Liquor (sureli
+        DEX/INT sarhosluk cezasi) ve Bone Armor (iskelet cesedini referans
+        olasiliklarla en fazla bes parca kemik zirhina cevirir).
+
+FIX - Inert buyu korumasi artik custom id alanini (1000+) da kapsiyor:
+        native handler'i veya script asamasi olmayan customlar (Chameleon,
+        Beast/Monster Form, Enchant, Forget - referansta da inert) mana ve
+        reagent yakip sessizce no-op olmak yerine bastan reddediliyor.
+
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 

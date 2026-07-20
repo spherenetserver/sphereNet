@@ -221,12 +221,13 @@ public sealed class TriggerDispatcher
         }
 
         // [SPELL n] section stages that mirror the char-level spell triggers
-        // (Source-X Spell_OnTrigger SPTRIG_SELECT/START/TARGETCANCEL). ARGN1 =
-        // spell id. Success/Fail/Effect fire from their engine sites already,
-        // so only the three stages with no other firing path map here.
+        // (Source-X Spell_OnTrigger SPTRIG_START/TARGETCANCEL). ARGN1 =
+        // spell id. Success/Fail/Effect fire from their engine sites already;
+        // Select fires from SpellEngine.CastStart (the Spell_CanCast
+        // equivalent every entry point funnels through) — mapping it here too
+        // would run pack @Select bodies twice per client cast.
         string? spellStage = trigger switch
         {
-            CharTrigger.SpellSelect => "Select",
             CharTrigger.SpellCast => "Start",
             CharTrigger.SpellTargetCancel => "TargetCancel",
             _ => null,

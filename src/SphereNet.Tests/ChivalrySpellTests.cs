@@ -83,25 +83,41 @@ public sealed class ChivalrySpellTests
     {
         // The pack def carries spellflag_heal; the generic heal branch used
         // to swallow it into a plain caster heal — the ally never got the
-        // area heal+cure and the paladin never paid the sacrifice.
-        var (_, engine, caster, ally) = Setup(new SpellDef
+        // area heal+cure and the paladin never paid the sacrifice. "Ally"
+        // means the paladin's PARTY (plus own pets) — a hostile bystander in
+        // range must never receive the heal+cure.
+        var (world, engine, caster, ally) = Setup(new SpellDef
         {
             Id = SpellType.NobleSacrifice,
             Name = "Noble Sacrifice",
             Flags = SpellFlag.Heal | SpellFlag.Good, // as the pack defines it
             EffectBase = 30, EffectScale = 30,
         });
+        var partyManager = new SphereNet.Game.Party.PartyManager();
+        var party = partyManager.CreateParty(caster.Uid);
+        party.AddMember(ally.Uid);
+        Character.ResolvePartyManager = () => partyManager;
+
         caster.MaxHits = 100;
         caster.Hits = 100;
         ally.MaxHits = 100;
         ally.Hits = 40;
         ally.ApplyPoison(2);
 
+        var enemy = world.CreateCharacter();
+        enemy.IsPlayer = true;
+        enemy.MaxHits = 100;
+        enemy.Hits = 40;
+        enemy.ApplyPoison(2);
+        world.PlaceCharacter(enemy, new Point3D(100, 101, 0, 0));
+
         engine.ApplyDirectEffect(caster, caster, SpellType.NobleSacrifice, 500);
 
-        Assert.True(ally.Hits > 40, "ally was not healed — the heal branch swallowed the spell");
-        Assert.False(ally.IsPoisoned, "ally was not cured");
+        Assert.True(ally.Hits > 40, "party ally was not healed — the heal branch swallowed the spell");
+        Assert.False(ally.IsPoisoned, "party ally was not cured");
         Assert.True(caster.Hits < 100, "the paladin paid no sacrifice");
+        Assert.Equal(40, enemy.Hits); // the bystander got nothing
+        Assert.True(enemy.IsPoisoned);
     }
 
     [Fact]

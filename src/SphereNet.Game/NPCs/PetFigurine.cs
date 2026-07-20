@@ -38,6 +38,26 @@ public static class PetFigurine
         return true;
     }
 
+    /// <summary>Shrink for the custom s_Shrink spell (Source-X SPELL_Shrink /
+    /// NPC_Shrink): works on any unowned NPC or the caster's own pet — never
+    /// on players, summons, or another player's pet.</summary>
+    public static bool ShrinkBySpell(Character caster, Character npc, Item figurine, GameWorld world)
+    {
+        if (npc.IsPlayer || npc.IsSummoned)
+            return false;
+        if (npc.OwnerSerial.IsValid && !npc.HasOwner(caster.Uid))
+            return false;
+
+        figurine.ItemType = ItemType.Figurine;
+        figurine.SetTag(SnapshotTag, Serialize(npc));
+        if (string.IsNullOrEmpty(figurine.Name))
+            figurine.Name = $"{npc.Name} (figurine)";
+
+        world.DeleteObject(npc);
+        npc.Delete();
+        return true;
+    }
+
     /// <summary>Recreate the pet stored in a figurine, re-owning it to <paramref name="owner"/>
     /// (follower-cap aware), placing it at <paramref name="pos"/>, and consuming the
     /// figurine. Returns null — and keeps the figurine — when the snapshot is missing/

@@ -189,6 +189,31 @@ public sealed class StandingSurfaceSyntheticTests
     }
 
     [Fact]
+    public void MultiIndex_CoversTypeSetAfterPlacement()
+    {
+        // The walk geometry now iterates GameWorld.GroundMultis instead of a
+        // spatial scan — an item that becomes a multi AFTER placement (deed
+        // flows that retype in place) must still register via the ItemType
+        // setter notification, or its floors would vanish from the walk.
+        var (world, walker, map) = Setup();
+        var mover = Mover(world);
+
+        map.SetSyntheticMulti(0x0073, new MultiDef(0x0073,
+        [
+            new MultiComponent { TileId = FloorTile, XOffset = 0, YOffset = 0, ZOffset = 20, Flags = 1 },
+        ]));
+        var late = world.CreateItem();
+        late.BaseId = 0x0073;
+        world.PlaceItem(late, new Point3D(110, 110, 0, 0)); // placed untyped
+        late.ItemType = ItemType.Multi;                     // typed afterwards
+
+        var floor = walker.ResolveStandingSurface(mover, 0, 110, 110, 20,
+            WalkCheck.StandingPolicy.Settle);
+        Assert.True(floor.Found, "late-typed multi floor not indexed");
+        Assert.Equal(20, floor.Z);
+    }
+
+    [Fact]
     public void CustomHouseFloor_DesignTilesAreSeats()
     {
         var (world, walker, map) = Setup();

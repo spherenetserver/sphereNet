@@ -264,7 +264,7 @@ public class SourceXScriptStructureRegressionTests
 
             [CHARDEF c_scavenge_probe]
             ID=0190
-            DESIRES=i_gold
+            DESIRES=i_gold 100
             """);
         stack.Resources.LoadResourceFile(path);
         ScriptTestBootstrap.LoadDefinitions(stack.Resources);
@@ -285,10 +285,12 @@ public class SourceXScriptStructureRegressionTests
             fired = seenNpc == npc && seenItem == gold;
             return true; // veto pickup so the assertion remains stable
         };
+        // DESIRES qty 100 = certain want (audit round 8 semantics: the entry
+        // qty IS the want score), and the per-NPC scan timer admits the very
+        // first call — one invocation is deterministic.
         MethodInfo look = typeof(NpcAI).GetMethod("LookAtNearbyItems",
             BindingFlags.Instance | BindingFlags.NonPublic)!;
-        for (int i = 0; i < 5000 && !fired; i++)
-            look.Invoke(ai, [npc]);
+        look.Invoke(ai, [npc]);
 
         Assert.True(fired);
         Assert.True(gold.IsOnGround);

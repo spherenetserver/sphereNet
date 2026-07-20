@@ -91,6 +91,7 @@ public sealed partial class NpcAI
                 _losFailCounts.Remove(uid);
                 _nextPathfindMs.Remove(uid);
                 _lastAttackNotify.Remove(uid);
+                _nextItemScan.Remove(uid);
             }
         }
 
@@ -130,6 +131,23 @@ public sealed partial class NpcAI
             if (staleLos != null)
                 foreach (var uid in staleLos)
                     _losFailCounts.Remove(uid);
+        }
+
+        // Item-scan timers accumulate for every acting NPC regardless of the
+        // path cache — sweep them for gone NPCs like the other per-uid state.
+        if (_nextItemScan.Count > 0)
+        {
+            List<uint>? staleScan = null;
+            foreach (var uid in _nextItemScan.Keys)
+            {
+                if (_pathCache.ContainsKey(uid)) continue; // already handled above
+                var obj = _world.FindObject(new Core.Types.Serial(uid));
+                if (obj is not Character ch || ch.IsDeleted || ch.IsDead)
+                    (staleScan ??= []).Add(uid);
+            }
+            if (staleScan != null)
+                foreach (var uid in staleScan)
+                    _nextItemScan.Remove(uid);
         }
 
         // Attack-notify latches outlive the path cache the same way (an NPC

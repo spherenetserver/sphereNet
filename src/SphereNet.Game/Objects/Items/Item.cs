@@ -217,6 +217,15 @@ public class Item : ObjBase
                 defType = ResolveDefinition()?.Type ?? ItemType.Normal;
             var oldEffective = oldRaw == ItemType.Normal ? defType : oldRaw;
             var newEffective = value == ItemType.Normal ? defType : value;
+
+            // A multi-classification flip keeps the world's multi index
+            // balanced — walk geometry iterates that index instead of a
+            // 32-tile spatial query per step.
+            bool wasMulti = IsMultiItemType(oldEffective);
+            bool isMulti = IsMultiItemType(newEffective);
+            if (wasMulti != isMulti)
+                ResolveWorld?.Invoke()?.NotifyGroundItemMultiChanged(this, isMulti);
+
             if (World.Sectors.Sector.IsListenItemType(oldEffective) ==
                 World.Sectors.Sector.IsListenItemType(newEffective))
                 return;
@@ -224,6 +233,11 @@ public class Item : ObjBase
             ResolveWorld?.Invoke()?.NotifyGroundItemTypeChanged(this, oldEffective, newEffective);
         }
     }
+
+    /// <summary>Multi-structure classification for the world's multi index
+    /// (houses, ships, addons, custom foundations).</summary>
+    internal static bool IsMultiItemType(ItemType t) =>
+        t is ItemType.Multi or ItemType.MultiCustom or ItemType.MultiAddon or ItemType.Ship;
 
     /// <summary>The raw instance type field, before the lazy def-resolution the
     /// <see cref="ItemType"/> getter applies. Diagnostics only: raw-<c>_type</c>

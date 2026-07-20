@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-20] - Apply-phase spike fix: multi index + NPC scan cadence
+----------------------------------------
+
+PERF - GameWorld keeps a ground-multi index (houses, ships, addons, custom
+        foundations; maintained on place/remove/retype - the ItemType
+        setter notifies on late retyping and the placement check resolves
+        def-typed multis from legacy saves). Walk geometry
+        (AddVirtualMultiComponents) iterates this short list with bounds
+        checks instead of a 32-tile spatial range query per step - the
+        per-NPC-step cost that dominated the live apply phase (50-180 ms
+        slow ticks) after NPC steps moved onto the standing resolver. Open
+        wilderness now costs nothing; player walk checks got cheaper too.
+
+PERF - The NPC ground-item desire scan runs on a per-NPC 10-15 s cadence
+        instead of a 1-in-8 dice roll per act - thousands of NPCs no
+        longer issue sector item queries in the serial apply phase every
+        few acts. Timer state is swept with the other per-NPC caches.
+
 [2026-07-20] - Gem-spawned NPCs run their chardef loot scripts (drops fixed)
 ----------------------------------------
 

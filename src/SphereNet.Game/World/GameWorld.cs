@@ -546,7 +546,10 @@ public sealed class GameWorld
         if (obj is Character removedChar)
             _allCharacters.Remove(removedChar);
         else if (obj is Item removedItem)
+        {
             _groundItems.Remove(removedItem);
+            _multiItems.Remove(removedItem);
+        }
         _objectsWithTimerF.Remove(obj);
         _uuidIndex.Remove(obj.Uuid);
         _uidTable.Free(obj.Uid);
@@ -691,7 +694,35 @@ public sealed class GameWorld
         // Sole sector.AddItem choke point — index every on-ground item so the decay
         // catch-up can sweep this set instead of the full object dictionary.
         _groundItems.Add(item);
+        // Multi index upkeep: walk geometry iterates GroundMultis with cheap
+        // bounds checks instead of a per-step 32-tile spatial scan (the cost
+        // that dominated the live apply phase). The ItemType getter resolves
+        // def-typed multis from legacy saves here too.
+        if (Item.IsMultiItemType(item.ItemType) && !_multiItems.Contains(item))
+            _multiItems.Add(item);
         return true;
+    }
+
+    private readonly List<Item> _multiItems = [];
+
+    /// <summary>Ground multi structures (houses, ships, addons, custom
+    /// foundations) — maintained on place/remove/retype so hot paths can
+    /// scan this short list instead of running spatial range queries.</summary>
+    public IReadOnlyList<Item> GroundMultis => _multiItems;
+
+    /// <summary>Called by the Item.ItemType setter when a ground item's
+    /// multi classification flips after placement.</summary>
+    public void NotifyGroundItemMultiChanged(Item item, bool isMulti)
+    {
+        if (isMulti)
+        {
+            if (!_multiItems.Contains(item))
+                _multiItems.Add(item);
+        }
+        else
+        {
+            _multiItems.Remove(item);
+        }
     }
 
     /// <summary>Source-X CCharBase::Region_Notify hook. Fired for every

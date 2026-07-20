@@ -502,13 +502,22 @@ public sealed partial class NpcAI
         }
     }
 
+    /// <summary>Next allowed item-scan tick per NPC uid — the widened native
+    /// scan ran a sector item query on every eighth act across thousands of
+    /// NPCs and showed up as live apply-phase spikes; a 10-15 s per-NPC
+    /// cadence matches the reference's leisurely look-around.</summary>
+    private readonly Dictionary<uint, long> _nextItemScan = [];
+
     private void LookAtNearbyItems(Character npc)
     {
         // The native scan runs regardless of script hooks (Source-X
         // NPC_LookAtItem calls NPC_WantThisItem first, trigger or not) —
         // it used to be silently disabled when no pack hooked
         // @NPCLookAtItem/@NPCSeeWantItem.
-        if (_rand.Next(8) != 0) return;
+        long scanNow = Environment.TickCount64;
+        if (_nextItemScan.TryGetValue(npc.Uid.Value, out long nextScan) && scanNow < nextScan)
+            return;
+        _nextItemScan[npc.Uid.Value] = scanNow + 10_000 + _rand.Next(5_001);
 
         // Sight-driven look range (Source-X NPC_LookAround), clamped for the
         // per-tick item sweep cost.

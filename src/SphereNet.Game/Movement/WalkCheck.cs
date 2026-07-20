@@ -796,12 +796,21 @@ public sealed class WalkCheck
         if (md == null)
             return;
 
-        var pivot = new Point3D((short)x, (short)y, 0, (byte)mapId);
-        foreach (var multi in _world.GetItemsInRange(pivot, 32))
+        // The world's multi index instead of a 32-tile spatial range query:
+        // this runs on EVERY walk/standing check (players, NPC steps, seat
+        // paths), and the per-step sector scan dominated the live server's
+        // apply phase. A shard has few multis — a bounds check over the
+        // short list is orders of magnitude cheaper, and an empty list
+        // (open wilderness) costs nothing.
+        var multis = _world.GroundMultis;
+        for (int m = 0; m < multis.Count; m++)
         {
+            var multi = multis[m];
             if (multi.IsDeleted || multi.IsEquipped || !multi.IsOnGround)
                 continue;
-            if (multi.ItemType is not (ItemType.Multi or ItemType.MultiCustom or ItemType.MultiAddon or ItemType.Ship))
+            if (multi.MapIndex != mapId)
+                continue;
+            if (Math.Abs(multi.X - x) > 32 || Math.Abs(multi.Y - y) > 32)
                 continue;
 
             var def = md.GetMulti(multi.BaseId);

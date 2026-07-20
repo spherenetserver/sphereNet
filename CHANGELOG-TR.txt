@@ -3,6 +3,24 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-20] - Apply fazi spike fixi: multi indeksi + NPC tarama kadansi
+----------------------------------------
+
+PERF - GameWorld yerdeki multi yapilarin indeksini tutuyor (ev, gemi,
+        addon, custom temel; yerlestirme/kaldirma/yeniden-tipleme ile
+        guncellenir - ItemType setter'i gec tiplemeyi bildirir, yerlestirme
+        kontrolu legacy save'lerin def-tipli multilerini cozer). Yuruyus
+        geometrisi (AddVirtualMultiComponents) adim basina 32-tile spatial
+        sorgu yerine bu kisa listeyi sinir kontrolleriyle geziyor - NPC
+        adimlari durus cozucusune gectikten sonra canli apply fazini
+        domine eden maliyet (50-180 ms slow tick) buydu. Acik arazi artik
+        sifir maliyet; oyuncu yuruyus kontrolleri de ucuzladi.
+
+PERF - NPC yerdeki-esya istek taramasi eylem basina 1/8 zar yerine NPC
+        basina 10-15 saniyelik kadansla calisiyor - binlerce NPC seri
+        apply fazinda birkac eylemde bir sektor sorgusu uretmiyor.
+        Zamanlayici durumu diger NPC onbellekleriyle birlikte supuruluyor.
+
 [2026-07-20] - Gem spawn NPC'leri chardef loot scriptlerini calistiriyor (drop fixi)
 ----------------------------------------
 

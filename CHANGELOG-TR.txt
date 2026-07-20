@@ -3,6 +3,22 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-20] - FINDID memory onceligi, tam halusinasyon gorselleri
+----------------------------------------
+
+FIX - FINDID gizli spell-memory katmanini backpack'ten ONCE tariyor: form
+        memory'si rune scroll'u ile ayni grafigi paylasir; eski pack-oncelikli
+        sira Reaper/Stone toggle'inin cantadaki yedek scroll'u silmesine ve
+        formun acik kalmasina izin veriyordu.
+
+NEW - Tam halusinasyon gorselleri (Source-X GetAdjustedCharID /
+        GetAdjustedItemID): halusinasyon goren oyuncu DIGER her mobili
+        rastgele klasik bir yaratik olarak, her mobili ve giyili
+        ekipmanlarini rastgele boya renkleriyle, yerdeki itemlari da
+        rastgele renklerle goruyor (multiler haric). Gorunum efekt
+        baslarken, her 15-30 saniyelik tick'te ve efekt BITERKEN
+        yenileniyor - son rastgele renkler client'ta asili kalmiyor.
+
 [2026-07-20] - Spell-memory ters baglantisi, zamansiz formlar, halusinasyon gorselleri
 ----------------------------------------
 

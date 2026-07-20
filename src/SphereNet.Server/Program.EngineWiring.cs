@@ -1297,13 +1297,18 @@ public static partial class Program
             };
             _spellEngine.OnViewRefresh = recipient =>
             {
-                // Source-X addChar/addPlayerSee on the hallucination tick:
-                // re-send nearby mobiles so the random hues re-roll.
+                // Source-X addChar/addPlayerSee on the hallucination tick and
+                // at effect add/remove: re-send nearby mobiles AND ground
+                // items so the random bodies/hues re-roll — and so the last
+                // trip colors clear the moment the effect ends.
                 if (!TryGetClientFor(recipient, out var c))
                     return;
                 foreach (var other in _world.GetCharsInRange(recipient.Position, 18))
                     if (!other.IsDeleted)
                         c.SendCharacterView(other);
+                foreach (var item in _world.GetItemsInRange(recipient.Position, 18))
+                    if (!item.IsDeleted)
+                        c.SendItemView(item);
             };
             _spellEngine.OnOverheadEmote = (speaker, text) =>
             {

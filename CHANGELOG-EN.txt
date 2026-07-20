@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-20] - FINDID memory precedence, full hallucination trip visuals
+----------------------------------------
+
+FIX - FINDID ranks the hidden spell-memory layer BEFORE the backpack: a
+        form memory shares its graphic with the rune scroll, so the old
+        pack-first order let the Reaper/Stone toggle delete a spare scroll
+        from the pack while the form stayed on.
+
+NEW - Full hallucination visuals (Source-X GetAdjustedCharID /
+        GetAdjustedItemID): a hallucinating player sees every OTHER mobile
+        as a random classic creature, every mobile plus its worn equipment
+        in random dye hues, and ground items recolored too (multis exempt).
+        The view refreshes the moment the effect lands, on every 15-30 s
+        trip tick, and when the effect ENDS - so the last random colors
+        never linger on the client.
+
 [2026-07-20] - Spell-memory reverse link, timerless forms, hallucination visuals
 ----------------------------------------
 

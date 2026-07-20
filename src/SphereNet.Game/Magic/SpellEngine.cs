@@ -2572,6 +2572,10 @@ public sealed class SpellEngine
                 eff.DotIntervalMs = 15_000;
                 eff.DotNextTickMs = Environment.TickCount64 + 15_000 + _rand.Next(15_001);
                 eff.DotSource = caster.Uid;
+                // Source-X refreshes the whole view the moment the effect
+                // lands (addChar + addPlayerSee) — the trip starts NOW, not
+                // at the first 15-30 s tick.
+                OnViewRefresh?.Invoke(target);
                 break;
             }
             case SpellType.Stone:
@@ -3276,6 +3280,13 @@ public sealed class SpellEngine
             t.LightLevel = eff.OldLightLevel;
             OnPersonalLightChanged?.Invoke(t);
         }
+        // Source-X refreshes the whole view when hallucination ENDS too —
+        // without it the last tick's random bodies/hues stay on the client
+        // until each object happens to update naturally. Skipped for the
+        // save-time stat unwind (detachMemory=false), which is not a real
+        // removal and is immediately re-applied.
+        if (detachMemory && eff.Spell == SpellType.Hallucination)
+            OnViewRefresh?.Invoke(t);
     }
 
     private void ApplyDeltas(ActiveSpellEffect eff)

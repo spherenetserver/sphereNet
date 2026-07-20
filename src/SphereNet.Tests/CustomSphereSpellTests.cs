@@ -397,6 +397,40 @@ public sealed class CustomSphereSpellTests
     }
 
     [Fact]
+    public void FormToggle_RemovesTheMemory_NotASpareScrollInThePack()
+    {
+        // The form memory and the rune scroll share BaseId 0x2D59 — FINDID
+        // must rank the memory layer before the backpack, or the toggle
+        // deletes the player's spare scroll while the form stays on.
+        var (world, engine, caster) = Setup(new SpellDef
+        {
+            Id = SpellType.ReaperForm,
+            Name = "Reaper Form",
+            Flags = SpellFlag.Good | SpellFlag.Poly,
+            DurationBase = 0,
+            RuneItemId = 0x2D59,
+        });
+        Character.SpellMemoryEffectRemover = engine.RemoveEffectByMemory;
+
+        var pack = world.CreateItem();
+        pack.ItemType = ItemType.Container;
+        caster.Backpack = pack;
+        caster.Equip(pack, Layer.Pack);
+        var spareScroll = world.CreateItem();
+        spareScroll.BaseId = 0x2D59;
+        pack.AddItem(spareScroll);
+
+        engine.ApplyDirectEffect(caster, caster, SpellType.ReaperForm, 500);
+        Assert.Equal((ushort)0x00E6, caster.BodyId);
+
+        Assert.True(caster.TryExecuteCommand("FINDID.02D59.REMOVE", "", null!));
+
+        Assert.False(caster.IsStatFlag(StatFlag.Polymorph), "the form did not end");
+        Assert.False(spareScroll.IsDeleted, "the toggle ate the spare scroll");
+        Assert.DoesNotContain(caster.Memories, m => !m.IsDeleted && m.BaseId == 0x2D59);
+    }
+
+    [Fact]
     public void Hallucination_Tick_PlaysClientOnlySound_AndRefreshesView()
     {
         var (_, engine, caster) = Setup(new SpellDef
@@ -407,18 +441,27 @@ public sealed class CustomSphereSpellTests
             DurationBase = 1200,
         });
         var sounds = new List<ushort>();
-        Character? refreshed = null;
+        int refreshes = 0;
         engine.OnPlaySoundTo = (_, snd) => sounds.Add(snd);
-        engine.OnViewRefresh = ch => refreshed = ch;
+        engine.OnViewRefresh = _ => refreshes++;
 
         engine.ApplyDirectEffect(caster, caster, SpellType.Hallucination, 500);
         Assert.True(caster.IsStatFlag(StatFlag.Hallucinating));
+        // Source-X refreshes the view the moment the effect lands.
+        Assert.Equal(1, refreshes);
 
         // First trip tick lands within 15-30 s.
         engine.ProcessExpirations(Environment.TickCount64 + 31_000);
         Assert.NotEmpty(sounds);
         Assert.All(sounds, s => Assert.Contains(s, new[] { (ushort)0x0243, (ushort)0x0244 }));
-        Assert.Same(caster, refreshed);
+        Assert.True(refreshes >= 2, "the trip tick did not refresh the view");
+
+        // ...and again when the effect ENDS, so the last random colors
+        // do not linger on the client.
+        int beforeExpiry = refreshes;
+        engine.ProcessExpirations(Environment.TickCount64 + 30L * 60 * 1000);
+        Assert.False(caster.IsStatFlag(StatFlag.Hallucinating));
+        Assert.True(refreshes > beforeExpiry, "no view refresh on effect removal");
     }
 
     [Fact]

@@ -39,24 +39,49 @@ public sealed partial class GameClient
     /// refresh re-sends nearby mobiles through the hue rules below.</summary>
     public void SendCharacterView(Character ch) => SendDrawObject(ch);
 
+    /// <summary>Public wrapper for engine wiring — the hallucination view
+    /// refresh re-sends nearby ground items through the item hue rule.</summary>
+    public void SendItemView(Item item) => SendWorldItem(item);
+
+    /// <summary>Body pool for the hallucination char swap. Source-X
+    /// GetAdjustedCharID rolls ANY artwork id below CREID_EQUIP_GM_ROBE
+    /// (excluding ids that crash clients); a curated classic-creature pool
+    /// keeps every rolled body client-safe.</summary>
+    private static readonly ushort[] s_hallucinationBodies =
+    [
+        0x0002, 0x0004, 0x0006, 0x0011, 0x001E, 0x0021, 0x0024, 0x002C,
+        0x0036, 0x003F, 0x00CD, 0x00CF, 0x00D3, 0x00D9, 0x00E1, 0x00EA,
+    ];
+
     internal void SendDrawObject(Character ch)
     {
         var equipment = BuildEquipmentList(ch);
         byte flags = BuildMobileFlags(ch);
         byte noto = GetNotoriety(ch);
 
-        // Source-X CClientMsg addChar hue rules: a hallucinating VIEWER sees
-        // every mobile in a random dye hue (re-rolled on each send — the
-        // hallucination tick refreshes the view for the trip effect); a
-        // petrified mobile shows HUE_STONE to everyone.
+        // Source-X CClientMsg GetAdjustedCharID rules: a hallucinating
+        // VIEWER sees every OTHER mobile as a random creature, and every
+        // mobile (self included) plus its worn equipment in random dye hues
+        // — re-rolled on each send; the hallucination tick refreshes the
+        // view for the trip effect. A petrified mobile shows HUE_STONE to
+        // everyone.
         var hue = ch.Hue;
+        ushort body = ch.BodyId;
         if (_character != null && _character.IsStatFlag(StatFlag.Hallucinating))
+        {
+            if (!ReferenceEquals(ch, _character))
+                body = s_hallucinationBodies[Random.Shared.Next(s_hallucinationBodies.Length)];
             hue = new Color((ushort)Random.Shared.Next(2, 0x03EA)); // HUE_DYE_HIGH
+            for (int i = 0; i < equipment.Length; i++)
+                equipment[i].Hue = (ushort)Random.Shared.Next(2, 0x03EA);
+        }
         else if (ch.IsStatFlag(StatFlag.Stone))
+        {
             hue = new Color(0x0482); // HUE_STONE
+        }
 
         _netState.Send(new PacketDrawObject(
-            ch.Uid.Value, ch.BodyId,
+            ch.Uid.Value, body,
             ch.X, ch.Y, ch.Z,
             (byte)ch.Direction, hue, flags, noto,
             equipment, _netState.SupportsNewMobileIncoming
@@ -687,11 +712,22 @@ public sealed partial class GameClient
             or SphereNet.Core.Enums.ItemType.MultiAddon
             or SphereNet.Core.Enums.ItemType.Ship;
 
+    /// <summary>Source-X GetAdjustedItemID: a hallucinating viewer sees
+    /// world items in random dye hues too (multis keep their hue — a
+    /// recolored house confuses the client's multi cache).</summary>
+    private ushort AdjustItemHueForViewer(Item item)
+    {
+        if (_character != null && _character.IsStatFlag(StatFlag.Hallucinating) &&
+            !IsMultiBody(item))
+            return (ushort)Random.Shared.Next(2, 0x03EA); // HUE_DYE_HIGH
+        return item.Hue;
+    }
+
     internal void SendWorldItem(Item item)
     {
         _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
-            item.X, item.Y, item.Z, item.Hue, item.Direction,
+            item.X, item.Y, item.Z, AdjustItemHueForViewer(item), item.Direction,
             isMulti: IsMultiBody(item)
         ));
     }
@@ -709,7 +745,7 @@ public sealed partial class GameClient
     {
         _netState.Send(BuildWorldItemPacket(
             item.Uid.Value, item.DispIdFull, item.Amount,
-            item.X, item.Y, item.Z, item.Hue, item.Direction,
+            item.X, item.Y, item.Z, AdjustItemHueForViewer(item), item.Direction,
             isMulti: IsMultiBody(item)
         ));
     }

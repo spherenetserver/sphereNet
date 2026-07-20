@@ -1869,23 +1869,26 @@ public partial class Character : ObjBase
 
     public void Memory_Delete(Item mem) => MemoryState.Delete(mem);
 
-    /// <summary>FINDID item search across worn equipment, the backpack and
-    /// the hidden memory layer — Source-X ContentFind covers every equipped
+    /// <summary>FINDID item search across worn equipment, the hidden memory
+    /// layer and the backpack — Source-X ContentFind covers every equipped
     /// item, spell memories included (the Scripts-X form toggles look up the
-    /// form's RUNE_ITEM memory this way).</summary>
+    /// form's RUNE_ITEM memory this way). Memories rank BEFORE the pack:
+    /// they are equipped items, and a form memory shares its graphic with
+    /// the rune scroll — pack-first would let the toggle eat a spare scroll
+    /// while the form stays on.</summary>
     private Item? FindItemByBaseId(ushort baseId)
     {
         for (int i = 0; i < _equipment.Length; i++)
             if (_equipment[i] != null && _equipment[i]!.BaseId == baseId)
                 return _equipment[i];
+        foreach (var mem in Memories)
+            if (!mem.IsDeleted && mem.BaseId == baseId)
+                return mem;
         var pack = Backpack;
         if (pack != null)
             foreach (var item in pack.Contents)
                 if (item.BaseId == baseId)
                     return item;
-        foreach (var mem in Memories)
-            if (!mem.IsDeleted && mem.BaseId == baseId)
-                return mem;
         return null;
     }
 

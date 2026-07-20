@@ -283,9 +283,15 @@ it is not wired to the `FILE.` ref in Source-X either. Guarded by
 The below-90 backlog closed through Wave 270 (70/76 items); the 6 surviving
 items were all explicitly deferred with reasons and are parked here:
 
-- **Spell schools** — Bushido/Ninjitsu/Focus/Imbuing/Mysticism/Spellweaving:
-  enums exist, no native handlers (large, separate project; note Chivalry is
-  NOT open — Source-X core has no chivalry cases either, verified 2026-07).
+- **Spell schools** — 2026-07-20 update: **Chivalry is native** (Cleanse by
+  Fire, Close Wounds, Dispel Evil, Divine Fury, Holy Light, Noble Sacrifice,
+  Remove Curse, Sacred Journey; Consecrate Weapon / Enemy of One stay script
+  territory — typed-damage coupling) and **Spellweaving Gift of Renewal** is a
+  native HoT. Remaining Bushido/Ninjitsu/Mysticism/Spellweaving uniques are
+  combat/stealth/form-coupled and stay deferred — the Source-X reference
+  implements none of them natively either (its native surface is buff-icon
+  layer bookkeeping; verified 2026-07); pack script defs run through the
+  generic flag engine.
 - **SERV no-op tail** — `STAT` / `TIMERF` section form / `SERVERS`: acceptable
   no-ops for a single-server shard. LOW.
 - **Pet economy sub-commands** — pet-sells-loot buy/sell/sample are

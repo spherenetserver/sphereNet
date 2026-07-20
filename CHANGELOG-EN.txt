@@ -7,6 +7,21 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+NEW - Chivalry works natively: Cleanse by Fire cures, Close Wounds heals
+        (generic heal flag), Dispel Evil strips/banishes conjured creatures
+        around the paladin (shared with Dispel's DISPELKILLSUMMONS
+        pipeline), Divine Fury refills stamina at a timed -20 defense cost,
+        Holy Light bursts energy damage at creatures fighting the caster,
+        Noble Sacrifice heals+cures nearby allies at the paladin's expense,
+        Remove Curse strips ONLY curse-type effects (buffs survive), and
+        Sacred Journey travels by rune like Recall. Spellweaving Gift of
+        Renewal is a real heal-over-time (the DOT engine now supports heal
+        ticks). Consecrate Weapon / Enemy of One and the Bushido/Ninjitsu
+        combat uniques stay script territory — the Source-X reference
+        itself implements none of them natively (its native surface is
+        buff-icon bookkeeping); the pack's script defs run through the
+        generic flag engine as before.
+
 NEW - Classic tailoring material flows work: wool/cotton targeted at a
         spinning wheel spins into 3 balls of yarn / 6 spools of thread
         (Source-X IT_WOOL/IT_COTTON), and thread/yarn targeted at a loom

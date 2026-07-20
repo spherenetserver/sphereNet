@@ -795,7 +795,7 @@ public sealed class SpellEngine
         }
 
         // Apply spell effect
-        if (spell is SpellType.Recall or SpellType.GateTravel)
+        if (spell is SpellType.Recall or SpellType.GateTravel or SpellType.SacredJourney)
         {
             var rune = _world?.FindItem(targetUid);
             if (rune != null && IsItemAccessible(caster, rune))
@@ -1772,23 +1772,7 @@ public sealed class SpellEngine
                 // Source-X Dispel removes the target's dispellable ATTR_MAGIC
                 // spell memories (buffs/curses), not only conjured creatures.
                 StripDispellableEffects(target);
-                if (target.IsStatFlag(StatFlag.Conjured) && !target.IsDead)
-                {
-                    if (IsMagicFlag(MagicConfigFlags.DispelKillSummons))
-                    {
-                        if (OnTargetKilled != null)
-                            OnTargetKilled.Invoke(target, caster);
-                        else if (Character.OnLifecycleKill != null)
-                            Character.OnLifecycleKill(target, caster);
-                        else
-                            target.Kill();
-                    }
-                    else
-                    {
-                        _world.DeleteObject(target);
-                        target.Delete();
-                    }
-                }
+                DispelConjured(caster, target);
                 break;
             case SpellType.Resurrection:
                 if (target.IsDead)
@@ -2084,6 +2068,101 @@ public sealed class SpellEngine
                 caster.Mana = (short)Math.Min(caster.Mana + vamp, caster.MaxMana);
                 break;
 
+            // ---- Chivalry (201-210). Source-X ships this school over the
+            // generic script engine (its native surface is buff bookkeeping
+            // only); the handlers below give the classic behaviors that the
+            // engine's existing primitives can express. Consecrate Weapon and
+            // Enemy of One stay script territory (typed-damage combat
+            // coupling), like the reference.
+            case SpellType.CleanseByFire:
+                // Cure the target's poison by holy fire.
+                target.CurePoison();
+                break;
+
+            case SpellType.DispelEvil:
+                // Area dispel around the paladin: strip dispellable effects
+                // from and banish conjured creatures near the caster.
+                foreach (var ch in _world.GetCharsInRange(caster.Position, 8).ToList())
+                {
+                    if (ch == caster || ch.IsDead || ch.IsPlayer)
+                        continue;
+                    if (ch.IsStatFlag(StatFlag.Conjured) ||
+                        ch.IsStatFlag(StatFlag.Polymorph))
+                        StripDispellableEffects(ch);
+                    DispelConjured(caster, ch);
+                }
+                break;
+
+            case SpellType.DivineFury:
+            {
+                // Stamina surges back; the paladin drops their guard for the
+                // duration (classic -20 defense while the fury lasts).
+                caster.Stam = caster.MaxStam;
+                var fury = ScheduleEffectExpiry(caster, caster, def.Id, def);
+                fury.ArmorDelta = -20;
+                caster.ProtectionArmor += fury.ArmorDelta;
+                break;
+            }
+
+            case SpellType.HolyLight:
+                // Energy burst around the paladin — strikes the creatures
+                // actively fighting the caster.
+                foreach (var ch in _world.GetCharsInRange(caster.Position, 3).ToList())
+                {
+                    if (ch == caster || ch.IsDead || CombatEngine.IsDamageImmune(ch))
+                        continue;
+                    bool hostile = ch.FightTarget == caster.Uid ||
+                                   caster.FightTarget == ch.Uid;
+                    if (!hostile)
+                        continue;
+                    int dmg = CombatEngine.ApplyElementalResist(ch,
+                        Math.Max(10, effect), DamageType.Energy);
+                    ch.Hits = (short)Math.Max(0, ch.Hits - dmg);
+                    ch.RecordAttack(caster.Uid, dmg);
+                    if (ch.Hits <= 0 && !ch.IsDead)
+                    {
+                        if (OnTargetKilled != null) OnTargetKilled.Invoke(ch, caster);
+                        else if (Character.OnLifecycleKill != null) Character.OnLifecycleKill(ch, caster);
+                        else ch.Kill();
+                    }
+                }
+                break;
+
+            case SpellType.NobleSacrifice:
+            {
+                // Heal + cure nearby allies at the paladin's own expense.
+                bool sacrificed = false;
+                foreach (var ch in _world.GetCharsInRange(caster.Position, 3).ToList())
+                {
+                    if (ch == caster || ch.IsDead)
+                        continue;
+                    if (!ch.IsPlayer && ch.OwnerSerial != caster.Uid)
+                        continue;
+                    ch.CurePoison();
+                    ch.Hits = (short)Math.Min(ch.Hits + Math.Max(10, effect), ch.MaxHits);
+                    sacrificed = true;
+                }
+                if (sacrificed && caster.Hits > 20)
+                    caster.Hits -= 20;
+                break;
+            }
+
+            case SpellType.RemoveCurse:
+                StripCurseEffects(target);
+                break;
+
+            // ---- Spellweaving: Gift of Renewal — heal-over-time (one heal
+            // tick every 2 s for the spell's duration; negative DOT = heal).
+            case SpellType.GiftOfRenewal:
+            {
+                int durTenths = def.GetDuration(caster.GetSkill(def.GetPrimarySkill()));
+                int charges = Math.Clamp(durTenths / 20, 5, 15); // one tick / 2s
+                var hot = SetupDot(caster, target, def, charges, 2000);
+                hot.DotDamagePerTick = -Math.Max(5, effect / 3);
+                hot.DotDirect = true;
+                break;
+            }
+
             case SpellType.CreateFood:
             {
                 // Materialize a food item into the caster's pack (was a no-op).
@@ -2264,6 +2343,52 @@ public sealed class SpellEngine
     /// target (Source-X removes the dispellable ATTR_MAGIC spell-memory items
     /// — Bless/Curse/NightSight/Protection/Reflect/Paralyze and the rest of
     /// the LAYER_SPELL family).</summary>
+    /// <summary>Banish a conjured creature (shared by Dispel / Mass Dispel and
+    /// Chivalry Dispel Evil): DISPELKILLSUMMONS routes through the kill
+    /// pipeline (loot/corpse), otherwise the summon is deleted outright.</summary>
+    private void DispelConjured(Character caster, Character target)
+    {
+        if (!target.IsStatFlag(StatFlag.Conjured) || target.IsDead)
+            return;
+        if (IsMagicFlag(MagicConfigFlags.DispelKillSummons))
+        {
+            if (OnTargetKilled != null)
+                OnTargetKilled.Invoke(target, caster);
+            else if (Character.OnLifecycleKill != null)
+                Character.OnLifecycleKill(target, caster);
+            else
+                target.Kill();
+        }
+        else
+        {
+            _world.DeleteObject(target);
+            target.Delete();
+        }
+    }
+
+    private static bool IsCurseSpell(SpellType s) => s is
+        SpellType.Clumsy or SpellType.Feeblemind or SpellType.Weaken or
+        SpellType.Curse or SpellType.MassCurse or SpellType.CorpseSkin or
+        SpellType.EvilOmen or SpellType.MindRot or SpellType.Strangle or
+        SpellType.BloodOath or SpellType.PainSpike;
+
+    /// <summary>Chivalry Remove Curse: strip only the CURSE-type active
+    /// effects from the target, leaving beneficial buffs intact.</summary>
+    public void StripCurseEffects(Character target)
+    {
+        for (int i = _activeEffects.Count - 1; i >= 0; i--)
+        {
+            var eff = _activeEffects[i];
+            if (eff.Target != target || !IsCurseSpell(eff.Spell))
+                continue;
+            _activeEffects.RemoveAt(i);
+            RevertDeltas(eff);
+            NotifySpellBuff(target, eff.Spell, false);
+            Character.OnSpellEffectRemove?.Invoke(target, (int)eff.Spell);
+            FireSpellSectionStage(eff.Spell, "EffectRemove", target);
+        }
+    }
+
     public void StripDispellableEffects(Character target)
     {
         for (int i = _activeEffects.Count - 1; i >= 0; i--)
@@ -2312,6 +2437,9 @@ public sealed class SpellEngine
             int mult = Math.Max(1, 3 - 2 * Math.Max(0, (int)victim.Stam) / maxStam);
             return Math.Max(1, Math.Max(1, spellPower) * mult);
         }
+        // Negative per-tick = heal-over-time (Spellweaving Gift of Renewal).
+        if (eff.DotDamagePerTick < 0)
+            return eff.DotDamagePerTick;
         return Math.Max(1, eff.DotDamagePerTick);
     }
 
@@ -2332,6 +2460,17 @@ public sealed class SpellEngine
     /// direct, damage credited to the source, health broadcast, death handled.</summary>
     private void ApplyDotDamage(Character victim, ActiveSpellEffect eff, int damage)
     {
+        // Negative amount = heal tick (Gift of Renewal HoT).
+        if (damage < 0)
+        {
+            if (victim.IsDead) return;
+            victim.Hits = (short)Math.Min(victim.Hits - damage, victim.MaxHits);
+            Character.BroadcastNearby?.Invoke(victim.Position, 18,
+                new SphereNet.Network.Packets.Outgoing.PacketUpdateHealth(
+                    victim.Uid.Value, victim.MaxHits, victim.Hits), 0);
+            return;
+        }
+
         if (!eff.DotDirect)
             damage = CombatEngine.ApplyElementalResist(victim, damage, eff.DotDamageType);
         damage = Math.Max(1, damage);

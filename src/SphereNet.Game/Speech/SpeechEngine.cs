@@ -418,6 +418,15 @@ public sealed class CommandHandler
     /// <summary>Fired when a command changes a character's visual state (invul, incognito, etc.).</summary>
     public event Action<Character>? OnCharVisualUpdate;
     public Func<Character, string, bool>? ScriptFallbackExecutor { get; set; }
+
+    /// <summary>Source-X CommandTrigger (sphere.ini CommandTrigger=f_oncommand):
+    /// a global function invoked BEFORE any command is dispatched, with
+    /// ARGS = the full command line. Returning true (RETURN 1 in the script)
+    /// consumes the command — packs use it to add/override custom commands
+    /// (the pack's .REMOVE/.FLIP/.MTELE staff tools live here). Null when no
+    /// CommandTrigger is configured.</summary>
+    public Func<Character, string, bool>? CommandTriggerHook { get; set; }
+
     public event Action<Character, string, string>? OnScriptParityWarning;
     public TriggerDispatcher? TriggerDispatcher { get; set; }
 
@@ -522,6 +531,12 @@ public sealed class CommandHandler
     {
         if (string.IsNullOrWhiteSpace(commandLine))
             return CommandResult.NotFound;
+
+        // Source-X CommandTrigger: fire the global command hook FIRST, so a
+        // pack can intercept or add commands (f_oncommand). RETURN 1 consumes
+        // the line; otherwise dispatch continues to native/script verbs.
+        if (CommandTriggerHook != null && CommandTriggerHook(gm, commandLine))
+            return CommandResult.Executed;
 
         // ".serv.save", ".serv.resync", ".serv broadcast x"… — previously these
         // fell through to the character verb path and silently failed; SERV.*

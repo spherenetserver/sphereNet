@@ -4,6 +4,35 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-20] - functions/ pack audit: strftime, CommandTrigger, CHR, CONTP
+----------------------------------------
+
+FIX - RTIME.FORMAT / RTICKS.FORMAT translate C strftime tokens instead of
+        feeding them raw to DateTime.ToString. The scripts pass POSIX tokens
+        (%Y %m %d %H %M %w %A %B ...); .NET read %m as MINUTES, %H:%M as
+        hour:MONTH, and threw on %Y/%w (falling back to the default date),
+        so every pack date/time function (SERV.ZAMAN/SAAT/AYNAME/DAYNAME/
+        DAYNUM) produced garbage. The dispatch now passes the original-case
+        property so case-sensitive tokens survive.
+
+NEW - CommandTrigger (sphere.ini CommandTrigger=f_oncommand): a global
+        function fired before every command with ARGS = the command line;
+        RETURN 1 consumes it. Lets a pack add or override commands - the
+        pack's f_oncommand staff tools (.REMOVE/.FLIP/.MTELE) were dead
+        because nothing invoked the hook.
+
+NEW - CHR intrinsic (inverse of ASC): <CHR n> is the character for byte
+        value n (Source-X CScriptObj_functions.tbl CHR).
+
+NEW - CONTP item verb: CONTP x,y repositions a contained item inside its
+        container (Source-X CItem IC_CONTP); a ground/equipped item is a
+        no-op like the reference.
+
+Note: pack-custom features with no Source-X counterpart were intentionally
+skipped (FLAGSIL, UOSOFT_CLIENT_LOGOUT, ISFORBIDSTRING/ISSTRING). The
+packet-scripting framework (F_PACKET_RECEIVE/SEND hooks) is unimplemented
+and left for a dedicated pass.
+
 [2026-07-20] - Scripted item timers + chained-object verbs (flash robe, staff mount)
 ----------------------------------------
 

@@ -1974,6 +1974,23 @@ public class Item : ObjBase
 
         switch (upper)
         {
+            // CONTP x,y — reposition a CONTAINED item at (x,y) inside its
+            // container (Source-X CItem IC_CONTP). A ground/equipped item is
+            // a no-op like the reference. GM item-creation scripts use it to
+            // lay out contents (NEW.CONTP 44,121).
+            case "CONTP":
+            {
+                if (!_containedIn.IsValid) return true;
+                var coords = args.Split([',', ' ', '\t'],
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (coords.Length >= 2 &&
+                    short.TryParse(coords[0], out short cpx) &&
+                    short.TryParse(coords[1], out short cpy))
+                {
+                    Position = new Point3D(cpx, cpy, Position.Z, Position.Map);
+                }
+                return true;
+            }
             // Clone this item (optionally <n> times) into the same location.
             case "DUPE":
             {

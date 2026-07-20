@@ -68,6 +68,36 @@ public class CommandSpeechParityTests
         Assert.Equal(100, staff.Str);
     }
 
+    // ---- CommandTrigger (Source-X f_oncommand) ----
+
+    [Fact]
+    public void CommandTrigger_Return1_ConsumesTheCommand_BeforeDispatch()
+    {
+        var world = CreateWorld();
+        var cmds = new CommandHandler();
+        var player = MakeChar(world, PrivLevel.Player);
+
+        string? seenLine = null;
+        // The hook mirrors the wiring: RETURN 1 (true) = consumed. The pack's
+        // f_oncommand intercepts REMOVE/FLIP/MTELE this way.
+        cmds.CommandTriggerHook = (gm, line) =>
+        {
+            seenLine = line;
+            return line.Contains("MYCUSTOM", StringComparison.OrdinalIgnoreCase);
+        };
+
+        // A command the hook claims: consumed, never reaches native dispatch.
+        Assert.Equal(CommandResult.Executed, cmds.TryExecute(player, "MYCUSTOM foo"));
+        Assert.Equal("MYCUSTOM foo", seenLine);
+
+        // A command the hook declines still flows to normal dispatch: a GM's
+        // native property-set runs, proving the hook does not swallow it.
+        var staff = MakeChar(world, PrivLevel.GM, x: 105);
+        Assert.Equal(CommandResult.Executed, cmds.TryExecute(staff, "STR=77"));
+        Assert.Equal("STR=77", seenLine); // the hook saw it but declined
+        Assert.Equal(77, staff.Str);      // native dispatch then applied it
+    }
+
     // ---- P1: @Speech self-trigger RETURN 1 cancels the utterance ----
 
     [Fact]

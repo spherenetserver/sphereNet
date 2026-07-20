@@ -829,6 +829,27 @@ public static partial class Program
 
                 return result == TriggerResult.True;
             };
+            // Source-X CommandTrigger (sphere.ini CommandTrigger=f_oncommand):
+            // a global hook run before every command. Fires the named function
+            // with ARGS = the command line; a RETURN 1 (TriggerResult.True)
+            // consumes the command. Unset = no hook.
+            if (!string.IsNullOrWhiteSpace(_config.CommandTrigger))
+            {
+                string cmdTrigFunc = _config.CommandTrigger.Trim();
+                _commands.CommandTriggerHook = (gm, commandLine) =>
+                {
+                    TryGetClientFor(gm, out var cmdConsole);
+                    var trigArgs = new SphereNet.Scripting.Execution.TriggerArgs(gm, 1, 0, commandLine)
+                    {
+                        Object1 = gm,
+                        Object2 = gm,
+                    };
+                    return _triggerRunner.TryRunFunction(cmdTrigFunc, gm, cmdConsole, trigArgs,
+                        out var trigResult) && trigResult == TriggerResult.True;
+                };
+                _log.LogInformation("CommandTrigger hook wired to function '{Func}'.", cmdTrigFunc);
+            }
+
             _commands.RegisterDefaults(_world);
             int scriptCmdCount = _commands.LoadScriptCommandPrivileges(_resources);
             _log.LogInformation("Loaded {Count} script command privilege entries from [PLEVEL] sections.", scriptCmdCount);

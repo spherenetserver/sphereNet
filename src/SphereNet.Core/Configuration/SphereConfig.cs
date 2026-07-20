@@ -269,6 +269,11 @@ public sealed class SphereConfig
     public string EventsPet { get; set; } = "";
     public string EventsPlayer { get; set; } = "";
     public string EventsRegion { get; set; } = "";
+
+    /// <summary>Source-X CommandTrigger: a global function fired before every
+    /// command with ARGS = the command line; RETURN 1 consumes it. Lets a
+    /// pack add/override commands (f_oncommand).</summary>
+    public string CommandTrigger { get; set; } = "";
     public string EventsItem { get; set; } = "";
 
     // Light
@@ -646,6 +651,7 @@ public sealed class SphereConfig
         SpeechPet = ini.GetValue(section, "SpeechPet") ?? SpeechPet;
         EventsPet = ini.GetValue(section, "EventsPet") ?? EventsPet;
         EventsPlayer = ini.GetValue(section, "EventsPlayer") ?? EventsPlayer;
+        CommandTrigger = ini.GetValue(section, "CommandTrigger") ?? CommandTrigger;
         EventsRegion = ini.GetValue(section, "EventsRegion") ?? EventsRegion;
         EventsItem = ini.GetValue(section, "EventsItem") ?? EventsItem;
 

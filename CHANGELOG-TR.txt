@@ -3,6 +3,35 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-20] - functions/ pack denetimi: strftime, CommandTrigger, CHR, CONTP
+----------------------------------------
+
+FIX - RTIME.FORMAT / RTICKS.FORMAT C strftime token'larini cevirir, ham
+        halde DateTime.ToString'e vermez. Scriptler POSIX token'lari
+        geciriyor (%Y %m %d %H %M %w %A %B ...); .NET %m'yi DAKIKA, %H:%M'yi
+        saat:AY okuyor ve %Y/%w'de exception firlatiyordu (varsayilan
+        tarihe dusuyordu), bu yuzden her pack tarih/saat fonksiyonu
+        (SERV.ZAMAN/SAAT/AYNAME/DAYNAME/DAYNUM) bozuk cikti veriyordu.
+        Dispatch artik orijinal buyuk/kucuk harf korunmus property geciriyor.
+
+NEW - CommandTrigger (sphere.ini CommandTrigger=f_oncommand): her komuttan
+        once ARGS = komut satiri ile calisan global fonksiyon; RETURN 1
+        komutu tuketir. Packlerin komut eklemesine/override etmesine izin
+        verir - pack'in f_oncommand staff araclari (.REMOVE/.FLIP/.MTELE)
+        hic cagrilmadigi icin oluydu.
+
+NEW - CHR intrinsic'i (ASC'nin tersi): <CHR n>, n byte degerinin karakteri
+        (Source-X CScriptObj_functions.tbl CHR).
+
+NEW - CONTP item verb'i: CONTP x,y container icindeki bir itemi (x,y)
+        konumuna tasir (Source-X CItem IC_CONTP); yer/giyili item referans
+        gibi no-op.
+
+Not: Source-X karsiligi olmayan pack-custom ozellikler bilerek atlandi
+(FLAGSIL, UOSOFT_CLIENT_LOGOUT, ISFORBIDSTRING/ISSTRING). Packet-scripting
+cercevesi (F_PACKET_RECEIVE/SEND hook'lari) implemente degil, ayri bir
+tur icin birakildi.
+
 [2026-07-20] - Scriptli item timer'lari + zincirli nesne verb'leri (flash robe, staff mount)
 ----------------------------------------
 

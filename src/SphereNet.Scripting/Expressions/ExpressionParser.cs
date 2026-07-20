@@ -1041,6 +1041,18 @@ public sealed class ExpressionParser
             return string.Join(" ", inner.Select(c => ((int)c).ToString("X2")));
         }
 
+        // CHR — inverse of ASC: byte VALUE -> the character (Source-X
+        // CScriptObj_functions.tbl CHR). The packet-rebuild scripts turn
+        // received bytes back into text with <SERV.CHR <byte>>.
+        if (varExpr.StartsWith("CHR ", StringComparison.OrdinalIgnoreCase) ||
+            varExpr.StartsWith("CHR(", StringComparison.OrdinalIgnoreCase))
+        {
+            string inner = varExpr.StartsWith("CHR(", StringComparison.OrdinalIgnoreCase)
+                ? ExtractFuncArg(varExpr, 3) : ResolveAngleBrackets(varExpr[4..].Trim());
+            long code = Evaluate(inner.AsSpan());
+            return code is > 0 and <= 0x10FFFF ? char.ConvertFromUtf32((int)code) : "";
+        }
+
         // ASCPAD — convert string to hex ASCII codes, padded to fixed length
         if (varExpr.StartsWith("ASCPAD ", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("ASCPAD(", StringComparison.OrdinalIgnoreCase))

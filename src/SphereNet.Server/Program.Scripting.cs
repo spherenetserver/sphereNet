@@ -174,8 +174,11 @@ public static partial class Program
             _ when upper.StartsWith("MAP(") => ResolveServMapPoint(property[4..]),
 
             // --- RTIME.FORMAT / RTICKS.FORMAT / RTICKS.FROMTIME (standalone, forwarded here) ---
-            _ when upper.StartsWith("RTIME.FORMAT") => ResolveRtimeFormat(upper),
-            _ when upper.StartsWith("RTICKS.FORMAT") => ResolveRticksFormat(upper),
+            // Pass the ORIGINAL-case property: strftime tokens are
+            // case-sensitive (%d day vs %M minute), and `upper` would fold
+            // %d/%m/%y into %D/%M/%Y — the very mismatch this path fixes.
+            _ when upper.StartsWith("RTIME.FORMAT") => ResolveRtimeFormat(property),
+            _ when upper.StartsWith("RTICKS.FORMAT") => ResolveRticksFormat(property),
             _ when upper.StartsWith("RTICKS.FROMTIME") => ResolveRticksFromTime(upper),
 
             // --- SERV.LOOKUPSKILL <name> — reverse lookup skill id by name.
@@ -2236,8 +2239,59 @@ public static partial class Program
         if (spaceIdx < 0)
             return DateTime.Now.ToString("ddd MMM dd HH:mm:ss yyyy");
         string fmt = property[(spaceIdx + 1)..].Trim();
-        try { return DateTime.Now.ToString(fmt); }
-        catch { return DateTime.Now.ToString("ddd MMM dd HH:mm:ss yyyy"); }
+        return FormatStrftime(DateTime.Now, fmt);
+    }
+
+    /// <summary>Format a DateTime with a C strftime-style pattern, the way
+    /// Source-X CSTime::Format does (CSTime.cpp:289). The scripts pass POSIX
+    /// tokens (%Y %m %d %H %M %w ...) — feeding those straight to
+    /// DateTime.ToString mis-read %m as minutes, %H:%M as hour:month, and
+    /// threw on %Y/%w, so every pack date/time function produced garbage.</summary>
+    private static string FormatStrftime(DateTime dt, string strftimeFmt)
+    {
+        if (string.IsNullOrEmpty(strftimeFmt) || !strftimeFmt.Contains('%'))
+        {
+            // No POSIX tokens — treat as a .NET pattern (back-compat).
+            try { return dt.ToString(strftimeFmt); }
+            catch { return dt.ToString("ddd MMM dd HH:mm:ss yyyy"); }
+        }
+
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var sb = new System.Text.StringBuilder(strftimeFmt.Length + 16);
+        for (int i = 0; i < strftimeFmt.Length; i++)
+        {
+            if (strftimeFmt[i] != '%' || i + 1 >= strftimeFmt.Length)
+            {
+                sb.Append(strftimeFmt[i]);
+                continue;
+            }
+            char c = strftimeFmt[++i];
+            sb.Append(c switch
+            {
+                'Y' => dt.ToString("yyyy", inv),
+                'y' => dt.ToString("yy", inv),
+                'm' => dt.ToString("MM", inv),
+                'd' => dt.ToString("dd", inv),
+                'e' => dt.Day.ToString(inv).PadLeft(2),
+                'H' => dt.ToString("HH", inv),
+                'I' => dt.ToString("hh", inv),
+                'M' => dt.ToString("mm", inv),
+                'S' => dt.ToString("ss", inv),
+                'p' => dt.ToString("tt", inv),
+                'A' => dt.ToString("dddd", inv),
+                'a' => dt.ToString("ddd", inv),
+                'B' => dt.ToString("MMMM", inv),
+                'b' or 'h' => dt.ToString("MMM", inv),
+                'j' => dt.DayOfYear.ToString("D3", inv),
+                'w' => ((int)dt.DayOfWeek).ToString(inv),          // 0=Sunday
+                'u' => (((int)dt.DayOfWeek + 6) % 7 + 1).ToString(inv), // 1=Mon..7=Sun
+                'n' => "\n",
+                't' => "\t",
+                '%' => "%",
+                _ => "%" + c, // unknown token: leave verbatim (strftime is impl-defined)
+            });
+        }
+        return sb.ToString();
     }
 
     private static string? ResolveRticksFormat(string property)
@@ -2251,7 +2305,7 @@ public static partial class Program
         try
         {
             var dt = DateTimeOffset.FromUnixTimeSeconds(ts).LocalDateTime;
-            return dt.ToString(args[1].Trim());
+            return FormatStrftime(dt, args[1].Trim());
         }
         catch { return "0"; }
     }

@@ -735,16 +735,30 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                 return true;
             case "FIX":
             {
-                // Source-X CObjBase fix: re-seat Z on the terrain surface.
+                // Source-X CObjBase fix: re-seat on the standing surface. A
+                // CHARACTER goes through the shared standing resolver — the
+                // terrain-only GetEffectiveZ dropped it under house floors,
+                // ship decks and dungeon statics. Items keep the plain
+                // terrain drop.
                 var fixWorld = ResolveWorld?.Invoke();
                 if (fixWorld?.MapData != null)
                 {
                     var p = Position;
-                    sbyte fixZ = fixWorld.MapData.GetEffectiveZ(p.Map, p.X, p.Y);
                     if (this is Characters.Character fixCh)
+                    {
+                        var fixStand = fixWorld.Standing.ResolveStandingSurface(
+                            fixCh, p.Map, p.X, p.Y, p.Z,
+                            Movement.WalkCheck.StandingPolicy.Settle);
+                        sbyte fixZ = fixStand.Found
+                            ? fixStand.Z
+                            : fixWorld.MapData.GetEffectiveZ(p.Map, p.X, p.Y);
                         fixWorld.MoveCharacter(fixCh, new Point3D(p.X, p.Y, fixZ, p.Map));
+                    }
                     else if (this is Items.Item fixItem && !fixItem.ContainedIn.IsValid)
+                    {
+                        sbyte fixZ = fixWorld.MapData.GetEffectiveZ(p.Map, p.X, p.Y);
                         Position = new Point3D(p.X, p.Y, fixZ, p.Map);
+                    }
                 }
                 return true;
             }

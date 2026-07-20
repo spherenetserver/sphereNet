@@ -4,6 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-20] - Z-resolver tail: .FIX, .GO, drift diagnostic, end-to-end 0x20 test
+----------------------------------------
+
+FIX - .FIX re-seats a CHARACTER through the shared standing resolver - the
+        terrain-only GetEffectiveZ dropped it under house floors, ship decks
+        and dungeon statics. Item .FIX keeps the plain terrain drop.
+
+FIX - .GO x y without a Z settles through the shared resolver (terrain
+        seeds the reference): the destination's dungeon statics and multi
+        floors are now seen instead of terrain-only Z.
+
+FIX - The [z_drift] dclick diagnostic compares against the resolver instead
+        of the multi-blind GetEffectiveZ - no more false alarms on ship
+        decks and house floors. Still log-only per the audit do-not list.
+
+NEW - End-to-end drift-chain test: a real MovementEngine.TryMove step on an
+        upper story, then a double-click that turns the character - the
+        self 0x20 the turn sends is captured off the packet queue and must
+        carry the story's Z. Closes the audit's E2E gap.
+
 [2026-07-20] - Standing-surface synthetic test matrix + flat multi-floor walk fix
 ----------------------------------------
 

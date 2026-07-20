@@ -219,6 +219,50 @@ public sealed class StandingSurfaceSyntheticTests
     }
 
     [Fact]
+    public void EndToEnd_UpperStoryWalk_ThenDclickFacing_0x20CarriesTheFloorZ()
+    {
+        // The full drift chain, end to end (audit ask): a real
+        // MovementEngine.TryMove step on an upper story, then a double-click
+        // that turns the character — the self 0x20 the turn sends must carry
+        // the story's Z, not a terrain-derived one.
+        var (world, _, map) = Setup();
+        map.AddSyntheticStatic(0, 40, 40, FloorTile, 20);
+        map.AddSyntheticStatic(0, 41, 40, FloorTile, 20);
+        map.AddSyntheticStatic(0, 42, 40, FloorTile, 20);
+
+        var lf = LoggerFactory.Create(_ => { });
+        var client = TestHarness.CreateClient(lf, world,
+            new SphereNet.Game.Accounts.AccountManager(lf), 17001);
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        player.BodyId = 0x0190;
+        world.PlaceCharacter(player, new Point3D(41, 40, 20, 0));
+        TestHarness.AttachCharacter(client, player);
+
+        var movement = new SphereNet.Game.Movement.MovementEngine(world);
+        Assert.True(movement.TryMove(player, Direction.East, running: false, sequence: 0),
+            "the upper-story step was rejected");
+        Assert.Equal(20, player.Z); // the walk kept the story
+
+        // A dclick target south of the player forces a facing change,
+        // which sends the self 0x20 redraw.
+        var lamp = world.CreateItem();
+        lamp.BaseId = AddonTile;
+        world.PlaceItem(lamp, new Point3D(42, 41, 20, 0));
+        client.HandleDoubleClick(lamp.Uid.Value);
+
+        var draw = TestHarness.GetQueuedPackets(client.NetState)
+            .LastOrDefault(p => p.Span.Length >= 19 && p.Span[0] == 0x20 &&
+                ReadU32(p, 1) == player.Uid.Value);
+        Assert.NotNull(draw);
+        Assert.Equal(20, (sbyte)draw!.Span[18]); // 0x20 layout: Z is the final byte
+    }
+
+    private static uint ReadU32(SphereNet.Network.Packets.PacketBuffer p, int offset) =>
+        (uint)((p.Span[offset] << 24) | (p.Span[offset + 1] << 16) |
+               (p.Span[offset + 2] << 8) | p.Span[offset + 3]);
+
+    [Fact]
     public void TwoStories_SameTile_WalkAndSettleAgreePerFloor()
     {
         var (world, walker, map) = Setup();

@@ -691,8 +691,14 @@ public sealed class CommandHandler
                 }
                 else
                 {
-                    // Auto-resolve terrain Z when not specified
+                    // Auto-resolve when not specified: terrain seeds the
+                    // reference, the SEAT goes through the shared standing
+                    // resolver so dungeon statics and multi floors are seen.
                     z = world.MapData?.GetEffectiveZ(targetMap, x, y) ?? 0;
+                    var goStand = world.Standing.ResolveStandingSurface(
+                        gm, targetMap, x, y, z,
+                        SphereNet.Game.Movement.WalkCheck.StandingPolicy.Settle);
+                    if (goStand.Found) z = goStand.Z;
                 }
                 var pos = new Point3D(x, y, z, targetMap);
                 byte oldMap = gm.MapIndex;

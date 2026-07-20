@@ -454,16 +454,21 @@ public sealed class ClientItemUseHandler
 
         // Field diagnostic for the "dclick in a dungeon bumps me up" report:
         // this redraw re-imposes the stored server Z, so a bump here means the
-        // stored Z had ALREADY drifted from the map-derived standing Z at this
-        // tile — log the pair to locate the drift source.
-        var mapData = _world.MapData;
-        if (mapData != null)
+        // stored Z had ALREADY drifted from the true standing Z at this tile —
+        // log the pair to locate the drift source. The comparison runs through
+        // the shared standing resolver: the old GetEffectiveZ check could not
+        // see multis/dynamics and produced false alarms on ship decks and
+        // house floors. Log-only — the audit do-not list forbids correcting
+        // Z here (it would mask the real drift source).
+        if (_world.MapData != null)
         {
-            sbyte standZ = mapData.GetEffectiveZ(_character.MapIndex, _character.X, _character.Y, _character.Z);
-            if (standZ != _character.Z)
+            var driftStand = _world.Standing.ResolveStandingSurface(_character,
+                _character.MapIndex, _character.X, _character.Y, _character.Z,
+                SphereNet.Game.Movement.WalkCheck.StandingPolicy.Settle);
+            if (driftStand.Found && driftStand.Z != _character.Z)
                 _logger.LogInformation(
                     "[z_drift] dclick-facing at {X},{Y} map {Map}: stored Z={Stored}, standing Z={Stand}",
-                    _character.X, _character.Y, _character.MapIndex, _character.Z, standZ);
+                    _character.X, _character.Y, _character.MapIndex, _character.Z, driftStand.Z);
         }
 
         _character.Direction = direction;

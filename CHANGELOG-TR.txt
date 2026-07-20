@@ -3,6 +3,27 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-20] - Z-cozucu kuyrugu: .FIX, .GO, drift teshisi, uctan uca 0x20 testi
+----------------------------------------
+
+FIX - .FIX bir KARAKTERI ortak durus cozucusuyle oturtuyor - yalniz-terrain
+        GetEffectiveZ onu ev katlarinin, gemi guvertelerinin ve dungeon
+        statiklerinin altina dusurebiliyordu. Item .FIX duz terrain
+        oturtmasinda kaldi.
+
+FIX - Z verilmeyen .GO x y ortak cozucuyle oturuyor (terrain referansi
+        tohumlar): hedefteki dungeon statikleri ve multi zeminleri artik
+        goruluyor.
+
+FIX - [z_drift] dclick teshisi multi-kor GetEffectiveZ yerine cozucuyle
+        karsilastiriyor - gemi guvertesi ve ev katinda yanlis alarm bitti.
+        Denetimin yasak listesi geregi hala yalniz log.
+
+NEW - Uctan uca drift zinciri testi: ust katta gercek MovementEngine.TryMove
+        adimi, ardindan karakteri donduren cift tiklama - donusun
+        gonderdigi 0x20 paket kuyrugundan yakalanip katin Z'sini tasidigi
+        dogrulaniyor. Denetimin E2E boslugu kapandi.
+
 [2026-07-20] - Durus-yuzeyi sentetik test matrisi + duz multi-kat yuruyus fixi
 ----------------------------------------
 

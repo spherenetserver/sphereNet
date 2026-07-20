@@ -246,4 +246,145 @@ public sealed class CustomSphereSpellTests
         Assert.True(engine.CastDone(caster));
         Assert.Contains(skeletonCorpse, removed); // the skeleton was consumed
     }
+
+    [Fact]
+    public void BoneArmor_NeverConsumesARemoteOrContainedCorpse()
+    {
+        var (world, engine, caster) = Setup(new SpellDef
+        {
+            Id = SpellType.BoneArmor,
+            Name = "Bone Armor",
+            Flags = SpellFlag.TargObj,
+        });
+        var removed = new List<Item>();
+        engine.OnItemRemoved = i => { removed.Add(i); world.RemoveItem(i); };
+
+        // A skeleton corpse far outside casting range (known UID exploit).
+        var farCorpse = world.CreateItem();
+        farCorpse.ItemType = ItemType.Corpse;
+        farCorpse.Amount = 0x0032;
+        world.PlaceItem(farCorpse, new Point3D(300, 300, 0, 0));
+
+        caster.BeginCast(SpellType.BoneArmor, farCorpse.Uid, farCorpse.Position);
+        Assert.True(engine.CastDone(caster));
+        Assert.Empty(removed);
+
+        // A skeleton corpse inside a container (Source-X: top-level only).
+        var chest = world.CreateItem();
+        chest.ItemType = ItemType.Container;
+        world.PlaceItem(chest, new Point3D(101, 100, 0, 0));
+        var packedCorpse = world.CreateItem();
+        packedCorpse.ItemType = ItemType.Corpse;
+        packedCorpse.Amount = 0x0032;
+        Assert.True(chest.TryAddItem(packedCorpse));
+
+        caster.BeginCast(SpellType.BoneArmor, packedCorpse.Uid, chest.Position);
+        Assert.True(engine.CastDone(caster));
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public void ReaperAndStoneForm_FirstCast_AppliesAndRevertsTheFormBody()
+    {
+        var (_, engine, caster) = Setup(
+            new SpellDef
+            {
+                Id = SpellType.ReaperForm,
+                Name = "Reaper Form",
+                Flags = SpellFlag.Good | SpellFlag.Poly,
+                DurationBase = 0, // as the pack ships it — form holds
+            },
+            new SpellDef
+            {
+                Id = SpellType.StoneForm,
+                Name = "Stone Form",
+                Flags = SpellFlag.Good | SpellFlag.Poly,
+                DurationBase = 600, // 60 s
+            });
+        ushort originalBody = caster.BodyId;
+
+        // Reaper Form: body 0xE6 (CREID_REAPER_FORM), holds past the 30 s
+        // engine floor because the pack duration is 0 (reference: no timer).
+        engine.ApplyDirectEffect(caster, caster, SpellType.ReaperForm, 500);
+        Assert.Equal((ushort)0x00E6, caster.BodyId);
+        Assert.True(caster.IsStatFlag(StatFlag.Polymorph));
+        engine.ProcessExpirations(Environment.TickCount64 + 30L * 60 * 1000);
+        Assert.Equal((ushort)0x00E6, caster.BodyId);
+
+        // Re-cast to Stone Form replaces the poly layer (0x2C1), and its
+        // timed duration reverts to the original body.
+        engine.ApplyDirectEffect(caster, caster, SpellType.StoneForm, 500);
+        Assert.Equal((ushort)0x02C1, caster.BodyId);
+        engine.ProcessExpirations(Environment.TickCount64 + 30L * 60 * 1000);
+        Assert.Equal(originalBody, caster.BodyId);
+        Assert.False(caster.IsStatFlag(StatFlag.Polymorph));
+    }
+
+    [Fact]
+    public void MonsterForm_PolymorphsIntoAMonsterBody()
+    {
+        var (_, engine, caster) = Setup(new SpellDef
+        {
+            Id = SpellType.MonsterForm,
+            Name = "Monster Form",
+            Flags = SpellFlag.Harm | SpellFlag.PlayerOnly,
+            DurationBase = 1200,
+        });
+        ushort originalBody = caster.BodyId;
+
+        engine.ApplyDirectEffect(caster, caster, SpellType.MonsterForm, 500);
+
+        Assert.NotEqual(originalBody, caster.BodyId);
+        Assert.Contains(caster.BodyId, new[]
+        {
+            (ushort)0x0002, (ushort)0x0004, (ushort)0x0011,
+            (ushort)0x0021, (ushort)0x0036,
+        });
+        Assert.True(caster.IsStatFlag(StatFlag.Polymorph));
+    }
+
+    [Fact]
+    public void Shrink_KillsAConjuredCreature()
+    {
+        var (world, engine, caster) = Setup(new SpellDef
+        {
+            Id = SpellType.Shrink,
+            Name = "Shrink",
+            Flags = SpellFlag.TargChar | SpellFlag.Harm,
+        });
+
+        var summon = world.CreateCharacter();
+        summon.SetStatFlag(StatFlag.Conjured);
+        summon.MaxHits = 50;
+        summon.Hits = 50;
+        world.PlaceCharacter(summon, new Point3D(101, 100, 0, 0));
+
+        engine.ApplyDirectEffect(caster, summon, SpellType.Shrink, 500);
+
+        // Source-X NPC_Shrink zeroes a conjured creature's STR — it dies
+        // instead of yielding a figurine.
+        Assert.True(summon.IsDead || summon.Hits <= 0,
+            "the conjured creature survived the shrink");
+    }
+
+    [Fact]
+    public void Alcohol_DrainsStaminaAndManaPerTick()
+    {
+        var (_, engine, caster) = Setup(new SpellDef
+        {
+            Id = SpellType.Ale,
+            Name = "Ale",
+            DurationBase = 600,
+        });
+        caster.MaxStam = 100; caster.Stam = 50;
+        caster.MaxMana = 100; caster.Mana = 50;
+
+        engine.ApplyDirectEffect(caster, caster, SpellType.Ale, 500);
+
+        // Advance past one 5 s drunk tick: one stamina and one mana drained
+        // (Source-X Spell_Equip_OnTick Stat_AddVal DEX/INT).
+        engine.ProcessExpirations(Environment.TickCount64 + 6000);
+        Assert.True(caster.Stam < 50, "the drunk tick drained no stamina");
+        Assert.True(caster.Mana < 50, "the drunk tick drained no mana");
+    }
 }

@@ -536,18 +536,21 @@ public sealed class ClientScriptConsoleHandler
 
         if (upper == "POLY")
         {
-            // From the sm_polymorph CAST menu: stash the picked form and run
-            // the real Polymorph cast (timed body revert included). The GM /
-            // script POLY verb outside a pending cast menu falls through to
-            // the direct character verb.
+            // From a poly-family CAST menu (sm_polymorph / sm_beast_form /
+            // sm_monster_form / chameleon): stash the picked form and run the
+            // real cast (timed body revert included). The GM / script POLY
+            // verb outside a pending cast menu falls through to the direct
+            // character verb.
             var polyChar = _character;
             if (polyChar != null &&
                 polyChar.TryGetTag("CAST_MENU_SPELL", out string? pendingPoly) &&
-                pendingPoly == ((int)SpellType.Polymorph).ToString())
+                int.TryParse(pendingPoly, out int pendingPolyId) &&
+                (SpellType)pendingPolyId is SpellType.Polymorph or SpellType.Chameleon
+                    or SpellType.BeastForm or SpellType.MonsterForm)
             {
                 polyChar.RemoveTag("CAST_MENU_SPELL");
                 polyChar.SetTag("POLY_SELECT", args.Trim());
-                (_client as GameClient)?.HandleCastSpell(SpellType.Polymorph, polyChar.Uid.Value);
+                (_client as GameClient)?.HandleCastSpell((SpellType)pendingPolyId, polyChar.Uid.Value);
                 return true;
             }
         }

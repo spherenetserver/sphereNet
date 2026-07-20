@@ -3,6 +3,43 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-20] - Poly formlar, ceset buyusu erisim kontrolu, periyodik sarhosluk/haluinasyon tikleri
+----------------------------------------
+
+FIX - Animate Dead ve Bone Armor hedef cesedi Source-X gibi dogruluyor:
+        ceset TOP-LEVEL bir dunya nesnesi olmali, caster ile ayni map'te ve
+        menzil icinde bulunmali. Onceden bilinen bir UID ile container
+        icindeki veya haritanin obur ucundaki ceset tuketilebiliyordu.
+
+NEW - Reaper Form ve Stone Form ilk cast'te formu uyguluyor: polymorph
+        katmaninda govde degisimi (Reaper 0xE6 CREID_REAPER_FORM, Stone
+        0x2C1 CREID_STONE_FORM) ve sureli geri donus. Pack suresi 0 olan
+        Reaper formu referansin zamansiz poly memory'si gibi kalici tutulur.
+        Baska bir poly buyusu cast edilirse form temiz sekilde degisir -
+        taban govde onceki form geri sarildiktan sonra yakalanir.
+
+NEW - Chameleon, Beast Form ve Monster Form ortak polymorph yolunu kullaniyor
+        (Source-X LAYER_SPELL_Polymorph): POLY cast-menu secimi artik tum
+        poly ailesinde calisiyor; secim yoksa Beast/Monster Form klasik
+        hayvan/canavar govdesi seciyor, Chameleon govdeyi koruyor (referans
+        skin-match gorselini yorum satirinda birakmis). Yalnizca Enchant ve
+        Forget inert olarak engelli kaliyor.
+
+FIX - Shrink conjured/summoned yaratigi figurine cevirmek yerine dogrudan
+        olduruyor (Source-X NPC_Shrink STR'yi sifirlar).
+
+FIX - Bone Armor parcalari ITEMDEF @Create metadata'sini calistiriyor
+        (ItemDefHelper.ApplyInstanceMetadata) - tip, zirh, dayaniklilik ve
+        eventler; onceden yalniz grafikten ibaret kabuk yaratiliyordu.
+
+NEW - Periyodik efekt tikleri (Source-X Spell_Equip_OnTick): Hallucination
+        sure boyunca 15-30 saniyede bir ses (0x243/0x244) calar;
+        Ale/Wine/Liquor her 5 saniyelik sarhosluk tikinde mevcut stamina ve
+        manadan birer puan dusurur, rastgele hickirik ve %10 erken ayilma
+        sansi uygular - onceki tek seferlik stat cezasinin yerine gecti.
+        Charge'lari erken biten efekt artik uyguladigi stat bayragini geri
+        aliyor.
+
 [2026-07-20] - HARM bayragi suc/reflect, @Select asamasi, custom Sphere buyuleri 1000+
 ----------------------------------------
 

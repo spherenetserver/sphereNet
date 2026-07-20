@@ -791,7 +791,8 @@ public sealed class SpellEngine
         if (spell is SpellType.AnimateDeadAOS or SpellType.AnimateDead)
         {
             var corpse = _world?.FindItem(targetUid);
-            if (corpse != null && !corpse.IsDeleted && corpse.ItemType == ItemType.Corpse)
+            if (corpse != null && !corpse.IsDeleted && corpse.ItemType == ItemType.Corpse &&
+                CanReachCorpse(caster, corpse))
             {
                 // A humanoid corpse raises a zombie; a creature corpse raises its
                 // own kind (the corpse stores the original body in Amount).
@@ -818,7 +819,8 @@ public sealed class SpellEngine
         if (spell == SpellType.BoneArmor)
         {
             var corpse = _world?.FindItem(targetUid);
-            if (corpse == null || corpse.IsDeleted || corpse.ItemType != ItemType.Corpse)
+            if (corpse == null || corpse.IsDeleted || corpse.ItemType != ItemType.Corpse ||
+                !CanReachCorpse(caster, corpse))
             {
                 OnSysMessage?.Invoke(caster, "That is not a corpse!");
             }
@@ -843,6 +845,10 @@ public sealed class SpellEngine
                         break;
                     var piece = _world!.CreateItem();
                     piece.BaseId = pieceId;
+                    // Run the ITEMDEF @Create metadata (type, armor, durability,
+                    // events) like every other scripted create path — a bare
+                    // BaseId would leave the piece a graphic-only shell.
+                    Definitions.ItemDefHelper.ApplyInstanceMetadata(piece, pieceId);
                     _world.PlaceItemWithDecay(piece, corpse.Position);
                     got++;
                 }
@@ -1780,6 +1786,15 @@ public sealed class SpellEngine
         return false;
     }
 
+    /// <summary>A corpse targeted by Animate Dead / Bone Armor must be a
+    /// TOP-LEVEL world item (Source-X pCorpse-&gt;IsTopLevel()) on the caster's
+    /// map within casting range — a known UID inside a container or across
+    /// the world must not be consumable.</summary>
+    private static bool CanReachCorpse(Character caster, Item corpse) =>
+        !corpse.ContainedIn.IsValid &&
+        corpse.Position.Map == caster.MapIndex &&
+        caster.Position.GetDistanceTo(corpse.Position) <= 12;
+
     private bool CanSpellReachItem(Character caster, Item item)
     {
         if (item.IsDeleted)
@@ -1935,7 +1950,8 @@ public sealed class SpellEngine
     private static bool HasNativeSchoolHandler(SpellType id) => id is
         SpellType.CleanseByFire or SpellType.CloseWounds or SpellType.DispelEvil or
         SpellType.DivineFury or SpellType.HolyLight or SpellType.NobleSacrifice or
-        SpellType.RemoveCurse or SpellType.SacredJourney or SpellType.GiftOfRenewal;
+        SpellType.RemoveCurse or SpellType.SacredJourney or SpellType.GiftOfRenewal or
+        SpellType.ReaperForm or SpellType.StoneForm;
 
     /// <summary>Sphere custom spells (1000+) whose char effect dispatches by
     /// id in ApplySpecificSpell — their pack defs carry marker flags only
@@ -1947,14 +1963,16 @@ public sealed class SpellEngine
         SpellType.Mana or SpellType.Sustenance or SpellType.GenderSwap or
         SpellType.Trance or SpellType.ParticleForm or SpellType.Shield or
         SpellType.Steelskin or SpellType.Stoneskin or SpellType.Regenerate or
-        SpellType.Ale or SpellType.Wine or SpellType.Liquor;
+        SpellType.Ale or SpellType.Wine or SpellType.Liquor or
+        SpellType.Chameleon or SpellType.BeastForm or SpellType.MonsterForm;
 
     /// <summary>Every Sphere custom spell (1000+) with native engine behavior
     /// — the char handlers above plus the summon/corpse/item routes (Summon
-    /// Undead, Animate Dead, Bone Armor) and plain-damage Fire Bolt. The
-    /// remaining customs (Chameleon, Beast/Monster Form, Enchant, Forget) are
-    /// inert in the Source-X reference too and stay refused by the no-op gate
-    /// unless the pack scripts them.</summary>
+    /// Undead, Animate Dead, Bone Armor) and plain-damage Fire Bolt.
+    /// Chameleon / Beast Form / Monster Form ride the reference's
+    /// LAYER_SPELL_Polymorph path. Only Enchant and Forget remain refused —
+    /// the Source-X reference has no case for either — unless the pack
+    /// scripts them.</summary>
     private static bool HasNativeCustomHandler(SpellType id) =>
         HasNativeCustomCharHandler(id) || id is
         SpellType.SummonUndead or SpellType.AnimateDead or
@@ -2313,10 +2331,16 @@ public sealed class SpellEngine
                 break;
             }
             case SpellType.Polymorph:
+            case SpellType.Chameleon:
+            case SpellType.BeastForm:
+            case SpellType.MonsterForm:
             {
-                // sm_polymorph menu pick stashed on the caster (Source-X keeps
-                // the selection and casts the real spell); no selection falls
-                // back to a random classic form.
+                // Menu pick (sm_polymorph / sm_beast_form / sm_monster_form)
+                // stashed on the caster (Source-X keeps the selection and
+                // casts the real spell); no selection falls back to a
+                // spell-appropriate classic form. The Sphere customs share
+                // the reference's LAYER_SPELL_Polymorph path
+                // (CCharSpell.cpp:4087).
                 ushort newBody = 0;
                 if (target.TryGetTag("POLY_SELECT", out string? polySel) &&
                     !string.IsNullOrWhiteSpace(polySel))
@@ -2324,20 +2348,73 @@ public sealed class SpellEngine
                     newBody = Character.ResolvePolyBody(polySel);
                     target.RemoveTag("POLY_SELECT");
                 }
-                ReadOnlySpan<ushort> forms = [0x0033, 0x0034, 0x0035, 0x0036, 0x0037, 0x0038];
-                if (newBody == 0)
+                if (newBody == 0 && def.Id != SpellType.Chameleon)
+                {
+                    ReadOnlySpan<ushort> forms = def.Id switch
+                    {
+                        // Animals: dog, timber wolf, black bear, great hart, rabbit
+                        SpellType.BeastForm =>
+                            [0x00D9, 0x00E1, 0x00D3, 0x00EA, 0x00CD],
+                        // Monsters: ettin, gargoyle, orc, lizardman, troll
+                        SpellType.MonsterForm =>
+                            [0x0002, 0x0004, 0x0011, 0x0021, 0x0036],
+                        _ => [0x0033, 0x0034, 0x0035, 0x0036, 0x0037, 0x0038],
+                    };
                     newBody = forms[_rand.Next(forms.Length)];
+                }
+                // Base body captured only AFTER the previous poly-layer
+                // effect is reverted inside ScheduleEffectExpiry — a re-cast
+                // must never record the current form as the restore body.
+                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
                 if (target.OBody == 0)
                     target.OBody = target.BodyId;
-                var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
                 eff.AppliedFlag = StatFlag.Polymorph;
-                eff.OldBodyId = target.OBody;
-                eff.NewBodyId = newBody;
-                eff.BodyChanged = true;
-                target.BodyId = newBody;
                 target.SetStatFlag(StatFlag.Polymorph);
+                // Chameleon without a menu pick keeps the body — the
+                // reference's skin-match visual is client-side flavor it
+                // ships commented out; only the poly layer is real there.
+                if (newBody != 0)
+                {
+                    eff.OldBodyId = target.OBody;
+                    eff.NewBodyId = newBody;
+                    eff.BodyChanged = true;
+                    target.BodyId = newBody;
+                    Character.OnAppearanceChanged?.Invoke(target);
+                }
                 break;
             }
+            case SpellType.ReaperForm:
+            case SpellType.StoneForm:
+            {
+                // Source-X OnSpellEffect equips LAYER_SPELL_Polymorph and the
+                // effect-add SetID()s the form body. Reaper uses its own
+                // CREID_REAPER_FORM 0xE6 (the reference literally assigns
+                // CREID_STONE_FORM to both — an obvious copy-paste slip we do
+                // not reproduce); Stone Form is CREID_STONE_FORM 0x2C1.
+                ushort formBody = def.Id == SpellType.ReaperForm
+                    ? (ushort)0x00E6 : (ushort)0x02C1;
+                // Capture the base body only AFTER ScheduleEffectExpiry has
+                // reverted a previous poly-layer effect — otherwise a re-cast
+                // records the CURRENT form as the body to restore.
+                var formEff = ScheduleEffectExpiry(caster, target, def.Id, def);
+                if (target.OBody == 0)
+                    target.OBody = target.BodyId;
+                // The pack ships Reaper Form with DURATION=0.0 — in the
+                // reference a 0-duration poly memory has no timer and the form
+                // holds until dispel/death/re-cast. Approximate with a
+                // far-future expiry instead of the generic 30 s floor.
+                if (def.GetDuration(caster.GetSkill(def.GetPrimarySkill())) <= 0)
+                    formEff.ExpireTick = Environment.TickCount64 + 4L * 60 * 60 * 1000;
+                formEff.AppliedFlag = StatFlag.Polymorph;
+                formEff.OldBodyId = target.OBody;
+                formEff.NewBodyId = formBody;
+                formEff.BodyChanged = true;
+                target.BodyId = formBody;
+                target.SetStatFlag(StatFlag.Polymorph);
+                Character.OnAppearanceChanged?.Invoke(target);
+                break;
+            }
+
             case SpellType.ManaDrain:
                 int drain = Math.Min(target.Mana, (short)effect);
                 target.Mana -= (short)drain;
@@ -2471,6 +2548,15 @@ public sealed class SpellEngine
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
                 eff.AppliedFlag = StatFlag.Hallucinating;
                 target.SetStatFlag(StatFlag.Hallucinating);
+                // Periodic trip sounds every 15-30 s (Source-X
+                // Spell_Equip_OnTick plays 0x243/0x244). The duration expiry
+                // ends the effect; the charge budget just outlasts it.
+                int tripTenths = def.GetDuration(caster.GetSkill(def.GetPrimarySkill()));
+                eff.DotCharges = Math.Max(2, tripTenths * 100 / 15_000 + 2);
+                eff.DotTotalCharges = eff.DotCharges;
+                eff.DotIntervalMs = 15_000;
+                eff.DotNextTickMs = Environment.TickCount64 + 15_000 + _rand.Next(15_001);
+                eff.DotSource = caster.Uid;
                 break;
             }
             case SpellType.Stone:
@@ -2485,10 +2571,19 @@ public sealed class SpellEngine
             }
             case SpellType.Shrink:
             {
-                // Source-X SPELL_Shrink: players are immune; an NPC is packed
-                // into a figurine dropped where it stood (NPC_Shrink).
+                // Source-X SPELL_Shrink: players are immune; a CONJURED
+                // creature is killed outright (NPC_Shrink zeroes its STR);
+                // any other NPC is packed into a figurine where it stood.
                 if (target.IsPlayer || _world == null)
                     break;
+                if (target.IsSummoned || target.IsStatFlag(StatFlag.Conjured))
+                {
+                    target.Hits = 0;
+                    if (OnTargetKilled != null) OnTargetKilled.Invoke(target, caster);
+                    else if (Character.OnLifecycleKill != null) Character.OnLifecycleKill(target, caster);
+                    else target.Kill();
+                    break;
+                }
                 var shrinkPos = target.Position;
                 var figurine = _world.CreateItem();
                 figurine.BaseId = 0x2106; // statuette graphic (pet-shrink path)
@@ -2565,22 +2660,27 @@ public sealed class SpellEngine
             case SpellType.Wine:
             case SpellType.Liquor:
             {
-                // Source-X drains 1 INT/DEX per 5 s drunk tick; SphereNet
-                // applies the drain as one timed stat penalty of matching
-                // severity (wine mild, liquor extreme), reverted on sobriety.
-                short drunkDrain = def.Id switch
-                {
-                    SpellType.Liquor => 6,
-                    SpellType.Ale => 4,
-                    _ => 2,
-                };
-                short dexDrop = (short)Math.Min(drunkDrain, target.Dex - 1);
-                short intDrop = (short)Math.Min(drunkDrain, target.Int - 1);
-                if (dexDrop <= 0 && intDrop <= 0)
-                    break;
+                // Source-X Spell_Equip_OnTick: each 5 s drunk tick drains one
+                // current stamina and mana point (Stat_AddVal DEX/INT vals),
+                // speaks a random hiccup, and has a 10% chance per tick to
+                // sober up early. The drink's strength sets the tick budget
+                // (wine mild, liquor extreme).
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
-                if (dexDrop > 0) { eff.DexDelta = (short)-dexDrop; target.Dex -= dexDrop; }
-                if (intDrop > 0) { eff.IntDelta = (short)-intDrop; target.Int -= intDrop; }
+                int baseTicks = def.Id switch
+                {
+                    SpellType.Liquor => 18,
+                    SpellType.Ale => 12,
+                    _ => 6,
+                };
+                int durTicks = def.GetDuration(caster.GetSkill(def.GetPrimarySkill())) * 100 / 5000;
+                eff.DotCharges = Math.Max(baseTicks, durTicks);
+                eff.DotTotalCharges = eff.DotCharges;
+                eff.DotIntervalMs = 5000;
+                eff.DotNextTickMs = Environment.TickCount64 + eff.DotIntervalMs;
+                eff.DotSource = caster.Uid;
+                // Keep the drunk effect alive until every tick is spent.
+                eff.ExpireTick = Math.Max(eff.ExpireTick, Environment.TickCount64 +
+                    (long)eff.DotCharges * eff.DotIntervalMs + 10_000L);
                 OnSysMessage?.Invoke(target, "*hic*");
                 break;
             }
@@ -2976,19 +3076,58 @@ public sealed class SpellEngine
                 continue;
             }
 
-            int damage = ComputeDotDamage(eff, eff.Target);
-            eff.DotCharges--;
-            eff.DotNextTickMs = now + NextDotIntervalMs(eff);
-            ApplyDotDamage(eff.Target, eff, damage);
+            if (!TryApplyCustomDotTick(eff, now))
+            {
+                int damage = ComputeDotDamage(eff, eff.Target);
+                eff.DotCharges--;
+                eff.DotNextTickMs = now + NextDotIntervalMs(eff);
+                ApplyDotDamage(eff.Target, eff, damage);
+            }
 
             if (eff.DotCharges <= 0 && _activeEffects.Remove(eff))
             {
-                DetachSpellMemory(eff);
+                // RevertDeltas (not a bare memory detach): a custom tick
+                // effect can carry an applied stat flag (Hallucinating) that
+                // must clear when the charges run dry before the timer.
+                RevertDeltas(eff);
                 NotifySpellBuff(eff.Target, eff.Spell, false);
                 Character.OnSpellEffectRemove?.Invoke(eff.Target, (int)eff.Spell);
                 FireSpellSectionStage(eff.Spell, "EffectRemove", eff.Target);
             }
         }
+    }
+
+    /// <summary>Non-damage periodic behaviors (Source-X Spell_Equip_OnTick):
+    /// hallucination trip sounds every 15-30 s, alcohol stamina/mana drain
+    /// with hiccups and an early-sober chance. Returns true when the effect
+    /// ticked here instead of the damage path.</summary>
+    private bool TryApplyCustomDotTick(ActiveSpellEffect eff, long now)
+    {
+        switch (eff.Spell)
+        {
+            case SpellType.Hallucination:
+                eff.DotCharges--;
+                eff.DotNextTickMs = now + 15_000 + _rand.Next(15_001);
+                OnPlaySound?.Invoke(eff.Target.Position,
+                    (ushort)(_rand.Next(2) == 0 ? 0x0243 : 0x0244));
+                return true;
+            case SpellType.Ale:
+            case SpellType.Wine:
+            case SpellType.Liquor:
+            {
+                eff.DotCharges--;
+                if (_rand.Next(100) < 10)
+                    eff.DotCharges--; // chance to sober up quickly
+                eff.DotNextTickMs = now + eff.DotIntervalMs;
+                var drunk = eff.Target;
+                drunk.Stam = (short)Math.Max(0, drunk.Stam - 1);
+                drunk.Mana = (short)Math.Max(0, drunk.Mana - 1);
+                if (_rand.Next(3) == 0)
+                    OnSysMessage?.Invoke(drunk, "*hic*");
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>Walk the active-effect list once per world tick and undo
@@ -3073,7 +3212,7 @@ public sealed class SpellEngine
             Character.OnAppearanceChanged?.Invoke(t);
         }
         if (eff.BodyChanged) t.BodyId = eff.OldBodyId;
-        if (eff.BodyChanged && eff.Spell == SpellType.Polymorph)
+        if (eff.BodyChanged && IsPolymorphLayerSpell(eff.Spell))
         {
             t.ClearStatFlag(StatFlag.Polymorph);
             if (t.OBody != 0 && t.BodyId == t.OBody)
@@ -3396,7 +3535,9 @@ public sealed class SpellEngine
 
     private static bool IsPolymorphLayerSpell(SpellType spell) =>
         spell is SpellType.Polymorph or SpellType.HorrificBeast or SpellType.WraithForm
-            or SpellType.LichForm or SpellType.VampiricEmbrace;
+            or SpellType.LichForm or SpellType.VampiricEmbrace
+            or SpellType.ReaperForm or SpellType.StoneForm
+            or SpellType.Chameleon or SpellType.BeastForm or SpellType.MonsterForm;
 
     private static string EncodeEffectString(string? value)
     {

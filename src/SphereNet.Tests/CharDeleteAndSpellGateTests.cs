@@ -112,15 +112,18 @@ public sealed class CharDeleteAndSpellGateTests
         Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.Heal }));
         Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.Wither }));
 
-        // Custom Sphere spells (1000+): the natively-handled set is castable;
-        // the reference-inert remainder (Chameleon, Enchant, Forget...) is
-        // refused — it used to bypass the gate entirely and burn mana as a
-        // no-op — unless the pack scripts it.
+        // Custom Sphere spells (1000+): the natively-handled set is castable
+        // (the poly-family forms included); only Enchant and Forget — the
+        // reference has no case for either — are refused unless the pack
+        // scripts them. They used to bypass the gate and burn mana as no-ops.
         Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.SummonUndead }));
         Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.Refresh }));
         Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.Regenerate }));
-        Assert.True(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.Chameleon }));
+        Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.Chameleon }));
+        Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.MonsterForm }));
+        Assert.True(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.EnchantItem }));
+        Assert.True(SpellEngine.IsInertSchoolSpell(new SpellDef { Id = SpellType.Forget }));
         Assert.False(SpellEngine.IsInertSchoolSpell(new SpellDef
-        { Id = SpellType.Chameleon, HasScriptedStages = true }));
+        { Id = SpellType.Forget, HasScriptedStages = true }));
     }
 }

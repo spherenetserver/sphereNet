@@ -4,6 +4,42 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-20] - Poly forms, corpse-spell reach checks, periodic drunk/hallucination ticks
+----------------------------------------
+
+FIX - Animate Dead and Bone Armor validate the targeted corpse like Source-X:
+        it must be a TOP-LEVEL world item on the caster's map within casting
+        range. A known UID could previously consume a corpse from inside a
+        container or across the world, dumping its contents at the corpse.
+
+NEW - Reaper Form and Stone Form apply their form on first cast: body swap
+        (Reaper 0xE6 CREID_REAPER_FORM, Stone 0x2C1 CREID_STONE_FORM) on the
+        polymorph layer with a timed revert. A pack duration of 0 (Reaper)
+        holds the form near-permanently like the reference's timerless poly
+        memory. Re-casting another poly-family spell swaps forms cleanly -
+        the base body is captured only after the previous form is reverted.
+
+NEW - Chameleon, Beast Form and Monster Form ride the shared polymorph route
+        (Source-X LAYER_SPELL_Polymorph, CCharSpell.cpp:4087): menu picks via
+        the POLY cast-menu flow now work for all poly-family spells; without
+        a pick, Beast/Monster Form roll a classic animal/monster body and
+        Chameleon keeps the body (the reference ships its skin-match visual
+        commented out). Only Enchant and Forget remain gated as inert.
+
+FIX - Shrink kills a conjured/summoned creature outright (Source-X
+        NPC_Shrink zeroes its STR) instead of rejecting it alive.
+
+FIX - Bone Armor pieces run their ITEMDEF @Create metadata
+        (ItemDefHelper.ApplyInstanceMetadata) - type, armor, durability and
+        events - instead of spawning as graphic-only shells.
+
+NEW - Periodic effect ticks (Source-X Spell_Equip_OnTick): Hallucination
+        plays trip sounds (0x243/0x244) every 15-30 s for its duration;
+        Ale/Wine/Liquor drain one current stamina and mana point per 5 s
+        drunk tick with random hiccups and a 10% early-sober chance,
+        replacing the earlier one-shot stat penalty. A charge-driven effect
+        that retires early now reverts its applied stat flag.
+
 [2026-07-20] - HARM-flag crime/reflect, @Select stage, custom Sphere spells 1000+
 ----------------------------------------
 

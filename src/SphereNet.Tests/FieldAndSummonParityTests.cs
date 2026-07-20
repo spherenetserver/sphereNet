@@ -66,6 +66,11 @@ public sealed class FieldAndSummonParityTests
             Assert.True(s.DecayTime > Environment.TickCount64 + 60_000,
                 "field segment still uses the fixed 30s decay"));
 
+        // A field is a spell manifestation, not lootable furniture.
+        Assert.All(segments, s => Assert.True(s.IsAttr(ObjAttributes.Move_Never),
+            "field segment can be picked up"));
+        Assert.All(segments, s => Assert.Equal(ItemType.Fire, s.ItemType));
+
         // Touch burns (typed fire damage), instead of nothing/flat routing.
         var victim = world.CreateCharacter();
         victim.MaxHits = 100;
@@ -149,6 +154,68 @@ public sealed class FieldAndSummonParityTests
             .FirstOrDefault(c => c != caster && c.IsSummoned);
         Assert.NotNull(spirit);
         Assert.Equal((ushort)0x023E, spirit!.BodyId); // CREID_BLADE_SPIRIT
+    }
+
+    [Fact]
+    public void SummonUndead_RaisesAClassicUndeadBody()
+    {
+        var (world, engine, caster) = Setup(new SpellDef
+        {
+            Id = SpellType.SummonUndead,
+            Name = "Summon Undead",
+            Flags = SpellFlag.TargXYZ | SpellFlag.Summon,
+            DurationBase = 1200,
+        });
+
+        Assert.True(engine.CastStart(caster, SpellType.SummonUndead, caster.Uid,
+            new Point3D(102, 100, 0, 0)) > 0);
+        Assert.True(engine.CastDone(caster));
+
+        var undead = world.GetCharsInRange(caster.Position, 5)
+            .FirstOrDefault(c => c != caster && c.IsSummoned);
+        Assert.NotNull(undead);
+        // Source-X random pick: zombie / skeleton / lich — never body 0.
+        Assert.Contains(undead!.BodyId, new[] { (ushort)0x0003, (ushort)0x0018, (ushort)0x0032 });
+    }
+
+    [Fact]
+    public void DualMembership_SurvivesSaveAndReload()
+    {
+        var world = CreateBareWorld();
+        var guilds = new GuildManager();
+
+        var member = world.CreateCharacter();
+        world.PlaceCharacter(member, new Point3D(100, 100, 0, 0));
+
+        var guildStone = world.CreateItem();
+        guildStone.ItemType = ItemType.StoneGuild;
+        world.PlaceItem(guildStone, new Point3D(101, 100, 0, 0));
+        var townStone = world.CreateItem();
+        townStone.ItemType = ItemType.StoneTown;
+        world.PlaceItem(townStone, new Point3D(102, 100, 0, 0));
+
+        guilds.CreateGuild(guildStone.Uid, "The Guild", member.Uid);
+        guilds.CreateGuild(townStone.Uid, "Britain", member.Uid, isTownStone: true);
+
+        // Save to stone tags, reload from scratch: BOTH memberships survive
+        // (a single claim set used to drop whichever stone loaded second).
+        guilds.SerializeAllToTags(world);
+        var reloaded = new GuildManager();
+        reloaded.DeserializeFromWorld(world);
+
+        Assert.NotNull(reloaded.FindGuildRecordFor(member.Uid, townStones: false));
+        Assert.NotNull(reloaded.FindGuildRecordFor(member.Uid, townStones: true));
+        // And the guild-only lookup never returns the town record.
+        Assert.False(reloaded.FindGuildFor(member.Uid)?.IsTownStone ?? false);
+    }
+
+    private static GameWorld CreateBareWorld()
+    {
+        var world = new GameWorld(LoggerFactory.Create(_ => { }));
+        world.InitMap(0, 6144, 4096);
+        SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
+        Item.ResolveWorld = () => world;
+        return world;
     }
 
     [Fact]

@@ -79,6 +79,32 @@ public sealed class ChivalrySpellTests
     }
 
     [Fact]
+    public void NobleSacrifice_WithPackHealFlag_ReachesItsNativeHandler()
+    {
+        // The pack def carries spellflag_heal; the generic heal branch used
+        // to swallow it into a plain caster heal — the ally never got the
+        // area heal+cure and the paladin never paid the sacrifice.
+        var (_, engine, caster, ally) = Setup(new SpellDef
+        {
+            Id = SpellType.NobleSacrifice,
+            Name = "Noble Sacrifice",
+            Flags = SpellFlag.Heal | SpellFlag.Good, // as the pack defines it
+            EffectBase = 30, EffectScale = 30,
+        });
+        caster.MaxHits = 100;
+        caster.Hits = 100;
+        ally.MaxHits = 100;
+        ally.Hits = 40;
+        ally.ApplyPoison(2);
+
+        engine.ApplyDirectEffect(caster, caster, SpellType.NobleSacrifice, 500);
+
+        Assert.True(ally.Hits > 40, "ally was not healed — the heal branch swallowed the spell");
+        Assert.False(ally.IsPoisoned, "ally was not cured");
+        Assert.True(caster.Hits < 100, "the paladin paid no sacrifice");
+    }
+
+    [Fact]
     public void RemoveCurse_StripsCursesButKeepsBuffs()
     {
         var (_, engine, caster, target) = Setup(

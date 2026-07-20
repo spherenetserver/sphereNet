@@ -770,7 +770,7 @@ public sealed class SpellEngine
 
         // Animate Dead targets a CORPSE item and raises an undead controlled by
         // the caster (reference SPELL_Animate_Dead, CCharSpell.cpp:2608-2632).
-        if (spell == SpellType.AnimateDeadAOS)
+        if (spell is SpellType.AnimateDeadAOS or SpellType.AnimateDead)
         {
             var corpse = _world?.FindItem(targetUid);
             if (corpse != null && !corpse.IsDeleted && corpse.ItemType == ItemType.Corpse)
@@ -862,13 +862,22 @@ public sealed class SpellEngine
             ushort summonBody = spell switch
             {
                 SpellType.SummonFamiliar => 0x013D,
-                SpellType.BladeSpirit => 0x023E,   // CREID_BLADE_SPIRIT
-                SpellType.EnergyVortex => 0x00A4,  // CREID_ENERGY_VORTEX
-                SpellType.AirElemental => 0x000D,  // CREID_AIR_ELEM
+                SpellType.BladeSpirit => 0x023E,     // CREID_BLADE_SPIRIT
+                SpellType.EnergyVortex => 0x00A4,    // CREID_ENERGY_VORTEX
+                SpellType.AirElemental => 0x000D,    // CREID_AIR_ELEM
                 SpellType.EarthElemental => 0x000E,
                 SpellType.FireElemental => 0x000F,
                 SpellType.WaterElemental => 0x0010,
-                SpellType.SummonDaemon => 0x0009,  // CREID_DEMON
+                SpellType.SummonDaemon => 0x0009,    // CREID_DEMON
+                SpellType.RisingColossus => 0x033D,  // CREID_RISING_COLOSSUS
+                // Sphere custom Summon Undead: 1/15 lich, 4/15 skeleton,
+                // else zombie (Source-X CCharSpell.cpp:2591).
+                SpellType.SummonUndead => _rand.Next(15) switch
+                {
+                    1 => (ushort)0x0018,             // CREID_LICH
+                    3 or 5 or 7 or 9 => (ushort)0x0032, // CREID_SKELETON
+                    _ => (ushort)0x0003,             // CREID_ZOMBIE
+                },
                 _ => 0,
             };
             var summoned = SummonCreature(caster, targetPos, def, skillLevel, summonBody);
@@ -1277,8 +1286,10 @@ public sealed class SpellEngine
                 }
             }
         }
-        // Heal spells
-        else if (def.IsFlag(SpellFlag.Heal))
+        // Heal spells. Noble Sacrifice carries spellflag_heal in the pack but
+        // has a NATIVE handler (area heal+cure at the paladin's expense) —
+        // the generic branch used to swallow it into a plain caster heal.
+        else if (def.IsFlag(SpellFlag.Heal) && def.Id != SpellType.NobleSacrifice)
         {
             caster.FlagForHelpingCriminalIfNeeded(target);
             target.Hits = (short)Math.Min(target.Hits + effect, target.MaxHits);
@@ -1377,6 +1388,11 @@ public sealed class SpellEngine
             var fieldItem = _world.CreateItem();
             fieldItem.BaseId = tileId;
             fieldItem.Name = def.Name + " field";
+            // A field segment is a spell manifestation, not a world item: it
+            // can never be picked up (Source-X ATTR_MOVE_NEVER on fields) and
+            // is typed IT_FIRE / IT_SPELL like the reference.
+            fieldItem.ItemType = def.Id == SpellType.FireField ? ItemType.Fire : ItemType.Spell;
+            fieldItem.SetAttr(ObjAttributes.Move_Never);
             fieldItem.SetTag("FIELD_CASTER", caster.Uid.Value.ToString());
             fieldItem.SetTag("FIELD_CASTER_UUID", caster.Uuid.ToString("D"));
             fieldItem.SetTag("FIELD_SPELL", ((int)def.Id).ToString());
@@ -1390,6 +1406,23 @@ public sealed class SpellEngine
             if (!_world.PlaceItem(fieldItem, tilePos))
                 _world.RemoveItem(fieldItem);
         }
+    }
+
+    /// <summary>Harming an innocent player with a field is a crime — the same
+    /// notoriety rule the direct harmful-spell path applies (Source-X routes
+    /// field hits through OnAttackedBy).</summary>
+    private static void MarkFieldCrime(Character? caster, Character victim)
+    {
+        if (caster == null || caster == victim || !caster.IsPlayer || !victim.IsPlayer)
+            return;
+        if (!Character.AttackingIsACrimeEnabled || victim.IsFlaggedAsCriminal)
+            return;
+        if (caster.Memory_FindObjTypes(victim.Uid,
+                MemoryType.SawCrime | MemoryType.HarmedBy) != null)
+            return; // self-defence
+        if ((Character.CombatFlags & (int)Combat.CombatFlags.AttackNoAggreived) != 0)
+            return;
+        caster.MakeCriminal();
     }
 
     /// <summary>Typed field step/stand effect (Source-X: walking into or
@@ -1412,6 +1445,7 @@ public sealed class SpellEngine
             case SpellType.FireField:
             {
                 if (CombatEngine.IsDamageImmune(ch)) return true;
+                MarkFieldCrime(caster, ch);
                 int dmg = field.TryGetTag("FIELD_DAMAGE", out string? dStr) &&
                           int.TryParse(dStr, out int d) ? d : 2;
                 dmg = CombatEngine.ApplyElementalResist(ch, Math.Max(1, dmg), DamageType.Fire);
@@ -1429,9 +1463,12 @@ public sealed class SpellEngine
             }
             case SpellType.PoisonField:
             {
+                MarkFieldCrime(caster, ch);
                 byte level = field.TryGetTag("FIELD_POISON", out string? pStr) &&
                              byte.TryParse(pStr, out byte p) ? p : (byte)1;
-                ch.ApplyPoison(level);
+                // The caster rides along as the poison SOURCE so a poison
+                // death credits the kill/crime to the right character.
+                ch.ApplyPoison(level, caster?.Uid ?? Serial.Invalid);
                 return true;
             }
             case SpellType.ParalyzeField:
@@ -1439,7 +1476,10 @@ public sealed class SpellEngine
                 // The engine's Paralyze handler gives the timed freeze with
                 // proper expiry; skip when already frozen.
                 if (!ch.IsStatFlag(StatFlag.Freeze))
+                {
+                    MarkFieldCrime(caster, ch);
                     ApplyDirectEffect(caster ?? ch, ch, SpellType.Paralyze, 300);
+                }
                 return true;
             }
             case SpellType.WallOfStone:
@@ -1803,10 +1843,13 @@ public sealed class SpellEngine
     /// damages only on SPELLFLAG_DAMAGE (CCharSpell.cpp:3817), so such a def
     /// is inert there as well.</summary>
     private static bool HasActionableFlags(SpellDef def) =>
+        // Only flags the engine has a GENERIC handler for. Scripted counts
+        // via HasScriptedStages (a bare SCRIPTED flag with no ON= body is
+        // dead); Poly and Tick have per-spell handlers only, so a school def
+        // carrying just those would still no-op after burning resources.
         (def.Flags & (SpellFlag.Damage | SpellFlag.Heal | SpellFlag.Bless |
                       SpellFlag.Curse | SpellFlag.Field | SpellFlag.Summon |
-                      SpellFlag.Area | SpellFlag.Poly | SpellFlag.Tick |
-                      SpellFlag.Scripted)) != 0;
+                      SpellFlag.Area)) != 0;
 
     /// <summary>School spells with a native SphereNet handler (dispatched in
     /// ApplySpecificSpell / the travel route) — always castable.</summary>

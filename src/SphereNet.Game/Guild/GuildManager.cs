@@ -370,9 +370,16 @@ public sealed class GuildManager
     public GuildDef? GetGuild(Serial stoneUid) => _guilds.GetValueOrDefault(stoneUid);
     public int GuildCount => _guilds.Count;
 
-    /// <summary>Find which guild a character belongs to.</summary>
+    /// <summary>Find which GUILD a character belongs to. Town records are
+    /// excluded — this feeds guild chat, corpse-loot relations and notoriety,
+    /// where a town citizenship must never masquerade as a guild membership
+    /// (Source-X keeps MEMORY_GUILD and MEMORY_TOWN independent).</summary>
     public GuildDef? FindGuildFor(Serial charUid) =>
-        _guilds.Values.FirstOrDefault(g => g.IsMember(charUid));
+        _guilds.Values.FirstOrDefault(g => !g.IsTownStone && g.IsMember(charUid));
+
+    /// <summary>Find which TOWN a character is a citizen of.</summary>
+    public GuildDef? FindTownFor(Serial charUid) =>
+        _guilds.Values.FirstOrDefault(g => g.IsTownStone && g.IsMember(charUid));
 
     /// <summary>Find a guild record including pending candidates.</summary>
     public GuildDef? FindGuildRecordFor(Serial charUid) =>
@@ -549,7 +556,11 @@ public sealed class GuildManager
     public void DeserializeFromWorld(World.GameWorld world)
     {
         _guilds.Clear();
-        var claimedCharacters = new HashSet<uint>();
+        // One claim set PER POOL: a character may be a guild member AND a
+        // town citizen — a single shared set silently dropped the second
+        // membership on reload (whichever stone loaded first won).
+        var claimedGuildChars = new HashSet<uint>();
+        var claimedTownChars = new HashSet<uint>();
         foreach (var obj in world.GetAllObjects().OrderBy(o => o.Uid.Value))
         {
             if (obj is not Objects.Items.Item item) continue;
@@ -601,6 +612,7 @@ public sealed class GuildManager
                 guild.MaxShips = maxShips;
 
             // Parse members
+            var claimedCharacters = guild.IsTownStone ? claimedTownChars : claimedGuildChars;
             if (item.TryGetTag("GUILD.MEMBERS", out string? membersStr) && !string.IsNullOrEmpty(membersStr))
             {
                 foreach (var part in membersStr.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))

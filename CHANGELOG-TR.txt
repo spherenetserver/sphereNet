@@ -6,6 +6,41 @@
 [2026-07-18] - Baslangic baglanti fixleri, bitki buyumesi, multi-server liste, gump fallback
 ----------------------------------------
 
+FIX - Noble Sacrifice native handler'ina ulasiyor: pack tanimi
+        spellflag_heal tasiyor ve jenerik heal dali cast'i duz caster
+        heal'ine yutuyordu - muttefikler iyilesmiyor/kurutulmuyor, paladin
+        bedel odemiyordu.
+
+FIX - Field cilasi: parcalar Move_Never ve IT_FIRE/IT_SPELL tipli
+        (oyuncular field parcasini yerden alabiliyordu); zehir field'i
+        caster'i zehir KAYNAGI olarak gecirir (kill/suc sahipligi); masum
+        oyuncuya field ile zarar vermek caster'i criminal yapar - dogrudan
+        zararli buyu kuraliyla ayni.
+
+FIX - Cift guild+town uyeligi restart'i atlatiyor: yukleme TUM taslar icin
+        TEK claim kumesi kullaniyordu; iki havuzda da olan karakter yalnizca
+        once yuklenen tasta kaliyordu. Claim'ler artik havuz basina ve genel
+        FindGuildFor() town kayitlarini disliyor - guild chat, ceset-loot
+        iliskisi ve notoriety vatandasligi asla guild uyeligi gibi gormez
+        (town yuzeyleri icin FindTownFor eklendi).
+
+FIX - Kalan klasik summonlar eslendi: Rising Colossus (0x33D) ve Sphere
+        custom Summon Undead (rastgele zombi/iskelet/lich, Source-X
+        oranlari); custom Animate Dead (1001) mevcut ceset-canlandirma
+        akisini kullanir. Animated Weapon script'te kaliyor - referansta da
+        native eslesmesi yok.
+
+FIX - Inert okul kapisi SCRIPTED (ON= govdesiz), POLY ve TICK'i artik
+        eylemli saymiyor - bunlarin jenerik handler'i yok, boyle tanimlar
+        mana yakip no-op kaliyordu.
+
+NEW - Buyu id yuzeyi referansla tamamlandi: Bard Masteries (701-706),
+        Skill Masteries (707-745) ve tam custom Sphere kuyrugu (1006-1026:
+        Stone, Shrink, Refresh, Restore, Mana, Sustenance, Chameleon,
+        Beast/Monster Form, Gender Swap, Trance, Particle Form, Shield,
+        Steel/Stoneskin, Regenerate, Enchant, Forget, Ale/Wine/Liquor)
+        artik enum'da.
+
 FIX - Field buyuleri gercek field gibi davraniyor (Source-X Spell_Field):
         parcalar buyu basina KLASIK field grafigini D/B-K/G yonelimiyle
         kullaniyor (tas duvar 0x0080, ates 0x398C/0x3996, zehir, felc,

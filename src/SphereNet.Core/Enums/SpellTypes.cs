@@ -55,10 +55,26 @@ public enum SpellType : ushort
     AnimatedWeapon, StoneForm, SpellTrigger, MassSleep, CleansingWinds,
     Bombard, SpellPlague, HailStorm, NetherCyclone, RisingColossus,
 
-    // --- Custom Sphere spells (Source-X uofiles_enums.h 1000+) ---
+    // --- Bard Masteries (SA, Source-X 701-706) ---
+    Inspire = 701, Invigorate, Resilience, Perseverance, Tribulation, Despair,
+
+    // --- Skill Masteries (TOL, Source-X 707+) ---
+    DeathRay = 707, EtherealBurst, NetherBlast, MysticWeapon, CommandUndead,
+    Conduit, ManaShield, SummonReaper, EnchantedSummoning, AnticipateHit,
+    Warcry, Intuition, Rejuvinate, HolyFist, Shadow, WhiteTigerForm,
+    FlamingShot, PlayingTheOdds, Thrust, Pierce, Stagger, Toughness,
+    Onslaught, FocusedEye, ElementalFury, CalledShot, WarriorsGifts,
+    ShieldBash, BodyGuard, HeightenedSenses, Tolerance, InjectedStrike,
+    Potency, Rampage, FistsOfFury, Knockout, Whispering, CombatTraining,
+    Boarding,
+
+    // --- Custom Sphere spells (Source-X uofiles_enums.h 1000-1026) ---
     // Hallucination previously sat at 1001, which is Animate Dead in the
     // reference — pack spells 1001-1004 resolved to the wrong enum member.
     SummonUndead = 1000, AnimateDead, BoneArmor, Light, FireBolt, Hallucination,
+    Stone, Shrink, Refresh, Restore, Mana, Sustenance, Chameleon, BeastForm,
+    MonsterForm, GenderSwap, Trance, ParticleForm, Shield, Steelskin,
+    Stoneskin, Regenerate, EnchantItem, Forget, Ale, Wine, Liquor,
 }
 
 /// <summary>

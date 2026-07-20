@@ -7,6 +7,41 @@
 [2026-07-18] - Startup wiring fixes, plant growth, multi-server list, gump fallback
 ----------------------------------------
 
+FIX - Noble Sacrifice reaches its native handler: the pack def carries
+        spellflag_heal, and the generic heal branch swallowed the cast into
+        a plain caster heal — allies were never healed/cured and the
+        paladin never paid the sacrifice.
+
+FIX - Field polish: segments are Move_Never and typed IT_FIRE/IT_SPELL
+        (players could pick field pieces up); poison field passes the
+        caster as the poison SOURCE (kill/crime credit); harming an
+        innocent player with any field marks the caster criminal, matching
+        the direct harmful-spell rule.
+
+FIX - Dual guild+town membership survives a restart: the reload used ONE
+        claim set across every stone, so a character in both pools kept
+        only whichever stone loaded first. Claims are now per pool, and
+        the general FindGuildFor() excludes town records — guild chat,
+        corpse-loot relations and notoriety never see a citizenship as a
+        guild membership (FindTownFor added for town surfaces).
+
+FIX - Remaining classic summons mapped: Rising Colossus (0x33D) and Sphere
+        custom Summon Undead (random zombie/skeleton/lich, Source-X odds);
+        custom Animate Dead (1001) rides the existing corpse-raise flow.
+        Animated Weapon stays scripted — the reference has no native
+        mapping either.
+
+FIX - The inert-school gate no longer counts SCRIPTED (without ON= stages),
+        POLY or TICK as actionable — those have no generic handler, so such
+        defs burned mana and no-opped.
+
+NEW - Spell id surface completed against the reference: Bard Masteries
+        (701-706), Skill Masteries (707-745) and the full custom Sphere
+        tail (1006-1026: Stone, Shrink, Refresh, Restore, Mana, Sustenance,
+        Chameleon, Beast/Monster Form, Gender Swap, Trance, Particle Form,
+        Shield, Steel/Stoneskin, Regenerate, Enchant, Forget, Ale/Wine/
+        Liquor) now exist in the enum.
+
 FIX - Field spells behave like fields (Source-X Spell_Field): segments use
         the CLASSIC field art per spell with E/W-N/S orientation (stone wall
         0x0080, fire 0x398C/0x3996, poison, paralyze, energy) instead of the

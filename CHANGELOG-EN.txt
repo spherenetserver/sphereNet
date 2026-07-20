@@ -4,6 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-20] - Spell-memory reverse link, timerless forms, hallucination visuals
+----------------------------------------
+
+FIX - FINDID now searches the hidden spell-memory layer alongside equipment
+        and the backpack, and supports chained verb dispatch
+        (FINDID.<id>.REMOVE). Removing an IT_SPELL memory item reverts its
+        active effect through the new SpellEngine.RemoveEffectByMemory
+        reverse link (Source-X: deleting the memory runs
+        Spell_Effect_Remove). The Scripts-X Reaper/Stone Form @Select
+        toggles (FINDID.<RUNE_ITEM>.REMOVE) now genuinely end the form.
+
+FIX - A zero-duration form (the pack ships Reaper Form with DURATION=0.0)
+        now holds with NO expiry - until dispel, death or the script toggle
+        - matching the reference's timerless poly memory; the previous
+        4-hour approximation is gone.
+
+NEW - Hallucination is visible: a hallucinating player sees every mobile in
+        a random dye hue (re-rolled on each view refresh, Source-X
+        CClientMsg addChar), the trip tick refreshes the nearby view and
+        plays its sound ONLY for the affected client (no more broadcast to
+        bystanders). A petrified (Stone) mobile now shows HUE_STONE 0x482
+        to everyone.
+
+FIX - The drunk hiccup is visible: an overhead *hic* emote nearby players
+        can see, plus a random facing turn and the bow animation when not
+        mounted (Source-X Spell_Equip_OnTick), replacing the private system
+        message.
+
 [2026-07-20] - Poly forms, corpse-spell reach checks, periodic drunk/hallucination ticks
 ----------------------------------------
 

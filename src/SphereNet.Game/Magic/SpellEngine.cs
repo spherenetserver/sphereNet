@@ -88,6 +88,20 @@ public sealed class SpellEngine
     /// Dispel Field to clear a field item early).</summary>
     public Action<Item>? OnItemRemoved { get; set; }
 
+    /// <summary>Play a sound only for this character's client (Source-X
+    /// m_pClient-&gt;addSound) — hallucination trip sounds must not broadcast
+    /// to bystanders.</summary>
+    public Action<Character, ushort>? OnPlaySoundTo { get; set; }
+
+    /// <summary>Re-send the nearby world view to this character's client
+    /// (Source-X addChar/addPlayerSee on the hallucination tick — each
+    /// refresh re-rolls the random hues).</summary>
+    public Action<Character>? OnViewRefresh { get; set; }
+
+    /// <summary>Overhead text spoken by the character, visible to everyone
+    /// nearby (Source-X CChar::Speak — the drunk *hic* line).</summary>
+    public Action<Character, string>? OnOverheadEmote { get; set; }
+
     /// <summary>Optional script dispatcher for item spell hooks.</summary>
     public TriggerDispatcher? TriggerDispatcher { get; set; }
 
@@ -2400,11 +2414,12 @@ public sealed class SpellEngine
                 if (target.OBody == 0)
                     target.OBody = target.BodyId;
                 // The pack ships Reaper Form with DURATION=0.0 — in the
-                // reference a 0-duration poly memory has no timer and the form
-                // holds until dispel/death/re-cast. Approximate with a
-                // far-future expiry instead of the generic 30 s floor.
+                // reference a 0-duration poly memory has no timer: the form
+                // holds until dispel/death/toggle (the Scripts-X @Select
+                // FINDID.<RUNE_ITEM>.REMOVE path, wired through
+                // RemoveEffectByMemory). No expiry at all, not a floor.
                 if (def.GetDuration(caster.GetSkill(def.GetPrimarySkill())) <= 0)
-                    formEff.ExpireTick = Environment.TickCount64 + 4L * 60 * 60 * 1000;
+                    formEff.ExpireTick = long.MaxValue;
                 formEff.AppliedFlag = StatFlag.Polymorph;
                 formEff.OldBodyId = target.OBody;
                 formEff.NewBodyId = formBody;
@@ -2774,6 +2789,29 @@ public sealed class SpellEngine
             (int)eff.Spell, graphic, 0, source, eff.Spell.ToString());
     }
 
+    /// <summary>Remove the active effect represented by this IT_SPELL memory
+    /// item — the reverse direction of the memory mirror. Source-X deletes
+    /// the memory item and Spell_Effect_Remove reverts the effect; SphereNet
+    /// scripts reach this through Character.SpellMemoryEffectRemover when
+    /// they REMOVE the memory (the Scripts-X Reaper/Stone Form @Select
+    /// toggles). Returns true when a matching effect was reverted.</summary>
+    public bool RemoveEffectByMemory(Item memory)
+    {
+        for (int i = 0; i < _activeEffects.Count; i++)
+        {
+            var eff = _activeEffects[i];
+            if (!ReferenceEquals(eff.Memory, memory))
+                continue;
+            _activeEffects.RemoveAt(i);
+            RevertDeltas(eff); // detaches and deletes the memory item too
+            NotifySpellBuff(eff.Target, eff.Spell, false);
+            Character.OnSpellEffectRemove?.Invoke(eff.Target, (int)eff.Spell);
+            FireSpellSectionStage(eff.Spell, "EffectRemove", eff.Target);
+            return true;
+        }
+        return false;
+    }
+
     /// <summary>Delete the effect's spell-memory item (Source-X deletes the
     /// IT_SPELL item, which unequips and runs Spell_Effect_Remove). Idempotent:
     /// a no-op when the effect never had a memory, so it is safe to call at every
@@ -3108,8 +3146,12 @@ public sealed class SpellEngine
             case SpellType.Hallucination:
                 eff.DotCharges--;
                 eff.DotNextTickMs = now + 15_000 + _rand.Next(15_001);
-                OnPlaySound?.Invoke(eff.Target.Position,
+                // The trip sound goes ONLY to the hallucinating client
+                // (Source-X m_pClient->addSound), and the view refresh
+                // re-rolls the random hues the client sees.
+                OnPlaySoundTo?.Invoke(eff.Target,
                     (ushort)(_rand.Next(2) == 0 ? 0x0243 : 0x0244));
+                OnViewRefresh?.Invoke(eff.Target);
                 return true;
             case SpellType.Ale:
             case SpellType.Wine:
@@ -3123,7 +3165,18 @@ public sealed class SpellEngine
                 drunk.Stam = (short)Math.Max(0, drunk.Stam - 1);
                 drunk.Mana = (short)Math.Max(0, drunk.Mana - 1);
                 if (_rand.Next(3) == 0)
-                    OnSysMessage?.Invoke(drunk, "*hic*");
+                {
+                    // Source-X: Speak(hic) + random facing + ANIM_BOW when
+                    // not mounted — visible drunkenness, not a private note.
+                    OnOverheadEmote?.Invoke(drunk, "*hic*");
+                    if (!drunk.IsStatFlag(StatFlag.OnHorse))
+                    {
+                        drunk.Direction = (Direction)_rand.Next(8);
+                        Character.BroadcastNearby?.Invoke(drunk.Position, 18,
+                            new SphereNet.Network.Packets.Outgoing.PacketAnimation(
+                                drunk.Uid.Value, (ushort)AnimationType.Bow), 0);
+                    }
+                }
                 return true;
             }
         }

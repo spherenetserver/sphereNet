@@ -293,7 +293,11 @@ items were all explicitly deferred with reasons and are parked here:
   layer bookkeeping; verified 2026-07); pack script defs run through the
   generic flag engine. The `[SPELL n] ON=@Select` stage now fires from
   CastStart (2026-07-20), so @Select-only pack forms (Reaper/Stone Form)
-  execute their script bodies.
+  execute their script bodies — and their `FINDID.<RUNE_ITEM>.REMOVE`
+  toggle works end-to-end: FINDID searches the hidden memory layer and
+  deleting an IT_SPELL memory reverts its effect
+  (SpellEngine.RemoveEffectByMemory, the Source-X Spell_Effect_Remove
+  contract). Zero-duration forms hold with no expiry.
 - **Custom Sphere spells 1000+** — 2026-07-20 update: native behaviors for
   Light, Hallucination (with periodic trip sounds), Stone, Particle Form,
   Shrink (kills conjured, figurines the rest), Refresh, Restore, Mana,

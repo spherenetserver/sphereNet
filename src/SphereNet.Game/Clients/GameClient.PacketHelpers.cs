@@ -35,16 +35,30 @@ namespace SphereNet.Game.Clients;
 public sealed partial class GameClient
 {
 
+    /// <summary>Public wrapper for engine wiring — the hallucination view
+    /// refresh re-sends nearby mobiles through the hue rules below.</summary>
+    public void SendCharacterView(Character ch) => SendDrawObject(ch);
+
     internal void SendDrawObject(Character ch)
     {
         var equipment = BuildEquipmentList(ch);
         byte flags = BuildMobileFlags(ch);
         byte noto = GetNotoriety(ch);
 
+        // Source-X CClientMsg addChar hue rules: a hallucinating VIEWER sees
+        // every mobile in a random dye hue (re-rolled on each send — the
+        // hallucination tick refreshes the view for the trip effect); a
+        // petrified mobile shows HUE_STONE to everyone.
+        var hue = ch.Hue;
+        if (_character != null && _character.IsStatFlag(StatFlag.Hallucinating))
+            hue = new Color((ushort)Random.Shared.Next(2, 0x03EA)); // HUE_DYE_HIGH
+        else if (ch.IsStatFlag(StatFlag.Stone))
+            hue = new Color(0x0482); // HUE_STONE
+
         _netState.Send(new PacketDrawObject(
             ch.Uid.Value, ch.BodyId,
             ch.X, ch.Y, ch.Z,
-            (byte)ch.Direction, ch.Hue, flags, noto,
+            (byte)ch.Direction, hue, flags, noto,
             equipment, _netState.SupportsNewMobileIncoming
         ));
     }

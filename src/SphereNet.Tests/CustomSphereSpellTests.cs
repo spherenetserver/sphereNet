@@ -368,6 +368,60 @@ public sealed class CustomSphereSpellTests
     }
 
     [Fact]
+    public void ReaperForm_ScriptToggle_RemovesTheFormViaItsMemory()
+    {
+        // The Scripts-X @Select toggle runs FINDID.<RUNE_ITEM>.REMOVE while
+        // polymorphed: FINDID must see the hidden spell-memory item (whose
+        // graphic IS the rune id) and removing it must revert the effect
+        // (Source-X: deleting the IT_SPELL memory runs Spell_Effect_Remove).
+        var (_, engine, caster) = Setup(new SpellDef
+        {
+            Id = SpellType.ReaperForm,
+            Name = "Reaper Form",
+            Flags = SpellFlag.Good | SpellFlag.Poly,
+            DurationBase = 0,
+            RuneItemId = 0x2D59, // i_scroll_reaper_form
+        });
+        Character.SpellMemoryEffectRemover = engine.RemoveEffectByMemory;
+        ushort originalBody = caster.BodyId;
+
+        engine.ApplyDirectEffect(caster, caster, SpellType.ReaperForm, 500);
+        Assert.Equal((ushort)0x00E6, caster.BodyId);
+        Assert.Contains(caster.Memories, m => !m.IsDeleted && m.BaseId == 0x2D59);
+
+        Assert.True(caster.TryExecuteCommand("FINDID.02D59.REMOVE", "", null!));
+
+        Assert.Equal(originalBody, caster.BodyId);
+        Assert.False(caster.IsStatFlag(StatFlag.Polymorph));
+        Assert.DoesNotContain(caster.Memories, m => !m.IsDeleted && m.BaseId == 0x2D59);
+    }
+
+    [Fact]
+    public void Hallucination_Tick_PlaysClientOnlySound_AndRefreshesView()
+    {
+        var (_, engine, caster) = Setup(new SpellDef
+        {
+            Id = SpellType.Hallucination,
+            Name = "Hallucination",
+            Flags = SpellFlag.TargChar | SpellFlag.Harm | SpellFlag.Curse,
+            DurationBase = 1200,
+        });
+        var sounds = new List<ushort>();
+        Character? refreshed = null;
+        engine.OnPlaySoundTo = (_, snd) => sounds.Add(snd);
+        engine.OnViewRefresh = ch => refreshed = ch;
+
+        engine.ApplyDirectEffect(caster, caster, SpellType.Hallucination, 500);
+        Assert.True(caster.IsStatFlag(StatFlag.Hallucinating));
+
+        // First trip tick lands within 15-30 s.
+        engine.ProcessExpirations(Environment.TickCount64 + 31_000);
+        Assert.NotEmpty(sounds);
+        Assert.All(sounds, s => Assert.Contains(s, new[] { (ushort)0x0243, (ushort)0x0244 }));
+        Assert.Same(caster, refreshed);
+    }
+
+    [Fact]
     public void Alcohol_DrainsStaminaAndManaPerTick()
     {
         var (_, engine, caster) = Setup(new SpellDef

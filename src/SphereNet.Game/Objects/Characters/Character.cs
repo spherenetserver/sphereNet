@@ -65,6 +65,14 @@ public partial class Character : ObjBase
     public static Func<Serial, Party.PartyDef?>? ResolvePartyFinder;
     // Static delegate for party manager (set in Program.cs) — needed for commands
     public static Func<Party.PartyManager?>? ResolvePartyManager;
+
+    /// <summary>Removes the active spell effect represented by an IT_SPELL
+    /// memory item (Source-X: deleting the memory runs Spell_Effect_Remove).
+    /// Wired to SpellEngine.RemoveEffectByMemory; invoked when a script
+    /// REMOVEs the memory (the Scripts-X Reaper/Stone Form toggles do this
+    /// via FINDID.&lt;RUNE_ITEM&gt;.REMOVE). Returns true when an effect was
+    /// found and reverted.</summary>
+    public static Func<Item, bool>? SpellMemoryEffectRemover;
     // Static delegate for account resolution from character UID (set in Program.cs)
     public static Func<Serial, Account?>? ResolveAccountForChar;
     // Static delegate for character lookup by UID — used for ACCOUNT.CHAR.N.NAME
@@ -1861,6 +1869,26 @@ public partial class Character : ObjBase
 
     public void Memory_Delete(Item mem) => MemoryState.Delete(mem);
 
+    /// <summary>FINDID item search across worn equipment, the backpack and
+    /// the hidden memory layer — Source-X ContentFind covers every equipped
+    /// item, spell memories included (the Scripts-X form toggles look up the
+    /// form's RUNE_ITEM memory this way).</summary>
+    private Item? FindItemByBaseId(ushort baseId)
+    {
+        for (int i = 0; i < _equipment.Length; i++)
+            if (_equipment[i] != null && _equipment[i]!.BaseId == baseId)
+                return _equipment[i];
+        var pack = Backpack;
+        if (pack != null)
+            foreach (var item in pack.Contents)
+                if (item.BaseId == baseId)
+                    return item;
+        foreach (var mem in Memories)
+            if (!mem.IsDeleted && mem.BaseId == baseId)
+                return mem;
+        return null;
+    }
+
     public bool Memory_UpdateFlags(Item mem) => MemoryState.UpdateFlags(mem);
 
     public bool Memory_OnTick(Item mem) => MemoryState.OnMemoryTick(mem);
@@ -3254,33 +3282,17 @@ public partial class Character : ObjBase
             }
         }
 
-        // FINDID.xxx
+        // FINDID.xxx  (see FindItemByBaseId for the search scope)
         if (upper.StartsWith("FINDID.", StringComparison.Ordinal))
         {
             string idStr = key["FINDID.".Length..].Trim();
             if (TryParseHexOrDecUshort(idStr, out ushort findId))
             {
-                // Search equipment
-                for (int i = 0; i < _equipment.Length; i++)
+                var found = FindItemByBaseId(findId);
+                if (found != null)
                 {
-                    if (_equipment[i] != null && _equipment[i]!.BaseId == findId)
-                    {
-                        value = $"0{_equipment[i]!.Uid.Value:X}";
-                        return true;
-                    }
-                }
-                // Search pack
-                var pack = Backpack;
-                if (pack != null)
-                {
-                    foreach (var item in pack.Contents)
-                    {
-                        if (item.BaseId == findId)
-                        {
-                            value = $"0{item.Uid.Value:X}";
-                            return true;
-                        }
-                    }
+                    value = $"0{found.Uid.Value:X}";
+                    return true;
                 }
             }
             value = "0";
@@ -4325,6 +4337,43 @@ public partial class Character : ObjBase
                 }
             }
             return true;
+        }
+
+        // Source-X chained dispatch on FINDID:
+        //   FINDID.i_scroll_reaper_form.REMOVE
+        // Resolve the item across equipment, pack AND the hidden memory
+        // layer, then route the trailing verb. Removing an IT_SPELL memory
+        // must also remove its active effect (Source-X: deleting the memory
+        // runs Spell_Effect_Remove) — the Scripts-X form toggles rely on it.
+        if (key.StartsWith("FINDID.", StringComparison.OrdinalIgnoreCase))
+        {
+            string chain = key["FINDID.".Length..];
+            int chainDot = chain.IndexOf('.');
+            if (chainDot > 0 &&
+                TryParseHexOrDecUshort(chain[..chainDot].Trim(), out ushort chainId))
+            {
+                string tail = chain[(chainDot + 1)..].Trim();
+                var found = FindItemByBaseId(chainId);
+                if (found == null || found.IsDeleted || tail.Length == 0)
+                    return true;
+                if (tail.Equals("REMOVE", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (found.ItemType == ItemType.Spell && Memories.Contains(found))
+                    {
+                        if (SpellMemoryEffectRemover?.Invoke(found) != true)
+                        {
+                            Memory_Delete(found);
+                            found.Delete();
+                        }
+                    }
+                    else
+                    {
+                        found.RemoveFromWorld();
+                    }
+                    return true;
+                }
+                return found.TryExecuteCommand(tail, args, source);
+            }
         }
 
         // Source-X chained method dispatch on the equipped-layer slot:

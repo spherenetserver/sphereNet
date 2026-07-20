@@ -3,6 +3,34 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-20] - Spell-memory ters baglantisi, zamansiz formlar, halusinasyon gorselleri
+----------------------------------------
+
+FIX - FINDID artik ekipman ve backpack yaninda gizli spell-memory katmanini
+        da tariyor ve zincirli verb dispatch destekliyor
+        (FINDID.<id>.REMOVE). Bir IT_SPELL memory item'i silindiginde aktif
+        efekt yeni SpellEngine.RemoveEffectByMemory ters baglantisiyla geri
+        aliniyor (Source-X: memory silinince Spell_Effect_Remove calisir).
+        Scripts-X Reaper/Stone Form @Select toggle'lari
+        (FINDID.<RUNE_ITEM>.REMOVE) artik formu gercekten kapatiyor.
+
+FIX - Sifir sureli form (pack Reaper Form'u DURATION=0.0 ile veriyor) artik
+        SURESIZ kaliyor - dispel, olum veya script toggle gelene kadar -
+        referansin zamansiz poly memory'siyle ayni; onceki 4 saatlik
+        yaklasiklastirma kaldirildi.
+
+NEW - Hallucination gorunur oldu: halusinasyon goren oyuncu her mobili
+        rastgele boya rengiyle goruyor (her gorus yenilemesinde yeniden
+        cekilir, Source-X CClientMsg addChar), tick yakin gorusu yeniliyor
+        ve sesi YALNIZCA etkilenen client'a caliyor (artik cevreye
+        broadcast yok). Taslasan (Stone) mobil herkese HUE_STONE 0x482
+        rengiyle gorunuyor.
+
+FIX - Sarhos hickirigi gorunur oldu: yakindaki oyuncularin gordugu overhead
+        *hic* emote'u, at ustunde degilse rastgele yon donusu ve bow
+        animasyonu (Source-X Spell_Equip_OnTick); onceki ozel sistem
+        mesajinin yerine gecti.
+
 [2026-07-20] - Poly formlar, ceset buyusu erisim kontrolu, periyodik sarhosluk/haluinasyon tikleri
 ----------------------------------------
 

@@ -1287,6 +1287,37 @@ public static partial class Program
                 if (TryGetClientFor(recipient, out var c))
                     c.SysMessage(text);
             };
+            _spellEngine.OnPlaySoundTo = (recipient, sound) =>
+            {
+                // Client-only sound (Source-X m_pClient->addSound): the
+                // hallucination trip must not be heard by bystanders.
+                if (TryGetClientFor(recipient, out var c))
+                    c.NetState.Send(new PacketSound(sound,
+                        recipient.X, recipient.Y, recipient.Z));
+            };
+            _spellEngine.OnViewRefresh = recipient =>
+            {
+                // Source-X addChar/addPlayerSee on the hallucination tick:
+                // re-send nearby mobiles so the random hues re-roll.
+                if (!TryGetClientFor(recipient, out var c))
+                    return;
+                foreach (var other in _world.GetCharsInRange(recipient.Position, 18))
+                    if (!other.IsDeleted)
+                        c.SendCharacterView(other);
+            };
+            _spellEngine.OnOverheadEmote = (speaker, text) =>
+            {
+                // Overhead line from the character, visible nearby (Source-X
+                // CChar::Speak — the drunk *hic*).
+                var pkt = new PacketSpeechUnicodeOut(
+                    speaker.Uid.Value, speaker.BodyId,
+                    0x02, // emote-style speech
+                    0x0022, 3, "ENU",
+                    speaker.Name ?? "", text);
+                BroadcastNearby(speaker.Position, 18, pkt, 0);
+            };
+            SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRemover =
+                mem => _spellEngine.RemoveEffectByMemory(mem);
             _spellEngine.OnCasterFacingChanged = caster =>
             {
                 // Source-X UpdateMove(GetTopPoint()) — broadcast new facing only.

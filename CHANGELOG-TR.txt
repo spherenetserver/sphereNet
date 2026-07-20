@@ -3,6 +3,27 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-20] - Durus-yuzeyi sentetik test matrisi + duz multi-kat yuruyus fixi
+----------------------------------------
+
+NEW - Denetimin sentetik senaryo matrisi mul'suz, bellek-ici harita
+        fixture'inda calisiyor: dinamik addon zeminleri, multi ev katlari
+        (ayni karoda iki kat, referans Z ile dogru kata oturma), su
+        ustunde gemi guvertesi, alcak tavan (settle reddi, GM fallback
+        zemin temasini korur), impassable+surface mobilya (asla oturak
+        degil), islenmis custom-house tasarim zeminleri ve kat basina
+        yuruyus/settle uyumu. Sentetik multi katmani
+        (MapDataManager.SetSyntheticMulti) ev/gemi tanimlarini multi.mul
+        olmadan besliyor.
+
+FIX - Matris gercek bir yuruyus-geometrisi acigini yakaladi: duz zemin
+        karolu (Surface, yukseklik 0) sanal multi/gemi/custom-house
+        bilesenleri ShouldTreatAsMovementGeometry'nin gevsek-esya yukseklik
+        filtresine takilip sessizce dusuyordu - ev kati, tiledata'sinda
+        Bridge veya yeterli yukseklik yoksa yuruyus geometrisine HIC
+        girmiyordu. Sanal bilesenler (MultiAddon damgali) yapisal oldugu
+        icin artik her zaman sayiliyor.
+
 [2026-07-20] - Birlesik durus-yuzeyi cozucusu: Z-drift kok cozumu
 ----------------------------------------
 

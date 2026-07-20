@@ -4,6 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-20] - Standing-surface synthetic test matrix + flat multi-floor walk fix
+----------------------------------------
+
+NEW - The audit's synthetic scenario matrix runs mul-free on the in-memory
+        map fixture: dynamic addon floors, multi house floors (two-story
+        same-tile seating by reference Z), ship decks over water, low
+        ceilings (settle refused, GM fallback keeps ground contact),
+        impassable+surface furniture (never a seat), committed
+        custom-house design floors, and walk/settle agreement per story.
+        A synthetic multi layer (MapDataManager.SetSyntheticMulti) feeds
+        house/ship definitions without multi.mul.
+
+FIX - The matrix exposed a real walk-geometry hole: virtual multi/ship/
+        custom-house components with flat floor tiles (Surface, height 0)
+        were silently dropped by the loose-item height filter in
+        ShouldTreatAsMovementGeometry - a house floor contributed NO walk
+        geometry unless its tiledata carried Bridge or enough height.
+        Virtual components (stamped MultiAddon) are structural by
+        definition and now always count.
+
 [2026-07-20] - Unified standing-surface resolver: the Z-drift root fix
 ----------------------------------------
 

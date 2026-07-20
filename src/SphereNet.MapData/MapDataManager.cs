@@ -181,6 +181,15 @@ public sealed class MapDataManager : IDisposable
     public void SetSyntheticLandTile(ushort tileId, LandTileData data) =>
         _synthLandTiles[tileId] = data;
 
+    private readonly Dictionary<int, Multi.MultiDef> _synthMultis = [];
+
+    /// <summary>Register a synthetic multi definition (test fixture) —
+    /// consulted before multi.mul like the other synthetic layers, so walk
+    /// and standing-surface tests can model house floors and ship decks
+    /// without the real muls.</summary>
+    public void SetSyntheticMulti(int multiId, Multi.MultiDef def) =>
+        _synthMultis[multiId] = def;
+
     public (int Width, int Height) GetMapSize(int mapId)
     {
         if (_synthMaps.TryGetValue(mapId, out var synth))
@@ -273,7 +282,7 @@ public sealed class MapDataManager : IDisposable
     }
 
     public MultiDef? GetMulti(int multiId) =>
-        _multiReader?.GetMulti(multiId);
+        _synthMultis.TryGetValue(multiId, out var synth) ? synth : _multiReader?.GetMulti(multiId);
 
     /// <summary>
     /// Get effective Z height at a world coordinate (terrain + statics).

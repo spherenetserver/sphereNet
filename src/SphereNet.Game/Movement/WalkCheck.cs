@@ -745,6 +745,12 @@ public sealed class WalkCheck
         // Surface bit, while bulky/anchored objects still should.
         if (item.ItemType == ItemType.Corpse) return false;
         if (item.IsStaticBlock) return true;
+        // Virtual multi/ship/custom-house components (AddVirtualGeometry
+        // stamps them MultiAddon) are structural by definition — the loose-
+        // item height filter below silently dropped every flat house-floor
+        // tile (Surface, height 0) from the walk geometry, which the
+        // synthetic standing-surface matrix exposed.
+        if (item.ItemType == ItemType.MultiAddon) return true;
         if (item.IsAttr(ObjAttributes.Static)
             || item.IsAttr(ObjAttributes.Move_Never)
             || item.IsAttr(ObjAttributes.LockedDown))

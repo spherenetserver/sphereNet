@@ -97,9 +97,13 @@ public sealed class MovementEngine
         // the char upward: the 5146,993 report, stored Z=10 over a floor at 1).
         if ((ch.PrivLevel >= PrivLevel.GM && ch.AllMove) || CharDefHelper.CanPassWalls(ch) || _world.MapData == null)
         {
-            sbyte bypassZ = _world.MapData != null
-                ? _world.MapData.GetEffectiveZ(ch.MapIndex, (short)(ch.X + dx), (short)(ch.Y + dy), ch.Z)
-                : ch.Z;
+            // The bypass skips collision ONLY — surface collection and Z
+            // selection still run through the shared resolver (audit design:
+            // GetEffectiveZ's closest-to-currentZ pick was self-reinforcing
+            // for a drifted Z and saw neither multis nor headroom).
+            var stand = _walkCheck.ResolveStandingSurface(ch, ch.MapIndex,
+                ch.X + dx, ch.Y + dy, ch.Z, WalkCheck.StandingPolicy.IgnoreCollision);
+            sbyte bypassZ = stand.Found ? stand.Z : ch.Z;
             target = new Point3D((short)(ch.X + dx), (short)(ch.Y + dy), bypassZ, ch.MapIndex);
             // Even the bypass branch may not step off the map — an off-map
             // char crashes the map readers on the next query.

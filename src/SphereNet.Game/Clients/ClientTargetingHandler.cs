@@ -255,14 +255,15 @@ public sealed class ClientTargetingHandler
             // static plane. Landing there strands the player: every subsequent
             // step gets rejected by climb/cliff checks (~150 MoveReject spam
             // on `.mtele 1493,1639,40` observed in logs).
-            var mdata = _world.MapData;
-            if (mdata != null)
-            {
-                var d = destination.Value;
-                sbyte walkZ = mdata.GetEffectiveZ(_character.MapIndex, d.X, d.Y, (sbyte)d.Z);
-                if (walkZ != d.Z)
-                    destination = new Point3D(d.X, d.Y, walkZ, _character.MapIndex);
-            }
+            var dPos = destination.Value;
+            // Derive the landing Z through the shared standing resolver —
+            // GetEffectiveZ stranded players on phantom static planes and
+            // could not see multi floors at the target.
+            var teleStand = _world.Standing.ResolveStandingSurface(_character,
+                _character.MapIndex, dPos.X, dPos.Y, (sbyte)dPos.Z,
+                SphereNet.Game.Movement.WalkCheck.StandingPolicy.Settle);
+            if (teleStand.Found && teleStand.Z != dPos.Z)
+                destination = new Point3D(dPos.X, dPos.Y, teleStand.Z, _character.MapIndex);
 
             _world.MoveCharacter(_character, destination.Value);
             Resync();

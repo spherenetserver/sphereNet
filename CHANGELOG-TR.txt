@@ -3,6 +3,40 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-20] - Birlesik durus-yuzeyi cozucusu: Z-drift kok cozumu
+----------------------------------------
+
+FIX - Karakter Z'si icin tek yuzey otoritesi (denetim tasarimi). WalkCheck'e
+        iki politikali ResolveStandingSurface eklendi: IgnoreCollision
+        (GM/AllMove/pass-walls adimlari - carpisma atlanir, yuzey toplama ve
+        Z secimi ASLA atlanmaz) ve Settle (login, mount, dismount, teleport
+        turetme, stuck menusu, NPC adim Z'si - referans Z'ye en yakin,
+        tavan bosluklu durulabilir yuzey; iki katli evde dogru kata oturur).
+        Secim, yuruyus yolunun kullandigi AYNI geometri envanterinden
+        yapilir: ortalama land, acik-kapi islemeli statikler, dinamik
+        itemlar, multi/gemi bilesenleri ve custom house karolari.
+
+FIX - Karakteri oturtan her yol MapDataManager.GetEffectiveZ'den tasindi -
+        o fonksiyon ne dinamikleri, ne multileri, ne custom evleri ne de
+        tavan boslugunu goruyordu ve mevcut-Z'ye-en-yakin secimi surklenmis
+        Z icin KENDINI BESLIYORDU (5146,993 dungeon raporu: taban 1'deyken
+        stored Z=10'da kaldi; dclick yon degisiminin 0x20'si bunu sicrama
+        olarak gorunur kildi). Tasinanlar: GM/AllMove hareket bypass'i,
+        login oturtma, mount ve dismount (iki handler), world-features
+        dismount, otomatik turetilen teleport hedefleri, stuck-menu
+        teleportu ve tum NPC adim-Z noktalari. GetEffectiveZ karakter-disi
+        sorgularda (spawn gem, yer esyasi, onizleme) ve - maliyet nedeniyle
+        bilincli olarak - A* rota sezgiselinde kaldi; yurutulen her adim
+        zaten WalkCheck'ten gecer. Dclick 0x20 duruyor; FaceUsePoint'e
+        dokunulmadi (denetimin yasak listesi geregi).
+
+NEW - Z-drift regresyon testleri GERCEK mul verisiyle calisiyor (yol
+        otomatik bulunur, yoksa temiz atlanir): drift karosunda normal
+        oyuncu adimi, iki referansli GM bypass ve iki referansli Settle ayni
+        tabana oturuyor; egimli arazide Settle her yuruyus adiminin Z'sini
+        birebir uretiyor; Britain koprusu guverteye oturuyor. Ucu de canli
+        harita verisine karsi gecti.
+
 [2026-07-20] - NPC AI dalga 2: aclik sayaclari, FOODTYPE diyeti, altin reddi, tarama korumalari
 ----------------------------------------
 

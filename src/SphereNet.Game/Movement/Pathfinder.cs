@@ -104,7 +104,12 @@ public sealed class Pathfinder
                     // Each tile has its own surface Z (terrain vs. static floors,
                     // bridges, steps). Using current.Z for every neighbor makes
                     // pathfinding fail as soon as terrain height changes by one
-                    // step. Resolve the effective Z per-tile using MapData.
+                    // step. DELIBERATE exception to the "no GetEffectiveZ for
+                    // characters" rule: this is the A* interior loop (hundreds
+                    // of nodes x 8 neighbors) — the full standing resolver's
+                    // per-tile world/multi scan would be far too hot here, and
+                    // the route Z is only a heuristic; the ACTUAL landing Z of
+                    // every executed step resolves through WalkCheck.
                     sbyte nz = _world.MapData?.GetEffectiveZ(mapIndex, nx, ny, current.Z) ?? current.Z;
                     long neighborKey = PackKey(nx, ny, nz);
 

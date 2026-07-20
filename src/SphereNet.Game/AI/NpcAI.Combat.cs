@@ -584,7 +584,7 @@ public sealed partial class NpcAI
 
         var pick = candidates[_rand.Next(count)];
         var mapData = _world.MapData;
-        sbyte nz = mapData?.GetEffectiveZ(npc.MapIndex, pick.x, pick.y, npc.Z) ?? npc.Z;
+        sbyte nz = ResolveNpcStepZ(npc, pick.x, pick.y);
         if (Math.Abs(nz - npc.Z) > 12) return;
         var pos = new Point3D(pick.x, pick.y, nz, npc.MapIndex);
         if (!CanNpcMoveTo(npc, pos)) return;
@@ -761,7 +761,7 @@ public sealed partial class NpcAI
         short nx = (short)(npc.X - dx);
         short ny = (short)(npc.Y - dy);
         var mapData = _world.MapData;
-        sbyte nz = mapData?.GetEffectiveZ(npc.MapIndex, nx, ny, npc.Z) ?? npc.Z;
+        sbyte nz = ResolveNpcStepZ(npc, nx, ny);
 
         if (Math.Abs(nz - npc.Z) <= 12)
         {
@@ -784,7 +784,7 @@ public sealed partial class NpcAI
                 GetDirectionDelta((Direction)altDir, out short adx, out short ady);
                 short ax = (short)(npc.X - adx);
                 short ay = (short)(npc.Y - ady);
-                sbyte az = mapData?.GetEffectiveZ(npc.MapIndex, ax, ay, npc.Z) ?? npc.Z;
+                sbyte az = ResolveNpcStepZ(npc, ax, ay);
                 if (Math.Abs(az - npc.Z) > 12) continue;
                 var altPos = new Point3D(ax, ay, az, npc.MapIndex);
                 if (CanNpcMoveTo(npc, altPos))
@@ -1128,7 +1128,7 @@ public sealed partial class NpcAI
         short nx = (short)(npc.X - dx);
         short ny = (short)(npc.Y - dy);
         var mapData = _world.MapData;
-        sbyte nz = mapData?.GetEffectiveZ(npc.MapIndex, nx, ny, npc.Z) ?? npc.Z;
+        sbyte nz = ResolveNpcStepZ(npc, nx, ny);
         if (Math.Abs(nz - npc.Z) > 12)
             return;
         var newPos = new Point3D(nx, ny, nz, npc.MapIndex);

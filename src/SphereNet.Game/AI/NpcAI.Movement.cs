@@ -295,7 +295,7 @@ public sealed partial class NpcAI
         short nx = (short)(npc.X + dx);
         short ny = (short)(npc.Y + dy);
         var mapData = _world.MapData;
-        sbyte nz = mapData?.GetEffectiveZ(npc.MapIndex, nx, ny, npc.Z) ?? npc.Z;
+        sbyte nz = ResolveNpcStepZ(npc, nx, ny);
         if (Math.Abs(nz - npc.Z) > 12)
             return;
         var newPos = new Point3D(nx, ny, nz, npc.MapIndex);
@@ -338,7 +338,7 @@ public sealed partial class NpcAI
         var sideDir = (Direction)((((int)dir & 0x07) + diff + 8) % 8);
         GetDirectionDelta(sideDir, out short dx, out short dy);
         short nx = (short)(npc.X + dx), ny = (short)(npc.Y + dy);
-        sbyte nz = _world.MapData?.GetEffectiveZ(npc.MapIndex, nx, ny, npc.Z) ?? npc.Z;
+        sbyte nz = ResolveNpcStepZ(npc, nx, ny);
         if (Math.Abs(nz - npc.Z) > 12)
             return false;
         var pos = new Point3D(nx, ny, nz, npc.MapIndex);
@@ -378,6 +378,14 @@ public sealed partial class NpcAI
     }
 
     /// <summary>Home from Character.Home field; legacy TAG.HOME_* fallback.</summary>
+    /// <summary>NPC step Z via the shared standing resolver (audit design):
+    /// GetEffectiveZ saw neither multis, dynamics nor custom houses, so an
+    /// NPC walking a ship deck or house floor drifted onto the terrain
+    /// underneath the structure.</summary>
+    private sbyte ResolveNpcStepZ(Character npc, int x, int y) =>
+        _world.Standing.ResolveStandingSurface(npc, npc.MapIndex, x, y, npc.Z,
+            WalkCheck.StandingPolicy.Settle) is { Found: true } stand ? stand.Z : npc.Z;
+
     private static bool TryResolveHome(Character npc, out Point3D home, out int wanderDist)
     {
         // Source-X default m_Home_Dist_Wander = INT16_MAX ("as far as I
@@ -425,7 +433,7 @@ public sealed partial class NpcAI
         short nx = (short)(npc.X + dx);
         short ny = (short)(npc.Y + dy);
         var mapData = _world.MapData;
-        sbyte nz = mapData?.GetEffectiveZ(npc.MapIndex, nx, ny, npc.Z) ?? npc.Z;
+        sbyte nz = ResolveNpcStepZ(npc, nx, ny);
         if (Math.Abs(nz - npc.Z) > 12)
             return;
         var directPos = new Point3D(nx, ny, nz, npc.MapIndex);
@@ -641,7 +649,7 @@ public sealed partial class NpcAI
         var dir = npc.Position.GetDirectionTo(goal);
         GetDirectionDelta(dir, out short dx, out short dy);
         short nx = (short)(npc.X + dx), ny = (short)(npc.Y + dy);
-        sbyte nz = _world.MapData?.GetEffectiveZ(npc.MapIndex, nx, ny, npc.Z) ?? npc.Z;
+        sbyte nz = ResolveNpcStepZ(npc, nx, ny);
         if (Math.Abs(nz - npc.Z) <= 12 &&
             CanNpcMoveTo(npc, new Point3D(nx, ny, nz, npc.MapIndex)))
             return (null, default, false, false);

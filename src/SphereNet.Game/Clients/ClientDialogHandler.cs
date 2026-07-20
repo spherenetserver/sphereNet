@@ -320,7 +320,12 @@ public sealed class ClientDialogHandler
         // Britain: bank plaza for "Town", the inn block for "Inn" (map 0).
         short x = toInn ? (short)1475 : (short)1495;
         short y = toInn ? (short)1612 : (short)1629;
+        // Terrain query seeds the reference; the SEAT goes through the shared
+        // standing resolver (audit design — character Z never from GetEffectiveZ).
         sbyte z = _world.MapData?.GetEffectiveZ(0, x, y) ?? (sbyte)10;
+        var stuckStand = _world.Standing.ResolveStandingSurface(_character, 0, x, y, z,
+            SphereNet.Game.Movement.WalkCheck.StandingPolicy.Settle);
+        if (stuckStand.Found) z = stuckStand.Z;
         _world.MoveCharacter(_character, new Point3D(x, y, z, 0));
         Resync();
         SysMessage(ServerMessages.Get("msg_stuck_teleported"));

@@ -4,6 +4,41 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-20] - Unified standing-surface resolver: the Z-drift root fix
+----------------------------------------
+
+FIX - One surface authority for character Z (the audit design). WalkCheck
+        gained ResolveStandingSurface with two policies: IgnoreCollision
+        (GM/AllMove/pass-walls steps - collision is bypassed, surface
+        collection and Z selection are NOT) and Settle (login, mount,
+        dismount, teleport-derive, stuck-menu, NPC step Z - nearest
+        standable surface WITH headroom to a reference Z, so two-story
+        houses seat the correct floor). It selects from the SAME geometry
+        inventory the walk path uses: land average, statics with open-door
+        handling, dynamic items, multi/ship components and custom-house
+        tiles.
+
+FIX - Every character seat path migrated off MapDataManager.GetEffectiveZ,
+        which saw neither dynamics, multis, custom houses nor headroom, and
+        whose closest-to-currentZ pick was SELF-REINFORCING for a drifted Z
+        (the 5146,993 dungeon report: stored Z=10 held over a floor at 1,
+        exposed as a snap by the dclick-facing self 0x20). Migrated: the
+        GM/AllMove movement bypass, login seating, mount and dismount (both
+        handlers), the world-features dismount, auto-derived teleport
+        destinations, the stuck-menu teleport, and all NPC step-Z sites.
+        GetEffectiveZ remains for non-character queries (spawn gems, ground
+        items, previews) and - deliberately, for cost - the A* route
+        heuristic, whose executed steps re-resolve through WalkCheck anyway.
+        The dclick 0x20 stays; FaceUsePoint stays untouched (per the audit
+        do-nots).
+
+NEW - Z-drift regression tests run against the REAL mul data (path
+        auto-detected, clean skip when absent): at the drift tile a normal
+        player step, the GM bypass from both the floor and the drifted
+        reference, and Settle from both references all agree on one floor;
+        sloped-land Settle reproduces every walk step Z; the Britain bridge
+        seats on the deck. All three passed against live map data.
+
 [2026-07-20] - NPC AI wave 2: food counters, FOODTYPE diet, gold refusal, scan guards
 ----------------------------------------
 

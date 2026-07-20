@@ -173,17 +173,15 @@ public sealed class ClientItemUseHandler
                     new PacketSound(0x0140, _character.X, _character.Y, _character.Z), 0);
                 var npc = DismountCharacter();
 
-                // Correct Z to terrain after body type change (mounted→foot)
-                var mapData = _world.MapData;
-                if (mapData != null)
+                // Re-seat after the body type change (mounted→foot) via the
+                // shared standing resolver (multi decks/house floors included).
+                var dismountStand = _world.Standing.ResolveStandingSurface(_character,
+                    _character.MapIndex, _character.X, _character.Y, _character.Z,
+                    SphereNet.Game.Movement.WalkCheck.StandingPolicy.Settle);
+                if (dismountStand.Found && dismountStand.Z != _character.Z)
                 {
-                    sbyte correctedZ = mapData.GetEffectiveZ(_character.MapIndex,
-                        _character.X, _character.Y, _character.Z);
-                    if (correctedZ != _character.Z)
-                    {
-                        _logger.LogInformation("[DISMOUNT] Z correction: {OldZ} -> {NewZ}", _character.Z, correctedZ);
-                        _character.Position = new Point3D(_character.X, _character.Y, correctedZ, _character.MapIndex);
-                    }
+                    _logger.LogInformation("[DISMOUNT] Z correction: {OldZ} -> {NewZ}", _character.Z, dismountStand.Z);
+                    _character.Position = new Point3D(_character.X, _character.Y, dismountStand.Z, _character.MapIndex);
                 }
 
                 if (oldMountItemUid != 0)
@@ -326,17 +324,13 @@ public sealed class ClientItemUseHandler
                     BroadcastNearby?.Invoke(_character.Position, UpdateRange,
                         new PacketSound(0x0140, _character.X, _character.Y, _character.Z), 0);
 
-                    // Correct Z to terrain after body type change (foot→mounted)
-                    var mountMapData = _world.MapData;
-                    if (mountMapData != null)
-                    {
-                        sbyte correctedZ = mountMapData.GetEffectiveZ(_character.MapIndex,
-                            _character.X, _character.Y, _character.Z);
-                        if (correctedZ != _character.Z)
-                        {
-                            _character.Position = new Point3D(_character.X, _character.Y, correctedZ, _character.MapIndex);
-                        }
-                    }
+                    // Re-seat after the body type change (foot→mounted) via
+                    // the shared standing resolver (multi decks included).
+                    var mountedStand = _world.Standing.ResolveStandingSurface(_character,
+                        _character.MapIndex, _character.X, _character.Y, _character.Z,
+                        SphereNet.Game.Movement.WalkCheck.StandingPolicy.Settle);
+                    if (mountedStand.Found && mountedStand.Z != _character.Z)
+                        _character.Position = new Point3D(_character.X, _character.Y, mountedStand.Z, _character.MapIndex);
 
                     // Immediately remove the old NPC mount from nearby clients to prevent temporary duplicates.
                     BroadcastDeleteObject(mountNpcUid);

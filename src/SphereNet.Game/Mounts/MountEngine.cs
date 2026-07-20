@@ -235,13 +235,13 @@ public sealed class MountEngine
         npc.SetTag("GUARD_TARGET", rider.Uid.Value.ToString());
 
         var pos = rider.Position;
-        var mapData = _world.MapData;
-        if (mapData != null)
-        {
-            sbyte terrainZ = mapData.GetEffectiveZ(pos.Map, pos.X, pos.Y, pos.Z);
-            if (pos.Z < terrainZ)
-                pos = new Point3D(pos.X, pos.Y, terrainZ, pos.Map);
-        }
+        // Seat the spawned mount NPC through the shared standing resolver
+        // (multi decks and house floors included — GetEffectiveZ saw neither).
+        var mountStand = _world.Standing.ResolveStandingSurface(npc,
+            pos.Map, pos.X, pos.Y, pos.Z,
+            SphereNet.Game.Movement.WalkCheck.StandingPolicy.Settle);
+        if (mountStand.Found && pos.Z < mountStand.Z)
+            pos = new Point3D(pos.X, pos.Y, mountStand.Z, pos.Map);
         _world.PlaceCharacter(npc, pos);
 
         return npc;

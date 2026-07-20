@@ -132,6 +132,15 @@ public sealed class GameWorld
     /// <summary>Optional map data access for terrain queries.</summary>
     public MapData.MapDataManager? MapData { get; set; }
 
+    private Movement.WalkCheck? _standing;
+
+    /// <summary>Shared character surface resolver (the WalkCheck geometry
+    /// authority). EVERY path that seats a character — login, mount,
+    /// dismount, teleport-derive, GM bypass steps, NPC step Z — resolves
+    /// through this instead of MapDataManager.GetEffectiveZ, which sees
+    /// neither dynamic items, multis, custom houses nor headroom.</summary>
+    public Movement.WalkCheck Standing => _standing ??= new Movement.WalkCheck(this);
+
     /// <summary>Auto-close delay for an opened map-static door, matching the
     /// item-door Use_Door timer (Source-X: an opened door swings shut 20s later).
     /// Map-static doors (doors baked into the .mul statics rather than real Item

@@ -373,13 +373,14 @@ public sealed class WalkCheck
 
     [ThreadStatic] private static List<PathEntry>? t_pathList;
 
-    private bool Check(Character mover, MapDataManager md, int mapId, int x, int y,
-        int startTop, int startZ, int moverZ, int preMinZ, int preMaxZ,
-        List<Item> items, List<Character>? mobiles, int direction, out int newZ,
-        ref CheckTrace trace)
+    /// <summary>Collect every piece of standing/blocking geometry at a tile
+    /// into a sorted PathEntry list — land, statics (open doors passable),
+    /// dynamic items and virtual multi/custom-house components. This is THE
+    /// surface inventory both the walk path and the standing-surface
+    /// resolver select from; the trace counters feed the reject log.</summary>
+    private List<PathEntry> BuildPathEntries(MapDataManager md, int mapId, int x, int y,
+        List<Item> items, ref CheckTrace trace)
     {
-        newZ = 0;
-
         var landTile = md.GetTerrainTile(mapId, x, y);
         var landData = md.GetLandTileData(landTile.TileId);
         bool landBlocks = LandBlocks(landData);
@@ -471,6 +472,17 @@ public sealed class WalkCheck
         }
 
         list.Sort();
+        return list;
+    }
+
+    private bool Check(Character mover, MapDataManager md, int mapId, int x, int y,
+        int startTop, int startZ, int moverZ, int preMinZ, int preMaxZ,
+        List<Item> items, List<Character>? mobiles, int direction, out int newZ,
+        ref CheckTrace trace)
+    {
+        newZ = 0;
+
+        var list = BuildPathEntries(md, mapId, x, y, items, ref trace);
         list.Add(new PathEntry(PathFlags.ImpSurf, 128, 128, 128));
 
         int resultZ = -128;
@@ -548,6 +560,108 @@ public sealed class WalkCheck
         }
 
         return moveIsOk;
+    }
+
+    // -----------------------------------------------------------------
+    //  ResolveStandingSurface — the shared character surface resolver
+    //  (audit design). Every path that SEATS a character (login, mount,
+    //  dismount, teleport-derive, GM/pass-walls step, NPC step Z) resolves
+    //  through this, so seat Z and walk Z can never diverge again.
+    //  MapDataManager.GetEffectiveZ stays for non-character queries only
+    //  (spawn gems, ground items, previews) — it sees neither dynamics,
+    //  multis, custom houses nor headroom.
+    // -----------------------------------------------------------------
+
+    public enum StandingPolicy
+    {
+        /// <summary>GM / AllMove / pass-walls step: collision rejects are
+        /// bypassed but surface collection and Z selection are NOT — the
+        /// mover still follows the ground. Prefers a surface with headroom
+        /// near the reference Z; inside solid geometry (walking through a
+        /// wall) it falls back to the nearest surface ignoring headroom.</summary>
+        IgnoreCollision,
+
+        /// <summary>Seat a character at a coordinate whose Z must be
+        /// re-derived (login, mount, dismount, teleport): no step window,
+        /// no descent cap — picks the standable surface WITH headroom
+        /// closest to the reference Z, so a two-story house seats the
+        /// character on the correct floor.</summary>
+        Settle,
+    }
+
+    public readonly record struct StandingResult(bool Found, sbyte Z, bool HasHeadroom);
+
+    /// <summary>Resolve the surface a character should stand on at (x, y),
+    /// choosing the candidate nearest to <paramref name="referenceZ"/> from
+    /// the SAME geometry inventory the walk path uses (land average, statics,
+    /// dynamic items, multi/ship components, custom-house tiles).</summary>
+    public StandingResult ResolveStandingSurface(Character mover, int mapId, int x, int y,
+        int referenceZ, StandingPolicy policy)
+    {
+        var md = _world.MapData;
+        if (md == null)
+            return new StandingResult(false, (sbyte)referenceZ, true);
+        var (mapW, mapH) = md.GetMapSize(mapId);
+        if (x < 0 || y < 0 || x >= mapW || y >= mapH)
+            return new StandingResult(false, (sbyte)referenceZ, true);
+
+        var items = CollectItems(mapId, x, y);
+        var trace = new CheckTrace();
+        var list = BuildPathEntries(md, mapId, x, y, items, ref trace);
+        // Sentinel so the topmost surface always gets a headroom verdict.
+        list.Add(new PathEntry(PathFlags.ImpSurf, 128, 128, 128));
+
+        int bestZ = 0, bestDelta = int.MaxValue;
+        bool bestFound = false;
+        int openZ = 0, openDelta = int.MaxValue;
+        bool openFound = false;
+
+        for (int i = 0; i < list.Count; i++)
+        {
+            var cand = list[i];
+            if ((cand.Flags & (PathFlags.Surface | PathFlags.Bridge)) == 0)
+                continue;
+
+            int standZ = cand.AverageZ;
+
+            // Headroom: the first blocking entry above the standing level
+            // must leave a full person height of open space.
+            bool hasHeadroom = true;
+            for (int j = 0; j < list.Count; j++)
+            {
+                var above = list[j];
+                if ((above.Flags & PathFlags.ImpSurf) == 0) continue;
+                if (above.Z <= standZ) continue;
+                if (above.Z - standZ < PersonHeight)
+                    hasHeadroom = false;
+                break; // list is sorted — the first entry above decides
+            }
+
+            int delta = Math.Abs(referenceZ - standZ);
+            if (hasHeadroom && delta < bestDelta)
+            {
+                bestDelta = delta;
+                bestZ = standZ;
+                bestFound = true;
+            }
+            if (delta < openDelta)
+            {
+                openDelta = delta;
+                openZ = standZ;
+                openFound = true;
+            }
+        }
+
+        if (bestFound)
+            return new StandingResult(true, (sbyte)Math.Clamp(bestZ, -128, 127), true);
+
+        // No candidate with headroom: the bypass policy still follows the
+        // nearest surface (a GM inside a wall keeps ground contact); a
+        // Settle caller gets Found=false and keeps its stored Z.
+        if (policy == StandingPolicy.IgnoreCollision && openFound)
+            return new StandingResult(true, (sbyte)Math.Clamp(openZ, -128, 127), false);
+
+        return new StandingResult(false, (sbyte)referenceZ, false);
     }
 
     /// <summary>Source tile Z baseline — what does "standing here" mean? Walks

@@ -607,18 +607,18 @@ public sealed partial class GameClient
         // (so a legitimate upper storey is preserved) and only falls back to
         // terrain when nothing supports the character there — i.e. it was
         // hovering. An earlier ±12 tolerance kept that hover instead of
-        // dropping it, which is exactly what produced the desync; trust
-        // GetEffectiveZ unconditionally instead.
-        var mapData = _world.MapData;
-        if (mapData != null)
+        // dropping it, which is exactly what produced the desync; settle on
+        // the shared standing-surface resolver instead (the WalkCheck
+        // geometry authority — it sees multis/dynamics/custom houses and
+        // honors headroom, so a save on a house floor seats the RIGHT floor).
+        var loginStand = _world.Standing.ResolveStandingSurface(_character,
+            _character.MapIndex, _character.X, _character.Y, _character.Z,
+            Movement.WalkCheck.StandingPolicy.Settle);
+        if (loginStand.Found && loginStand.Z != _character.Z)
         {
-            sbyte surfaceZ = mapData.GetEffectiveZ(_character.MapIndex, _character.X, _character.Y, _character.Z);
-            if (surfaceZ != _character.Z)
-            {
-                _logger.LogInformation("Login Z correction: {OldZ} -> {NewZ} for '{Name}' at {X},{Y}",
-                    _character.Z, surfaceZ, _character.Name, _character.X, _character.Y);
-                _character.Position = new Point3D(_character.X, _character.Y, surfaceZ, _character.MapIndex);
-            }
+            _logger.LogInformation("Login Z correction: {OldZ} -> {NewZ} for '{Name}' at {X},{Y}",
+                _character.Z, loginStand.Z, _character.Name, _character.X, _character.Y);
+            _character.Position = new Point3D(_character.X, _character.Y, loginStand.Z, _character.MapIndex);
         }
 
         // Map dimensions per map index (ML-expanded Felucca = 7168x4096)

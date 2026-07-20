@@ -2819,14 +2819,13 @@ public sealed class ClientWorldFeaturesHandler
                         new PacketSound(0x0140, _character.X, _character.Y, _character.Z), 0);
                     var npc = DismountCharacter();
 
-                    var mapData = _world.MapData;
-                    if (mapData != null)
-                    {
-                        sbyte correctedZ = mapData.GetEffectiveZ(_character.MapIndex,
-                            _character.X, _character.Y, _character.Z);
-                        if (correctedZ != _character.Z)
-                            _character.Position = new Point3D(_character.X, _character.Y, correctedZ, _character.MapIndex);
-                    }
+                    // Re-seat via the shared standing resolver (audit design;
+                    // multi decks / house floors included).
+                    var wfStand = _world.Standing.ResolveStandingSurface(_character,
+                        _character.MapIndex, _character.X, _character.Y, _character.Z,
+                        SphereNet.Game.Movement.WalkCheck.StandingPolicy.Settle);
+                    if (wfStand.Found && wfStand.Z != _character.Z)
+                        _character.Position = new Point3D(_character.X, _character.Y, wfStand.Z, _character.MapIndex);
 
                     if (oldMountItemUid != 0)
                         BroadcastDeleteObject(oldMountItemUid);

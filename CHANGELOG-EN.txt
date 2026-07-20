@@ -4,6 +4,45 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-20] - NPC AI parity wave: brain alias, give-item semantics, DESIRES, self-defense
+----------------------------------------
+
+FIX - brain_animal_trainer resolves to the Stable brain: the Scripts-X
+        stablemaster alias (defs.scp value 7) failed the enum-name parse and
+        left stablemasters on the pre-spawn Monster fallback brain.
+
+FIX - The 0x77 mobile-move packet and single worn-item updates route through
+        the viewer adjustment (Source-X PacketCharacterMove calls
+        GetAdjustedCharID per client): a tripping player no longer sees
+        mobiles snap back to their real body/hue the moment they move, and a
+        fresh equip recolors too.
+
+FIX - Giving an item to an NPC follows Source-X NPC_OnItemGive: @ReceiveItem
+        fires FIRST (before train/hire gold pay); an owned pet eats offered
+        food and refuses what it cannot carry; a banker deposits gold into
+        the giver's bank box; dropping goods on a vendor is a quick-sell
+        offer; everyone else runs the NPC_WantThisItem gate - an unwanted
+        gift is REFUSED by default, @NPCRefuseItem RETURN 1 overrides the
+        refusal, @NPCAcceptItem RETURN 1 cancels the accept. The previous
+        contract (default-accept, inverted trigger meanings) is gone and the
+        tests now lock the reference semantics.
+
+FIX - DESIRES entries keep their want quantity (Source-X NPC_WantThisItem
+        returns the entry's GetResQty, bare defname = 1) instead of a flat
+        100 - desiring NPCs are no longer maximally greedy; a hungry NPC
+        wants edibles at 100-foodPercent and vendor brains want gold. The
+        native item scan runs without the script-trigger gate and now also
+        covers idle monsters, animals and vendor brains; pickup requires
+        usable hands and corpse looting never happens in guarded territory.
+
+FIX - Non-monster brains defend themselves: Human, Vendor, Banker, Stable
+        and Healer NPCs fight (or flee, on fear motivation) the attacker
+        assigned as their FightTarget, and animals fight back instead of
+        only shying away from war-mode characters.
+
+FIX - Healer alignment: an evil healer (negative karma) serves criminals
+        and murderers; a good healer keeps serving only the innocent.
+
 [2026-07-20] - FINDID memory precedence, full hallucination trip visuals
 ----------------------------------------
 

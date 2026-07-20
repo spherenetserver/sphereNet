@@ -73,6 +73,11 @@ public partial class Character : ObjBase
     /// via FINDID.&lt;RUNE_ITEM&gt;.REMOVE). Returns true when an effect was
     /// found and reverted.</summary>
     public static Func<Item, bool>? SpellMemoryEffectRemover;
+
+    /// <summary>Source-X NPC_WantThisItem: how badly this NPC wants an item
+    /// (0-100). Wired to NpcAI.GetWantScore; the give-item flow refuses
+    /// unwanted gifts by default when this returns 0.</summary>
+    public static Func<Character, Item, int>? NpcWantThisItem;
     // Static delegate for account resolution from character UID (set in Program.cs)
     public static Func<Serial, Account?>? ResolveAccountForChar;
     // Static delegate for character lookup by UID — used for ACCOUNT.CHAR.N.NAME
@@ -4235,6 +4240,16 @@ public partial class Character : ObjBase
             normalized = normalized[4..];
         else if (normalized.StartsWith("brain_", StringComparison.OrdinalIgnoreCase))
             normalized = normalized[6..];
+
+        // Pack alias whose def name differs from the enum member: the
+        // Scripts-X stablemaster brain is brain_animal_trainer=7, which is
+        // NpcBrainType.Stable here. Without this, @Create NPC=... failed the
+        // parse and stablemasters kept the pre-spawn Monster fallback brain.
+        if (normalized.Equals("animal_trainer", StringComparison.OrdinalIgnoreCase))
+        {
+            brain = NpcBrainType.Stable;
+            return true;
+        }
 
         if (Enum.TryParse(normalized, true, out NpcBrainType named))
         {

@@ -3,6 +3,48 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-20] - NPC AI parity dalgasi: brain alias, esya verme, DESIRES, oz-savunma
+----------------------------------------
+
+FIX - brain_animal_trainer artik Stable brain'ine cozuluyor: Scripts-X
+        stablemaster alias'i (defs.scp deger 7) enum adi eslesmedigi icin
+        parse edilemiyor ve stablemasterlar spawn oncesi Monster fallback
+        brain'inde kaliyordu.
+
+FIX - 0x77 hareket paketi ve tekil worn-item guncellemeleri izleyici
+        ayarlamasindan geciyor (Source-X PacketCharacterMove her client icin
+        GetAdjustedCharID cagirir): halusinasyon goren oyuncu mobiller
+        hareket ettiginde gercek govde/renge sicrama gormuyor; yeni takilan
+        ekipman da yeniden renkleniyor.
+
+FIX - NPC'ye esya verme Source-X NPC_OnItemGive akisini izliyor:
+        @ReceiveItem EN ONCE atesleniyor (train/hire altin odemesinden de
+        once); sahipli pet verilen yemegi yiyor, tasiyamadigini reddediyor;
+        banker altini verenin banka kutusuna yatiriyor; vendor'a birakilan
+        urun quick-sell teklifi oluyor; digerleri NPC_WantThisItem
+        kapisindan geciyor - istenmeyen hediye varsayilan olarak REDDEDILIR,
+        @NPCRefuseItem RETURN 1 reddi asar, @NPCAcceptItem RETURN 1 kabulu
+        iptal eder. Onceki ters sozlesme kaldirildi; testler referans
+        semantigini kilitliyor.
+
+FIX - DESIRES girisleri istek miktarini koruyor (Source-X NPC_WantThisItem
+        girdinin GetResQty degerini dondurur, miktarsiz defname = 1); duz
+        100 kaldirildi - istekli NPC'ler artik asiri acgozlu degil. Ac NPC
+        yiyecegi 100-foodPercent ile istiyor, vendor brain'leri altin
+        istiyor. Native esya taramasi script-trigger kapisina bagli olmadan
+        calisiyor ve bos monster, hayvan ve vendor brain'lerini de
+        kapsiyor; alma icin el kullanimi gerekiyor ve korumali bolgede
+        ceset yagmasi yapilmiyor.
+
+FIX - Monster olmayan brain'ler kendini savunuyor: Human, Vendor, Banker,
+        Stable ve Healer NPC'leri FightTarget olarak atanan saldirganla
+        savasiyor (korku motivasyonunda kaciyor); hayvanlar war-mode
+        karakterden yalnizca urkup uzaklasmak yerine saldirgana karsilik
+        veriyor.
+
+FIX - Healer hizasi: kotu healer (negatif karma) suclu ve katillere hizmet
+        ediyor; iyi healer yalnizca masumlara hizmet etmeye devam ediyor.
+
 [2026-07-20] - FINDID memory onceligi, tam halusinasyon gorselleri
 ----------------------------------------
 

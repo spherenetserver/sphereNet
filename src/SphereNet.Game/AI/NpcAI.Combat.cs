@@ -15,6 +15,35 @@ namespace SphereNet.Game.AI;
 
 public sealed partial class NpcAI
 {
+    /// <summary>Source-X NPC_OnTickAction: an engaged fight (the FightTarget
+    /// assigned when someone attacks the NPC) continues REGARDLESS of brain —
+    /// service NPCs defend themselves instead of ignoring their attacker, and
+    /// animals fight back rather than only shying away. Fear still routes to
+    /// flee via ActFight (negative motivation). Returns true when this tick
+    /// was spent fighting or fleeing the assigned target.</summary>
+    private bool TryFightAssignedTarget(Character npc)
+    {
+        if (!npc.FightTarget.IsValid)
+            return false;
+        var target = _world.FindChar(npc.FightTarget);
+        if (target == null || target.IsDead || target.IsDeleted ||
+            target.MapIndex != npc.MapIndex || !IsAttackable(target))
+        {
+            npc.FightTarget = Serial.Invalid;
+            return false;
+        }
+        int motivation = GetAttackMotivation(npc, target);
+        if (motivation == 0)
+        {
+            // Neutral score, but the target was assigned by an actual attack:
+            // a service NPC still defends itself at minimum effort rather
+            // than standing there taking hits.
+            motivation = 1;
+        }
+        ActFight(npc, target, motivation);
+        return true;
+    }
+
     /// <summary>
     /// Monster/Dragon: look for targets to attack, fight, or wander.
     /// Source-X: NPC_Act_Idle → NPC_LookAround → NPC_LookAtCharMonster + NPC_Act_Fight.
@@ -111,6 +140,10 @@ public sealed partial class NpcAI
         if ((GetNpcFlags(npc).HasFlag(NpcAIFlags.Looting) || npc.TryGetTag("LOOTING", out _))
             && TryLoot(npc))
             return;
+
+        // Idle monsters notice desirable ground items too (Source-X
+        // NPC_LookAtItem runs for every brain, not just humans).
+        LookAtNearbyItems(npc);
 
         if (_rand.Next(8) == 0)
             EmitSound(npc, _rand.Next(2) == 0 ? CreatureSoundType.Idle : CreatureSoundType.Notice);

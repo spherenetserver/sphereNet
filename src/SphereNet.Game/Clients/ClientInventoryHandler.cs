@@ -313,6 +313,106 @@ public sealed class ClientInventoryHandler
 
     /// <summary>True when <paramref name="item"/>'s top-level container is THIS
     /// character's own bank box (directly or via a nested bag).</summary>
+    /// <summary>Source-X CChar::NPC_OnItemGive (CCharNPCAct.cpp:2060) — the
+    /// native give flow after @ReceiveItem and the train/hire gold pay:
+    /// an owned pet eats offered food and refuses what it cannot carry; a
+    /// banker deposits gold into the giver's bank box; dropping goods on a
+    /// vendor is a quick-sell offer; everyone else runs the
+    /// NPC_WantThisItem gate — an UNWANTED item is refused by default,
+    /// @NPCRefuseItem RETURN 1 overrides the refusal (opens the accept
+    /// path), and @NPCAcceptItem RETURN 1 cancels the native accept.</summary>
+    private void HandleGiveItemToNpc(Character npc, Item item)
+    {
+        bool isGold = item.ItemType == ItemType.Gold || item.BaseId == 0x0EED;
+
+        // Own pet / hireling.
+        if (npc.HasOwner(_character!.Uid))
+        {
+            if (item.ItemType is ItemType.Food or ItemType.Fruit or ItemType.Grain or ItemType.FoodRaw)
+            {
+                // The pet eats the meal on the spot (Source-X Use_Eat).
+                npc.NpcFood = (ushort)Math.Min(60, npc.NpcFood + 10 * Math.Max(1, (int)item.Amount));
+                _world.RemoveItem(item);
+                item.Delete();
+                SysMessage("Your pet gratefully eats the food.");
+                _netState.Send(new PacketDropAck());
+                return;
+            }
+            if (!npc.CanCarry(item))
+            {
+                SysMessage("Your pet is too weak to carry that.");
+                PlaceItemInPack(_character, item);
+                _netState.Send(new PacketDropAck());
+                return;
+            }
+            PlaceItemInPack(npc, item);
+            _netState.Send(new PacketDropAck());
+            return;
+        }
+
+        // Banker: gold goes into the GIVER's bank box.
+        if (isGold && npc.NpcBrain == NpcBrainType.Banker)
+        {
+            var bank = _character.GetEquippedItem(Layer.BankBox);
+            if (bank == null)
+            {
+                bank = _world.CreateItem();
+                bank.BaseId = 0x09AB; // bank box container graphic
+                bank.ItemType = ItemType.EqBankBox;
+                bank.Name = "Bank Box";
+                _character.Equip(bank, Layer.BankBox);
+            }
+            SysMessage($"{item.Amount} gold has been deposited into your bank box.");
+            if (!bank.TryAddItem(item))
+                PlaceItemInPack(_character, item);
+            _netState.Send(new PacketDropAck());
+            return;
+        }
+
+        // Non-pet vendor: a dropped item is a quick-sell offer
+        // (Source-X routes it into Event_VendorSell for that one item).
+        if (!isGold && npc.NpcBrain == NpcBrainType.Vendor && !npc.OwnerSerial.IsValid)
+        {
+            // Back into the pack first — the sell transaction consumes it
+            // from there like a normal 0x9F response.
+            PlaceItemInPack(_character, item);
+            _netState.Send(new PacketDropAck());
+            (_client as GameClient)?.HandleVendorSell(npc.Uid.Value,
+                [new SphereNet.Network.Packets.Incoming.VendorSellEntry
+                    { ItemSerial = item.Uid.Value, Amount = item.Amount }]);
+            return;
+        }
+
+        // NPC_WantThisItem gate: an unwanted gift is refused by default;
+        // @NPCRefuseItem RETURN 1 overrides the refusal.
+        int want = Character.NpcWantThisItem?.Invoke(npc, item) ?? 0;
+        if (want <= 0)
+        {
+            var refuse = _triggerDispatcher?.FireCharTrigger(npc, CharTrigger.NPCRefuseItem,
+                new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item });
+            if (refuse != TriggerResult.True)
+            {
+                SysMessage("It does not seem to want that.");
+                PlaceItemInPack(_character, item);
+                _netState.Send(new PacketDropAck());
+                return;
+            }
+        }
+
+        // @NPCAcceptItem RETURN 1 cancels the native accept.
+        if (_triggerDispatcher?.FireCharTrigger(npc, CharTrigger.NPCAcceptItem,
+                new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item })
+            == TriggerResult.True)
+        {
+            PlaceItemInPack(_character, item);
+            _netState.Send(new PacketDropAck());
+            return;
+        }
+
+        PlaceItemInPack(npc, item);
+        _netState.Send(new PacketDropAck());
+    }
+
     private bool IsInSelfBankBox(Character ch, Item item)
     {
         var top = GetTopContainer(item);
@@ -1046,6 +1146,18 @@ public sealed class ClientInventoryHandler
                     return;
                 }
 
+                // Source-X NPC_OnItemGive: @ReceiveItem fires FIRST — a
+                // quest/reward script may fully consume the gift before ANY
+                // native handling, the train/hire gold pay included.
+                if (!charTarget.IsPlayer && _triggerDispatcher != null &&
+                    _triggerDispatcher.FireCharTrigger(charTarget, CharTrigger.ReceiveItem,
+                        new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item })
+                    == TriggerResult.True)
+                {
+                    _netState.Send(new PacketDropAck());
+                    return;
+                }
+
                 // Source-X NPC_OnTrainPay: gold handed to a trainer with a pending
                 // "train <skill>" offer buys skill points — 1 gp per 0.1, capped
                 // at the trainer's limit. Leftover gold bounces back.
@@ -1088,35 +1200,10 @@ public sealed class ClientInventoryHandler
                     }
                 }
 
-                // Giving an item to an NPC — fire @ReceiveItem so quest/reward/
-                // "bring me X" scripts can handle it (<src> = giver, <argo> = item).
-                // RETURN 1 means the script fully consumed/handled the item.
-                if (!charTarget.IsPlayer && _triggerDispatcher != null)
+                // Native give flow (Source-X NPC_OnItemGive tail).
+                if (!charTarget.IsPlayer)
                 {
-                    var rcv = _triggerDispatcher.FireCharTrigger(charTarget, CharTrigger.ReceiveItem,
-                        new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item });
-                    if (rcv == TriggerResult.True)
-                    {
-                        _netState.Send(new PacketDropAck());
-                        return;
-                    }
-                    // @NPCRefuseItem — the engine's accept gate (Source-X). RETURN 1
-                    // refuses the gift: the item bounces back to the giver instead of
-                    // entering the NPC's pack. Default (no handler) accepts, so prior
-                    // behaviour is preserved.
-                    var refuse = _triggerDispatcher.FireCharTrigger(charTarget, CharTrigger.NPCRefuseItem,
-                        new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item });
-                    if (refuse == TriggerResult.True)
-                    {
-                        PlaceItemInPack(_character!, item);
-                        _netState.Send(new PacketDropAck());
-                        return;
-                    }
-                    // Default: NPC accepts the item into its pack and fires @NPCAcceptItem.
-                    PlaceItemInPack(charTarget, item);
-                    _triggerDispatcher.FireCharTrigger(charTarget, CharTrigger.NPCAcceptItem,
-                        new TriggerArgs { CharSrc = _character, ItemSrc = item, O1 = item });
-                    _netState.Send(new PacketDropAck());
+                    HandleGiveItemToNpc(charTarget, item);
                     return;
                 }
 

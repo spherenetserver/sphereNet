@@ -1323,6 +1323,8 @@ public static partial class Program
             };
             SphereNet.Game.Objects.Characters.Character.SpellMemoryEffectRemover =
                 mem => _spellEngine.RemoveEffectByMemory(mem);
+            SphereNet.Game.Objects.Characters.Character.NpcWantThisItem =
+                (npc, wantedItem) => _npcAI.GetWantScore(npc, wantedItem);
             _spellEngine.OnCasterFacingChanged = caster =>
             {
                 // Source-X UpdateMove(GetTopPoint()) — broadcast new facing only.

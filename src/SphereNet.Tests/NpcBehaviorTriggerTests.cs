@@ -11,13 +11,12 @@ using Xunit;
 
 namespace SphereNet.Tests;
 
-// Verifies the newly-wired @NPCRefuseItem accept-gate in the drop-on-NPC flow.
-// When a player gives an item to an NPC, @ReceiveItem fires first; if it does not
-// handle the gift, @NPCRefuseItem fires as the engine accept gate — RETURN 1
-// bounces the item back to the giver instead of the NPC pocketing it. Default
-// (no handler) accepts, preserving prior behaviour. The NPC-side trigger fires
-// through the EVENTSPET global event set (TriggerDispatcher uses EVENTSPET for
-// non-players), so handlers are registered there.
+// Source-X NPC_OnItemGive contract (CCharNPCAct.cpp:2060) for the
+// drop-on-NPC flow: @ReceiveItem fires first; then the NPC_WantThisItem
+// gate REFUSES an unwanted gift by default — @NPCRefuseItem RETURN 1
+// overrides the refusal (opens the accept path), and @NPCAcceptItem
+// RETURN 1 cancels the native accept. The previous SphereNet contract
+// (default-accept, RefuseItem RETURN 1 = refuse) was inverted.
 public class NpcBehaviorTriggerTests
 {
     private static GameWorld CreateWorld()
@@ -61,7 +60,27 @@ public class NpcBehaviorTriggerTests
     }
 
     [Fact]
-    public void DropOnNpc_NpcRefuseItemReturnsTrue_BouncesItemToGiver()
+    public void DropOnNpc_UnwantedItem_IsRefusedByDefault()
+    {
+        var world = CreateWorld();
+        var (client, giver, npc, item) = Setup(world);
+
+        var dispatcher = new TriggerDispatcher();
+        bool acceptFired = false;
+        dispatcher.RegisterCharEvent("EVENTSPET", "NPCAcceptItem",
+            (_, _) => { acceptFired = true; return TriggerResult.Default; });
+        client.SetEngines(triggerDispatcher: dispatcher);
+
+        client.HandleItemDrop(item.Uid.Value, 0, 0, 0, npc.Uid.Value);
+
+        // No want, no refuse-override: the gift bounces back to the giver.
+        Assert.Contains(giver.Backpack!.Contents, i => i.Uid == item.Uid);
+        Assert.DoesNotContain(npc.Backpack!.Contents, i => i.Uid == item.Uid);
+        Assert.False(acceptFired); // the accept path was never reached
+    }
+
+    [Fact]
+    public void DropOnNpc_NpcRefuseItemReturn1_OverridesRefusal_NpcAccepts()
     {
         var world = CreateWorld();
         var (client, giver, npc, item) = Setup(world);
@@ -72,25 +91,68 @@ public class NpcBehaviorTriggerTests
 
         client.HandleItemDrop(item.Uid.Value, 0, 0, 0, npc.Uid.Value);
 
-        Assert.Contains(giver.Backpack!.Contents, i => i.Uid == item.Uid);     // bounced back
-        Assert.DoesNotContain(npc.Backpack!.Contents, i => i.Uid == item.Uid); // not pocketed
+        // Source-X: RETURN 1 in @NPCRefuseItem SKIPS the native refusal.
+        Assert.Contains(npc.Backpack!.Contents, i => i.Uid == item.Uid);
+        Assert.DoesNotContain(giver.Backpack!.Contents, i => i.Uid == item.Uid);
     }
 
     [Fact]
-    public void DropOnNpc_NoRefuse_NpcAcceptsItem_AndFiresAcceptTrigger()
+    public void DropOnNpc_WantedItem_Accepted_AndAcceptReturn1_Cancels()
     {
         var world = CreateWorld();
         var (client, giver, npc, item) = Setup(world);
+        Character.NpcWantThisItem = (_, _) => 100; // the NPC wants it
 
         var dispatcher = new TriggerDispatcher();
-        bool accepted = false;
-        dispatcher.RegisterCharEvent("EVENTSPET", "NPCAcceptItem", (_, _) => { accepted = true; return TriggerResult.Default; });
         client.SetEngines(triggerDispatcher: dispatcher);
 
         client.HandleItemDrop(item.Uid.Value, 0, 0, 0, npc.Uid.Value);
+        Assert.Contains(npc.Backpack!.Contents, i => i.Uid == item.Uid); // wanted → pocketed
 
-        Assert.Contains(npc.Backpack!.Contents, i => i.Uid == item.Uid);        // accepted into pack
-        Assert.DoesNotContain(giver.Backpack!.Contents, i => i.Uid == item.Uid);
-        Assert.True(accepted);                                                  // @NPCAcceptItem fired
+        // Second gift: @NPCAcceptItem RETURN 1 cancels the native accept.
+        var item2 = world.CreateItem();
+        item2.BaseId = 0x1234;
+        giver.SetTag("DRAGGING", item2.Uid.Value.ToString());
+        dispatcher.RegisterCharEvent("EVENTSPET", "NPCAcceptItem", (_, _) => TriggerResult.True);
+
+        client.HandleItemDrop(item2.Uid.Value, 0, 0, 0, npc.Uid.Value);
+        Assert.Contains(giver.Backpack!.Contents, i => i.Uid == item2.Uid);
+        Assert.DoesNotContain(npc.Backpack!.Contents, i => i.Uid == item2.Uid);
+    }
+
+    [Fact]
+    public void DropOnOwnPet_Food_IsEaten()
+    {
+        var world = CreateWorld();
+        var (client, giver, npc, item) = Setup(world);
+        npc.SetTag("OWNER_UID", giver.Uid.Value.ToString());
+        npc.NpcFood = 10;
+        item.ItemType = ItemType.Food;
+        item.Amount = 1;
+
+        client.SetEngines(triggerDispatcher: new TriggerDispatcher());
+        client.HandleItemDrop(item.Uid.Value, 0, 0, 0, npc.Uid.Value);
+
+        Assert.True(item.IsDeleted, "the pet did not eat the offered food");
+        Assert.True(npc.NpcFood > 10, "the meal did not feed the pet");
+    }
+
+    [Fact]
+    public void GoldGivenToBanker_LandsInTheGiversBankBox()
+    {
+        var world = CreateWorld();
+        var (client, giver, npc, item) = Setup(world);
+        npc.NpcBrain = NpcBrainType.Banker;
+        item.ItemType = ItemType.Gold;
+        item.BaseId = 0x0EED;
+        item.Amount = 500;
+
+        client.SetEngines(triggerDispatcher: new TriggerDispatcher());
+        client.HandleItemDrop(item.Uid.Value, 0, 0, 0, npc.Uid.Value);
+
+        var bank = giver.GetEquippedItem(Layer.BankBox);
+        Assert.NotNull(bank);
+        Assert.Contains(bank!.Contents, i => i.Uid == item.Uid); // deposited
+        Assert.DoesNotContain(npc.Backpack!.Contents, i => i.Uid == item.Uid);
     }
 }

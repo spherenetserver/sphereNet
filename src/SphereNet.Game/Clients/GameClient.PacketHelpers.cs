@@ -53,32 +53,36 @@ public sealed partial class GameClient
         0x0036, 0x003F, 0x00CD, 0x00CF, 0x00D3, 0x00D9, 0x00E1, 0x00EA,
     ];
 
+    /// <summary>Source-X CClient::GetAdjustedCharID for every outgoing mobile
+    /// packet (0x78 draw AND 0x77 move): a hallucinating VIEWER sees every
+    /// OTHER mobile as a random creature and every mobile (self included) in
+    /// a random dye hue — re-rolled on each send; a petrified mobile shows
+    /// HUE_STONE to everyone.</summary>
+    private (ushort Body, Color Hue) AdjustCharViewForViewer(Character ch)
+    {
+        if (_character != null && _character.IsStatFlag(StatFlag.Hallucinating))
+        {
+            ushort body = ReferenceEquals(ch, _character)
+                ? ch.BodyId
+                : s_hallucinationBodies[Random.Shared.Next(s_hallucinationBodies.Length)];
+            return (body, new Color((ushort)Random.Shared.Next(2, 0x03EA))); // HUE_DYE_HIGH
+        }
+        if (ch.IsStatFlag(StatFlag.Stone))
+            return (ch.BodyId, new Color(0x0482)); // HUE_STONE
+        return (ch.BodyId, ch.Hue);
+    }
+
     internal void SendDrawObject(Character ch)
     {
         var equipment = BuildEquipmentList(ch);
         byte flags = BuildMobileFlags(ch);
         byte noto = GetNotoriety(ch);
 
-        // Source-X CClientMsg GetAdjustedCharID rules: a hallucinating
-        // VIEWER sees every OTHER mobile as a random creature, and every
-        // mobile (self included) plus its worn equipment in random dye hues
-        // — re-rolled on each send; the hallucination tick refreshes the
-        // view for the trip effect. A petrified mobile shows HUE_STONE to
-        // everyone.
-        var hue = ch.Hue;
-        ushort body = ch.BodyId;
+        var (body, hue) = AdjustCharViewForViewer(ch);
+        // Worn equipment recolors with the trip too (GetAdjustedItemID).
         if (_character != null && _character.IsStatFlag(StatFlag.Hallucinating))
-        {
-            if (!ReferenceEquals(ch, _character))
-                body = s_hallucinationBodies[Random.Shared.Next(s_hallucinationBodies.Length)];
-            hue = new Color((ushort)Random.Shared.Next(2, 0x03EA)); // HUE_DYE_HIGH
             for (int i = 0; i < equipment.Length; i++)
                 equipment[i].Hue = (ushort)Random.Shared.Next(2, 0x03EA);
-        }
-        else if (ch.IsStatFlag(StatFlag.Stone))
-        {
-            hue = new Color(0x0482); // HUE_STONE
-        }
 
         _netState.Send(new PacketDrawObject(
             ch.Uid.Value, body,
@@ -625,10 +629,14 @@ public sealed partial class GameClient
     {
         byte flags = BuildMobileFlags(ch);
         byte noto = GetNotoriety(ch);
+        // Source-X PacketCharacterMove runs GetAdjustedCharID per client —
+        // without it a tripping viewer saw mobiles snap back to their real
+        // body/hue the moment they moved.
+        var (body, hue) = AdjustCharViewForViewer(ch);
         _netState.Send(new PacketMobileMoving(
-            ch.Uid.Value, ch.BodyId,
+            ch.Uid.Value, body,
             ch.X, ch.Y, ch.Z, (byte)ch.Direction,
-            ch.Hue, flags, noto
+            hue, flags, noto
         ));
     }
 
@@ -647,10 +655,11 @@ public sealed partial class GameClient
     {
         byte flags = (byte)(BuildMobileFlags(ch) | 0x80);
         byte noto = GetNotoriety(ch);
+        var (body, hue) = AdjustCharViewForViewer(ch);
         _netState.Send(new PacketMobileMoving(
-            ch.Uid.Value, ch.BodyId,
+            ch.Uid.Value, body,
             ch.X, ch.Y, ch.Z, (byte)ch.Direction,
-            ch.Hue, flags, noto
+            hue, flags, noto
         ));
     }
 
@@ -674,10 +683,11 @@ public sealed partial class GameClient
         byte flags = (byte)(BuildMobileFlags(ch) | 0x80);
         byte noto = GetNotoriety(ch);
 
+        var (body, hue) = AdjustCharViewForViewer(ch);
         _netState.Send(new PacketDrawObject(
-            ch.Uid.Value, ch.BodyId,
+            ch.Uid.Value, body,
             ch.X, ch.Y, ch.Z,
-            (byte)ch.Direction, ch.Hue, flags, noto,
+            (byte)ch.Direction, hue, flags, noto,
             equipment, _netState.SupportsNewMobileIncoming
         ));
     }
@@ -761,9 +771,12 @@ public sealed partial class GameClient
             if (wearer == null || wearer.Position.GetDistanceTo(_character.Position) > UpdateRange)
                 return;
 
+            // The single worn-item update recolors for a tripping viewer too
+            // — otherwise a fresh equip showed its real hue until the next
+            // full view refresh.
             _netState.Send(new PacketWornItem(
                 item.Uid.Value, item.DispIdFull, (byte)item.EquipLayer,
-                wearer.Uid.Value, item.Hue));
+                wearer.Uid.Value, AdjustItemHueForViewer(item)));
             return;
         }
 

@@ -311,6 +311,16 @@ items were all explicitly deferred with reasons and are parked here:
   apparent copy-paste slip). Still deferred — no case in the reference:
   **Enchant, Forget**; the inert gate refuses them unless the pack scripts
   them.
+- **NPC action state machine** — 2026-07-20: deferred by maintainer decision
+  to its own session. Source-X NPC_OnTickAction dispatches the persisted
+  Action/Act* fields (NPCACT_TALK, TALK_FOLLOW, LOOKING, GO_HOME as
+  persistent actions); SphereNet's OnTickAction goes straight to the brain
+  switch. The round-7 wave covered the biggest player-visible gaps without
+  it (non-monster self-defense via TryFightAssignedTarget, Source-X
+  give-item semantics, DESIRES want quantities, healer alignment) — the
+  remaining tail is persistent talk/follow/go-home actions and NPC
+  spell-AI ITEM targets (Immolating Weapon / Healing Stone), which need
+  the action plumbing.
 - **SERV no-op tail** — `STAT` / `TIMERF` section form / `SERVERS`: acceptable
   no-ops for a single-server shard. LOW.
 - **Pet economy sub-commands** — pet-sells-loot buy/sell/sample are

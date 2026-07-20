@@ -80,6 +80,11 @@ public sealed class CharDef : BaseDef
     public int ThrowRange { get; set; }
 
     public List<ResourceId> Desires { get; } = [];
+
+    /// <summary>Want score per Desires entry, index-aligned. Source-X
+    /// NPC_WantThisItem returns the DESIRES entry's resource qty (default 1
+    /// when the pack writes a bare defname) — not a flat maximum.</summary>
+    public List<int> DesireQtys { get; } = [];
     public List<ResourceId> Aversions { get; } = [];
     public ResourceId? SpeechResource { get; set; }
     public List<ResourceId> SpeechResources { get; } = [];
@@ -196,7 +201,7 @@ public sealed class CharDef : BaseDef
             case "TEVENTS":
                 ParseEventsList(value);
                 break;
-            case "DESIRES": ParseResourceList(value, Desires); break;
+            case "DESIRES": ParseDesireList(value); break;
             case "AVERSIONS": ParseResourceList(value, Aversions); break;
             case "SUBSECTION": Subsection = value.Trim(); break;
             case "DESCRIPTION": Description = value.Trim(); break;
@@ -362,6 +367,39 @@ public sealed class CharDef : BaseDef
             if (rid.IsValid)
                 BaseResources.Add(rid);
             CarveResources.Add((rid, amount, name));
+        }
+    }
+
+    /// <summary>DESIRES is a Source-X resource-qty list: each entry is a
+    /// bare defname, "qty defname" or "defname qty". The qty is the want
+    /// score (NPC_WantThisItem returns GetResQty; bare entries default 1).
+    /// A qty-carrying entry used to fail ResourceId.FromString entirely.</summary>
+    private void ParseDesireList(string value)
+    {
+        var parts = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        foreach (var entry in parts)
+        {
+            var tokens = entry.Split((char[]?)null,
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (tokens.Length == 0) continue;
+            string name = tokens[0];
+            int qty = 1;
+            if (tokens.Length >= 2 && int.TryParse(tokens[0], out int leadQty))
+            {
+                qty = leadQty;
+                name = tokens[1];
+            }
+            else if (tokens.Length >= 2 && int.TryParse(tokens[1], out int tailQty))
+            {
+                qty = tailQty;
+            }
+            ResType type = name.StartsWith("t_", StringComparison.OrdinalIgnoreCase)
+                ? ResType.TypeDef
+                : ResType.ItemDef;
+            var rid = ResourceId.FromString(name, type);
+            if (!rid.IsValid) continue;
+            Desires.Add(rid);
+            DesireQtys.Add(Math.Clamp(qty, 0, 100));
         }
     }
 

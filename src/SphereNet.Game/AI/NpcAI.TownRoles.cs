@@ -186,13 +186,20 @@ public sealed partial class NpcAI
     /// <summary>Healer: resurrect dead, cure poison, heal wounded. Range 5, refuse criminals/evil.</summary>
     private void ActHealer(Character npc)
     {
+        if (TryFightAssignedTarget(npc))
+            return;
+
         const int healerRange = 5;
 
-        // Priority 1: resurrect dead players in range
+        // Priority 1: resurrect dead players in range.
         foreach (var ch in _world.GetCharsInRange(npc.Position, healerRange))
         {
             if (ch == npc || !ch.IsDead || !ch.IsPlayer) continue;
-            if (ch.IsCriminal || ch.IsMurderer) continue;
+            // Source-X healer alignment: a good healer serves the innocent;
+            // an EVIL healer (negative karma) serves criminals and murderers
+            // instead of turning them away.
+            bool wicked = ch.IsCriminal || ch.IsMurderer;
+            if (npc.Karma < 0 ? !wicked : wicked) continue;
             if (!_world.CanSeeLOS(npc.Position, ch.Position)) continue;
 
             if (!ch.IsInWarMode)
@@ -232,9 +239,13 @@ public sealed partial class NpcAI
 
     private const int VendorRestockIntervalMs = 10 * 60 * 1000; // 10 minutes
 
-    /// <summary>Vendor/Banker/Stable: stay near home, barely move, periodic restock.</summary>
+    /// <summary>Vendor/Banker/Stable: stay near home, barely move, periodic
+    /// restock. Defends itself when attacked.</summary>
     private void ActVendor(Character npc)
     {
+        if (TryFightAssignedTarget(npc))
+            return;
+
         CheckWitnessCrime(npc);
 
         // Periodic restock check (vendor brain only). Source-X
@@ -262,6 +273,10 @@ public sealed partial class NpcAI
             }
         }
 
+        // Vendors notice desirable ground items too — gold above all
+        // (Source-X NPC_WantThisItem: vendors always want money).
+        LookAtNearbyItems(npc);
+
         if (!TryResolveHome(npc, out Point3D home, out _))
             return;
 
@@ -287,9 +302,14 @@ public sealed partial class NpcAI
             Wander(npc);
     }
 
-    /// <summary>Animal: wander, flee from combat.</summary>
+    /// <summary>Animal: wander, flee from combat threats — but FIGHT BACK
+    /// when actually attacked (Source-X: the assigned fight continues; fear
+    /// only takes over via negative motivation at low relative strength).</summary>
     private void ActAnimal(Character npc)
     {
+        if (TryFightAssignedTarget(npc))
+            return;
+
         // Timid animals back off from the nearest threat until they reach a safe
         // distance, instead of only stepping away once (ModernUO Backoff state).
         // A threat is anyone in war mode or actively targeting this animal.
@@ -320,6 +340,10 @@ public sealed partial class NpcAI
              npc.TryGetTag("INTFOOD", out _))
             && TryEatFood(npc))
             return;
+
+        // Idle animals notice desirable ground items (Source-X
+        // NPC_LookAtItem runs for every brain).
+        LookAtNearbyItems(npc);
 
         if (_rand.Next(12) == 0)
             EmitSound(npc, CreatureSoundType.Idle);
@@ -397,9 +421,13 @@ public sealed partial class NpcAI
     /// <summary>Callback: NPC witnesses a crime and calls guards. Parameters: witness, criminal.</summary>
     public Action<Character, Character>? OnWitnessCrime { get; set; }
 
-    /// <summary>Human: idle, look around, wander occasionally. Witnesses crimes.</summary>
+    /// <summary>Human: idle, look around, wander occasionally. Witnesses
+    /// crimes; defends itself when attacked.</summary>
     private void ActHuman(Character npc)
     {
+        if (TryFightAssignedTarget(npc))
+            return;
+
         CheckWitnessCrime(npc);
         LookAtNearbyItems(npc);
 
@@ -425,7 +453,11 @@ public sealed partial class NpcAI
 
     private void LookAtNearbyItems(Character npc)
     {
-        if ((OnNpcLookAtItem == null && OnNpcSeeWantItem == null) || _rand.Next(8) != 0) return;
+        // The native scan runs regardless of script hooks (Source-X
+        // NPC_LookAtItem calls NPC_WantThisItem first, trigger or not) —
+        // it used to be silently disabled when no pack hooked
+        // @NPCLookAtItem/@NPCSeeWantItem.
+        if (_rand.Next(8) != 0) return;
 
         foreach (var item in _world.GetItemsInRange(npc.Position, 3))
         {
@@ -442,6 +474,17 @@ public sealed partial class NpcAI
 
             if (OnNpcSeeWantItem?.Invoke(npc, item) == true)
                 return;
+
+            // Source-X pickup guards: scavenging needs usable hands, and
+            // corpse looting never happens in guarded territory.
+            var can = Definitions.DefinitionLoader.GetCharDef(npc.CharDefIndex)?.Can
+                ?? SphereNet.Core.Enums.CanFlags.None;
+            if ((can & SphereNet.Core.Enums.CanFlags.C_UseHands) == 0 &&
+                !IsHumanoidBrain(npc.NpcBrain))
+                continue;
+            if (item.ItemType == ItemType.Corpse &&
+                (_world.FindRegion(npc.Position)?.IsGuarded ?? false))
+                continue;
 
             if (dist > 1)
             {
@@ -465,32 +508,53 @@ public sealed partial class NpcAI
         }
     }
 
-    private int GetWantScore(Character npc, Item item)
+    /// <summary>Source-X NPC_WantThisItem (CCharNPCStatus.cpp:628): a
+    /// DESIRES match scores the entry's OWN qty (bare defname = 1) — never
+    /// a flat 100; a hungry NPC wants an edible at 100-foodPercent; vendor
+    /// brains always want gold at 100. Corpse-looting stays a SphereNet
+    /// heuristic for NPC_AI_LOOTING creatures.</summary>
+    public int GetWantScore(Character npc, Item item)
     {
         var def = Definitions.DefinitionLoader.GetCharDef(npc.CharDefIndex);
         var resources = Definitions.DefinitionLoader.StaticResources;
-        if (def == null || resources == null)
-            return 0;
-
-        int itemDefIndex = Definitions.ItemDefHelper.ResolveInstanceDefIndex(item, resources);
-        var itemDef = Definitions.DefinitionLoader.GetItemDef(itemDefIndex)
-            ?? Definitions.DefinitionLoader.GetItemDef(item.BaseId);
-        foreach (var desire in def.Desires)
+        if (def != null && resources != null)
         {
-            if (desire.Type == ResType.ItemDef)
+            int itemDefIndex = Definitions.ItemDefHelper.ResolveInstanceDefIndex(item, resources);
+            var itemDef = Definitions.DefinitionLoader.GetItemDef(itemDefIndex)
+                ?? Definitions.DefinitionLoader.GetItemDef(item.BaseId);
+            for (int i = 0; i < def.Desires.Count; i++)
             {
-                var desiredDef = Definitions.DefinitionLoader.GetItemDef(desire.Index);
-                if (desire.Index == itemDefIndex || desire.Index == item.BaseId ||
-                    desiredDef?.DispIndex == item.BaseId)
-                    return 100;
-            }
-            else if (desire.Type == ResType.TypeDef && !string.IsNullOrWhiteSpace(itemDef?.TypeRaw))
-            {
-                var typeRid = resources.ResolveDefName(itemDef.TypeRaw.Trim());
-                if (typeRid == desire)
-                    return 100;
+                var desire = def.Desires[i];
+                int qty = i < def.DesireQtys.Count ? def.DesireQtys[i] : 1;
+                if (desire.Type == ResType.ItemDef)
+                {
+                    var desiredDef = Definitions.DefinitionLoader.GetItemDef(desire.Index);
+                    if (desire.Index == itemDefIndex || desire.Index == item.BaseId ||
+                        desiredDef?.DispIndex == item.BaseId)
+                        return qty;
+                }
+                else if (desire.Type == ResType.TypeDef && !string.IsNullOrWhiteSpace(itemDef?.TypeRaw))
+                {
+                    var typeRid = resources.ResolveDefName(itemDef.TypeRaw.Trim());
+                    if (typeRid == desire)
+                        return qty;
+                }
             }
         }
+
+        // Hunger: an edible reads 100-foodPercent (Source-X Food_CanEat +
+        // Food_GetLevelPercent; NpcFood caps at 60 = fully fed).
+        if (item.ItemType is ItemType.Food or ItemType.Fruit or ItemType.Grain or ItemType.FoodRaw)
+        {
+            int foodPercent = Math.Min(100, npc.NpcFood * 100 / 60);
+            if (foodPercent < 100)
+                return 100 - foodPercent;
+        }
+
+        // Vendor brains always want money.
+        if (npc.NpcBrain is NpcBrainType.Vendor or NpcBrainType.Banker or NpcBrainType.Stable &&
+            (item.ItemType == ItemType.Gold || item.BaseId == 0x0EED))
+            return 100;
 
         return item.ItemType == ItemType.Corpse && GetNpcFlags(npc).HasFlag(NpcAIFlags.Looting)
             ? 60

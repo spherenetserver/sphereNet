@@ -4,6 +4,36 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-20] - Scripted item timers + chained-object verbs (flash robe, staff mount)
+----------------------------------------
+
+FIX - The TIMER verb arms the SCRIPT timer, not only decay. Sphere has one
+        item timer that drives both @Timer and decay; a scripted `TIMER n`
+        line used to set only DecayTime, so the flash robe's color loop,
+        trap re-arms and door autoclose written as a property never fired.
+        Negative TIMER disables it (the scripts' off switch).
+
+FIX - Worn / contained items with a timer are pumped by the world tick.
+        Sector ticks only reach GROUND items, so a WORN item's @Timer never
+        ran — the flash robe did nothing while equipped. A registry
+        (SetTimeout tracks off-ground timed items) fires them in the serial
+        tick phase.
+
+NEW - The classic short random <Ra,b> / <Rn> intrinsic. The live packs use
+        it everywhere (the flash robe DORAND color table, array picks); only
+        the long RAND(...) form existed, so every <R...> resolved to 0.
+
+NEW - Chained object verbs/reads: TOPOBJ.<x>, CONT.<x>, LINK.<x> on items
+        and FINDLAYER(n).<prop> route the remainder of the line to the
+        resolved object as a command OR a property set. Item scripts drive
+        their wearer/container this way (the robe's
+        TOPOBJ.FINDLAYER(25).COLOR gear-and-mount recolor).
+
+FIX - MOUNT as a VERB on an NPC seats its owner (Source-X Horse_Mount), and
+        MAKEMYPET <char> makes the NPC that character's pet. Both were
+        missing — MOUNT existed only as a property read — so the staff .bineq
+        script (NEW.MAKEMYPET SRC then REF1.MOUNT) did nothing.
+
 [2026-07-20] - Apply-phase spike fix: multi index + NPC scan cadence
 ----------------------------------------
 

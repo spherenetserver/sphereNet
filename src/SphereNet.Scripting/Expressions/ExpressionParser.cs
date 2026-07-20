@@ -1457,6 +1457,27 @@ public sealed class ExpressionParser
             return ((long)Math.Exp(val)).ToString();
         }
 
+        // R — the CLASSIC Sphere short random: <R1059,1101> inclusive range,
+        // <R20> = [0,20). The live packs use this form everywhere (the flash
+        // robe's DORAND color table, <R1,<ARRAYCOUNT ...>> picks); only the
+        // long RAND form was implemented. Guarded to R-followed-by-a-digit so
+        // RAND/RANDBELL and real defnames never match.
+        if (varExpr.Length > 1 && (varExpr[0] == 'R' || varExpr[0] == 'r') &&
+            char.IsDigit(varExpr[1]))
+        {
+            var shortParts = varExpr[1..].Split(',', 2);
+            long shortMin = Evaluate(ResolveAngleBrackets(shortParts[0].Trim()).AsSpan());
+            if (shortParts.Length == 2)
+            {
+                long shortMax = Evaluate(ResolveAngleBrackets(shortParts[1].Trim()).AsSpan());
+                if (shortMax < shortMin) (shortMin, shortMax) = (shortMax, shortMin);
+                return (shortMax == long.MaxValue
+                    ? Random.Shared.NextInt64(shortMin, shortMax)
+                    : Random.Shared.NextInt64(shortMin, shortMax + 1)).ToString();
+            }
+            return shortMin > 0 ? Random.Shared.NextInt64(shortMin).ToString() : "0";
+        }
+
         // RAND — random: RAND(max) or RAND(min,max)
         if (varExpr.StartsWith("RAND(", StringComparison.OrdinalIgnoreCase) ||
             varExpr.StartsWith("RAND ", StringComparison.OrdinalIgnoreCase))

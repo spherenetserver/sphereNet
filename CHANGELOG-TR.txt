@@ -3,6 +3,38 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-20] - Scriptli item timer'lari + zincirli nesne verb'leri (flash robe, staff mount)
+----------------------------------------
+
+FIX - TIMER verb'i SCRIPT timer'ini kuruyor, yalniz decay'i degil. Sphere'de
+        tek item timer'i hem @Timer'i hem decay'i surer; scriptli `TIMER n`
+        satiri yalniz DecayTime kuruyordu, bu yuzden flash robe renk dongusu,
+        trap yeniden-kurulmasi ve property olarak yazilan kapi autoclose'u hic
+        atesleismiyordu. Negatif TIMER onu devre disi birakir (scriptlerin
+        kapatma anahtari).
+
+FIX - Timer'i olan giyili / container icindeki itemlar world tick tarafindan
+        pompalaniyor. Sektor tick'leri yalniz YERDEKI itemlara ulasir, bu
+        yuzden giyili bir itemin @Timer'i hic calismiyordu — flash robe
+        giyiliyken hicbir sey yapmiyordu. Bir kayit (SetTimeout yer-disi
+        timerli itemlari izler) onlari seri tick fazinda atesler.
+
+NEW - Klasik kisa random <Ra,b> / <Rn> intrinsic'i. Canli packler bunu her
+        yerde kullaniyor (flash robe DORAND renk tablosu, dizi secimleri);
+        yalniz uzun RAND(...) formu vardi, bu yuzden her <R...> 0 cozuluyordu.
+
+NEW - Zincirli nesne verb/okumalari: itemlarda TOPOBJ.<x>, CONT.<x>,
+        LINK.<x> ve FINDLAYER(n).<prop>, satirin geri kalanini cozulen
+        nesneye komut VEYA property-set olarak yonlendiriyor. Item scriptleri
+        giyeni/container'i boyle suruyor (robe'un TOPOBJ.FINDLAYER(25).COLOR
+        gear+mount yeniden renklendirmesi).
+
+FIX - NPC uzerinde VERB olarak MOUNT sahibini bindiriyor (Source-X
+        Horse_Mount), MAKEMYPET <char> NPC'yi o karakterin peti yapiyor. Ikisi
+        de eksikti — MOUNT yalniz property okumasi olarak vardi — bu yuzden
+        staff .bineq scripti (NEW.MAKEMYPET SRC sonra REF1.MOUNT) hicbir sey
+        yapmiyordu.
+
 [2026-07-20] - Apply fazi spike fixi: multi indeksi + NPC tarama kadansi
 ----------------------------------------
 

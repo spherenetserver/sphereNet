@@ -94,6 +94,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnPetDesert = null;
         SphereNet.Game.Objects.Characters.Character.OnJailed = null;
         SphereNet.Game.Objects.Characters.Character.OnScriptDismount = null;
+        SphereNet.Game.Objects.Characters.Character.OnScriptMount = null;
         SphereNet.Game.Objects.Characters.Character.OnDragRelease = null;
         SphereNet.Game.Objects.Characters.Character.OnHitIgnored = null;
         SphereNet.Game.Objects.Characters.Character.OnNpcLostTeleport = null;

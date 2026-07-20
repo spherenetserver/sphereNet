@@ -239,6 +239,24 @@ public class Item : ObjBase
     internal static bool IsMultiItemType(ItemType t) =>
         t is ItemType.Multi or ItemType.MultiCustom or ItemType.MultiAddon or ItemType.Ship;
 
+    /// <summary>Top of the container chain — the wearing character or the
+    /// outermost item (Source-X GetTopLevelObj). Used by the chained
+    /// TOPOBJ.&lt;verb&gt; dispatch.</summary>
+    internal ObjBase? ResolveTopObject()
+    {
+        var world = ResolveWorld?.Invoke();
+        if (world == null) return this;
+        ObjBase cur = this;
+        for (int depth = 0; depth < 64; depth++)
+        {
+            if (cur is not Item ci || !ci.ContainedIn.IsValid) break;
+            var parent = world.FindObject(ci.ContainedIn);
+            if (parent == null) break;
+            cur = parent;
+        }
+        return cur;
+    }
+
     /// <summary>The raw instance type field, before the lazy def-resolution the
     /// <see cref="ItemType"/> getter applies. Diagnostics only: raw-<c>_type</c>
     /// readers (IsStaticBlock, spellbook/book/map/ship/multi/container checks) see
@@ -1480,6 +1498,28 @@ public class Item : ObjBase
             return true;
         }
 
+        // CONT.<prop> / TOPOBJ.<prop> chained reads — item scripts inspect
+        // their container/wearer this way (the flash robe's
+        // IF (<CONT.FINDLAYER(n)>) gear sweep).
+        if (upper.StartsWith("CONT.", StringComparison.Ordinal) && _containedIn.IsValid)
+        {
+            string sub = key["CONT.".Length..];
+            var contObj = ResolveWorld?.Invoke()?.FindObject(_containedIn);
+            if (contObj != null)
+                return contObj.TryGetProperty(sub, out value);
+            value = "";
+            return true;
+        }
+        if (upper.StartsWith("TOPOBJ.", StringComparison.Ordinal))
+        {
+            string sub = key["TOPOBJ.".Length..];
+            var topObj = ResolveTopObject();
+            if (topObj != null && !ReferenceEquals(topObj, this))
+                return topObj.TryGetProperty(sub, out value);
+            value = "";
+            return true;
+        }
+
         if (upper.StartsWith("HOUSE.", StringComparison.Ordinal) &&
             TryGetHouseProperty(upper["HOUSE.".Length..], out value))
         {
@@ -1652,11 +1692,29 @@ public class Item : ObjBase
                 SetTag("USESMAX", value);
                 return true;
             case "DECAY":
-            case "TIMER": // legacy Sphere saves: TIMER=seconds — decay IS the
-                          // item timer (Source-X _OnTick), so a spawner's
-                          // pending @Timer resumes its schedule after import.
                 if (long.TryParse(value, out long decaySec) && decaySec > 0)
                     DecayTime = Environment.TickCount64 + decaySec * 1000;
+                return true;
+            case "TIMER":
+                // Sphere has ONE item timer: TIMER drives the @Timer script
+                // AND decay. This used to arm ONLY DecayTime (the legacy-save
+                // import reading), so every scripted `TIMER n` line — the
+                // flash-robe color loop, trap rearms, door autoclose written
+                // as a property — never armed the script timer at all.
+                // Negative = disable (the scripts' off switch). The decay
+                // meaning is mirrored for decayable items so imported loose
+                // ground items still rot on their saved schedule.
+                if (long.TryParse(value, out long timerSec))
+                {
+                    SetTimeout(timerSec < 0
+                        ? 0
+                        : Environment.TickCount64 + timerSec * 1000);
+                    if (timerSec > 0 &&
+                        (IsAttr(ObjAttributes.Decay) ||
+                         (IsOnGround && !IsAttr(ObjAttributes.Move_Never) &&
+                          !IsAttr(ObjAttributes.Static))))
+                        DecayTime = Environment.TickCount64 + timerSec * 1000;
+                }
                 return true;
 
             case "AUTHOR": // books / bulletin messages read the AUTHOR tag
@@ -1877,6 +1935,36 @@ public class Item : ObjBase
     public override bool TryExecuteCommand(string key, string args, ITextConsole source)
     {
         var upper = key.ToUpperInvariant();
+
+        // Chained object dispatch (Source-X CScriptObj r_Verb ref heads):
+        // TOPOBJ.<rest> / CONT.<rest> / LINK.<rest> route the remainder of
+        // the line to the resolved object — item scripts drive their wearer
+        // this way (the flash robe's TOPOBJ.FINDLAYER(5).COLOR <hue>).
+        // Command first, property-set fallback; an invalid ref swallows the
+        // line like Sphere does.
+        if (upper.StartsWith("TOPOBJ.", StringComparison.Ordinal) ||
+            upper.StartsWith("CONT.", StringComparison.Ordinal) ||
+            upper.StartsWith("LINK.", StringComparison.Ordinal))
+        {
+            int headDot = key.IndexOf('.');
+            string head = upper[..headDot];
+            string chainTail = key[(headDot + 1)..];
+            var chainWorld = ResolveWorld?.Invoke();
+            ObjBase? refObj = head switch
+            {
+                "TOPOBJ" => ResolveTopObject(),
+                "CONT" => _containedIn.IsValid ? chainWorld?.FindObject(_containedIn) : null,
+                "LINK" => _link.IsValid ? chainWorld?.FindObject(_link) : null,
+                _ => null,
+            };
+            if (refObj == null)
+                return true;
+            if (refObj.TryExecuteCommand(chainTail, args, source))
+                return true;
+            if (args.Length > 0 && refObj.TrySetProperty(chainTail, args))
+                return true;
+            return true;
+        }
 
         // Champion altar verbs (Source-X ICHMPV_*: START/STOP/INIT/ADDSPAWN/
         // DELREDCANDLE/DELWHITECANDLE/ADDOBJ/DELOBJ) win when the component

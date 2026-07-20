@@ -731,7 +731,15 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                 return true;
             case "TIMER":
                 if (long.TryParse(args, out long timerVal))
-                    SetTimeout(Environment.TickCount64 + Math.Max(0, timerVal) * 1000);
+                {
+                    // Sphere: a negative TIMER DISABLES the timer (scripts
+                    // toggle loops off with TIMER -1); clamping to 0 made it
+                    // fire immediately instead — the flash-robe off switch
+                    // restarted the color loop.
+                    SetTimeout(timerVal < 0
+                        ? 0
+                        : Environment.TickCount64 + timerVal * 1000);
+                }
                 return true;
             case "FIX":
             {
@@ -1078,7 +1086,15 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     public long Timeout => _timeout;
     public bool IsSleeping => _isSleeping;
 
-    public void SetTimeout(long timeoutMs) => _timeout = timeoutMs;
+    public void SetTimeout(long timeoutMs)
+    {
+        _timeout = timeoutMs;
+        // A timed ITEM off the ground (worn gear, contained items) is in no
+        // sector tick list — register it with the world's off-ground timer
+        // pump so its @Timer still fires (the flash-robe class of scripts).
+        if (timeoutMs > 0 && this is Items.Item timedItem && !timedItem.IsOnGround)
+            ResolveWorld?.Invoke()?.TrackOffGroundTimer(timedItem);
+    }
     public void GoSleep() => _isSleeping = true;
     public void GoAwake() => _isSleeping = false;
 

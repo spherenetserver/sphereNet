@@ -1229,6 +1229,44 @@ public sealed class GameWorld
         TickSleepingMaintenance(currentTime);
 
         TickTimerF(currentTime);
+        TickOffGroundTimers(currentTime);
+    }
+
+    // Timed items OFF the ground (worn gear, contained items) belong to no
+    // sector tick list — sector ticks cover ground items only, so a WORN
+    // flash robe's 1 s color TIMER never fired. Registered from SetTimeout,
+    // pumped here in the serial phase (@Timer bodies mutate the world).
+    private readonly HashSet<Item> _offGroundTimers = [];
+    private readonly List<Item> _offGroundTimerBuffer = [];
+
+    internal void TrackOffGroundTimer(Item item) => _offGroundTimers.Add(item);
+
+    private void TickOffGroundTimers(long nowMs)
+    {
+        if (_offGroundTimers.Count == 0)
+            return;
+
+        _offGroundTimerBuffer.Clear();
+        foreach (var item in _offGroundTimers)
+        {
+            // Ground items tick through their sector; deleted or disarmed
+            // ones just leave the registry.
+            if (item.IsDeleted || item.Timeout <= 0 || item.IsOnGround ||
+                nowMs >= item.Timeout)
+                _offGroundTimerBuffer.Add(item);
+        }
+
+        foreach (var item in _offGroundTimerBuffer)
+        {
+            _offGroundTimers.Remove(item);
+            if (!item.IsDeleted && !item.IsOnGround &&
+                item.Timeout > 0 && nowMs >= item.Timeout)
+            {
+                // A re-armed timer (@Timer body runs TIMER n again)
+                // re-registers through SetTimeout.
+                item.OnTick();
+            }
+        }
     }
 
     /// <summary>Register an object as holding a pending TIMERF entry so
@@ -1487,6 +1525,7 @@ public sealed class GameWorld
 
         // Script TIMERF callbacks — must run in sequential phase (callbacks can mutate world).
         TickTimerF(currentTime);
+        TickOffGroundTimers(currentTime);
     }
 
     private void ExpireClientLingers()

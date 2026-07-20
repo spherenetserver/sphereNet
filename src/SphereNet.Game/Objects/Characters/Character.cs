@@ -33,6 +33,11 @@ public partial class Character : ObjBase
     /// update; when unset the verb falls back to clearing the OnHorse flag.</summary>
     public static Action<Character>? OnScriptDismount;
 
+    /// <summary>Script MOUNT verb on an NPC (Source-X Horse_Mount): seat the
+    /// NPC's own owner on it. Args: (npc). Wired to MountEngine.TryMount.
+    /// The staff-horse script (REF1.MOUNT after NEW.MAKEMYPET SRC) needs it.</summary>
+    public static Func<Character, bool>? OnScriptMount;
+
     /// <summary>Fired by the script BOUNCE/DROP verbs. Arg: true = release
     /// the dragged item (DRAGGING tag) to the ground, false = bounce it back
     /// into the backpack. The host resolves the owning client so the drag
@@ -4420,7 +4425,11 @@ public partial class Character : ObjBase
                         worn.RemoveFromWorld();
                         return true;
                     }
-                    return worn.TryExecuteCommand(tail, args, source);
+                    // Property-set fallback: FINDLAYER(5).COLOR <hue> is a
+                    // property write, not a verb (the flash-robe recolor).
+                    if (worn.TryExecuteCommand(tail, args, source))
+                        return true;
+                    return args.Length > 0 && worn.TrySetProperty(tail, args);
                 }
             }
         }
@@ -5042,6 +5051,28 @@ public partial class Character : ObjBase
                     OnScriptDismount(this);
                 else
                     ClearStatFlag(StatFlag.OnHorse);
+                return true;
+            }
+            case "MOUNT":
+                // Source-X Horse_Mount as a VERB on the NPC: seat its owner.
+                // (The same token is a property read elsewhere — SRC.MOUNT —
+                // returning the worn mount item; the verb path is the write.)
+                OnScriptMount?.Invoke(this);
+                return true;
+            case "MAKEMYPET":
+            {
+                // Source-X MAKEMYPET <char>: make THIS npc the argument's pet.
+                var petWorld = ResolveWorld?.Invoke();
+                Serial ownerUid = ParseSerial(args.Trim());
+                var newOwner = ownerUid.IsValid
+                    ? petWorld?.FindObject(ownerUid) as Character
+                    : null;
+                if (newOwner != null)
+                {
+                    SetStatFlag(StatFlag.Pet);
+                    TryAssignOwnership(newOwner, newOwner, summoned: false,
+                        enforceFollowerCap: false);
+                }
                 return true;
             }
             case "NEWGOLD":

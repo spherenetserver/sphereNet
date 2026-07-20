@@ -3136,6 +3136,16 @@ public static partial class Program
                 else
                     _mountEngine.Dismount(ch);
             };
+            // Script MOUNT verb on an NPC: seat its owner (Source-X Horse_Mount).
+            // The staff-horse script runs REF1.MOUNT after making the mount a
+            // pet of SRC; resolve the owner and route through the engine.
+            SphereNet.Game.Objects.Characters.Character.OnScriptMount = npc =>
+            {
+                var owner = npc.OwnerSerial.IsValid
+                    ? _world.FindChar(npc.OwnerSerial)
+                    : null;
+                return owner != null && _mountEngine.TryMount(owner, npc);
+            };
 
             // Script BOUNCE/DROP verbs — release the dragged item through the
             // owning client (drag-cursor cancel + view updates); headless

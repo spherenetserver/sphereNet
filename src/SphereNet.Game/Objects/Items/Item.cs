@@ -718,9 +718,24 @@ public class Item : ObjBase
     /// so the slot/object table would retain a dead reference). Falls back to the
     /// low-level flag-set when no world is wired (e.g. unit tests).
     /// </summary>
+    /// <summary>Fires @Unequip when a WORN item leaves the character through
+    /// a script/engine path (Source-X ItemBounce / RemoveSelf run
+    /// ITRIG_UnEquip). The client pickup path fires it itself, so this hook is
+    /// invoked only from the engine-side unequip/remove paths — its cleanup
+    /// block (e.g. clearing a combat-bonus freeze) would otherwise never run.</summary>
+    public static Action<Item, Characters.Character>? OnItemUnequipped;
+
     public void RemoveFromWorld()
     {
         var world = ResolveWorld?.Invoke();
+        // A worn item being removed (script .REMOVE, engine cleanup) must fire
+        // @Unequip while it is still equipped, before it leaves the world.
+        if (IsEquipped && _containedIn.IsValid &&
+            world?.FindObject(_containedIn) is Characters.Character wornWearer &&
+            wornWearer.GetEquippedItem(EquipLayer) == this)
+        {
+            OnItemUnequipped?.Invoke(this, wornWearer);
+        }
         if (world != null)
             world.RemoveItem(this);
         else
@@ -1085,7 +1100,9 @@ public class Item : ObjBase
             case "MEMORYTYPES": value = ((ushort)GetMemoryTypes()).ToString(); return true;
             case "PRICE": value = _price.ToString(); return true;
             case "QUALITY": value = _quality.ToString(); return true;
-            case "CRAFTER": value = _crafter.IsValid ? $"0{_crafter.Value:X}" : ""; return true;
+            case "CRAFTER":
+            case "CRAFTEDBY": // Source-X IC_CRAFTEDBY — the crafter's uid
+                value = _crafter.IsValid ? $"0{_crafter.Value:X}" : ""; return true;
             case "USESREMAINING":
             case "USESCUR": value = _usesRemaining.ToString(); return true; // Source-X IC_USESCUR alias
             case "USESMAX": value = (TryGetTag("USESMAX", out string? um) ? um : "0") ?? "0"; return true;
@@ -1682,6 +1699,7 @@ public class Item : ObjBase
                 if (ushort.TryParse(value, out ushort qv)) _quality = qv;
                 return true;
             case "CRAFTER":
+            case "CRAFTEDBY":
                 _crafter = new Serial(ParseHexOrDecUInt(value));
                 return true;
             case "USESREMAINING":
@@ -2121,13 +2139,20 @@ public class Item : ObjBase
                 if (sourceChar == null || world == null)
                     return false;
 
+                Characters.Character? unequippedFrom = null;
                 if (ContainedIn.IsValid && world.FindObject(ContainedIn) is Character wearer &&
                     IsEquipped && wearer.GetEquippedItem(EquipLayer) == this)
+                {
+                    unequippedFrom = wearer;
                     wearer.Unequip(EquipLayer);
+                }
                 else if (ContainedIn.IsValid && world.FindObject(ContainedIn) is Item parent)
                     parent.RemoveItem(this);
 
                 IsEquipped = false;
+                // Source-X CIV_UNEQUIP runs ITRIG_UnEquip after the bounce.
+                if (unequippedFrom != null)
+                    OnItemUnequipped?.Invoke(this, unequippedFrom);
                 if (sourceChar.Backpack != null && sourceChar.Backpack.TryAddItem(this))
                     return true;
                 return world.PlaceItemWithDecay(this, sourceChar.Position);

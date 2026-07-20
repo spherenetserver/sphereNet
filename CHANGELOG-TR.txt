@@ -3,6 +3,34 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-20] - events/ pack denetimi: script EQUIP, motor yollarinda @Unequip, SKILL FAIL, CRAFTEDBY
+----------------------------------------
+
+FIX - Char EQUIP verb'i artik UID argumanini kullaniyor (Source-X CHV_EQUIP):
+        SRC.EQUIP <uid> o itemi kusaniyor ve @Equip atesliyor. Onceden argumani
+        kullanilmayan bir bayraga atiyordu, bu yuzden script'in yarattigi giyili
+        esya hic kusanilmiyor ve @Equip efekti hic calismiyordu — tum efektini
+        buna baglayan silah-ozel combat bonus'lari oluydu.
+
+FIX - @Unequip motor/script unequip yollarinda atesleniyor: item UNEQUIP verb'i
+        ve giyili itemin REMOVE'u (Source-X ItemBounce / RemoveSelf unequip
+        trigger'ini calistirir). Onceden yalniz client toplama yolu atesliyordu,
+        bu yuzden giyili itemin temizlik blogu (orn. combat-bonus freeze'i
+        temizleme) hic calismiyor ve efekt takili kaliyordu.
+
+FIX - SKILL FAIL aktif skilli iptal ediyor (Source-X Skill_Start(SKILL_NONE));
+        FAIL ne skill adi ne id oldugu icin dusuyordu.
+
+NEW - CRAFTEDBY item property'si uretici uid'ini mevcut CRAFTER ile ayni yerden
+        okur/yazar (Source-X CItem CRAFTEDBY).
+
+NEW - STATTOTAL karakter property'si = STR+DEX+INT (Source-X Stat_GetSum) ve
+        ISVALIDE yazimi ISVALID gibi cozuluyor (gercek ISVALID keyword'unun pack
+        genelinde yaygin varyanti), boylece ref-gecerlilik kontrolleri artik
+        sessizce bos okumuyor.
+
+Source-X karsiligi olmayan pack-custom token'lar atlandi.
+
 [2026-07-20] - functions/ pack denetimi: strftime, CommandTrigger, CHR, CONTP
 ----------------------------------------
 

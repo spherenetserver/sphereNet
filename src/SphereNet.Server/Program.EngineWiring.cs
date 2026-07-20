@@ -872,6 +872,13 @@ public static partial class Program
                 foreach (var c in _clients.Values)
                     c.SendItemVisualUpdate(item);
             };
+            // @Unequip on engine/script unequip paths (Source-X ITRIG_UnEquip
+            // from ItemBounce / RemoveSelf). The client pickup path fires its
+            // own; this covers the .UNEQUIP verb and worn .REMOVE so worn-item
+            // cleanup blocks run.
+            Item.OnItemUnequipped = (item, wearer) =>
+                _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Unequip,
+                    new SphereNet.Game.Scripting.TriggerArgs { CharSrc = wearer, ItemSrc = item });
             // Script OPEN / DCLICK / USE verbs: resolve the acting console to
             // its GameClient and replay the real client paths. Non-client
             // consoles (telnet, headless script runs) stay ack-only.
@@ -3166,6 +3173,30 @@ public static partial class Program
                     ? _world.FindChar(npc.OwnerSerial)
                     : null;
                 return owner != null && _mountEngine.TryMount(owner, npc);
+            };
+
+            // Script EQUIP verb (Source-X CHV_EQUIP): resolve the item's
+            // definition layer, equip it, fire @Equip, and show the worn item
+            // to nearby clients. Layer/trigger plumbing lives here so the
+            // object model stays free of the dispatcher dependency.
+            SphereNet.Game.Objects.Characters.Character.ScriptEquipItem = (wearer, item) =>
+            {
+                var layer = item.EquipLayer;
+                if (layer == SphereNet.Core.Enums.Layer.None || layer == 0)
+                {
+                    var idef = SphereNet.Game.Definitions.DefinitionLoader.GetItemDef(
+                        SphereNet.Game.Definitions.ItemDefHelper.ResolveInstanceDefIndex(item, _resources));
+                    layer = idef?.Layer ?? SphereNet.Core.Enums.Layer.None;
+                }
+                if (layer == SphereNet.Core.Enums.Layer.None || layer == 0)
+                    return false;
+                if (!wearer.Equip(item, layer))
+                    return false;
+                _triggerDispatcher?.FireItemTrigger(item, ItemTrigger.Equip,
+                    new SphereNet.Game.Scripting.TriggerArgs { CharSrc = wearer, ItemSrc = item });
+                foreach (var oc in _clients.Values)
+                    oc.SendItemVisualUpdate(item);
+                return true;
             };
 
             // Script BOUNCE/DROP verbs — release the dragged item through the

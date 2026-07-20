@@ -415,6 +415,12 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         value = "";
         switch (key.ToUpperInvariant())
         {
+            // Reaching this getter means the ref already resolved to a live
+            // object, so ISVALID is 1 unless it is a tombstone. ISVALIDE is
+            // the pack's pervasive spelling (75 uses) — accepted as an alias
+            // (the correct token ISVALID is a genuine Source-X keyword).
+            case "ISVALID":
+            case "ISVALIDE": value = IsDeleted ? "0" : "1"; return true;
             case "UID": value = $"0{_uid.Value:X}"; return true;
             case "UUID": value = _uuid.ToString("D"); return true;
             case "NAME": value = _name; return true;

@@ -38,6 +38,12 @@ public partial class Character : ObjBase
     /// The staff-horse script (REF1.MOUNT after NEW.MAKEMYPET SRC) needs it.</summary>
     public static Func<Character, bool>? OnScriptMount;
 
+    /// <summary>Script EQUIP verb (Source-X CHV_EQUIP ItemEquip): equip the
+    /// item on this character at its definition layer AND fire @Equip. Wired
+    /// in the host so layer resolution and the trigger dispatch stay out of
+    /// the pure object model. Args: (wearer, item) → equipped.</summary>
+    public static Func<Character, Item, bool>? ScriptEquipItem;
+
     /// <summary>Fired by the script BOUNCE/DROP verbs. Arg: true = release
     /// the dragged item (DRAGGING tag) to the ground, false = bounce it back
     /// into the backpack. The host resolves the owning client so the drag
@@ -229,7 +235,7 @@ public partial class Character : ObjBase
         {
             value = "";
             string upper = key.ToUpperInvariant();
-            if (upper == "ISVALID")
+            if (upper is "ISVALID" or "ISVALIDE")
             {
                 value = link != null ? "1" : "0";
                 return true;
@@ -2016,6 +2022,11 @@ public partial class Character : ObjBase
         return false;
     }
 
+    /// <summary>ISVALID plus the pack's pervasive ISVALIDE alias.</summary>
+    private static bool IsValidQueryToken(string s) =>
+        s.Equals("ISVALID", StringComparison.OrdinalIgnoreCase) ||
+        s.Equals("ISVALIDE", StringComparison.OrdinalIgnoreCase);
+
     private static Serial ParseSerial(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
@@ -2572,7 +2583,7 @@ public partial class Character : ObjBase
                 var guild = gm?.FindGuildFor(Uid);
                 if (guild == null)
                 {
-                    if (sub.Equals("ISVALID", StringComparison.OrdinalIgnoreCase))
+                    if (IsValidQueryToken(sub))
                     { value = "0"; return true; }
                     value = "0";
                     return true;
@@ -2583,7 +2594,7 @@ public partial class Character : ObjBase
                     value = $"0{guild.StoneUid.Value:X8}";
                     return true;
                 }
-                if (sub.Equals("ISVALID", StringComparison.OrdinalIgnoreCase))
+                if (IsValidQueryToken(sub))
                 { value = "1"; return true; }
                 if (sub.StartsWith("LINK", StringComparison.OrdinalIgnoreCase))
                 {
@@ -2615,14 +2626,14 @@ public partial class Character : ObjBase
             {
                 if (sub.Length == 0)
                     return memory.TryGetProperty("LINK", out value);
-                if (sub.Equals("ISVALID", StringComparison.OrdinalIgnoreCase))
+                if (IsValidQueryToken(sub))
                 { value = "1"; return true; }
                 return memory.TryGetProperty(sub, out value);
             }
 
             // Unknown memory or sub: return false-y so callers using
             // `<isEmpty ...>` or `If <...isValid>` take the empty branch.
-            if (sub.Equals("ISVALID", StringComparison.OrdinalIgnoreCase))
+            if (IsValidQueryToken(sub))
             { value = "0"; return true; }
             value = "";
             return true;
@@ -2732,6 +2743,11 @@ public partial class Character : ObjBase
             case "STR": value = _str.ToString(); return true;
             case "DEX": value = _dex.ToString(); return true;
             case "INT": value = _int.ToString(); return true;
+            // STR+DEX+INT (Source-X Stat_GetSum). The pack's stat-overflow
+            // guards (<SRC.STATTOTAL> > <SRC.SKILLCLASS.STATSUM>) read 0
+            // without it, so those checks never tripped.
+            case "STATTOTAL":
+            case "STATSUM": value = (_str + _dex + _int).ToString(); return true;
             case "HITS":
             case "HITPOINTS": value = _hits.ToString(); return true; // Source-X CHC_HITPOINTS == CHC_HITS
             case "MANA": value = _mana.ToString(); return true;
@@ -4486,6 +4502,18 @@ public partial class Character : ObjBase
             case "SKILL":
             {
                 string skillToken = (args ?? "").Trim();
+                // Source-X CHV_SKILL: SKILL FAIL (FindSkillKey → SKILL_NONE)
+                // cancels the character's active skill. SphereNet used to drop
+                // it because FAIL is neither a skill name nor an id.
+                if (skillToken.Equals("FAIL", StringComparison.OrdinalIgnoreCase) ||
+                    skillToken.Equals("NONE", StringComparison.OrdinalIgnoreCase) ||
+                    skillToken == "-1")
+                {
+                    int abortedSkill = ClearActiveSkillPending();
+                    if (abortedSkill >= 0)
+                        ActiveSkillAborted?.Invoke(this, abortedSkill);
+                    return true;
+                }
                 SkillType skill;
                 if (!_skillNameMap.TryGetValue(skillToken, out skill))
                 {
@@ -4500,6 +4528,19 @@ public partial class Character : ObjBase
             }
             case "EQUIP":
             {
+                // Source-X CHV_EQUIP: SRC.EQUIP <uid> equips that item on this
+                // character and fires @Equip. The arg used to be dropped into
+                // an unused PendingEquip flag, so script-created gear (combat
+                // bonus memories, etc.) was never worn and its @Equip effect
+                // never ran. An arg-less EQUIP keeps the legacy no-op flag.
+                var equipUid = ParseSerial((args ?? "").Trim());
+                if (equipUid.IsValid)
+                {
+                    var equipWorld = ResolveWorld?.Invoke();
+                    var toEquip = equipWorld?.FindObject(equipUid) as Item;
+                    if (toEquip != null && ScriptEquipItem != null)
+                        return ScriptEquipItem(this, toEquip);
+                }
                 PendingEquip = true;
                 return true;
             }

@@ -32,6 +32,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.ObjBase.BroadcastNearby = null;
         SphereNet.Game.Objects.Items.Item.ResolveWorld = null;
         SphereNet.Game.Objects.Items.Item.CreateTriggerHook = null;
+        SphereNet.Game.Objects.Items.Item.OnItemUnequipped = null;
         SphereNet.Game.Objects.Items.Item.ItemsMaxAmount = 60000;
         SphereNet.Game.Objects.Characters.Character.BroadcastNearby = null;
         SphereNet.Game.Objects.Characters.Character.FieldTouchHook = null;
@@ -95,6 +96,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.Character.OnJailed = null;
         SphereNet.Game.Objects.Characters.Character.OnScriptDismount = null;
         SphereNet.Game.Objects.Characters.Character.OnScriptMount = null;
+        SphereNet.Game.Objects.Characters.Character.ScriptEquipItem = null;
         SphereNet.Game.Objects.Characters.Character.OnDragRelease = null;
         SphereNet.Game.Objects.Characters.Character.OnHitIgnored = null;
         SphereNet.Game.Objects.Characters.Character.OnNpcLostTeleport = null;

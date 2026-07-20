@@ -4,6 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-20] - events/ pack audit: script EQUIP, @Unequip on engine paths, SKILL FAIL, CRAFTEDBY
+----------------------------------------
+
+FIX - The char EQUIP verb now honors its UID argument (Source-X CHV_EQUIP):
+        SRC.EQUIP <uid> equips that item and fires @Equip. It used to drop
+        the arg into an unused flag, so script-created worn gear was never
+        equipped and its @Equip effect never ran — the weapon-special combat
+        bonuses that hang their whole effect on it were dead.
+
+FIX - @Unequip fires on the script/engine unequip paths: the item UNEQUIP
+        verb and a worn item's REMOVE (Source-X ItemBounce / RemoveSelf run
+        the unequip trigger). Only the client pickup path fired it before,
+        so a worn item's cleanup block (e.g. clearing a combat-bonus freeze)
+        never ran and the effect got stuck.
+
+FIX - SKILL FAIL cancels the active skill (Source-X Skill_Start(SKILL_NONE));
+        it was dropped because FAIL is neither a skill name nor an id.
+
+NEW - CRAFTEDBY item property reads/writes the crafter uid alongside the
+        existing CRAFTER (Source-X CItem CRAFTEDBY).
+
+NEW - STATTOTAL character property = STR+DEX+INT (Source-X Stat_GetSum), and
+        the ISVALIDE spelling resolves like ISVALID (a widely-used pack
+        variant of the genuine ISVALID keyword) so ref-validity checks stop
+        silently reading empty.
+
+Pack-custom tokens with no Source-X counterpart were skipped.
+
 [2026-07-20] - functions/ pack audit: strftime, CommandTrigger, CHR, CONTP
 ----------------------------------------
 

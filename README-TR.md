@@ -20,6 +20,23 @@ SphereNet, mevcut Sphere/Source-X `.scp` scriptlerini ve eski save verilerini de
 | **Çok çekirdekli motor** | Seri apply'lı paralel tick hattı, sektör uykusu (boş dünya ≈ bedava), alan-bazlı delta view, bellek-eşlemeli haritalar |
 | **İşletim** | SignalR web dashboard, Telnet yönetim konsolu, bot stres testleri (`STRESS`/`BOT`), SQLite kayıt/oynatma |
 
+## Source-X'in Ötesinde
+
+Klasik motorda olmayan yetenekler:
+
+| | |
+|---|---|
+| **4 kayıt formatı + canlı geçiş** | `Text` (%100) / `TextGz` (~%15) / `Binary` (~%50) / `BinaryGz` (~%8–10); `.SAVEFORMAT BinaryGz 4` format + shard sayısını çalışırken taşır; `SAVESHARDS=2–16` paralel hash shard yazar; `SAVEBACKGROUND=1` yazımı ana döngüden çıkarır |
+| **Çoklu MySQL veritabanı** | Aynı anda birden çok isimli `[MYSQL <isim>]` bağlantısı; scriptler `db.select <isim>` ile geçer |
+| **Çok çekirdekli tick hattı** | Snapshot/Build fazları paralel, Apply seri & deterministik; hata durumunda otomatik tek-thread'e düşer |
+| **Sektör uykusu** | Yalnızca çevrimiçi oyunculara yakın sektörler tick alır — 30 bin NPC'li boş dünya 0.1 ms; timer'lar gerçek-saat doğruluğunu korur |
+| **Delta view** | Alan-bazlı değişiklik takibi (`DirtyFlag`) yalnızca değişeni gönderir, tam nesne tekrarı yok |
+| **Bellek-eşlemeli haritalar** | MUL dosyalarını OS sayfalar (tam RAM yüklemeye göre ~200 MB tasarruf) |
+| **NPC timer çarkı** | 256 slotlu çark NPC aksiyonlarını O(1) planlar; her tick tüm NPC'leri taramaz |
+| **Web panel (SignalR)** | Canlı log akışı, CPU/RAM metrikleri, oyuncu listesi ve sunucu komutları tarayıcıda (port 9999) |
+| **Bot stres testi** | Aynı process'te TCP botları gerçek login akışını tamamlayıp oynar: `.bot spawn 100` / `.botmenu`, telnet `BOT`/`STRESS` |
+| **Kayıt & oynatma** | GM soruşturmaları ve debug için SQLite tabanlı hareket/durum kaydı |
+
 ## Performans
 
 **2026-07-20'de güncel build üzerinde**, kod içi araçla (gerçek TCP bot istemcileri, tam üretim script paketi) mütevazı bir **5 vCPU VM, 12 GB RAM** üzerinde ölçüldü. Tick = 100 ms (saniyede 10, Source-X paritesi); botlar aynı process'te — sayılar kötümserdir.
@@ -50,7 +67,7 @@ dotnet run --project src/SphereNet.Server   # headless (web panel için SphereNe
 
 `config/sphere.ini` düzenleyin: `MULFILES` UO istemci verinize, scriptler `SCPFILES` altına. Önemli anahtarlar: `SAVEFORMAT` (`Text`…`BinaryGz`), `SAVESHARDS` (0–16), `SAVEBACKGROUND`, `[MYSQL <isim>]` blokları.
 
-Portlar: **2593** UO istemci · **2594** Telnet yönetim · **2595** HTTP durum · **2596** web panel.
+Portlar: **2593** UO istemci · **2594** Telnet yönetim · **2595** HTTP durum · **9999** web panel (`ADMINPANELPORT`).
 
 ## Proje yapısı
 

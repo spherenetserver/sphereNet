@@ -20,6 +20,23 @@ SphereNet runs existing Sphere/Source-X `.scp` scripts and legacy save data unch
 | **Multicore engine** | Parallel tick pipeline with serial apply, sector sleeping (idle world ≈ free), field-level delta views, memory-mapped maps |
 | **Operations** | SignalR web dashboard, Telnet admin console, in-process bot stress tests (`STRESS`/`BOT`), SQLite record/replay |
 
+## Beyond Source-X
+
+Capabilities the classic engine does not have:
+
+| | |
+|---|---|
+| **4 save formats + live switching** | `Text` (100%) / `TextGz` (~15%) / `Binary` (~50%) / `BinaryGz` (~8–10%); `.SAVEFORMAT BinaryGz 4` migrates format + shard count at runtime; `SAVESHARDS=2–16` writes parallel hash shards; `SAVEBACKGROUND=1` moves the write off the main loop |
+| **Multi-database MySQL** | Several named `[MYSQL <name>]` connections at once; scripts switch with `db.select <name>` |
+| **Multicore tick pipeline** | Snapshot/Build phases run parallel, Apply stays serial & deterministic; auto-fallback to single-thread on error |
+| **Sector sleeping** | Only sectors near online players tick — a 30k-NPC idle world costs 0.1 ms; timers stay wall-clock accurate |
+| **Delta views** | Field-level change tracking (`DirtyFlag`) sends only what changed, not full object resends |
+| **Memory-mapped maps** | The OS pages MUL files on demand (~200 MB saved vs full RAM load) |
+| **NPC timer wheel** | 256-slot wheel schedules NPC actions O(1) instead of scanning every NPC per tick |
+| **Web panel (SignalR)** | Live log stream, CPU/RAM metrics, player list and server commands in the browser (port 9999) |
+| **Bot stress testing** | In-process TCP bots complete the real login flow and play: `.bot spawn 100` / `.botmenu`, telnet `BOT`/`STRESS` |
+| **Record & replay** | SQLite-backed movement/state recording for GM investigations and debugging |
+
 ## Performance
 
 Measured **2026-07-20 on the current build** with the in-tree harness (real TCP bot clients, full production script pack) on a modest **5-vCPU VM, 12 GB RAM**. Tick = 100 ms (10/s, Source-X parity); bots run in-process, so numbers are pessimistic.
@@ -50,7 +67,7 @@ dotnet run --project src/SphereNet.Server   # headless (or SphereNet.Host for th
 
 Edit `config/sphere.ini`: point `MULFILES` at your UO client data, put scripts under `SCPFILES`. Key settings: `SAVEFORMAT` (`Text`…`BinaryGz`), `SAVESHARDS` (0–16), `SAVEBACKGROUND`, `[MYSQL <name>]` blocks.
 
-Ports: **2593** UO client · **2594** Telnet admin · **2595** HTTP status · **2596** web panel.
+Ports: **2593** UO client · **2594** Telnet admin · **2595** HTTP status · **9999** web panel (`ADMINPANELPORT`).
 
 ## Project structure
 

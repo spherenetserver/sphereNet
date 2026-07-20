@@ -531,7 +531,9 @@ public sealed class TriggerDispatcher
             return TriggerResult.Default;
 
         var charDef = Definitions.DefinitionLoader.GetCharDef(npc.CharDefIndex);
-        if (charDef != null && charDef.SpeechResources.Count > 0)
+        bool hasDSpeech = npc.DSpeech.Count > 0;
+        bool hasDefSpeech = charDef != null && charDef.SpeechResources.Count > 0;
+        if (hasDSpeech || hasDefSpeech)
         {
             var args = new SphereNet.Scripting.Execution.TriggerArgs(speaker, mode, 0, text)
             {
@@ -539,14 +541,32 @@ public sealed class TriggerDispatcher
                 Object2 = speaker
             };
 
-            foreach (var speechRid in charDef.SpeechResources)
+            // Source-X CChar::OnTriggerSpeech runs the char's per-instance m_Speech
+            // (DSPEECH) list first, then the CharDef's static SPEECH list.
+            if (hasDSpeech)
             {
-                var link = Resources.GetResource(speechRid);
-                if (link == null) continue;
+                foreach (var speechRid in npc.DSpeech)
+                {
+                    var link = Resources.GetResource(speechRid);
+                    if (link == null) continue;
 
-                var result = Runner.RunSpeechTrigger(link, text, npc, sourceConsole, args);
-                if (result == TriggerResult.True)
-                    return TriggerResult.True;
+                    var result = Runner.RunSpeechTrigger(link, text, npc, sourceConsole, args);
+                    if (result == TriggerResult.True)
+                        return TriggerResult.True;
+                }
+            }
+
+            if (hasDefSpeech)
+            {
+                foreach (var speechRid in charDef!.SpeechResources)
+                {
+                    var link = Resources.GetResource(speechRid);
+                    if (link == null) continue;
+
+                    var result = Runner.RunSpeechTrigger(link, text, npc, sourceConsole, args);
+                    if (result == TriggerResult.True)
+                        return TriggerResult.True;
+                }
             }
         }
 

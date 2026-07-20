@@ -525,6 +525,16 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             return true;
         }
 
+        // ISDSPEECH.defname — membership in the char's dynamic SPEECH list.
+        if (key.StartsWith("ISDSPEECH.", StringComparison.OrdinalIgnoreCase))
+        {
+            int dot = key.IndexOf('.');
+            string spName = key[(dot + 1)..];
+            var checkRid = ResourceId.FromString(spName, Core.Enums.ResType.Speech);
+            value = this is Characters.Character dspCh && dspCh.DSpeech.Contains(checkRid) ? "1" : "0";
+            return true;
+        }
+
         // DISTANCE.<uid> / DISTANCE.<x>,<y> — Source-X OC_DISTANCE: tile
         // distance from this object's TOP-LEVEL position to another object or
         // map point (a contained item measures from its wearer/container).
@@ -712,6 +722,14 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                     return ApplyEventsCommand(ch.Events, args);
                 if (this is Items.Item item)
                     return ApplyEventsCommand(item.Events, args);
+                return true;
+            }
+            case "DSPEECH":
+            {
+                // Per-char dynamic SPEECH list (Source-X m_Speech). Append/remove
+                // with +/-<resource>; a bare list replaces it.
+                if (this is Characters.Character dch)
+                    return ApplySpeechListCommand(dch.DSpeech, args);
                 return true;
             }
             case "TRIGGER":
@@ -1040,6 +1058,10 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                 if (this is Items.Item item)
                     return SetEventsList(item.Events, value);
                 return true;
+            case "DSPEECH":
+                if (this is Characters.Character dspCh)
+                    return ApplySpeechListCommand(dspCh.DSpeech, value);
+                return true;
             case "TIMERMS":
                 if (long.TryParse(value, out long timerMs) && timerMs > 0)
                     SetTimeout(Environment.TickCount64 + timerMs);
@@ -1133,6 +1155,25 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     /// Resolve map point properties: TERRAIN, STATICS, REGION, ROOM, SECTOR, ISNEARTYPE.
     /// Provides read-only access to terrain/static tile data at this object's position.
     /// </summary>
+    /// <summary>Classify a land tile into a t_* terrain type name (Source-X
+    /// terrain item-type). Water/rock come from the tile flags; the natural
+    /// ground kind is read from the tiledata name, defaulting to t_grass for
+    /// plain walkable land.</summary>
+    private static string ClassifyTerrainType(MapData.Tiles.LandTileData ld)
+    {
+        if (ld.IsWet) return "t_water";
+        string n = (ld.Name ?? "").ToLowerInvariant();
+        if (n.Contains("dirt") || n.Contains("mud") || n.Contains("earth")) return "t_dirt";
+        if (n.Contains("sand") || n.Contains("desert") || n.Contains("beach")) return "t_sand";
+        if (n.Contains("snow") || n.Contains("ice")) return "t_snow";
+        if (n.Contains("jungle")) return "t_jungle";
+        if (n.Contains("forest") || n.Contains("tree") || n.Contains("wood")) return "t_forest";
+        if (n.Contains("grass")) return "t_grass";
+        if (n.Contains("rock") || n.Contains("mountain") || n.Contains("cave")) return "t_rock";
+        // Impassable non-named land reads as rock; plain walkable land as grass.
+        return ld.IsImpassable ? "t_rock" : "t_grass";
+    }
+
     private bool TryGetMapPointProperty(string upper, out string value)
     {
         value = "";
@@ -1177,6 +1218,21 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         // --- TERRAIN ---
         var mapData = world.MapData;
         if (mapData == null) return false;
+
+        // P.TYPE — the t_* terrain type at this point (Source-X CPointBase
+        // PT_TYPE via GetTerrainItemTypeDef). Source-X reads a TileTypes
+        // table (script [TERRAIN] defs), which neither this pack nor the
+        // engine ships, so the type is derived from the land tiledata:
+        // water/rock from flags, else the natural-ground kind from the name
+        // (falling back to t_grass for plain walkable land). Enough for the
+        // treasure-map placement whitelist that depends on it.
+        if (upper == "P.TYPE")
+        {
+            var cell = mapData.GetTerrainTile(pos.Map, pos.X, pos.Y);
+            var ld = mapData.GetLandTileData(cell.TileId);
+            value = ClassifyTerrainType(ld);
+            return true;
+        }
 
         if (upper == "TERRAIN")
         {
@@ -1383,6 +1439,50 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
         }
 
         return SetEventsList(list, text);
+    }
+
+    private static bool ApplySpeechListCommand(List<ResourceId> list, string args)
+    {
+        string text = args.Trim();
+        if (string.IsNullOrEmpty(text))
+            return true;
+
+        char op = text[0];
+        if (op is '+' or '-')
+        {
+            string name = text[1..].Trim();
+            if (name.Length == 0)
+                return true;
+
+            var rid = ResourceId.FromString(name, ResType.Speech);
+            if (!rid.IsValid)
+                return true;
+
+            if (op == '+')
+            {
+                if (!list.Contains(rid))
+                    list.Add(rid);
+            }
+            else
+            {
+                list.Remove(rid);
+            }
+            return true;
+        }
+
+        // A multi-value assignment replaces the list; a single bare name appends
+        // (so successive saved DSPEECH lines accumulate, matching EVENTS).
+        bool isMultiValue = text.Contains(',') || text.Contains(' ');
+        if (isMultiValue)
+            list.Clear();
+        var parts = text.Split([',', ' '], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        foreach (var part in parts)
+        {
+            var rid = ResourceId.FromString(part, ResType.Speech);
+            if (rid.IsValid && !list.Contains(rid))
+                list.Add(rid);
+        }
+        return true;
     }
 
     private static ResourceId ParseEventResourceId(string token)

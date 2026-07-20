@@ -3,6 +3,38 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-21] - systems/ pack denetimi: char-basi SPEECH listesi, tas keyword'leri, nokta zemin tipi
+----------------------------------------
+
+NEW - Char-basi dinamik SPEECH listesi (Source-X CChar m_Speech / DSPEECH).
+        DSPEECH +<resource> / -<resource> calisma aninda tek bir char'a SPEECH
+        parcasi ekler/cikarir; cikip bir tek deger ekler (kaydedilen satirlar
+        birikir), coklu deger atamasi listeyi degistirir. Char konusma DUYDUGUNDA
+        liste once calisir, CharDef'in statik SPEECH bloklarindan once (Source-X
+        CChar::OnTriggerSpeech sirasi). ISDSPEECH.<resource> uyeligi okur. Liste
+        char ile birlikte kaydedilir. Boylece katilma/ayrilma akislari sehir/lonca
+        konusma tepkilerini uyelere tek tek baglayabiliyor; onceden DSPEECH opak
+        bir tag'di, ISDSPEECH yoktu ve char-basi konusma bloklari hic
+        ateslenmiyordu.
+
+NEW - Char GUILD / TOWN keyword'u baglilik tasini cozer: cikip tas uid'ini,
+        alt-keyword (GUILD.<key> / TOWN.<key>) ise tas item'ine yonlendirir
+        (Source-X CChar GUILD/TOWN). Bagli olmayan char bos okur.
+
+NEW - SERV.GUILDS dunyadaki tum lonca + sehir taslarini sayar ve
+        SERV.GUILDSTONES / SERV.TOWNSTONES uzerlerinde gezer (.COUNT ve
+        .<index>[.UID]), Source-X sunucu tas sayimi ile ayni. GUILDS sabit 0'di.
+
+NEW - <point>.TYPE bir harita noktasi icin zemin tipini okur (Source-X CPointBase
+        TYPE), land tiledata'sindan turetilir (su/toprak/kum/kar/cimen/kaya ...),
+        pack'in nesne yerlestirmeden once yaptigi zemin whitelist kontrolleri icin
+        yeterli.
+
+NEW - GUILDTITLE lonca unvanini GUILD.TITLE ile birlikte okur/yazar ve TARGPRV
+        gidip geliyor (Source-X CChar keyword'leri). Bir sehre/loncaya katilma
+        artik tasa MEMORY_TOWN / MEMORY_GUILD baglantisi kaydediyor, ayrilma ise
+        siliyor, boylece uyelik sorgulari tutarli kaliyor.
+
 [2026-07-20] - events/ pack denetimi: script EQUIP, motor yollarinda @Unequip, SKILL FAIL, CRAFTEDBY
 ----------------------------------------
 

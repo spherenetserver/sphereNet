@@ -4,6 +4,39 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-21] - systems/ pack audit: per-char SPEECH list, stone keywords, point terrain type
+----------------------------------------
+
+NEW - Per-char dynamic SPEECH list (Source-X CChar m_Speech / DSPEECH). DSPEECH
+        +<resource> / -<resource> attach or detach a SPEECH fragment on an
+        individual char at runtime; a bare single value appends (so saved lines
+        accumulate) and a multi-value assignment replaces the list. When the char
+        HEARS speech the list runs first, before the CharDef's static SPEECH
+        blocks (Source-X CChar::OnTriggerSpeech order). ISDSPEECH.<resource> reads
+        membership. The list is persisted with the char. This lets the join/resign
+        flows wire town/guild speech reactions onto members individually; before,
+        DSPEECH was an opaque tag, ISDSPEECH was unimplemented, and per-char
+        speech blocks never fired.
+
+NEW - Char GUILD / TOWN keyword resolves the affiliation's stone: bare returns
+        the stone uid, and a sub-key (GUILD.<key> / TOWN.<key>) forwards to the
+        stone item (Source-X CChar GUILD/TOWN). An unaffiliated char reads empty.
+
+NEW - SERV.GUILDS counts all guild + town stones in the world, and
+        SERV.GUILDSTONES / SERV.TOWNSTONES iterate them (.COUNT and
+        .<index>[.UID]), matching the Source-X server stone enumeration. GUILDS
+        was a hardcoded 0.
+
+NEW - <point>.TYPE reads a terrain type for a map point (Source-X CPointBase
+        TYPE), derived from the land tiledata (water/dirt/sand/snow/grass/rock
+        ...), enough for the terrain whitelist checks the pack runs before
+        placing objects.
+
+NEW - GUILDTITLE reads/writes the guild title alongside GUILD.TITLE, and TARGPRV
+        round-trips (Source-X CChar keywords). Joining a town/guild now records a
+        MEMORY_TOWN / MEMORY_GUILD link to the stone and resigning removes it, so
+        membership queries stay consistent.
+
 [2026-07-20] - events/ pack audit: script EQUIP, @Unequip on engine paths, SKILL FAIL, CRAFTEDBY
 ----------------------------------------
 

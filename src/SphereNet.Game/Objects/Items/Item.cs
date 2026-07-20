@@ -2620,7 +2620,16 @@ public class Item : ObjBase
                 if (guild != null)
                 {
                     uint uid = ParseHexOrDecUInt(args.Trim());
-                    if (uid != 0) guild.AddRecruit(new Serial(uid));
+                    if (uid != 0)
+                    {
+                        guild.AddRecruit(new Serial(uid));
+                        // Source-X marks the candidate with the stone memory
+                        // too, so <argo.memoryfindtype.memory_town> dedup and
+                        // affiliation checks see town candidates.
+                        var recruit = ResolveWorld?.Invoke()?.FindChar(new Serial(uid));
+                        recruit?.Memory_AddObjTypes(Uid,
+                            ItemType == ItemType.StoneTown ? MemoryType.Town : MemoryType.Guild);
+                    }
                 }
                 return true;
             }
@@ -2663,7 +2672,15 @@ public class Item : ObjBase
                 if (guild != null)
                 {
                     uint uid = ParseHexOrDecUInt(args.Trim());
-                    if (uid != 0) guild.RemoveMember(new Serial(uid));
+                    if (uid != 0)
+                    {
+                        guild.RemoveMember(new Serial(uid));
+                        // Source-X clears the stone memory on resign, else a
+                        // stale town/guild memory blocks re-recruit elsewhere.
+                        var resigned = ResolveWorld?.Invoke()?.FindChar(new Serial(uid));
+                        var stoneMem = resigned?.Memory_FindObj(Uid);
+                        if (stoneMem != null) resigned!.Memory_Delete(stoneMem);
+                    }
                 }
                 return true;
             }

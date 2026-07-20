@@ -97,7 +97,11 @@ public static partial class Program
             // --- Misc ---
             "HEARALL" => IsHearAllEnabled() ? "1" : "0",
             "GMPAGES" => (_world?.GmPages.Count ?? 0).ToString(),
-            "GUILDS" => "0",
+            // Source-X CServerConfig g_World.m_Stones.size() — the world's
+            // stone objects (guild + town). Was stubbed "0", so the pack's
+            // SERVER_MAX_GUILDS cap never triggered.
+            "GUILDS" => (CountWorldStonesInt(ItemType.StoneGuild) +
+                         CountWorldStonesInt(ItemType.StoneTown)).ToString(),
             "AGE" => ((int)(DateTime.UtcNow - _serverStartTime).TotalDays).ToString(),
             "BUILD" => ThisAssemblyVersion(),
             "URL" => "localhost",
@@ -125,6 +129,13 @@ public static partial class Program
             "GUARDSINSTANTKILL" => (_config?.GuardsInstantKill == true ? "1" : "0"),
             "GUILDSTONES" => CountWorldStones(ItemType.StoneGuild),
             "TOWNSTONES" => CountWorldStones(ItemType.StoneTown),
+            // Iterable stone lists (Source-X CServerConfig GUILDSTONES./
+            // TOWNSTONES. prefix): .COUNT and .<index>[.UID]. The pack walks
+            // these for name/abbrev uniqueness and all-stone war search.
+            _ when upper.StartsWith("GUILDSTONES.") =>
+                ResolveStoneList(ItemType.StoneGuild, property[12..]),
+            _ when upper.StartsWith("TOWNSTONES.") =>
+                ResolveStoneList(ItemType.StoneTown, property[11..]),
 
             // --- Reference lookups via SERV.xxx ---
             "LASTNEWITEM" => _world?.LastNewItem.Value.ToString() ?? "0",
@@ -323,8 +334,37 @@ public static partial class Program
         return "";
     }
 
+    private static int CountWorldStonesInt(ItemType type) =>
+        _world?.GetAllObjects().OfType<Item>().Count(i => i.ItemType == type) ?? 0;
+
     private static string CountWorldStones(ItemType type) =>
-        (_world?.GetAllObjects().OfType<Item>().Count(i => i.ItemType == type) ?? 0).ToString();
+        CountWorldStonesInt(type).ToString();
+
+    /// <summary>SERV.GUILDSTONES./TOWNSTONES. list access (Source-X
+    /// CServerConfig): ".COUNT" / "" → count, ".&lt;index&gt;[.UID]" → the
+    /// index-th stone's uid.</summary>
+    private static string ResolveStoneList(ItemType type, string sub)
+    {
+        sub = sub.Trim();
+        if (sub.Length == 0 || sub.Equals("COUNT", StringComparison.OrdinalIgnoreCase))
+            return CountWorldStones(type);
+
+        // "<index>" or "<index>.UID" (the only per-stone sub-key the pack reads).
+        string idxTok = sub;
+        int dot = sub.IndexOf('.');
+        if (dot >= 0) idxTok = sub[..dot];
+        if (!int.TryParse(idxTok.Trim(), out int index) || index < 0)
+            return "";
+
+        var stones = _world?.GetAllObjects().OfType<Item>()
+            .Where(i => i.ItemType == type).ToList();
+        if (stones == null || index >= stones.Count)
+            return "";
+        var stone = stones[index];
+        if (dot < 0 || sub[(dot + 1)..].Equals("UID", StringComparison.OrdinalIgnoreCase))
+            return $"0{stone.Uid.Value:X}";
+        return stone.TryGetProperty(sub[(dot + 1)..], out string v) ? v : "";
+    }
 
     private static string EnsureTrailingDirectorySeparator(string path) =>
         string.IsNullOrEmpty(path) || path.EndsWith(Path.DirectorySeparatorChar) || path.EndsWith(Path.AltDirectorySeparatorChar)

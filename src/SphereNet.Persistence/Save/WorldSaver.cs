@@ -894,6 +894,14 @@ public sealed class WorldSaver
                 w.WriteProperty("EVENTS", name!);
         }
 
+        foreach (var r in ch.DSpeech)
+        {
+            if (r.Type != SphereNet.Core.Enums.ResType.Speech || r.Index == 0) continue;
+            string? name = ResolveResourceName?.Invoke(r);
+            if (!string.IsNullOrWhiteSpace(name))
+                w.WriteProperty("DSPEECH", name!);
+        }
+
         foreach (var mem in ch.Memories)
         {
             var flags = mem.GetMemoryTypes();

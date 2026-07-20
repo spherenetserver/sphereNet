@@ -329,6 +329,7 @@ public partial class Character : ObjBase
 
     // Runtime EVENTS list (from CHARDEF + dynamically added)
     private readonly List<ResourceId> _events = [];
+    private readonly List<ResourceId> _dspeech = [];
 
     // Character state
     private Direction _direction;
@@ -1505,6 +1506,12 @@ public partial class Character : ObjBase
 
     /// <summary>Runtime EVENTS list. Populated from CHARDEF Events + dynamically added at runtime.</summary>
     public List<ResourceId> Events => _events;
+
+    /// <summary>Per-char dynamic SPEECH list (Source-X CChar m_Speech / DSPEECH). These
+    /// speech-fragment resources fire — before the CharDef's static SPEECH list — when
+    /// this char HEARS speech, letting scripts attach reactions (e.g. town/guild speech
+    /// blocks) to individual chars at runtime. Read membership via ISDSPEECH.&lt;name&gt;.</summary>
+    public List<ResourceId> DSpeech => _dspeech;
 
     // Combat fields
     private Serial _fightTarget = Serial.Invalid;
@@ -3521,8 +3528,17 @@ public partial class Character : ObjBase
             return true;
         }
 
-        // Guild/stone member properties
+        // Guild/stone member properties (PRIV, ISMASTER, GUILD.TITLE, ...)
         if (TryGetGuildProperty(key, out value))
+            return true;
+
+        // Char GUILD / TOWN keyword: resolve to the member's stone and forward
+        // the trailing sub-key to it (Source-X CCharPlayer GUILD/TOWN via
+        // Guild_Find). Tried AFTER the member-prop switch so <GUILD.TITLE>
+        // keeps its member meaning while <GUILD>/<GUILD.MASTERUID>/
+        // <TOWN.MEMBERFROMUID.x.PRIV> resolve to the stone. The whole
+        // stone-driven guild/town script backend keys off this.
+        if (TryResolveStoneKeyword(key, out value))
             return true;
 
         // Party properties
@@ -3830,6 +3846,12 @@ public partial class Character : ObjBase
                     else CurePoison();
                 }
                 return true;
+
+            // Source-X client m_Targ_Prv_UID — the target cursor's carried
+            // uid. Stored so scripts that preset it (SRC.TARGPRV=<uid> before
+            // a REVEAL/target) read it back; the cursor flow itself is driven
+            // by the target packet.
+            case "TARGPRV": SetTag("TARGPRV", normalized); return true;
 
             // --- New writable properties ---
             case "OSTR": if (short.TryParse(normalized, out short osv)) _oStr = osv; return true;
@@ -4141,7 +4163,7 @@ public partial class Character : ObjBase
             case "MAXFOOD":
                 SetTag("MAXFOOD", normalized);
                 return true;
-            case "DSPEECH": case "EMOTECOLOR": case "VIRTUALGOLD":
+            case "EMOTECOLOR": case "VIRTUALGOLD":
             case "LASTUSED": case "LASTDISCONNECTED": case "NEED": case "SPAWNITEM":
                 SetTag(upperKey, value);
                 return true;
@@ -5616,6 +5638,45 @@ public partial class Character : ObjBase
 
     // --- Guild/stone member properties ---
 
+    /// <summary>Source-X CCharPlayer GUILD/TOWN keyword: the char's guild or
+    /// town STONE, with the trailing sub-key forwarded to that stone item
+    /// (&lt;GUILD.MASTERUID&gt;, &lt;TOWN.MEMBERFROMUID.x.PRIV&gt;, ...). A bare
+    /// &lt;GUILD&gt;/&lt;TOWN&gt; returns the stone uid (empty when unaffiliated,
+    /// so IF (&lt;GUILD&gt;) reads false).</summary>
+    private bool TryResolveStoneKeyword(string key, out string value)
+    {
+        value = "";
+        string upper = key.ToUpperInvariant();
+        bool isTown;
+        string sub;
+        if (upper == "GUILD") { isTown = false; sub = ""; }
+        else if (upper == "TOWN") { isTown = true; sub = ""; }
+        else if (upper.StartsWith("GUILD.", StringComparison.Ordinal)) { isTown = false; sub = key[6..]; }
+        else if (upper.StartsWith("TOWN.", StringComparison.Ordinal)) { isTown = true; sub = key[5..]; }
+        else return false;
+
+        var gm = ResolveGuildManager?.Invoke(Uid);
+        var rec = isTown ? gm?.FindTownFor(Uid) : gm?.FindGuildFor(Uid);
+        if (rec == null)
+        {
+            // Unaffiliated: <GUILD> is empty/false; a sub-key is likewise empty.
+            value = "";
+            return true;
+        }
+        if (sub.Length == 0)
+        {
+            value = $"0{rec.StoneUid.Value:X}";
+            return true;
+        }
+        var stone = ResolveWorld?.Invoke()?.FindObject(rec.StoneUid);
+        if (stone == null)
+        {
+            value = "";
+            return true;
+        }
+        return stone.TryGetProperty(sub, out value);
+    }
+
     private bool TryGetGuildProperty(string key, out string value)
     {
         value = "";
@@ -5629,6 +5690,7 @@ public partial class Character : ObjBase
             case "PRIV":
             case "PRIVNAME":
             case "GUILD.TITLE":
+            case "GUILDTITLE": // Source-X CStoneMember TITLE alias
             case "SHOWABBREV":
                 break;
             default:
@@ -5672,6 +5734,7 @@ public partial class Character : ObjBase
                 };
                 return true;
             case "GUILD.TITLE":
+            case "GUILDTITLE":
                 value = member.Title;
                 return true;
             case "SHOWABBREV":
@@ -5690,6 +5753,7 @@ public partial class Character : ObjBase
             case "LOYALTO":
             case "PRIV":
             case "GUILD.TITLE":
+            case "GUILDTITLE": // Source-X CStoneMember TITLE alias
             case "SHOWABBREV":
                 break;
             default:
@@ -5719,6 +5783,7 @@ public partial class Character : ObjBase
                 if (byte.TryParse(value, out byte pv)) member.Priv = (Guild.GuildPriv)pv;
                 return true;
             case "GUILD.TITLE":
+            case "GUILDTITLE":
                 member.Title = value;
                 return true;
             case "SHOWABBREV":

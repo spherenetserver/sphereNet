@@ -267,26 +267,58 @@ public sealed partial class GameClient
 
         string title = book.TryGetTag("BOOK_TITLE", out string? t) && t != null ? t : book.GetName();
         string author = book.TryGetTag("BOOK_AUTHOR", out string? a) && a != null ? a : "";
-        ushort pageCount = 16;
-        if (book.TryGetTag("BOOK_PAGES", out string? ps) && ushort.TryParse(ps, out ushort pc))
-            pageCount = pc;
+        // Clamp the page count and iterate with an int. A BOOK_PAGES tag of 65535
+        // (corrupt/hand-edited save) drove the old "for (ushort i = 1; i <= pageCount)"
+        // past 65535, wrapped i to 0, and looped forever on the main thread (E1).
+        int pageCount = 16;
+        if (book.TryGetTag("BOOK_PAGES", out string? ps) && int.TryParse(ps, out int pc))
+            pageCount = Math.Clamp(pc, 0, MaxBookPages);
 
         _netState.Send(new PacketBookHeaderOut(
-            book.Uid.Value, writable, pageCount, title, author));
+            book.Uid.Value, writable, (ushort)pageCount, title, author));
 
         var pages = new List<(ushort PageNum, string[] Lines)>();
-        for (ushort i = 1; i <= pageCount; i++)
+        for (int i = 1; i <= pageCount; i++)
         {
             string[] lines;
             if (book.TryGetTag($"PAGE_{i}", out string? content) && !string.IsNullOrEmpty(content))
                 lines = content.Split('\n');
             else
                 lines = [];
-            pages.Add((i, lines));
+            pages.Add(((ushort)i, lines));
         }
 
-        _netState.Send(new PacketBookPageContent(
-            book.Uid.Value, pages.ToArray()));
+        SendBookPages(book.Uid.Value, pages);
+    }
+
+    private const int MaxBookPages = 256;
+
+    /// <summary>Send book pages as one or more 0x66 packets, splitting so no
+    /// single packet approaches the 65535-byte variable-length ceiling. A normal
+    /// book fits one packet (unchanged wire behaviour); an oversized/poisoned book
+    /// is split, and any residual over-budget single page is caught by the send
+    /// path's oversize guard rather than emitting a wrapped length field.</summary>
+    private void SendBookPages(uint serial, IReadOnlyList<(ushort PageNum, string[] Lines)> pages)
+    {
+        const int Budget = 60000; // headroom under 65535 for the packet header
+        var group = new List<(ushort, string[])>();
+        int size = 8; // opcode(1)+len(2)+serial(4)+pageCount(2), rounded up
+        foreach (var page in pages)
+        {
+            int pageSize = 4; // pageNum(2) + lineCount(2)
+            foreach (var line in page.Lines)
+                pageSize += System.Text.Encoding.ASCII.GetByteCount(line) + 1; // + NUL
+            if (group.Count > 0 && size + pageSize > Budget)
+            {
+                _netState.Send(new PacketBookPageContent(serial, group.ToArray()));
+                group.Clear();
+                size = 8;
+            }
+            group.Add(page);
+            size += pageSize;
+        }
+        if (group.Count > 0)
+            _netState.Send(new PacketBookPageContent(serial, group.ToArray()));
     }
 
     /// <summary>Handle book page read/write (0x66).</summary>
@@ -317,8 +349,7 @@ public sealed partial class GameClient
                 else
                     pageLines = [];
 
-                _netState.Send(new PacketBookPageContent(
-                    serial, [(pageNum, pageLines)]));
+                SendBookPages(serial, [(pageNum, pageLines)]);
                 continue;
             }
 

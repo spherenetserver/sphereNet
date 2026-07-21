@@ -469,8 +469,24 @@ public sealed class NetState : IDisposable
         EnqueueAt(writer.Build(), PacketPriority.Highest);
     }
 
+    /// <summary>Drop a packet whose finalized size overflowed the ushort length
+    /// field (its wire length can't be represented, so sending it would desync
+    /// the client). Logs the opcode and true size, returns the buffer to the
+    /// pool, and reports the drop so callers stop. Never throws.</summary>
+    private bool DropOversize(PacketBuffer packet)
+    {
+        if (!packet.IsOversize) return false;
+        byte opcode = packet.Length > 0 ? packet.Data[0] : (byte)0;
+        _logger.LogError(
+            "Dropping oversize packet 0x{Op:X2} ({Len} bytes > {Max}) for #{Id} ({EP}); not sent",
+            opcode, packet.Length, PacketBuffer.MaxWireLength, Id, RemoteEndPoint);
+        packet.ReturnToPool();
+        return true;
+    }
+
     private void EnqueueAt(PacketBuffer packet, PacketPriority priority)
     {
+        if (DropOversize(packet)) return;
         if (!IsInUse || IsClosing) { packet.ReturnToPool(); return; }
         LastActivityTick = Environment.TickCount64;
 
@@ -494,6 +510,7 @@ public sealed class NetState : IDisposable
     /// recipient's refcount claim is released — the buffer survives for the rest.</summary>
     public void EnqueueShared(PacketBuffer packet)
     {
+        if (DropOversize(packet)) return;
         if (!IsInUse || IsClosing) { packet.ReturnToPool(); return; }
         LastActivityTick = Environment.TickCount64;
 

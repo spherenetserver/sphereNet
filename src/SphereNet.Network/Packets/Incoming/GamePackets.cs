@@ -517,6 +517,10 @@ public sealed class PacketBookPage : PacketHandler
 
         const int MaxPages = 64;
         const int MaxLinesPerPage = 64;
+        // Cap a single line's stored length. Without this a crafted 0x66 line
+        // (no NUL, filling the packet) is stored verbatim and later echoed in a
+        // 0x66 that overflows the length field — the book-poison client freeze.
+        const int MaxLineChars = 256;
         var pages = new List<(ushort PageNum, string[] Lines)>();
         int maxPageCount = Math.Min((int)pageCount, MaxPages);
         for (int i = 0; i < maxPageCount && buffer.Remaining >= 4; i++)
@@ -534,7 +538,7 @@ public sealed class PacketBookPage : PacketHandler
             int maxLines = Math.Min((int)lineCount, MaxLinesPerPage);
             for (int j = 0; j < maxLines && buffer.Remaining > 0; j++)
             {
-                lines.Add(buffer.ReadAsciiNull());
+                lines.Add(buffer.ReadAsciiNull(MaxLineChars));
             }
             pages.Add((pageNum, lines.ToArray()));
         }

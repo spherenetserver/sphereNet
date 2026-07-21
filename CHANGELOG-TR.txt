@@ -3,6 +3,29 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-21] - Giden paket uzunluk tasmasi + zehirli kitap client donmasi duzeltildi
+----------------------------------------
+
+FIX - PacketBuffer.WriteLengthAt artik 65535'i asan govdeyi ushort'a cevirmiyor
+        (65536'yi 0'a sariyordu). Bunun yerine buffer'i oversize isaretliyor ve
+        gonderim yolu (EnqueueAt / EnqueueShared) boyle bir paketi log ile
+        dusurup havuza iade ediyor; client'i desync eden/donduran bozuk frame
+        gonderilmiyor. Bu yalniz kitaplari degil tum degisken-uzunluklu
+        paketleri (kitap, gump, tooltip, ...) koruyor.
+
+FIX - Gelen 0x66 kitap sayfalarinda her satirin saklanan uzunlugu (256 byte)
+        alani tamamen tuketen sinirli bir ASCII okumasiyla cap'leniyor. NUL'suz
+        ozel hazirlanmis bir satir artik oldugu gibi saklanip oversize bir 0x66
+        icinde geri gonderilemez.
+
+FIX - OpenBook BOOK_PAGES'i en fazla 256'ya clamp'liyor ve int ile donuyor.
+        BOOK_PAGES=65535 onceden "for (ushort i = 1; i <= n)" dongusunu 65535'in
+        otesine gecirip i'yi 0'a sariyor ve ana thread'de sonsuza donuyordu.
+
+FIX - Kitap sayfa icerigi, her paket wire sinirinin altinda kalacak sekilde
+        gerektigi kadar 0x66 pakete bolunuyor; buyuk (cok sayfali) bir kitap tek
+        tasan paket yerine birden fazla spec-ici paketle eksiksiz iletiliyor.
+
 [2026-07-21] - Expression motoru sertlestirme: patolojik girdi artik tick'i cokertemiyor
 ----------------------------------------
 

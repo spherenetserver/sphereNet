@@ -4,6 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-21] - Outbound packet-length overflow + poisoned-book client freeze fixed
+----------------------------------------
+
+FIX - PacketBuffer.WriteLengthAt no longer casts an over-65535 body to a ushort
+        (which wrapped 65536 to 0). It flags the buffer oversize instead, and the
+        send path (EnqueueAt / EnqueueShared) drops such a packet with a log and
+        returns it to the pool rather than emitting a corrupt frame that desynced
+        or froze the client. This guards every variable-length packet (books,
+        gumps, tooltips, ...), not just books.
+
+FIX - Incoming 0x66 book pages cap each line's stored length (256 bytes) via a
+        bounded ASCII read that still consumes the whole field. A crafted line
+        with no NUL can no longer be stored verbatim and echoed in an oversized
+        0x66.
+
+FIX - OpenBook clamps BOOK_PAGES to at most 256 and iterates with an int. A
+        BOOK_PAGES tag of 65535 previously drove a "for (ushort i = 1; i <= n)"
+        past 65535, wrapped i to 0, and looped forever on the main thread.
+
+FIX - Book page content is split across as many 0x66 packets as needed so each
+        stays under the wire ceiling; a large (multi-page) book is delivered in
+        full via several in-spec packets instead of one overflowing one.
+
 [2026-07-21] - Expression engine hardening: pathological input can no longer crash the tick
 ----------------------------------------
 

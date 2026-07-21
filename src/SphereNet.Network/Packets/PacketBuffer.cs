@@ -240,11 +240,28 @@ public sealed class PacketBuffer
         if (_position > _length) _length = _position;
     }
 
+    /// <summary>The variable-length wire ceiling: the length field is a big-endian
+    /// ushort, so a packet body cannot exceed this without the field wrapping.</summary>
+    public const int MaxWireLength = 65535;
+
+    /// <summary>Set by <see cref="WriteLengthAt"/> when the finalized packet is
+    /// larger than <see cref="MaxWireLength"/>. Such a packet must be dropped by
+    /// the send path — its length field cannot represent the true size.</summary>
+    public bool IsOversize { get; private set; }
+
     /// <summary>
     /// Write packet length at a specific position (for variable-length packets).
     /// </summary>
     public void WriteLengthAt(int position)
     {
+        if (_length > MaxWireLength)
+        {
+            // Writing (ushort)_length would wrap (65536 -> 0) and desync/freeze
+            // the client (the book-poison vector). Flag it instead so the send
+            // path drops the packet safely rather than emitting a corrupt frame.
+            IsOversize = true;
+            return;
+        }
         BinaryPrimitives.WriteUInt16BigEndian(_data.AsSpan(position), (ushort)_length);
     }
 
@@ -310,6 +327,21 @@ public sealed class PacketBuffer
         string result = System.Text.Encoding.ASCII.GetString(_data, start, _position - start);
         if (_position < _length) _position++; // skip null
         return result;
+    }
+
+    /// <summary>Null-terminated ASCII read that consumes the whole field (so
+    /// framing stays correct) but materializes at most <paramref name="maxChars"/>
+    /// characters. Bounds attacker-controlled line lengths (e.g. a 0x66 book page
+    /// line with no NUL) so a single field can't blow up the stored/echoed size.</summary>
+    public string ReadAsciiNull(int maxChars)
+    {
+        int start = _position;
+        while (_position < _length && _data[_position] != 0)
+            _position++;
+        int len = _position - start;
+        if (_position < _length) _position++; // skip null
+        if (len > maxChars) len = maxChars;
+        return System.Text.Encoding.ASCII.GetString(_data, start, len);
     }
 
     public string ReadUnicodeNullBE(int maxChars = 4096)

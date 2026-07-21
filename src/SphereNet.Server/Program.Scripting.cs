@@ -155,6 +155,9 @@ public static partial class Program
             // definition data without instantiating the object.
             _ when upper.StartsWith("CHARDEF.") => ResolveServCharDef(property[8..]),
             _ when upper.StartsWith("ITEMDEF.") => ResolveServItemDef(property[8..]),
+            // Source-X CServerConfig r_GetRef accepts both the paren accessor
+            // AREA(<defname>).<prop> and the dot form AREA.<defname>.<prop>.
+            _ when upper.StartsWith("AREA(") => ResolveServArea(property[4..]),
             _ when upper.StartsWith("AREA.") => ResolveServArea(property[5..]),
             _ when upper.StartsWith("MULTIDEF.") => ResolveServMultiDef(property[9..]),
             _ when upper.StartsWith("LIST.") => ResolveServList(property[5..]),
@@ -614,6 +617,7 @@ public static partial class Program
             "CAN" => $"0{(ulong)def.Can:X}",
             "COLOR" => $"0{def.BaseColor:X}",
             "FOODTYPE" => def.FoodTypeRaw,
+            "MAXFOOD" => def.MaxFood.ToString(),
             "ERALIMITGEAR" => def.EraLimitGear.ToString(),
             "ERALIMITLOOT" => def.EraLimitLoot.ToString(),
             "ERALIMITPROPS" => def.EraLimitProps.ToString(),
@@ -691,9 +695,22 @@ public static partial class Program
         if (_world == null || string.IsNullOrWhiteSpace(sub))
             return "0";
 
-        int dot = sub.IndexOf('.');
-        string selector = dot >= 0 ? sub[..dot] : sub;
-        string field = dot >= 0 ? sub[(dot + 1)..] : "";
+        string selector, field;
+        if (sub.StartsWith("(", StringComparison.Ordinal))
+        {
+            // Paren form: (<defname>).<field>
+            int close = sub.IndexOf(')');
+            if (close < 0)
+                return "0";
+            selector = sub[1..close].Trim();
+            field = sub[(close + 1)..].TrimStart('.');
+        }
+        else
+        {
+            int dot = sub.IndexOf('.');
+            selector = dot >= 0 ? sub[..dot] : sub;
+            field = dot >= 0 ? sub[(dot + 1)..] : "";
+        }
 
         Region? region = null;
         if (int.TryParse(selector, out int index))

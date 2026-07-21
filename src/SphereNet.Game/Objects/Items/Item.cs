@@ -1198,11 +1198,33 @@ public class Item : ObjBase
                 value = $"0{_contents[idx].Uid.Value:X}";
             return true;
         }
+        if (upper == "RESCOUNT")
+        {
+            // Source-X CContainer RESCOUNT: number of items directly contained.
+            value = _contents.Count.ToString();
+            return true;
+        }
         if (upper.StartsWith("RESCOUNT.", StringComparison.Ordinal))
         {
             var arg = upper[9..];
             ushort id = ParseHexId(arg);
             value = GetResCount(id).ToString();
+            return true;
+        }
+        if (upper == "INSTANCES")
+        {
+            // Source-X CBaseBaseDef INSTANCES: count of world items sharing this
+            // item's base (matched by display id, as the FORINSTANCES loop does).
+            var world = ResolveWorld?.Invoke();
+            int count = 0;
+            if (world != null)
+            {
+                ushort myId = BaseId;
+                foreach (var obj in world.GetAllObjects())
+                    if (obj is Item it && !it.IsDeleted && it.BaseId == myId)
+                        count++;
+            }
+            value = count.ToString();
             return true;
         }
         if (upper.StartsWith("RESTEST ", StringComparison.Ordinal) ||
@@ -1469,6 +1491,21 @@ public class Item : ObjBase
         var def = ResolveDefinition();
         if (def != null)
         {
+            // RESOURCES / SKILLMAKE craft lists (Source-X CBaseBaseDef OBC_RESOURCES /
+            // CItemBase IBC_SKILLMAKE). Bare = the comma-separated list; .COUNT = the
+            // entry count; .<n>[.KEY|.VAL] indexes an entry 1-based (WriteKeys starts
+            // at index-1). Quantities live only in the raw string, so parse that.
+            if (upper == "RESOURCES" || upper.StartsWith("RESOURCES.", StringComparison.Ordinal))
+            {
+                if (TryResolveResourceList(def.ResourcesRaw, upper, "RESOURCES", out value))
+                    return true;
+            }
+            if (upper == "SKILLMAKE" || upper.StartsWith("SKILLMAKE.", StringComparison.Ordinal))
+            {
+                if (TryResolveResourceList(def.SkillMakeRaw, upper, "SKILLMAKE", out value))
+                    return true;
+            }
+
             switch (upper)
             {
                 case "VALUE": value = def.ValueMin == def.ValueMax ? def.ValueMin.ToString() : $"{def.ValueMin},{def.ValueMax}"; return true;
@@ -3428,7 +3465,7 @@ public class Item : ObjBase
         return 0;
     }
 
-    private static ItemType ParseItemType(string arg)
+    internal static ItemType ParseItemType(string arg)
     {
         var s = arg.Trim();
         if (s.StartsWith("T_", StringComparison.OrdinalIgnoreCase))
@@ -3503,6 +3540,54 @@ public class Item : ObjBase
         foreach (var item in _contents)
             if (item.BaseId == baseId) return item;
         return null;
+    }
+
+    /// <summary>Resolve a RESOURCES/SKILLMAKE resource-qty list read from its raw
+    /// "&lt;qty&gt; &lt;resource&gt;[, ...]" string (Source-X CBaseBaseDef OBC_RESOURCES).
+    /// Forms: bare = whole list; .COUNT = entry count; .&lt;n&gt; = the n-th entry
+    /// (1-based); .&lt;n&gt;.KEY = its resource token; .&lt;n&gt;.VAL = its quantity.</summary>
+    private static bool TryResolveResourceList(string raw, string upper, string keyword, out string value)
+    {
+        value = "";
+        string rest = upper.Length > keyword.Length ? upper[(keyword.Length + 1)..] : "";
+        if (rest.Length == 0)
+        {
+            value = raw; // whole comma-separated list (ARGV counts the entries)
+            return true;
+        }
+
+        var entries = string.IsNullOrWhiteSpace(raw)
+            ? []
+            : raw.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+        if (rest == "COUNT")
+        {
+            value = entries.Length.ToString();
+            return true;
+        }
+
+        int subDot = rest.IndexOf('.');
+        string idxPart = subDot < 0 ? rest : rest[..subDot];
+        string field = subDot < 0 ? "" : rest[(subDot + 1)..];
+        if (!int.TryParse(idxPart, out int idx) || idx < 1 || idx > entries.Length)
+        {
+            value = "0";
+            return true;
+        }
+
+        string entry = entries[idx - 1]; // Source-X WriteKeys index is 1-based
+        int sp = entry.IndexOfAny([' ', '\t']);
+        bool hasQty = sp > 0 && ulong.TryParse(entry.AsSpan(0, sp), out _);
+        string qty = hasQty ? entry[..sp].Trim() : "1";
+        string resKey = hasQty ? entry[(sp + 1)..].Trim() : entry.Trim();
+
+        value = field switch
+        {
+            "KEY" => resKey,
+            "VAL" => qty,
+            _ => entry
+        };
+        return true;
     }
 
     private Item? FindContentByType(ItemType type)

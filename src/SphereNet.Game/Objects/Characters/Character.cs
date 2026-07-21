@@ -1920,6 +1920,23 @@ public partial class Character : ObjBase
         return null;
     }
 
+    /// <summary>Resolve a FINDLAYER layer argument to a layer index. Accepts a
+    /// plain number or a layer DEFNAME (layer_hair, layer_beard, ...), mirroring
+    /// Source-X's expression-evaluated layer arg.</summary>
+    private static bool TryResolveLayerToken(string token, out int layerIdx)
+    {
+        token = token.Trim();
+        if (int.TryParse(token, out layerIdx))
+            return true;
+        if (DefinitionLoader.StaticResources?.TryResolveDefNameValue(token, out long defVal) == true)
+        {
+            layerIdx = (int)defVal;
+            return true;
+        }
+        layerIdx = -1;
+        return false;
+    }
+
     public bool Memory_UpdateFlags(Item mem) => MemoryState.UpdateFlags(mem);
 
     public bool Memory_OnTick(Item mem) => MemoryState.OnMemoryTick(mem);
@@ -2791,6 +2808,15 @@ public partial class Character : ObjBase
                 return true;
             }
             case "FOOD": value = _food.ToString(); return true;
+            // MAXFOOD / VIRTUALGOLD are stored as tags by their setters (Source-X
+            // CHC_MAXFOOD / CHC_VIRTUALGOLD are readable). Default 0 when unset;
+            // the food dialog falls back to SERV.CHARDEF.<id>.MAXFOOD from there.
+            case "MAXFOOD":
+                value = TryGetTag("MAXFOOD", out string? mf) ? (mf ?? "0") : "0";
+                return true;
+            case "VIRTUALGOLD":
+                value = TryGetTag("VIRTUALGOLD", out string? vg) ? (vg ?? "0") : "0";
+                return true;
             case "PRIVLEVEL": value = ((int)PrivLevel).ToString(); return true;
             case "ISMOUNTED": value = IsMounted ? "1" : "0"; return true;
             case "ISDEAD": value = IsDead ? "1" : "0"; return true;
@@ -3117,33 +3143,48 @@ public partial class Character : ObjBase
             }
         }
 
-        // CANSEELOS.uid / CANSEE.uid
-        if (upper.StartsWith("CANSEELOS.", StringComparison.Ordinal) ||
-            upper.StartsWith("CANSEE.", StringComparison.Ordinal))
+        // CANSEELOS / CANSEE — accept either a '.' or whitespace before the uid
+        // argument (Source-X CObjBase OC_CANSEELOS/OC_CANSEE: SKIP_SEPARATORS +
+        // GETNONWHITESPACE, so <SRC.CANSEELOS <uid>> and CANSEELOS.<uid> both work).
         {
-            int dot = upper.IndexOf('.');
-            string uidStr = key[(dot + 1)..];
-            var world = ResolveWorld?.Invoke();
-            if (world != null && ParseSerial(uidStr).IsValid)
+            string? canSeeArg = null;
+            bool canSeeLosMode = false;
+            if (upper.StartsWith("CANSEELOS", StringComparison.Ordinal) &&
+                (upper.Length == 9 || !char.IsLetterOrDigit(upper[9])))
             {
-                var target = world.FindObject(ParseSerial(uidStr));
-                if (target != null)
-                {
-                    bool los = world.CanSeeLOS(Position, target.Position);
-                    if (upper.StartsWith("CANSEE.", StringComparison.Ordinal))
-                    {
-                        int dist = Position.GetDistanceTo(target.Position);
-                        value = (los && dist <= (_visualRange > 0 ? _visualRange : 18)) ? "1" : "0";
-                    }
-                    else
-                    {
-                        value = los ? "1" : "0";
-                    }
-                    return true;
-                }
+                canSeeLosMode = true;
+                canSeeArg = upper.Length > 9 ? key[9..].TrimStart('.', ' ', '\t') : "";
             }
-            value = "0";
-            return true;
+            else if (upper.StartsWith("CANSEE", StringComparison.Ordinal) &&
+                     (upper.Length == 6 || !char.IsLetterOrDigit(upper[6])))
+            {
+                canSeeArg = upper.Length > 6 ? key[6..].TrimStart('.', ' ', '\t') : "";
+            }
+            if (canSeeArg != null)
+            {
+                var world = ResolveWorld?.Invoke();
+                var serial = ParseSerial(canSeeArg);
+                if (world != null && serial.IsValid)
+                {
+                    var target = world.FindObject(serial);
+                    if (target != null)
+                    {
+                        bool los = world.CanSeeLOS(Position, target.Position);
+                        if (canSeeLosMode)
+                        {
+                            value = los ? "1" : "0";
+                        }
+                        else
+                        {
+                            int dist = Position.GetDistanceTo(target.Position);
+                            value = (los && dist <= (_visualRange > 0 ? _visualRange : 18)) ? "1" : "0";
+                        }
+                        return true;
+                    }
+                }
+                value = "0";
+                return true;
+            }
         }
 
         // NOTOGETFLAG <uid> [allowIncog] [allowInvul] — my notoriety flag as
@@ -3310,17 +3351,25 @@ public partial class Character : ObjBase
             return true;
         }
 
-        // FINDLAYER.n
+        // FINDLAYER.<layer>[.<property>] — <layer> may be a number or a layer
+        // DEFNAME (layer_hair=11, layer_beard=16, ...). Source-X expression-
+        // evaluates the arg (CChar LayerFind(Exp_GetSingle(...))). Chains to the
+        // found item's properties like the FINDLAYER(N) paren form.
         if (upper.StartsWith("FINDLAYER.", StringComparison.Ordinal))
         {
-            if (int.TryParse(upper.AsSpan("FINDLAYER.".Length), out int layerIdx))
+            string rest = key["FINDLAYER.".Length..];
+            int dotIdx = rest.IndexOf('.');
+            string layerToken = dotIdx < 0 ? rest : rest[..dotIdx];
+            string tail = dotIdx < 0 ? "" : rest[(dotIdx + 1)..];
+            if (TryResolveLayerToken(layerToken, out int layerIdx))
             {
-                if (layerIdx >= 0 && layerIdx < _equipment.Length && _equipment[layerIdx] != null)
-                    value = $"0{_equipment[layerIdx]!.Uid.Value:X}";
-                else
-                    value = "0";
-                return true;
+                var worn = GetEquippedItem((Layer)layerIdx);
+                if (worn == null) { value = "0"; return true; }
+                if (tail.Length == 0) { value = $"0{worn.Uid.Value:X}"; return true; }
+                return worn.TryGetProperty(tail, out value);
             }
+            value = "0";
+            return true;
         }
 
         // FINDID.xxx  (see FindItemByBaseId for the search scope)
@@ -4439,6 +4488,34 @@ public partial class Character : ObjBase
                     return true;
                 }
                 return found.TryExecuteCommand(tail, args, source);
+            }
+        }
+
+        // Chained dispatch on the dot form (Source-X CChar LayerFind with an
+        // expression-evaluated layer arg):
+        //   Src.FindLayer.layer_hair.REMOVE      → strip the worn hair
+        //   Src.FindLayer.layer_hair.COLOR <hue> → recolor it (property write)
+        // <layer> may be a number or a layer DEFNAME.
+        if (key.StartsWith("FINDLAYER.", StringComparison.OrdinalIgnoreCase))
+        {
+            string chain = key["FINDLAYER.".Length..];
+            int chainDot = chain.IndexOf('.');
+            if (chainDot > 0)
+            {
+                string tail = chain[(chainDot + 1)..].Trim();
+                if (TryResolveLayerToken(chain[..chainDot], out int layerNum) && tail.Length > 0)
+                {
+                    var worn = GetEquippedItem((Layer)layerNum);
+                    if (worn == null || worn.IsDeleted) return true;
+                    if (tail.Equals("REMOVE", StringComparison.OrdinalIgnoreCase))
+                    {
+                        worn.RemoveFromWorld();
+                        return true;
+                    }
+                    if (worn.TryExecuteCommand(tail, args, source))
+                        return true;
+                    return args.Length > 0 && worn.TrySetProperty(tail, args);
+                }
             }
         }
 
@@ -5821,13 +5898,37 @@ public partial class Character : ObjBase
                 return true;
         }
 
-        // PARTY.MEMBER.n
-        if (sub.StartsWith("MEMBER.", StringComparison.Ordinal) && int.TryParse(sub["MEMBER.".Length..], out int memberIdx))
+        // PARTY.MASTER.<sub> — forward to the party master as a reference
+        // (Source-X CParty r_GetRef), so <PARTY.MASTER.NAME>/.REGION.NAME chain.
+        if (sub.StartsWith("MASTER.", StringComparison.Ordinal))
         {
-            if (party != null && memberIdx >= 0 && memberIdx < party.MemberCount)
-                value = $"0{party.Members[memberIdx].Value:X}";
-            else
-                value = "0";
+            string msub = key["PARTY.MASTER.".Length..]; // preserve case
+            var masterChar = party != null ? ResolveWorld?.Invoke()?.FindChar(party.Master) : null;
+            value = masterChar != null && masterChar.TryGetProperty(msub, out var mval) ? mval : "0";
+            return true;
+        }
+
+        // PARTY.MEMBER.n  and  PARTY.MEMBER.n.<sub> (forward to the member char)
+        if (sub.StartsWith("MEMBER.", StringComparison.Ordinal))
+        {
+            string rest = sub["MEMBER.".Length..];
+            int d = rest.IndexOf('.');
+            string idxStr = d < 0 ? rest : rest[..d];
+            if (int.TryParse(idxStr, out int memberIdx) &&
+                party != null && memberIdx >= 0 && memberIdx < party.MemberCount)
+            {
+                var memberSerial = party.Members[memberIdx];
+                if (d < 0)
+                {
+                    value = $"0{memberSerial.Value:X}";
+                    return true;
+                }
+                string msub = key[("PARTY.MEMBER.".Length + idxStr.Length + 1)..]; // preserve case
+                var memberChar = ResolveWorld?.Invoke()?.FindChar(memberSerial);
+                value = memberChar != null && memberChar.TryGetProperty(msub, out var mv) ? mv : "0";
+                return true;
+            }
+            value = "0";
             return true;
         }
 
@@ -5926,6 +6027,26 @@ public partial class Character : ObjBase
 
         switch (sub)
         {
+            case "CREATE":
+            {
+                // Source-X CParty PDV_CREATE — ensure this char has a party (as
+                // master). The party-invite flow calls PARTY.CREATE <flag>,<uid>;
+                // any token resolving to a real char is added as a member (the
+                // leading flag resolves to no char and is skipped).
+                if (pm == null) return true;
+                var party = pm.FindParty(Uid) ?? pm.CreateParty(Uid);
+                var world = ResolveWorld?.Invoke();
+                foreach (var tok in args.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (uint.TryParse(tok.TrimStart('0').TrimStart('x', 'X'),
+                            System.Globalization.NumberStyles.HexNumber, null, out uint memUid) &&
+                        memUid != Uid.Value && world?.FindChar(new Serial(memUid)) != null)
+                    {
+                        party.AddMember(new Serial(memUid));
+                    }
+                }
+                return true;
+            }
             case "ADDMEMBER":
             {
                 if (pm == null) return true;

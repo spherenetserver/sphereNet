@@ -106,9 +106,16 @@ public sealed class GumpBuilder
 
     /// <summary>Cliloc tooltip attached to the previous layout element
     /// (Source-X GUMPCTL_TOOLTIP, client 4.0.0+).</summary>
-    public GumpBuilder AddTooltip(long cliloc)
+    public GumpBuilder AddTooltip(long cliloc) => AddTooltip(cliloc, "");
+
+    /// <summary>Cliloc tooltip, optionally with a tilde-arg string (Source-X
+    /// GUMPCTL_TOOLTIP emits "tooltip &lt;cliloc&gt; &lt;args&gt;"). The args carry
+    /// their leading "@" as authored.</summary>
+    public GumpBuilder AddTooltip(long cliloc, string args)
     {
-        _layout.Add($"{{ tooltip {cliloc} }}");
+        _layout.Add(string.IsNullOrWhiteSpace(args)
+            ? $"{{ tooltip {cliloc} }}"
+            : $"{{ tooltip {cliloc} {args.Trim()} }}");
         return this;
     }
 

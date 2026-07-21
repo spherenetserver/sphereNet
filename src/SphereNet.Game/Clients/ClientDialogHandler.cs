@@ -438,7 +438,13 @@ public sealed class ClientDialogHandler
         int dialogX = 0, dialogY = 0;
         if (layoutSection.Keys.Count > 0)
         {
+            // Source-X evaluates the first-line "x,y" through the expression
+            // engine, so a DEF-based start position (<DEF.dlgstartpos> = 30,30)
+            // resolves instead of collapsing the dialog to 0,0.
             string firstLine = layoutSection.Keys[0].RawLine.Trim();
+            if (firstLine.IndexOf('<') >= 0)
+                firstLine = ResolveInlineExpressions(firstLine,
+                    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), requestedPage);
             var posParts = firstLine.Split(',', StringSplitOptions.TrimEntries);
             if (posParts.Length >= 2 && int.TryParse(posParts[0], out int px) && int.TryParse(posParts[1], out int py))
             {
@@ -589,9 +595,15 @@ public sealed class ClientDialogHandler
                 case "TOOLTIP":
                 {
                     if (!currentPageVisible) break;
-                    var parts = SplitTokens(args, 1);
-                    if (parts.Length >= 1)
-                        gump.AddTooltip(ParseIntToken(parts[0]));
+                    // TOOLTIP <cliloc> [@<args>] — Source-X forwards the trailing
+                    // tilde-arg string so parameterized clilocs (e.g. "~1_val~")
+                    // render with their argument.
+                    string targ = args.Trim();
+                    int sp = targ.IndexOfAny([' ', '\t']);
+                    string clilocStr = sp < 0 ? targ : targ[..sp];
+                    string ttArgs = sp < 0 ? "" : targ[(sp + 1)..].Trim();
+                    if (clilocStr.Length > 0)
+                        gump.AddTooltip(ParseIntToken(clilocStr), ttArgs);
                     break;
                 }
                 case "GUMPPICTILED":

@@ -438,6 +438,7 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             case "P.Z": value = _position.Z.ToString(); return true;
             case "P.M":
             case "P.MAP": value = _position.Map.ToString(); return true;
+            case "SEXTANTP": value = ComputeSextant(GetTopLevelPosition()); return true;
             case "COLOR": value = _hue.Value.ToString(); return true;
             case "ID": value = $"0{_baseId:X}"; return true;
             case "ATTR": value = ((uint)_attr).ToString(); return true;
@@ -585,6 +586,22 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             cur = parent;
         }
         return cur.Position;
+    }
+
+    /// <summary>Sextant coordinate string for a map point (Source-X
+    /// CServerConfig::Calc_MaptoSextant). Zero point 1323,1624; longitude uses
+    /// the real world width (5120) on maps 0/1, else the map's own width.</summary>
+    private static string ComputeSextant(Point3D pos)
+    {
+        const int zeroX = 1323, zeroY = 1624, uoSizeXReal = 0x1400; // 5120
+        var world = ResolveWorld?.Invoke();
+        var (mapW, mapH) = world?.MapData?.GetMapSize(pos.Map) ?? (uoSizeXReal, 4096);
+        if (mapH <= 0) mapH = 4096;
+        int iLat = (pos.Y - zeroY) * 360 * 60 / mapH;
+        int longDiv = pos.Map <= 1 ? uoSizeXReal : (mapW > 0 ? mapW : uoSizeXReal);
+        int iLong = (pos.X - zeroX) * 360 * 60 / longDiv;
+        return $"{Math.Abs(iLat / 60)}o {Math.Abs(iLat % 60)}'{(iLat <= 0 ? "N" : "S")}, " +
+               $"{Math.Abs(iLong / 60)}o {Math.Abs(iLong % 60)}'{(iLong >= 0 ? "E" : "W")}";
     }
 
     public virtual bool TryExecuteCommand(string key, string args, ITextConsole source)
@@ -1215,6 +1232,95 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             return true;
         }
 
+        // --- ISNEARTYPE --- (before the mapData guard: the dynamic-item search
+        // works without terrain data; only the terrain-flag search needs it).
+        if (upper.StartsWith("ISNEARTYPE", StringComparison.Ordinal))
+        {
+            // Format: ISNEARTYPE type,distance  or  ISNEARTYPE(type,distance)
+            var argStr = upper["ISNEARTYPE".Length..].Trim('(', ')', ' ');
+            var parts = argStr.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 1)
+            {
+                string typeName = parts[0];
+                int dist = parts.Length >= 2 && int.TryParse(parts[1], out int d) ? d : 0;
+
+                // Resolve type name to a terrain TileFlag (else it's an item IT_TYPE).
+                TileFlag flagToMatch = typeName switch
+                {
+                    "T_WATER" or "WATER" => TileFlag.Wet,
+                    "T_WALL" or "WALL" => TileFlag.Wall,
+                    "T_DOOR" or "DOOR" => TileFlag.Door,
+                    "T_ROOF" or "ROOF" => TileFlag.Roof,
+                    "T_FOLIAGE" or "FOLIAGE" => TileFlag.Foliage,
+                    "T_BRIDGE" or "BRIDGE" => TileFlag.Bridge,
+                    "T_CONTAINER" or "CONTAINER" => TileFlag.Container,
+                    "T_WEAPON" or "WEAPON" => TileFlag.Weapon,
+                    "T_ARMOR" or "ARMOR" => TileFlag.Armor,
+                    "T_WEARABLE" or "WEARABLE" => TileFlag.Wearable,
+                    "T_LIGHTSOURCE" or "LIGHTSOURCE" => TileFlag.LightSource,
+                    "T_WINDOW" or "WINDOW" => TileFlag.Window,
+                    "T_IMPASSABLE" or "IMPASSABLE" => TileFlag.Impassable,
+                    "T_SURFACE" or "SURFACE" => TileFlag.Surface,
+                    "T_DAMAGING" or "DAMAGING" => TileFlag.Damaging,
+                    _ => TileFlag.None
+                };
+
+                bool found = false;
+                var terrainData = world.MapData;
+                if (flagToMatch != TileFlag.None && terrainData != null)
+                {
+                    for (int dx = -dist; dx <= dist && !found; dx++)
+                    {
+                        for (int dy = -dist; dy <= dist && !found; dy++)
+                        {
+                            int cx = pos.X + dx;
+                            int cy = pos.Y + dy;
+
+                            var terrain = terrainData.GetTerrainTile(pos.Map, cx, cy);
+                            var landData = terrainData.GetLandTileData(terrain.TileId);
+                            if ((landData.Flags & flagToMatch) != 0)
+                            {
+                                found = true;
+                                break;
+                            }
+
+                            var statics = terrainData.GetStatics(pos.Map, cx, cy);
+                            foreach (var s in statics)
+                            {
+                                var itemData = terrainData.GetItemTileData(s.TileId);
+                                if ((itemData.Flags & flagToMatch) != 0)
+                                {
+                                    found = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // A non-terrain name (e.g. T_MOONGATE) is a dynamic-item IT_TYPE:
+                // Source-X ISNEARTYPE also scans nearby dynamic items by type.
+                if (!found && flagToMatch == TileFlag.None)
+                {
+                    var itemType = Items.Item.ParseItemType(typeName);
+                    if (itemType is not (ItemType.Invalid or ItemType.Normal))
+                    {
+                        foreach (var it in world.GetItemsInRange(pos, dist))
+                        {
+                            if (!it.IsDeleted && it.ItemType == itemType)
+                            {
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                value = found ? "1" : "0";
+                return true;
+            }
+        }
+
         // --- TERRAIN ---
         var mapData = world.MapData;
         if (mapData == null) return false;
@@ -1278,77 +1384,6 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
                     "Z" => s.Z.ToString(),
                     _ => "0"
                 };
-                return true;
-            }
-        }
-
-        // --- ISNEARTYPE ---
-        if (upper.StartsWith("ISNEARTYPE", StringComparison.Ordinal))
-        {
-            // Format: ISNEARTYPE type,distance  or  ISNEARTYPE(type,distance)
-            var argStr = upper["ISNEARTYPE".Length..].Trim('(', ')', ' ');
-            var parts = argStr.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length >= 1)
-            {
-                string typeName = parts[0];
-                int dist = parts.Length >= 2 && int.TryParse(parts[1], out int d) ? d : 0;
-
-                // Resolve type name to TileFlag
-                TileFlag flagToMatch = typeName switch
-                {
-                    "T_WATER" or "WATER" => TileFlag.Wet,
-                    "T_WALL" or "WALL" => TileFlag.Wall,
-                    "T_DOOR" or "DOOR" => TileFlag.Door,
-                    "T_ROOF" or "ROOF" => TileFlag.Roof,
-                    "T_FOLIAGE" or "FOLIAGE" => TileFlag.Foliage,
-                    "T_BRIDGE" or "BRIDGE" => TileFlag.Bridge,
-                    "T_CONTAINER" or "CONTAINER" => TileFlag.Container,
-                    "T_WEAPON" or "WEAPON" => TileFlag.Weapon,
-                    "T_ARMOR" or "ARMOR" => TileFlag.Armor,
-                    "T_WEARABLE" or "WEARABLE" => TileFlag.Wearable,
-                    "T_LIGHTSOURCE" or "LIGHTSOURCE" => TileFlag.LightSource,
-                    "T_WINDOW" or "WINDOW" => TileFlag.Window,
-                    "T_IMPASSABLE" or "IMPASSABLE" => TileFlag.Impassable,
-                    "T_SURFACE" or "SURFACE" => TileFlag.Surface,
-                    "T_DAMAGING" or "DAMAGING" => TileFlag.Damaging,
-                    _ => TileFlag.None
-                };
-
-                bool found = false;
-                if (flagToMatch != TileFlag.None)
-                {
-                    for (int dx = -dist; dx <= dist && !found; dx++)
-                    {
-                        for (int dy = -dist; dy <= dist && !found; dy++)
-                        {
-                            int cx = pos.X + dx;
-                            int cy = pos.Y + dy;
-
-                            // Check land tile
-                            var terrain = mapData.GetTerrainTile(pos.Map, cx, cy);
-                            var landData = mapData.GetLandTileData(terrain.TileId);
-                            if ((landData.Flags & flagToMatch) != 0)
-                            {
-                                found = true;
-                                break;
-                            }
-
-                            // Check static tiles
-                            var statics = mapData.GetStatics(pos.Map, cx, cy);
-                            foreach (var s in statics)
-                            {
-                                var itemData = mapData.GetItemTileData(s.TileId);
-                                if ((itemData.Flags & flagToMatch) != 0)
-                                {
-                                    found = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                value = found ? "1" : "0";
                 return true;
             }
         }

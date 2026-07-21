@@ -150,6 +150,9 @@ public sealed class CharDef : BaseDef
             case "FOODTYPE":
                 FoodTypeRaw = value.Trim();
                 FoodType = ParseFoodType(value);
+                // Source-X CCharBase::SetFoodType derives m_MaxFood from FOODTYPE:
+                // the largest resource quantity (bare resource = qty 1).
+                MaxFood = DeriveMaxFood(FoodTypeRaw);
                 break;
             case "ERALIMITGEAR": int.TryParse(value, out int eraGear); EraLimitGear = eraGear; break;
             case "ERALIMITLOOT": int.TryParse(value, out int eraLoot); EraLimitLoot = eraLoot; break;
@@ -470,6 +473,24 @@ public sealed class CharDef : BaseDef
         if (token.StartsWith("t_", StringComparison.OrdinalIgnoreCase)) token = token[2..];
         token = token.Replace("_", "", StringComparison.Ordinal);
         return Enum.TryParse(token, true, out ItemType type) ? type : ItemType.Normal;
+    }
+
+    /// <summary>Source-X CCharBase::SetFoodType: m_MaxFood = the largest resource
+    /// quantity across the comma-separated FOODTYPE entries. Each entry is
+    /// "&lt;qty&gt; &lt;resource&gt;"; a bare resource (no leading number) counts as 1.</summary>
+    private static ushort DeriveMaxFood(string foodTypeRaw)
+    {
+        if (string.IsNullOrWhiteSpace(foodTypeRaw))
+            return 0;
+        ushort max = 0;
+        foreach (var part in foodTypeRaw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            int sp = part.IndexOfAny([' ', '\t']);
+            string lead = sp < 0 ? part : part[..sp];
+            ushort qty = ushort.TryParse(lead, out ushort q) ? q : (ushort)1;
+            if (qty > max) max = qty;
+        }
+        return max;
     }
 
     private static (int Min, int Max) ParseRange(string value)

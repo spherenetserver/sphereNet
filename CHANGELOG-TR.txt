@@ -3,6 +3,54 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-21] - dialogs/ pack denetimi: inceleme, party, stylist, moongate ve where diyaloglarindaki property/verb bosluklari
+----------------------------------------
+
+FIX - CANSEELOS / CANSEE nokta formuna ek olarak bosluk-ayrimli uid argumanini
+        da kabul ediyor (CANSEELOS <uid>) (Source-X OC_CANSEELOS uid'den once
+        ayiraclari atlar). Bosluk formu <SRC.CANSEELOS <UID>>'in urettigi formdur
+        ve stylist'in uygulama handler'larini korur.
+
+FIX - ISNEARTYPE artik yalniz zemin/statik TileFlag'leri degil, yakindaki
+        dinamik itemleri de IT_TYPE'a gore tariyor (orn. T_MOONGATE) (Source-X
+        ISNEARTYPE). Item aramasi artik yuklu zemin verisi gerektirmiyor.
+
+NEW - FINDLAYER.<layer> bir sayinin yani sira layer DEFNAME'ini de cozer
+        (layer_hair, layer_beard, ...) ve nokta formu bulunan itemin
+        property/verb'lerine zincirlenir (FINDLAYER.<layer>.COLOR / .REMOVE),
+        parantez formuyla ayni (Source-X LayerFind ifade-degerli arg).
+
+NEW - PARTY.MASTER.<sub> ve PARTY.MEMBER.<n>.<sub> master / n. uyeyi bir referans
+        olarak yonlendirir (Source-X CParty r_GetRef), boylece uye-listesi
+        satirlari <...NAME>, <...REGION.NAME> vb. okuyabilir. PARTY.CREATE verb'i
+        eklendi (bu char master olacak sekilde bir party olusturur ve gercek bir
+        char'a cozulen argumani uye ekler).
+
+NEW - Item RESCOUNT (cikip) = icerdeki item sayisi (Source-X CContainer);
+        INSTANCES = ayni display id'yi paylasan dunya item sayisi; RESOURCES ve
+        SKILLMAKE craft listelerini acar (cikip = liste, .COUNT ve
+        .<n>[.KEY|.VAL] 1-tabanli indeks) itemdef'ten (Source-X
+        CBaseBaseDef/CItemBase).
+
+NEW - MAXFOOD okunabilir: chardef'te FOODTYPE kaynak miktarlarindan turetilir
+        (Source-X CCharBase::SetFoodType, en buyuk miktar) ve char uzerinden
+        okunur; VIRTUALGOLD char'da okunabilir (ikisi de onceden yalniz
+        yazilabiliyordu).
+
+NEW - SEXTANTP bir nokta icin sextant koordinat dizesini dondurur (Source-X
+        Calc_MaptoSextant; sifir noktasi 1323,1624, 0/1 haritalarinda gercek
+        dunya genisligi 5120).
+
+FIX - Diyalog TOOLTIP kontrolu arguman dizesini iletiyor
+        (TOOLTIP <cliloc> @<args>), boylece parametreli cliloc'lar argumaniyla
+        cizilir (Source-X GUMPCTL_TOOLTIP "tooltip <cliloc> <args>" uretir).
+
+FIX - SERV.AREA erisimcisi nokta formuna ek olarak parantez formu
+        AREA(<defname>).<prop>'u kabul ediyor (Source-X CServerConfig r_GetRef)
+        ve bir diyalog layout'unun ilk satir "x,y" pozisyonu ifade-degerli
+        cozuluyor, boylece DEF-bazli baslangic pozisyonu 0,0'a sabitlenmek yerine
+        cozuluyor.
+
 [2026-07-21] - Layout icinde FUNCTION cagrilari; virgul-bazli ARGV ayrimi
 ----------------------------------------
 

@@ -4,6 +4,52 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-21] - dialogs/ pack audit: property/verb gaps behind the inspector, party, stylist, moongate and where dialogs
+----------------------------------------
+
+FIX - CANSEELOS / CANSEE accept a whitespace-separated uid argument
+        (CANSEELOS <uid>) in addition to the dot form (Source-X OC_CANSEELOS
+        skips separators before the uid). The space form is what <SRC.CANSEELOS
+        <UID>> produces, and it guards the stylist's apply handlers.
+
+FIX - ISNEARTYPE also scans nearby dynamic items by IT_TYPE (e.g. T_MOONGATE),
+        not only terrain/static TileFlags (Source-X ISNEARTYPE). The item search
+        no longer requires loaded terrain data.
+
+NEW - FINDLAYER.<layer> resolves a layer DEFNAME (layer_hair, layer_beard, ...)
+        as well as a number, and the dot form chains to the found item's
+        properties/verbs (FINDLAYER.<layer>.COLOR / .REMOVE), matching the paren
+        form (Source-X LayerFind with an expression-evaluated arg).
+
+NEW - PARTY.MASTER.<sub> and PARTY.MEMBER.<n>.<sub> forward to the master /
+        n-th member as a reference (Source-X CParty r_GetRef), so member-list
+        rows can read <...NAME>, <...REGION.NAME>, etc. Added the PARTY.CREATE
+        verb (ensures a party exists with this char as master and adds any
+        argument that resolves to a real char).
+
+NEW - Item RESCOUNT (bare) = contained-item count (Source-X CContainer);
+        INSTANCES = count of world items sharing the display id; RESOURCES and
+        SKILLMAKE expose the craft lists (bare = list, .COUNT, and .<n>[.KEY|.VAL]
+        indexed 1-based) from the itemdef (Source-X CBaseBaseDef/CItemBase).
+
+NEW - MAXFOOD is readable: derived on the chardef from the FOODTYPE resource
+        quantities (Source-X CCharBase::SetFoodType, largest quantity) and read
+        back on the char; VIRTUALGOLD is readable on the char (both were
+        write-only before).
+
+NEW - SEXTANTP returns the sextant coordinate string for a point (Source-X
+        Calc_MaptoSextant; zero point 1323,1624, real-world width 5120 on maps
+        0/1).
+
+FIX - The dialog TOOLTIP control forwards its argument string
+        (TOOLTIP <cliloc> @<args>), so parameterized clilocs render with their
+        argument (Source-X GUMPCTL_TOOLTIP emits "tooltip <cliloc> <args>").
+
+FIX - The SERV.AREA accessor accepts the paren form AREA(<defname>).<prop> in
+        addition to the dot form (Source-X CServerConfig r_GetRef), and a dialog
+        layout's first-line "x,y" position is expression-evaluated so a DEF-based
+        start position resolves instead of anchoring at 0,0.
+
 [2026-07-21] - Dialog FUNCTION calls in layouts; comma-only ARGV parsing
 ----------------------------------------
 

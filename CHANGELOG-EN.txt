@@ -4,6 +4,27 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-21] - Inbound exception firewall: one bad packet can no longer crash the server
+----------------------------------------
+
+FIX - A throw from a packet handler (game logic or a synchronous .scp trigger)
+        is now caught per-connection: the offending connection is logged with
+        its remote endpoint and closed, and the input phase keeps running.
+        Previously any unhandled exception in handler dispatch propagated out of
+        the main loop and terminated the whole process — killing every player
+        and skipping the shutdown save (all state since the last periodic save
+        was lost).
+
+FIX - The same containment now guards OnConnectionAccepted (a bad accept drops
+        only that connection), per-connection output flush (a non-socket throw
+        in outbound compression/encryption closes one connection instead of the
+        loop), and each main-loop iteration (a fault in any phase is logged with
+        the phase name and the loop continues, log throttled to avoid spam).
+
+FIX - Shutdown and the on-exit world save moved into a try/finally around the
+        main loop, so cleanup and the final save still run if the loop exits
+        abnormally. The exit hook dispatch is guarded so it cannot mask that.
+
 [2026-07-21] - Custom-house door fixtures: no more double render/collision after commit
 ----------------------------------------
 

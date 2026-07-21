@@ -275,7 +275,19 @@ public sealed class NetworkManager : IDisposable
                 OnStateInit(slot.RemoteEndPoint?.Address);
                 slot.DebugPackets = DebugPackets;
                 _logger.LogInformation("Connection #{Id} from {EP}", slot.Id, slot.RemoteEndPoint);
-                OnConnectionAccepted?.Invoke(slot);
+                try
+                {
+                    OnConnectionAccepted?.Invoke(slot);
+                }
+                catch (Exception ex)
+                {
+                    // A handler wiring up the new client must not take down the
+                    // accept pass (or the main loop) — drop this connection only.
+                    _logger.LogError(ex,
+                        "OnConnectionAccepted threw for #{Id} from {EP}; closing connection",
+                        slot.Id, slot.RemoteEndPoint);
+                    slot.MarkClosing();
+                }
             }
         }
         catch (SocketException ex)
@@ -297,17 +309,31 @@ public sealed class NetworkManager : IDisposable
         {
             if (!state.CanReceive) continue;
 
-            int read = state.Receive();
-            if (read < 0)
+            // Per-connection containment: a throw while receiving, decrypting or
+            // dispatching this connection's data must never escape into the main
+            // loop (that would kill the whole server and skip the shutdown save).
+            // Isolate it, log with the remote endpoint, and drop only this one.
+            try
             {
-                _logger.LogInformation("Connection #{Id} lost", state.Id);
-                state.MarkClosing();
-                continue;
+                int read = state.Receive();
+                if (read < 0)
+                {
+                    _logger.LogInformation("Connection #{Id} lost", state.Id);
+                    state.MarkClosing();
+                    continue;
+                }
+
+                if (read == 0) continue;
+
+                ProcessInput(state);
             }
-
-            if (read == 0) continue;
-
-            ProcessInput(state);
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Input processing threw for #{Id} from {EP}; closing connection",
+                    state.Id, state.RemoteEndPoint);
+                state.MarkClosing();
+            }
         }
     }
 
@@ -476,7 +502,22 @@ public sealed class NetworkManager : IDisposable
 
                 var buffer = new PacketBuffer(data.Slice(consumed + payloadOffset, payloadLength).ToArray());
                 long handlerStart = System.Diagnostics.Stopwatch.GetTimestamp();
-                handler.OnReceive(buffer, state);
+                try
+                {
+                    handler.OnReceive(buffer, state);
+                }
+                catch (Exception ex)
+                {
+                    // The handler surface (game logic + synchronous .scp triggers)
+                    // is the largest attacker-reachable code path. A throw here
+                    // must close only this connection, never propagate out of the
+                    // input phase and terminate the server.
+                    _logger.LogError(ex,
+                        "Packet handler threw for #{Id} 0x{Op:X2} ({Name}) from {EP}; closing connection",
+                        state.Id, opcode, handler.GetType().Name, state.RemoteEndPoint);
+                    state.MarkClosing();
+                    break;
+                }
                 long handlerUs = (System.Diagnostics.Stopwatch.GetTimestamp() - handlerStart)
                     * 1_000_000 / System.Diagnostics.Stopwatch.Frequency;
                 _passPacketCount++;
@@ -731,7 +772,7 @@ public sealed class NetworkManager : IDisposable
             foreach (var state in _states)
             {
                 if (state.IsInUse)
-                    state.FlushOutput();
+                    FlushOne(state);
             }
             return;
         }
@@ -742,8 +783,27 @@ public sealed class NetworkManager : IDisposable
             state =>
             {
                 if (state.IsInUse)
-                    state.FlushOutput();
+                    FlushOne(state);
             });
+    }
+
+    /// <summary>Flush one connection with containment. FlushOutput already
+    /// swallows SocketException internally; this catches anything else (a throw
+    /// in outbound compression/encryption of a broadcast) so one bad flush can
+    /// neither stop the other connections nor escape into the main loop.</summary>
+    private void FlushOne(NetState state)
+    {
+        try
+        {
+            state.FlushOutput();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "FlushOutput threw for #{Id} from {EP}; closing connection",
+                state.Id, state.RemoteEndPoint);
+            state.MarkClosing();
+        }
     }
 
     /// <summary>Idle timeout: drop connections with no activity for this duration.</summary>

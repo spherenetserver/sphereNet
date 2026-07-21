@@ -3,6 +3,28 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-21] - Gelen paket exception firewall: tek bir kotu paket artik sunucuyu cokertemiyor
+----------------------------------------
+
+FIX - Bir paket handler'inin (oyun mantigi veya senkron .scp trigger) firlattigi
+        exception artik baglanti bazinda yakalaniyor: hatali baglanti remote
+        endpoint'i ile loglanip kapatiliyor ve input fazi calismaya devam ediyor.
+        Onceden handler dispatch'indeki herhangi bir yakalanmamis exception ana
+        dongoden disari sizip tum process'i sonlandiriyordu — tum oyunculari
+        dusuruyor ve shutdown save'i atliyordu (son periyodik save'den beri tum
+        state kayboluyordu).
+
+FIX - Ayni izolasyon artik OnConnectionAccepted'i (kotu bir accept yalniz o
+        baglantiyi dusurur), baglanti bazli output flush'i (giden compression/
+        encryption'daki socket-disi bir throw dongoyu degil tek baglantiyi
+        kapatir) ve her ana-dongo iterasyonunu (herhangi bir fazdaki hata faz
+        adiyla loglanir ve dongo devam eder, log spam onlemek icin kisilir) da
+        koruyor.
+
+FIX - Shutdown ve cikista dunya save'i ana dongo etrafinda bir try/finally'ye
+        alindi; dongo anormal ciksa bile cleanup ve son save yine calisiyor.
+        Exit hook dispatch'i bunu maskelememesi icin guard'landi.
+
 [2026-07-21] - Custom-house kapi fixture'lari: commit sonrasi cift render/carpisma yok
 ----------------------------------------
 

@@ -62,6 +62,13 @@ public static partial class Program
     // from sphere.ini LoopStallWarnMs (0 disables the warning).
     private static long _lastLoopStallLogMs;
 
+    // Main-loop iteration guard (İş 01 / C2): a throw anywhere in an iteration is
+    // logged with the phase it happened in and the loop keeps running, instead of
+    // escaping to ServerMain (which would kill the process and skip the shutdown
+    // save). Log is throttled so a fault that reproduces every tick can't spam.
+    private static long _lastMainLoopFailureLogMs;
+    private static int _mainLoopFailureCount;
+
     private static void RunMainLoop()
     {
             _mainLoopThreadId = Environment.CurrentManagedThreadId;
@@ -87,8 +94,13 @@ public static partial class Program
             const int MaxCatchUpTicksPerLoop = 4;
             long nextTickMs = TickIntervalMs;
 
+            try
+            {
             while (_running)
             {
+                string loopPhase = "begin";
+                try
+                {
                 // Loop-stall diagnostics: client-visible latency (0x73 ping echo)
                 // lives in the WHOLE iteration — network I/O, periodic jobs and
                 // the yield — not just RunServerTick. tick_stats can read 0.2ms
@@ -126,6 +138,7 @@ public static partial class Program
                 long iterTs1 = Stopwatch.GetTimestamp(); // console/actions done
 
                 // Network I/O runs every iteration for low latency
+                loopPhase = "net_in";
                 _network.CheckNewConnections();
                 _network.ProcessAllInput();
 
@@ -215,11 +228,13 @@ public static partial class Program
 
                 long iterTs3 = Stopwatch.GetTimestamp(); // periodic jobs done
 
+                loopPhase = "net_out";
                 _network.ProcessAllOutput();
                 _network.Tick();
 
                 long iterTs4 = Stopwatch.GetTimestamp(); // network output done
 
+                loopPhase = "ticks";
                 int catchUpTicks = ComputeDueTickCount(now, ref nextTickMs, TickIntervalMs, MaxCatchUpTicksPerLoop);
                 for (int tick = 0; tick < catchUpTicks; tick++)
                 {
@@ -257,11 +272,35 @@ public static partial class Program
                             _network.LastInputPassSlowestMs.ToString("F1"));
                     }
                 }
+                }
+                catch (Exception ex)
+                {
+                    // Last-defense containment: keep the shard alive through a
+                    // fault in any iteration phase rather than crashing out (and
+                    // losing all state since the last save). Throttle the log.
+                    long failNowMs = Environment.TickCount64;
+                    _mainLoopFailureCount++;
+                    if (failNowMs - _lastMainLoopFailureLogMs > 2000)
+                    {
+                        _log.LogError(ex,
+                            "[loop_guard] main-loop iteration failed in phase={Phase} ({Count} failures since last log); server continues",
+                            loopPhase, _mainLoopFailureCount);
+                        _lastMainLoopFailureLogMs = failNowMs;
+                        _mainLoopFailureCount = 0;
+                    }
+                    // Don't spin a hot crash-loop pegging the CPU if the fault
+                    // reproduces on every iteration.
+                    System.Threading.Thread.Sleep(1);
+                }
             }
+            }
+            finally
+            {
 
             // --- 10. Shutdown ---
             _log.LogInformation("Shutting down...");
-            _systemHooks.DispatchServer("exit", _serverHookContext);
+            try { _systemHooks.DispatchServer("exit", _serverHookContext); }
+            catch (Exception ex) { _log.LogError(ex, "Exit hook dispatch failed"); }
 
             // Persist the world on a clean shutdown so changes since the last periodic
             // save are not lost (safe default on; SaveOnShutdown=0 to disable).
@@ -315,6 +354,7 @@ public static partial class Program
                 _consoleForm.BeginInvoke(() => _consoleForm.Close());
             }
     #endif
+            }
     }
 
     private static int ComputeDueTickCount(long nowMs, ref long nextTickMs, int tickIntervalMs, int maxCatchUpTicks)

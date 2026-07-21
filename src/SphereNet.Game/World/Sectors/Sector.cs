@@ -40,6 +40,13 @@ public sealed class Sector : IScriptObj
     private static readonly byte[] TrammelPhaseBrightness = [0, 0, 1, 1, 2, 1, 1, 0];
     private static readonly byte[] FeluccaPhaseBrightness = [0, 1, 3, 4, 6, 4, 3, 1];
 
+    // Reusable per-thread snapshot buffers for the tick loops (see OnTick). Sector
+    // ticks run sequentially, so one buffer per thread is reused across sectors —
+    // allocation-free after warmup, and [ThreadStatic] keeps it safe if tests tick
+    // sectors on different threads.
+    [ThreadStatic] private static List<Character>? t_charTickScratch;
+    [ThreadStatic] private static List<Item>? t_itemTickScratch;
+
     private Dictionary<int, (int Remaining, long RegenTick)>? _resourcePools;
 
     public int SectorX => _x;
@@ -375,12 +382,25 @@ public sealed class Sector : IScriptObj
     /// <param name="currentTime">Current tick timestamp (currently unused, reserved for future use).</param>
     public void OnTick(long currentTime)
     {
-        for (int i = _characters.Count - 1; i >= 0; i--)
+        // Snapshot before ticking: a character's OnTick (poison/standing-field
+        // death, script) can remove MORE than one character from this sector's
+        // list mid-pass, so walking the live list by index would overrun it
+        // (ArgumentOutOfRangeException on the world tick). Tick a snapshot and
+        // re-check each entry — a callback-removed character is skipped, and a
+        // newly-added one isn't in the snapshot so it waits for the next tick.
+        if (_characters.Count > 0)
         {
-            var ch = _characters[i];
-            if (ch.IsDeleted) { _characters.RemoveAt(i); continue; }
-            if (!ch.IsSleeping)
-                ch.OnTick();
+            var scratch = t_charTickScratch ??= new List<Character>(16);
+            scratch.Clear();
+            scratch.AddRange(_characters);
+            for (int i = 0; i < scratch.Count; i++)
+            {
+                var ch = scratch[i];
+                if (ch.IsDeleted) { _characters.Remove(ch); continue; }
+                if (!ch.IsSleeping)
+                    ch.OnTick();
+            }
+            scratch.Clear(); // don't pin ticked references until the next tick
         }
 
         TickItems();
@@ -398,16 +418,27 @@ public sealed class Sector : IScriptObj
 
     private void TickItems()
     {
-        for (int i = _items.Count - 1; i >= 0; i--)
+        if (_items.Count == 0) return;
+
+        // Snapshot for the same reason as OnTick: an item's OnTick (@Timer script,
+        // corpse decay) can delete several items and add new ones mid-pass. Tick a
+        // snapshot; a callback-removed item is skipped, a newly-added one waits for
+        // the next tick, and an item whose OnTick returns false is retired only if
+        // it is still in the live list.
+        var scratch = t_itemTickScratch ??= new List<Item>(16);
+        scratch.Clear();
+        scratch.AddRange(_items);
+        for (int i = 0; i < scratch.Count; i++)
         {
-            var item = _items[i];
-            if (item.IsDeleted) { _items.RemoveAt(i); continue; }
+            var item = scratch[i];
+            if (item.IsDeleted) { _items.Remove(item); continue; }
             if (!item.IsSleeping)
             {
                 if (!item.OnTick())
-                    _items.RemoveAt(i);
+                    _items.Remove(item);
             }
         }
+        scratch.Clear();
     }
 
     // ==================== IScriptObj Implementation ====================

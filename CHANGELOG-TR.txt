@@ -3,6 +3,19 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - Sector tick, callback birden fazla nesne silince artik cokmuyor
+----------------------------------------
+
+FIX - Sector.OnTick ve TickItems canli karakter/item listesini index ile gezerken
+        her nesnenin OnTick'ini atesliyordu. Ayni sektorden birden fazla nesne
+        silen bir callback — bir olum kaskadi ya da birkac item silen bir item
+        @Timer script'i — listeyi dongo index'inin altina dusuruyor, sonraki
+        erisim dunya tick'inde ArgumentOutOfRangeException firlatiyordu. Her iki
+        dongu de artik bir snapshot uzerinde tick ediyor (thread-basi buffer
+        yeniden kullanildigi icin sicak yol allocation-free kaliyor): callback'in
+        kaldirdigi nesne atlaniyor, emekli olan nesne yalniz hala listedeyse
+        kaldiriliyor ve yeni eklenen nesne bir sonraki tick'e kaliyor.
+
 [2026-07-22] - Gump / tooltip boyut butceleri: compression bomb ve saran alanlar reddediliyor
 ----------------------------------------
 

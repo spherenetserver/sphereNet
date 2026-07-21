@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-22] - Sector tick no longer crashes when a callback removes several objects
+----------------------------------------
+
+FIX - Sector.OnTick and TickItems walked the live character/item list by index
+        while firing each object's OnTick. A callback that removed more than one
+        object from the same sector — a death cascade, or an item @Timer script
+        that deletes several items — shrank the list under the loop index, so the
+        next access threw ArgumentOutOfRangeException on the world tick. Both
+        loops now tick a snapshot (reusing a per-thread buffer so the hot path
+        stays allocation-free): a callback-removed object is skipped, an object
+        that retires is removed only if still present, and a newly-added object
+        waits for the next tick.
+
 [2026-07-22] - Gump / tooltip size budgets: reject compression bombs and wrapping fields
 ----------------------------------------
 

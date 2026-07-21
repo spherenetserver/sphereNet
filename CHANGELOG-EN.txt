@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-22] - Gump / tooltip size budgets: reject compression bombs and wrapping fields
+----------------------------------------
+
+FIX - Script gumps and object-property tooltips (OPL) now enforce size budgets
+        the raw 65535 wire guard cannot: a compressed 0xDD gump is tiny on the
+        wire but announces a decompressed size the client must allocate, and the
+        inner ushort length fields (per-text, text count, OPL args) wrap silently
+        below a 65535 total. The 0xDD/0xB0 gump builders cap layout bytes, text
+        count, per-text length and total decompressed size; the 0xD6 OPL builder
+        caps property count and per-property args length. Over-budget content is
+        rejected up front and dropped by the send path (with a logged reason)
+        instead of emitting a frame that would wrap a field or force an unbounded
+        client allocation.
+
 [2026-07-22] - A corrupt current save no longer aborts boot — fall back to a good backup
 ----------------------------------------
 

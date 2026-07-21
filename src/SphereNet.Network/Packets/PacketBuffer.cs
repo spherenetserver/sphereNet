@@ -245,9 +245,25 @@ public sealed class PacketBuffer
     public const int MaxWireLength = 65535;
 
     /// <summary>Set by <see cref="WriteLengthAt"/> when the finalized packet is
-    /// larger than <see cref="MaxWireLength"/>. Such a packet must be dropped by
-    /// the send path — its length field cannot represent the true size.</summary>
+    /// larger than <see cref="MaxWireLength"/>, or by <see cref="MarkOversize"/>
+    /// when a builder rejects over-budget content (e.g. a gump whose decompressed
+    /// size or a tooltip whose args would overrun). Such a packet must be dropped
+    /// by the send path.</summary>
     public bool IsOversize { get; private set; }
+
+    /// <summary>Human-readable reason a builder rejected this packet, surfaced by
+    /// the send path's drop log. Null for a plain wire-length overflow.</summary>
+    public string? OversizeReason { get; private set; }
+
+    /// <summary>Mark a packet as over-budget so the send path drops it instead of
+    /// emitting content that would wrap an inner length field or force a huge
+    /// client-side allocation. The wire-length check can't catch these — a
+    /// compression bomb is small on the wire — so builders flag them explicitly.</summary>
+    public void MarkOversize(string reason)
+    {
+        IsOversize = true;
+        OversizeReason = reason;
+    }
 
     /// <summary>
     /// Write packet length at a specific position (for variable-length packets).

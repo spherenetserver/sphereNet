@@ -690,6 +690,14 @@ public sealed class PacketOPLData : PacketWriter
 
     public override PacketBuffer Build()
     {
+        // Reject an over-budget tooltip: too many properties, or a single args
+        // string long enough to wrap its ushort byte-length field (chars*2).
+        if (_properties.Length > PacketBudget.MaxOplProperties)
+            return RejectOversize($"OPL property count {_properties.Length} exceeds cap {PacketBudget.MaxOplProperties}");
+        foreach (var (_, args) in _properties)
+            if (args != null && args.Length > PacketBudget.MaxOplArgsChars)
+                return RejectOversize($"OPL args length {args.Length} exceeds cap {PacketBudget.MaxOplArgsChars}");
+
         var buf = CreateVariable(64 + _properties.Length * 32);
         buf.WriteUInt16(1); // unknown
         buf.WriteUInt32(_serial);
@@ -1711,6 +1719,16 @@ public sealed class PacketGumpDialog : PacketWriter
     {
         // Compress layout string
         byte[] layoutBytes = Encoding.ASCII.GetBytes(_layout + "\0");
+
+        // Budget check BEFORE compressing: a highly compressible layout/text block
+        // is tiny on the wire (so the 65535 wire guard never trips) yet announces a
+        // huge decompressed size the client must allocate — a compression bomb.
+        long textBlockBytes = 0;
+        foreach (var t in _texts) textBlockBytes += 2 + (long)t.Length * 2;
+        string? reject = PacketBudget.CheckGump(layoutBytes.Length, _texts, textBlockBytes);
+        if (reject != null)
+            return RejectOversize(reject);
+
         byte[] layoutCompressed = ZlibCompress(layoutBytes);
 
         // Build text block: count(4) + for each text: len(2) + unicode_be
@@ -1805,6 +1823,15 @@ public sealed class PacketGumpDialogStandard : PacketWriter
     public override PacketBuffer Build()
     {
         byte[] layoutBytes = Encoding.ASCII.GetBytes(_layout);
+
+        // Same budget as the compressed form: the ushort layout/count/per-text
+        // fields here would silently wrap past their caps, desyncing the client.
+        long textBlockBytes = 0;
+        foreach (var t in _texts) textBlockBytes += 2 + (long)t.Length * 2;
+        string? reject = PacketBudget.CheckGump(layoutBytes.Length, _texts, textBlockBytes);
+        if (reject != null)
+            return RejectOversize(reject);
+
         var buf = CreateVariable(64 + layoutBytes.Length + _texts.Count * 8);
         buf.WriteUInt32(_serial);
         buf.WriteUInt32(_gumpId);

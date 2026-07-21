@@ -3,6 +3,20 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - Gump / tooltip boyut butceleri: compression bomb ve saran alanlar reddediliyor
+----------------------------------------
+
+FIX - Script gump'lari ve object-property tooltip'leri (OPL) artik ham 65535
+        wire guard'inin yakalayamadigi boyut butcelerini uyguluyor: sikistirilmis
+        0xDD gump wire'da kucucuk ama client'in allocate etmesi gereken bir
+        decompressed boyut bildiriyor, ve ic ushort uzunluk alanlari (satir basi,
+        satir sayisi, OPL args) 65535 toplamin altinda sessizce sariyor. 0xDD/0xB0
+        gump builder'lari layout byte, satir sayisi, satir basi uzunluk ve toplam
+        decompressed boyutu; 0xD6 OPL builder'i property sayisi ve property basi
+        args uzunlugunu cap'liyor. Butce asan icerik bastan reddedilip gonderim
+        yolunda (loglanan bir sebeple) dusuruluyor; alan saran ya da client'a
+        sinirsiz allocation yaptiran bir frame gonderilmiyor.
+
 [2026-07-22] - Bozuk current save artik boot'u abort etmiyor — saglam yedege fallback
 ----------------------------------------
 

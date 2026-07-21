@@ -477,9 +477,14 @@ public sealed class NetState : IDisposable
     {
         if (!packet.IsOversize) return false;
         byte opcode = packet.Length > 0 ? packet.Data[0] : (byte)0;
-        _logger.LogError(
-            "Dropping oversize packet 0x{Op:X2} ({Len} bytes > {Max}) for #{Id} ({EP}); not sent",
-            opcode, packet.Length, PacketBuffer.MaxWireLength, Id, RemoteEndPoint);
+        if (packet.OversizeReason != null)
+            _logger.LogError(
+                "Dropping over-budget packet 0x{Op:X2} for #{Id} ({EP}); not sent: {Reason}",
+                opcode, Id, RemoteEndPoint, packet.OversizeReason);
+        else
+            _logger.LogError(
+                "Dropping oversize packet 0x{Op:X2} ({Len} bytes > {Max}) for #{Id} ({EP}); not sent",
+                opcode, packet.Length, PacketBuffer.MaxWireLength, Id, RemoteEndPoint);
         packet.ReturnToPool();
         return true;
     }

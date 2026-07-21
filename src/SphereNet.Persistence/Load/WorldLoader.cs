@@ -155,8 +155,108 @@ public sealed class WorldLoader
         return (loaded.items, loaded.chars, replaced);
     }
 
-    /// <summary>Load world data from save files.</summary>
+    /// <summary>The resolved file set for one save generation (level 0 = current,
+    /// level N = the aligned <c>.bakN</c> rotation of every logical file).</summary>
+    private readonly record struct GenerationPaths(
+        List<string> ItemPaths, List<string> CharPaths, List<string> StaticPaths,
+        List<string> MultiPaths, List<string> DataPaths)
+    {
+        public bool IsEmpty => ItemPaths.Count == 0 && CharPaths.Count == 0 &&
+            StaticPaths.Count == 0 && MultiPaths.Count == 0 && DataPaths.Count == 0;
+
+        public IEnumerable<string> AllFiles => ItemPaths
+            .Concat(CharPaths).Concat(StaticPaths).Concat(MultiPaths).Concat(DataPaths)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Load world data, tolerating a corrupt/truncated current save. Each save
+    /// rotates every logical file's <c>.bakN</c> together, so <c>.bak1</c> is the
+    /// previous full generation, <c>.bak2</c> the one before, etc. Try the current
+    /// generation first; if any of its files fail an integrity read, fall back to
+    /// the newest intact backup generation. A corrupt save therefore no longer
+    /// aborts boot with a raw exception — and because a whole generation is loaded
+    /// or skipped as a unit, a fallback never mixes new and old files. If every
+    /// generation is unreadable, throw a clear, actionable error instead of
+    /// silently starting a blank world.
+    /// </summary>
     public (int Items, int Chars) Load(GameWorld world, string savePath, AccountManager? accounts = null)
+    {
+        if (!Directory.Exists(savePath))
+        {
+            _logger.LogInformation("No save directory at {Path} — starting a fresh world", savePath);
+            return (0, 0);
+        }
+
+        // .bakN levels are bounded by BackupLevels (max 32); probe a bit past the
+        // configured max in case backups pre-date a lowered setting.
+        const int MaxBackupProbe = 32;
+        for (int level = 0; level <= MaxBackupProbe; level++)
+        {
+            var gen = ResolveGeneration(savePath, level);
+            if (gen.IsEmpty)
+            {
+                if (level == 0)
+                {
+                    _logger.LogInformation("No world save found in {Path} — starting a fresh world", savePath);
+                    return (0, 0);
+                }
+                break; // no older generation to fall back to
+            }
+
+            var (ok, badFile) = ValidateGeneration(gen);
+            if (!ok)
+            {
+                _logger.LogError(
+                    "Save generation {Which} is unreadable (bad file: {File}); falling back to the previous generation",
+                    level == 0 ? "current" : $".bak{level}", badFile);
+                continue;
+            }
+
+            if (level > 0)
+                _logger.LogWarning(
+                    "Loading from BACKUP generation .bak{Level} — the current save (and any newer backups) were unreadable. " +
+                    "Investigate the corrupt files; the next save will overwrite this backup.", level);
+
+            return Materialize(world, gen, accounts);
+        }
+
+        throw new InvalidDataException(
+            $"All world save generations under '{savePath}' are unreadable. Restore a known-good backup " +
+            "(e.g. copy a matching set of sphere*.bakN files over the current ones) or move the corrupt " +
+            "files aside to start a fresh world.");
+    }
+
+    private GenerationPaths ResolveGeneration(string savePath, int bakLevel) => new(
+        ResolveSaveFiles(savePath, "sphereworld", bakLevel),
+        ResolveSaveFiles(savePath, "spherechars", bakLevel),
+        ResolveSaveFiles(savePath, "spherestatics", bakLevel),
+        ResolveSaveFiles(savePath, "spheremultis", bakLevel),
+        ResolveSaveFiles(savePath, "spheredata", bakLevel));
+
+    /// <summary>Read every file of a generation end-to-end, without materializing
+    /// anything, so corruption (bad gzip, truncation, misaligned binary records)
+    /// is detected before a single object is created. Returns the first bad file.</summary>
+    private (bool Ok, string? BadFile) ValidateGeneration(GenerationPaths gen)
+    {
+        foreach (string path in gen.AllFiles)
+        {
+            try
+            {
+                using var reader = SaveIO.OpenReader(path);
+                while (reader.NextRecord(out _))
+                    while (reader.NextProperty(out _, out _)) { }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Save file failed integrity validation: {Path}", Path.GetFileName(path));
+                return (false, Path.GetFileName(path));
+            }
+        }
+        return (true, null);
+    }
+
+    private (int Items, int Chars) Materialize(GameWorld world, GenerationPaths gen, AccountManager? accounts)
     {
         int itemCount = 0, charCount = 0;
 
@@ -172,10 +272,10 @@ public sealed class WorldLoader
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            var itemPaths = ResolveSaveFiles(savePath, "sphereworld");
-            var charPaths = ResolveSaveFiles(savePath, "spherechars");
-            var staticPaths = ResolveSaveFiles(savePath, "spherestatics");
-            var multiPaths = ResolveSaveFiles(savePath, "spheremultis");
+            var itemPaths = gen.ItemPaths;
+            var charPaths = gen.CharPaths;
+            var staticPaths = gen.StaticPaths;
+            var multiPaths = gen.MultiPaths;
 
             var itemSectionPaths = itemPaths
                 .Concat(charPaths)
@@ -223,7 +323,7 @@ public sealed class WorldLoader
             }
 
             // spheredata.scp — globals, lists, world scripts
-            var dataPaths = ResolveSaveFiles(savePath, "spheredata");
+            var dataPaths = gen.DataPaths;
             foreach (string path in dataPaths)
                 LoadDataFile(world, path);
         }
@@ -511,23 +611,30 @@ public sealed class WorldLoader
     }
 
     /// <summary>Resolve actual on-disk paths for a logical save name
-    /// (e.g. "sphereworld"). Priority: manifest → format probes. Returns an
-    /// empty list if nothing exists.</summary>
-    private List<string> ResolveSaveFiles(string savePath, string baseName)
+    /// (e.g. "sphereworld") at a backup level (0 = current, N = the aligned
+    /// <c>.bakN</c> rotation). Priority: manifest → format probes. Returns an
+    /// empty list if nothing exists at that level.</summary>
+    private List<string> ResolveSaveFiles(string savePath, string baseName, int bakLevel = 0)
     {
-        string manifestPath = ShardManifest.PathFor(savePath, baseName);
+        string suffix = bakLevel == 0 ? "" : $".bak{bakLevel}";
+
+        string manifestPath = ShardManifest.PathFor(savePath, baseName) + suffix;
         var manifest = ShardManifest.TryLoad(manifestPath);
         if (manifest != null && manifest.Files.Count > 0)
         {
             var list = new List<string>(manifest.Files.Count);
             foreach (var name in manifest.Files)
             {
-                string full = Path.Combine(savePath, name);
+                // Shard names in the manifest are the logical (current) names; at a
+                // backup level the on-disk file carries the same .bakN suffix as
+                // the manifest, since every file rotates together.
+                string full = Path.Combine(savePath, name + suffix);
                 if (File.Exists(full)) list.Add(full);
-                else _logger.LogWarning("Manifest references missing shard {File}", name);
+                else if (bakLevel == 0) _logger.LogWarning("Manifest references missing shard {File}", name);
             }
-            _logger.LogInformation("Loaded manifest {Base}: format={Format}, shards={Count}",
-                baseName, manifest.Format, list.Count);
+            if (bakLevel == 0)
+                _logger.LogInformation("Loaded manifest {Base}: format={Format}, shards={Count}",
+                    baseName, manifest.Format, list.Count);
             return list;
         }
 
@@ -535,7 +642,7 @@ public sealed class WorldLoader
         // (most-specific format first so a gzip survives alongside a stale .scp).
         foreach (string ext in new[] { ".sbin.gz", ".sbin", ".scp.gz", ".scp" })
         {
-            string candidate = Path.Combine(savePath, baseName + ext);
+            string candidate = Path.Combine(savePath, baseName + ext + suffix);
             if (File.Exists(candidate))
                 return new List<string> { candidate };
         }

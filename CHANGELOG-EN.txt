@@ -4,6 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-22] - A corrupt current save no longer aborts boot — fall back to a good backup
+----------------------------------------
+
+FIX - The loader previously read the current save's files directly, so a
+        corrupt or truncated gzip/binary file threw out of Load and the server
+        refused to boot even with intact .bakN backups sitting next to it. Load
+        now tries the current generation, and if any of its files fail an
+        integrity read it falls back to the newest intact backup generation
+        (.bak1, then .bak2, ...). Every logical file's .bakN rotates together on
+        each save, so a whole generation is loaded or skipped as a unit — a
+        fallback never mixes new and old files. If every generation is
+        unreadable, boot stops with a clear, actionable error instead of silently
+        starting a blank world.
+
+FIX - Generation files are validated (read end-to-end) before any object is
+        materialized, so a corrupt generation is rejected without partially
+        loading it. SaveIO.FormatFromPath ignores a trailing .bakN/.tmp suffix so
+        a binary/gzip backup is opened with its real format instead of being
+        misread as text.
+
+NOTE - This uses the existing flat save layout and its aligned .bakN backups as
+        generations; the classic on-disk file names are unchanged. Write-side
+        cross-file commit ordering (a torn write of individually-valid files) is
+        a separate follow-up.
+
 [2026-07-22] - Binary save records are now atomic; a failing record aborts the save
 ----------------------------------------
 

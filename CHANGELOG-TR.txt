@@ -3,6 +3,31 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - Bozuk current save artik boot'u abort etmiyor — saglam yedege fallback
+----------------------------------------
+
+FIX - Loader onceden current save'in dosyalarini dogrudan okuyordu; bozuk ya da
+        kesik bir gzip/binary dosya Load'dan disari throw edip, yaninda saglam
+        .bakN yedekleri dururken bile sunucu boot etmiyordu. Load artik once
+        current generation'i deniyor; dosyalarindan biri butunluk okumasinda
+        basarisiz olursa en yeni saglam yedek generation'a (.bak1, sonra .bak2,
+        ...) fallback ediyor. Her mantiksal dosyanin .bakN'i her save'de birlikte
+        rotate ediliyor, boylece bir generation birim olarak yukleniyor ya da
+        atlaniyor — fallback asla yeni ve eski dosyalari karistirmiyor. Butun
+        generation'lar okunamazsa boot, sessizce bos dunya baslatmak yerine acik
+        ve uygulanabilir bir hatayla duruyor.
+
+FIX - Generation dosyalari, hicbir nesne materialize edilmeden once dogrulaniyor
+        (ucdan uca okunuyor); boylece bozuk bir generation kismen yuklenmeden
+        reddediliyor. SaveIO.FormatFromPath sonundaki .bakN/.tmp ekini yok
+        sayiyor, boylece binary/gzip bir yedek text yerine gercek formatiyla
+        aciliyor.
+
+NOTE - Bu, mevcut duz save layout'unu ve hizali .bakN yedeklerini generation
+        olarak kullaniyor; klasik disk dosya adlari degismedi. Yazim tarafi
+        dosyalar-arasi commit sirasi (tek tek gecerli dosyalarin torn yazimi)
+        ayri bir follow-up.
+
 [2026-07-22] - Binary save kayitlari artik atomik; hatali kayit save'i iptal ediyor
 ----------------------------------------
 

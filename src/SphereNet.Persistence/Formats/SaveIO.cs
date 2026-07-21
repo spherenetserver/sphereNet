@@ -25,11 +25,31 @@ public static class SaveIO
     /// </summary>
     public static SaveFormat FormatFromPath(string path)
     {
-        string lower = path.ToLowerInvariant();
+        // Ignore a trailing rotation/temp suffix so a backup or in-flight temp
+        // ("sphereworld.0.sbin.bak3", "spherechars.scp.gz.tmp") still resolves to
+        // its real save format instead of defaulting to text (which would read a
+        // binary/gzip backup as garbage during boot fallback).
+        string lower = StripRotationSuffix(path.ToLowerInvariant());
         if (lower.EndsWith(".scp.gz")) return SaveFormat.TextGz;
         if (lower.EndsWith(".sbin.gz")) return SaveFormat.BinaryGz;
         if (lower.EndsWith(".sbin")) return SaveFormat.Binary;
         return SaveFormat.Text; // .scp or unknown → treat as text
+    }
+
+    /// <summary>Strip a trailing <c>.tmp</c> or <c>.bak</c>/<c>.bakN</c> suffix
+    /// (rotation/temp markers) so the underlying save extension is visible.</summary>
+    internal static string StripRotationSuffix(string lower)
+    {
+        if (lower.EndsWith(".tmp")) return lower[..^4];
+        int bak = lower.LastIndexOf(".bak", StringComparison.Ordinal);
+        if (bak >= 0)
+        {
+            bool allDigits = true;
+            for (int i = bak + 4; i < lower.Length; i++)
+                if (!char.IsDigit(lower[i])) { allDigits = false; break; }
+            if (allDigits) return lower[..bak];
+        }
+        return lower;
     }
 
     /// <summary>Open a writer at <paramref name="path"/> using <paramref name="fmt"/>.

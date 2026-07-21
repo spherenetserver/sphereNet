@@ -471,7 +471,6 @@ public sealed class WorldSaver
         string ext, long sizeLimit, bool isItems, List<string> outputFiles)
     {
         int count = 0;
-        int errors = 0;
         int fileIdx = 0;
         ISaveWriter? writer = null;
         FileStream? raw = null;
@@ -489,34 +488,32 @@ public sealed class WorldSaver
 
         OpenNext();
 
-        foreach (var record in records)
+        try
         {
-            try
+            foreach (var record in records)
             {
+                // A record failure fails the whole rolling write (see WriteOneShard):
+                // it propagates to WritePrepared, which deletes the .tmp files and
+                // returns false without committing.
                 WriteRecord(writer!, record);
                 count++;
-            }
-            catch (Exception ex)
-            {
-                errors++;
-                if (errors <= 5)
-                    _logger.LogWarning(ex, "Error saving entity during rolling write");
-            }
 
-            if (sizeLimit > 0 && writer != null && writer.WrittenBytes >= sizeLimit)
-            {
-                writer.Dispose();
-                writer = null; raw = null;
-                fileIdx++;
-                OpenNext();
+                if (sizeLimit > 0 && writer != null && writer.WrittenBytes >= sizeLimit)
+                {
+                    writer.Dispose();
+                    writer = null; raw = null;
+                    fileIdx++;
+                    OpenNext();
+                }
             }
         }
+        finally
+        {
+            // Release the file handle on the current segment even on failure, so
+            // WritePrepared's .tmp cleanup can delete it.
+            writer?.Dispose();
+        }
 
-        writer?.Dispose();
-
-        if (errors > 0)
-            _logger.LogWarning("Rolling save {Kind}: {Errors} entities failed",
-                isItems ? "items" : "chars", errors);
         return count;
     }
 
@@ -530,29 +527,22 @@ public sealed class WorldSaver
             writer.WriteHeaderComment($"Shard {shardIndex}/{shardCount}");
 
         int count = 0;
-        int errors = 0;
 
         foreach (var record in records)
         {
             if (shardCount > 1 && ShardManifest.ShardIndexForUid(record.Uid, shardCount) != shardIndex)
                 continue;
-            try
-            {
-                WriteRecord(writer, record);
-                count++;
-            }
-            catch (Exception ex)
-            {
-                errors++;
-                if (errors <= 5)
-                    _logger.LogWarning(ex, "Error saving {Kind} 0x{Serial:X8}",
-                        isItems ? "item" : "char", record.Uid);
-            }
+            // Do NOT swallow per-record errors. A record that fails to encode/write
+            // (oversized field, or a stream/IO error) must fail the whole shard so
+            // the caller aborts the commit and keeps the previous good save —
+            // silently dropping the record loses that entity from the world, and
+            // continuing after a stream error risks a misaligned shard. The
+            // exception propagates to WritePrepared, which cleans up the .tmp files
+            // and returns false without committing.
+            WriteRecord(writer, record);
+            count++;
         }
 
-        if (errors > 0)
-            _logger.LogWarning("Save{Kind} shard {Idx}: {Errors} failed",
-                isItems ? "Items" : "Chars", shardIndex, errors);
         return count;
     }
 

@@ -3,6 +3,28 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - Binary save kayitlari artik atomik; hatali kayit save'i iptal ediyor
+----------------------------------------
+
+FIX - BinarySaveWriter.EndRecord, section header ve property sayisini her
+        property'nin uzunlugunu dogrulamadan ONCE yaziyordu; boylece oversize bir
+        alan kayit ortasinda throw edip, vaat edilen sayisi sonraki baytlarla
+        eslesmeyen kesik bir kayit birakiyordu — sonraki her kayit kayik hizalanip
+        tum shard okunamaz (ve sonraki acilista boot edilemez) hale geliyordu.
+        EndRecord artik tum kaydi bastan encode edip uzunluk kontrolu yapiyor ve
+        hep-ya-hic yaziyor; hatali kayit stream'i bozmadan basarisiz oluyor. Alan
+        limitleri karakter degil UTF-8 byte cinsinden olculuyor.
+
+FIX - WorldSaver artik per-record yazim hatalarini yutup shard'i yine de commit
+        etmiyor (bu nesneyi sessizce dusuruyordu). Encode edilemeyen bir kayit ya
+        da stream/IO hatasi artik tum save'i basarisiz yapiyor: exception
+        yayiliyor, .tmp dosyalari siliniyor, onceki commit edilmis save ve
+        yedekleri dokunulmadan kaliyor ve Save false donuyor.
+
+FIX - Senkron save yolu artik bu donus degerini dikkate aliyor — dunya yazimi
+        commit edilmediyse "save complete" broadcast'i yerine save hatasi
+        raporluyor. Background save yolu basari broadcast'ini zaten gate ediyordu.
+
 [2026-07-22] - Multicore tick dunya-mutasyonlu sector guncellemelerini artik paralel calistirmiyor
 ----------------------------------------
 

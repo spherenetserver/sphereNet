@@ -4,6 +4,28 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-22] - Binary save records are now atomic; a failing record aborts the save
+----------------------------------------
+
+FIX - BinarySaveWriter.EndRecord wrote the section header and property count
+        before validating each property's length, so an oversized field threw
+        mid-record and left a truncated record whose promised count no longer
+        matched the following bytes — every later record was then misaligned and
+        the whole shard unreadable (and unbootable on next start). EndRecord now
+        encodes and length-checks the entire record up front and writes it
+        all-or-nothing, so a bad record fails without corrupting the stream. Field
+        limits are measured in UTF-8 bytes, not characters.
+
+FIX - WorldSaver no longer swallows per-record write errors and commits the shard
+        anyway (which silently dropped the entity). A record that fails to encode
+        or a stream/IO error now fails the whole save: the exception propagates,
+        the .tmp files are deleted, the previous committed save and its backups
+        are left untouched, and Save returns false.
+
+FIX - The synchronous save path now honours that return value — it reports a save
+        failure instead of broadcasting "save complete" when the world write did
+        not commit. The background save path already gated its success broadcast.
+
 [2026-07-22] - Multicore tick no longer runs world-mutating sector updates in parallel
 ----------------------------------------
 

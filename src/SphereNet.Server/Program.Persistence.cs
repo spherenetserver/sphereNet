@@ -298,10 +298,11 @@ public static partial class Program
             // not leave its sequential-writes flag sticky on this path.
             _saver.SequentialShardWrites = false;
             double worldSecs;
+            bool worldOk;
             try
             {
                 long t0 = sw.ElapsedMilliseconds;
-                _saver.Save(_world, sp);
+                worldOk = _saver.Save(_world, sp);
                 worldSecs = (sw.ElapsedMilliseconds - t0) / 1000.0;
             }
             finally
@@ -317,7 +318,13 @@ public static partial class Program
                 "Save phases: prep={Prep:F2}s world={World:F2}s tail={Tail:F2}s accounts={Acct:F2}s",
                 prepSecs, worldSecs, preAccounts - prepSecs - worldSecs,
                 sw.Elapsed.TotalSeconds - preAccounts);
-            FinishSaveSuccess(sw);
+            // Broadcast success only when the world write actually committed. A
+            // failed write (record encode/IO error) left the previous save intact;
+            // report the failure instead of a false "save complete".
+            if (worldOk)
+                FinishSaveSuccess(sw);
+            else
+                FinishSaveFailure(sw, "world save failed (record write/commit error); previous save retained — see log");
         }
         catch (Exception ex)
         {

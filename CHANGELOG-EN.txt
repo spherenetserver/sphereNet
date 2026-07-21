@@ -4,6 +4,27 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-22] - Multicore tick no longer runs world-mutating sector updates in parallel
+----------------------------------------
+
+FIX - GameWorld.OnTickParallel ran Sector.OnTick across sectors with
+        Parallel.ForEach once 50+ sectors were active. Sector.OnTick is not a
+        pure per-sector computation: spawn components create/place/delete world
+        objects, poison and standing-field deaths route into the death engine
+        (corpse creation, equipment moves, broadcasts), and item @Timer /
+        corpse-decay fire script triggers. Those mutate shared, non-thread-safe
+        state — the sector character/item lists and the world Dictionary/HashSet
+        indexes — so concurrent sectors raced them and could wedge a worker in a
+        corrupted-bucket probe, hanging the main loop with no watchdog. The sector
+        phase now runs sequentially. The safe parallelism (the NPC read-only
+        pathfinding prestage, BuildDecision) is unchanged, so multicore mode still
+        parallelizes the heavy A* work.
+
+FIX - As a consequence, no script trigger or expression evaluation runs on a
+        worker thread anymore, so the shared expression evaluator / trigger runner
+        is single-use again (closes the parallel-reuse hazard noted with the
+        expression hardening work).
+
 [2026-07-21] - Outbound packet-length overflow + poisoned-book client freeze fixed
 ----------------------------------------
 

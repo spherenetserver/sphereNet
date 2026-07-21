@@ -1460,18 +1460,25 @@ public sealed class GameWorld
     }
 
     /// <summary>
-    /// Multicore-friendly world tick: sector updates can run in parallel because each
-    /// sector owns its own item/character lists.
+    /// Multicore world tick. The sector-update phase runs SEQUENTIALLY (see below);
+    /// the parallelism in multicore mode is the NPC read-only pathfinding prestage
+    /// (<c>NpcAI.BuildDecision</c>) driven by the caller, not this method.
     /// <para>
-    /// <b>THREAD-SAFETY CONTRACT:</b> During parallel sector tick, <c>Character.OnTick()</c>
-    /// and <c>Item.OnTick()</c> MUST NOT call <c>MoveCharacter</c>, <c>PlaceCharacter</c>,
-    /// or any method that modifies sector lists. These mutations must be deferred to
-    /// sequential apply phases (e.g., <c>NpcAI.ApplyDecision</c>). Violating this contract
-    /// causes race conditions on <c>Sector._characters</c> / <c>Sector._items</c> lists.
+    /// <b>Why sequential:</b> <c>Sector.OnTick</c> is not a pure per-sector compute.
+    /// Spawn components create/place/delete world objects; poison and standing-field
+    /// deaths route into the death engine (corpse creation, equipment moves,
+    /// broadcasts); item <c>@Timer</c> and corpse-decay fire script triggers. Those
+    /// mutate shared, non-thread-safe state — <c>Sector._characters</c>/<c>_items</c>
+    /// lists and the world's <c>Dictionary</c>/<c>HashSet</c> indexes — so running
+    /// sectors concurrently raced those structures and could wedge a worker in a
+    /// corrupted-bucket probe, hanging the main loop with no watchdog. Serializing
+    /// this phase removes the hazard; it also means no script trigger / expression
+    /// evaluation runs on a worker thread, so the shared evaluator stays single-use.
     /// </para>
     /// <para>
-    /// Safe operations during parallel tick: regeneration, stat updates, timer checks,
-    /// dirty flag marking, spawn component ticks (which queue spawns for later).
+    /// The workerCount / cancellationToken parameters are retained for the caller's
+    /// contract and a future compute/apply decomposition that could re-parallelize a
+    /// mutation-free subset; they are not used to parallelize sector ticks today.
     /// </para>
     /// </summary>
     public void OnTickParallel(int workerCount = 0, CancellationToken cancellationToken = default)
@@ -1488,27 +1495,10 @@ public sealed class GameWorld
         RefreshActiveSectors();
         var sectors = _tickSectors;
 
-        // Below ~50 sectors the thread-pool overhead (context switches,
-        // work-stealing, lambda capture) exceeds the actual work.
-        // Fall back to sequential to avoid 50-60ms spikes on light loads.
-        if (sectors.Count < 50)
-        {
-            foreach (var sector in sectors)
-                sector.OnTick(currentTime);
-        }
-        else
-        {
-            var po = new ParallelOptions
-            {
-                // Mirror the tick loop's auto default: leave one core to the
-                // main thread instead of saturating the box (E7).
-                MaxDegreeOfParallelism = workerCount > 0
-                    ? workerCount
-                    : Math.Max(1, Environment.ProcessorCount - 1),
-                CancellationToken = cancellationToken
-            };
-            Parallel.ForEach(sectors, po, sector => sector.OnTick(currentTime));
-        }
+        // Sector ticks mutate shared world state (spawns, deaths, @Timer scripts)
+        // and are therefore serialized — see the method contract above.
+        foreach (var sector in sectors)
+            sector.OnTick(currentTime);
 
         // Notoriety decay for online players — must match single-threaded OnTick behavior.
         // Without this, murder counts (_kills) never decay in multicore mode.

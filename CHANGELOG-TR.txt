@@ -3,6 +3,27 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - Multicore tick dunya-mutasyonlu sector guncellemelerini artik paralel calistirmiyor
+----------------------------------------
+
+FIX - GameWorld.OnTickParallel, 50+ sector aktif olunca Sector.OnTick'i
+        Parallel.ForEach ile sector'lar arasi calistiriyordu. Sector.OnTick saf
+        bir sector-ici hesap degil: spawn bilesenleri dunya nesnesi
+        create/place/delete ediyor, zehir ve standing-field olumleri death
+        engine'e gidiyor (corpse olusturma, ekipman tasima, broadcast), item
+        @Timer / corpse-decay script trigger atesliyor. Bunlar paylasilan,
+        thread-safe olmayan state'i — sector karakter/item listeleri ve dunya
+        Dictionary/HashSet indeksleri — degistiriyor; esamanli sector'lar bunlari
+        race ediyor ve bir worker'i bozuk-bucket probe'unda kilitleyip ana
+        dongoyu watchdog olmadan dondurabiliyordu. Sector fazi artik seri
+        calisiyor. Guvenli paralellik (NPC salt-okunur pathfinding prestage'i,
+        BuildDecision) degismedi; multicore mod agir A* isini hala paralellestiriyor.
+
+FIX - Bunun sonucunda artik worker thread'de hicbir script trigger veya
+        expression degerlemesi kosmuyor; paylasilan expression evaluator / trigger
+        runner tekrar tek-kullanimlik (expression sertlestirmesinde belirtilen
+        paralel-paylasim tehlikesi kapaniyor).
+
 [2026-07-21] - Giden paket uzunluk tasmasi + zehirli kitap client donmasi duzeltildi
 ----------------------------------------
 

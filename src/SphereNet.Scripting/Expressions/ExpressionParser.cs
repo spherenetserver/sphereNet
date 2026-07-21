@@ -11,6 +11,19 @@ public sealed class ExpressionParser
 {
     private int _resolveDepth;
     private const int MaxResolveDepth = 128; // Source-X _iGetVal_Reentrant cap
+
+    // Arithmetic-recursion guard. The right-fold parser (operators + parens) and
+    // the unary parsers recurse on the native stack with no cap in Source-X, so a
+    // pathological expression — thousands of parens, "1+1+1+...", "----1" — would
+    // StackOverflow, which is uncatchable and process-fatal. Bound the logical
+    // nesting depth and fail the evaluation instead. ~512 levels is far beyond any
+    // real script yet an order of magnitude below the native stack limit.
+    private int _evalDepth;
+    private const int MaxEvalDepth = 512;
+    // Absurd single-expression length is refused up front (defense in depth on top
+    // of the depth guard). No legitimate expression approaches this.
+    private const int MaxExpressionLength = 65536;
+
     private const int MaxRegexPatternLength = 512;
     private const int MaxRegexInputLength = 4096;
     private static readonly TimeSpan RegexMatchTimeout = TimeSpan.FromMilliseconds(25);
@@ -125,6 +138,11 @@ public sealed class ExpressionParser
     {
         expr = expr.Trim();
         if (expr.IsEmpty) return 0;
+        if (expr.Length > MaxExpressionLength)
+        {
+            DiagnosticLogger?.Invoke($"[script] expression too long ({expr.Length} chars); evaluation aborted");
+            return 0;
+        }
 
         int pos = 0;
         string text = expr.ToString();
@@ -140,6 +158,12 @@ public sealed class ExpressionParser
     {
         expr = expr.Trim();
         if (expr.IsEmpty) { value = 0; return false; }
+        if (expr.Length > MaxExpressionLength)
+        {
+            DiagnosticLogger?.Invoke($"[script] expression too long ({expr.Length} chars); evaluation aborted");
+            value = 0;
+            return false;
+        }
 
         bool prev = _numericOk;
         _numericOk = true;
@@ -328,6 +352,11 @@ public sealed class ExpressionParser
     {
         expr = expr.Trim();
         if (expr.IsEmpty) return 0;
+        if (expr.Length > MaxExpressionLength)
+        {
+            DiagnosticLogger?.Invoke($"[script] expression too long ({expr.Length} chars); evaluation aborted");
+            return 0;
+        }
 
         int pos = 0;
         string text = expr.ToString();
@@ -346,13 +375,23 @@ public sealed class ExpressionParser
 
     private long ParseExpression(string text, ref int pos)
     {
-        // Source-X GetVal: parse ONE operand (GetSingle), then apply at most
-        // one operator whose right side re-parses the ENTIRE remainder
-        // (GetValMath). Sphere expressions therefore have NO operator
-        // precedence and fold right-to-left: "2*3+1" is 2*(3+1)=8, and
-        // "a/100*50" is a/(100*50) — old script packs rely on this.
-        long val = ParseUnary(text, ref pos);
-        return ApplyMathRightFold(val, text, ref pos);
+        if (++_evalDepth > MaxEvalDepth)
+        {
+            --_evalDepth;
+            DiagnosticLogger?.Invoke("[script] expression nesting too deep; evaluation aborted");
+            return 0;
+        }
+        try
+        {
+            // Source-X GetVal: parse ONE operand (GetSingle), then apply at most
+            // one operator whose right side re-parses the ENTIRE remainder
+            // (GetValMath). Sphere expressions therefore have NO operator
+            // precedence and fold right-to-left: "2*3+1" is 2*(3+1)=8, and
+            // "a/100*50" is a/(100*50) — old script packs rely on this.
+            long val = ParseUnary(text, ref pos);
+            return ApplyMathRightFold(val, text, ref pos);
+        }
+        finally { --_evalDepth; }
     }
 
     /// <summary>Source-X CExpression::GetValMath — apply one binary operator
@@ -473,27 +512,37 @@ public sealed class ExpressionParser
 
     private long ParseUnary(string text, ref int pos)
     {
-        SkipWhitespace(text, ref pos);
-        if (pos >= text.Length) return 0;
-
-        char c = text[pos];
-        if (c == '-') { pos++; return -ParseUnary(text, ref pos); }
-        if (c == '!')
+        if (++_evalDepth > MaxEvalDepth)
         {
-            pos++;
-            // Source-X quirk: a "!=x" prefix just skips the '=' and evaluates
-            // the operand as-is.
-            if (pos < text.Length && text[pos] == '=')
+            --_evalDepth;
+            DiagnosticLogger?.Invoke("[script] expression nesting too deep; evaluation aborted");
+            return 0;
+        }
+        try
+        {
+            SkipWhitespace(text, ref pos);
+            if (pos >= text.Length) return 0;
+
+            char c = text[pos];
+            if (c == '-') { pos++; return -ParseUnary(text, ref pos); }
+            if (c == '!')
             {
                 pos++;
-                return ParseUnary(text, ref pos);
+                // Source-X quirk: a "!=x" prefix just skips the '=' and evaluates
+                // the operand as-is.
+                if (pos < text.Length && text[pos] == '=')
+                {
+                    pos++;
+                    return ParseUnary(text, ref pos);
+                }
+                return ParseUnary(text, ref pos) == 0 ? 1 : 0;
             }
-            return ParseUnary(text, ref pos) == 0 ? 1 : 0;
-        }
-        if (c == '~') { pos++; return ~ParseUnary(text, ref pos); }
-        if (c == '+') { pos++; return ParseUnary(text, ref pos); }
+            if (c == '~') { pos++; return ~ParseUnary(text, ref pos); }
+            if (c == '+') { pos++; return ParseUnary(text, ref pos); }
 
-        return ParsePrimary(text, ref pos);
+            return ParsePrimary(text, ref pos);
+        }
+        finally { --_evalDepth; }
     }
 
     private long ParsePrimary(string text, ref int pos)
@@ -639,7 +688,7 @@ public sealed class ExpressionParser
         {
             long lo = Math.Min(vals[0], vals[1]);
             long hi = Math.Max(vals[0], vals[1]);
-            return Random.Shared.NextInt64(lo, hi + 1);
+            return NextInclusiveRandom(lo, hi);
         }
 
         // Weighted (value, weight) pairs — Source-X GetRangeNumber requires an
@@ -666,6 +715,26 @@ public sealed class ExpressionParser
             if (roll < 0) return vals[i];
         }
         return vals[0];
+    }
+
+    /// <summary>Uniform random in the INCLUSIVE range [lo, hi] without the
+    /// <c>hi + 1</c> that overflows (and throws) when hi == long.MaxValue — the
+    /// bug that let <c>{1 0x7fffffffffffffff}</c> crash the tick. The short-R /
+    /// RAND intrinsics already guard MaxValue; this covers the {lo hi} path.</summary>
+    private static long NextInclusiveRandom(long lo, long hi)
+    {
+        if (lo >= hi) return lo; // lo == hi, and defensively any inverted range
+        if (hi == long.MaxValue)
+        {
+            // hi + 1 would overflow. NextInt64(min,max) is exclusive of max, so
+            // [lo, MaxValue) drops only the single endpoint MaxValue — acceptable
+            // for a pathological range, and it never throws. The whole-range case
+            // (lo == MinValue too) falls back to a non-negative draw.
+            return lo == long.MinValue
+                ? Random.Shared.NextInt64()
+                : Random.Shared.NextInt64(lo, long.MaxValue);
+        }
+        return Random.Shared.NextInt64(lo, hi + 1);
     }
 
     /// <summary>Split brace content on whitespace, respecting nested &lt;...&gt;
@@ -1050,7 +1119,11 @@ public sealed class ExpressionParser
             string inner = varExpr.StartsWith("CHR(", StringComparison.OrdinalIgnoreCase)
                 ? ExtractFuncArg(varExpr, 3) : ResolveAngleBrackets(varExpr[4..].Trim());
             long code = Evaluate(inner.AsSpan());
-            return code is > 0 and <= 0x10FFFF ? char.ConvertFromUtf32((int)code) : "";
+            // Reject the UTF-16 surrogate range (0xD800..0xDFFF) and out-of-plane
+            // values: char.ConvertFromUtf32 throws on those, which would escape
+            // to the tick. Rune.IsValid is exactly that predicate.
+            return code is > 0 and <= 0x10FFFF && System.Text.Rune.IsValid((int)code)
+                ? char.ConvertFromUtf32((int)code) : "";
         }
 
         // ASCPAD — convert string to hex ASCII codes, padded to fixed length
@@ -1060,6 +1133,15 @@ public sealed class ExpressionParser
             var parts = SplitFuncArgsResolved(varExpr, 6, 2);
             if (parts.Count == 2 && int.TryParse(parts[0], out int padCount))
             {
+                // Clamp the pad count: an attacker-influenced value (e.g.
+                // int.MaxValue) would build a multi-GB string → OutOfMemory.
+                const int MaxAscPad = 4096;
+                if (padCount < 0) padCount = 0;
+                else if (padCount > MaxAscPad)
+                {
+                    DiagnosticLogger?.Invoke($"[script] ASCPAD count {padCount} exceeds max {MaxAscPad}; clamped");
+                    padCount = MaxAscPad;
+                }
                 string str = parts[1].Trim('"');
                 var sb = new System.Text.StringBuilder();
                 for (int idx = 0; idx < padCount; idx++)
@@ -1853,7 +1935,17 @@ public sealed class ExpressionParser
         }
     }
 
-    private double ParseFloatExpression(string text, ref int pos) => ParseFloatAddSub(text, ref pos);
+    private double ParseFloatExpression(string text, ref int pos)
+    {
+        if (++_evalDepth > MaxEvalDepth)
+        {
+            --_evalDepth;
+            DiagnosticLogger?.Invoke("[script] expression nesting too deep; evaluation aborted");
+            return 0;
+        }
+        try { return ParseFloatAddSub(text, ref pos); }
+        finally { --_evalDepth; }
+    }
 
     private double ParseFloatAddSub(string text, ref int pos)
     {
@@ -1896,13 +1988,23 @@ public sealed class ExpressionParser
 
     private double ParseFloatUnary(string text, ref int pos)
     {
-        SkipWhitespace(text, ref pos);
-        if (pos >= text.Length) return 0;
+        if (++_evalDepth > MaxEvalDepth)
+        {
+            --_evalDepth;
+            DiagnosticLogger?.Invoke("[script] expression nesting too deep; evaluation aborted");
+            return 0;
+        }
+        try
+        {
+            SkipWhitespace(text, ref pos);
+            if (pos >= text.Length) return 0;
 
-        char c = text[pos];
-        if (c == '-') { pos++; return -ParseFloatUnary(text, ref pos); }
-        if (c == '+') { pos++; return ParseFloatUnary(text, ref pos); }
-        return ParseFloatPrimary(text, ref pos);
+            char c = text[pos];
+            if (c == '-') { pos++; return -ParseFloatUnary(text, ref pos); }
+            if (c == '+') { pos++; return ParseFloatUnary(text, ref pos); }
+            return ParseFloatPrimary(text, ref pos);
+        }
+        finally { --_evalDepth; }
     }
 
     private double ParseFloatPrimary(string text, ref int pos)

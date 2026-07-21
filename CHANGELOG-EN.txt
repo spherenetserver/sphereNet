@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-21] - Expression engine hardening: pathological input can no longer crash the tick
+----------------------------------------
+
+FIX - The arithmetic evaluator's recursion (right-fold operators, parentheses,
+        and unary chains, integer and float) had no depth cap, so a crafted
+        expression — thousands of nested parens, a long "1+1+..." chain, or
+        "----1" — caused a StackOverflowException, which is uncatchable and
+        terminates the process. Recursion is now bounded (MaxEvalDepth) and an
+        over-deep expression fails controlled (returns 0 with a diagnostic). A
+        very long single expression is also refused up front.
+
+FIX - The {lo hi} brace-random range computed hi+1, which overflowed and threw
+        ArgumentOutOfRangeException when hi was long.MaxValue (e.g.
+        {1 0x7fffffffffffffff}). It now uses an inclusive-range helper that
+        never overflows; {max max} collapses to the value.
+
+FIX - ASCPAD clamps its pad count (max 4096, negatives to 0); an
+        attacker-influenced count such as int.MaxValue previously built a
+        multi-GB string and ran the server out of memory.
+
+FIX - CHR rejects UTF-16 surrogate code points (0xD800..0xDFFF) via
+        Rune.IsValid instead of passing them to char.ConvertFromUtf32, which
+        threw. Valid BMP and supplementary code points are unchanged.
+
 [2026-07-21] - Spell-effect removal no longer crashes the tick on reentrancy
 ----------------------------------------
 

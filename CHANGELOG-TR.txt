@@ -3,6 +3,30 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-21] - Expression motoru sertlestirme: patolojik girdi artik tick'i cokertemiyor
+----------------------------------------
+
+FIX - Aritmetik degerleyicinin recursion'i (right-fold operatorler, parantezler
+        ve unary zincirler; integer ve float) derinlik siniri yoktu; ozel
+        hazirlanmis bir ifade — binlerce ic ice paranteziz, uzun "1+1+..."
+        zinciri, ya da "----1" — StackOverflowException'a yol aciyordu; bu
+        yakalanamaz ve process'i sonlandirir. Recursion artik sinirli
+        (MaxEvalDepth) ve cok derin ifade kontrollu basarisiz oluyor (diagnostic
+        ile 0 doner). Cok uzun tek ifade de bastan reddediliyor.
+
+FIX - {lo hi} brace-random araligi hi+1 hesapliyordu; hi long.MaxValue iken
+        (or. {1 0x7fffffffffffffff}) tasip ArgumentOutOfRangeException
+        firlatiyordu. Artik hicbir zaman tasmayan inclusive-range yardimcisi
+        kullaniyor; {max max} degere collapse oluyor.
+
+FIX - ASCPAD pad sayisini clamp'liyor (max 4096, negatifler 0'a);
+        int.MaxValue gibi saldirgan-etkili bir sayi onceden coklu-GB string
+        kurup sunucuyu belleksiz birakiyordu.
+
+FIX - CHR, UTF-16 surrogate code point'lerini (0xD800..0xDFFF) throw eden
+        char.ConvertFromUtf32'ye gecirmek yerine Rune.IsValid ile reddediyor.
+        Gecerli BMP ve supplementary code point'ler degismedi.
+
 [2026-07-21] - Spell-effect kaldirma artik reentrancy'de tick'i cokertemiyor
 ----------------------------------------
 

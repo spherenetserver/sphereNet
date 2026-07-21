@@ -838,6 +838,11 @@ public sealed class WalkCheck
             {
                 foreach (var tile in ResolveCustomDesign(multi))
                 {
+                    // Invisible tiles are commit-materialized fixtures (doors)
+                    // that already exist as real items — the design copy must
+                    // not add a second, never-opening collision box.
+                    if (!tile.Visible)
+                        continue;
                     if (multi.X + tile.X != x || multi.Y + tile.Y != y)
                         continue;
 

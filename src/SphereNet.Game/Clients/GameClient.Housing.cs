@@ -54,12 +54,30 @@ public sealed partial class GameClient
         var multi = _world.FindItem(new Serial(serial));
         if (multi == null)
             return;
-        SendHouseDesign(multi, HouseDesign.LoadFromTags(multi));
+        SendCommittedDesign(multi);
     }
 
+    /// <summary>Working-design 0xD8 — sent to the designer, fixture tiles
+    /// included (Source-X sends invisible components only for the working
+    /// design, so the architect sees the doors being placed).</summary>
     private void SendHouseDesign(Item multi, HouseDesign design)
     {
         Send(new PacketHouseDesignDetailed(multi.Uid.Value, design.Revision, design.Tiles));
+    }
+
+    /// <summary>Committed-design 0xD8 — fixture tiles are excluded because
+    /// commit materialized them as real items the client already draws;
+    /// keeping them in the stream doubled every door.</summary>
+    private void SendCommittedDesign(Item multi)
+    {
+        // No engine wired (no fixture materialization either) → raw tags.
+        var design = _customHousing != null
+            ? _customHousing.GetCommittedDesign(multi)
+            : HouseDesign.LoadFromTags(multi);
+        IReadOnlyList<HouseDesignTile> tiles = design.Tiles;
+        if (tiles.Any(t => !t.Visible))
+            tiles = tiles.Where(t => t.Visible).ToList();
+        Send(new PacketHouseDesignDetailed(multi.Uid.Value, design.Revision, tiles));
     }
 
     /// <summary>
@@ -211,7 +229,7 @@ public sealed partial class GameClient
                 if (revision == null)
                     break;
                 Send(new PacketHouseCustomizationMode(multi.Uid.Value, begin: false));
-                SendHouseDesign(multi, HouseDesign.LoadFromTags(multi));
+                SendCommittedDesign(multi);
                 // Observers re-query (0xBF 0x1E) on revision mismatch and get
                 // the committed design through HandleQueryDesignDetails.
                 BroadcastNearby?.Invoke(multi.Position, 24,
@@ -226,7 +244,7 @@ public sealed partial class GameClient
             {
                 _customHousing.End(_character);
                 Send(new PacketHouseCustomizationMode(multi.Uid.Value, begin: false));
-                SendHouseDesign(multi, HouseDesign.LoadFromTags(multi));
+                SendCommittedDesign(multi);
                 _triggerDispatcher?.FireCharTrigger(_character, CharTrigger.HouseDesignExit,
                     new TriggerArgs { CharSrc = _character, O1 = multi });
                 break;

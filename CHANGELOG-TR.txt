@@ -3,6 +3,26 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-21] - Custom-house kapi fixture'lari: commit sonrasi cift render/carpisma yok
+----------------------------------------
+
+FIX - Custom house tasarimi commit edildiginde kapi/konteyner tile'lari artik
+        ikinci bir sanal kopya olarak kalmiyor. Source-X semantigi: commit'in
+        gercek item'a donusturdugu fixture tile'lari committed tasarimda
+        gorunmez isaretleniyor; 0xD8 akisi, yurume geometrisi ve LOS yalnizca
+        gercek item'i kullaniyor. Onceden tasarim kopyasi ikinci bir kapi
+        ciziyor ve gercek kapi acikken bile hareketi/gorusu bloklamaya devam
+        ediyordu.
+
+FIX - Committed 0xD8 tasarim akisi (commit sonrasi gonderim ve 0xBF 0x1E
+        sorgu cevaplari) fixture tile'larini haric tutuyor; tasarimciya
+        gonderilen working akisi Source-X'teki gibi dahil etmeye devam ediyor.
+
+NOTE - Fixture donusumu eklenmeden once commit edilmis eski tasarimlar
+        (COMMIT_FIXTURES tag'i ve gercek kapi item'i yok) bir sonraki
+        commit'e kadar sanal kapilarini gorunur tutuyor; yuklemede hicbir
+        evin kapisi kaybolmuyor.
+
 [2026-07-21] - dialogs/ pack denetimi: inceleme, party, stylist, moongate ve where diyaloglarindaki property/verb bosluklari
 ----------------------------------------
 

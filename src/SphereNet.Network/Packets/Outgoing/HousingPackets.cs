@@ -2,8 +2,11 @@ namespace SphereNet.Network.Packets.Outgoing;
 
 /// <summary>One tile of a custom house design. X/Y are offsets relative to
 /// the multi center; Z is absolute within the house (story 1 floor = 7,
-/// story 2 = 27, ... — see CustomHousingEngine.LevelToZ).</summary>
-public readonly record struct HouseDesignTile(ushort TileId, sbyte X, sbyte Y, sbyte Z);
+/// story 2 = 27, ... — see CustomHousingEngine.LevelToZ). Visible mirrors the
+/// Source-X component flag: fixture tiles (doors/containers) of a committed
+/// design are invisible — the real items materialized on commit replace them
+/// for rendering, walking and LOS.</summary>
+public readonly record struct HouseDesignTile(ushort TileId, sbyte X, sbyte Y, sbyte Z, bool Visible = true);
 
 /// <summary>0xBF sub 0x20 — switch the client's house-customization mode on
 /// (flag 0x04) or off (flag 0x05) for the given foundation serial. While on,

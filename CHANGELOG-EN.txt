@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-21] - Custom-house door fixtures: no more double render/collision after commit
+----------------------------------------
+
+FIX - Committing a custom house design no longer keeps door/container tiles
+        as a second, virtual copy. Source-X semantics: fixture tiles the
+        commit materializes as real items are marked invisible in the
+        committed design, so the 0xD8 stream, walk geometry and LOS use only
+        the real item. Previously the design copy rendered a second door and
+        kept blocking movement/sight even with the real door open.
+
+FIX - The committed 0xD8 design stream (post-commit send and 0xBF 0x1E
+        query answers) excludes fixture tiles; the working stream sent to
+        the designer still includes them, matching Source-X.
+
+NOTE - Legacy designs committed before fixture materialization existed (no
+        COMMIT_FIXTURES tag, no real door items) keep their virtual doors
+        visible until the next commit, so no house loses its door on load.
+
 [2026-07-21] - dialogs/ pack audit: property/verb gaps behind the inspector, party, stylist, moongate and where dialogs
 ----------------------------------------
 

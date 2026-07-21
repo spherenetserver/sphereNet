@@ -55,18 +55,33 @@ public sealed class CustomHousingEngine
     /// reparses the tags. Used by WalkCheck (via ResolveCustomDesign) to turn
     /// the design into virtual walk geometry.
     /// </summary>
-    public IReadOnlyList<HouseDesignTile> GetCommittedTiles(Item multi)
+    public IReadOnlyList<HouseDesignTile> GetCommittedTiles(Item multi) =>
+        GetCommittedDesign(multi).Tiles;
+
+    /// <summary>Committed design with Source-X fixture visibility applied:
+    /// tiles that Commit materialized as real items (doors/containers) are
+    /// marked invisible so render (0xD8), walk and LOS don't double them.
+    /// Gated on the COMMIT_FIXTURES tag — a legacy design committed before
+    /// fixture materialization existed has no real door items, so its door
+    /// tiles must stay visible until the next commit.</summary>
+    public HouseDesign GetCommittedDesign(Item multi)
     {
         uint revision = 0;
         if (multi.TryGetTag(HouseDesign.RevisionTag, out string? revStr))
             uint.TryParse(revStr, out revision);
 
         if (_committedCache.TryGetValue(multi.Uid, out var cached) && cached.Revision == revision)
-            return cached.Design.Tiles;
+            return cached.Design;
 
         var design = HouseDesign.LoadFromTags(multi);
+        if (multi.TryGetTag(FixturesTag, out string? fixtures) && !string.IsNullOrEmpty(fixtures))
+        {
+            for (int i = 0; i < design.Tiles.Count; i++)
+                if (IsFixtureTile(design.Tiles[i].TileId, out _))
+                    design.Tiles[i] = design.Tiles[i] with { Visible = false };
+        }
         _committedCache[multi.Uid] = (revision, design);
-        return design.Tiles;
+        return design;
     }
 
     public HouseDesignSession? GetSession(Serial charUid) => _sessions.GetValueOrDefault(charUid);
@@ -236,21 +251,9 @@ public sealed class CustomHousingEngine
 
         var house = _housing.GetHouse(multi.Uid);
         var created = new List<string>();
-        var md = _world.MapData;
         foreach (var tile in design.Tiles)
         {
-            // Interactive detection: ITEMDEF TYPE first (works without map
-            // files), then the tiledata Door/Container flags.
-            var defType = Definitions.DefinitionLoader.GetItemDef(tile.TileId)?.Type;
-            bool isDoor = defType is SphereNet.Core.Enums.ItemType.Door
-                    or SphereNet.Core.Enums.ItemType.DoorOpen
-                    or SphereNet.Core.Enums.ItemType.DoorLocked ||
-                World.DoorHelper.IsDoorGraphic(md, tile.TileId);
-            bool isContainer = !isDoor &&
-                (defType == SphereNet.Core.Enums.ItemType.Container ||
-                 (md != null &&
-                  (md.GetItemTileData(tile.TileId).Flags & SphereNet.MapData.Tiles.TileFlag.Container) != 0));
-            if (!isDoor && !isContainer)
+            if (!IsFixtureTile(tile.TileId, out bool isDoor))
                 continue;
 
             var fixture = _world.CreateItem();
@@ -272,6 +275,25 @@ public sealed class CustomHousingEngine
             multi.SetTag(FixturesTag, string.Join(',', created));
         else
             multi.RemoveTag(FixturesTag);
+    }
+
+    /// <summary>Source-X CItemMultiCustom fixture test: interactive design
+    /// tiles — doors and containers — that Commit replaces with real items.
+    /// ITEMDEF TYPE first (works without map files), then the tiledata
+    /// Door/Container flags.</summary>
+    private bool IsFixtureTile(ushort tileId, out bool isDoor)
+    {
+        var md = _world.MapData;
+        var defType = Definitions.DefinitionLoader.GetItemDef(tileId)?.Type;
+        isDoor = defType is SphereNet.Core.Enums.ItemType.Door
+                or SphereNet.Core.Enums.ItemType.DoorOpen
+                or SphereNet.Core.Enums.ItemType.DoorLocked ||
+            World.DoorHelper.IsDoorGraphic(md, tileId);
+        if (isDoor)
+            return true;
+        return defType == SphereNet.Core.Enums.ItemType.Container ||
+            (md != null &&
+             (md.GetItemTileData(tileId).Flags & SphereNet.MapData.Tiles.TileFlag.Container) != 0);
     }
 
     /// <summary>End the session without committing (close/exit).</summary>

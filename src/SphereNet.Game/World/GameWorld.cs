@@ -251,6 +251,7 @@ public sealed class GameWorld
             {
                 foreach (var tile in Movement.WalkCheck.ResolveCustomDesign(multi))
                 {
+                    if (!tile.Visible) continue; // materialized fixture — the real item occludes
                     if (multi.X + tile.X != x || multi.Y + tile.Y != y) continue;
                     if (MultiTileBlocksLos(tile.TileId, multi.Z + tile.Z, rayZ))
                         return true;

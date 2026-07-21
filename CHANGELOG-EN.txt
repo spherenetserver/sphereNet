@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-21] - Spell-effect removal no longer crashes the tick on reentrancy
+----------------------------------------
+
+FIX - ProcessExpirations, ClearAllEffectsOnDeath, BreakInvisibility,
+        BreakParalyze, StripCurseEffects and StripDispellableEffects walked the
+        live active-effect list by index while firing removal callbacks. A
+        callback that removed further effects on the same target (typically by
+        killing it, which clears every remaining effect) shrank the list under
+        the index, so the next access threw ArgumentOutOfRangeException on the
+        world tick and terminated the server. They now snapshot the matching
+        effects first and remove each via reference (Remove), matching the
+        already-safe ProcessDotTicks pattern — each effect is reverted and its
+        removal observed at most once, with no live-list index access after a
+        callback runs.
+
 [2026-07-21] - Inbound exception firewall: one bad packet can no longer crash the server
 ----------------------------------------
 

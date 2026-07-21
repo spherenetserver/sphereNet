@@ -3,6 +3,21 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-21] - Spell-effect kaldirma artik reentrancy'de tick'i cokertemiyor
+----------------------------------------
+
+FIX - ProcessExpirations, ClearAllEffectsOnDeath, BreakInvisibility,
+        BreakParalyze, StripCurseEffects ve StripDispellableEffects canli
+        aktif-efekt listesini index ile gezerken kaldirma callback'leri
+        atesliyordu. Ayni hedefin baska efektlerini kaldiran bir callback
+        (genelde hedefi oldururek — bu tum kalan efektleri temizler) listeyi
+        index'in altina dusuruyor, sonraki erisim dunya tick'inde
+        ArgumentOutOfRangeException firlatip sunucuyu sonlandiriyordu. Artik
+        eslesen efektler once snapshot'lanip her biri referansla (Remove)
+        kaldiriliyor — zaten guvenli olan ProcessDotTicks deseniyle ayni; her
+        efekt en fazla bir kez revert edilip gozlemleniyor ve callback
+        sonrasi canli listeye index'le erisilmiyor.
+
 [2026-07-21] - Gelen paket exception firewall: tek bir kotu paket artik sunucuyu cokertemiyor
 ----------------------------------------
 

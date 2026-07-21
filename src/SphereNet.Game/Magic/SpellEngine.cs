@@ -2891,12 +2891,20 @@ public sealed class SpellEngine
     public void BreakParalyze(Character victim)
     {
         victim.ClearStatFlag(StatFlag.Freeze);
-        for (int i = _activeEffects.Count - 1; i >= 0; i--)
+        // Snapshot before firing callbacks — a removal callback can clear other
+        // effects mid-pass, so the live list must not be walked by index.
+        // Paralyze carries no stat delta (only the Freeze flag, cleared above),
+        // so this detaches the memory rather than calling RevertDeltas.
+        List<ActiveSpellEffect>? snapshot = null;
+        foreach (var eff in _activeEffects)
+            if (eff.Target == victim && eff.Spell == SpellType.Paralyze)
+                (snapshot ??= []).Add(eff);
+        if (snapshot == null) return;
+
+        foreach (var eff in snapshot)
         {
-            if (_activeEffects[i].Target != victim || _activeEffects[i].Spell != SpellType.Paralyze)
-                continue;
-            DetachSpellMemory(_activeEffects[i]);
-            _activeEffects.RemoveAt(i);
+            if (!_activeEffects.Remove(eff)) continue; // already retired by a callback
+            DetachSpellMemory(eff);
             NotifySpellBuff(victim, SpellType.Paralyze, false);
             Character.OnSpellEffectRemove?.Invoke(victim, (int)SpellType.Paralyze);
             FireSpellSectionStage(SpellType.Paralyze, "EffectRemove", victim);
@@ -2940,32 +2948,12 @@ public sealed class SpellEngine
     /// effects from the target, leaving beneficial buffs intact.</summary>
     public void StripCurseEffects(Character target)
     {
-        for (int i = _activeEffects.Count - 1; i >= 0; i--)
-        {
-            var eff = _activeEffects[i];
-            if (eff.Target != target || !IsCurseSpell(eff.Spell))
-                continue;
-            _activeEffects.RemoveAt(i);
-            RevertDeltas(eff);
-            NotifySpellBuff(target, eff.Spell, false);
-            Character.OnSpellEffectRemove?.Invoke(target, (int)eff.Spell);
-            FireSpellSectionStage(eff.Spell, "EffectRemove", target);
-        }
+        RemoveMatchingEffects(eff => eff.Target == target && IsCurseSpell(eff.Spell));
     }
 
     public void StripDispellableEffects(Character target)
     {
-        for (int i = _activeEffects.Count - 1; i >= 0; i--)
-        {
-            var eff = _activeEffects[i];
-            if (eff.Target != target)
-                continue;
-            _activeEffects.RemoveAt(i);
-            RevertDeltas(eff);
-            NotifySpellBuff(target, eff.Spell, false);
-            Character.OnSpellEffectRemove?.Invoke(target, (int)eff.Spell);
-            FireSpellSectionStage(eff.Spell, "EffectRemove", target);
-        }
+        RemoveMatchingEffects(eff => eff.Target == target);
     }
 
     /// <summary>Create a periodic damage-over-time effect (reference
@@ -3187,23 +3175,56 @@ public sealed class SpellEngine
         return false;
     }
 
+    /// <summary>Revert and retire every active effect matching
+    /// <paramref name="match"/>, firing the removal callbacks (RevertDeltas +
+    /// NotifySpellBuff + @EffectRemove / OnSpellEffectRemove). A callback can
+    /// clear further effects on the same target mid-pass (e.g. by killing it),
+    /// so a snapshot is taken up front and the live list is never indexed;
+    /// Remove returning false means a callback already retired that effect, so
+    /// it is reverted and observed at most once. Mirrors ProcessDotTicks.</summary>
+    private void RemoveMatchingEffects(Func<ActiveSpellEffect, bool> match)
+    {
+        List<ActiveSpellEffect>? snapshot = null;
+        foreach (var eff in _activeEffects)
+            if (match(eff))
+                (snapshot ??= []).Add(eff);
+        if (snapshot == null) return;
+
+        foreach (var eff in snapshot)
+        {
+            if (!_activeEffects.Remove(eff)) continue; // already retired by a callback
+            RevertDeltas(eff);
+            NotifySpellBuff(eff.Target, eff.Spell, false);
+            Character.OnSpellEffectRemove?.Invoke(eff.Target, (int)eff.Spell);
+            FireSpellSectionStage(eff.Spell, "EffectRemove", eff.Target);
+        }
+    }
+
     /// <summary>Walk the active-effect list once per world tick and undo
     /// any whose expire tick has passed. Called from Program.cs main
     /// loop. Cheap when the list is empty; no-op otherwise.</summary>
     public void ProcessExpirations(long now)
     {
         ProcessDotTicks(now);
-        for (int i = _activeEffects.Count - 1; i >= 0; i--)
+
+        // Snapshot expired/orphaned effects first: a removal callback can clear
+        // other effects on the same target mid-pass, so index iteration over
+        // the live list is unsafe (an ArgumentOutOfRangeException here escapes
+        // to the main tick and takes the server down).
+        List<ActiveSpellEffect>? due = null;
+        foreach (var eff in _activeEffects)
+            if (eff.Target.IsDeleted || now >= eff.ExpireTick)
+                (due ??= []).Add(eff);
+        if (due == null) return;
+
+        foreach (var eff in due)
         {
-            var eff = _activeEffects[i];
+            if (!_activeEffects.Remove(eff)) continue; // already retired by a callback
             if (eff.Target.IsDeleted)
             {
                 DetachSpellMemory(eff);
-                _activeEffects.RemoveAt(i);
                 continue;
             }
-            if (now < eff.ExpireTick) continue;
-            _activeEffects.RemoveAt(i);
             RevertDeltas(eff);
             NotifySpellBuff(eff.Target, eff.Spell, false);
             Character.OnSpellEffectRemove?.Invoke(eff.Target, (int)eff.Spell);
@@ -3364,16 +3385,7 @@ public sealed class SpellEngine
     public void ClearAllEffectsOnDeath(Character ch)
     {
         RevertPolymorphOnDeath(ch);
-        for (int i = _activeEffects.Count - 1; i >= 0; i--)
-        {
-            if (_activeEffects[i].Target != ch) continue;
-            var eff = _activeEffects[i];
-            RevertDeltas(eff);
-            _activeEffects.RemoveAt(i);
-            NotifySpellBuff(ch, eff.Spell, false);
-            Character.OnSpellEffectRemove?.Invoke(ch, (int)eff.Spell);
-            FireSpellSectionStage(eff.Spell, "EffectRemove", ch);
-        }
+        RemoveMatchingEffects(eff => eff.Target == ch);
     }
 
     /// <summary>Original body for resurrect after polymorph (OBody or active effect).</summary>
@@ -3407,17 +3419,7 @@ public sealed class SpellEngine
     /// casting exposes the character before the original timer expires.</summary>
     public void BreakInvisibility(Character victim)
     {
-        for (int i = _activeEffects.Count - 1; i >= 0; i--)
-        {
-            var eff = _activeEffects[i];
-            if (eff.Target != victim || eff.Spell != SpellType.Invisibility)
-                continue;
-            _activeEffects.RemoveAt(i);
-            RevertDeltas(eff);
-            NotifySpellBuff(victim, eff.Spell, false);
-            Character.OnSpellEffectRemove?.Invoke(victim, (int)eff.Spell);
-            FireSpellSectionStage(eff.Spell, "EffectRemove", victim);
-        }
+        RemoveMatchingEffects(eff => eff.Target == victim && eff.Spell == SpellType.Invisibility);
     }
 
     /// <summary>Rebuild the client's buff bar after login/resync. Removing each

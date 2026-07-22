@@ -60,6 +60,19 @@ public sealed class BootFallbackTests
         }
     }
 
+    // Delete the entire CURRENT (level-0) generation — every logical data file and
+    // manifest — while leaving the .bakN rotations untouched, simulating a lost or
+    // externally deleted current save.
+    private static void DeleteCurrentGeneration(string dir)
+    {
+        foreach (var f in Directory.GetFiles(dir))
+        {
+            string name = Path.GetFileName(f);
+            if (name.Contains(".bak")) continue; // keep the backup generations
+            File.Delete(f);
+        }
+    }
+
     [Theory]
     [InlineData(SaveFormat.BinaryGz, 3)]
     [InlineData(SaveFormat.Binary, 3)]
@@ -138,5 +151,65 @@ public sealed class BootFallbackTests
         var (items, chars) = loader.Load(world, missing);
         Assert.Equal(0, items);
         Assert.Equal(0, chars);
+    }
+
+    // İş #3 — a MISSING current save (not merely a corrupt one) must still recover
+    // from a surviving backup. The loader used to return a blank world the moment
+    // the current generation was empty, ignoring good .bakN files on disk.
+    [Theory]
+    [InlineData(SaveFormat.BinaryGz, 3)]
+    [InlineData(SaveFormat.BinaryGz, 0)]
+    public void MissingCurrentSave_RecoversFromBackup_InsteadOfBlanking(SaveFormat fmt, int shards)
+    {
+        string dir = Path.Combine(Path.GetTempPath(), $"sphnet_bootfb_{System.Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var saver = new WorldSaver(LoggerFactory.Create(_ => { }))
+            {
+                Format = fmt,
+                ShardCount = shards,
+                BackupLevels = 5,
+            };
+            var loader = new WorldLoader(LoggerFactory.Create(_ => { }));
+
+            SaveGeneration(saver, dir, "A");   // generation A
+            SaveGeneration(saver, dir, "B");   // generation B (rotates A -> .bak1)
+
+            // The whole current generation (B) is lost; only the .bak1 backup of A
+            // survives. The loader must recover A rather than silently boot blank.
+            DeleteCurrentGeneration(dir);
+
+            var recovered = MakeWorld();
+            var (items, _) = loader.Load(recovered, dir);
+            Assert.True(items >= 1);
+            Assert.Equal("A", LoadedGeneration(recovered));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { }
+        }
+    }
+
+    // The genuine fresh-start case (an existing but empty save dir, no backups
+    // anywhere) must still start blank and not throw — the recovery path only
+    // engages when a backup actually exists.
+    [Fact]
+    public void EmptySaveDirectory_StartsFreshWithoutThrowing()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), $"sphnet_empty_{System.Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var loader = new WorldLoader(LoggerFactory.Create(_ => { }));
+            var world = MakeWorld();
+            var (items, chars) = loader.Load(world, dir);
+            Assert.Equal(0, items);
+            Assert.Equal(0, chars);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { }
+        }
     }
 }

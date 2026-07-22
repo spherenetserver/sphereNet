@@ -3,6 +3,17 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - Boot, current save eksikse (sadece bozukken degil) backup'tan kurtariyor
+----------------------------------------
+
+FIX - Dunya loader'i current save bozuk oldugunda bir .bakN backup'a fallback
+        yapiyordu, ama current nesil bos oldugu anda bos bir dunya donuyordu — yani
+        current save dosyalari silinir/kaybolur ama diskte iyi backup'lar dururken
+        sunucu sessizce bos bir dunya ile aciliyordu. Load artik eksik bir current
+        save'in otesinde backup nesillerini yoklamaya devam ediyor ve yalnizca
+        HICBIR seviyede nesil yoksa sifirdan basliyor; nesiller var ama hepsi
+        dogrulamayi geciremiyorsa dunyayi bosaltmak yerine yine net hatayi firlatiyor.
+
 [2026-07-22] - Custom-house tasarim yuklemesi editor tile sinirina baglandi
 ----------------------------------------
 

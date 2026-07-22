@@ -191,18 +191,22 @@ public sealed class WorldLoader
         // .bakN levels are bounded by BackupLevels (max 32); probe a bit past the
         // configured max in case backups pre-date a lowered setting.
         const int MaxBackupProbe = 32;
+        bool anyGenerationExisted = false;
         for (int level = 0; level <= MaxBackupProbe; level++)
         {
             var gen = ResolveGeneration(savePath, level);
             if (gen.IsEmpty)
             {
+                // A missing generation. Keep probing past a missing CURRENT save so
+                // a surviving .bakN is still recovered instead of silently booting a
+                // blank world — the previous behaviour returned a fresh world here
+                // even when good backups sat on disk. Backups rotate contiguously
+                // from .bak1, so once a backup level is missing nothing older remains.
                 if (level == 0)
-                {
-                    _logger.LogInformation("No world save found in {Path} — starting a fresh world", savePath);
-                    return (0, 0);
-                }
-                break; // no older generation to fall back to
+                    continue;
+                break;
             }
+            anyGenerationExisted = true;
 
             var (ok, badFile) = ValidateGeneration(gen);
             if (!ok)
@@ -215,10 +219,19 @@ public sealed class WorldLoader
 
             if (level > 0)
                 _logger.LogWarning(
-                    "Loading from BACKUP generation .bak{Level} — the current save (and any newer backups) were unreadable. " +
-                    "Investigate the corrupt files; the next save will overwrite this backup.", level);
+                    "Loading from BACKUP generation .bak{Level} — the current save (and any newer backups) were missing or unreadable. " +
+                    "Investigate the current save files; the next save will overwrite this backup.", level);
 
             return Materialize(world, gen, accounts);
+        }
+
+        // Reached only when no generation could be loaded. If nothing existed at any
+        // level it is a genuine fresh start; if generations existed but every one
+        // failed validation, refuse to silently blank the world.
+        if (!anyGenerationExisted)
+        {
+            _logger.LogInformation("No world save found in {Path} — starting a fresh world", savePath);
+            return (0, 0);
         }
 
         throw new InvalidDataException(

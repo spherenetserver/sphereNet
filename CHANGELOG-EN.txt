@@ -4,6 +4,18 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-22] - Boot recovers from a backup when the current save is missing, not just corrupt
+----------------------------------------
+
+FIX - The world loader fell back to a .bakN backup when the current save was
+        corrupt, but returned a blank world the moment the current generation was
+        empty — so if the current save files were deleted or lost while good
+        backups sat on disk, the server silently booted an empty world. Load now
+        keeps probing backup generations past a missing current save and starts
+        fresh only when NO generation exists at any level; when generations exist
+        but every one fails validation it still raises the clear error rather than
+        blanking the world.
+
 [2026-07-22] - Custom-house design load is bounded to the editor's tile cap
 ----------------------------------------
 

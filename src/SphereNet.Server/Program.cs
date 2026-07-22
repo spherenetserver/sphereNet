@@ -197,6 +197,10 @@ public static partial class Program
     private static long _tickStatsTotalUs;
     private static long _tickStatsMaxUs;
     private static int _tickStatsCount;
+    // Main-loop iterations in the current tick_stats window. Divided by the tick
+    // count it yields "loops per tick" — the idle-CPU / hot-spin gauge: a spinning
+    // yield runs thousands of loops per 100ms tick, an adaptive/sleeping yield ~1.
+    private static long _loopIterationCount;
     // GC pressure telemetry, sampled per tick_stats window. Bots run in-process
     // so allocation bytes include client-emulation churn — treat alloc as a
     // relative before/after gauge; gen2 count and pause% are the real GC-stall

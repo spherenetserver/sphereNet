@@ -3,6 +3,20 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - Tick-yield idle-CPU olcumu ve opt-in adaptif yield modu
+----------------------------------------
+
+ADD  - [tick_stats] artik loops (bu penceredeki ana-loop iterasyonlari) ve lpt
+        (loops-per-tick) raporluyor. Bu idle-CPU / hot-spin gostergesi: default
+        hybrid yield hic gercekten uyumadigindan idle sunucu 100ms tick basina
+        binlerce loop dondururuyor (yuksek lpt); adaptif/uyuyan yield ~1 raporluyor.
+        Kucuk bir host'ta TickSleepMode degistirmeden once ve sonra bu olcumu al.
+ADD  - TickSleepMode=3 (adaptif): bir sonraki tick due olana kadarki bosluk kadar,
+        birkac ms'lik cap ile uyuyor; boylece idle CPU sifira dogru dusuyor, tick
+        cadence bozulmuyor ve input latency cap ile sinirli kaliyor. Opt-in; default
+        (2 = hybrid) degismedi, boylece bir operator olcum yapip bilincli olarak
+        gecene kadar mevcut latency davranisi korunuyor.
+
 [2026-07-22] - Ana-loop shutdown bayragi volatile yapildi, cross-thread istekler goruluyor
 ----------------------------------------
 

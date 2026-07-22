@@ -382,6 +382,10 @@ public sealed class SphereConfig
     // 1 = sleep  : Thread.Sleep(1) — ~15ms latency on Windows, minimal CPU usage.
     //              Best for shared/low-end machines where CPU is precious.
     // 2 = hybrid : SpinWait + Sleep(0) — ~1ms latency, moderate CPU usage. (default)
+    // 3 = adaptive : sleep out the slack until the next tick deadline, capped at a
+    //              few ms — near-zero idle CPU with bounded input latency. Best for
+    //              small/shared hosts. Watch the [tick_stats] loops-per-tick (lpt)
+    //              gauge to confirm the drop before/after switching.
     public int TickSleepMode { get; set; } = 2;
 
     // Sentry

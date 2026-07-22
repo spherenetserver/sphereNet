@@ -109,6 +109,7 @@ public static partial class Program
                 // iteration over the threshold, with the GC collection delta so
                 // a GC pause is distinguishable from a slow job.
                 long iterTs0 = Stopwatch.GetTimestamp();
+                _loopIterationCount++;
                 int iterG0 = GC.CollectionCount(0);
                 int iterG1 = GC.CollectionCount(1);
                 int iterG2 = GC.CollectionCount(2);
@@ -244,7 +245,10 @@ public static partial class Program
 
                 long iterTs5 = Stopwatch.GetTimestamp(); // server ticks done
 
-                TickYieldStrategy.Yield(_config.TickSleepMode);
+                // Pass the slack until the next tick is due so the adaptive yield
+                // (TickSleepMode=3) can sleep out an idle window without ever
+                // overrunning the tick cadence. Other modes ignore the argument.
+                TickYieldStrategy.Yield(_config.TickSleepMode, nextTickMs - sw.ElapsedMilliseconds);
 
                 long iterTs6 = Stopwatch.GetTimestamp();
                 long iterTotalUs = ToMicroseconds(iterTs6 - iterTs0);
@@ -500,6 +504,12 @@ public static partial class Program
             {
                 double avgMs = _tickStatsCount > 0 ? (_tickStatsTotalUs / _tickStatsCount / 1000.0) : 0;
                 double maxMs = _tickStatsMaxUs / 1000.0;
+                // Idle-CPU gauge: main-loop iterations per tick this window. A hot
+                // spinning yield reports a large number here (the loop churns
+                // between ticks doing nothing); an adaptive/sleeping yield reports
+                // ~1. This is the measurement to take before/after changing
+                // TickSleepMode on a small host.
+                double loopsPerTick = _tickStatsCount > 0 ? (double)_loopIterationCount / _tickStatsCount : 0;
                 var tickTelemetry = GetTickTelemetrySnapshot();
                 int onlinePlayers = _clients.Values.Count(c => c.IsPlaying);
                 var (chars, items, _) = _world.GetStats();
@@ -509,15 +519,15 @@ public static partial class Program
                 {
                     var botStats = _botEngine.GetStats();
                     _log.LogDebug(
-                        "[tick_stats] ticks={Count} avg={AvgMs:F1}ms max={MaxMs:F1}ms p50={P50Ms:F1}ms p95={P95Ms:F1}ms p99={P99Ms:F1}ms players={Players} chars={Chars} items={Items} bots={Bots}/{BotTotal} pps_in={PpsIn:F0} pps_out={PpsOut:F0}",
-                        _tickStatsCount, avgMs, maxMs, tickTelemetry.P50Ms, tickTelemetry.P95Ms, tickTelemetry.P99Ms, onlinePlayers, chars, items,
+                        "[tick_stats] ticks={Count} avg={AvgMs:F1}ms max={MaxMs:F1}ms p50={P50Ms:F1}ms p95={P95Ms:F1}ms p99={P99Ms:F1}ms loops={Loops} lpt={Lpt:F0} players={Players} chars={Chars} items={Items} bots={Bots}/{BotTotal} pps_in={PpsIn:F0} pps_out={PpsOut:F0}",
+                        _tickStatsCount, avgMs, maxMs, tickTelemetry.P50Ms, tickTelemetry.P95Ms, tickTelemetry.P99Ms, _loopIterationCount, loopsPerTick, onlinePlayers, chars, items,
                         botStats.ActiveBots, botStats.TotalBots, botStats.PacketsPerSecIn, botStats.PacketsPerSecOut);
                 }
                 else
                 {
                     _log.LogDebug(
-                        "[tick_stats] ticks={Count} avg={AvgMs:F1}ms max={MaxMs:F1}ms p50={P50Ms:F1}ms p95={P95Ms:F1}ms p99={P99Ms:F1}ms players={Players} chars={Chars} items={Items}",
-                        _tickStatsCount, avgMs, maxMs, tickTelemetry.P50Ms, tickTelemetry.P95Ms, tickTelemetry.P99Ms, onlinePlayers, chars, items);
+                        "[tick_stats] ticks={Count} avg={AvgMs:F1}ms max={MaxMs:F1}ms p50={P50Ms:F1}ms p95={P95Ms:F1}ms p99={P99Ms:F1}ms loops={Loops} lpt={Lpt:F0} players={Players} chars={Chars} items={Items}",
+                        _tickStatsCount, avgMs, maxMs, tickTelemetry.P50Ms, tickTelemetry.P95Ms, tickTelemetry.P99Ms, _loopIterationCount, loopsPerTick, onlinePlayers, chars, items);
                 }
 
                 // GC pressure for the same window. Gen2 collections and pause%
@@ -547,6 +557,7 @@ public static partial class Program
                 _tickStatsTotalUs = 0;
                 _tickStatsMaxUs = 0;
                 _tickStatsCount = 0;
+                _loopIterationCount = 0;
                 _lastTickStatsLogMs = nowMs;
             }
         }

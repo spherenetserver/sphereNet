@@ -708,6 +708,13 @@ public sealed class WorldLoader
             while (reader.NextProperty(out string key, out string val))
             {
                 string upper = key.ToUpperInvariant();
+                // Once a duplicate SERIAL/UUID has retired (DeleteObject'd) this
+                // instance, drain the rest of the record with NO side effects —
+                // in particular the UUID branch, which otherwise re-indexed the
+                // already-deleted object and left a stale UUID -> dead-object entry
+                // (M8: FindByUuid would return a deleted object).
+                if (skipItem)
+                    continue;
                 if (upper == "SERIAL")
                 {
                     if (TryParseHexOrDec(val, out uint serial))
@@ -755,8 +762,6 @@ public sealed class WorldLoader
                     continue;
                 }
                 if (upper == "CREATE")
-                    continue;
-                if (skipItem)
                     continue;
                 if (upper == "ID")
                     hasId = true;
@@ -1051,6 +1056,11 @@ public sealed class WorldLoader
 
             while (reader.NextProperty(out string key, out string val))
             {
+                // Drain with no side effects once a duplicate SERIAL/UUID retired
+                // this instance — the UUID branch must not re-index the deleted
+                // char (M8; see the item loop).
+                if (skipChar)
+                    continue;
                 if (key.Equals("SERIAL", StringComparison.OrdinalIgnoreCase))
                 {
                     if (TryParseHexOrDec(val, out uint serial))
@@ -1098,8 +1108,6 @@ public sealed class WorldLoader
                 }
 
                 if (key.Equals("CREATE", StringComparison.OrdinalIgnoreCase))
-                    continue;
-                if (skipChar)
                     continue;
 
                 if (TryParseEquipProperty(key, val, out var itemSerial, out byte layer))

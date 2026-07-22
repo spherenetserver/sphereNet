@@ -3,6 +3,22 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - Save'deki duplicate SERIAL/UUID artik UUID index'ini bozmuyor
+----------------------------------------
+
+FIX - Bir save kaydinin SERIAL ya da UUID'si zaten yuklenmis bir nesneyle
+        cakistiginda, loader yeni parse edilen nesneyi siliyor ama property'lerini
+        islemeye devam ediyordu. UUID dali o zaman silinmis nesneyi yeniden
+        indeksliyor, FindByUuid olu bir nesne donduruyordu. Loader artik emekli
+        edilmis bir kaydin kalanini yan-etki olmadan drain ediyor (skip kontrolu
+        property loop'unun basina tasindi).
+
+FIX - UUID'si baska bir canli nesnenin sahip oldugu bir degere set edilmis bir
+        nesneyi silmek (duplicate-UUID kaydi) o diger nesnenin index girdisini
+        eviction ediyordu. DeleteObject artik bir UUID girdisini yalniz gercekten
+        silinen nesneyi isaret ettiginde kaldiriyor (serial-registration guard'iyla
+        tutarli).
+
 [2026-07-22] - Nesne/dunya export'lari atomik; basarisiz export rollback snapshot'ini bozamaz
 ----------------------------------------
 

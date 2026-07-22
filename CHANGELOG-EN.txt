@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-22] - Duplicate SERIAL/UUID in a save no longer corrupts the UUID index
+----------------------------------------
+
+FIX - When a save record's SERIAL or UUID duplicated an already-loaded object,
+        the loader deleted the just-parsed object but kept processing its
+        properties. The UUID branch then re-indexed the deleted object, so
+        FindByUuid returned a dead object. The loader now drains the rest of a
+        retired record with no side effects (the skip check moved to the top of
+        the property loop).
+
+FIX - Deleting an object whose UUID had been set to a value another live object
+        owns (a duplicate-UUID record) evicted that other object's index entry.
+        DeleteObject now removes a UUID entry only when it actually points at the
+        object being deleted, mirroring the serial-registration guard.
+
 [2026-07-22] - Object/world exports are atomic; a failed export can't corrupt the rollback snapshot
 ----------------------------------------
 

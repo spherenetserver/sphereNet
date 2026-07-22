@@ -552,7 +552,12 @@ public sealed class GameWorld
             _multiItems.Remove(removedItem);
         }
         _objectsWithTimerF.Remove(obj);
-        _uuidIndex.Remove(obj.Uuid);
+        // Only drop the UUID index entry if it actually points at THIS object.
+        // A duplicate-UUID load sets obj.Uuid to a value another live object owns
+        // (the reindex was rejected), and an unconditional Remove would evict that
+        // other object's entry — mirrors the serial-registration guard above.
+        if (_uuidIndex.TryGetValue(obj.Uuid, out var uuidOwner) && ReferenceEquals(uuidOwner, obj))
+            _uuidIndex.Remove(obj.Uuid);
         _uidTable.Free(obj.Uid);
 
         if (obj is Item delItem && delItem.ContainedIn.IsValid)

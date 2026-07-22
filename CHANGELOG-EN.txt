@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-22] - Object/world exports are atomic; a failed export can't corrupt the rollback snapshot
+----------------------------------------
+
+FIX - ExportObject/ExportObjects/ExportWorld/ExportStatics wrote straight to the
+        final path (FileMode.Create), so a crash mid-write left a truncated file.
+        Because destructive world-ops use ExportObjects as their rollback
+        snapshot, a truncated snapshot could overwrite a good one and leave the
+        deleted objects unrecoverable. Exports now write a sibling .tmp, verify it
+        re-reads with the expected record count, then atomically move it over the
+        final. A crash leaves the previous final intact (only a stray .tmp), and a
+        write that doesn't validate throws without replacing the final.
+
+FIX - Because a failed export now throws, destructive RestoreFile aborts before
+        its delete phase when the rollback snapshot can't be written — it no
+        longer deletes live objects against a snapshot that isn't there.
+
 [2026-07-22] - StateRecorder no longer shares one SQLite connection across threads
 ----------------------------------------
 

@@ -133,58 +133,86 @@ public sealed class WorldSaver
         }
     }
 
+    /// <summary>Write a classic text export atomically: build the whole file in a
+    /// sibling <c>.tmp</c>, verify it re-reads with the expected record count, then
+    /// move it over the final path. A crash mid-write leaves the previous final
+    /// intact (only a stray <c>.tmp</c>), and a truncated/garbled write is rejected
+    /// before it can replace the final. This matters because destructive restore
+    /// uses these files as its rollback snapshot — a corrupt snapshot must never
+    /// silently overwrite a good one, and a failed export must throw so the caller
+    /// aborts before deleting live objects.</summary>
+    private static int WriteTextExportAtomic(string path, Func<TextSaveWriter, int> writeBody)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
+        string tmp = path + ".tmp";
+        try
+        {
+            int expected;
+            using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var writer = new TextSaveWriter(fs))
+            {
+                expected = writeBody(writer);
+            } // writer/fs disposed → fully flushed and closed
+
+            int actual = CountTextRecords(tmp);
+            if (actual != expected)
+                throw new InvalidDataException(
+                    $"Export validation failed for '{Path.GetFileName(path)}': wrote {expected} records but re-read {actual}");
+
+            File.Move(tmp, path, overwrite: true);
+            return expected;
+        }
+        catch
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* best effort */ }
+            throw;
+        }
+    }
+
+    private static int CountTextRecords(string path)
+    {
+        using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var reader = new TextSaveReader(fs);
+        int n = 0;
+        while (reader.NextRecord(out _))
+        {
+            while (reader.NextProperty(out _, out _)) { }
+            n++;
+        }
+        return n;
+    }
+
     /// <summary>Export a single object as a classic text <c>.scp</c> record.
     /// Source-X world-ops use the script save format, so this intentionally
     /// writes text regardless of the server's normal binary/gzip save mode.</summary>
     public int ExportObject(ObjBase obj, string path)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
         long now = Environment.TickCount64;
-        using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
-        using var writer = new TextSaveWriter(fs);
-        writer.WriteHeaderComment($"SphereNet object export at {DateTime.UtcNow:u}");
-
-        if (obj is Item item && !item.IsDeleted)
+        return WriteTextExportAtomic(path, writer =>
         {
-            WriteItem(writer, item, now);
-            return 1;
-        }
-
-        if (obj is Character ch && !ch.IsDeleted)
-        {
-            WriteChar(writer, ch, now);
-            return 1;
-        }
-
-        return 0;
+            writer.WriteHeaderComment($"SphereNet object export at {DateTime.UtcNow:u}");
+            if (obj is Item item && !item.IsDeleted) { WriteItem(writer, item, now); return 1; }
+            if (obj is Character ch && !ch.IsDeleted) { WriteChar(writer, ch, now); return 1; }
+            return 0;
+        });
     }
 
     /// <summary>Export a bounded object set to one classic text <c>.scp</c>
     /// file. Used by destructive world-ops as a rollback snapshot.</summary>
     public int ExportObjects(IEnumerable<ObjBase> objects, string path)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
         long now = Environment.TickCount64;
-        int count = 0;
-        using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
-        using var writer = new TextSaveWriter(fs);
-        writer.WriteHeaderComment($"SphereNet object set export at {DateTime.UtcNow:u}");
-
-        foreach (var obj in objects)
+        return WriteTextExportAtomic(path, writer =>
         {
-            if (obj is Item item && !item.IsDeleted)
+            writer.WriteHeaderComment($"SphereNet object set export at {DateTime.UtcNow:u}");
+            int count = 0;
+            foreach (var obj in objects)
             {
-                WriteItem(writer, item, now);
-                count++;
+                if (obj is Item item && !item.IsDeleted) { WriteItem(writer, item, now); count++; }
+                else if (obj is Character ch && !ch.IsDeleted) { WriteChar(writer, ch, now); count++; }
             }
-            else if (obj is Character ch && !ch.IsDeleted)
-            {
-                WriteChar(writer, ch, now);
-                count++;
-            }
-        }
-
-        return count;
+            return count;
+        });
     }
 
     /// <summary>Export the current dynamic world into one mixed text
@@ -192,16 +220,16 @@ public sealed class WorldSaver
     /// (for example, virtual vendor stock is skipped).</summary>
     public int ExportWorld(GameWorld world, string path, WorldExportScope? scope = null)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
         var snapshot = CaptureSnapshot(world, scope);
-        using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
-        using var writer = new TextSaveWriter(fs);
-        writer.WriteHeaderComment($"SphereNet world export at {DateTime.UtcNow:u}");
-        foreach (var record in snapshot.Items)
-            WriteRecord(writer, record);
-        foreach (var record in snapshot.Characters)
-            WriteRecord(writer, record);
-        return snapshot.Items.Count + snapshot.Characters.Count;
+        return WriteTextExportAtomic(path, writer =>
+        {
+            writer.WriteHeaderComment($"SphereNet world export at {DateTime.UtcNow:u}");
+            foreach (var record in snapshot.Items)
+                WriteRecord(writer, record);
+            foreach (var record in snapshot.Characters)
+                WriteRecord(writer, record);
+            return snapshot.Items.Count + snapshot.Characters.Count;
+        });
     }
 
     /// <summary>Export static world items into one text <c>.scp</c> file.
@@ -210,22 +238,22 @@ public sealed class WorldSaver
     /// written here for inspection or later import.</summary>
     public int ExportStatics(GameWorld world, string path, WorldExportScope? scope = null)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
         long now = Environment.TickCount64;
-        int count = 0;
-        using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
-        using var writer = new TextSaveWriter(fs);
-        writer.WriteHeaderComment($"SphereNet statics export at {DateTime.UtcNow:u}");
-        foreach (var obj in world.GetAllObjects())
+        return WriteTextExportAtomic(path, writer =>
         {
-            if (obj is not Item item || item.IsDeleted || !item.IsAttr(Core.Enums.ObjAttributes.Static))
-                continue;
-            if (scope is { } s && (!s.IncludeItems || !s.Contains(item.Position)))
-                continue;
-            WriteItem(writer, item, now);
-            count++;
-        }
-        return count;
+            writer.WriteHeaderComment($"SphereNet statics export at {DateTime.UtcNow:u}");
+            int count = 0;
+            foreach (var obj in world.GetAllObjects())
+            {
+                if (obj is not Item item || item.IsDeleted || !item.IsAttr(Core.Enums.ObjAttributes.Static))
+                    continue;
+                if (scope is { } s && (!s.IncludeItems || !s.Contains(item.Position)))
+                    continue;
+                WriteItem(writer, item, now);
+                count++;
+            }
+            return count;
+        });
     }
 
     /// <summary>Write one logical save ("sphereworld" or "spherechars"). Three

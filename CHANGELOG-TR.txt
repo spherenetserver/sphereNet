@@ -3,6 +3,23 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - Nesne/dunya export'lari atomik; basarisiz export rollback snapshot'ini bozamaz
+----------------------------------------
+
+FIX - ExportObject/ExportObjects/ExportWorld/ExportStatics dogrudan final yola
+        (FileMode.Create) yaziyordu, bu yuzden yazim ortasindaki bir crash kesik
+        dosya birakiyordu. Destructive world-op'lari ExportObjects'i rollback
+        snapshot'i olarak kullandigindan, kesik bir snapshot saglam olanin
+        uzerine yazip silinen nesneleri kurtarilamaz birakabiliyordu. Export'lar
+        artik kardes bir .tmp yaziyor, beklenen kayit sayisiyla yeniden-okundugunu
+        dogruluyor, sonra atomik olarak final'in uzerine tasiyor. Bir crash onceki
+        final'i dokunulmadan birakiyor (yalniz artik bir .tmp) ve dogrulanmayan
+        bir yazim final'i degistirmeden throw ediyor.
+
+FIX - Basarisiz bir export artik throw ettigi icin, rollback snapshot'i
+        yazilamadiginda destructive RestoreFile silme fazindan once abort ediyor
+        — olmayan bir snapshot'a karsi canli nesneleri artik silmiyor.
+
 [2026-07-22] - StateRecorder artik tek SQLite connection'ini thread'ler arasi paylasmiyor
 ----------------------------------------
 

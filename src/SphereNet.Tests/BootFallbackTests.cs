@@ -73,6 +73,24 @@ public sealed class BootFallbackTests
         }
     }
 
+    // Delete exactly ONE current shard data file for a base, leaving that base's
+    // manifest (which still lists it) and the other shards in place — an
+    // incomplete current generation.
+    private static void DeleteOneCurrentShard(string dir, string baseName)
+    {
+        foreach (var f in Directory.GetFiles(dir, baseName + ".*"))
+        {
+            string name = Path.GetFileName(f);
+            if (name.Contains(".bak") || name.EndsWith(".tmp") || name.Contains(".manifest"))
+                continue;
+            if (name.Contains(".0.") || name.Contains(".1.") || name.Contains(".2."))
+            {
+                File.Delete(f);
+                return;
+            }
+        }
+    }
+
     [Theory]
     [InlineData(SaveFormat.BinaryGz, 3)]
     [InlineData(SaveFormat.Binary, 3)]
@@ -184,6 +202,73 @@ public sealed class BootFallbackTests
             var (items, _) = loader.Load(recovered, dir);
             Assert.True(items >= 1);
             Assert.Equal("A", LoadedGeneration(recovered));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { }
+        }
+    }
+
+    // İş #2 — a manifest that lists a shard which is not on disk is an INCOMPLETE
+    // generation. Loading only the surviving shards would silently drop every
+    // object in the missing one, so the loader must fall back to a whole intact
+    // generation instead.
+    [Fact]
+    public void MissingCurrentShard_FallsBackToPreviousGeneration_NoSilentLoss()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), $"sphnet_shardfb_{System.Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var saver = new WorldSaver(LoggerFactory.Create(_ => { }))
+            {
+                Format = SaveFormat.BinaryGz,
+                ShardCount = 3,
+                BackupLevels = 5,
+            };
+            var loader = new WorldLoader(LoggerFactory.Create(_ => { }));
+
+            SaveGeneration(saver, dir, "A");   // generation A
+            SaveGeneration(saver, dir, "B");   // generation B (rotates A -> .bak1)
+
+            // Drop one current shard while its manifest still references it. The
+            // loader must recover the whole .bak1 (A), not load B minus a shard.
+            DeleteOneCurrentShard(dir, "sphereworld");
+
+            var recovered = MakeWorld();
+            var (items, _) = loader.Load(recovered, dir);
+            Assert.True(items >= 1);
+            Assert.Equal("A", LoadedGeneration(recovered));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { }
+        }
+    }
+
+    // An incomplete current generation with no backup to fall back to must raise
+    // the clear error, not silently boot with the missing shard's objects gone.
+    [Fact]
+    public void MissingCurrentShard_WithNoBackup_ThrowsInsteadOfLoadingPartial()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), $"sphnet_shardnobak_{System.Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var saver = new WorldSaver(LoggerFactory.Create(_ => { }))
+            {
+                Format = SaveFormat.BinaryGz,
+                ShardCount = 3,
+                BackupLevels = 5,
+            };
+            var loader = new WorldLoader(LoggerFactory.Create(_ => { }));
+
+            SaveGeneration(saver, dir, "A"); // only one generation, no .bak yet
+            DeleteOneCurrentShard(dir, "sphereworld");
+
+            var world = MakeWorld();
+            var ex = Record.Exception(() => loader.Load(world, dir));
+            Assert.IsType<InvalidDataException>(ex);
         }
         finally
         {

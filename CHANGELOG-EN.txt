@@ -4,6 +4,16 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-23] - Loader rejects an incomplete sharded generation instead of loading it partially
+----------------------------------------
+
+FIX - When a shard manifest referenced a file that was not on disk, the loader
+        logged a warning and loaded the surviving shards anyway — silently dropping
+        every object in the missing shard. A generation with a missing manifest
+        shard is now flagged incomplete and treated like a corrupt one: the loader
+        falls back to the previous whole generation, or raises the clear error when
+        no intact backup exists, rather than booting a world with holes.
+
 [2026-07-22] - Boot recovers from a backup when the current save is missing, not just corrupt
 ----------------------------------------
 

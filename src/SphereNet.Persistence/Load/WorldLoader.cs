@@ -159,7 +159,7 @@ public sealed class WorldLoader
     /// level N = the aligned <c>.bakN</c> rotation of every logical file).</summary>
     private readonly record struct GenerationPaths(
         List<string> ItemPaths, List<string> CharPaths, List<string> StaticPaths,
-        List<string> MultiPaths, List<string> DataPaths)
+        List<string> MultiPaths, List<string> DataPaths, bool Incomplete)
     {
         public bool IsEmpty => ItemPaths.Count == 0 && CharPaths.Count == 0 &&
             StaticPaths.Count == 0 && MultiPaths.Count == 0 && DataPaths.Count == 0;
@@ -208,6 +208,18 @@ public sealed class WorldLoader
             }
             anyGenerationExisted = true;
 
+            // A generation whose manifest lists a shard that is not on disk is
+            // incomplete: loading its surviving shards would silently lose every
+            // object in the missing one. Treat it like a corrupt generation and fall
+            // back to the previous (whole) one rather than booting with holes.
+            if (gen.Incomplete)
+            {
+                _logger.LogError(
+                    "Save generation {Which} is incomplete (a manifest shard is missing); falling back to the previous generation",
+                    level == 0 ? "current" : $".bak{level}");
+                continue;
+            }
+
             var (ok, badFile) = ValidateGeneration(gen);
             if (!ok)
             {
@@ -240,12 +252,16 @@ public sealed class WorldLoader
             "files aside to start a fresh world.");
     }
 
-    private GenerationPaths ResolveGeneration(string savePath, int bakLevel) => new(
-        ResolveSaveFiles(savePath, "sphereworld", bakLevel),
-        ResolveSaveFiles(savePath, "spherechars", bakLevel),
-        ResolveSaveFiles(savePath, "spherestatics", bakLevel),
-        ResolveSaveFiles(savePath, "spheremultis", bakLevel),
-        ResolveSaveFiles(savePath, "spheredata", bakLevel));
+    private GenerationPaths ResolveGeneration(string savePath, int bakLevel)
+    {
+        var items = ResolveSaveFiles(savePath, "sphereworld", bakLevel, out bool incItems);
+        var chars = ResolveSaveFiles(savePath, "spherechars", bakLevel, out bool incChars);
+        var statics = ResolveSaveFiles(savePath, "spherestatics", bakLevel, out bool incStatics);
+        var multis = ResolveSaveFiles(savePath, "spheremultis", bakLevel, out bool incMultis);
+        var data = ResolveSaveFiles(savePath, "spheredata", bakLevel, out bool incData);
+        return new GenerationPaths(items, chars, statics, multis, data,
+            incItems || incChars || incStatics || incMultis || incData);
+    }
 
     /// <summary>Read every file of a generation end-to-end, without materializing
     /// anything, so corruption (bad gzip, truncation, misaligned binary records)
@@ -642,8 +658,9 @@ public sealed class WorldLoader
     /// (e.g. "sphereworld") at a backup level (0 = current, N = the aligned
     /// <c>.bakN</c> rotation). Priority: manifest → format probes. Returns an
     /// empty list if nothing exists at that level.</summary>
-    private List<string> ResolveSaveFiles(string savePath, string baseName, int bakLevel = 0)
+    private List<string> ResolveSaveFiles(string savePath, string baseName, int bakLevel, out bool incomplete)
     {
+        incomplete = false;
         string suffix = bakLevel == 0 ? "" : $".bak{bakLevel}";
 
         string manifestPath = ShardManifest.PathFor(savePath, baseName) + suffix;
@@ -658,7 +675,16 @@ public sealed class WorldLoader
                 // the manifest, since every file rotates together.
                 string full = Path.Combine(savePath, name + suffix);
                 if (File.Exists(full)) list.Add(full);
-                else if (bakLevel == 0) _logger.LogWarning("Manifest references missing shard {File}", name);
+                else
+                {
+                    // A manifest shard that is not on disk means this generation is
+                    // incomplete — loading only the surviving shards would silently
+                    // drop every object in the missing one. Flag it so the caller
+                    // falls back to a whole intact generation instead.
+                    incomplete = true;
+                    _logger.LogWarning("Manifest {Base} ({Which}) references missing shard {File}",
+                        baseName, bakLevel == 0 ? "current" : $".bak{bakLevel}", name);
+                }
             }
             if (bakLevel == 0)
                 _logger.LogInformation("Loaded manifest {Base}: format={Format}, shards={Count}",

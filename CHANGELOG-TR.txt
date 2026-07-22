@@ -3,6 +3,16 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-23] - Loader eksik shard'li nesli kismen yuklemek yerine reddediyor
+----------------------------------------
+
+FIX - Bir shard manifesti diskte olmayan bir dosyayi referans ettiginde, loader
+        uyari loglayip mevcut shard'lari yine de yukluyordu — eksik shard'daki her
+        nesneyi sessizce dusuruyordu. Eksik manifest shard'i olan bir nesil artik
+        incomplete olarak isaretleniyor ve bozuk bir nesil gibi ele aliniyor: loader
+        onceki butun nesle fallback yapiyor ya da saglam backup yoksa net hatayi
+        firlatiyor; delikli bir dunya ile acilmiyor.
+
 [2026-07-22] - Boot, current save eksikse (sadece bozukken degil) backup'tan kurtariyor
 ----------------------------------------
 

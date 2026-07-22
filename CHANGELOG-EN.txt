@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-22] - World save commits all three files transactionally (no mixed generations)
+----------------------------------------
+
+FIX - The world save writes three logical files (sphereworld, spherechars,
+        spheredata) and used to commit each to its live name before the next was
+        even written. A crash between them could publish a new-generation
+        sphereworld beside an old-generation spherechars — a mixed, internally
+        inconsistent world that the loader silently degrades into dangling
+        CONT/EQUIP references (data loss, not a crash). WritePrepared now stages
+        every file to its .tmp sibling first and only then commits all three
+        back-to-back, so a write failure leaves the previous generation completely
+        intact and the window in which the on-disk set is inconsistent shrinks from
+        the whole multi-second write of the later files to a few adjacent renames.
+
 [2026-07-22] - Version-correct broadcast framing for corpse contents (0x25) and damage (0x0B)
 ----------------------------------------
 

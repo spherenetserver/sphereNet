@@ -3,6 +3,19 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - Dunya save'i uc dosyayi transactional commit ediyor (karisik nesil yok)
+----------------------------------------
+
+FIX - Dunya save'i uc mantiksal dosya yaziyor (sphereworld, spherechars, spheredata)
+        ve her birini bir sonraki daha yazilmadan canli adina commit ediyordu.
+        Aradaki bir crash, yeni-nesil bir sphereworld'u eski-nesil bir spherechars'in
+        yanina yayabiliyordu — loader'in sessizce dangling CONT/EQUIP referanslarina
+        (crash degil, veri kaybi) dusurdugu karisik, ic-tutarsiz bir dunya.
+        WritePrepared artik her dosyayi once .tmp kardesine yaziyor ve ancak sonra
+        ucunu de ardarda commit ediyor; boylece bir yazma hatasi onceki nesli tam
+        birakiyor ve on-disk setin tutarsiz oldugu pencere, sonraki dosyalarin tum
+        coklu-saniye yaziminidan birkac bitisik rename'e iniyor.
+
 [2026-07-22] - Corpse icerigi (0x25) ve damage (0x0B) broadcast'i icin surum-dogru framing
 ----------------------------------------
 

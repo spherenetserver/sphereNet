@@ -117,9 +117,25 @@ public sealed class WorldSaver
         try
         {
             Directory.CreateDirectory(savePath);
-            int itemCount = SaveSharded(prepared.Snapshot.Items, savePath, "sphereworld", isItems: true);
-            int charCount = SaveSharded(prepared.Snapshot.Characters, savePath, "spherechars", isItems: false);
-            WriteServerData(savePath, prepared.ServerData);
+
+            // Phase 1 — write EVERY logical file (sphereworld, spherechars,
+            // spheredata) to its .tmp sibling; touch no live file yet. A crash here
+            // leaves the previous generation fully intact — only stray .tmp files,
+            // which the catch below and the next save clean up.
+            var itemPending = WriteShardsToTmp(prepared.Snapshot.Items, savePath, "sphereworld", isItems: true, out int itemCount);
+            var charPending = WriteShardsToTmp(prepared.Snapshot.Characters, savePath, "spherechars", isItems: false, out int charCount);
+            WriteServerDataToTmp(savePath, prepared.ServerData);
+
+            // Phase 2 — commit all three back-to-back. Previously each logical file
+            // was committed before the next was even written, so a crash mid-save
+            // could publish a new-generation sphereworld next to an old-generation
+            // spherechars (a mixed, internally inconsistent world that the loader
+            // silently degrades into dangling CONT/EQUIP data loss). Deferring every
+            // rename until all writes finish shrinks that window from the whole
+            // multi-second write of the later files to just these adjacent renames.
+            CommitShards(itemPending, savePath);
+            CommitShards(charPending, savePath);
+            CommitServerData(savePath);
 
             _logger.LogInformation("World save #{Index} complete: {Items} items, {Chars} chars in {Elapsed}s",
                 prepared.SaveIndex, itemCount, charCount, sw.Elapsed.TotalSeconds.ToString("F1"));
@@ -405,13 +421,28 @@ public sealed class WorldSaver
         return false;
     }
 
-    private int SaveSharded(IReadOnlyList<SaveRecord> records, string savePath, string baseName, bool isItems)
+    /// <summary>What <see cref="CommitShards"/> needs to atomically publish a
+    /// logical save whose shards (and manifest) have already been written to their
+    /// <c>.tmp</c> siblings. Produced by <see cref="WriteShardsToTmp"/>.</summary>
+    private readonly record struct PendingShardCommit(
+        string BaseName,
+        List<string> OutputFiles,
+        bool WriteManifest,
+        string ManifestPath);
+
+    /// <summary>Phase 1 of a logical save: write every shard (and, when there is
+    /// more than one, the manifest) to its <c>.tmp</c> sibling WITHOUT touching any
+    /// live file. Returns the record count via <paramref name="totalCount"/> and the
+    /// handle <see cref="CommitShards"/> uses to publish the result. Splitting write
+    /// from commit lets <see cref="WritePrepared"/> stage sphereworld, spherechars
+    /// and spheredata to .tmp before committing any of them, so a crash between
+    /// writes can never leave a new-generation file beside an old-generation one.</summary>
+    private PendingShardCommit WriteShardsToTmp(IReadOnlyList<SaveRecord> records, string savePath, string baseName, bool isItems, out int totalCount)
     {
         int shards = Math.Clamp(ShardCount, 0, 16);
         string ext = SaveIO.ExtensionFor(Format);
         long sizeLimit = Math.Max(0, ShardSizeBytes);
 
-        int totalCount;
         List<string> outputFiles;
 
         if (shards == 0)
@@ -481,14 +512,12 @@ public sealed class WorldSaver
             foreach (int c in counts) totalCount += c;
         }
 
-        // Atomic commit for every real output file.
-        foreach (string name in outputFiles)
-            CommitFile(Path.Combine(savePath, name));
-
-        // Manifest: written only when >1 file actually exists — keeps small
-        // worlds at a single {base}{ext} file, matching classic Sphere layout.
+        // Manifest (written only when >1 file exists — small worlds stay a single
+        // {base}{ext} file, matching classic Sphere layout) goes to .tmp here in the
+        // write phase; CommitShards publishes it alongside the shards.
         string manifestPath = ShardManifest.PathFor(savePath, baseName);
-        if (outputFiles.Count > 1)
+        bool writeManifest = outputFiles.Count > 1;
+        if (writeManifest)
         {
             var manifest = new ShardManifest
             {
@@ -497,15 +526,27 @@ public sealed class WorldSaver
                 Files = outputFiles,
             };
             manifest.Save(manifestPath + ".tmp");
-            CommitFile(manifestPath);
-        }
-        else if (File.Exists(manifestPath))
-        {
-            File.Delete(manifestPath);
         }
 
-        RemoveStaleSiblings(savePath, baseName, outputFiles);
-        return totalCount;
+        return new PendingShardCommit(baseName, outputFiles, writeManifest, manifestPath);
+    }
+
+    /// <summary>Phase 2 of a logical save: publish shards already staged to .tmp by
+    /// rotating each live file to .bak and renaming its .tmp into place, committing
+    /// (or clearing) the manifest, then pruning stale siblings. Runs only after
+    /// EVERY logical file of the save has been written, so the window in which the
+    /// on-disk set is internally inconsistent is just these adjacent renames.</summary>
+    private void CommitShards(PendingShardCommit pending, string savePath)
+    {
+        foreach (string name in pending.OutputFiles)
+            CommitFile(Path.Combine(savePath, name));
+
+        if (pending.WriteManifest)
+            CommitFile(pending.ManifestPath);
+        else if (File.Exists(pending.ManifestPath))
+            File.Delete(pending.ManifestPath);
+
+        RemoveStaleSiblings(savePath, pending.BaseName, pending.OutputFiles);
     }
 
     private static List<SaveRecord>[] PartitionRecordsByShard(IEnumerable<SaveRecord> records, int shards)
@@ -1018,11 +1059,21 @@ public sealed class WorldSaver
     /// tmp + rotate + commit dance. Prepared-data only — any thread.</summary>
     private void WriteServerData(string savePath, string content)
     {
-        string finalPath = Path.Combine(savePath, "spheredata.scp");
-        string tmpPath = finalPath + ".tmp";
-        File.WriteAllText(tmpPath, content);
-        CommitFile(finalPath);
+        WriteServerDataToTmp(savePath, content);
+        CommitServerData(savePath);
     }
+
+    /// <summary>Phase 1 for spheredata: stage the content to its .tmp sibling only.</summary>
+    private static void WriteServerDataToTmp(string savePath, string content)
+    {
+        string tmpPath = Path.Combine(savePath, "spheredata.scp") + ".tmp";
+        File.WriteAllText(tmpPath, content);
+    }
+
+    /// <summary>Phase 2 for spheredata: rotate the live file to .bak and rename its
+    /// staged .tmp into place.</summary>
+    private void CommitServerData(string savePath)
+        => CommitFile(Path.Combine(savePath, "spheredata.scp"));
 
     /// <summary>Render the spheredata.scp payload from live world state
     /// (globals, lists, GM pages, doors, sector env). MAIN-THREAD only.</summary>

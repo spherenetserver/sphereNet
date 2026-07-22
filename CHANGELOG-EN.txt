@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-23] - Central oversize guard now catches raw over-length buffers (replay bypass)
+----------------------------------------
+
+FIX - The send-path oversize guard keyed only on PacketBuffer.IsOversize, a flag
+        set while a packet is built (WriteLengthAt). A raw PacketBuffer(byte[]) —
+        such as a recorded broadcast replayed verbatim by the diagnostics tooling —
+        never runs that path, so an over-wire-length buffer carried the flag unset
+        and slipped past the guard, desyncing the client stream. The guard now also
+        drops any buffer whose length exceeds the 65535 wire ceiling regardless of
+        the flag, closing the replay bypass and any future raw-buffer send path.
+
 [2026-07-23] - OPL tooltip gains a total-size budget so an over-budget packet is refused early
 ----------------------------------------
 

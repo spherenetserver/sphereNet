@@ -485,7 +485,12 @@ public sealed class NetState : IDisposable
     /// pool, and reports the drop so callers stop. Never throws.</summary>
     private bool DropOversize(PacketBuffer packet)
     {
-        if (!packet.IsOversize) return false;
+        // Drop a packet flagged oversize during building OR any buffer whose length
+        // exceeds the wire ceiling — including a raw PacketBuffer(byte[]) that never
+        // went through WriteLengthAt (e.g. a recorded broadcast replayed verbatim),
+        // which carries IsOversize == false. Without the length check such a buffer
+        // bypasses this central guard and desyncs the client's packet stream.
+        if (!packet.IsOversize && packet.Length <= PacketBuffer.MaxWireLength) return false;
         byte opcode = packet.Length > 0 ? packet.Data[0] : (byte)0;
         if (packet.OversizeReason != null)
             _logger.LogError(

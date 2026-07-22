@@ -3,6 +3,18 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-23] - Merkezi oversize guard artik ham asiri-uzun buffer'lari yakaliyor (replay bypass)
+----------------------------------------
+
+FIX - Send-yolu oversize guard'i yalniz PacketBuffer.IsOversize bayragina bakiyordu;
+        bu bayrak paket kurulurken (WriteLengthAt) set ediliyor. Ham bir
+        PacketBuffer(byte[]) — ornegin taniglama araciyla aynen replay edilen bir
+        kayitli broadcast — bu yoldan gecmedigi icin wire-uzunlugunu asan bir buffer
+        bayragi set edilmemis tasiyor ve guard'i atlayip client stream'ini desync
+        ediyordu. Guard artik bayraktan bagimsiz olarak 65535 wire tavanini asan her
+        buffer'i da dusuruyor; replay bypass'i ve gelecekteki ham-buffer send
+        yollari kapaniyor.
+
 [2026-07-23] - OPL tooltip'e toplam-boyut butcesi eklendi, asiri paket erkenden reddediliyor
 ----------------------------------------
 

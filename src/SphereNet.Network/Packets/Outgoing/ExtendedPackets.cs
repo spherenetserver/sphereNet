@@ -2202,24 +2202,28 @@ public sealed class PacketArrowQuest : PacketWriter
 {
     private readonly bool _active;
     private readonly ushort _x, _y;
+    private readonly bool _extended;
 
-    public PacketArrowQuest(bool active, ushort x, ushort y) : base(0xBA)
+    /// <param name="extended">7.0.9+/KR/EC take a 10-byte variant with a trailing
+    /// serial dword; older clients use the 6-byte form. Sending the 10-byte form
+    /// to a 6-byte client leaves 4 bytes the client reads as the next opcode,
+    /// desyncing its stream — so this must match the recipient's version.</param>
+    public PacketArrowQuest(bool active, ushort x, ushort y, bool extended = true) : base(0xBA)
     {
         _active = active;
         _x = x;
         _y = y;
+        _extended = extended;
     }
 
     public override PacketBuffer Build()
     {
-        // Modern clients (7.0.x) accept a 10-byte variant with a trailing
-        // serial; legacy 0.21/older use the 6-byte form. We emit 10 so
-        // arrows survive KR/EC targeting too.
-        var buf = CreateFixed(10);
+        var buf = CreateFixed(_extended ? 10 : 6);
         buf.WriteByte((byte)(_active ? 1 : 0));
         buf.WriteUInt16(_x);
         buf.WriteUInt16(_y);
-        buf.WriteUInt32(0); // serial placeholder — scripts don't bind one
+        if (_extended)
+            buf.WriteUInt32(0); // serial placeholder — scripts don't bind one
         return buf;
     }
 }

@@ -4,6 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-22] - Version-correct framing for the tracking arrow (0xBA) and multi target (0x99)
+----------------------------------------
+
+FIX - The 0xBA quest/tracking arrow was always sent as the 10-byte 7.0.9+ form.
+        A pre-7.0.9 client expects 6 bytes and reads the trailing 4 as the next
+        opcode, desyncing its stream. PacketArrowQuest now emits 6 or 10 bytes,
+        and the tracking-skill sender (a unicast to one player) picks the form
+        from that client's version.
+
+FIX - The 0x99 multi-placement target added its trailing hue dword only at
+        7.0.13; the correct boundary is 7.0.9 (Source-X send.cpp), so 7.0.9-7.0.12
+        clients were sent 26 bytes where they expect 30. The gate is now 7.0.9.
+
+NOTE - The remaining T3 items are the mixed-version BROADCAST packets — 0x0B
+        combat damage and the 0x25 corpse-contents grid byte — which are built
+        once and shared across nearby clients of differing versions. Fixing those
+        needs per-recipient (version-bucketed) broadcast and is a separate change;
+        if old-client support is not a goal, raising the configured minimum client
+        version is the alternative.
+
 [2026-07-22] - A failed multicore tick no longer replays and double-applies itself
 ----------------------------------------
 

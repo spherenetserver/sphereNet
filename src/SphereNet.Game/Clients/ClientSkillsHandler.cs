@@ -564,13 +564,13 @@ public sealed class ClientSkillsHandler
         var target = expired ? null : _world.FindChar(new Serial(uid));
         if (target == null || target.IsDeleted || target.IsDead || target.MapIndex != _character.MapIndex)
         {
-            _netState.Send(new PacketArrowQuest(false, 0, 0));
+            _netState.Send(new PacketArrowQuest(false, 0, 0, _netState.IsClientPost7090));
             _character.RemoveTag("TRACKING_TARGET");
             _character.RemoveTag("TRACKING_UNTIL");
             _character.RemoveTag("TRACKING_ARROW_NEXT");
             return;
         }
-        _netState.Send(new PacketArrowQuest(true, (ushort)target.X, (ushort)target.Y));
+        _netState.Send(new PacketArrowQuest(true, (ushort)target.X, (ushort)target.Y, _netState.IsClientPost7090));
         _character.SetTag("TRACKING_ARROW_NEXT", (now + 1000).ToString());
     }
 

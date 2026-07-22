@@ -886,7 +886,8 @@ public sealed class ClientTargetingHandler
     /// <summary>Ground cursor with the multi footprint ghost-rendered at the
     /// cursor (0x99, Source-X addTargetItems for deeds). Same pending-target
     /// bookkeeping as <see cref="SetPendingTarget"/>; only the raised packet
-    /// differs. HS-era clients (7.0.13+) take the trailing hue dword.</summary>
+    /// differs. 7.0.9+ clients take the trailing hue dword (30 bytes); older
+    /// clients use the 26-byte form (Source-X send.cpp threshold 7.0.9).</summary>
     internal void SetPendingMultiTarget(Action<uint, short, short, sbyte, ushort> callback,
         ushort multiId, short xOff, short yOff, short zOff, ushort hue)
     {
@@ -906,7 +907,7 @@ public sealed class ClientTargetingHandler
         uint cursorId = (uint)Random.Shared.Next(1, int.MaxValue);
         Targets.CursorId = cursorId;
         _netState.Send(new PacketTargetMulti(cursorId, multiId, xOff, yOff, zOff, hue,
-            includeHue: _netState.ClientVersionNumber >= 70_013_000));
+            includeHue: _netState.IsClientPost7090));
     }
 
     // ==================== Information Skills ====================

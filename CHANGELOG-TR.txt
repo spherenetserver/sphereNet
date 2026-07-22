@@ -3,6 +3,26 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - Tracking arrow (0xBA) ve multi target (0x99) icin surum-dogru framing
+----------------------------------------
+
+FIX - 0xBA quest/tracking arrow her zaman 10-byte 7.0.9+ formunda gonderiliyordu.
+        7.0.9 oncesi bir client 6 byte bekler ve sondaki 4 byte'i sonraki opcode
+        olarak okuyup stream'ini desync eder. PacketArrowQuest artik 6 ya da 10
+        byte uretiyor ve tracking-skill gonderici (tek oyuncuya unicast) formu o
+        client'in surumune gore seciyor.
+
+FIX - 0x99 multi-placement target sondaki hue dword'unu yalniz 7.0.13'te ekliyordu;
+        dogru sinir 7.0.9 (Source-X send.cpp), dolayisiyla 7.0.9-7.0.12 client'lari
+        30 bekledigi yerde 26 byte aliyordu. Esik artik 7.0.9.
+
+NOTE - Kalan T3 kalemleri mixed-version BROADCAST paketleri — 0x0B combat damage
+        ve 0x25 corpse-icerik grid byte'i — bir kez build edilip farkli surumlu
+        yakin client'lara paylasiliyor. Bunlari duzeltmek per-recipient
+        (version-bucketed) broadcast gerektiriyor ve ayri bir degisiklik; eski
+        client destegi hedef degilse yapilandirilan minimum client surumunu
+        yukseltmek alternatiftir.
+
 [2026-07-22] - Basarisiz multicore tick artik replay edip kendini cift-uygulamiyor
 ----------------------------------------
 

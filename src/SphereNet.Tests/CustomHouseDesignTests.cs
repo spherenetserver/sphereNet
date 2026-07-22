@@ -343,4 +343,37 @@ public class CustomHouseDesignTests
         var tiles2 = engine.GetCommittedTiles(multi);
         Assert.Equal(2, tiles2.Count);
     }
+
+    // ---- Tile-count bound on tag load (İş #6) ----
+
+    [Fact]
+    public void LoadFromTags_CapsTileCountAtMaxTiles_ForOversizedTagSet()
+    {
+        var world = CreateWorld();
+        var multi = world.CreateItem();
+
+        // A corrupt or hostile save can carry unbounded DESIGN_n tags — far past the
+        // editor's per-placement cap. LoadFromTags must not materialize them all
+        // (memory) nor let the count overflow the 0xD8 packet's ushort tile-count /
+        // byte plane-count fields when the house is later streamed to a client.
+        int over = HouseDesign.MaxTiles + 500;
+        for (int i = 0; i < over; i++)
+            multi.Tags.Set($"DESIGN_{i}", $"0x{0x100 + (i % 200):X},{i % 15 - 7},{i / 120 % 120 - 60},7,0");
+
+        var loaded = HouseDesign.LoadFromTags(multi);
+        Assert.Equal(HouseDesign.MaxTiles, loaded.Tiles.Count);
+        Assert.True(loaded.Tiles.Count <= ushort.MaxValue); // fits the packet count field
+    }
+
+    [Fact]
+    public void LoadFromTags_UnderCap_LoadsEveryTile()
+    {
+        var world = CreateWorld();
+        var multi = world.CreateItem();
+        for (int i = 0; i < 50; i++)
+            multi.Tags.Set($"DESIGN_{i}", $"0x100,{i % 15 - 7},0,7,0");
+
+        var loaded = HouseDesign.LoadFromTags(multi);
+        Assert.Equal(50, loaded.Tiles.Count); // nothing dropped below the cap
+    }
 }

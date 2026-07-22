@@ -14,6 +14,13 @@ public sealed class HouseDesign
     public const string RevisionTag = "DESIGN_REVISION";
     private const string TilePrefix = "DESIGN_";
 
+    /// <summary>Hard cap on the number of tiles in a single design. The interactive
+    /// editor enforces this per placement; <see cref="LoadFromTags"/> enforces the
+    /// same bound so a corrupt or hostile save/script (unbounded DESIGN_n tags)
+    /// cannot balloon memory or overflow the design packet's tile-count (ushort) and
+    /// plane-count (byte) fields when the house is later sent to a client.</summary>
+    public const int MaxTiles = 10_000;
+
     public List<HouseDesignTile> Tiles { get; } = [];
     public uint Revision { get; set; } = 1;
 
@@ -40,6 +47,11 @@ public sealed class HouseDesign
             .OrderBy(pair => pair.Index);
         foreach (var (_, entry, _) in entries)
         {
+            // Bound the load the same way the editor bounds placement. Entries are
+            // ordered by index, so this keeps the first MaxTiles and drops the rest
+            // of an over-long (corrupt/hostile) tag set rather than materializing it.
+            if (design.Tiles.Count >= MaxTiles)
+                break;
             if (string.IsNullOrEmpty(entry))
                 continue;
             var parts = entry.Split(',', StringSplitOptions.TrimEntries);

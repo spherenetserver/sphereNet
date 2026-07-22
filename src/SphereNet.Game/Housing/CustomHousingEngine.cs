@@ -340,7 +340,7 @@ public sealed class CustomHousingEngine
         x is >= sbyte.MinValue and <= sbyte.MaxValue &&
         y is >= sbyte.MinValue and <= sbyte.MaxValue;
 
-    private const int MaxDesignTiles = 10_000;
+    private const int MaxDesignTiles = HouseDesign.MaxTiles;
 
     private static bool AddTile(HouseDesignSession session, ushort tileId, int x, int y, sbyte z)
     {

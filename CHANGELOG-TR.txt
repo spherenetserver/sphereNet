@@ -3,6 +3,18 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - Custom-house tasarim yuklemesi editor tile sinirina baglandi
+----------------------------------------
+
+FIX - HouseDesign.LoadFromTags her DESIGN_n tag'ini toplam-sayi siniri olmadan
+        okuyordu; oysa interaktif editor bir tasarimi yerlestirme basina 10.000 tile
+        ile sinirliyor. Bundan fazla DESIGN_n tag'i tasiyan bozuk ya da kotu niyetli
+        bir save/script bellegi sisirebiliyor ve ev bir istemciye aktarilirken 0xD8
+        tasarim paketinin ushort tile-count ve byte plane-count alanlarini tasirip
+        stream'i desync edebiliyordu. Yukleme artik ayni siniri (HouseDesign.MaxTiles)
+        uyguluyor; indekse gore ilk N tile'i tutup gerisini atiyor.
+        CustomHousingEngine'in yerlestirme siniri da artik ayni sabiti referans aliyor.
+
 [2026-07-22] - Dunya save'i uc dosyayi transactional commit ediyor (karisik nesil yok)
 ----------------------------------------
 

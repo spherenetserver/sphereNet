@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-22] - Version-correct broadcast framing for corpse contents (0x25) and damage (0x0B)
+----------------------------------------
+
+FIX - The corpse-contents broadcast sent one shared 0x25 add-to-container packet
+        (21 bytes, with the 6.0.1.7+ grid-index byte) to every nearby observer. A
+        pre-6.0.1.7 client in range expects 20 bytes, so it read the grid byte as
+        the first byte of the container serial and desynced its whole packet
+        stream. The corpse broadcast now dispatches a per-recipient variant sized
+        to each observer's version.
+FIX - The combat damage popup broadcast a single 7-byte 0x0B packet to everyone.
+        Per Source-X CClient::addShowDamage, only clients >=4.0.7a understand 0x0B;
+        4.0.0-4.0.6 need the 11-byte 0xBF.0x22 form and older clients get no packet
+        at all. Damage broadcasts now bucket recipients by version and send each
+        its own format. Recipients of the same variant still share one built buffer,
+        so the common all-modern case keeps the broadcast fast path.
+
 [2026-07-22] - Tick-yield idle-CPU measurement and opt-in adaptive yield mode
 ----------------------------------------
 

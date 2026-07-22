@@ -409,6 +409,57 @@ public static partial class Program
     /// to include everyone (the action can decide what to send to the
     /// dying player), or a specific UID to skip a single character.
     /// </summary>
+    // Reusable per-version buckets for the damage broadcast. The combat apply
+    // phase (where damage is broadcast) runs single-threaded on the main tick, so
+    // these plain static lists are safe and avoid per-hit allocation.
+    private static List<GameClient>? _dmgNewRecipients;
+    private static List<GameClient>? _dmgOldRecipients;
+
+    /// <summary>
+    /// Broadcast a combat damage popup, selecting the wire format per recipient:
+    /// 0x0B (7 bytes) for >=4.0.7a clients, 0xBF.0x22 (11 bytes) for 4.0.0-4.0.6,
+    /// and nothing for older clients — matching Source-X CClient::addShowDamage.
+    /// A single shared buffer is still built per version bucket, so the common
+    /// all-modern case keeps the shared-broadcast fast path (one build, no
+    /// per-recipient rebuild).
+    /// </summary>
+    private static void BroadcastDamageNearby(Point3D center, int range, uint defenderSerial, int damage, uint excludeUid)
+    {
+        if (_recordingEngine.HasActiveRecordings)
+        {
+            var built = new PacketDamage(defenderSerial, (ushort)Math.Min(damage, ushort.MaxValue)).Build();
+            _recordingEngine.CaptureFromBroadcast(center, range, built.Span.ToArray());
+            built.ReturnToPool();
+        }
+
+        var newBucket = _dmgNewRecipients ??= new List<GameClient>(256);
+        var oldBucket = _dmgOldRecipients ??= new List<GameClient>(16);
+        newBucket.Clear();
+        oldBucket.Clear();
+
+        ForEachClientInRange(center, range, excludeUid, (_, c) =>
+        {
+            if (c.NetState.SendsNewDamagePacket) newBucket.Add(c);
+            else if (c.NetState.SendsOldDamagePacket) oldBucket.Add(c);
+            // else: client predates 4.0.0 and gets no damage packet at all.
+        });
+
+        if (newBucket.Count > 0)
+        {
+            var shared = new PacketDamage(defenderSerial, (ushort)Math.Min(damage, ushort.MaxValue)).Build();
+            shared.MarkShared(newBucket.Count);
+            foreach (var c in newBucket) c.NetState.EnqueueShared(shared);
+            newBucket.Clear();
+        }
+        if (oldBucket.Count > 0)
+        {
+            var shared = new PacketDamageOld(defenderSerial, (byte)Math.Min(damage, byte.MaxValue)).Build();
+            shared.MarkShared(oldBucket.Count);
+            foreach (var c in oldBucket) c.NetState.EnqueueShared(shared);
+            oldBucket.Clear();
+        }
+    }
+
     private static void ForEachClientInRange(Point3D center, int range, uint excludeUid,
         Action<Character, GameClient> action)
     {

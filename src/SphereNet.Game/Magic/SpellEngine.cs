@@ -1358,9 +1358,7 @@ public sealed class SpellEngine
                 // 0x0B damage number, no health-bar update — while the melee
                 // and breath paths broadcast both. Without these the hit is
                 // invisible until the victim dies.
-                Character.BroadcastNearby?.Invoke(target.Position, 18,
-                    new SphereNet.Network.Packets.Outgoing.PacketDamage(
-                        target.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue)), 0);
+                Character.BroadcastDamageNearby?.Invoke(target.Position, 18, target.Uid.Value, damage, 0);
                 Character.BroadcastNearby?.Invoke(target.Position, 18,
                     new SphereNet.Network.Packets.Outgoing.PacketUpdateHealth(
                         target.Uid.Value, target.MaxHits, target.Hits), 0);
@@ -3035,9 +3033,7 @@ public sealed class SpellEngine
             victim.RecordAttack(eff.DotSource, damage);
         TryInterruptFromDamage(victim, damage);
 
-        Character.BroadcastNearby?.Invoke(victim.Position, 18,
-            new SphereNet.Network.Packets.Outgoing.PacketDamage(
-                victim.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue)), 0);
+        Character.BroadcastDamageNearby?.Invoke(victim.Position, 18, victim.Uid.Value, damage, 0);
         Character.BroadcastNearby?.Invoke(victim.Position, 18,
             new SphereNet.Network.Packets.Outgoing.PacketUpdateHealth(
                 victim.Uid.Value, victim.MaxHits, victim.Hits), 0);
@@ -3067,9 +3063,7 @@ public sealed class SpellEngine
         victim.RecordAttack(caster.Uid, damage);
         TryInterruptFromDamage(victim, damage);
 
-        Character.BroadcastNearby?.Invoke(victim.Position, 18,
-            new SphereNet.Network.Packets.Outgoing.PacketDamage(
-                victim.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue)), 0);
+        Character.BroadcastDamageNearby?.Invoke(victim.Position, 18, victim.Uid.Value, damage, 0);
         Character.BroadcastNearby?.Invoke(victim.Position, 18,
             new SphereNet.Network.Packets.Outgoing.PacketUpdateHealth(
                 victim.Uid.Value, victim.MaxHits, victim.Hits), 0);

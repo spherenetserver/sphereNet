@@ -1359,6 +1359,33 @@ public sealed class PacketDamage : PacketWriter
     }
 }
 
+/// <summary>0xBF sub 0x22 — Legacy damage notification for pre-4.0.7a clients that
+/// do not understand the 7-byte 0x0B packet. Source-X PacketCombatDamageOld
+/// (send.cpp): 11 bytes total — a leading 0x01, the defender serial, and a single
+/// damage byte. Selected per recipient by NetState.SendsOldDamagePacket.</summary>
+public sealed class PacketDamageOld : PacketWriter
+{
+    private readonly uint _serial;
+    private readonly byte _damage;
+
+    public PacketDamageOld(uint serial, byte damage) : base(0xBF)
+    {
+        _serial = serial;
+        _damage = damage;
+    }
+
+    public override PacketBuffer Build()
+    {
+        var buf = CreateVariable(11);
+        buf.WriteUInt16(0x0022); // subcommand
+        buf.WriteByte(0x01);     // Source-X writes a constant leading 0x01
+        buf.WriteUInt32(_serial);
+        buf.WriteByte(_damage);
+        buf.WriteLengthAt(1);
+        return buf;
+    }
+}
+
 /// <summary>0x6E — Character animation packet.</summary>
 public sealed class PacketAnimation : PacketWriter
 {

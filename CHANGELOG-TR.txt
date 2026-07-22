@@ -3,6 +3,23 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - Corpse icerigi (0x25) ve damage (0x0B) broadcast'i icin surum-dogru framing
+----------------------------------------
+
+FIX - Corpse-icerigi broadcast'i yakindaki her gozlemciye tek bir shared 0x25
+        add-to-container paketi (21 byte, 6.0.1.7+ grid-index byte'i ile) gonderiyordu.
+        Menzildeki pre-6.0.1.7 client 20 byte bekliyor; grid byte'ini container
+        serial'inin ilk byte'i sanip tum paket akisini desync ediyordu. Corpse
+        broadcast'i artik her gozlemcinin surumune gore boyutlandirilmis per-recipient
+        varyant gonderiyor.
+FIX - Combat damage popup'i herkese tek bir 7-byte 0x0B paketi yayiyordu. Source-X
+        CClient::addShowDamage'a gore yalniz >=4.0.7a client'lar 0x0B'yi anliyor;
+        4.0.0-4.0.6 icin 11-byte 0xBF.0x22 gerekiyor, daha eski client'lar ise hicbir
+        paket almiyor. Damage broadcast'lari artik alicilari surume gore kovaliyor ve
+        her birine kendi formatini gonderiyor. Ayni varyanti alanlar hala tek kurulmus
+        buffer'i paylasiyor, boylece yaygin all-modern durumda broadcast fast path'i
+        korunuyor.
+
 [2026-07-22] - Tick-yield idle-CPU olcumu ve opt-in adaptif yield modu
 ----------------------------------------
 

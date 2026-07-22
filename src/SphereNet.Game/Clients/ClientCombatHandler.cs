@@ -1292,8 +1292,8 @@ public sealed class ClientCombatHandler
                 BroadcastNearby?.Invoke(target.Position, UpdateRange,
                     new PacketSound(painSound, target.X, target.Y, target.Z), 0);
 
-            var damagePacket = new PacketDamage(target.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue));
-            BroadcastNearby?.Invoke(target.Position, UpdateRange, damagePacket, 0);
+            SphereNet.Game.Objects.Characters.Character.BroadcastDamageNearby?.Invoke(
+                target.Position, UpdateRange, target.Uid.Value, damage, 0);
 
             var healthPacket = new PacketUpdateHealth(
                 target.Uid.Value, target.MaxHits, target.Hits);
@@ -1353,20 +1353,21 @@ public sealed class ClientCombatHandler
                         BroadcastNearby?.Invoke(targetPos, UpdateRange, corpsePacket, 0);
 
                         // Player corpse: send contents + equip map for paperdoll corpse rendering.
-                        foreach (var corpseItem in corpse.Contents)
+                        // 0x25 add-to-container is 21 bytes for >=6.0.1.7 clients (extra grid-index
+                        // byte) and 20 for older ones. A single shared broadcast buffer would desync
+                        // whichever era it does not match, so dispatch a per-recipient variant sized
+                        // to each observer's version instead of one shared packet.
+                        ForEachClientInRange?.Invoke(targetPos, UpdateRange, 0, (_, observerClient) =>
                         {
-                            var containerItem = new PacketContainerItem(
-                                corpseItem.Uid.Value,
-                                corpseItem.DispIdFull,
-                                0,
-                                corpseItem.Amount,
-                                corpseItem.X,
-                                corpseItem.Y,
-                                corpse.Uid.Value,
-                                corpseItem.Hue,
-                                useGridIndex: true);
-                            BroadcastNearby?.Invoke(targetPos, UpdateRange, containerItem, 0);
-                        }
+                            bool grid = observerClient.NetState.IsClientPost6017;
+                            foreach (var corpseItem in corpse.Contents)
+                            {
+                                observerClient.Send(new PacketContainerItem(
+                                    corpseItem.Uid.Value, corpseItem.DispIdFull, 0,
+                                    corpseItem.Amount, corpseItem.X, corpseItem.Y,
+                                    corpse.Uid.Value, corpseItem.Hue, useGridIndex: grid));
+                            }
+                        });
 
                         var corpseEquipEntries = new List<(byte Layer, uint ItemSerial)>();
                         var usedLayers = new HashSet<byte>();

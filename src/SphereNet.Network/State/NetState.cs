@@ -200,6 +200,16 @@ public sealed class NetState : IDisposable
     public int PendingPacketLength { get; set; }
     public long PendingPacketStartTick { get; set; }
 
+    // Damage popup packet selection (Source-X CClient::addShowDamage):
+    //   >= 4.0.7a  -> 0x0B new damage (7 bytes)
+    //   4.0.0-4.0.6 -> 0xBF.0x22 old damage (11 bytes)
+    //   < 4.0.0     -> no damage packet at all
+    // An unreported version (0) is treated as a modern client so existing clients
+    // keep getting 0x0B — only a client that explicitly announces an old version
+    // is downgraded to the legacy packet.
+    public bool SendsNewDamagePacket => _clientVersionNumber == 0 || _clientVersionNumber >= 40_007_000;
+    public bool SendsOldDamagePacket => _clientVersionNumber >= 40_000_000 && _clientVersionNumber < 40_007_000;
+
     public bool IsClientPost6017  => HasProtocolChanges(ProtocolChanges.Version6017) || FallbackVersionAtLeast(60_001_007);
     public bool IsClientPost60142 => HasProtocolChanges(ProtocolChanges.Version60142) || FallbackVersionAtLeast(60_014_002);
     public bool IsClientPost7090  => HasProtocolChanges(ProtocolChanges.Version7090) || FallbackVersionAtLeast(70_009_000);

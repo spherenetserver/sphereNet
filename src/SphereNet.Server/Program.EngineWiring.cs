@@ -1938,8 +1938,7 @@ public static partial class Program
                         BroadcastNearby(target.Position, 18,
                             new PacketSound(painSound, target.X, target.Y, target.Z), 0);
 
-                    BroadcastNearby(target.Position, 18,
-                        new PacketDamage(target.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue)), 0);
+                    BroadcastDamageNearby(target.Position, 18, target.Uid.Value, damage, 0);
                 }
 
                 BroadcastNearby(target.Position, 18,
@@ -2064,8 +2063,7 @@ public static partial class Program
                     target.NextNpcActionTime = 0;
                     WakeNpc(target);
                 }
-                var dmgPkt = new PacketDamage(target.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue));
-                BroadcastNearby(target.Position, 18, dmgPkt, 0);
+                BroadcastDamageNearby(target.Position, 18, target.Uid.Value, damage, 0);
                 var healthPkt = new PacketUpdateHealth(target.Uid.Value, target.MaxHits, target.Hits);
                 BroadcastNearby(target.Position, 18, healthPkt, 0);
 
@@ -2114,8 +2112,7 @@ public static partial class Program
                     target.NextNpcActionTime = 0;
                     WakeNpc(target);
                 }
-                var dmgPkt = new PacketDamage(target.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue));
-                BroadcastNearby(target.Position, 18, dmgPkt, 0);
+                BroadcastDamageNearby(target.Position, 18, target.Uid.Value, damage, 0);
                 var healthPkt = new PacketUpdateHealth(target.Uid.Value, target.MaxHits, target.Hits);
                 BroadcastNearby(target.Position, 18, healthPkt, 0);
 
@@ -2332,8 +2329,7 @@ public static partial class Program
             CombatEngine.OnDirectCharacterDamageApplied = (target, source, damage) =>
             {
                 _spellEngine?.TryInterruptFromDamage(target, damage);
-                BroadcastNearby(target.Position, 18,
-                    new PacketDamage(target.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue)), 0);
+                BroadcastDamageNearby(target.Position, 18, target.Uid.Value, damage, 0);
                 BroadcastNearby(target.Position, 18,
                     new PacketUpdateHealth(target.Uid.Value, target.MaxHits, target.Hits), 0);
                 GameClient.EmitBloodSplat(_world, target);
@@ -3090,6 +3086,10 @@ public static partial class Program
             {
                 BroadcastNearby(origin, range, pkt, exclude);
             };
+            SphereNet.Game.Objects.Characters.Character.BroadcastDamageNearby = (origin, range, serial, damage, exclude) =>
+            {
+                BroadcastDamageNearby(origin, range, serial, damage, exclude);
+            };
             SphereNet.Game.Objects.Characters.Character.OnFacingChanged = ch =>
             {
                 BroadcastFacingUpdate(ch);
@@ -3369,20 +3369,21 @@ public static partial class Program
                 BroadcastNearby(victimPos, 18, corpsePacket, 0);
 
                 // Player corpse: send contents + equip map for paperdoll corpse rendering.
-                foreach (var corpseItem in corpse.Contents)
+                // 0x25 add-to-container is 21 bytes for >=6.0.1.7 clients (extra grid-index
+                // byte) and 20 for older ones. A single shared broadcast buffer would desync
+                // whichever era it does not match, so dispatch a per-recipient variant sized
+                // to each observer's version instead of one shared packet.
+                ForEachClientInRange(victimPos, 18, 0, (_, observerClient) =>
                 {
-                    var containerItem = new PacketContainerItem(
-                        corpseItem.Uid.Value,
-                        corpseItem.DispIdFull,
-                        0,
-                        corpseItem.Amount,
-                        corpseItem.X,
-                        corpseItem.Y,
-                        corpse.Uid.Value,
-                        corpseItem.Hue,
-                        useGridIndex: true);
-                    BroadcastNearby(victimPos, 18, containerItem, 0);
-                }
+                    bool grid = observerClient.NetState.IsClientPost6017;
+                    foreach (var corpseItem in corpse.Contents)
+                    {
+                        observerClient.Send(new PacketContainerItem(
+                            corpseItem.Uid.Value, corpseItem.DispIdFull, 0,
+                            corpseItem.Amount, corpseItem.X, corpseItem.Y,
+                            corpse.Uid.Value, corpseItem.Hue, useGridIndex: grid));
+                    }
+                });
 
                 var corpseEquipEntries = new List<(byte Layer, uint ItemSerial)>();
                 var usedLayers = new HashSet<byte>();

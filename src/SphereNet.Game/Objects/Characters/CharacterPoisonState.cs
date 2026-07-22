@@ -228,9 +228,7 @@ public sealed class CharacterPoisonState
 
             // Show the poison damage to nearby clients and refresh the health bar —
             // without this the victim's HP silently drains with no visual feedback.
-            Character.BroadcastNearby?.Invoke(_owner.Position, 18,
-                new SphereNet.Network.Packets.Outgoing.PacketDamage(
-                    _owner.Uid.Value, (ushort)Math.Min(damage, ushort.MaxValue)), 0);
+            Character.BroadcastDamageNearby?.Invoke(_owner.Position, 18, _owner.Uid.Value, damage, 0);
             Character.BroadcastNearby?.Invoke(_owner.Position, 18,
                 new SphereNet.Network.Packets.Outgoing.PacketUpdateHealth(
                     _owner.Uid.Value, _owner.MaxHits, _owner.Hits), 0);

@@ -175,6 +175,14 @@ public partial class Character : ObjBase
     /// BroadcastNearby helper.</summary>
     public new static Action<Point3D, int, SphereNet.Network.Packets.PacketWriter, uint>? BroadcastNearby;
 
+    /// <summary>Broadcast a combat damage popup to nearby clients, selecting the
+    /// wire format per recipient version (0x0B for >=4.0.7a, 0xBF.0x22 for older,
+    /// nothing below 4.0.0). Args: (origin, range, defenderSerial, rawDamage,
+    /// excludeUid). Wired in Program.cs; a single shared buffer per version bucket
+    /// preserves the broadcast fast path. Unwired (e.g. unit tests) it is a no-op,
+    /// like <see cref="BroadcastNearby"/>.</summary>
+    public static Action<Point3D, int, uint, int, uint>? BroadcastDamageNearby;
+
     /// <summary>Broadcast a direction-only 0x77 update after script FACE.</summary>
     public static Action<Character>? OnFacingChanged;
 
@@ -1446,9 +1454,7 @@ public partial class Character : ObjBase
             if (caster != null && caster != this)
                 RecordAttack(caster.Uid, dmg);
 
-            BroadcastNearby?.Invoke(Position, 18,
-                new SphereNet.Network.Packets.Outgoing.PacketDamage(
-                    Uid.Value, (ushort)Math.Min(dmg, ushort.MaxValue)), 0);
+            BroadcastDamageNearby?.Invoke(Position, 18, Uid.Value, dmg, 0);
             BroadcastNearby?.Invoke(Position, 18,
                 new SphereNet.Network.Packets.Outgoing.PacketUpdateHealth(
                     Uid.Value, MaxHits, Hits), 0);

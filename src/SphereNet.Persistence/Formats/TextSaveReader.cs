@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace SphereNet.Persistence.Formats;
 
 /// <summary>
@@ -7,6 +9,15 @@ namespace SphereNet.Persistence.Formats;
 /// </summary>
 public sealed class TextSaveReader : ISaveReader
 {
+    /// <summary>
+    /// Hard cap on a single physical line. A corrupt or malicious save with no
+    /// line terminator would otherwise let one <see cref="StreamReader.ReadLine"/>
+    /// buffer the whole (multi-gigabyte) file into memory. Real save lines are far
+    /// smaller; exceeding this is treated as corruption so the caller's generation
+    /// fallback can take over instead of the loader OOM-ing.
+    /// </summary>
+    internal const int MaxLineLength = 8 * 1024 * 1024;
+
     private readonly StreamReader _reader;
     private readonly bool _ownsStream;
     private bool _inRecord;
@@ -44,7 +55,7 @@ public sealed class TextSaveReader : ISaveReader
         }
 
         string? line;
-        while ((line = _reader.ReadLine()) != null)
+        while ((line = ReadBoundedLine()) != null)
         {
             string trimmed = line.Trim();
             if (trimmed.Length == 0) continue;
@@ -77,7 +88,7 @@ public sealed class TextSaveReader : ISaveReader
         }
 
         string? line;
-        while ((line = _reader.ReadLine()) != null)
+        while ((line = ReadBoundedLine()) != null)
         {
             string trimmed = line.Trim();
             if (trimmed.Length == 0) continue;
@@ -96,13 +107,77 @@ public sealed class TextSaveReader : ISaveReader
             if (eq <= 0) continue;
 
             key = trimmed[..eq].Trim();
-            value = trimmed[(eq + 1)..].Trim();
+            value = DecodeValue(trimmed[(eq + 1)..].Trim());
             return true;
         }
 
         _inRecord = false;
         key = value = string.Empty;
         return false;
+    }
+
+    /// <summary>
+    /// Reads one line, enforcing <see cref="MaxLineLength"/>. Handles LF, CR and
+    /// CRLF terminators and a final unterminated line, matching
+    /// <see cref="StreamReader.ReadLine"/> semantics for well-formed input while
+    /// refusing to buffer an unbounded run of characters.
+    /// </summary>
+    private string? ReadBoundedLine()
+    {
+        int first = _reader.Read();
+        if (first < 0) return null;
+
+        var sb = new StringBuilder(256);
+        int c = first;
+        while (c >= 0)
+        {
+            if (c == '\n')
+                return sb.ToString();
+            if (c == '\r')
+            {
+                if (_reader.Peek() == '\n') _reader.Read();
+                return sb.ToString();
+            }
+            if (sb.Length >= MaxLineLength)
+                throw new InvalidDataException(
+                    $"Save line exceeds {MaxLineLength} characters without a terminator; file is corrupt.");
+            sb.Append((char)c);
+            c = _reader.Read();
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Reverses <c>TextSaveWriter</c>'s multi-line encoding. A value that does not
+    /// begin with <see cref="TextSaveWriter.MultilineSentinel"/> — every value a
+    /// classic Sphere/Source-X save produces — is returned verbatim.
+    /// </summary>
+    private static string DecodeValue(string value)
+    {
+        if (value.Length == 0 || value[0] != TextSaveWriter.MultilineSentinel)
+            return value;
+
+        var sb = new StringBuilder(value.Length - 1);
+        for (int i = 1; i < value.Length; i++)
+        {
+            char c = value[i];
+            if (c == '\\' && i + 1 < value.Length)
+            {
+                char n = value[++i];
+                sb.Append(n switch
+                {
+                    'n' => '\n',
+                    'r' => '\r',
+                    '\\' => '\\',
+                    _ => n,
+                });
+            }
+            else
+            {
+                sb.Append(c);
+            }
+        }
+        return sb.ToString();
     }
 
     // Recovery for the "read ahead" case where NextProperty finds a new

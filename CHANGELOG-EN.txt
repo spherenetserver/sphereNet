@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-22] - Text save line policy: lossless multi-line values, bounded line reader
+----------------------------------------
+
+FIX - The text (.scp) save writer silently cut a property value at its first line
+        break, dropping everything after it with no diagnostic (and a value crafted
+        with an embedded CRLF could smuggle a second KEY=VALUE line into the record).
+        A value containing a line break is now escape-encoded behind a leading
+        control-byte sentinel so it round-trips losslessly; single-line values — the
+        overwhelming majority — are still written byte-identically, and the reader
+        returns any value lacking the sentinel verbatim, so legacy saves are
+        unaffected.
+FIX - TextSaveReader used an unbounded ReadLine, so a corrupt or malicious save
+        with no line terminator could buffer the entire (multi-gigabyte) file into
+        a single string and exhaust memory. A bounded line reader now caps one
+        physical line and raises InvalidDataException on overflow, letting the boot
+        generation-fallback recover instead of the loader OOM-ing.
+
 [2026-07-22] - Vendor-stock filter now skips items nested at any depth, not just direct children
 ----------------------------------------
 

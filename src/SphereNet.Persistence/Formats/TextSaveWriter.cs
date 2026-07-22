@@ -1,3 +1,5 @@
+﻿using System.Text;
+
 namespace SphereNet.Persistence.Formats;
 
 /// <summary>
@@ -7,6 +9,14 @@ namespace SphereNet.Persistence.Formats;
 /// </summary>
 public sealed class TextSaveWriter : ISaveWriter
 {
+    /// <summary>
+    /// Leading marker on a property value whose original text contained a line
+    /// break. Classic single-line saves never emit a leading control char, so a
+    /// value beginning with this byte unambiguously signals "escape-encoded" to
+    /// <see cref="TextSaveReader"/>; every other value round-trips verbatim.
+    /// </summary>
+    internal const char MultilineSentinel = '\u0001';
+
     private readonly StreamWriter _writer;
     private readonly bool _ownsStream;
     private bool _recordOpen;
@@ -47,7 +57,11 @@ public sealed class TextSaveWriter : ISaveWriter
         if (!_recordOpen)
             throw new InvalidOperationException("WriteProperty called before BeginRecord");
         ValidateToken(key, nameof(key));
-        value = TruncateLine(value);
+        // A single-line value is written verbatim (byte-identical to classic
+        // saves). A value carrying a line break can't be represented on one line;
+        // rather than silently dropping everything after the first break, encode
+        // it losslessly so it round-trips through TextSaveReader. See EncodeValue.
+        value = EncodeValue(value);
         _writer.Write(key);
         _writer.Write('=');
         _writer.WriteLine(value);
@@ -72,6 +86,34 @@ public sealed class TextSaveWriter : ISaveWriter
         _writer.Flush();
         _writer.Dispose();
         _disposed = true;
+    }
+
+    /// <summary>
+    /// Values without a line break pass through unchanged (identical output to the
+    /// classic writer). Values containing <c>\r</c>/<c>\n</c> are escape-encoded
+    /// behind <see cref="MultilineSentinel"/> so no data is silently lost and the
+    /// original text can be reconstructed on load.
+    /// </summary>
+    private static string EncodeValue(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        if (value.AsSpan().IndexOfAny('\r', '\n') < 0 &&
+            (value.Length == 0 || value[0] != MultilineSentinel))
+            return value;
+
+        var sb = new StringBuilder(value.Length + 8);
+        sb.Append(MultilineSentinel);
+        foreach (char c in value)
+        {
+            switch (c)
+            {
+                case '\\': sb.Append("\\\\"); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                default: sb.Append(c); break;
+            }
+        }
+        return sb.ToString();
     }
 
     private static string TruncateLine(string value)

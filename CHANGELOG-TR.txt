@@ -3,6 +3,22 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - Metin-save satir politikasi: kayipsiz cok-satirli deger, sinirli satir okuyucu
+----------------------------------------
+
+FIX - Metin (.scp) save writer bir property degerini ilk satir sonunda sessizce
+        kesiyor, sonrasindaki her seyi hicbir uyari vermeden atiyordu (ve icine
+        CRLF gomulmus bir deger, kayda ikinci bir KEY=VALUE satiri sizdirabilir).
+        Satir sonu iceren deger artik bir bastaki kontrol-bayti sentinel'i arkasinda
+        escape-kodlaniyor, boylece kayipsiz round-trip yapiyor; tek-satirlik degerler
+        — cok buyuk cogunluk — hala byte-ayni yaziliyor ve okuyucu sentinel tasimayan
+        degeri aynen dondurdugu icin legacy save'ler etkilenmiyor.
+FIX - TextSaveReader sinirsiz ReadLine kullaniyordu; satir sonu olmayan bozuk ya da
+        kotu niyetli bir save, tum (coklu-gigabyte) dosyayi tek bir string'e
+        bufferleyip bellegi tuketebilirdi. Sinirli bir satir okuyucu artik tek bir
+        fiziksel satiri sinirliyor ve tasmada InvalidDataException firlatiyor; boylece
+        loader OOM olmak yerine boot generation-fallback devreye giriyor.
+
 [2026-07-22] - Vendor-stock filtresi artik yalniz dogrudan cocuklari degil her derinlikteki nested item'lari atliyor
 ----------------------------------------
 

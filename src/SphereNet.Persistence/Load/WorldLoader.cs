@@ -398,10 +398,21 @@ public sealed class WorldLoader
                         item.Uid.Value);
                     world.PlaceItem(item, item.Position);
                 }
+                else if (parentItem.AddItem(item))
+                {
+                    containedCount++;
+                }
                 else
                 {
-                    parentItem.AddItem(item);
-                    containedCount++;
+                    // A corrupt/hand-edited CONT chain (e.g. A->B->A) would leave
+                    // this item's ContainedIn pointing into a cycle; TryAddItem
+                    // refused the add. Quarantine it on the ground so its
+                    // ContainedIn no longer forms the cycle (which would otherwise
+                    // hang the parent-chain walk in packet sends).
+                    _logger.LogWarning(
+                        "Item 0x{Uid:X8} CONT 0x{Cont:X8} forms a containment cycle; placing on ground",
+                        item.Uid.Value, contSerial.Value);
+                    world.PlaceItem(item, item.Position);
                 }
             }
             else
@@ -582,9 +593,13 @@ public sealed class WorldLoader
                         item.Uid.Value);
                     world.PlaceItem(item, item.Position);
                 }
-                else
+                else if (!parentItem.AddItem(item))
                 {
-                    parentItem.AddItem(item);
+                    // Corrupt CONT cycle — quarantine on the ground (see Materialize).
+                    _logger.LogWarning(
+                        "Item 0x{Uid:X8} CONT 0x{Cont:X8} forms a containment cycle; placing on ground",
+                        item.Uid.Value, contSerial.Value);
+                    world.PlaceItem(item, item.Position);
                 }
             }
             else

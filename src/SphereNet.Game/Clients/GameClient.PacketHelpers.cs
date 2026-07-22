@@ -796,9 +796,23 @@ public sealed partial class GameClient
         if (parentItem == null)
             return;
 
+        // Walk up to the top-level container, bounded like every other parent-chain
+        // walk (16). A corrupt/hand-edited save can store a containment cycle
+        // (A cont B, B cont A, or an item contained in itself) directly into
+        // ContainedIn, bypassing the runtime ContainsInSubtree guard — without a
+        // cap this loops forever on the main thread and hangs the shard.
+        const int MaxContainerDepth = 16;
         var top = parentItem;
+        int depth = 0;
         while (top.ContainedIn.IsValid)
         {
+            if (++depth > MaxContainerDepth)
+            {
+                _logger.LogWarning(
+                    "Container chain for item 0x{Uid:X8} exceeds depth {Max} (cycle or corrupt CONT?); not sending",
+                    item.Uid.Value, MaxContainerDepth);
+                return;
+            }
             var next = _world.FindItem(top.ContainedIn);
             if (next == null)
                 break;

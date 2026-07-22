@@ -3,6 +3,23 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - Containment-cycle guard: bozuk CONT zinciri ana thread'i kilitleyemiyor
+----------------------------------------
+
+FIX - SendItemVisualUpdate'teki parent-zinciri yuruyusunun derinlik cap'i ya da
+        cycle guard'i yoktu. Bozuk ya da elle-edit edilmis bir save, containment
+        cycle'ini (A cont B, B cont A ya da kendini iceren bir item) dogrudan
+        ContainedIn'e yazabiliyor, runtime ContainsInSubtree kontrolunu atlatiyor
+        — yuruyus o zaman ana thread'de sonsuza donup shard'i kilitliyordu. Artik
+        16 seviyeyle sinirli (diger tum parent-zinciri yuruyusleri gibi) ve zincir
+        cycle ya da patolojik derinlikteyse item'i loglayip atliyor.
+
+FIX - Yuklemede, CONT'u bir containment cycle olusturacak item cycle'da
+        birakilmak yerine yere karantinaya aliniyor (ContainedIn'i temizleniyor),
+        boylece bozuk iliski runtime'a hic ulasmiyor. Item.AddItem artik add'in
+        basarili olup olmadigini donuyor ki loader reddedilen (cyclic) durumu
+        tespit edebilsin.
+
 [2026-07-22] - Sector tick, callback birden fazla nesne silince artik cokmuyor
 ----------------------------------------
 

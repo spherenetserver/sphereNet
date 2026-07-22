@@ -790,7 +790,11 @@ public class Item : ObjBase
         return true;
     }
 
-    public void AddItem(Item item) => TryAddItem(item);
+    /// <summary>Add an item to this container. Returns false when the add would
+    /// create a containment cycle (or the container is full) — callers loading
+    /// from a corrupt save use this to quarantine the item instead of leaving a
+    /// cyclic ContainedIn.</summary>
+    public bool AddItem(Item item) => TryAddItem(item);
 
     private bool ContainsInSubtree(Item target)
     {

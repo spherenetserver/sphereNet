@@ -137,7 +137,14 @@ public static partial class Program
     private const int RegionPeriodicTicks = 120;
     private static readonly HashSet<uint> _regPeriodicFired = [];
 
-    private static bool _running;
+    // Written from several threads (Console.CancelKeyPress signal handler, the
+    // telnet accept thread, the WinForms UI thread, the IPC/panel callback) and
+    // read every iteration by the main game loop. Without a barrier the JIT may
+    // cache the read in the tight `while (_running)` loop, so a shutdown request
+    // from another thread might not be observed for a long time — or ever. Marking
+    // it volatile forces each read to re-fetch and publishes every write, so all
+    // shutdown paths take effect on the loop's next iteration.
+    private static volatile bool _running;
     private static bool _multicoreRuntimeEnabled;
     private static long _multicoreFallbackMs;
     private const long MulticoreRecoveryCooldownMs = 30_000;

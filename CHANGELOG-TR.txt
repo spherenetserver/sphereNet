@@ -3,6 +3,19 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - Ana-loop shutdown bayragi volatile yapildi, cross-thread istekler goruluyor
+----------------------------------------
+
+FIX - Ana oyun loop'unun `_running` bayragi, birden fazla thread'den yazilan
+        (Console.CancelKeyPress sinyal handler'i, telnet accept thread'i, WinForms UI
+        thread'i, IPC/panel callback'i) ve siki `while (_running)` loop'unda her
+        iterasyonda okunan duz bir bool'du. Bellek bariyeri olmadan JIT okumayi
+        cache'leyebiliyor; boylece baska bir thread'den gelen shutdown istegi
+        belirsiz bir sure fark edilmeyebiliyordu. Bayrak artik volatile; her yazma
+        yayimlaniyor ve her loop iterasyonu yeniden okuyor — CancelKeyPress, telnet,
+        panel ve gecikmeli SERV.SHUTDOWN, loop'un bir sonraki gecisinde etkili
+        oluyor.
+
 [2026-07-22] - IPC sunucu host reconnect'lerini game-server restart etmeden kabul ediyor
 ----------------------------------------
 

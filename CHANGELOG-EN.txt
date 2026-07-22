@@ -4,6 +4,18 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-22] - Main-loop shutdown flag made volatile so cross-thread requests are seen
+----------------------------------------
+
+FIX - The main game loop's `_running` flag was a plain bool written from several
+        threads (Console.CancelKeyPress signal handler, telnet accept thread,
+        WinForms UI thread, IPC/panel callback) and read every iteration of the
+        tight `while (_running)` loop. Without a memory barrier the JIT may cache
+        the read, so a shutdown request from another thread could go unobserved for
+        an unbounded time. The flag is now volatile, so every write is published and
+        each loop iteration re-reads it — CancelKeyPress, telnet, panel and delayed
+        SERV.SHUTDOWN all take effect on the loop's next pass.
+
 [2026-07-22] - IPC server accepts host reconnects without a game-server restart
 ----------------------------------------
 

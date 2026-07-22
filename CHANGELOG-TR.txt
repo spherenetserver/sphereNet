@@ -3,6 +3,24 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - StateRecorder artik tek SQLite connection'ini thread'ler arasi paylasmiyor
+----------------------------------------
+
+FIX - StateRecorder tek bir SqliteConnection'i flush thread'inden, ThreadPool
+        cleanup'indan ve caller-thread pin/share/query cagrilarindan kullaniyordu.
+        Microsoft.Data.Sqlite connection'lari thread-safe degil, dolayisiyla
+        esamanli kullanim sporadik native "misuse"/transaction hatalari
+        uretiyordu. Flush thread artik connection'ini yalniz kendisi sahipleniyor;
+        cleanup, pin, share ve tum query'ler kendi kisa-omurlu connection'ini
+        aciyor. WAL (DB dosyasinda kalici) bunlarin flush writer ile esamanli
+        calismasina izin veriyor, busy_timeout gecici bir yazma kilidini
+        SQLITE_BUSY firlatmak yerine bekliyor.
+
+FIX - Basarisiz bir flush, drain edilen move/snapshot kayitlarini dusurmek yerine
+        yeniden queue'ya koyuyor (sinirli, boylece kalici bir hata queue'lari
+        sinirsiz buyutemez), boylece gecici bir hata artik kaydedilen veriyi
+        kaybetmiyor.
+
 [2026-07-22] - Tracking arrow (0xBA) ve multi target (0x99) icin surum-dogru framing
 ----------------------------------------
 

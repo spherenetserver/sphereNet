@@ -53,7 +53,11 @@ public sealed class StateRecorder : IDisposable
         _db.Open();
 
         using var pragma = _db.CreateCommand();
-        pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA cache_size=-8000;";
+        // WAL persists in the DB file header, so every connection opened later
+        // (cleanup, queries, pins) inherits it: one writer + concurrent readers
+        // across connections, which is how the thread-safety fix works. busy_timeout
+        // makes a connection wait for a transient write lock instead of failing.
+        pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA cache_size=-8000; PRAGMA busy_timeout=5000;";
         pragma.ExecuteNonQuery();
 
         using var ddl = _db.CreateCommand();
@@ -169,6 +173,22 @@ public sealed class StateRecorder : IDisposable
         _insertSnapshotCmd.Parameters.Add("@mst", SqliteType.Integer);
         _insertSnapshotCmd.Parameters.Add("@eq", SqliteType.Text);
         _insertSnapshotCmd.Prepare();
+    }
+
+    /// <summary>Open a short-lived connection for an operation running OFF the
+    /// flush thread. SqliteConnection is not thread-safe, so cleanup, pins, shares
+    /// and queries each use their own connection instead of sharing <c>_db</c>
+    /// (which is owned exclusively by the flush thread). WAL (set on the file)
+    /// lets these run concurrently with the flush writer; busy_timeout waits out a
+    /// transient write lock rather than throwing SQLITE_BUSY.</summary>
+    private SqliteConnection OpenConnection()
+    {
+        var conn = new SqliteConnection($"Data Source={_dbPath}");
+        conn.Open();
+        using var pragma = conn.CreateCommand();
+        pragma.CommandText = "PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL;";
+        pragma.ExecuteNonQuery();
+        return conn;
     }
 
     // ----------------------------------------------------------------
@@ -330,8 +350,16 @@ public sealed class StateRecorder : IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "StateRecorder flush failed ({Moves} moves, {Snaps} snapshots)",
+            _logger.LogError(ex, "StateRecorder flush failed ({Moves} moves, {Snaps} snapshots); re-queuing for retry",
                 moves.Count, snaps.Count);
+            // Don't lose the drained records on a transient failure — put them back
+            // so the next flush retries. Cap the backlog so a persistent failure
+            // (e.g. disk full) can't grow the queues without bound (dead-letter).
+            const int MaxPendingRecords = 500_000;
+            if (_moveQueue.Count < MaxPendingRecords)
+                foreach (var m in moves) _moveQueue.Enqueue(m);
+            if (_snapshotQueue.Count < MaxPendingRecords)
+                foreach (var s in snaps) _snapshotQueue.Enqueue(s);
         }
     }
 
@@ -349,7 +377,8 @@ public sealed class StateRecorder : IDisposable
 
         try
         {
-            using var cmd = _db!.CreateCommand();
+            using var conn = OpenConnection();
+            using var cmd = conn.CreateCommand();
             cmd.CommandText = """
                 DELETE FROM char_moves WHERE ts < @cutoff
                 AND NOT EXISTS (
@@ -379,7 +408,8 @@ public sealed class StateRecorder : IDisposable
 
     public void PinPeriod(long startTs, long endTs, string label, string pinnedBy, bool isPublic = false)
     {
-        using var cmd = _db!.CreateCommand();
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             INSERT INTO pinned_periods(start_ts, end_ts, label, pinned_by, is_public, created_at)
             VALUES(@s, @e, @l, @p, @pub, @c)
@@ -395,7 +425,8 @@ public sealed class StateRecorder : IDisposable
 
     public bool UnpinPeriod(int pinId)
     {
-        using var cmd = _db!.CreateCommand();
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
         cmd.CommandText = "DELETE FROM pinned_periods WHERE id = @id";
         cmd.Parameters.AddWithValue("@id", pinId);
         return cmd.ExecuteNonQuery() > 0;
@@ -404,7 +435,8 @@ public sealed class StateRecorder : IDisposable
     public List<(int Id, long StartTs, long EndTs, string Label, string PinnedBy, bool IsPublic)> GetPinnedPeriods()
     {
         var result = new List<(int, long, long, string, string, bool)>();
-        using var cmd = _db!.CreateCommand();
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT id, start_ts, end_ts, label, pinned_by, is_public FROM pinned_periods ORDER BY start_ts DESC";
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -419,7 +451,8 @@ public sealed class StateRecorder : IDisposable
 
     public void ShareView(uint charUid, long startTs, long endTs, string label, string sharedBy)
     {
-        using var cmd = _db!.CreateCommand();
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             INSERT INTO shared_views(char_uid, start_ts, end_ts, label, shared_by, created_at)
             VALUES(@u, @s, @e, @l, @sb, @c)
@@ -435,7 +468,8 @@ public sealed class StateRecorder : IDisposable
 
     public bool UnshareView(int shareId)
     {
-        using var cmd = _db!.CreateCommand();
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
         cmd.CommandText = "DELETE FROM shared_views WHERE id = @id";
         cmd.Parameters.AddWithValue("@id", shareId);
         return cmd.ExecuteNonQuery() > 0;
@@ -444,7 +478,8 @@ public sealed class StateRecorder : IDisposable
     public List<(int Id, uint CharUid, string Label, long StartTs, long EndTs, string SharedBy)> GetSharedViews()
     {
         var result = new List<(int, uint, string, long, long, string)>();
-        using var cmd = _db!.CreateCommand();
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT id, char_uid, label, start_ts, end_ts, shared_by FROM shared_views ORDER BY created_at DESC";
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -457,7 +492,8 @@ public sealed class StateRecorder : IDisposable
     {
         if (viewerPrivLevel >= PrivLevel.Admin) return true;
 
-        using var cmd = _db!.CreateCommand();
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT COUNT(*) FROM shared_views
             WHERE char_uid = @uid AND start_ts <= @s AND end_ts >= @e
@@ -476,7 +512,8 @@ public sealed class StateRecorder : IDisposable
         string? nameFilter = null, int limit = 30)
     {
         var result = new List<(uint, string, bool, long, int)>();
-        using var cmd = _db!.CreateCommand();
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
 
         bool hasFilter = !string.IsNullOrWhiteSpace(nameFilter);
         cmd.CommandText = $"""
@@ -500,7 +537,8 @@ public sealed class StateRecorder : IDisposable
     public List<(string HourKey, long StartTs, int SnapshotCount, int MoveCount)> GetHourBuckets(uint charUid, int limit = 72)
     {
         var result = new List<(string, long, int, int)>();
-        using var cmd = _db!.CreateCommand();
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT hour_key, MIN(ts) as start_ts, COUNT(*) as cnt
             FROM char_snapshots
@@ -518,7 +556,7 @@ public sealed class StateRecorder : IDisposable
             long st = r.GetInt64(1);
             int snapCount = r.GetInt32(2);
 
-            using var mc = _db.CreateCommand();
+            using var mc = conn.CreateCommand();
             mc.CommandText = "SELECT COUNT(*) FROM char_moves WHERE char_uid=@u AND ts>=@s AND ts<@e";
             mc.Parameters.AddWithValue("@u", (long)charUid);
             mc.Parameters.AddWithValue("@s", st);
@@ -532,7 +570,8 @@ public sealed class StateRecorder : IDisposable
 
     public uint? FindCharUidByName(string name)
     {
-        using var cmd = _db!.CreateCommand();
+        using var conn = OpenConnection();
+        using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT char_uid FROM char_snapshots WHERE name = @n COLLATE NOCASE ORDER BY ts DESC LIMIT 1";
         cmd.Parameters.AddWithValue("@n", name);
         var val = cmd.ExecuteScalar();
@@ -551,7 +590,8 @@ public sealed class StateRecorder : IDisposable
 
     public RecordingSession? BuildReplaySession(uint charUid, long startMs, long endMs)
     {
-        var initSnap = GetClosestSnapshot(charUid, startMs);
+        using var conn = OpenConnection();
+        var initSnap = GetClosestSnapshot(conn, charUid, startMs);
         if (initSnap == null) return null;
 
         var session = new RecordingSession
@@ -574,7 +614,7 @@ public sealed class StateRecorder : IDisposable
             snap.Dir, (ushort)snap.Hue, snap.Flags, 0x01, equipTuples);
         session.Packets.Add(new RecordedPacket { TickOffset = 0, Data = drawPkt.Build().Span.ToArray() });
 
-        var moves = GetMoves(charUid, startMs, endMs);
+        var moves = GetMoves(conn, charUid, startMs, endMs);
         ushort lastBody = (ushort)snap.BodyId;
         ushort lastHue = (ushort)snap.Hue;
         foreach (var mv in moves)
@@ -587,7 +627,7 @@ public sealed class StateRecorder : IDisposable
             session.Packets.Add(new RecordedPacket { TickOffset = offset, Data = movePkt.Build().Span.ToArray() });
         }
 
-        var snapshots = GetSnapshots(charUid, startMs, endMs);
+        var snapshots = GetSnapshots(conn, charUid, startMs, endMs);
         string lastEquip = snap.Equipment;
         foreach (var s in snapshots)
         {
@@ -614,9 +654,9 @@ public sealed class StateRecorder : IDisposable
     //  Internal DB queries for replay builder
     // ----------------------------------------------------------------
 
-    private SnapRow? GetClosestSnapshot(uint charUid, long ts)
+    private SnapRow? GetClosestSnapshot(SqliteConnection conn, uint charUid, long ts)
     {
-        using var cmd = _db!.CreateCommand();
+        using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT ts,x,y,z,map,dir,body_id,hue,name,flags,equipment
             FROM char_snapshots WHERE char_uid=@u AND ts<=@t ORDER BY ts DESC LIMIT 1
@@ -642,10 +682,10 @@ public sealed class StateRecorder : IDisposable
         (byte)r.GetInt32(4), (byte)r.GetInt32(5), r.GetInt32(6), r.GetInt32(7),
         r.GetString(8), (byte)r.GetInt32(9), r.GetString(10));
 
-    private List<MoveRow> GetMoves(uint charUid, long startMs, long endMs)
+    private static List<MoveRow> GetMoves(SqliteConnection conn, uint charUid, long startMs, long endMs)
     {
         var result = new List<MoveRow>();
-        using var cmd = _db!.CreateCommand();
+        using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT ts,x,y,z,map,dir FROM char_moves WHERE char_uid=@u AND ts>=@s AND ts<=@e ORDER BY ts";
         cmd.Parameters.AddWithValue("@u", (long)charUid);
         cmd.Parameters.AddWithValue("@s", startMs);
@@ -657,10 +697,10 @@ public sealed class StateRecorder : IDisposable
         return result;
     }
 
-    private List<SnapRow> GetSnapshots(uint charUid, long startMs, long endMs)
+    private static List<SnapRow> GetSnapshots(SqliteConnection conn, uint charUid, long startMs, long endMs)
     {
         var result = new List<SnapRow>();
-        using var cmd = _db!.CreateCommand();
+        using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT ts,x,y,z,map,dir,body_id,hue,name,flags,equipment
             FROM char_snapshots WHERE char_uid=@u AND ts>=@s AND ts<=@e ORDER BY ts

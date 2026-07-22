@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-22] - StateRecorder no longer shares one SQLite connection across threads
+----------------------------------------
+
+FIX - StateRecorder used a single SqliteConnection from the flush thread, the
+        ThreadPool cleanup, and caller-thread pin/share/query calls.
+        Microsoft.Data.Sqlite connections are not thread-safe, so concurrent use
+        produced sporadic native "misuse"/transaction errors. The flush thread now
+        owns its connection exclusively; cleanup, pins, shares and all queries open
+        their own short-lived connection. WAL (persisted in the DB file) lets them
+        run concurrently with the flush writer, and busy_timeout waits out a
+        transient write lock instead of throwing SQLITE_BUSY.
+
+FIX - A failed flush re-queues the drained move/snapshot records (bounded, so a
+        persistent failure can't grow the queues without limit) instead of
+        dropping them, so a transient error no longer loses recorded data.
+
 [2026-07-22] - Version-correct framing for the tracking arrow (0xBA) and multi target (0x99)
 ----------------------------------------
 

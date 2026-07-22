@@ -113,6 +113,33 @@ public sealed class GumpOplBudgetTests
         Assert.Contains("property count", buf.OversizeReason);
     }
 
+    [Fact]
+    public void Opl_PropertiesWithinPerArgCap_ButOverTotal_IsRejectedByTotalBudget()
+    {
+        // 20 args of 8000 chars each: every property is under the per-arg cap
+        // (8192) and the count is under 512, yet the total is ~320 KB — far past
+        // the ushort wire ceiling. Without the total budget this built an ~8 MB-
+        // class buffer only to have WriteLengthAt drop it; now it is refused up front.
+        var props = Enumerable.Range(0, 20)
+            .Select(_ => ((uint)1042971, new string('x', 8000))).ToArray();
+        var buf = new PacketOPLData(1, 1, props).Build();
+        Assert.True(buf.IsOversize);
+        Assert.Contains("total", buf.OversizeReason);
+    }
+
+    [Fact]
+    public void Opl_LargeButUnderTotalBudget_StillBuilds()
+    {
+        // Seven 4,000-char args (each under the 8192 per-arg cap) → ~56 KB, just
+        // under the 65535 ceiling: the total budget must not reject content that
+        // still fits on the wire.
+        var props = Enumerable.Range(0, 7)
+            .Select(_ => ((uint)1042971, new string('x', 4000))).ToArray();
+        var buf = new PacketOPLData(1, 1, props).Build();
+        Assert.False(buf.IsOversize);
+        Assert.Equal(0xD6, buf.Data[0]);
+    }
+
     // ---- integration: the send path drops an over-budget gump ----
 
     [Fact]

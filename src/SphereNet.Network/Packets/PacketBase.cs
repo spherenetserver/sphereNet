@@ -99,6 +99,36 @@ public static class PacketBudget
     /// <summary>Max characters in one OPL property's argument string. Under the
     /// ushort byte-length field (chars*2) so it cannot wrap.</summary>
     public const int MaxOplArgsChars = 8192;
+    /// <summary>Max total 0xD6 packet bytes — the ushort wire ceiling. The per-
+    /// property and per-argument caps alone do not bound the PRODUCT (512 args of
+    /// 8192 chars is ~8 MB), which would build a huge buffer only to be dropped by
+    /// WriteLengthAt. Checking the running total rejects it before allocation.</summary>
+    public const int MaxOplTotalBytes = 65535;
+
+    /// <summary>Validate a tooltip (OPL) property list; returns a reason string if
+    /// over budget, else null. Bounds the property count, each argument's length,
+    /// and the total on-wire packet size (0xD6 header + per-property records +
+    /// terminator), short-circuiting as soon as the running total is exceeded.</summary>
+    public static string? CheckOpl(IReadOnlyList<(uint ClilocId, string Args)> properties)
+    {
+        if (properties.Count > MaxOplProperties)
+            return $"OPL property count {properties.Count} exceeds cap {MaxOplProperties}";
+
+        // opcode(1) + length(2) + fixed header(12) + terminator(4).
+        long total = 19;
+        for (int i = 0; i < properties.Count; i++)
+        {
+            string args = properties[i].Args;
+            int len = args?.Length ?? 0;
+            if (len > MaxOplArgsChars)
+                return $"OPL args length {len} exceeds cap {MaxOplArgsChars}";
+            // clilocId(4) + argsLen(2) + unicode bytes (chars*2, 0 when empty).
+            total += 6 + (len == 0 ? 0 : (long)len * 2);
+            if (total > MaxOplTotalBytes)
+                return $"OPL total size {total}+ bytes exceeds cap {MaxOplTotalBytes}";
+        }
+        return null;
+    }
 
     /// <summary>Validate a gump's sizes; returns a reason string if over budget,
     /// else null. <paramref name="textBlockBytes"/> is the uncompressed text-block

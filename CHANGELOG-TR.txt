@@ -3,6 +3,18 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-23] - OPL tooltip'e toplam-boyut butcesi eklendi, asiri paket erkenden reddediliyor
+----------------------------------------
+
+FIX - 0xD6 tooltip builder'i property sayisini (512) ve her argumanin uzunlugunu
+        (8192 karakter) sinirliyordu ama toplami degil; boylece 512 near-max arguman
+        (~8 MB) her iki per-item kontrolu de geciyor, dev bir buffer kuruyor ve
+        WriteLengthAt gonderimde onu dusuruyordu — client korunuyor ama sunucu her
+        kotu/hatali tooltip icin megabaytlarca allocate/format ediyordu. Calisan bir
+        toplam-byte kontrolu (PacketBudget.MaxOplTotalBytes = 65535 wire tavani)
+        artik boyle bir paketi allocation'dan once reddediyor ve toplam asilir
+        asilmaz kisa devre yapiyor.
+
 [2026-07-23] - Loader eksik shard'li nesli kismen yuklemek yerine reddediyor
 ----------------------------------------
 

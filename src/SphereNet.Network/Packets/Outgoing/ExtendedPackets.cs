@@ -690,13 +690,13 @@ public sealed class PacketOPLData : PacketWriter
 
     public override PacketBuffer Build()
     {
-        // Reject an over-budget tooltip: too many properties, or a single args
-        // string long enough to wrap its ushort byte-length field (chars*2).
-        if (_properties.Length > PacketBudget.MaxOplProperties)
-            return RejectOversize($"OPL property count {_properties.Length} exceeds cap {PacketBudget.MaxOplProperties}");
-        foreach (var (_, args) in _properties)
-            if (args != null && args.Length > PacketBudget.MaxOplArgsChars)
-                return RejectOversize($"OPL args length {args.Length} exceeds cap {PacketBudget.MaxOplArgsChars}");
+        // Reject an over-budget tooltip before allocating: too many properties, a
+        // single args string long enough to wrap its ushort byte-length field, or a
+        // total packet size that would exceed the ushort wire ceiling (the per-
+        // property caps alone don't bound the product — ~8 MB otherwise).
+        string? reason = PacketBudget.CheckOpl(_properties);
+        if (reason != null)
+            return RejectOversize(reason);
 
         var buf = CreateVariable(64 + _properties.Length * 32);
         buf.WriteUInt16(1); // unknown

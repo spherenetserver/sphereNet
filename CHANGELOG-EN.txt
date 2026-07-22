@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-23] - OPL tooltip gains a total-size budget so an over-budget packet is refused early
+----------------------------------------
+
+FIX - The 0xD6 tooltip builder capped the property count (512) and each argument's
+        length (8192 chars) but not the total, so 512 near-max arguments (~8 MB)
+        passed both per-item checks and built a huge buffer that WriteLengthAt then
+        dropped at send — protecting the client but leaving the server to allocate
+        and format megabytes per hostile/buggy tooltip. A running total-bytes check
+        (PacketBudget.MaxOplTotalBytes = the 65535 wire ceiling) now rejects such a
+        packet before allocation, short-circuiting as soon as the total is exceeded.
+
 [2026-07-23] - Loader rejects an incomplete sharded generation instead of loading it partially
 ----------------------------------------
 

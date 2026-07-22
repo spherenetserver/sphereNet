@@ -30,27 +30,84 @@ public sealed class IpcServer : IDisposable
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _disposeCts.Token);
         CancellationToken runCt = linkedCts.Token;
 
-        _pipe = new NamedPipeServerStream(
+        // A SINGLE server instance is reused for the whole lifetime and reset with
+        // Disconnect() between hosts. Disposing and re-creating the instance per
+        // session races the OS release of the pipe name ("all instances are busy")
+        // and can wedge the accept loop, so the canonical reconnect pattern —
+        // WaitForConnection / serve / Disconnect / repeat — is used instead. The
+        // host (panel/console bridge) can therefore connect, drop and reconnect any
+        // number of times without a game-server restart.
+        using var pipe = new NamedPipeServerStream(
             _pipeName, PipeDirection.InOut, 1,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        _pipe = pipe;
+
+        while (!runCt.IsCancellationRequested)
+        {
+            try
+            {
+                await ServeOneSessionAsync(pipe, runCt).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (runCt.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+            {
+                // A pipe fault while waiting for or serving a host: reset the
+                // instance and loop back to accept the next connection rather than
+                // exiting for good.
+                Console.WriteLine($"[IPC] Pipe error, re-accepting: {ex.Message}");
+                try { pipe.Disconnect(); } catch { /* not connected — fine */ }
+            }
+        }
+
+        _pipe = null;
+    }
+
+    private async Task ServeOneSessionAsync(NamedPipeServerStream pipe, CancellationToken runCt)
+    {
+        // Session-scoped CTS: the stats loop dies with THIS connection and can
+        // never write to a later session's reader/writer. Cancelling it (host
+        // disconnect or shutdown) tears down only this session.
+        using var sessionCts = CancellationTokenSource.CreateLinkedTokenSource(runCt);
+        CancellationToken sessionCt = sessionCts.Token;
 
         Console.WriteLine($"[IPC] Waiting for host on pipe '{_pipeName}'...");
-        await _pipe.WaitForConnectionAsync(runCt).ConfigureAwait(false);
+        await pipe.WaitForConnectionAsync(sessionCt).ConfigureAwait(false);
         Console.WriteLine("[IPC] Host connected.");
 
-        _writer = new StreamWriter(_pipe, leaveOpen: true) { AutoFlush = true };
-        _reader = new StreamReader(_pipe, leaveOpen: true);
-
-        Task statsTask = StatsLoopAsync(runCt);
+        // Fresh reader/writer per session, leaveOpen so tearing them down does not
+        // dispose the shared pipe instance (which is reused for the next host).
+        var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
+        var reader = new StreamReader(pipe, leaveOpen: true);
+        _writer = writer;
+        _reader = reader;
         try
         {
-            await ReadLoopAsync(runCt).ConfigureAwait(false);
+            Task statsTask = StatsLoopAsync(sessionCt);
+            try
+            {
+                await ReadLoopAsync(sessionCt).ConfigureAwait(false);
+            }
+            finally
+            {
+                sessionCts.Cancel();
+                try { await statsTask.ConfigureAwait(false); }
+                catch (OperationCanceledException) when (sessionCt.IsCancellationRequested) { }
+            }
         }
         finally
         {
-            linkedCts.Cancel();
-            try { await statsTask.ConfigureAwait(false); }
-            catch (OperationCanceledException) when (runCt.IsCancellationRequested) { }
+            // Drop the shared references before disposing so a late WriteAsync sees
+            // no writer instead of a disposed one, tear down this session's
+            // reader/writer, then reset the pipe instance to a clean listening
+            // state for the next host.
+            _writer = null;
+            _reader = null;
+            writer.Dispose();
+            reader.Dispose();
+            try { pipe.Disconnect(); } catch { /* client already gone */ }
         }
     }
 

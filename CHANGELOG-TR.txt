@@ -3,6 +3,20 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - IPC sunucu host reconnect'lerini game-server restart etmeden kabul ediyor
+----------------------------------------
+
+FIX - Named-pipe IPC sunucusu tek bir host baglantisi bekliyor, onu servis edip
+        host disconnect olunca donuyordu — yani panel / console bridge tum game
+        server restart edilmeden asla yeniden baglanamiyordu. RunAsync artik tek bir
+        yeniden-kullanilan pipe instance uzerinde cancellation-bagli bir accept
+        loop calistiriyor ve host'lar arasinda Disconnect() ile resetliyor (kanonik
+        reconnect deseni; session basina dispose-ve-yeniden-yarat, pipe isminin OS
+        tarafindan serbest birakilmasiyla yarisip loop'u "tum boru ornekleri mesgul"
+        ile kilitliyor). Her session, session-omurlu bir token altinda taze bir
+        reader/writer aliyor; boylece stats loop kendi baglantisiyla oluyor ve asla
+        sonraki bir session'a yazamiyor.
+
 [2026-07-22] - Vendor liste isim-uzunlugu tasmasi ve 0xA7 tip-request framing
 ----------------------------------------
 

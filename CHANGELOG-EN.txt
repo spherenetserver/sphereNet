@@ -4,6 +4,19 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-22] - IPC server accepts host reconnects without a game-server restart
+----------------------------------------
+
+FIX - The named-pipe IPC server waited for a single host connection, served it,
+        and returned when the host disconnected — so the panel / console bridge
+        could never reconnect without restarting the whole game server. RunAsync
+        now runs a cancellation-bound accept loop over one reused pipe instance,
+        resetting it with Disconnect() between hosts (the canonical reconnect
+        pattern; dispose-and-recreate-per-session races the OS release of the pipe
+        name and wedges the loop with "all pipe instances are busy"). Each session
+        gets a fresh reader/writer under a session-scoped token so the stats loop
+        dies with its connection and can never write to a later session.
+
 [2026-07-22] - Vendor list name-length overflow and 0xA7 tip-request framing
 ----------------------------------------
 

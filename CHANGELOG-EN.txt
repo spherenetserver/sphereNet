@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-22] - Text save reader no longer drops a section when a record is read partially
+----------------------------------------
+
+FIX - TextSaveReader.NextRecord consumed its stashed next-header BEFORE draining
+        the previous record. A caller that stopped mid-record (or read no
+        properties) made the drain stash the next header, but that stash was never
+        re-checked in the same call — so NextRecord skipped a whole section and the
+        stale header came back out of order later. NextRecord now drains the
+        current record first, then consumes the single stashed header, then reads
+        forward. Fully-drained records (the common load path) are unaffected.
+
 [2026-07-22] - Duplicate SERIAL/UUID in a save no longer corrupts the UUID index
 ----------------------------------------
 

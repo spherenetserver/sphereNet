@@ -19,7 +19,16 @@ public sealed class TextSaveReader : ISaveReader
 
     public bool NextRecord(out string section)
     {
-        // Consume any stashed header from a prior NextProperty lookahead.
+        // Drain any UNREAD properties of the current record FIRST. NextProperty's
+        // lookahead stashes the next record's header into _pendingSection when it
+        // hits it, so this has to run before we consume the stash below — otherwise
+        // an early-exit caller (one that stopped mid-record) would skip the whole
+        // section the drain just stashed, and that stale header would surface out
+        // of order on the following call.
+        while (_inRecord && NextProperty(out _, out _)) { /* discard */ }
+
+        // Consume a stashed header — from the drain above, or from a prior
+        // NextProperty the caller stopped on. Single owner of "the next header".
         if (_pendingSection != null)
         {
             string pending = _pendingSection;
@@ -30,10 +39,9 @@ public sealed class TextSaveReader : ISaveReader
                 _inRecord = true;
                 return true;
             }
+            // A stashed [EOF] ends the record; fall through to read any trailing
+            // sections (classic saves put [EOF] last, so this usually hits EOF).
         }
-
-        // Flush remaining properties of the previous record.
-        while (_inRecord && NextProperty(out _, out _)) { /* discard */ }
 
         string? line;
         while ((line = _reader.ReadLine()) != null)

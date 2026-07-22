@@ -3,6 +3,18 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - Text save reader bir kayit kismen okununca artik section dusurmuyor
+----------------------------------------
+
+FIX - TextSaveReader.NextRecord, stash'lenmis sonraki-header'i onceki kaydi
+        drain etmeden ONCE tuketiyordu. Kaydin ortasinda duran (ya da hic property
+        okumayan) bir caller, drain'in sonraki header'i stash'lemesine yol
+        aciyordu ama bu stash ayni cagride yeniden kontrol edilmiyordu — bu yuzden
+        NextRecord tum bir section'i atliyor ve stale header sonradan sirasiz
+        geliyordu. NextRecord artik once mevcut kaydi drain ediyor, sonra tek
+        stash'lenmis header'i tuketiyor, sonra ileri okuyor. Tamamen drain edilen
+        kayitlar (yaygin yukleme yolu) etkilenmiyor.
+
 [2026-07-22] - Save'deki duplicate SERIAL/UUID artik UUID index'ini bozmuyor
 ----------------------------------------
 

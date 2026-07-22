@@ -3,6 +3,17 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - Vendor-stock filtresi artik yalniz dogrudan cocuklari degil her derinlikteki nested item'lari atliyor
+----------------------------------------
+
+FIX - Save yalnizca DOGRUDAN container'i vendor-stock olan item'lari atliyordu.
+        Vendor stock icindeki bir alt-cantada yuvalanmis item yine persist
+        ediliyor, hic kaydedilmemis bir parent'a CONT ile baglaniyordu — bu yuzden
+        sonraki yuklemede stale bir pozisyonda yere dusuyordu (dunya cop). Filtre
+        artik tum ancestor zincirini (derinlik-sinirli) yuruyor ve herhangi bir
+        ancestor'i vendor stock olan item'i atliyor; normal oyuncu-container
+        nesting'i etkilenmiyor.
+
 [2026-07-22] - Text save reader bir kayit kismen okununca artik section dusurmuyor
 ----------------------------------------
 

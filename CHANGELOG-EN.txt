@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-22] - Vendor-stock filter now skips items nested at any depth, not just direct children
+----------------------------------------
+
+FIX - The save skipped only items whose DIRECT container was a vendor-stock
+        container. An item nested in a sub-bag inside vendor stock was still
+        persisted, with a CONT pointing at a parent that was never saved — so it
+        dropped to the ground at a stale position on the next load (world clutter).
+        The filter now walks the full ancestor chain (depth-capped) and skips an
+        item if any ancestor is vendor stock; normal player-container nesting is
+        unaffected.
+
 [2026-07-22] - Text save reader no longer drops a section when a record is read partially
 ----------------------------------------
 

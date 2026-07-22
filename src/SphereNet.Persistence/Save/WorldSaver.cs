@@ -289,6 +289,18 @@ public sealed class WorldSaver
                 vendorStock.Add(it.Uid.Value);
         }
 
+        // Parent-serial map so the vendor-stock filter can walk an item's FULL
+        // ancestor chain. Skipping only a DIRECT child of a stock container left
+        // items in a sub-bag inside vendor stock persisted with a CONT pointing at
+        // a never-persisted parent — on load they dropped to the ground at a stale
+        // position (world clutter). Read-only during the parallel capture below.
+        var parentOf = new Dictionary<uint, uint>(allObjects.Length);
+        foreach (var obj in allObjects)
+        {
+            if (obj is Item pit && !pit.IsDeleted && pit.ContainedIn.IsValid)
+                parentOf[pit.Uid.Value] = pit.ContainedIn.Value;
+        }
+
         // Capture in parallel: this is a pure read of live objects (the main
         // thread is inside the save, nothing mutates), and per-object record
         // building (property formatting + string alloc) dominated the sync-save
@@ -303,9 +315,8 @@ public sealed class WorldSaver
             {
                 if (item.IsDeleted || item.IsAttr(Core.Enums.ObjAttributes.Static))
                     return;
-                if (vendorStock.Contains(item.Uid.Value) ||
-                    (item.ContainedIn.IsValid && vendorStock.Contains(item.ContainedIn.Value)))
-                    return; // virtual vendor stock — never persisted
+                if (IsInsideVendorStock(item.Uid.Value, vendorStock, parentOf))
+                    return; // virtual vendor stock (or nested inside it) — never persisted
                 if (!ShouldExportItem(item, scope, byUid))
                     return;
                 itemSlots[i] = CaptureItem(item, now);
@@ -334,6 +345,26 @@ public sealed class WorldSaver
 
         var s = scope.Value;
         return s.IncludeChars && s.Contains(ch.Position);
+    }
+
+    /// <summary>True if the item is a vendor-stock container or nested at ANY
+    /// depth inside one — such objects are virtual (rebuilt from the SELL template
+    /// on vendor open) and must not be persisted. Walks the ancestor chain via
+    /// <paramref name="parentOf"/> with a depth cap so a corrupt/cyclic CONT chain
+    /// can't loop.</summary>
+    private static bool IsInsideVendorStock(uint uid, HashSet<uint> vendorStock, Dictionary<uint, uint> parentOf)
+    {
+        if (vendorStock.Contains(uid)) return true;
+        uint cur = uid;
+        for (int guard = 0; guard < 64; guard++)
+        {
+            if (!parentOf.TryGetValue(cur, out uint parent))
+                return false; // reached a grounded/equipped root — not vendor stock
+            if (vendorStock.Contains(parent))
+                return true;
+            cur = parent;
+        }
+        return false; // depth cap (corrupt/cyclic chain) — persist rather than lose it
     }
 
     private static bool ShouldExportItem(Item item, WorldExportScope? scope,

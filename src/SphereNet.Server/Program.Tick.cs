@@ -372,6 +372,38 @@ public static partial class Program
         return due;
     }
 
+    // The NPC batch a multicore tick consumed from the timer wheel (Advance
+    // removes them). Set right after Advance and cleared once the tick has
+    // rescheduled them; if the tick fails in between, RunServerTick reschedules
+    // this batch so a failed tick can't drop those NPCs out of the wheel entirely.
+    // TimerWheel.Schedule is idempotent (dedups on uid), so re-adding an NPC the
+    // apply phase already rescheduled is a no-op.
+    private static List<Character>? _multicoreConsumedNpcs;
+
+    /// <summary>Reschedule the active-sector NPCs (and pets) in <paramref name="npcs"/>
+    /// into the wheel. Shared by the normal multicore reschedule and the
+    /// failed-tick recovery. Dead/deleted/sleeping NPCs are left out, matching the
+    /// single-thread guard.</summary>
+    private static void RescheduleActiveNpcs(List<Character> npcs)
+    {
+        if (_npcTimerWheel == null) return;
+        foreach (var npc in npcs)
+            if (!npc.IsDead && !npc.IsDeleted && !npc.IsPlayer &&
+                (npc.NpcMaster.IsValid || _world.IsInActiveArea(npc.MapIndex, npc.X, npc.Y)))
+                _npcTimerWheel.Schedule(npc, npc.NextNpcActionTime);
+    }
+
+    /// <summary>Put back the NPCs a failed/abandoned multicore tick consumed from
+    /// the wheel, so they aren't dropped from the schedule. Idempotent and a no-op
+    /// once the tick has already rescheduled them.</summary>
+    private static void RecoverConsumedNpcsAfterFailedTick()
+    {
+        var consumed = _multicoreConsumedNpcs;
+        _multicoreConsumedNpcs = null;
+        if (consumed != null)
+            RescheduleActiveNpcs(consumed);
+    }
+
     private static void RunServerTick()
     {
         _tickCounter++;
@@ -393,19 +425,27 @@ public static partial class Program
         }
         catch (OperationCanceledException oce)
         {
-            _log.LogWarning(oce, "Multicore tick timeout. Falling back to single-thread mode.");
+            // Do NOT re-run this tick single-threaded: the multicore attempt
+            // already applied part of it (sector ticks, spell expirations), and
+            // replaying would double-apply those side effects. Abandon this partial
+            // tick, recover the NPCs it consumed from the timer wheel, drop to
+            // single-thread mode, and let the NEXT scheduled tick run cleanly.
+            _log.LogError(oce, "Multicore tick timed out; abandoning this tick and falling back to single-thread mode.");
             _multicoreRuntimeEnabled = false;
             _multicoreFallbackMs = Environment.TickCount64;
-            RunSingleThreadTick();
+            RecoverConsumedNpcsAfterFailedTick();
         }
         catch (Exception ex)
         {
             if (_multicoreRuntimeEnabled)
             {
-                _log.LogWarning(ex, "Multicore tick failure. Falling back to single-thread mode.");
+                // Same as the timeout path: abandon (don't replay) to avoid
+                // double-applying the partial tick, recover consumed NPCs, and
+                // continue single-threaded next tick.
+                _log.LogError(ex, "Multicore tick failed; abandoning this tick and falling back to single-thread mode.");
                 _multicoreRuntimeEnabled = false;
                 _multicoreFallbackMs = Environment.TickCount64;
-                RunSingleThreadTick();
+                RecoverConsumedNpcsAfterFailedTick();
             }
             else
             {
@@ -701,9 +741,12 @@ public static partial class Program
         // Wake NPCs in sectors that just became active (player entered area)
         WakeNewlyActiveSectorNpcs();
 
-        // NPC AI via timer wheel
+        // NPC AI via timer wheel. Advance REMOVES the due NPCs from the wheel, so
+        // track them: if this tick fails before rescheduling, RunServerTick's
+        // recovery puts them back (see _multicoreConsumedNpcs).
         var npcSnapshot = _npcTimerWheel.Advance(Environment.TickCount64);
         ApplyNpcTickBudget(npcSnapshot);
+        _multicoreConsumedNpcs = npcSnapshot;
 
         _reusableClientSnapshot.Clear();
         foreach (var c in _clients.Values)
@@ -885,19 +928,12 @@ public static partial class Program
             FindItemInBackpack,
             (uid, msg) => { if (_world.FindChar(new Serial(uid)) is { } c) SendSysMessage(c, msg); });
 
-        // Re-schedule only active-sector NPCs (and pets). Sleeping NPCs
-        // exit the wheel — WakeNewlyActiveSectorNpcs handles sector transitions.
-        if (_npcTimerWheel != null)
-        {
-            foreach (var npc in npcSnapshot)
-            {
-                // Match the single-thread reschedule guard: a dead NPC (killed
-                // during ApplyDecision) must not be re-queued into the wheel.
-                if (!npc.IsDead && !npc.IsDeleted && !npc.IsPlayer &&
-                    (npc.NpcMaster.IsValid || _world.IsInActiveArea(npc.MapIndex, npc.X, npc.Y)))
-                    _npcTimerWheel.Schedule(npc, npc.NextNpcActionTime);
-            }
-        }
+        // Re-schedule only active-sector NPCs (and pets). Sleeping NPCs exit the
+        // wheel — WakeNewlyActiveSectorNpcs handles sector transitions. Clearing
+        // the tracked batch afterwards means a failure in a LATER phase won't
+        // double-reschedule what we've already put back.
+        RescheduleActiveNpcs(npcSnapshot);
+        _multicoreConsumedNpcs = null;
         _telemetryPostApplyUs = ToMicroseconds(Stopwatch.GetTimestamp() - p2b);
 
         long p3 = Stopwatch.GetTimestamp();

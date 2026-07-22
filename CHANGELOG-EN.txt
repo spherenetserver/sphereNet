@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-22] - A failed multicore tick no longer replays and double-applies itself
+----------------------------------------
+
+FIX - When a multicore tick threw or timed out after partially running (some
+        sectors ticked, spell expirations applied, NPCs consumed from the timer
+        wheel), the fallback re-ran the SAME tick single-threaded, double-applying
+        those side effects. It now abandons the partial tick instead: it logs,
+        drops to single-thread mode, and lets the next scheduled tick run cleanly,
+        so no side effect is applied twice and the world tick count advances once.
+
+FIX - The NPCs a multicore tick consumed from the timer wheel are tracked, so an
+        abandoned tick reschedules them instead of dropping them out of the wheel
+        (which would freeze those NPCs). The reschedule is idempotent — the wheel
+        dedups on NPC id — so recovering a batch the apply phase already
+        rescheduled never double-fires it.
+
 [2026-07-22] - Containment-cycle guard: a corrupt CONT chain can't hang the main thread
 ----------------------------------------
 

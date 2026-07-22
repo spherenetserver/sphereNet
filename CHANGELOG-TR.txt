@@ -3,6 +3,23 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - Basarisiz multicore tick artik replay edip kendini cift-uygulamiyor
+----------------------------------------
+
+FIX - Bir multicore tick kismen calistiktan sonra (bazi sector'lar ticklendi,
+        spell expiration'lari uygulandi, NPC'ler timer wheel'dan consume edildi)
+        throw ya da timeout ederse, fallback AYNI tick'i single-thread tekrar
+        calistirip bu yan etkileri cift-uyguluyordu. Artik kismi tick'i terk
+        ediyor: log'luyor, single-thread moduna dusuyor ve bir sonraki planli
+        tick'in temiz calismasina birakiyor; boylece hicbir yan etki iki kez
+        uygulanmiyor ve dunya tick sayaci bir kez ilerliyor.
+
+FIX - Bir multicore tick'in timer wheel'dan consume ettigi NPC'ler izleniyor;
+        boylece terk edilen bir tick onlari wheel'dan dusurmek (o NPC'leri
+        dondurmak) yerine yeniden schedule ediyor. Reschedule idempotent —
+        wheel NPC id uzerinden dedup ediyor — dolayisiyla apply fazinin zaten
+        yeniden schedule ettigi bir batch'i kurtarmak asla iki kez ateslemiyor.
+
 [2026-07-22] - Containment-cycle guard: bozuk CONT zinciri ana thread'i kilitleyemiyor
 ----------------------------------------
 

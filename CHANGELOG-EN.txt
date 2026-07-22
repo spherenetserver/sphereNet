@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-22] - Vendor list name-length overflow and 0xA7 tip-request framing
+----------------------------------------
+
+FIX - The 0x74 vendor buy list wrote each row's name length as a single byte from
+        name.Length + 1. A name of 255+ characters overflowed the byte (255 -> 0)
+        while the full string was still written, so the client mis-read the length
+        and every following row of the buy list desynced. The length now always
+        equals the bytes written; over-long names are truncated deterministically
+        (254 name bytes + NUL). The 0x9E sell list gained the same clamp against its
+        word-sized prefix.
+FIX - Packet 0xA7 (Tip/Notice Request, client->server) was defined as variable
+        length, so the framer read the request's tip-index word as a length field —
+        dropping the connection (index 0 -> length 0) or stalling the stream.
+        Source-X frames it as a fixed 4-byte packet; the definition now matches, so
+        it is consumed cleanly (no handler needed) and any following packet frames
+        correctly.
+
 [2026-07-22] - Text save line policy: lossless multi-line values, bounded line reader
 ----------------------------------------
 

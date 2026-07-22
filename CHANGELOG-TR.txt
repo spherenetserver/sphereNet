@@ -3,6 +3,23 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-22] - Vendor liste isim-uzunlugu tasmasi ve 0xA7 tip-request framing
+----------------------------------------
+
+FIX - 0x74 vendor buy list her satirin isim uzunlugunu name.Length + 1'den tek byte
+        olarak yaziyordu. 255+ karakterli bir isim byte'i tasiriyor (255 -> 0) ama
+        tum string yine yaziliyordu; boylece istemci uzunlugu yanlis okuyup buy
+        list'in sonraki her satiri desync oluyordu. Uzunluk artik her zaman yazilan
+        byte sayisina esit; asiri uzun isimler deterministik olarak kesiliyor (254
+        isim byte'i + NUL). 0x9E sell list de word boyutlu on-eki icin ayni clamp'i
+        aldi.
+FIX - 0xA7 (Tip/Notice Request, istemci->sunucu) paketi degisken uzunluklu
+        tanimliydi; framer istegin tip-index word'unu bir uzunluk alani sanip
+        baglantiyi dusuruyor (index 0 -> uzunluk 0) ya da stream'i stall ediyordu.
+        Source-X bunu sabit 4-byte paket olarak cerceveliyor; tanim artik uyusuyor,
+        paket temiz tuketiliyor (handler gerekmiyor) ve arkasindan gelen paket dogru
+        cerceveleniyor.
+
 [2026-07-22] - Metin-save satir politikasi: kayipsiz cok-satirli deger, sinirli satir okuyucu
 ----------------------------------------
 

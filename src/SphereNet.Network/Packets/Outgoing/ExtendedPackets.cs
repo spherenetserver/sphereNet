@@ -779,6 +779,10 @@ public readonly struct VendorItem
 /// the inventory items and silently drops the buy gump.</summary>
 public sealed class PacketVendorBuyList : PacketWriter
 {
+    // 254 name bytes + 1 NUL terminator == 255, the largest value the single-byte
+    // per-row length prefix can hold without overflowing.
+    private const int MaxBuyNameChars = 254;
+
     private readonly uint _containerSerial;
     private readonly IReadOnlyList<VendorItem> _items;
 
@@ -805,6 +809,13 @@ public sealed class PacketVendorBuyList : PacketWriter
             // explicit NAME= directive (vast majority of stock items
             // inherit their display name from tiledata).
             string name = item.Name ?? string.Empty;
+            // The length prefix is a SINGLE byte and must cover the name plus the
+            // trailing NUL WriteAsciiNull appends (one byte per char + 0). A name of
+            // 255+ chars would overflow the byte — e.g. 255 chars -> (byte)256 == 0 —
+            // while 256 bytes are still written, desyncing every following row on the
+            // client. Truncate deterministically so the prefix always equals the
+            // bytes actually written (max 254 name bytes + 1 NUL == 255).
+            if (name.Length > MaxBuyNameChars) name = name[..MaxBuyNameChars];
             byte nameLen = (byte)(name.Length + 1);
             buf.WriteByte(nameLen);
             buf.WriteAsciiNull(name);
@@ -817,6 +828,10 @@ public sealed class PacketVendorBuyList : PacketWriter
 /// <summary>0x9E — Vendor sell list. Sent to client to display items vendor will buy.</summary>
 public sealed class PacketVendorSellList : PacketWriter
 {
+    // 65534 name bytes + 1 NUL == 65535, the largest value the word length prefix
+    // can hold without overflowing.
+    private const int MaxSellNameChars = 65534;
+
     private readonly uint _vendorSerial;
     private readonly IReadOnlyList<VendorItem> _items;
 
@@ -838,9 +853,15 @@ public sealed class PacketVendorSellList : PacketWriter
             buf.WriteUInt16(item.Hue);
             buf.WriteUInt16(item.Amount);
             buf.WriteUInt16((ushort)item.Price);
-            ushort nameLen = (ushort)(item.Name.Length + 1);
+            // The length prefix here is a word, so the overflow bound is far higher
+            // than the buy list's byte, but the same rule holds: the prefix must
+            // equal the bytes written (name chars + NUL). Clamp so 65535+ char names
+            // can't wrap the word and desync the row stream.
+            string name = item.Name ?? string.Empty;
+            if (name.Length > MaxSellNameChars) name = name[..MaxSellNameChars];
+            ushort nameLen = (ushort)(name.Length + 1);
             buf.WriteUInt16(nameLen);
-            buf.WriteAsciiNull(item.Name);
+            buf.WriteAsciiNull(name);
         }
         buf.WriteLengthAt(1);
         return buf;

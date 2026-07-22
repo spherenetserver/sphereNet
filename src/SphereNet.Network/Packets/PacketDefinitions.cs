@@ -125,7 +125,7 @@ public static class PacketDefinitions
         _lengths[0xA4] = 0x95;  // 149 - System Info
         _lengths[0xA5] = 0;     // variable (Web Link)
         _lengths[0xA6] = 0;     // variable (Scroll)
-        _lengths[0xA7] = 0;     // variable (Tip)
+        _lengths[0xA7] = 0x04;  // Tip/Notice Request (client->server, fixed): word index + bool forward (Source-X PacketTipReq : Packet(4))
         _lengths[0xA8] = 0;     // variable (Server List)
         _lengths[0xA9] = 0;     // variable (Char List)
         _lengths[0xAA] = 0x05;  // Attack Notify

@@ -276,6 +276,95 @@ public sealed class BootFallbackTests
         }
     }
 
+    // İş #1 — a torn multi-file commit (a crash between the back-to-back renames)
+    // can leave a new sphereworld beside an old spherechars. Each file validates on
+    // its own, but their [SAVEID] stamps disagree, so the loader must reject the
+    // mixed generation and recover the last internally-consistent one.
+    [Fact]
+    public void TornCommit_MixedGeneration_IsDetected_AndFallsBack()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), $"sphnet_torn_{System.Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var saver = new WorldSaver(LoggerFactory.Create(_ => { }))
+            {
+                Format = SaveFormat.Text,
+                ShardCount = 0,
+                BackupLevels = 5,
+            };
+            var loader = new WorldLoader(LoggerFactory.Create(_ => { }));
+
+            SaveGeneration(saver, dir, "A");   // save index N
+            SaveGeneration(saver, dir, "B");   // save index N+1 (rotates A -> .bak1)
+
+            // Simulate the torn commit: the current spherechars rename never happened,
+            // so it still holds generation A while sphereworld is already B. Their
+            // SAVEID stamps now disagree (world=N+1, chars=N).
+            File.Copy(Path.Combine(dir, "spherechars.scp.bak1"),
+                      Path.Combine(dir, "spherechars.scp"), overwrite: true);
+
+            var recovered = MakeWorld();
+            var (items, _) = loader.Load(recovered, dir);
+            Assert.True(items >= 1);
+            Assert.Equal("A", LoadedGeneration(recovered)); // whole consistent .bak1
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { }
+        }
+    }
+
+    // Backward compatibility — a legacy generation with no [SAVEID] stamp can't be
+    // verified and must load rather than be wrongly rejected as inconsistent.
+    [Fact]
+    public void GenerationWithoutStamp_LoadsWithoutFalseRejection()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), $"sphnet_nostamp_{System.Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var saver = new WorldSaver(LoggerFactory.Create(_ => { }))
+            {
+                Format = SaveFormat.Text,
+                ShardCount = 0,
+                BackupLevels = 0,
+            };
+            var loader = new WorldLoader(LoggerFactory.Create(_ => { }));
+
+            SaveGeneration(saver, dir, "A");
+            StripSaveIdStamp(Path.Combine(dir, "sphereworld.scp")); // make it look legacy
+
+            var loaded = MakeWorld();
+            var (items, _) = loader.Load(loaded, dir);
+            Assert.True(items >= 1);
+            Assert.Equal("A", LoadedGeneration(loaded));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { }
+        }
+    }
+
+    // Remove the two-line [SAVEID] record from a text save so it reads as an
+    // unstamped (legacy) file.
+    private static void StripSaveIdStamp(string path)
+    {
+        var kept = new List<string>();
+        var lines = File.ReadAllLines(path);
+        for (int i = 0; i < lines.Length; i++)
+        {
+            if (lines[i].Trim().Equals("[SAVEID]", System.StringComparison.OrdinalIgnoreCase))
+            {
+                if (i + 1 < lines.Length && lines[i + 1].TrimStart().StartsWith("ID=", System.StringComparison.OrdinalIgnoreCase))
+                    i++; // also drop the ID line
+                continue;
+            }
+            kept.Add(lines[i]);
+        }
+        File.WriteAllLines(path, kept);
+    }
+
     // The genuine fresh-start case (an existing but empty save dir, no backups
     // anywhere) must still start blank and not throw — the recovery path only
     // engages when a backup actually exists.

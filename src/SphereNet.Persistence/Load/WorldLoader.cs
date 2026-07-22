@@ -229,6 +229,19 @@ public sealed class WorldLoader
                 continue;
             }
 
+            // Cross-file consistency: each file individually validated, but a torn
+            // multi-file commit can leave them from different saves (new sphereworld
+            // beside old spherechars). Their SAVEID stamps disagree, so reject the
+            // mixed generation and fall back to the last internally-consistent one.
+            if (!IsGenerationConsistent(gen, out string stampDetail))
+            {
+                _logger.LogError(
+                    "Save generation {Which} is internally inconsistent — its files come from different saves ({Detail}), " +
+                    "indicating a torn multi-file commit; falling back to the previous generation",
+                    level == 0 ? "current" : $".bak{level}", stampDetail);
+                continue;
+            }
+
             if (level > 0)
                 _logger.LogWarning(
                     "Loading from BACKUP generation .bak{Level} — the current save (and any newer backups) were missing or unreadable. " +
@@ -283,6 +296,59 @@ public sealed class WorldLoader
             }
         }
         return (true, null);
+    }
+
+    /// <summary>Read a single stamp property from the first record of a save file
+    /// that opens with the given section. Returns null when the file has no such
+    /// stamp (a legacy save) or it can't be parsed.</summary>
+    private static long? ReadStamp(string path, string section, string prop)
+    {
+        try
+        {
+            using var reader = SaveIO.OpenReader(path);
+            while (reader.NextRecord(out string sec))
+            {
+                bool match = sec.Equals(section, StringComparison.OrdinalIgnoreCase);
+                while (reader.NextProperty(out string key, out string val))
+                {
+                    if (match && key.Equals(prop, StringComparison.OrdinalIgnoreCase)
+                        && long.TryParse(val, out long id))
+                        return id;
+                }
+                if (match) return null; // section present but no parsable stamp
+            }
+        }
+        catch { /* validation already vetted readability; treat as unstamped */ }
+        return null;
+    }
+
+    /// <summary>Verify that every logical file of a generation was written by the
+    /// SAME save. Item/char shards carry a [SAVEID] record and spheredata records
+    /// SAVECOUNT; a torn multi-file commit (a crash between the back-to-back
+    /// renames) leaves files from different saves whose stamps disagree. Enforced
+    /// only when every present base is stamped — a legacy or partially-stamped
+    /// generation can't be verified and is accepted rather than wrongly rejected.</summary>
+    private bool IsGenerationConsistent(GenerationPaths gen, out string detail)
+    {
+        long? worldId = gen.ItemPaths.Count > 0
+            ? ReadStamp(gen.ItemPaths[0], SaveIO.SaveIdSection, SaveIO.SaveIdProperty) : null;
+        long? charId = gen.CharPaths.Count > 0
+            ? ReadStamp(gen.CharPaths[0], SaveIO.SaveIdSection, SaveIO.SaveIdProperty) : null;
+        long? dataId = gen.DataPaths.Count > 0
+            ? ReadStamp(gen.DataPaths[0], SaveIO.ServerDataSection, SaveIO.SaveCountProperty) : null;
+
+        detail = $"world={worldId?.ToString() ?? "-"} chars={charId?.ToString() ?? "-"} data={dataId?.ToString() ?? "-"}";
+
+        long? reference = null;
+        foreach (var (count, id) in new[]
+                 { (gen.ItemPaths.Count, worldId), (gen.CharPaths.Count, charId), (gen.DataPaths.Count, dataId) })
+        {
+            if (count == 0) continue;      // this base has no file — nothing to compare
+            if (id == null) return true;   // present but unstamped — can't verify, accept
+            if (reference == null) reference = id;
+            else if (id != reference) return false; // stamps disagree — torn/mixed generation
+        }
+        return true;
     }
 
     private (int Items, int Chars) Materialize(GameWorld world, GenerationPaths gen, AccountManager? accounts)

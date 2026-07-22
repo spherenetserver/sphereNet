@@ -3,6 +3,20 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-23] - Dunya save'i cross-file nesil damgasi tasiyor, torn commit tespit ediliyor
+----------------------------------------
+
+FIX - Uc dunya-save dosyasi uc ardarda rename ile commit ediliyor; bu (artik
+        milisaniye-alti) pencerede bir crash yine yeni bir sphereworld'u eski bir
+        spherechars'in yanina birakabilir — her dosyanin tek basina dogrulandigi
+        karisik bir nesil; loader bunu iyisinden ayirt edemeyip yukluyor ve
+        cross-file referanslari sessizce dusuruyordu. Her item/char shard'i artik
+        save index'ini tasiyan bir [SAVEID] record'u ile aciliyor (spheredata bunu
+        zaten SAVECOUNT olarak kaydediyor) ve loader ucunun de ayni oldugunu
+        dogruluyor. Damgalari uyusmayan bir nesil bozuk gibi ele aliniyor ve loader
+        son ic-tutarli nesle fallback yapiyor. Damgasiz legacy save'ler aynen kabul
+        ediliyor (herhangi bir dosya damgasizsa kontrol atlaniyor).
+
 [2026-07-23] - Merkezi oversize guard artik ham asiri-uzun buffer'lari yakaliyor (replay bypass)
 ----------------------------------------
 

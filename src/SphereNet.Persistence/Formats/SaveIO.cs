@@ -9,6 +9,15 @@ namespace SphereNet.Persistence.Formats;
 /// </summary>
 public static class SaveIO
 {
+    // Cross-file generation stamp identifiers. Item/char shards open with a
+    // [SAVEID] record; spheredata records the same save index as SAVECOUNT in its
+    // [SPHERE] section. WorldLoader compares them to detect a torn multi-file
+    // commit. Shared here so the writer and loader stay in sync.
+    public const string SaveIdSection = "SAVEID";
+    public const string SaveIdProperty = "ID";
+    public const string ServerDataSection = "SPHERE";
+    public const string SaveCountProperty = "SAVECOUNT";
+
     /// <summary>Canonical on-disk extension for each format.</summary>
     public static string ExtensionFor(SaveFormat fmt) => fmt switch
     {

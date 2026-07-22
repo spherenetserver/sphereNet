@@ -122,8 +122,8 @@ public sealed class WorldSaver
             // spheredata) to its .tmp sibling; touch no live file yet. A crash here
             // leaves the previous generation fully intact — only stray .tmp files,
             // which the catch below and the next save clean up.
-            var itemPending = WriteShardsToTmp(prepared.Snapshot.Items, savePath, "sphereworld", isItems: true, out int itemCount);
-            var charPending = WriteShardsToTmp(prepared.Snapshot.Characters, savePath, "spherechars", isItems: false, out int charCount);
+            var itemPending = WriteShardsToTmp(prepared.Snapshot.Items, savePath, "sphereworld", isItems: true, prepared.SaveIndex, out int itemCount);
+            var charPending = WriteShardsToTmp(prepared.Snapshot.Characters, savePath, "spherechars", isItems: false, prepared.SaveIndex, out int charCount);
             WriteServerDataToTmp(savePath, prepared.ServerData);
 
             // Phase 2 — commit all three back-to-back. Previously each logical file
@@ -437,7 +437,7 @@ public sealed class WorldSaver
     /// from commit lets <see cref="WritePrepared"/> stage sphereworld, spherechars
     /// and spheredata to .tmp before committing any of them, so a crash between
     /// writes can never leave a new-generation file beside an old-generation one.</summary>
-    private PendingShardCommit WriteShardsToTmp(IReadOnlyList<SaveRecord> records, string savePath, string baseName, bool isItems, out int totalCount)
+    private PendingShardCommit WriteShardsToTmp(IReadOnlyList<SaveRecord> records, string savePath, string baseName, bool isItems, int saveIndex, out int totalCount)
     {
         int shards = Math.Clamp(ShardCount, 0, 16);
         string ext = SaveIO.ExtensionFor(Format);
@@ -449,13 +449,13 @@ public sealed class WorldSaver
         {
             string fileName = baseName + ext;
             string tmp = Path.Combine(savePath, fileName + ".tmp");
-            totalCount = WriteOneShard(records, tmp, isItems, shardIndex: 0, shardCount: 1);
+            totalCount = WriteOneShard(records, tmp, isItems, shardIndex: 0, shardCount: 1, saveIndex);
             outputFiles = new List<string> { fileName };
         }
         else if (shards == 1)
         {
             outputFiles = new List<string>();
-            totalCount = WriteRollingShards(records, savePath, baseName, ext, sizeLimit, isItems, outputFiles);
+            totalCount = WriteRollingShards(records, savePath, baseName, ext, sizeLimit, isItems, outputFiles, saveIndex);
 
             // Small worlds that never hit the rolling threshold get promoted
             // to the classic {base}{ext} name so there's no lone .0 suffix
@@ -492,7 +492,7 @@ public sealed class WorldSaver
                 for (int i = 0; i < shards; i++)
                 {
                     string tmp = Path.Combine(savePath, outputFiles[i] + ".tmp");
-                    counts[i] = WriteOneShard(shardBuckets[i], tmp, isItems, i, shards);
+                    counts[i] = WriteOneShard(shardBuckets[i], tmp, isItems, i, shards, saveIndex);
                 }
             }
             else
@@ -503,7 +503,7 @@ public sealed class WorldSaver
                     int shardIdx = i;
                     string tmp = Path.Combine(savePath, outputFiles[shardIdx] + ".tmp");
                     tasks[i] = Task.Run(() =>
-                        counts[shardIdx] = WriteOneShard(shardBuckets[shardIdx], tmp, isItems, shardIdx, shards));
+                        counts[shardIdx] = WriteOneShard(shardBuckets[shardIdx], tmp, isItems, shardIdx, shards, saveIndex));
                 }
                 Task.WaitAll(tasks);
             }
@@ -568,7 +568,7 @@ public sealed class WorldSaver
     /// Size is polled on the raw FileStream (compressed bytes for gzip) which
     /// may lag by up to one gzip block — close enough for rolling.</summary>
     private int WriteRollingShards(IEnumerable<SaveRecord> records, string savePath, string baseName,
-        string ext, long sizeLimit, bool isItems, List<string> outputFiles)
+        string ext, long sizeLimit, bool isItems, List<string> outputFiles, int saveIndex)
     {
         int count = 0;
         int fileIdx = 0;
@@ -582,8 +582,9 @@ public sealed class WorldSaver
             string tmp = Path.Combine(savePath, name + ".tmp");
             writer = SaveIO.OpenWriter(tmp, Format, out raw);
             writer.WriteHeaderComment($"SphereNet {(isItems ? "World Items" : "World Characters")} Save");
-            writer.WriteHeaderComment($"Save #{_saveIndex} at {DateTime.UtcNow:u}");
+            writer.WriteHeaderComment($"Save #{saveIndex} at {DateTime.UtcNow:u}");
             writer.WriteHeaderComment($"Rolling segment {fileIdx}");
+            WriteSaveIdRecord(writer!, saveIndex);
         }
 
         OpenNext();
@@ -618,13 +619,14 @@ public sealed class WorldSaver
     }
 
     private int WriteOneShard(IEnumerable<SaveRecord> records, string tmpPath, bool isItems,
-        int shardIndex, int shardCount)
+        int shardIndex, int shardCount, int saveIndex)
     {
         using var writer = SaveIO.OpenWriter(tmpPath, Format);
         writer.WriteHeaderComment($"SphereNet {(isItems ? "World Items" : "World Characters")} Save");
-        writer.WriteHeaderComment($"Save #{_saveIndex} at {DateTime.UtcNow:u}");
+        writer.WriteHeaderComment($"Save #{saveIndex} at {DateTime.UtcNow:u}");
         if (shardCount > 1)
             writer.WriteHeaderComment($"Shard {shardIndex}/{shardCount}");
+        WriteSaveIdRecord(writer, saveIndex);
 
         int count = 0;
 
@@ -665,6 +667,20 @@ public sealed class WorldSaver
         writer.BeginRecord(record.Section);
         foreach (var (key, value) in record.Properties)
             writer.WriteProperty(key, value);
+        writer.EndRecord();
+    }
+
+    // Cross-file generation stamp. Every item/char shard opens with a [SAVEID]
+    // record carrying this save's index; spheredata already records the same value
+    // as SAVECOUNT. The loader compares the three, so a torn multi-file commit — a
+    // crash between the back-to-back renames leaving a new sphereworld beside an old
+    // spherechars — is detected (their SAVEIDs disagree) and the mixed generation is
+    // rejected in favour of the last consistent one. Legacy saves have no stamp; the
+    // loader skips the check when any file lacks one.
+    private static void WriteSaveIdRecord(ISaveWriter writer, int saveIndex)
+    {
+        writer.BeginRecord(SaveIO.SaveIdSection);
+        writer.WriteProperty(SaveIO.SaveIdProperty, saveIndex.ToString());
         writer.EndRecord();
     }
 

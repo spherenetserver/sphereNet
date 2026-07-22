@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-23] - World save carries a cross-file generation stamp so a torn commit is detected
+----------------------------------------
+
+FIX - The three world-save files are committed with three back-to-back renames;
+        a crash in that (now sub-millisecond) window could still leave a new
+        sphereworld beside an old spherechars — a mixed generation each file
+        validates individually, so the loader could not tell it apart from a good
+        one and loaded it, silently dropping cross-file references. Every item/char
+        shard now opens with a [SAVEID] record carrying the save index (spheredata
+        already records it as SAVECOUNT), and the loader verifies all three agree.
+        A generation whose stamps disagree is treated like a corrupt one and the
+        loader falls back to the last internally-consistent generation. Legacy saves
+        with no stamp are accepted unchanged (the check is skipped when any file
+        lacks a stamp).
+
 [2026-07-23] - Central oversize guard now catches raw over-length buffers (replay bypass)
 ----------------------------------------
 

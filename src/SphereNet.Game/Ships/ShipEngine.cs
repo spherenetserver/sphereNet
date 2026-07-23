@@ -144,6 +144,7 @@ public sealed class ShipEngine
             // before the first movement command. "Drop anchor" still parks it.
             Anchored = false,
         };
+        ApplyDefSpeed(ship, def);
 
         // Materialize ONLY the invisible placeholder components (flags == 0):
         // tiller, planks, hatch, mast anchor — the working server items.
@@ -428,6 +429,19 @@ public sealed class ShipEngine
     /// halves the tick interval so continuous sailing advances twice as fast.</summary>
     private static long GetMoveDelay(Ship ship)
         => ship.SpeedMode == ShipSpeedMode.Slow ? ship.SpeedPeriod : ship.SpeedPeriod / 2;
+
+    /// <summary>Apply a ship's script-defined speed ([MULTIDEF] SHIPSPEED=period,tiles).
+    /// Source-X stores period in TENTHS of a second and the per-step delay is
+    /// period * MSECS_PER_TENTH (100); continuous (fast) sailing halves it in
+    /// <see cref="GetMoveDelay"/>. When the def has no SHIPSPEED the ship keeps the
+    /// engine default (500 ms / 1 tile), so unscripted ships are unchanged.</summary>
+    private static void ApplyDefSpeed(Ship ship, SphereNet.Game.Housing.MultiDef? def)
+    {
+        if (def == null || def.ShipSpeedPeriodTenths <= 0) return;
+        ship.SpeedPeriod = (ushort)Math.Clamp(def.ShipSpeedPeriodTenths * 100, 1, ushort.MaxValue);
+        if (def.ShipSpeedTiles > 0)
+            ship.SpeedTiles = (byte)Math.Clamp(def.ShipSpeedTiles, 1, 16);
+    }
 
     /// <summary>
     /// Move ship in direction by given distance.
@@ -1287,6 +1301,11 @@ public sealed class ShipEngine
                 ship.SpeedPeriod = Math.Max((ushort)1, sp);
             if (item.TryGetTag("SHIP.SPEEDTILES", out string? stStr) && byte.TryParse(stStr, out byte st))
                 ship.SpeedTiles = Math.Clamp(st, (byte)1, (byte)16);
+            // The ship class's script SHIPSPEED is authoritative (Source-X derives
+            // the speed from the base def on load), so it overrides any stale saved
+            // period — existing ships pick up the current script speed. Ships whose
+            // def has no SHIPSPEED keep the value restored above.
+            ApplyDefSpeed(ship, _multiDefs.Get(item.BaseId));
             if (item.TryGetTag("SHIP.SPEEDMODE", out string? smStr) && byte.TryParse(smStr, out byte sm) &&
                 sm is >= (byte)ShipSpeedMode.OneTile and <= (byte)ShipSpeedMode.Fast)
                 ship.SpeedMode = (ShipSpeedMode)sm;

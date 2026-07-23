@@ -67,6 +67,12 @@ public sealed class MultiDef
     /// <summary>Script [MULTIDEF] BaseVendors (max house vendors); 0 = unset.</summary>
     public int BaseVendors { get; set; }
 
+    /// <summary>Script [MULTIDEF] SHIPSPEED=period,tiles. Period is TENTHS of a
+    /// second between movement steps (Source-X MSECS_PER_TENTH), tiles is the
+    /// distance moved per step. 0 = unset (a placed ship keeps the engine default).</summary>
+    public int ShipSpeedPeriodTenths { get; set; }
+    public int ShipSpeedTiles { get; set; }
+
     public List<MultiComponent> Components { get; } = [];
 
     // Bounding rect
@@ -551,6 +557,19 @@ public sealed class MultiRegistry
                         break;
                     case "BASEVENDORS":
                         if (int.TryParse(arg, out int bv)) def.BaseVendors = bv;
+                        break;
+                    case "SHIPSPEED":
+                        {
+                            // SHIPSPEED=period,tiles (period in tenths of a second).
+                            var sp = arg.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+                            if (sp.Length >= 2 &&
+                                int.TryParse(sp[0], out int period) && period > 0 &&
+                                int.TryParse(sp[1], out int tiles) && tiles > 0)
+                            {
+                                def.ShipSpeedPeriodTenths = period;
+                                def.ShipSpeedTiles = tiles;
+                            }
+                        }
                         break;
                 }
             }

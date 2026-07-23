@@ -379,6 +379,34 @@ public sealed class HousingShipIntegrityTests
     }
 
     [Fact]
+    public void PlaceShip_AppliesScriptShipSpeed_AndFallsBackWhenUnset()
+    {
+        var world = CreateWorld();
+        var owner = CreatePlayer(world);
+
+        var registry = new MultiRegistry();
+        // Ship def with SHIPSPEED=2,1 (period 2 tenths, 1 tile).
+        var fast = new MultiDef { Id = 0x4000, Name = "fast ship", ShipSpeedPeriodTenths = 2, ShipSpeedTiles = 1 };
+        fast.Components.Add(new MultiComponent { TileId = 0x3E40, DeltaX = 0, DeltaY = 0, DeltaZ = 0, Visible = false });
+        fast.RecalcBounds();
+        registry.Register(fast);
+        // Def without SHIPSPEED keeps the engine default (500 ms / 1 tile).
+        var plain = new MultiDef { Id = 0x4004, Name = "plain ship" };
+        plain.Components.Add(new MultiComponent { TileId = 0x3E44, DeltaX = 0, DeltaY = 0, DeltaZ = 0, Visible = false });
+        plain.RecalcBounds();
+        registry.Register(plain);
+
+        var engine = new ShipEngine(world, registry, null) { MaxShipsPerPlayer = -1, MaxShipsPerAccount = -1 };
+
+        var fastShip = engine.PlaceShip(owner, 0x4000, new Point3D(300, 300, 0, 0), Direction.North)!;
+        Assert.Equal((ushort)200, fastShip.SpeedPeriod); // 2 tenths * 100 = 200 ms
+        Assert.Equal((byte)1, fastShip.SpeedTiles);
+
+        var plainShip = engine.PlaceShip(owner, 0x4004, new Point3D(320, 320, 0, 0), Direction.North)!;
+        Assert.Equal((ushort)500, plainShip.SpeedPeriod); // engine default preserved
+    }
+
+    [Fact]
     public void ShipPlacement_EnforcesPerPlayerOwnershipLimit()
     {
         var world = CreateWorld();

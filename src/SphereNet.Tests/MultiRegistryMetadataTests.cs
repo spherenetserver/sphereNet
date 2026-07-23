@@ -50,6 +50,29 @@ public sealed class MultiRegistryMetadataTests
     }
 
     [Fact]
+    public void MergeScriptMetadata_ParsesShipSpeed()
+    {
+        var stack = ScriptTestBootstrap.CreateRuntimeStack();
+        string path = WriteScript("""
+            [MULTIDEF 065]
+            DEFNAME=m_test_ship
+            NAME=Test Ship
+            TYPE=t_ship
+            SHIPSPEED=2,1
+            """);
+        stack.Resources.LoadResourceFile(path);
+
+        var reg = new MultiRegistry();
+        reg.Register(new MultiDef { Id = 0x65 });
+        reg.MergeScriptMetadata(stack.Resources);
+
+        var def = reg.Get(0x65);
+        Assert.NotNull(def);
+        Assert.Equal(2, def!.ShipSpeedPeriodTenths); // period (tenths of a second)
+        Assert.Equal(1, def.ShipSpeedTiles);          // tiles per step
+    }
+
+    [Fact]
     public void MergeScriptMetadata_SkipsMetadataWithoutGeometry()
     {
         var stack = ScriptTestBootstrap.CreateRuntimeStack();

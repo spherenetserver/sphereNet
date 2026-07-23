@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-23] - Ship speed now comes from the script SHIPSPEED, not a fixed value
+----------------------------------------
+
+CHANGE - The ship engine ignored the [MULTIDEF] SHIPSPEED=period,tiles directive and
+        ran every ship at a fixed 500 ms period. It now parses SHIPSPEED (period in
+        tenths of a second, Source-X MSECS_PER_TENTH; tiles per step) into the multi
+        def and applies it when a ship is placed — matching Source-X and letting each
+        ship's speed be tuned from the script (raise the period to slow a ship). The
+        script speed is authoritative on load too, so existing ships pick up their
+        def's SHIPSPEED. Ships whose def has no SHIPSPEED keep the 500 ms default.
+
 [2026-07-23] - Freshly placed ships start unanchored; new default config values
 ----------------------------------------
 

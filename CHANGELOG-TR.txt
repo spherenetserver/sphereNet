@@ -3,6 +3,18 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-23] - Gemi hizi artik sabit deger degil, script SHIPSPEED'den geliyor
+----------------------------------------
+
+CHANGE - Gemi motoru [MULTIDEF] SHIPSPEED=period,tiles direktifini yok sayip her
+        gemiyi sabit 500 ms period ile calistiriyordu. Artik SHIPSPEED'i (period
+        saniyenin ondaligi cinsinden, Source-X MSECS_PER_TENTH; tiles adim basina)
+        multi def'ine parse ediyor ve gemi yerlestirilirken uyguluyor — Source-X ile
+        uyumlu ve her geminin hizi script'ten ayarlanabiliyor (yavaslatmak icin
+        period'u yukselt). Script hizi yuklemede de otoriter, boylece mevcut gemiler
+        de def'lerinin SHIPSPEED'ini aliyor. Def'inde SHIPSPEED olmayan gemiler 500 ms
+        varsayilanini koruyor.
+
 [2026-07-23] - Yeni yerlestirilen gemi demir atili baslamiyor; yeni varsayilan config degerleri
 ----------------------------------------
 

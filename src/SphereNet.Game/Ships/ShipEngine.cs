@@ -140,7 +140,9 @@ public sealed class ShipEngine
             Owner = owner.Uid,
             DirFace = normalizedFacing,
             DirMove = normalizedFacing,
-            Anchored = true,
+            // A freshly placed ship is ready to sail — no "raise anchor" needed
+            // before the first movement command. "Drop anchor" still parks it.
+            Anchored = false,
         };
 
         // Materialize ONLY the invisible placeholder components (flags == 0):

@@ -4,6 +4,17 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-23] - Freshly placed ships start unanchored; new default config values
+----------------------------------------
+
+CHANGE - A newly placed ship no longer starts anchored, so movement commands
+        ("Unfurl sail"/"Forward"/etc.) work immediately without a "raise anchor"
+        first. "Drop anchor" still parks it and "raise anchor" releases it.
+CHANGE - Default config values updated (used when the sphere.ini key is absent):
+        ClientEra=Modern, ToolTipMode=0 (tooltips off), AdminPassword=1234.
+        StateRecordingEnabled=0, ClientMax=256 and ScpFiles=scripts/ were already
+        the defaults.
+
 [2026-07-23] - World save carries a cross-file generation stamp so a torn commit is detected
 ----------------------------------------
 

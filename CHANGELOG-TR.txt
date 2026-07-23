@@ -3,6 +3,16 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-23] - Yeni yerlestirilen gemi demir atili baslamiyor; yeni varsayilan config degerleri
+----------------------------------------
+
+CHANGE - Yeni yerlestirilen gemi artik demir atili baslamiyor; hareket komutlari
+        ("Unfurl sail"/"Forward"/vb.) once "raise anchor" gerekmeden hemen calisiyor.
+        "Drop anchor" hala parkediyor, "raise anchor" birakiyor.
+CHANGE - Varsayilan config degerleri guncellendi (sphere.ini anahtari yoksa kullanilir):
+        ClientEra=Modern, ToolTipMode=0 (tooltip kapali), AdminPassword=1234.
+        StateRecordingEnabled=0, ClientMax=256 ve ScpFiles=scripts/ zaten varsayilandi.
+
 [2026-07-23] - Dunya save'i cross-file nesil damgasi tasiyor, torn commit tespit ediliyor
 ----------------------------------------
 

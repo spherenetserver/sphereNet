@@ -361,8 +361,12 @@ public sealed class HousingShipIntegrityTests
         var engine = new ShipEngine(world, registry, null);
         var ship = engine.PlaceShip(owner, 0x4000, new Point3D(200, 200, 0, 0), Direction.North)!;
 
-        Assert.False(engine.SetPilot(ship, pilot));
+        Assert.False(engine.SetPilot(ship, pilot)); // not aboard
         world.MoveCharacter(pilot, new Point3D(200, 200, 0, 0));
+
+        // A freshly placed ship is now unanchored, so anchor it explicitly to
+        // prove an anchored ship still rejects a pilot even when aboard.
+        ship.Anchored = true;
         Assert.False(engine.SetPilot(ship, pilot));
         ship.Anchored = false;
         pilot.SetStatFlag(StatFlag.OnHorse);

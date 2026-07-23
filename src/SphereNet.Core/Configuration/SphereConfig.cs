@@ -35,7 +35,7 @@ public sealed class SphereConfig
 
     // Client
     public string ClientVersion { get; set; } = "4.0.2";
-    public ClientEra ClientEra { get; set; } = ClientEra.Sphere56x;
+    public ClientEra ClientEra { get; set; } = ClientEra.Modern;
     public bool UseCrypt { get; set; } = true;
     public bool UseNoCrypt { get; set; }
     public int ClientMax { get; set; } = 256;
@@ -325,7 +325,7 @@ public sealed class SphereConfig
     public bool AutoResDisp { get; set; } = true;
 
     // Tooltip
-    public int ToolTipMode { get; set; } = 1; // 0=off, 1=revision/request, 2=force full
+    public int ToolTipMode { get; set; } = 0; // 0=off, 1=revision/request, 2=force full
     public int ToolTipCache { get; set; } = 30;
 
     // Experimental / Option flags
@@ -447,7 +447,7 @@ public sealed class SphereConfig
     public bool UseHttp { get; set; } = true;
 
     // Admin Panel
-    public string AdminPassword { get; set; } = "";
+    public string AdminPassword { get; set; } = "1234";
     public int AdminPanelPort { get; set; } = 0; // 0 = ServPort + 3
 
     /// <summary>Parse the SERVERLIST ini value: ';'-separated "name,ip,port" entries.

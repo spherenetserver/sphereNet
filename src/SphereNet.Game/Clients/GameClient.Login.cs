@@ -328,7 +328,13 @@ public sealed partial class GameClient
 
             if (info != null)
             {
-                _character.BodyId = info.Female ? (ushort)0x0191 : (ushort)0x0190;
+                // Body follows the chosen race (elf/gargoyle), not always human.
+                _character.BodyId = (info.Race, info.Female) switch
+                {
+                    (2, false) => (ushort)0x025D, (2, true) => (ushort)0x025E, // elf m/f
+                    (3, false) => (ushort)0x029A, (3, true) => (ushort)0x029B, // gargoyle m/f
+                    (_, false) => (ushort)0x0190, (_, true) => (ushort)0x0191, // human m/f
+                };
                 if (info.SkinHue != 0) _character.Hue = new Color(info.SkinHue);
 
                 int str = Math.Clamp((int)info.Str, 10, 60);
@@ -424,6 +430,16 @@ public sealed partial class GameClient
             }
             EquipPlayerNewbieItems(_character, info?.Female ?? false);
             EquipNewbieSkillKits(_character, info);
+
+            // Tint the starter shirt/pants with the hues picked on the creation
+            // screen (the client sends them in the create packet).
+            if (info != null)
+            {
+                if (info.ShirtHue != 0 && _character.GetEquippedItem(Layer.Shirt) is { } shirt)
+                    shirt.Hue = new Color(info.ShirtHue);
+                if (info.PantsHue != 0 && _character.GetEquippedItem(Layer.Pants) is { } pants)
+                    pants.Hue = new Color(info.PantsHue);
+            }
 
             // Reference serv_triggers pipeline: every fresh player character
             // runs f_onchar_create_player and then f_onchar_setup_player once

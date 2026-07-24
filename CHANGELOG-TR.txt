@@ -3,6 +3,20 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-24] - Karakter olusturma irka (elf/gargoyle govde) ve shirt/pants renklerine uyuyor
+----------------------------------------
+
+FIX - Karakter olusturma gender/race byte'ini her client icin pre-7.0 encoding ile
+        cozuyordu; boylece modern (Stygian Abyss) bir client'ta "insan" (2/3) elf,
+        "elf" (4/5) gargoyle olarak okunuyordu. Irk artik client cagina gore
+        cozuluyor (7.0.0.0+: 2/3 insan, 4/5 elf, 6/7 gargoyle; eski: 0/1 insan,
+        2/3 elf) — Source-X PacketCreate ile uyumlu.
+FIX - Secilen irk govdeye hic uygulanmiyordu — her yeni karakter insan govdesiyle
+        olusuyordu. Elfler (0x025D/0x025E) ve gargoyle'lar (0x029A/0x029B) artik dogru
+        govdeyi aliyor.
+FIX - Client'in create paketinin sonunda gonderdigi shirt/pants renkleri
+        okunmuyordu; artik parse edilip baslangic shirt/pants'ine uygulaniyor.
+
 [2026-07-24] - Host server exe'sini eski net9.0 yolu yerine mevcut TFM ile buluyor
 ----------------------------------------
 

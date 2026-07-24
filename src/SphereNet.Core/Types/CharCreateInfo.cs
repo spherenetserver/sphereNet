@@ -19,6 +19,9 @@ public sealed class CharCreateInfo
     public ushort HairHue { get; init; }
     public ushort BeardStyle { get; init; }
     public ushort BeardHue { get; init; }
+    /// <summary>Starter shirt/pants tints picked on the creation screen; 0 = default.</summary>
+    public ushort ShirtHue { get; init; }
+    public ushort PantsHue { get; init; }
     public (byte Id, byte Value)[] Skills { get; init; } = [];
 
     /// <summary>Index of the starting city the player picked, into the city list

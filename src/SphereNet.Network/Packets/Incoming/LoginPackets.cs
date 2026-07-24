@@ -70,8 +70,12 @@ public sealed class PacketCreateCharacterHS : PacketHandler
         ushort beardStyle = buffer.ReadUInt16();
         ushort beardHue = buffer.ReadUInt16();
 
-        buffer.ReadByte();            // unknown
+        buffer.ReadByte();            // shard index
         byte city = buffer.ReadByte(); // starting city index (into the 0xA9 list)
+
+        buffer.ReadBytes(8); // slot (4) + client IP (4)
+        ushort shirtHue = buffer.ReadUInt16();
+        ushort pantsHue = buffer.ReadUInt16();
 
         bool female = (genderRace % 2) != 0;
 
@@ -81,14 +85,27 @@ public sealed class PacketCreateCharacterHS : PacketHandler
             Female = female,
             ClientFlags = clientFlags,
             Profession = profession,
-            Race = (byte)Math.Clamp(genderRace / 2 + 1, 1, 3),
+            // 0xF8 is a 7.0.16+ (Stygian Abyss) packet, so the byte uses the SA
+            // race/sex encoding.
+            Race = RaceFromGenderRace(genderRace, saEncoding: true),
             Str = str, Dex = dex, Int = intl,
             SkinHue = skinHue,
             HairStyle = hairStyle, HairHue = hairHue,
             BeardStyle = beardStyle, BeardHue = beardHue,
+            ShirtHue = shirtHue, PantsHue = pantsHue,
             Skills = skills,
             City = city,
         });
+    }
+
+    /// <summary>Map the create packet's gender/race byte to a race id (1 human,
+    /// 2 elf, 3 gargoyle). Source-X PacketCreate::onReceive: 7.0.0.0+ clients encode
+    /// 2/3=human, 4/5=elf, 6/7=gargoyle; older clients encode 0/1=human, 2/3=elf.</summary>
+    internal static byte RaceFromGenderRace(byte genderRace, bool saEncoding)
+    {
+        if (saEncoding)
+            return genderRace switch { <= 3 => 1, <= 5 => 2, _ => 3 };
+        return (byte)(genderRace >= 2 ? 2 : 1);
     }
 }
 
@@ -128,8 +145,12 @@ public sealed class PacketCreateCharacter : PacketHandler
         ushort beardStyle = buffer.ReadUInt16();
         ushort beardHue = buffer.ReadUInt16();
 
-        buffer.ReadByte();            // unknown
+        buffer.ReadByte();            // shard index
         byte city = buffer.ReadByte(); // starting city index (into the 0xA9 list)
+
+        buffer.ReadBytes(8); // slot (4) + client IP (4)
+        ushort shirtHue = buffer.ReadUInt16();
+        ushort pantsHue = buffer.ReadUInt16();
 
         bool female = (genderRace % 2) != 0;
 
@@ -139,11 +160,15 @@ public sealed class PacketCreateCharacter : PacketHandler
             Female = female,
             ClientFlags = clientFlags,
             Profession = profession,
-            Race = (byte)Math.Clamp(genderRace / 2 + 1, 1, 3),
+            // The old 0x00 packet is pre-7.0.16; use the SA race encoding only if
+            // the client explicitly reports a 7.0.0.0+ version, else the legacy one.
+            Race = PacketCreateCharacterHS.RaceFromGenderRace(
+                genderRace, saEncoding: state.ClientVersionNumber >= 70_000_000),
             Str = str, Dex = dex, Int = intl,
             SkinHue = skinHue,
             HairStyle = hairStyle, HairHue = hairHue,
             BeardStyle = beardStyle, BeardHue = beardHue,
+            ShirtHue = shirtHue, PantsHue = pantsHue,
             Skills = skills,
             City = city,
         });

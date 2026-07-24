@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-24] - Character creation honors race (elf/gargoyle body) and shirt/pants colors
+----------------------------------------
+
+FIX - Character creation decoded the gender/race byte with the pre-7.0 encoding for
+        every client, so on a modern (Stygian Abyss) client "human" (2/3) was read as
+        elf and "elf" (4/5) as gargoyle. The race is now decoded per client era
+        (7.0.0.0+: 2/3 human, 4/5 elf, 6/7 gargoyle; older: 0/1 human, 2/3 elf),
+        matching Source-X PacketCreate.
+FIX - The chosen race was never applied to the body — every new character got a
+        human body. Elves (0x025D/0x025E) and gargoyles (0x029A/0x029B) now get their
+        correct body.
+FIX - The shirt and pants tints the client sends at the tail of the create packet
+        were not read; they are now parsed and applied to the starter shirt/pants.
+
 [2026-07-24] - Host locates the server exe by the current TFM, not a stale net9.0 path
 ----------------------------------------
 

@@ -132,6 +132,10 @@ public static partial class Program
 
             NetState.RttPingIntervalMs = _config.RttPingIntervalMs;
 
+            // SECTORSLEEP (minutes; 0 disables) was read into config but never
+            // applied, so sectors always used the hardcoded 10-minute default.
+            SphereNet.Game.World.Sectors.Sector.SleepDelayMs = _config.SectorSleepMs;
+
             _triggerDispatcher = new TriggerDispatcher();
             _triggerDispatcher.Resources = _resources;
             var exprParser = new ExpressionParser

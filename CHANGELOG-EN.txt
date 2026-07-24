@@ -4,6 +4,16 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-24] - SECTORSLEEP config is now applied instead of a fixed 10-minute delay
+----------------------------------------
+
+FIX - The SECTORSLEEP setting (minutes a clientless sector waits before sleeping)
+        was read from sphere.ini but never applied — sectors always used the
+        hardcoded 10-minute default. It is now wired to Sector.SleepDelayMs via a new
+        SphereConfig.SectorSleepMs (minutes * 60000; 0 disables sleeping, negatives
+        clamp to 0), matching Source-X _iSectorSleepDelay. The config default was
+        aligned to Source-X (10 minutes) so unconfigured servers are unchanged.
+
 [2026-07-24] - Character creation honors race (elf/gargoyle body) and shirt/pants colors
 ----------------------------------------
 

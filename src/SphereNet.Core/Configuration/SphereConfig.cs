@@ -100,7 +100,13 @@ public sealed class SphereConfig
     public int GameMinuteLength { get; set; } = 20;
     /// <summary>Minutes between Source-X f_onserver_timer calls. Zero disables it.</summary>
     public int TimerCallMinutes { get; set; }
-    public int SectorSleep { get; set; } = 7;
+    /// <summary>Minutes a clientless sector waits before sleeping (Source-X
+    /// SECTORSLEEP / _iSectorSleepDelay, default 10). 0 disables sector sleeping.</summary>
+    public int SectorSleep { get; set; } = 10;
+
+    /// <summary>SECTORSLEEP as milliseconds for Sector.SleepDelayMs (Source-X stores
+    /// value * 60 * MSECS_PER_SEC). 0 disables sleeping; negatives clamp to 0.</summary>
+    public long SectorSleepMs => Math.Max(0, SectorSleep) * 60_000L;
     public int MapViewSize { get; set; } = 18;
     public int MapViewSizeMax { get; set; } = 18;
     /// <summary>Combat retreat distance (tiles). 0 = use MapViewSize. sphere.ini MAPVIEWRADAR.</summary>

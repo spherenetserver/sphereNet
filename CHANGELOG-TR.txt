@@ -3,6 +3,17 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-24] - SECTORSLEEP config'i artik uygulaniyor, sabit 10 dakika degil
+----------------------------------------
+
+FIX - SECTORSLEEP ayari (client'siz bir sektorun uykuya gecmeden once bekledigi
+        dakika) sphere.ini'den okunuyor ama hic uygulanmiyordu — sektorler her zaman
+        sabit 10 dakika varsayilanini kullaniyordu. Artik yeni bir
+        SphereConfig.SectorSleepMs (dakika * 60000; 0 uykuyu kapatir, negatifler 0'a
+        clamp) uzerinden Sector.SleepDelayMs'e baglaniyor — Source-X _iSectorSleepDelay
+        ile uyumlu. Config varsayilani Source-X ile hizalandi (10 dakika) ki
+        yapilandirilmamis sunucular degismesin.
+
 [2026-07-24] - Karakter olusturma irka (elf/gargoyle govde) ve shirt/pants renklerine uyuyor
 ----------------------------------------
 

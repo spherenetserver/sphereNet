@@ -108,6 +108,37 @@ public class ConfigRegressionTests
         }
     }
 
+    // SECTORSLEEP (minutes) is wired to Sector.SleepDelayMs (ms) via SectorSleepMs;
+    // it used to be read but never applied (sectors stuck at a fixed 10 minutes).
+    [Theory]
+    [InlineData(10, 600_000L)] // Source-X default: 10 minutes
+    [InlineData(1, 60_000L)]
+    [InlineData(0, 0L)]        // 0 disables sector sleeping
+    [InlineData(-5, 0L)]       // negatives clamp to 0
+    public void SectorSleepMs_ConvertsMinutesToMilliseconds(int minutes, long expectedMs)
+    {
+        Assert.Equal(expectedMs, new SphereConfig { SectorSleep = minutes }.SectorSleepMs);
+    }
+
+    [Fact]
+    public void SectorSleep_DefaultsToTenMinutes_AndReadsFromIni()
+    {
+        Assert.Equal(10, new SphereConfig().SectorSleep); // Source-X default
+
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_cfg_{Guid.NewGuid():N}.ini");
+        File.WriteAllText(tmp, "[SPHERE]\nSectorSleep=3\n");
+        try
+        {
+            var parser = new IniParser();
+            parser.Load(tmp);
+            var config = new SphereConfig();
+            config.LoadFromIni(parser);
+            Assert.Equal(3, config.SectorSleep);
+            Assert.Equal(180_000L, config.SectorSleepMs);
+        }
+        finally { try { File.Delete(tmp); } catch { } }
+    }
+
     // Case-insensitive INI keys mean COLORNOTOGOOD=0 maps to ColorNotoGood. A literal 0
     // would paint the click name label black; the loader must fall back to the built-in
     // colour instead. Invisibility hues keep an explicit 0 (it means "no tint").

@@ -3,6 +3,16 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-07-24] - Host server exe'sini eski net9.0 yolu yerine mevcut TFM ile buluyor
+----------------------------------------
+
+FIX - Host'un SphereNet.Server.exe'yi bulan gelistirme fallback'i "net9.0" cikti
+        klasorunu sabit yaziyordu; .NET 10'a gecisten sonra server build'ini artik
+        bulamiyor ve Host modu baslamiyor olabilirdi. Artik hedef-framework klasorunu
+        Host'un kendi cikti dizininden turetiyor (ornek "net10.0"), boylece yol
+        gelecekteki .NET surum yukseltmelerini otomatik takip ediyor. Baslangic
+        banner'indaki ".NET 9 Port" etiketi ".NET 10" olarak duzeltildi.
+
 [2026-07-23] - Gemi hizi artik sabit deger degil, script SHIPSPEED'den geliyor
 ----------------------------------------
 

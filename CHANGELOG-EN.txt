@@ -4,6 +4,16 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-07-24] - Host locates the server exe by the current TFM, not a stale net9.0 path
+----------------------------------------
+
+FIX - The Host's development fallback that finds SphereNet.Server.exe hardcoded a
+        "net9.0" output folder, so after the .NET 10 retarget it could no longer
+        locate the server build and Host mode failed to start. It now derives the
+        target-framework folder from the Host's own output directory (e.g.
+        "net10.0"), so the path tracks future .NET version bumps automatically. The
+        startup banner's ".NET 9 Port" label is corrected to ".NET 10".
+
 [2026-07-23] - Ship speed now comes from the script SHIPSPEED, not a fixed value
 ----------------------------------------
 

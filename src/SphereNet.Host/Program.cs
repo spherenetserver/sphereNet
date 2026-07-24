@@ -37,11 +37,16 @@ var serverExe = Path.Combine(baseDir, "SphereNet.Server.exe");
 // Development fallback: look for server exe in the solution bin folder
 if (!File.Exists(serverExe))
 {
+    // Match the Host's OWN target-framework folder (e.g. "net10.0") instead of a
+    // hardcoded moniker, so this dev fallback survives .NET version bumps — a
+    // stale "net9.0" here silently broke Host mode after the .NET 10 retarget.
+    string tfm = new DirectoryInfo(baseDir.TrimEnd(Path.DirectorySeparatorChar)).Name;
+
     // Old per-project output layout (pre-unified bin)
     foreach (var cfg in new[] { "Debug", "Release" })
     {
         var devPath = Path.GetFullPath(Path.Combine(
-            baseDir, "..", "..", "..", "..", "src", "SphereNet.Server", "bin", cfg, "net9.0", "SphereNet.Server.exe"));
+            baseDir, "..", "..", "..", "..", "src", "SphereNet.Server", "bin", cfg, tfm, "SphereNet.Server.exe"));
         if (File.Exists(devPath)) { serverExe = devPath; break; }
     }
 }

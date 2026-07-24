@@ -536,7 +536,7 @@ public static partial class Program
         // Banner
         ConsoleAppend("===========================================");
         ConsoleAppend("  SphereNet — Ultima Online Server");
-        ConsoleAppend("  Source-X Architecture / .NET 9 Port");
+        ConsoleAppend("  Source-X Architecture / .NET 10 Port");
         ConsoleAppend("===========================================");
         ConsoleAppend("");
 

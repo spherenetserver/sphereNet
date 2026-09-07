@@ -14,7 +14,7 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | İŞ-5 dördüncü dilim (bu oturum) |
+| Son commit | `6429cb5` (İŞ-5 dördüncü dilim) |
 | Tam test | 3.283 başarılı / 0 başarısız |
 | Sıradaki iş | **İŞ-5 devamı: SPELLTIMEOUT/DISTANCEFORMULA/STATSFLAGS; NOWEATHER+NPCSKILLSAVE karar bekliyor** |
 

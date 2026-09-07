@@ -287,6 +287,18 @@ public sealed class SphereConfig
     /// <summary>Teleport sound for an NPC (default 0x01FE).</summary>
     public int TeleportSoundNpc { get; set; } = 0x01FE;
 
+    /// <summary>How much MORE than they can carry a player may stuff into their own
+    /// backpack, in stones (Source-X m_iBackpackOverload, ini BACKPACKOVERLOAD, default
+    /// 40). A player's pack is not bounded by the flat container cap: its limit is what
+    /// its owner can carry plus this (CItemContainer.cpp:907). Below zero means no
+    /// limit at all.</summary>
+    public int BackpackOverload { get; set; } = 40;
+
+    /// <summary>Does an item dropped on the ground turn to its flipped graphic?
+    /// (Source-X m_fFlipDroppedItems, ini FLIPDROPPEDITEMS, default true,
+    /// CCharAct.cpp:3266.)</summary>
+    public bool FlipDroppedItems { get; set; } = true;
+
     /// <summary>Can an NPC's spell be disturbed by a hit, the way a player's can?
     /// (Source-X m_fNPCCanFizzleOnHit, ini NPCCANFIZZLEONHIT, default false - only
     /// players are disturbed, CCharFight.cpp:881.)</summary>
@@ -712,6 +724,8 @@ public sealed class SphereConfig
         MaxItemComplexity = ini.GetInt(section, "MaxItemComplexity", MaxItemComplexity);
         MaxHousesGuild = Math.Max(0, ini.GetInt(section, "MaxHousesGuild", MaxHousesGuild));
         NpcCanFizzleOnHit = ini.GetBool(section, "NpcCanFizzleOnHit", NpcCanFizzleOnHit);
+        BackpackOverload = ini.GetInt(section, "BackpackOverload", BackpackOverload);
+        FlipDroppedItems = ini.GetBool(section, "FlipDroppedItems", FlipDroppedItems);
         TeleportEffectStaff = GetIntOrHex(ini, section, "TeleportEffectStaff", TeleportEffectStaff);
         TeleportSoundStaff = GetIntOrHex(ini, section, "TeleportSoundStaff", TeleportSoundStaff);
         TeleportEffectPlayers = GetIntOrHex(ini, section, "TeleportEffectPlayers", TeleportEffectPlayers);

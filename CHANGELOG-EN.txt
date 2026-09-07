@@ -4,6 +4,20 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-07] - A pack holds what its owner can carry (IS-5)
+----------------------------------------
+
+FIX - A player's own backpack was bounded by the flat container weight cap that every
+        chest and pouch gets, so a strong character could carry no more in it than a
+        weak one. Upstream bounds the PACK by what its owner can carry plus
+        BACKPACKOVERLOAD (CItemContainer.cpp:907, default 40 stones), which is exactly
+        what that setting is for - and it was not read at all. Below zero means the pack
+        has no limit of its own, as upstream defines it.
+
+FIX - A dropped item always turned to its flipped graphic. It is a setting
+        (FLIPDROPPEDITEMS, default true) and it never applies to something that cannot
+        be moved (CCharAct.cpp:3266). A shard turning it off still got the flip.
+
 [2026-09-07] - Whether a creature's casting can be disturbed is a setting (IS-5)
 ----------------------------------------
 

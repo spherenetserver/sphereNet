@@ -949,6 +949,16 @@ public class Item : ObjBase
     /// CServerConfig m_iMaxItemComplexity, ini MAXITEMCOMPLEXITY, default 25).</summary>
     public static int MaxItemComplexity { get; set; } = 25;
 
+    /// <summary>Does an item dropped on the ground turn to its flipped graphic
+    /// (ini FLIPDROPPEDITEMS, default true)? The host sets it from the
+    /// configuration.</summary>
+    public static bool FlipDroppedItems { get; set; } = true;
+
+    /// <summary>How much more than they can carry a player may stuff into their own
+    /// backpack, in stones (ini BACKPACKOVERLOAD, default 40). Below zero = no
+    /// limit.</summary>
+    public static int BackpackOverload { get; set; } = 40;
+
     // Per-item MAXAMOUNT override (Source-X CItem MaxAmount defnum). Null = global.
     private int? _maxAmountOverride;
     /// <summary>Per-item stack-size override, or null to use the global default.</summary>

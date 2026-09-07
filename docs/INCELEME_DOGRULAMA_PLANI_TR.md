@@ -2826,6 +2826,16 @@ karari. Ayrica bu tur yalnizca CANLI ini'nin set ettigi anahtarlara bakti; refer
 
 **Kapanis:** tam suite **3.282 basarili / 0 basarisiz** (+1).
 
+**IS-5 dorduncu dilim (7 Eylul 2026):**
+
+- [x] **B5-5 (P2)** - Oyuncunun cantasi duz kapsayici agirlik sinirina tabiydi; guc
+  farketmiyordu. (YAPILDI: `BACKPACKOVERLOAD` - canta siniri = sahibinin tasiyabildigi +
+  ayar, varsayilan 40 tas; sifir alti = sinirsiz.)
+- [x] **B5-6 (P3)** - Yere birakilan esya kosulsuz ceviriliyordu. (YAPILDI:
+  `FLIPDROPPEDITEMS` ayari + tasinabilirlik kosulu.)
+
+**Kapanis:** tam suite **3.283 basarili / 0 basarisiz** (+1).
+
 ### IS-4 - nesne olusturma/kopyalama giris noktalari tablosu (7 Eylul 2026)
 
 Kaynak: port plani IS-4 / PLAN-101. Amac: ayni isi yapan girislerin ortak ve farkli

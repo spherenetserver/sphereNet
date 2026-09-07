@@ -1184,6 +1184,19 @@ public sealed class ClientInventoryHandler
                         return;
                     }
                     int weightLimit = isBank ? _world.MaxBankWeight : _world.MaxContainerWeight;
+                    // A player's OWN pack is not bounded by the flat container cap:
+                    // upstream lets it hold what its owner can carry plus
+                    // BACKPACKOVERLOAD (CItemContainer.cpp:907), so a strong character
+                    // carries more than a weak one and the setting is what says how far
+                    // past their limit the pack may go. A flat cap for everybody made
+                    // strength meaningless here and ignored the setting entirely.
+                    if (!isBank && container.IsEquipped && container.EquipLayer == Layer.Pack &&
+                        _world.FindChar(container.ContainedIn) is { } packOwner)
+                    {
+                        weightLimit = Item.BackpackOverload < 0
+                            ? 0                                  // below zero: no limit
+                            : packOwner.MaxWeight + Item.BackpackOverload;
+                    }
                     if (weightLimit > 0)
                     {
                         int totalWeightTenths = 0;
@@ -1607,7 +1620,11 @@ public sealed class ClientInventoryHandler
         else
         {
             item.Direction = (byte)((tileItemCount % 7) + 1);
-            item.TryFlipDisplay();
+            // Whether a dropped item turns to its flipped graphic is a setting, and it
+            // never applies to something that cannot be moved (CCharAct.cpp:3266). The
+            // flip was unconditional here, so a shard that turned it off still got it.
+            if (Item.FlipDroppedItems && item.IsMovableType)
+                item.TryFlipDisplay();
         }
 
         // RETURN 1 on THIS event means the script took over after the item was placed -

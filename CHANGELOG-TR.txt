@@ -3,6 +3,20 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-07] - Canta, sahibinin tasiyabildigi kadarini alir (IS-5)
+----------------------------------------
+
+FIX - Oyuncunun kendi cantasi, her sandik ve kesenin tabi oldugu duz kapsayici agirlik
+        siniriyla sinirlaniyordu; yani guclu karakter zayif olandan fazlasini
+        tasiyamiyordu. Referans CANTAYI, sahibinin tasiyabildigi + BACKPACKOVERLOAD ile
+        sinirlar (CItemContainer.cpp:907, varsayilan 40 tas) - o ayarin varlik sebebi tam
+        olarak budur ve hic okunmuyordu. Sifirin altindaki deger, referansin tanimladigi
+        gibi, cantanin kendine ait sinirinin olmadigi anlamina gelir.
+
+FIX - Yere birakilan esya her zaman cevrilmis grafigine donuyordu. Bu bir ayardir
+        (FLIPDROPPEDITEMS, varsayilan acik) ve tasinamayan bir seye asla uygulanmaz
+        (CCharAct.cpp:3266). Ayari kapatan shard yine de cevrilme aliyordu.
+
 [2026-09-07] - Yaratigin buyusunun bozulabilirligi bir ayardir (IS-5)
 ----------------------------------------
 

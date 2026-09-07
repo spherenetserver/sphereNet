@@ -3,6 +3,29 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-07] - Kopya ne bildirir, ve kacar tane olabilir (IS-4)
+----------------------------------------
+
+FIX - Esya uzerindeki DUPE ne urettigini kimseye soylemiyordu. Referans kopyayi
+        CreateDupeItem'a cagiran konsolun karakteri ve fSetNew ile verir; boylece NEW de
+        cagiranin ACT'i de kopyayi gosterir - satir birden fazla urettiginde
+        sonuncusunu (CItem.cpp:3641 -> :385). Burada yalnizca NEW ayarlaniyordu, o da
+        nesne olusturmanin yan etkisi olarak; yani bir seyi kopyalayip sonra ACT
+        uzerinde calisan script, daha once neye bakiyorsa onun uzerinde calisiyordu.
+
+FIX - Bir DUPE'un uretebilecegi kopya sayisi bine sabitlenmisti; bu bu motorun kendi
+        sayisi, hicbir yerden gelen bir kural degil. Referans UST DUZEY yigini
+        MAXITEMCOMPLEXITY ile sinirlar (CItem.cpp:3636) - varsayilani 25 olan bir ini
+        ayari - ve kap icinde yapilan kopyayi sinirlamaz. O ayar artik var ve sinir odur.
+
+NOTE - Giris noktalari port plani icin sutun sutun karsilastirildi (IS-4): @Create'i ne
+        calistirir, NEW ve ACT neyi gosterir, miktar nasil okunur, nesne nereye konur ve
+        basarisizlikta ne olur. Kopya, HICBIR yolda @Create'i tekrar calistirmaz -
+        referans onu CreateBase + DupeCopy ile kurar ve @Create'i calistiran scripte hic
+        ulasmaz; tekrar calistirmak sihirli silahin ozelliklerini yeniden zar atardi ve
+        kopya kopya olmazdi. KARAKTER uzerindeki DUPE ise bilerek ne NEW ne ACT ayarlar;
+        referansin CHV_DUPE'u DupeFrom'u dogrudan cagirir ve ikisine de dokunmaz.
+
 [2026-09-07] - Kaydet, yukle, yine kaydet - ve ayni seyi soyle (IS-3)
 ----------------------------------------
 

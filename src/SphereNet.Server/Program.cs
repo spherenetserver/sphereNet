@@ -737,6 +737,7 @@ public static partial class Program
         _world.GameMinuteLengthMs = Math.Max(1, _config.GameMinuteLength) * 1000;
         _world.MaxContainerItems = _config.ContainerMaxItems;
         SphereNet.Game.Objects.Items.Item.ItemsMaxAmount = _config.ItemsMaxAmount;
+        SphereNet.Game.Objects.Items.Item.MaxItemComplexity = _config.MaxItemComplexity;
         _world.MaxBankItems      = _config.BankMaxItems;
         _world.MaxBankWeight        = _config.BankMaxWeight;
         _world.MaxContainerWeight   = _config.ContainerMaxWeight;

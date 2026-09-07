@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | `b91e771` (İŞ-3) |
-| Tam test | 3.273 başarılı / 0 başarısız |
-| Sıradaki iş | **İŞ-4: tek nesne oluşturma/kopyalama sözleşmesi tablosu (PLAN-101)** |
+| Son commit | İŞ-4 (bu oturum) |
+| Tam test | 3.278 başarılı / 0 başarısız |
+| Sıradaki iş | **İŞ-5: gerçek ini fark listesi (PLAN-301/302)** |
 
 ## Çalışma sırası
 
@@ -58,10 +58,13 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   Testin kendisi "her şeyi kaybeden kayıt da sabit noktadır" tuzağına karşı, çevrilen
   verinin kayıtta bulunduğunu ayrıca doğruluyor.
 
-- [ ] **İŞ-4 — Tek nesne oluşturma/kopyalama sözleşmesi tablosu** (PLAN-101)
-  NEWITEM, NEWNPC, NEWDUPE, karakter DUPE, spawn, template, vendor ve stack
-  bölme girişlerinin ortak/farklı davranışını tabloya dök; farkları ya kapat ya
-  da bilinçli sapma olarak kaydet. 13G-13J bu tablonun yarısını zaten yazdı.
+- [x] **İŞ-4 — Tek nesne oluşturma/kopyalama sözleşmesi tablosu** (PLAN-101) — **KAPANDI**
+  On giriş noktası altı sütunda karşılaştırıldı (tablo takip planında). İki fark
+  kapandı: eşya DUPE'u artık kopyayı çağıranın ACT'ine yazıyor; DUPE sayısındaki
+  uydurma 1000 sınırı yerine referansın `MAXITEMCOMPLEXITY` ini ayarı (varsayılan 25,
+  yalnız üst düzey nesnede). Üç davranış bilinçli sapma olarak **doğrulandı ve
+  değiştirilmedi** (kopya @Create'i tekrar çalıştırmaz; karakter DUPE'u NEW/ACT
+  ayarlamaz; SERV. öneki ACT'e dokunmaz).
 
 - [ ] **İŞ-5 — Gerçek ini fark listesi** (PLAN-301/302)
   Canlı `sphere.ini` ile desteklenen anahtar manifestini karşılaştır; etkisiz
@@ -72,6 +75,9 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-4 KAPANDI** — 2026-09-07. On giriş noktası altı sütunda tabloya döküldü;
+  eşya DUPE'unun ACT'i ve uydurma 1000 sınırı (→ `MAXITEMCOMPLEXITY`) düzeltildi,
+  üç sapma doğrulanıp korundu. Tam suite 3.278.
 - **İŞ-3 KAPANDI** — 2026-09-07. `SaveRoundTripParityTests` (kaydet→yükle→kaydet,
   satır satır karşılaştırma; motor dünyası + klasik kayıt dünyası). İlk bulgusu
   `MAXHITS=0` sapmasıydı, düzeltildi. Tam suite 3.273.

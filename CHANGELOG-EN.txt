@@ -4,6 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-07] - What a copy reports, and how much of it there may be (IS-4)
+----------------------------------------
+
+FIX - DUPE on an item told nobody what it had made. Upstream hands the copy to
+        CreateDupeItem with the calling console's character and fSetNew set, so NEW and
+        the caller's ACT both name the copy - the last one when the line made several
+        (CItem.cpp:3641 -> :385). Only NEW was set here, and only as a side effect of
+        creating an object, so a script that duplicated something and then worked on ACT
+        worked on whatever it had been looking at before.
+
+FIX - The number of copies one DUPE could make was capped at a thousand, which is this
+        engine's own number and not a rule from anywhere. The reference bounds a
+        TOP-LEVEL pile by MAXITEMCOMPLEXITY (CItem.cpp:3636), an ini setting that
+        defaults to 25, and leaves a copy made inside a container unbounded. That
+        setting exists now and the cap is it.
+
+NOTE - The entry points were compared column by column for the port plan (IS-4): what
+        fires @Create, what NEW and ACT end up naming, how the amount is read, where the
+        object is put and what happens when it fails. A duplicate deliberately does NOT
+        re-run @Create on any path - upstream builds it with CreateBase plus DupeCopy
+        and never reaches the script that fires it, and re-running would re-roll a magic
+        weapon's properties so the copy would not be a copy. DUPE on a CHARACTER
+        deliberately sets neither NEW nor ACT, because upstream's CHV_DUPE calls DupeFrom
+        directly and touches neither.
+
 [2026-09-07] - Save, load, save again - and say the same thing (IS-3)
 ----------------------------------------
 

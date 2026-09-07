@@ -267,6 +267,12 @@ public sealed class SphereConfig
     public int ContainerMaxWeight { get; set; } = 400;
     public int ItemsMaxAmount { get; set; } = 60000;
 
+    /// <summary>How many copies one DUPE of a TOP-LEVEL item may make (Source-X
+    /// CServerConfig m_iMaxItemComplexity, ini MAXITEMCOMPLEXITY, default 25). It is
+    /// the ceiling on how much a single script line may pile on one square; a copy
+    /// inside a container is not bound by it.</summary>
+    public int MaxItemComplexity { get; set; } = 25;
+
     // Housing
     public int MaxHousesPlayer { get; set; } = 1;
     public int MaxHousesAccount { get; set; } = 1;
@@ -664,6 +670,7 @@ public sealed class SphereConfig
         BankMaxWeight = ini.GetInt(section, "BankMaxWeight", BankMaxWeight);
         ContainerMaxWeight = ini.GetInt(section, "ContainerMaxWeight", ContainerMaxWeight);
         ItemsMaxAmount = ini.GetInt(section, "ItemsMaxAmount", ItemsMaxAmount);
+        MaxItemComplexity = ini.GetInt(section, "MaxItemComplexity", MaxItemComplexity);
 
         MaxHousesPlayer = ini.GetInt(section, "MaxHousesPlayer", MaxHousesPlayer);
         MaxHousesAccount = ini.GetInt(section, "MaxHousesAccount", MaxHousesAccount);

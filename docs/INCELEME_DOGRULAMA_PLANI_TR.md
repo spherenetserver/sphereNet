@@ -2767,6 +2767,39 @@ gecici olarak geri alinarak dokuz testin besinin eski davranisi yakaladigi kanit
 dali (referansta more2 uzerinden ikinci karakter uretimi) ve canta ici derin
 oz-referanslar.
 
+### IS-4 - nesne olusturma/kopyalama giris noktalari tablosu (7 Eylul 2026)
+
+Kaynak: port plani IS-4 / PLAN-101. Amac: ayni isi yapan girislerin ortak ve farkli
+davranislarini tabloya dokmek; farki ya kapatmak ya da bilincli sapma olarak yazmak.
+
+| Giris | @Create | NEW | ACT | Miktar/sayi | Yerlestirme | Basarisizlik |
+|---|---|---|---|---|---|---|
+| SERV.NEWITEM (ITEMDEF) | evet | isin SONUNDA | hayir (sunucuya yonelik) | Sphere ifadesi, sifir korunur | parent alani: kap / katman / pack | NEW temizlenir, nesne silinir |
+| NEWITEM (nesne uzerinde) | evet | evet | evet (cagiranin ACT'i) | ayni | ayni | ayni |
+| SERV.NEWITEM (TEMPLATE) | her satirda | recetenin sonucu | - | dis miktar sonuca uygulanir | recete + parent | NEW temizlenir |
+| SERV.NEWNPC | CHARDEF @Create | evet | - | - | - | NEW temizlenir |
+| NEWDUPE | HAYIR (kopya) | evet | evet | - | ust nesnenin YANINA | kaynak yoksa NEW temizlenir |
+| DUPE (esya) | HAYIR | evet | **evet (bu tur eklendi)** | Sphere argumani; ust duzeyde MAXITEMCOMPLEXITY | ust nesnenin yanina | yerlesemezse kopya silinir |
+| DUPE (karakter) | HAYIR | **hayir - referans da oyle** | hayir | arguman newbie sozlesmesini secer | kaynagin konumu | - |
+| spawn | evet | - | - | PILE (yiginlanabilirse) | spawn noktasi cevresi | tur atlanir |
+| TEMPLATE satiri | evet | - | - | satir miktari + R# sansi | gecerli kap | satir hicbir sey uretmez |
+| yigin bolme | HAYIR | - | - | bolunen adet | ayni kap | - |
+
+- [x] **B4-1 (P2)** - Esya DUPE'u kopyayi cagiranin ACT'ine yazmiyordu. (YAPILDI:
+  `CreateDupeItem` sozlesmesi - NEW ve ACT kopyayi gosterir, birden fazlada sonuncusu.)
+- [x] **B4-2 (P2)** - DUPE sayisi 1000'e sabitlenmisti; motorun kendi uydurdugu sayi.
+  (YAPILDI: `MAXITEMCOMPLEXITY` ini ayari eklendi, varsayilan 25 - referansin degeri;
+  yalniz UST DUZEY nesnede uygulanir, kap icindeki kopya sinirsiz.)
+
+**Bilincli sapma olarak DOGRULANANLAR (degistirilmedi):** kopya hicbir yolda @Create'i
+tekrar calistirmaz; karakter DUPE'u NEW/ACT ayarlamaz (CHV_DUPE dogrudan DupeFrom
+cagirir); SERV. onekli bicim ACT'e dokunmaz, ciplak bicim dokunur (CScriptObj.cpp:1383).
+
+**Kapanis:** tam suite **3.278 basarili / 0 basarisiz** (+5).
+
+**Acik kalan:** vendor restock ve loot yollarinin NEW/ACT sutunlari bu turda canli
+denenmedi (tabloda "-" ile isaretli, "yok" degil "olculmedi" demektir).
+
 ### IS-3 - kaydin sabit noktasi (7 Eylul 2026)
 
 Kaynak: port plani IS-3 / PLAN-107.

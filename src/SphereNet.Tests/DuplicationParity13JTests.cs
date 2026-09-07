@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Characters;
@@ -261,5 +262,124 @@ public sealed class DuplicationParity13JTests
         public string GetName() => "test";
         public PrivLevel GetPrivLevel() => PrivLevel.Admin;
         public void SysMessage(string text) { }
+    }
+
+    // ================================================================ İŞ-4 / PLAN-101
+    // The creation entry points are meant to report their result the same way. DUPE on
+    // an item hands its copy to CreateDupeItem with the caller and fSetNew set, so both
+    // NEW and the caller's ACT name the copy - the last one when the line made several
+    // (CItem.cpp:3641 -> :385). DUPE on a CHARACTER does not: upstream's CHV_DUPE calls
+    // DupeFrom directly and touches neither (CChar.cpp:4541).
+
+    [Fact]
+    public void DuplicatingAnItemPointsBothNewAndTheCallersActAtTheCopy()
+    {
+        var world = NewWorld();
+        var caller = world.CreateCharacter();
+        world.PlaceCharacter(caller, new Point3D(150, 150, 0, 0));
+
+        var source = world.CreateItem();
+        source.BaseId = 0x1F03;
+        world.PlaceItem(source, new Point3D(151, 150, 0, 0));
+
+        Assert.True(source.TryExecuteCommand("DUPE", "", new ActConsole(caller)));
+
+        var copy = world.GetAllObjects().OfType<Item>()
+            .Single(i => i != source && i.BaseId == 0x1F03);
+        Assert.Equal(copy.Uid, world.LastNewObject);
+        Assert.Equal(copy.Uid, caller.Act);
+    }
+
+    [Fact]
+    public void SeveralCopiesLeaveTheLastOneNamed()
+    {
+        var world = NewWorld();
+        var caller = world.CreateCharacter();
+        world.PlaceCharacter(caller, new Point3D(150, 150, 0, 0));
+        var source = world.CreateItem();
+        source.BaseId = 0x1F03;
+        world.PlaceItem(source, new Point3D(151, 150, 0, 0));
+
+        Assert.True(source.TryExecuteCommand("DUPE", "3", new ActConsole(caller)));
+
+        var copies = world.GetAllObjects().OfType<Item>()
+            .Where(i => i != source && i.BaseId == 0x1F03).ToList();
+        Assert.Equal(3, copies.Count);
+        Assert.Contains(copies, c => c.Uid == world.LastNewObject);
+        Assert.Equal(world.LastNewObject, caller.Act);
+    }
+
+    [Fact]
+    public void ATopLevelPileIsBoundedByTheConfiguredComplexity()
+    {
+        var world = NewWorld();
+        var source = world.CreateItem();
+        source.BaseId = 0x1F03;
+        world.PlaceItem(source, new Point3D(151, 150, 0, 0));
+
+        int previous = Item.MaxItemComplexity;
+        Item.MaxItemComplexity = 4;
+        try
+        {
+            Assert.True(source.TryExecuteCommand("DUPE", "50", new ActConsole(null)));
+            int copies = world.GetAllObjects().OfType<Item>().Count(i => i != source && i.BaseId == 0x1F03);
+            Assert.Equal(4, copies);
+        }
+        finally { Item.MaxItemComplexity = previous; }
+    }
+
+    [Fact]
+    public void ACopyInsideAContainerIsNotBoundedByIt()
+    {
+        var world = NewWorld();
+        var box = world.CreateItem();
+        box.BaseId = 0x0E75;
+        box.ItemType = ItemType.Container;
+        world.PlaceItem(box, new Point3D(152, 150, 0, 0));
+
+        var source = world.CreateItem();
+        source.BaseId = 0x1F03;
+        Assert.True(box.TryAddItem(source));
+
+        int previous = Item.MaxItemComplexity;
+        Item.MaxItemComplexity = 2;
+        try
+        {
+            Assert.True(source.TryExecuteCommand("DUPE", "5", new ActConsole(null)));
+            int copies = world.GetAllObjects().OfType<Item>().Count(i => i != source && i.BaseId == 0x1F03);
+            Assert.Equal(5, copies);
+        }
+        finally { Item.MaxItemComplexity = previous; }
+    }
+
+    [Fact]
+    public void ACopyDoesNotRunTheDefinitionsCreateScriptAgain()
+    {
+        // A duplicate is a COPY, not a new creation: upstream builds it with CreateBase
+        // plus DupeCopy and never reaches the script that fires @Create
+        // (CreateDupeItem, CItem.cpp:385). Re-running it would re-roll a magic weapon's
+        // properties and the copy would not be a copy.
+        var world = NewWorld();
+        int fired = 0;
+        Item.CreateTriggerHook = _ => fired++;
+        try
+        {
+            var source = world.CreateItem();
+            source.BaseId = 0x1F03;
+            source.FireCreateTrigger();
+            Assert.Equal(1, fired);
+
+            source.CreateDupe(world);
+            Assert.Equal(1, fired);
+        }
+        finally { Item.CreateTriggerHook = null; }
+    }
+
+    private sealed class ActConsole(Character? actor) : Core.Interfaces.ITextConsole
+    {
+        public string GetName() => "test";
+        public PrivLevel GetPrivLevel() => PrivLevel.Admin;
+        public void SysMessage(string text) { }
+        public Core.Interfaces.IScriptObj? GetSourceChar() => actor;
     }
 }

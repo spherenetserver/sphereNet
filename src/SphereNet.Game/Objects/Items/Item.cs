@@ -945,6 +945,10 @@ public class Item : ObjBase
     /// (Source-X CServerConfig m_iItemsMaxAmount, ini ITEMSMAXAMOUNT, default 60000).</summary>
     public static int ItemsMaxAmount { get; set; } = 60000;
 
+    /// <summary>How many copies one DUPE of a top-level item may make (Source-X
+    /// CServerConfig m_iMaxItemComplexity, ini MAXITEMCOMPLEXITY, default 25).</summary>
+    public static int MaxItemComplexity { get; set; } = 25;
+
     // Per-item MAXAMOUNT override (Source-X CItem MaxAmount defnum). Null = global.
     private int? _maxAmountOverride;
     /// <summary>Per-item stack-size override, or null to use the global default.</summary>
@@ -2574,18 +2578,40 @@ public class Item : ObjBase
                     Core.Types.ScriptNumber.TryParseArgument(args, out long parsedCount) &&
                     parsedCount > 0)
                 {
-                    dupeCount = (int)Math.Min(parsedCount, 1000);
+                    dupeCount = (int)Math.Min(parsedCount, int.MaxValue);
                 }
+                // A TOP-LEVEL pile is bounded by MAXITEMCOMPLEXITY, the same ceiling
+                // the reference puts on how much one line may heap on one square
+                // (CItem.cpp:3636); a copy made inside a container is not bound by it.
+                // The 1000 that stood here was this engine's own number, not a rule
+                // from anywhere.
+                if (!ContainedIn.IsValid && dupeCount > MaxItemComplexity)
+                    dupeCount = Math.Max(1, MaxItemComplexity);
                 // Beside the source's top-level object, never inside its container
                 // (MoveNearObj, CObjBase.cpp:498). Pushing copies into the container
                 // filled it up, and on a full one the copy was either dropped at a
                 // container-local coordinate or deleted outright.
                 Point3D dropAt = GetDupeDropPosition();
+                var dupeCaller = ResolveSourceCharacter(source);
                 for (int n = 0; n < dupeCount; n++)
                 {
                     var copy = CreateDupe(dupeWorld);
                     if (!dupeWorld.PlaceItem(copy, dropAt))
+                    {
                         dupeWorld.RemoveItem(copy);
+                        continue;
+                    }
+                    // The copy is what the caller just made: upstream hands
+                    // CreateDupeItem the source console's character and asks it to set
+                    // NEW, so both point at the copy - the last one when the line made
+                    // several (CItem.cpp:3641 -> :385). Only NEW was being set here, as
+                    // a side effect of creating the object, so a script that duplicated
+                    // something and then worked on ACT worked on whatever it had been
+                    // looking at before.
+                    dupeWorld.LastNewItem = copy.Uid;
+                    dupeWorld.LastNewObject = copy.Uid;
+                    if (dupeCaller != null)
+                        dupeCaller.Act = copy.Uid;
                 }
                 return true;
             }

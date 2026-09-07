@@ -15,6 +15,12 @@ kayabilir — sembol adına güven, satıra değil.
 Sonuç: HOUSE_SHIP ve PERFORMANS raporlarındaki **her** kod iddiası GERÇEK çıktı.
 PROJE_GENEL'de 1 madde BAYAT (tarım, Wave 270'te düzeltilmiş), 1 madde KISMİ.
 
+**Durum (2026-09-07): açık madde YOK — 296/296 kapalı.** Son taramada açık görünen
+on kutu (SX-02-01–04, SX-02B-01–03, SX-03A-01–03) kodda zaten kapanmıştı; düzeltmeler
+`f42ea6a` (ticaret) ve `f98612e` (dövüş) commitlerinde yapılmış, kutular
+işaretlenmemişti. Her biri koda karşı yeniden doğrulanıp kanıtıyla işaretlendi;
+ticaret + dövüş test seçkisi 190/190, tam paket 3143/3143 başarılı.
+
 ---
 
 ## ELENEN MADDELER (aksiyon YOK)
@@ -2468,14 +2474,27 @@ SphereNet `6804d29`, Source-X `92ced0ba`.
 [Kanıt ve tekrar raporu](D:/Projeler/Yunus/sphereNet/docs/reviews/SOURCE_X_BOLUM_02_GUVENLI_TICARET.md).
 Tam suite 2362/2362 başarılı. Dört bulgu izole handler/world deneyleriyle üretildi.
 
-- [ ] **SX-02-01 (P1)** — `HandleSecureTrade` param değerini kullanmalı;
+- [x] **SX-02-01 (P1)** — `HandleSecureTrade` param değerini kullanmalı;
   `param=0` mevcut toggle yaklaşımında onayı açıp transferi tamamlayabiliyor.
-- [ ] **SX-02-02 (P2)** — Trade container sahipliği/açılma/erişim bağlamını
+  (YAPILDI, `f42ea6a`: `trade.SetAccept(_character, param != 0)` — paketin kendi
+  bayrağı okunuyor; ayrıca gönderen KENDİ kabını adlandırmak zorunda
+  (receive.cpp:1132), yoksa bayrağı okumak partnerin onayını set etmeye yarardı.)
+- [x] **SX-02-02 (P2)** — Trade container sahipliği/açılma/erişim bağlamını
   bütünleştir; normal oyuncu kendi teklif nesnesini pickup ile geri alamıyor.
-- [ ] **SX-02-03 (P1)** — Başlatılamayan trade'in ilk eşyasını iade et;
+  (YAPILDI, `f42ea6a`: pencere sahibine `Layer.Special`de `EqTradeWindow` olarak
+  kuşandırılıyor (CClientUse.cpp:1414/1420); `CanReachInsideContainer` top-level
+  karakter kendisi olduğu için teklifi geri alabiliyor, partnerin penceresi
+  erişim dışı kalıyor.)
+- [x] **SX-02-03 (P1)** — Başlatılamayan trade'in ilk eşyasını iade et;
   REFUSETRADES reddinde eşya çanta ve DRAGGING dışında karaktere bağlı kalıyor.
-- [ ] **SX-02-04 (P1)** — Trade içeriğinden nesne çıkarılınca iki onayı sıfırla;
+  (YAPILDI, `f42ea6a`: `InitiateTrade` artık `bool` dönüyor ve çağıran eşyayı
+  kaldırma noktasına geri sektiriyor (CClientEvent.cpp:325); ölü/uzak/çevrimdışı,
+  REFUSETRADES ve zaten-ticarette dallarının tamamı bu yoldan geçiyor.)
+- [x] **SX-02-04 (P1)** — Trade içeriğinden nesne çıkarılınca iki onayı sıfırla;
   World.RemoveItem sonrası partner onayı korunup farklı teklif tamamlanıyor.
+  (YAPILDI, `f42ea6a`: `Item.OnTradeWindowChanged` kabın kendi değişiminden
+  sürülüyor — ekleme ve çıkarma aynı invariant üzerinden onayı düşürüyor
+  (CItemContainer.cpp:557/:798), handler nezaketine bağlı değil.)
 
 Normal tamamlama, disconnect iadesi ve ölüm öncesi trade iptal köprüsü kontrolleri
 geçti. Sonraki 02B turu: save/load, script sözleşmesi, uzaklaşma/harita ve diğer
@@ -2484,16 +2503,25 @@ farkı olarak ayrıldı, yeni hata hükmü verilmedi.
 
 ### SX-02B — Yeni kayıt/script bulguları (6 Eylül 2026)
 
-Kullanıcı SX-02-01–04 sorunlarının sürdüğünü bildirdi; açık durumları korundu.
-Bu tur onları düzeltmeden üç ayrı senaryo çalıştırıldı. SphereNet `db97de6`.
+Kullanıcı SX-02-01–04 sorunlarının sürdüğünü bildirdi; o turda açık durumları
+korundu. Bu tur onları düzeltmeden üç ayrı senaryo çalıştırıldı. SphereNet `db97de6`.
+(Dördü de sonradan `f42ea6a` ile kapandı; yukarıdaki kayıtlara bakınız.)
 [02B raporu](D:/Projeler/Yunus/sphereNet/docs/reviews/SOURCE_X_BOLUM_02B_KAYIT_SCRIPT.md).
 
-- [ ] **SX-02B-01 (P1)** — Aktif trade snapshot'ından yüklemede teklif eşyasını
+- [x] **SX-02B-01 (P1)** — Aktif trade snapshot'ından yüklemede teklif eşyasını
   özgün sahibine geri bağla; nesne oturumsuz ve sahipsiz eski trade kabında kalıyor.
-- [ ] **SX-02B-02 (P2)** — Partnerin aktif bağlantısını doğrula; IsPlayer=true
+  (YAPILDI, `f42ea6a`: `Program.WorldBootstrap.RecoverInterruptedTrades` her
+  pencereyi sahibine boşaltıp kaldırıyor; sahibi bulunamayan eski kayıtta eşya
+  silinmek yerine pencerenin durduğu yere bırakılıyor (CItem.cpp:1005).)
+- [x] **SX-02B-02 (P2)** — Partnerin aktif bağlantısını doğrula; IsPlayer=true
   fakat GameClient olmayan karakterle trade açılabiliyor.
-- [ ] **SX-02B-03 (P2)** — @TradeAccepted veto ile gerçek iptali ayır; Source-X
+  (YAPILDI, `f42ea6a`: `InitiateTrade` içinde `!partner.IsOnline` reddi —
+  Cmd_SecureTrade çevrimdışı oyuncuyu da reddeder (CClientUse.cpp:1338).)
+- [x] **SX-02B-03 (P2)** — @TradeAccepted veto ile gerçek iptali ayır; Source-X
   pencereyi açık bırakırken SphereNet kapatıp iki @TradeClose çalıştırıyor.
+  (YAPILDI, `f42ea6a`: RETURN 1 yalnız O DEĞİŞİMİ veto ediyor ve `return` ile
+  çıkıyor — pencere açık, iki teklif ve iki onay işareti yerinde
+  (CItemContainer.cpp:189/:145); @TradeClose artık ateşlenmiyor.)
 
 Üçü izole deneyle üretildi; Source-X karşılıkları kaynak okumadır. Üretim kodu
 değiştirilmedi. Önceki 2362 test sonucu geçerli kaynak ağacına aittir; tam suite
@@ -2505,14 +2533,25 @@ bu tur tekrar çalıştırılmadı. Sonraki ana alan 03 dövüş; kalan ticaret 
 SphereNet `f42ea6a`, Source-X `92ced0ba`.
 [Ayrıntılı rapor](D:/Projeler/Yunus/sphereNet/docs/reviews/SOURCE_X_BOLUM_03A_DOVUS.md).
 Üç fark izole deneyle doğrulandı; tam suite 2374/2374 başarılı. Üretim koduna
-bu incelemede dokunulmadı; ticaret düzeltmelerinin kapanışı bu turun konusu değil.
+o incelemede dokunulmadı; üçü de sonradan `f98612e` ile kapandı.
 
-- [ ] **SX-03A-01 (P2)** — Normal mühimmat aramasında kilitli alt kaplara inme;
+- [x] **SX-03A-01 (P2)** — Normal mühimmat aramasında kilitli alt kaplara inme;
   FindAmmoInContainerCore IsSearchableContainer kontrolünü kullanmıyor.
-- [ ] **SX-03A-02 (P1)** — REFLECTPHYSICALDAM hasarını bağışıklık sözleşmesinden
+  (YAPILDI, `f98612e`: iniş `item.IsSearchableContainer` ile kapatıldı —
+  ContentFind de inmeden önce IsSearchable bakar (CContainer.cpp:236).)
+- [x] **SX-03A-02 (P1)** — REFLECTPHYSICALDAM hasarını bağışıklık sözleşmesinden
   geçir; Invul saldırgan doğrudan HP yazımı nedeniyle 20 can kaybediyor.
-- [ ] **SX-03A-03 (P2)** — Vuruş sonrası proc'ları ana HP hasarından sonra uygula;
+  (YAPILDI, `f98612e`: Blood Oath, Reactive Armor ve REFLECTPHYSICALDAM tek
+  `ApplyReflectedDamage` girişini paylaşıyor; referans yansımayı olağan
+  OnTakeDamage'den geçirir ve özyineleme DAMAGE_REACTIVE ile durur
+  (CCharFight.cpp:1021/:1015/:642). SpellEngine yansıması ve zehir tikleri de
+  aynı girişe alındı.)
+- [x] **SX-03A-03 (P2)** — Vuruş sonrası proc'ları ana HP hasarından sonra uygula;
   HITFIREBALL callback'i 20 hasarlık vuruşta hedefi hâlâ 100 HP'de görüyor.
+  (YAPILDI, `f98612e`: silahın kendi hasarı önce (CCharFight.cpp:2259), proc'lar
+  sonra (:2270). Asıl bedel proc'un gördüğü HP değil: proc hedefi öldürünce
+  vuruşun hasarı hiç inmiyor ve kayda geçmiyordu — öldürme, murder sayacı ve
+  yağma hakkı proc'a gidiyordu.)
 
 Sonraki 03B: windup/hedef değişimi, silah değiştirme, player/NPC zamanlaması,
 miss/parry/veto cephane yolları. İlk tarama bütün dövüş kategorisini kapatmaz.

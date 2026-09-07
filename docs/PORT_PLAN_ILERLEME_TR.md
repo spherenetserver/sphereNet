@@ -14,7 +14,7 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | İŞ-3 (bu oturum) |
+| Son commit | `b91e771` (İŞ-3) |
 | Tam test | 3.273 başarılı / 0 başarısız |
 | Sıradaki iş | **İŞ-4: tek nesne oluşturma/kopyalama sözleşmesi tablosu (PLAN-101)** |
 

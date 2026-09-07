@@ -14,7 +14,7 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | PLAN-106 ikinci dilim (bu oturum) |
+| Son commit | `22c7ed9` (PLAN-106 ikinci dilim) |
 | Tam test | 3.250 başarılı / 0 başarısız |
 | Sıradaki iş | **İŞ-2 devamı: REGION.TAG.\* (94) — tek kök** |
 

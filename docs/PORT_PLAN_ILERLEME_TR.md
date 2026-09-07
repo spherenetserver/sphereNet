@@ -14,7 +14,7 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | İŞ-5 ilk dilim (bu oturum) |
+| Son commit | `4c7bcd8` (İŞ-5 ilk dilim) |
 | Tam test | 3.279 başarılı / 0 başarısız |
 | Sıradaki iş | **İŞ-5 devamı: oynanış ini anahtarları (13 adet)** |
 

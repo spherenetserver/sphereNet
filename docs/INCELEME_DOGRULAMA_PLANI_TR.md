@@ -2767,6 +2767,39 @@ gecici olarak geri alinarak dokuz testin besinin eski davranisi yakaladigi kanit
 dali (referansta more2 uzerinden ikinci karakter uretimi) ve canta ici derin
 oz-referanslar.
 
+### IS-5 - canli ini ile motorun karsilastirilmasi (7 Eylul 2026)
+
+Kaynak: port plani IS-5 / PLAN-301. Yontem: canli `C:\sphereNetServer\sphere.ini`
+icindeki her anahtar, `SphereConfig` icinde string olarak GECIYOR MU diye tarandi
+(yardimci metotlarla okunanlari da yakalamak icin literal taramasi).
+
+**Sonuc: 184 anahtar set ediliyor, 33'u config tarafindan hic okunmuyor.** Yani ini'de
+yazan deger sessizce hicbir sey yapmiyor.
+
+Okunmayan 33 anahtarin siniflandirmasi:
+
+| Grup | Anahtarlar | Not |
+|---|---|---|
+| Bu dalgada baglandi | TELEPORTEFFECTNPC/PLAYERS/STAFF, TELEPORTSOUNDNPC/PLAYERS/STAFF | referans davranisi tanimli, gorunur etki |
+| Oynanis - referansta var, sirada | BACKPACKOVERLOAD, NPCTRAINPERCENT, SPELLTIMEOUT, HITSUPDATERATE, CANUNDRESSPETS, NPCCANFIZZLEONHIT, NPCSKILLSAVE, MAXPOLYSTATS, DISTANCEFORMULA, NOWEATHER, MAXHOUSESGUILD, STATSFLAGS, FLIPDROPPEDITEMS | her biri ayri kucuk is |
+| Referansta YOK (0.56/yerel) | MONSTERTIGHT | eklenmemeli, sapma olarak yazilmali |
+| Ag/altyapi | MAXQUEUESIZE, MAXSIZECLIENTIN/OUT, MAXSIZEPERTICK, USEASYNCNETWORK, USEEXTRABUFFER, USEPACKETPRIORITY, NETWORKTHREADPRIORITY, CONNECTINGMAXIP | bu motorun ag modeli farkli; once tasarim karari |
+| Harita/veri | MAP0, MAP1, MAPCACHETIME | harita yukleme yolu ayri |
+| Yerel | APPUPDATEREPODIR | SphereNet'e ozgu, motor ayari degil |
+
+- [x] **B5-1 (P2)** - Teleport her zaman ayni sesi caliyor, hicbir efekt gostermiyordu;
+  alti ini ayari okunmuyordu. (YAPILDI: aktor sinifina gore efekt+ses, referansin
+  varsayilanlariyla; 0 = gosterme/calma.)
+
+**Ayrica ayni listeden onceki dalgada:** MAXITEMCOMPLEXITY (DUPE tavani, uydurma 1000
+yerine).
+
+**Kapanis:** tam suite **3.279 basarili / 0 basarisiz** (+1).
+
+**Acik kalan:** yukaridaki "oynanis" grubu (13 anahtar) ve ag/altyapi grubunun tasarim
+karari. Ayrica bu tur yalnizca CANLI ini'nin set ettigi anahtarlara bakti; referansin
+279 anahtarinin tamami ile karsilastirma ayri bir istir.
+
 ### IS-4 - nesne olusturma/kopyalama giris noktalari tablosu (7 Eylul 2026)
 
 Kaynak: port plani IS-4 / PLAN-101. Amac: ayni isi yapan girislerin ortak ve farkli

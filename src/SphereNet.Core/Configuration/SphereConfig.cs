@@ -267,6 +267,26 @@ public sealed class SphereConfig
     public int ContainerMaxWeight { get; set; } = 400;
     public int ItemsMaxAmount { get; set; } = 60000;
 
+    // What a teleport looks and sounds like, by who did it (Source-X
+    // m_iSpell_Teleport_Effect_* / _Sound_*, ini TELEPORTEFFECT* / TELEPORTSOUND*,
+    // CServerConfig.cpp:88). A script that sets its own effect or sound on the
+    // teleport overrides these; they are what happens when it does not
+    // (CCharSpell.cpp:178). 0 means "show nothing" / "play nothing".
+
+    /// <summary>Teleport effect for a visible staff member (default 0x3709, the
+    /// flamestrike - upstream's own drama).</summary>
+    public int TeleportEffectStaff { get; set; } = 0x3709;
+    /// <summary>Teleport sound for a visible staff member (default 0x01F3).</summary>
+    public int TeleportSoundStaff { get; set; } = 0x01F3;
+    /// <summary>Teleport effect for a player (default 0x3728, the vanish).</summary>
+    public int TeleportEffectPlayers { get; set; } = 0x3728;
+    /// <summary>Teleport sound for a player (default 0x01FE).</summary>
+    public int TeleportSoundPlayers { get; set; } = 0x01FE;
+    /// <summary>Teleport effect for an NPC (default 0x376A).</summary>
+    public int TeleportEffectNpc { get; set; } = 0x376A;
+    /// <summary>Teleport sound for an NPC (default 0x01FE).</summary>
+    public int TeleportSoundNpc { get; set; } = 0x01FE;
+
     /// <summary>How many copies one DUPE of a TOP-LEVEL item may make (Source-X
     /// CServerConfig m_iMaxItemComplexity, ini MAXITEMCOMPLEXITY, default 25). It is
     /// the ceiling on how much a single script line may pile on one square; a copy
@@ -671,6 +691,12 @@ public sealed class SphereConfig
         ContainerMaxWeight = ini.GetInt(section, "ContainerMaxWeight", ContainerMaxWeight);
         ItemsMaxAmount = ini.GetInt(section, "ItemsMaxAmount", ItemsMaxAmount);
         MaxItemComplexity = ini.GetInt(section, "MaxItemComplexity", MaxItemComplexity);
+        TeleportEffectStaff = GetIntOrHex(ini, section, "TeleportEffectStaff", TeleportEffectStaff);
+        TeleportSoundStaff = GetIntOrHex(ini, section, "TeleportSoundStaff", TeleportSoundStaff);
+        TeleportEffectPlayers = GetIntOrHex(ini, section, "TeleportEffectPlayers", TeleportEffectPlayers);
+        TeleportSoundPlayers = GetIntOrHex(ini, section, "TeleportSoundPlayers", TeleportSoundPlayers);
+        TeleportEffectNpc = GetIntOrHex(ini, section, "TeleportEffectNpc", TeleportEffectNpc);
+        TeleportSoundNpc = GetIntOrHex(ini, section, "TeleportSoundNpc", TeleportSoundNpc);
 
         MaxHousesPlayer = ini.GetInt(section, "MaxHousesPlayer", MaxHousesPlayer);
         MaxHousesAccount = ini.GetInt(section, "MaxHousesAccount", MaxHousesAccount);

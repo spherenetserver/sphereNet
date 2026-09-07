@@ -292,4 +292,48 @@ public class ConfigRegressionTests
             try { File.Delete(tmp); } catch { }
         }
     }
+
+    [Fact]
+    public void SphereConfig_TeleportEffects_DefaultToTheReferencesAndAreConfigurable()
+    {
+        // What a teleport looks and sounds like is per ACTOR CLASS upstream
+        // (m_iSpell_Teleport_Effect_*, CServerConfig.cpp:88): a visible staff member
+        // gets the flamestrike, a player the vanish, an NPC the heal effect.
+        var defaults = new SphereConfig();
+        Assert.Equal(0x3709, defaults.TeleportEffectStaff);
+        Assert.Equal(0x01F3, defaults.TeleportSoundStaff);
+        Assert.Equal(0x3728, defaults.TeleportEffectPlayers);
+        Assert.Equal(0x01FE, defaults.TeleportSoundPlayers);
+        Assert.Equal(0x376A, defaults.TeleportEffectNpc);
+        Assert.Equal(0x01FE, defaults.TeleportSoundNpc);
+
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_tp_{Guid.NewGuid():N}.ini");
+        File.WriteAllText(tmp, """
+            [SPHERE]
+            TeleportEffectStaff=0x3000
+            TeleportSoundStaff=0x0100
+            TeleportEffectPlayers=0
+            TeleportSoundPlayers=0x0101
+            TeleportEffectNpc=0x3002
+            TeleportSoundNpc=0
+            MaxItemComplexity=7
+            """);
+        try
+        {
+            var ini = new SphereNet.Core.Configuration.IniParser();
+            ini.Load(tmp);
+            var config = new SphereConfig();
+            config.LoadFromIni(ini);
+
+            Assert.Equal(0x3000, config.TeleportEffectStaff);
+            Assert.Equal(0x0100, config.TeleportSoundStaff);
+            Assert.Equal(0, config.TeleportEffectPlayers);      // 0 = show nothing
+            Assert.Equal(0x0101, config.TeleportSoundPlayers);
+            Assert.Equal(0x3002, config.TeleportEffectNpc);
+            Assert.Equal(0, config.TeleportSoundNpc);
+            // The DUPE ceiling is a setting too, not a number this engine invented.
+            Assert.Equal(7, config.MaxItemComplexity);
+        }
+        finally { File.Delete(tmp); }
+    }
 }

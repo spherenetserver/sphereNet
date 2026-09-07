@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | `cc959e3` (İŞ-4) |
-| Tam test | 3.278 başarılı / 0 başarısız |
-| Sıradaki iş | **İŞ-5: gerçek ini fark listesi (PLAN-301/302)** |
+| Son commit | İŞ-5 ilk dilim (bu oturum) |
+| Tam test | 3.279 başarılı / 0 başarısız |
+| Sıradaki iş | **İŞ-5 devamı: oynanış ini anahtarları (13 adet)** |
 
 ## Çalışma sırası
 
@@ -66,15 +66,26 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   değiştirilmedi** (kopya @Create'i tekrar çalıştırmaz; karakter DUPE'u NEW/ACT
   ayarlamaz; SERV. öneki ACT'e dokunmaz).
 
-- [ ] **İŞ-5 — Gerçek ini fark listesi** (PLAN-301/302)
-  Canlı `sphere.ini` ile desteklenen anahtar manifestini karşılaştır; etkisiz
-  kalan oyun anahtarlarını çıkar. İlk paket: hareket/ağırlık/stamina.
+- [x] **İŞ-5 — Gerçek ini fark listesi** (PLAN-301/302) — **İLK DİLİM**
+  Canlı `sphere.ini`'nin set ettiği **184 anahtardan 33'ü** config tarafından hiç
+  okunmuyordu (sessizce etkisiz). Sınıflandırma takip planında. Bu dilimde teleport
+  efekt/ses altılısı gerçek davranışa bağlandı (aktör sınıfına göre, referans
+  varsayılanlarıyla). Önceki dalgadaki `MAXITEMCOMPLEXITY` de aynı listedendi.
+
+  Sıradaki alt paket (oynanış, referansta karşılığı olanlar): BACKPACKOVERLOAD,
+  NPCTRAINPERCENT, SPELLTIMEOUT, HITSUPDATERATE, CANUNDRESSPETS, NPCCANFIZZLEONHIT,
+  NPCSKILLSAVE, MAXPOLYSTATS, DISTANCEFORMULA, NOWEATHER, MAXHOUSESGUILD, STATSFLAGS,
+  FLIPDROPPEDITEMS. Ağ/altyapı grubu önce tasarım kararı ister; MONSTERTIGHT
+  referansta yok (sapma olarak kaydedilmeli).
 
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-5 ilk dilim** — 2026-09-07. Canlı ini'nin 184 anahtarından 33'ünün hiç
+  okunmadığı ölçüldü ve sınıflandırıldı; teleport efekt/ses altılısı davranışa
+  bağlandı. Tam suite 3.279.
 - **İŞ-4 KAPANDI** — 2026-09-07. On giriş noktası altı sütunda tabloya döküldü;
   eşya DUPE'unun ACT'i ve uydurma 1000 sınırı (→ `MAXITEMCOMPLEXITY`) düzeltildi,
   üç sapma doğrulanıp korundu. Tam suite 3.278.

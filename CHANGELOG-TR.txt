@@ -3,6 +3,23 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-07] - Teleportun gorunusu ve sesi bir ayardir (IS-5)
+----------------------------------------
+
+FIX - Her teleport AYNI sesi caliyor ve hicbir efekt gostermiyordu. Referans ikisini de
+        kimin yaptigina gore secer (CCharSpell.cpp:178): gorunur bir gorevli
+        flamestrike, oyuncu kayboImus efekti, NPC iyilestirme efekti alir; her birinin
+        kendi sesi vardir - alti ini ayari (TELEPORTEFFECT* / TELEPORTSOUND*,
+        CServerConfig.cpp:88). Canli shard'in ini'si bunlari set ediyor, hicbiri
+        okunmuyordu. Artik varlar, referansin kendi degerlerine varsayilanlanmis
+        durumdalar ve sifir "hicbir sey gosterme" / "hicbir sey calma" demek.
+
+NOTE - Canli sphere.ini ile config karsilastirilarak bulundu: o shard'in set ettigi 184
+        anahtardan 33'u hicbir yerde okunmuyordu - yanlis ayristirilmiyor, hic
+        bakilmiyordu. Siniflandirilmis liste dogrulama planinda; bu dalga gorunur etkisi
+        ve tanimli referans davranisi olan altisini aliyor. Onceki dalgada ayni sebeple
+        eklenen MAXITEMCOMPLEXITY de ayni listeden geliyordu.
+
 [2026-09-07] - Kopya ne bildirir, ve kacar tane olabilir (IS-4)
 ----------------------------------------
 

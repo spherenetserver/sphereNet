@@ -1538,8 +1538,37 @@ public static partial class Program
                         c.HandleMapChanged();
                     else
                         c.Resync();
-                    var snd = new PacketSound(0x01FE, caster.X, caster.Y, caster.Z);
-                    BroadcastNearby(caster.Position, 18, snd, 0);
+                }
+
+                // What a teleport looks and sounds like depends on WHO did it, and both
+                // are configured (CCharSpell.cpp:178): a visible staff member, a player
+                // and an NPC each have their own effect and sound. The sound was fixed
+                // at the player one for everybody and the effect was not shown at all,
+                // so a teleporting NPC was silent-looking and a GM arrived without the
+                // flamestrike the setting promises.
+                bool staff = caster.IsPlayer &&
+                             caster.PrivLevel >= PrivLevel.GM &&
+                             !caster.IsStatFlag(StatFlag.Incognito);
+                int effectId = caster.IsPlayer
+                    ? (staff ? _config.TeleportEffectStaff : _config.TeleportEffectPlayers)
+                    : _config.TeleportEffectNpc;
+                int soundId = caster.IsPlayer
+                    ? (staff ? _config.TeleportSoundStaff : _config.TeleportSoundPlayers)
+                    : _config.TeleportSoundNpc;
+
+                if (effectId > 0)
+                {
+                    var fx = new PacketEffect(
+                        3, caster.Uid.Value, caster.Uid.Value, (ushort)effectId,
+                        caster.X, caster.Y, (short)caster.Z,
+                        caster.X, caster.Y, (short)caster.Z,
+                        10, 30, true, false);
+                    BroadcastNearby(caster.Position, 18, fx, 0);
+                }
+                if (soundId > 0)
+                {
+                    BroadcastNearby(caster.Position, 18,
+                        new PacketSound((ushort)soundId, caster.X, caster.Y, caster.Z), 0);
                 }
             };
             _spellEngine.OnTargetKilled = (victim, killer) =>

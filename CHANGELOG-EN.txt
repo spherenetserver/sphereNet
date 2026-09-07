@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-07] - What a teleport looks and sounds like is a setting (IS-5)
+----------------------------------------
+
+FIX - Every teleport played the SAME sound and showed no effect at all. Upstream picks
+        both by who did it (CCharSpell.cpp:178): a visible staff member gets the
+        flamestrike, a player the vanish, an NPC the heal effect, each with its own
+        sound - six ini settings (TELEPORTEFFECT* / TELEPORTSOUND*, CServerConfig.cpp:88).
+        The live shard's ini sets them and nothing read them. They exist now, default to
+        the reference's own values, and a zero means "show nothing" / "play nothing".
+
+NOTE - Found by comparing the live sphere.ini against the config: of the 184 keys that
+        shard sets, 33 were not read anywhere - not misparsed, simply never looked at.
+        The classified list is in the verification plan; this wave takes the six with a
+        visible effect and a defined reference behaviour. MAXITEMCOMPLEXITY, added in
+        the previous wave for the same reason, came from the same list.
+
 [2026-09-07] - What a copy reports, and how much of it there may be (IS-4)
 ----------------------------------------
 

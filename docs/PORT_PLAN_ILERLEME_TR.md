@@ -14,7 +14,7 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | PLAN-106 beşinci dilim (bu oturum) |
+| Son commit | `d4b8bf5` (PLAN-106 beşinci dilim) |
 | Tam test | 3.265 başarılı / 0 başarısız |
 | Sıradaki iş | **KILLSPLAYER/KILLSNPC kararı, ya da İŞ-2b (multi TYPE / sahipsiz gemi)** |
 

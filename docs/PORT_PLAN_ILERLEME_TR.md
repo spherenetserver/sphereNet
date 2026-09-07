@@ -14,7 +14,7 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | PLAN-106 kapanışı (bu oturum) |
+| Son commit | `e206eed` (PLAN-106 kapanışı) |
 | Tam test | 3.266 başarılı / 0 başarısız |
 | Sıradaki iş | **İŞ-2b: multi TYPE / sahipsiz gemi** (sonra İŞ-3: Save→Load→Save) |
 

@@ -20,6 +20,64 @@ public class Sphere56TSaveCompatTests
 
     public Sphere56TSaveCompatTests(ITestOutputHelper output) => _out = output;
 
+
+    /// <summary>The unhandled-key inventory ABOVE runs without the script pack, so a
+    /// key whose meaning comes from the pack - a skill the shard renamed, say - shows
+    /// up there as unmapped even when the running server would read it fine. This is
+    /// the same measurement with the pack loaded, which is the configuration a real
+    /// server runs in, and it is where the classified gaps are held.
+    ///
+    /// The 56T pack renames skill 54 to Sailormanship and skill 58 to Farming
+    /// ([SKILL n] KEY=..., CSkillDef); those characters must come back WITH those
+    /// skills rather than with a SAVE.* tag holding the number.</summary>
+    [Fact]
+    public void WithTheScriptPackLoaded_ThePacksOwnSkillNamesAreRead()
+    {
+        if (!Directory.Exists(ScriptsDir) || !File.Exists(Path.Combine(SaveDir, "spherechars.scp")))
+        {
+            _out.WriteLine("SKIP: 56T scripts/save not found");
+            return;
+        }
+
+        var lf = LoggerFactory.Create(_ => { });
+        var resources = new SphereNet.Scripting.Resources.ResourceHolder(
+            lf.CreateLogger<SphereNet.Scripting.Resources.ResourceHolder>());
+        foreach (var file in Directory.EnumerateFiles(ScriptsDir, "*.scp", SearchOption.AllDirectories))
+            resources.LoadResourceFile(file);
+        new SphereNet.Game.Definitions.DefinitionLoader(resources,
+            new SphereNet.Game.Magic.SpellRegistry()).LoadAll();
+
+        var world = new SphereNet.Game.World.GameWorld(lf);
+        world.InitMap(0, 7168, 4096);
+        SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
+        new WorldLoader(lf).Load(world, SaveDir);
+
+        var unhandled = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        int withSkill = 0;
+        foreach (var obj in world.GetAllObjects())
+        {
+            foreach (var tag in obj.Tags.GetAll())
+                if (tag.Key.StartsWith("SAVE.", StringComparison.OrdinalIgnoreCase))
+                    unhandled[tag.Key[5..]] = unhandled.GetValueOrDefault(tag.Key[5..]) + 1;
+
+            if (obj is SphereNet.Game.Objects.Characters.Character ch &&
+                ch.GetSkill(SphereNet.Core.Enums.SkillType.Spellweaving) > 0)
+                withSkill++;
+        }
+
+        foreach (var kv in unhandled.OrderByDescending(k => k.Value))
+            _out.WriteLine($"  unhandled {kv.Key} x{kv.Value}");
+        _out.WriteLine($"total unhandled key kinds (pack loaded): {unhandled.Count}");
+        _out.WriteLine($"characters carrying skill 54: {withSkill}");
+
+        // The renamed skills are read, not parked.
+        Assert.False(unhandled.ContainsKey("Sailormanship"),
+            "the pack's own name for skill 54 was parked in a SAVE.* tag");
+        Assert.False(unhandled.ContainsKey("Farming"),
+            "the pack's own name for skill 58 was parked in a SAVE.* tag");
+        Assert.True(withSkill > 0, "no character came back with the renamed skill");
+    }
+
     /// <summary>Field report: imported 56T spawner worldgems never spawned
     /// (MORE1 is a raw chardef defname the ItemDef-gated resolver dropped)
     /// and NPCs showed as "creature". Full-stack check against the REAL 56T

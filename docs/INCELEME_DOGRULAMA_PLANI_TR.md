@@ -2767,6 +2767,37 @@ gecici olarak geri alinarak dokuz testin besinin eski davranisi yakaladigi kanit
 dali (referansta more2 uzerinden ikinci karakter uretimi) ve canta ici derin
 oz-referanslar.
 
+### PLAN-106 ilk dilim - shard'in kendi skill adlari (7 Eylul 2026)
+
+Kaynak: port plani [IS-2](D:/Projeler/Yunus/sphereNet/docs/PORT_PLAN_ILERLEME_TR.md),
+56T gercek veri dokumundeki eslenmeyen kayit anahtarlari.
+
+- [x] **P106-1 (P1)** - Paketin yeniden adlandirdigi skill'ler kayittan hic
+  okunmuyordu: 56T'de skill 54 Sailormanship, skill 19 Farming; 128 karakterin degeri
+  SAVE.* tag'ine park edilip skill sifir doniyordu. (YAPILDI: skill adlari yuklenen
+  tanimlardan da cozuluyor - `SkillNames.TryResolve`.)
+- [x] **P106-2 (P1)** - Paket adi ortak defname tablosundan araniyordu; 56T'deki
+  "Farming" adli NEWBIE kaynagi aramayi kazanip skill'i gizliyordu. (YAPILDI: skill
+  bloklari kendi adlariyla indeksleniyor - `DefinitionLoader.TryGetSkillIndexByName`;
+  ortak tablo yedek.)
+- [x] **P106-3 (P2)** - Ayni soruyu uc ayri tablo yanitliyordu (script, dunya
+  yukleyicisi, yerlesik enum). (YAPILDI: tek tablo `SkillNames`; yukleyicinin kopyasi
+  klasik yazimlarin yarisini da bilmiyordu.)
+
+**Olcum duzeltmesi:** eslenmeyen anahtar envanteri paket YUKLENMEDEN olculuyordu;
+anlami paketten gelen anahtar orada haksiz yere "motor eksigi" gorunuyor. Paket
+yukluyken calisan ikinci gecis eklendi
+(`Sphere56TSaveCompatTests.WithTheScriptPackLoaded_...`). Paketli olcumde 17 tur 15'e
+dustu.
+
+**Kapanis:** tam suite **3.247 basarili / 0 basarisiz** (+6). Yeni testler:
+`LegacySaveKeyParityTests` (5) ve paketli gercek veri gecisi (1).
+
+**Acik kalan (IS-2'nin devami):** paketli olcumde kalan 15 anahtar turu - KILLSPLAYER
+897, KILLSNPC 286, REGION.TAG.owner 93, PIN 59, ALIGN/MEMBER 10, HATCH 8, ABBREV 7,
+BODY.0-3 18, CHARTER0 1, PLANK 1, REGION.TAG.hp_bar 1. Siniflandirma port plani
+dosyasinda.
+
 ### SX-01B — Envanter ilk tarama (6 Eylül 2026)
 
 SphereNet `7a11130da128af76417574a8003d7915ee6d737f`, Source-X `92ced0ba`.

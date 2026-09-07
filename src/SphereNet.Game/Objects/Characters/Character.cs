@@ -3955,8 +3955,9 @@ public partial class Character : ObjBase
         if (TryGetPartyProperty(key, out value))
             return true;
 
-        // Skill name-based read (MAGICRESISTANCE, TACTICS, etc.)
-        if (_skillNameMap.TryGetValue(upper, out var readSkill))
+        // Skill name-based read (MAGICRESISTANCE, TACTICS, etc.), the pack's own
+        // names included.
+        if (TryResolveSkillName(upper, out var readSkill))
         {
             value = GetSkill(readSkill).ToString();
             return true;
@@ -4597,7 +4598,7 @@ public partial class Character : ObjBase
     private static bool TryNormalizeScriptValue(string key, string value, out string normalized)
     {
         normalized = value.Trim();
-        bool skillValue = _skillNameMap.ContainsKey(key.Trim());
+        bool skillValue = TryResolveSkillName(key.Trim(), out _);
         if (normalized.StartsWith('{') && normalized.EndsWith('}') && normalized.Length > 2)
         {
             string inner = normalized[1..^1].Trim();
@@ -4644,40 +4645,15 @@ public partial class Character : ObjBase
         return result;
     }
 
-    private static readonly Dictionary<string, SkillType> _skillNameMap = BuildSkillNameMap();
-
-    private static Dictionary<string, SkillType> BuildSkillNameMap()
-    {
-        var map = new Dictionary<string, SkillType>(StringComparer.OrdinalIgnoreCase);
-        foreach (SkillType st in Enum.GetValues<SkillType>())
-        {
-            if (st == SkillType.None || st == SkillType.Qty) continue;
-            map[st.ToString()] = st;
-        }
-        // Source-X alternate names
-        map["ANIMALLORE"] = SkillType.AnimalLore;
-        map["ARMSLORE"] = SkillType.ArmsLore;
-        map["DETECTINGHIDDEN"] = SkillType.DetectingHidden;
-        map["DETECTHIDDEN"] = SkillType.DetectingHidden;
-        map["EVALINT"] = SkillType.EvalInt;
-        map["EVALUATINGINTELLIGENCE"] = SkillType.EvalInt;
-        map["EVALUATEINTEL"] = SkillType.EvalInt;
-        map["ITEMID"] = SkillType.ItemId;
-        map["ITEMIDENTIFICATION"] = SkillType.ItemId;
-        map["MACEFIGHTING"] = SkillType.MaceFighting;
-        map["DISCORDANCE"] = SkillType.Enticement; // post-UOR name for skill 15
-        map["MAGICRESISTANCE"] = SkillType.MagicResistance;
-        map["RESISTINGSPELLS"] = SkillType.MagicResistance;
-        map["REMOVETRAP"] = SkillType.RemoveTrap;
-        map["SPIRITSPEAK"] = SkillType.SpiritSpeak;
-        map["TASTEID"] = SkillType.TasteId;
-        map["TASTEIDENTIFICATION"] = SkillType.TasteId;
-        return map;
-    }
+    /// <summary>A skill name: the engine's own, a classic spelling, or the one this
+    /// shard gave the slot. One table answers this for the whole engine
+    /// (<see cref="Definitions.SkillNames"/>).</summary>
+    private static bool TryResolveSkillName(string name, out SkillType skill) =>
+        Definitions.SkillNames.TryResolve(name, out skill);
 
     private bool TrySetSkillByName(string upperKey, string normalized)
     {
-        if (!_skillNameMap.TryGetValue(upperKey, out var skillType))
+        if (!TryResolveSkillName(upperKey, out var skillType))
             return false;
         if (ushort.TryParse(normalized, out ushort skillVal))
             SetSkillRuntime(skillType, skillVal); // runtime set — fires cancelable @SkillChange
@@ -4961,7 +4937,7 @@ public partial class Character : ObjBase
                     return true;
                 }
                 SkillType skill;
-                if (!_skillNameMap.TryGetValue(skillToken, out skill))
+                if (!TryResolveSkillName(skillToken, out skill))
                 {
                     if (!int.TryParse(skillToken, out int skillId) ||
                         skillId < 0 || skillId >= (int)SkillType.Qty)

@@ -4,6 +4,34 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-07] - A skill is called what the shard calls it (PLAN-106)
+----------------------------------------
+
+FIX - A character loaded from a classic save lost every skill the shard had renamed.
+        A pack renames a slot with the KEY of its [SKILL n] block and Source-X looks
+        skills up by that key (CSkillDef): 56T calls skill 54 Sailormanship and skill
+        19 Farming, so 128 characters carried skill lines under names the engine had
+        never heard of. The value was parked in a SAVE.* tag and the skill came back at
+        zero. Skill names now resolve through the loaded definitions as well as the
+        built-in table, on the world-load path and the script path alike.
+
+FIX - The pack's name was resolved through the shared defname table, where anything
+        may claim the same word - 56T has a NEWBIE resource called "Farming" that won
+        the lookup and hid the skill of that name. The skill blocks are indexed by
+        their own names now, and the shared table is only the fallback.
+
+CHANGE - The three separate skill-name tables (one for scripts, one for the world
+        loader, and the built-in enum names) are one table
+        (SphereNet.Game.Definitions.SkillNames). The loader's copy knew neither the
+        pack's names nor half the classic spellings the script side knew, so the same
+        save line was understood in one place and not the other.
+
+CHANGE - The real-data check has a second pass that runs WITH the script pack loaded.
+        The existing one loads the save alone, which is not how a server runs: a key
+        whose meaning comes from the pack shows up there as unmapped even when the
+        running server reads it fine. With the pack loaded the 56T dump now leaves 15
+        kinds of unmapped key rather than 17.
+
 [2026-09-07] - Naming, timing and asking about delayed work (12W)
 ----------------------------------------
 

@@ -29,6 +29,10 @@ public sealed class DefinitionLoader
     private static readonly Dictionary<int, RegionResourceDef> _regionResourceDefs = new();
     private static readonly Dictionary<int, RegionTypeDef> _regionTypeDefs = new();
     private static readonly Dictionary<int, SkillDef> _skillDefs = new();
+
+    /// <summary>Every name the loaded skill blocks answer to, mapped to the slot.</summary>
+    private static readonly Dictionary<string, int> _skillIndexByName =
+        new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<int, TemplateDef> _templateDefs = new();
 
     /// <summary>Look up a TEMPLATE by numeric resource index.</summary>
@@ -84,12 +88,33 @@ public sealed class DefinitionLoader
     /// ADV_RATE curves — skill gain follows the curve strictly (no curve = no
     /// gain, Source-X GetChancePercent), so gain tests must provide one.</summary>
     public static void SetSkillDef(int skillIndex, SkillDef def) => _skillDefs[skillIndex] = def;
-    public static SkillDef? GetSkillDef(string? name)
+    public static SkillDef? GetSkillDef(string? name) =>
+        TryGetSkillIndexByName(name, out int index) ? GetSkillDef(index) : null;
+
+    /// <summary>The skill slot a NAME belongs to - the pack's own KEY for it included.
+    /// This asks the loaded skill definitions directly rather than the shared defname
+    /// table, because a pack may register the same word for something else entirely:
+    /// 56T has a NEWBIE resource called "Farming", which won the global lookup and hid
+    /// the skill of that name, so every character's Farming value was lost on
+    /// import.</summary>
+    public static bool TryGetSkillIndexByName(string? name, out int index)
     {
-        if (string.IsNullOrWhiteSpace(name))
-            return null;
-        var rid = _resourcesStatic?.ResolveDefName(name.Trim()) ?? ResourceId.Invalid;
-        return rid.IsValid && rid.Type == ResType.SkillDef ? GetSkillDef(rid.Index) : null;
+        index = -1;
+        string key = (name ?? "").Trim();
+        if (key.Length == 0)
+            return false;
+        if (_skillIndexByName.TryGetValue(key, out index))
+            return true;
+
+        // A name the skill blocks do not carry may still be a defname pointing at one.
+        var rid = _resourcesStatic?.ResolveDefName(key) ?? ResourceId.Invalid;
+        if (rid.IsValid && rid.Type == ResType.SkillDef)
+        {
+            index = rid.Index;
+            return true;
+        }
+        index = -1;
+        return false;
     }
 
     /// <summary>Resolve #NAMES_xxx placeholders in a string using loaded [NAMES] resources.</summary>
@@ -128,6 +153,7 @@ public sealed class DefinitionLoader
         _regionResourceDefs.Clear();
         _regionTypeDefs.Clear();
         _skillDefs.Clear();
+        _skillIndexByName.Clear();
         _templateDefs.Clear();
         _resourcesStatic = null;
         Diagnostic = null;
@@ -682,7 +708,14 @@ public sealed class DefinitionLoader
         }
 
         if (!string.IsNullOrWhiteSpace(def.DefName))
+        {
             _resources.RegisterDefName(def.DefName, link.Id);
+            _skillIndexByName[def.DefName.Trim()] = link.Id.Index;
+        }
+        // "Skill_Farming" as well as "Farming": a block carries both spellings and a
+        // save or a script may use either.
+        if (!string.IsNullOrWhiteSpace(link.DefName))
+            _skillIndexByName[link.DefName.Trim()] = link.Id.Index;
 
         _skillDefs[link.Id.Index] = def;
         SkillDefsLoaded++;

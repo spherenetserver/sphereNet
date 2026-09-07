@@ -3,6 +3,35 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-07] - Skill'in adi shard'in verdigi addir (PLAN-106)
+----------------------------------------
+
+FIX - Klasik kayittan yuklenen karakter, shard'in yeniden adlandirdigi butun
+        skill'leri kaybediyordu. Paket bir slotu `[SKILL n]` blogunun KEY'i ile
+        yeniden adlandirir ve referans skill'leri bu anahtarla arar (CSkillDef): 56T
+        skill 54'e Sailormanship, skill 19'a Farming diyor; 128 karakterin skill
+        satirlari motorun hic duymadigi adlarla yaziliydi. Deger SAVE.* tag'ine
+        park ediliyor, skill sifir donuyordu. Skill adlari artik yerlesik tablonun
+        yani sira yuklenen tanimlardan da cozuluyor - hem dunya yukleme hem script
+        yolunda.
+
+FIX - Paketin adi ortak defname tablosundan cozuluyordu; orada ayni kelimeyi baska
+        her sey talep edebilir - 56T'de "Farming" adinda bir NEWBIE kaynagi var ve
+        aramayi kazanip ayni adli skill'i gizliyordu. Skill bloklari artik kendi
+        adlariyla indeksleniyor, ortak tablo yalnizca yedek.
+
+CHANGE - Uc ayri skill adi tablosu (biri script, biri dunya yukleyicisi, biri
+        yerlesik enum adlari) tek tabloya indi
+        (SphereNet.Game.Definitions.SkillNames). Yukleyicinin kopyasi ne paketin
+        adlarini ne de script tarafinin bildigi klasik yazimlarin yarisini
+        biliyordu; ayni kayit satiri bir yerde anlasilip digerinde anlasilmiyordu.
+
+CHANGE - Gercek veri kontrolune paket YUKLUYKEN calisan ikinci bir gecis eklendi.
+        Mevcut kontrol kaydi tek basina yukluyor; sunucu boyle calismiyor: anlami
+        paketten gelen bir anahtar orada eslenmemis gorunuyor, oysa calisan sunucu
+        onu okuyabiliyor. Paket yukluyken 56T dokumu artik 17 degil 15 tur
+        eslenmemis anahtar birakiyor.
+
 [2026-09-07] - Gecikmeli isin adlandirilmasi, zamanlamasi ve sorgulanmasi (12W)
 ----------------------------------------
 

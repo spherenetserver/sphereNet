@@ -1714,29 +1714,12 @@ public sealed class WorldLoader
         return uint.TryParse(val, out result);
     }
 
-    private static bool TryResolveSkillName(string upper, out SkillType skill)
-    {
-        if (_sphereSkillNames.TryGetValue(upper, out skill))
-            return true;
-        if (Enum.TryParse(upper, true, out skill) && Enum.IsDefined(skill))
-            return true;
-        skill = SkillType.None;
-        return false;
-    }
-
-    private static readonly Dictionary<string, SkillType> _sphereSkillNames = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["EVALUATINGINTEL"] = SkillType.EvalInt,
-        ["EVALUATINGINTELLECT"] = SkillType.EvalInt,
-        ["ITEMID"] = SkillType.ItemId,
-        ["ITEMIDENTIFICATION"] = SkillType.ItemId,
-        ["MACEFIGHTING"] = SkillType.MaceFighting,
-        ["ANIMALLORE"] = SkillType.AnimalLore,
-        ["ARMSLOREBOWCRAFT"] = SkillType.Bowcraft,
-        ["DETECTINGHIDDEN"] = SkillType.DetectingHidden,
-        ["MAGICRESISTANCE"] = SkillType.MagicResistance,
-        ["SPIRITSPEAK"] = SkillType.SpiritSpeak,
-        ["TASTEID"] = SkillType.TasteId,
-        ["REMOVETRAP"] = SkillType.RemoveTrap,
-    };
+    /// <summary>A skill line in a save is named the way the SHARD names the skill, not
+    /// the way the engine does: a pack renames a slot with the KEY of its [SKILL n]
+    /// block. The loader had its own name table that knew neither those names nor half
+    /// the classic spellings the script side knew, so every renamed skill was parked in
+    /// a SAVE.* tag and the character came back without it. One table answers this for
+    /// the whole engine now.</summary>
+    private static bool TryResolveSkillName(string upper, out SkillType skill) =>
+        SphereNet.Game.Definitions.SkillNames.TryResolve(upper, out skill);
 }

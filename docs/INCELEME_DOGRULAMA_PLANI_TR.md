@@ -2452,6 +2452,257 @@ olarak kapatilarak 10 testin eski davranisi yakaladigi kanitlandi.
 dusmeli); yurutme aninda sahip degistirme; klasik TIMERF'in birden cok dosyaya yayilmis
 ya da eksik ciftleri.
 
+### 12W - TIMERF desen, ifade ve sorgu sinirlari: 3 bulgu (7 Eylul 2026) - ACIK
+
+Kanit raporu: [12W](D:/Projeler/Yunus/sphereNet/docs/reviews/SOURCE_X_BOLUM_12W_TIMERF_DESEN_IFADE_SORGU.md).
+Bu turun uc bulgusu HENUZ UYGULANMADI; 12X/12Y dalgasi ayni dosyalara dokundugu icin
+durum kod uzerinden yeniden dogrulandi ve acik kaldigi goruldu.
+
+**Kok neden ortak:** referans hem `TIMERF STOP` hem `ISTIMERF` icin desenle KOMUTUN
+TAMAMINI eslestirir (`Str_Match(pattern, command) == MATCH_VALID`,
+CTimedFunctionHandler.cpp:19/34); SphereNet ikisini de basi eslesen arama olarak
+uyguluyor.
+
+- [ ] **12W-1 (P2)** - `ClearTimerF` ve `GetTimerFRemaining` sondaki yildizi silip
+  yalnizca `FunctionName` uzerinde `StartsWith` uyguluyor (ObjBase.cs:413/430).
+  Argumanlar eslestirmeye hic katilmiyor: "f_job" deseni "f_job_extra" isini de
+  durduruyor, "f_jo?" hicbir isi durdurmuyor ve "f_job alpha" ile argumanla secilen is
+  iptal edilemiyor. Referansta desen KOMUTUN TAMAMIYLA - argumanlar dahil - Str_Match
+  ile karsilastirilir; duz isim tam eslesme, `*` ve `?` desen anlamindadir.
+- [ ] **12W-2 (P2)** - `ScheduleTimerF` sureyi ilk virgul veya BOSLUKTA kesiyor,
+  `TryParseSphereDelay` ise yalnizca toplama/cikarma terimlerini isliyor. "2*3, f_done"
+  ve "(1+1), f_done" hic is eklemiyor; "1 + 1, f_done" ise `+` adli bir is kuruyor.
+  Referans ifadeyi Exp_Get64Val ile TUKETIP komut ayiricisina ilerler (CObjBase.cpp:2777,
+  CExpression.cpp:794/1256). 12U'nun "Sphere sayisi olarak oku" duzeltmesinin kapsam
+  siniri; ayni arizanin tekrari degil.
+- [ ] **12W-3 (P3)** - `ISTIMERF` eslesmelerin EN KUCUK suresini donduruyor; ustelik
+  `best == 0` hem "eslesme yok" hem gecerli bir sonuc oldugu icin vadesi dolmus isin
+  sifiri sonraki pozitif sureyle eziliyor. Referans ILK eslesmede doner ve yeni isi kabin
+  sonuna ekler (CTimedFunctionHandler.cpp:19/111). Minimum sure bilincli bir tercih
+  olacaksa Source-X'ten ayrildigi belgelenmeli.
+
+**Neden bu turda uygulanmadi:** uc madde de TIMERF sorgu/iptal yuzeyine ait; 12X-13H
+dalgalari cagri zinciri ve fabrika tarafinda ilerledi. Sonraki TIMERF turunun ilk isi.
+
+### 12X-12Y - gecikmeli isin vade sirasi, komut ayrimi ve referans zinciri: 9 bulgu (6 Eylul 2026)
+
+Kanit raporlari: [12X](D:/Projeler/Yunus/sphereNet/docs/reviews/SOURCE_X_BOLUM_12X_TIMERF_COKLU_NESNE_PAYLOAD.md),
+[12Y](D:/Projeler/Yunus/sphereNet/docs/reviews/SOURCE_X_BOLUM_12Y_TIMERF_REFERANS_KAYIT_SINIRLARI.md).
+Dokuz bulgu da dogrulandi ve tek turda uygulandi (`5e16269`).
+
+**Kok neden ortak:** vade sirasi NESNE BASINA tutuluyordu ve gecikmeli satirin
+ayristirilmasi motorun kendi komut dilbilgisini kullanmiyordu. Referans butun zamanli
+nesneleri tek bir vadeye gore sirali listede tutar (CWorldTicker.cpp:1051/1129/1214) ve
+payload'i tetiklenme aninda `ParseKey` ile ayirir (CTimedFunction.cpp:88).
+
+- [x] **12X-1 (P2)** - Nesneler arasi vade sirasi korunmuyordu; 10 saniye once vadesi
+  gelen is, sahibi kumede sonra geldigi icin 100 ms'lik isten sonra calisiyordu.
+  (YAPILDI: hazir isler butun nesnelerden toplanip vadeye gore siralaniyor, esitlikte
+  toplama sirasi; is calismadan hemen once cikariliyor, boylece callback icindeki Save
+  bekleyenleri gormeye devam ediyor.)
+- [x] **12X-2 (P2)** - Ne verb ne fonksiyon olan gecikmeli satir hicbir sey yapmiyordu.
+  (YAPILDI: referansin son adimi - `r_LoadVal` property atamasi - eklendi;
+  TOPOBJ./CONT./LINK. zincirinde de eksikti.)
+- [x] **12X-3 (P2)** - Payload yalnizca bosluktan ayriliyor, "=" ad icinde kaliyordu;
+  "TIMERF 0, f_capture=37" cozulemeyen bir is kuruyordu. (YAPILDI: ortak ayirici
+  yardimcisi - "=, \t" ayiricilari, tirnak/parantez kurallari, yalnizca ilk ayirici
+  yapisal.)
+- [x] **12X-4 (P2)** - Harf iceren Sphere hex argumani sifir okunuyor ve parse imlecini
+  de bozuyordu ("0A,2,3" -> 0,0,0). (YAPILDI: bastaki '0' hex ISARETI, ardindan
+  [0-9A-Fa-f]; anlamli nibble genisligi isaretli yeniden yorumu belirliyor.)
+- [x] **12X-5 (P3)** - Script sayisal argumanlari 32 bit sinirinda doyuyordu.
+  (YAPILDI: tasima ucundan uca 64 bit, daralma motorun kendi alaninda ve saturasyonla.)
+- [x] **12Y-1 (P2)** - Istemcisiz oyuncu/NPC icin UNEQUIP/SUMMONTO/CONTROL karakteri
+  cozemiyordu. (YAPILDI: `ITextConsole.GetSourceChar`; istemcisiz karakterin vekil
+  konsolu da yanitliyor.)
+- [x] **12Y-2 (P2)** - Adi taniyip reddeden yerlesik verb, ayni adli script
+  [FUNCTION]'ina dusuyordu. (YAPILDI: `TryExecuteCommand` adin verb tablosuna ait olup
+  olmadigini ayrica bildiriyor; sahiplenilen adin yaniti kesin.)
+- [x] **12Y-3 (P2)** - TOPOBJ./CONT./LINK. zinciri hedefi cozup yalnizca verb ve
+  property deniyordu; "TOPOBJ.f_mark 37" sessizce yutuluyordu. (YAPILDI: cozulen nesnede
+  tam sira - verb, fonksiyon, property.)
+- [x] **12Y-4 (P2)** - Nesne basina 64 is siniri 65.'yi sessizce dusuruyor, klasik
+  yukleyici de dusen isi geri yuklenmis sayiyordu. (YAPILDI: `AddTimerF` kabul edilip
+  edilmedigini bildiriyor; kayittan yukleme siniri asiyor - kayit otoritedir - canli
+  planlamada sinir duruyor ve ret loglaniyor.)
+
+**Ayrica:** 12X'in "=" ayrimi klasik yukleme yolunda da suruyordu; ayni yardimci oraya
+da baglandi (CTimedFunctionHandler.cpp:185).
+
+### 12Z - callback icinden eklenen isin ayni tura girmesi: 1 bulgu (7 Eylul 2026)
+
+Kanit raporu: [12Z](D:/Projeler/Yunus/sphereNet/docs/reviews/SOURCE_X_BOLUM_12Z_TIMERF_TICK_SECIM_YASAM.md).
+
+- [x] **12Z-1 (P2)** - Callback icinde baska nesneye eklenen sifir gecikmeli is, hedef
+  aktif ve henuz dolasilmamissa AYNI turda calisiyordu. (YAPILDI: 12X-1'in vade sirasi
+  duzeltmesi tur uyeligini hicbir callback calismadan once sabitledigi icin bu bulgu
+  kendiliginden kapandi; dort hedef durumunun tamami testle kilitlendi.)
+
+### 13A-13E - cagri zinciri, nesne fabrikalari ve kopyalama: 23 bulgu (7 Eylul 2026)
+
+Kanit raporlari: [13A](D:/Projeler/Yunus/sphereNet/docs/reviews/SOURCE_X_BOLUM_13A_SCRIPT_CALL_TRY_ARGN.md),
+[13B](D:/Projeler/Yunus/sphereNet/docs/reviews/SOURCE_X_BOLUM_13B_TRYSRC_NEWITEM_NEWNPC.md),
+[13C](D:/Projeler/Yunus/sphereNet/docs/reviews/SOURCE_X_BOLUM_13C_NEW_ACT_REFERANS_YASAMI.md),
+[13D](D:/Projeler/Yunus/sphereNet/docs/reviews/SOURCE_X_BOLUM_13D_KOPYALAMA_ICERIK_BILESEN.md),
+[13E](D:/Projeler/Yunus/sphereNet/docs/reviews/SOURCE_X_BOLUM_13E_DUPE_YERLESIM_SAYISAL.md).
+Yirmi uc bulgu dogrulandi ve tek turda uygulandi (`cc65b64`).
+
+**Kok neden ortak:** cagri ve fabrika yuzeylerinin hicbirinde referansin ARGUMAN, REFERANS
+ve BASARISIZLIK sozlesmesi yoktu. CALL kendi arg nesnesini uyduruyordu, fabrikalar NEW'i
+yan etki olarak yaziyordu, kopyalama ise nesnenin yalnizca kendi alanlarini tasiyordu.
+
+- [x] **13A-1 (P2)** - CALL hicbir sey hazirlamiyordu: cagiranin ARGN1/2/3'unu kopyalayip
+  yalnizca ARGS'i degistiriyor, argumansiz CALL ise ARGS'i bosaltiyordu. (YAPILDI:
+  referansin Execute_Call'i gibi CAGIRANIN KENDI arg nesnesi kullaniliyor - argumanla
+  gelen sayilar/nesne/metin saklanip yeni argumandan Init ediliyor ve donuste geri
+  aliniyor; argumansiz bicimde nesne oldugu gibi geciyor. Duz fonksiyon satiri ARGN'yi
+  KENDI argumanindan hazirliyor.)
+- [x] **13A-2 (P2)** - CALL cagiranin LOCAL havuzunu paylasmiyordu. (YAPILDI: havuz arg
+  nesnesinde; ayni nesnenin gecmesi paylasimi cift yonlu yapiyor, duz fonksiyon satiri
+  ise kendi havuzunu koruyor.)
+- [x] **13A-3 (P2)** - "CALL SRC.f_mark" / "CALL TOPOBJ.f_mark" literal ad araniyordu.
+  (YAPILDI: referans basi `r_GetRef` ile cozuluyor, SRC icin `pSrc->GetChar`; kalan ad
+  cozulen nesnede cagriliyor.)
+- [x] **13A-4 (P2)** - TRY kendi kisitli yurutucusune sahipti; "TRY TAG.FLAG 1" ve
+  "TRY f_mark" hicbir sey yapmiyordu. (YAPILDI: satirin kalani hedefin tam `r_Verb`
+  zincirinden geciyor, yalnizca gecersiz referans hatasi bastiriliyor.)
+- [x] **13A-5 (P2)** - ARGN atamasi ondalik/0x parser kullaniyordu; "ARGN1=010" on,
+  "ARGN1=1+1" reddediliyordu. (YAPILDI: atama tam ifade yolundan.)
+- [x] **13B-1 (P2)** - TRYSRC kaynagi degil hedefi degistiriyordu. (YAPILDI: uid kaynak
+  konsoluna cozuluyor, verb MEVCUT nesnede calisiyor; koprulenmis konsol o karakter adina
+  konusuyor.)
+- [x] **13B-2 (P2)** - SERV.NEWITEM TEMPLATE basligini kaynak turu kontrolunde
+  reddediyordu. (YAPILDI: CreateHeader ITEMDEF ve TEMPLATE'i birlikte kabul ediyor;
+  template acilimi spawner ile ortak tek uygulamada.)
+- [x] **13B-3 (P2)** - Karakter parent'inda esya her zaman cantaya gidiyordu. (YAPILDI:
+  tanimdaki katmana giydiriliyor, katman yoksa cantaya - LoadSetContainer.)
+- [x] **13B-4 (P2)** - NEWITEM argumani uc alana bolunuyor, dorduncu alan parent uid'ine
+  yapisiyordu. (YAPILDI: dort alan.)
+- [x] **13B-5 (P2)** - SERV.NEWNPC yeni yaratigi 0 can / 0 mana ile birakiyordu.
+  (YAPILDI: olusturmada uc havuz da doluyor - CreateNewCharCheck.)
+- [x] **13C-1 (P2)** - NEW ve NEW.<property> farkli alanlardan okuyordu; ustelik boslik
+  testi "!= 0" iken bos deger 0xFFFFFFFF idi. (YAPILDI: iki bicim tek referanstan;
+  SERV.LASTNEWITEM/LASTNEWCHAR kendi alanlarini koruyor.)
+- [x] **13C-2 (P2)** - Fabrika NEW'i nesne olusturmanin yan etkisi olarak yaziyordu;
+  ic ice @Create ikinci esya yaptiginda referans ona kayiyordu. (YAPILDI: NEWITEM
+  referansi isinin SONUNDA yaziyor.)
+- [x] **13C-3 (P2)** - Nesne uzerine yazilan duz NEWITEM, o nesnenin ACT'ini
+  guncellemiyordu. (YAPILDI: komut sunucuya yonelmemisse cagiranin ACT'i olusturulani
+  gosteriyor.)
+- [x] **13C-4 (P2)** - NEW yalnizca okunabiliyordu; "NEW=<uid>" ve "NEW.<prop>=<deger>"
+  sessizce yok sayiliyordu. (YAPILDI: ikisi de bagli; hicbir seyi adlandirmayan atama
+  referansi temizliyor.)
+- [x] **13C-5 (P2)** - Kaynagi bulunmayan NEWDUPE onceki NEW'i birakiyordu. (YAPILDI:
+  referans temizleniyor ve basarisizlik donuyor.)
+- [x] **13D-1 (P2)** - Kapsayici kopyasi bos cikiyordu; kopyalama yigin-bolme
+  yardimcisini paylasiyordu. (YAPILDI: her cocuk kendi kopyasi olarak, alt kapsayicilar
+  dahil.)
+- [x] **13D-2 (P2)** - Kopyalanan spawner TYPE'ini tasiyip davranisini kaybediyordu.
+  (YAPILDI: kota, aralik, menzil ve spawn kimligi tasiniyor; uretilmis cocuklar bilincli
+  olarak tasinmiyor.)
+- [x] **13D-3 (P2)** - Kopyalanan karakter ciplak ve cantasiz cikiyordu. (YAPILDI: her
+  giyili katman yeni karaktere kopyalaniyor.)
+- [x] **13D-4 (P2)** - Kopyalanan karakter fame/karma, direncler, durum bayraklari
+  (gizlenme dahil) ve EVENTS listesini kaybediyordu. (YAPILDI: DupeFrom sozlesmesi;
+  hesap/istemci/uid gibi canli baglar bilincli olarak kopyalanmiyor.)
+- [x] **13D-5 (P3)** - Kitap AUTHOR yazilabiliyor ama okunamiyordu (setter TAG.AUTHOR,
+  getter TAG.BOOK_AUTHOR). (YAPILDI: setter iki yazimi da yaziyor, getter ikisini de
+  kabul ediyor - ne pano yolu ne de mevcut kayit veri kaybediyor. Bu kaynak kitapta da
+  vardi, kopyalama kaybi sayilmadi.)
+- [x] **13E-1 (P2)** - DUPE/NEWDUPE kopyalari kaynagin kapsayicisina itiliyordu.
+  (YAPILDI: MoveNearObj gibi UST DUZEY nesnenin dunya konumu; kapsayici-ici koordinat
+  haritada yanlis noktaya donusuyordu.)
+- [x] **13E-2 (P2)** - NEWDUPE uid'i kosulsuz hex okuyordu. (YAPILDI: Sphere arguman
+  kurali - yalnizca bastaki sifir hex.)
+- [x] **13E-3 (P2)** - DUPE adedi ondalik int okunuyordu; "1+1" bire dusuyor, "010" on
+  kopya yapiyordu. (YAPILDI: ortak Sphere sayi parser'i.)
+
+### 13F - TEMPLATE recetesinin yurutulmesi: 5 bulgu (7 Eylul 2026)
+
+Kanit raporu: [13F](D:/Projeler/Yunus/sphereNet/docs/reviews/SOURCE_X_BOLUM_13F_TEMPLATE_RECETE_YURUTME.md).
+Bes bulgu da dogrulandi ve tek turda uygulandi (`7638841`).
+
+**Kok neden ortak:** tarif bir RECETE, tek bir itemdef degil. SphereNet ilk satiri okuyup
+nesneyi elle kuruyordu; referans satir satir yurutur (ReadTemplate, CItem.cpp:600) ve her
+olusturma satirini CreateHeader'dan gecirir (:461).
+
+- [x] **13F-1 (P2)** - Recetenin miktarlari uygulanmiyor, sifir miktar yine esya
+  uretiyordu. (YAPILDI: R# sansi, "{lo hi}" zari dahil miktar ifadesi ve sifirda satirin
+  reddi; kok satirin miktari cagirana donen nesneye de ulasiyor.)
+- [x] **13F-2 (P2)** - NAME/COLOR/TAG satirlari yuklemede dusuruluyordu. (YAPILDI:
+  TemplateDef her satiri KAYNAK SIRASIYLA tutuyor; property satiri kendinden once
+  olusturulana uygulaniyor.)
+- [x] **13F-3 (P2)** - Ikinci CONTAINER satiri sonrakilerin hedefi olmuyordu. (YAPILDI:
+  ITC_CONTAINER; gercekte kapsayici olmayan satir hicbir hedef birakmiyor.)
+- [x] **13F-4 (P2)** - Baska bir TEMPLATE'i adlandiran ITEM satiri hicbir sey
+  uretmiyordu. (YAPILDI: cozucu kaynak TURUNU koruyor ve derinlik siniriyla
+  ozyineliyor.)
+- [x] **13F-5 (P2)** - Kaynak konumundaki ondalik sayi hex okunuyordu. (YAPILDI: Sphere
+  sayi kurali.)
+
+**Yapisal karar:** TEMPLATE basligiyla cagrilan SERV.NEWITEM artik receteyi YURUTUYOR ve
+kendi sonucunu donduruyor; spawner ayni yuruyusu paylasiyor.
+
+### 13G-13H - script fabrikasi yerlestirmesi ve tarif sinirlari: 10 bulgu (7 Eylul 2026)
+
+Kanit raporlari: [13G](D:/Projeler/Yunus/sphereNet/docs/reviews/SOURCE_X_BOLUM_13G_NEWITEM_YERLESTIRME_HATA_SONUCU.md),
+[13H](D:/Projeler/Yunus/sphereNet/docs/reviews/SOURCE_X_BOLUM_13H_TEMPLATE_BAGLAM_OZEL_KAPLAR.md).
+On bulgu da dogrulandi ve tek turda uygulandi (`855ee3a`).
+
+**Kok neden ortak:** iki tarafta da EKSIK OLAN, basarisizligin ne anlama geldigiydi.
+Fabrika tarafinda reddedilen yerlestirme basari gibi raporlaniyordu; tarif tarafinda
+hicbir sey uretmeyen satir onceki nesneyi hedef olarak birakiyordu.
+
+- [x] **13G-1 (P2)** - NEWITEM miktar alani en az bire yuvarlaniyor ve ilk operatorde
+  duruyordu ("1+1" -> 1, "0" -> 1). (YAPILDI: `ScriptNumber.ToScriptAmount`; ifade
+  degerlendiriliyor ve sifir sifir kaliyor - SetAmount sozlesmesi.)
+- [x] **13G-2 (P2)** - Dolu kapsayicinin reddi basari gibi donuyordu; esya 0,0,0'da
+  parent'siz kalirken script gecerli uid aliyordu. (YAPILDI: yerlestirme sonucu cagirana
+  ulasiyor - nesne kaldiriliyor ve NEWITEM 0 donuyor. 255 esya siniri korundu: istemci
+  sinirini dusunmeden kapasiteyi kaldirmak onerilmemisti.)
+- [x] **13G-3 (P2)** - LAYER=Pack nesnesi giydirme dalindan cikariliyor, cantasiz
+  karakterde IKINCI bos canta uretilip istenen canta onun icine saklaniyordu. (YAPILDI:
+  BOS pack katmani kapsayiciyi kabul ediyor; dolu katman reddediyor ve nesne zaten giyili
+  cantaya dusuyor - CanEquipLayer.)
+- [x] **13G-4 (P2)** - Dorduncu alan (equip flag) ayristirilip hic okunmuyordu.
+  (YAPILDI: flag=1 karakter parent icin ItemEquip yolu - guc sarti, @EquipTest vetosu,
+  giyildikten sonra @Equip; flag=0 yukleme tarzi yol.)
+- [x] **13G-5 (P2)** - Basarisiz NEWITEM/NEWNPC NEW'i temizlemiyordu. (YAPILDI: iki yol
+  da temizliyor - NEWDUPE'un 13C-5'te aldigi ayni sozlesme.)
+- [x] **13H-1 (P2)** - Basarisiz olusturma satirindan sonraki property onceki esyaya
+  uygulaniyordu. (YAPILDI: ITC_CONTAINER referansi test etmeden once atar; basarisiz
+  satir hicbir hedef birakmiyor, hedef kapsayici ise oldugu gibi kaliyor.)
+- [x] **13H-2 (P2)** - Alt TEMPLATE satirinin dis miktari uygulanmiyordu. (YAPILDI:
+  CreateHeader miktari urettigi seye - template sonucu dahil - uyguluyor ve yalnizca
+  miktar 1 degilse uzerine yaziyor.)
+- [x] **13H-3 (P2)** - Yalnizca iki esya turu tarif hedefi sayiliyor, ceset ve banka
+  kutusu bos kaliyordu. (YAPILDI: `Item.IsContainerType` - turun karsilik geldigi C++
+  sinifi, CreateBase; CItemCorpse de CItemContainer'dan turer.)
+- [x] **13H-4 (P2)** - Tarif icindeki FUNC satiri property gibi atanip
+  cagrilmiyordu. (YAPILDI: `TemplateRowKind.Func` + `TemplateEngine.FunctionRowHook`;
+  cagiran, kapsayicinin ust duzey nesnesi, kapsayici yoksa sunucu. Cagrildigi nesneyi
+  silen fonksiyon tarifin esya referansini da sonlandiriyor.)
+- [x] **13H-5 (P2)** - Create sirasinda tasinamaz yapilan esya kapsayiciya ekleniyordu.
+  (YAPILDI: `Item.IsMovableType`; satir hicbir sey uretmemis sayiliyor ve nesne
+  siliniyor. Kapsayicisiz tasinamaz nesne etkilenmiyor.)
+
+**Raporun iddiasindan bilincli sapma - 13G-4 guc kontrolu:** rapor guc sartinin flag=0
+yolunda da uygulandigini soyluyordu. `CanEquipLayer` icinde `CanEquipStr`, YALNIZCA
+katmani kendisi turetmek zorunda kaldiginda calisir (CCharStatus.cpp:326); LoadSetContainer
+tanimdaki katmani hazir verdigi icin flag=0 yolunda guc testi YOKTUR. Kod referansa gore
+yazildi, test de bu ayrimi kilitliyor.
+
+**Yapisal karar:** yerlestirme kurallari `SphereNet.Game.Objects.Items.ScriptItemPlacement`
+sinifina tasindi; boylece sozlesme sunucu ayaga kaldirilmadan test edilebiliyor. Host
+yalnizca @EquipTest/@Equip tetikleyicilerini bagliyor.
+
+**13G-13H kapanisi:** tam suite **3.184 basarili / 0 basarisiz**. Yeni testler:
+`ScriptFactoryParity13GTests`, `TemplateRecipeParity13HTests` (+41 test, 13F dahil).
+
+**Acik kalan:** 13G raporunun 4. maddesinin tetikleyici kuyrugu (flag=1'de @EquipTest
+veto sonrasi NPC/oyuncu ayrimi); tarif icindeki BUY/SELL satirlarinin vendor katmanlari;
+FUNC satirinin ARGN hazirligi tam script yuruyusuyle canli dogrulanmadi.
+
 ### SX-01B — Envanter ilk tarama (6 Eylül 2026)
 
 SphereNet `7a11130da128af76417574a8003d7915ee6d737f`, Source-X `92ced0ba`.

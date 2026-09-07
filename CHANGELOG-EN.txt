@@ -4,6 +4,78 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-07] - Script factory placement and recipe boundaries (13G/13H)
+----------------------------------------
+
+FIX - The amount field of NEWITEM was clamped to at least one and read only up to the
+        first operator, so "NEWITEM i_gift,1+1" delivered a single item and
+        "NEWITEM i_gift,0" delivered one where the script had asked for none. Upstream
+        evaluates the field as an expression and hands the result straight to SetAmount,
+        which stores a zero as a zero (CScriptObj.cpp:1358, CItem.cpp:2207). It now
+        follows the same Sphere number rule the rest of the factory arguments do.
+
+FIX - A parent container that refused the new object was reported as a success: the
+        placement result was discarded, so an item turned away by the 255-entry
+        container limit was left parented to nothing at 0,0,0 while the script was
+        handed a valid uid and NEW pointed at it. The refusal now reaches the caller -
+        the object is removed and NEWITEM returns 0.
+
+FIX - An object whose definition puts it on the PACK layer was excluded from equipping
+        outright, so creating a scripted starting backpack onto a character who had
+        none built a SECOND, empty backpack, equipped that, and hid the scripted one
+        (contents and all) inside it. LoadSetContainer applies the definition's layer
+        through LayerAdd (CItem.cpp:2516, CCharAct.cpp:251): an EMPTY pack layer takes
+        the container, and an occupied one refuses it so it bounces into the pack that
+        is already worn (CanEquipLayer, CCharStatus.cpp:455).
+
+FIX - The fourth NEWITEM field was parsed off the line and then never read, so both
+        forms behaved as flag 0. It chooses between two paths for a character parent
+        (CScriptObj.cpp:1360): with the flag, the object goes through ItemEquip
+        (CCharAct.cpp:3278), which derives the layer itself and therefore applies the
+        strength requirement and lets @EquipTest refuse the item, firing @Equip once it
+        is worn. Without it, the load-style path is used and no strength test is made,
+        because CanEquipLayer only reaches CanEquipStr when it has to work the layer out
+        for itself (CCharStatus.cpp:326). Anything a slot refuses bounces into the pack
+        rather than being worn regardless.
+
+FIX - A failed NEWITEM or NEWNPC left the NEW reference standing, so a script that
+        checks NEW to see whether the creation worked read the PREVIOUS object - or, for
+        NEWNPC, the uid of the half-built creature that had just been removed from the
+        world. Both clear it now, as upstream does (CScriptObj.cpp:1348/1402); the same
+        clearing NEWDUPE already had.
+
+FIX - A recipe row that created NOTHING left the previous item as the target for the
+        lines after it, so the NAME, COLOR or TAG following a row switched off with ",0"
+        - or one naming an item that does not exist - was applied to the reward created
+        BEFORE it. ITC_CONTAINER assigns the reference before testing it
+        (CItem.cpp:626), so a failed row leaves no target at all; a failed row still
+        leaves the destination container as it was.
+
+FIX - A recipe row naming another recipe lost its own amount: the sub-recipe's result
+        was returned as-is, so a shared reward recipe used with "ITEM=t_gift,7" handed
+        out the inner recipe's own quantity. CreateHeader applies the row's amount to
+        whatever it made, a template's result included, and only overwrites when that
+        amount is not 1 (CItem.cpp:526).
+
+FIX - Only two item types counted as a recipe destination, so a scripted corpse or a
+        custom bank box came out EMPTY - the rows after it were skipped for want of
+        anywhere to put them. The reference decides containment by the C++ class the
+        type maps to (CreateBase, CItem.cpp:314; CItemCorpse derives from CItemContainer,
+        CItemCorpse.h:14), which is now what Item.IsContainerType answers.
+
+FIX - A FUNC= row inside a recipe was stored as an ordinary property line and assigned
+        rather than CALLED, so a recipe's randomising or quest-marking function never
+        ran. ITC_FUNC splits the function name from its arguments and calls it on the
+        item the recipe created last, with the container's top-level object as the
+        caller and the server when there is no container (CItem.cpp:649). A function
+        that deletes what it was called on now ends the recipe's item reference too.
+
+FIX - An object made immovable while it was being created - an @Create body setting
+        ATTR_MOVE_NEVER, say - was still added to the recipe's container. Upstream
+        deletes it and reports the row as having produced nothing, because nothing
+        immovable may live inside another item (CItem.cpp:519 -> IsMovableType, :712).
+        A free-standing immovable object is unaffected.
+
 [2026-09-07] - TEMPLATE recipes are run, not skimmed (13F)
 ----------------------------------------
 

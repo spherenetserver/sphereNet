@@ -37,6 +37,10 @@ public enum TemplateRowKind
     /// <summary>A <c>CONTAINER=</c> line. It becomes the container the rows after
     /// it are created in (Source-X ITC_CONTAINER, CItem.cpp:631).</summary>
     Container,
+    /// <summary>A <c>FUNC=</c> line. It CALLS the named script function on the item
+    /// the recipe created last, with the rest of the line as its arguments
+    /// (ITC_FUNC, CItem.cpp:649) - it is not a property assignment.</summary>
+    Func,
     /// <summary>Any other line. Source-X applies it with r_LoadVal to the item the
     /// recipe most recently created (ReadTemplate, CItem.cpp:686), which is how a
     /// recipe gives its reward a NAME, a COLOR or a TAG.</summary>

@@ -32,6 +32,9 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.ObjBase.BroadcastNearby = null;
         SphereNet.Game.Objects.Items.Item.ResolveWorld = null;
         SphereNet.Game.Objects.Items.Item.CreateTriggerHook = null;
+        // A recipe's FUNC= row reaches the script layer through this hook; a test
+        // that installs one must not leave it standing for the next.
+        SphereNet.Game.Definitions.TemplateEngine.FunctionRowHook = null;
         SphereNet.Game.Components.ChampionComponent.ResolveGameClockMs = null;
         SphereNet.Game.Components.SpawnComponent.ReleaseFromPreviousSpawner = null;
         SphereNet.Game.Objects.Characters.Character.ReleaseFromSpawner = null;

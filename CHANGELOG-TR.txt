@@ -3,6 +3,78 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-07] - Script fabrikasi yerlestirmesi ve tarif sinirlari (13G/13H)
+----------------------------------------
+
+FIX - NEWITEM'in miktar alani en az bire yuvarlaniyor ve yalnizca ilk operatore kadar
+        okunuyordu; "NEWITEM i_gift,1+1" tek parca veriyor, "NEWITEM i_gift,0" ise
+        scriptin hic istemedigi yerde bir adet uretiyordu. Referans alani ifade olarak
+        degerlendirip sonucu dogrudan SetAmount'a verir ve sifiri sifir olarak saklar
+        (CScriptObj.cpp:1358, CItem.cpp:2207). Alan artik diger fabrika argumanlarinin
+        uydugu ayni Sphere sayi kuralini izliyor.
+
+FIX - Yeni nesneyi kabul etmeyen kapsayici basari gibi raporlaniyordu: yerlestirme
+        sonucu kullanilmiyor, 255 esya sinirinda geri cevrilen esya 0,0,0 konumunda
+        parent'siz kaliyor, scripte ise gecerli bir uid donuyor ve NEW onu
+        gosteriyordu. Ret artik cagirana ulasiyor - nesne kaldiriliyor ve NEWITEM 0
+        donuyor.
+
+FIX - Tanimi PACK katmanina koyan nesne giydirme dalindan tamamen cikariliyordu;
+        cantasiz karaktere script ile baslangic cantasi olusturuldugunda IKINCI ve bos
+        bir canta yaratilip giydiriliyor, istenen canta (icindekilerle birlikte) onun
+        icine saklaniyordu. LoadSetContainer tanimdaki katmani LayerAdd uzerinden
+        uygular (CItem.cpp:2516, CCharAct.cpp:251): BOS pack katmani kapsayiciyi kabul
+        eder, dolu katman reddeder ve nesne zaten giyili olan cantaya duser
+        (CanEquipLayer, CCharStatus.cpp:455).
+
+FIX - NEWITEM'in dorduncu alani satirdan ayristirildigi halde hic okunmuyordu; iki bicim
+        de flag 0 gibi davraniyordu. Bu alan karakter parent icin iki yol arasinda secim
+        yapar (CScriptObj.cpp:1360): flag varken nesne ItemEquip'ten gecer
+        (CCharAct.cpp:3278) - katmani kendi turetir, bu yuzden guc sarti uygulanir,
+        @EquipTest esyayi reddedebilir ve giyildikten sonra @Equip calisir. Flag yokken
+        yukleme tarzi yol kullanilir ve guc kontrolu yapilmaz, cunku CanEquipLayer
+        CanEquipStr'a yalnizca katmani kendisi cozmek zorunda kaldiginda ulasir
+        (CCharStatus.cpp:326). Katmanin reddettigi her nesne, kosulsuz giydirilmek yerine
+        cantaya duser.
+
+FIX - Basarisiz NEWITEM veya NEWNPC, NEW referansini oldugu gibi birakiyordu; olusturma
+        calisti mi diye NEW'e bakan script ONCEKI nesneyi - NEWNPC'de ise dunyadan yeni
+        cikarilmis yarim yaratigin uid'sini - okuyordu. Ikisi de artik referansi
+        temizliyor (CScriptObj.cpp:1348/1402); NEWDUPE'un zaten yaptigi temizlik.
+
+FIX - Hicbir sey uretmeyen tarif satiri, kendinden sonraki satirlar icin onceki esyayi
+        hedef olarak birakiyordu; ",0" ile kapatilmis ya da var olmayan bir esyayi
+        adlandiran satirin ardindaki NAME/COLOR/TAG, bir ONCE olusturulan odule
+        uygulaniyordu. ITC_CONTAINER referansi test etmeden once atar (CItem.cpp:626),
+        yani basarisiz satir hicbir hedef birakmaz; hedef kapsayici ise oldugu gibi
+        kalir.
+
+FIX - Baska bir tarifi adlandiran satir kendi miktarini kaybediyordu: alt tarifin sonucu
+        oldugu gibi donduruluyor, "ITEM=t_gift,7" ile kullanilan ortak odul tarifi ic
+        tarifin kendi adedini veriyordu. CreateHeader satirin miktarini urettigi seye -
+        template sonucu dahil - uygular ve yalnizca miktar 1 degilse uzerine yazar
+        (CItem.cpp:526).
+
+FIX - Tarif hedefi olarak yalnizca iki esya turu sayiliyordu; script ile olusturulan
+        ceset veya ozel banka kutusu BOS cikiyor, ardindaki satirlar koyacak yer
+        bulunamadigi icin atlaniyordu. Referans kapsayiciligi turun karsilik geldigi C++
+        sinifina gore belirler (CreateBase, CItem.cpp:314; CItemCorpse,
+        CItemContainer'dan turer, CItemCorpse.h:14) - Item.IsContainerType artik bu
+        soruyu yanitliyor.
+
+FIX - Tarif icindeki FUNC= satiri siradan bir property satiri gibi saklanip
+        CAGRILMAK yerine ataniyordu; tarifin rastgelelestirme veya gorev isaretleme
+        fonksiyonu hic calismiyordu. ITC_FUNC fonksiyon adini argumanlarindan ayirir ve
+        onu tarifin en son olusturdugu esyada calistirir; cagiran, kapsayicinin ust
+        duzey nesnesi, kapsayici yoksa sunucudur (CItem.cpp:649). Cagrildigi nesneyi
+        silen fonksiyon artik tarifin esya referansini da sonlandiriyor.
+
+FIX - Olusturulurken tasinamaz yapilan nesne - ornegin ATTR_MOVE_NEVER ayarlayan bir
+        @Create govdesi - yine de tarifin kapsayicisina ekleniyordu. Referans onu siler
+        ve satiri hicbir sey uretmemis sayar; cunku tasinamaz hicbir sey baska bir
+        esyanin icinde duramaz (CItem.cpp:519 -> IsMovableType, :712). Kapsayicisiz
+        tasinamaz nesne bundan etkilenmiyor.
+
 [2026-09-07] - TEMPLATE tarifleri artik yurutuluyor, gozden gecirilmiyor (13F)
 ----------------------------------------
 

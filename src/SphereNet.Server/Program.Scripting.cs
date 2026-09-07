@@ -1138,7 +1138,7 @@ public static partial class Program
             int numeric = ValueCurve.ParseSphereNumber(token);
             rid = new ResourceId(ResType.ItemDef, numeric);
             if (_resources.GetResource(rid) == null)
-                return "0";
+                return FailedFactory();
         }
         // TEMPLATE is a valid header for NEWITEM: upstream goes through
         // CItem::CreateHeader, which accepts ITEMDEF and TEMPLATE alike and hands the
@@ -1147,7 +1147,7 @@ public static partial class Program
         if (rid.Type == ResType.Template)
             return HandleServNewFromTemplate(rid, parts);
         if (rid.Type != ResType.ItemDef)
-            return "0";
+            return FailedFactory();
 
         var def = DefinitionLoader.GetItemDef(rid.Index);
         ushort dispId = def?.DispIndex ?? 0;
@@ -1155,7 +1155,7 @@ public static partial class Program
         if (dispId == 0 && rid.Index is > 0 and <= ushort.MaxValue)
             dispId = (ushort)rid.Index;
         if (dispId == 0)
-            return "0";
+            return FailedFactory();
 
         var item = _world.CreateItem();
         item.BaseId = dispId;
@@ -1164,10 +1164,17 @@ public static partial class Program
             setName: !string.IsNullOrWhiteSpace(def?.Name));
 
         if (parts.Length > 1 && parts[1].Length > 0)
-            item.Amount = (ushort)Math.Clamp(ValueCurve.ParseSphereNumber(parts[1]), 1, ushort.MaxValue);
+            item.Amount = ParseFactoryAmount(parts[1]);
 
-        if (parts.Length > 2 && TryParseScriptUid(parts[2], out Serial parentUid))
-            PlaceNewItemUnderParent(item, parentUid, def);
+        if (parts.Length > 2 && TryParseScriptUid(parts[2], out Serial parentUid) &&
+            !TryPlaceNewItem(item, parentUid, def, ReadEquipFlag(parts)))
+        {
+            // The parent refused it. Leaving the object floating with no parent - and
+            // still handing the script a uid to work with - made a full reward bag
+            // look like a successful delivery.
+            _world.RemoveItem(item);
+            return FailedFactory();
+        }
 
         // NEW names the object THIS call produced, written after everything else is
         // done (Source-X sets m_uidNew at the end of NEWITEM, CScriptObj.cpp:1381).
@@ -1223,10 +1230,15 @@ public static partial class Program
 
         // An explicit amount on the NEWITEM line overrides whatever the recipe set.
         if (parts.Length > 1 && parts[1].Length > 0)
-            item.Amount = (ushort)Math.Clamp(ValueCurve.ParseSphereNumber(parts[1]), 1, ushort.MaxValue);
-        if (parts.Length > 2 && TryParseScriptUid(parts[2], out Serial templateParent))
-            PlaceNewItemUnderParent(item, templateParent,
-                DefinitionLoader.GetItemDef(ItemDefHelper.ResolveInstanceDefIndex(item)));
+            item.Amount = ParseFactoryAmount(parts[1]);
+        if (parts.Length > 2 && TryParseScriptUid(parts[2], out Serial templateParent) &&
+            !TryPlaceNewItem(item, templateParent,
+                DefinitionLoader.GetItemDef(ItemDefHelper.ResolveInstanceDefIndex(item)),
+                ReadEquipFlag(parts)))
+        {
+            _world.RemoveItem(item);
+            return FailedFactory();
+        }
 
         // The recipe created objects of its own; NEW must name the one this call
         // produced (CScriptObj.cpp:1381).
@@ -1235,41 +1247,52 @@ public static partial class Program
         return $"0{item.Uid.Value:X}";
     }
 
-    /// <summary>Put a freshly made item where the NEWITEM parent field asked for.
-    /// A CONTAINER parent takes it as content; a CHARACTER parent equips it at the
-    /// layer its definition declares and only falls back to the pack when the
-    /// definition names no layer (Source-X LoadSetContainer, CItem.cpp:2516). The
-    /// character branch used to drop everything in the backpack, so a script creating
-    /// a shirt straight onto someone left it unworn.</summary>
-    private static void PlaceNewItemUnderParent(Item item, Serial parentUid,
-        SphereNet.Scripting.Definitions.ItemDef? def)
+    /// <summary>A factory that produced nothing: the reference clears the world's NEW
+    /// reference so a script cannot go on working with the PREVIOUS object as if the
+    /// creation had succeeded (CScriptObj.cpp:1348/1402).</summary>
+    private static string FailedFactory()
+    {
+        if (_world != null)
+            _world.LastNewObject = Serial.Invalid;
+        return "0";
+    }
+
+    /// <summary>The amount field of a factory line. Source-X evaluates it as an
+    /// EXPRESSION (Exp_GetWVal) and hands the result straight to SetAmount, zero
+    /// included (CScriptObj.cpp:1358, CItem.cpp:2207) - clamping to at least one
+    /// turned a switched-off row into a delivered item, and stopping at the first
+    /// operator turned "1+1" into one. An unreadable field leaves the default.</summary>
+    private static ushort ParseFactoryAmount(string raw) =>
+        SphereNet.Core.Types.ScriptNumber.ToScriptAmount(raw);
+
+    /// <summary>The fourth NEWITEM field: with it set, a CHARACTER parent gets the
+    /// object through the equip path with its triggers and its strength requirement
+    /// rather than the load-style one (CScriptObj.cpp:1360). It was parsed off the
+    /// line already but never read, so both forms behaved as flag 0.</summary>
+    private static bool ReadEquipFlag(string[] parts) =>
+        parts.Length > 3 && parts[3].Length > 0 &&
+        SphereNet.Core.Types.ScriptNumber.TryParseArgument(parts[3], out long flag) && flag != 0;
+
+    /// <summary>Put a freshly made item where the NEWITEM parent field asked for, and
+    /// say whether that worked. The rules live in
+    /// <see cref="ScriptItemPlacement"/>; this wires the equip triggers to them.</summary>
+    private static bool TryPlaceNewItem(Item item, Serial parentUid,
+        SphereNet.Scripting.Definitions.ItemDef? def, bool triggerEquip)
     {
         if (_world == null)
-            return;
-        if (_world.FindItem(parentUid) is { } container)
-        {
-            container.TryAddItem(item);
-            return;
-        }
-        if (_world.FindChar(parentUid) is not { } owner)
-            return;
+            return false;
 
-        Layer layer = def?.Layer is { } l and > Layer.None and < Layer.Qty ? l : Layer.None;
-        if (layer != Layer.None && layer != Layer.Pack)
-        {
-            owner.Equip(item, layer);
-            return;
-        }
+        var outcome = ScriptItemPlacement.Place(
+            _world, item, parentUid, def, triggerEquip,
+            equipTestVeto: _triggerDispatcher == null ? null : (worn, wearer) =>
+                _triggerDispatcher.FireItemTrigger(worn, ItemTrigger.EquipTest,
+                    new SphereNet.Game.Scripting.TriggerArgs { CharSrc = wearer, ItemSrc = worn })
+                        == TriggerResult.True,
+            onEquipped: _triggerDispatcher == null ? null : (worn, wearer) =>
+                _triggerDispatcher.FireItemTrigger(worn, ItemTrigger.Equip,
+                    new SphereNet.Game.Scripting.TriggerArgs { CharSrc = wearer, ItemSrc = worn }));
 
-        if (owner.Backpack == null)
-        {
-            var pack = _world.CreateItem();
-            pack.BaseId = 0x0E75;
-            pack.ItemType = ItemType.Container;
-            pack.Name = "Backpack";
-            owner.Equip(pack, Layer.Pack);
-        }
-        owner.Backpack?.TryAddItem(item);
+        return outcome != ScriptItemPlacement.Outcome.Refused;
     }
 
     private static string HandleServNewNpc(string raw)
@@ -1294,7 +1317,11 @@ public static partial class Program
         if (!applied)
         {
             _world.DeleteObject(npc);
-            return "0";
+            // CreateNPC failed: clear NEW (CScriptObj.cpp:1402). Without this the
+            // reference named the half-built creature that had just been removed
+            // from the world, so a script checking NEW saw a uid it could not
+            // resolve - or, worse, went on to work with the previous object.
+            return FailedFactory();
         }
 
         // A new NPC starts with FULL pools. Source-X reaches CreateNewCharCheck

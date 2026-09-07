@@ -2872,6 +2872,31 @@ public static partial class Program
             SphereNet.Game.Definitions.TemplateEngine.Diagnostic = msg =>
                 _log.LogDebug("{Details}", msg);
 
+            // A recipe's FUNC= row CALLS a script function on the item the recipe
+            // created last (ITC_FUNC, CItem.cpp:649). The caller is the top-level
+            // object of the container being filled, and the server when the recipe is
+            // filling none - the same rule the delayed-call dispatcher already
+            // resolves, so it answers the question here too.
+            SphereNet.Game.Definitions.TemplateEngine.FunctionRowHook =
+                (madeItem, funcName, funcArgs, cont) =>
+            {
+                var runner = _triggerRunner;
+                if (runner == null || string.IsNullOrWhiteSpace(funcName))
+                    return;
+                var (src, console) = delayedCalls.ResolveCaller(
+                    (SphereNet.Game.Objects.ObjBase?)cont ?? madeItem);
+                var funcTriggerArgs = new SphereNet.Scripting.Execution.TriggerArgs { Source = src };
+                funcTriggerArgs.InitFromRaw(funcArgs);
+                try
+                {
+                    runner.TryRunFunction(funcName, madeItem, console, funcTriggerArgs, out _);
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning(ex, "Template FUNC '{Func}' failed", funcName);
+                }
+            };
+
             // Guild member properties
             SphereNet.Game.Objects.Characters.Character.ResolveGuildManager = _ => _guildManager;
 

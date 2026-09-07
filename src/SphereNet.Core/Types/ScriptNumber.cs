@@ -46,6 +46,16 @@ public static class ScriptNumber
         return true;
     }
 
+    /// <summary>The AMOUNT field of a script factory line (NEWITEM, and the recipe
+    /// rows behind it). Source-X evaluates it as an expression and hands the result
+    /// straight to SetAmount, which stores a zero as a zero (CScriptObj.cpp:1358,
+    /// CItem.cpp:2207): raising zero to one turned a row a script had switched off
+    /// into a delivered item. An unreadable field keeps the default of one.</summary>
+    public static ushort ToScriptAmount(string? text) =>
+        TryParseArgument(text, out long value)
+            ? (ushort)(value < 0 ? 0 : value > ushort.MaxValue ? ushort.MaxValue : value)
+            : (ushort)1;
+
     /// <summary>Read a Sphere numeric ARGUMENT: a token, or a simple sum of them.
     /// Source-X arguments go through the expression parser (GetArgVal -&gt;
     /// Exp_GetVal, CScript.cpp:154), so <c>1+1</c> is two rather than a parse failure

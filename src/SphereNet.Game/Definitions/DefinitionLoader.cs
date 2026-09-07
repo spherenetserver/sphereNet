@@ -326,6 +326,22 @@ public sealed class DefinitionLoader
                 }
                 def.ItemEntries.Add(new TemplateEntry { DefName = parts[0], Amount = amount });
             }
+            else if (upper == "FUNC")
+            {
+                // FUNC=f_name <args> is a CALL on the item the recipe created last
+                // (ITC_FUNC, CItem.cpp:649), not a property assignment. Storing it as
+                // one meant the function never ran. The name and its arguments are
+                // split here, on the first run of whitespace, as upstream does.
+                string funcLine = key.Arg.Trim();
+                if (funcLine.Length == 0) continue;
+                int space = funcLine.IndexOfAny([' ', '\t']);
+                def.Rows.Add(new TemplateRow
+                {
+                    Kind = TemplateRowKind.Func,
+                    Key = space < 0 ? funcLine : funcLine[..space],
+                    Value = space < 0 ? "" : funcLine[(space + 1)..].TrimStart(),
+                });
+            }
             else if (upper == "DEFNAME")
             {
                 // Some templates rename themselves — register alias.

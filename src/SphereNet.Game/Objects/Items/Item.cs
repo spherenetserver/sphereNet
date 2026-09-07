@@ -942,6 +942,44 @@ public class Item : ObjBase
     /// CItemBase::IsStackableType: CAN_I_PILE or the tiledata Generic flag). The
     /// itemdef flag is seeded from tiledata at load, but packs rarely script it,
     /// so the tiledata fallback keeps ore/ingot/log piles merging.</summary>
+    /// <summary>Whether this item IS a container - the reference decides it by the
+    /// C++ class its type maps to (CItem::CreateBase, CItem.cpp:314, builds a
+    /// CItemContainer for every type in this list, and CItemCorpse derives from it,
+    /// CItemCorpse.h:14). Testing two enum values instead left a corpse or a bank box
+    /// looking like an ordinary item to anything that asks "can this hold things?".
+    /// </summary>
+    public bool IsContainerType => IsContainerItemType(_type);
+
+    /// <summary>The type test behind <see cref="IsContainerType"/>, for callers that
+    /// hold a type rather than an item.</summary>
+    public static bool IsContainerItemType(ItemType type) =>
+        type is ItemType.Container or ItemType.ContainerLocked or ItemType.Corpse or
+                ItemType.EqBankBox or ItemType.EqVendorBox or ItemType.EqTradeWindow or
+                ItemType.GameBoard or ItemType.BBoard or ItemType.TrashCan or
+                ItemType.Keyring or ItemType.ShipHold or ItemType.ShipHoldLock;
+
+    /// <summary>Can this item be moved at all? Source-X CItem::IsMovableType
+    /// (CItem.cpp:712): MOVE_ALWAYS overrides everything, MOVE_NEVER / STATIC /
+    /// INVIS / LOCKEDDOWN refuse outright, and the definition itself can declare an
+    /// immovable weight (CItemBase::IsMovableType, weight 255 in the tiledata).
+    /// </summary>
+    public bool IsMovableType
+    {
+        get
+        {
+            if (IsAttr(ObjAttributes.Move_Always))
+                return true;
+            if (IsAttr(ObjAttributes.Move_Never) || IsAttr(ObjAttributes.Static) ||
+                IsAttr(ObjAttributes.Invis) || IsAttr(ObjAttributes.LockedDown))
+                return false;
+
+            var mapData = ResolveWorld?.Invoke()?.MapData;
+            if (mapData != null && mapData.GetItemTileData(DispIdFull).Weight == 255)
+                return false;
+            return true;
+        }
+    }
+
     /// <summary>
     /// Whether a resource search may descend into this container. Source-X
     /// CItemContainer::IsSearchable (CItemContainer.cpp:760) excludes the bank box,

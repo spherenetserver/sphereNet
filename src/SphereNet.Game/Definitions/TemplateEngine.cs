@@ -219,6 +219,16 @@ public static class TemplateEngine
     /// </summary>
     public static Action<string>? Diagnostic { get; set; }
 
+    /// <summary>How a recipe's <c>FUNC=</c> row reaches the script layer. Source-X
+    /// calls the named function on the item the recipe created last, with the rest of
+    /// the line as its arguments and the container's top-level object as the caller
+    /// (ITC_FUNC, CItem.cpp:649). The host wires this to the trigger runner; left
+    /// unwired - in a bare test world, say - a FUNC row does nothing.
+    /// Arguments: the item, the function name, its argument text, and the container
+    /// the recipe is currently filling (null for a free-standing build).</summary>
+    public static Action<SphereNet.Game.Objects.Items.Item, string, string,
+        SphereNet.Game.Objects.Items.Item?>? FunctionRowHook { get; set; }
+
     /// <summary>Resolve a single-item defname to its full ItemDef
     /// resource index (used as the key into DefinitionLoader._itemDefs).
     /// For numeric ITEMDEFs (<c>[ITEMDEF 0xF0E]</c>) this equals the
@@ -332,19 +342,23 @@ public static class TemplateEngine
                         skipped = true;
                         continue;
                     }
-                    var made = CreateHeaderRow(world, row.Entry!, cont, depth);
-                    if (made == null) continue;
-                    item = made;
+                    // The row's result becomes the current item WHETHER OR NOT it
+                    // produced anything: ITC_CONTAINER assigns pItem before testing
+                    // it (CItem.cpp:626). Keeping the previous object alive here let
+                    // the property lines after a row that created NOTHING land on the
+                    // previous reward instead.
+                    item = CreateHeaderRow(world, row.Entry!, cont, depth);
+                    if (item == null)
+                        continue;   // a failed row leaves the destination as it was
                     // The new container becomes the destination for what follows
                     // (ITC_CONTAINER, CItem.cpp:631). Reusing the outer container
                     // left a second box empty and its contents beside it. When the
                     // row does not actually name a container the destination becomes
                     // NOTHING, exactly as the reference's failed dynamic_cast leaves
                     // pCont null, and the following rows stop rather than spilling.
-                    cont = made.ItemType is ItemType.Container or ItemType.ContainerLocked
-                        ? made : null;
+                    cont = item.IsContainerType ? item : null;
                     if (cont != null)
-                        topCont ??= made;
+                        topCont ??= cont;
                     continue;
                 }
 
@@ -353,8 +367,23 @@ public static class TemplateEngine
                     // Nowhere to put it yet and something has already been made:
                     // upstream stops rather than dropping items loose (:643).
                     if (cont == null && item != null) continue;
-                    var made = CreateHeaderRow(world, row.Entry!, cont, depth);
-                    if (made != null) item = made;
+                    item = CreateHeaderRow(world, row.Entry!, cont, depth);
+                    continue;
+                }
+
+                case TemplateRowKind.Func:
+                {
+                    // ITC_FUNC (CItem.cpp:649): the row CALLS a script function on the
+                    // item the recipe created last, with the rest of the line as its
+                    // arguments. Storing it as an ordinary property line - which is
+                    // what the loader did - meant the function never ran, so a
+                    // recipe's randomising or quest-marking function was skipped.
+                    if (item == null) continue;
+                    FunctionRowHook?.Invoke(item, row.Key, row.Value.Trim(), cont);
+                    // The function may delete what it was called on; the reference
+                    // drops the reference rather than writing to a dead object.
+                    if (item.IsDeleted)
+                        item = null;
                     continue;
                 }
 
@@ -394,28 +423,50 @@ public static class TemplateEngine
         // A row may name another RECIPE. Upstream's CreateHeader accepts
         // RES_TEMPLATE and reads it in the current container (:515 -> :555);
         // collapsing the resource to an itemdef index lost that and produced
-        // nothing at all.
-        if (rid.Type == ResType.Template)
-            return BuildTemplate(world, rid.Index, cont, depth + 1);
-
-        var made = world.CreateItem();
-        if (!ItemDefHelper.ApplyInstanceMetadata(made, rid.Index))
+        // nothing at all. A sub-recipe builds INSIDE the current container itself,
+        // which is why only the itemdef branch adds its result below (:531).
+        bool fromTemplate = rid.Type == ResType.Template;
+        SphereNet.Game.Objects.Items.Item? made;
+        if (fromTemplate)
         {
-            if (rid.Index is <= 0 or > ushort.MaxValue)
-            {
-                world.RemoveItem(made);
+            made = BuildTemplate(world, rid.Index, cont, depth + 1);
+            if (made == null)
                 return null;
-            }
-            made.BaseId = (ushort)rid.Index;
         }
-        made.FireCreateTrigger();
+        else
+        {
+            made = world.CreateItem();
+            if (!ItemDefHelper.ApplyInstanceMetadata(made, rid.Index))
+            {
+                if (rid.Index is <= 0 or > ushort.MaxValue)
+                {
+                    world.RemoveItem(made);
+                    return null;
+                }
+                made.BaseId = (ushort)rid.Index;
+            }
+            made.FireCreateTrigger();
+        }
+
+        // Nothing that cannot be moved may live inside another item: the reference
+        // deletes it and reports the row as having produced nothing (:519). The
+        // @Create hook has already run by now, so a script that makes its own object
+        // immovable is exactly the case being caught - such an object used to be left
+        // sitting in the reward bag.
+        if (cont != null && !made.IsMovableType)
+        {
+            world.RemoveItem(made);
+            return null;
+        }
 
         // Amount before the container, so stacking sees the final quantity
-        // (CItem.cpp:530 makes the same ordering point).
+        // (CItem.cpp:530 makes the same ordering point). It applies to a sub-recipe's
+        // result as well; only "1" leaves whatever the recipe chose alone.
         if (amount != 1)
             made.Amount = (ushort)Math.Clamp(amount, 1, ushort.MaxValue);
 
-        cont?.AddItem(made);
+        if (!fromTemplate)
+            cont?.AddItem(made);
         return made;
     }
 

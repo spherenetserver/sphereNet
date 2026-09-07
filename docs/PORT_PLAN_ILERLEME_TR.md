@@ -14,7 +14,7 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | PLAN-106 üçüncü dilim (bu oturum) |
+| Son commit | `4dbfc49` (PLAN-106 üçüncü dilim) |
 | Tam test | 3.253 başarılı / 0 başarısız |
 | Sıradaki iş | **İŞ-2 devamı: lonca taşı alanları (28) — tek kök** |
 

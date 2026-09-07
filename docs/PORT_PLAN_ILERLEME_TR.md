@@ -14,7 +14,7 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | İŞ-2c (bu oturum) |
+| Son commit | `c0d333c` (İŞ-2c) |
 | Tam test | 3.271 başarılı / 0 başarısız |
 | Sıradaki iş | **İŞ-3: Save→Load→Save alan bazında eşitlik** |
 

@@ -14,7 +14,7 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | İŞ-2b (bu oturum) |
+| Son commit | `917d0f8` (İŞ-2b) |
 | Tam test | 3.269 başarılı / 0 başarısız |
 | Sıradaki iş | **İŞ-2c: klasik ev kaydı** (ya da İŞ-3: Save→Load→Save) |
 

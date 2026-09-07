@@ -2767,6 +2767,27 @@ gecici olarak geri alinarak dokuz testin besinin eski davranisi yakaladigi kanit
 dali (referansta more2 uzerinden ikinci karakter uretimi) ve canta ici derin
 oz-referanslar.
 
+### PLAN-106 ikinci dilim - kaydin turu tanimindan gelir (7 Eylul 2026)
+
+- [x] **P106-4 (P1)** - Harita pinleri (59) ve kitap sayfalari (18) klasik kayittan
+  hic okunmuyordu: kitap/harita/gemi property dallari HAM `_type` alanina bakiyor,
+  klasik kayitta ise TYPE satiri olmadigi icin o alan okuma sirasinda Normal kaliyor.
+  (YAPILDI: `Item.EffectiveType` - ornegin kendi turu varsa o, yoksa tanimin turu;
+  get ve set yuzeyinin yedi kapisi buna bagli. Duzeltme gecici geri alinip testin eski
+  davranisi yakaladigi dogrulandi.)
+- [x] **P106-5 (P2)** - Paketli gercek veri gecisi yukleyici cozumleyicilerini
+  kurmuyordu; sunucunun okudugu anahtarlari motorun eksigi gibi gosteriyordu.
+  (YAPILDI: gecis artik Program.cs:806 kablolamasini aynaliyor.)
+
+**Olcum:** paket + sunucu kablolamasiyla eslenmeyen anahtar turu **17 -> 10**.
+
+**Kapanis:** tam suite **3.250 basarili / 0 basarisiz** (+3).
+
+**Acik kalan (IS-2'nin devami):** KILLSPLAYER 897, KILLSNPC 286, REGION.TAG.owner 93,
+ALIGN/MEMBER 20, HATCH 8, ABBREV 7, CHARTER0 1, PLANK 1, REGION.TAG.hp_bar 1. Ayrica
+`Item` icindeki kalan ham `_type` kapilari (yigin, hafiza, multi-custom, statik blok)
+bu turda BILINCLI olarak degistirilmedi; davranis yollari, ayri bir tur ister.
+
 ### PLAN-106 ilk dilim - shard'in kendi skill adlari (7 Eylul 2026)
 
 Kaynak: port plani [IS-2](D:/Projeler/Yunus/sphereNet/docs/PORT_PLAN_ILERLEME_TR.md),

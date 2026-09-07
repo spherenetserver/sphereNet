@@ -3,6 +3,25 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-07] - Kaydin turu tanimindan gelir (PLAN-106)
+----------------------------------------
+
+FIX - Klasik kayittan gelen her haritanin her pini ve her kitabin her sayfasi
+        yuklemede reddedilip SAVE.* tag'ine park ediliyordu. Klasik kayitta TYPE
+        satiri yoktur - tur ITEMDEF'e aittir ve referans nesnenin sinifini
+        olusturmada ondan sabitler (CreateBase, CItem.cpp:314), tek bir anahtari
+        okumadan once. SphereNet turu tembel cozuyor; kitap, harita ve gemi property
+        dallari ise HAM ornek alanina bakiyordu - kayit okunurken o alan hala
+        Normal. Dallar artik etkin turu soruyor: ornegin kendi turu varsa o, yoksa
+        tanimin turu. 56T dokumunde bu, park edilmek yerine okunan 59 harita pini ve
+        18 kitap sayfasi demek.
+
+CHANGE - Gercek veri gecisi artik sunucunun kurdugu yukleyici cozumleyicilerini
+        kuruyor (Program.cs:806). Onlar olmadan yukleyici ITEMDEF'e hic
+        ulasamiyordu; olcum, calisan sunucunun okudugu anahtarlar icin motoru
+        sucluyordu. Paket yuklu ve sunucu kablolamasiyla 56T dokumu artik 17 degil
+        10 tur eslenmemis anahtar birakiyor.
+
 [2026-09-07] - Skill'in adi shard'in verdigi addir (PLAN-106)
 ----------------------------------------
 

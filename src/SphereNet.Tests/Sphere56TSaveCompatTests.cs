@@ -50,7 +50,43 @@ public class Sphere56TSaveCompatTests
         var world = new SphereNet.Game.World.GameWorld(lf);
         world.InitMap(0, 7168, 4096);
         SphereNet.Game.Objects.ObjBase.ResolveWorld = () => world;
-        new WorldLoader(lf).Load(world, SaveDir);
+        SphereNet.Game.Objects.Items.Item.ResolveWorld = () => world;
+
+        // The same resolvers the server installs (Program.cs:806). Without them the
+        // loader cannot reach an ITEMDEF at all, and a measurement taken that way
+        // blames the engine for keys it would have read.
+        var loader = new WorldLoader(lf);
+        loader.ApplyCharDefFromName = (ch, defname) =>
+            SphereNet.Game.Definitions.CharDefHelper.TryApplyDefName(ch, defname, resources);
+        loader.ResolveBodyFromCharDefIndex = idx =>
+            SphereNet.Game.Definitions.CharDefHelper.ResolveBodyId(idx, resources);
+        loader.ResolveItemDef = defname =>
+        {
+            var rid = resources.ResolveDefName(defname);
+            if (rid.IsValid && rid.Type == SphereNet.Core.Enums.ResType.ItemDef)
+            {
+                var def = SphereNet.Game.Definitions.DefinitionLoader.GetItemDef(rid.Index);
+                return def != null && def.DispIndex > 0 ? def.DispIndex : (ushort)rid.Index;
+            }
+            return 0;
+        };
+        loader.ResolveItemDefFullIndex = defname =>
+        {
+            var rid = resources.ResolveDefName(defname);
+            return rid.IsValid && rid.Type == SphereNet.Core.Enums.ResType.ItemDef ? rid.Index : 0;
+        };
+        loader.ResolveCharDef = defname =>
+        {
+            int idx = SphereNet.Game.Definitions.CharDefHelper.ResolveDefIndex(defname, resources);
+            return idx != 0 ? SphereNet.Game.Definitions.CharDefHelper.ResolveBodyId(idx, resources) : (ushort)0;
+        };
+        SphereNet.Game.Objects.Items.Item.ResolveDefName = defname =>
+        {
+            var rid = resources.ResolveDefName(defname);
+            return rid.IsValid && rid.Type == SphereNet.Core.Enums.ResType.ItemDef
+                ? (ushort)rid.Index : (ushort)0;
+        };
+        loader.Load(world, SaveDir);
 
         var unhandled = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         int withSkill = 0;
@@ -76,6 +112,11 @@ public class Sphere56TSaveCompatTests
         Assert.False(unhandled.ContainsKey("Farming"),
             "the pack's own name for skill 58 was parked in a SAVE.* tag");
         Assert.True(withSkill > 0, "no character came back with the renamed skill");
+
+        // A map's pins and a book's pages are typed by their ITEMDEF, not by a TYPE
+        // line in the record: the engine has to read them through the definition.
+        Assert.False(unhandled.ContainsKey("PIN"), "map pins were parked in SAVE.* tags");
+        Assert.False(unhandled.ContainsKey("BODY.0"), "book pages were parked in SAVE.* tags");
     }
 
     /// <summary>Field report: imported 56T spawner worldgems never spawned

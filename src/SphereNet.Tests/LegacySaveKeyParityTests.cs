@@ -40,6 +40,16 @@ public sealed class LegacySaveKeyParityTests : IDisposable
         [SKILL 1]
         DEFNAME=Skill_Anatomy
         KEY=Anatomy
+
+        [ITEMDEF 014ec]
+        DEFNAME=i_map_test
+        NAME=Treasure map
+        TYPE=t_map
+
+        [ITEMDEF 0fbd]
+        DEFNAME=i_book_test
+        NAME=Book
+        TYPE=t_book
         """;
 
     public LegacySaveKeyParityTests()
@@ -118,5 +128,57 @@ public sealed class LegacySaveKeyParityTests : IDisposable
         // to go through the same normalisation the built-in names do.
         Assert.True(ch.TrySetProperty("Sailormanship", "12.5"));
         Assert.Equal(125, ch.GetSkill(SkillType.Spellweaving));
+    }
+
+    // ================================================================
+    // A classic record carries no TYPE line: the type belongs to the ITEMDEF, and
+    // upstream fixes the object's class from it at creation (CreateBase,
+    // CItem.cpp:314) before reading a single key. Keys that only a map or a book
+    // understands have to be read through that definition.
+
+    [Fact]
+    public void AMapTypedByItsDefinitionTakesItsPins()
+    {
+        var world = NewWorld();
+        var map = world.CreateItem();
+        map.BaseId = 0x14EC;                    // the itemdef says t_map; the record does not
+
+        Assert.True(map.TrySetProperty("PIN", "150,150"));
+        Assert.True(map.TrySetProperty("PIN", "160,170"));
+
+        Assert.True(map.TryGetProperty("PINS", out string count));
+        Assert.Equal("2", count);
+        Assert.True(map.TryGetProperty("PIN.1", out string first));
+        Assert.Equal("150,150", first);
+        Assert.True(map.TryGetProperty("PIN.2", out string second));
+        Assert.Equal("160,170", second);
+    }
+
+    [Fact]
+    public void ABookTypedByItsDefinitionTakesItsPages()
+    {
+        var world = NewWorld();
+        var book = world.CreateItem();
+        book.BaseId = 0x0FBD;                   // t_book from the definition
+
+        Assert.True(book.TrySetProperty("BODY.0", "first page"));
+        Assert.True(book.TrySetProperty("BODY.1", "second page"));
+        Assert.True(book.TrySetProperty("TITLE", "A title"));
+
+        Assert.True(book.TryGetProperty("PAGES", out string pages));
+        Assert.Equal("2", pages);
+        Assert.Equal("A title", book.Name);
+    }
+
+    [Fact]
+    public void AnInstanceTypeStillWinsOverItsDefinition()
+    {
+        var world = NewWorld();
+        var item = world.CreateItem();
+        item.BaseId = 0x14EC;
+        item.ItemType = ItemType.Normal;        // not a map any more, whatever the def says
+        item.ItemType = ItemType.Container;
+
+        Assert.False(item.TrySetProperty("PIN", "150,150"));
     }
 }

@@ -166,6 +166,18 @@ public class Item : ObjBase
     private SphereNet.Scripting.Definitions.ItemDef? ResolveDefinition() =>
         DefinitionLoader.GetItemDef(ItemDefHelper.ResolveInstanceDefIndex(this));
 
+    /// <summary>The type this item ACTUALLY is, for the property surface: the instance
+    /// override when it has one, otherwise the type its definition declares.
+    ///
+    /// A classic save writes no TYPE line - the type belongs to the ITEMDEF, and
+    /// upstream fixes the object's class at creation from it (CreateBase,
+    /// CItem.cpp:314) before reading any key. SphereNet resolves the type lazily, so
+    /// the raw field is still Normal while a record is being read; keying the book, map
+    /// and ship branches off that raw field meant a map's PIN lines and a book's BODY
+    /// lines were refused on load and parked in SAVE.* tags. Read once per call: when
+    /// the instance HAS its own type this costs nothing.</summary>
+    private ItemType EffectiveType => ItemType;
+
     /// <summary>PROPLIST diagnostic surface (Source-X OV_PROPLIST).</summary>
     protected override IEnumerable<string> EnumeratePropListKeys() =>
         ["NAME", "COLOR", "P", "TIMER", "LINK", "TYPE", "AMOUNT", "ATTR",
@@ -1431,7 +1443,7 @@ public class Item : ObjBase
 
             // Faz 3: Spellbook
             case "SPELLCOUNT":
-                if (_type is ItemType.Spellbook or ItemType.SpellbookNecro or ItemType.SpellbookPala
+                if (EffectiveType is ItemType.Spellbook or ItemType.SpellbookNecro or ItemType.SpellbookPala
                     or ItemType.SpellbookExtra or ItemType.SpellbookBushido or ItemType.SpellbookNinjitsu
                     or ItemType.SpellbookArcanist or ItemType.SpellbookMystic or ItemType.SpellbookMastery)
                 {
@@ -1505,7 +1517,7 @@ public class Item : ObjBase
         }
 
         // Faz 3: Book/Message properties
-        if (_type is ItemType.Book or ItemType.Message)
+        if (EffectiveType is ItemType.Book or ItemType.Message)
         {
             // Either spelling answers: a save written before the setter kept both in
             // step may carry only one of them.
@@ -1544,7 +1556,7 @@ public class Item : ObjBase
         }
 
         // Faz 3: Map properties
-        if (_type is ItemType.Map or ItemType.MapBlank)
+        if (EffectiveType is ItemType.Map or ItemType.MapBlank)
         {
             if (upper == "PINS") { value = CountTagsWithPrefix("PIN_").ToString(); return true; }
             if (upper.StartsWith("PIN.", StringComparison.Ordinal))
@@ -1556,7 +1568,7 @@ public class Item : ObjBase
 
         // Ship properties (resolved via static delegate)
         // Source: CItemShip sm_szLoadKeys + CCMultiMovable sm_szLoadKeys
-        if (_type is ItemType.Ship or ItemType.ShipPlank or ItemType.ShipTiller
+        if (EffectiveType is ItemType.Ship or ItemType.ShipPlank or ItemType.ShipTiller
             or ItemType.ShipHold or ItemType.ShipHoldLock or ItemType.ShipSide
             or ItemType.ShipSideLocked or ItemType.ShipOther)
         {
@@ -2258,7 +2270,7 @@ public class Item : ObjBase
         }
 
         // Faz 3: Book/Message set
-        if (_type is ItemType.Book or ItemType.Message)
+        if (EffectiveType is ItemType.Book or ItemType.Message)
         {
             // AUTHOR is handled by the shared setter above, which writes both tags;
             // this branch is unreachable for it and is left to the TITLE/BODY keys.
@@ -2295,7 +2307,7 @@ public class Item : ObjBase
         }
 
         // Map: PIN.n set
-        if (_type is ItemType.Map or ItemType.MapBlank)
+        if (EffectiveType is ItemType.Map or ItemType.MapBlank)
         {
             if (upper.StartsWith("PIN.", StringComparison.Ordinal))
             {
@@ -2316,7 +2328,7 @@ public class Item : ObjBase
         }
 
         // Ship property set — Source: CCMultiMovable::r_LoadVal
-        if (_type == ItemType.Ship)
+        if (EffectiveType == ItemType.Ship)
         {
             var ship = ResolveShip?.Invoke(Uid);
             if (ship != null)

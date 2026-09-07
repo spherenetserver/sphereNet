@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | `5984e8e` (12W + PLAN-106 ilk dilim) |
-| Tam test | 3.247 başarılı / 0 başarısız |
-| Sıradaki iş | **İŞ-2 devamı: PIN (59) — kod var, yükleyici yolu bağlı değil** |
+| Son commit | PLAN-106 ikinci dilim (bu oturum) |
+| Tam test | 3.250 başarılı / 0 başarısız |
+| Sıradaki iş | **İŞ-2 devamı: REGION.TAG.\* (94) — tek kök** |
 
 ## Çalışma sırası
 
@@ -31,27 +31,29 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   `ISTIMERF` ilk eşleşmeyi döndürür ve sıfırı geçerli sonuç sayar.
 
 - [ ] **İŞ-2 — 56T'nin eşlenmeyen kayıt anahtarları** (PLAN-106) — **KISMEN**
-  İlk dilim kapandı: shard'ın kendi skill adları (Sailormanship/Farming) artık
-  okunuyor, ölçüm de düzeltildi (paket yüklüyken çalışan ikinci geçiş). Paketsiz
-  ölçümde 17, **paketli ölçümde 15** tür anahtar kalıyor.
+  Kapanan dilimler: (1) shard'ın kendi skill adları, (2) kaydın türünün tanımdan
+  gelmesi — harita pinleri ve kitap sayfaları. Ölçüm de düzeltildi: paket **ve**
+  sunucu kablolaması yüklüyken çalışan geçiş. Paketsiz ölçümde 17, doğru ölçümde
+  **10** tür anahtar kalıyor.
 
-  Kalanların sınıflandırma taslağı — **hepsi doğrulanmamış hipotez**, sıradaki
-  oturumun işi bunları teker teker kanıtlamak:
+  Kalanların sınıflandırma taslağı — **hepsi doğrulanmamış hipotez**:
 
   | Anahtar | Adet | Hipotez | Nereye bakmalı |
   |---|---:|---|---|
-  | KILLSPLAYER | 897 | 56x'in ayrık öldürme sayacı; motorda tek `KILLS` var. Source-X'te bu ad YOK — 0.56 dönemi alanı. | `Character.Kills`, `WorldSaver:907` |
+  | KILLSPLAYER | 897 | 56x'in ayrık öldürme sayacı; motorda tek `KILLS` var. Source-X'te bu ad YOK — 0.56 dönemi alanı. Tasarım kararı ister. | `Character.Kills`, `WorldSaver:907` |
   | KILLSNPC | 286 | aynı ailenin NPC yarısı | aynı |
   | REGION.TAG.owner | 93 | bölge tag'i; nesne kaydında region alt-bloğu | `WorldLoader` region dalı |
-  | PIN | 59 | harita pini. `Item.cs:2305` bare PIN'i ZATEN işliyor → yükleyici o yola girmiyor olabilir; **güçlü aday** | `Item.cs:2305`, `WorldLoader:1278` |
   | ALIGN / MEMBER / ABBREV / CHARTER0 | 28 | lonca taşı alanları (hizalanma, üye, kısaltma, ferman) | guild stone kalıcılığı |
   | HATCH / PLANK | 9 | gemi bileşen bağlantıları | `ShipEngine`, multi kaydı |
-  | BODY.0-3 | 18 | multi/gemi bileşen listesi | multi kaydı |
   | REGION.TAG.hp_bar | 1 | bölge tag'i (yukarıdakiyle aynı kök) | aynı |
 
-  Sıradaki adım: PIN (kod zaten var, yol bağlanmamış görünüyor) → REGION.TAG.*
-  (93+1, tek kök) → lonca alanları → gemi/multi bileşenleri → KILLSPLAYER/KILLSNPC
-  (bunlar tasarım kararı isteyebilir: `KILLS`e mi toplanacak, ayrı alan mı).
+  Sıradaki adım: REGION.TAG.* (94, tek kök) → lonca alanları (28, tek kök) →
+  gemi HATCH/PLANK (9) → en sonda KILLSPLAYER/KILLSNPC (1183; `KILLS`e mi toplanacak,
+  ayrı alan mı — kullanıcı kararı isteyebilir).
+
+  Ayrıca bu dilimden çıkan yan iş: `Item` içinde kalan ham `_type` kapıları
+  (yığın/hafıza/multi-custom/statik blok) aynı sınıf hataya açık; davranış yolları
+  oldukları için bilinçli olarak ertelendi.
 
 - [ ] **İŞ-3 — Save→Load→Save alan bazında eşitlik** (PLAN-107)
   Temel stat, miktar, owner/parent, spawn üyeliği, timer ve vendor içeriği için
@@ -74,6 +76,11 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-2 ikinci dilim (PLAN-106)** — 2026-09-07. Kitap/harita/gemi property
+  kapıları ham `_type` yerine etkin türe (`Item.EffectiveType`) bakıyor; klasik
+  kayıtta TYPE satırı olmadığı için 59 harita pini ve 18 kitap sayfası okunmuyordu.
+  Gerçek veri geçişi sunucu kablolamasını aynalıyor. Ölçüm 15 → 10. Test:
+  `LegacySaveKeyParityTests` +3; tam suite 3.250.
 - **İŞ-2 ilk dilim (PLAN-106)** — 2026-09-07. Shard'ın kendi skill adları
   (`[SKILL n] KEY=`) yükleme ve script yollarında çözülüyor; üç ayrı isim tablosu
   `SkillNames`te birleşti; `Farming` adını kapan NEWBIE kaynağı yüzünden defname

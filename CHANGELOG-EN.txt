@@ -4,6 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-07] - Save, load, save again - and say the same thing (IS-3)
+----------------------------------------
+
+NEW - A round-trip check: a world is saved, loaded back and saved again, and the two
+        saves are compared line by line. This is the check that catches the class of
+        bug no single assertion looks for - a field written in one shape and read back
+        in another drifts a little on every save cycle, and nothing notices until the
+        numbers are wrong. The equipped-bonus pool that compounded on every duplicate
+        was exactly that shape. Two worlds are compared: one built through the engine's
+        own API, and one loaded from CLASSIC records - a stone with its roster, a ship
+        with its hold and planks, a structure with its region lines, a character with
+        an old shard's kill counters and a renamed skill - which has to reach a fixed
+        point in one cycle. A save that lost everything would also be a fixed point, so
+        the translated data is checked to BE there first.
+
+FIX - The first thing it found: a character with no maximum hit points of its own was
+        saved as MAXHITS=0, and a zero maximum is not a value the engine can hold - the
+        setter clamps it to one, so the NEXT save said something different from the
+        first. It is left out now; a character with no maximum of its own takes its
+        definition's.
+
+NOTE - A clock is not drift: the world time, a countdown timer and a character's age
+        are expected to have moved on between two saves, so the check compares what
+        those lines are rather than what they say.
+
 [2026-09-07] - A structure's region belongs to the structure (IS-2c)
 ----------------------------------------
 

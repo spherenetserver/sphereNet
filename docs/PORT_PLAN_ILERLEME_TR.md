@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | `c0d333c` (İŞ-2c) |
-| Tam test | 3.271 başarılı / 0 başarısız |
-| Sıradaki iş | **İŞ-3: Save→Load→Save alan bazında eşitlik** |
+| Son commit | İŞ-3 (bu oturum) |
+| Tam test | 3.273 başarılı / 0 başarısız |
+| Sıradaki iş | **İŞ-4: tek nesne oluşturma/kopyalama sözleşmesi tablosu (PLAN-101)** |
 
 ## Çalışma sırası
 
@@ -50,12 +50,13 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   evleri sahibi MORE1'de tutuyor ama bunu shard'ın kendi scriptleri okuyor; Source-X
   CItemMulti sahibi yalnız OWNER'dan okur, MORE1'i hiç kullanmaz.
 
-- [ ] **İŞ-3 — Save→Load→Save alan bazında eşitlik** (PLAN-107)
-  Temel stat, miktar, owner/parent, spawn üyeliği, timer ve vendor içeriği için
-  alan bazında karşılaştırma testi. 13J'nin temel/etkin havuz hatası tam da bu
-  sınıftı; invariant testi olmadan aynı sınıf yine kaçar.
-  Kabul: iki tur kayıt sonrası hiçbir alan sessizce değişmiyor; değişenler
-  belgeli.
+- [x] **İŞ-3 — Save→Load→Save alan bazında eşitlik** (PLAN-107) — **KAPANDI**
+  `SaveRoundTripParityTests`: kaydet → yükle → kaydet ve iki kaydı satır satır
+  karşılaştır; hem motor API'siyle kurulan dünya hem klasik kayıttan yüklenen dünya.
+  İlk bulgusu: kendi maksimum canı olmayan karakter `MAXHITS=0` yazıyor, yüklemede
+  1'e yuvarlanıyordu → kayıt sabit noktaya ulaşmıyordu; artık yazılmıyor.
+  Testin kendisi "her şeyi kaybeden kayıt da sabit noktadır" tuzağına karşı, çevrilen
+  verinin kayıtta bulunduğunu ayrıca doğruluyor.
 
 - [ ] **İŞ-4 — Tek nesne oluşturma/kopyalama sözleşmesi tablosu** (PLAN-101)
   NEWITEM, NEWNPC, NEWDUPE, karakter DUPE, spawn, template, vendor ve stack
@@ -71,6 +72,9 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-3 KAPANDI** — 2026-09-07. `SaveRoundTripParityTests` (kaydet→yükle→kaydet,
+  satır satır karşılaştırma; motor dünyası + klasik kayıt dünyası). İlk bulgusu
+  `MAXHITS=0` sapmasıydı, düzeltildi. Tam suite 3.273.
 - **İŞ-2c KAPANDI** — 2026-09-07. Yapının bölgesi ev kaydına değil multi'ye bağlı;
   56T'nin 93 yapısı artık bölgesiyle (bayraklar, olaylar, tag'ler) yükleniyor.
   Test: `LegacySaveKeyParityTests` +2; tam suite 3.271.

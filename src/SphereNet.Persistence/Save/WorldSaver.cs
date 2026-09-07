@@ -889,7 +889,12 @@ public sealed class WorldSaver
         // Persist the BASE max pools, not the effective getters — the equipped-suit
         // BONUSHITSMAX/MANAMAX/STAMMAX contribution is derived on read and must never
         // be written back as base (it would inflate permanently across save cycles).
-        w.WriteProperty("MAXHITS", ch.BaseMaxHits.ToString());
+        // A ZERO maximum is not a value the engine can hold: the setter clamps it to
+        // one, so writing it made the next save say something different from this one -
+        // the save never reached a fixed point. Nothing is lost by leaving it out; a
+        // character with no maximum of its own takes its definition's.
+        if (ch.BaseMaxHits > 0)
+            w.WriteProperty("MAXHITS", ch.BaseMaxHits.ToString());
         w.WriteProperty("MAXMANA", ch.BaseMaxMana.ToString());
         w.WriteProperty("MAXSTAM", ch.BaseMaxStam.ToString());
         // Source-X CREATE key: character age at save time, in tenths of a

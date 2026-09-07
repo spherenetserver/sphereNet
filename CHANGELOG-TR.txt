@@ -3,6 +3,30 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-07] - Kaydet, yukle, yine kaydet - ve ayni seyi soyle (IS-3)
+----------------------------------------
+
+NEW - Gidis-donus kontrolu: dunya kaydediliyor, geri yukleniyor ve tekrar
+        kaydediliyor; iki kayit satir satir karsilastiriliyor. Bu, tek bir assert'in
+        aramadigi hata sinifini yakalayan kontrol - bir alan bir bicimde yazilip baska
+        bir bicimde okunuyorsa her kayit turunda biraz kayar ve sayilar bozulana kadar
+        kimse fark etmez. Her kopyada katlanan ekipman bonusu havuzu tam olarak bu
+        bicimdeydi. Iki dunya karsilastiriliyor: biri motorun kendi API'siyle kurulan,
+        digeri KLASIK kayitlardan yuklenen - listesiyle bir tas, ambari ve iskeleleriyle
+        bir gemi, bolge satirlariyla bir yapi, eski shard'in oldurme sayaclari ve yeniden
+        adlandirilmis skill'iyle bir karakter - ki bunun tek turda sabit noktaya ulasmasi
+        gerekir. Her seyi kaybeden bir kayit da sabit nokta olacagi icin, once cevrilen
+        verinin ORADA oldugu kontrol ediliyor.
+
+FIX - Ilk buldugu sey: kendi maksimum cani olmayan karakter MAXHITS=0 olarak
+        kaydediliyordu; sifir bir maksimum motorun tutabilecegi deger degil - setter onu
+        bire yuvarliyor, yani SONRAKI kayit ilkinden farkli sey soyluyordu. Artik
+        yazilmiyor; kendi maksimumu olmayan karakter tanimininkini alir.
+
+NOTE - Saat kayma degildir: dunya saati, geri sayan timer ve karakterin yasi iki kayit
+        arasinda ilerlemis olmali; kontrol o satirlarin ne SOYLEDIGINE degil ne
+        OLDUGUNA bakiyor.
+
 [2026-09-07] - Yapinin bolgesi yapiya aittir (IS-2c)
 ----------------------------------------
 

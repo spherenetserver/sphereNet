@@ -2767,6 +2767,29 @@ gecici olarak geri alinarak dokuz testin besinin eski davranisi yakaladigi kanit
 dali (referansta more2 uzerinden ikinci karakter uretimi) ve canta ici derin
 oz-referanslar.
 
+### IS-3 - kaydin sabit noktasi (7 Eylul 2026)
+
+Kaynak: port plani IS-3 / PLAN-107.
+
+- [x] **B3-1 (P2)** - Kendi maksimum cani olmayan karakter `MAXHITS=0` olarak
+  kaydediliyor, yuklemede setter onu 1'e yuvarliyordu; yani ikinci kayit ilkinden farkli
+  oluyordu (kayit sabit noktaya ulasmiyordu). (YAPILDI: sifir maksimum yazilmiyor.)
+
+**Yeni test - `SaveRoundTripParityTests`:** kaydet -> yukle -> kaydet, iki kaydi satir
+satir karsilastir. Iki dunya: motorun API'siyle kurulan (karakter statlari/skilleri/
+tag'leri/EVENTS, giyili esya, ic ice kap ve konumlari, timer, MORE/LINK) ve KLASIK
+kayitlardan yuklenen (lonca listesi, gemi ambari/iskelesi, yapi bolgesi, oldurme
+sayaclari, yeniden adlandirilmis skill).
+
+**Test kalitesi notu:** her seyi kaybeden kayit da sabit noktadir; bu yuzden klasik
+turda once cevrilen verinin kayitta BULUNDUGU dogrulaniyor (GUILD.MEMBERS, SHIP.HOLD,
+SHIP.PLANKS, REGION.TAG.OWNER, KILLS=5, Spellweaving=1000, KILLSNPC).
+
+**Saat normalizasyonu:** TIME/TIMER/TIMERMS/TIMERD/CREATE degerleri iki kayit arasinda
+mesru olarak ilerler; karsilastirma bu satirlarin degerini degil varligini olcer.
+
+**Kapanis:** tam suite **3.273 basarili / 0 basarisiz** (+2).
+
 ### IS-2c - yapinin bolgesi (7 Eylul 2026)
 
 - [x] **B2c-1 (P1)** - Klasik kayittan gelen 93 yapinin hicbir bolgesi yoktu: bolge

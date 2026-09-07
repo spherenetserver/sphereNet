@@ -1399,6 +1399,25 @@ public sealed class WorldLoader
                     }
                     break;
                 }
+                // Sphere 0.56 kept TWO kill counters and wrote them as KILLSPLAYER and
+                // KILLSNPC. The reference keeps ONE - KILLS, the murder count
+                // (CCharPlayer.h:49) - and neither of those names exists anywhere in
+                // it, not even in its own legacy importer, which translates an old key
+                // into the field it maps to and leaves the rest (CWorldImport.cpp:750).
+                // KILLSPLAYER is that field: it is the count notoriety reads. KILLSNPC
+                // has no counterpart, so it is kept as script-readable data rather than
+                // invented into the engine as a second counter the reference lacks.
+                if (upper == "KILLSPLAYER")
+                {
+                    if (short.TryParse(val, out short murders) && murders > 0)
+                        ch.Kills = murders;
+                    break;
+                }
+                if (upper == "KILLSNPC")
+                {
+                    ch.SetTag("KILLSNPC", val);
+                    break;
+                }
                 if (TryResolveSkillName(upper, out SkillType skill))
                 {
                     if (ushort.TryParse(val, out ushort sv))

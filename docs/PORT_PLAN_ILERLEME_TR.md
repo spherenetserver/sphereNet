@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | `d4b8bf5` (PLAN-106 beşinci dilim) |
-| Tam test | 3.265 başarılı / 0 başarısız |
-| Sıradaki iş | **KILLSPLAYER/KILLSNPC kararı, ya da İŞ-2b (multi TYPE / sahipsiz gemi)** |
+| Son commit | PLAN-106 kapanışı (bu oturum) |
+| Tam test | 3.266 başarılı / 0 başarısız |
+| Sıradaki iş | **İŞ-2b: multi TYPE / sahipsiz gemi** (sonra İŞ-3: Save→Load→Save) |
 
 ## Çalışma sırası
 
@@ -30,22 +30,14 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   argümanlar eşleştirmeye katılır); süre ifadesi çarpma/parantez/boşluk tüketir;
   `ISTIMERF` ilk eşleşmeyi döndürür ve sıfırı geçerli sonuç sayar.
 
-- [ ] **İŞ-2 — 56T'nin eşlenmeyen kayıt anahtarları** (PLAN-106) — **KISMEN**
-  Kapanan dilimler: (1) shard'ın skill adları, (2) kaydın türü tanımdan — harita
-  pini/kitap sayfası, (3) yapının bölgesi (REGION.TAG.\*), (4) klasik taşın loncası,
-  (5) klasik geminin ambarı/iskeleleri. Paketsiz ölçümde 17, doğru ölçümde **2**.
+- [x] **İŞ-2 — 56T'nin eşlenmeyen kayıt anahtarları** (PLAN-106) — **KAPANDI**
+  Altı dilim: (1) shard'ın skill adları, (2) kaydın türü tanımdan — harita pini/kitap
+  sayfası, (3) yapının bölgesi (REGION.TAG.\*), (4) klasik taşın loncası,
+  (5) klasik geminin ambarı/iskeleleri, (6) 0.56'nın öldürme sayaçları.
+  **Paketsiz ölçümde 17 → doğru ölçümde 0.** 56T dökümü artık hiçbir anahtarı park
+  etmeden yükleniyor; ölçüm paket + sunucu kablolamasıyla yapılıyor ve testte kilitli.
 
-  | Anahtar | Adet | Durum |
-  |---|---:|---|
-  | KILLSPLAYER | 897 | **KARAR GEREKİYOR** — Source-X'te bu ad yok (0.56 dönemi), motorda tek `KILLS` var |
-  | KILLSNPC | 286 | aynı ailenin NPC yarısı |
-
-  Seçenekler: (a) ikisini tek `KILLS`e topla — oyuncu öldürme sayısı korunur, NPC
-  sayacı kaybolur; (b) iki ayrı alan aç — veri tam korunur ama Source-X'te karşılığı
-  olmayan alan eklenir; (c) tag olarak sakla, davranışa bağlama — veri korunur,
-  anlam yok. Kullanıcı kararı bekliyor.
-
-- [ ] **İŞ-2b — multi'nin TYPE'ı ve sahipsiz gemi** (bu turda ortaya çıktı)
+- [ ] **İŞ-2b — multi'nin TYPE'ı ve sahipsiz gemi** (İŞ-2'de ortaya çıktı)
   Multi'nin TYPE'ı `[MULTIDEF]`'ten gelir, motor onu multi kayıt defterinde tutar;
   import edilen tekne `ItemType.Ship` değil, bu yüzden `ShipEngine`in tür kapısından
   geçmiyor. Ayrıca aynı kapı OWNER arıyor ve 56T'nin 8 gemisinin hiçbirinde OWNER yok.
@@ -73,6 +65,10 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-2 KAPANDI (PLAN-106)** — 2026-09-07. Son dilim: 0.56'nın KILLSPLAYER'ı
+  referansın tek sayacına (KILLS) çevriliyor, KILLSNPC tag olarak korunuyor
+  (referansta karşılığı yok). 56T dökümünde eşlenmeyen anahtar **0**; 834 karakter
+  cinayet sayısını geri aldı. Tam suite 3.266.
 - **İŞ-2 beşinci dilim (PLAN-106)** — 2026-09-07. Klasik geminin HATCH/PLANK
   satırları okunuyor ve gemi katmanına bileşen olarak kaydediliyor; klasik "temizlenmiş
   uid" işaretçisi için `Serial.NamesAnObject` eklendi. Ölçüm 4 → 2. Test:

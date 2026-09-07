@@ -2767,6 +2767,24 @@ gecici olarak geri alinarak dokuz testin besinin eski davranisi yakaladigi kanit
 dali (referansta more2 uzerinden ikinci karakter uretimi) ve canta ici derin
 oz-referanslar.
 
+### PLAN-106 kapanisi - eski shard'in oldurme sayaclari (7 Eylul 2026)
+
+- [x] **P106-11 (P1)** - 0.56'nin KILLSPLAYER/KILLSNPC anahtarlari SAVE.* tag'ine park
+  ediliyordu; 56T'de 834 karakter cinayet sayisi olmadan, yani masum yukleniyordu.
+  (YAPILDI: referansin yapisi tek sayactir - KILLS, cinayet sayisi; KILLSPLAYER ona
+  cevriliyor. KILLSNPC'nin referansta karsiligi YOK, ikinci sayac uydurulmadi; script
+  okuyabilsin diye tag olarak korunuyor. Ceviri, referansin kendi legacy import
+  yolundaki desenle ayni yerde - yukleyicide.)
+
+**Kullanici karari:** "Source-X yapisi nasilsa oyle yapalim." Referansta tek sayac
+oldugu dogrulandi (CCharPlayer.h:49, CCharPlayer.cpp:553, CWorldImport.cpp:750); iki
+adin da Source-X kaynak agacinda hic gecmedigi ayrica arandi.
+
+**Olcum:** eslenmeyen anahtar turu **2 -> 0**. 56T dokumu artik hicbir anahtari
+park etmeden yukleniyor.
+
+**Kapanis:** tam suite **3.266 basarili / 0 basarisiz** (+1).
+
 ### PLAN-106 besinci dilim - klasik geminin ambari ve iskeleleri (7 Eylul 2026)
 
 - [x] **P106-9 (P2)** - Klasik gemi kaydindaki HATCH ve PLANK satirlari reddedilip

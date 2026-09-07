@@ -125,6 +125,13 @@ public class Sphere56TSaveCompatTests
         // to come back with it - not just accept the lines.
         Assert.False(unhandled.ContainsKey("MEMBER"), "guild members were parked in SAVE.* tags");
         // A classic ship names its hold and planks and lists no components.
+        // The murder count a 0.56 shard wrote as KILLSPLAYER reaches the one counter
+        // the reference keeps.
+        Assert.False(unhandled.ContainsKey("KILLSPLAYER"), "murder counts were parked in SAVE.* tags");
+        int withKills = world.GetAllCharactersSnapshot().Count(c => c.Kills > 0);
+        _out.WriteLine($"characters carrying a murder count: {withKills}");
+        Assert.True(withKills > 0, "no character came back with its murder count");
+
         Assert.False(unhandled.ContainsKey("HATCH"), "a ship's hold was parked in a SAVE.* tag");
         Assert.False(unhandled.ContainsKey("PLANK"), "a ship's planks were parked in SAVE.* tags");
         var guilds = new SphereNet.Game.Guild.GuildManager();

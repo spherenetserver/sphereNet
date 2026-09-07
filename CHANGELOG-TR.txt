@@ -3,6 +3,25 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-07] - Eski shard'in yazdigi cinayet sayisi (PLAN-106)
+----------------------------------------
+
+FIX - 0.56 shard'indan import edilen karakter cinayet sayisi olmadan donuyordu. O
+        sunucu IKI oldurme sayaci tutar ve bunlari KILLSPLAYER ile KILLSNPC olarak
+        yazar; iki ad da referansta hicbir yerde yok. Referans TEK sayac tutar - KILLS,
+        cinayet sayisi (CCharPlayer.h:49) - ve kendi legacy import yolu eski anahtari
+        karsilik geldigi alana cevirir, gerisini birakir (CWorldImport.cpp:750).
+        KILLSPLAYER o alandir: notoriety'nin okudugu sayidir, yani 56T dokumundeki 834
+        karakter masum olarak yukleniyordu. Artik KILLS'e ulasiyor. KILLSNPC'nin
+        karsiligi yok; referansta bulunmayan ikinci bir sayac uydurmak yerine script
+        tarafindan okunabilir veri olarak korunuyor.
+
+NOTE - Bununla 56T dokumu HIC eslenmemis anahtar birakmadan yukleniyor: o shard'in
+        dunya, karakter ve multi kayitlarindaki her anahtar artik bir alana, anlami
+        olan bir tag'e ya da belgelenmis bir karara ulasiyor. Olcum, script paketi ve
+        sunucunun kendi yukleyici kablolamasiyla calisiyor - sunucunun calistigi
+        yapilandirma.
+
 [2026-09-07] - Klasik gemi ambarini ve iskelelerini adlandirir (PLAN-106)
 ----------------------------------------
 

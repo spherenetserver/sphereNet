@@ -4,6 +4,25 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-07] - The murder count an old shard wrote (PLAN-106)
+----------------------------------------
+
+FIX - A character imported from a 0.56 shard came back with no murder count. That
+        server kept TWO kill counters and wrote them as KILLSPLAYER and KILLSNPC;
+        neither name exists anywhere in the reference, which keeps ONE - KILLS, the
+        murder count (CCharPlayer.h:49) - and whose own legacy importer translates an
+        old key into the field it maps to and leaves the rest (CWorldImport.cpp:750).
+        KILLSPLAYER is that field: it is the count notoriety reads, so 834 characters
+        in the 56T dump were loading as innocent. It reaches KILLS now. KILLSNPC has no
+        counterpart and is kept as script-readable data rather than invented into the
+        engine as a second counter the reference does not have.
+
+NOTE - With this the 56T dump loads with NO unmapped keys left: every key in that
+        shard's world, character and multi records now reaches a field, a tag with a
+        meaning, or a documented decision. The measurement runs with the script pack
+        and the server's own loader wiring, which is the configuration a server runs
+        in.
+
 [2026-09-07] - A classic ship names its hold and its planks (PLAN-106)
 ----------------------------------------
 

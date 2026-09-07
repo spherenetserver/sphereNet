@@ -14,7 +14,7 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | 12W + PLAN-106 ilk dilim (bu oturum) |
+| Son commit | `5984e8e` (12W + PLAN-106 ilk dilim) |
 | Tam test | 3.247 başarılı / 0 başarısız |
 | Sıradaki iş | **İŞ-2 devamı: PIN (59) — kod var, yükleyici yolu bağlı değil** |
 

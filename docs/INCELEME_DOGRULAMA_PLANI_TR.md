@@ -2767,6 +2767,29 @@ gecici olarak geri alinarak dokuz testin besinin eski davranisi yakaladigi kanit
 dali (referansta more2 uzerinden ikinci karakter uretimi) ve canta ici derin
 oz-referanslar.
 
+### PLAN-106 dorduncu dilim - klasik tasin loncasi (7 Eylul 2026)
+
+- [x] **P106-7 (P1)** - Klasik lonca/sehir tasinin ALIGN, ABBREV, CHARTER<n>, WEBPAGE
+  ve MEMBER satirlari reddedilip SAVE.* tag'ine park ediliyordu; lonca katmani hicbir
+  lonca gormuyor, sonraki kayit da hicbirini geri yazmiyordu. 56T'de 10 tas / 144
+  satir. (YAPILDI: `GuildManager.TryApplyClassicStoneKey` klasik satiri motorun kendi
+  GUILD.* bicimine ceviriyor; gercek veride 10 lonca geri geldi, en buyugu 13 uyeyle.)
+- [x] **P106-8 (P2)** - Yeniden kurma yalnizca GUILD.NAME tag'ine bakiyordu; klasik tas
+  kendi adini yazmaz. (YAPILDI: liste tasiyan tas kendi adini aliyor -
+  CItemStone::GetName.)
+
+**Sinir - dogrulanmamis dal:** listedeki 100/101 yetkileri (ENEMY/ALLY) uye degil savas
+/ittifak kaydidir; iliski olarak ceviriliyor. 56T dokumunde ornegi YOK, dal referansin
+bicim yorumuna ve birim testine dayaniyor.
+
+**Tur ici duzeltilen kendi hatali testim:** savas testini var olmayan bir tasa karsi
+kurmustum; mevcut kod, yuklenmemis loncaya karsi iliskiyi bilerek dusuruyor. Test iki
+gercek tasla yeniden kuruldu.
+
+**Olcum:** eslenmeyen anahtar turu **8 -> 4**.
+
+**Kapanis:** tam suite **3.257 basarili / 0 basarisiz** (+4).
+
 ### PLAN-106 ucuncu dilim - yapinin bolgesi (7 Eylul 2026)
 
 - [x] **P106-6 (P2)** - Multi kaydindaki `REGION.TAG.<ad>` satirlari reddedilip SAVE.*

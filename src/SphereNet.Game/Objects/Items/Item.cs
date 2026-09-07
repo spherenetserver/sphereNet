@@ -2223,6 +2223,12 @@ public class Item : ObjBase
             case var regionTag when regionTag.StartsWith("REGION.TAG.", StringComparison.Ordinal):
                 SetTag(regionTag, value);
                 return true;
+            case "ALIGN" or "ABBREV" or "WEBPAGE" or "MEMBER"
+                when EffectiveType is ItemType.StoneGuild or ItemType.StoneTown:
+                return Guild.GuildManager.TryApplyClassicStoneKey(this, upper, value);
+            case var charterKey when charterKey.StartsWith("CHARTER", StringComparison.Ordinal)
+                && EffectiveType is ItemType.StoneGuild or ItemType.StoneTown:
+                return Guild.GuildManager.TryApplyClassicStoneKey(this, charterKey, value);
             // Reading is deliberately NOT intercepted: REGION.<key> on any object
             // answers from the region it stands in (ObjBase), and for a structure that
             // IS its own region. The stored tag is the save-side carrier; the region

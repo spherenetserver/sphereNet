@@ -120,6 +120,24 @@ public class Sphere56TSaveCompatTests
         // A multi carries its structure's region inside its own record.
         Assert.False(unhandled.ContainsKey("REGION.TAG.owner"),
             "a house's region tags were parked in SAVE.* tags");
+
+        // A classic stone keeps its roster in its own record, and the guild layer has
+        // to come back with it - not just accept the lines.
+        Assert.False(unhandled.ContainsKey("MEMBER"), "guild members were parked in SAVE.* tags");
+        var guilds = new SphereNet.Game.Guild.GuildManager();
+        guilds.DeserializeFromWorld(world);
+        _out.WriteLine($"guilds rebuilt: {guilds.GuildCount}");
+        Assert.True(guilds.GuildCount > 0, "no guild came back from the stones");
+
+        var stone = world.FindItem(new SphereNet.Core.Types.Serial(0x04000F6EF));
+        Assert.NotNull(stone);
+        var saints = guilds.GetGuild(stone!.Uid);
+        Assert.NotNull(saints);
+        Assert.Equal("Saints OF Ultima", saints!.Name);
+        Assert.Equal("SOU", saints.Abbreviation);
+        _out.WriteLine($"Saints OF Ultima members: {saints.Members.Count}");
+        Assert.True(saints.Members.Count > 5, $"expected the roster, got {saints.Members.Count}");
+        Assert.Contains(saints.Members, m => m.Priv == SphereNet.Game.Guild.GuildPriv.Master);
     }
 
     /// <summary>Field report: imported 56T spawner worldgems never spawned

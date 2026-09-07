@@ -552,6 +552,99 @@ public sealed class GuildManager
     // both are escaped. The escape CHARACTER has to be escaped as well, or a title that
     // genuinely contains a backslash comes back as a separator: "Ranger\camp" used to
     // load as "Ranger:amp".
+
+    /// <summary>Read a line a CLASSIC guild or town stone carries in its own record.
+    ///
+    /// Upstream keeps the roster on the stone: ALIGN, ABBREV, WEBPAGE, CHARTER&lt;n&gt;
+    /// and one MEMBER line per member, written as
+    /// <c>uid,title,priv,loyaluid,abbrev,wedeclaredwar,accountgold</c>
+    /// (CItemStone::r_LoadVal :345 / r_Write :145). SphereNet keeps the same data in
+    /// the stone's GUILD.* tags, which is what <see cref="DeserializeFromWorld"/>
+    /// rebuilds from - so a classic line is translated into that shape here. Refusing
+    /// these lines dropped every guild in an imported shard: its alignment, its
+    /// abbreviation and all of its members.
+    ///
+    /// Returns false for a key that is not one of them, so the caller can go on.</summary>
+    public static bool TryApplyClassicStoneKey(Objects.Items.Item stone, string upperKey, string value)
+    {
+        switch (upperKey)
+        {
+            case "ALIGN":
+                stone.SetTag("GUILD.ALIGN", value.Trim());
+                return true;
+            case "ABBREV":
+                stone.SetTag("GUILD.ABBREV", value.Trim());
+                return true;
+            case "WEBPAGE":
+                stone.SetTag("GUILD.WEB", value.Trim());
+                return true;
+            case "MEMBER":
+                return TryAppendClassicMember(stone, value);
+        }
+
+        // CHARTER0, CHARTER1 … - upstream keeps an ARRAY of lines and SphereNet one
+        // string, so the lines are joined in the order they arrive. The flattening is
+        // deliberate: a charter reads as one text everywhere it is shown.
+        if (upperKey.StartsWith("CHARTER", StringComparison.Ordinal) &&
+            upperKey.Length > 7 && char.IsDigit(upperKey[7]))
+        {
+            string line = value.Trim();
+            if (line.Length == 0)
+                return true;
+            string existing = stone.TryGetTag("GUILD.CHARTER", out string? had) ? had ?? "" : "";
+            stone.SetTag("GUILD.CHARTER", existing.Length == 0 ? line : $"{existing} {line}");
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>One classic MEMBER line. Privileges 100/101 are not members at all -
+    /// they are the war and alliance records the same list carries (STONEPRIV_ENEMY /
+    /// _ALLY), and the two flag fields say who declared it: the fifth field is THEIRS,
+    /// the sixth is OURS (the reference's own format comment, CItemStone.cpp:145).</summary>
+    private static bool TryAppendClassicMember(Objects.Items.Item stone, string value)
+    {
+        var f = value.Split(',');
+        if (f.Length < 1 || f[0].Trim().Length == 0)
+            return true;                       // a line with no uid names nobody
+
+        uint uid = ParseHexSerial(f[0]);
+        if (uid == 0)
+            return true;
+
+        string Field(int i) => i < f.Length ? f[i].Trim() : "";
+        int Num(int i) => int.TryParse(Field(i), out int n) ? n : 0;
+
+        int priv = f.Length > 2 ? Num(2) : (int)GuildPriv.Candidate;
+        bool theyDeclared = Num(4) != 0;
+        bool weDeclared = Num(5) != 0;
+
+        if (priv is (int)GuildPriv.Enemy or (int)GuildPriv.Ally)
+        {
+            bool ally = priv == (int)GuildPriv.Ally;
+            Append(stone, "GUILD.RELATIONS",
+                $"0{uid:X}:{(!ally && weDeclared ? "1" : "0")}:{(!ally && theyDeclared ? "1" : "0")}:" +
+                $"{(ally && weDeclared ? "1" : "0")}:{(ally && theyDeclared ? "1" : "0")}");
+            return true;
+        }
+
+        uint loyal = ParseHexSerial(Field(3));
+        Append(stone, "GUILD.MEMBERS",
+            $"0{uid:X}:{priv}:{EscapeField(Field(1))}:{Num(6)}:" +
+            $"{(loyal == 0 ? "0" : $"0{loyal:X}")}:{(theyDeclared ? "1" : "0")}");
+        return true;
+    }
+
+    /// <summary>Add one record to a comma-separated tag, keeping what is already
+    /// there: a stone writes one MEMBER line per member and they arrive one at a
+    /// time.</summary>
+    private static void Append(Objects.Items.Item stone, string tag, string record)
+    {
+        string existing = stone.TryGetTag(tag, out string? had) ? had ?? "" : "";
+        stone.SetTag(tag, existing.Length == 0 ? record : $"{existing},{record}");
+    }
+
     private static string EscapeField(string? text) =>
         (text ?? "").Replace("\\", "\\e").Replace(":", "\\c").Replace(",", "\\m");
 
@@ -672,8 +765,19 @@ public sealed class GuildManager
         foreach (var obj in world.GetAllObjects().OrderBy(o => o.Uid.Value))
         {
             if (obj is not Objects.Items.Item item) continue;
-            if (!item.TryGetTag("GUILD.NAME", out string? guildName)) continue;
-            if (string.IsNullOrWhiteSpace(guildName)) continue;
+            if (!item.TryGetTag("GUILD.NAME", out string? guildName) ||
+                string.IsNullOrWhiteSpace(guildName))
+            {
+                // A classic stone writes no name of its own: the guild is called
+                // whatever the stone is called (CItemStone::GetName). Its roster is
+                // what says it is a guild at all.
+                if (item.ItemType is not (Core.Enums.ItemType.StoneGuild or Core.Enums.ItemType.StoneTown) ||
+                    !item.TryGetTag("GUILD.MEMBERS", out _))
+                    continue;
+                guildName = item.Name;
+                if (string.IsNullOrWhiteSpace(guildName))
+                    continue;
+            }
 
             var safeName = guildName.Trim();
             var guild = new GuildDef(item.Uid)

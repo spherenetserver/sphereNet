@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | `4dbfc49` (PLAN-106 üçüncü dilim) |
-| Tam test | 3.253 başarılı / 0 başarısız |
-| Sıradaki iş | **İŞ-2 devamı: lonca taşı alanları (28) — tek kök** |
+| Son commit | PLAN-106 dördüncü dilim (bu oturum) |
+| Tam test | 3.257 başarılı / 0 başarısız |
+| Sıradaki iş | **İŞ-2 devamı: gemi HATCH/PLANK (9)** |
 
 ## Çalışma sırası
 
@@ -32,23 +32,23 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 
 - [ ] **İŞ-2 — 56T'nin eşlenmeyen kayıt anahtarları** (PLAN-106) — **KISMEN**
   Kapanan dilimler: (1) shard'ın kendi skill adları, (2) kaydın türünün tanımdan
-  gelmesi — harita pinleri ve kitap sayfaları, (3) yapının bölgesi (REGION.TAG.\*).
-  Paketsiz ölçümde 17, doğru ölçümde (paket + sunucu kablolaması) **8** tür kalıyor.
+  gelmesi — harita pinleri/kitap sayfaları, (3) yapının bölgesi (REGION.TAG.\*),
+  (4) klasik taşın loncası (ALIGN/ABBREV/CHARTER/MEMBER). Paketsiz ölçümde 17,
+  doğru ölçümde (paket + sunucu kablolaması) **4** tür kalıyor.
 
-  Kalanların sınıflandırma taslağı — **hepsi doğrulanmamış hipotez**:
-
-  | Anahtar | Adet | Hipotez | Nereye bakmalı |
+  | Anahtar | Adet | Hipotez (doğrulanmamış) | Nereye bakmalı |
   |---|---:|---|---|
-  | KILLSPLAYER | 897 | 56x'in ayrık öldürme sayacı; motorda tek `KILLS` var. Source-X'te bu ad YOK — 0.56 dönemi alanı. Tasarım kararı ister. | `Character.Kills`, `WorldSaver:907` |
+  | KILLSPLAYER | 897 | 56x'in ayrık öldürme sayacı; motorda tek `KILLS` var. Source-X'te bu ad YOK — 0.56 dönemi alanı. **Tasarım kararı ister.** | `Character.Kills`, `WorldSaver:907` |
   | KILLSNPC | 286 | aynı ailenin NPC yarısı | aynı |
-  | ALIGN / MEMBER / ABBREV / CHARTER0 | 28 | lonca taşı alanları (hizalanma, üye, kısaltma, ferman) | guild stone kalıcılığı, `CItemStone.cpp` |
-  | HATCH / PLANK | 9 | gemi bileşen bağlantıları | `ShipEngine`, multi kaydı |
+  | HATCH | 8 | gemi ambar kapağı bağlantısı | `ShipEngine`, multi kaydı |
+  | PLANK | 1 | gemi iskelesi bağlantısı | aynı |
 
-  Sıradaki adım: **lonca taşı alanları (28, tek kök)** → gemi HATCH/PLANK (9) → en
-  sonda KILLSPLAYER/KILLSNPC (1183; `KILLS`e mi toplanacak, ayrı alan mı — kullanıcı
-  kararı isteyebilir).
+  Sıradaki adım: **gemi HATCH/PLANK (9)** — küçük ve tek kök. Sonra KILLSPLAYER/
+  KILLSNPC: bunlar için önce karar gerekiyor (tek `KILLS`e mi toplansın, yoksa iki
+  ayrı alan mı açılsın); Source-X'te bu adlar bulunmuyor, yani parite değil legacy
+  veri korunumu meselesi.
 
-  Bu dilimden çıkan iki yan iş (ikisi de bilinçli ertelendi):
+  Bu dilimlerden çıkan yan işler (bilinçli ertelendi):
   - `Item` içinde kalan ham `_type` kapıları (yığın/hafıza/multi-custom/statik blok).
   - Bölge tetikleyicilerinin nesne kimliği: `FireRegionEvents` script'i karakter
     üzerinde çalıştırıyor, referansta bölge nesnesi üzerinde çalışır (SRC karakter).
@@ -74,6 +74,10 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-2 dördüncü dilim (PLAN-106)** — 2026-09-07. Klasik lonca/şehir taşının
+  ALIGN/ABBREV/CHARTER/MEMBER satırları motorun GUILD.* biçimine çevriliyor; gerçek
+  veride 10 lonca geri geldi (en büyüğü 13 üye). Taş kendi adını veriyor. Ölçüm
+  8 → 4. Test: `LegacySaveKeyParityTests` +4; tam suite 3.257.
 - **İŞ-2 üçüncü dilim (PLAN-106)** — 2026-09-07. Multi kaydındaki
   `REGION.TAG.<ad>` satırları okunuyor, geri yazılıyor ve ev/gemi bölgesi
   gerçekleşirken bölgeye kopyalanıyor (93+1 kayıt). Okuma bilinçli olarak eşyada

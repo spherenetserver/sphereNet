@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-07] - A classic stone brings its guild with it (PLAN-106)
+----------------------------------------
+
+FIX - Every guild in an imported shard was lost. A classic guild or town stone keeps
+        its roster in its own record - ALIGN, ABBREV, CHARTER<n>, WEBPAGE and one
+        MEMBER line per member, written as
+        uid,title,priv,loyaluid,abbrev,wedeclaredwar,accountgold (CItemStone.cpp:145) -
+        and none of those keys had a case here. They were parked in SAVE.* tags, the
+        guild layer (which rebuilds from the stone's GUILD.* tags) saw no guild at all,
+        and the next save wrote none of it back. The 56T dump carries 10 stones and 144
+        such lines. A classic line is translated into the engine's own shape now, so
+        those 10 guilds come back with their names, abbreviations, alignments and
+        rosters - the largest with 13 members, its master included.
+
+FIX - A classic stone writes no name of its own: the guild is called whatever the
+        STONE is called (CItemStone::GetName). The rebuild keyed on a GUILD.NAME tag
+        alone, so even a stone whose roster had been read would have come back
+        nameless. A stone carrying a roster now takes its own name.
+
+NOTE - Privilege 100 / 101 in that list are not members: they are the war and alliance
+        records (STONEPRIV_ENEMY / _ALLY), and they become relations rather than
+        members. The 56T dump carries none of them, so that branch rests on the
+        reference's own format comment and its unit test, not on live data.
+
 [2026-09-07] - A structure's region travels inside its own record (PLAN-106)
 ----------------------------------------
 

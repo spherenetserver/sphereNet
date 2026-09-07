@@ -3,6 +3,30 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-07] - Klasik tas loncasini da getirir (PLAN-106)
+----------------------------------------
+
+FIX - Import edilen shard'in butun loncalari kayboluyordu. Klasik lonca ya da sehir
+        tasi listesini kendi kaydinda tutar - ALIGN, ABBREV, CHARTER<n>, WEBPAGE ve
+        her uye icin bir MEMBER satiri; bicim
+        uid,baslik,yetki,sadakat_uid,kisaltma,savas_actik,hesap_altini
+        (CItemStone.cpp:145) - ve bu anahtarlarin hicbiri icin case yoktu. Hepsi SAVE.*
+        tag'ine park ediliyor, lonca katmani (tasin GUILD.* tag'lerinden yeniden kurar)
+        hicbir lonca gormuyor ve sonraki kayit bunlarin hicbirini geri yazmiyordu. 56T
+        dokumunde 10 tas ve 144 boyle satir var. Klasik satir artik motorun kendi
+        bicimine ceviriliyor; o 10 lonca adlari, kisaltmalari, hizalanmalari ve
+        listeleriyle geri geliyor - en buyugu ustasi dahil 13 uyeyle.
+
+FIX - Klasik tas kendi adini yazmaz: lonca, TASIN adiyla anilir
+        (CItemStone::GetName). Yeniden kurma yalnizca GUILD.NAME tag'ine bakiyordu;
+        listesi okunmus bir tas bile adsiz donerdi. Liste tasiyan tas artik kendi adini
+        aliyor.
+
+NOTE - O listedeki 100 / 101 yetkileri uye degildir: savas ve ittifak kayitlaridir
+        (STONEPRIV_ENEMY / _ALLY) ve uye yerine iliski olarak ceviriliyor. 56T
+        dokumunde bunlardan yok; bu dal referansin kendi bicim yorumuna ve birim
+        testine dayaniyor, canli veriye degil.
+
 [2026-09-07] - Yapinin bolgesi kendi kaydinin icinde tasinir (PLAN-106)
 ----------------------------------------
 

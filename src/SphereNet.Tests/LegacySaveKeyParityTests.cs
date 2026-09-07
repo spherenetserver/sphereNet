@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using Microsoft.Extensions.Logging;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
@@ -247,5 +248,115 @@ public sealed class LegacySaveKeyParityTests : IDisposable
         // asks the REGION for it.
         Assert.True(item.TryGetProperty("REGION.TAG.OWNER", out string value));
         Assert.Equal("09191", value);
+    }
+
+    // ================================================================
+    // A classic guild or town stone keeps its whole roster in its own record: ALIGN,
+    // ABBREV, CHARTER<n> and one MEMBER line per member, written as
+    // uid,title,priv,loyaluid,abbrev,wedeclaredwar,accountgold (CItemStone.cpp:145).
+
+    [Fact]
+    public void AClassicStonesRosterBecomesAGuild()
+    {
+        var world = NewWorld();
+        var master = world.CreateCharacter();
+        var member = world.CreateCharacter();
+
+        var stone = world.CreateItem();
+        stone.ItemType = ItemType.StoneGuild;
+        stone.Name = "Saints OF Ultima";
+
+        Assert.True(stone.TrySetProperty("ALIGN", "1"));
+        Assert.True(stone.TrySetProperty("ABBREV", "SOU"));
+        Assert.True(stone.TrySetProperty("CHARTER0", "We stand together"));
+        Assert.True(stone.TrySetProperty("MEMBER", $"0{master.Uid.Value:X},Lord,2,0{master.Uid.Value:X},1,0,50"));
+        Assert.True(stone.TrySetProperty("MEMBER", $"0{member.Uid.Value:X},,1,0,0,0,0"));
+
+        var guilds = new SphereNet.Game.Guild.GuildManager();
+        guilds.DeserializeFromWorld(world);
+
+        var guild = guilds.GetGuild(stone.Uid);
+        Assert.NotNull(guild);
+        // A classic stone writes no name of its own - the guild is called what the
+        // stone is called.
+        Assert.Equal("Saints OF Ultima", guild!.Name);
+        Assert.Equal("SOU", guild.Abbreviation);
+        Assert.Equal(SphereNet.Game.Guild.GuildAlign.Order, guild.Align);
+        Assert.Equal("We stand together", guild.Charter);
+
+        Assert.Equal(2, guild.Members.Count);
+        var lord = guild.Members.Single(m => m.CharUid == master.Uid);
+        Assert.Equal(SphereNet.Game.Guild.GuildPriv.Master, lord.Priv);
+        Assert.Equal("Lord", lord.Title);
+        Assert.Equal(50, lord.AccountGold);
+        Assert.Equal(master.Uid, lord.LoyalTo);
+        Assert.True(lord.ShowAbbrev);
+
+        var plain = guild.Members.Single(m => m.CharUid == member.Uid);
+        Assert.Equal(SphereNet.Game.Guild.GuildPriv.Member, plain.Priv);
+        Assert.False(plain.ShowAbbrev);
+    }
+
+    [Fact]
+    public void AMemberTitleKeepsItsPunctuation()
+    {
+        var world = NewWorld();
+        var ch = world.CreateCharacter();
+        var stone = world.CreateItem();
+        stone.ItemType = ItemType.StoneGuild;
+        stone.Name = "Punctuation";
+
+        // The engine's own member record is colon-and-comma separated, so a title
+        // carrying either has to come back whole.
+        Assert.True(stone.TrySetProperty("MEMBER", $"0{ch.Uid.Value:X},The: Bold,1,0,1,0,0"));
+
+        var guilds = new SphereNet.Game.Guild.GuildManager();
+        guilds.DeserializeFromWorld(world);
+
+        var guild = guilds.GetGuild(stone.Uid);
+        Assert.Equal("The: Bold", Assert.Single(guild!.Members).Title);
+    }
+
+    [Fact]
+    public void AWarRecordInTheRosterBecomesARelationRatherThanAMember()
+    {
+        var world = NewWorld();
+        var ours = world.CreateCharacter();
+        var theirs = world.CreateCharacter();
+
+        var enemyStone = world.CreateItem();
+        enemyStone.ItemType = ItemType.StoneGuild;
+        enemyStone.Name = "The other guild";
+        Assert.True(enemyStone.TrySetProperty("MEMBER", $"0{theirs.Uid.Value:X},,2,0,1,0,0"));
+
+        var stone = world.CreateItem();
+        stone.ItemType = ItemType.StoneGuild;
+        stone.Name = "At war";
+        Assert.True(stone.TrySetProperty("MEMBER", $"0{ours.Uid.Value:X},,1,0,1,0,0"));
+        // Privilege 100 is STONEPRIV_ENEMY: the same list carries the war records, and
+        // the sixth field says WE declared it.
+        Assert.True(stone.TrySetProperty("MEMBER", $"0{enemyStone.Uid.Value:X},,100,0,0,1,0"));
+
+        var guilds = new SphereNet.Game.Guild.GuildManager();
+        guilds.DeserializeFromWorld(world);
+
+        var guild = guilds.GetGuild(stone.Uid);
+        Assert.NotNull(guild);
+        Assert.Single(guild!.Members);                 // the enemy is not a member
+        var relation = Assert.Single(guild.Relations.Values);
+        Assert.Equal(enemyStone.Uid, relation.OtherStoneUid);
+        Assert.True(relation.WeDeclaredWar);
+        Assert.False(relation.WeDeclaredAlliance);
+    }
+
+    [Fact]
+    public void AnOrdinaryItemIsNotAStone()
+    {
+        var world = NewWorld();
+        var item = world.CreateItem();
+        item.BaseId = 0x1F03;
+
+        // ALIGN on something that is not a stone means nothing to the guild layer.
+        Assert.False(item.TrySetProperty("ALIGN", "1"));
     }
 }

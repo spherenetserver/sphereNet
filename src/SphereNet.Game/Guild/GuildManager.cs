@@ -375,6 +375,12 @@ public sealed class GuildManager
 {
     private readonly Dictionary<Serial, GuildDef> _guilds = [];
 
+    /// <summary>How many houses a guild may own when its stone does not say
+    /// (Source-X _iMaxHousesGuild, ini MAXHOUSESGUILD, default 1). Upstream gives a
+    /// stone this value the moment it is built (CItemStone.cpp:24); the host sets it
+    /// from the configuration.</summary>
+    public static int DefaultMaxHouses { get; set; } = 1;
+
     public GuildDef? GetGuild(Serial stoneUid) => _guilds.GetValueOrDefault(stoneUid);
     public int GuildCount => _guilds.Count;
 
@@ -423,7 +429,12 @@ public sealed class GuildManager
     {
         if (_guilds.TryGetValue(stoneUid, out var existing))
             return existing;
-        var guild = new GuildDef(stoneUid) { Name = name, IsTownStone = isTownStone };
+        var guild = new GuildDef(stoneUid)
+        {
+            Name = name,
+            IsTownStone = isTownStone,
+            MaxHouses = DefaultMaxHouses,
+        };
         var master = guild.AddRecruit(masterUid);
         master.Priv = GuildPriv.Master;
         _guilds[stoneUid] = guild;
@@ -782,6 +793,8 @@ public sealed class GuildManager
             var safeName = guildName.Trim();
             var guild = new GuildDef(item.Uid)
             {
+                // What the stone does not say, the server's default says.
+                MaxHouses = DefaultMaxHouses,
                 Name = safeName[..Math.Min(40, safeName.Length)],
                 // Town records stay in their own membership pool (tag first,
                 // stone item type as the legacy fallback).

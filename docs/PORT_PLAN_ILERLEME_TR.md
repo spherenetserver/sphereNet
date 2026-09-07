@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | `4c7bcd8` (İŞ-5 ilk dilim) |
-| Tam test | 3.279 başarılı / 0 başarısız |
-| Sıradaki iş | **İŞ-5 devamı: oynanış ini anahtarları (13 adet)** |
+| Son commit | İŞ-5 ikinci dilim (bu oturum) |
+| Tam test | 3.281 başarılı / 0 başarısız |
+| Sıradaki iş | **İŞ-5 devamı: kalan oynanış anahtarları (11 adet)** |
 
 ## Çalışma sırası
 
@@ -77,6 +77,12 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   NPCSKILLSAVE, MAXPOLYSTATS, DISTANCEFORMULA, NOWEATHER, MAXHOUSESGUILD, STATSFLAGS,
   FLIPDROPPEDITEMS. Ağ/altyapı grubu önce tasarım kararı ister; MONSTERTIGHT
   referansta yok (sapma olarak kaydedilmeli).
+
+  **İkinci dilim (aynı oturum):** okunmayan anahtarların ikinci sınıfı — **ad
+  uyuşmazlığı**. `NPCTRAINPERCENT`/`NPCTRAINMAX` referansın adları; ayar bizde
+  çalışıyordu ama bu adlarla okunmuyordu → shard'ın değeri hiç uygulanmıyordu. İkisi
+  de kabul ediliyor artık. `MAXHOUSESGUILD` eklendi (referans varsayılanı 1).
+  `HITSUPDATERATE` referansta ELEM_VOID — davranış uydurulmadı, sapma olarak yazıldı.
 
 ## Yapıldı
 

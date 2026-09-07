@@ -738,6 +738,7 @@ public static partial class Program
         _world.MaxContainerItems = _config.ContainerMaxItems;
         SphereNet.Game.Objects.Items.Item.ItemsMaxAmount = _config.ItemsMaxAmount;
         SphereNet.Game.Objects.Items.Item.MaxItemComplexity = _config.MaxItemComplexity;
+        SphereNet.Game.Guild.GuildManager.DefaultMaxHouses = _config.MaxHousesGuild;
         _world.MaxBankItems      = _config.BankMaxItems;
         _world.MaxBankWeight        = _config.BankMaxWeight;
         _world.MaxContainerWeight   = _config.ContainerMaxWeight;

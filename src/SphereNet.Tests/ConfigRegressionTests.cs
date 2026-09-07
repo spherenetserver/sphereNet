@@ -336,4 +336,53 @@ public class ConfigRegressionTests
         }
         finally { File.Delete(tmp); }
     }
+
+    [Fact]
+    public void SphereConfig_AcceptsTheReferencesOwnKeyNames()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_alias_{Guid.NewGuid():N}.ini");
+        File.WriteAllText(tmp, """
+            [SPHERE]
+            NpcTrainPercent=45
+            NpcTrainMax=700
+            MaxHousesGuild=3
+            """);
+        try
+        {
+            var ini = new SphereNet.Core.Configuration.IniParser();
+            ini.Load(tmp);
+            var config = new SphereConfig();
+            config.LoadFromIni(ini);
+
+            // The training settings worked, but only under this engine's own spelling:
+            // a shard writing the reference's NPCTRAINPERCENT / NPCTRAINMAX
+            // (CServerConfig.cpp:667/668) changed nothing.
+            Assert.Equal(45, config.TrainSkillPercent);
+            Assert.Equal(700, config.TrainSkillMax);
+            Assert.Equal(3, config.MaxHousesGuild);
+        }
+        finally { File.Delete(tmp); }
+    }
+
+    [Fact]
+    public void SphereConfig_KeepsTheEnginesOwnSpellingToo()
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_alias2_{Guid.NewGuid():N}.ini");
+        File.WriteAllText(tmp, """
+            [SPHERE]
+            TrainSkillPercent=55
+            TrainSkillMax=800
+            """);
+        try
+        {
+            var ini = new SphereNet.Core.Configuration.IniParser();
+            ini.Load(tmp);
+            var config = new SphereConfig();
+            config.LoadFromIni(ini);
+
+            Assert.Equal(55, config.TrainSkillPercent);
+            Assert.Equal(800, config.TrainSkillMax);
+        }
+        finally { File.Delete(tmp); }
+    }
 }

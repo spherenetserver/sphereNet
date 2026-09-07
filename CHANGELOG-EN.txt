@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-07] - Settings that worked under the wrong name (IS-5)
+----------------------------------------
+
+FIX - NPC training was configurable and the setting worked - under this engine's own
+        spelling only. The reference calls those keys NPCTRAINPERCENT and NPCTRAINMAX
+        (CServerConfig.cpp:667/668), which is what a shard's ini writes, so the shard
+        set them and nothing changed. Both names are accepted now; the reference's wins
+        when a file carries both.
+
+NEW - MAXHOUSESGUILD: how many houses a guild may own when its own stone does not say.
+        Upstream gives a stone this value the moment it is built (CItemStone.cpp:24,
+        default 1); here a guild simply had no limit of its own unless a tag set one.
+
+NOTE - HITSUPDATERATE, which the live ini also sets, is ELEM_VOID upstream - the
+        reference accepts the key and does nothing with it. It is recorded as such
+        rather than given a behaviour this engine would have had to invent.
+
 [2026-09-07] - What a teleport looks and sounds like is a setting (IS-5)
 ----------------------------------------
 

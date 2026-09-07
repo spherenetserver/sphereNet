@@ -3,6 +3,23 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-07] - Yanlis ad altinda calisan ayarlar (IS-5)
+----------------------------------------
+
+FIX - NPC egitimi yapilandirilabilirdi ve ayar calisiyordu - ama yalnizca bu motorun
+        kendi yazimiyla. Referans bu anahtarlara NPCTRAINPERCENT ve NPCTRAINMAX der
+        (CServerConfig.cpp:667/668); shard'in ini'si de oyle yazar, yani shard bunlari
+        set ediyor ve hicbir sey degismiyordu. Artik iki ad da kabul ediliyor; dosyada
+        ikisi de varsa referansinki kazanir.
+
+NEW - MAXHOUSESGUILD: bir loncanin kendi tasi soylemediginde kac ev sahibi olabilecegi.
+        Referans tasa bu degeri kuruldugu anda verir (CItemStone.cpp:24, varsayilan 1);
+        burada lonca, bir tag koymadikca kendi sinirina hic sahip degildi.
+
+NOTE - Canli ini'nin ayrica set ettigi HITSUPDATERATE referansta ELEM_VOID'dir -
+        anahtari kabul eder, hicbir sey yapmaz. Bu motorun uydurmak zorunda kalacagi bir
+        davranis verilmedi, oldugu gibi kaydedildi.
+
 [2026-09-07] - Teleportun gorunusu ve sesi bir ayardir (IS-5)
 ----------------------------------------
 

@@ -287,6 +287,12 @@ public sealed class SphereConfig
     /// <summary>Teleport sound for an NPC (default 0x01FE).</summary>
     public int TeleportSoundNpc { get; set; } = 0x01FE;
 
+    /// <summary>How many houses a guild may own by default (Source-X
+    /// _iMaxHousesGuild, ini MAXHOUSESGUILD, default 1). It is the value a stone
+    /// starts with (CItemStone.cpp:24); a stone that names its own MAXHOUSES keeps
+    /// that.</summary>
+    public int MaxHousesGuild { get; set; } = 1;
+
     /// <summary>How many copies one DUPE of a TOP-LEVEL item may make (Source-X
     /// CServerConfig m_iMaxItemComplexity, ini MAXITEMCOMPLEXITY, default 25). It is
     /// the ceiling on how much a single script line may pile on one square; a copy
@@ -683,14 +689,23 @@ public sealed class SphereConfig
         MinKarma = ini.GetInt(section, "MinKarma", MinKarma);
 
         ContainerMaxItems = ini.GetInt(section, "ContainerMaxItems", ContainerMaxItems);
-        TrainSkillPercent = Math.Clamp(ini.GetInt(section, "TrainSkillPercent", TrainSkillPercent), 0, 100);
-        TrainSkillMax = Math.Max(0, ini.GetInt(section, "TrainSkillMax", TrainSkillMax));
+        // The reference calls these NPCTRAINPERCENT and NPCTRAINMAX
+        // (CServerConfig.cpp:667/668). The settings worked, but only under this
+        // engine's own spelling, so a shard's own ini set them and nothing changed.
+        // Both names are accepted; the reference's wins when both are present.
+        TrainSkillPercent = Math.Clamp(
+            ini.GetInt(section, "NpcTrainPercent",
+                ini.GetInt(section, "TrainSkillPercent", TrainSkillPercent)), 0, 100);
+        TrainSkillMax = Math.Max(0,
+            ini.GetInt(section, "NpcTrainMax",
+                ini.GetInt(section, "TrainSkillMax", TrainSkillMax)));
         TrainSkillCost = Math.Max(0, ini.GetInt(section, "TrainSkillCost", TrainSkillCost));
         BankMaxItems = ini.GetInt(section, "BankMaxItems", BankMaxItems);
         BankMaxWeight = ini.GetInt(section, "BankMaxWeight", BankMaxWeight);
         ContainerMaxWeight = ini.GetInt(section, "ContainerMaxWeight", ContainerMaxWeight);
         ItemsMaxAmount = ini.GetInt(section, "ItemsMaxAmount", ItemsMaxAmount);
         MaxItemComplexity = ini.GetInt(section, "MaxItemComplexity", MaxItemComplexity);
+        MaxHousesGuild = Math.Max(0, ini.GetInt(section, "MaxHousesGuild", MaxHousesGuild));
         TeleportEffectStaff = GetIntOrHex(ini, section, "TeleportEffectStaff", TeleportEffectStaff);
         TeleportSoundStaff = GetIntOrHex(ini, section, "TeleportSoundStaff", TeleportSoundStaff);
         TeleportEffectPlayers = GetIntOrHex(ini, section, "TeleportEffectPlayers", TeleportEffectPlayers);

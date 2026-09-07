@@ -2800,6 +2800,19 @@ yerine).
 karari. Ayrica bu tur yalnizca CANLI ini'nin set ettigi anahtarlara bakti; referansin
 279 anahtarinin tamami ile karsilastirma ayri bir istir.
 
+**IS-5 ikinci dilim (7 Eylul 2026):** okunmayan anahtarlarin ikinci sinifi bulundu -
+**ad uyusmazligi**: ayar var ve calisiyor, ama referansin ANAHTAR ADI kabul edilmiyor.
+
+- [x] **B5-2 (P2)** - NPC egitim ayarlari yalnizca `TrainSkillPercent`/`TrainSkillMax`
+  adlariyla okunuyordu; referans (ve shard ini'si) `NPCTRAINPERCENT`/`NPCTRAINMAX` yazar.
+  (YAPILDI: iki ad da kabul ediliyor, referansinki oncelikli.)
+- [x] **B5-3 (P2)** - `MAXHOUSESGUILD` yoktu; lonca kendi tasi soylemedikce sinirsizdi.
+  (YAPILDI: config + `GuildManager.DefaultMaxHouses`, referans varsayilani 1.)
+- **HITSUPDATERATE**: referansta ELEM_VOID - kabul eder, hicbir sey yapmaz. Davranis
+  UYDURULMADI; sapma olarak kaydedildi.
+
+**Kapanis:** tam suite **3.281 basarili / 0 basarisiz** (+2).
+
 ### IS-4 - nesne olusturma/kopyalama giris noktalari tablosu (7 Eylul 2026)
 
 Kaynak: port plani IS-4 / PLAN-101. Amac: ayni isi yapan girislerin ortak ve farkli

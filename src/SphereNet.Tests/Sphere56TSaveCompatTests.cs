@@ -117,6 +117,9 @@ public class Sphere56TSaveCompatTests
         // line in the record: the engine has to read them through the definition.
         Assert.False(unhandled.ContainsKey("PIN"), "map pins were parked in SAVE.* tags");
         Assert.False(unhandled.ContainsKey("BODY.0"), "book pages were parked in SAVE.* tags");
+        // A multi carries its structure's region inside its own record.
+        Assert.False(unhandled.ContainsKey("REGION.TAG.owner"),
+            "a house's region tags were parked in SAVE.* tags");
     }
 
     /// <summary>Field report: imported 56T spawner worldgems never spawned

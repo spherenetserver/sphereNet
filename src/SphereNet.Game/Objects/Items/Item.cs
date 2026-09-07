@@ -2214,6 +2214,20 @@ public class Item : ObjBase
             case "REGION.FLAGS": case "REGION.EVENTS": case "HOUSETYPE":
                 SetTag(upper, value);
                 return true;
+            // A REGION.<key> line on a multi belongs to the structure's own region:
+            // upstream strips the prefix and hands the rest to the region's r_LoadVal
+            // (SHL_REGION, CItemMulti.cpp:3011). REGION.TAG.<name> - a house's owner,
+            // for one - had no case here, so it was refused on load and parked in a
+            // SAVE.* tag. The tag is kept on the item, which is what survives a save,
+            // and the region realization puts it on the live region.
+            case var regionTag when regionTag.StartsWith("REGION.TAG.", StringComparison.Ordinal):
+                SetTag(regionTag, value);
+                return true;
+            // Reading is deliberately NOT intercepted: REGION.<key> on any object
+            // answers from the region it stands in (ObjBase), and for a structure that
+            // IS its own region. The stored tag is the save-side carrier; the region
+            // realization copies it onto the live region, which is what a script
+            // inside the structure reads.
             case "OWNER":
             {
                 SetTag(upper, value);

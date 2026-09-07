@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-07] - A structure's region travels inside its own record (PLAN-106)
+----------------------------------------
+
+FIX - A house's region lines were refused on load. A multi carries its structure's
+        region in its own record, and upstream strips the "REGION." prefix and hands
+        the rest to that region (SHL_REGION, CItemMulti.cpp:3011): REGION.FLAGS and
+        REGION.EVENTS had cases here, REGION.TAG.<name> did not, so a 56T house's owner
+        - 93 of them - was parked in a SAVE.* tag and lost on the next save. The line is
+        kept on the multi, written back out under its own name, and copied onto the
+        region when the house or ship realizes it, which is where a script standing
+        inside the structure reads it from.
+
+NOTE - Reading REGION.<key> is deliberately NOT intercepted on the item: on any object
+        it answers from the region that object stands in, and for a structure that is
+        its own region. Intercepting it would have hidden the region from everything
+        else standing there.
+
 [2026-09-07] - A record's type comes from its definition (PLAN-106)
 ----------------------------------------
 

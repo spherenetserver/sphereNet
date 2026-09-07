@@ -835,7 +835,11 @@ public sealed class WorldSaver
                 continue;
             if (upper is "SPAWNID" or "TIMELO" or "TIMEHI" or "MAXDIST"
                 or "REGION.FLAGS" or "REGION.EVENTS" or "OWNER" or "HOUSETYPE"
-                or "LOCKDOWNSPERCENT" or "BASEVENDORS" or "BASESTORAGE")
+                or "LOCKDOWNSPERCENT" or "BASEVENDORS" or "BASESTORAGE"
+                // A multi's region keys go back out under their own names, not as
+                // TAG.REGION.* - that is how the classic save writes them and how it
+                // reads them again (SHL_REGION, CItemMulti.cpp:3011).
+                || upper.StartsWith("REGION.TAG.", StringComparison.Ordinal))
             {
                 w.WriteProperty(upper, val);
             }

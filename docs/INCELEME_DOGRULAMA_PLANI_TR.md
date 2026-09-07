@@ -2767,6 +2767,27 @@ gecici olarak geri alinarak dokuz testin besinin eski davranisi yakaladigi kanit
 dali (referansta more2 uzerinden ikinci karakter uretimi) ve canta ici derin
 oz-referanslar.
 
+### PLAN-106 ucuncu dilim - yapinin bolgesi (7 Eylul 2026)
+
+- [x] **P106-6 (P2)** - Multi kaydindaki `REGION.TAG.<ad>` satirlari reddedilip SAVE.*
+  tag'ine park ediliyordu (56T'de 93 ev sahibi + 1 hp_bar); sonraki kayitta kayboluyordu.
+  (YAPILDI: satir multi uzerinde tutuluyor, kendi adiyla geri yaziliyor ve
+  `HousingEngine`/`ShipEngine` bolgeyi gerceklestirirken bolgeye kopyalaniyor.)
+
+**Bilincli sinir - okuma yakalanmadi:** `REGION.<anahtar>` okumasi zaten `ObjBase`
+uzerinden nesnenin icinde durdugu bolgeye gidiyor. Ilk denemede esya uzerinde
+yakalamistim; bu, orada duran her sey icin bolgeyi gizledi ve test yakaladi. Depolama
+(tag) ile okuma (bolge) ayri tutuldu.
+
+**Olcum:** eslenmeyen anahtar turu **10 -> 8**.
+
+**Kapanis:** tam suite **3.253 basarili / 0 basarisiz** (+3).
+
+**Acik kalan:** bolge tetikleyicilerinin nesne kimligi - `FireRegionEvents` script'i
+KARAKTER uzerinde calistiriyor, referansta ise bolge nesnesi uzerinde calisir ve SRC
+karakterdir. Yani bolge @Enter icinde `<TAG.owner>` su an karakterin tag'ini okur.
+Ayri bir tur ister; bu turda dogrulanmis bir hata olarak sayilmadi, statik gozlemdir.
+
 ### PLAN-106 ikinci dilim - kaydin turu tanimindan gelir (7 Eylul 2026)
 
 - [x] **P106-4 (P1)** - Harita pinleri (59) ve kitap sayfalari (18) klasik kayittan

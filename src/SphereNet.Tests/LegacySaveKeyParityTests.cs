@@ -181,4 +181,71 @@ public sealed class LegacySaveKeyParityTests : IDisposable
 
         Assert.False(item.TrySetProperty("PIN", "150,150"));
     }
+
+    // ================================================================
+    // A multi carries its structure's region inside its own record: upstream strips
+    // the "REGION." prefix and hands the rest to the region (SHL_REGION,
+    // CItemMulti.cpp:3011). A 56T house writes its owner that way.
+
+    [Fact]
+    public void AMultisRegionTagIsReadAndReadBack()
+    {
+        var world = NewWorld();
+        var multi = world.CreateItem();
+        multi.BaseId = 0x4000;
+
+        Assert.True(multi.TrySetProperty("REGION.TAG.owner", "09191"));
+
+        // The item CARRIES the line - that is what a save writes back - while reading
+        // REGION.<key> answers from the region, as it does on any object.
+        Assert.True(multi.TryGetTag("REGION.TAG.OWNER", out string? stored));
+        Assert.Equal("09191", stored);
+        Assert.False(multi.TryGetTag("SAVE.REGION.TAG.owner", out _));
+    }
+
+    [Fact]
+    public void AMultisRegionTagSurvivesASaveAndLoad()
+    {
+        var world = NewWorld();
+        var multi = world.CreateItem();
+        multi.BaseId = 0x4000;
+        Assert.True(multi.TrySetProperty("REGION.TAG.owner", "09191"));
+        world.PlaceItem(multi, new Point3D(60, 60, 0, 0));
+
+        string dir = Path.Combine(Path.GetTempPath(), $"sphnet_rt_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var lf = LoggerFactory.Create(_ => { });
+            new SphereNet.Persistence.Save.WorldSaver(lf).Save(world, dir);
+
+            var reloaded = NewWorld();
+            new SphereNet.Persistence.Load.WorldLoader(lf).Load(reloaded, dir);
+
+            var back = reloaded.FindItem(multi.Uid);
+            Assert.NotNull(back);
+            Assert.True(back!.TryGetTag("REGION.TAG.OWNER", out string? stored));
+            Assert.Equal("09191", stored);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void AnObjectStandingInTheRegionReadsItsTags()
+    {
+        var world = NewWorld();
+        var region = new SphereNet.Game.World.Regions.Region { Name = "Test house" };
+        region.AddRect(50, 50, 70, 70);
+        region.SetTag("OWNER", "09191");
+        world.AddRegion(region);
+
+        var item = world.CreateItem();
+        item.BaseId = 0x1F03;
+        world.PlaceItem(item, new Point3D(60, 60, 0, 0));
+
+        // The consumer the stored line exists for: whoever is inside the structure
+        // asks the REGION for it.
+        Assert.True(item.TryGetProperty("REGION.TAG.OWNER", out string value));
+        Assert.Equal("09191", value);
+    }
 }

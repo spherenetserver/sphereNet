@@ -3,6 +3,22 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-07] - Yapinin bolgesi kendi kaydinin icinde tasinir (PLAN-106)
+----------------------------------------
+
+FIX - Evin bolge satirlari yuklemede reddediliyordu. Multi, yapinin bolgesini kendi
+        kaydinda tasir; referans "REGION." onekini soyup kalanini o bolgeye verir
+        (SHL_REGION, CItemMulti.cpp:3011). REGION.FLAGS ve REGION.EVENTS icin case
+        vardi, REGION.TAG.<ad> icin yoktu; 56T evinin sahibi - 93 tanesi - SAVE.*
+        tag'ine park edilip sonraki kayitta kayboluyordu. Satir artik multi uzerinde
+        tutuluyor, kendi adiyla geri yaziliyor ve ev ya da gemi bolgesini
+        gerceklestirirken bolgeye kopyalaniyor - yapinin icindeki scriptin okudugu yer
+        orasi.
+
+NOTE - REGION.<anahtar> OKUMASI esya uzerinde bilincli olarak yakalanmiyor: herhangi
+        bir nesnede o okuma, nesnenin icinde durdugu bolgeden yanitlanir; yapi icin de
+        zaten kendi bolgesidir. Yakalamak, orada duran her sey icin bolgeyi gizlerdi.
+
 [2026-09-07] - Kaydin turu tanimindan gelir (PLAN-106)
 ----------------------------------------
 

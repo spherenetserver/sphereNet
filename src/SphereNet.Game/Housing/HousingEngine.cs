@@ -1105,10 +1105,27 @@ public sealed class HousingEngine
         // scripts fire (the tag round-trips on the item but was never realized).
         if (mi.TryGetTag("REGION.EVENTS", out string? regionEvents))
             region.AddEventsFromTag(regionEvents);
+        ApplyRegionTags(mi, region);
 
         _world.AddRegion(region);
         house.RegionUid = region.Uid;
     }
+
+    /// <summary>Put the multi's stored REGION.TAG.&lt;name&gt; lines on the region it
+    /// realizes. A classic save writes them on the multi and upstream hands them
+    /// straight to the region (SHL_REGION, CItemMulti.cpp:3011), which is where a
+    /// script standing inside the structure reads them from - a house's TAG.owner, for
+    /// one. Keeping them only on the item left the live region blank.</summary>
+    private static void ApplyRegionTags(SphereNet.Game.Objects.Items.Item mi,
+        SphereNet.Game.World.Regions.Region region)
+    {
+        foreach (var (key, val) in mi.Tags.GetAll())
+        {
+            if (key.StartsWith("REGION.TAG.", StringComparison.OrdinalIgnoreCase))
+                region.SetTag(key["REGION.TAG.".Length..], val);
+        }
+    }
+
 
     /// <summary>Tear down the dynamic region created by <see cref="CreateHouseRegion"/>.</summary>
     private void RemoveHouseRegion(House house)

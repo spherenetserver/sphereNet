@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | `22c7ed9` (PLAN-106 ikinci dilim) |
-| Tam test | 3.250 başarılı / 0 başarısız |
-| Sıradaki iş | **İŞ-2 devamı: REGION.TAG.\* (94) — tek kök** |
+| Son commit | PLAN-106 üçüncü dilim (bu oturum) |
+| Tam test | 3.253 başarılı / 0 başarısız |
+| Sıradaki iş | **İŞ-2 devamı: lonca taşı alanları (28) — tek kök** |
 
 ## Çalışma sırası
 
@@ -32,9 +32,8 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 
 - [ ] **İŞ-2 — 56T'nin eşlenmeyen kayıt anahtarları** (PLAN-106) — **KISMEN**
   Kapanan dilimler: (1) shard'ın kendi skill adları, (2) kaydın türünün tanımdan
-  gelmesi — harita pinleri ve kitap sayfaları. Ölçüm de düzeltildi: paket **ve**
-  sunucu kablolaması yüklüyken çalışan geçiş. Paketsiz ölçümde 17, doğru ölçümde
-  **10** tür anahtar kalıyor.
+  gelmesi — harita pinleri ve kitap sayfaları, (3) yapının bölgesi (REGION.TAG.\*).
+  Paketsiz ölçümde 17, doğru ölçümde (paket + sunucu kablolaması) **8** tür kalıyor.
 
   Kalanların sınıflandırma taslağı — **hepsi doğrulanmamış hipotez**:
 
@@ -42,18 +41,17 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   |---|---:|---|---|
   | KILLSPLAYER | 897 | 56x'in ayrık öldürme sayacı; motorda tek `KILLS` var. Source-X'te bu ad YOK — 0.56 dönemi alanı. Tasarım kararı ister. | `Character.Kills`, `WorldSaver:907` |
   | KILLSNPC | 286 | aynı ailenin NPC yarısı | aynı |
-  | REGION.TAG.owner | 93 | bölge tag'i; nesne kaydında region alt-bloğu | `WorldLoader` region dalı |
-  | ALIGN / MEMBER / ABBREV / CHARTER0 | 28 | lonca taşı alanları (hizalanma, üye, kısaltma, ferman) | guild stone kalıcılığı |
+  | ALIGN / MEMBER / ABBREV / CHARTER0 | 28 | lonca taşı alanları (hizalanma, üye, kısaltma, ferman) | guild stone kalıcılığı, `CItemStone.cpp` |
   | HATCH / PLANK | 9 | gemi bileşen bağlantıları | `ShipEngine`, multi kaydı |
-  | REGION.TAG.hp_bar | 1 | bölge tag'i (yukarıdakiyle aynı kök) | aynı |
 
-  Sıradaki adım: REGION.TAG.* (94, tek kök) → lonca alanları (28, tek kök) →
-  gemi HATCH/PLANK (9) → en sonda KILLSPLAYER/KILLSNPC (1183; `KILLS`e mi toplanacak,
-  ayrı alan mı — kullanıcı kararı isteyebilir).
+  Sıradaki adım: **lonca taşı alanları (28, tek kök)** → gemi HATCH/PLANK (9) → en
+  sonda KILLSPLAYER/KILLSNPC (1183; `KILLS`e mi toplanacak, ayrı alan mı — kullanıcı
+  kararı isteyebilir).
 
-  Ayrıca bu dilimden çıkan yan iş: `Item` içinde kalan ham `_type` kapıları
-  (yığın/hafıza/multi-custom/statik blok) aynı sınıf hataya açık; davranış yolları
-  oldukları için bilinçli olarak ertelendi.
+  Bu dilimden çıkan iki yan iş (ikisi de bilinçli ertelendi):
+  - `Item` içinde kalan ham `_type` kapıları (yığın/hafıza/multi-custom/statik blok).
+  - Bölge tetikleyicilerinin nesne kimliği: `FireRegionEvents` script'i karakter
+    üzerinde çalıştırıyor, referansta bölge nesnesi üzerinde çalışır (SRC karakter).
 
 - [ ] **İŞ-3 — Save→Load→Save alan bazında eşitlik** (PLAN-107)
   Temel stat, miktar, owner/parent, spawn üyeliği, timer ve vendor içeriği için
@@ -76,6 +74,11 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-2 üçüncü dilim (PLAN-106)** — 2026-09-07. Multi kaydındaki
+  `REGION.TAG.<ad>` satırları okunuyor, geri yazılıyor ve ev/gemi bölgesi
+  gerçekleşirken bölgeye kopyalanıyor (93+1 kayıt). Okuma bilinçli olarak eşyada
+  yakalanmadı — bölgeye gidiyor. Ölçüm 10 → 8. Test: `LegacySaveKeyParityTests` +3;
+  tam suite 3.253.
 - **İŞ-2 ikinci dilim (PLAN-106)** — 2026-09-07. Kitap/harita/gemi property
   kapıları ham `_type` yerine etkin türe (`Item.EffectiveType`) bakıyor; klasik
   kayıtta TYPE satırı olmadığı için 59 harita pini ve 18 kitap sayfası okunmuyordu.

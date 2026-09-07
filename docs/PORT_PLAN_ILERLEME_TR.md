@@ -14,7 +14,7 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | İŞ-5 üçüncü dilim (bu oturum) |
+| Son commit | `7587495` (İŞ-5 üçüncü dilim) |
 | Tam test | 3.282 başarılı / 0 başarısız |
 | Sıradaki iş | **İŞ-5 devamı: FLIPDROPPEDITEMS / BACKPACKOVERLOAD / SPELLTIMEOUT; NOWEATHER+NPCSKILLSAVE karar bekliyor** |
 

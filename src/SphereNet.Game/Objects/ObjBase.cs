@@ -364,23 +364,19 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     /// from the payload, so the payload may itself contain commas.</summary>
     internal void ScheduleTimerF(string args, long delayUnitMs)
     {
-        // The delay ends at the first comma OR the first space, whichever comes first:
-        // upstream reads the expression and then walks the pointer on to the command,
-        // skipping one argument separator (CObjBase.cpp:2777). Splitting on the comma
-        // alone threw away the whole "2 f_a" form, which is perfectly valid.
+        // The delay is an EXPRESSION and the command begins where it ends: upstream
+        // reads it with Exp_Get64Val and walks the pointer on to the command, skipping
+        // one argument separator (CObjBase.cpp:2777). Cutting the line at the first
+        // comma or space instead lost "2*3" and "(1+1)" - which scheduled nothing at
+        // all - and turned "1 + 1, f_done" into a job called "+".
         string trimmed = args.Trim();
-        int split = -1;
-        for (int i = 0; i < trimmed.Length; i++)
-        {
-            if (trimmed[i] == ',' || char.IsWhiteSpace(trimmed[i])) { split = i; break; }
-        }
-        if (split < 0)
-            return;                                   // a delay and nothing to run
-        string delayPart = trimmed[..split].Trim();
-        string payload = trimmed[(split + 1)..].TrimStart();
+        if (!Core.Types.ScriptNumber.TryEvaluatePrefix(trimmed, out long delay, out int split) ||
+            delay < 0)
+            return;                                   // unreadable or negative: refused
+        string payload = trimmed[split..].TrimStart();
         if (payload.StartsWith(',')) payload = payload[1..].TrimStart();
         if (string.IsNullOrWhiteSpace(payload))
-            return;
+            return;                                   // a delay and nothing to run
         // The payload is a command line, so it splits on Source-X's argument
         // separators ("=, \t", CExpression.cpp:144) and not on whitespace alone:
         // upstream keeps the raw payload and only runs ParseKey over it when the
@@ -391,28 +387,28 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             payload, out string functionName, out string functionArgs);
         functionArgs = functionArgs.Trim();
 
-        // A Sphere number: an expression, or hex when it leads with a zero. A value
-        // that cannot be read - or a negative one - is refused rather than silently
-        // scheduled for right now (:2777).
-        if (!TryParseSphereDelay(delayPart, out long delay) || delay < 0)
-            return;
         AddTimerF(delay * delayUnitMs, functionName, functionArgs);
     }
 
     /// <summary>Read a Sphere numeric literal or simple sum: a leading zero means hex
     /// (CExpression.cpp:666), and <c>1+1</c> is arithmetic rather than a parse failure
     /// that silently became zero.</summary>
-    /// <summary>Read a Sphere numeric literal or simple sum: a leading zero means hex
-    /// (CExpression.cpp:666), and <c>1+1</c> is arithmetic rather than a parse failure
-    /// that silently became zero. Shared with the other verbs that read a Sphere
-    /// number straight off a command line.</summary>
-    private static bool TryParseSphereDelay(string text, out long value) =>
-        Core.Types.ScriptNumber.TryParseArgument(text, out value);
+    /// <summary>The command a delayed job was queued with - what a STOP or ISTIMERF
+    /// pattern is matched against. Upstream keeps the whole line and matches the
+    /// pattern against all of it, arguments included
+    /// (CTimedFunctionHandler.cpp:19/34), so a pattern naming only the function does
+    /// NOT match a job that was given arguments. The line is rebuilt with a space,
+    /// which is the separator this engine splits payloads on.</summary>
+    private static string CommandOf(TimerFEntry entry) =>
+        entry.Args.Length == 0 ? entry.FunctionName : $"{entry.FunctionName} {entry.Args}";
 
     /// <summary>Cancel this object's delayed work. A null pattern clears everything
-    /// (TIMERF CLEAR); otherwise only the jobs whose command starts with it are removed
-    /// (TIMERF STOP &lt;pattern&gt;, CTimedFunctionHandler.cpp:34). A trailing '*' is
-    /// accepted as the wildcard scripts write.</summary>
+    /// (TIMERF CLEAR); otherwise the jobs whose COMMAND matches the pattern are removed
+    /// (TIMERF STOP &lt;pattern&gt;, CTimedFunctionHandler.cpp:34). The pattern is
+    /// Source-X's Str_Match: a plain name is an exact match and '*' / '?' are the
+    /// wildcards. Treating it as a prefix search stopped unrelated jobs that merely
+    /// began with the same text, and could not stop a job selected by its arguments.
+    /// </summary>
     public int ClearTimerF(string? pattern)
     {
         if (string.IsNullOrWhiteSpace(pattern))
@@ -421,25 +417,27 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             _timerFEntries.Clear();
             return all;
         }
-        string prefix = pattern.Trim().TrimEnd('*');
+        string trimmed = pattern.Trim();
         return _timerFEntries.RemoveAll(e =>
-            e.FunctionName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+            Core.Types.SpherePattern.Matches(trimmed, CommandOf(e)));
     }
 
-    /// <summary>Milliseconds until the named delayed job runs, or 0 when there is no
-    /// such job (ISTIMERF, CObjBase.cpp:1499 -> CTimedFunctionHandler.cpp:19).</summary>
+    /// <summary>Milliseconds until the matching delayed job runs, or 0 when there is
+    /// none (ISTIMERF, CObjBase.cpp:1499 -> CTimedFunctionHandler.cpp:19). Upstream
+    /// returns on the FIRST match, and jobs are appended in the order they were queued
+    /// (:111). Answering with the smallest remaining time instead reported the wrong
+    /// job when a script had queued the same function twice, and its "no match yet"
+    /// marker was a zero - so a job that was already due was overwritten by a later
+    /// one.</summary>
     public long GetTimerFRemaining(string pattern, long nowMs)
     {
-        string prefix = (pattern ?? "").Trim().TrimEnd('*');
-        long best = 0;
+        string trimmed = (pattern ?? "").Trim();
         foreach (var e in _timerFEntries)
         {
-            if (!e.FunctionName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                continue;
-            long remaining = Math.Max(0, e.DueTickMs - nowMs);
-            if (best == 0 || remaining < best) best = remaining;
+            if (Core.Types.SpherePattern.Matches(trimmed, CommandOf(e)))
+                return Math.Max(0, e.DueTickMs - nowMs);
         }
-        return best;
+        return 0;
     }
 
     /// <summary>Restore a persisted TIMERF entry ("remainingMs|functionName|args",

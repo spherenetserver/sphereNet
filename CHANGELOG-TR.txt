@@ -3,6 +3,32 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-07] - Gecikmeli isin adlandirilmasi, zamanlamasi ve sorgulanmasi (12W)
+----------------------------------------
+
+FIX - TIMERF STOP ve ISTIMERF deseni yalnizca fonksiyon adi uzerinde onek aramasina
+        indirgiyordu; "f_job" deseni "f_job_extra" isini de iptal ediyor, "f_jo?"
+        hicbir isi iptal etmiyor, argumanla secilen is ise hic iptal edilemiyordu.
+        Referans deseni, argumanlar dahil KUYRUGA GIREN KOMUTUN TAMAMIYLA Str_Match
+        ile karsilastirir (CTimedFunctionHandler.cpp:19/34): duz isim tam eslesmedir,
+        '*' / '?' / '[a-z]' ise joker. Bu desen dili artik ortak bir yardimci
+        (sstring.cpp:1750 portu).
+
+FIX - Gecikmeli komutun onundeki sure ilk virgul veya boslukta kesiliyor, ardindan
+        token-ya-da-toplam olarak okunuyordu; "2*3, f_done" ve "(1+1), f_done" HICBIR
+        is kurmuyor, "1 + 1, f_done" ise bir saniye sonrasina "+" adli bir is
+        koyuyordu. Referans sureyi Exp_Get64Val ile okur; ifadenin tamamini -
+        parantez, carpma ve operator etrafindaki bosluklar dahil - tuketir ve imleci
+        ardindan gelen komutun basinda birakir (CObjBase.cpp:2777,
+        CExpression.cpp:794/1256). Okuyucu artik ifadenin nerede bittigini bildiriyor,
+        komut da orada basliyor.
+
+FIX - ISTIMERF eslesen isler arasindan ilkini degil EN KUCUK kalan sureyi donduruyor,
+        ustelik sifiri "henuz eslesme yok" isareti olarak kullaniyordu; boylece vadesi
+        gelmis bir is sonraki isle eziliyor ve bekliyormus gibi raporlaniyordu.
+        Referans ilk eslesmede doner ve yeni isleri kabin sonuna ekler
+        (CTimedFunctionHandler.cpp:19/111).
+
 [2026-09-07] - Spawner icin tek recete yuruyusu ve kopyanin tasidiklari (13I/13J)
 ----------------------------------------
 

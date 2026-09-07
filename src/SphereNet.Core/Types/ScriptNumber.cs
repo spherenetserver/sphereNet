@@ -46,6 +46,129 @@ public static class ScriptNumber
         return true;
     }
 
+    /// <summary>Read the EXPRESSION a command line starts with, and say how much of
+    /// the line it used. Source-X reads a delay with Exp_Get64Val, which consumes the
+    /// whole expression - parentheses, multiplication and the spaces around an
+    /// operator included - and leaves the pointer on whatever follows
+    /// (CObjBase.cpp:2777, CExpression.cpp:794/1256). Cutting the line at the first
+    /// space instead meant "2*3, f_done" scheduled nothing and "1 + 1, f_done" queued
+    /// a job called "+".
+    ///
+    /// Operands are Sphere numeric tokens (a leading zero is hexadecimal); the
+    /// operators are + - * / % and parentheses. The scan stops at the first thing that
+    /// cannot continue an expression - a comma, or the name that follows the delay -
+    /// and <paramref name="consumed"/> is where that happened.</summary>
+    public static bool TryEvaluatePrefix(string? text, out long value, out int consumed)
+    {
+        value = 0;
+        consumed = 0;
+        string s = text ?? "";
+        int i = 0;
+        if (!ParseSum(s, ref i, out value))
+            return false;
+        consumed = i;
+        return true;
+    }
+
+    private static bool ParseSum(string s, ref int i, out long value)
+    {
+        if (!ParseProduct(s, ref i, out value))
+            return false;
+        while (true)
+        {
+            int save = i;
+            SkipSpace(s, ref i);
+            if (i >= s.Length || (s[i] != '+' && s[i] != '-'))
+            {
+                i = save;
+                return true;
+            }
+            char op = s[i++];
+            if (!ParseProduct(s, ref i, out long rhs))
+            {
+                i = save;                       // a dangling operator is not ours
+                return true;
+            }
+            value = op == '+' ? value + rhs : value - rhs;
+        }
+    }
+
+    private static bool ParseProduct(string s, ref int i, out long value)
+    {
+        if (!ParseUnary(s, ref i, out value))
+            return false;
+        while (true)
+        {
+            int save = i;
+            SkipSpace(s, ref i);
+            if (i >= s.Length || (s[i] != '*' && s[i] != '/' && s[i] != '%'))
+            {
+                i = save;
+                return true;
+            }
+            char op = s[i++];
+            if (!ParseUnary(s, ref i, out long rhs))
+            {
+                i = save;
+                return true;
+            }
+            if (op == '*') value *= rhs;
+            else if (rhs == 0) { i = save; return true; }   // division by zero: stop here
+            else if (op == '/') value /= rhs;
+            else value %= rhs;
+        }
+    }
+
+    private static bool ParseUnary(string s, ref int i, out long value)
+    {
+        value = 0;
+        SkipSpace(s, ref i);
+        if (i < s.Length && (s[i] == '-' || s[i] == '+'))
+        {
+            char sign = s[i];
+            int inner = i + 1;
+            if (!ParseUnary(s, ref inner, out long operand))
+                return false;
+            i = inner;
+            value = sign == '-' ? -operand : operand;
+            return true;
+        }
+        if (i < s.Length && s[i] == '(')
+        {
+            int inner = i + 1;
+            if (!ParseSum(s, ref inner, out long grouped))
+                return false;
+            SkipSpace(s, ref inner);
+            if (inner >= s.Length || s[inner] != ')')
+                return false;
+            i = inner + 1;
+            value = grouped;
+            return true;
+        }
+        return ParseNumberToken(s, ref i, out value);
+    }
+
+    private static bool ParseNumberToken(string s, ref int i, out long value)
+    {
+        value = 0;
+        SkipSpace(s, ref i);
+        int start = i;
+        while (i < s.Length && (char.IsLetterOrDigit(s[i]) || s[i] == '.'))
+            i++;
+        if (i == start || !TryParseToken(s[start..i], out value))
+        {
+            i = start;                          // not a number: the expression ends
+            return false;
+        }
+        return true;
+    }
+
+    private static void SkipSpace(string s, ref int i)
+    {
+        while (i < s.Length && (s[i] == ' ' || s[i] == '\t'))
+            i++;
+    }
+
     /// <summary>The AMOUNT field of a script factory line (NEWITEM, and the recipe
     /// rows behind it). Source-X evaluates it as an expression and hands the result
     /// straight to SetAmount, which stores a zero as a zero (CScriptObj.cpp:1358,

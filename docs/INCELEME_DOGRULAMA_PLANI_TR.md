@@ -2452,37 +2452,52 @@ olarak kapatilarak 10 testin eski davranisi yakaladigi kanitlandi.
 dusmeli); yurutme aninda sahip degistirme; klasik TIMERF'in birden cok dosyaya yayilmis
 ya da eksik ciftleri.
 
-### 12W - TIMERF desen, ifade ve sorgu sinirlari: 3 bulgu (7 Eylul 2026) - ACIK
+### 12W - TIMERF desen, ifade ve sorgu sinirlari: 3 bulgu (7 Eylul 2026)
 
 Kanit raporu: [12W](D:/Projeler/Yunus/sphereNet/docs/reviews/SOURCE_X_BOLUM_12W_TIMERF_DESEN_IFADE_SORGU.md).
-Bu turun uc bulgusu HENUZ UYGULANMADI; 12X/12Y dalgasi ayni dosyalara dokundugu icin
-durum kod uzerinden yeniden dogrulandi ve acik kaldigi goruldu.
+Uc bulgu de once kod uzerinden yeniden dogrulandi (12X/12Y dalgasi ayni dosyalara
+dokunmustu), sonra tek turda uygulandi.
 
 **Kok neden ortak:** referans hem `TIMERF STOP` hem `ISTIMERF` icin desenle KOMUTUN
 TAMAMINI eslestirir (`Str_Match(pattern, command) == MATCH_VALID`,
 CTimedFunctionHandler.cpp:19/34); SphereNet ikisini de basi eslesen arama olarak
 uyguluyor.
 
-- [ ] **12W-1 (P2)** - `ClearTimerF` ve `GetTimerFRemaining` sondaki yildizi silip
+- [x] **12W-1 (P2)** - `ClearTimerF` ve `GetTimerFRemaining` sondaki yildizi silip
   yalnizca `FunctionName` uzerinde `StartsWith` uyguluyor (ObjBase.cs:413/430).
   Argumanlar eslestirmeye hic katilmiyor: "f_job" deseni "f_job_extra" isini de
   durduruyor, "f_jo?" hicbir isi durdurmuyor ve "f_job alpha" ile argumanla secilen is
   iptal edilemiyor. Referansta desen KOMUTUN TAMAMIYLA - argumanlar dahil - Str_Match
   ile karsilastirilir; duz isim tam eslesme, `*` ve `?` desen anlamindadir.
-- [ ] **12W-2 (P2)** - `ScheduleTimerF` sureyi ilk virgul veya BOSLUKTA kesiyor,
+  (YAPILDI: `SpherePattern` port edildi; eslesme hedefi komutun tamami.)
+- [x] **12W-2 (P2)** - `ScheduleTimerF` sureyi ilk virgul veya BOSLUKTA kesiyor,
   `TryParseSphereDelay` ise yalnizca toplama/cikarma terimlerini isliyor. "2*3, f_done"
   ve "(1+1), f_done" hic is eklemiyor; "1 + 1, f_done" ise `+` adli bir is kuruyor.
   Referans ifadeyi Exp_Get64Val ile TUKETIP komut ayiricisina ilerler (CObjBase.cpp:2777,
   CExpression.cpp:794/1256). 12U'nun "Sphere sayisi olarak oku" duzeltmesinin kapsam
-  siniri; ayni arizanin tekrari degil.
-- [ ] **12W-3 (P3)** - `ISTIMERF` eslesmelerin EN KUCUK suresini donduruyor; ustelik
+  siniri; ayni arizanin tekrari degil. (YAPILDI: `ScriptNumber.TryEvaluatePrefix`
+  ifadeyi tuketip nerede bittigini bildiriyor; komut orada basliyor.)
+- [x] **12W-3 (P3)** - `ISTIMERF` eslesmelerin EN KUCUK suresini donduruyor; ustelik
   `best == 0` hem "eslesme yok" hem gecerli bir sonuc oldugu icin vadesi dolmus isin
   sifiri sonraki pozitif sureyle eziliyor. Referans ILK eslesmede doner ve yeni isi kabin
   sonuna ekler (CTimedFunctionHandler.cpp:19/111). Minimum sure bilincli bir tercih
-  olacaksa Source-X'ten ayrildigi belgelenmeli.
+  olacaksa Source-X'ten ayrildigi belgelenmeli. (YAPILDI: ilk eslesme donuyor,
+  sifir gecerli sonuc.)
 
-**Neden bu turda uygulanmadi:** uc madde de TIMERF sorgu/iptal yuzeyine ait; 12X-13H
-dalgalari cagri zinciri ve fabrika tarafinda ilerledi. Sonraki TIMERF turunun ilk isi.
+**Yapisal karar - desen dili ortak:** Str_Match'in port'u
+`SphereNet.Core.Types.SpherePattern` olarak ayri duruyor ('*', '?', '[a-z]', '[!...]',
+'\\' kacisi, buyuk/kucuk harf duyarsiz, bastan sona eslesme). Eslesme hedefi
+`FunctionName + " " + Args` olarak yeniden kuruluyor; referans ham komut satirini
+sakladigi icin "f_capture=37" gibi ayiricisi esittir olan bir kayitta desen metni
+farklidir - bu bilincli yaklasim, sinir olarak not edildi.
+
+**12W kapanisi:** tam suite **3.241 basarili / 0 basarisiz** (+40). Yeni test:
+`DelayedCallParity12WTests`. Uc duzeltme gecici olarak geri alinarak 40 testin 12'sinin
+eski davranisi yakaladigi kanitlandi.
+
+**Acik kalan:** kose parantezli desenlerin gercek script paketinde kullanimi
+denenmedi; ifade okuyucusu degisken/property cozmuyor (yorumlayici satiri zaten
+cozmus olarak veriyor).
 
 ### 12X-12Y - gecikmeli isin vade sirasi, komut ayrimi ve referans zinciri: 9 bulgu (6 Eylul 2026)
 

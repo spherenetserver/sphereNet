@@ -4,6 +4,32 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-07] - Naming, timing and asking about delayed work (12W)
+----------------------------------------
+
+FIX - TIMERF STOP and ISTIMERF reduced a pattern to a prefix search on the function
+        name alone, so "f_job" cancelled "f_job_extra" as well, "f_jo?" cancelled
+        nothing, and a job selected by its arguments could not be cancelled at all.
+        Upstream matches the pattern against the WHOLE queued command, arguments
+        included, with Str_Match (CTimedFunctionHandler.cpp:19/34): a plain name is an
+        exact match, and '*' / '?' / '[a-z]' are the wildcards. That pattern language
+        is now a shared helper, ported from sstring.cpp:1750.
+
+FIX - The delay in front of a delayed command was cut at the first comma or space and
+        then read as a token-or-sum, so "2*3, f_done" and "(1+1), f_done" scheduled
+        NOTHING and "1 + 1, f_done" queued a job called "+" one second out. Upstream
+        reads the delay with Exp_Get64Val, which consumes the whole expression -
+        parentheses, multiplication and the spaces around an operator included - and
+        leaves the pointer on the command that follows (CObjBase.cpp:2777,
+        CExpression.cpp:794/1256). The reader now reports where the expression ended
+        and the command begins there.
+
+FIX - ISTIMERF answered with the SMALLEST remaining time among the matching jobs
+        rather than the first one, and used zero as its "nothing found yet" marker, so
+        a job that was already due was overwritten by a later one and reported as
+        pending. Upstream returns on the first match and appends new jobs at the end
+        (CTimedFunctionHandler.cpp:19/111).
+
 [2026-09-07] - One recipe walk for the spawner, and what a copy carries (13I/13J)
 ----------------------------------------
 

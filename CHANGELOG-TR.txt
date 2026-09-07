@@ -3,6 +3,62 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-07] - Spawner icin tek recete yuruyusu ve kopyanin tasidiklari (13I/13J)
+----------------------------------------
+
+FIX - TEMPLATE hedefli spawner recetenin ilk somut itemdef'ini secip nesneyi elle
+        kuruyordu; recetenin o nesne hakkinda soyledigi her sey kayboluyordu: kok
+        satirin miktari bir olarak geliyor, ",0" ile kapatilmis satir yine bos kapsayici
+        olarak olusuyor ve recetenin NAME satiri nesneye hic ulasmiyordu. Referans butun
+        receteyi CItem::CreateTemplate ile yurutur ve donen nesneyi uretir (GenerateItem,
+        CCSpawn.cpp:323).
+
+FIX - Ilk olusturma satiri BASKA bir receteyi adlandiran tarif hicbir sey uretmiyordu:
+        koku somut itemdef'e cozmek template turunu eliyor, spawner her turda sessizce
+        sifir nesne veriyordu. Ortak yuruyus basvurulan receteyi izliyor; boylece
+        spawner da SERV.NEWITEM'in zaten aldigi sonucu aliyor.
+
+FIX - Recetenin icerigi ve property satirlari @Spawn'DAN SONRA uygulaniyordu; eline
+        gecen nesneye bakan tetikleyici temel adiyla bos bir kapsayici goruyor, sonra
+        tetikleyicinin yazdigi deger recete tarafindan eziliyordu. Referans once nesneyi
+        tamamlar, @Spawn'i ondan sonra calistirir (:346).
+
+FIX - Hedefi degistiren @PreSpawn'da KOK yeni receteden, ICERIK eski receteden
+        kuruluyordu; cunku doldurma adimi hala spawner'in kayitli hedefini okuyordu.
+        Artik tetikleyicinin sectigi kimlik nesnenin tamami icin tek kaynak.
+
+CHANGE - Recete kurmanin TEK uygulamasi var. Spawner'in "mevcut kapsayiciyi doldur"
+        girisi (TemplateEngine.FillTemplateContents) cagiraniyla birlikte kaldirildi;
+        tek yuruyus BuildTemplate. Spawner ile script fabrikalarinin yeniden
+        ayrismasini engelleyen sey bu.
+
+FIX - Karakter kopyalamada ETKIN havuzlar kopyanin temel alanlarina yaziliyordu: Max*
+        getter'i temel + giyili BONUS*MAX doner, setter ise temeli yazar; +20 can
+        veren kiyafetli yaratik 120 temel / 140 etkin olarak cikiyor, kopyanin kopyasi
+        160'a cikiyordu. Kiyafeti cikarmak artisi geri vermiyordu. Artik TEMEL havuzlar
+        geciyor, mevcut havuzlar ise ekipmandan SONRA uygulaniyor; boylece etkin
+        sinirinda duran yaratik yolda kirpilmiyor. Bu, dunya kaydinin uydugu
+        "turetilmis degil temel" kuralinin aynisi.
+
+FIX - Giyili esyanin, giyen karakteri gosteren alanlari kopyalamadan sonra da ASLI
+        gosteriyordu; kopyanin hafizasi, bagi veya isareti hala kaynak uzerinde
+        calisiyordu. Referans MORE1, MORE2 ve LINK alanlarini, kopyalanan karakteri
+        adlandirdiklarinda yeni karaktere cevirir (DupeFrom, CChar.cpp:1227); baska bir
+        nesneye giden bag oldugu gibi birakilir.
+
+FIX - Karakterin kendi DUPE verb'u merkezi kopyalamaya hic ulasmiyordu: elle secilmis
+        birkac alani kopyaladigi icin kopya ciplak ve cantasiz, fame/karma, direncler,
+        durum bayraklari ve EVENTS olmadan cikiyor; ayni karakterde NEWDUPE ise hepsini
+        tasiyordu. Referansta DUPE, DupeFrom'dur (CChar.cpp:4541) ve argumani newbie
+        sozlesmesini secer - birden kucuk deger, argumansiz bicim dahil, kopyanin
+        ekipmanini ve o ekipmanin icerigini ATTR_NEWBIE yapar.
+
+FIX - Kopyalanan kapsayicinin icerigi dagiliyordu: her cocuk kopyasi konumu olmadan
+        ekleniyor, konumsuz esyaya da rastgele bir yer veriliyordu. Referans ContentAdd'e
+        kaynak cocugun kapsayici-ici noktasini verir (CItemContainer::DupeCopy,
+        CItemContainer.cpp:830); boylece duzenlenmis odul ya da ornek cantasi ic ice
+        kaplar dahil duzenini koruyor.
+
 [2026-09-07] - Script fabrikasi yerlestirmesi ve tarif sinirlari (13G/13H)
 ----------------------------------------
 

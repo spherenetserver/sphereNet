@@ -2444,7 +2444,10 @@ public partial class Character : ObjBase
     ///
     /// What deliberately does NOT come across is the live wiring: uid, account, client
     /// and world position belong to the new object and its own session.</summary>
-    public Character CreateDupe(World.GameWorld world)
+    /// <param name="newbieItems">Source-X fNewbieItems: the copy's equipment - and
+    /// the contents of a copied container - are marked ATTR_NEWBIE (CChar.cpp:1201).
+    /// The DUPE verb chooses it from its argument; NEWDUPE does not.</param>
+    public Character CreateDupe(World.GameWorld world, bool newbieItems = false)
     {
         var copy = world.CreateCharacter();
 
@@ -2459,10 +2462,17 @@ public partial class Character : ObjBase
 
         // Stats, and the pools with them: a copy that kept the maxima but started at
         // zero hits would be a different creature.
+        //
+        // The BASE maxima, never the effective ones: the Max* getter reports base plus
+        // the equipped BONUS*MAX, while the setter writes the base field. Reading the
+        // getter here wrote a suit's contribution into the copy's base, so duplicating
+        // an equipped creature strengthened it - and duplicating the duplicate
+        // strengthened it again, with the increase surviving the suit coming off. This
+        // is the same rule the world save follows.
         copy.Str = Str; copy.Dex = Dex; copy.Int = Int;
-        copy.MaxHits = MaxHits; copy.Hits = Hits;
-        copy.MaxStam = MaxStam; copy.Stam = Stam;
-        copy.MaxMana = MaxMana; copy.Mana = Mana;
+        copy.MaxHits = BaseMaxHits;
+        copy.MaxStam = BaseMaxStam;
+        copy.MaxMana = BaseMaxMana;
 
         // Standing in the world: reputation, resistances and the status flags that
         // carry things like concealment.
@@ -2499,12 +2509,47 @@ public partial class Character : ObjBase
             if (worn == null || worn.IsDeleted) continue;
             var wornCopy = worn.CreateDupe(world);
             if (!copy.Equip(wornCopy, (Layer)layer))
+            {
                 world.RemoveItem(wornCopy);
-            else if ((Layer)layer == Layer.Pack)
+                continue;
+            }
+            if ((Layer)layer == Layer.Pack)
                 copy.Backpack = wornCopy;
+
+            if (newbieItems)
+            {
+                wornCopy.SetAttr(ObjAttributes.Newbie);
+                foreach (var inside in wornCopy.Contents)
+                {
+                    inside.SetAttr(ObjAttributes.Newbie);
+                    RepointSelfReferences(inside, copy);
+                }
+            }
+            // A worn item pointing at the character it was worn by must point at the
+            // one wearing the COPY (DupeFrom, CChar.cpp:1227): the memory, the pet
+            // link or the quest marker otherwise still worked on the original.
+            RepointSelfReferences(wornCopy, copy);
         }
 
+        // The current pools last: their setters clamp to the EFFECTIVE maximum, so a
+        // creature standing at its equipped-bonus maximum would otherwise be trimmed to
+        // the base one before its suit was on.
+        copy.Hits = Hits;
+        copy.Stam = Stam;
+        copy.Mana = Mana;
+
         return copy;
+    }
+
+    /// <summary>Re-point an equipped copy's MORE1 / MORE2 / LINK at the new owner when
+    /// they name the character being copied FROM (DupeFrom, CChar.cpp:1227). A link to
+    /// anything else is left exactly as it is - only a self-reference is rewritten. The
+    /// mount branch upstream also has here is not modelled.</summary>
+    private void RepointSelfReferences(Items.Item item, Character copy)
+    {
+        if (item.More1 == Uid.Value) item.More1 = copy.Uid.Value;
+        if (item.More2 == Uid.Value) item.More2 = copy.Uid.Value;
+        if (item.Link == Uid) item.Link = copy.Uid;
     }
 
     // --- Equipment ---
@@ -4882,32 +4927,15 @@ public partial class Character : ObjBase
                 var world = ResolveWorld?.Invoke();
                 if (world == null) return false;
 
-                var clone = world.CreateCharacter();
-                clone.BaseId = BaseId;
-                clone.BodyId = BodyId;
-                clone.Name = Name;
-                clone.Hue = Hue;
-                clone.Direction = Direction;
-                clone.Str = Str;
-                clone.Dex = Dex;
-                clone.Int = Int;
-                clone.MaxHits = MaxHits;
-                clone.Hits = Hits;
-                clone.MaxStam = MaxStam;
-                clone.Stam = Stam;
-                clone.MaxMana = MaxMana;
-                clone.Mana = Mana;
-                clone.NpcBrain = NpcBrain;
-                foreach (var (tagKey, tagValue) in Tags.GetAll())
-                {
-                    if (!EngineTags.IsEphemeral(tagKey))
-                        clone.Tags.Set(tagKey, tagValue);
-                }
-                foreach (SkillType skill in Enum.GetValues<SkillType>())
-                {
-                    if (skill != SkillType.None && skill < SkillType.Qty)
-                        clone.SetSkill(skill, GetSkill(skill));
-                }
+                // CHV_DUPE is DupeFrom (CChar.cpp:4541), the same copy NEWDUPE makes -
+                // copying a hand-picked handful of fields here left the character's own
+                // DUPE producing a naked copy with no fame, karma or resistances while
+                // the other path carried them. The argument chooses the newbie
+                // contract: below one - an absent argument included - marks the copy's
+                // equipment ATTR_NEWBIE.
+                bool newbieItems = !(Core.Types.ScriptNumber.TryParseArgument(args, out long dupeArg)
+                                     && dupeArg >= 1);
+                var clone = CreateDupe(world, newbieItems);
 
                 if (!world.PlaceCharacter(clone, Position))
                 {

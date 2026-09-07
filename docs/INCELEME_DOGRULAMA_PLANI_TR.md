@@ -2703,6 +2703,55 @@ yalnizca @EquipTest/@Equip tetikleyicilerini bagliyor.
 veto sonrasi NPC/oyuncu ayrimi); tarif icindeki BUY/SELL satirlarinin vendor katmanlari;
 FUNC satirinin ARGN hazirligi tam script yuruyusuyle canli dogrulanmadi.
 
+### 13I-13J - spawner recete yolu ve kopyanin tasidiklari: 8 bulgu (7 Eylul 2026)
+
+Kanit raporlari: [13I](D:/Projeler/Yunus/sphereNet/docs/reviews/SOURCE_X_BOLUM_13I_SPAWN_TEMPLATE_ORTAK_YOL.md),
+[13J](D:/Projeler/Yunus/sphereNet/docs/reviews/SOURCE_X_BOLUM_13J_KOPYA_BONUS_REFERANS_KONUM.md).
+Sekiz bulgu da dogrulandi ve tek turda uygulandi.
+
+**Kok neden ortak:** her iki tarafta da AYNI isi yapan IKI yol vardi. Recete kurmanin
+biri (BuildTemplate) 13F'de referansa gore duzeltilmisti, spawner ise hala kendi
+"ilk itemdef'i bul ve elle kur" yolunu kullaniyordu. Kopyalamanin biri (CreateDupe)
+13D'de duzeltilmisti, karakterin kendi DUPE verb'u ise hala elle alan kopyaliyordu.
+
+- [x] **13I-1 (P2)** - Spawner kok satirin miktarini, sifirla kapatmayi ve satir
+  ayarlarini yurutmuyordu. (YAPILDI: TEMPLATE hedefi artik BuildTemplate ile yurutuluyor
+  ve donen nesne spawn ediliyor - GenerateItem, CCSpawn.cpp:323.)
+- [x] **13I-2 (P2)** - Ilk satiri baska TEMPLATE olan tarif spawner'da hic nesne
+  uretmiyordu. (YAPILDI: ayni ortak yuruyus basvurulan receteyi izliyor.)
+- [x] **13I-3 (P2)** - Tarif icerigi ve ayarlari @Spawn'dan SONRA uygulaniyordu.
+  (YAPILDI: nesne tetikleyiciden once tamamlaniyor; tetikleyicinin yazdigi ad artik
+  ezilmiyor.)
+- [x] **13I-4 (P2)** - @PreSpawn hedefi degistirince kok yeni, icerik eski receteden
+  geliyordu. (YAPILDI: tur ve icerik, tetikleyicinin sectigi indeksten cozuluyor.)
+- [x] **13J-1 (P2)** - Karakter kopyasi ETKIN havuzlari temel alana yaziyordu; ekipman
+  bonusu her kopyada katlaniyor, kiyafet cikinca geri gelmiyordu. (YAPILDI: BaseMax*
+  kopyalaniyor; mevcut havuzlar ekipmandan sonra uygulaniyor.)
+- [x] **13J-2 (P2)** - Giyili esyanin karaktere oz referanslari eski karakterde
+  kaliyordu. (YAPILDI: MORE1/MORE2/LINK yalnizca kaynagi gosteriyorsa kopyaya
+  ceviriliyor; baska nesneye giden bag korunuyor. Referansin mount dali modellenmedi.)
+- [x] **13J-3 (P2)** - Karakterin kendi DUPE verb'u merkezi kopyalamayi kullanmiyordu.
+  (YAPILDI: DUPE artik CreateDupe cagiriyor; arguman newbie sozlesmesini seciyor -
+  birden kucuk deger ekipmani ve icerigini ATTR_NEWBIE yapar.)
+- [x] **13J-4 (P3)** - Canta kopyasinda icerik duzeni korunmuyordu. (YAPILDI: her cocuk
+  kopyasi kaynak cocugun kapsayici-ici konumuna yerlestiriliyor.)
+
+**Yapisal karar - tek recete yuruyusu:** `TemplateEngine.FillTemplateContents` ve
+spawner'in `ExpandTemplate` sargisi cagiranlariyla birlikte kaldirildi; `WalkRows` da
+yalnizca bu yola hizmet eden `skipLeadingContainer`/`topCont` parametrelerinden
+arindirildi. 13I'nin dort bulgusunun tamami "iki ayri recete yolu" olmasindan
+kaynaklandigi icin ikinci yolun kaldirilmasi duzeltmenin kendisidir.
+
+**13I-13J kapanisi:** tam suite **3.201 basarili / 0 basarisiz** (+17). Yeni testler:
+`SpawnTemplateParity13ITests` (8), `DuplicationParity13JTests` (9). 13J duzeltmeleri
+gecici olarak geri alinarak dokuz testin besinin eski davranisi yakaladigi kanitlandi;
+13I icin ayni geri alma denemesi yapilmadi, dayanak raporun probe kaydidir.
+
+**Acik kalan:** kok satirin R# olasiligi (13I raporu rastgele deney yapmadi); template
+-> itemdef ve itemdef -> template gecisleri @PreSpawn'da denenmedi; kopyalamanin mount
+dali (referansta more2 uzerinden ikinci karakter uretimi) ve canta ici derin
+oz-referanslar.
+
 ### SX-01B — Envanter ilk tarama (6 Eylül 2026)
 
 SphereNet `7a11130da128af76417574a8003d7915ee6d737f`, Source-X `92ced0ba`.

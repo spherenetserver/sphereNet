@@ -4,6 +4,63 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-07] - One recipe walk for the spawner, and what a copy carries (13I/13J)
+----------------------------------------
+
+FIX - A spawner pointed at a TEMPLATE picked the recipe's first concrete itemdef and
+        built that object by hand, so everything the recipe said about it was lost: the
+        root row's amount arrived as one, a row switched off with ",0" was spawned
+        anyway as an empty container, and the recipe's NAME line never reached the
+        object at all. Upstream runs the whole recipe through CItem::CreateTemplate and
+        spawns what comes back (GenerateItem, CCSpawn.cpp:323).
+
+FIX - A recipe whose first create row named ANOTHER recipe spawned nothing: resolving
+        the root to a concrete itemdef discarded the template type, and the spawner
+        quietly produced zero objects each cycle. The shared walk follows a referenced
+        recipe, so the spawner now gets what SERV.NEWITEM already got.
+
+FIX - The recipe's contents and property lines were applied AFTER @Spawn, so a trigger
+        that inspects what it was handed saw an empty container with its base name, and
+        anything the trigger set afterwards was overwritten by the recipe. Upstream
+        finishes the object first and only then fires @Spawn (:346).
+
+FIX - A @PreSpawn that retargeted the spawner built the ROOT from the new recipe and its
+        CONTENTS from the old one, because the fill step still read the spawner's stored
+        target. The id the trigger chose is now the single source for the whole object.
+
+CHANGE - Building a recipe has ONE implementation. The spawner's fill-an-existing-
+        container entry point (TemplateEngine.FillTemplateContents) is gone with its
+        caller; BuildTemplate is the only walk, which is what keeps the spawner and the
+        script factories from drifting apart again.
+
+FIX - Duplicating a character copied its EFFECTIVE pools into the copy's base fields:
+        the Max* getter reports base plus the equipped BONUS*MAX and the setter writes
+        the base, so a creature in a +20 hits suit came out with 120 base and 140
+        effective - and copying the copy made it 160. Taking the suit off did not give
+        the increase back. The base pools are what crosses now, and the current pools
+        are applied after the equipment so a creature standing at its equipped maximum
+        is not trimmed on the way. This is the same base-not-derived rule the world save
+        follows.
+
+FIX - An equipped item pointing at the character it was worn by kept pointing at the
+        ORIGINAL after duplication, so a copy's memory, link or marker still worked on
+        the source. Upstream re-points MORE1, MORE2 and LINK at the new character when
+        they name the one being copied from (DupeFrom, CChar.cpp:1227); a link to
+        anything else is left alone.
+
+FIX - A character's own DUPE verb never reached the central duplication: it copied a
+        hand-picked handful of fields, so the copy came out naked and packless with no
+        fame, karma, resistances, status flags or EVENTS, while NEWDUPE on the same
+        character carried them all. DUPE is DupeFrom upstream (CChar.cpp:4541), and its
+        argument chooses the newbie contract - below one, an absent argument included,
+        marks the copy's equipment and that equipment's contents ATTR_NEWBIE.
+
+FIX - A copied container scattered its contents: each child copy was added without its
+        place, and an item with no position is given a random one. Upstream hands
+        ContentAdd the source child's contained point (CItemContainer::DupeCopy,
+        CItemContainer.cpp:830), so an arranged reward or sample bag keeps its layout,
+        nested containers included.
+
 [2026-09-07] - Script factory placement and recipe boundaries (13G/13H)
 ----------------------------------------
 

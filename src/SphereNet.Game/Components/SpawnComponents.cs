@@ -996,43 +996,57 @@ public sealed class ItemSpawnComponent
             return;
         }
 
-        // A TEMPLATE is a recipe, not an itemdef: expand it and take its first item as
-        // the thing that is spawned (CreateTemplate, CItem.cpp:555).
-        if (_isTemplate)
-        {
-            var expanded = ExpandTemplate(defIndex);
-            if (expanded <= 0)
-            {
-                SetNextSpawnTime();
-                return;
-            }
-            defIndex = expanded;
-        }
-        int templateSource = _isTemplate ? _itemDefId : 0;
+        // A TEMPLATE is a recipe, not an itemdef: it is RUN, and what it produced is
+        // what this spawner spawns (GenerateItem -> CreateTemplate, CCSpawn.cpp:323).
+        // Picking the recipe's first itemdef and building that object by hand lost the
+        // row's amount, its switched-off ",0" rows and its property lines, and could
+        // not follow a row that named another recipe at all.
+        //
+        // Which KIND the index names is resolved from the index actually being built:
+        // a @PreSpawn that retargeted the spawner may have named a different resource,
+        // and reading the kind off the ORIGINAL target made the root come from the new
+        // recipe while its contents came from the old one.
+        bool isTemplate = defIndex == _itemDefId
+            ? _isTemplate
+            : DefinitionLoader.GetTemplateDef(defIndex) != null;
 
-        var item = _world.CreateItem();
-        var idef = DefinitionLoader.GetItemDef(defIndex);
-        if (!ItemDefHelper.ApplyInstanceMetadata(item, defIndex))
+        Item item;
+        if (isTemplate)
         {
-            // Metadata could not be resolved (def not in the pack). A synthetic
-            // index has no 16-bit graphic to fall back to, so drop the spawn;
-            // only a genuine 16-bit id can become a bare BaseId.
-            if (defIndex is <= 0 or > ushort.MaxValue)
+            var built = TemplateEngine.BuildTemplate(_world, defIndex);
+            if (built == null)
             {
-                _world.RemoveItem(item);
                 SetNextSpawnTime();
                 return;
             }
-            item.BaseId = (ushort)defIndex;
+            item = built;
         }
-        // The definition's name is a DEFAULT, applied only when the instance has not
-        // been given one. ApplyInstanceMetadata above runs the itemdef's @Create, so
-        // overwriting the name afterwards threw away whatever that script chose -
-        // upstream never rewrites it (GenerateItem, CCSpawn.cpp:323).
-        if (string.IsNullOrEmpty(item.Name))
-            item.Name = idef != null && !string.IsNullOrEmpty(idef.Name)
-                ? idef.Name
-                : $"Spawned_{defIndex:X}";
+        else
+        {
+            item = _world.CreateItem();
+            var idef = DefinitionLoader.GetItemDef(defIndex);
+            if (!ItemDefHelper.ApplyInstanceMetadata(item, defIndex))
+            {
+                // Metadata could not be resolved (def not in the pack). A synthetic
+                // index has no 16-bit graphic to fall back to, so drop the spawn;
+                // only a genuine 16-bit id can become a bare BaseId.
+                if (defIndex is <= 0 or > ushort.MaxValue)
+                {
+                    _world.RemoveItem(item);
+                    SetNextSpawnTime();
+                    return;
+                }
+                item.BaseId = (ushort)defIndex;
+            }
+            // The definition's name is a DEFAULT, applied only when the instance has
+            // not been given one. ApplyInstanceMetadata above runs the itemdef's
+            // @Create, so overwriting the name afterwards threw away whatever that
+            // script chose - upstream never rewrites it (GenerateItem, CCSpawn.cpp:323).
+            if (string.IsNullOrEmpty(item.Name))
+                item.Name = idef != null && !string.IsNullOrEmpty(idef.Name)
+                    ? idef.Name
+                    : $"Spawned_{defIndex:X}";
+        }
 
         // PILE only means anything for a stackable type (GenerateItem,
         // CCSpawn.cpp:329). Setting an amount on a single object left its quantity
@@ -1091,22 +1105,8 @@ public sealed class ItemSpawnComponent
                 return;
             }
         }
-        // A container the template opened gets the rows that followed it.
-        if (templateSource > 0)
-            FillTemplateContents(item, templateSource);
         RegisterGenerated(item);
     }
-
-    /// <summary>The itemdef a TEMPLATE resolves to. SphereNet already expands template
-    /// bodies for loot and vendor stock; a spawner needs the same first entry.</summary>
-    // Template expansion lives in TemplateEngine so the spawner and SERV.NEWITEM
-    // build a recipe the same way (CreateHeader -> CreateTemplate, CItem.cpp:461/554).
-    private static int ExpandTemplate(int templateIndex) =>
-        TemplateEngine.ResolveTemplatePrimary(templateIndex);
-
-    /// <summary>Put the template's contents inside the container it declared.</summary>
-    private void FillTemplateContents(Item container, int templateIndex) =>
-        TemplateEngine.FillTemplateContents(_world, container, templateIndex);
 
     public void ForceSpawn() => _nextSpawnTick = 0;
 

@@ -1164,7 +1164,13 @@ public class Item : ObjBase
                 if (child.IsDeleted) continue;
                 // AddItem, not TryAddItem: upstream's ContentAdd places the duplicate
                 // unconditionally, so a full container's copy still gets its contents.
-                copy.AddItem(child.CreateDupe(world, depth + 1));
+                var childCopy = child.CreateDupe(world, depth + 1);
+                copy.AddItem(childCopy);
+                // ...at the point it occupied in the source container: upstream hands
+                // ContentAdd the child's GetContainedPoint (CItemContainer::DupeCopy,
+                // CItemContainer.cpp:830). Without it the copy of an arranged container
+                // came out scattered, since an unplaced item is given a random spot.
+                childCopy.Position = child.Position;
             }
         }
         return copy;

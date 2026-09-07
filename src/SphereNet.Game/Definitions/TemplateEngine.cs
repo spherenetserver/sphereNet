@@ -305,30 +305,15 @@ public static class TemplateEngine
         var tdef = DefinitionLoader.GetTemplateDef(templateIndex);
         if (tdef == null || depth >= MaxTemplateDepth)
             return null;
-        return WalkRows(world, tdef, into, depth, skipLeadingContainer: false, topCont: null);
-    }
-
-    /// <summary>Fill an ALREADY-CREATED container from a recipe whose leading
-    /// CONTAINER row the caller has built itself (the spawner does this: it needs to
-    /// own the object so it can apply its own spawn semantics to it). The rest of
-    /// the recipe runs normally against that container, property rows included.</summary>
-    public static void FillTemplateContents(
-        SphereNet.Game.World.GameWorld world,
-        SphereNet.Game.Objects.Items.Item container, int templateIndex)
-    {
-        var tdef = DefinitionLoader.GetTemplateDef(templateIndex);
-        if (tdef == null || tdef.Rows.Count == 0) return;
-        if (tdef.Rows[0].Kind != TemplateRowKind.Container) return;   // no box, nothing to fill
-        WalkRows(world, tdef, container, depth: 0, skipLeadingContainer: true, topCont: container);
+        return WalkRows(world, tdef, into, depth);
     }
 
     private static SphereNet.Game.Objects.Items.Item? WalkRows(
         SphereNet.Game.World.GameWorld world, TemplateDef tdef,
-        SphereNet.Game.Objects.Items.Item? cont, int depth,
-        bool skipLeadingContainer, SphereNet.Game.Objects.Items.Item? topCont)
+        SphereNet.Game.Objects.Items.Item? cont, int depth)
     {
-        SphereNet.Game.Objects.Items.Item? item = topCont;
-        bool skipped = !skipLeadingContainer;
+        SphereNet.Game.Objects.Items.Item? item = null;
+        SphereNet.Game.Objects.Items.Item? topCont = null;
 
         foreach (var row in tdef.Rows)
         {
@@ -336,12 +321,6 @@ public static class TemplateEngine
             {
                 case TemplateRowKind.Container:
                 {
-                    if (!skipped)
-                    {
-                        // The caller already built this one and is holding it.
-                        skipped = true;
-                        continue;
-                    }
                     // The row's result becomes the current item WHETHER OR NOT it
                     // produced anything: ITC_CONTAINER assigns pItem before testing
                     // it (CItem.cpp:626). Keeping the previous object alive here let

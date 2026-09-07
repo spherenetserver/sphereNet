@@ -2767,6 +2767,28 @@ gecici olarak geri alinarak dokuz testin besinin eski davranisi yakaladigi kanit
 dali (referansta more2 uzerinden ikinci karakter uretimi) ve canta ici derin
 oz-referanslar.
 
+### PLAN-106 besinci dilim - klasik geminin ambari ve iskeleleri (7 Eylul 2026)
+
+- [x] **P106-9 (P2)** - Klasik gemi kaydindaki HATCH ve PLANK satirlari reddedilip
+  SAVE.* tag'ine park ediliyordu; kayit hicbir bileseni listelemedigi icin bu iki uid o
+  parcalarin TEK kaydiydi. (YAPILDI: `SHIP.HOLD` / `SHIP.PLANKS` olarak okunuyor,
+  `ShipEngine.DeserializeFromWorld` bunlari bilesen olarak kaydediyor.)
+- [x] **P106-10 (P2)** - Klasik kaydin TEMIZLENMIS uid isaretcisi (indeks bitleri dolu,
+  ornegin 04FFFFFFF) gecerli sayiliyordu; 56T'nin sekiz gemisinden yedisi ambar alaninda
+  bunu tasiyor. (YAPILDI: `Serial.NamesAnObject` - referansin CUID::IsValidUID kurali.
+  Mevcut `IsValid` degistirilmedi; motorun kendi alanlari icin dar soru orada kaliyor.)
+
+**Olcum:** eslenmeyen anahtar turu **4 -> 2**. Kalan ikisi KILLSPLAYER/KILLSNPC.
+
+**Kapanis:** tam suite **3.265 basarili / 0 basarisiz** (+8).
+
+**Bu dilimde ORTAYA CIKAN yeni eksik (ayri is):** multi'nin TYPE'i `[MULTIDEF]`
+blogundan gelir ve bu motor onu esyada degil multi kayit defterinde tutar. Sonuc: import
+edilen tekne `ItemType.Ship` degil; bu yuzden `ShipEngine.DeserializeFromWorld`in tur
+kapisindan gecmiyor. Ayrica ayni yerde OWNER de araniyor, 56T'nin sekiz gemisinin
+hicbirinde OWNER yok. Yani gemiler su an hic kayit olmuyor; bu dilim verinin
+KAYBOLMAMASINI sagliyor, gemiyi canlandirmiyor.
+
 ### PLAN-106 dorduncu dilim - klasik tasin loncasi (7 Eylul 2026)
 
 - [x] **P106-7 (P1)** - Klasik lonca/sehir tasinin ALIGN, ABBREV, CHARTER<n>, WEBPAGE

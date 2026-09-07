@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | `6a75530` (PLAN-106 dördüncü dilim) |
-| Tam test | 3.257 başarılı / 0 başarısız |
-| Sıradaki iş | **İŞ-2 devamı: gemi HATCH/PLANK (9)** |
+| Son commit | PLAN-106 beşinci dilim (bu oturum) |
+| Tam test | 3.265 başarılı / 0 başarısız |
+| Sıradaki iş | **KILLSPLAYER/KILLSNPC kararı, ya da İŞ-2b (multi TYPE / sahipsiz gemi)** |
 
 ## Çalışma sırası
 
@@ -31,27 +31,26 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   `ISTIMERF` ilk eşleşmeyi döndürür ve sıfırı geçerli sonuç sayar.
 
 - [ ] **İŞ-2 — 56T'nin eşlenmeyen kayıt anahtarları** (PLAN-106) — **KISMEN**
-  Kapanan dilimler: (1) shard'ın kendi skill adları, (2) kaydın türünün tanımdan
-  gelmesi — harita pinleri/kitap sayfaları, (3) yapının bölgesi (REGION.TAG.\*),
-  (4) klasik taşın loncası (ALIGN/ABBREV/CHARTER/MEMBER). Paketsiz ölçümde 17,
-  doğru ölçümde (paket + sunucu kablolaması) **4** tür kalıyor.
+  Kapanan dilimler: (1) shard'ın skill adları, (2) kaydın türü tanımdan — harita
+  pini/kitap sayfası, (3) yapının bölgesi (REGION.TAG.\*), (4) klasik taşın loncası,
+  (5) klasik geminin ambarı/iskeleleri. Paketsiz ölçümde 17, doğru ölçümde **2**.
 
-  | Anahtar | Adet | Hipotez (doğrulanmamış) | Nereye bakmalı |
-  |---|---:|---|---|
-  | KILLSPLAYER | 897 | 56x'in ayrık öldürme sayacı; motorda tek `KILLS` var. Source-X'te bu ad YOK — 0.56 dönemi alanı. **Tasarım kararı ister.** | `Character.Kills`, `WorldSaver:907` |
-  | KILLSNPC | 286 | aynı ailenin NPC yarısı | aynı |
-  | HATCH | 8 | gemi ambar kapağı bağlantısı | `ShipEngine`, multi kaydı |
-  | PLANK | 1 | gemi iskelesi bağlantısı | aynı |
+  | Anahtar | Adet | Durum |
+  |---|---:|---|
+  | KILLSPLAYER | 897 | **KARAR GEREKİYOR** — Source-X'te bu ad yok (0.56 dönemi), motorda tek `KILLS` var |
+  | KILLSNPC | 286 | aynı ailenin NPC yarısı |
 
-  Sıradaki adım: **gemi HATCH/PLANK (9)** — küçük ve tek kök. Sonra KILLSPLAYER/
-  KILLSNPC: bunlar için önce karar gerekiyor (tek `KILLS`e mi toplansın, yoksa iki
-  ayrı alan mı açılsın); Source-X'te bu adlar bulunmuyor, yani parite değil legacy
-  veri korunumu meselesi.
+  Seçenekler: (a) ikisini tek `KILLS`e topla — oyuncu öldürme sayısı korunur, NPC
+  sayacı kaybolur; (b) iki ayrı alan aç — veri tam korunur ama Source-X'te karşılığı
+  olmayan alan eklenir; (c) tag olarak sakla, davranışa bağlama — veri korunur,
+  anlam yok. Kullanıcı kararı bekliyor.
 
-  Bu dilimlerden çıkan yan işler (bilinçli ertelendi):
-  - `Item` içinde kalan ham `_type` kapıları (yığın/hafıza/multi-custom/statik blok).
-  - Bölge tetikleyicilerinin nesne kimliği: `FireRegionEvents` script'i karakter
-    üzerinde çalıştırıyor, referansta bölge nesnesi üzerinde çalışır (SRC karakter).
+- [ ] **İŞ-2b — multi'nin TYPE'ı ve sahipsiz gemi** (bu turda ortaya çıktı)
+  Multi'nin TYPE'ı `[MULTIDEF]`'ten gelir, motor onu multi kayıt defterinde tutar;
+  import edilen tekne `ItemType.Ship` değil, bu yüzden `ShipEngine`in tür kapısından
+  geçmiyor. Ayrıca aynı kapı OWNER arıyor ve 56T'nin 8 gemisinin hiçbirinde OWNER yok.
+  Sonuç: import edilen gemiler hiç kayıt olmuyor (bölge yok, dümen yok, iskele yok).
+  Veri artık korunuyor — eksik olan gemiyi canlandırmak.
 
 - [ ] **İŞ-3 — Save→Load→Save alan bazında eşitlik** (PLAN-107)
   Temel stat, miktar, owner/parent, spawn üyeliği, timer ve vendor içeriği için
@@ -74,6 +73,10 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-2 beşinci dilim (PLAN-106)** — 2026-09-07. Klasik geminin HATCH/PLANK
+  satırları okunuyor ve gemi katmanına bileşen olarak kaydediliyor; klasik "temizlenmiş
+  uid" işaretçisi için `Serial.NamesAnObject` eklendi. Ölçüm 4 → 2. Test:
+  `LegacySaveKeyParityTests` +8; tam suite 3.265.
 - **İŞ-2 dördüncü dilim (PLAN-106)** — 2026-09-07. Klasik lonca/şehir taşının
   ALIGN/ABBREV/CHARTER/MEMBER satırları motorun GUILD.* biçimine çevriliyor; gerçek
   veride 10 lonca geri geldi (en büyüğü 13 üye). Taş kendi adını veriyor. Ölçüm

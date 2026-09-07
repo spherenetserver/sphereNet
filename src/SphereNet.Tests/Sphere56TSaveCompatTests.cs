@@ -124,6 +124,9 @@ public class Sphere56TSaveCompatTests
         // A classic stone keeps its roster in its own record, and the guild layer has
         // to come back with it - not just accept the lines.
         Assert.False(unhandled.ContainsKey("MEMBER"), "guild members were parked in SAVE.* tags");
+        // A classic ship names its hold and planks and lists no components.
+        Assert.False(unhandled.ContainsKey("HATCH"), "a ship's hold was parked in a SAVE.* tag");
+        Assert.False(unhandled.ContainsKey("PLANK"), "a ship's planks were parked in SAVE.* tags");
         var guilds = new SphereNet.Game.Guild.GuildManager();
         guilds.DeserializeFromWorld(world);
         _out.WriteLine($"guilds rebuilt: {guilds.GuildCount}");

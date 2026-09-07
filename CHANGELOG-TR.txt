@@ -3,6 +3,30 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-07] - Klasik gemi ambarini ve iskelelerini adlandirir (PLAN-106)
+----------------------------------------
+
+FIX - Klasik kayittan gelen gemi ambarsiz ve iskelesiz donuyordu. Kayit HICBIR bileseni
+        listelemez: gemi yalnizca ambarini ve iskelelerini adlandirir (HATCH / PLANK,
+        CItemShip.cpp:118/208). Iki anahtarin da case'i yoktu; ikisi de SAVE.* tag'ine
+        park ediliyor ve o parcalarin TEK kaydi olan uid'ler gemi katmanindan
+        kayboluyordu. Artik okunuyor, gemi katmaninin baktigi yere yaziliyor ve yeniden
+        kurmada bilesen olarak kaydediliyor - turlerine gore siniflandirilmalari da
+        boyle oluyor.
+
+NEW - Serial.NamesAnObject, referansin kendi uid kurali (CUID::IsValidUID,
+        CUID.cpp:32): sifir hicbir seyi adlandirmaz, indeks bitleri tamamen dolu bir
+        deger de adlandirmaz - klasik kayit TEMIZLENMIS alani boyle yazar. 56T'deki
+        sekiz geminin yedisi ambar alaninda tam olarak bunu tasiyor; oldugu gibi almak
+        her birini var olmayan bir nesneye baglardi.
+
+NOTE - Anahtarlar, esyanin gemi olarak turlenmis olmasina bagli degil. Multi'nin TYPE'i
+        [MULTIDEF] blogundan gelir; bu motor onu esyada degil multi kayit defterinde
+        tutar, yani import edilen tekne kaydi okunurken hala Normal turunde. Bu ayri ve
+        gercek bir eksik: ayni sebeple import edilen gemi, gemi motorunun yeniden
+        kurmasina da girmiyor - o ayrica klasik kaydin her zaman tasimadigi bir OWNER
+        istiyor.
+
 [2026-09-07] - Klasik tas loncasini da getirir (PLAN-106)
 ----------------------------------------
 

@@ -2223,6 +2223,34 @@ public class Item : ObjBase
             case var regionTag when regionTag.StartsWith("REGION.TAG.", StringComparison.Ordinal):
                 SetTag(regionTag, value);
                 return true;
+            // A classic ship names its hold and its planks in its own record, and
+            // nothing else does: the components are not listed (HATCH / PLANK,
+            // CItemShip.cpp:118/208). Refusing the lines left an imported ship with no
+            // hold to load and no plank to board by.
+            //
+            // The keys are NOT gated on the item being typed as a ship: a multi's type
+            // comes from its [MULTIDEF] block, which this engine keeps in the multi
+            // registry rather than on the item, so an imported hull is still typed
+            // Normal while its record is being read. Only a ship writes these keys, and
+            // they are stored where only the ship layer looks for them.
+            case "HATCH":
+            {
+                var hold = new Serial(ParseHexOrDecUInt(value));
+                if (hold.NamesAnObject)
+                    SetTag("SHIP.HOLD", $"0{hold.Value:X}");
+                return true;
+            }
+            case "PLANK":
+            {
+                var plank = new Serial(ParseHexOrDecUInt(value));
+                if (plank.NamesAnObject)
+                {
+                    string existing = TryGetTag("SHIP.PLANKS", out string? had) ? had ?? "" : "";
+                    SetTag("SHIP.PLANKS",
+                        existing.Length == 0 ? $"0{plank.Value:X}" : $"{existing},0{plank.Value:X}");
+                }
+                return true;
+            }
             case "ALIGN" or "ABBREV" or "WEBPAGE" or "MEMBER"
                 when EffectiveType is ItemType.StoneGuild or ItemType.StoneTown:
                 return Guild.GuildManager.TryApplyClassicStoneKey(this, upper, value);

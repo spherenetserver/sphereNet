@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-07] - A classic ship names its hold and its planks (PLAN-106)
+----------------------------------------
+
+FIX - A ship out of a classic save came back with no hold and no boarding plank. The
+        record lists NO components at all: a ship names its hold and its planks and
+        nothing else (HATCH / PLANK, CItemShip.cpp:118/208). Neither key had a case
+        here, so both were parked in SAVE.* tags and the two uids - the only record
+        those parts have - were lost to the ship layer. They are read now, stored where
+        the ship layer looks for them, and registered as components on rebuild, which
+        is what categorises them by type.
+
+NEW - Serial.NamesAnObject, the reference's own uid rule (CUID::IsValidUID,
+        CUID.cpp:32): zero names nothing, and neither does a value whose index bits are
+        all set - which is how a classic save writes a field it has CLEARED. Seven of
+        the eight 56T ships carry exactly that as their hatch, and taking it at face
+        value would have pointed each one at an object that does not exist.
+
+NOTE - The keys are not gated on the item being typed as a ship. A multi's TYPE comes
+        from its [MULTIDEF] block, which this engine keeps in the multi registry rather
+        than on the item, so an imported hull is still typed Normal while its record is
+        being read. That gap is real and separate: it also keeps an imported ship out
+        of the ship engine's own rebuild, which additionally wants an OWNER the classic
+        record does not always carry.
+
 [2026-09-07] - A classic stone brings its guild with it (PLAN-106)
 ----------------------------------------
 

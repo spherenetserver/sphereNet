@@ -23,6 +23,14 @@ public readonly struct Serial : IEquatable<Serial>, IComparable<Serial>
     public bool IsItem => (_value & ItemFlag) != 0;
     public bool IsChar => (_value & ItemFlag) == 0 && _value != ClearValue;
     public bool IsValid => _value != ClearValue;
+
+    /// <summary>Does this value NAME an object at all? The reference's own rule
+    /// (CUID::IsValidUID, CUID.cpp:32): zero names nothing, and so does any value whose
+    /// index bits are all set - which is how a classic save writes a field it has
+    /// cleared ("0FFFFFFF", or "04FFFFFFF" once the item flag is on). Read a uid out of
+    /// an old save with this; <see cref="IsValid"/> answers the narrower question this
+    /// engine's own fields ask.</summary>
+    public bool NamesAnObject => _value != 0 && (_value & IndexMask) != IndexMask;
     public int Index => (int)(_value & IndexMask);
 
     public static Serial NewItem(int index) => new((uint)index | ItemFlag);

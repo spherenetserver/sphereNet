@@ -359,4 +359,86 @@ public sealed class LegacySaveKeyParityTests : IDisposable
         // ALIGN on something that is not a stone means nothing to the guild layer.
         Assert.False(item.TrySetProperty("ALIGN", "1"));
     }
+
+    // ================================================================
+    // A classic ship names its hold and its planks in its own record and lists no
+    // components at all (HATCH / PLANK, CItemShip.cpp:118/208).
+
+    [Fact]
+    public void AClassicShipNamesItsHoldAndPlanks()
+    {
+        var world = NewWorld();
+        var hull = world.CreateItem();
+        hull.ItemType = ItemType.Ship;
+        var hold = world.CreateItem();
+        var plankA = world.CreateItem();
+        var plankB = world.CreateItem();
+
+        Assert.True(hull.TrySetProperty("HATCH", $"0{hold.Uid.Value:X}"));
+        Assert.True(hull.TrySetProperty("PLANK", $"0{plankA.Uid.Value:X}"));
+        Assert.True(hull.TrySetProperty("PLANK", $"0{plankB.Uid.Value:X}"));
+
+        Assert.True(hull.TryGetTag("SHIP.HOLD", out string? storedHold));
+        Assert.Equal($"0{hold.Uid.Value:X}", storedHold);
+        Assert.True(hull.TryGetTag("SHIP.PLANKS", out string? storedPlanks));
+        Assert.Equal($"0{plankA.Uid.Value:X},0{plankB.Uid.Value:X}", storedPlanks);
+    }
+
+    [Fact]
+    public void AClearedUidNamesNothing()
+    {
+        var world = NewWorld();
+        var hull = world.CreateItem();
+        hull.ItemType = ItemType.Ship;
+
+        // What seven of the 56T ships carry: the item flag over an index of all ones,
+        // which is how a classic save writes a field it has cleared
+        // (CUID::IsValidUID, CUID.cpp:32).
+        Assert.True(hull.TrySetProperty("HATCH", "04fffffff"));
+
+        Assert.False(hull.TryGetTag("SHIP.HOLD", out _));
+    }
+
+    [Theory]
+    [InlineData(0x4000BEEFu, true)]
+    [InlineData(0u, false)]
+    [InlineData(0x0FFFFFFFu, false)]
+    [InlineData(0x4FFFFFFFu, false)]
+    [InlineData(0xFFFFFFFFu, false)]
+    public void TheReferencesUidRuleDecidesWhetherAFieldNamesAnything(uint value, bool names)
+    {
+        Assert.Equal(names, new Serial(value).NamesAnObject);
+    }
+
+    [Fact]
+    public void AShipRebuiltFromAClassicRecordHasItsHoldAndPlanks()
+    {
+        var world = NewWorld();
+        var owner = world.CreateCharacter();
+
+        var hull = world.CreateItem();
+        hull.ItemType = ItemType.Ship;
+        world.PlaceItem(hull, new Point3D(100, 100, 0, 0));
+        hull.SetTag("OWNER", $"0{owner.Uid.Value:X}");
+
+        var hold = world.CreateItem();
+        hold.ItemType = ItemType.ShipHold;
+        var plank = world.CreateItem();
+        plank.ItemType = ItemType.ShipPlank;
+
+        Assert.True(hull.TrySetProperty("HATCH", $"0{hold.Uid.Value:X}"));
+        Assert.True(hull.TrySetProperty("PLANK", $"0{plank.Uid.Value:X}"));
+
+        var engine = new SphereNet.Game.Ships.ShipEngine(
+            world, new SphereNet.Game.Housing.MultiRegistry(), null);
+        engine.DeserializeFromWorld();
+
+        var ship = engine.GetShip(hull.Uid);
+        Assert.NotNull(ship);
+        // The classic record lists no components, so these two uids are the only way
+        // the hold and the plank are ever found.
+        Assert.Same(hold, ship!.GetHold(world));
+        Assert.Equal(1, ship.GetPlankCount(world));
+        Assert.Same(plank, ship.GetPlank(0, world));
+    }
 }

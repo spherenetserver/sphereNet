@@ -1507,6 +1507,27 @@ public sealed class ShipEngine
     /// <summary>
     /// Rebuild ship instances from IT_SHIP items after world load.
     /// </summary>
+    /// <summary>Register the items a tag names as components of the ship. Used for the
+    /// hold and plank uids a classic save carries, which are not in any component
+    /// list.</summary>
+    private void RegisterNamedComponent(Ship ship, Item item, string tag)
+    {
+        if (!item.TryGetTag(tag, out string? raw) || string.IsNullOrWhiteSpace(raw))
+            return;
+        foreach (var part in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            uint val = ParseHexSerial(part);
+            if (val == 0)
+                continue;
+            var comp = _world.FindItem(new Serial(val));
+            if (comp == null)
+                continue;
+            comp.Link = item.Uid;
+            comp.SetAttr(ObjAttributes.Move_Never);
+            ship.AddComponent(comp);
+        }
+    }
+
     public void DeserializeFromWorld()
     {
         foreach (var existing in _ships.Values.ToList())
@@ -1568,6 +1589,13 @@ public sealed class ShipEngine
                     }
                 }
             }
+
+            // A classic save lists no components at all - it names the hold and the
+            // planks and nothing else (CItemShip::r_Write, CItemShip.cpp:118). Those
+            // uids are components too, so they go through the same registration and
+            // AddComponent categorises them by type.
+            RegisterNamedComponent(ship, item, "SHIP.HOLD");
+            RegisterNamedComponent(ship, item, "SHIP.PLANKS");
 
             if (item.TryGetTag("SHIP.BANS", out string? bansStr) && !string.IsNullOrWhiteSpace(bansStr))
             {

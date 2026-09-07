@@ -278,12 +278,14 @@ public sealed class DefinitionLoader
                 int amount = 0;
                 if (parts.Length >= 2 && int.TryParse(parts[1], out int a) && a > 0)
                     amount = a;
-                def.ItemEntries.Add(new TemplateEntry
+                var itemEntry = new TemplateEntry
                 {
                     DefName = parts[0],
                     Amount = amount,
                     RawArgs = parts.Length >= 2 ? parts[1..] : []
-                });
+                };
+                def.ItemEntries.Add(itemEntry);
+                def.Rows.Add(new TemplateRow { Kind = TemplateRowKind.Item, Entry = itemEntry });
             }
             else if (upper == "CONTAINER")
             {
@@ -291,7 +293,14 @@ public sealed class DefinitionLoader
                 // container (Source-X ReadTemplate ITC_CONTAINER).
                 var parts = key.Arg.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 0) continue;
-                def.ItemEntries.Add(new TemplateEntry { DefName = parts[0], IsContainer = true });
+                var contEntry = new TemplateEntry
+                {
+                    DefName = parts[0],
+                    IsContainer = true,
+                    RawArgs = parts.Length >= 2 ? parts[1..] : []
+                };
+                def.ItemEntries.Add(contEntry);
+                def.Rows.Add(new TemplateRow { Kind = TemplateRowKind.Container, Entry = contEntry });
             }
             else if (upper == "SELL" || upper == "BUY")
             {
@@ -321,6 +330,19 @@ public sealed class DefinitionLoader
             {
                 // Some templates rename themselves — register alias.
                 _resources.RegisterDefName(key.Arg.Trim(), link.Id);
+            }
+            else if (key.HasArg)
+            {
+                // Not a create command: Source-X hands the line to r_LoadVal on the
+                // item the recipe most recently created (ReadTemplate,
+                // CItem.cpp:686). Dropping these lost the NAME, COLOR and TAG a
+                // recipe gives its reward.
+                def.Rows.Add(new TemplateRow
+                {
+                    Kind = TemplateRowKind.Property,
+                    Key = key.Key.Trim(),
+                    Value = key.Arg,
+                });
             }
         }
 

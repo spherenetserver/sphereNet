@@ -29,6 +29,34 @@ public sealed class TemplateEntry
     public bool IsContainer { get; init; }
 }
 
+/// <summary>What one line of a template recipe is.</summary>
+public enum TemplateRowKind
+{
+    /// <summary>An <c>ITEM=</c> / <c>ITEMNEWBIE=</c> line.</summary>
+    Item,
+    /// <summary>A <c>CONTAINER=</c> line. It becomes the container the rows after
+    /// it are created in (Source-X ITC_CONTAINER, CItem.cpp:631).</summary>
+    Container,
+    /// <summary>Any other line. Source-X applies it with r_LoadVal to the item the
+    /// recipe most recently created (ReadTemplate, CItem.cpp:686), which is how a
+    /// recipe gives its reward a NAME, a COLOR or a TAG.</summary>
+    Property,
+}
+
+/// <summary>One line of a template recipe, IN THE ORDER IT WAS WRITTEN. Order is
+/// the whole grammar here: a CONTAINER line changes where the following items go,
+/// and a property line belongs to whatever was created immediately before it.</summary>
+public sealed class TemplateRow
+{
+    public TemplateRowKind Kind { get; init; }
+    /// <summary>The create arguments, for an Item or Container row.</summary>
+    public TemplateEntry? Entry { get; init; }
+    /// <summary>Property key, for a Property row.</summary>
+    public string Key { get; init; } = "";
+    /// <summary>Property value, for a Property row.</summary>
+    public string Value { get; init; } = "";
+}
+
 /// <summary>
 /// Script <c>[TEMPLATE name]</c> resource. Can behave as:
 ///   - a <b>list</b> template — every ITEM= line gets spawned (used by NPC
@@ -44,6 +72,12 @@ public sealed class TemplateDef : ResourceLink
 
     /// <summary>Sequential entries from ITEM= lines — each spawned in turn.</summary>
     public List<TemplateEntry> ItemEntries { get; } = [];
+
+    /// <summary>Every recipe line in source order, create commands and property
+    /// lines alike. <see cref="ItemEntries"/> is the flat create-only view the older
+    /// callers use; this is what a faithful ReadTemplate walk needs, because the
+    /// meaning of a line depends on what came before it.</summary>
+    public List<TemplateRow> Rows { get; } = [];
 
     /// <summary>True when this template only has random-pick entries
     /// (i.e. random_hats, random_shirts). False when it enumerates items

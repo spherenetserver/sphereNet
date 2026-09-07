@@ -3,6 +3,50 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-07] - TEMPLATE tarifleri artik yurutuluyor, gozden gecirilmiyor (13F)
+----------------------------------------
+
+FIX - Tarifin esya miktarlari hic uygulanmiyor, sifir miktar da yine esya
+        uretiyordu; yedi parcalik odul tek parca olarak geliyor, ",0" ile kapatilmis
+        satir yine olusuyordu. Her olusturma satiri artik CreateHeader sozlesmesinden
+        geciyor (CItem.cpp:461): R# sansi atiliyor, miktar ifadesi - "{lo hi}" zari
+        dahil - degerlendiriliyor ve sifir miktar satiri tamamen reddediyor. Kok
+        satirin miktari da cagirana donen nesneye ulasiyor.
+
+FIX - Tarifin icindeki NAME, COLOR ve TAG satirlari yuklemede dusuruluyordu: yukleyici
+        yalnizca olusturma komutlarini tutuyor, gorev odulu temel tanimin adiyla,
+        renksiz ve takip tag'i olmadan cikiyordu. Referans, tanimadigi her satiri
+        tarifin en son olusturdugu esyada r_LoadVal ile uygular (ReadTemplate,
+        CItem.cpp:686). TemplateDef artik her satiri KAYNAK SIRASIYLA tutuyor; bir
+        property satiri kendinden once olusturulana uygulaniyor - ilk ITEM'dan onceki
+        satirlar icin kapsayiciya, sonrasinda o esyaya.
+
+FIX - Ikinci CONTAINER satiri kendinden sonrakilerin hedefi olmuyordu; ic cantaya
+        konmasi gereken mallar cantanin yanina uretiliyor, canta bos kaliyordu.
+        ITC_CONTAINER yeni kapsayiciyi gecerli yapar (CItem.cpp:631) ve sonraki ITEM
+        satirlari onu kullanir (:642). Gercekte kapsayici adlandirmayan satir artik
+        hicbir hedef birakmiyor - referansin basarisiz cast'i gibi - ve sonraki
+        satirlar tasmak yerine duruyor.
+
+FIX - Baska bir TEMPLATE'i adlandiran ITEM satiri hicbir sey uretmiyordu: cozucu her
+        satiri itemdef indeksine indirgiyor, template bu kontrolu gecemiyordu; basvuru
+        yapilan alt tarif bos kutu veriyor, tek satir oldugunda ise hicbir nesne
+        olusmuyordu. CreateHeader RES_TEMPLATE'i kabul eder ve onu gecerli kapsayicida
+        okur (:515 -> :555); cozucu artik kaynak TURUNU koruyor ve ozyineliyor,
+        derinlik siniriyla - boylece tarif dongusu sinirli bir yuruyusle bitiyor.
+
+FIX - Kaynak konumundaki ondalik sayi onaltilik okunuyordu; "ITEM=4096" ondalik 4096
+        yerine 0x4096'yi - bambaska ama tamamen gecerli bir esyayi - olusturuyordu.
+        Referans bunu Exp_GetDWVal ile okur (ResourceGetID_EatStr,
+        CResourceHolder.cpp:102); yalnizca bastaki sifir hex demektir. Bu, gecikmeli
+        cagri ve NEWDUPE parser'larinin zaten uydugu ayni Sphere sayi kurali.
+
+CHANGE - TEMPLATE basligiyla cagrilan SERV.NEWITEM artik tarifi YURUTUYOR ve kendi
+        sonucunu donduruyor - actigi ilk kapsayici, hic acmadiysa son esyasi - ilk
+        girisi elle kurup doldurmak yerine. Spawner ayni yuruyusu paylasiyor, boylece
+        template spawner'i da miktarlari, property satirlarini ve ic ice kapsayicilari
+        aliyor.
+
 [2026-09-07] - Script cagri zinciri, nesne fabrikalari ve kopyalama (12Z/13A-13E)
 ----------------------------------------
 

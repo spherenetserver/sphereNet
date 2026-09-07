@@ -4,6 +4,49 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-07] - TEMPLATE recipes are run, not skimmed (13F)
+----------------------------------------
+
+FIX - A recipe's item amounts were never applied and a zero amount still produced an
+        item, so a seven-piece reward arrived as one piece and a row switched off with
+        ",0" was created anyway. Every create row now goes through the CreateHeader
+        contract (CItem.cpp:461): the R# chance is rolled, the amount expression is
+        evaluated - "{lo hi}" dice included - and an amount of zero refuses the row
+        outright. The root row's amount reaches the object the caller receives too.
+
+FIX - The NAME, COLOR and TAG lines inside a recipe were dropped at load: the loader
+        kept only the create commands, so a quest reward came out with the base
+        definition's name, no hue and no tracking tag. Source-X hands any line it does
+        not recognise to r_LoadVal on the item the recipe most recently created
+        (ReadTemplate, CItem.cpp:686). TemplateDef now keeps every line IN SOURCE
+        ORDER, and a property row applies to whatever was created before it - the
+        container for the rows before the first ITEM, that item afterwards.
+
+FIX - A second CONTAINER row did not become the destination for the rows after it, so
+        goods meant for an inner bag were created beside it and the bag came out
+        empty. ITC_CONTAINER makes the new container current (CItem.cpp:631) and the
+        following ITEM rows use it (:642). A row that does not actually name a
+        container now leaves no destination at all, as the reference's failed cast
+        does, so the following rows stop rather than spilling.
+
+FIX - An ITEM row naming another TEMPLATE built nothing: the resolver reduced every
+        row to an itemdef index and a template failed that, so a referenced sub-recipe
+        yielded an empty box, or zero objects when it was the only row. CreateHeader
+        accepts RES_TEMPLATE and reads it in the current container (:515 -> :555); the
+        resolver keeps the resource TYPE now and recurses, with a depth bound so a
+        recipe cycle ends in a bounded walk.
+
+FIX - A decimal number in a resource position was read as hexadecimal, so "ITEM=4096"
+        created 0x4096 - a different, perfectly valid item - instead of decimal 4096.
+        Upstream reads it with Exp_GetDWVal (ResourceGetID_EatStr,
+        CResourceHolder.cpp:102), where only a leading zero means hex. This is the
+        same Sphere number rule the delayed-call and NEWDUPE parsers already follow.
+
+CHANGE - SERV.NEWITEM on a TEMPLATE header now RUNS the recipe and hands back its own
+        result - the first container it opened, or its last item - instead of building
+        the first entry by hand and filling it. The spawner shares the same walk, so a
+        template spawner gets the amounts, property lines and nested containers too.
+
 [2026-09-07] - Script call chain, object factories and duplication (12Z/13A-13E)
 ----------------------------------------
 

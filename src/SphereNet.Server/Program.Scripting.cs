@@ -1202,39 +1202,34 @@ public static partial class Program
         return result;
     }
 
-    /// <summary>NEWITEM on a [TEMPLATE] header: build the recipe's first entry as the
-    /// object the caller receives and, when that entry is a CONTAINER, create the rows
-    /// after it inside it (Source-X CreateHeader -> CreateTemplate,
-    /// CItem.cpp:461/554/628). The amount and parent fields apply to the object handed
-    /// back, exactly as for an ITEMDEF header.</summary>
+    /// <summary>NEWITEM on a [TEMPLATE] header. The recipe is RUN, line by line
+    /// (Source-X CreateHeader -> CreateTemplate -> ReadTemplate,
+    /// CItem.cpp:461/554/600): its CONTAINER rows open containers, its ITEM rows fill
+    /// whichever one is current, and its other lines set properties on whatever was
+    /// created last. The caller receives the recipe's own result - the first container
+    /// it opened, or its last item. The amount and parent fields then apply to that
+    /// object, exactly as for an ITEMDEF header.
+    ///
+    /// Reading only the first entry and hand-building it lost the recipe's amounts,
+    /// its NAME/COLOR/TAG lines, its nested containers and any recipe it referenced.</summary>
     private static string HandleServNewFromTemplate(ResourceId rid, string[] parts)
     {
         if (_world == null)
             return "0";
 
-        int primary = TemplateEngine.ResolveTemplatePrimary(rid.Index);
-        if (primary <= 0)
+        var item = TemplateEngine.BuildTemplate(_world, rid.Index);
+        if (item == null || item.IsDeleted)
             return "0";
 
-        var item = _world.CreateItem();
-        if (!ItemDefHelper.ApplyInstanceMetadata(item, primary))
-        {
-            if (primary is <= 0 or > ushort.MaxValue)
-            {
-                _world.RemoveItem(item);
-                return "0";
-            }
-            item.BaseId = (ushort)primary;
-        }
-        TemplateEngine.FillTemplateContents(_world, item, rid.Index);
-
+        // An explicit amount on the NEWITEM line overrides whatever the recipe set.
         if (parts.Length > 1 && parts[1].Length > 0)
             item.Amount = (ushort)Math.Clamp(ValueCurve.ParseSphereNumber(parts[1]), 1, ushort.MaxValue);
         if (parts.Length > 2 && TryParseScriptUid(parts[2], out Serial templateParent))
-            PlaceNewItemUnderParent(item, templateParent, DefinitionLoader.GetItemDef(primary));
+            PlaceNewItemUnderParent(item, templateParent,
+                DefinitionLoader.GetItemDef(ItemDefHelper.ResolveInstanceDefIndex(item)));
 
-        // Filling the contents created objects of its own; NEW must name the one this
-        // call produced (CScriptObj.cpp:1381).
+        // The recipe created objects of its own; NEW must name the one this call
+        // produced (CScriptObj.cpp:1381).
         _world.LastNewItem = item.Uid;
         _world.LastNewObject = item.Uid;
         return $"0{item.Uid.Value:X}";

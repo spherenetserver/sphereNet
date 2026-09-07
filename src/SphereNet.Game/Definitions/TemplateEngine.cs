@@ -270,15 +270,183 @@ public static class TemplateEngine
 
     // ---- Building real items out of a [TEMPLATE] recipe -------------------
     //
-    // A TEMPLATE is a recipe, not an itemdef. Source-X routes it through
-    // CItem::CreateHeader, which accepts ITEMDEF and TEMPLATE alike and hands the
-    // latter to CreateTemplate (CItem.cpp:461/554): the first entry becomes the
-    // object the caller gets back, and when that entry is a CONTAINER the rows
-    // after it are created inside it (CItem.cpp:628/642).
+    // A TEMPLATE is a recipe, not an itemdef. Source-X reads it line by line in
+    // CItem::ReadTemplate (CItem.cpp:600): a CONTAINER row becomes the container the
+    // rows after it are created in, an ITEM row is created in whatever container is
+    // current, and ANY OTHER line is applied with r_LoadVal to the item the recipe
+    // most recently created (:686). Each create row goes through CreateHeader
+    // (:461), which rolls the row's R# chance, evaluates its amount, refuses the row
+    // outright when that amount is zero, and accepts a nested TEMPLATE as readily as
+    // an ITEMDEF. The object handed back is the first container the recipe opened,
+    // or the last item when it opened none (:691).
 
-    /// <summary>The itemdef index the template's first resolvable entry names -
-    /// the object a caller creating from this template receives. 0 when the recipe
+    /// <summary>How deep a recipe may reference other recipes before we stop. A
+    /// cycle in the data must end in a bounded walk, not a stack overflow.</summary>
+    private const int MaxTemplateDepth = 8;
+
+    /// <summary>Run a whole recipe and return the object its caller receives.
+    /// <paramref name="into"/> is the container the recipe starts in (null for a
+    /// free-standing build); rows may replace it as they open containers of their
+    /// own.</summary>
+    public static SphereNet.Game.Objects.Items.Item? BuildTemplate(
+        SphereNet.Game.World.GameWorld world, int templateIndex,
+        SphereNet.Game.Objects.Items.Item? into = null, int depth = 0)
+    {
+        var tdef = DefinitionLoader.GetTemplateDef(templateIndex);
+        if (tdef == null || depth >= MaxTemplateDepth)
+            return null;
+        return WalkRows(world, tdef, into, depth, skipLeadingContainer: false, topCont: null);
+    }
+
+    /// <summary>Fill an ALREADY-CREATED container from a recipe whose leading
+    /// CONTAINER row the caller has built itself (the spawner does this: it needs to
+    /// own the object so it can apply its own spawn semantics to it). The rest of
+    /// the recipe runs normally against that container, property rows included.</summary>
+    public static void FillTemplateContents(
+        SphereNet.Game.World.GameWorld world,
+        SphereNet.Game.Objects.Items.Item container, int templateIndex)
+    {
+        var tdef = DefinitionLoader.GetTemplateDef(templateIndex);
+        if (tdef == null || tdef.Rows.Count == 0) return;
+        if (tdef.Rows[0].Kind != TemplateRowKind.Container) return;   // no box, nothing to fill
+        WalkRows(world, tdef, container, depth: 0, skipLeadingContainer: true, topCont: container);
+    }
+
+    private static SphereNet.Game.Objects.Items.Item? WalkRows(
+        SphereNet.Game.World.GameWorld world, TemplateDef tdef,
+        SphereNet.Game.Objects.Items.Item? cont, int depth,
+        bool skipLeadingContainer, SphereNet.Game.Objects.Items.Item? topCont)
+    {
+        SphereNet.Game.Objects.Items.Item? item = topCont;
+        bool skipped = !skipLeadingContainer;
+
+        foreach (var row in tdef.Rows)
+        {
+            switch (row.Kind)
+            {
+                case TemplateRowKind.Container:
+                {
+                    if (!skipped)
+                    {
+                        // The caller already built this one and is holding it.
+                        skipped = true;
+                        continue;
+                    }
+                    var made = CreateHeaderRow(world, row.Entry!, cont, depth);
+                    if (made == null) continue;
+                    item = made;
+                    // The new container becomes the destination for what follows
+                    // (ITC_CONTAINER, CItem.cpp:631). Reusing the outer container
+                    // left a second box empty and its contents beside it. When the
+                    // row does not actually name a container the destination becomes
+                    // NOTHING, exactly as the reference's failed dynamic_cast leaves
+                    // pCont null, and the following rows stop rather than spilling.
+                    cont = made.ItemType is ItemType.Container or ItemType.ContainerLocked
+                        ? made : null;
+                    if (cont != null)
+                        topCont ??= made;
+                    continue;
+                }
+
+                case TemplateRowKind.Item:
+                {
+                    // Nowhere to put it yet and something has already been made:
+                    // upstream stops rather than dropping items loose (:643).
+                    if (cont == null && item != null) continue;
+                    var made = CreateHeaderRow(world, row.Entry!, cont, depth);
+                    if (made != null) item = made;
+                    continue;
+                }
+
+                default:
+                    // Applies to the item the recipe last created - which for the
+                    // rows before any ITEM is the container itself.
+                    item?.TrySetProperty(row.Key, row.Value);
+                    continue;
+            }
+        }
+
+        return topCont ?? item;
+    }
+
+    /// <summary>Create one recipe row: roll its chance and amount, resolve what it
+    /// names, and put the result in <paramref name="cont"/>. The port of
+    /// CItem::CreateHeader (CItem.cpp:461). Returns null when the row declines to
+    /// produce anything - a failed R# roll, an amount of zero, or a name that
     /// resolves to nothing.</summary>
+    private static SphereNet.Game.Objects.Items.Item? CreateHeaderRow(
+        SphereNet.Game.World.GameWorld world, TemplateEntry entry,
+        SphereNet.Game.Objects.Items.Item? cont, int depth)
+    {
+        // "R5" is a 1-in-5 chance to create the row at all; an amount of 0 means the
+        // row is switched off. Both used to be ignored, so a disabled reward was
+        // still produced and a seven-piece one arrived as a single item.
+        if (!TryRollTemplateRow(entry, out int amount))
+            return null;
+
+        string picked = PickRandomItemDefName(entry.DefName);
+        if (string.IsNullOrWhiteSpace(picked))
+            return null;
+
+        if (!TryResolveTemplateResource(picked, out ResourceId rid))
+            return null;
+
+        // A row may name another RECIPE. Upstream's CreateHeader accepts
+        // RES_TEMPLATE and reads it in the current container (:515 -> :555);
+        // collapsing the resource to an itemdef index lost that and produced
+        // nothing at all.
+        if (rid.Type == ResType.Template)
+            return BuildTemplate(world, rid.Index, cont, depth + 1);
+
+        var made = world.CreateItem();
+        if (!ItemDefHelper.ApplyInstanceMetadata(made, rid.Index))
+        {
+            if (rid.Index is <= 0 or > ushort.MaxValue)
+            {
+                world.RemoveItem(made);
+                return null;
+            }
+            made.BaseId = (ushort)rid.Index;
+        }
+        made.FireCreateTrigger();
+
+        // Amount before the container, so stacking sees the final quantity
+        // (CItem.cpp:530 makes the same ordering point).
+        if (amount != 1)
+            made.Amount = (ushort)Math.Clamp(amount, 1, ushort.MaxValue);
+
+        cont?.AddItem(made);
+        return made;
+    }
+
+    /// <summary>Resolve what a recipe row names, KEEPING the resource type: a name
+    /// first, then a Sphere number. Upstream reads the number with Exp_GetDWVal
+    /// (ResourceGetID_EatStr, CResourceHolder.cpp:102), so only a leading zero means
+    /// hexadecimal - reading every number as hex turned a decimal id into a
+    /// different, perfectly valid item.</summary>
+    public static bool TryResolveTemplateResource(string token, out ResourceId rid)
+    {
+        rid = ResourceId.Invalid;
+        string name = (token ?? "").Trim();
+        if (name.Length == 0) return false;
+
+        var resolved = DefinitionLoader.StaticResources?.ResolveDefName(name);
+        if (resolved is { IsValid: true } r && r.Type is ResType.ItemDef or ResType.Template)
+        {
+            rid = r;
+            return true;
+        }
+
+        if (!SphereNet.Core.Types.ScriptNumber.TryParseToken(name, out long numeric) ||
+            numeric is <= 0 or > int.MaxValue)
+            return false;
+        rid = new ResourceId(ResType.ItemDef, (int)numeric);
+        return true;
+    }
+
+    /// <summary>The itemdef index a recipe's first resolvable create row names - what
+    /// a caller that wants to build the object itself needs to know. 0 when the
+    /// recipe resolves to nothing.</summary>
     public static int ResolveTemplatePrimary(int templateIndex)
     {
         var tdef = DefinitionLoader.GetTemplateDef(templateIndex);
@@ -291,42 +459,14 @@ public static class TemplateEngine
         return 0;
     }
 
-    /// <summary>Resolve one template row to an itemdef storage index.</summary>
-    public static int ResolveTemplateEntryIndex(string defName)
-    {
-        var rid = DefinitionLoader.StaticResources?.ResolveDefName(defName);
-        if (rid is { IsValid: true, Type: ResType.ItemDef })
-            return rid.Value.Index;
-        return int.TryParse(defName, System.Globalization.NumberStyles.HexNumber,
-            null, out int raw) && raw > 0 ? raw : 0;
-    }
+    /// <summary>Resolve one recipe row to an itemdef storage index, discarding the
+    /// resource type. Prefer <see cref="TryResolveTemplateResource"/>; this remains
+    /// for the callers that build the object themselves.</summary>
+    public static int ResolveTemplateEntryIndex(string defName) =>
+        TryResolveTemplateResource(defName, out ResourceId rid) && rid.Type == ResType.ItemDef
+            ? rid.Index
+            : 0;
 
-    /// <summary>Create the template's remaining rows INSIDE <paramref name="container"/>,
-    /// which must be the object built from its first (CONTAINER) entry. A recipe whose
-    /// first row is not a container has no contents to place and is left alone.</summary>
-    public static void FillTemplateContents(
-        SphereNet.Game.World.GameWorld world, SphereNet.Game.Objects.Items.Item container,
-        int templateIndex)
-    {
-        var tdef = DefinitionLoader.GetTemplateDef(templateIndex);
-        if (tdef == null || tdef.ItemEntries.Count == 0) return;
-        if (!tdef.ItemEntries[0].IsContainer) return;   // no box, nothing to fill
-
-        for (int i = 1; i < tdef.ItemEntries.Count; i++)
-        {
-            int idx = ResolveTemplateEntryIndex(tdef.ItemEntries[i].DefName);
-            if (idx <= 0) continue;
-
-            var child = world.CreateItem();
-            if (!ItemDefHelper.ApplyInstanceMetadata(child, idx))
-            {
-                if (idx > ushort.MaxValue) { world.RemoveItem(child); continue; }
-                child.BaseId = (ushort)idx;
-            }
-            child.FireCreateTrigger();
-            container.AddItem(child);
-        }
-    }
 
     private static string PickByWeight(List<TemplateEntry> pool)
     {

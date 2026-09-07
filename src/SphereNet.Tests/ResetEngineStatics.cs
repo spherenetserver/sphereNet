@@ -32,6 +32,8 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.ObjBase.BroadcastNearby = null;
         SphereNet.Game.Objects.Items.Item.ResolveWorld = null;
         SphereNet.Game.Objects.Items.Item.CreateTriggerHook = null;
+        // Config-fed engine switches must not leak from one test into the next.
+        SphereNet.Game.Magic.SpellEngine.NpcCanFizzleOnHit = false;
         // A recipe's FUNC= row reaches the script layer through this hook; a test
         // that installs one must not leave it standing for the next.
         SphereNet.Game.Definitions.TemplateEngine.FunctionRowHook = null;

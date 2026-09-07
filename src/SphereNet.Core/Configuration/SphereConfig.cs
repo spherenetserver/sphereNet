@@ -287,6 +287,11 @@ public sealed class SphereConfig
     /// <summary>Teleport sound for an NPC (default 0x01FE).</summary>
     public int TeleportSoundNpc { get; set; } = 0x01FE;
 
+    /// <summary>Can an NPC's spell be disturbed by a hit, the way a player's can?
+    /// (Source-X m_fNPCCanFizzleOnHit, ini NPCCANFIZZLEONHIT, default false - only
+    /// players are disturbed, CCharFight.cpp:881.)</summary>
+    public bool NpcCanFizzleOnHit { get; set; }
+
     /// <summary>How many houses a guild may own by default (Source-X
     /// _iMaxHousesGuild, ini MAXHOUSESGUILD, default 1). It is the value a stone
     /// starts with (CItemStone.cpp:24); a stone that names its own MAXHOUSES keeps
@@ -706,6 +711,7 @@ public sealed class SphereConfig
         ItemsMaxAmount = ini.GetInt(section, "ItemsMaxAmount", ItemsMaxAmount);
         MaxItemComplexity = ini.GetInt(section, "MaxItemComplexity", MaxItemComplexity);
         MaxHousesGuild = Math.Max(0, ini.GetInt(section, "MaxHousesGuild", MaxHousesGuild));
+        NpcCanFizzleOnHit = ini.GetBool(section, "NpcCanFizzleOnHit", NpcCanFizzleOnHit);
         TeleportEffectStaff = GetIntOrHex(ini, section, "TeleportEffectStaff", TeleportEffectStaff);
         TeleportSoundStaff = GetIntOrHex(ini, section, "TeleportSoundStaff", TeleportSoundStaff);
         TeleportEffectPlayers = GetIntOrHex(ini, section, "TeleportEffectPlayers", TeleportEffectPlayers);

@@ -477,6 +477,11 @@ public sealed class SpellEngine
     /// Call this when a casting character takes damage.
     /// Returns true if the spell was interrupted.
     /// </summary>
+    /// <summary>Whether a creature's casting can be disturbed by a hit the way a
+    /// player's is (ini NPCCANFIZZLEONHIT, default false). The host sets it from the
+    /// configuration.</summary>
+    public static bool NpcCanFizzleOnHit { get; set; }
+
     public bool TryInterruptFromDamage(Character caster, int damage)
     {
         // Source-X CChar::OnTakeDamage: taking damage removes paralyze (the
@@ -495,7 +500,11 @@ public sealed class SpellEngine
         // Reference disturb (OnTakeDamage): only players are disturbed; the
         // chance is the spell's INTERRUPT curve at the caster's skill
         // (per-mille) — the damage amount does not factor in.
-        if (!caster.IsPlayer)
+        //
+        // "Only players" is the DEFAULT, not the rule: NPCCANFIZZLEONHIT makes a
+        // creature's casting interruptible too (CCharFight.cpp:881). The setting was
+        // not read at all, so a shard asking for it got the default anyway.
+        if (!caster.IsPlayer && !NpcCanFizzleOnHit)
             return false;
 
         int chance = 1000;

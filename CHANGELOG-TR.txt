@@ -3,6 +3,22 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-07] - Yaratigin buyusunun bozulabilirligi bir ayardir (IS-5)
+----------------------------------------
+
+FIX - "Vurulunca yalnizca oyuncularin buyusu bozulur" kesme yoluna kural olarak
+        yazilmisti. Bu VARSAYILANDIR: referans bunu NPCCANFIZZLEONHIT ile kapiya baglar
+        (CCharFight.cpp:881); yaratiklarinin buyusunun bozulmasini isteyen shard bunu
+        ister ve alir. Ayar hic okunmuyordu, yani istemek hicbir sey degistirmiyordu.
+        Varsayilan degismedi - eskisi gibi yalnizca oyuncular.
+
+NOTE - Okunmayan anahtarlardan ikisine daha bakildi ve bu dalgada bilerek dokunulmadi.
+        NPCSKILLSAVE referansta bir kayit ayari degildir: esigin altindaki NPC
+        skillerini SIFIRLAYAN bir temizlik kuralidir (FixWeirdness, CChar.cpp:1030),
+        yani baglamak import edilmis veriyi degistirir ve once karar ister. MAXPOLYSTATS
+        icin burada tuketici yok - polymorph, formun statlarini hic uygulamiyor; sinir
+        koymak hicbir seyi sinirlamazdi.
+
 [2026-09-07] - Yanlis ad altinda calisan ayarlar (IS-5)
 ----------------------------------------
 

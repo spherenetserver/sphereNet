@@ -739,6 +739,7 @@ public static partial class Program
         SphereNet.Game.Objects.Items.Item.ItemsMaxAmount = _config.ItemsMaxAmount;
         SphereNet.Game.Objects.Items.Item.MaxItemComplexity = _config.MaxItemComplexity;
         SphereNet.Game.Guild.GuildManager.DefaultMaxHouses = _config.MaxHousesGuild;
+        SphereNet.Game.Magic.SpellEngine.NpcCanFizzleOnHit = _config.NpcCanFizzleOnHit;
         _world.MaxBankItems      = _config.BankMaxItems;
         _world.MaxBankWeight        = _config.BankMaxWeight;
         _world.MaxContainerWeight   = _config.ContainerMaxWeight;

@@ -87,4 +87,24 @@ public class SpellInterruptTests
         Assert.False(engine.TryInterruptFromDamage(caster, 99));
         Assert.True(caster.IsCasting);
     }
+
+    [Fact]
+    public void AnNpcIsNotDisturbedByDefault_AndIsWhenTheSettingSaysSo()
+    {
+        // "Only players are disturbed" is the DEFAULT, not the rule: upstream gates it
+        // on NPCCANFIZZLEONHIT (CCharFight.cpp:881), which was not read at all.
+        var (engine, npc, _) = CreateCastingCaster(1000, 0, isPlayer: false);
+        Assert.False(SpellEngine.NpcCanFizzleOnHit);
+        Assert.False(engine.TryInterruptFromDamage(npc, 50));
+        Assert.True(npc.IsCasting);
+
+        var (engine2, npc2, _) = CreateCastingCaster(1000, 0, isPlayer: false);
+        SpellEngine.NpcCanFizzleOnHit = true;
+        try
+        {
+            Assert.True(engine2.TryInterruptFromDamage(npc2, 1));
+            Assert.False(npc2.IsCasting);
+        }
+        finally { SpellEngine.NpcCanFizzleOnHit = false; }
+    }
 }

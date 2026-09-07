@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-07] - Whether a creature's casting can be disturbed is a setting (IS-5)
+----------------------------------------
+
+FIX - "Only players are disturbed by a hit" was written into the interrupt path as a
+        rule. It is the DEFAULT: upstream gates it on NPCCANFIZZLEONHIT
+        (CCharFight.cpp:881), so a shard that wants its creatures interruptible asks for
+        it and gets it. The setting was not read at all, so asking changed nothing. The
+        default is unchanged - only players, as before.
+
+NOTE - Two more of the unread keys were looked at and deliberately left alone this
+        wave. NPCSKILLSAVE is not a save setting upstream: it is a cleanup rule that
+        ZEROES an NPC's skills below the threshold (FixWeirdness, CChar.cpp:1030), so
+        wiring it changes imported data and wants a decision first. MAXPOLYSTATS has no
+        consumer here yet - polymorph does not apply the form's stats at all, so a cap
+        on them would cap nothing.
+
 [2026-09-07] - Settings that worked under the wrong name (IS-5)
 ----------------------------------------
 

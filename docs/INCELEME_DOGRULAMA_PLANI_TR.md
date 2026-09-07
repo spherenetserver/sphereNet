@@ -2813,6 +2813,19 @@ karari. Ayrica bu tur yalnizca CANLI ini'nin set ettigi anahtarlara bakti; refer
 
 **Kapanis:** tam suite **3.281 basarili / 0 basarisiz** (+2).
 
+**IS-5 ucuncu dilim (7 Eylul 2026):**
+
+- [x] **B5-4 (P2)** - "Vurulunca yalnizca oyuncu bozulur" kesme yoluna kural olarak
+  yazilmisti; referansta bu NPCCANFIZZLEONHIT'e bagli varsayilandir. (YAPILDI: ayar
+  eklendi, varsayilan degismedi.)
+- **NPCSKILLSAVE - KARAR BEKLIYOR:** referansta kayit ayari degil, esigin altindaki NPC
+  skillerini SIFIRLAYAN temizlik kurali (FixWeirdness, CChar.cpp:1030, varsayilan 10).
+  Baglamak import edilmis veriyi degistirir.
+- **MAXPOLYSTATS - TUKETICI YOK:** polymorph formun statlarini hic uygulamiyor; once o
+  eksik kapanmali.
+
+**Kapanis:** tam suite **3.282 basarili / 0 basarisiz** (+1).
+
 ### IS-4 - nesne olusturma/kopyalama giris noktalari tablosu (7 Eylul 2026)
 
 Kaynak: port plani IS-4 / PLAN-101. Amac: ayni isi yapan girislerin ortak ve farkli

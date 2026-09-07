@@ -35,6 +35,15 @@ public sealed class WorldLoader
     /// the truncated graphic would miss. Returns 0 when unknown.</summary>
     public Func<string, int>? ResolveItemDefFullIndex { get; set; }
 
+    /// <summary>What a record header naming a <c>[MULTIDEF]</c> resolves to: the multi
+    /// id it is drawn as, and the TYPE the block declares. A classic save writes a
+    /// structure as <c>[WORLDITEM m_small_ship_n]</c> with no ID and no TYPE line of
+    /// its own, and that defname is a MULTIDEF, not an ITEMDEF - so
+    /// <see cref="ResolveItemDef"/> answered nothing and the hull loaded with graphic 0
+    /// and type Normal. Upstream has no such split: a multi's definition IS its item
+    /// base (CItemBaseMulti), so the id and the type come from it.</summary>
+    public Func<string, (ushort Id, SphereNet.Core.Enums.ItemType Type)?>? ResolveMultiDef { get; set; }
+
     /// <inheritdoc cref="ResolveItemDef"/>
     public Func<string, ushort>? ResolveCharDef { get; set; }
 
@@ -791,9 +800,33 @@ public sealed class WorldLoader
             {
                 ushort baseId = ResolveItemDef(defname);
                 if (baseId != 0)
+                {
                     item.BaseId = baseId;
+                }
+                else if (ResolveMultiDef?.Invoke(defname) is { } multi)
+                {
+                    // A structure: the header names a [MULTIDEF], which carries both
+                    // the graphic and the TYPE the record itself never writes.
+                    item.BaseId = multi.Id;
+                    if (multi.Type != SphereNet.Core.Enums.ItemType.Normal)
+                        item.ItemType = multi.Type;
+                }
+                else if (SphereNet.Core.Types.ScriptNumber.TryParseToken(defname, out long numericId) &&
+                         numericId is > 0 and <= ushort.MaxValue)
+                {
+                    // A classic record may head with the ITEM ID itself rather than a
+                    // defname - "[WORLDITEM 03eb2]" - and then write no ID line, because
+                    // the header already IS the id. It is read as a Sphere number, so
+                    // the leading zero means hexadecimal (ResourceGetID_EatStr,
+                    // CResourceHolder.cpp:102). Ship parts are written this way, and
+                    // without it they loaded with graphic 0 and type Normal: the hull
+                    // could not tell its own planks from anything else.
+                    item.BaseId = (ushort)numericId;
+                }
                 else
+                {
                     _logger.LogDebug("Unknown item defname '{DefName}' — BaseId stays default", defname);
+                }
 
                 // Pin the source defname when the ITEMDEF is keyed by a synthetic
                 // index (non-numeric [ITEMDEF i_xxx] header) that the 16-bit BaseId

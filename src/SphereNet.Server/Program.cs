@@ -827,6 +827,28 @@ public static partial class Program
             }
             return 0;
         };
+        // A structure's record names a [MULTIDEF], not an ITEMDEF: that block carries
+        // the multi id it is drawn as and the TYPE the record never writes.
+        _loader.ResolveMultiDef = defname =>
+        {
+            var rid = _resources.ResolveDefName(defname);
+            if (!rid.IsValid || rid.Type != ResType.MultiDef || rid.Index is < 0 or > ushort.MaxValue)
+                return null;
+            string typeName = "";
+            var link = _resources.GetResource(rid);
+            if (link?.StoredKeys != null)
+            {
+                foreach (var key in link.StoredKeys)
+                {
+                    if (key.Key.Equals("TYPE", StringComparison.OrdinalIgnoreCase))
+                    {
+                        typeName = key.Arg.Trim();
+                        break;
+                    }
+                }
+            }
+            return ((ushort)rid.Index, SphereNet.Scripting.Definitions.ItemDef.ParseTypeName(typeName));
+        };
         _loader.ResolveItemDefFullIndex = defname =>
         {
             var rid = _resources.ResolveDefName(defname);

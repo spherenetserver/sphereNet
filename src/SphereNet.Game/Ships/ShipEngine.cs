@@ -1543,14 +1543,19 @@ public sealed class ShipEngine
             // was read, so a ship out of a classic save loaded as an item and was never
             // registered with the engine at all - no region, no helm, invisible to
             // every ship lookup.
-            if (!item.TryGetTag("SHIP.OWNER", out string? ownerStr) &&
-                !item.TryGetTag("OWNER", out ownerStr))
-                continue;
-
+            //
+            // An owner is not what MAKES it a ship, though: upstream builds a
+            // CItemShip from the type and leaves m_uidOwner empty when nobody owns it
+            // (a guard ship, a scripted decoration). Requiring one kept every ownerless
+            // hull out of the engine as well - all eight of them in the 56T dump.
+            if (!item.TryGetTag("SHIP.OWNER", out string? ownerStr))
+                item.TryGetTag("OWNER", out ownerStr);
             uint ownerVal = ParseHexSerial(ownerStr);
-            if (ownerVal == 0) continue;
 
-            var ship = new Ship(item) { Owner = new Serial(ownerVal) };
+            var ship = new Ship(item)
+            {
+                Owner = ownerVal != 0 ? new Serial(ownerVal) : Serial.Invalid,
+            };
 
             if (item.TryGetTag("SHIP.ANCHORED", out string? ancStr))
                 ship.Anchored = ancStr == "1";

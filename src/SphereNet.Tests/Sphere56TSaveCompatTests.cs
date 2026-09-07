@@ -70,6 +70,27 @@ public class Sphere56TSaveCompatTests
             }
             return 0;
         };
+        loader.ResolveMultiDef = defname =>
+        {
+            var rid = resources.ResolveDefName(defname);
+            if (!rid.IsValid || rid.Type != SphereNet.Core.Enums.ResType.MultiDef ||
+                rid.Index is < 0 or > ushort.MaxValue)
+                return null;
+            string typeName = "";
+            var link = resources.GetResource(rid);
+            if (link?.StoredKeys != null)
+            {
+                foreach (var key in link.StoredKeys)
+                {
+                    if (key.Key.Equals("TYPE", StringComparison.OrdinalIgnoreCase))
+                    {
+                        typeName = key.Arg.Trim();
+                        break;
+                    }
+                }
+            }
+            return ((ushort)rid.Index, SphereNet.Scripting.Definitions.ItemDef.ParseTypeName(typeName));
+        };
         loader.ResolveItemDefFullIndex = defname =>
         {
             var rid = resources.ResolveDefName(defname);
@@ -87,6 +108,30 @@ public class Sphere56TSaveCompatTests
                 ? (ushort)rid.Index : (ushort)0;
         };
         loader.Load(world, SaveDir);
+
+        // A structure's record names a [MULTIDEF], which carries the graphic and the
+        // TYPE the record itself never writes; its parts are written under numeric
+        // headers with no ID line. Both have to resolve or the hull cannot tell its own
+        // planks from anything else.
+        var hull = world.FindItem(new SphereNet.Core.Types.Serial(0x040014E75));
+        Assert.NotNull(hull);
+        Assert.Equal(SphereNet.Core.Enums.ItemType.Ship, hull!.ItemType);
+
+        var shipEngine = new SphereNet.Game.Ships.ShipEngine(
+            world, new SphereNet.Game.Housing.MultiRegistry(), null);
+        shipEngine.DeserializeFromWorld();
+        _out.WriteLine($"ships registered: {shipEngine.ShipCount}");
+
+        var liveShip = shipEngine.GetShip(hull.Uid);
+        Assert.NotNull(liveShip);
+        // None of these hulls carries an OWNER: an owner is not what makes it a ship.
+        Assert.NotNull(liveShip!.GetHold(world));
+        Assert.Equal(2, liveShip.GetPlankCount(world));
+        Assert.Equal(SphereNet.Core.Enums.ItemType.ShipSideLocked,
+            liveShip.GetPlank(0, world)!.ItemType);
+        // Seven of the eight hulls in the dump; the eighth carries an explicit
+        // TYPE=t_multi of its own, and an instance's type outranks its definition.
+        Assert.True(shipEngine.ShipCount >= 7, $"expected the hulls, got {shipEngine.ShipCount}");
 
         var unhandled = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         int withSkill = 0;

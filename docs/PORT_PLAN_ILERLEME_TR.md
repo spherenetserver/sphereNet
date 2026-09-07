@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | `e206eed` (PLAN-106 kapanışı) |
-| Tam test | 3.266 başarılı / 0 başarısız |
-| Sıradaki iş | **İŞ-2b: multi TYPE / sahipsiz gemi** (sonra İŞ-3: Save→Load→Save) |
+| Son commit | İŞ-2b (bu oturum) |
+| Tam test | 3.269 başarılı / 0 başarısız |
+| Sıradaki iş | **İŞ-2c: klasik ev kaydı** (ya da İŞ-3: Save→Load→Save) |
 
 ## Çalışma sırası
 
@@ -37,12 +37,18 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   **Paketsiz ölçümde 17 → doğru ölçümde 0.** 56T dökümü artık hiçbir anahtarı park
   etmeden yükleniyor; ölçüm paket + sunucu kablolamasıyla yapılıyor ve testte kilitli.
 
-- [ ] **İŞ-2b — multi'nin TYPE'ı ve sahipsiz gemi** (İŞ-2'de ortaya çıktı)
-  Multi'nin TYPE'ı `[MULTIDEF]`'ten gelir, motor onu multi kayıt defterinde tutar;
-  import edilen tekne `ItemType.Ship` değil, bu yüzden `ShipEngine`in tür kapısından
-  geçmiyor. Ayrıca aynı kapı OWNER arıyor ve 56T'nin 8 gemisinin hiçbirinde OWNER yok.
-  Sonuç: import edilen gemiler hiç kayıt olmuyor (bölge yok, dümen yok, iskele yok).
-  Veri artık korunuyor — eksik olan gemiyi canlandırmak.
+- [x] **İŞ-2b — multi'nin TYPE'ı ve sahipsiz gemi** — **KAPANDI**
+  Yapının kaydı `[MULTIDEF]` adıyla başlıyor ve ID/TYPE yazmıyor; parçaları sayısal
+  başlık kullanıyor. İkisi de çözülmüyordu → tekne grafik 0 / tür Normal. Artık
+  ikisi de tanımına çözülüyor ve gemi sahipsiz de olsa kaydoluyor: 7 tekne ambarı ve
+  iskeleleriyle geri geldi.
+
+- [ ] **İŞ-2c — klasik EV kaydı** (İŞ-2b'de ortaya çıktı)
+  `HousingEngine.CreateHouseFromTags` `HOUSE.OWNER` tag'i arıyor; klasik ev kaydında
+  öyle bir tag yok (0.56 evleri sahibi `MORE1`'de taşıyor **gibi görünüyor —
+  doğrulanmadı**). Sonuç: 93 ev hâlâ kaydolmuyor (bölge var — REGION.TAG.owner
+  dilimi onu kurdu — ama ev kaydı, kilitleme, güvenli kap, decay yok).
+  İlk adım: Source-X'te 0.56 ev kaydının sahibi nereden okuduğunu doğrula.
 
 - [ ] **İŞ-3 — Save→Load→Save alan bazında eşitlik** (PLAN-107)
   Temel stat, miktar, owner/parent, spawn üyeliği, timer ve vendor içeriği için
@@ -65,6 +71,9 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-2b KAPANDI** — 2026-09-07. Yapının kaydı `[MULTIDEF]`'e, parçaları sayısal
+  başlığa çözülüyor; sahipsiz gemi de kaydoluyor. 56T'de 7 tekne ambarı+iskelesiyle
+  geri geldi. Test: `LegacySaveKeyParityTests` +3; tam suite 3.269.
 - **İŞ-2 KAPANDI (PLAN-106)** — 2026-09-07. Son dilim: 0.56'nın KILLSPLAYER'ı
   referansın tek sayacına (KILLS) çevriliyor, KILLSNPC tag olarak korunuyor
   (referansta karşılığı yok). 56T dökümünde eşlenmeyen anahtar **0**; 834 karakter

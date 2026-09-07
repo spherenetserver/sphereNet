@@ -2767,6 +2767,31 @@ gecici olarak geri alinarak dokuz testin besinin eski davranisi yakaladigi kanit
 dali (referansta more2 uzerinden ikinci karakter uretimi) ve canta ici derin
 oz-referanslar.
 
+### IS-2b - yapinin kendi tanimina cozulmesi (7 Eylul 2026)
+
+Kaynak: IS-2 sirasinda ortaya cikti (klasik gemi HATCH/PLANK dilimi).
+
+- [x] **B2-1 (P1)** - Yapinin kaydi `[MULTIDEF]` adiyla baslar ve ne ID ne TYPE yazar;
+  yukleyici yalnizca ITEMDEF soruyordu, tekne grafik 0 / tur Normal yukleniyordu.
+  (YAPILDI: `WorldLoader.ResolveMultiDef` - baslik multi tanimina cozuluyor, kimlik ve
+  tur oradan geliyor. Referansta ayrim yok: CItemBaseMulti.)
+- [x] **B2-2 (P1)** - Yapinin parcalari esya kimligiyle baslayan sayisal basliklar
+  kullanir ve ID satiri yazmaz; onlar da grafik 0 / tur Normal geliyordu, yani tekne
+  kendi iskelesini taniyamiyordu. (YAPILDI: sayisal baslik Sphere sayisi olarak
+  okunuyor.)
+- [x] **B2-3 (P2)** - `ShipEngine.DeserializeFromWorld` OWNER olmadan tekneyi
+  kurmuyordu; 56T'nin sekiz teknesinin hicbirinde OWNER yok. (YAPILDI: sahip, gemiyi
+  gemi yapan sey degil - tur yapar; sahipsiz gemi `Serial.Invalid` sahiple kaydoluyor.)
+
+**Gercek veri sonucu:** 7 tekne ambari ve iskeleleriyle kaydoldu. Sekizinci kaydinda
+kendi `TYPE=t_multi` satirini tasiyor - ornegin turu tanimindan ustun, dogru davranis.
+
+**Kapanis:** tam suite **3.269 basarili / 0 basarisiz** (+3).
+
+**Acik kalan:** klasik EV kaydi da ayni sekilde `HOUSE.OWNER` tag'ini bilmiyor
+(`CreateHouseFromTags` onu ariyor); 0.56 evleri sahibi MORE1'de tasiyor gorunuyor -
+dogrulanmadi. Yani evler hala kaydolmuyor. Ayri is olarak durur.
+
 ### PLAN-106 kapanisi - eski shard'in oldurme sayaclari (7 Eylul 2026)
 
 - [x] **P106-11 (P1)** - 0.56'nin KILLSPLAYER/KILLSNPC anahtarlari SAVE.* tag'ine park

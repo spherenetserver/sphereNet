@@ -354,6 +354,11 @@ public sealed class ItemDef : BaseDef
     /// to the ItemType enum. Strips the t_ prefix and underscores.
     /// Also handles numeric values.
     /// </summary>
+    /// <summary>Read a script TYPE name - "t_ship", "t_multi_custom", a bare number.
+    /// A [MULTIDEF] block declares its type with the same spelling an ITEMDEF does, so
+    /// the two read it the same way.</summary>
+    public static ItemType ParseTypeName(string? value) => ParseItemType(value ?? "");
+
     private static ItemType ParseItemType(string value)
     {
         if (string.IsNullOrWhiteSpace(value))

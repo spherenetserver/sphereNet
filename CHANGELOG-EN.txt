@@ -4,6 +4,32 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-07] - A structure resolves to its own definition (İŞ-2b)
+----------------------------------------
+
+FIX - Every house and ship out of a classic save loaded as graphic 0 with type Normal.
+        A structure's record heads with a [MULTIDEF] name - "[WORLDITEM m_small_ship_n]"
+        - and writes neither an ID nor a TYPE line, because both belong to that block.
+        The loader only ever asked for an ITEMDEF, so the header resolved to nothing.
+        Upstream has no such split: a multi's definition IS its item base
+        (CItemBaseMulti), which is where the id and the type come from. The header now
+        resolves through the multi definition as well, and the hull comes back drawn as
+        its multi and typed as a ship.
+
+FIX - A structure's PARTS head with the item id itself - "[WORLDITEM 03eb2]" - and
+        write no ID line either, because the header already is the id
+        (ResourceGetID_EatStr, CResourceHolder.cpp:102). They loaded with graphic 0 and
+        type Normal too, so a hull could not tell its own planks from anything else. A
+        numeric header is read as the Sphere number it is.
+
+FIX - The ship engine refused to rebuild a hull that names no owner, so every ownerless
+        ship stayed out of it: no region, no helm, no plank - all eight in the 56T dump.
+        An owner is not what makes it a ship: upstream builds a CItemShip from the type
+        and leaves the owner empty when nobody owns it (a guard ship, a scripted
+        decoration). Seven of those eight hulls now come back as ships with their holds
+        and planks attached; the eighth carries an explicit TYPE=t_multi of its own, and
+        an instance's type outranks its definition.
+
 [2026-09-07] - The murder count an old shard wrote (PLAN-106)
 ----------------------------------------
 

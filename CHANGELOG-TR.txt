@@ -3,6 +3,31 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-07] - Yapi kendi tanimina cozuluyor (IS-2b)
+----------------------------------------
+
+FIX - Klasik kayittan gelen her ev ve gemi grafik 0 ve tur Normal olarak
+        yukleniyordu. Yapinin kaydi bir [MULTIDEF] adiyla baslar - "[WORLDITEM
+        m_small_ship_n]" - ve ne ID ne TYPE satiri yazar; ikisi de o bloga aittir.
+        Yukleyici yalnizca ITEMDEF soruyordu, yani baslik hicbir seye cozulmuyordu.
+        Referansta bu ayrim yok: multi'nin tanimi ONUN esya tabanidir
+        (CItemBaseMulti), kimlik ve tur oradan gelir. Baslik artik multi tanimindan da
+        cozuluyor; tekne kendi multi'si olarak cizilip gemi olarak turleniyor.
+
+FIX - Yapinin PARCALARI esyanin kimligiyle baslar - "[WORLDITEM 03eb2]" - ve onlar da
+        ID satiri yazmaz, cunku baslik zaten kimliktir (ResourceGetID_EatStr,
+        CResourceHolder.cpp:102). Onlar da grafik 0 / tur Normal yukleniyordu; tekne
+        kendi iskelesini baska bir seyden ayirt edemiyordu. Sayisal baslik artik
+        oldugu gibi, Sphere sayisi olarak okunuyor.
+
+FIX - Gemi motoru sahibi olmayan tekneyi yeniden kurmayi reddediyordu; sahipsiz her
+        gemi disarida kaliyordu: bolge yok, dumen yok, iskele yok - 56T dokumundeki
+        sekizin sekizi. Sahip, onu gemi YAPAN sey degildir: referans CItemShip'i
+        turden kurar ve kimse sahip degilse sahibi bos birakir (muhafiz gemisi,
+        scriptli dekor). O sekiz tekneden yedisi artik ambari ve iskeleleriyle geri
+        geliyor; sekizincisi kaydinda kendi TYPE=t_multi'sini tasiyor ve ornegin turu
+        tanimindan ustundur.
+
 [2026-09-07] - Eski shard'in yazdigi cinayet sayisi (PLAN-106)
 ----------------------------------------
 

@@ -51,6 +51,15 @@ public sealed class LegacySaveKeyParityTests : IDisposable
         DEFNAME=i_book_test
         NAME=Book
         TYPE=t_book
+
+        [ITEMDEF 03eb2]
+        NAME=Ship side
+        TYPE=t_ship_side_locked
+
+        [MULTIDEF 05b]
+        DEFNAME=m_test_ship
+        NAME=Test ship
+        TYPE=t_ship
         """;
 
     public LegacySaveKeyParityTests()
@@ -477,5 +486,125 @@ public sealed class LegacySaveKeyParityTests : IDisposable
             Assert.False(ch.TryGetTag("SAVE.KILLSPLAYER", out _));
         }
         finally { Directory.Delete(dir, true); }
+    }
+
+    // ================================================================
+    // A structure's record heads with a [MULTIDEF] name and writes neither an ID nor a
+    // TYPE line; its parts head with the item id itself. Upstream has no such split -
+    // a multi's definition IS its item base (CItemBaseMulti) - so both have to resolve
+    // through the definition, or the hull loads as graphic 0, type Normal.
+
+    private SphereNet.Persistence.Load.WorldLoader LoaderWithDefinitions()
+    {
+        var loader = new SphereNet.Persistence.Load.WorldLoader(LoggerFactory.Create(_ => { }));
+        loader.ResolveItemDef = defname =>
+        {
+            var rid = _resources.ResolveDefName(defname);
+            if (rid.IsValid && rid.Type == ResType.ItemDef)
+            {
+                var def = DefinitionLoader.GetItemDef(rid.Index);
+                return def != null && def.DispIndex > 0 ? def.DispIndex : (ushort)rid.Index;
+            }
+            return 0;
+        };
+        loader.ResolveMultiDef = defname =>
+        {
+            var rid = _resources.ResolveDefName(defname);
+            if (!rid.IsValid || rid.Type != ResType.MultiDef || rid.Index is < 0 or > ushort.MaxValue)
+                return null;
+            string typeName = "";
+            var link = _resources.GetResource(rid);
+            if (link?.StoredKeys != null)
+            {
+                foreach (var key in link.StoredKeys)
+                {
+                    if (key.Key.Equals("TYPE", StringComparison.OrdinalIgnoreCase))
+                    {
+                        typeName = key.Arg.Trim();
+                        break;
+                    }
+                }
+            }
+            return ((ushort)rid.Index, SphereNet.Scripting.Definitions.ItemDef.ParseTypeName(typeName));
+        };
+        return loader;
+    }
+
+    [Fact]
+    public void AStructureTakesItsGraphicAndTypeFromItsMultiDefinition()
+    {
+        var world = NewWorld();
+        string dir = Path.Combine(Path.GetTempPath(), $"sphnet_m_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "sphereworld.scp"), """
+                [WORLDITEM m_test_ship]
+                SERIAL=04000100
+                P=100,100,0
+
+                [WORLDITEM 03eb2]
+                SERIAL=04000101
+                P=101,100,0
+                """);
+
+            LoaderWithDefinitions().Load(world, dir);
+
+            var hull = world.FindItem(new Serial(0x04000100));
+            Assert.NotNull(hull);
+            Assert.Equal(0x5B, hull!.BaseId);              // the multi id it is drawn as
+            Assert.Equal(ItemType.Ship, hull.ItemType);    // the TYPE its [MULTIDEF] declares
+
+            // A part heads with the item id itself and writes no ID line.
+            var part = world.FindItem(new Serial(0x04000101));
+            Assert.NotNull(part);
+            Assert.Equal(0x3EB2, part!.BaseId);
+            Assert.Equal(ItemType.ShipSideLocked, part.ItemType);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void AnInstanceTypeInTheRecordStillOutranksTheDefinition()
+    {
+        var world = NewWorld();
+        string dir = Path.Combine(Path.GetTempPath(), $"sphnet_m2_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            // One 56T hull carries exactly this: a ship multi retyped in-game.
+            File.WriteAllText(Path.Combine(dir, "sphereworld.scp"), """
+                [WORLDITEM m_test_ship]
+                SERIAL=04000102
+                TYPE=t_multi
+                P=102,100,0
+                """);
+
+            LoaderWithDefinitions().Load(world, dir);
+
+            var hull = world.FindItem(new Serial(0x04000102));
+            Assert.NotNull(hull);
+            Assert.Equal(ItemType.Multi, hull!.ItemType);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void AShipWithNoOwnerIsStillAShip()
+    {
+        var world = NewWorld();
+        var hull = world.CreateItem();
+        hull.ItemType = ItemType.Ship;
+        world.PlaceItem(hull, new Point3D(140, 140, 0, 0));
+
+        var engine = new SphereNet.Game.Ships.ShipEngine(
+            world, new SphereNet.Game.Housing.MultiRegistry(), null);
+        engine.DeserializeFromWorld();
+
+        // Upstream builds a CItemShip from the TYPE and leaves the owner empty when
+        // nobody owns it - a guard ship, a scripted decoration.
+        var ship = engine.GetShip(hull.Uid);
+        Assert.NotNull(ship);
+        Assert.False(ship!.Owner.IsValid);
     }
 }

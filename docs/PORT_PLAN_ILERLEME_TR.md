@@ -14,7 +14,7 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | PLAN-106 dördüncü dilim (bu oturum) |
+| Son commit | `6a75530` (PLAN-106 dördüncü dilim) |
 | Tam test | 3.257 başarılı / 0 başarısız |
 | Sıradaki iş | **İŞ-2 devamı: gemi HATCH/PLANK (9)** |
 

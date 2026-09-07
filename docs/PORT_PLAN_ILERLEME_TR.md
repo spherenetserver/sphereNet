@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | `917d0f8` (İŞ-2b) |
-| Tam test | 3.269 başarılı / 0 başarısız |
-| Sıradaki iş | **İŞ-2c: klasik ev kaydı** (ya da İŞ-3: Save→Load→Save) |
+| Son commit | İŞ-2c (bu oturum) |
+| Tam test | 3.271 başarılı / 0 başarısız |
+| Sıradaki iş | **İŞ-3: Save→Load→Save alan bazında eşitlik** |
 
 ## Çalışma sırası
 
@@ -43,12 +43,12 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   ikisi de tanımına çözülüyor ve gemi sahipsiz de olsa kaydoluyor: 7 tekne ambarı ve
   iskeleleriyle geri geldi.
 
-- [ ] **İŞ-2c — klasik EV kaydı** (İŞ-2b'de ortaya çıktı)
-  `HousingEngine.CreateHouseFromTags` `HOUSE.OWNER` tag'i arıyor; klasik ev kaydında
-  öyle bir tag yok (0.56 evleri sahibi `MORE1`'de taşıyor **gibi görünüyor —
-  doğrulanmadı**). Sonuç: 93 ev hâlâ kaydolmuyor (bölge var — REGION.TAG.owner
-  dilimi onu kurdu — ama ev kaydı, kilitleme, güvenli kap, decay yok).
-  İlk adım: Source-X'te 0.56 ev kaydının sahibi nereden okuduğunu doğrula.
+- [x] **İŞ-2c — klasik yapının bölgesi** — **KAPANDI**
+  93 yapının hiç bölgesi yoktu (bölge gerçekleştirme ev kaydına bağlıydı). Artık
+  multi'nin kendisine bağlı: sahipsiz yapı da ayak izini, adını, olaylarını,
+  tag'lerini ve REGION.FLAGS'ini alıyor. **Sahiplik kasıtlı olarak eklenmedi:** 56T
+  evleri sahibi MORE1'de tutuyor ama bunu shard'ın kendi scriptleri okuyor; Source-X
+  CItemMulti sahibi yalnız OWNER'dan okur, MORE1'i hiç kullanmaz.
 
 - [ ] **İŞ-3 — Save→Load→Save alan bazında eşitlik** (PLAN-107)
   Temel stat, miktar, owner/parent, spawn üyeliği, timer ve vendor içeriği için
@@ -71,6 +71,9 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-2c KAPANDI** — 2026-09-07. Yapının bölgesi ev kaydına değil multi'ye bağlı;
+  56T'nin 93 yapısı artık bölgesiyle (bayraklar, olaylar, tag'ler) yükleniyor.
+  Test: `LegacySaveKeyParityTests` +2; tam suite 3.271.
 - **İŞ-2b KAPANDI** — 2026-09-07. Yapının kaydı `[MULTIDEF]`'e, parçaları sayısal
   başlığa çözülüyor; sahipsiz gemi de kaydoluyor. 56T'de 7 tekne ambarı+iskelesiyle
   geri geldi. Test: `LegacySaveKeyParityTests` +3; tam suite 3.269.

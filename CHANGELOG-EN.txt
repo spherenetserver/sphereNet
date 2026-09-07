@@ -4,6 +4,25 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-07] - A structure's region belongs to the structure (IS-2c)
+----------------------------------------
+
+FIX - A house out of a classic save had no region at all. Realizing one was hung off
+        the HOUSE record, and a house record needs an ownership tag this engine writes
+        itself - which a classic save never does, because that shard keeps ownership in
+        its own scripts. So 93 structures in the 56T dump loaded as decoration: their
+        Safe and NoBuild flags did nothing, their @Enter and @Step scripts never fired,
+        and nothing inside them could be told apart from the open field around them.
+        Upstream realizes the region whenever the MULTI is put in the world, owner or
+        not (MultiRealizeRegion, CItemMulti.cpp:191/571), so that is where it hangs
+        now: a multi with no ownership record still gets its footprint, its name, its
+        events, its tags and the REGION.FLAGS its own record carries.
+
+NOTE - Rebuilding the world twice replaces those regions rather than layering a second
+        one over the first. What is NOT handled yet is a structure being deleted while
+        the server runs: a house record still takes its region with it, but a multi
+        that has none leaks one until the next rebuild.
+
 [2026-09-07] - A structure resolves to its own definition (İŞ-2b)
 ----------------------------------------
 

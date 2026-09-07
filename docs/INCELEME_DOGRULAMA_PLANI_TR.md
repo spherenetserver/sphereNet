@@ -2767,6 +2767,27 @@ gecici olarak geri alinarak dokuz testin besinin eski davranisi yakaladigi kanit
 dali (referansta more2 uzerinden ikinci karakter uretimi) ve canta ici derin
 oz-referanslar.
 
+### IS-2c - yapinin bolgesi (7 Eylul 2026)
+
+- [x] **B2c-1 (P1)** - Klasik kayittan gelen 93 yapinin hicbir bolgesi yoktu: bolge
+  gerceklestirme EV kaydina bagliydi, ev kaydi da bu motorun kendi sahiplik tag'ini
+  istiyor. Sonuc: Safe/NoBuild bayraklari, @Enter/@Step scriptleri ve bolge tag'leri
+  hicbir sey yapmiyordu. (YAPILDI: `RealizeMultiRegion` multi'nin kendisine bagli -
+  referansta da oyledir, CItemMulti.cpp:191/571. Ev yolu da ayni metodu kullaniyor.
+  Kayittaki REGION.FLAGS artik bolgeye uygulaniyor.)
+
+**Dogrulama sirasinda netlesen sey:** 56T evleri sahibi `MORE1`'de tutuyor ve bunu
+shard'in KENDI scriptleri okuyor (`<link.uid.<link.more1>.account.name>`). Source-X
+CItemMulti sahibi yalnizca OWNER'dan okur, MORE1'i hic kullanmaz. Bu yuzden MORE1'i
+sahip saymak motora Source-X'te olmayan bir kural eklemek olurdu - yapilmadi. Eksik
+olan sahiplik degil, BOLGEYDI; o kapandi.
+
+**Kapanis:** tam suite **3.271 basarili / 0 basarisiz** (+2).
+
+**Acik kalan:** sunucu calisirken silinen sahipsiz multi bolgesini sizdirir (ev kaydi
+olan yapida silme yolu zaten var). Ayrica bu yapilarin kilitleme/guvenli kap/decay
+yonetimi shard scriptlerinde; motorun House kaydina baglanmalari ayri bir karar.
+
 ### IS-2b - yapinin kendi tanimina cozulmesi (7 Eylul 2026)
 
 Kaynak: IS-2 sirasinda ortaya cikti (klasik gemi HATCH/PLANK dilimi).

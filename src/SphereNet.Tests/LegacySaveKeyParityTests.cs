@@ -607,4 +607,68 @@ public sealed class LegacySaveKeyParityTests : IDisposable
         Assert.NotNull(ship);
         Assert.False(ship!.Owner.IsValid);
     }
+
+    // ================================================================
+    // A structure's region belongs to the structure. Upstream realizes it whenever the
+    // multi is put in the world, owner or not (MultiRealizeRegion, CItemMulti.cpp:191).
+
+    private static SphereNet.Game.Housing.MultiRegistry RegistryWithFootprint(ushort id)
+    {
+        var registry = new SphereNet.Game.Housing.MultiRegistry();
+        var def = new SphereNet.Game.Housing.MultiDef { Id = id, Name = "test multi" };
+        def.Components.Add(new SphereNet.Game.Housing.MultiComponent
+            { TileId = 0x0001, DeltaX = -2, DeltaY = -2, DeltaZ = 0, Visible = true });
+        def.Components.Add(new SphereNet.Game.Housing.MultiComponent
+            { TileId = 0x0001, DeltaX = 2, DeltaY = 2, DeltaZ = 0, Visible = true });
+        def.RecalcBounds();
+        registry.Register(def);
+        return registry;
+    }
+
+    [Fact]
+    public void AStructureWithNoOwnershipRecordStillHasItsRegion()
+    {
+        var world = NewWorld();
+        var multi = world.CreateItem();
+        multi.BaseId = 0x7E;
+        multi.ItemType = ItemType.Multi;
+        multi.Name = "Lonely keep";
+        world.PlaceItem(multi, new Point3D(80, 80, 0, 0));
+
+        // What a classic record carries: the region's own flags, events and tags - and
+        // no ownership record this engine would recognise.
+        Assert.True(multi.TrySetProperty("REGION.EVENTS", "r_house_private"));
+        Assert.True(multi.TrySetProperty("REGION.TAG.owner", "09191"));
+
+        var housing = new SphereNet.Game.Housing.HousingEngine(world, RegistryWithFootprint(0x7E));
+        housing.DeserializeFromWorld();
+
+        Assert.Equal(0, housing.HouseCount);          // no owner: no house record
+        var region = world.FindRegion(multi.Position);
+        Assert.NotNull(region);
+        Assert.Equal("Lonely keep", region!.Name);
+        Assert.True(region.TryGetTag("OWNER", out string? owner));
+        Assert.Equal("09191", owner);
+        Assert.Single(region.Events);
+    }
+
+    [Fact]
+    public void RebuildingTwiceDoesNotStackASecondRegionOnTheStructure()
+    {
+        var world = NewWorld();
+        var multi = world.CreateItem();
+        multi.BaseId = 0x7E;
+        multi.ItemType = ItemType.Multi;
+        world.PlaceItem(multi, new Point3D(90, 90, 0, 0));
+
+        var housing = new SphereNet.Game.Housing.HousingEngine(world, RegistryWithFootprint(0x7E));
+        housing.DeserializeFromWorld();
+        var first = world.FindRegion(multi.Position);
+        housing.DeserializeFromWorld();
+        var second = world.FindRegion(multi.Position);
+
+        Assert.NotNull(first);
+        Assert.NotNull(second);
+        Assert.NotEqual(first!.Uid, second!.Uid);     // the old one is gone, not layered
+    }
 }

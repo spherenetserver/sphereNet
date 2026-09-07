@@ -3,6 +3,25 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-07] - Yapinin bolgesi yapiya aittir (IS-2c)
+----------------------------------------
+
+FIX - Klasik kayittan gelen evin hicbir bolgesi yoktu. Bolgeyi gerceklestirme EV
+        kaydina bagliydi; ev kaydi ise bu motorun kendi yazdigi bir sahiplik tag'ini
+        istiyor - klasik kayit onu hic yazmaz, cunku o shard sahipligi kendi
+        scriptlerinde tutar. Yani 56T dokumundeki 93 yapi dekor olarak yukleniyordu:
+        Safe ve NoBuild bayraklari hicbir sey yapmiyor, @Enter/@Step scriptleri hic
+        calismiyor ve iclerindeki hicbir sey etraftaki acik araziden ayirt
+        edilemiyordu. Referans bolgeyi, MULTI dunyaya konuldugunda sahipli sahipsiz
+        farketmeksizin gerceklestirir (MultiRealizeRegion, CItemMulti.cpp:191/571);
+        artik burada da oyle: sahiplik kaydi olmayan multi de kendi ayak izini, adini,
+        olaylarini, tag'lerini ve kaydindaki REGION.FLAGS'i aliyor.
+
+NOTE - Dunya iki kez yeniden kuruldugunda bu bolgeler DEGISTIRILIYOR, ustuste
+        binmiyor. Henuz ele alinmayan sey: sunucu calisirken yapinin silinmesi - ev
+        kaydi bolgesini yaninda goturur, ama sahiplik kaydi olmayan multi bir sonraki
+        yeniden kurmaya kadar bolge sizdirir.
+
 [2026-09-07] - Yapi kendi tanimina cozuluyor (IS-2b)
 ----------------------------------------
 

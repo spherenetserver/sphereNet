@@ -1075,9 +1075,25 @@ public sealed class HousingEngine
     private void CreateHouseRegion(House house)
     {
         if (house.RegionUid != 0) return; // already realized
-        var mi = house.MultiItem;
+        var region = RealizeMultiRegion(house.MultiItem);
+        if (region != null)
+            house.RegionUid = region.Uid;
+    }
+
+    /// <summary>Give a MULTI its region: the footprint its definition declares, the
+    /// flags and events its own record carries, and the tags with them.
+    ///
+    /// The region belongs to the STRUCTURE, not to any ownership record of it -
+    /// upstream realizes it whenever the multi is put in the world, owner or not
+    /// (MultiRealizeRegion, CItemMulti.cpp:191/571). Hanging it off the house record
+    /// meant a structure out of a classic save - which names no owner in the shape this
+    /// engine reads - had no region at all: its Safe and NoBuild flags did nothing, its
+    /// @Enter and @Step scripts never fired, and nothing inside it could be told apart
+    /// from the open field around it.</summary>
+    private Region? RealizeMultiRegion(Objects.Items.Item mi)
+    {
         var def = _multiDefs.Get(mi.BaseId);
-        if (def == null) return;
+        if (def == null) return null;
 
         short x1 = (short)(mi.X + def.MinX);
         short y1 = (short)(mi.Y + def.MinY);
@@ -1105,10 +1121,17 @@ public sealed class HousingEngine
         // scripts fire (the tag round-trips on the item but was never realized).
         if (mi.TryGetTag("REGION.EVENTS", out string? regionEvents))
             region.AddEventsFromTag(regionEvents);
+        // A classic record carries the region's own flags too, and they are the
+        // structure's, not the definition's default (REGION.FLAGS, SHL_REGION,
+        // CItemMulti.cpp:3011).
+        if (mi.TryGetTag("REGION.FLAGS", out string? regionFlags) &&
+            SphereNet.Core.Types.ScriptNumber.TryParseToken(regionFlags, out long flagBits) &&
+            flagBits > 0)
+            region.Flags |= (RegionFlag)flagBits;
         ApplyRegionTags(mi, region);
 
         _world.AddRegion(region);
-        house.RegionUid = region.Uid;
+        return region;
     }
 
     /// <summary>Put the multi's stored REGION.TAG.&lt;name&gt; lines on the region it
@@ -1363,6 +1386,9 @@ public sealed class HousingEngine
         foreach (var existing in _houses.Values.ToList())
             RemoveHouseRegion(existing);
         _houses.Clear();
+        foreach (uint regionUid in _multiRegions.Values)
+            _world.RemoveRegion(regionUid);
+        _multiRegions.Clear();
         foreach (var obj in _world.GetAllObjects())
         {
             if (obj is not Item item) continue;
@@ -1372,12 +1398,28 @@ public sealed class HousingEngine
             // the registry after a restart (it then decayed/escaped management).
             if (item.ItemType is not (ItemType.Multi or ItemType.MultiCustom)) continue;
             var house = CreateHouseFromTags(item);
-            if (house == null) continue;
+            if (house == null)
+            {
+                // No ownership record - a structure out of a classic save, which writes
+                // its owner in its own script's shape rather than in the tag this
+                // engine keeps. It is still a structure: its region is realized from
+                // the multi itself, exactly as upstream does when the multi is put in
+                // the world (CItemMulti.cpp:571).
+                var loose = RealizeMultiRegion(item);
+                if (loose != null)
+                    _multiRegions[item.Uid] = loose.Uid;
+                continue;
+            }
 
             _houses[item.Uid] = house;
             CreateHouseRegion(house);
         }
     }
+
+    /// <summary>Regions realized for multis that carry no house record of their own.
+    /// Kept so a second rebuild replaces them rather than stacking a new region on top
+    /// of the old one.</summary>
+    private readonly Dictionary<Serial, uint> _multiRegions = [];
 
     private House? CreateHouseFromTags(Item item)
     {

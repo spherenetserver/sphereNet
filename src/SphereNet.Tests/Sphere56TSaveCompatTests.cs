@@ -117,6 +117,34 @@ public class Sphere56TSaveCompatTests
         Assert.NotNull(hull);
         Assert.Equal(SphereNet.Core.Enums.ItemType.Ship, hull!.ItemType);
 
+        var castle = world.FindItem(new SphereNet.Core.Types.Serial(0x04000313D));
+        // The multi geometry a server loads from multi.mul; the test supplies the one
+        // footprint it checks.
+        var multiDefs = new SphereNet.Game.Housing.MultiRegistry();
+        var castleDef = new SphereNet.Game.Housing.MultiDef { Id = 0x7E, Name = "castle" };
+        castleDef.Components.Add(new SphereNet.Game.Housing.MultiComponent
+            { TileId = 0x0001, DeltaX = -1, DeltaY = -1, DeltaZ = 0, Visible = true });
+        castleDef.Components.Add(new SphereNet.Game.Housing.MultiComponent
+            { TileId = 0x0001, DeltaX = 1, DeltaY = 1, DeltaZ = 0, Visible = true });
+        castleDef.RecalcBounds();
+        multiDefs.Register(castleDef);
+        var housing = new SphereNet.Game.Housing.HousingEngine(world, multiDefs);
+        housing.DeserializeFromWorld();
+        // A structure's region belongs to the STRUCTURE, not to an ownership record of
+        // it: this castle names no owner in the shape this engine keeps, and it still
+        // has to be a region - with the flags, events and tags its own record carries.
+        Assert.NotNull(castle);
+        Assert.Equal(SphereNet.Core.Enums.ItemType.Multi, castle!.ItemType);
+        Assert.Equal(0, housing.HouseCount);
+
+        var castleRegion = world.FindRegion(castle.Position);
+        Assert.NotNull(castleRegion);
+        Assert.Equal("Saints OF Ultima", castleRegion!.Name);
+        Assert.True(castleRegion.TryGetTag("OWNER", out string? regionOwner));
+        Assert.False(string.IsNullOrEmpty(regionOwner));
+        Assert.NotEmpty(castleRegion.Events);
+        _out.WriteLine($"castle region: {castleRegion.Name}, events={castleRegion.Events.Count}");
+
         var shipEngine = new SphereNet.Game.Ships.ShipEngine(
             world, new SphereNet.Game.Housing.MultiRegistry(), null);
         shipEngine.DeserializeFromWorld();

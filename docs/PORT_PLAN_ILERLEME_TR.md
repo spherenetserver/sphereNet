@@ -14,7 +14,7 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | İŞ-4 (bu oturum) |
+| Son commit | `cc959e3` (İŞ-4) |
 | Tam test | 3.278 başarılı / 0 başarısız |
 | Sıradaki iş | **İŞ-5: gerçek ini fark listesi (PLAN-301/302)** |
 

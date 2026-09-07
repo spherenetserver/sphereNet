@@ -14,7 +14,7 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-07 |
-| Son commit | İŞ-5 ikinci dilim (bu oturum) |
+| Son commit | `0ba152a` (İŞ-5 ikinci dilim) |
 | Tam test | 3.281 başarılı / 0 başarısız |
 | Sıradaki iş | **İŞ-5 devamı: kalan oynanış anahtarları (11 adet)** |
 

@@ -2899,6 +2899,18 @@ tasiyor (TELEPORTEFFECT*/SOUND* 0, MAXHOUSESGUILD 0, BACKPACKOVERLOAD 0,
 FLIPDROPPEDITEMS 0, NPCCANFIZZLEONHIT 1, MAXITEMCOMPLEXITY satiri yok). O dosya depoda
 degil; kullanici onayi olmadan degistirilmedi.
 
+**IS-5 devami - MAXPOLYSTATS'in tuketicisi yazildi (8 Eylul 2026):**
+
+- [x] **B5-9 (P2)** - Polymorph yalnizca govdeyi degistiriyor, formun statlarini hic
+  uygulamiyordu; bu yuzden MAXPOLYSTATS'in sinirlayacagi bir sey yoktu. (YAPILDI:
+  MAGICF_POLYMORPHSTATS acikken formun STR/DEX'i aliniyor, degisim iki yonde de
+  MAXPOLYSTATS ile sinirli, delta buyu hafizasinda - form kalkinca geri aliniyor.
+  Deger bildirmeyen tanim o stata dokunmuyor.)
+- Yan urun: `DefinitionLoader.GetCharDefByBody` - tanimi cizildigi govdeden bulan indeks.
+
+**Kapanis:** tam suite **3.290 basarili / 0 basarisiz** (+4). Iki ini dosyasina da
+MAXPOLYSTATS satiri eklendi.
+
 ### IS-4 - nesne olusturma/kopyalama giris noktalari tablosu (7 Eylul 2026)
 
 Kaynak: port plani IS-4 / PLAN-101. Amac: ayni isi yapan girislerin ortak ve farkli

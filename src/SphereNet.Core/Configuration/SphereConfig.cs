@@ -294,6 +294,12 @@ public sealed class SphereConfig
     /// limit at all.</summary>
     public int BackpackOverload { get; set; } = 40;
 
+    /// <summary>How far a polymorph may move a stat, in points (Source-X
+    /// m_iMaxPolyStats, ini MAXPOLYSTATS, default 150). The form's own STR and DEX
+    /// replace the caster's, but never by more than this in either direction
+    /// (CCharSpell.cpp:1082). Only read when MAGICF_POLYMORPHSTATS is on.</summary>
+    public int MaxPolyStats { get; set; } = 150;
+
     /// <summary>Is there no weather at all? (Source-X m_fNoWeather, ini NOWEATHER.)
     /// The reference's default is TRUE - a bare upstream server has no rain and no
     /// snow, and a shard that wants them says NOWEATHER=0. This engine used to run
@@ -741,6 +747,7 @@ public sealed class SphereConfig
         BackpackOverload = ini.GetInt(section, "BackpackOverload", BackpackOverload);
         FlipDroppedItems = ini.GetBool(section, "FlipDroppedItems", FlipDroppedItems);
         NoWeather = ini.GetBool(section, "NoWeather", NoWeather);
+        MaxPolyStats = Math.Max(0, ini.GetInt(section, "MaxPolyStats", MaxPolyStats));
         NpcSkillSave = Math.Max(0, ini.GetInt(section, "NpcSkillSave", NpcSkillSave));
         TeleportEffectStaff = GetIntOrHex(ini, section, "TeleportEffectStaff", TeleportEffectStaff);
         TeleportSoundStaff = GetIntOrHex(ini, section, "TeleportSoundStaff", TeleportSoundStaff);

@@ -14,8 +14,8 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-08 |
-| Son commit | `26e1f97` (İŞ-5 + ini düzeltmesi) |
-| Tam test | 3.286 başarılı / 0 başarısız |
+| Son commit | MAXPOLYSTATS tüketicisi (bu oturum) |
+| Tam test | 3.290 başarılı / 0 başarısız |
 | Sıradaki iş | **Yeni inceleme dalgası ya da planın yeni maddesi** |
 
 ## Çalışma sırası

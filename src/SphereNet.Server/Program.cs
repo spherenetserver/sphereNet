@@ -743,6 +743,7 @@ public static partial class Program
         SphereNet.Game.Objects.Items.Item.FlipDroppedItems = _config.FlipDroppedItems;
         SphereNet.Game.Objects.Items.Item.BackpackOverload = _config.BackpackOverload;
         SphereNet.Game.World.WeatherEngine.NoWeather = _config.NoWeather;
+        SphereNet.Game.Magic.SpellEngine.MaxPolyStats = _config.MaxPolyStats;
         SphereNet.Persistence.Load.WorldLoader.NpcSkillSave = _config.NpcSkillSave;
         _world.MaxBankItems      = _config.BankMaxItems;
         _world.MaxBankWeight        = _config.BankMaxWeight;

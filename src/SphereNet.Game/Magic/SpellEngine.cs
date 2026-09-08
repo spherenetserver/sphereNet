@@ -482,6 +482,49 @@ public sealed class SpellEngine
     /// configuration.</summary>
     public static bool NpcCanFizzleOnHit { get; set; }
 
+    /// <summary>How far a polymorph may move a stat, in points (ini MAXPOLYSTATS,
+    /// default 150). The host sets it from the configuration.</summary>
+    public static int MaxPolyStats { get; set; } = 150;
+
+    /// <summary>Take on the form's own STR and DEX, as far as the setting allows.
+    ///
+    /// Upstream moves the caster's stats to the creature definition's when
+    /// MAGICF_POLYMORPHSTATS is on, by no more than MAXPOLYSTATS points in either
+    /// direction, and remembers the change on the spell memory so it comes off with the
+    /// form (CCharSpell.cpp:1082). SphereNet changed only the BODY: a mage in a dragon's
+    /// shape kept a mage's strength, and the setting that bounds the change had nothing
+    /// to bound. A definition that declares no stat leaves that stat alone, exactly as
+    /// the reference's <c>if (pCharDef->m_Str)</c> does.</summary>
+    private void ApplyPolymorphStats(Character target, ActiveSpellEffect eff, ushort bodyId)
+    {
+        if (!IsMagicFlag(MagicConfigFlags.PolymorphStats))
+            return;
+        var def = Definitions.DefinitionLoader.GetCharDefByBody(bodyId);
+        if (def == null)
+            return;
+
+        // The definition's declared value, not a fresh roll: a form has to be the same
+        // form every time and has to come off exactly as it went on.
+        int formStr = def.StrMax > 0 ? def.StrMax : Math.Max(0, def.StrMin);
+        int formDex = def.DexMax > 0 ? def.DexMax : Math.Max(0, def.DexMin);
+        eff.StrDelta = (short)(eff.StrDelta + ApplyOne(formStr, target.Str, v => target.Str = v));
+        eff.DexDelta = (short)(eff.DexDelta + ApplyOne(formDex, target.Dex, v => target.Dex = v));
+
+        int ApplyOne(int formValue, short current, Action<short> set)
+        {
+            if (formValue <= 0)
+                return 0;                       // the form declares none: leave it be
+            int change = formValue - current;
+            int cap = Math.Max(0, MaxPolyStats);
+            if (change > cap) change = cap;
+            else if (change < -cap) change = -cap;
+            if (change + current < 0) change = -current;
+            if (change == 0) return 0;
+            set((short)(current + change));
+            return change;
+        }
+    }
+
     public bool TryInterruptFromDamage(Character caster, int damage)
     {
         // Source-X CChar::OnTakeDamage: taking damage removes paralyze (the
@@ -2636,6 +2679,7 @@ public sealed class SpellEngine
                     eff.NewBodyId = newBody;
                     eff.BodyChanged = true;
                     target.BodyId = newBody;
+                    ApplyPolymorphStats(target, eff, newBody);
                     Character.OnAppearanceChanged?.Invoke(target);
                 }
                 break;

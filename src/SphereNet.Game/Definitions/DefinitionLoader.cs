@@ -64,6 +64,14 @@ public sealed class DefinitionLoader
     }
 
     public static CharDef? GetCharDef(int baseId) => _charDefs.GetValueOrDefault(baseId);
+
+    /// <summary>The definition a BODY belongs to - the question a polymorph asks: what
+    /// is a dragon's own strength? The defs are keyed by their own index, so the answer
+    /// needs a second index built once at load.</summary>
+    public static CharDef? GetCharDefByBody(ushort bodyId) =>
+        _charDefsByBody.GetValueOrDefault(bodyId);
+
+    private static readonly Dictionary<ushort, CharDef> _charDefsByBody = [];
     public static ItemDef? GetItemDef(int baseId) => _itemDefs.GetValueOrDefault(baseId);
     public static IEnumerable<KeyValuePair<int, CharDef>> AllCharDefs => _charDefs;
     public static IEnumerable<KeyValuePair<int, ItemDef>> AllItemDefs => _itemDefs;
@@ -155,6 +163,7 @@ public sealed class DefinitionLoader
         _skillDefs.Clear();
         _skillIndexByName.Clear();
         _templateDefs.Clear();
+        _charDefsByBody.Clear();
         _resourcesStatic = null;
         Diagnostic = null;
     }
@@ -199,6 +208,7 @@ public sealed class DefinitionLoader
             }
         }
 
+        IndexCharDefsByBody();
         ResolveItemDefReferences();
         ResolveDupeItemInheritance();
         ResolveRegionResourceReapDefNames();
@@ -232,6 +242,20 @@ public sealed class DefinitionLoader
         _regionTypeDefs.Clear();
         _skillDefs.Clear();
         _templateDefs.Clear();
+    }
+
+    /// <summary>Map every loaded character definition to the body it is drawn as, so a
+    /// body id can find its definition. First one wins: several defs may share a body
+    /// (a renamed variant), and the earlier is the one the pack declares first.</summary>
+    private void IndexCharDefsByBody()
+    {
+        _charDefsByBody.Clear();
+        foreach (var (index, def) in _charDefs)
+        {
+            ushort body = CharDefHelper.ResolveBodyId(def, index, _resources);
+            if (body != 0)
+                _charDefsByBody.TryAdd(body, def);
+        }
     }
 
     private void ResolveRegionResourceReapDefNames()

@@ -3,6 +3,21 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-08] - Yaratigin sekli gucunu de getirir (MAXPOLYSTATS)
+----------------------------------------
+
+FIX - Polymorph yalnizca GOVDEYI degistiriyordu: ejderha seklindeki buyucu, buyucunun
+        gucunde kaliyordu. Referans, MAGICF_POLYMORPHSTATS aciksa buyucunun STR ve
+        DEX'ini formun kendi degerlerine tasir - iki yonde de MAXPOLYSTATS puanindan
+        fazla degil - ve degisimi buyu hafizasinda tutar ki form kalkinca geri alinsin
+        (CCharSpell.cpp:1082). Bir stat icin deger bildirmeyen tanim o stata dokunmaz;
+        referansin kendi "if (pCharDef->m_Str)" kontrolu de oyle yapar. Gecen dalgada
+        "tuketicisi yok" diye kaydedilen o ayarin artik tuketicisi var.
+
+NEW - Karakter tanimi, cizildigi GOVDEDEN bulunabiliyor. Tanimlar kendi indeksleriyle
+        anahtarli oldugu icin "ejderhanin gucu nedir?" sorusunun cevabi yoktu; indeks
+        yuklemede bir kez kuruluyor.
+
 [2026-09-08] - Pakete konan ini eski yer tutuculari soyluyordu (IS-5)
 ----------------------------------------
 

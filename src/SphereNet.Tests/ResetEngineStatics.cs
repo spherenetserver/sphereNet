@@ -40,6 +40,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         // The reference's own default: a bare server has no weather.
         SphereNet.Game.World.WeatherEngine.NoWeather = true;
         SphereNet.Persistence.Load.WorldLoader.NpcSkillSave = 10;
+        SphereNet.Game.Magic.SpellEngine.MaxPolyStats = 150;
         // A recipe's FUNC= row reaches the script layer through this hook; a test
         // that installs one must not leave it standing for the next.
         SphereNet.Game.Definitions.TemplateEngine.FunctionRowHook = null;

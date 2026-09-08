@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-08] - A creature's shape brings its strength (MAXPOLYSTATS)
+----------------------------------------
+
+FIX - Polymorph changed only the BODY: a mage in a dragon's shape kept a mage's
+        strength. Upstream moves the caster's STR and DEX to the form's own when
+        MAGICF_POLYMORPHSTATS is on, by no more than MAXPOLYSTATS points in either
+        direction, and remembers the change on the spell memory so it comes off with the
+        form (CCharSpell.cpp:1082). A definition that declares no value for a stat
+        leaves that stat alone, as upstream's own "if (pCharDef->m_Str)" does. That
+        setting - listed last wave as having no consumer - now has one.
+
+NEW - A character definition can be found by the BODY it is drawn as. The definitions
+        are keyed by their own index, so asking "what is a dragon's strength?" had no
+        answer; the index is built once at load.
+
 [2026-09-08] - The shipped ini meant the old placeholders (IS-5)
 ----------------------------------------
 

@@ -536,6 +536,19 @@ public sealed class WorldLoader
                 continue;
             }
 
+            // Already on that layer? Then the item's own record put it there
+            // (EquipLoadedItem, above) and this link says the same thing. Equipping it
+            // a second time takes it OFF first, and taking a piece off lowers the
+            // wearer's effective maximum pool for that instant - long enough for the
+            // current pool to be trimmed to it. A character who saved at 120 of 120
+            // hits in a BONUSHITSMAX suit came back at 100: the suit went back on and
+            // the maximum returned to 120, but the hits it had been cut to did not.
+            if (ReferenceEquals(ch.GetEquippedItem((Layer)layer), item))
+            {
+                equipCount++;
+                continue;
+            }
+
             if (item.ContainedIn.IsValid && world.FindItem(item.ContainedIn) is { } parentItem)
                 parentItem.RemoveItem(item);
 

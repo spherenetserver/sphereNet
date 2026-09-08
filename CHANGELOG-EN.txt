@@ -4,6 +4,33 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-08] - A character logs back in with the pool it logged out with
+----------------------------------------
+
+FIX - A player wearing a suit with BONUSHITSMAX logged out at 120 of 120 hits and came
+        back at 100 of 120, every time, and the same for mana and stamina. Two separate
+        causes, both in the load:
+
+        1. Writing HITS was treated as a HEAL. Upstream keeps two operations apart -
+        an assignment goes to Stat_SetVal, which stores what it is given and refuses
+        only a negative (CChar.cpp:3901), while damage, healing and regeneration go to
+        UpdateStatVal, which clamps to the adjusted maximum (CCharAct.cpp:753).
+        SphereNet had one clamping setter doing both, so a record read BEFORE the
+        equipment goes back on had its value trimmed to the bare base maximum. The
+        assignment path (a save record and a script's HITS= alike) now stores the value
+        as given; the gameplay path still stops at the maximum.
+
+        2. The load put a piece of equipment on TWICE - once from the item's own
+        record, once from the character's EQUIP link - and the second time takes it off
+        first. For that instant the wearer's maximum drops by the suit's bonus and the
+        current pool is trimmed to it; the suit goes back on, the maximum returns, the
+        lost hits do not. The load no longer re-equips what is already on the layer.
+
+CHANGE - A character record states MAXHITS/MAXMANA/MAXSTAM before HITS/MANA/STAM, the
+        order the reference calls out as "VERY important" (CChar.cpp:4250) for exactly
+        this reason: setting a maximum trims the value under it. Old records still load
+        - the order only matters within one record.
+
 [2026-09-08] - The raw type field, measured rather than assumed
 ----------------------------------------
 

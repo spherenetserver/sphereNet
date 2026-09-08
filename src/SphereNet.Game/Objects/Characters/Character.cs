@@ -1027,6 +1027,48 @@ public partial class Character : ObjBase
             if (v != _stam) { _stam = v; MarkDirty(DirtyFlag.Stats); }
         }
     }
+    /// <summary>Write a pool's current value the way an ASSIGNMENT does: store what
+    /// you are given, refuse only a negative.
+    ///
+    /// The reference keeps two separate operations and SphereNet had only one of them.
+    /// `HITS=` from a script or from a save record goes to Stat_SetVal, which assigns
+    /// the value with no upper bound at all (CChar.cpp:3901 -> CCharStat.cpp:157); a
+    /// GAMEPLAY change - damage, healing, regeneration - goes to UpdateStatVal, which
+    /// clamps to the adjusted maximum (CCharAct.cpp:753). The clamping property below is
+    /// the second of those, and using it for the first cost a suit's worth of pool on
+    /// every save cycle: a record is read BEFORE the equipment is put back on, so the
+    /// maximum is still the bare base one and the stored value was trimmed to it. A
+    /// character who logged out at 120 of 120 hits logged back in at 100.
+    ///
+    /// It also keeps the load quiet: the clamping setter treats any decrease as damage
+    /// taken and fires the skill/meditation interrupts, which a character being read off
+    /// disk has not earned.</summary>
+    public void SetHitsRaw(int value)
+    {
+        short v = (short)Math.Clamp(value, 0, short.MaxValue);
+        if (v == _hits) return;
+        _hits = v;
+        MarkDirty(DirtyFlag.Stats);
+    }
+
+    /// <inheritdoc cref="SetHitsRaw"/>
+    public void SetManaRaw(int value)
+    {
+        short v = (short)Math.Clamp(value, 0, short.MaxValue);
+        if (v == _mana) return;
+        _mana = v;
+        MarkDirty(DirtyFlag.Stats);
+    }
+
+    /// <inheritdoc cref="SetHitsRaw"/>
+    public void SetStamRaw(int value)
+    {
+        short v = (short)Math.Clamp(value, 0, short.MaxValue);
+        if (v == _stam) return;
+        _stam = v;
+        MarkDirty(DirtyFlag.Stats);
+    }
+
     // Max-pool getters report the EFFECTIVE pool (base field + equipped
     // BONUSHITSMAX/BONUSMANAMAX/BONUSSTAMMAX, derived on read via CombatEngine).
     // Setters write the BASE field only; the base is what persists (see BaseMax*).
@@ -4154,11 +4196,14 @@ public partial class Character : ObjBase
             case "STR": if (short.TryParse(normalized, out short sv)) Str = sv; return true;
             case "DEX": if (short.TryParse(normalized, out short dv)) Dex = dv; return true;
             case "INT": if (short.TryParse(normalized, out short iv)) Int = iv; return true;
+            // Assignment, not a gameplay change: stored as given (see SetHitsRaw).
+            // This is the path a save record and a script's HITS= both take, and the
+            // reference's r_LoadVal hands both to Stat_SetVal.
             case "HITS":
-            case "HITPOINTS": if (short.TryParse(normalized, out short hv)) Hits = hv; return true;
-            case "MANA": if (short.TryParse(normalized, out short mv)) Mana = mv; return true;
+            case "HITPOINTS": if (int.TryParse(normalized, out int hv)) SetHitsRaw(hv); return true;
+            case "MANA": if (int.TryParse(normalized, out int mv)) SetManaRaw(mv); return true;
             case "STAM":
-            case "STAMINA": if (short.TryParse(normalized, out short stv)) Stam = stv; return true;
+            case "STAMINA": if (int.TryParse(normalized, out int stv)) SetStamRaw(stv); return true;
             case "MAXHITS": if (short.TryParse(normalized, out short mhv)) MaxHits = mhv; return true;
             case "MAXMANA": if (short.TryParse(normalized, out short mmv)) MaxMana = mmv; return true;
             case "MAXSTAM": if (short.TryParse(normalized, out short msv)) MaxStam = msv; return true;

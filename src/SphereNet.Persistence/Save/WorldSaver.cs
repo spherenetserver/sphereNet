@@ -883,9 +883,13 @@ public sealed class WorldSaver
         w.WriteProperty("STR", ch.Str.ToString());
         w.WriteProperty("DEX", ch.Dex.ToString());
         w.WriteProperty("INT", ch.Int.ToString());
-        w.WriteProperty("HITS", ch.Hits.ToString());
-        w.WriteProperty("MANA", ch.Mana.ToString());
-        w.WriteProperty("STAM", ch.Stam.ToString());
+        // The MAXIMUM goes down before the value it bounds, which is the order the
+        // reference is emphatic about ("this is VERY important", CChar.cpp:4250):
+        // setting a maximum trims the current value to it, so a record that states the
+        // value first can have it cut back the moment the maximum arrives - and the
+        // maximum in force while a record is being read is the bare base one, the
+        // equipment not being on yet.
+        //
         // Persist the BASE max pools, not the effective getters — the equipped-suit
         // BONUSHITSMAX/MANAMAX/STAMMAX contribution is derived on read and must never
         // be written back as base (it would inflate permanently across save cycles).
@@ -897,6 +901,9 @@ public sealed class WorldSaver
             w.WriteProperty("MAXHITS", ch.BaseMaxHits.ToString());
         w.WriteProperty("MAXMANA", ch.BaseMaxMana.ToString());
         w.WriteProperty("MAXSTAM", ch.BaseMaxStam.ToString());
+        w.WriteProperty("HITS", ch.Hits.ToString());
+        w.WriteProperty("MANA", ch.Mana.ToString());
+        w.WriteProperty("STAM", ch.Stam.ToString());
         // Source-X CREATE key: character age at save time, in tenths of a
         // second (CChar::r_Write). Players only — feeds the MinCharDeleteTime
         // delete gate; NPCs don't need it and it would bloat 50K+ records.

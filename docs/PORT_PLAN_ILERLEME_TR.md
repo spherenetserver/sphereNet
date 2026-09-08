@@ -14,8 +14,8 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-08 |
-| Son commit | `42ec482` (gerçek dünyada değişmez denetimi) |
-| Tam test | 3.291 başarılı / 0 başarısız |
+| Son commit | `396e4c5` + havuz kayıt döngüsü |
+| Tam test | 3.297 başarılı / 0 başarısız |
 | Sıradaki iş | **Yeni inceleme dalgası ya da planın yeni maddesi** |
 
 ## Çalışma sırası
@@ -100,11 +100,24 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   verilmeyen eşya; denetleyici yalnız yükleme sonrası koştuğu için ancak kaydedilip
   yeniden yüklenince yakalanır.
 
+- [x] **İŞ-7 — Kopya ve kayıt döngüsünde havuz değerleri** (PLAN-102/103) — **KAPANDI**
+  13J'nin dört bulgusu kodda kapalıydı; raporun kendi bıraktığı boşluk (**kayıt
+  döngüsü hiç denenmedi**) denendi ve **ters yönde** bir hata çıktı: temel değer
+  şişmiyor, MEVCUT havuz kayboluyordu. BONUSHITSMAX kıyafetli oyuncu her çıkışta
+  120/120 kaydedip 100/120 giriyordu. İki kök sebep: (1) `HITS=` ataması iyileştirme
+  gibi kırpılıyordu — referansta atama `Stat_SetVal` (üst sınır yok), oynanış değişimi
+  `UpdateStatVal` (kırpar); (2) yükleme ekipmanı iki kez giydiriyor, ikincisi önce
+  çıkarıyor ve o an havuzu düşen maksimuma kırpıyor. Ayrıca kayıt sırası referansın
+  `MAX*` → `HITS` sırasına alındı.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-7 KAPANDI** — 2026-09-08. Havuz kayıt döngüsü: atama/oynanış ayrımı, çifte
+  giydirme, kayıt sırası. Test: `PoolRoundTripParityTests` (6); üç düzeltme tek tek
+  geri alınıp yakalandığı doğrulandı. Tam suite 3.297.
 - **İŞ-6 ÖLÇÜLDÜ** — 2026-09-08. Ham `_type` okuyucuları için değişiklik gerekmedi;
   gerçek shard yüklemesinde 0 ıraksama. Gerçek veri testi bütün dünya değişmezlerini
   assert ediyor (önce yalnız yükleyip anahtar sayıyordu). Tam suite 3.291.

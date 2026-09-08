@@ -3,6 +3,32 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-08] - Karakter, cikisda kalan havuzuyla geri giriyor
+----------------------------------------
+
+FIX - BONUSHITSMAX veren kiyafet giyen oyuncu 120 candan 120 ile cikip 120 candan 100
+        ile geri geliyordu; mana ve dayaniklilik da ayni. Iki ayri sebep, ikisi de
+        yuklemede:
+
+        1. HITS yazmak IYILESTIRME sayiliyordu. Referans iki islemi ayri tutar: atama
+        Stat_SetVal'e gider, verileni saklar ve yalnizca negatifi reddeder
+        (CChar.cpp:3901); hasar, iyilestirme ve yenilenme UpdateStatVal'e gider ve
+        ayarlanmis maksimuma kirpilir (CCharAct.cpp:753). SphereNet'te tek kirpan setter
+        ikisini birden yapiyordu; ekipman geri giyilmeden ONCE okunan kayit, ciplak
+        temel maksimuma kirpiliyordu. Atama yolu (kayit satiri da scriptin HITS= yazimi
+        da) artik degeri verildigi gibi sakliyor; oynanis yolu maksimumda duruyor.
+
+        2. Yukleme ekipmani IKI KEZ giydiriyordu - biri esyanin kendi kaydindan, biri
+        karakterin EQUIP bagindan - ve ikincisi once cikariyor. O an icin giyenin
+        maksimumu kiyafetin bonusu kadar dusuyor ve mevcut havuz ona kirpiliyor;
+        kiyafet geri giyiliyor, maksimum geri geliyor, kaybolan can gelmiyor. Yukleme
+        artik katmanda zaten duran esyayi tekrar giydirmiyor.
+
+CHANGE - Karakter kaydi MAXHITS/MAXMANA/MAXSTAM satirlarini HITS/MANA/STAM'dan once
+        yaziyor; referansin tam bu yuzden "COK onemli" dedigi sira (CChar.cpp:4250):
+        maksimumu kurmak altindaki degeri kirpar. Eski kayitlar yine yukleniyor - sira
+        yalnizca tek bir kaydin icinde onemli.
+
 [2026-09-08] - Ham tur alani: varsayilmadi, olculdu
 ----------------------------------------
 

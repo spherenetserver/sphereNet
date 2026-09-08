@@ -2925,6 +2925,37 @@ Kaynak: IS-2c turunda statik gozlem olarak kaydedilmisti.
 
 **Kapanis:** tam suite **3.291 basarili / 0 basarisiz** (+1).
 
+### PLAN-102/103 - Kopya ve kayit dongusunde havuz degerleri (8 Eylul 2026)
+
+13J raporunun dort bulgusu (temel/etkin havuz, oz referans, dogrudan DUPE, kap ici
+konum) kodda kapali; denetlendi. Raporun kendi kabul ettigi eksik parca ise KAYIT
+DONGUSUYDU: "sismis temel degerin kayda tasinmasi koddan gorulen risktir, gercek kayit
+deneyi yapilmadi."
+
+Deney yapildi ve **ters yonde** bir hata cikti: temel deger sismiyor, MEVCUT havuz
+kaybediliyordu. BONUSHITSMAX kiyafetli karakter 120/120 kaydedip 100/120 yukleniyordu.
+
+- [x] **HV-1 (P1)** - Atama ile oynanis degisimi ayrildi. Referansta `HITS=` ->
+  `Stat_SetVal` (ust sinir YOK, yalniz negatif reddedilir, CChar.cpp:3901 ->
+  CCharStat.cpp:157); hasar/iyilestirme/yenilenme -> `UpdateStatVal` (ayarlanmis
+  maksimuma kirpar, CCharAct.cpp:753). SphereNet'te tek kirpan setter ikisini de
+  yapiyordu. `SetHitsRaw`/`SetManaRaw`/`SetStamRaw` eklendi; `TrySetProperty` (kayit
+  yukleme ve script yaziminin ortak yolu) bunlari kullaniyor. Yan fayda: kirpan setter
+  her dususu "hasar aldi" sayip skill/meditasyon kesintilerini tetikliyordu - diskten
+  okunan karakter bunu hak etmiyor.
+- [x] **HV-2 (P1)** - Yukleme ekipmani iki kez giydiriyordu (esyanin kendi kaydi +
+  karakterin `EQUIP[n]=` bagi). Ikinci giydirme once cikariyor; cikarma
+  `Stat_AddMaxMod` paritesi geregi havuzu dusen maksimuma kirpiyor. Katmanda zaten
+  duran ayni esya icin giydirme atlaniyor.
+- [x] **HV-3 (P3)** - Kayit sirasi referansa alindi: `MAX*` satirlari `HITS/MANA/STAM`
+  oncesinde. Referans bunu acikca vurguluyor ("this is VERY important",
+  CChar.cpp:4250). Bizde gizli kalmisti: `STR=` zaten `_maxHits`'i kurdugu icin sonraki
+  `MAXHITS=` cogu kayitta no-op oluyor ve kirpma tetiklenmiyordu; temel maksimum
+  STR'den farkli oldugunda tetiklenir. Testle sabitlendi.
+
+Testler: `PoolRoundTripParityTests` (6). Uc duzeltme tek tek geri alinip dogrulandi:
+atama 3, giydirme 3, sira 1 test dusuyor.
+
 ### Ham `_type` kapilari - olcum sonucu (8 Eylul 2026)
 
 Kaynak: IS-2b/2c turlarinda "ertelendi" diye kaydedilen madde.

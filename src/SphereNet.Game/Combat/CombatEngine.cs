@@ -678,6 +678,60 @@ public static class CombatEngine
         return damage;
     }
 
+    /// <summary>Is this the kind of blow the reflect family answers?
+    ///
+    /// The reference gates the whole family on "a physical blow of some sort"
+    /// (CCharFight.cpp:946) and on there being a source other than the victim
+    /// (:918). A spell, a burning field or a trap with nobody behind it therefore
+    /// bounces off nothing - which is why a mage does not take his own fireball back
+    /// from a target wearing Reactive Armour.</summary>
+    public static bool IsReflectableBlow(Character? attacker, Character target, DamageType damageType) =>
+        attacker != null && attacker != target && !attacker.IsDead && !attacker.IsDeleted &&
+        (damageType & (DamageType.HitBlunt | DamageType.HitPierce | DamageType.HitSlash)) != 0;
+
+    /// <summary>Reactive Armour: take the bounce out of the blow, send it back, and
+    /// show it. Runs BEFORE the blow lands, because the reference subtracts it from
+    /// the damage first (CCharFight.cpp:993).</summary>
+    public static void ApplyReactiveArmor(Character attacker, Character target, ref int damage)
+    {
+        var reactive = PrepareReactiveArmor(attacker, target, ref damage);
+        if (reactive == null)
+            return;
+
+        // Deliberately NOT gated on what is left of the blow: the bounce is the
+        // reactive spell's own event, and a wearer who absorbed the whole blow still
+        // sends it back. Gating it on the remainder meant a full absorb reflected
+        // nothing.
+        if (reactive.Reflect > 0)
+            ApplyReflectedDamage(attacker, target, reactive.Reflect);
+        if (reactive.Sound != 0 || reactive.EffectId != 0)
+            OnReactiveArmorFeedback?.Invoke(target, attacker, reactive.Sound, reactive.EffectId);
+    }
+
+    /// <summary>The two reflects that answer a blow that has already landed.
+    ///
+    /// Necromancy Blood Oath (reference OnTakeDamage): a bonded victim struck by its
+    /// linked enemy suffers an extra 10% and reflects (100 - level)% back as fixed
+    /// damage. AOS REFLECTPHYSICALDAM (CCharFight.cpp:1013): the defender's suit
+    /// bounces a percentage back, capped at 250%. Neither recurses - the reflect is
+    /// applied directly rather than routed back through the damage path.</summary>
+    public static void ApplyBloodOathAndSuitReflect(Character attacker, Character target, int damage)
+    {
+        if (attacker == target || attacker.IsDead || attacker.IsDeleted)
+            return;
+
+        if (target.BloodOathEnemy == attacker.Uid && target.BloodOathLevel > 0)
+        {
+            int extra = damage / 10;
+            if (extra > 0)
+                target.Hits -= (short)Math.Min(extra, short.MaxValue);
+            ApplyReflectedDamage(attacker, target, damage * (100 - target.BloodOathLevel) / 100);
+        }
+
+        int reflectPct = Math.Min(GetOnHitPropertyValue(target, null, "REFLECTPHYSICALDAM"), 250);
+        ApplyReflectedDamage(attacker, target, damage * reflectPct / 100);
+    }
+
     /// <summary>Work out what Reactive Armour takes out of a blow and what it sends
     /// back, and let a script rewrite all of it.
     ///
@@ -780,9 +834,31 @@ public static class CombatEngine
         damage = Math.Clamp(damage, 0, short.MaxValue);
         if (damage <= 0) return 0;
 
+        // The reflect family answers a scripted blow too. The reference has ONE damage
+        // entry - CChar::OnTakeDamage - and the DAMAGE verb calls it directly
+        // (CObjBase.cpp:2249), so Reactive Armour, Blood Oath and REFLECTPHYSICALDAM
+        // are as much a part of `<SRC.DAMAGE 40>` as of a swing. SphereNet grew a
+        // second entry for scripted damage and the family stayed behind on the melee
+        // one, so a shard that dealt its damage from script - the usual way a custom
+        // attack, a trap with a culprit or an arena is written - got none of it.
+        //
+        // Only for a blow with somebody behind it: the reference gates the family on a
+        // physical damage type and a source that is not the victim, which is why a
+        // fireball or an unattributed field bounces off nothing.
+        bool reflectable = IsReflectableBlow(source, character, damageType);
+        if (reflectable)
+        {
+            ApplyReactiveArmor(source!, character, ref damage);
+            damage = Math.Clamp(damage, 0, short.MaxValue);
+            if (damage <= 0)
+                return 0;
+        }
+
         character.Hits -= (short)damage;
         if (source != null && source != character)
             character.RecordAttack(source.Uid, damage);
+        if (reflectable)
+            ApplyBloodOathAndSuitReflect(source!, character, damage);
         OnDirectCharacterDamageApplied?.Invoke(character, source, damage);
         return damage;
     }
@@ -1200,18 +1276,9 @@ public static class CombatEngine
         // off and only then hits the attacker (CCharFight.cpp:993-999). SphereNet
         // reflected but never reduced, so the spell cost the attacker some damage
         // without ever sparing the wearer any.
-        var reactive = PrepareReactiveArmor(attacker, target, ref damage);
-        if (reactive != null)
-        {
-            // Deliberately NOT inside the "damage still greater than zero" gate below:
-            // the bounce is the reactive spell's own event, and a wearer who absorbed
-            // the whole blow still sends it back. Gating it on the remainder meant a
-            // full absorb reflected nothing.
-            if (reactive.Reflect > 0)
-                ApplyReflectedDamage(attacker, target, reactive.Reflect);
-            if (reactive.Sound != 0 || reactive.EffectId != 0)
-                OnReactiveArmorFeedback?.Invoke(target, attacker, reactive.Sound, reactive.EffectId);
-        }
+        // A swing is a physical blow by definition, so the type gate the reference
+        // applies to the reflect family is already satisfied here.
+        ApplyReactiveArmor(attacker, target, ref damage);
 
         // Apply damage — do NOT call Kill() here; the caller handles death
         // via DeathEngine.ProcessDeath which creates the corpse, drops loot,
@@ -1228,28 +1295,7 @@ public static class CombatEngine
             target.Hits -= (short)Math.Min(damage, short.MaxValue);
             target.RecordAttack(attacker.Uid, damage);
 
-            // Necromancy Blood Oath (reference OnTakeDamage): a bonded victim
-            // struck by its linked enemy suffers an extra 10% and reflects
-            // (100 - level)% back as fixed damage — no recursion (the reflect is
-            // applied directly, not routed back through this block).
-            if (target.BloodOathEnemy == attacker.Uid && target.BloodOathLevel > 0 &&
-                attacker != target && !attacker.IsDead)
-            {
-                int extra = damage / 10;
-                if (extra > 0)
-                    target.Hits -= (short)Math.Min(extra, short.MaxValue);
-                int reflect = damage * (100 - target.BloodOathLevel) / 100;
-                ApplyReflectedDamage(attacker, target, reflect);
-            }
-
-            // AOS REFLECTPHYSICALDAM (Source-X OnTakeDamage, CCharFight.cpp:1013):
-            // the defender's suit bounces a percentage of the damage back at the
-            // attacker, capped at 250%. Separate from the Reactive Armor spell above.
-            if (attacker != target && !attacker.IsDead)
-            {
-                int reflectPct = Math.Min(GetOnHitPropertyValue(target, null, "REFLECTPHYSICALDAM"), 250);
-                ApplyReflectedDamage(attacker, target, damage * reflectPct / 100);
-            }
+            ApplyBloodOathAndSuitReflect(attacker, target, damage);
 
             // Source-X @Hit LOCAL.ItemDamageChance: the weapon wears only
             // WeaponDamageChance% of the time (script-writable, seeded 25).

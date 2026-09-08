@@ -3,6 +3,23 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-09] - Scriptten verilen darbe de digerleri gibi sekiyor
+----------------------------------------
+
+FIX - Reaktif zirh, Blood Oath ve REFLECTPHYSICALDAM artik yalniz silah vurusuna degil,
+        scriptli hasara da cevap veriyor. Referansta TEK bir hasar girisi var -
+        CChar::OnTakeDamage - ve DAMAGE verb'i onu dogrudan cagirir
+        (CObjBase.cpp:2249); yani yansima ailesi <SRC.DAMAGE 40> icin de en az bir
+        vurus kadar gecerlidir. SphereNet scriptli hasar icin ikinci bir giris
+        buyutmus, aile yakin dovus girisinde kalmisti: hasarini scriptten veren bir
+        shard - ozel saldiri, arena ya da failli tuzak boyle yazilir - bunlarin
+        hicbirini alamiyordu.
+
+        Kapilar referansin kendi kapilari ve bilerek dar: aile, ARKASINDA BIRI OLAN
+        FIZIKSEL bir darbeye cevap verir (kunt/delici/kesici). Buyu, yanan alan ya da
+        faili olmayan tuzak yine hicbir seyden sekmez; buyucunun kendi atesi de bu
+        yuzden geri donmez.
+
 [2026-09-09] - Script paketinin istedigi ama hic gelmeyen dort trigger
 ----------------------------------------
 

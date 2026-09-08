@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-08 |
-| Son commit | `55cb275` + dört trigger boşluğu |
-| Tam test | 3.311 başarılı / 0 başarısız |
-| Sıradaki iş | **İŞ-10 — yansıma ailesi DAMAGE verb yolunda yok** (aşağıda) |
+| Son commit | `8a315b7` + yansıma ailesi |
+| Tam test | 3.317 başarılı / 0 başarısız |
+| Sıradaki iş | **Yeni inceleme dalgası ya da planın yeni maddesi** |
 
 ## Çalışma sırası
 
@@ -124,16 +124,22 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   `damage / 4` değil büyü tanımının EFFECT eğrisinden; darbe artık AZALTILIYOR (önce
   yalnız yansıtılıyordu); iki karelik mesafe şartı kondu.
 
-- [ ] **İŞ-10 — Yansıma ailesi yalnız yakın dövüşte**
-  Reaktif zırh, Blood Oath ve REFLECTPHYSICALDAM üçü de `ResolveAttack` içinde.
-  Referans bunları `OnTakeDamage`'a koyar; DAMAGE verb'i (`ApplyScriptDamage`) oradan
-  geçtiği için scriptli hasar da yansımalı. Üçü tek iş olarak ele alınmalı.
+- [x] **İŞ-10 — Yansıma ailesi yalnız yakın dövüşteydi** — **KAPANDI**
+  Aile ortak adımlara çıkarıldı (`IsReflectableBlow` / `ApplyReactiveArmor` /
+  `ApplyBloodOathAndSuitReflect`) ve DAMAGE verb yolu da çağırıyor. Kapsam ölçerken
+  daraldı: referansta aile **fiziksel darbeye** özel, yani büyü hasarı orada da
+  sekmiyor; faili olmayan tuzak/alan da dışarıda. 11 hasar noktamızdan gerçek boşluk
+  yalnız DAMAGE verb yoluydu.
+  **Kalan yapısal not:** referansta tek `OnTakeDamage` kapısı var, bizde 11 ayrı hasar
+  uygulama noktası. Davranış paritesi sağlandı; birleştirme ayrı bir iş.
 
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-10 KAPANDI** — 2026-09-09. Yansıma ailesi scriptli hasarda da çalışıyor. Test:
+  `ScriptedDamageReflectTests` (6). Tam suite 3.317.
 - **İŞ-9 KAPANDI** — 2026-09-09. Dört trigger + reaktif zırh yeniden kuruldu. Test:
   `ResourceAndReactiveTriggerTests` (12); korkuluğun boşluk listesi boşaldı. Tam suite
   3.311.

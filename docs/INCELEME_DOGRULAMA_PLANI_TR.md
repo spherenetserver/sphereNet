@@ -2925,6 +2925,33 @@ Kaynak: IS-2c turunda statik gozlem olarak kaydedilmisti.
 
 **Kapanis:** tam suite **3.291 basarili / 0 basarisiz** (+1).
 
+### IS-10 - Yansima ailesi tek hasar girisine baglandi (9 Eylul 2026)
+
+IS-9'da kaydedilen bulgu kapandi. Referansta hasar TEK kapidan gecer
+(`CChar::OnTakeDamage`); bizde iki giris var (`ResolveAttack` = yakin dovus,
+`ApplyScriptDamage` = DAMAGE verb) ve yansima ailesinin ucu de yalniz birincisindeydi.
+
+Aile ortak adimlara cikarildi ve iki girisin ikisi de cagiriyor:
+- `IsReflectableBlow(kaynak, hedef, tur)` - referansin iki kapisi: fiziksel darbe turu
+  (`DAMAGE_HIT_BLUNT|PIERCE|SLASH`, CCharFight.cpp:946) ve hedeften farkli bir kaynak
+  (:918).
+- `ApplyReactiveArmor(...)` - darbe DUSMEDEN once (referans once azaltir).
+- `ApplyBloodOathAndSuitReflect(...)` - darbe dustukten sonra.
+
+**Kapsam olcumu (onemli):** ilk bakista "butun hasar yollari" sanmistim; referans
+kaynagini okuyunca kapsam daraldi. Aile fiziksel darbeye ozel, yani BUYU hasari
+referansta da sekmez. Tuzak/alan hasari `pSrc = nullptr` ile cagrildigi icin yine
+disarida. Bizdeki 11 hasar uygulama noktasindan yalnizca DAMAGE verb yolu gercek
+boslugtu.
+
+- [x] **RF-1** - `ApplyScriptDamage` karakter dalinda aile calisiyor. Test:
+  `ScriptedDamageReflectTests` (6); baglanti gecici geri alinip 4 testin yakaladigi
+  dogrulandi. Tam suite 3.317.
+
+**Not:** bizdeki 11 ayri hasar uygulama noktasi (traps, fields, spells, combat, verb)
+referansin tek `OnTakeDamage` kapisiyla ortusmuyor. Bu dalgada davranis paritesi
+saglandi; yapisal birlestirme ayri bir is olarak durmali.
+
 ### IS-9 - PLAN-206'nin dort gercek boslugu kapandi (9 Eylul 2026)
 
 Olcumun cikardigi dort trigger uygulandi. Sozlesmeler referanstan alindi:

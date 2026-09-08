@@ -4,6 +4,22 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-09] - A blow dealt from script bounces like any other
+----------------------------------------
+
+FIX - Reactive Armour, Blood Oath and REFLECTPHYSICALDAM now answer scripted damage,
+        not only weapon swings. The reference has ONE damage entry - CChar::OnTakeDamage
+        - and the DAMAGE verb calls it directly (CObjBase.cpp:2249), so the reflect
+        family belongs to <SRC.DAMAGE 40> exactly as much as to a hit. SphereNet grew a
+        second entry for scripted damage and the family stayed behind on the melee one,
+        so a shard that deals its damage from script - the usual way a custom attack, an
+        arena or a trap with a culprit is written - got none of it.
+
+        The gates are the reference's own and are deliberately narrow: the family
+        answers a PHYSICAL blow (blunt/pierce/slash) with somebody behind it. A spell,
+        a burning field or a trap with no culprit still bounces off nothing, which is
+        why a mage does not take his own fireball back.
+
 [2026-09-09] - The four triggers a script pack asked for and never got
 ----------------------------------------
 

@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-08] - The raw type field, measured rather than assumed
+----------------------------------------
+
+NOTE - Roughly twenty places read an item's RAW type field instead of the resolving
+        property (stacking, blocking, traps, ship parts, corpses, multi commands). Two
+        of them were real bugs and were fixed when a classic record's map pins and book
+        pages went missing; the rest were recorded as a deferred concern. They were
+        measured this wave instead of changed: after a load every item's raw type is
+        materialised from its definition, and the world invariant sweep over the real
+        56T shard - 76,359 items - reports ZERO type divergences. So the remaining raw
+        readers are correct, and the thing that makes them correct is now asserted on
+        live data instead of assumed.
+
+CHANGE - The real-data check now fails if the loaded world breaks ANY of the world
+        invariants (container index, parent links, type materialisation, spawner counts,
+        limbo items), naming the first few. It used to only load and count keys.
+
 [2026-09-08] - A region's own script runs on the region
 ----------------------------------------
 

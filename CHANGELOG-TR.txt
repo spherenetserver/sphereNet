@@ -3,6 +3,24 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-08] - Ham tur alani: varsayilmadi, olculdu
+----------------------------------------
+
+NOTE - Yaklasik yirmi yer, esyanin turunu cozen ozellik yerine HAM alanini okuyor
+        (yiginlanma, engelleme, tuzaklar, gemi parcalari, cesetler, multi komutlari).
+        Bunlardan ikisi gercek hataydi ve klasik kaydin harita pinleri ile kitap
+        sayfalari kaybolunca duzeltildi; geri kalani ertelenmis endise olarak
+        kaydedilmisti. Bu dalgada degistirilmek yerine OLCULDU: yuklemeden sonra her
+        esyanin ham turu tanimindan dolduruluyor ve gercek 56T shard'i uzerindeki dunya
+        degismezi taramasi - 76.359 esya - SIFIR tur iraksamasi bildiriyor. Yani kalan
+        ham okuyucular dogru; onlari dogru kilan sey de artik varsayilmiyor, canli
+        veride dogrulaniyor.
+
+CHANGE - Gercek veri kontrolu artik yuklenen dunya HERHANGI bir degismezi bozarsa
+        dusuyor (kap indeksi, ebeveyn baglari, tur doldurma, spawner sayilari, limbo
+        esyalari) ve ilk birkacini adiyla soyluyor. Onceden yalnizca yukleyip anahtar
+        sayiyordu.
+
 [2026-09-08] - Bolgenin kendi scripti bolge uzerinde calisir
 ----------------------------------------
 

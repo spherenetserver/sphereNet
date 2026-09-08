@@ -161,6 +161,25 @@ public class Sphere56TSaveCompatTests
         // TYPE=t_multi of its own, and an instance's type outranks its definition.
         Assert.True(shipEngine.ShipCount >= 7, $"expected the hulls, got {shipEngine.ShipCount}");
 
+        // The raw type field is what a good deal of behaviour reads directly (stacking,
+        // blocking, traps, ship parts). A legacy record writes no TYPE line, so the
+        // load has to materialise it from the definition - and this is the sweep that
+        // says whether it did, over the real shard rather than a fixture.
+        var anomalies = SphereNet.Game.Diagnostics.WorldInvariantAuditor.Audit(world);
+        var byKind = anomalies.GroupBy(a => a.Kind)
+            .ToDictionary(g => g.Key, g => g.Count());
+        foreach (var (kind, count) in byKind)
+            _out.WriteLine($"  invariant {kind} x{count}");
+        _out.WriteLine($"world invariants: {anomalies.Count} anomaly");
+        // Behaviour reads the RAW type field in a good many places (stacking, blocking,
+        // traps, ship parts, corpses). They are only right while every item's raw type
+        // matches its definition, which for a legacy record depends on the load
+        // materialising it - so the invariant is asserted here, on the real shard,
+        // rather than assumed.
+        Assert.True(anomalies.Count == 0,
+            $"the loaded world breaks {anomalies.Count} invariant(s): " +
+            string.Join(" | ", anomalies.Take(5).Select(a => a.ToString())));
+
         var unhandled = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         int withSkill = 0;
         foreach (var obj in world.GetAllObjects())

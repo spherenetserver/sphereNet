@@ -2925,6 +2925,33 @@ Kaynak: IS-2c turunda statik gozlem olarak kaydedilmisti.
 
 **Kapanis:** tam suite **3.291 basarili / 0 basarisiz** (+1).
 
+### Ham `_type` kapilari - olcum sonucu (8 Eylul 2026)
+
+Kaynak: IS-2b/2c turlarinda "ertelendi" diye kaydedilen madde.
+
+**Bulgu: kalan ham okuyucular icin degisiklik GEREKMIYOR.** Sebep zincirini olcerek
+dogruladim:
+
+1. Fabrika yolu (`ItemDefHelper.ApplyInstanceMetadata`) turu zaten kuruyor.
+2. Klasik kayit yolu TYPE satiri yazmaz (56T'de 76 bin esyada yalniz 721 TYPE satiri
+   var), ama yukleyici yuklemeden sonra `MaterializeDefinitionType()` ile ham turu
+   tanimdan dolduruyor.
+3. `WorldInvariantAuditor.AuditType` tam bu iraksamayi kontrol ediyor ve gercek 56T
+   dunyasinda **0 anomali** veriyor.
+
+Gercek hata SADECE kayit OKUNURKEN gecerli olan pencerede vardi (property get/set
+yuzeyi: harita pini, kitap sayfasi, gemi anahtarlari) - o da `Item.EffectiveType` ile
+kapatilmisti.
+
+- [x] **HT-1 (P2)** - Gercek veri kontrolu artik butun dunya degismezlerini assert
+  ediyor (once yalnizca yukleyip anahtar sayiyordu). Boylece "ham tur okuyuculari
+  dogru" iddiasi her koşuda canli veride sinaniyor.
+
+**Kalan risk (kayitli, degistirilmedi):** calisma aninda `CreateItem()` + `BaseId` ile
+kurulup turu ACIKCA verilmeyen esya; denetleyici yalnizca yukleme sonrasi calistigi icin
+boyle bir esya ancak kaydedilip yeniden yuklendiginde yakalanir. Uretimdeki bu tur
+yerlerin tamami turu hemen ardindan kendisi ayarliyor.
+
 ### IS-4 - nesne olusturma/kopyalama giris noktalari tablosu (7 Eylul 2026)
 
 Kaynak: port plani IS-4 / PLAN-101. Amac: ayni isi yapan girislerin ortak ve farkli

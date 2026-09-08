@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-08 |
-| Son commit | `15d03c8` + trigger kapsam ölçümü |
-| Tam test | 3.299 başarılı / 0 başarısız |
-| Sıradaki iş | **İŞ-9 — dört gerçek trigger boşluğunu kapat** (aşağıda) |
+| Son commit | `55cb275` + dört trigger boşluğu |
+| Tam test | 3.311 başarılı / 0 başarısız |
+| Sıradaki iş | **İŞ-10 — yansıma ailesi DAMAGE verb yolunda yok** (aşağıda) |
 
 ## Çalışma sırası
 
@@ -117,20 +117,26 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   aşamaları ve `@item<Ad>`/`@char<Ad>` aynaları enum değerinden geçmeden ateşleniyor.
   `DispatchableTriggerNames` + kendini bakım eden korkuluk testi eklendi.
 
-- [ ] **İŞ-9 — Dört gerçek trigger boşluğu** (PLAN-206 devamı)
-  Kaynak zinciri: `@ResourceFound` (REGIONRESOURCE tanımı üzerinde),
-  `@RegionResourceFound` (karakter üzerinde), `@RegionResourceGather` (toplayan
-  üzerinde, `LOCAL.ResourceID` yazılabilir). Ayrı: `@HitReactive` (reaktif zırh
-  yansıması; LOCAL.Sound/EffectID/Damage/ReflectDamage/ReduceDamage/DamageType geri
-  okunur). Sözleşmeler takip planında.
-  **Not:** reaktif zırh yansımamız `damage / 4` sabitini kullanıyor; referans yüzdeyi
-  büyü hafızasından okuyor — uydurmuş-değer denetim backlog'una da giren bir madde.
+- [x] **İŞ-9 — Dört gerçek trigger boşluğu** (PLAN-206 devamı) — **KAPANDI**
+  `@RegionResourceFound` + `@ResourceFound` (damar bulunduğunda, tek dönüş değeri
+  paylaşımlı), `@RegionResourceGather` (toplayanda, `@ResourceGather` ile yan yana) ve
+  `@HitReactive`. Yanında reaktif zırhın üç kusuru düzeldi: yansıyan pay artık uydurma
+  `damage / 4` değil büyü tanımının EFFECT eğrisinden; darbe artık AZALTILIYOR (önce
+  yalnız yansıtılıyordu); iki karelik mesafe şartı kondu.
+
+- [ ] **İŞ-10 — Yansıma ailesi yalnız yakın dövüşte**
+  Reaktif zırh, Blood Oath ve REFLECTPHYSICALDAM üçü de `ResolveAttack` içinde.
+  Referans bunları `OnTakeDamage`'a koyar; DAMAGE verb'i (`ApplyScriptDamage`) oradan
+  geçtiği için scriptli hasar da yansımalı. Üçü tek iş olarak ele alınmalı.
 
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-9 KAPANDI** — 2026-09-09. Dört trigger + reaktif zırh yeniden kuruldu. Test:
+  `ResourceAndReactiveTriggerTests` (12); korkuluğun boşluk listesi boşaldı. Tam suite
+  3.311.
 - **İŞ-8 KAPANDI** — 2026-09-08. Trigger kapsamı paket tarafından ölçüldü; dört gerçek
   boşluk kayda geçti, yanlış alarmlar elendi. Test: `ScriptPackTriggerCoverageTests` (2).
   Tam suite 3.299.

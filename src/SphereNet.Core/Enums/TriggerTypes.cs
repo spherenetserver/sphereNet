@@ -259,5 +259,22 @@ public enum CharTrigger : short
     AddMulti,
     HouseDesignBegin,
 
+    /// <summary>Fired on the gatherer when a resource vein is first found under a
+    /// tile, with the resource marker as the object argument (CWorldMap.cpp:157).
+    /// RETURN 1 empties the vein - the spot holds nothing.</summary>
+    RegionResourceFound,
+
+    /// <summary>Fired on the gatherer as a swing takes from the vein, alongside the
+    /// resource definition's own @ResourceGather (CCharSkill.cpp:1035). ARGN1 is the
+    /// amount, LOCAL.ResourceID the item about to be produced; RETURN 1 takes
+    /// nothing.</summary>
+    RegionResourceGather,
+
+    /// <summary>Fired on the defender when reactive armour is about to bounce damage
+    /// back at the attacker (CCharFight.cpp:965). The reflection is described in
+    /// LOCAL.Sound/EffectID/Damage/ReflectDamage/ReduceDamage/DamageType and read
+    /// back after the script runs.</summary>
+    HitReactive,
+
     Qty,
 }

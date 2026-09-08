@@ -2526,6 +2526,47 @@ public static partial class Program
                     _deathEngine?.ProcessDeath(target, source);
             };
 
+            // @HitReactive (Source-X CCharFight.cpp:965). The whole bounce - what comes
+            // off the blow, what lands on the attacker, and the sound and effect the
+            // two of them get - is handed over in locals and read back, so a shard can
+            // rewrite any part of it without touching the engine.
+            CombatEngine.OnReactiveArmorTrigger = ctx =>
+            {
+                if (_triggerDispatcher == null ||
+                    !_triggerDispatcher.IsCharTriggerUsed(CharTrigger.HitReactive))
+                    return;
+
+                var locals = new SphereNet.Scripting.Variables.VarMap();
+                locals.SetInt("Sound", ctx.Sound);
+                locals.SetInt("EffectID", ctx.EffectId);
+                locals.SetInt("Damage", ctx.Bounce);
+                locals.SetInt("ReflectDamage", ctx.Reflect);
+                locals.SetInt("ReduceDamage", ctx.Reduce);
+                locals.SetInt("DamageType", (int)(DamageType.Fixed));
+                _triggerDispatcher.FireCharTrigger(ctx.Defender, CharTrigger.HitReactive,
+                    new TriggerArgs { CharSrc = ctx.Attacker, Locals = locals });
+
+                ctx.Sound = (ushort)Math.Clamp(locals.GetInt("Sound"), 0, ushort.MaxValue);
+                ctx.EffectId = (ushort)Math.Clamp(locals.GetInt("EffectID"), 0, ushort.MaxValue);
+                ctx.Bounce = (int)Math.Clamp(locals.GetInt("Damage"), int.MinValue, int.MaxValue);
+                ctx.Reflect = (int)Math.Clamp(locals.GetInt("ReflectDamage"), int.MinValue, int.MaxValue);
+                ctx.Reduce = (int)Math.Clamp(locals.GetInt("ReduceDamage"), int.MinValue, int.MaxValue);
+            };
+
+            // The bounce is felt at the attacker: the sound plays there and the effect
+            // travels from the wearer to them (CCharFight.cpp:1002-1006).
+            CombatEngine.OnReactiveArmorFeedback = (defender, attacker, sound, effectId) =>
+            {
+                if (sound != 0)
+                    BroadcastNearby(attacker.Position, 18,
+                        new PacketSound(sound, attacker.X, attacker.Y, attacker.Z), 0);
+                if (effectId != 0)
+                    BroadcastNearby(attacker.Position, 18, new PacketEffect(
+                        0, defender.Uid.Value, attacker.Uid.Value, effectId,
+                        defender.X, defender.Y, defender.Z, attacker.X, attacker.Y, attacker.Z,
+                        10, 16, false, false), 0);
+            };
+
             // AOS on-hit hooks (Source-X Fight_Hit tail, CCharFight.cpp:2270).
             // Leech feedback: Source-X plays 0x44D at the attacker.
             CombatEngine.OnLeechEffect = ch =>

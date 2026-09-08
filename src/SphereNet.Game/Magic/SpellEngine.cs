@@ -156,6 +156,9 @@ public sealed class SpellEngine
         public Serial BloodOathEnemy { get; set; }
         public int BloodOathLevel { get; set; }
 
+        /// <summary>Reactive Armour reflect percentage (reference m_PolyStr).</summary>
+        public int ReactivePercent { get; set; }
+
         // Source-X equips a real IT_SPELL memory item per active effect
         // (Spell_Effect_Create). We mirror that: this is the worn spell-memory
         // item on the target, created on apply and deleted on every removal.
@@ -2424,6 +2427,14 @@ public sealed class SpellEngine
                 var eff = ScheduleEffectExpiry(caster, target, def.Id, def);
                 eff.AppliedFlag = StatFlag.Reactive;
                 target.SetStatFlag(StatFlag.Reactive);
+                // How much comes back is the SPELL DEFINITION's business, not the
+                // engine's: the reference reads its EFFECT curve at the caster's
+                // primary skill and divides by ten (CCharSpell.cpp:1411). SphereNet
+                // reflected a flat quarter of every blow - a number the reference does
+                // not contain anywhere, and one no script could change.
+                int reflectSkill = caster.GetSkill(def.GetPrimarySkill());
+                eff.ReactivePercent = Math.Max(0, def.GetEffect(reflectSkill) / 10);
+                target.ReactiveArmorPercent = eff.ReactivePercent;
                 break;
             }
             case SpellType.Protection:
@@ -3622,6 +3633,8 @@ public sealed class SpellEngine
             t.BloodOathEnemy = Serial.Invalid;
             t.BloodOathLevel = 0;
         }
+        if (eff.Spell == SpellType.ReactiveArmor)
+            t.ReactiveArmorPercent = 0;
         if (eff.AppliedFlag != StatFlag.None) t.ClearStatFlag(eff.AppliedFlag);
         if (eff.NameChanged && eff.OldName != null)
         {
@@ -3686,6 +3699,8 @@ public sealed class SpellEngine
             t.BloodOathEnemy = eff.BloodOathEnemy;
             t.BloodOathLevel = eff.BloodOathLevel;
         }
+        if (eff.Spell == SpellType.ReactiveArmor)
+            t.ReactiveArmorPercent = eff.ReactivePercent;
         if (eff.AppliedFlag != StatFlag.None) t.SetStatFlag(eff.AppliedFlag);
         if (eff.NameChanged && eff.NewName != null)
         {

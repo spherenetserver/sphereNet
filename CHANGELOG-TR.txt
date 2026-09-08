@@ -3,6 +3,45 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-09] - Script paketinin istedigi ama hic gelmeyen dort trigger
+----------------------------------------
+
+FIX - @RegionResourceFound ve @ResourceFound artik madencilik/oduncululuk vurusu bir
+        damar bulur bulmaz atesleniyor; nesne argumani damarin isaretcisi
+        (CWorldMap.cpp:151-166). Tek bir donus degerini paylasiyorlar - sonraki
+        oncekinin uzerine yaziyor ve her atama, o trigger'i gercekten bir scriptin
+        kancalayip kancalamadigina bagli. RETURN 1 damari silmez, BOSALTIR: nokta
+        arandi ve bir sey cikmadi; bu, hic bakilmamis olmakla ayni sey degildir.
+
+FIX - @RegionResourceGather artik toplayan uzerinde, kaynak tanimin kendi
+        @ResourceGather'i ile yan yana atesleniyor; ayni argumanlari ve ayni donus
+        degerini paylasiyorlar (CCharSkill.cpp:1029-1040). ARGN1 miktar,
+        LOCAL.ResourceID uretilecek esya; ikisi de her iki taraftan yazilabilir.
+
+FIX - @HitReactive artik reaktif zirh bir darbeyi geri yansitmak uzereyken atesleniyor
+        ve yansimanin tamami local'lerle veriliyor - Sound, EffectID, Damage,
+        ReflectDamage, ReduceDamage, DamageType - sonra geri okunuyor
+        (CCharFight.cpp:965).
+
+CHANGE - Reaktif zirh referansin kendi kurallariyla yeniden kuruldu ve uc kusur da
+        onunla birlikte gitti. Yansiyan pay darbenin duz ceyregiydi; referansta boyle
+        bir sayi yok: yuzdeyi, buyu taniminin EFFECT egrisinin buyucunun becerisindeki
+        degerinden okuyor ve buyu yapilirken sakliyor (CCharSpell.cpp:1411) - artik
+        shard'in kendi EFFECT= satiri karar veriyor. Darbe yansitiliyor ama hic
+        AZALTILMIYORDU; yani buyu saldirgani yaraliyor, giyeni hic korumuyordu. Ve
+        referansin sarti olan iki karelik mesafe hic bakilmiyordu; ekranin obur ucundan
+        atilan ok bile geri seken oluyordu.
+
+        Dolayisiyla bayrak tek basina artik hicbir sey yansitmiyor - referansin
+        davranisi budur, cunku giyili hafizayi okur ve yansima istemeyen bir tanim
+        yansima almaz. Bir birimlik alt sinir da yok: referansta o kirpma yorum
+        satirinda, yani kucuk yuzdeyle kucuk darbe hic sekmez.
+
+NOTE - Reaktif zirh, Blood Oath ve REFLECTPHYSICALDAM yalnizca yakin dovus yolunda
+        yasiyor. Referans bunlari OnTakeDamage'a koyar ve DAMAGE verb'i de oradan
+        gecer; bizde scriptli hasar hicbirinden sekmiyor. Degistirilmedi, KAYDEDILDI -
+        bu, dorduncu trigger'in isi degil, butun yansima ailesinin tek boslugu.
+
 [2026-09-08] - Gercek script paketi hangi trigger'lari istiyor, hangileri cevap veriyor
 ----------------------------------------
 

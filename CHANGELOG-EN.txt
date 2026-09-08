@@ -4,6 +4,45 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-09] - The four triggers a script pack asked for and never got
+----------------------------------------
+
+FIX - @RegionResourceFound and @ResourceFound now fire the moment a mining or
+        lumberjacking swing turns up a vein, with the vein marker as the object
+        argument (CWorldMap.cpp:151-166). They share one return value, the later
+        overwriting the earlier and each guarded by whether a script actually hooks it,
+        and RETURN 1 empties the vein rather than removing it - the spot was searched
+        and holds nothing, which is not the same as never having looked.
+
+FIX - @RegionResourceGather now fires on the gatherer alongside the resource
+        definition's own @ResourceGather, sharing the same arguments and the same
+        return value (CCharSkill.cpp:1029-1040). ARGN1 is the amount and
+        LOCAL.ResourceID the item, both writable from either side.
+
+FIX - @HitReactive now fires when Reactive Armour is about to bounce a blow, and the
+        whole bounce is handed over in locals - Sound, EffectID, Damage,
+        ReflectDamage, ReduceDamage, DamageType - and read back (CCharFight.cpp:965).
+
+CHANGE - Reactive Armour was rebuilt on the reference's own terms and three defects
+        went with it. The reflected share came from a flat quarter of the blow, a
+        number the reference does not contain: it reads the percentage the spell
+        definition's EFFECT curve gives at the caster's skill, stored when the spell is
+        cast (CCharSpell.cpp:1411), so a shard's own EFFECT= now decides it. The blow
+        was reflected but never REDUCED, so the spell hurt the attacker without ever
+        sparing its wearer. And the two-tile reach the reference requires was not
+        checked, so a bow shot from across the screen bounced back.
+
+        The flag alone therefore no longer reflects anything - that is the reference's
+        behaviour, since it reads the worn memory and a definition asking for no
+        reflection gets none. There is no minimum of one: the reference has that clamp
+        commented out, so a small blow at a small percentage bounces nothing.
+
+NOTE - Reactive Armour, Blood Oath and REFLECTPHYSICALDAM all live on the melee path
+        only. The reference puts them in OnTakeDamage, which the DAMAGE verb also goes
+        through, so scripted damage bounces off none of them here. Recorded, not
+        changed - it is one gap for the whole reflect family rather than a fourth
+        trigger's business.
+
 [2026-09-08] - Which triggers a real script pack asks for, and which answer
 ----------------------------------------
 

@@ -277,6 +277,13 @@ public sealed class NpcAiAuditRegressionTests
         var defender = world.CreateCharacter();
         defender.Hits = defender.MaxHits = 1_000;
         defender.SetStatFlag(StatFlag.Reactive);
+        // The flag alone bounces nothing: how much comes back is the spell definition's
+        // EFFECT, stored when the spell is cast (reference m_itSpell.m_PolyStr). This
+        // fixture sets the flag by hand, so it has to supply the percentage too.
+        // 100%: the reference deliberately has NO minimum of one (the clamp is
+        // commented out upstream), so a small blow at a small percentage bounces
+        // nothing at all - and this test is about who gets credited, not about rounding.
+        defender.ReactiveArmorPercent = 100;
         world.PlaceCharacter(defender, new Point3D(101, 100, 0, 0));
 
         Character? creditedKiller = null;

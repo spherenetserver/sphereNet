@@ -244,6 +244,36 @@ public static class CombatEngine
     /// SpellType id.</summary>
     public static Action<Character, Character, int>? OnHitSpell;
 
+    /// <summary>What Reactive Armour is about to do with a blow, handed to the script
+    /// and read back. The reference describes the bounce entirely in locals so a
+    /// @HitReactive block can change any part of it - how much comes off the blow, how
+    /// much lands on the attacker, and what the two of them see and hear
+    /// (CCharFight.cpp:965-990).</summary>
+    public sealed class ReactiveArmorContext
+    {
+        public required Character Defender { get; init; }
+        public required Character Attacker { get; init; }
+        /// <summary>The blow as it stands, before the bounce is taken out of it.</summary>
+        public required int Damage { get; init; }
+        /// <summary>LOCAL.Damage - the bounce the percentage worked out to.</summary>
+        public int Bounce { get; set; }
+        /// <summary>LOCAL.ReflectDamage - what the attacker takes.</summary>
+        public int Reflect { get; set; }
+        /// <summary>LOCAL.ReduceDamage - what comes off the blow.</summary>
+        public int Reduce { get; set; }
+        /// <summary>LOCAL.Sound / LOCAL.EffectID.</summary>
+        public ushort Sound { get; set; }
+        public ushort EffectId { get; set; }
+    }
+
+    /// <summary>@HitReactive bridge: the host fires the trigger and copies the script's
+    /// locals back into the context. Null when no script hooks it.</summary>
+    public static Action<ReactiveArmorContext>? OnReactiveArmorTrigger;
+
+    /// <summary>Reactive Armour feedback on the attacker: the sound and the effect the
+    /// context ended up with. Args: defender, attacker, sound, effect id.</summary>
+    public static Action<Character, Character, ushort, ushort>? OnReactiveArmorFeedback;
+
     /// <summary>Armor layers a hit may pick for the item @GetHit trigger and
     /// the durability wear (Source-X sm_ArmorDamageLayers, CCharFight.cpp:388).
     /// Hand layers (weapons/shields) are excluded.</summary>
@@ -646,6 +676,54 @@ public static class CombatEngine
         // karma/fame, loot rights).
         recipient.RecordAttack(from.Uid, damage);
         return damage;
+    }
+
+    /// <summary>Work out what Reactive Armour takes out of a blow and what it sends
+    /// back, and let a script rewrite all of it.
+    ///
+    /// The reference (CCharFight.cpp:950-1006) asks four things before anything
+    /// happens: the defender wears the flag, the blow is neither divine nor itself a
+    /// bounce, the attacker is within two tiles, and a reactive memory is actually worn.
+    /// The percentage comes from that memory, not from the engine. The blow is then
+    /// REDUCED by the bounce and the attacker takes it - SphereNet only ever did the
+    /// second half, so the spell hurt the attacker without sparing its wearer.
+    ///
+    /// A zero percentage is a real answer, not a missing one: a definition with no
+    /// EFFECT reflects nothing, and the trigger still runs so a script can supply the
+    /// numbers itself.
+    ///
+    /// Reflected damage cannot bounce again: <see cref="ApplyReflectedDamage"/> writes
+    /// the hit points directly rather than coming back through this path, which is the
+    /// reference's DAMAGE_REACTIVE guard by another route.</summary>
+    private static ReactiveArmorContext? PrepareReactiveArmor(
+        Character attacker, Character target, ref int damage)
+    {
+        if (damage <= 0 || attacker == target) return null;
+        if (!target.IsStatFlag(StatFlag.Reactive)) return null;
+        if (attacker.IsDead || attacker.IsDeleted || target.IsDead) return null;
+        if (target.Position.GetDistanceTo(attacker.Position) > 2) return null;
+
+        int bounce = Math.Max(0, damage * target.ReactiveArmorPercent / 100);
+        var ctx = new ReactiveArmorContext
+        {
+            Defender = target,
+            Attacker = attacker,
+            Damage = damage,
+            Bounce = bounce,
+            Reflect = bounce,
+            Reduce = bounce,
+            Sound = 0x01F1,
+            EffectId = 0x374A,      // ITEMID_FX_CURSE_EFFECT
+        };
+        OnReactiveArmorTrigger?.Invoke(ctx);
+
+        // Both halves fall back to the plain bounce when the script zeroed only the
+        // specific figure, which is what the reference's `x ? x : base` reads as.
+        if (ctx.Reduce > 0 || ctx.Bounce > 0)
+            damage = Math.Max(0, damage - (ctx.Reduce > 0 ? ctx.Reduce : ctx.Bounce));
+        if (ctx.Reflect <= 0 && ctx.Bounce > 0)
+            ctx.Reflect = ctx.Bounce;
+        return ctx;
     }
 
     /// <summary>Apply the Source-X CObjBase DAMAGE verb to a character or item.
@@ -1117,6 +1195,24 @@ public static class CombatEngine
             }
         }
 
+        // Reactive Armour bounces part of the blow back and takes that part OUT of
+        // the blow: the reference subtracts it from iDmg before the hit points come
+        // off and only then hits the attacker (CCharFight.cpp:993-999). SphereNet
+        // reflected but never reduced, so the spell cost the attacker some damage
+        // without ever sparing the wearer any.
+        var reactive = PrepareReactiveArmor(attacker, target, ref damage);
+        if (reactive != null)
+        {
+            // Deliberately NOT inside the "damage still greater than zero" gate below:
+            // the bounce is the reactive spell's own event, and a wearer who absorbed
+            // the whole blow still sends it back. Gating it on the remainder meant a
+            // full absorb reflected nothing.
+            if (reactive.Reflect > 0)
+                ApplyReflectedDamage(attacker, target, reactive.Reflect);
+            if (reactive.Sound != 0 || reactive.EffectId != 0)
+                OnReactiveArmorFeedback?.Invoke(target, attacker, reactive.Sound, reactive.EffectId);
+        }
+
         // Apply damage — do NOT call Kill() here; the caller handles death
         // via DeathEngine.ProcessDeath which creates the corpse, drops loot,
         // and sends the delete packet. Calling Kill() early makes
@@ -1145,9 +1241,6 @@ public static class CombatEngine
                 int reflect = damage * (100 - target.BloodOathLevel) / 100;
                 ApplyReflectedDamage(attacker, target, reflect);
             }
-
-            if (target.IsStatFlag(StatFlag.Reactive) && attacker != target && !attacker.IsDead)
-                ApplyReflectedDamage(attacker, target, Math.Max(1, damage / 4));
 
             // AOS REFLECTPHYSICALDAM (Source-X OnTakeDamage, CCharFight.cpp:1013):
             // the defender's suit bounces a percentage of the damage back at the

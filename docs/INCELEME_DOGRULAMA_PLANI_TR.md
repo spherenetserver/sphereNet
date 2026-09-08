@@ -2925,6 +2925,42 @@ Kaynak: IS-2c turunda statik gozlem olarak kaydedilmisti.
 
 **Kapanis:** tam suite **3.291 basarili / 0 basarisiz** (+1).
 
+### IS-9 - PLAN-206'nin dort gercek boslugu kapandi (9 Eylul 2026)
+
+Olcumun cikardigi dort trigger uygulandi. Sozlesmeler referanstan alindi:
+
+| Trigger | Nerede | Sozlesme |
+|---|---|---|
+| `@RegionResourceFound` | karakter | ARGO = damar isaretcisi; RETURN 1 -> miktar 0 |
+| `@ResourceFound` | REGIONRESOURCE tanimi | ayni argumanlar, donus degerini o belirler |
+| `@RegionResourceGather` | toplayan | ARGN1 = miktar, LOCAL.ResourceID; RETURN 1 -> hicbir sey |
+| `@HitReactive` | savunan | LOCAL.Sound/EffectID/Damage/ReflectDamage/ReduceDamage/DamageType |
+
+**Iki trigger tek donus degeri paylasiyor** (hem found hem gather ciftinde): sonraki
+oncekinin uzerine yazar ve her atama `IsTrigUsed` ile korunur. Bunun icin
+`TriggerDispatcher.IsTriggerNameUsed(ad)` eklendi - referansin IsTrigUsed'i gibi GLOBAL
+bir soru, ve onbellek kurulmadan once "bilinmiyor" diye ACIK dusuyor (kancali bir
+trigger'i asla "kullanilmiyor" diye bildirmemeli).
+
+**Reaktif zirh yeniden kuruldu (3 kusur):**
+1. Yansiyan pay `damage / 4` sabitiydi - referansta yok. Artik buyu taniminin EFFECT
+   egrisinden, buyu yapilirken hesaplanip saklaniyor (`Character.ReactiveArmorPercent`,
+   Blood Oath'taki ayna deseniyle; undo/restore dahil).
+2. Darbe yansitiliyor ama AZALTILMIYORDU. Referans once dusurup sonra yansitir.
+3. Iki karelik mesafe sarti yoktu.
+
+Yansima, kalan hasar sifir olsa bile calisir (tam sogurma da geri seker) - blogu
+`damage > 0` kapisinin icine koymak ilk denemede tam bunu bozdu, test yakaladi.
+
+- [x] **TG-3** - dort trigger + reaktif zirh duzeltmesi. Test:
+  `ResourceAndReactiveTriggerTests` (12). Korkuluk listesi bosaldi.
+
+**Yeni kayitli bulgu (degistirilmedi):** reaktif zirh, Blood Oath ve REFLECTPHYSICALDAM
+yalnizca `ResolveAttack` (yakin dovus) yolunda. Referans bunlari `OnTakeDamage`'a koyar;
+DAMAGE verb'i (`ApplyScriptDamage`) oradan gectigi icin scriptli hasar da yansimali
+olmali. Ucu birden ayni yerde eksik - tek bir "yansima ailesi" isi olarak ayri ele
+alinmali.
+
 ### PLAN-206 - Trigger uzun kuyrugu: paket tarafindan olcum (8 Eylul 2026)
 
 Plan maddesinin kendi sarti: "Eksik trigger adlarini enum adi uzerinden degil Source-X

@@ -49,13 +49,7 @@ public sealed class ScriptPackTriggerCoverageTests(ITestOutputHelper outp)
     /// entry stops being unserved, so implementing one forces its removal from here.
     /// </summary>
     private static readonly HashSet<string> KnownGaps =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            "ResourceFound",            // CWorldMap.cpp:159 - fires on the REGIONRESOURCE def
-            "RegionResourceFound",      // CWorldMap.cpp:157 - fires on the character
-            "RegionResourceGather",     // CCharSkill.cpp:1035 - fires on the gatherer
-            "HitReactive",              // CCharFight.cpp:965 - reactive armour reflection
-        };
+        new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly Regex HookLine =
         new(@"^\s*ON\s*=\s*@(\w+)", RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Compiled);

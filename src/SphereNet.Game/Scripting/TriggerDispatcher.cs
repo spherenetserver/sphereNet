@@ -851,6 +851,22 @@ public sealed class TriggerDispatcher
         return _usedItemTriggers.Contains(name) || _usedItemTriggers.Contains("item" + name);
     }
 
+    /// <summary>Does ANY loaded script hook this trigger name?
+    ///
+    /// The reference's IsTrigUsed is a global flag, not a per-object question: it asks
+    /// whether the name appears anywhere in the loaded scripts, and the engine uses it
+    /// to decide whether a trigger is worth firing at all - and, where two triggers
+    /// share one return value, which of them gets to set it. Same registry, same
+    /// question, by name so the families that never pass through an enum (REGIONRESOURCE
+    /// sections, region and spell stages) can be asked about too.</summary>
+    /// <remarks>Answers TRUE while the used-set has not been built yet: an unbuilt
+    /// gate means "unknown", and the one thing it must never do is report a hooked
+    /// trigger as unused - that would silently drop the script. Same fail-open rule the
+    /// function-fallback gate uses.</remarks>
+    public bool IsTriggerNameUsed(string trigName) =>
+        !_funcTriggerGateBuilt ||
+        _usedCharTriggers.Contains(trigName) || _usedItemTriggers.Contains(trigName);
+
     /// <summary>Register a global item event handler.</summary>
     public void RegisterItemEvent(string eventKey, string trigName, TriggerHandler handler)
     {
@@ -993,6 +1009,8 @@ public sealed class TriggerDispatcher
         {
             "Enter", "Exit", "Step", "RegPeriodic", "CliPeriodic",
             "Effect", "EffectTick", "Select", "Success", "Fail",
+            // [REGIONRESOURCE] section stages, fired on the definition itself.
+            "ResourceTest", "ResourceFound", "ResourceGather",
         })
             names.Add(n);
         return names;

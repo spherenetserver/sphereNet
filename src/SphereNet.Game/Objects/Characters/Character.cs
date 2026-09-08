@@ -1203,6 +1203,11 @@ public partial class Character : ObjBase
     /// the reflect percent base (reference m_spelllevel).</summary>
     internal Serial BloodOathEnemy { get; set; }
     internal int BloodOathLevel { get; set; }
+    /// <summary>Reactive Armour: the percentage of an incoming blow this character
+    /// bounces back (reference LAYER_SPELL_Reactive m_itSpell.m_PolyStr, set at cast
+    /// time from the spell definition's own EFFECT curve, CCharSpell.cpp:1411). Zero
+    /// means the flag is up but the definition asks for no reflection.</summary>
+    internal int ReactiveArmorPercent { get; set; }
     /// <summary>Necromancy Evil Omen: a one-shot marker that makes the next
     /// harmful effect on this character land harder, then is consumed (reference
     /// LAYER_SPELL_Evil_Omen). Expiry is lazy — read via <see cref="ConsumeEvilOmen"/>.</summary>

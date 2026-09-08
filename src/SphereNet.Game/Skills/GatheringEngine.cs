@@ -145,6 +145,7 @@ public sealed class GatheringEngine
             int poolAmount = Math.Clamp(resDef.GetRandomAmount(Rng), 1, ushort.MaxValue);
             poolAmount = ApplyWorkhorsePoolBonus(ch, skill, target.Map, poolAmount);
             marker = CreateMarker(target, skillTag, poolAmount, resDef);
+            FireResourceFound(ch, resDef, marker);
         }
 
         // A node that already exists is handed back exactly as it stands: Source-X
@@ -211,7 +212,19 @@ public sealed class GatheringEngine
                     O1 = activeMarker,
                     Locals = locals,
                 };
-                if (_triggerDispatcher.FireResourceTrigger(resDef, "ResourceGather", ch, args) == TriggerResult.True)
+                // Both triggers see the SAME arguments and share ONE return value,
+                // the later one overwriting the earlier - but only when a script
+                // actually hooks it, because the reference guards each assignment with
+                // IsTrigUsed (CCharSkill.cpp:1034-1038). A char-level @RegionResource-
+                // Gather therefore cancels the reap unless a @ResourceGather block
+                // exists to have the last word.
+                var gatherRet = TriggerResult.Default;
+                if (_triggerDispatcher.IsTriggerNameUsed("RegionResourceGather"))
+                    gatherRet = _triggerDispatcher.FireCharTrigger(
+                        ch, CharTrigger.RegionResourceGather, args);
+                if (_triggerDispatcher.IsTriggerNameUsed("ResourceGather"))
+                    gatherRet = _triggerDispatcher.FireResourceTrigger(resDef, "ResourceGather", ch, args);
+                if (gatherRet == TriggerResult.True)
                     return new GatherResult { Handled = true, Success = false };
 
                 reapAmount = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1);
@@ -258,6 +271,36 @@ public sealed class GatheringEngine
         }
 
         return new GatherResult { Handled = true, Success = false };
+    }
+
+    /// <summary>Announce a vein the moment it is found under a tile.
+    ///
+    /// The reference creates the resource bit, gives it its amount, and only then tells
+    /// the scripts: @RegionResourceFound on the CHARACTER and @ResourceFound on the
+    /// REGIONRESOURCE definition, both with the bit as the object argument
+    /// (CWorldMap.cpp:151-166). They share one return value, the later overwriting the
+    /// earlier and each assignment guarded by IsTrigUsed, and RETURN 1 empties the vein
+    /// rather than removing it - the spot is found and holds nothing, which is how a
+    /// script says "not here" without disturbing the node's own lifetime.</summary>
+    private void FireResourceFound(Character ch, RegionResourceDef resDef, Item marker)
+    {
+        if (_triggerDispatcher == null)
+            return;
+
+        bool charUsed = _triggerDispatcher.IsTriggerNameUsed("RegionResourceFound");
+        bool defUsed = _triggerDispatcher.IsTriggerNameUsed("ResourceFound");
+        if (!charUsed && !defUsed)
+            return;
+
+        var args = new TriggerArgs { CharSrc = ch, O1 = marker };
+        var ret = TriggerResult.Default;
+        if (charUsed)
+            ret = _triggerDispatcher.FireCharTrigger(ch, CharTrigger.RegionResourceFound, args);
+        if (defUsed)
+            ret = _triggerDispatcher.FireResourceTrigger(resDef, "ResourceFound", ch, args);
+
+        if (ret == TriggerResult.True)
+            SetPool(marker, 0);
     }
 
     /// <summary>Source-X RACIALF_HUMAN_WORKHORSE node-size bonus: +1 ore in

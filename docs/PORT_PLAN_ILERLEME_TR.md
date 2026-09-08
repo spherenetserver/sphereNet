@@ -14,7 +14,7 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-08 |
-| Son commit | `8aa495c` (bölge tetikleyicisi) |
+| Son commit | `42ec482` (gerçek dünyada değişmez denetimi) |
 | Tam test | 3.291 başarılı / 0 başarısız |
 | Sıradaki iş | **Yeni inceleme dalgası ya da planın yeni maddesi** |
 
@@ -72,8 +72,7 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   BACKPACKOVERLOAD, FLIPDROPPEDITEMS, NPCTRAINPERCENT/NPCTRAINMAX alias'ları,
   MAXITEMCOMPLEXITY İŞ-4'te). Kalanların tam sınıflandırması takip planında.
 
-  **Tüketicisi olmadığı için ayar EKLENMEDİ** (sahte ayar olurdu): MAXPOLYSTATS
-  (polymorph statları uygulamıyor), SPELLTIMEOUT (hedef imleci süre aşımı yok),
+  **Tüketicisi olmadığı için ayar EKLENMEDİ** (sahte ayar olurdu): SPELLTIMEOUT (hedef imleci süre aşımı yok),
   STATSFLAGS ("0 = türet" semantiği yok). DISTANCEFORMULA ve ağ/harita grubu kapsam
   dışı. HITSUPDATERATE referansta ELEM_VOID, MONSTERTIGHT referansta hiç yok.
 
@@ -84,10 +83,31 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
     (referansta FixWeirdness); oyuncuya dokunulmuyor.
   Canlı shard'ın ini'si `NOWEATHER=0` / `NPCSKILLSAVE=100` diyor — hava açık kalır.
 
+  `MAXPOLYSTATS` önce "tüketicisi yok" diye park edilmişti; sonra tüketicisi yazıldı:
+  polymorph artık formun kendi STR/DEX'ini alıyor (`MAGICF_POLYMORPHSTATS` kapılı,
+  değişim bu ayarla sınırlı, büyü hafızasında saklanıp geri alınıyor).
+
+- [x] **İŞ-6 — `Item` içindeki ham `_type` kapıları** — **ÖLÇÜLDÜ, DEĞİŞİKLİK GEREKMEDİ**
+  Yaklaşık yirmi okuyucu (yığınlanma, statik engel, tuzak, gemi parçası, ceset, multi
+  komutları) türü çözen özellik yerine ham alanı okuyor. Zincir ölçüldü: fabrika yolu
+  türü kuruyor, klasik yol TYPE yazmıyor ama yükleme sonrası
+  `MaterializeDefinitionType()` dolduruyor. Gerçek 56T dünyasında
+  `WorldInvariantAuditor` **0 anomali** veriyor — dolayısıyla kalan ham okuyucular
+  doğru. Gerçek veri testi artık bu değişmezi (ve diğer bütün dünya değişmezlerini)
+  assert ediyor; iddia varsayım olmaktan çıktı. Gerçek pencere (kayıt OKUNURKEN
+  property yüzeyi) İŞ-2 ikinci diliminde `Item.EffectiveType` ile kapanmıştı.
+  **Kalan risk, kayıtlı:** çalışma anında `BaseId` ile kurulup türü açıkça
+  verilmeyen eşya; denetleyici yalnız yükleme sonrası koştuğu için ancak kaydedilip
+  yeniden yüklenince yakalanır.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
+
+- **İŞ-6 ÖLÇÜLDÜ** — 2026-09-08. Ham `_type` okuyucuları için değişiklik gerekmedi;
+  gerçek shard yüklemesinde 0 ıraksama. Gerçek veri testi bütün dünya değişmezlerini
+  assert ediyor (önce yalnız yükleyip anahtar sayıyordu). Tam suite 3.291.
 
 - **İŞ-5 KAPANDI** — 2026-09-08. 33 okunmayan anahtarın 13'ü bağlandı, geri kalanı
   gerekçesiyle sınıflandırıldı (tüketici yok / referansta no-op / kapsam dışı / karar

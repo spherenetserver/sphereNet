@@ -3,6 +3,27 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-08] - Pakete konan ini eski yer tutuculari soyluyordu (IS-5)
+----------------------------------------
+
+FIX - config/sphere.ini, henuz okunmayan anahtarlar icin yer tutucu degerler tasiyordu;
+        her biri "[UYGULANMADI]" etiketliydi. Bir anahtar OKUNMAYA baslar baslamaz yer
+        tutucusu CANLI olur - ve bunlarin bircogu referansin tam tersini soyluyordu:
+        teleport efektleri ve sesleri 0'di (hicbir sey gosterme, hicbir sey calma),
+        MAXHOUSESGUILD 0'di (lonca hic ev sahibi olamaz), BACKPACKOVERLOAD 0'di ve
+        aciklamasi tas cinsinden bir pay yerine 0/1 anahtari tarif ediyordu,
+        FLIPDROPPEDITEMS 0 ve NPCCANFIZZLEONHIT 1'di - ikisi de referansin tersi. Artik
+        referansin kendi degerlerini tasiyorlar, aciklamalari ayarin gercekte ne yaptigini
+        soyluyor ve etiketleri calistigini yaziyor. Hic satiri olmayan MAXITEMCOMPLEXITY
+        de dosyaya eklendi.
+
+NEW - Bir test pakete konan ini'yi yukleyip motorun artik okuduguna karsi dogruluyor;
+        boylece sonradan baglanan bir anahtar sessizce yer tutucu devralamaz.
+
+NOTE - Bu paketin referanstan BILEREK ayrildigi iki deger dosyada oyle isaretli:
+        NOWEATHER=0 (bu shard hava istiyor; referansin varsayilani havasiz) ve
+        NPCSKILLSAVE=100 (referansin 10'undan daha siki).
+
 [2026-09-08] - Hava ve NPC'nin kucuk skilleri, referanstaki gibi (IS-5)
 ----------------------------------------
 

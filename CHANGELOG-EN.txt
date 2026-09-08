@@ -4,6 +4,27 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-08] - The shipped ini meant the old placeholders (IS-5)
+----------------------------------------
+
+FIX - config/sphere.ini carried placeholder values for the keys that had not been read
+        yet, each marked "[UYGULANMADI]". The moment a key IS read, its placeholder
+        becomes live - and several of them said the opposite of the reference: the
+        teleport effects and sounds were all 0 (show nothing, play nothing),
+        MAXHOUSESGUILD was 0 (a guild could own no house at all), BACKPACKOVERLOAD was 0
+        with a comment describing a 0/1 switch rather than an allowance in stones,
+        FLIPDROPPEDITEMS was 0 and NPCCANFIZZLEONHIT was 1, the opposite of upstream.
+        They now carry the reference's own values, their comments say what the setting
+        actually does, and their labels say they work. MAXITEMCOMPLEXITY, which had no
+        line at all, is in the file.
+
+NEW - A test loads the shipped ini and holds it to what the engine now reads, so a key
+        wired later cannot quietly inherit a placeholder again.
+
+NOTE - The two values this pack deliberately keeps away from the reference are marked as
+        such in the file: NOWEATHER=0 (this shard wants weather; upstream's default is
+        none) and NPCSKILLSAVE=100 (stricter than the reference's 10).
+
 [2026-09-08] - Weather and an NPC's small skills, as the reference has them (IS-5)
 ----------------------------------------
 

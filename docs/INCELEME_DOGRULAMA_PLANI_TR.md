@@ -2886,6 +2886,19 @@ kalir ve 10.0 altindaki NPC skilleri dusurulur - ikisi de shard'in kendi tercihi
 
 **Kapanis:** tam suite **3.285 basarili / 0 basarisiz** (+2).
 
+**IS-5 - pakete konan ini duzeltildi (8 Eylul 2026):** Bu turda baglanan anahtarlarin
+`config/sphere.ini` icindeki YER TUTUCU degerleri canli hale gelmisti ve bircogu
+referansin tersini soyluyordu (teleport efekt/ses 0, MAXHOUSESGUILD 0, BACKPACKOVERLOAD 0
+- ustelik aciklamasi 0/1 anahtari diyordu -, FLIPDROPPEDITEMS 0, NPCCANFIZZLEONHIT 1).
+Degerler referansinkine cekildi, aciklamalar duzeltildi, `[UYGULANMADI]` etiketleri
+`[ÇALIŞIYOR]` oldu, eksik olan MAXITEMCOMPLEXITY eklendi. Yeni test pakete konan ini'yi
+motorun okuduguna karsi dogruluyor.
+
+**Uyari - CANLI sunucu ini'si:** `C:\sphereNetServer\sphere.ini` ayni yer tutuculari
+tasiyor (TELEPORTEFFECT*/SOUND* 0, MAXHOUSESGUILD 0, BACKPACKOVERLOAD 0,
+FLIPDROPPEDITEMS 0, NPCCANFIZZLEONHIT 1, MAXITEMCOMPLEXITY satiri yok). O dosya depoda
+degil; kullanici onayi olmadan degistirilmedi.
+
 ### IS-4 - nesne olusturma/kopyalama giris noktalari tablosu (7 Eylul 2026)
 
 Kaynak: port plani IS-4 / PLAN-101. Amac: ayni isi yapan girislerin ortak ve farkli

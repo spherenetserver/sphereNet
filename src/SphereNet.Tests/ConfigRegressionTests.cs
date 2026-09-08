@@ -444,4 +444,46 @@ public class ConfigRegressionTests
         }
         finally { File.Delete(tmp); }
     }
+
+    [Fact]
+    public void TheShippedIniMeansWhatTheEngineNowReads()
+    {
+        // config/sphere.ini carried placeholder values for keys that were not read yet
+        // ("[UYGULANMADI]"). The moment a key IS read, its placeholder becomes live: a
+        // TELEPORTEFFECTSTAFF=0 turns the effect off, a MAXHOUSESGUILD=0 lets a guild
+        // own nothing. This holds the shipped file to what it says it does.
+        string? repoIni = FindRepoFile("config/sphere.ini");
+        if (repoIni == null) return;   // not running from the repo tree
+
+        var ini = new SphereNet.Core.Configuration.IniParser();
+        ini.Load(repoIni);
+        var config = new SphereConfig();
+        config.LoadFromIni(ini);
+
+        Assert.Equal(0x3709, config.TeleportEffectStaff);
+        Assert.Equal(0x3728, config.TeleportEffectPlayers);
+        Assert.Equal(0x376A, config.TeleportEffectNpc);
+        Assert.Equal(0x01F3, config.TeleportSoundStaff);
+        Assert.Equal(1, config.MaxHousesGuild);
+        Assert.Equal(40, config.BackpackOverload);
+        Assert.True(config.FlipDroppedItems);
+        Assert.False(config.NpcCanFizzleOnHit);
+        Assert.Equal(25, config.MaxItemComplexity);
+        Assert.Equal(30, config.TrainSkillPercent);
+        // This pack's own choices, deliberately not the reference defaults.
+        Assert.False(config.NoWeather);
+        Assert.Equal(100, config.NpcSkillSave);
+    }
+
+    private static string? FindRepoFile(string relative)
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null)
+        {
+            string candidate = Path.Combine(dir.FullName, relative);
+            if (File.Exists(candidate)) return candidate;
+            dir = dir.Parent;
+        }
+        return null;
+    }
 }

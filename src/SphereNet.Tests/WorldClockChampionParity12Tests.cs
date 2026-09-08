@@ -214,6 +214,11 @@ public sealed class WorldClockChampionParity12Tests
         ObjBase.ResolveWorld = () => world;
         Item.ResolveWorld = () => world;
 
+        // These check what a client is TOLD about the weather, so the bench is a shard
+        // that has weather: upstream's own default is NOWEATHER=1, and a shard with no
+        // weather is told nothing at all (addWeather, CClientMsg.cpp:526).
+        SphereNet.Game.World.WeatherEngine.NoWeather = false;
+
         var state = TestHarness.CreateActiveNetState(lf, 1);
         var client = new GameClient(state, world, new AccountManager(lf), lf.CreateLogger<GameClient>());
         var me = world.CreateCharacter();

@@ -294,6 +294,20 @@ public sealed class SphereConfig
     /// limit at all.</summary>
     public int BackpackOverload { get; set; } = 40;
 
+    /// <summary>Is there no weather at all? (Source-X m_fNoWeather, ini NOWEATHER.)
+    /// The reference's default is TRUE - a bare upstream server has no rain and no
+    /// snow, and a shard that wants them says NOWEATHER=0. This engine used to run
+    /// weather unconditionally; the default follows the reference now, so a shard
+    /// that wants weather has to ask for it the way it would upstream.</summary>
+    public bool NoWeather { get; set; } = true;
+
+    /// <summary>The skill value below which an NPC's skills are dropped when the world
+    /// is read (Source-X m_iSaveNPCSkills, ini NPCSKILLSAVE, default 10 = 1.0).
+    /// Despite the name it is not a save switch: upstream ZEROES an NPC's skills under
+    /// this value while fixing up the world (FixWeirdness, CChar.cpp:1030), which is
+    /// why they never reach the next save. Zero keeps every skill.</summary>
+    public int NpcSkillSave { get; set; } = 10;
+
     /// <summary>Does an item dropped on the ground turn to its flipped graphic?
     /// (Source-X m_fFlipDroppedItems, ini FLIPDROPPEDITEMS, default true,
     /// CCharAct.cpp:3266.)</summary>
@@ -726,6 +740,8 @@ public sealed class SphereConfig
         NpcCanFizzleOnHit = ini.GetBool(section, "NpcCanFizzleOnHit", NpcCanFizzleOnHit);
         BackpackOverload = ini.GetInt(section, "BackpackOverload", BackpackOverload);
         FlipDroppedItems = ini.GetBool(section, "FlipDroppedItems", FlipDroppedItems);
+        NoWeather = ini.GetBool(section, "NoWeather", NoWeather);
+        NpcSkillSave = Math.Max(0, ini.GetInt(section, "NpcSkillSave", NpcSkillSave));
         TeleportEffectStaff = GetIntOrHex(ini, section, "TeleportEffectStaff", TeleportEffectStaff);
         TeleportSoundStaff = GetIntOrHex(ini, section, "TeleportSoundStaff", TeleportSoundStaff);
         TeleportEffectPlayers = GetIntOrHex(ini, section, "TeleportEffectPlayers", TeleportEffectPlayers);

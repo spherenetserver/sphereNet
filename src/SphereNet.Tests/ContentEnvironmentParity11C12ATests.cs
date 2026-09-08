@@ -449,6 +449,9 @@ public sealed class ContentEnvironmentParity11C12ATests
 
     private static (WeatherEngine Engine, Region Region) WeatherBench(int rain, int cold)
     {
+        // A shard that wants weather says so: upstream's own default is NOWEATHER=1
+        // (CServerConfig.cpp:160), so the bench turns it on the way an ini would.
+        WeatherEngine.NoWeather = false;
         var b = Setup();
         var region = new Region { Name = "climate test", MapIndex = 0 };
         region.AddRect(0, 0, 4000, 4000);

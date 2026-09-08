@@ -3,6 +3,24 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-08] - Hava ve NPC'nin kucuk skilleri, referanstaki gibi (IS-5)
+----------------------------------------
+
+CHANGE - NOWEATHER artik var ve varsayilani referansinki: ciplak bir sunucuda hava
+        YOKTUR. Bu motor yagmuru ve kari kosulsuz calistiriyordu; yani sessizlik isteyen
+        shard yine hava aliyordu. Bayragin durdurdugu sey yeni hava ATILMASI ve
+        istemcilere SOYLENMESIDIR (GetWeatherCalc, CSector.cpp:861; addWeather,
+        CClientMsg.cpp:526) - bir scriptin bolgeye kurdugu hava saklanmaya ve
+        okunabilmeye devam eder, referansin sektorunkini sakladigi gibi. Hava isteyen
+        shard NOWEATHER=0 der; canli shard'in ini'si zaten oyle diyor.
+
+FIX - NPCSKILLSAVE okunuyor ve adinin dusundurdugu kayit anahtari DEGIL: referans
+        dunyayi okurken bu degerin altindaki NPC skillerini DUSURUR ("kullanilmayan
+        skilleri takip etme", CChar.cpp:1027), zaten bu yuzden sonraki kayda hic
+        ulasmazlar. Burada yaratigin tek puanlik artiklari sonsuza kadar tutuluyor ve
+        her turda yeniden yaziliyordu. Oyuncunun skillerine asla dokunulmaz, sifir ise
+        her seyi korur.
+
 [2026-09-07] - Canta, sahibinin tasiyabildigi kadarini alir (IS-5)
 ----------------------------------------
 

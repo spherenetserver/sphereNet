@@ -671,4 +671,45 @@ public sealed class LegacySaveKeyParityTests : IDisposable
         Assert.NotNull(second);
         Assert.NotEqual(first!.Uid, second!.Uid);     // the old one is gone, not layered
     }
+
+    [Fact]
+    public void ACreaturesTinySkillsAreDroppedAsTheWorldIsRead()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), $"sphnet_ns_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "spherechars.scp"), """
+                [WORLDCHAR c_man_rt]
+                SERIAL=0f001
+                NAME=Creature
+                P=100,100,0
+                ISPLAYER=0
+                Anatomy=5
+                Tactics=900
+
+                [WORLDCHAR c_man_rt]
+                SERIAL=0f002
+                NAME=Player
+                P=101,100,0
+                ISPLAYER=1
+                Anatomy=5
+                """);
+
+            var world = NewWorld();
+            new SphereNet.Persistence.Load.WorldLoader(LoggerFactory.Create(_ => { }))
+                .Load(world, dir);
+
+            // "An NPC. Don't keep track of unused skills" (CChar.cpp:1027): under the
+            // threshold it goes, which is why it never reaches the next save.
+            var npc = world.FindChar(new Serial(0x0F001))!;
+            Assert.Equal(0, npc.GetSkill(SkillType.Anatomy));
+            Assert.Equal(900, npc.GetSkill(SkillType.Tactics));
+
+            // A player's skills are never touched.
+            var player = world.FindChar(new Serial(0x0F002))!;
+            Assert.Equal(5, player.GetSkill(SkillType.Anatomy));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }

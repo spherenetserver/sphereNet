@@ -415,4 +415,33 @@ public class ConfigRegressionTests
         }
         finally { File.Delete(tmp); }
     }
+
+    [Fact]
+    public void SphereConfig_WeatherAndNpcSkillFloorFollowTheReferencesDefaults()
+    {
+        var defaults = new SphereConfig();
+        // A bare upstream server has NO weather (CServerConfig.cpp:160) and drops an
+        // NPC's skills under 1.0 as it reads the world (:122).
+        Assert.True(defaults.NoWeather);
+        Assert.Equal(10, defaults.NpcSkillSave);
+
+        string tmp = Path.Combine(Path.GetTempPath(), $"sphnet_w_{Guid.NewGuid():N}.ini");
+        File.WriteAllText(tmp, """
+            [SPHERE]
+            NoWeather=0
+            NpcSkillSave=100
+            """);
+        try
+        {
+            var ini = new SphereNet.Core.Configuration.IniParser();
+            ini.Load(tmp);
+            var config = new SphereConfig();
+            config.LoadFromIni(ini);
+
+            // What the live shard's own ini says.
+            Assert.False(config.NoWeather);
+            Assert.Equal(100, config.NpcSkillSave);
+        }
+        finally { File.Delete(tmp); }
+    }
 }

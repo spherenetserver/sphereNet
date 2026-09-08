@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-08] - Weather and an NPC's small skills, as the reference has them (IS-5)
+----------------------------------------
+
+CHANGE - NOWEATHER exists, and its default is the reference's: a bare server has NO
+        weather. This engine ran rain and snow unconditionally, so a shard that asked
+        for silence got weather anyway. What the flag stops is the ROLLING of new
+        weather and the TELLING of clients (GetWeatherCalc, CSector.cpp:861; addWeather,
+        CClientMsg.cpp:526) - weather a script sets on a region is still kept and still
+        readable, exactly as upstream keeps a sector's own. A shard that wants weather
+        says NOWEATHER=0, which the live shard's ini already does.
+
+FIX - NPCSKILLSAVE is read, and it is not the save switch its name suggests: upstream
+        DROPS an NPC's skills below it while reading the world ("don't keep track of
+        unused skills", CChar.cpp:1027), which is why they never reach the next save. A
+        creature's one-point leftovers were kept here forever and written out on every
+        cycle. A player's skills are never touched, and zero keeps everything.
+
 [2026-09-07] - A pack holds what its owner can carry (IS-5)
 ----------------------------------------
 

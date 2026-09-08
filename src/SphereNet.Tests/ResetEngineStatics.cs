@@ -37,6 +37,9 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Items.Item.FlipDroppedItems = true;
         SphereNet.Game.Objects.Items.Item.BackpackOverload = 40;
         SphereNet.Game.Objects.Items.Item.MaxItemComplexity = 25;
+        // The reference's own default: a bare server has no weather.
+        SphereNet.Game.World.WeatherEngine.NoWeather = true;
+        SphereNet.Persistence.Load.WorldLoader.NpcSkillSave = 10;
         // A recipe's FUNC= row reaches the script layer through this hook; a test
         // that installs one must not leave it standing for the next.
         SphereNet.Game.Definitions.TemplateEngine.FunctionRowHook = null;

@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-08 |
-| Son commit | `3ca4812` (İŞ-5 kapanışı) |
-| Tam test | 3.283 başarılı / 0 başarısız |
-| Sıradaki iş | **Yeni tur: kullanıcı kararları (NOWEATHER, NPCSKILLSAVE) ya da yeni bir inceleme dalgası** |
+| Son commit | İŞ-5 tam kapanış (bu oturum) |
+| Tam test | 3.285 başarılı / 0 başarısız |
+| Sıradaki iş | **Yeni inceleme dalgası ya da planın yeni maddesi** |
 
 ## Çalışma sırası
 
@@ -77,10 +77,12 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   STATSFLAGS ("0 = türet" semantiği yok). DISTANCEFORMULA ve ağ/harita grubu kapsam
   dışı. HITSUPDATERATE referansta ELEM_VOID, MONSTERTIGHT referansta hiç yok.
 
-  **Kullanıcı kararı bekleyen 2 madde:**
-  - `NOWEATHER` — referans varsayılanı **hava kapalı**; bizde hava açık çalışıyor.
-  - `NPCSKILLSAVE` — kayıt ayarı değil, eşik altı NPC skillerini **sıfırlayan** temizlik
-    kuralı (varsayılan 10); import edilmiş veriyi değiştirir.
+  **Karar verilen 2 madde (kullanıcı: "Source-X nasılsa öyle") — KAPANDI:**
+  - `NOWEATHER` eklendi, varsayılan referansınki (hava YOK). Bayrak yeni hava atmayı ve
+    istemciye söylemeyi durduruyor; scriptin kurduğu hava saklanıp okunabiliyor.
+  - `NPCSKILLSAVE` eklendi: dünya okunurken eşik altı NPC skilleri düşürülüyor
+    (referansta FixWeirdness); oyuncuya dokunulmuyor.
+  Canlı shard'ın ini'si `NOWEATHER=0` / `NPCSKILLSAVE=100` diyor — hava açık kalır.
 
 ## Yapıldı
 

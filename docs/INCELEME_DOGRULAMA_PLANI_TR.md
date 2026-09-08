@@ -2870,6 +2870,22 @@ karar bekliyor, 1'i referansta no-op, 1'i referansta yok, 13'u kapsam disi/yerel
 **Ilke:** tuketicisi olmayan anahtara ayar eklenmedi. Bir ini satirinin okunup hicbir sey
 yapmamasi, hic okunmamasindan daha kotudur - ilki calistigini soyler.
 
+**IS-5 - karar bekleyen iki madde kapandi (8 Eylul 2026, kullanici karari: "Source-X
+nasilsa oyle"):**
+
+- [x] **B5-7 (P2)** - NOWEATHER yoktu; motor havayi kosulsuz calistiriyordu. (YAPILDI:
+  ayar eklendi, varsayilan REFERANSINKI = hava yok. Bayrak yalnizca yeni hava atmayi ve
+  istemciye soylemeyi durduruyor; scriptin kurdugu hava saklaniyor ve okunabiliyor -
+  ilk denemede okumayi da kapatmistim, mevcut testler yakaladi.)
+- [x] **B5-8 (P2)** - NPCSKILLSAVE okunmuyordu. (YAPILDI: dunya okunurken esik altindaki
+  NPC skilleri dusuruluyor - referansta FixWeirdness'in yaptigi; oyuncuya dokunulmuyor,
+  sifir her seyi korur.)
+
+**Canli shard etkisi:** o ini `NOWEATHER=0` ve `NPCSKILLSAVE=100` diyor; yani hava acik
+kalir ve 10.0 altindaki NPC skilleri dusurulur - ikisi de shard'in kendi tercihi.
+
+**Kapanis:** tam suite **3.285 basarili / 0 basarisiz** (+2).
+
 ### IS-4 - nesne olusturma/kopyalama giris noktalari tablosu (7 Eylul 2026)
 
 Kaynak: port plani IS-4 / PLAN-101. Amac: ayni isi yapan girislerin ortak ve farkli

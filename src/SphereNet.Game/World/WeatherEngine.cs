@@ -99,8 +99,19 @@ public sealed class WeatherEngine
     /// <summary>
     /// Get the current weather for a region. Returns (type, intensity, temp).
     /// </summary>
+    /// <summary>Is there no weather at all (ini NOWEATHER)? Upstream answers DRY for
+    /// every sector when this is set and never rolls for precipitation
+    /// (GetWeatherCalc, CSector.cpp:861); its own default is that there is none. The
+    /// host sets it from the configuration.</summary>
+    public static bool NoWeather { get; set; } = true;
+
     public (WeatherType Type, byte Intensity, byte Temperature) GetWeatherForRegion(Regions.Region? region)
     {
+        // NOWEATHER is deliberately NOT read here: upstream keeps whatever weather was
+        // SET on a sector and answers with it (CSector::GetWeather); what the flag stops
+        // is the rolling of new weather and the telling of clients
+        // (GetWeatherCalc, CSector.cpp:861; addWeather, CClientMsg.cpp:526). Hiding the
+        // stored value here would have made a script's own weather unreadable.
         if (region != null && _regionWeather.TryGetValue(KeyOf(region), out var state))
             return (state.Type, state.Intensity, state.Temperature);
         return (WeatherType.None, 0, 20);
@@ -152,12 +163,18 @@ public sealed class WeatherEngine
         // of named regions exist (every named house, guild hall, tiny
         // dungeon zone); weather in a region with zero players has no
         // observer so rolling the dice there is pure waste.
+        // Nothing to roll for when the shard has no weather: upstream stops at
+        // GetWeatherCalc and never reaches the dice (CSector.cpp:861). The SEASON still
+        // turns below - that is the calendar, not the weather.
         _activeRegionsScratch.Clear();
-        foreach (var player in _world.OnlinePlayers)
+        if (!NoWeather)
         {
-            if (player.IsDeleted || !player.IsOnline) continue;
-            var region = _world.FindRegion(player.Position);
-            if (region != null) _activeRegionsScratch.Add(region);
+            foreach (var player in _world.OnlinePlayers)
+            {
+                if (player.IsDeleted || !player.IsOnline) continue;
+                var region = _world.FindRegion(player.Position);
+                if (region != null) _activeRegionsScratch.Add(region);
+            }
         }
         foreach (var region in _activeRegionsScratch)
         {

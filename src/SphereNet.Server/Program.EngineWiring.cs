@@ -573,7 +573,8 @@ public static partial class Program
                 gc.Send(new PacketSeason(mover.IsDead
                     ? (byte)SeasonType.Desolation
                     : (byte)_weatherEngine.CurrentSeason, playSound: false));
-                gc.Send(new PacketWeather((byte)weatherType, weatherIntensity, weatherTemp));
+                if (!SphereNet.Game.World.WeatherEngine.NoWeather)
+                    gc.Send(new PacketWeather((byte)weatherType, weatherIntensity, weatherTemp));
 
                 // Walking off the edge of every defined region still has to publish the
                 // environment: upstream resolves weather from the SECTOR, which exists
@@ -1331,7 +1332,8 @@ public static partial class Program
                     : (sector.Season != 0 ? sector.Season : (byte)_weatherEngine.CurrentSeason);
                 character.UpdateEnvironment(light, sector.Weather, season);
                 if (!TryGetClientFor(character, out var envClient)) return;
-                envClient.Send(new PacketWeather(sector.Weather, 0, 20));
+                if (!SphereNet.Game.World.WeatherEngine.NoWeather)
+                    envClient.Send(new PacketWeather(sector.Weather, 0, 20));
                 envClient.Send(new PacketSeason(season, playSound: false));
                 envClient.Send(new PacketGlobalLight(light));
             };
@@ -2318,6 +2320,7 @@ public static partial class Program
             };
             _weatherEngine.OnWeatherChanged = (region, type, intensity, temp) =>
             {
+                if (SphereNet.Game.World.WeatherEngine.NoWeather) return;
                 var pkt = new PacketWeather((byte)type, intensity, temp);
                 // EVERY character in the region learns about it, NPCs included: upstream
                 // runs @EnvironChange before it ever asks whether the character has a

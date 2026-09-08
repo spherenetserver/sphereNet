@@ -1260,6 +1260,7 @@ public sealed class WorldLoader
                 continue;
 
             CharDefHelper.EnsureDisplayBody(ch, DefinitionLoader.StaticResources);
+            DropTinyNpcSkills(ch);
             ch.RestoreSummonExpiry();
             ch.ClearTransientVisualState();
 
@@ -1310,6 +1311,30 @@ public sealed class WorldLoader
                 if (!item.TrySetProperty(key, val))
                     item.SetTag("SAVE." + key, val);
                 break;
+        }
+    }
+
+    /// <summary>The skill value below which an NPC's skills are dropped as the world
+    /// is read (ini NPCSKILLSAVE, default 10 = 1.0). Despite the name it is not a save
+    /// switch: upstream zeroes an NPC's skills under this value while fixing up the
+    /// world (FixWeirdness, CChar.cpp:1030), which is why they never reach the next
+    /// save. Zero keeps every skill. The host sets it from the configuration.</summary>
+    public static int NpcSkillSave { get; set; } = 10;
+
+    /// <summary>"An NPC. Don't keep track of unused skills" (CChar.cpp:1027): a
+    /// creature's skills below the threshold are dropped as the record is read, so what
+    /// is written back holds only the skills that mean something. A PLAYER's skills are
+    /// never touched.</summary>
+    private static void DropTinyNpcSkills(Character ch)
+    {
+        if (ch.IsPlayer || NpcSkillSave <= 0)
+            return;
+        for (int i = 0; i < (int)SkillType.Qty; i++)
+        {
+            var skill = (SkillType)i;
+            ushort value = ch.GetSkill(skill);
+            if (value > 0 && value < NpcSkillSave)
+                ch.SetSkill(skill, 0);
         }
     }
 

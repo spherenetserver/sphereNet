@@ -578,6 +578,9 @@ public sealed partial class GameClient
     private void SendCurrentWeather()
     {
         if (_character == null) return;
+        // A shard with no weather tells its clients nothing about it - the packet is
+        // where upstream puts that gate (addWeather, CClientMsg.cpp:526).
+        if (SphereNet.Game.World.WeatherEngine.NoWeather) return;
         var (type, intensity, temp) = _world.WeatherAt(_character.Position);
         _netState.Send(new PacketWeather(type, intensity, temp));
     }

@@ -14,7 +14,7 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-08 |
-| Son commit | İŞ-5 kapanışı (bu oturum) |
+| Son commit | `3ca4812` (İŞ-5 kapanışı) |
 | Tam test | 3.283 başarılı / 0 başarısız |
 | Sıradaki iş | **Yeni tur: kullanıcı kararları (NOWEATHER, NPCSKILLSAVE) ya da yeni bir inceleme dalgası** |
 

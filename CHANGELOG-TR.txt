@@ -3,6 +3,30 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-08] - Gercek script paketi hangi trigger'lari istiyor, hangileri cevap veriyor
+----------------------------------------
+
+NOTE - Trigger uzun kuyrugu PAKET tarafindan ve referansin kendi tablosuna karsi
+        olculdu (tables/triggers.tbl, 248 trigger); kendi enum'umuza karsi olcmek
+        yalnizca enum'un kendisiyle tutarli oldugunu kanitlar. 910 script dosyasi,
+        10.166 kanca ve 123 farkli trigger adi icinde dokuz ad hicbir yere ulasmiyor.
+        Bunlarin besi (@npcmount, @NPCDisMount, @move, @skilluse, @statgain) ile
+        @TameAbort, @SpellStart ve @PartyJoin referansta da yok - hic var olmamis
+        trigger'lara yazilmis olu script. Kalan DORDU gercek ve artik kayitli bosluk:
+        @ResourceFound, @RegionResourceFound, @RegionResourceGather, @HitReactive.
+
+        Ilk gecisteki bazi "bosluklar" yanlis alarm cikti ve dogrulanarak elendi: skill
+        asamalari (@PreStart, @Stroke, @Abort, @Fail, @Success, @Select, @UseQuick) kisa
+        bolum adlariyla, bolge asamalari (@Enter, @RegPeriodic, @CliPeriodic) ve buyu
+        asamalari (@Effect, @Select) adla, @item<Ad>/@char<Ad> aynalari ise string
+        birlestirmeyle capraz atesleniyor - hicbiri bir trigger enum degerinden gecmiyor.
+
+CHANGE - Dispatcher artik gercekten ulasabildigi ad kumesini yayinliyor
+        (DispatchableTriggerNames) ve bir test, makinede bulunan script paketlerindeki
+        her kancayi bu kumeye karsi denetliyor. Paket yoksa temiz atlaniyor. Kayitli bir
+        bosluk artik bosluk olmaktan cikarsa, listeden silinene kadar test dusuyor;
+        boylece liste bosluklarin sessizce saklandigi bir yere donusemiyor.
+
 [2026-09-08] - Karakter, cikisda kalan havuzuyla geri giriyor
 ----------------------------------------
 

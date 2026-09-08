@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-08 |
-| Son commit | `396e4c5` + havuz kayıt döngüsü |
-| Tam test | 3.297 başarılı / 0 başarısız |
-| Sıradaki iş | **Yeni inceleme dalgası ya da planın yeni maddesi** |
+| Son commit | `15d03c8` + trigger kapsam ölçümü |
+| Tam test | 3.299 başarılı / 0 başarısız |
+| Sıradaki iş | **İŞ-9 — dört gerçek trigger boşluğunu kapat** (aşağıda) |
 
 ## Çalışma sırası
 
@@ -110,11 +110,30 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   çıkarıyor ve o an havuzu düşen maksimuma kırpıyor. Ayrıca kayıt sırası referansın
   `MAX*` → `HITS` sırasına alındı.
 
+- [x] **İŞ-8 — Trigger uzun kuyruğu, paket tarafından ölçüm** (PLAN-206) — **KAPANDI**
+  Referansın kendi tablosu (248 trigger) + 910 script dosyası / 10.166 kanca tarandı.
+  Dokuz ad hiçbir yere ulaşmıyor; beşi + üçü referansta da yok (ölü script), **dördü
+  gerçek boşluk**. İlk statik geçişin 19 adayının çoğu yanlış alarmdı: skill/bölge/büyü
+  aşamaları ve `@item<Ad>`/`@char<Ad>` aynaları enum değerinden geçmeden ateşleniyor.
+  `DispatchableTriggerNames` + kendini bakım eden korkuluk testi eklendi.
+
+- [ ] **İŞ-9 — Dört gerçek trigger boşluğu** (PLAN-206 devamı)
+  Kaynak zinciri: `@ResourceFound` (REGIONRESOURCE tanımı üzerinde),
+  `@RegionResourceFound` (karakter üzerinde), `@RegionResourceGather` (toplayan
+  üzerinde, `LOCAL.ResourceID` yazılabilir). Ayrı: `@HitReactive` (reaktif zırh
+  yansıması; LOCAL.Sound/EffectID/Damage/ReflectDamage/ReduceDamage/DamageType geri
+  okunur). Sözleşmeler takip planında.
+  **Not:** reaktif zırh yansımamız `damage / 4` sabitini kullanıyor; referans yüzdeyi
+  büyü hafızasından okuyor — uydurmuş-değer denetim backlog'una da giren bir madde.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-8 KAPANDI** — 2026-09-08. Trigger kapsamı paket tarafından ölçüldü; dört gerçek
+  boşluk kayda geçti, yanlış alarmlar elendi. Test: `ScriptPackTriggerCoverageTests` (2).
+  Tam suite 3.299.
 - **İŞ-7 KAPANDI** — 2026-09-08. Havuz kayıt döngüsü: atama/oynanış ayrımı, çifte
   giydirme, kayıt sırası. Test: `PoolRoundTripParityTests` (6); üç düzeltme tek tek
   geri alınıp yakalandığı doğrulandı. Tam suite 3.297.

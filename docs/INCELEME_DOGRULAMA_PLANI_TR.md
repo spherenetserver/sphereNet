@@ -2925,6 +2925,48 @@ Kaynak: IS-2c turunda statik gozlem olarak kaydedilmisti.
 
 **Kapanis:** tam suite **3.291 basarili / 0 basarisiz** (+1).
 
+### PLAN-206 - Trigger uzun kuyrugu: paket tarafindan olcum (8 Eylul 2026)
+
+Plan maddesinin kendi sarti: "Eksik trigger adlarini enum adi uzerinden degil Source-X
+isim/alias/baglam eslemesiyle cikar." Oyle yapildi.
+
+**Olcum 1 - referans tablosu:** `tables/triggers.tbl` 248 trigger. Motorun kaynaginda
+hicbir izi olmayan 18 ad var; elimizdeki hicbir paket bunlardan birini bile kancalamiyor
+(HOUSEDESIGNCOMMITITEM yalnizca upstream ornek scriptlerinde). Yani bu 18, canli bir
+bosluk degil.
+
+**Olcum 2 - paket tarafi (asil sinyal):** 910 script dosyasi, 10.166 `ON=@Ad` kancasi,
+123 farkli ad. Dokuz ad hicbir yere ulasmiyor:
+
+| Ad | Kullanim | Durum |
+|---|---|---|
+| `@ResourceFound` | 30 | referansta VAR (CWorldMap.cpp:159) - bosluk |
+| `@RegionResourceGather` | 3 | referansta VAR (CCharSkill.cpp:1035) - bosluk |
+| `@RegionResourceFound` | 2 | referansta VAR (CWorldMap.cpp:157) - bosluk |
+| `@HitReactive` | 2 | referansta VAR (CCharFight.cpp:965) - bosluk |
+| `@npcmount`, `@NPCDisMount`, `@move`, `@skilluse`, `@statgain` | 23 | referansta YOK - olu script |
+| `@TameAbort`, `@SpellStart`, `@PartyJoin` | 3 | referansta YOK - olu script |
+
+**Elenen yanlis alarmlar (onemli):** ilk statik gecis 19 aday uretti; dogrulamada
+cogunun ates ettigi gorildu. Skill asamalari kisa bolum adlariyla
+(`GetSkillSectionStage`: SkillPreStart -> "PreStart"), bolge/oda ve [SPELL] asamalari
+duz adla (`FireRegionEvents(region, "RegPeriodic", ...)`), `@item<Ad>`/`@char<Ad>`
+aynalari ise string birlestirmeyle (`"item" + trigName`) atesleniyor. Hicbiri bir enum
+degerinden gecmedigi icin "enum uyeleri ates ediliyor mu" olcumu bunlari goremez.
+
+- [x] **TG-1** - `TriggerDispatcher.DispatchableTriggerNames`: motorun gercekten
+  ulasabildigi ad kumesi (char/item adlari + iki ayna + skill asamalari + bolge/buyu
+  asamalari). Olcum artik kaynak koda regex atmiyor, motora soruyor.
+- [x] **TG-2** - `ScriptPackTriggerCoverageTests`: makinede bulunan paketleri tarar,
+  her kancayi bu kumeye karsi dogrular, paket yoksa atlar. Kayitli bosluk listesi
+  kendini bakim eder: bir bosluk kapaninca test onu listeden silmeni ister.
+
+**Sirada (bosluk kapatma):** dort gercek trigger. Kaynak ucusu (`@ResourceFound` ->
+REGIONRESOURCE tanimi uzerinde, `@RegionResourceFound` -> karakter uzerinde, ARGO =
+kaynak biti, RETURN 1 = miktar 0) ile `@RegionResourceGather` (ARGN1 = miktar,
+LOCAL.ResourceID yazilabilir, RETURN 1 = hicbir sey uretme) tek bir zincir; `@HitReactive`
+ayri (LOCAL.Sound/EffectID/Damage/ReflectDamage/ReduceDamage/DamageType geri okunur).
+
 ### PLAN-102/103 - Kopya ve kayit dongusunde havuz degerleri (8 Eylul 2026)
 
 13J raporunun dort bulgusu (temel/etkin havuz, oz referans, dogrudan DUPE, kap ici

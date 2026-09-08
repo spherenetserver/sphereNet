@@ -959,6 +959,46 @@ public sealed class TriggerDispatcher
 
     // --- Trigger name mapping ---
 
+    /// <summary>Every <c>@Name</c> a script can hook and this engine will actually
+    /// reach: the char and item trigger names, the <c>@char&lt;Name&gt;</c> and
+    /// <c>@item&lt;Name&gt;</c> mirrors that cross-fire onto the other object, the
+    /// [SKILL] section stages, and the region/room and [SPELL] section stages.
+    ///
+    /// A script pack states what it expects the engine to do by hooking names; a name
+    /// nothing fires is a silent no-op, and the shard finds out by the behaviour never
+    /// happening. This is the set to check a pack against - built from the dispatcher's
+    /// own mapping rather than from the enum, because several families (region, spell,
+    /// skill, the cross-fire) never pass through a CharTrigger/ItemTrigger value.</summary>
+    public static IReadOnlySet<string> DispatchableTriggerNames { get; } = BuildDispatchableNames();
+
+    private static HashSet<string> BuildDispatchableNames()
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (CharTrigger t in Enum.GetValues<CharTrigger>())
+        {
+            string n = GetCharTriggerName(t);
+            names.Add(n);
+            names.Add("char" + n);                       // cross-fired onto the char
+            if (GetSkillSectionStage(t) is { } stage)
+                names.Add(stage);                        // [SKILL n] section stage
+        }
+        foreach (ItemTrigger t in Enum.GetValues<ItemTrigger>())
+        {
+            string n = GetItemTriggerName(t);
+            names.Add(n);
+            names.Add("item" + n);                       // cross-fired onto the item's user
+        }
+        // Region, room and [SPELL] section stages: fired by name, never through an enum.
+        foreach (string n in new[]
+        {
+            "Enter", "Exit", "Step", "RegPeriodic", "CliPeriodic",
+            "Effect", "EffectTick", "Select", "Success", "Fail",
+        })
+            names.Add(n);
+        return names;
+    }
+
+
     private static string GetCharTriggerName(CharTrigger trigger) => trigger switch
     {
         CharTrigger.AfterClick => "AfterClick",

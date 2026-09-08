@@ -4,6 +4,32 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-08] - Which triggers a real script pack asks for, and which answer
+----------------------------------------
+
+NOTE - The trigger long tail was measured from the PACK side and against the
+        reference's own table (tables/triggers.tbl, 248 triggers) rather than against
+        our enum - measuring coverage with your own enum only proves the enum agrees
+        with itself. Across 910 script files, 10,166 hooks and 123 distinct trigger
+        names, nine names reach nothing. Five of them (@npcmount, @NPCDisMount, @move,
+        @skilluse, @statgain) plus @TameAbort, @SpellStart and @PartyJoin do not exist
+        in the reference either - dead script written against triggers that never
+        existed. The remaining FOUR are real and are now recorded gaps: @ResourceFound,
+        @RegionResourceFound, @RegionResourceGather and @HitReactive.
+
+        Several first-pass "gaps" were false alarms and were verified away: the skill
+        stages (@PreStart, @Stroke, @Abort, @Fail, @Success, @Select, @UseQuick) fire
+        under their short section names, the region stages (@Enter, @RegPeriodic,
+        @CliPeriodic) and spell stages (@Effect, @Select) fire by name, and the
+        @item<Name>/@char<Name> mirrors cross-fire through string composition - none of
+        them pass through a trigger enum value.
+
+CHANGE - The dispatcher publishes the set of names it can actually reach
+        (DispatchableTriggerNames), and a test checks every hook in the script packs
+        present on the machine against it. It skips cleanly when no pack is installed.
+        A recorded gap that stops being a gap fails the test until it is struck from
+        the list, so the list cannot quietly become a place where gaps hide.
+
 [2026-09-08] - A character logs back in with the pool it logged out with
 ----------------------------------------
 

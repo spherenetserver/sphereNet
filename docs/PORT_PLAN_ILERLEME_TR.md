@@ -13,10 +13,10 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 
 | Alan | Değer |
 |---|---|
-| Son güncelleme | 2026-09-07 |
-| Son commit | `6429cb5` (İŞ-5 dördüncü dilim) |
+| Son güncelleme | 2026-09-08 |
+| Son commit | İŞ-5 kapanışı (bu oturum) |
 | Tam test | 3.283 başarılı / 0 başarısız |
-| Sıradaki iş | **İŞ-5 devamı: SPELLTIMEOUT/DISTANCEFORMULA/STATSFLAGS; NOWEATHER+NPCSKILLSAVE karar bekliyor** |
+| Sıradaki iş | **Yeni tur: kullanıcı kararları (NOWEATHER, NPCSKILLSAVE) ya da yeni bir inceleme dalgası** |
 
 ## Çalışma sırası
 
@@ -66,29 +66,30 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   değiştirilmedi** (kopya @Create'i tekrar çalıştırmaz; karakter DUPE'u NEW/ACT
   ayarlamaz; SERV. öneki ACT'e dokunmaz).
 
-- [x] **İŞ-5 — Gerçek ini fark listesi** (PLAN-301/302) — **İLK DİLİM**
-  Canlı `sphere.ini`'nin set ettiği **184 anahtardan 33'ü** config tarafından hiç
-  okunmuyordu (sessizce etkisiz). Sınıflandırma takip planında. Bu dilimde teleport
-  efekt/ses altılısı gerçek davranışa bağlandı (aktör sınıfına göre, referans
-  varsayılanlarıyla). Önceki dalgadaki `MAXITEMCOMPLEXITY` de aynı listedendi.
+- [x] **İŞ-5 — Gerçek ini fark listesi** (PLAN-301/302) — **KAPANDI (karar bekleyen 2 madde hariç)**
+  Canlı `sphere.ini`'nin 184 anahtarından 33'ü hiç okunmuyordu. Dört dilimde **13'ü
+  davranışa bağlandı** (teleport efekt/ses 6'lısı, MAXHOUSESGUILD, NPCCANFIZZLEONHIT,
+  BACKPACKOVERLOAD, FLIPDROPPEDITEMS, NPCTRAINPERCENT/NPCTRAINMAX alias'ları,
+  MAXITEMCOMPLEXITY İŞ-4'te). Kalanların tam sınıflandırması takip planında.
 
-  Sıradaki alt paket (oynanış, referansta karşılığı olanlar): BACKPACKOVERLOAD,
-  NPCTRAINPERCENT, SPELLTIMEOUT, HITSUPDATERATE, CANUNDRESSPETS, NPCCANFIZZLEONHIT,
-  NPCSKILLSAVE, MAXPOLYSTATS, DISTANCEFORMULA, NOWEATHER, MAXHOUSESGUILD, STATSFLAGS,
-  FLIPDROPPEDITEMS. Ağ/altyapı grubu önce tasarım kararı ister; MONSTERTIGHT
-  referansta yok (sapma olarak kaydedilmeli).
+  **Tüketicisi olmadığı için ayar EKLENMEDİ** (sahte ayar olurdu): MAXPOLYSTATS
+  (polymorph statları uygulamıyor), SPELLTIMEOUT (hedef imleci süre aşımı yok),
+  STATSFLAGS ("0 = türet" semantiği yok). DISTANCEFORMULA ve ağ/harita grubu kapsam
+  dışı. HITSUPDATERATE referansta ELEM_VOID, MONSTERTIGHT referansta hiç yok.
 
-  **İkinci dilim (aynı oturum):** okunmayan anahtarların ikinci sınıfı — **ad
-  uyuşmazlığı**. `NPCTRAINPERCENT`/`NPCTRAINMAX` referansın adları; ayar bizde
-  çalışıyordu ama bu adlarla okunmuyordu → shard'ın değeri hiç uygulanmıyordu. İkisi
-  de kabul ediliyor artık. `MAXHOUSESGUILD` eklendi (referans varsayılanı 1).
-  `HITSUPDATERATE` referansta ELEM_VOID — davranış uydurulmadı, sapma olarak yazıldı.
+  **Kullanıcı kararı bekleyen 2 madde:**
+  - `NOWEATHER` — referans varsayılanı **hava kapalı**; bizde hava açık çalışıyor.
+  - `NPCSKILLSAVE` — kayıt ayarı değil, eşik altı NPC skillerini **sıfırlayan** temizlik
+    kuralı (varsayılan 10); import edilmiş veriyi değiştirir.
 
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-5 KAPANDI** — 2026-09-08. 33 okunmayan anahtarın 13'ü bağlandı, geri kalanı
+  gerekçesiyle sınıflandırıldı (tüketici yok / referansta no-op / kapsam dışı / karar
+  bekliyor). Tüketicisi olmayan anahtara ayar eklenmedi.
 - **İŞ-5 ilk dilim** — 2026-09-07. Canlı ini'nin 184 anahtarından 33'ünün hiç
   okunmadığı ölçüldü ve sınıflandırıldı; teleport efekt/ses altılısı davranışa
   bağlandı. Tam suite 3.279.

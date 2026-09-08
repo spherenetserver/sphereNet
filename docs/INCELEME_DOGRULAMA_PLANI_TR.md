@@ -2836,6 +2836,40 @@ karari. Ayrica bu tur yalnizca CANLI ini'nin set ettigi anahtarlara bakti; refer
 
 **Kapanis:** tam suite **3.283 basarili / 0 basarisiz** (+1).
 
+### IS-5 kapanisi - okunmayan 33 ini anahtarinin tam siniflandirmasi (8 Eylul 2026)
+
+Yontem: canli `C:\sphereNetServer\sphere.ini`'nin set ettigi 184 anahtar `SphereConfig`
+icinde arandi; okunmayan 33'unun her biri referans tablosundan ve tuketicisinden
+dogrulandi. Amac PLAN-002'nin istedigi siniflandirma: okunuyor / davranista tuketiliyor /
+bilincli desteklenmiyor.
+
+| Anahtar | Durum | Not |
+|---|---|---|
+| TELEPORTEFFECTNPC/PLAYERS/STAFF | BAGLANDI | aktor sinifina gore efekt, referans varsayilanlari |
+| TELEPORTSOUNDNPC/PLAYERS/STAFF | BAGLANDI | ayni |
+| MAXHOUSESGUILD | BAGLANDI | lonca varsayilan ev siniri (referans 1) |
+| NPCCANFIZZLEONHIT | BAGLANDI | varsayilan degismedi (yalniz oyuncu bozulur) |
+| BACKPACKOVERLOAD | BAGLANDI | canta siniri = sahibin tasiyabildigi + ayar |
+| FLIPDROPPEDITEMS | BAGLANDI | + tasinabilirlik kosulu |
+| NPCTRAINPERCENT / NPCTRAINMAX | BAGLANDI (alias) | ayar zaten calisiyordu, referansin adi okunmuyordu |
+| HITSUPDATERATE | REFERANSTA NO-OP | ELEM_VOID: kabul eder, hicbir sey yapmaz. Davranis uydurulmadi |
+| MONSTERTIGHT | REFERANSTA YOK | 0.56/yerel anahtar; eklenmemeli |
+| MAXPOLYSTATS | TUKETICI YOK | polymorph formun statlarini hic uygulamiyor; once o eksik |
+| SPELLTIMEOUT | TUKETICI YOK | hedef imlecinin sure asimi mekanizmasi yok (varsayilan 0 = sinirsiz, mevcut davranis) |
+| STATSFLAGS | TUKETICI YOK | `Stat_SetMax`'in "0 = turet" semantigi burada yok |
+| DISTANCEFORMULA | KAPSAM DISI | mesafe metrigini global degistirir; dort varyantin tamami ayri is |
+| NOWEATHER | KARAR BEKLIYOR | referans varsayilani "hava KAPALI", bizde acik |
+| NPCSKILLSAVE | KARAR BEKLIYOR | kayit ayari degil: esik alti NPC skillerini SIFIRLAYAN temizlik kurali |
+| MAP0, MAP1, MAPCACHETIME | KAPSAM DISI | harita yukleme yolu ayri tasarim |
+| MAXQUEUESIZE, MAXSIZECLIENTIN/OUT, MAXSIZEPERTICK, USEASYNCNETWORK, USEEXTRABUFFER, USEPACKETPRIORITY, NETWORKTHREADPRIORITY, CONNECTINGMAXIP | KAPSAM DISI | bu motorun ag modeli farkli; once tasarim karari |
+| APPUPDATEREPODIR | YEREL | SphereNet'e ozgu, motor ayari degil |
+
+**Sayilar:** 33 anahtardan **13'u baglandi**, 3'u tuketicisi olmadigi icin acik, 2'si
+karar bekliyor, 1'i referansta no-op, 1'i referansta yok, 13'u kapsam disi/yerel.
+
+**Ilke:** tuketicisi olmayan anahtara ayar eklenmedi. Bir ini satirinin okunup hicbir sey
+yapmamasi, hic okunmamasindan daha kotudur - ilki calistigini soyler.
+
 ### IS-4 - nesne olusturma/kopyalama giris noktalari tablosu (7 Eylul 2026)
 
 Kaynak: port plani IS-4 / PLAN-101. Amac: ayni isi yapan girislerin ortak ve farkli

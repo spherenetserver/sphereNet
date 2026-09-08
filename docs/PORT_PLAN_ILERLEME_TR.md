@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-08 |
-| Son commit | `9e6acf3` (İŞ-5 tam kapanış) |
-| Tam test | 3.285 başarılı / 0 başarısız |
-| Sıradaki iş | **Yeni inceleme dalgası ya da planın yeni maddesi** |
+| Son commit | `26e1f97` (İŞ-5 + ini düzeltmesi) |
+| Tam test | 3.286 başarılı / 0 başarısız |
+| Sıradaki iş | **CANLI ini güncellemesi (onay bekliyor) → sonra yeni dalga** |
 
 ## Çalışma sırası
 
@@ -141,6 +141,24 @@ planındadır.
   ifade olarak tüketiliyor. Test: `DelayedCallParity12WTests` (40); tam suite
   3.241. Düzeltmeler geçici geri alınıp 12 testin eski davranışı yakaladığı
   doğrulandı. Ayrıntı takip planında 12W bölümünde.
+
+## Bekleyen: canlı sunucu ini'si
+
+`C:\sphereNetServer\sphere.ini` bu oturumda bağlanan anahtarlar için hâlâ **yer tutucu**
+değerler taşıyor; repo ini'si düzeltildi ama canlı dosya depoda olmadığı için
+**dokunulmadı**. Sunucu bu hâliyle başlatılırsa kod yeni okuduğu değerleri şöyle görür:
+
+| Satır | Şu an | Olması gereken | Etkisi |
+|---|---|---|---|
+| TELEPORTEFFECTNPC/PLAYERS/STAFF | 0 | 0x376A / 0x3728 / 0x3709 | teleport efekti hiç görünmez |
+| TELEPORTSOUNDNPC/PLAYERS/STAFF | 0 | 0x01FE / 0x01FE / 0x01F3 | teleport sesi hiç çıkmaz |
+| MAXHOUSESGUILD | 0 | 1 | **lonca hiç ev sahibi olamaz** |
+| BACKPACKOVERLOAD | 0 | 40 | çanta payı yok (taşıma sınırı = tam kapasite) |
+| FLIPDROPPEDITEMS | 0 | 1 | yere bırakılan eşya çevrilmez |
+| NPCCANFIZZLEONHIT | 1 | 0 | NPC büyüsü de bozulur (referans: yalnız oyuncu) |
+| MAXITEMCOMPLEXITY | satır yok | 25 | varsayılan zaten 25, satır bilgi amaçlı |
+
+`NOWEATHER=0` ve `NPCSKILLSAVE=100` shard'ın kendi tercihi, dokunulmamalı.
 
 ## Oturum notları
 

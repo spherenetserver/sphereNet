@@ -3,6 +3,21 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-08] - Bolgenin kendi scripti bolge uzerinde calisir
+----------------------------------------
+
+FIX - Bolgenin @Enter, @Exit ve @Step tetikleyicileri KARAKTER nesnesi uzerinde
+        calisiyordu; bu yuzden iclerindeki her bolge duzeyi okuma yurUyenden
+        yanitlaniyordu: <TAG.owner> soran bir ev scripti, yapinin degil yuruyenin
+        tag'ini aliyordu - ustelik ev bolgesinin tasidigi tag tam olarak odur. Referans
+        script'i bolgenin kendisinden cagirir ve ona karakterin konsolunu verir
+        (CRegion::OnRegionTrigger, CRegion.cpp:882): nesne bolgedir, yuruyen SRC'dir.
+        Oda olaylari ayni kurali izler; sunucu genelindeki EVENTSREGION isleyicileri de.
+
+NOTE - Bu, yapilar bolgelerine kavustugunda statik gozlem olarak kaydedilmisti; artik
+        tekrar uretildi, duzeltildi ve tetikleyicinin icinden bolge tag'ini, bolge adini
+        ve SRC'yi okuyan bir testle kilitlendi.
+
 [2026-09-08] - Yaratigin sekli gucunu de getirir (MAXPOLYSTATS)
 ----------------------------------------
 

@@ -2911,6 +2911,20 @@ degil; kullanici onayi olmadan degistirilmedi.
 **Kapanis:** tam suite **3.290 basarili / 0 basarisiz** (+4). Iki ini dosyasina da
 MAXPOLYSTATS satiri eklendi.
 
+### Bolge tetikleyicisinin nesne kimligi (8 Eylul 2026)
+
+Kaynak: IS-2c turunda statik gozlem olarak kaydedilmisti.
+
+- [x] **BT-1 (P2)** - Bolge/oda @Enter/@Exit/@Step scriptleri KARAKTER uzerinde
+  calisiyordu; bolge duzeyi her okuma yuruyenden yanitlaniyordu. (YAPILDI: script bolge
+  /oda nesnesi uzerinde calisiyor, karakter SRC olarak kaliyor - referansin
+  OnRegionTrigger sozlesmesi. EVENTSREGION isleyicileri de ayni nesneye baglandi.)
+
+**Kanit:** yeni `RegionTriggerObjectParityTests` tetikleyici icinden `<TAG.owner>`,
+`<NAME>` ve `<SRC.NAME>` okuyor; duzeltme gecici geri alindiginda test dusuyor.
+
+**Kapanis:** tam suite **3.291 basarili / 0 basarisiz** (+1).
+
 ### IS-4 - nesne olusturma/kopyalama giris noktalari tablosu (7 Eylul 2026)
 
 Kaynak: port plani IS-4 / PLAN-101. Amac: ayni isi yapan girislerin ortak ve farkli

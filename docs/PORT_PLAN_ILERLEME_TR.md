@@ -14,8 +14,8 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-08 |
-| Son commit | `519bc83` (MAXPOLYSTATS tüketicisi) |
-| Tam test | 3.290 başarılı / 0 başarısız |
+| Son commit | bölge tetikleyicisi (bu oturum) |
+| Tam test | 3.291 başarılı / 0 başarısız |
 | Sıradaki iş | **Yeni inceleme dalgası ya da planın yeni maddesi** |
 
 ## Çalışma sırası

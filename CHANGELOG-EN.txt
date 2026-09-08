@@ -4,6 +4,21 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-08] - A region's own script runs on the region
+----------------------------------------
+
+FIX - A region's @Enter, @Exit and @Step ran with the CHARACTER as the object, so every
+        region-level read inside them answered from the walker: a house script asking
+        for <TAG.owner> got the walker's tag rather than the structure's - and that tag
+        is exactly what a house region carries. Upstream calls the script from the
+        region itself and hands it the character's console (CRegion::OnRegionTrigger,
+        CRegion.cpp:882), so the object is the region and the walker is SRC. Room events
+        follow the same rule, and so do the server-wide EVENTSREGION handlers.
+
+NOTE - This was recorded as a static observation when the structures got their regions
+        back; it is now reproduced, fixed and locked by a test that reads a region tag,
+        a region name and SRC from inside the trigger.
+
 [2026-09-08] - A creature's shape brings its strength (MAXPOLYSTATS)
 ----------------------------------------
 

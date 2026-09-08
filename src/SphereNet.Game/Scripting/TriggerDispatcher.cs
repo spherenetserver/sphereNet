@@ -673,14 +673,20 @@ public sealed class TriggerDispatcher
     {
         if (Resources == null || Runner == null) return;
 
+        // The script runs ON THE REGION, with the character as SRC: upstream calls
+        // OnTriggerScript from the region itself and hands it the character's console
+        // (CRegion::OnRegionTrigger, CRegion.cpp:882). Running it on the CHARACTER made
+        // every region-level read answer from the wrong object - a region @Enter asking
+        // for <TAG.owner> got the walker's tag instead of the structure's, which is the
+        // very tag a house region carries.
         foreach (var eventRid in region.Events)
         {
             var link = Resources.GetResource(eventRid);
             if (link == null) continue;
-            RunWrapped(link, trigName, ch, args);
+            RunWrapped(link, trigName, region, args);
         }
 
-        RunResourceEventHandlers(GlobalRegionEvents, trigName, ch, args);
+        RunResourceEventHandlers(GlobalRegionEvents, trigName, region, args);
     }
 
     /// <summary>
@@ -691,14 +697,15 @@ public sealed class TriggerDispatcher
     {
         if (Resources == null || Runner == null) return;
 
+        // Same as a region: the script runs on the ROOM, the character is SRC.
         foreach (var eventRid in room.Events)
         {
             var link = Resources.GetResource(eventRid);
             if (link == null) continue;
-            RunWrapped(link, trigName, ch, args);
+            RunWrapped(link, trigName, room, args);
         }
 
-        RunResourceEventHandlers(GlobalRegionEvents, trigName, ch, args);
+        RunResourceEventHandlers(GlobalRegionEvents, trigName, room, args);
     }
 
     /// <summary>

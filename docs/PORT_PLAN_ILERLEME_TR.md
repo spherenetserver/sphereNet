@@ -14,7 +14,7 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-08 |
-| Son commit | İŞ-5 tam kapanış (bu oturum) |
+| Son commit | `9e6acf3` (İŞ-5 tam kapanış) |
 | Tam test | 3.285 başarılı / 0 başarısız |
 | Sıradaki iş | **Yeni inceleme dalgası ya da planın yeni maddesi** |
 

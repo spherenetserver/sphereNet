@@ -4,6 +4,29 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-09] - Items are heard again: drop and equip sounds
+----------------------------------------
+
+FIX - Wearing something made no sound at all. Upstream plays EQUIPSOUND - 0x057 unless
+        the item says otherwise - on any layer that actually shows
+        (CCharAct.cpp:3355), so armour and weapons went on in silence here.
+
+FIX - Every drop sounded the same. Upstream picks the sound from the item's TYPE first
+        (coins and gold by how many there are, gems by whether they are large, an ingot
+        only when it lands on the ground), then lets the item's own DROPSOUND key
+        override that, and only then falls back - and its fallback depends on WHERE the
+        item landed: 0x057 onto something, 0x042 on the ground (CItem.cpp:1490-1552).
+        SphereNet answered 0x042 for everything and never distinguished the two.
+
+CHANGE - The gold drop sounds were invented. SphereNet banded them 1 / under 6 / more
+        and played 0x2E4-0x2E6; the reference bands them 1 / 2 / 3-4 / more and plays
+        0x035, 0x032, 0x036, 0x037. Gold now sounds like the reference says it does.
+
+NOTE - DROPSOUND and EQUIPSOUND read from the instance first and the ITEMDEF second,
+        which is the resolution upstream's GetDefKey performs. No script pack on hand
+        sets either key, so this changes nothing for them today - it is the contract for
+        the code path, not a guess about what a shard wants.
+
 [2026-09-09] - Training that survives the night, and a modifier that means something
 ----------------------------------------
 

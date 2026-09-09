@@ -2925,6 +2925,36 @@ Kaynak: IS-2c turunda statik gozlem olarak kaydedilmisti.
 
 **Kapanis:** tam suite **3.291 basarili / 0 basarisiz** (+1).
 
+### IS-12 - Esya sesleri (9 Eylul 2026, PLAN-305)
+
+Plan maddesinin kendi ifadesi: "Item ses property'lerinin varligi ile ses calmanin
+varligini ayir." Ayrildi ve ikisi de eksikti.
+
+**Olcum:** `DROPSOUND`/`EQUIPSOUND` referansta gercek item property'leri
+(CItemBase_props.tbl:26/32); bizde ikisi de yok. Elimizdeki hicbir paket bunlari
+yazmiyor (olcum 0), yani oncelik sinyali sifir - AMA davranis tarafi script'e bagli
+degil ve orada iki gercek bosluk vardi:
+
+1. **Kusanma sesi hic calinmiyordu.** Referans gorunur katmanda 0x057 calar
+   (CCharAct.cpp:3355). Bizde hicbir yerde ses yoktu.
+2. **Birakma sesi tek sabitti.** Referansin sirasi: TUR tablosu -> DROPSOUND anahtari ->
+   yedek (`ustune` 0x057 / `yere` 0x042). Bizde yalniz 0x042 vardi ve "ustune dustu"
+   ayrimi yoktu.
+
+**Uydurma deger temizligi:** altin sesleri bizde 0x2E4-0x2E6 ve bantlama 1/<6/fazla
+idi; referans 0x035/0x032/0x036/0x037 ve 1/2/3-4/fazla. Referansa alindi
+(uydurma-deger denetim backlog'undan bir madde daha).
+
+- [x] **SN-1** - `Item.GetDropSound(ontoSomething)` referansin tam sirasiyla.
+- [x] **SN-2** - `Item.GetEquipSound()` + `Item.IsVisibleLayer` ve kusanmada calinmasi.
+- [x] **SN-3** - `DROPSOUND`/`EQUIPSOUND` instance -> ITEMDEF cozumlemesi (GetDefKey).
+
+Test: `ItemSoundParityTests` (13). Tam suite 3.337.
+
+**Test notu:** tanimlar constructor'da degil TEST GOVDESINDE yuklenmeli - paylasilan
+statik sifirlama (`ResetEngineStatics`) ikisinin arasinda kosuyor ve constructor'da
+yuklenen tanimlari siliyor. Ilk yazimda 7 test bu yuzden dustu.
+
 ### IS-11 - Stat modifier ailesi ve OSTR (9 Eylul 2026, PLAN-303)
 
 Referans modeli: her stat icin BIR temel ve BIR modifier. `Stat_GetAdjusted` = temel +

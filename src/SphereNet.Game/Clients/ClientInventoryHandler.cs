@@ -1604,7 +1604,8 @@ public sealed class ClientInventoryHandler
                     _world.RemoveItem(item);
                     _netState.Send(new PacketDropAck());
                     BroadcastNearby?.Invoke(existing.Position, UpdateRange,
-                        new PacketSound(GetDropSound(existing), existing.X, existing.Y, existing.Z), 0);
+                        new PacketSound(existing.GetDropSound(ontoSomething: true),
+                            existing.X, existing.Y, existing.Z), 0);
                     BroadcastWorldItem(existing);
                     return;
                 }
@@ -1653,7 +1654,8 @@ public sealed class ClientInventoryHandler
         _netState.Send(new PacketDropAck());
         BroadcastDragAnimation(item, _character.Uid.Value, _character.Position, 0, groundPos, groundPos);
         BroadcastNearby?.Invoke(groundPos, UpdateRange,
-            new PacketSound(GetDropSound(item), groundPos.X, groundPos.Y, groundPos.Z), 0);
+            new PacketSound(item.GetDropSound(ontoSomething: false),
+                groundPos.X, groundPos.Y, groundPos.Z), 0);
         BroadcastWorldItem(item);
     }
 
@@ -1702,15 +1704,6 @@ public sealed class ClientInventoryHandler
         _world.PlaceItemWithDecay(item, _character.Position);
         BroadcastWorldItem(item);
         return true;
-    }
-
-    /// <summary>Item-aware drop sound: gold coins get the amount-scaled coin
-    /// sounds; everything else keeps the generic 0x42 item drop.</summary>
-    private static ushort GetDropSound(Item item)
-    {
-        if (item.BaseId == 0x0EED)
-            return item.Amount switch { 1 => (ushort)0x02E4, < 6 => (ushort)0x02E5, _ => (ushort)0x02E6 };
-        return 0x0042;
     }
 
     // ==================== Item Equip ====================
@@ -1950,6 +1943,13 @@ public sealed class ClientInventoryHandler
             int delayMs = CombatEngine.GetSwingDelayMs(target, item);
             target.BeginEquipSwingWait(Environment.TickCount64, delayMs, noWait);
         }
+
+        // Wearing something is heard: upstream plays EQUIPSOUND (0x057 by default) for
+        // any layer that actually shows (CCharAct.cpp:3355). SphereNet played nothing at
+        // all, so armour and weapons went on in silence.
+        if (Item.IsVisibleLayer((Layer)actualLayer))
+            BroadcastNearby?.Invoke(target.Position, UpdateRange,
+                new PacketSound(item.GetEquipSound(), target.X, target.Y, target.Z), 0);
 
         var wornPkt = new PacketWornItem(
             item.Uid.Value, item.DispIdFull, actualLayer,

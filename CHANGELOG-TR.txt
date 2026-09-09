@@ -3,6 +3,30 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-09] - Esyalar yine duyuluyor: birakma ve kusanma sesleri
+----------------------------------------
+
+FIX - Bir sey kusanmak hicbir ses cikarmiyordu. Referans, gercekten gorunen her katmanda
+        EQUIPSOUND caliyor - esya baska bir sey soylemiyorsa 0x057 (CCharAct.cpp:3355);
+        bizde zirh da silah da sessizce giyiliyordu.
+
+FIX - Her birakma ayni sesi cikariyordu. Referans sesi once esyanin TURUNDEN secer
+        (madeni para ve altin miktarina gore, tas buyuklugune gore, kulce yalnizca yere
+        dustugunde), sonra esyanin kendi DROPSOUND anahtarinin uzerine yazmasina izin
+        verir ve ancak ondan sonra yedege duser - yedegi de NEREYE dustugune baglidir:
+        bir seyin uzerine 0x057, yere 0x042 (CItem.cpp:1490-1552). SphereNet her sey
+        icin 0x042 veriyor ve bu ikisini hic ayirmiyordu.
+
+CHANGE - Altin birakma sesleri uydurmaydi. SphereNet 1 / 6'dan az / daha fazla diye
+        bantliyor ve 0x2E4-0x2E6 caliyordu; referans 1 / 2 / 3-4 / daha fazla diye
+        bantlar ve 0x035, 0x032, 0x036, 0x037 calar. Altin artik referansin dedigi gibi
+        ses cikariyor.
+
+NOTE - DROPSOUND ve EQUIPSOUND once esyanin kendisinden, sonra ITEMDEF'ten okunuyor;
+        referansin GetDefKey cozumlemesi budur. Elimizdeki hicbir script paketi bu
+        anahtarlari kullanmiyor, yani bugun onlar icin bir sey degismiyor - bu, o kod
+        yolunun sozlesmesi, shard'in ne istedigine dair bir tahmin degil.
+
 [2026-09-09] - Sabaha kalan antrenman ve nihayet bir anlami olan modifier
 ----------------------------------------
 

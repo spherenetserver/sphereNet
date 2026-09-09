@@ -471,6 +471,76 @@ public class Item : ObjBase
         return name;
     }
 
+    /// <summary>The sound this item makes when it lands, and the one it makes when it
+    /// is worn.
+    ///
+    /// Upstream picks the drop sound from the item's TYPE first - coins and gold by how
+    /// many, gems by how big, an ingot only when it lands on the ground - then lets the
+    /// item's own DROPSOUND key override whatever that produced, and falls back to
+    /// 0x057 when it landed ON something and 0x042 when it landed on the ground
+    /// (CItem.cpp:1490-1552). Equipping plays 0x057 unless the item's EQUIPSOUND says
+    /// otherwise, and only for a layer that shows (CCharAct.cpp:3355).</summary>
+    public ushort GetDropSound(bool ontoSomething)
+    {
+        ushort snd = 0;
+        switch (EffectiveType)
+        {
+            case ItemType.Coin:
+            case ItemType.Gold:
+                snd = Amount switch
+                {
+                    1 => 0x035,
+                    2 => 0x032,
+                    3 or 4 => 0x036,
+                    _ => 0x037,
+                };
+                break;
+            case ItemType.Gem:
+                snd = BaseId > 0x0F20 ? (ushort)0x034 : (ushort)0x032;   // small vs large
+                break;
+            case ItemType.Ingot:
+                if (!ontoSomething)
+                    snd = 0x033;
+                break;
+        }
+
+        ushort scripted = ReadSoundKey("DROPSOUND");
+        if (scripted != 0)
+            snd = scripted;
+
+        if (snd != 0)
+            return snd;
+        return ontoSomething ? (ushort)0x057 : (ushort)0x042;
+    }
+
+    /// <summary>Layers a worn item is seen on (upstream IsVisibleLayer: anything up to
+    /// and including the mount). Equipping to one of the bookkeeping layers - a bank
+    /// box, a memory, the drag layer - makes no sound.</summary>
+    public static bool IsVisibleLayer(Layer layer) => layer > Layer.None && layer <= Layer.Horse;
+
+    /// <summary>Sound made when this item is worn (upstream EQUIPSOUND, default
+    /// 0x057).</summary>
+    public ushort GetEquipSound()
+    {
+        ushort scripted = ReadSoundKey("EQUIPSOUND");
+        return scripted != 0 ? scripted : (ushort)0x057;
+    }
+
+    /// <summary>A sound key off this instance, else off its definition - the
+    /// resolution upstream's GetDefKey(name, true) performs. Zero means "not set",
+    /// which is how the reference reads it too: the key only overrides when it holds
+    /// a non-zero value.</summary>
+    private ushort ReadSoundKey(string key)
+    {
+        string? raw = TryGetTag(key, out string? own) ? own : null;
+        if (string.IsNullOrWhiteSpace(raw))
+            raw = Definitions.DefinitionLoader.GetItemDef(BaseId)?.TagDefs.Get(key);
+        if (string.IsNullOrWhiteSpace(raw) ||
+            !SphereNet.Core.Types.ScriptNumber.TryParseToken(raw, out long id) || id <= 0)
+            return 0;
+        return (ushort)Math.Min(id, ushort.MaxValue);
+    }
+
     /// <summary>
     /// Source-X-faithful display name. Mirrors <c>CItem::GetName()</c>
     /// in <c>CItem.cpp</c>: applies <c>%plural/singular%</c> NAME=

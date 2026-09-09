@@ -14,8 +14,8 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-08 |
-| Son commit | `b18fec0` + stat modifier / OSTR |
-| Tam test | 3.324 başarılı / 0 başarısız |
+| Son commit | `b06885a` + eşya sesleri |
+| Tam test | 3.337 başarılı / 0 başarısız |
 | Sıradaki iş | **Yeni inceleme dalgası ya da planın yeni maddesi** |
 
 ## Çalışma sırası
@@ -142,11 +142,20 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   **Kapsam dışı:** `MODMAX*` ailesi referansta var, bizde yok — ama hiçbir paket/kayıt
   kullanmıyor (ölçüm 0).
 
+- [x] **İŞ-12 — Eşya sesleri** (PLAN-305) — **KAPANDI**
+  Planın kendi ifadesiyle "property varlığı ile ses çalmanın varlığını ayır": ikisi de
+  eksikti. **Kuşanma sesi hiç çalınmıyordu** (referans görünür katmanda 0x057) ve
+  bırakma sesi tek sabitti (referans: tür tablosu → `DROPSOUND` → yedek, yedeği de
+  "üstüne mi yere mi" düştüğüne bağlı). Altın sesleri uydurmaydı, referansa alındı.
+  `DROPSOUND`/`EQUIPSOUND` artık instance→ITEMDEF sırasıyla okunuyor.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-12 KAPANDI** — 2026-09-09. Eşya bırakma/kuşanma sesleri referansa alındı;
+  kuşanma sesi hiç yoktu. Test: `ItemSoundParityTests` (13). Tam suite 3.337.
 - **İŞ-11 KAPANDI** — 2026-09-09. Stat modifier + OSTR. Test:
   `StatModifierParityTests` (7); üç düzeltme tek tek geri alınıp doğrulandı. Ayrıca UOP
   harita geçici dosyası sızıntısı kapatıldı (makinede 120 GB birikmişti). Tam suite

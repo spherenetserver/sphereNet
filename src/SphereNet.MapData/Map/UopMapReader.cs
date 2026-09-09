@@ -40,7 +40,17 @@ public sealed class UopMapReader : IDisposable
         var fileInfo = new FileInfo(_tempFilePath);
         _dataLength = fileInfo.Length;
 
-        _mmf = MemoryMappedFile.CreateFromFile(_tempFilePath, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
+        // The extracted map is ~84 MB and lives only as long as this reader, so the
+        // file is handed to the OS to delete when the last handle closes rather than
+        // relying on Dispose being reached. It was not: a caller that skipped disposal,
+        // or a process that ended without it, left the whole map behind every time, and
+        // a machine running the suite regularly ended up with a temp directory measured
+        // in tens of gigabytes. FileShare.Delete lets the pending deletion stand while
+        // the mapping is open.
+        var stream = new FileStream(_tempFilePath, FileMode.Open, FileAccess.Read,
+            FileShare.Read | FileShare.Delete, 4096, FileOptions.DeleteOnClose);
+        _mmf = MemoryMappedFile.CreateFromFile(stream, null, 0, MemoryMappedFileAccess.Read,
+            HandleInheritability.None, leaveOpen: false);
         _view = _mmf.CreateViewAccessor(0, _dataLength, MemoryMappedFileAccess.Read);
     }
 

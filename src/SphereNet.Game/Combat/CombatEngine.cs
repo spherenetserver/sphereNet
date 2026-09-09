@@ -1746,17 +1746,25 @@ public static class CombatEngine
     public static int EffResPoison(Character ch) => EffectiveResist(ch, DamageType.Poison);
     public static int EffResEnergy(Character ch) => EffectiveResist(ch, DamageType.Energy);
 
-    /// <summary>Effective STR/DEX/INT: the base stat plus the suit contribution
-    /// from equipped items (BONUSSTR/BONUSDEX/BONUSINT), derived on read. Used by
-    /// the correctness-facing reads (display, melee damage, carry weight, REQSTR
-    /// gate, skill contribution); the stored max pools stay derived from the base
-    /// stat so no feedback loop forms.</summary>
+    /// <summary>Effective STR/DEX/INT: the base stat, the script-set modifier, and the
+    /// suit contribution from equipped items (BONUSSTR/BONUSDEX/BONUSINT).
+    ///
+    /// This is upstream's Stat_GetAdjusted, base + mod (CCharStat.cpp:143), where the
+    /// modifier holds BOTH what a script set through MODSTR and what equipment added at
+    /// equip time (CCharAct.cpp:3382). SphereNet derives the equipment share on read
+    /// instead of at equip time, and simply never read MODSTR at all - it was stored,
+    /// saved by nobody, and consulted by nothing, so a script raising a character's
+    /// strength changed a number no part of the game looked at.
+    ///
+    /// Used by the correctness-facing reads (display, melee damage, carry weight, REQSTR
+    /// gate, skill contribution); the stored max pools stay derived from the base stat
+    /// so no feedback loop forms.</summary>
     public static int EffectiveStr(Character ch) =>
-        Math.Max(0, ch.Str + SumEquippedItemProperty(ch, "BONUSSTR"));
+        Math.Max(0, ch.Str + ch.ModStr + SumEquippedItemProperty(ch, "BONUSSTR"));
     public static int EffectiveDex(Character ch) =>
-        Math.Max(0, ch.Dex + SumEquippedItemProperty(ch, "BONUSDEX"));
+        Math.Max(0, ch.Dex + ch.ModDex + SumEquippedItemProperty(ch, "BONUSDEX"));
     public static int EffectiveInt(Character ch) =>
-        Math.Max(0, ch.Int + SumEquippedItemProperty(ch, "BONUSINT"));
+        Math.Max(0, ch.Int + ch.ModInt + SumEquippedItemProperty(ch, "BONUSINT"));
 
     /// <summary>Effective max hit/mana/stamina pool: the stored base pool plus the
     /// suit contribution (Source-X BONUSHITSMAX/BONUSMANAMAX/BONUSSTAMMAX), derived

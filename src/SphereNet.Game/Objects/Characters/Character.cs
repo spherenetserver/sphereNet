@@ -363,7 +363,6 @@ public partial class Character : ObjBase
     private byte _lightLevel;
 
     // Original/base stats (before modifiers)
-    private short _oStr, _oDex, _oInt;
     private short _modStr, _modDex, _modInt;
     private short _modAr;
     private short _modMaxWeight;
@@ -1167,9 +1166,16 @@ public partial class Character : ObjBase
     public byte LightLevel { get => _lightLevel; set => _lightLevel = value; }
 
     // Original/base stats
-    public short OStr { get => _oStr; set => _oStr = value; }
-    public short ODex { get => _oDex; set => _oDex = value; }
-    public short OInt { get => _oInt; set => _oInt = value; }
+    /// <summary>OSTR/ODEX/OINT are the BASE stat under another name, not a second
+    /// value beside it: upstream reads them with Stat_GetBase and writes them with
+    /// Stat_SetBase, the very calls STR/DEX/INT use (CChar.cpp:3139, :3641). Keeping a
+    /// separate field for them cost every character its training - the record states
+    /// STR before OSTR, so the shadow copy, stale from the moment the stat changed,
+    /// overwrote the real one on load and a trained 110 came back as the 100 it was
+    /// imported with.</summary>
+    public short OStr { get => _str; set => Str = value; }
+    public short ODex { get => _dex; set => Dex = value; }
+    public short OInt { get => _int; set => Int = value; }
     public short ModStr { get => _modStr; set => _modStr = value; }
     public short ModDex { get => _modDex; set => _modDex = value; }
     public short ModInt { get => _modInt; set => _modInt = value; }
@@ -3172,9 +3178,13 @@ public partial class Character : ObjBase
 
         switch (upper)
         {
-            case "STR": value = _str.ToString(); return true;
-            case "DEX": value = _dex.ToString(); return true;
-            case "INT": value = _int.ToString(); return true;
+            // Upstream answers STR with Stat_GetAdjusted - base plus modifier plus the
+            // suit (CChar.cpp:3146) - and keeps the bare base under OSTR. Reporting the
+            // base here made <STR> disagree with the number the character actually
+            // fights, carries and equips with.
+            case "STR": value = CombatEngine.EffectiveStr(this).ToString(); return true;
+            case "DEX": value = CombatEngine.EffectiveDex(this).ToString(); return true;
+            case "INT": value = CombatEngine.EffectiveInt(this).ToString(); return true;
             // STR+DEX+INT (Source-X Stat_GetSum). The pack's stat-overflow
             // guards (<SRC.STATTOTAL> > <SRC.SKILLCLASS.STATSUM>) read 0
             // without it, so those checks never tripped.
@@ -3324,9 +3334,10 @@ public partial class Character : ObjBase
                 return true;
 
             // --- New direct field properties ---
-            case "OSTR": value = _oStr.ToString(); return true;
-            case "ODEX": value = _oDex.ToString(); return true;
-            case "OINT": value = _oInt.ToString(); return true;
+            // The base stat under its other name (Stat_GetBase, CChar.cpp:3139).
+            case "OSTR": value = _str.ToString(); return true;
+            case "ODEX": value = _dex.ToString(); return true;
+            case "OINT": value = _int.ToString(); return true;
             case "MODSTR": value = _modStr.ToString(); return true;
             case "MODDEX": value = _modDex.ToString(); return true;
             case "MODINT": value = _modInt.ToString(); return true;
@@ -4315,9 +4326,11 @@ public partial class Character : ObjBase
             case "TARGPRV": SetTag("TARGPRV", normalized); return true;
 
             // --- New writable properties ---
-            case "OSTR": if (short.TryParse(normalized, out short osv)) _oStr = osv; return true;
-            case "ODEX": if (short.TryParse(normalized, out short odv)) _oDex = odv; return true;
-            case "OINT": if (short.TryParse(normalized, out short oiv)) _oInt = oiv; return true;
+            // Writing the O-name writes the base, exactly as writing STR does
+            // (both reach Stat_SetBase, CChar.cpp:3641).
+            case "OSTR": if (short.TryParse(normalized, out short osv)) Str = osv; return true;
+            case "ODEX": if (short.TryParse(normalized, out short odv)) Dex = odv; return true;
+            case "OINT": if (short.TryParse(normalized, out short oiv)) Int = oiv; return true;
             case "MODSTR": if (short.TryParse(normalized, out short msv2)) _modStr = msv2; return true;
             case "MODDEX": if (short.TryParse(normalized, out short mdv)) _modDex = mdv; return true;
             case "MODINT": if (short.TryParse(normalized, out short miv)) _modInt = miv; return true;

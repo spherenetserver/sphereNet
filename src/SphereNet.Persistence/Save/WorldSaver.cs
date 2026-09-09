@@ -880,6 +880,13 @@ public sealed class WorldSaver
             w.WriteProperty("CHARDEFINDEX", $"0{ch.CharDefIndex:X}");
         if (ch.Hue.Value != 0) w.WriteProperty("COLOR", $"0{ch.Hue.Value:x}");
         w.WriteProperty("DIR", ((byte)ch.Direction).ToString());
+        // The MODIFIER goes down first, which upstream calls out in as many words
+        // ("this is VERY important, saving the MOD first", CChar.cpp:4250), and the
+        // base follows. A modifier that was never written came back as zero, so a
+        // script-applied strength quietly expired at every restart.
+        if (ch.ModStr != 0) w.WriteProperty("MODSTR", ch.ModStr.ToString());
+        if (ch.ModDex != 0) w.WriteProperty("MODDEX", ch.ModDex.ToString());
+        if (ch.ModInt != 0) w.WriteProperty("MODINT", ch.ModInt.ToString());
         w.WriteProperty("STR", ch.Str.ToString());
         w.WriteProperty("DEX", ch.Dex.ToString());
         w.WriteProperty("INT", ch.Int.ToString());
@@ -934,9 +941,12 @@ public sealed class WorldSaver
                 w.WriteProperty("NPCSPELL", ((int)spell).ToString());
         }
 
-        if (ch.OStr != 0) w.WriteProperty("OSTR", ch.OStr.ToString());
-        if (ch.ODex != 0) w.WriteProperty("ODEX", ch.ODex.ToString());
-        if (ch.OInt != 0) w.WriteProperty("OINT", ch.OInt.ToString());
+        // OSTR/ODEX/OINT are not written: they are the base stat under another name
+        // (upstream reads and writes them through Stat_GetBase/Stat_SetBase), and the
+        // STR/DEX/INT lines above already state it. Writing them again from a separate
+        // field is what silently undid a character's training - the O-line came later
+        // in the record and overwrote the real stat on load. Still ACCEPTED on load:
+        // a classic save states only the O-variants.
         if (ch.OBody != 0) w.WriteProperty("OBODY", $"0{ch.OBody:X}");
         if (ch.OSkin != 0) w.WriteProperty("OSKIN", $"0{ch.OSkin:x}");
         if (ch.Luck != 0) w.WriteProperty("LUCK", ch.Luck.ToString());

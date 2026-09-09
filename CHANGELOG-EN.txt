@@ -4,6 +4,37 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-09] - Training that survives the night, and a modifier that means something
+----------------------------------------
+
+FIX - A character imported from a classic save lost every stat it gained, at every
+        restart. OSTR/ODEX/OINT are not a second value beside the base stat - upstream
+        reads them with Stat_GetBase and writes them with Stat_SetBase, the same calls
+        STR/DEX/INT use (CChar.cpp:3139, :3641). SphereNet kept a separate field for
+        them, stale from the moment the stat changed, and the record states STR before
+        OSTR - so the shadow won on load and a trained 110 came back as the 100 it was
+        imported with. They are now the base under another name, and the save states it
+        once. A classic record, which carries only the O-names, still loads.
+
+FIX - MODSTR/MODDEX/MODINT did nothing at all. The value was stored, saved by nobody,
+        and read by nothing - the live script pack sets it 83 times, every one of them
+        a no-op. It now joins the stat the character actually uses, which is upstream's
+        Stat_GetAdjusted: base plus modifier plus the equipped suit
+        (CCharStat.cpp:143). It is persisted too, written before the base the way the
+        reference insists on ("saving the MOD first", CChar.cpp:4250).
+
+CHANGE - Reading <STR> now answers with the adjusted stat and <OSTR> with the bare base,
+        as upstream does (CChar.cpp:3146/3139). The stored base field is still never
+        touched at equip time - deriving the suit share on read is unchanged - but the
+        script surface no longer disagrees with the number the character fights,
+        carries and equips with. One test asserted the old reading; it had tied the
+        read contract to the storage decision, which are separate questions.
+
+FIX - A map extracted from a UOP left its ~84 MB temp file behind whenever the reader
+        was not disposed - including every test run that built a map. The file is now
+        opened DeleteOnClose, so the OS reclaims it when the last handle goes, even if
+        the process never gets to Dispose.
+
 [2026-09-09] - A blow dealt from script bounces like any other
 ----------------------------------------
 

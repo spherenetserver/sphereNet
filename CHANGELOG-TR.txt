@@ -3,6 +3,38 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-09] - Sabaha kalan antrenman ve nihayet bir anlami olan modifier
+----------------------------------------
+
+FIX - Klasik kayittan gelen bir karakter, kazandigi butun statlari her yeniden
+        baslatmada kaybediyordu. OSTR/ODEX/OINT, temel statin yanindaki ikinci bir
+        deger DEGILDIR - referans onlari Stat_GetBase ile okur, Stat_SetBase ile yazar;
+        yani STR/DEX/INT ile ayni cagrilar (CChar.cpp:3139, :3641). SphereNet bunlar
+        icin ayri bir alan tutuyordu; stat degisir degismez bayatliyor ve kayitta STR
+        satiri OSTR'den ONCE geldigi icin yuklemede golge kazaniyordu: 110'a
+        antrenmanli bir stat, geldigi 100 olarak geri donuyordu. Artik temel statin
+        baska bir adi ve kayit onu bir kez soyluyor. Yalniz O-adlarini tasiyan klasik
+        kayit yine yukleniyor.
+
+FIX - MODSTR/MODDEX/MODINT hicbir sey yapmiyordu. Deger saklaniyor, kimse kaydetmiyor,
+        hicbir yer okumuyordu - canli script paketi bunu 83 kez yaziyor ve hepsi bosa
+        gidiyordu. Artik karakterin gercekten kullandigi stata katiliyor; referansta bu
+        Stat_GetAdjusted: temel + modifier + giyili takim (CCharStat.cpp:143).
+        Kaydediliyor da; referansin israrla belirttigi gibi temelden ONCE yaziliyor
+        ("saving the MOD first", CChar.cpp:4250).
+
+CHANGE - <STR> okumasi artik ayarlanmis stati, <OSTR> ise ciplak temeli veriyor -
+        referanstaki gibi (CChar.cpp:3146/3139). Saklanan temel alan equip aninda yine
+        hic degistirilmiyor; takim payi okuma aninda turetilmeye devam ediyor. Ama
+        script yuzeyi artik karakterin dovustugu, tasidigi ve kusandigi sayiyla celiski
+        icinde degil. Eski okumayi sabitleyen bir test vardi; okuma sozlesmesini
+        saklama kararina baglamisti, oysa bunlar ayri sorular.
+
+FIX - UOP'tan cikarilan harita, okuyucu dispose edilmediginde ~84 MB'lik gecici
+        dosyasini geride birakiyordu - harita kuran her test kosusu dahil. Dosya artik
+        DeleteOnClose ile aciliyor; son tanitici kapandiginda isletim sistemi geri
+        aliyor, surec Dispose'a hic ulasamasa bile.
+
 [2026-09-09] - Scriptten verilen darbe de digerleri gibi sekiyor
 ----------------------------------------
 

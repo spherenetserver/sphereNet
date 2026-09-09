@@ -2925,6 +2925,50 @@ Kaynak: IS-2c turunda statik gozlem olarak kaydedilmisti.
 
 **Kapanis:** tam suite **3.291 basarili / 0 basarisiz** (+1).
 
+### IS-11 - Stat modifier ailesi ve OSTR (9 Eylul 2026, PLAN-303)
+
+Referans modeli: her stat icin BIR temel ve BIR modifier. `Stat_GetAdjusted` = temel +
+mod (CCharStat.cpp:143); modifier hem scriptin MODSTR'ini hem equip aninda eklenen
+BONUSSTR'i tasir (CCharAct.cpp:3382). `STR` okumasi ayarlanmis degeri, `OSTR` ciplak
+temeli verir (CChar.cpp:3146/3139) ve HER IKI ad da yazildiginda temeli yazar (:3641).
+
+**Bulgu 1 (P1, veri kaybi) - OSTR golge alani.** Bizde `_oStr` ayri bir alandi. Stat
+degisir degismez bayatliyor; kayitta `STR` satiri once, `OSTR` sonra yazildigi ve
+yukleyici O-adini da temele uyguladigi icin yuklemede golge kazaniyordu. Olcum:
+110/111/112 kaydedip 100/100/100 yukleniyor. **Klasik kayittan gelen her karakter, yani
+56T'deki herkes, her restart'ta antrenmanini kaybediyordu.** `OStr/ODex/OInt` artik
+temelin takma adi; kayit O-satirlarini yazmiyor (STR zaten temeli soyluyor), yuklemede
+kabul etmeye devam ediyor.
+
+**Bulgu 2 (P2, sessiz no-op) - MODSTR yazilip hic okunmuyordu.** `_modStr/_modDex/
+_modInt` alanlarinin TEK okuyucusu kendi property'leriydi: ne etkin stata giriyor, ne
+kaydediliyordu. Canli paket 83 kez yaziyor. Artik `CombatEngine.EffectiveStr/Dex/Int`
+iceriyor (dolayisiyla hasar, tasima, REQSTR, skill, ekran) ve kayitta temelden once
+yaziliyor.
+
+**Sozlesme degisikligi:** `<STR>` artik ayarlanmis degeri donuyor. `SourceXWave263Tests`
+eski okumayi sabitlemisti; gerekcesi "equip aninda alan degistirilmiyor" idi - o karar
+dogru ve duruyor, ama OKUMA sozlesmesi ayri bir sorudur ve referansta ayarlanmis
+degerdir. Test referansa gore guncellendi (STR=80, OSTR=50).
+
+- [x] **SM-1** - OSTR/ODEX/OINT temelin takma adi. Test: `StatModifierParityTests` (7).
+- [x] **SM-2** - MODSTR/MODDEX/MODINT etkin stata katiliyor + kaydediliyor.
+- [x] **SM-3** - `<STR>` ayarlanmis, `<OSTR>` temel.
+
+Uc duzeltme tek tek geri alinip dogrulandi: modifier 5, OSTR 2, mod-kayit 1 test dusuyor.
+
+**Kapsam disi birakildi:** `MODMAXHITS/MODMAXMANA/MODMAXSTAM/MODMAXFOOD` referansta var,
+bizde hic yok - ama elimizdeki hicbir paket/kayit bunlari kullanmiyor (olcum: 0). Havuz
+tarafinda ayni modeli kurmak ayri bir is.
+
+### Altyapi - UOP harita gecici dosyasi sizintisi
+
+Test paketi calistigi makinede `%TEMP%` 120 GB'a ulasmisti: 1433 adet
+`spherenet_map_*.tmp`, her biri ~84 MB. `UopMapReader.Dispose` dosyayi siliyor ama
+cagiranlar dispose etmiyor. Dosya artik `FileOptions.DeleteOnClose` ile aciliyor
+(mapping icin `FileShare.Delete`), yani Dispose'a hic ulasilmasa bile isletim sistemi
+geri aliyor. Tam paket kosusundan sonra artik dosya sayisi: 0.
+
 ### IS-10 - Yansima ailesi tek hasar girisine baglandi (9 Eylul 2026)
 
 IS-9'da kaydedilen bulgu kapandi. Referansta hasar TEK kapidan gecer

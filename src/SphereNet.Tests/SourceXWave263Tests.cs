@@ -73,12 +73,20 @@ public sealed class SourceXWave263Tests
         var (world, ch) = Make(str: 50);
         ch.Equip(StatPiece(world, "BONUSSTR", 30), Layer.Helm);
 
-        // No equip-time mutation: the stored base field and the script getter are
-        // unchanged; only the effective read includes the suit.
+        // No equip-time mutation: the STORED base field is untouched, which is the
+        // point of deriving the suit share on read.
         Assert.Equal(50, ch.Str);
-        Assert.True(ch.TryGetProperty("STR", out string v));
-        Assert.Equal("50", v);
         Assert.Equal(80, CombatEngine.EffectiveStr(ch));
+
+        // The script surface follows upstream, and it splits the two names: STR
+        // answers with Stat_GetAdjusted - the number the character actually fights and
+        // carries with - while OSTR is the bare base (CChar.cpp:3139/3146). This test
+        // used to require the base from both, tying the read contract to the storage
+        // decision; they are separate questions.
+        Assert.True(ch.TryGetProperty("STR", out string v));
+        Assert.Equal("80", v);
+        Assert.True(ch.TryGetProperty("OSTR", out string baseVal));
+        Assert.Equal("50", baseVal);
     }
 
     [Fact]

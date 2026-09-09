@@ -14,8 +14,8 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-08 |
-| Son commit | `8a315b7` + yansıma ailesi |
-| Tam test | 3.317 başarılı / 0 başarısız |
+| Son commit | `b18fec0` + stat modifier / OSTR |
+| Tam test | 3.324 başarılı / 0 başarısız |
 | Sıradaki iş | **Yeni inceleme dalgası ya da planın yeni maddesi** |
 
 ## Çalışma sırası
@@ -133,11 +133,24 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   **Kalan yapısal not:** referansta tek `OnTakeDamage` kapısı var, bizde 11 ayrı hasar
   uygulama noktası. Davranış paritesi sağlandı; birleştirme ayrı bir iş.
 
+- [x] **İŞ-11 — Stat modifier ailesi ve OSTR** (PLAN-303) — **KAPANDI**
+  İki bulgu. (1) `OSTR/ODEX/OINT` ayrı alandı; kayıtta `STR`'den sonra yazıldığı için
+  bayat gölge yüklemede kazanıyordu — **klasik kayıttan gelen her karakter her
+  restart'ta antrenmanını kaybediyordu** (ölçüm: 110→100). Artık temelin takma adı.
+  (2) `MODSTR/MODDEX/MODINT` yazılıp hiç okunmuyordu (canlı paket 83 kez yazıyor);
+  artık etkin stata katılıyor ve kaydediliyor. `<STR>` ayarlanmış, `<OSTR>` temel.
+  **Kapsam dışı:** `MODMAX*` ailesi referansta var, bizde yok — ama hiçbir paket/kayıt
+  kullanmıyor (ölçüm 0).
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-11 KAPANDI** — 2026-09-09. Stat modifier + OSTR. Test:
+  `StatModifierParityTests` (7); üç düzeltme tek tek geri alınıp doğrulandı. Ayrıca UOP
+  harita geçici dosyası sızıntısı kapatıldı (makinede 120 GB birikmişti). Tam suite
+  3.324.
 - **İŞ-10 KAPANDI** — 2026-09-09. Yansıma ailesi scriptli hasarda da çalışıyor. Test:
   `ScriptedDamageReflectTests` (6). Tam suite 3.317.
 - **İŞ-9 KAPANDI** — 2026-09-09. Dört trigger + reaktif zırh yeniden kuruldu. Test:

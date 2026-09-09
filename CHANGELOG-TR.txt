@@ -3,6 +3,23 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-09] - CANMAKE ve CANMAKESKILL nihayet cevap veriyor
+----------------------------------------
+
+FIX - CANMAKE.<itemdef> ya da CANMAKESKILL.<itemdef> soran bir script hicbir sey
+        alamiyordu; iki anahtar da yoktu ve elimizdeki paketler bunlari sekiz yerde
+        kullaniyor. Referans ikisini de Skill_MakeItem'in SELECT asamasindan yanitlar
+        (CChar.cpp:2787): CANMAKE butun soruyu sorar - SKILLMAKE kosullari VE
+        malzemenin elde olup olmadigi - CANMAKESKILL ise fSkillOnly gecerek yalniz
+        beceri tarafini sorar (CCharSkill.cpp:913). Uretim motoru cevabi zaten
+        biliyordu; sorulacak bir yol ve becerinin yarisini tek basina yanitlama imkani
+        yoktu.
+
+NOTE - Calisma yeri bilerek cevabin parcasi degil. Referans ocagi demircilik
+        asamasinda kontrol eder, Skill_MakeItem'in SELECT'inde degil; yani tarlada
+        duran bir demirci "nasil yapilacagini biliyor muyum ve demirim var mi"
+        sorusuna yine evet der. Uretimin kendisi ocagi istemeye devam ediyor.
+
 [2026-09-09] - Esyalar yine duyuluyor: birakma ve kusanma sesleri
 ----------------------------------------
 

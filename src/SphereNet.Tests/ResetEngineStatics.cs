@@ -128,6 +128,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Items.Item.ResolveGuildManager = null;
         SphereNet.Game.Objects.Items.Item.ResolveGuildCharacter = null;
         SphereNet.Game.Objects.Characters.Character.OnCanCastCheck = null;
+        SphereNet.Game.Objects.Characters.Character.OnCanMakeCheck = null;
         SphereNet.Game.Objects.Items.Item.OnSpawnStartStop = null;
         SphereNet.Game.Objects.Items.Item.OnScriptOpen = null;
         SphereNet.Game.Objects.Items.Item.OnScriptDClick = null;

@@ -113,7 +113,16 @@ public sealed class CraftingEngine
         return single;
     }
 
-    public bool CanCraft(Character crafter, CraftRecipe recipe, ushort? primaryResourceHue = null)
+    /// <param name="skillOnly">Answer the SKILLMAKE half only - the skills and the
+    /// tools or items the recipe requires present - and ignore whether the materials
+    /// are in the pack. This is upstream's fSkillOnly (CCharSkill.cpp:913), the
+    /// difference between CANMAKESKILL and CANMAKE.</param>
+    /// <param name="checkWorkSite">Whether standing at a forge (or a fire, for cooking)
+    /// is part of the answer. Crafting requires it; the CANMAKE query does not ask -
+    /// upstream checks the work site in the skill's own stage, not in Skill_MakeItem's
+    /// SKTRIG_SELECT.</param>
+    public bool CanCraft(Character crafter, CraftRecipe recipe, ushort? primaryResourceHue = null,
+        bool skillOnly = false, bool checkWorkSite = true)
     {
         // Check skill requirements
         foreach (var (skill, minVal) in recipe.SkillRequirements)
@@ -134,10 +143,15 @@ public sealed class CraftingEngine
                 return false;
         }
 
+        // Everything above is the SKILLMAKE side of the recipe, which is all
+        // CANMAKESKILL asks about.
+        if (skillOnly)
+            return true;
+
         // Work-site proximity (reference Skill_Blacksmith / Skill_Cooking):
         // smithing needs a forge within 2 tiles, cooking a heat source
         // within 3 (fire, forge or campfire).
-        if (!HasRequiredWorkSite(crafter, recipe.PrimarySkill))
+        if (checkWorkSite && !HasRequiredWorkSite(crafter, recipe.PrimarySkill))
             return false;
 
         // Check resource availability

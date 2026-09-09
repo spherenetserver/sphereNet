@@ -4,6 +4,23 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-09] - CANMAKE and CANMAKESKILL answer at last
+----------------------------------------
+
+FIX - A script asking CANMAKE.<itemdef> or CANMAKESKILL.<itemdef> got nothing back;
+        both keys were simply absent, and the packs on hand use them eight times.
+        Upstream answers both from Skill_MakeItem at its SELECT stage (CChar.cpp:2787):
+        CANMAKE asks the whole question - the SKILLMAKE requirements and whether the
+        materials are to hand - while CANMAKESKILL passes fSkillOnly and asks about the
+        skill side alone (CCharSkill.cpp:913). The crafting engine already knew how to
+        answer; it had no way to be asked, and no way to answer the skill half on its
+        own.
+
+NOTE - The work site is deliberately not part of the answer. Upstream checks the forge
+        in the smithing stage rather than in Skill_MakeItem's SELECT, so a smith
+        standing in a field still answers yes to "do I know how, and do I have the
+        iron". Crafting itself still requires the forge.
+
 [2026-09-09] - Items are heard again: drop and equip sounds
 ----------------------------------------
 

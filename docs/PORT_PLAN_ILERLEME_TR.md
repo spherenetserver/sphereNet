@@ -14,8 +14,8 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-08 |
-| Son commit | `b06885a` + eşya sesleri |
-| Tam test | 3.337 başarılı / 0 başarısız |
+| Son commit | `5a870aa` + CANMAKE |
+| Tam test | 3.343 başarılı / 0 başarısız |
 | Sıradaki iş | **Yeni inceleme dalgası ya da planın yeni maddesi** |
 
 ## Çalışma sırası
@@ -149,11 +149,21 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   "üstüne mi yere mi" düştüğüne bağlı). Altın sesleri uydurmaydı, referansa alındı.
   `DROPSOUND`/`EQUIPSOUND` artık instance→ITEMDEF sırasıyla okunuyor.
 
+- [x] **İŞ-13 — CANMAKE / CANMAKESKILL** (PLAN-304) — **KAPANDI**
+  Ölçüm planı doğruladı: `CANCAST` var (66 kullanım), `CANMAKE`/`CANMAKESKILL` hiç
+  yoktu (8 kullanım). İkisi de referansın `Skill_MakeItem` SELECT aşamasından:
+  CANMAKESKILL = beceri + SKILLMAKE, CANMAKE = onlar + malzeme. Çalışma yeri bilerek
+  cevabın dışında (referans ocağı becerinin kendi aşamasında arar).
+  **Ertelendi:** `SKILLUSEQUICK`/`SKILLTEST` — sorgu görünümlü ama yan etkili
+  (deneme sayılır, kazanç tetikler); ayrı ve dikkatli bir iş.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-13 KAPANDI** — 2026-09-09. CANMAKE/CANMAKESKILL bağlandı. Test:
+  `CanMakeQueryParityTests` (6). Tam suite 3.343.
 - **İŞ-12 KAPANDI** — 2026-09-09. Eşya bırakma/kuşanma sesleri referansa alındı;
   kuşanma sesi hiç yoktu. Test: `ItemSoundParityTests` (13). Tam suite 3.337.
 - **İŞ-11 KAPANDI** — 2026-09-09. Stat modifier + OSTR. Test:

@@ -75,6 +75,12 @@ public partial class Character : ObjBase
     /// wired to a SpellEngine check (mana, skill req, region antimagic).</summary>
     public static Func<Character, int, bool>? OnCanCastCheck;
 
+    /// <summary>CANMAKE.&lt;itemdef&gt; / CANMAKESKILL.&lt;itemdef&gt; backend (Source-X
+    /// CHC_CANMAKE / CHC_CANMAKESKILL, both answered by Skill_MakeItem at its SELECT
+    /// stage). Args: the character, the resolved item id, and whether only the skill
+    /// side is being asked about. Wired to the crafting engine.</summary>
+    public static Func<Character, int, bool, bool>? OnCanMakeCheck;
+
     // Static delegate for guild resolution (set in Program.cs)
     public static Func<Serial, Guild.GuildManager?>? ResolveGuildManager;
     // Static delegate for party resolution (set in Program.cs)
@@ -1088,6 +1094,28 @@ public partial class Character : ObjBase
     public bool IsFemale => _bodyId == 0x0191 || _bodyId == 0x025E || _bodyId == 0x029B;
     public bool IsHuman => _bodyId is 0x0190 or 0x0191 or 0x0192 or 0x0193;
     public bool IsGargoyle => _bodyId is 0x029A or 0x029B or 0x02B6 or 0x02B7;
+
+    /// <summary>An ITEMDEF named by defname or by number, as a script writes it in a
+    /// key like CANMAKE.i_dagger or CANMAKE.03f6 (upstream ResourceGetIndexType with
+    /// RES_ITEMDEF). Zero when it names nothing.</summary>
+    private static int ResolveItemDefId(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+            return 0;
+        token = token.Trim();
+
+        var resources = DefinitionLoader.StaticResources;
+        if (resources != null)
+        {
+            var rid = resources.ResolveDefName(token);
+            if (rid.IsValid && rid.Type == SphereNet.Core.Enums.ResType.ItemDef)
+                return rid.Index;
+        }
+        return SphereNet.Core.Types.ScriptNumber.TryParseToken(token, out long id) &&
+               id > 0 && id <= ushort.MaxValue
+            ? (int)id
+            : 0;
+    }
 
     /// <summary>Player-facing name (overhead label, corpse, tooltips).
     /// Falls back to CHARDEF NAME when the runtime name is blank or
@@ -4054,6 +4082,23 @@ public partial class Character : ObjBase
             else if (Enum.TryParse(spellStr.Replace(" ", ""), ignoreCase: true, out SpellType spEnum))
                 spellId = (int)spEnum;
             value = spellId > 0 && (OnCanCastCheck?.Invoke(this, spellId) ?? false) ? "1" : "0";
+            return true;
+        }
+
+        // Source-X CHC_CANMAKE.<itemdef> / CHC_CANMAKESKILL.<itemdef>: could this
+        // character make that item right now. Both reach Skill_MakeItem at its SELECT
+        // stage (CChar.cpp:2787); CANMAKESKILL passes fSkillOnly, so it answers for the
+        // skill and the tools alone and does not care whether the materials are to hand.
+        if (upper.StartsWith("CANMAKESKILL.", StringComparison.Ordinal) ||
+            upper.StartsWith("CANMAKESKILL ", StringComparison.Ordinal) ||
+            upper.StartsWith("CANMAKE.", StringComparison.Ordinal) ||
+            upper.StartsWith("CANMAKE ", StringComparison.Ordinal))
+        {
+            bool skillOnly = upper.StartsWith("CANMAKESKILL", StringComparison.Ordinal);
+            string idStr = upper[(skillOnly ? 13 : 8)..].Trim();
+            int itemId = ResolveItemDefId(idStr);
+            value = itemId > 0 && (OnCanMakeCheck?.Invoke(this, itemId, skillOnly) ?? false)
+                ? "1" : "0";
             return true;
         }
 

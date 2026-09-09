@@ -2925,6 +2925,32 @@ Kaynak: IS-2c turunda statik gozlem olarak kaydedilmisti.
 
 **Kapanis:** tam suite **3.291 basarili / 0 basarisiz** (+1).
 
+### IS-13 - CANMAKE / CANMAKESKILL (9 Eylul 2026, PLAN-304)
+
+Plan maddesi "CANCAST zaten mevcut: yeniden yazmak yerine kapsami tamamla" diyordu.
+Olcum bunu dogruladi: `CANCAST` var ve calisiyor (Character.cs:4045, paketlerde 66
+kullanim). `CANMAKE`/`CANMAKESKILL` ise hic yoktu; paketlerde 8 kullanim.
+
+**Referans sozlesmesi:** ikisi de `Skill_MakeItem(id, uid, SKTRIG_SELECT)`
+(CChar.cpp:2787). Icerde sira: `SkillResourceTest(SKILLMAKE)` -> `fSkillOnly` ise
+BURADA true doner -> degilse `ResourceConsume(BaseResources, test)` (CCharSkill.cpp:913).
+Yani CANMAKESKILL = beceri + SKILLMAKE gereksinimleri; CANMAKE = onlar + malzeme.
+
+**Calisma yeri bilerek disarida:** referans ocak/ates kontrolunu becerinin kendi
+asamasinda yapar, SELECT'te degil. `CanCraft`'a `checkWorkSite` parametresi eklendi ve
+sorgu yolu false geciyor; uretimin kendisi eskisi gibi ocagi ariyor.
+
+- [x] **CM-1** - `CraftingEngine.CanCraft(..., skillOnly, checkWorkSite)`.
+- [x] **CM-2** - `Character.OnCanMakeCheck` + `CANMAKE`/`CANMAKESKILL` property'leri
+  (nokta ya da bosluk ayirici, defname veya sayisal id).
+
+Test: `CanMakeQueryParityTests` (6). Tam suite 3.343.
+
+**Not:** `SKILLTEST` ve `SKILLUSEQUICK.<skill>,<zorluk>` referansta ayni bolgede duran
+iki sorgu daha; `SKILLUSEQUICK` paketlerde 2 kez geciyor. Bu turda ele alinmadi -
+`Skill_UseQuick`'in yan etkileri (deneme sayilir, beceri kazanci tetiklenir) sorgu
+gorunumlu ama sorgu degildir; ayri ve dikkatli bir is.
+
 ### IS-12 - Esya sesleri (9 Eylul 2026, PLAN-305)
 
 Plan maddesinin kendi ifadesi: "Item ses property'lerinin varligi ile ses calmanin

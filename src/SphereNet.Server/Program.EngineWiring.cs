@@ -1382,6 +1382,18 @@ public static partial class Program
             };
             // CANCAST.<spell> property backend: mana, primary-skill requirement
             // and region antimagic — the checks Spell_CanCast front-loads.
+            // CANMAKE.<itemdef> / CANMAKESKILL.<itemdef>: could this character make it
+            // right now. The recipe is looked up by the item the script named; a name
+            // with no recipe answers 0 rather than throwing, the way a query should.
+            SphereNet.Game.Objects.Characters.Character.OnCanMakeCheck = (ch, itemId, skillOnly) =>
+            {
+                var recipe = _craftingEngine?.TryGetRecipe(itemId);
+                if (recipe == null)
+                    return false;
+                return _craftingEngine!.CanCraft(ch, recipe, primaryResourceHue: null,
+                    skillOnly: skillOnly, checkWorkSite: false);
+            };
+
             SphereNet.Game.Objects.Characters.Character.OnCanCastCheck = (ch, spellId) =>
             {
                 var canCastDef = _spellEngine?.GetSpellDef((SpellType)spellId);

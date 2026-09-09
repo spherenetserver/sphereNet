@@ -178,10 +178,14 @@ public static class SkillEngine
     /// Quick skill use: check + experience in one call.
     /// Maps to Skill_UseQuick in Source-X.
     /// </summary>
-    public static bool UseQuick(Character ch, SkillType skill, int difficulty, bool allowGain = true, bool useBellCurve = true)
+    /// <param name="forceCheck">Roll even for a SCRIPTED skill. Upstream refuses those
+    /// unless the caller insists (CCharSkill.cpp:553), which is what the fourth argument
+    /// of the SKILLUSEQUICK property asks for.</param>
+    public static bool UseQuick(Character ch, SkillType skill, int difficulty,
+        bool allowGain = true, bool useBellCurve = true, bool forceCheck = false)
     {
         if (!IsValidBaseSkill(skill) || HasFlag(skill, SkillFlag.Disabled) ||
-            HasFlag(skill, SkillFlag.Scripted))
+            (HasFlag(skill, SkillFlag.Scripted) && !forceCheck))
             return false;
 
         bool success = CheckSuccess(ch, skill, difficulty, useBellCurve);

@@ -14,8 +14,8 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-08 |
-| Son commit | `5a870aa` + CANMAKE |
-| Tam test | 3.343 başarılı / 0 başarısız |
+| Son commit | `2ed0a3d` + SKILLUSEQUICK |
+| Tam test | 3.350 başarılı / 0 başarısız |
 | Sıradaki iş | **Yeni inceleme dalgası ya da planın yeni maddesi** |
 
 ## Çalışma sırası
@@ -157,11 +157,23 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   **Ertelendi:** `SKILLUSEQUICK`/`SKILLTEST` — sorgu görünümlü ama yan etkili
   (deneme sayılır, kazanç tetikler); ayrı ve dikkatli bir iş.
 
+- [x] **İŞ-14 — SKILLUSEQUICK** (PLAN-304 kuyruğu) — **KAPANDI**
+  İŞ-13'te bilerek ertelenen madde. Sorgu gibi duruyor ama zar atıyor, beceri
+  yükseltiyor ve `@SkillUseQuick` çalıştırıyor. Referansın iki tuhaflığı korundu:
+  üçüncü argüman **ters** (sıfır değilse çan eğrisi kapalı) ve iki argümandan azı
+  anahtarı **yanıtsız** bırakıyor. `SKILLTEST` kapsam dışı (paketlerde 0 kullanım).
+
+  **Ölçülüp boşluk çıkmayanlar (aynı tur):** "yazılıp hiç okunmayan durum" taraması
+  (4 aday, 4'ü de yanlış pozitif) ve ölüm anında imleçteki eşya (zaten doğru,
+  `DeathInventoryEdgeTests` sabitliyor). Ayrıntı takip planında.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-14 KAPANDI** — 2026-09-09. SKILLUSEQUICK bağlandı. Test:
+  `SkillUseQuickPropertyTests` (7). Tam suite 3.350.
 - **İŞ-13 KAPANDI** — 2026-09-09. CANMAKE/CANMAKESKILL bağlandı. Test:
   `CanMakeQueryParityTests` (6). Tam suite 3.343.
 - **İŞ-12 KAPANDI** — 2026-09-09. Eşya bırakma/kuşanma sesleri referansa alındı;

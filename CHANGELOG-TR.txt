@@ -3,6 +3,26 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-09] - SKILLUSEQUICK: sorgu gibi duran, sorgu olmayan anahtar
+----------------------------------------
+
+FIX - SKILLUSEQUICK.<beceri>,<zorluk>[,<canegrisiKapali>][,<zorla>] artik yanitlaniyor.
+        Salt-okunur sorgularin arasinda duruyor ve hicbirine benzemiyor: referans onu
+        dogrudan Skill_UseQuick'e verir, kazanc acik (CChar.cpp:2802); yani anahtari
+        OKUMAK zar atar, beceriyi yukseltebilir ve @SkillUseQuick'i calistirir. CANMAKE
+        dalgasindan bu yuzden ayri tutulmustu.
+
+        Iki ayrinti referansin kendisine ait ve duzeltilmeden korundu: ucuncu arguman
+        TERSTIR - sifir olmayan deger can egrisini KAPATIR - ve ikiden az arguman
+        verildiginde anahtar yanitsiz birakilir, sifir denmez; boylece cagiran uydurma
+        bir sonuc yerine kendi metnini gorur. Dorduncu arguman SCRIPTED bir beceri icin
+        bile zar attirir; SkillEngine.UseQuick artik bunu kabul ediyor.
+
+NOTE - SKILLTEST bilerek disarida birakildi. Referansta komsu anahtar ve gercekten
+        salt-okunur bir sorgu, ama elimizdeki hicbir paket kullanmiyor ve yanitlamak
+        kaynak-listesi ayristiricisini calisma zamanina acmayi gerektiriyor. Tahmin
+        edilmedi, kaydedildi.
+
 [2026-09-09] - CANMAKE ve CANMAKESKILL nihayet cevap veriyor
 ----------------------------------------
 

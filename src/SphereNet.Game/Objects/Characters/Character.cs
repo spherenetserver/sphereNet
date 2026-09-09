@@ -75,6 +75,13 @@ public partial class Character : ObjBase
     /// wired to a SpellEngine check (mana, skill req, region antimagic).</summary>
     public static Func<Character, int, bool>? OnCanCastCheck;
 
+    /// <summary>SKILLUSEQUICK.&lt;skill&gt;,&lt;difficulty&gt;[,&lt;noBellCurve&gt;][,&lt;force&gt;]
+    /// backend (Source-X CHC_SKILLUSEQUICK). Unlike its neighbours this is NOT a
+    /// question: it rolls, it can raise the skill, and it fires @SkillUseQuick. Args:
+    /// the character, the skill, the difficulty, whether to skip the bell curve, and
+    /// whether to roll for a scripted skill anyway.</summary>
+    public static Func<Character, int, int, bool, bool, bool>? OnSkillUseQuickProperty;
+
     /// <summary>CANMAKE.&lt;itemdef&gt; / CANMAKESKILL.&lt;itemdef&gt; backend (Source-X
     /// CHC_CANMAKE / CHC_CANMAKESKILL, both answered by Skill_MakeItem at its SELECT
     /// stage). Args: the character, the resolved item id, and whether only the skill
@@ -4043,6 +4050,37 @@ public partial class Character : ObjBase
 
         // Skill name-based read (MAGICRESISTANCE, TACTICS, etc.), the pack's own
         // names included.
+        // Source-X CHC_SKILLUSEQUICK.<skill>,<difficulty>[,<noBellCurve>][,<force>].
+        // This one LOOKS like the queries around it and is not one: upstream hands it
+        // straight to Skill_UseQuick with gain allowed (CChar.cpp:2802), so reading it
+        // rolls the dice, can raise the skill and runs @SkillUseQuick. The odd third
+        // argument is inverted at the source - a non-zero value turns the bell curve
+        // OFF - and it is kept that way here rather than tidied.
+        //
+        // Fewer than two arguments is not an answer of zero: upstream returns false and
+        // leaves the key unhandled, so the caller sees the raw text.
+        if (upper.StartsWith("SKILLUSEQUICK.", StringComparison.Ordinal) ||
+            upper.StartsWith("SKILLUSEQUICK ", StringComparison.Ordinal))
+        {
+            string[] parts = upper[14..].Split(',');
+            if (parts.Length >= 2 &&
+                SkillNames.TryResolve(parts[0].Trim(), out SkillType useSkill) &&
+                SphereNet.Core.Types.ScriptNumber.TryParseToken(parts[1].Trim(), out long diff))
+            {
+                bool noBell = parts.Length >= 3 &&
+                    SphereNet.Core.Types.ScriptNumber.TryParseToken(parts[2].Trim(), out long b) && b != 0;
+                bool force = parts.Length >= 4 &&
+                    SphereNet.Core.Types.ScriptNumber.TryParseToken(parts[3].Trim(), out long f) && f != 0;
+                bool rolled = OnSkillUseQuickProperty?.Invoke(
+                    this, (int)useSkill, (int)Math.Clamp(diff, int.MinValue, int.MaxValue),
+                    !noBell, force) ?? false;
+                value = rolled ? "1" : "0";
+                return true;
+            }
+            value = "";
+            return false;
+        }
+
         if (TryResolveSkillName(upper, out var readSkill))
         {
             value = GetSkill(readSkill).ToString();

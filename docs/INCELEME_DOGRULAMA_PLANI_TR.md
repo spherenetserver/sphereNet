@@ -2925,6 +2925,51 @@ Kaynak: IS-2c turunda statik gozlem olarak kaydedilmisti.
 
 **Kapanis:** tam suite **3.291 basarili / 0 basarisiz** (+1).
 
+### IS-14 - SKILLUSEQUICK (9 Eylul 2026, PLAN-304 kuyrugu)
+
+IS-13'te "sorgu gorunumlu ama yan etkili" diye ertelenen madde. Sozlesme
+(CChar.cpp:2802 -> CCharSkill.cpp:542):
+
+| Arguman | Anlam | Not |
+|---|---|---|
+| 1 | beceri adi | `SkillNames` ile cozulur |
+| 2 | zorluk | ifade |
+| 3 | can egrisi | **TERS**: sifir degilse egri KAPALI |
+| 4 | zorla | SCRIPTED beceride bile zar at |
+
+`fAllowGain` referansta sabit true. `SkillEngine.UseQuick`'e `forceCheck` eklendi
+(SCRIPTED reddini atlar, CCharSkill.cpp:553). Ikiden az arguman -> anahtar YANITSIZ
+(referans `return false`), sifir degil.
+
+- [x] **SQ-1** - `SKILLUSEQUICK` property + `OnSkillUseQuickProperty` kancasi.
+- [x] **SQ-2** - `UseQuick(..., forceCheck)`.
+
+Test: `SkillUseQuickPropertyTests` (7). Tam suite 3.350.
+
+**Yerlestirme notu:** bilesik anahtar, genel skill-adi aramasindan ONCE denenmeli;
+sonraya konursa "SKILLUSEQUICK.x,y" dizesi baska bir dal tarafindan yutuluyor.
+
+**SKILLTEST kapsam disi:** referansta var (`SkillResourceTest`), paketlerde 0 kullanim;
+yanitlamak icin kaynak-listesi ayristiricisini disa acmak gerekir. Kayitli.
+
+### Olculup bosluk CIKMAYAN alanlar (ayni tur, ayni gun)
+
+Zaman kaybini tekrar etmemek icin: bu turda iki tarama daha yapildi ve **ikisi de temiz
+cikti**.
+
+1. **"Yazilip hic okunmayan durum" taramasi** (MODSTR kalibini genellemek icin):
+   Character'da 119, Item'da 69 script-yazilabilir anahtar tuketicilerine karsi tarandi;
+   4 aday cikti, **dordu de yanlis pozitif** (FleeStepsMax, HomeDist, BaseStorage,
+   FACTION_SPECIES - hepsi public property ya da tag uzerinden okunuyor). Taramanin
+   kapsami sinirli (yalnizca uye yazan anahtarlar), ama MODSTR'in istisna oldugunu
+   gosteriyor.
+
+2. **Olum aninda imlecteki esya** (PLAN-406 listesinden): ilk sonda esyayi
+   `Layer.Dragging`'e koyup kaybettigini gosterdi, ama bu kurulum GERCEK degil - motor
+   surukleme durumunu `DRAGGING` TAG'inde tutuyor. Dogru kurulumla esya cesede giriyor
+   ve zaten `DeathInventoryEdgeTests` bunu sabitliyor. Onceki bir dalgada bulunmus ve
+   duzeltilmis.
+
 ### IS-13 - CANMAKE / CANMAKESKILL (9 Eylul 2026, PLAN-304)
 
 Plan maddesi "CANCAST zaten mevcut: yeniden yazmak yerine kapsami tamamla" diyordu.

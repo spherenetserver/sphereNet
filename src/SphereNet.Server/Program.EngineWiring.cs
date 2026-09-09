@@ -1382,6 +1382,14 @@ public static partial class Program
             };
             // CANCAST.<spell> property backend: mana, primary-skill requirement
             // and region antimagic — the checks Spell_CanCast front-loads.
+            // SKILLUSEQUICK.<skill>,<difficulty>[,...]: rolls, so it is wired to the
+            // real skill path rather than to a read-only estimate.
+            SphereNet.Game.Objects.Characters.Character.OnSkillUseQuickProperty =
+                (ch, skillId, difficulty, useBellCurve, forceCheck) =>
+                    SphereNet.Game.Skills.SkillEngine.UseQuick(
+                        ch, (SkillType)skillId, difficulty,
+                        allowGain: true, useBellCurve: useBellCurve, forceCheck: forceCheck);
+
             // CANMAKE.<itemdef> / CANMAKESKILL.<itemdef>: could this character make it
             // right now. The recipe is looked up by the item the script named; a name
             // with no recipe answers 0 rather than throwing, the way a query should.

@@ -4,6 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-09] - SKILLUSEQUICK, the query that is not one
+----------------------------------------
+
+FIX - SKILLUSEQUICK.<skill>,<difficulty>[,<noBellCurve>][,<force>] is now answered. It
+        sits among the read-only queries and behaves like none of them: upstream hands
+        it straight to Skill_UseQuick with gain allowed (CChar.cpp:2802), so reading the
+        key rolls the dice, can raise the skill and runs @SkillUseQuick. That is why it
+        was held back from the CANMAKE wave and given a pass of its own.
+
+        Two details are the reference's own and are kept rather than tidied: the third
+        argument is INVERTED - a non-zero value turns the bell curve OFF - and fewer
+        than two arguments leaves the key unhandled rather than answering zero, so the
+        caller sees its own text instead of a made-up result. The fourth argument rolls
+        even for a SCRIPTED skill, which SkillEngine.UseQuick now accepts.
+
+NOTE - SKILLTEST was left out on purpose. It is the neighbouring key in the reference
+        and a genuine read-only query, but no script pack on hand uses it, and answering
+        it means exposing the resource-list parser for runtime use. Recorded rather than
+        guessed at.
+
 [2026-09-09] - CANMAKE and CANMAKESKILL answer at last
 ----------------------------------------
 

@@ -3,6 +3,30 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-09] - Gercek script paketinin cagirdigi verb'ler, olculdu
+----------------------------------------
+
+NOTE - Trigger taramasi "paketin astigi ama hicbir seyin atesledigi @kanca hangisi"
+        diye sormustu. Bu, script yuzeyinin obur yarisi icin ayni soru: 1.881 dosya,
+        14.223 ifade, 314 farkli verb. Bunlardan ikisi bu motorun uygulamadigi gercek
+        referans verb'i. Eslesmeyen geri kalan her sey shard'in kendi [FUNCTION]
+        bloklari - F_SHADOW_CURSE, MAKE_TEKRAR gibi - ve bunlar fonksiyon yolundan
+        cozuluyor, motor verb'i degiller.
+
+FIX - MESSAGE ve MSG artik NESNE uzerinde calisiyor; referans onlari oraya koyar
+        (CObjBase.cpp:2402). Bizde yalnizca yonetici konsol komutu olarak vardi, yani
+        `MESSAGE Icini bir urperti kapliyor` gibi bir script satiri hicbir sey
+        yapmiyordu - ve elimizdeki paketler bunu 330 kez cagiriyor; eksik verb'ler
+        icinde acik farkla en cok kullanilani. Kimin gordugu de referanstaki gibi:
+        verb'i veren karakter varsa yalniz ona, yoksa (gecikmeli cagri, arkasinda kimse
+        olmayan konsol) nesnenin uzerinde herkese. SYSMESSAGE ile karistirilmamali -
+        o kosede yazar ve degismedi.
+
+FIX - ADDCIRCLE <cember>[,<altindakiler>] bir buyu kitabini o cemberin sekiz buyusuyle
+        dolduruyor; ikinci arguman sifir degilse altindaki butun cemberlerle birlikte
+        (CItem.cpp:3213). Buyu kitabi olmayan bir sey reddediliyor, referansta oldugu
+        gibi. Paketteki magery scripti bunu dokuz kez cagiriyor.
+
 [2026-09-09] - SKILLUSEQUICK: sorgu gibi duran, sorgu olmayan anahtar
 ----------------------------------------
 

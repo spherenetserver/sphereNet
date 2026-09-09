@@ -28,6 +28,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
     private static void Reset()
     {
         SphereNet.Game.Objects.ObjBase.ResolveWorld = null;
+        SphereNet.Game.Objects.ObjBase.OnObjectMessage = null;
         SphereNet.Game.Definitions.DefinitionLoader.ResetForTests();
         SphereNet.Game.Objects.ObjBase.BroadcastNearby = null;
         SphereNet.Game.Objects.Items.Item.ResolveWorld = null;

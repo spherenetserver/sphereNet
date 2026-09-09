@@ -2925,6 +2925,37 @@ Kaynak: IS-2c turunda statik gozlem olarak kaydedilmisti.
 
 **Kapanis:** tam suite **3.291 basarili / 0 basarisiz** (+1).
 
+### IS-15 - Verb uzun kuyrugu: paket tarafindan olcum (9 Eylul 2026)
+
+IS-8'deki trigger olcumunun verb karsiligi. Yontem ayni: PAKET tarafindan sor, motorun
+kendi tablosuna degil.
+
+**Olcum:** 1.881 script dosyasi, 14.223 ifade satiri, 314 farkli ifade basligi.
+Motorda hicbir izi olmayan: 121.
+
+**Siniflandirma (onemli):** 121'in neredeyse tamami shard'in kendi `[FUNCTION]`
+bloklari (`F_SHADOW_CURSE` 63, `F_DUNGEON_CHEST_ADDITEM` 48, `MAKE_TEKRAR` 16 ...).
+Bunlar FunctionResolver yolundan cozulur ve motor verb'i DEGILDIR - hafizadaki
+"script functions != intrinsics" kurali tam bu. Referans tablolarina
+(`tables/*.tbl`) karsi kontrol edildiginde gercek verb sayisi **iki**:
+
+| Verb | Kullanim | Durum |
+|---|---|---|
+| `MESSAGE` / `MSG` | 330 | referansta CObjBase verb'i - **yoktu** |
+| `ADDCIRCLE` | 9 | referansta CItem verb'i - **yoktu** |
+
+`MESSAGE` bizde yalnizca `ClientScriptConsoleHandler`'da bir konsol komutuydu; nesne
+uzerinde cagrilinca `TryExecuteCommand` false donuyordu (calisma zamaninda dogrulandi:
+`SAY`/`EMOTE` true, `MESSAGE`/`MSG` false).
+
+- [x] **VB-1** - `ObjBase` verb'i `MESSAGE`/`MSG` + `OnObjectMessage` kancasi. Kaynak
+  karakter varsa YALNIZ ona (upstream `ObjMessage`), yoksa nesne uzerinde yayin
+  (`UpdateObjMessage`). TALKMODE_ITEM.
+- [x] **VB-2** - `ADDCIRCLE <cember>[,<altindakiler>]`, spellbook disina red.
+
+Test: `ObjectMessageVerbTests` (5) + `AddCircleVerbTests` (5). Tam suite 3.360.
+Olcum yeniden kosuldu: 121 -> 120 -> 119 (iki verb listeden dustu).
+
 ### IS-14 - SKILLUSEQUICK (9 Eylul 2026, PLAN-304 kuyrugu)
 
 IS-13'te "sorgu gorunumlu ama yan etkili" diye ertelenen madde. Sozlesme

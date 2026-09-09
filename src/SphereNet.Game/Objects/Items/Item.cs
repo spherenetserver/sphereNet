@@ -3156,6 +3156,37 @@ public class Item : ObjBase
                         _more2 |= (1u << (addSpell - 32));
                 }
                 return true;
+            // Source-X IC_ADDCIRCLE (CItem.cpp:3213): ADDCIRCLE <circle>[,<andLower>]
+            // writes the eight spells of that circle into the book - and every circle
+            // below it when the second argument is not zero. Only a spellbook answers
+            // it; upstream logs and refuses on anything else.
+            case "ADDCIRCLE":
+            {
+                if (EffectiveType != ItemType.Spellbook)
+                    return false;
+
+                string[] circleArgs = args.Split([' ', ',', '	'], StringSplitOptions.RemoveEmptyEntries);
+                if (circleArgs.Length == 0 ||
+                    !SphereNet.Core.Types.ScriptNumber.TryParseToken(circleArgs[0], out long topCircle))
+                    return false;
+                bool andLower = circleArgs.Length > 1 &&
+                    SphereNet.Core.Types.ScriptNumber.TryParseToken(circleArgs[1], out long lower) && lower != 0;
+
+                for (long circle = topCircle; circle > 0; --circle)
+                {
+                    for (int i = 1; i < 9; ++i)
+                    {
+                        long spell = ((circle - 1) * 8) + i;
+                        if (spell < 0 || spell >= 64) continue;
+                        if (spell < 32) _more1 |= 1u << (int)spell;
+                        else _more2 |= 1u << (int)(spell - 32);
+                    }
+                    if (!andLower)
+                        break;
+                }
+                return true;
+            }
+
             case "REMOVESPELL":
                 if (int.TryParse(args.Trim(), out int rmSpell) && rmSpell >= 0 && rmSpell < 64)
                 {

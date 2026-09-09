@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-09] - The verbs a real script pack issues, measured
+----------------------------------------
+
+NOTE - The trigger sweep asked which @Hooks a pack writes that nothing fires. This is
+        the same question for the other half of the script surface: 1,881 files, 14,223
+        statements, 314 distinct verbs. Two of them are real reference verbs this engine
+        did not implement. Everything else that came back unmatched is the shard's own
+        [FUNCTION] blocks - F_SHADOW_CURSE, MAKE_TEKRAR and the like - which resolve
+        through the function path and are not engine verbs at all.
+
+FIX - MESSAGE and MSG now work on an object, which is where upstream puts them
+        (CObjBase.cpp:2402). They existed here only as an admin console command, so a
+        script line like `MESSAGE You feel a chill` did nothing at all - and the packs
+        on hand issue it 330 times, by a wide margin the most-used verb that was
+        missing. The audience follows the reference: private to the character that
+        issued the verb when there is one, and over the object for everyone nearby when
+        there is not (a delayed call, a console with nobody behind it). It is not
+        SYSMESSAGE - that writes in the corner and is unchanged.
+
+FIX - ADDCIRCLE <circle>[,<andLower>] fills a spellbook with the eight spells of that
+        circle, and with every circle below it when the second argument is not zero
+        (CItem.cpp:3213). Anything that is not a spellbook is refused, as upstream
+        refuses it. The magery script in the pack calls it nine times.
+
 [2026-09-09] - SKILLUSEQUICK, the query that is not one
 ----------------------------------------
 

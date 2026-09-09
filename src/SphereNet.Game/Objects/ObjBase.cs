@@ -47,6 +47,13 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
     /// named triggers on an object through the normal handler chain.</summary>
     public static Action<ObjBase, string, ITextConsole>? OnScriptTrigger;
 
+    /// <summary>MESSAGE/MSG: put a line of text over THIS object. The third argument is
+    /// who gets to see it - the character that issued the verb, or null for everyone
+    /// nearby, which is the split upstream makes (CObjBase.cpp:2402): with a source
+    /// client the message is private to it, without one it goes over the object for
+    /// anyone in range.</summary>
+    public static Action<ObjBase, string, Characters.Character?>? OnObjectMessage;
+
     /// <summary>Source-X CLICK verb bridge. The host resolves the invoking
     /// console to its live client and replays the normal single-click path,
     /// including @Click/@AfterClick and the overhead label packet.</summary>
@@ -885,6 +892,17 @@ public abstract class ObjBase : IScriptObj, ITimedObject, IEntity
             case "SHOW":
                 source.SysMessage($"{GetName()} [0x{Uid.Value:X8}] P={Position.X},{Position.Y},{Position.Z},{Position.Map}");
                 return true;
+            // Source-X OV_MESSAGE / OV_MSG (CObjBase.cpp:2402): a line of text over
+            // THIS object - not a system message in the corner, which is what SYSMESSAGE
+            // below is. Private to the character that asked for it when there is one,
+            // and over the object for everyone otherwise. The script packs here issue it
+            // 330 times and every one of them was doing nothing: the verb existed only
+            // as an admin console command, never on an object.
+            case "MESSAGE":
+            case "MSG":
+                OnObjectMessage?.Invoke(this, args, ResolveSourceCharacter(source));
+                return true;
+
             case "SAY":
             case "EMOTE":
             case "SYSMESSAGE":

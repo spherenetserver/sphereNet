@@ -14,8 +14,8 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-08 |
-| Son commit | `2ed0a3d` + SKILLUSEQUICK |
-| Tam test | 3.350 başarılı / 0 başarısız |
+| Son commit | `a0a00c8` + verb ölçümü |
+| Tam test | 3.360 başarılı / 0 başarısız |
 | Sıradaki iş | **Yeni inceleme dalgası ya da planın yeni maddesi** |
 
 ## Çalışma sırası
@@ -167,11 +167,19 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   (4 aday, 4'ü de yanlış pozitif) ve ölüm anında imleçteki eşya (zaten doğru,
   `DeathInventoryEdgeTests` sabitliyor). Ayrıntı takip planında.
 
+- [x] **İŞ-15 — Verb uzun kuyruğu, paket tarafından ölçüm** — **KAPANDI**
+  İŞ-8'in verb karşılığı: 1.881 dosya, 14.223 ifade, 314 farklı başlık. Motorda izi
+  olmayan 121 adayın neredeyse tamamı shard'ın kendi `[FUNCTION]`'ları; referans
+  tablolarına göre **gerçek verb sayısı iki**: `MESSAGE`/`MSG` (330 kullanım, bizde
+  yalnız konsol komutuydu) ve `ADDCIRCLE` (9 kullanım). İkisi de bağlandı.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-15 KAPANDI** — 2026-09-09. MESSAGE/MSG nesne verb'i + ADDCIRCLE. Test:
+  `ObjectMessageVerbTests` (5), `AddCircleVerbTests` (5). Tam suite 3.360.
 - **İŞ-14 KAPANDI** — 2026-09-09. SKILLUSEQUICK bağlandı. Test:
   `SkillUseQuickPropertyTests` (7). Tam suite 3.350.
 - **İŞ-13 KAPANDI** — 2026-09-09. CANMAKE/CANMAKESKILL bağlandı. Test:

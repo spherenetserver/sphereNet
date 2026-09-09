@@ -1453,6 +1453,34 @@ public static partial class Program
                     if (!item.IsDeleted)
                         c.SendItemView(item);
             };
+            // MESSAGE/MSG on an object: a line over the object itself. Upstream shows it
+            // ONLY to the character that issued the verb when there is one, and over the
+            // object to everyone nearby otherwise (CObjBase.cpp:2402).
+            SphereNet.Game.Objects.ObjBase.OnObjectMessage = (obj, text, recipient) =>
+            {
+                if (string.IsNullOrEmpty(text))
+                    return;
+
+                string speaker = obj.GetName() ?? "";
+                ushort body = obj is SphereNet.Game.Objects.Characters.Character speakerChar
+                    ? speakerChar.BodyId
+                    : (ushort)0;
+                var pkt = new PacketSpeechUnicodeOut(
+                    obj.Uid.Value, body,
+                    0x06,               // TALKMODE_ITEM - text belonging to the object
+                    0x03B2, 3, "ENU",
+                    speaker, text);
+
+                if (recipient != null)
+                {
+                    // Private to the asker, as upstream's ObjMessage is.
+                    if (TryGetClientFor(recipient, out var only))
+                        only.Send(pkt);
+                    return;
+                }
+                BroadcastNearby(obj.GetTopLevelObj()?.Position ?? obj.Position, 18, pkt, 0);
+            };
+
             _spellEngine.OnOverheadEmote = (speaker, text) =>
             {
                 // Overhead line from the character, visible nearby (Source-X

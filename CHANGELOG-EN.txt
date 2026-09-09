@@ -4,6 +4,31 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-09] - Two invented economies removed
+----------------------------------------
+
+CHANGE - Mining, fishing and lumberjacking no longer invent a resource when the world
+        has nothing defined for the spot. There was a whole second economy behind the
+        real one: a hardcoded iron ore, fish and log, a marker pool of its own and its
+        own difficulty numbers - a resource table the reference does not have and no
+        script could reach or change. Upstream simply fails the attempt when its
+        resource setup finds nothing (CCharSkill.cpp:1456), and that is what happens
+        now.
+
+        Measured before removing rather than after: the live script pack defines
+        REGIONTYPE t_rock, t_water and t_tree with RESOURCES, so the real gathering path
+        answers every one of these and the invented branch never ran with a pack
+        loaded. No test depended on it either.
+
+CHANGE - An ordinary container no longer stops accepting items at 400 stones. The
+        reference has no global cap for chests and bags: a container's limit is its own
+        MODMAXWEIGHT, which starts at zero, and the check is skipped while that is not
+        positive (CItemContainer.cpp:906). Only the player's backpack has a real limit,
+        from its owner's carry weight plus BACKPACKOVERLOAD - which is already how it
+        works here. The setting remains for a shard that wants a cap; it is simply no
+        longer imposed. The BANK limit is untouched: that one IS in the reference
+        (m_iBankWMax).
+
 [2026-09-09] - The verbs a real script pack issues, measured
 ----------------------------------------
 

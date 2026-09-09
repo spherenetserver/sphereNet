@@ -3,6 +3,30 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-09] - Iki uydurma ekonomi kaldirildi
+----------------------------------------
+
+CHANGE - Madencilik, balikcilik ve oduncululuk artik dunyada o nokta icin tanimli bir
+        sey yokken kaynak UYDURMUYOR. Gercek ekonominin arkasinda ikinci bir ekonomi
+        vardi: gomulu demir cevheri, balik ve kutuk, kendi isaretci havuzu ve kendi
+        zorluk sayilari - referansta olmayan, hicbir scriptin ulasamadigi ya da
+        degistiremedigi bir kaynak tablosu. Referans, kaynak kurulumu bir sey bulamazsa
+        denemeyi basitce basarisiz sayar (CCharSkill.cpp:1456); artik olan da bu.
+
+        Silmeden ONCE olculdu: canli script paketi REGIONTYPE t_rock, t_water ve
+        t_tree'yi RESOURCES ile tanimliyor, yani gercek toplama yolu bunlarin hepsini
+        yanitliyor ve uydurma dal paket yuklenmisken hic calismiyordu. Hicbir test de
+        ona dayanmiyordu.
+
+CHANGE - Siradan bir kap artik 400 tasta esya kabul etmeyi birakmiyor. Referansta
+        sandiklar ve cantalar icin global bir tavan yok: kabin siniri kendi
+        MODMAXWEIGHT'idir, o da sifirdan baslar ve pozitif olmadigi surece kontrol
+        atlanir (CItemContainer.cpp:906). Yalnizca oyuncunun cantasinin gercek bir
+        siniri var - sahibinin tasima kapasitesi + BACKPACKOVERLOAD - ki bizde zaten
+        boyle calisiyor. Ayar, tavan isteyen bir shard icin duruyor; sadece varsayilan
+        olarak dayatilmiyor. BANKA siniri degismedi: o referansta GERCEKTEN var
+        (m_iBankWMax).
+
 [2026-09-09] - Gercek script paketinin cagirdigi verb'ler, olculdu
 ----------------------------------------
 

@@ -293,7 +293,10 @@ public sealed class GameWorld
     /// BANKMAXWEIGHT; Source-X default 1000 stones.</summary>
     public int MaxBankWeight { get; set; } = 1000;
     /// <summary>Max total weight (stones) allowed in a regular container. sphere.ini CONTAINERMAXWEIGHT. 0=unlimited.</summary>
-    public int MaxContainerWeight { get; set; } = 400;
+    /// <summary>Weight an ordinary container holds; 0 = no limit, which is the
+    /// reference's own default (CItemContainer.cpp:906). The player's backpack is
+    /// bounded separately, by what its owner can carry.</summary>
+    public int MaxContainerWeight { get; set; }
     /// <summary>AOS tooltip mode. 0=off, 1=revision/request, 2=force full. sphere.ini TOOLTIPMODE.</summary>
     public int ToolTipMode { get; set; } = 1;
     public int ToolTipCache { get; set; } = 30;

@@ -264,7 +264,17 @@ public sealed class SphereConfig
     public int ContainerMaxItems { get; set; } = 255;
     public int BankMaxItems { get; set; } = 1000;
     public int BankMaxWeight { get; set; } = 1000;
-    public int ContainerMaxWeight { get; set; } = 400;
+    /// <summary>Weight an ordinary container will hold, in stones; 0 (the default)
+    /// means no limit of its own.
+    ///
+    /// The reference has no global cap for chests and bags: a container's limit is its
+    /// own MODMAXWEIGHT, which starts at zero, and the check is skipped entirely while
+    /// that is not positive (CItemContainer.cpp:906-916). Only the player's backpack
+    /// gets a real limit, from its owner's carry weight plus BACKPACKOVERLOAD. Shipping
+    /// a flat 400 meant every chest in the world quietly refused the next item at a
+    /// number the reference does not contain. Left as a setting for a shard that wants
+    /// one, but no longer imposed by default.</summary>
+    public int ContainerMaxWeight { get; set; }
     public int ItemsMaxAmount { get; set; } = 60000;
 
     // What a teleport looks and sounds like, by who did it (Source-X

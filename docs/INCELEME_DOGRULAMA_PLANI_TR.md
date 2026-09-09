@@ -2925,6 +2925,46 @@ Kaynak: IS-2c turunda statik gozlem olarak kaydedilmisti.
 
 **Kapanis:** tam suite **3.291 basarili / 0 basarisiz** (+1).
 
+### IS-16 - Uydurma-deger backlog'unun kalan iki olculebilir maddesi (9 Eylul 2026)
+
+`project_invented_values_audit_backlog` icindeki "KALAN/ERTELENEN" listesinden, kosulu
+OLCULEBILIR olan iki madde kapandi.
+
+**1. Fallback gathering ekonomisi.** Backlog'un kendi kosulu: "pack REGIONRESOURCE
+tanimliyorsa olu kod, silinebilir". Olcum: canli pakette 31 REGIONRESOURCE, 46
+REGIONTYPE; ucunun de (t_rock 4, t_water 2, t_tree 1) RESOURCES satiri var. Ayrica
+`GatheringEngine` eslesme bulamazsa global `FindRegionTypeByFilter`'a dusuyor - yani
+paket yuklenmisken toplama HER ZAMAN "Handled". Dolayisiyla
+`ActiveSkillEngine`'deki uc fallback (demir cevheri 0x19B9 rand(1..3), balik 0x09CC,
+kutuk 0x1BDD rand(1..5) + kendi marker havuzu) olu koddu ve silindi (38 satirlik
+yardimci cift dahil). Tam suite degismeden gecti (3.360) - hicbir test ona dayanmiyordu.
+
+**2. ContainerMaxWeight 400.** Backlog'da "SX karsiligi dogrulanmadi" diye duruyordu;
+dogrulandi ve **karsiligi yok**: referansta kabin siniri kendi `m_ModMaxWeight`'i
+(varsayilan 0) ve kontrol `iMaxWeight > 0` ile atlaniyor (CItemContainer.cpp:906-916).
+Global tavan yalnizca oyuncunun cantasi icin var (tasima + BACKPACKOVERLOAD, bizde
+IS-5'te dogru baglandi). Varsayilan 0'a alindi; ini anahtari isteyen shard icin duruyor.
+**Banka sinirina dokunulmadi** - `g_Cfg.m_iBankWMax` referansta gercek.
+
+**Ayrica dogrulandi:** paketlerin `MODMAXWEIGHT` kullanimi (4 yer) CHARDEF'te, yani yuk
+hayvanlarinda; karakter tarafi bizde zaten destekli (`Character.MaxWeight`).
+
+### Property OKUMA taramasi - sonucsuz (ayni tur)
+
+Script yuzeyinin ucuncu ayagi (trigger = kanca, verb = komut, property = okuma) ayni
+yontemle olculmeye calisildi: 1.881 dosya, 52.615 `<...>` okumasi. **Statik olcum bu
+ayakta guvenilir aday uretmiyor** ve iki ayri kusur bunu gosterdi:
+
+1. Ad-uzayi yutulmasi: `<def.tcolor_red>` gibi okumalarda son parca alininca paketin
+   kendi sabit tablosu "eksik property" gibi gorundu (1.236 aday). Ad-uzayina gore
+   filtrelenince 710'a dustu.
+2. Argumanli anahtarlar: `<SRC.FINDLAYER.layer_hair>` gibi okumalarda property ORTA
+   parca; son parcayi almak `FINDLAYER`i (uygulanmis) eksik gosterdi.
+
+Kalan liste hala paketin kendi sozlugu agirlikli. Bu ayak icin dogru arac motorda ZATEN
+var: `ExpressionParser.DebugUnresolved` + `DiagnosticLogger` (`.SCRIPTDEBUG`), yani
+CALISMA ZAMANI olcumu. Statik tarama tekrar denenmemeli.
+
 ### IS-15 - Verb uzun kuyrugu: paket tarafindan olcum (9 Eylul 2026)
 
 IS-8'deki trigger olcumunun verb karsiligi. Yontem ayni: PAKET tarafindan sor, motorun

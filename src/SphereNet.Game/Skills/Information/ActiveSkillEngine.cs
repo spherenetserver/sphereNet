@@ -993,30 +993,16 @@ public static class ActiveSkillEngine
             }
         }
 
-        var marker = FindFallbackMarker(world, target, "Mining");
-        if (marker != null && marker.Amount <= 0)
-        {
-            sink.SysMessage(ServerMessages.Get(Msg.Mining1));
-            return false;
-        }
-
-        bool success = SkillEngine.UseQuick(ch, SkillType.Mining, 50);
-        if (success)
-        {
-            int amount = sink.Random.Next(1, 3);
-            ConsumeFallbackMarker(world, target, "Mining", amount, ref marker);
-            var ore = world.CreateItem();
-            ore.BaseId = 0x19B9;
-            ore.Name = "iron ore";
-            ore.Amount = (ushort)amount;
-            sink.SysMessage("You dig some ore and put it in your backpack.");
-            sink.DeliverItem(ore);
-        }
-        else
-        {
-            sink.SysMessage(ServerMessages.Get(Msg.Mining3));
-        }
-        return success;
+        // Nothing defined here means there is nothing here, and that is the whole
+        // answer: upstream's resource setup returns nothing and the attempt just fails
+        // (CCharSkill.cpp:1456). SphereNet invented an economy instead - a hardcoded
+        // ore, fish or log, a marker pool of its own and its own difficulty - a
+        // resource table the reference does not have and no script could reach or
+        // change. Measured before removing: the live pack defines REGIONTYPE
+        // t_rock/t_water/t_tree with RESOURCES, so the gathering engine answers every
+        // one of these and this branch never ran with a real pack loaded.
+        sink.SysMessage(ServerMessages.Get(Msg.Mining3));
+        return false;
     }
 
     private static bool IsMinableTile(World.GameWorld world, Point3D target)
@@ -1182,29 +1168,16 @@ public static class ActiveSkillEngine
             }
         }
 
-        var marker = FindFallbackMarker(world, target, "Fishing");
-        if (marker != null && marker.Amount <= 0)
-        {
-            sink.SysMessage(ServerMessages.Get(Msg.Fishing1));
-            return false;
-        }
-
-        bool success = SkillEngine.UseQuick(ch, SkillType.Fishing, 40);
-        if (success)
-        {
-            ConsumeFallbackMarker(world, target, "Fishing", 1, ref marker);
-            var fish = world.CreateItem();
-            fish.BaseId = 0x09CC;
-            fish.Name = "fish";
-            fish.Amount = 1;
-            sink.SysMessage(ServerMessages.GetFormatted(Msg.FishingSuccess, fish.GetName()));
-            sink.DeliverItem(fish);
-        }
-        else
-        {
-            sink.SysMessage(ServerMessages.Get(Msg.Fishing3));
-        }
-        return success;
+        // Nothing defined here means there is nothing here, and that is the whole
+        // answer: upstream's resource setup returns nothing and the attempt just fails
+        // (CCharSkill.cpp:1456). SphereNet invented an economy instead - a hardcoded
+        // ore, fish or log, a marker pool of its own and its own difficulty - a
+        // resource table the reference does not have and no script could reach or
+        // change. Measured before removing: the live pack defines REGIONTYPE
+        // t_rock/t_water/t_tree with RESOURCES, so the gathering engine answers every
+        // one of these and this branch never ran with a real pack loaded.
+        sink.SysMessage(ServerMessages.Get(Msg.Fishing3));
+        return false;
     }
 
     // --------------------------------------------------------- Lumberjacking
@@ -1260,70 +1233,18 @@ public static class ActiveSkillEngine
             }
         }
 
-        var marker = FindFallbackMarker(world, target, "Lumberjacking");
-        if (marker != null && marker.Amount <= 0)
-        {
-            sink.SysMessage(ServerMessages.Get(Msg.Lumberjacking1));
-            return false;
-        }
-
-        bool success = SkillEngine.UseQuick(ch, SkillType.Lumberjacking, 50);
-        if (success)
-        {
-            int amount = sink.Random.Next(1, 5);
-            ConsumeFallbackMarker(world, target, "Lumberjacking", amount, ref marker);
-            var logs = world.CreateItem();
-            logs.BaseId = 0x1BDD;
-            logs.Name = "logs";
-            logs.Amount = (ushort)amount;
-            sink.SysMessage("You put some logs in your backpack.");
-            sink.DeliverItem(logs);
-        }
-        else
-        {
-            sink.SysMessage(ServerMessages.Get(Msg.Lumberjacking2));
-        }
-        return success;
+        // Nothing defined here means there is nothing here, and that is the whole
+        // answer: upstream's resource setup returns nothing and the attempt just fails
+        // (CCharSkill.cpp:1456). SphereNet invented an economy instead - a hardcoded
+        // ore, fish or log, a marker pool of its own and its own difficulty - a
+        // resource table the reference does not have and no script could reach or
+        // change. Measured before removing: the live pack defines REGIONTYPE
+        // t_rock/t_water/t_tree with RESOURCES, so the gathering engine answers every
+        // one of these and this branch never ran with a real pack loaded.
+        sink.SysMessage(ServerMessages.Get(Msg.Lumberjacking2));
+        return false;
     }
 
-    private static Item? FindFallbackMarker(World.GameWorld world, Point3D tile, string skillTag)
-    {
-        foreach (var item in world.GetItemsInRange(tile, 0))
-        {
-            if (item.BaseId != GatheringEngine.MarkerGraphic) continue;
-            if (!item.TryGetTag("RESOURCE_MARKER", out string? mk) || mk != "1") continue;
-            if (!item.TryGetTag("RES_SKILL", out string? st) || st != skillTag) continue;
-            if (item.X == tile.X && item.Y == tile.Y) return item;
-        }
-        return null;
-    }
-
-    private static void ConsumeFallbackMarker(World.GameWorld world, Point3D tile, string skillTag, int amount, ref Item? marker)
-    {
-        if (marker == null)
-        {
-            marker = world.CreateItem();
-            marker.BaseId = GatheringEngine.MarkerGraphic;
-            marker.Name = "worldgem bit";
-            marker.Amount = (ushort)FallbackResAmount;
-            marker.SetAttr(ObjAttributes.Invis | ObjAttributes.Move_Never);
-            marker.SetTag("RESOURCE_MARKER", "1");
-            marker.SetTag("RES_SKILL", skillTag);
-            marker.DecayTime = Environment.TickCount64 + FallbackRegenMs;
-            world.PlaceItem(marker, tile);
-        }
-
-        int remaining = marker.Amount - amount;
-        if (remaining <= 0)
-        {
-            marker.Amount = 0;
-            marker.DecayTime = Environment.TickCount64 + FallbackRegenMs;
-        }
-        else
-        {
-            marker.Amount = (ushort)remaining;
-        }
-    }
 
     private static void BroadcastAnimation(Character ch, SkillType skill, ushort animId, ushort soundId)
     {

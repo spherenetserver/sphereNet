@@ -14,7 +14,7 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-08 |
-| Son commit | `a0a00c8` + verb ölçümü |
+| Son commit | `ab045a6` + uydurma ekonomi temizliği |
 | Tam test | 3.360 başarılı / 0 başarısız |
 | Sıradaki iş | **Yeni inceleme dalgası ya da planın yeni maddesi** |
 
@@ -173,11 +173,24 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   tablolarına göre **gerçek verb sayısı iki**: `MESSAGE`/`MSG` (330 kullanım, bizde
   yalnız konsol komutuydu) ve `ADDCIRCLE` (9 kullanım). İkisi de bağlandı.
 
+- [x] **İŞ-16 — Uydurma-değer backlog'unun ölçülebilir kalanları** — **KAPANDI**
+  (1) Toplama fallback ekonomisi (gömülü cevher/balık/kütük + kendi marker havuzu)
+  silindi; backlog'un kendi koşulu ölçülerek doğrulandı — canlı paket t_rock/t_water/
+  t_tree'yi RESOURCES ile tanımlıyor, yani dal zaten ölüydü. (2) `ContainerMaxWeight`
+  400 → 0: referansta sandık/çanta için global tavan yok, sınır kabın kendi
+  MODMAXWEIGHT'i (varsayılan 0). **Banka sınırı referansta gerçek, dokunulmadı.**
+
+  **Sonuçsuz ölçüm (kayıtlı):** property OKUMA taraması. Statik yöntem bu ayakta
+  güvenilir aday üretmiyor (ad-uzayı ve argümanlı anahtar kusurları); doğru araç
+  motordaki `DebugUnresolved` ile çalışma zamanı ölçümü.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-16 KAPANDI** — 2026-09-09. İki uydurma ekonomi kaldırıldı (toplama fallback'i,
+  düz 400 kap tavanı). Tam suite 3.360.
 - **İŞ-15 KAPANDI** — 2026-09-09. MESSAGE/MSG nesne verb'i + ADDCIRCLE. Test:
   `ObjectMessageVerbTests` (5), `AddCircleVerbTests` (5). Tam suite 3.360.
 - **İŞ-14 KAPANDI** — 2026-09-09. SKILLUSEQUICK bağlandı. Test:

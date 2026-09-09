@@ -2925,6 +2925,36 @@ Kaynak: IS-2c turunda statik gozlem olarak kaydedilmisti.
 
 **Kapanis:** tam suite **3.291 basarili / 0 basarisiz** (+1).
 
+### IS-17 - Kabin kendi agirlik siniri (9 Eylul 2026)
+
+IS-16'nin tamamlayicisi. Duz 400 tavani kaldirinca siradan bir kabi sinirlayacak tek
+sey referansin kullandigi deger kaliyordu: kabin kendi `MODMAXWEIGHT`'i. Referansta bu
+ORTAK NESNE TABANINDA (`OC_MODMAXWEIGHT`, CObjBase.cpp:1104), yani hem karakter hem
+esya yanitlar; bizde yalnizca karakterde vardi.
+
+- [x] **CW-1** - `Item.ModMaxWeight` + `MODMAXWEIGHT` oku/yaz.
+- [x] **CW-2** - Kap agirlik kontrolu once kabin kendi degerine bakiyor; ini'deki genel
+  deger yalnizca kap sifir derse devreye giriyor (ikisi de sifir = sinir yok).
+- [x] **CW-3** - Kayda yaziliyor (yoksa restart'ta scriptin kurdugu her sandik
+  sinirsizlasirdi).
+
+Test: `ContainerWeightLimitTests` (4). Tam suite 3.364.
+
+### Property OKUMA olcumu - IKINCI deneme de sonucsuz
+
+IS-16'da "dogru arac calisma zamani olcumu" diye kaydedilmisti; denendi. `ExpressionParser`
+`DebugUnresolved`+`DiagnosticLogger` ile paketteki 1.158 farkli nesne-property okumasi
+motora cozduruldu. **Sonuc yine kullanilamaz:** en cok "cozulemedi" diyen basliklar
+`SRC` (287), `DLOCAL` (129), `DEF0` (81), `LINK`, `CTAG0`, `NEW`, `ACT`, `TOPOBJ` -
+hepsi bench'te BAGLAM olmadigi icin. Yani olcum motorun eksigini degil, kurulumun
+yoksullugunu olcuyor.
+
+**Sonuc:** bu ayak icin dogru olcum, ifadeleri tek tek cozdurmek DEGIL; gercek bir
+dunyada gercek trigger'lari calistirip (`SRC`, `ARGO`, dialog local'leri yerinde) o
+sirada cikan uyarilari toplamaktir - yani bir oyun-akisi kosum tezgahi. Bu, ayri ve
+buyuk bir is; iki kez denenip iki kez sonucsuz kaldigi buraya yazildi ki ucuncu kez
+statik/baglamsiz denenmesin.
+
 ### IS-16 - Uydurma-deger backlog'unun kalan iki olculebilir maddesi (9 Eylul 2026)
 
 `project_invented_values_audit_backlog` icindeki "KALAN/ERTELENEN" listesinden, kosulu

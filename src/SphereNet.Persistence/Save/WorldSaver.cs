@@ -733,6 +733,10 @@ public sealed class WorldSaver
             or SphereNet.Core.Enums.ItemType.Ship)
             w.WriteProperty("TYPE", ((ushort)item.ItemType).ToString());
 
+        // A container's own weight limit: it is the only thing bounding one, so losing
+        // it on a restart would quietly un-bound every chest a script had set up.
+        if (item.ModMaxWeight != 0)
+            w.WriteProperty("MODMAXWEIGHT", item.ModMaxWeight.ToString());
         if (item.More1 != 0) w.WriteProperty("MORE1", $"0{item.More1:X}");
         if (item.More2 != 0) w.WriteProperty("MORE2", $"0{item.More2:X}");
         if (item.MoreB != 0) w.WriteProperty("MOREB", $"0{item.MoreB:X}");

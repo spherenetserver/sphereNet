@@ -14,8 +14,8 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-08 |
-| Son commit | `ab045a6` + uydurma ekonomi temizliği |
-| Tam test | 3.360 başarılı / 0 başarısız |
+| Son commit | `4ef351c` + kap ağırlık sınırı |
+| Tam test | 3.364 başarılı / 0 başarısız |
 | Sıradaki iş | **Yeni inceleme dalgası ya da planın yeni maddesi** |
 
 ## Çalışma sırası
@@ -184,11 +184,20 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   güvenilir aday üretmiyor (ad-uzayı ve argümanlı anahtar kusurları); doğru araç
   motordaki `DebugUnresolved` ile çalışma zamanı ölçümü.
 
+- [x] **İŞ-17 — Kabın kendi ağırlık sınırı** — **KAPANDI**
+  `MODMAXWEIGHT` artık eşyada da çalışıyor (referansta ortak nesne tabanında) ve
+  kaydediliyor. Düz 400 tavanı kalktığına göre bir kabı sınırlayan tek şey bu.
+  **Property okuma ölçümü ikinci kez sonuçsuz:** çalışma zamanı denemesi motorun
+  eksiğini değil bench'in bağlamsızlığını ölçtü (SRC/DLOCAL/ACT...). Doğru yol gerçek
+  dünyada gerçek trigger koşturan bir akış tezgahı; ayrı ve büyük iş, kayıtlı.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-17 KAPANDI** — 2026-09-09. Kap MODMAXWEIGHT'i (oku/yaz/kaydet). Test:
+  `ContainerWeightLimitTests` (4). Tam suite 3.364.
 - **İŞ-16 KAPANDI** — 2026-09-09. İki uydurma ekonomi kaldırıldı (toplama fallback'i,
   düz 400 kap tavanı). Tam suite 3.360.
 - **İŞ-15 KAPANDI** — 2026-09-09. MESSAGE/MSG nesne verb'i + ADDCIRCLE. Test:

@@ -3,6 +3,22 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-09] - Bir kap, ne kadar tasidigini kendi soyleyebiliyor
+----------------------------------------
+
+FIX - MODMAXWEIGHT artik yalniz karakterde degil, esyada da calisiyor. Referans onu
+        ortak nesne tabaninda tutar (CObjBase.cpp:1104); yani bir sandik da bunu tipki
+        bir karakter gibi yanitlar ve siradan bir kap icin agirlik kuralinin TAMAMI
+        budur - deger pozitif olmadikca kontrol atlanir (CItemContainer.cpp:906).
+        Bizde yalnizca karakterde vardi, yani bir script sandigin ne kadar tasidigini
+        soyleyebiliyor ama kimse dinlemiyordu. Artik okunuyor, yaziliyor ve
+        kaydediliyor; yeniden baslatmada kaybolmasi, scriptin kurdugu her sandigi
+        sessizce sinirsiz birakirdi.
+
+        Bu, ayni gun kaldirilan uydurma 400 taslik duz tavanin tamamlayicisi: global
+        sinir kalmadigina gore kabi sinirlayan sey kendi degeri; ayardaki deger yalnizca
+        kap bir sey soylemediginde bakiliyor.
+
 [2026-09-09] - Iki uydurma ekonomi kaldirildi
 ----------------------------------------
 

@@ -471,6 +471,18 @@ public class Item : ObjBase
         return name;
     }
 
+    /// <summary>How much this container will hold, in stones; 0 means no limit of its
+    /// own.
+    ///
+    /// The reference keeps MODMAXWEIGHT on the shared object base (OC_MODMAXWEIGHT,
+    /// CObjBase.cpp:1104), so a chest answers it exactly as a character does, and a
+    /// container's whole weight rule is this one value: the check is skipped while it
+    /// is not positive (CItemContainer.cpp:906). SphereNet had it on characters only,
+    /// which left containers with no way to be bounded at all once the invented flat
+    /// cap was removed - a script could say how much a chest holds and nothing
+    /// listened.</summary>
+    public int ModMaxWeight { get; set; }
+
     /// <summary>The sound this item makes when it lands, and the one it makes when it
     /// is worn.
     ///
@@ -1445,6 +1457,7 @@ public class Item : ObjBase
             case "SLAYER_SPECIES": value = TryGetTag("SLAYER_SPECIES", out var slyS) ? slyS ?? "0" : "0"; return true;
 
             // Faz 1: Core fields
+            case "MODMAXWEIGHT": value = ModMaxWeight.ToString(); return true;
             case "MORE1": case "MORE": value = FormatMore1(); return true;
             case "MORE2": value = $"0{_more2:X}"; return true;
             case "MOREB": value = $"0{_moreB:X}"; return true;
@@ -2088,6 +2101,10 @@ public class Item : ObjBase
             case "SLAYER_SPECIES": SetTag("SLAYER_SPECIES", value.Trim()); return true;
 
             // Faz 1: Core fields
+            case "MODMAXWEIGHT":
+                if (SphereNet.Core.Types.ScriptNumber.TryParseToken(value, out long mmw))
+                    ModMaxWeight = (int)Math.Clamp(mmw, int.MinValue, int.MaxValue);
+                return true;
             case "MORE1": case "MORE":
             {
                 uint v = ParseHexOrDecUInt(value);

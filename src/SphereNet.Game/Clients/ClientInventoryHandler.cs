@@ -1183,7 +1183,13 @@ public sealed class ClientInventoryHandler
                         _netState.Send(new PacketDropReject());
                         return;
                     }
-                    int weightLimit = isBank ? _world.MaxBankWeight : _world.MaxContainerWeight;
+                    // A container's own MODMAXWEIGHT is its limit, and the reference
+                    // has no other for an ordinary chest (CItemContainer.cpp:906). The
+                    // configured value is a shard's optional global, consulted only when
+                    // the container says nothing; zero from both means no limit.
+                    int weightLimit = isBank
+                        ? _world.MaxBankWeight
+                        : container.ModMaxWeight > 0 ? container.ModMaxWeight : _world.MaxContainerWeight;
                     // A player's OWN pack is not bounded by the flat container cap:
                     // upstream lets it hold what its owner can carry plus
                     // BACKPACKOVERLOAD (CItemContainer.cpp:907), so a strong character

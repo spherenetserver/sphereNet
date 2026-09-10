@@ -284,6 +284,24 @@ public class Item : ObjBase
     /// misbehave. <see cref="Diagnostics.WorldInvariantAuditor"/> checks it.</summary>
     internal ItemType RawType => _type;
 
+    /// <summary>The type this item's ITEMDEF declares, or <see cref="ItemType.Normal"/>
+    /// when no definition resolves. Source-X compares the instance type against this
+    /// to decide whether the type is instance state (CItem::r_Write, CItem.cpp:2461).
+    /// </summary>
+    public ItemType DefinitionType => ResolveDefinition()?.Type ?? ItemType.Normal;
+
+    /// <summary>True when this item carries a type of its OWN - one the engine or a
+    /// script gave it that its definition does not declare. That is exactly what
+    /// Source-X persists a <c>TYPE=</c> line for; a type that merely repeats the
+    /// definition's is recovered on load by <see cref="MaterializeDefinitionType"/>
+    /// and would cost a save line for nothing.
+    ///
+    /// The RAW field is deliberate: the <see cref="ItemType"/> getter also falls back
+    /// to the door-graphic guess, which is derived from tiledata on both sides of a
+    /// save and is not instance state.</summary>
+    public bool HasInstanceType => _type != ItemType.Normal && _type != DefinitionType;
+
+
     /// <summary>Copy the resolved ITEMDEF's TYPE and TDATA onto the instance when
     /// they are still at their defaults. Script-created items get these via
     /// ItemDefHelper.ApplyInstanceMetadata, but a legacy save stores neither TYPE

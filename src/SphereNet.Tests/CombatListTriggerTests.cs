@@ -37,7 +37,7 @@ public class CombatListTriggerTests
         var attacker = MakeChar(world, 101);
 
         var added = new List<uint>();
-        Character.OnCombatAdd = (self, uid) => { if (self == defender) added.Add(uid.Value); };
+        Character.OnCombatAdd = (self, uid, _) => { if (self == defender) added.Add(uid.Value); return true; };
 
         defender.RecordAttack(attacker.Uid, 10);
         defender.RecordAttack(attacker.Uid, 5); // same attacker again -> no new add

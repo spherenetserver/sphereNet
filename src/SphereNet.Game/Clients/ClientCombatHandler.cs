@@ -753,15 +753,16 @@ public sealed class ClientCombatHandler
             return;
         }
 
-        if (_triggerDispatcher != null && _character.FightTarget != target.Uid)
+        // Source-X Fight_Attack's engagement contract (CCharFight.cpp:1422-1450):
+        // @Attack carries the threat and the ignore flag and reads both back, then
+        // the target goes onto MY OWN attacker list with the threat that survived.
+        // Firing the trigger with no arguments and no list write meant a script
+        // could veto the attack but never weight it, and the engagement left no
+        // trace on the list an NPC picks its next target from.
+        if (!_character.CombatState.BeginFightWith(target, toldByMaster: false))
         {
-            var attackResult = _triggerDispatcher.FireCharTrigger(_character, CharTrigger.Attack,
-                new TriggerArgs { CharSrc = target, O1 = target });
-            if (attackResult == TriggerResult.True)
-            {
-                Send(new PacketAttackResponse(0));
-                return;
-            }
+            Send(new PacketAttackResponse(0));
+            return;
         }
 
         // A cancelled combat start is only intent: do not mutate ownership,

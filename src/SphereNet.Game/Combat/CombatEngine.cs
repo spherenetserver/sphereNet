@@ -1389,7 +1389,7 @@ public static class CombatEngine
     /// Maps to CItem::Weapon_GetSkill in Source-X.
     /// </summary>
     /// <summary>True for ranged weapon skills (Source-X SKF_RANGED).</summary>
-    private static bool IsRangedSkill(SkillType skill) =>
+    internal static bool IsRangedSkill(SkillType skill) =>
         skill is SkillType.Archery or SkillType.Throwing;
 
     private static bool IsWeaponSkill(SkillType skill) =>

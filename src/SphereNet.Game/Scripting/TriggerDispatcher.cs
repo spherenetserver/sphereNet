@@ -31,6 +31,13 @@ public sealed class TriggerArgs
     /// the @SpellEffectTick LOCAL.EFFECT/DELAY/CHARGES contract.</summary>
     public SphereNet.Scripting.Variables.VarMap? Locals { get; set; }
 
+    /// <summary>REF1..REFn the engine hands the script (Source-X
+    /// CScriptTriggerArgs.m_VarObjs), keyed by ref index. Set it when a trigger's
+    /// argument is a LIST of objects and ARGN can only carry its length -
+    /// @TradeAccepted names each offered item this way. Shared with every block in
+    /// the chain, so a script's own REF writes are visible afterwards.</summary>
+    public Dictionary<int, string>? Refs { get; set; }
+
     // Convenience typed references
     public Character? CharSrc { get; set; }
     public Item? ItemSrc { get; set; }
@@ -969,6 +976,7 @@ public sealed class TriggerDispatcher
         // Reference, not copy: every chain step's wrapped args share the one
         // LOCAL pool, so cross-step and engine readback semantics hold.
         wrapped.SharedLocals = args.Locals;
+        wrapped.SharedRefs = args.Refs;
         return wrapped;
     }
 

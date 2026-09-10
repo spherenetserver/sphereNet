@@ -481,10 +481,12 @@ public class GameSystemTests
     }
 
     [Fact]
-    public void Npc_ThreatBonus_FavorsHeaviestAttacker()
+    public void Npc_Threat_IsAStoredValue_NotDamageDealt()
     {
-        // Threat targeting: a target that has dealt more damage to the NPC yields
-        // a higher (bounded) bonus, so the NPC sticks to its biggest threat.
+        // Threat is a number a script (or a master's order) writes, not something
+        // the engine derives from damage taken: the reference stores it on the
+        // attacker row and never computes it (CCharAttacker.cpp:202). Damage alone
+        // therefore leaves it at zero, and the write only sticks on an NPC.
         var world = CreateWorld();
         var npc = world.CreateCharacter();
         var heavy = world.CreateCharacter();
@@ -493,11 +495,21 @@ public class GameSystemTests
         npc.RecordAttack(heavy.Uid, 100);
         npc.RecordAttack(light.Uid, 10);
 
-        Assert.Equal(50, SphereNet.Game.AI.NpcAI.GetThreatBonus(npc, heavy)); // 100/2
-        Assert.Equal(5, SphereNet.Game.AI.NpcAI.GetThreatBonus(npc, light));  // 10/2
-        Assert.True(SphereNet.Game.AI.NpcAI.GetThreatBonus(npc, heavy)
-                  > SphereNet.Game.AI.NpcAI.GetThreatBonus(npc, light));
-        Assert.Equal(0, SphereNet.Game.AI.NpcAI.GetThreatBonus(npc, npc)); // no record
+        Assert.Equal(0, npc.CombatState.GetAttackerThreat(0));
+        Assert.Equal(0, npc.CombatState.GetAttackerThreat(1));
+
+        Assert.True(npc.CombatState.SetAttackerThreat(1, 250));
+        Assert.Equal(250, npc.CombatState.GetAttackerThreat(1));
+        Assert.Equal(250, npc.CombatState.HighestThreat());
+
+        // Off the end of the list reports -1, the way the reference does.
+        Assert.Equal(-1, npc.CombatState.GetAttackerThreat(9));
+
+        var player = world.CreateCharacter();
+        player.IsPlayer = true;
+        player.RecordAttack(heavy.Uid, 5);
+        Assert.False(player.CombatState.SetAttackerThreat(0, 500));
+        Assert.Equal(0, player.CombatState.GetAttackerThreat(0));
     }
 
     [Fact]

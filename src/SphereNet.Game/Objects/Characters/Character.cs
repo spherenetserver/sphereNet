@@ -500,6 +500,13 @@ public partial class Character : ObjBase
     private CharacterPoisonState? _poison;
     private long _nextFieldTick;  // next time standing-in-field damage is applied
 
+    /// <summary><c>ATTACKER.ADD &lt;uid&gt;</c>: upstream runs the write through
+    /// Fight_Attack (CChar.cpp:3764), so the script verb starts a real engagement
+    /// - war mode, @Attack, the attacker log - rather than pushing a bare row onto
+    /// the list. The engagement path lives on the client handler, so the object
+    /// reaches it through this hook.</summary>
+    public static Action<Character, Character>? OnScriptAttackerAdd;
+
     /// <summary>Fired when an attacker flagged ATTACKER.n.IGNORE=1 lands a
     /// hit (Source-X @HitIgnore). Args: victim, attacker uid. Return true to
     /// clear the ignore flag (the script un-ignored the attacker).</summary>
@@ -688,9 +695,17 @@ public partial class Character : ObjBase
     /// Returns the recorded count + whether to arm the criminal flag.</summary>
     public static Func<Character, Character, int, MurderMarkDecision>? OnMurderMark { get; set; }
 
-    /// <summary>Fired when a new attacker first enters this character's combat
-    /// (attacker) list (Source-X @CombatAdd). Arg: attacker UID.</summary>
-    public static Action<Character, Serial>? OnCombatAdd { get; set; }
+    /// <summary>Fired when a character first enters this one's combat
+    /// (attacker) list (Source-X @CombatAdd, CCharAttacker.cpp:40). ARGN1 is the
+    /// threat the engine worked out and ARGN2 the ignore flag; the script may
+    /// rewrite BOTH, and RETURN 1 (a false result here) cancels the add outright.
+    /// Passing neither meant a script could see the event but not steer it.</summary>
+    public static Func<Character, Serial, CombatAddContext, bool>? OnCombatAdd { get; set; }
+
+    /// <summary>@Attack (Source-X CCharFight.cpp:1430): fired when this character
+    /// turns on a NEW target. ARGN1 = threat, ARGN2 = ignore, both read back;
+    /// a false result is the trigger's RETURN 1 and stops the engagement.</summary>
+    public static Func<Character, Character, AttackTriggerContext, bool>? OnAttackTrigger { get; set; }
 
     /// <summary>Fired when an attacker is removed from the combat list
     /// (Source-X @CombatDelete). Arg: removed attacker UID.</summary>
@@ -3674,33 +3689,45 @@ public partial class Character : ObjBase
             return true;
         }
 
-        // ATTACKER.LAST / ATTACKER.MAX / ATTACKER.n.{DAM|ELAPSED|UID}
+        // ATTACKER.<selector>[.<field>] - Source-X CChar::r_WriteVal CHC_ATTACKER
+        // (CChar.cpp:2414). The SELECTOR resolves an index (a number, MAX = most
+        // damage, LAST = most recent hit) and the field is read off that entry; with
+        // no field the entry answers with its UID (:2498, where an empty key falls
+        // into the UID branch). Reading MAX and LAST as uid-only meant the live
+        // pack's own player-info dialog could not ask for <ATTACKER.MAX.DAM> at all.
         if (upper.StartsWith("ATTACKER.", StringComparison.Ordinal))
         {
-            string tail = upper.Substring("ATTACKER.".Length);
-            if (tail == "LAST")
+            string tail = upper.Substring("ATTACKER.".Length).Trim();
+
+            // ATTACKER.ID <uid> - which slot that character holds, -1 when none.
+            if (tail.StartsWith("ID", StringComparison.Ordinal) &&
+                (tail.Length == 2 || tail[2] == ' ' || tail[2] == '\t'))
             {
-                value = CombatState.Attackers.Count > 0
-                    ? "0x" + CombatState.Attackers[^1].Uid.Value.ToString("X")
-                    : "0";
+                uint idUid = ParseHexOrDecUInt(tail[2..].Trim());
+                value = idUid != 0
+                    ? CombatState.IndexOfAttacker(new Serial(idUid)).ToString()
+                    : "-1";
                 return true;
             }
-            if (tail == "MAX")
+
+            // ATTACKER.TARGET - who I am fighting, -1 when nobody.
+            if (tail == "TARGET")
             {
-                if (CombatState.Attackers.Count == 0) { value = "0"; return true; }
-                int bestIdx = 0;
-                for (int i = 1; i < CombatState.Attackers.Count; i++)
-                    if (CombatState.Attackers[i].TotalDamage > CombatState.Attackers[bestIdx].TotalDamage)
-                        bestIdx = i;
-                value = "0x" + CombatState.Attackers[bestIdx].Uid.Value.ToString("X");
+                value = FightTarget.IsValid ? "0x" + FightTarget.Value.ToString("X") : "-1";
                 return true;
             }
-            // ATTACKER.n.{DAM|ELAPSED|UID}
+
             int dot = tail.IndexOf('.');
-            if (dot > 0 && int.TryParse(tail.AsSpan(0, dot), out int idx)
-                && idx >= 0 && idx < CombatState.Attackers.Count)
+            string selector = dot > 0 ? tail[..dot] : tail;
+            string sub = dot > 0 ? tail[(dot + 1)..] : "";
+            int idx = selector switch
             {
-                string sub = tail.Substring(dot + 1);
+                "MAX" => CombatState.MaxDamageAttackerIndex(),
+                "LAST" => CombatState.LastAttackerIndex(),
+                _ => int.TryParse(selector, out int n) ? n : -1,
+            };
+            if (idx >= 0 && idx < CombatState.Attackers.Count)
+            {
                 var rec = CombatState.Attackers[idx];
                 switch (sub)
                 {
@@ -3711,13 +3738,23 @@ public partial class Character : ObjBase
                         // Seconds since last hit from this attacker
                         value = Math.Max(0L, (Environment.TickCount64 - rec.LastHitTick) / 1000L).ToString();
                         return true;
-                    case "UID":
-                        value = "0x" + rec.Uid.Value.ToString("X");
+                    case "THREAT":
+                        value = CombatState.GetAttackerThreat(idx).ToString();
                         return true;
                     case "IGNORE":
                         value = rec.Ignored ? "1" : "0";
                         return true;
+                    case "":
+                    case "UID":
+                        value = "0x" + rec.Uid.Value.ToString("X");
+                        return true;
                 }
+            }
+            else if (sub.Length == 0 && selector is "MAX" or "LAST")
+            {
+                // Nobody has hit me yet - the selector still answers.
+                value = "0";
+                return true;
             }
         }
 
@@ -4273,19 +4310,79 @@ public partial class Character : ObjBase
             return false;
         }
 
-        // ATTACKER.n.IGNORE=0/1 — script-controlled ignore flag on an
-        // attacker-log entry; a later hit from an ignored attacker fires
-        // @HitIgnore (Source-X parity).
+        // ATTACKER.* writes — Source-X CChar::r_LoadVal CHC_ATTACKER
+        // (CChar.cpp:3733). Whole-list verbs first (CLEAR / DELETE / ADD / TARGET),
+        // then the per-entry fields. Only IGNORE existed here, so a pack that clears
+        // its attacker log between rounds — the live pack does, in
+        // sphere_functions.scp — was writing into nothing.
         if (key.StartsWith("ATTACKER.", StringComparison.OrdinalIgnoreCase))
         {
-            string atail = key["ATTACKER.".Length..].ToUpperInvariant();
-            int adot = atail.IndexOf('.');
-            if (adot > 0 && atail[(adot + 1)..] == "IGNORE"
-                && int.TryParse(atail.AsSpan(0, adot), out int aidx)
-                && aidx >= 0 && aidx < CombatState.Attackers.Count)
+            string atail = key["ATTACKER.".Length..].Trim().ToUpperInvariant();
+
+            if (atail == "CLEAR")
             {
-                SetAttackerIgnored(CombatState.Attackers[aidx].Uid, normalized != "0");
+                ClearAttackers();
                 return true;
+            }
+            if (atail == "ADD")
+            {
+                // Start a fight with that character: upstream routes it through
+                // Fight_Attack, so the whole engagement contract runs rather than a
+                // bare list insert.
+                uint addUid = ParseHexOrDecUInt(normalized);
+                if (addUid != 0 &&
+                    ResolveWorld?.Invoke()?.FindChar(new Serial(addUid)) is { } addTarg &&
+                    addTarg != this && OnScriptAttackerAdd != null)
+                {
+                    OnScriptAttackerAdd(this, addTarg);
+                    return true;
+                }
+                return false;
+            }
+            if (atail == "TARGET")
+            {
+                // Cannot point at myself; upstream clears the target and reports
+                // failure in that case (CChar.cpp:3770).
+                uint tgtUid = ParseHexOrDecUInt(normalized);
+                if (tgtUid != 0 &&
+                    ResolveWorld?.Invoke()?.FindChar(new Serial(tgtUid)) is { } tgtChar &&
+                    tgtChar != this)
+                {
+                    FightTarget = tgtChar.Uid;
+                    return true;
+                }
+                FightTarget = Serial.Invalid;
+                return false;
+            }
+            if (atail == "DELETE")
+            {
+                // ATTACKER.DELETE takes the attacker's UID, not its slot.
+                uint delUid = ParseHexOrDecUInt(normalized);
+                return delUid != 0 &&
+                    CombatState.RemoveAttacker(CombatState.IndexOfAttacker(new Serial(delUid)));
+            }
+
+            int adot = atail.IndexOf('.');
+            if (adot > 0 && int.TryParse(atail.AsSpan(0, adot), out int aidx))
+            {
+                string asub = atail[(adot + 1)..];
+                switch (asub)
+                {
+                    case "IGNORE":
+                        return aidx >= 0 && aidx < CombatState.Attackers.Count &&
+                               SetAttackerIgnored(CombatState.Attackers[aidx].Uid, normalized != "0");
+                    case "THREAT":
+                        return int.TryParse(normalized, out int athreat) &&
+                               CombatState.SetAttackerThreat(aidx, athreat);
+                    case "DAM":
+                        return int.TryParse(normalized, out int adam) &&
+                               CombatState.SetAttackerDamage(aidx, adam);
+                    case "ELAPSED":
+                        return long.TryParse(normalized, out long aelapsed) &&
+                               CombatState.SetAttackerElapsed(aidx, aelapsed);
+                    case "DELETE":
+                        return CombatState.RemoveAttacker(aidx);
+                }
             }
             return false;
         }

@@ -373,15 +373,20 @@ public sealed class DeathEngine
         }
     }
 
-    /// <summary>The final-blow killer first, then every logged attacker, each
-    /// resolved to its effective offender (a pet's hits credit its master).
-    /// Ignored attackers (ATTACKER.n.IGNORE) are skipped.</summary>
+    /// <summary>The final-blow killer first, then every logged attacker that
+    /// actually DEALT DAMAGE, each resolved to its effective offender (a pet's hits
+    /// credit its master). Ignored attackers (ATTACKER.n.IGNORE) are skipped.
+    ///
+    /// The damage gate is the reference's (CCharAct.cpp:4361 credits a row only
+    /// while <c>amountDone &gt; 0</c>) and it is load-bearing now that the list also
+    /// holds characters this one merely ENGAGED: without it, swinging once and
+    /// missing would earn a share of the kill.</summary>
     private IEnumerable<Character> EnumerateOffenders(Character victim, Character effectiveKiller)
     {
         yield return effectiveKiller;
         foreach (var rec in victim.Attackers)
         {
-            if (rec.Ignored) continue;
+            if (rec.Ignored || rec.TotalDamage <= 0) continue;
             var attacker = _world.FindChar(rec.Uid);
             if (attacker == null || attacker.IsDeleted) continue;
             if (attacker.NpcMaster.IsValid)

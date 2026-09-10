@@ -35,6 +35,13 @@ public sealed class TriggerArgs : ITriggerArgs
     /// locals (Source-X function-call semantics).</summary>
     public Variables.VarMap? SharedLocals { get; set; }
 
+    /// <summary>Shared REF1..REFn object references for the whole trigger chain
+    /// (Source-X CScriptTriggerArgs.m_VarObjs). Values are UID strings, the shape
+    /// <c>REFn=</c> stores. A trigger that hands the script a LIST of objects passes
+    /// it here - @TradeAccepted's offered goods, which the reference pack walks as
+    /// <c>for &lt;ARGN1&gt; ... &lt;REF&lt;dLOCAL._FOR&gt;&gt;</c>.</summary>
+    public Dictionary<int, string>? SharedRefs { get; set; }
+
     /// <summary>CALL semantics: the callee runs on the CALLER'S LOCAL pool.
     ///
     /// In Source-X the LOCAL pool lives on the args object (m_VarsLocal), so which

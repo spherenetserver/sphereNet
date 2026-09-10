@@ -42,10 +42,17 @@ public sealed class TriggerRunner
     /// the chain uses it, so engine-seeded values are visible to the script
     /// and script writes are visible back to the engine. Function calls are
     /// NOT routed through here — they keep their own locals.</summary>
-    private static ScriptScope CreateTriggerScope(string triggerName, ITriggerArgs? args) =>
-        args is TriggerArgs { SharedLocals: not null } ta
+    private static ScriptScope CreateTriggerScope(string triggerName, ITriggerArgs? args)
+    {
+        var scope = args is TriggerArgs { SharedLocals: not null } ta
             ? new ScriptScope { TriggerName = triggerName, LocalVars = ta.SharedLocals }
             : new ScriptScope { TriggerName = triggerName };
+        // REF1..REFn ride on the args the same way (Source-X m_VarObjs), so a seeded
+        // list survives the whole chain and a script's own REF writes reach the engine.
+        if (args is TriggerArgs { SharedRefs: not null } refArgs)
+            scope.RefMap = refArgs.SharedRefs;
+        return scope;
+    }
 
     /// <summary>
     /// Execute a trigger on a ResourceLink, reading its script on demand.

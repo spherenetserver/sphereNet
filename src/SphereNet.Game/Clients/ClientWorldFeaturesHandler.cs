@@ -1000,15 +1000,37 @@ public sealed class ClientWorldFeaturesHandler
         Character other, Item? offeredItem = null)
     {
         bool accepted = trigger == CharTrigger.TradeAccepted;
+        // ARGN1 is the count of what THIS side receives and ARGN2 of what it gives;
+        // both are the length of the list Source-X builds, so they are counted off
+        // the same walk that names the refs.
+        var incoming = accepted ? BuildOfferedRefs(trade.GetPartnerContainer(target)) : null;
+        int outgoing = accepted ? BuildOfferedRefs(trade.GetOwnContainer(target)).Count : 0;
         return _triggerDispatcher?.FireCharTrigger(target, trigger, new TriggerArgs
         {
             CharSrc = other,
             O1 = (Core.Interfaces.IScriptObj?)offeredItem ?? other,
-            N1 = accepted
-                ? trade.GetPartnerContainer(target).Contents.Count
-                : (int)trade.SessionId.Value,
-            N2 = accepted ? trade.GetOwnContainer(target).Contents.Count : 0
+            N1 = accepted ? incoming!.Count : (int)trade.SessionId.Value,
+            N2 = outgoing,
+            Refs = incoming
         }) ?? TriggerResult.Default;
+    }
+
+    /// <summary>Name each item this side is about to RECEIVE as REF1..REFn, the way
+    /// Source-X fills the trigger args' object list (CItemContainer::Trade_Status,
+    /// CItemContainer.cpp:196 - m_VarObjs.Insert(i, pItem)). ARGN1 is only the count;
+    /// without the list a script cannot tell WHAT it is being handed, which is how the
+    /// reference pack's house transfer reads the deed out of an accepted trade
+    /// (`for &lt;ARGN1&gt; ... &lt;REF&lt;dLOCAL._FOR&gt;.TYPE&gt;`).</summary>
+    private static Dictionary<int, string> BuildOfferedRefs(Item container)
+    {
+        var refs = new Dictionary<int, string>();
+        int index = 1;
+        foreach (var item in container.Contents)
+        {
+            if (item.IsDeleted) continue;
+            refs[index++] = $"0{item.Uid.Value:X}";
+        }
+        return refs;
     }
 
 

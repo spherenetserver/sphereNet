@@ -3,6 +3,79 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-10] - Bir NPC siradaki kime doner
+----------------------------------------
+
+FIX - ATTACKER.* script yuzeyi, bir paketin gercekten sordugu seye cevap veriyor.
+        Enum'dan degil CANLI PAKETTEN olculdu: paketin kendi oyuncu-bilgi dialogu
+        <ATTACKER.0>, <ATTACKER.LAST.DAM> ve <ATTACKER.MAX.DAM> okuyor, bir
+        fonksiyonu da ATTACKER.CLEAR yaziyor. Dordu de cozulmuyordu - motor LAST ve
+        MAX'i yalnizca ciplak uid olarak yanitliyor, ciplak indeksi reddediyor ve
+        yazma tarafinda sadece n.IGNORE kabul ediyordu. Referans once bir SECICIYI
+        satira cozer, sonra o satirda bir alan okur ya da yazar; artik burada da
+        oyle: ID, TARGET, MAX, LAST, sayi; DAM, ELAPSED, THREAT, IGNORE, UID; ve
+        CLEAR / DELETE / ADD / TARGET verb'leri.
+
+FIX - Saldirgan listesi sirasini koruyor. Darbe alan satir, ATTACKER.LAST onu
+        gostersin diye sona tasiniyordu; bu, altindaki her satiri yeniden
+        numaralandiriyordu - oysa ATTACKER.n, scriptin iki satir arasinda tuttugu
+        tutamagin ta kendisi. Referans yalnizca sona ekler; LAST son-darbe
+        damgasindan cozulur.
+
+FIX - NPC siradaki rakibini kendi saldirgan listesinden seciyor. Referansta liste
+        IKI YONLU yazilir - bir hedefe saldirmak, o hedef henuz karsilik vermeden
+        onu listeye yazar - yani mevcut hedef dustugunde kavganin geri kalani zaten
+        kayitlidir. Bu motor listeyi yalnizca ALINAN hasardan dolduruyor ve bunun
+        yerine tum gorus menzilini bastan tariyordu; uc saldirgandan birini yeni
+        oldurmus bir yaratigin diger ikisinin ortasinda oylece durmasinin sebebi
+        buydu.
+
+FIX - THREAT gercek bir saklanan deger; uydurma olan kaldirildi. O listeden hangi
+        hedefin cikacagini belirler (NPC_AI_THREAT ile en yuksek tehdit, yoksa en
+        yakin) ve sahibin emri de bunun uzerine biner: saldir emri alan bir evcil,
+        listesindeki en yuksek tehdidin uzerine 1000 tasir, yani emri hicbir sey
+        gecemez. Yerinde duran sey, motivasyon puanina karistirilan hasar-turevi bir
+        bonustu - referansta olmayan ve hicbir scriptin ulasamadigi bir formul.
+        Tehdit, saldirgan satiriyla birlikte kaydediliyor.
+
+FIX - @Attack ve @CombatAdd tehdidi (ARGN1) ve yoksayma bayragini (ARGN2) tasiyor
+        ve ikisini de geri okuyor; RETURN 1 catismayi ya da ekleme islemini
+        durduruyor. @Attack daha once hicbir argumansiz atesleniyordu, yani script
+        bir kavgayi reddedebiliyor ama agirliklandiramiyordu.
+
+FIX - Oldurme kredisi hasar istiyor. Referans bir saldirgan satirini yalnizca hasar
+        verdigi surece kredilendirir (CCharAct.cpp:4361); bu kapi olmadan, liste
+        artik yalnizca catismaya giren karakterleri de tuttuguna gore, bir kez
+        savurup isabet ettirememek bile oldurmeden pay alirdi.
+
+
+[2026-09-10] - Yeniden baslatma, yolda olan mala ne yapiyor
+----------------------------------------
+
+FIX - Bir esyanin KENDI turu artik kaydi asiyor. Referans, TYPE satirini nesnenin turu
+        tanimininkinden farkli oldugu her durumda yazar (CItem.cpp:2461); bizde yalniz
+        uc yapi turu icin yaziliyordu, yani diger her tur degisikligi - scriptin
+        TYPE=t_door'u, motorun kurdugu tur - bir sonraki acilista ITEMDEF ne diyorsa
+        ona donuyordu. 76.359 esyalik gercek shard dokumunde olculdu: 2.383 esya kendi
+        turunu tasiyor ve bunlar tam olarak kaydinda zaten TYPE satiri olanlar, yani
+        kayit buyumuyor.
+
+FIX - Iki oyuncunun takas penceresi acikken alinan bir kayit artik icindekini yemiyor.
+        Takas penceresi yalniz canli istemcisi olan bir oyuncuda var olabilir; yani bir
+        kayittaki her pencere, surecle birlikte olen bir oturuma aittir. Referans,
+        yuklemede icindekileri sahibinin cantasina geri birakir ve pencereyi siler
+        (FixWeirdness, CItem.cpp:1005). Bu olmadan teklif edilen mal, hicbir envanter
+        goruntusunun ulasamadigi Special katmanindaki bir kabin icinde kapali
+        donuyordu - dunyada var, oyuncu icin yok.
+
+FIX - @TradeAccepted artik yalniz kac tane oldugunu degil, malin kendisini de soyluyor.
+        Referans, tetikleyicinin nesne listesini alan tarafin alacagi esyalarla doldurur
+        (CItemContainer.cpp:196) ve scriptler bunlari REF1..REFn olarak okur; bizde
+        yalnizca ARGN1'deki sayi geciyordu. Referansa gore yazilmis bir script el
+        degistiren seyin ne oldugunu goremiyordu - housing paketinin devir kodu tapuyu
+        bu listede arar, yani takas edilen ev hic el degistirmiyordu. REF1..REFn butun
+        tetikleyici zinciriyle paylasiliyor; scriptin kendi REF yazimlari da yasiyor.
+
 [2026-09-09] - Bir kap, ne kadar tasidigini kendi soyleyebiliyor
 ----------------------------------------
 

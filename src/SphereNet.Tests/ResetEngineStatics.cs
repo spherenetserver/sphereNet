@@ -95,6 +95,8 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Objects.Characters.CrimeWitnessService.OnCrimeNoticed = null;
         SphereNet.Game.Objects.Characters.CrimeWitnessService.SnoopCriminalChance = 100;
         SphereNet.Game.Objects.Characters.Character.OnCombatAdd = null;
+        SphereNet.Game.Objects.Characters.Character.OnAttackTrigger = null;
+        SphereNet.Game.Objects.Characters.Character.OnScriptAttackerAdd = null;
         SphereNet.Game.Objects.Characters.Character.OnCombatDelete = null;
         SphereNet.Game.Objects.Characters.Character.OnCombatEnd = null;
         SphereNet.Game.Objects.Characters.Character.OnMurderDecay = null;

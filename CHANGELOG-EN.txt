@@ -4,6 +4,77 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-10] - Who an NPC turns on next
+----------------------------------------
+
+FIX - The ATTACKER.* script surface answers what a pack actually asks it. Measured
+        against the live pack rather than the enum: its own player-info dialog reads
+        <ATTACKER.0>, <ATTACKER.LAST.DAM> and <ATTACKER.MAX.DAM>, and one of its
+        functions writes ATTACKER.CLEAR. None of the four resolved - the engine
+        answered LAST and MAX as bare uids with no field after them, refused a bare
+        index, and accepted only n.IGNORE on the way in. The reference resolves a
+        SELECTOR to a row and then reads or writes a field on it, and now so does
+        this: ID, TARGET, MAX, LAST, a number; DAM, ELAPSED, THREAT, IGNORE, UID;
+        and the CLEAR / DELETE / ADD / TARGET verbs.
+
+FIX - The attacker list keeps its order. An entry that took a hit was moved to the
+        end so ATTACKER.LAST would point at it, which renumbered every row under it
+        - and ATTACKER.n is the handle a script holds between two lines. The
+        reference only ever appends; LAST is resolved from the last-hit stamp.
+
+FIX - An NPC picks its next opponent off its own attacker list. The list is written
+        from both directions upstream - engaging a target records it before it has
+        hit back - so when the current one drops, the rest of the fight is already
+        written down. This engine only filled the list from damage taken and swept
+        the whole sight range again instead, which is how a creature that had just
+        killed one of three attackers could stand idle among the other two.
+
+FIX - THREAT is a real stored value, and the invented one is gone. It decides which
+        target comes off that list (highest threat with NPC_AI_THREAT, else nearest)
+        and it is what a master's order rides on: a pet told to attack carries 1000
+        plus the highest threat already on its list, so nothing outbids the order.
+        What was here instead was a damage-derived bonus blended into the
+        motivation score - a formula the reference does not have, and one no script
+        could reach. Threat is saved with the attacker row.
+
+FIX - @Attack and @CombatAdd carry the threat (ARGN1) and the ignore flag (ARGN2)
+        and read both back, and RETURN 1 stops the engagement or the add. @Attack
+        used to fire with no arguments at all, so a script could refuse a fight but
+        never weight one.
+
+FIX - Kill credit requires damage. The reference credits an attacker row only while
+        it has dealt some (CCharAct.cpp:4361); without that gate, now that the list
+        also holds characters who merely engaged, swinging once and missing would
+        earn a share of the kill.
+
+
+[2026-09-10] - What a restart does to goods in flight
+----------------------------------------
+
+FIX - An item's own TYPE now survives a save. The reference writes the TYPE line
+        whenever an instance's type differs from its definition's (CItem.cpp:2461);
+        here it was written for three structure types only, so every other retype -
+        a script's TYPE=t_door, an engine-set type - was reverted to whatever the
+        ITEMDEF said on the next restart. Measured on the 76,359-item shard dump:
+        2,383 items carry a type of their own, exactly the ones whose record already
+        had a TYPE line, so the save does not grow.
+
+FIX - A save taken while two players had a trade window open no longer eats what was
+        in it. A trade window may only exist on a player with a live client, so every
+        one a save contains belongs to a session that died with the process; the
+        reference bounces its contents into the owner's pack and deletes the window at
+        load (FixWeirdness, CItem.cpp:1005). Without that the offered goods came back
+        sealed in a Special-layer container that no inventory view reaches - present in
+        the world, gone for the player.
+
+FIX - @TradeAccepted now names the goods, not just how many. The reference fills the
+        trigger's object list with the items the receiving side is about to get
+        (CItemContainer.cpp:196) and scripts read them as REF1..REFn; only the count in
+        ARGN1 was passed. A script written against the reference could not tell what
+        changed hands - the housing pack's transfer walks that list to find the deed,
+        so a traded house never moved. REF1..REFn are shared with the whole trigger
+        chain, so a script's own REF writes survive it.
+
 [2026-09-09] - A container can say how much it holds
 ----------------------------------------
 

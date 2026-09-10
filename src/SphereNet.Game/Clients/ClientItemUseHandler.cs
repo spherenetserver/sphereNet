@@ -4067,6 +4067,18 @@ public sealed class ClientItemUseHandler
                     // master (ModernUO DoOrderNone behavior).
                     if (pet.PetAIMode != PetAIMode.Attack)
                         pet.SetTag("PREV_PET_MODE", ((int)pet.PetAIMode).ToString());
+
+                    // Told by the master: the order goes on the pet's own attacker
+                    // list carrying ATTACKER_THREAT_TOLDBYMASTER on top of whatever
+                    // threat is already there (Source-X Fight_Attack fToldByMaster,
+                    // CCharFight.cpp:1425), so nothing on that list can outbid it and
+                    // the pet does not wander off to whoever hit it last.
+                    if (!pet.CombatState.BeginFightWith(victim, toldByMaster: true))
+                    {
+                        SysMessage(ServerMessages.Get(Msg.NpcPetFailure));
+                        break;
+                    }
+
                     pet.SetTag("ATTACK_TARGET", victim.Uid.Value.ToString());
                     pet.FightTarget = victim.Uid;
                     pet.PetAIMode = PetAIMode.Attack;

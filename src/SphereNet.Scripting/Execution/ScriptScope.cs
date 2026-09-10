@@ -39,6 +39,17 @@ public sealed class ScriptScope
     /// </summary>
     private Dictionary<int, string>? _refs;
 
+    /// <summary>The REF map itself, so a trigger chain can SHARE one. In Source-X
+    /// the object references live on the args (CScriptTriggerArgs.m_VarObjs), not on
+    /// the block, which is what lets the engine seed REF1..REFn before a fire and
+    /// every block in the chain see the same ones. Assigning replaces this scope's
+    /// own map with the caller's.</summary>
+    public Dictionary<int, string> RefMap
+    {
+        get => _refs ??= [];
+        set => _refs = value;
+    }
+
     public string GetRef(int index) =>
         _refs != null && _refs.TryGetValue(index, out string? v) ? v : "0";
 

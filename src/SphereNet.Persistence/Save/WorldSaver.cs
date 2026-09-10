@@ -722,15 +722,19 @@ public sealed class WorldSaver
         if ((uint)item.Attributes != 0) w.WriteProperty("ATTR", $"0{(uint)item.Attributes:x}");
         if (item.DispIdOverride != 0) w.WriteProperty("DISPID", $"0{item.DispIdOverride:x}");
 
-        // Persist the instance TYPE for structure items (Multi / MultiCustom / Ship).
-        // Their BaseId is a raw multi index with no ITEMDEF, so the loader's
-        // def-materialization cannot recover the type — without this a reloaded
-        // house/ship becomes t_normal and HousingEngine/ShipEngine.DeserializeFromWorld
-        // never re-registers it (the structure is lost on restart). ParseItemType reads
-        // the numeric ItemType back on load.
-        if (item.ItemType is SphereNet.Core.Enums.ItemType.Multi
-            or SphereNet.Core.Enums.ItemType.MultiCustom
-            or SphereNet.Core.Enums.ItemType.Ship)
+        // Persist the instance TYPE whenever the item's type is its OWN rather than
+        // its definition's. Source-X writes the line under exactly that condition
+        // (`!pItemDef->IsType(m_type)`, CItem::r_Write, CItem.cpp:2461); a type equal
+        // to the def's is recovered on load by MaterializeDefinitionType, so writing
+        // it would only bloat the save.
+        //
+        // This used to be a three-name special case for Multi / MultiCustom / Ship,
+        // whose BaseId is a raw multi index with no ITEMDEF to recover from. Those
+        // are still covered (no def -> no def type -> the type is the instance's),
+        // but every OTHER retype was silently dropped: a script's `TYPE=t_door` or an
+        // engine-set type reverted to whatever the ITEMDEF said on the next restart.
+        // ParseItemType reads the numeric ItemType back on load.
+        if (item.HasInstanceType)
             w.WriteProperty("TYPE", ((ushort)item.ItemType).ToString());
 
         // A container's own weight limit: it is the only thing bounding one, so losing
@@ -1084,11 +1088,13 @@ public sealed class WorldSaver
                 $"0{mem.Link.Value:X8},{(ushort)flags},{memRemaining},{mem.More1}");
         }
 
-        // Attacker log (Source-X m_lastAttackers): damage totals + ignore flags
-        // per aggressor, so loot rights / kill credit survive a save-load.
+        // Attacker log (Source-X m_lastAttackers): damage totals, ignore flags and
+        // THREAT per aggressor, so loot rights / kill credit and a script's own
+        // aggro weighting survive a save-load. The threat field is appended, so a
+        // save written before it still reads (the loader defaults it to zero).
         foreach (var rec in ch.Attackers)
             w.WriteProperty("ATTACKER",
-                $"0{rec.Uid.Value:X8},{rec.TotalDamage},{(rec.Ignored ? 1 : 0)}");
+                $"0{rec.Uid.Value:X8},{rec.TotalDamage},{(rec.Ignored ? 1 : 0)},{rec.Threat}");
 
         WriteTimerF(w, ch, now);
 

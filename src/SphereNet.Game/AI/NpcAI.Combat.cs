@@ -29,6 +29,19 @@ public sealed partial class NpcAI
         if (target == null || target.IsDead || target.IsDeleted ||
             target.MapIndex != npc.MapIndex || !IsAttackable(target))
         {
+            // Source-X Fight_HitTry (CCharFight.cpp:1503): a target I can no longer
+            // hit does not end the fight — the next opponent comes straight off my
+            // own attacker list, with the one I just lost excluded (:1508). Dropping
+            // to a fresh look-around instead let an NPC that had just killed one of
+            // three attackers stand idle among the other two.
+            var replacement = FightFindBestTarget(npc, exclude: target);
+            if (replacement != null && replacement != target)
+            {
+                npc.FightTarget = replacement.Uid;
+                npc.Memory_Fight_Start(replacement);
+                ActFight(npc, replacement, Math.Max(1, GetAttackMotivation(npc, replacement)));
+                return true;
+            }
             npc.FightTarget = Serial.Invalid;
             return false;
         }
@@ -77,13 +90,17 @@ public sealed partial class NpcAI
                     // where the THREAT/tank switch actually needs it.
                     if (npc.Attackers.Count > 1 && _rand.Next(4) == 0)
                     {
-                        var (betterTarget, betterMotivation) = FindBestTarget(npc, sightRange);
-                        if (betterTarget != null && !betterTarget.IsDeleted && betterTarget != current && betterMotivation > curMotivation)
+                        // Off the ATTACKER LIST, not a fresh look-around: this is the
+                        // switch THREAT exists for, and a look-around scores by
+                        // distance and hostility, which is exactly what a script
+                        // raising an attacker's threat is trying to override.
+                        var betterTarget = FightFindBestTarget(npc);
+                        if (betterTarget != null && !betterTarget.IsDeleted && betterTarget != current)
                         {
                             npc.FightTarget = betterTarget.Uid;
                             npc.Memory_Fight_Start(betterTarget);
                             current = betterTarget;
-                            curMotivation = betterMotivation;
+                            curMotivation = Math.Max(1, GetAttackMotivation(npc, betterTarget));
                         }
                     }
 
@@ -108,6 +125,19 @@ public sealed partial class NpcAI
                 if (PursueHiddenTarget(npc, current))
                     return;
             }
+            // Before sweeping the whole sight range, take the next opponent off
+            // the attacker list the way the reference does (NPC_FightFindBestTarget).
+            var fromList = FightFindBestTarget(npc, exclude: current);
+            if (fromList != null && fromList != current)
+            {
+                npc.FightTarget = fromList.Uid;
+                npc.RemoveTag("HIDE_PURSUIT");
+                npc.RemoveTag("LAST_TGT_LOC");
+                npc.Memory_Fight_Start(fromList);
+                ActFight(npc, fromList, Math.Max(1, GetAttackMotivation(npc, fromList)));
+                return;
+            }
+
             npc.FightTarget = Serial.Invalid;
             npc.RemoveTag("HIDE_PURSUIT");
             npc.RemoveTag("LAST_TGT_LOC");

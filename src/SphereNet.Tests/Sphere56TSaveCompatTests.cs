@@ -179,6 +179,31 @@ public class Sphere56TSaveCompatTests
         Assert.True(anomalies.Count == 0,
             $"the loaded world breaks {anomalies.Count} invariant(s): " +
             string.Join(" | ", anomalies.Take(5).Select(a => a.ToString())));
+        // The other side of the same coin: a save now writes TYPE for every item whose
+        // type is its OWN rather than its definition's (Source-X CItem::r_Write,
+        // CItem.cpp:2461). On a legacy world that has to be almost nobody - the load
+        // materialises the type FROM the definition, so the two agree - and this is the
+        // measurement that says a rule meant to save a handful of retyped objects has
+        // not turned into a line on all 76k of them.
+        int items = 0, ownType = 0;
+        foreach (var obj in world.GetAllObjects())
+        {
+            if (obj is not SphereNet.Game.Objects.Items.Item it || it.IsDeleted) continue;
+            items++;
+            if (it.HasInstanceType) ownType++;
+        }
+        int typeLinesInSave = Directory.EnumerateFiles(SaveDir, "*.scp")
+            .SelectMany(File.ReadLines)
+            .Count(l => l.TrimStart().StartsWith("TYPE=", StringComparison.OrdinalIgnoreCase));
+        _out.WriteLine($"items carrying a type of their own: {ownType} / {items} " +
+            $"(TYPE= lines in the source save: {typeLinesInSave})");
+        // Round trip: the rule may only give back TYPE lines the shard already had.
+        // Writing MORE of them than the dump contains means it is persisting the
+        // DEFINITION's type as though it were the instance's, which is the bloat the
+        // three-name special case was guarding against.
+        Assert.True(ownType <= typeLinesInSave,
+            $"{ownType} items would persist a TYPE line but the save only carries " +
+            $"{typeLinesInSave} - the rule is writing the definition's type back out");
 
         var unhandled = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         int withSkill = 0;

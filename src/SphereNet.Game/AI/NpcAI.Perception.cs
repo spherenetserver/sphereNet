@@ -19,13 +19,76 @@ public sealed partial class NpcAI
     /// on the damage that target has dealt to it (from the attacker list).
     /// Bounded so a single heavy hitter dominates target choice without
     /// completely ignoring distance/other factors.</summary>
-    internal static int GetThreatBonus(Character npc, Character target)
+    /// <summary>Source-X NPC_FightFindBestTarget (CCharNPCAct_Fight.cpp:60): the
+    /// next opponent comes off MY OWN attacker list, not from looking the world
+    /// over again. That list holds every character I am in a fight with — the ones
+    /// who hit me AND the ones I engaged — so when the current target drops, the
+    /// rest of the fight is already written down.
+    ///
+    /// Choice: with NPC_AI_THREAT the HIGHEST THREAT wins outright, otherwise the
+    /// nearest does (:139/:145). Threat is a stored number a script (or a master's
+    /// order) sets — not something derived from damage taken, which is what this
+    /// engine used to invent.</summary>
+    internal Character? FightFindBestTarget(Character npc, Character? exclude = null)
     {
         var attackers = npc.Attackers;
+        bool useThreat = GetNpcFlags(npc).HasFlag(NpcAIFlags.Threat);
+        var weaponSkill = SphereNet.Game.Combat.CombatEngine.GetWeaponSkill(npc);
+        bool ranged = SphereNet.Game.Combat.CombatEngine.IsRangedSkill(weaponSkill);
+
+        Character? best = null;
+        int bestDist = int.MaxValue;
+        int bestThreat = 0;
+
         for (int i = 0; i < attackers.Count; i++)
-            if (attackers[i].Uid == target.Uid)
-                return Math.Clamp(attackers[i].TotalDamage / 2, 0, 60);
-        return 0;
+        {
+            var rec = attackers[i];
+            var candidate = _world.FindChar(rec.Uid);
+            if (candidate == null || candidate == npc || candidate == exclude)
+                continue;
+            if (!IsAttackable(candidate) || candidate.MapIndex != npc.MapIndex)
+                continue;
+
+            // An ignored row is skipped, but @HitIgnore gets to say otherwise
+            // first (:103) — the script can un-ignore for this decision.
+            if (rec.Ignored)
+            {
+                bool stillIgnored = Character.OnHitIgnored == null ||
+                                    !Character.OnHitIgnored(npc, rec.Uid);
+                if (stillIgnored)
+                    continue;
+            }
+
+            // The first workable candidate is the answer until something beats
+            // it, so a fight never ends just because nobody scored (:116).
+            best ??= candidate;
+
+            int dist = npc.Position.GetDistanceTo(candidate.Position);
+            if (ranged && (dist < _config.ArcheryMinDist || dist > _config.ArcheryMaxDist))
+                continue;
+            if (!_world.CanSeeLOS(npc.Position, candidate.Position))
+                continue;
+
+            int threat = rec.Threat;
+            if (useThreat && threat > bestThreat)
+            {
+                best = candidate;
+                bestDist = dist;
+                bestThreat = threat;
+            }
+            else if (dist < bestDist)
+            {
+                best = candidate;
+                bestDist = dist;
+            }
+        }
+
+        if (best != null)
+            return best;
+
+        // Nothing on the list: keep the target I already have (:156).
+        var current = npc.FightTarget.IsValid ? _world.FindChar(npc.FightTarget) : null;
+        return current != null && current != exclude && IsAttackable(current) ? current : null;
     }
 
     /// <summary>Source-X NPC_GetAttackContinueMotivation morale: the SIGNED
@@ -220,6 +283,16 @@ public sealed partial class NpcAI
         if (npc.NpcBrain == NpcBrainType.Berserk)
             return 100 + 80 - npc.Position.GetDistanceTo(target.Position);
 
+        // A pet told by its master to attack THIS target weighs nothing else while
+        // the fight lasts: upstream returns a flat 100 as soon as the current
+        // target carries ATTACKER_THREAT_TOLDBYMASTER (CCharNPCStatus.cpp:912).
+        if (npc.FightTarget == target.Uid &&
+            npc.CombatState.GetAttackerThreat(npc.CombatState.IndexOfAttacker(target.Uid))
+                >= CharacterCombatState.ThreatToldByMaster)
+        {
+            return 100;
+        }
+
         int motivation = hostility;
 
         // Bonus for current target (Source-X: +8 — the exact hysteresis
@@ -232,14 +305,12 @@ public sealed partial class NpcAI
 
         // NOTE: no wounded/caster/healer/retaliation bonuses here — Source-X
         // NPC_GetAttackMotivation has none (motivation is hostility + same-
-        // target hysteresis − distance + morale). Retaliation pressure comes
-        // from the attacker-list THREAT term below.
-
-        // Threat: stick to whoever has dealt the most damage to us (Source-X
-        // NPC_AI_THREAT / NPC_FightFindBestTarget). Global flag, on by default;
-        // drives tank/aggro mechanics off the accumulated attacker list.
-        if (GetNpcFlags(npc).HasFlag(NpcAIFlags.Threat))
-            motivation += GetThreatBonus(npc, target);
+        // target hysteresis − distance + morale).
+        //
+        // Threat is deliberately NOT blended in here. It decides which target comes
+        // off the attacker list (FightFindBestTarget), and the only place it reaches
+        // motivation is the master's order handled at the top of this method. The
+        // damage-derived bonus that used to sit here was this engine's own.
 
         // Optional per-creature FightMode bias (ServUO/ModernUO AcquireFocusMob:
         // Weakest/Strongest/Evil). Default (no tag) leaves distance-based

@@ -13,10 +13,10 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 
 | Alan | Değer |
 |---|---|
-| Son güncelleme | 2026-09-08 |
-| Son commit | `4ef351c` + kap ağırlık sınırı |
-| Tam test | 3.364 başarılı / 0 başarısız |
-| Sıradaki iş | **Yeni inceleme dalgası ya da planın yeni maddesi** |
+| Son güncelleme | 2026-09-10 |
+| Son commit | `902a970` + İŞ-18 (takas/yükleme) + İŞ-19 (hedef seçimi) |
+| Tam test | 3.400 başarılı / 0 başarısız |
+| Sıradaki iş | **PLAN-402'nin kalanı — menzil/LOS, mühimmat, swing timer'ı** |
 
 ## Çalışma sırası
 
@@ -191,11 +191,59 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   eksiğini değil bench'in bağlamsızlığını ölçtü (SRC/DLOCAL/ACT...). Doğru yol gerçek
   dünyada gerçek trigger koşturan bir akış tezgahı; ayrı ve büyük iş, kayıtlı.
 
+- [x] **İŞ-18 — Vendor ve secure trade uçtan uca** (PLAN-401) — **KAPANDI**
+  Dalga 4'ün ilk maddesi. Sekiz ayağın altısı ölçülüp **zaten doğru** çıktı
+  (fiyat/miktar satır bazında, dolu çanta ağırlık+slot, iç içe altın özyinelemeli,
+  teklif değişimi kap değişmezi olarak, disconnect ve ölüm kablolu; takas penceresinin
+  ağırlığı da referanstaki gibi sahibine yazılmıyor). **Yeniden yükleme ayağı üç
+  gerçek boşluk verdi:**
+  1. **Eşyanın kendi TYPE'ı kaydı aşmıyordu.** Referans, tür tanımınkinden farklıysa
+     TYPE yazar (CItem.cpp:2461); bizde yalnız Multi/MultiCustom/Ship için yazılıyordu,
+     yani scriptin ya da motorun kurduğu her tür restart'ta ITEMDEF'e dönüyordu.
+     Ölçüm (56T, 76.359 eşya): 2.383 eşya kendi türünü taşıyor ve bunlar tam olarak
+     kaydında zaten TYPE satırı olanlar → kayıt büyümüyor, test bu turu kilitliyor.
+  2. **Takas ortasında alınan kayıt malı yiyordu.** Referans yüklemede pencereyi
+     dağıtır (FixWeirdness 0x2220): içindekiler sahibinin çantasına, pencere silinir.
+     Bizde Special katmanında erişilemez bir kapta kapalı dönüyordu.
+  3. **@TradeAccepted malı adlandırmıyordu.** Referans alınacak eşyaları REF1..REFn
+     olarak verir (CItemContainer.cpp:196), bizde yalnız ARGN1 sayısı geçiyordu —
+     Scripts-X-main housing paketi tapuyu bu listede arıyor, yani takas edilen ev hiç
+     el değiştirmiyordu. REF haritası tetikleyici zinciriyle paylaşılıyor.
+
+- [x] **İŞ-19 — Dövüş uçtan uca, hedef değişimi ve tehdit** (PLAN-402 birinci dilim) — **KAPANDI**
+  PLAN-402'nin "hedef değişimi" ayağı. Ölçüm iki taraftan yapıldı: canlı paketin
+  `ATTACKER.*` kullanımı ve referansın `Fight_Attack` → `Attacker_Add` →
+  `NPC_FightFindBestTarget` zinciri. **Beş boşluk:**
+  1. **Script yüzeyi.** Canlı paket `<ATTACKER.0>`, `<ATTACKER.LAST.DAM>`,
+     `<ATTACKER.MAX.DAM>` okuyor ve `ATTACKER.CLEAR` yazıyor; **dördü de**
+     çözülmüyordu. Referansın seçici→satır→alan modeli kuruldu.
+  2. **Liste sırası.** Darbe alan satır sona taşınıyordu → `ATTACKER.n` her
+     darbede başkasını gösteriyor. Referans yalnız sona ekler; LAST damgadan.
+  3. **Liste tek yönlüydü.** Referansta saldırdığın hedef de kendi listene yazılır;
+     bizde yalnız alınan hasar dolduruyordu, dolayısıyla hedef ölünce sıradaki
+     rakip listede yoktu ve motor tüm görüş menzilini yeniden tarıyordu.
+  4. **THREAT yoktu.** Yerinde `TotalDamage/2` uydurma bonusu vardı. Gerçek model:
+     saklanan değer, script/emir yazar, `NPC_AI_THREAT` ile en yüksek tehdit kazanır,
+     sahibin emri 1000+en yüksek taşır, oyuncuda hiç tutulmaz, kayda yazılır.
+  5. **@Attack argümansızdı.** ARGN1 tehdit / ARGN2 yoksay + geri yazma + RETURN 1;
+     @CombatAdd de aynı sözleşmeye alındı.
+  Yanında: öldürme kredisi artık hasar istiyor (referansın `amountDone > 0` kapısı),
+  liste artık yalnız vuranları tutmadığı için taşıyıcı.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-19 KAPANDI** — 2026-09-10. ATTACKER.* yüzeyi, liste sırası, iki yönlü liste,
+  gerçek THREAT, @Attack/@CombatAdd argümanları, öldürme kredisi hasar kapısı.
+  Test: `AttackerListParityTests` (9), `CombatEngagementParityTests` (16),
+  `AttackerThreatPersistenceTests` (2); dört düzeltme tek tek geri alınıp
+  yakalandığı doğrulandı (4/8/1/1 kırmızı). Tam suite 3.400.
+- **İŞ-18 KAPANDI** — 2026-09-10. Vendor/secure trade uçtan uca; üç boşluk kapandı
+  (eşya TYPE'ı persist, takas penceresi yükleme onarımı, @TradeAccepted REF1..REFn).
+  Test: `TradeReloadParityTests` (5), `TradeAcceptedRefsTests` (4) + 56T gerçek veri
+  ölçümü; üç düzeltme tek tek geri alınıp yakalandığı doğrulandı. Tam suite 3.373.
 - **İŞ-17 KAPANDI** — 2026-09-09. Kap MODMAXWEIGHT'i (oku/yaz/kaydet). Test:
   `ContainerWeightLimitTests` (4). Tam suite 3.364.
 - **İŞ-16 KAPANDI** — 2026-09-09. İki uydurma ekonomi kaldırıldı (toplama fallback'i,

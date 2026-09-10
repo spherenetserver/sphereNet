@@ -3,8 +3,26 @@ using SphereNet.Core.Types;
 
 namespace SphereNet.Game.Objects.Characters;
 
+/// <summary>Mutable @CombatAdd arguments: ARGN1 threat, ARGN2 ignore. The engine
+/// seeds them, the script may rewrite them, and the engine reads them back
+/// (Source-X CCharAttacker.cpp:38/:45).</summary>
+public sealed class CombatAddContext
+{
+    public int Threat { get; set; }
+    public bool Ignore { get; set; }
+}
+
+/// <summary>Mutable @Attack arguments: ARGN1 threat, ARGN2 ignore, both read back
+/// (Source-X CCharFight.cpp:1433/:1437).</summary>
+public sealed class AttackTriggerContext
+{
+    public int Threat { get; set; }
+    public bool Ignore { get; set; }
+}
+
 /// <summary>One attacker-log entry (Source-X CChar::m_lastAttackers).</summary>
-public readonly struct AttackerRecord(Serial uid, int totalDamage, long lastHitTick, bool ignored = false)
+public readonly struct AttackerRecord(Serial uid, int totalDamage, long lastHitTick,
+    bool ignored = false, int threat = 0)
 {
     public Serial Uid { get; } = uid;
     public int TotalDamage { get; } = totalDamage;
@@ -12,6 +30,13 @@ public readonly struct AttackerRecord(Serial uid, int totalDamage, long lastHitT
     /// <summary>Script-set ATTACKER.n.IGNORE flag. A hit from an ignored
     /// attacker fires @HitIgnore on the victim instead of passing silently.</summary>
     public bool Ignored { get; } = ignored;
+    /// <summary>How badly this NPC wants to fight this attacker
+    /// (Source-X LastAttackers.threat, script key ATTACKER.n.THREAT). It is a
+    /// STORED value, not a derived one: a script sets it, @Attack can rewrite it,
+    /// and a pet told by its master carries
+    /// <see cref="CharacterCombatState.ThreatToldByMaster"/>. Only an NPC keeps
+    /// one - the reference refuses the write on a player (CCharAttacker.cpp:205).</summary>
+    public int Threat { get; } = threat;
 }
 
 /// <summary>
@@ -153,35 +178,193 @@ public sealed class CharacterCombatState
                 if (ignored && Character.OnHitIgnored != null && Character.OnHitIgnored(_owner, attackerUid))
                     ignored = false; // script un-ignored the attacker
                 int total = (int)Math.Min((long)_attackers[i].TotalDamage + damage, int.MaxValue);
-                _attackers[i] = new AttackerRecord(attackerUid, total, now, ignored);
-                // Move this entry to the end so ATTACKER.LAST reflects it
-                if (i != _attackers.Count - 1)
-                {
-                    var rec = _attackers[i];
-                    _attackers.RemoveAt(i);
-                    _attackers.Add(rec);
-                }
+                // Insertion order is STABLE (Source-X Attacker_Add only ever appends).
+                // It has to be: ATTACKER.n is the handle a script holds between two
+                // lines, and moving the entry that just took a hit to the end renumbered
+                // every other one under it. ATTACKER.LAST is resolved from the last-hit
+                // stamp instead (CChar.cpp:2463 walks the list looking for it).
+                _attackers[i] = new AttackerRecord(attackerUid, total, now, ignored,
+                    _attackers[i].Threat);
                 return;
             }
         }
-        _attackers.Add(new AttackerRecord(attackerUid, Math.Min(damage, int.MaxValue), now));
-        Character.OnCombatAdd?.Invoke(_owner, attackerUid);
+        // First blow from someone not yet on the list: the same add the engagement
+        // path takes, so @CombatAdd fires exactly once per participant and can veto
+        // or reweight it here too.
+        var ctx = new CombatAddContext();
+        if (Character.OnCombatAdd != null && !Character.OnCombatAdd(_owner, attackerUid, ctx))
+            return;
+        _attackers.Add(new AttackerRecord(attackerUid, Math.Min(damage, int.MaxValue), now,
+            ctx.Ignore, _owner.IsPlayer ? 0 : ctx.Threat));
     }
 
     /// <summary>Set/clear the ATTACKER.n.IGNORE flag for an attacker already
     /// in the log. Returns false when the uid is not an attacker.</summary>
     public bool SetAttackerIgnored(Serial attackerUid, bool ignored)
     {
+        int i = IndexOfAttacker(attackerUid);
+        if (i < 0) return false;
+        var rec = _attackers[i];
+        _attackers[i] = new AttackerRecord(rec.Uid, rec.TotalDamage, rec.LastHitTick, ignored, rec.Threat);
+        return true;
+    }
+
+    /// <summary>Threat an NPC assigns to a target its master pointed it at.
+    /// Source-X ATTACKER_THREAT_TOLDBYMASTER (CChar.h:1132): the order adds this
+    /// ON TOP of the highest threat the pet already holds, so nothing on the list
+    /// can outbid it.</summary>
+    public const int ThreatToldByMaster = 1000;
+
+    /// <summary>Index of an attacker in the log, or -1 (Source-X Attacker_GetID).</summary>
+    public int IndexOfAttacker(Serial attackerUid)
+    {
         for (int i = 0; i < _attackers.Count; i++)
-        {
             if (_attackers[i].Uid == attackerUid)
-            {
-                var rec = _attackers[i];
-                _attackers[i] = new AttackerRecord(rec.Uid, rec.TotalDamage, rec.LastHitTick, ignored);
-                return true;
-            }
+                return i;
+        return -1;
+    }
+
+    /// <summary>Index of the most recent hit (ATTACKER.LAST), or -1.</summary>
+    public int LastAttackerIndex()
+    {
+        int best = -1;
+        for (int i = 0; i < _attackers.Count; i++)
+            if (best < 0 || _attackers[i].LastHitTick >= _attackers[best].LastHitTick)
+                best = i;
+        return best;
+    }
+
+    /// <summary>Index of the heaviest damage dealer (ATTACKER.MAX), or -1.</summary>
+    public int MaxDamageAttackerIndex()
+    {
+        int best = -1;
+        for (int i = 0; i < _attackers.Count; i++)
+            if (best < 0 || _attackers[i].TotalDamage > _attackers[best].TotalDamage)
+                best = i;
+        return best;
+    }
+
+    /// <summary>Highest threat currently on the log (Source-X
+    /// Attacker_GetHighestThreat); 0 when the log is empty.</summary>
+    public int HighestThreat()
+    {
+        int high = 0;
+        foreach (var rec in _attackers)
+            if (rec.Threat > high) high = rec.Threat;
+        return high;
+    }
+
+    /// <summary>Threat of one entry, clamped at 0 (Source-X Attacker_GetThreat
+    /// reports a negative stored value as 0); -1 for an index off the end.</summary>
+    public int GetAttackerThreat(int index) =>
+        index < 0 || index >= _attackers.Count ? -1 : Math.Max(0, _attackers[index].Threat);
+
+    /// <summary>ATTACKER.n.THREAT=. A PLAYER never keeps one: the reference returns
+    /// before the write (CCharAttacker.cpp:205), because threat exists only to steer
+    /// the target an NPC picks.</summary>
+    public bool SetAttackerThreat(int index, int value)
+    {
+        if (_owner.IsPlayer || index < 0 || index >= _attackers.Count)
+            return false;
+        var rec = _attackers[index];
+        _attackers[index] = new AttackerRecord(rec.Uid, rec.TotalDamage, rec.LastHitTick, rec.Ignored, value);
+        return true;
+    }
+
+    /// <summary>ATTACKER.n.DAM= - overwrite the running damage total.</summary>
+    public bool SetAttackerDamage(int index, int value)
+    {
+        if (index < 0 || index >= _attackers.Count) return false;
+        var rec = _attackers[index];
+        _attackers[index] = new AttackerRecord(rec.Uid, value, rec.LastHitTick, rec.Ignored, rec.Threat);
+        return true;
+    }
+
+    /// <summary>ATTACKER.n.ELAPSED= - how many SECONDS ago this attacker last hit.
+    /// It is kept here as a tick stamp, so the value is applied backwards from now;
+    /// that keeps the getter and the setter talking about the same thing.</summary>
+    public bool SetAttackerElapsed(int index, long seconds)
+    {
+        if (index < 0 || index >= _attackers.Count) return false;
+        var rec = _attackers[index];
+        _attackers[index] = new AttackerRecord(rec.Uid, rec.TotalDamage,
+            Environment.TickCount64 - Math.Max(0, seconds) * 1000L, rec.Ignored, rec.Threat);
+        return true;
+    }
+
+    /// <summary>ATTACKER.n.DELETE / ATTACKER.DELETE &lt;uid&gt; - drop one entry.</summary>
+    public bool RemoveAttacker(int index)
+    {
+        if (index < 0 || index >= _attackers.Count) return false;
+        _attackers.RemoveAt(index);
+        return true;
+    }
+
+    /// <summary>Whether this attacker is flagged ignored; false when unknown.</summary>
+    public bool IsAttackerIgnored(Serial attackerUid)
+    {
+        int i = IndexOfAttacker(attackerUid);
+        return i >= 0 && _attackers[i].Ignored;
+    }
+
+    /// <summary>Source-X Attacker_Add (CCharAttacker.cpp:11): put
+    /// <paramref name="uid"/> on the combat-participant list.
+    ///
+    /// The list runs BOTH WAYS upstream: Fight_Attack adds the character you
+    /// engage, so a target is on your list before it has ever touched you. That is
+    /// what lets an NPC pick its next opponent off the list when the current one
+    /// dies, instead of looking the world over again. An entry that already exists
+    /// is left alone (upstream returns early), so a repeated order cannot re-seed
+    /// the threat.
+    ///
+    /// Returns false when @CombatAdd vetoed the add (RETURN 1, :43).</summary>
+    public bool AddAttacker(Serial uid, int threat = 0)
+    {
+        if (uid == _owner.Uid || uid == Serial.Invalid)
+            return true;
+        if (IndexOfAttacker(uid) >= 0)
+            return true;
+
+        var ctx = new CombatAddContext { Threat = threat, Ignore = false };
+        if (Character.OnCombatAdd != null && !Character.OnCombatAdd(_owner, uid, ctx))
+            return false;
+
+        // A player never carries threat (CCharAttacker.cpp:205 refuses the write,
+        // and the add itself zeroes it at :53).
+        _attackers.Add(new AttackerRecord(uid, 0, Environment.TickCount64,
+            ctx.Ignore, _owner.IsPlayer ? 0 : ctx.Threat));
+        return true;
+    }
+
+    /// <summary>Source-X Fight_Attack's engagement contract (CCharFight.cpp:1422
+    /// -1450), the part that is about the attacker LIST rather than about war mode
+    /// and skills: work out the threat, let @Attack rewrite it (and the ignore
+    /// flag) when the target is CHANGING, then commit both to the list.
+    ///
+    /// Returns false when the engagement must not proceed - @Attack or @CombatAdd
+    /// returned 1, or the target ends up flagged ignored.</summary>
+    public bool BeginFightWith(Character target, bool toldByMaster)
+    {
+        // An order from the owner outbids everything already on the list, which is
+        // the whole point of the constant (CCharFight.cpp:1425).
+        int threat = toldByMaster ? ThreatToldByMaster + HighestThreat() : 0;
+        bool ignored = IsAttackerIgnored(target.Uid);
+
+        // Only on a CHANGE of target: re-confirming the current one is an
+        // acknowledgement, not a new attack (:1430).
+        if (_owner.FightTarget != target.Uid && Character.OnAttackTrigger != null)
+        {
+            var ctx = new AttackTriggerContext { Threat = threat, Ignore = ignored };
+            if (!Character.OnAttackTrigger(_owner, target, ctx))
+                return false;
+            threat = ctx.Threat;
+            ignored = ctx.Ignore;
         }
-        return false;
+
+        SetAttackerIgnored(target.Uid, ignored);   // no-op while it is not on the list
+        if (!AddAttacker(target.Uid, threat))
+            return false;
+        return !IsAttackerIgnored(target.Uid);
     }
 
     public void ClearAttackers() => _attackers.Clear();
@@ -189,14 +372,15 @@ public sealed class CharacterCombatState
     /// <summary>Re-add a saved attacker entry on world load — no reacquire
     /// bump, no @CombatAdd, no last-hit refresh side effects (unlike
     /// <see cref="RecordAttack"/>); the last-hit tick restarts at load time.</summary>
-    public void RestoreAttacker(Serial attackerUid, int totalDamage, bool ignored)
+    public void RestoreAttacker(Serial attackerUid, int totalDamage, bool ignored, int threat = 0)
     {
         if (attackerUid == _owner.Uid || attackerUid == Serial.Invalid || totalDamage <= 0)
             return;
         for (int i = 0; i < _attackers.Count; i++)
             if (_attackers[i].Uid == attackerUid)
                 return;
-        _attackers.Add(new AttackerRecord(attackerUid, Math.Min(totalDamage, int.MaxValue), Environment.TickCount64, ignored));
+        _attackers.Add(new AttackerRecord(attackerUid, Math.Min(totalDamage, int.MaxValue),
+            Environment.TickCount64, ignored, threat));
     }
 
     /// <summary>Index of <paramref name="uid"/> in the attacker log, or -1.</summary>

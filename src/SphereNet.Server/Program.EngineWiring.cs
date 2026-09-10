@@ -3189,9 +3189,51 @@ public static partial class Program
             // the character whose list changed, O1 = the other combatant; @CombatEnd
             // fires when the list empties. The list is mutated inside Character with
             // no dispatcher, so it resolves the attacker UID via the world here.
-            SphereNet.Game.Objects.Characters.Character.OnCombatAdd = (self, attackerUid) =>
-                _triggerDispatcher?.FireCharTrigger(self, CharTrigger.CombatAdd,
-                    new TriggerArgs { CharSrc = self, O1 = _world?.FindChar(attackerUid) });
+            //
+            // @CombatAdd carries the threat (ARGN1) and the ignore flag (ARGN2) and
+            // reads both back, and RETURN 1 cancels the add - that is the only place
+            // a script can weight an NPC's aggro before the row exists.
+            SphereNet.Game.Objects.Characters.Character.OnCombatAdd = (self, attackerUid, ctx) =>
+            {
+                var args = new TriggerArgs
+                {
+                    CharSrc = self,
+                    O1 = _world?.FindChar(attackerUid),
+                    N1 = ctx.Threat,
+                    N2 = ctx.Ignore ? 1 : 0,
+                };
+                var res = _triggerDispatcher?.FireCharTrigger(self, CharTrigger.CombatAdd, args);
+                ctx.Threat = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1);
+                ctx.Ignore = args.N2 != 0;
+                return res != TriggerResult.True;
+            };
+
+            // @Attack — this character turning on a NEW target. Same two writable
+            // arguments; RETURN 1 refuses the engagement (CCharFight.cpp:1435).
+            SphereNet.Game.Objects.Characters.Character.OnAttackTrigger = (self, target, ctx) =>
+            {
+                var args = new TriggerArgs
+                {
+                    CharSrc = target,
+                    O1 = target,
+                    N1 = ctx.Threat,
+                    N2 = ctx.Ignore ? 1 : 0,
+                };
+                var res = _triggerDispatcher?.FireCharTrigger(self, CharTrigger.Attack, args);
+                ctx.Threat = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1);
+                ctx.Ignore = args.N2 != 0;
+                return res != TriggerResult.True;
+            };
+
+            // ATTACKER.ADD <uid> runs the reference's Fight_Attack, so the script
+            // verb starts a real engagement instead of pushing a bare row.
+            SphereNet.Game.Objects.Characters.Character.OnScriptAttackerAdd = (self, target) =>
+            {
+                if (!self.CombatState.BeginFightWith(target, toldByMaster: false))
+                    return;
+                self.FightTarget = target.Uid;
+                self.Memory_Fight_Start(target);
+            };
             SphereNet.Game.Objects.Characters.Character.OnCombatDelete = (self, attackerUid) =>
                 _triggerDispatcher?.FireCharTrigger(self, CharTrigger.CombatDelete,
                     new TriggerArgs { CharSrc = self, O1 = _world?.FindChar(attackerUid) });

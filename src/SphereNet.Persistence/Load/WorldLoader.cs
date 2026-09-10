@@ -119,6 +119,40 @@ public sealed class WorldLoader
         return (itemCount, charCount);
     }
 
+    /// <summary>Bounce every saved trade window's contents back to its owner and
+    /// delete the window (Source-X FixWeirdness 0x2220). Returns how many windows
+    /// were dissolved. An ownerless window still gives its contents up - to the
+    /// ground at the window's own position - rather than taking them with it.</summary>
+    private static int DissolveStaleTradeWindows(GameWorld world)
+    {
+        var windows = new List<Item>();
+        foreach (var obj in world.GetAllObjects())
+            if (obj is Item it && !it.IsDeleted && it.ItemType == Core.Enums.ItemType.EqTradeWindow)
+                windows.Add(it);
+
+        foreach (var window in windows)
+        {
+            var owner = world.FindChar(window.ContainedIn);
+            foreach (var offered in window.Contents.ToList())
+            {
+                window.RemoveItem(offered);
+                offered.ContainedIn = Serial.Invalid;
+                var pack = owner?.Backpack;
+                if (pack != null && !pack.IsDeleted && pack != window && pack.TryAddItem(offered))
+                    continue;
+                // ItemBounce with nowhere to put it: the ground under the owner, or
+                // under the window itself when the owner is gone too.
+                world.PlaceItem(offered, owner?.Position ?? window.Position);
+            }
+
+            if (owner != null && owner.GetEquippedItem(window.EquipLayer) == window)
+                owner.Unequip(window.EquipLayer);
+            world.RemoveItem(window);
+        }
+
+        return windows.Count;
+    }
+
     /// <summary>Restore one runtime object file, replacing any currently
     /// registered world object whose serial is present in the file. Unlike
     /// <see cref="LoadFile"/>, this matches Source-X's destructive restore
@@ -575,6 +609,20 @@ public sealed class WorldLoader
         // so bags render empty on the client after a restart. Rebuild once from the
         // authoritative ContainedIn now that every item and parent link exists.
         world.RebuildContainerIndex();
+
+        // Source-X FixWeirdness (CItem.cpp:1005, result code 0x2220): a trade window
+        // may only exist on a PLAYER WITH AN ACTIVE CLIENT. Nothing has a client while
+        // a save is being read, so every trade window a save contains is stale by
+        // definition - the session that owned it died with the process. Upstream
+        // bounces its contents into the owner's pack and deletes the window.
+        //
+        // Without this a save taken mid-trade came back with the offered goods sealed
+        // inside a Special-layer container: it is not in the equipment slot array (that
+        // layer is shared with memory items), no inventory view reaches it, and no
+        // trade session claims it - the items were simply gone.
+        int tradeWindows = DissolveStaleTradeWindows(world);
+        if (tradeWindows > 0)
+            _logger.LogInformation("Dissolved {Count} stale trade window(s) from the save; offered items returned to their owners", tradeWindows);
 
         _logger.LogInformation("World loaded: {Items} items, {Chars} chars, {Contained} contained/equipped in {Elapsed}s",
             itemCount, charCount, containedCount + equipCount, sw.Elapsed.TotalSeconds.ToString("F1"));
@@ -1466,7 +1514,9 @@ public sealed class WorldLoader
                         int.TryParse(parts[1], out int aDamage))
                     {
                         bool ignored = parts.Length >= 3 && parts[2] == "1";
-                        ch.CombatState.RestoreAttacker(new Serial(aUid), aDamage, ignored);
+                        int threat = parts.Length >= 4 && int.TryParse(parts[3], out int aThreat)
+                            ? aThreat : 0;
+                        ch.CombatState.RestoreAttacker(new Serial(aUid), aDamage, ignored, threat);
                     }
                     break;
                 }

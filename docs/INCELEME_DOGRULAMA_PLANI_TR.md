@@ -3675,3 +3675,163 @@ o incelemede dokunulmadı; üçü de sonradan `f98612e` ile kapandı.
 
 Sonraki 03B: windup/hedef değişimi, silah değiştirme, player/NPC zamanlaması,
 miss/parry/veto cephane yolları. İlk tarama bütün dövüş kategorisini kapatmaz.
+
+---
+
+## İŞ-18 — Vendor ve secure trade uçtan uca (PLAN-401, 10 Eylül 2026)
+
+Port planının Dalga 4'e ilk girişi. PLAN-401'in sekiz ayağı tek tek ölçüldü;
+altısı zaten referansla aynı çıktı, ikisi (yeniden yükleme + trigger sözleşmesi)
+üç gerçek boşluk verdi.
+
+### Ölçülüp DEĞİŞTİRİLMEYEN ayaklar (kanıtıyla)
+
+| Ayak | Durum | Kanıt |
+|---|---|---|
+| Fiyat / miktar | Doğru | `ProcessBuy` her satırın fiyatını O SATIRIN kendi PRICE tag'inden alır (aynı BaseId'li iki farklı fiyatlı stok satırı ayrışır), tekrar eden satır ve stok aşımı reddedilir |
+| Dolu çanta | Doğru | `CanAcceptTradeItems` slot (`MaxContainerItems`) + ağırlık; `DeliverToBuyer` taşan malı ayağa bırakır, hiç yok etmez (ItemBounce) |
+| İç içe altın | Doğru | `CountGold`/`RemoveGold` `EnumerateContainerContentsRecursive` üzerinden alt çantalara iner |
+| Teklif değişimi | Doğru | `Item.NotifyTradeContentChanged` → `OnTradeWindowChanged`; ekleme VE çıkarma iki onay işaretini de düşürüyor (CItemContainer.cpp:557/:798) — kap değişmezi, handler nezaketi değil |
+| Disconnect | Doğru | `GameClient.cs:288` → `AbortActiveTradeOnDisconnect` (CChar::ClientDetach, CChar.cpp:490) |
+| Ölüm | Doğru | `Program.EngineWiring.cs:1812` → `CancelActiveTradeOnDeath` (CCharAct.cpp:4338) |
+| Takas penceresi ağırlığı | Doğru (bilinçli) | Pencere `_equipment` dizisinde değil ve ağırlık döngüsü VendorStock'tan sonraki katmanları atlıyor — referans da pencere ağırlığını sahibine yazmaz (CContainer.cpp:150/198) |
+
+### Kapanan boşluklar
+
+- [x] **İŞ-18-01 (P1) — Eşyanın kendi TYPE'ı kaydı aşmıyordu.**
+  Referans TYPE satırını `!pItemDef->IsType(m_type)` koşuluyla yazar
+  (CItem::r_Write, CItem.cpp:2461). `WorldSaver` yalnız Multi / MultiCustom / Ship
+  için yazıyordu; bunlar zaten ITEMDEF'i olmayan yapı türleriydi. Sonuç: scriptin
+  `TYPE=t_door`'u ya da motorun kurduğu her tür restart'ta ITEMDEF'e dönüyordu
+  (`MaterializeDefinitionType` yalnız Normal olanı doldurur).
+  **Düzeltme:** `Item.DefinitionType` / `Item.HasInstanceType` + saver'da genel kural.
+  Ham `_type` bilinçli: `ItemType` getter'ı tiledata'dan kapı tahmini de yapar, o
+  kaydın iki yakasında da türetilebilir olduğu için nesne durumu değildir.
+  **Ölçüm (56T, gerçek shard):** 76.359 eşyanın 2.383'ü kendi türünü taşıyor; kaynak
+  dökümdeki TYPE satırı sayısıyla karşılaştırılıyor (test), yani kayıt büyümüyor.
+
+- [x] **İŞ-18-02 (P1) — Takas ortasında alınan kayıt malı yiyordu.**
+  Takas penceresi yalnız CANLI İSTEMCİSİ olan bir oyuncuda var olabilir; referans
+  yüklemede pencereyi dağıtır — içindekiler sahibinin çantasına, pencere silinir
+  (FixWeirdness sonuç kodu 0x2220, CItem.cpp:1005). Bizde kayda giriyordu ve
+  Special katmanında geri geliyordu: o katman ekipman dizisinde değil (hafıza
+  eşyalarıyla paylaşımlı), hiçbir envanter görünümü ulaşmıyor, hiçbir takas oturumu
+  sahiplenmiyor — mal dünyada var, oyuncu için yok.
+  **Düzeltme:** `WorldLoader.DissolveStaleTradeWindows`, `RebuildContainerIndex`
+  sonrasında. Sahipsiz pencere de içindekini bırakır (yere), yanında götürmez.
+
+- [x] **İŞ-18-03 (P2) — @TradeAccepted malı adlandırmıyordu.**
+  Referans, alan tarafın alacağı eşyaları trigger argümanlarının nesne listesine
+  koyar (`m_VarObjs.Insert(i, pItem)`, CItemContainer.cpp:196) ve ARGN1 bunların
+  SAYISIDIR; script listeye REF1..REFn olarak erişir (CScriptTriggerArgs.cpp:189).
+  Bizde yalnız sayı geçiyordu, yani trigger neyin el değiştirdiğini söyleyemiyordu.
+  **Paket tarafından ölçüm:** `Scripts-X-main/housing/house_typedefs.scp:516` tam bu
+  sözleşmeyi kullanıyor (`for <ARGN1>` + `<REF<dLOCAL._FOR>.TYPE>==t_trade_house_deed`)
+  — REF'siz döngü her turda 0 okur ve takas edilen ev hiç el değiştirmez.
+  **Düzeltme:** `TriggerArgs.Refs` (Game) → `SharedRefs` (Scripting) →
+  `ScriptScope.RefMap`. Harita PAYLAŞILIYOR (LOCAL havuzu gibi), yani zincirdeki her
+  blok aynı REF'leri görür ve scriptin kendi `REFn=` yazımı fire sonrası okunabilir.
+  ARGN1/ARGN2 de refleri üreten aynı yürüyüşten sayılıyor.
+
+**Testler:** `TradeReloadParityTests` (5), `TradeAcceptedRefsTests` (4),
+`Sphere56TSaveCompatTests` içine TYPE gidiş-dönüş ölçümü. Üç düzeltme tek tek geri
+alınıp ilgili testlerin eski davranışı yakaladığı doğrulandı (5→3, 5→2, 4→2).
+Tam suite 3.373 / 0.
+
+**Kayıtlı kalan:** referans TYPE'ı ADIYLA yazar (`t_door`), biz sayısal yazıyoruz.
+İkisi de aynı okuyucudan geçiyor (`ParseItemType` ad + sayı kabul eder), ama bizim
+kaydımızı okuyan üçüncü taraf araç için ad daha okunaklı olurdu. Kapsam dışı bırakıldı.
+
+---
+
+## İŞ-19 — Dövüşte hedef değişimi ve tehdit (PLAN-402 birinci dilim, 10 Eylül 2026)
+
+PLAN-402'nin sekiz ayağından **"hedef değişimi"**. Ölçüm iki taraftan: canlı
+paketin `ATTACKER.*` kullanımı (paket tarafı) ve referansın `Fight_Attack` →
+`Attacker_Add` → `NPC_FightFindBestTarget` zinciri (motor tarafı).
+
+### Paket tarafı ölçüm
+
+`oldSphere/` + canlı paket taranınca `ATTACKER.` ile başlayan 12 farklı anahtar
+kullanımı çıktı. Sözdizimi/dokümantasyon dosyaları elendikten sonra **canlı
+pakette gerçekten kullanılan ve bizde çözülmeyen dört tanesi** kaldı:
+
+| Anahtar | Yer | Bizdeki durum (önce) |
+|---|---|---|
+| `<ATTACKER.0>` | `dialogs/sphere_dialogs_prop.scp:530` | çözülmüyor (alt anahtar zorunluydu) |
+| `<ATTACKER.LAST.DAM>` | aynı dosya `:537` | çözülmüyor (LAST yalnız uid) |
+| `<ATTACKER.MAX.DAM>` | aynı dosya `:541` | çözülmüyor (MAX yalnız uid) |
+| `ATTACKER.CLEAR` | `functions/sphere_functions.scp:246` | yazma tarafı yalnız `n.IGNORE` kabul ediyordu |
+
+Yani shard'ın kendi oyuncu-bilgi dialogu boş basıyordu ve listeyi temizleyen
+fonksiyonu hiçbir şey yapmıyordu.
+
+### Kapanan boşluklar
+
+- [x] **İŞ-19-01 (P2) — `ATTACKER.*` seçici modeli.**
+  Referans önce bir SEÇİCİYİ satıra çözer (sayı / `MAX` = en çok hasar / `LAST` =
+  en son darbe), sonra o satırda alan okur ya da yazar; alan yoksa satır kendi
+  UID'siyle cevap verir (CChar.cpp:2414 / :3733). Okuma: `ID <uid>`, `TARGET`,
+  `MAX`, `LAST`, sayı × `DAM|ELAPSED|THREAT|IGNORE|UID|<boş>`. Yazma: `CLEAR`,
+  `DELETE <uid>`, `ADD <uid>`, `TARGET <uid>`, `n.{DAM|ELAPSED|THREAT|IGNORE|DELETE}`.
+
+- [x] **İŞ-19-02 (P2) — Liste sırası kararlı.**
+  Darbe alan satır `ATTACKER.LAST` onu göstersin diye sona taşınıyordu; bu,
+  altındaki her indisi kaydırıyordu. `ATTACKER.n` scriptin iki satır arasında
+  tuttuğu tutamak olduğu için bu tek başına bir hata sınıfı. Referans yalnızca
+  sona ekler (`Attacker_Add`); LAST son-darbe damgasından çözülüyor.
+
+- [x] **İŞ-19-03 (P1) — Liste iki yönlü.**
+  Referansta `Fight_Attack` saldırdığın hedefi KENDİ listene yazar
+  (CCharFight.cpp:1442). Bizde listeyi yalnız alınan hasar dolduruyordu, yani
+  hedef ölünce sıradaki rakip listede yoktu: motor `NPC_FightFindBestTarget`
+  yerine tüm görüş menzilini yeniden tarıyordu. Üç saldırgandan birini yeni
+  öldürmüş bir yaratığın diğer ikisinin ortasında boş durmasının kökü bu.
+  `NPC_FightFindBestTarget` portlandı: yoksayma satırı + `@HitIgnore` kaçış
+  kapısı, menzilli silahta `ArcheryMin/MaxDist`, LOS, sonra tehdit-ya-da-mesafe.
+
+- [x] **İŞ-19-04 (P1) — THREAT uydurmaydı.**
+  Yerinde `Math.Clamp(TotalDamage / 2, 0, 60)` vardı ve motivasyon puanına
+  karıştırılıyordu — referansta böyle bir formül YOK. Gerçek model: satırda
+  saklanan tamsayı (`ATTACKER.n.THREAT`), oyuncuda hiç tutulmaz
+  (CCharAttacker.cpp:205), `NPC_AI_THREAT` açıkken hedef seçimini TEK BAŞINA
+  belirler, sahibin emri `ATTACKER_THREAT_TOLDBYMASTER`(=1000) + mevcut en yüksek
+  taşır ve emredilen hedef motivasyonu düz 100'e sabitler (CCharNPCStatus.cpp:912).
+  Kayda yazılıyor (ATTACKER satırına dördüncü alan; eski kayıt yine okunuyor).
+
+- [x] **İŞ-19-05 (P2) — @Attack argümansızdı.**
+  Referans ARGN1=tehdit, ARGN2=yoksay verir ve ikisini de GERİ OKUR
+  (CCharFight.cpp:1433/:1437); `@CombatAdd` de aynı (CCharAttacker.cpp:38/:45) ve
+  RETURN 1 eklemeyi iptal eder. Bizde @Attack hiçbir argüman taşımıyordu: script
+  kavgayı reddedebiliyor ama ağırlıklandıramıyordu.
+
+- [x] **İŞ-19-06 (P1) — Öldürme kredisi hasar istemiyordu.**
+  `EnumerateOffenders` her satırı kredilendiriyordu; referans yalnızca
+  `amountDone > 0` olanı (CCharAct.cpp:4361). Liste artık yalnız vuranları
+  tutmadığına göre bu kapı taşıyıcı: bir kez savurup ıskalamak pay kazandırırdı.
+
+### Bilinçli olarak REFERANSTAKİ GİBİ bırakılanlar
+
+- `@Attack`'ta yazılan yoksayma bayrağı, hedef HENÜZ listede değilse hiçbir yere
+  düşmez: referans `Attacker_SetIgnore`'u eklemeden ÖNCE çağırır ve taze satır
+  yoksayılmamış okunur (CCharFight.cpp:1440 → :1446). Testte kilitli.
+- Tekrar edilen emir satırı yeniden tohumlamaz (`Attacker_Add` var olan satırda
+  erken döner, CCharAttacker.cpp:21).
+
+### Kayıtlı sapmalar
+
+- `@CombatStart` bizde hedef değişiminde istemci tarafında ateşleniyor; referans
+  onu liste BOŞKEN `Attacker_Add` içinde ateşler. Taşımak geniş bir davranış
+  değişikliği; bu turda dokunulmadı.
+- Hasarı sıfır olan "katılımcı" satırı kaydedilmiyor (`RestoreAttacker` hasar
+  şartı arıyor). Referans zaten listeyi ölümde temizler; geçici satırın restart'ı
+  aşması gerekmiyor.
+
+**Testler:** `AttackerListParityTests` (9), `CombatEngagementParityTests` (16),
+`AttackerThreatPersistenceTests` (2). Dört düzeltme tek tek geri alındı ve
+sırasıyla 4 / 8 / 1 / 1 test kırmızıya döndü. Tam suite 3.400 / 0.
+
+**PLAN-402'nin kalan ayakları:** menzil/LOS, mühimmat, swing timer'ı,
+parry/yansıma (C-dalgalarında kapsandı, yeniden ölçülecek), ölüm ve trigger veto
+sırası.
+

@@ -38,6 +38,11 @@ public sealed class TriggerArgs
     /// the chain, so a script's own REF writes are visible afterwards.</summary>
     public Dictionary<int, string>? Refs { get; set; }
 
+    /// <summary>The number the trigger's <c>RETURN</c> named, when it named one.
+    /// The reference's own contracts use negative returns (@HitCheck's -1 and -2),
+    /// which a true/false result cannot carry. Null when no block returned.</summary>
+    public long? ReturnNumber { get; set; }
+
     // Convenience typed references
     public Character? CharSrc { get; set; }
     public Item? ItemSrc { get; set; }
@@ -957,6 +962,9 @@ public sealed class TriggerDispatcher
         args.N2 = wrapped.Number2;
         args.N3 = wrapped.Number3;
         args.S1 = wrapped.ArgString; // ARGS the script rewrote (Source-X m_s1 readback)
+        // The raw RETURN number, for the triggers whose contract is numeric.
+        if (wrapped.ReturnValue != null && long.TryParse(wrapped.ReturnValue, out long retNum))
+            args.ReturnNumber = retNum;
         return result;
     }
 

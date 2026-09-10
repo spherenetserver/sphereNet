@@ -860,11 +860,17 @@ public sealed partial class NpcAI
     /// player path's @HitTry. Args: npc, target, weapon, swingDelayTenths.</summary>
     public Func<Character, Character, Item?, int, int>? OnNpcHitTry { get; set; }
 
-    /// <summary>@HitCheck hook fired before range/LoS validation. Receives and
-    /// returns the per-swing Recoil_NoRange value plus a forced-miss decision,
-    /// matching the player path's trigger contract.</summary>
-    public Func<Character, Character, Item?, bool,
-        (bool ForceMiss, bool SwingNoRange)>? OnNpcHitCheck { get; set; }
+    /// <summary>What @HitCheck answered for one swing: the raw RETURN number,
+    /// whether that return was true at all, the swing state ARGN1 named, and the
+    /// per-swing Recoil_NoRange. The reference's contract is numeric
+    /// (CCharFight.cpp:1770-1779), so a plain true/false cannot carry it.</summary>
+    public readonly record struct NpcHitCheckOutcome(
+        long Return, bool Vetoed, int SwingState, bool SwingNoRange);
+
+    /// <summary>@HitCheck hook fired before range/LoS validation, on the same
+    /// contract the player path uses — a script must not see one meaning of
+    /// RETURN 1 when it swings and another when its pet does.</summary>
+    public Func<Character, Character, Item?, bool, NpcHitCheckOutcome>? OnNpcHitCheck { get; set; }
 
     /// <summary>
     /// Try to swing attack a target with swing timer throttle.
@@ -932,13 +938,26 @@ public sealed partial class NpcAI
         if (OnNpcHitCheck != null)
         {
             var hitCheck = OnNpcHitCheck(npc, target, weapon, swingNoRange);
-            swingNoRange = hitCheck.SwingNoRange;
-            if (hitCheck.ForceMiss)
+
+            if (hitCheck.Return == -1)
             {
-                npc.NextAttackTime = now + swingDelayMs;
-                OnNpcAttack?.Invoke(npc, target, weapon, CombatEngine.AttackMiss, 0);
+                // WAR_SWING_INVALID: this target is no longer worth swinging at.
+                npc.SetCombatSwingState(SwingState.Ready);
+                npc.ClearPendingHit();
+                npc.FightTarget = Serial.Invalid;
                 return true;
             }
+            if (hitCheck.Vetoed && hitCheck.Return != -2)
+            {
+                // RETURN 1: ARGN1 IS the state to take. READY / SWINGING hold,
+                // EQUIPPING means the swing is spent — neither is a miss.
+                ApplyScriptedSwingState(npc, hitCheck.SwingState, now, swingDelayMs);
+                return true;
+            }
+
+            swingNoRange = hitCheck.SwingNoRange;
+            if (Enum.IsDefined(typeof(SwingState), hitCheck.SwingState))
+                npc.SetCombatSwingState((SwingState)hitCheck.SwingState);
         }
 
         var prep = CombatHelper.ValidateSwingPrep(
@@ -1013,6 +1032,34 @@ public sealed partial class NpcAI
     /// reach/LoS per the combat flags (STAYINRANGE -> miss, SWING_NORANGE -> wait),
     /// fires @HitCheck, runs ResolveAttack and the NPC hit feedback. Called inline
     /// for an atomic swing, or from the NPC tick once the windup elapses.</summary>
+    /// <summary>Take the war swing state @HitCheck named (the NPC mirror of the
+    /// client handler's own): INVALID drops the target, EQUIPPING spends the
+    /// swing, READY / SWINGING wait a tenth of a second (upstream _SetTimeoutD(1))
+    /// and look again.</summary>
+    private static void ApplyScriptedSwingState(Character npc, int rawState, long now, int swingDelayMs)
+    {
+        if (!Enum.IsDefined(typeof(SwingState), rawState))
+            return;
+        switch ((SwingState)rawState)
+        {
+            case SwingState.Invalid:
+                npc.SetCombatSwingState(SwingState.Ready);
+                npc.ClearPendingHit();
+                npc.FightTarget = Serial.Invalid;
+                return;
+            case SwingState.Equipping:
+            case SwingState.EquippingNoWait:
+                npc.SetCombatSwingState(SwingState.Ready);
+                npc.NextAttackTime = now +
+                    ((SwingState)rawState == SwingState.EquippingNoWait ? 0 : swingDelayMs);
+                return;
+            default:
+                npc.SetCombatSwingState((SwingState)rawState);
+                npc.NextAttackTime = now + 100;
+                return;
+        }
+    }
+
     private static Item? FindNpcAmmo(Character npc, Item weapon)
     {
         // Throwing weapons fire themselves — no pack ammo to find/consume.

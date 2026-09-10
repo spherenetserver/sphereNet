@@ -3835,3 +3835,68 @@ sırasıyla 4 / 8 / 1 / 1 test kırmızıya döndü. Tam suite 3.400 / 0.
 parry/yansıma (C-dalgalarında kapsandı, yeniden ölçülecek), ölüm ve trigger veto
 sırası.
 
+---
+
+## İŞ-20 — Swing durumu ve @HitCheck sözleşmesi (PLAN-402 ikinci dilim, 10 Eylül 2026)
+
+### Ölçülüp DEĞİŞTİRİLMEYEN ayaklar
+
+PLAN-402'nin "menzil/LOS", "mühimmat" ve "timer" ayakları `Fight_CanHit` /
+`Fight_Hit` satır satır karşılaştırıldı; C-dalgalarının kapsamı bunları zaten
+kapatmış:
+
+| Ayak | Kanıt |
+|---|---|
+| Min/max menzil, LOS | `CombatHelper.ValidateSwingPrep` + `EvaluateHitTime` (menzilli/yakın ayrı) |
+| Yay + kalkan | `HasShieldEquipped` → Abort, `Msg.ItemuseBowShield` |
+| Okçuluk hareket gecikmesi | `CombatArcheryMovementDelay`, `COMBAT_ARCHERYCANMOVE` / `STATF_ARCHERCANMOVE` |
+| Gemi kuralı | `IsCombatBlockedByRegion` + `COMBAT_ALLOWHITFROMSHIP` |
+| Paralize / uyku | `COMBAT_PARALYZE_CANSWING`, uyuyan hedef iki yolda da bekletiliyor |
+| Ok ekonomisi | İska: yığından 1 düşer, %40 hedefin ayağına decay'li; isabet: hedef NPC ise %40 gövdesine, değilse harcanır; `LOCAL.Arrow` + `ArrowHandled`; NPC ıskada ok harcamaz (referansta `m_pPlayer` kapılı) |
+
+### Kapanan boşluklar
+
+- [x] **İŞ-20-01 (P2) — Tetikleyicinin sayısal RETURN'ü motora ulaşmıyordu.**
+  `TriggerResult` yalnız sıfır/sıfır-değil ayırır. Referansın birçok sözleşmesi
+  NEGATİF dönüş kullanır (@HitCheck -1 ve -2). Ham değer artık
+  `ScriptScope.ReturnValue` → `TriggerArgs.ReturnValue` → `TriggerArgs.ReturnNumber`
+  yoluyla geri geliyor; genel bir motor yeteneği, başka trigger'lar da kullanabilir.
+
+- [x] **İŞ-20-02 (P1) — @HitCheck ters okunuyordu.**
+  Bizde "her doğru dönüş = zorunlu ıska" idi. Referans (CCharFight.cpp:1770-1779):
+  `RETURN 1` → **ARGN1 dönen swing durumudur**; `RETURN -1` → WAR_SWING_INVALID
+  (hedefi bırak); `RETURN -2` → düzenlemeleri al, gömülü yolu yine de çalıştır;
+  başka her şey → ARGN1 ve `LOCAL.Recoil_NoRange` geri okunur, akış devam eder.
+  **Ölçüm (paket tarafı):** `Scripts-X-main/_incomplete/combat_override.scp` bütün
+  bir script-tarafı dövüş katmanı ve tempoyu tam bu sözleşmeyle kuruyor
+  (`:49` `argn1 SWING_READY` + `return 1` = *bekle*). Bizde o beklemelerin her biri
+  bir vuruş ve bir ıska olarak görünürdü.
+  Durum eşlemesi: INVALID → hedefi bırak; EQUIPPING → vuruş harcandı, recoil başlar;
+  READY/SWINGING → bir onda saniye bekle ve yeniden bak (upstream `_SetTimeoutD(1)`).
+  **NPC yolu da aynı sözleşmeye alındı** (`NpcHitCheckOutcome`): bir script, vuran
+  kendisi de olsa evcili de olsa RETURN 1'in tek bir anlamını görür.
+
+- [x] **İŞ-20-03 (P2) — `<SWING>` yoktu.**
+  Referansın kendi adı (CChar.cpp:2998/4038). Canlı paket
+  `dialogs/sphere_dialogs_prop.scp:183`'te `<SWING>` ve `<DEF.war_swing.<SWING>>`
+  okuyor; bizde yalnız uydurma `SWINGSTATE` yanıt veriyordu. Yazma tarafı da
+  eklendi: 0 her zaman, gerisi yalnız -1..2 (referans dışını reddeder).
+
+### Kayıtlı sapmalar
+
+- **@HitCheck'in ARGN2'si (hasar türü) geri okunmuyor** ve `DAMAGE_FIXED` hızlı
+  yolu yok. Sebebi yapısal: bizim vuruş yolu hasarı TÜRSÜZ uyguluyor
+  (`ResolveAttack` bir hasar türü parametresi almıyor, tür silahtan içeride
+  türetiliyor). Scriptin yazdığı türü vuruşa taşımak ayrı ve daha büyük bir iş;
+  İŞ-10'da kayda geçen "tek `OnTakeDamage` kapısı" birleştirmesiyle aynı yere
+  bakıyor.
+- **`CANSEELOSFLAG`** hâlâ yok. Yalnız `_incomplete` demo scripti kullanıyor;
+  ayrıca bizim LOS'umuz pencereleri her zaman şeffaf sayıyor (kod içinde kayıtlı
+  bilinçli sadeleştirme), yani `LOS_NB_WINDOWS` bizde zaten varsayılan davranış.
+
+**Testler:** `HitCheckReturnParityTests` (9). Dört düzeltme tek tek geri alınıp
+sırasıyla 3 / 2 / 2 / 1 test kırmızıya döndü. Tam suite 3.409 / 0.
+
+**PLAN-402'nin kalanı:** ölüm ve trigger veto sırası (parry/yansıma C-dalgalarında
+kapsandı; hedef değişimi İŞ-19'da kapandı).
+

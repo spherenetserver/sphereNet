@@ -1004,11 +1004,21 @@ public sealed class ClientCombatHandler
         int swingDelayMs = GetSwingDelayMs(_character, weapon);
 
         // Source-X @HitCheck (Fight_Hit entry, BEFORE Fight_CanHit's range/LoS
-        // validation): SRC = the victim, ARGN1 = war swing state, ARGN2 =
-        // damage type, LOCAL.Recoil_NoRange = the per-swing SWING_NORANGE
-        // decision — seeded from the combat flags and read back to drive the
-        // range validation and windup window below. RETURN 1 forces a miss
-        // (SphereNet adaptation of the Source-X swing-state return).
+        // validation): SRC = the victim, ARGN1 = war swing state, ARGN2 = damage
+        // type, LOCAL.Recoil_NoRange = the per-swing SWING_NORANGE decision.
+        //
+        // The RETURN is NUMERIC, and that is the whole point of the trigger
+        // (CCharFight.cpp:1770-1779):
+        //   RETURN 1  — ARGN1 IS the swing state to adopt; the script is steering
+        //               the state machine, not reporting a miss;
+        //   RETURN -1 — the target is invalid, stop fighting it;
+        //   RETURN -2 — take the script's edits and run the hardcoded path anyway;
+        //   anything else — read ARGN1 / LOCAL.Recoil_NoRange back and continue.
+        //
+        // This used to treat any true return as a forced miss, which inverts the
+        // contract: the reference pack's own combat override answers
+        // `argn1 SWING_READY / return 1` to mean "hold, not yet" and would have had
+        // every one of those holds rendered as a swing and a miss.
         bool swingNoRange = CombatHelper.SwingIgnoresStartRange();
         if (_triggerDispatcher != null)
         {
@@ -1023,14 +1033,29 @@ public sealed class ClientCombatHandler
                 N2 = (int)CombatEngine.GetWeaponDamageType(weapon),
                 Locals = hitCheckLocals,
             };
-            if (_triggerDispatcher.FireCharTrigger(_character, CharTrigger.HitCheck, hitCheckArgs) == TriggerResult.True)
+            var hitCheckResult = _triggerDispatcher.FireCharTrigger(
+                _character, CharTrigger.HitCheck, hitCheckArgs);
+            long hitCheckReturn = hitCheckArgs.ReturnNumber
+                ?? (hitCheckResult == TriggerResult.True ? 1L : 0L);
+
+            if (hitCheckReturn == -1)
             {
-                EmitMissFeedback(target, weapon);
-                _triggerDispatcher.FireCharTrigger(_character, CharTrigger.HitMiss,
-                    new TriggerArgs { CharSrc = target, O1 = weapon, ItemSrc = weapon });
-                _character.NextAttackTime = now + swingDelayMs;
+                // WAR_SWING_INVALID: the fight with this target is over.
+                _character.SetCombatSwingState(SwingState.Ready);
+                _character.ClearPendingHit();
+                _character.FightTarget = Serial.Invalid;
                 return;
             }
+
+            if (hitCheckResult == TriggerResult.True && hitCheckReturn != -2)
+            {
+                ApplyScriptedSwingState((int)hitCheckArgs.N1, now, swingDelayMs);
+                return;
+            }
+
+            // -2, or an ordinary fall-through: the script's edits stand and the
+            // hardcoded path carries on from them.
+            ApplyScriptedSwingState((int)hitCheckArgs.N1, now, swingDelayMs, adopt: false);
             swingNoRange = hitCheckLocals.GetInt("Recoil_NoRange") != 0;
         }
 
@@ -1502,6 +1527,51 @@ public sealed class ClientCombatHandler
                 SysMessage(ServerMessages.GetFormatted(Msg.CombatMisss, target.Name));
                 EmitMissSound(weapon);
             }
+        }
+    }
+
+    /// <summary>Take the war swing state @HitCheck named in ARGN1.
+    ///
+    /// Source-X returns the value straight out of Fight_Hit and Fight_HitTry then
+    /// acts on it (CCharFight.cpp:1580): INVALID clears the fight, READY and
+    /// SWINGING wait a tenth of a second and try again, EQUIPPING means the swing
+    /// is spent and the recoil starts. With <paramref name="adopt"/> false the
+    /// state is only written back (the script edited ARGN1 without returning 1) and
+    /// the caller keeps going.</summary>
+    private void ApplyScriptedSwingState(int rawState, long now, int swingDelayMs, bool adopt = true)
+    {
+        if (_character == null) return;
+        if (!Enum.IsDefined(typeof(SwingState), rawState))
+            return;
+
+        var state = (SwingState)rawState;
+        if (!adopt)
+        {
+            if (state != _character.CombatSwingState)
+                _character.SetCombatSwingState(state);
+            return;
+        }
+
+        switch (state)
+        {
+            case SwingState.Invalid:
+                _character.SetCombatSwingState(SwingState.Ready);
+                _character.ClearPendingHit();
+                _character.FightTarget = Serial.Invalid;
+                return;
+            case SwingState.Equipping:
+            case SwingState.EquippingNoWait:
+                // The swing was made: burn the recoil, no hit and no miss.
+                _character.SetCombatSwingState(SwingState.Ready);
+                _character.NextAttackTime = now +
+                    (state == SwingState.EquippingNoWait ? 0 : swingDelayMs);
+                return;
+            default:
+                // READY / SWINGING: hold and look again on the next tenth
+                // (upstream's _SetTimeoutD(1)).
+                _character.SetCombatSwingState(state);
+                _character.NextAttackTime = now + 100;
+                return;
         }
     }
 

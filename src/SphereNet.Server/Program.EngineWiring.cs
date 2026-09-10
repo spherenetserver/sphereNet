@@ -2056,7 +2056,9 @@ public static partial class Program
             };
             _npcAI.OnNpcHitCheck = (attacker, target, weapon, swingNoRange) =>
             {
-                if (_triggerDispatcher == null) return (false, swingNoRange);
+                if (_triggerDispatcher == null)
+                    return new SphereNet.Game.AI.NpcAI.NpcHitCheckOutcome(
+                        0, false, (int)attacker.CombatSwingState, swingNoRange);
                 var locals = new SphereNet.Scripting.Variables.VarMap();
                 locals.SetInt("Recoil_NoRange", swingNoRange ? 1 : 0);
                 var args = new TriggerArgs
@@ -2068,8 +2070,12 @@ public static partial class Program
                     N2 = (int)CombatEngine.GetWeaponDamageType(weapon),
                     Locals = locals,
                 };
-                bool forceMiss = _triggerDispatcher.FireCharTrigger(attacker, CharTrigger.HitCheck, args) == TriggerResult.True;
-                return (forceMiss, locals.GetInt("Recoil_NoRange") != 0);
+                var res = _triggerDispatcher.FireCharTrigger(attacker, CharTrigger.HitCheck, args);
+                long retNum = args.ReturnNumber ?? (res == TriggerResult.True ? 1L : 0L);
+                return new SphereNet.Game.AI.NpcAI.NpcHitCheckOutcome(
+                    retNum, res == TriggerResult.True,
+                    SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1),
+                    locals.GetInt("Recoil_NoRange") != 0);
             };
             _npcAI.OnNpcAttack = (attacker, target, weapon, damage, ammoUid) =>
             {

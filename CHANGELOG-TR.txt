@@ -3,6 +3,33 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-10] - @HitCheck'in cevabi ne demek
+----------------------------------------
+
+FIX - Bir tetikleyicinin RETURN'u yine SAYI olabiliyor ve motor onu okuyor.
+        Dogru/yanlis sonuc bir vetoyu tasir ama referansin SAYISAL donuslerini
+        tasiyamaz; @HitCheck'in sozlesmesinin tamami ise sayisal. Ham deger artik
+        tetikleyici argumanlariyla birlikte geri geliyor.
+
+FIX - @HitCheck her seferinde iska yaptirmak yerine vurusu yonlendiriyor.
+        Referans donusu bir savas-vurus durumu olarak okur
+        (CCharFight.cpp:1770-1779): RETURN 1 "durum ARGN1'de", RETURN -1 "hedef
+        gecersiz", RETURN -2 ise "duzenlemelerimi al ve gomulu yolu yine de calistir"
+        demektir. Bu motor her dogru donusu ZORUNLU ISKA sayiyordu - scriptin
+        `argn1 SWING_READY / return 1` ile soyledigi seyin tam tersi; o satir
+        "bekle, henuz degil" demektir ve referans paketinin kendi dovus katmani her
+        vurusu boyle sayar. Beklemek artik bir vurus ve iska olarak gorunmuyor; -1
+        hedefi birakiyor; -2 ve duz gecis scriptin ARGN1'ini ve
+        LOCAL.Recoil_NoRange'ini alip devam ediyor. NPC yolu da ayni sozlesmeyi
+        okuyor: script, vuran kendisi de olsa evcili de olsa RETURN 1'in tek bir
+        anlamini goruyor.
+
+FIX - <SWING> cozuluyor. Savas-vurus durumunun referanstaki kendi adi bu
+        (CChar.cpp:2998) ve canli paket onu oyuncu-bilgi dialogunda okuyor; yalnizca
+        SphereNet'in uydurdugu SWINGSTATE yanit veriyordu. SWING= yazma tarafinda da
+        calisiyor ve referanstaki gibi -1..2 disini reddediyor.
+
+
 [2026-09-10] - Bir NPC siradaki kime doner
 ----------------------------------------
 

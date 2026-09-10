@@ -42,6 +42,15 @@ public sealed class TriggerArgs : ITriggerArgs
     /// <c>for &lt;ARGN1&gt; ... &lt;REF&lt;dLOCAL._FOR&gt;&gt;</c>.</summary>
     public Dictionary<int, string>? SharedRefs { get; set; }
 
+    /// <summary>What the trigger block's <c>RETURN</c> actually said, as written.
+    ///
+    /// TriggerResult only distinguishes zero from non-zero, which is enough for the
+    /// usual veto but not for the reference's NUMERIC returns: @HitCheck alone uses
+    /// -1 (target invalid) and -2 (run the hardcoded path anyway) alongside 1
+    /// (CCharFight.cpp:1770-1779). Set by the trigger runner after the block runs;
+    /// null when nothing returned.</summary>
+    public string? ReturnValue { get; set; }
+
     /// <summary>CALL semantics: the callee runs on the CALLER'S LOCAL pool.
     ///
     /// In Source-X the LOCAL pool lives on the args object (m_VarsLocal), so which

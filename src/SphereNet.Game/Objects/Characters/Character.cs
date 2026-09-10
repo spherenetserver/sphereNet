@@ -3469,6 +3469,12 @@ public partial class Character : ObjBase
             case "FIGHTTARGET": value = FightTarget.IsValid ? $"0{FightTarget.Value:X}" : "0"; return true;
             case "OWNER":
             case "NPCMASTER": value = NpcMaster.IsValid ? $"0{NpcMaster.Value:X}" : "0"; return true;
+            // SWING is the reference's own name for the war swing state
+            // (CChar::r_WriteVal CHC_SWING, CChar.cpp:2998). The live pack reads it
+            // in its player-info dialog (<SWING> and <DEF.war_swing.<SWING>>,
+            // dialogs/sphere_dialogs_prop.scp:183) and got nothing back: only the
+            // SphereNet-invented SWINGSTATE name answered. Both resolve now.
+            case "SWING":
             case "SWINGSTATE": value = ((int)CombatSwingState).ToString(); return true;
             case "SWINGSTATE.NAME": value = CombatSwingState.ToString(); return true;
             case "SWINGREMAIN":
@@ -4389,6 +4395,18 @@ public partial class Character : ObjBase
 
         switch (key.ToUpperInvariant())
         {
+            // SWING= (CChar::r_LoadVal CHC_SWING, CChar.cpp:4038): the reference
+            // accepts 0 unconditionally and otherwise only -1..2, refusing anything
+            // else rather than parking a nonsense state on the character.
+            case "SWING":
+            {
+                if (!int.TryParse(normalized, out int swingVal))
+                    return false;
+                if (swingVal != 0 && (swingVal < (int)SwingState.Invalid || swingVal > (int)SwingState.Swinging))
+                    return false;
+                SetCombatSwingState((SwingState)swingVal);
+                return true;
+            }
             case "STR": if (short.TryParse(normalized, out short sv)) Str = sv; return true;
             case "DEX": if (short.TryParse(normalized, out short dv)) Dex = dv; return true;
             case "INT": if (short.TryParse(normalized, out short iv)) Int = iv; return true;

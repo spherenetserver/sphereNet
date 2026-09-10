@@ -42,6 +42,19 @@ public sealed class TriggerRunner
     /// the chain uses it, so engine-seeded values are visible to the script
     /// and script writes are visible back to the engine. Function calls are
     /// NOT routed through here — they keep their own locals.</summary>
+    /// <summary>Run one trigger block and hand the raw RETURN value back through the
+    /// args (Source-X returns the TRIGRET number itself, and several triggers read
+    /// negative ones). Keeps the ordinary TriggerResult as the method's result.</summary>
+    private TriggerResult ExecuteTriggerBody(
+        IReadOnlyList<Parsing.ScriptKey> body, IScriptObj target, ITextConsole? source,
+        ITriggerArgs? args, ScriptScope scope)
+    {
+        var result = _interpreter.Execute(body, target, source, args, scope);
+        if (args is TriggerArgs ta)
+            ta.ReturnValue = scope.ReturnValue;
+        return result;
+    }
+
     private static ScriptScope CreateTriggerScope(string triggerName, ITriggerArgs? args)
     {
         var scope = args is TriggerArgs { SharedLocals: not null } ta
@@ -80,7 +93,7 @@ public sealed class TriggerRunner
             if (link.TryGetTriggerBody(triggerName, out var cachedTriggerLines))
             {
                 var cachedScope = CreateTriggerScope("@" + triggerName, args);
-                return _interpreter.Execute(cachedTriggerLines, target, source, args, cachedScope);
+                return ExecuteTriggerBody(cachedTriggerLines, target, source, args, cachedScope);
             }
 
             using var scriptFile = link.OpenAtStoredPosition();
@@ -105,7 +118,7 @@ public sealed class TriggerRunner
                         var triggerLines = CollectTriggerBody(section.Keys, startIdx);
 
                         var scope = CreateTriggerScope("@" + triggerName, args);
-                        return _interpreter.Execute(triggerLines, target, source, args, scope);
+                        return ExecuteTriggerBody(triggerLines, target, source, args, scope);
                     }
                 }
             }
@@ -145,7 +158,7 @@ public sealed class TriggerRunner
                     _logger.LogDebug("[trig_runner] {Trig} matched cached body lines={N}",
                         triggerName, cachedTriggerLines.Count);
                 var cachedScope = CreateTriggerScope("@" + triggerName, args);
-                return _interpreter.Execute(cachedTriggerLines, target, source, args, cachedScope);
+                return ExecuteTriggerBody(cachedTriggerLines, target, source, args, cachedScope);
             }
 
             using var scriptFile = link.OpenAtStoredPosition();
@@ -186,7 +199,7 @@ public sealed class TriggerRunner
                         }
 
                         var scope = CreateTriggerScope("@" + triggerName, args);
-                        return _interpreter.Execute(triggerLines, target, source, args, scope);
+                        return ExecuteTriggerBody(triggerLines, target, source, args, scope);
                     }
                 }
             }

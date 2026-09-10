@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-10 |
-| Son commit | `902a970` + İŞ-18 (takas/yükleme) + İŞ-19 (hedef seçimi) |
-| Tam test | 3.400 başarılı / 0 başarısız |
-| Sıradaki iş | **PLAN-402'nin kalanı — menzil/LOS, mühimmat, swing timer'ı** |
+| Son commit | `da5e8f1` + İŞ-20 (swing durumu / @HitCheck) |
+| Tam test | 3.409 başarılı / 0 başarısız |
+| Sıradaki iş | **PLAN-402'nin kalanı — ölüm ve trigger veto sırası** |
 
 ## Çalışma sırası
 
@@ -230,11 +230,29 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   Yanında: öldürme kredisi artık hasar istiyor (referansın `amountDone > 0` kapısı),
   liste artık yalnız vuranları tutmadığı için taşıyıcı.
 
+- [x] **İŞ-20 — Dövüş: swing durumu ve @HitCheck sözleşmesi** (PLAN-402 ikinci dilim) — **KAPANDI**
+  PLAN-402'nin "menzil/LOS, mühimmat, timer" ayakları **ölçülüp zaten doğru**
+  bulundu (C-dalgalarının kapsamı): min/max menzil, LOS, yay+kalkan, okçuluk
+  hareket gecikmesi, gemi kuralı, paralize, ok ekonomisi (iska %40 yere, isabette
+  NPC gövdesine, `LOCAL.Arrow`/`ArrowHandled`, NPC iskada ok harcamaz). **Üç gerçek
+  boşluk swing DURUMUNDA çıktı:**
+  1. **Trigger RETURN'ü sayı değildi.** Dogru/yanlış sonuç -1 / -2 taşıyamıyor.
+  2. **@HitCheck ters okunuyordu.** Her doğru dönüş ZORUNLU ISKA sayılıyordu;
+     referansta RETURN 1 = "durum ARGN1'de", -1 = geçersiz hedef, -2 = gömülü yolu
+     yine de çalıştır. Referans paketinin kendi dövüş katmanı `argn1 SWING_READY /
+     return 1` ile *bekle* diyor — bizde her bekleme bir vuruş+ıska oluyordu.
+  3. **`<SWING>` yoktu.** Canlı paketin prop dialogu okuyor; yalnız uydurma
+     `SWINGSTATE` adı yanıt veriyordu. Yazma tarafı da eklendi (-1..2 dışını reddeder).
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-20 KAPANDI** — 2026-09-10. Sayısal trigger RETURN'ü, @HitCheck dönüş
+  sözleşmesi (oyuncu + NPC yolu), `<SWING>` oku/yaz. Test:
+  `HitCheckReturnParityTests` (9); dört düzeltme tek tek geri alınıp yakalandığı
+  doğrulandı (3/2/2/1 kırmızı). Tam suite 3.409.
 - **İŞ-19 KAPANDI** — 2026-09-10. ATTACKER.* yüzeyi, liste sırası, iki yönlü liste,
   gerçek THREAT, @Attack/@CombatAdd argümanları, öldürme kredisi hasar kapısı.
   Test: `AttackerListParityTests` (9), `CombatEngagementParityTests` (16),

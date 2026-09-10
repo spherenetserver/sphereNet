@@ -4,6 +4,32 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-10] - What @HitCheck's answer means
+----------------------------------------
+
+FIX - A trigger's RETURN can be a number again, and the engine reads it. A
+        true/false result carries a veto but not the reference's NUMERIC returns,
+        and @HitCheck's whole contract is numeric. The raw value now travels back
+        with the trigger arguments.
+
+FIX - @HitCheck steers the swing instead of always missing. The reference reads
+        the return as a war swing state (CCharFight.cpp:1770-1779): RETURN 1 means
+        "the state is in ARGN1", RETURN -1 means the target is invalid, RETURN -2
+        means take my edits and run the hardcoded path anyway. This engine read any
+        true return as a forced miss - the exact inverse of what a script says with
+        `argn1 SWING_READY / return 1`, which is "hold, not yet" and is how the
+        reference pack's own combat override paces every swing. Holding no longer
+        renders a swing and a miss; -1 drops the target; -2 and a plain
+        fall-through take the script's ARGN1 and LOCAL.Recoil_NoRange and carry on.
+        The NPC path answers the same contract, so a script sees one meaning of
+        RETURN 1 whether it swings or its pet does.
+
+FIX - <SWING> resolves. It is the reference's own name for the war swing state
+        (CChar.cpp:2998) and the live pack reads it in its player-info dialog;
+        only the SphereNet-invented SWINGSTATE answered. SWING= writes it too, and
+        refuses anything outside -1..2 the way the reference does.
+
+
 [2026-09-10] - Who an NPC turns on next
 ----------------------------------------
 

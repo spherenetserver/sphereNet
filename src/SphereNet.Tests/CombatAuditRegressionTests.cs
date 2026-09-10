@@ -368,7 +368,7 @@ public class CombatAuditRegressionTests
     [Fact]
     public void FullParryHasDistinctOutcomeFromMiss()
     {
-        var savedParry = CombatEngine.OnHitParry;
+        var savedSucceeded = CombatEngine.OnParrySucceeded;
         try
         {
             var world = TestHarness.CreateWorld();
@@ -378,7 +378,7 @@ public class CombatAuditRegressionTests
             target.SetSkill(SkillType.Parrying, 1000);
             target.Equip(new Item { ItemType = ItemType.Shield }, Layer.TwoHanded);
             bool parried = false;
-            CombatEngine.OnHitParry = (_, _, _) => { parried = true; return 0; };
+            CombatEngine.OnParrySucceeded = _ => parried = true;
 
             int result = 0;
             for (int i = 0; i < 500 && !parried; i++)
@@ -392,7 +392,7 @@ public class CombatAuditRegressionTests
         }
         finally
         {
-            CombatEngine.OnHitParry = savedParry;
+            CombatEngine.OnParrySucceeded = savedSucceeded;
         }
     }
 

@@ -78,6 +78,7 @@ public sealed class ResetEngineStaticsAttribute : BeforeAfterTestAttribute
         SphereNet.Game.Combat.CombatEngine.BreakOnZeroHits = true;
         SphereNet.Game.Combat.CombatEngine.DefaultHits = 50;
         SphereNet.Game.Combat.CombatEngine.OnHitParry = null;
+        SphereNet.Game.Combat.CombatEngine.OnParrySucceeded = null;
         SphereNet.Game.Objects.Items.Item.RedeedHouse = null;
         SphereNet.Game.Objects.Items.Item.RedeedShip = null;
         SphereNet.Game.Speech.CommandHandler.ServerCommandBridge = null;

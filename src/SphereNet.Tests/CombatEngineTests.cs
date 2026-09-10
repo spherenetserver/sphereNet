@@ -323,6 +323,7 @@ public class CombatEngineTests
     public void OnHitParry_PartialBlockLeaksDamageInsteadOfFullBlock()
     {
         var savedParry = CombatEngine.OnHitParry;
+        var savedSucceeded = CombatEngine.OnParrySucceeded;
         try
         {
             var attacker = MakeChar();
@@ -331,27 +332,28 @@ public class CombatEngineTests
             var shield = new Item { ItemType = ItemType.Shield };
             target.Equip(shield, Layer.TwoHanded);
 
-            // Partial parry: 1 point leaks through (target has no armor → it stands).
-            // Previously every successful parry was a full block (returned -1). The
-            // hook flags when a parry actually fires so we can assert on that swing.
+            // ARGN1 is a PERCENT the parry takes off, so half of it still lands.
+            // Every successful parry used to be a full block; the reference reduces
+            // by the percent and only treats 100 as "nothing gets through".
             bool parried = false;
-            CombatEngine.OnHitParry = (_, _, _) => { parried = true; return 1; };
+            CombatEngine.OnHitParry = (_, _, ctx) => { ctx.ReductionPercent = 50; return true; };
+            CombatEngine.OnParrySucceeded = _ => parried = true;
             int dmg = 0;
             for (int i = 0; i < 4000; i++)
             {
                 parried = false;
                 target.Hits = target.MaxHits;
                 dmg = CombatEngine.ResolveAttack(attacker, target, null);
-                if (parried) break;
+                if (parried && dmg != CombatEngine.AttackMiss) break;
             }
             Assert.True(parried, "expected at least one parry across the attempts");
-            Assert.Equal(1, dmg);                                  // partial damage leaked through
-            Assert.Equal((short)(target.MaxHits - 1), target.Hits); // not a full block
-
+            Assert.NotEqual(CombatEngine.AttackParried, dmg);       // not a full block
+            Assert.True(target.Hits < target.MaxHits, "half the blow should still land");
         }
         finally
         {
             CombatEngine.OnHitParry = savedParry;
+            CombatEngine.OnParrySucceeded = savedSucceeded;
         }
     }
 

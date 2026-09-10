@@ -2507,18 +2507,48 @@ public static partial class Program
                 item.Delete();
             };
 
-            CombatEngine.OnHitParry = (defender, attacker, blockedDamage) =>
+            // @HitParry (Source-X CCharFight.cpp:2095-2119). Fires BEFORE the parry
+            // roll, because LOCAL.ParryChance is one of the things it hands over:
+            // ARGN1 = the PERCENT the parry takes off, ARGN2 = the damage type,
+            // ARGO = the parrying item, and the four LOCALs carry the chance, the
+            // skill that rolls, the item-wear chance and the raw damage. RETURN 1
+            // drops the blow entirely.
+            CombatEngine.OnHitParry = (defender, attacker, ctx) =>
             {
-                // Visible block spark on a successful parry (ModernUO 0x37B9).
-                GameClient.BroadcastParryEffect(defender, BroadcastNearby);
                 if (_triggerDispatcher == null)
-                    return 0; // full block
-                // @HitParry: ARGN1 is the damage allowed through the parry — 0 (the
-                // default) is a full block; a script may raise it for a partial block.
-                var args = new TriggerArgs { CharSrc = attacker, O1 = attacker, N1 = 0 };
-                _triggerDispatcher.FireCharTrigger(defender, CharTrigger.HitParry, args);
-                return SphereNet.Core.Types.ScriptNumber.ToEngineInt(Math.Max(0, args.N1));
+                    return true;
+
+                var locals = new SphereNet.Scripting.Variables.VarMap();
+                locals.SetInt("ParryChance", ctx.ParryChance);
+                locals.SetInt("ParrySkillID", ctx.ParrySkillId);
+                locals.SetInt("ItemParryDamageChance", ctx.ItemParryDamageChance);
+                locals.SetInt("Damage", ctx.Damage);
+                var args = new TriggerArgs
+                {
+                    CharSrc = attacker,
+                    O1 = (Core.Interfaces.IScriptObj?)ctx.ParryItem ?? attacker,
+                    ItemSrc = ctx.ParryItem,
+                    N1 = ctx.ReductionPercent,
+                    N2 = ctx.DamageType,
+                    Locals = locals,
+                };
+                if (_triggerDispatcher.FireCharTrigger(defender, CharTrigger.HitParry, args)
+                    == TriggerResult.True)
+                    return false;
+
+                ctx.ReductionPercent = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N1);
+                ctx.DamageType = SphereNet.Core.Types.ScriptNumber.ToEngineInt(args.N2);
+                ctx.ParryChance = (int)locals.GetInt("ParryChance");
+                ctx.ParrySkillId = (int)locals.GetInt("ParrySkillID");
+                ctx.ItemParryDamageChance = (int)locals.GetInt("ItemParryDamageChance");
+                ctx.Damage = (int)locals.GetInt("Damage");
+                return true;
             };
+
+            // The visible block spark belongs to a parry that actually landed, so it
+            // is emitted from the roll rather than from the trigger fire above.
+            CombatEngine.OnParrySucceeded = defender =>
+                GameClient.BroadcastParryEffect(defender, BroadcastNearby);
 
             // Shared on-hit damage pipeline for both the player and NPC swing
             // paths. Fires @Hit / @GetHit and the weapon/armor item hooks after

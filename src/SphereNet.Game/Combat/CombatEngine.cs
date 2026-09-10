@@ -203,13 +203,40 @@ public static class CombatEngine
 
     public static Action<Item>? OnItemBroken;
     public static Func<Item, int, bool>? OnItemDamaged;
-    /// <summary>
-    /// Fired on a successful parry. Returns the damage that still leaks THROUGH
-    /// the parry — 0 (the default, when unwired or when no @HitParry script
-    /// overrides ARGN1) is a full block; a positive value is a partial block.
-    /// Args: defender, attacker, blockedDamage → damageThrough.
-    /// </summary>
-    public static Func<Character, Character, int, int>? OnHitParry;
+    /// <summary>Mutable @HitParry arguments (Source-X CCharFight.cpp:2095-2119).
+    /// The reference documents them in the source itself:
+    /// <list type="bullet">
+    /// <item>ARGN1 = the PERCENT of the blow the parry takes off (100 = a full
+    /// block, which is the default and what the Parrying skill's own EFFECT curve
+    /// overrides when a pack defines one);</item>
+    /// <item>ARGN2 = the damage type;</item>
+    /// <item>ARGO = the item doing the parrying;</item>
+    /// <item>LOCAL.ParryChance = the chance the roll uses — a script may raise it
+    /// from zero or drop it to zero, which is why the trigger fires BEFORE the
+    /// roll rather than after a successful one;</item>
+    /// <item>LOCAL.ParrySkillID = which skill rolls and trains;</item>
+    /// <item>LOCAL.ItemParryDamageChance = the chance the parrying item is worn;</item>
+    /// <item>LOCAL.Damage = the raw damage before any parry reduction.</item>
+    /// </list></summary>
+    public sealed class HitParryContext
+    {
+        public int ReductionPercent { get; set; } = 100;
+        public int DamageType { get; set; }
+        public int ParryChance { get; set; }
+        public int ParrySkillId { get; set; }
+        public int ItemParryDamageChance { get; set; } = 100;
+        public int Damage { get; set; }
+        public Item? ParryItem { get; init; }
+    }
+
+    /// <summary>@HitParry. Fired BEFORE the parry roll, with the whole contract
+    /// in <see cref="HitParryContext"/>; a false result is the trigger's RETURN 1
+    /// and drops the blow entirely (CCharFight.cpp:2113).</summary>
+    public static Func<Character, Character, HitParryContext, bool>? OnHitParry;
+
+    /// <summary>A parry that actually landed — the visible block effect hangs off
+    /// this rather than off the trigger, which now fires before the roll.</summary>
+    public static Action<Character>? OnParrySucceeded;
 
     /// <summary>
     /// On-hit damage pipeline. Fires the @Hit / @GetHit char triggers and the
@@ -947,6 +974,37 @@ public static class CombatEngine
 
     /// <summary>Source-X Calc_CombatChanceToParry, including the Samurai
     /// Empire Bushido formulas and COMBATPARRYINGERA equipment gates.</summary>
+    /// <summary>Roll one parry attempt: train on the try (Source-X rolls through
+    /// Skill_UseQuick, which trains on the attempt with the chance as difficulty),
+    /// and on a success wear the parrying item — the reference damages it for 1
+    /// (CCharFight.cpp:2133), which this engine never did, so a shield parried
+    /// forever for free.</summary>
+    private static bool RollParry(Character defender, Character attacker, int chance,
+        SkillType parrySkill, Item? parryItem, int itemDamageChance)
+    {
+        if (defender.IsPlayer)
+            Skills.SkillEngine.GainExperience(defender, parrySkill, chance);
+
+        if (_rand.Next(100) >= chance)
+            return false;
+
+        bool seWeaponParry = (Character.FeatureSE & 0x02) != 0 &&
+            ((ParryEraFlags)Character.CombatParryingEra).HasFlag(ParryEraFlags.SeFormula) &&
+            parryItem?.ItemType != ItemType.Shield;
+        if (defender.IsPlayer && seWeaponParry)
+            Skills.SkillEngine.GainExperience(defender, SkillType.Bushido, chance);
+
+        // The reference damages the parrying item for 1 outright
+        // (pItemHit->OnTakeDamage, CCharFight.cpp:2133) - the only roll in front of
+        // it is LOCAL.ItemParryDamageChance, so the global durability chance must
+        // not be rolled a second time here.
+        if (parryItem != null && DurabilityEnabled && itemDamageChance > _rand.Next(100))
+            ApplyDurabilityLoss(parryItem, rollConfiguredChance: false);
+
+        OnParrySucceeded?.Invoke(defender);
+        return true;
+    }
+
     public static int CalculateParryChance(Character defender, out Item? parryItem)
     {
         parryItem = null;
@@ -1114,30 +1172,66 @@ public static class CombatEngine
 
         // Parry check — Source-X Calc_CombatChanceToParry, selected by the
         // COMBATPARRYINGERA mask (legacy or Samurai Empire/Bushido formula).
+        // Upstream skips the whole block for a DAMAGE_GOD blow (CCharFight.cpp:2083).
+        // There is nothing to skip here: a weapon swing carries no damage-type flags
+        // through this path at all (see the note on the @HitCheck ARGN2 read-back),
+        // and the God-flagged sources are the script DAMAGE verb and the spell
+        // engine, neither of which comes through the parry check.
         int parryChance = CalculateParryChance(target, out Item? parryItem);
-        if (parryChance > 0)
+        var parrySkill = SkillType.Parrying;
+
+        // Default reduction is a full block, unless the Parrying skill's own
+        // EFFECT curve says otherwise (CCharFight.cpp:2091) — the pack decides
+        // how much a parry takes off, not the engine.
+        int reductionPercent = 100;
+        var parrySkillDef = Definitions.DefinitionLoader.GetSkillDef((int)parrySkill);
+        if (parrySkillDef is { Effect.IsEmpty: false })
+            reductionPercent = parrySkillDef.Effect.GetLinear(target.GetSkill(parrySkill));
+
+        // The trigger fires whether or not the engine would have rolled: its
+        // LOCAL.ParryChance is writable, so a script can parry where the engine
+        // would not (and refuse where it would). Firing it only after a SUCCESSFUL
+        // roll — as this used to — puts both of those out of reach.
+        if (OnHitParry != null)
         {
-            // Source-X rolls through Skill_UseQuick, which trains Parrying on
-            // the attempt using the computed parry chance as difficulty.
-            if (target.IsPlayer)
-                Skills.SkillEngine.GainExperience(target, SkillType.Parrying, parryChance);
-
-            if (_rand.Next(100) < parryChance)
+            var parryCtx = new HitParryContext
             {
-                bool seWeaponParry = (Character.FeatureSE & 0x02) != 0 &&
-                    ((ParryEraFlags)Character.CombatParryingEra).HasFlag(ParryEraFlags.SeFormula) &&
-                    parryItem?.ItemType != ItemType.Shield;
-                if (target.IsPlayer && seWeaponParry)
-                    Skills.SkillEngine.GainExperience(target, SkillType.Bushido, parryChance);
+                ReductionPercent = reductionPercent,
+                DamageType = (int)GetWeaponDamageType(weapon),
+                ParryChance = parryChance,
+                ParrySkillId = (int)parrySkill,
+                ItemParryDamageChance = 100,
+                Damage = damage,
+                ParryItem = parryItem,
+            };
+            if (!OnHitParry(target, attacker, parryCtx))
+                return AttackParried;   // RETURN 1: the blow is dropped whole
 
-                // A parry fully blocks by default. A wired @HitParry can let
-                // some damage leak through (partial block) by returning a
-                // positive value; that damage then still runs through armor.
-                int through = OnHitParry?.Invoke(target, attacker, damage) ?? 0;
-                if (through <= 0)
+            reductionPercent = parryCtx.ReductionPercent;
+            parryChance = parryCtx.ParryChance;
+            damage = parryCtx.Damage;
+            // SkillType is backed by a short, so the id has to be narrowed before
+            // it can be asked about - Enum.IsDefined throws on a mismatched width.
+            if (parryCtx.ParrySkillId is >= short.MinValue and <= short.MaxValue &&
+                Enum.IsDefined(typeof(SkillType), (short)parryCtx.ParrySkillId))
+                parrySkill = (SkillType)parryCtx.ParrySkillId;
+
+            if (parryChance > 0 && RollParry(target, attacker, parryChance, parrySkill,
+                    parryItem, parryCtx.ItemParryDamageChance))
+            {
+                if (reductionPercent >= 100)
                     return AttackParried;
-                damage = Math.Min(damage, through);
+                if (reductionPercent > 0)
+                    damage -= damage * reductionPercent / 100;
             }
+        }
+        else if (parryChance > 0 && RollParry(target, attacker, parryChance, parrySkill,
+                     parryItem, itemDamageChance: 100))
+        {
+            if (reductionPercent >= 100)
+                return AttackParried;
+            if (reductionPercent > 0)
+                damage -= damage * reductionPercent / 100;
         }
 
         // Armor reduction

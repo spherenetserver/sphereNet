@@ -4,6 +4,30 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-10] - What a parry is allowed to decide
+----------------------------------------
+
+FIX - @HitParry fires BEFORE the parry roll, which is the only moment its
+        arguments mean anything. It used to fire after a SUCCESSFUL roll, so
+        LOCAL.ParryChance - the chance the roll uses - was unreachable: a script
+        could neither parry where the engine would not nor refuse one where it
+        would.
+
+FIX - ARGN1 is the PERCENT the parry takes off, not the damage let through. The
+        two are inverse quantities, so a script raising ARGN1 to parry harder took
+        LESS off the blow. 100 (the default) is a full block, and the Parrying
+        skill's own EFFECT curve sets it when a pack defines one - the pack decides
+        how much a parry is worth, not the engine.
+
+FIX - The rest of the contract arrived with it: ARGN2 the damage type, ARGO the
+        parrying item, LOCAL.ParrySkillID (which skill rolls and trains),
+        LOCAL.ItemParryDamageChance and LOCAL.Damage (the raw blow, rewritable).
+        RETURN 1 drops the blow whole.
+
+FIX - A parry wears the item that made it. The reference damages the shield or
+        weapon for 1 on every successful parry; here it parried forever for free.
+
+
 [2026-09-10] - What @HitCheck's answer means
 ----------------------------------------
 

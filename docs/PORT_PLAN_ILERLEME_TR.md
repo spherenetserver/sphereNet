@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-10 |
-| Son commit | `da5e8f1` + İŞ-20 (swing durumu / @HitCheck) |
-| Tam test | 3.409 başarılı / 0 başarısız |
-| Sıradaki iş | **PLAN-402'nin kalanı — ölüm ve trigger veto sırası** |
+| Son commit | `60a28a3` + İŞ-21 (@HitParry sözleşmesi) |
+| Tam test | 3.417 başarılı / 0 başarısız |
+| Sıradaki iş | **PLAN-403 (magic uçtan uca)** — PLAN-402 kapandı |
 
 ## Çalışma sırası
 
@@ -244,11 +244,28 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   3. **`<SWING>` yoktu.** Canlı paketin prop dialogu okuyor; yalnız uydurma
      `SWINGSTATE` adı yanıt veriyordu. Yazma tarafı da eklendi (-1..2 dışını reddeder).
 
+- [x] **İŞ-21 — Dövüş: @HitParry sözleşmesi** (PLAN-402 üçüncü dilim) — **KAPANDI**
+  PLAN-402'nin "parry/yansıma" ayağı. Yansıma İŞ-9/İŞ-10'da kapanmıştı; savuşturma
+  tarafı açıktı ve **ARGN1 ters anlamdaydı**. Dört boşluk: (1) trigger zardan SONRA
+  ateşleniyordu, yani `LOCAL.ParryChance` ulaşılamazdı; (2) ARGN1 "geçen hasar"
+  okunuyordu, referansta "düşülen yüzde"; (3) ARGN2/ARGO ve dört LOCAL hiç yoktu,
+  RETURN 1 vetosu yoktu; (4) savuşturan eşya hiç yıpranmıyordu. Ayrıca varsayılan
+  indirim artık Parrying yeteneğinin **EFFECT eğrisinden** geliyor.
+
+  **PLAN-402 bununla kapandı:** hedef değişimi (İŞ-19), swing durumu/@HitCheck
+  (İŞ-20), menzil/LOS + mühimmat + timer (İŞ-20'de ölçüldü, değişiklik gerekmedi),
+  parry (İŞ-21), yansıma (İŞ-9/10), ölüm ve trigger veto sırası (D1-D3 + İŞ-19'un
+  hasar kapısı).
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-21 KAPANDI** — 2026-09-10. @HitParry zardan önce ateşleniyor; ARGN1 yüzde,
+  ARGN2/ARGO + dört LOCAL, RETURN 1 vetosu, eşya yıpranması, EFFECT eğrisi.
+  Test: `HitParryContractTests` (8); üç düzeltme tek tek geri alınıp yakalandığı
+  doğrulandı (7/2/1 kırmızı). Tam suite 3.417.
 - **İŞ-20 KAPANDI** — 2026-09-10. Sayısal trigger RETURN'ü, @HitCheck dönüş
   sözleşmesi (oyuncu + NPC yolu), `<SWING>` oku/yaz. Test:
   `HitCheckReturnParityTests` (9); dört düzeltme tek tek geri alınıp yakalandığı

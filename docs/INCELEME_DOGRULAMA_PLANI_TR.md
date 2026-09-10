@@ -3900,3 +3900,54 @@ sırasıyla 3 / 2 / 2 / 1 test kırmızıya döndü. Tam suite 3.409 / 0.
 **PLAN-402'nin kalanı:** ölüm ve trigger veto sırası (parry/yansıma C-dalgalarında
 kapsandı; hedef değişimi İŞ-19'da kapandı).
 
+---
+
+## İŞ-21 — @HitParry sözleşmesi (PLAN-402 üçüncü dilim, 10 Eylül 2026)
+
+PLAN-402'nin "parry/yansıma" ayağı. Yansıma tarafı İŞ-9 ve İŞ-10'da kapanmıştı;
+savuşturma tarafı açıktı. Referans sözleşmeyi kendi kaynağında belgeliyor
+(CCharFight.cpp:2095-2119).
+
+### Kapanan boşluklar
+
+- [x] **İŞ-21-01 (P1) — Trigger yanlış anda ateşleniyordu.**
+  Bizde BAŞARILI zardan sonra, referansta zardan ÖNCE. Argümanların bir anlam
+  taşıdığı tek an bu: `LOCAL.ParryChance` zarın kullandığı şans, yani script
+  motorun savuşturmayacağı yerde savuşturabilir (ve tersi). Sonradan ateşlenince
+  ikisi de erişilemezdi.
+
+- [x] **İŞ-21-02 (P1) — ARGN1 ters büyüklüktü.**
+  Bizde "parry'den GEÇEN hasar", referansta "darbeden DÜŞÜLEN yüzde". Bunlar ters
+  büyüklükler: daha sert savuşturmak için ARGN1'i yükselten bir script darbeden
+  daha AZ düşürüyordu. 100 tam blok; `>= 100` → darbe düşer, `> 0` → yüzde kadar
+  azalır. Varsayılan da artık Parrying'in **EFFECT eğrisinden** (`:2091`) geliyor;
+  eğri tanımlı değilse 100.
+
+- [x] **İŞ-21-03 (P2) — Sözleşmenin geri kalanı yoktu.**
+  ARGN2 (hasar türü), ARGO (savuşturan eşya), `LOCAL.ParrySkillID` (hangi yetenek
+  zar atar ve gelişir), `LOCAL.ItemParryDamageChance`, `LOCAL.Damage` (ham darbe,
+  yeniden yazılabilir) ve `RETURN 1` vetosu (`:2113`).
+
+- [x] **İŞ-21-04 (P2) — Savuşturan eşya hiç yıpranmıyordu.**
+  Referans her başarılı savuşturmada `pItemHit->OnTakeDamage(1, ...)` yapar
+  (`:2133`), tek kapı `LOCAL.ItemParryDamageChance`. Bizde `parryItem`
+  hesaplanıyor ama hiç kullanılmıyordu: kalkan sonsuza kadar bedava savuştururdu.
+  Global dayanıklılık şansı burada ikinci kez atılmıyor (referansta o roll yok).
+
+### Kayıtlı sapmalar
+
+- ARGN2'yi script YAZABİLİR ama yazdığı tür darbeye taşınmıyor — İŞ-20'de kayda
+  geçen aynı yapısal sınır (vuruş yolu hasarı türsüz uyguluyor).
+- Referans `DAMAGE_GOD` darbede bütün bloğu atlar (`:2083`). Bizde atlanacak bir
+  şey yok: silah vuruşu bu yoldan hiç hasar bayrağı taşımıyor, God bayraklı
+  kaynaklar (script DAMAGE verb'ü, büyü motoru) savuşturma kontrolüne uğramıyor.
+
+**Testler:** `HitParryContractTests` (8). Üç düzeltme tek tek geri alındı ve
+sırasıyla 7 / 2 / 1 test kırmızıya döndü. Tam suite 3.417 / 0 (iki kez arka arkaya
+koşuldu). **Fikstür notu:** ilk halinde 11 koşuda 1 kez düşen bir kırılganlık
+vardı; sınıf okuduğu paylaşımlı statiklerin YALNIZ bir kısmını sabitliyordu.
+Savuşturma cevabı `CombatParryingEra` + `FeatureSE`'ye, yıpranma ise
+`DurabilityLossMin/Max`'a bakıyor; hepsi sabitlendi ve 5 arka arkaya koşu temiz.
+
+**PLAN-402 KAPANDI.** Sıradaki: PLAN-403 (magic uçtan uca).
+

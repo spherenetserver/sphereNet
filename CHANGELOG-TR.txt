@@ -3,6 +3,31 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-10] - Bir savusturma neye karar verebilir
+----------------------------------------
+
+FIX - @HitParry artik savusturma zarindan ONCE atesleniyor; argumanlarinin bir
+        anlam tasidigi tek an bu. Daha once BASARILI zardan SONRA atesleniyordu,
+        yani zarin kullandigi sans olan LOCAL.ParryChance'a ulasilamiyordu: script
+        ne motorun savusturmayacagi yerde savusturabiliyor ne de savuturacagi yerde
+        reddedebiliyordu.
+
+FIX - ARGN1, darbeden DUSULEN YUZDE; gecen hasar degil. Ikisi ters buyuklukler,
+        yani daha sert savusturmak icin ARGN1'i yukselten bir script darbeden DAHA
+        AZ dusuyordu. 100 (varsayilan) tam blok demek ve paket tanimlamissa degeri
+        Parrying yeteneginin kendi EFFECT egrisi belirliyor - bir savusturmanin ne
+        kadar ettigine motor degil paket karar verir.
+
+FIX - Sozlesmenin geri kalani da onunla geldi: ARGN2 hasar turu, ARGO savusturan
+        esya, LOCAL.ParrySkillID (hangi yetenek zar atar ve gelisir),
+        LOCAL.ItemParryDamageChance ve LOCAL.Damage (ham darbe, yeniden yazilabilir).
+        RETURN 1 darbeyi butunuyle dusuruyor.
+
+FIX - Savusturma, onu yapan esyayi yipratiyor. Referans her basarili savusturmada
+        kalkani ya da silahi 1 hasarla eskitir; bizde kalkan sonsuza kadar bedava
+        savusturuyordu.
+
+
 [2026-09-10] - @HitCheck'in cevabi ne demek
 ----------------------------------------
 

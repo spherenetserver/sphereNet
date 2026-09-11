@@ -277,9 +277,13 @@ public sealed class CraftingEngine
         else
         {
             // Partial resource loss on failure (reference Skill_MakeItem
-            // SKTRIG_FAIL → ResourceConsumePart): one 0-50%% roll applied
-            // uniformly to every required resource.
-            int lossPercent = Random.Shared.Next(50);
+            // SKTRIG_FAIL → ResourceConsumePart, CCharSkill.cpp:925-945). The
+            // percent has THREE sources in order, and only the last was implemented:
+            //   1. ACTIONEFFECT, when a script set one on this attempt;
+            //   2. the crafting skill's own EFFECT curve, rolled at random
+            //      (the live pack gives Inscription EFFECT=50);
+            //   3. a flat 0-49%% roll.
+            int lossPercent = ResolveFailureLossPercent(crafter, recipe);
             for (int resourceIndex = 0; resourceIndex < recipe.Resources.Count; resourceIndex++)
             {
                 var res = recipe.Resources[resourceIndex];
@@ -291,6 +295,22 @@ public sealed class CraftingEngine
 
             return null;
         }
+    }
+
+    /// <summary>How much of a failed craft's bill is still paid, as a percent
+    /// (Source-X Skill_MakeItem SKTRIG_FAIL, CCharSkill.cpp:928-943). ACTIONEFFECT
+    /// wins when a script set one; otherwise the crafting skill's EFFECT curve
+    /// decides, and only with neither does the flat roll apply.</summary>
+    private static int ResolveFailureLossPercent(Character crafter, CraftRecipe recipe)
+    {
+        if (crafter.ActionEffect >= 0)
+            return Math.Clamp(crafter.ActionEffect, 0, 100);
+
+        var skillDef = Definitions.DefinitionLoader.GetSkillDef((int)recipe.PrimarySkill);
+        if (skillDef is { Effect.IsEmpty: false })
+            return Math.Clamp(skillDef.Effect.GetLinear(Random.Shared.Next(1001)), 0, 100);
+
+        return Random.Shared.Next(50);
     }
 
     /// <summary>Crafted item quality on the 1-200 scale (100 = average) —

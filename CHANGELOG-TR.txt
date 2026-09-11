@@ -3,6 +3,26 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-11] - Basarisiz bir uretim yine de neye mal olur
+----------------------------------------
+
+FIX - ACTIONEFFECT artik var. Referansin, scriptin bir yetenek tetikleyicisi
+        icinde yazdigi TEK SEFERLIK denemeye ozel gecersiz kilma degeri
+        (m_Act_Effect, CChar.cpp:3084): iyilestirilen miktar, cekilen mana, alan
+        yeteneginin yaricapi, basarisiz bir uretimde kaybedilen malzeme payi.
+        Bizde hicbir sey yanit vermiyordu; oysa canli paket onu oyuncu-bilgi
+        dialogunda basiyor ve bir INPDLG ile geri yaziyor. Negatif yazim -1'e
+        normallesir ve her yetenek baslangici ile temizligi onu geri alir, yani bir
+        deneme sonrakini yonlendiremez.
+
+FIX - Basarisiz bir uretim, bedelini referansin yaptigi gibi hesapliyor
+        (Skill_MakeItem SKTRIG_FAIL, CCharSkill.cpp:928-943): script bir deger
+        yazdiysa ACTIONEFFECT, yoksa uretim yeteneginin kendi EFFECT egrisi, ve
+        ancak ikisi de yoksa duz 0-49%% zar. Bizde yalnizca duz zar vardi, yani
+        kaybi ayarlayan bir paket yok sayiliyordu - canli paket Inscription'a
+        EFFECT=50 veriyor.
+
+
 [2026-09-11] - Bir buyu nerede reddedilir
 ----------------------------------------
 

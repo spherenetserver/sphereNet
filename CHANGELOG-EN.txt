@@ -4,6 +4,24 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-11] - What a failed craft still costs
+----------------------------------------
+
+FIX - ACTIONEFFECT exists. It is the reference's one-shot per-attempt override a
+        script writes inside a skill trigger (m_Act_Effect, CChar.cpp:3084) - the
+        amount healed, the mana drained, the radius of an area skill, the share of
+        a failed craft's resources lost. Nothing answered it here, although the
+        live pack prints it in its player-info dialog and writes it back through an
+        INPDLG. A negative write normalises to -1, and every skill start and
+        cleanup restores that, so one attempt cannot steer the next.
+
+FIX - A failed craft works its cost out the way the reference does
+        (Skill_MakeItem SKTRIG_FAIL, CCharSkill.cpp:928-943): ACTIONEFFECT when a
+        script set one, otherwise the crafting skill's own EFFECT curve, and only
+        with neither a flat 0-49% roll. Only the flat roll existed, so a pack that
+        tunes the loss was ignored - the live one gives Inscription EFFECT=50.
+
+
 [2026-09-11] - Where a spell is refused
 ----------------------------------------
 

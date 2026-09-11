@@ -1520,6 +1520,8 @@ public partial class Character : ObjBase
 
         int skillId = _skillPendingId;
         _skillPendingId = -1;
+        ActionEffect = -1;
+        ActionEffect = -1;
         _skillDelayEnd = 0;
         _skillStrokeNext = 0;
         _skillStrokeCount = 0;
@@ -3465,6 +3467,10 @@ public partial class Character : ObjBase
                 return true;
             case "ACTPRV": value = _actPrv == Serial.Invalid ? "0" : $"0{_actPrv.Value:X}"; return true;
             case "ACTDIFF": value = _actDiff.ToString(); return true;
+            // ACTIONEFFECT (Source-X CHC_ACTIONEFFECT, CChar.cpp:3084). The live
+            // pack shows it in its player-info dialog and writes it back through an
+            // INPDLG (dialogs/sphere_dialogs_prop.scp:603/1036); nothing answered.
+            case "ACTIONEFFECT": value = ActionEffect.ToString(); return true;
             case "ACTION": value = ((int)_action).ToString(); return true;
             case "FIGHTTARGET": value = FightTarget.IsValid ? $"0{FightTarget.Value:X}" : "0"; return true;
             case "OWNER":
@@ -4703,6 +4709,9 @@ public partial class Character : ObjBase
                 return true;
             }
             case "ACTDIFF": if (int.TryParse(normalized, out int adv)) _actDiff = adv; return true;
+            case "ACTIONEFFECT":
+                if (int.TryParse(normalized, out int aev)) ActionEffect = aev;
+                return true;
             case "ACTION":
                 if (int.TryParse(normalized, out int actv)) _action = (SkillType)actv;
                 return true;

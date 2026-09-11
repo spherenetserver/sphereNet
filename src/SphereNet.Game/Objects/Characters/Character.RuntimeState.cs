@@ -19,6 +19,22 @@ public partial class Character
 
     // Delayed active skill runtime
     private int _skillPendingId = -1;
+
+    /// <summary>ACTIONEFFECT (Source-X m_Act_Effect): a one-shot override a script
+    /// writes inside a skill trigger — the amount healed, the mana drained, the
+    /// radius of an area skill, the percent of a failed craft's resources lost.
+    /// -1 means "no override", and every skill start and cleanup restores it
+    /// (CCharSkill.cpp:602/4456) so one attempt cannot steer the next.</summary>
+    private int _actionEffect = -1;
+
+    /// <summary>ACTIONEFFECT. A negative write normalises to -1, the way the
+    /// reference's own setter does (CChar.cpp:3729).</summary>
+    public int ActionEffect
+    {
+        get => _actionEffect;
+        set => _actionEffect = value < 0 ? -1 : value;
+    }
+
     private long _skillDelayEnd;
     private long _skillStrokeNext;
     private int _skillStrokeCount;
@@ -137,6 +153,8 @@ public partial class Character
         Point3D? point, bool isInfo = false)
     {
         _skillPendingId = skillId;
+        // A fresh attempt starts with no script override (Skill_Cleanup, :602).
+        _actionEffect = -1;
         _skillDelayEnd = delayEnd;
         _skillStrokeNext = strokeNext;
         _skillStrokeCount = 0;

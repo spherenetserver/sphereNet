@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-11 |
-| Son commit | `dcf0e4b` + İŞ-24 (büyü: bölge/bayraklar) |
-| Tam test | 3.448 başarılı / 0 başarısız |
-| Sıradaki iş | **PLAN-404 (skill/craft/gathering)** — PLAN-403 kapandı |
+| Son commit | `3a3ea2a` + İŞ-25 (üretim: başarısızlık bedeli) |
+| Tam test | 3.454 başarılı / 0 başarısız |
+| Sıradaki iş | **PLAN-404 devam — kaynak tükenmesi, retry, kalite** |
 
 ## Çalışma sırası
 
@@ -293,11 +293,25 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   cast (İŞ-23), bölge kapıları + summon + alan (İŞ-24); reagent/scroll/wand ve
   hasarla iptal İŞ-23'te ölçülüp doğru bulundu.
 
+- [x] **İŞ-25 — Üretim: başarısızlık bedeli ve ACTIONEFFECT** (PLAN-404 birinci dilim) — **KAPANDI**
+  PLAN-404'ün "kısmi maliyet" ayağı. **Ölçülüp zaten doğru bulunanlar:** toplama
+  miktarı (`REAPAMOUNT` eğrisi, yoksa `AMOUNT`/2 ve stok kırpması), tool aşınması
+  (her denemede), stroke sayıları, `@ResourceGather` sözleşmesi. **İki boşluk:**
+  1. **`ACTIONEFFECT` hiç yoktu** — canlı paket prop dialogunda basıyor ve INPDLG
+     ile geri yazıyor.
+  2. **Başarısız üretimin bedeli yalnız düz zardı** — referansta önce
+     `ACTIONEFFECT`, sonra üretim yeteneğinin `EFFECT` eğrisi, en son düz zar.
+     Canlı paket Inscription'a `EFFECT=50` veriyor.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-25 KAPANDI** — 2026-09-11. ACTIONEFFECT (oku/yaz/yaşam döngüsü) + başarısız
+  üretimin üç kaynaklı bedeli. Test: `CraftFailureCostParityTests` (6); iki
+  düzeltme tek tek geri alınıp yakalandığı doğrulandı (3/1 kırmızı).
+  Tam suite 3.454.
 - **İŞ-24 KAPANDI** — 2026-09-11. CheckAntiMagic portu (Mark + gemi dahil),
   SUMMONWALKCHECK, OVERRIDEFIELDS. Test: `SpellRegionAndFlagParityTests` (10);
   üç düzeltme tek tek geri alınıp yakalandığı doğrulandı (2/1/1 kırmızı).

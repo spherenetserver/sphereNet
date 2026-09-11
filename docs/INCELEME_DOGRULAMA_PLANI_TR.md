@@ -4110,3 +4110,52 @@ koşu.
 
 **PLAN-403 KAPANDI.** Sıradaki: PLAN-404 (skill/craft/gathering).
 
+---
+
+## İŞ-25 — Üretim: başarısızlık bedeli ve ACTIONEFFECT (PLAN-404 birinci dilim, 11 Eylül 2026)
+
+### Ölçülüp DEĞİŞTİRİLMEYEN ayaklar
+
+| Ayak | Kanıt |
+|---|---|
+| Toplama miktarı | `REAPAMOUNT` eğrisi; tanımsızsa `AMOUNT` eğrisi / 2, en az 1 ve damardaki stokla kırpılı (CCharSkill.cpp:1016-1027) |
+| Tool aşınması | Her denemede (başarı ya da başarısızlık farketmez) |
+| Stroke sayıları | Önceki dalgada kapandı (DELAY × sayı, SKF_GATHER tekrarı) |
+| `@ResourceGather` / `@RegionResourceGather` | İŞ-9'da kapandı, `LOCAL.ResourceID` dahil |
+
+### Kapanan boşluklar
+
+- [x] **İŞ-25-01 (P2) — `ACTIONEFFECT` hiç yoktu.**
+  Referansta `m_Act_Effect`: scriptin bir yetenek tetikleyicisi içinde yazdığı
+  TEK SEFERLİK geçersiz-kılma değeri. Kullanıldığı yerler referansta iyileştirme
+  miktarı (`:2882`), çekilen mana (`:2711`), alan yeteneğinin yarıçapı (`:1724`)
+  ve başarısız üretimin malzeme payı (`:932`). Negatif yazım -1'e normalleşir
+  (CChar.cpp:3730) ve her yetenek başlangıcı/temizliği -1'e döndürür
+  (`:602`/`:4456`) — yani bir deneme sonrakini yönlendiremez; bu sıfırlama da
+  eklendi.
+  **Paket tarafı ölçüm:** canlı paket `dialogs/sphere_dialogs_prop.scp:603`'te
+  `<ACTIONEFFECT>` basıyor, `:1036`'da `INPDLG ACTIONEFFECT` ile geri yazıyor ve
+  `functions/sphere_functions.scp:265`'te hata ayıklama çıktısına koyuyor.
+
+- [x] **İŞ-25-02 (P2) — Başarısız üretimin bedeli yalnız düz zardı.**
+  Referansın sırası (CCharSkill.cpp:928-943): (1) `m_Act_Effect >= 0` ise o,
+  (2) yoksa üretim yeteneğinin `EFFECT` eğrisinin rastgele değeri, (3) ikisi de
+  yoksa `rand(50)`. Bizde yalnızca (3) vardı, yani kaybı ayarlayan bir paket yok
+  sayılıyordu. **Canlı pakette Inscription `EFFECT=50`** (`sphere_skills.scp`),
+  yani orada başarısız bir yazımın maliyeti fiilen yanlıştı.
+
+### Kayda geçen — çözülmemiş test kırılganlığı
+
+Bu dalga sırasında `SmeltRepairParity08ATests.AScriptMayChooseTheProduceAndTheYield`
+**13 tam suite koşusunda 1 kez** düştü ve bir daha üretilemedi (aynı testin 6 ayrı
+koşusu ve 10 tam suite koşusu temiz). Hata metni yakalanamadı. Testin tetikleyici
+gövdesinde `Assert.Equal(1000, args.N1)` var (eritenin Mining yeteneği), yani
+testler arası sızan bir duruma benziyor; bu dalganın değişiklikleriyle bir bağ
+kurulamadı. **Açık madde olarak kayıtlı** — yeniden görülürse önce o iddia
+incelenmeli.
+
+**Testler:** `CraftFailureCostParityTests` (6). İki düzeltme tek tek geri alındı ve
+sırasıyla 3 / 1 test kırmızıya döndü. Tam suite 3.454 / 0.
+
+**PLAN-404'ün kalanı:** kaynak tükenmesi/yenilenmesi, retry, kalite.
+

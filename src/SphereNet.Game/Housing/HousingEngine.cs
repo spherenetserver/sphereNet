@@ -457,6 +457,66 @@ public sealed class House
         return true;
     }
 
+    /// <summary>Let go of every locked-down item and every secured container,
+    /// without asking anyone's privileges (Source-X UnlockAllItems,
+    /// CItemMulti.cpp:1804, and the Release loop beside it).
+    ///
+    /// This is what a house owes the world when it stops existing by any route
+    /// other than a redeed. A locked-down item is NOT MOVABLE (ObjAttributes
+    /// LockedDown fails Item.IsMovable), so one left behind by a deleted house is
+    /// stuck in the world for good, still linked to a multi that is gone.</summary>
+    public void ReleaseAllHoldings()
+    {
+        var world = Objects.ObjBase.ResolveWorld?.Invoke();
+        foreach (var (uids, attr, marker) in new (IEnumerable<Serial>, Core.Enums.ObjAttributes, string)[]
+        {
+            (_lockdowns.ToList(), Core.Enums.ObjAttributes.LockedDown, LockdownEvent),
+            (_secureContainers.ToList(), Core.Enums.ObjAttributes.Secure, SecureEvent),
+        })
+        {
+            foreach (var uid in uids)
+            {
+                if (world?.FindItem(uid) is not { IsDeleted: false } item)
+                    continue;
+                item.ClearAttr(attr);
+                if (item.Link == _multiItem.Uid)
+                    item.Link = Serial.Invalid;
+                RemoveMarkerEvent(item, marker);
+            }
+        }
+        _lockdowns.Clear();
+        _secureContainers.Clear();
+    }
+
+    /// <summary>Hand the moving crate over to the owner (Source-X
+    /// TransferMovingCrateToBank, CItemMulti.cpp:1522). An EMPTY crate is deleted
+    /// rather than delivered — the reference will not put an empty box in someone's
+    /// bank (:1539). With no owner or no bank to reach, a crate that holds
+    /// something lands on the ground rather than nowhere.</summary>
+    public void TransferMovingCrateToOwner()
+    {
+        var crate = ResolveMovingCrate();
+        if (crate == null)
+            return;
+
+        MovingCrate = Serial.Invalid;
+        crate.Link = Serial.Invalid;
+        var world = Objects.ObjBase.ResolveWorld?.Invoke();
+
+        if (crate.Contents.Count == 0)
+        {
+            world?.RemoveItem(crate);
+            crate.Delete();
+            return;
+        }
+
+        world?.HideFromSector(crate);   // it was sitting at house Z - 20
+        var owner = _owner.IsValid ? world?.FindChar(_owner) : null;
+        var bank = owner?.GetEquippedItem(Core.Enums.Layer.BankBox);
+        if (bank == null || !bank.TryAddItem(crate))
+            world?.PlaceItemWithDecay(crate, _multiItem.Position);
+    }
+
     /// <summary>Restore a persisted lockdown/secure on world load WITHOUT the priv
     /// or capacity checks. A saved house may legitimately hold more than the
     /// current MaxLockdowns/MaxSecure (config or storage changed since the save);
@@ -632,6 +692,15 @@ public sealed class House
             var bank = owner?.GetEquippedItem(Core.Enums.Layer.BankBox);
             foreach (var crate in crates)
             {
+                // Source-X TransferMovingCrateToBank deletes an empty crate rather
+                // than delivering it (CItemMulti.cpp:1539) — a house that was
+                // carrying an untouched crate must not post an empty box to the bank.
+                if (crate.Contents.Count == 0)
+                {
+                    world.RemoveItem(crate);
+                    crate.Delete();
+                    continue;
+                }
                 if (bank == null || !bank.TryAddItem(crate))
                     world.PlaceItemWithDecay(crate, _multiItem.Position);
             }
@@ -786,6 +855,12 @@ public sealed class HousingEngine
         if (!_houses.TryGetValue(it.Uid, out var house) || !ReferenceEquals(house.MultiItem, it))
             return;
         _houses.Remove(it.Uid);
+        // A house that stops existing by any route other than a redeed still owes
+        // the world what it was holding. A locked-down item is not movable, so one
+        // left behind is stuck in place for good, linked to a multi that is gone;
+        // and the moving crate would stay buried at house Z - 20 with its contents.
+        house.ReleaseAllHoldings();
+        house.TransferMovingCrateToOwner();
         var owner = house.Owner.IsValid ? _world.FindChar(house.Owner) : null;
         RemoveStructureKeys(owner, it.Uid);
         var ownerMemory = owner?.Memory_FindObjTypes(it.Uid, MemoryType.Guard);

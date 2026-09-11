@@ -4,6 +4,35 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-12] - What a house owes the world when it stops existing
+----------------------------------------
+
+FIX - Deleting a house lets go of what it had locked down and secured. A
+        locked-down item is not movable here (ObjAttributes.LockedDown fails
+        Item.IsMovableType), so one left behind by a deleted house was stuck in
+        the world for good, still linked to a multi that no longer existed and
+        still carrying its house marker event. The reference lets go of them
+        (UnlockAllItems, CItemMulti.cpp:1804); nothing here did, because only the
+        REDEED path ever cleared them - a GM .remove, a script REMOVE or any other
+        teardown stranded them.
+
+FIX - A deleted house hands its moving crate over instead of leaving it buried.
+        The crate lives at house Z - 20, so one left behind sat under a house that
+        no longer existed with its contents inside it. It goes to the owner's bank,
+        or to the ground when there is no bank to reach.
+
+FIX - An empty moving crate is deleted rather than delivered. The reference will
+        not post an empty box to someone's bank (TransferMovingCrateToBank,
+        CItemMulti.cpp:1539). Applies to both routes - the teardown above and a
+        redeed.
+
+        Measured first: the MOVEALLTOCRATE / MOVELOCKSTOCRATE / MOVECRATETOBANK /
+        REDEEDADDONS verbs and the @Redeed ARGN2/ARGN3 read-back have no use in
+        either script pack - Scripts-X drives a redeed with the bare REDEED verb
+        and does its own crate work in script - so they were left alone and the
+        work went to the invariants that the existing paths actually break.
+
+
 [2026-09-12] - The permission gate a housing pack is built on
 ----------------------------------------
 

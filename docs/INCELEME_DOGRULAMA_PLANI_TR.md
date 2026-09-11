@@ -4624,3 +4624,67 @@ arkaya koşu.
 
 **PLAN-501 kapandı.** Sıradaki: PLAN-502 (MOVEALLTOCRATE/MOVELOCKSTOCRATE).
 
+---
+
+## İŞ-34 — Ev yıkımı: elindekini bırakmak (PLAN-502, 12 Eylül 2026)
+
+### Önce kapsam: fiiller yazılmadı
+
+PLAN-502 adıyla `MOVEALLTOCRATE` / `MOVELOCKSTOCRATE` senaryolarını istiyor.
+Paket ölçümü: **her iki fiil de, `MOVECRATETOBANK` ve `REDEEDADDONS` de, iki
+pakette de sıfır kullanım.** `TRANSFER_*` sabitlerinin tek eşleşmesi
+`core/defs.scp`'teki tanımların kendisi. `@Redeed`'in ARGN2/ARGN3 geri-okuması
+da kullanılmıyor: Scripts-X redeed'i **çıplak `REDEED` fiiliyle** sürüyor
+(`house_dialogs.scp:21` ve `:1046`) ve sandık işini `f_house_box` ile script
+tarafında kendisi yapıyor.
+
+İŞ-8'in kuralı gereği bunlar yazılmadı. Bunun yerine dalganın **kabul ölçütüne**
+gidildi: "ev/gemi silme veya redeed sırasında içerik kaybolmaz; taşınan nesne iki
+parent altında görünmez." Var olan yollarda bu ölçütün gerçekten kırıldığı
+üç yer bulundu.
+
+### Kapanan boşluklar
+
+- [x] **İŞ-34-01 (P1) — Silinen ev kilitlediklerini bırakmıyordu.**
+  Bu motorda kilitli bir eşya **taşınamaz**: `ObjAttributes.LockedDown`,
+  `Item.IsMovableType`'ı düşürür. Dolayısıyla silinen bir evin geride bıraktığı
+  kilitli eşya dünyada **temelli** sıkışıyordu: artık var olmayan bir multi'ye
+  baglı, sahibi tarafından alınamaz. Referans `UnlockAllItems` ile bırakır
+  (CItemMulti.cpp:1804).
+
+  Bizde temizleme **yalnızca REDEED yolunda** vardı; GM `.remove`'u, script
+  `REMOVE`'u ya da başka herhangi bir yıkım — hepsi `OnWorldObjectDeleting`'e
+  düşüyor ve orada kilit/güvence hiç ele alınmıyordu. İŞ-33'te eklenen işaret
+  olayı da üzerlerinde kalıyordu.
+
+- [x] **İŞ-34-02 (P1) — Taşıma sandığı evin altında gömülü kalıyordu.**
+  Sandık ev Z'sinin **20 altında** durur (İŞ-32). Ev silindiğinde sandık orada,
+  içindekilerle kalıyordu. Referans `TransferMovingCrateToBank` ile devreder
+  (:1522). Banka yoksa yere düşüyor, hiçliğe değil.
+
+- [x] **İŞ-34-03 (P2) — Boş sandık bankaya postalanıyordu.**
+  Referans boş sandığı teslim etmez, **siler** (:1539). Hem yıkım hem redeed
+  yolunda uygulandı — İŞ-32'de redeed artık eldeki sandığı kullandığı için
+  dokunulmamış bir sandık taşıyan ev aksi halde bankaya boş kutu koyardı.
+
+### Tek-parent değişmezi
+
+Sandık yerden bankaya geçerken önce sektörden düşürülüyor
+(`HideFromSector`), yani aynı anda hem dünyada hem kapta görünmüyor. Bunu
+doğrulayan ayrı bir test var (`ADeliveredCrateHasExactlyOneParent`).
+
+### Ölçülüp DEĞİŞTİRİLMEYEN
+
+| Ayak | Kanıt |
+|---|---|
+| Tekrar çağırım | Referans `REMOVED` anahtarıyla korur (:1198); bizde `_redeeded` + kayıttan silme — ikinci deed üretilemiyor |
+| Bileşen temizliği | `RemoveAllComponents` (:144) — `OnWorldObjectDeleting` zaten siliyor |
+| Dolu hedef | Banka almazsa yere, `TryAddItem` dönüşü kontrol ediliyor |
+
+**Testler:** `HouseTeardownHoldingsParityTests` (8). İki düzeltme tek tek geri
+alındı; sırasıyla 5 ve 1 test kırmızıya döndü. Tam suite 3.548 / 0, üç arka
+arkaya koşu.
+
+**PLAN-502 kapandı.** Sıradaki: PLAN-503 (custom housing commit + harita
+yürüme geometrisi + save/reload).
+

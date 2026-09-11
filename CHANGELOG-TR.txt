@@ -3,6 +3,35 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-12] - Bir ev var olmaktan cikarken dunyaya ne borcludur
+----------------------------------------
+
+FIX - Bir evi silmek, kilitledigi ve guvenceye aldigi seyleri birakiyor. Burada
+        kilitli bir esya tasinamaz (ObjAttributes.LockedDown, Item.IsMovableType'i
+        dusurur), yani silinen bir evin geride biraktigi esya dunyada temelli
+        sikisip kaliyordu: artik var olmayan bir multi'ye bagli ve hala ev isaret
+        olayini tasiyor. Referans onlari birakir (UnlockAllItems,
+        CItemMulti.cpp:1804); bizde bunu yapan hicbir sey yoktu, cunku yalnizca
+        REDEED yolu temizliyordu - bir GM .remove'u, script REMOVE'u ya da baska
+        herhangi bir yikim onlari ortada birakiyordu.
+
+FIX - Silinen bir ev tasima sandigini gomulu birakmak yerine devrediyor. Sandik
+        ev Z'sinin 20 altinda durur, yani geride kalan bir sandik artik var
+        olmayan bir evin altinda, icindekilerle birlikte kaliyordu. Artik sahibin
+        bankasina, banka yoksa yere gidiyor.
+
+FIX - Bos bir tasima sandigi teslim edilmek yerine siliniyor. Referans kimsenin
+        bankasina bos kutu koymaz (TransferMovingCrateToBank,
+        CItemMulti.cpp:1539). Her iki yol icin de gecerli - yukaridaki yikim ve
+        redeed.
+
+        Once olculdu: MOVEALLTOCRATE / MOVELOCKSTOCRATE / MOVECRATETOBANK /
+        REDEEDADDONS fiilleri ve @Redeed'in ARGN2/ARGN3 geri-okumasi iki script
+        paketinde de hic kullanilmiyor - Scripts-X redeed'i ciplak REDEED fiiliyle
+        surer ve sandik isini script'te kendisi yapar - o yuzden onlara
+        dokunulmadi; is, mevcut yollarin gercekten bozdugu degismezlere gitti.
+
+
 [2026-09-12] - Bir konut paketinin uzerine kuruldugu izin kapisi
 ----------------------------------------
 

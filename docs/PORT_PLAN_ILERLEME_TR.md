@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-12 |
-| Son commit | `045d304` + İŞ-33 (konut izin anahtarları) |
-| Tam test | 3.540 başarılı / 0 başarısız |
-| Sıradaki iş | **PLAN-502 — MOVEALLTOCRATE/MOVELOCKSTOCRATE senaryoları** |
+| Son commit | `6f1d113` + İŞ-34 (ev yıkımı) |
+| Tam test | 3.548 başarılı / 0 başarısız |
+| Sıradaki iş | **PLAN-503 — custom housing commit + harita geometrisi + save/reload** |
 
 ## Çalışma sırası
 
@@ -373,11 +373,24 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   `ei_house_secure`) kondu — paketin ev boşaltma akışı tam olarak onlara soruyor.
   **PLAN-501 kapandı.**
 
+- [x] **İŞ-34 — Ev yıkımı: elindekini bırakmak** (PLAN-502) — **KAPANDI**
+  PLAN-502'nin fiilleri (`MOVEALLTOCRATE` vb.) iki pakette de **hiç**
+  kullanılmıyor — İŞ-8 kuralı gereği yazılmadılar. İş, dalganın kabul
+  ölçütüne ("silme/redeed sırasında içerik kaybolmaz, taşınan nesne iki parent
+  altında görünmez") göre gerçek yollara gitti. **Üç boşluk:** (1) silinen ev
+  kilitlediklerini bırakmıyordu — kilitli eşya **taşınamaz**, yani temelli
+  sıkışıyordu; (2) taşıma sandığı evin altında gömülü kalıyordu; (3) boş sandık
+  bankaya postalanıyordu.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-34 KAPANDI** — 2026-09-12. `ReleaseAllHoldings` +
+  `TransferMovingCrateToOwner` silme yolunda; boş sandık her iki yolda siliniyor.
+  Test: `HouseTeardownHoldingsParityTests` (8); iki düzeltme tek tek geri alınıp
+  doğrulandı (5 + 1). Tam suite 3.548, üç koşu. **PLAN-502 tamamlandı.**
 - **İŞ-33 KAPANDI** — 2026-09-12. `ISOWNER` + 8 `GET...POS` +
   `GETSECUREDCONTAINERS`/`GETSECUREDITEMS` + kilit/güvence işaret olayları. Test:
   `HousePermissionKeyParityTests` (17); iki düzeltme tek tek geri alınıp

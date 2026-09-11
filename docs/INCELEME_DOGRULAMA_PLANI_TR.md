@@ -4059,3 +4059,54 @@ koşu.
 
 **PLAN-403'ün kalanı:** alan etkisi, summon, seyahat.
 
+---
+
+## İŞ-24 — Büyü: bölge kapıları ve ölü bayraklar (PLAN-403 üçüncü dilim, 11 Eylül 2026)
+
+### Kapanan boşluklar
+
+- [x] **İŞ-24-01 (P1) — `CheckAntiMagic` portlanmamıştı.**
+  Referans büyücünün bölgesine TEK bir soru sorar (CRegion.cpp:720) ve cevabı
+  bizim baktığımız iki bitten çok daha geniş:
+
+  | Bölge bayrağı | Reddettiği |
+  |---|---|
+  | `ANTIMAGIC_ALL` | her şey |
+  | `ANTIMAGIC_RECALL_IN` **veya `REGION_FLAG_SHIP`** | Mark, Gate Travel |
+  | `ANTIMAGIC_RECALL_OUT` | Recall, Gate Travel, **Mark** |
+  | `ANTIMAGIC_GATE` | Gate Travel |
+  | `ANTIMAGIC_TELEPORT` | Teleport |
+  | `ANTIMAGIC_DAMAGE` | `SPELLFLAG_HARM` taşıyan her şey |
+
+  En görünür iki sonuç: **Mark'ın bizde hiçbir bölge kapısı yoktu** (her yerde
+  çalışıyordu) ve **gemi bölgesi de recall-in sorusunu yanıtlıyor**, yani
+  referansta teknenin güvertesinde rune işaretlenemez. Red artık sessiz değil:
+  `DEFMSG_MAGERY_6` mesajını veriyor.
+
+- [x] **İŞ-24-02 (P2) — `MAGICF_SUMMONWALKCHECK` ölü bayraktı.**
+  Çağrılan yaratık çağrıldığı yerde DURABİLMELİ (CCharSpell.cpp:2646). Bayrak
+  `MagicConfigFlags` enum'unda ve ini'de duruyordu, hiçbir şey okumuyordu.
+  Harita verisi yokken (birim testi dünyası) sessizce geçiyor: kontrol gerçek
+  zemin bilgisine dayanır, uydurma bir cevap vermez.
+
+- [x] **İŞ-24-03 (P2) — `MAGICF_OVERRIDEFIELDS` ölü bayraktı.**
+  Yeni alan, karodaki mevcut büyü eşyalarının (IT_SPELL / IT_FIRE) YERİNİ alır
+  (CCharSpell.cpp:2295). Sıradan bir eşyaya dokunmuyor.
+
+### Kayıtlı sapmalar
+
+- `MAGICF_NOFIELDSOVERWALLS` hâlâ okunmuyor. Referans bayrak açıkken alanın
+  genişliğini merkezden dışa doğru duvarda KESER (CCharSpell.cpp:2187); bizim
+  `CreateField` ise her karoyu tek tek geçilebilirlik için eliyor — bayraktan
+  bağımsız ve her zaman. Davranış yakın ama kural aynı değil; kesme geometrisi
+  ayrı bir iş.
+- `ANTIMAGIC_TELEPORT` bizde HEDEF bölgede de kontrol ediliyor (referans yorumu
+  "Can't teleport into here" diyor); `CheckAntiMagic` ise büyücünün bölgesine
+  bakar. İkisi de korundu.
+
+**Testler:** `SpellRegionAndFlagParityTests` (10). Üç düzeltme tek tek geri alındı
+ve sırasıyla 2 / 1 / 1 test kırmızıya döndü. Tam suite 3.448 / 0, üç arka arkaya
+koşu.
+
+**PLAN-403 KAPANDI.** Sıradaki: PLAN-404 (skill/craft/gathering).
+

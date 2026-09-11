@@ -754,17 +754,18 @@ public sealed class SpellEngine
                 == TriggerResult.True)
                 return -1;
         }
-        // Region NoMagic / NoMagicDamage check (Source-X anti-magic sub-flags).
+        // The caster's own area gets the reference's single anti-magic question
+        // (Spell_CanCast's fCheckAntiMagic, CCharSpell.cpp:2519). Only NoMagic and
+        // NoMagicDamage were asked before, which left Mark ungated everywhere and
+        // let a rune be marked on a boat.
         if (_world != null)
         {
             var region = _world.FindRegion(caster.Position);
-            if (region != null && caster.PrivLevel < Core.Enums.PrivLevel.GM)
+            if (region != null && caster.PrivLevel < Core.Enums.PrivLevel.GM &&
+                RegionBlocksSpell(region, def))
             {
-                if (region.NoMagic)
-                    return -1;
-                // REGION_ANTIMAGIC_DAMAGE: harmful magic is suppressed in this region.
-                if (region.IsFlag(RegionFlag.NoMagicDamage) && IsHarmfulSpell(def))
-                    return -1;
+                OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.Magery6));
+                return -1;
             }
         }
 
@@ -1756,6 +1757,20 @@ public sealed class SpellEngine
                     .Any(c => c.X == tx && c.Y == ty && !c.IsDead))
                 continue;
 
+            // MAGICF_OVERRIDEFIELDS (CCharSpell.cpp:2295): a new field REPLACES the
+            // spell items already on the tile instead of stacking on top of them.
+            // Another flag that was declared and never read.
+            if (IsMagicFlag(MagicConfigFlags.OverrideFields))
+            {
+                foreach (var existing in _world.GetItemsInRange(tilePos, 0).ToList())
+                {
+                    if (existing.IsDeleted || existing.X != tx || existing.Y != ty)
+                        continue;
+                    if (existing.ItemType is ItemType.Spell or ItemType.Fire)
+                        _world.RemoveItem(existing);
+                }
+            }
+
             var fieldItem = _world.CreateItem();
             fieldItem.BaseId = tileId;
             fieldItem.Name = def.Name + " field";
@@ -1941,6 +1956,19 @@ public sealed class SpellEngine
     private Character? SummonCreature(Character caster, Point3D pos, SpellDef def, int skillLevel,
         ushort bodyId = 0, string? defName = null)
     {
+        // MAGICF_SUMMONWALKCHECK (Source-X CCharSpell.cpp:2646): the creature has
+        // to be able to STAND where it is called. Without it a summon lands inside
+        // a wall or over water and is stuck there. The flag was in the enum and in
+        // the ini and nothing read it.
+        if (IsMagicFlag(MagicConfigFlags.SummonWalkCheck) &&
+            caster.PrivLevel < PrivLevel.GM &&
+            _world.MapData is { } summonMap &&
+            !summonMap.IsPassable(pos.Map, pos.X, pos.Y, pos.Z))
+        {
+            OnSysMessage?.Invoke(caster, ServerMessages.Get(Msg.MsgSummonInvalidtarg));
+            return null;
+        }
+
         if (IsMagicFlag(MagicConfigFlags.LimitSummons))
         {
             int activeSummons = 0;
@@ -2327,6 +2355,47 @@ public sealed class SpellEngine
     /// the union for defs registered without the marker flag.</summary>
     private static bool IsHarmfulSpell(SpellDef def) =>
         (def.Flags & (SpellFlag.Harm | SpellFlag.Damage | SpellFlag.Curse)) != 0;
+
+    /// <summary>Whether a region refuses this spell — the port of Source-X
+    /// CRegion::CheckAntiMagic (CRegion.cpp:720). The reference asks this ONE
+    /// question of the caster's own area, and its answer covers more than the two
+    /// flags this engine was reading:
+    /// <list type="bullet">
+    /// <item>ANTIMAGIC_ALL refuses everything;</item>
+    /// <item>RECALL_IN — <b>and a SHIP region</b> — refuse Mark and Gate Travel,
+    /// which is why you cannot mark a rune aboard a boat;</item>
+    /// <item>RECALL_OUT refuses Recall, Gate Travel AND Mark;</item>
+    /// <item>GATE refuses Gate Travel, TELEPORT refuses Teleport;</item>
+    /// <item>DAMAGE refuses anything flagged harmful.</item>
+    /// </list>
+    /// Mark was ungated here altogether, so a rune could be marked anywhere.</summary>
+    public static bool RegionBlocksSpell(World.Regions.Region region, SpellDef def)
+    {
+        const RegionFlag anyMagicFlag =
+            RegionFlag.Ship | RegionFlag.NoMagic | RegionFlag.Recall | RegionFlag.RecallOut |
+            RegionFlag.Gate | RegionFlag.NoTeleport | RegionFlag.NoMagicDamage;
+        if (!region.IsFlag(anyMagicFlag))
+            return false;
+
+        if (region.IsFlag(RegionFlag.NoMagic))
+            return true;
+
+        if (region.IsFlag(RegionFlag.Recall | RegionFlag.Ship) &&
+            def.Id is SpellType.Mark or SpellType.GateTravel)
+            return true;
+
+        if (region.IsFlag(RegionFlag.RecallOut) &&
+            def.Id is SpellType.Recall or SpellType.GateTravel or SpellType.Mark)
+            return true;
+
+        if (region.IsFlag(RegionFlag.Gate) && def.Id == SpellType.GateTravel)
+            return true;
+
+        if (region.IsFlag(RegionFlag.NoTeleport) && def.Id == SpellType.Teleport)
+            return true;
+
+        return region.IsFlag(RegionFlag.NoMagicDamage) && IsHarmfulSpell(def);
+    }
 
     private static bool HasActionableFlags(SpellDef def) =>
         // Only flags the engine has a GENERIC handler for. Scripted counts

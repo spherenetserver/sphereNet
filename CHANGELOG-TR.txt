@@ -3,6 +3,26 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-11] - Bir buyu nerede reddedilir
+----------------------------------------
+
+FIX - Buyucunun bolgesi, referansin anti-magic sorusunun TAMAMINI aliyor; iki
+        bitini degil (CheckAntiMagic, CRegion.cpp:720). RECALL_IN Mark ve Gate
+        Travel'i reddeder, RECALL_OUT Recall, Gate Travel VE Mark'i reddeder, GATE
+        Gate Travel'i, TELEPORT Teleport'u reddeder - ve bir GEMI bolgesi de
+        recall-in sorusunu yanitlar; referans bir teknenin guvertesinde rune
+        isaretlenmesini boyle engeller. Mark'in bizde hic bolge kapisi yoktu, yani
+        her yerde calisiyordu. Red artik sessiz degil, mesajini veriyor.
+
+FIX - MAGICF_SUMMONWALKCHECK bir ise yariyor. Cagrilan yaratik cagrildigi yerde
+        DURABILMELI (CCharSpell.cpp:2646); bayrak enum'da ve sphere.ini'de duruyor
+        ama hicbir sey okumuyordu, yani yaratik duvarin icine cagrilabiliyordu.
+
+FIX - MAGICF_OVERRIDEFIELDS bir ise yariyor. Yeni bir alan, karodaki mevcut buyu
+        esyalarinin uzerine binmek yerine onlarin YERINI aliyor
+        (CCharSpell.cpp:2295). O da tanimliydi ve hic okunmuyordu.
+
+
 [2026-09-11] - Bir buyu neye mal olur, ve yururken buyu yapmak
 ----------------------------------------
 

@@ -4,6 +4,26 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-11] - Where a spell is refused
+----------------------------------------
+
+FIX - The caster's region gets the reference's whole anti-magic question, not two
+        bits of it (CheckAntiMagic, CRegion.cpp:720). RECALL_IN refuses Mark and
+        Gate Travel, RECALL_OUT refuses Recall, Gate Travel AND Mark, GATE refuses
+        Gate Travel, TELEPORT refuses Teleport - and a SHIP region answers the
+        recall-in question too, which is how upstream stops a rune being marked on
+        the deck of a boat. Mark had no region gate here at all, so it worked
+        everywhere. The refusal now says so instead of failing silently.
+
+FIX - MAGICF_SUMMONWALKCHECK does something. A summon has to be able to stand
+        where it is called (CCharSpell.cpp:2646); the flag was in the enum and in
+        sphere.ini and nothing read it, so a creature could be called into a wall.
+
+FIX - MAGICF_OVERRIDEFIELDS does something. A new field replaces the spell items
+        already on the tile rather than stacking on them (CCharSpell.cpp:2295).
+        Also declared and never read.
+
+
 [2026-09-11] - What a spell costs, and walking while you cast it
 ----------------------------------------
 

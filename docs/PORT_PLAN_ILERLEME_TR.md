@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-11 |
-| Son commit | `399edec` + İŞ-22/İŞ-23 (büyü) |
-| Tam test | 3.438 başarılı / 0 başarısız |
-| Sıradaki iş | **PLAN-403 devam — alan etkisi, summon, seyahat** |
+| Son commit | `dcf0e4b` + İŞ-24 (büyü: bölge/bayraklar) |
+| Tam test | 3.448 başarılı / 0 başarısız |
+| Sıradaki iş | **PLAN-404 (skill/craft/gathering)** — PLAN-403 kapandı |
 
 ## Çalışma sırası
 
@@ -281,11 +281,27 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   3. **`LOWERREAGENTCOST` okunmuyordu** (kaç tane değil, HİÇ harcamama şansı).
      İkisini de referans script paketi artifact'larında kullanıyor.
 
+- [x] **İŞ-24 — Büyü: bölge kapıları ve ölü bayraklar** (PLAN-403 üçüncü dilim) — **KAPANDI**
+  PLAN-403'ün "alan etkisi / summon / seyahat" ayakları. **Üç boşluk:**
+  1. **`CheckAntiMagic` yoktu.** Bizde yalnız `NoMagic` ve `NoMagicDamage`
+     soruluyordu. Referansın tablosu portlandı; en görünür sonucu: **Mark'ın hiç
+     bölge kapısı yoktu** ve **gemi güvertesinde rune işaretlenebiliyordu**.
+  2. **`MAGICF_SUMMONWALKCHECK` ölü bayraktı** — yaratık duvarın içine çağrılabiliyordu.
+  3. **`MAGICF_OVERRIDEFIELDS` ölü bayraktı** — yeni alan eskisinin üstüne biniyordu.
+
+  **PLAN-403 bununla kapandı:** cast başlangıcı/eller (İŞ-22), maliyet ve yürürken
+  cast (İŞ-23), bölge kapıları + summon + alan (İŞ-24); reagent/scroll/wand ve
+  hasarla iptal İŞ-23'te ölçülüp doğru bulundu.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-24 KAPANDI** — 2026-09-11. CheckAntiMagic portu (Mark + gemi dahil),
+  SUMMONWALKCHECK, OVERRIDEFIELDS. Test: `SpellRegionAndFlagParityTests` (10);
+  üç düzeltme tek tek geri alınıp yakalandığı doğrulandı (2/1/1 kırmızı).
+  Tam suite 3.448, üç arka arkaya koşu.
 - **İŞ-23 KAPANDI** — 2026-09-11. FREEZEONCAST (global + spell bayrağı), yürürken
   cast, LOWERMANACOST, LOWERREAGENTCOST. Test: `SpellCostAndFreezeParityTests` (10);
   üç düzeltme tek tek geri alınıp yakalandığı doğrulandı (3/2/2 kırmızı).

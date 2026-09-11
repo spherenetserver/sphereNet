@@ -1,4 +1,4 @@
-using SphereNet.Core.Enums;
+﻿using SphereNet.Core.Enums;
 using SphereNet.Core.Types;
 using SphereNet.Game.Objects.Characters;
 using SphereNet.Game.Objects.Items;
@@ -370,8 +370,30 @@ public sealed class House
         _lockdowns.Add(itemUid);
         item.SetAttr(SphereNet.Core.Enums.ObjAttributes.LockedDown);
         item.Link = _multiItem.Uid;
+        AddMarkerEvent(item, LockdownEvent);
         return true;
     }
+
+    /// <summary>The marker events Source-X puts ON a locked-down or secured item
+    /// ("EVENTS +ei_house_lockdown" / "+ei_house_secure", CItemMulti.cpp:1779/1856).
+    ///
+    /// They are not scripts the pack defines — they are how it RECOGNISES such an
+    /// item: the housing pack clears a house by asking each item
+    /// <c>&lt;isevent.ei_house_lockdown&gt;</c> and then calling unlockitem/release on it
+    /// (Scripts-X house_functions.scp:297/881/885/927/930). Without the marker
+    /// nothing in that pack can tell a locked item from a loose one.</summary>
+    public const string LockdownEvent = "ei_house_lockdown";
+    public const string SecureEvent = "ei_house_secure";
+
+    private static void AddMarkerEvent(Item item, string name)
+    {
+        var rid = Core.Types.ResourceId.FromString(name, Core.Enums.ResType.Events);
+        if (!item.Events.Contains(rid))
+            item.Events.Add(rid);
+    }
+
+    private static void RemoveMarkerEvent(Item item, string name) =>
+        item.Events.Remove(Core.Types.ResourceId.FromString(name, Core.Enums.ResType.Events));
 
     /// <summary>Inside-the-house-region test for lockdown/secure targets.
     /// A house with no realized region (bare tests) accepts everything.</summary>
@@ -393,6 +415,7 @@ public sealed class House
             item.ClearAttr(SphereNet.Core.Enums.ObjAttributes.LockedDown);
             if (item.Link == _multiItem.Uid)
                 item.Link = Serial.Invalid;
+            RemoveMarkerEvent(item, LockdownEvent);
         }
         return true;
     }
@@ -414,6 +437,7 @@ public sealed class House
         _secureContainers.Add(containerUid);
         secureItem.SetAttr(SphereNet.Core.Enums.ObjAttributes.Secure);
         secureItem.Link = _multiItem.Uid;
+        AddMarkerEvent(secureItem, SecureEvent);
         return true;
     }
 
@@ -428,6 +452,7 @@ public sealed class House
             item.ClearAttr(SphereNet.Core.Enums.ObjAttributes.Secure);
             if (item.Link == _multiItem.Uid)
                 item.Link = Serial.Invalid;
+            RemoveMarkerEvent(item, SecureEvent);
         }
         return true;
     }

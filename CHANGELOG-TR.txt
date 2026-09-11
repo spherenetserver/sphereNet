@@ -3,6 +3,41 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-12] - Bir konut paketinin uzerine kuruldugu izin kapisi
+----------------------------------------
+
+NEW - Ev multi'sinde ISOWNER ve GET...POS ailesi. Scripts-X konut paketi multi'ye
+        dogrudan, tekrar tekrar sorar:
+            if (<isowner <src>>) || (<GetCoownerPos <src>> >= 0) || ...
+        ISOWNER 1/0 dondurur, her GET...POS ise o listedeki konumu ya da -1
+        dondurur (Source-X GetCoownerIndex ve kardesleri, CItemMulti.cpp:811/888/
+        962/1037/1648/1818/1887). Bizde hicbiri yoktu, yani o paketteki her boyle
+        sinama hicbir sey okumuyordu. Eklenenler: ISOWNER, GETCOOWNERPOS,
+        GETFRIENDPOS, GETACCESSPOS, GETBANPOS, GETLOCKEDITEMPOS,
+        GETSECUREDCONTAINERPOS, GETCOMPPOS, GETHOUSEVENDORPOS. Listede olmayan
+        icin 0 degil -1 donuyor, cunku paketlerin sinadigi bu.
+
+FIX - Kilitlenmis ya da guvenceye alinmis bir esya kendi isaret olayini tasiyor.
+        Source-X esyaya "EVENTS +ei_house_lockdown" / "+ei_house_secure" ekler
+        (CItemMulti.cpp:1779/1856). Bunlar bir paketin tanimladigi script degil -
+        paketin boyle bir esyayi TANIMA yolu: konut paketi bir evi bosaltirken her
+        esyaya <isevent.ei_house_lockdown> diye sorar ve sonra uzerinde unlockitem
+        cagirir (house_functions.scp:297/881/885/927/930). Isaret olmadan orada
+        hicbir sey kilitli esyayi bosta durandan ayiramiyordu, yani ev bosaltma
+        akisi sessizce hicbir sey yapmiyordu. Birakma isareti geri kaldiriyor.
+
+NEW - GETSECUREDCONTAINERS ve GETSECUREDITEMS. Referans ikisini ayri tutar
+        (CItemMulti.cpp:1904/1919): biri guvenceye alinmis kaplari sayar, digeri
+        onlarin icindeki esyalari; konut diyalogu depolama butcesini ikincisiyle
+        harcar.
+
+        Once paketten olculdu: ISOWNER 45 yer, GETCOOWNERPOS 32, GETFRIENDPOS 29,
+        GETSECUREDITEMS 3, GETACCESSPOS 2, GETBANPOS 2, GETSECUREDCONTAINERPOS 1.
+        Multi anahtar tablosunun hala eksik olan geri kalani (ADDADDON, ADDKEY,
+        ADDVENDOR, REMOVEKEYS, GETADDONPOS) iki pakette de hic kullanilmiyor;
+        dokunulmadi.
+
+
 [2026-09-12] - Bir ev kendi anahtarlarini yanitlar ve sandigini korur
 ----------------------------------------
 

@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using SphereNet.Core.Enums;
 using SphereNet.Core.Interfaces;
 using SphereNet.Core.Types;
@@ -4640,6 +4640,52 @@ public class Item : ObjBase
             case "DECAY_STAGE": value = ((byte)house.DecayStage).ToString(); return true;
         }
 
+        // The permission gate the housing packs are built on:
+        //   if (<isowner <src>>) || (<GetCoownerPos <src>> >= 0) || ...
+        // ISOWNER answers 1/0 and every GET...POS answers the index or -1
+        // (Source-X CItemMulti.cpp:2855 and neighbours). None of these existed,
+        // so in Scripts-X housing every such test read as nothing — 45 ISOWNER
+        // sites, 32 GETCOOWNERPOS, 29 GETFRIENDPOS.
+        if (TryReadHouseUidArg(subKey, "ISOWNER", out string? isOwnerArg))
+        {
+            value = ParseHexOrDecUInt(isOwnerArg!) is var ownerArg && ownerArg != 0 &&
+                new Serial(ownerArg) == house.Owner ? "1" : "0";
+            return true;
+        }
+
+        if (TryReadHouseIndexOf(subKey, "GETCOOWNERPOS", house.CoOwners, out value) ||
+            TryReadHouseIndexOf(subKey, "GETFRIENDPOS", house.Friends, out value) ||
+            TryReadHouseIndexOf(subKey, "GETACCESSPOS", house.AccessList, out value) ||
+            TryReadHouseIndexOf(subKey, "GETBANPOS", house.Bans, out value) ||
+            TryReadHouseIndexOf(subKey, "GETLOCKEDITEMPOS", house.Lockdowns, out value) ||
+            TryReadHouseIndexOf(subKey, "GETSECUREDCONTAINERPOS", house.SecureContainers, out value) ||
+            TryReadHouseIndexOf(subKey, "GETCOMPPOS", house.Components, out value) ||
+            TryReadHouseIndexOf(subKey, "GETHOUSEVENDORPOS", house.Vendors, out value))
+        {
+            return true;
+        }
+
+        // GETSECUREDCONTAINERS is how many containers are secured;
+        // GETSECUREDITEMS is how many items sit INSIDE them (CItemMulti.cpp:1904).
+        // The housing dialog spends the storage budget with the second one.
+        if (subKey.Equals("GETSECUREDCONTAINERS", StringComparison.Ordinal))
+        {
+            value = house.SecureContainers.Count.ToString();
+            return true;
+        }
+        if (subKey.Equals("GETSECUREDITEMS", StringComparison.Ordinal))
+        {
+            int secured = 0;
+            var secWorld = ResolveWorld?.Invoke();
+            foreach (var containerUid in house.SecureContainers)
+            {
+                if (secWorld?.FindItem(containerUid) is { IsDeleted: false } container)
+                    secured += container.Contents.Count;
+            }
+            value = secured.ToString();
+            return true;
+        }
+
         if (TryGetHouseSerialCollection(subKey, "COOWNER", "COOWNERS", house.CoOwners, out value) ||
             TryGetHouseSerialCollection(subKey, "FRIEND", "FRIENDS", house.Friends, out value) ||
             TryGetHouseSerialCollection(subKey, "BAN", "BANS", house.Bans, out value) ||
@@ -4670,6 +4716,46 @@ public class Item : ObjBase
             return false;
 
         value = "0";
+        return true;
+    }
+
+    /// <summary>Split "KEY &lt;uid&gt;" — the reference's argument form for the
+    /// housing predicates (a space, then an expression). Returns false when the
+    /// key is not this one.</summary>
+    private static bool TryReadHouseUidArg(string subKey, string name, out string? arg)
+    {
+        arg = null;
+        if (!subKey.StartsWith(name, StringComparison.Ordinal))
+            return false;
+        string rest = subKey[name.Length..];
+        if (rest.Length == 0 || (rest[0] != ' ' && rest[0] != '.'))
+            return false;   // GETFRIENDPOSX must not match GETFRIENDPOS
+        arg = rest[1..].Trim();
+        return arg.Length > 0;
+    }
+
+    /// <summary>Source-X GetCoownerIndex and its siblings: the position of a uid in
+    /// one of the house's lists, or -1. The packs only ever test it against >= 0,
+    /// which is membership — the index itself matches what COOWNER.n reads back,
+    /// since both walk the list the same way.</summary>
+    private static bool TryReadHouseIndexOf(string subKey, string name,
+        IEnumerable<Serial> list, out string value)
+    {
+        value = "";
+        if (!TryReadHouseUidArg(subKey, name, out string? arg))
+            return false;
+
+        uint wanted = ParseHexOrDecUInt(arg!);
+        int index = -1, i = 0;
+        if (wanted != 0)
+        {
+            foreach (var uid in list)
+            {
+                if (uid.Value == wanted) { index = i; break; }
+                i++;
+            }
+        }
+        value = index.ToString();
         return true;
     }
 

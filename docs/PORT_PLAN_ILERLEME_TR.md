@@ -14,9 +14,9 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 | Alan | Değer |
 |---|---|
 | Son güncelleme | 2026-09-12 |
-| Son commit | `b07a82f` + İŞ-32 (konut) |
-| Tam test | 3.523 başarılı / 0 başarısız |
-| Sıradaki iş | **PLAN-501 devam — component/addon, secure/lockdown, key** |
+| Son commit | `045d304` + İŞ-33 (konut izin anahtarları) |
+| Tam test | 3.540 başarılı / 0 başarısız |
+| Sıradaki iş | **PLAN-502 — MOVEALLTOCRATE/MOVELOCKSTOCRATE senaryoları** |
 
 ## Çalışma sırası
 
@@ -365,11 +365,23 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   hiç yoktu — referans taşıma sandığını EVİN üzerinde tutar ve Scripts-X konut
   diyalogları onu okur. Redeed artık eldeki sandığı kullanıyor.
 
+- [x] **İŞ-33 — Konut: izin anahtarları ve işaret olayları** (PLAN-501 ikinci dilim) — **KAPANDI**
+  Referans multi anahtar tablosu bizimkiyle karşılaştırıldı: 18 anahtar eksikti.
+  Paket ölçümüyle sıralanıp gerçekten kullanılanlar eklendi (`ISOWNER` 45 yer,
+  `GETCOOWNERPOS` 32, `GETFRIENDPOS` 29, `GETSECUREDITEMS` 3…); kullanılmayanlar
+  kayıtta bırakıldı. Ayrıca kilit/güvence işaret olayları (`ei_house_lockdown` /
+  `ei_house_secure`) kondu — paketin ev boşaltma akışı tam olarak onlara soruyor.
+  **PLAN-501 kapandı.**
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-33 KAPANDI** — 2026-09-12. `ISOWNER` + 8 `GET...POS` +
+  `GETSECUREDCONTAINERS`/`GETSECUREDITEMS` + kilit/güvence işaret olayları. Test:
+  `HousePermissionKeyParityTests` (17); iki düzeltme tek tek geri alınıp
+  doğrulandı (14 + 2). Tam suite 3.540, üç koşu. **PLAN-501 tamamlandı.**
 - **İŞ-32 KAPANDI** — 2026-09-12. Öneksiz konut anahtarları + `MOVINGCRATE`
   (get/set/alt-anahtar/kayıt) + redeed'in eldeki sandığı kullanması. Test:
   `HouseMovingCrateParityTests` (12); iki düzeltme tek tek geri alınıp doğrulandı

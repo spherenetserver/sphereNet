@@ -4,6 +4,41 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-12] - The permission gate a housing pack is built on
+----------------------------------------
+
+NEW - ISOWNER and the GET...POS family on a house multi. Scripts-X housing asks
+        the multi directly, over and over:
+            if (<isowner <src>>) || (<GetCoownerPos <src>> >= 0) || ...
+        ISOWNER answers 1/0 and every GET...POS answers the position in that list
+        or -1 (Source-X GetCoownerIndex and its siblings, CItemMulti.cpp:811/888/
+        962/1037/1648/1818/1887). None of them existed, so every such test in that
+        pack read as nothing at all. Added: ISOWNER, GETCOOWNERPOS, GETFRIENDPOS,
+        GETACCESSPOS, GETBANPOS, GETLOCKEDITEMPOS, GETSECUREDCONTAINERPOS,
+        GETCOMPPOS, GETHOUSEVENDORPOS. A non-member is -1, not 0, because that is
+        what the packs test against.
+
+FIX - A locked-down or secured item carries its marker event. Source-X puts
+        "EVENTS +ei_house_lockdown" / "+ei_house_secure" on the item
+        (CItemMulti.cpp:1779/1856). These are not scripts a pack defines - they
+        are how it RECOGNISES such an item: the housing pack clears a house by
+        asking each item <isevent.ei_house_lockdown> and then calling unlockitem
+        on it (house_functions.scp:297/881/885/927/930). Without the marker
+        nothing there could tell a locked item from a loose one, so the whole
+        clear-the-house flow silently did nothing. Releasing removes it again.
+
+NEW - GETSECUREDCONTAINERS and GETSECUREDITEMS. The reference keeps them apart
+        (CItemMulti.cpp:1904/1919): one counts the secured containers, the other
+        counts the items inside them, and the housing dialog spends the storage
+        budget with the second.
+
+        Measured in the pack first: ISOWNER 45 sites, GETCOOWNERPOS 32,
+        GETFRIENDPOS 29, GETSECUREDITEMS 3, GETACCESSPOS 2, GETBANPOS 2,
+        GETSECUREDCONTAINERPOS 1. The rest of the multi key table that is still
+        missing (ADDADDON, ADDKEY, ADDVENDOR, REMOVEKEYS, GETADDONPOS) has no use
+        in either pack and was left alone.
+
+
 [2026-09-12] - A house answers its own keys, and keeps its crate
 ----------------------------------------
 

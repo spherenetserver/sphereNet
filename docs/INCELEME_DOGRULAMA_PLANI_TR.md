@@ -4548,3 +4548,79 @@ düzeltme tek tek geri alındı; her biri 6 testi kırmızıya döndürdü. Tam 
 **PLAN-501'in kalanı:** component kimliği/ekle-sil, addon ilişkileri,
 secure/lockdown, house vendor, key.
 
+---
+
+## İŞ-33 — Konut: izin anahtarları ve işaret olayları (PLAN-501 ikinci dilim, 12 Eylül 2026)
+
+### Yöntem
+
+Referansın multi anahtar tablosunu (`CItemMulti::sm_szLoadKeys`, 44 anahtar)
+bizim karşılıklarımızla diff'ledim: **18 anahtar eksikti.** Sonra her birini iki
+paketten ölçtüm ve yalnızca gerçekten kullanılanları işe aldım.
+
+| Anahtar | Scripts-X | Canlı | Karar |
+|---|---|---|---|
+| `ISOWNER` | 45 | 0 | eklendi |
+| `GETCOOWNERPOS` | 32 | 0 | eklendi |
+| `GETFRIENDPOS` | 29 | 0 | eklendi |
+| `GETSECUREDITEMS` | 3 | 0 | eklendi |
+| `GETACCESSPOS` | 2 | 0 | eklendi |
+| `GETBANPOS` | 2 | 0 | eklendi |
+| `GETSECUREDCONTAINERPOS` | 1 | 0 | eklendi |
+| `ADDONS` | 9 | 4 | **eşleşmeler `CATEGORY` metni** — alınmadı |
+| `ADDADDON` `ADDKEY` `ADDVENDOR` `REMOVEKEYS` `GETADDONPOS` `ADDCOMPONENT` | 0 | 0 | kayıtta |
+
+`GETCOMPPOS`, `GETHOUSEVENDORPOS`, `GETLOCKEDITEMPOS` ve
+`GETSECUREDCONTAINERS` paket ölçümünde sıfır çıktı ama **yine de eklendi**:
+aynı paylaşılan yardımcının tek satırlık çağırımları ve referans onları aynı
+tabloda aynı biçimde tanımlıyor — aileyi keyfi olarak bölmek daha kötü olurdu.
+Yazan tarafları (`ADDADDON` vb.) eklenmedi.
+
+### Kapanan boşluklar
+
+- [x] **İŞ-33-01 (P1) — Konut izin kapısı hiç yanıt vermiyordu.**
+  Scripts-X konut paketi izni şöyle sorar:
+  `if (<isowner <src>>) || (<GetCoownerPos <src>> ≥ 0) || (<GetFriendPos <src>> ≥ 0)`.
+  Bizde bu anahtarların hiçbiri yoktu — yani o paketin **bütün** konut izin
+  sınamaları boş okuyordu.
+
+  **Sözleşme ayrıntısı:** listede olmayan bir uid için **-1** dönmeli, 0 değil;
+  paketler tam olarak `≥ 0` sınıyor, yani 0 dönmek "listede" demek olurdu.
+  Dönen konum, `COOWNER.n` gibi indeksli okumayla aynı sırayı yürüyor.
+
+  **`GETSECUREDCONTAINERS` vs `GETSECUREDITEMS`:** referans ikisini ayırır
+  (CItemMulti.cpp:1904/1919) — biri kap sayısı, diğeri o kapların içindeki eşya
+  sayısı. Konut diyalogu depolama bütçesini ikincisiyle harcar.
+
+- [x] **İŞ-33-02 (P1) — Kilit/güvence işaret olayı konmuyordu.**
+  Referans kilitlerken/güvenceye alırken eşyaya `EVENTS +ei_house_lockdown` /
+  `+ei_house_secure` ekler (:1779/:1856).
+
+  **Bunu önce sapma olarak kaydedecektim** ("paket bu event'i tanımlamıyor"),
+  doğrulayınca yanıldığımı gördüm. Bunlar bir script değil, bir **işarettir**:
+  Scripts-X konut paketi bir evi boşaltırken her eşyaya
+  `<isevent.ei_house_lockdown>` diye sorar ve sonra `ref1.unlockitem <uid>`
+  çağırır (`house_functions.scp:297/881/885/927/930`). İşaret konmadan o
+  paketteki hiçbir şey kilitli eşyayı boşta durandan ayıramıyordu — ev
+  boşaltma akışı sessizce hiçbir şey yapmazdı. Bırakma işareti geri kaldırıyor.
+
+### Ölçülüp DEĞİŞTİRİLMEYEN
+
+| Ayak | Kanıt |
+|---|---|
+| `GetCurrentStorage` | `lockdowns + secureContainers` (CItemMulti.cpp:1728) — aynı |
+| `GetMaxStorage` | `base + base*increased/100` (:1723) — aynı |
+| `GetMaxLockdowns` | ifade `maxStorage*pct/100`'e indirgenir (:1749) — aynı |
+| `GetMaxVendors` | `baseVendors + baseVendors*increased/100` (:1743) — aynı |
+| `LockItem` kapısı | zaten kilitli **veya** zaten güvencede ise reddeder (:1773) — aynı |
+| `Secure` kapısı | zaten güvencedeyse reddeder (:1850) — aynı |
+| Kilit/güvence eşya tarafı | `ATTR_LOCKEDDOWN`/`ATTR_SECURE` + eve link — aynı |
+
+**Testler:** `HousePermissionKeyParityTests` (17) — ev olmayan bir eşyanın
+hiçbirine yanıt vermemesi, dönen konumun indeksli okumayla uyuşması ve iki
+işaretin birbirine karışmaması dahil. Anahtar kapısı geri alındığında 14, işaret
+olayları geri alındığında 2 test kırmızıya döndü. Tam suite 3.540 / 0, üç arka
+arkaya koşu.
+
+**PLAN-501 kapandı.** Sıradaki: PLAN-502 (MOVEALLTOCRATE/MOVELOCKSTOCRATE).
+

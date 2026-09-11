@@ -13,10 +13,10 @@ buradaki kutuyu işaretle ve "Son durum" satırını güncelle.
 
 | Alan | Değer |
 |---|---|
-| Son güncelleme | 2026-09-11 |
-| Son commit | `1a1fcdd` + İŞ-30/İŞ-31 (pet/ölüm) |
-| Tam test | 3.511 başarılı / 0 başarısız |
-| Sıradaki iş | **Dalga 5 — PLAN-501** (PLAN-405/406 kapandı) |
+| Son güncelleme | 2026-09-12 |
+| Son commit | `b07a82f` + İŞ-32 (konut) |
+| Tam test | 3.523 başarılı / 0 başarısız |
+| Sıradaki iş | **PLAN-501 devam — component/addon, secure/lockdown, key** |
 
 ## Çalışma sırası
 
@@ -359,11 +359,21 @@ kanıtlanmış veri kaybı riski, sonra script sözleşmesi, sonra kapsam geniş
   çağrılmıyor, kişisel gri oluşmuyor, `@SeeCrime` ateşlenmiyordu.
   **PLAN-406 kapandı.**
 
+- [x] **İŞ-32 — Konut: oneksiz anahtarlar ve tasima sandigi** (PLAN-501 birinci dilim)
+  **İki boşluk:** (1) konut anahtarları yalnızca-yazılırdı — `BASESTORAGE=4688`
+  canlı eve ulaşıyor ama `<BASESTORAGE>` hiçbir şey döndürmüyordu; (2) `MOVINGCRATE`
+  hiç yoktu — referans taşıma sandığını EVİN üzerinde tutar ve Scripts-X konut
+  diyalogları onu okur. Redeed artık eldeki sandığı kullanıyor.
+
 ## Yapıldı
 
 Bu bölüm yalnızca bu plandaki işlerin kapanışını listeler; bulgu ayrıntısı takip
 planındadır.
 
+- **İŞ-32 KAPANDI** — 2026-09-12. Öneksiz konut anahtarları + `MOVINGCRATE`
+  (get/set/alt-anahtar/kayıt) + redeed'in eldeki sandığı kullanması. Test:
+  `HouseMovingCrateParityTests` (12); iki düzeltme tek tek geri alınıp doğrulandı
+  (6'şar test). Tam suite 3.523, üç koşu.
 - **İŞ-31 KAPANDI** — 2026-09-11. Ölümde büyü dağıtma, ceset ağırlık sınırı,
   ceset suçunda tanık hattı. Test: `DeathDispelAndCorpseWeightParityTests` (5),
   `CorpseCrimeWitnessParityTests` (5); üç düzeltme tek tek geri alınıp

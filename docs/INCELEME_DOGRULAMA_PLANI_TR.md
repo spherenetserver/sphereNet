@@ -4484,3 +4484,67 @@ canlı paketin kendi `attr_flags` tablosu zaten 0x8000'de bitiyor.
 
 **PLAN-406 kapandı.** Sıradaki: Dalga 5 (PLAN-501 — housing/ship/social).
 
+---
+
+## İŞ-32 — Konut: öneksiz anahtarlar ve taşıma sandığı (PLAN-501, 12 Eylül 2026)
+
+### Paket tarafı ölçüm
+
+Konut API'sinin gerçekte kullanılıp kullanılmadığını önce paketlerden ölçtüm.
+**Canlı paket hiçbirini kullanmıyor** (tek "addons" eşleşmesi bir `CATEGORY`
+metni). **`Scripts-X-main` ise yoğun kullanıyor:** `BASESTORAGE` 163, `REDEED` 35,
+`LOCKDOWNS` 13, `MOVINGCRATE` 10, `INCREASEDSTORAGE` 10, `SECURED` 6,
+`MAXSTORAGE` 6, `UNLOCKITEM` 4, `MAXVENDORS` 3, `COOWNERS` 1.
+
+Bunların hangisinin bizde karşılığı olduğunu saydım: `MOVINGCRATE` **sıfır**
+geçiyordu. `SECURED`/`ADDONS` eşleşmeleri ise çalışma-anı okuması değil
+(`CATEGORY` metinleri ve sysmessage'lar) — o yüzden işe alınmadılar.
+
+### Kapanan boşluklar
+
+- [x] **İŞ-32-01 (P1) — Konut anahtarları yalnızca-yazılırdı.**
+  Referans bu anahtarları multi'nin **üzerinde öneksiz** tutar
+  (`CItemMulti::r_WriteVal`, SHL_* tablosu) ve paketler de öyle okur
+  (`<argo.movingcrate>`). Bizde `TrySetProperty` öneksiz biçimi kabul ediyor ve
+  değeri canlı eve yazıyordu (`Item.cs`, `BASESTORAGE`/`INCREASEDSTORAGE`/
+  `LOCKDOWNSPERCENT`/`BASEVENDORS`), ama `TryGetProperty` yalnızca `HOUSE.`
+  önekliyi çözüyordu. Ölçtüm: `BASESTORAGE=999` → `house.BaseStorage == 999`,
+  `<BASESTORAGE>` → `ok=False`. Yani bir script kendi yazdığını geri okuyamıyordu.
+
+  **Kapsam kasten dar:** konut araması eşyanın kendi anahtarlarından **sonra**
+  koşuyor, böylece ortak anahtarlar (`TYPE`, `OWNER`) hala EŞYANIN değerini
+  veriyor; ve `strict` kipinde ev yoksa / anahtar tanınmıyorsa **false**
+  dönüyor. Bu önemliydi: `HOUSE.` yolunda tanınmayan anahtar "0" dönüyor, o
+  davranış öneksiz yola taşınsaydı **her eşyada her bilinmeyen anahtar 0**
+  olurdu.
+
+- [x] **İŞ-32-02 (P2) — `MOVINGCRATE` hiç yoktu.**
+  Referans taşıma sandığını multi'nin üzerinde tutar (`_uidMovingCrate`) — bu,
+  yalnızca redeed sırasında var olan bir şey değil. Bizde yalnızca redeed anında
+  üretilen geçici sandıklar vardı.
+
+  | Parça | Referans |
+  |---|---|
+  | `GetMovingCrate(fCreate)` | ITEMID_CRATE1, evin noktasında **Z-20**, eve link (:1329) |
+  | `SetMovingCrate` | dolu eski sandığı yenisine boşaltır, eskisini siler (:1317) |
+  | `<MOVINGCRATE>` | uid ya da 0; **yaratmaz** (:2876) |
+  | `<MOVINGCRATE 1>` | gerekirse yaratır, sonra uid (:2872) |
+  | `<MOVINGCRATE.key>` | alt-anahtarı sandığa iletir (:2866) |
+  | `MOVINGCRATE=1` (yükleme) | "bir tane yarat" (:3034) |
+  | Kayıt | ev bir tane taşıyorsa yazılır (:2666) |
+
+- [x] **İŞ-32-03 (P2) — Redeed eldeki sandığı terk ediyordu.**
+  Referans `TransferAllItemsToMovingCrate`, `GetMovingCrate(true)` sorar — yani
+  evin zaten taşıdığı sandık malları alan sandıktır. Yeni sandık mantığı artık
+  yalnızca kap sınırını aşan taşma için çalışıyor. Ayrıca sandık, paketlenecek
+  başka bir şey **olmasa da** evden alınıyor; yoksa içi dolu bir sandık artık var
+  olmayan bir evin altında (Z-20) gömülü kalırdı.
+
+**Testler:** `HouseMovingCrateParityTests` (12) — ev olmayan bir eşyanın hiçbir
+konut anahtarına yanıt vermemesi ve `TYPE`'ın hala eşyanınki olması dahil. İki
+düzeltme tek tek geri alındı; her biri 6 testi kırmızıya döndürdü. Tam suite
+3.523 / 0, üç arka arkaya koşu.
+
+**PLAN-501'in kalanı:** component kimliği/ekle-sil, addon ilişkileri,
+secure/lockdown, house vendor, key.
+

@@ -205,6 +205,82 @@ public sealed class House
     public long LastRefreshTick { get => _lastRefreshTick; set => _lastRefreshTick = value; }
     public HouseDecayStage DecayStage { get => _decayStage; set => _decayStage = value; }
     public uint RegionUid { get => _regionUid; set => _regionUid = value; }
+
+    /// <summary>The house's standing moving crate, or Invalid when it has none.
+    /// Source-X keeps this on the multi (_uidMovingCrate) — it is not a thing that
+    /// only exists during a redeed. The housing dialogs read it back
+    /// (Scripts-X house_dialogs.scp:238/277, house_typedefs.scp:632).</summary>
+    public Serial MovingCrate { get => _movingCrate; set => _movingCrate = value; }
+    private Serial _movingCrate = Serial.Invalid;
+
+    /// <summary>ITEMID_CRATE1 — what Source-X makes a moving crate out of.</summary>
+    public const ushort MovingCrateId = 0x0E3D;
+
+    /// <summary>The crate item, when one exists and still does.</summary>
+    public Item? ResolveMovingCrate()
+    {
+        if (!_movingCrate.IsValid)
+            return null;
+        var crate = Objects.ObjBase.ResolveWorld?.Invoke()?.FindItem(_movingCrate);
+        if (crate == null || crate.IsDeleted)
+        {
+            _movingCrate = Serial.Invalid;   // the crate went away; forget it
+            return null;
+        }
+        return crate;
+    }
+
+    /// <summary>Source-X GetMovingCrate(fCreate) (CItemMulti.cpp:1329). With
+    /// <paramref name="create"/> it mints one at the house's own spot but 20 below
+    /// it, so the crate sits under the floor rather than in the room, and links it
+    /// back to the house.</summary>
+    public Item? GetMovingCrate(bool create)
+    {
+        var existing = ResolveMovingCrate();
+        if (existing != null || !create)
+            return existing;
+
+        var world = Objects.ObjBase.ResolveWorld?.Invoke();
+        if (world == null)
+            return null;
+
+        var crate = world.CreateItem();
+        crate.BaseId = MovingCrateId;
+        crate.ItemType = Core.Enums.ItemType.Container;
+        crate.Name = "a moving crate";
+        world.PlaceItem(crate, new Core.Types.Point3D(
+            _multiItem.X, _multiItem.Y, (sbyte)(_multiItem.Z - 20), _multiItem.MapIndex));
+        AssignMovingCrate(crate);
+        return crate;
+    }
+
+    /// <summary>Source-X SetMovingCrate (CItemMulti.cpp:1306). A crate already
+    /// holding something is not simply dropped: its contents move into the new one
+    /// and the old crate is deleted, so replacing a crate never strands goods.
+    /// Passing null (or a dead item) just forgets the crate.</summary>
+    public void AssignMovingCrate(Item? crate)
+    {
+        if (crate == null || crate.IsDeleted)
+        {
+            _movingCrate = Serial.Invalid;
+            return;
+        }
+
+        var current = ResolveMovingCrate();
+        if (current != null && current != crate && current.Contents.Count > 0)
+        {
+            foreach (var item in new List<Item>(current.Contents))
+            {
+                current.RemoveItem(item);
+                crate.TryAddItem(item);
+            }
+            Objects.ObjBase.ResolveWorld?.Invoke()?.RemoveItem(current);
+            current.Delete();
+        }
+
+        _movingCrate = crate.Uid;
+        crate.Link = _multiItem.Uid;
+    }
     public IReadOnlyCollection<Serial> CoOwners => _coOwners;
     public IReadOnlyCollection<Serial> Friends => _friends;
     public IReadOnlyCollection<Serial> Bans => _bans;
@@ -468,42 +544,69 @@ public sealed class House
             protectedUids = protectedSet.ToList();
         }
 
-        if (protectedUids.Count > 0)
+        var protectedItems = new List<Item>();
+        foreach (var protUid in protectedUids)
         {
-            var protectedItems = new List<Item>();
-            foreach (var protUid in protectedUids)
-            {
-                var item = world.FindItem(protUid);
-                if (item == null || item.IsDeleted) continue;
-                item.ClearAttr(Core.Enums.ObjAttributes.LockedDown | Core.Enums.ObjAttributes.Secure);
-                if (item.Link == _multiItem.Uid)
-                    item.Link = Serial.Invalid;
-                // Detach from its current container or ground sector, then place it
-                // in the crate (a fresh slot). Contents of a secured container ride
-                // along inside it.
-                if (item.ContainedIn.IsValid)
-                    world.FindItem(item.ContainedIn)?.RemoveItem(item);
-                else
-                    world.HideFromSector(item);
-                item.DecayTime = 0; // protected inside the crate
-                protectedItems.Add(item);
-            }
+            var item = world.FindItem(protUid);
+            if (item == null || item.IsDeleted) continue;
+            item.ClearAttr(Core.Enums.ObjAttributes.LockedDown | Core.Enums.ObjAttributes.Secure);
+            if (item.Link == _multiItem.Uid)
+                item.Link = Serial.Invalid;
+            // Detach from its current container or ground sector, then place it
+            // in the crate (a fresh slot). Contents of a secured container ride
+            // along inside it.
+            if (item.ContainedIn.IsValid)
+                world.FindItem(item.ContainedIn)?.RemoveItem(item);
+            else
+                world.HideFromSector(item);
+            item.DecayTime = 0; // protected inside the crate
+            protectedItems.Add(item);
+        }
 
-            var owner = _owner.IsValid ? world.FindChar(_owner) : null;
-            var bank = owner?.GetEquippedItem(Core.Enums.Layer.BankBox);
-            while (protectedItems.Count > 0)
+        // Source-X TransferAllItemsToMovingCrate asks GetMovingCrate(true), so the
+        // crate the house was ALREADY carrying is the one that receives the goods.
+        // It is taken off the house here whether or not there is anything to put in
+        // it — a crate with goods already inside must not be left buried under a
+        // house that no longer exists.
+        var crates = new List<Item>();
+        if (GetMovingCrate(create: false) is { } standingCrate)
+        {
+            MovingCrate = Serial.Invalid;
+            standingCrate.Link = Serial.Invalid;
+            world.HideFromSector(standingCrate);   // it was sitting at house Z - 20
+            crates.Add(standingCrate);
+        }
+
+        while (protectedItems.Count > 0)
+        {
+            Item crate;
+            if (crates.Count > 0 && crates[^1].Contents.Count < Item.MaxContainerItems)
             {
-                var crate = world.CreateItem();
-                crate.BaseId = 0x0E3D; // ITEMID_CRATE1 (wooden crate)
+                crate = crates[^1];
+            }
+            else
+            {
+                crate = world.CreateItem();
+                crate.BaseId = MovingCrateId;
                 crate.ItemType = Core.Enums.ItemType.Container;
                 crate.Name = "a moving crate";
-                while (protectedItems.Count > 0 && crate.Contents.Count < Item.MaxContainerItems)
-                {
-                    var item = protectedItems[^1];
-                    protectedItems.RemoveAt(protectedItems.Count - 1);
-                    item.Position = new Point3D(0, 0, 0, crate.MapIndex);
-                    crate.TryAddItem(item);
-                }
+                crates.Add(crate);
+            }
+            while (protectedItems.Count > 0 && crate.Contents.Count < Item.MaxContainerItems)
+            {
+                var item = protectedItems[^1];
+                protectedItems.RemoveAt(protectedItems.Count - 1);
+                item.Position = new Point3D(0, 0, 0, crate.MapIndex);
+                crate.TryAddItem(item);
+            }
+        }
+
+        if (crates.Count > 0)
+        {
+            var owner = _owner.IsValid ? world.FindChar(_owner) : null;
+            var bank = owner?.GetEquippedItem(Core.Enums.Layer.BankBox);
+            foreach (var crate in crates)
+            {
                 if (bank == null || !bank.TryAddItem(crate))
                     world.PlaceItemWithDecay(crate, _multiItem.Position);
             }
@@ -1338,6 +1441,13 @@ public sealed class HousingEngine
                 item.SetTag("HOUSE.GUILD", $"0{house.GuildStone.Value:X}");
             else
                 item.RemoveTag("HOUSE.GUILD");
+            // Source-X writes MOVINGCRATE only when the house has one
+            // (CItemMulti.cpp:2666) — a crate outlives a restart, and the goods in
+            // it are the owner's.
+            if (house.ResolveMovingCrate() is { } savedCrate)
+                item.SetTag("HOUSE.MOVINGCRATE", $"0{savedCrate.Uid.Value:X}");
+            else
+                item.RemoveTag("HOUSE.MOVINGCRATE");
             item.SetTag("HOUSE.DECAY_STAGE", ((byte)house.DecayStage).ToString());
             long elapsed = Environment.TickCount64 - house.LastRefreshTick;
             item.SetTag("HOUSE.DECAY_ELAPSED", Math.Max(0, elapsed).ToString());
@@ -1441,6 +1551,11 @@ public sealed class HousingEngine
             house.LockdownsPercent = lp;
         if (item.TryGetTag("HOUSE.GUILD", out string? guildStr))
             house.GuildStone = new Serial(ParseHexSerial(guildStr));
+        // The crate item is an ordinary world item and loads on its own; the house
+        // just re-adopts it. ResolveMovingCrate drops the link if the item is gone,
+        // so a crate that was emptied and deleted does not come back as a ghost uid.
+        if (item.TryGetTag("HOUSE.MOVINGCRATE", out string? crateStr))
+            house.MovingCrate = new Serial(ParseHexSerial(crateStr));
         if (item.TryGetTag("HOUSE.DECAY_STAGE", out string? dsStr) && byte.TryParse(dsStr, out byte ds) &&
             ds <= (byte)HouseDecayStage.InDangerOfCollapsing)
             house.DecayStage = (HouseDecayStage)ds;

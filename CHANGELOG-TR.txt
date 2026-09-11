@@ -3,6 +3,33 @@
  Tum onemli degisiklikler bu dosyada belgelenir.
  Ingilizce: CHANGELOG-EN.txt  |  Arsiv (2026-05-29 oncesi, iki dilli): CHANGELOG_OLD.txt
 
+[2026-09-12] - Bir ev kendi anahtarlarini yanitlar ve sandigini korur
+----------------------------------------
+
+FIX - Bir ev multi'si konut anahtarlarini ONEKSIZ okur. Referans onlari orada
+        tutar (CItemMulti::r_WriteVal) ve konut paketleri de oyle okur. Bizde
+        oneksiz bicimi yalnizca YAZAN taraf kabul ediyordu: BASESTORAGE=4688 canli
+        eve ulasiyor, ama <BASESTORAGE> geriye hicbir sey dondurmuyordu - yani
+        yalnizca-yazilir ozellikler. HOUSE. oneki calismaya ve ayni seyi ifade
+        etmeye devam ediyor. Esyanin ve evin paylastigi anahtarlar (TYPE, OWNER)
+        hala ESYANINKINI ifade ediyor: konut aramasi en sonda kosuyor ve ev
+        olmayan bir seyde hic yanit vermiyor.
+
+NEW - MOVINGCRATE. Source-X tasima sandigini EVIN uzerinde tutar, yalnizca redeed
+        sirasinda degil: <MOVINGCRATE> sandik uid'sini ya da 0 dondurur,
+        <MOVINGCRATE 1> once bir tane yaratir, <MOVINGCRATE.anahtar> dogrudan
+        sandiga okur, ve ev bir tane tasiyorsa uid kaydedilir
+        (CItemMulti.cpp:1329/2666/2858). Sandik, evin kendi noktasinda ama 20
+        altinda duran bir ITEMID_CRATE1'dir ve eve baglanir. Icinde bir sey olan
+        bir sandigi degistirmek icindekileri yenisine tasir ve eskisini siler,
+        yani degisim hicbir seyi ortada birakmaz (:1317).
+
+FIX - Bir evi deed'e cevirmek, elindeki sandigi terk edip yenisini basmak yerine
+        onu kullaniyor. Icinde mal olan bir sandik, paketlenecek baska bir sey
+        olsun olmasin evden alinir; boylece artik var olmayan bir evin altinda
+        gomulu kalmaz.
+
+
 [2026-09-11] - Olum neyi bitirir, sizi yagmalarken kim gorur
 ----------------------------------------
 

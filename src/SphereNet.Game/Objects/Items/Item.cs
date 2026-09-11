@@ -2000,6 +2000,18 @@ public class Item : ObjBase
             return true;
         }
 
+        // A house multi answers its housing keys BARE — that is where the
+        // reference keeps them (CItemMulti::r_WriteVal, the SHL_* table), and the
+        // housing packs read them that way (<argo.movingcrate>, <BASESTORAGE>).
+        // Only the setter accepted the bare form here, so BASESTORAGE=4688 reached
+        // a live house and <BASESTORAGE> then read back nothing.
+        //
+        // Placed after everything the item answers for itself, so keys the two
+        // share (TYPE, OWNER) still mean the ITEM's — they never reach here.
+        // Strict: an unknown key falls through instead of becoming "0".
+        if (TryGetHouseProperty(upper, out value, strict: true))
+            return true;
+
         return base.TryGetProperty(key, out value);
     }
 
@@ -2410,6 +2422,25 @@ public class Item : ObjBase
             // applied before the house is registered keeps working, but when the
             // multi already IS a live house the value must reach it — writing
             // only the tag left the running house on its defaults.
+            // Source-X SHL_MOVINGCRATE load (CItemMulti.cpp:3029): a uid names the
+            // crate, and the special value 1 means "make one" — which is how a save
+            // written as "movingcrate 1" comes back.
+            case "MOVINGCRATE":
+            {
+                var crateHouse = ResolveHouse?.Invoke(Uid);
+                if (crateHouse == null)
+                {
+                    SetTag(upper, value);   // template applied before registration
+                    return true;
+                }
+                uint crateUid = ParseHexOrDecUInt(value);
+                if (crateUid == 1)
+                    crateHouse.GetMovingCrate(create: true);
+                else
+                    crateHouse.AssignMovingCrate(
+                        crateUid != 0 ? ResolveWorld?.Invoke()?.FindItem(new Serial(crateUid)) : null);
+                return true;
+            }
             case "LOCKDOWNSPERCENT": case "BASEVENDORS": case "BASESTORAGE":
             case "INCREASEDSTORAGE":
             {
@@ -4550,13 +4581,43 @@ public class Item : ObjBase
         return count;
     }
 
-    private bool TryGetHouseProperty(string subKey, out string value)
+    private bool TryGetHouseProperty(string subKey, out string value, bool strict = false)
     {
         value = "";
         var house = ResolveHouse?.Invoke(Uid);
         if (house == null)
         {
+            if (strict)
+                return false;   // not a house at all: this key is not ours to answer
             value = "0";
+            return true;
+        }
+
+        // MOVINGCRATE (Source-X SHL_MOVINGCRATE, CItemMulti.cpp:2858): bare reads the
+        // crate uid or 0; "MOVINGCRATE 1" creates one first; anything longer is a
+        // subkey forwarded to the crate itself.
+        if (subKey.Equals("MOVINGCRATE", StringComparison.Ordinal) ||
+            subKey.StartsWith("MOVINGCRATE ", StringComparison.Ordinal) ||
+            subKey.StartsWith("MOVINGCRATE.", StringComparison.Ordinal))
+        {
+            string arg = subKey.Length > "MOVINGCRATE".Length
+                ? subKey[("MOVINGCRATE".Length + 1)..].Trim()
+                : "";
+
+            if (subKey.StartsWith("MOVINGCRATE.", StringComparison.Ordinal) && arg.Length > 0)
+            {
+                var existing = house.ResolveMovingCrate();
+                if (existing == null)
+                {
+                    value = "0";
+                    return true;
+                }
+                return existing.TryGetProperty(arg, out value);
+            }
+
+            bool create = arg.Length > 0 && arg != "0";
+            var crate = house.GetMovingCrate(create);
+            value = crate != null ? FormatSerial(crate.Uid) : "0";
             return true;
         }
 
@@ -4602,6 +4663,11 @@ public class Item : ObjBase
         {
             return true;
         }
+
+        // Under the explicit HOUSE. prefix an unrecognised key is 0 (the caller
+        // asked for a housing key). Bare, it is simply not a housing key.
+        if (strict)
+            return false;
 
         value = "0";
         return true;

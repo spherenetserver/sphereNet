@@ -4,6 +4,32 @@
  Turkish: CHANGELOG-TR.txt  |  Archive (pre 2026-05-29, bilingual): CHANGELOG_OLD.txt
 ================================================================================
 
+[2026-09-12] - A house answers its own keys, and keeps its crate
+----------------------------------------
+
+FIX - A house multi reads its housing keys BARE. That is where the reference
+        keeps them (CItemMulti::r_WriteVal) and how the housing packs read them.
+        Only the SETTER took the bare form here, so BASESTORAGE=4688 reached a
+        live house and <BASESTORAGE> then read back nothing at all - write-only
+        properties. The HOUSE. prefix still works and means the same thing. Keys
+        the item and the house share (TYPE, OWNER) still mean the ITEM's: the
+        housing lookup runs last, and on anything that is not a house it does not
+        answer at all.
+
+NEW - MOVINGCRATE. Source-X keeps a moving crate ON the house, not just during a
+        redeed: <MOVINGCRATE> reads the crate uid or 0, <MOVINGCRATE 1> makes one
+        first, <MOVINGCRATE.key> reads through to the crate, and the uid is saved
+        when the house has one (CItemMulti.cpp:1329/2666/2858). The crate is an
+        ITEMID_CRATE1 at the house's own spot but 20 below it, linked back to the
+        house. Replacing a crate that holds something moves the contents across
+        and deletes the old one, so a swap never strands goods (:1317).
+
+FIX - Redeeding a house uses the crate it already had instead of abandoning it
+        and minting a fresh one. A crate holding goods is taken off the house
+        whether or not there is anything else to pack, so it is never left buried
+        under a house that no longer exists.
+
+
 [2026-09-11] - What death ends, and who sees you loot
 ----------------------------------------
 
